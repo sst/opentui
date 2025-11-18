@@ -3182,3 +3182,89 @@ test "TextBufferView - tab indicator set and get" {
     try std.testing.expectEqual(@as(u32, '·'), view.getTabIndicator().?);
     try std.testing.expectEqual(@as(f32, 0.4), view.getTabIndicatorColor().?[0]);
 }
+
+test "TextBufferView findVisualLineIndex - finds correct line for wrapped text" {
+    const pool = gp.initGlobalPool(std.testing.allocator);
+    defer gp.deinitGlobalPool();
+
+    const gd = gp.initGlobalUnicodeData(std.testing.allocator);
+    defer gp.deinitGlobalUnicodeData(std.testing.allocator);
+    const graphemes_ptr, const display_width_ptr = gd;
+
+    var tb = try TextBuffer.init(std.testing.allocator, pool, .wcwidth, graphemes_ptr, display_width_ptr);
+    defer tb.deinit();
+
+    var view = try TextBufferView.init(std.testing.allocator, tb);
+    defer view.deinit();
+
+    // Same text as in the failing test - wraps into 7 virtual lines
+    try tb.setText("This is a very long line that will definitely wrap into multiple visual lines when the viewport is small");
+
+    view.setWrapMode(.word);
+    view.setWrapWidth(20);
+
+    // Test findVisualLineIndex for various logical columns
+    // Column 0 should be in visual line 0
+    const idx0 = view.findVisualLineIndex(0, 0);
+    try std.testing.expectEqual(@as(u32, 0), idx0);
+
+    // Column 20 should be in visual line 1 (starts at col 20)
+    const idx20 = view.findVisualLineIndex(0, 20);
+    try std.testing.expectEqual(@as(u32, 1), idx20);
+
+    // Column 35 should be in visual line 2 (starts at col 35)
+    const idx35 = view.findVisualLineIndex(0, 35);
+    try std.testing.expectEqual(@as(u32, 2), idx35);
+
+    // Column 50 is the last column of visual line 2
+    const idx50 = view.findVisualLineIndex(0, 50);
+    try std.testing.expectEqual(@as(u32, 2), idx50);
+
+    // Column 51 should be in visual line 3 (starts at col 51)
+    const idx51 = view.findVisualLineIndex(0, 51);
+    try std.testing.expectEqual(@as(u32, 3), idx51);
+}
+
+test "TextBufferView word wrapping - chunk at exact wrap boundary" {
+    const pool = gp.initGlobalPool(std.testing.allocator);
+    defer gp.deinitGlobalPool();
+
+    const gd = gp.initGlobalUnicodeData(std.testing.allocator);
+    defer gp.deinitGlobalUnicodeData(std.testing.allocator);
+    const graphemes_ptr, const display_width_ptr = gd;
+
+    var tb = try TextBuffer.init(std.testing.allocator, pool, .wcwidth, graphemes_ptr, display_width_ptr);
+    defer tb.deinit();
+
+    var view = try TextBufferView.init(std.testing.allocator, tb);
+    defer view.deinit();
+
+    const text = "hello world ddddddddd";
+    const mem_id = try tb.mem_registry.register(text, false);
+
+    const seg_mod = @import("../text-buffer-segment.zig");
+    const Segment = seg_mod.Segment;
+
+    var segments = std.ArrayList(Segment).init(std.testing.allocator);
+    defer segments.deinit();
+
+    try segments.append(Segment{ .linestart = {} });
+
+    const chunk1 = tb.createChunk(mem_id, 0, 17);
+    try segments.append(Segment{ .text = chunk1 });
+
+    const chunk2 = tb.createChunk(mem_id, 17, 21);
+    try segments.append(Segment{ .text = chunk2 });
+
+    try tb.rope.setSegments(segments.items);
+    view.virtual_lines_dirty = true;
+
+    view.setWrapMode(.word);
+    view.setWrapWidth(17);
+
+    const vlines = view.getVirtualLines();
+
+    try std.testing.expectEqual(@as(usize, 2), vlines.len);
+    try std.testing.expectEqual(@as(u32, 12), vlines[0].width);
+    try std.testing.expectEqual(@as(u32, 9), vlines[1].width);
+}

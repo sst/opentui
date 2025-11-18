@@ -1078,6 +1078,153 @@ test("parseKeypress - filters out basic mouse events", () => {
   expect(basicMouse).toBeNull()
 })
 
+test("parseKeypress - filters out terminal response sequences", () => {
+  // Window/cell size reports - Format: ESC[4;height;width t or ESC[8;rows;cols t
+  // Example: resolution query response "\u001b[4;1782;3012t"
+  const windowSize1 = parseKeypress("\u001b[4;1782;3012t")
+  expect(windowSize1).toBeNull()
+
+  const windowSize2 = parseKeypress("\x1b[4;800;600t")
+  expect(windowSize2).toBeNull()
+
+  const cellSize = parseKeypress("\x1b[8;24;80t")
+  expect(cellSize).toBeNull()
+
+  // Cursor position reports - Format: ESC[row;col R
+  // Response to DSR (Device Status Report) query
+  const cursorPos1 = parseKeypress("\x1b[10;25R")
+  expect(cursorPos1).toBeNull()
+
+  const cursorPos2 = parseKeypress("\u001b[1;1R")
+  expect(cursorPos2).toBeNull()
+
+  // Device Attributes (DA) responses - Format: ESC[?...c
+  // Response to terminal identification query
+  const deviceAttrs1 = parseKeypress("\x1b[?1;2c")
+  expect(deviceAttrs1).toBeNull()
+
+  const deviceAttrs2 = parseKeypress("\x1b[?62;c")
+  expect(deviceAttrs2).toBeNull()
+
+  const deviceAttrs3 = parseKeypress("\x1b[?1;0;6;9;15c")
+  expect(deviceAttrs3).toBeNull()
+
+  // Mode reports - Format: ESC[?...;...$y
+  // Response to DECRQM (Request Mode) query
+  const modeReport1 = parseKeypress("\x1b[?1;2$y")
+  expect(modeReport1).toBeNull()
+
+  const modeReport2 = parseKeypress("\x1b[?25;1$y")
+  expect(modeReport2).toBeNull()
+
+  // Focus events
+  const focusIn = parseKeypress("\x1b[I")
+  expect(focusIn).toBeNull()
+
+  const focusOut = parseKeypress("\x1b[O")
+  expect(focusOut).toBeNull()
+
+  // OSC (Operating System Command) responses - color/style queries
+  // Format: ESC]...ESC\ or ESC]...BEL
+  // Must be complete sequences with proper terminators to be filtered
+  const oscResponse1 = parseKeypress("\x1b]11;rgb:0000/0000/0000\x1b\\")
+  expect(oscResponse1).toBeNull()
+
+  const oscResponse2 = parseKeypress("\x1b]10;rgb:ffff/ffff/ffff\x07")
+  expect(oscResponse2).toBeNull()
+
+  // Incomplete OSC sequences should NOT be filtered
+  // StdinBuffer will either complete them or timeout and flush them
+  const incompleteOsc = parseKeypress("\x1b]11;rgb:0000")
+  expect(incompleteOsc).not.toBeNull()
+  expect(incompleteOsc?.name).toBe("") // Unknown sequence, but not filtered
+})
+
+test("parseKeypress - does not filter valid key sequences that might look similar", () => {
+  // Make sure we don't accidentally filter out valid keys
+
+  // F1-F12 should still work (e.g., [11~, [24~)
+  const f1 = parseKeypress("\x1b[11~")
+  expect(f1).not.toBeNull()
+  expect(f1?.name).toBe("f1")
+
+  const f12 = parseKeypress("\x1b[24~")
+  expect(f12).not.toBeNull()
+  expect(f12?.name).toBe("f12")
+
+  // Arrow keys with O prefix should still work (SS3 sequences)
+  const arrowUp = parseKeypress("\x1bOA")
+  expect(arrowUp).not.toBeNull()
+  expect(arrowUp?.name).toBe("up")
+
+  // Other SS3 sequences
+  const ss3Down = parseKeypress("\x1bOB")
+  expect(ss3Down).not.toBeNull()
+  expect(ss3Down?.name).toBe("down")
+
+  // Note: ESC[O without a following character is filtered (focus out event)
+  const focusOutFiltered = parseKeypress("\x1b[O")
+  expect(focusOutFiltered).toBeNull()
+
+  // Standard arrow keys should still work
+  const arrowLeft = parseKeypress("\x1b[D")
+  expect(arrowLeft).not.toBeNull()
+  expect(arrowLeft?.name).toBe("left")
+
+  // Modified keys should still work
+  const ctrlUp = parseKeypress("\x1b[1;5A")
+  expect(ctrlUp).not.toBeNull()
+  expect(ctrlUp?.name).toBe("up")
+  expect(ctrlUp?.ctrl).toBe(true)
+
+  // Delete, insert, page up/down should still work
+  const deleteKey = parseKeypress("\x1b[3~")
+  expect(deleteKey).not.toBeNull()
+  expect(deleteKey?.name).toBe("delete")
+
+  const insertKey = parseKeypress("\x1b[2~")
+  expect(insertKey).not.toBeNull()
+  expect(insertKey?.name).toBe("insert")
+
+  const pageUp = parseKeypress("\x1b[5~")
+  expect(pageUp).not.toBeNull()
+  expect(pageUp?.name).toBe("pageup")
+
+  // Kitty keyboard protocol sequences should still work
+  const kittyA = parseKeypress("\x1b[97u", { useKittyKeyboard: true })
+  expect(kittyA).not.toBeNull()
+  expect(kittyA?.name).toBe("a")
+  expect(kittyA?.source).toBe("kitty")
+
+  const kittyArrow = parseKeypress("\x1b[57352u", { useKittyKeyboard: true })
+  expect(kittyArrow).not.toBeNull()
+  expect(kittyArrow?.name).toBe("up")
+  expect(kittyArrow?.source).toBe("kitty")
+
+  // Bracketed paste markers should be filtered
+  // They're handled by KeyHandler before parseKeypress is called,
+  // but should return null for defense-in-depth
+  const pasteStart = parseKeypress("\x1b[200~")
+  expect(pasteStart).toBeNull()
+
+  const pasteEnd = parseKeypress("\x1b[201~")
+  expect(pasteEnd).toBeNull()
+
+  // Control characters should still work (including BEL which is Ctrl+G)
+  const bel = parseKeypress("\x07")
+  expect(bel).not.toBeNull()
+  expect(bel?.name).toBe("g")
+  expect(bel?.ctrl).toBe(true)
+
+  const backspace = parseKeypress("\b")
+  expect(backspace).not.toBeNull()
+  expect(backspace?.name).toBe("backspace")
+
+  const backspace2 = parseKeypress("\x7f")
+  expect(backspace2).not.toBeNull()
+  expect(backspace2?.name).toBe("backspace")
+})
+
 test("parseKeypress - source field is always 'raw' for non-Kitty parsing", () => {
   // Test various key types to ensure they all have source: "raw"
   const letter = parseKeypress("a")
@@ -1153,11 +1300,12 @@ test("parseKeypress - fallback to raw parsing when Kitty option is enabled but s
   expect(normalCtrl?.ctrl).toBe(true)
 })
 
-test("parseKeypress - Ghostty terminal modified enter keys", () => {
-  // Ghostty terminal sends special escape sequences for modified enter keys
-  // Format: ESC[27;modifier;charcode~ where charcode 13 is enter/return
+test("parseKeypress - modifyOtherKeys modified enter keys", () => {
+  // Terminals with modifyOtherKeys mode enabled send special escape sequences for modified keys
+  // Format: CSI 27 ; modifier ; code ~ where code 13 is enter/return
+  // This is part of the CSI u protocol and is sent by xterm, iTerm2, Ghostty, etc.
 
-  // Shift+Enter: ESC[27;2;13~ (modifier 2 = shift bit 1)
+  // Shift+Enter: CSI 27;2;13~ (modifier 2 = shift bit 1)
   const shiftEnter = parseKeypress("\u001b[27;2;13~")!
   expect(shiftEnter.name).toBe("return")
   expect(shiftEnter.shift).toBe(true)
@@ -1177,7 +1325,7 @@ test("parseKeypress - Ghostty terminal modified enter keys", () => {
   expect(shiftEnter2.meta).toBe(false)
   expect(shiftEnter2.option).toBe(false)
 
-  // Ctrl+Enter: ESC[27;5;13~ (modifier 5 = ctrl bit 4)
+  // Ctrl+Enter: CSI 27;5;13~ (modifier 5 = ctrl bit 4)
   const ctrlEnter = parseKeypress("\u001b[27;5;13~")!
   expect(ctrlEnter.name).toBe("return")
   expect(ctrlEnter.ctrl).toBe(true)
@@ -1197,7 +1345,7 @@ test("parseKeypress - Ghostty terminal modified enter keys", () => {
   expect(ctrlEnter2.meta).toBe(false)
   expect(ctrlEnter2.option).toBe(false)
 
-  // Alt/Option+Enter: ESC[27;3;13~ (modifier 3 = alt/option bit 2)
+  // Alt/Option+Enter: CSI 27;3;13~ (modifier 3 = alt/option bit 2)
   const altEnter = parseKeypress("\u001b[27;3;13~")!
   expect(altEnter.name).toBe("return")
   expect(altEnter.meta).toBe(true)
@@ -1209,7 +1357,7 @@ test("parseKeypress - Ghostty terminal modified enter keys", () => {
   expect(altEnter.eventType).toBe("press")
   expect(altEnter.source).toBe("raw")
 
-  // Shift+Ctrl+Enter: ESC[27;6;13~ (modifier 6 = shift(1) + ctrl(4) = bits 5)
+  // Shift+Ctrl+Enter: CSI 27;6;13~ (modifier 6 = shift(1) + ctrl(4) = bits 5)
   const shiftCtrlEnter = parseKeypress("\u001b[27;6;13~")!
   expect(shiftCtrlEnter.name).toBe("return")
   expect(shiftCtrlEnter.shift).toBe(true)
@@ -1221,7 +1369,7 @@ test("parseKeypress - Ghostty terminal modified enter keys", () => {
   expect(shiftCtrlEnter.eventType).toBe("press")
   expect(shiftCtrlEnter.source).toBe("raw")
 
-  // Shift+Alt+Enter: ESC[27;4;13~ (modifier 4 = shift(1) + alt(2) = bits 3)
+  // Shift+Alt+Enter: CSI 27;4;13~ (modifier 4 = shift(1) + alt(2) = bits 3)
   const shiftAltEnter = parseKeypress("\u001b[27;4;13~")!
   expect(shiftAltEnter.name).toBe("return")
   expect(shiftAltEnter.shift).toBe(true)
@@ -1233,7 +1381,7 @@ test("parseKeypress - Ghostty terminal modified enter keys", () => {
   expect(shiftAltEnter.eventType).toBe("press")
   expect(shiftAltEnter.source).toBe("raw")
 
-  // Ctrl+Alt+Enter: ESC[27;7;13~ (modifier 7 = alt(2) + ctrl(4) = bits 6)
+  // Ctrl+Alt+Enter: CSI 27;7;13~ (modifier 7 = alt(2) + ctrl(4) = bits 6)
   const ctrlAltEnter = parseKeypress("\u001b[27;7;13~")!
   expect(ctrlAltEnter.name).toBe("return")
   expect(ctrlAltEnter.ctrl).toBe(true)
@@ -1245,7 +1393,7 @@ test("parseKeypress - Ghostty terminal modified enter keys", () => {
   expect(ctrlAltEnter.eventType).toBe("press")
   expect(ctrlAltEnter.source).toBe("raw")
 
-  // Shift+Ctrl+Alt+Enter: ESC[27;8;13~ (modifier 8 = shift(1) + alt(2) + ctrl(4) = bits 7)
+  // Shift+Ctrl+Alt+Enter: CSI 27;8;13~ (modifier 8 = shift(1) + alt(2) + ctrl(4) = bits 7)
   const allModsEnter = parseKeypress("\u001b[27;8;13~")!
   expect(allModsEnter.name).toBe("return")
   expect(allModsEnter.shift).toBe(true)
@@ -1258,11 +1406,11 @@ test("parseKeypress - Ghostty terminal modified enter keys", () => {
   expect(allModsEnter.source).toBe("raw")
 })
 
-test("parseKeypress - Ghostty terminal modified escape keys", () => {
-  // Ghostty terminal also sends modified escape key sequences
-  // Format: ESC[27;modifier;27~ where charcode 27 is escape
+test("parseKeypress - modifyOtherKeys modified escape keys", () => {
+  // Terminals with modifyOtherKeys mode enabled also send modified escape key sequences
+  // Format: CSI 27 ; modifier ; 27 ~ where code 27 is escape
 
-  // Ctrl+Escape: ESC[27;5;27~ (modifier 5 = ctrl bit 4)
+  // Ctrl+Escape: CSI 27;5;27~ (modifier 5 = ctrl bit 4)
   const ctrlEscape = parseKeypress("\u001b[27;5;27~")!
   expect(ctrlEscape.name).toBe("escape")
   expect(ctrlEscape.ctrl).toBe(true)
@@ -1282,7 +1430,7 @@ test("parseKeypress - Ghostty terminal modified escape keys", () => {
   expect(ctrlEscape2.meta).toBe(false)
   expect(ctrlEscape2.option).toBe(false)
 
-  // Shift+Escape: ESC[27;2;27~ (modifier 2 = shift bit 1)
+  // Shift+Escape: CSI 27;2;27~ (modifier 2 = shift bit 1)
   const shiftEscape = parseKeypress("\u001b[27;2;27~")!
   expect(shiftEscape.name).toBe("escape")
   expect(shiftEscape.shift).toBe(true)
@@ -1294,7 +1442,7 @@ test("parseKeypress - Ghostty terminal modified escape keys", () => {
   expect(shiftEscape.eventType).toBe("press")
   expect(shiftEscape.source).toBe("raw")
 
-  // Alt+Escape: ESC[27;3;27~ (modifier 3 = alt/option bit 2)
+  // Alt+Escape: CSI 27;3;27~ (modifier 3 = alt/option bit 2)
   const altEscape = parseKeypress("\u001b[27;3;27~")!
   expect(altEscape.name).toBe("escape")
   expect(altEscape.meta).toBe(true)
@@ -1306,7 +1454,7 @@ test("parseKeypress - Ghostty terminal modified escape keys", () => {
   expect(altEscape.eventType).toBe("press")
   expect(altEscape.source).toBe("raw")
 
-  // Shift+Ctrl+Escape: ESC[27;6;27~ (modifier 6 = shift(1) + ctrl(4) = bits 5)
+  // Shift+Ctrl+Escape: CSI 27;6;27~ (modifier 6 = shift(1) + ctrl(4) = bits 5)
   const shiftCtrlEscape = parseKeypress("\u001b[27;6;27~")!
   expect(shiftCtrlEscape.name).toBe("escape")
   expect(shiftCtrlEscape.shift).toBe(true)
@@ -1319,7 +1467,7 @@ test("parseKeypress - Ghostty terminal modified escape keys", () => {
   expect(shiftCtrlEscape.source).toBe("raw")
 })
 
-test("parseKeypress - Ghostty terminal modified tab, space, and backspace keys", () => {
+test("parseKeypress - modifyOtherKeys modified tab, space, and backspace keys", () => {
   // Tab key: charcode 9
   const ctrlTab = parseKeypress("\u001b[27;5;9~")!
   expect(ctrlTab.name).toBe("tab")
@@ -1376,4 +1524,61 @@ test("parseKeypress - Ghostty terminal modified tab, space, and backspace keys",
   const ctrlBackspace8 = parseKeypress("\u001b[27;5;8~")!
   expect(ctrlBackspace8.name).toBe("backspace")
   expect(ctrlBackspace8.ctrl).toBe(true)
+})
+
+test("parseKeypress - meta+arrow keys with uppercase F and B (old style)", () => {
+  // Some terminals send ESC followed by uppercase F/B for meta+arrow keys
+  // ONLY uppercase F and B map to arrow keys (not P/N which require actual shift)
+  // Lowercase f/b are just regular meta+letter combinations
+
+  // Meta+Right (uppercase F)
+  const metaRight = parseKeypress("\u001BF")!
+  expect(metaRight.name).toBe("right")
+  expect(metaRight.meta).toBe(true)
+  expect(metaRight.shift).toBe(false)
+  expect(metaRight.ctrl).toBe(false)
+  expect(metaRight.option).toBe(false)
+  expect(metaRight.sequence).toBe("\u001BF")
+  expect(metaRight.raw).toBe("\u001BF")
+
+  // Meta+Left (uppercase B)
+  const metaLeft = parseKeypress("\u001BB")!
+  expect(metaLeft.name).toBe("left")
+  expect(metaLeft.meta).toBe(true)
+  expect(metaLeft.shift).toBe(false)
+  expect(metaLeft.ctrl).toBe(false)
+  expect(metaLeft.option).toBe(false)
+  expect(metaLeft.sequence).toBe("\u001BB")
+  expect(metaLeft.raw).toBe("\u001BB")
+
+  // Uppercase P should be meta+shift+p (not arrow up)
+  const metaShiftP = parseKeypress("\u001BP")!
+  expect(metaShiftP.name).toBe("P")
+  expect(metaShiftP.meta).toBe(true)
+  expect(metaShiftP.shift).toBe(true)
+  expect(metaShiftP.ctrl).toBe(false)
+  expect(metaShiftP.option).toBe(false)
+
+  // Uppercase N should be meta+shift+n (not arrow down)
+  const metaShiftN = parseKeypress("\u001BN")!
+  expect(metaShiftN.name).toBe("N")
+  expect(metaShiftN.meta).toBe(true)
+  expect(metaShiftN.shift).toBe(true)
+  expect(metaShiftN.ctrl).toBe(false)
+  expect(metaShiftN.option).toBe(false)
+
+  // Lowercase versions should NOT map to arrow keys - they're just meta+letter
+  // Meta+f (lowercase f) should be just meta+f, NOT meta+right
+  const metaF = parseKeypress("\u001Bf")!
+  expect(metaF.name).toBe("f")
+  expect(metaF.meta).toBe(true)
+  expect(metaF.shift).toBe(false)
+  expect(metaF.ctrl).toBe(false)
+
+  // Meta+b (lowercase b) should be just meta+b, NOT meta+left
+  const metaB = parseKeypress("\u001Bb")!
+  expect(metaB.name).toBe("b")
+  expect(metaB.meta).toBe(true)
+  expect(metaB.shift).toBe(false)
+  expect(metaB.ctrl).toBe(false)
 })

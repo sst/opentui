@@ -168,8 +168,8 @@ export class SelectRenderable extends Renderable {
           text: option.name,
           x: contentX + 1 + indicatorWidth,
           y: itemY,
-          fg: nameColor,
-          bg: isSelected ? this._selectedBackgroundColor : bgColor,
+          color: nameColor,
+          backgroundColor: isSelected ? this._selectedBackgroundColor : bgColor,
           font: this._font,
         })
         descX = contentX + 1 + indicatorWidth
@@ -179,7 +179,6 @@ export class SelectRenderable extends Renderable {
 
       if (this._showDescription && itemY + this.fontHeight < contentY + contentHeight) {
         const descColor = isSelected ? this._selectedDescriptionColor : this._descriptionColor
-        const descBg = this._focused ? this._focusedBackgroundColor : this._backgroundColor
         this.frameBuffer.drawText(option.description, descX, itemY + this.fontHeight, descColor)
       }
     }

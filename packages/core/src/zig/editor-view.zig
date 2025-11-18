@@ -385,6 +385,7 @@ pub const EditorView = struct {
                     .row = new_vcursor.logical_row,
                     .col = new_vcursor.logical_col,
                     .desired_col = new_vcursor.logical_col,
+                    .offset = new_vcursor.offset,
                 };
                 self.ensureCursorVisible(new_vcursor.visual_row);
 
@@ -419,6 +420,7 @@ pub const EditorView = struct {
                     .row = new_vcursor.logical_row,
                     .col = new_vcursor.logical_col,
                     .desired_col = new_vcursor.logical_col,
+                    .offset = new_vcursor.offset,
                 };
                 self.ensureCursorVisible(new_vcursor.visual_row);
 

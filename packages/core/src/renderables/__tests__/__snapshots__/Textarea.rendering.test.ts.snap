@@ -1,86 +1,34 @@
 // Bun Snapshot v1, https://bun.sh/docs/test/snapshots
 
-exports[`TextareaRenderable Width/Height Setter Layout Tests should not shrink box when width is set via setter 1`] = `
-"┌────────────────────────────┐          
-│>    Content that takes up  │          
-│     space                  │          
-└────────────────────────────┘          
-                                        
-                                        
-                                        
-                                        
-                                        
-                                        
+exports[`Textarea - Rendering Tests Wrapping should render with tab indicator correctly 1`] = `
+"Line 1→ Tabbed                                                                  
+Line 2→ → Double tab                                                            
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
 "
 `;
 
-exports[`TextareaRenderable Width/Height Setter Layout Tests should not shrink box when height is set via setter in column layout with textarea 1`] = `
-"┌───────────────────────┐     
-│Header                 │     
-│                       │     
-│                       │     
-│Line1                  │     
-│Line2                  │     
-│Line3                  │     
-│Footer                 │     
-│                       │     
-└───────────────────────┘     
-                              
-                              
-                              
-                              
-                              
-"
-`;
-
-exports[`TextareaRenderable Width/Height Setter Layout Tests should not shrink box when minWidth is set via setter 1`] = `
-"┌────────────────────────────┐          
-│>    Content that takes up  │          
-│     space                  │          
-└────────────────────────────┘          
-                                        
-                                        
-                                        
-                                        
-                                        
-                                        
-"
-`;
-
-exports[`TextareaRenderable Width/Height Setter Layout Tests should not shrink box when minHeight is set via setter in column layout with textarea 1`] = `
-"┌───────────────────────┐     
-│Header                 │     
-│                       │     
-│                       │     
-│Line1                  │     
-│Line2                  │     
-│Line3                  │     
-│Footer                 │     
-│                       │     
-└───────────────────────┘     
-                              
-                              
-                              
-                              
-                              
-"
-`;
-
-exports[`TextareaRenderable Width/Height Setter Layout Tests should not shrink box when width is set from undefined via setter 1`] = `
-"┌────────────────────────────┐          
-│>    Content that takes up  │          
-│     space                  │          
-└────────────────────────────┘          
-                                        
-                                        
-                                        
-                                        
-                                        
-                                        
-"
-`;
-
-exports[`TextareaRenderable Textarea Content Snapshots should render basic text content correctly 1`] = `
+exports[`Textarea - Rendering Tests Textarea Content Snapshots should render basic text content correctly 1`] = `
 "                                                                                
                                                                                 
                                                                                 
@@ -108,7 +56,7 @@ exports[`TextareaRenderable Textarea Content Snapshots should render basic text 
 "
 `;
 
-exports[`TextareaRenderable Textarea Content Snapshots should render multiline text content correctly 1`] = `
+exports[`Textarea - Rendering Tests Textarea Content Snapshots should render multiline text content correctly 1`] = `
 "                                                                                
  Line 1: Hello                                                                  
  Line 2: World                                                                  
@@ -136,7 +84,7 @@ exports[`TextareaRenderable Textarea Content Snapshots should render multiline t
 "
 `;
 
-exports[`TextareaRenderable Textarea Content Snapshots should render text with character wrapping correctly 1`] = `
+exports[`Textarea - Rendering Tests Textarea Content Snapshots should render text with character wrapping correctly 1`] = `
 "This is a very                                                                  
 long text that                                                                  
 should wrap to                                                                  
@@ -164,7 +112,7 @@ abled
 "
 `;
 
-exports[`TextareaRenderable Textarea Content Snapshots should render text with word wrapping and punctuation 1`] = `
+exports[`Textarea - Rendering Tests Textarea Content Snapshots should render text with word wrapping and punctuation 1`] = `
 "Hello,World.                                                                    
 Test-                                                                           
 Example/                                                                        
@@ -192,7 +140,7 @@ marks!
 "
 `;
 
-exports[`TextareaRenderable Textarea Content Snapshots should render placeholder when creating textarea with placeholder directly 1`] = `
+exports[`Textarea - Rendering Tests Textarea Content Snapshots should render placeholder when creating textarea with placeholder directly 1`] = `
 "                                                                                
  Enter text here...                                                             
                                                                                 
@@ -220,7 +168,7 @@ exports[`TextareaRenderable Textarea Content Snapshots should render placeholder
 "
 `;
 
-exports[`TextareaRenderable Textarea Content Snapshots should render placeholder when set programmatically after creation 1`] = `
+exports[`Textarea - Rendering Tests Textarea Content Snapshots should render placeholder when set programmatically after creation 1`] = `
 "                                                                                
  Type something...                                                              
                                                                                 
@@ -248,7 +196,7 @@ exports[`TextareaRenderable Textarea Content Snapshots should render placeholder
 "
 `;
 
-exports[`TextareaRenderable Textarea Content Snapshots should resize correctly when typing return as first input with placeholder 1`] = `
+exports[`Textarea - Rendering Tests Textarea Content Snapshots should resize correctly when typing return as first input with placeholder 1`] = `
 "                                        
  ┌──────────────────────────────────────
  │                                      
@@ -262,30 +210,82 @@ exports[`TextareaRenderable Textarea Content Snapshots should resize correctly w
 "
 `;
 
-exports[`TextareaRenderable Wrapping should render with tab indicator correctly 1`] = `
-"Line 1→ Tabbed                                                                  
-Line 2→ → Double tab                                                            
-                                                                                
-                                                                                
-                                                                                
-                                                                                
-                                                                                
-                                                                                
-                                                                                
-                                                                                
-                                                                                
-                                                                                
-                                                                                
-                                                                                
-                                                                                
-                                                                                
-                                                                                
-                                                                                
-                                                                                
-                                                                                
-                                                                                
-                                                                                
-                                                                                
-                                                                                
+exports[`Textarea - Rendering Tests Width/Height Setter Layout Tests should not shrink box when width is set via setter 1`] = `
+"┌────────────────────────────┐          
+│>    Content that takes up  │          
+│     space                  │          
+└────────────────────────────┘          
+                                        
+                                        
+                                        
+                                        
+                                        
+                                        
+"
+`;
+
+exports[`Textarea - Rendering Tests Width/Height Setter Layout Tests should not shrink box when height is set via setter in column layout with textarea 1`] = `
+"┌───────────────────────┐     
+│Header                 │     
+│                       │     
+│                       │     
+│Line1                  │     
+│Line2                  │     
+│Line3                  │     
+│Footer                 │     
+│                       │     
+└───────────────────────┘     
+                              
+                              
+                              
+                              
+                              
+"
+`;
+
+exports[`Textarea - Rendering Tests Width/Height Setter Layout Tests should not shrink box when minWidth is set via setter 1`] = `
+"┌────────────────────────────┐          
+│>    Content that takes up  │          
+│     space                  │          
+└────────────────────────────┘          
+                                        
+                                        
+                                        
+                                        
+                                        
+                                        
+"
+`;
+
+exports[`Textarea - Rendering Tests Width/Height Setter Layout Tests should not shrink box when minHeight is set via setter in column layout with textarea 1`] = `
+"┌───────────────────────┐     
+│Header                 │     
+│                       │     
+│                       │     
+│Line1                  │     
+│Line2                  │     
+│Line3                  │     
+│Footer                 │     
+│                       │     
+└───────────────────────┘     
+                              
+                              
+                              
+                              
+                              
+"
+`;
+
+exports[`Textarea - Rendering Tests Width/Height Setter Layout Tests should not shrink box when width is set from undefined via setter 1`] = `
+"┌────────────────────────────┐          
+│>    Content that takes up  │          
+│     space                  │          
+└────────────────────────────┘          
+                                        
+                                        
+                                        
+                                        
+                                        
+                                        
 "
 `;

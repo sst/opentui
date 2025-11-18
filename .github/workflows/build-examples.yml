@@ -1,0 +1,193 @@
+name: Build Examples
+
+on:
+  workflow_call:
+    inputs:
+      version:
+        description: "Version being released"
+        required: true
+        type: string
+      isDryRun:
+        description: "Whether this is a dry run release"
+        required: false
+        type: boolean
+        default: false
+
+jobs:
+  build-examples:
+    name: Build Example Executables
+    runs-on: macos-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+
+      - name: Install dependencies FIRST (before copying built packages)
+        run: |
+          echo "Installing base dependencies..."
+          bun install
+
+          echo ""
+          echo "✅ Base dependencies installed"
+          echo "Note: bun-webgpu will be installed by build script for all platforms"
+
+      - name: Download npm packages artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: npm-packages-${{ inputs.version }}
+
+      - name: Extract and install npm packages
+        run: |
+          set -e
+          echo "Extracting npm packages..."
+          test -f npm-packages.zip || (echo "❌ npm-packages.zip not found!" && exit 1)
+          unzip -q npm-packages.zip
+
+          # Create node_modules structure
+          mkdir -p node_modules/@opentui
+          mkdir -p packages/core/node_modules/@opentui
+
+          # Copy core dist (required)
+          echo "Copying core dist..."
+          test -d "npm-packages/core-dist" || (echo "❌ core-dist not found in artifact!" && exit 1)
+          cp -r npm-packages/core-dist packages/core/dist
+          test -f packages/core/dist/package.json || (echo "❌ core dist/package.json missing after copy!" && exit 1)
+          echo "✅ Core dist copied"
+
+          # Copy native packages to core's node_modules (required - these OVERRIDE the npm versions)
+          echo "Copying built native packages (overriding any npm versions)..."
+          test -d "npm-packages/core-native-packages" || (echo "❌ core-native-packages not found in artifact!" && exit 1)
+          cp -r npm-packages/core-native-packages/* packages/core/node_modules/@opentui/
+          test -n "$(ls -A packages/core/node_modules/@opentui/)" || (echo "❌ No native packages copied!" && exit 1)
+          echo "✅ Native packages copied"
+
+          # Copy other package dists (optional)
+          if [ -d "npm-packages/react-dist" ]; then
+            cp -r npm-packages/react-dist packages/react/dist
+            echo "✅ React dist copied"
+          fi
+
+          if [ -d "npm-packages/solid-dist" ]; then
+            cp -r npm-packages/solid-dist packages/solid/dist
+            echo "✅ Solid dist copied"
+          fi
+
+          if [ -d "npm-packages/vue-dist" ]; then
+            cp -r npm-packages/vue-dist packages/vue/dist
+            echo "✅ Vue dist copied"
+          fi
+
+          echo ""
+          echo "Package extraction complete:"
+          ls -lah packages/core/dist/
+          ls -lah packages/core/node_modules/@opentui/
+
+      - name: Verify bun-webgpu is available for build
+        run: |
+          echo "Checking bun-webgpu installation..."
+          test -d node_modules/bun-webgpu || (echo "❌ bun-webgpu not found!" && exit 1)
+          test -d node_modules/bun-webgpu-darwin-arm64 || echo "⚠️  bun-webgpu-darwin-arm64 not found"
+          test -d node_modules/bun-webgpu-darwin-x64 || echo "⚠️  bun-webgpu-darwin-x64 not found"
+          test -d node_modules/bun-webgpu-linux-x64 || echo "⚠️  bun-webgpu-linux-x64 not found"
+          test -d node_modules/bun-webgpu-win32-x64 || echo "⚠️  bun-webgpu-win32-x64 not found"
+
+          # Show what's installed
+          echo ""
+          echo "bun-webgpu packages found:"
+          ls -lah node_modules/ | grep bun-webgpu
+          echo ""
+          echo "✅ bun-webgpu ready for bundling"
+
+      - name: Build examples
+        run: |
+          set -e
+          cd packages/core
+          bun src/examples/build.ts
+
+      - name: Verify example builds
+        run: |
+          set -e
+          echo "Verifying example executables..."
+          test -f "packages/core/src/examples/dist/darwin-x64/opentui-examples" || (echo "❌ darwin-x64 example missing!" && exit 1)
+          test -f "packages/core/src/examples/dist/darwin-arm64/opentui-examples" || (echo "❌ darwin-arm64 example missing!" && exit 1)
+          test -f "packages/core/src/examples/dist/linux-x64/opentui-examples" || (echo "❌ linux-x64 example missing!" && exit 1)
+          test -f "packages/core/src/examples/dist/windows-x64/opentui-examples.exe" || (echo "❌ windows-x64 example missing!" && exit 1)
+
+          echo "✅ All example executables verified"
+          echo ""
+          ls -lah packages/core/src/examples/dist/*/
+
+      # Create separate zips for each platform's examples
+      - name: Package examples - darwin-x64
+        run: |
+          set -e
+          mkdir -p artifacts/examples-darwin-x64
+          cp packages/core/src/examples/dist/darwin-x64/opentui-examples artifacts/examples-darwin-x64/
+          cd artifacts
+          zip -r examples-darwin-x64.zip examples-darwin-x64/
+          test -f examples-darwin-x64.zip || (echo "❌ Failed to create darwin-x64 zip" && exit 1)
+          test -s examples-darwin-x64.zip || (echo "❌ darwin-x64 zip is empty" && exit 1)
+          echo "✅ darwin-x64 packaged successfully ($(du -h examples-darwin-x64.zip | cut -f1))"
+
+      - name: Package examples - darwin-arm64
+        run: |
+          set -e
+          mkdir -p artifacts/examples-darwin-arm64
+          cp packages/core/src/examples/dist/darwin-arm64/opentui-examples artifacts/examples-darwin-arm64/
+          cd artifacts
+          zip -r examples-darwin-arm64.zip examples-darwin-arm64/
+          test -f examples-darwin-arm64.zip || (echo "❌ Failed to create darwin-arm64 zip" && exit 1)
+          test -s examples-darwin-arm64.zip || (echo "❌ darwin-arm64 zip is empty" && exit 1)
+          echo "✅ darwin-arm64 packaged successfully ($(du -h examples-darwin-arm64.zip | cut -f1))"
+
+      - name: Package examples - linux-x64
+        run: |
+          set -e
+          mkdir -p artifacts/examples-linux-x64
+          cp packages/core/src/examples/dist/linux-x64/opentui-examples artifacts/examples-linux-x64/
+          cd artifacts
+          zip -r examples-linux-x64.zip examples-linux-x64/
+          test -f examples-linux-x64.zip || (echo "❌ Failed to create linux-x64 zip" && exit 1)
+          test -s examples-linux-x64.zip || (echo "❌ linux-x64 zip is empty" && exit 1)
+          echo "✅ linux-x64 packaged successfully ($(du -h examples-linux-x64.zip | cut -f1))"
+
+      - name: Package examples - windows-x64
+        run: |
+          set -e
+          mkdir -p artifacts/examples-windows-x64
+          cp packages/core/src/examples/dist/windows-x64/opentui-examples.exe artifacts/examples-windows-x64/
+          cd artifacts
+          zip -r examples-windows-x64.zip examples-windows-x64/
+          test -f examples-windows-x64.zip || (echo "❌ Failed to create windows-x64 zip" && exit 1)
+          test -s examples-windows-x64.zip || (echo "❌ windows-x64 zip is empty" && exit 1)
+          echo "✅ windows-x64 packaged successfully ($(du -h examples-windows-x64.zip | cut -f1))"
+
+      - name: Verify all artifacts before upload
+        run: |
+          set -e
+          echo "Verifying all artifacts exist..."
+          test -f artifacts/examples-darwin-x64.zip || (echo "❌ examples-darwin-x64.zip missing!" && exit 1)
+          test -f artifacts/examples-darwin-arm64.zip || (echo "❌ examples-darwin-arm64.zip missing!" && exit 1)
+          test -f artifacts/examples-linux-x64.zip || (echo "❌ examples-linux-x64.zip missing!" && exit 1)
+          test -f artifacts/examples-windows-x64.zip || (echo "❌ examples-windows-x64.zip missing!" && exit 1)
+
+          echo ""
+          echo "✅ All artifacts verified. Ready to upload:"
+          ls -lah artifacts/*.zip
+
+      - name: Upload example executables
+        uses: actions/upload-artifact@v4
+        with:
+          name: example-executables-${{ inputs.version }}
+          path: |
+            artifacts/examples-darwin-x64.zip
+            artifacts/examples-darwin-arm64.zip
+            artifacts/examples-linux-x64.zip
+            artifacts/examples-windows-x64.zip
+          if-no-files-found: error
+          retention-days: 30

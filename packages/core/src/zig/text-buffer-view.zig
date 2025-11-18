@@ -353,12 +353,12 @@ pub const UnifiedTextBufferView = struct {
                     wctx.line_position += width;
                 }
 
-                fn segment_callback(ctx_ptr: *anyopaque, line_idx: u32, chunk: *const TextChunk, chunk_idx_in_line: u32) void {
-                    _ = line_idx;
+                fn segment_callback(ctx_ptr: *anyopaque, _: u32, chunk: *const TextChunk, chunk_idx_in_line: u32) void {
                     const wctx = @as(*@This(), @ptrCast(@alignCast(ctx_ptr)));
                     wctx.chunk_idx_in_line = chunk_idx_in_line;
 
                     if (wctx.view.wrap_mode == .word) {
+                        const chunk_bytes = chunk.getBytes(&wctx.view.text_buffer.mem_registry);
                         const wrap_offsets = chunk.getWrapOffsets(&wctx.view.text_buffer.mem_registry, wctx.view.text_buffer.allocator) catch &[_]utf8.WrapBreak{};
 
                         var char_offset: u32 = 0;
@@ -385,27 +385,90 @@ pub const UnifiedTextBufferView = struct {
                             var to_add: u32 = 0;
                             var has_wrap_after: bool = false;
 
-                            if (last_wrap_that_fits) |wrap_width| {
-                                // Add up to the wrap boundary
+                            if (remaining_in_chunk <= remaining_on_line) {
+                                // Chunk fits, but check if we should break at a word boundary instead
+                                if (last_wrap_that_fits) |wrap_width| {
+                                    // If we have a word boundary and adding full chunk would fill the line,
+                                    // prefer breaking at the word boundary to avoid splitting words across chunks
+                                    const would_fill_line = wctx.line_position + remaining_in_chunk >= wctx.wrap_w;
+                                    if (would_fill_line and wrap_width < remaining_in_chunk) {
+                                        // Break at the word boundary instead of taking the full chunk
+                                        to_add = wrap_width;
+                                        has_wrap_after = true;
+                                    } else {
+                                        // Take the full chunk - but if there's a wrap boundary before the end,
+                                        // we need to remember it for potential rollback
+                                        to_add = remaining_in_chunk;
+                                        // Mark as wrap point even if we go past it - the rollback logic will handle splitting the chunk
+                                        has_wrap_after = true;
+                                    }
+                                } else {
+                                    // No word boundary, take the full chunk
+                                    to_add = remaining_in_chunk;
+                                }
+                            } else if (last_wrap_that_fits) |wrap_width| {
+                                // Chunk doesn't fit, add up to the wrap boundary
                                 to_add = wrap_width;
                                 has_wrap_after = true;
-                            } else if (remaining_in_chunk <= remaining_on_line) {
-                                // Whole remaining chunk fits
-                                to_add = remaining_in_chunk;
                             } else if (wctx.line_position == 0) {
                                 // Line is empty, force add something (fallback to char wrap)
-                                to_add = @min(remaining_on_line, remaining_in_chunk);
-                                if (to_add == 0) to_add = 1;
+                                // Must respect grapheme boundaries to avoid splitting wide characters
+                                const is_ascii_only = (chunk.flags & TextChunk.Flags.ASCII_ONLY) != 0;
+                                var byte_offset: u32 = 0;
+                                if (char_offset > 0) {
+                                    const pos_result = utf8.findPosByWidth(chunk_bytes, char_offset, wctx.view.text_buffer.tab_width, is_ascii_only, false);
+                                    byte_offset = pos_result.byte_offset;
+                                }
+                                const remaining_bytes = chunk_bytes[byte_offset..];
+                                const wrap_result = utf8.findWrapPosByWidthSIMD16(remaining_bytes, remaining_on_line, wctx.view.text_buffer.tab_width, is_ascii_only);
+                                to_add = wrap_result.columns_used;
+                                if (to_add == 0) to_add = 1; // Force at least one grapheme
                             } else if (wctx.last_wrap_chunk_count > 0) {
                                 // Doesn't fit and we have a previous wrap point, rollback and wrap
-                                // Get the chunks that need to move to the next line (they're already in order)
-                                const chunks_slice = wctx.current_vline.chunks.items[wctx.last_wrap_chunk_count..];
-                                const chunks_to_move_count = chunks_slice.len;
+
+                                // Check if the last chunk before wrap extends past the wrap boundary
+                                var accumulated_width: u32 = 0;
+                                for (wctx.current_vline.chunks.items[0..wctx.last_wrap_chunk_count]) |vchunk| {
+                                    accumulated_width += vchunk.width;
+                                }
+
+                                // Calculate how many chunks to move, potentially including a split chunk
+                                const chunks_after_wrap = wctx.current_vline.chunks.items[wctx.last_wrap_chunk_count..];
+                                var chunks_to_move_count = chunks_after_wrap.len;
+                                var split_chunk: ?VirtualChunk = null;
+
+                                // If the last kept chunk extends past the wrap boundary, we need to split it
+                                if (accumulated_width > wctx.last_wrap_line_position) {
+                                    const last_chunk_idx = wctx.last_wrap_chunk_count - 1;
+                                    const last_chunk = wctx.current_vline.chunks.items[last_chunk_idx];
+                                    const overhang = accumulated_width - wctx.last_wrap_line_position;
+
+                                    // Create the part that goes on the next line
+                                    split_chunk = VirtualChunk{
+                                        .grapheme_start = last_chunk.grapheme_start + last_chunk.width - overhang,
+                                        .width = overhang,
+                                        .chunk = last_chunk.chunk,
+                                    };
+
+                                    // Reduce the last chunk's width to fit the wrap boundary
+                                    wctx.current_vline.chunks.items[last_chunk_idx].width -= overhang;
+
+                                    chunks_to_move_count += 1; // One extra for the split chunk
+                                }
 
                                 // Allocate space in arena for the chunks we need to preserve (single allocation in arena, no growing)
                                 const saved_chunks_result = wctx.virtual_allocator.alloc(VirtualChunk, chunks_to_move_count);
                                 if (saved_chunks_result) |saved_chunks| {
-                                    @memcpy(saved_chunks, chunks_slice);
+                                    var saved_idx: usize = 0;
+
+                                    // Add split chunk first if it exists
+                                    if (split_chunk) |sc| {
+                                        saved_chunks[saved_idx] = sc;
+                                        saved_idx += 1;
+                                    }
+
+                                    // Copy chunks after the wrap point
+                                    @memcpy(saved_chunks[saved_idx..], chunks_after_wrap);
 
                                     wctx.line_position = wctx.last_wrap_line_position;
                                     wctx.global_char_offset = wctx.last_wrap_global_offset;
@@ -426,19 +489,41 @@ pub const UnifiedTextBufferView = struct {
 
                                 continue;
                             } else {
-                                // No wrap point, just wrap normally
+                                // No wrap point and line not empty, need to wrap and force-break on next line
+                                // Wrap the current line first
                                 commitVirtualLine(wctx);
-                                continue;
+                                // Now line_position is 0, force add content respecting grapheme boundaries
+                                const is_ascii_only = (chunk.flags & TextChunk.Flags.ASCII_ONLY) != 0;
+                                var byte_offset: u32 = 0;
+                                if (char_offset > 0) {
+                                    const pos_result = utf8.findPosByWidth(chunk_bytes, char_offset, wctx.view.text_buffer.tab_width, is_ascii_only, false);
+                                    byte_offset = pos_result.byte_offset;
+                                }
+                                const remaining_bytes = chunk_bytes[byte_offset..];
+                                // After wrapping, the full wrap width is available
+                                const wrap_result = utf8.findWrapPosByWidthSIMD16(remaining_bytes, wctx.wrap_w, wctx.view.text_buffer.tab_width, is_ascii_only);
+                                to_add = wrap_result.columns_used;
+                                if (to_add == 0) to_add = 1; // Force at least one grapheme
                             }
 
                             if (to_add > 0) {
+                                const position_before_add = wctx.line_position;
+                                const offset_before_add = wctx.global_char_offset;
+
                                 addVirtualChunk(wctx, chunk, chunk_idx_in_line, char_offset, to_add);
                                 char_offset += to_add;
 
                                 if (has_wrap_after) {
+                                    // If there's a wrap boundary within what we just added, calculate its position
+                                    // last_wrap_that_fits is the width from char_offset to the wrap boundary
+                                    const wrap_pos_in_added = if (last_wrap_that_fits) |wrap_width|
+                                        @min(wrap_width, to_add)
+                                    else
+                                        to_add;
+
                                     wctx.last_wrap_chunk_count = @intCast(wctx.current_vline.chunks.items.len);
-                                    wctx.last_wrap_line_position = wctx.line_position;
-                                    wctx.last_wrap_global_offset = wctx.global_char_offset;
+                                    wctx.last_wrap_line_position = position_before_add + wrap_pos_in_added;
+                                    wctx.last_wrap_global_offset = offset_before_add + wrap_pos_in_added;
                                 }
 
                                 if (wctx.line_position >= wctx.wrap_w and char_offset < chunk.width) {
@@ -653,15 +738,11 @@ pub const UnifiedTextBufferView = struct {
             const vline_end_col = vline_start_col + vline.width;
 
             const is_last_vline = (i == vline_count - 1);
-            const is_at_boundary = (logical_col == vline_end_col);
 
-            var prefer_current_vline = is_last_vline;
-            if (is_at_boundary and !is_last_vline and self.wrap_width != null) {
-                const wrap_w = self.wrap_width.?;
-                prefer_current_vline = (vline.width < wrap_w);
-            }
-
-            const end_check = if (prefer_current_vline) logical_col <= vline_end_col else logical_col < vline_end_col;
+            // For the end check: use < for all lines except the last line where we use <=
+            // This ensures that a position exactly at vline_end_col goes to the NEXT line
+            // unless this is the last line (where there is no next line)
+            const end_check = if (is_last_vline) logical_col <= vline_end_col else logical_col < vline_end_col;
 
             if (logical_col >= vline_start_col and end_check) {
                 return vline_idx;

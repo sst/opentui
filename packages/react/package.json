@@ -1,6 +1,6 @@
 {
   "name": "@opentui/react",
-  "version": "0.1.39",
+  "version": "0.1.46",
   "description": "React renderer for building terminal user interfaces using OpenTUI core",
   "license": "MIT",
   "repository": {
@@ -16,6 +16,10 @@
     ".": {
       "import": "./src/index.ts",
       "types": "./src/index.ts"
+    },
+    "./test-utils": {
+      "import": "./src/test-utils.ts",
+      "types": "./src/test-utils.d.ts"
     },
     "./jsx-runtime": {
       "import": "./jsx-runtime.js",

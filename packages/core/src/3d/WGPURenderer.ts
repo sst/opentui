@@ -41,6 +41,7 @@ export class ThreeCliRenderer {
 
   private resizeHandler: (width: number, height: number) => void
   private debugToggleHandler: (enabled: boolean) => void
+  private destroyHandler: () => void
 
   // Stats tracking
   private renderTimeMs: number = 0
@@ -104,11 +105,16 @@ export class ThreeCliRenderer {
       this.doRenderStats = enabled
     }
 
+    this.destroyHandler = () => {
+      this.destroy()
+    }
+
     if (options.autoResize !== false) {
       this.cliRenderer.on("resize", this.resizeHandler)
     }
 
     this.cliRenderer.on(CliRenderEvents.DEBUG_OVERLAY_TOGGLE, this.debugToggleHandler)
+    this.cliRenderer.on(CliRenderEvents.DESTROY, this.destroyHandler)
 
     setupGlobals({ libPath: options.libPath })
   }
@@ -201,6 +207,7 @@ export class ThreeCliRenderer {
   }
 
   private rendering: boolean = false
+  private destroyed: boolean = false
   async doDrawScene(
     root: Scene,
     camera: PerspectiveCamera | OrthographicCamera,
@@ -209,6 +216,9 @@ export class ThreeCliRenderer {
   ): Promise<void> {
     if (this.rendering) {
       console.warn("ThreeCliRenderer.drawScene was called concurrently, which is not supported.")
+      return
+    }
+    if (this.destroyed) {
       return
     }
     try {
@@ -263,8 +273,14 @@ export class ThreeCliRenderer {
   }
 
   public destroy(): void {
+    this.destroyed = true
+
     this.cliRenderer.off("resize", this.resizeHandler)
     this.cliRenderer.off(CliRenderEvents.DEBUG_OVERLAY_TOGGLE, this.debugToggleHandler)
+
+    if (this.canvas) {
+      this.canvas.destroy()
+    }
 
     if (this.threeRenderer) {
       this.threeRenderer.dispose()

@@ -16,7 +16,7 @@
     "prepare-release": "bun scripts/prepare-release.ts",
     "test:go": "cd packages/go && go test -v . && go build ./examples/...",
     "prettier:write": "prettier --write .",
-    "test": "bun run --filter '@opentui/core' --filter '@opentui/solid' --if-present test"
+    "test": "bun run --filter '@opentui/core' --filter '@opentui/solid' --filter '@opentui/react' --if-present test"
   },
   "devDependencies": {
     "prettier": "3.6.2"
