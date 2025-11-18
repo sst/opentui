@@ -1284,6 +1284,8 @@ export class CliRenderer extends EventEmitter implements RenderContext {
     this.disableMouse()
     this._keyHandler.suspend()
     this._stdinBuffer.clear()
+    this.lib.suspendRenderer(this.rendererPtr)
+
     if (this.stdin.setRawMode) {
       this.stdin.setRawMode(false)
     }
@@ -1296,6 +1298,7 @@ export class CliRenderer extends EventEmitter implements RenderContext {
     }
     this.stdin.resume()
     this._keyHandler.resume()
+    this.lib.resumeRenderer(this.rendererPtr)
 
     if (this._suspendedMouseEnabled) {
       this.enableMouse()

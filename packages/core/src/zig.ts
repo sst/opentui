@@ -291,6 +291,14 @@ function getOpenTUILib(libPath?: string) {
       args: ["ptr", "bool"],
       returns: "void",
     },
+    suspendRenderer: {
+      args: ["ptr"],
+      returns: "void",
+    },
+    resumeRenderer: {
+      args: ["ptr"],
+      returns: "void",
+    },
 
     // TextBuffer functions
     createTextBuffer: {
@@ -1167,6 +1175,8 @@ export interface RenderLib {
   setUseKittyKeyboard: (renderer: Pointer, use: boolean) => void
   getUseKittyKeyboard: (renderer: Pointer) => boolean
   setupTerminal: (renderer: Pointer, useAlternateScreen: boolean) => void
+  suspendRenderer: (renderer: Pointer) => void
+  resumeRenderer: (renderer: Pointer) => void
   queryPixelResolution: (renderer: Pointer) => void
 
   // TextBuffer methods
@@ -1894,6 +1904,14 @@ class FFIRenderLib implements RenderLib {
 
   public setupTerminal(renderer: Pointer, useAlternateScreen: boolean): void {
     this.opentui.symbols.setupTerminal(renderer, useAlternateScreen)
+  }
+
+  public suspendRenderer(renderer: Pointer): void {
+    this.opentui.symbols.suspendRenderer(renderer)
+  }
+
+  public resumeRenderer(renderer: Pointer): void {
+    this.opentui.symbols.resumeRenderer(renderer)
   }
 
   public queryPixelResolution(renderer: Pointer): void {
