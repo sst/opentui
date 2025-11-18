@@ -1282,25 +1282,31 @@ export class CliRenderer extends EventEmitter implements RenderContext {
     this._suspendedMouseEnabled = this._useMouse
 
     this.disableMouse()
-    this._keyHandler.suspend()
     this._stdinBuffer.clear()
+    this.stdin.removeListener("data", this.stdinListener)
+    this.lib.suspendRenderer(this.rendererPtr)
+
     if (this.stdin.setRawMode) {
       this.stdin.setRawMode(false)
     }
-    this.stdin.pause()
+    // We do not pause and resume stdin, as it would buffer stdin
+    // and emit it all at once on resume, which is not desired.
   }
 
   public resume(): void {
     if (this.stdin.setRawMode) {
       this.stdin.setRawMode(true)
     }
-    this.stdin.resume()
-    this._keyHandler.resume()
+    
+    this.stdin.on("data", this.stdinListener)
+
+    this.lib.resumeRenderer(this.rendererPtr)
 
     if (this._suspendedMouseEnabled) {
       this.enableMouse()
     }
 
+    this.currentRenderBuffer.clear(this.backgroundColor)
     this._controlState = this._previousControlState
 
     if (
@@ -1308,6 +1314,8 @@ export class CliRenderer extends EventEmitter implements RenderContext {
       this._previousControlState === RendererControlState.EXPLICIT_STARTED
     ) {
       this.internalStart()
+    } else {
+      this.requestRender()
     }
   }
 

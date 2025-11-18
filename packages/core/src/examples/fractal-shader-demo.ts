@@ -1,6 +1,6 @@
 #!/usr/bin/env bun
 
-import { BoxRenderable, CliRenderer, createCliRenderer, RGBA, TextRenderable } from "../index"
+import { BoxRenderable, CliRenderer, createCliRenderer, RGBA, TextRenderable, type KeyEvent } from "../index"
 import { setupCommonDemoKeys } from "./lib/standalone-keys"
 import { Scene as ThreeScene, Mesh as ThreeMesh, PerspectiveCamera, PlaneGeometry, Vector2 } from "three"
 import { MeshBasicNodeMaterial } from "three/webgpu"
@@ -32,7 +32,7 @@ let cameraNode: PerspectiveCamera | null = null
 let time = 0
 let timeSpeed = 1.0
 let paused = false
-let keyHandler: ((key: Buffer) => void) | null = null
+let keyHandler: ((key: KeyEvent) => void) | null = null
 let handleResize: ((width: number, height: number) => void) | null = null
 let parentContainer: BoxRenderable | null = null
 
@@ -177,14 +177,12 @@ export async function run(renderer: CliRenderer): Promise<void> {
   timeSpeed = 1.0
   paused = false
 
-  keyHandler = (key: Buffer) => {
-    const keyStr = key.toString()
-
-    if (keyStr === "p" && engine) {
+  keyHandler = (key: KeyEvent) => {
+    if (key.name === "p" && engine) {
       engine.saveToFile(`fractal-${Date.now()}.png`)
     }
 
-    if (keyStr === "r" && cameraNode) {
+    if (key.name === "r" && cameraNode) {
       timeSpeed = 1.0
       paused = false
       cameraNode.position.set(0, 0, 5)
@@ -193,23 +191,23 @@ export async function run(renderer: CliRenderer): Promise<void> {
       statusText.content = `Speed: ${timeSpeed.toFixed(1)}x`
     }
 
-    if (keyStr === " ") {
+    if (key.name === "space") {
       paused = !paused
       statusText.content = `Speed: ${timeSpeed.toFixed(1)}x`
     }
 
-    if (keyStr === "+" || keyStr === "=") {
+    if (key.name === "+" || key.name === "=") {
       timeSpeed = Math.min(timeSpeed + 0.1, 3.0)
       statusText.content = `Speed: ${timeSpeed.toFixed(1)}x`
     }
 
-    if (keyStr === "-" || keyStr === "_") {
+    if (key.name === "-" || key.name === "_") {
       timeSpeed = Math.max(timeSpeed - 0.1, 0.1)
       statusText.content = `Speed: ${timeSpeed.toFixed(1)}x`
     }
   }
 
-  process.stdin.on("data", keyHandler)
+  renderer.keyInput.on("keypress", keyHandler)
 
   renderer.setFrameCallback(async (deltaMs) => {
     const deltaTime = deltaMs / 1000
@@ -232,7 +230,7 @@ export async function run(renderer: CliRenderer): Promise<void> {
 
 export function destroy(renderer: CliRenderer): void {
   if (keyHandler) {
-    process.stdin.off("data", keyHandler)
+    renderer.keyInput.off("keypress", keyHandler)
     keyHandler = null
   }
 

@@ -1,6 +1,13 @@
 #!/usr/bin/env bun
 
-import { createCliRenderer, CliRenderer, TextRenderable, BoxRenderable, FrameBufferRenderable } from "../index"
+import {
+  createCliRenderer,
+  CliRenderer,
+  TextRenderable,
+  BoxRenderable,
+  FrameBufferRenderable,
+  type KeyEvent,
+} from "../index"
 import { setupCommonDemoKeys } from "./lib/standalone-keys"
 import { RGBA } from "../lib"
 import { TextureUtils } from "../3d/TextureUtils"
@@ -59,7 +66,7 @@ interface ShaderCubeDemoState {
   param1StatusText: TextRenderable
   param2StatusText: TextRenderable
   controlsText: TextRenderable
-  keyHandler: (key: Buffer) => void
+  keyHandler: (key: KeyEvent) => void
   resizeHandler: (width: number, height: number) => void
   frameCallbackId: boolean
 }
@@ -414,27 +421,26 @@ export async function run(renderer: CliRenderer): Promise<void> {
     textureEffectsText.content = `Texture Effects: P-Specular [${specularMapEnabled ? "ON" : "OFF"}] | B-Normal [${normalMapEnabled ? "ON" : "OFF"}] | I-Emissive [${emissiveMapEnabled ? "ON" : "OFF"}]`
   }
 
-  const keyHandler = (key: Buffer) => {
-    const keyStr = key.toString()
+  const keyHandler = (key: KeyEvent) => {
     const cubeObject = sceneRoot.getObjectByName("cube") as ThreeMesh | undefined
 
-    if (keyStr === "w") cameraNode.translateY(0.5)
-    else if (keyStr === "s") cameraNode.translateY(-0.5)
-    else if (keyStr === "a") cameraNode.translateX(-0.5)
-    else if (keyStr === "d") cameraNode.translateX(0.5)
-    if (keyStr === "q") cameraNode.rotateY(0.1)
-    else if (keyStr === "e") cameraNode.rotateY(-0.1)
-    if (keyStr === "z") cameraNode.translateZ(1)
-    else if (keyStr === "x") cameraNode.translateZ(-1)
-    if (keyStr === "r") {
+    if (key.name === "w") cameraNode.translateY(0.5)
+    else if (key.name === "s") cameraNode.translateY(-0.5)
+    else if (key.name === "a") cameraNode.translateX(-0.5)
+    else if (key.name === "d") cameraNode.translateX(0.5)
+    if (key.name === "q") cameraNode.rotateY(0.1)
+    else if (key.name === "e") cameraNode.rotateY(-0.1)
+    if (key.name === "z") cameraNode.translateZ(1)
+    else if (key.name === "x") cameraNode.translateZ(-1)
+    if (key.name === "r") {
       cameraNode.position.set(0, 0, CAM_DISTANCE)
       cameraNode.rotation.set(0, 0, 0)
       cameraNode.lookAt(0, 0, 0)
     }
-    if (keyStr === " ") rotationEnabled = !rotationEnabled
+    if (key.name === "space") rotationEnabled = !rotationEnabled
 
     // Toggle light visualization
-    if (keyStr === "v") {
+    if (key.name === "v") {
       showLightVisualizers = !showLightVisualizers
       const vizObject = sceneRoot.getObjectByName("light_viz")
       if (vizObject) {
@@ -444,7 +450,7 @@ export async function run(renderer: CliRenderer): Promise<void> {
     }
 
     // Add light color cycling
-    if (keyStr === "c") {
+    if (key.name === "c") {
       lightColorMode = (lightColorMode + 1) % lightColors.length
       const colorInfo = lightColors[lightColorMode]
 
@@ -464,7 +470,7 @@ export async function run(renderer: CliRenderer): Promise<void> {
     }
 
     // Toggle custom lights
-    if (keyStr === "l") {
+    if (key.name === "l") {
       customLightsEnabled = !customLightsEnabled
       if (mainLightNode) mainLightNode.visible = customLightsEnabled
       if (pointLightNode) pointLightNode.visible = customLightsEnabled
@@ -472,11 +478,11 @@ export async function run(renderer: CliRenderer): Promise<void> {
     }
 
     // Material toggling
-    if (keyStr === "m") {
+    if (key.name === "m") {
       manualMaterialSelection = !manualMaterialSelection
       materialToggleText.content = `Material: ${manualMaterialSelection ? "Manual" : "Auto-cycling"} (M to toggle, N to change)`
     }
-    if (keyStr === "n") {
+    if (key.name === "n") {
       currentMaterial = (currentMaterial + 1) % materials.length
       materialToggleText.content = `Material: ${manualMaterialSelection ? "Manual" : "Auto-cycling"} (#${currentMaterial}${currentMaterial === 6 ? " - White" : ""}) (M/N)`
       if (cubeObject) {
@@ -486,24 +492,24 @@ export async function run(renderer: CliRenderer): Promise<void> {
     }
 
     // Toggle super sampling
-    if (keyStr === "u") {
+    if (key.name === "u") {
       engine.toggleSuperSampling()
     }
 
     // Toggle debug mode for console caller info
-    if (keyStr === "k") {
+    if (key.name === "k") {
       renderer.console.toggleDebugMode()
     }
 
     // Toggle texture effects
     let effectsChanged = false
-    if (keyStr === "p") {
+    if (key.name === "p") {
       specularMapEnabled = !specularMapEnabled
       effectsChanged = true
-    } else if (keyStr === "b") {
+    } else if (key.name === "b") {
       normalMapEnabled = !normalMapEnabled
       effectsChanged = true
-    } else if (keyStr === "i") {
+    } else if (key.name === "i") {
       emissiveMapEnabled = !emissiveMapEnabled
       effectsChanged = true
     }
@@ -522,10 +528,10 @@ export async function run(renderer: CliRenderer): Promise<void> {
     }
 
     let filterChanged = false
-    if (keyStr === ",") {
+    if (key.name === ",") {
       currentFilterIndex = (currentFilterIndex - 1 + filterFunctions.length) % filterFunctions.length
       filterChanged = true
-    } else if (keyStr === ".") {
+    } else if (key.name === ".") {
       currentFilterIndex = (currentFilterIndex + 1) % filterFunctions.length
       filterChanged = true
     }
@@ -545,7 +551,7 @@ export async function run(renderer: CliRenderer): Promise<void> {
     const currentFilterName = filterFunctions[currentFilterIndex].name
     const height = renderer.terminalHeight
 
-    if (keyStr === "[") {
+    if (key.name === "[") {
       switch (currentFilterName) {
         case "Distortion":
           distortionEffectInstance.glitchChancePerSecond = Math.max(
@@ -571,7 +577,7 @@ export async function run(renderer: CliRenderer): Promise<void> {
           paramChanged = true
           break
       }
-    } else if (keyStr === "]") {
+    } else if (key.name === "]") {
       switch (currentFilterName) {
         case "Distortion":
           distortionEffectInstance.glitchChancePerSecond = Math.min(
@@ -600,7 +606,7 @@ export async function run(renderer: CliRenderer): Promise<void> {
     }
 
     // Parameter 2 Adjustment ({/})
-    if (keyStr === "{") {
+    if (key.name === "{") {
       switch (currentFilterName) {
         case "Distortion":
           distortionEffectInstance.maxGlitchLines = Math.max(0, distortionEffectInstance.maxGlitchLines - 1)
@@ -611,7 +617,7 @@ export async function run(renderer: CliRenderer): Promise<void> {
           paramChanged = true
           break
       }
-    } else if (keyStr === "}") {
+    } else if (key.name === "}") {
       switch (currentFilterName) {
         case "Distortion":
           distortionEffectInstance.maxGlitchLines = Math.min(height - 1, distortionEffectInstance.maxGlitchLines + 1)
@@ -642,7 +648,7 @@ export async function run(renderer: CliRenderer): Promise<void> {
     controlsText.y = height - 2
   }
 
-  process.stdin.on("data", keyHandler)
+  renderer.keyInput.on("keypress", keyHandler)
   renderer.on("resize", resizeHandler)
 
   renderer.setFrameCallback(async (deltaMs) => {
@@ -738,7 +744,7 @@ export async function run(renderer: CliRenderer): Promise<void> {
 export function destroy(renderer: CliRenderer): void {
   if (!demoState) return
 
-  process.stdin.removeListener("data", demoState.keyHandler)
+  renderer.keyInput.off("keypress", demoState.keyHandler)
   renderer.root.removeListener("resize", demoState.resizeHandler)
 
   if (demoState.frameCallbackId) {

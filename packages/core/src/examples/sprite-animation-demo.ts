@@ -1,6 +1,14 @@
 #!/usr/bin/env bun
 
-import { CliRenderer, createCliRenderer, RGBA, TextRenderable, FrameBufferRenderable, BoxRenderable } from "../index"
+import {
+  CliRenderer,
+  createCliRenderer,
+  RGBA,
+  TextRenderable,
+  FrameBufferRenderable,
+  BoxRenderable,
+  type KeyEvent,
+} from "../index"
 import { setupCommonDemoKeys } from "./lib/standalone-keys"
 import * as THREE from "three"
 import {
@@ -38,7 +46,7 @@ interface SpriteAnimationDemoState {
   parentContainer: BoxRenderable
   instructionsText: TextRenderable
   cameraModeText: TextRenderable
-  keyHandler: ((key: Buffer) => void) | null
+  keyHandler: ((key: KeyEvent) => void) | null
 }
 
 let demoState: SpriteAnimationDemoState | null = null
@@ -249,14 +257,12 @@ export async function run(renderer: CliRenderer): Promise<void> {
     }
   }
 
-  const keyHandler = (key: Buffer) => {
-    const keyStr = key.toString()
-
-    if (keyStr === "u") {
+  const keyHandler = (key: KeyEvent) => {
+    if (key.name === "u") {
       engine.toggleSuperSampling()
     }
 
-    if (keyStr === "c") {
+    if (key.name === "c") {
       isPerspectiveActive = !isPerspectiveActive
       if (isPerspectiveActive) {
         engine.setActiveCamera(pCamera)
@@ -269,7 +275,7 @@ export async function run(renderer: CliRenderer): Promise<void> {
       }
     }
 
-    if (keyStr === "e") {
+    if (key.name === "e") {
       if (mainChar && mainChar.visible) {
         if (mainCharExplosionHandle && !mainCharExplosionHandle.hasBeenRestored) {
           console.log("Main character already exploded and awaiting restoration. Restore first or reset demo.")
@@ -300,7 +306,7 @@ export async function run(renderer: CliRenderer): Promise<void> {
       }
     }
 
-    if (keyStr === "r") {
+    if (key.name === "r") {
       if (mainCharExplosionHandle && !mainCharExplosionHandle.hasBeenRestored) {
         console.log("Attempting to restore main character...")
         ;(async () => {
@@ -319,7 +325,7 @@ export async function run(renderer: CliRenderer): Promise<void> {
       }
     }
 
-    if (keyStr === "p") {
+    if (key.name === "p") {
       if (addedSprites.length > 0) {
         console.log("Clearing existing sprites...")
         addedSprites.forEach((sprite) => sprite.destroy())
@@ -363,12 +369,12 @@ export async function run(renderer: CliRenderer): Promise<void> {
       })()
     }
 
-    if (keyStr === "x") {
+    if (key.name === "x") {
       explodeRandomSprite()
     }
   }
 
-  process.stdin.on("data", keyHandler)
+  renderer.keyInput.on("keypress", keyHandler)
 
   renderer.setFrameCallback(async (deltaTime: number) => {
     spriteAnimator.update(deltaTime)
@@ -411,7 +417,7 @@ export async function run(renderer: CliRenderer): Promise<void> {
 export function destroy(renderer: CliRenderer): void {
   if (demoState) {
     if (demoState.keyHandler) {
-      process.stdin.removeListener("data", demoState.keyHandler)
+      renderer.keyInput.off("keypress", demoState.keyHandler)
     }
 
     demoState.addedSprites.forEach((sprite) => sprite.destroy())

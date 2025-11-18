@@ -1,5 +1,5 @@
 import { createTimeline, type JSAnimation, Timeline } from "../animation/Timeline"
-import { CliRenderer, createCliRenderer, TextRenderable, BoxRenderable } from "../index"
+import { CliRenderer, createCliRenderer, TextRenderable, BoxRenderable, type KeyEvent } from "../index"
 import { setupCommonDemoKeys } from "./lib/standalone-keys"
 
 class TimelineExample {
@@ -638,14 +638,12 @@ export function run(renderer: CliRenderer): void {
     }
   })
 
-  process.stdin.on("data", (key: Buffer) => {
-    const keyStr = key.toString()
-
-    if (keyStr === "p") {
+  renderer.keyInput.on("keypress", (key: KeyEvent) => {
+    if (key.name === "p") {
       currentExample?.pause()
     }
 
-    if (keyStr === "r") {
+    if (key.name === "r") {
       currentExample?.start()
     }
   })

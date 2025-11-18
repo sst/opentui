@@ -276,6 +276,13 @@ pub const CliRenderer = struct {
             logger.warn("Failed to query terminal capabilities", .{});
         };
 
+        self.setupTerminalWithoutDetection(useAlternateScreen);
+    }
+
+    fn setupTerminalWithoutDetection(self: *CliRenderer, useAlternateScreen: bool) void {
+        var bufferedWriter = &self.stdoutWriter;
+        const writer = bufferedWriter.writer();
+
         writer.writeAll(ansi.ANSI.saveCursorState) catch {};
 
         if (useAlternateScreen) {
@@ -285,8 +292,19 @@ pub const CliRenderer = struct {
         }
 
         self.terminal.setCursorPosition(1, 1, false);
+        self.terminal.enableDetectedFeatures(writer, self.useKittyKeyboard) catch {};
 
         bufferedWriter.flush() catch {};
+    }
+
+    pub fn suspendRenderer(self: *CliRenderer) void {
+        if (!self.terminalSetup) return;
+        self.performShutdownSequence();
+    }
+
+    pub fn resumeRenderer(self: *CliRenderer) void {
+        if (!self.terminalSetup) return;
+        self.setupTerminalWithoutDetection(self.useAlternateScreen);
     }
 
     pub fn performShutdownSequence(self: *CliRenderer) void {

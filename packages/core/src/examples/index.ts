@@ -357,7 +357,7 @@ class ExampleSelector {
       marginLeft: 2,
       marginRight: 2,
       content:
-        "Use ↑↓ or j/k to navigate, Shift+↑↓ or Shift+j/k for fast scroll, Enter to run, Escape to return, ` for console, ctrl+c to quit",
+        "Use ↑↓ or j/k to navigate, Shift+↑↓ or Shift+j/k for fast scroll, Enter to run, Escape to return, ` for console, ctrl+z to suspend/resume, ctrl+c to quit",
       fg: "#94A3B8",
     })
     this.renderer.root.add(this.instructions)
@@ -437,6 +437,16 @@ class ExampleSelector {
       switch (key.name) {
         case "c":
           console.log("Capabilities:", this.renderer.capabilities)
+          break
+        case "z":
+          if (key.ctrl) {
+            console.log("Suspending renderer... (will auto-resume in 5 seconds)")
+            this.renderer.suspend()
+            setTimeout(() => {
+              console.log("Resuming renderer...")
+              this.renderer.resume()
+            }, 5000)
+          }
           break
       }
     })

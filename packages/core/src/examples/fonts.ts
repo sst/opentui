@@ -1,4 +1,12 @@
-import { BoxRenderable, CliRenderer, createCliRenderer, FrameBufferRenderable, RGBA, TextRenderable } from "../index"
+import {
+  BoxRenderable,
+  CliRenderer,
+  createCliRenderer,
+  FrameBufferRenderable,
+  RGBA,
+  TextRenderable,
+  type KeyEvent,
+} from "../index"
 import { renderFontToFrameBuffer } from "../lib/ascii.font"
 import { setupCommonDemoKeys } from "./lib/standalone-keys"
 
@@ -17,17 +25,17 @@ function updateScrollPosition(): void {
   renderer.requestRender()
 }
 
-function handleKeyPress(key: string): void {
+function handleKeyPress(key: KeyEvent): void {
   const scrollAmount = 3
 
-  switch (key) {
-    case "\u001b[A": // Up arrow
+  switch (key.name) {
+    case "up":
     case "k":
       console.log("up")
       scrollY -= scrollAmount
       updateScrollPosition()
       break
-    case "\u001b[B": // Down arrow
+    case "down":
     case "j":
       scrollY += scrollAmount
       updateScrollPosition()
@@ -59,7 +67,7 @@ export function run(rendererInstance: CliRenderer): void {
   // Reset scroll position
   scrollY = 0
 
-  process.stdin.on("data", handleKeyPress)
+  renderer.keyInput.on("keypress", handleKeyPress)
 
   // Large title with block font (multi-color)
   renderFontToFrameBuffer(buffer.frameBuffer, {
@@ -211,7 +219,9 @@ export function run(rendererInstance: CliRenderer): void {
 }
 
 export function destroy(rendererInstance: CliRenderer): void {
-  process.stdin.removeListener("data", handleKeyPress)
+  if (renderer) {
+    renderer.keyInput.off("keypress", handleKeyPress)
+  }
 
   rendererInstance.root.remove("ascii-demo")
 

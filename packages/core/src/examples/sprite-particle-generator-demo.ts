@@ -8,6 +8,7 @@ import {
   BoxRenderable,
   TextRenderable,
   FrameBufferRenderable,
+  type KeyEvent,
 } from "../index"
 import { setupCommonDemoKeys } from "./lib/standalone-keys"
 import * as THREE from "three"
@@ -39,7 +40,7 @@ let currentGenerator: SpriteParticleGenerator | null = null
 let currentGeneratorKey = "3d-static"
 let backgroundSprite: TiledSprite | null = null
 let configs: Record<string, { name: string; params: ParticleEffectParameters }> = {}
-let inputListener: ((key: Buffer) => void) | null = null
+let inputListener: ((key: KeyEvent) => void) | null = null
 let resizeListener: ((width: number, height: number) => void) | null = null
 let frameCallback: ((deltaTime: number) => Promise<void>) | null = null
 let parentContainer: BoxRenderable | null = null
@@ -352,17 +353,15 @@ export async function run(renderer: CliRenderer): Promise<void> {
     console.log(`Switched to ${configName} generator${wasAutoSpawning ? " (auto-spawn continued)" : ""}`)
   }
 
-  inputListener = (key: Buffer) => {
-    const keyStr = key.toString()
-
-    if (keyStr === "g" && currentGenerator) {
+  inputListener = (key: KeyEvent) => {
+    if (key.name === "g" && currentGenerator) {
       console.log("Generating 100 particles (burst)...")
       currentGenerator.spawnParticles(100).then(() => {
         console.log("Particle burst spawn call completed.")
       })
     }
 
-    if (keyStr === "a" && currentGenerator) {
+    if (key.name === "a" && currentGenerator) {
       console.log("Starting auto-spawn (30 particles/sec)...")
       currentGenerator.setAutoSpawn(AUTO_SPAWN_RATE)
       const configName = configs[currentGeneratorKey as keyof typeof configs].name
@@ -371,7 +370,7 @@ export async function run(renderer: CliRenderer): Promise<void> {
       }
     }
 
-    if (keyStr === "s" && currentGenerator) {
+    if (key.name === "s" && currentGenerator) {
       console.log("Stopping auto-spawn...")
       currentGenerator.stopAutoSpawn()
       const configName = configs[currentGeneratorKey as keyof typeof configs].name
@@ -380,24 +379,24 @@ export async function run(renderer: CliRenderer): Promise<void> {
       }
     }
 
-    if (keyStr === "x" && currentGenerator) {
+    if (key.name === "x" && currentGenerator) {
       console.log("Clearing all particles...")
       currentGenerator.dispose()
     }
 
-    if (keyStr === "1") {
+    if (key.name === "1") {
       switchToGenerator("3d-static")
     }
 
-    if (keyStr === "2") {
+    if (key.name === "2") {
       switchToGenerator("2d-static")
     }
 
-    if (keyStr === "3") {
+    if (key.name === "3") {
       switchToGenerator("3d-animated")
     }
 
-    if (keyStr === "4") {
+    if (key.name === "4") {
       configs.custom.params.gravity = new THREE.Vector3(
         0,
         THREE.MathUtils.randFloat(-9.8, 9.8),
@@ -409,17 +408,17 @@ export async function run(renderer: CliRenderer): Promise<void> {
       switchToGenerator("custom")
     }
 
-    if (keyStr === "5") {
+    if (key.name === "5") {
       switchToGenerator("2d-animated")
     }
   }
 
-  process.stdin.on("data", inputListener)
+  renderer.keyInput.on("keypress", inputListener)
 }
 
 export function destroy(renderer: CliRenderer): void {
   if (inputListener) {
-    process.stdin.removeListener("data", inputListener)
+    renderer.keyInput.off("keypress", inputListener)
     inputListener = null
   }
 

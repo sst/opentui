@@ -7,13 +7,14 @@ import {
   BoxRenderable,
   parseColor,
   getBorderFromSides,
+  type KeyEvent,
 } from "../index"
 import type { BorderCharacters, BorderSidesConfig, CliRenderer } from "../index"
 import { TabControllerRenderable } from "./lib/tab-controller"
 import { setupCommonDemoKeys } from "./lib/standalone-keys"
 
 let globalTabController: TabControllerRenderable | null = null
-let globalKeyboardHandler: ((key: Buffer) => void) | null = null
+let globalKeyboardHandler: ((key: KeyEvent) => void) | null = null
 
 export function run(renderer: CliRenderer): void {
   renderer.start()
@@ -1012,31 +1013,29 @@ export function run(renderer: CliRenderer): void {
 
   tabController.focus()
 
-  globalKeyboardHandler = (key: Buffer) => {
-    const keyStr = key.toString()
-
+  globalKeyboardHandler = (key: KeyEvent) => {
     // Interactive border controls (only active in Interactive tab)
     if (tabController.getCurrentTab().title === "Interactive") {
-      if (keyStr === "t" || keyStr === "T") {
+      if (key.name === "t" || key.name === "T") {
         interactiveBorderSides.top = !interactiveBorderSides.top
-      } else if (keyStr === "r" || keyStr === "R") {
+      } else if (key.name === "r" || key.name === "R") {
         interactiveBorderSides.right = !interactiveBorderSides.right
-      } else if (keyStr === "b" || keyStr === "B") {
+      } else if (key.name === "b" || key.name === "B") {
         interactiveBorderSides.bottom = !interactiveBorderSides.bottom
-      } else if (keyStr === "l" || keyStr === "L") {
+      } else if (key.name === "l" || key.name === "L") {
         interactiveBorderSides.left = !interactiveBorderSides.left
       }
     }
   }
 
-  process.stdin.on("data", globalKeyboardHandler)
+  renderer.keyInput.on("keypress", globalKeyboardHandler)
 }
 
 export function destroy(renderer: CliRenderer): void {
   renderer.clearFrameCallbacks()
 
   if (globalKeyboardHandler) {
-    process.stdin.removeListener("data", globalKeyboardHandler)
+    renderer.keyInput.off("keypress", globalKeyboardHandler)
     globalKeyboardHandler = null
   }
 

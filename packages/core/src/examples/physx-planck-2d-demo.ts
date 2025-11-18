@@ -1,6 +1,13 @@
 #!/usr/bin/env bun
 
-import { CliRenderer, TextRenderable, FrameBufferRenderable, BoxRenderable, createCliRenderer } from "../index"
+import {
+  CliRenderer,
+  TextRenderable,
+  FrameBufferRenderable,
+  BoxRenderable,
+  createCliRenderer,
+  type KeyEvent,
+} from "../index"
 import { setupCommonDemoKeys } from "./lib/standalone-keys"
 import * as THREE from "three"
 import {
@@ -53,7 +60,7 @@ interface DemoState {
   controlsText: TextRenderable
   statsText: TextRenderable
   frameCallback: (deltaTime: number) => Promise<void>
-  keyHandler: (key: Buffer) => void
+  keyHandler: (key: KeyEvent) => void
   statsInterval: NodeJS.Timeout
   resizeHandler: (width: number, height: number) => void
 }
@@ -368,10 +375,10 @@ export async function run(renderer: CliRenderer): Promise<void> {
     await state.engine.drawScene(state.scene, framebuffer, deltaTime)
   }
 
-  state.keyHandler = (key: Buffer) => {
-    const keyStr = key.toString()
+  state.keyHandler = (key: KeyEvent) => {
+    const keyStr = key.name
 
-    if (keyStr === " " && state.isInitialized) {
+    if (keyStr === "space" && state.isInitialized) {
       ;(async () => {
         const x = (Math.random() - 0.5) * 16
         const y = 8 + Math.random() * 2
@@ -459,7 +466,7 @@ export async function run(renderer: CliRenderer): Promise<void> {
 
   // Register handlers
   renderer.setFrameCallback(state.frameCallback)
-  process.stdin.on("data", state.keyHandler)
+  renderer.keyInput.on("keypress", state.keyHandler)
   renderer.on("resize", state.resizeHandler)
 
   demoState = state
@@ -470,7 +477,7 @@ export function destroy(renderer: CliRenderer): void {
   if (!demoState) return
 
   renderer.removeFrameCallback(demoState.frameCallback)
-  process.stdin.removeListener("data", demoState.keyHandler)
+  renderer.keyInput.off("keypress", demoState.keyHandler)
   renderer.root.removeListener("resize", demoState.resizeHandler)
 
   clearInterval(demoState.statsInterval)
