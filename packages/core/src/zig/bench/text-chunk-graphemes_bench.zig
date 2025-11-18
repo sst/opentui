@@ -2,7 +2,7 @@ const std = @import("std");
 const bench_utils = @import("../bench-utils.zig");
 const seg_mod = @import("../text-buffer-segment.zig");
 const gp = @import("../grapheme.zig");
-const gwidth = @import("../gwidth.zig");
+const utf8 = @import("../utf8.zig");
 const Graphemes = @import("Graphemes");
 const DisplayWidth = @import("DisplayWidth");
 
@@ -119,7 +119,7 @@ fn benchGetGraphemes(
     var grapheme_count: usize = 0;
     var final_mem: usize = 0;
 
-    const width_method = gwidth.WidthMethod.unicode;
+    const width_method = utf8.WidthMethod.unicode;
 
     var i: usize = 0;
     while (i < iterations) : (i += 1) {

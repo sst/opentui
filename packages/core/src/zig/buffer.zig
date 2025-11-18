@@ -10,7 +10,7 @@ const Graphemes = @import("Graphemes");
 const DisplayWidth = @import("DisplayWidth");
 const code_point = @import("code_point");
 const gp = @import("grapheme.zig");
-const gwidth = @import("gwidth.zig");
+
 const logger = @import("logger.zig");
 const utf8 = @import("utf8.zig");
 const uucode = @import("uucode");
@@ -136,14 +136,14 @@ pub const OptimizedBuffer = struct {
     graphemes_data: Graphemes,
     display_width: DisplayWidth,
     grapheme_tracker: gp.GraphemeTracker,
-    width_method: gwidth.WidthMethod,
+    width_method: utf8.WidthMethod,
     id: []const u8,
     scissor_stack: std.ArrayList(ClipRect),
 
     const InitOptions = struct {
         respectAlpha: bool = false,
         pool: *gp.GraphemePool,
-        width_method: gwidth.WidthMethod = .unicode,
+        width_method: utf8.WidthMethod = .unicode,
         id: []const u8 = "unnamed buffer",
     };
 

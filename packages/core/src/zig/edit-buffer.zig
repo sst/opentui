@@ -4,7 +4,7 @@ const tb = @import("text-buffer.zig");
 const iter_mod = @import("text-buffer-iterators.zig");
 const seg_mod = @import("text-buffer-segment.zig");
 const gp = @import("grapheme.zig");
-const gwidth = @import("gwidth.zig");
+
 const utf8 = @import("utf8.zig");
 const event_emitter = @import("event-emitter.zig");
 const event_bus = @import("event-bus.zig");
@@ -95,7 +95,7 @@ pub const EditBuffer = struct {
     pub fn init(
         allocator: Allocator,
         pool: *gp.GraphemePool,
-        width_method: gwidth.WidthMethod,
+        width_method: utf8.WidthMethod,
         graphemes_data: *Graphemes,
         display_width: *DisplayWidth,
     ) !*EditBuffer {

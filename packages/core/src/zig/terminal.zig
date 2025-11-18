@@ -3,9 +3,9 @@ const builtin = @import("builtin");
 const atomic = std.atomic;
 const assert = std.debug.assert;
 const ansi = @import("ansi.zig");
-const gwidth = @import("gwidth.zig");
+const utf8 = @import("utf8.zig");
 
-const WidthMethod = gwidth.WidthMethod;
+const WidthMethod = utf8.WidthMethod;
 const log = std.log.scoped(.terminal);
 
 /// Terminal capability detection and management
@@ -182,7 +182,7 @@ pub fn enableDetectedFeatures(self: *Terminal, tty: anytype, use_kitty_keyboard:
         self.caps.rgb = true;
         self.caps.bracketed_paste = true;
     }
-    
+
     self.checkEnvironmentOverrides();
 
     if (!self.state.modify_other_keys and !self.state.kitty_keyboard) {

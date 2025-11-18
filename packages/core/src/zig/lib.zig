@@ -11,7 +11,7 @@ const edit_buffer_mod = @import("edit-buffer.zig");
 const editor_view = @import("editor-view.zig");
 const syntax_style = @import("syntax-style.zig");
 const terminal = @import("terminal.zig");
-const gwidth = @import("gwidth.zig");
+const utf8 = @import("utf8.zig");
 const logger = @import("logger.zig");
 const event_bus = @import("event-bus.zig");
 const utils = @import("utils.zig");
@@ -103,7 +103,7 @@ export fn createOptimizedBuffer(width: u32, height: u32, respectAlpha: bool, wid
     }
 
     const pool = gp.initGlobalPool(globalArena);
-    const wMethod: gwidth.WidthMethod = if (widthMethod == 0) .wcwidth else .unicode;
+    const wMethod: utf8.WidthMethod = if (widthMethod == 0) .wcwidth else .unicode;
     const id = idPtr[0..idLen];
 
     const unicode_data = gp.initGlobalUnicodeData(globalArena);
@@ -429,7 +429,7 @@ export fn resumeRenderer(rendererPtr: *renderer.CliRenderer) void {
 
 export fn createTextBuffer(widthMethod: u8) ?*text_buffer.UnifiedTextBuffer {
     const pool = gp.initGlobalPool(globalArena);
-    const wMethod: gwidth.WidthMethod = if (widthMethod == 0) .wcwidth else .unicode;
+    const wMethod: utf8.WidthMethod = if (widthMethod == 0) .wcwidth else .unicode;
 
     const unicode_data = gp.initGlobalUnicodeData(globalArena);
     const graphemes_ptr, const display_width_ptr = unicode_data;
@@ -640,7 +640,7 @@ export fn textBufferViewSetTabIndicatorColor(view: *text_buffer_view.UnifiedText
 
 export fn createEditBuffer(widthMethod: u8) ?*edit_buffer_mod.EditBuffer {
     const pool = gp.initGlobalPool(globalArena);
-    const wMethod: gwidth.WidthMethod = if (widthMethod == 0) .wcwidth else .unicode;
+    const wMethod: utf8.WidthMethod = if (widthMethod == 0) .wcwidth else .unicode;
     const unicode_data = gp.initGlobalUnicodeData(globalArena);
     const graphemes_ptr, const display_width_ptr = unicode_data;
 

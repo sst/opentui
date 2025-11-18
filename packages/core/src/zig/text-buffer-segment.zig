@@ -5,7 +5,7 @@ const buffer = @import("buffer.zig");
 const Graphemes = @import("Graphemes");
 const DisplayWidth = @import("DisplayWidth");
 const gp = @import("grapheme.zig");
-const gwidth = @import("gwidth.zig");
+
 const utf8 = @import("utf8.zig");
 
 pub const RGBA = buffer.RGBA;
@@ -140,7 +140,7 @@ pub const TextChunk = struct {
         mem_registry: *const MemRegistry,
         allocator: Allocator,
         graphemes_data: *const Graphemes,
-        width_method: gwidth.WidthMethod,
+        width_method: utf8.WidthMethod,
         display_width: *const DisplayWidth,
         tabwidth: u8,
     ) TextBufferError![]const GraphemeInfo {

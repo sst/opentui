@@ -4,7 +4,7 @@ const seg_mod = @import("text-buffer-segment.zig");
 const iter_mod = @import("text-buffer-iterators.zig");
 const ss = @import("syntax-style.zig");
 const gp = @import("grapheme.zig");
-const gwidth = @import("gwidth.zig");
+
 const utf8 = @import("utf8.zig");
 const utils = @import("utils.zig");
 const Graphemes = @import("Graphemes");
@@ -57,7 +57,7 @@ pub const UnifiedTextBuffer = struct {
     pool: *gp.GraphemePool,
     graphemes_data: Graphemes,
     display_width: DisplayWidth,
-    width_method: gwidth.WidthMethod,
+    width_method: utf8.WidthMethod,
 
     view_dirty_flags: std.ArrayListUnmanaged(bool),
     next_view_id: u32,
@@ -79,7 +79,7 @@ pub const UnifiedTextBuffer = struct {
     pub fn init(
         global_allocator: Allocator,
         pool: *gp.GraphemePool,
-        width_method: gwidth.WidthMethod,
+        width_method: utf8.WidthMethod,
         graphemes_data: *Graphemes,
         display_width: *DisplayWidth,
     ) TextBufferError!*Self {
