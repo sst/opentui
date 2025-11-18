@@ -1,6 +1,14 @@
 #!/usr/bin/env bun
 
-import { CliRenderer, createCliRenderer, RGBA, BoxRenderable, TextRenderable, FrameBufferRenderable } from "../index"
+import {
+  CliRenderer,
+  createCliRenderer,
+  RGBA,
+  BoxRenderable,
+  TextRenderable,
+  FrameBufferRenderable,
+  type KeyEvent,
+} from "../index"
 import { setupCommonDemoKeys } from "./lib/standalone-keys"
 import { TextureUtils } from "../3d/TextureUtils"
 import {
@@ -190,24 +198,23 @@ export async function run(renderer: CliRenderer): Promise<void> {
     controlsText.y = height - 2
   }
 
-  const inputHandler = (key: Buffer) => {
-    const keyStr = key.toString()
-    if (keyStr === "w") camera.translateY(0.5)
-    if (keyStr === "s") camera.translateY(-0.5)
-    if (keyStr === "a") camera.translateX(-0.5)
-    if (keyStr === "d") camera.translateX(0.5)
-    if (keyStr === "q") camera.rotateY(0.1)
-    if (keyStr === "e") camera.rotateY(-0.1)
-    if (keyStr === "z") camera.translateZ(1)
-    if (keyStr === "x") camera.translateZ(-1)
-    if (keyStr === "r") {
+  const inputHandler = (key: KeyEvent) => {
+    if (key.name === "w") camera.translateY(0.5)
+    if (key.name === "s") camera.translateY(-0.5)
+    if (key.name === "a") camera.translateX(-0.5)
+    if (key.name === "d") camera.translateX(0.5)
+    if (key.name === "q") camera.rotateY(0.1)
+    if (key.name === "e") camera.rotateY(-0.1)
+    if (key.name === "z") camera.translateZ(1)
+    if (key.name === "x") camera.translateZ(-1)
+    if (key.name === "r") {
       camera.position.set(0, 0, 7)
       camera.rotation.set(0, 0, 0)
       camera.quaternion.set(0, 0, 0, 1)
       camera.up.set(0, 1, 0)
       camera.lookAt(0, 0, 0)
     }
-    if (keyStr === "u") {
+    if (key.name === "u") {
       engine.toggleSuperSampling()
     }
   }
@@ -236,12 +243,12 @@ export async function run(renderer: CliRenderer): Promise<void> {
   }
 
   renderer.on("resize", resizeHandler)
-  process.stdin.on("data", inputHandler)
+  renderer.keyInput.on("keypress", inputHandler)
   renderer.setFrameCallback(animate)
 
   const cleanup = () => {
     renderer.off("resize", resizeHandler)
-    process.stdin.off("data", inputHandler)
+    renderer.keyInput.off("keypress", inputHandler)
     renderer.removeFrameCallback(animate)
     engine.destroy()
   }
