@@ -340,8 +340,6 @@ pub fn run(
         const bench_data = try benchWrap(
             allocator,
             pool,
-            graphemes_ptr,
-            display_width_ptr,
             text,
             scenario.width,
             scenario.mode,

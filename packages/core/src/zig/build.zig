@@ -13,15 +13,8 @@ const SUPPORTED_ZIG_VERSIONS = [_]SupportedZigVersion{
     // .{ .major = 0, .minor = 15, .patch = 0 },
 };
 
-/// Apply zg (Zig Unicode) dependencies to a module
-fn applyZgDependencies(b: *std.Build, module: *std.Build.Module, optimize: std.builtin.OptimizeMode, target: std.Build.ResolvedTarget) void {
-    const zg_dep = b.dependency("zg", .{
-        // .cjk = false,
-        .optimize = optimize,
-        .target = target,
-    });
-    module.addImport("code_point", zg_dep.module("code_point"));
-
+/// Apply dependencies to a module
+fn applyDependencies(b: *std.Build, module: *std.Build.Module, optimize: std.builtin.OptimizeMode, target: std.Build.ResolvedTarget) void {
     // Add uucode for grapheme break detection
     if (b.lazyDependency("uucode", .{
         .target = target,
@@ -115,7 +108,7 @@ pub fn build(b: *std.Build) void {
         .filter = b.option([]const u8, "test-filter", "Skip tests that do not match filter"),
     });
 
-    applyZgDependencies(b, test_exe.root_module, .Debug, test_target);
+    applyDependencies(b, test_exe.root_module, .Debug, test_target);
 
     const run_test = b.addRunArtifact(test_exe);
     test_step.dependOn(&run_test.step);
@@ -135,7 +128,7 @@ pub fn build(b: *std.Build) void {
         .optimize = optimize,
     });
 
-    applyZgDependencies(b, bench_exe.root_module, optimize, bench_target);
+    applyDependencies(b, bench_exe.root_module, optimize, bench_target);
 
     const run_bench = b.addRunArtifact(bench_exe);
     if (b.args) |args| {
@@ -152,7 +145,7 @@ pub fn build(b: *std.Build) void {
         .optimize = .Debug,
     });
 
-    applyZgDependencies(b, debug_exe.root_module, .Debug, test_target);
+    applyDependencies(b, debug_exe.root_module, .Debug, test_target);
 
     const run_debug = b.addRunArtifact(debug_exe);
     debug_step.dependOn(&run_debug.step);
@@ -194,7 +187,7 @@ fn buildTargetFromQuery(
         .link_libc = false,
     });
 
-    applyZgDependencies(b, module, optimize, target);
+    applyDependencies(b, module, optimize, target);
 
     target_output = b.addLibrary(.{
         .name = LIB_NAME,

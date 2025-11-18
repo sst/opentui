@@ -433,7 +433,7 @@ fn benchFindWrapPosByWidth(allocator: std.mem.Allocator, iterations: usize) ![]B
         var iter: usize = 0;
         while (iter < iterations) : (iter += 1) {
             var timer = try std.time.Timer.start();
-            const result = utf8.findWrapPosByWidthSIMD16(text, max_columns, 4, true);
+            const result = utf8.findWrapPosByWidthSIMD16(text, max_columns, 4, true, .unicode);
             const elapsed = timer.read();
             _ = result;
 
@@ -468,7 +468,7 @@ fn benchFindWrapPosByWidth(allocator: std.mem.Allocator, iterations: usize) ![]B
         var iter: usize = 0;
         while (iter < iterations) : (iter += 1) {
             var timer = try std.time.Timer.start();
-            const result = utf8.findWrapPosByWidthSIMD16(text, max_columns, 4, false);
+            const result = utf8.findWrapPosByWidthSIMD16(text, max_columns, 4, false, .unicode);
             const elapsed = timer.read();
             _ = result;
 
@@ -503,7 +503,7 @@ fn benchFindWrapPosByWidth(allocator: std.mem.Allocator, iterations: usize) ![]B
         var iter: usize = 0;
         while (iter < iterations) : (iter += 1) {
             var timer = try std.time.Timer.start();
-            const result = utf8.findWrapPosByWidthSIMD16(text, max_columns, 4, false);
+            const result = utf8.findWrapPosByWidthSIMD16(text, max_columns, 4, false, .unicode);
             const elapsed = timer.read();
             _ = result;
 
@@ -545,7 +545,7 @@ fn benchFindPosByWidth(allocator: std.mem.Allocator, iterations: usize) ![]Bench
         var iter: usize = 0;
         while (iter < iterations) : (iter += 1) {
             var timer = try std.time.Timer.start();
-            const result = utf8.findPosByWidth(text, max_columns, 4, true, true);
+            const result = utf8.findPosByWidth(text, max_columns, 4, true, true, .unicode);
             const elapsed = timer.read();
             _ = result;
 
@@ -580,7 +580,7 @@ fn benchFindPosByWidth(allocator: std.mem.Allocator, iterations: usize) ![]Bench
         var iter: usize = 0;
         while (iter < iterations) : (iter += 1) {
             var timer = try std.time.Timer.start();
-            const result = utf8.findPosByWidth(text, max_columns, 4, true, false);
+            const result = utf8.findPosByWidth(text, max_columns, 4, true, false, .unicode);
             const elapsed = timer.read();
             _ = result;
 
@@ -615,7 +615,7 @@ fn benchFindPosByWidth(allocator: std.mem.Allocator, iterations: usize) ![]Bench
         var iter: usize = 0;
         while (iter < iterations) : (iter += 1) {
             var timer = try std.time.Timer.start();
-            const result = utf8.findPosByWidth(text, max_columns, 4, false, true);
+            const result = utf8.findPosByWidth(text, max_columns, 4, false, true, .unicode);
             const elapsed = timer.read();
             _ = result;
 
@@ -655,7 +655,7 @@ fn benchCalculateTextWidth(allocator: std.mem.Allocator, iterations: usize) ![]B
         var iter: usize = 0;
         while (iter < iterations) : (iter += 1) {
             var timer = try std.time.Timer.start();
-            const result = utf8.calculateTextWidth(text, 4, true);
+            const result = utf8.calculateTextWidth(text, 4, true, .unicode);
             const elapsed = timer.read();
             _ = result;
 
@@ -688,7 +688,7 @@ fn benchCalculateTextWidth(allocator: std.mem.Allocator, iterations: usize) ![]B
         var iter: usize = 0;
         while (iter < iterations) : (iter += 1) {
             var timer = try std.time.Timer.start();
-            const result = utf8.calculateTextWidth(text, 4, true);
+            const result = utf8.calculateTextWidth(text, 4, true, .unicode);
             const elapsed = timer.read();
             _ = result;
 
@@ -721,7 +721,7 @@ fn benchCalculateTextWidth(allocator: std.mem.Allocator, iterations: usize) ![]B
         var iter: usize = 0;
         while (iter < iterations) : (iter += 1) {
             var timer = try std.time.Timer.start();
-            const result = utf8.calculateTextWidth(text, 4, true);
+            const result = utf8.calculateTextWidth(text, 4, true, .unicode);
             const elapsed = timer.read();
             _ = result;
 
@@ -762,7 +762,7 @@ fn benchCalculateTextWidth(allocator: std.mem.Allocator, iterations: usize) ![]B
         var iter: usize = 0;
         while (iter < iterations) : (iter += 1) {
             var timer = try std.time.Timer.start();
-            const result = utf8.calculateTextWidth(text.items, 4, true);
+            const result = utf8.calculateTextWidth(text.items, 4, true, .unicode);
             const elapsed = timer.read();
             _ = result;
 
@@ -795,7 +795,7 @@ fn benchCalculateTextWidth(allocator: std.mem.Allocator, iterations: usize) ![]B
         var iter: usize = 0;
         while (iter < iterations) : (iter += 1) {
             var timer = try std.time.Timer.start();
-            const result = utf8.calculateTextWidth(text, 4, false);
+            const result = utf8.calculateTextWidth(text, 4, false, .unicode);
             const elapsed = timer.read();
             _ = result;
 
@@ -828,7 +828,7 @@ fn benchCalculateTextWidth(allocator: std.mem.Allocator, iterations: usize) ![]B
         var iter: usize = 0;
         while (iter < iterations) : (iter += 1) {
             var timer = try std.time.Timer.start();
-            const result = utf8.calculateTextWidth(text, 4, false);
+            const result = utf8.calculateTextWidth(text, 4, false, .unicode);
             const elapsed = timer.read();
             _ = result;
 

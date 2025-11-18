@@ -7,7 +7,6 @@ const edv = @import("editor-view.zig");
 const ss = @import("syntax-style.zig");
 const math = std.math;
 
-const code_point = @import("code_point");
 const gp = @import("grapheme.zig");
 
 const logger = @import("logger.zig");
