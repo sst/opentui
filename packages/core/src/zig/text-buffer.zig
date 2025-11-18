@@ -4,11 +4,10 @@ const seg_mod = @import("text-buffer-segment.zig");
 const iter_mod = @import("text-buffer-iterators.zig");
 const ss = @import("syntax-style.zig");
 const gp = @import("grapheme.zig");
-const gwidth = @import("gwidth.zig");
+
 const utf8 = @import("utf8.zig");
 const utils = @import("utils.zig");
-const Graphemes = @import("Graphemes");
-const DisplayWidth = @import("DisplayWidth");
+
 const logger = @import("logger.zig");
 
 const Segment = seg_mod.Segment;
@@ -55,9 +54,8 @@ pub const UnifiedTextBuffer = struct {
     syntax_style: ?*const SyntaxStyle,
 
     pool: *gp.GraphemePool,
-    graphemes_data: Graphemes,
-    display_width: DisplayWidth,
-    width_method: gwidth.WidthMethod,
+
+    width_method: utf8.WidthMethod,
 
     view_dirty_flags: std.ArrayListUnmanaged(bool),
     next_view_id: u32,
@@ -79,9 +77,7 @@ pub const UnifiedTextBuffer = struct {
     pub fn init(
         global_allocator: Allocator,
         pool: *gp.GraphemePool,
-        width_method: gwidth.WidthMethod,
-        graphemes_data: *Graphemes,
-        display_width: *DisplayWidth,
+        width_method: utf8.WidthMethod,
     ) TextBufferError!*Self {
         const self = global_allocator.create(Self) catch return TextBufferError.OutOfMemory;
         errdefer global_allocator.destroy(self);
@@ -91,9 +87,6 @@ pub const UnifiedTextBuffer = struct {
         internal_arena.* = std.heap.ArenaAllocator.init(global_allocator);
 
         const internal_allocator = internal_arena.allocator();
-
-        const graph = graphemes_data.*;
-        const dw = display_width.*;
 
         const rope = UnifiedRope.init(internal_allocator) catch return TextBufferError.OutOfMemory;
 
@@ -120,8 +113,6 @@ pub const UnifiedTextBuffer = struct {
             .rope = rope,
             .syntax_style = null,
             .pool = pool,
-            .graphemes_data = graph,
-            .display_width = dw,
             .width_method = width_method,
             .view_dirty_flags = view_dirty_flags,
             .next_view_id = 0,
@@ -238,7 +229,7 @@ pub const UnifiedTextBuffer = struct {
         // For grapheme-accurate width calculation (used by highlighting system),
         // use utf8.calculateTextWidth which properly handles grapheme clusters
         const is_ascii = utf8.isAsciiOnly(text);
-        return utf8.calculateTextWidth(text, self.tab_width, is_ascii);
+        return utf8.calculateTextWidth(text, self.tab_width, is_ascii, self.width_method);
     }
 
     /// Clear the text content without resetting arena or memory registry.
@@ -394,7 +385,7 @@ pub const UnifiedTextBuffer = struct {
             flags |= TextChunk.Flags.ASCII_ONLY;
         }
 
-        const chunk_width: u16 = @intCast(@min(65535, utf8.calculateTextWidth(chunk_bytes, self.tab_width, is_ascii)));
+        const chunk_width: u16 = @intCast(@min(65535, utf8.calculateTextWidth(chunk_bytes, self.tab_width, is_ascii, self.width_method)));
 
         return TextChunk{
             .mem_id = mem_id,
@@ -1020,6 +1011,7 @@ pub const UnifiedTextBuffer = struct {
             start_offset,
             clamped_end,
             out_buffer,
+            self.width_method,
         );
     }
 

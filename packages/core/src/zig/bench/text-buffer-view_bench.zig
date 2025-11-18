@@ -3,8 +3,6 @@ const bench_utils = @import("../bench-utils.zig");
 const text_buffer = @import("../text-buffer.zig");
 const text_buffer_view = @import("../text-buffer-view.zig");
 const gp = @import("../grapheme.zig");
-const Graphemes = @import("Graphemes");
-const DisplayWidth = @import("DisplayWidth");
 
 const UnifiedTextBuffer = text_buffer.UnifiedTextBuffer;
 const UnifiedTextBufferView = text_buffer_view.UnifiedTextBufferView;
@@ -88,8 +86,8 @@ pub fn generateLargeTextSingleLine(allocator: std.mem.Allocator, target_bytes: u
 fn benchSetText(
     allocator: std.mem.Allocator,
     pool: *gp.GraphemePool,
-    graphemes_ptr: *Graphemes,
-    display_width_ptr: *DisplayWidth,
+    
+    
     iterations: usize,
     show_mem: bool,
 ) ![]BenchResult {
@@ -105,7 +103,7 @@ fn benchSetText(
 
         var i: usize = 0;
         while (i < iterations) : (i += 1) {
-            var tb = try UnifiedTextBuffer.init(allocator, pool, .unicode, graphemes_ptr, display_width_ptr);
+            var tb = try UnifiedTextBuffer.init(allocator, pool, .unicode);
             defer tb.deinit();
 
             var timer = try std.time.Timer.start();
@@ -151,7 +149,7 @@ fn benchSetText(
 
         var i: usize = 0;
         while (i < iterations) : (i += 1) {
-            var tb = try UnifiedTextBuffer.init(allocator, pool, .unicode, graphemes_ptr, display_width_ptr);
+            var tb = try UnifiedTextBuffer.init(allocator, pool, .unicode);
             defer tb.deinit();
 
             var timer = try std.time.Timer.start();
@@ -204,8 +202,8 @@ fn benchSetText(
 fn benchWrap(
     allocator: std.mem.Allocator,
     pool: *gp.GraphemePool,
-    graphemes_ptr: *Graphemes,
-    display_width_ptr: *DisplayWidth,
+    
+    
     text: []const u8,
     wrap_width: u32,
     wrap_mode: WrapMode,
@@ -220,7 +218,7 @@ fn benchWrap(
 
     var i: usize = 0;
     while (i < iterations) : (i += 1) {
-        var tb = try UnifiedTextBuffer.init(allocator, pool, .unicode, graphemes_ptr, display_width_ptr);
+        var tb = try UnifiedTextBuffer.init(allocator, pool, .unicode);
         defer tb.deinit();
 
         try tb.setText(text);
@@ -270,8 +268,8 @@ pub fn run(
 
     // Global pool and unicode data are initialized once in bench.zig
     const pool = gp.initGlobalPool(allocator);
-    const unicode_data = gp.initGlobalUnicodeData(allocator);
-    const graphemes_ptr, const display_width_ptr = unicode_data;
+    
+    
 
     if (show_mem) {
         try stdout.print("Memory stats enabled\n", .{});
@@ -283,7 +281,7 @@ pub fn run(
     const iterations: usize = 10;
 
     // Run setText benchmarks
-    const setText_results = try benchSetText(allocator, pool, graphemes_ptr, display_width_ptr, iterations, show_mem);
+    const setText_results = try benchSetText(allocator, pool, iterations, show_mem);
     defer allocator.free(setText_results);
     try all_results.appendSlice(setText_results);
 
@@ -342,8 +340,6 @@ pub fn run(
         const bench_data = try benchWrap(
             allocator,
             pool,
-            graphemes_ptr,
-            display_width_ptr,
             text,
             scenario.width,
             scenario.mode,

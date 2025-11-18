@@ -7,8 +7,7 @@ const iter_mod = @import("text-buffer-iterators.zig");
 const gp = @import("grapheme.zig");
 const ss = @import("syntax-style.zig");
 const event_emitter = @import("event-emitter.zig");
-const Graphemes = @import("Graphemes");
-const DisplayWidth = @import("DisplayWidth");
+
 const EditBuffer = eb.EditBuffer;
 
 // Use the unified types to match EditBuffer
@@ -498,8 +497,6 @@ pub const EditorView = struct {
                 self.global_allocator,
                 self.edit_buffer.tb.pool,
                 self.edit_buffer.tb.width_method,
-                &self.edit_buffer.tb.graphemes_data,
-                &self.edit_buffer.tb.display_width,
             );
             const syntax_style = try ss.SyntaxStyle.init(self.global_allocator);
             self.placeholder_syntax_style = syntax_style;
