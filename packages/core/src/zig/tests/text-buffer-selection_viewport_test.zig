@@ -13,11 +13,8 @@ test "Selection - vertical viewport selection without wrapping" {
     const pool = gp.initGlobalPool(std.testing.allocator);
     defer gp.deinitGlobalPool();
 
-    const gd = gp.initGlobalUnicodeData(std.testing.allocator);
-    defer gp.deinitGlobalUnicodeData(std.testing.allocator);
-    const graphemes_ptr, const display_width_ptr = gd;
 
-    var tb = try TextBuffer.init(std.testing.allocator, pool, .unicode, graphemes_ptr, display_width_ptr);
+    var tb = try TextBuffer.init(std.testing.allocator, pool, .unicode);
     defer tb.deinit();
 
     var view = try TextBufferView.init(std.testing.allocator, tb);
@@ -43,11 +40,8 @@ test "Selection - horizontal viewport selection without wrapping" {
     const pool = gp.initGlobalPool(std.testing.allocator);
     defer gp.deinitGlobalPool();
 
-    const gd = gp.initGlobalUnicodeData(std.testing.allocator);
-    defer gp.deinitGlobalUnicodeData(std.testing.allocator);
-    const graphemes_ptr, const display_width_ptr = gd;
 
-    var tb = try TextBuffer.init(std.testing.allocator, pool, .unicode, graphemes_ptr, display_width_ptr);
+    var tb = try TextBuffer.init(std.testing.allocator, pool, .unicode);
     defer tb.deinit();
 
     var view = try TextBufferView.init(std.testing.allocator, tb);
@@ -70,11 +64,8 @@ test "Selection - wrapping mode ignores horizontal viewport offset" {
     const pool = gp.initGlobalPool(std.testing.allocator);
     defer gp.deinitGlobalPool();
 
-    const gd = gp.initGlobalUnicodeData(std.testing.allocator);
-    defer gp.deinitGlobalUnicodeData(std.testing.allocator);
-    const graphemes_ptr, const display_width_ptr = gd;
 
-    var tb = try TextBuffer.init(std.testing.allocator, pool, .unicode, graphemes_ptr, display_width_ptr);
+    var tb = try TextBuffer.init(std.testing.allocator, pool, .unicode);
     defer tb.deinit();
 
     var view = try TextBufferView.init(std.testing.allocator, tb);
@@ -100,11 +91,8 @@ test "Selection - vertical viewport with wrapping" {
     const pool = gp.initGlobalPool(std.testing.allocator);
     defer gp.deinitGlobalPool();
 
-    const gd = gp.initGlobalUnicodeData(std.testing.allocator);
-    defer gp.deinitGlobalUnicodeData(std.testing.allocator);
-    const graphemes_ptr, const display_width_ptr = gd;
 
-    var tb = try TextBuffer.init(std.testing.allocator, pool, .unicode, graphemes_ptr, display_width_ptr);
+    var tb = try TextBuffer.init(std.testing.allocator, pool, .unicode);
     defer tb.deinit();
 
     var view = try TextBufferView.init(std.testing.allocator, tb);
@@ -133,11 +121,8 @@ test "Selection - across empty line with viewport offset" {
     const pool = gp.initGlobalPool(std.testing.allocator);
     defer gp.deinitGlobalPool();
 
-    const gd = gp.initGlobalUnicodeData(std.testing.allocator);
-    defer gp.deinitGlobalUnicodeData(std.testing.allocator);
-    const graphemes_ptr, const display_width_ptr = gd;
 
-    var tb = try TextBuffer.init(std.testing.allocator, pool, .unicode, graphemes_ptr, display_width_ptr);
+    var tb = try TextBuffer.init(std.testing.allocator, pool, .unicode);
     defer tb.deinit();
 
     var view = try TextBufferView.init(std.testing.allocator, tb);
@@ -160,11 +145,8 @@ test "Selection - viewport offset with multi-line selection" {
     const pool = gp.initGlobalPool(std.testing.allocator);
     defer gp.deinitGlobalPool();
 
-    const gd = gp.initGlobalUnicodeData(std.testing.allocator);
-    defer gp.deinitGlobalUnicodeData(std.testing.allocator);
-    const graphemes_ptr, const display_width_ptr = gd;
 
-    var tb = try TextBuffer.init(std.testing.allocator, pool, .unicode, graphemes_ptr, display_width_ptr);
+    var tb = try TextBuffer.init(std.testing.allocator, pool, .unicode);
     defer tb.deinit();
 
     var view = try TextBufferView.init(std.testing.allocator, tb);
@@ -187,11 +169,8 @@ test "Selection - combined horizontal and vertical viewport offsets" {
     const pool = gp.initGlobalPool(std.testing.allocator);
     defer gp.deinitGlobalPool();
 
-    const gd = gp.initGlobalUnicodeData(std.testing.allocator);
-    defer gp.deinitGlobalUnicodeData(std.testing.allocator);
-    const graphemes_ptr, const display_width_ptr = gd;
 
-    var tb = try TextBuffer.init(std.testing.allocator, pool, .unicode, graphemes_ptr, display_width_ptr);
+    var tb = try TextBuffer.init(std.testing.allocator, pool, .unicode);
     defer tb.deinit();
 
     var view = try TextBufferView.init(std.testing.allocator, tb);
@@ -214,11 +193,8 @@ test "Selection - viewport without offsets behaves as before" {
     const pool = gp.initGlobalPool(std.testing.allocator);
     defer gp.deinitGlobalPool();
 
-    const gd = gp.initGlobalUnicodeData(std.testing.allocator);
-    defer gp.deinitGlobalUnicodeData(std.testing.allocator);
-    const graphemes_ptr, const display_width_ptr = gd;
 
-    var tb = try TextBuffer.init(std.testing.allocator, pool, .unicode, graphemes_ptr, display_width_ptr);
+    var tb = try TextBuffer.init(std.testing.allocator, pool, .unicode);
     defer tb.deinit();
 
     var view = try TextBufferView.init(std.testing.allocator, tb);
@@ -241,11 +217,8 @@ test "Selection - no viewport behaves as before" {
     const pool = gp.initGlobalPool(std.testing.allocator);
     defer gp.deinitGlobalPool();
 
-    const gd = gp.initGlobalUnicodeData(std.testing.allocator);
-    defer gp.deinitGlobalUnicodeData(std.testing.allocator);
-    const graphemes_ptr, const display_width_ptr = gd;
 
-    var tb = try TextBuffer.init(std.testing.allocator, pool, .unicode, graphemes_ptr, display_width_ptr);
+    var tb = try TextBuffer.init(std.testing.allocator, pool, .unicode);
     defer tb.deinit();
 
     var view = try TextBufferView.init(std.testing.allocator, tb);
@@ -266,11 +239,8 @@ test "Selection - VALIDATION: verify selection range matches extracted text with
     const pool = gp.initGlobalPool(std.testing.allocator);
     defer gp.deinitGlobalPool();
 
-    const gd = gp.initGlobalUnicodeData(std.testing.allocator);
-    defer gp.deinitGlobalUnicodeData(std.testing.allocator);
-    const graphemes_ptr, const display_width_ptr = gd;
 
-    var tb = try TextBuffer.init(std.testing.allocator, pool, .unicode, graphemes_ptr, display_width_ptr);
+    var tb = try TextBuffer.init(std.testing.allocator, pool, .unicode);
     defer tb.deinit();
 
     var view = try TextBufferView.init(std.testing.allocator, tb);
@@ -302,11 +272,8 @@ test "Selection - VALIDATION: multi-line selection range with viewport" {
     const pool = gp.initGlobalPool(std.testing.allocator);
     defer gp.deinitGlobalPool();
 
-    const gd = gp.initGlobalUnicodeData(std.testing.allocator);
-    defer gp.deinitGlobalUnicodeData(std.testing.allocator);
-    const graphemes_ptr, const display_width_ptr = gd;
 
-    var tb = try TextBuffer.init(std.testing.allocator, pool, .unicode, graphemes_ptr, display_width_ptr);
+    var tb = try TextBuffer.init(std.testing.allocator, pool, .unicode);
     defer tb.deinit();
 
     var view = try TextBufferView.init(std.testing.allocator, tb);
@@ -341,11 +308,8 @@ test "Selection - RENDER TEST: selection highlights correct cells with viewport 
     const pool = gp.initGlobalPool(std.testing.allocator);
     defer gp.deinitGlobalPool();
 
-    const gd = gp.initGlobalUnicodeData(std.testing.allocator);
-    defer gp.deinitGlobalUnicodeData(std.testing.allocator);
-    const graphemes_ptr, const display_width_ptr = gd;
 
-    var tb = try TextBuffer.init(std.testing.allocator, pool, .unicode, graphemes_ptr, display_width_ptr);
+    var tb = try TextBuffer.init(std.testing.allocator, pool, .unicode);
     defer tb.deinit();
 
     var view = try TextBufferView.init(std.testing.allocator, tb);
@@ -358,7 +322,7 @@ test "Selection - RENDER TEST: selection highlights correct cells with viewport 
     const red_bg = RGBA{ 1.0, 0.0, 0.0, 1.0 };
     _ = view.setLocalSelection(0, 0, 3, 0, red_bg, null);
 
-    var render_buffer = try buffer_mod.OptimizedBuffer.init(std.testing.allocator, pool, 20, 10, .unicode, graphemes_ptr, display_width_ptr);
+    var render_buffer = try buffer_mod.OptimizedBuffer.init(std.testing.allocator, pool, 20, 10, .unicode);
     defer render_buffer.deinit();
 
     try render_buffer.drawTextBuffer(view, 0, 0);

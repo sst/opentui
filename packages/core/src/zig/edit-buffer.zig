@@ -8,8 +8,6 @@ const gp = @import("grapheme.zig");
 const utf8 = @import("utf8.zig");
 const event_emitter = @import("event-emitter.zig");
 const event_bus = @import("event-bus.zig");
-const Graphemes = @import("Graphemes");
-const DisplayWidth = @import("DisplayWidth");
 
 const UnifiedTextBuffer = tb.UnifiedTextBuffer;
 const TextChunk = seg_mod.TextChunk;
@@ -96,13 +94,11 @@ pub const EditBuffer = struct {
         allocator: Allocator,
         pool: *gp.GraphemePool,
         width_method: utf8.WidthMethod,
-        graphemes_data: *Graphemes,
-        display_width: *DisplayWidth,
     ) !*EditBuffer {
         const self = try allocator.create(EditBuffer);
         errdefer allocator.destroy(self);
 
-        const text_buffer = try UnifiedTextBuffer.init(allocator, pool, width_method, graphemes_data, display_width);
+        const text_buffer = try UnifiedTextBuffer.init(allocator, pool, width_method);
         errdefer text_buffer.deinit();
 
         const add_buffer = try AddBuffer.init(allocator, text_buffer, 65536);

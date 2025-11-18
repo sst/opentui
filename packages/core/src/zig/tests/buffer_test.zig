@@ -13,17 +13,12 @@ test "OptimizedBuffer - init and deinit" {
     const pool = gp.initGlobalPool(std.testing.allocator);
     defer gp.deinitGlobalPool();
 
-    const gd = gp.initGlobalUnicodeData(std.testing.allocator);
-    defer gp.deinitGlobalUnicodeData(std.testing.allocator);
-    const graphemes_ptr, const display_width_ptr = gd;
 
     var buf = try OptimizedBuffer.init(
         std.testing.allocator,
         10,
         10,
         .{ .pool = pool, .id = "test-buffer" },
-        graphemes_ptr,
-        display_width_ptr,
     );
     defer buf.deinit();
 
@@ -35,17 +30,12 @@ test "OptimizedBuffer - clear fills with default char" {
     const pool = gp.initGlobalPool(std.testing.allocator);
     defer gp.deinitGlobalPool();
 
-    const gd = gp.initGlobalUnicodeData(std.testing.allocator);
-    defer gp.deinitGlobalUnicodeData(std.testing.allocator);
-    const graphemes_ptr, const display_width_ptr = gd;
 
     var buf = try OptimizedBuffer.init(
         std.testing.allocator,
         5,
         5,
         .{ .pool = pool, .id = "test-buffer" },
-        graphemes_ptr,
-        display_width_ptr,
     );
     defer buf.deinit();
 
@@ -66,17 +56,12 @@ test "OptimizedBuffer - drawText with ASCII" {
     const pool = gp.initGlobalPool(std.testing.allocator);
     defer gp.deinitGlobalPool();
 
-    const gd = gp.initGlobalUnicodeData(std.testing.allocator);
-    defer gp.deinitGlobalUnicodeData(std.testing.allocator);
-    const graphemes_ptr, const display_width_ptr = gd;
 
     var buf = try OptimizedBuffer.init(
         std.testing.allocator,
         20,
         5,
         .{ .pool = pool, .id = "test-buffer" },
-        graphemes_ptr,
-        display_width_ptr,
     );
     defer buf.deinit();
 
@@ -97,17 +82,12 @@ test "OptimizedBuffer - repeated emoji rendering should not exhaust pool" {
     const pool = gp.initGlobalPool(std.testing.allocator);
     defer gp.deinitGlobalPool();
 
-    const gd = gp.initGlobalUnicodeData(std.testing.allocator);
-    defer gp.deinitGlobalUnicodeData(std.testing.allocator);
-    const graphemes_ptr, const display_width_ptr = gd;
 
     var buf = try OptimizedBuffer.init(
         std.testing.allocator,
         20,
         5,
         .{ .pool = pool, .id = "test-buffer" },
-        graphemes_ptr,
-        display_width_ptr,
     );
     defer buf.deinit();
 
@@ -128,17 +108,12 @@ test "OptimizedBuffer - repeated CJK rendering should not exhaust pool" {
     const pool = gp.initGlobalPool(std.testing.allocator);
     defer gp.deinitGlobalPool();
 
-    const gd = gp.initGlobalUnicodeData(std.testing.allocator);
-    defer gp.deinitGlobalUnicodeData(std.testing.allocator);
-    const graphemes_ptr, const display_width_ptr = gd;
 
     var buf = try OptimizedBuffer.init(
         std.testing.allocator,
         20,
         5,
         .{ .pool = pool, .id = "test-buffer" },
-        graphemes_ptr,
-        display_width_ptr,
     );
     defer buf.deinit();
 
@@ -159,11 +134,8 @@ test "OptimizedBuffer - drawTextBuffer repeatedly should not exhaust pool" {
     const pool = gp.initGlobalPool(std.testing.allocator);
     defer gp.deinitGlobalPool();
 
-    const gd = gp.initGlobalUnicodeData(std.testing.allocator);
-    defer gp.deinitGlobalUnicodeData(std.testing.allocator);
-    const graphemes_ptr, const display_width_ptr = gd;
 
-    var tb = try TextBuffer.init(std.testing.allocator, pool, .wcwidth, graphemes_ptr, display_width_ptr);
+    var tb = try TextBuffer.init(std.testing.allocator, pool, .wcwidth);
     defer tb.deinit();
 
     var view = try TextBufferView.init(std.testing.allocator, tb);
@@ -176,8 +148,6 @@ test "OptimizedBuffer - drawTextBuffer repeatedly should not exhaust pool" {
         80,
         25,
         .{ .pool = pool, .id = "test-buffer" },
-        graphemes_ptr,
-        display_width_ptr,
     );
     defer buf.deinit();
 
@@ -194,17 +164,12 @@ test "OptimizedBuffer - mixed ASCII and emoji repeated rendering" {
     const pool = gp.initGlobalPool(std.testing.allocator);
     defer gp.deinitGlobalPool();
 
-    const gd = gp.initGlobalUnicodeData(std.testing.allocator);
-    defer gp.deinitGlobalUnicodeData(std.testing.allocator);
-    const graphemes_ptr, const display_width_ptr = gd;
 
     var buf = try OptimizedBuffer.init(
         std.testing.allocator,
         40,
         5,
         .{ .pool = pool, .id = "test-buffer" },
-        graphemes_ptr,
-        display_width_ptr,
     );
     defer buf.deinit();
 
@@ -227,17 +192,12 @@ test "OptimizedBuffer - overwriting graphemes repeatedly" {
     const pool = gp.initGlobalPool(std.testing.allocator);
     defer gp.deinitGlobalPool();
 
-    const gd = gp.initGlobalUnicodeData(std.testing.allocator);
-    defer gp.deinitGlobalUnicodeData(std.testing.allocator);
-    const graphemes_ptr, const display_width_ptr = gd;
 
     var buf = try OptimizedBuffer.init(
         std.testing.allocator,
         20,
         5,
         .{ .pool = pool, .id = "test-buffer" },
-        graphemes_ptr,
-        display_width_ptr,
     );
     defer buf.deinit();
 
@@ -259,17 +219,12 @@ test "OptimizedBuffer - rendering to different positions" {
     const pool = gp.initGlobalPool(std.testing.allocator);
     defer gp.deinitGlobalPool();
 
-    const gd = gp.initGlobalUnicodeData(std.testing.allocator);
-    defer gp.deinitGlobalUnicodeData(std.testing.allocator);
-    const graphemes_ptr, const display_width_ptr = gd;
 
     var buf = try OptimizedBuffer.init(
         std.testing.allocator,
         80,
         25,
         .{ .pool = pool, .id = "test-buffer" },
-        graphemes_ptr,
-        display_width_ptr,
     );
     defer buf.deinit();
 
@@ -297,11 +252,8 @@ test "OptimizedBuffer - large text buffer with wrapping repeated render" {
     const pool = gp.initGlobalPool(std.testing.allocator);
     defer gp.deinitGlobalPool();
 
-    const gd = gp.initGlobalUnicodeData(std.testing.allocator);
-    defer gp.deinitGlobalUnicodeData(std.testing.allocator);
-    const graphemes_ptr, const display_width_ptr = gd;
 
-    var tb = try TextBuffer.init(std.testing.allocator, pool, .wcwidth, graphemes_ptr, display_width_ptr);
+    var tb = try TextBuffer.init(std.testing.allocator, pool, .wcwidth);
     defer tb.deinit();
 
     var view = try TextBufferView.init(std.testing.allocator, tb);
@@ -327,8 +279,6 @@ test "OptimizedBuffer - large text buffer with wrapping repeated render" {
         80,
         50,
         .{ .pool = pool, .id = "test-buffer" },
-        graphemes_ptr,
-        display_width_ptr,
     );
     defer buf.deinit();
 
@@ -345,17 +295,12 @@ test "OptimizedBuffer - grapheme tracker counts" {
     const pool = gp.initGlobalPool(std.testing.allocator);
     defer gp.deinitGlobalPool();
 
-    const gd = gp.initGlobalUnicodeData(std.testing.allocator);
-    defer gp.deinitGlobalUnicodeData(std.testing.allocator);
-    const graphemes_ptr, const display_width_ptr = gd;
 
     var buf = try OptimizedBuffer.init(
         std.testing.allocator,
         20,
         5,
         .{ .pool = pool, .id = "test-buffer" },
-        graphemes_ptr,
-        display_width_ptr,
     );
     defer buf.deinit();
 
@@ -382,17 +327,12 @@ test "OptimizedBuffer - alternating emojis should not leak" {
     const pool = gp.initGlobalPool(std.testing.allocator);
     defer gp.deinitGlobalPool();
 
-    const gd = gp.initGlobalUnicodeData(std.testing.allocator);
-    defer gp.deinitGlobalUnicodeData(std.testing.allocator);
-    const graphemes_ptr, const display_width_ptr = gd;
 
     var buf = try OptimizedBuffer.init(
         std.testing.allocator,
         20,
         5,
         .{ .pool = pool, .id = "test-buffer" },
-        graphemes_ptr,
-        display_width_ptr,
     );
     defer buf.deinit();
 
@@ -416,11 +356,8 @@ test "OptimizedBuffer - drawTextBuffer without clear should not exhaust pool" {
     const pool = gp.initGlobalPool(std.testing.allocator);
     defer gp.deinitGlobalPool();
 
-    const gd = gp.initGlobalUnicodeData(std.testing.allocator);
-    defer gp.deinitGlobalUnicodeData(std.testing.allocator);
-    const graphemes_ptr, const display_width_ptr = gd;
 
-    var tb = try TextBuffer.init(std.testing.allocator, pool, .wcwidth, graphemes_ptr, display_width_ptr);
+    var tb = try TextBuffer.init(std.testing.allocator, pool, .wcwidth);
     defer tb.deinit();
 
     var view = try TextBufferView.init(std.testing.allocator, tb);
@@ -433,8 +370,6 @@ test "OptimizedBuffer - drawTextBuffer without clear should not exhaust pool" {
         80,
         25,
         .{ .pool = pool, .id = "test-buffer" },
-        graphemes_ptr,
-        display_width_ptr,
     );
     defer buf.deinit();
 
@@ -454,11 +389,8 @@ test "OptimizedBuffer - many small graphemes without clear" {
     const pool = gp.initGlobalPool(std.testing.allocator);
     defer gp.deinitGlobalPool();
 
-    const gd = gp.initGlobalUnicodeData(std.testing.allocator);
-    defer gp.deinitGlobalUnicodeData(std.testing.allocator);
-    const graphemes_ptr, const display_width_ptr = gd;
 
-    var tb = try TextBuffer.init(std.testing.allocator, pool, .wcwidth, graphemes_ptr, display_width_ptr);
+    var tb = try TextBuffer.init(std.testing.allocator, pool, .wcwidth);
     defer tb.deinit();
 
     var view = try TextBufferView.init(std.testing.allocator, tb);
@@ -471,8 +403,6 @@ test "OptimizedBuffer - many small graphemes without clear" {
         80,
         25,
         .{ .pool = pool, .id = "test-buffer" },
-        graphemes_ptr,
-        display_width_ptr,
     );
     defer buf.deinit();
 
@@ -492,11 +422,8 @@ test "OptimizedBuffer - stress test with many graphemes" {
     const pool = gp.initGlobalPool(std.testing.allocator);
     defer gp.deinitGlobalPool();
 
-    const gd = gp.initGlobalUnicodeData(std.testing.allocator);
-    defer gp.deinitGlobalUnicodeData(std.testing.allocator);
-    const graphemes_ptr, const display_width_ptr = gd;
 
-    var tb = try TextBuffer.init(std.testing.allocator, pool, .wcwidth, graphemes_ptr, display_width_ptr);
+    var tb = try TextBuffer.init(std.testing.allocator, pool, .wcwidth);
     defer tb.deinit();
 
     var view = try TextBufferView.init(std.testing.allocator, tb);
@@ -517,8 +444,6 @@ test "OptimizedBuffer - stress test with many graphemes" {
         80,
         25,
         .{ .pool = pool, .id = "test-buffer" },
-        graphemes_ptr,
-        display_width_ptr,
     );
     defer buf.deinit();
 
@@ -542,11 +467,8 @@ test "OptimizedBuffer - pool slot exhaustion test" {
     const pool = gp.initGlobalPool(std.testing.allocator);
     defer gp.deinitGlobalPool();
 
-    const gd = gp.initGlobalUnicodeData(std.testing.allocator);
-    defer gp.deinitGlobalUnicodeData(std.testing.allocator);
-    const graphemes_ptr, const display_width_ptr = gd;
 
-    var tb = try TextBuffer.init(std.testing.allocator, pool, .wcwidth, graphemes_ptr, display_width_ptr);
+    var tb = try TextBuffer.init(std.testing.allocator, pool, .wcwidth);
     defer tb.deinit();
 
     var view = try TextBufferView.init(std.testing.allocator, tb);
@@ -559,8 +481,6 @@ test "OptimizedBuffer - pool slot exhaustion test" {
         80,
         25,
         .{ .pool = pool, .id = "test-buffer" },
-        graphemes_ptr,
-        display_width_ptr,
     );
     defer buf.deinit();
 
@@ -589,11 +509,8 @@ test "OptimizedBuffer - many unique graphemes with small pool" {
     });
     defer local_pool.deinit();
 
-    const gd = gp.initGlobalUnicodeData(std.testing.allocator);
-    defer gp.deinitGlobalUnicodeData(std.testing.allocator);
-    const graphemes_ptr, const display_width_ptr = gd;
 
-    var tb = try TextBuffer.init(std.testing.allocator, &local_pool, .wcwidth, graphemes_ptr, display_width_ptr);
+    var tb = try TextBuffer.init(std.testing.allocator, &local_pool, .wcwidth);
     defer tb.deinit();
 
     var view = try TextBufferView.init(std.testing.allocator, tb);
@@ -604,8 +521,6 @@ test "OptimizedBuffer - many unique graphemes with small pool" {
         80,
         25,
         .{ .pool = &local_pool, .id = "test-buffer" },
-        graphemes_ptr,
-        display_width_ptr,
     );
     defer buf.deinit();
 
@@ -651,11 +566,8 @@ test "OptimizedBuffer - continuous rendering without buffer recreation" {
     const pool = gp.initGlobalPool(std.testing.allocator);
     defer gp.deinitGlobalPool();
 
-    const gd = gp.initGlobalUnicodeData(std.testing.allocator);
-    defer gp.deinitGlobalUnicodeData(std.testing.allocator);
-    const graphemes_ptr, const display_width_ptr = gd;
 
-    var tb = try TextBuffer.init(std.testing.allocator, pool, .wcwidth, graphemes_ptr, display_width_ptr);
+    var tb = try TextBuffer.init(std.testing.allocator, pool, .wcwidth);
     defer tb.deinit();
 
     var view = try TextBufferView.init(std.testing.allocator, tb);
@@ -668,8 +580,6 @@ test "OptimizedBuffer - continuous rendering without buffer recreation" {
         80,
         25,
         .{ .pool = pool, .id = "test-buffer" },
-        graphemes_ptr,
-        display_width_ptr,
     );
     defer buf.deinit();
 
@@ -683,11 +593,8 @@ test "OptimizedBuffer - multiple buffers rendering same TextBuffer" {
     const pool = gp.initGlobalPool(std.testing.allocator);
     defer gp.deinitGlobalPool();
 
-    const gd = gp.initGlobalUnicodeData(std.testing.allocator);
-    defer gp.deinitGlobalUnicodeData(std.testing.allocator);
-    const graphemes_ptr, const display_width_ptr = gd;
 
-    var tb = try TextBuffer.init(std.testing.allocator, pool, .wcwidth, graphemes_ptr, display_width_ptr);
+    var tb = try TextBuffer.init(std.testing.allocator, pool, .wcwidth);
     defer tb.deinit();
 
     var view = try TextBufferView.init(std.testing.allocator, tb);
@@ -700,8 +607,6 @@ test "OptimizedBuffer - multiple buffers rendering same TextBuffer" {
         40,
         10,
         .{ .pool = pool, .id = "buffer-1" },
-        graphemes_ptr,
-        display_width_ptr,
     );
     defer buf1.deinit();
 
@@ -710,8 +615,6 @@ test "OptimizedBuffer - multiple buffers rendering same TextBuffer" {
         40,
         10,
         .{ .pool = pool, .id = "buffer-2" },
-        graphemes_ptr,
-        display_width_ptr,
     );
     defer buf2.deinit();
 
@@ -720,8 +623,6 @@ test "OptimizedBuffer - multiple buffers rendering same TextBuffer" {
         40,
         10,
         .{ .pool = pool, .id = "buffer-3" },
-        graphemes_ptr,
-        display_width_ptr,
     );
     defer buf3.deinit();
 
@@ -740,11 +641,8 @@ test "OptimizedBuffer - continuous render without clear with small pool" {
     });
     defer local_pool.deinit();
 
-    const gd = gp.initGlobalUnicodeData(std.testing.allocator);
-    defer gp.deinitGlobalUnicodeData(std.testing.allocator);
-    const graphemes_ptr, const display_width_ptr = gd;
 
-    var tb = try TextBuffer.init(std.testing.allocator, &local_pool, .wcwidth, graphemes_ptr, display_width_ptr);
+    var tb = try TextBuffer.init(std.testing.allocator, &local_pool, .wcwidth);
     defer tb.deinit();
 
     var view = try TextBufferView.init(std.testing.allocator, tb);
@@ -757,8 +655,6 @@ test "OptimizedBuffer - continuous render without clear with small pool" {
         80,
         25,
         .{ .pool = &local_pool, .id = "test-buffer" },
-        graphemes_ptr,
-        display_width_ptr,
     );
     defer buf.deinit();
 
@@ -778,11 +674,8 @@ test "OptimizedBuffer - graphemes with scissor clipping and small pool" {
     });
     defer local_pool.deinit();
 
-    const gd = gp.initGlobalUnicodeData(std.testing.allocator);
-    defer gp.deinitGlobalUnicodeData(std.testing.allocator);
-    const graphemes_ptr, const display_width_ptr = gd;
 
-    var tb = try TextBuffer.init(std.testing.allocator, &local_pool, .wcwidth, graphemes_ptr, display_width_ptr);
+    var tb = try TextBuffer.init(std.testing.allocator, &local_pool, .wcwidth);
     defer tb.deinit();
 
     var view = try TextBufferView.init(std.testing.allocator, tb);
@@ -795,8 +688,6 @@ test "OptimizedBuffer - graphemes with scissor clipping and small pool" {
         80,
         25,
         .{ .pool = &local_pool, .id = "test-buffer" },
-        graphemes_ptr,
-        display_width_ptr,
     );
     defer buf.deinit();
 
@@ -818,17 +709,12 @@ test "OptimizedBuffer - drawText with alpha blending and scissor" {
     });
     defer local_pool.deinit();
 
-    const gd = gp.initGlobalUnicodeData(std.testing.allocator);
-    defer gp.deinitGlobalUnicodeData(std.testing.allocator);
-    const graphemes_ptr, const display_width_ptr = gd;
 
     var buf = try OptimizedBuffer.init(
         std.testing.allocator,
         80,
         25,
         .{ .pool = &local_pool, .id = "test-buffer" },
-        graphemes_ptr,
-        display_width_ptr,
     );
     defer buf.deinit();
 
@@ -853,17 +739,12 @@ test "OptimizedBuffer - many unique graphemes with alpha and small pool" {
     });
     defer local_pool.deinit();
 
-    const gd = gp.initGlobalUnicodeData(std.testing.allocator);
-    defer gp.deinitGlobalUnicodeData(std.testing.allocator);
-    const graphemes_ptr, const display_width_ptr = gd;
 
     var buf = try OptimizedBuffer.init(
         std.testing.allocator,
         80,
         25,
         .{ .pool = &local_pool, .id = "test-buffer" },
-        graphemes_ptr,
-        display_width_ptr,
     );
     defer buf.deinit();
 
@@ -897,17 +778,12 @@ test "OptimizedBuffer - fill buffer with many unique graphemes" {
     });
     defer local_pool.deinit();
 
-    const gd = gp.initGlobalUnicodeData(std.testing.allocator);
-    defer gp.deinitGlobalUnicodeData(std.testing.allocator);
-    const graphemes_ptr, const display_width_ptr = gd;
 
     var buf = try OptimizedBuffer.init(
         std.testing.allocator,
         40,
         20,
         .{ .pool = &local_pool, .id = "test-buffer" },
-        graphemes_ptr,
-        display_width_ptr,
     );
     defer buf.deinit();
 
@@ -942,17 +818,12 @@ test "OptimizedBuffer - verify pool growth works correctly" {
     });
     defer local_pool.deinit();
 
-    const gd = gp.initGlobalUnicodeData(std.testing.allocator);
-    defer gp.deinitGlobalUnicodeData(std.testing.allocator);
-    const graphemes_ptr, const display_width_ptr = gd;
 
     var buf = try OptimizedBuffer.init(
         std.testing.allocator,
         80,
         25,
         .{ .pool = &local_pool, .id = "test-buffer" },
-        graphemes_ptr,
-        display_width_ptr,
     );
     defer buf.deinit();
 
@@ -984,17 +855,12 @@ test "OptimizedBuffer - repeated overwriting of same grapheme" {
     });
     defer local_pool.deinit();
 
-    const gd = gp.initGlobalUnicodeData(std.testing.allocator);
-    defer gp.deinitGlobalUnicodeData(std.testing.allocator);
-    const graphemes_ptr, const display_width_ptr = gd;
 
     var buf = try OptimizedBuffer.init(
         std.testing.allocator,
         10,
         5,
         .{ .pool = &local_pool, .id = "test-buffer" },
-        graphemes_ptr,
-        display_width_ptr,
     );
     defer buf.deinit();
 
@@ -1018,17 +884,12 @@ test "OptimizedBuffer - two-buffer pattern should not leak" {
     });
     defer local_pool.deinit();
 
-    const gd = gp.initGlobalUnicodeData(std.testing.allocator);
-    defer gp.deinitGlobalUnicodeData(std.testing.allocator);
-    const graphemes_ptr, const display_width_ptr = gd;
 
     var nextBuffer = try OptimizedBuffer.init(
         std.testing.allocator,
         10,
         5,
         .{ .pool = &local_pool, .id = "next-buffer" },
-        graphemes_ptr,
-        display_width_ptr,
     );
     defer nextBuffer.deinit();
 
@@ -1037,8 +898,6 @@ test "OptimizedBuffer - two-buffer pattern should not leak" {
         10,
         5,
         .{ .pool = &local_pool, .id = "current-buffer" },
-        graphemes_ptr,
-        display_width_ptr,
     );
     defer currentBuffer.deinit();
 
@@ -1063,17 +922,12 @@ test "OptimizedBuffer - set and clear cycle should not leak" {
     });
     defer local_pool.deinit();
 
-    const gd = gp.initGlobalUnicodeData(std.testing.allocator);
-    defer gp.deinitGlobalUnicodeData(std.testing.allocator);
-    const graphemes_ptr, const display_width_ptr = gd;
 
     var buf = try OptimizedBuffer.init(
         std.testing.allocator,
         10,
         5,
         .{ .pool = &local_pool, .id = "test-buffer" },
-        graphemes_ptr,
-        display_width_ptr,
     );
     defer buf.deinit();
 
@@ -1094,11 +948,8 @@ test "OptimizedBuffer - repeated drawTextBuffer without clear should not leak" {
     });
     defer local_pool.deinit();
 
-    const gd = gp.initGlobalUnicodeData(std.testing.allocator);
-    defer gp.deinitGlobalUnicodeData(std.testing.allocator);
-    const graphemes_ptr, const display_width_ptr = gd;
 
-    var tb = try TextBuffer.init(std.testing.allocator, &local_pool, .wcwidth, graphemes_ptr, display_width_ptr);
+    var tb = try TextBuffer.init(std.testing.allocator, &local_pool, .wcwidth);
     defer tb.deinit();
 
     var view = try TextBufferView.init(std.testing.allocator, tb);
@@ -1111,8 +962,6 @@ test "OptimizedBuffer - repeated drawTextBuffer without clear should not leak" {
         80,
         25,
         .{ .pool = &local_pool, .id = "render-buffer" },
-        graphemes_ptr,
-        display_width_ptr,
     );
     defer buf.deinit();
 
@@ -1132,11 +981,8 @@ test "OptimizedBuffer - renderer two-buffer swap pattern should not leak" {
     });
     defer local_pool.deinit();
 
-    const gd = gp.initGlobalUnicodeData(std.testing.allocator);
-    defer gp.deinitGlobalUnicodeData(std.testing.allocator);
-    const graphemes_ptr, const display_width_ptr = gd;
 
-    var tb = try TextBuffer.init(std.testing.allocator, &local_pool, .wcwidth, graphemes_ptr, display_width_ptr);
+    var tb = try TextBuffer.init(std.testing.allocator, &local_pool, .wcwidth);
     defer tb.deinit();
 
     var view = try TextBufferView.init(std.testing.allocator, tb);
@@ -1149,8 +995,6 @@ test "OptimizedBuffer - renderer two-buffer swap pattern should not leak" {
         20,
         5,
         .{ .pool = &local_pool, .id = "current" },
-        graphemes_ptr,
-        display_width_ptr,
     );
     defer current.deinit();
 
@@ -1159,8 +1003,6 @@ test "OptimizedBuffer - renderer two-buffer swap pattern should not leak" {
         20,
         5,
         .{ .pool = &local_pool, .id = "next" },
-        graphemes_ptr,
-        display_width_ptr,
     );
     defer next.deinit();
 
@@ -1189,11 +1031,8 @@ test "OptimizedBuffer - sustained rendering should not leak" {
     });
     defer local_pool.deinit();
 
-    const gd = gp.initGlobalUnicodeData(std.testing.allocator);
-    defer gp.deinitGlobalUnicodeData(std.testing.allocator);
-    const graphemes_ptr, const display_width_ptr = gd;
 
-    var tb = try TextBuffer.init(std.testing.allocator, &local_pool, .wcwidth, graphemes_ptr, display_width_ptr);
+    var tb = try TextBuffer.init(std.testing.allocator, &local_pool, .wcwidth);
     defer tb.deinit();
 
     var view = try TextBufferView.init(std.testing.allocator, tb);
@@ -1206,8 +1045,6 @@ test "OptimizedBuffer - sustained rendering should not leak" {
         80,
         25,
         .{ .pool = &local_pool, .id = "render-buffer" },
-        graphemes_ptr,
-        display_width_ptr,
     );
     defer buf.deinit();
 
@@ -1227,11 +1064,8 @@ test "OptimizedBuffer - rendering with changing content should not leak" {
     });
     defer local_pool.deinit();
 
-    const gd = gp.initGlobalUnicodeData(std.testing.allocator);
-    defer gp.deinitGlobalUnicodeData(std.testing.allocator);
-    const graphemes_ptr, const display_width_ptr = gd;
 
-    var tb = try TextBuffer.init(std.testing.allocator, &local_pool, .wcwidth, graphemes_ptr, display_width_ptr);
+    var tb = try TextBuffer.init(std.testing.allocator, &local_pool, .wcwidth);
     defer tb.deinit();
 
     var view = try TextBufferView.init(std.testing.allocator, tb);
@@ -1242,8 +1076,6 @@ test "OptimizedBuffer - rendering with changing content should not leak" {
         80,
         25,
         .{ .pool = &local_pool, .id = "render-buffer" },
-        graphemes_ptr,
-        display_width_ptr,
     );
     defer buf.deinit();
 
@@ -1280,21 +1112,18 @@ test "OptimizedBuffer - multiple TextBuffers rendering simultaneously should not
     });
     defer local_pool.deinit();
 
-    const gd = gp.initGlobalUnicodeData(std.testing.allocator);
-    defer gp.deinitGlobalUnicodeData(std.testing.allocator);
-    const graphemes_ptr, const display_width_ptr = gd;
 
-    var tb1 = try TextBuffer.init(std.testing.allocator, &local_pool, .wcwidth, graphemes_ptr, display_width_ptr);
+    var tb1 = try TextBuffer.init(std.testing.allocator, &local_pool, .wcwidth);
     defer tb1.deinit();
     var view1 = try TextBufferView.init(std.testing.allocator, tb1);
     defer view1.deinit();
 
-    var tb2 = try TextBuffer.init(std.testing.allocator, &local_pool, .wcwidth, graphemes_ptr, display_width_ptr);
+    var tb2 = try TextBuffer.init(std.testing.allocator, &local_pool, .wcwidth);
     defer tb2.deinit();
     var view2 = try TextBufferView.init(std.testing.allocator, tb2);
     defer view2.deinit();
 
-    var tb3 = try TextBuffer.init(std.testing.allocator, &local_pool, .wcwidth, graphemes_ptr, display_width_ptr);
+    var tb3 = try TextBuffer.init(std.testing.allocator, &local_pool, .wcwidth);
     defer tb3.deinit();
     var view3 = try TextBufferView.init(std.testing.allocator, tb3);
     defer view3.deinit();
@@ -1308,8 +1137,6 @@ test "OptimizedBuffer - multiple TextBuffers rendering simultaneously should not
         80,
         30,
         .{ .pool = &local_pool, .id = "main-buffer" },
-        graphemes_ptr,
-        display_width_ptr,
     );
     defer buf.deinit();
 
@@ -1331,17 +1158,12 @@ test "OptimizedBuffer - grapheme refcount management" {
     });
     defer local_pool.deinit();
 
-    const gd = gp.initGlobalUnicodeData(std.testing.allocator);
-    defer gp.deinitGlobalUnicodeData(std.testing.allocator);
-    const graphemes_ptr, const display_width_ptr = gd;
 
     var buf = try OptimizedBuffer.init(
         std.testing.allocator,
         5,
         1,
         .{ .pool = &local_pool, .id = "test-buffer" },
-        graphemes_ptr,
-        display_width_ptr,
     );
     defer buf.deinit();
 
@@ -1376,11 +1198,8 @@ test "OptimizedBuffer - drawTextBuffer with graphemes then clear removes all poo
     });
     defer local_pool.deinit();
 
-    const gd = gp.initGlobalUnicodeData(std.testing.allocator);
-    defer gp.deinitGlobalUnicodeData(std.testing.allocator);
-    const graphemes_ptr, const display_width_ptr = gd;
 
-    var tb = try TextBuffer.init(std.testing.allocator, &local_pool, .wcwidth, graphemes_ptr, display_width_ptr);
+    var tb = try TextBuffer.init(std.testing.allocator, &local_pool, .wcwidth);
     defer tb.deinit();
 
     var view = try TextBufferView.init(std.testing.allocator, tb);
@@ -1393,8 +1212,6 @@ test "OptimizedBuffer - drawTextBuffer with graphemes then clear removes all poo
         80,
         25,
         .{ .pool = &local_pool, .id = "test-buffer" },
-        graphemes_ptr,
-        display_width_ptr,
     );
     defer buf.deinit();
 

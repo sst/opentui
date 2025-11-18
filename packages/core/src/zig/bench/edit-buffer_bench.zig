@@ -2,8 +2,6 @@ const std = @import("std");
 const bench_utils = @import("../bench-utils.zig");
 const edit_buffer = @import("../edit-buffer.zig");
 const gp = @import("../grapheme.zig");
-const Graphemes = @import("Graphemes");
-const DisplayWidth = @import("DisplayWidth");
 
 const EditBuffer = edit_buffer.EditBuffer;
 const BenchResult = bench_utils.BenchResult;
@@ -14,8 +12,8 @@ pub const benchName = "EditBuffer Operations";
 fn benchInsertOperations(
     allocator: std.mem.Allocator,
     pool: *gp.GraphemePool,
-    graphemes_ptr: *Graphemes,
-    display_width_ptr: *DisplayWidth,
+    
+    
     iterations: usize,
     show_mem: bool,
 ) ![]BenchResult {
@@ -30,7 +28,7 @@ fn benchInsertOperations(
 
         var iter: usize = 0;
         while (iter < iterations) : (iter += 1) {
-            var eb = try EditBuffer.init(allocator, pool, .unicode, graphemes_ptr, display_width_ptr);
+            var eb = try EditBuffer.init(allocator, pool, .unicode);
             defer eb.deinit();
 
             const text = "Hello, world! ";
@@ -78,7 +76,7 @@ fn benchInsertOperations(
 
         var iter: usize = 0;
         while (iter < iterations) : (iter += 1) {
-            var eb = try EditBuffer.init(allocator, pool, .unicode, graphemes_ptr, display_width_ptr);
+            var eb = try EditBuffer.init(allocator, pool, .unicode);
             defer eb.deinit();
 
             const text = "Line 1\nLine 2\nLine 3\n";
@@ -122,8 +120,8 @@ fn benchInsertOperations(
 fn benchDeleteOperations(
     allocator: std.mem.Allocator,
     pool: *gp.GraphemePool,
-    graphemes_ptr: *Graphemes,
-    display_width_ptr: *DisplayWidth,
+    
+    
     iterations: usize,
     show_mem: bool,
 ) ![]BenchResult {
@@ -138,7 +136,7 @@ fn benchDeleteOperations(
 
         var iter: usize = 0;
         while (iter < iterations) : (iter += 1) {
-            var eb = try EditBuffer.init(allocator, pool, .unicode, graphemes_ptr, display_width_ptr);
+            var eb = try EditBuffer.init(allocator, pool, .unicode);
             defer eb.deinit();
 
             // Build up text
@@ -191,7 +189,7 @@ fn benchDeleteOperations(
 
         var iter: usize = 0;
         while (iter < iterations) : (iter += 1) {
-            var eb = try EditBuffer.init(allocator, pool, .unicode, graphemes_ptr, display_width_ptr);
+            var eb = try EditBuffer.init(allocator, pool, .unicode);
             defer eb.deinit();
 
             // Build up text with many lines
@@ -239,8 +237,8 @@ fn benchDeleteOperations(
 fn benchMixedOperations(
     allocator: std.mem.Allocator,
     pool: *gp.GraphemePool,
-    graphemes_ptr: *Graphemes,
-    display_width_ptr: *DisplayWidth,
+    
+    
     iterations: usize,
     show_mem: bool,
 ) ![]BenchResult {
@@ -255,7 +253,7 @@ fn benchMixedOperations(
 
         var iter: usize = 0;
         while (iter < iterations) : (iter += 1) {
-            var eb = try EditBuffer.init(allocator, pool, .unicode, graphemes_ptr, display_width_ptr);
+            var eb = try EditBuffer.init(allocator, pool, .unicode);
             defer eb.deinit();
 
             var timer = try std.time.Timer.start();
@@ -310,8 +308,8 @@ fn benchMixedOperations(
 fn benchWordBoundaryOperations(
     allocator: std.mem.Allocator,
     pool: *gp.GraphemePool,
-    graphemes_ptr: *Graphemes,
-    display_width_ptr: *DisplayWidth,
+    
+    
     iterations: usize,
     show_mem: bool,
 ) ![]BenchResult {
@@ -326,7 +324,7 @@ fn benchWordBoundaryOperations(
 
         var iter: usize = 0;
         while (iter < iterations) : (iter += 1) {
-            var eb = try EditBuffer.init(allocator, pool, .unicode, graphemes_ptr, display_width_ptr);
+            var eb = try EditBuffer.init(allocator, pool, .unicode);
             defer eb.deinit();
 
             // Build text with many words
@@ -383,7 +381,7 @@ fn benchWordBoundaryOperations(
 
         var iter: usize = 0;
         while (iter < iterations) : (iter += 1) {
-            var eb = try EditBuffer.init(allocator, pool, .unicode, graphemes_ptr, display_width_ptr);
+            var eb = try EditBuffer.init(allocator, pool, .unicode);
             defer eb.deinit();
 
             // Build text with many words
@@ -443,7 +441,7 @@ fn benchWordBoundaryOperations(
 
         var iter: usize = 0;
         while (iter < iterations) : (iter += 1) {
-            var eb = try EditBuffer.init(allocator, pool, .unicode, graphemes_ptr, display_width_ptr);
+            var eb = try EditBuffer.init(allocator, pool, .unicode);
             defer eb.deinit();
 
             // Build multi-line text with words
@@ -502,8 +500,8 @@ pub fn run(
 
     // Global pool and unicode data are initialized once in bench.zig
     const pool = gp.initGlobalPool(allocator);
-    const unicode_data = gp.initGlobalUnicodeData(allocator);
-    const graphemes_ptr, const display_width_ptr = unicode_data;
+    
+    
 
     if (show_mem) {
         try stdout.print("Memory stats enabled\n", .{});
@@ -515,19 +513,19 @@ pub fn run(
     const iterations: usize = 5;
 
     // Run all benchmark categories
-    const insert_results = try benchInsertOperations(allocator, pool, graphemes_ptr, display_width_ptr, iterations, show_mem);
+    const insert_results = try benchInsertOperations(allocator, pool, iterations, show_mem);
     defer allocator.free(insert_results);
     try all_results.appendSlice(insert_results);
 
-    const delete_results = try benchDeleteOperations(allocator, pool, graphemes_ptr, display_width_ptr, iterations, show_mem);
+    const delete_results = try benchDeleteOperations(allocator, pool, iterations, show_mem);
     defer allocator.free(delete_results);
     try all_results.appendSlice(delete_results);
 
-    const mixed_results = try benchMixedOperations(allocator, pool, graphemes_ptr, display_width_ptr, iterations, show_mem);
+    const mixed_results = try benchMixedOperations(allocator, pool, iterations, show_mem);
     defer allocator.free(mixed_results);
     try all_results.appendSlice(mixed_results);
 
-    const word_boundary_results = try benchWordBoundaryOperations(allocator, pool, graphemes_ptr, display_width_ptr, iterations, show_mem);
+    const word_boundary_results = try benchWordBoundaryOperations(allocator, pool, iterations, show_mem);
     defer allocator.free(word_boundary_results);
     try all_results.appendSlice(word_boundary_results);
 

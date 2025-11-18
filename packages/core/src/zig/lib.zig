@@ -43,10 +43,7 @@ export fn createRenderer(width: u32, height: u32, testing: bool) ?*renderer.CliR
     }
 
     const pool = gp.initGlobalPool(globalArena);
-    const unicode_data = gp.initGlobalUnicodeData(globalArena);
-
-    const graphemes_ptr, const display_width_ptr = unicode_data;
-    return renderer.CliRenderer.create(std.heap.page_allocator, width, height, pool, graphemes_ptr, display_width_ptr, testing) catch |err| {
+    return renderer.CliRenderer.create(std.heap.page_allocator, width, height, pool, testing) catch |err| {
         logger.err("Failed to create renderer: {}", .{err});
         return null;
     };
@@ -106,15 +103,12 @@ export fn createOptimizedBuffer(width: u32, height: u32, respectAlpha: bool, wid
     const wMethod: utf8.WidthMethod = if (widthMethod == 0) .wcwidth else .unicode;
     const id = idPtr[0..idLen];
 
-    const unicode_data = gp.initGlobalUnicodeData(globalArena);
-    const graphemes_ptr, const display_width_ptr = unicode_data;
-
     return buffer.OptimizedBuffer.init(std.heap.page_allocator, width, height, .{
         .respectAlpha = respectAlpha,
         .pool = pool,
         .width_method = wMethod,
         .id = id,
-    }, graphemes_ptr, display_width_ptr) catch |err| {
+    }) catch |err| {
         logger.err("Failed to create optimized buffer: {}", .{err});
         return null;
     };
@@ -431,10 +425,7 @@ export fn createTextBuffer(widthMethod: u8) ?*text_buffer.UnifiedTextBuffer {
     const pool = gp.initGlobalPool(globalArena);
     const wMethod: utf8.WidthMethod = if (widthMethod == 0) .wcwidth else .unicode;
 
-    const unicode_data = gp.initGlobalUnicodeData(globalArena);
-    const graphemes_ptr, const display_width_ptr = unicode_data;
-
-    const tb = text_buffer.UnifiedTextBuffer.init(std.heap.page_allocator, pool, wMethod, graphemes_ptr, display_width_ptr) catch {
+    const tb = text_buffer.UnifiedTextBuffer.init(std.heap.page_allocator, pool, wMethod) catch {
         return null;
     };
 
@@ -641,15 +632,11 @@ export fn textBufferViewSetTabIndicatorColor(view: *text_buffer_view.UnifiedText
 export fn createEditBuffer(widthMethod: u8) ?*edit_buffer_mod.EditBuffer {
     const pool = gp.initGlobalPool(globalArena);
     const wMethod: utf8.WidthMethod = if (widthMethod == 0) .wcwidth else .unicode;
-    const unicode_data = gp.initGlobalUnicodeData(globalArena);
-    const graphemes_ptr, const display_width_ptr = unicode_data;
 
     return edit_buffer_mod.EditBuffer.init(
         std.heap.page_allocator,
         pool,
         wMethod,
-        graphemes_ptr,
-        display_width_ptr,
     ) catch null;
 }
 

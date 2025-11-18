@@ -21,8 +21,6 @@ fn applyZgDependencies(b: *std.Build, module: *std.Build.Module, optimize: std.b
         .target = target,
     });
     module.addImport("code_point", zg_dep.module("code_point"));
-    module.addImport("Graphemes", zg_dep.module("Graphemes"));
-    module.addImport("DisplayWidth", zg_dep.module("DisplayWidth"));
 
     // Add uucode for grapheme break detection
     if (b.lazyDependency("uucode", .{

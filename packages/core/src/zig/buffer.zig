@@ -6,8 +6,7 @@ const tbv = @import("text-buffer-view.zig");
 const edv = @import("editor-view.zig");
 const ss = @import("syntax-style.zig");
 const math = std.math;
-const Graphemes = @import("Graphemes");
-const DisplayWidth = @import("DisplayWidth");
+
 const code_point = @import("code_point");
 const gp = @import("grapheme.zig");
 
@@ -133,8 +132,7 @@ pub const OptimizedBuffer = struct {
     respectAlpha: bool,
     allocator: Allocator,
     pool: *gp.GraphemePool,
-    graphemes_data: Graphemes,
-    display_width: DisplayWidth,
+
     grapheme_tracker: gp.GraphemeTracker,
     width_method: utf8.WidthMethod,
     id: []const u8,
@@ -147,14 +145,11 @@ pub const OptimizedBuffer = struct {
         id: []const u8 = "unnamed buffer",
     };
 
-    pub fn init(allocator: Allocator, width: u32, height: u32, options: InitOptions, graphemes_data: *Graphemes, display_width: *DisplayWidth) BufferError!*OptimizedBuffer {
+    pub fn init(allocator: Allocator, width: u32, height: u32, options: InitOptions) BufferError!*OptimizedBuffer {
         if (width == 0 or height == 0) {
             logger.warn("OptimizedBuffer.init: Invalid dimensions {}x{}", .{ width, height });
             return BufferError.InvalidDimensions;
         }
-
-        const graph = graphemes_data.*;
-        const dw = display_width.*;
 
         const self = allocator.create(OptimizedBuffer) catch return BufferError.OutOfMemory;
         errdefer allocator.destroy(self);
@@ -179,8 +174,6 @@ pub const OptimizedBuffer = struct {
             .respectAlpha = options.respectAlpha,
             .allocator = allocator,
             .pool = options.pool,
-            .graphemes_data = graph,
-            .display_width = dw,
             .grapheme_tracker = gp.GraphemeTracker.init(allocator, options.pool),
             .width_method = options.width_method,
             .id = owned_id,
@@ -191,9 +184,6 @@ pub const OptimizedBuffer = struct {
         @memset(self.buffer.fg, .{ 0.0, 0.0, 0.0, 0.0 });
         @memset(self.buffer.bg, .{ 0.0, 0.0, 0.0, 0.0 });
         @memset(self.buffer.attributes, 0);
-
-        self.graphemes_data = graph;
-        self.display_width = dw;
 
         return self;
     }
@@ -992,7 +982,7 @@ pub const OptimizedBuffer = struct {
             for (vline.chunks.items) |vchunk| {
                 const chunk = vchunk.chunk;
                 const chunk_bytes = chunk.getBytes(&text_buffer.mem_registry);
-                const specials = chunk.getGraphemes(&text_buffer.mem_registry, text_buffer.allocator, &text_buffer.graphemes_data, text_buffer.width_method, &text_buffer.display_width, text_buffer.tab_width) catch continue;
+                const specials = chunk.getGraphemes(&text_buffer.mem_registry, text_buffer.allocator, text_buffer.tab_width) catch continue;
 
                 if (currentX >= @as(i32, @intCast(self.width))) {
                     globalCharPos += vchunk.width;

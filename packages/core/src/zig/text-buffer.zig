@@ -7,8 +7,7 @@ const gp = @import("grapheme.zig");
 
 const utf8 = @import("utf8.zig");
 const utils = @import("utils.zig");
-const Graphemes = @import("Graphemes");
-const DisplayWidth = @import("DisplayWidth");
+
 const logger = @import("logger.zig");
 
 const Segment = seg_mod.Segment;
@@ -55,8 +54,7 @@ pub const UnifiedTextBuffer = struct {
     syntax_style: ?*const SyntaxStyle,
 
     pool: *gp.GraphemePool,
-    graphemes_data: Graphemes,
-    display_width: DisplayWidth,
+
     width_method: utf8.WidthMethod,
 
     view_dirty_flags: std.ArrayListUnmanaged(bool),
@@ -80,8 +78,6 @@ pub const UnifiedTextBuffer = struct {
         global_allocator: Allocator,
         pool: *gp.GraphemePool,
         width_method: utf8.WidthMethod,
-        graphemes_data: *Graphemes,
-        display_width: *DisplayWidth,
     ) TextBufferError!*Self {
         const self = global_allocator.create(Self) catch return TextBufferError.OutOfMemory;
         errdefer global_allocator.destroy(self);
@@ -91,9 +87,6 @@ pub const UnifiedTextBuffer = struct {
         internal_arena.* = std.heap.ArenaAllocator.init(global_allocator);
 
         const internal_allocator = internal_arena.allocator();
-
-        const graph = graphemes_data.*;
-        const dw = display_width.*;
 
         const rope = UnifiedRope.init(internal_allocator) catch return TextBufferError.OutOfMemory;
 
@@ -120,8 +113,6 @@ pub const UnifiedTextBuffer = struct {
             .rope = rope,
             .syntax_style = null,
             .pool = pool,
-            .graphemes_data = graph,
-            .display_width = dw,
             .width_method = width_method,
             .view_dirty_flags = view_dirty_flags,
             .next_view_id = 0,

@@ -8,11 +8,8 @@ test "EditBuffer - basic undo/redo with insertText" {
     const pool = gp.initGlobalPool(std.testing.allocator);
     defer gp.deinitGlobalPool();
 
-    const gd = gp.initGlobalUnicodeData(std.testing.allocator);
-    defer gp.deinitGlobalUnicodeData(std.testing.allocator);
-    const graphemes_ptr, const display_width_ptr = gd;
 
-    var eb = try EditBuffer.init(std.testing.allocator, pool, .wcwidth, graphemes_ptr, display_width_ptr);
+    var eb = try EditBuffer.init(std.testing.allocator, pool, .wcwidth);
     defer eb.deinit();
 
     try eb.insertText("Hello");
@@ -37,11 +34,8 @@ test "EditBuffer - canUndo/canRedo" {
     const pool = gp.initGlobalPool(std.testing.allocator);
     defer gp.deinitGlobalPool();
 
-    const gd = gp.initGlobalUnicodeData(std.testing.allocator);
-    defer gp.deinitGlobalUnicodeData(std.testing.allocator);
-    const graphemes_ptr, const display_width_ptr = gd;
 
-    var eb = try EditBuffer.init(std.testing.allocator, pool, .wcwidth, graphemes_ptr, display_width_ptr);
+    var eb = try EditBuffer.init(std.testing.allocator, pool, .wcwidth);
     defer eb.deinit();
 
     try std.testing.expect(!eb.canUndo());
@@ -67,11 +61,8 @@ test "EditBuffer - undo/redo with deleteRange" {
     const pool = gp.initGlobalPool(std.testing.allocator);
     defer gp.deinitGlobalPool();
 
-    const gd = gp.initGlobalUnicodeData(std.testing.allocator);
-    defer gp.deinitGlobalUnicodeData(std.testing.allocator);
-    const graphemes_ptr, const display_width_ptr = gd;
 
-    var eb = try EditBuffer.init(std.testing.allocator, pool, .wcwidth, graphemes_ptr, display_width_ptr);
+    var eb = try EditBuffer.init(std.testing.allocator, pool, .wcwidth);
     defer eb.deinit();
 
     try eb.insertText("Hello World");
@@ -94,11 +85,8 @@ test "EditBuffer - undo/redo with backspace" {
     const pool = gp.initGlobalPool(std.testing.allocator);
     defer gp.deinitGlobalPool();
 
-    const gd = gp.initGlobalUnicodeData(std.testing.allocator);
-    defer gp.deinitGlobalUnicodeData(std.testing.allocator);
-    const graphemes_ptr, const display_width_ptr = gd;
 
-    var eb = try EditBuffer.init(std.testing.allocator, pool, .wcwidth, graphemes_ptr, display_width_ptr);
+    var eb = try EditBuffer.init(std.testing.allocator, pool, .wcwidth);
     defer eb.deinit();
 
     try eb.insertText("Hello");
@@ -117,11 +105,8 @@ test "EditBuffer - undo/redo with deleteForward" {
     const pool = gp.initGlobalPool(std.testing.allocator);
     defer gp.deinitGlobalPool();
 
-    const gd = gp.initGlobalUnicodeData(std.testing.allocator);
-    defer gp.deinitGlobalUnicodeData(std.testing.allocator);
-    const graphemes_ptr, const display_width_ptr = gd;
 
-    var eb = try EditBuffer.init(std.testing.allocator, pool, .wcwidth, graphemes_ptr, display_width_ptr);
+    var eb = try EditBuffer.init(std.testing.allocator, pool, .wcwidth);
     defer eb.deinit();
 
     try eb.insertText("Hello");
@@ -141,11 +126,8 @@ test "EditBuffer - cursor position after undo" {
     const pool = gp.initGlobalPool(std.testing.allocator);
     defer gp.deinitGlobalPool();
 
-    const gd = gp.initGlobalUnicodeData(std.testing.allocator);
-    defer gp.deinitGlobalUnicodeData(std.testing.allocator);
-    const graphemes_ptr, const display_width_ptr = gd;
 
-    var eb = try EditBuffer.init(std.testing.allocator, pool, .wcwidth, graphemes_ptr, display_width_ptr);
+    var eb = try EditBuffer.init(std.testing.allocator, pool, .wcwidth);
     defer eb.deinit();
 
     try eb.insertText("Line 1\nLine 2");
@@ -169,11 +151,8 @@ test "EditBuffer - lineCount after undo/redo" {
     const pool = gp.initGlobalPool(std.testing.allocator);
     defer gp.deinitGlobalPool();
 
-    const gd = gp.initGlobalUnicodeData(std.testing.allocator);
-    defer gp.deinitGlobalUnicodeData(std.testing.allocator);
-    const graphemes_ptr, const display_width_ptr = gd;
 
-    var eb = try EditBuffer.init(std.testing.allocator, pool, .wcwidth, graphemes_ptr, display_width_ptr);
+    var eb = try EditBuffer.init(std.testing.allocator, pool, .wcwidth);
     defer eb.deinit();
 
     try eb.insertText("Line 1");
@@ -193,11 +172,8 @@ test "EditBuffer - clearHistory" {
     const pool = gp.initGlobalPool(std.testing.allocator);
     defer gp.deinitGlobalPool();
 
-    const gd = gp.initGlobalUnicodeData(std.testing.allocator);
-    defer gp.deinitGlobalUnicodeData(std.testing.allocator);
-    const graphemes_ptr, const display_width_ptr = gd;
 
-    var eb = try EditBuffer.init(std.testing.allocator, pool, .wcwidth, graphemes_ptr, display_width_ptr);
+    var eb = try EditBuffer.init(std.testing.allocator, pool, .wcwidth);
     defer eb.deinit();
 
     try eb.insertText("Hello");
@@ -215,11 +191,8 @@ test "EditBuffer - undo history branching" {
     const pool = gp.initGlobalPool(std.testing.allocator);
     defer gp.deinitGlobalPool();
 
-    const gd = gp.initGlobalUnicodeData(std.testing.allocator);
-    defer gp.deinitGlobalUnicodeData(std.testing.allocator);
-    const graphemes_ptr, const display_width_ptr = gd;
 
-    var eb = try EditBuffer.init(std.testing.allocator, pool, .wcwidth, graphemes_ptr, display_width_ptr);
+    var eb = try EditBuffer.init(std.testing.allocator, pool, .wcwidth);
     defer eb.deinit();
 
     try eb.insertText("State A");
@@ -254,11 +227,8 @@ test "EditBuffer - multiple undo/redo operations" {
     const pool = gp.initGlobalPool(std.testing.allocator);
     defer gp.deinitGlobalPool();
 
-    const gd = gp.initGlobalUnicodeData(std.testing.allocator);
-    defer gp.deinitGlobalUnicodeData(std.testing.allocator);
-    const graphemes_ptr, const display_width_ptr = gd;
 
-    var eb = try EditBuffer.init(std.testing.allocator, pool, .wcwidth, graphemes_ptr, display_width_ptr);
+    var eb = try EditBuffer.init(std.testing.allocator, pool, .wcwidth);
     defer eb.deinit();
 
     var out_buffer: [100]u8 = undefined;

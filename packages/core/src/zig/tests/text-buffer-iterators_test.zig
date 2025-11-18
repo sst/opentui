@@ -353,11 +353,8 @@ test "getGraphemeWidthAt - ASCII text" {
     const pool = gp.initGlobalPool(testing.allocator);
     defer gp.deinitGlobalPool();
 
-    const gd = gp.initGlobalUnicodeData(testing.allocator);
-    defer gp.deinitGlobalUnicodeData(testing.allocator);
-    const graphemes_ptr, const display_width_ptr = gd;
 
-    var tb = try TextBuffer.init(testing.allocator, pool, .unicode, graphemes_ptr, display_width_ptr);
+    var tb = try TextBuffer.init(testing.allocator, pool, .unicode);
     defer tb.deinit();
 
     try tb.setText("Hello");
@@ -375,11 +372,8 @@ test "getGraphemeWidthAt - emoji and wide characters" {
     const pool = gp.initGlobalPool(testing.allocator);
     defer gp.deinitGlobalPool();
 
-    const gd = gp.initGlobalUnicodeData(testing.allocator);
-    defer gp.deinitGlobalUnicodeData(testing.allocator);
-    const graphemes_ptr, const display_width_ptr = gd;
 
-    var tb = try TextBuffer.init(testing.allocator, pool, .unicode, graphemes_ptr, display_width_ptr);
+    var tb = try TextBuffer.init(testing.allocator, pool, .unicode);
     defer tb.deinit();
 
     try tb.setText("a😀b");
@@ -394,11 +388,8 @@ test "getGraphemeWidthAt - multiple chunks" {
     const pool = gp.initGlobalPool(testing.allocator);
     defer gp.deinitGlobalPool();
 
-    const gd = gp.initGlobalUnicodeData(testing.allocator);
-    defer gp.deinitGlobalUnicodeData(testing.allocator);
-    const graphemes_ptr, const display_width_ptr = gd;
 
-    var tb = try TextBuffer.init(testing.allocator, pool, .unicode, graphemes_ptr, display_width_ptr);
+    var tb = try TextBuffer.init(testing.allocator, pool, .unicode);
     defer tb.deinit();
 
     try tb.setText("Hello World");
@@ -415,11 +406,8 @@ test "getGraphemeWidthAt - empty line" {
     const pool = gp.initGlobalPool(testing.allocator);
     defer gp.deinitGlobalPool();
 
-    const gd = gp.initGlobalUnicodeData(testing.allocator);
-    defer gp.deinitGlobalUnicodeData(testing.allocator);
-    const graphemes_ptr, const display_width_ptr = gd;
 
-    var tb = try TextBuffer.init(testing.allocator, pool, .unicode, graphemes_ptr, display_width_ptr);
+    var tb = try TextBuffer.init(testing.allocator, pool, .unicode);
     defer tb.deinit();
 
     try tb.setText("");
@@ -431,11 +419,8 @@ test "getGraphemeWidthAt - at chunk boundary" {
     const pool = gp.initGlobalPool(testing.allocator);
     defer gp.deinitGlobalPool();
 
-    const gd = gp.initGlobalUnicodeData(testing.allocator);
-    defer gp.deinitGlobalUnicodeData(testing.allocator);
-    const graphemes_ptr, const display_width_ptr = gd;
 
-    var tb = try TextBuffer.init(testing.allocator, pool, .unicode, graphemes_ptr, display_width_ptr);
+    var tb = try TextBuffer.init(testing.allocator, pool, .unicode);
     defer tb.deinit();
 
     try tb.setText("abcdef");
@@ -447,11 +432,8 @@ test "getGraphemeWidthAt - after break segment" {
     const pool = gp.initGlobalPool(testing.allocator);
     defer gp.deinitGlobalPool();
 
-    const gd = gp.initGlobalUnicodeData(testing.allocator);
-    defer gp.deinitGlobalUnicodeData(testing.allocator);
-    const graphemes_ptr, const display_width_ptr = gd;
 
-    var tb = try TextBuffer.init(testing.allocator, pool, .unicode, graphemes_ptr, display_width_ptr);
+    var tb = try TextBuffer.init(testing.allocator, pool, .unicode);
     defer tb.deinit();
 
     try tb.setText("abc\ndef");
@@ -465,11 +447,8 @@ test "getPrevGraphemeWidth - ASCII text" {
     const pool = gp.initGlobalPool(testing.allocator);
     defer gp.deinitGlobalPool();
 
-    const gd = gp.initGlobalUnicodeData(testing.allocator);
-    defer gp.deinitGlobalUnicodeData(testing.allocator);
-    const graphemes_ptr, const display_width_ptr = gd;
 
-    var tb = try TextBuffer.init(testing.allocator, pool, .unicode, graphemes_ptr, display_width_ptr);
+    var tb = try TextBuffer.init(testing.allocator, pool, .unicode);
     defer tb.deinit();
 
     try tb.setText("Hello");
@@ -486,11 +465,8 @@ test "getPrevGraphemeWidth - emoji and wide characters" {
     const pool = gp.initGlobalPool(testing.allocator);
     defer gp.deinitGlobalPool();
 
-    const gd = gp.initGlobalUnicodeData(testing.allocator);
-    defer gp.deinitGlobalUnicodeData(testing.allocator);
-    const graphemes_ptr, const display_width_ptr = gd;
 
-    var tb = try TextBuffer.init(testing.allocator, pool, .unicode, graphemes_ptr, display_width_ptr);
+    var tb = try TextBuffer.init(testing.allocator, pool, .unicode);
     defer tb.deinit();
 
     try tb.setText("a😀b");
@@ -505,11 +481,8 @@ test "getPrevGraphemeWidth - at chunk boundary" {
     const pool = gp.initGlobalPool(testing.allocator);
     defer gp.deinitGlobalPool();
 
-    const gd = gp.initGlobalUnicodeData(testing.allocator);
-    defer gp.deinitGlobalUnicodeData(testing.allocator);
-    const graphemes_ptr, const display_width_ptr = gd;
 
-    var tb = try TextBuffer.init(testing.allocator, pool, .unicode, graphemes_ptr, display_width_ptr);
+    var tb = try TextBuffer.init(testing.allocator, pool, .unicode);
     defer tb.deinit();
 
     try tb.setText("abcdef");
@@ -523,11 +496,8 @@ test "getPrevGraphemeWidth - emoji at chunk boundary" {
     const pool = gp.initGlobalPool(testing.allocator);
     defer gp.deinitGlobalPool();
 
-    const gd = gp.initGlobalUnicodeData(testing.allocator);
-    defer gp.deinitGlobalUnicodeData(testing.allocator);
-    const graphemes_ptr, const display_width_ptr = gd;
 
-    var tb = try TextBuffer.init(testing.allocator, pool, .unicode, graphemes_ptr, display_width_ptr);
+    var tb = try TextBuffer.init(testing.allocator, pool, .unicode);
     defer tb.deinit();
 
     try tb.setText("a😀b");
@@ -539,11 +509,8 @@ test "getPrevGraphemeWidth - multiple chunks" {
     const pool = gp.initGlobalPool(testing.allocator);
     defer gp.deinitGlobalPool();
 
-    const gd = gp.initGlobalUnicodeData(testing.allocator);
-    defer gp.deinitGlobalUnicodeData(testing.allocator);
-    const graphemes_ptr, const display_width_ptr = gd;
 
-    var tb = try TextBuffer.init(testing.allocator, pool, .unicode, graphemes_ptr, display_width_ptr);
+    var tb = try TextBuffer.init(testing.allocator, pool, .unicode);
     defer tb.deinit();
 
     try tb.setText("Hello 😀");
@@ -558,11 +525,8 @@ test "getPrevGraphemeWidth - empty line" {
     const pool = gp.initGlobalPool(testing.allocator);
     defer gp.deinitGlobalPool();
 
-    const gd = gp.initGlobalUnicodeData(testing.allocator);
-    defer gp.deinitGlobalUnicodeData(testing.allocator);
-    const graphemes_ptr, const display_width_ptr = gd;
 
-    var tb = try TextBuffer.init(testing.allocator, pool, .unicode, graphemes_ptr, display_width_ptr);
+    var tb = try TextBuffer.init(testing.allocator, pool, .unicode);
     defer tb.deinit();
 
     try tb.setText("");
@@ -574,11 +538,8 @@ test "getPrevGraphemeWidth - col beyond line width" {
     const pool = gp.initGlobalPool(testing.allocator);
     defer gp.deinitGlobalPool();
 
-    const gd = gp.initGlobalUnicodeData(testing.allocator);
-    defer gp.deinitGlobalUnicodeData(testing.allocator);
-    const graphemes_ptr, const display_width_ptr = gd;
 
-    var tb = try TextBuffer.init(testing.allocator, pool, .unicode, graphemes_ptr, display_width_ptr);
+    var tb = try TextBuffer.init(testing.allocator, pool, .unicode);
     defer tb.deinit();
 
     try tb.setText("abc");
@@ -590,11 +551,8 @@ test "getPrevGraphemeWidth - multiline" {
     const pool = gp.initGlobalPool(testing.allocator);
     defer gp.deinitGlobalPool();
 
-    const gd = gp.initGlobalUnicodeData(testing.allocator);
-    defer gp.deinitGlobalUnicodeData(testing.allocator);
-    const graphemes_ptr, const display_width_ptr = gd;
 
-    var tb = try TextBuffer.init(testing.allocator, pool, .unicode, graphemes_ptr, display_width_ptr);
+    var tb = try TextBuffer.init(testing.allocator, pool, .unicode);
     defer tb.deinit();
 
     try tb.setText("abc\n😀xyz");
@@ -610,11 +568,8 @@ test "getGraphemeWidthAt - CJK characters (Chinese)" {
     const pool = gp.initGlobalPool(testing.allocator);
     defer gp.deinitGlobalPool();
 
-    const gd = gp.initGlobalUnicodeData(testing.allocator);
-    defer gp.deinitGlobalUnicodeData(testing.allocator);
-    const graphemes_ptr, const display_width_ptr = gd;
 
-    var tb = try TextBuffer.init(testing.allocator, pool, .unicode, graphemes_ptr, display_width_ptr);
+    var tb = try TextBuffer.init(testing.allocator, pool, .unicode);
     defer tb.deinit();
 
     try tb.setText("a世界b");
@@ -630,11 +585,8 @@ test "getGraphemeWidthAt - various emoji including star" {
     const pool = gp.initGlobalPool(testing.allocator);
     defer gp.deinitGlobalPool();
 
-    const gd = gp.initGlobalUnicodeData(testing.allocator);
-    defer gp.deinitGlobalUnicodeData(testing.allocator);
-    const graphemes_ptr, const display_width_ptr = gd;
 
-    var tb = try TextBuffer.init(testing.allocator, pool, .unicode, graphemes_ptr, display_width_ptr);
+    var tb = try TextBuffer.init(testing.allocator, pool, .unicode);
     defer tb.deinit();
 
     try tb.setText("🌟🎉");
@@ -648,11 +600,8 @@ test "getGraphemeWidthAt - tab characters" {
     const pool = gp.initGlobalPool(testing.allocator);
     defer gp.deinitGlobalPool();
 
-    const gd = gp.initGlobalUnicodeData(testing.allocator);
-    defer gp.deinitGlobalUnicodeData(testing.allocator);
-    const graphemes_ptr, const display_width_ptr = gd;
 
-    var tb = try TextBuffer.init(testing.allocator, pool, .unicode, graphemes_ptr, display_width_ptr);
+    var tb = try TextBuffer.init(testing.allocator, pool, .unicode);
     defer tb.deinit();
     tb.setTabWidth(4);
 
@@ -670,11 +619,8 @@ test "getGraphemeWidthAt - tab with different tab_width" {
     const pool = gp.initGlobalPool(testing.allocator);
     defer gp.deinitGlobalPool();
 
-    const gd = gp.initGlobalUnicodeData(testing.allocator);
-    defer gp.deinitGlobalUnicodeData(testing.allocator);
-    const graphemes_ptr, const display_width_ptr = gd;
 
-    var tb = try TextBuffer.init(testing.allocator, pool, .unicode, graphemes_ptr, display_width_ptr);
+    var tb = try TextBuffer.init(testing.allocator, pool, .unicode);
     defer tb.deinit();
 
     try tb.setText("x\ty");
@@ -690,11 +636,8 @@ test "getGraphemeWidthAt - middle of wide character" {
     const pool = gp.initGlobalPool(testing.allocator);
     defer gp.deinitGlobalPool();
 
-    const gd = gp.initGlobalUnicodeData(testing.allocator);
-    defer gp.deinitGlobalUnicodeData(testing.allocator);
-    const graphemes_ptr, const display_width_ptr = gd;
 
-    var tb = try TextBuffer.init(testing.allocator, pool, .unicode, graphemes_ptr, display_width_ptr);
+    var tb = try TextBuffer.init(testing.allocator, pool, .unicode);
     defer tb.deinit();
 
     try tb.setText("世");
@@ -708,11 +651,8 @@ test "getGraphemeWidthAt - invalid row" {
     const pool = gp.initGlobalPool(testing.allocator);
     defer gp.deinitGlobalPool();
 
-    const gd = gp.initGlobalUnicodeData(testing.allocator);
-    defer gp.deinitGlobalUnicodeData(testing.allocator);
-    const graphemes_ptr, const display_width_ptr = gd;
 
-    var tb = try TextBuffer.init(testing.allocator, pool, .unicode, graphemes_ptr, display_width_ptr);
+    var tb = try TextBuffer.init(testing.allocator, pool, .unicode);
     defer tb.deinit();
 
     try tb.setText("test");
@@ -724,11 +664,8 @@ test "getPrevGraphemeWidth - CJK characters" {
     const pool = gp.initGlobalPool(testing.allocator);
     defer gp.deinitGlobalPool();
 
-    const gd = gp.initGlobalUnicodeData(testing.allocator);
-    defer gp.deinitGlobalUnicodeData(testing.allocator);
-    const graphemes_ptr, const display_width_ptr = gd;
 
-    var tb = try TextBuffer.init(testing.allocator, pool, .unicode, graphemes_ptr, display_width_ptr);
+    var tb = try TextBuffer.init(testing.allocator, pool, .unicode);
     defer tb.deinit();
 
     try tb.setText("a世界b");
@@ -744,11 +681,8 @@ test "getPrevGraphemeWidth - star emoji" {
     const pool = gp.initGlobalPool(testing.allocator);
     defer gp.deinitGlobalPool();
 
-    const gd = gp.initGlobalUnicodeData(testing.allocator);
-    defer gp.deinitGlobalUnicodeData(testing.allocator);
-    const graphemes_ptr, const display_width_ptr = gd;
 
-    var tb = try TextBuffer.init(testing.allocator, pool, .unicode, graphemes_ptr, display_width_ptr);
+    var tb = try TextBuffer.init(testing.allocator, pool, .unicode);
     defer tb.deinit();
 
     try tb.setText("x🌟y");
@@ -762,11 +696,8 @@ test "getPrevGraphemeWidth - tabs" {
     const pool = gp.initGlobalPool(testing.allocator);
     defer gp.deinitGlobalPool();
 
-    const gd = gp.initGlobalUnicodeData(testing.allocator);
-    defer gp.deinitGlobalUnicodeData(testing.allocator);
-    const graphemes_ptr, const display_width_ptr = gd;
 
-    var tb = try TextBuffer.init(testing.allocator, pool, .unicode, graphemes_ptr, display_width_ptr);
+    var tb = try TextBuffer.init(testing.allocator, pool, .unicode);
     defer tb.deinit();
     tb.setTabWidth(4);
 
@@ -781,11 +712,8 @@ test "getPrevGraphemeWidth - invalid row" {
     const pool = gp.initGlobalPool(testing.allocator);
     defer gp.deinitGlobalPool();
 
-    const gd = gp.initGlobalUnicodeData(testing.allocator);
-    defer gp.deinitGlobalUnicodeData(testing.allocator);
-    const graphemes_ptr, const display_width_ptr = gd;
 
-    var tb = try TextBuffer.init(testing.allocator, pool, .unicode, graphemes_ptr, display_width_ptr);
+    var tb = try TextBuffer.init(testing.allocator, pool, .unicode);
     defer tb.deinit();
 
     try tb.setText("test");
@@ -797,11 +725,8 @@ test "getGraphemeWidthAt and getPrevGraphemeWidth - mixed content" {
     const pool = gp.initGlobalPool(testing.allocator);
     defer gp.deinitGlobalPool();
 
-    const gd = gp.initGlobalUnicodeData(testing.allocator);
-    defer gp.deinitGlobalUnicodeData(testing.allocator);
-    const graphemes_ptr, const display_width_ptr = gd;
 
-    var tb = try TextBuffer.init(testing.allocator, pool, .unicode, graphemes_ptr, display_width_ptr);
+    var tb = try TextBuffer.init(testing.allocator, pool, .unicode);
     defer tb.deinit();
     tb.setTabWidth(4);
 

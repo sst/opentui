@@ -3,8 +3,6 @@ const bench_utils = @import("../bench-utils.zig");
 const text_buffer_mod = @import("../text-buffer.zig");
 const syntax_style_mod = @import("../syntax-style.zig");
 const gp = @import("../grapheme.zig");
-const Graphemes = @import("Graphemes");
-const DisplayWidth = @import("DisplayWidth");
 
 const BenchResult = bench_utils.BenchResult;
 const MemStats = bench_utils.MemStats;
@@ -28,8 +26,8 @@ fn benchSetStyledTextOperations(allocator: std.mem.Allocator, iterations: usize)
     const global_alloc = arena.allocator();
 
     const pool = gp.initGlobalPool(global_alloc);
-    const unicode_data = gp.initGlobalUnicodeData(global_alloc);
-    const graphemes_ptr, const display_width_ptr = unicode_data;
+    
+    
 
     // Single chunk - baseline
     {
@@ -42,7 +40,7 @@ fn benchSetStyledTextOperations(allocator: std.mem.Allocator, iterations: usize)
 
         var iter: usize = 0;
         while (iter < iterations) : (iter += 1) {
-            const tb = try TextBuffer.init(allocator, pool, .wcwidth, graphemes_ptr, display_width_ptr);
+            const tb = try TextBuffer.init(allocator, pool, .wcwidth);
             defer tb.deinit();
 
             const style = try SyntaxStyle.init(allocator);
@@ -93,7 +91,7 @@ fn benchSetStyledTextOperations(allocator: std.mem.Allocator, iterations: usize)
 
         var iter: usize = 0;
         while (iter < iterations) : (iter += 1) {
-            const tb = try TextBuffer.init(allocator, pool, .wcwidth, graphemes_ptr, display_width_ptr);
+            const tb = try TextBuffer.init(allocator, pool, .wcwidth);
             defer tb.deinit();
 
             const style = try SyntaxStyle.init(allocator);
@@ -150,7 +148,7 @@ fn benchSetStyledTextOperations(allocator: std.mem.Allocator, iterations: usize)
 
         var iter: usize = 0;
         while (iter < iterations) : (iter += 1) {
-            const tb = try TextBuffer.init(allocator, pool, .wcwidth, graphemes_ptr, display_width_ptr);
+            const tb = try TextBuffer.init(allocator, pool, .wcwidth);
             defer tb.deinit();
 
             const style = try SyntaxStyle.init(allocator);
@@ -209,7 +207,7 @@ fn benchSetStyledTextOperations(allocator: std.mem.Allocator, iterations: usize)
 
         var iter: usize = 0;
         while (iter < iterations) : (iter += 1) {
-            const tb = try TextBuffer.init(allocator, pool, .wcwidth, graphemes_ptr, display_width_ptr);
+            const tb = try TextBuffer.init(allocator, pool, .wcwidth);
             defer tb.deinit();
 
             const style = try SyntaxStyle.init(allocator);
@@ -260,7 +258,7 @@ fn benchSetStyledTextOperations(allocator: std.mem.Allocator, iterations: usize)
 
         var iter: usize = 0;
         while (iter < iterations) : (iter += 1) {
-            const tb = try TextBuffer.init(allocator, pool, .wcwidth, graphemes_ptr, display_width_ptr);
+            const tb = try TextBuffer.init(allocator, pool, .wcwidth);
             defer tb.deinit();
 
             const style = try SyntaxStyle.init(allocator);
@@ -314,8 +312,8 @@ fn benchHighlightOperations(allocator: std.mem.Allocator, iterations: usize) ![]
     const global_alloc = arena.allocator();
 
     const pool = gp.initGlobalPool(global_alloc);
-    const unicode_data = gp.initGlobalUnicodeData(global_alloc);
-    const graphemes_ptr, const display_width_ptr = unicode_data;
+    
+    
 
     // Baseline: 1000 sequential addHighlightByCharRange calls (unbatched)
     {
@@ -325,7 +323,7 @@ fn benchHighlightOperations(allocator: std.mem.Allocator, iterations: usize) ![]
 
         var iter: usize = 0;
         while (iter < iterations) : (iter += 1) {
-            const tb = try TextBuffer.init(allocator, pool, .wcwidth, graphemes_ptr, display_width_ptr);
+            const tb = try TextBuffer.init(allocator, pool, .wcwidth);
             defer tb.deinit();
 
             const style = try SyntaxStyle.init(allocator);
@@ -374,7 +372,7 @@ fn benchHighlightOperations(allocator: std.mem.Allocator, iterations: usize) ![]
 
         var iter: usize = 0;
         while (iter < iterations) : (iter += 1) {
-            const tb = try TextBuffer.init(allocator, pool, .wcwidth, graphemes_ptr, display_width_ptr);
+            const tb = try TextBuffer.init(allocator, pool, .wcwidth);
             defer tb.deinit();
 
             const style = try SyntaxStyle.init(allocator);
@@ -452,7 +450,7 @@ fn benchHighlightOperations(allocator: std.mem.Allocator, iterations: usize) ![]
 
         var iter: usize = 0;
         while (iter < iterations) : (iter += 1) {
-            const tb = try TextBuffer.init(allocator, pool, .wcwidth, graphemes_ptr, display_width_ptr);
+            const tb = try TextBuffer.init(allocator, pool, .wcwidth);
             defer tb.deinit();
 
             const style = try SyntaxStyle.init(allocator);

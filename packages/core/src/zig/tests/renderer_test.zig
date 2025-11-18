@@ -5,8 +5,6 @@ const text_buffer_view = @import("../text-buffer-view.zig");
 const buffer = @import("../buffer.zig");
 const gp = @import("../grapheme.zig");
 const ss = @import("../syntax-style.zig");
-const Graphemes = @import("Graphemes");
-const DisplayWidth = @import("DisplayWidth");
 
 const CliRenderer = renderer.CliRenderer;
 const TextBuffer = text_buffer.TextBuffer;
@@ -18,17 +16,12 @@ test "renderer - create and destroy" {
     const pool = gp.initGlobalPool(std.testing.allocator);
     defer gp.deinitGlobalPool();
 
-    const gd = gp.initGlobalUnicodeData(std.testing.allocator);
-    defer gp.deinitGlobalUnicodeData(std.testing.allocator);
-    const graphemes_ptr, const display_width_ptr = gd;
 
     var cli_renderer = try CliRenderer.create(
         std.testing.allocator,
         80,
         24,
         pool,
-        graphemes_ptr,
-        display_width_ptr,
         true,
     );
     defer cli_renderer.destroy();
@@ -42,11 +35,8 @@ test "renderer - simple text rendering to currentRenderBuffer" {
     const pool = gp.initGlobalPool(std.testing.allocator);
     defer gp.deinitGlobalPool();
 
-    const gd = gp.initGlobalUnicodeData(std.testing.allocator);
-    defer gp.deinitGlobalUnicodeData(std.testing.allocator);
-    const graphemes_ptr, const display_width_ptr = gd;
 
-    var tb = try TextBuffer.init(std.testing.allocator, pool, .unicode, graphemes_ptr, display_width_ptr);
+    var tb = try TextBuffer.init(std.testing.allocator, pool, .unicode);
     defer tb.deinit();
 
     try tb.setText("Hello World");
@@ -59,8 +49,6 @@ test "renderer - simple text rendering to currentRenderBuffer" {
         80,
         24,
         pool,
-        graphemes_ptr,
-        display_width_ptr,
         true,
     );
     defer cli_renderer.destroy();
@@ -89,11 +77,8 @@ test "renderer - multi-line text rendering" {
     const pool = gp.initGlobalPool(std.testing.allocator);
     defer gp.deinitGlobalPool();
 
-    const gd = gp.initGlobalUnicodeData(std.testing.allocator);
-    defer gp.deinitGlobalUnicodeData(std.testing.allocator);
-    const graphemes_ptr, const display_width_ptr = gd;
 
-    var tb = try TextBuffer.init(std.testing.allocator, pool, .unicode, graphemes_ptr, display_width_ptr);
+    var tb = try TextBuffer.init(std.testing.allocator, pool, .unicode);
     defer tb.deinit();
 
     try tb.setText("Line 1\nLine 2\nLine 3");
@@ -106,8 +91,6 @@ test "renderer - multi-line text rendering" {
         80,
         24,
         pool,
-        graphemes_ptr,
-        display_width_ptr,
         true,
     );
     defer cli_renderer.destroy();
@@ -135,11 +118,8 @@ test "renderer - emoji (wide grapheme) rendering" {
     const pool = gp.initGlobalPool(std.testing.allocator);
     defer gp.deinitGlobalPool();
 
-    const gd = gp.initGlobalUnicodeData(std.testing.allocator);
-    defer gp.deinitGlobalUnicodeData(std.testing.allocator);
-    const graphemes_ptr, const display_width_ptr = gd;
 
-    var tb = try TextBuffer.init(std.testing.allocator, pool, .unicode, graphemes_ptr, display_width_ptr);
+    var tb = try TextBuffer.init(std.testing.allocator, pool, .unicode);
     defer tb.deinit();
 
     try tb.setText("Hi 👋 there");
@@ -152,8 +132,6 @@ test "renderer - emoji (wide grapheme) rendering" {
         80,
         24,
         pool,
-        graphemes_ptr,
-        display_width_ptr,
         true,
     );
     defer cli_renderer.destroy();
@@ -197,11 +175,8 @@ test "renderer - CJK characters rendering" {
     const pool = gp.initGlobalPool(std.testing.allocator);
     defer gp.deinitGlobalPool();
 
-    const gd = gp.initGlobalUnicodeData(std.testing.allocator);
-    defer gp.deinitGlobalUnicodeData(std.testing.allocator);
-    const graphemes_ptr, const display_width_ptr = gd;
 
-    var tb = try TextBuffer.init(std.testing.allocator, pool, .unicode, graphemes_ptr, display_width_ptr);
+    var tb = try TextBuffer.init(std.testing.allocator, pool, .unicode);
     defer tb.deinit();
 
     try tb.setText("Hello 世界");
@@ -214,8 +189,6 @@ test "renderer - CJK characters rendering" {
         80,
         24,
         pool,
-        graphemes_ptr,
-        display_width_ptr,
         true,
     );
     defer cli_renderer.destroy();
@@ -255,11 +228,8 @@ test "renderer - mixed ASCII, emoji, and CJK" {
     const pool = gp.initGlobalPool(std.testing.allocator);
     defer gp.deinitGlobalPool();
 
-    const gd = gp.initGlobalUnicodeData(std.testing.allocator);
-    defer gp.deinitGlobalUnicodeData(std.testing.allocator);
-    const graphemes_ptr, const display_width_ptr = gd;
 
-    var tb = try TextBuffer.init(std.testing.allocator, pool, .unicode, graphemes_ptr, display_width_ptr);
+    var tb = try TextBuffer.init(std.testing.allocator, pool, .unicode);
     defer tb.deinit();
 
     try tb.setText("A 😀 世");
@@ -272,8 +242,6 @@ test "renderer - mixed ASCII, emoji, and CJK" {
         80,
         24,
         pool,
-        graphemes_ptr,
-        display_width_ptr,
         true,
     );
     defer cli_renderer.destroy();
@@ -317,17 +285,12 @@ test "renderer - resize updates dimensions" {
     const pool = gp.initGlobalPool(std.testing.allocator);
     defer gp.deinitGlobalPool();
 
-    const gd = gp.initGlobalUnicodeData(std.testing.allocator);
-    defer gp.deinitGlobalUnicodeData(std.testing.allocator);
-    const graphemes_ptr, const display_width_ptr = gd;
 
     var cli_renderer = try CliRenderer.create(
         std.testing.allocator,
         80,
         24,
         pool,
-        graphemes_ptr,
-        display_width_ptr,
         true,
     );
     defer cli_renderer.destroy();
@@ -345,17 +308,12 @@ test "renderer - background color setting" {
     const pool = gp.initGlobalPool(std.testing.allocator);
     defer gp.deinitGlobalPool();
 
-    const gd = gp.initGlobalUnicodeData(std.testing.allocator);
-    defer gp.deinitGlobalUnicodeData(std.testing.allocator);
-    const graphemes_ptr, const display_width_ptr = gd;
 
     var cli_renderer = try CliRenderer.create(
         std.testing.allocator,
         80,
         24,
         pool,
-        graphemes_ptr,
-        display_width_ptr,
         true,
     );
     defer cli_renderer.destroy();
@@ -370,11 +328,8 @@ test "renderer - empty text buffer renders correctly" {
     const pool = gp.initGlobalPool(std.testing.allocator);
     defer gp.deinitGlobalPool();
 
-    const gd = gp.initGlobalUnicodeData(std.testing.allocator);
-    defer gp.deinitGlobalUnicodeData(std.testing.allocator);
-    const graphemes_ptr, const display_width_ptr = gd;
 
-    var tb = try TextBuffer.init(std.testing.allocator, pool, .unicode, graphemes_ptr, display_width_ptr);
+    var tb = try TextBuffer.init(std.testing.allocator, pool, .unicode);
     defer tb.deinit();
 
     try tb.setText("");
@@ -387,8 +342,6 @@ test "renderer - empty text buffer renders correctly" {
         80,
         24,
         pool,
-        graphemes_ptr,
-        display_width_ptr,
         true,
     );
     defer cli_renderer.destroy();
@@ -402,11 +355,8 @@ test "renderer - multiple renders update currentRenderBuffer" {
     const pool = gp.initGlobalPool(std.testing.allocator);
     defer gp.deinitGlobalPool();
 
-    const gd = gp.initGlobalUnicodeData(std.testing.allocator);
-    defer gp.deinitGlobalUnicodeData(std.testing.allocator);
-    const graphemes_ptr, const display_width_ptr = gd;
 
-    var tb = try TextBuffer.init(std.testing.allocator, pool, .unicode, graphemes_ptr, display_width_ptr);
+    var tb = try TextBuffer.init(std.testing.allocator, pool, .unicode);
     defer tb.deinit();
 
     var view = try TextBufferView.init(std.testing.allocator, tb);
@@ -417,8 +367,6 @@ test "renderer - multiple renders update currentRenderBuffer" {
         80,
         24,
         pool,
-        graphemes_ptr,
-        display_width_ptr,
         true,
     );
     defer cli_renderer.destroy();
@@ -448,11 +396,8 @@ test "renderer - 1000 frame render loop with setStyledText" {
     const pool = gp.initGlobalPool(std.testing.allocator);
     defer gp.deinitGlobalPool();
 
-    const gd = gp.initGlobalUnicodeData(std.testing.allocator);
-    defer gp.deinitGlobalUnicodeData(std.testing.allocator);
-    const graphemes_ptr, const display_width_ptr = gd;
 
-    var tb = try TextBuffer.init(std.testing.allocator, pool, .unicode, graphemes_ptr, display_width_ptr);
+    var tb = try TextBuffer.init(std.testing.allocator, pool, .unicode);
     defer tb.deinit();
 
     const style = try ss.SyntaxStyle.init(std.testing.allocator);
@@ -467,8 +412,6 @@ test "renderer - 1000 frame render loop with setStyledText" {
         80,
         24,
         pool,
-        graphemes_ptr,
-        display_width_ptr,
         true,
     );
     defer cli_renderer.destroy();
@@ -478,8 +421,6 @@ test "renderer - 1000 frame render loop with setStyledText" {
         80,
         24,
         .{ .pool = pool, .width_method = .unicode },
-        graphemes_ptr,
-        display_width_ptr,
     );
     defer opt_buffer.deinit();
 
@@ -540,11 +481,8 @@ test "renderer - grapheme pool refcounting with frame buffer fast path" {
     });
     defer gp.deinitGlobalPool();
 
-    const gd = gp.initGlobalUnicodeData(std.testing.allocator);
-    defer gp.deinitGlobalUnicodeData(std.testing.allocator);
-    const graphemes_ptr, const display_width_ptr = gd;
 
-    var tb = try TextBuffer.init(std.testing.allocator, limited_pool, .unicode, graphemes_ptr, display_width_ptr);
+    var tb = try TextBuffer.init(std.testing.allocator, limited_pool, .unicode);
     defer tb.deinit();
 
     const style = try ss.SyntaxStyle.init(std.testing.allocator);
@@ -559,8 +497,6 @@ test "renderer - grapheme pool refcounting with frame buffer fast path" {
         80,
         24,
         limited_pool,
-        graphemes_ptr,
-        display_width_ptr,
         true,
     );
     defer cli_renderer.destroy();
@@ -570,8 +506,6 @@ test "renderer - grapheme pool refcounting with frame buffer fast path" {
         80,
         24,
         .{ .pool = limited_pool, .width_method = .unicode, .respectAlpha = false },
-        graphemes_ptr,
-        display_width_ptr,
     );
     defer frame_buffer.deinit();
 

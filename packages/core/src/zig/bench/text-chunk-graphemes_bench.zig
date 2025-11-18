@@ -3,8 +3,6 @@ const bench_utils = @import("../bench-utils.zig");
 const seg_mod = @import("../text-buffer-segment.zig");
 const gp = @import("../grapheme.zig");
 const utf8 = @import("../utf8.zig");
-const Graphemes = @import("Graphemes");
-const DisplayWidth = @import("DisplayWidth");
 
 const TextChunk = seg_mod.TextChunk;
 const MemRegistry = seg_mod.MemRegistry;
@@ -79,8 +77,8 @@ fn generateTestText(allocator: std.mem.Allocator, size: usize, text_type: TextTy
 
 fn benchGetGraphemes(
     allocator: std.mem.Allocator,
-    graphemes_ptr: *Graphemes,
-    display_width_ptr: *DisplayWidth,
+    
+    
     size: usize,
     text_type: TextType,
     iterations: usize,
@@ -193,8 +191,8 @@ pub fn run(
 
     // Global pool and unicode data are initialized once in bench.zig
     const pool = gp.initGlobalPool(allocator);
-    const unicode_data = gp.initGlobalUnicodeData(allocator);
-    const graphemes_ptr, const display_width_ptr = unicode_data;
+    
+    
 
     if (show_mem) {
         try stdout.print("Memory stats enabled\n", .{});

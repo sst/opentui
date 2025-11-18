@@ -5,8 +5,7 @@ const seg_mod = @import("text-buffer-segment.zig");
 const iter_mod = @import("text-buffer-iterators.zig");
 const gp = @import("grapheme.zig");
 const utf8 = @import("utf8.zig");
-const Graphemes = @import("Graphemes");
-const DisplayWidth = @import("DisplayWidth");
+
 const logger = @import("logger.zig");
 
 const UnifiedTextBuffer = tb.UnifiedTextBuffer;
