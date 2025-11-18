@@ -733,7 +733,7 @@ pub const OptimizedBuffer = struct {
                 bgColor = .{ 0.0, 0.0, 0.0, 1.0 };
             }
 
-            const cell_width = utf8.getWidthAt(text, if (at_special) specials[special_idx - 1].byte_offset else byte_offset - 1, tab_width, .unicode);
+            const cell_width = utf8.getWidthAt(text, if (at_special) specials[special_idx - 1].byte_offset else byte_offset - 1, tab_width, self.width_method);
             if (cell_width == 0) {
                 col += g_width;
                 continue;
@@ -1007,7 +1007,7 @@ pub const OptimizedBuffer = struct {
                 if (vchunk.grapheme_start > 0) {
                     // Use UTF-8 aware position finding to skip to the grapheme_start
                     const is_ascii_only = (vchunk.chunk.flags & tb.TextChunk.Flags.ASCII_ONLY) != 0;
-                    const pos_result = utf8.findPosByWidth(chunk_bytes, vchunk.grapheme_start, text_buffer.tab_width, is_ascii_only, false, .unicode);
+                    const pos_result = utf8.findPosByWidth(chunk_bytes, vchunk.grapheme_start, text_buffer.tab_width, is_ascii_only, false, text_buffer.width_method);
                     byte_offset = pos_result.byte_offset;
 
                     // Advance special_idx to match the skipped columns
@@ -1255,7 +1255,7 @@ pub const OptimizedBuffer = struct {
         if (title) |titleText| {
             if (titleText.len > 0 and borderSides.top and isAtActualTop) {
                 const is_ascii = utf8.isAsciiOnly(titleText);
-                const titleLength = @as(i32, @intCast(utf8.calculateTextWidth(titleText, 2, is_ascii, .unicode)));
+                const titleLength = @as(i32, @intCast(utf8.calculateTextWidth(titleText, 2, is_ascii, self.width_method)));
                 const minTitleSpace = 4;
 
                 shouldDrawTitle = @as(i32, @intCast(width)) >= titleLength + minTitleSpace;
