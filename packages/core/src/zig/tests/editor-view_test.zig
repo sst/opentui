@@ -2810,19 +2810,31 @@ test "EditorView - cursor movement with emoji skin tone modifier wcwidth" {
 
     // "👋🏿" is a waving hand emoji with dark skin tone modifier
     // In wcwidth mode (tmux-style), each codepoint has width 2, total = 4 columns
+    // IMPORTANT: In wcwidth mode, each codepoint is treated as a separate char for cursor movement
     try eb.setText("👋🏿", false);
 
-    // Start at position 0 (before the grapheme cluster)
+    // Start at position 0 (before the first codepoint)
     try eb.setCursor(0, 0);
     var cursor = eb.getPrimaryCursor();
     try std.testing.expectEqual(@as(u32, 0), cursor.col);
 
-    // Move right once - should move past the entire grapheme cluster (4 columns in wcwidth)
+    // Move right once - should move past the FIRST codepoint (2 columns)
+    // In wcwidth mode, each codepoint is a separate char, so this moves to col 2
+    eb.moveRight();
+    cursor = eb.getPrimaryCursor();
+    try std.testing.expectEqual(@as(u32, 2), cursor.col);
+
+    // Move right again - should move past the SECOND codepoint (2 more columns)
     eb.moveRight();
     cursor = eb.getPrimaryCursor();
     try std.testing.expectEqual(@as(u32, 4), cursor.col);
 
-    // Move left once - should move back to the beginning
+    // Move left once - should move back to col 2 (before second codepoint)
+    eb.moveLeft();
+    cursor = eb.getPrimaryCursor();
+    try std.testing.expectEqual(@as(u32, 2), cursor.col);
+
+    // Move left again - should move back to the beginning
     eb.moveLeft();
     cursor = eb.getPrimaryCursor();
     try std.testing.expectEqual(@as(u32, 0), cursor.col);
@@ -2870,11 +2882,17 @@ test "EditorView - backspace emoji with skin tone modifier wcwidth" {
 
     // "👋🏿" is a waving hand emoji with dark skin tone modifier
     // In wcwidth mode, this renders as 4 columns (2+2)
+    // In wcwidth mode, each codepoint is treated as a separate char
     try eb.setText("👋🏿", false);
 
-    // Move cursor to AFTER the grapheme cluster (4 columns total in wcwidth mode)
+    // Move cursor to col 2 (after first codepoint)
     eb.moveRight();
     var cursor = eb.getPrimaryCursor();
+    try std.testing.expectEqual(@as(u32, 2), cursor.col);
+
+    // Move cursor to col 4 (after second codepoint)
+    eb.moveRight();
+    cursor = eb.getPrimaryCursor();
     try std.testing.expectEqual(@as(u32, 4), cursor.col);
 
     // Get text before backspace to verify it contains the emoji
@@ -2882,7 +2900,19 @@ test "EditorView - backspace emoji with skin tone modifier wcwidth" {
     const len_before = eb.getText(&buffer_before);
     try std.testing.expectEqualStrings("👋🏿", buffer_before[0..len_before]);
 
-    // Backspace should delete the entire grapheme cluster (both codepoints)
+    // First backspace should delete just the skin tone modifier (second codepoint)
+    try eb.backspace();
+
+    // Cursor should now be at position 2 (after the first codepoint)
+    cursor = eb.getPrimaryCursor();
+    try std.testing.expectEqual(@as(u32, 2), cursor.col);
+
+    // Text buffer should contain just the hand emoji without skin tone
+    var buffer_middle: [100]u8 = undefined;
+    const len_middle = eb.getText(&buffer_middle);
+    try std.testing.expectEqualStrings("👋", buffer_middle[0..len_middle]);
+
+    // Second backspace should delete the hand emoji (first codepoint)
     try eb.backspace();
 
     // Cursor should now be at position 0

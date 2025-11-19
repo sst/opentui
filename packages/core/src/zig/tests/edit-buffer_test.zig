@@ -13,7 +13,6 @@ test "EditBuffer - init and deinit" {
     const pool = gp.initGlobalPool(std.testing.allocator);
     defer gp.deinitGlobalPool();
 
-
     var eb = try EditBuffer.init(std.testing.allocator, pool, .wcwidth);
     defer eb.deinit();
 
@@ -27,7 +26,6 @@ test "EditBuffer - init and deinit" {
 test "EditBuffer - next word boundary basic" {
     const pool = gp.initGlobalPool(std.testing.allocator);
     defer gp.deinitGlobalPool();
-
 
     var eb = try EditBuffer.init(std.testing.allocator, pool, .wcwidth);
     defer eb.deinit();
@@ -44,7 +42,6 @@ test "EditBuffer - prev word boundary basic" {
     const pool = gp.initGlobalPool(std.testing.allocator);
     defer gp.deinitGlobalPool();
 
-
     var eb = try EditBuffer.init(std.testing.allocator, pool, .wcwidth);
     defer eb.deinit();
 
@@ -59,7 +56,6 @@ test "EditBuffer - prev word boundary basic" {
 test "EditBuffer - next word boundary across line" {
     const pool = gp.initGlobalPool(std.testing.allocator);
     defer gp.deinitGlobalPool();
-
 
     var eb = try EditBuffer.init(std.testing.allocator, pool, .wcwidth);
     defer eb.deinit();
@@ -76,7 +72,6 @@ test "EditBuffer - prev word boundary across line" {
     const pool = gp.initGlobalPool(std.testing.allocator);
     defer gp.deinitGlobalPool();
 
-
     var eb = try EditBuffer.init(std.testing.allocator, pool, .wcwidth);
     defer eb.deinit();
 
@@ -92,7 +87,6 @@ test "EditBuffer - hyphen word boundary" {
     const pool = gp.initGlobalPool(std.testing.allocator);
     defer gp.deinitGlobalPool();
 
-
     var eb = try EditBuffer.init(std.testing.allocator, pool, .wcwidth);
     defer eb.deinit();
 
@@ -107,7 +101,6 @@ test "EditBuffer - hyphen word boundary" {
 test "EditBuffer - multiple word boundaries" {
     const pool = gp.initGlobalPool(std.testing.allocator);
     defer gp.deinitGlobalPool();
-
 
     var eb = try EditBuffer.init(std.testing.allocator, pool, .wcwidth);
     defer eb.deinit();
@@ -131,7 +124,6 @@ test "EditBuffer - word boundary at end of line" {
     const pool = gp.initGlobalPool(std.testing.allocator);
     defer gp.deinitGlobalPool();
 
-
     var eb = try EditBuffer.init(std.testing.allocator, pool, .wcwidth);
     defer eb.deinit();
 
@@ -146,7 +138,6 @@ test "EditBuffer - word boundary at end of line" {
 test "EditBuffer - word boundary at start of line" {
     const pool = gp.initGlobalPool(std.testing.allocator);
     defer gp.deinitGlobalPool();
-
 
     var eb = try EditBuffer.init(std.testing.allocator, pool, .wcwidth);
     defer eb.deinit();
@@ -163,7 +154,6 @@ test "EditBuffer - getEOL basic" {
     const pool = gp.initGlobalPool(std.testing.allocator);
     defer gp.deinitGlobalPool();
 
-
     var eb = try EditBuffer.init(std.testing.allocator, pool, .wcwidth);
     defer eb.deinit();
 
@@ -178,7 +168,6 @@ test "EditBuffer - getEOL basic" {
 test "EditBuffer - getEOL at end of line" {
     const pool = gp.initGlobalPool(std.testing.allocator);
     defer gp.deinitGlobalPool();
-
 
     var eb = try EditBuffer.init(std.testing.allocator, pool, .wcwidth);
     defer eb.deinit();
@@ -195,7 +184,6 @@ test "EditBuffer - getEOL multi-line" {
     const pool = gp.initGlobalPool(std.testing.allocator);
     defer gp.deinitGlobalPool();
 
-
     var eb = try EditBuffer.init(std.testing.allocator, pool, .wcwidth);
     defer eb.deinit();
 
@@ -211,7 +199,6 @@ test "EditBuffer - getEOL empty line" {
     const pool = gp.initGlobalPool(std.testing.allocator);
     defer gp.deinitGlobalPool();
 
-
     var eb = try EditBuffer.init(std.testing.allocator, pool, .wcwidth);
     defer eb.deinit();
 
@@ -226,7 +213,6 @@ test "EditBuffer - getEOL empty line" {
 test "EditBuffer - moveRight past tab at start of line" {
     const pool = gp.initGlobalPool(std.testing.allocator);
     defer gp.deinitGlobalPool();
-
 
     var eb = try EditBuffer.init(std.testing.allocator, pool, .wcwidth);
     defer eb.deinit();
@@ -246,7 +232,6 @@ test "EditBuffer - moveRight past tab at start of line" {
 test "EditBuffer - moveRight after typing before tab" {
     const pool = gp.initGlobalPool(std.testing.allocator);
     defer gp.deinitGlobalPool();
-
 
     var eb = try EditBuffer.init(std.testing.allocator, pool, .wcwidth);
     defer eb.deinit();
@@ -275,7 +260,6 @@ test "EditBuffer - moveRight between two tabs" {
     const pool = gp.initGlobalPool(std.testing.allocator);
     defer gp.deinitGlobalPool();
 
-
     var eb = try EditBuffer.init(std.testing.allocator, pool, .wcwidth);
     defer eb.deinit();
 
@@ -295,7 +279,6 @@ test "EditBuffer - moveRight between two tabs" {
 test "EditBuffer - type and move around single tab" {
     const pool = gp.initGlobalPool(std.testing.allocator);
     defer gp.deinitGlobalPool();
-
 
     var eb = try EditBuffer.init(std.testing.allocator, pool, .wcwidth);
     defer eb.deinit();
@@ -329,7 +312,6 @@ test "EditBuffer - insert text between tabs and move right" {
     const pool = gp.initGlobalPool(std.testing.allocator);
     defer gp.deinitGlobalPool();
 
-
     var eb = try EditBuffer.init(std.testing.allocator, pool, .wcwidth);
     defer eb.deinit();
 
@@ -360,7 +342,6 @@ test "EditBuffer - insert after tab and move around" {
     const pool = gp.initGlobalPool(std.testing.allocator);
     defer gp.deinitGlobalPool();
 
-
     var eb = try EditBuffer.init(std.testing.allocator, pool, .wcwidth);
     defer eb.deinit();
 
@@ -388,7 +369,6 @@ test "EditBuffer - cursor stuck after typing around tab" {
     const pool = gp.initGlobalPool(std.testing.allocator);
     defer gp.deinitGlobalPool();
 
-
     var eb = try EditBuffer.init(std.testing.allocator, pool, .wcwidth);
     defer eb.deinit();
 
@@ -406,7 +386,6 @@ test "EditBuffer - cursor stuck after typing around tab" {
 test "EditBuffer - complex tab scenario" {
     const pool = gp.initGlobalPool(std.testing.allocator);
     defer gp.deinitGlobalPool();
-
 
     var eb = try EditBuffer.init(std.testing.allocator, pool, .wcwidth);
     defer eb.deinit();
@@ -442,7 +421,6 @@ test "EditBuffer - cursor stuck at tab in middle of line" {
     const pool = gp.initGlobalPool(std.testing.allocator);
     defer gp.deinitGlobalPool();
 
-
     var eb = try EditBuffer.init(std.testing.allocator, pool, .wcwidth);
     defer eb.deinit();
 
@@ -463,7 +441,6 @@ test "EditBuffer - cursor stuck at tab in middle of line" {
 test "EditBuffer - type between tabs then move right" {
     const pool = gp.initGlobalPool(std.testing.allocator);
     defer gp.deinitGlobalPool();
-
 
     var eb = try EditBuffer.init(std.testing.allocator, pool, .wcwidth);
     defer eb.deinit();
@@ -490,7 +467,6 @@ test "EditBuffer - tabs only with cursor movement" {
     const pool = gp.initGlobalPool(std.testing.allocator);
     defer gp.deinitGlobalPool();
 
-
     var eb = try EditBuffer.init(std.testing.allocator, pool, .wcwidth);
     defer eb.deinit();
 
@@ -515,7 +491,6 @@ test "EditBuffer - getTextRange basic ASCII" {
     const pool = gp.initGlobalPool(std.testing.allocator);
     defer gp.deinitGlobalPool();
 
-
     var eb = try EditBuffer.init(std.testing.allocator, pool, .wcwidth);
     defer eb.deinit();
 
@@ -529,7 +504,6 @@ test "EditBuffer - getTextRange basic ASCII" {
 test "EditBuffer - getTextRange full text" {
     const pool = gp.initGlobalPool(std.testing.allocator);
     defer gp.deinitGlobalPool();
-
 
     var eb = try EditBuffer.init(std.testing.allocator, pool, .wcwidth);
     defer eb.deinit();
@@ -545,7 +519,6 @@ test "EditBuffer - getTextRange with emojis" {
     const pool = gp.initGlobalPool(std.testing.allocator);
     defer gp.deinitGlobalPool();
 
-
     var eb = try EditBuffer.init(std.testing.allocator, pool, .wcwidth);
     defer eb.deinit();
 
@@ -560,7 +533,6 @@ test "EditBuffer - getTextRange with emojis" {
 test "EditBuffer - getTextRange emoji with skin tone" {
     const pool = gp.initGlobalPool(std.testing.allocator);
     defer gp.deinitGlobalPool();
-
 
     var eb = try EditBuffer.init(std.testing.allocator, pool, .wcwidth);
     defer eb.deinit();
@@ -578,7 +550,6 @@ test "EditBuffer - getTextRange flag emoji" {
     const pool = gp.initGlobalPool(std.testing.allocator);
     defer gp.deinitGlobalPool();
 
-
     var eb = try EditBuffer.init(std.testing.allocator, pool, .wcwidth);
     defer eb.deinit();
 
@@ -594,7 +565,6 @@ test "EditBuffer - getTextRange flag emoji" {
 test "EditBuffer - getTextRange family emoji" {
     const pool = gp.initGlobalPool(std.testing.allocator);
     defer gp.deinitGlobalPool();
-
 
     var eb = try EditBuffer.init(std.testing.allocator, pool, .wcwidth);
     defer eb.deinit();
@@ -612,7 +582,6 @@ test "EditBuffer - getTextRange Devanagari with combining marks" {
     const pool = gp.initGlobalPool(std.testing.allocator);
     defer gp.deinitGlobalPool();
 
-
     var eb = try EditBuffer.init(std.testing.allocator, pool, .wcwidth);
     defer eb.deinit();
 
@@ -628,7 +597,6 @@ test "EditBuffer - getTextRange Devanagari with combining marks" {
 test "EditBuffer - getTextRange CJK characters" {
     const pool = gp.initGlobalPool(std.testing.allocator);
     defer gp.deinitGlobalPool();
-
 
     var eb = try EditBuffer.init(std.testing.allocator, pool, .wcwidth);
     defer eb.deinit();
@@ -646,7 +614,6 @@ test "EditBuffer - getTextRange single CJK character" {
     const pool = gp.initGlobalPool(std.testing.allocator);
     defer gp.deinitGlobalPool();
 
-
     var eb = try EditBuffer.init(std.testing.allocator, pool, .wcwidth);
     defer eb.deinit();
 
@@ -661,7 +628,6 @@ test "EditBuffer - getTextRange single CJK character" {
 test "EditBuffer - getTextRange across lines" {
     const pool = gp.initGlobalPool(std.testing.allocator);
     defer gp.deinitGlobalPool();
-
 
     var eb = try EditBuffer.init(std.testing.allocator, pool, .wcwidth);
     defer eb.deinit();
@@ -678,7 +644,6 @@ test "EditBuffer - getTextRange with tabs" {
     const pool = gp.initGlobalPool(std.testing.allocator);
     defer gp.deinitGlobalPool();
 
-
     var eb = try EditBuffer.init(std.testing.allocator, pool, .wcwidth);
     defer eb.deinit();
 
@@ -693,7 +658,6 @@ test "EditBuffer - getTextRange with tabs" {
 test "EditBuffer - getTextRange partial grapheme snap to start" {
     const pool = gp.initGlobalPool(std.testing.allocator);
     defer gp.deinitGlobalPool();
-
 
     var eb = try EditBuffer.init(std.testing.allocator, pool, .wcwidth);
     defer eb.deinit();
@@ -711,7 +675,6 @@ test "EditBuffer - getTextRange partial grapheme snap to end" {
     const pool = gp.initGlobalPool(std.testing.allocator);
     defer gp.deinitGlobalPool();
 
-
     var eb = try EditBuffer.init(std.testing.allocator, pool, .wcwidth);
     defer eb.deinit();
 
@@ -728,7 +691,6 @@ test "EditBuffer - getTextRange empty range" {
     const pool = gp.initGlobalPool(std.testing.allocator);
     defer gp.deinitGlobalPool();
 
-
     var eb = try EditBuffer.init(std.testing.allocator, pool, .wcwidth);
     defer eb.deinit();
 
@@ -743,7 +705,6 @@ test "EditBuffer - getTextRange out of bounds" {
     const pool = gp.initGlobalPool(std.testing.allocator);
     defer gp.deinitGlobalPool();
 
-
     var eb = try EditBuffer.init(std.testing.allocator, pool, .wcwidth);
     defer eb.deinit();
 
@@ -757,7 +718,6 @@ test "EditBuffer - getTextRange out of bounds" {
 test "EditBuffer - getTextRange mixed scripts" {
     const pool = gp.initGlobalPool(std.testing.allocator);
     defer gp.deinitGlobalPool();
-
 
     var eb = try EditBuffer.init(std.testing.allocator, pool, .wcwidth);
     defer eb.deinit();
@@ -783,7 +743,6 @@ test "EditBuffer - getTextRange before cursor" {
     const pool = gp.initGlobalPool(std.testing.allocator);
     defer gp.deinitGlobalPool();
 
-
     var eb = try EditBuffer.init(std.testing.allocator, pool, .wcwidth);
     defer eb.deinit();
 
@@ -801,7 +760,6 @@ test "EditBuffer - getTextRange before cursor" {
 test "EditBuffer - getTextRange char before cursor" {
     const pool = gp.initGlobalPool(std.testing.allocator);
     defer gp.deinitGlobalPool();
-
 
     var eb = try EditBuffer.init(std.testing.allocator, pool, .wcwidth);
     defer eb.deinit();
@@ -824,7 +782,6 @@ test "EditBuffer - getTextRange emoji before cursor" {
     const pool = gp.initGlobalPool(std.testing.allocator);
     defer gp.deinitGlobalPool();
 
-
     var eb = try EditBuffer.init(std.testing.allocator, pool, .wcwidth);
     defer eb.deinit();
 
@@ -844,7 +801,6 @@ test "EditBuffer - getTextRange multiline with emojis" {
     const pool = gp.initGlobalPool(std.testing.allocator);
     defer gp.deinitGlobalPool();
 
-
     var eb = try EditBuffer.init(std.testing.allocator, pool, .wcwidth);
     defer eb.deinit();
 
@@ -854,4 +810,98 @@ test "EditBuffer - getTextRange multiline with emojis" {
     // Get across all lines
     const len = try eb.getTextRange(0, 100, &buffer);
     try std.testing.expectEqualStrings("Line1 👋\nLine2 🎉\nLine3", buffer[0..len]);
+}
+
+test "EditBuffer - wcwidth mode treats multi-codepoint emoji as separate chars" {
+    const pool = gp.initGlobalPool(std.testing.allocator);
+    defer gp.deinitGlobalPool();
+
+    var eb = try EditBuffer.init(std.testing.allocator, pool, .wcwidth);
+    defer eb.deinit();
+
+    // Hand emoji with skin tone: U+1F44B (waving hand) + U+1F3FB (light skin tone)
+    // In wcwidth mode, these should be treated as 2 separate chars with width 2 each = 4 total
+    // In unicode/no_zwj mode, they would be 1 grapheme with width 2
+    const hand_with_skin_tone = "👋🏻"; // U+1F44B U+1F3FB
+
+    // Family emoji: U+1F468 (man) + U+200D (ZWJ) + U+1F469 (woman) + U+200D + U+1F467 (girl)
+    // In wcwidth mode: each visible codepoint should count separately
+    const family = "👨‍👩‍👧"; // man + ZWJ + woman + ZWJ + girl
+
+    // Girl with laptop: U+1F469 (woman) + U+200D (ZWJ) + U+1F4BB (laptop)
+    const girl_laptop = "👩‍💻"; // woman + ZWJ + laptop
+
+    std.debug.print("\n=== Testing hand with skin tone ===\n", .{});
+    try eb.setText(hand_with_skin_tone, false);
+    try eb.setCursor(0, 0);
+
+    // In wcwidth mode:
+    // - U+1F44B (👋) has width 2
+    // - U+1F3FB (🏻 skin tone) has width 2
+    // Total width should be 4 (not 2 as in grapheme mode)
+    const line_width_hand = iter_mod.lineWidthAt(&eb.tb.rope, 0);
+    std.debug.print("Hand with skin tone line width: {}\n", .{line_width_hand});
+
+    // Move right should go: col 0 -> col 2 (after first codepoint) -> col 4 (after second codepoint)
+    eb.moveRight();
+    var cursor = eb.getPrimaryCursor();
+    std.debug.print("After 1st moveRight: col = {}\n", .{cursor.col});
+
+    eb.moveRight();
+    cursor = eb.getPrimaryCursor();
+    std.debug.print("After 2nd moveRight: col = {}\n", .{cursor.col});
+
+    // Expected behavior for wcwidth mode: treating each codepoint as separate
+    try std.testing.expectEqual(@as(u32, 4), line_width_hand);
+    try eb.setCursor(0, 0);
+    eb.moveRight();
+    cursor = eb.getPrimaryCursor();
+    try std.testing.expectEqual(@as(u32, 2), cursor.col); // After first codepoint (width 2)
+    eb.moveRight();
+    cursor = eb.getPrimaryCursor();
+    try std.testing.expectEqual(@as(u32, 4), cursor.col); // After second codepoint (width 2)
+
+    std.debug.print("\n=== Testing family emoji ===\n", .{});
+    try eb.setText(family, false);
+    const line_width_family = iter_mod.lineWidthAt(&eb.tb.rope, 0);
+    std.debug.print("Family emoji line width: {}\n", .{line_width_family});
+
+    // Family: man (width 2) + ZWJ (width 0) + woman (width 2) + ZWJ (width 0) + girl (width 2)
+    // In wcwidth mode, total should be 6
+    try std.testing.expectEqual(@as(u32, 6), line_width_family);
+
+    try eb.setCursor(0, 0);
+    eb.moveRight(); // Should move to col 2 (after man)
+    cursor = eb.getPrimaryCursor();
+    std.debug.print("After moveRight past man: col = {}\n", .{cursor.col});
+    try std.testing.expectEqual(@as(u32, 2), cursor.col);
+
+    eb.moveRight(); // Should move to col 4 (after woman)
+    cursor = eb.getPrimaryCursor();
+    std.debug.print("After moveRight past woman: col = {}\n", .{cursor.col});
+    try std.testing.expectEqual(@as(u32, 4), cursor.col);
+
+    eb.moveRight(); // Should move to col 6 (after girl)
+    cursor = eb.getPrimaryCursor();
+    std.debug.print("After moveRight past girl: col = {}\n", .{cursor.col});
+    try std.testing.expectEqual(@as(u32, 6), cursor.col);
+
+    std.debug.print("\n=== Testing girl with laptop ===\n", .{});
+    try eb.setText(girl_laptop, false);
+    const line_width_laptop = iter_mod.lineWidthAt(&eb.tb.rope, 0);
+    std.debug.print("Girl with laptop line width: {}\n", .{line_width_laptop});
+
+    // Woman (width 2) + ZWJ (width 0) + laptop (width 2) = 4 in wcwidth mode
+    try std.testing.expectEqual(@as(u32, 4), line_width_laptop);
+
+    try eb.setCursor(0, 0);
+    eb.moveRight(); // Should move to col 2 (after woman)
+    cursor = eb.getPrimaryCursor();
+    std.debug.print("After moveRight past woman: col = {}\n", .{cursor.col});
+    try std.testing.expectEqual(@as(u32, 2), cursor.col);
+
+    eb.moveRight(); // Should move to col 4 (after laptop)
+    cursor = eb.getPrimaryCursor();
+    std.debug.print("After moveRight past laptop: col = {}\n", .{cursor.col});
+    try std.testing.expectEqual(@as(u32, 4), cursor.col);
 }
