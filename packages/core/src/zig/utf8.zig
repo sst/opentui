@@ -1237,9 +1237,31 @@ pub fn getWidthAt(text: []const u8, byte_offset: usize, tab_width: u8, width_met
     var state = GraphemeWidthState.init(first_cp, first_width, width_method);
 
     // In wcwidth mode, treat each codepoint as a separate char for cursor movement
-    // Return width of just the first codepoint
+    // Skip over zero-width characters (like ZWJ) and find the next non-zero-width char
     if (width_method == .wcwidth) {
-        return first_width;
+        if (first_width > 0) {
+            return first_width;
+        }
+
+        // First codepoint is zero-width, skip over it and any following zero-width chars
+        var pos = byte_offset + first_len;
+        while (pos < text.len) {
+            const b = text[pos];
+            const curr_cp: u21 = if (b < 0x80) b else decodeUtf8Unchecked(text, pos).cp;
+            const cp_len: usize = if (b < 0x80) 1 else decodeUtf8Unchecked(text, pos).len;
+
+            if (pos + cp_len > text.len) break;
+
+            const cp_width = charWidth(b, curr_cp, tab_width);
+            if (cp_width > 0) {
+                return cp_width;
+            }
+
+            pos += cp_len;
+        }
+
+        // All remaining codepoints are zero-width, return 0
+        return 0;
     }
 
     var pos = byte_offset + first_len;
@@ -1274,28 +1296,39 @@ pub fn getPrevGraphemeStart(text: []const u8, byte_offset: usize, tab_width: u8,
     if (byte_offset > text.len) return null;
 
     // In wcwidth mode, treat each codepoint as a separate char
+    // Skip over zero-width characters when moving backwards
     if (width_method == .wcwidth) {
-        // Find the start of the previous codepoint
-        var pos: usize = 0;
-        var prev_pos: usize = 0;
+        // Build a list of all codepoint positions
+        var positions = std.BoundedArray(struct { pos: usize, width: u32 }, 256).init(0) catch unreachable;
 
+        var pos: usize = 0;
         while (pos < byte_offset) {
-            prev_pos = pos;
             const b = text[pos];
+            const curr_cp: u21 = if (b < 0x80) b else blk: {
+                const dec = decodeUtf8Unchecked(text, pos);
+                if (pos + dec.len > text.len) break :blk 0xFFFD;
+                break :blk dec.cp;
+            };
             const cp_len: usize = if (b < 0x80) 1 else decodeUtf8Unchecked(text, pos).len;
+            const cp_width = charWidth(b, curr_cp, tab_width);
+
+            positions.appendAssumeCapacity(.{ .pos = pos, .width = cp_width });
             pos += cp_len;
         }
 
-        // prev_pos now points to the start of the last codepoint before byte_offset
-        if (prev_pos == 0 and byte_offset == 0) {
-            return null;
+        // Find the last non-zero-width codepoint before byte_offset
+        var i: isize = @as(isize, @intCast(positions.len)) - 1;
+        while (i >= 0) : (i -= 1) {
+            const idx = @as(usize, @intCast(i));
+            if (positions.get(idx).width > 0) {
+                return .{
+                    .start_offset = positions.get(idx).pos,
+                    .width = positions.get(idx).width,
+                };
+            }
         }
 
-        const width = getWidthAt(text, prev_pos, tab_width, width_method);
-        return .{
-            .start_offset = prev_pos,
-            .width = width,
-        };
+        return null;
     }
 
     // For unicode/no_zwj modes, use grapheme cluster detection

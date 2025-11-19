@@ -905,3 +905,281 @@ test "EditBuffer - wcwidth mode treats multi-codepoint emoji as separate chars" 
     std.debug.print("After moveRight past laptop: col = {}\n", .{cursor.col});
     try std.testing.expectEqual(@as(u32, 4), cursor.col);
 }
+
+test "EditBuffer - wcwidth comprehensive emoji cursor movement and backspace" {
+    const pool = gp.initGlobalPool(std.testing.allocator);
+    defer gp.deinitGlobalPool();
+
+    var eb = try EditBuffer.init(std.testing.allocator, pool, .wcwidth);
+    defer eb.deinit();
+
+    // Test string with various emoji types
+    // "👩🏽‍💻  👨‍👩‍👧‍👦  🏳️‍🌈  🇺🇸  🇩🇪  🇯🇵  🇮🇳"
+    const woman_tech = "👩🏽‍💻"; // Woman + skin tone + ZWJ + laptop = 2+2+0+2 = 6
+    const family = "👨‍👩‍👧‍👦"; // Man + ZWJ + Woman + ZWJ + Girl + ZWJ + Boy = 2+0+2+0+2+0+2 = 8
+    const rainbow_flag = "🏳️‍🌈"; // Flag + VS16 + ZWJ + Rainbow = 1+0+0+2 = 3 (white flag is width 1 in wcwidth)
+    const us_flag = "🇺🇸"; // Regional indicators = 1+1 = 2
+    _ = "🇩🇪"; // German flag (unused but documented)
+    _ = "🇯🇵"; // Japanese flag (unused but documented)
+    _ = "🇮🇳"; // Indian flag (unused but documented)
+
+    std.debug.print("\n=== Testing woman technologist with skin tone ===\n", .{});
+    try eb.setText(woman_tech, false);
+    const width1 = iter_mod.lineWidthAt(&eb.tb.rope, 0);
+    std.debug.print("Width: {} (expected 6)\n", .{width1});
+    try std.testing.expectEqual(@as(u32, 6), width1);
+
+    // Test moving right through all codepoints
+    try eb.setCursor(0, 0);
+    eb.moveRight(); // Past woman (width 2)
+    var cursor = eb.getPrimaryCursor();
+    std.debug.print("After woman: col={}\n", .{cursor.col});
+    try std.testing.expectEqual(@as(u32, 2), cursor.col);
+
+    eb.moveRight(); // Past skin tone (width 2)
+    cursor = eb.getPrimaryCursor();
+    std.debug.print("After skin tone: col={}\n", .{cursor.col});
+    try std.testing.expectEqual(@as(u32, 4), cursor.col);
+
+    eb.moveRight(); // Past ZWJ - since ZWJ has width 0, we skip it and move to laptop
+    cursor = eb.getPrimaryCursor();
+    std.debug.print("After ZWJ (skipped to laptop): col={}\n", .{cursor.col});
+    // ZWJ is zero-width and should be skipped - cursor jumps directly to laptop
+    try std.testing.expectEqual(@as(u32, 6), cursor.col);
+
+    // Test moving back left
+    eb.moveLeft(); // Back before laptop, skip ZWJ, land at skin tone
+    cursor = eb.getPrimaryCursor();
+    std.debug.print("Move left from 6 (skip ZWJ): col={}\n", .{cursor.col});
+    try std.testing.expectEqual(@as(u32, 4), cursor.col); // Skipped ZWJ, at skin tone
+
+    eb.moveLeft(); // Back before skin tone
+    cursor = eb.getPrimaryCursor();
+    std.debug.print("Move left from 4: col={}\n", .{cursor.col});
+    try std.testing.expectEqual(@as(u32, 2), cursor.col);
+
+    eb.moveLeft(); // Back to start
+    cursor = eb.getPrimaryCursor();
+    std.debug.print("Move left from 2: col={}\n", .{cursor.col});
+    try std.testing.expectEqual(@as(u32, 0), cursor.col);
+
+    // Test backspace from end
+    std.debug.print("\n=== Testing backspace ===\n", .{});
+    try eb.setCursor(0, 6); // At end
+
+    // Get initial text
+    var buf: [100]u8 = undefined;
+    var len = eb.getText(&buf);
+    std.debug.print("Initial text: {s} (len={})\n", .{ buf[0..len], len });
+    try std.testing.expectEqualStrings(woman_tech, buf[0..len]);
+
+    // Backspace from col 6 should delete laptop and move to col 4
+    try eb.backspace();
+    cursor = eb.getPrimaryCursor();
+    std.debug.print("After backspace 1 (laptop): col={}\n", .{cursor.col});
+    try std.testing.expectEqual(@as(u32, 4), cursor.col);
+
+    len = eb.getText(&buf);
+    std.debug.print("After backspace 1: {s} (len={})\n", .{ buf[0..len], len });
+
+    // Backspace from col 4: getPrevGraphemeWidth skips ZWJ and returns skin tone width (2)
+    // So we delete from col 2 to col 4, which removes both ZWJ and skin tone
+    // Cursor moves to col 2
+    try eb.backspace();
+    cursor = eb.getPrimaryCursor();
+    std.debug.print("After backspace 2 (ZWJ+skin deleted, cursor skipped ZWJ): col={}\n", .{cursor.col});
+    try std.testing.expectEqual(@as(u32, 2), cursor.col);
+
+    len = eb.getText(&buf);
+    std.debug.print("After backspace 2: {s} (len={})\n", .{ buf[0..len], len });
+
+    // Backspace from col 2 should delete woman and move to col 0
+    try eb.backspace();
+    cursor = eb.getPrimaryCursor();
+    std.debug.print("After backspace 3 (woman): col={}\n", .{cursor.col});
+    try std.testing.expectEqual(@as(u32, 0), cursor.col);
+
+    len = eb.getText(&buf);
+    std.debug.print("After all backspaces: len={}\n", .{len});
+    try std.testing.expectEqual(@as(usize, 0), len);
+
+    std.debug.print("\n=== Testing family emoji ===\n", .{});
+    try eb.setText(family, false);
+    const width2 = iter_mod.lineWidthAt(&eb.tb.rope, 0);
+    std.debug.print("Width: {} (expected 8)\n", .{width2});
+    try std.testing.expectEqual(@as(u32, 8), width2);
+
+    // Move through all visible codepoints (ZWJs are automatically skipped)
+    try eb.setCursor(0, 0);
+    eb.moveRight(); // Man (skips following ZWJ)
+    cursor = eb.getPrimaryCursor();
+    try std.testing.expectEqual(@as(u32, 2), cursor.col);
+
+    eb.moveRight(); // Woman (skips preceding and following ZWJ)
+    cursor = eb.getPrimaryCursor();
+    try std.testing.expectEqual(@as(u32, 4), cursor.col);
+
+    eb.moveRight(); // Girl (skips preceding and following ZWJ)
+    cursor = eb.getPrimaryCursor();
+    try std.testing.expectEqual(@as(u32, 6), cursor.col);
+
+    eb.moveRight(); // Boy (skips preceding ZWJ)
+    cursor = eb.getPrimaryCursor();
+    try std.testing.expectEqual(@as(u32, 8), cursor.col);
+
+    // Move back (ZWJs are skipped)
+    eb.moveLeft(); // Back to Girl
+    cursor = eb.getPrimaryCursor();
+    try std.testing.expectEqual(@as(u32, 6), cursor.col);
+
+    eb.moveLeft(); // Back to Woman
+    cursor = eb.getPrimaryCursor();
+    try std.testing.expectEqual(@as(u32, 4), cursor.col);
+
+    eb.moveLeft(); // Back to Man
+    cursor = eb.getPrimaryCursor();
+    try std.testing.expectEqual(@as(u32, 2), cursor.col);
+
+    std.debug.print("\n=== Testing rainbow flag ===\n", .{});
+    try eb.setText(rainbow_flag, false);
+    const width3 = iter_mod.lineWidthAt(&eb.tb.rope, 0);
+    std.debug.print("Width: {} (expected 3)\n", .{width3});
+    try std.testing.expectEqual(@as(u32, 3), width3);
+
+    try eb.setCursor(0, 0);
+    eb.moveRight(); // White flag (width 1, skips VS16 and ZWJ)
+    cursor = eb.getPrimaryCursor();
+    try std.testing.expectEqual(@as(u32, 1), cursor.col);
+
+    eb.moveRight(); // Rainbow (width 2, VS16 and ZWJ were skipped)
+    cursor = eb.getPrimaryCursor();
+    try std.testing.expectEqual(@as(u32, 3), cursor.col);
+
+    std.debug.print("\n=== Testing regional indicator flags ===\n", .{});
+    try eb.setText(us_flag, false);
+    const width4 = iter_mod.lineWidthAt(&eb.tb.rope, 0);
+    std.debug.print("US flag width: {} (expected 2)\n", .{width4});
+    try std.testing.expectEqual(@as(u32, 2), width4);
+
+    try eb.setCursor(0, 0);
+    eb.moveRight(); // First regional indicator
+    cursor = eb.getPrimaryCursor();
+    try std.testing.expectEqual(@as(u32, 1), cursor.col);
+
+    eb.moveRight(); // Second regional indicator
+    cursor = eb.getPrimaryCursor();
+    try std.testing.expectEqual(@as(u32, 2), cursor.col);
+
+    // Move back
+    eb.moveLeft();
+    cursor = eb.getPrimaryCursor();
+    try std.testing.expectEqual(@as(u32, 1), cursor.col);
+
+    eb.moveLeft();
+    cursor = eb.getPrimaryCursor();
+    try std.testing.expectEqual(@as(u32, 0), cursor.col);
+
+    std.debug.print("\n=== Testing mixed text with all emoji types ===\n", .{});
+    const mixed_text = "A 👩🏽‍💻 B 👨‍👩‍👧‍👦 C";
+    try eb.setText(mixed_text, false);
+    const mixed_width = iter_mod.lineWidthAt(&eb.tb.rope, 0);
+    std.debug.print("Mixed text width: {}\n", .{mixed_width});
+    // A(1) + space(1) + woman_tech(6) + space(1) + B(1) + space(1) + family(8) + space(1) + C(1) = 21
+    try std.testing.expectEqual(@as(u32, 21), mixed_width);
+
+    // Navigate through the mixed text
+    try eb.setCursor(0, 0);
+
+    // Move to 'A'
+    eb.moveRight();
+    cursor = eb.getPrimaryCursor();
+    try std.testing.expectEqual(@as(u32, 1), cursor.col);
+
+    // Move past space
+    eb.moveRight();
+    cursor = eb.getPrimaryCursor();
+    try std.testing.expectEqual(@as(u32, 2), cursor.col);
+
+    // Move through woman technologist (ZWJs are skipped)
+    eb.moveRight(); // woman
+    cursor = eb.getPrimaryCursor();
+    try std.testing.expectEqual(@as(u32, 4), cursor.col);
+
+    eb.moveRight(); // skin tone
+    cursor = eb.getPrimaryCursor();
+    try std.testing.expectEqual(@as(u32, 6), cursor.col);
+
+    eb.moveRight(); // laptop (ZWJ is skipped)
+    cursor = eb.getPrimaryCursor();
+    try std.testing.expectEqual(@as(u32, 8), cursor.col);
+
+    // Should be at space after woman_tech
+    eb.moveRight();
+    cursor = eb.getPrimaryCursor();
+    try std.testing.expectEqual(@as(u32, 9), cursor.col);
+
+    std.debug.print("Test passed!\n", .{});
+}
+
+test "EditBuffer - wcwidth ZWJ does not appear in rendered text" {
+    const pool = gp.initGlobalPool(std.testing.allocator);
+    defer gp.deinitGlobalPool();
+
+    var eb = try EditBuffer.init(std.testing.allocator, pool, .wcwidth);
+    defer eb.deinit();
+
+    std.debug.print("\n=== Testing that ZWJ bytes are in buffer but cursor skips them ===\n", .{});
+
+    const woman_tech = "👩🏽‍💻"; // Contains ZWJ at byte position
+    try eb.setText(woman_tech, false);
+
+    // Get the raw bytes - ZWJ should be present in the buffer
+    var buf: [100]u8 = undefined;
+    const len = eb.getText(&buf);
+    const text_bytes = buf[0..len];
+
+    std.debug.print("Text bytes length: {}\n", .{len});
+    std.debug.print("Text bytes: ", .{});
+    for (text_bytes) |byte| {
+        std.debug.print("{X:0>2} ", .{byte});
+    }
+    std.debug.print("\n", .{});
+
+    // Check that ZWJ (U+200D = 0xE2 0x80 0x8D in UTF-8) is present in bytes
+    var has_zwj = false;
+    var i: usize = 0;
+    while (i + 2 < len) : (i += 1) {
+        if (text_bytes[i] == 0xE2 and text_bytes[i + 1] == 0x80 and text_bytes[i + 2] == 0x8D) {
+            has_zwj = true;
+            std.debug.print("Found ZWJ at byte offset {}\n", .{i});
+            break;
+        }
+    }
+    try std.testing.expect(has_zwj);
+
+    // Verify that the full text is preserved byte-for-byte
+    try std.testing.expectEqualStrings(woman_tech, text_bytes);
+
+    // But cursor movement should skip over ZWJ
+    try eb.setCursor(0, 0);
+    const line_width = iter_mod.lineWidthAt(&eb.tb.rope, 0);
+    std.debug.print("Line width: {} (ZWJ is width 0)\n", .{line_width});
+    try std.testing.expectEqual(@as(u32, 6), line_width); // 2+2+0+2
+
+    // Moving through: cursor positions should be 0, 2, 4, 6
+    // ZWJ is skipped automatically
+    try eb.setCursor(0, 0);
+    eb.moveRight(); // Woman
+    var cursor = eb.getPrimaryCursor();
+    try std.testing.expectEqual(@as(u32, 2), cursor.col);
+
+    eb.moveRight(); // Skin tone
+    cursor = eb.getPrimaryCursor();
+    try std.testing.expectEqual(@as(u32, 4), cursor.col);
+
+    eb.moveRight(); // Laptop (ZWJ is skipped)
+    cursor = eb.getPrimaryCursor();
+    try std.testing.expectEqual(@as(u32, 6), cursor.col);
+
+    std.debug.print("ZWJ is present in bytes but cursor correctly skips over it\n", .{});
+}
