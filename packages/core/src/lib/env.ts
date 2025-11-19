@@ -142,9 +142,9 @@ export function generateEnvMarkdown(): string {
 
     if (config.default !== undefined) {
       const defaultValue = typeof config.default === "string" ? `"${config.default}"` : String(config.default)
-      markdown += `**Default:** \`${defaultValue}\`  \n`
+      markdown += `**Default:** \`${defaultValue}\`\n`
     } else {
-      markdown += "**Default:** *Required*  \n"
+      markdown += "**Default:** *Required*\n"
     }
 
     markdown += "\n"

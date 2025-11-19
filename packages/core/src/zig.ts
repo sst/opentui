@@ -39,6 +39,20 @@ registerEnvVar({
   default: false,
 })
 
+// Env vars used in terminal.zig
+registerEnvVar({
+  name: "OPENTUI_FORCE_WCWIDTH",
+  description: "Use wcwidth for character width calculations",
+  type: "boolean",
+  default: false,
+})
+registerEnvVar({
+  name: "OPENTUI_FORCE_UNICODE",
+  description: "Force Mode 2026 Unicode support in terminal capabilities",
+  type: "boolean",
+  default: false,
+})
+
 function getOpenTUILib(libPath?: string) {
   const resolvedLibPath = libPath || targetLibPath
 

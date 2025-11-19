@@ -99,9 +99,13 @@ test "parseXtversion - terminal name only" {
 
 test "parseXtversion - empty response" {
     var term = Terminal.init(.{});
+
+    const initial_name_len = term.term_info.name_len;
+    const initial_version_len = term.term_info.version_len;
+
     const response = "\x1bP>|\x1b\\";
     term.processCapabilityResponse(response);
 
-    try testing.expectEqualStrings("", term.getTerminalName());
-    try testing.expectEqualStrings("", term.getTerminalVersion());
+    try testing.expectEqual(initial_name_len, term.term_info.name_len);
+    try testing.expectEqual(initial_version_len, term.term_info.version_len);
 }
