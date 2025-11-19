@@ -2278,8 +2278,6 @@ test "drawTextBuffer - wcwidth mode does not render ZWJ or VS16 as characters" {
     const test_string = "👩🏽‍💻  👨‍👩‍👧‍👦  🏳️‍🌈  🇺🇸  🇩🇪  🇯🇵  🇮🇳";
     try tb.setText(test_string);
 
-    std.debug.print("\n=== Testing ZWJ rendering in wcwidth mode ===\n", .{});
-
     var opt_buffer = try OptimizedBuffer.init(
         std.testing.allocator,
         50,
@@ -2296,8 +2294,6 @@ test "drawTextBuffer - wcwidth mode does not render ZWJ or VS16 as characters" {
     const text_len = tb.getPlainTextIntoBuffer(&text_buf);
     const text_bytes = text_buf[0..text_len];
 
-    std.debug.print("Original text byte length: {}\n", .{text_len});
-
     // Check that ZWJ (0xE2 0x80 0x8D) is in the original text
     var has_zwj = false;
     var zwj_count: u32 = 0;
@@ -2306,20 +2302,15 @@ test "drawTextBuffer - wcwidth mode does not render ZWJ or VS16 as characters" {
         if (text_bytes[i] == 0xE2 and text_bytes[i + 1] == 0x80 and text_bytes[i + 2] == 0x8D) {
             has_zwj = true;
             zwj_count += 1;
-            std.debug.print("Found ZWJ at byte offset {}\n", .{i});
         }
     }
-    std.debug.print("Total ZWJs found in text: {}\n", .{zwj_count});
     try std.testing.expect(has_zwj);
     try std.testing.expect(zwj_count >= 5); // Should have multiple ZWJs
 
     // Now check the rendered buffer - ZWJ should NOT appear as rendered characters
     var render_buf: [500]u8 = undefined;
     const render_len = try opt_buffer.writeResolvedChars(&render_buf, false);
-    const render_bytes = render_buf[0..render_len];
-
-    std.debug.print("Rendered text byte length: {}\n", .{render_len});
-    std.debug.print("Rendered text: {s}\n", .{render_bytes});
+    _ = render_len;
 
     // Check positions where we expect actual characters
     // Woman technologist: 👩🏽‍💻
@@ -2331,17 +2322,11 @@ test "drawTextBuffer - wcwidth mode does not render ZWJ or VS16 as characters" {
     // Col 6-7: spaces
 
     const cell_0 = opt_buffer.get(0, 0) orelse unreachable;
-    std.debug.print("Cell 0: U+{X:0>4} (should be woman emoji start)\n", .{cell_0.char});
     try std.testing.expect(gp.isGraphemeChar(cell_0.char));
 
     // Get the actual bytes for this grapheme
     const gid_0 = gp.graphemeIdFromChar(cell_0.char);
     const grapheme_bytes_0 = pool.get(gid_0) catch unreachable;
-    std.debug.print("Cell 0 grapheme bytes: ", .{});
-    for (grapheme_bytes_0) |b| {
-        std.debug.print("{X:0>2} ", .{b});
-    }
-    std.debug.print("\n", .{});
 
     // Woman emoji should be F0 9F 91 A9 (4 bytes)
     try std.testing.expectEqual(@as(usize, 4), grapheme_bytes_0.len);
@@ -2351,20 +2336,13 @@ test "drawTextBuffer - wcwidth mode does not render ZWJ or VS16 as characters" {
     try std.testing.expectEqual(@as(u8, 0xA9), grapheme_bytes_0[3]);
 
     const cell_1 = opt_buffer.get(1, 0) orelse unreachable;
-    std.debug.print("Cell 1: continuation={}\n", .{gp.isContinuationChar(cell_1.char)});
     try std.testing.expect(gp.isContinuationChar(cell_1.char));
 
     const cell_2 = opt_buffer.get(2, 0) orelse unreachable;
-    std.debug.print("Cell 2: U+{X:0>4} (should be skin tone emoji start)\n", .{cell_2.char});
     try std.testing.expect(gp.isGraphemeChar(cell_2.char));
 
     const gid_2 = gp.graphemeIdFromChar(cell_2.char);
     const grapheme_bytes_2 = pool.get(gid_2) catch unreachable;
-    std.debug.print("Cell 2 grapheme bytes: ", .{});
-    for (grapheme_bytes_2) |b| {
-        std.debug.print("{X:0>2} ", .{b});
-    }
-    std.debug.print("\n", .{});
 
     // Skin tone should be F0 9F 8F BD (4 bytes) - NO ZWJ
     try std.testing.expectEqual(@as(usize, 4), grapheme_bytes_2.len);
@@ -2374,21 +2352,14 @@ test "drawTextBuffer - wcwidth mode does not render ZWJ or VS16 as characters" {
     try std.testing.expectEqual(@as(u8, 0xBD), grapheme_bytes_2[3]);
 
     const cell_3 = opt_buffer.get(3, 0) orelse unreachable;
-    std.debug.print("Cell 3: continuation={}\n", .{gp.isContinuationChar(cell_3.char)});
     try std.testing.expect(gp.isContinuationChar(cell_3.char));
 
     // Col 4 should be laptop emoji (ZWJ was NOT rendered)
     const cell_4 = opt_buffer.get(4, 0) orelse unreachable;
-    std.debug.print("Cell 4: U+{X:0>4} (should be laptop emoji start)\n", .{cell_4.char});
     try std.testing.expect(gp.isGraphemeChar(cell_4.char));
 
     const gid_4 = gp.graphemeIdFromChar(cell_4.char);
     const grapheme_bytes_4 = pool.get(gid_4) catch unreachable;
-    std.debug.print("Cell 4 grapheme bytes: ", .{});
-    for (grapheme_bytes_4) |b| {
-        std.debug.print("{X:0>2} ", .{b});
-    }
-    std.debug.print("\n", .{});
 
     // Laptop should be F0 9F 92 BB (4 bytes) - NO ZWJ
     try std.testing.expectEqual(@as(usize, 4), grapheme_bytes_4.len);
@@ -2409,12 +2380,6 @@ test "drawTextBuffer - wcwidth mode does not render ZWJ or VS16 as characters" {
                 var j: usize = 0;
                 while (j + 2 < grapheme_bytes.len) : (j += 1) {
                     if (grapheme_bytes[j] == 0xE2 and grapheme_bytes[j + 1] == 0x80 and grapheme_bytes[j + 2] == 0x8D) {
-                        std.debug.print("ERROR: Found ZWJ in rendered grapheme at cell {}!\n", .{cell_idx});
-                        std.debug.print("Grapheme bytes: ", .{});
-                        for (grapheme_bytes) |b| {
-                            std.debug.print("{X:0>2} ", .{b});
-                        }
-                        std.debug.print("\n", .{});
                         return error.TestFailed;
                     }
                 }
@@ -2423,16 +2388,12 @@ test "drawTextBuffer - wcwidth mode does not render ZWJ or VS16 as characters" {
                 j = 0;
                 while (j + 2 < grapheme_bytes.len) : (j += 1) {
                     if (grapheme_bytes[j] == 0xEF and grapheme_bytes[j + 1] == 0xB8 and grapheme_bytes[j + 2] == 0x8F) {
-                        std.debug.print("ERROR: Found VS16 in rendered grapheme at cell {}!\n", .{cell_idx});
                         return error.TestFailed;
                     }
                 }
             }
         }
     }
-
-    std.debug.print("✓ No ZWJ or VS16 found in any rendered graphemes\n", .{});
-    std.debug.print("✓ ZWJs and VS16 are correctly filtered from rendering\n", .{});
 }
 
 test "drawTextBuffer - wcwidth cursor movement matches rendered output" {
@@ -2448,9 +2409,6 @@ test "drawTextBuffer - wcwidth cursor movement matches rendered output" {
     // Use the exact text from user's request
     const test_text = "👩🏽‍💻  👨‍👩‍👧‍👦";
     try eb.setText(test_text, false);
-
-    std.debug.print("\n=== Testing cursor movement matches rendered cells ===\n", .{});
-    std.debug.print("Test text: {s}\n", .{test_text});
 
     // Create a text buffer view and render it
     const tb = eb.getTextBuffer();
@@ -2471,9 +2429,7 @@ test "drawTextBuffer - wcwidth cursor movement matches rendered output" {
     // Get what was actually rendered
     var render_buf: [200]u8 = undefined;
     const render_len = try opt_buffer.writeResolvedChars(&render_buf, false);
-    const render_text = render_buf[0..render_len];
-    std.debug.print("Rendered: {s}\n", .{render_text});
-    std.debug.print("Rendered length: {} bytes\n", .{render_len});
+    _ = render_len;
 
     // Expected rendering in wcwidth mode:
     // Col 0-1: 👩 (woman, width 2)
@@ -2487,14 +2443,12 @@ test "drawTextBuffer - wcwidth cursor movement matches rendered output" {
     // Col 14-15: 👦 (boy, width 2) - ZWJ filtered out
 
     // Verify rendered cells match expectations
-    std.debug.print("\n--- Verifying rendered cells ---\n", .{});
 
     // Col 0: Woman emoji start
     const cell_0 = opt_buffer.get(0, 0) orelse unreachable;
     try std.testing.expect(gp.isGraphemeChar(cell_0.char));
     const gid_0 = gp.graphemeIdFromChar(cell_0.char);
     const bytes_0 = pool.get(gid_0) catch unreachable;
-    std.debug.print("Col 0: Woman emoji, bytes={any}\n", .{bytes_0});
     try std.testing.expectEqualSlices(u8, &[_]u8{ 0xF0, 0x9F, 0x91, 0xA9 }, bytes_0);
 
     // Col 1: Woman continuation
@@ -2506,7 +2460,6 @@ test "drawTextBuffer - wcwidth cursor movement matches rendered output" {
     try std.testing.expect(gp.isGraphemeChar(cell_2.char));
     const gid_2 = gp.graphemeIdFromChar(cell_2.char);
     const bytes_2 = pool.get(gid_2) catch unreachable;
-    std.debug.print("Col 2: Skin tone emoji, bytes={any}\n", .{bytes_2});
     try std.testing.expectEqualSlices(u8, &[_]u8{ 0xF0, 0x9F, 0x8F, 0xBD }, bytes_2);
 
     // Col 3: Skin continuation
@@ -2518,7 +2471,6 @@ test "drawTextBuffer - wcwidth cursor movement matches rendered output" {
     try std.testing.expect(gp.isGraphemeChar(cell_4.char));
     const gid_4 = gp.graphemeIdFromChar(cell_4.char);
     const bytes_4 = pool.get(gid_4) catch unreachable;
-    std.debug.print("Col 4: Laptop emoji, bytes={any}\n", .{bytes_4});
     try std.testing.expectEqualSlices(u8, &[_]u8{ 0xF0, 0x9F, 0x92, 0xBB }, bytes_4);
 
     // Col 5: Laptop continuation
@@ -2536,7 +2488,6 @@ test "drawTextBuffer - wcwidth cursor movement matches rendered output" {
     try std.testing.expect(gp.isGraphemeChar(cell_8.char));
     const gid_8 = gp.graphemeIdFromChar(cell_8.char);
     const bytes_8 = pool.get(gid_8) catch unreachable;
-    std.debug.print("Col 8: Man emoji, bytes={any}\n", .{bytes_8});
     try std.testing.expectEqualSlices(u8, &[_]u8{ 0xF0, 0x9F, 0x91, 0xA8 }, bytes_8);
 
     // Col 10: Woman emoji start (ZWJ filtered)
@@ -2544,7 +2495,6 @@ test "drawTextBuffer - wcwidth cursor movement matches rendered output" {
     try std.testing.expect(gp.isGraphemeChar(cell_10.char));
     const gid_10 = gp.graphemeIdFromChar(cell_10.char);
     const bytes_10 = pool.get(gid_10) catch unreachable;
-    std.debug.print("Col 10: Woman emoji, bytes={any}\n", .{bytes_10});
     try std.testing.expectEqualSlices(u8, &[_]u8{ 0xF0, 0x9F, 0x91, 0xA9 }, bytes_10);
 
     // Col 12: Girl emoji start (ZWJ filtered)
@@ -2552,7 +2502,6 @@ test "drawTextBuffer - wcwidth cursor movement matches rendered output" {
     try std.testing.expect(gp.isGraphemeChar(cell_12.char));
     const gid_12 = gp.graphemeIdFromChar(cell_12.char);
     const bytes_12 = pool.get(gid_12) catch unreachable;
-    std.debug.print("Col 12: Girl emoji, bytes={any}\n", .{bytes_12});
     try std.testing.expectEqualSlices(u8, &[_]u8{ 0xF0, 0x9F, 0x91, 0xA7 }, bytes_12);
 
     // Col 14: Boy emoji start (ZWJ filtered)
@@ -2560,136 +2509,106 @@ test "drawTextBuffer - wcwidth cursor movement matches rendered output" {
     try std.testing.expect(gp.isGraphemeChar(cell_14.char));
     const gid_14 = gp.graphemeIdFromChar(cell_14.char);
     const bytes_14 = pool.get(gid_14) catch unreachable;
-    std.debug.print("Col 14: Boy emoji, bytes={any}\n", .{bytes_14});
     try std.testing.expectEqualSlices(u8, &[_]u8{ 0xF0, 0x9F, 0x91, 0xA6 }, bytes_14);
-
-    std.debug.print("\n--- Testing cursor movement through rendered cells ---\n", .{});
 
     // Now test that cursor movement matches the rendered cells
     try eb.setCursor(0, 0);
     var cursor = eb.getPrimaryCursor();
-    std.debug.print("Start: col={}\n", .{cursor.col});
     try std.testing.expectEqual(@as(u32, 0), cursor.col);
 
     // Move through woman technologist
     eb.moveRight(); // Woman at col 0-1
     cursor = eb.getPrimaryCursor();
-    std.debug.print("After woman: col={} (rendered at cells 0-1)\n", .{cursor.col});
     try std.testing.expectEqual(@as(u32, 2), cursor.col);
 
     eb.moveRight(); // Skin at col 2-3
     cursor = eb.getPrimaryCursor();
-    std.debug.print("After skin: col={} (rendered at cells 2-3)\n", .{cursor.col});
     try std.testing.expectEqual(@as(u32, 4), cursor.col);
 
     eb.moveRight(); // Laptop at col 4-5 (ZWJ skipped)
     cursor = eb.getPrimaryCursor();
-    std.debug.print("After laptop: col={} (rendered at cells 4-5)\n", .{cursor.col});
     try std.testing.expectEqual(@as(u32, 6), cursor.col);
 
     eb.moveRight(); // First space at col 6
     cursor = eb.getPrimaryCursor();
-    std.debug.print("After space 1: col={} (rendered at cell 6)\n", .{cursor.col});
     try std.testing.expectEqual(@as(u32, 7), cursor.col);
 
     eb.moveRight(); // Second space at col 7
     cursor = eb.getPrimaryCursor();
-    std.debug.print("After space 2: col={} (rendered at cell 7)\n", .{cursor.col});
     try std.testing.expectEqual(@as(u32, 8), cursor.col);
 
     // Move through family emoji
     eb.moveRight(); // Man at col 8-9
     cursor = eb.getPrimaryCursor();
-    std.debug.print("After man: col={} (rendered at cells 8-9)\n", .{cursor.col});
     try std.testing.expectEqual(@as(u32, 10), cursor.col);
 
     eb.moveRight(); // Woman at col 10-11 (ZWJ skipped)
     cursor = eb.getPrimaryCursor();
-    std.debug.print("After woman: col={} (rendered at cells 10-11)\n", .{cursor.col});
     try std.testing.expectEqual(@as(u32, 12), cursor.col);
 
     eb.moveRight(); // Girl at col 12-13 (ZWJ skipped)
     cursor = eb.getPrimaryCursor();
-    std.debug.print("After girl: col={} (rendered at cells 12-13)\n", .{cursor.col});
     try std.testing.expectEqual(@as(u32, 14), cursor.col);
 
     eb.moveRight(); // Boy at col 14-15 (ZWJ skipped)
     cursor = eb.getPrimaryCursor();
-    std.debug.print("After boy: col={} (rendered at cells 14-15)\n", .{cursor.col});
     try std.testing.expectEqual(@as(u32, 16), cursor.col);
-
-    std.debug.print("\n--- Testing cursor movement backwards ---\n", .{});
 
     // Move back through the same cells
     eb.moveLeft(); // Back to col 14 (before boy)
     cursor = eb.getPrimaryCursor();
-    std.debug.print("Move left to before boy: col={}\n", .{cursor.col});
     try std.testing.expectEqual(@as(u32, 14), cursor.col);
 
     eb.moveLeft(); // Back to col 12 (before girl, ZWJ skipped)
     cursor = eb.getPrimaryCursor();
-    std.debug.print("Move left to before girl: col={}\n", .{cursor.col});
     try std.testing.expectEqual(@as(u32, 12), cursor.col);
 
     eb.moveLeft(); // Back to col 10 (before woman, ZWJ skipped)
     cursor = eb.getPrimaryCursor();
-    std.debug.print("Move left to before woman: col={}\n", .{cursor.col});
     try std.testing.expectEqual(@as(u32, 10), cursor.col);
 
     eb.moveLeft(); // Back to col 8 (before man, ZWJ skipped)
     cursor = eb.getPrimaryCursor();
-    std.debug.print("Move left to before man: col={}\n", .{cursor.col});
     try std.testing.expectEqual(@as(u32, 8), cursor.col);
 
     eb.moveLeft(); // Back to col 7 (space 2)
     cursor = eb.getPrimaryCursor();
-    std.debug.print("Move left to space 2: col={}\n", .{cursor.col});
     try std.testing.expectEqual(@as(u32, 7), cursor.col);
 
     eb.moveLeft(); // Back to col 6 (space 1)
     cursor = eb.getPrimaryCursor();
-    std.debug.print("Move left to space 1: col={}\n", .{cursor.col});
     try std.testing.expectEqual(@as(u32, 6), cursor.col);
 
     eb.moveLeft(); // Back to col 4 (before laptop, ZWJ skipped)
     cursor = eb.getPrimaryCursor();
-    std.debug.print("Move left to before laptop: col={}\n", .{cursor.col});
     try std.testing.expectEqual(@as(u32, 4), cursor.col);
 
     eb.moveLeft(); // Back to col 2 (before skin)
     cursor = eb.getPrimaryCursor();
-    std.debug.print("Move left to before skin: col={}\n", .{cursor.col});
     try std.testing.expectEqual(@as(u32, 2), cursor.col);
 
     eb.moveLeft(); // Back to col 0 (before woman)
     cursor = eb.getPrimaryCursor();
-    std.debug.print("Move left to start: col={}\n", .{cursor.col});
     try std.testing.expectEqual(@as(u32, 0), cursor.col);
-
-    std.debug.print("\n--- Testing backspace deletes rendered characters ---\n", .{});
 
     // Move to end and backspace through everything
     try eb.setCursor(0, 16); // At the end
     cursor = eb.getPrimaryCursor();
-    std.debug.print("Cursor at end: col={}\n", .{cursor.col});
 
     // Get initial rendered state
     try opt_buffer.clear(.{ 0.0, 0.0, 0.0, 1.0 }, 32);
     try opt_buffer.drawTextBuffer(view, 0, 0);
     var buf: [200]u8 = undefined;
     var buf_len = try opt_buffer.writeResolvedChars(&buf, false);
-    std.debug.print("Before backspace: {s}\n", .{buf[0..buf_len]});
 
     // Backspace boy (col 14-15)
     try eb.backspace();
     cursor = eb.getPrimaryCursor();
-    std.debug.print("After backspace boy: col={}\n", .{cursor.col});
     try std.testing.expectEqual(@as(u32, 14), cursor.col);
 
     try opt_buffer.clear(.{ 0.0, 0.0, 0.0, 1.0 }, 32);
     try opt_buffer.drawTextBuffer(view, 0, 0);
     buf_len = try opt_buffer.writeResolvedChars(&buf, false);
-    std.debug.print("After deleting boy: {s}\n", .{buf[0..buf_len]});
 
     // Verify boy is gone but girl is still there
     const cell_14_after = opt_buffer.get(14, 0) orelse unreachable;
@@ -2700,30 +2619,25 @@ test "drawTextBuffer - wcwidth cursor movement matches rendered output" {
     // Backspace girl (col 12-13), ZWJ auto-deleted
     try eb.backspace();
     cursor = eb.getPrimaryCursor();
-    std.debug.print("After backspace girl: col={}\n", .{cursor.col});
     try std.testing.expectEqual(@as(u32, 12), cursor.col);
 
     try opt_buffer.clear(.{ 0.0, 0.0, 0.0, 1.0 }, 32);
     try opt_buffer.drawTextBuffer(view, 0, 0);
     buf_len = try opt_buffer.writeResolvedChars(&buf, false);
-    std.debug.print("After deleting girl: {s}\n", .{buf[0..buf_len]});
 
     // Backspace woman (col 10-11), ZWJ auto-deleted
     try eb.backspace();
     cursor = eb.getPrimaryCursor();
-    std.debug.print("After backspace woman: col={}\n", .{cursor.col});
     try std.testing.expectEqual(@as(u32, 10), cursor.col);
 
     // Backspace man (col 8-9), ZWJ auto-deleted
     try eb.backspace();
     cursor = eb.getPrimaryCursor();
-    std.debug.print("After backspace man: col={}\n", .{cursor.col});
     try std.testing.expectEqual(@as(u32, 8), cursor.col);
 
     try opt_buffer.clear(.{ 0.0, 0.0, 0.0, 1.0 }, 32);
     try opt_buffer.drawTextBuffer(view, 0, 0);
     buf_len = try opt_buffer.writeResolvedChars(&buf, false);
-    std.debug.print("After deleting family: {s}\n", .{buf[0..buf_len]});
 
     // Should have just "👩🏽💻  " remaining (woman technologist + 2 spaces)
     // Verify man is gone
@@ -2743,41 +2657,31 @@ test "drawTextBuffer - wcwidth cursor movement matches rendered output" {
     // Backspace laptop (col 4-5), ZWJ auto-deleted
     try eb.backspace();
     cursor = eb.getPrimaryCursor();
-    std.debug.print("After backspace laptop: col={}\n", .{cursor.col});
     try std.testing.expectEqual(@as(u32, 4), cursor.col);
 
     try opt_buffer.clear(.{ 0.0, 0.0, 0.0, 1.0 }, 32);
     try opt_buffer.drawTextBuffer(view, 0, 0);
     buf_len = try opt_buffer.writeResolvedChars(&buf, false);
-    std.debug.print("After deleting laptop+ZWJ: {s}\n", .{buf[0..buf_len]});
 
     // Backspace skin+ZWJ (col 2-3)
     try eb.backspace();
     cursor = eb.getPrimaryCursor();
-    std.debug.print("After backspace skin: col={}\n", .{cursor.col});
     try std.testing.expectEqual(@as(u32, 2), cursor.col);
 
     try opt_buffer.clear(.{ 0.0, 0.0, 0.0, 1.0 }, 32);
     try opt_buffer.drawTextBuffer(view, 0, 0);
     buf_len = try opt_buffer.writeResolvedChars(&buf, false);
-    std.debug.print("After deleting skin: {s}\n", .{buf[0..buf_len]});
 
     // Backspace woman (col 0-1)
     try eb.backspace();
     cursor = eb.getPrimaryCursor();
-    std.debug.print("After backspace woman: col={}\n", .{cursor.col});
     try std.testing.expectEqual(@as(u32, 0), cursor.col);
 
     try opt_buffer.clear(.{ 0.0, 0.0, 0.0, 1.0 }, 32);
     try opt_buffer.drawTextBuffer(view, 0, 0);
     buf_len = try opt_buffer.writeResolvedChars(&buf, false);
-    std.debug.print("After deleting woman (should be empty): {s}\n", .{buf[0..buf_len]});
 
     // All cells should now be spaces
     const cell_0_final = opt_buffer.get(0, 0) orelse unreachable;
     try std.testing.expectEqual(@as(u32, ' '), cell_0_final.char);
-
-    std.debug.print("\n✓ Cursor movement perfectly matches rendered cell positions\n", .{});
-    std.debug.print("✓ Backspace correctly deletes rendered characters\n", .{});
-    std.debug.print("✓ ZWJs are filtered from rendering but present in text buffer\n", .{});
 }
