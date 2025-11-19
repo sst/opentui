@@ -177,7 +177,7 @@ inline fn isUnicodeWrapBreak(cp: u21) bool {
 
 // Nothing needed here - using uucode.grapheme.isBreak directly
 
-pub fn findWrapBreaksSIMD16(text: []const u8, result: *WrapBreakResult, width_method: WidthMethod) !void {
+pub fn findWrapBreaks(text: []const u8, result: *WrapBreakResult, width_method: WidthMethod) !void {
     _ = width_method; // Currently unused, but kept for API consistency
     result.reset();
     const vector_len = 16;
@@ -344,7 +344,7 @@ pub fn findWrapBreaksSIMD16(text: []const u8, result: *WrapBreakResult, width_me
     }
 }
 
-pub fn findTabStopsSIMD16(text: []const u8, result: *TabStopResult) !void {
+pub fn findTabStops(text: []const u8, result: *TabStopResult) !void {
     result.reset();
     const vector_len = 16;
     const Vec = @Vector(vector_len, u8);
@@ -375,7 +375,7 @@ pub fn findTabStopsSIMD16(text: []const u8, result: *TabStopResult) !void {
     }
 }
 
-pub fn findLineBreaksSIMD16(text: []const u8, result: *LineBreakResult) !void {
+pub fn findLineBreaks(text: []const u8, result: *LineBreakResult) !void {
     result.reset();
     const vector_len = 16; // Use 16-byte vectors (SSE2/NEON compatible)
     const Vec = @Vector(vector_len, u8);
@@ -909,7 +909,7 @@ inline fn handleClusterForPos(
     return false;
 }
 
-pub fn findWrapPosByWidthSIMD16(
+pub fn findWrapPosByWidth(
     text: []const u8,
     max_columns: u32,
     tab_width: u8,
@@ -1458,7 +1458,23 @@ pub const GraphemeInfoResult = struct {
 };
 
 /// Find all grapheme clusters in text and return info for multi-byte graphemes and tabs
-pub fn findGraphemeInfoSIMD16(
+/// This is a proxy function that dispatches to the appropriate implementation based on width_method
+pub fn findGraphemeInfo(
+    text: []const u8,
+    tab_width: u8,
+    isASCIIOnly: bool,
+    width_method: WidthMethod,
+    result: *std.ArrayList(GraphemeInfo),
+) !void {
+    switch (width_method) {
+        .unicode, .no_zwj => try findGraphemeInfoUnicode(text, tab_width, isASCIIOnly, width_method, result),
+        .wcwidth => try findGraphemeInfoWCWidth(text, tab_width, isASCIIOnly, result),
+    }
+}
+
+/// Find all grapheme clusters using Unicode grapheme cluster segmentation
+/// This version treats grapheme clusters as single units for width calculation
+fn findGraphemeInfoUnicode(
     text: []const u8,
     tab_width: u8,
     isASCIIOnly: bool,
@@ -1652,5 +1668,55 @@ pub fn findGraphemeInfoSIMD16(
                 .col_offset = cluster_start_col,
             });
         }
+    }
+}
+
+/// Find all grapheme clusters using wcwidth-style codepoint-by-codepoint processing
+/// This version treats each codepoint as a separate character (tmux/wcwidth behavior)
+fn findGraphemeInfoWCWidth(
+    text: []const u8,
+    tab_width: u8,
+    isASCIIOnly: bool,
+    result: *std.ArrayList(GraphemeInfo),
+) !void {
+    if (isASCIIOnly) {
+        return;
+    }
+
+    if (text.len == 0) {
+        return;
+    }
+
+    var pos: usize = 0;
+    var col: u32 = 0;
+
+    while (pos < text.len) {
+        const b0 = text[pos];
+        const curr_cp: u21 = if (b0 < 0x80) b0 else blk: {
+            const dec = decodeUtf8Unchecked(text, pos);
+            if (pos + dec.len > text.len) break :blk 0xFFFD;
+            break :blk dec.cp;
+        };
+        const cp_len: usize = if (b0 < 0x80) 1 else decodeUtf8Unchecked(text, pos).len;
+
+        if (pos + cp_len > text.len) break;
+
+        const cp_width = charWidth(b0, curr_cp, tab_width);
+
+        // In wcwidth mode, only track multi-byte codepoints and tabs that have non-zero width
+        const is_tab = (b0 == '\t');
+        const is_multibyte = (cp_len != 1);
+
+        if ((is_multibyte or is_tab) and cp_width > 0) {
+            try result.append(GraphemeInfo{
+                .byte_offset = @intCast(pos),
+                .byte_len = @intCast(cp_len),
+                .width = @intCast(cp_width),
+                .col_offset = col,
+            });
+        }
+
+        col += cp_width;
+        pos += cp_len;
     }
 }

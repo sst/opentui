@@ -191,7 +191,7 @@ fn benchIsAsciiOnly(allocator: std.mem.Allocator, iterations: usize) ![]BenchRes
     return try results.toOwnedSlice();
 }
 
-// Benchmark findLineBreaksSIMD16
+// Benchmark findLineBreaks
 fn benchFindLineBreaks(allocator: std.mem.Allocator, iterations: usize) ![]BenchResult {
     var results = std.ArrayList(BenchResult).init(allocator);
 
@@ -210,7 +210,7 @@ fn benchFindLineBreaks(allocator: std.mem.Allocator, iterations: usize) ![]Bench
             defer line_breaks.deinit();
 
             var timer = try std.time.Timer.start();
-            try utf8.findLineBreaksSIMD16(text, &line_breaks);
+            try utf8.findLineBreaks(text, &line_breaks);
             const elapsed = timer.read();
 
             min_ns = @min(min_ns, elapsed);
@@ -245,7 +245,7 @@ fn benchFindLineBreaks(allocator: std.mem.Allocator, iterations: usize) ![]Bench
             defer line_breaks.deinit();
 
             var timer = try std.time.Timer.start();
-            try utf8.findLineBreaksSIMD16(text, &line_breaks);
+            try utf8.findLineBreaks(text, &line_breaks);
             const elapsed = timer.read();
 
             min_ns = @min(min_ns, elapsed);
@@ -280,7 +280,7 @@ fn benchFindLineBreaks(allocator: std.mem.Allocator, iterations: usize) ![]Bench
             defer line_breaks.deinit();
 
             var timer = try std.time.Timer.start();
-            try utf8.findLineBreaksSIMD16(text, &line_breaks);
+            try utf8.findLineBreaks(text, &line_breaks);
             const elapsed = timer.read();
 
             min_ns = @min(min_ns, elapsed);
@@ -303,7 +303,7 @@ fn benchFindLineBreaks(allocator: std.mem.Allocator, iterations: usize) ![]Bench
     return try results.toOwnedSlice();
 }
 
-// Benchmark findWrapBreaksSIMD16
+// Benchmark findWrapBreaks
 fn benchFindWrapBreaks(allocator: std.mem.Allocator, iterations: usize) ![]BenchResult {
     var results = std.ArrayList(BenchResult).init(allocator);
 
@@ -322,7 +322,7 @@ fn benchFindWrapBreaks(allocator: std.mem.Allocator, iterations: usize) ![]Bench
             defer wrap_breaks.deinit();
 
             var timer = try std.time.Timer.start();
-            try utf8.findWrapBreaksSIMD16(text, &wrap_breaks, .unicode);
+            try utf8.findWrapBreaks(text, &wrap_breaks, .unicode);
             const elapsed = timer.read();
 
             min_ns = @min(min_ns, elapsed);
@@ -357,7 +357,7 @@ fn benchFindWrapBreaks(allocator: std.mem.Allocator, iterations: usize) ![]Bench
             defer wrap_breaks.deinit();
 
             var timer = try std.time.Timer.start();
-            try utf8.findWrapBreaksSIMD16(text, &wrap_breaks, .unicode);
+            try utf8.findWrapBreaks(text, &wrap_breaks, .unicode);
             const elapsed = timer.read();
 
             min_ns = @min(min_ns, elapsed);
@@ -392,7 +392,7 @@ fn benchFindWrapBreaks(allocator: std.mem.Allocator, iterations: usize) ![]Bench
             defer wrap_breaks.deinit();
 
             var timer = try std.time.Timer.start();
-            try utf8.findWrapBreaksSIMD16(text, &wrap_breaks, .unicode);
+            try utf8.findWrapBreaks(text, &wrap_breaks, .unicode);
             const elapsed = timer.read();
 
             min_ns = @min(min_ns, elapsed);
@@ -415,7 +415,7 @@ fn benchFindWrapBreaks(allocator: std.mem.Allocator, iterations: usize) ![]Bench
     return try results.toOwnedSlice();
 }
 
-// Benchmark findWrapPosByWidthSIMD16
+// Benchmark findWrapPosByWidth
 fn benchFindWrapPosByWidth(allocator: std.mem.Allocator, iterations: usize) ![]BenchResult {
     var results = std.ArrayList(BenchResult).init(allocator);
 
@@ -433,7 +433,7 @@ fn benchFindWrapPosByWidth(allocator: std.mem.Allocator, iterations: usize) ![]B
         var iter: usize = 0;
         while (iter < iterations) : (iter += 1) {
             var timer = try std.time.Timer.start();
-            const result = utf8.findWrapPosByWidthSIMD16(text, max_columns, 4, true, .unicode);
+            const result = utf8.findWrapPosByWidth(text, max_columns, 4, true, .unicode);
             const elapsed = timer.read();
             _ = result;
 
@@ -468,7 +468,7 @@ fn benchFindWrapPosByWidth(allocator: std.mem.Allocator, iterations: usize) ![]B
         var iter: usize = 0;
         while (iter < iterations) : (iter += 1) {
             var timer = try std.time.Timer.start();
-            const result = utf8.findWrapPosByWidthSIMD16(text, max_columns, 4, false, .unicode);
+            const result = utf8.findWrapPosByWidth(text, max_columns, 4, false, .unicode);
             const elapsed = timer.read();
             _ = result;
 
@@ -503,7 +503,7 @@ fn benchFindWrapPosByWidth(allocator: std.mem.Allocator, iterations: usize) ![]B
         var iter: usize = 0;
         while (iter < iterations) : (iter += 1) {
             var timer = try std.time.Timer.start();
-            const result = utf8.findWrapPosByWidthSIMD16(text, max_columns, 4, false, .unicode);
+            const result = utf8.findWrapPosByWidth(text, max_columns, 4, false, .unicode);
             const elapsed = timer.read();
             _ = result;
 

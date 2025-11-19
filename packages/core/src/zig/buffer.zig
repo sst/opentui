@@ -677,7 +677,7 @@ pub const OptimizedBuffer = struct {
         defer grapheme_list.deinit();
 
         const tab_width: u8 = 2;
-        try utf8.findGraphemeInfoSIMD16(text, tab_width, is_ascii_only, self.width_method, &grapheme_list);
+        try utf8.findGraphemeInfo(text, tab_width, is_ascii_only, self.width_method, &grapheme_list);
         const specials = grapheme_list.items;
 
         var advance_cells: u32 = 0;

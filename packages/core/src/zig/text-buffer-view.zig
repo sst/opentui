@@ -419,7 +419,7 @@ pub const UnifiedTextBufferView = struct {
                                     byte_offset = pos_result.byte_offset;
                                 }
                                 const remaining_bytes = chunk_bytes[byte_offset..];
-                                const wrap_result = utf8.findWrapPosByWidthSIMD16(remaining_bytes, remaining_on_line, wctx.view.text_buffer.tab_width, is_ascii_only, wctx.view.text_buffer.width_method);
+                                const wrap_result = utf8.findWrapPosByWidth(remaining_bytes, remaining_on_line, wctx.view.text_buffer.tab_width, is_ascii_only, wctx.view.text_buffer.width_method);
                                 to_add = wrap_result.columns_used;
                                 if (to_add == 0) to_add = 1; // Force at least one grapheme
                             } else if (wctx.last_wrap_chunk_count > 0) {
@@ -500,7 +500,7 @@ pub const UnifiedTextBufferView = struct {
                                 }
                                 const remaining_bytes = chunk_bytes[byte_offset..];
                                 // After wrapping, the full wrap width is available
-                                const wrap_result = utf8.findWrapPosByWidthSIMD16(remaining_bytes, wctx.wrap_w, wctx.view.text_buffer.tab_width, is_ascii_only, wctx.view.text_buffer.width_method);
+                                const wrap_result = utf8.findWrapPosByWidth(remaining_bytes, wctx.wrap_w, wctx.view.text_buffer.tab_width, is_ascii_only, wctx.view.text_buffer.width_method);
                                 to_add = wrap_result.columns_used;
                                 if (to_add == 0) to_add = 1; // Force at least one grapheme
                             }
@@ -547,7 +547,7 @@ pub const UnifiedTextBufferView = struct {
                                     continue;
                                 }
                                 const remaining_bytes = chunk_bytes[byte_offset..];
-                                const force_result = utf8.findWrapPosByWidthSIMD16(remaining_bytes, 1, wctx.view.text_buffer.tab_width, is_ascii_only, wctx.view.text_buffer.width_method);
+                                const force_result = utf8.findWrapPosByWidth(remaining_bytes, 1, wctx.view.text_buffer.tab_width, is_ascii_only, wctx.view.text_buffer.width_method);
                                 if (force_result.grapheme_count > 0) {
                                     addVirtualChunk(wctx, chunk, chunk_idx_in_line, char_offset, force_result.columns_used);
                                     char_offset += force_result.columns_used;
@@ -559,7 +559,7 @@ pub const UnifiedTextBufferView = struct {
                             }
 
                             const remaining_bytes = chunk_bytes[byte_offset..];
-                            const wrap_result = utf8.findWrapPosByWidthSIMD16(
+                            const wrap_result = utf8.findWrapPosByWidth(
                                 remaining_bytes,
                                 remaining_width,
                                 wctx.view.text_buffer.tab_width,
@@ -572,7 +572,7 @@ pub const UnifiedTextBufferView = struct {
                                     commitVirtualLine(wctx);
                                     continue;
                                 }
-                                const force_result = utf8.findWrapPosByWidthSIMD16(remaining_bytes, 1000, wctx.view.text_buffer.tab_width, is_ascii_only, wctx.view.text_buffer.width_method);
+                                const force_result = utf8.findWrapPosByWidth(remaining_bytes, 1000, wctx.view.text_buffer.tab_width, is_ascii_only, wctx.view.text_buffer.width_method);
                                 if (force_result.grapheme_count > 0) {
                                     addVirtualChunk(wctx, chunk, chunk_idx_in_line, char_offset, force_result.columns_used);
                                     char_offset += force_result.columns_used;

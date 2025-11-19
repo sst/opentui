@@ -174,7 +174,7 @@ fn testLineBreaks(test_case: LineBreakTestCase, allocator: std.mem.Allocator) !v
     var result = utf8.LineBreakResult.init(allocator);
     defer result.deinit();
 
-    try utf8.findLineBreaksSIMD16(test_case.input, &result);
+    try utf8.findLineBreaks(test_case.input, &result);
 
     try testing.expectEqual(test_case.expected.len, result.breaks.items.len);
 
@@ -273,7 +273,7 @@ test "line breaks: realistic text" {
     var result = utf8.LineBreakResult.init(testing.allocator);
     defer result.deinit();
 
-    try utf8.findLineBreaksSIMD16(sample_text, &result);
+    try utf8.findLineBreaks(sample_text, &result);
 
     // Verify we found some breaks
     try testing.expect(result.breaks.items.len > 0);
@@ -302,7 +302,7 @@ test "line breaks: random small buffers" {
 
         var result = utf8.LineBreakResult.init(testing.allocator);
         defer result.deinit();
-        try utf8.findLineBreaksSIMD16(buf, &result);
+        try utf8.findLineBreaks(buf, &result);
     }
 }
 
@@ -378,7 +378,7 @@ fn testTabStops(test_case: TabStopTestCase, allocator: std.mem.Allocator) !void 
     var result = utf8.TabStopResult.init(allocator);
     defer result.deinit();
 
-    try utf8.findTabStopsSIMD16(test_case.input, &result);
+    try utf8.findTabStops(test_case.input, &result);
 
     try testing.expectEqual(test_case.expected.len, result.positions.items.len);
 
@@ -517,7 +517,7 @@ test "tab stops: realistic code text" {
     var result = utf8.TabStopResult.init(testing.allocator);
     defer result.deinit();
 
-    try utf8.findTabStopsSIMD16(sample_text, &result);
+    try utf8.findTabStops(sample_text, &result);
 
     // Should find 6 tabs (including double-tab for nested return)
     try testing.expectEqual(@as(usize, 6), result.positions.items.len);
@@ -555,7 +555,7 @@ test "tab stops: random small buffers" {
 
         var result = utf8.TabStopResult.init(testing.allocator);
         defer result.deinit();
-        try utf8.findTabStopsSIMD16(buf, &result);
+        try utf8.findTabStops(buf, &result);
     }
 }
 
@@ -576,7 +576,7 @@ test "tab stops: large buffer with periodic tabs" {
 
     var result = utf8.TabStopResult.init(testing.allocator);
     defer result.deinit();
-    try utf8.findTabStopsSIMD16(buf, &result);
+    try utf8.findTabStops(buf, &result);
 
     try testing.expectEqual(expected_count, result.positions.items.len);
 }
@@ -619,11 +619,11 @@ test "tab stops: result reuse" {
     defer result.deinit();
 
     // First use
-    try utf8.findTabStopsSIMD16("a\tb\tc", &result);
+    try utf8.findTabStops("a\tb\tc", &result);
     try testing.expectEqual(@as(usize, 2), result.positions.items.len);
 
     // Second use - should reset automatically
-    try utf8.findTabStopsSIMD16("x\ty", &result);
+    try utf8.findTabStops("x\ty", &result);
     try testing.expectEqual(@as(usize, 1), result.positions.items.len);
     try testing.expectEqual(@as(usize, 1), result.positions.items[0]);
 }
@@ -645,7 +645,7 @@ test "tab stops: makefile style" {
     var result = utf8.TabStopResult.init(testing.allocator);
     defer result.deinit();
 
-    try utf8.findTabStopsSIMD16(makefile, &result);
+    try utf8.findTabStops(makefile, &result);
 
     // Should find 2 tabs (one per command line)
     try testing.expectEqual(@as(usize, 2), result.positions.items.len);
@@ -799,7 +799,7 @@ fn testWrapBreaks(test_case: WrapBreakTestCase, allocator: std.mem.Allocator) !v
     var result = utf8.WrapBreakResult.init(allocator);
     defer result.deinit();
 
-    try utf8.findWrapBreaksSIMD16(test_case.input, &result, .unicode);
+    try utf8.findWrapBreaks(test_case.input, &result, .unicode);
 
     try testing.expectEqual(test_case.expected.len, result.breaks.items.len);
 
@@ -914,7 +914,7 @@ test "wrap breaks: realistic text" {
     var result = utf8.WrapBreakResult.init(testing.allocator);
     defer result.deinit();
 
-    try utf8.findWrapBreaksSIMD16(sample_text, &result, .unicode);
+    try utf8.findWrapBreaks(sample_text, &result, .unicode);
 
     // Verify we found many breaks
     try testing.expect(result.breaks.items.len > 0);
@@ -945,7 +945,7 @@ test "wrap breaks: random small buffers" {
 
         var result = utf8.WrapBreakResult.init(testing.allocator);
         defer result.deinit();
-        try utf8.findWrapBreaksSIMD16(buf, &result, .unicode);
+        try utf8.findWrapBreaks(buf, &result, .unicode);
     }
 }
 
@@ -967,7 +967,7 @@ test "wrap breaks: large buffer" {
 
     var result = utf8.WrapBreakResult.init(testing.allocator);
     defer result.deinit();
-    try utf8.findWrapBreaksSIMD16(buf, &result, .unicode);
+    try utf8.findWrapBreaks(buf, &result, .unicode);
 
     try testing.expect(result.breaks.items.len > 0);
 }
@@ -981,18 +981,18 @@ test "edge case: result reuse" {
     defer line_result.deinit();
 
     // First use - line breaks
-    try utf8.findLineBreaksSIMD16("a\nb\nc", &line_result);
+    try utf8.findLineBreaks("a\nb\nc", &line_result);
     try testing.expectEqual(@as(usize, 2), line_result.breaks.items.len);
 
     // Second use - should reset automatically
-    try utf8.findLineBreaksSIMD16("x\ny", &line_result);
+    try utf8.findLineBreaks("x\ny", &line_result);
     try testing.expectEqual(@as(usize, 1), line_result.breaks.items.len);
     try testing.expectEqual(@as(usize, 1), line_result.breaks.items[0].pos);
 
     // Third use - wrap breaks (different result type)
     var wrap_result = utf8.WrapBreakResult.init(testing.allocator);
     defer wrap_result.deinit();
-    try utf8.findWrapBreaksSIMD16("a b c", &wrap_result, .unicode);
+    try utf8.findWrapBreaks("a b c", &wrap_result, .unicode);
     try testing.expectEqual(@as(usize, 2), wrap_result.breaks.items.len);
 }
 
@@ -1000,12 +1000,12 @@ test "edge case: empty input" {
     var line_result = utf8.LineBreakResult.init(testing.allocator);
     defer line_result.deinit();
 
-    try utf8.findLineBreaksSIMD16("", &line_result);
+    try utf8.findLineBreaks("", &line_result);
     try testing.expectEqual(@as(usize, 0), line_result.breaks.items.len);
 
     var wrap_result = utf8.WrapBreakResult.init(testing.allocator);
     defer wrap_result.deinit();
-    try utf8.findWrapBreaksSIMD16("", &wrap_result, .unicode);
+    try utf8.findWrapBreaks("", &wrap_result, .unicode);
     try testing.expectEqual(@as(usize, 0), wrap_result.breaks.items.len);
 }
 
@@ -1014,12 +1014,12 @@ test "edge case: exactly 16 bytes" {
     defer line_result.deinit();
 
     const input = "0123456789abcdef"; // exactly 16 bytes
-    try utf8.findLineBreaksSIMD16(input, &line_result);
+    try utf8.findLineBreaks(input, &line_result);
     try testing.expectEqual(@as(usize, 0), line_result.breaks.items.len);
 
     var wrap_result = utf8.WrapBreakResult.init(testing.allocator);
     defer wrap_result.deinit();
-    try utf8.findWrapBreaksSIMD16(input, &wrap_result, .unicode);
+    try utf8.findWrapBreaks(input, &wrap_result, .unicode);
     try testing.expectEqual(@as(usize, 0), wrap_result.breaks.items.len);
 }
 
@@ -1028,14 +1028,14 @@ test "edge case: 17 bytes with break at 16" {
     defer line_result.deinit();
 
     const input = "0123456789abcde\nx"; // break at position 15
-    try utf8.findLineBreaksSIMD16(input, &line_result);
+    try utf8.findLineBreaks(input, &line_result);
     try testing.expectEqual(@as(usize, 1), line_result.breaks.items.len);
     try testing.expectEqual(@as(usize, 15), line_result.breaks.items[0].pos);
 
     var wrap_result = utf8.WrapBreakResult.init(testing.allocator);
     defer wrap_result.deinit();
     const input2 = "0123456789abcde x"; // space at position 15
-    try utf8.findWrapBreaksSIMD16(input2, &wrap_result, .unicode);
+    try utf8.findWrapBreaks(input2, &wrap_result, .unicode);
     try testing.expectEqual(@as(usize, 1), wrap_result.breaks.items.len);
     try testing.expectEqual(@as(u16, 15), wrap_result.breaks.items[0].byte_offset);
     try testing.expectEqual(@as(u16, 15), wrap_result.breaks.items[0].char_offset);
@@ -1050,7 +1050,7 @@ test "wrap breaks: emoji with ZWJ - char offset should count grapheme not codepo
 
     var result = utf8.WrapBreakResult.init(testing.allocator);
     defer result.deinit();
-    try utf8.findWrapBreaksSIMD16(input, &result, .unicode);
+    try utf8.findWrapBreaks(input, &result, .unicode);
 
     try testing.expectEqual(@as(usize, 2), result.breaks.items.len);
     try testing.expectEqual(@as(u16, 2), result.breaks.items[0].byte_offset);
@@ -1064,7 +1064,7 @@ test "wrap breaks: emoji with skin tone - char offset should count grapheme" {
 
     var result = utf8.WrapBreakResult.init(testing.allocator);
     defer result.deinit();
-    try utf8.findWrapBreaksSIMD16(input, &result, .unicode);
+    try utf8.findWrapBreaks(input, &result, .unicode);
 
     try testing.expectEqual(@as(usize, 2), result.breaks.items.len);
     try testing.expectEqual(@as(u16, 2), result.breaks.items[0].byte_offset);
@@ -1078,7 +1078,7 @@ test "wrap breaks: emoji with VS16 selector - char offset should count grapheme"
 
     var result = utf8.WrapBreakResult.init(testing.allocator);
     defer result.deinit();
-    try utf8.findWrapBreaksSIMD16(input, &result, .unicode);
+    try utf8.findWrapBreaks(input, &result, .unicode);
 
     try testing.expectEqual(@as(usize, 2), result.breaks.items.len);
     try testing.expectEqual(@as(u16, 1), result.breaks.items[0].byte_offset);
@@ -1092,7 +1092,7 @@ test "wrap breaks: combining diacritic - char offset should count grapheme" {
 
     var result = utf8.WrapBreakResult.init(testing.allocator);
     defer result.deinit();
-    try utf8.findWrapBreaksSIMD16(input, &result, .unicode);
+    try utf8.findWrapBreaks(input, &result, .unicode);
 
     try testing.expectEqual(@as(usize, 1), result.breaks.items.len);
     try testing.expectEqual(@as(u16, 6), result.breaks.items[0].byte_offset);
@@ -1104,7 +1104,7 @@ test "wrap breaks: flag emoji - char offset should count grapheme" {
 
     var result = utf8.WrapBreakResult.init(testing.allocator);
     defer result.deinit();
-    try utf8.findWrapBreaksSIMD16(input, &result, .unicode);
+    try utf8.findWrapBreaks(input, &result, .unicode);
 
     try testing.expectEqual(@as(usize, 1), result.breaks.items.len);
     try testing.expectEqual(@as(u16, 11), result.breaks.items[0].byte_offset);
@@ -1116,7 +1116,7 @@ test "wrap breaks: mixed graphemes and ASCII" {
 
     var result = utf8.WrapBreakResult.init(testing.allocator);
     defer result.deinit();
-    try utf8.findWrapBreaksSIMD16(input, &result, .unicode);
+    try utf8.findWrapBreaks(input, &result, .unicode);
 
     try testing.expectEqual(@as(usize, 4), result.breaks.items.len);
     try testing.expectEqual(@as(u16, 5), result.breaks.items[0].byte_offset);
@@ -1134,56 +1134,56 @@ test "wrap breaks: mixed graphemes and ASCII" {
 // ============================================================================
 
 test "wrap by width: empty string" {
-    const result = utf8.findWrapPosByWidthSIMD16("", 10, 4, true, .unicode);
+    const result = utf8.findWrapPosByWidth("", 10, 4, true, .unicode);
     try testing.expectEqual(@as(u32, 0), result.byte_offset);
     try testing.expectEqual(@as(u32, 0), result.grapheme_count);
     try testing.expectEqual(@as(u32, 0), result.columns_used);
 }
 
 test "wrap by width: simple ASCII no wrap" {
-    const result = utf8.findWrapPosByWidthSIMD16("hello", 10, 4, true, .unicode);
+    const result = utf8.findWrapPosByWidth("hello", 10, 4, true, .unicode);
     try testing.expectEqual(@as(u32, 5), result.byte_offset);
     try testing.expectEqual(@as(u32, 5), result.grapheme_count);
     try testing.expectEqual(@as(u32, 5), result.columns_used);
 }
 
 test "wrap by width: ASCII wrap exactly at limit" {
-    const result = utf8.findWrapPosByWidthSIMD16("hello", 5, 4, true, .unicode);
+    const result = utf8.findWrapPosByWidth("hello", 5, 4, true, .unicode);
     try testing.expectEqual(@as(u32, 5), result.byte_offset);
     try testing.expectEqual(@as(u32, 5), result.grapheme_count);
     try testing.expectEqual(@as(u32, 5), result.columns_used);
 }
 
 test "wrap by width: ASCII wrap before limit" {
-    const result = utf8.findWrapPosByWidthSIMD16("hello world", 7, 4, true, .unicode);
+    const result = utf8.findWrapPosByWidth("hello world", 7, 4, true, .unicode);
     try testing.expectEqual(@as(u32, 7), result.byte_offset);
     try testing.expectEqual(@as(u32, 7), result.grapheme_count);
     try testing.expectEqual(@as(u32, 7), result.columns_used);
 }
 
 test "wrap by width: East Asian wide char" {
-    const result = utf8.findWrapPosByWidthSIMD16("世界", 3, 4, false, .unicode);
+    const result = utf8.findWrapPosByWidth("世界", 3, 4, false, .unicode);
     try testing.expectEqual(@as(u32, 3), result.byte_offset); // After first char
     try testing.expectEqual(@as(u32, 1), result.grapheme_count);
     try testing.expectEqual(@as(u32, 2), result.columns_used);
 }
 
 test "wrap by width: combining mark" {
-    const result = utf8.findWrapPosByWidthSIMD16("e\u{0301}test", 3, 4, false, .unicode);
+    const result = utf8.findWrapPosByWidth("e\u{0301}test", 3, 4, false, .unicode);
     try testing.expectEqual(@as(u32, 5), result.byte_offset); // After "é" (3 bytes) + "te" (2 bytes)
     try testing.expectEqual(@as(u32, 3), result.grapheme_count);
     try testing.expectEqual(@as(u32, 3), result.columns_used);
 }
 
 test "wrap by width: tab handling" {
-    const result = utf8.findWrapPosByWidthSIMD16("a\tb", 5, 4, true, .unicode);
+    const result = utf8.findWrapPosByWidth("a\tb", 5, 4, true, .unicode);
     try testing.expectEqual(@as(u32, 2), result.byte_offset); // After "a\t"
     try testing.expectEqual(@as(u32, 2), result.grapheme_count); // 'a' + tab
     try testing.expectEqual(@as(u32, 5), result.columns_used); // 'a' (1) + tab (4) = 5
 }
 
 fn testWrapByWidthMethodsMatch(input: []const u8, max_columns: u32, tab_width: u8, isASCIIOnly: bool) !void {
-    const result = utf8.findWrapPosByWidthSIMD16(input, max_columns, tab_width, isASCIIOnly, .unicode);
+    const result = utf8.findWrapPosByWidth(input, max_columns, tab_width, isASCIIOnly, .unicode);
     // Since we only have SIMD16 in utf8.zig, just verify it doesn't crash
     _ = result;
 }
@@ -1269,15 +1269,15 @@ test "wrap by width: boundary - Unicode at SIMD boundary" {
 test "wrap by width: wide emoji exactly at column boundary" {
     const input = "Hello 🌍 World";
 
-    const result7 = utf8.findWrapPosByWidthSIMD16(input, 7, 8, false, .unicode);
+    const result7 = utf8.findWrapPosByWidth(input, 7, 8, false, .unicode);
     try testing.expectEqual(@as(u32, 6), result7.byte_offset);
     try testing.expectEqual(@as(u32, 6), result7.columns_used);
 
-    const result8 = utf8.findWrapPosByWidthSIMD16(input, 8, 8, false, .unicode);
+    const result8 = utf8.findWrapPosByWidth(input, 8, 8, false, .unicode);
     try testing.expectEqual(@as(u32, 10), result8.byte_offset);
     try testing.expectEqual(@as(u32, 8), result8.columns_used);
 
-    const result6 = utf8.findWrapPosByWidthSIMD16(input, 6, 8, false, .unicode);
+    const result6 = utf8.findWrapPosByWidth(input, 6, 8, false, .unicode);
     try testing.expectEqual(@as(u32, 6), result6.byte_offset);
     try testing.expectEqual(@as(u32, 6), result6.columns_used);
 }
@@ -1285,15 +1285,15 @@ test "wrap by width: wide emoji exactly at column boundary" {
 test "wrap by width: wide emoji at start" {
     const input = "🌍 World";
 
-    const result1 = utf8.findWrapPosByWidthSIMD16(input, 1, 8, false, .unicode);
+    const result1 = utf8.findWrapPosByWidth(input, 1, 8, false, .unicode);
     try testing.expectEqual(@as(u32, 0), result1.byte_offset);
     try testing.expectEqual(@as(u32, 0), result1.columns_used);
 
-    const result2 = utf8.findWrapPosByWidthSIMD16(input, 2, 8, false, .unicode);
+    const result2 = utf8.findWrapPosByWidth(input, 2, 8, false, .unicode);
     try testing.expectEqual(@as(u32, 4), result2.byte_offset);
     try testing.expectEqual(@as(u32, 2), result2.columns_used);
 
-    const result3 = utf8.findWrapPosByWidthSIMD16(input, 3, 8, false, .unicode);
+    const result3 = utf8.findWrapPosByWidth(input, 3, 8, false, .unicode);
     try testing.expectEqual(@as(u32, 5), result3.byte_offset);
     try testing.expectEqual(@as(u32, 3), result3.columns_used);
 }
@@ -1301,11 +1301,11 @@ test "wrap by width: wide emoji at start" {
 test "wrap by width: multiple wide characters" {
     const input = "AB🌍CD🌎EF";
 
-    const result5 = utf8.findWrapPosByWidthSIMD16(input, 5, 8, false, .unicode);
+    const result5 = utf8.findWrapPosByWidth(input, 5, 8, false, .unicode);
     try testing.expectEqual(@as(u32, 7), result5.byte_offset);
     try testing.expectEqual(@as(u32, 5), result5.columns_used);
 
-    const result6 = utf8.findWrapPosByWidthSIMD16(input, 6, 8, false, .unicode);
+    const result6 = utf8.findWrapPosByWidth(input, 6, 8, false, .unicode);
     try testing.expectEqual(@as(u32, 8), result6.byte_offset);
     try testing.expectEqual(@as(u32, 6), result6.columns_used);
 }
@@ -1313,11 +1313,11 @@ test "wrap by width: multiple wide characters" {
 test "wrap by width: CJK wide characters at boundary" {
     const input = "hello世界test";
 
-    const result6 = utf8.findWrapPosByWidthSIMD16(input, 6, 8, false, .unicode);
+    const result6 = utf8.findWrapPosByWidth(input, 6, 8, false, .unicode);
     try testing.expectEqual(@as(u32, 5), result6.byte_offset);
     try testing.expectEqual(@as(u32, 5), result6.columns_used);
 
-    const result7 = utf8.findWrapPosByWidthSIMD16(input, 7, 8, false, .unicode);
+    const result7 = utf8.findWrapPosByWidth(input, 7, 8, false, .unicode);
     try testing.expectEqual(@as(u32, 8), result7.byte_offset);
     try testing.expectEqual(@as(u32, 7), result7.columns_used);
 }
@@ -2041,7 +2041,7 @@ test "findGraphemeInfo: empty string" {
     var result = std.ArrayList(utf8.GraphemeInfo).init(testing.allocator);
     defer result.deinit();
 
-    try utf8.findGraphemeInfoSIMD16("", 4, true, .unicode, &result);
+    try utf8.findGraphemeInfo("", 4, true, .unicode, &result);
     try testing.expectEqual(@as(usize, 0), result.items.len);
 }
 
@@ -2049,7 +2049,7 @@ test "findGraphemeInfo: ASCII-only returns empty" {
     var result = std.ArrayList(utf8.GraphemeInfo).init(testing.allocator);
     defer result.deinit();
 
-    try utf8.findGraphemeInfoSIMD16("hello world", 4, true, .unicode, &result);
+    try utf8.findGraphemeInfo("hello world", 4, true, .unicode, &result);
     try testing.expectEqual(@as(usize, 0), result.items.len);
 }
 
@@ -2057,7 +2057,7 @@ test "findGraphemeInfo: ASCII with tab" {
     var result = std.ArrayList(utf8.GraphemeInfo).init(testing.allocator);
     defer result.deinit();
 
-    try utf8.findGraphemeInfoSIMD16("hello\tworld", 4, false, .unicode, &result);
+    try utf8.findGraphemeInfo("hello\tworld", 4, false, .unicode, &result);
 
     // Should have one entry for the tab
     try testing.expectEqual(@as(usize, 1), result.items.len);
@@ -2071,7 +2071,7 @@ test "findGraphemeInfo: multiple tabs" {
     var result = std.ArrayList(utf8.GraphemeInfo).init(testing.allocator);
     defer result.deinit();
 
-    try utf8.findGraphemeInfoSIMD16("a\tb\tc", 4, false, .unicode, &result);
+    try utf8.findGraphemeInfo("a\tb\tc", 4, false, .unicode, &result);
 
     // Should have two entries for the tabs
     try testing.expectEqual(@as(usize, 2), result.items.len);
@@ -2094,7 +2094,7 @@ test "findGraphemeInfo: CJK characters" {
     defer result.deinit();
 
     const text = "hello世界";
-    try utf8.findGraphemeInfoSIMD16(text, 4, false, .unicode, &result);
+    try utf8.findGraphemeInfo(text, 4, false, .unicode, &result);
 
     // Should have two entries for the CJK characters
     try testing.expectEqual(@as(usize, 2), result.items.len);
@@ -2117,7 +2117,7 @@ test "findGraphemeInfo: emoji with skin tone" {
     defer result.deinit();
 
     const text = "Hi👋🏿Bye"; // Hi + wave + dark skin tone + Bye
-    try utf8.findGraphemeInfoSIMD16(text, 4, false, .unicode, &result);
+    try utf8.findGraphemeInfo(text, 4, false, .unicode, &result);
 
     // Should have one entry for the emoji cluster
     try testing.expectEqual(@as(usize, 1), result.items.len);
@@ -2133,7 +2133,7 @@ test "findGraphemeInfo: emoji with ZWJ" {
     defer result.deinit();
 
     const text = "a👩‍🚀b"; // a + woman astronaut + b
-    try utf8.findGraphemeInfoSIMD16(text, 4, false, .unicode, &result);
+    try utf8.findGraphemeInfo(text, 4, false, .unicode, &result);
 
     // Should have one entry for the emoji cluster
     try testing.expectEqual(@as(usize, 1), result.items.len);
@@ -2148,7 +2148,7 @@ test "findGraphemeInfo: combining mark" {
     defer result.deinit();
 
     const text = "cafe\u{0301}"; // café with combining acute
-    try utf8.findGraphemeInfoSIMD16(text, 4, false, .unicode, &result);
+    try utf8.findGraphemeInfo(text, 4, false, .unicode, &result);
 
     // Should have one entry for e + combining mark
     try testing.expectEqual(@as(usize, 1), result.items.len);
@@ -2164,7 +2164,7 @@ test "findGraphemeInfo: flag emoji" {
     defer result.deinit();
 
     const text = "US🇺🇸"; // US + flag
-    try utf8.findGraphemeInfoSIMD16(text, 4, false, .unicode, &result);
+    try utf8.findGraphemeInfo(text, 4, false, .unicode, &result);
 
     // Should have one entry for the flag (two regional indicators)
     try testing.expectEqual(@as(usize, 1), result.items.len);
@@ -2180,7 +2180,7 @@ test "findGraphemeInfo: mixed content" {
     defer result.deinit();
 
     const text = "Hi\t世界!"; // Hi + tab + CJK + !
-    try utf8.findGraphemeInfoSIMD16(text, 4, false, .unicode, &result);
+    try utf8.findGraphemeInfo(text, 4, false, .unicode, &result);
 
     // Should have three entries: tab, 世, 界
     try testing.expectEqual(@as(usize, 3), result.items.len);
@@ -2208,7 +2208,7 @@ test "findGraphemeInfo: only ASCII letters no cache" {
     var result = std.ArrayList(utf8.GraphemeInfo).init(testing.allocator);
     defer result.deinit();
 
-    try utf8.findGraphemeInfoSIMD16("abcdefghij", 4, false, .unicode, &result);
+    try utf8.findGraphemeInfo("abcdefghij", 4, false, .unicode, &result);
 
     // No special characters, should be empty
     try testing.expectEqual(@as(usize, 0), result.items.len);
@@ -2219,7 +2219,7 @@ test "findGraphemeInfo: emoji with VS16" {
     defer result.deinit();
 
     const text = "I ❤️ U"; // I + space + heart + VS16 + space + U
-    try utf8.findGraphemeInfoSIMD16(text, 4, false, .unicode, &result);
+    try utf8.findGraphemeInfo(text, 4, false, .unicode, &result);
 
     // Should have one entry for the emoji cluster
     try testing.expectEqual(@as(usize, 1), result.items.len);
@@ -2234,7 +2234,7 @@ test "findGraphemeInfo: realistic text" {
     defer result.deinit();
 
     const text = "function test() {\n\tconst 世界 = 10;\n}";
-    try utf8.findGraphemeInfoSIMD16(text, 4, false, .unicode, &result);
+    try utf8.findGraphemeInfo(text, 4, false, .unicode, &result);
 
     // Should have entries for: tab, 世, 界
     try testing.expectEqual(@as(usize, 3), result.items.len);
@@ -2245,7 +2245,7 @@ test "findGraphemeInfo: hiragana" {
     defer result.deinit();
 
     const text = "こんにちは";
-    try utf8.findGraphemeInfoSIMD16(text, 4, false, .unicode, &result);
+    try utf8.findGraphemeInfo(text, 4, false, .unicode, &result);
 
     // Should have 5 entries (each hiragana is 3 bytes, width 2)
     try testing.expectEqual(@as(usize, 5), result.items.len);
@@ -2266,7 +2266,7 @@ test "findGraphemeInfo: at SIMD boundary" {
     const cjk = "世";
     @memcpy(buf[14..17], cjk); // Place CJK char at boundary
 
-    try utf8.findGraphemeInfoSIMD16(&buf, 4, false, .unicode, &result);
+    try utf8.findGraphemeInfo(&buf, 4, false, .unicode, &result);
 
     // Should find the CJK character
     var found = false;
@@ -3556,7 +3556,7 @@ test "findGraphemeInfo: comprehensive multilingual text" {
     var result = std.ArrayList(utf8.GraphemeInfo).init(testing.allocator);
     defer result.deinit();
 
-    try utf8.findGraphemeInfoSIMD16(text, 4, false, .unicode, &result);
+    try utf8.findGraphemeInfo(text, 4, false, .unicode, &result);
     try testing.expect(result.items.len > 0);
 
     var prev_end_byte: usize = 0;
