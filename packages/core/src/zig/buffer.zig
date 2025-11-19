@@ -677,7 +677,7 @@ pub const OptimizedBuffer = struct {
         defer grapheme_list.deinit();
 
         const tab_width: u8 = 2;
-        try utf8.findGraphemeInfoSIMD16(text, tab_width, is_ascii_only, &grapheme_list);
+        try utf8.findGraphemeInfoSIMD16(text, tab_width, is_ascii_only, self.width_method, &grapheme_list);
         const specials = grapheme_list.items;
 
         var advance_cells: u32 = 0;
@@ -981,7 +981,7 @@ pub const OptimizedBuffer = struct {
             for (vline.chunks.items) |vchunk| {
                 const chunk = vchunk.chunk;
                 const chunk_bytes = chunk.getBytes(&text_buffer.mem_registry);
-                const specials = chunk.getGraphemes(&text_buffer.mem_registry, text_buffer.allocator, text_buffer.tab_width) catch continue;
+                const specials = chunk.getGraphemes(&text_buffer.mem_registry, text_buffer.allocator, text_buffer.tab_width, text_buffer.width_method) catch continue;
 
                 if (currentX >= @as(i32, @intCast(self.width))) {
                     globalCharPos += vchunk.width;

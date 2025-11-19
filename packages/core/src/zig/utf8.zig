@@ -703,11 +703,6 @@ inline fn charWidth(byte: u8, codepoint: u21, tab_width: u8) u32 {
     } else if (byte < 0x80 and byte >= 32 and byte <= 126) {
         return 1;
     } else if (byte >= 0x80) {
-        // Emoji skin tone modifiers (U+1F3FB-U+1F3FF) should be zero-width
-        // when part of a grapheme cluster
-        if (codepoint >= 0x1F3FB and codepoint <= 0x1F3FF) {
-            return 0;
-        }
         return eastAsianWidth(codepoint);
     }
     return 0;
@@ -735,20 +730,30 @@ const GraphemeWidthState = struct {
     is_regional_indicator_pair: bool = false,
     has_vs16: bool = false,
     has_indic_virama: bool = false,
+    width_method: WidthMethod,
 
     /// Initialize state with the first codepoint of a grapheme cluster
-    inline fn init(first_cp: u21, first_width: u32) GraphemeWidthState {
+    inline fn init(first_cp: u21, first_width: u32, width_method: WidthMethod) GraphemeWidthState {
         return .{
             .width = first_width,
             .has_width = (first_width > 0),
             .is_regional_indicator_pair = (first_cp >= 0x1F1E6 and first_cp <= 0x1F1FF),
             .has_vs16 = false,
             .has_indic_virama = false,
+            .width_method = width_method,
         };
     }
 
     /// Add a codepoint to the current grapheme cluster
     inline fn addCodepoint(self: *GraphemeWidthState, cp: u21, cp_width: u32) void {
+        // wcwidth mode: simply add all codepoint widths (tmux-style)
+        if (self.width_method == .wcwidth) {
+            self.width += cp_width;
+            if (cp_width > 0) self.has_width = true;
+            return;
+        }
+
+        // unicode/no_zwj modes: use grapheme-aware width (modifiers are 0-width)
         const is_ri = (cp >= 0x1F1E6 and cp <= 0x1F1FF);
         const is_vs16 = (cp == 0xFE0F); // Variation Selector-16 (emoji presentation)
 
@@ -814,8 +819,12 @@ const ClusterState = struct {
     cluster_start: usize,
     prev_cp: ?u21,
     break_state: uucode.grapheme.BreakState,
+    width_state: GraphemeWidthState,
+    width_method: WidthMethod,
+    cluster_started: bool,
 
-    fn init() ClusterState {
+    fn init(width_method: WidthMethod) ClusterState {
+        const dummy_width_state = GraphemeWidthState.init(0, 0, width_method);
         return .{
             .columns_used = 0,
             .grapheme_count = 0,
@@ -823,6 +832,9 @@ const ClusterState = struct {
             .cluster_start = 0,
             .prev_cp = null,
             .break_state = .default,
+            .width_state = dummy_width_state,
+            .width_method = width_method,
+            .cluster_started = false,
         };
     }
 };
@@ -845,6 +857,7 @@ inline fn handleClusterForWrap(
         }
         state.cluster_width = 0;
         state.cluster_start = new_cluster_start;
+        state.cluster_started = false;
     }
     return false;
 }
@@ -886,6 +899,7 @@ inline fn handleClusterForPos(
         }
         state.cluster_width = 0;
         state.cluster_start = new_cluster_start;
+        state.cluster_started = false;
     }
     return false;
 }
@@ -897,7 +911,6 @@ pub fn findWrapPosByWidthSIMD16(
     isASCIIOnly: bool,
     width_method: WidthMethod,
 ) WrapByWidthResult {
-    _ = width_method; // Ignored for now
     if (text.len == 0 or max_columns == 0) {
         return .{ .byte_offset = 0, .grapheme_count = 0, .columns_used = 0 };
     }
@@ -939,7 +952,7 @@ pub fn findWrapPosByWidthSIMD16(
 
     const vector_len = 16;
     var pos: usize = 0;
-    var state = ClusterState.init();
+    var state = ClusterState.init(width_method);
 
     while (pos + vector_len <= text.len) {
         const chunk: @Vector(vector_len, u8) = text[pos..][0..vector_len].*;
@@ -958,7 +971,15 @@ pub fn findWrapPosByWidthSIMD16(
                     return .{ .byte_offset = @intCast(state.cluster_start), .grapheme_count = state.grapheme_count, .columns_used = state.columns_used };
                 }
 
-                state.cluster_width += asciiCharWidth(b, tab_width);
+                const cp_width = asciiCharWidth(b, tab_width);
+                if (!state.cluster_started) {
+                    state.width_state = GraphemeWidthState.init(curr_cp, cp_width, width_method);
+                    state.cluster_width = cp_width;
+                    state.cluster_started = true;
+                } else {
+                    state.width_state.addCodepoint(curr_cp, cp_width);
+                    state.cluster_width = state.width_state.width;
+                }
                 state.prev_cp = curr_cp;
             }
             pos += vector_len;
@@ -980,7 +1001,15 @@ pub fn findWrapPosByWidthSIMD16(
                 return .{ .byte_offset = @intCast(state.cluster_start), .grapheme_count = state.grapheme_count, .columns_used = state.columns_used };
             }
 
-            state.cluster_width += charWidth(b0, curr_cp, tab_width);
+            const cp_width = charWidth(b0, curr_cp, tab_width);
+            if (!state.cluster_started) {
+                state.width_state = GraphemeWidthState.init(curr_cp, cp_width, width_method);
+                state.cluster_width = cp_width;
+                state.cluster_started = true;
+            } else {
+                state.width_state.addCodepoint(curr_cp, cp_width);
+                state.cluster_width = state.width_state.width;
+            }
             state.prev_cp = curr_cp;
             i += cp_len;
         }
@@ -999,7 +1028,15 @@ pub fn findWrapPosByWidthSIMD16(
             return .{ .byte_offset = @intCast(state.cluster_start), .grapheme_count = state.grapheme_count, .columns_used = state.columns_used };
         }
 
-        state.cluster_width += charWidth(b0, curr_cp, tab_width);
+        const cp_width = charWidth(b0, curr_cp, tab_width);
+        if (!state.cluster_started) {
+            state.width_state = GraphemeWidthState.init(curr_cp, cp_width, width_method);
+            state.cluster_width = cp_width;
+            state.cluster_started = true;
+        } else {
+            state.width_state.addCodepoint(curr_cp, cp_width);
+            state.cluster_width = state.width_state.width;
+        }
         state.prev_cp = curr_cp;
         pos += cp_len;
     }
@@ -1029,7 +1066,6 @@ pub fn findPosByWidth(
     include_start_before: bool,
     width_method: WidthMethod,
 ) PosByWidthResult {
-    _ = width_method; // Ignored for now
     if (text.len == 0 or max_columns == 0) {
         return .{ .byte_offset = 0, .grapheme_count = 0, .columns_used = 0 };
     }
@@ -1074,7 +1110,7 @@ pub fn findPosByWidth(
 
     const vector_len = 16;
     var pos: usize = 0;
-    var state = ClusterState.init();
+    var state = ClusterState.init(width_method);
 
     while (pos + vector_len <= text.len) {
         const chunk: @Vector(vector_len, u8) = text[pos..][0..vector_len].*;
@@ -1093,7 +1129,15 @@ pub fn findPosByWidth(
                     return .{ .byte_offset = @intCast(state.cluster_start), .grapheme_count = state.grapheme_count, .columns_used = state.columns_used };
                 }
 
-                state.cluster_width += asciiCharWidth(b, tab_width);
+                const cp_width = asciiCharWidth(b, tab_width);
+                if (!state.cluster_started) {
+                    state.width_state = GraphemeWidthState.init(curr_cp, cp_width, width_method);
+                    state.cluster_width = cp_width;
+                    state.cluster_started = true;
+                } else {
+                    state.width_state.addCodepoint(curr_cp, cp_width);
+                    state.cluster_width = state.width_state.width;
+                }
                 state.prev_cp = curr_cp;
             }
             pos += vector_len;
@@ -1115,7 +1159,15 @@ pub fn findPosByWidth(
                 return .{ .byte_offset = @intCast(state.cluster_start), .grapheme_count = state.grapheme_count, .columns_used = state.columns_used };
             }
 
-            state.cluster_width += charWidth(b0, curr_cp, tab_width);
+            const cp_width = charWidth(b0, curr_cp, tab_width);
+            if (!state.cluster_started) {
+                state.width_state = GraphemeWidthState.init(curr_cp, cp_width, width_method);
+                state.cluster_width = cp_width;
+                state.cluster_started = true;
+            } else {
+                state.width_state.addCodepoint(curr_cp, cp_width);
+                state.cluster_width = state.width_state.width;
+            }
             state.prev_cp = curr_cp;
             i += cp_len;
         }
@@ -1134,7 +1186,15 @@ pub fn findPosByWidth(
             return .{ .byte_offset = @intCast(state.cluster_start), .grapheme_count = state.grapheme_count, .columns_used = state.columns_used };
         }
 
-        state.cluster_width += charWidth(b0, curr_cp, tab_width);
+        const cp_width = charWidth(b0, curr_cp, tab_width);
+        if (!state.cluster_started) {
+            state.width_state = GraphemeWidthState.init(curr_cp, cp_width, width_method);
+            state.cluster_width = cp_width;
+            state.cluster_started = true;
+        } else {
+            state.width_state.addCodepoint(curr_cp, cp_width);
+            state.cluster_width = state.width_state.width;
+        }
         state.prev_cp = curr_cp;
         pos += cp_len;
     }
@@ -1154,7 +1214,6 @@ pub fn findPosByWidth(
 }
 
 pub fn getWidthAt(text: []const u8, byte_offset: usize, tab_width: u8, width_method: WidthMethod) u32 {
-    _ = width_method; // Ignored for now
     if (byte_offset >= text.len) return 0;
 
     const b0 = text[byte_offset];
@@ -1170,7 +1229,7 @@ pub fn getWidthAt(text: []const u8, byte_offset: usize, tab_width: u8, width_met
     var break_state: uucode.grapheme.BreakState = .default;
     var prev_cp: ?u21 = first_cp;
     const first_width = charWidth(b0, first_cp, tab_width);
-    var state = GraphemeWidthState.init(first_cp, first_width);
+    var state = GraphemeWidthState.init(first_cp, first_width, width_method);
 
     var pos = byte_offset + first_len;
 
@@ -1251,7 +1310,6 @@ pub fn getPrevGraphemeStart(text: []const u8, byte_offset: usize, tab_width: u8,
 
 /// Calculate the display width of text including tab characters with static tab_width
 pub fn calculateTextWidth(text: []const u8, tab_width: u8, isASCIIOnly: bool, width_method: WidthMethod) u32 {
-    _ = width_method; // Ignored for now
     if (text.len == 0) return 0;
 
     // ASCII-only fast path
@@ -1286,7 +1344,7 @@ pub fn calculateTextWidth(text: []const u8, tab_width: u8, isASCIIOnly: bool, wi
             }
 
             const cp_width = charWidth(b0, curr_cp, tab_width);
-            state = GraphemeWidthState.init(curr_cp, cp_width);
+            state = GraphemeWidthState.init(curr_cp, cp_width, width_method);
         } else {
             const cp_width = charWidth(b0, curr_cp, tab_width);
             state.addCodepoint(curr_cp, cp_width);
@@ -1334,6 +1392,7 @@ pub fn findGraphemeInfoSIMD16(
     text: []const u8,
     tab_width: u8,
     isASCIIOnly: bool,
+    width_method: WidthMethod,
     result: *std.ArrayList(GraphemeInfo),
 ) !void {
     if (isASCIIOnly) {
@@ -1394,7 +1453,7 @@ pub fn findGraphemeInfoSIMD16(
                     cluster_is_multibyte = false; // ASCII is not multibyte
 
                     const cp_width = asciiCharWidth(b, tab_width);
-                    cluster_width_state = GraphemeWidthState.init(curr_cp, cp_width);
+                    cluster_width_state = GraphemeWidthState.init(curr_cp, cp_width, width_method);
                 } else {
                     // Continuing cluster (shouldn't happen for ASCII, but handle it)
                     const cp_width = asciiCharWidth(b, tab_width);
@@ -1442,7 +1501,7 @@ pub fn findGraphemeInfoSIMD16(
                 cluster_is_multibyte = (cp_len != 1);
 
                 const cp_width = charWidth(b0, curr_cp, tab_width);
-                cluster_width_state = GraphemeWidthState.init(curr_cp, cp_width);
+                cluster_width_state = GraphemeWidthState.init(curr_cp, cp_width, width_method);
             } else {
                 // Continuing cluster
                 cluster_is_multibyte = cluster_is_multibyte or (cp_len != 1);
@@ -1490,7 +1549,7 @@ pub fn findGraphemeInfoSIMD16(
             cluster_is_multibyte = (cp_len != 1);
 
             const cp_width = charWidth(b0, curr_cp, tab_width);
-            cluster_width_state = GraphemeWidthState.init(curr_cp, cp_width);
+            cluster_width_state = GraphemeWidthState.init(curr_cp, cp_width, width_method);
         } else {
             // Continuing cluster
             cluster_is_multibyte = cluster_is_multibyte or (cp_len != 1);

@@ -19,6 +19,8 @@ This is an interactive text editor powered by EditBuffer and EditorView.
 \tThis is a tab
 \t\t\tMultiple tabs
 
+👋🏿
+
 NAVIGATION:
   • Arrow keys to move cursor
   • Home/End for line navigation

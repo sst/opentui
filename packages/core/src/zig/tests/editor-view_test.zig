@@ -2798,7 +2798,7 @@ test "EditorView - word wrapping during editing: typing with incremental wrappin
     try std.testing.expectEqualStrings("Hello world ddddddddd", out_buffer[0..written]);
 }
 
-test "EditorView - cursor movement with emoji skin tone modifier" {
+test "EditorView - cursor movement with emoji skin tone modifier wcwidth" {
     const pool = gp.initGlobalPool(std.testing.allocator);
     defer gp.deinitGlobalPool();
 
@@ -2809,37 +2809,56 @@ test "EditorView - cursor movement with emoji skin tone modifier" {
     defer ev.deinit();
 
     // "👋🏿" is a waving hand emoji with dark skin tone modifier
-    // This is a single grapheme cluster but consists of two codepoints
+    // In wcwidth mode (tmux-style), each codepoint has width 2, total = 4 columns
     try eb.setText("👋🏿", false);
 
-    // Start at position 0 (before the emoji)
+    // Start at position 0 (before the grapheme cluster)
     try eb.setCursor(0, 0);
     var cursor = eb.getPrimaryCursor();
     try std.testing.expectEqual(@as(u32, 0), cursor.col);
 
-    // Move right once - should move AFTER the emoji (the emoji is 2 cols wide)
+    // Move right once - should move past the entire grapheme cluster (4 columns in wcwidth)
     eb.moveRight();
     cursor = eb.getPrimaryCursor();
-    try std.testing.expectEqual(@as(u32, 2), cursor.col); // Should be at col 2 (after emoji)
+    try std.testing.expectEqual(@as(u32, 4), cursor.col);
 
-    // Move left once - should move BEFORE the emoji
+    // Move left once - should move back to the beginning
     eb.moveLeft();
     cursor = eb.getPrimaryCursor();
-    try std.testing.expectEqual(@as(u32, 0), cursor.col); // Should be back at col 0
-
-    // Move right again to verify consistency
-    eb.moveRight();
-    cursor = eb.getPrimaryCursor();
-    try std.testing.expectEqual(@as(u32, 2), cursor.col); // Should be at col 2 again
-
-    // Move left twice - first should go before emoji, second should stay at 0
-    eb.moveLeft();
-    eb.moveLeft();
-    cursor = eb.getPrimaryCursor();
-    try std.testing.expectEqual(@as(u32, 0), cursor.col); // Should stay at col 0
+    try std.testing.expectEqual(@as(u32, 0), cursor.col);
 }
 
-test "EditorView - backspace emoji with skin tone modifier" {
+test "EditorView - cursor movement with emoji skin tone modifier unicode" {
+    const pool = gp.initGlobalPool(std.testing.allocator);
+    defer gp.deinitGlobalPool();
+
+    var eb = try EditBuffer.init(std.testing.allocator, pool, .unicode);
+    defer eb.deinit();
+
+    var ev = try EditorView.init(std.testing.allocator, eb, 80, 24);
+    defer ev.deinit();
+
+    // "👋🏿" is a waving hand emoji with dark skin tone modifier
+    // In unicode mode (modern terminals), skin tone is 0-width, total = 2 columns
+    try eb.setText("👋🏿", false);
+
+    // Start at position 0 (before the grapheme cluster)
+    try eb.setCursor(0, 0);
+    var cursor = eb.getPrimaryCursor();
+    try std.testing.expectEqual(@as(u32, 0), cursor.col);
+
+    // Move right once - should move past the entire grapheme cluster (2 columns in unicode)
+    eb.moveRight();
+    cursor = eb.getPrimaryCursor();
+    try std.testing.expectEqual(@as(u32, 2), cursor.col);
+
+    // Move left once - should move back to the beginning
+    eb.moveLeft();
+    cursor = eb.getPrimaryCursor();
+    try std.testing.expectEqual(@as(u32, 0), cursor.col);
+}
+
+test "EditorView - backspace emoji with skin tone modifier wcwidth" {
     const pool = gp.initGlobalPool(std.testing.allocator);
     defer gp.deinitGlobalPool();
 
@@ -2850,10 +2869,48 @@ test "EditorView - backspace emoji with skin tone modifier" {
     defer ev.deinit();
 
     // "👋🏿" is a waving hand emoji with dark skin tone modifier
-    // This is a single grapheme cluster but consists of two codepoints
+    // In wcwidth mode, this renders as 4 columns (2+2)
     try eb.setText("👋🏿", false);
 
-    // Move cursor to AFTER the emoji (the emoji is 2 cols wide, so position should be 2)
+    // Move cursor to AFTER the grapheme cluster (4 columns total in wcwidth mode)
+    eb.moveRight();
+    var cursor = eb.getPrimaryCursor();
+    try std.testing.expectEqual(@as(u32, 4), cursor.col);
+
+    // Get text before backspace to verify it contains the emoji
+    var buffer_before: [100]u8 = undefined;
+    const len_before = eb.getText(&buffer_before);
+    try std.testing.expectEqualStrings("👋🏿", buffer_before[0..len_before]);
+
+    // Backspace should delete the entire grapheme cluster (both codepoints)
+    try eb.backspace();
+
+    // Cursor should now be at position 0
+    cursor = eb.getPrimaryCursor();
+    try std.testing.expectEqual(@as(u32, 0), cursor.col);
+
+    // Text buffer should be empty
+    var buffer_after: [100]u8 = undefined;
+    const len_after = eb.getText(&buffer_after);
+    try std.testing.expectEqual(@as(usize, 0), len_after);
+    try std.testing.expectEqualStrings("", buffer_after[0..len_after]);
+}
+
+test "EditorView - backspace emoji with skin tone modifier unicode" {
+    const pool = gp.initGlobalPool(std.testing.allocator);
+    defer gp.deinitGlobalPool();
+
+    var eb = try EditBuffer.init(std.testing.allocator, pool, .unicode);
+    defer eb.deinit();
+
+    var ev = try EditorView.init(std.testing.allocator, eb, 80, 24);
+    defer ev.deinit();
+
+    // "👋🏿" is a waving hand emoji with dark skin tone modifier
+    // In unicode mode, this renders as 2 columns (modifier is 0-width)
+    try eb.setText("👋🏿", false);
+
+    // Move cursor to AFTER the grapheme cluster (2 columns total in unicode mode)
     eb.moveRight();
     var cursor = eb.getPrimaryCursor();
     try std.testing.expectEqual(@as(u32, 2), cursor.col);
@@ -2863,7 +2920,7 @@ test "EditorView - backspace emoji with skin tone modifier" {
     const len_before = eb.getText(&buffer_before);
     try std.testing.expectEqualStrings("👋🏿", buffer_before[0..len_before]);
 
-    // Backspace should delete the entire emoji (including skin tone modifier)
+    // Backspace should delete the entire grapheme cluster (both codepoints)
     try eb.backspace();
 
     // Cursor should now be at position 0

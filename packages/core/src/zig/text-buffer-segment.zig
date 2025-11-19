@@ -139,6 +139,7 @@ pub const TextChunk = struct {
         mem_registry: *const MemRegistry,
         allocator: Allocator,
         tabwidth: u8,
+        width_method: utf8.WidthMethod,
     ) TextBufferError![]const GraphemeInfo {
         const mut_self = @constCast(self);
         if (self.graphemes) |cached| {
@@ -156,7 +157,7 @@ pub const TextChunk = struct {
         var grapheme_list = std.ArrayList(GraphemeInfo).init(allocator);
         errdefer grapheme_list.deinit();
 
-        try utf8.findGraphemeInfoSIMD16(chunk_bytes, tabwidth, self.isAsciiOnly(), &grapheme_list);
+        try utf8.findGraphemeInfoSIMD16(chunk_bytes, tabwidth, self.isAsciiOnly(), width_method, &grapheme_list);
 
         // TODO: Calling this with an arena allocator will just double the memory usage?
         const graphemes = try grapheme_list.toOwnedSlice();

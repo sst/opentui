@@ -2041,7 +2041,7 @@ test "findGraphemeInfo: empty string" {
     var result = std.ArrayList(utf8.GraphemeInfo).init(testing.allocator);
     defer result.deinit();
 
-    try utf8.findGraphemeInfoSIMD16("", 4, true, &result);
+    try utf8.findGraphemeInfoSIMD16("", 4, true, .unicode, &result);
     try testing.expectEqual(@as(usize, 0), result.items.len);
 }
 
@@ -2049,7 +2049,7 @@ test "findGraphemeInfo: ASCII-only returns empty" {
     var result = std.ArrayList(utf8.GraphemeInfo).init(testing.allocator);
     defer result.deinit();
 
-    try utf8.findGraphemeInfoSIMD16("hello world", 4, true, &result);
+    try utf8.findGraphemeInfoSIMD16("hello world", 4, true, .unicode, &result);
     try testing.expectEqual(@as(usize, 0), result.items.len);
 }
 
@@ -2057,7 +2057,7 @@ test "findGraphemeInfo: ASCII with tab" {
     var result = std.ArrayList(utf8.GraphemeInfo).init(testing.allocator);
     defer result.deinit();
 
-    try utf8.findGraphemeInfoSIMD16("hello\tworld", 4, false, &result);
+    try utf8.findGraphemeInfoSIMD16("hello\tworld", 4, false, .unicode, &result);
 
     // Should have one entry for the tab
     try testing.expectEqual(@as(usize, 1), result.items.len);
@@ -2071,7 +2071,7 @@ test "findGraphemeInfo: multiple tabs" {
     var result = std.ArrayList(utf8.GraphemeInfo).init(testing.allocator);
     defer result.deinit();
 
-    try utf8.findGraphemeInfoSIMD16("a\tb\tc", 4, false, &result);
+    try utf8.findGraphemeInfoSIMD16("a\tb\tc", 4, false, .unicode, &result);
 
     // Should have two entries for the tabs
     try testing.expectEqual(@as(usize, 2), result.items.len);
@@ -2094,7 +2094,7 @@ test "findGraphemeInfo: CJK characters" {
     defer result.deinit();
 
     const text = "hello世界";
-    try utf8.findGraphemeInfoSIMD16(text, 4, false, &result);
+    try utf8.findGraphemeInfoSIMD16(text, 4, false, .unicode, &result);
 
     // Should have two entries for the CJK characters
     try testing.expectEqual(@as(usize, 2), result.items.len);
@@ -2117,7 +2117,7 @@ test "findGraphemeInfo: emoji with skin tone" {
     defer result.deinit();
 
     const text = "Hi👋🏿Bye"; // Hi + wave + dark skin tone + Bye
-    try utf8.findGraphemeInfoSIMD16(text, 4, false, &result);
+    try utf8.findGraphemeInfoSIMD16(text, 4, false, .unicode, &result);
 
     // Should have one entry for the emoji cluster
     try testing.expectEqual(@as(usize, 1), result.items.len);
@@ -2133,7 +2133,7 @@ test "findGraphemeInfo: emoji with ZWJ" {
     defer result.deinit();
 
     const text = "a👩‍🚀b"; // a + woman astronaut + b
-    try utf8.findGraphemeInfoSIMD16(text, 4, false, &result);
+    try utf8.findGraphemeInfoSIMD16(text, 4, false, .unicode, &result);
 
     // Should have one entry for the emoji cluster
     try testing.expectEqual(@as(usize, 1), result.items.len);
@@ -2148,7 +2148,7 @@ test "findGraphemeInfo: combining mark" {
     defer result.deinit();
 
     const text = "cafe\u{0301}"; // café with combining acute
-    try utf8.findGraphemeInfoSIMD16(text, 4, false, &result);
+    try utf8.findGraphemeInfoSIMD16(text, 4, false, .unicode, &result);
 
     // Should have one entry for e + combining mark
     try testing.expectEqual(@as(usize, 1), result.items.len);
@@ -2164,7 +2164,7 @@ test "findGraphemeInfo: flag emoji" {
     defer result.deinit();
 
     const text = "US🇺🇸"; // US + flag
-    try utf8.findGraphemeInfoSIMD16(text, 4, false, &result);
+    try utf8.findGraphemeInfoSIMD16(text, 4, false, .unicode, &result);
 
     // Should have one entry for the flag (two regional indicators)
     try testing.expectEqual(@as(usize, 1), result.items.len);
@@ -2180,7 +2180,7 @@ test "findGraphemeInfo: mixed content" {
     defer result.deinit();
 
     const text = "Hi\t世界!"; // Hi + tab + CJK + !
-    try utf8.findGraphemeInfoSIMD16(text, 4, false, &result);
+    try utf8.findGraphemeInfoSIMD16(text, 4, false, .unicode, &result);
 
     // Should have three entries: tab, 世, 界
     try testing.expectEqual(@as(usize, 3), result.items.len);
@@ -2208,7 +2208,7 @@ test "findGraphemeInfo: only ASCII letters no cache" {
     var result = std.ArrayList(utf8.GraphemeInfo).init(testing.allocator);
     defer result.deinit();
 
-    try utf8.findGraphemeInfoSIMD16("abcdefghij", 4, false, &result);
+    try utf8.findGraphemeInfoSIMD16("abcdefghij", 4, false, .unicode, &result);
 
     // No special characters, should be empty
     try testing.expectEqual(@as(usize, 0), result.items.len);
@@ -2219,7 +2219,7 @@ test "findGraphemeInfo: emoji with VS16" {
     defer result.deinit();
 
     const text = "I ❤️ U"; // I + space + heart + VS16 + space + U
-    try utf8.findGraphemeInfoSIMD16(text, 4, false, &result);
+    try utf8.findGraphemeInfoSIMD16(text, 4, false, .unicode, &result);
 
     // Should have one entry for the emoji cluster
     try testing.expectEqual(@as(usize, 1), result.items.len);
@@ -2234,7 +2234,7 @@ test "findGraphemeInfo: realistic text" {
     defer result.deinit();
 
     const text = "function test() {\n\tconst 世界 = 10;\n}";
-    try utf8.findGraphemeInfoSIMD16(text, 4, false, &result);
+    try utf8.findGraphemeInfoSIMD16(text, 4, false, .unicode, &result);
 
     // Should have entries for: tab, 世, 界
     try testing.expectEqual(@as(usize, 3), result.items.len);
@@ -2245,7 +2245,7 @@ test "findGraphemeInfo: hiragana" {
     defer result.deinit();
 
     const text = "こんにちは";
-    try utf8.findGraphemeInfoSIMD16(text, 4, false, &result);
+    try utf8.findGraphemeInfoSIMD16(text, 4, false, .unicode, &result);
 
     // Should have 5 entries (each hiragana is 3 bytes, width 2)
     try testing.expectEqual(@as(usize, 5), result.items.len);
@@ -2266,7 +2266,7 @@ test "findGraphemeInfo: at SIMD boundary" {
     const cjk = "世";
     @memcpy(buf[14..17], cjk); // Place CJK char at boundary
 
-    try utf8.findGraphemeInfoSIMD16(&buf, 4, false, &result);
+    try utf8.findGraphemeInfoSIMD16(&buf, 4, false, .unicode, &result);
 
     // Should find the CJK character
     var found = false;
@@ -3556,7 +3556,7 @@ test "findGraphemeInfo: comprehensive multilingual text" {
     var result = std.ArrayList(utf8.GraphemeInfo).init(testing.allocator);
     defer result.deinit();
 
-    try utf8.findGraphemeInfoSIMD16(text, 4, false, &result);
+    try utf8.findGraphemeInfoSIMD16(text, 4, false, .unicode, &result);
     try testing.expect(result.items.len > 0);
 
     var prev_end_byte: usize = 0;
