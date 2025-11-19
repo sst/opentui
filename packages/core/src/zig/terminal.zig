@@ -223,10 +223,10 @@ fn checkEnvironmentOverrides(self: *Terminal) void {
     // Check for tmux first (via TERM or TMUX environment variables)
     // Tmux doesn't support proper Unicode grapheme width calculation
     if (env_map.get("TMUX")) |_| {
-        self.caps.unicode = .wcwidth;
+        self.caps.unicode = .no_zwj;
     } else if (env_map.get("TERM")) |term| {
         if (std.mem.startsWith(u8, term, "tmux") or std.mem.startsWith(u8, term, "screen")) {
-            self.caps.unicode = .wcwidth;
+            self.caps.unicode = .no_zwj;
         }
     }
 
@@ -409,7 +409,7 @@ pub fn processCapabilityResponse(self: *Terminal, response: []const u8) void {
 
     // Tmux detection - tmux doesn't support proper Unicode grapheme width
     if (std.mem.indexOf(u8, response, "tmux")) |_| {
-        self.caps.unicode = .wcwidth;
+        self.caps.unicode = .no_zwj;
     }
 
     // Sixel detection via device attributes (capability 4 in DA1 response ending with 'c')
