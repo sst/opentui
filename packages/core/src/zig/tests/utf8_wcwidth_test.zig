@@ -193,3 +193,53 @@ test "calculateTextWidth wcwidth: flag emoji counts both RIs" {
     // unicode: single flag grapheme (width 2)
     try testing.expectEqual(@as(u32, 2), width_unicode);
 }
+
+// ============================================================================
+// FIND WRAP POS BY WIDTH TESTS - WCWIDTH MODE
+// ============================================================================
+
+test "findWrapPosByWidth wcwidth: emoji with skin tone stops earlier" {
+    const text = "Hi👋🏿Bye"; // H(1) i(1) wave(2) skin(2) B(1) y(1) e(1) = 10 cols wcwidth
+
+    const result_wcwidth = utf8.findWrapPosByWidth(text, 4, 4, false, .wcwidth);
+    const result_unicode = utf8.findWrapPosByWidth(text, 4, 4, false, .unicode);
+
+    // wcwidth: stops after "Hi👋" = 4 columns (1+1+2)
+    try testing.expectEqual(@as(u32, 6), result_wcwidth.byte_offset);
+    try testing.expectEqual(@as(u32, 4), result_wcwidth.columns_used);
+
+    // unicode: stops after "Hi👋🏿" = 4 columns (1+1+2 for whole grapheme)
+    try testing.expectEqual(@as(u32, 10), result_unicode.byte_offset);
+    try testing.expectEqual(@as(u32, 4), result_unicode.columns_used);
+}
+
+test "findPosByWidth wcwidth: emoji boundary behavior" {
+    const text = "AB👋🏿CD"; // A(1) B(1) wave(2) skin(2) C(1) D(1)
+
+    // With include_start_before=false (selection start)
+    const start3 = utf8.findPosByWidth(text, 3, 4, false, false, .wcwidth);
+    // wcwidth: stops after "AB" at 2 columns (wave would exceed)
+    try testing.expectEqual(@as(u32, 2), start3.byte_offset);
+
+    // With include_start_before=true (selection end)
+    const end3 = utf8.findPosByWidth(text, 3, 4, false, true, .wcwidth);
+    // wcwidth: includes wave since it starts at column 2 which is < 3
+    try testing.expectEqual(@as(u32, 6), end3.byte_offset);
+    try testing.expectEqual(@as(u32, 4), end3.columns_used);
+}
+
+test "getPrevGraphemeStart wcwidth: each codepoint separate" {
+    const text = "Hi👋🏿";
+
+    // From end of text (after skin tone)
+    const r_end = utf8.getPrevGraphemeStart(text, text.len, 4, .wcwidth);
+    try testing.expect(r_end != null);
+    try testing.expectEqual(@as(usize, 6), r_end.?.start_offset); // Skin tone starts at byte 6
+    try testing.expectEqual(@as(u32, 2), r_end.?.width);
+
+    // From start of skin tone (byte 6)
+    const r_wave = utf8.getPrevGraphemeStart(text, 6, 4, .wcwidth);
+    try testing.expect(r_wave != null);
+    try testing.expectEqual(@as(usize, 2), r_wave.?.start_offset); // Wave starts at byte 2
+    try testing.expectEqual(@as(u32, 2), r_wave.?.width);
+}

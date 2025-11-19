@@ -909,7 +909,22 @@ inline fn handleClusterForPos(
     return false;
 }
 
+/// Find wrap position by width - proxy function that dispatches based on width_method
 pub fn findWrapPosByWidth(
+    text: []const u8,
+    max_columns: u32,
+    tab_width: u8,
+    isASCIIOnly: bool,
+    width_method: WidthMethod,
+) WrapByWidthResult {
+    switch (width_method) {
+        .unicode, .no_zwj => return findWrapPosByWidthUnicode(text, max_columns, tab_width, isASCIIOnly, width_method),
+        .wcwidth => return findWrapPosByWidthWCWidth(text, max_columns, tab_width, isASCIIOnly),
+    }
+}
+
+/// Find wrap position by width using Unicode grapheme cluster segmentation
+fn findWrapPosByWidthUnicode(
     text: []const u8,
     max_columns: u32,
     tab_width: u8,
@@ -1058,12 +1073,88 @@ pub fn findWrapPosByWidth(
     return .{ .byte_offset = @intCast(text.len), .grapheme_count = state.grapheme_count, .columns_used = state.columns_used };
 }
 
-/// Find position by column width, with control over boundary behavior
+/// Find wrap position by width using wcwidth-style codepoint-by-codepoint processing
+fn findWrapPosByWidthWCWidth(
+    text: []const u8,
+    max_columns: u32,
+    tab_width: u8,
+    isASCIIOnly: bool,
+) WrapByWidthResult {
+    if (text.len == 0 or max_columns == 0) {
+        return .{ .byte_offset = 0, .grapheme_count = 0, .columns_used = 0 };
+    }
+
+    // ASCII-only fast path
+    if (isASCIIOnly) {
+        var pos: usize = 0;
+        var columns_used: u32 = 0;
+
+        while (pos < text.len) {
+            const b = text[pos];
+            const width = asciiCharWidth(b, tab_width);
+
+            if (columns_used + width > max_columns) {
+                return .{ .byte_offset = @intCast(pos), .grapheme_count = @intCast(pos), .columns_used = columns_used };
+            }
+
+            columns_used += width;
+            pos += 1;
+        }
+
+        return .{ .byte_offset = @intCast(text.len), .grapheme_count = @intCast(text.len), .columns_used = columns_used };
+    }
+
+    // Unicode path - process each codepoint independently
+    var pos: usize = 0;
+    var columns_used: u32 = 0;
+    var codepoint_count: u32 = 0;
+
+    while (pos < text.len) {
+        const b0 = text[pos];
+        const curr_cp: u21 = if (b0 < 0x80) b0 else blk: {
+            const dec = decodeUtf8Unchecked(text, pos);
+            if (pos + dec.len > text.len) break :blk 0xFFFD;
+            break :blk dec.cp;
+        };
+        const cp_len: usize = if (b0 < 0x80) 1 else decodeUtf8Unchecked(text, pos).len;
+
+        if (pos + cp_len > text.len) break;
+
+        const cp_width = charWidth(b0, curr_cp, tab_width);
+
+        if (columns_used + cp_width > max_columns) {
+            return .{ .byte_offset = @intCast(pos), .grapheme_count = codepoint_count, .columns_used = columns_used };
+        }
+
+        columns_used += cp_width;
+        if (cp_width > 0) codepoint_count += 1;
+        pos += cp_len;
+    }
+
+    return .{ .byte_offset = @intCast(text.len), .grapheme_count = codepoint_count, .columns_used = columns_used };
+}
+
+/// Find position by column width - proxy function that dispatches based on width_method
 /// - If include_start_before: include graphemes that START before max_columns (snap forward for selection end)
 ///   This ensures that if max_columns points to the middle of a width=2 grapheme, we include the whole grapheme
 /// - If !include_start_before: exclude graphemes that START at or after max_columns (snap backward for selection start)
 ///   This ensures that if max_columns points to the middle of a width=2 grapheme, we snap back to exclude it
 pub fn findPosByWidth(
+    text: []const u8,
+    max_columns: u32,
+    tab_width: u8,
+    isASCIIOnly: bool,
+    include_start_before: bool,
+    width_method: WidthMethod,
+) PosByWidthResult {
+    switch (width_method) {
+        .unicode, .no_zwj => return findPosByWidthUnicode(text, max_columns, tab_width, isASCIIOnly, include_start_before, width_method),
+        .wcwidth => return findPosByWidthWCWidth(text, max_columns, tab_width, isASCIIOnly, include_start_before),
+    }
+}
+
+/// Find position by column width using Unicode grapheme cluster segmentation
+fn findPosByWidthUnicode(
     text: []const u8,
     max_columns: u32,
     tab_width: u8,
@@ -1218,7 +1309,92 @@ pub fn findPosByWidth(
     return .{ .byte_offset = @intCast(text.len), .grapheme_count = state.grapheme_count, .columns_used = state.columns_used };
 }
 
+/// Find position by column width using wcwidth-style codepoint-by-codepoint processing
+fn findPosByWidthWCWidth(
+    text: []const u8,
+    max_columns: u32,
+    tab_width: u8,
+    isASCIIOnly: bool,
+    include_start_before: bool,
+) PosByWidthResult {
+    if (text.len == 0 or max_columns == 0) {
+        return .{ .byte_offset = 0, .grapheme_count = 0, .columns_used = 0 };
+    }
+
+    // ASCII-only fast path
+    if (isASCIIOnly) {
+        var pos: usize = 0;
+        var columns_used: u32 = 0;
+
+        while (pos < text.len) {
+            const b = text[pos];
+            const prev_columns = columns_used;
+            const width = asciiCharWidth(b, tab_width);
+
+            columns_used += width;
+
+            // Check if this character starts at or after max_columns
+            if (prev_columns >= max_columns) {
+                return .{ .byte_offset = @intCast(pos), .grapheme_count = @intCast(pos), .columns_used = prev_columns };
+            }
+
+            pos += 1;
+        }
+
+        return .{ .byte_offset = @intCast(text.len), .grapheme_count = @intCast(text.len), .columns_used = columns_used };
+    }
+
+    // Unicode path - process each codepoint independently
+    var pos: usize = 0;
+    var columns_used: u32 = 0;
+    var codepoint_count: u32 = 0;
+
+    while (pos < text.len) {
+        const b0 = text[pos];
+        const curr_cp: u21 = if (b0 < 0x80) b0 else blk: {
+            const dec = decodeUtf8Unchecked(text, pos);
+            if (pos + dec.len > text.len) break :blk 0xFFFD;
+            break :blk dec.cp;
+        };
+        const cp_len: usize = if (b0 < 0x80) 1 else decodeUtf8Unchecked(text, pos).len;
+
+        if (pos + cp_len > text.len) break;
+
+        const cp_width = charWidth(b0, curr_cp, tab_width);
+        const cp_start_col = columns_used;
+        const cp_end_col = columns_used + cp_width;
+
+        // Apply boundary behavior
+        if (include_start_before) {
+            // Selection end: include codepoints that START before max_columns
+            if (cp_start_col >= max_columns) {
+                return .{ .byte_offset = @intCast(pos), .grapheme_count = codepoint_count, .columns_used = columns_used };
+            }
+        } else {
+            // Selection start: exclude codepoints that END after max_columns
+            if (cp_end_col > max_columns) {
+                return .{ .byte_offset = @intCast(pos), .grapheme_count = codepoint_count, .columns_used = columns_used };
+            }
+        }
+
+        columns_used = cp_end_col;
+        if (cp_width > 0) codepoint_count += 1;
+        pos += cp_len;
+    }
+
+    return .{ .byte_offset = @intCast(text.len), .grapheme_count = codepoint_count, .columns_used = columns_used };
+}
+
+/// Get width at byte offset - proxy function that dispatches based on width_method
 pub fn getWidthAt(text: []const u8, byte_offset: usize, tab_width: u8, width_method: WidthMethod) u32 {
+    switch (width_method) {
+        .unicode, .no_zwj => return getWidthAtUnicode(text, byte_offset, tab_width, width_method),
+        .wcwidth => return getWidthAtWCWidth(text, byte_offset, tab_width),
+    }
+}
+
+/// Get width at byte offset using Unicode grapheme cluster segmentation
+fn getWidthAtUnicode(text: []const u8, byte_offset: usize, tab_width: u8, width_method: WidthMethod) u32 {
     if (byte_offset >= text.len) return 0;
 
     const b0 = text[byte_offset];
@@ -1235,34 +1411,6 @@ pub fn getWidthAt(text: []const u8, byte_offset: usize, tab_width: u8, width_met
     var prev_cp: ?u21 = first_cp;
     const first_width = charWidth(b0, first_cp, tab_width);
     var state = GraphemeWidthState.init(first_cp, first_width, width_method);
-
-    // In wcwidth mode, treat each codepoint as a separate char for cursor movement
-    // Skip over zero-width characters (like ZWJ) and find the next non-zero-width char
-    if (width_method == .wcwidth) {
-        if (first_width > 0) {
-            return first_width;
-        }
-
-        // First codepoint is zero-width, skip over it and any following zero-width chars
-        var pos = byte_offset + first_len;
-        while (pos < text.len) {
-            const b = text[pos];
-            const curr_cp: u21 = if (b < 0x80) b else decodeUtf8Unchecked(text, pos).cp;
-            const cp_len: usize = if (b < 0x80) 1 else decodeUtf8Unchecked(text, pos).len;
-
-            if (pos + cp_len > text.len) break;
-
-            const cp_width = charWidth(b, curr_cp, tab_width);
-            if (cp_width > 0) {
-                return cp_width;
-            }
-
-            pos += cp_len;
-        }
-
-        // All remaining codepoints are zero-width, return 0
-        return 0;
-    }
 
     var pos = byte_offset + first_len;
 
@@ -1286,50 +1434,103 @@ pub fn getWidthAt(text: []const u8, byte_offset: usize, tab_width: u8, width_met
     return state.width;
 }
 
+/// Get width at byte offset using wcwidth-style codepoint-by-codepoint processing
+fn getWidthAtWCWidth(text: []const u8, byte_offset: usize, tab_width: u8) u32 {
+    if (byte_offset >= text.len) return 0;
+
+    const b0 = text[byte_offset];
+
+    const first_cp: u21 = if (b0 < 0x80) b0 else blk: {
+        const dec = decodeUtf8Unchecked(text, byte_offset);
+        if (byte_offset + dec.len > text.len) return 1;
+        break :blk dec.cp;
+    };
+
+    const first_len: usize = if (b0 < 0x80) 1 else decodeUtf8Unchecked(text, byte_offset).len;
+    const first_width = charWidth(b0, first_cp, tab_width);
+
+    // In wcwidth mode, treat each codepoint as a separate char for cursor movement
+    // Skip over zero-width characters (like ZWJ) and find the next non-zero-width char
+    if (first_width > 0) {
+        return first_width;
+    }
+
+    // First codepoint is zero-width, skip over it and any following zero-width chars
+    var pos = byte_offset + first_len;
+    while (pos < text.len) {
+        const b = text[pos];
+        const curr_cp: u21 = if (b < 0x80) b else decodeUtf8Unchecked(text, pos).cp;
+        const cp_len: usize = if (b < 0x80) 1 else decodeUtf8Unchecked(text, pos).len;
+
+        if (pos + cp_len > text.len) break;
+
+        const cp_width = charWidth(b, curr_cp, tab_width);
+        if (cp_width > 0) {
+            return cp_width;
+        }
+
+        pos += cp_len;
+    }
+
+    // All remaining codepoints are zero-width, return 0
+    return 0;
+}
+
 pub const PrevGraphemeResult = struct {
     start_offset: usize,
     width: u32,
 };
 
+/// Get previous grapheme start - proxy function that dispatches based on width_method
 pub fn getPrevGraphemeStart(text: []const u8, byte_offset: usize, tab_width: u8, width_method: WidthMethod) ?PrevGraphemeResult {
+    switch (width_method) {
+        .unicode, .no_zwj => return getPrevGraphemeStartUnicode(text, byte_offset, tab_width, width_method),
+        .wcwidth => return getPrevGraphemeStartWCWidth(text, byte_offset, tab_width),
+    }
+}
+
+/// Get previous grapheme start using wcwidth-style codepoint-by-codepoint processing
+fn getPrevGraphemeStartWCWidth(text: []const u8, byte_offset: usize, tab_width: u8) ?PrevGraphemeResult {
     if (byte_offset == 0 or text.len == 0) return null;
     if (byte_offset > text.len) return null;
 
-    // In wcwidth mode, treat each codepoint as a separate char
-    // Skip over zero-width characters when moving backwards
-    if (width_method == .wcwidth) {
-        // Build a list of all codepoint positions
-        var positions = std.BoundedArray(struct { pos: usize, width: u32 }, 256).init(0) catch unreachable;
+    // Build a list of all codepoint positions
+    var codepoint_positions = std.BoundedArray(struct { pos: usize, width: u32 }, 256).init(0) catch unreachable;
 
-        var pos: usize = 0;
-        while (pos < byte_offset) {
-            const b = text[pos];
-            const curr_cp: u21 = if (b < 0x80) b else blk: {
-                const dec = decodeUtf8Unchecked(text, pos);
-                if (pos + dec.len > text.len) break :blk 0xFFFD;
-                break :blk dec.cp;
-            };
-            const cp_len: usize = if (b < 0x80) 1 else decodeUtf8Unchecked(text, pos).len;
-            const cp_width = charWidth(b, curr_cp, tab_width);
+    var pos: usize = 0;
+    while (pos < byte_offset) {
+        const b = text[pos];
+        const curr_cp: u21 = if (b < 0x80) b else blk: {
+            const dec = decodeUtf8Unchecked(text, pos);
+            if (pos + dec.len > text.len) break :blk 0xFFFD;
+            break :blk dec.cp;
+        };
+        const cp_len: usize = if (b < 0x80) 1 else decodeUtf8Unchecked(text, pos).len;
+        const cp_width = charWidth(b, curr_cp, tab_width);
 
-            positions.appendAssumeCapacity(.{ .pos = pos, .width = cp_width });
-            pos += cp_len;
-        }
-
-        // Find the last non-zero-width codepoint before byte_offset
-        var i: isize = @as(isize, @intCast(positions.len)) - 1;
-        while (i >= 0) : (i -= 1) {
-            const idx = @as(usize, @intCast(i));
-            if (positions.get(idx).width > 0) {
-                return .{
-                    .start_offset = positions.get(idx).pos,
-                    .width = positions.get(idx).width,
-                };
-            }
-        }
-
-        return null;
+        codepoint_positions.appendAssumeCapacity(.{ .pos = pos, .width = cp_width });
+        pos += cp_len;
     }
+
+    // Find the last non-zero-width codepoint before byte_offset
+    var i: isize = @as(isize, @intCast(codepoint_positions.len)) - 1;
+    while (i >= 0) : (i -= 1) {
+        const idx = @as(usize, @intCast(i));
+        if (codepoint_positions.get(idx).width > 0) {
+            return .{
+                .start_offset = codepoint_positions.get(idx).pos,
+                .width = codepoint_positions.get(idx).width,
+            };
+        }
+    }
+
+    return null;
+}
+
+/// Get previous grapheme start using Unicode grapheme cluster segmentation
+fn getPrevGraphemeStartUnicode(text: []const u8, byte_offset: usize, tab_width: u8, width_method: WidthMethod) ?PrevGraphemeResult {
+    if (byte_offset == 0 or text.len == 0) return null;
+    if (byte_offset > text.len) return null;
 
     // For unicode/no_zwj modes, use grapheme cluster detection
     var break_state: uucode.grapheme.BreakState = .default;
@@ -1378,8 +1579,16 @@ pub fn getPrevGraphemeStart(text: []const u8, byte_offset: usize, tab_width: u8,
     };
 }
 
-/// Calculate the display width of text including tab characters with static tab_width
+/// Calculate the display width of text - proxy function that dispatches based on width_method
 pub fn calculateTextWidth(text: []const u8, tab_width: u8, isASCIIOnly: bool, width_method: WidthMethod) u32 {
+    switch (width_method) {
+        .unicode, .no_zwj => return calculateTextWidthUnicode(text, tab_width, isASCIIOnly, width_method),
+        .wcwidth => return calculateTextWidthWCWidth(text, tab_width, isASCIIOnly),
+    }
+}
+
+/// Calculate text width using Unicode grapheme cluster segmentation
+fn calculateTextWidthUnicode(text: []const u8, tab_width: u8, isASCIIOnly: bool, width_method: WidthMethod) u32 {
     if (text.len == 0) return 0;
 
     // ASCII-only fast path
@@ -1426,6 +1635,41 @@ pub fn calculateTextWidth(text: []const u8, tab_width: u8, isASCIIOnly: bool, wi
 
     if (prev_cp != null) {
         total_width += state.width;
+    }
+
+    return total_width;
+}
+
+/// Calculate text width using wcwidth-style codepoint-by-codepoint processing
+fn calculateTextWidthWCWidth(text: []const u8, tab_width: u8, isASCIIOnly: bool) u32 {
+    if (text.len == 0) return 0;
+
+    // ASCII-only fast path
+    if (isASCIIOnly) {
+        var width: u32 = 0;
+        for (text) |b| {
+            width += asciiCharWidth(b, tab_width);
+        }
+        return width;
+    }
+
+    // Unicode path - sum width of all codepoints
+    var total_width: u32 = 0;
+    var pos: usize = 0;
+
+    while (pos < text.len) {
+        const b0 = text[pos];
+        const curr_cp: u21 = if (b0 < 0x80) b0 else blk: {
+            const dec = decodeUtf8Unchecked(text, pos);
+            if (pos + dec.len > text.len) break :blk 0xFFFD;
+            break :blk dec.cp;
+        };
+        const cp_len: usize = if (b0 < 0x80) 1 else decodeUtf8Unchecked(text, pos).len;
+
+        const cp_width = charWidth(b0, curr_cp, tab_width);
+        total_width += cp_width;
+
+        pos += cp_len;
     }
 
     return total_width;
