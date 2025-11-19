@@ -1,5 +1,7 @@
 # Environment Variables
 
+# Environment Variables
+
 ## OTUI_TS_STYLE_WARN
 
 Enable warnings for missing syntax styles
@@ -38,6 +40,20 @@ Enable debug logging for the FFI bindings.
 ## OTUI_TRACE_FFI
 
 Enable tracing for the FFI bindings.
+
+**Type:** `boolean`  
+**Default:** `false`
+
+## OPENTUI_FORCE_WCWIDTH
+
+Use wcwidth for character width calculations
+
+**Type:** `boolean`  
+**Default:** `false`
+
+## OPENTUI_FORCE_UNICODE
+
+Force Mode 2026 Unicode support in terminal capabilities
 
 **Type:** `boolean`  
 **Default:** `false`
@@ -83,6 +99,7 @@ Override the stdout stream. This is useful for debugging.
 
 **Type:** `boolean`  
 **Default:** `true`
+
 
 ---
 
