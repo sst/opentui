@@ -91,9 +91,9 @@ class ParserWorker {
           with: { type: "wasm" },
         })
 
-        if (/\$bunfs/.test(treeWasm)) {
-          treeWasm = "/$bunfs/root/" + path.parse(treeWasm).base
-        }
+        // if (/\$bunfs/.test(treeWasm)) {
+        //   treeWasm = "/$bunfs/root/" + path.parse(treeWasm).base
+        // }
 
         await Parser.init({
           locateFile() {
@@ -170,14 +170,11 @@ class ParserWorker {
       return undefined
     }
 
-    // Normalize path for Windows compatibility - tree-sitter expects forward slashes
-    const normalizedPath = result.filePath.replaceAll("\\", "/")
-
     try {
-      const language = await Language.load(normalizedPath)
+      const language = await Language.load(result.filePath)
       return language
     } catch (error) {
-      console.error(`Error loading language from ${normalizedPath}:`, error)
+      console.error(`Error loading language from ${result.filePath}:`, error)
       return undefined
     }
   }

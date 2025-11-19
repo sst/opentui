@@ -231,7 +231,7 @@ if (buildLib) {
     [
       "build",
       "--target=bun",
-      "--outdir=dist",
+      "--outdir=dist/lib/tree-sitter",
       "--sourcemap",
       ...externalDeps.flatMap((dep) => ["--external", dep]),
       "--external",
