@@ -243,3 +243,131 @@ test "getPrevGraphemeStart wcwidth: each codepoint separate" {
     try testing.expectEqual(@as(usize, 2), r_wave.?.start_offset); // Wave starts at byte 2
     try testing.expectEqual(@as(u32, 2), r_wave.?.width);
 }
+
+// ============================================================================
+// ADDITIONAL COMPREHENSIVE WCWIDTH TESTS
+// ============================================================================
+
+test "wcwidth: zero-width characters are handled correctly" {
+    // ZWJ (Zero Width Joiner) should have width 0
+    const text_zwj = "\u{200D}";
+    const width_zwj = utf8.calculateTextWidth(text_zwj, 4, false, .wcwidth);
+    try testing.expectEqual(@as(u32, 0), width_zwj);
+
+    // Combining marks should have width 0
+    const text_combining = "e\u{0301}"; // e + combining acute
+    const width = utf8.calculateTextWidth(text_combining, 4, false, .wcwidth);
+    try testing.expectEqual(@as(u32, 1), width); // Only 'e' contributes
+}
+
+test "wcwidth: variation selectors" {
+    // VS15 (text presentation) and VS16 (emoji presentation)
+    const text_vs16 = "☺\u{FE0F}"; // Smiling face + VS16
+    const width_vs16 = utf8.calculateTextWidth(text_vs16, 4, false, .wcwidth);
+    try testing.expectEqual(@as(u32, 1), width_vs16); // Smiling face (1) + VS16 (0) = 1
+}
+
+test "wcwidth: regional indicators counted separately" {
+    // Each regional indicator should contribute width 1
+    const text = "🇺🇸"; // US flag = two regional indicators
+    const width = utf8.calculateTextWidth(text, 4, false, .wcwidth);
+    try testing.expectEqual(@as(u32, 2), width); // Each RI has width 1
+}
+
+test "wcwidth: emoji ZWJ sequences split" {
+    // Woman astronaut = woman + ZWJ + rocket
+    const text = "👩‍🚀";
+    const width = utf8.calculateTextWidth(text, 4, false, .wcwidth);
+    // Woman (2) + ZWJ (0) + Rocket (2) = 4
+    try testing.expectEqual(@as(u32, 4), width);
+}
+
+test "wcwidth: family emoji split into components" {
+    // Family emoji with ZWJ
+    const text = "👨‍👩‍👧"; // Man + ZWJ + Woman + ZWJ + Girl
+    const width = utf8.calculateTextWidth(text, 4, false, .wcwidth);
+    // Man (2) + ZWJ (0) + Woman (2) + ZWJ (0) + Girl (2) = 6
+    try testing.expectEqual(@as(u32, 6), width);
+}
+
+test "wcwidth: skin tone modifiers counted separately" {
+    // Emoji with skin tone modifier
+    const text = "👋🏻"; // Wave + light skin tone
+    const width = utf8.calculateTextWidth(text, 4, false, .wcwidth);
+    // Wave (2) + Skin tone modifier (2) = 4
+    try testing.expectEqual(@as(u32, 4), width);
+}
+
+test "wcwidth: CJK characters have width 2" {
+    const text = "你好世界"; // 4 CJK characters
+    const width = utf8.calculateTextWidth(text, 4, false, .wcwidth);
+    try testing.expectEqual(@as(u32, 8), width); // 4 * 2 = 8
+}
+
+test "wcwidth: mixed ASCII and emoji" {
+    const text = "Hello👋World";
+    // H(1) e(1) l(1) l(1) o(1) 👋(2) W(1) o(1) r(1) l(1) d(1) = 12
+    const width = utf8.calculateTextWidth(text, 4, false, .wcwidth);
+    try testing.expectEqual(@as(u32, 12), width);
+}
+
+test "wcwidth: findWrapPosByWidth with ZWJ sequences" {
+    const text = "AB👩‍🚀CD"; // A(1) B(1) woman(2) ZWJ(0) rocket(2) C(1) D(1) = 8
+
+    // Should wrap after woman emoji (before ZWJ)
+    const result = utf8.findWrapPosByWidth(text, 4, 4, false, .wcwidth);
+    try testing.expectEqual(@as(u32, 6), result.byte_offset); // After woman emoji
+    try testing.expectEqual(@as(u32, 4), result.columns_used);
+}
+
+test "wcwidth: findPosByWidth with skin tone modifier" {
+    const text = "AB👋🏻CD"; // A(1) B(1) wave(2) skin(2) C(1) D(1) = 8
+
+    // With include_start_before=false, include codepoints that end at or before max_columns
+    // Wave ends at column 4, which is at max_columns=4, so it's included
+    const start4 = utf8.findPosByWidth(text, 4, 4, false, false, .wcwidth);
+    try testing.expectEqual(@as(u32, 6), start4.byte_offset); // After wave
+    try testing.expectEqual(@as(u32, 4), start4.columns_used);
+
+    // With include_start_before=true, include codepoints that start before max_columns
+    // Wave starts at column 2 which is < 4, so it's included
+    const end4 = utf8.findPosByWidth(text, 4, 4, false, true, .wcwidth);
+    try testing.expectEqual(@as(u32, 6), end4.byte_offset); // After wave
+    try testing.expectEqual(@as(u32, 4), end4.columns_used);
+}
+
+test "wcwidth: getWidthAt with combining marks" {
+    const text = "e\u{0301}test"; // e + combining acute
+
+    // Width at 'e' should be 1
+    const width_e = utf8.getWidthAt(text, 0, 4, .wcwidth);
+    try testing.expectEqual(@as(u32, 1), width_e);
+
+    // Width at combining mark should be 0 (but next non-zero is 't')
+    const width_combining = utf8.getWidthAt(text, 1, 4, .wcwidth);
+    try testing.expectEqual(@as(u32, 0), width_combining);
+}
+
+test "wcwidth: getPrevGraphemeStart with ZWJ sequence" {
+    const text = "AB👩‍🚀"; // A B woman ZWJ rocket
+
+    // From end (after rocket)
+    const r1 = utf8.getPrevGraphemeStart(text, text.len, 4, .wcwidth);
+    try testing.expect(r1 != null);
+    // Should point to rocket emoji (after ZWJ)
+    try testing.expectEqual(@as(u32, 2), r1.?.width);
+
+    // From rocket start, should go to ZWJ
+    const r2 = utf8.getPrevGraphemeStart(text, r1.?.start_offset, 4, .wcwidth);
+    try testing.expect(r2 != null);
+
+    // Eventually should reach woman emoji
+    var pos = text.len;
+    var count: usize = 0;
+    while (utf8.getPrevGraphemeStart(text, pos, 4, .wcwidth)) |prev| {
+        pos = prev.start_offset;
+        count += 1;
+        if (count > 10) break; // Safety limit
+    }
+    try testing.expect(count >= 3); // At least rocket, ZWJ, woman
+}

@@ -715,12 +715,33 @@ inline fn isValidCodepoint(cp: u21) bool {
 }
 
 /// Check if there's a grapheme break between two codepoints
-/// In wcwidth mode, always returns true (treat each codepoint as separate char)
+/// - wcwidth mode: always returns true (treat each codepoint as separate char)
+/// - no_zwj mode: use grapheme breaks but treat ZWJ as a break (ignore joining)
+/// - unicode mode: use standard grapheme cluster segmentation
 inline fn isGraphemeBreak(prev_cp: ?u21, curr_cp: u21, break_state: *uucode.grapheme.BreakState, width_method: WidthMethod) bool {
     // In wcwidth mode, treat every codepoint as a separate char for cursor movement
     if (width_method == .wcwidth) return true;
 
     if (!isValidCodepoint(curr_cp)) return true;
+
+    // In no_zwj mode, treat ZWJ (U+200D) as NOT joining characters
+    // When we see ZWJ after a character, it's part of that character's grapheme
+    // But when we see a character after ZWJ, it starts a new grapheme
+    if (width_method == .no_zwj) {
+        const ZWJ: u21 = 0x200D;
+        if (prev_cp) |p| {
+            // If previous was ZWJ, current starts a new grapheme
+            // Don't call uucode.grapheme.isBreak because it will say no break
+            if (p == ZWJ) {
+                // Reset break state since we're forcing a break
+                break_state.* = .default;
+                return true;
+            }
+        }
+        // If current is ZWJ, don't break yet - it's part of previous grapheme
+        // (will have width 0 anyway)
+    }
+
     if (prev_cp) |p| {
         if (!isValidCodepoint(p)) return true;
         return uucode.grapheme.isBreak(p, curr_cp, break_state);
@@ -758,7 +779,19 @@ const GraphemeWidthState = struct {
             return;
         }
 
-        // unicode/no_zwj modes: use grapheme-aware width (modifiers are 0-width)
+        // no_zwj mode: treat each base character as standalone, ignore modifiers except for certain cases
+        // Each character with non-zero width contributes independently (like wcwidth)
+        // But skin tone modifiers and other combining marks still combine (unlike wcwidth)
+        if (self.width_method == .no_zwj) {
+            // For no_zwj, we want to count standalone characters but still handle
+            // combining marks properly. The key is that ZWJ-joined sequences are split
+            // but skin tones, variation selectors, etc. still combine.
+            // This is similar to unicode mode but we've already split at ZWJ boundaries
+            // So we can use the same logic as unicode mode
+        }
+
+        // unicode and no_zwj modes: use grapheme-aware width (modifiers are 0-width)
+        // The difference is in grapheme break detection, not in width calculation
         const is_ri = (cp >= 0x1F1E6 and cp <= 0x1F1FF);
         const is_vs16 = (cp == 0xFE0F); // Variation Selector-16 (emoji presentation)
 
@@ -1122,12 +1155,19 @@ fn findWrapPosByWidthWCWidth(
 
         const cp_width = charWidth(b0, curr_cp, tab_width);
 
+        // In wcwidth mode, stop if we've already used max_columns
+        // (don't continue adding zero-width chars after reaching limit)
+        if (columns_used >= max_columns) {
+            return .{ .byte_offset = @intCast(pos), .grapheme_count = codepoint_count, .columns_used = columns_used };
+        }
+
+        // Stop if adding this codepoint would exceed max_columns
         if (columns_used + cp_width > max_columns) {
             return .{ .byte_offset = @intCast(pos), .grapheme_count = codepoint_count, .columns_used = columns_used };
         }
 
         columns_used += cp_width;
-        if (cp_width > 0) codepoint_count += 1;
+        codepoint_count += 1;
         pos += cp_len;
     }
 
@@ -1371,14 +1411,15 @@ fn findPosByWidthWCWidth(
                 return .{ .byte_offset = @intCast(pos), .grapheme_count = codepoint_count, .columns_used = columns_used };
             }
         } else {
-            // Selection start: exclude codepoints that END after max_columns
+            // Selection start: only include codepoints that END before or at max_columns
+            // So exclude (stop) if end > max_columns
             if (cp_end_col > max_columns) {
                 return .{ .byte_offset = @intCast(pos), .grapheme_count = codepoint_count, .columns_used = columns_used };
             }
         }
 
         columns_used = cp_end_col;
-        if (cp_width > 0) codepoint_count += 1;
+        codepoint_count += 1;
         pos += cp_len;
     }
 
@@ -1435,6 +1476,7 @@ fn getWidthAtUnicode(text: []const u8, byte_offset: usize, tab_width: u8, width_
 }
 
 /// Get width at byte offset using wcwidth-style codepoint-by-codepoint processing
+/// In wcwidth mode, each codepoint is treated independently - return its width directly
 fn getWidthAtWCWidth(text: []const u8, byte_offset: usize, tab_width: u8) u32 {
     if (byte_offset >= text.len) return 0;
 
@@ -1446,34 +1488,8 @@ fn getWidthAtWCWidth(text: []const u8, byte_offset: usize, tab_width: u8) u32 {
         break :blk dec.cp;
     };
 
-    const first_len: usize = if (b0 < 0x80) 1 else decodeUtf8Unchecked(text, byte_offset).len;
     const first_width = charWidth(b0, first_cp, tab_width);
-
-    // In wcwidth mode, treat each codepoint as a separate char for cursor movement
-    // Skip over zero-width characters (like ZWJ) and find the next non-zero-width char
-    if (first_width > 0) {
-        return first_width;
-    }
-
-    // First codepoint is zero-width, skip over it and any following zero-width chars
-    var pos = byte_offset + first_len;
-    while (pos < text.len) {
-        const b = text[pos];
-        const curr_cp: u21 = if (b < 0x80) b else decodeUtf8Unchecked(text, pos).cp;
-        const cp_len: usize = if (b < 0x80) 1 else decodeUtf8Unchecked(text, pos).len;
-
-        if (pos + cp_len > text.len) break;
-
-        const cp_width = charWidth(b, curr_cp, tab_width);
-        if (cp_width > 0) {
-            return cp_width;
-        }
-
-        pos += cp_len;
-    }
-
-    // All remaining codepoints are zero-width, return 0
-    return 0;
+    return first_width;
 }
 
 pub const PrevGraphemeResult = struct {
