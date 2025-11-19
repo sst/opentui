@@ -2,17 +2,6 @@ const std = @import("std");
 const testing = std.testing;
 const utf8 = @import("../utf8.zig");
 
-// ============================================================================
-// WCWIDTH-SPECIFIC TESTS
-// These tests verify wcwidth mode behavior where each codepoint is treated
-// as a separate character (tmux-style), vs unicode mode where grapheme
-// clusters are treated as single units.
-// ============================================================================
-
-// ============================================================================
-// GRAPHEME INFO TESTS - WCWIDTH MODE
-// ============================================================================
-
 test "findGraphemeInfo wcwidth: empty string" {
     var result = std.ArrayList(utf8.GraphemeInfo).init(testing.allocator);
     defer result.deinit();

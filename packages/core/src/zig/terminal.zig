@@ -219,8 +219,6 @@ fn checkEnvironmentOverrides(self: *Terminal) void {
     // Always just try to enable bracketed paste, even if it was reported as not supported
     self.caps.bracketed_paste = true;
 
-    // Check for tmux first (via TERM or TMUX environment variables)
-    // Tmux doesn't support proper Unicode grapheme width calculation
     if (env_map.get("TMUX")) |_| {
         self.caps.unicode = .wcwidth;
     } else if (env_map.get("TERM")) |term| {
@@ -274,7 +272,6 @@ fn checkEnvironmentOverrides(self: *Terminal) void {
         self.caps.kitty_graphics = false;
     }
 
-    // Force overrides (highest priority)
     if (env_map.get("OPENTUI_FORCE_WCWIDTH")) |_| {
         self.caps.unicode = .wcwidth;
     }
@@ -406,7 +403,6 @@ pub fn processCapabilityResponse(self: *Terminal, response: []const u8) void {
         self.caps.hyperlinks = true;
     }
 
-    // Tmux detection - tmux doesn't support proper Unicode grapheme width
     if (std.mem.indexOf(u8, response, "tmux")) |_| {
         self.caps.unicode = .wcwidth;
     }

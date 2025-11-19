@@ -2,14 +2,6 @@ const std = @import("std");
 const testing = std.testing;
 const utf8 = @import("../utf8.zig");
 
-// ============================================================================
-// NO_ZWJ MODE TESTS
-// These tests verify no_zwj mode behavior where ZWJ (Zero Width Joiner) is
-// treated as a grapheme break point, causing emoji sequences to be split
-// into separate graphemes, while still using Unicode grapheme segmentation
-// for other combining characters.
-// ============================================================================
-
 test "no_zwj: basic emoji ZWJ sequence split" {
     const text = "👩‍🚀"; // Woman + ZWJ + Rocket
 
