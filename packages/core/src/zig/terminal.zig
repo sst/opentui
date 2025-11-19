@@ -80,9 +80,13 @@ state: struct {
 term_info: TerminalInfo = .{},
 
 pub fn init(opts: Options) Terminal {
-    return .{
+    var term: Terminal = .{
         .opts = opts,
     };
+    // Detect terminal capabilities from environment early
+    // This ensures width_method is correct from the start
+    term.checkEnvironmentOverrides();
+    return term;
 }
 
 pub fn resetState(self: *Terminal, tty: anytype) !void {
@@ -216,6 +220,16 @@ fn checkEnvironmentOverrides(self: *Terminal) void {
     // Always just try to enable bracketed paste, even if it was reported as not supported
     self.caps.bracketed_paste = true;
 
+    // Check for tmux first (via TERM or TMUX environment variables)
+    // Tmux doesn't support proper Unicode grapheme width calculation
+    if (env_map.get("TMUX")) |_| {
+        self.caps.unicode = .wcwidth;
+    } else if (env_map.get("TERM")) |term| {
+        if (std.mem.startsWith(u8, term, "tmux") or std.mem.startsWith(u8, term, "screen")) {
+            self.caps.unicode = .wcwidth;
+        }
+    }
+
     // Extract terminal name and version from environment variables
     // These will be overridden by xtversion responses if available
     if (!self.term_info.from_xtversion) {
@@ -261,6 +275,7 @@ fn checkEnvironmentOverrides(self: *Terminal) void {
         self.caps.kitty_graphics = false;
     }
 
+    // Force overrides (highest priority)
     if (env_map.get("OPENTUI_FORCE_WCWIDTH")) |_| {
         self.caps.unicode = .wcwidth;
     }
@@ -390,6 +405,11 @@ pub fn processCapabilityResponse(self: *Terminal, response: []const u8) void {
         self.caps.sixel = true;
         self.caps.bracketed_paste = true;
         self.caps.hyperlinks = true;
+    }
+
+    // Tmux detection - tmux doesn't support proper Unicode grapheme width
+    if (std.mem.indexOf(u8, response, "tmux")) |_| {
+        self.caps.unicode = .wcwidth;
     }
 
     // Sixel detection via device attributes (capability 4 in DA1 response ending with 'c')
