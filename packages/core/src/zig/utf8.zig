@@ -779,19 +779,8 @@ const GraphemeWidthState = struct {
             return;
         }
 
-        // no_zwj mode: treat each base character as standalone, ignore modifiers except for certain cases
-        // Each character with non-zero width contributes independently (like wcwidth)
-        // But skin tone modifiers and other combining marks still combine (unlike wcwidth)
-        if (self.width_method == .no_zwj) {
-            // For no_zwj, we want to count standalone characters but still handle
-            // combining marks properly. The key is that ZWJ-joined sequences are split
-            // but skin tones, variation selectors, etc. still combine.
-            // This is similar to unicode mode but we've already split at ZWJ boundaries
-            // So we can use the same logic as unicode mode
-        }
-
         // unicode and no_zwj modes: use grapheme-aware width (modifiers are 0-width)
-        // The difference is in grapheme break detection, not in width calculation
+        // The difference is in grapheme break detection (ZWJ handling), not in width calculation
         const is_ri = (cp >= 0x1F1E6 and cp <= 0x1F1FF);
         const is_vs16 = (cp == 0xFE0F); // Variation Selector-16 (emoji presentation)
 
