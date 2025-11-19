@@ -1501,14 +1501,17 @@ pub fn findGraphemeInfoSIMD16(
 
                 if (is_break) {
                     // Commit previous cluster if it was special (tab or multibyte)
+                    // In wcwidth mode, skip zero-width characters (don't add to grapheme list)
                     if (prev_cp != null and (cluster_is_multibyte or cluster_is_tab)) {
-                        const cluster_byte_len = (pos + i) - cluster_start;
-                        try result.append(GraphemeInfo{
-                            .byte_offset = @intCast(cluster_start),
-                            .byte_len = @intCast(cluster_byte_len),
-                            .width = @intCast(cluster_width_state.width),
-                            .col_offset = cluster_start_col,
-                        });
+                        if (cluster_width_state.width > 0 or width_method != .wcwidth) {
+                            const cluster_byte_len = (pos + i) - cluster_start;
+                            try result.append(GraphemeInfo{
+                                .byte_offset = @intCast(cluster_start),
+                                .byte_len = @intCast(cluster_byte_len),
+                                .width = @intCast(cluster_width_state.width),
+                                .col_offset = cluster_start_col,
+                            });
+                        }
                         // Advance col by the committed cluster's width
                         col += cluster_width_state.width;
                     } else if (prev_cp != null) {
@@ -1549,14 +1552,17 @@ pub fn findGraphemeInfoSIMD16(
 
             if (is_break) {
                 // Commit previous cluster if it was special (tab or multibyte)
+                // In wcwidth mode, skip zero-width characters (don't add to grapheme list)
                 if (prev_cp != null and (cluster_is_multibyte or cluster_is_tab)) {
-                    const cluster_byte_len = (pos + i) - cluster_start;
-                    try result.append(GraphemeInfo{
-                        .byte_offset = @intCast(cluster_start),
-                        .byte_len = @intCast(cluster_byte_len),
-                        .width = @intCast(cluster_width_state.width),
-                        .col_offset = cluster_start_col,
-                    });
+                    if (cluster_width_state.width > 0 or width_method != .wcwidth) {
+                        const cluster_byte_len = (pos + i) - cluster_start;
+                        try result.append(GraphemeInfo{
+                            .byte_offset = @intCast(cluster_start),
+                            .byte_len = @intCast(cluster_byte_len),
+                            .width = @intCast(cluster_width_state.width),
+                            .col_offset = cluster_start_col,
+                        });
+                    }
                     // Advance col by the committed cluster's width
                     col += cluster_width_state.width;
                 } else if (prev_cp != null) {
@@ -1597,14 +1603,17 @@ pub fn findGraphemeInfoSIMD16(
 
         if (is_break) {
             // Commit previous cluster if it was special (tab or multibyte)
+            // In wcwidth mode, skip zero-width characters (don't add to grapheme list)
             if (prev_cp != null and (cluster_is_multibyte or cluster_is_tab)) {
-                const cluster_byte_len = pos - cluster_start;
-                try result.append(GraphemeInfo{
-                    .byte_offset = @intCast(cluster_start),
-                    .byte_len = @intCast(cluster_byte_len),
-                    .width = @intCast(cluster_width_state.width),
-                    .col_offset = cluster_start_col,
-                });
+                if (cluster_width_state.width > 0 or width_method != .wcwidth) {
+                    const cluster_byte_len = pos - cluster_start;
+                    try result.append(GraphemeInfo{
+                        .byte_offset = @intCast(cluster_start),
+                        .byte_len = @intCast(cluster_byte_len),
+                        .width = @intCast(cluster_width_state.width),
+                        .col_offset = cluster_start_col,
+                    });
+                }
                 // Advance col by the committed cluster's width
                 col += cluster_width_state.width;
             } else if (prev_cp != null) {
@@ -1632,13 +1641,16 @@ pub fn findGraphemeInfoSIMD16(
     }
 
     // Commit final cluster if it was special
+    // In wcwidth mode, skip zero-width characters (don't add to grapheme list)
     if (prev_cp != null and (cluster_is_multibyte or cluster_is_tab)) {
-        const cluster_byte_len = text.len - cluster_start;
-        try result.append(GraphemeInfo{
-            .byte_offset = @intCast(cluster_start),
-            .byte_len = @intCast(cluster_byte_len),
-            .width = @intCast(cluster_width_state.width),
-            .col_offset = cluster_start_col,
-        });
+        if (cluster_width_state.width > 0 or width_method != .wcwidth) {
+            const cluster_byte_len = text.len - cluster_start;
+            try result.append(GraphemeInfo{
+                .byte_offset = @intCast(cluster_start),
+                .byte_len = @intCast(cluster_byte_len),
+                .width = @intCast(cluster_width_state.width),
+                .col_offset = cluster_start_col,
+            });
+        }
     }
 }

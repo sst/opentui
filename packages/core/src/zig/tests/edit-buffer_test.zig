@@ -1183,3 +1183,107 @@ test "EditBuffer - wcwidth ZWJ does not appear in rendered text" {
 
     std.debug.print("ZWJ is present in bytes but cursor correctly skips over it\n", .{});
 }
+
+test "EditBuffer - wcwidth each visible emoji requires exactly one cursor move" {
+    const pool = gp.initGlobalPool(std.testing.allocator);
+    defer gp.deinitGlobalPool();
+
+    var eb = try EditBuffer.init(std.testing.allocator, pool, .wcwidth);
+    defer eb.deinit();
+
+    std.debug.print("\n=== Testing one move per visible emoji ===\n", .{});
+
+    // Test 1: Simple laptop emoji (no ZWJ)
+    try eb.setText("💻", false);
+    const width1 = iter_mod.lineWidthAt(&eb.tb.rope, 0);
+    std.debug.print("Laptop width: {}\n", .{width1});
+    try std.testing.expectEqual(@as(u32, 2), width1);
+
+    try eb.setCursor(0, 0);
+    eb.moveRight(); // Should move past laptop in ONE move
+    var cursor = eb.getPrimaryCursor();
+    std.debug.print("Laptop: after 1 moveRight, col={} (expected 2)\n", .{cursor.col});
+    try std.testing.expectEqual(@as(u32, 2), cursor.col);
+
+    // Test 2: Woman emoji (no modifiers)
+    try eb.setText("👩", false);
+    try eb.setCursor(0, 0);
+    eb.moveRight(); // Should move past woman in ONE move
+    cursor = eb.getPrimaryCursor();
+    std.debug.print("Woman: after 1 moveRight, col={} (expected 2)\n", .{cursor.col});
+    try std.testing.expectEqual(@as(u32, 2), cursor.col);
+
+    // Test 3: Skin tone emoji alone
+    try eb.setText("🏽", false);
+    try eb.setCursor(0, 0);
+    eb.moveRight(); // Should move past skin in ONE move
+    cursor = eb.getPrimaryCursor();
+    std.debug.print("Skin tone: after 1 moveRight, col={} (expected 2)\n", .{cursor.col});
+    try std.testing.expectEqual(@as(u32, 2), cursor.col);
+
+    // Test 4: Woman + skin (no ZWJ yet)
+    try eb.setText("👩🏽", false);
+    const width4 = iter_mod.lineWidthAt(&eb.tb.rope, 0);
+    std.debug.print("Woman+skin width: {}\n", .{width4});
+    try std.testing.expectEqual(@as(u32, 4), width4); // 2+2
+
+    try eb.setCursor(0, 0);
+    eb.moveRight(); // Move past woman
+    cursor = eb.getPrimaryCursor();
+    std.debug.print("Woman+skin: after 1 moveRight, col={} (expected 2)\n", .{cursor.col});
+    try std.testing.expectEqual(@as(u32, 2), cursor.col);
+
+    eb.moveRight(); // Move past skin in ONE more move
+    cursor = eb.getPrimaryCursor();
+    std.debug.print("Woman+skin: after 2 moveRight, col={} (expected 4)\n", .{cursor.col});
+    try std.testing.expectEqual(@as(u32, 4), cursor.col);
+
+    // Test 5: Woman + skin + ZWJ + laptop (full technologist)
+    try eb.setText("👩🏽‍💻", false);
+    const width5 = iter_mod.lineWidthAt(&eb.tb.rope, 0);
+    std.debug.print("Woman+skin+ZWJ+laptop width: {}\n", .{width5});
+    try std.testing.expectEqual(@as(u32, 6), width5); // 2+2+0+2
+
+    try eb.setCursor(0, 0);
+
+    // Should take exactly 3 moves to get to the end (woman, skin, laptop)
+    // ZWJ should be completely invisible to cursor
+    eb.moveRight(); // Move 1: woman
+    cursor = eb.getPrimaryCursor();
+    std.debug.print("Full: after move 1, col={} (expected 2, at woman)\n", .{cursor.col});
+    try std.testing.expectEqual(@as(u32, 2), cursor.col);
+
+    eb.moveRight(); // Move 2: skin
+    cursor = eb.getPrimaryCursor();
+    std.debug.print("Full: after move 2, col={} (expected 4, at skin)\n", .{cursor.col});
+    try std.testing.expectEqual(@as(u32, 4), cursor.col);
+
+    eb.moveRight(); // Move 3: laptop (ZWJ should be skipped automatically)
+    cursor = eb.getPrimaryCursor();
+    std.debug.print("Full: after move 3, col={} (expected 6, at laptop)\n", .{cursor.col});
+    try std.testing.expectEqual(@as(u32, 6), cursor.col);
+
+    // Moving right again should do nothing (at end)
+    eb.moveRight();
+    cursor = eb.getPrimaryCursor();
+    std.debug.print("Full: after move 4, col={} (expected 6, still at end)\n", .{cursor.col});
+    try std.testing.expectEqual(@as(u32, 6), cursor.col);
+
+    // Test moving backwards
+    eb.moveLeft(); // Should move back to before laptop (skip ZWJ), land at skin
+    cursor = eb.getPrimaryCursor();
+    std.debug.print("Full: moveLeft from end, col={} (expected 4, at skin)\n", .{cursor.col});
+    try std.testing.expectEqual(@as(u32, 4), cursor.col);
+
+    eb.moveLeft(); // Should move back to before skin
+    cursor = eb.getPrimaryCursor();
+    std.debug.print("Full: moveLeft again, col={} (expected 2, at woman)\n", .{cursor.col});
+    try std.testing.expectEqual(@as(u32, 2), cursor.col);
+
+    eb.moveLeft(); // Should move back to start
+    cursor = eb.getPrimaryCursor();
+    std.debug.print("Full: moveLeft again, col={} (expected 0, at start)\n", .{cursor.col});
+    try std.testing.expectEqual(@as(u32, 0), cursor.col);
+
+    std.debug.print("✓ Each visible emoji takes exactly ONE cursor move\n", .{});
+}

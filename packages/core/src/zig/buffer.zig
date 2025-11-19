@@ -1117,6 +1117,12 @@ pub const OptimizedBuffer = struct {
                         }
                     }
 
+                    // Skip zero-width characters (ZWJ, VS16, etc.) - don't render them
+                    // Don't increment col since they take no space
+                    if (g_width == 0) {
+                        continue;
+                    }
+
                     var drawFg = finalFg;
                     var drawBg = finalBg;
                     const drawAttributes = finalAttributes;
