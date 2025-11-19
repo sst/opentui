@@ -652,7 +652,7 @@ pub const EditBuffer = struct {
                 const next_cols = cols_before + chunk.width;
 
                 if (cursor.col < next_cols) {
-                    const wrap_offsets = chunk.getWrapOffsets(&self.tb.mem_registry, self.tb.allocator) catch {
+                    const wrap_offsets = chunk.getWrapOffsets(&self.tb.mem_registry, self.tb.allocator, self.tb.width_method) catch {
                         cols_before = next_cols;
                         continue;
                     };
@@ -699,7 +699,7 @@ pub const EditBuffer = struct {
             if (seg.asText()) |chunk| {
                 const next_cols = cols_before + chunk.width;
 
-                const wrap_offsets = chunk.getWrapOffsets(&self.tb.mem_registry, self.tb.allocator) catch {
+                const wrap_offsets = chunk.getWrapOffsets(&self.tb.mem_registry, self.tb.allocator, self.tb.width_method) catch {
                     cols_before = next_cols;
                     continue;
                 };

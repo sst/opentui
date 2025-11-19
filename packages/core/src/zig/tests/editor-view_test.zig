@@ -15,7 +15,6 @@ test "EditorView - init and deinit" {
     const pool = gp.initGlobalPool(std.testing.allocator);
     defer gp.deinitGlobalPool();
 
-
     var eb = try EditBuffer.init(std.testing.allocator, pool, .wcwidth);
     defer eb.deinit();
 
@@ -32,7 +31,6 @@ test "EditorView - init and deinit" {
 test "EditorView - ensureCursorVisible scrolls down when cursor moves below viewport" {
     const pool = gp.initGlobalPool(std.testing.allocator);
     defer gp.deinitGlobalPool();
-
 
     var eb = try EditBuffer.init(std.testing.allocator, pool, .wcwidth);
     defer eb.deinit();
@@ -56,7 +54,6 @@ test "EditorView - ensureCursorVisible scrolls down when cursor moves below view
 test "EditorView - ensureCursorVisible scrolls up when cursor moves above viewport" {
     const pool = gp.initGlobalPool(std.testing.allocator);
     defer gp.deinitGlobalPool();
-
 
     var eb = try EditBuffer.init(std.testing.allocator, pool, .wcwidth);
     defer eb.deinit();
@@ -85,7 +82,6 @@ test "EditorView - ensureCursorVisible scrolls up when cursor moves above viewpo
 test "EditorView - moveDown scrolls viewport automatically" {
     const pool = gp.initGlobalPool(std.testing.allocator);
     defer gp.deinitGlobalPool();
-
 
     var eb = try EditBuffer.init(std.testing.allocator, pool, .wcwidth);
     defer eb.deinit();
@@ -118,7 +114,6 @@ test "EditorView - moveDown scrolls viewport automatically" {
 test "EditorView - moveUp scrolls viewport automatically" {
     const pool = gp.initGlobalPool(std.testing.allocator);
     defer gp.deinitGlobalPool();
-
 
     var eb = try EditBuffer.init(std.testing.allocator, pool, .wcwidth);
     defer eb.deinit();
@@ -154,7 +149,6 @@ test "EditorView - scroll margin keeps cursor away from edges" {
     const pool = gp.initGlobalPool(std.testing.allocator);
     defer gp.deinitGlobalPool();
 
-
     var eb = try EditBuffer.init(std.testing.allocator, pool, .wcwidth);
     defer eb.deinit();
 
@@ -181,7 +175,6 @@ test "EditorView - insertText with newlines maintains cursor visibility" {
     const pool = gp.initGlobalPool(std.testing.allocator);
     defer gp.deinitGlobalPool();
 
-
     var eb = try EditBuffer.init(std.testing.allocator, pool, .wcwidth);
     defer eb.deinit();
 
@@ -202,7 +195,6 @@ test "EditorView - insertText with newlines maintains cursor visibility" {
 test "EditorView - backspace at line start maintains visibility" {
     const pool = gp.initGlobalPool(std.testing.allocator);
     defer gp.deinitGlobalPool();
-
 
     var eb = try EditBuffer.init(std.testing.allocator, pool, .wcwidth);
     defer eb.deinit();
@@ -226,7 +218,6 @@ test "EditorView - backspace at line start maintains visibility" {
 test "EditorView - deleteForward at line end maintains visibility" {
     const pool = gp.initGlobalPool(std.testing.allocator);
     defer gp.deinitGlobalPool();
-
 
     var eb = try EditBuffer.init(std.testing.allocator, pool, .wcwidth);
     defer eb.deinit();
@@ -253,7 +244,6 @@ test "EditorView - deleteRange maintains cursor visibility" {
     const pool = gp.initGlobalPool(std.testing.allocator);
     defer gp.deinitGlobalPool();
 
-
     var eb = try EditBuffer.init(std.testing.allocator, pool, .wcwidth);
     defer eb.deinit();
 
@@ -276,7 +266,6 @@ test "EditorView - deleteRange maintains cursor visibility" {
 test "EditorView - deleteLine maintains cursor visibility" {
     const pool = gp.initGlobalPool(std.testing.allocator);
     defer gp.deinitGlobalPool();
-
 
     var eb = try EditBuffer.init(std.testing.allocator, pool, .wcwidth);
     defer eb.deinit();
@@ -302,7 +291,6 @@ test "EditorView - deleteLine maintains cursor visibility" {
 test "EditorView - setText resets viewport to top" {
     const pool = gp.initGlobalPool(std.testing.allocator);
     defer gp.deinitGlobalPool();
-
 
     var eb = try EditBuffer.init(std.testing.allocator, pool, .wcwidth);
     defer eb.deinit();
@@ -332,7 +320,6 @@ test "EditorView - viewport respects total line count as max offset" {
     const pool = gp.initGlobalPool(std.testing.allocator);
     defer gp.deinitGlobalPool();
 
-
     var eb = try EditBuffer.init(std.testing.allocator, pool, .wcwidth);
     defer eb.deinit();
 
@@ -350,7 +337,6 @@ test "EditorView - viewport respects total line count as max offset" {
 test "EditorView - horizontal movement doesn't affect vertical scroll" {
     const pool = gp.initGlobalPool(std.testing.allocator);
     defer gp.deinitGlobalPool();
-
 
     var eb = try EditBuffer.init(std.testing.allocator, pool, .wcwidth);
     defer eb.deinit();
@@ -375,7 +361,6 @@ test "EditorView - horizontal movement doesn't affect vertical scroll" {
 test "EditorView - cursor at boundaries doesn't cause invalid viewport" {
     const pool = gp.initGlobalPool(std.testing.allocator);
     defer gp.deinitGlobalPool();
-
 
     var eb = try EditBuffer.init(std.testing.allocator, pool, .wcwidth);
     defer eb.deinit();
@@ -408,7 +393,6 @@ test "EditorView - rapid cursor movements maintain visibility" {
     const pool = gp.initGlobalPool(std.testing.allocator);
     defer gp.deinitGlobalPool();
 
-
     var eb = try EditBuffer.init(std.testing.allocator, pool, .wcwidth);
     defer eb.deinit();
 
@@ -436,7 +420,6 @@ test "EditorView - VisualCursor without wrapping" {
     const pool = gp.initGlobalPool(std.testing.allocator);
     defer gp.deinitGlobalPool();
 
-
     var eb = try EditBuffer.init(std.testing.allocator, pool, .wcwidth);
     defer eb.deinit();
 
@@ -457,7 +440,6 @@ test "EditorView - VisualCursor without wrapping" {
 test "EditorView - VisualCursor with character wrapping" {
     const pool = gp.initGlobalPool(std.testing.allocator);
     defer gp.deinitGlobalPool();
-
 
     var eb = try EditBuffer.init(std.testing.allocator, pool, .wcwidth);
     defer eb.deinit();
@@ -482,7 +464,6 @@ test "EditorView - VisualCursor with word wrapping" {
     const pool = gp.initGlobalPool(std.testing.allocator);
     defer gp.deinitGlobalPool();
 
-
     var eb = try EditBuffer.init(std.testing.allocator, pool, .wcwidth);
     defer eb.deinit();
 
@@ -502,7 +483,6 @@ test "EditorView - VisualCursor with word wrapping" {
 test "EditorView - moveUpVisual with wrapping" {
     const pool = gp.initGlobalPool(std.testing.allocator);
     defer gp.deinitGlobalPool();
-
 
     var eb = try EditBuffer.init(std.testing.allocator, pool, .wcwidth);
     defer eb.deinit();
@@ -532,7 +512,6 @@ test "EditorView - moveDownVisual with wrapping" {
     const pool = gp.initGlobalPool(std.testing.allocator);
     defer gp.deinitGlobalPool();
 
-
     var eb = try EditBuffer.init(std.testing.allocator, pool, .wcwidth);
     defer eb.deinit();
 
@@ -561,7 +540,6 @@ test "EditorView - visualToLogicalCursor conversion" {
     const pool = gp.initGlobalPool(std.testing.allocator);
     defer gp.deinitGlobalPool();
 
-
     var eb = try EditBuffer.init(std.testing.allocator, pool, .wcwidth);
     defer eb.deinit();
 
@@ -582,7 +560,6 @@ test "EditorView - visualToLogicalCursor conversion" {
 test "EditorView - moveUpVisual at top boundary" {
     const pool = gp.initGlobalPool(std.testing.allocator);
     defer gp.deinitGlobalPool();
-
 
     var eb = try EditBuffer.init(std.testing.allocator, pool, .wcwidth);
     defer eb.deinit();
@@ -607,7 +584,6 @@ test "EditorView - moveDownVisual at bottom boundary" {
     const pool = gp.initGlobalPool(std.testing.allocator);
     defer gp.deinitGlobalPool();
 
-
     var eb = try EditBuffer.init(std.testing.allocator, pool, .wcwidth);
     defer eb.deinit();
 
@@ -629,7 +605,6 @@ test "EditorView - moveDownVisual at bottom boundary" {
 test "EditorView - VisualCursor preserves desired column across wrapped lines" {
     const pool = gp.initGlobalPool(std.testing.allocator);
     defer gp.deinitGlobalPool();
-
 
     var eb = try EditBuffer.init(std.testing.allocator, pool, .wcwidth);
     defer eb.deinit();
@@ -656,7 +631,6 @@ test "EditorView - VisualCursor with multiple logical lines and wrapping" {
     const pool = gp.initGlobalPool(std.testing.allocator);
     defer gp.deinitGlobalPool();
 
-
     var eb = try EditBuffer.init(std.testing.allocator, pool, .wcwidth);
     defer eb.deinit();
 
@@ -679,7 +653,6 @@ test "EditorView - logicalToVisualCursor handles cursor past line end" {
     const pool = gp.initGlobalPool(std.testing.allocator);
     defer gp.deinitGlobalPool();
 
-
     var eb = try EditBuffer.init(std.testing.allocator, pool, .wcwidth);
     defer eb.deinit();
 
@@ -697,7 +670,6 @@ test "EditorView - getTextBufferView returns correct view" {
     const pool = gp.initGlobalPool(std.testing.allocator);
     defer gp.deinitGlobalPool();
 
-
     var eb = try EditBuffer.init(std.testing.allocator, pool, .wcwidth);
     defer eb.deinit();
 
@@ -713,7 +685,6 @@ test "EditorView - getEditBuffer returns correct buffer" {
     const pool = gp.initGlobalPool(std.testing.allocator);
     defer gp.deinitGlobalPool();
 
-
     var eb = try EditBuffer.init(std.testing.allocator, pool, .wcwidth);
     defer eb.deinit();
 
@@ -727,7 +698,6 @@ test "EditorView - getEditBuffer returns correct buffer" {
 test "EditorView - setViewportSize maintains cursor visibility" {
     const pool = gp.initGlobalPool(std.testing.allocator);
     defer gp.deinitGlobalPool();
-
 
     var eb = try EditBuffer.init(std.testing.allocator, pool, .wcwidth);
     defer eb.deinit();
@@ -749,7 +719,6 @@ test "EditorView - setViewportSize maintains cursor visibility" {
 test "EditorView - moveDownVisual across empty line preserves desired column" {
     const pool = gp.initGlobalPool(std.testing.allocator);
     defer gp.deinitGlobalPool();
-
 
     var eb = try EditBuffer.init(std.testing.allocator, pool, .wcwidth);
     defer eb.deinit();
@@ -781,7 +750,6 @@ test "EditorView - moveUpVisual across empty line preserves desired column" {
     const pool = gp.initGlobalPool(std.testing.allocator);
     defer gp.deinitGlobalPool();
 
-
     var eb = try EditBuffer.init(std.testing.allocator, pool, .wcwidth);
     defer eb.deinit();
 
@@ -811,7 +779,6 @@ test "EditorView - moveUpVisual across empty line preserves desired column" {
 test "EditorView - horizontal movement resets desired visual column" {
     const pool = gp.initGlobalPool(std.testing.allocator);
     defer gp.deinitGlobalPool();
-
 
     var eb = try EditBuffer.init(std.testing.allocator, pool, .wcwidth);
     defer eb.deinit();
@@ -850,7 +817,6 @@ test "EditorView - inserting newlines maintains rope integrity" {
     const pool = gp.initGlobalPool(std.testing.allocator);
     defer gp.deinitGlobalPool();
 
-
     var eb = try EditBuffer.init(std.testing.allocator, pool, .wcwidth);
     defer eb.deinit();
 
@@ -886,7 +852,6 @@ test "EditorView - inserting newlines maintains rope integrity" {
 test "EditorView - visual cursor stays in sync after scrolling and moving up" {
     const pool = gp.initGlobalPool(std.testing.allocator);
     defer gp.deinitGlobalPool();
-
 
     var eb = try EditBuffer.init(std.testing.allocator, pool, .wcwidth);
     defer eb.deinit();
@@ -968,7 +933,6 @@ test "EditorView - cursor positioning after wide grapheme" {
     const pool = gp.initGlobalPool(std.testing.allocator);
     defer gp.deinitGlobalPool();
 
-
     var eb = try EditBuffer.init(std.testing.allocator, pool, .wcwidth);
     defer eb.deinit();
 
@@ -994,7 +958,6 @@ test "EditorView - cursor positioning after wide grapheme" {
 test "EditorView - backspace after wide grapheme updates cursor correctly" {
     const pool = gp.initGlobalPool(std.testing.allocator);
     defer gp.deinitGlobalPool();
-
 
     var eb = try EditBuffer.init(std.testing.allocator, pool, .wcwidth);
     defer eb.deinit();
@@ -1024,7 +987,6 @@ test "EditorView - backspace after wide grapheme updates cursor correctly" {
 test "EditorView - viewport scrolling with wrapped lines: down + edit + up" {
     const pool = gp.initGlobalPool(std.testing.allocator);
     defer gp.deinitGlobalPool();
-
 
     var eb = try EditBuffer.init(std.testing.allocator, pool, .wcwidth);
     defer eb.deinit();
@@ -1079,7 +1041,6 @@ test "EditorView - viewport scrolling with wrapped lines: aggressive down + edit
     const pool = gp.initGlobalPool(std.testing.allocator);
     defer gp.deinitGlobalPool();
 
-
     var eb = try EditBuffer.init(std.testing.allocator, pool, .wcwidth);
     defer eb.deinit();
 
@@ -1130,7 +1091,6 @@ test "EditorView - viewport scrolling with wrapped lines: multiple edits and mov
     const pool = gp.initGlobalPool(std.testing.allocator);
     defer gp.deinitGlobalPool();
 
-
     var eb = try EditBuffer.init(std.testing.allocator, pool, .wcwidth);
     defer eb.deinit();
 
@@ -1174,7 +1134,6 @@ test "EditorView - viewport scrolling with wrapped lines: multiple edits and mov
 test "EditorView - viewport scrolling with wrapped lines: verify viewport consistency" {
     const pool = gp.initGlobalPool(std.testing.allocator);
     defer gp.deinitGlobalPool();
-
 
     var eb = try EditBuffer.init(std.testing.allocator, pool, .wcwidth);
     defer eb.deinit();
@@ -1231,7 +1190,6 @@ test "EditorView - viewport scrolling with wrapped lines: backspace after scroll
     const pool = gp.initGlobalPool(std.testing.allocator);
     defer gp.deinitGlobalPool();
 
-
     var eb = try EditBuffer.init(std.testing.allocator, pool, .wcwidth);
     defer eb.deinit();
 
@@ -1268,7 +1226,6 @@ test "EditorView - viewport scrolling with wrapped lines: backspace after scroll
 test "EditorView - viewport scrolling with wrapped lines: viewport follows cursor precisely" {
     const pool = gp.initGlobalPool(std.testing.allocator);
     defer gp.deinitGlobalPool();
-
 
     var eb = try EditBuffer.init(std.testing.allocator, pool, .wcwidth);
     defer eb.deinit();
@@ -1327,7 +1284,6 @@ test "EditorView - viewport scrolling with wrapped lines: viewport follows curso
 test "EditorView - wrapped lines: specific scenario with insert and deletions" {
     const pool = gp.initGlobalPool(std.testing.allocator);
     defer gp.deinitGlobalPool();
-
 
     var eb = try EditBuffer.init(std.testing.allocator, pool, .wcwidth);
     defer eb.deinit();
@@ -1389,7 +1345,6 @@ test "EditorView - wrapped lines: many small edits with viewport scrolling" {
     const pool = gp.initGlobalPool(std.testing.allocator);
     defer gp.deinitGlobalPool();
 
-
     var eb = try EditBuffer.init(std.testing.allocator, pool, .wcwidth);
     defer eb.deinit();
 
@@ -1446,7 +1401,6 @@ test "EditorView - horizontal scroll: cursor moves right beyond viewport" {
     const pool = gp.initGlobalPool(std.testing.allocator);
     defer gp.deinitGlobalPool();
 
-
     var eb = try EditBuffer.init(std.testing.allocator, pool, .wcwidth);
     defer eb.deinit();
 
@@ -1476,7 +1430,6 @@ test "EditorView - horizontal scroll: cursor moves left to beginning" {
     const pool = gp.initGlobalPool(std.testing.allocator);
     defer gp.deinitGlobalPool();
 
-
     var eb = try EditBuffer.init(std.testing.allocator, pool, .wcwidth);
     defer eb.deinit();
 
@@ -1501,7 +1454,6 @@ test "EditorView - horizontal scroll: cursor moves left to beginning" {
 test "EditorView - horizontal scroll: moveRight scrolls viewport" {
     const pool = gp.initGlobalPool(std.testing.allocator);
     defer gp.deinitGlobalPool();
-
 
     var eb = try EditBuffer.init(std.testing.allocator, pool, .wcwidth);
     defer eb.deinit();
@@ -1537,7 +1489,6 @@ test "EditorView - horizontal scroll: moveLeft scrolls viewport back" {
     const pool = gp.initGlobalPool(std.testing.allocator);
     defer gp.deinitGlobalPool();
 
-
     var eb = try EditBuffer.init(std.testing.allocator, pool, .wcwidth);
     defer eb.deinit();
 
@@ -1572,7 +1523,6 @@ test "EditorView - horizontal scroll: editing in scrolled view" {
     const pool = gp.initGlobalPool(std.testing.allocator);
     defer gp.deinitGlobalPool();
 
-
     var eb = try EditBuffer.init(std.testing.allocator, pool, .wcwidth);
     defer eb.deinit();
 
@@ -1606,7 +1556,6 @@ test "EditorView - horizontal scroll: backspace in scrolled view" {
     const pool = gp.initGlobalPool(std.testing.allocator);
     defer gp.deinitGlobalPool();
 
-
     var eb = try EditBuffer.init(std.testing.allocator, pool, .wcwidth);
     defer eb.deinit();
 
@@ -1636,7 +1585,6 @@ test "EditorView - horizontal scroll: backspace in scrolled view" {
 test "EditorView - horizontal scroll: short lines reset scroll" {
     const pool = gp.initGlobalPool(std.testing.allocator);
     defer gp.deinitGlobalPool();
-
 
     var eb = try EditBuffer.init(std.testing.allocator, pool, .wcwidth);
     defer eb.deinit();
@@ -1668,7 +1616,6 @@ test "EditorView - horizontal scroll: short lines reset scroll" {
 test "EditorView - horizontal scroll: scroll margin works" {
     const pool = gp.initGlobalPool(std.testing.allocator);
     defer gp.deinitGlobalPool();
-
 
     var eb = try EditBuffer.init(std.testing.allocator, pool, .wcwidth);
     defer eb.deinit();
@@ -1702,7 +1649,6 @@ test "EditorView - horizontal scroll: no scrolling with wrapping enabled" {
     const pool = gp.initGlobalPool(std.testing.allocator);
     defer gp.deinitGlobalPool();
 
-
     var eb = try EditBuffer.init(std.testing.allocator, pool, .wcwidth);
     defer eb.deinit();
 
@@ -1723,7 +1669,6 @@ test "EditorView - horizontal scroll: no scrolling with wrapping enabled" {
 test "EditorView - horizontal scroll: cursor position correct after scrolling" {
     const pool = gp.initGlobalPool(std.testing.allocator);
     defer gp.deinitGlobalPool();
-
 
     var eb = try EditBuffer.init(std.testing.allocator, pool, .wcwidth);
     defer eb.deinit();
@@ -1755,7 +1700,6 @@ test "EditorView - horizontal scroll: rapid movements maintain visibility" {
     const pool = gp.initGlobalPool(std.testing.allocator);
     defer gp.deinitGlobalPool();
 
-
     var eb = try EditBuffer.init(std.testing.allocator, pool, .wcwidth);
     defer eb.deinit();
 
@@ -1784,7 +1728,6 @@ test "EditorView - horizontal scroll: goto end of long line" {
     const pool = gp.initGlobalPool(std.testing.allocator);
     defer gp.deinitGlobalPool();
 
-
     var eb = try EditBuffer.init(std.testing.allocator, pool, .wcwidth);
     defer eb.deinit();
 
@@ -1811,7 +1754,6 @@ test "EditorView - horizontal scroll: goto end of long line" {
 test "EditorView - cursor at second cell of width=2 grapheme moveLeft should jump to before grapheme" {
     const pool = gp.initGlobalPool(std.testing.allocator);
     defer gp.deinitGlobalPool();
-
 
     var eb = try EditBuffer.init(std.testing.allocator, pool, .wcwidth);
     defer eb.deinit();
@@ -1855,7 +1797,6 @@ test "EditorView - cursor should be able to land after closing paren on line wit
     const pool = gp.initGlobalPool(std.testing.allocator);
     defer gp.deinitGlobalPool();
 
-
     var eb = try EditBuffer.init(std.testing.allocator, pool, .wcwidth);
     defer eb.deinit();
 
@@ -1896,7 +1837,6 @@ test "EditorView - visual cursor should stay on same line when moving to line en
     const pool = gp.initGlobalPool(std.testing.allocator);
     defer gp.deinitGlobalPool();
 
-
     var eb = try EditBuffer.init(std.testing.allocator, pool, .wcwidth);
     defer eb.deinit();
 
@@ -1931,7 +1871,6 @@ test "EditorView - visual cursor should stay on same line when moving to line en
 test "EditorView - placeholder with styled text renders with correct highlights" {
     const pool = gp.initGlobalPool(std.testing.allocator);
     defer gp.deinitGlobalPool();
-
 
     var eb = try EditBuffer.init(std.testing.allocator, pool, .wcwidth);
     defer eb.deinit();
@@ -2027,7 +1966,6 @@ test "EditorView - getNextWordBoundary returns VisualCursor" {
     const pool = gp.initGlobalPool(std.testing.allocator);
     defer gp.deinitGlobalPool();
 
-
     var eb = try EditBuffer.init(std.testing.allocator, pool, .wcwidth);
     defer eb.deinit();
 
@@ -2048,7 +1986,6 @@ test "EditorView - getPrevWordBoundary returns VisualCursor" {
     const pool = gp.initGlobalPool(std.testing.allocator);
     defer gp.deinitGlobalPool();
 
-
     var eb = try EditBuffer.init(std.testing.allocator, pool, .wcwidth);
     defer eb.deinit();
 
@@ -2068,7 +2005,6 @@ test "EditorView - getPrevWordBoundary returns VisualCursor" {
 test "EditorView - word boundary with wrapping" {
     const pool = gp.initGlobalPool(std.testing.allocator);
     defer gp.deinitGlobalPool();
-
 
     var eb = try EditBuffer.init(std.testing.allocator, pool, .wcwidth);
     defer eb.deinit();
@@ -2092,7 +2028,6 @@ test "EditorView - word boundary across lines" {
     const pool = gp.initGlobalPool(std.testing.allocator);
     defer gp.deinitGlobalPool();
 
-
     var eb = try EditBuffer.init(std.testing.allocator, pool, .wcwidth);
     defer eb.deinit();
 
@@ -2112,7 +2047,6 @@ test "EditorView - word boundary across lines" {
 test "EditorView - word boundary prev across lines" {
     const pool = gp.initGlobalPool(std.testing.allocator);
     defer gp.deinitGlobalPool();
-
 
     var eb = try EditBuffer.init(std.testing.allocator, pool, .wcwidth);
     defer eb.deinit();
@@ -2134,7 +2068,6 @@ test "EditorView - word boundary with punctuation" {
     const pool = gp.initGlobalPool(std.testing.allocator);
     defer gp.deinitGlobalPool();
 
-
     var eb = try EditBuffer.init(std.testing.allocator, pool, .wcwidth);
     defer eb.deinit();
 
@@ -2152,7 +2085,6 @@ test "EditorView - word boundary with punctuation" {
 test "EditorView - word boundary at end of buffer" {
     const pool = gp.initGlobalPool(std.testing.allocator);
     defer gp.deinitGlobalPool();
-
 
     var eb = try EditBuffer.init(std.testing.allocator, pool, .wcwidth);
     defer eb.deinit();
@@ -2172,7 +2104,6 @@ test "EditorView - word boundary at start of buffer" {
     const pool = gp.initGlobalPool(std.testing.allocator);
     defer gp.deinitGlobalPool();
 
-
     var eb = try EditBuffer.init(std.testing.allocator, pool, .wcwidth);
     defer eb.deinit();
 
@@ -2190,7 +2121,6 @@ test "EditorView - word boundary at start of buffer" {
 test "EditorView - horizontal scroll: combined vertical and horizontal scrolling" {
     const pool = gp.initGlobalPool(std.testing.allocator);
     defer gp.deinitGlobalPool();
-
 
     var eb = try EditBuffer.init(std.testing.allocator, pool, .wcwidth);
     defer eb.deinit();
@@ -2232,7 +2162,6 @@ test "EditorView - deleteSelectedText single line" {
     const pool = gp.initGlobalPool(std.testing.allocator);
     defer gp.deinitGlobalPool();
 
-
     var eb_inst = try EditBuffer.init(std.testing.allocator, pool, .wcwidth);
     defer eb_inst.deinit();
 
@@ -2266,7 +2195,6 @@ test "EditorView - deleteSelectedText multi-line" {
     const pool = gp.initGlobalPool(std.testing.allocator);
     defer gp.deinitGlobalPool();
 
-
     var eb_inst = try EditBuffer.init(std.testing.allocator, pool, .wcwidth);
     defer eb_inst.deinit();
 
@@ -2291,7 +2219,6 @@ test "EditorView - deleteSelectedText multi-line" {
 test "EditorView - deleteSelectedText with wrapping" {
     const pool = gp.initGlobalPool(std.testing.allocator);
     defer gp.deinitGlobalPool();
-
 
     var eb_inst = try EditBuffer.init(std.testing.allocator, pool, .wcwidth);
     defer eb_inst.deinit();
@@ -2323,7 +2250,6 @@ test "EditorView - deleteSelectedText with viewport scrolled" {
     const pool = gp.initGlobalPool(std.testing.allocator);
     defer gp.deinitGlobalPool();
 
-
     var eb_inst = try EditBuffer.init(std.testing.allocator, pool, .wcwidth);
     defer eb_inst.deinit();
 
@@ -2354,7 +2280,6 @@ test "EditorView - deleteSelectedText with no selection" {
     const pool = gp.initGlobalPool(std.testing.allocator);
     defer gp.deinitGlobalPool();
 
-
     var eb_inst = try EditBuffer.init(std.testing.allocator, pool, .wcwidth);
     defer eb_inst.deinit();
 
@@ -2373,7 +2298,6 @@ test "EditorView - deleteSelectedText with no selection" {
 test "EditorView - deleteSelectedText entire line" {
     const pool = gp.initGlobalPool(std.testing.allocator);
     defer gp.deinitGlobalPool();
-
 
     var eb_inst = try EditBuffer.init(std.testing.allocator, pool, .wcwidth);
     defer eb_inst.deinit();
@@ -2399,7 +2323,6 @@ test "EditorView - deleteSelectedText entire line" {
 test "EditorView - deleteSelectedText respects selection with empty lines" {
     const pool = gp.initGlobalPool(std.testing.allocator);
     defer gp.deinitGlobalPool();
-
 
     var eb_inst = try EditBuffer.init(std.testing.allocator, pool, .wcwidth);
     defer eb_inst.deinit();
@@ -2441,7 +2364,6 @@ test "EditorView - word wrapping with space insertion maintains cursor sync" {
     const pool = gp.initGlobalPool(std.testing.allocator);
     defer gp.deinitGlobalPool();
 
-
     var eb = try EditBuffer.init(std.testing.allocator, pool, .wcwidth);
     defer eb.deinit();
 
@@ -2475,7 +2397,6 @@ test "EditorView - getVisualCursor always returns on empty buffer" {
     const pool = gp.initGlobalPool(std.testing.allocator);
     defer gp.deinitGlobalPool();
 
-
     var eb = try EditBuffer.init(std.testing.allocator, pool, .wcwidth);
     defer eb.deinit();
 
@@ -2492,7 +2413,6 @@ test "EditorView - getVisualCursor always returns on empty buffer" {
 test "EditorView - logicalToVisualCursor clamps row beyond last line" {
     const pool = gp.initGlobalPool(std.testing.allocator);
     defer gp.deinitGlobalPool();
-
 
     var eb = try EditBuffer.init(std.testing.allocator, pool, .wcwidth);
     defer eb.deinit();
@@ -2511,7 +2431,6 @@ test "EditorView - logicalToVisualCursor clamps col beyond line width" {
     const pool = gp.initGlobalPool(std.testing.allocator);
     defer gp.deinitGlobalPool();
 
-
     var eb = try EditBuffer.init(std.testing.allocator, pool, .wcwidth);
     defer eb.deinit();
 
@@ -2529,7 +2448,6 @@ test "EditorView - logicalToVisualCursor clamps col beyond line width" {
 test "EditorView - placeholder shows when empty" {
     const pool = gp.initGlobalPool(std.testing.allocator);
     defer gp.deinitGlobalPool();
-
 
     var eb = try EditBuffer.init(std.testing.allocator, pool, .wcwidth);
     defer eb.deinit();
@@ -2561,7 +2479,6 @@ test "EditorView - placeholder cleared when set to empty" {
     const pool = gp.initGlobalPool(std.testing.allocator);
     defer gp.deinitGlobalPool();
 
-
     var eb = try EditBuffer.init(std.testing.allocator, pool, .wcwidth);
     defer eb.deinit();
 
@@ -2590,7 +2507,6 @@ test "EditorView - placeholder cleared when set to empty" {
 test "EditorView - placeholder with styled text" {
     const pool = gp.initGlobalPool(std.testing.allocator);
     defer gp.deinitGlobalPool();
-
 
     var eb = try EditBuffer.init(std.testing.allocator, pool, .wcwidth);
     defer eb.deinit();
@@ -2630,7 +2546,6 @@ test "EditorView - placeholder with styled text" {
 test "EditorView - placeholder renders to buffer when empty" {
     const pool = gp.initGlobalPool(std.testing.allocator);
     defer gp.deinitGlobalPool();
-
 
     var eb = try EditBuffer.init(std.testing.allocator, pool, .wcwidth);
     defer eb.deinit();
@@ -2686,7 +2601,6 @@ test "EditorView - tab indicator set and get" {
     const pool = gp.initGlobalPool(std.testing.allocator);
     defer gp.deinitGlobalPool();
 
-
     var eb = try EditBuffer.init(std.testing.allocator, pool, .wcwidth);
     defer eb.deinit();
 
@@ -2706,7 +2620,6 @@ test "EditorView - tab indicator set and get" {
 test "EditorView - tab indicator renders in buffer" {
     const pool = gp.initGlobalPool(std.testing.allocator);
     defer gp.deinitGlobalPool();
-
 
     var eb = try EditBuffer.init(std.testing.allocator, pool, .wcwidth);
     defer eb.deinit();
@@ -2760,7 +2673,6 @@ test "EditorView - tab indicator renders in buffer" {
 test "EditorView - word wrapping during editing: typing with incremental wrapping" {
     const pool = gp.initGlobalPool(std.testing.allocator);
     defer gp.deinitGlobalPool();
-
 
     var eb = try EditBuffer.init(std.testing.allocator, pool, .wcwidth);
     defer eb.deinit();
@@ -2884,4 +2796,170 @@ test "EditorView - word wrapping during editing: typing with incremental wrappin
     var out_buffer: [100]u8 = undefined;
     const written = eb.getText(&out_buffer);
     try std.testing.expectEqualStrings("Hello world ddddddddd", out_buffer[0..written]);
+}
+
+test "EditorView - cursor movement with emoji skin tone modifier wcwidth" {
+    const pool = gp.initGlobalPool(std.testing.allocator);
+    defer gp.deinitGlobalPool();
+
+    var eb = try EditBuffer.init(std.testing.allocator, pool, .wcwidth);
+    defer eb.deinit();
+
+    var ev = try EditorView.init(std.testing.allocator, eb, 80, 24);
+    defer ev.deinit();
+
+    // "👋🏿" is a waving hand emoji with dark skin tone modifier
+    // In wcwidth mode (tmux-style), each codepoint has width 2, total = 4 columns
+    // IMPORTANT: In wcwidth mode, each codepoint is treated as a separate char for cursor movement
+    try eb.setText("👋🏿", false);
+
+    // Start at position 0 (before the first codepoint)
+    try eb.setCursor(0, 0);
+    var cursor = eb.getPrimaryCursor();
+    try std.testing.expectEqual(@as(u32, 0), cursor.col);
+
+    // Move right once - should move past the FIRST codepoint (2 columns)
+    // In wcwidth mode, each codepoint is a separate char, so this moves to col 2
+    eb.moveRight();
+    cursor = eb.getPrimaryCursor();
+    try std.testing.expectEqual(@as(u32, 2), cursor.col);
+
+    // Move right again - should move past the SECOND codepoint (2 more columns)
+    eb.moveRight();
+    cursor = eb.getPrimaryCursor();
+    try std.testing.expectEqual(@as(u32, 4), cursor.col);
+
+    // Move left once - should move back to col 2 (before second codepoint)
+    eb.moveLeft();
+    cursor = eb.getPrimaryCursor();
+    try std.testing.expectEqual(@as(u32, 2), cursor.col);
+
+    // Move left again - should move back to the beginning
+    eb.moveLeft();
+    cursor = eb.getPrimaryCursor();
+    try std.testing.expectEqual(@as(u32, 0), cursor.col);
+}
+
+test "EditorView - cursor movement with emoji skin tone modifier unicode" {
+    const pool = gp.initGlobalPool(std.testing.allocator);
+    defer gp.deinitGlobalPool();
+
+    var eb = try EditBuffer.init(std.testing.allocator, pool, .unicode);
+    defer eb.deinit();
+
+    var ev = try EditorView.init(std.testing.allocator, eb, 80, 24);
+    defer ev.deinit();
+
+    // "👋🏿" is a waving hand emoji with dark skin tone modifier
+    // In unicode mode (modern terminals), skin tone is 0-width, total = 2 columns
+    try eb.setText("👋🏿", false);
+
+    // Start at position 0 (before the grapheme cluster)
+    try eb.setCursor(0, 0);
+    var cursor = eb.getPrimaryCursor();
+    try std.testing.expectEqual(@as(u32, 0), cursor.col);
+
+    // Move right once - should move past the entire grapheme cluster (2 columns in unicode)
+    eb.moveRight();
+    cursor = eb.getPrimaryCursor();
+    try std.testing.expectEqual(@as(u32, 2), cursor.col);
+
+    // Move left once - should move back to the beginning
+    eb.moveLeft();
+    cursor = eb.getPrimaryCursor();
+    try std.testing.expectEqual(@as(u32, 0), cursor.col);
+}
+
+test "EditorView - backspace emoji with skin tone modifier wcwidth" {
+    const pool = gp.initGlobalPool(std.testing.allocator);
+    defer gp.deinitGlobalPool();
+
+    var eb = try EditBuffer.init(std.testing.allocator, pool, .wcwidth);
+    defer eb.deinit();
+
+    var ev = try EditorView.init(std.testing.allocator, eb, 80, 24);
+    defer ev.deinit();
+
+    // "👋🏿" is a waving hand emoji with dark skin tone modifier
+    // In wcwidth mode, this renders as 4 columns (2+2)
+    // In wcwidth mode, each codepoint is treated as a separate char
+    try eb.setText("👋🏿", false);
+
+    // Move cursor to col 2 (after first codepoint)
+    eb.moveRight();
+    var cursor = eb.getPrimaryCursor();
+    try std.testing.expectEqual(@as(u32, 2), cursor.col);
+
+    // Move cursor to col 4 (after second codepoint)
+    eb.moveRight();
+    cursor = eb.getPrimaryCursor();
+    try std.testing.expectEqual(@as(u32, 4), cursor.col);
+
+    // Get text before backspace to verify it contains the emoji
+    var buffer_before: [100]u8 = undefined;
+    const len_before = eb.getText(&buffer_before);
+    try std.testing.expectEqualStrings("👋🏿", buffer_before[0..len_before]);
+
+    // First backspace should delete just the skin tone modifier (second codepoint)
+    try eb.backspace();
+
+    // Cursor should now be at position 2 (after the first codepoint)
+    cursor = eb.getPrimaryCursor();
+    try std.testing.expectEqual(@as(u32, 2), cursor.col);
+
+    // Text buffer should contain just the hand emoji without skin tone
+    var buffer_middle: [100]u8 = undefined;
+    const len_middle = eb.getText(&buffer_middle);
+    try std.testing.expectEqualStrings("👋", buffer_middle[0..len_middle]);
+
+    // Second backspace should delete the hand emoji (first codepoint)
+    try eb.backspace();
+
+    // Cursor should now be at position 0
+    cursor = eb.getPrimaryCursor();
+    try std.testing.expectEqual(@as(u32, 0), cursor.col);
+
+    // Text buffer should be empty
+    var buffer_after: [100]u8 = undefined;
+    const len_after = eb.getText(&buffer_after);
+    try std.testing.expectEqual(@as(usize, 0), len_after);
+    try std.testing.expectEqualStrings("", buffer_after[0..len_after]);
+}
+
+test "EditorView - backspace emoji with skin tone modifier unicode" {
+    const pool = gp.initGlobalPool(std.testing.allocator);
+    defer gp.deinitGlobalPool();
+
+    var eb = try EditBuffer.init(std.testing.allocator, pool, .unicode);
+    defer eb.deinit();
+
+    var ev = try EditorView.init(std.testing.allocator, eb, 80, 24);
+    defer ev.deinit();
+
+    // "👋🏿" is a waving hand emoji with dark skin tone modifier
+    // In unicode mode, this renders as 2 columns (modifier is 0-width)
+    try eb.setText("👋🏿", false);
+
+    // Move cursor to AFTER the grapheme cluster (2 columns total in unicode mode)
+    eb.moveRight();
+    var cursor = eb.getPrimaryCursor();
+    try std.testing.expectEqual(@as(u32, 2), cursor.col);
+
+    // Get text before backspace to verify it contains the emoji
+    var buffer_before: [100]u8 = undefined;
+    const len_before = eb.getText(&buffer_before);
+    try std.testing.expectEqualStrings("👋🏿", buffer_before[0..len_before]);
+
+    // Backspace should delete the entire grapheme cluster (both codepoints)
+    try eb.backspace();
+
+    // Cursor should now be at position 0
+    cursor = eb.getPrimaryCursor();
+    try std.testing.expectEqual(@as(u32, 0), cursor.col);
+
+    // Text buffer should be empty
+    var buffer_after: [100]u8 = undefined;
+    const len_after = eb.getText(&buffer_after);
+    try std.testing.expectEqual(@as(usize, 0), len_after);
+    try std.testing.expectEqualStrings("", buffer_after[0..len_after]);
 }

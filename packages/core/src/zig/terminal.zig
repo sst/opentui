@@ -80,9 +80,12 @@ state: struct {
 term_info: TerminalInfo = .{},
 
 pub fn init(opts: Options) Terminal {
-    return .{
+    var term: Terminal = .{
         .opts = opts,
     };
+
+    term.checkEnvironmentOverrides();
+    return term;
 }
 
 pub fn resetState(self: *Terminal, tty: anytype) !void {
@@ -215,6 +218,14 @@ fn checkEnvironmentOverrides(self: *Terminal) void {
 
     // Always just try to enable bracketed paste, even if it was reported as not supported
     self.caps.bracketed_paste = true;
+
+    if (env_map.get("TMUX")) |_| {
+        self.caps.unicode = .wcwidth;
+    } else if (env_map.get("TERM")) |term| {
+        if (std.mem.startsWith(u8, term, "tmux") or std.mem.startsWith(u8, term, "screen")) {
+            self.caps.unicode = .wcwidth;
+        }
+    }
 
     // Extract terminal name and version from environment variables
     // These will be overridden by xtversion responses if available
@@ -390,6 +401,10 @@ pub fn processCapabilityResponse(self: *Terminal, response: []const u8) void {
         self.caps.sixel = true;
         self.caps.bracketed_paste = true;
         self.caps.hyperlinks = true;
+    }
+
+    if (std.mem.indexOf(u8, response, "tmux")) |_| {
+        self.caps.unicode = .wcwidth;
     }
 
     // Sixel detection via device attributes (capability 4 in DA1 response ending with 'c')

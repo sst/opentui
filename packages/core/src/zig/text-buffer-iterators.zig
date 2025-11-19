@@ -299,6 +299,19 @@ pub fn getPrevGraphemeWidth(rope: *UnifiedRope, mem_registry: *const MemRegistry
                 const here = utf8.findPosByWidth(bytes, local_col, tab_width, is_ascii, false, width_method);
 
                 const grapheme_start_col = here.columns_used;
+
+                // Check for integer underflow: if grapheme_start_col > local_col, we're in the middle of a grapheme
+                // that spans beyond local_col. This can happen with multi-codepoint graphemes.
+                if (grapheme_start_col > local_col) {
+                    // We're in the middle of a wide grapheme cluster - need to look at previous chunk or grapheme
+                    if (prev_chunk) |pc| {
+                        const prev_bytes = pc.chunk.getBytes(mem_registry);
+                        const prev = utf8.getPrevGraphemeStart(prev_bytes, prev_bytes.len, tab_width, width_method);
+                        if (prev) |res| return res.width;
+                    }
+                    return 0;
+                }
+
                 const offset_into_grapheme = local_col - grapheme_start_col;
 
                 if (offset_into_grapheme > 0) {

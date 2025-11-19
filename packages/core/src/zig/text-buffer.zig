@@ -408,7 +408,7 @@ pub const UnifiedTextBuffer = struct {
     ) TextBufferError!struct { segments: std.ArrayList(Segment), total_width: u32 } {
         var break_result = utf8.LineBreakResult.init(allocator);
         defer break_result.deinit();
-        try utf8.findLineBreaksSIMD16(text, &break_result);
+        try utf8.findLineBreaks(text, &break_result);
 
         var segments = std.ArrayList(Segment).init(allocator);
         errdefer segments.deinit();

@@ -130,6 +130,7 @@ fn benchGetGraphemes(
             &registry,
             arena_alloc,
             4, // tab width
+            .unicode,
         );
         const elapsed = timer.read();
 
