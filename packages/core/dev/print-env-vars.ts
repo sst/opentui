@@ -17,7 +17,7 @@ const useMarkdown = args.includes("--markdown")
 const updateDocs = args.includes("--update")
 
 const generateMarkdownContent = () => {
-  return `# Environment Variables\n\n${generateEnvMarkdown()}\n---\n\n_generated via packages/core/dev/print-env-vars.ts_\n`
+  return `# Environment Variables\n\n${generateEnvMarkdown()}---\n\n_generated via packages/core/dev/print-env-vars.ts_\n`
 }
 
 if (updateDocs) {
