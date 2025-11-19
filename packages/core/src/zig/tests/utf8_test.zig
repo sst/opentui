@@ -799,7 +799,7 @@ fn testWrapBreaks(test_case: WrapBreakTestCase, allocator: std.mem.Allocator) !v
     var result = utf8.WrapBreakResult.init(allocator);
     defer result.deinit();
 
-    try utf8.findWrapBreaksSIMD16(test_case.input, &result);
+    try utf8.findWrapBreaksSIMD16(test_case.input, &result, .unicode);
 
     try testing.expectEqual(test_case.expected.len, result.breaks.items.len);
 
@@ -914,7 +914,7 @@ test "wrap breaks: realistic text" {
     var result = utf8.WrapBreakResult.init(testing.allocator);
     defer result.deinit();
 
-    try utf8.findWrapBreaksSIMD16(sample_text, &result);
+    try utf8.findWrapBreaksSIMD16(sample_text, &result, .unicode);
 
     // Verify we found many breaks
     try testing.expect(result.breaks.items.len > 0);
@@ -945,7 +945,7 @@ test "wrap breaks: random small buffers" {
 
         var result = utf8.WrapBreakResult.init(testing.allocator);
         defer result.deinit();
-        try utf8.findWrapBreaksSIMD16(buf, &result);
+        try utf8.findWrapBreaksSIMD16(buf, &result, .unicode);
     }
 }
 
@@ -967,7 +967,7 @@ test "wrap breaks: large buffer" {
 
     var result = utf8.WrapBreakResult.init(testing.allocator);
     defer result.deinit();
-    try utf8.findWrapBreaksSIMD16(buf, &result);
+    try utf8.findWrapBreaksSIMD16(buf, &result, .unicode);
 
     try testing.expect(result.breaks.items.len > 0);
 }
@@ -992,7 +992,7 @@ test "edge case: result reuse" {
     // Third use - wrap breaks (different result type)
     var wrap_result = utf8.WrapBreakResult.init(testing.allocator);
     defer wrap_result.deinit();
-    try utf8.findWrapBreaksSIMD16("a b c", &wrap_result);
+    try utf8.findWrapBreaksSIMD16("a b c", &wrap_result, .unicode);
     try testing.expectEqual(@as(usize, 2), wrap_result.breaks.items.len);
 }
 
@@ -1005,7 +1005,7 @@ test "edge case: empty input" {
 
     var wrap_result = utf8.WrapBreakResult.init(testing.allocator);
     defer wrap_result.deinit();
-    try utf8.findWrapBreaksSIMD16("", &wrap_result);
+    try utf8.findWrapBreaksSIMD16("", &wrap_result, .unicode);
     try testing.expectEqual(@as(usize, 0), wrap_result.breaks.items.len);
 }
 
@@ -1019,7 +1019,7 @@ test "edge case: exactly 16 bytes" {
 
     var wrap_result = utf8.WrapBreakResult.init(testing.allocator);
     defer wrap_result.deinit();
-    try utf8.findWrapBreaksSIMD16(input, &wrap_result);
+    try utf8.findWrapBreaksSIMD16(input, &wrap_result, .unicode);
     try testing.expectEqual(@as(usize, 0), wrap_result.breaks.items.len);
 }
 
@@ -1035,7 +1035,7 @@ test "edge case: 17 bytes with break at 16" {
     var wrap_result = utf8.WrapBreakResult.init(testing.allocator);
     defer wrap_result.deinit();
     const input2 = "0123456789abcde x"; // space at position 15
-    try utf8.findWrapBreaksSIMD16(input2, &wrap_result);
+    try utf8.findWrapBreaksSIMD16(input2, &wrap_result, .unicode);
     try testing.expectEqual(@as(usize, 1), wrap_result.breaks.items.len);
     try testing.expectEqual(@as(u16, 15), wrap_result.breaks.items[0].byte_offset);
     try testing.expectEqual(@as(u16, 15), wrap_result.breaks.items[0].char_offset);
@@ -1050,7 +1050,7 @@ test "wrap breaks: emoji with ZWJ - char offset should count grapheme not codepo
 
     var result = utf8.WrapBreakResult.init(testing.allocator);
     defer result.deinit();
-    try utf8.findWrapBreaksSIMD16(input, &result);
+    try utf8.findWrapBreaksSIMD16(input, &result, .unicode);
 
     try testing.expectEqual(@as(usize, 2), result.breaks.items.len);
     try testing.expectEqual(@as(u16, 2), result.breaks.items[0].byte_offset);
@@ -1064,7 +1064,7 @@ test "wrap breaks: emoji with skin tone - char offset should count grapheme" {
 
     var result = utf8.WrapBreakResult.init(testing.allocator);
     defer result.deinit();
-    try utf8.findWrapBreaksSIMD16(input, &result);
+    try utf8.findWrapBreaksSIMD16(input, &result, .unicode);
 
     try testing.expectEqual(@as(usize, 2), result.breaks.items.len);
     try testing.expectEqual(@as(u16, 2), result.breaks.items[0].byte_offset);
@@ -1078,7 +1078,7 @@ test "wrap breaks: emoji with VS16 selector - char offset should count grapheme"
 
     var result = utf8.WrapBreakResult.init(testing.allocator);
     defer result.deinit();
-    try utf8.findWrapBreaksSIMD16(input, &result);
+    try utf8.findWrapBreaksSIMD16(input, &result, .unicode);
 
     try testing.expectEqual(@as(usize, 2), result.breaks.items.len);
     try testing.expectEqual(@as(u16, 1), result.breaks.items[0].byte_offset);
@@ -1092,7 +1092,7 @@ test "wrap breaks: combining diacritic - char offset should count grapheme" {
 
     var result = utf8.WrapBreakResult.init(testing.allocator);
     defer result.deinit();
-    try utf8.findWrapBreaksSIMD16(input, &result);
+    try utf8.findWrapBreaksSIMD16(input, &result, .unicode);
 
     try testing.expectEqual(@as(usize, 1), result.breaks.items.len);
     try testing.expectEqual(@as(u16, 6), result.breaks.items[0].byte_offset);
@@ -1104,7 +1104,7 @@ test "wrap breaks: flag emoji - char offset should count grapheme" {
 
     var result = utf8.WrapBreakResult.init(testing.allocator);
     defer result.deinit();
-    try utf8.findWrapBreaksSIMD16(input, &result);
+    try utf8.findWrapBreaksSIMD16(input, &result, .unicode);
 
     try testing.expectEqual(@as(usize, 1), result.breaks.items.len);
     try testing.expectEqual(@as(u16, 11), result.breaks.items[0].byte_offset);
@@ -1116,7 +1116,7 @@ test "wrap breaks: mixed graphemes and ASCII" {
 
     var result = utf8.WrapBreakResult.init(testing.allocator);
     defer result.deinit();
-    try utf8.findWrapBreaksSIMD16(input, &result);
+    try utf8.findWrapBreaksSIMD16(input, &result, .unicode);
 
     try testing.expectEqual(@as(usize, 4), result.breaks.items.len);
     try testing.expectEqual(@as(u16, 5), result.breaks.items[0].byte_offset);

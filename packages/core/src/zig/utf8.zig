@@ -177,7 +177,8 @@ inline fn isUnicodeWrapBreak(cp: u21) bool {
 
 // Nothing needed here - using uucode.grapheme.isBreak directly
 
-pub fn findWrapBreaksSIMD16(text: []const u8, result: *WrapBreakResult) !void {
+pub fn findWrapBreaksSIMD16(text: []const u8, result: *WrapBreakResult, width_method: WidthMethod) !void {
+    _ = width_method; // Currently unused, but kept for API consistency
     result.reset();
     const vector_len = 16;
 

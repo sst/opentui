@@ -172,6 +172,7 @@ pub const TextChunk = struct {
         self: *const TextChunk,
         mem_registry: *const MemRegistry,
         allocator: Allocator,
+        width_method: utf8.WidthMethod,
     ) TextBufferError![]const utf8.WrapBreak {
         const mut_self = @constCast(self);
         if (self.wrap_offsets) |cached| {
@@ -182,7 +183,7 @@ pub const TextChunk = struct {
         var wrap_result = utf8.WrapBreakResult.init(allocator);
         defer wrap_result.deinit();
 
-        try utf8.findWrapBreaksSIMD16(chunk_bytes, &wrap_result);
+        try utf8.findWrapBreaksSIMD16(chunk_bytes, &wrap_result, width_method);
 
         // TODO: Do not cache for chunks < 64 bytes, as it does not profit from the cache
         const wrap_offsets = try allocator.dupe(utf8.WrapBreak, wrap_result.breaks.items);

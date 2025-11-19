@@ -203,7 +203,7 @@ pub const UnifiedTextBufferView = struct {
         if (total_width == 0) return .{ .char_count = 0, .width = 0 };
         if (total_width <= max_width) return .{ .char_count = total_width, .width = total_width };
 
-        const wrap_offsets = chunk.getWrapOffsets(&self.text_buffer.mem_registry, self.text_buffer.allocator) catch {
+        const wrap_offsets = chunk.getWrapOffsets(&self.text_buffer.mem_registry, self.text_buffer.allocator, self.text_buffer.width_method) catch {
             const fit_width = @min(max_width, total_width);
             return .{ .char_count = fit_width, .width = fit_width };
         };
@@ -358,7 +358,7 @@ pub const UnifiedTextBufferView = struct {
 
                     if (wctx.view.wrap_mode == .word) {
                         const chunk_bytes = chunk.getBytes(&wctx.view.text_buffer.mem_registry);
-                        const wrap_offsets = chunk.getWrapOffsets(&wctx.view.text_buffer.mem_registry, wctx.view.text_buffer.allocator) catch &[_]utf8.WrapBreak{};
+                        const wrap_offsets = chunk.getWrapOffsets(&wctx.view.text_buffer.mem_registry, wctx.view.text_buffer.allocator, wctx.view.text_buffer.width_method) catch &[_]utf8.WrapBreak{};
 
                         var char_offset: u32 = 0;
                         var wrap_idx: usize = 0; // Track current position in wrap_offsets to avoid O(n²) scanning

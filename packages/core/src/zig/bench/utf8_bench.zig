@@ -322,7 +322,7 @@ fn benchFindWrapBreaks(allocator: std.mem.Allocator, iterations: usize) ![]Bench
             defer wrap_breaks.deinit();
 
             var timer = try std.time.Timer.start();
-            try utf8.findWrapBreaksSIMD16(text, &wrap_breaks);
+            try utf8.findWrapBreaksSIMD16(text, &wrap_breaks, .unicode);
             const elapsed = timer.read();
 
             min_ns = @min(min_ns, elapsed);
@@ -357,7 +357,7 @@ fn benchFindWrapBreaks(allocator: std.mem.Allocator, iterations: usize) ![]Bench
             defer wrap_breaks.deinit();
 
             var timer = try std.time.Timer.start();
-            try utf8.findWrapBreaksSIMD16(text, &wrap_breaks);
+            try utf8.findWrapBreaksSIMD16(text, &wrap_breaks, .unicode);
             const elapsed = timer.read();
 
             min_ns = @min(min_ns, elapsed);
@@ -392,7 +392,7 @@ fn benchFindWrapBreaks(allocator: std.mem.Allocator, iterations: usize) ![]Bench
             defer wrap_breaks.deinit();
 
             var timer = try std.time.Timer.start();
-            try utf8.findWrapBreaksSIMD16(text, &wrap_breaks);
+            try utf8.findWrapBreaksSIMD16(text, &wrap_breaks, .unicode);
             const elapsed = timer.read();
 
             min_ns = @min(min_ns, elapsed);
