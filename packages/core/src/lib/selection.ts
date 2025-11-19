@@ -122,6 +122,7 @@ export class Selection {
         }
         return a.x - b.x
       })
+      .filter((renderable) => !renderable.isDestroyed)
       .map((renderable) => renderable.getSelectedText())
       .filter((text) => text)
     return selectedTexts.join("\n")
