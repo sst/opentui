@@ -599,6 +599,29 @@ pub const OptimizedBuffer = struct {
         }
     }
 
+    pub fn drawChar(
+        self: *OptimizedBuffer,
+        char: u32,
+        x: u32,
+        y: u32,
+        fg: RGBA,
+        bg: RGBA,
+        attributes: u8,
+    ) !void {
+        if (!self.isPointInScissor(@intCast(x), @intCast(y))) return;
+
+        if (isRGBAWithAlpha(bg) or isRGBAWithAlpha(fg)) {
+            try self.setCellWithAlphaBlending(x, y, char, fg, bg, attributes);
+        } else {
+            self.set(x, y, Cell{
+                .char = char,
+                .fg = fg,
+                .bg = bg,
+                .attributes = attributes,
+            });
+        }
+    }
+
     pub fn fillRect(
         self: *OptimizedBuffer,
         x: u32,
