@@ -1411,8 +1411,11 @@ export interface RenderLib {
   getTerminalCapabilities: (renderer: Pointer) => any
   processCapabilityResponse: (renderer: Pointer, response: string) => void
 
-  encodeUnicode: (text: string, widthMethod: WidthMethod) => Array<{ width: number; char: number }> | null
-  freeUnicode: (encodedChars: Pointer, length: number) => void
+  encodeUnicode: (
+    text: string,
+    widthMethod: WidthMethod,
+  ) => { ptr: Pointer; data: Array<{ width: number; char: number }> } | null
+  freeUnicode: (encoded: { ptr: Pointer; data: Array<{ width: number; char: number }> }) => void
   bufferDrawChar: (buffer: Pointer, char: number, x: number, y: number, fg: RGBA, bg: RGBA, attributes?: number) => void
 
   onNativeEvent: (name: string, handler: (data: ArrayBuffer) => void) => void
@@ -2849,7 +2852,10 @@ class FFIRenderLib implements RenderLib {
     this.opentui.symbols.processCapabilityResponse(renderer, responseBytes, responseBytes.length)
   }
 
-  public encodeUnicode(text: string, widthMethod: WidthMethod): Array<{ width: number; char: number }> | null {
+  public encodeUnicode(
+    text: string,
+    widthMethod: WidthMethod,
+  ): { ptr: Pointer; data: Array<{ width: number; char: number }> } | null {
     const textBytes = this.encoder.encode(text)
     const widthMethodCode = widthMethod === "wcwidth" ? 0 : 1
 
@@ -2875,18 +2881,19 @@ class FFIRenderLib implements RenderLib {
     const resultLen = Number(outLenView[0])
 
     if (resultLen === 0) {
-      return []
+      return { ptr: resultPtr, data: [] }
     }
 
     // Convert pointer to ArrayBuffer and use EncodedCharStruct to unpack the list
     const byteLen = resultLen * EncodedCharStruct.size
     const raw = toArrayBuffer(resultPtr, 0, byteLen)
-    const result = EncodedCharStruct.unpackList(raw, resultLen)
-    return result.map((item: any) => ({ width: item.width, char: item.char }))
+    const data = EncodedCharStruct.unpackList(raw, resultLen)
+
+    return { ptr: resultPtr, data }
   }
 
-  public freeUnicode(encodedChars: Pointer, length: number): void {
-    this.opentui.symbols.freeUnicode(encodedChars, length)
+  public freeUnicode(encoded: { ptr: Pointer; data: Array<{ width: number; char: number }> }): void {
+    this.opentui.symbols.freeUnicode(encoded.ptr, encoded.data.length)
   }
 
   public bufferDrawChar(
