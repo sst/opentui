@@ -1289,8 +1289,8 @@ export class CliRenderer extends EventEmitter implements RenderContext {
     if (this.stdin.setRawMode) {
       this.stdin.setRawMode(false)
     }
-    // We do not pause and resume stdin, as it would buffer stdin
-    // and emit it all at once on resume, which is not desired.
+
+    this.stdin.pause()
   }
 
   public resume(): void {
@@ -1298,7 +1298,13 @@ export class CliRenderer extends EventEmitter implements RenderContext {
       this.stdin.setRawMode(true)
     }
 
-    this.stdin.on("data", this.stdinListener)
+    this.stdin.resume()
+
+    this.stdin.once("readable", () => {
+      // Consume any existing stdin data to avoid processing stale input
+      while (this.stdin.read() !== null) {}
+      this.stdin.on("data", this.stdinListener)
+    })
 
     this.lib.resumeRenderer(this.rendererPtr)
 
