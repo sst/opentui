@@ -596,25 +596,26 @@ export function run(renderer: CliRenderer): void {
       emojiBuffer.drawText("+", 0, emojiBuffer.height - 1, RGBA.fromInts(255, 230, 150))
       emojiBuffer.drawText("+", emojiBuffer.width - 1, emojiBuffer.height - 1, RGBA.fromInts(255, 230, 150))
 
-      // Encode and draw all monkey emojis in a line using encodeUnicode and drawChar
+      // Draw only the current frame using encodeUnicode and drawChar
       const fg = RGBA.fromInts(255, 255, 255)
-      const bg = RGBA.fromInts(50, 50, 80)
-      let x = 2
+      const bg = RGBA.fromInts(0, 0, 0, 0) // Transparent background
 
-      for (const frame of monkeyFrames) {
-        const encoded = emojiBuffer.encodeUnicode(frame)
-        if (encoded) {
-          for (const encodedChar of encoded.data) {
-            emojiBuffer.drawChar(encodedChar.char, x, 2, fg, bg)
-            x += encodedChar.width
-          }
-          emojiBuffer.freeUnicode(encoded)
+      // Encode the current frame
+      const currentFrame = monkeyFrames[currentMonkeyFrame]
+      const encoded = emojiBuffer.encodeUnicode(currentFrame)
+
+      if (encoded) {
+        let x = 7 // Center the emoji
+        for (const encodedChar of encoded.data) {
+          emojiBuffer.drawChar(encodedChar.char, x, 2, fg, bg)
+          x += encodedChar.width
         }
+        emojiBuffer.freeUnicode(encoded)
       }
 
-      // Highlight the current frame
-      const frameX = 2 + currentMonkeyFrame * 3 // Each frame is "🙈 " = emoji (width 2) + space (width 1) = 3
-      emojiBuffer.drawText("^", frameX, 3, RGBA.fromInts(255, 255, 0))
+      // Draw frame indicator
+      const frameText = `Frame ${currentMonkeyFrame + 1}/4`
+      emojiBuffer.drawText(frameText, 5, 3, RGBA.fromInts(200, 200, 200))
     }
   })
 
