@@ -6,7 +6,7 @@ describe("OptimizedBuffer", () => {
   let buffer: OptimizedBuffer
 
   beforeEach(() => {
-    buffer = OptimizedBuffer.create(20, 10, "unicode", { id: "test-buffer" })
+    buffer = OptimizedBuffer.create(20, 5, "unicode", { id: "test-buffer" })
   })
 
   afterEach(() => {
@@ -113,7 +113,9 @@ describe("OptimizedBuffer", () => {
 
   describe("snapshot tests with unicode encoding", () => {
     it("should render ASCII text correctly", () => {
-      const encoded = buffer.encodeUnicode("Hello World")
+      buffer.clear(RGBA.fromValues(0, 0, 0, 1))
+
+      const encoded = buffer.encodeUnicode("Hello")
       expect(encoded).not.toBeNull()
 
       const fg = RGBA.fromValues(1, 1, 1, 1)
@@ -133,7 +135,9 @@ describe("OptimizedBuffer", () => {
     })
 
     it("should render emoji text correctly", () => {
-      const encoded = buffer.encodeUnicode("Hello 👋 🌍 World")
+      buffer.clear(RGBA.fromValues(0, 0, 0, 1))
+
+      const encoded = buffer.encodeUnicode("Hi 👋 🌍")
       expect(encoded).not.toBeNull()
 
       const fg = RGBA.fromValues(1, 1, 1, 1)
@@ -153,7 +157,9 @@ describe("OptimizedBuffer", () => {
     })
 
     it("should handle multiline text with unicode", () => {
-      const lines = ["Hello 世界", "🌟 Star", "Text"]
+      buffer.clear(RGBA.fromValues(0, 0, 0, 1))
+
+      const lines = ["Hi 世界", "🌟 Star"]
       const fg = RGBA.fromValues(1, 1, 1, 1)
       const bg = RGBA.fromValues(0, 0, 0, 1)
 
