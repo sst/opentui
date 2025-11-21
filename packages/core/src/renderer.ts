@@ -1300,7 +1300,7 @@ export class CliRenderer extends EventEmitter implements RenderContext {
 
     this.stdin.resume()
 
-    this.stdin.once("readable", () => {
+    setImmediate(() => {
       // Consume any existing stdin data to avoid processing stale input
       while (this.stdin.read() !== null) {}
       this.stdin.on("data", this.stdinListener)
