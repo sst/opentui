@@ -1196,3 +1196,134 @@ export fn syntaxStyleResolveByName(style: *syntax_style.SyntaxStyle, namePtr: [*
 export fn syntaxStyleGetStyleCount(style: *syntax_style.SyntaxStyle) usize {
     return style.getStyleCount();
 }
+
+// Unicode encoding API
+
+pub const EncodedChar = extern struct {
+    width: u8,
+    char: u32,
+};
+
+export fn encodeUnicode(
+    textPtr: [*]const u8,
+    textLen: usize,
+    outPtr: *[*]EncodedChar,
+    outLenPtr: *usize,
+    widthMethod: u8,
+) bool {
+    const text = textPtr[0..textLen];
+    const pool = gp.initGlobalPool(globalArena);
+    const wMethod: utf8.WidthMethod = if (widthMethod == 0) .wcwidth else .unicode;
+
+    // Check if ASCII only for optimization
+    const is_ascii_only = utf8.isAsciiOnly(text);
+
+    // Find grapheme info
+    var grapheme_list = std.ArrayList(utf8.GraphemeInfo).init(globalArena);
+    defer grapheme_list.deinit();
+
+    const tab_width: u8 = 2;
+    utf8.findGraphemeInfo(text, tab_width, is_ascii_only, wMethod, &grapheme_list) catch return false;
+    const specials = grapheme_list.items;
+
+    // Allocate output array
+    const estimated_count = if (is_ascii_only) text.len else text.len * 2;
+    var result = globalArena.alloc(EncodedChar, estimated_count) catch return false;
+    var result_idx: usize = 0;
+
+    var byte_offset: u32 = 0;
+    var col: u32 = 0;
+    var special_idx: usize = 0;
+
+    while (byte_offset < text.len) {
+        const at_special = special_idx < specials.len and specials[special_idx].col_offset == col;
+
+        var grapheme_bytes: []const u8 = undefined;
+        var g_width: u8 = undefined;
+
+        if (at_special) {
+            const g = specials[special_idx];
+            grapheme_bytes = text[g.byte_offset .. g.byte_offset + g.byte_len];
+            g_width = g.width;
+            byte_offset = g.byte_offset + g.byte_len;
+            special_idx += 1;
+        } else {
+            if (byte_offset >= text.len) break;
+            grapheme_bytes = text[byte_offset .. byte_offset + 1];
+            g_width = 1;
+            byte_offset += 1;
+        }
+
+        const cell_width = utf8.getWidthAt(text, if (at_special) specials[special_idx - 1].byte_offset else byte_offset - 1, tab_width, wMethod);
+        if (cell_width == 0) {
+            col += g_width;
+            continue;
+        }
+
+        // Encode the character
+        var encoded_char: u32 = 0;
+        if (grapheme_bytes.len == 1 and cell_width == 1 and grapheme_bytes[0] >= 32) {
+            // Simple ASCII character
+            encoded_char = @as(u32, grapheme_bytes[0]);
+        } else {
+            // Multi-byte or special character - allocate in pool
+            const gid = pool.alloc(grapheme_bytes) catch return false;
+            encoded_char = gp.packGraphemeStart(gid & gp.GRAPHEME_ID_MASK, cell_width);
+
+            // Incref since we're handing this off to the caller
+            pool.incref(gid) catch return false;
+        }
+
+        // Ensure we have space
+        if (result_idx >= result.len) {
+            const new_len = result.len * 2;
+            result = globalArena.realloc(result, new_len) catch return false;
+        }
+
+        result[result_idx] = EncodedChar{
+            .width = @intCast(cell_width),
+            .char = encoded_char,
+        };
+        result_idx += 1;
+        col += g_width;
+    }
+
+    // Trim to actual size
+    result = globalArena.realloc(result, result_idx) catch result;
+
+    outPtr.* = result.ptr;
+    outLenPtr.* = result_idx;
+    return true;
+}
+
+export fn freeUnicode(charsPtr: [*]const EncodedChar, charsLen: usize) void {
+    const chars = charsPtr[0..charsLen];
+    const pool = gp.initGlobalPool(globalArena);
+
+    for (chars) |encoded_char| {
+        const char = encoded_char.char;
+
+        // Check if this is a packed grapheme
+        if (gp.isGraphemeChar(char)) {
+            const gid = gp.graphemeIdFromChar(char);
+            pool.decref(gid) catch {};
+        }
+    }
+
+    // Free the array itself
+    globalArena.free(chars);
+}
+
+export fn bufferDrawChar(
+    bufferPtr: *buffer.OptimizedBuffer,
+    char: u32,
+    x: u32,
+    y: u32,
+    fg: [*]const f32,
+    bg: [*]const f32,
+    attributes: u8,
+) void {
+    const rgbaFg = utils.f32PtrToRGBA(fg);
+    const rgbaBg = utils.f32PtrToRGBA(bg);
+    bufferPtr.drawChar(char, x, y, rgbaFg, rgbaBg, attributes) catch {};
+}
