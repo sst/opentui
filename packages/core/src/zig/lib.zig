@@ -1219,7 +1219,7 @@ export fn encodeUnicode(
     const is_ascii_only = utf8.isAsciiOnly(text);
 
     // Find grapheme info
-    var grapheme_list = std.ArrayList(utf8.GraphemeInfo).init(globalArena);
+    var grapheme_list = std.ArrayList(utf8.GraphemeInfo).init(std.heap.page_allocator);
     defer grapheme_list.deinit();
 
     const tab_width: u8 = 2;
@@ -1228,7 +1228,7 @@ export fn encodeUnicode(
 
     // Allocate output array
     const estimated_count = if (is_ascii_only) text.len else text.len * 2;
-    var result = globalArena.alloc(EncodedChar, estimated_count) catch return false;
+    var result = std.heap.page_allocator.alloc(EncodedChar, estimated_count) catch return false;
     var result_idx: usize = 0;
 
     var byte_offset: u32 = 0;
@@ -1277,7 +1277,7 @@ export fn encodeUnicode(
         // Ensure we have space
         if (result_idx >= result.len) {
             const new_len = result.len * 2;
-            result = globalArena.realloc(result, new_len) catch return false;
+            result = std.heap.page_allocator.realloc(result, new_len) catch return false;
         }
 
         result[result_idx] = EncodedChar{
@@ -1289,7 +1289,7 @@ export fn encodeUnicode(
     }
 
     // Trim to actual size
-    result = globalArena.realloc(result, result_idx) catch result;
+    result = std.heap.page_allocator.realloc(result, result_idx) catch result;
 
     outPtr.* = result.ptr;
     outLenPtr.* = result_idx;
@@ -1311,7 +1311,7 @@ export fn freeUnicode(charsPtr: [*]const EncodedChar, charsLen: usize) void {
     }
 
     // Free the array itself
-    globalArena.free(chars);
+    std.heap.page_allocator.free(chars);
 }
 
 export fn bufferDrawChar(
