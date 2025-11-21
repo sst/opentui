@@ -12,6 +12,7 @@ import {
   LogicalCursorStruct,
   VisualCursorStruct,
   TerminalCapabilitiesStruct,
+  EncodedCharStruct,
 } from "./zig-structs"
 
 const module = await import(`@opentui/core-${process.platform}-${process.arch}/index.ts`)
@@ -844,6 +845,20 @@ function getOpenTUILib(libPath?: string) {
       args: ["ptr", "ptr", "usize"],
       returns: "void",
     },
+
+    // Unicode encoding API
+    encodeUnicode: {
+      args: ["ptr", "usize", "ptr", "ptr", "u8"],
+      returns: "bool",
+    },
+    freeUnicode: {
+      args: ["ptr", "usize"],
+      returns: "void",
+    },
+    bufferDrawChar: {
+      args: ["ptr", "u32", "u32", "u32", "ptr", "ptr", "u8"],
+      returns: "void",
+    },
   })
 
   if (env.OTUI_DEBUG_FFI || env.OTUI_TRACE_FFI) {
@@ -1396,6 +1411,13 @@ export interface RenderLib {
   getTerminalCapabilities: (renderer: Pointer) => any
   processCapabilityResponse: (renderer: Pointer, response: string) => void
 
+  encodeUnicode: (
+    text: string,
+    widthMethod: WidthMethod,
+  ) => { ptr: Pointer; data: Array<{ width: number; char: number }> } | null
+  freeUnicode: (encoded: { ptr: Pointer; data: Array<{ width: number; char: number }> }) => void
+  bufferDrawChar: (buffer: Pointer, char: number, x: number, y: number, fg: RGBA, bg: RGBA, attributes?: number) => void
+
   onNativeEvent: (name: string, handler: (data: ArrayBuffer) => void) => void
   onceNativeEvent: (name: string, handler: (data: ArrayBuffer) => void) => void
   offNativeEvent: (name: string, handler: (data: ArrayBuffer) => void) => void
@@ -1567,7 +1589,7 @@ class FFIRenderLib implements RenderLib {
     const width = this.opentui.symbols.getBufferWidth(bufferPtr)
     const height = this.opentui.symbols.getBufferHeight(bufferPtr)
 
-    return new OptimizedBuffer(this, bufferPtr, width, height, { id: "next buffer" })
+    return new OptimizedBuffer(this, bufferPtr, width, height, { id: "next buffer", widthMethod: "unicode" })
   }
 
   public getCurrentBuffer(renderer: Pointer): OptimizedBuffer {
@@ -1579,7 +1601,7 @@ class FFIRenderLib implements RenderLib {
     const width = this.opentui.symbols.getBufferWidth(bufferPtr)
     const height = this.opentui.symbols.getBufferHeight(bufferPtr)
 
-    return new OptimizedBuffer(this, bufferPtr, width, height, { id: "current buffer" })
+    return new OptimizedBuffer(this, bufferPtr, width, height, { id: "current buffer", widthMethod: "unicode" })
   }
 
   public bufferGetCharPtr(buffer: Pointer): Pointer {
@@ -1833,7 +1855,7 @@ class FFIRenderLib implements RenderLib {
       throw new Error(`Failed to create optimized buffer: ${width}x${height}`)
     }
 
-    return new OptimizedBuffer(this, bufferPtr, width, height, { respectAlpha, id })
+    return new OptimizedBuffer(this, bufferPtr, width, height, { respectAlpha, id, widthMethod })
   }
 
   public destroyOptimizedBuffer(bufferPtr: Pointer) {
@@ -2828,6 +2850,62 @@ class FFIRenderLib implements RenderLib {
   public processCapabilityResponse(renderer: Pointer, response: string): void {
     const responseBytes = this.encoder.encode(response)
     this.opentui.symbols.processCapabilityResponse(renderer, responseBytes, responseBytes.length)
+  }
+
+  public encodeUnicode(
+    text: string,
+    widthMethod: WidthMethod,
+  ): { ptr: Pointer; data: Array<{ width: number; char: number }> } | null {
+    const textBytes = this.encoder.encode(text)
+    const widthMethodCode = widthMethod === "wcwidth" ? 0 : 1
+
+    const outPtrBuffer = new ArrayBuffer(8) // Pointer size
+    const outLenBuffer = new ArrayBuffer(8) // usize
+
+    const success = this.opentui.symbols.encodeUnicode(
+      textBytes,
+      textBytes.length,
+      ptr(outPtrBuffer),
+      ptr(outLenBuffer),
+      widthMethodCode,
+    )
+
+    if (!success) {
+      return null
+    }
+
+    const outPtrView = new BigUint64Array(outPtrBuffer)
+    const outLenView = new BigUint64Array(outLenBuffer)
+
+    const resultPtr = Number(outPtrView[0]) as Pointer
+    const resultLen = Number(outLenView[0])
+
+    if (resultLen === 0) {
+      return { ptr: resultPtr, data: [] }
+    }
+
+    // Convert pointer to ArrayBuffer and use EncodedCharStruct to unpack the list
+    const byteLen = resultLen * EncodedCharStruct.size
+    const raw = toArrayBuffer(resultPtr, 0, byteLen)
+    const data = EncodedCharStruct.unpackList(raw, resultLen)
+
+    return { ptr: resultPtr, data }
+  }
+
+  public freeUnicode(encoded: { ptr: Pointer; data: Array<{ width: number; char: number }> }): void {
+    this.opentui.symbols.freeUnicode(encoded.ptr, encoded.data.length)
+  }
+
+  public bufferDrawChar(
+    buffer: Pointer,
+    char: number,
+    x: number,
+    y: number,
+    fg: RGBA,
+    bg: RGBA,
+    attributes: number = 0,
+  ): void {
+    this.opentui.symbols.bufferDrawChar(buffer, char, x, y, fg.buffer, bg.buffer, attributes)
   }
 
   public createSyntaxStyle(): Pointer {

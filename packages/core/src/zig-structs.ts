@@ -73,3 +73,8 @@ export const TerminalCapabilitiesStruct = defineStruct([
   ["term_version_len", "u64", { lengthOf: "term_version" }],
   ["term_from_xtversion", "bool_u8"],
 ])
+
+export const EncodedCharStruct = defineStruct([
+  ["width", "u8"],
+  ["char", "u32"],
+])

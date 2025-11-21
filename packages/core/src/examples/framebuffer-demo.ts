@@ -371,6 +371,37 @@ export function run(renderer: CliRenderer): void {
   })
   parentContainer.add(cropDemoLabel)
 
+  // Emoji demo using encodeUnicode and drawChar
+  const emojiBufferRenderable = new FrameBufferRenderable(renderer, {
+    id: "emoji-demo",
+    width: 20,
+    height: 5,
+    position: "absolute",
+    left: 60,
+    top: 35,
+    zIndex: 4,
+  })
+  renderer.root.add(emojiBufferRenderable)
+  const { frameBuffer: emojiBuffer } = emojiBufferRenderable
+
+  const emojiDemoLabel = new TextRenderable(renderer, {
+    id: "emoji_demo_label",
+    content: "encodeUnicode Demo:",
+    position: "absolute",
+    left: 60,
+    top: 34,
+    fg: RGBA.fromInts(255, 255, 200),
+    attributes: TextAttributes.BOLD,
+    zIndex: 1000,
+  })
+  parentContainer.add(emojiDemoLabel)
+
+  // Pre-encode the monkey emoji frames
+  const monkeyFrames = ["🐵 ", "🙈 ", "🙉 ", "🙊 "]
+  let currentMonkeyFrame = 0
+  let lastMonkeyFrameTime = 0
+  const monkeyFrameInterval = 0.3 // Change frame every 300ms
+
   boxX = 10
   boxY = 10
   boxDx = 5
@@ -542,6 +573,50 @@ export function run(renderer: CliRenderer): void {
       )
       overlayBuffer.drawText("show through!", 5, 7, RGBA.fromInts(255, 255, 255), RGBA.fromInts(255, 255, 255, 180))
     }
+
+    // Update monkey emoji animation
+    if (time - lastMonkeyFrameTime > monkeyFrameInterval) {
+      lastMonkeyFrameTime = time
+      currentMonkeyFrame = (currentMonkeyFrame + 1) % monkeyFrames.length
+
+      // Clear emoji buffer
+      emojiBuffer.clear(RGBA.fromInts(0, 0, 0, 1))
+
+      // Draw border
+      for (let x = 0; x < emojiBuffer.width; x++) {
+        emojiBuffer.drawText("=", x, 0, RGBA.fromInts(255, 200, 100))
+        emojiBuffer.drawText("=", x, emojiBuffer.height - 1, RGBA.fromInts(255, 200, 100))
+      }
+      for (let y = 0; y < emojiBuffer.height; y++) {
+        emojiBuffer.drawText("|", 0, y, RGBA.fromInts(255, 200, 100))
+        emojiBuffer.drawText("|", emojiBuffer.width - 1, y, RGBA.fromInts(255, 200, 100))
+      }
+      emojiBuffer.drawText("+", 0, 0, RGBA.fromInts(255, 230, 150))
+      emojiBuffer.drawText("+", emojiBuffer.width - 1, 0, RGBA.fromInts(255, 230, 150))
+      emojiBuffer.drawText("+", 0, emojiBuffer.height - 1, RGBA.fromInts(255, 230, 150))
+      emojiBuffer.drawText("+", emojiBuffer.width - 1, emojiBuffer.height - 1, RGBA.fromInts(255, 230, 150))
+
+      // Draw only the current frame using encodeUnicode and drawChar
+      const fg = RGBA.fromInts(255, 255, 255)
+      const bg = RGBA.fromInts(0, 0, 0, 0) // Transparent background
+
+      // Encode the current frame
+      const currentFrame = monkeyFrames[currentMonkeyFrame]
+      const encoded = emojiBuffer.encodeUnicode(currentFrame)
+
+      if (encoded) {
+        let x = 7 // Center the emoji
+        for (const encodedChar of encoded.data) {
+          emojiBuffer.drawChar(encodedChar.char, x, 2, fg, bg)
+          x += encodedChar.width
+        }
+        emojiBuffer.freeUnicode(encoded)
+      }
+
+      // Draw frame indicator
+      const frameText = `Frame ${currentMonkeyFrame + 1}/4`
+      emojiBuffer.drawText(frameText, 5, 3, RGBA.fromInts(200, 200, 200))
+    }
   })
 
   const debugInstructionsText = new TextRenderable(renderer, {
@@ -573,6 +648,7 @@ export function destroy(renderer: CliRenderer): void {
   renderer.root.remove("crop-demo-1")
   renderer.root.remove("crop-demo-2")
   renderer.root.remove("crop-demo-3")
+  renderer.root.remove("emoji-demo")
 
   boxX = 10
   boxY = 10
