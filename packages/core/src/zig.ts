@@ -1589,7 +1589,7 @@ class FFIRenderLib implements RenderLib {
     const width = this.opentui.symbols.getBufferWidth(bufferPtr)
     const height = this.opentui.symbols.getBufferHeight(bufferPtr)
 
-    return new OptimizedBuffer(this, bufferPtr, width, height, { id: "next buffer" })
+    return new OptimizedBuffer(this, bufferPtr, width, height, { id: "next buffer", widthMethod: "unicode" })
   }
 
   public getCurrentBuffer(renderer: Pointer): OptimizedBuffer {
@@ -1601,7 +1601,7 @@ class FFIRenderLib implements RenderLib {
     const width = this.opentui.symbols.getBufferWidth(bufferPtr)
     const height = this.opentui.symbols.getBufferHeight(bufferPtr)
 
-    return new OptimizedBuffer(this, bufferPtr, width, height, { id: "current buffer" })
+    return new OptimizedBuffer(this, bufferPtr, width, height, { id: "current buffer", widthMethod: "unicode" })
   }
 
   public bufferGetCharPtr(buffer: Pointer): Pointer {
@@ -1855,7 +1855,7 @@ class FFIRenderLib implements RenderLib {
       throw new Error(`Failed to create optimized buffer: ${width}x${height}`)
     }
 
-    return new OptimizedBuffer(this, bufferPtr, width, height, { respectAlpha, id })
+    return new OptimizedBuffer(this, bufferPtr, width, height, { respectAlpha, id, widthMethod })
   }
 
   public destroyOptimizedBuffer(bufferPtr: Pointer) {

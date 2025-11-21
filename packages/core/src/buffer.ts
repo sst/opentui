@@ -47,6 +47,7 @@ export class OptimizedBuffer {
   private bufferPtr: Pointer
   private _width: number
   private _height: number
+  private _widthMethod: WidthMethod
   public respectAlpha: boolean = false
   private _rawBuffers: {
     char: Uint32Array
@@ -97,13 +98,14 @@ export class OptimizedBuffer {
     ptr: Pointer,
     width: number,
     height: number,
-    options: { respectAlpha?: boolean; id?: string },
+    options: { respectAlpha?: boolean; id?: string; widthMethod?: WidthMethod },
   ) {
     this.id = options.id || `fb_${OptimizedBuffer.fbIdCounter++}`
     this.lib = lib
     this.respectAlpha = options.respectAlpha || false
     this._width = width
     this._height = height
+    this._widthMethod = options.widthMethod || "unicode"
     this.bufferPtr = ptr
   }
 
@@ -116,7 +118,12 @@ export class OptimizedBuffer {
     const lib = resolveRenderLib()
     const respectAlpha = options.respectAlpha || false
     const id = options.id && options.id.trim() !== "" ? options.id : "unnamed buffer"
-    return lib.createOptimizedBuffer(width, height, widthMethod, respectAlpha, id)
+    const buffer = lib.createOptimizedBuffer(width, height, widthMethod, respectAlpha, id)
+    return buffer
+  }
+
+  public get widthMethod(): WidthMethod {
+    return this._widthMethod
   }
 
   public get width(): number {
@@ -344,5 +351,20 @@ export class OptimizedBuffer {
   public clearScissorRects(): void {
     this.guard()
     this.lib.bufferClearScissorRects(this.bufferPtr)
+  }
+
+  public encodeUnicode(text: string): { ptr: Pointer; data: Array<{ width: number; char: number }> } | null {
+    this.guard()
+    return this.lib.encodeUnicode(text, this._widthMethod)
+  }
+
+  public freeUnicode(encoded: { ptr: Pointer; data: Array<{ width: number; char: number }> }): void {
+    this.guard()
+    this.lib.freeUnicode(encoded)
+  }
+
+  public drawChar(char: number, x: number, y: number, fg: RGBA, bg: RGBA, attributes: number = 0): void {
+    this.guard()
+    this.lib.bufferDrawChar(this.bufferPtr, char, x, y, fg, bg, attributes)
   }
 }
