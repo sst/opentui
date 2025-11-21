@@ -397,7 +397,7 @@ export function run(renderer: CliRenderer): void {
   parentContainer.add(emojiDemoLabel)
 
   // Pre-encode the monkey emoji frames
-  const monkeyFrames = ["🙈 ", "🙈 ", "🙉 ", "🙊 "]
+  const monkeyFrames = ["🐵 ", "🙈 ", "🙉 ", "🙊 "]
   let currentMonkeyFrame = 0
   let lastMonkeyFrameTime = 0
   const monkeyFrameInterval = 0.3 // Change frame every 300ms
