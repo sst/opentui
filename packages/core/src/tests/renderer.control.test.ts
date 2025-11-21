@@ -295,7 +295,7 @@ test("keyboard input is suspended when renderer is suspended", async () => {
   expect(keyEventReceived).toBe(false)
   renderer.resume()
   // Wait for renderer to consume stale input and re-register listeners
-  await new Promise(r => setImmediate(r))
+  await new Promise((r) => setImmediate(r))
   mockInput.pressKey("c")
   expect(keyEventReceived).toBe(true)
   renderer.keyInput.off("keypress", onKeypress)
@@ -354,7 +354,7 @@ test("paste input is suspended when renderer is suspended", async () => {
 
   renderer.resume()
   // Wait for renderer to consume stale input and re-register listeners
-  await new Promise(r => setImmediate(r))
+  await new Promise((r) => setImmediate(r))
 
   mockInput.pasteBracketedText("pasted text 3")
   expect(pasteEventReceived).toBe(true)
