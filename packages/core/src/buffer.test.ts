@@ -61,6 +61,33 @@ describe("OptimizedBuffer", () => {
 
       buffer.freeUnicode(encoded!)
     })
+
+    it("should encode monkey emoji frames and draw in a line", () => {
+      const frames = ["🙈 ", "🙈 ", "🙉 ", "🙊 "]
+      const fg = RGBA.fromValues(1, 1, 1, 1)
+      const bg = RGBA.fromValues(0, 0, 0, 1)
+
+      buffer.clear(bg)
+
+      let x = 0
+      for (const frame of frames) {
+        const encoded = buffer.encodeUnicode(frame)
+        expect(encoded).not.toBeNull()
+
+        for (const encodedChar of encoded!.data) {
+          buffer.drawChar(encodedChar.char, x, 0, fg, bg)
+          x += encodedChar.width
+        }
+
+        buffer.freeUnicode(encoded!)
+      }
+
+      const frameBytes = buffer.getRealCharBytes(false)
+      const frameText = new TextDecoder().decode(frameBytes)
+      expect(frameText).toContain("🙈")
+      expect(frameText).toContain("🙉")
+      expect(frameText).toContain("🙊")
+    })
   })
 
   describe("drawChar", () => {
