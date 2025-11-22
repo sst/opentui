@@ -1269,15 +1269,32 @@ test "OptimizedBuffer - drawTextBuffer with negative y coordinate should not pan
     const bg = RGBA{ 0.0, 0.0, 0.0, 1.0 };
     try buf.clear(bg, null);
 
-    // Reproduce bug: drawing text buffer at negative y coordinate panics with
-    // "attempt to cast negative value to unsigned integer" at buffer.zig:943
-    // This happens in ScrollBoxRenderable when internal ScrollBox components are destroyed
-    // Expected behavior: should clip properly and not crash
-    // BUG: Currently panics when y < 0 and y is cast to u32 at line 943:
-    //   @min(virtual_lines.len, bufferBottomY - @as(u32, @intCast(y)))
-    // The issue is that the code checks (y >= bufferBottomY) but not (y < 0) before the cast
+    // Draw text buffer at negative y coordinate (-2)
+    // This simulates a scenario where content is scrolled partially off-screen
+    // The first 2 lines should be clipped, and lines 3, 4, 5 should be visible
     try buf.drawTextBuffer(view, 0, -2);
 
-    // After fix: verify that content is properly clipped when drawn at negative y
-    // Lines that are off-screen (negative y) should be skipped, and visible lines should render
+    // Verify that content is properly clipped when drawn at negative y
+    // Lines that are off-screen (negative y) should be skipped
+    // Line 3 should appear at y=0, Line 4 at y=1, Line 5 at y=2
+
+    // Check that Line 3 is rendered at y=0
+    const cell_y0 = buf.get(0, 0).?;
+    try std.testing.expectEqual(@as(u32, 'L'), cell_y0.char);
+
+    // Check that Line 4 is rendered at y=1
+    const cell_y1 = buf.get(0, 1).?;
+    try std.testing.expectEqual(@as(u32, 'L'), cell_y1.char);
+
+    // Check that Line 5 is rendered at y=2
+    const cell_y2 = buf.get(0, 2).?;
+    try std.testing.expectEqual(@as(u32, 'L'), cell_y2.char);
+
+    // Verify the full content of the first visible line (Line 3)
+    try std.testing.expectEqual(@as(u32, 'L'), buf.get(0, 0).?.char);
+    try std.testing.expectEqual(@as(u32, 'i'), buf.get(1, 0).?.char);
+    try std.testing.expectEqual(@as(u32, 'n'), buf.get(2, 0).?.char);
+    try std.testing.expectEqual(@as(u32, 'e'), buf.get(3, 0).?.char);
+    try std.testing.expectEqual(@as(u32, ' '), buf.get(4, 0).?.char);
+    try std.testing.expectEqual(@as(u32, '3'), buf.get(5, 0).?.char);
 }
