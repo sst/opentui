@@ -2,14 +2,16 @@ import { test, expect, describe } from "bun:test"
 import { createTestRenderer } from "../testing/test-renderer"
 import { EventEmitter } from "events"
 import { Buffer } from "node:buffer"
+import { Readable } from "node:stream"
+import tty from "tty"
 
 function createMockStreams() {
-  const mockStdin = new EventEmitter() as any
+  const mockStdin = new Readable({ read() {} }) as tty.ReadStream
   mockStdin.isTTY = true
-  mockStdin.setRawMode = () => {}
-  mockStdin.resume = () => {}
-  mockStdin.pause = () => {}
-  mockStdin.setEncoding = () => {}
+  mockStdin.setRawMode = () => mockStdin
+  mockStdin.resume = () => mockStdin
+  mockStdin.pause = () => mockStdin
+  mockStdin.setEncoding = () => mockStdin
 
   const writes: string[] = []
   const mockStdout = {
