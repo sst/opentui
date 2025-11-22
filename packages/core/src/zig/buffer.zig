@@ -937,8 +937,10 @@ pub const OptimizedBuffer = struct {
 
         const firstVisibleLine: u32 = if (y < 0) @intCast(-y) else 0;
         const bufferBottomY = self.height;
-        const lastPossibleLine = if (y >= bufferBottomY)
+        const lastPossibleLine = if (y >= @as(i32, @intCast(bufferBottomY)))
             0
+        else if (y < 0)
+            @min(virtual_lines.len, bufferBottomY)
         else
             @min(virtual_lines.len, bufferBottomY - @as(u32, @intCast(y)));
 
