@@ -1499,10 +1499,9 @@ fn getPrevGraphemeStartWCWidth(text: []const u8, byte_offset: usize, tab_width: 
     if (byte_offset == 0 or text.len == 0) return null;
     if (byte_offset > text.len) return null;
 
-    // Build a list of all codepoint positions
-    var codepoint_positions = std.BoundedArray(struct { pos: usize, width: u32 }, 256).init(0) catch unreachable;
-
     var pos: usize = 0;
+    var last_result: ?PrevGraphemeResult = null;
+
     while (pos < byte_offset) {
         const b = text[pos];
         const curr_cp: u21 = if (b < 0x80) b else blk: {
@@ -1513,23 +1512,16 @@ fn getPrevGraphemeStartWCWidth(text: []const u8, byte_offset: usize, tab_width: 
         const cp_len: usize = if (b < 0x80) 1 else decodeUtf8Unchecked(text, pos).len;
         const cp_width = charWidth(b, curr_cp, tab_width);
 
-        codepoint_positions.appendAssumeCapacity(.{ .pos = pos, .width = cp_width });
+        if (cp_width > 0) {
+            last_result = .{
+                .start_offset = pos,
+                .width = cp_width,
+            };
+        }
         pos += cp_len;
     }
 
-    // Find the last non-zero-width codepoint before byte_offset
-    var i: isize = @as(isize, @intCast(codepoint_positions.len)) - 1;
-    while (i >= 0) : (i -= 1) {
-        const idx = @as(usize, @intCast(i));
-        if (codepoint_positions.get(idx).width > 0) {
-            return .{
-                .start_offset = codepoint_positions.get(idx).pos,
-                .width = codepoint_positions.get(idx).width,
-            };
-        }
-    }
-
-    return null;
+    return last_result;
 }
 
 /// Get previous grapheme start using Unicode grapheme cluster segmentation
