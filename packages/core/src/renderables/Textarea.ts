@@ -11,6 +11,12 @@ import {
 import { type StyledText, fg } from "../lib/styled-text"
 import type { ExtmarksController } from "../lib/extmarks"
 
+// TODO: make this just plain strings instead of an enum (same for other events)
+export enum TextareaRenderableEvents {
+  INPUT = "input",
+  CHANGE = "change",
+}
+
 export type TextareaAction =
   | "move-left"
   | "move-right"
@@ -102,6 +108,7 @@ export interface TextareaOptions extends EditBufferOptions {
   placeholder?: StyledText | string | null
   keyBindings?: KeyBinding[]
   onSubmit?: (event: SubmitEvent) => void
+  maxLength?: number
 }
 
 export class TextareaRenderable extends EditBufferRenderable {
@@ -114,6 +121,8 @@ export class TextareaRenderable extends EditBufferRenderable {
   private _actionHandlers: Map<TextareaAction, () => boolean>
   private _initialValueSet: boolean = false
   private _submitListener: ((event: SubmitEvent) => void) | undefined = undefined
+  private _maxLength: number | undefined = undefined
+  private _lastCommittedValue: string = ""
 
   private static readonly defaults = {
     backgroundColor: "transparent",
@@ -147,10 +156,12 @@ export class TextareaRenderable extends EditBufferRenderable {
     this._keyBindingsMap = buildKeyBindingsMap(mergedBindings)
     this._actionHandlers = this.buildActionHandlers()
     this._submitListener = options.onSubmit
+    this._maxLength = options.maxLength
 
     if (options.initialValue) {
       this.setText(options.initialValue)
       this._initialValueSet = true
+      this._lastCommittedValue = options.initialValue
     }
     this.updateColors()
 
@@ -267,8 +278,17 @@ export class TextareaRenderable extends EditBufferRenderable {
       this.deleteSelectedText()
     }
 
+    // Apply maxLength constraint
+    if (this._maxLength !== undefined) {
+      const currentLength = this.plainText.length
+      if (currentLength >= this._maxLength) {
+        return // Cannot insert any more characters
+      }
+    }
+
     this.editBuffer.insertChar(char)
     this.requestRender()
+    this.emit(TextareaRenderableEvents.INPUT, this.plainText)
   }
 
   public insertText(text: string): void {
@@ -276,8 +296,19 @@ export class TextareaRenderable extends EditBufferRenderable {
       this.deleteSelectedText()
     }
 
+    // Apply maxLength constraint
+    if (this._maxLength !== undefined) {
+      const currentLength = this.plainText.length
+      const maxInsertLength = this._maxLength - currentLength
+      if (maxInsertLength <= 0) {
+        return // Cannot insert any more text
+      }
+      text = text.substring(0, maxInsertLength)
+    }
+
     this.editBuffer.insertText(text)
     this.requestRender()
+    this.emit(TextareaRenderableEvents.INPUT, this.plainText)
   }
 
   public deleteChar(): boolean {
@@ -289,6 +320,7 @@ export class TextareaRenderable extends EditBufferRenderable {
     this._ctx.clearSelection()
     this.editBuffer.deleteChar()
     this.requestRender()
+    this.emit(TextareaRenderableEvents.INPUT, this.plainText)
     return true
   }
 
@@ -301,6 +333,7 @@ export class TextareaRenderable extends EditBufferRenderable {
     this._ctx.clearSelection()
     this.editBuffer.deleteCharBackward()
     this.requestRender()
+    this.emit(TextareaRenderableEvents.INPUT, this.plainText)
     return true
   }
 
@@ -309,12 +342,22 @@ export class TextareaRenderable extends EditBufferRenderable {
 
     this._ctx.clearSelection()
     this.requestRender()
+    this.emit(TextareaRenderableEvents.INPUT, this.plainText)
   }
 
   public newLine(): boolean {
+    // Apply maxLength constraint for newline
+    if (this._maxLength !== undefined) {
+      const currentLength = this.plainText.length
+      if (currentLength >= this._maxLength) {
+        return true // Cannot insert newline, but still consume the action
+      }
+    }
+
     this._ctx.clearSelection()
     this.editBuffer.newLine()
     this.requestRender()
+    this.emit(TextareaRenderableEvents.INPUT, this.plainText)
     return true
   }
 
@@ -322,6 +365,7 @@ export class TextareaRenderable extends EditBufferRenderable {
     this._ctx.clearSelection()
     this.editBuffer.deleteLine()
     this.requestRender()
+    this.emit(TextareaRenderableEvents.INPUT, this.plainText)
     return true
   }
 
@@ -404,6 +448,7 @@ export class TextareaRenderable extends EditBufferRenderable {
 
     if (eol.col > cursor.col) {
       this.editBuffer.deleteRange(cursor.row, cursor.col, eol.row, eol.col)
+      this.emit(TextareaRenderableEvents.INPUT, this.plainText)
     }
 
     this.requestRender()
@@ -415,6 +460,7 @@ export class TextareaRenderable extends EditBufferRenderable {
 
     if (cursor.col > 0) {
       this.editBuffer.deleteRange(cursor.row, 0, cursor.row, cursor.col)
+      this.emit(TextareaRenderableEvents.INPUT, this.plainText)
     }
 
     this.requestRender()
@@ -466,6 +512,7 @@ export class TextareaRenderable extends EditBufferRenderable {
 
     if (nextWord.offset > currentCursor.offset) {
       this.editBuffer.deleteRange(currentCursor.row, currentCursor.col, nextWord.row, nextWord.col)
+      this.emit(TextareaRenderableEvents.INPUT, this.plainText)
     }
 
     this._ctx.clearSelection()
@@ -484,6 +531,7 @@ export class TextareaRenderable extends EditBufferRenderable {
 
     if (prevWord.offset < currentCursor.offset) {
       this.editBuffer.deleteRange(prevWord.row, prevWord.col, currentCursor.row, currentCursor.col)
+      this.emit(TextareaRenderableEvents.INPUT, this.plainText)
     }
 
     this._ctx.clearSelection()
@@ -517,11 +565,19 @@ export class TextareaRenderable extends EditBufferRenderable {
   public focus(): void {
     super.focus()
     this.updateColors()
+    this._lastCommittedValue = this.plainText
   }
 
   public blur(): void {
     super.blur()
     this.updateColors()
+
+    // Emit change event if value changed
+    const currentValue = this.plainText
+    if (currentValue !== this._lastCommittedValue) {
+      this._lastCommittedValue = currentValue
+      this.emit(TextareaRenderableEvents.CHANGE, currentValue)
+    }
   }
 
   get placeholder(): StyledText | string | null {
@@ -605,5 +661,22 @@ export class TextareaRenderable extends EditBufferRenderable {
 
   public get extmarks(): ExtmarksController {
     return this.editorView.extmarks
+  }
+
+  public get maxLength(): number | undefined {
+    return this._maxLength
+  }
+
+  public set maxLength(value: number | undefined) {
+    this._maxLength = value
+
+    // If current text exceeds maxLength, truncate it
+    if (value !== undefined) {
+      const currentText = this.plainText
+      if (currentText.length > value) {
+        this.setText(currentText.substring(0, value))
+        this.emit(TextareaRenderableEvents.INPUT, this.plainText)
+      }
+    }
   }
 }
