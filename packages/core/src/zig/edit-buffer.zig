@@ -409,7 +409,9 @@ pub const EditBuffer = struct {
     }
 
     pub fn moveLeft(self: *EditBuffer) void {
-        if (self.cursors.items.len == 0) return;
+        if (self.cursors.items.len == 0) {
+            return;
+        }
         const cursor = &self.cursors.items[0];
 
         if (cursor.col > 0) {
