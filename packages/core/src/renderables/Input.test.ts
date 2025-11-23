@@ -808,6 +808,34 @@ describe("InputRenderable", () => {
       expect(input.value).toBe("")
     })
 
+    it("should not insert text for keys with modifier keys", () => {
+      const { input } = createInputRenderable({ width: 20, height: 1 })
+
+      input.focus()
+
+      // Test various modifier key combinations
+      mockInput.pressKey("a", { ctrl: true })
+      expect(input.value).toBe("")
+
+      mockInput.pressKey("b", { meta: true })
+      expect(input.value).toBe("")
+
+      mockInput.pressKey("c", { super: true })
+      expect(input.value).toBe("")
+
+      // Test combination of modifiers
+      mockInput.pressKey("d", { ctrl: true, shift: true })
+      expect(input.value).toBe("")
+
+      // Normal key without modifiers should still work
+      mockInput.pressKey("e")
+      expect(input.value).toBe("e")
+
+      // Shift alone should work for uppercase letters
+      mockInput.pressKey("f", { shift: true })
+      expect(input.value).toBe("eF")
+    })
+
     it("should handle cursor movement at boundaries", () => {
       const { input } = createInputRenderable({
         value: "hi",
