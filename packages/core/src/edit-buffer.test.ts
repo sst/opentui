@@ -1652,4 +1652,21 @@ describe("EditBuffer Clear Method", () => {
       expect(() => buffer.clear()).toThrow("EditBuffer is destroyed")
     })
   })
+
+  describe("Regression Tests", () => {
+    it("should handle moving left in a long line (potential BoundedArray overflow)", () => {
+      // Create a string longer than 256 chars (the size of BoundedArray in getPrevGraphemeStartWCWidth)
+      const longText = "a".repeat(500)
+      buffer.setText(longText)
+
+      // Move cursor to the end (or near the end)
+      buffer.setCursorToLineCol(0, 500)
+
+      // Move left should not crash
+      buffer.moveCursorLeft()
+
+      const cursor = buffer.getCursorPosition()
+      expect(cursor.col).toBe(499)
+    })
+  })
 })

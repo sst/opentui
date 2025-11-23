@@ -289,13 +289,16 @@ pub fn getPrevGraphemeWidth(rope: *UnifiedRope, mem_registry: *const MemRegistry
                     const pc = prev_chunk.?;
                     const bytes = pc.chunk.getBytes(mem_registry);
                     const prev = utf8.getPrevGraphemeStart(bytes, bytes.len, tab_width, width_method);
-                    if (prev) |res| return res.width;
+                    if (prev) |res| {
+                        return res.width;
+                    }
                     return 0;
                 }
 
                 const bytes = chunk.getBytes(mem_registry);
                 const is_ascii = (chunk.flags & TextChunk.Flags.ASCII_ONLY) != 0;
                 const local_col: u32 = clamped_col - cols_before;
+
                 const here = utf8.findPosByWidth(bytes, local_col, tab_width, is_ascii, false, width_method);
 
                 const grapheme_start_col = here.columns_used;
@@ -325,7 +328,9 @@ pub fn getPrevGraphemeWidth(rope: *UnifiedRope, mem_registry: *const MemRegistry
                 }
 
                 const prev = utf8.getPrevGraphemeStart(bytes, @intCast(here.byte_offset), tab_width, width_method);
-                if (prev) |res| return res.width;
+                if (prev) |res| {
+                    return res.width;
+                }
                 return 0;
             }
 
