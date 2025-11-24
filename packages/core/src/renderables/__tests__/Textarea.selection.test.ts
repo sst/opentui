@@ -438,6 +438,112 @@ describe("Textarea - Selection Tests", () => {
 
       buffer.destroy()
     })
+
+    it("should handle shift+arrow selection with viewport scrolling - scrolled down", async () => {
+      const { textarea: editor } = await createTextareaRenderable(currentRenderer, renderOnce, {
+        initialValue: Array.from({ length: 20 }, (_, i) => `Line${i}`).join("\n"),
+        width: 40,
+        height: 5,
+        selectable: true,
+      })
+
+      editor.focus()
+
+      // Scroll to line 15 (near the end)
+      editor.gotoLine(15)
+      await renderOnce()
+
+      const viewport = editor.editorView.getViewport()
+      expect(viewport.offsetY).toBeGreaterThan(10) // Should be scrolled significantly
+
+      // Now select 5 characters using shift+right
+      for (let i = 0; i < 5; i++) {
+        currentMockInput.pressArrow("right", { shift: true })
+      }
+
+      expect(editor.hasSelection()).toBe(true)
+      const selectedText = editor.getSelectedText()
+
+      // Should select "Line1" from Line15
+      expect(selectedText).toBe("Line1")
+
+      // Verify selection range
+      const sel = editor.getSelection()
+      expect(sel).not.toBe(null)
+      expect(sel!.end - sel!.start).toBe(5)
+    })
+
+    it("should handle mouse drag selection with scrolled viewport - correct offset", async () => {
+      const { textarea: editor } = await createTextareaRenderable(currentRenderer, renderOnce, {
+        initialValue: Array.from({ length: 30 }, (_, i) => `AAAA${i}`).join("\n"),
+        width: 40,
+        height: 5,
+        selectable: true,
+      })
+
+      // Scroll to line 20
+      editor.gotoLine(20)
+      await renderOnce()
+
+      const viewport = editor.editorView.getViewport()
+      expect(viewport.offsetY).toBeGreaterThan(15)
+
+      // Mouse drag from (editor.x, editor.y) to (editor.x + 4, editor.y)
+      // This should select the first 4 characters of the FIRST VISIBLE LINE in the viewport
+      await currentMouse.drag(editor.x, editor.y, editor.x + 4, editor.y)
+      await renderOnce()
+
+      expect(editor.hasSelection()).toBe(true)
+      const selectedText = editor.getSelectedText()
+
+      // Should select "AAAA" from the line at viewport.offsetY (which should be around line 18-20)
+      // NOT from line 0
+      expect(selectedText).not.toContain("AAAA0")
+      expect(selectedText).not.toContain("AAAA1")
+
+      // Should be the first 4 chars of the line visible at the top of the viewport
+      const firstVisibleLineIdx = viewport.offsetY
+      const expectedText = `AAAA${firstVisibleLineIdx}`.substring(0, 4)
+      expect(selectedText).toBe(expectedText)
+    })
+
+    it("should handle multi-line mouse drag with scrolled viewport", async () => {
+      const { textarea: editor } = await createTextareaRenderable(currentRenderer, renderOnce, {
+        initialValue: Array.from({ length: 30 }, (_, i) => `Line${i}`).join("\n"),
+        width: 40,
+        height: 5,
+        selectable: true,
+      })
+
+      // Scroll to line 12
+      editor.gotoLine(12)
+      await renderOnce()
+
+      const viewport = editor.editorView.getViewport()
+      expect(viewport.offsetY).toBeGreaterThan(7)
+
+      // Drag from (editor.x, editor.y) to (editor.x + 5, editor.y + 2)
+      // Should select viewport-local rows 0-2 (which are absolute rows viewport.offsetY to viewport.offsetY+2)
+      await currentMouse.drag(editor.x, editor.y, editor.x + 5, editor.y + 2)
+      await renderOnce()
+
+      expect(editor.hasSelection()).toBe(true)
+      const selectedText = editor.getSelectedText()
+
+      // Should NOT start with Line0, Line1, Line2 (those are way above the viewport)
+      expect(selectedText.startsWith("Line0")).toBe(false)
+      expect(selectedText.startsWith("Line1")).toBe(false)
+      expect(selectedText.startsWith("Line2")).toBe(false)
+
+      // Should contain lines starting from viewport.offsetY
+      const line1 = `Line${viewport.offsetY}`
+      const line2 = `Line${viewport.offsetY + 1}`
+      const line3 = `Line${viewport.offsetY + 2}`
+
+      expect(selectedText).toContain(line1)
+      expect(selectedText).toContain(line2)
+      expect(selectedText).toContain(line3.substring(0, 5))
+    })
   })
 
   describe("Shift+Arrow Key Selection", () => {
