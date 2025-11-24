@@ -1304,4 +1304,3 @@ test("CodeRenderable - streaming mode handles empty cached highlights gracefully
   expect(codeRenderable.content).toBe("more plain text")
   expect(codeRenderable.plainText).toBe("more plain text")
 })
-
