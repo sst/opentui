@@ -13,7 +13,6 @@ test "OptimizedBuffer - init and deinit" {
     const pool = gp.initGlobalPool(std.testing.allocator);
     defer gp.deinitGlobalPool();
 
-
     var buf = try OptimizedBuffer.init(
         std.testing.allocator,
         10,
@@ -29,7 +28,6 @@ test "OptimizedBuffer - init and deinit" {
 test "OptimizedBuffer - clear fills with default char" {
     const pool = gp.initGlobalPool(std.testing.allocator);
     defer gp.deinitGlobalPool();
-
 
     var buf = try OptimizedBuffer.init(
         std.testing.allocator,
@@ -56,7 +54,6 @@ test "OptimizedBuffer - drawText with ASCII" {
     const pool = gp.initGlobalPool(std.testing.allocator);
     defer gp.deinitGlobalPool();
 
-
     var buf = try OptimizedBuffer.init(
         std.testing.allocator,
         20,
@@ -81,7 +78,6 @@ test "OptimizedBuffer - drawText with ASCII" {
 test "OptimizedBuffer - repeated emoji rendering should not exhaust pool" {
     const pool = gp.initGlobalPool(std.testing.allocator);
     defer gp.deinitGlobalPool();
-
 
     var buf = try OptimizedBuffer.init(
         std.testing.allocator,
@@ -108,7 +104,6 @@ test "OptimizedBuffer - repeated CJK rendering should not exhaust pool" {
     const pool = gp.initGlobalPool(std.testing.allocator);
     defer gp.deinitGlobalPool();
 
-
     var buf = try OptimizedBuffer.init(
         std.testing.allocator,
         20,
@@ -133,7 +128,6 @@ test "OptimizedBuffer - repeated CJK rendering should not exhaust pool" {
 test "OptimizedBuffer - drawTextBuffer repeatedly should not exhaust pool" {
     const pool = gp.initGlobalPool(std.testing.allocator);
     defer gp.deinitGlobalPool();
-
 
     var tb = try TextBuffer.init(std.testing.allocator, pool, .wcwidth);
     defer tb.deinit();
@@ -164,7 +158,6 @@ test "OptimizedBuffer - mixed ASCII and emoji repeated rendering" {
     const pool = gp.initGlobalPool(std.testing.allocator);
     defer gp.deinitGlobalPool();
 
-
     var buf = try OptimizedBuffer.init(
         std.testing.allocator,
         40,
@@ -192,7 +185,6 @@ test "OptimizedBuffer - overwriting graphemes repeatedly" {
     const pool = gp.initGlobalPool(std.testing.allocator);
     defer gp.deinitGlobalPool();
 
-
     var buf = try OptimizedBuffer.init(
         std.testing.allocator,
         20,
@@ -218,7 +210,6 @@ test "OptimizedBuffer - overwriting graphemes repeatedly" {
 test "OptimizedBuffer - rendering to different positions" {
     const pool = gp.initGlobalPool(std.testing.allocator);
     defer gp.deinitGlobalPool();
-
 
     var buf = try OptimizedBuffer.init(
         std.testing.allocator,
@@ -251,7 +242,6 @@ test "OptimizedBuffer - rendering to different positions" {
 test "OptimizedBuffer - large text buffer with wrapping repeated render" {
     const pool = gp.initGlobalPool(std.testing.allocator);
     defer gp.deinitGlobalPool();
-
 
     var tb = try TextBuffer.init(std.testing.allocator, pool, .wcwidth);
     defer tb.deinit();
@@ -295,7 +285,6 @@ test "OptimizedBuffer - grapheme tracker counts" {
     const pool = gp.initGlobalPool(std.testing.allocator);
     defer gp.deinitGlobalPool();
 
-
     var buf = try OptimizedBuffer.init(
         std.testing.allocator,
         20,
@@ -327,7 +316,6 @@ test "OptimizedBuffer - alternating emojis should not leak" {
     const pool = gp.initGlobalPool(std.testing.allocator);
     defer gp.deinitGlobalPool();
 
-
     var buf = try OptimizedBuffer.init(
         std.testing.allocator,
         20,
@@ -355,7 +343,6 @@ test "OptimizedBuffer - alternating emojis should not leak" {
 test "OptimizedBuffer - drawTextBuffer without clear should not exhaust pool" {
     const pool = gp.initGlobalPool(std.testing.allocator);
     defer gp.deinitGlobalPool();
-
 
     var tb = try TextBuffer.init(std.testing.allocator, pool, .wcwidth);
     defer tb.deinit();
@@ -389,7 +376,6 @@ test "OptimizedBuffer - many small graphemes without clear" {
     const pool = gp.initGlobalPool(std.testing.allocator);
     defer gp.deinitGlobalPool();
 
-
     var tb = try TextBuffer.init(std.testing.allocator, pool, .wcwidth);
     defer tb.deinit();
 
@@ -421,7 +407,6 @@ test "OptimizedBuffer - many small graphemes without clear" {
 test "OptimizedBuffer - stress test with many graphemes" {
     const pool = gp.initGlobalPool(std.testing.allocator);
     defer gp.deinitGlobalPool();
-
 
     var tb = try TextBuffer.init(std.testing.allocator, pool, .wcwidth);
     defer tb.deinit();
@@ -467,7 +452,6 @@ test "OptimizedBuffer - pool slot exhaustion test" {
     const pool = gp.initGlobalPool(std.testing.allocator);
     defer gp.deinitGlobalPool();
 
-
     var tb = try TextBuffer.init(std.testing.allocator, pool, .wcwidth);
     defer tb.deinit();
 
@@ -508,7 +492,6 @@ test "OptimizedBuffer - many unique graphemes with small pool" {
         .slots_per_page = tiny_slots,
     });
     defer local_pool.deinit();
-
 
     var tb = try TextBuffer.init(std.testing.allocator, &local_pool, .wcwidth);
     defer tb.deinit();
@@ -566,7 +549,6 @@ test "OptimizedBuffer - continuous rendering without buffer recreation" {
     const pool = gp.initGlobalPool(std.testing.allocator);
     defer gp.deinitGlobalPool();
 
-
     var tb = try TextBuffer.init(std.testing.allocator, pool, .wcwidth);
     defer tb.deinit();
 
@@ -592,7 +574,6 @@ test "OptimizedBuffer - continuous rendering without buffer recreation" {
 test "OptimizedBuffer - multiple buffers rendering same TextBuffer" {
     const pool = gp.initGlobalPool(std.testing.allocator);
     defer gp.deinitGlobalPool();
-
 
     var tb = try TextBuffer.init(std.testing.allocator, pool, .wcwidth);
     defer tb.deinit();
@@ -641,7 +622,6 @@ test "OptimizedBuffer - continuous render without clear with small pool" {
     });
     defer local_pool.deinit();
 
-
     var tb = try TextBuffer.init(std.testing.allocator, &local_pool, .wcwidth);
     defer tb.deinit();
 
@@ -673,7 +653,6 @@ test "OptimizedBuffer - graphemes with scissor clipping and small pool" {
         .slots_per_page = tiny_slots,
     });
     defer local_pool.deinit();
-
 
     var tb = try TextBuffer.init(std.testing.allocator, &local_pool, .wcwidth);
     defer tb.deinit();
@@ -709,7 +688,6 @@ test "OptimizedBuffer - drawText with alpha blending and scissor" {
     });
     defer local_pool.deinit();
 
-
     var buf = try OptimizedBuffer.init(
         std.testing.allocator,
         80,
@@ -738,7 +716,6 @@ test "OptimizedBuffer - many unique graphemes with alpha and small pool" {
         .slots_per_page = tiny_slots,
     });
     defer local_pool.deinit();
-
 
     var buf = try OptimizedBuffer.init(
         std.testing.allocator,
@@ -777,7 +754,6 @@ test "OptimizedBuffer - fill buffer with many unique graphemes" {
         .slots_per_page = tiny_slots,
     });
     defer local_pool.deinit();
-
 
     var buf = try OptimizedBuffer.init(
         std.testing.allocator,
@@ -818,7 +794,6 @@ test "OptimizedBuffer - verify pool growth works correctly" {
     });
     defer local_pool.deinit();
 
-
     var buf = try OptimizedBuffer.init(
         std.testing.allocator,
         80,
@@ -855,7 +830,6 @@ test "OptimizedBuffer - repeated overwriting of same grapheme" {
     });
     defer local_pool.deinit();
 
-
     var buf = try OptimizedBuffer.init(
         std.testing.allocator,
         10,
@@ -883,7 +857,6 @@ test "OptimizedBuffer - two-buffer pattern should not leak" {
         .slots_per_page = tiny_slots,
     });
     defer local_pool.deinit();
-
 
     var nextBuffer = try OptimizedBuffer.init(
         std.testing.allocator,
@@ -922,7 +895,6 @@ test "OptimizedBuffer - set and clear cycle should not leak" {
     });
     defer local_pool.deinit();
 
-
     var buf = try OptimizedBuffer.init(
         std.testing.allocator,
         10,
@@ -947,7 +919,6 @@ test "OptimizedBuffer - repeated drawTextBuffer without clear should not leak" {
         .slots_per_page = tiny_slots,
     });
     defer local_pool.deinit();
-
 
     var tb = try TextBuffer.init(std.testing.allocator, &local_pool, .wcwidth);
     defer tb.deinit();
@@ -980,7 +951,6 @@ test "OptimizedBuffer - renderer two-buffer swap pattern should not leak" {
         .slots_per_page = tiny_slots,
     });
     defer local_pool.deinit();
-
 
     var tb = try TextBuffer.init(std.testing.allocator, &local_pool, .wcwidth);
     defer tb.deinit();
@@ -1031,7 +1001,6 @@ test "OptimizedBuffer - sustained rendering should not leak" {
     });
     defer local_pool.deinit();
 
-
     var tb = try TextBuffer.init(std.testing.allocator, &local_pool, .wcwidth);
     defer tb.deinit();
 
@@ -1063,7 +1032,6 @@ test "OptimizedBuffer - rendering with changing content should not leak" {
         .slots_per_page = tiny_slots,
     });
     defer local_pool.deinit();
-
 
     var tb = try TextBuffer.init(std.testing.allocator, &local_pool, .wcwidth);
     defer tb.deinit();
@@ -1112,7 +1080,6 @@ test "OptimizedBuffer - multiple TextBuffers rendering simultaneously should not
     });
     defer local_pool.deinit();
 
-
     var tb1 = try TextBuffer.init(std.testing.allocator, &local_pool, .wcwidth);
     defer tb1.deinit();
     var view1 = try TextBufferView.init(std.testing.allocator, tb1);
@@ -1158,7 +1125,6 @@ test "OptimizedBuffer - grapheme refcount management" {
     });
     defer local_pool.deinit();
 
-
     var buf = try OptimizedBuffer.init(
         std.testing.allocator,
         5,
@@ -1197,7 +1163,6 @@ test "OptimizedBuffer - drawTextBuffer with graphemes then clear removes all poo
         .slots_per_page = small_slots,
     });
     defer local_pool.deinit();
-
 
     var tb = try TextBuffer.init(std.testing.allocator, &local_pool, .wcwidth);
     defer tb.deinit();
@@ -1279,4 +1244,57 @@ test "OptimizedBuffer - drawTextBuffer with graphemes then clear removes all poo
         free_after_second_clear += @intCast(class.free_list.items.len);
     }
     try std.testing.expectEqual(allocated_after_second_clear, free_after_second_clear);
+}
+
+test "OptimizedBuffer - drawTextBuffer with negative y coordinate should not panic" {
+    const pool = gp.initGlobalPool(std.testing.allocator);
+    defer gp.deinitGlobalPool();
+
+    var tb = try TextBuffer.init(std.testing.allocator, pool, .wcwidth);
+    defer tb.deinit();
+
+    var view = try TextBufferView.init(std.testing.allocator, tb);
+    defer view.deinit();
+
+    try tb.setText("Line 1\nLine 2\nLine 3\nLine 4\nLine 5");
+
+    var buf = try OptimizedBuffer.init(
+        std.testing.allocator,
+        80,
+        25,
+        .{ .pool = pool, .id = "test-buffer" },
+    );
+    defer buf.deinit();
+
+    const bg = RGBA{ 0.0, 0.0, 0.0, 1.0 };
+    try buf.clear(bg, null);
+
+    // Draw text buffer at negative y coordinate (-2)
+    // This simulates a scenario where content is scrolled partially off-screen
+    // The first 2 lines should be clipped, and lines 3, 4, 5 should be visible
+    try buf.drawTextBuffer(view, 0, -2);
+
+    // Verify that content is properly clipped when drawn at negative y
+    // Lines that are off-screen (negative y) should be skipped
+    // Line 3 should appear at y=0, Line 4 at y=1, Line 5 at y=2
+
+    // Check that Line 3 is rendered at y=0
+    const cell_y0 = buf.get(0, 0).?;
+    try std.testing.expectEqual(@as(u32, 'L'), cell_y0.char);
+
+    // Check that Line 4 is rendered at y=1
+    const cell_y1 = buf.get(0, 1).?;
+    try std.testing.expectEqual(@as(u32, 'L'), cell_y1.char);
+
+    // Check that Line 5 is rendered at y=2
+    const cell_y2 = buf.get(0, 2).?;
+    try std.testing.expectEqual(@as(u32, 'L'), cell_y2.char);
+
+    // Verify the full content of the first visible line (Line 3)
+    try std.testing.expectEqual(@as(u32, 'L'), buf.get(0, 0).?.char);
+    try std.testing.expectEqual(@as(u32, 'i'), buf.get(1, 0).?.char);
+    try std.testing.expectEqual(@as(u32, 'n'), buf.get(2, 0).?.char);
+    try std.testing.expectEqual(@as(u32, 'e'), buf.get(3, 0).?.char);
+    try std.testing.expectEqual(@as(u32, ' '), buf.get(4, 0).?.char);
+    try std.testing.expectEqual(@as(u32, '3'), buf.get(5, 0).?.char);
 }

@@ -12,11 +12,11 @@
   "version": "0.1.49",
   "type": "module",
   "scripts": {
-    "build:dev": "cd src/zig && zig build -Doptimize=Debug",
-    "build:prod": "cd src/zig && zig build -Doptimize=ReleaseFast",
     "build": "bun run build:native && bun run build:lib",
+    "build:dev": "bun run build:native:dev && bun run build:lib",
     "build:lib": "bun scripts/build.ts --lib",
     "build:native": "bun scripts/build.ts --native",
+    "build:native:dev": "bun scripts/build.ts --native --dev",
     "build:examples": "bun src/examples/build.ts",
     "test:native": "cd src/zig && zig build test --summary all",
     "bench:native": "cd src/zig && zig build bench -Doptimize=ReleaseFast --",
