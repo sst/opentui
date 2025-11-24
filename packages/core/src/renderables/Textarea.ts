@@ -501,9 +501,8 @@ export class TextareaRenderable extends EditBufferRenderable {
 
     const visualCursor = this.editorView.getVisualCursor()
 
-    const viewport = this.editorView.getViewport()
     const cursorX = this.x + visualCursor.visualCol
-    const cursorY = this.y + (visualCursor.visualRow - viewport.offsetY)
+    const cursorY = this.y + visualCursor.visualRow
 
     if (isBeforeMovement) {
       if (!this._ctx.hasSelection) {
