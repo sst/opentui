@@ -173,7 +173,8 @@ pub fn queryTerminalSend(self: *Terminal, tty: anytype) !void {
         ansi.ANSI.csiUQuery ++
         // Kitty graphics detection: sends dummy query + DA1
         // Terminal will respond with ESC_Gi=31337;OK/ERROR ESC\ if supported, or just DA1 if not
-        ansi.ANSI.kittyGraphicsQuery ++
+        // NOTE: deactivated temporarily due to issues with tmux showing the query as pane title
+        // ansi.ANSI.kittyGraphicsQuery ++
         ansi.ANSI.restoreCursorState
             // ++ ansi.ANSI.sixelGeometryQuery
     );
