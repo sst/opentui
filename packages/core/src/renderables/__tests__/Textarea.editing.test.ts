@@ -1213,7 +1213,7 @@ describe("Textarea - Editing Tests", () => {
   })
 
   describe("Keyboard Input - Control Commands", () => {
-    it("should move to buffer start with Ctrl+A", async () => {
+    it("should move to line start with Ctrl+A", async () => {
       const { textarea: editor } = await createTextareaRenderable(currentRenderer, renderOnce, {
         initialValue: "Line 1\nLine 2\nLine 3",
         width: 40,
@@ -1221,15 +1221,20 @@ describe("Textarea - Editing Tests", () => {
       })
 
       editor.focus()
-      editor.gotoLine(9999) // Move to end
+      editor.gotoLine(1) // Move to line 2
+      for (let i = 0; i < 3; i++) {
+        editor.moveCursorRight() // Move to middle of line
+      }
+      expect(editor.logicalCursor.row).toBe(1)
+      expect(editor.logicalCursor.col).toBe(3)
 
       currentMockInput.pressKey("a", { ctrl: true })
       const cursor = editor.logicalCursor
-      expect(cursor.row).toBe(0)
-      expect(cursor.col).toBe(0)
+      expect(cursor.row).toBe(1) // Should stay on same line
+      expect(cursor.col).toBe(0) // Should move to start of line
     })
 
-    it("should move to buffer end with Ctrl+E", async () => {
+    it("should move to line end with Ctrl+E", async () => {
       const { textarea: editor } = await createTextareaRenderable(currentRenderer, renderOnce, {
         initialValue: "Line 1\nLine 2\nLine 3",
         width: 40,
@@ -1237,10 +1242,12 @@ describe("Textarea - Editing Tests", () => {
       })
 
       editor.focus()
+      editor.gotoLine(1) // Move to line 2
 
       currentMockInput.pressKey("e", { ctrl: true })
       const cursor = editor.logicalCursor
-      expect(cursor.row).toBe(2)
+      expect(cursor.row).toBe(1) // Should stay on same line
+      expect(cursor.col).toBe(6) // "Line 2" is 6 chars
     })
 
     it("should delete word forward with Ctrl+D", async () => {
