@@ -197,6 +197,98 @@ describe("LineNumberRenderable", () => {
     expect(line1GutterBg.b).toBeCloseTo(0, 2)
   })
 
+  test("can dynamically update line colors", async () => {
+    const { renderer, renderOnce } = await createTestRenderer({
+      width: 20,
+      height: 10,
+    })
+
+    const text = "Line 1\nLine 2\nLine 3\nLine 4\nLine 5"
+    const textRenderable = new MockTextBuffer(renderer, {
+      text,
+      width: "100%",
+      height: "100%",
+    })
+
+    const lineNumberRenderable = new LineNumberRenderable(renderer, {
+      target: textRenderable,
+      minWidth: 3,
+      paddingRight: 1,
+      fg: "#ffffff",
+      bg: "#000000",
+      width: "100%",
+      height: "100%",
+    })
+
+    renderer.root.add(lineNumberRenderable)
+
+    await renderOnce()
+
+    const buffer = renderer.currentRenderBuffer
+    const bgBuffer = buffer.buffers.bg
+
+    // Helper to get RGBA values from buffer at position
+    const getBgColor = (x: number, y: number) => {
+      const offset = (y * buffer.width + x) * 4
+      return {
+        r: bgBuffer[offset],
+        g: bgBuffer[offset + 1],
+        b: bgBuffer[offset + 2],
+        a: bgBuffer[offset + 3],
+      }
+    }
+
+    // Initially no colors
+    const line2InitialBg = getBgColor(2, 1)
+    expect(line2InitialBg.r).toBeCloseTo(0, 2)
+    expect(line2InitialBg.g).toBeCloseTo(0, 2)
+    expect(line2InitialBg.b).toBeCloseTo(0, 2)
+
+    // Set line color using setter
+    lineNumberRenderable.setLineColor(1, "#2d4a2e")
+    await renderOnce()
+
+    const line2AfterSetBg = getBgColor(2, 1)
+    expect(line2AfterSetBg.r).toBeCloseTo(0x2d / 255, 2)
+    expect(line2AfterSetBg.g).toBeCloseTo(0x4a / 255, 2)
+    expect(line2AfterSetBg.b).toBeCloseTo(0x2e / 255, 2)
+
+    // Clear the line color
+    lineNumberRenderable.clearLineColor(1)
+    await renderOnce()
+
+    const line2AfterClearBg = getBgColor(2, 1)
+    expect(line2AfterClearBg.r).toBeCloseTo(0, 2)
+    expect(line2AfterClearBg.g).toBeCloseTo(0, 2)
+    expect(line2AfterClearBg.b).toBeCloseTo(0, 2)
+
+    // Set multiple colors
+    const newColors = new Map<number, string>()
+    newColors.set(0, "#2d4a2e") // Green for line 1
+    newColors.set(2, "#4a2d2d") // Red for line 3
+    lineNumberRenderable.setLineColors(newColors)
+    await renderOnce()
+
+    const line1Bg = getBgColor(2, 0)
+    expect(line1Bg.r).toBeCloseTo(0x2d / 255, 2)
+    expect(line1Bg.g).toBeCloseTo(0x4a / 255, 2)
+    expect(line1Bg.b).toBeCloseTo(0x2e / 255, 2)
+
+    const line3Bg = getBgColor(2, 2)
+    expect(line3Bg.r).toBeCloseTo(0x4a / 255, 2)
+    expect(line3Bg.g).toBeCloseTo(0x2d / 255, 2)
+    expect(line3Bg.b).toBeCloseTo(0x2d / 255, 2)
+
+    // Clear all colors
+    lineNumberRenderable.clearAllLineColors()
+    await renderOnce()
+
+    const line1AfterClearAllBg = getBgColor(2, 0)
+    expect(line1AfterClearAllBg.r).toBeCloseTo(0, 2)
+    expect(line1AfterClearAllBg.g).toBeCloseTo(0, 2)
+    expect(line1AfterClearAllBg.b).toBeCloseTo(0, 2)
+  })
+
   test("renders line colors for wrapped lines", async () => {
     const { renderer, renderOnce } = await createTestRenderer({
       width: 20,

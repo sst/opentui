@@ -52,6 +52,7 @@ UNDO/REDO:
 VIEW:
   • Shift+W to toggle wrap mode (word/char/none)
   • Shift+L to toggle line numbers
+  • Shift+H to toggle line highlights (diff colors)
 
 FEATURES:
   ✓ Grapheme-aware cursor movement
@@ -69,6 +70,7 @@ let parentContainer: BoxRenderable | null = null
 let editor: TextareaRenderable | null = null
 let editorWithLines: LineNumberRenderable | null = null
 let statusText: TextRenderable | null = null
+let highlightsEnabled: boolean = false
 
 export async function run(rendererInstance: CliRenderer): Promise<void> {
   renderer = rendererInstance
@@ -137,7 +139,8 @@ export async function run(rendererInstance: CliRenderer): Promise<void> {
       try {
         const cursor = editor.logicalCursor
         const wrap = editor.wrapMode !== "none" ? "ON" : "OFF"
-        statusText.content = `Line ${cursor.row + 1}, Col ${cursor.col + 1} | Wrap: ${wrap}`
+        const highlights = highlightsEnabled ? "ON" : "OFF"
+        statusText.content = `Line ${cursor.row + 1}, Col ${cursor.col + 1} | Wrap: ${wrap} | Highlights: ${highlights}`
       } catch (error) {
         // Ignore errors during shutdown
       }
@@ -157,6 +160,22 @@ export async function run(rendererInstance: CliRenderer): Promise<void> {
         const currentMode = editor.wrapMode
         const nextMode = currentMode === "word" ? "char" : currentMode === "char" ? "none" : "word"
         editor.wrapMode = nextMode
+      }
+    }
+    if (key.shift && key.name === "h") {
+      key.preventDefault()
+      if (editorWithLines && !editorWithLines.isDestroyed) {
+        highlightsEnabled = !highlightsEnabled
+        if (highlightsEnabled) {
+          // Add some example diff-style line colors
+          editorWithLines.setLineColor(2, "#1a3a1a") // Line 3: Added (dark green)
+          editorWithLines.setLineColor(5, "#3a1a1a") // Line 6: Removed (dark red)
+          editorWithLines.setLineColor(8, "#3a3a1a") // Line 9: Modified (dark yellow)
+          editorWithLines.setLineColor(11, "#1a3a1a") // Line 12: Added
+          editorWithLines.setLineColor(14, "#3a1a1a") // Line 15: Removed
+        } else {
+          editorWithLines.clearAllLineColors()
+        }
       }
     }
     if (key.ctrl && (key.name === "pageup" || key.name === "pagedown")) {

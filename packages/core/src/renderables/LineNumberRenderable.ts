@@ -56,6 +56,14 @@ class GutterRenderable extends Renderable {
     return Math.max(this._minWidth, digits + this._paddingRight + 1) // +1 for left padding
   }
 
+  public setLineColors(lineColors: Map<number, RGBA>): void {
+    this._lineColors = lineColors
+  }
+
+  public getLineColors(): Map<number, RGBA> {
+    return this._lineColors
+  }
+
   protected onUpdate(deltaTime: number): void {
     const newWidth = this.calculateWidth()
 
@@ -165,5 +173,32 @@ export class LineNumberRenderable extends Renderable {
 
   public get showLineNumbers(): boolean {
     return this.gutter.visible
+  }
+
+  public setLineColor(line: number, color: string | RGBA): void {
+    const lineColors = this.gutter.getLineColors()
+    lineColors.set(line, parseColor(color))
+  }
+
+  public clearLineColor(line: number): void {
+    const lineColors = this.gutter.getLineColors()
+    lineColors.delete(line)
+  }
+
+  public clearAllLineColors(): void {
+    const lineColors = this.gutter.getLineColors()
+    lineColors.clear()
+  }
+
+  public setLineColors(lineColors: Map<number, string | RGBA>): void {
+    const parsedColors = new Map<number, RGBA>()
+    for (const [line, color] of lineColors) {
+      parsedColors.set(line, parseColor(color))
+    }
+    this.gutter.setLineColors(parsedColors)
+  }
+
+  public getLineColors(): Map<number, RGBA> {
+    return this.gutter.getLineColors()
   }
 }
