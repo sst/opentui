@@ -591,26 +591,36 @@ export fn textBufferViewGetVirtualLineCount(view: *text_buffer_view.UnifiedTextB
     return view.getVirtualLineCount();
 }
 
-export fn textBufferViewGetLineInfoDirect(view: *text_buffer_view.UnifiedTextBufferView, lineStartsPtr: [*]u32, lineWidthsPtr: [*]u32, lineSourcesPtr: [*]u32, lineWrapsPtr: [*]u32) u32 {
+export fn textBufferViewGetLineInfoDirect(view: *text_buffer_view.UnifiedTextBufferView, outPtr: *ExternalLineInfo) void {
     const line_info = view.getCachedLineInfo();
 
-    @memcpy(lineStartsPtr[0..line_info.starts.len], line_info.starts);
-    @memcpy(lineWidthsPtr[0..line_info.widths.len], line_info.widths);
-    @memcpy(lineSourcesPtr[0..line_info.sources.len], line_info.sources);
-    @memcpy(lineWrapsPtr[0..line_info.wraps.len], line_info.wraps);
-
-    return line_info.max_width;
+    outPtr.* = .{
+        .starts_ptr = line_info.starts.ptr,
+        .starts_len = line_info.starts.len,
+        .widths_ptr = line_info.widths.ptr,
+        .widths_len = line_info.widths.len,
+        .sources_ptr = line_info.sources.ptr,
+        .sources_len = line_info.sources.len,
+        .wraps_ptr = line_info.wraps.ptr,
+        .wraps_len = line_info.wraps.len,
+        .max_width = line_info.max_width,
+    };
 }
 
-export fn textBufferViewGetLogicalLineInfoDirect(view: *text_buffer_view.UnifiedTextBufferView, lineStartsPtr: [*]u32, lineWidthsPtr: [*]u32, lineSourcesPtr: [*]u32, lineWrapsPtr: [*]u32) u32 {
+export fn textBufferViewGetLogicalLineInfoDirect(view: *text_buffer_view.UnifiedTextBufferView, outPtr: *ExternalLineInfo) void {
     const line_info = view.getLogicalLineInfo();
 
-    @memcpy(lineStartsPtr[0..line_info.starts.len], line_info.starts);
-    @memcpy(lineWidthsPtr[0..line_info.widths.len], line_info.widths);
-    @memcpy(lineSourcesPtr[0..line_info.sources.len], line_info.sources);
-    @memcpy(lineWrapsPtr[0..line_info.wraps.len], line_info.wraps);
-
-    return line_info.max_width;
+    outPtr.* = .{
+        .starts_ptr = line_info.starts.ptr,
+        .starts_len = line_info.starts.len,
+        .widths_ptr = line_info.widths.ptr,
+        .widths_len = line_info.widths.len,
+        .sources_ptr = line_info.sources.ptr,
+        .sources_len = line_info.sources.len,
+        .wraps_ptr = line_info.wraps.ptr,
+        .wraps_len = line_info.wraps.len,
+        .max_width = line_info.max_width,
+    };
 }
 
 export fn textBufferViewGetSelectedText(view: *text_buffer_view.UnifiedTextBufferView, outPtr: [*]u8, maxLen: usize) usize {
@@ -889,34 +899,38 @@ export fn editorViewGetTotalVirtualLineCount(view: *editor_view.EditorView) u32 
     return view.getTotalVirtualLineCount();
 }
 
-export fn editorViewGetLineInfoDirect(view: *editor_view.EditorView, lineStartsPtr: [*]u32, lineWidthsPtr: [*]u32, lineSourcesPtr: [*]u32, lineWrapsPtr: [*]u32) u32 {
+export fn editorViewGetLineInfoDirect(view: *editor_view.EditorView, outPtr: *ExternalLineInfo) void {
     const line_info = view.getCachedLineInfo();
-    for (line_info.starts, 0..) |start, i| {
-        lineStartsPtr[i] = start;
-    }
-    for (line_info.widths, 0..) |width, i| {
-        lineWidthsPtr[i] = width;
-    }
-    for (line_info.sources, 0..) |source, i| {
-        lineSourcesPtr[i] = source;
-    }
-    for (line_info.wraps, 0..) |wrap, i| {
-        lineWrapsPtr[i] = wrap;
-    }
-    return line_info.max_width;
+    outPtr.* = .{
+        .starts_ptr = line_info.starts.ptr,
+        .starts_len = line_info.starts.len,
+        .widths_ptr = line_info.widths.ptr,
+        .widths_len = line_info.widths.len,
+        .sources_ptr = line_info.sources.ptr,
+        .sources_len = line_info.sources.len,
+        .wraps_ptr = line_info.wraps.ptr,
+        .wraps_len = line_info.wraps.len,
+        .max_width = line_info.max_width,
+    };
 }
 
 export fn editorViewGetTextBufferView(view: *editor_view.EditorView) *text_buffer_view.UnifiedTextBufferView {
     return view.getTextBufferView();
 }
 
-export fn editorViewGetLogicalLineInfoDirect(view: *editor_view.EditorView, lineStartsPtr: [*]u32, lineWidthsPtr: [*]u32, lineSourcesPtr: [*]u32, lineWrapsPtr: [*]u32) u32 {
+export fn editorViewGetLogicalLineInfoDirect(view: *editor_view.EditorView, outPtr: *ExternalLineInfo) void {
     const line_info = view.getLogicalLineInfo();
-    @memcpy(lineStartsPtr[0..line_info.starts.len], line_info.starts);
-    @memcpy(lineWidthsPtr[0..line_info.widths.len], line_info.widths);
-    @memcpy(lineSourcesPtr[0..line_info.sources.len], line_info.sources);
-    @memcpy(lineWrapsPtr[0..line_info.wraps.len], line_info.wraps);
-    return line_info.max_width;
+    outPtr.* = .{
+        .starts_ptr = line_info.starts.ptr,
+        .starts_len = line_info.starts.len,
+        .widths_ptr = line_info.widths.ptr,
+        .widths_len = line_info.widths.len,
+        .sources_ptr = line_info.sources.ptr,
+        .sources_len = line_info.sources.len,
+        .wraps_ptr = line_info.wraps.ptr,
+        .wraps_len = line_info.wraps.len,
+        .max_width = line_info.max_width,
+    };
 }
 
 export fn editorViewSetViewportSize(view: *editor_view.EditorView, width: u32, height: u32) void {
@@ -1096,6 +1110,18 @@ pub const ExternalVisualCursor = extern struct {
     logical_row: u32,
     logical_col: u32,
     offset: u32,
+};
+
+pub const ExternalLineInfo = extern struct {
+    starts_ptr: [*]const u32,
+    starts_len: usize,
+    widths_ptr: [*]const u32,
+    widths_len: usize,
+    sources_ptr: [*]const u32,
+    sources_len: usize,
+    wraps_ptr: [*]const u32,
+    wraps_len: usize,
+    max_width: u32,
 };
 
 export fn textBufferAddHighlightByCharRange(
