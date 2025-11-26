@@ -599,6 +599,80 @@ describe("LineNumberRenderable", () => {
     expect(lines[3]).toMatch(/4.*-/) // Line 4 has - after number
   })
 
+  test("renders line signs with custom colors", async () => {
+    const { renderer, renderOnce } = await createTestRenderer({
+      width: 30,
+      height: 10,
+    })
+
+    const text = "Line 1\nLine 2\nLine 3"
+    const textRenderable = new MockTextBuffer(renderer, {
+      text,
+      width: "100%",
+      height: "100%",
+    })
+
+    const lineSigns = new Map<number, any>()
+    lineSigns.set(1, { after: " +", afterColor: "#22c55e" }) // Bright green plus
+    lineSigns.set(0, { before: "❌", beforeColor: "#ef4444" }) // Bright red error
+
+    const lineNumberRenderable = new LineNumberRenderable(renderer, {
+      target: textRenderable,
+      minWidth: 3,
+      paddingRight: 1,
+      fg: "#888888",
+      bg: "#000000",
+      lineSigns: lineSigns,
+      width: "100%",
+      height: "100%",
+    })
+
+    renderer.root.add(lineNumberRenderable)
+
+    await renderOnce()
+
+    const buffer = renderer.currentRenderBuffer
+    const fgBuffer = buffer.buffers.fg
+
+    // Helper to get RGBA values from buffer at position
+    const getFgColor = (x: number, y: number) => {
+      const offset = (y * buffer.width + x) * 4
+      return {
+        r: fgBuffer[offset],
+        g: fgBuffer[offset + 1],
+        b: fgBuffer[offset + 2],
+        a: fgBuffer[offset + 3],
+      }
+    }
+
+    // Find the position of the + sign on line 2 (y=1)
+    // It should be after the line number, so around x=7-8
+    // Check that it has green color (#22c55e = rgb(34, 197, 94))
+    let foundGreenPlus = false
+    for (let x = 5; x < 10; x++) {
+      const fg = getFgColor(x, 1)
+      // Check if color is close to green
+      if (Math.abs(fg.g - 197 / 255) < 0.05 && fg.r < 0.2 && fg.b < 0.5) {
+        foundGreenPlus = true
+        break
+      }
+    }
+    expect(foundGreenPlus).toBe(true)
+
+    // Find the emoji on line 1 (y=0)
+    // It should have red color (#ef4444 = rgb(239, 68, 68))
+    let foundRedEmoji = false
+    for (let x = 0; x < 5; x++) {
+      const fg = getFgColor(x, 0)
+      // Check if color is close to red
+      if (Math.abs(fg.r - 239 / 255) < 0.05 && fg.g < 0.4 && fg.b < 0.4) {
+        foundRedEmoji = true
+        break
+      }
+    }
+    expect(foundRedEmoji).toBe(true)
+  })
+
   test("dynamically updates line signs", async () => {
     const { renderer, renderOnce, captureCharFrame } = await createTestRenderer({
       width: 30,

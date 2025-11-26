@@ -5,7 +5,9 @@ import { RGBA, parseColor } from "../lib/RGBA"
 
 export interface LineSign {
   before?: string
+  beforeColor?: string | RGBA
   after?: string
+  afterColor?: string | RGBA
 }
 
 export interface LineNumberOptions extends RenderableOptions<LineNumberRenderable> {
@@ -168,7 +170,8 @@ class GutterRenderable extends Renderable {
           // Pad to max before width for alignment
           const padding = this._maxBeforeWidth - beforeWidth
           currentX += padding
-          buffer.drawText(sign.before, currentX, startY + i, this._fg, lineBg)
+          const beforeColor = sign.beforeColor ? parseColor(sign.beforeColor) : this._fg
+          buffer.drawText(sign.before, currentX, startY + i, beforeColor, lineBg)
           currentX += beforeWidth
         } else if (this._maxBeforeWidth > 0) {
           currentX += this._maxBeforeWidth
@@ -187,7 +190,8 @@ class GutterRenderable extends Renderable {
         // Draw 'after' sign if present
         if (sign?.after) {
           const afterX = startX + this.width - this._paddingRight - this._maxAfterWidth
-          buffer.drawText(sign.after, afterX, startY + i, this._fg, lineBg)
+          const afterColor = sign.afterColor ? parseColor(sign.afterColor) : this._fg
+          buffer.drawText(sign.after, afterX, startY + i, afterColor, lineBg)
         }
       }
 
