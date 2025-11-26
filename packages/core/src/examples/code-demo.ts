@@ -340,6 +340,8 @@ Other:
     border: true,
     scrollY: true,
     scrollX: false,
+    flexGrow: 1,
+    flexShrink: 1,
   })
   parentContainer.add(codeScrollBox)
 
@@ -426,6 +428,8 @@ Other:
     id: "timing-display",
     content: "Initializing...",
     fg: "#A5D6FF",
+    wrapMode: "word",
+    flexShrink: 0,
   })
   parentContainer.add(timingText)
 
