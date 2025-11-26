@@ -178,8 +178,8 @@ export class LineNumberRenderable extends Renderable {
 
     if (startLine >= sources.length) return
 
-    // Calculate the area to fill: from after the gutter to the end of our width
-    const gutterWidth = this.gutter.width
+    // Calculate the area to fill: from after the gutter (if visible) to the end of our width
+    const gutterWidth = this.gutter.visible ? this.gutter.width : 0
     const contentWidth = this.width - gutterWidth
 
     // Draw full-width background colors for lines with custom colors

@@ -476,6 +476,82 @@ describe("LineNumberRenderable", () => {
     expect(line1ContentBg.b).toBeCloseTo(0, 2)
   })
 
+  test("renders full-width line colors when line numbers are hidden", async () => {
+    const { renderer, renderOnce, captureCharFrame } = await createTestRenderer({
+      width: 20,
+      height: 10,
+    })
+
+    const text = "Line 1\nLine 2\nLine 3\nLine 4\nLine 5"
+    const textRenderable = new MockTextBuffer(renderer, {
+      text,
+      width: "100%",
+      height: "100%",
+    })
+
+    const lineColors = new Map<number, string>()
+    lineColors.set(1, "#2d4a2e") // Green for line 2 (index 1)
+
+    const lineNumberRenderable = new LineNumberRenderable(renderer, {
+      target: textRenderable,
+      minWidth: 3,
+      paddingRight: 1,
+      fg: "#ffffff",
+      bg: "#000000",
+      lineColors: lineColors,
+      width: "100%",
+      height: "100%",
+    })
+
+    renderer.root.add(lineNumberRenderable)
+
+    // First render with line numbers visible
+    await renderOnce()
+    const frameWithLineNumbers = captureCharFrame()
+
+    // Hide line numbers
+    lineNumberRenderable.showLineNumbers = false
+
+    await renderOnce()
+    const frameWithoutLineNumbers = captureCharFrame()
+
+    const buffer = renderer.currentRenderBuffer
+    const bgBuffer = buffer.buffers.bg
+
+    // Helper to get RGBA values from buffer at position
+    const getBgColor = (x: number, y: number) => {
+      const offset = (y * buffer.width + x) * 4
+      return {
+        r: bgBuffer[offset],
+        g: bgBuffer[offset + 1],
+        b: bgBuffer[offset + 2],
+        a: bgBuffer[offset + 3],
+      }
+    }
+
+    // Debug: check if text moved to x=0
+    expect(frameWithoutLineNumbers).toContain("Line 1")
+    expect(frameWithoutLineNumbers.split("\n")[1]).toMatch(/^Line 2/)
+
+    // When line numbers are hidden, the background should start at x=0
+    const line2LeftEdgeBg = getBgColor(0, 1)
+    expect(line2LeftEdgeBg.r).toBeCloseTo(0x2d / 255, 2)
+    expect(line2LeftEdgeBg.g).toBeCloseTo(0x4a / 255, 2)
+    expect(line2LeftEdgeBg.b).toBeCloseTo(0x2e / 255, 2)
+
+    // Check middle of line also has background
+    const line2MiddleBg = getBgColor(10, 1)
+    expect(line2MiddleBg.r).toBeCloseTo(0x2d / 255, 2)
+    expect(line2MiddleBg.g).toBeCloseTo(0x4a / 255, 2)
+    expect(line2MiddleBg.b).toBeCloseTo(0x2e / 255, 2)
+
+    // Check right edge has background
+    const line2RightEdgeBg = getBgColor(19, 1)
+    expect(line2RightEdgeBg.r).toBeCloseTo(0x2d / 255, 2)
+    expect(line2RightEdgeBg.g).toBeCloseTo(0x4a / 255, 2)
+    expect(line2RightEdgeBg.b).toBeCloseTo(0x2e / 255, 2)
+  })
+
   test("reproduce issue with layout shifting when typing", async () => {
     const { renderer, renderOnce, captureCharFrame } = await createTestRenderer({
       width: 35,
