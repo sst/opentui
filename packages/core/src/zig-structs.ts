@@ -90,3 +90,8 @@ export const LineInfoStruct = defineStruct([
   ["wrapsLen", "u32", { lengthOf: "wraps" }],
   ["maxWidth", "u32"],
 ])
+
+export const MeasureResultStruct = defineStruct([
+  ["lineCount", "u32"],
+  ["maxWidth", "u32"],
+])

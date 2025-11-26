@@ -641,6 +641,20 @@ export fn textBufferViewSetTabIndicatorColor(view: *text_buffer_view.UnifiedText
     view.setTabIndicatorColor(utils.f32PtrToRGBA(color));
 }
 
+pub const ExternalMeasureResult = extern struct {
+    line_count: u32,
+    max_width: u32,
+};
+
+export fn textBufferViewMeasureForDimensions(view: *text_buffer_view.UnifiedTextBufferView, width: u32, height: u32, outPtr: *ExternalMeasureResult) bool {
+    const result = view.measureForDimensions(width, height) catch return false;
+    outPtr.* = .{
+        .line_count = result.line_count,
+        .max_width = result.max_width,
+    };
+    return true;
+}
+
 // ===== EditBuffer Exports =====
 
 export fn createEditBuffer(widthMethod: u8) ?*edit_buffer_mod.EditBuffer {

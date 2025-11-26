@@ -16,6 +16,7 @@ import {
   TerminalCapabilitiesStruct,
   EncodedCharStruct,
   LineInfoStruct,
+  MeasureResultStruct,
 } from "./zig-structs"
 
 const module = await import(`@opentui/core-${process.platform}-${process.arch}/index.ts`)
@@ -521,6 +522,10 @@ function getOpenTUILib(libPath?: string) {
     textBufferViewSetTabIndicatorColor: {
       args: ["ptr", "ptr"],
       returns: "void",
+    },
+    textBufferViewMeasureForDimensions: {
+      args: ["ptr", "u32", "u32", "ptr"],
+      returns: "bool",
     },
     bufferDrawTextBufferView: {
       args: ["ptr", "ptr", "i32", "i32"],
@@ -1278,6 +1283,11 @@ export interface RenderLib {
   textBufferViewGetPlainTextBytes: (view: Pointer, maxLength: number) => Uint8Array | null
   textBufferViewSetTabIndicator: (view: Pointer, indicator: number) => void
   textBufferViewSetTabIndicatorColor: (view: Pointer, color: RGBA) => void
+  textBufferViewMeasureForDimensions: (
+    view: Pointer,
+    width: number,
+    height: number,
+  ) => { lineCount: number; maxWidth: number } | null
 
   readonly encoder: TextEncoder
   readonly decoder: TextDecoder
@@ -2292,6 +2302,21 @@ class FFIRenderLib implements RenderLib {
 
   public textBufferViewSetTabIndicatorColor(view: Pointer, color: RGBA): void {
     this.opentui.symbols.textBufferViewSetTabIndicatorColor(view, color.buffer)
+  }
+
+  public textBufferViewMeasureForDimensions(
+    view: Pointer,
+    width: number,
+    height: number,
+  ): { lineCount: number; maxWidth: number } | null {
+    const resultBuffer = new ArrayBuffer(MeasureResultStruct.size)
+    const resultPtr = ptr(new Uint8Array(resultBuffer))
+    const success = this.opentui.symbols.textBufferViewMeasureForDimensions(view, width, height, resultPtr)
+    if (!success) {
+      return null
+    }
+    const result = MeasureResultStruct.unpack(resultBuffer)
+    return result
   }
 
   public textBufferAddHighlightByCharRange(buffer: Pointer, highlight: Highlight): void {
