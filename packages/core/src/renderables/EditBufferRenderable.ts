@@ -415,17 +415,14 @@ export abstract class EditBufferRenderable extends Renderable implements LineInf
       const effectiveHeight = isNaN(height) ? 1 : height
       const effectiveWidth = isNaN(width) ? 1 : width
 
-      // Update viewport size to match measured dimensions
-      // When wrapping and width changes, this will trigger wrap recalculation
-      if (this._wrapMode !== "none" && this.width !== effectiveWidth) {
-        this.editorView.setViewportSize(Math.floor(effectiveWidth), effectiveHeight)
-      } else {
-        this.editorView.setViewportSize(Math.floor(effectiveWidth), effectiveHeight)
-      }
+      // Use the native measure function which doesn't require setting viewport or wrap width
+      const measureResult = this.editorView.measureForDimensions(
+        Math.floor(effectiveWidth),
+        Math.floor(effectiveHeight),
+      )
 
-      const lineInfo = this.editorView.getLogicalLineInfo()
-      const measuredWidth = Math.max(1, lineInfo.maxLineWidth)
-      const measuredHeight = Math.max(1, lineInfo.lineStarts.length)
+      const measuredWidth = measureResult ? Math.max(1, measureResult.maxWidth) : 1
+      const measuredHeight = measureResult ? Math.max(1, measureResult.lineCount) : 1
 
       if (widthMode === MeasureMode.AtMost) {
         return {

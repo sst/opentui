@@ -239,6 +239,11 @@ export abstract class TextBufferRenderable extends Renderable implements LineInf
     // Update viewport size to match renderable dimensions
     this.textBufferView.setViewportSize(width, height)
 
+    // Update wrap width if wrapping is enabled
+    if (this._wrapMode !== "none" && width > 0) {
+      this.updateWrapWidth(width)
+    }
+
     if (this.lastLocalSelection) {
       const changed = this.updateLocalSelection(this.lastLocalSelection)
       if (changed) {
@@ -306,20 +311,24 @@ export abstract class TextBufferRenderable extends Renderable implements LineInf
       // Use a reasonable default for NaN/undefined height to allow measuring content
       // This happens when Yoga calls measure with height/widthMode="Undefined" (0)
       const effectiveWidth = isNaN(width) ? 1 : width
+      const effectiveHeight = isNaN(height) ? 1 : height
 
-      if (this._wrapMode !== "none" && this.width !== effectiveWidth) {
-        this.updateWrapWidth(Math.floor(effectiveWidth))
-      } else {
-        this.updateLineInfo()
-      }
+      // Use the native measure function which doesn't require setting viewport or wrap width
+      const measureResult = this.textBufferView.measureForDimensions(
+        Math.floor(effectiveWidth),
+        Math.floor(effectiveHeight),
+      )
 
-      const measuredWidth = Math.max(1, this._lineInfo.maxLineWidth)
-      const measuredHeight = Math.max(1, this._lineInfo.lineStarts.length)
+      const measuredWidth = measureResult ? Math.max(1, measureResult.maxWidth) : 1
+      const measuredHeight = measureResult ? Math.max(1, measureResult.lineCount) : 1
+
+      // Update cached line info after measurement
+      this.updateLineInfo()
 
       if (widthMode === MeasureMode.AtMost) {
         return {
           width: Math.min(effectiveWidth, measuredWidth),
-          height: Math.min(isNaN(height) ? 1 : height, measuredHeight),
+          height: Math.min(effectiveHeight, measuredHeight),
         }
       }
 

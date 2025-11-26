@@ -19,6 +19,7 @@ export class EditorView {
   private editBuffer: EditBuffer
   private _destroyed: boolean = false
   private _extmarksController?: any
+  private _textBufferViewPtr?: Pointer
 
   constructor(lib: RenderLib, ptr: Pointer, editBuffer: EditBuffer) {
     this.lib = lib
@@ -211,6 +212,22 @@ export class EditorView {
   public setTabIndicatorColor(color: RGBA): void {
     this.guard()
     this.lib.editorViewSetTabIndicatorColor(this.viewPtr, color)
+  }
+
+  public getTextBufferViewPtr(): Pointer {
+    this.guard()
+    if (!this._textBufferViewPtr) {
+      this._textBufferViewPtr = this.lib.editorViewGetTextBufferView(this.viewPtr)
+    }
+    return this._textBufferViewPtr
+  }
+
+  public measureForDimensions(width: number, height: number): { lineCount: number; maxWidth: number } | null {
+    this.guard()
+    if (!this._textBufferViewPtr) {
+      this._textBufferViewPtr = this.lib.editorViewGetTextBufferView(this.viewPtr)
+    }
+    return this.lib.textBufferViewMeasureForDimensions(this._textBufferViewPtr, width, height)
   }
 
   public destroy(): void {
