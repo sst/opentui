@@ -41,6 +41,23 @@ pub const WrapInfo = struct {
     line_vline_counts: []const u32,
 };
 
+/// Output structure for virtual line calculation
+pub const VirtualLineOutput = struct {
+    virtual_lines: *std.ArrayListUnmanaged(VirtualLine),
+    cached_line_starts: *std.ArrayListUnmanaged(u32),
+    cached_line_widths: *std.ArrayListUnmanaged(u32),
+    cached_line_sources: *std.ArrayListUnmanaged(u32),
+    cached_line_wrap_indices: *std.ArrayListUnmanaged(u32),
+    cached_line_first_vline: *std.ArrayListUnmanaged(u32),
+    cached_line_vline_counts: *std.ArrayListUnmanaged(u32),
+};
+
+/// Result from measuring dimensions without modifying cache
+pub const MeasureResult = struct {
+    line_count: u32,
+    max_width: u32,
+};
+
 pub const VirtualLineSpanInfo = struct {
     spans: []const StyleSpan,
     source_line: usize,
@@ -259,395 +276,25 @@ pub const UnifiedTextBufferView = struct {
         self.cached_line_vline_counts = .{};
         const virtual_allocator = self.virtual_lines_arena.allocator();
 
-        if (self.wrap_mode == .none or self.wrap_width == null) {
-            // No wrapping - create 1:1 mapping to real lines using single-pass API
-            const Context = struct {
-                view: *Self,
-                virtual_allocator: Allocator,
-                current_vline: ?VirtualLine = null,
+        // Create output structure for the generic function
+        const output = VirtualLineOutput{
+            .virtual_lines = &self.virtual_lines,
+            .cached_line_starts = &self.cached_line_starts,
+            .cached_line_widths = &self.cached_line_widths,
+            .cached_line_sources = &self.cached_line_sources,
+            .cached_line_wrap_indices = &self.cached_line_wrap_indices,
+            .cached_line_first_vline = &self.cached_line_first_vline,
+            .cached_line_vline_counts = &self.cached_line_vline_counts,
+        };
 
-                fn segment_callback(ctx_ptr: *anyopaque, line_idx: u32, chunk: *const TextChunk, _: u32) void {
-                    _ = line_idx;
-                    const ctx = @as(*@This(), @ptrCast(@alignCast(ctx_ptr)));
-
-                    if (ctx.current_vline) |*vline| {
-                        vline.chunks.append(ctx.virtual_allocator, VirtualChunk{
-                            .grapheme_start = 0,
-                            .width = chunk.width,
-                            .chunk = chunk,
-                        }) catch {};
-                    }
-                }
-
-                fn line_end_callback(ctx_ptr: *anyopaque, line_info: iter_mod.LineInfo) void {
-                    const ctx = @as(*@This(), @ptrCast(@alignCast(ctx_ptr)));
-
-                    // Record first virtual line index for this logical line (1:1 mapping)
-                    const first_vline_idx: u32 = @intCast(ctx.view.virtual_lines.items.len);
-                    ctx.view.cached_line_first_vline.append(ctx.virtual_allocator, first_vline_idx) catch {};
-                    ctx.view.cached_line_vline_counts.append(ctx.virtual_allocator, 1) catch {};
-
-                    // If we have a pending vline from segments, finalize it
-                    var vline = if (ctx.current_vline) |v| v else VirtualLine.init();
-                    vline.width = line_info.width;
-                    // line_info.char_offset now includes newlines from walkLinesAndSegments fix
-                    vline.char_offset = line_info.char_offset;
-                    vline.source_line = line_info.line_idx;
-                    vline.source_col_offset = 0;
-
-                    ctx.view.virtual_lines.append(ctx.virtual_allocator, vline) catch {};
-                    ctx.view.cached_line_starts.append(ctx.virtual_allocator, vline.char_offset) catch {};
-                    ctx.view.cached_line_widths.append(ctx.virtual_allocator, vline.width) catch {};
-                    ctx.view.cached_line_sources.append(ctx.virtual_allocator, @intCast(line_info.line_idx)) catch {};
-                    ctx.view.cached_line_wrap_indices.append(ctx.virtual_allocator, 0) catch {};
-
-                    ctx.current_vline = VirtualLine.init();
-                }
-            };
-
-            var ctx = Context{
-                .view = self,
-                .virtual_allocator = virtual_allocator,
-                .current_vline = VirtualLine.init(),
-            };
-
-            iter_mod.walkLinesAndSegments(&self.text_buffer.rope, &ctx, Context.segment_callback, Context.line_end_callback);
-        } else {
-            const wrap_w = self.wrap_width.?;
-
-            const WrapContext = struct {
-                view: *Self,
-                virtual_allocator: Allocator,
-                wrap_w: u32,
-                global_char_offset: u32 = 0,
-                line_idx: u32 = 0,
-                line_col_offset: u32 = 0,
-                line_position: u32 = 0,
-                current_vline: VirtualLine = VirtualLine.init(),
-                chunk_idx_in_line: u32 = 0,
-                current_line_first_vline_idx: u32 = 0,
-                current_line_vline_count: u32 = 0,
-
-                last_wrap_chunk_count: u32 = 0,
-                last_wrap_line_position: u32 = 0,
-                last_wrap_global_offset: u32 = 0,
-
-                fn commitVirtualLine(wctx: *@This()) void {
-                    wctx.current_vline.width = wctx.line_position;
-                    wctx.current_vline.source_line = wctx.line_idx;
-                    wctx.current_vline.source_col_offset = wctx.line_col_offset;
-                    wctx.view.virtual_lines.append(wctx.virtual_allocator, wctx.current_vline) catch {};
-                    wctx.view.cached_line_starts.append(wctx.virtual_allocator, wctx.current_vline.char_offset) catch {};
-                    wctx.view.cached_line_widths.append(wctx.virtual_allocator, wctx.current_vline.width) catch {};
-                    wctx.view.cached_line_sources.append(wctx.virtual_allocator, wctx.line_idx) catch {};
-                    wctx.view.cached_line_wrap_indices.append(wctx.virtual_allocator, wctx.current_line_vline_count) catch {};
-
-                    wctx.current_line_vline_count += 1;
-
-                    wctx.line_col_offset += wctx.line_position;
-                    wctx.current_vline = VirtualLine.init();
-                    wctx.current_vline.char_offset = wctx.global_char_offset;
-                    wctx.line_position = 0;
-
-                    wctx.last_wrap_chunk_count = 0;
-                    wctx.last_wrap_line_position = 0;
-                    wctx.last_wrap_global_offset = 0;
-                }
-
-                fn addVirtualChunk(wctx: *@This(), chunk: *const TextChunk, _: u32, start: u32, width: u32) void {
-                    wctx.current_vline.chunks.append(wctx.virtual_allocator, VirtualChunk{
-                        .grapheme_start = start,
-                        .width = width,
-                        .chunk = chunk,
-                    }) catch {};
-                    wctx.global_char_offset += width;
-                    wctx.line_position += width;
-                }
-
-                fn segment_callback(ctx_ptr: *anyopaque, _: u32, chunk: *const TextChunk, chunk_idx_in_line: u32) void {
-                    const wctx = @as(*@This(), @ptrCast(@alignCast(ctx_ptr)));
-                    wctx.chunk_idx_in_line = chunk_idx_in_line;
-
-                    if (wctx.view.wrap_mode == .word) {
-                        const chunk_bytes = chunk.getBytes(&wctx.view.text_buffer.mem_registry);
-                        const wrap_offsets = chunk.getWrapOffsets(&wctx.view.text_buffer.mem_registry, wctx.view.text_buffer.allocator, wctx.view.text_buffer.width_method) catch &[_]utf8.WrapBreak{};
-
-                        var char_offset: u32 = 0;
-                        var wrap_idx: usize = 0; // Track current position in wrap_offsets to avoid O(n²) scanning
-                        while (char_offset < chunk.width) {
-                            const remaining_in_chunk = chunk.width - char_offset;
-                            const remaining_on_line = if (wctx.line_position < wctx.wrap_w) wctx.wrap_w - wctx.line_position else 0;
-
-                            // Find the last wrap boundary in the remaining part that fits on current line
-                            // Only scan forward from last position
-                            var last_wrap_that_fits: ?u32 = null;
-                            var saved_wrap_idx = wrap_idx;
-                            while (wrap_idx < wrap_offsets.len) : (wrap_idx += 1) {
-                                const wrap_break = wrap_offsets[wrap_idx];
-                                const offset = @as(u32, wrap_break.char_offset);
-                                if (offset < char_offset) continue;
-                                const width_to_boundary = offset - char_offset + 1;
-                                if (width_to_boundary > remaining_on_line or width_to_boundary > remaining_in_chunk) break;
-                                last_wrap_that_fits = width_to_boundary;
-                                saved_wrap_idx = wrap_idx + 1;
-                            }
-                            wrap_idx = saved_wrap_idx;
-
-                            var to_add: u32 = 0;
-                            var has_wrap_after: bool = false;
-
-                            if (remaining_in_chunk <= remaining_on_line) {
-                                // Chunk fits, but check if we should break at a word boundary instead
-                                if (last_wrap_that_fits) |wrap_width| {
-                                    // If we have a word boundary and adding full chunk would fill the line,
-                                    // prefer breaking at the word boundary to avoid splitting words across chunks
-                                    const would_fill_line = wctx.line_position + remaining_in_chunk >= wctx.wrap_w;
-                                    if (would_fill_line and wrap_width < remaining_in_chunk) {
-                                        // Break at the word boundary instead of taking the full chunk
-                                        to_add = wrap_width;
-                                        has_wrap_after = true;
-                                    } else {
-                                        // Take the full chunk - but if there's a wrap boundary before the end,
-                                        // we need to remember it for potential rollback
-                                        to_add = remaining_in_chunk;
-                                        // Mark as wrap point even if we go past it - the rollback logic will handle splitting the chunk
-                                        has_wrap_after = true;
-                                    }
-                                } else {
-                                    // No word boundary, take the full chunk
-                                    to_add = remaining_in_chunk;
-                                }
-                            } else if (last_wrap_that_fits) |wrap_width| {
-                                // Chunk doesn't fit, add up to the wrap boundary
-                                to_add = wrap_width;
-                                has_wrap_after = true;
-                            } else if (wctx.line_position == 0) {
-                                // Line is empty, force add something (fallback to char wrap)
-                                // Must respect grapheme boundaries to avoid splitting wide characters
-                                const is_ascii_only = (chunk.flags & TextChunk.Flags.ASCII_ONLY) != 0;
-                                var byte_offset: u32 = 0;
-                                if (char_offset > 0) {
-                                    const pos_result = utf8.findPosByWidth(chunk_bytes, char_offset, wctx.view.text_buffer.tab_width, is_ascii_only, false, wctx.view.text_buffer.width_method);
-                                    byte_offset = pos_result.byte_offset;
-                                }
-                                const remaining_bytes = chunk_bytes[byte_offset..];
-                                const wrap_result = utf8.findWrapPosByWidth(remaining_bytes, remaining_on_line, wctx.view.text_buffer.tab_width, is_ascii_only, wctx.view.text_buffer.width_method);
-                                to_add = wrap_result.columns_used;
-                                if (to_add == 0) to_add = 1; // Force at least one grapheme
-                            } else if (wctx.last_wrap_chunk_count > 0) {
-                                // Doesn't fit and we have a previous wrap point, rollback and wrap
-
-                                // Check if the last chunk before wrap extends past the wrap boundary
-                                var accumulated_width: u32 = 0;
-                                for (wctx.current_vline.chunks.items[0..wctx.last_wrap_chunk_count]) |vchunk| {
-                                    accumulated_width += vchunk.width;
-                                }
-
-                                // Calculate how many chunks to move, potentially including a split chunk
-                                const chunks_after_wrap = wctx.current_vline.chunks.items[wctx.last_wrap_chunk_count..];
-                                var chunks_to_move_count = chunks_after_wrap.len;
-                                var split_chunk: ?VirtualChunk = null;
-
-                                // If the last kept chunk extends past the wrap boundary, we need to split it
-                                if (accumulated_width > wctx.last_wrap_line_position) {
-                                    const last_chunk_idx = wctx.last_wrap_chunk_count - 1;
-                                    const last_chunk = wctx.current_vline.chunks.items[last_chunk_idx];
-                                    const overhang = accumulated_width - wctx.last_wrap_line_position;
-
-                                    // Create the part that goes on the next line
-                                    split_chunk = VirtualChunk{
-                                        .grapheme_start = last_chunk.grapheme_start + last_chunk.width - overhang,
-                                        .width = overhang,
-                                        .chunk = last_chunk.chunk,
-                                    };
-
-                                    // Reduce the last chunk's width to fit the wrap boundary
-                                    wctx.current_vline.chunks.items[last_chunk_idx].width -= overhang;
-
-                                    chunks_to_move_count += 1; // One extra for the split chunk
-                                }
-
-                                // Allocate space in arena for the chunks we need to preserve (single allocation in arena, no growing)
-                                const saved_chunks_result = wctx.virtual_allocator.alloc(VirtualChunk, chunks_to_move_count);
-                                if (saved_chunks_result) |saved_chunks| {
-                                    var saved_idx: usize = 0;
-
-                                    // Add split chunk first if it exists
-                                    if (split_chunk) |sc| {
-                                        saved_chunks[saved_idx] = sc;
-                                        saved_idx += 1;
-                                    }
-
-                                    // Copy chunks after the wrap point
-                                    @memcpy(saved_chunks[saved_idx..], chunks_after_wrap);
-
-                                    wctx.line_position = wctx.last_wrap_line_position;
-                                    wctx.global_char_offset = wctx.last_wrap_global_offset;
-                                    wctx.current_vline.chunks.items.len = wctx.last_wrap_chunk_count;
-
-                                    commitVirtualLine(wctx);
-
-                                    for (saved_chunks) |vchunk| {
-                                        wctx.current_vline.chunks.append(wctx.virtual_allocator, vchunk) catch {};
-                                        wctx.global_char_offset += vchunk.width;
-                                        wctx.line_position += vchunk.width;
-                                    }
-                                } else |_| {
-                                    // Allocation failed, just wrap normally without rollback
-                                    logger.err("Failed to allocate space for saved chunks", .{});
-                                    commitVirtualLine(wctx);
-                                }
-
-                                continue;
-                            } else {
-                                // No wrap point and line not empty, need to wrap and force-break on next line
-                                // Wrap the current line first
-                                commitVirtualLine(wctx);
-                                // Now line_position is 0, force add content respecting grapheme boundaries
-                                const is_ascii_only = (chunk.flags & TextChunk.Flags.ASCII_ONLY) != 0;
-                                var byte_offset: u32 = 0;
-                                if (char_offset > 0) {
-                                    const pos_result = utf8.findPosByWidth(chunk_bytes, char_offset, wctx.view.text_buffer.tab_width, is_ascii_only, false, wctx.view.text_buffer.width_method);
-                                    byte_offset = pos_result.byte_offset;
-                                }
-                                const remaining_bytes = chunk_bytes[byte_offset..];
-                                // After wrapping, the full wrap width is available
-                                const wrap_result = utf8.findWrapPosByWidth(remaining_bytes, wctx.wrap_w, wctx.view.text_buffer.tab_width, is_ascii_only, wctx.view.text_buffer.width_method);
-                                to_add = wrap_result.columns_used;
-                                if (to_add == 0) to_add = 1; // Force at least one grapheme
-                            }
-
-                            if (to_add > 0) {
-                                const position_before_add = wctx.line_position;
-                                const offset_before_add = wctx.global_char_offset;
-
-                                addVirtualChunk(wctx, chunk, chunk_idx_in_line, char_offset, to_add);
-                                char_offset += to_add;
-
-                                if (has_wrap_after) {
-                                    // If there's a wrap boundary within what we just added, calculate its position
-                                    // last_wrap_that_fits is the width from char_offset to the wrap boundary
-                                    const wrap_pos_in_added = if (last_wrap_that_fits) |wrap_width|
-                                        @min(wrap_width, to_add)
-                                    else
-                                        to_add;
-
-                                    wctx.last_wrap_chunk_count = @intCast(wctx.current_vline.chunks.items.len);
-                                    wctx.last_wrap_line_position = position_before_add + wrap_pos_in_added;
-                                    wctx.last_wrap_global_offset = offset_before_add + wrap_pos_in_added;
-                                }
-
-                                if (wctx.line_position >= wctx.wrap_w and char_offset < chunk.width) {
-                                    if (has_wrap_after or wctx.last_wrap_chunk_count > 0) {
-                                        commitVirtualLine(wctx);
-                                    }
-                                }
-                            }
-                        }
-                    } else {
-                        const chunk_bytes = chunk.getBytes(&wctx.view.text_buffer.mem_registry);
-                        const is_ascii_only = (chunk.flags & TextChunk.Flags.ASCII_ONLY) != 0;
-                        var byte_offset: usize = 0;
-                        var char_offset: u32 = 0;
-
-                        while (char_offset < chunk.width) {
-                            const remaining_width = if (wctx.line_position < wctx.wrap_w) wctx.wrap_w - wctx.line_position else 0;
-
-                            if (remaining_width == 0) {
-                                if (wctx.line_position > 0) {
-                                    commitVirtualLine(wctx);
-                                    continue;
-                                }
-                                const remaining_bytes = chunk_bytes[byte_offset..];
-                                const force_result = utf8.findWrapPosByWidth(remaining_bytes, 1, wctx.view.text_buffer.tab_width, is_ascii_only, wctx.view.text_buffer.width_method);
-                                if (force_result.grapheme_count > 0) {
-                                    addVirtualChunk(wctx, chunk, chunk_idx_in_line, char_offset, force_result.columns_used);
-                                    char_offset += force_result.columns_used;
-                                    byte_offset += force_result.byte_offset;
-                                } else {
-                                    break;
-                                }
-                                continue;
-                            }
-
-                            const remaining_bytes = chunk_bytes[byte_offset..];
-                            const wrap_result = utf8.findWrapPosByWidth(
-                                remaining_bytes,
-                                remaining_width,
-                                wctx.view.text_buffer.tab_width,
-                                is_ascii_only,
-                                wctx.view.text_buffer.width_method,
-                            );
-
-                            if (wrap_result.grapheme_count == 0) {
-                                if (wctx.line_position > 0) {
-                                    commitVirtualLine(wctx);
-                                    continue;
-                                }
-                                const force_result = utf8.findWrapPosByWidth(remaining_bytes, 1000, wctx.view.text_buffer.tab_width, is_ascii_only, wctx.view.text_buffer.width_method);
-                                if (force_result.grapheme_count > 0) {
-                                    addVirtualChunk(wctx, chunk, chunk_idx_in_line, char_offset, force_result.columns_used);
-                                    char_offset += force_result.columns_used;
-                                    byte_offset += force_result.byte_offset;
-                                    if (char_offset < chunk.width) {
-                                        commitVirtualLine(wctx);
-                                    }
-                                }
-                                break;
-                            }
-
-                            addVirtualChunk(wctx, chunk, chunk_idx_in_line, char_offset, wrap_result.columns_used);
-                            char_offset += wrap_result.columns_used;
-                            byte_offset += wrap_result.byte_offset;
-
-                            if (wctx.line_position >= wctx.wrap_w and char_offset < chunk.width) {
-                                commitVirtualLine(wctx);
-                            }
-                        }
-                    }
-                }
-
-                fn line_end_callback(ctx_ptr: *anyopaque, line_info: iter_mod.LineInfo) void {
-                    const wctx = @as(*@This(), @ptrCast(@alignCast(ctx_ptr)));
-
-                    // Commit current virtual line if it has content or represents an empty line
-                    if (wctx.current_vline.chunks.items.len > 0 or line_info.width == 0) {
-                        wctx.current_vline.width = wctx.line_position;
-                        wctx.current_vline.source_line = wctx.line_idx;
-                        wctx.current_vline.source_col_offset = wctx.line_col_offset;
-                        wctx.view.virtual_lines.append(wctx.virtual_allocator, wctx.current_vline) catch {};
-                        wctx.view.cached_line_starts.append(wctx.virtual_allocator, wctx.current_vline.char_offset) catch {};
-                        wctx.view.cached_line_widths.append(wctx.virtual_allocator, wctx.current_vline.width) catch {};
-                        wctx.view.cached_line_sources.append(wctx.virtual_allocator, wctx.line_idx) catch {};
-                        wctx.view.cached_line_wrap_indices.append(wctx.virtual_allocator, wctx.current_line_vline_count) catch {};
-                        wctx.current_line_vline_count += 1;
-                    }
-
-                    wctx.view.cached_line_first_vline.append(wctx.virtual_allocator, wctx.current_line_first_vline_idx) catch {};
-                    wctx.view.cached_line_vline_counts.append(wctx.virtual_allocator, wctx.current_line_vline_count) catch {};
-
-                    // Account for newline character between logical lines (weight = 1)
-                    wctx.global_char_offset += 1;
-
-                    wctx.line_idx += 1;
-                    wctx.line_col_offset = 0;
-                    wctx.line_position = 0;
-                    wctx.current_vline = VirtualLine.init();
-                    wctx.current_vline.char_offset = wctx.global_char_offset;
-                    wctx.chunk_idx_in_line = 0;
-                    wctx.current_line_first_vline_idx = @intCast(wctx.view.virtual_lines.items.len);
-                    wctx.current_line_vline_count = 0;
-                }
-            };
-
-            var wrap_ctx = WrapContext{
-                .view = self,
-                .virtual_allocator = virtual_allocator,
-                .wrap_w = wrap_w,
-            };
-
-            iter_mod.walkLinesAndSegments(&self.text_buffer.rope, &wrap_ctx, WrapContext.segment_callback, WrapContext.line_end_callback);
-        }
+        // Call the generic calculation function
+        calculateVirtualLinesGeneric(
+            self.text_buffer,
+            self.wrap_mode,
+            self.wrap_width,
+            virtual_allocator,
+            output,
+        );
 
         self.virtual_lines_dirty = false;
         self.text_buffer.clearViewDirty(self.view_id);
@@ -999,5 +646,428 @@ pub const UnifiedTextBufferView = struct {
 
     pub fn getTabIndicatorColor(self: *const Self) ?RGBA {
         return self.tab_indicator_color;
+    }
+
+    /// Measure dimensions for given width/height WITHOUT modifying virtual lines cache
+    /// This is useful for Yoga measure functions that need to know dimensions without committing changes
+    pub fn measureForDimensions(self: *const Self, width: u32, height: u32) TextBufferViewError!MeasureResult {
+        _ = height; // Height is for future use, currently only width affects layout
+
+        // Create temporary arena for measurement
+        var measure_arena = std.heap.ArenaAllocator.init(self.global_allocator);
+        defer measure_arena.deinit();
+        const measure_allocator = measure_arena.allocator();
+
+        // Create temporary output structures
+        var temp_virtual_lines = std.ArrayListUnmanaged(VirtualLine){};
+        var temp_line_starts = std.ArrayListUnmanaged(u32){};
+        var temp_line_widths = std.ArrayListUnmanaged(u32){};
+        var temp_line_sources = std.ArrayListUnmanaged(u32){};
+        var temp_line_wrap_indices = std.ArrayListUnmanaged(u32){};
+        var temp_line_first_vline = std.ArrayListUnmanaged(u32){};
+        var temp_line_vline_counts = std.ArrayListUnmanaged(u32){};
+
+        const output = VirtualLineOutput{
+            .virtual_lines = &temp_virtual_lines,
+            .cached_line_starts = &temp_line_starts,
+            .cached_line_widths = &temp_line_widths,
+            .cached_line_sources = &temp_line_sources,
+            .cached_line_wrap_indices = &temp_line_wrap_indices,
+            .cached_line_first_vline = &temp_line_first_vline,
+            .cached_line_vline_counts = &temp_line_vline_counts,
+        };
+
+        // Use width for wrap calculation
+        const wrap_width_for_measure = if (self.wrap_mode != .none) width else null;
+
+        // Call generic calculation with temporary structures
+        calculateVirtualLinesGeneric(
+            self.text_buffer,
+            self.wrap_mode,
+            wrap_width_for_measure,
+            measure_allocator,
+            output,
+        );
+
+        // Calculate max width from temp structures
+        var max_width: u32 = 0;
+        for (temp_line_widths.items) |w| {
+            max_width = @max(max_width, w);
+        }
+
+        return MeasureResult{
+            .line_count = @intCast(temp_virtual_lines.items.len),
+            .max_width = max_width,
+        };
+    }
+
+    /// Generic virtual line calculation that writes to provided output structures
+    fn calculateVirtualLinesGeneric(
+        text_buffer: *UnifiedTextBuffer,
+        wrap_mode: WrapMode,
+        wrap_width: ?u32,
+        allocator: Allocator,
+        output: VirtualLineOutput,
+    ) void {
+        if (wrap_mode == .none or wrap_width == null) {
+            // No wrapping - create 1:1 mapping to real lines
+            const Context = struct {
+                text_buffer: *UnifiedTextBuffer,
+                allocator: Allocator,
+                output: VirtualLineOutput,
+                current_vline: ?VirtualLine = null,
+
+                fn segment_callback(ctx_ptr: *anyopaque, line_idx: u32, chunk: *const TextChunk, _: u32) void {
+                    _ = line_idx;
+                    const ctx = @as(*@This(), @ptrCast(@alignCast(ctx_ptr)));
+
+                    if (ctx.current_vline) |*vline| {
+                        vline.chunks.append(ctx.allocator, VirtualChunk{
+                            .grapheme_start = 0,
+                            .width = chunk.width,
+                            .chunk = chunk,
+                        }) catch {};
+                    }
+                }
+
+                fn line_end_callback(ctx_ptr: *anyopaque, line_info: iter_mod.LineInfo) void {
+                    const ctx = @as(*@This(), @ptrCast(@alignCast(ctx_ptr)));
+
+                    const first_vline_idx: u32 = @intCast(ctx.output.virtual_lines.items.len);
+                    ctx.output.cached_line_first_vline.append(ctx.allocator, first_vline_idx) catch {};
+                    ctx.output.cached_line_vline_counts.append(ctx.allocator, 1) catch {};
+
+                    var vline = if (ctx.current_vline) |v| v else VirtualLine.init();
+                    vline.width = line_info.width;
+                    vline.char_offset = line_info.char_offset;
+                    vline.source_line = line_info.line_idx;
+                    vline.source_col_offset = 0;
+
+                    ctx.output.virtual_lines.append(ctx.allocator, vline) catch {};
+                    ctx.output.cached_line_starts.append(ctx.allocator, vline.char_offset) catch {};
+                    ctx.output.cached_line_widths.append(ctx.allocator, vline.width) catch {};
+                    ctx.output.cached_line_sources.append(ctx.allocator, @intCast(line_info.line_idx)) catch {};
+                    ctx.output.cached_line_wrap_indices.append(ctx.allocator, 0) catch {};
+
+                    ctx.current_vline = VirtualLine.init();
+                }
+            };
+
+            var ctx = Context{
+                .text_buffer = text_buffer,
+                .allocator = allocator,
+                .output = output,
+                .current_vline = VirtualLine.init(),
+            };
+
+            iter_mod.walkLinesAndSegments(&text_buffer.rope, &ctx, Context.segment_callback, Context.line_end_callback);
+        } else {
+            const wrap_w = wrap_width.?;
+
+            const WrapContext = struct {
+                text_buffer: *UnifiedTextBuffer,
+                allocator: Allocator,
+                output: VirtualLineOutput,
+                wrap_mode: WrapMode,
+                wrap_w: u32,
+                global_char_offset: u32 = 0,
+                line_idx: u32 = 0,
+                line_col_offset: u32 = 0,
+                line_position: u32 = 0,
+                current_vline: VirtualLine = VirtualLine.init(),
+                chunk_idx_in_line: u32 = 0,
+                current_line_first_vline_idx: u32 = 0,
+                current_line_vline_count: u32 = 0,
+
+                last_wrap_chunk_count: u32 = 0,
+                last_wrap_line_position: u32 = 0,
+                last_wrap_global_offset: u32 = 0,
+
+                fn commitVirtualLine(wctx: *@This()) void {
+                    wctx.current_vline.width = wctx.line_position;
+                    wctx.current_vline.source_line = wctx.line_idx;
+                    wctx.current_vline.source_col_offset = wctx.line_col_offset;
+                    wctx.output.virtual_lines.append(wctx.allocator, wctx.current_vline) catch {};
+                    wctx.output.cached_line_starts.append(wctx.allocator, wctx.current_vline.char_offset) catch {};
+                    wctx.output.cached_line_widths.append(wctx.allocator, wctx.current_vline.width) catch {};
+                    wctx.output.cached_line_sources.append(wctx.allocator, wctx.line_idx) catch {};
+                    wctx.output.cached_line_wrap_indices.append(wctx.allocator, wctx.current_line_vline_count) catch {};
+
+                    wctx.current_line_vline_count += 1;
+
+                    wctx.line_col_offset += wctx.line_position;
+                    wctx.current_vline = VirtualLine.init();
+                    wctx.current_vline.char_offset = wctx.global_char_offset;
+                    wctx.line_position = 0;
+
+                    wctx.last_wrap_chunk_count = 0;
+                    wctx.last_wrap_line_position = 0;
+                    wctx.last_wrap_global_offset = 0;
+                }
+
+                fn addVirtualChunk(wctx: *@This(), chunk: *const TextChunk, _: u32, start: u32, width_param: u32) void {
+                    wctx.current_vline.chunks.append(wctx.allocator, VirtualChunk{
+                        .grapheme_start = start,
+                        .width = width_param,
+                        .chunk = chunk,
+                    }) catch {};
+                    wctx.global_char_offset += width_param;
+                    wctx.line_position += width_param;
+                }
+
+                fn segment_callback(ctx_ptr: *anyopaque, _: u32, chunk: *const TextChunk, chunk_idx_in_line: u32) void {
+                    const wctx = @as(*@This(), @ptrCast(@alignCast(ctx_ptr)));
+                    wctx.chunk_idx_in_line = chunk_idx_in_line;
+
+                    if (wctx.wrap_mode == .word) {
+                        const chunk_bytes = chunk.getBytes(&wctx.text_buffer.mem_registry);
+                        const wrap_offsets = chunk.getWrapOffsets(&wctx.text_buffer.mem_registry, wctx.text_buffer.allocator, wctx.text_buffer.width_method) catch &[_]utf8.WrapBreak{};
+
+                        var char_offset: u32 = 0;
+                        var wrap_idx: usize = 0;
+                        while (char_offset < chunk.width) {
+                            const remaining_in_chunk = chunk.width - char_offset;
+                            const remaining_on_line = if (wctx.line_position < wctx.wrap_w) wctx.wrap_w - wctx.line_position else 0;
+
+                            var last_wrap_that_fits: ?u32 = null;
+                            var saved_wrap_idx = wrap_idx;
+                            while (wrap_idx < wrap_offsets.len) : (wrap_idx += 1) {
+                                const wrap_break = wrap_offsets[wrap_idx];
+                                const offset = @as(u32, wrap_break.char_offset);
+                                if (offset < char_offset) continue;
+                                const width_to_boundary = offset - char_offset + 1;
+                                if (width_to_boundary > remaining_on_line or width_to_boundary > remaining_in_chunk) break;
+                                last_wrap_that_fits = width_to_boundary;
+                                saved_wrap_idx = wrap_idx + 1;
+                            }
+                            wrap_idx = saved_wrap_idx;
+
+                            var to_add: u32 = 0;
+                            var has_wrap_after: bool = false;
+
+                            if (remaining_in_chunk <= remaining_on_line) {
+                                if (last_wrap_that_fits) |boundary_w| {
+                                    const would_fill_line = wctx.line_position + remaining_in_chunk >= wctx.wrap_w;
+                                    if (would_fill_line and boundary_w < remaining_in_chunk) {
+                                        to_add = boundary_w;
+                                        has_wrap_after = true;
+                                    } else {
+                                        to_add = remaining_in_chunk;
+                                        has_wrap_after = true;
+                                    }
+                                } else {
+                                    to_add = remaining_in_chunk;
+                                }
+                            } else if (last_wrap_that_fits) |boundary_w| {
+                                to_add = boundary_w;
+                                has_wrap_after = true;
+                            } else if (wctx.line_position == 0) {
+                                const is_ascii_only = (chunk.flags & TextChunk.Flags.ASCII_ONLY) != 0;
+                                var byte_offset: u32 = 0;
+                                if (char_offset > 0) {
+                                    const pos_result = utf8.findPosByWidth(chunk_bytes, char_offset, wctx.text_buffer.tab_width, is_ascii_only, false, wctx.text_buffer.width_method);
+                                    byte_offset = pos_result.byte_offset;
+                                }
+                                const remaining_bytes = chunk_bytes[byte_offset..];
+                                const wrap_result = utf8.findWrapPosByWidth(remaining_bytes, remaining_on_line, wctx.text_buffer.tab_width, is_ascii_only, wctx.text_buffer.width_method);
+                                to_add = wrap_result.columns_used;
+                                if (to_add == 0) to_add = 1;
+                            } else if (wctx.last_wrap_chunk_count > 0) {
+                                var accumulated_width: u32 = 0;
+                                for (wctx.current_vline.chunks.items[0..wctx.last_wrap_chunk_count]) |vchunk| {
+                                    accumulated_width += vchunk.width;
+                                }
+
+                                const chunks_after_wrap = wctx.current_vline.chunks.items[wctx.last_wrap_chunk_count..];
+                                var chunks_to_move_count = chunks_after_wrap.len;
+                                var split_chunk: ?VirtualChunk = null;
+
+                                if (accumulated_width > wctx.last_wrap_line_position) {
+                                    const last_chunk_idx = wctx.last_wrap_chunk_count - 1;
+                                    const last_chunk = wctx.current_vline.chunks.items[last_chunk_idx];
+                                    const overhang = accumulated_width - wctx.last_wrap_line_position;
+
+                                    split_chunk = VirtualChunk{
+                                        .grapheme_start = last_chunk.grapheme_start + last_chunk.width - overhang,
+                                        .width = overhang,
+                                        .chunk = last_chunk.chunk,
+                                    };
+
+                                    wctx.current_vline.chunks.items[last_chunk_idx].width -= overhang;
+
+                                    chunks_to_move_count += 1;
+                                }
+
+                                const saved_chunks_result = wctx.allocator.alloc(VirtualChunk, chunks_to_move_count);
+                                if (saved_chunks_result) |saved_chunks| {
+                                    var saved_idx: usize = 0;
+
+                                    if (split_chunk) |sc| {
+                                        saved_chunks[saved_idx] = sc;
+                                        saved_idx += 1;
+                                    }
+
+                                    @memcpy(saved_chunks[saved_idx..], chunks_after_wrap);
+
+                                    wctx.line_position = wctx.last_wrap_line_position;
+                                    wctx.global_char_offset = wctx.last_wrap_global_offset;
+                                    wctx.current_vline.chunks.items.len = wctx.last_wrap_chunk_count;
+
+                                    commitVirtualLine(wctx);
+
+                                    for (saved_chunks) |vchunk| {
+                                        wctx.current_vline.chunks.append(wctx.allocator, vchunk) catch {};
+                                        wctx.global_char_offset += vchunk.width;
+                                        wctx.line_position += vchunk.width;
+                                    }
+                                } else |_| {
+                                    logger.err("Failed to allocate space for saved chunks", .{});
+                                    commitVirtualLine(wctx);
+                                }
+
+                                continue;
+                            } else {
+                                commitVirtualLine(wctx);
+                                const is_ascii_only = (chunk.flags & TextChunk.Flags.ASCII_ONLY) != 0;
+                                var byte_offset: u32 = 0;
+                                if (char_offset > 0) {
+                                    const pos_result = utf8.findPosByWidth(chunk_bytes, char_offset, wctx.text_buffer.tab_width, is_ascii_only, false, wctx.text_buffer.width_method);
+                                    byte_offset = pos_result.byte_offset;
+                                }
+                                const remaining_bytes = chunk_bytes[byte_offset..];
+                                const wrap_result = utf8.findWrapPosByWidth(remaining_bytes, wctx.wrap_w, wctx.text_buffer.tab_width, is_ascii_only, wctx.text_buffer.width_method);
+                                to_add = wrap_result.columns_used;
+                                if (to_add == 0) to_add = 1;
+                            }
+
+                            if (to_add > 0) {
+                                const position_before_add = wctx.line_position;
+                                const offset_before_add = wctx.global_char_offset;
+
+                                addVirtualChunk(wctx, chunk, chunk_idx_in_line, char_offset, to_add);
+                                char_offset += to_add;
+
+                                if (has_wrap_after) {
+                                    const wrap_pos_in_added = if (last_wrap_that_fits) |boundary_w|
+                                        @min(boundary_w, to_add)
+                                    else
+                                        to_add;
+
+                                    wctx.last_wrap_chunk_count = @intCast(wctx.current_vline.chunks.items.len);
+                                    wctx.last_wrap_line_position = position_before_add + wrap_pos_in_added;
+                                    wctx.last_wrap_global_offset = offset_before_add + wrap_pos_in_added;
+                                }
+
+                                if (wctx.line_position >= wctx.wrap_w and char_offset < chunk.width) {
+                                    if (has_wrap_after or wctx.last_wrap_chunk_count > 0) {
+                                        commitVirtualLine(wctx);
+                                    }
+                                }
+                            }
+                        }
+                    } else {
+                        const chunk_bytes = chunk.getBytes(&wctx.text_buffer.mem_registry);
+                        const is_ascii_only = (chunk.flags & TextChunk.Flags.ASCII_ONLY) != 0;
+                        var byte_offset: usize = 0;
+                        var char_offset: u32 = 0;
+
+                        while (char_offset < chunk.width) {
+                            const remaining_width = if (wctx.line_position < wctx.wrap_w) wctx.wrap_w - wctx.line_position else 0;
+
+                            if (remaining_width == 0) {
+                                if (wctx.line_position > 0) {
+                                    commitVirtualLine(wctx);
+                                    continue;
+                                }
+                                const remaining_bytes = chunk_bytes[byte_offset..];
+                                const force_result = utf8.findWrapPosByWidth(remaining_bytes, 1, wctx.text_buffer.tab_width, is_ascii_only, wctx.text_buffer.width_method);
+                                if (force_result.grapheme_count > 0) {
+                                    addVirtualChunk(wctx, chunk, chunk_idx_in_line, char_offset, force_result.columns_used);
+                                    char_offset += force_result.columns_used;
+                                    byte_offset += force_result.byte_offset;
+                                } else {
+                                    break;
+                                }
+                                continue;
+                            }
+
+                            const remaining_bytes = chunk_bytes[byte_offset..];
+                            const wrap_result = utf8.findWrapPosByWidth(
+                                remaining_bytes,
+                                remaining_width,
+                                wctx.text_buffer.tab_width,
+                                is_ascii_only,
+                                wctx.text_buffer.width_method,
+                            );
+
+                            if (wrap_result.grapheme_count == 0) {
+                                if (wctx.line_position > 0) {
+                                    commitVirtualLine(wctx);
+                                    continue;
+                                }
+                                const force_result = utf8.findWrapPosByWidth(remaining_bytes, 1000, wctx.text_buffer.tab_width, is_ascii_only, wctx.text_buffer.width_method);
+                                if (force_result.grapheme_count > 0) {
+                                    addVirtualChunk(wctx, chunk, chunk_idx_in_line, char_offset, force_result.columns_used);
+                                    char_offset += force_result.columns_used;
+                                    byte_offset += force_result.byte_offset;
+                                    if (char_offset < chunk.width) {
+                                        commitVirtualLine(wctx);
+                                    }
+                                }
+                                break;
+                            }
+
+                            addVirtualChunk(wctx, chunk, chunk_idx_in_line, char_offset, wrap_result.columns_used);
+                            char_offset += wrap_result.columns_used;
+                            byte_offset += wrap_result.byte_offset;
+
+                            if (wctx.line_position >= wctx.wrap_w and char_offset < chunk.width) {
+                                commitVirtualLine(wctx);
+                            }
+                        }
+                    }
+                }
+
+                fn line_end_callback(ctx_ptr: *anyopaque, line_info: iter_mod.LineInfo) void {
+                    const wctx = @as(*@This(), @ptrCast(@alignCast(ctx_ptr)));
+
+                    if (wctx.current_vline.chunks.items.len > 0 or line_info.width == 0) {
+                        wctx.current_vline.width = wctx.line_position;
+                        wctx.current_vline.source_line = wctx.line_idx;
+                        wctx.current_vline.source_col_offset = wctx.line_col_offset;
+                        wctx.output.virtual_lines.append(wctx.allocator, wctx.current_vline) catch {};
+                        wctx.output.cached_line_starts.append(wctx.allocator, wctx.current_vline.char_offset) catch {};
+                        wctx.output.cached_line_widths.append(wctx.allocator, wctx.current_vline.width) catch {};
+                        wctx.output.cached_line_sources.append(wctx.allocator, wctx.line_idx) catch {};
+                        wctx.output.cached_line_wrap_indices.append(wctx.allocator, wctx.current_line_vline_count) catch {};
+                        wctx.current_line_vline_count += 1;
+                    }
+
+                    wctx.output.cached_line_first_vline.append(wctx.allocator, wctx.current_line_first_vline_idx) catch {};
+                    wctx.output.cached_line_vline_counts.append(wctx.allocator, wctx.current_line_vline_count) catch {};
+
+                    wctx.global_char_offset += 1;
+
+                    wctx.line_idx += 1;
+                    wctx.line_col_offset = 0;
+                    wctx.line_position = 0;
+                    wctx.current_vline = VirtualLine.init();
+                    wctx.current_vline.char_offset = wctx.global_char_offset;
+                    wctx.chunk_idx_in_line = 0;
+                    wctx.current_line_first_vline_idx = @intCast(wctx.output.virtual_lines.items.len);
+                    wctx.current_line_vline_count = 0;
+                }
+            };
+
+            var wrap_ctx = WrapContext{
+                .text_buffer = text_buffer,
+                .allocator = allocator,
+                .output = output,
+                .wrap_mode = wrap_mode,
+                .wrap_w = wrap_w,
+            };
+
+            iter_mod.walkLinesAndSegments(&text_buffer.rope, &wrap_ctx, WrapContext.segment_callback, WrapContext.line_end_callback);
+        }
     }
 };
