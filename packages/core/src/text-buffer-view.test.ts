@@ -148,6 +148,37 @@ describe("TextBufferView", () => {
       const unwrappedInfo = view.lineInfo
       expect(unwrappedInfo.lineStarts).toEqual([0, 7, 14])
     })
+
+    it("should return extended wrap info", () => {
+      const text = "Line 1 content\nLine 2"
+      const styledText = stringToStyledText(text)
+      buffer.setStyledText(styledText)
+
+      view.setWrapMode("char")
+      view.setWrapWidth(10)
+
+      // Line 1 content (14 chars) wraps into two lines:
+      // "Line 1 con" (10)
+      // "tent" (4)
+      // Line 2 (6 chars) fits on one line
+
+      const info = view.lineInfo
+
+      expect(info.lineSources.length).toBe(3)
+      expect(info.lineWraps.length).toBe(3)
+
+      // First visual line: source line 0, wrap 0
+      expect(info.lineSources[0]).toBe(0)
+      expect(info.lineWraps[0]).toBe(0)
+
+      // Second visual line: source line 0, wrap 1 (continuation)
+      expect(info.lineSources[1]).toBe(0)
+      expect(info.lineWraps[1]).toBe(1)
+
+      // Third visual line: source line 1, wrap 0
+      expect(info.lineSources[2]).toBe(1)
+      expect(info.lineWraps[2]).toBe(0)
+    })
   })
 
   describe("getSelectedText", () => {

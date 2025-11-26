@@ -2225,28 +2225,12 @@ class FFIRenderLib implements RenderLib {
   private unpackLineInfo(outBuffer: ArrayBuffer): LineInfo {
     const struct = LineInfoStruct.unpack(outBuffer)
 
-    const startsLen = Number(struct.startsLen)
-    const widthsLen = Number(struct.widthsLen)
-    const sourcesLen = Number(struct.sourcesLen)
-    const wrapsLen = Number(struct.wrapsLen)
-
-    // Unpacking pointers, ensuring we handle them as pointers
-    const startsPtr = struct.starts as unknown as Pointer
-    const widthsPtr = struct.widths as unknown as Pointer
-    const sourcesPtr = struct.sources as unknown as Pointer
-    const wrapsPtr = struct.wraps as unknown as Pointer
-
-    const starts = startsLen > 0 ? new Uint32Array(toArrayBuffer(startsPtr, 0, startsLen * 4)) : new Uint32Array(0)
-    const widths = widthsLen > 0 ? new Uint32Array(toArrayBuffer(widthsPtr, 0, widthsLen * 4)) : new Uint32Array(0)
-    const sources = sourcesLen > 0 ? new Uint32Array(toArrayBuffer(sourcesPtr, 0, sourcesLen * 4)) : new Uint32Array(0)
-    const wraps = wrapsLen > 0 ? new Uint32Array(toArrayBuffer(wrapsPtr, 0, wrapsLen * 4)) : new Uint32Array(0)
-
     return {
       maxLineWidth: struct.maxWidth,
-      lineStarts: Array.from(starts),
-      lineWidths: Array.from(widths),
-      lineSources: Array.from(sources),
-      lineWraps: Array.from(wraps),
+      lineStarts: struct.starts as number[],
+      lineWidths: struct.widths as number[],
+      lineSources: struct.sources as number[],
+      lineWraps: struct.wraps as number[],
     }
   }
 

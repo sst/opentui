@@ -596,13 +596,13 @@ export fn textBufferViewGetLineInfoDirect(view: *text_buffer_view.UnifiedTextBuf
 
     outPtr.* = .{
         .starts_ptr = line_info.starts.ptr,
-        .starts_len = line_info.starts.len,
+        .starts_len = @intCast(line_info.starts.len),
         .widths_ptr = line_info.widths.ptr,
-        .widths_len = line_info.widths.len,
+        .widths_len = @intCast(line_info.widths.len),
         .sources_ptr = line_info.sources.ptr,
-        .sources_len = line_info.sources.len,
+        .sources_len = @intCast(line_info.sources.len),
         .wraps_ptr = line_info.wraps.ptr,
-        .wraps_len = line_info.wraps.len,
+        .wraps_len = @intCast(line_info.wraps.len),
         .max_width = line_info.max_width,
     };
 }
@@ -612,13 +612,13 @@ export fn textBufferViewGetLogicalLineInfoDirect(view: *text_buffer_view.Unified
 
     outPtr.* = .{
         .starts_ptr = line_info.starts.ptr,
-        .starts_len = line_info.starts.len,
+        .starts_len = @intCast(line_info.starts.len),
         .widths_ptr = line_info.widths.ptr,
-        .widths_len = line_info.widths.len,
+        .widths_len = @intCast(line_info.widths.len),
         .sources_ptr = line_info.sources.ptr,
-        .sources_len = line_info.sources.len,
+        .sources_len = @intCast(line_info.sources.len),
         .wraps_ptr = line_info.wraps.ptr,
-        .wraps_len = line_info.wraps.len,
+        .wraps_len = @intCast(line_info.wraps.len),
         .max_width = line_info.max_width,
     };
 }
@@ -903,13 +903,13 @@ export fn editorViewGetLineInfoDirect(view: *editor_view.EditorView, outPtr: *Ex
     const line_info = view.getCachedLineInfo();
     outPtr.* = .{
         .starts_ptr = line_info.starts.ptr,
-        .starts_len = line_info.starts.len,
+        .starts_len = @intCast(line_info.starts.len),
         .widths_ptr = line_info.widths.ptr,
-        .widths_len = line_info.widths.len,
+        .widths_len = @intCast(line_info.widths.len),
         .sources_ptr = line_info.sources.ptr,
-        .sources_len = line_info.sources.len,
+        .sources_len = @intCast(line_info.sources.len),
         .wraps_ptr = line_info.wraps.ptr,
-        .wraps_len = line_info.wraps.len,
+        .wraps_len = @intCast(line_info.wraps.len),
         .max_width = line_info.max_width,
     };
 }
@@ -922,13 +922,13 @@ export fn editorViewGetLogicalLineInfoDirect(view: *editor_view.EditorView, outP
     const line_info = view.getLogicalLineInfo();
     outPtr.* = .{
         .starts_ptr = line_info.starts.ptr,
-        .starts_len = line_info.starts.len,
+        .starts_len = @intCast(line_info.starts.len),
         .widths_ptr = line_info.widths.ptr,
-        .widths_len = line_info.widths.len,
+        .widths_len = @intCast(line_info.widths.len),
         .sources_ptr = line_info.sources.ptr,
-        .sources_len = line_info.sources.len,
+        .sources_len = @intCast(line_info.sources.len),
         .wraps_ptr = line_info.wraps.ptr,
-        .wraps_len = line_info.wraps.len,
+        .wraps_len = @intCast(line_info.wraps.len),
         .max_width = line_info.max_width,
     };
 }
@@ -1114,13 +1114,17 @@ pub const ExternalVisualCursor = extern struct {
 
 pub const ExternalLineInfo = extern struct {
     starts_ptr: [*]const u32,
-    starts_len: usize,
+    starts_len: u32,
+    starts_len_pad: u32 = 0,
     widths_ptr: [*]const u32,
-    widths_len: usize,
+    widths_len: u32,
+    widths_len_pad: u32 = 0,
     sources_ptr: [*]const u32,
-    sources_len: usize,
+    sources_len: u32,
+    sources_len_pad: u32 = 0,
     wraps_ptr: [*]const u32,
-    wraps_len: usize,
+    wraps_len: u32,
+    wraps_len_pad: u32 = 0,
     max_width: u32,
 };
 
