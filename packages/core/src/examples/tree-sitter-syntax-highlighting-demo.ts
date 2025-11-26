@@ -6,6 +6,7 @@ import {
   TextRenderable,
   type ParsedKey,
   ScrollBoxRenderable,
+  LineNumberRenderable,
 } from "../index"
 import { setupCommonDemoKeys } from "./lib/standalone-keys"
 import { parseColor } from "../lib/RGBA"
@@ -243,10 +244,13 @@ let keyboardHandler: ((key: ParsedKey) => void) | null = null
 let parentContainer: BoxRenderable | null = null
 let codeScrollBox: ScrollBoxRenderable | null = null
 let codeDisplay: CodeRenderable | null = null
+let codeWithLineNumbers: LineNumberRenderable | null = null
 let timingText: TextRenderable | null = null
 let syntaxStyle: SyntaxStyle | null = null
 let currentExampleIndex = 0
 let concealEnabled = true
+let highlightsEnabled = false
+let diagnosticsEnabled = false
 
 export async function run(rendererInstance: CliRenderer): Promise<void> {
   renderer = rendererInstance
@@ -275,7 +279,7 @@ export async function run(rendererInstance: CliRenderer): Promise<void> {
   const instructionsText = new TextRenderable(renderer, {
     id: "instructions",
     content:
-      "ESC to return | ← → to switch examples | C to toggle conceal | Demonstrating CodeRenderable with tree-sitter highlighting",
+      "ESC to return | ← → switch examples | C toggle conceal | L toggle line numbers | H toggle diff | D toggle diagnostics",
     fg: "#888888",
   })
   titleBox.add(instructionsText)
@@ -290,9 +294,6 @@ export async function run(rendererInstance: CliRenderer): Promise<void> {
     border: true,
     scrollY: true,
     scrollX: false,
-    contentOptions: {
-      paddingLeft: 1,
-    },
   })
   parentContainer.add(codeScrollBox)
 
@@ -350,7 +351,7 @@ export async function run(rendererInstance: CliRenderer): Promise<void> {
     default: { fg: parseColor("#E6EDF3") },
   })
 
-  // Create code display using CodeRenderable
+  // Create code display using CodeRenderable wrapped in LineNumberRenderable
   codeDisplay = new CodeRenderable(renderer, {
     id: "code-display",
     content: examples[currentExampleIndex].code,
@@ -361,8 +362,22 @@ export async function run(rendererInstance: CliRenderer): Promise<void> {
     selectionBg: "#264F78",
     selectionFg: "#FFFFFF",
     conceal: concealEnabled,
+    width: "100%",
+    height: "100%",
   })
-  codeScrollBox.add(codeDisplay)
+
+  codeWithLineNumbers = new LineNumberRenderable(renderer, {
+    id: "code-with-lines",
+    target: codeDisplay,
+    minWidth: 3,
+    paddingRight: 1,
+    fg: "#6b7280",
+    bg: "#161b22",
+    width: "100%",
+    height: "100%",
+  })
+
+  codeScrollBox.add(codeWithLineNumbers)
 
   timingText = new TextRenderable(renderer, {
     id: "timing-display",
@@ -373,7 +388,10 @@ export async function run(rendererInstance: CliRenderer): Promise<void> {
 
   const updateTimingText = () => {
     if (timingText) {
-      timingText.content = `Using CodeRenderable with ${examples[currentExampleIndex].name} highlighting (${currentExampleIndex + 1}/${examples.length}) | Conceal: ${concealEnabled ? "ON" : "OFF"}`
+      const lineNums = codeWithLineNumbers?.showLineNumbers ? "ON" : "OFF"
+      const diff = highlightsEnabled ? "ON" : "OFF"
+      const diag = diagnosticsEnabled ? "ON" : "OFF"
+      timingText.content = `${examples[currentExampleIndex].name} (${currentExampleIndex + 1}/${examples.length}) | Conceal: ${concealEnabled ? "ON" : "OFF"} | Lines: ${lineNums} | Diff: ${diff} | Diag: ${diag}`
     }
   }
 
@@ -405,6 +423,75 @@ export async function run(rendererInstance: CliRenderer): Promise<void> {
         codeDisplay.conceal = concealEnabled
       }
       updateTimingText()
+    } else if (key.name === "l" && !key.ctrl && !key.meta) {
+      // Toggle line numbers
+      if (codeWithLineNumbers) {
+        codeWithLineNumbers.showLineNumbers = !codeWithLineNumbers.showLineNumbers
+      }
+      updateTimingText()
+    } else if (key.name === "h" && !key.ctrl && !key.meta) {
+      // Toggle diff highlights
+      if (codeWithLineNumbers && codeDisplay) {
+        highlightsEnabled = !highlightsEnabled
+        if (highlightsEnabled) {
+          // Add diff-style highlights for demonstration
+          const lineCount = codeDisplay.lineCount
+          for (let i = 0; i < lineCount; i += 7) {
+            if (i % 14 === 0) {
+              codeWithLineNumbers.setLineColor(i, "#1a4d1a")
+              codeWithLineNumbers.setLineSign(i, { after: " +", afterColor: "#22c55e" })
+            } else {
+              codeWithLineNumbers.setLineColor(i, "#4d1a1a")
+              codeWithLineNumbers.setLineSign(i, { after: " -", afterColor: "#ef4444" })
+            }
+          }
+        } else {
+          codeWithLineNumbers.clearAllLineColors()
+          // Clear only after signs
+          const currentSigns = codeWithLineNumbers.getLineSigns()
+          for (const [line, sign] of currentSigns) {
+            if (sign.after) {
+              if (sign.before) {
+                codeWithLineNumbers.setLineSign(line, { before: sign.before, beforeColor: sign.beforeColor })
+              } else {
+                codeWithLineNumbers.clearLineSign(line)
+              }
+            }
+          }
+        }
+      }
+      updateTimingText()
+    } else if (key.name === "d" && !key.ctrl && !key.meta) {
+      // Toggle diagnostics
+      if (codeWithLineNumbers && codeDisplay) {
+        diagnosticsEnabled = !diagnosticsEnabled
+        if (diagnosticsEnabled) {
+          // Add diagnostic signs for demonstration
+          const lineCount = codeDisplay.lineCount
+          for (let i = 0; i < lineCount; i += 9) {
+            if (i % 27 === 0) {
+              codeWithLineNumbers.setLineSign(i, { before: "❌", beforeColor: "#ef4444" })
+            } else if (i % 18 === 0) {
+              codeWithLineNumbers.setLineSign(i, { before: "⚠️", beforeColor: "#f59e0b" })
+            } else {
+              codeWithLineNumbers.setLineSign(i, { before: "💡", beforeColor: "#3b82f6" })
+            }
+          }
+        } else {
+          // Clear only before signs
+          const currentSigns = codeWithLineNumbers.getLineSigns()
+          for (const [line, sign] of currentSigns) {
+            if (sign.before) {
+              if (sign.after) {
+                codeWithLineNumbers.setLineSign(line, { after: sign.after, afterColor: sign.afterColor })
+              } else {
+                codeWithLineNumbers.clearLineSign(line)
+              }
+            }
+          }
+        }
+      }
+      updateTimingText()
     }
   }
 
@@ -421,6 +508,7 @@ export function destroy(rendererInstance: CliRenderer): void {
   parentContainer = null
   codeScrollBox = null
   codeDisplay = null
+  codeWithLineNumbers = null
   timingText = null
   syntaxStyle = null
 
