@@ -357,7 +357,6 @@ export async function run(rendererInstance: CliRenderer): Promise<void> {
     content: examples[currentExampleIndex].code,
     filetype: examples[currentExampleIndex].filetype,
     syntaxStyle,
-    bg: "#0D1117",
     selectable: true,
     selectionBg: "#264F78",
     selectionFg: "#FFFFFF",
