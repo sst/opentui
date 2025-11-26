@@ -91,8 +91,6 @@ export async function run(rendererInstance: CliRenderer): Promise<void> {
     backgroundColor: "#0D1117",
     title: "Interactive Editor (TextareaRenderable)",
     titleAlignment: "left",
-    paddingLeft: 1,
-    paddingRight: 1,
     border: true,
   })
   parentContainer.add(editorBox)
