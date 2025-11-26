@@ -106,7 +106,6 @@ export class KeyHandler extends EventEmitter<KeyHandlerEventMap> {
       }
     } catch (error) {
       console.error(`[KeyHandler] Error processing input:`, error)
-      // Return true to indicate we handled the input (even if handler errored)
       return true
     }
 
@@ -141,12 +140,10 @@ export class InternalKeyHandler extends KeyHandler {
   private emitWithPriority<K extends keyof KeyHandlerEventMap>(event: K, ...args: KeyHandlerEventMap[K]): boolean {
     let hasGlobalListeners = false
 
-    // Call global listeners with error handling
     try {
       hasGlobalListeners = super.emit(event as any, ...args)
     } catch (error) {
       console.error(`[KeyHandler] Error in global ${event} handler:`, error)
-      // Continue processing other handlers despite error
     }
 
     const renderableSet = this.renderableHandlers.get(event)
@@ -165,7 +162,6 @@ export class InternalKeyHandler extends KeyHandler {
           handler(...args)
         } catch (error) {
           console.error(`[KeyHandler] Error in renderable ${event} handler:`, error)
-          // Continue processing other handlers despite error
         }
       }
     }
