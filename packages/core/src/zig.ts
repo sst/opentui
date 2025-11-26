@@ -1,7 +1,9 @@
 import { dlopen, toArrayBuffer, JSCallback, ptr, type Pointer } from "bun:ffi"
 import { existsSync } from "fs"
 import { EventEmitter } from "events"
-import { type CursorStyle, type DebugOverlayCorner, type WidthMethod, type Highlight } from "./types"
+import { type CursorStyle, type DebugOverlayCorner, type WidthMethod, type Highlight, type LineInfo } from "./types"
+export type { LineInfo }
+
 import { RGBA } from "./lib/RGBA"
 import { OptimizedBuffer } from "./buffer"
 import { TextBuffer } from "./text-buffer"
@@ -13,6 +15,8 @@ import {
   VisualCursorStruct,
   TerminalCapabilitiesStruct,
   EncodedCharStruct,
+  LineInfoStruct,
+  MeasureResultStruct,
 } from "./zig-structs"
 
 const module = await import(`@opentui/core-${process.platform}-${process.arch}/index.ts`)
@@ -496,12 +500,12 @@ function getOpenTUILib(libPath?: string) {
       returns: "u32",
     },
     textBufferViewGetLineInfoDirect: {
-      args: ["ptr", "ptr", "ptr"],
-      returns: "u32",
+      args: ["ptr", "ptr"],
+      returns: "void",
     },
     textBufferViewGetLogicalLineInfoDirect: {
-      args: ["ptr", "ptr", "ptr"],
-      returns: "u32",
+      args: ["ptr", "ptr"],
+      returns: "void",
     },
     textBufferViewGetSelectedText: {
       args: ["ptr", "ptr", "usize"],
@@ -518,6 +522,10 @@ function getOpenTUILib(libPath?: string) {
     textBufferViewSetTabIndicatorColor: {
       args: ["ptr", "ptr"],
       returns: "void",
+    },
+    textBufferViewMeasureForDimensions: {
+      args: ["ptr", "u32", "u32", "ptr"],
+      returns: "bool",
     },
     bufferDrawTextBufferView: {
       args: ["ptr", "ptr", "i32", "i32"],
@@ -566,12 +574,12 @@ function getOpenTUILib(libPath?: string) {
       returns: "ptr",
     },
     editorViewGetLineInfoDirect: {
-      args: ["ptr", "ptr", "ptr"],
-      returns: "u32",
+      args: ["ptr", "ptr"],
+      returns: "void",
     },
     editorViewGetLogicalLineInfoDirect: {
-      args: ["ptr", "ptr", "ptr"],
-      returns: "u32",
+      args: ["ptr", "ptr"],
+      returns: "void",
     },
 
     // EditBuffer functions
@@ -1059,12 +1067,6 @@ export enum LogLevel {
   Debug = 3,
 }
 
-export interface LineInfo {
-  lineStarts: number[]
-  lineWidths: number[]
-  maxLineWidth: number
-}
-
 /**
  * VisualCursor represents a cursor position with both visual and logical coordinates.
  * Visual coordinates (visualRow, visualCol) are VIEWPORT-RELATIVE.
@@ -1281,6 +1283,11 @@ export interface RenderLib {
   textBufferViewGetPlainTextBytes: (view: Pointer, maxLength: number) => Uint8Array | null
   textBufferViewSetTabIndicator: (view: Pointer, indicator: number) => void
   textBufferViewSetTabIndicatorColor: (view: Pointer, color: RGBA) => void
+  textBufferViewMeasureForDimensions: (
+    view: Pointer,
+    width: number,
+    height: number,
+  ) => { lineCount: number; maxWidth: number } | null
 
   readonly encoder: TextEncoder
   readonly decoder: TextDecoder
@@ -2219,58 +2226,40 @@ class FFIRenderLib implements RenderLib {
     this.opentui.symbols.textBufferViewSetViewportSize(view, width, height)
   }
 
-  public textBufferViewGetLineInfo(view: Pointer): LineInfo {
-    const lineCount = this.textBufferViewGetLineCount(view)
-
-    if (lineCount === 0) {
-      return { lineStarts: [], lineWidths: [], maxLineWidth: 0 }
-    }
-
-    const lineStarts = new Uint32Array(lineCount)
-    const lineWidths = new Uint32Array(lineCount)
-
-    const maxLineWidth = this.textBufferViewGetLineInfoDirect(view, ptr(lineStarts), ptr(lineWidths))
+  private unpackLineInfo(outBuffer: ArrayBuffer): LineInfo {
+    const struct = LineInfoStruct.unpack(outBuffer)
 
     return {
-      maxLineWidth,
-      lineStarts: Array.from(lineStarts),
-      lineWidths: Array.from(lineWidths),
+      maxLineWidth: struct.maxWidth,
+      lineStarts: struct.starts as number[],
+      lineWidths: struct.widths as number[],
+      lineSources: struct.sources as number[],
+      lineWraps: struct.wraps as number[],
     }
   }
 
+  public textBufferViewGetLineInfo(view: Pointer): LineInfo {
+    const outBuffer = new ArrayBuffer(LineInfoStruct.size)
+    this.textBufferViewGetLineInfoDirect(view, ptr(outBuffer))
+    return this.unpackLineInfo(outBuffer)
+  }
+
   public textBufferViewGetLogicalLineInfo(view: Pointer): LineInfo {
-    const lineCount = this.textBufferViewGetLineCount(view)
-
-    if (lineCount === 0) {
-      return { lineStarts: [], lineWidths: [], maxLineWidth: 0 }
-    }
-
-    const lineStarts = new Uint32Array(lineCount)
-    const lineWidths = new Uint32Array(lineCount)
-
-    const maxLineWidth = this.textBufferViewGetLogicalLineInfoDirect(view, ptr(lineStarts), ptr(lineWidths))
-
-    return {
-      maxLineWidth,
-      lineStarts: Array.from(lineStarts),
-      lineWidths: Array.from(lineWidths),
-    }
+    const outBuffer = new ArrayBuffer(LineInfoStruct.size)
+    this.textBufferViewGetLogicalLineInfoDirect(view, ptr(outBuffer))
+    return this.unpackLineInfo(outBuffer)
   }
 
   private textBufferViewGetLineCount(view: Pointer): number {
     return this.opentui.symbols.textBufferViewGetVirtualLineCount(view)
   }
 
-  private textBufferViewGetLineInfoDirect(view: Pointer, lineStartsPtr: Pointer, lineWidthsPtr: Pointer): number {
-    return this.opentui.symbols.textBufferViewGetLineInfoDirect(view, lineStartsPtr, lineWidthsPtr)
+  private textBufferViewGetLineInfoDirect(view: Pointer, outPtr: Pointer): void {
+    this.opentui.symbols.textBufferViewGetLineInfoDirect(view, outPtr)
   }
 
-  private textBufferViewGetLogicalLineInfoDirect(
-    view: Pointer,
-    lineStartsPtr: Pointer,
-    lineWidthsPtr: Pointer,
-  ): number {
-    return this.opentui.symbols.textBufferViewGetLogicalLineInfoDirect(view, lineStartsPtr, lineWidthsPtr)
+  private textBufferViewGetLogicalLineInfoDirect(view: Pointer, outPtr: Pointer): void {
+    this.opentui.symbols.textBufferViewGetLogicalLineInfoDirect(view, outPtr)
   }
 
   private textBufferViewGetSelectedText(view: Pointer, outPtr: Pointer, maxLen: number): number {
@@ -2313,6 +2302,21 @@ class FFIRenderLib implements RenderLib {
 
   public textBufferViewSetTabIndicatorColor(view: Pointer, color: RGBA): void {
     this.opentui.symbols.textBufferViewSetTabIndicatorColor(view, color.buffer)
+  }
+
+  public textBufferViewMeasureForDimensions(
+    view: Pointer,
+    width: number,
+    height: number,
+  ): { lineCount: number; maxWidth: number } | null {
+    const resultBuffer = new ArrayBuffer(MeasureResultStruct.size)
+    const resultPtr = ptr(new Uint8Array(resultBuffer))
+    const success = this.opentui.symbols.textBufferViewMeasureForDimensions(view, width, height, resultPtr)
+    if (!success) {
+      return null
+    }
+    const result = MeasureResultStruct.unpack(resultBuffer)
+    return result
   }
 
   public textBufferAddHighlightByCharRange(buffer: Pointer, highlight: Highlight): void {
@@ -2432,44 +2436,16 @@ class FFIRenderLib implements RenderLib {
     return result
   }
 
-  // TODO: use structs
   public editorViewGetLineInfo(view: Pointer): LineInfo {
-    const lineCount = this.editorViewGetVirtualLineCount(view)
-
-    if (lineCount === 0) {
-      return { lineStarts: [], lineWidths: [], maxLineWidth: 0 }
-    }
-
-    const lineStarts = new Uint32Array(lineCount)
-    const lineWidths = new Uint32Array(lineCount)
-
-    const maxLineWidth = this.opentui.symbols.editorViewGetLineInfoDirect(view, ptr(lineStarts), ptr(lineWidths))
-
-    return {
-      maxLineWidth,
-      lineStarts: Array.from(lineStarts),
-      lineWidths: Array.from(lineWidths),
-    }
+    const outBuffer = new ArrayBuffer(LineInfoStruct.size)
+    this.opentui.symbols.editorViewGetLineInfoDirect(view, ptr(outBuffer))
+    return this.unpackLineInfo(outBuffer)
   }
 
-  // TODO: use structs
   public editorViewGetLogicalLineInfo(view: Pointer): LineInfo {
-    const lineCount = this.editorViewGetVirtualLineCount(view)
-
-    if (lineCount === 0) {
-      return { lineStarts: [], lineWidths: [], maxLineWidth: 0 }
-    }
-
-    const lineStarts = new Uint32Array(lineCount)
-    const lineWidths = new Uint32Array(lineCount)
-
-    const maxLineWidth = this.opentui.symbols.editorViewGetLogicalLineInfoDirect(view, ptr(lineStarts), ptr(lineWidths))
-
-    return {
-      maxLineWidth,
-      lineStarts: Array.from(lineStarts),
-      lineWidths: Array.from(lineWidths),
-    }
+    const outBuffer = new ArrayBuffer(LineInfoStruct.size)
+    this.opentui.symbols.editorViewGetLogicalLineInfoDirect(view, ptr(outBuffer))
+    return this.unpackLineInfo(outBuffer)
   }
 
   // EditBuffer implementations

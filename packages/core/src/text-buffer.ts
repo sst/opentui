@@ -120,6 +120,11 @@ export class TextBuffer {
     this.lib.textBufferResetDefaults(this.bufferPtr)
   }
 
+  public getLineCount(): number {
+    this.guard()
+    return this.lib.textBufferGetLineCount(this.bufferPtr)
+  }
+
   public get length(): number {
     this.guard()
     return this._length

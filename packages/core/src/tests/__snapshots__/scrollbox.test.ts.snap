@@ -1,0 +1,29 @@
+// Bun Snapshot v1, https://bun.sh/docs/test/snapshots
+
+exports[`ScrollBoxRenderable - Content Visibility scrolls CodeRenderable with LineNumberRenderable using mouse wheel 1`] = `
+" 22 Line 22                                                                     
+ 23 Line 23                                                                     
+ 24 Line 24                                                                     
+ 25 Line 25                                                                     
+ 26 Line 26                                                                     
+ 27 Line 27                                                                     
+ 28 Line 28                                                                     
+ 29 Line 29                                                                     
+ 30 Line 30                                                                     
+ 31                                    ▄                                        
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+"
+`;

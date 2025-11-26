@@ -3,7 +3,7 @@ import { convertGlobalToLocalSelection, Selection, type LocalSelectionBounds } f
 import { EditBuffer, type LogicalCursor } from "../edit-buffer"
 import { EditorView, type VisualCursor } from "../editor-view"
 import { RGBA, parseColor } from "../lib/RGBA"
-import type { RenderContext, Highlight, CursorStyleOptions } from "../types"
+import type { RenderContext, Highlight, CursorStyleOptions, LineInfoProvider, LineInfo } from "../types"
 import type { OptimizedBuffer } from "../buffer"
 import { MeasureMode } from "yoga-layout"
 import type { SyntaxStyle } from "../syntax-style"
@@ -36,7 +36,7 @@ export interface EditBufferOptions extends RenderableOptions<EditBufferRenderabl
   onContentChange?: (event: ContentChangeEvent) => void
 }
 
-export abstract class EditBufferRenderable extends Renderable {
+export abstract class EditBufferRenderable extends Renderable implements LineInfoProvider {
   protected _focusable: boolean = true
   public selectable: boolean = true
 
@@ -129,6 +129,10 @@ export abstract class EditBufferRenderable extends Renderable {
     this.setupEventListeners(options)
   }
 
+  public get lineInfo(): LineInfo {
+    return this.editorView.getLogicalLineInfo()
+  }
+
   private setupEventListeners(options: EditBufferOptions): void {
     this._cursorChangeListener = options.onCursorChange
     this._contentChangeListener = options.onContentChange
@@ -150,6 +154,14 @@ export abstract class EditBufferRenderable extends Renderable {
         this._contentChangeListener({})
       }
     })
+  }
+
+  public get lineCount(): number {
+    return this.editBuffer.getLineCount()
+  }
+
+  public get scrollY(): number {
+    return this.editorView.getViewport().offsetY
   }
 
   get plainText(): string {
@@ -388,6 +400,9 @@ export abstract class EditBufferRenderable extends Renderable {
     return this.editorView.getSelection()
   }
 
+  // Undefined = 0,
+  // Exactly = 1,
+  // AtMost = 2
   private setupMeasureFunc(): void {
     const measureFunc = (
       width: number,
@@ -400,21 +415,24 @@ export abstract class EditBufferRenderable extends Renderable {
       const effectiveHeight = isNaN(height) ? 1 : height
       const effectiveWidth = isNaN(width) ? 1 : width
 
-      // Update viewport size to match measured dimensions
-      // When wrapping and width changes, this will trigger wrap recalculation
-      if (this._wrapMode !== "none" && this.width !== effectiveWidth) {
-        this.editorView.setViewportSize(effectiveWidth, effectiveHeight)
-      } else {
-        this.editorView.setViewportSize(effectiveWidth, effectiveHeight)
+      const measureResult = this.editorView.measureForDimensions(
+        Math.floor(effectiveWidth),
+        Math.floor(effectiveHeight),
+      )
+
+      const measuredWidth = measureResult ? Math.max(1, measureResult.maxWidth) : 1
+      const measuredHeight = measureResult ? Math.max(1, measureResult.lineCount) : 1
+
+      if (widthMode === MeasureMode.AtMost && this._positionType !== "absolute") {
+        return {
+          width: Math.min(effectiveWidth, measuredWidth),
+          height: Math.min(effectiveHeight, measuredHeight),
+        }
       }
 
-      const lineInfo = this.editorView.getLogicalLineInfo()
-      const measuredWidth = lineInfo.maxLineWidth
-      const measuredHeight = lineInfo.lineStarts.length
-
       return {
-        width: Math.max(1, measuredWidth),
-        height: Math.max(1, measuredHeight),
+        width: measuredWidth,
+        height: measuredHeight,
       }
     }
 

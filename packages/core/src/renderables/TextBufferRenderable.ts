@@ -3,7 +3,7 @@ import { convertGlobalToLocalSelection, Selection, type LocalSelectionBounds } f
 import { TextBuffer, type TextChunk } from "../text-buffer"
 import { TextBufferView } from "../text-buffer-view"
 import { RGBA, parseColor } from "../lib/RGBA"
-import { type RenderContext } from "../types"
+import { type RenderContext, type LineInfoProvider } from "../types"
 import type { OptimizedBuffer } from "../buffer"
 import { MeasureMode } from "yoga-layout"
 import type { LineInfo } from "../zig"
@@ -21,7 +21,7 @@ export interface TextBufferOptions extends RenderableOptions<TextBufferRenderabl
   tabIndicatorColor?: string | RGBA
 }
 
-export abstract class TextBufferRenderable extends Renderable {
+export abstract class TextBufferRenderable extends Renderable implements LineInfoProvider {
   public selectable: boolean = true
 
   protected _defaultFg: RGBA
@@ -36,7 +36,13 @@ export abstract class TextBufferRenderable extends Renderable {
 
   protected textBuffer: TextBuffer
   protected textBufferView: TextBufferView
-  protected _lineInfo: LineInfo = { lineStarts: [], lineWidths: [], maxLineWidth: 0 }
+  protected _lineInfo: LineInfo = {
+    lineStarts: [],
+    lineWidths: [],
+    maxLineWidth: 0,
+    lineSources: [],
+    lineWraps: [],
+  }
 
   protected _defaultOptions = {
     fg: RGBA.fromValues(1, 1, 1, 1),
@@ -90,6 +96,18 @@ export abstract class TextBufferRenderable extends Renderable {
     }
 
     this.updateTextInfo()
+  }
+
+  public get lineInfo(): LineInfo {
+    return this.textBufferView.logicalLineInfo
+  }
+
+  public get lineCount(): number {
+    return this.textBuffer.getLineCount()
+  }
+
+  public get scrollY(): number {
+    return 0
   }
 
   get plainText(): string {
@@ -221,6 +239,11 @@ export abstract class TextBufferRenderable extends Renderable {
     // Update viewport size to match renderable dimensions
     this.textBufferView.setViewportSize(width, height)
 
+    // Update wrap width if wrapping is enabled
+    if (this._wrapMode !== "none" && width > 0) {
+      this.updateWrapWidth(width)
+    }
+
     if (this.lastLocalSelection) {
       const changed = this.updateLocalSelection(this.lastLocalSelection)
       if (changed) {
@@ -266,6 +289,8 @@ export abstract class TextBufferRenderable extends Renderable {
     this._lineInfo.lineStarts = lineInfo.lineStarts
     this._lineInfo.lineWidths = lineInfo.lineWidths
     this._lineInfo.maxLineWidth = lineInfo.maxLineWidth
+    this._lineInfo.lineSources = lineInfo.lineSources
+    this._lineInfo.lineWraps = lineInfo.lineWraps
   }
 
   private updateWrapWidth(width: number): void {
@@ -273,6 +298,9 @@ export abstract class TextBufferRenderable extends Renderable {
     this.updateLineInfo()
   }
 
+  // Undefined = 0,
+  // Exactly = 1,
+  // AtMost = 2
   private setupMeasureFunc(): void {
     const measureFunc = (
       width: number,
@@ -283,21 +311,31 @@ export abstract class TextBufferRenderable extends Renderable {
       // Use a reasonable default for NaN/undefined height to allow measuring content
       // This happens when Yoga calls measure with height/widthMode="Undefined" (0)
       const effectiveWidth = isNaN(width) ? 1 : width
+      const effectiveHeight = isNaN(height) ? 1 : height
 
-      if (this._wrapMode !== "none" && this.width !== effectiveWidth) {
-        this.updateWrapWidth(effectiveWidth)
-      } else {
-        this.updateLineInfo()
+      const measureResult = this.textBufferView.measureForDimensions(
+        Math.floor(effectiveWidth),
+        Math.floor(effectiveHeight),
+      )
+
+      const measuredWidth = measureResult ? Math.max(1, measureResult.maxWidth) : 1
+      const measuredHeight = measureResult ? Math.max(1, measureResult.lineCount) : 1
+
+      // TODO: still needed??
+      this.updateLineInfo()
+
+      if (widthMode === MeasureMode.AtMost && this._positionType !== "absolute") {
+        return {
+          width: Math.min(effectiveWidth, measuredWidth),
+          height: Math.min(effectiveHeight, measuredHeight),
+        }
       }
-
-      const measuredWidth = this._lineInfo.maxLineWidth
-      const measuredHeight = this._lineInfo.lineStarts.length
 
       // NOTE: Yoga may use these measurements or not.
       // If the yoga node settings and the parent allow this node to grow, it will.
       return {
-        width: Math.max(1, measuredWidth),
-        height: Math.max(1, measuredHeight),
+        width: measuredWidth,
+        height: measuredHeight,
       }
     }
 
