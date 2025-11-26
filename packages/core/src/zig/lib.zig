@@ -591,20 +591,24 @@ export fn textBufferViewGetVirtualLineCount(view: *text_buffer_view.UnifiedTextB
     return view.getVirtualLineCount();
 }
 
-export fn textBufferViewGetLineInfoDirect(view: *text_buffer_view.UnifiedTextBufferView, lineStartsPtr: [*]u32, lineWidthsPtr: [*]u32) u32 {
+export fn textBufferViewGetLineInfoDirect(view: *text_buffer_view.UnifiedTextBufferView, lineStartsPtr: [*]u32, lineWidthsPtr: [*]u32, lineSourcesPtr: [*]u32, lineWrapsPtr: [*]u32) u32 {
     const line_info = view.getCachedLineInfo();
 
     @memcpy(lineStartsPtr[0..line_info.starts.len], line_info.starts);
     @memcpy(lineWidthsPtr[0..line_info.widths.len], line_info.widths);
+    @memcpy(lineSourcesPtr[0..line_info.sources.len], line_info.sources);
+    @memcpy(lineWrapsPtr[0..line_info.wraps.len], line_info.wraps);
 
     return line_info.max_width;
 }
 
-export fn textBufferViewGetLogicalLineInfoDirect(view: *text_buffer_view.UnifiedTextBufferView, lineStartsPtr: [*]u32, lineWidthsPtr: [*]u32) u32 {
+export fn textBufferViewGetLogicalLineInfoDirect(view: *text_buffer_view.UnifiedTextBufferView, lineStartsPtr: [*]u32, lineWidthsPtr: [*]u32, lineSourcesPtr: [*]u32, lineWrapsPtr: [*]u32) u32 {
     const line_info = view.getLogicalLineInfo();
 
     @memcpy(lineStartsPtr[0..line_info.starts.len], line_info.starts);
     @memcpy(lineWidthsPtr[0..line_info.widths.len], line_info.widths);
+    @memcpy(lineSourcesPtr[0..line_info.sources.len], line_info.sources);
+    @memcpy(lineWrapsPtr[0..line_info.wraps.len], line_info.wraps);
 
     return line_info.max_width;
 }
@@ -885,13 +889,19 @@ export fn editorViewGetTotalVirtualLineCount(view: *editor_view.EditorView) u32 
     return view.getTotalVirtualLineCount();
 }
 
-export fn editorViewGetLineInfoDirect(view: *editor_view.EditorView, lineStartsPtr: [*]u32, lineWidthsPtr: [*]u32) u32 {
+export fn editorViewGetLineInfoDirect(view: *editor_view.EditorView, lineStartsPtr: [*]u32, lineWidthsPtr: [*]u32, lineSourcesPtr: [*]u32, lineWrapsPtr: [*]u32) u32 {
     const line_info = view.getCachedLineInfo();
     for (line_info.starts, 0..) |start, i| {
         lineStartsPtr[i] = start;
     }
     for (line_info.widths, 0..) |width, i| {
         lineWidthsPtr[i] = width;
+    }
+    for (line_info.sources, 0..) |source, i| {
+        lineSourcesPtr[i] = source;
+    }
+    for (line_info.wraps, 0..) |wrap, i| {
+        lineWrapsPtr[i] = wrap;
     }
     return line_info.max_width;
 }
@@ -900,10 +910,12 @@ export fn editorViewGetTextBufferView(view: *editor_view.EditorView) *text_buffe
     return view.getTextBufferView();
 }
 
-export fn editorViewGetLogicalLineInfoDirect(view: *editor_view.EditorView, lineStartsPtr: [*]u32, lineWidthsPtr: [*]u32) u32 {
+export fn editorViewGetLogicalLineInfoDirect(view: *editor_view.EditorView, lineStartsPtr: [*]u32, lineWidthsPtr: [*]u32, lineSourcesPtr: [*]u32, lineWrapsPtr: [*]u32) u32 {
     const line_info = view.getLogicalLineInfo();
     @memcpy(lineStartsPtr[0..line_info.starts.len], line_info.starts);
     @memcpy(lineWidthsPtr[0..line_info.widths.len], line_info.widths);
+    @memcpy(lineSourcesPtr[0..line_info.sources.len], line_info.sources);
+    @memcpy(lineWrapsPtr[0..line_info.wraps.len], line_info.wraps);
     return line_info.max_width;
 }
 

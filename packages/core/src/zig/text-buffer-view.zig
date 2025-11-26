@@ -31,6 +31,8 @@ pub const Viewport = struct {
 pub const LineInfo = struct {
     starts: []const u32,
     widths: []const u32,
+    sources: []const u32,
+    wraps: []const u32,
     max_width: u32,
 };
 
@@ -99,6 +101,8 @@ pub const UnifiedTextBufferView = struct {
     virtual_lines_dirty: bool,
     cached_line_starts: std.ArrayListUnmanaged(u32),
     cached_line_widths: std.ArrayListUnmanaged(u32),
+    cached_line_sources: std.ArrayListUnmanaged(u32),
+    cached_line_wrap_indices: std.ArrayListUnmanaged(u32),
     cached_line_first_vline: std.ArrayListUnmanaged(u32),
     cached_line_vline_counts: std.ArrayListUnmanaged(u32),
     global_allocator: Allocator,
@@ -129,6 +133,8 @@ pub const UnifiedTextBufferView = struct {
             .virtual_lines_dirty = true,
             .cached_line_starts = .{},
             .cached_line_widths = .{},
+            .cached_line_sources = .{},
+            .cached_line_wrap_indices = .{},
             .cached_line_first_vline = .{},
             .cached_line_vline_counts = .{},
             .global_allocator = global_allocator,
@@ -247,6 +253,8 @@ pub const UnifiedTextBufferView = struct {
         self.virtual_lines = .{};
         self.cached_line_starts = .{};
         self.cached_line_widths = .{};
+        self.cached_line_sources = .{};
+        self.cached_line_wrap_indices = .{};
         self.cached_line_first_vline = .{};
         self.cached_line_vline_counts = .{};
         const virtual_allocator = self.virtual_lines_arena.allocator();
@@ -290,6 +298,8 @@ pub const UnifiedTextBufferView = struct {
                     ctx.view.virtual_lines.append(ctx.virtual_allocator, vline) catch {};
                     ctx.view.cached_line_starts.append(ctx.virtual_allocator, vline.char_offset) catch {};
                     ctx.view.cached_line_widths.append(ctx.virtual_allocator, vline.width) catch {};
+                    ctx.view.cached_line_sources.append(ctx.virtual_allocator, @intCast(line_info.line_idx)) catch {};
+                    ctx.view.cached_line_wrap_indices.append(ctx.virtual_allocator, 0) catch {};
 
                     ctx.current_vline = VirtualLine.init();
                 }
@@ -329,6 +339,8 @@ pub const UnifiedTextBufferView = struct {
                     wctx.view.virtual_lines.append(wctx.virtual_allocator, wctx.current_vline) catch {};
                     wctx.view.cached_line_starts.append(wctx.virtual_allocator, wctx.current_vline.char_offset) catch {};
                     wctx.view.cached_line_widths.append(wctx.virtual_allocator, wctx.current_vline.width) catch {};
+                    wctx.view.cached_line_sources.append(wctx.virtual_allocator, wctx.line_idx) catch {};
+                    wctx.view.cached_line_wrap_indices.append(wctx.virtual_allocator, wctx.current_line_vline_count) catch {};
 
                     wctx.current_line_vline_count += 1;
 
@@ -669,6 +681,8 @@ pub const UnifiedTextBufferView = struct {
 
             const viewport_starts = self.cached_line_starts.items[start_idx..end_idx];
             const viewport_widths = self.cached_line_widths.items[start_idx..end_idx];
+            const viewport_sources = self.cached_line_sources.items[start_idx..end_idx];
+            const viewport_wraps = self.cached_line_wrap_indices.items[start_idx..end_idx];
 
             var max_width: u32 = 0;
             for (viewport_widths) |w| {
@@ -678,6 +692,8 @@ pub const UnifiedTextBufferView = struct {
             return LineInfo{
                 .starts = viewport_starts,
                 .widths = viewport_widths,
+                .sources = viewport_sources,
+                .wraps = viewport_wraps,
                 .max_width = max_width,
             };
         }
@@ -685,6 +701,8 @@ pub const UnifiedTextBufferView = struct {
         return LineInfo{
             .starts = self.cached_line_starts.items,
             .widths = self.cached_line_widths.items,
+            .sources = self.cached_line_sources.items,
+            .wraps = self.cached_line_wrap_indices.items,
             .max_width = iter_mod.getMaxLineWidth(&self.text_buffer.rope),
         };
     }
@@ -695,6 +713,8 @@ pub const UnifiedTextBufferView = struct {
         return LineInfo{
             .starts = self.cached_line_starts.items,
             .widths = self.cached_line_widths.items,
+            .sources = self.cached_line_sources.items,
+            .wraps = self.cached_line_wrap_indices.items,
             .max_width = iter_mod.getMaxLineWidth(&self.text_buffer.rope),
         };
     }

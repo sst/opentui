@@ -496,11 +496,11 @@ function getOpenTUILib(libPath?: string) {
       returns: "u32",
     },
     textBufferViewGetLineInfoDirect: {
-      args: ["ptr", "ptr", "ptr"],
+      args: ["ptr", "ptr", "ptr", "ptr", "ptr"],
       returns: "u32",
     },
     textBufferViewGetLogicalLineInfoDirect: {
-      args: ["ptr", "ptr", "ptr"],
+      args: ["ptr", "ptr", "ptr", "ptr", "ptr"],
       returns: "u32",
     },
     textBufferViewGetSelectedText: {
@@ -566,11 +566,11 @@ function getOpenTUILib(libPath?: string) {
       returns: "ptr",
     },
     editorViewGetLineInfoDirect: {
-      args: ["ptr", "ptr", "ptr"],
+      args: ["ptr", "ptr", "ptr", "ptr", "ptr"],
       returns: "u32",
     },
     editorViewGetLogicalLineInfoDirect: {
-      args: ["ptr", "ptr", "ptr"],
+      args: ["ptr", "ptr", "ptr", "ptr", "ptr"],
       returns: "u32",
     },
 
@@ -1063,6 +1063,8 @@ export interface LineInfo {
   lineStarts: number[]
   lineWidths: number[]
   maxLineWidth: number
+  lineSources: number[]
+  lineWraps: number[]
 }
 
 /**
@@ -2223,18 +2225,28 @@ class FFIRenderLib implements RenderLib {
     const lineCount = this.textBufferViewGetLineCount(view)
 
     if (lineCount === 0) {
-      return { lineStarts: [], lineWidths: [], maxLineWidth: 0 }
+      return { lineStarts: [], lineWidths: [], maxLineWidth: 0, lineSources: [], lineWraps: [] }
     }
 
     const lineStarts = new Uint32Array(lineCount)
     const lineWidths = new Uint32Array(lineCount)
+    const lineSources = new Uint32Array(lineCount)
+    const lineWraps = new Uint32Array(lineCount)
 
-    const maxLineWidth = this.textBufferViewGetLineInfoDirect(view, ptr(lineStarts), ptr(lineWidths))
+    const maxLineWidth = this.textBufferViewGetLineInfoDirect(
+      view,
+      ptr(lineStarts),
+      ptr(lineWidths),
+      ptr(lineSources),
+      ptr(lineWraps),
+    )
 
     return {
       maxLineWidth,
       lineStarts: Array.from(lineStarts),
       lineWidths: Array.from(lineWidths),
+      lineSources: Array.from(lineSources),
+      lineWraps: Array.from(lineWraps),
     }
   }
 
@@ -2242,18 +2254,28 @@ class FFIRenderLib implements RenderLib {
     const lineCount = this.textBufferViewGetLineCount(view)
 
     if (lineCount === 0) {
-      return { lineStarts: [], lineWidths: [], maxLineWidth: 0 }
+      return { lineStarts: [], lineWidths: [], maxLineWidth: 0, lineSources: [], lineWraps: [] }
     }
 
     const lineStarts = new Uint32Array(lineCount)
     const lineWidths = new Uint32Array(lineCount)
+    const lineSources = new Uint32Array(lineCount)
+    const lineWraps = new Uint32Array(lineCount)
 
-    const maxLineWidth = this.textBufferViewGetLogicalLineInfoDirect(view, ptr(lineStarts), ptr(lineWidths))
+    const maxLineWidth = this.textBufferViewGetLogicalLineInfoDirect(
+      view,
+      ptr(lineStarts),
+      ptr(lineWidths),
+      ptr(lineSources),
+      ptr(lineWraps),
+    )
 
     return {
       maxLineWidth,
       lineStarts: Array.from(lineStarts),
       lineWidths: Array.from(lineWidths),
+      lineSources: Array.from(lineSources),
+      lineWraps: Array.from(lineWraps),
     }
   }
 
@@ -2261,16 +2283,36 @@ class FFIRenderLib implements RenderLib {
     return this.opentui.symbols.textBufferViewGetVirtualLineCount(view)
   }
 
-  private textBufferViewGetLineInfoDirect(view: Pointer, lineStartsPtr: Pointer, lineWidthsPtr: Pointer): number {
-    return this.opentui.symbols.textBufferViewGetLineInfoDirect(view, lineStartsPtr, lineWidthsPtr)
+  private textBufferViewGetLineInfoDirect(
+    view: Pointer,
+    lineStartsPtr: Pointer,
+    lineWidthsPtr: Pointer,
+    lineSourcesPtr: Pointer,
+    lineWrapsPtr: Pointer,
+  ): number {
+    return this.opentui.symbols.textBufferViewGetLineInfoDirect(
+      view,
+      lineStartsPtr,
+      lineWidthsPtr,
+      lineSourcesPtr,
+      lineWrapsPtr,
+    )
   }
 
   private textBufferViewGetLogicalLineInfoDirect(
     view: Pointer,
     lineStartsPtr: Pointer,
     lineWidthsPtr: Pointer,
+    lineSourcesPtr: Pointer,
+    lineWrapsPtr: Pointer,
   ): number {
-    return this.opentui.symbols.textBufferViewGetLogicalLineInfoDirect(view, lineStartsPtr, lineWidthsPtr)
+    return this.opentui.symbols.textBufferViewGetLogicalLineInfoDirect(
+      view,
+      lineStartsPtr,
+      lineWidthsPtr,
+      lineSourcesPtr,
+      lineWrapsPtr,
+    )
   }
 
   private textBufferViewGetSelectedText(view: Pointer, outPtr: Pointer, maxLen: number): number {
@@ -2437,18 +2479,28 @@ class FFIRenderLib implements RenderLib {
     const lineCount = this.editorViewGetVirtualLineCount(view)
 
     if (lineCount === 0) {
-      return { lineStarts: [], lineWidths: [], maxLineWidth: 0 }
+      return { lineStarts: [], lineWidths: [], maxLineWidth: 0, lineSources: [], lineWraps: [] }
     }
 
     const lineStarts = new Uint32Array(lineCount)
     const lineWidths = new Uint32Array(lineCount)
+    const lineSources = new Uint32Array(lineCount)
+    const lineWraps = new Uint32Array(lineCount)
 
-    const maxLineWidth = this.opentui.symbols.editorViewGetLineInfoDirect(view, ptr(lineStarts), ptr(lineWidths))
+    const maxLineWidth = this.opentui.symbols.editorViewGetLineInfoDirect(
+      view,
+      ptr(lineStarts),
+      ptr(lineWidths),
+      ptr(lineSources),
+      ptr(lineWraps),
+    )
 
     return {
       maxLineWidth,
       lineStarts: Array.from(lineStarts),
       lineWidths: Array.from(lineWidths),
+      lineSources: Array.from(lineSources),
+      lineWraps: Array.from(lineWraps),
     }
   }
 
@@ -2457,18 +2509,28 @@ class FFIRenderLib implements RenderLib {
     const lineCount = this.editorViewGetVirtualLineCount(view)
 
     if (lineCount === 0) {
-      return { lineStarts: [], lineWidths: [], maxLineWidth: 0 }
+      return { lineStarts: [], lineWidths: [], maxLineWidth: 0, lineSources: [], lineWraps: [] }
     }
 
     const lineStarts = new Uint32Array(lineCount)
     const lineWidths = new Uint32Array(lineCount)
+    const lineSources = new Uint32Array(lineCount)
+    const lineWraps = new Uint32Array(lineCount)
 
-    const maxLineWidth = this.opentui.symbols.editorViewGetLogicalLineInfoDirect(view, ptr(lineStarts), ptr(lineWidths))
+    const maxLineWidth = this.opentui.symbols.editorViewGetLogicalLineInfoDirect(
+      view,
+      ptr(lineStarts),
+      ptr(lineWidths),
+      ptr(lineSources),
+      ptr(lineWraps),
+    )
 
     return {
       maxLineWidth,
       lineStarts: Array.from(lineStarts),
       lineWidths: Array.from(lineWidths),
+      lineSources: Array.from(lineSources),
+      lineWraps: Array.from(lineWraps),
     }
   }
 

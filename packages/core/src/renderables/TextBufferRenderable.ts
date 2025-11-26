@@ -36,7 +36,13 @@ export abstract class TextBufferRenderable extends Renderable {
 
   protected textBuffer: TextBuffer
   protected textBufferView: TextBufferView
-  protected _lineInfo: LineInfo = { lineStarts: [], lineWidths: [], maxLineWidth: 0 }
+  protected _lineInfo: LineInfo = {
+    lineStarts: [],
+    lineWidths: [],
+    maxLineWidth: 0,
+    lineSources: [],
+    lineWraps: [],
+  }
 
   protected _defaultOptions = {
     fg: RGBA.fromValues(1, 1, 1, 1),
@@ -266,6 +272,8 @@ export abstract class TextBufferRenderable extends Renderable {
     this._lineInfo.lineStarts = lineInfo.lineStarts
     this._lineInfo.lineWidths = lineInfo.lineWidths
     this._lineInfo.maxLineWidth = lineInfo.maxLineWidth
+    this._lineInfo.lineSources = lineInfo.lineSources
+    this._lineInfo.lineWraps = lineInfo.lineWraps
   }
 
   private updateWrapWidth(width: number): void {
