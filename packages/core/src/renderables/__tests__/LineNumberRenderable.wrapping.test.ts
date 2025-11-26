@@ -32,7 +32,7 @@ describe("LineNumberRenderable Wrapping & Scrolling", () => {
     await renderOnce()
     let frame = captureCharFrame()
     // Note: Line numbers should appear only on first visual line of logical line
-    expect(frame).toContain(" 1 1111111111") 
+    expect(frame).toContain(" 1 1111111111")
 
     // Move cursor to bottom to force scroll
     editor.editBuffer.setCursor(4, 0)
