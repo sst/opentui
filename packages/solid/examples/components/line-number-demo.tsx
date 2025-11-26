@@ -1,5 +1,6 @@
 import { createSignal, onMount } from "solid-js"
 import { SyntaxStyle } from "@opentui/core"
+import { useKeyboard } from "@opentui/solid"
 
 export default function LineNumberDemo() {
   const [showLineNumbers, setShowLineNumbers] = createSignal(true)
@@ -56,6 +57,16 @@ console.log('Even numbers:', evens)`
       lineNumberRef?.setLineSign(0, { before: "⚠️", beforeColor: "#f59e0b" })
       lineNumberRef?.setLineSign(7, { before: "💡", beforeColor: "#3b82f6" })
       lineNumberRef?.setLineSign(13, { before: "❌", beforeColor: "#ef4444" })
+    }
+  })
+
+  useKeyboard((key) => {
+    if (key.name === "l" && !key.ctrl && !key.meta) {
+      toggleLineNumbers()
+    } else if (key.name === "h" && !key.ctrl && !key.meta) {
+      toggleDiffHighlights()
+    } else if (key.name === "d" && !key.ctrl && !key.meta) {
+      toggleDiagnostics()
     }
   })
 
@@ -119,22 +130,7 @@ console.log('Even numbers:', evens)`
         <text fg="#AAAAAA"> D - Toggle diagnostics ({showDiagnostics() ? "ON" : "OFF"})</text>
       </box>
 
-      <box
-        flexGrow={1}
-        border
-        borderStyle="single"
-        borderColor="#4ECDC4"
-        backgroundColor="#0D1117"
-        onKeyPress={(key: any) => {
-          if (key.name === "l" && !key.ctrl && !key.meta) {
-            toggleLineNumbers()
-          } else if (key.name === "h" && !key.ctrl && !key.meta) {
-            toggleDiffHighlights()
-          } else if (key.name === "d" && !key.ctrl && !key.meta) {
-            toggleDiagnostics()
-          }
-        }}
-      >
+      <box flexGrow={1} border borderStyle="single" borderColor="#4ECDC4" backgroundColor="#0D1117">
         <line_number
           ref={lineNumberRef}
           fg="#6b7280"
