@@ -52,7 +52,8 @@ UNDO/REDO:
 VIEW:
   • Shift+W to toggle wrap mode (word/char/none)
   • Shift+L to toggle line numbers
-  • Shift+H to toggle line highlights (diff colors + signs)
+  • Shift+H to toggle diff highlights (colors + +/- signs)
+  • Shift+D to toggle diagnostics (error/warning/info emojis)
 
 FEATURES:
   ✓ Grapheme-aware cursor movement
@@ -71,6 +72,7 @@ let editor: TextareaRenderable | null = null
 let editorWithLines: LineNumberRenderable | null = null
 let statusText: TextRenderable | null = null
 let highlightsEnabled: boolean = false
+let diagnosticsEnabled: boolean = false
 
 export async function run(rendererInstance: CliRenderer): Promise<void> {
   renderer = rendererInstance
@@ -139,7 +141,8 @@ export async function run(rendererInstance: CliRenderer): Promise<void> {
         const cursor = editor.logicalCursor
         const wrap = editor.wrapMode !== "none" ? "ON" : "OFF"
         const highlights = highlightsEnabled ? "ON" : "OFF"
-        statusText.content = `Line ${cursor.row + 1}, Col ${cursor.col + 1} | Wrap: ${wrap} | Highlights: ${highlights}`
+        const diagnostics = diagnosticsEnabled ? "ON" : "OFF"
+        statusText.content = `Line ${cursor.row + 1}, Col ${cursor.col + 1} | Wrap: ${wrap} | Diff: ${highlights} | Diag: ${diagnostics}`
       } catch (error) {
         // Ignore errors during shutdown
       }
@@ -166,7 +169,7 @@ export async function run(rendererInstance: CliRenderer): Promise<void> {
       if (editorWithLines && !editorWithLines.isDestroyed) {
         highlightsEnabled = !highlightsEnabled
         if (highlightsEnabled) {
-          // Add modern diff-style line colors throughout the document
+          // Add modern diff-style line colors and +/- signs throughout the document
           editorWithLines.setLineColor(2, "#1a4d1a") // Line 3: Added (fresh green)
           editorWithLines.setLineSign(2, { after: " +", afterColor: "#22c55e" })
 
@@ -217,7 +220,29 @@ export async function run(rendererInstance: CliRenderer): Promise<void> {
 
           editorWithLines.setLineColor(58, "#1a4d1a") // Line 59: Added (fresh green)
           editorWithLines.setLineSign(58, { after: " +", afterColor: "#22c55e" })
-
+        } else {
+          editorWithLines.clearAllLineColors()
+          // Clear only the after signs (keep diagnostics if enabled)
+          const currentSigns = editorWithLines.getLineSigns()
+          for (const [line, sign] of currentSigns) {
+            if (sign.after) {
+              if (sign.before) {
+                // Keep the before sign, remove only after
+                editorWithLines.setLineSign(line, { before: sign.before, beforeColor: sign.beforeColor })
+              } else {
+                // No before sign, remove entirely
+                editorWithLines.clearLineSign(line)
+              }
+            }
+          }
+        }
+      }
+    }
+    if (key.shift && key.name === "d") {
+      key.preventDefault()
+      if (editorWithLines && !editorWithLines.isDestroyed) {
+        diagnosticsEnabled = !diagnosticsEnabled
+        if (diagnosticsEnabled) {
           // Add diagnostic signs (errors, warnings, info) on some lines
           editorWithLines.setLineSign(0, { before: "❌", beforeColor: "#ef4444" }) // Line 1: Error
           editorWithLines.setLineSign(4, { before: "⚠️", beforeColor: "#f59e0b" }) // Line 5: Warning
@@ -226,8 +251,19 @@ export async function run(rendererInstance: CliRenderer): Promise<void> {
           editorWithLines.setLineSign(40, { before: "⚠️", beforeColor: "#f59e0b" }) // Line 41: Warning
           editorWithLines.setLineSign(52, { before: "💡", beforeColor: "#3b82f6" }) // Line 53: Info
         } else {
-          editorWithLines.clearAllLineColors()
-          editorWithLines.clearAllLineSigns()
+          // Clear only the before signs (keep diff signs if enabled)
+          const currentSigns = editorWithLines.getLineSigns()
+          for (const [line, sign] of currentSigns) {
+            if (sign.before) {
+              if (sign.after) {
+                // Keep the after sign, remove only before
+                editorWithLines.setLineSign(line, { after: sign.after, afterColor: sign.afterColor })
+              } else {
+                // No after sign, remove entirely
+                editorWithLines.clearLineSign(line)
+              }
+            }
+          }
         }
       }
     }
