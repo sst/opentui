@@ -26,6 +26,8 @@ export type TextareaAction =
   | "select-line-end"
   | "buffer-home"
   | "buffer-end"
+  | "select-buffer-home"
+  | "select-buffer-end"
   | "delete-line"
   | "delete-to-line-end"
   | "delete-to-line-start"
@@ -53,12 +55,12 @@ const defaultTextareaKeybindings: KeyBinding[] = [
   { name: "right", shift: true, action: "select-right" },
   { name: "up", shift: true, action: "select-up" },
   { name: "down", shift: true, action: "select-down" },
-  { name: "home", action: "line-home" },
-  { name: "end", action: "line-end" },
-  { name: "home", shift: true, action: "select-line-home" },
-  { name: "end", shift: true, action: "select-line-end" },
-  { name: "a", ctrl: true, action: "buffer-home" },
-  { name: "e", ctrl: true, action: "buffer-end" },
+  { name: "home", action: "buffer-home" },
+  { name: "end", action: "buffer-end" },
+  { name: "home", shift: true, action: "select-buffer-home" },
+  { name: "end", shift: true, action: "select-buffer-end" },
+  { name: "a", ctrl: true, action: "line-home" },
+  { name: "e", ctrl: true, action: "line-end" },
   { name: "f", ctrl: true, action: "move-right" },
   { name: "b", ctrl: true, action: "move-left" },
   { name: "d", ctrl: true, action: "delete-word-forward" },
@@ -186,6 +188,8 @@ export class TextareaRenderable extends EditBufferRenderable {
       ["line-end", () => this.gotoLineEnd()],
       ["select-line-home", () => this.gotoLineHome({ select: true })],
       ["select-line-end", () => this.gotoLineEnd({ select: true })],
+      ["select-buffer-home", () => this.gotoBufferHome({ select: true })],
+      ["select-buffer-end", () => this.gotoBufferEnd({ select: true })],
       ["buffer-home", () => this.gotoBufferHome()],
       ["buffer-end", () => this.gotoBufferEnd()],
       ["delete-line", () => this.deleteLine()],
@@ -386,14 +390,20 @@ export class TextareaRenderable extends EditBufferRenderable {
     return true
   }
 
-  public gotoBufferHome(): boolean {
+  public gotoBufferHome(options?: { select?: boolean }): boolean {
+    const select = options?.select ?? false
+    this.updateSelectionForMovement(select, true)
     this.editBuffer.setCursor(0, 0)
+    this.updateSelectionForMovement(select, false)
     this.requestRender()
     return true
   }
 
-  public gotoBufferEnd(): boolean {
+  public gotoBufferEnd(options?: { select?: boolean }): boolean {
+    const select = options?.select ?? false
+    this.updateSelectionForMovement(select, true)
     this.editBuffer.gotoLine(999999)
+    this.updateSelectionForMovement(select, false)
     this.requestRender()
     return true
   }
