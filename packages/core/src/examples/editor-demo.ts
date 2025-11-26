@@ -115,7 +115,8 @@ export async function run(rendererInstance: CliRenderer): Promise<void> {
     target: editor,
     minWidth: 3,
     paddingRight: 1,
-    fg: "#4b5563", // gray-600
+    fg: "#6b7280", // Dimmed gray for line numbers
+    bg: "#161b22", // Slightly darker than editor background for distinction
     width: "100%",
     height: "100%",
   })
@@ -165,12 +166,24 @@ export async function run(rendererInstance: CliRenderer): Promise<void> {
       if (editorWithLines && !editorWithLines.isDestroyed) {
         highlightsEnabled = !highlightsEnabled
         if (highlightsEnabled) {
-          // Add some example diff-style line colors
-          editorWithLines.setLineColor(2, "#1a3a1a") // Line 3: Added (dark green)
-          editorWithLines.setLineColor(5, "#3a1a1a") // Line 6: Removed (dark red)
-          editorWithLines.setLineColor(8, "#3a3a1a") // Line 9: Modified (dark yellow)
-          editorWithLines.setLineColor(11, "#1a3a1a") // Line 12: Added
-          editorWithLines.setLineColor(14, "#3a1a1a") // Line 15: Removed
+          // Add modern diff-style line colors throughout the document
+          editorWithLines.setLineColor(2, "#1a4d1a") // Line 3: Added (fresh green)
+          editorWithLines.setLineColor(5, "#4d1a1a") // Line 6: Removed (vibrant red)
+          editorWithLines.setLineColor(8, "#1a4d1a") // Line 9: Added (fresh green)
+          editorWithLines.setLineColor(11, "#4d1a1a") // Line 12: Removed (vibrant red)
+          editorWithLines.setLineColor(14, "#1a4d1a") // Line 15: Added (fresh green)
+          editorWithLines.setLineColor(17, "#4d1a1a") // Line 18: Removed (vibrant red)
+          editorWithLines.setLineColor(20, "#1a4d1a") // Line 21: Added (fresh green)
+          editorWithLines.setLineColor(23, "#4d1a1a") // Line 24: Removed (vibrant red)
+          editorWithLines.setLineColor(27, "#1a4d1a") // Line 28: Added (fresh green)
+          editorWithLines.setLineColor(30, "#4d1a1a") // Line 31: Removed (vibrant red)
+          editorWithLines.setLineColor(34, "#1a4d1a") // Line 35: Added (fresh green)
+          editorWithLines.setLineColor(38, "#4d1a1a") // Line 39: Removed (vibrant red)
+          editorWithLines.setLineColor(42, "#1a4d1a") // Line 43: Added (fresh green)
+          editorWithLines.setLineColor(46, "#4d1a1a") // Line 47: Removed (vibrant red)
+          editorWithLines.setLineColor(50, "#1a4d1a") // Line 51: Added (fresh green)
+          editorWithLines.setLineColor(54, "#4d1a1a") // Line 55: Removed (vibrant red)
+          editorWithLines.setLineColor(58, "#1a4d1a") // Line 59: Added (fresh green)
         } else {
           editorWithLines.clearAllLineColors()
         }
