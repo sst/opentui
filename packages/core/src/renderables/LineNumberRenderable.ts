@@ -11,7 +11,7 @@ export interface LineSign {
 }
 
 export interface LineNumberOptions extends RenderableOptions<LineNumberRenderable> {
-  target: Renderable & LineInfoProvider
+  target?: Renderable & LineInfoProvider
   fg?: string | RGBA
   bg?: string | RGBA
   minWidth?: number
@@ -208,10 +208,14 @@ class GutterRenderable extends Renderable {
 }
 
 export class LineNumberRenderable extends Renderable {
-  private gutter: GutterRenderable
-  private target: Renderable & LineInfoProvider
+  private gutter: GutterRenderable | null = null
+  private target: (Renderable & LineInfoProvider) | null = null
   private _lineColors: Map<number, RGBA>
   private _lineSigns: Map<number, LineSign>
+  private _fg: RGBA
+  private _bg: RGBA
+  private _minWidth: number
+  private _paddingRight: number
 
   constructor(ctx: RenderContext, options: LineNumberOptions) {
     super(ctx, {
@@ -220,10 +224,10 @@ export class LineNumberRenderable extends Renderable {
       alignItems: "stretch",
     })
 
-    this.target = options.target
-
-    const fg = parseColor(options.fg ?? "#888888")
-    const bg = parseColor(options.bg ?? "transparent")
+    this._fg = parseColor(options.fg ?? "#888888")
+    this._bg = parseColor(options.bg ?? "transparent")
+    this._minWidth = options.minWidth ?? 3
+    this._paddingRight = options.paddingRight ?? 1
 
     this._lineColors = new Map<number, RGBA>()
     if (options.lineColors) {
@@ -239,23 +243,95 @@ export class LineNumberRenderable extends Renderable {
       }
     }
 
-    this.gutter = new GutterRenderable(ctx, this.target, {
-      fg,
-      bg,
-      minWidth: options.minWidth ?? 3,
-      paddingRight: options.paddingRight ?? 1,
+    // If target is provided in constructor, set it up immediately
+    if (options.target) {
+      this.setTarget(options.target)
+    }
+  }
+
+  private setTarget(target: Renderable & LineInfoProvider): void {
+    if (this.target === target) return
+
+    // Remove old target if it exists
+    if (this.target) {
+      super.remove(this.target.id)
+    }
+
+    // Remove old gutter if it exists
+    if (this.gutter) {
+      super.remove(this.gutter.id)
+      this.gutter = null
+    }
+
+    this.target = target
+
+    // Create new gutter
+    this.gutter = new GutterRenderable(this.ctx, this.target, {
+      fg: this._fg,
+      bg: this._bg,
+      minWidth: this._minWidth,
+      paddingRight: this._paddingRight,
       lineColors: this._lineColors,
       lineSigns: this._lineSigns,
-      id: options.id ? `${options.id}-gutter` : undefined,
+      id: this.id ? `${this.id}-gutter` : undefined,
       buffered: true,
     })
 
-    this.add(this.gutter)
-    this.add(this.target)
+    // Add in correct order: gutter first, then target
+    super.add(this.gutter)
+    super.add(this.target)
+  }
+
+  // Override add to intercept and set as target if it's a LineInfoProvider
+  public override add(child: Renderable): void {
+    // If this is a LineInfoProvider and we don't have a target yet, set it
+    if (!this.target && "lineInfo" in child && "lineCount" in child && "scrollY" in child) {
+      this.setTarget(child as Renderable & LineInfoProvider)
+    }
+    // Otherwise ignore - SolidJS may try to add layout slots or other helpers
+  }
+
+  // Override remove to prevent removing gutter/target directly
+  public override remove(id: string): void {
+    if (this.gutter && id === this.gutter.id) {
+      throw new Error("LineNumberRenderable: Cannot remove gutter directly.")
+    }
+    if (this.target && id === this.target.id) {
+      throw new Error("LineNumberRenderable: Cannot remove target directly. Use clearTarget() instead.")
+    }
+    super.remove(id)
+  }
+
+  // Override destroyRecursively to properly clean up internal components
+  public override destroyRecursively(): void {
+    // Manually destroy gutter and target
+    if (this.gutter) {
+      this.gutter.destroy()
+      this.gutter = null
+    }
+    if (this.target) {
+      this.target.destroy()
+      this.target = null
+    }
+    // Now destroy ourselves
+    this.destroy()
+  }
+
+  public clearTarget(): void {
+    if (this.target) {
+      super.remove(this.target.id)
+      this.target = null
+    }
+    if (this.gutter) {
+      super.remove(this.gutter.id)
+      this.gutter = null
+    }
   }
 
   protected renderSelf(buffer: OptimizedBuffer): void {
     // Draw full-width line backgrounds before children render
+    if (!this.target || !this.gutter) return
+
     const lineInfo = this.target.lineInfo
     if (!lineInfo || !lineInfo.lineSources) return
 
@@ -284,11 +360,13 @@ export class LineNumberRenderable extends Renderable {
   }
 
   public set showLineNumbers(value: boolean) {
-    this.gutter.visible = value
+    if (this.gutter) {
+      this.gutter.visible = value
+    }
   }
 
   public get showLineNumbers(): boolean {
-    return this.gutter.visible
+    return this.gutter?.visible ?? false
   }
 
   public setLineColor(line: number, color: string | RGBA): void {
@@ -317,17 +395,23 @@ export class LineNumberRenderable extends Renderable {
 
   public setLineSign(line: number, sign: LineSign): void {
     this._lineSigns.set(line, sign)
-    this.gutter.setLineSigns(this._lineSigns)
+    if (this.gutter) {
+      this.gutter.setLineSigns(this._lineSigns)
+    }
   }
 
   public clearLineSign(line: number): void {
     this._lineSigns.delete(line)
-    this.gutter.setLineSigns(this._lineSigns)
+    if (this.gutter) {
+      this.gutter.setLineSigns(this._lineSigns)
+    }
   }
 
   public clearAllLineSigns(): void {
     this._lineSigns.clear()
-    this.gutter.setLineSigns(this._lineSigns)
+    if (this.gutter) {
+      this.gutter.setLineSigns(this._lineSigns)
+    }
   }
 
   public setLineSigns(lineSigns: Map<number, LineSign>): void {
@@ -335,7 +419,9 @@ export class LineNumberRenderable extends Renderable {
     for (const [line, sign] of lineSigns) {
       this._lineSigns.set(line, sign)
     }
-    this.gutter.setLineSigns(this._lineSigns)
+    if (this.gutter) {
+      this.gutter.setLineSigns(this._lineSigns)
+    }
   }
 
   public getLineSigns(): Map<number, LineSign> {

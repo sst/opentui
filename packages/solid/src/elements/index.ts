@@ -3,6 +3,7 @@ import {
   BoxRenderable,
   CodeRenderable,
   InputRenderable,
+  LineNumberRenderable,
   ScrollBoxRenderable,
   SelectRenderable,
   TabSelectRenderable,
@@ -84,6 +85,7 @@ export const baseComponents = {
   tab_select: TabSelectRenderable,
   scrollbox: ScrollBoxRenderable,
   code: CodeRenderable,
+  line_number: LineNumberRenderable,
 
   span: SpanRenderable,
   strong: BoldSpanRenderable,

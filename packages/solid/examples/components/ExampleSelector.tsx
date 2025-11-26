@@ -7,6 +7,7 @@ import AutocompleteDemo from "./autocomplete-demo.tsx"
 import { CodeDemo } from "./code-demo.tsx"
 import ExtendDemo from "./extend-demo.tsx"
 import InputScene from "./input-demo.tsx"
+import LineNumberDemo from "./line-number-demo.tsx"
 import MouseScene from "./mouse-demo.tsx"
 import { ScrollDemo, ScrollDemoIndex } from "./scroll-demo.tsx"
 import { CustomScrollAccelDemo } from "./custom-scroll-accel-demo.tsx"
@@ -16,6 +17,11 @@ import TextStyleScene from "./text-style-demo.tsx"
 import { TextareaDemo } from "./textarea-demo.tsx"
 
 const EXAMPLES = [
+  {
+    name: "Line Numbers Demo",
+    description: "Code with line numbers, diff highlights, and diagnostics",
+    scene: "line-number-demo",
+  },
   {
     name: "Code Syntax Highlighting Demo",
     description: "JavaScript syntax highlighting using TreeSitter with <code> component",
@@ -138,6 +144,9 @@ const ExampleSelector = () => {
 
   return (
     <Switch>
+      <Match when={selectedScene() === "line-number-demo"}>
+        <LineNumberDemo />
+      </Match>
       <Match when={selectedScene() === "code-demo"}>
         <CodeDemo />
       </Match>
