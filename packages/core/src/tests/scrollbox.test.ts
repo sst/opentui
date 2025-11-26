@@ -931,13 +931,11 @@ console.log(processor.reduce((acc, val) => acc + val, 0))`
       drawUnstyledText: true,
       treeSitterClient: mockTreeSitterClient,
       width: "100%",
-      height: "100%",
     })
 
     const codeWithLines = new LineNumberRenderable(testRenderer, {
       target: codeRenderable,
       width: "100%",
-      height: "100%",
     })
 
     scrollBox.add(codeWithLines)
@@ -954,8 +952,8 @@ console.log(processor.reduce((acc, val) => acc + val, 0))`
     expect(frameTop).toContain("Line 1")
     expect(frameTop).not.toContain("Line 30")
 
-    // Scroll down multiple times
-    for (let i = 0; i < 10; i++) {
+    // Scroll down to bottom
+    for (let i = 0; i < 25; i++) {
       await mockMouse.scroll(20, 5, "down")
       await renderOnce()
     }

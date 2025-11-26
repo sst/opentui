@@ -362,7 +362,6 @@ export async function run(rendererInstance: CliRenderer): Promise<void> {
     selectionFg: "#FFFFFF",
     conceal: concealEnabled,
     width: "100%",
-    height: "100%",
   })
 
   codeWithLineNumbers = new LineNumberRenderable(renderer, {
@@ -373,7 +372,6 @@ export async function run(rendererInstance: CliRenderer): Promise<void> {
     fg: "#6b7280",
     bg: "#161b22",
     width: "100%",
-    height: "100%",
   })
 
   codeScrollBox.add(codeWithLineNumbers)
