@@ -907,6 +907,66 @@ console.log(processor.reduce((acc, val) => acc + val, 0))`
     }
   })
 
+  test("scrolls CodeRenderable with LineNumberRenderable using mouse wheel", async () => {
+    const syntaxStyle = SyntaxStyle.fromTheme([])
+
+    const scrollBox = new ScrollBoxRenderable(testRenderer, {
+      width: 40,
+      height: 10,
+      scrollY: true,
+      scrollX: false,
+    })
+
+    // Create long code content that needs scrolling
+    let code = "Line 1\n"
+    for (let i = 2; i <= 30; i++) {
+      code += `Line ${i}\n`
+    }
+
+    const { LineNumberRenderable } = await import("../renderables/LineNumberRenderable")
+    const codeRenderable = new CodeRenderable(testRenderer, {
+      content: code,
+      filetype: "javascript",
+      syntaxStyle,
+      drawUnstyledText: true,
+      treeSitterClient: mockTreeSitterClient,
+      width: "100%",
+      height: "100%",
+    })
+
+    const codeWithLines = new LineNumberRenderable(testRenderer, {
+      target: codeRenderable,
+      width: "100%",
+      height: "100%",
+    })
+
+    scrollBox.add(codeWithLines)
+    testRenderer.root.add(scrollBox)
+
+    await renderOnce()
+
+    mockTreeSitterClient.resolveAllHighlightOnce()
+    await new Promise((resolve) => setTimeout(resolve, 10))
+    await renderOnce()
+
+    // Capture initial frame (should show top lines)
+    const frameTop = captureCharFrame()
+    expect(frameTop).toContain("Line 1")
+    expect(frameTop).not.toContain("Line 30")
+
+    // Scroll down multiple times
+    for (let i = 0; i < 10; i++) {
+      await mockMouse.scroll(20, 5, "down")
+      await renderOnce()
+    }
+
+    // Capture after scroll (should show bottom lines)
+    const frameBottom = captureCharFrame()
+    expect(frameBottom).toMatchSnapshot()
+    expect(frameBottom).toContain("Line 30")
+    expect(frameBottom).not.toContain("Line 1")
+  })
+
   test("sticky scroll bottom stays at bottom when gradually filled with code renderables", async () => {
     const syntaxStyle = SyntaxStyle.fromTheme([])
 
