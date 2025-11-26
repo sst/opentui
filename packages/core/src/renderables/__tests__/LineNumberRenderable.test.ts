@@ -552,6 +552,95 @@ describe("LineNumberRenderable", () => {
     expect(line2RightEdgeBg.b).toBeCloseTo(0x2e / 255, 2)
   })
 
+  test("renders line signs before and after line numbers", async () => {
+    const { renderer, renderOnce, captureCharFrame } = await createTestRenderer({
+      width: 30,
+      height: 10,
+    })
+
+    const text = "Line 1\nLine 2\nLine 3\nLine 4\nLine 5"
+    const textRenderable = new MockTextBuffer(renderer, {
+      text,
+      width: "100%",
+      height: "100%",
+    })
+
+    const lineSigns = new Map<number, any>()
+    lineSigns.set(1, { after: "+" }) // Line 2: Added
+    lineSigns.set(3, { after: "-" }) // Line 4: Removed
+    lineSigns.set(0, { before: "⚠️" }) // Line 1: Warning
+
+    const lineNumberRenderable = new LineNumberRenderable(renderer, {
+      target: textRenderable,
+      minWidth: 3,
+      paddingRight: 1,
+      fg: "#ffffff",
+      bg: "#000000",
+      lineSigns: lineSigns,
+      width: "100%",
+      height: "100%",
+    })
+
+    renderer.root.add(lineNumberRenderable)
+
+    await renderOnce()
+
+    const frame = captureCharFrame()
+
+    // Check that signs are present
+    expect(frame).toContain("⚠️") // Warning emoji before line 1
+    expect(frame).toContain("+") // Plus after line 2
+    expect(frame).toContain("-") // Minus after line 4
+
+    // Verify structure: should have emoji, line number, and +/- signs
+    const lines = frame.split("\n")
+    expect(lines[0]).toMatch(/⚠️.*1/) // Line 1 has warning before number
+    expect(lines[1]).toMatch(/2.*\+/) // Line 2 has + after number
+    expect(lines[3]).toMatch(/4.*-/) // Line 4 has - after number
+  })
+
+  test("dynamically updates line signs", async () => {
+    const { renderer, renderOnce, captureCharFrame } = await createTestRenderer({
+      width: 30,
+      height: 10,
+    })
+
+    const text = "Line 1\nLine 2\nLine 3"
+    const textRenderable = new MockTextBuffer(renderer, {
+      text,
+      width: "100%",
+      height: "100%",
+    })
+
+    const lineNumberRenderable = new LineNumberRenderable(renderer, {
+      target: textRenderable,
+      minWidth: 3,
+      paddingRight: 1,
+      fg: "#ffffff",
+      bg: "#000000",
+      width: "100%",
+      height: "100%",
+    })
+
+    renderer.root.add(lineNumberRenderable)
+
+    await renderOnce()
+    let frame = captureCharFrame()
+    expect(frame).not.toContain("+")
+
+    // Add a sign
+    lineNumberRenderable.setLineSign(1, { after: "+" })
+    await renderOnce()
+    frame = captureCharFrame()
+    expect(frame).toContain("+")
+
+    // Clear the sign
+    lineNumberRenderable.clearLineSign(1)
+    await renderOnce()
+    frame = captureCharFrame()
+    expect(frame).not.toContain("+")
+  })
+
   test("reproduce issue with layout shifting when typing", async () => {
     const { renderer, renderOnce, captureCharFrame } = await createTestRenderer({
       width: 35,

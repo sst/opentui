@@ -3,6 +3,11 @@ import { OptimizedBuffer } from "../buffer"
 import type { RenderContext, LineInfoProvider } from "../types"
 import { RGBA, parseColor } from "../lib/RGBA"
 
+export interface LineSign {
+  before?: string
+  after?: string
+}
+
 export interface LineNumberOptions extends RenderableOptions<LineNumberRenderable> {
   target: Renderable & LineInfoProvider
   fg?: string | RGBA
@@ -10,6 +15,7 @@ export interface LineNumberOptions extends RenderableOptions<LineNumberRenderabl
   minWidth?: number
   paddingRight?: number
   lineColors?: Map<number, string | RGBA>
+  lineSigns?: Map<number, LineSign>
 }
 
 class GutterRenderable extends Renderable {
@@ -19,6 +25,9 @@ class GutterRenderable extends Renderable {
   private _minWidth: number
   private _paddingRight: number
   private _lineColors: Map<number, RGBA>
+  private _lineSigns: Map<number, LineSign>
+  private _maxBeforeWidth: number = 0
+  private _maxAfterWidth: number = 0
 
   constructor(
     ctx: RenderContext,
@@ -29,6 +38,7 @@ class GutterRenderable extends Renderable {
       minWidth: number
       paddingRight: number
       lineColors: Map<number, RGBA>
+      lineSigns: Map<number, LineSign>
       id?: string
       buffered?: boolean
     },
@@ -47,13 +57,32 @@ class GutterRenderable extends Renderable {
     this._minWidth = options.minWidth
     this._paddingRight = options.paddingRight
     this._lineColors = options.lineColors
+    this._lineSigns = options.lineSigns
+    this.calculateSignWidths()
     this.width = this.calculateWidth()
+  }
+
+  private calculateSignWidths(): void {
+    this._maxBeforeWidth = 0
+    this._maxAfterWidth = 0
+
+    for (const sign of this._lineSigns.values()) {
+      if (sign.before) {
+        const width = Bun.stringWidth(sign.before)
+        this._maxBeforeWidth = Math.max(this._maxBeforeWidth, width)
+      }
+      if (sign.after) {
+        const width = Bun.stringWidth(sign.after)
+        this._maxAfterWidth = Math.max(this._maxAfterWidth, width)
+      }
+    }
   }
 
   private calculateWidth(): number {
     const totalLines = this.target.lineCount
     const digits = totalLines > 0 ? Math.floor(Math.log10(totalLines)) + 1 : 1
-    return Math.max(this._minWidth, digits + this._paddingRight + 1) // +1 for left padding
+    const baseWidth = Math.max(this._minWidth, digits + this._paddingRight + 1) // +1 for left padding
+    return baseWidth + this._maxBeforeWidth + this._maxAfterWidth
   }
 
   public setLineColors(lineColors: Map<number, RGBA>): void {
@@ -62,6 +91,19 @@ class GutterRenderable extends Renderable {
 
   public getLineColors(): Map<number, RGBA> {
     return this._lineColors
+  }
+
+  public setLineSigns(lineSigns: Map<number, LineSign>): void {
+    this._lineSigns = lineSigns
+    this.calculateSignWidths()
+    const newWidth = this.calculateWidth()
+    if (this.width !== newWidth) {
+      this.width = newWidth
+    }
+  }
+
+  public getLineSigns(): Map<number, LineSign> {
+    return this._lineSigns
   }
 
   protected onUpdate(deltaTime: number): void {
@@ -117,11 +159,35 @@ class GutterRenderable extends Renderable {
       if (logicalLine === lastSource) {
         // Continuation line, maybe draw a dot or nothing
       } else {
+        let currentX = startX
+
+        // Draw 'before' sign if present
+        const sign = this._lineSigns.get(logicalLine)
+        if (sign?.before) {
+          const beforeWidth = Bun.stringWidth(sign.before)
+          // Pad to max before width for alignment
+          const padding = this._maxBeforeWidth - beforeWidth
+          currentX += padding
+          buffer.drawText(sign.before, currentX, startY + i, this._fg, lineBg)
+          currentX += beforeWidth
+        } else if (this._maxBeforeWidth > 0) {
+          currentX += this._maxBeforeWidth
+        }
+
+        // Draw line number (right-aligned in its space)
         const lineNumStr = (logicalLine + 1).toString()
-        // Draw right aligned
-        const x = startX + this.width - this._paddingRight - lineNumStr.length
-        if (x >= startX) {
-          buffer.drawText(lineNumStr, x, startY + i, this._fg, lineBg)
+        const lineNumWidth = lineNumStr.length
+        const availableSpace = this.width - this._maxBeforeWidth - this._maxAfterWidth - this._paddingRight
+        const lineNumX = startX + this._maxBeforeWidth + availableSpace - lineNumWidth
+
+        if (lineNumX >= startX) {
+          buffer.drawText(lineNumStr, lineNumX, startY + i, this._fg, lineBg)
+        }
+
+        // Draw 'after' sign if present
+        if (sign?.after) {
+          const afterX = startX + this.width - this._paddingRight - this._maxAfterWidth
+          buffer.drawText(sign.after, afterX, startY + i, this._fg, lineBg)
         }
       }
 
@@ -134,6 +200,7 @@ export class LineNumberRenderable extends Renderable {
   private gutter: GutterRenderable
   private target: Renderable & LineInfoProvider
   private _lineColors: Map<number, RGBA>
+  private _lineSigns: Map<number, LineSign>
 
   constructor(ctx: RenderContext, options: LineNumberOptions) {
     super(ctx, {
@@ -154,12 +221,20 @@ export class LineNumberRenderable extends Renderable {
       }
     }
 
+    this._lineSigns = new Map<number, LineSign>()
+    if (options.lineSigns) {
+      for (const [line, sign] of options.lineSigns) {
+        this._lineSigns.set(line, sign)
+      }
+    }
+
     this.gutter = new GutterRenderable(ctx, this.target, {
       fg,
       bg,
       minWidth: options.minWidth ?? 3,
       paddingRight: options.paddingRight ?? 1,
       lineColors: this._lineColors,
+      lineSigns: this._lineSigns,
       id: options.id ? `${options.id}-gutter` : undefined,
       buffered: true,
     })
@@ -227,5 +302,32 @@ export class LineNumberRenderable extends Renderable {
 
   public getLineColors(): Map<number, RGBA> {
     return this._lineColors
+  }
+
+  public setLineSign(line: number, sign: LineSign): void {
+    this._lineSigns.set(line, sign)
+    this.gutter.setLineSigns(this._lineSigns)
+  }
+
+  public clearLineSign(line: number): void {
+    this._lineSigns.delete(line)
+    this.gutter.setLineSigns(this._lineSigns)
+  }
+
+  public clearAllLineSigns(): void {
+    this._lineSigns.clear()
+    this.gutter.setLineSigns(this._lineSigns)
+  }
+
+  public setLineSigns(lineSigns: Map<number, LineSign>): void {
+    this._lineSigns.clear()
+    for (const [line, sign] of lineSigns) {
+      this._lineSigns.set(line, sign)
+    }
+    this.gutter.setLineSigns(this._lineSigns)
+  }
+
+  public getLineSigns(): Map<number, LineSign> {
+    return this._lineSigns
   }
 }

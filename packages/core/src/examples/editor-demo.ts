@@ -52,7 +52,7 @@ UNDO/REDO:
 VIEW:
   • Shift+W to toggle wrap mode (word/char/none)
   • Shift+L to toggle line numbers
-  • Shift+H to toggle line highlights (diff colors)
+  • Shift+H to toggle line highlights (diff colors + signs)
 
 FEATURES:
   ✓ Grapheme-aware cursor movement
@@ -168,24 +168,66 @@ export async function run(rendererInstance: CliRenderer): Promise<void> {
         if (highlightsEnabled) {
           // Add modern diff-style line colors throughout the document
           editorWithLines.setLineColor(2, "#1a4d1a") // Line 3: Added (fresh green)
+          editorWithLines.setLineSign(2, { after: "+" })
+
           editorWithLines.setLineColor(5, "#4d1a1a") // Line 6: Removed (vibrant red)
+          editorWithLines.setLineSign(5, { after: "-" })
+
           editorWithLines.setLineColor(8, "#1a4d1a") // Line 9: Added (fresh green)
+          editorWithLines.setLineSign(8, { after: "+" })
+
           editorWithLines.setLineColor(11, "#4d1a1a") // Line 12: Removed (vibrant red)
+          editorWithLines.setLineSign(11, { after: "-" })
+
           editorWithLines.setLineColor(14, "#1a4d1a") // Line 15: Added (fresh green)
+          editorWithLines.setLineSign(14, { after: "+" })
+
           editorWithLines.setLineColor(17, "#4d1a1a") // Line 18: Removed (vibrant red)
+          editorWithLines.setLineSign(17, { after: "-" })
+
           editorWithLines.setLineColor(20, "#1a4d1a") // Line 21: Added (fresh green)
+          editorWithLines.setLineSign(20, { after: "+" })
+
           editorWithLines.setLineColor(23, "#4d1a1a") // Line 24: Removed (vibrant red)
+          editorWithLines.setLineSign(23, { after: "-" })
+
           editorWithLines.setLineColor(27, "#1a4d1a") // Line 28: Added (fresh green)
+          editorWithLines.setLineSign(27, { after: "+" })
+
           editorWithLines.setLineColor(30, "#4d1a1a") // Line 31: Removed (vibrant red)
+          editorWithLines.setLineSign(30, { after: "-" })
+
           editorWithLines.setLineColor(34, "#1a4d1a") // Line 35: Added (fresh green)
+          editorWithLines.setLineSign(34, { after: "+" })
+
           editorWithLines.setLineColor(38, "#4d1a1a") // Line 39: Removed (vibrant red)
+          editorWithLines.setLineSign(38, { after: "-" })
+
           editorWithLines.setLineColor(42, "#1a4d1a") // Line 43: Added (fresh green)
+          editorWithLines.setLineSign(42, { after: "+" })
+
           editorWithLines.setLineColor(46, "#4d1a1a") // Line 47: Removed (vibrant red)
+          editorWithLines.setLineSign(46, { after: "-" })
+
           editorWithLines.setLineColor(50, "#1a4d1a") // Line 51: Added (fresh green)
+          editorWithLines.setLineSign(50, { after: "+" })
+
           editorWithLines.setLineColor(54, "#4d1a1a") // Line 55: Removed (vibrant red)
+          editorWithLines.setLineSign(54, { after: "-" })
+
           editorWithLines.setLineColor(58, "#1a4d1a") // Line 59: Added (fresh green)
+          editorWithLines.setLineSign(58, { after: "+" })
+
+          // Add diagnostic signs (errors, warnings, info) on some lines
+          editorWithLines.setLineSign(0, { before: "❌" }) // Line 1: Error
+          editorWithLines.setLineSign(4, { before: "⚠️" }) // Line 5: Warning
+          editorWithLines.setLineSign(10, { before: "💡" }) // Line 11: Info
+          editorWithLines.setLineSign(25, { before: "❌" }) // Line 26: Error
+          editorWithLines.setLineSign(40, { before: "⚠️" }) // Line 41: Warning
+          editorWithLines.setLineSign(52, { before: "💡" }) // Line 53: Info
         } else {
           editorWithLines.clearAllLineColors()
+          editorWithLines.clearAllLineSigns()
         }
       }
     }
