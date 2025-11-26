@@ -283,12 +283,14 @@ export class LineNumberRenderable extends Renderable {
   }
 
   // Override add to intercept and set as target if it's a LineInfoProvider
-  public override add(child: Renderable): void {
+  public override add(child: Renderable): number {
     // If this is a LineInfoProvider and we don't have a target yet, set it
     if (!this.target && "lineInfo" in child && "lineCount" in child && "scrollY" in child) {
       this.setTarget(child as Renderable & LineInfoProvider)
+      return this.getChildrenCount() - 1
     }
     // Otherwise ignore - SolidJS may try to add layout slots or other helpers
+    return -1
   }
 
   // Override remove to prevent removing gutter/target directly
