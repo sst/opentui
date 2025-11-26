@@ -132,13 +132,6 @@ export class LineNumberRenderable extends Renderable {
 
     this.add(this.gutter)
     this.add(this.target)
-
-    // Hook requestRender to ensure gutter updates when target updates
-    const originalRequestRender = this.target.requestRender.bind(this.target)
-    this.target.requestRender = () => {
-      originalRequestRender()
-      this.gutter.requestRender()
-    }
   }
 
   public set showLineNumbers(value: boolean) {
