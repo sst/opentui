@@ -184,11 +184,23 @@ describe("LineNumberRenderable", () => {
     expect(line2GutterBg.g).toBeCloseTo(0x4a / 255, 2)
     expect(line2GutterBg.b).toBeCloseTo(0x2e / 255, 2)
 
+    // Check line 2 (index 1) has green background in content area (x=10 is in content)
+    const line2ContentBg = getBgColor(10, 1)
+    expect(line2ContentBg.r).toBeCloseTo(0x2d / 255, 2)
+    expect(line2ContentBg.g).toBeCloseTo(0x4a / 255, 2)
+    expect(line2ContentBg.b).toBeCloseTo(0x2e / 255, 2)
+
     // Check line 4 (index 3) has red background in gutter
     const line4GutterBg = getBgColor(2, 3)
     expect(line4GutterBg.r).toBeCloseTo(0x4a / 255, 2)
     expect(line4GutterBg.g).toBeCloseTo(0x2d / 255, 2)
     expect(line4GutterBg.b).toBeCloseTo(0x2d / 255, 2)
+
+    // Check line 4 (index 3) has red background in content area
+    const line4ContentBg = getBgColor(10, 3)
+    expect(line4ContentBg.r).toBeCloseTo(0x4a / 255, 2)
+    expect(line4ContentBg.g).toBeCloseTo(0x2d / 255, 2)
+    expect(line4ContentBg.b).toBeCloseTo(0x2d / 255, 2)
 
     // Check line 1 (index 0) has default black background in gutter
     const line1GutterBg = getBgColor(2, 0)
@@ -335,23 +347,133 @@ describe("LineNumberRenderable", () => {
       }
     }
 
-    // First visual line of logical line 0 should have green background
-    const line0Visual0Bg = getBgColor(2, 0)
-    expect(line0Visual0Bg.r).toBeCloseTo(0x2d / 255, 2)
-    expect(line0Visual0Bg.g).toBeCloseTo(0x4a / 255, 2)
-    expect(line0Visual0Bg.b).toBeCloseTo(0x2e / 255, 2)
+    // First visual line of logical line 0 should have green background in gutter
+    const line0Visual0GutterBg = getBgColor(2, 0)
+    expect(line0Visual0GutterBg.r).toBeCloseTo(0x2d / 255, 2)
+    expect(line0Visual0GutterBg.g).toBeCloseTo(0x4a / 255, 2)
+    expect(line0Visual0GutterBg.b).toBeCloseTo(0x2e / 255, 2)
+
+    // First visual line of logical line 0 should have green background in content
+    const line0Visual0ContentBg = getBgColor(10, 0)
+    expect(line0Visual0ContentBg.r).toBeCloseTo(0x2d / 255, 2)
+    expect(line0Visual0ContentBg.g).toBeCloseTo(0x4a / 255, 2)
+    expect(line0Visual0ContentBg.b).toBeCloseTo(0x2e / 255, 2)
 
     // Second visual line of logical line 0 should also have green background (wrapped continuation)
-    const line0Visual1Bg = getBgColor(2, 1)
+    const line0Visual1Bg = getBgColor(10, 1)
     expect(line0Visual1Bg.r).toBeCloseTo(0x2d / 255, 2)
     expect(line0Visual1Bg.g).toBeCloseTo(0x4a / 255, 2)
     expect(line0Visual1Bg.b).toBeCloseTo(0x2e / 255, 2)
 
     // Third visual line of logical line 0 should also have green background (wrapped continuation)
-    const line0Visual2Bg = getBgColor(2, 2)
+    const line0Visual2Bg = getBgColor(10, 2)
     expect(line0Visual2Bg.r).toBeCloseTo(0x2d / 255, 2)
     expect(line0Visual2Bg.g).toBeCloseTo(0x4a / 255, 2)
     expect(line0Visual2Bg.b).toBeCloseTo(0x2e / 255, 2)
+  })
+
+  test("renders line colors correctly within a box with borders", async () => {
+    const { renderer, renderOnce } = await createTestRenderer({
+      width: 30,
+      height: 10,
+    })
+
+    const text = "Line 1\nLine 2\nLine 3\nLine 4\nLine 5"
+    const textRenderable = new MockTextBuffer(renderer, {
+      text,
+      width: "100%",
+      height: "100%",
+    })
+
+    const lineColors = new Map<number, string>()
+    lineColors.set(1, "#2d4a2e") // Green for line 2 (index 1)
+    lineColors.set(3, "#4a2d2d") // Red for line 4 (index 3)
+
+    const lineNumberRenderable = new LineNumberRenderable(renderer, {
+      target: textRenderable,
+      minWidth: 3,
+      paddingRight: 1,
+      fg: "#ffffff",
+      bg: "#000000",
+      lineColors: lineColors,
+      width: "100%",
+      height: "100%",
+    })
+
+    const box = new BoxRenderable(renderer, {
+      border: true,
+      borderStyle: "single",
+      borderColor: "#ffffff",
+      backgroundColor: "#000000",
+      width: "100%",
+      height: "100%",
+      padding: 1,
+    })
+
+    box.add(lineNumberRenderable)
+    renderer.root.add(box)
+
+    await renderOnce()
+
+    const buffer = renderer.currentRenderBuffer
+    const bgBuffer = buffer.buffers.bg
+    const charBuffer = buffer.buffers.char
+
+    // Helper to get RGBA values from buffer at position
+    const getBgColor = (x: number, y: number) => {
+      const offset = (y * buffer.width + x) * 4
+      return {
+        r: bgBuffer[offset],
+        g: bgBuffer[offset + 1],
+        b: bgBuffer[offset + 2],
+        a: bgBuffer[offset + 3],
+      }
+    }
+
+    const getChar = (x: number, y: number) => {
+      return charBuffer[y * buffer.width + x]
+    }
+
+    // Box has borders at x=0 (left) and x=29 (right)
+    // Box has padding of 1, so content starts at x=2 (after left border + padding)
+    // Gutter is about 5 chars wide (minWidth 3 + padding + margin)
+    // Content starts around x=7
+
+    // Line 2 (y=3, accounting for top border + padding + 1 line)
+    const line2Y = 3
+
+    // Check that left border is NOT colored (should be white border)
+    const leftBorderChar = getChar(0, line2Y)
+    expect(leftBorderChar).toBe(0x2502) // Vertical line character │
+
+    // Check that right border is NOT colored (should be white border)
+    const rightBorderChar = getChar(29, line2Y)
+    expect(rightBorderChar).toBe(0x2502) // Vertical line character │
+
+    // Check that gutter area (inside padding) has green background
+    const gutterBg = getBgColor(4, line2Y)
+    expect(gutterBg.r).toBeCloseTo(0x2d / 255, 2)
+    expect(gutterBg.g).toBeCloseTo(0x4a / 255, 2)
+    expect(gutterBg.b).toBeCloseTo(0x2e / 255, 2)
+
+    // Check that content area has green background
+    const contentBg = getBgColor(15, line2Y)
+    expect(contentBg.r).toBeCloseTo(0x2d / 255, 2)
+    expect(contentBg.g).toBeCloseTo(0x4a / 255, 2)
+    expect(contentBg.b).toBeCloseTo(0x2e / 255, 2)
+
+    // Check that area near right border (but not the border itself) has green background
+    const nearRightBg = getBgColor(27, line2Y)
+    expect(nearRightBg.r).toBeCloseTo(0x2d / 255, 2)
+    expect(nearRightBg.g).toBeCloseTo(0x4a / 255, 2)
+    expect(nearRightBg.b).toBeCloseTo(0x2e / 255, 2)
+
+    // Verify line without color (line 1, y=2) doesn't have green background
+    const line1Y = 2
+    const line1ContentBg = getBgColor(15, line1Y)
+    expect(line1ContentBg.r).toBeCloseTo(0, 2)
+    expect(line1ContentBg.g).toBeCloseTo(0, 2)
+    expect(line1ContentBg.b).toBeCloseTo(0, 2)
   })
 
   test("reproduce issue with layout shifting when typing", async () => {

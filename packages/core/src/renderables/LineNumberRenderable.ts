@@ -133,6 +133,7 @@ class GutterRenderable extends Renderable {
 export class LineNumberRenderable extends Renderable {
   private gutter: GutterRenderable
   private target: Renderable & LineInfoProvider
+  private _lineColors: Map<number, RGBA>
 
   constructor(ctx: RenderContext, options: LineNumberOptions) {
     super(ctx, {
@@ -146,10 +147,10 @@ export class LineNumberRenderable extends Renderable {
     const fg = parseColor(options.fg ?? "#888888")
     const bg = parseColor(options.bg ?? "transparent")
 
-    const lineColors = new Map<number, RGBA>()
+    this._lineColors = new Map<number, RGBA>()
     if (options.lineColors) {
       for (const [line, color] of options.lineColors) {
-        lineColors.set(line, parseColor(color))
+        this._lineColors.set(line, parseColor(color))
       }
     }
 
@@ -158,13 +159,42 @@ export class LineNumberRenderable extends Renderable {
       bg,
       minWidth: options.minWidth ?? 3,
       paddingRight: options.paddingRight ?? 1,
-      lineColors,
+      lineColors: this._lineColors,
       id: options.id ? `${options.id}-gutter` : undefined,
       buffered: true,
     })
 
     this.add(this.gutter)
     this.add(this.target)
+  }
+
+  protected renderSelf(buffer: OptimizedBuffer): void {
+    // Draw full-width line backgrounds before children render
+    const lineInfo = this.target.lineInfo
+    if (!lineInfo || !lineInfo.lineSources) return
+
+    const sources = lineInfo.lineSources
+    const startLine = this.target.scrollY
+
+    if (startLine >= sources.length) return
+
+    // Calculate the area to fill: from after the gutter to the end of our width
+    const gutterWidth = this.gutter.width
+    const contentWidth = this.width - gutterWidth
+
+    // Draw full-width background colors for lines with custom colors
+    for (let i = 0; i < this.height; i++) {
+      const visualLineIndex = startLine + i
+      if (visualLineIndex >= sources.length) break
+
+      const logicalLine = sources[visualLineIndex]
+      const lineBg = this._lineColors.get(logicalLine)
+
+      if (lineBg) {
+        // Fill from after gutter to the end of the LineNumberRenderable
+        buffer.fillRect(this.x + gutterWidth, this.y + i, contentWidth, 1, lineBg)
+      }
+    }
   }
 
   public set showLineNumbers(value: boolean) {
@@ -176,29 +206,26 @@ export class LineNumberRenderable extends Renderable {
   }
 
   public setLineColor(line: number, color: string | RGBA): void {
-    const lineColors = this.gutter.getLineColors()
-    lineColors.set(line, parseColor(color))
+    const parsedColor = parseColor(color)
+    this._lineColors.set(line, parsedColor)
   }
 
   public clearLineColor(line: number): void {
-    const lineColors = this.gutter.getLineColors()
-    lineColors.delete(line)
+    this._lineColors.delete(line)
   }
 
   public clearAllLineColors(): void {
-    const lineColors = this.gutter.getLineColors()
-    lineColors.clear()
+    this._lineColors.clear()
   }
 
   public setLineColors(lineColors: Map<number, string | RGBA>): void {
-    const parsedColors = new Map<number, RGBA>()
+    this._lineColors.clear()
     for (const [line, color] of lineColors) {
-      parsedColors.set(line, parseColor(color))
+      this._lineColors.set(line, parseColor(color))
     }
-    this.gutter.setLineColors(parsedColors)
   }
 
   public getLineColors(): Map<number, RGBA> {
-    return this.gutter.getLineColors()
+    return this._lineColors
   }
 }
