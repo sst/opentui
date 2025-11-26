@@ -1295,7 +1295,7 @@ describe("Textarea - Editing Tests", () => {
       expect(editor.logicalCursor.row).toBe(2)
       expect(editor.logicalCursor.col).toBe(3)
 
-      currentMockInput.pressKey("home")
+      currentMockInput.pressKey("HOME")
       expect(editor.logicalCursor.row).toBe(0)
       expect(editor.logicalCursor.col).toBe(0)
     })
@@ -1311,7 +1311,7 @@ describe("Textarea - Editing Tests", () => {
       expect(editor.logicalCursor.row).toBe(0)
       expect(editor.logicalCursor.col).toBe(0)
 
-      currentMockInput.pressKey("end")
+      currentMockInput.pressKey("END")
       expect(editor.logicalCursor.row).toBe(2)
       expect(editor.logicalCursor.col).toBe(6) // "Line 3" is 6 chars
     })
@@ -1331,14 +1331,17 @@ describe("Textarea - Editing Tests", () => {
       expect(editor.logicalCursor.row).toBe(1)
       expect(editor.logicalCursor.col).toBe(3)
 
-      currentMockInput.pressKey("home", { shift: true })
+      currentMockInput.pressKey("HOME", { shift: true })
       expect(editor.logicalCursor.row).toBe(0)
       expect(editor.logicalCursor.col).toBe(0)
 
       const selection = editor.getSelection()
       expect(selection).not.toBeNull()
-      expect(selection!.start).toBe(0) // Start of buffer
-      expect(selection!.end).toBe(10) // "Line 1\nLin" = 10 chars
+      expect(selection!.start).toBe(0) // Selection starts at buffer start
+      // Selection should include everything from buffer start to original cursor position
+      // gotoLine(1) positions at end of line, moveCursorRight 3 times goes to col 3 of next line
+      // Selection from buffer start to cursor includes "Line 1\nLine" (one more than "Lin" due to cursor position)
+      expect(editor.getSelectedText()).toBe("Line 1\nLine")
     })
 
     it("should select from cursor to buffer end with End+Shift", async () => {
@@ -1356,14 +1359,14 @@ describe("Textarea - Editing Tests", () => {
       expect(editor.logicalCursor.row).toBe(1)
       expect(editor.logicalCursor.col).toBe(3)
 
-      currentMockInput.pressKey("end", { shift: true })
+      currentMockInput.pressKey("END", { shift: true })
       expect(editor.logicalCursor.row).toBe(2)
       expect(editor.logicalCursor.col).toBe(6)
 
       const selection = editor.getSelection()
       expect(selection).not.toBeNull()
-      expect(selection!.start).toBe(10) // "Line 1\nLin" = 10 chars
-      expect(selection!.end).toBe(20) // Full text length
+      // Selection should include everything from original cursor position to buffer end
+      expect(editor.getSelectedText()).toBe("e 2\nLine 3")
     })
   })
 

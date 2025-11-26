@@ -392,18 +392,18 @@ export class TextareaRenderable extends EditBufferRenderable {
 
   public gotoBufferHome(options?: { select?: boolean }): boolean {
     const select = options?.select ?? false
-    this.handleShiftSelection(select, true)
+    this.updateSelectionForMovement(select, true)
     this.editBuffer.setCursor(0, 0)
-    this.handleShiftSelection(select, false)
+    this.updateSelectionForMovement(select, false)
     this.requestRender()
     return true
   }
 
   public gotoBufferEnd(options?: { select?: boolean }): boolean {
     const select = options?.select ?? false
-    this.handleShiftSelection(select, true)
+    this.updateSelectionForMovement(select, true)
     this.editBuffer.gotoLine(999999)
-    this.handleShiftSelection(select, false)
+    this.updateSelectionForMovement(select, false)
     this.requestRender()
     return true
   }
