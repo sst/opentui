@@ -313,7 +313,6 @@ export abstract class TextBufferRenderable extends Renderable implements LineInf
       const effectiveWidth = isNaN(width) ? 1 : width
       const effectiveHeight = isNaN(height) ? 1 : height
 
-      // Use the native measure function which doesn't require setting viewport or wrap width
       const measureResult = this.textBufferView.measureForDimensions(
         Math.floor(effectiveWidth),
         Math.floor(effectiveHeight),
@@ -322,10 +321,10 @@ export abstract class TextBufferRenderable extends Renderable implements LineInf
       const measuredWidth = measureResult ? Math.max(1, measureResult.maxWidth) : 1
       const measuredHeight = measureResult ? Math.max(1, measureResult.lineCount) : 1
 
-      // Update cached line info after measurement
+      // TODO: still needed??
       this.updateLineInfo()
 
-      if (widthMode === MeasureMode.AtMost) {
+      if (widthMode === MeasureMode.AtMost && this._positionType !== "absolute") {
         return {
           width: Math.min(effectiveWidth, measuredWidth),
           height: Math.min(effectiveHeight, measuredHeight),

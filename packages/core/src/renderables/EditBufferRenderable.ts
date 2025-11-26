@@ -415,7 +415,6 @@ export abstract class EditBufferRenderable extends Renderable implements LineInf
       const effectiveHeight = isNaN(height) ? 1 : height
       const effectiveWidth = isNaN(width) ? 1 : width
 
-      // Use the native measure function which doesn't require setting viewport or wrap width
       const measureResult = this.editorView.measureForDimensions(
         Math.floor(effectiveWidth),
         Math.floor(effectiveHeight),
@@ -424,7 +423,7 @@ export abstract class EditBufferRenderable extends Renderable implements LineInf
       const measuredWidth = measureResult ? Math.max(1, measureResult.maxWidth) : 1
       const measuredHeight = measureResult ? Math.max(1, measureResult.lineCount) : 1
 
-      if (widthMode === MeasureMode.AtMost) {
+      if (widthMode === MeasureMode.AtMost && this._positionType !== "absolute") {
         return {
           width: Math.min(effectiveWidth, measuredWidth),
           height: Math.min(effectiveHeight, measuredHeight),
