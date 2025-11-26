@@ -31,32 +31,32 @@ exports[`LineNumberRenderable renders line numbers for wrapping text 1`] = `
 exports[`LineNumberRenderable reproduce issue with layout shifting when typing 1`] = `
 "                                   
  ┌───────────────────────────────┐ 
- │  35   • Ctrl+Shift+Z or Ctrl+Y│ 
- │     to redo                   │ 
+ │     Ctrl+Y to redo            │ 
  │  36                           │ 
  │  37 VIEW:                     │ 
- │  38   • Shift+W to toggle wrap│ 
- │     mode (word/char/none)     │ 
- │  39   • Shift+L to toggle line│ 
- │     numbers                   │ 
+ │  38   • Shift+W to toggle     │ 
+ │     wrap mode (word/char/     │ 
+ │     none)                     │ 
+ │  39   • Shift+L to toggle     │ 
+ │     line numbers              │ 
  │  40                           │ 
  │  41 FEATURES:                 │ 
- │  42   ✓ Grapheme-aware cursor │ 
- │     movement                  │ 
- │  43   ✓ Unicode (emoji 🌟 and │ 
- │      CJK 世界, 你好世界,      │ 
- │     中文, 한글)               │ 
+ │  42   ✓ Grapheme-aware        │ 
+ │     cursor movement           │ 
+ │  43   ✓ Unicode (emoji 🌟     │ 
+ │      and CJK 世界, 你好世界   │ 
+ │     界, 中文, 한글)            │ 
  │  44   ✓ Incremental editing   │ 
  │  45   ✓ Text wrapping and     │ 
  │     viewport management       │ 
  │  46   ✓ Undo/redo support     │ 
- │  47   ✓ Word-based navigation │ 
- │     and deletion              │ 
+ │  47   ✓ Word-based            │ 
+ │     navigation and deletion   │ 
  │  48   ✓ Text selection with   │ 
  │     shift keys                │ 
  │  49                           │ 
- │  50 Press ESC to return to main 
- │     menu                      │ 
+ │  50 Press ESC to return to    │ 
+ │     main menu                 │ 
  └───────────────────────────────┘ 
                                    
 "
@@ -65,32 +65,32 @@ exports[`LineNumberRenderable reproduce issue with layout shifting when typing 1
 exports[`LineNumberRenderable reproduce issue with layout shifting when typing 2`] = `
 "                                   
  ┌───────────────────────────────┐ 
- │     word forward/backward     │ 
- │  22   • Alt+Shift+Left/Right to 
- │     select word forward/backward
- │  23                           │ 
- │  24 EDITING:                  │ 
- │  25 a  • Type any text to insert
- │  26   • Backspace/Delete to   │ 
- │     remove text               │ 
- │  27   • Enter to create new   │ 
- │     lines                     │ 
- │  28   • Ctrl+D to delete      │ 
- │     current line              │ 
- │  29   • Ctrl+K to delete to   │ 
- │     line end                  │ 
- │  30   • Alt+D to delete word  │ 
- │     forward                   │ 
- │  31   • Alt+Backspace or Ctrl+W 
- │     to delete word backward   │ 
- │  32                           │ 
- │  33 UNDO/REDO:                │ 
- │  34   • Ctrl+Z to undo        │ 
- │  35   • Ctrl+Shift+Z or Ctrl+Y│ 
- │     to redo                   │ 
+ │     Ctrl+Y to redo            │ 
  │  36                           │ 
  │  37 VIEW:                     │ 
- │  38   • Shift+W to toggle wrap│ 
+ │  38   • Shift+W to toggle     │ 
+ │     wrap mode (word/char/     │ 
+ │     none)                     │ 
+ │  39   • Shift+L to toggle     │ 
+ │     line numbers              │ 
+ │  40                           │ 
+ │  41 FEATURES:                 │ 
+ │  42   ✓ Grapheme-aware        │ 
+ │     cursor movement           │ 
+ │  43   ✓ Unicode (emoji 🌟     │ 
+ │      and CJK 世界, 你好世界   │ 
+ │     界, 中文, 한글)            │ 
+ │  44   ✓ Incremental editing   │ 
+ │  45   ✓ Text wrapping and     │ 
+ │     viewport management       │ 
+ │  46   ✓ Undo/redo support     │ 
+ │  47   ✓ Word-based            │ 
+ │     navigation and deletion   │ 
+ │  48   ✓ Text selection with   │ 
+ │     shift keys                │ 
+ │  49 a                         │ 
+ │  50 Press ESC to return to    │ 
+ │     main menu                 │ 
  └───────────────────────────────┘ 
                                    
 "

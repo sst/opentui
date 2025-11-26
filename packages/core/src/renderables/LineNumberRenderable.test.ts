@@ -187,34 +187,51 @@ describe("LineNumberRenderable", () => {
     // Initial render
     await renderOnce()
 
-    // Move cursor to bottom
+    const lineInfoInitial = editor.editorView.getLogicalLineInfo()
+    const visualLinesInitial = lineInfoInitial.lineStarts.length
+
+    // Move cursor to bottom - THIS IS WHERE THE BUG HAPPENS
     editor.gotoBufferEnd()
     await renderOnce()
+
+    const lineInfoAfterScroll = editor.editorView.getLogicalLineInfo()
+    const visualLinesAfterScroll = lineInfoAfterScroll.lineStarts.length
 
     const frame1 = captureCharFrame()
     expect(frame1).toMatchSnapshot()
 
-    const checkBorder = (frame: string) => {
+    // THE BUG: visualLines changed from initial render to after scroll!
+    // This happens because measureFunc is called with wrong width
+    console.log(`Initial visual lines: ${visualLinesInitial}`)
+    console.log(`After scroll visual lines: ${visualLinesAfterScroll}`)
+    expect(visualLinesInitial).toBe(visualLinesAfterScroll)
+
+    // Move cursor to line 49 (index 48) which is an empty line and insert a character
+    editor.editBuffer.setCursor(48, 0)
+    editor.insertChar("a")
+    await renderOnce()
+
+    const lineInfoAfterTyping = editor.editorView.getLogicalLineInfo()
+    const visualLinesAfterTyping = lineInfoAfterTyping.lineStarts.length
+
+    const frame2 = captureCharFrame()
+    expect(frame2).toMatchSnapshot()
+
+    // Visual lines should remain stable after typing
+    expect(visualLinesAfterScroll).toBe(visualLinesAfterTyping)
+
+    // Verify borders are intact
+    const checkBorder = (frame: string, frameName: string) => {
       const lines = frame.split("\n")
       for (let i = 0; i < lines.length; i++) {
         const line = lines[i]
         if (line.startsWith(" │")) {
           if (!line.trimEnd().endsWith("│")) {
-            throw new Error(`Line ${i} missing right border: "${line}"`)
+            throw new Error(`${frameName}: Line ${i} missing right border: "${line}"`)
           }
         }
       }
     }
-    checkBorder(frame1)
-
-    // Move cursor up to an empty line and insert a character
-    // Line 25 (index 24) is empty
-    editor.editBuffer.setCursor(24, 0)
-    editor.insertChar("a")
-    await renderOnce()
-
-    const frame2 = captureCharFrame()
-    expect(frame2).toMatchSnapshot()
-    checkBorder(frame2)
+    checkBorder(frame2, "Frame2")
   })
 })
