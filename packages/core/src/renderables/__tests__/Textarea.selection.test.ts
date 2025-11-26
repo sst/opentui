@@ -871,5 +871,29 @@ describe("Textarea - Selection Tests", () => {
       // Verify selection is cleared in EditorView
       expect(editor.editorView.hasSelection()).toBe(false)
     })
+    it("should maintain correct selection start when scrolling down with shift+down", async () => {
+      const { textarea: editor } = await createTextareaRenderable(currentRenderer, renderOnce, {
+        initialValue: Array.from({ length: 20 }, (_, i) => `Line ${i}`).join("\n"),
+        width: 20,
+        height: 5,
+        selectable: true,
+      })
+
+      editor.focus()
+
+      // Select down 8 times. Since height is 5, this should scroll.
+      for (let i = 0; i < 8; i++) {
+        currentMockInput.pressArrow("down", { shift: true })
+        await renderOnce()
+      }
+
+      const viewport = editor.editorView.getViewport()
+      expect(viewport.offsetY).toBeGreaterThan(0)
+
+      const sel = editor.getSelection()
+      expect(sel).not.toBe(null)
+      // Should start at 0 (Line 0)
+      expect(sel!.start).toBe(0)
+    })
   })
 })
