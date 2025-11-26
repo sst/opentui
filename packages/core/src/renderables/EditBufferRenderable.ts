@@ -3,7 +3,7 @@ import { convertGlobalToLocalSelection, Selection, type LocalSelectionBounds } f
 import { EditBuffer, type LogicalCursor } from "../edit-buffer"
 import { EditorView, type VisualCursor } from "../editor-view"
 import { RGBA, parseColor } from "../lib/RGBA"
-import type { RenderContext, Highlight, CursorStyleOptions } from "../types"
+import type { RenderContext, Highlight, CursorStyleOptions, LineInfoProvider, LineInfo } from "../types"
 import type { OptimizedBuffer } from "../buffer"
 import { MeasureMode } from "yoga-layout"
 import type { SyntaxStyle } from "../syntax-style"
@@ -36,7 +36,7 @@ export interface EditBufferOptions extends RenderableOptions<EditBufferRenderabl
   onContentChange?: (event: ContentChangeEvent) => void
 }
 
-export abstract class EditBufferRenderable extends Renderable {
+export abstract class EditBufferRenderable extends Renderable implements LineInfoProvider {
   protected _focusable: boolean = true
   public selectable: boolean = true
 
@@ -129,6 +129,10 @@ export abstract class EditBufferRenderable extends Renderable {
     this.setupEventListeners(options)
   }
 
+  public get lineInfo(): LineInfo {
+    return this.editorView.getLogicalLineInfo()
+  }
+
   private setupEventListeners(options: EditBufferOptions): void {
     this._cursorChangeListener = options.onCursorChange
     this._contentChangeListener = options.onContentChange
@@ -150,6 +154,14 @@ export abstract class EditBufferRenderable extends Renderable {
         this._contentChangeListener({})
       }
     })
+  }
+
+  public get lineCount(): number {
+    return this.editBuffer.getLineCount()
+  }
+
+  public get scrollY(): number {
+    return this.editorView.getViewport().offsetY
   }
 
   get plainText(): string {

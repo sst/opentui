@@ -4,6 +4,7 @@ import {
   TextareaRenderable,
   BoxRenderable,
   TextRenderable,
+  LineNumberRenderable,
   KeyEvent,
   t,
   bold,
@@ -50,6 +51,7 @@ UNDO/REDO:
 
 VIEW:
   • Shift+W to toggle wrap mode (word/char/none)
+  • Shift+L to toggle line numbers
 
 FEATURES:
   ✓ Grapheme-aware cursor movement
@@ -65,6 +67,7 @@ Press ESC to return to main menu`
 let renderer: CliRenderer | null = null
 let parentContainer: BoxRenderable | null = null
 let editor: TextareaRenderable | null = null
+let editorWithLines: LineNumberRenderable | null = null
 let statusText: TextRenderable | null = null
 
 export async function run(rendererInstance: CliRenderer): Promise<void> {
@@ -106,7 +109,18 @@ export async function run(rendererInstance: CliRenderer): Promise<void> {
     tabIndicator: "→",
     tabIndicatorColor: "#30363D",
   })
-  editorBox.add(editor)
+
+  editorWithLines = new LineNumberRenderable(renderer, {
+    id: "editor-lines",
+    target: editor,
+    minWidth: 3,
+    paddingRight: 1,
+    fg: "#4b5563", // gray-600
+    width: "100%",
+    height: "100%",
+  })
+
+  editorBox.add(editorWithLines)
 
   statusText = new TextRenderable(renderer, {
     id: "status",
@@ -131,6 +145,12 @@ export async function run(rendererInstance: CliRenderer): Promise<void> {
   })
 
   rendererInstance.keyInput.on("keypress", (key: KeyEvent) => {
+    if (key.shift && key.name === "l") {
+      key.preventDefault()
+      if (editorWithLines && !editorWithLines.isDestroyed) {
+        editorWithLines.showLineNumbers = !editorWithLines.showLineNumbers
+      }
+    }
     if (key.shift && key.name === "w") {
       key.preventDefault()
       if (editor && !editor.isDestroyed) {
@@ -156,6 +176,7 @@ export function destroy(rendererInstance: CliRenderer): void {
   rendererInstance.clearFrameCallbacks()
   parentContainer?.destroy()
   parentContainer = null
+  editorWithLines = null
   editor = null
   statusText = null
   renderer = null

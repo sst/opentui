@@ -3,7 +3,7 @@ import { convertGlobalToLocalSelection, Selection, type LocalSelectionBounds } f
 import { TextBuffer, type TextChunk } from "../text-buffer"
 import { TextBufferView } from "../text-buffer-view"
 import { RGBA, parseColor } from "../lib/RGBA"
-import { type RenderContext } from "../types"
+import { type RenderContext, type LineInfoProvider } from "../types"
 import type { OptimizedBuffer } from "../buffer"
 import { MeasureMode } from "yoga-layout"
 import type { LineInfo } from "../zig"
@@ -21,7 +21,7 @@ export interface TextBufferOptions extends RenderableOptions<TextBufferRenderabl
   tabIndicatorColor?: string | RGBA
 }
 
-export abstract class TextBufferRenderable extends Renderable {
+export abstract class TextBufferRenderable extends Renderable implements LineInfoProvider {
   public selectable: boolean = true
 
   protected _defaultFg: RGBA
@@ -96,6 +96,18 @@ export abstract class TextBufferRenderable extends Renderable {
     }
 
     this.updateTextInfo()
+  }
+
+  public get lineInfo(): LineInfo {
+    return this.textBufferView.logicalLineInfo
+  }
+
+  public get lineCount(): number {
+    return this.textBuffer.getLineCount()
+  }
+
+  public get scrollY(): number {
+    return 0
   }
 
   get plainText(): string {

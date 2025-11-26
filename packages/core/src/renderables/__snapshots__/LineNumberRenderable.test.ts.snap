@@ -1,0 +1,29 @@
+// Bun Snapshot v1, https://bun.sh/docs/test/snapshots
+
+exports[`LineNumberRenderable renders line numbers correctly 1`] = `
+" 1 Line 1           
+ 2 Line 2           
+ 3 Line 3           
+                    
+                    
+                    
+                    
+                    
+                    
+                    
+"
+`;
+
+exports[`LineNumberRenderable renders line numbers for wrapping text 1`] = `
+" 1 Line 1 is very l 
+   ong and should w 
+   rap around multi 
+   ple lines        
+                    
+                    
+                    
+                    
+                    
+                    
+"
+`;

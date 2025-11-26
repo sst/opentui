@@ -1,7 +1,9 @@
 import { dlopen, toArrayBuffer, JSCallback, ptr, type Pointer } from "bun:ffi"
 import { existsSync } from "fs"
 import { EventEmitter } from "events"
-import { type CursorStyle, type DebugOverlayCorner, type WidthMethod, type Highlight } from "./types"
+import { type CursorStyle, type DebugOverlayCorner, type WidthMethod, type Highlight, type LineInfo } from "./types"
+export type { LineInfo }
+
 import { RGBA } from "./lib/RGBA"
 import { OptimizedBuffer } from "./buffer"
 import { TextBuffer } from "./text-buffer"
@@ -1058,14 +1060,6 @@ export enum LogLevel {
   Warn = 1,
   Info = 2,
   Debug = 3,
-}
-
-export interface LineInfo {
-  lineStarts: number[]
-  lineWidths: number[]
-  maxLineWidth: number
-  lineSources: number[]
-  lineWraps: number[]
 }
 
 /**

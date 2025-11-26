@@ -83,3 +83,17 @@ export interface Highlight {
   priority?: number | null
   hlRef?: number | null
 }
+
+export interface LineInfo {
+  lineStarts: number[]
+  lineWidths: number[]
+  maxLineWidth: number
+  lineSources: number[]
+  lineWraps: number[]
+}
+
+export interface LineInfoProvider {
+  get lineInfo(): LineInfo
+  get lineCount(): number
+  get scrollY(): number
+}
