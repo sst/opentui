@@ -82,15 +82,11 @@ export const EncodedCharStruct = defineStruct([
 export const LineInfoStruct = defineStruct([
   ["starts", ["u32"]],
   ["startsLen", "u32", { lengthOf: "starts" }],
-  ["_startsLenPad", "u32"],
   ["widths", ["u32"]],
   ["widthsLen", "u32", { lengthOf: "widths" }],
-  ["_widthsLenPad", "u32"],
   ["sources", ["u32"]],
   ["sourcesLen", "u32", { lengthOf: "sources" }],
-  ["_sourcesLenPad", "u32"],
   ["wraps", ["u32"]],
   ["wrapsLen", "u32", { lengthOf: "wraps" }],
-  ["_wrapsLenPad", "u32"],
   ["maxWidth", "u32"],
 ])

@@ -1115,16 +1115,12 @@ pub const ExternalVisualCursor = extern struct {
 pub const ExternalLineInfo = extern struct {
     starts_ptr: [*]const u32,
     starts_len: u32,
-    starts_len_pad: u32 = 0,
     widths_ptr: [*]const u32,
     widths_len: u32,
-    widths_len_pad: u32 = 0,
     sources_ptr: [*]const u32,
     sources_len: u32,
-    sources_len_pad: u32 = 0,
     wraps_ptr: [*]const u32,
     wraps_len: u32,
-    wraps_len_pad: u32 = 0,
     max_width: u32,
 };
 

@@ -618,6 +618,8 @@ pub const UnifiedTextBufferView = struct {
                         wctx.view.virtual_lines.append(wctx.virtual_allocator, wctx.current_vline) catch {};
                         wctx.view.cached_line_starts.append(wctx.virtual_allocator, wctx.current_vline.char_offset) catch {};
                         wctx.view.cached_line_widths.append(wctx.virtual_allocator, wctx.current_vline.width) catch {};
+                        wctx.view.cached_line_sources.append(wctx.virtual_allocator, wctx.line_idx) catch {};
+                        wctx.view.cached_line_wrap_indices.append(wctx.virtual_allocator, wctx.current_line_vline_count) catch {};
                         wctx.current_line_vline_count += 1;
                     }
 
