@@ -715,7 +715,7 @@ describe("LineNumberRenderable", () => {
     expect(frame).not.toContain("+")
   })
 
-  test("reproduce issue with layout shifting when typing", async () => {
+  test("maintains stable visual line count when scrolling and typing with word wrap", async () => {
     const { renderer, renderOnce, captureCharFrame } = await createTestRenderer({
       width: 35,
       height: 30,
@@ -773,7 +773,7 @@ describe("LineNumberRenderable", () => {
     const lineInfoInitial = editor.editorView.getLogicalLineInfo()
     const visualLinesInitial = lineInfoInitial.lineStarts.length
 
-    // Move cursor to bottom - THIS IS WHERE THE BUG HAPPENS
+    // Move cursor to bottom to trigger scrolling
     editor.gotoBufferEnd()
     await renderOnce()
 
@@ -783,10 +783,7 @@ describe("LineNumberRenderable", () => {
     const frame1 = captureCharFrame()
     expect(frame1).toMatchSnapshot()
 
-    // THE BUG: visualLines changed from initial render to after scroll!
-    // This happens because measureFunc is called with wrong width
-    console.log(`Initial visual lines: ${visualLinesInitial}`)
-    console.log(`After scroll visual lines: ${visualLinesAfterScroll}`)
+    // Visual line count should remain stable after scrolling
     expect(visualLinesInitial).toBe(visualLinesAfterScroll)
 
     // Move cursor to line 49 (index 48) which is an empty line and insert a character
