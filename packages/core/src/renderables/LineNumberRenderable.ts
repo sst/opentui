@@ -96,11 +96,18 @@ class GutterRenderable extends Renderable {
   }
 
   public setLineSigns(lineSigns: Map<number, LineSign>): void {
+    const oldMaxBefore = this._maxBeforeWidth
+    const oldMaxAfter = this._maxAfterWidth
+
     this._lineSigns = lineSigns
     this.calculateSignWidths()
-    const newWidth = this.calculateWidth()
-    if (this.width !== newWidth) {
-      this.width = newWidth
+
+    // Only recalculate width if sign widths changed
+    if (this._maxBeforeWidth !== oldMaxBefore || this._maxAfterWidth !== oldMaxAfter) {
+      const newWidth = this.calculateWidth()
+      if (this.width !== newWidth) {
+        this.width = newWidth
+      }
     }
   }
 

@@ -106,7 +106,7 @@ export function treeSitterToTextChunks(
             __isChunk: true,
             text: replacementText,
             fg: defaultStyle?.fg,
-            bg: defaultStyle?.bg !== undefined ? defaultStyle.bg : undefined,
+            bg: defaultStyle?.bg,
             attributes: defaultStyle
               ? createTextAttributes({
                   bold: defaultStyle.bold,
@@ -186,7 +186,7 @@ export function treeSitterToTextChunks(
           __isChunk: true,
           text: segmentText,
           fg: finalStyle?.fg,
-          bg: finalStyle?.bg !== undefined ? finalStyle.bg : undefined,
+          bg: finalStyle?.bg,
           attributes: finalStyle
             ? createTextAttributes({
                 bold: finalStyle.bold,
@@ -203,7 +203,7 @@ export function treeSitterToTextChunks(
         __isChunk: true,
         text,
         fg: defaultStyle?.fg,
-        bg: defaultStyle?.bg !== undefined ? defaultStyle.bg : undefined,
+        bg: defaultStyle?.bg,
         attributes: defaultStyle
           ? createTextAttributes({
               bold: defaultStyle.bold,
@@ -260,7 +260,7 @@ export function treeSitterToTextChunks(
       __isChunk: true,
       text,
       fg: defaultStyle?.fg,
-      bg: defaultStyle?.bg !== undefined ? defaultStyle.bg : undefined,
+      bg: defaultStyle?.bg,
       attributes: defaultStyle
         ? createTextAttributes({
             bold: defaultStyle.bold,

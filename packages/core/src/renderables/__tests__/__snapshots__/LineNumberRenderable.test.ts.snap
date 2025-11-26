@@ -28,7 +28,7 @@ exports[`LineNumberRenderable renders line numbers for wrapping text 1`] = `
 "
 `;
 
-exports[`LineNumberRenderable reproduce issue with layout shifting when typing 1`] = `
+exports[`LineNumberRenderable maintains stable visual line count when scrolling and typing with word wrap 1`] = `
 "                                   
  ┌───────────────────────────────┐ 
  │     Ctrl+Y to redo            │ 
@@ -62,7 +62,7 @@ exports[`LineNumberRenderable reproduce issue with layout shifting when typing 1
 "
 `;
 
-exports[`LineNumberRenderable reproduce issue with layout shifting when typing 2`] = `
+exports[`LineNumberRenderable maintains stable visual line count when scrolling and typing with word wrap 2`] = `
 "                                   
  ┌───────────────────────────────┐ 
  │     Ctrl+Y to redo            │ 
