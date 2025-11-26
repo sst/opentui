@@ -57,9 +57,11 @@ class GutterRenderable extends Renderable {
     const startX = this.buffered ? 0 : this.x
     const startY = this.buffered ? 0 : this.y
 
-    // Fill background
-    // Note: this.height might be determined by parent (flex stretch)
-    if (this._bg.a > 0) {
+    if (this.buffered) {
+      buffer.clear(this._bg)
+    } else if (this._bg.a > 0) {
+      // Fill background if not buffered and opaque (if buffered, clear handles it)
+      // Note: this.height might be determined by parent (flex stretch)
       buffer.fillRect(startX, startY, this.width, this.height, this._bg)
     }
 
