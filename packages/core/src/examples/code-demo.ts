@@ -247,10 +247,12 @@ let codeDisplay: CodeRenderable | null = null
 let codeWithLineNumbers: LineNumberRenderable | null = null
 let timingText: TextRenderable | null = null
 let syntaxStyle: SyntaxStyle | null = null
+let helpModal: BoxRenderable | null = null
 let currentExampleIndex = 0
 let concealEnabled = true
 let highlightsEnabled = false
 let diagnosticsEnabled = false
+let showingHelp = false
 
 export async function run(rendererInstance: CliRenderer): Promise<void> {
   renderer = rendererInstance
@@ -278,11 +280,55 @@ export async function run(rendererInstance: CliRenderer): Promise<void> {
 
   const instructionsText = new TextRenderable(renderer, {
     id: "instructions",
-    content:
-      "ESC to return | ← → switch examples | C toggle conceal | L toggle line numbers | H toggle diff | D toggle diagnostics",
+    content: "ESC to return | Press ? for keybindings",
     fg: "#888888",
   })
   titleBox.add(instructionsText)
+
+  // Create help modal (hidden by default)
+  helpModal = new BoxRenderable(renderer, {
+    id: "help-modal",
+    position: "absolute",
+    left: "50%",
+    top: "50%",
+    width: 60,
+    height: 16,
+    marginLeft: -30, // Center horizontally
+    marginTop: -8, // Center vertically
+    border: true,
+    borderStyle: "double",
+    borderColor: "#4ECDC4",
+    backgroundColor: "#0D1117",
+    title: "Keybindings",
+    titleAlignment: "center",
+    padding: 2,
+    zIndex: 100,
+    visible: false,
+  })
+
+  const helpContent = new TextRenderable(renderer, {
+    id: "help-content",
+    content: `Navigation:
+  ← → : Switch between code examples
+
+View Controls:
+  L : Toggle line numbers
+  C : Toggle concealment (Markdown links, etc.)
+
+Diff Highlighting:
+  H : Toggle diff highlights (+ green, - red)
+
+Diagnostics:
+  D : Toggle diagnostic signs (❌ ⚠️  💡)
+
+Other:
+  ? : Toggle this help screen
+  ESC : Return to main menu`,
+    fg: "#E6EDF3",
+  })
+
+  helpModal.add(helpContent)
+  renderer.root.add(helpModal)
 
   codeScrollBox = new ScrollBoxRenderable(renderer, {
     id: "code-scroll-box",
@@ -395,6 +441,16 @@ export async function run(rendererInstance: CliRenderer): Promise<void> {
   updateTimingText()
 
   keyboardHandler = (key: ParsedKey) => {
+    // Handle help modal toggle
+    if (key.raw === "?" && helpModal) {
+      showingHelp = !showingHelp
+      helpModal.visible = showingHelp
+      return
+    }
+
+    // Don't process other keys when help is showing
+    if (showingHelp) return
+
     if (key.name === "right" || key.name === "left") {
       // Navigate between examples
       if (key.name === "right") {
@@ -502,12 +558,14 @@ export function destroy(rendererInstance: CliRenderer): void {
   }
 
   parentContainer?.destroy()
+  helpModal?.destroy()
   parentContainer = null
   codeScrollBox = null
   codeDisplay = null
   codeWithLineNumbers = null
   timingText = null
   syntaxStyle = null
+  helpModal = null
 
   renderer = null
 }
