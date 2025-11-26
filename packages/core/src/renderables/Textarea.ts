@@ -114,12 +114,6 @@ export class TextareaRenderable extends EditBufferRenderable {
   private _actionHandlers: Map<TextareaAction, () => boolean>
   private _initialValueSet: boolean = false
   private _submitListener: ((event: SubmitEvent) => void) | undefined = undefined
-  private _selectionAnchorState: {
-    screenX: number
-    screenY: number
-    viewportX: number
-    viewportY: number
-  } | null = null
 
   private static readonly defaults = {
     backgroundColor: "transparent",
@@ -333,36 +327,36 @@ export class TextareaRenderable extends EditBufferRenderable {
 
   public moveCursorLeft(options?: { select?: boolean }): boolean {
     const select = options?.select ?? false
-    this.handleShiftSelection(select, true)
+    this.updateSelectionForMovement(select, true)
     this.editBuffer.moveCursorLeft()
-    this.handleShiftSelection(select, false)
+    this.updateSelectionForMovement(select, false)
     this.requestRender()
     return true
   }
 
   public moveCursorRight(options?: { select?: boolean }): boolean {
     const select = options?.select ?? false
-    this.handleShiftSelection(select, true)
+    this.updateSelectionForMovement(select, true)
     this.editBuffer.moveCursorRight()
-    this.handleShiftSelection(select, false)
+    this.updateSelectionForMovement(select, false)
     this.requestRender()
     return true
   }
 
   public moveCursorUp(options?: { select?: boolean }): boolean {
     const select = options?.select ?? false
-    this.handleShiftSelection(select, true)
+    this.updateSelectionForMovement(select, true)
     this.editorView.moveUpVisual()
-    this.handleShiftSelection(select, false)
+    this.updateSelectionForMovement(select, false)
     this.requestRender()
     return true
   }
 
   public moveCursorDown(options?: { select?: boolean }): boolean {
     const select = options?.select ?? false
-    this.handleShiftSelection(select, true)
+    this.updateSelectionForMovement(select, true)
     this.editorView.moveDownVisual()
-    this.handleShiftSelection(select, false)
+    this.updateSelectionForMovement(select, false)
     this.requestRender()
     return true
   }
@@ -374,20 +368,20 @@ export class TextareaRenderable extends EditBufferRenderable {
 
   public gotoLineHome(options?: { select?: boolean }): boolean {
     const select = options?.select ?? false
-    this.handleShiftSelection(select, true)
+    this.updateSelectionForMovement(select, true)
     const cursor = this.editorView.getCursor()
     this.editBuffer.setCursor(cursor.row, 0)
-    this.handleShiftSelection(select, false)
+    this.updateSelectionForMovement(select, false)
     this.requestRender()
     return true
   }
 
   public gotoLineEnd(options?: { select?: boolean }): boolean {
     const select = options?.select ?? false
-    this.handleShiftSelection(select, true)
+    this.updateSelectionForMovement(select, true)
     const eol = this.editBuffer.getEOL()
     this.editBuffer.setCursor(eol.row, eol.col)
-    this.handleShiftSelection(select, false)
+    this.updateSelectionForMovement(select, false)
     this.requestRender()
     return true
   }
@@ -443,20 +437,20 @@ export class TextareaRenderable extends EditBufferRenderable {
 
   public moveWordForward(options?: { select?: boolean }): boolean {
     const select = options?.select ?? false
-    this.handleShiftSelection(select, true)
+    this.updateSelectionForMovement(select, true)
     const nextWord = this.editBuffer.getNextWordBoundary()
     this.editBuffer.setCursorByOffset(nextWord.offset)
-    this.handleShiftSelection(select, false)
+    this.updateSelectionForMovement(select, false)
     this.requestRender()
     return true
   }
 
   public moveWordBackward(options?: { select?: boolean }): boolean {
     const select = options?.select ?? false
-    this.handleShiftSelection(select, true)
+    this.updateSelectionForMovement(select, true)
     const prevWord = this.editBuffer.getPrevWordBoundary()
     this.editBuffer.setCursorByOffset(prevWord.offset)
-    this.handleShiftSelection(select, false)
+    this.updateSelectionForMovement(select, false)
     this.requestRender()
     return true
   }
@@ -495,65 +489,6 @@ export class TextareaRenderable extends EditBufferRenderable {
     this._ctx.clearSelection()
     this.requestRender()
     return true
-  }
-
-  private handleShiftSelection(shiftPressed: boolean, isBeforeMovement: boolean): void {
-    if (!this.selectable) return
-
-    if (!shiftPressed) {
-      this._ctx.clearSelection()
-      this._selectionAnchorState = null
-      return
-    }
-
-    const visualCursor = this.editorView.getVisualCursor()
-    const viewport = this.editorView.getViewport()
-
-    const cursorX = this.x + visualCursor.visualCol
-    const cursorY = this.y + visualCursor.visualRow
-
-    if (isBeforeMovement) {
-      if (!this._ctx.hasSelection) {
-        this._ctx.startSelection(this, cursorX, cursorY)
-        this._selectionAnchorState = {
-          screenX: cursorX,
-          screenY: cursorY,
-          viewportX: viewport.offsetX,
-          viewportY: viewport.offsetY,
-        }
-      } else if (!this._selectionAnchorState) {
-        // Selection exists but we don't have state (e.g. from mouse), capture it
-        const selection = this._ctx.getSelection()
-        if (selection && selection.isActive) {
-          this._selectionAnchorState = {
-            screenX: selection.anchor.x,
-            screenY: selection.anchor.y,
-            viewportX: viewport.offsetX,
-            viewportY: viewport.offsetY,
-          }
-        }
-      }
-    } else {
-      // After movement - check if viewport changed
-      if (this._selectionAnchorState) {
-        const deltaY = viewport.offsetY - this._selectionAnchorState.viewportY
-        const deltaX = viewport.offsetX - this._selectionAnchorState.viewportX
-
-        if (deltaY !== 0 || deltaX !== 0) {
-          const newAnchorX = this._selectionAnchorState.screenX - deltaX
-          const newAnchorY = this._selectionAnchorState.screenY - deltaY
-
-          // We need to update the anchor without losing focus position
-          // startSelection sets both anchor and focus to the same point
-          this._ctx.startSelection(this, newAnchorX, newAnchorY)
-          this._ctx.updateSelection(this, cursorX, cursorY)
-        } else {
-          this._ctx.updateSelection(this, cursorX, cursorY)
-        }
-      } else {
-        this._ctx.updateSelection(this, cursorX, cursorY)
-      }
-    }
   }
 
   public focus(): void {
