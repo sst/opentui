@@ -400,6 +400,9 @@ export abstract class EditBufferRenderable extends Renderable implements LineInf
     return this.editorView.getSelection()
   }
 
+  // Undefined = 0,
+  // Exactly = 1,
+  // AtMost = 2
   private setupMeasureFunc(): void {
     const measureFunc = (
       width: number,
@@ -415,18 +418,25 @@ export abstract class EditBufferRenderable extends Renderable implements LineInf
       // Update viewport size to match measured dimensions
       // When wrapping and width changes, this will trigger wrap recalculation
       if (this._wrapMode !== "none" && this.width !== effectiveWidth) {
-        this.editorView.setViewportSize(effectiveWidth, effectiveHeight)
+        this.editorView.setViewportSize(Math.floor(effectiveWidth), effectiveHeight)
       } else {
-        this.editorView.setViewportSize(effectiveWidth, effectiveHeight)
+        this.editorView.setViewportSize(Math.floor(effectiveWidth), effectiveHeight)
       }
 
       const lineInfo = this.editorView.getLogicalLineInfo()
-      const measuredWidth = lineInfo.maxLineWidth
-      const measuredHeight = lineInfo.lineStarts.length
+      const measuredWidth = Math.max(1, lineInfo.maxLineWidth)
+      const measuredHeight = Math.max(1, lineInfo.lineStarts.length)
+
+      if (widthMode === MeasureMode.AtMost) {
+        return {
+          width: Math.min(effectiveWidth, measuredWidth),
+          height: Math.min(effectiveHeight, measuredHeight),
+        }
+      }
 
       return {
-        width: Math.max(1, measuredWidth),
-        height: Math.max(1, measuredHeight),
+        width: measuredWidth,
+        height: measuredHeight,
       }
     }
 
