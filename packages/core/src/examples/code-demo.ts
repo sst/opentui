@@ -270,7 +270,7 @@ export async function run(rendererInstance: CliRenderer): Promise<void> {
     borderStyle: "double",
     borderColor: "#4ECDC4",
     backgroundColor: "#0D1117",
-    title: "Tree-Sitter Syntax Highlighting Demo",
+    title: "Code Demo - Syntax Highlighting + Line Numbers",
     titleAlignment: "center",
     border: true,
   })
