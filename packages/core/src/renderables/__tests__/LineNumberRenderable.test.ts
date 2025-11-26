@@ -132,6 +132,136 @@ describe("LineNumberRenderable", () => {
     expect(frame).toContain(" 1 Line 1")
   })
 
+  test("renders line colors for diff highlighting", async () => {
+    const { renderer, renderOnce } = await createTestRenderer({
+      width: 20,
+      height: 10,
+    })
+
+    const text = "Line 1\nLine 2\nLine 3\nLine 4\nLine 5"
+    const textRenderable = new MockTextBuffer(renderer, {
+      text,
+      width: "100%",
+      height: "100%",
+    })
+
+    const lineColors = new Map<number, string>()
+    lineColors.set(1, "#2d4a2e") // Green for line 2 (index 1)
+    lineColors.set(3, "#4a2d2d") // Red for line 4 (index 3)
+
+    const lineNumberRenderable = new LineNumberRenderable(renderer, {
+      target: textRenderable,
+      minWidth: 3,
+      paddingRight: 1,
+      fg: "#ffffff",
+      bg: "#000000",
+      lineColors: lineColors,
+      width: "100%",
+      height: "100%",
+    })
+
+    renderer.root.add(lineNumberRenderable)
+
+    await renderOnce()
+
+    const buffer = renderer.currentRenderBuffer
+    const bgBuffer = buffer.buffers.bg
+
+    // Helper to get RGBA values from buffer at position
+    const getBgColor = (x: number, y: number) => {
+      const offset = (y * buffer.width + x) * 4
+      return {
+        r: bgBuffer[offset],
+        g: bgBuffer[offset + 1],
+        b: bgBuffer[offset + 2],
+        a: bgBuffer[offset + 3],
+      }
+    }
+
+    // Check line 2 (index 1) has green background in gutter (x=2 is in the gutter)
+    const line2GutterBg = getBgColor(2, 1)
+    expect(line2GutterBg.r).toBeCloseTo(0x2d / 255, 2)
+    expect(line2GutterBg.g).toBeCloseTo(0x4a / 255, 2)
+    expect(line2GutterBg.b).toBeCloseTo(0x2e / 255, 2)
+
+    // Check line 4 (index 3) has red background in gutter
+    const line4GutterBg = getBgColor(2, 3)
+    expect(line4GutterBg.r).toBeCloseTo(0x4a / 255, 2)
+    expect(line4GutterBg.g).toBeCloseTo(0x2d / 255, 2)
+    expect(line4GutterBg.b).toBeCloseTo(0x2d / 255, 2)
+
+    // Check line 1 (index 0) has default black background in gutter
+    const line1GutterBg = getBgColor(2, 0)
+    expect(line1GutterBg.r).toBeCloseTo(0, 2)
+    expect(line1GutterBg.g).toBeCloseTo(0, 2)
+    expect(line1GutterBg.b).toBeCloseTo(0, 2)
+  })
+
+  test("renders line colors for wrapped lines", async () => {
+    const { renderer, renderOnce } = await createTestRenderer({
+      width: 20,
+      height: 10,
+    })
+
+    const text = "Line 1 is very long and should wrap around multiple lines\nLine 2"
+    const textRenderable = new MockTextBuffer(renderer, {
+      text,
+      width: "auto",
+      height: "100%",
+      wrapMode: "char",
+    })
+
+    const lineColors = new Map<number, string>()
+    lineColors.set(0, "#2d4a2e") // Green for line 1 (index 0, which wraps)
+
+    const lineNumberRenderable = new LineNumberRenderable(renderer, {
+      target: textRenderable,
+      minWidth: 3,
+      paddingRight: 1,
+      fg: "#ffffff",
+      bg: "#000000",
+      lineColors: lineColors,
+      width: "100%",
+      height: "100%",
+    })
+
+    renderer.root.add(lineNumberRenderable)
+
+    await renderOnce()
+
+    const buffer = renderer.currentRenderBuffer
+    const bgBuffer = buffer.buffers.bg
+
+    // Helper to get RGBA values from buffer at position
+    const getBgColor = (x: number, y: number) => {
+      const offset = (y * buffer.width + x) * 4
+      return {
+        r: bgBuffer[offset],
+        g: bgBuffer[offset + 1],
+        b: bgBuffer[offset + 2],
+        a: bgBuffer[offset + 3],
+      }
+    }
+
+    // First visual line of logical line 0 should have green background
+    const line0Visual0Bg = getBgColor(2, 0)
+    expect(line0Visual0Bg.r).toBeCloseTo(0x2d / 255, 2)
+    expect(line0Visual0Bg.g).toBeCloseTo(0x4a / 255, 2)
+    expect(line0Visual0Bg.b).toBeCloseTo(0x2e / 255, 2)
+
+    // Second visual line of logical line 0 should also have green background (wrapped continuation)
+    const line0Visual1Bg = getBgColor(2, 1)
+    expect(line0Visual1Bg.r).toBeCloseTo(0x2d / 255, 2)
+    expect(line0Visual1Bg.g).toBeCloseTo(0x4a / 255, 2)
+    expect(line0Visual1Bg.b).toBeCloseTo(0x2e / 255, 2)
+
+    // Third visual line of logical line 0 should also have green background (wrapped continuation)
+    const line0Visual2Bg = getBgColor(2, 2)
+    expect(line0Visual2Bg.r).toBeCloseTo(0x2d / 255, 2)
+    expect(line0Visual2Bg.g).toBeCloseTo(0x4a / 255, 2)
+    expect(line0Visual2Bg.b).toBeCloseTo(0x2e / 255, 2)
+  })
+
   test("reproduce issue with layout shifting when typing", async () => {
     const { renderer, renderOnce, captureCharFrame } = await createTestRenderer({
       width: 35,

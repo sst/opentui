@@ -9,6 +9,7 @@ export interface LineNumberOptions extends RenderableOptions<LineNumberRenderabl
   bg?: string | RGBA
   minWidth?: number
   paddingRight?: number
+  lineColors?: Map<number, string | RGBA>
 }
 
 class GutterRenderable extends Renderable {
@@ -17,11 +18,20 @@ class GutterRenderable extends Renderable {
   private _bg: RGBA
   private _minWidth: number
   private _paddingRight: number
+  private _lineColors: Map<number, RGBA>
 
   constructor(
     ctx: RenderContext,
     target: Renderable & LineInfoProvider,
-    options: { fg: RGBA; bg: RGBA; minWidth: number; paddingRight: number; id?: string; buffered?: boolean },
+    options: {
+      fg: RGBA
+      bg: RGBA
+      minWidth: number
+      paddingRight: number
+      lineColors: Map<number, RGBA>
+      id?: string
+      buffered?: boolean
+    },
   ) {
     super(ctx, {
       id: options.id,
@@ -36,6 +46,7 @@ class GutterRenderable extends Renderable {
     this._bg = options.bg
     this._minWidth = options.minWidth
     this._paddingRight = options.paddingRight
+    this._lineColors = options.lineColors
     this.width = this.calculateWidth()
   }
 
@@ -87,6 +98,12 @@ class GutterRenderable extends Renderable {
       if (visualLineIndex >= sources.length) break
 
       const logicalLine = sources[visualLineIndex]
+      const lineBg = this._lineColors.get(logicalLine) ?? this._bg
+
+      // Fill background for this line if it has a custom color
+      if (lineBg !== this._bg) {
+        buffer.fillRect(startX, startY + i, this.width, 1, lineBg)
+      }
 
       // Draw line number only for the first visual line of a logical line (wrapping)
       if (logicalLine === lastSource) {
@@ -96,7 +113,7 @@ class GutterRenderable extends Renderable {
         // Draw right aligned
         const x = startX + this.width - this._paddingRight - lineNumStr.length
         if (x >= startX) {
-          buffer.drawText(lineNumStr, x, startY + i, this._fg, this._bg)
+          buffer.drawText(lineNumStr, x, startY + i, this._fg, lineBg)
         }
       }
 
@@ -121,11 +138,19 @@ export class LineNumberRenderable extends Renderable {
     const fg = parseColor(options.fg ?? "#888888")
     const bg = parseColor(options.bg ?? "transparent")
 
+    const lineColors = new Map<number, RGBA>()
+    if (options.lineColors) {
+      for (const [line, color] of options.lineColors) {
+        lineColors.set(line, parseColor(color))
+      }
+    }
+
     this.gutter = new GutterRenderable(ctx, this.target, {
       fg,
       bg,
       minWidth: options.minWidth ?? 3,
       paddingRight: options.paddingRight ?? 1,
+      lineColors,
       id: options.id ? `${options.id}-gutter` : undefined,
       buffered: true,
     })
