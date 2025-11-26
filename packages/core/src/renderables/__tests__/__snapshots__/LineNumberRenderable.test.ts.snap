@@ -1,0 +1,97 @@
+// Bun Snapshot v1, https://bun.sh/docs/test/snapshots
+
+exports[`LineNumberRenderable renders line numbers correctly 1`] = `
+" 1 Line 1           
+ 2 Line 2           
+ 3 Line 3           
+                    
+                    
+                    
+                    
+                    
+                    
+                    
+"
+`;
+
+exports[`LineNumberRenderable renders line numbers for wrapping text 1`] = `
+" 1 Line 1 is very l 
+   ong and should w 
+   rap around multi 
+   ple lines        
+                    
+                    
+                    
+                    
+                    
+                    
+"
+`;
+
+exports[`LineNumberRenderable maintains stable visual line count when scrolling and typing with word wrap 1`] = `
+"                                   
+ ┌───────────────────────────────┐ 
+ │     Ctrl+Y to redo            │ 
+ │  36                           │ 
+ │  37 VIEW:                     │ 
+ │  38   • Shift+W to toggle     │ 
+ │     wrap mode (word/char/     │ 
+ │     none)                     │ 
+ │  39   • Shift+L to toggle     │ 
+ │     line numbers              │ 
+ │  40                           │ 
+ │  41 FEATURES:                 │ 
+ │  42   ✓ Grapheme-aware        │ 
+ │     cursor movement           │ 
+ │  43   ✓ Unicode (emoji 🌟     │ 
+ │      and CJK 世界, 你好世界   │ 
+ │     界, 中文, 한글)            │ 
+ │  44   ✓ Incremental editing   │ 
+ │  45   ✓ Text wrapping and     │ 
+ │     viewport management       │ 
+ │  46   ✓ Undo/redo support     │ 
+ │  47   ✓ Word-based            │ 
+ │     navigation and deletion   │ 
+ │  48   ✓ Text selection with   │ 
+ │     shift keys                │ 
+ │  49                           │ 
+ │  50 Press ESC to return to    │ 
+ │     main menu                 │ 
+ └───────────────────────────────┘ 
+                                   
+"
+`;
+
+exports[`LineNumberRenderable maintains stable visual line count when scrolling and typing with word wrap 2`] = `
+"                                   
+ ┌───────────────────────────────┐ 
+ │     Ctrl+Y to redo            │ 
+ │  36                           │ 
+ │  37 VIEW:                     │ 
+ │  38   • Shift+W to toggle     │ 
+ │     wrap mode (word/char/     │ 
+ │     none)                     │ 
+ │  39   • Shift+L to toggle     │ 
+ │     line numbers              │ 
+ │  40                           │ 
+ │  41 FEATURES:                 │ 
+ │  42   ✓ Grapheme-aware        │ 
+ │     cursor movement           │ 
+ │  43   ✓ Unicode (emoji 🌟     │ 
+ │      and CJK 世界, 你好世界   │ 
+ │     界, 中文, 한글)            │ 
+ │  44   ✓ Incremental editing   │ 
+ │  45   ✓ Text wrapping and     │ 
+ │     viewport management       │ 
+ │  46   ✓ Undo/redo support     │ 
+ │  47   ✓ Word-based            │ 
+ │     navigation and deletion   │ 
+ │  48   ✓ Text selection with   │ 
+ │     shift keys                │ 
+ │  49 a                         │ 
+ │  50 Press ESC to return to    │ 
+ │     main menu                 │ 
+ └───────────────────────────────┘ 
+                                   
+"
+`;

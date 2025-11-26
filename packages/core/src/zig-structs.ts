@@ -78,3 +78,20 @@ export const EncodedCharStruct = defineStruct([
   ["width", "u8"],
   ["char", "u32"],
 ])
+
+export const LineInfoStruct = defineStruct([
+  ["starts", ["u32"]],
+  ["startsLen", "u32", { lengthOf: "starts" }],
+  ["widths", ["u32"]],
+  ["widthsLen", "u32", { lengthOf: "widths" }],
+  ["sources", ["u32"]],
+  ["sourcesLen", "u32", { lengthOf: "sources" }],
+  ["wraps", ["u32"]],
+  ["wrapsLen", "u32", { lengthOf: "wraps" }],
+  ["maxWidth", "u32"],
+])
+
+export const MeasureResultStruct = defineStruct([
+  ["lineCount", "u32"],
+  ["maxWidth", "u32"],
+])

@@ -89,27 +89,36 @@ export class KeyHandler extends EventEmitter<KeyHandlerEventMap> {
       return false
     }
 
-    switch (parsedKey.eventType) {
-      case "press":
-        this.emit("keypress", new KeyEvent(parsedKey))
-        break
-      case "repeat":
-        this.emit("keyrepeat", new KeyEvent(parsedKey))
-        break
-      case "release":
-        this.emit("keyrelease", new KeyEvent(parsedKey))
-        break
-      default:
-        this.emit("keypress", new KeyEvent(parsedKey))
-        break
+    try {
+      switch (parsedKey.eventType) {
+        case "press":
+          this.emit("keypress", new KeyEvent(parsedKey))
+          break
+        case "repeat":
+          this.emit("keyrepeat", new KeyEvent(parsedKey))
+          break
+        case "release":
+          this.emit("keyrelease", new KeyEvent(parsedKey))
+          break
+        default:
+          this.emit("keypress", new KeyEvent(parsedKey))
+          break
+      }
+    } catch (error) {
+      console.error(`[KeyHandler] Error processing input:`, error)
+      return true
     }
 
     return true
   }
 
   public processPaste(data: string): void {
-    const cleanedData = Bun.stripANSI(data)
-    this.emit("paste", new PasteEvent(cleanedData))
+    try {
+      const cleanedData = Bun.stripANSI(data)
+      this.emit("paste", new PasteEvent(cleanedData))
+    } catch (error) {
+      console.error(`[KeyHandler] Error processing paste:`, error)
+    }
   }
 }
 
@@ -129,7 +138,14 @@ export class InternalKeyHandler extends KeyHandler {
   }
 
   private emitWithPriority<K extends keyof KeyHandlerEventMap>(event: K, ...args: KeyHandlerEventMap[K]): boolean {
-    const hasGlobalListeners = super.emit(event as any, ...args)
+    let hasGlobalListeners = false
+
+    try {
+      hasGlobalListeners = super.emit(event as any, ...args)
+    } catch (error) {
+      console.error(`[KeyHandler] Error in global ${event} handler:`, error)
+    }
+
     const renderableSet = this.renderableHandlers.get(event)
     let hasRenderableListeners = false
 
@@ -142,7 +158,11 @@ export class InternalKeyHandler extends KeyHandler {
       }
 
       for (const handler of renderableSet) {
-        handler(...args)
+        try {
+          handler(...args)
+        } catch (error) {
+          console.error(`[KeyHandler] Error in renderable ${event} handler:`, error)
+        }
       }
     }
 

@@ -502,3 +502,152 @@ test("KeyHandler - source field persists through KeyEvent wrapper", () => {
 
   renderer.keyInput.removeAllListeners("keypress")
 })
+
+test("KeyHandler - global handler error is caught and logged", () => {
+  const handler = createKeyHandler()
+
+  let handlerCalled = false
+  let errorThrown = false
+
+  // Handler throws an error
+  handler.on("keypress", (key: KeyEvent) => {
+    handlerCalled = true
+    errorThrown = true
+    throw new Error("Test error in global handler")
+  })
+
+  // Should not throw - error is caught and logged
+  expect(() => handler.processInput("a")).not.toThrow()
+
+  expect(handlerCalled).toBe(true)
+  expect(errorThrown).toBe(true)
+})
+
+test("KeyHandler - renderable handler error does not stop processing", () => {
+  const handler = createKeyHandler()
+
+  let firstInternalCalled = false
+  let secondInternalCalled = false
+  let errorThrown = false
+
+  // First internal handler throws
+  handler.onInternal("keypress", (key: KeyEvent) => {
+    firstInternalCalled = true
+    errorThrown = true
+    throw new Error("Test error in internal handler")
+  })
+
+  // Second internal handler should still be called
+  handler.onInternal("keypress", (key: KeyEvent) => {
+    secondInternalCalled = true
+  })
+
+  // Should not throw
+  expect(() => handler.processInput("a")).not.toThrow()
+
+  expect(firstInternalCalled).toBe(true)
+  expect(errorThrown).toBe(true)
+  expect(secondInternalCalled).toBe(true)
+})
+
+test("KeyHandler - global handler error stops further global handlers but allows internal handlers", () => {
+  const handler = createKeyHandler()
+
+  let globalCalled = false
+  let internalCalled = false
+
+  // Global handler throws - stops further global handlers
+  handler.on("keypress", (key: KeyEvent) => {
+    globalCalled = true
+    throw new Error("Global handler error")
+  })
+
+  // Internal handler should still be called (different priority level)
+  handler.onInternal("keypress", (key: KeyEvent) => {
+    internalCalled = true
+  })
+
+  // Should not throw - errors are caught
+  expect(() => handler.processInput("a")).not.toThrow()
+
+  expect(globalCalled).toBe(true)
+  expect(internalCalled).toBe(true)
+})
+
+test("KeyHandler - paste handler error is caught and logged", () => {
+  const handler = createKeyHandler()
+
+  let handlerCalled = false
+
+  // Paste handler throws
+  handler.on("paste", (event) => {
+    handlerCalled = true
+    throw new Error("Test error in paste handler")
+  })
+
+  // Should not throw - error is caught and logged
+  expect(() => handler.processPaste("test")).not.toThrow()
+
+  expect(handlerCalled).toBe(true)
+})
+
+test("KeyHandler - processInput returns true even when handler throws", () => {
+  const handler = createKeyHandler()
+
+  handler.on("keypress", (key: KeyEvent) => {
+    throw new Error("Handler error")
+  })
+
+  // Should return true indicating the input was handled (even if handler errored)
+  const result = handler.processInput("a")
+  expect(result).toBe(true)
+})
+
+test("KeyHandler - internal handler error with preventDefault still respects prevention", () => {
+  const handler = createKeyHandler()
+
+  let globalCalled = false
+  let internalCalled = false
+
+  // Global handler prevents default
+  handler.on("keypress", (key: KeyEvent) => {
+    globalCalled = true
+    key.preventDefault()
+  })
+
+  // Internal handler should not be called (due to preventDefault)
+  handler.onInternal("keypress", (key: KeyEvent) => {
+    internalCalled = true
+    throw new Error("Should not reach here")
+  })
+
+  handler.processInput("a")
+
+  expect(globalCalled).toBe(true)
+  expect(internalCalled).toBe(false)
+})
+
+test("KeyHandler - error in one event type does not prevent other event types from working", () => {
+  const handler = createKeyHandler()
+
+  let keypressCalled = false
+  let pasteCalled = false
+
+  // Keypress handler throws
+  handler.on("keypress", (key: KeyEvent) => {
+    keypressCalled = true
+    throw new Error("Keypress error")
+  })
+
+  // Paste handler should work fine
+  handler.on("paste", (event) => {
+    pasteCalled = true
+  })
+
+  // Both should not throw - errors are caught and logged
+  expect(() => handler.processInput("a")).not.toThrow()
+  expect(() => handler.processPaste("test")).not.toThrow()
+
+  expect(keypressCalled).toBe(true)
+  expect(pasteCalled).toBe(true)
+})

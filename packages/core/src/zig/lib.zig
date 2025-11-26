@@ -591,22 +591,36 @@ export fn textBufferViewGetVirtualLineCount(view: *text_buffer_view.UnifiedTextB
     return view.getVirtualLineCount();
 }
 
-export fn textBufferViewGetLineInfoDirect(view: *text_buffer_view.UnifiedTextBufferView, lineStartsPtr: [*]u32, lineWidthsPtr: [*]u32) u32 {
+export fn textBufferViewGetLineInfoDirect(view: *text_buffer_view.UnifiedTextBufferView, outPtr: *ExternalLineInfo) void {
     const line_info = view.getCachedLineInfo();
 
-    @memcpy(lineStartsPtr[0..line_info.starts.len], line_info.starts);
-    @memcpy(lineWidthsPtr[0..line_info.widths.len], line_info.widths);
-
-    return line_info.max_width;
+    outPtr.* = .{
+        .starts_ptr = line_info.starts.ptr,
+        .starts_len = @intCast(line_info.starts.len),
+        .widths_ptr = line_info.widths.ptr,
+        .widths_len = @intCast(line_info.widths.len),
+        .sources_ptr = line_info.sources.ptr,
+        .sources_len = @intCast(line_info.sources.len),
+        .wraps_ptr = line_info.wraps.ptr,
+        .wraps_len = @intCast(line_info.wraps.len),
+        .max_width = line_info.max_width,
+    };
 }
 
-export fn textBufferViewGetLogicalLineInfoDirect(view: *text_buffer_view.UnifiedTextBufferView, lineStartsPtr: [*]u32, lineWidthsPtr: [*]u32) u32 {
+export fn textBufferViewGetLogicalLineInfoDirect(view: *text_buffer_view.UnifiedTextBufferView, outPtr: *ExternalLineInfo) void {
     const line_info = view.getLogicalLineInfo();
 
-    @memcpy(lineStartsPtr[0..line_info.starts.len], line_info.starts);
-    @memcpy(lineWidthsPtr[0..line_info.widths.len], line_info.widths);
-
-    return line_info.max_width;
+    outPtr.* = .{
+        .starts_ptr = line_info.starts.ptr,
+        .starts_len = @intCast(line_info.starts.len),
+        .widths_ptr = line_info.widths.ptr,
+        .widths_len = @intCast(line_info.widths.len),
+        .sources_ptr = line_info.sources.ptr,
+        .sources_len = @intCast(line_info.sources.len),
+        .wraps_ptr = line_info.wraps.ptr,
+        .wraps_len = @intCast(line_info.wraps.len),
+        .max_width = line_info.max_width,
+    };
 }
 
 export fn textBufferViewGetSelectedText(view: *text_buffer_view.UnifiedTextBufferView, outPtr: [*]u8, maxLen: usize) usize {
@@ -625,6 +639,20 @@ export fn textBufferViewSetTabIndicator(view: *text_buffer_view.UnifiedTextBuffe
 
 export fn textBufferViewSetTabIndicatorColor(view: *text_buffer_view.UnifiedTextBufferView, color: [*]const f32) void {
     view.setTabIndicatorColor(utils.f32PtrToRGBA(color));
+}
+
+pub const ExternalMeasureResult = extern struct {
+    line_count: u32,
+    max_width: u32,
+};
+
+export fn textBufferViewMeasureForDimensions(view: *text_buffer_view.UnifiedTextBufferView, width: u32, height: u32, outPtr: *ExternalMeasureResult) bool {
+    const result = view.measureForDimensions(width, height) catch return false;
+    outPtr.* = .{
+        .line_count = result.line_count,
+        .max_width = result.max_width,
+    };
+    return true;
 }
 
 // ===== EditBuffer Exports =====
@@ -885,26 +913,38 @@ export fn editorViewGetTotalVirtualLineCount(view: *editor_view.EditorView) u32 
     return view.getTotalVirtualLineCount();
 }
 
-export fn editorViewGetLineInfoDirect(view: *editor_view.EditorView, lineStartsPtr: [*]u32, lineWidthsPtr: [*]u32) u32 {
+export fn editorViewGetLineInfoDirect(view: *editor_view.EditorView, outPtr: *ExternalLineInfo) void {
     const line_info = view.getCachedLineInfo();
-    for (line_info.starts, 0..) |start, i| {
-        lineStartsPtr[i] = start;
-    }
-    for (line_info.widths, 0..) |width, i| {
-        lineWidthsPtr[i] = width;
-    }
-    return line_info.max_width;
+    outPtr.* = .{
+        .starts_ptr = line_info.starts.ptr,
+        .starts_len = @intCast(line_info.starts.len),
+        .widths_ptr = line_info.widths.ptr,
+        .widths_len = @intCast(line_info.widths.len),
+        .sources_ptr = line_info.sources.ptr,
+        .sources_len = @intCast(line_info.sources.len),
+        .wraps_ptr = line_info.wraps.ptr,
+        .wraps_len = @intCast(line_info.wraps.len),
+        .max_width = line_info.max_width,
+    };
 }
 
 export fn editorViewGetTextBufferView(view: *editor_view.EditorView) *text_buffer_view.UnifiedTextBufferView {
     return view.getTextBufferView();
 }
 
-export fn editorViewGetLogicalLineInfoDirect(view: *editor_view.EditorView, lineStartsPtr: [*]u32, lineWidthsPtr: [*]u32) u32 {
+export fn editorViewGetLogicalLineInfoDirect(view: *editor_view.EditorView, outPtr: *ExternalLineInfo) void {
     const line_info = view.getLogicalLineInfo();
-    @memcpy(lineStartsPtr[0..line_info.starts.len], line_info.starts);
-    @memcpy(lineWidthsPtr[0..line_info.widths.len], line_info.widths);
-    return line_info.max_width;
+    outPtr.* = .{
+        .starts_ptr = line_info.starts.ptr,
+        .starts_len = @intCast(line_info.starts.len),
+        .widths_ptr = line_info.widths.ptr,
+        .widths_len = @intCast(line_info.widths.len),
+        .sources_ptr = line_info.sources.ptr,
+        .sources_len = @intCast(line_info.sources.len),
+        .wraps_ptr = line_info.wraps.ptr,
+        .wraps_len = @intCast(line_info.wraps.len),
+        .max_width = line_info.max_width,
+    };
 }
 
 export fn editorViewSetViewportSize(view: *editor_view.EditorView, width: u32, height: u32) void {
@@ -1084,6 +1124,18 @@ pub const ExternalVisualCursor = extern struct {
     logical_row: u32,
     logical_col: u32,
     offset: u32,
+};
+
+pub const ExternalLineInfo = extern struct {
+    starts_ptr: [*]const u32,
+    starts_len: u32,
+    widths_ptr: [*]const u32,
+    widths_len: u32,
+    sources_ptr: [*]const u32,
+    sources_len: u32,
+    wraps_ptr: [*]const u32,
+    wraps_len: u32,
+    max_width: u32,
 };
 
 export fn textBufferAddHighlightByCharRange(

@@ -99,6 +99,11 @@ export class EditBuffer extends EventEmitter {
     this.lib.editBufferSetText(this.bufferPtr, textBytes, history)
   }
 
+  public getLineCount(): number {
+    this.guard()
+    return this.lib.textBufferGetLineCount(this.textBufferPtr)
+  }
+
   public getText(): string {
     this.guard()
     // TODO: Use byte size of text buffer to get the actual size of the text

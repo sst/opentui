@@ -46,7 +46,7 @@ import * as splitModeExample from "./split-mode-demo"
 import * as consoleExample from "./console-demo"
 import * as vnodeCompositionDemo from "./vnode-composition-demo"
 import * as hastSyntaxHighlightingExample from "./hast-syntax-highlighting-demo"
-import * as treeSitterSyntaxHighlightingExample from "./tree-sitter-syntax-highlighting-demo"
+import * as codeDemo from "./code-demo"
 import * as liveStateExample from "./live-state-demo"
 import * as fullUnicodeExample from "./full-unicode-demo"
 import * as textNodeDemo from "./text-node-demo"
@@ -119,10 +119,11 @@ const examples: Example[] = [
     destroy: hastSyntaxHighlightingExample.destroy,
   },
   {
-    name: "Tree-Sitter Syntax Highlighting Demo",
-    description: "Real-time syntax highlighting using tree-sitter with CodeRenderable",
-    run: treeSitterSyntaxHighlightingExample.run,
-    destroy: treeSitterSyntaxHighlightingExample.destroy,
+    name: "Code Demo",
+    description:
+      "Code viewer with line numbers, diff highlights, and diagnostics using CodeRenderable + LineNumberRenderable",
+    run: codeDemo.run,
+    destroy: codeDemo.destroy,
   },
   {
     name: "Live State Management Demo",

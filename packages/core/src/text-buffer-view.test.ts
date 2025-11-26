@@ -148,6 +148,37 @@ describe("TextBufferView", () => {
       const unwrappedInfo = view.lineInfo
       expect(unwrappedInfo.lineStarts).toEqual([0, 7, 14])
     })
+
+    it("should return extended wrap info", () => {
+      const text = "Line 1 content\nLine 2"
+      const styledText = stringToStyledText(text)
+      buffer.setStyledText(styledText)
+
+      view.setWrapMode("char")
+      view.setWrapWidth(10)
+
+      // Line 1 content (14 chars) wraps into two lines:
+      // "Line 1 con" (10)
+      // "tent" (4)
+      // Line 2 (6 chars) fits on one line
+
+      const info = view.lineInfo
+
+      expect(info.lineSources.length).toBe(3)
+      expect(info.lineWraps.length).toBe(3)
+
+      // First visual line: source line 0, wrap 0
+      expect(info.lineSources[0]).toBe(0)
+      expect(info.lineWraps[0]).toBe(0)
+
+      // Second visual line: source line 0, wrap 1 (continuation)
+      expect(info.lineSources[1]).toBe(0)
+      expect(info.lineWraps[1]).toBe(1)
+
+      // Third visual line: source line 1, wrap 0
+      expect(info.lineSources[2]).toBe(1)
+      expect(info.lineWraps[2]).toBe(0)
+    })
   })
 
   describe("getSelectedText", () => {
@@ -409,6 +440,98 @@ describe("TextBufferView", () => {
       view.setSelection(8, 13)
       const selected = view.getSelectedText()
       expect(selected).toBe("IJKLM")
+    })
+  })
+
+  describe("measureForDimensions", () => {
+    it("should measure without modifying cache", () => {
+      const styledText = stringToStyledText("ABCDEFGHIJKLMNOPQRST")
+      buffer.setStyledText(styledText)
+
+      view.setWrapMode("char")
+      view.setWrapWidth(100) // Large width
+
+      // Measure with different width
+      const measureResult = view.measureForDimensions(10, 10)
+      expect(measureResult).not.toBeNull()
+      expect(measureResult!.lineCount).toBe(2)
+      expect(measureResult!.maxWidth).toBe(10)
+
+      // Verify cache wasn't modified (should be 1 line with wrap width 100)
+      const lineInfo = view.lineInfo
+      expect(lineInfo.lineStarts.length).toBe(1)
+    })
+
+    it("should measure char wrap correctly", () => {
+      const styledText = stringToStyledText("ABCDEFGHIJKLMNOPQRST")
+      buffer.setStyledText(styledText)
+
+      view.setWrapMode("char")
+
+      // Test different widths
+      const result1 = view.measureForDimensions(10, 10)
+      expect(result1).not.toBeNull()
+      expect(result1!.lineCount).toBe(2)
+      expect(result1!.maxWidth).toBe(10)
+
+      const result2 = view.measureForDimensions(5, 10)
+      expect(result2).not.toBeNull()
+      expect(result2!.lineCount).toBe(4)
+      expect(result2!.maxWidth).toBe(5)
+
+      const result3 = view.measureForDimensions(20, 10)
+      expect(result3).not.toBeNull()
+      expect(result3!.lineCount).toBe(1)
+      expect(result3!.maxWidth).toBe(20)
+    })
+
+    it("should handle no wrap mode", () => {
+      const styledText = stringToStyledText("Hello\nWorld\nTest")
+      buffer.setStyledText(styledText)
+
+      view.setWrapMode("none")
+
+      const result = view.measureForDimensions(3, 10)
+      expect(result).not.toBeNull()
+      expect(result!.lineCount).toBe(3)
+      expect(result!.maxWidth).toBeGreaterThanOrEqual(4)
+    })
+
+    it("should handle word wrap", () => {
+      const styledText = stringToStyledText("Hello wonderful world")
+      buffer.setStyledText(styledText)
+
+      view.setWrapMode("word")
+
+      const result = view.measureForDimensions(10, 10)
+      expect(result).not.toBeNull()
+      expect(result!.lineCount).toBeGreaterThanOrEqual(2)
+      expect(result!.maxWidth).toBeLessThanOrEqual(10)
+    })
+
+    it("should handle empty buffer", () => {
+      const styledText = stringToStyledText("")
+      buffer.setStyledText(styledText)
+
+      view.setWrapMode("char")
+
+      const result = view.measureForDimensions(10, 10)
+      expect(result).not.toBeNull()
+      expect(result!.lineCount).toBe(1)
+      expect(result!.maxWidth).toBe(0)
+    })
+
+    it("should handle multiple lines with wrapping", () => {
+      const styledText = stringToStyledText("Short\nAVeryLongLineHere\nMedium")
+      buffer.setStyledText(styledText)
+
+      view.setWrapMode("char")
+
+      const result = view.measureForDimensions(10, 10)
+      expect(result).not.toBeNull()
+      // "Short" (1), "AVeryLongLineHere" (2), "Medium" (1) = 4 lines
+      expect(result!.lineCount).toBe(4)
+      expect(result!.maxWidth).toBe(10)
     })
   })
 })

@@ -6,6 +6,7 @@ import {
   TextRenderable,
   type ParsedKey,
   ScrollBoxRenderable,
+  LineNumberRenderable,
 } from "../index"
 import { setupCommonDemoKeys } from "./lib/standalone-keys"
 import { parseColor } from "../lib/RGBA"
@@ -243,10 +244,15 @@ let keyboardHandler: ((key: ParsedKey) => void) | null = null
 let parentContainer: BoxRenderable | null = null
 let codeScrollBox: ScrollBoxRenderable | null = null
 let codeDisplay: CodeRenderable | null = null
+let codeWithLineNumbers: LineNumberRenderable | null = null
 let timingText: TextRenderable | null = null
 let syntaxStyle: SyntaxStyle | null = null
+let helpModal: BoxRenderable | null = null
 let currentExampleIndex = 0
 let concealEnabled = true
+let highlightsEnabled = false
+let diagnosticsEnabled = false
+let showingHelp = false
 
 export async function run(rendererInstance: CliRenderer): Promise<void> {
   renderer = rendererInstance
@@ -266,7 +272,7 @@ export async function run(rendererInstance: CliRenderer): Promise<void> {
     borderStyle: "double",
     borderColor: "#4ECDC4",
     backgroundColor: "#0D1117",
-    title: "Tree-Sitter Syntax Highlighting Demo",
+    title: "Code Demo - Syntax Highlighting + Line Numbers",
     titleAlignment: "center",
     border: true,
   })
@@ -274,11 +280,55 @@ export async function run(rendererInstance: CliRenderer): Promise<void> {
 
   const instructionsText = new TextRenderable(renderer, {
     id: "instructions",
-    content:
-      "ESC to return | ← → to switch examples | C to toggle conceal | Demonstrating CodeRenderable with tree-sitter highlighting",
+    content: "ESC to return | Press ? for keybindings",
     fg: "#888888",
   })
   titleBox.add(instructionsText)
+
+  // Create help modal (hidden by default)
+  helpModal = new BoxRenderable(renderer, {
+    id: "help-modal",
+    position: "absolute",
+    left: "50%",
+    top: "50%",
+    width: 60,
+    height: 16,
+    marginLeft: -30, // Center horizontally
+    marginTop: -8, // Center vertically
+    border: true,
+    borderStyle: "double",
+    borderColor: "#4ECDC4",
+    backgroundColor: "#0D1117",
+    title: "Keybindings",
+    titleAlignment: "center",
+    padding: 2,
+    zIndex: 100,
+    visible: false,
+  })
+
+  const helpContent = new TextRenderable(renderer, {
+    id: "help-content",
+    content: `Navigation:
+  ← → : Switch between code examples
+
+View Controls:
+  L : Toggle line numbers
+  C : Toggle concealment (Markdown links, etc.)
+
+Diff Highlighting:
+  H : Toggle diff highlights (+ green, - red)
+
+Diagnostics:
+  D : Toggle diagnostic signs (❌ ⚠️  💡)
+
+Other:
+  ? : Toggle this help screen
+  ESC : Return to main menu`,
+    fg: "#E6EDF3",
+  })
+
+  helpModal.add(helpContent)
+  renderer.root.add(helpModal)
 
   codeScrollBox = new ScrollBoxRenderable(renderer, {
     id: "code-scroll-box",
@@ -290,9 +340,8 @@ export async function run(rendererInstance: CliRenderer): Promise<void> {
     border: true,
     scrollY: true,
     scrollX: false,
-    contentOptions: {
-      paddingLeft: 1,
-    },
+    flexGrow: 1,
+    flexShrink: 1,
   })
   parentContainer.add(codeScrollBox)
 
@@ -350,36 +399,62 @@ export async function run(rendererInstance: CliRenderer): Promise<void> {
     default: { fg: parseColor("#E6EDF3") },
   })
 
-  // Create code display using CodeRenderable
+  // Create code display using CodeRenderable wrapped in LineNumberRenderable
   codeDisplay = new CodeRenderable(renderer, {
     id: "code-display",
     content: examples[currentExampleIndex].code,
     filetype: examples[currentExampleIndex].filetype,
     syntaxStyle,
-    bg: "#0D1117",
     selectable: true,
     selectionBg: "#264F78",
     selectionFg: "#FFFFFF",
     conceal: concealEnabled,
+    width: "100%",
   })
-  codeScrollBox.add(codeDisplay)
+
+  codeWithLineNumbers = new LineNumberRenderable(renderer, {
+    id: "code-with-lines",
+    target: codeDisplay,
+    minWidth: 3,
+    paddingRight: 1,
+    fg: "#6b7280",
+    bg: "#161b22",
+    width: "100%",
+  })
+
+  codeScrollBox.add(codeWithLineNumbers)
 
   timingText = new TextRenderable(renderer, {
     id: "timing-display",
     content: "Initializing...",
     fg: "#A5D6FF",
+    wrapMode: "word",
+    flexShrink: 0,
   })
   parentContainer.add(timingText)
 
   const updateTimingText = () => {
     if (timingText) {
-      timingText.content = `Using CodeRenderable with ${examples[currentExampleIndex].name} highlighting (${currentExampleIndex + 1}/${examples.length}) | Conceal: ${concealEnabled ? "ON" : "OFF"}`
+      const lineNums = codeWithLineNumbers?.showLineNumbers ? "ON" : "OFF"
+      const diff = highlightsEnabled ? "ON" : "OFF"
+      const diag = diagnosticsEnabled ? "ON" : "OFF"
+      timingText.content = `${examples[currentExampleIndex].name} (${currentExampleIndex + 1}/${examples.length}) | Conceal: ${concealEnabled ? "ON" : "OFF"} | Lines: ${lineNums} | Diff: ${diff} | Diag: ${diag}`
     }
   }
 
   updateTimingText()
 
   keyboardHandler = (key: ParsedKey) => {
+    // Handle help modal toggle
+    if (key.raw === "?" && helpModal) {
+      showingHelp = !showingHelp
+      helpModal.visible = showingHelp
+      return
+    }
+
+    // Don't process other keys when help is showing
+    if (showingHelp) return
+
     if (key.name === "right" || key.name === "left") {
       // Navigate between examples
       if (key.name === "right") {
@@ -405,6 +480,75 @@ export async function run(rendererInstance: CliRenderer): Promise<void> {
         codeDisplay.conceal = concealEnabled
       }
       updateTimingText()
+    } else if (key.name === "l" && !key.ctrl && !key.meta) {
+      // Toggle line numbers
+      if (codeWithLineNumbers) {
+        codeWithLineNumbers.showLineNumbers = !codeWithLineNumbers.showLineNumbers
+      }
+      updateTimingText()
+    } else if (key.name === "h" && !key.ctrl && !key.meta) {
+      // Toggle diff highlights
+      if (codeWithLineNumbers && codeDisplay) {
+        highlightsEnabled = !highlightsEnabled
+        if (highlightsEnabled) {
+          // Add diff-style highlights for demonstration
+          const lineCount = codeDisplay.lineCount
+          for (let i = 0; i < lineCount; i += 7) {
+            if (i % 14 === 0) {
+              codeWithLineNumbers.setLineColor(i, "#1a4d1a")
+              codeWithLineNumbers.setLineSign(i, { after: " +", afterColor: "#22c55e" })
+            } else {
+              codeWithLineNumbers.setLineColor(i, "#4d1a1a")
+              codeWithLineNumbers.setLineSign(i, { after: " -", afterColor: "#ef4444" })
+            }
+          }
+        } else {
+          codeWithLineNumbers.clearAllLineColors()
+          // Clear only after signs
+          const currentSigns = codeWithLineNumbers.getLineSigns()
+          for (const [line, sign] of currentSigns) {
+            if (sign.after) {
+              if (sign.before) {
+                codeWithLineNumbers.setLineSign(line, { before: sign.before, beforeColor: sign.beforeColor })
+              } else {
+                codeWithLineNumbers.clearLineSign(line)
+              }
+            }
+          }
+        }
+      }
+      updateTimingText()
+    } else if (key.name === "d" && !key.ctrl && !key.meta) {
+      // Toggle diagnostics
+      if (codeWithLineNumbers && codeDisplay) {
+        diagnosticsEnabled = !diagnosticsEnabled
+        if (diagnosticsEnabled) {
+          // Add diagnostic signs for demonstration
+          const lineCount = codeDisplay.lineCount
+          for (let i = 0; i < lineCount; i += 9) {
+            if (i % 27 === 0) {
+              codeWithLineNumbers.setLineSign(i, { before: "❌", beforeColor: "#ef4444" })
+            } else if (i % 18 === 0) {
+              codeWithLineNumbers.setLineSign(i, { before: "⚠️", beforeColor: "#f59e0b" })
+            } else {
+              codeWithLineNumbers.setLineSign(i, { before: "💡", beforeColor: "#3b82f6" })
+            }
+          }
+        } else {
+          // Clear only before signs
+          const currentSigns = codeWithLineNumbers.getLineSigns()
+          for (const [line, sign] of currentSigns) {
+            if (sign.before) {
+              if (sign.after) {
+                codeWithLineNumbers.setLineSign(line, { after: sign.after, afterColor: sign.afterColor })
+              } else {
+                codeWithLineNumbers.clearLineSign(line)
+              }
+            }
+          }
+        }
+      }
+      updateTimingText()
     }
   }
 
@@ -418,11 +562,14 @@ export function destroy(rendererInstance: CliRenderer): void {
   }
 
   parentContainer?.destroy()
+  helpModal?.destroy()
   parentContainer = null
   codeScrollBox = null
   codeDisplay = null
+  codeWithLineNumbers = null
   timingText = null
   syntaxStyle = null
+  helpModal = null
 
   renderer = null
 }
