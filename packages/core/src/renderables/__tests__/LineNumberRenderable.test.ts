@@ -943,6 +943,168 @@ describe("LineNumberRenderable", () => {
     expect(frame).toContain("46 Line 5")
   })
 
+  test("gutter width is stable from first render - no width glitch", async () => {
+    const { renderer, renderOnce } = await createTestRenderer({
+      width: 20,
+      height: 10,
+    })
+
+    const text = "Line 1\nLine 2\nLine 3"
+    const textRenderable = new MockTextBuffer(renderer, {
+      text,
+      width: "100%",
+      height: "100%",
+    })
+
+    const lineNumberRenderable = new LineNumberRenderable(renderer, {
+      target: textRenderable,
+      minWidth: 3,
+      paddingRight: 1,
+      fg: "white",
+      width: "100%",
+      height: "100%",
+    })
+
+    renderer.root.add(lineNumberRenderable)
+
+    // First render - this is when layout happens
+    await renderOnce()
+
+    // Capture width after first render
+    const gutterAfterFirstRender = lineNumberRenderable["gutter"]
+    const widthAfterFirstRender = gutterAfterFirstRender?.width
+
+    expect(widthAfterFirstRender).toBeGreaterThan(0)
+
+    // Render a second time - width should NOT change (no glitch)
+    await renderOnce()
+
+    const widthAfterSecondRender = lineNumberRenderable["gutter"]?.width
+    expect(widthAfterSecondRender).toBe(widthAfterFirstRender)
+
+    // Render a third time to be absolutely sure
+    await renderOnce()
+
+    const widthAfterThirdRender = lineNumberRenderable["gutter"]?.width
+    expect(widthAfterThirdRender).toBe(widthAfterFirstRender)
+  })
+
+  test("gutter width accounts for large line numbers from first render", async () => {
+    const { renderer, renderOnce } = await createTestRenderer({
+      width: 30,
+      height: 10,
+    })
+
+    const text = "Line 1\nLine 2\nLine 3"
+    const textRenderable = new MockTextBuffer(renderer, {
+      text,
+      width: "100%",
+      height: "100%",
+    })
+
+    const lineNumberRenderable = new LineNumberRenderable(renderer, {
+      target: textRenderable,
+      minWidth: 3,
+      paddingRight: 1,
+      fg: "white",
+      lineNumberOffset: 997, // Will show lines 998, 999, 1000 (4 digits)
+      width: "100%",
+      height: "100%",
+    })
+
+    renderer.root.add(lineNumberRenderable)
+
+    // First render - this is when layout happens
+    await renderOnce()
+
+    // Capture width after first render
+    const gutterAfterFirstRender = lineNumberRenderable["gutter"]
+    const widthAfterFirstRender = gutterAfterFirstRender?.width
+
+    // Width should be at least 5 (for "1000" which is 4 digits + padding)
+    expect(widthAfterFirstRender).toBeGreaterThanOrEqual(5)
+
+    // Render again - width should NOT change (no glitch)
+    await renderOnce()
+
+    const widthAfterSecondRender = lineNumberRenderable["gutter"]?.width
+    expect(widthAfterSecondRender).toBe(widthAfterFirstRender)
+
+    // Render a third time to be absolutely sure
+    await renderOnce()
+
+    const widthAfterThirdRender = lineNumberRenderable["gutter"]?.width
+    expect(widthAfterThirdRender).toBe(widthAfterFirstRender)
+  })
+
+  test("maintains consistent left padding for all line numbers", async () => {
+    const { renderer, renderOnce, captureCharFrame } = await createTestRenderer({
+      width: 30,
+      height: 15,
+    })
+
+    // Create content with 12 lines so we have both 1-digit (1-9) and 2-digit (10-12) line numbers
+    const lines = []
+    for (let i = 1; i <= 12; i++) {
+      lines.push(`Line ${i}`)
+    }
+    const text = lines.join("\n")
+
+    const textRenderable = new MockTextBuffer(renderer, {
+      text,
+      width: "100%",
+      height: "100%",
+    })
+
+    const lineNumberRenderable = new LineNumberRenderable(renderer, {
+      target: textRenderable,
+      minWidth: 3,
+      paddingRight: 1,
+      fg: "white",
+      width: "100%",
+      height: "100%",
+    })
+
+    renderer.root.add(lineNumberRenderable)
+
+    await renderOnce()
+
+    const frame = captureCharFrame()
+    expect(frame).toMatchSnapshot()
+
+    const frameLines = frame.split("\n")
+
+    // Extract the gutter portion (everything before "Line X")
+    // For 1-digit line numbers (1-9), they are right-aligned in a 2-digit space
+    // For 2-digit line numbers (10-12), they fill the 2-digit space
+    // Both should have 1 space of left padding
+
+    // Line 1 should have format: "  1 Line 1" (1 left pad + 1 space for alignment + "1" + 1 paddingRight)
+    expect(frameLines[0]).toMatch(/^  1 Line 1/)
+    const line1Match = frameLines[0].match(/^( +)1 /)
+    expect(line1Match).toBeTruthy()
+    expect(line1Match![1].length).toBe(2) // 1 left padding + 1 alignment space
+
+    // Line 9 should also have the same format as line 1
+    expect(frameLines[8]).toMatch(/^  9 Line 9/)
+    const line9Match = frameLines[8].match(/^( +)9 /)
+    expect(line9Match).toBeTruthy()
+    expect(line9Match![1].length).toBe(2) // 1 left padding + 1 alignment space
+
+    // Line 10 should have format: " 10 Line 10" (1 left pad + "10" + 1 paddingRight)
+    expect(frameLines[9]).toMatch(/^ 10 Line 10/)
+    const line10Match = frameLines[9].match(/^( +)10 /)
+    expect(line10Match).toBeTruthy()
+    expect(line10Match![1].length).toBe(1) // Just 1 left padding
+
+    // All lines should have at least 1 space of left padding before the first digit
+    for (let i = 0; i < 12; i++) {
+      const lineMatch = frameLines[i].match(/^( +)\d+/)
+      expect(lineMatch).toBeTruthy()
+      expect(lineMatch![1].length).toBeGreaterThanOrEqual(1)
+    }
+  })
+
   test("maintains stable visual line count when scrolling and typing with word wrap", async () => {
     const { renderer, renderOnce, captureCharFrame } = await createTestRenderer({
       width: 35,

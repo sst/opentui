@@ -1,5 +1,29 @@
 // Bun Snapshot v1, https://bun.sh/docs/test/snapshots
 
+exports[`DiffRenderable - consistent left padding for line numbers > 9: unified view with double-digit line numbers 1`] = `
+"  8   line8                                                                     
+  9   line9                                                                     
+ 10 - line10_old                                                                
+ 11 + line10_new                                                                
+ 12   line11                                                                    
+ 13 + line12_added                                                              
+ 14 + line13_added                                                              
+ 15   line14                                                                    
+ 16   line15                                                                    
+ 17 - line16_old                                                                
+ 18 + line16_new                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+"
+`;
+
 exports[`DiffRenderable - unified view renders correctly: unified view simple diff 1`] = `
 " 1   function hello() {                                                         
  2 -   console.log("Hello");                                                    
@@ -49,18 +73,18 @@ exports[`DiffRenderable - split view renders correctly: split view simple diff 1
 `;
 
 exports[`DiffRenderable - multi-line diff unified view: unified view multi-line diff 1`] = `
-" 1   function add(a, b) {                                                       
- 2     return a + b;                                                            
- 3   }                                                                          
- 4                                                                              
- 5 + function subtract(a, b) {                                                  
- 6 +   return a - b;                                                            
- 7 + }                                                                          
- 8 +                                                                            
- 9   function multiply(a, b) {                                                  
-10 -   return a * b;                                                            
-11 +   return a * b * 1;                                                        
-12   }                                                                          
+"  1   function add(a, b) {                                                      
+  2     return a + b;                                                           
+  3   }                                                                         
+  4                                                                             
+  5 + function subtract(a, b) {                                                 
+  6 +   return a - b;                                                           
+  7 + }                                                                         
+  8 +                                                                           
+  9   function multiply(a, b) {                                                 
+ 10 -   return a * b;                                                           
+ 11 +   return a * b * 1;                                                       
+ 12   }                                                                         
                                                                                 
                                                                                 
                                                                                 
@@ -73,20 +97,20 @@ exports[`DiffRenderable - multi-line diff unified view: unified view multi-line 
 `;
 
 exports[`DiffRenderable - multi-line diff split view: split view multi-line diff 1`] = `
-" 1   function add(a, b) {                1   function add(a, b) {               
- 2     return a + b;                     2     return a + b;                    
- 3   }                                   3   }                                  
- 4                                       4                                      
-                                         5 + function subtract(a,               
-                                              b) {                              
-                                         6 +   return a - b;                    
-                                         7 + }                                  
- 9   function multiply(a,                8 +                                    
-      b) {                               9   function multiply(a,               
-10 -   return a * b;                          b) {                              
+"  1   function add(a, b) {                1   function add(a, b) {              
+  2     return a + b;                     2     return a + b;                   
+  3   }                                   3   }                                 
+  4                                       4                                     
+                                          5 + function subtract(a,              
+                                               b) {                             
+                                          6 +   return a - b;                   
+                                          7 + }                                 
+  9   function multiply(a,                8 +                                   
+       b) {                               9   function multiply(a,              
+ 10 -   return a * b;                          b) {                             
                                                                                 
-12   }                                  11 +   return a * b * 1;                
-                                        12   }                                  
+ 12   }                                  11 +   return a * b * 1;               
+                                         12   }                                 
                                                                                 
                                                                                 
                                                                                 
@@ -193,18 +217,18 @@ exports[`DiffRenderable - remove-only diff split view: split view remove-only di
 `;
 
 exports[`DiffRenderable - large line numbers displayed correctly: unified view large line numbers 1`] = `
-"42   const line42 = 'context';                                                  
-43   const line43 = 'context';                                                  
-44 - const line44 = 'removed';                                                  
-45 + const line44 = 'added';                                                    
-46   const line45 = 'context';                                                  
-47 + const line46 = 'added';                                                    
-48   const line47 = 'context';                                                  
-49   const line48 = 'context';                                                  
-50 - const line49 = 'removed';                                                  
-51 + const line49 = 'changed';                                                  
-52   const line50 = 'context';                                                  
-53   const line51 = 'context';                                                  
+" 42   const line42 = 'context';                                                 
+ 43   const line43 = 'context';                                                 
+ 44 - const line44 = 'removed';                                                 
+ 45 + const line44 = 'added';                                                   
+ 46   const line45 = 'context';                                                 
+ 47 + const line46 = 'added';                                                   
+ 48   const line47 = 'context';                                                 
+ 49   const line48 = 'context';                                                 
+ 50 - const line49 = 'removed';                                                 
+ 51 + const line49 = 'changed';                                                 
+ 52   const line50 = 'context';                                                 
+ 53   const line51 = 'context';                                                 
                                                                                 
                                                                                 
                                                                                 

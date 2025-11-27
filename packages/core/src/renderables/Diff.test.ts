@@ -639,3 +639,65 @@ test("DiffRenderable - line numbers hidden for empty alignment lines in split vi
   // Right side should have line numbers for new lines
   // Left side should have empty lines without line numbers
 })
+
+test("DiffRenderable - consistent left padding for line numbers > 9", async () => {
+  const syntaxStyle = SyntaxStyle.fromStyles({
+    default: { fg: RGBA.fromValues(1, 1, 1, 1) },
+  })
+
+  // Create a diff with line numbers that go into double digits
+  const diffWith10PlusLines = `--- a/test.js
++++ b/test.js
+@@ -8,8 +8,10 @@
+ line8
+ line9
+-line10_old
++line10_new
+ line11
++line12_added
++line13_added
+ line14
+ line15
+-line16_old
++line16_new`
+
+  const diffRenderable = new DiffRenderable(currentRenderer, {
+    id: "test-diff",
+    diff: diffWith10PlusLines,
+    view: "unified",
+    syntaxStyle,
+    showLineNumbers: true,
+    width: "100%",
+    height: "100%",
+  })
+
+  currentRenderer.root.add(diffRenderable)
+  await renderOnce()
+
+  const frame = captureFrame()
+  expect(frame).toMatchSnapshot("unified view with double-digit line numbers")
+
+  const frameLines = frame.split("\n")
+
+  // Find lines in the output
+  // Line 8 (single digit) should have left padding (appears as " 8 line8")
+  const line8 = frameLines.find((l) => l.includes("line8"))
+  expect(line8).toBeTruthy()
+  const line8Match = line8!.match(/^( +)8 /)
+  expect(line8Match).toBeTruthy()
+  expect(line8Match![1].length).toBeGreaterThanOrEqual(1) // At least 1 space of left padding
+
+  // Line 10 (double digit) should have left padding (appears as " 10 line10" or " 11 line10")
+  const line10 = frameLines.find((l) => l.includes("line10"))
+  expect(line10).toBeTruthy()
+  const line10Match = line10!.match(/^( +)1[01] /)
+  expect(line10Match).toBeTruthy()
+  expect(line10Match![1].length).toBeGreaterThanOrEqual(1) // At least 1 space of left padding
+
+  // Line 16 (double digit) should have left padding
+  const line16 = frameLines.find((l) => l.includes("line16"))
+  expect(line16).toBeTruthy()
+  const line16Match = line16!.match(/^( +)1[67] /)
+  expect(line16Match).toBeTruthy()
+  expect(line16Match![1].length).toBeGreaterThanOrEqual(1) // At least 1 space of left padding
+})

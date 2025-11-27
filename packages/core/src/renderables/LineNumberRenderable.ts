@@ -2,6 +2,7 @@ import { Renderable, type RenderableOptions } from "../Renderable"
 import { OptimizedBuffer } from "../buffer"
 import type { RenderContext, LineInfoProvider } from "../types"
 import { RGBA, parseColor } from "../lib/RGBA"
+import { MeasureMode } from "yoga-layout"
 
 export interface LineSign {
   before?: string
@@ -34,6 +35,7 @@ class GutterRenderable extends Renderable {
   private _hideLineNumbers: Set<number>
   private _maxBeforeWidth: number = 0
   private _maxAfterWidth: number = 0
+  private _lastKnownLineCount: number = 0
 
   constructor(
     ctx: RenderContext,
@@ -68,8 +70,43 @@ class GutterRenderable extends Renderable {
     this._lineSigns = options.lineSigns
     this._lineNumberOffset = options.lineNumberOffset
     this._hideLineNumbers = options.hideLineNumbers
+    this._lastKnownLineCount = this.target.lineCount
     this.calculateSignWidths()
-    this.width = this.calculateWidth()
+    this.setupMeasureFunc()
+
+    // Use lifecycle pass to detect line count changes BEFORE layout
+    this.onLifecyclePass = () => {
+      const currentLineCount = this.target.lineCount
+      if (currentLineCount !== this._lastKnownLineCount) {
+        this._lastKnownLineCount = currentLineCount
+        this.yogaNode.markDirty()
+      }
+    }
+  }
+
+  private setupMeasureFunc(): void {
+    const measureFunc = (
+      width: number,
+      widthMode: MeasureMode,
+      height: number,
+      heightMode: MeasureMode,
+    ): { width: number; height: number } => {
+      // Calculate the gutter width based on the target's line count
+      const gutterWidth = this.calculateWidth()
+
+      // Return the calculated width and let height be determined by parent
+      return {
+        width: gutterWidth,
+        height: height || 1,
+      }
+    }
+
+    this.yogaNode.setMeasureFunc(measureFunc)
+  }
+
+  public remeasure(): void {
+    // Mark the yoga node as dirty to trigger re-measurement
+    this.yogaNode.markDirty()
   }
 
   private calculateSignWidths(): void {
@@ -111,25 +148,14 @@ class GutterRenderable extends Renderable {
     this._lineSigns = lineSigns
     this.calculateSignWidths()
 
-    // Only recalculate width if sign widths changed
+    // Only mark dirty if sign widths changed - this will trigger remeasure
     if (this._maxBeforeWidth !== oldMaxBefore || this._maxAfterWidth !== oldMaxAfter) {
-      const newWidth = this.calculateWidth()
-      if (this.width !== newWidth) {
-        this.width = newWidth
-      }
+      this.yogaNode.markDirty()
     }
   }
 
   public getLineSigns(): Map<number, LineSign> {
     return this._lineSigns
-  }
-
-  protected onUpdate(deltaTime: number): void {
-    const newWidth = this.calculateWidth()
-
-    if (this.width !== newWidth) {
-      this.width = newWidth
-    }
   }
 
   protected renderSelf(buffer: OptimizedBuffer): void {
@@ -193,14 +219,14 @@ class GutterRenderable extends Renderable {
           currentX += this._maxBeforeWidth
         }
 
-        // Draw line number (right-aligned in its space)
+        // Draw line number (right-aligned in its space with left padding of 1)
         if (!this._hideLineNumbers.has(logicalLine)) {
           const lineNumStr = (logicalLine + 1 + this._lineNumberOffset).toString()
           const lineNumWidth = lineNumStr.length
           const availableSpace = this.width - this._maxBeforeWidth - this._maxAfterWidth - this._paddingRight
-          const lineNumX = startX + this._maxBeforeWidth + availableSpace - lineNumWidth
+          const lineNumX = startX + this._maxBeforeWidth + 1 + availableSpace - lineNumWidth - 1
 
-          if (lineNumX >= startX) {
+          if (lineNumX >= startX + this._maxBeforeWidth + 1) {
             buffer.drawText(lineNumStr, lineNumX, startY + i, this._fg, lineBg)
           }
         }
