@@ -19,7 +19,7 @@ export interface ParsedDiff {
 }
 
 export interface DiffRenderableOptions extends RenderableOptions<DiffRenderable> {
-  diff: string
+  diff?: string
   view?: "unified" | "split"
 
   // CodeRenderable options
@@ -73,7 +73,7 @@ export class DiffRenderable extends Renderable {
       flexDirection: options.view === "split" ? "row" : "column",
     })
 
-    this._diff = options.diff
+    this._diff = options.diff ?? ""
     this._view = options.view ?? "unified"
 
     // CodeRenderable options
@@ -93,8 +93,11 @@ export class DiffRenderable extends Renderable {
     this._addedSignColor = parseColor(options.addedSignColor ?? "#22c55e")
     this._removedSignColor = parseColor(options.removedSignColor ?? "#ef4444")
 
-    this.parseDiff()
-    this.buildView()
+    // Only parse and build if diff is provided
+    if (this._diff) {
+      this.parseDiff()
+      this.buildView()
+    }
   }
 
   private parseDiff(): void {
