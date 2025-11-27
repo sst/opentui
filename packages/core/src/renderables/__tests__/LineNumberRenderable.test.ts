@@ -715,6 +715,234 @@ describe("LineNumberRenderable", () => {
     expect(frame).not.toContain("+")
   })
 
+  test("renders line numbers with offset", async () => {
+    const { renderer, renderOnce, captureCharFrame } = await createTestRenderer({
+      width: 20,
+      height: 10,
+    })
+
+    const text = "Line 1\nLine 2\nLine 3"
+    const textRenderable = new MockTextBuffer(renderer, {
+      text,
+      width: "100%",
+      height: "100%",
+    })
+
+    const lineNumberRenderable = new LineNumberRenderable(renderer, {
+      target: textRenderable,
+      minWidth: 3,
+      paddingRight: 1,
+      fg: "white",
+      lineNumberOffset: 41, // Start at line 42
+      width: "100%",
+      height: "100%",
+    })
+
+    renderer.root.add(lineNumberRenderable)
+
+    await renderOnce()
+
+    const frame = captureCharFrame()
+    expect(frame).toMatchSnapshot()
+
+    // Line numbers should start at 42 instead of 1
+    expect(frame).toContain("42 Line 1")
+    expect(frame).toContain("43 Line 2")
+    expect(frame).toContain("44 Line 3")
+  })
+
+  test("can dynamically update line number offset", async () => {
+    const { renderer, renderOnce, captureCharFrame } = await createTestRenderer({
+      width: 20,
+      height: 10,
+    })
+
+    const text = "Line 1\nLine 2\nLine 3"
+    const textRenderable = new MockTextBuffer(renderer, {
+      text,
+      width: "100%",
+      height: "100%",
+    })
+
+    const lineNumberRenderable = new LineNumberRenderable(renderer, {
+      target: textRenderable,
+      minWidth: 3,
+      paddingRight: 1,
+      fg: "white",
+      lineNumberOffset: 0,
+      width: "100%",
+      height: "100%",
+    })
+
+    renderer.root.add(lineNumberRenderable)
+
+    await renderOnce()
+
+    let frame = captureCharFrame()
+    expect(frame).toContain(" 1 Line 1")
+    expect(frame).toContain(" 2 Line 2")
+
+    // Update offset
+    lineNumberRenderable.lineNumberOffset = 99
+    await renderOnce()
+
+    frame = captureCharFrame()
+    expect(frame).toContain("100 Line 1")
+    expect(frame).toContain("101 Line 2")
+    expect(frame).toContain("102 Line 3")
+  })
+
+  test("hides line numbers for specific lines", async () => {
+    const { renderer, renderOnce, captureCharFrame } = await createTestRenderer({
+      width: 20,
+      height: 10,
+    })
+
+    const text = "Line 1\nLine 2\nLine 3\nLine 4\nLine 5"
+    const textRenderable = new MockTextBuffer(renderer, {
+      text,
+      width: "100%",
+      height: "100%",
+    })
+
+    const hideLineNumbers = new Set<number>()
+    hideLineNumbers.add(1) // Hide line 2
+    hideLineNumbers.add(3) // Hide line 4
+
+    const lineNumberRenderable = new LineNumberRenderable(renderer, {
+      target: textRenderable,
+      minWidth: 3,
+      paddingRight: 1,
+      fg: "white",
+      hideLineNumbers,
+      width: "100%",
+      height: "100%",
+    })
+
+    renderer.root.add(lineNumberRenderable)
+
+    await renderOnce()
+
+    const frame = captureCharFrame()
+    expect(frame).toMatchSnapshot()
+
+    // Check that lines 1, 3, 5 have line numbers
+    expect(frame).toContain(" 1 Line 1")
+    expect(frame).toContain(" 3 Line 3")
+    expect(frame).toContain(" 5 Line 5")
+
+    // Lines 2 and 4 should not have line numbers (but text is still visible)
+    const lines = frame.split("\n")
+
+    // Line 2 should have text but no line number visible
+    expect(lines[1]).toContain("Line 2")
+    expect(lines[1]).not.toMatch(/2\s+Line 2/)
+
+    // Line 4 should have text but no line number visible
+    expect(lines[3]).toContain("Line 4")
+    expect(lines[3]).not.toMatch(/4\s+Line 4/)
+  })
+
+  test("can dynamically update hidden line numbers", async () => {
+    const { renderer, renderOnce, captureCharFrame } = await createTestRenderer({
+      width: 20,
+      height: 10,
+    })
+
+    const text = "Line 1\nLine 2\nLine 3"
+    const textRenderable = new MockTextBuffer(renderer, {
+      text,
+      width: "100%",
+      height: "100%",
+    })
+
+    const lineNumberRenderable = new LineNumberRenderable(renderer, {
+      target: textRenderable,
+      minWidth: 3,
+      paddingRight: 1,
+      fg: "white",
+      width: "100%",
+      height: "100%",
+    })
+
+    renderer.root.add(lineNumberRenderable)
+
+    await renderOnce()
+
+    let frame = captureCharFrame()
+    expect(frame).toContain(" 1 Line 1")
+    expect(frame).toContain(" 2 Line 2")
+    expect(frame).toContain(" 3 Line 3")
+
+    // Hide line 2
+    const hideSet = new Set<number>()
+    hideSet.add(1)
+    lineNumberRenderable.setHideLineNumbers(hideSet)
+    await renderOnce()
+
+    frame = captureCharFrame()
+    expect(frame).toContain(" 1 Line 1")
+    expect(frame).toContain("Line 2") // Text still visible
+    expect(frame).toContain(" 3 Line 3")
+
+    const lines = frame.split("\n")
+    expect(lines[1]).not.toMatch(/2\s+Line 2/)
+  })
+
+  test("combines line number offset with hidden line numbers", async () => {
+    const { renderer, renderOnce, captureCharFrame } = await createTestRenderer({
+      width: 20,
+      height: 10,
+    })
+
+    const text = "Line 1\nLine 2\nLine 3\nLine 4\nLine 5"
+    const textRenderable = new MockTextBuffer(renderer, {
+      text,
+      width: "100%",
+      height: "100%",
+    })
+
+    const hideLineNumbers = new Set<number>()
+    hideLineNumbers.add(1) // Hide line at logical index 1
+    hideLineNumbers.add(3) // Hide line at logical index 3
+
+    const lineNumberRenderable = new LineNumberRenderable(renderer, {
+      target: textRenderable,
+      minWidth: 3,
+      paddingRight: 1,
+      fg: "white",
+      lineNumberOffset: 41, // Start at line 42
+      hideLineNumbers,
+      width: "100%",
+      height: "100%",
+    })
+
+    renderer.root.add(lineNumberRenderable)
+
+    await renderOnce()
+
+    const frame = captureCharFrame()
+    expect(frame).toMatchSnapshot()
+
+    // Line 1 (index 0) should show as line 42
+    expect(frame).toContain("42 Line 1")
+
+    // Line 2 (index 1) should be hidden (but text visible)
+    expect(frame).toContain("Line 2")
+    const lines = frame.split("\n")
+    expect(lines[1]).not.toMatch(/43\s+Line 2/)
+
+    // Line 3 (index 2) should show as line 44
+    expect(frame).toContain("44 Line 3")
+
+    // Line 4 (index 3) should be hidden
+    expect(frame).toContain("Line 4")
+    expect(lines[3]).not.toMatch(/45\s+Line 4/)
+
+    // Line 5 (index 4) should show as line 46
+    expect(frame).toContain("46 Line 5")
+  })
+
   test("maintains stable visual line count when scrolling and typing with word wrap", async () => {
     const { renderer, renderOnce, captureCharFrame } = await createTestRenderer({
       width: 35,

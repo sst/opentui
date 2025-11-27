@@ -90,7 +90,8 @@ class GutterRenderable extends Renderable {
 
   private calculateWidth(): number {
     const totalLines = this.target.lineCount
-    const digits = totalLines > 0 ? Math.floor(Math.log10(totalLines)) + 1 : 1
+    const maxLineNumber = totalLines + this._lineNumberOffset
+    const digits = maxLineNumber > 0 ? Math.floor(Math.log10(maxLineNumber)) + 1 : 1
     const baseWidth = Math.max(this._minWidth, digits + this._paddingRight + 1) // +1 for left padding
     return baseWidth + this._maxBeforeWidth + this._maxAfterWidth
   }
@@ -446,9 +447,18 @@ export class LineNumberRenderable extends Renderable {
   public set lineNumberOffset(value: number) {
     if (this._lineNumberOffset !== value) {
       this._lineNumberOffset = value
-      if (this.gutter) {
-        this.gutter.destroy()
-        this.setTarget(this.target!)
+      if (this.gutter && this.target) {
+        // Need to recreate gutter with new offset
+        const target = this.target
+
+        // Remove both gutter and target
+        super.remove(this.gutter.id)
+        super.remove(this.target.id)
+        this.gutter = null
+        this.target = null
+
+        // Re-create with new offset
+        this.setTarget(target)
       }
     }
   }
@@ -459,9 +469,18 @@ export class LineNumberRenderable extends Renderable {
 
   public setHideLineNumbers(hideLineNumbers: Set<number>): void {
     this._hideLineNumbers = hideLineNumbers
-    if (this.gutter) {
-      this.gutter.destroy()
-      this.setTarget(this.target!)
+    if (this.gutter && this.target) {
+      // Need to recreate gutter with new hideLineNumbers
+      const target = this.target
+
+      // Remove both gutter and target
+      super.remove(this.gutter.id)
+      super.remove(this.target.id)
+      this.gutter = null
+      this.target = null
+
+      // Re-create with new hideLineNumbers
+      this.setTarget(target)
     }
   }
 
