@@ -784,3 +784,53 @@ test("DiffRenderable - consistent left padding for line numbers > 9", async () =
   expect(line16Match).toBeTruthy()
   expect(line16Match![1].length).toBeGreaterThanOrEqual(1) // At least 1 space of left padding
 })
+
+test("DiffRenderable - split view should not wrap lines prematurely", async () => {
+  const syntaxStyle = SyntaxStyle.fromStyles({
+    default: { fg: RGBA.fromValues(1, 1, 1, 1) },
+  })
+
+  // Create a diff with long lines that should fit in split view
+  const longLineDiff = `--- a/test.js
++++ b/test.js
+@@ -1,3 +1,3 @@
+ class Calculator {
+-  subtract(a: number, b: number): number {
++  subtract(a: number, b: number, c: number = 0): number {
+   return a - b;
+ }`
+
+  const diffRenderable = new DiffRenderable(currentRenderer, {
+    id: "test-diff",
+    diff: longLineDiff,
+    view: "split",
+    syntaxStyle,
+    showLineNumbers: true,
+    wrapMode: "word",
+    width: "100%",
+    height: "100%",
+  })
+
+  currentRenderer.root.add(diffRenderable)
+  await renderOnce()
+
+  const frame = captureFrame()
+  const frameLines = frame.split("\n")
+
+  // Find the line with "subtract" on the left side
+  const leftSubtractLine = frameLines.find((l) => l.includes("subtract") && l.includes("b: number):"))
+  expect(leftSubtractLine).toBeTruthy()
+
+  // The line should NOT be wrapped - "subtract(a: number, b: number):" should be on one line
+  // In an 80-char terminal with split view, each side gets ~40 chars (minus line numbers)
+  // "subtract(a: number, b: number):" is 34 chars, so it should fit without wrapping
+  expect(leftSubtractLine).toMatch(/subtract\(a: number, b: number\):/)
+
+  // Find the line with "subtract" on the right side - it might be on the same line or next line
+  // The signature is longer and might wrap
+  const rightSubtractLines = frameLines.filter((l) => l.includes("subtract") || l.includes("c: number"))
+  expect(rightSubtractLines.length).toBeGreaterThan(0)
+
+  // The key assertion is that the left side doesn't wrap prematurely
+  // We've already verified that above
+})
