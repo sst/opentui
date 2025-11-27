@@ -5,9 +5,11 @@ development and is not ready for production use.
 
 ## Documentation
 
-- [Getting Started](docs/getting-started.md)
-- [Tree-Sitter](docs/tree-sitter.md)
-- [Environment Variables](docs/env-vars.md)
+- [Getting Started](docs/getting-started.md) - API and usage guide
+- [Development Guide](docs/development.md) - Building, testing, and contributing
+- [Tree-Sitter](docs/tree-sitter.md) - Syntax highlighting integration
+- [Renderables vs Constructs](docs/renderables-vs-constructs.md) - Understanding the component model
+- [Environment Variables](docs/env-vars.md) - Configuration options
 
 ## Install
 
