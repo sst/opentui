@@ -1,5 +1,77 @@
 // Bun Snapshot v1, https://bun.sh/docs/test/snapshots
 
+exports[`LineNumberRenderable in ScrollBox gutter width changes with line count - verify remeasure 1`] = `
+"┌──────────────────────────────────────┐                    
+│ 1 function test1() {                 │                    
+│ 2   console.log("Line 1");           │                    
+│ 3   return 1;                        │                    
+│ 4 }                                  │                    
+│ 5 function test2() {                 │                    
+│ 6   console.log("Line 2");           │                    
+│ 7   return 2;                        │                    
+│ 8 }                                  │                    
+│                                      │                    
+│                                      │                    
+└──────────────────────────────────────┘                    
+                                                            
+                                                            
+                                                            
+                                                            
+                                                            
+                                                            
+                                                            
+                                                            
+"
+`;
+
+exports[`LineNumberRenderable in ScrollBox gutter width changes with line count - verify remeasure 2`] = `
+"┌──────────────────────────────────────┐                    
+│  1 function test1() {                │                    
+│  2   console.log("Line 1");          │                    
+│  3   return 1;                       │                    
+│  4 }                                 │                    
+│  5 function test2() {                │                    
+│  6   console.log("Line 2");          │                    
+│  7   return 2;                       │                    
+│  8 }                                 │                    
+│  9 function test3() {                │                    
+│ 10   console.log("Line 3");          │                    
+└──────────────────────────────────────┘                    
+                                                            
+                                                            
+                                                            
+                                                            
+                                                            
+                                                            
+                                                            
+                                                            
+"
+`;
+
+exports[`LineNumberRenderable in ScrollBox gutter width changes with line count - verify remeasure 3`] = `
+"┌──────────────────────────────────────┐                    
+│   1 function test1() {               │                    
+│   2   console.log("Line 1");         │                    
+│   3   return 1;                      │                    
+│   4 }                                │                    
+│   5 function test2() {               │                    
+│   6   console.log("Line 2");         │                    
+│   7   return 2;                      │                    
+│   8 }                                │                    
+│   9 function test3() {               │                    
+│  10   console.log("Line 3");         │                    
+└──────────────────────────────────────┘                    
+                                                            
+                                                            
+                                                            
+                                                            
+                                                            
+                                                            
+                                                            
+                                                            
+"
+`;
+
 exports[`LineNumberRenderable in ScrollBox single Code renderable with line numbers in ScrollBox - correct dimensions 1`] = `
 "┌────────────────────────────┐                              
 │  1 function test1() {      │                              
@@ -288,54 +360,6 @@ exports[`LineNumberRenderable in ScrollBox ScrollBox with horizontal and vertica
 "
 `;
 
-exports[`LineNumberRenderable in ScrollBox gutter width changes with line count - verify remeasure 1`] = `
-"┌──────────────────────────────────────┐                    
-│ 1 function test1() {                 │                    
-│ 2   console.log("Line 1");           │                    
-│ 3   return 1;                        │                    
-│ 4 }                                  │                    
-│ 5 function test2() {                 │                    
-│ 6   console.log("Line 2");           │                    
-│ 7   return 2;                        │                    
-│ 8 }                                  │                    
-│                                      │                    
-│                                      │                    
-└──────────────────────────────────────┘                    
-                                                            
-                                                            
-                                                            
-                                                            
-                                                            
-                                                            
-                                                            
-                                                            
-"
-`;
-
-exports[`LineNumberRenderable in ScrollBox gutter width changes with line count - verify remeasure 2`] = `
-"┌──────────────────────────────────────┐                    
-│ 1 function test1() {                 │                    
-│ 2   console.log("Line 1");           │                    
-│ 3   return 1;                        │                    
-│ 4 }                                  │                    
-│ 5 function test2() {                 │                    
-│ 6   console.log("Line 2");           │                    
-│ 7   return 2;                        │                    
-│ 8 }                                  │                    
-│   function test3() {                 │                    
-│     console.log("Line 3");           │                    
-└──────────────────────────────────────┘                    
-                                                            
-                                                            
-                                                            
-                                                            
-                                                            
-                                                            
-                                                            
-                                                            
-"
-`;
-
 exports[`LineNumberRenderable in ScrollBox line colors span full width in ScrollBox 1`] = `
 "┌────────────────────────────────────────────────┐          
 │  1 function test1() {                          │          
@@ -429,101 +453,5 @@ exports[`LineNumberRenderable in ScrollBox viewport culling with line numbers - 
 └───────────────────────────────────────────┘               
                                                             
 ┌───────────────────────────────────────────┐               
-"
-`;
-
-exports[`LineNumberRenderable in ScrollBox EXPECTED FAILURE: gutter width should change with line count but doesn't - verify remeasure 1`] = `
-"┌──────────────────────────────────────┐                    
-│ 1 function test1() {                 │                    
-│ 2   console.log("Line 1");           │                    
-│ 3   return 1;                        │                    
-│ 4 }                                  │                    
-│ 5 function test2() {                 │                    
-│ 6   console.log("Line 2");           │                    
-│ 7   return 2;                        │                    
-│ 8 }                                  │                    
-│                                      │                    
-│                                      │                    
-└──────────────────────────────────────┘                    
-                                                            
-                                                            
-                                                            
-                                                            
-                                                            
-                                                            
-                                                            
-                                                            
-"
-`;
-
-exports[`LineNumberRenderable in ScrollBox EXPECTED FAILURE: gutter width should change with line count but doesn't - verify remeasure 2`] = `
-"┌──────────────────────────────────────┐                    
-│ 1 function test1() {                 │                    
-│ 2   console.log("Line 1");           │                    
-│ 3   return 1;                        │                    
-│ 4 }                                  │                    
-│ 5 function test2() {                 │                    
-│ 6   console.log("Line 2");           │                    
-│ 7   return 2;                        │                    
-│ 8 }                                  │                    
-│   function test3() {                 │                    
-│     console.log("Line 3");           │                    
-└──────────────────────────────────────┘                    
-                                                            
-                                                            
-                                                            
-                                                            
-                                                            
-                                                            
-                                                            
-                                                            
-"
-`;
-
-exports[`LineNumberRenderable in ScrollBox EXPECTED FAILURE: gutter width should change with line count but doesn't - verify remeasure 3`] = `
-"┌──────────────────────────────────────┐                    
-│  1 function test1() {                │                    
-│  2   console.log("Line 1");          │                    
-│  3   return 1;                       │                    
-│  4 }                                 │                    
-│  5 function test2() {                │                    
-│  6   console.log("Line 2");          │                    
-│  7   return 2;                       │                    
-│  8 }                                 │                    
-│  9 function test3() {                │                    
-│ 10   console.log("Line 3");          │                    
-└──────────────────────────────────────┘                    
-                                                            
-                                                            
-                                                            
-                                                            
-                                                            
-                                                            
-                                                            
-                                                            
-"
-`;
-
-exports[`LineNumberRenderable in ScrollBox gutter width changes with line count - verify remeasure 3`] = `
-"┌──────────────────────────────────────┐                    
-│  1 function test1() {                │                    
-│  2   console.log("Line 1");          │                    
-│  3   return 1;                       │                    
-│  4 }                                 │                    
-│  5 function test2() {                │                    
-│  6   console.log("Line 2");          │                    
-│  7   return 2;                       │                    
-│  8 }                                 │                    
-│  9 function test3() {                │                    
-│ 10   console.log("Line 3");          │                    
-└──────────────────────────────────────┘                    
-                                                            
-                                                            
-                                                            
-                                                            
-                                                            
-                                                            
-                                                            
-                                                            
 "
 `;

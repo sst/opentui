@@ -70,6 +70,13 @@ export class CodeRenderable extends TextBufferRenderable {
     if (this._content !== value) {
       this._content = value
       this._highlightsDirty = true
+
+      // Update text buffer immediately for measure functions (like gutter width calculation)
+      // Only do this if we're showing unstyled text or have no filetype
+      if (this._drawUnstyledText || !this._filetype) {
+        this.textBuffer.setText(value)
+        this.updateTextInfo()
+      }
     }
   }
 
