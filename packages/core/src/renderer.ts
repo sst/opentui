@@ -1751,7 +1751,8 @@ export class CliRenderer extends EventEmitter implements RenderContext {
     }
 
     if (!this._paletteDetector) {
-      this._paletteDetector = createTerminalPalette(this.stdin, this.stdout, this.writeOut.bind(this))
+      const isTmux = this.capabilities?.terminal?.name?.toLowerCase()?.includes("tmux")
+      this._paletteDetector = createTerminalPalette(this.stdin, this.stdout, this.writeOut.bind(this), isTmux)
     }
 
     this._paletteDetectionPromise = this._paletteDetector.detect(options).then((result) => {
