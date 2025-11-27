@@ -30,6 +30,7 @@
     "@types/node": "latest",
     "@types/three": "0.177.0",
     "commander": "^13.1.0",
+    "diff": "^8.0.2",
     "typescript": "^5",
     "web-tree-sitter": "0.25.10"
   },
