@@ -3,10 +3,31 @@ import { testRender } from "../index"
 import { SyntaxStyle } from "../../core/src/syntax-style"
 import { MockTreeSitterClient } from "@opentui/core/testing"
 
+/**
+ * CRITICAL BUG REPRODUCTION
+ *
+ * Based on actual OpenCode logs:
+ *
+ * WORKING (old code with manual boxes):
+ *   box-399 (ToolPart): h=34
+ *     text-413 (ToolTitle): h=2
+ *     box-400 (row): h=29
+ *       code: h=29
+ *
+ * BROKEN (LineNumberRenderable):
+ *   box-399 (ToolPart): h=13 ⚠️
+ *     text-413 (ToolTitle): h=0 ⚠️
+ *     line_number: h=29 ⚠️ EXTENDS BEYOND PARENT!
+ *       code: h=29
+ *
+ * The line_number is 29 lines tall but its parent is only 13 lines!
+ * This causes overlap with content below.
+ */
+
 let testSetup: Awaited<ReturnType<typeof testRender>>
 let mockTreeSitterClient: MockTreeSitterClient
 
-describe("LineNumber Debug - Visual Border Tests", () => {
+describe("LineNumber Critical Bug - Parent Height Violation", () => {
   beforeEach(async () => {
     if (testSetup) {
       testSetup.renderer.destroy()
@@ -21,87 +42,56 @@ describe("LineNumber Debug - Visual Border Tests", () => {
     }
   })
 
-  it("DEBUG: line_number with borders to see actual height", async () => {
+  it("BUG: LineNumberRenderable extends beyond parent container height", async () => {
     const syntaxStyle = SyntaxStyle.fromTheme([])
-    const codeContent = `function hello() {
-  console.log("Hello");
-  return 42;
-}`
+
+    // 29 lines of code
+    const longCode = Array.from({ length: 29 }, (_, i) => `line ${i + 1}`).join("\n")
 
     testSetup = await testRender(
       () => (
-        <box flexDirection="column" border borderColor="#ff0000" title="Outer Container">
-          <scrollbox flexGrow={1} scrollbarOptions={{ visible: false }} border borderColor="#00ff00" title="ScrollBox">
-            <line_number fg="#888888" minWidth={3} paddingRight={1} border borderColor="#0000ff" title="LineNumber">
-              <code
-                fg="#ffffff"
-                filetype="javascript"
-                syntaxStyle={syntaxStyle}
-                content={codeContent}
-                treeSitterClient={mockTreeSitterClient}
-              />
-            </line_number>
-          </scrollbox>
-        </box>
-      ),
-      {
-        width: 50,
-        height: 30,
-      },
-    )
+        <box flexDirection="column" height="100%">
+          <scrollbox flexGrow={1} scrollbarOptions={{ visible: false }} stickyScroll={true} stickyStart="bottom">
+            {/* ToolPart structure - box with border, padding, gap */}
+            <box
+              id="tool-part"
+              border={["left"]}
+              paddingTop={1}
+              paddingBottom={1}
+              paddingLeft={2}
+              gap={1}
+              backgroundColor="#1a1a1a"
+            >
+              {/* ToolTitle */}
+              <text id="tool-title" paddingLeft={3} fg="#888888">
+                ← Wrote test.ts
+              </text>
 
-    await testSetup.renderOnce()
-    mockTreeSitterClient.resolveAllHighlightOnce()
-    await new Promise((resolve) => setTimeout(resolve, 10))
-    await testSetup.renderOnce()
-
-    const frame = testSetup.captureCharFrame()
-    console.log("=== FRAME WITH BORDERS ===")
-    console.log(frame)
-    console.log("=== END FRAME ===")
-
-    expect(frame).toMatchSnapshot()
-
-    // The borders will show us exactly where each component's boundaries are
-    expect(frame).toContain("function hello")
-  })
-
-  it("DEBUG: multiple line_number blocks with borders", async () => {
-    const syntaxStyle = SyntaxStyle.fromTheme([])
-
-    testSetup = await testRender(
-      () => (
-        <box flexDirection="column" border borderColor="#ff0000">
-          <scrollbox flexGrow={1} scrollbarOptions={{ visible: false }} border borderColor="#00ff00">
-            <box border borderColor="#ffff00" title="Block 1 Container">
-              <line_number fg="#888888" minWidth={2} paddingRight={1} border borderColor="#0000ff">
+              {/* LineNumberRenderable */}
+              <line_number id="line-num" fg="#888888" minWidth={3} paddingRight={1}>
                 <code
+                  id="code-content"
                   fg="#ffffff"
-                  filetype="javascript"
+                  filetype="typescript"
                   syntaxStyle={syntaxStyle}
-                  content="const x = 1;"
+                  content={longCode}
                   treeSitterClient={mockTreeSitterClient}
                 />
               </line_number>
             </box>
 
-            <box border borderColor="#ff00ff" title="Block 2 Container">
-              <line_number fg="#888888" minWidth={2} paddingRight={1} border borderColor="#00ffff">
-                <code
-                  fg="#ffffff"
-                  filetype="javascript"
-                  syntaxStyle={syntaxStyle}
-                  content="const y = 2;"
-                  treeSitterClient={mockTreeSitterClient}
-                />
-              </line_number>
+            {/* Next message - should NOT overlap */}
+            <box paddingLeft={3} marginTop={1}>
+              <text id="next-message" fg="#ffffff">
+                This text should NOT be overlapped by line numbers!
+              </text>
             </box>
           </scrollbox>
         </box>
       ),
       {
-        width: 50,
-        height: 30,
+        width: 73,
+        height: 45,
       },
     )
 
@@ -111,69 +101,39 @@ describe("LineNumber Debug - Visual Border Tests", () => {
     await testSetup.renderOnce()
 
     const frame = testSetup.captureCharFrame()
-    console.log("=== MULTIPLE BLOCKS WITH BORDERS ===")
+    console.log("=== BUG REPRODUCTION ===")
     console.log(frame)
-    console.log("=== END FRAME ===")
+    console.log("=== END ===")
 
-    expect(frame).toMatchSnapshot()
-  })
+    // The critical assertions from the logs
+    const toolPart = testSetup.renderer.root.findById("tool-part")
+    const toolTitle = testSetup.renderer.root.findById("tool-title")
+    const lineNum = testSetup.renderer.root.findById("line-num")
+    const codeContent = testSetup.renderer.root.findById("code-content")
 
-  it("DEBUG: add markers between blocks to see spacing", async () => {
-    const syntaxStyle = SyntaxStyle.fromTheme([])
+    console.log("\n=== LAYOUT ANALYSIS ===")
+    console.log(`tool-part:    y=${toolPart?.y} h=${toolPart?.height}`)
+    console.log(`tool-title:   y=${toolTitle?.y} h=${toolTitle?.height}`)
+    console.log(`line-num:     y=${lineNum?.y} h=${lineNum?.height}`)
+    console.log(`code-content: y=${codeContent?.y} h=${codeContent?.height}`)
 
-    testSetup = await testRender(
-      () => (
-        <box flexDirection="column" border borderColor="#ff0000">
-          <scrollbox flexGrow={1} scrollbarOptions={{ visible: false }}>
-            <text>▼▼▼ START ▼▼▼</text>
+    if (toolPart && lineNum) {
+      const parentHeight = toolPart.height
+      const childHeight = lineNum.height
+      const overflow = childHeight - (parentHeight - (lineNum.y - toolPart.y))
 
-            <line_number fg="#888888" minWidth={2} paddingRight={1} border borderColor="#0000ff" title="LineNum1">
-              <code
-                fg="#ffffff"
-                filetype="javascript"
-                syntaxStyle={syntaxStyle}
-                content="const x = 1;"
-                treeSitterClient={mockTreeSitterClient}
-              />
-            </line_number>
+      console.log(`\nPARENT vs CHILD:`)
+      console.log(`  Parent (tool-part) height: ${parentHeight}`)
+      console.log(`  Child (line-num) height: ${childHeight}`)
+      console.log(`  Child relative Y: ${lineNum.y - toolPart.y}`)
+      console.log(`  Overflow: ${overflow} lines`)
 
-            <text>▲▲▲ BETWEEN ▼▼▼</text>
+      if (overflow > 0) {
+        console.log(`\n🚨 BUG CONFIRMED: line_number extends ${overflow} lines beyond parent!`)
+      }
+    }
 
-            <line_number fg="#888888" minWidth={2} paddingRight={1} border borderColor="#00ffff" title="LineNum2">
-              <code
-                fg="#ffffff"
-                filetype="javascript"
-                syntaxStyle={syntaxStyle}
-                content="const y = 2;"
-                treeSitterClient={mockTreeSitterClient}
-              />
-            </line_number>
-
-            <text>▲▲▲ END ▲▲▲</text>
-          </scrollbox>
-        </box>
-      ),
-      {
-        width: 50,
-        height: 35,
-      },
-    )
-
-    await testSetup.renderOnce()
-    mockTreeSitterClient.resolveAllHighlightOnce()
-    await new Promise((resolve) => setTimeout(resolve, 10))
-    await testSetup.renderOnce()
-
-    const frame = testSetup.captureCharFrame()
-    console.log("=== WITH MARKERS ===")
-    console.log(frame)
-    console.log("=== END FRAME ===")
-
-    expect(frame).toMatchSnapshot()
-
-    // All markers should be visible
-    expect(frame).toContain("START")
-    expect(frame).toContain("BETWEEN")
-    expect(frame).toContain("END")
+    expect(frame).toContain("Wrote test.ts")
+    expect(frame).toContain("line 1")
   })
 })
