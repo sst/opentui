@@ -260,6 +260,11 @@ export class LineNumberRenderable extends Renderable {
   private _lineNumberOffset: number
   private _hideLineNumbers: Set<number>
   private _isDestroying: boolean = false
+  private handleLineInfoChange = (): void => {
+    // When line info changes in the target, remeasure the gutter
+    this.gutter?.remeasure()
+    this.requestRender()
+  }
 
   constructor(ctx: RenderContext, options: LineNumberOptions) {
     super(ctx, {
@@ -298,6 +303,8 @@ export class LineNumberRenderable extends Renderable {
     if (this.target === target) return
 
     if (this.target) {
+      // Remove event listener from old target
+      this.target.off("line-info-change", this.handleLineInfoChange)
       super.remove(this.target.id)
     }
 
@@ -307,6 +314,9 @@ export class LineNumberRenderable extends Renderable {
     }
 
     this.target = target
+
+    // Listen for line info changes from target
+    this.target.on("line-info-change", this.handleLineInfoChange)
 
     this.gutter = new GutterRenderable(this.ctx, this.target, {
       fg: this._fg,
@@ -356,6 +366,10 @@ export class LineNumberRenderable extends Renderable {
   public override destroyRecursively(): void {
     this._isDestroying = true
 
+    if (this.target) {
+      this.target.off("line-info-change", this.handleLineInfoChange)
+    }
+
     super.destroyRecursively()
 
     this.gutter = null
@@ -364,6 +378,7 @@ export class LineNumberRenderable extends Renderable {
 
   public clearTarget(): void {
     if (this.target) {
+      this.target.off("line-info-change", this.handleLineInfoChange)
       super.remove(this.target.id)
       this.target = null
     }

@@ -1037,6 +1037,195 @@ describe("LineNumberRenderable", () => {
     expect(widthAfterThirdRender).toBe(widthAfterFirstRender)
   })
 
+  test("handles async content loading in Code renderable with drawUnstyledText=false", async () => {
+    const { renderer, renderOnce, captureCharFrame } = await createTestRenderer({
+      width: 30,
+      height: 10,
+    })
+
+    // Import Code renderable
+    const { CodeRenderable } = await import("../Code")
+    const { SyntaxStyle } = await import("../../syntax-style")
+
+    const syntaxStyle = SyntaxStyle.create()
+
+    // Create Code renderable with no initial content and drawUnstyledText=false
+    const codeRenderable = new CodeRenderable(renderer, {
+      content: "",
+      filetype: "typescript",
+      syntaxStyle,
+      drawUnstyledText: false,
+      width: "100%",
+      height: "100%",
+    })
+
+    const lineNumberRenderable = new LineNumberRenderable(renderer, {
+      target: codeRenderable,
+      minWidth: 3,
+      paddingRight: 1,
+      fg: "white",
+      width: "100%",
+      height: "100%",
+    })
+
+    renderer.root.add(lineNumberRenderable)
+
+    // First render - no content yet
+    await renderOnce()
+
+    let frame = captureCharFrame()
+
+    // Should have minimal lines (empty buffer may show 1 line)
+    const initialLineCount = codeRenderable.lineCount
+    expect(initialLineCount).toBeLessThanOrEqual(1)
+
+    // Now set content on the Code renderable
+    const code = `function hello() {\n  console.log("Hello");\n}`
+    codeRenderable.content = code
+
+    // Wait for render and highlighting
+    await renderOnce()
+    // Give highlighting time to complete
+    await Bun.sleep(100)
+    await renderOnce()
+
+    frame = captureCharFrame()
+
+    // Should now show line numbers for the content
+    expect(codeRenderable.lineCount).toBe(3)
+    expect(frame).toContain("function")
+    expect(frame).toContain("console")
+
+    // Check that line numbers are present
+    const lines = frame.split("\n")
+    expect(lines[0]).toMatch(/1/)
+    expect(lines[1]).toMatch(/2/)
+    expect(lines[2]).toMatch(/3/)
+  })
+
+  test("updates line numbers when Code renderable content changes", async () => {
+    const { renderer, renderOnce, captureCharFrame } = await createTestRenderer({
+      width: 30,
+      height: 10,
+    })
+
+    const { CodeRenderable } = await import("../Code")
+    const { SyntaxStyle } = await import("../../syntax-style")
+
+    const syntaxStyle = SyntaxStyle.create()
+
+    // Create Code renderable with initial content
+    const codeRenderable = new CodeRenderable(renderer, {
+      content: "line 1\nline 2",
+      filetype: "typescript",
+      syntaxStyle,
+      drawUnstyledText: true,
+      width: "100%",
+      height: "100%",
+    })
+
+    const lineNumberRenderable = new LineNumberRenderable(renderer, {
+      target: codeRenderable,
+      minWidth: 3,
+      paddingRight: 1,
+      fg: "white",
+      width: "100%",
+      height: "100%",
+    })
+
+    renderer.root.add(lineNumberRenderable)
+
+    // First render
+    await renderOnce()
+    await Bun.sleep(50)
+    await renderOnce()
+
+    let frame = captureCharFrame()
+
+    // Should show 2 lines
+    expect(codeRenderable.lineCount).toBe(2)
+    expect(frame).toContain("line 1")
+    expect(frame).toContain("line 2")
+
+    // Now update content to have more lines
+    codeRenderable.content = "line 1\nline 2\nline 3\nline 4\nline 5"
+
+    await renderOnce()
+    await Bun.sleep(50)
+    await renderOnce()
+
+    frame = captureCharFrame()
+
+    // Should now show 5 lines
+    expect(codeRenderable.lineCount).toBe(5)
+    expect(frame).toContain("line 5")
+
+    // Check that line numbers are present for all 5 lines
+    const lines = frame.split("\n")
+    expect(lines.length).toBeGreaterThanOrEqual(5)
+    expect(lines[0]).toMatch(/1/)
+    expect(lines[4]).toMatch(/5/)
+  })
+
+  test("handles Code renderable switching from no filetype to having filetype", async () => {
+    const { renderer, renderOnce, captureCharFrame } = await createTestRenderer({
+      width: 30,
+      height: 10,
+    })
+
+    const { CodeRenderable } = await import("../Code")
+    const { SyntaxStyle } = await import("../../syntax-style")
+
+    const syntaxStyle = SyntaxStyle.create()
+
+    // Create Code renderable with content but no filetype (plain text fallback)
+    const codeRenderable = new CodeRenderable(renderer, {
+      content: "function test() {\n  return 42;\n}",
+      filetype: undefined,
+      syntaxStyle,
+      drawUnstyledText: true,
+      width: "100%",
+      height: "100%",
+    })
+
+    const lineNumberRenderable = new LineNumberRenderable(renderer, {
+      target: codeRenderable,
+      minWidth: 3,
+      paddingRight: 1,
+      fg: "white",
+      width: "100%",
+      height: "100%",
+    })
+
+    renderer.root.add(lineNumberRenderable)
+
+    // First render - plain text
+    await renderOnce()
+
+    let frame = captureCharFrame()
+
+    expect(codeRenderable.lineCount).toBe(3)
+    expect(frame).toContain("function")
+
+    // Now set filetype to enable syntax highlighting
+    codeRenderable.filetype = "typescript"
+
+    await renderOnce()
+    await Bun.sleep(100)
+    await renderOnce()
+
+    frame = captureCharFrame()
+
+    // Should still show 3 lines with highlighting
+    expect(codeRenderable.lineCount).toBe(3)
+    expect(frame).toContain("function")
+
+    // Line numbers should be present
+    const lines = frame.split("\n")
+    expect(lines[0]).toMatch(/1/)
+    expect(lines[2]).toMatch(/3/)
+  })
+
   test("maintains consistent left padding for all line numbers", async () => {
     const { renderer, renderOnce, captureCharFrame } = await createTestRenderer({
       width: 30,

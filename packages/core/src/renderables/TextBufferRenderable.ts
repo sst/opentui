@@ -271,6 +271,7 @@ export abstract class TextBufferRenderable extends Renderable implements LineInf
 
     this.yogaNode.markDirty()
     this.requestRender()
+    this.emit("line-info-change")
   }
 
   // Undefined = 0,
