@@ -640,6 +640,58 @@ test("DiffRenderable - line numbers hidden for empty alignment lines in split vi
   // Left side should have empty lines without line numbers
 })
 
+test("DiffRenderable - no width glitch on initial render", async () => {
+  const syntaxStyle = SyntaxStyle.fromStyles({
+    default: { fg: RGBA.fromValues(1, 1, 1, 1) },
+  })
+
+  const diffRenderable = new DiffRenderable(currentRenderer, {
+    id: "test-diff",
+    diff: multiLineDiff,
+    view: "unified",
+    syntaxStyle,
+    showLineNumbers: true,
+    width: "100%",
+    height: "100%",
+  })
+
+  currentRenderer.root.add(diffRenderable)
+
+  // Wait for automatic initial render to happen
+  await Bun.sleep(50)
+
+  const frameAfterAutoRender = captureFrame()
+  const gutterAfterAutoRender = diffRenderable["unifiedView"]?.["gutter"]
+  const widthAfterAutoRender = gutterAfterAutoRender?.width
+
+  // Now call renderOnce explicitly (this would be the second render)
+  await renderOnce()
+  const firstFrame = captureFrame()
+  const widthAfterFirst = diffRenderable["unifiedView"]?.["gutter"]?.width
+
+  // Render a third time
+  await renderOnce()
+  const secondFrame = captureFrame()
+  const widthAfterSecond = diffRenderable["unifiedView"]?.["gutter"]?.width
+
+  // EXPECTATION: Width should be correct (6) from the very first auto render
+  // If this fails, it means there's a glitch where width starts incorrect
+  expect(widthAfterAutoRender).toBe(6) // Should be 6 for double-digit line numbers
+
+  // Width should NOT change between renders (no glitch)
+  expect(widthAfterAutoRender).toBe(widthAfterFirst)
+  expect(widthAfterFirst).toBe(widthAfterSecond)
+
+  // The frames should be identical (no visual glitch)
+  expect(frameAfterAutoRender).toBe(firstFrame)
+  expect(firstFrame).toBe(secondFrame)
+
+  // Verify all frames have all content (not just partial)
+  expect(frameAfterAutoRender).toContain("function add")
+  expect(frameAfterAutoRender).toContain("function subtract")
+  expect(frameAfterAutoRender).toContain("function multiply")
+})
+
 test("DiffRenderable - consistent left padding for line numbers > 9", async () => {
   const syntaxStyle = SyntaxStyle.fromStyles({
     default: { fg: RGBA.fromValues(1, 1, 1, 1) },
