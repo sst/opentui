@@ -18,6 +18,8 @@ export interface LineNumberOptions extends RenderableOptions<LineNumberRenderabl
   paddingRight?: number
   lineColors?: Map<number, string | RGBA>
   lineSigns?: Map<number, LineSign>
+  lineNumberOffset?: number
+  hideLineNumbers?: Set<number>
 }
 
 class GutterRenderable extends Renderable {
@@ -28,6 +30,8 @@ class GutterRenderable extends Renderable {
   private _paddingRight: number
   private _lineColors: Map<number, RGBA>
   private _lineSigns: Map<number, LineSign>
+  private _lineNumberOffset: number
+  private _hideLineNumbers: Set<number>
   private _maxBeforeWidth: number = 0
   private _maxAfterWidth: number = 0
 
@@ -41,6 +45,8 @@ class GutterRenderable extends Renderable {
       paddingRight: number
       lineColors: Map<number, RGBA>
       lineSigns: Map<number, LineSign>
+      lineNumberOffset: number
+      hideLineNumbers: Set<number>
       id?: string
       buffered?: boolean
     },
@@ -60,6 +66,8 @@ class GutterRenderable extends Renderable {
     this._paddingRight = options.paddingRight
     this._lineColors = options.lineColors
     this._lineSigns = options.lineSigns
+    this._lineNumberOffset = options.lineNumberOffset
+    this._hideLineNumbers = options.hideLineNumbers
     this.calculateSignWidths()
     this.width = this.calculateWidth()
   }
@@ -185,13 +193,15 @@ class GutterRenderable extends Renderable {
         }
 
         // Draw line number (right-aligned in its space)
-        const lineNumStr = (logicalLine + 1).toString()
-        const lineNumWidth = lineNumStr.length
-        const availableSpace = this.width - this._maxBeforeWidth - this._maxAfterWidth - this._paddingRight
-        const lineNumX = startX + this._maxBeforeWidth + availableSpace - lineNumWidth
+        if (!this._hideLineNumbers.has(logicalLine)) {
+          const lineNumStr = (logicalLine + 1 + this._lineNumberOffset).toString()
+          const lineNumWidth = lineNumStr.length
+          const availableSpace = this.width - this._maxBeforeWidth - this._maxAfterWidth - this._paddingRight
+          const lineNumX = startX + this._maxBeforeWidth + availableSpace - lineNumWidth
 
-        if (lineNumX >= startX) {
-          buffer.drawText(lineNumStr, lineNumX, startY + i, this._fg, lineBg)
+          if (lineNumX >= startX) {
+            buffer.drawText(lineNumStr, lineNumX, startY + i, this._fg, lineBg)
+          }
         }
 
         // Draw 'after' sign if present
@@ -216,6 +226,8 @@ export class LineNumberRenderable extends Renderable {
   private _bg: RGBA
   private _minWidth: number
   private _paddingRight: number
+  private _lineNumberOffset: number
+  private _hideLineNumbers: Set<number>
   private _isDestroying: boolean = false
 
   constructor(ctx: RenderContext, options: LineNumberOptions) {
@@ -229,6 +241,8 @@ export class LineNumberRenderable extends Renderable {
     this._bg = parseColor(options.bg ?? "transparent")
     this._minWidth = options.minWidth ?? 3
     this._paddingRight = options.paddingRight ?? 1
+    this._lineNumberOffset = options.lineNumberOffset ?? 0
+    this._hideLineNumbers = options.hideLineNumbers ?? new Set()
 
     this._lineColors = new Map<number, RGBA>()
     if (options.lineColors) {
@@ -271,6 +285,8 @@ export class LineNumberRenderable extends Renderable {
       paddingRight: this._paddingRight,
       lineColors: this._lineColors,
       lineSigns: this._lineSigns,
+      lineNumberOffset: this._lineNumberOffset,
+      hideLineNumbers: this._hideLineNumbers,
       id: this.id ? `${this.id}-gutter` : undefined,
       buffered: true,
     })
@@ -425,5 +441,31 @@ export class LineNumberRenderable extends Renderable {
 
   public getLineSigns(): Map<number, LineSign> {
     return this._lineSigns
+  }
+
+  public set lineNumberOffset(value: number) {
+    if (this._lineNumberOffset !== value) {
+      this._lineNumberOffset = value
+      if (this.gutter) {
+        this.gutter.destroy()
+        this.setTarget(this.target!)
+      }
+    }
+  }
+
+  public get lineNumberOffset(): number {
+    return this._lineNumberOffset
+  }
+
+  public setHideLineNumbers(hideLineNumbers: Set<number>): void {
+    this._hideLineNumbers = hideLineNumbers
+    if (this.gutter) {
+      this.gutter.destroy()
+      this.setTarget(this.target!)
+    }
+  }
+
+  public getHideLineNumbers(): Set<number> {
+    return this._hideLineNumbers
   }
 }
