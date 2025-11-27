@@ -94,10 +94,14 @@ class GutterRenderable extends Renderable {
       // Calculate the gutter width based on the target's line count
       const gutterWidth = this.calculateWidth()
 
-      // Return the calculated width and let height be determined by parent
+      // Calculate gutter height based on target's actual line count
+      // The gutter should match the height of the content it's numbering
+      const gutterHeight = this.target.lineCount
+
+      // Return calculated dimensions based on content, not parent constraints
       return {
         width: gutterWidth,
-        height: height || 1,
+        height: gutterHeight,
       }
     }
 
@@ -261,7 +265,6 @@ export class LineNumberRenderable extends Renderable {
     super(ctx, {
       ...options,
       flexDirection: "row",
-      alignItems: "stretch",
     })
 
     this._fg = parseColor(options.fg ?? "#888888")
