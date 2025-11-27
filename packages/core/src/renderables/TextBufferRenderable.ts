@@ -237,12 +237,8 @@ export abstract class TextBufferRenderable extends Renderable implements LineInf
 
   protected onResize(width: number, height: number): void {
     // Update viewport size to match renderable dimensions
+    // Note: setViewportSize automatically updates wrap_width via setViewport (see text-buffer-view.zig:178)
     this.textBufferView.setViewportSize(width, height)
-
-    // Update wrap width if wrapping is enabled
-    if (this._wrapMode !== "none" && width > 0) {
-      this.updateWrapWidth(width)
-    }
 
     if (this.lastLocalSelection) {
       const changed = this.updateLocalSelection(this.lastLocalSelection)
@@ -328,9 +324,6 @@ export abstract class TextBufferRenderable extends Renderable implements LineInf
 
       const measuredWidth = measureResult ? Math.max(1, measureResult.maxWidth) : 1
       const measuredHeight = measureResult ? Math.max(1, measureResult.lineCount) : 1
-
-      // TODO: still needed??
-      this.updateLineInfo()
 
       if (widthMode === MeasureMode.AtMost && this._positionType !== "absolute") {
         return {
