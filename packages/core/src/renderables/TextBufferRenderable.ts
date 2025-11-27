@@ -36,13 +36,6 @@ export abstract class TextBufferRenderable extends Renderable implements LineInf
 
   protected textBuffer: TextBuffer
   protected textBufferView: TextBufferView
-  protected _lineInfo: LineInfo = {
-    lineStarts: [],
-    lineWidths: [],
-    maxLineWidth: 0,
-    lineSources: [],
-    lineWraps: [],
-  }
 
   protected _defaultOptions = {
     fg: RGBA.fromValues(1, 1, 1, 1),
@@ -92,7 +85,7 @@ export abstract class TextBufferRenderable extends Renderable implements LineInf
     }
 
     if (this._wrapMode !== "none" && this.width > 0) {
-      this.updateWrapWidth(this.width)
+      this.textBufferView.setWrapWidth(this.width)
     }
 
     this.updateTextInfo()
@@ -198,7 +191,7 @@ export abstract class TextBufferRenderable extends Renderable implements LineInf
       this._wrapMode = value
       this.textBufferView.setWrapMode(this._wrapMode)
       if (value !== "none" && this.width > 0) {
-        this.updateWrapWidth(this.width)
+        this.textBufferView.setWrapWidth(this.width)
       }
       // Changing wrap mode can change dimensions, so mark yoga node dirty to trigger re-measurement
       this.yogaNode.markDirty()
@@ -278,20 +271,6 @@ export abstract class TextBufferRenderable extends Renderable implements LineInf
 
     this.yogaNode.markDirty()
     this.requestRender()
-  }
-
-  private updateLineInfo(): void {
-    const lineInfo = this.textBufferView.logicalLineInfo
-    this._lineInfo.lineStarts = lineInfo.lineStarts
-    this._lineInfo.lineWidths = lineInfo.lineWidths
-    this._lineInfo.maxLineWidth = lineInfo.maxLineWidth
-    this._lineInfo.lineSources = lineInfo.lineSources
-    this._lineInfo.lineWraps = lineInfo.lineWraps
-  }
-
-  private updateWrapWidth(width: number): void {
-    this.textBufferView.setWrapWidth(width)
-    this.updateLineInfo()
   }
 
   // Undefined = 0,
