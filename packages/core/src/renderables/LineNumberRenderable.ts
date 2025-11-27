@@ -270,11 +270,7 @@ export class LineNumberRenderable extends Renderable {
     super(ctx, {
       ...options,
       flexDirection: "row",
-      // CRITICAL FIX: Force flexShrink=0 and height="auto"
-      // Without this, when LineNumberRenderable is placed inside a box with gap,
-      // Yoga's layout calculation can incorrectly compress the parent container
-      // (e.g., parent becomes h=13 instead of h=30+ to fit 29 lines of code).
-      // This causes the line_number to extend beyond its parent and overlap content below.
+      // CRITICAL: Must have flexShrink=0 to prevent parent from compressing us
       // By forcing flexShrink=0, we ensure the parent box properly accounts for our full height.
       flexShrink: 0,
       height: "auto",
