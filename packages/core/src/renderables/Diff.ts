@@ -195,10 +195,11 @@ export class DiffRenderable extends Renderable {
     const lines = this._parsedDiff.lines
     const content = lines.map((line) => line.content).join("\n")
 
-    // Build line colors and signs
+    // Build line colors, signs, and custom line numbers
     const lineColors = new Map<number, string | RGBA>()
     const lineSigns = new Map<number, LineSign>()
     const hideLineNumbers = new Set<number>()
+    const lineNumbers = new Map<number, number>()
 
     lines.forEach((line, index) => {
       if (line.type === "add") {
@@ -207,12 +208,25 @@ export class DiffRenderable extends Renderable {
           after: " +",
           afterColor: this._addedSignColor,
         })
+        // Added lines show new line number
+        if (line.newLineNum !== undefined) {
+          lineNumbers.set(index, line.newLineNum)
+        }
       } else if (line.type === "remove") {
         lineColors.set(index, this._removedBg)
         lineSigns.set(index, {
           after: " -",
           afterColor: this._removedSignColor,
         })
+        // Removed lines show old line number
+        if (line.oldLineNum !== undefined) {
+          lineNumbers.set(index, line.oldLineNum)
+        }
+      } else {
+        // Context lines can use either (they're the same)
+        if (line.oldLineNum !== undefined) {
+          lineNumbers.set(index, line.oldLineNum)
+        }
       }
     })
 
@@ -241,7 +255,8 @@ export class DiffRenderable extends Renderable {
       bg: this._lineNumberBg,
       lineColors,
       lineSigns,
-      lineNumberOffset: this._parsedDiff.oldStart - 1,
+      lineNumbers,
+      lineNumberOffset: 0, // Not needed when using custom line numbers
       hideLineNumbers,
       width: "100%",
       height: "100%",
@@ -265,6 +280,8 @@ export class DiffRenderable extends Renderable {
     const rightLineSigns = new Map<number, LineSign>()
     const leftHideLineNumbers = new Set<number>()
     const rightHideLineNumbers = new Set<number>()
+    const leftLineNumbers = new Map<number, number>()
+    const rightLineNumbers = new Map<number, number>()
 
     let leftIndex = 0
     let rightIndex = 0
@@ -278,6 +295,9 @@ export class DiffRenderable extends Renderable {
           after: " -",
           afterColor: this._removedSignColor,
         })
+        if (line.oldLineNum !== undefined) {
+          leftLineNumbers.set(leftIndex, line.oldLineNum)
+        }
         leftIndex++
 
         rightLines.push("")
@@ -291,6 +311,9 @@ export class DiffRenderable extends Renderable {
           after: " +",
           afterColor: this._addedSignColor,
         })
+        if (line.newLineNum !== undefined) {
+          rightLineNumbers.set(rightIndex, line.newLineNum)
+        }
         rightIndex++
 
         leftLines.push("")
@@ -299,9 +322,15 @@ export class DiffRenderable extends Renderable {
       } else {
         // Context line - add to both
         leftLines.push(line.content)
+        if (line.oldLineNum !== undefined) {
+          leftLineNumbers.set(leftIndex, line.oldLineNum)
+        }
         leftIndex++
 
         rightLines.push(line.content)
+        if (line.newLineNum !== undefined) {
+          rightLineNumbers.set(rightIndex, line.newLineNum)
+        }
         rightIndex++
       }
     }
@@ -333,7 +362,8 @@ export class DiffRenderable extends Renderable {
       bg: this._lineNumberBg,
       lineColors: leftLineColors,
       lineSigns: leftLineSigns,
-      lineNumberOffset: this._parsedDiff.oldStart - 1,
+      lineNumbers: leftLineNumbers,
+      lineNumberOffset: 0, // Not needed when using custom line numbers
       hideLineNumbers: leftHideLineNumbers,
       width: "50%",
       height: "100%",
@@ -365,7 +395,8 @@ export class DiffRenderable extends Renderable {
       bg: this._lineNumberBg,
       lineColors: rightLineColors,
       lineSigns: rightLineSigns,
-      lineNumberOffset: this._parsedDiff.newStart - 1,
+      lineNumbers: rightLineNumbers,
+      lineNumberOffset: 0, // Not needed when using custom line numbers
       hideLineNumbers: rightHideLineNumbers,
       width: "50%",
       height: "100%",

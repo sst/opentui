@@ -778,11 +778,77 @@ test("DiffRenderable - consistent left padding for line numbers > 9", async () =
   expect(line10Match![1].length).toBeGreaterThanOrEqual(1) // At least 1 space of left padding
 
   // Line 16 (double digit) should have left padding
+  // Note: With correct line numbers, the removed line shows as 14 - and added shows as 16 +
   const line16 = frameLines.find((l) => l.includes("line16"))
   expect(line16).toBeTruthy()
-  const line16Match = line16!.match(/^( +)1[67] /)
+  // Match either 14 - or 16 + (the correct line numbers after the fix)
+  const line16Match = line16!.match(/^( +)(14 -|16 \+) /)
   expect(line16Match).toBeTruthy()
   expect(line16Match![1].length).toBeGreaterThanOrEqual(1) // At least 1 space of left padding
+})
+
+test("DiffRenderable - line numbers are correct in unified view", async () => {
+  const syntaxStyle = SyntaxStyle.fromStyles({
+    default: { fg: RGBA.fromValues(1, 1, 1, 1) },
+  })
+
+  const diffRenderable = new DiffRenderable(currentRenderer, {
+    id: "test-diff",
+    diff: simpleDiff,
+    view: "unified",
+    syntaxStyle,
+    showLineNumbers: true,
+    width: "100%",
+    height: "100%",
+  })
+
+  currentRenderer.root.add(diffRenderable)
+  await renderOnce()
+
+  const frame = captureFrame()
+  const frameLines = frame.split("\n")
+
+  // Line 2 is removed (old file line 2)
+  const removedLine = frameLines.find((l) => l.includes('console.log("Hello");'))
+  expect(removedLine).toBeTruthy()
+  expect(removedLine).toMatch(/^ *2 -/)
+
+  // Line 2 is added (new file line 2) - NOT line 3!
+  const addedLine = frameLines.find((l) => l.includes('console.log("Hello, World!")'))
+  expect(addedLine).toBeTruthy()
+  expect(addedLine).toMatch(/^ *2 \+/)
+})
+
+test("DiffRenderable - line numbers are correct in split view", async () => {
+  const syntaxStyle = SyntaxStyle.fromStyles({
+    default: { fg: RGBA.fromValues(1, 1, 1, 1) },
+  })
+
+  const diffRenderable = new DiffRenderable(currentRenderer, {
+    id: "test-diff",
+    diff: simpleDiff,
+    view: "split",
+    syntaxStyle,
+    showLineNumbers: true,
+    width: "100%",
+    height: "100%",
+  })
+
+  currentRenderer.root.add(diffRenderable)
+  await renderOnce()
+
+  const frame = captureFrame()
+  const frameLines = frame.split("\n")
+
+  // Left side: line 2 is removed
+  const leftLine = frameLines.find((l) => l.includes('console.log("Hello");'))
+  expect(leftLine).toBeTruthy()
+  expect(leftLine).toMatch(/^ *2 -/)
+
+  // Right side: line 2 is added (same line number as the removed line it replaces)
+  const rightLine = frameLines.find((l) => l.includes('console.log("Hello, World!")'))
+  expect(rightLine).toBeTruthy()
+  expect(rightLine).toMatch(/^ *2 \+/)
 })
 
 test("DiffRenderable - split view should not wrap lines prematurely", async () => {

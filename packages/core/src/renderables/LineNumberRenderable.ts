@@ -21,6 +21,7 @@ export interface LineNumberOptions extends RenderableOptions<LineNumberRenderabl
   lineSigns?: Map<number, LineSign>
   lineNumberOffset?: number
   hideLineNumbers?: Set<number>
+  lineNumbers?: Map<number, number>
 }
 
 class GutterRenderable extends Renderable {
@@ -33,6 +34,7 @@ class GutterRenderable extends Renderable {
   private _lineSigns: Map<number, LineSign>
   private _lineNumberOffset: number
   private _hideLineNumbers: Set<number>
+  private _lineNumbers: Map<number, number>
   private _maxBeforeWidth: number = 0
   private _maxAfterWidth: number = 0
   private _lastKnownLineCount: number = 0
@@ -49,6 +51,7 @@ class GutterRenderable extends Renderable {
       lineSigns: Map<number, LineSign>
       lineNumberOffset: number
       hideLineNumbers: Set<number>
+      lineNumbers?: Map<number, number>
       id?: string
       buffered?: boolean
     },
@@ -70,6 +73,7 @@ class GutterRenderable extends Renderable {
     this._lineSigns = options.lineSigns
     this._lineNumberOffset = options.lineNumberOffset
     this._hideLineNumbers = options.hideLineNumbers
+    this._lineNumbers = options.lineNumbers ?? new Map()
     this._lastKnownLineCount = this.target.lineCount
     this.calculateSignWidths()
     this.setupMeasureFunc()
@@ -131,7 +135,15 @@ class GutterRenderable extends Renderable {
 
   private calculateWidth(): number {
     const totalLines = this.target.lineCount
-    const maxLineNumber = totalLines + this._lineNumberOffset
+
+    // Find max line number, considering both calculated and custom line numbers
+    let maxLineNumber = totalLines + this._lineNumberOffset
+    if (this._lineNumbers.size > 0) {
+      for (const customLineNum of this._lineNumbers.values()) {
+        maxLineNumber = Math.max(maxLineNumber, customLineNum)
+      }
+    }
+
     const digits = maxLineNumber > 0 ? Math.floor(Math.log10(maxLineNumber)) + 1 : 1
     const baseWidth = Math.max(this._minWidth, digits + this._paddingRight + 1) // +1 for left padding
     return baseWidth + this._maxBeforeWidth + this._maxAfterWidth
@@ -225,7 +237,10 @@ class GutterRenderable extends Renderable {
 
         // Draw line number (right-aligned in its space with left padding of 1)
         if (!this._hideLineNumbers.has(logicalLine)) {
-          const lineNumStr = (logicalLine + 1 + this._lineNumberOffset).toString()
+          // Use custom line number if provided, otherwise use calculated line number
+          const customLineNum = this._lineNumbers.get(logicalLine)
+          const lineNum = customLineNum !== undefined ? customLineNum : logicalLine + 1 + this._lineNumberOffset
+          const lineNumStr = lineNum.toString()
           const lineNumWidth = lineNumStr.length
           const availableSpace = this.width - this._maxBeforeWidth - this._maxAfterWidth - this._paddingRight
           const lineNumX = startX + this._maxBeforeWidth + 1 + availableSpace - lineNumWidth - 1
@@ -259,6 +274,7 @@ export class LineNumberRenderable extends Renderable {
   private _paddingRight: number
   private _lineNumberOffset: number
   private _hideLineNumbers: Set<number>
+  private _lineNumbers: Map<number, number>
   private _isDestroying: boolean = false
   private handleLineInfoChange = (): void => {
     // When line info changes in the target, remeasure the gutter
@@ -270,7 +286,7 @@ export class LineNumberRenderable extends Renderable {
     super(ctx, {
       ...options,
       flexDirection: "row",
-      // CRITICAL: 
+      // CRITICAL:
       // By forcing height=auto, we ensure the parent box properly accounts for our full height.
       height: "auto",
     })
@@ -281,6 +297,7 @@ export class LineNumberRenderable extends Renderable {
     this._paddingRight = options.paddingRight ?? 1
     this._lineNumberOffset = options.lineNumberOffset ?? 0
     this._hideLineNumbers = options.hideLineNumbers ?? new Set()
+    this._lineNumbers = options.lineNumbers ?? new Map()
 
     this._lineColors = new Map<number, RGBA>()
     if (options.lineColors) {
@@ -330,6 +347,7 @@ export class LineNumberRenderable extends Renderable {
       lineSigns: this._lineSigns,
       lineNumberOffset: this._lineNumberOffset,
       hideLineNumbers: this._hideLineNumbers,
+      lineNumbers: this._lineNumbers,
       id: this.id ? `${this.id}-gutter` : undefined,
       buffered: true,
     })
