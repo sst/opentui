@@ -46,17 +46,45 @@ function toHex(r?: string, g?: string, b?: string, hex6?: string): string {
   return "#000000"
 }
 
+/**
+ * Wrap OSC sequence for tmux passthrough
+ * tmux requires DCS sequences to pass OSC to the underlying terminal
+ * Format: ESC P tmux; ESC <OSC_SEQUENCE> ESC \
+ */
+function wrapForTmux(osc: string): string {
+  // Replace ESC with ESC ESC for tmux (escape the escape)
+  const escaped = osc.replace(/\x1b/g, "\x1b\x1b")
+  return `\x1bPtmux;${escaped}\x1b\\`
+}
+
+/**
+ * Check if running inside tmux
+ */
+function isTmux(): boolean {
+  return !!process.env.TMUX
+}
+
 export class TerminalPalette implements TerminalPaletteDetector {
   private stdin: NodeJS.ReadStream
   private stdout: NodeJS.WriteStream
   private writeFn: WriteFunction
   private activeListeners: Array<{ event: string; handler: (...args: any[]) => void }> = []
   private activeTimers: Array<NodeJS.Timeout> = []
+  private inTmux: boolean
 
   constructor(stdin: NodeJS.ReadStream, stdout: NodeJS.WriteStream, writeFn?: WriteFunction) {
     this.stdin = stdin
     this.stdout = stdout
     this.writeFn = writeFn || ((data: string | Buffer) => stdout.write(data))
+    this.inTmux = isTmux()
+  }
+
+  /**
+   * Write an OSC sequence, wrapping for tmux if needed
+   */
+  private writeOsc(osc: string): boolean {
+    const data = this.inTmux ? wrapForTmux(osc) : osc
+    return this.writeFn(data)
   }
 
   cleanup(): void {
@@ -109,7 +137,7 @@ export class TerminalPalette implements TerminalPaletteDetector {
       this.activeTimers.push(timer)
       inp.on("data", onData)
       this.activeListeners.push({ event: "data", handler: onData })
-      this.writeFn("\x1b]4;0;?\x07")
+      this.writeOsc("\x1b]4;0;?\x07")
     })
   }
 
@@ -180,7 +208,7 @@ export class TerminalPalette implements TerminalPaletteDetector {
       this.activeTimers.push(timer)
       inp.on("data", onData)
       this.activeListeners.push({ event: "data", handler: onData })
-      this.writeFn(indices.map((i) => `\x1b]4;${i};?\x07`).join(""))
+      this.writeOsc(indices.map((i) => `\x1b]4;${i};?\x07`).join(""))
     })
   }
 
@@ -259,7 +287,7 @@ export class TerminalPalette implements TerminalPaletteDetector {
       this.activeTimers.push(timer)
       inp.on("data", onData)
       this.activeListeners.push({ event: "data", handler: onData })
-      this.writeFn(
+      this.writeOsc(
         [
           "\x1b]10;?\x07",
           "\x1b]11;?\x07",
