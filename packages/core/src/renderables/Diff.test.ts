@@ -692,6 +692,37 @@ test("DiffRenderable - no width glitch on initial render", async () => {
   expect(frameAfterAutoRender).toContain("function multiply")
 })
 
+test("DiffRenderable - can be constructed without diff and set via setter", async () => {
+  const syntaxStyle = SyntaxStyle.fromStyles({
+    default: { fg: RGBA.fromValues(1, 1, 1, 1) },
+  })
+
+  // Construct without diff
+  const diffRenderable = new DiffRenderable(currentRenderer, {
+    id: "test-diff",
+    view: "unified",
+    syntaxStyle,
+    width: "100%",
+    height: "100%",
+  })
+
+  currentRenderer.root.add(diffRenderable)
+  await renderOnce()
+
+  // Should render empty
+  let frame = captureFrame()
+  expect(frame.trim()).toBe("")
+
+  // Now set diff via setter
+  diffRenderable.diff = simpleDiff
+  await renderOnce()
+
+  frame = captureFrame()
+  expect(frame).toContain("function hello")
+  expect(frame).toContain('console.log("Hello")')
+  expect(frame).toContain('console.log("Hello, World!")')
+})
+
 test("DiffRenderable - consistent left padding for line numbers > 9", async () => {
   const syntaxStyle = SyntaxStyle.fromStyles({
     default: { fg: RGBA.fromValues(1, 1, 1, 1) },
