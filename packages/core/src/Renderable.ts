@@ -978,13 +978,6 @@ export abstract class Renderable extends BaseRenderable {
     const newHeight = Math.max(layout.height, 1)
     const sizeChanged = this.width !== newWidth || this.height !== newHeight
 
-    // DEBUG LOGGING - Log ALL renderables in OpenCode
-    if (process.env.DEBUG_LINE_NUMBER === "1") {
-      console.log(
-        `[Layout] ${this.id || "unnamed"} (${this.constructor.name}): x=${layout.left} y=${layout.top} w=${layout.width} h=${layout.height} | flexGrow=${this.yogaNode.getFlexGrow()} flexShrink=${this.yogaNode.getFlexShrink()} parent=${this.parent?.id || "none"}`,
-      )
-    }
-
     this._widthValue = newWidth
     this._heightValue = newHeight
 

@@ -98,26 +98,10 @@ class GutterRenderable extends Renderable {
       // The gutter should match the height of the content it's numbering
       const gutterHeight = this.target.lineCount
 
-      // DEBUG LOGGING
-      if (process.env.DEBUG_LINE_NUMBER === "1") {
-        console.log(`[GutterRenderable.measure] id=${this.id} lineCount=${this.target.lineCount}`)
-        console.log(`  input: width=${width} widthMode=${widthMode} height=${height} heightMode=${heightMode}`)
-        console.log(`  IGNORING height constraint! Returning gutterHeight=${gutterHeight}`)
-        console.log(`  yoga: flexGrow=${this.yogaNode.getFlexGrow()} flexShrink=${this.yogaNode.getFlexShrink()}`)
-      }
-
-      // BUG FIX: Respect height constraints to prevent overflow
-      // If heightMode is AtMost, we should not exceed the given height
-      const constrainedHeight = heightMode === MeasureMode.AtMost ? Math.min(gutterHeight, height) : gutterHeight
-
-      if (process.env.DEBUG_LINE_NUMBER === "1" && constrainedHeight !== gutterHeight) {
-        console.log(`  🔧 CONSTRAINED: ${gutterHeight} -> ${constrainedHeight} (parent limit: ${height})`)
-      }
-
       // Return calculated dimensions based on content, not parent constraints
       return {
         width: gutterWidth,
-        height: constrainedHeight,
+        height: gutterHeight,
       }
     }
 
@@ -286,29 +270,15 @@ export class LineNumberRenderable extends Renderable {
     super(ctx, {
       ...options,
       flexDirection: "row",
-      // CRITICAL: Must have flexShrink=0 to prevent parent from compressing us
-      // This ensures line_number reports its true intrinsic size to parent
+      // CRITICAL FIX: Force flexShrink=0 and height="auto"
+      // Without this, when LineNumberRenderable is placed inside a box with gap,
+      // Yoga's layout calculation can incorrectly compress the parent container
+      // (e.g., parent becomes h=13 instead of h=30+ to fit 29 lines of code).
+      // This causes the line_number to extend beyond its parent and overlap content below.
+      // By forcing flexShrink=0, we ensure the parent box properly accounts for our full height.
       flexShrink: 0,
-      // Explicitly set height to auto to ensure proper measurement
       height: "auto",
     })
-
-    // DEBUG LOGGING
-    if (process.env.DEBUG_LINE_NUMBER === "1") {
-      console.log(`[LineNumberRenderable.constructor] id=${options.id ?? "unnamed"}`)
-      console.log(`  options:`, {
-        width: options.width,
-        height: options.height,
-        flexGrow: options.flexGrow,
-        flexShrink: options.flexShrink,
-        alignItems: options.alignItems,
-        minWidth: options.minWidth,
-        paddingRight: options.paddingRight,
-      })
-      console.log(
-        `  yoga AFTER: flexGrow=${this.yogaNode.getFlexGrow()} flexShrink=${this.yogaNode.getFlexShrink()} alignItems=${this.yogaNode.getAlignItems()}`,
-      )
-    }
 
     this._fg = parseColor(options.fg ?? "#888888")
     this._bg = parseColor(options.bg ?? "transparent")
@@ -427,15 +397,6 @@ export class LineNumberRenderable extends Renderable {
   }
 
   protected renderSelf(buffer: OptimizedBuffer): void {
-    // DEBUG LOGGING
-    if (process.env.DEBUG_LINE_NUMBER === "1") {
-      console.log(`[LineNumberRenderable.renderSelf] id=${this.id}`)
-      console.log(`  position: x=${this.x} y=${this.y}`)
-      console.log(`  size: width=${this.width} height=${this.height}`)
-      console.log(`  target: lineCount=${this.target?.lineCount ?? "none"}`)
-      console.log(`  gutter: width=${this.gutter?.width ?? "none"} height=${this.gutter?.height ?? "none"}`)
-    }
-
     // Draw full-width line backgrounds before children render
     if (!this.target || !this.gutter) return
 
