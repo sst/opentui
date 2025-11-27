@@ -19,11 +19,14 @@ jobs:
           bun-version: latest
 
       - name: Check Prettier formatting
-        run: bunx prettier --check --log-level warn .
+        run: |
+          PRETTIER_VERSION=$(bun -e 'console.log(require("./package.json").devDependencies.prettier)')
+          bunx prettier@$PRETTIER_VERSION --check --log-level warn .
 
       - name: Show formatting differences
         if: failure()
         run: |
           echo "=== Showing differences for each file ==="
-          bunx prettier --write .
+          PRETTIER_VERSION=$(bun -e 'console.log(require("./package.json").devDependencies.prettier)')
+          bunx prettier@$PRETTIER_VERSION --write .
           git diff --color=always
