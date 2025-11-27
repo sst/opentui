@@ -617,6 +617,41 @@ describe("SelectRenderable", () => {
       expect(lastOption).toEqual(sampleOptions[2])
     })
 
+    test("should not reuse the same keypress after focusing another select", async () => {
+      const { select: first } = await createSelectRenderable(currentRenderer, {
+        width: 20,
+        height: 5,
+        options: sampleOptions,
+        selectedIndex: 1,
+      })
+      const { select: second } = await createSelectRenderable(currentRenderer, {
+        width: 20,
+        height: 5,
+        options: [
+          { name: "A", description: "A" },
+          { name: "B", description: "B" },
+        ],
+      })
+
+      let firstSelections = 0
+      let secondSelections = 0
+
+      first.on(SelectRenderableEvents.ITEM_SELECTED, () => {
+        firstSelections++
+        second.focus()
+      })
+      second.on(SelectRenderableEvents.ITEM_SELECTED, () => {
+        secondSelections++
+      })
+
+      first.focus()
+      currentMockInput.pressKey("RETURN")
+
+      expect(firstSelections).toBe(1)
+      expect(secondSelections).toBe(0)
+      expect(second.focused).toBe(true)
+    })
+
     test("should emit events even when movement is blocked", async () => {
       const { select } = await createSelectRenderable(currentRenderer, {
         width: 20,
