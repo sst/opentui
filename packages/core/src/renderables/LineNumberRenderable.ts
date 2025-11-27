@@ -270,9 +270,8 @@ export class LineNumberRenderable extends Renderable {
     super(ctx, {
       ...options,
       flexDirection: "row",
-      // CRITICAL: Must have flexShrink=0 to prevent parent from compressing us
-      // By forcing flexShrink=0, we ensure the parent box properly accounts for our full height.
-      flexShrink: 0,
+      // CRITICAL: 
+      // By forcing height=auto, we ensure the parent box properly accounts for our full height.
       height: "auto",
     })
 
