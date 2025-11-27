@@ -1580,4 +1580,267 @@ describe("Textarea - Rendering Tests", () => {
       expect(total).toBeLessThanOrEqual(18)
     })
   })
+
+  describe("Absolute Positioned Box with Textarea", () => {
+    it("should render textarea in absolute positioned box with padding and borders correctly", async () => {
+      resize(80, 20)
+
+      const notificationBox = new BoxRenderable(currentRenderer, {
+        position: "absolute",
+        justifyContent: "center",
+        alignItems: "flex-start",
+        top: 2,
+        right: 2,
+        maxWidth: Math.min(60, 80 - 6),
+        paddingLeft: 2,
+        paddingRight: 2,
+        paddingTop: 1,
+        paddingBottom: 1,
+        backgroundColor: "#1e293b",
+        borderColor: "#3b82f6",
+        border: ["left", "right"],
+      })
+
+      currentRenderer.root.add(notificationBox)
+
+      const outerWrapperBox = new BoxRenderable(currentRenderer, {
+        flexDirection: "row",
+        paddingBottom: 1,
+        paddingTop: 1,
+        paddingLeft: 2,
+        paddingRight: 2,
+        gap: 2,
+      })
+      notificationBox.add(outerWrapperBox)
+
+      const innerContentBox = new BoxRenderable(currentRenderer, {
+        flexGrow: 1,
+        gap: 1,
+      })
+      outerWrapperBox.add(innerContentBox)
+
+      const titleText = new TextRenderable(currentRenderer, {
+        content: "Important Notification",
+        attributes: 1,
+        marginBottom: 1,
+        fg: "#f8fafc",
+      })
+      innerContentBox.add(titleText)
+
+      const { textarea: messageTextarea } = await createTextareaRenderable(currentRenderer, renderOnce, {
+        initialValue:
+          "This is a longer message that should wrap properly within the absolutely positioned box with appropriate width constraints and padding applied.",
+        textColor: "#e2e8f0",
+        wrapMode: "word",
+        width: "100%",
+      })
+      innerContentBox.add(messageTextarea)
+
+      await renderOnce()
+
+      const frame = captureFrame()
+      expect(frame).toMatchSnapshot()
+
+      expect(notificationBox.x).toBeGreaterThan(0)
+      expect(notificationBox.y).toBe(2)
+      expect(notificationBox.width).toBeGreaterThan(25)
+
+      expect(outerWrapperBox.width).toBeGreaterThan(15)
+      expect(innerContentBox.width).toBeGreaterThan(15)
+
+      expect(titleText.width).toBeGreaterThan(15)
+      expect(titleText.plainText).toBe("Important Notification")
+      expect(titleText.height).toBe(1)
+
+      expect(messageTextarea.width).toBeGreaterThan(15)
+      expect(messageTextarea.height).toBeGreaterThanOrEqual(1)
+      expect(messageTextarea.plainText).toBe(
+        "This is a longer message that should wrap properly within the absolutely positioned box with appropriate width constraints and padding applied.",
+      )
+    })
+
+    it("should render textarea fully visible in absolute positioned box at various positions", async () => {
+      resize(100, 25)
+
+      const topRightBox = new BoxRenderable(currentRenderer, {
+        position: "absolute",
+        top: 1,
+        right: 1,
+        maxWidth: 40,
+        paddingLeft: 1,
+        paddingRight: 1,
+        paddingTop: 0,
+        paddingBottom: 0,
+        backgroundColor: "#fef2f2",
+        borderColor: "#ef4444",
+        border: true,
+      })
+      currentRenderer.root.add(topRightBox)
+
+      const { textarea: topRightTextarea } = await createTextareaRenderable(currentRenderer, renderOnce, {
+        initialValue: "Error: File not found in the specified directory path",
+        textColor: "#991b1b",
+        wrapMode: "word",
+        width: "100%",
+      })
+      topRightBox.add(topRightTextarea)
+
+      const bottomLeftBox = new BoxRenderable(currentRenderer, {
+        position: "absolute",
+        bottom: 1,
+        left: 1,
+        maxWidth: 35,
+        paddingLeft: 1,
+        paddingRight: 1,
+        backgroundColor: "#f0fdf4",
+        borderColor: "#22c55e",
+        border: ["top", "bottom"],
+      })
+      currentRenderer.root.add(bottomLeftBox)
+
+      const { textarea: bottomLeftTextarea } = await createTextareaRenderable(currentRenderer, renderOnce, {
+        initialValue: "Success: Operation completed successfully!",
+        textColor: "#166534",
+        wrapMode: "word",
+        width: "100%",
+      })
+      bottomLeftBox.add(bottomLeftTextarea)
+
+      await renderOnce()
+
+      const frame = captureFrame()
+      expect(frame).toMatchSnapshot()
+
+      expect(topRightBox.y).toBe(1)
+      expect(topRightBox.x).toBeGreaterThan(50)
+      expect(topRightBox.width).toBeGreaterThan(30)
+      expect(topRightBox.width).toBeLessThanOrEqual(40)
+
+      expect(topRightTextarea.plainText).toBe("Error: File not found in the specified directory path")
+      expect(topRightTextarea.width).toBeGreaterThan(25)
+      expect(topRightTextarea.width).toBeLessThanOrEqual(38)
+      expect(topRightTextarea.height).toBeGreaterThan(1)
+
+      expect(bottomLeftBox.x).toBe(1)
+      expect(bottomLeftBox.y).toBeGreaterThan(15)
+      expect(bottomLeftBox.width).toBeGreaterThan(25)
+      expect(bottomLeftBox.width).toBeLessThanOrEqual(35)
+
+      expect(bottomLeftTextarea.plainText).toBe("Success: Operation completed successfully!")
+      expect(bottomLeftTextarea.width).toBeGreaterThan(25)
+      expect(bottomLeftTextarea.width).toBeLessThanOrEqual(33)
+      expect(bottomLeftTextarea.height).toBeGreaterThan(1)
+    })
+
+    it("should handle width:100% textarea in absolute positioned box with constrained maxWidth", async () => {
+      resize(70, 15)
+
+      const constrainedBox = new BoxRenderable(currentRenderer, {
+        position: "absolute",
+        top: 5,
+        left: 10,
+        maxWidth: 50,
+        paddingLeft: 3,
+        paddingRight: 3,
+        paddingTop: 2,
+        paddingBottom: 2,
+        backgroundColor: "#1e1e2e",
+      })
+      currentRenderer.root.add(constrainedBox)
+
+      const { textarea: longTextarea } = await createTextareaRenderable(currentRenderer, renderOnce, {
+        initialValue:
+          "This is an extremely long piece of text that needs to wrap multiple times within the constrained width of the absolutely positioned container box with significant padding on all sides.",
+        textColor: "#cdd6f4",
+        wrapMode: "word",
+        width: "100%",
+      })
+      constrainedBox.add(longTextarea)
+
+      await renderOnce()
+
+      const frame = captureFrame()
+      expect(frame).toMatchSnapshot()
+
+      expect(constrainedBox.width).toBeLessThanOrEqual(50)
+      expect(constrainedBox.width).toBeGreaterThan(40)
+      expect(constrainedBox.x).toBe(10)
+      expect(constrainedBox.y).toBe(5)
+
+      expect(longTextarea.width).toBeGreaterThan(35)
+      expect(longTextarea.width).toBeLessThanOrEqual(44)
+      expect(longTextarea.height).toBeGreaterThanOrEqual(5)
+      expect(longTextarea.plainText).toBe(
+        "This is an extremely long piece of text that needs to wrap multiple times within the constrained width of the absolutely positioned container box with significant padding on all sides.",
+      )
+    })
+
+    it("should render multiple textarea elements in absolute positioned box with proper spacing", async () => {
+      resize(90, 20)
+
+      const infoBox = new BoxRenderable(currentRenderer, {
+        position: "absolute",
+        justifyContent: "flex-start",
+        alignItems: "flex-start",
+        top: 3,
+        right: 5,
+        maxWidth: 45,
+        paddingLeft: 2,
+        paddingRight: 2,
+        paddingTop: 1,
+        paddingBottom: 1,
+        backgroundColor: "#eff6ff",
+        borderColor: "#3b82f6",
+        border: true,
+      })
+      currentRenderer.root.add(infoBox)
+
+      const headerText = new TextRenderable(currentRenderer, {
+        content: "System Update",
+        attributes: 1,
+        fg: "#1e40af",
+      })
+      infoBox.add(headerText)
+
+      const { textarea: bodyTextarea } = await createTextareaRenderable(currentRenderer, renderOnce, {
+        initialValue: "A new version is available with bug fixes and performance improvements.",
+        textColor: "#1e3a8a",
+        wrapMode: "word",
+        width: "100%",
+        marginTop: 1,
+      })
+      infoBox.add(bodyTextarea)
+
+      const footerText = new TextRenderable(currentRenderer, {
+        content: "Click to install",
+        fg: "#60a5fa",
+        marginTop: 1,
+      })
+      infoBox.add(footerText)
+
+      await renderOnce()
+
+      const frame = captureFrame()
+      expect(frame).toMatchSnapshot()
+
+      expect(headerText.plainText).toBe("System Update")
+      expect(bodyTextarea.plainText).toBe("A new version is available with bug fixes and performance improvements.")
+      expect(footerText.plainText).toBe("Click to install")
+
+      expect(infoBox.width).toBeGreaterThan(35)
+      expect(infoBox.width).toBeLessThanOrEqual(45)
+
+      expect(headerText.width).toBeGreaterThan(10)
+      expect(headerText.height).toBe(1)
+
+      expect(bodyTextarea.width).toBeGreaterThan(30)
+      expect(bodyTextarea.height).toBeGreaterThanOrEqual(2)
+
+      expect(footerText.width).toBeGreaterThan(10)
+      expect(footerText.height).toBe(1)
+
+      expect(bodyTextarea.y).toBeGreaterThan(headerText.y)
+      expect(footerText.y).toBeGreaterThan(bodyTextarea.y)
+    })
+  })
 })

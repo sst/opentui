@@ -410,10 +410,18 @@ export abstract class EditBufferRenderable extends Renderable implements LineInf
       height: number,
       heightMode: MeasureMode,
     ): { width: number; height: number } => {
-      // Use a reasonable default for NaN/undefined height to allow measuring content
-      // This happens when Yoga calls measure with height/widthMode="Undefined" (0)
+      // When widthMode is Undefined, Yoga is asking for the intrinsic/natural width
+      // Pass width=0 to measureForDimensions to signal we want max-content (no wrapping)
+      // The Zig code treats width=0 with wrap_mode != none as null wrap_width,
+      // which triggers no-wrap mode and returns the text's intrinsic width
+      let effectiveWidth: number
+      if (widthMode === MeasureMode.Undefined || isNaN(width)) {
+        effectiveWidth = 0
+      } else {
+        effectiveWidth = width
+      }
+
       const effectiveHeight = isNaN(height) ? 1 : height
-      const effectiveWidth = isNaN(width) ? 1 : width
 
       const measureResult = this.editorView.measureForDimensions(
         Math.floor(effectiveWidth),

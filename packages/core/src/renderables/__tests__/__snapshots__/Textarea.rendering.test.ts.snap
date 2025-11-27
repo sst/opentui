@@ -289,3 +289,99 @@ exports[`Textarea - Rendering Tests Width/Height Setter Layout Tests should not 
                                         
 "
 `;
+
+exports[`Textarea - Rendering Tests Absolute Positioned Box with Textarea should render textarea in absolute positioned box with padding and borders correctly 1`] = `
+"                                                                                
+                                                                                
+                  │                                                          │  
+                  │                                                          │  
+                  │    Important Notification                                │  
+                  │                                                          │  
+                  │                                                          │  
+                  │    This is a longer message that should wrap properly within
+                  │                                                          │  
+                  │                                                          │  
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+"
+`;
+
+exports[`Textarea - Rendering Tests Absolute Positioned Box with Textarea should render textarea fully visible in absolute positioned box at various positions 1`] = `
+"                                                                                                    
+                                                           ┌──────────────────────────────────────┐ 
+                                                           │ Error: File not found in the         │ 
+                                                           │ specified directory path             │ 
+                                                           └──────────────────────────────────────┘ 
+                                                                                                    
+                                                                                                    
+                                                                                                    
+                                                                                                    
+                                                                                                    
+                                                                                                    
+                                                                                                    
+                                                                                                    
+                                                                                                    
+                                                                                                    
+                                                                                                    
+                                                                                                    
+                                                                                                    
+                                                                                                    
+                                                                                                    
+ ───────────────────────────────────                                                                
+  Success: Operation completed                                                                      
+  successfully!                                                                                     
+ ───────────────────────────────────                                                                
+                                                                                                    
+"
+`;
+
+exports[`Textarea - Rendering Tests Absolute Positioned Box with Textarea should handle width:100% textarea in absolute positioned box with constrained maxWidth 1`] = `
+"                                                                      
+                                                                      
+                                                                      
+                                                                      
+                                                                      
+                                                                      
+                                                                      
+             This is an extremely long piece of text                  
+             that needs to wrap multiple times within                 
+             the constrained width of the absolutely                  
+             positioned container box with significant                
+             padding on all sides.                                    
+                                                                      
+                                                                      
+                                                                      
+"
+`;
+
+exports[`Textarea - Rendering Tests Absolute Positioned Box with Textarea should render multiple textarea elements in absolute positioned box with proper spacing 1`] = `
+"                                                                                          
+                                                                                          
+                                                                                          
+                                        ┌───────────────────────────────────────────┐     
+                                        │                                           │     
+                                        │  System Update                            │     
+                                        │                                           │     
+                                        │  A new version is available with bug      │     
+                                        │  fixes and performance improvements.      │     
+                                        │                                           │     
+                                        │  Click to install                         │     
+                                        │                                           │     
+                                        └───────────────────────────────────────────┘     
+                                                                                          
+                                                                                          
+                                                                                          
+                                                                                          
+                                                                                          
+                                                                                          
+                                                                                          
+"
+`;

@@ -650,6 +650,7 @@ pub const UnifiedTextBufferView = struct {
 
     /// Measure dimensions for given width/height WITHOUT modifying virtual lines cache
     /// This is useful for Yoga measure functions that need to know dimensions without committing changes
+    /// Special case: width=0 means "measure intrinsic/max-content width" (no wrapping)
     pub fn measureForDimensions(self: *const Self, width: u32, height: u32) TextBufferViewError!MeasureResult {
         _ = height; // Height is for future use, currently only width affects layout
 
@@ -678,7 +679,8 @@ pub const UnifiedTextBufferView = struct {
         };
 
         // Use width for wrap calculation
-        const wrap_width_for_measure = if (self.wrap_mode != .none) width else null;
+        // Special case: width=0 means get intrinsic width (no wrapping), so pass null
+        const wrap_width_for_measure = if (self.wrap_mode != .none and width > 0) width else null;
 
         // Call generic calculation with temporary structures
         calculateVirtualLinesGeneric(

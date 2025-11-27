@@ -1,85 +1,5 @@
 // Bun Snapshot v1, https://bun.sh/docs/test/snapshots
 
-exports[`TextRenderable Selection Width/Height Setter Layout Tests should not shrink box when width is set via setter 1`] = `
-"┌────────────────────────────┐          
-│>    Content that takes up  │          
-│     space                  │          
-└────────────────────────────┘          
-                                        
-                                        
-                                        
-                                        
-                                        
-                                        
-"
-`;
-
-exports[`TextRenderable Selection Width/Height Setter Layout Tests should not shrink box when height is set via setter in column layout with text 1`] = `
-"┌───────────────────────┐     
-│Header                 │     
-│                       │     
-│                       │     
-│Line1                  │     
-│Line2                  │     
-│Line3                  │     
-│Footer                 │     
-│                       │     
-└───────────────────────┘     
-                              
-                              
-                              
-                              
-                              
-"
-`;
-
-exports[`TextRenderable Selection Width/Height Setter Layout Tests should not shrink box when minWidth is set via setter 1`] = `
-"┌────────────────────────────┐          
-│>    Content that takes up  │          
-│     space                  │          
-└────────────────────────────┘          
-                                        
-                                        
-                                        
-                                        
-                                        
-                                        
-"
-`;
-
-exports[`TextRenderable Selection Width/Height Setter Layout Tests should not shrink box when minHeight is set via setter in column layout with text 1`] = `
-"┌───────────────────────┐     
-│Header                 │     
-│                       │     
-│                       │     
-│Line1                  │     
-│Line2                  │     
-│Line3                  │     
-│Footer                 │     
-│                       │     
-└───────────────────────┘     
-                              
-                              
-                              
-                              
-                              
-"
-`;
-
-exports[`TextRenderable Selection Width/Height Setter Layout Tests should not shrink box when width is set from undefined via setter 1`] = `
-"┌────────────────────────────┐          
-│>    Content that takes up  │          
-│     space                  │          
-└────────────────────────────┘          
-                                        
-                                        
-                                        
-                                        
-                                        
-                                        
-"
-`;
-
 exports[`TextRenderable Selection Text Content Snapshots should render basic text content correctly 1`] = `
 "                    
                     
@@ -170,6 +90,15 @@ tent
 "
 `;
 
+exports[`TextRenderable Selection Text Content Snapshots should render text with tab indicator correctly 1`] = `
+"Line 1→ Tabbed      
+Line 2→ → Double tab
+                    
+                    
+                    
+"
+`;
+
 exports[`TextRenderable Selection Text Node Dimension Updates should update dimensions and reposition subsequent elements when text nodes expand 1`] = `
 "Short               
 Second text         
@@ -213,6 +142,182 @@ Bottom text
                     
                     
                     
+"
+`;
+
+exports[`TextRenderable Selection Width/Height Setter Layout Tests should not shrink box when width is set via setter 1`] = `
+"┌────────────────────────────┐          
+│>    Content that takes up  │          
+│     space                  │          
+└────────────────────────────┘          
+                                        
+                                        
+                                        
+                                        
+                                        
+                                        
+"
+`;
+
+exports[`TextRenderable Selection Width/Height Setter Layout Tests should not shrink box when height is set via setter in column layout with text 1`] = `
+"┌───────────────────────┐     
+│Header                 │     
+│                       │     
+│                       │     
+│Line1                  │     
+│Line2                  │     
+│Line3                  │     
+│Footer                 │     
+│                       │     
+└───────────────────────┘     
+                              
+                              
+                              
+                              
+                              
+"
+`;
+
+exports[`TextRenderable Selection Width/Height Setter Layout Tests should not shrink box when minWidth is set via setter 1`] = `
+"┌────────────────────────────┐          
+│>    Content that takes up  │          
+│     space                  │          
+└────────────────────────────┘          
+                                        
+                                        
+                                        
+                                        
+                                        
+                                        
+"
+`;
+
+exports[`TextRenderable Selection Width/Height Setter Layout Tests should not shrink box when minHeight is set via setter in column layout with text 1`] = `
+"┌───────────────────────┐     
+│Header                 │     
+│                       │     
+│                       │     
+│Line1                  │     
+│Line2                  │     
+│Line3                  │     
+│Footer                 │     
+│                       │     
+└───────────────────────┘     
+                              
+                              
+                              
+                              
+                              
+"
+`;
+
+exports[`TextRenderable Selection Width/Height Setter Layout Tests should not shrink box when width is set from undefined via setter 1`] = `
+"┌────────────────────────────┐          
+│>    Content that takes up  │          
+│     space                  │          
+└────────────────────────────┘          
+                                        
+                                        
+                                        
+                                        
+                                        
+                                        
+"
+`;
+
+exports[`TextRenderable Selection Absolute Positioned Box with Text should render text in absolute positioned box with padding and borders correctly 1`] = `
+"                                                                                
+                                                                                
+                  │                                                          │  
+                  │                                                          │  
+                  │    Important Notification                                │  
+                  │                                                          │  
+                  │                                                          │  
+                  │    This is a longer message that should wrap properly within
+                  │                                                          │  
+                  │                                                          │  
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+"
+`;
+
+exports[`TextRenderable Selection Absolute Positioned Box with Text should render text fully visible in absolute positioned box at various positions 1`] = `
+"                                                                                                    
+                                                           ┌──────────────────────────────────────┐ 
+                                                           │ Error: File not found in the         │ 
+                                                           │ specified directory path             │ 
+                                                           └──────────────────────────────────────┘ 
+                                                                                                    
+                                                                                                    
+                                                                                                    
+                                                                                                    
+                                                                                                    
+                                                                                                    
+                                                                                                    
+                                                                                                    
+                                                                                                    
+                                                                                                    
+                                                                                                    
+                                                                                                    
+                                                                                                    
+                                                                                                    
+                                                                                                    
+ ───────────────────────────────────                                                                
+  Success: Operation completed                                                                      
+  successfully!                                                                                     
+ ───────────────────────────────────                                                                
+                                                                                                    
+"
+`;
+
+exports[`TextRenderable Selection Absolute Positioned Box with Text should handle width:100% text in absolute positioned box with constrained maxWidth 1`] = `
+"                                                                      
+                                                                      
+                                                                      
+                                                                      
+                                                                      
+                                                                      
+                                                                      
+             This is an extremely long piece of text                  
+             that needs to wrap multiple times within                 
+             the constrained width of the absolutely                  
+             positioned container box with significant                
+             padding on all sides.                                    
+                                                                      
+                                                                      
+                                                                      
+"
+`;
+
+exports[`TextRenderable Selection Absolute Positioned Box with Text should render multiple text elements in absolute positioned box with proper spacing 1`] = `
+"                                                                                          
+                                                                                          
+                                                                                          
+                                        ┌───────────────────────────────────────────┐     
+                                        │                                           │     
+                                        │  System Update                            │     
+                                        │                                           │     
+                                        │  A new version is available with bug      │     
+                                        │  fixes and performance improvements.      │     
+                                        │                                           │     
+                                        │  Click to install                         │     
+                                        │                                           │     
+                                        └───────────────────────────────────────────┘     
+                                                                                          
+                                                                                          
+                                                                                          
+                                                                                          
+                                                                                          
+                                                                                          
+                                                                                          
 "
 `;
 
@@ -312,14 +417,5 @@ longer text that
 should definitely   
 wrap to multiple    
 lines               
-"
-`;
-
-exports[`TextRenderable Selection Text Content Snapshots should render text with tab indicator correctly 1`] = `
-"Line 1→ Tabbed      
-Line 2→ → Double tab
-                    
-                    
-                    
 "
 `;
