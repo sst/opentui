@@ -6,6 +6,7 @@ LINK_REACT=false
 LINK_SOLID=false
 LINK_DIST=false
 COPY_MODE=false
+LINK_SUBDEPS=false
 TARGET_ROOT=""
 
 while [[ $# -gt 0 ]]; do
@@ -26,6 +27,10 @@ while [[ $# -gt 0 ]]; do
             COPY_MODE=true
             shift
             ;;
+        --subdeps)
+            LINK_SUBDEPS=true
+            shift
+            ;;
         *)
             TARGET_ROOT="$1"
             shift
@@ -34,18 +39,20 @@ while [[ $# -gt 0 ]]; do
 done
 
 if [ -z "$TARGET_ROOT" ]; then
-    echo "Usage: $0 <target-project-root> [--react] [--solid] [--dist] [--copy]"
+    echo "Usage: $0 <target-project-root> [--react] [--solid] [--dist] [--copy] [--subdeps]"
     echo "Example: $0 /path/to/your/project"
     echo "Example: $0 /path/to/your/project --solid"
     echo "Example: $0 /path/to/your/project --react --dist"
     echo "Example: $0 /path/to/your/project --dist --copy"
+    echo "Example: $0 /path/to/your/project --solid --subdeps"
     echo ""
     echo "By default, only @opentui/core is linked."
     echo "Options:"
-    echo "  --react   Also link @opentui/react"
-    echo "  --solid   Also link @opentui/solid and solid-js"
-    echo "  --dist    Link dist directories instead of source packages"
-    echo "  --copy    Copy dist directories instead of symlinking (requires --dist)"
+    echo "  --react    Also link @opentui/react"
+    echo "  --solid    Also link @opentui/solid and solid-js"
+    echo "  --dist     Link dist directories instead of source packages"
+    echo "  --copy     Copy dist directories instead of symlinking (requires --dist)"
+    echo "  --subdeps  Find and link packages that depend on opentui (e.g., opentui-spinner)"
     exit 1
 fi
 
@@ -117,6 +124,20 @@ if [ -d "$CORE_PATH" ]; then
     link_or_copy "$CORE_PATH" "$NODE_MODULES_DIR/@opentui/core" "@opentui/core"
 else
     echo "Warning: $CORE_PATH not found"
+fi
+
+# Link yoga-layout when not in copy mode to ensure version consistency
+if [ "$COPY_MODE" = false ]; then
+    remove_if_exists "$NODE_MODULES_DIR/yoga-layout"
+    if [ -d "$OPENTUI_ROOT/node_modules/yoga-layout" ]; then
+        ln -s "$OPENTUI_ROOT/node_modules/yoga-layout" "$NODE_MODULES_DIR/yoga-layout"
+        echo "✓ Linked yoga-layout"
+    elif [ -d "$OPENTUI_ROOT/packages/core/node_modules/yoga-layout" ]; then
+        ln -s "$OPENTUI_ROOT/packages/core/node_modules/yoga-layout" "$NODE_MODULES_DIR/yoga-layout"
+        echo "✓ Linked yoga-layout (from packages/core/node_modules)"
+    else
+        echo "Warning: yoga-layout not found in OpenTUI node_modules"
+    fi
 fi
 
 # Link React if requested
@@ -191,6 +212,124 @@ if [ "$LINK_SOLID" = true ]; then
         else
             echo "Warning: solid-js not found in OpenTUI node_modules"
         fi
+    fi
+fi
+
+# Link subdependencies if requested
+if [ "$LINK_SUBDEPS" = true ]; then
+    echo
+    echo "Discovering packages that depend on opentui..."
+    
+    # Function to find packages with opentui dependencies in bun.lock
+    find_opentui_dependents_in_lockfile() {
+        if [ ! -f "$TARGET_ROOT/bun.lock" ]; then
+            return
+        fi
+        
+        # Find packages that have peerDependencies or dependencies on @opentui packages
+        # Bun.lock format has package entries with dependencies/peerDependencies on same line
+        grep '@opentui/' "$TARGET_ROOT/bun.lock" | grep -E '(peer)?[Dd]ependencies' | sed 's/^[[:space:]]*"\([^"]*\)".*/\1/' | grep -v '^@opentui' | grep -v '^\$' | grep -v '^#' | grep -v dependencies | grep -v ':' | sort -u || true
+    }
+    
+    # Function to find packages with opentui dependencies in package.json files
+    find_opentui_dependents_in_packages() {
+        if [ ! -d "$TARGET_ROOT/packages" ]; then
+            return
+        fi
+        
+        find "$TARGET_ROOT/packages" -name "package.json" -type f 2>/dev/null | while read -r pkg_json; do
+            if grep -q '@opentui' "$pkg_json" 2>/dev/null; then
+                grep -m1 '"name"' "$pkg_json" | sed 's/.*"name"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/' | grep -v '@opentui' || true
+            fi
+        done | sort -u
+    }
+    
+    # Function to link opentui packages in a specific location
+    link_opentui_in_location() {
+        local location_path="$1"
+        local location_desc="$2"
+        
+        if [ ! -d "$location_path" ]; then
+            return 0
+        fi
+        
+        local linked_any=false
+        
+        # Link @opentui/core if it exists
+        if [ -d "$location_path/@opentui/core" ] || [ -L "$location_path/@opentui/core" ]; then
+            remove_if_exists "$location_path/@opentui/core"
+            CORE_PATH="$OPENTUI_ROOT/packages/core$SUFFIX"
+            if [ -d "$CORE_PATH" ]; then
+                mkdir -p "$location_path/@opentui"
+                ln -s "$CORE_PATH" "$location_path/@opentui/core"
+                echo "    ✓ Linked @opentui/core in $location_desc"
+                linked_any=true
+            fi
+        fi
+        
+        # Link @opentui/react if it exists
+        if [ -d "$location_path/@opentui/react" ] || [ -L "$location_path/@opentui/react" ]; then
+            remove_if_exists "$location_path/@opentui/react"
+            REACT_PATH="$OPENTUI_ROOT/packages/react$SUFFIX"
+            if [ -d "$REACT_PATH" ]; then
+                mkdir -p "$location_path/@opentui"
+                ln -s "$REACT_PATH" "$location_path/@opentui/react"
+                echo "    ✓ Linked @opentui/react in $location_desc"
+                linked_any=true
+            fi
+        fi
+        
+        # Link @opentui/solid if it exists
+        if [ -d "$location_path/@opentui/solid" ] || [ -L "$location_path/@opentui/solid" ]; then
+            remove_if_exists "$location_path/@opentui/solid"
+            SOLID_PATH="$OPENTUI_ROOT/packages/solid$SUFFIX"
+            if [ -d "$SOLID_PATH" ]; then
+                mkdir -p "$location_path/@opentui"
+                ln -s "$SOLID_PATH" "$location_path/@opentui/solid"
+                echo "    ✓ Linked @opentui/solid in $location_desc"
+                linked_any=true
+            fi
+        fi
+        
+        return 0
+    }
+    
+    # Collect all packages that depend on opentui
+    dependents_lockfile=$(find_opentui_dependents_in_lockfile)
+    dependents_packages=$(find_opentui_dependents_in_packages)
+    dependents=$(echo -e "$dependents_lockfile\n$dependents_packages" | grep -v '^$' | sort -u)
+    
+    if [ -z "$dependents" ]; then
+        echo "No packages found that depend on opentui"
+    else
+        echo "Found packages that depend on opentui:"
+        echo "$dependents" | sed 's/^/  - /'
+        echo
+        
+        # For each dependent package, find where it's installed and link subdeps
+        for pkg in $dependents; do
+            echo "  Processing $pkg..."
+            
+            # Check in workspace packages' node_modules
+            if [ -d "$TARGET_ROOT/packages" ]; then
+                find "$TARGET_ROOT/packages" -type d -name "node_modules" 2>/dev/null | while read -r pkg_node_modules; do
+                    if [ -d "$pkg_node_modules/$pkg/node_modules" ]; then
+                        workspace_pkg_name=$(basename "$(dirname "$pkg_node_modules")")
+                        link_opentui_in_location "$pkg_node_modules/$pkg/node_modules" "$pkg (in workspace: $workspace_pkg_name)"
+                    fi
+                done
+            fi
+            
+            # Check in bun's cache directories
+            if [ -d "$NODE_MODULES_DIR/.bun" ]; then
+                find "$NODE_MODULES_DIR/.bun" -type d -maxdepth 1 -name "*$pkg@*" 2>/dev/null | while read -r bun_pkg_cache; do
+                    # Bun stores packages as: .bun/package@version/node_modules/@opentui/...
+                    if [ -d "$bun_pkg_cache/node_modules" ]; then
+                        link_opentui_in_location "$bun_pkg_cache/node_modules" "$pkg (bun cache: $(basename "$bun_pkg_cache"))"
+                    fi
+                done
+            fi
+        done
     fi
 fi
 

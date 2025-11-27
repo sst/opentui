@@ -60,47 +60,13 @@ bun run src/examples/index.ts
 
 ## Development
 
-### Local Development Linking
+See the [Development Guide](packages/core/docs/development.md) for building, testing, debugging, and local development linking.
 
-When developing OpenTUI, you may want to test your changes in another project without publishing. The `link-opentui-dev.sh` script makes this easy by creating symlinks (or copies) from your OpenTUI workspace to another project's `node_modules`.
+### Documentation
 
-**Basic usage:**
-
-```bash
-./scripts/link-opentui-dev.sh /path/to/your/project
-```
-
-This will link `@opentui/core` to your target project.
-
-**Options:**
-
-- `--react` - Also link `@opentui/react`
-- `--solid` - Also link `@opentui/solid` and `solid-js`
-- `--dist` - Link the built `dist` directories instead of source packages
-- `--copy` - Copy the dist directories instead of symlinking (requires `--dist`)
-
-**Examples:**
-
-```bash
-# Link only core (default)
-./scripts/link-opentui-dev.sh /path/to/your/project
-
-# Link core and solid
-./scripts/link-opentui-dev.sh /path/to/your/project --solid
-
-# Link core and react, using dist directories
-./scripts/link-opentui-dev.sh /path/to/your/project --react --dist
-
-# Copy dist directories (useful for environments where symlinks don't work)
-./scripts/link-opentui-dev.sh /path/to/your/project --dist --copy
-```
-
-**Notes:**
-
-- The target project must have already run `bun install` (or `npm install`) to have a `node_modules` directory
-- By default, the script links to the source packages, allowing hot-reloading of changes
-- Use `--dist` when you need to test the built artifacts
-- Use `--copy` mode when working in environments that don't support symlinks well (e.g., Docker containers, Windows)
+- [Development Guide](packages/core/docs/development.md) - Building, testing, and local dev linking
+- [Getting Started](packages/core/docs/getting-started.md) - API and usage guide
+- [Environment Variables](packages/core/docs/env-vars.md) - Configuration options
 
 ## Showcase
 
