@@ -5,7 +5,7 @@ import { SyntaxStyle } from "../syntax-style"
 
 const exampleDiff = `--- a/calculator.ts
 +++ b/calculator.ts
-@@ -1,15 +1,20 @@
+@@ -1,13 +1,20 @@
  class Calculator {
    add(a: number, b: number): number {
      return a + b;

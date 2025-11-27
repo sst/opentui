@@ -4,19 +4,7 @@ import { CodeRenderable } from "./Code"
 import { LineNumberRenderable, type LineSign } from "./LineNumberRenderable"
 import { RGBA, parseColor } from "../lib/RGBA"
 import type { SyntaxStyle } from "../syntax-style"
-
-export interface DiffLine {
-  type: "context" | "add" | "remove"
-  content: string
-  oldLineNum?: number
-  newLineNum?: number
-}
-
-export interface ParsedDiff {
-  oldStart: number
-  newStart: number
-  lines: DiffLine[]
-}
+import { parsePatch, type StructuredPatch } from "diff"
 
 export interface DiffRenderableOptions extends RenderableOptions<DiffRenderable> {
   diff?: string
@@ -43,7 +31,7 @@ export interface DiffRenderableOptions extends RenderableOptions<DiffRenderable>
 export class DiffRenderable extends Renderable {
   private _diff: string
   private _view: "unified" | "split"
-  private _parsedDiff: ParsedDiff | null = null
+  private _parsedDiff: StructuredPatch | null = null
 
   // CodeRenderable options
   private _filetype?: string
@@ -101,66 +89,21 @@ export class DiffRenderable extends Renderable {
   }
 
   private parseDiff(): void {
-    const lines = this._diff.split("\n")
-    const diffLines: DiffLine[] = []
-    let oldLineNum = 1
-    let newLineNum = 1
-    let inHunk = false
-
-    for (const line of lines) {
-      // Skip file headers (--- and +++)
-      if (line.startsWith("---") || line.startsWith("+++")) {
-        continue
-      }
-
-      // Parse hunk header (@@ -oldStart,oldCount +newStart,newCount @@)
-      if (line.startsWith("@@")) {
-        const match = line.match(/@@ -(\d+)(?:,\d+)? \+(\d+)(?:,\d+)? @@/)
-        if (match) {
-          oldLineNum = parseInt(match[1], 10)
-          newLineNum = parseInt(match[2], 10)
-          inHunk = true
-        }
-        continue
-      }
-
-      if (!inHunk) continue
-
-      if (line.startsWith("+")) {
-        // Added line
-        diffLines.push({
-          type: "add",
-          content: line.slice(1),
-          newLineNum: newLineNum++,
-        })
-      } else if (line.startsWith("-")) {
-        // Removed line
-        diffLines.push({
-          type: "remove",
-          content: line.slice(1),
-          oldLineNum: oldLineNum++,
-        })
-      } else if (line.startsWith(" ") || line === "") {
-        // Context line
-        diffLines.push({
-          type: "context",
-          content: line.slice(1),
-          oldLineNum: oldLineNum++,
-          newLineNum: newLineNum++,
-        })
-      }
+    if (!this._diff) {
+      this._parsedDiff = null
+      return
     }
 
-    // Determine the starting line numbers from the first line
-    const firstLine = diffLines[0]
-    const oldStart = firstLine?.oldLineNum ?? 1
-    const newStart = firstLine?.newLineNum ?? 1
+    // Use jsdiff's parsePatch to parse the diff string
+    const patches = parsePatch(this._diff)
 
-    this._parsedDiff = {
-      oldStart: oldStart,
-      newStart: newStart,
-      lines: diffLines,
+    if (patches.length === 0) {
+      this._parsedDiff = null
+      return
     }
+
+    // Use the first patch (most diffs have only one file)
+    this._parsedDiff = patches[0]
   }
 
   private buildView(): void {
@@ -178,7 +121,7 @@ export class DiffRenderable extends Renderable {
       this.rightSide = null
     }
 
-    if (!this._parsedDiff || this._parsedDiff.lines.length === 0) {
+    if (!this._parsedDiff || this._parsedDiff.hunks.length === 0) {
       return
     }
 
@@ -192,43 +135,57 @@ export class DiffRenderable extends Renderable {
   private buildUnifiedView(): void {
     if (!this._parsedDiff) return
 
-    const lines = this._parsedDiff.lines
-    const content = lines.map((line) => line.content).join("\n")
-
-    // Build line colors, signs, and custom line numbers
+    const contentLines: string[] = []
     const lineColors = new Map<number, string | RGBA>()
     const lineSigns = new Map<number, LineSign>()
-    const hideLineNumbers = new Set<number>()
     const lineNumbers = new Map<number, number>()
 
-    lines.forEach((line, index) => {
-      if (line.type === "add") {
-        lineColors.set(index, this._addedBg)
-        lineSigns.set(index, {
-          after: " +",
-          afterColor: this._addedSignColor,
-        })
-        // Added lines show new line number
-        if (line.newLineNum !== undefined) {
-          lineNumbers.set(index, line.newLineNum)
+    let lineIndex = 0
+
+    // Process each hunk
+    for (const hunk of this._parsedDiff.hunks) {
+      let oldLineNum = hunk.oldStart
+      let newLineNum = hunk.newStart
+
+      for (const line of hunk.lines) {
+        const firstChar = line[0]
+        const content = line.slice(1)
+
+        if (firstChar === "+") {
+          // Added line
+          contentLines.push(content)
+          lineColors.set(lineIndex, this._addedBg)
+          lineSigns.set(lineIndex, {
+            after: " +",
+            afterColor: this._addedSignColor,
+          })
+          lineNumbers.set(lineIndex, newLineNum)
+          newLineNum++
+          lineIndex++
+        } else if (firstChar === "-") {
+          // Removed line
+          contentLines.push(content)
+          lineColors.set(lineIndex, this._removedBg)
+          lineSigns.set(lineIndex, {
+            after: " -",
+            afterColor: this._removedSignColor,
+          })
+          lineNumbers.set(lineIndex, oldLineNum)
+          oldLineNum++
+          lineIndex++
+        } else if (firstChar === " ") {
+          // Context line
+          contentLines.push(content)
+          lineNumbers.set(lineIndex, oldLineNum)
+          oldLineNum++
+          newLineNum++
+          lineIndex++
         }
-      } else if (line.type === "remove") {
-        lineColors.set(index, this._removedBg)
-        lineSigns.set(index, {
-          after: " -",
-          afterColor: this._removedSignColor,
-        })
-        // Removed lines show old line number
-        if (line.oldLineNum !== undefined) {
-          lineNumbers.set(index, line.oldLineNum)
-        }
-      } else {
-        // Context lines can use either (they're the same)
-        if (line.oldLineNum !== undefined) {
-          lineNumbers.set(index, line.oldLineNum)
-        }
+        // Skip "\ No newline at end of file" lines
       }
-    })
+    }
+
+    const content = contentLines.join("\n")
 
     // Create CodeRenderable
     const codeOptions: any = {
@@ -256,8 +213,8 @@ export class DiffRenderable extends Renderable {
       lineColors,
       lineSigns,
       lineNumbers,
-      lineNumberOffset: 0, // Not needed when using custom line numbers
-      hideLineNumbers,
+      lineNumberOffset: 0,
+      hideLineNumbers: new Set<number>(),
       width: "100%",
       height: "100%",
     })
@@ -268,8 +225,6 @@ export class DiffRenderable extends Renderable {
 
   private buildSplitView(): void {
     if (!this._parsedDiff) return
-
-    const lines = this._parsedDiff.lines
 
     // Build left side (old/removed) and right side (new/added)
     const leftLines: string[] = []
@@ -286,52 +241,93 @@ export class DiffRenderable extends Renderable {
     let leftIndex = 0
     let rightIndex = 0
 
-    for (const line of lines) {
-      if (line.type === "remove") {
-        // Add to left only, add empty line to right
-        leftLines.push(line.content)
-        leftLineColors.set(leftIndex, this._removedBg)
-        leftLineSigns.set(leftIndex, {
-          after: " -",
-          afterColor: this._removedSignColor,
-        })
-        if (line.oldLineNum !== undefined) {
-          leftLineNumbers.set(leftIndex, line.oldLineNum)
-        }
-        leftIndex++
+    // Process each hunk
+    for (const hunk of this._parsedDiff.hunks) {
+      let oldLineNum = hunk.oldStart
+      let newLineNum = hunk.newStart
 
-        rightLines.push("")
-        rightHideLineNumbers.add(rightIndex)
-        rightIndex++
-      } else if (line.type === "add") {
-        // Add to right only, add empty line to left
-        rightLines.push(line.content)
-        rightLineColors.set(rightIndex, this._addedBg)
-        rightLineSigns.set(rightIndex, {
-          after: " +",
-          afterColor: this._addedSignColor,
-        })
-        if (line.newLineNum !== undefined) {
-          rightLineNumbers.set(rightIndex, line.newLineNum)
-        }
-        rightIndex++
+      // Process lines in the hunk and group consecutive changes for better alignment
+      let i = 0
+      while (i < hunk.lines.length) {
+        const line = hunk.lines[i]
+        const firstChar = line[0]
 
-        leftLines.push("")
-        leftHideLineNumbers.add(leftIndex)
-        leftIndex++
-      } else {
-        // Context line - add to both
-        leftLines.push(line.content)
-        if (line.oldLineNum !== undefined) {
-          leftLineNumbers.set(leftIndex, line.oldLineNum)
-        }
-        leftIndex++
+        if (firstChar === " ") {
+          // Context line - add to both sides
+          const content = line.slice(1)
+          leftLines.push(content)
+          leftLineNumbers.set(leftIndex, oldLineNum)
+          leftIndex++
+          oldLineNum++
 
-        rightLines.push(line.content)
-        if (line.newLineNum !== undefined) {
-          rightLineNumbers.set(rightIndex, line.newLineNum)
+          rightLines.push(content)
+          rightLineNumbers.set(rightIndex, newLineNum)
+          rightIndex++
+          newLineNum++
+          i++
+        } else if (firstChar === "\\") {
+          // Skip "\ No newline at end of file"
+          i++
+        } else {
+          // Collect consecutive removes and adds as a block
+          const removes: { content: string; lineNum: number }[] = []
+          const adds: { content: string; lineNum: number }[] = []
+
+          while (i < hunk.lines.length) {
+            const currentLine = hunk.lines[i]
+            const currentChar = currentLine[0]
+
+            if (currentChar === " " || currentChar === "\\") {
+              break
+            }
+
+            const content = currentLine.slice(1)
+
+            if (currentChar === "-") {
+              removes.push({ content, lineNum: oldLineNum })
+              oldLineNum++
+            } else if (currentChar === "+") {
+              adds.push({ content, lineNum: newLineNum })
+              newLineNum++
+            }
+            i++
+          }
+
+          // Align the block: pair up removes and adds, padding as needed
+          const maxLength = Math.max(removes.length, adds.length)
+
+          for (let j = 0; j < maxLength; j++) {
+            // Add remove line to left (or empty if no more removes)
+            if (j < removes.length) {
+              leftLines.push(removes[j].content)
+              leftLineColors.set(leftIndex, this._removedBg)
+              leftLineSigns.set(leftIndex, {
+                after: " -",
+                afterColor: this._removedSignColor,
+              })
+              leftLineNumbers.set(leftIndex, removes[j].lineNum)
+            } else {
+              leftLines.push("")
+              leftHideLineNumbers.add(leftIndex)
+            }
+            leftIndex++
+
+            // Add add line to right (or empty if no more adds)
+            if (j < adds.length) {
+              rightLines.push(adds[j].content)
+              rightLineColors.set(rightIndex, this._addedBg)
+              rightLineSigns.set(rightIndex, {
+                after: " +",
+                afterColor: this._addedSignColor,
+              })
+              rightLineNumbers.set(rightIndex, adds[j].lineNum)
+            } else {
+              rightLines.push("")
+              rightHideLineNumbers.add(rightIndex)
+            }
+            rightIndex++
+          }
         }
-        rightIndex++
       }
     }
 

@@ -31,7 +31,7 @@ const simpleDiff = `--- a/test.js
 
 const multiLineDiff = `--- a/math.js
 +++ b/math.js
-@@ -1,7 +1,9 @@
+@@ -1,7 +1,11 @@
  function add(a, b) {
    return a + b;
  }
@@ -61,7 +61,7 @@ const removeOnlyDiff = `--- a/old.js
 
 const largeDiff = `--- a/large.js
 +++ b/large.js
-@@ -42,10 +42,12 @@
+@@ -42,9 +42,10 @@
  const line42 = 'context';
  const line43 = 'context';
 -const line44 = 'removed';
@@ -731,7 +731,7 @@ test("DiffRenderable - consistent left padding for line numbers > 9", async () =
   // Create a diff with line numbers that go into double digits
   const diffWith10PlusLines = `--- a/test.js
 +++ b/test.js
-@@ -8,8 +8,10 @@
+@@ -8,7 +8,9 @@
  line8
  line9
 -line10_old
@@ -840,15 +840,14 @@ test("DiffRenderable - line numbers are correct in split view", async () => {
   const frame = captureFrame()
   const frameLines = frame.split("\n")
 
-  // Left side: line 2 is removed
-  const leftLine = frameLines.find((l) => l.includes('console.log("Hello");'))
-  expect(leftLine).toBeTruthy()
-  expect(leftLine).toMatch(/^ *2 -/)
-
-  // Right side: line 2 is added (same line number as the removed line it replaces)
-  const rightLine = frameLines.find((l) => l.includes('console.log("Hello, World!")'))
-  expect(rightLine).toBeTruthy()
-  expect(rightLine).toMatch(/^ *2 \+/)
+  // In split view, both sides are on the same terminal line
+  // Left side: line 2 is removed, Right side: line 2 is added
+  const splitLine = frameLines.find((l) => l.includes('console.log("Hello, World!")'))
+  expect(splitLine).toBeTruthy()
+  // Should contain line 2 with - on left side
+  expect(splitLine).toMatch(/^ *2 -/)
+  // Should contain line 2 with + on right side (later in the same line)
+  expect(splitLine).toMatch(/2 \+.*console\.log\("Hello, World!"\)/)
 })
 
 test("DiffRenderable - split view should not wrap lines prematurely", async () => {
@@ -859,7 +858,7 @@ test("DiffRenderable - split view should not wrap lines prematurely", async () =
   // Create a diff with long lines that should fit in split view
   const longLineDiff = `--- a/test.js
 +++ b/test.js
-@@ -1,3 +1,3 @@
+@@ -1,4 +1,4 @@
  class Calculator {
 -  subtract(a: number, b: number): number {
 +  subtract(a: number, b: number, c: number = 0): number {
