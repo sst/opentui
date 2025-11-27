@@ -57,13 +57,6 @@ function wrapForTmux(osc: string): string {
   return `\x1bPtmux;${escaped}\x1b\\`
 }
 
-/**
- * Check if running inside tmux
- */
-function isTmux(): boolean {
-  return !!process.env.TMUX
-}
-
 export class TerminalPalette implements TerminalPaletteDetector {
   private stdin: NodeJS.ReadStream
   private stdout: NodeJS.WriteStream
@@ -72,11 +65,11 @@ export class TerminalPalette implements TerminalPaletteDetector {
   private activeTimers: Array<NodeJS.Timeout> = []
   private inTmux: boolean
 
-  constructor(stdin: NodeJS.ReadStream, stdout: NodeJS.WriteStream, writeFn?: WriteFunction) {
+  constructor(stdin: NodeJS.ReadStream, stdout: NodeJS.WriteStream, writeFn?: WriteFunction, isTmux?: boolean) {
     this.stdin = stdin
     this.stdout = stdout
     this.writeFn = writeFn || ((data: string | Buffer) => stdout.write(data))
-    this.inTmux = isTmux()
+    this.inTmux = isTmux ?? false
   }
 
   /**
@@ -347,6 +340,7 @@ export function createTerminalPalette(
   stdin: NodeJS.ReadStream,
   stdout: NodeJS.WriteStream,
   writeFn?: WriteFunction,
+  isTmux?: boolean,
 ): TerminalPaletteDetector {
-  return new TerminalPalette(stdin, stdout, writeFn)
+  return new TerminalPalette(stdin, stdout, writeFn, isTmux)
 }
