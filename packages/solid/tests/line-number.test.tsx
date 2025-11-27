@@ -2,6 +2,7 @@ import { describe, test, expect, beforeEach, afterEach } from "bun:test"
 import { testRender } from "../index"
 import { SyntaxStyle } from "@opentui/core"
 import { MockTreeSitterClient } from "@opentui/core/testing"
+import { createSignal, Show } from "solid-js"
 
 let testSetup: Awaited<ReturnType<typeof testRender>>
 let mockTreeSitterClient: MockTreeSitterClient
@@ -71,5 +72,84 @@ console.log(test())`
     expect(frame).toContain(" 2 ") // Line number 2
     expect(frame).toContain(" 3 ") // Line number 3
     expect(frame).toContain(" 4 ") // Line number 4
+  })
+
+  test("handles conditional removal of line number element", async () => {
+    const syntaxStyle = SyntaxStyle.fromStyles({
+      keyword: { fg: "#C792EA" },
+      function: { fg: "#82AAFF" },
+      default: { fg: "#FFFFFF" },
+    })
+
+    const codeContent = `function test() {
+  return 42
+}
+console.log(test())`
+
+    const [showLineNumbers, setShowLineNumbers] = createSignal(true)
+
+    testSetup = await testRender(() => (
+      <box id="root" width="100%" height="100%">
+        <Show
+          when={showLineNumbers()}
+          fallback={
+            <code
+              id="code-content-no-lines"
+              content={codeContent}
+              filetype="javascript"
+              syntaxStyle={syntaxStyle}
+              treeSitterClient={mockTreeSitterClient}
+              width="100%"
+              height="100%"
+            />
+          }
+        >
+          <line_number
+            id="line-numbers"
+            fg="#888888"
+            bg="#000000"
+            minWidth={3}
+            paddingRight={1}
+            width="100%"
+            height="100%"
+          >
+            <code
+              id="code-content"
+              content={codeContent}
+              filetype="javascript"
+              syntaxStyle={syntaxStyle}
+              treeSitterClient={mockTreeSitterClient}
+              width="100%"
+              height="100%"
+            />
+          </line_number>
+        </Show>
+      </box>
+    ))
+
+    await testSetup.renderOnce()
+    mockTreeSitterClient.resolveAllHighlightOnce()
+    await new Promise((resolve) => setTimeout(resolve, 10))
+    await testSetup.renderOnce()
+
+    let frame = testSetup.captureCharFrame()
+
+    // Initially shows line numbers
+    expect(frame).toContain(" 1 ")
+    expect(frame).toContain(" 2 ")
+
+    // Toggle to hide line numbers - this should trigger destruction of LineNumberRenderable
+    setShowLineNumbers(false)
+    await testSetup.renderOnce()
+    mockTreeSitterClient.resolveAllHighlightOnce()
+    await new Promise((resolve) => setTimeout(resolve, 10))
+    await testSetup.renderOnce()
+
+    frame = testSetup.captureCharFrame()
+
+    // Should still show code but without line numbers
+    expect(frame).toContain("function test()")
+    // Line numbers should not be present
+    expect(frame).not.toContain(" 1 function")
   })
 })
