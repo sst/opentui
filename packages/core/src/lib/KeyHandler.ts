@@ -147,6 +147,9 @@ export class InternalKeyHandler extends KeyHandler {
     }
 
     const renderableSet = this.renderableHandlers.get(event)
+    // Snapshot the handler list so listeners added during dispatch (e.g., via focus changes)
+    // do not receive the in-flight key event.
+    const renderableHandlers = renderableSet && renderableSet.size > 0 ? [...renderableSet] : []
     let hasRenderableListeners = false
 
     if (renderableSet && renderableSet.size > 0) {
@@ -157,7 +160,7 @@ export class InternalKeyHandler extends KeyHandler {
         if (keyEvent.defaultPrevented) return hasGlobalListeners || hasRenderableListeners
       }
 
-      for (const handler of renderableSet) {
+      for (const handler of renderableHandlers) {
         try {
           handler(...args)
         } catch (error) {
