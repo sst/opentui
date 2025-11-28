@@ -287,6 +287,50 @@ test("parseKeypress - Kitty keyboard arrow keys with event types", () => {
   expect(downRelease.eventType).toBe("release")
 })
 
+test("parseKeypress - Kitty functional keys with event types", () => {
+  const options: ParseKeypressOptions = { useKittyKeyboard: true }
+
+  // Legacy format: CSI 1;modifiers:event_type LETTER
+  // Up arrow press
+  const upPress = parseKeypress("\x1b[1;1:1A", options)!
+  expect(upPress.name).toBe("up")
+  expect(upPress.eventType).toBe("press")
+  expect(upPress.source).toBe("kitty")
+
+  // Up arrow release
+  const upRelease = parseKeypress("\x1b[1;1:3A", options)!
+  expect(upRelease.name).toBe("up")
+  expect(upRelease.eventType).toBe("release")
+  expect(upRelease.source).toBe("kitty")
+
+  // Down arrow with repeat
+  const downRepeat = parseKeypress("\x1b[1;1:2B", options)!
+  expect(downRepeat.name).toBe("down")
+  expect(downRepeat.eventType).toBe("repeat")
+
+  // Left arrow press
+  const leftPress = parseKeypress("\x1b[1;1:1D", options)!
+  expect(leftPress.name).toBe("left")
+  expect(leftPress.eventType).toBe("press")
+
+  // Right arrow release
+  const rightRelease = parseKeypress("\x1b[1;1:3C", options)!
+  expect(rightRelease.name).toBe("right")
+  expect(rightRelease.eventType).toBe("release")
+
+  // Shift+up press
+  const shiftUpPress = parseKeypress("\x1b[1;2:1A", options)!
+  expect(shiftUpPress.name).toBe("up")
+  expect(shiftUpPress.shift).toBe(true)
+  expect(shiftUpPress.eventType).toBe("press")
+
+  // Ctrl+down release
+  const ctrlDownRelease = parseKeypress("\x1b[1;5:3B", options)!
+  expect(ctrlDownRelease.name).toBe("down")
+  expect(ctrlDownRelease.ctrl).toBe(true)
+  expect(ctrlDownRelease.eventType).toBe("release")
+})
+
 test("parseKeypress - Kitty keyboard invalid event types", () => {
   const options: ParseKeypressOptions = { useKittyKeyboard: true }
 
