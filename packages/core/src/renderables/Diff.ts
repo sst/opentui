@@ -1,10 +1,19 @@
 import { Renderable, type RenderableOptions } from "../Renderable"
 import type { RenderContext } from "../types"
-import { CodeRenderable } from "./Code"
+import { CodeRenderable, type CodeOptions } from "./Code"
 import { LineNumberRenderable, type LineSign, type LineColorConfig } from "./LineNumberRenderable"
 import { RGBA, parseColor } from "../lib/RGBA"
-import type { SyntaxStyle } from "../syntax-style"
+import { SyntaxStyle } from "../syntax-style"
 import { parsePatch, type StructuredPatch } from "diff"
+
+interface LogicalLine {
+  content: string
+  lineNum?: number
+  hideLineNumber?: boolean
+  color?: string | RGBA
+  sign?: LineSign
+  type: "context" | "add" | "remove" | "empty"
+}
 
 export interface DiffRenderableOptions extends RenderableOptions<DiffRenderable> {
   diff?: string
@@ -278,17 +287,15 @@ export class DiffRenderable extends Renderable {
 
     // Create or reuse CodeRenderable for left side (used for unified view)
     if (!this.leftCodeRenderable) {
-      const codeOptions: any = {
+      const codeOptions: CodeOptions = {
         id: this.id ? `${this.id}-left-code` : undefined,
         content,
         filetype: this._filetype,
         wrapMode: this._wrapMode,
         conceal: this._conceal,
+        syntaxStyle: this._syntaxStyle ?? SyntaxStyle.create(),
         width: "100%",
         height: "100%",
-      }
-      if (this._syntaxStyle) {
-        codeOptions.syntaxStyle = this._syntaxStyle
       }
       this.leftCodeRenderable = new CodeRenderable(this.ctx, codeOptions)
     } else {
@@ -349,15 +356,6 @@ export class DiffRenderable extends Renderable {
     if (!this._parsedDiff) return
 
     // Step 1: Build initial content without wrapping alignment
-    interface LogicalLine {
-      content: string
-      lineNum?: number
-      hideLineNumber?: boolean
-      color?: string | RGBA
-      sign?: LineSign
-      type: "context" | "add" | "remove" | "empty"
-    }
-
     const leftLogicalLines: LogicalLine[] = []
     const rightLogicalLines: LogicalLine[] = []
 
@@ -475,18 +473,16 @@ export class DiffRenderable extends Renderable {
     const effectiveWrapMode = canDoWrapAlignment ? this._wrapMode! : "none"
 
     if (!this.leftCodeRenderable) {
-      const leftCodeOptions: any = {
+      const leftCodeOptions: CodeOptions = {
         id: this.id ? `${this.id}-left-code` : undefined,
         content: preLeftContent,
         filetype: this._filetype,
         wrapMode: effectiveWrapMode,
         conceal: this._conceal,
+        syntaxStyle: this._syntaxStyle ?? SyntaxStyle.create(),
         drawUnstyledText: true, // Force immediate lineInfo update
         width: "100%",
         height: "100%",
-      }
-      if (this._syntaxStyle) {
-        leftCodeOptions.syntaxStyle = this._syntaxStyle
       }
       this.leftCodeRenderable = new CodeRenderable(this.ctx, leftCodeOptions)
     } else {
@@ -502,18 +498,16 @@ export class DiffRenderable extends Renderable {
     }
 
     if (!this.rightCodeRenderable) {
-      const rightCodeOptions: any = {
+      const rightCodeOptions: CodeOptions = {
         id: this.id ? `${this.id}-right-code` : undefined,
         content: preRightContent,
         filetype: this._filetype,
         wrapMode: effectiveWrapMode,
         conceal: this._conceal,
+        syntaxStyle: this._syntaxStyle ?? SyntaxStyle.create(),
         drawUnstyledText: true, // Force immediate lineInfo update
         width: "100%",
         height: "100%",
-      }
-      if (this._syntaxStyle) {
-        rightCodeOptions.syntaxStyle = this._syntaxStyle
       }
       this.rightCodeRenderable = new CodeRenderable(this.ctx, rightCodeOptions)
     } else {
