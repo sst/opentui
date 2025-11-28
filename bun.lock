@@ -8,22 +8,12 @@
         "prettier": "3.6.2",
       },
     },
-    "packages/bun-yoga": {
-      "name": "bun-yoga",
-      "version": "0.2.2",
-      "devDependencies": {
-        "@types/bun": "latest",
-        "bun-types": "latest",
-        "typescript": "^5.0.0",
-        "yoga-layout": "^3.2.1",
-      },
-    },
     "packages/core": {
       "name": "@opentui/core",
       "version": "0.1.50",
       "dependencies": {
         "bun-ffi-structs": "0.1.2",
-        "bun-yoga": "workspace:*",
+        "bun-yoga": "0.2.3",
         "jimp": "1.6.0",
       },
       "devDependencies": {
@@ -340,7 +330,7 @@
 
     "bun-webgpu-win32-x64": ["bun-webgpu-win32-x64@0.1.4", "", { "os": "win32", "cpu": "x64" }, "sha512-Z5yAK28xrcm8Wb5k7TZ8FJKpOI/r+aVCRdlHYAqI2SDJFN3nD4mJs900X6kNVmG/xFzb5yOuKVYWGg+6ZXWbyA=="],
 
-    "bun-yoga": ["bun-yoga@workspace:packages/bun-yoga"],
+    "bun-yoga": ["bun-yoga@0.2.3", "", {}, "sha512-jfWM2yPOHK/ZrCKrSHoKXlRxtYPPnyMrcBqIzq3wgl9yjkdCW6kr1t2oeD1Lx9+zCJig1aQj3+ALIoI4Xyt3gA=="],
 
     "caniuse-lite": ["caniuse-lite@1.0.30001737", "", {}, "sha512-BiloLiXtQNrY5UyF0+1nSJLXUENuhka2pzy2Fx5pGxqavdrxSCW4U6Pn/PoG3Efspi2frRbHpBV2XsrPE6EDlw=="],
 
@@ -533,8 +523,6 @@
     "xmlbuilder": ["xmlbuilder@11.0.1", "", {}, "sha512-fDlsI/kFEx7gLvbecc0/ohLG50fugQp8ryHzMTuW9vSa1GJ0XYWKnhsUx7oie3G98+r56aTQIUB4kht42R3JvA=="],
 
     "yallist": ["yallist@3.1.1", "", {}, "sha512-a4UGQaWPH59mOXUYnAG2ewncQS4i4F43Tv3JoAM+s2VDAmS9NsK8GpDMLrCHPksFT7h3K6TOoUNn2pb7RoXx4g=="],
-
-    "yoga-layout": ["yoga-layout@3.2.1", "", {}, "sha512-0LPOt3AxKqMdFBZA3HBAt/t/8vIKq7VaQYbuA8WxCgung+p9TVyKRYdpvCb80HcdTN2NkbIKbhNwKUfm3tQywQ=="],
 
     "zod": ["zod@3.25.76", "", {}, "sha512-gzUt/qt81nXsFGKIFcC3YnfEAx5NkunCfnDlvuBSSFS02bcXu4Lmea0AFIUwbLWxWPx3d9p8S5QoaujKcNQxcQ=="],
 
