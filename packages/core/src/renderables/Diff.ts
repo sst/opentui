@@ -402,16 +402,16 @@ export class DiffRenderable extends Renderable {
       }
     }
 
-    // Step 2: Create/reuse CodeRenderables with wrapMode and drawUnstyledText
-    // We set content first to get immediate lineInfo with lineWraps
+    // Step 2: Determine if we can do wrap-aware alignment
+    // We need valid widths for wrap calculation, which requires a layout pass
+    // On first build (from constructor), widths are 0, so we skip wrap alignment
+    // and schedule a rebuild after layout
+    const canDoWrapAlignment = this.width > 0 && (this._wrapMode === "word" || this._wrapMode === "char")
+
     const preLeftContent = leftLogicalLines.map((l) => l.content).join("\n")
     const preRightContent = rightLogicalLines.map((l) => l.content).join("\n")
 
-    const effectiveWrapMode = this._wrapMode ?? "none"
-
-    console.log(
-      `\nsplit: wrapMode=${effectiveWrapMode} preLeft=${leftLogicalLines.length} preRight=${rightLogicalLines.length}`,
-    )
+    const effectiveWrapMode = canDoWrapAlignment ? this._wrapMode! : "none"
 
     if (!this.leftCodeRenderable) {
       const leftCodeOptions: any = {
@@ -467,56 +467,93 @@ export class DiffRenderable extends Renderable {
       }
     }
 
-    // Step 3: Align lines using lineWraps
-    const leftLineInfo = this.leftCodeRenderable.lineInfo
-    const rightLineInfo = this.rightCodeRenderable.lineInfo
+    // Step 3: Align lines using lineInfo (if we can)
+    let finalLeftLines: LogicalLine[]
+    let finalRightLines: LogicalLine[]
 
-    const leftWraps = leftLineInfo.lineWraps || []
-    const rightWraps = rightLineInfo.lineWraps || []
+    if (canDoWrapAlignment) {
+      const leftLineInfo = this.leftCodeRenderable.lineInfo
+      const rightLineInfo = this.rightCodeRenderable.lineInfo
 
-    console.log(
-      `split: left wraps sample [0..3]=[${leftWraps.slice(0, 4).join(",")}] right wraps sample [0..3]=[${rightWraps.slice(0, 4).join(",")}]`,
-    )
+      const leftSources = leftLineInfo.lineSources || []
+      const rightSources = rightLineInfo.lineSources || []
 
-    // Build final aligned lines
-    const finalLeftLines: LogicalLine[] = []
-    const finalRightLines: LogicalLine[] = []
+      // Build visual count per logical line
+      const leftVisualCounts = new Map<number, number>()
+      const rightVisualCounts = new Map<number, number>()
 
-    for (let i = 0; i < leftLogicalLines.length; i++) {
-      const leftLine = leftLogicalLines[i]
-      const rightLine = rightLogicalLines[i]
+      for (const logicalLine of leftSources) {
+        leftVisualCounts.set(logicalLine, (leftVisualCounts.get(logicalLine) || 0) + 1)
+      }
+      for (const logicalLine of rightSources) {
+        rightVisualCounts.set(logicalLine, (rightVisualCounts.get(logicalLine) || 0) + 1)
+      }
 
-      const leftWrap = leftWraps[i] || 0
-      const rightWrap = rightWraps[i] || 0
+      // Align by inserting padding to ensure both sides stay synchronized
+      // Each logical line should start at the same visual position on both sides
+      finalLeftLines = []
+      finalRightLines = []
 
-      const leftVisualRows = 1 + leftWrap
-      const rightVisualRows = 1 + rightWrap
+      let leftVisualPos = 0
+      let rightVisualPos = 0
 
-      // Add the main line to both sides
-      finalLeftLines.push(leftLine)
-      finalRightLines.push(rightLine)
+      for (let i = 0; i < leftLogicalLines.length; i++) {
+        const leftLine = leftLogicalLines[i]
+        const rightLine = rightLogicalLines[i]
 
-      // If one side has more visual rows, pad the other side
-      if (leftVisualRows > rightVisualRows) {
-        const padCount = leftVisualRows - rightVisualRows
-        console.log(`split: inserted ${padCount} right padders at logical index ${i}`)
-        for (let p = 0; p < padCount; p++) {
-          finalRightLines.push({
-            content: "",
-            hideLineNumber: true,
-            type: "empty",
-          })
+        const leftVisualCount = leftVisualCounts.get(i) || 1
+        const rightVisualCount = rightVisualCounts.get(i) || 1
+
+        // Both logical lines should start at the same visual position
+        // If they don't, add padding to whichever side is behind
+        if (leftVisualPos < rightVisualPos) {
+          const pad = rightVisualPos - leftVisualPos
+          for (let p = 0; p < pad; p++) {
+            finalLeftLines.push({ content: "", hideLineNumber: true, type: "empty" })
+          }
+          leftVisualPos += pad
+        } else if (rightVisualPos < leftVisualPos) {
+          const pad = leftVisualPos - rightVisualPos
+          for (let p = 0; p < pad; p++) {
+            finalRightLines.push({ content: "", hideLineNumber: true, type: "empty" })
+          }
+          rightVisualPos += pad
         }
-      } else if (rightVisualRows > leftVisualRows) {
-        const padCount = rightVisualRows - leftVisualRows
-        console.log(`split: inserted ${padCount} left padders at logical index ${i}`)
-        for (let p = 0; p < padCount; p++) {
-          finalLeftLines.push({
-            content: "",
-            hideLineNumber: true,
-            type: "empty",
-          })
+
+        // Now add the actual content line
+        finalLeftLines.push(leftLine)
+        finalRightLines.push(rightLine)
+
+        // Update visual positions
+        leftVisualPos += leftVisualCount
+        rightVisualPos += rightVisualCount
+      }
+
+      // Final padding to make totals equal
+      if (leftVisualPos < rightVisualPos) {
+        const pad = rightVisualPos - leftVisualPos
+        for (let p = 0; p < pad; p++) {
+          finalLeftLines.push({ content: "", hideLineNumber: true, type: "empty" })
         }
+      } else if (rightVisualPos < leftVisualPos) {
+        const pad = leftVisualPos - rightVisualPos
+        for (let p = 0; p < pad; p++) {
+          finalRightLines.push({ content: "", hideLineNumber: true, type: "empty" })
+        }
+      }
+    } else {
+      // Can't do wrap alignment yet (no width), use logical lines as-is
+      finalLeftLines = leftLogicalLines
+      finalRightLines = rightLogicalLines
+
+      // If wrapMode is set but we can't align yet, schedule a rebuild after layout
+      if (this._wrapMode !== "none" && this._wrapMode !== undefined && !this.pendingRebuild) {
+        // Use a microtask to schedule rebuild after this render completes
+        queueMicrotask(() => {
+          if (!this.isDestroyed) {
+            this.scheduleRebuild()
+          }
+        })
       }
     }
 
@@ -562,8 +599,6 @@ export class DiffRenderable extends Renderable {
 
     const leftContentFinal = finalLeftLines.map((l) => l.content).join("\n")
     const rightContentFinal = finalRightLines.map((l) => l.content).join("\n")
-
-    console.log(`split: final left lines=${finalLeftLines.length} right lines=${finalRightLines.length}`)
 
     // Step 5: Update CodeRenderables with final content
     this.leftCodeRenderable.content = leftContentFinal

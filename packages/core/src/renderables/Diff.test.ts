@@ -1066,6 +1066,12 @@ test("DiffRenderable - wrapMode works in unified view", async () => {
 })
 
 test("DiffRenderable - split view with wrapMode honors wrapping alignment", async () => {
+  // Create a larger test renderer to fit the whole diff with wrapping
+  const testRenderer = await createTestRenderer({ width: 80, height: 40 })
+  const renderer = testRenderer.renderer
+  const renderOnce = testRenderer.renderOnce
+  const captureFrame = testRenderer.captureCharFrame
+
   const syntaxStyle = SyntaxStyle.fromStyles({
     default: { fg: RGBA.fromValues(1, 1, 1, 1) },
   })
@@ -1096,18 +1102,22 @@ test("DiffRenderable - split view with wrapMode honors wrapping alignment", asyn
 +  }
  }`
 
-  const diffRenderable = new DiffRenderable(currentRenderer, {
+  const diffRenderable = new DiffRenderable(renderer, {
     id: "test-diff",
     diff: calculatorDiff,
     view: "split",
     syntaxStyle,
     showLineNumbers: true,
     wrapMode: "word",
-    width: 80,
+    width: "100%",
     height: "100%",
   })
 
-  currentRenderer.root.add(diffRenderable)
+  renderer.root.add(diffRenderable)
+  await renderOnce()
+
+  // Wait for deferred rebuild with wrap alignment (debounced 150ms)
+  await new Promise((resolve) => setTimeout(resolve, 200))
   await renderOnce()
 
   const frame = captureFrame()
@@ -1129,6 +1139,9 @@ test("DiffRenderable - split view with wrapMode honors wrapping alignment", asyn
   // (counting both logical lines and wrap continuations)
   // This is hard to assert directly, but if alignment is correct,
   // the closing braces being on the same line proves it worked
+
+  // Clean up
+  renderer.destroy()
 })
 
 test("DiffRenderable - context lines show new line numbers in unified view", async () => {
