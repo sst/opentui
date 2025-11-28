@@ -140,7 +140,92 @@ function fromKittyMods(mod: number): {
   }
 }
 
+// Map functional key CSI codes to key names
+const functionalKeyMap: Record<string, string> = {
+  A: "up",
+  B: "down",
+  C: "right",
+  D: "left",
+  H: "home",
+  F: "end",
+  P: "f1",
+  Q: "f2",
+  R: "f3",
+  S: "f4",
+}
+
+/**
+ * Parse Kitty keyboard protocol functional keys with event type
+ * Format: CSI 1;modifiers:event_type LETTER
+ * Examples:
+ *   \x1b[1;1:1A = up arrow press (modifier 1, event 1, key A)
+ *   \x1b[1;1:3A = up arrow release (modifier 1, event 3, key A)
+ *   \x1b[1;2:1A = shift+up press
+ */
+function parseKittyFunctionalKey(sequence: string): ParsedKey | null {
+  // Match: ESC [ 1 ; modifiers:event_type LETTER
+  const functionalRe = /^\x1b\[1;(\d+):(\d+)([A-Z])$/
+  const match = functionalRe.exec(sequence)
+
+  if (!match) return null
+
+  const modifierStr = match[1]
+  const eventTypeStr = match[2]
+  const keyChar = match[3]
+
+  const keyName = functionalKeyMap[keyChar]
+  if (!keyName) return null
+
+  const key: ParsedKey = {
+    name: keyName,
+    ctrl: false,
+    meta: false,
+    shift: false,
+    option: false,
+    number: false,
+    sequence,
+    raw: sequence,
+    eventType: "press",
+    source: "kitty",
+    super: false,
+    hyper: false,
+    capsLock: false,
+    numLock: false,
+  }
+
+  // Parse modifiers (same as standard Kitty format)
+  if (modifierStr) {
+    const modifierMask = parseInt(modifierStr, 10)
+    if (!isNaN(modifierMask) && modifierMask > 1) {
+      const mods = fromKittyMods(modifierMask - 1)
+      key.shift = mods.shift
+      key.ctrl = mods.ctrl
+      key.meta = mods.alt || mods.meta
+      key.option = mods.alt
+      key.super = mods.super
+      key.hyper = mods.hyper
+      key.capsLock = mods.capsLock
+      key.numLock = mods.numLock
+    }
+  }
+
+  // Parse event type: 1 = press, 2 = repeat, 3 = release
+  if (eventTypeStr === "1" || !eventTypeStr) {
+    key.eventType = "press"
+  } else if (eventTypeStr === "2") {
+    key.eventType = "repeat"
+  } else if (eventTypeStr === "3") {
+    key.eventType = "release"
+  }
+
+  return key
+}
+
 export function parseKittyKeyboard(sequence: string): ParsedKey | null {
+  // Try functional key format first (CSI 1;mod:event LETTER)
+  const functionalResult = parseKittyFunctionalKey(sequence)
+  if (functionalResult) return functionalResult
+
   // Kitty keyboard protocol: CSI unicode-key-code:alternate-key-codes ; modifiers:event-type ; text-as-codepoints u
   const kittyRe = /^\x1b\[([^\x1b]+)u$/
   const match = kittyRe.exec(sequence)
