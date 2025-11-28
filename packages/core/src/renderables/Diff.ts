@@ -55,6 +55,10 @@ export class DiffRenderable extends Renderable {
   private leftSide: LineNumberRenderable | null = null
   private rightSide: LineNumberRenderable | null = null
 
+  // Track whether renderables are currently in the render tree
+  private leftSideAdded: boolean = false
+  private rightSideAdded: boolean = false
+
   // Reusable CodeRenderables (not recreated on rebuild)
   // These are created once and updated with new content to avoid expensive recreation
   private leftCodeRenderable: CodeRenderable | null = null
@@ -153,6 +157,8 @@ export class DiffRenderable extends Renderable {
       this.rebuildTimer = null
     }
     this.pendingRebuild = false
+    this.leftSideAdded = false
+    this.rightSideAdded = false
     super.destroyRecursively()
   }
 
@@ -257,20 +263,25 @@ export class DiffRenderable extends Renderable {
       })
       this.leftSide.showLineNumbers = this._showLineNumbers
       super.add(this.leftSide)
+      this.leftSideAdded = true
     } else {
       // Update LineNumberRenderable metadata
       this.leftSide.setLineColors(lineColors)
       this.leftSide.setLineSigns(lineSigns)
       // Update width for unified view
       this.leftSide.width = "100%"
-      // If rightSide exists and is added, remove it for unified view
-      if (this.rightSide) {
-        try {
-          super.remove(this.rightSide.id)
-        } catch (e) {
-          // Already removed, ignore
-        }
+
+      // Ensure leftSide is added if not already
+      if (!this.leftSideAdded) {
+        super.add(this.leftSide)
+        this.leftSideAdded = true
       }
+    }
+
+    // Remove rightSide from render tree for unified view
+    if (this.rightSide && this.rightSideAdded) {
+      super.remove(this.rightSide.id)
+      this.rightSideAdded = false
     }
   }
 
@@ -512,12 +523,19 @@ export class DiffRenderable extends Renderable {
       })
       this.leftSide.showLineNumbers = this._showLineNumbers
       super.add(this.leftSide)
+      this.leftSideAdded = true
     } else {
       // Update existing leftSide for split view
       this.leftSide.width = "50%"
       this.leftSide.setLineColors(leftLineColors)
       this.leftSide.setLineSigns(leftLineSigns)
       this.leftSide.setHideLineNumbers(leftHideLineNumbers)
+
+      // Ensure leftSide is added if not already
+      if (!this.leftSideAdded) {
+        super.add(this.leftSide)
+        this.leftSideAdded = true
+      }
     }
 
     if (!this.rightSide) {
@@ -536,11 +554,18 @@ export class DiffRenderable extends Renderable {
       })
       this.rightSide.showLineNumbers = this._showLineNumbers
       super.add(this.rightSide)
+      this.rightSideAdded = true
     } else {
       // Update existing rightSide
       this.rightSide.setLineColors(rightLineColors)
       this.rightSide.setLineSigns(rightLineSigns)
       this.rightSide.setHideLineNumbers(rightHideLineNumbers)
+
+      // Re-add rightSide if it was removed (when switching from unified to split)
+      if (!this.rightSideAdded) {
+        super.add(this.rightSide)
+        this.rightSideAdded = true
+      }
     }
   }
 

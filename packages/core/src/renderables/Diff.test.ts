@@ -959,3 +959,55 @@ test("DiffRenderable - split view alignment with calculator diff", async () => {
   // They should be on the SAME line in the output
   expect(leftClosingBrace).toBe(rightClosingBrace)
 })
+
+test("DiffRenderable - switching between unified and split views multiple times", async () => {
+  const syntaxStyle = SyntaxStyle.fromStyles({
+    default: { fg: RGBA.fromValues(1, 1, 1, 1) },
+  })
+
+  const diffRenderable = new DiffRenderable(currentRenderer, {
+    id: "test-diff",
+    diff: simpleDiff,
+    view: "unified",
+    syntaxStyle,
+    showLineNumbers: true,
+    width: "100%",
+    height: "100%",
+  })
+
+  currentRenderer.root.add(diffRenderable)
+  await renderOnce()
+
+  // Step 1: Verify unified view works
+  let frame = captureFrame()
+  expect(frame).toContain("function hello")
+  expect(frame).toContain('console.log("Hello")')
+  expect(frame).toContain('console.log("Hello, World!")')
+
+  // Step 2: Switch to split view
+  diffRenderable.view = "split"
+  await renderOnce()
+
+  frame = captureFrame()
+  expect(frame).toContain("function hello")
+  expect(frame).toContain('console.log("Hello")')
+  expect(frame).toContain('console.log("Hello, World!")')
+
+  // Step 3: Switch back to unified view
+  diffRenderable.view = "unified"
+  await renderOnce()
+
+  frame = captureFrame()
+  expect(frame).toContain("function hello")
+  expect(frame).toContain('console.log("Hello")')
+  expect(frame).toContain('console.log("Hello, World!")')
+
+  // Step 4: Switch to split view again (this currently fails)
+  diffRenderable.view = "split"
+  await renderOnce()
+
+  frame = captureFrame()
+  expect(frame).toContain("function hello")
+  expect(frame).toContain('console.log("Hello")')
+  expect(frame).toContain('console.log("Hello, World!")')
+})
