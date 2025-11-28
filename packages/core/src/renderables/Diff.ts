@@ -64,11 +64,9 @@ export class DiffRenderable extends Renderable {
   private leftCodeRenderable: CodeRenderable | null = null
   private rightCodeRenderable: CodeRenderable | null = null
 
-  // Lazy rebuild strategy: For split view, debounce diff rebuilds to avoid
-  // expensive re-parsing and re-rendering on rapid changes (e.g., width changes).
+  // Lazy rebuild strategy: For split view, use microtask to coalesce rebuilds.
+  // This avoids expensive re-parsing and re-rendering on rapid changes (e.g., width changes).
   // CodeRenderables are reused and only their content is updated.
-  private rebuildTimer: ReturnType<typeof setTimeout> | null = null
-  private readonly REBUILD_DEBOUNCE_MS = 150
   private pendingRebuild: boolean = false
 
   constructor(ctx: RenderContext, options: DiffRenderableOptions) {
@@ -137,25 +135,31 @@ export class DiffRenderable extends Renderable {
     }
   }
 
-  private scheduleRebuild(): void {
-    if (this.rebuildTimer) {
-      clearTimeout(this.rebuildTimer)
+  protected override onResize(width: number, height: number): void {
+    super.onResize(width, height)
+
+    // For split view with wrapping, rebuild on width changes to realign wrapped lines
+    if (this._view === "split" && this._wrapMode !== "none" && this._wrapMode !== undefined) {
+      this.requestRebuild()
+    }
+  }
+
+  private requestRebuild(): void {
+    if (this.pendingRebuild) {
+      return
     }
 
     this.pendingRebuild = true
-    this.rebuildTimer = setTimeout(() => {
-      this.rebuildTimer = null
-      this.pendingRebuild = false
-      this.buildView()
-      this.requestRender()
-    }, this.REBUILD_DEBOUNCE_MS)
+    queueMicrotask(() => {
+      if (!this.isDestroyed && this.pendingRebuild) {
+        this.pendingRebuild = false
+        this.buildView()
+        this.requestRender()
+      }
+    })
   }
 
   public override destroyRecursively(): void {
-    if (this.rebuildTimer) {
-      clearTimeout(this.rebuildTimer)
-      this.rebuildTimer = null
-    }
     this.pendingRebuild = false
     this.leftSideAdded = false
     this.rightSideAdded = false
@@ -546,15 +550,8 @@ export class DiffRenderable extends Renderable {
       finalLeftLines = leftLogicalLines
       finalRightLines = rightLogicalLines
 
-      // If wrapMode is set but we can't align yet, schedule a rebuild after layout
-      if (this._wrapMode !== "none" && this._wrapMode !== undefined && !this.pendingRebuild) {
-        // Use a microtask to schedule rebuild after this render completes
-        queueMicrotask(() => {
-          if (!this.isDestroyed) {
-            this.scheduleRebuild()
-          }
-        })
-      }
+      // If wrapMode is set but we can't align yet, onResize will trigger a rebuild
+      // once widths are available (no manual scheduling needed here)
     }
 
     // Step 4: Build final content and metadata
@@ -679,9 +676,9 @@ export class DiffRenderable extends Renderable {
     if (this._diff !== value) {
       this._diff = value
       this.parseDiff()
-      // Use debounced rebuild for split view, immediate for unified
+      // Use microtask rebuild for split view, immediate for unified
       if (this._view === "split") {
-        this.scheduleRebuild()
+        this.requestRebuild()
       } else {
         this.buildView()
       }
@@ -708,9 +705,9 @@ export class DiffRenderable extends Renderable {
   public set filetype(value: string | undefined) {
     if (this._filetype !== value) {
       this._filetype = value
-      // Use debounced rebuild for split view, immediate for unified
+      // Use microtask rebuild for split view, immediate for unified
       if (this._view === "split") {
-        this.scheduleRebuild()
+        this.requestRebuild()
       } else {
         this.buildView()
       }
@@ -724,9 +721,9 @@ export class DiffRenderable extends Renderable {
   public set syntaxStyle(value: SyntaxStyle | undefined) {
     if (this._syntaxStyle !== value) {
       this._syntaxStyle = value
-      // Use debounced rebuild for split view, immediate for unified
+      // Use microtask rebuild for split view, immediate for unified
       if (this._view === "split") {
-        this.scheduleRebuild()
+        this.requestRebuild()
       } else {
         this.buildView()
       }
@@ -746,7 +743,7 @@ export class DiffRenderable extends Renderable {
         this.leftCodeRenderable.wrapMode = value ?? "none"
       } else if (this._view === "split") {
         // For split view, wrapMode affects alignment, so rebuild
-        this.scheduleRebuild()
+        this.requestRebuild()
       }
     }
   }
