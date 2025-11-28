@@ -44,6 +44,7 @@ class GutterRenderable extends Renderable {
   private _maxBeforeWidth: number = 0
   private _maxAfterWidth: number = 0
   private _lastKnownLineCount: number = 0
+  private _lastKnownScrollY: number = 0
 
   constructor(
     ctx: RenderContext,
@@ -83,6 +84,7 @@ class GutterRenderable extends Renderable {
     this._hideLineNumbers = options.hideLineNumbers
     this._lineNumbers = options.lineNumbers ?? new Map()
     this._lastKnownLineCount = this.target.lineCount
+    this._lastKnownScrollY = this.target.scrollY
     this.calculateSignWidths()
     this.setupMeasureFunc()
 
@@ -92,6 +94,7 @@ class GutterRenderable extends Renderable {
       if (currentLineCount !== this._lastKnownLineCount) {
         this._lastKnownLineCount = currentLineCount
         this.yogaNode.markDirty()
+        this.requestRender()
       }
     }
   }
@@ -160,6 +163,7 @@ class GutterRenderable extends Renderable {
   public setLineColors(lineColorsGutter: Map<number, RGBA>, lineColorsContent: Map<number, RGBA>): void {
     this._lineColorsGutter = lineColorsGutter
     this._lineColorsContent = lineColorsContent
+    this.requestRender()
   }
 
   public getLineColors(): { gutter: Map<number, RGBA>; content: Map<number, RGBA> } {
@@ -176,10 +180,13 @@ class GutterRenderable extends Renderable {
     this._lineSigns = lineSigns
     this.calculateSignWidths()
 
-    // Only mark dirty if sign widths changed - this will trigger remeasure
+    // Mark dirty if sign widths changed - this will trigger remeasure
     if (this._maxBeforeWidth !== oldMaxBefore || this._maxAfterWidth !== oldMaxAfter) {
       this.yogaNode.markDirty()
     }
+
+    // Always request render since signs themselves may have changed
+    this.requestRender()
   }
 
   public getLineSigns(): Map<number, LineSign> {
@@ -187,6 +194,19 @@ class GutterRenderable extends Renderable {
   }
 
   protected renderSelf(buffer: OptimizedBuffer): void {
+    // For buffered rendering, only re-render when dirty OR when scroll position changed
+    const currentScrollY = this.target.scrollY
+    const scrollChanged = currentScrollY !== this._lastKnownScrollY
+
+    if (this.buffered && !this.isDirty && !scrollChanged) {
+      return
+    }
+
+    this._lastKnownScrollY = currentScrollY
+    this.refreshFrameBuffer(buffer)
+  }
+
+  private refreshFrameBuffer(buffer: OptimizedBuffer): void {
     const startX = this.buffered ? 0 : this.x
     const startY = this.buffered ? 0 : this.y
 
