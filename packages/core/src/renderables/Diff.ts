@@ -202,6 +202,119 @@ export class DiffRenderable extends Renderable {
     super.destroyRecursively()
   }
 
+  /**
+   * Create or update a CodeRenderable with the given content and options.
+   * Reuses existing instances to avoid expensive recreation.
+   */
+  private createOrUpdateCodeRenderable(
+    side: "left" | "right",
+    content: string,
+    wrapMode: "word" | "char" | "none" | undefined,
+    drawUnstyledText?: boolean,
+  ): CodeRenderable {
+    const existingRenderable = side === "left" ? this.leftCodeRenderable : this.rightCodeRenderable
+
+    if (!existingRenderable) {
+      // Create new CodeRenderable
+      const codeOptions: CodeOptions = {
+        id: this.id ? `${this.id}-${side}-code` : undefined,
+        content,
+        filetype: this._filetype,
+        wrapMode,
+        conceal: this._conceal,
+        syntaxStyle: this._syntaxStyle ?? SyntaxStyle.create(),
+        width: "100%",
+        height: "100%",
+        ...(drawUnstyledText !== undefined && { drawUnstyledText }),
+      }
+      const newRenderable = new CodeRenderable(this.ctx, codeOptions)
+
+      if (side === "left") {
+        this.leftCodeRenderable = newRenderable
+      } else {
+        this.rightCodeRenderable = newRenderable
+      }
+
+      return newRenderable
+    } else {
+      // Update existing CodeRenderable
+      existingRenderable.content = content
+      existingRenderable.wrapMode = wrapMode ?? "none"
+      if (drawUnstyledText !== undefined) {
+        existingRenderable.drawUnstyledText = drawUnstyledText
+      }
+      if (this._filetype !== undefined) {
+        existingRenderable.filetype = this._filetype
+      }
+      if (this._syntaxStyle !== undefined) {
+        existingRenderable.syntaxStyle = this._syntaxStyle
+      }
+
+      return existingRenderable
+    }
+  }
+
+  /**
+   * Create or update a LineNumberRenderable side panel.
+   * Handles both creation and updates, ensuring the side is properly added to the render tree.
+   */
+  private createOrUpdateSide(
+    side: "left" | "right",
+    target: CodeRenderable,
+    lineColors: Map<number, string | RGBA | LineColorConfig>,
+    lineSigns: Map<number, LineSign>,
+    lineNumbers: Map<number, number>,
+    hideLineNumbers: Set<number>,
+    width: "50%" | "100%",
+  ): void {
+    const sideRef = side === "left" ? this.leftSide : this.rightSide
+    const addedFlag = side === "left" ? this.leftSideAdded : this.rightSideAdded
+
+    if (!sideRef) {
+      // Create new LineNumberRenderable
+      const newSide = new LineNumberRenderable(this.ctx, {
+        id: this.id ? `${this.id}-${side}` : undefined,
+        target,
+        fg: this._lineNumberFg,
+        bg: this._lineNumberBg,
+        lineColors,
+        lineSigns,
+        lineNumbers,
+        lineNumberOffset: 0,
+        hideLineNumbers,
+        width,
+        height: "100%",
+      })
+      newSide.showLineNumbers = this._showLineNumbers
+      super.add(newSide)
+
+      if (side === "left") {
+        this.leftSide = newSide
+        this.leftSideAdded = true
+      } else {
+        this.rightSide = newSide
+        this.rightSideAdded = true
+      }
+    } else {
+      // Update existing LineNumberRenderable
+      sideRef.width = width
+      sideRef.setLineColors(lineColors)
+      sideRef.setLineSigns(lineSigns)
+      sideRef.setLineNumbers(lineNumbers)
+      sideRef.setHideLineNumbers(hideLineNumbers)
+
+      // Ensure side is added if not already
+      if (!addedFlag) {
+        super.add(sideRef)
+        if (side === "left") {
+          this.leftSideAdded = true
+        } else {
+          this.rightSideAdded = true
+        }
+      }
+    }
+  }
+
   private buildUnifiedView(): void {
     if (!this._parsedDiff) return
 
@@ -285,65 +398,11 @@ export class DiffRenderable extends Renderable {
 
     const content = contentLines.join("\n")
 
-    // Create or reuse CodeRenderable for left side (used for unified view)
-    if (!this.leftCodeRenderable) {
-      const codeOptions: CodeOptions = {
-        id: this.id ? `${this.id}-left-code` : undefined,
-        content,
-        filetype: this._filetype,
-        wrapMode: this._wrapMode,
-        conceal: this._conceal,
-        syntaxStyle: this._syntaxStyle ?? SyntaxStyle.create(),
-        width: "100%",
-        height: "100%",
-      }
-      this.leftCodeRenderable = new CodeRenderable(this.ctx, codeOptions)
-    } else {
-      // Update existing CodeRenderable with unified view content
-      this.leftCodeRenderable.content = content
-      if (this._filetype !== undefined) {
-        this.leftCodeRenderable.filetype = this._filetype
-      }
-      if (this._syntaxStyle !== undefined) {
-        this.leftCodeRenderable.syntaxStyle = this._syntaxStyle
-      }
-      // Always update wrapMode for unified view (user's preference)
-      this.leftCodeRenderable.wrapMode = this._wrapMode ?? "none"
-    }
+    // Create or update CodeRenderable for left side (used for unified view)
+    const codeRenderable = this.createOrUpdateCodeRenderable("left", content, this._wrapMode)
 
     // Create or update LineNumberRenderable (leftSide used for unified view)
-    if (!this.leftSide) {
-      this.leftSide = new LineNumberRenderable(this.ctx, {
-        id: this.id ? `${this.id}-left` : undefined,
-        target: this.leftCodeRenderable,
-        fg: this._lineNumberFg,
-        bg: this._lineNumberBg,
-        lineColors,
-        lineSigns,
-        lineNumbers,
-        lineNumberOffset: 0,
-        hideLineNumbers: new Set<number>(),
-        width: "100%",
-        height: "100%",
-      })
-      this.leftSide.showLineNumbers = this._showLineNumbers
-      super.add(this.leftSide)
-      this.leftSideAdded = true
-    } else {
-      // Update LineNumberRenderable metadata
-      this.leftSide.setLineColors(lineColors)
-      this.leftSide.setLineSigns(lineSigns)
-      this.leftSide.setLineNumbers(lineNumbers)
-      this.leftSide.setHideLineNumbers(new Set<number>())
-      // Update width for unified view
-      this.leftSide.width = "100%"
-
-      // Ensure leftSide is added if not already
-      if (!this.leftSideAdded) {
-        super.add(this.leftSide)
-        this.leftSideAdded = true
-      }
-    }
+    this.createOrUpdateSide("left", codeRenderable, lineColors, lineSigns, lineNumbers, new Set<number>(), "100%")
 
     // Remove rightSide from render tree for unified view
     if (this.rightSide && this.rightSideAdded) {
@@ -472,63 +531,17 @@ export class DiffRenderable extends Renderable {
 
     const effectiveWrapMode = canDoWrapAlignment ? this._wrapMode! : "none"
 
-    if (!this.leftCodeRenderable) {
-      const leftCodeOptions: CodeOptions = {
-        id: this.id ? `${this.id}-left-code` : undefined,
-        content: preLeftContent,
-        filetype: this._filetype,
-        wrapMode: effectiveWrapMode,
-        conceal: this._conceal,
-        syntaxStyle: this._syntaxStyle ?? SyntaxStyle.create(),
-        drawUnstyledText: true, // Force immediate lineInfo update
-        width: "100%",
-        height: "100%",
-      }
-      this.leftCodeRenderable = new CodeRenderable(this.ctx, leftCodeOptions)
-    } else {
-      this.leftCodeRenderable.content = preLeftContent
-      this.leftCodeRenderable.wrapMode = effectiveWrapMode
-      this.leftCodeRenderable.drawUnstyledText = true
-      if (this._filetype !== undefined) {
-        this.leftCodeRenderable.filetype = this._filetype
-      }
-      if (this._syntaxStyle !== undefined) {
-        this.leftCodeRenderable.syntaxStyle = this._syntaxStyle
-      }
-    }
-
-    if (!this.rightCodeRenderable) {
-      const rightCodeOptions: CodeOptions = {
-        id: this.id ? `${this.id}-right-code` : undefined,
-        content: preRightContent,
-        filetype: this._filetype,
-        wrapMode: effectiveWrapMode,
-        conceal: this._conceal,
-        syntaxStyle: this._syntaxStyle ?? SyntaxStyle.create(),
-        drawUnstyledText: true, // Force immediate lineInfo update
-        width: "100%",
-        height: "100%",
-      }
-      this.rightCodeRenderable = new CodeRenderable(this.ctx, rightCodeOptions)
-    } else {
-      this.rightCodeRenderable.content = preRightContent
-      this.rightCodeRenderable.wrapMode = effectiveWrapMode
-      this.rightCodeRenderable.drawUnstyledText = true
-      if (this._filetype !== undefined) {
-        this.rightCodeRenderable.filetype = this._filetype
-      }
-      if (this._syntaxStyle !== undefined) {
-        this.rightCodeRenderable.syntaxStyle = this._syntaxStyle
-      }
-    }
+    // Create or update CodeRenderables with initial content
+    const leftCodeRenderable = this.createOrUpdateCodeRenderable("left", preLeftContent, effectiveWrapMode, true)
+    const rightCodeRenderable = this.createOrUpdateCodeRenderable("right", preRightContent, effectiveWrapMode, true)
 
     // Step 3: Align lines using lineInfo (if we can)
     let finalLeftLines: LogicalLine[]
     let finalRightLines: LogicalLine[]
 
     if (canDoWrapAlignment) {
-      const leftLineInfo = this.leftCodeRenderable.lineInfo
-      const rightLineInfo = this.rightCodeRenderable.lineInfo
+      const leftLineInfo = leftCodeRenderable.lineInfo
+      const rightLineInfo = rightCodeRenderable.lineInfo
 
       const leftSources = leftLineInfo.lineSources || []
       const rightSources = rightLineInfo.lineSources || []
@@ -685,73 +698,29 @@ export class DiffRenderable extends Renderable {
     const rightContentFinal = finalRightLines.map((l) => l.content).join("\n")
 
     // Step 5: Update CodeRenderables with final content
-    this.leftCodeRenderable.content = leftContentFinal
-    this.rightCodeRenderable.content = rightContentFinal
+    leftCodeRenderable.content = leftContentFinal
+    rightCodeRenderable.content = rightContentFinal
 
     // Create or update LineNumberRenderables (they wrap the CodeRenderables)
     // leftSide might already exist from unified view, so we reuse it
-    if (!this.leftSide) {
-      this.leftSide = new LineNumberRenderable(this.ctx, {
-        id: this.id ? `${this.id}-left` : undefined,
-        target: this.leftCodeRenderable,
-        fg: this._lineNumberFg,
-        bg: this._lineNumberBg,
-        lineColors: leftLineColors,
-        lineSigns: leftLineSigns,
-        lineNumbers: leftLineNumbers,
-        lineNumberOffset: 0,
-        hideLineNumbers: leftHideLineNumbers,
-        width: "50%",
-        height: "100%",
-      })
-      this.leftSide.showLineNumbers = this._showLineNumbers
-      super.add(this.leftSide)
-      this.leftSideAdded = true
-    } else {
-      // Update existing leftSide for split view
-      this.leftSide.width = "50%"
-      this.leftSide.setLineColors(leftLineColors)
-      this.leftSide.setLineSigns(leftLineSigns)
-      this.leftSide.setLineNumbers(leftLineNumbers)
-      this.leftSide.setHideLineNumbers(leftHideLineNumbers)
-
-      // Ensure leftSide is added if not already
-      if (!this.leftSideAdded) {
-        super.add(this.leftSide)
-        this.leftSideAdded = true
-      }
-    }
-
-    if (!this.rightSide) {
-      this.rightSide = new LineNumberRenderable(this.ctx, {
-        id: this.id ? `${this.id}-right` : undefined,
-        target: this.rightCodeRenderable,
-        fg: this._lineNumberFg,
-        bg: this._lineNumberBg,
-        lineColors: rightLineColors,
-        lineSigns: rightLineSigns,
-        lineNumbers: rightLineNumbers,
-        lineNumberOffset: 0,
-        hideLineNumbers: rightHideLineNumbers,
-        width: "50%",
-        height: "100%",
-      })
-      this.rightSide.showLineNumbers = this._showLineNumbers
-      super.add(this.rightSide)
-      this.rightSideAdded = true
-    } else {
-      // Update existing rightSide
-      this.rightSide.setLineColors(rightLineColors)
-      this.rightSide.setLineSigns(rightLineSigns)
-      this.rightSide.setLineNumbers(rightLineNumbers)
-      this.rightSide.setHideLineNumbers(rightHideLineNumbers)
-
-      // Re-add rightSide if it was removed (when switching from unified to split)
-      if (!this.rightSideAdded) {
-        super.add(this.rightSide)
-        this.rightSideAdded = true
-      }
-    }
+    this.createOrUpdateSide(
+      "left",
+      leftCodeRenderable,
+      leftLineColors,
+      leftLineSigns,
+      leftLineNumbers,
+      leftHideLineNumbers,
+      "50%",
+    )
+    this.createOrUpdateSide(
+      "right",
+      rightCodeRenderable,
+      rightLineColors,
+      rightLineSigns,
+      rightLineNumbers,
+      rightHideLineNumbers,
+      "50%",
+    )
   }
 
   // Getters and setters
