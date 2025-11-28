@@ -1064,3 +1064,83 @@ test("DiffRenderable - wrapMode works in unified view", async () => {
   expect(frameNoneAgain).toMatchSnapshot("wrapMode-none")
   expect(frameNoneAgain).toBe(frameNone)
 })
+
+test("DiffRenderable - context lines show new line numbers in unified view", async () => {
+  // Create a larger test renderer to fit the whole diff
+  const testRenderer = await createTestRenderer({ width: 80, height: 30 })
+  const renderer = testRenderer.renderer
+  const renderOnce = testRenderer.renderOnce
+  const captureFrame = testRenderer.captureCharFrame
+
+  const syntaxStyle = SyntaxStyle.fromStyles({
+    default: { fg: RGBA.fromValues(1, 1, 1, 1) },
+  })
+
+  // This diff adds lines in the middle, so context lines after additions
+  // should show their NEW line numbers, not old ones
+  const calculatorDiff = `--- a/calculator.ts
++++ b/calculator.ts
+@@ -1,13 +1,20 @@
+ class Calculator {
+   add(a: number, b: number): number {
+     return a + b;
+   }
+ 
+-  subtract(a: number, b: number): number {
+-    return a - b;
++  subtract(a: number, b: number, c: number = 0): number {
++    return a - b - c;
+   }
+ 
+   multiply(a: number, b: number): number {
+     return a * b;
+   }
++
++  divide(a: number, b: number): number {
++    if (b === 0) {
++      throw new Error("Division by zero");
++    }
++    return a / b;
++  }
+ }`
+
+  const diffRenderable = new DiffRenderable(renderer, {
+    id: "test-diff",
+    diff: calculatorDiff,
+    view: "unified",
+    syntaxStyle,
+    showLineNumbers: true,
+    width: "100%",
+    height: "100%",
+  })
+
+  renderer.root.add(diffRenderable)
+  await renderOnce()
+
+  const frame = captureFrame()
+  const frameLines = frame.split("\n")
+
+  // The closing brace "}" for the Calculator class is a context line
+  // In the old file it was at line 13
+  // In the new file it's at line 20 (after adding 7 lines for divide method)
+  // Unified view should show line 20, not line 13
+  // Find the LAST closing brace that's just "}" (at the beginning of indentation, not nested)
+  // This regex matches: optional spaces, digits, spaces, optional sign (+/-), spaces, "}", trailing spaces
+  const closingBraceLines = frameLines.filter((l) => l.match(/^\s*\d+\s+[+-]?\s*\}\s*$/))
+
+  // The last one should be the class closing brace
+  const classClosingBraceLine = closingBraceLines[closingBraceLines.length - 1]
+  expect(classClosingBraceLine).toBeTruthy()
+
+  // Extract the line number from the closing brace line
+  const lineNumberMatch = classClosingBraceLine!.match(/^\s*(\d+)/)
+  expect(lineNumberMatch).toBeTruthy()
+
+  const lineNumber = parseInt(lineNumberMatch![1])
+
+  // The closing brace should show line 20 (new file position), not 13 (old file position)
+  expect(lineNumber).toBe(20)
+
+  // Clean up
+  renderer.destroy()
+})

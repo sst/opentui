@@ -57,10 +57,10 @@ exports[`DiffRenderable - multi-line diff unified view: unified view multi-line 
   6 +   return a - b;                                                           
   7 + }                                                                         
   8 +                                                                           
-  5   function multiply(a, b) {                                                 
+  9   function multiply(a, b) {                                                 
   6 -   return a * b;                                                           
  10 +   return a * b * 1;                                                       
-  7   }                                                                         
+ 11   }                                                                         
                                                                                 
                                                                                 
                                                                                 
@@ -192,6 +192,30 @@ exports[`DiffRenderable - remove-only diff split view: split view remove-only di
 "
 `;
 
+exports[`DiffRenderable - large line numbers displayed correctly: unified view large line numbers 1`] = `
+" 42   const line42 = 'context';                                                 
+ 43   const line43 = 'context';                                                 
+ 44 - const line44 = 'removed';                                                 
+ 44 + const line44 = 'added';                                                   
+ 45   const line45 = 'context';                                                 
+ 46 + const line46 = 'added';                                                   
+ 47   const line47 = 'context';                                                 
+ 48   const line48 = 'context';                                                 
+ 48 - const line49 = 'removed';                                                 
+ 49 + const line49 = 'changed';                                                 
+ 50   const line50 = 'context';                                                 
+ 51   const line51 = 'context';                                                 
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+"
+`;
+
 exports[`DiffRenderable - split view alignment with empty lines: split view alignment 1`] = `
 " 1 line1                                 1   line1                              
                                          2 + line2_added                        
@@ -248,35 +272,11 @@ exports[`DiffRenderable - consistent left padding for line numbers > 9: unified 
  11   line11                                                                    
  12 + line12_added                                                              
  13 + line13_added                                                              
- 12   line14                                                                    
- 13   line15                                                                    
+ 14   line14                                                                    
+ 15   line15                                                                    
  14 - line16_old                                                                
  16 + line16_new                                                                
                                                                                 
-                                                                                
-                                                                                
-                                                                                
-                                                                                
-                                                                                
-                                                                                
-                                                                                
-                                                                                
-"
-`;
-
-exports[`DiffRenderable - large line numbers displayed correctly: unified view large line numbers 1`] = `
-" 42   const line42 = 'context';                                                 
- 43   const line43 = 'context';                                                 
- 44 - const line44 = 'removed';                                                 
- 44 + const line44 = 'added';                                                   
- 45   const line45 = 'context';                                                 
- 46 + const line46 = 'added';                                                   
- 46   const line47 = 'context';                                                 
- 47   const line48 = 'context';                                                 
- 48 - const line49 = 'removed';                                                 
- 49 + const line49 = 'changed';                                                 
- 49   const line50 = 'context';                                                 
- 50   const line51 = 'context';                                                 
                                                                                 
                                                                                 
                                                                                 

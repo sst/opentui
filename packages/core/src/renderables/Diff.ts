@@ -206,7 +206,7 @@ export class DiffRenderable extends Renderable {
         } else if (firstChar === " ") {
           // Context line
           contentLines.push(content)
-          lineNumbers.set(lineIndex, oldLineNum)
+          lineNumbers.set(lineIndex, newLineNum)
           oldLineNum++
           newLineNum++
           lineIndex++
