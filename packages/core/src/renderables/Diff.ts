@@ -1,7 +1,7 @@
 import { Renderable, type RenderableOptions } from "../Renderable"
 import type { RenderContext } from "../types"
 import { CodeRenderable } from "./Code"
-import { LineNumberRenderable, type LineSign } from "./LineNumberRenderable"
+import { LineNumberRenderable, type LineSign, type LineColorConfig } from "./LineNumberRenderable"
 import { RGBA, parseColor } from "../lib/RGBA"
 import type { SyntaxStyle } from "../syntax-style"
 import { parsePatch, type StructuredPatch } from "diff"
@@ -24,8 +24,11 @@ export interface DiffRenderableOptions extends RenderableOptions<DiffRenderable>
   // Diff styling
   addedBg?: string | RGBA
   removedBg?: string | RGBA
+  contextBg?: string | RGBA
   addedSignColor?: string | RGBA
   removedSignColor?: string | RGBA
+  addedLineNumberBg?: string | RGBA
+  removedLineNumberBg?: string | RGBA
 }
 
 export class DiffRenderable extends Renderable {
@@ -47,8 +50,11 @@ export class DiffRenderable extends Renderable {
   // Diff styling
   private _addedBg: RGBA
   private _removedBg: RGBA
+  private _contextBg: RGBA
   private _addedSignColor: RGBA
   private _removedSignColor: RGBA
+  private _addedLineNumberBg: RGBA
+  private _removedLineNumberBg: RGBA
 
   // Child renderables - reused for both unified and split views
   // Unified view uses only leftSide, split view uses both leftSide and rightSide
@@ -92,8 +98,11 @@ export class DiffRenderable extends Renderable {
     // Diff styling
     this._addedBg = parseColor(options.addedBg ?? "#1a4d1a")
     this._removedBg = parseColor(options.removedBg ?? "#4d1a1a")
+    this._contextBg = parseColor(options.contextBg ?? "transparent")
     this._addedSignColor = parseColor(options.addedSignColor ?? "#22c55e")
     this._removedSignColor = parseColor(options.removedSignColor ?? "#ef4444")
+    this._addedLineNumberBg = parseColor(options.addedLineNumberBg ?? "transparent")
+    this._removedLineNumberBg = parseColor(options.removedLineNumberBg ?? "transparent")
 
     // Only parse and build if diff is provided
     if (this._diff) {
@@ -159,6 +168,15 @@ export class DiffRenderable extends Renderable {
     })
   }
 
+  private rebuildView(): void {
+    // Use microtask rebuild for split view, immediate for unified
+    if (this._view === "split") {
+      this.requestRebuild()
+    } else {
+      this.buildView()
+    }
+  }
+
   public override destroyRecursively(): void {
     this.pendingRebuild = false
     this.leftSideAdded = false
@@ -170,7 +188,7 @@ export class DiffRenderable extends Renderable {
     if (!this._parsedDiff) return
 
     const contentLines: string[] = []
-    const lineColors = new Map<number, string | RGBA>()
+    const lineColors = new Map<number, string | RGBA | LineColorConfig>()
     const lineSigns = new Map<number, LineSign>()
     const lineNumbers = new Map<number, number>()
 
@@ -188,7 +206,10 @@ export class DiffRenderable extends Renderable {
         if (firstChar === "+") {
           // Added line
           contentLines.push(content)
-          lineColors.set(lineIndex, this._addedBg)
+          lineColors.set(lineIndex, {
+            gutter: this._addedLineNumberBg,
+            content: this._addedBg,
+          })
           lineSigns.set(lineIndex, {
             after: " +",
             afterColor: this._addedSignColor,
@@ -199,7 +220,10 @@ export class DiffRenderable extends Renderable {
         } else if (firstChar === "-") {
           // Removed line
           contentLines.push(content)
-          lineColors.set(lineIndex, this._removedBg)
+          lineColors.set(lineIndex, {
+            gutter: this._removedLineNumberBg,
+            content: this._removedBg,
+          })
           lineSigns.set(lineIndex, {
             after: " -",
             afterColor: this._removedSignColor,
@@ -210,6 +234,10 @@ export class DiffRenderable extends Renderable {
         } else if (firstChar === " ") {
           // Context line
           contentLines.push(content)
+          lineColors.set(lineIndex, {
+            gutter: this._lineNumberBg,
+            content: this._contextBg,
+          })
           lineNumbers.set(lineIndex, newLineNum)
           oldLineNum++
           newLineNum++
@@ -322,11 +350,13 @@ export class DiffRenderable extends Renderable {
           leftLogicalLines.push({
             content,
             lineNum: oldLineNum,
+            color: this._contextBg,
             type: "context",
           })
           rightLogicalLines.push({
             content,
             lineNum: newLineNum,
+            color: this._contextBg,
             type: "context",
           })
           oldLineNum++
@@ -555,8 +585,8 @@ export class DiffRenderable extends Renderable {
     }
 
     // Step 4: Build final content and metadata
-    const leftLineColors = new Map<number, string | RGBA>()
-    const rightLineColors = new Map<number, string | RGBA>()
+    const leftLineColors = new Map<number, string | RGBA | LineColorConfig>()
+    const rightLineColors = new Map<number, string | RGBA | LineColorConfig>()
     const leftLineSigns = new Map<number, LineSign>()
     const rightLineSigns = new Map<number, LineSign>()
     const leftHideLineNumbers = new Set<number>()
@@ -571,8 +601,16 @@ export class DiffRenderable extends Renderable {
       if (line.hideLineNumber) {
         leftHideLineNumbers.add(index)
       }
-      if (line.color) {
-        leftLineColors.set(index, line.color)
+      if (line.type === "remove") {
+        leftLineColors.set(index, {
+          gutter: this._removedLineNumberBg,
+          content: this._removedBg,
+        })
+      } else if (line.type === "context") {
+        leftLineColors.set(index, {
+          gutter: this._lineNumberBg,
+          content: this._contextBg,
+        })
       }
       if (line.sign) {
         leftLineSigns.set(index, line.sign)
@@ -586,8 +624,16 @@ export class DiffRenderable extends Renderable {
       if (line.hideLineNumber) {
         rightHideLineNumbers.add(index)
       }
-      if (line.color) {
-        rightLineColors.set(index, line.color)
+      if (line.type === "add") {
+        rightLineColors.set(index, {
+          gutter: this._addedLineNumberBg,
+          content: this._addedBg,
+        })
+      } else if (line.type === "context") {
+        rightLineColors.set(index, {
+          gutter: this._lineNumberBg,
+          content: this._contextBg,
+        })
       }
       if (line.sign) {
         rightLineSigns.set(index, line.sign)
@@ -676,12 +722,7 @@ export class DiffRenderable extends Renderable {
     if (this._diff !== value) {
       this._diff = value
       this.parseDiff()
-      // Use microtask rebuild for split view, immediate for unified
-      if (this._view === "split") {
-        this.requestRebuild()
-      } else {
-        this.buildView()
-      }
+      this.rebuildView()
     }
   }
 
@@ -705,12 +746,7 @@ export class DiffRenderable extends Renderable {
   public set filetype(value: string | undefined) {
     if (this._filetype !== value) {
       this._filetype = value
-      // Use microtask rebuild for split view, immediate for unified
-      if (this._view === "split") {
-        this.requestRebuild()
-      } else {
-        this.buildView()
-      }
+      this.rebuildView()
     }
   }
 
@@ -721,12 +757,7 @@ export class DiffRenderable extends Renderable {
   public set syntaxStyle(value: SyntaxStyle | undefined) {
     if (this._syntaxStyle !== value) {
       this._syntaxStyle = value
-      // Use microtask rebuild for split view, immediate for unified
-      if (this._view === "split") {
-        this.requestRebuild()
-      } else {
-        this.buildView()
-      }
+      this.rebuildView()
     }
   }
 
@@ -761,6 +792,114 @@ export class DiffRenderable extends Renderable {
       if (this.rightSide) {
         this.rightSide.showLineNumbers = value
       }
+    }
+  }
+
+  public get addedBg(): RGBA {
+    return this._addedBg
+  }
+
+  public set addedBg(value: string | RGBA) {
+    const parsed = parseColor(value)
+    if (this._addedBg !== parsed) {
+      this._addedBg = parsed
+      this.rebuildView()
+    }
+  }
+
+  public get removedBg(): RGBA {
+    return this._removedBg
+  }
+
+  public set removedBg(value: string | RGBA) {
+    const parsed = parseColor(value)
+    if (this._removedBg !== parsed) {
+      this._removedBg = parsed
+      this.rebuildView()
+    }
+  }
+
+  public get contextBg(): RGBA {
+    return this._contextBg
+  }
+
+  public set contextBg(value: string | RGBA) {
+    const parsed = parseColor(value)
+    if (this._contextBg !== parsed) {
+      this._contextBg = parsed
+      this.rebuildView()
+    }
+  }
+
+  public get addedSignColor(): RGBA {
+    return this._addedSignColor
+  }
+
+  public set addedSignColor(value: string | RGBA) {
+    const parsed = parseColor(value)
+    if (this._addedSignColor !== parsed) {
+      this._addedSignColor = parsed
+      this.rebuildView()
+    }
+  }
+
+  public get removedSignColor(): RGBA {
+    return this._removedSignColor
+  }
+
+  public set removedSignColor(value: string | RGBA) {
+    const parsed = parseColor(value)
+    if (this._removedSignColor !== parsed) {
+      this._removedSignColor = parsed
+      this.rebuildView()
+    }
+  }
+
+  public get addedLineNumberBg(): RGBA {
+    return this._addedLineNumberBg
+  }
+
+  public set addedLineNumberBg(value: string | RGBA) {
+    const parsed = parseColor(value)
+    if (this._addedLineNumberBg !== parsed) {
+      this._addedLineNumberBg = parsed
+      this.rebuildView()
+    }
+  }
+
+  public get removedLineNumberBg(): RGBA {
+    return this._removedLineNumberBg
+  }
+
+  public set removedLineNumberBg(value: string | RGBA) {
+    const parsed = parseColor(value)
+    if (this._removedLineNumberBg !== parsed) {
+      this._removedLineNumberBg = parsed
+      this.rebuildView()
+    }
+  }
+
+  public get lineNumberFg(): RGBA {
+    return this._lineNumberFg
+  }
+
+  public set lineNumberFg(value: string | RGBA) {
+    const parsed = parseColor(value)
+    if (this._lineNumberFg !== parsed) {
+      this._lineNumberFg = parsed
+      this.rebuildView()
+    }
+  }
+
+  public get lineNumberBg(): RGBA {
+    return this._lineNumberBg
+  }
+
+  public set lineNumberBg(value: string | RGBA) {
+    const parsed = parseColor(value)
+    if (this._lineNumberBg !== parsed) {
+      this._lineNumberBg = parsed
+      this.rebuildView()
     }
   }
 }
