@@ -25,6 +25,9 @@ export interface DiffRenderableOptions extends RenderableOptions<DiffRenderable>
   addedBg?: string | RGBA
   removedBg?: string | RGBA
   contextBg?: string | RGBA
+  addedContentBg?: string | RGBA
+  removedContentBg?: string | RGBA
+  contextContentBg?: string | RGBA
   addedSignColor?: string | RGBA
   removedSignColor?: string | RGBA
   addedLineNumberBg?: string | RGBA
@@ -51,6 +54,9 @@ export class DiffRenderable extends Renderable {
   private _addedBg: RGBA
   private _removedBg: RGBA
   private _contextBg: RGBA
+  private _addedContentBg: RGBA | null
+  private _removedContentBg: RGBA | null
+  private _contextContentBg: RGBA | null
   private _addedSignColor: RGBA
   private _removedSignColor: RGBA
   private _addedLineNumberBg: RGBA
@@ -99,6 +105,9 @@ export class DiffRenderable extends Renderable {
     this._addedBg = parseColor(options.addedBg ?? "#1a4d1a")
     this._removedBg = parseColor(options.removedBg ?? "#4d1a1a")
     this._contextBg = parseColor(options.contextBg ?? "transparent")
+    this._addedContentBg = options.addedContentBg ? parseColor(options.addedContentBg) : null
+    this._removedContentBg = options.removedContentBg ? parseColor(options.removedContentBg) : null
+    this._contextContentBg = options.contextContentBg ? parseColor(options.contextContentBg) : null
     this._addedSignColor = parseColor(options.addedSignColor ?? "#22c55e")
     this._removedSignColor = parseColor(options.removedSignColor ?? "#ef4444")
     this._addedLineNumberBg = parseColor(options.addedLineNumberBg ?? "transparent")
@@ -206,10 +215,16 @@ export class DiffRenderable extends Renderable {
         if (firstChar === "+") {
           // Added line
           contentLines.push(content)
-          lineColors.set(lineIndex, {
+          const config: LineColorConfig = {
             gutter: this._addedLineNumberBg,
-            content: this._addedBg,
-          })
+          }
+          // If explicit content background is set, use it; otherwise use gutter color (will be darkened)
+          if (this._addedContentBg) {
+            config.content = this._addedContentBg
+          } else {
+            config.content = this._addedBg
+          }
+          lineColors.set(lineIndex, config)
           lineSigns.set(lineIndex, {
             after: " +",
             afterColor: this._addedSignColor,
@@ -220,10 +235,16 @@ export class DiffRenderable extends Renderable {
         } else if (firstChar === "-") {
           // Removed line
           contentLines.push(content)
-          lineColors.set(lineIndex, {
+          const config: LineColorConfig = {
             gutter: this._removedLineNumberBg,
-            content: this._removedBg,
-          })
+          }
+          // If explicit content background is set, use it; otherwise use gutter color (will be darkened)
+          if (this._removedContentBg) {
+            config.content = this._removedContentBg
+          } else {
+            config.content = this._removedBg
+          }
+          lineColors.set(lineIndex, config)
           lineSigns.set(lineIndex, {
             after: " -",
             afterColor: this._removedSignColor,
@@ -234,10 +255,16 @@ export class DiffRenderable extends Renderable {
         } else if (firstChar === " ") {
           // Context line
           contentLines.push(content)
-          lineColors.set(lineIndex, {
+          const config: LineColorConfig = {
             gutter: this._lineNumberBg,
-            content: this._contextBg,
-          })
+          }
+          // If explicit content background is set, use it; otherwise use contextBg
+          if (this._contextContentBg) {
+            config.content = this._contextContentBg
+          } else {
+            config.content = this._contextBg
+          }
+          lineColors.set(lineIndex, config)
           lineNumbers.set(lineIndex, newLineNum)
           oldLineNum++
           newLineNum++
@@ -602,15 +629,25 @@ export class DiffRenderable extends Renderable {
         leftHideLineNumbers.add(index)
       }
       if (line.type === "remove") {
-        leftLineColors.set(index, {
+        const config: LineColorConfig = {
           gutter: this._removedLineNumberBg,
-          content: this._removedBg,
-        })
+        }
+        if (this._removedContentBg) {
+          config.content = this._removedContentBg
+        } else {
+          config.content = this._removedBg
+        }
+        leftLineColors.set(index, config)
       } else if (line.type === "context") {
-        leftLineColors.set(index, {
+        const config: LineColorConfig = {
           gutter: this._lineNumberBg,
-          content: this._contextBg,
-        })
+        }
+        if (this._contextContentBg) {
+          config.content = this._contextContentBg
+        } else {
+          config.content = this._contextBg
+        }
+        leftLineColors.set(index, config)
       }
       if (line.sign) {
         leftLineSigns.set(index, line.sign)
@@ -625,15 +662,25 @@ export class DiffRenderable extends Renderable {
         rightHideLineNumbers.add(index)
       }
       if (line.type === "add") {
-        rightLineColors.set(index, {
+        const config: LineColorConfig = {
           gutter: this._addedLineNumberBg,
-          content: this._addedBg,
-        })
+        }
+        if (this._addedContentBg) {
+          config.content = this._addedContentBg
+        } else {
+          config.content = this._addedBg
+        }
+        rightLineColors.set(index, config)
       } else if (line.type === "context") {
-        rightLineColors.set(index, {
+        const config: LineColorConfig = {
           gutter: this._lineNumberBg,
-          content: this._contextBg,
-        })
+        }
+        if (this._contextContentBg) {
+          config.content = this._contextContentBg
+        } else {
+          config.content = this._contextBg
+        }
+        rightLineColors.set(index, config)
       }
       if (line.sign) {
         rightLineSigns.set(index, line.sign)
@@ -899,6 +946,42 @@ export class DiffRenderable extends Renderable {
     const parsed = parseColor(value)
     if (this._lineNumberBg !== parsed) {
       this._lineNumberBg = parsed
+      this.rebuildView()
+    }
+  }
+
+  public get addedContentBg(): RGBA | null {
+    return this._addedContentBg
+  }
+
+  public set addedContentBg(value: string | RGBA | null) {
+    const parsed = value ? parseColor(value) : null
+    if (this._addedContentBg !== parsed) {
+      this._addedContentBg = parsed
+      this.rebuildView()
+    }
+  }
+
+  public get removedContentBg(): RGBA | null {
+    return this._removedContentBg
+  }
+
+  public set removedContentBg(value: string | RGBA | null) {
+    const parsed = value ? parseColor(value) : null
+    if (this._removedContentBg !== parsed) {
+      this._removedContentBg = parsed
+      this.rebuildView()
+    }
+  }
+
+  public get contextContentBg(): RGBA | null {
+    return this._contextContentBg
+  }
+
+  public set contextContentBg(value: string | RGBA | null) {
+    const parsed = value ? parseColor(value) : null
+    if (this._contextContentBg !== parsed) {
+      this._contextContentBg = parsed
       this.rebuildView()
     }
   }
