@@ -50,12 +50,12 @@ export class DiffRenderable extends Renderable {
   private _addedSignColor: RGBA
   private _removedSignColor: RGBA
 
-  // Child renderables
+  // Child renderables - reused for both unified and split views
+  // Unified view uses only leftSide, split view uses both leftSide and rightSide
   private leftSide: LineNumberRenderable | null = null
   private rightSide: LineNumberRenderable | null = null
-  private unifiedView: LineNumberRenderable | null = null
 
-  // Reusable CodeRenderables for split view (not recreated on rebuild)
+  // Reusable CodeRenderables (not recreated on rebuild)
   // These are created once and updated with new content to avoid expensive recreation
   private leftCodeRenderable: CodeRenderable | null = null
   private rightCodeRenderable: CodeRenderable | null = null
@@ -119,35 +119,8 @@ export class DiffRenderable extends Renderable {
   }
 
   private buildView(): void {
-    // Clear all existing children
-    // For split view, we'll reuse CodeRenderables if they exist
-    // For unified view, always recreate
-    if (this.unifiedView) {
-      this.unifiedView.destroyRecursively()
-      this.unifiedView = null
-    }
-
-    // For split view, only clear LineNumberRenderables
-    // CodeRenderables will be reused
-    if (this._view !== "split") {
-      // If switching away from split view, clear everything
-      if (this.leftSide) {
-        this.leftSide.destroyRecursively()
-        this.leftSide = null
-      }
-      if (this.rightSide) {
-        this.rightSide.destroyRecursively()
-        this.rightSide = null
-      }
-      if (this.leftCodeRenderable) {
-        // CodeRenderables are owned by LineNumberRenderables in split view
-        // so they're already destroyed above
-        this.leftCodeRenderable = null
-      }
-      if (this.rightCodeRenderable) {
-        this.rightCodeRenderable = null
-      }
-    }
+    // Never destroy anything - just update existing renderables or create new ones
+    // Unified view uses leftSide only, split view uses both leftSide and rightSide
 
     if (!this._parsedDiff || this._parsedDiff.hunks.length === 0) {
       return
@@ -238,40 +211,67 @@ export class DiffRenderable extends Renderable {
 
     const content = contentLines.join("\n")
 
-    // Create CodeRenderable
-    const codeOptions: any = {
-      id: this.id ? `${this.id}-unified-code` : undefined,
-      content,
-      filetype: this._filetype,
-      wrapMode: this._wrapMode,
-      conceal: this._conceal,
-      width: "100%",
-      height: "100%",
+    // Create or reuse CodeRenderable for left side (used for unified view)
+    if (!this.leftCodeRenderable) {
+      const codeOptions: any = {
+        id: this.id ? `${this.id}-left-code` : undefined,
+        content,
+        filetype: this._filetype,
+        wrapMode: this._wrapMode,
+        conceal: this._conceal,
+        width: "100%",
+        height: "100%",
+      }
+      if (this._syntaxStyle) {
+        codeOptions.syntaxStyle = this._syntaxStyle
+      }
+      this.leftCodeRenderable = new CodeRenderable(this.ctx, codeOptions)
+    } else {
+      // Update existing CodeRenderable
+      this.leftCodeRenderable.content = content
+      if (this._filetype !== undefined) {
+        this.leftCodeRenderable.filetype = this._filetype
+      }
+      if (this._syntaxStyle !== undefined) {
+        this.leftCodeRenderable.syntaxStyle = this._syntaxStyle
+      }
+      if (this._wrapMode !== undefined) {
+        this.leftCodeRenderable.wrapMode = this._wrapMode
+      }
     }
 
-    if (this._syntaxStyle) {
-      codeOptions.syntaxStyle = this._syntaxStyle
+    // Create or update LineNumberRenderable (leftSide used for unified view)
+    if (!this.leftSide) {
+      this.leftSide = new LineNumberRenderable(this.ctx, {
+        id: this.id ? `${this.id}-left` : undefined,
+        target: this.leftCodeRenderable,
+        fg: this._lineNumberFg,
+        bg: this._lineNumberBg,
+        lineColors,
+        lineSigns,
+        lineNumbers,
+        lineNumberOffset: 0,
+        hideLineNumbers: new Set<number>(),
+        width: "100%",
+        height: "100%",
+      })
+      this.leftSide.showLineNumbers = this._showLineNumbers
+      super.add(this.leftSide)
+    } else {
+      // Update LineNumberRenderable metadata
+      this.leftSide.setLineColors(lineColors)
+      this.leftSide.setLineSigns(lineSigns)
+      // Update width for unified view
+      this.leftSide.width = "100%"
+      // If rightSide exists and is added, remove it for unified view
+      if (this.rightSide) {
+        try {
+          super.remove(this.rightSide.id)
+        } catch (e) {
+          // Already removed, ignore
+        }
+      }
     }
-
-    const codeRenderable = new CodeRenderable(this.ctx, codeOptions)
-
-    // Wrap in LineNumberRenderable
-    this.unifiedView = new LineNumberRenderable(this.ctx, {
-      id: this.id ? `${this.id}-unified` : undefined,
-      target: codeRenderable,
-      fg: this._lineNumberFg,
-      bg: this._lineNumberBg,
-      lineColors,
-      lineSigns,
-      lineNumbers,
-      lineNumberOffset: 0,
-      hideLineNumbers: new Set<number>(),
-      width: "100%",
-      height: "100%",
-    })
-
-    this.unifiedView.showLineNumbers = this._showLineNumbers
-    super.add(this.unifiedView)
   }
 
   private buildSplitView(): void {
@@ -495,26 +495,8 @@ export class DiffRenderable extends Renderable {
     }
 
     // Create or update LineNumberRenderables (they wrap the CodeRenderables)
-    // Note: We need to recreate LineNumberRenderables when lineNumbers or hideLineNumbers change
-    // because the gutter needs to be recreated with the new data
-    const needsRecreate =
-      !this.leftSide ||
-      !this.rightSide ||
-      this.leftSide.getHideLineNumbers().size !== leftHideLineNumbers.size ||
-      this.rightSide.getHideLineNumbers().size !== rightHideLineNumbers.size
-
-    if (needsRecreate) {
-      // Clean up existing LineNumberRenderables
-      if (this.leftSide) {
-        this.leftSide.destroyRecursively()
-        this.leftSide = null
-      }
-      if (this.rightSide) {
-        this.rightSide.destroyRecursively()
-        this.rightSide = null
-      }
-
-      // Create new LineNumberRenderables
+    // leftSide might already exist from unified view, so we reuse it
+    if (!this.leftSide) {
       this.leftSide = new LineNumberRenderable(this.ctx, {
         id: this.id ? `${this.id}-left` : undefined,
         target: this.leftCodeRenderable,
@@ -530,7 +512,15 @@ export class DiffRenderable extends Renderable {
       })
       this.leftSide.showLineNumbers = this._showLineNumbers
       super.add(this.leftSide)
+    } else {
+      // Update existing leftSide for split view
+      this.leftSide.width = "50%"
+      this.leftSide.setLineColors(leftLineColors)
+      this.leftSide.setLineSigns(leftLineSigns)
+      this.leftSide.setHideLineNumbers(leftHideLineNumbers)
+    }
 
+    if (!this.rightSide) {
       this.rightSide = new LineNumberRenderable(this.ctx, {
         id: this.id ? `${this.id}-right` : undefined,
         target: this.rightCodeRenderable,
@@ -547,16 +537,10 @@ export class DiffRenderable extends Renderable {
       this.rightSide.showLineNumbers = this._showLineNumbers
       super.add(this.rightSide)
     } else {
-      // Update line metadata using setter methods
-      if (this.leftSide && this.rightSide) {
-        this.leftSide.setLineColors(leftLineColors)
-        this.leftSide.setLineSigns(leftLineSigns)
-        this.leftSide.setHideLineNumbers(leftHideLineNumbers)
-
-        this.rightSide.setLineColors(rightLineColors)
-        this.rightSide.setLineSigns(rightLineSigns)
-        this.rightSide.setHideLineNumbers(rightHideLineNumbers)
-      }
+      // Update existing rightSide
+      this.rightSide.setLineColors(rightLineColors)
+      this.rightSide.setLineSigns(rightLineSigns)
+      this.rightSide.setHideLineNumbers(rightHideLineNumbers)
     }
   }
 
@@ -646,9 +630,6 @@ export class DiffRenderable extends Renderable {
   public set showLineNumbers(value: boolean) {
     if (this._showLineNumbers !== value) {
       this._showLineNumbers = value
-      if (this.unifiedView) {
-        this.unifiedView.showLineNumbers = value
-      }
       if (this.leftSide) {
         this.leftSide.showLineNumbers = value
       }

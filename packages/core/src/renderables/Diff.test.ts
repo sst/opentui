@@ -661,18 +661,18 @@ test("DiffRenderable - no width glitch on initial render", async () => {
   await Bun.sleep(50)
 
   const frameAfterAutoRender = captureFrame()
-  const gutterAfterAutoRender = diffRenderable["unifiedView"]?.["gutter"]
+  const gutterAfterAutoRender = diffRenderable["leftSide"]?.["gutter"]
   const widthAfterAutoRender = gutterAfterAutoRender?.width
 
   // Now call renderOnce explicitly (this would be the second render)
   await renderOnce()
   const firstFrame = captureFrame()
-  const widthAfterFirst = diffRenderable["unifiedView"]?.["gutter"]?.width
+  const widthAfterFirst = diffRenderable["leftSide"]?.["gutter"]?.width
 
   // Render a third time
   await renderOnce()
   const secondFrame = captureFrame()
-  const widthAfterSecond = diffRenderable["unifiedView"]?.["gutter"]?.width
+  const widthAfterSecond = diffRenderable["leftSide"]?.["gutter"]?.width
 
   // EXPECTATION: Width should be correct (6) from the very first auto render
   // If this fails, it means there's a glitch where width starts incorrect
