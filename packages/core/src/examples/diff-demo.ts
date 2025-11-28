@@ -139,35 +139,68 @@ const themes: DiffTheme[] = [
   },
   {
     name: "Solarized Dark",
-    backgroundColor: "#002B36",
-    borderColor: "#2AA198",
+    backgroundColor: "#002b36", // base03 - official
+    borderColor: "#2aa198", // cyan - official
     addedBg: "#1a4032",
     removedBg: "#4d2a30",
     contextBg: "transparent",
-    addedSignColor: "#859900",
-    removedSignColor: "#DC322F",
-    lineNumberFg: "#586E75",
-    lineNumberBg: "#073642",
+    addedSignColor: "#859900", // green - official
+    removedSignColor: "#dc322f", // red - official
+    lineNumberFg: "#586e75", // base01 - official
+    lineNumberBg: "#073642", // base02 - official
     addedLineNumberBg: "#0d3326",
     removedLineNumberBg: "#3a2026",
     syntaxStyle: {
-      keyword: { fg: parseColor("#859900"), bold: true },
+      keyword: { fg: parseColor("#859900"), bold: true }, // green
       "keyword.import": { fg: parseColor("#859900"), bold: true },
-      string: { fg: parseColor("#2AA198") },
-      comment: { fg: parseColor("#586E75"), italic: true },
-      number: { fg: parseColor("#D33682") },
-      boolean: { fg: parseColor("#D33682") },
-      constant: { fg: parseColor("#B58900") },
-      function: { fg: parseColor("#268BD2") },
-      "function.call": { fg: parseColor("#268BD2") },
-      constructor: { fg: parseColor("#CB4B16") },
-      type: { fg: parseColor("#CB4B16") },
+      string: { fg: parseColor("#2aa198") }, // cyan
+      comment: { fg: parseColor("#586e75"), italic: true }, // base01
+      number: { fg: parseColor("#d33682") }, // magenta
+      boolean: { fg: parseColor("#d33682") },
+      constant: { fg: parseColor("#b58900") }, // yellow
+      function: { fg: parseColor("#268bd2") }, // blue
+      "function.call": { fg: parseColor("#268bd2") },
+      constructor: { fg: parseColor("#cb4b16") }, // orange
+      type: { fg: parseColor("#cb4b16") },
       operator: { fg: parseColor("#859900") },
-      variable: { fg: parseColor("#93A1A1") },
-      property: { fg: parseColor("#268BD2") },
-      bracket: { fg: parseColor("#93A1A1") },
-      punctuation: { fg: parseColor("#93A1A1") },
-      default: { fg: parseColor("#93A1A1") },
+      variable: { fg: parseColor("#839496") }, // base0 - official foreground
+      property: { fg: parseColor("#268bd2") },
+      bracket: { fg: parseColor("#839496") }, // base0
+      punctuation: { fg: parseColor("#839496") },
+      default: { fg: parseColor("#839496") }, // base0
+    },
+  },
+  {
+    name: "One Dark",
+    backgroundColor: "#282c34", // official
+    borderColor: "#61afef", // blue - official
+    addedBg: "#2d4a2d",
+    removedBg: "#4d2d2d",
+    contextBg: "transparent",
+    addedSignColor: "#98c379", // green - official
+    removedSignColor: "#e06c75", // red - official
+    lineNumberFg: "#636d83", // gutter - official
+    lineNumberBg: "#21252b",
+    addedLineNumberBg: "#1e3a1e",
+    removedLineNumberBg: "#3a1e1e",
+    syntaxStyle: {
+      keyword: { fg: parseColor("#c678dd"), bold: true }, // purple - official
+      "keyword.import": { fg: parseColor("#c678dd"), bold: true },
+      string: { fg: parseColor("#98c379") }, // green - official
+      comment: { fg: parseColor("#5c6370"), italic: true }, // comment - official
+      number: { fg: parseColor("#d19a66") }, // orange - official
+      boolean: { fg: parseColor("#d19a66") },
+      constant: { fg: parseColor("#d19a66") },
+      function: { fg: parseColor("#61afef") }, // blue - official
+      "function.call": { fg: parseColor("#61afef") },
+      constructor: { fg: parseColor("#e5c07b") }, // yellow - official
+      type: { fg: parseColor("#e5c07b") },
+      operator: { fg: parseColor("#56b6c2") }, // cyan - official
+      variable: { fg: parseColor("#abb2bf") }, // foreground - official
+      property: { fg: parseColor("#e06c75") }, // red - official
+      bracket: { fg: parseColor("#abb2bf") },
+      punctuation: { fg: parseColor("#abb2bf") },
+      default: { fg: parseColor("#abb2bf") },
     },
   },
 ]
