@@ -25,6 +25,8 @@ export interface DiffRenderableOptions extends RenderableOptions<DiffRenderable>
   syntaxStyle?: SyntaxStyle
   wrapMode?: "word" | "char" | "none"
   conceal?: boolean
+  selectionBg?: string | RGBA
+  selectionFg?: string | RGBA
 
   // LineNumberRenderable options
   showLineNumbers?: boolean
@@ -55,6 +57,8 @@ export class DiffRenderable extends Renderable {
   private _syntaxStyle?: SyntaxStyle
   private _wrapMode?: "word" | "char" | "none"
   private _conceal: boolean
+  private _selectionBg?: RGBA
+  private _selectionFg?: RGBA
 
   // LineNumberRenderable options
   private _showLineNumbers: boolean
@@ -110,6 +114,8 @@ export class DiffRenderable extends Renderable {
     this._syntaxStyle = options.syntaxStyle
     this._wrapMode = options.wrapMode
     this._conceal = options.conceal ?? true
+    this._selectionBg = options.selectionBg ? parseColor(options.selectionBg) : undefined
+    this._selectionFg = options.selectionFg ? parseColor(options.selectionFg) : undefined
 
     // LineNumberRenderable options
     this._showLineNumbers = options.showLineNumbers ?? true
@@ -309,6 +315,8 @@ export class DiffRenderable extends Renderable {
         width: "100%",
         height: "100%",
         ...(drawUnstyledText !== undefined && { drawUnstyledText }),
+        ...(this._selectionBg !== undefined && { selectionBg: this._selectionBg }),
+        ...(this._selectionFg !== undefined && { selectionFg: this._selectionFg }),
       }
       const newRenderable = new CodeRenderable(this.ctx, codeOptions)
 
@@ -331,6 +339,12 @@ export class DiffRenderable extends Renderable {
       }
       if (this._syntaxStyle !== undefined) {
         existingRenderable.syntaxStyle = this._syntaxStyle
+      }
+      if (this._selectionBg !== undefined) {
+        existingRenderable.selectionBg = this._selectionBg
+      }
+      if (this._selectionFg !== undefined) {
+        existingRenderable.selectionFg = this._selectionFg
       }
 
       return existingRenderable
@@ -1063,6 +1077,40 @@ export class DiffRenderable extends Renderable {
     if (this._contextContentBg !== parsed) {
       this._contextContentBg = parsed
       this.rebuildView()
+    }
+  }
+
+  public get selectionBg(): RGBA | undefined {
+    return this._selectionBg
+  }
+
+  public set selectionBg(value: string | RGBA | undefined) {
+    const parsed = value ? parseColor(value) : undefined
+    if (this._selectionBg !== parsed) {
+      this._selectionBg = parsed
+      if (this.leftCodeRenderable) {
+        this.leftCodeRenderable.selectionBg = parsed
+      }
+      if (this.rightCodeRenderable) {
+        this.rightCodeRenderable.selectionBg = parsed
+      }
+    }
+  }
+
+  public get selectionFg(): RGBA | undefined {
+    return this._selectionFg
+  }
+
+  public set selectionFg(value: string | RGBA | undefined) {
+    const parsed = value ? parseColor(value) : undefined
+    if (this._selectionFg !== parsed) {
+      this._selectionFg = parsed
+      if (this.leftCodeRenderable) {
+        this.leftCodeRenderable.selectionFg = parsed
+      }
+      if (this.rightCodeRenderable) {
+        this.rightCodeRenderable.selectionFg = parsed
+      }
     }
   }
 }

@@ -16,6 +16,8 @@ interface DiffTheme {
   lineNumberBg: string
   addedLineNumberBg: string
   removedLineNumberBg: string
+  selectionBg: string
+  selectionFg: string
   syntaxStyle: {
     keyword: { fg: RGBA; bold?: boolean }
     "keyword.import": { fg: RGBA; bold?: boolean }
@@ -51,6 +53,8 @@ const themes: DiffTheme[] = [
     lineNumberBg: "#161b22",
     addedLineNumberBg: "#0d3a0d",
     removedLineNumberBg: "#3a0d0d",
+    selectionBg: "#264F78",
+    selectionFg: "#FFFFFF",
     syntaxStyle: {
       keyword: { fg: parseColor("#FF7B72"), bold: true },
       "keyword.import": { fg: parseColor("#FF7B72"), bold: true },
@@ -84,6 +88,8 @@ const themes: DiffTheme[] = [
     lineNumberBg: "#1e1f1c",
     addedLineNumberBg: "#1e3a1e",
     removedLineNumberBg: "#3a1e1e",
+    selectionBg: "#49483E",
+    selectionFg: "#F8F8F2",
     syntaxStyle: {
       keyword: { fg: parseColor("#F92672"), bold: true },
       "keyword.import": { fg: parseColor("#F92672"), bold: true },
@@ -117,6 +123,8 @@ const themes: DiffTheme[] = [
     lineNumberBg: "#21222C",
     addedLineNumberBg: "#1f3626",
     removedLineNumberBg: "#3a2328",
+    selectionBg: "#44475A",
+    selectionFg: "#F8F8F2",
     syntaxStyle: {
       keyword: { fg: parseColor("#FF79C6"), bold: true },
       "keyword.import": { fg: parseColor("#FF79C6"), bold: true },
@@ -150,6 +158,8 @@ const themes: DiffTheme[] = [
     lineNumberBg: "#073642", // base02 - official
     addedLineNumberBg: "#0d3326",
     removedLineNumberBg: "#3a2026",
+    selectionBg: "#073642",
+    selectionFg: "#93a1a1",
     syntaxStyle: {
       keyword: { fg: parseColor("#859900"), bold: true }, // green
       "keyword.import": { fg: parseColor("#859900"), bold: true },
@@ -183,6 +193,8 @@ const themes: DiffTheme[] = [
     lineNumberBg: "#21252b",
     addedLineNumberBg: "#1e3a1e",
     removedLineNumberBg: "#3a1e1e",
+    selectionBg: "#3E4451",
+    selectionFg: "#abb2bf",
     syntaxStyle: {
       keyword: { fg: parseColor("#c678dd"), bold: true }, // purple - official
       "keyword.import": { fg: parseColor("#c678dd"), bold: true },
@@ -295,6 +307,8 @@ const applyTheme = (themeIndex: number) => {
     diffRenderable.lineNumberBg = theme.lineNumberBg
     diffRenderable.addedLineNumberBg = theme.addedLineNumberBg
     diffRenderable.removedLineNumberBg = theme.removedLineNumberBg
+    diffRenderable.selectionBg = theme.selectionBg
+    diffRenderable.selectionFg = theme.selectionFg
   }
 }
 
@@ -392,6 +406,8 @@ Other:
     lineNumberBg: theme.lineNumberBg,
     addedLineNumberBg: theme.addedLineNumberBg,
     removedLineNumberBg: theme.removedLineNumberBg,
+    selectionBg: theme.selectionBg,
+    selectionFg: theme.selectionFg,
     flexGrow: 1,
     flexShrink: 1,
   })
