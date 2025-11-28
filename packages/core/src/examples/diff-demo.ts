@@ -220,11 +220,13 @@ let diffRenderable: DiffRenderable | null = null
 let instructionsText: TextRenderable | null = null
 let titleBox: BoxRenderable | null = null
 let syntaxStyle: SyntaxStyle | null = null
+let helpModal: BoxRenderable | null = null
 let currentView: "unified" | "split" = "unified"
 let showLineNumbers = true
 let currentWrapMode: "none" | "word" = "none"
 let currentThemeIndex = 0
 let showMalformedDiff = false
+let showingHelp = false
 
 const applyTheme = (themeIndex: number) => {
   const theme = themes[themeIndex]
@@ -237,6 +239,11 @@ const applyTheme = (themeIndex: number) => {
     titleBox.borderColor = theme.borderColor
     titleBox.backgroundColor = theme.backgroundColor
     titleBox.title = `Diff Demo - ${theme.name}`
+  }
+
+  if (helpModal) {
+    helpModal.borderColor = theme.borderColor
+    helpModal.backgroundColor = theme.backgroundColor
   }
 
   if (syntaxStyle) {
@@ -286,11 +293,51 @@ export async function run(rendererInstance: CliRenderer): Promise<void> {
 
   instructionsText = new TextRenderable(renderer, {
     id: "instructions",
-    content:
-      "ESC to return | V: Toggle View (Unified/Split) | L: Toggle Line Numbers | W: Toggle Wrap Mode | T: Change Theme | M: Toggle Malformed Diff",
+    content: "ESC to return | Press ? for keybindings",
     fg: "#888888",
   })
   titleBox.add(instructionsText)
+
+  // Create help modal (hidden by default)
+  helpModal = new BoxRenderable(renderer, {
+    id: "help-modal",
+    position: "absolute",
+    left: "50%",
+    top: "50%",
+    width: 60,
+    height: 14,
+    marginLeft: -30, // Center horizontally
+    marginTop: -7, // Center vertically
+    border: true,
+    borderStyle: "double",
+    borderColor: theme.borderColor,
+    backgroundColor: theme.backgroundColor,
+    title: "Keybindings",
+    titleAlignment: "center",
+    padding: 2,
+    zIndex: 100,
+    visible: false,
+  })
+
+  const helpContent = new TextRenderable(renderer, {
+    id: "help-content",
+    content: `View Controls:
+  V : Toggle view mode (Unified/Split)
+  L : Toggle line numbers
+  W : Toggle wrap mode (None/Word)
+
+Theme & Display:
+  T : Cycle through themes
+  M : Toggle malformed diff example
+
+Other:
+  ? : Toggle this help screen
+  ESC : Return to main menu`,
+    fg: "#E6EDF3",
+  })
+
+  helpModal.add(helpContent)
+  renderer.root.add(helpModal)
 
   syntaxStyle = SyntaxStyle.fromStyles(theme.syntaxStyle)
 
@@ -318,49 +365,45 @@ export async function run(rendererInstance: CliRenderer): Promise<void> {
 
   parentContainer.add(diffRenderable)
 
-  const updateInstructions = () => {
-    if (instructionsText) {
-      const themeName = themes[currentThemeIndex].name
-      instructionsText.content = `ESC to return | V: Toggle View (${currentView.toUpperCase()}) | L: Line Numbers (${showLineNumbers ? "ON" : "OFF"}) | W: Wrap Mode (${currentWrapMode.toUpperCase()}) | T: Theme (${themeName}) | M: ${showMalformedDiff ? "Valid Diff" : "Malformed Diff"}`
-    }
-  }
-
-  updateInstructions()
-
   keyboardHandler = (key: ParsedKey) => {
+    // Handle help modal toggle
+    if (key.raw === "?" && helpModal) {
+      showingHelp = !showingHelp
+      helpModal.visible = showingHelp
+      return
+    }
+
+    // Don't process other keys when help is showing
+    if (showingHelp) return
+
     if (key.name === "v" && !key.ctrl && !key.meta) {
       // Toggle view mode
       currentView = currentView === "unified" ? "split" : "unified"
       if (diffRenderable) {
         diffRenderable.view = currentView
       }
-      updateInstructions()
     } else if (key.name === "l" && !key.ctrl && !key.meta) {
       // Toggle line numbers
       showLineNumbers = !showLineNumbers
       if (diffRenderable) {
         diffRenderable.showLineNumbers = showLineNumbers
       }
-      updateInstructions()
     } else if (key.name === "w" && !key.ctrl && !key.meta) {
       // Toggle wrap mode
       currentWrapMode = currentWrapMode === "none" ? "word" : "none"
       if (diffRenderable) {
         diffRenderable.wrapMode = currentWrapMode
       }
-      updateInstructions()
     } else if (key.name === "t" && !key.ctrl && !key.meta) {
       // Change theme
       currentThemeIndex = (currentThemeIndex + 1) % themes.length
       applyTheme(currentThemeIndex)
-      updateInstructions()
     } else if (key.name === "m" && !key.ctrl && !key.meta) {
       // Toggle malformed diff
       showMalformedDiff = !showMalformedDiff
       if (diffRenderable) {
         diffRenderable.diff = showMalformedDiff ? malformedDiff : exampleDiff
       }
-      updateInstructions()
     }
   }
 
@@ -374,11 +417,13 @@ export function destroy(rendererInstance: CliRenderer): void {
   }
 
   parentContainer?.destroy()
+  helpModal?.destroy()
   parentContainer = null
   diffRenderable = null
   instructionsText = null
   titleBox = null
   syntaxStyle = null
+  helpModal = null
 
   renderer = null
 }
