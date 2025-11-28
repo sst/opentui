@@ -402,8 +402,125 @@ export class DiffRenderable extends Renderable {
       }
     }
 
-    // Step 2: Build final content
-    // Note: Wrapping is disabled in split view to maintain alignment
+    // Step 2: Create/reuse CodeRenderables with wrapMode and drawUnstyledText
+    // We set content first to get immediate lineInfo with lineWraps
+    const preLeftContent = leftLogicalLines.map((l) => l.content).join("\n")
+    const preRightContent = rightLogicalLines.map((l) => l.content).join("\n")
+
+    const effectiveWrapMode = this._wrapMode ?? "none"
+
+    console.log(
+      `\nsplit: wrapMode=${effectiveWrapMode} preLeft=${leftLogicalLines.length} preRight=${rightLogicalLines.length}`,
+    )
+
+    if (!this.leftCodeRenderable) {
+      const leftCodeOptions: any = {
+        id: this.id ? `${this.id}-left-code` : undefined,
+        content: preLeftContent,
+        filetype: this._filetype,
+        wrapMode: effectiveWrapMode,
+        conceal: this._conceal,
+        drawUnstyledText: true, // Force immediate lineInfo update
+        width: "100%",
+        height: "100%",
+      }
+      if (this._syntaxStyle) {
+        leftCodeOptions.syntaxStyle = this._syntaxStyle
+      }
+      this.leftCodeRenderable = new CodeRenderable(this.ctx, leftCodeOptions)
+    } else {
+      this.leftCodeRenderable.content = preLeftContent
+      this.leftCodeRenderable.wrapMode = effectiveWrapMode
+      this.leftCodeRenderable.drawUnstyledText = true
+      if (this._filetype !== undefined) {
+        this.leftCodeRenderable.filetype = this._filetype
+      }
+      if (this._syntaxStyle !== undefined) {
+        this.leftCodeRenderable.syntaxStyle = this._syntaxStyle
+      }
+    }
+
+    if (!this.rightCodeRenderable) {
+      const rightCodeOptions: any = {
+        id: this.id ? `${this.id}-right-code` : undefined,
+        content: preRightContent,
+        filetype: this._filetype,
+        wrapMode: effectiveWrapMode,
+        conceal: this._conceal,
+        drawUnstyledText: true, // Force immediate lineInfo update
+        width: "100%",
+        height: "100%",
+      }
+      if (this._syntaxStyle) {
+        rightCodeOptions.syntaxStyle = this._syntaxStyle
+      }
+      this.rightCodeRenderable = new CodeRenderable(this.ctx, rightCodeOptions)
+    } else {
+      this.rightCodeRenderable.content = preRightContent
+      this.rightCodeRenderable.wrapMode = effectiveWrapMode
+      this.rightCodeRenderable.drawUnstyledText = true
+      if (this._filetype !== undefined) {
+        this.rightCodeRenderable.filetype = this._filetype
+      }
+      if (this._syntaxStyle !== undefined) {
+        this.rightCodeRenderable.syntaxStyle = this._syntaxStyle
+      }
+    }
+
+    // Step 3: Align lines using lineWraps
+    const leftLineInfo = this.leftCodeRenderable.lineInfo
+    const rightLineInfo = this.rightCodeRenderable.lineInfo
+
+    const leftWraps = leftLineInfo.lineWraps || []
+    const rightWraps = rightLineInfo.lineWraps || []
+
+    console.log(
+      `split: left wraps sample [0..3]=[${leftWraps.slice(0, 4).join(",")}] right wraps sample [0..3]=[${rightWraps.slice(0, 4).join(",")}]`,
+    )
+
+    // Build final aligned lines
+    const finalLeftLines: LogicalLine[] = []
+    const finalRightLines: LogicalLine[] = []
+
+    for (let i = 0; i < leftLogicalLines.length; i++) {
+      const leftLine = leftLogicalLines[i]
+      const rightLine = rightLogicalLines[i]
+
+      const leftWrap = leftWraps[i] || 0
+      const rightWrap = rightWraps[i] || 0
+
+      const leftVisualRows = 1 + leftWrap
+      const rightVisualRows = 1 + rightWrap
+
+      // Add the main line to both sides
+      finalLeftLines.push(leftLine)
+      finalRightLines.push(rightLine)
+
+      // If one side has more visual rows, pad the other side
+      if (leftVisualRows > rightVisualRows) {
+        const padCount = leftVisualRows - rightVisualRows
+        console.log(`split: inserted ${padCount} right padders at logical index ${i}`)
+        for (let p = 0; p < padCount; p++) {
+          finalRightLines.push({
+            content: "",
+            hideLineNumber: true,
+            type: "empty",
+          })
+        }
+      } else if (rightVisualRows > leftVisualRows) {
+        const padCount = rightVisualRows - leftVisualRows
+        console.log(`split: inserted ${padCount} left padders at logical index ${i}`)
+        for (let p = 0; p < padCount; p++) {
+          finalLeftLines.push({
+            content: "",
+            hideLineNumber: true,
+            type: "empty",
+          })
+        }
+      }
+    }
+
+    // Step 4: Build final content and metadata
     const leftLineColors = new Map<number, string | RGBA>()
     const rightLineColors = new Map<number, string | RGBA>()
     const leftLineSigns = new Map<number, LineSign>()
@@ -413,7 +530,7 @@ export class DiffRenderable extends Renderable {
     const leftLineNumbers = new Map<number, number>()
     const rightLineNumbers = new Map<number, number>()
 
-    leftLogicalLines.forEach((line, index) => {
+    finalLeftLines.forEach((line, index) => {
       if (line.lineNum !== undefined) {
         leftLineNumbers.set(index, line.lineNum)
       }
@@ -428,7 +545,7 @@ export class DiffRenderable extends Renderable {
       }
     })
 
-    rightLogicalLines.forEach((line, index) => {
+    finalRightLines.forEach((line, index) => {
       if (line.lineNum !== undefined) {
         rightLineNumbers.set(index, line.lineNum)
       }
@@ -443,72 +560,14 @@ export class DiffRenderable extends Renderable {
       }
     })
 
-    const leftContentFinal = leftLogicalLines.map((l) => l.content).join("\n")
-    const rightContentFinal = rightLogicalLines.map((l) => l.content).join("\n")
+    const leftContentFinal = finalLeftLines.map((l) => l.content).join("\n")
+    const rightContentFinal = finalRightLines.map((l) => l.content).join("\n")
 
-    console.log("\nFinal left lines:", leftContentFinal.split("\n").length)
-    console.log("Final right lines:", rightContentFinal.split("\n").length)
+    console.log(`split: final left lines=${finalLeftLines.length} right lines=${finalRightLines.length}`)
 
-    // Step 3: Create or reuse CodeRenderables
-    // For split view, we create CodeRenderables once and reuse them on subsequent rebuilds.
-    // This avoids expensive syntax highlighting re-initialization and maintains performance.
-    if (!this.leftCodeRenderable) {
-      const leftCodeOptions: any = {
-        id: this.id ? `${this.id}-left-code` : undefined,
-        content: leftContentFinal,
-        filetype: this._filetype,
-        wrapMode: "none", // Disable wrapping in split view to maintain alignment
-        conceal: this._conceal,
-        width: "100%",
-        height: "100%",
-      }
-
-      if (this._syntaxStyle) {
-        leftCodeOptions.syntaxStyle = this._syntaxStyle
-      }
-
-      this.leftCodeRenderable = new CodeRenderable(this.ctx, leftCodeOptions)
-    } else {
-      // Update existing CodeRenderable with split view content
-      this.leftCodeRenderable.content = leftContentFinal
-      // Always set wrapMode to "none" for split view to maintain alignment
-      this.leftCodeRenderable.wrapMode = "none"
-      if (this._filetype !== undefined) {
-        this.leftCodeRenderable.filetype = this._filetype
-      }
-      if (this._syntaxStyle !== undefined) {
-        this.leftCodeRenderable.syntaxStyle = this._syntaxStyle
-      }
-    }
-
-    if (!this.rightCodeRenderable) {
-      const rightCodeOptions: any = {
-        id: this.id ? `${this.id}-right-code` : undefined,
-        content: rightContentFinal,
-        filetype: this._filetype,
-        wrapMode: "none", // Disable wrapping in split view to maintain alignment
-        conceal: this._conceal,
-        width: "100%",
-        height: "100%",
-      }
-
-      if (this._syntaxStyle) {
-        rightCodeOptions.syntaxStyle = this._syntaxStyle
-      }
-
-      this.rightCodeRenderable = new CodeRenderable(this.ctx, rightCodeOptions)
-    } else {
-      // Update existing CodeRenderable with split view content
-      this.rightCodeRenderable.content = rightContentFinal
-      // Always set wrapMode to "none" for split view to maintain alignment
-      this.rightCodeRenderable.wrapMode = "none"
-      if (this._filetype !== undefined) {
-        this.rightCodeRenderable.filetype = this._filetype
-      }
-      if (this._syntaxStyle !== undefined) {
-        this.rightCodeRenderable.syntaxStyle = this._syntaxStyle
-      }
-    }
+    // Step 5: Update CodeRenderables with final content
+    this.leftCodeRenderable.content = leftContentFinal
+    this.rightCodeRenderable.content = rightContentFinal
 
     // Create or update LineNumberRenderables (they wrap the CodeRenderables)
     // leftSide might already exist from unified view, so we reuse it
@@ -651,9 +710,8 @@ export class DiffRenderable extends Renderable {
       if (this._view === "unified" && this.leftCodeRenderable) {
         this.leftCodeRenderable.wrapMode = value ?? "none"
       } else if (this._view === "split") {
-        // For split view, wrapMode is always "none" to maintain alignment
-        // So changing wrapMode has no effect in split view
-        // No need to rebuild
+        // For split view, wrapMode affects alignment, so rebuild
+        this.scheduleRebuild()
       }
     }
   }

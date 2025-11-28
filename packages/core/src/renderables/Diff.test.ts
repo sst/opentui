@@ -1065,6 +1065,72 @@ test("DiffRenderable - wrapMode works in unified view", async () => {
   expect(frameNoneAgain).toBe(frameNone)
 })
 
+test("DiffRenderable - split view with wrapMode honors wrapping alignment", async () => {
+  const syntaxStyle = SyntaxStyle.fromStyles({
+    default: { fg: RGBA.fromValues(1, 1, 1, 1) },
+  })
+
+  const calculatorDiff = `--- a/calculator.ts
++++ b/calculator.ts
+@@ -1,13 +1,20 @@
+ class Calculator {
+   add(a: number, b: number): number {
+     return a + b;
+   }
+ 
+-  subtract(a: number, b: number): number {
+-    return a - b;
++  subtract(a: number, b: number, c: number = 0): number {
++    return a - b - c;
+   }
+ 
+   multiply(a: number, b: number): number {
+     return a * b;
+   }
++
++  divide(a: number, b: number): number {
++    if (b === 0) {
++      throw new Error("Division by zero");
++    }
++    return a / b;
++  }
+ }`
+
+  const diffRenderable = new DiffRenderable(currentRenderer, {
+    id: "test-diff",
+    diff: calculatorDiff,
+    view: "split",
+    syntaxStyle,
+    showLineNumbers: true,
+    wrapMode: "word",
+    width: 80,
+    height: "100%",
+  })
+
+  currentRenderer.root.add(diffRenderable)
+  await renderOnce()
+
+  const frame = captureFrame()
+  const frameLines = frame.split("\n")
+
+  // Find the closing brace on the left (old line 13)
+  const leftClosingBraceLine = frameLines.find((l) => l.match(/^\s*13\s+\}/))
+  expect(leftClosingBraceLine).toBeTruthy()
+
+  // Find the closing brace on the right (new line 20)
+  const rightClosingBraceLine = frameLines.find((l) => l.match(/\s*20\s+\}/))
+  expect(rightClosingBraceLine).toBeTruthy()
+
+  // They should be on the SAME line in the output (same visual row)
+  // even though the right side has wrapped lines above it
+  expect(leftClosingBraceLine).toBe(rightClosingBraceLine)
+
+  // Both sides should have the same number of final visual lines
+  // (counting both logical lines and wrap continuations)
+  // This is hard to assert directly, but if alignment is correct,
+  // the closing braces being on the same line proves it worked
+})
+
 test("DiffRenderable - context lines show new line numbers in unified view", async () => {
   // Create a larger test renderer to fit the whole diff
   const testRenderer = await createTestRenderer({ width: 80, height: 30 })
