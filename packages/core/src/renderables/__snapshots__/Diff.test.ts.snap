@@ -1,5 +1,29 @@
 // Bun Snapshot v1, https://bun.sh/docs/test/snapshots
 
+exports[`DiffRenderable - invalid diff format shows error with raw diff: invalid diff format with error 1`] = `
+"Error parsing diff: Unknown line 5 "-  console.log(\\"Hello\\");"                 
+                                                                                
+--- a/test.js                                                                   
++++ b/test.js                                                                   
+@@ -a,b +c,d @@                                                                 
+ function hello() {                                                             
+-  console.log("Hello");                                                        
++  console.log("Hello, World!");                                                
+ }                                                                              
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+"
+`;
+
 exports[`DiffRenderable - unified view renders correctly: unified view simple diff 1`] = `
 " 1   function hello() {                                                         
  2 -   console.log("Hello");                                                    
@@ -456,54 +480,6 @@ exports[`DiffRenderable - no newline at end of file in split view: split view wi
 "
 `;
 
-exports[`DiffRenderable - very long lines wrapping multiple times in split view: split view multi-wrap lines 1`] = `
-" 1   short line                          1   short line                         
- 2 - This is an extremely long line      2 + This is an extremely long line     
-     that will definitely wrap multiple      that has been modified and will    
-     times when rendered in a split          definitely wrap multiple times     
-     view with word wrapping enabled         when rendered in a split view with 
-     because it contains so many words       word wrapping enabled because it   
-     and characters                          contains so many words and         
-                                             characters and even more content   
- 3   another short line                  3   another short line                 
-                                                                                
-                                                                                
-                                                                                
-                                                                                
-                                                                                
-                                                                                
-                                                                                
-                                                                                
-                                                                                
-                                                                                
-                                                                                
-"
-`;
-
-exports[`DiffRenderable - diff with only context lines (no changes): diff with only context lines 1`] = `
-" 1 line1                                                                        
- 2 line2                                                                        
- 3 line3                                                                        
- 4 line4                                                                        
- 5 line5                                                                        
-                                                                                
-                                                                                
-                                                                                
-                                                                                
-                                                                                
-                                                                                
-                                                                                
-                                                                                
-                                                                                
-                                                                                
-                                                                                
-                                                                                
-                                                                                
-                                                                                
-                                                                                
-"
-`;
-
 exports[`DiffRenderable - asymmetric block with more removes than adds in split view: split view asymmetric block more removes 1`] = `
 " 1   context_before                      1   context_before                     
  2 - remove1                             2 + add1                               
@@ -558,6 +534,54 @@ exports[`DiffRenderable - back-to-back change blocks without context lines in sp
  3 - remove3                             3 + add3                               
  4 - remove4                             4 + add4                               
                                                                                 
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+"
+`;
+
+exports[`DiffRenderable - very long lines wrapping multiple times in split view: split view multi-wrap lines 1`] = `
+" 1   short line                          1   short line                         
+ 2 - This is an extremely long line      2 + This is an extremely long line     
+     that will definitely wrap multiple      that has been modified and will    
+     times when rendered in a split          definitely wrap multiple times     
+     view with word wrapping enabled         when rendered in a split view with 
+     because it contains so many words       word wrapping enabled because it   
+     and characters                          contains so many words and         
+                                             characters and even more content   
+ 3   another short line                  3   another short line                 
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+"
+`;
+
+exports[`DiffRenderable - diff with only context lines (no changes): diff with only context lines 1`] = `
+" 1 line1                                                                        
+ 2 line2                                                                        
+ 3 line3                                                                        
+ 4 line4                                                                        
+ 5 line5                                                                        
                                                                                 
                                                                                 
                                                                                 

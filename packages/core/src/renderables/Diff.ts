@@ -5,6 +5,7 @@ import { LineNumberRenderable, type LineSign, type LineColorConfig } from "./Lin
 import { RGBA, parseColor } from "../lib/RGBA"
 import { SyntaxStyle } from "../syntax-style"
 import { parsePatch, type StructuredPatch } from "diff"
+import { TextRenderable } from "./Text"
 
 interface LogicalLine {
   content: string
@@ -47,6 +48,7 @@ export class DiffRenderable extends Renderable {
   private _diff: string
   private _view: "unified" | "split"
   private _parsedDiff: StructuredPatch | null = null
+  private _parseError: Error | null = null
 
   // CodeRenderable options
   private _filetype?: string
@@ -90,6 +92,10 @@ export class DiffRenderable extends Renderable {
   // CodeRenderables are reused and only their content is updated.
   private pendingRebuild: boolean = false
 
+  // Error renderables for displaying parse errors
+  private errorTextRenderable: TextRenderable | null = null
+  private errorCodeRenderable: CodeRenderable | null = null
+
   constructor(ctx: RenderContext, options: DiffRenderableOptions) {
     super(ctx, {
       ...options,
@@ -132,24 +138,39 @@ export class DiffRenderable extends Renderable {
   private parseDiff(): void {
     if (!this._diff) {
       this._parsedDiff = null
+      this._parseError = null
       return
     }
 
-    // Use jsdiff's parsePatch to parse the diff string
-    const patches = parsePatch(this._diff)
+    try {
+      // Use jsdiff's parsePatch to parse the diff string
+      const patches = parsePatch(this._diff)
 
-    if (patches.length === 0) {
+      if (patches.length === 0) {
+        this._parsedDiff = null
+        this._parseError = null
+        return
+      }
+
+      // Use the first patch (most diffs have only one file)
+      this._parsedDiff = patches[0]
+      this._parseError = null
+    } catch (error) {
+      // Catch parsing errors from invalid diff format
       this._parsedDiff = null
-      return
+      this._parseError = error instanceof Error ? error : new Error(String(error))
     }
-
-    // Use the first patch (most diffs have only one file)
-    this._parsedDiff = patches[0]
   }
 
   private buildView(): void {
     // Never destroy anything - just update existing renderables or create new ones
     // Unified view uses leftSide only, split view uses both leftSide and rightSide
+
+    // If there's a parse error, show error message instead
+    if (this._parseError) {
+      this.buildErrorView()
+      return
+    }
 
     if (!this._parsedDiff || this._parsedDiff.hunks.length === 0) {
       return
@@ -206,6 +227,68 @@ export class DiffRenderable extends Renderable {
    * Create or update a CodeRenderable with the given content and options.
    * Reuses existing instances to avoid expensive recreation.
    */
+  private buildErrorView(): void {
+    // Ensure column layout for error view
+    this.flexDirection = "column"
+
+    // Remove any existing diff view renderables
+    if (this.leftSide && this.leftSideAdded) {
+      super.remove(this.leftSide.id)
+      this.leftSideAdded = false
+    }
+    if (this.rightSide && this.rightSideAdded) {
+      super.remove(this.rightSide.id)
+      this.rightSideAdded = false
+    }
+
+    // Create or update error text renderable
+    const errorMessage = `Error parsing diff: ${this._parseError?.message || "Unknown error"}\n`
+    if (!this.errorTextRenderable) {
+      this.errorTextRenderable = new TextRenderable(this.ctx, {
+        id: this.id ? `${this.id}-error-text` : undefined,
+        content: errorMessage,
+        fg: "#ef4444",
+        width: "100%",
+        flexShrink: 0,
+      })
+      super.add(this.errorTextRenderable)
+    } else {
+      this.errorTextRenderable.content = errorMessage
+      // Ensure it's in the render tree
+      const errorTextIndex = this.getChildren().indexOf(this.errorTextRenderable)
+      if (errorTextIndex === -1) {
+        super.add(this.errorTextRenderable)
+      }
+    }
+
+    // Create or update error code renderable to show the raw diff
+    if (!this.errorCodeRenderable) {
+      this.errorCodeRenderable = new CodeRenderable(this.ctx, {
+        id: this.id ? `${this.id}-error-code` : undefined,
+        content: this._diff,
+        filetype: "diff",
+        syntaxStyle: this._syntaxStyle ?? SyntaxStyle.create(),
+        wrapMode: this._wrapMode,
+        conceal: this._conceal,
+        width: "100%",
+        flexGrow: 1,
+        flexShrink: 1,
+      })
+      super.add(this.errorCodeRenderable)
+    } else {
+      this.errorCodeRenderable.content = this._diff
+      this.errorCodeRenderable.wrapMode = this._wrapMode ?? "none"
+      if (this._syntaxStyle) {
+        this.errorCodeRenderable.syntaxStyle = this._syntaxStyle
+      }
+      // Ensure it's in the render tree
+      const errorCodeIndex = this.getChildren().indexOf(this.errorCodeRenderable)
+      if (errorCodeIndex === -1) {
+        super.add(this.errorCodeRenderable)
+      }
+    }
+  }
+
   private createOrUpdateCodeRenderable(
     side: "left" | "right",
     content: string,
@@ -318,6 +401,23 @@ export class DiffRenderable extends Renderable {
   private buildUnifiedView(): void {
     if (!this._parsedDiff) return
 
+    // Ensure column layout for unified view
+    this.flexDirection = "column"
+
+    // Remove error renderables if they exist
+    if (this.errorTextRenderable) {
+      const errorTextIndex = this.getChildren().indexOf(this.errorTextRenderable)
+      if (errorTextIndex !== -1) {
+        super.remove(this.errorTextRenderable.id)
+      }
+    }
+    if (this.errorCodeRenderable) {
+      const errorCodeIndex = this.getChildren().indexOf(this.errorCodeRenderable)
+      if (errorCodeIndex !== -1) {
+        super.remove(this.errorCodeRenderable.id)
+      }
+    }
+
     const contentLines: string[] = []
     const lineColors = new Map<number, string | RGBA | LineColorConfig>()
     const lineSigns = new Map<number, LineSign>()
@@ -413,6 +513,23 @@ export class DiffRenderable extends Renderable {
 
   private buildSplitView(): void {
     if (!this._parsedDiff) return
+
+    // Ensure row layout for split view
+    this.flexDirection = "row"
+
+    // Remove error renderables if they exist
+    if (this.errorTextRenderable) {
+      const errorTextIndex = this.getChildren().indexOf(this.errorTextRenderable)
+      if (errorTextIndex !== -1) {
+        super.remove(this.errorTextRenderable.id)
+      }
+    }
+    if (this.errorCodeRenderable) {
+      const errorCodeIndex = this.getChildren().indexOf(this.errorCodeRenderable)
+      if (errorCodeIndex !== -1) {
+        super.remove(this.errorCodeRenderable.id)
+      }
+    }
 
     // Step 1: Build initial content without wrapping alignment
     const leftLogicalLines: LogicalLine[] = []

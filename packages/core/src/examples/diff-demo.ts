@@ -198,6 +198,21 @@ const exampleDiff = `--- a/calculator.ts
 +  }
  }`
 
+const malformedDiff = `--- a/calculator.ts
++++ b/calculator.ts
+@@ -a,b +c,d @@
+ class Calculator {
+   add(a: number, b: number): number {
+     return a + b;
+   }
+ 
+-  subtract(a: number, b: number): number {
+-    return a - b;
++  subtract(a: number, b: number, c: number = 0): number {
++    return a - b - c;
+   }
+ }`
+
 let renderer: CliRenderer | null = null
 let keyboardHandler: ((key: ParsedKey) => void) | null = null
 let parentContainer: BoxRenderable | null = null
@@ -209,6 +224,7 @@ let currentView: "unified" | "split" = "unified"
 let showLineNumbers = true
 let currentWrapMode: "none" | "word" = "none"
 let currentThemeIndex = 0
+let showMalformedDiff = false
 
 const applyTheme = (themeIndex: number) => {
   const theme = themes[themeIndex]
@@ -271,7 +287,7 @@ export async function run(rendererInstance: CliRenderer): Promise<void> {
   instructionsText = new TextRenderable(renderer, {
     id: "instructions",
     content:
-      "ESC to return | V: Toggle View (Unified/Split) | L: Toggle Line Numbers | W: Toggle Wrap Mode | T: Change Theme",
+      "ESC to return | V: Toggle View (Unified/Split) | L: Toggle Line Numbers | W: Toggle Wrap Mode | T: Change Theme | M: Toggle Malformed Diff",
     fg: "#888888",
   })
   titleBox.add(instructionsText)
@@ -305,7 +321,7 @@ export async function run(rendererInstance: CliRenderer): Promise<void> {
   const updateInstructions = () => {
     if (instructionsText) {
       const themeName = themes[currentThemeIndex].name
-      instructionsText.content = `ESC to return | V: Toggle View (${currentView.toUpperCase()}) | L: Line Numbers (${showLineNumbers ? "ON" : "OFF"}) | W: Wrap Mode (${currentWrapMode.toUpperCase()}) | T: Theme (${themeName})`
+      instructionsText.content = `ESC to return | V: Toggle View (${currentView.toUpperCase()}) | L: Line Numbers (${showLineNumbers ? "ON" : "OFF"}) | W: Wrap Mode (${currentWrapMode.toUpperCase()}) | T: Theme (${themeName}) | M: ${showMalformedDiff ? "Valid Diff" : "Malformed Diff"}`
     }
   }
 
@@ -337,6 +353,13 @@ export async function run(rendererInstance: CliRenderer): Promise<void> {
       // Change theme
       currentThemeIndex = (currentThemeIndex + 1) % themes.length
       applyTheme(currentThemeIndex)
+      updateInstructions()
+    } else if (key.name === "m" && !key.ctrl && !key.meta) {
+      // Toggle malformed diff
+      showMalformedDiff = !showMalformedDiff
+      if (diffRenderable) {
+        diffRenderable.diff = showMalformedDiff ? malformedDiff : exampleDiff
+      }
       updateInstructions()
     }
   }

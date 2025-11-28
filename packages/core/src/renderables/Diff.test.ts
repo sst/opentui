@@ -1763,6 +1763,46 @@ Without proper headers`
   expect(diffRenderable.diff).toBe(malformedDiff)
 })
 
+test("DiffRenderable - invalid diff format shows error with raw diff", async () => {
+  const syntaxStyle = SyntaxStyle.fromStyles({
+    default: { fg: RGBA.fromValues(1, 1, 1, 1) },
+  })
+
+  // This diff has a malformed hunk header that will cause parsePatch to throw
+  // The hunk header must have the format @@ -oldStart,oldLines +newStart,newLines @@
+  const invalidDiff = `--- a/test.js
++++ b/test.js
+@@ -a,b +c,d @@
+ function hello() {
+-  console.log("Hello");
++  console.log("Hello, World!");
+ }`
+
+  const diffRenderable = new DiffRenderable(currentRenderer, {
+    id: "test-diff",
+    diff: invalidDiff,
+    view: "unified",
+    syntaxStyle,
+    width: "100%",
+    height: "100%",
+  })
+
+  currentRenderer.root.add(diffRenderable)
+
+  // Should not crash when rendering invalid diff
+  await renderOnce()
+
+  const frame = captureFrame()
+  expect(frame).toMatchSnapshot("invalid diff format with error")
+
+  // Should contain error message (the error from parsePatch)
+  expect(frame).toContain("Unknown line")
+
+  // Should show the raw diff content
+  expect(frame).toContain("@@ -a,b +c,d @@")
+  expect(frame).toContain("function hello")
+})
+
 test("DiffRenderable - diff with only context lines (no changes)", async () => {
   const syntaxStyle = SyntaxStyle.fromStyles({
     default: { fg: RGBA.fromValues(1, 1, 1, 1) },
