@@ -5,7 +5,7 @@ import { EditorView, type VisualCursor } from "../editor-view"
 import { RGBA, parseColor } from "../lib/RGBA"
 import type { RenderContext, Highlight, CursorStyleOptions, LineInfoProvider, LineInfo } from "../types"
 import type { OptimizedBuffer } from "../buffer"
-import { MeasureMode } from "yoga-layout"
+import { MeasureMode } from "bun-yoga"
 import type { SyntaxStyle } from "../syntax-style"
 
 export interface CursorChangeEvent {

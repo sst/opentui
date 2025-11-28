@@ -35,8 +35,8 @@
   },
   "dependencies": {
     "bun-ffi-structs": "0.1.2",
-    "jimp": "1.6.0",
-    "yoga-layout": "3.2.1"
+    "bun-yoga": "workspace:*",
+    "jimp": "1.6.0"
   },
   "peerDependencies": {
     "web-tree-sitter": "0.25.10"

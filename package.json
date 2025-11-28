@@ -24,5 +24,6 @@
   "prettier": {
     "semi": false,
     "printWidth": 120
-  }
+  },
+  "dependencies": {}
 }

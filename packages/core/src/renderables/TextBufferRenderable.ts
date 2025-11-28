@@ -5,7 +5,7 @@ import { TextBufferView } from "../text-buffer-view"
 import { RGBA, parseColor } from "../lib/RGBA"
 import { type RenderContext, type LineInfoProvider } from "../types"
 import type { OptimizedBuffer } from "../buffer"
-import { MeasureMode } from "yoga-layout"
+import { MeasureMode } from "bun-yoga"
 import type { LineInfo } from "../zig"
 import { SyntaxStyle } from "../syntax-style"
 
