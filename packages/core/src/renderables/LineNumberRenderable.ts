@@ -300,6 +300,27 @@ export class LineNumberRenderable extends Renderable {
     this.requestRender()
   }
 
+  private parseLineColor(line: number, color: string | RGBA | LineColorConfig): void {
+    if (typeof color === "object" && "gutter" in color) {
+      // LineColorConfig format
+      const config = color as LineColorConfig
+      if (config.gutter) {
+        this._lineColorsGutter.set(line, parseColor(config.gutter))
+      }
+      if (config.content) {
+        this._lineColorsContent.set(line, parseColor(config.content))
+      } else if (config.gutter) {
+        // If only gutter is specified, use a darker version for content
+        this._lineColorsContent.set(line, darkenColor(parseColor(config.gutter)))
+      }
+    } else {
+      // Simple format - same color for both, but content is darker
+      const parsedColor = parseColor(color as string | RGBA)
+      this._lineColorsGutter.set(line, parsedColor)
+      this._lineColorsContent.set(line, darkenColor(parsedColor))
+    }
+  }
+
   constructor(ctx: RenderContext, options: LineNumberOptions) {
     super(ctx, {
       ...options,
@@ -321,24 +342,7 @@ export class LineNumberRenderable extends Renderable {
     this._lineColorsContent = new Map<number, RGBA>()
     if (options.lineColors) {
       for (const [line, color] of options.lineColors) {
-        if (typeof color === "object" && "gutter" in color) {
-          // LineColorConfig format
-          const config = color as LineColorConfig
-          if (config.gutter) {
-            this._lineColorsGutter.set(line, parseColor(config.gutter))
-          }
-          if (config.content) {
-            this._lineColorsContent.set(line, parseColor(config.content))
-          } else if (config.gutter) {
-            // If only gutter is specified, use a darker version for content
-            this._lineColorsContent.set(line, darkenColor(parseColor(config.gutter)))
-          }
-        } else {
-          // Simple format - same color for both, but content is darker
-          const parsedColor = parseColor(color as string | RGBA)
-          this._lineColorsGutter.set(line, parsedColor)
-          this._lineColorsContent.set(line, darkenColor(parsedColor))
-        }
+        this.parseLineColor(line, color)
       }
     }
 
@@ -488,24 +492,7 @@ export class LineNumberRenderable extends Renderable {
   }
 
   public setLineColor(line: number, color: string | RGBA | LineColorConfig): void {
-    if (typeof color === "object" && "gutter" in color) {
-      // LineColorConfig format
-      const config = color as LineColorConfig
-      if (config.gutter) {
-        this._lineColorsGutter.set(line, parseColor(config.gutter))
-      }
-      if (config.content) {
-        this._lineColorsContent.set(line, parseColor(config.content))
-      } else if (config.gutter) {
-        // If only gutter is specified, use a darker version for content
-        this._lineColorsContent.set(line, darkenColor(parseColor(config.gutter)))
-      }
-    } else {
-      // Simple format - same color for both, but content is darker
-      const parsedColor = parseColor(color as string | RGBA)
-      this._lineColorsGutter.set(line, parsedColor)
-      this._lineColorsContent.set(line, darkenColor(parsedColor))
-    }
+    this.parseLineColor(line, color)
     // Update gutter if it exists
     if (this.gutter) {
       this.gutter.setLineColors(this._lineColorsGutter, this._lineColorsContent)
@@ -532,25 +519,9 @@ export class LineNumberRenderable extends Renderable {
     this._lineColorsGutter.clear()
     this._lineColorsContent.clear()
     for (const [line, color] of lineColors) {
-      if (typeof color === "object" && "gutter" in color) {
-        // LineColorConfig format
-        const config = color as LineColorConfig
-        if (config.gutter) {
-          this._lineColorsGutter.set(line, parseColor(config.gutter))
-        }
-        if (config.content) {
-          this._lineColorsContent.set(line, parseColor(config.content))
-        } else if (config.gutter) {
-          // If only gutter is specified, use a darker version for content
-          this._lineColorsContent.set(line, darkenColor(parseColor(config.gutter)))
-        }
-      } else {
-        // Simple format - same color for both, but content is darker
-        const parsedColor = parseColor(color as string | RGBA)
-        this._lineColorsGutter.set(line, parsedColor)
-        this._lineColorsContent.set(line, darkenColor(parsedColor))
-      }
+      this.parseLineColor(line, color)
     }
+    // Update gutter once after all colors are set
     if (this.gutter) {
       this.gutter.setLineColors(this._lineColorsGutter, this._lineColorsContent)
     }
