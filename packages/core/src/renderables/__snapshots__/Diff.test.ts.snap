@@ -359,3 +359,219 @@ exports[`DiffRenderable - wrapMode works in unified view: wrapMode-none 2`] = `
                                                                                 
 "
 `;
+
+exports[`DiffRenderable - multiple hunks in unified view: unified view multiple hunks 1`] = `
+"  1   function first() {                                                        
+  2 -   return 1;                                                               
+  2 +   return "one";                                                           
+  3   }                                                                         
+ 15   function second() {                                                       
+ 16     var x = 10;                                                             
+ 17 +   var y = 20;                                                             
+ 18     return x;                                                               
+ 19   }                                                                         
+ 31   function third() {                                                        
+ 31 -   console.log("old");                                                     
+ 32 +   console.log("new");                                                     
+ 33   }                                                                         
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+"
+`;
+
+exports[`DiffRenderable - multiple hunks in split view: split view multiple hunks 1`] = `
+"  1   function first() {                  1   function first() {                
+  2 -   return 1;                         2 +   return "one";                   
+  3   }                                   3   }                                 
+ 15   function second() {                15   function second() {               
+ 16     var x = 10;                      16     var x = 10;                     
+                                         17 +   var y = 20;                     
+ 17     return x;                        18     return x;                       
+ 18   }                                  19   }                                 
+ 30   function third() {                 31   function third() {                
+ 31 -   console.log("old");              32 +   console.log("new");             
+ 32   }                                  33   }                                 
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+"
+`;
+
+exports[`DiffRenderable - no newline at end of file in unified view: unified view with no newline marker 1`] = `
+" 1   line1                                                                      
+ 2   line2                                                                      
+ 3 - line3                                                                      
+ 3 + line3_modified                                                             
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+"
+`;
+
+exports[`DiffRenderable - no newline at end of file in split view: split view with no newline marker 1`] = `
+" 1   line1                               1   line1                              
+ 2   line2                               2   line2                              
+ 3 - line3                                                                      
+                                         3 + line3_modified                     
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+"
+`;
+
+exports[`DiffRenderable - very long lines wrapping multiple times in split view: split view multi-wrap lines 1`] = `
+" 1   short line                          1   short line                         
+ 2 - This is an extremely long line      2 + This is an extremely long line     
+     that will definitely wrap multiple      that has been modified and will    
+     times when rendered in a split          definitely wrap multiple times     
+     view with word wrapping enabled         when rendered in a split view with 
+     because it contains so many words       word wrapping enabled because it   
+     and characters                          contains so many words and         
+                                             characters and even more content   
+ 3   another short line                  3   another short line                 
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+"
+`;
+
+exports[`DiffRenderable - diff with only context lines (no changes): diff with only context lines 1`] = `
+" 1 line1                                                                        
+ 2 line2                                                                        
+ 3 line3                                                                        
+ 4 line4                                                                        
+ 5 line5                                                                        
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+"
+`;
+
+exports[`DiffRenderable - asymmetric block with more removes than adds in split view: split view asymmetric block more removes 1`] = `
+" 1   context_before                      1   context_before                     
+ 2 - remove1                             2 + add1                               
+ 3 - remove2                             3 + add2                               
+ 4 - remove3                                                                    
+ 5 - remove4                                                                    
+ 6 - remove5                                                                    
+ 7   context_after                       4   context_after                      
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+"
+`;
+
+exports[`DiffRenderable - asymmetric block with more adds than removes in split view: split view asymmetric block more adds 1`] = `
+" 1   context_before                      1   context_before                     
+ 2 - remove1                             2 + add1                               
+ 3 - remove2                             3 + add2                               
+                                         4 + add3                               
+                                         5 + add4                               
+                                         6 + add5                               
+ 4   context_after                       7   context_after                      
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+"
+`;
+
+exports[`DiffRenderable - back-to-back change blocks without context lines in split view: split view back-to-back blocks 1`] = `
+" 1 - remove1                             1 + add1                               
+ 2 - remove2                             2 + add2                               
+ 3 - remove3                             3 + add3                               
+ 4 - remove4                             4 + add4                               
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+"
+`;

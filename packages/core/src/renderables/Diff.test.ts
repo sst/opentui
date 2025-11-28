@@ -640,7 +640,7 @@ test("DiffRenderable - line numbers hidden for empty alignment lines in split vi
   // Left side should have empty lines without line numbers
 })
 
-test("DiffRenderable - no width glitch on initial render", async () => {
+test("DiffRenderable - stable rendering across multiple frames (no visual glitches)", async () => {
   const syntaxStyle = SyntaxStyle.fromStyles({
     default: { fg: RGBA.fromValues(1, 1, 1, 1) },
   })
@@ -661,35 +661,46 @@ test("DiffRenderable - no width glitch on initial render", async () => {
   await Bun.sleep(50)
 
   const frameAfterAutoRender = captureFrame()
-  const gutterAfterAutoRender = diffRenderable["leftSide"]?.["gutter"]
-  const widthAfterAutoRender = gutterAfterAutoRender?.width
 
   // Now call renderOnce explicitly (this would be the second render)
   await renderOnce()
   const firstFrame = captureFrame()
-  const widthAfterFirst = diffRenderable["leftSide"]?.["gutter"]?.width
 
   // Render a third time
   await renderOnce()
   const secondFrame = captureFrame()
-  const widthAfterSecond = diffRenderable["leftSide"]?.["gutter"]?.width
 
-  // EXPECTATION: Width should be correct (6) from the very first auto render
-  // If this fails, it means there's a glitch where width starts incorrect
-  expect(widthAfterAutoRender).toBe(6) // Should be 6 for double-digit line numbers
-
-  // Width should NOT change between renders (no glitch)
-  expect(widthAfterAutoRender).toBe(widthAfterFirst)
-  expect(widthAfterFirst).toBe(widthAfterSecond)
-
-  // The frames should be identical (no visual glitch)
+  // BEHAVIORAL EXPECTATION: All frames should be identical
+  // If frames differ, it indicates a visual glitch (e.g., gutter width changing,
+  // content shifting, or partial rendering)
   expect(frameAfterAutoRender).toBe(firstFrame)
   expect(firstFrame).toBe(secondFrame)
 
-  // Verify all frames have all content (not just partial)
+  // Verify all frames have complete content (not partial rendering)
   expect(frameAfterAutoRender).toContain("function add")
   expect(frameAfterAutoRender).toContain("function subtract")
   expect(frameAfterAutoRender).toContain("function multiply")
+
+  // Verify line numbers are present and properly aligned
+  // If gutter width is wrong, line numbers will be misaligned or cut off
+  const frameLines = frameAfterAutoRender.split("\n")
+  const linesWithLineNumbers = frameLines.filter((l) => l.match(/^\s*\d+\s+/))
+
+  // Should have multiple lines with line numbers
+  expect(linesWithLineNumbers.length).toBeGreaterThan(5)
+
+  // All line number widths should be consistent (not change between renders)
+  // Extract just the line number part (before the sign)
+  const lineNumberWidths = linesWithLineNumbers
+    .map((line) => {
+      const match = line.match(/^(\s*\d+)\s/)
+      return match ? match[1].length : -1
+    })
+    .filter((w) => w > 0)
+
+  // All line numbers should have the same width (indicating stable gutter)
+  const uniqueWidths = new Set(lineNumberWidths)
+  expect(uniqueWidths.size).toBe(1) // Gutter width should be consistent
 })
 
 test("DiffRenderable - can be constructed without diff and set via setter", async () => {
@@ -1222,4 +1233,575 @@ test("DiffRenderable - context lines show new line numbers in unified view", asy
 
   // Clean up
   renderer.destroy()
+})
+
+test("DiffRenderable - multiple hunks in unified view", async () => {
+  const syntaxStyle = SyntaxStyle.fromStyles({
+    default: { fg: RGBA.fromValues(1, 1, 1, 1) },
+  })
+
+  // Diff with three separate hunks
+  const multiHunkDiff = `--- a/file.js
++++ b/file.js
+@@ -1,3 +1,3 @@
+ function first() {
+-  return 1;
++  return "one";
+ }
+@@ -15,4 +15,5 @@
+ function second() {
+   var x = 10;
++  var y = 20;
+   return x;
+ }
+@@ -30,3 +31,3 @@
+ function third() {
+-  console.log("old");
++  console.log("new");
+ }`
+
+  const diffRenderable = new DiffRenderable(currentRenderer, {
+    id: "test-diff",
+    diff: multiHunkDiff,
+    view: "unified",
+    syntaxStyle,
+    showLineNumbers: true,
+    width: "100%",
+    height: "100%",
+  })
+
+  currentRenderer.root.add(diffRenderable)
+  await renderOnce()
+
+  const frame = captureFrame()
+  expect(frame).toMatchSnapshot("unified view multiple hunks")
+
+  // All three hunks should be present
+  expect(frame).toContain('return "one"')
+  expect(frame).toContain("var y = 20")
+  expect(frame).toContain('console.log("new")')
+
+  // Line numbers should be correct for each hunk
+  const frameLines = frame.split("\n")
+
+  // First hunk around line 2
+  const firstHunkLine = frameLines.find((l) => l.includes('return "one"'))
+  expect(firstHunkLine).toMatch(/2 \+/)
+
+  // Second hunk around line 17 (added line)
+  const secondHunkLine = frameLines.find((l) => l.includes("var y = 20"))
+  expect(secondHunkLine).toMatch(/17 \+/)
+
+  // Third hunk around line 32
+  const thirdHunkLine = frameLines.find((l) => l.includes('console.log("new")'))
+  expect(thirdHunkLine).toMatch(/32 \+/)
+})
+
+test("DiffRenderable - multiple hunks in split view", async () => {
+  const syntaxStyle = SyntaxStyle.fromStyles({
+    default: { fg: RGBA.fromValues(1, 1, 1, 1) },
+  })
+
+  const multiHunkDiff = `--- a/file.js
++++ b/file.js
+@@ -1,3 +1,3 @@
+ function first() {
+-  return 1;
++  return "one";
+ }
+@@ -15,4 +15,5 @@
+ function second() {
+   var x = 10;
++  var y = 20;
+   return x;
+ }
+@@ -30,3 +31,3 @@
+ function third() {
+-  console.log("old");
++  console.log("new");
+ }`
+
+  const diffRenderable = new DiffRenderable(currentRenderer, {
+    id: "test-diff",
+    diff: multiHunkDiff,
+    view: "split",
+    syntaxStyle,
+    showLineNumbers: true,
+    width: "100%",
+    height: "100%",
+  })
+
+  currentRenderer.root.add(diffRenderable)
+  await renderOnce()
+
+  const frame = captureFrame()
+  expect(frame).toMatchSnapshot("split view multiple hunks")
+
+  // All three hunks should be present in split view
+  expect(frame).toContain('return "one"')
+  expect(frame).toContain("var y = 20")
+  expect(frame).toContain('console.log("new")')
+
+  // Both old and new content should be visible
+  expect(frame).toContain("return 1")
+  expect(frame).toContain('console.log("old")')
+})
+
+test("DiffRenderable - no newline at end of file in unified view", async () => {
+  const syntaxStyle = SyntaxStyle.fromStyles({
+    default: { fg: RGBA.fromValues(1, 1, 1, 1) },
+  })
+
+  const noNewlineDiff = `--- a/test.js
++++ b/test.js
+@@ -1,3 +1,3 @@
+ line1
+ line2
+-line3
+\\ No newline at end of file
++line3_modified
+\\ No newline at end of file`
+
+  const diffRenderable = new DiffRenderable(currentRenderer, {
+    id: "test-diff",
+    diff: noNewlineDiff,
+    view: "unified",
+    syntaxStyle,
+    showLineNumbers: true,
+    width: "100%",
+    height: "100%",
+  })
+
+  currentRenderer.root.add(diffRenderable)
+  await renderOnce()
+
+  const frame = captureFrame()
+  expect(frame).toMatchSnapshot("unified view with no newline marker")
+
+  // Should show both old and new versions
+  expect(frame).toContain("line3")
+  expect(frame).toContain("line3_modified")
+
+  // Should NOT show the "No newline" marker as content
+  // (it's a special marker that should be skipped)
+  const frameLines = frame.split("\n")
+  const markerLines = frameLines.filter((l) => l.includes("No newline at end of file"))
+  expect(markerLines.length).toBe(0)
+})
+
+test("DiffRenderable - no newline at end of file in split view", async () => {
+  const syntaxStyle = SyntaxStyle.fromStyles({
+    default: { fg: RGBA.fromValues(1, 1, 1, 1) },
+  })
+
+  const noNewlineDiff = `--- a/test.js
++++ b/test.js
+@@ -1,3 +1,3 @@
+ line1
+ line2
+-line3
+\\ No newline at end of file
++line3_modified
+\\ No newline at end of file`
+
+  const diffRenderable = new DiffRenderable(currentRenderer, {
+    id: "test-diff",
+    diff: noNewlineDiff,
+    view: "split",
+    syntaxStyle,
+    showLineNumbers: true,
+    width: "100%",
+    height: "100%",
+  })
+
+  currentRenderer.root.add(diffRenderable)
+  await renderOnce()
+
+  const frame = captureFrame()
+  expect(frame).toMatchSnapshot("split view with no newline marker")
+
+  // Both sides should show their respective versions
+  expect(frame).toContain("line3")
+  expect(frame).toContain("line3_modified")
+
+  // Should NOT show the "No newline" marker
+  const frameLines = frame.split("\n")
+  const markerLines = frameLines.filter((l) => l.includes("No newline at end of file"))
+  expect(markerLines.length).toBe(0)
+})
+
+test("DiffRenderable - asymmetric block with more removes than adds in split view", async () => {
+  const syntaxStyle = SyntaxStyle.fromStyles({
+    default: { fg: RGBA.fromValues(1, 1, 1, 1) },
+  })
+
+  const asymmetricDiff = `--- a/test.js
++++ b/test.js
+@@ -1,7 +1,4 @@
+ context_before
+-remove1
+-remove2
+-remove3
+-remove4
+-remove5
++add1
++add2
+ context_after`
+
+  const diffRenderable = new DiffRenderable(currentRenderer, {
+    id: "test-diff",
+    diff: asymmetricDiff,
+    view: "split",
+    syntaxStyle,
+    showLineNumbers: true,
+    width: "100%",
+    height: "100%",
+  })
+
+  currentRenderer.root.add(diffRenderable)
+  await renderOnce()
+
+  const frame = captureFrame()
+  expect(frame).toMatchSnapshot("split view asymmetric block more removes")
+
+  // Left side should have all 5 removes
+  expect(frame).toContain("remove1")
+  expect(frame).toContain("remove2")
+  expect(frame).toContain("remove3")
+  expect(frame).toContain("remove4")
+  expect(frame).toContain("remove5")
+
+  // Right side should have 2 adds
+  expect(frame).toContain("add1")
+  expect(frame).toContain("add2")
+
+  // Context lines should appear on both sides at the same visual position
+  const frameLines = frame.split("\n")
+  const contextBeforeLines = frameLines.filter((l) => l.includes("context_before"))
+  const contextAfterLines = frameLines.filter((l) => l.includes("context_after"))
+
+  // context_before should appear once (on same visual line for both sides)
+  expect(contextBeforeLines.length).toBeGreaterThanOrEqual(1)
+
+  // context_after should appear once (on same visual line for both sides)
+  expect(contextAfterLines.length).toBeGreaterThanOrEqual(1)
+
+  // The right side should have empty padding lines to align with left side's extra removes
+  // We can verify this by checking that context_after appears at similar vertical positions
+})
+
+test("DiffRenderable - asymmetric block with more adds than removes in split view", async () => {
+  const syntaxStyle = SyntaxStyle.fromStyles({
+    default: { fg: RGBA.fromValues(1, 1, 1, 1) },
+  })
+
+  const asymmetricDiff = `--- a/test.js
++++ b/test.js
+@@ -1,4 +1,7 @@
+ context_before
+-remove1
+-remove2
++add1
++add2
++add3
++add4
++add5
+ context_after`
+
+  const diffRenderable = new DiffRenderable(currentRenderer, {
+    id: "test-diff",
+    diff: asymmetricDiff,
+    view: "split",
+    syntaxStyle,
+    showLineNumbers: true,
+    width: "100%",
+    height: "100%",
+  })
+
+  currentRenderer.root.add(diffRenderable)
+  await renderOnce()
+
+  const frame = captureFrame()
+  expect(frame).toMatchSnapshot("split view asymmetric block more adds")
+
+  // Left side should have 2 removes
+  expect(frame).toContain("remove1")
+  expect(frame).toContain("remove2")
+
+  // Right side should have all 5 adds
+  expect(frame).toContain("add1")
+  expect(frame).toContain("add2")
+  expect(frame).toContain("add3")
+  expect(frame).toContain("add4")
+  expect(frame).toContain("add5")
+
+  // Context lines should be aligned
+  const frameLines = frame.split("\n")
+  const contextBeforeLines = frameLines.filter((l) => l.includes("context_before"))
+  const contextAfterLines = frameLines.filter((l) => l.includes("context_after"))
+
+  expect(contextBeforeLines.length).toBeGreaterThanOrEqual(1)
+  expect(contextAfterLines.length).toBeGreaterThanOrEqual(1)
+})
+
+test("DiffRenderable - back-to-back change blocks without context lines in split view", async () => {
+  const syntaxStyle = SyntaxStyle.fromStyles({
+    default: { fg: RGBA.fromValues(1, 1, 1, 1) },
+  })
+
+  const backToBackDiff = `--- a/test.js
++++ b/test.js
+@@ -1,4 +1,4 @@
+-remove1
+-remove2
+-remove3
+-remove4
++add1
++add2
++add3
++add4`
+
+  const diffRenderable = new DiffRenderable(currentRenderer, {
+    id: "test-diff",
+    diff: backToBackDiff,
+    view: "split",
+    syntaxStyle,
+    showLineNumbers: true,
+    width: "100%",
+    height: "100%",
+  })
+
+  currentRenderer.root.add(diffRenderable)
+  await renderOnce()
+
+  const frame = captureFrame()
+  expect(frame).toMatchSnapshot("split view back-to-back blocks")
+
+  // All removes should be on left
+  expect(frame).toContain("remove1")
+  expect(frame).toContain("remove2")
+  expect(frame).toContain("remove3")
+  expect(frame).toContain("remove4")
+
+  // All adds should be on right
+  expect(frame).toContain("add1")
+  expect(frame).toContain("add2")
+  expect(frame).toContain("add3")
+  expect(frame).toContain("add4")
+
+  // Both sides should have same number of visual lines (with alignment)
+  const frameLines = frame.split("\n").filter((l) => l.trim().length > 0)
+  expect(frameLines.length).toBeGreaterThan(0)
+})
+
+test("DiffRenderable - very long lines wrapping multiple times in split view", async () => {
+  const syntaxStyle = SyntaxStyle.fromStyles({
+    default: { fg: RGBA.fromValues(1, 1, 1, 1) },
+  })
+
+  const longLineDiff = `--- a/test.js
++++ b/test.js
+@@ -1,3 +1,3 @@
+ short line
+-This is an extremely long line that will definitely wrap multiple times when rendered in a split view with word wrapping enabled because it contains so many words and characters
++This is an extremely long line that has been modified and will definitely wrap multiple times when rendered in a split view with word wrapping enabled because it contains so many words and characters and even more content
+ another short line`
+
+  const diffRenderable = new DiffRenderable(currentRenderer, {
+    id: "test-diff",
+    diff: longLineDiff,
+    view: "split",
+    syntaxStyle,
+    showLineNumbers: true,
+    wrapMode: "word",
+    width: "100%",
+    height: "100%",
+  })
+
+  currentRenderer.root.add(diffRenderable)
+  await renderOnce()
+
+  // Wait for wrap alignment to complete (microtask)
+  await new Promise((resolve) => setTimeout(resolve, 10))
+  await renderOnce()
+
+  const frame = captureFrame()
+  expect(frame).toMatchSnapshot("split view multi-wrap lines")
+
+  // Both versions of the long line should be present
+  expect(frame).toContain("extremely long line")
+  expect(frame).toContain("has been modified")
+
+  // Short lines should still be aligned
+  expect(frame).toContain("short line")
+  expect(frame).toContain("another short line")
+
+  const frameLines = frame.split("\n")
+
+  // Find the "another short line" on both sides
+  const shortLineMatches = frameLines.filter((l) => l.includes("another short line"))
+
+  // Should appear (on the same visual line in split view)
+  expect(shortLineMatches.length).toBeGreaterThanOrEqual(1)
+})
+
+test("DiffRenderable - rapid diff updates trigger microtask coalescing", async () => {
+  const syntaxStyle = SyntaxStyle.fromStyles({
+    default: { fg: RGBA.fromValues(1, 1, 1, 1) },
+  })
+
+  const diffRenderable = new DiffRenderable(currentRenderer, {
+    id: "test-diff",
+    diff: simpleDiff,
+    view: "split",
+    syntaxStyle,
+    showLineNumbers: true,
+    wrapMode: "word",
+    width: "100%",
+    height: "100%",
+  })
+
+  currentRenderer.root.add(diffRenderable)
+  await renderOnce()
+
+  // Rapidly update the diff multiple times
+  diffRenderable.diff = multiLineDiff
+  diffRenderable.diff = addOnlyDiff
+  diffRenderable.diff = removeOnlyDiff
+  diffRenderable.diff = simpleDiff
+
+  // Wait for microtask to complete
+  await new Promise((resolve) => setTimeout(resolve, 10))
+  await renderOnce()
+
+  const frame = captureFrame()
+
+  // Should show the final diff (simpleDiff)
+  expect(frame).toContain("function hello")
+  expect(frame).toContain('console.log("Hello")')
+  expect(frame).toContain('console.log("Hello, World!")')
+
+  // Should NOT show content from intermediate diffs
+  expect(frame).not.toContain("subtract")
+  expect(frame).not.toContain("newFunction")
+  expect(frame).not.toContain("oldFunction")
+})
+
+test("DiffRenderable - explicit content background colors differ from gutter", async () => {
+  const syntaxStyle = SyntaxStyle.fromStyles({
+    default: { fg: RGBA.fromValues(1, 1, 1, 1) },
+  })
+
+  const diffRenderable = new DiffRenderable(currentRenderer, {
+    id: "test-diff",
+    diff: simpleDiff,
+    view: "unified",
+    syntaxStyle,
+    showLineNumbers: true,
+    addedBg: "#1a4d1a",
+    removedBg: "#4d1a1a",
+    addedContentBg: "#2a5d2a",
+    removedContentBg: "#5d2a2a",
+    width: "100%",
+    height: "100%",
+  })
+
+  currentRenderer.root.add(diffRenderable)
+  await renderOnce()
+
+  const frame = captureFrame()
+
+  // Verify content is rendered
+  expect(frame).toContain("function hello")
+  expect(frame).toContain('console.log("Hello")')
+  expect(frame).toContain('console.log("Hello, World!")')
+
+  // Verify properties are set correctly
+  expect(diffRenderable.addedBg).toEqual(RGBA.fromHex("#1a4d1a"))
+  expect(diffRenderable.removedBg).toEqual(RGBA.fromHex("#4d1a1a"))
+  expect(diffRenderable.addedContentBg).toEqual(RGBA.fromHex("#2a5d2a"))
+  expect(diffRenderable.removedContentBg).toEqual(RGBA.fromHex("#5d2a2a"))
+
+  // Test that we can update them
+  diffRenderable.addedContentBg = "#3a6d3a"
+  expect(diffRenderable.addedContentBg).toEqual(RGBA.fromHex("#3a6d3a"))
+
+  await renderOnce()
+  const frame2 = captureFrame()
+
+  // Should still render correctly after update
+  expect(frame2).toContain("function hello")
+})
+
+test("DiffRenderable - malformed diff string handled gracefully", async () => {
+  const syntaxStyle = SyntaxStyle.fromStyles({
+    default: { fg: RGBA.fromValues(1, 1, 1, 1) },
+  })
+
+  const malformedDiff = `This is not a valid diff format
+Just some random text
+Without proper headers`
+
+  const diffRenderable = new DiffRenderable(currentRenderer, {
+    id: "test-diff",
+    diff: malformedDiff,
+    view: "unified",
+    syntaxStyle,
+    width: "100%",
+    height: "100%",
+  })
+
+  currentRenderer.root.add(diffRenderable)
+
+  // Should not crash when rendering malformed diff
+  await renderOnce()
+
+  const frame = captureFrame()
+
+  // Should render empty/blank since diff can't be parsed
+  // The important thing is it doesn't crash
+  expect(diffRenderable.diff).toBe(malformedDiff)
+})
+
+test("DiffRenderable - diff with only context lines (no changes)", async () => {
+  const syntaxStyle = SyntaxStyle.fromStyles({
+    default: { fg: RGBA.fromValues(1, 1, 1, 1) },
+  })
+
+  const contextOnlyDiff = `--- a/test.js
++++ b/test.js
+@@ -1,5 +1,5 @@
+ line1
+ line2
+ line3
+ line4
+ line5`
+
+  const diffRenderable = new DiffRenderable(currentRenderer, {
+    id: "test-diff",
+    diff: contextOnlyDiff,
+    view: "unified",
+    syntaxStyle,
+    showLineNumbers: true,
+    width: "100%",
+    height: "100%",
+  })
+
+  currentRenderer.root.add(diffRenderable)
+  await renderOnce()
+
+  const frame = captureFrame()
+  expect(frame).toMatchSnapshot("diff with only context lines")
+
+  // All lines should be present as context
+  expect(frame).toContain("line1")
+  expect(frame).toContain("line2")
+  expect(frame).toContain("line3")
+  expect(frame).toContain("line4")
+  expect(frame).toContain("line5")
+
+  // No +/- signs should be present (only context)
+  const frameLines = frame.split("\n")
+  const changedLines = frameLines.filter((l) => l.match(/[+-]\s*line/))
+  expect(changedLines.length).toBe(0)
 })
