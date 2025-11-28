@@ -552,4 +552,25 @@ export class LineNumberRenderable extends Renderable {
   public getHideLineNumbers(): Set<number> {
     return this._hideLineNumbers
   }
+
+  public setLineNumbers(lineNumbers: Map<number, number>): void {
+    this._lineNumbers = lineNumbers
+    if (this.gutter && this.target) {
+      // Need to recreate gutter with new lineNumbers
+      const target = this.target
+
+      // Remove both gutter and target
+      super.remove(this.gutter.id)
+      super.remove(this.target.id)
+      this.gutter = null
+      this.target = null
+
+      // Re-create with new lineNumbers
+      this.setTarget(target)
+    }
+  }
+
+  public getLineNumbers(): Map<number, number> {
+    return this._lineNumbers
+  }
 }

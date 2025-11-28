@@ -233,7 +233,7 @@ export class DiffRenderable extends Renderable {
       }
       this.leftCodeRenderable = new CodeRenderable(this.ctx, codeOptions)
     } else {
-      // Update existing CodeRenderable
+      // Update existing CodeRenderable with unified view content
       this.leftCodeRenderable.content = content
       if (this._filetype !== undefined) {
         this.leftCodeRenderable.filetype = this._filetype
@@ -241,9 +241,8 @@ export class DiffRenderable extends Renderable {
       if (this._syntaxStyle !== undefined) {
         this.leftCodeRenderable.syntaxStyle = this._syntaxStyle
       }
-      if (this._wrapMode !== undefined) {
-        this.leftCodeRenderable.wrapMode = this._wrapMode
-      }
+      // Always update wrapMode for unified view (user's preference)
+      this.leftCodeRenderable.wrapMode = this._wrapMode ?? "none"
     }
 
     // Create or update LineNumberRenderable (leftSide used for unified view)
@@ -268,6 +267,8 @@ export class DiffRenderable extends Renderable {
       // Update LineNumberRenderable metadata
       this.leftSide.setLineColors(lineColors)
       this.leftSide.setLineSigns(lineSigns)
+      this.leftSide.setLineNumbers(lineNumbers)
+      this.leftSide.setHideLineNumbers(new Set<number>())
       // Update width for unified view
       this.leftSide.width = "100%"
 
@@ -468,8 +469,10 @@ export class DiffRenderable extends Renderable {
 
       this.leftCodeRenderable = new CodeRenderable(this.ctx, leftCodeOptions)
     } else {
-      // Update existing CodeRenderable
+      // Update existing CodeRenderable with split view content
       this.leftCodeRenderable.content = leftContentFinal
+      // Always set wrapMode to "none" for split view to maintain alignment
+      this.leftCodeRenderable.wrapMode = "none"
       if (this._filetype !== undefined) {
         this.leftCodeRenderable.filetype = this._filetype
       }
@@ -495,8 +498,10 @@ export class DiffRenderable extends Renderable {
 
       this.rightCodeRenderable = new CodeRenderable(this.ctx, rightCodeOptions)
     } else {
-      // Update existing CodeRenderable
+      // Update existing CodeRenderable with split view content
       this.rightCodeRenderable.content = rightContentFinal
+      // Always set wrapMode to "none" for split view to maintain alignment
+      this.rightCodeRenderable.wrapMode = "none"
       if (this._filetype !== undefined) {
         this.rightCodeRenderable.filetype = this._filetype
       }
@@ -529,6 +534,7 @@ export class DiffRenderable extends Renderable {
       this.leftSide.width = "50%"
       this.leftSide.setLineColors(leftLineColors)
       this.leftSide.setLineSigns(leftLineSigns)
+      this.leftSide.setLineNumbers(leftLineNumbers)
       this.leftSide.setHideLineNumbers(leftHideLineNumbers)
 
       // Ensure leftSide is added if not already
@@ -559,6 +565,7 @@ export class DiffRenderable extends Renderable {
       // Update existing rightSide
       this.rightSide.setLineColors(rightLineColors)
       this.rightSide.setLineSigns(rightLineSigns)
+      this.rightSide.setLineNumbers(rightLineNumbers)
       this.rightSide.setHideLineNumbers(rightHideLineNumbers)
 
       // Re-add rightSide if it was removed (when switching from unified to split)
