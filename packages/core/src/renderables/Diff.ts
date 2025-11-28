@@ -55,6 +55,18 @@ export class DiffRenderable extends Renderable {
   private rightSide: LineNumberRenderable | null = null
   private unifiedView: LineNumberRenderable | null = null
 
+  // Reusable CodeRenderables for split view (not recreated on rebuild)
+  // These are created once and updated with new content to avoid expensive recreation
+  private leftCodeRenderable: CodeRenderable | null = null
+  private rightCodeRenderable: CodeRenderable | null = null
+
+  // Lazy rebuild strategy: For split view, debounce diff rebuilds to avoid
+  // expensive re-parsing and re-rendering on rapid changes (e.g., width changes).
+  // CodeRenderables are reused and only their content is updated.
+  private rebuildTimer: ReturnType<typeof setTimeout> | null = null
+  private readonly REBUILD_DEBOUNCE_MS = 150
+  private pendingRebuild: boolean = false
+
   constructor(ctx: RenderContext, options: DiffRenderableOptions) {
     super(ctx, {
       ...options,
@@ -107,18 +119,34 @@ export class DiffRenderable extends Renderable {
   }
 
   private buildView(): void {
-    // Clear existing children
+    // Clear all existing children
+    // For split view, we'll reuse CodeRenderables if they exist
+    // For unified view, always recreate
     if (this.unifiedView) {
       this.unifiedView.destroyRecursively()
       this.unifiedView = null
     }
-    if (this.leftSide) {
-      this.leftSide.destroyRecursively()
-      this.leftSide = null
-    }
-    if (this.rightSide) {
-      this.rightSide.destroyRecursively()
-      this.rightSide = null
+
+    // For split view, only clear LineNumberRenderables
+    // CodeRenderables will be reused
+    if (this._view !== "split") {
+      // If switching away from split view, clear everything
+      if (this.leftSide) {
+        this.leftSide.destroyRecursively()
+        this.leftSide = null
+      }
+      if (this.rightSide) {
+        this.rightSide.destroyRecursively()
+        this.rightSide = null
+      }
+      if (this.leftCodeRenderable) {
+        // CodeRenderables are owned by LineNumberRenderables in split view
+        // so they're already destroyed above
+        this.leftCodeRenderable = null
+      }
+      if (this.rightCodeRenderable) {
+        this.rightCodeRenderable = null
+      }
     }
 
     if (!this._parsedDiff || this._parsedDiff.hunks.length === 0) {
@@ -130,6 +158,29 @@ export class DiffRenderable extends Renderable {
     } else {
       this.buildSplitView()
     }
+  }
+
+  private scheduleRebuild(): void {
+    if (this.rebuildTimer) {
+      clearTimeout(this.rebuildTimer)
+    }
+
+    this.pendingRebuild = true
+    this.rebuildTimer = setTimeout(() => {
+      this.rebuildTimer = null
+      this.pendingRebuild = false
+      this.buildView()
+      this.requestRender()
+    }, this.REBUILD_DEBOUNCE_MS)
+  }
+
+  public override destroyRecursively(): void {
+    if (this.rebuildTimer) {
+      clearTimeout(this.rebuildTimer)
+      this.rebuildTimer = null
+    }
+    this.pendingRebuild = false
+    super.destroyRecursively()
   }
 
   private buildUnifiedView(): void {
@@ -386,74 +437,127 @@ export class DiffRenderable extends Renderable {
     console.log("\nFinal left lines:", leftContentFinal.split("\n").length)
     console.log("Final right lines:", rightContentFinal.split("\n").length)
 
-    // Create left side (old)
-    const leftCodeOptionsFinal: any = {
-      id: this.id ? `${this.id}-left-code` : undefined,
-      content: leftContentFinal,
-      filetype: this._filetype,
-      wrapMode: "none", // Disable wrapping in split view to maintain alignment
-      conceal: this._conceal,
-      width: "100%",
-      height: "100%",
+    // Step 3: Create or reuse CodeRenderables
+    // For split view, we create CodeRenderables once and reuse them on subsequent rebuilds.
+    // This avoids expensive syntax highlighting re-initialization and maintains performance.
+    if (!this.leftCodeRenderable) {
+      const leftCodeOptions: any = {
+        id: this.id ? `${this.id}-left-code` : undefined,
+        content: leftContentFinal,
+        filetype: this._filetype,
+        wrapMode: "none", // Disable wrapping in split view to maintain alignment
+        conceal: this._conceal,
+        width: "100%",
+        height: "100%",
+      }
+
+      if (this._syntaxStyle) {
+        leftCodeOptions.syntaxStyle = this._syntaxStyle
+      }
+
+      this.leftCodeRenderable = new CodeRenderable(this.ctx, leftCodeOptions)
+    } else {
+      // Update existing CodeRenderable
+      this.leftCodeRenderable.content = leftContentFinal
+      if (this._filetype !== undefined) {
+        this.leftCodeRenderable.filetype = this._filetype
+      }
+      if (this._syntaxStyle !== undefined) {
+        this.leftCodeRenderable.syntaxStyle = this._syntaxStyle
+      }
     }
 
-    if (this._syntaxStyle) {
-      leftCodeOptionsFinal.syntaxStyle = this._syntaxStyle
+    if (!this.rightCodeRenderable) {
+      const rightCodeOptions: any = {
+        id: this.id ? `${this.id}-right-code` : undefined,
+        content: rightContentFinal,
+        filetype: this._filetype,
+        wrapMode: "none", // Disable wrapping in split view to maintain alignment
+        conceal: this._conceal,
+        width: "100%",
+        height: "100%",
+      }
+
+      if (this._syntaxStyle) {
+        rightCodeOptions.syntaxStyle = this._syntaxStyle
+      }
+
+      this.rightCodeRenderable = new CodeRenderable(this.ctx, rightCodeOptions)
+    } else {
+      // Update existing CodeRenderable
+      this.rightCodeRenderable.content = rightContentFinal
+      if (this._filetype !== undefined) {
+        this.rightCodeRenderable.filetype = this._filetype
+      }
+      if (this._syntaxStyle !== undefined) {
+        this.rightCodeRenderable.syntaxStyle = this._syntaxStyle
+      }
     }
 
-    const leftCodeRenderable = new CodeRenderable(this.ctx, leftCodeOptionsFinal)
+    // Create or update LineNumberRenderables (they wrap the CodeRenderables)
+    // Note: We need to recreate LineNumberRenderables when lineNumbers or hideLineNumbers change
+    // because the gutter needs to be recreated with the new data
+    const needsRecreate =
+      !this.leftSide ||
+      !this.rightSide ||
+      this.leftSide.getHideLineNumbers().size !== leftHideLineNumbers.size ||
+      this.rightSide.getHideLineNumbers().size !== rightHideLineNumbers.size
 
-    this.leftSide = new LineNumberRenderable(this.ctx, {
-      id: this.id ? `${this.id}-left` : undefined,
-      target: leftCodeRenderable,
-      fg: this._lineNumberFg,
-      bg: this._lineNumberBg,
-      lineColors: leftLineColors,
-      lineSigns: leftLineSigns,
-      lineNumbers: leftLineNumbers,
-      lineNumberOffset: 0, // Not needed when using custom line numbers
-      hideLineNumbers: leftHideLineNumbers,
-      width: "50%",
-      height: "100%",
-    })
+    if (needsRecreate) {
+      // Clean up existing LineNumberRenderables
+      if (this.leftSide) {
+        this.leftSide.destroyRecursively()
+        this.leftSide = null
+      }
+      if (this.rightSide) {
+        this.rightSide.destroyRecursively()
+        this.rightSide = null
+      }
 
-    this.leftSide.showLineNumbers = this._showLineNumbers
+      // Create new LineNumberRenderables
+      this.leftSide = new LineNumberRenderable(this.ctx, {
+        id: this.id ? `${this.id}-left` : undefined,
+        target: this.leftCodeRenderable,
+        fg: this._lineNumberFg,
+        bg: this._lineNumberBg,
+        lineColors: leftLineColors,
+        lineSigns: leftLineSigns,
+        lineNumbers: leftLineNumbers,
+        lineNumberOffset: 0,
+        hideLineNumbers: leftHideLineNumbers,
+        width: "50%",
+        height: "100%",
+      })
+      this.leftSide.showLineNumbers = this._showLineNumbers
+      super.add(this.leftSide)
 
-    // Create right side (new)
-    const rightCodeOptionsFinal: any = {
-      id: this.id ? `${this.id}-right-code` : undefined,
-      content: rightContentFinal,
-      filetype: this._filetype,
-      wrapMode: "none", // Disable wrapping in split view to maintain alignment
-      conceal: this._conceal,
-      width: "100%",
-      height: "100%",
+      this.rightSide = new LineNumberRenderable(this.ctx, {
+        id: this.id ? `${this.id}-right` : undefined,
+        target: this.rightCodeRenderable,
+        fg: this._lineNumberFg,
+        bg: this._lineNumberBg,
+        lineColors: rightLineColors,
+        lineSigns: rightLineSigns,
+        lineNumbers: rightLineNumbers,
+        lineNumberOffset: 0,
+        hideLineNumbers: rightHideLineNumbers,
+        width: "50%",
+        height: "100%",
+      })
+      this.rightSide.showLineNumbers = this._showLineNumbers
+      super.add(this.rightSide)
+    } else {
+      // Update line metadata using setter methods
+      if (this.leftSide && this.rightSide) {
+        this.leftSide.setLineColors(leftLineColors)
+        this.leftSide.setLineSigns(leftLineSigns)
+        this.leftSide.setHideLineNumbers(leftHideLineNumbers)
+
+        this.rightSide.setLineColors(rightLineColors)
+        this.rightSide.setLineSigns(rightLineSigns)
+        this.rightSide.setHideLineNumbers(rightHideLineNumbers)
+      }
     }
-
-    if (this._syntaxStyle) {
-      rightCodeOptionsFinal.syntaxStyle = this._syntaxStyle
-    }
-
-    const rightCodeRenderable = new CodeRenderable(this.ctx, rightCodeOptionsFinal)
-
-    this.rightSide = new LineNumberRenderable(this.ctx, {
-      id: this.id ? `${this.id}-right` : undefined,
-      target: rightCodeRenderable,
-      fg: this._lineNumberFg,
-      bg: this._lineNumberBg,
-      lineColors: rightLineColors,
-      lineSigns: rightLineSigns,
-      lineNumbers: rightLineNumbers,
-      lineNumberOffset: 0, // Not needed when using custom line numbers
-      hideLineNumbers: rightHideLineNumbers,
-      width: "50%",
-      height: "100%",
-    })
-
-    this.rightSide.showLineNumbers = this._showLineNumbers
-
-    super.add(this.leftSide)
-    super.add(this.rightSide)
   }
 
   // Getters and setters
@@ -465,7 +569,12 @@ export class DiffRenderable extends Renderable {
     if (this._diff !== value) {
       this._diff = value
       this.parseDiff()
-      this.buildView()
+      // Use debounced rebuild for split view, immediate for unified
+      if (this._view === "split") {
+        this.scheduleRebuild()
+      } else {
+        this.buildView()
+      }
     }
   }
 
@@ -477,6 +586,7 @@ export class DiffRenderable extends Renderable {
     if (this._view !== value) {
       this._view = value
       this.flexDirection = value === "split" ? "row" : "column"
+      // Always rebuild immediately when changing view mode
       this.buildView()
     }
   }
@@ -488,7 +598,12 @@ export class DiffRenderable extends Renderable {
   public set filetype(value: string | undefined) {
     if (this._filetype !== value) {
       this._filetype = value
-      this.buildView()
+      // Use debounced rebuild for split view, immediate for unified
+      if (this._view === "split") {
+        this.scheduleRebuild()
+      } else {
+        this.buildView()
+      }
     }
   }
 
@@ -499,7 +614,12 @@ export class DiffRenderable extends Renderable {
   public set syntaxStyle(value: SyntaxStyle | undefined) {
     if (this._syntaxStyle !== value) {
       this._syntaxStyle = value
-      this.buildView()
+      // Use debounced rebuild for split view, immediate for unified
+      if (this._view === "split") {
+        this.scheduleRebuild()
+      } else {
+        this.buildView()
+      }
     }
   }
 
@@ -510,7 +630,12 @@ export class DiffRenderable extends Renderable {
   public set wrapMode(value: "word" | "char" | "none" | undefined) {
     if (this._wrapMode !== value) {
       this._wrapMode = value
-      this.buildView()
+      // Use debounced rebuild for split view, immediate for unified
+      if (this._view === "split") {
+        this.scheduleRebuild()
+      } else {
+        this.buildView()
+      }
     }
   }
 
