@@ -226,27 +226,24 @@ export class DiffRenderable extends Renderable {
   private buildSplitView(): void {
     if (!this._parsedDiff) return
 
-    // Build left side (old/removed) and right side (new/added)
-    const leftLines: string[] = []
-    const rightLines: string[] = []
-    const leftLineColors = new Map<number, string | RGBA>()
-    const rightLineColors = new Map<number, string | RGBA>()
-    const leftLineSigns = new Map<number, LineSign>()
-    const rightLineSigns = new Map<number, LineSign>()
-    const leftHideLineNumbers = new Set<number>()
-    const rightHideLineNumbers = new Set<number>()
-    const leftLineNumbers = new Map<number, number>()
-    const rightLineNumbers = new Map<number, number>()
+    // Step 1: Build initial content without wrapping alignment
+    interface LogicalLine {
+      content: string
+      lineNum?: number
+      hideLineNumber?: boolean
+      color?: string | RGBA
+      sign?: LineSign
+      type: "context" | "add" | "remove" | "empty"
+    }
 
-    let leftIndex = 0
-    let rightIndex = 0
+    const leftLogicalLines: LogicalLine[] = []
+    const rightLogicalLines: LogicalLine[] = []
 
-    // Process each hunk
+    // Process each hunk to build logical lines
     for (const hunk of this._parsedDiff.hunks) {
       let oldLineNum = hunk.oldStart
       let newLineNum = hunk.newStart
 
-      // Process lines in the hunk and group consecutive changes for better alignment
       let i = 0
       while (i < hunk.lines.length) {
         const line = hunk.lines[i]
@@ -255,14 +252,17 @@ export class DiffRenderable extends Renderable {
         if (firstChar === " ") {
           // Context line - add to both sides
           const content = line.slice(1)
-          leftLines.push(content)
-          leftLineNumbers.set(leftIndex, oldLineNum)
-          leftIndex++
+          leftLogicalLines.push({
+            content,
+            lineNum: oldLineNum,
+            type: "context",
+          })
+          rightLogicalLines.push({
+            content,
+            lineNum: newLineNum,
+            type: "context",
+          })
           oldLineNum++
-
-          rightLines.push(content)
-          rightLineNumbers.set(rightIndex, newLineNum)
-          rightIndex++
           newLineNum++
           i++
         } else if (firstChar === "\\") {
@@ -297,59 +297,111 @@ export class DiffRenderable extends Renderable {
           const maxLength = Math.max(removes.length, adds.length)
 
           for (let j = 0; j < maxLength; j++) {
-            // Add remove line to left (or empty if no more removes)
             if (j < removes.length) {
-              leftLines.push(removes[j].content)
-              leftLineColors.set(leftIndex, this._removedBg)
-              leftLineSigns.set(leftIndex, {
-                after: " -",
-                afterColor: this._removedSignColor,
+              leftLogicalLines.push({
+                content: removes[j].content,
+                lineNum: removes[j].lineNum,
+                color: this._removedBg,
+                sign: {
+                  after: " -",
+                  afterColor: this._removedSignColor,
+                },
+                type: "remove",
               })
-              leftLineNumbers.set(leftIndex, removes[j].lineNum)
             } else {
-              leftLines.push("")
-              leftHideLineNumbers.add(leftIndex)
+              leftLogicalLines.push({
+                content: "",
+                hideLineNumber: true,
+                type: "empty",
+              })
             }
-            leftIndex++
 
-            // Add add line to right (or empty if no more adds)
             if (j < adds.length) {
-              rightLines.push(adds[j].content)
-              rightLineColors.set(rightIndex, this._addedBg)
-              rightLineSigns.set(rightIndex, {
-                after: " +",
-                afterColor: this._addedSignColor,
+              rightLogicalLines.push({
+                content: adds[j].content,
+                lineNum: adds[j].lineNum,
+                color: this._addedBg,
+                sign: {
+                  after: " +",
+                  afterColor: this._addedSignColor,
+                },
+                type: "add",
               })
-              rightLineNumbers.set(rightIndex, adds[j].lineNum)
             } else {
-              rightLines.push("")
-              rightHideLineNumbers.add(rightIndex)
+              rightLogicalLines.push({
+                content: "",
+                hideLineNumber: true,
+                type: "empty",
+              })
             }
-            rightIndex++
           }
         }
       }
     }
 
-    const leftContent = leftLines.join("\n")
-    const rightContent = rightLines.join("\n")
+    // Step 2: Build final content
+    // Note: Wrapping is disabled in split view to maintain alignment
+    const leftLineColors = new Map<number, string | RGBA>()
+    const rightLineColors = new Map<number, string | RGBA>()
+    const leftLineSigns = new Map<number, LineSign>()
+    const rightLineSigns = new Map<number, LineSign>()
+    const leftHideLineNumbers = new Set<number>()
+    const rightHideLineNumbers = new Set<number>()
+    const leftLineNumbers = new Map<number, number>()
+    const rightLineNumbers = new Map<number, number>()
+
+    leftLogicalLines.forEach((line, index) => {
+      if (line.lineNum !== undefined) {
+        leftLineNumbers.set(index, line.lineNum)
+      }
+      if (line.hideLineNumber) {
+        leftHideLineNumbers.add(index)
+      }
+      if (line.color) {
+        leftLineColors.set(index, line.color)
+      }
+      if (line.sign) {
+        leftLineSigns.set(index, line.sign)
+      }
+    })
+
+    rightLogicalLines.forEach((line, index) => {
+      if (line.lineNum !== undefined) {
+        rightLineNumbers.set(index, line.lineNum)
+      }
+      if (line.hideLineNumber) {
+        rightHideLineNumbers.add(index)
+      }
+      if (line.color) {
+        rightLineColors.set(index, line.color)
+      }
+      if (line.sign) {
+        rightLineSigns.set(index, line.sign)
+      }
+    })
+
+    const leftContentFinal = leftLogicalLines.map((l) => l.content).join("\n")
+    const rightContentFinal = rightLogicalLines.map((l) => l.content).join("\n")
+
+    console.log("\nFinal left lines:", leftContentFinal.split("\n").length)
+    console.log("Final right lines:", rightContentFinal.split("\n").length)
 
     // Create left side (old)
-    const leftCodeOptions: any = {
+    const leftCodeOptionsFinal: any = {
       id: this.id ? `${this.id}-left-code` : undefined,
-      content: leftContent,
+      content: leftContentFinal,
       filetype: this._filetype,
-      wrapMode: this._wrapMode,
+      wrapMode: "none", // Disable wrapping in split view to maintain alignment
       conceal: this._conceal,
       width: "100%",
       height: "100%",
     }
 
     if (this._syntaxStyle) {
-      leftCodeOptions.syntaxStyle = this._syntaxStyle
+      leftCodeOptionsFinal.syntaxStyle = this._syntaxStyle
     }
 
-    const leftCodeRenderable = new CodeRenderable(this.ctx, leftCodeOptions)
+    const leftCodeRenderable = new CodeRenderable(this.ctx, leftCodeOptionsFinal)
 
     this.leftSide = new LineNumberRenderable(this.ctx, {
       id: this.id ? `${this.id}-left` : undefined,
@@ -368,21 +420,21 @@ export class DiffRenderable extends Renderable {
     this.leftSide.showLineNumbers = this._showLineNumbers
 
     // Create right side (new)
-    const rightCodeOptions: any = {
+    const rightCodeOptionsFinal: any = {
       id: this.id ? `${this.id}-right-code` : undefined,
-      content: rightContent,
+      content: rightContentFinal,
       filetype: this._filetype,
-      wrapMode: this._wrapMode,
+      wrapMode: "none", // Disable wrapping in split view to maintain alignment
       conceal: this._conceal,
       width: "100%",
       height: "100%",
     }
 
     if (this._syntaxStyle) {
-      rightCodeOptions.syntaxStyle = this._syntaxStyle
+      rightCodeOptionsFinal.syntaxStyle = this._syntaxStyle
     }
 
-    const rightCodeRenderable = new CodeRenderable(this.ctx, rightCodeOptions)
+    const rightCodeRenderable = new CodeRenderable(this.ctx, rightCodeOptionsFinal)
 
     this.rightSide = new LineNumberRenderable(this.ctx, {
       id: this.id ? `${this.id}-right` : undefined,

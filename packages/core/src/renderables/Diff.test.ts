@@ -899,3 +899,63 @@ test("DiffRenderable - split view should not wrap lines prematurely", async () =
   // The key assertion is that the left side doesn't wrap prematurely
   // We've already verified that above
 })
+
+test("DiffRenderable - split view alignment with calculator diff", async () => {
+  const syntaxStyle = SyntaxStyle.fromStyles({
+    default: { fg: RGBA.fromValues(1, 1, 1, 1) },
+  })
+
+  const calculatorDiff = `--- a/calculator.ts
++++ b/calculator.ts
+@@ -1,13 +1,20 @@
+ class Calculator {
+   add(a: number, b: number): number {
+     return a + b;
+   }
+ 
+-  subtract(a: number, b: number): number {
+-    return a - b;
++  subtract(a: number, b: number, c: number = 0): number {
++    return a - b - c;
+   }
+ 
+   multiply(a: number, b: number): number {
+     return a * b;
+   }
++
++  divide(a: number, b: number): number {
++    if (b === 0) {
++      throw new Error("Division by zero");
++    }
++    return a / b;
++  }
+ }`
+
+  const diffRenderable = new DiffRenderable(currentRenderer, {
+    id: "test-diff",
+    diff: calculatorDiff,
+    view: "split",
+    syntaxStyle,
+    showLineNumbers: true,
+    wrapMode: "none",
+    width: "100%",
+    height: "100%",
+  })
+
+  currentRenderer.root.add(diffRenderable)
+  await renderOnce()
+
+  const frame = captureFrame()
+  const frameLines = frame.split("\n")
+
+  // Find the closing brace on the left (old line 13)
+  const leftClosingBrace = frameLines.find((l) => l.match(/^\s*13\s+\}/))
+  expect(leftClosingBrace).toBeTruthy()
+
+  // Find the closing brace on the right (new line 20)
+  const rightClosingBrace = frameLines.find((l) => l.match(/\s*20\s+\}/))
+  expect(rightClosingBrace).toBeTruthy()
+
+  // They should be on the SAME line in the output
+  expect(leftClosingBrace).toBe(rightClosingBrace)
+})
