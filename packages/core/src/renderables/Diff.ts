@@ -646,11 +646,14 @@ export class DiffRenderable extends Renderable {
   public set wrapMode(value: "word" | "char" | "none" | undefined) {
     if (this._wrapMode !== value) {
       this._wrapMode = value
-      // Use debounced rebuild for split view, immediate for unified
-      if (this._view === "split") {
-        this.scheduleRebuild()
-      } else {
-        this.buildView()
+
+      // For unified view, directly update wrapMode on the CodeRenderable
+      if (this._view === "unified" && this.leftCodeRenderable) {
+        this.leftCodeRenderable.wrapMode = value ?? "none"
+      } else if (this._view === "split") {
+        // For split view, wrapMode is always "none" to maintain alignment
+        // So changing wrapMode has no effect in split view
+        // No need to rebuild
       }
     }
   }

@@ -287,3 +287,75 @@ exports[`DiffRenderable - large line numbers displayed correctly: unified view l
                                                                                 
 "
 `;
+
+exports[`DiffRenderable - wrapMode works in unified view: wrapMode-none 1`] = `
+" 1   function hello() {                                                         
+ 2 -   console.log("This is a very long line that should wrap when wrapMode is s
+ 2 +   console.log("This is a very long line that has been modified and should w
+ 3   }                                                                          
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+"
+`;
+
+exports[`DiffRenderable - wrapMode works in unified view: wrapMode-word 1`] = `
+" 1   function hello() {                                                         
+ 2 -   console.log("This is a very long line that should wrap when wrapMode is  
+     set to word but not when it is set to none");                              
+ 2 +   console.log("This is a very long line that has been modified and should  
+     wrap when wrapMode is set to word but not when it is set to none");        
+ 3   }                                                                          
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+"
+`;
+
+exports[`DiffRenderable - wrapMode works in unified view: wrapMode-none 2`] = `
+" 1   function hello() {                                                         
+ 2 -   console.log("This is a very long line that should wrap when wrapMode is s
+ 2 +   console.log("This is a very long line that has been modified and should w
+ 3   }                                                                          
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+"
+`;

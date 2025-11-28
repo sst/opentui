@@ -37,6 +37,7 @@ let instructionsText: TextRenderable | null = null
 let syntaxStyle: SyntaxStyle | null = null
 let currentView: "unified" | "split" = "unified"
 let showLineNumbers = true
+let currentWrapMode: "none" | "word" = "none"
 
 export async function run(rendererInstance: CliRenderer): Promise<void> {
   renderer = rendererInstance
@@ -64,7 +65,7 @@ export async function run(rendererInstance: CliRenderer): Promise<void> {
 
   instructionsText = new TextRenderable(renderer, {
     id: "instructions",
-    content: "ESC to return | V: Toggle View (Unified/Split) | L: Toggle Line Numbers",
+    content: "ESC to return | V: Toggle View (Unified/Split) | L: Toggle Line Numbers | W: Toggle Wrap Mode",
     fg: "#888888",
   })
   titleBox.add(instructionsText)
@@ -98,6 +99,7 @@ export async function run(rendererInstance: CliRenderer): Promise<void> {
     filetype: "typescript",
     syntaxStyle,
     showLineNumbers,
+    wrapMode: currentWrapMode,
     addedBg: "#1a4d1a",
     removedBg: "#4d1a1a",
     addedSignColor: "#22c55e",
@@ -112,7 +114,7 @@ export async function run(rendererInstance: CliRenderer): Promise<void> {
 
   const updateInstructions = () => {
     if (instructionsText) {
-      instructionsText.content = `ESC to return | V: Toggle View (${currentView.toUpperCase()}) | L: Line Numbers (${showLineNumbers ? "ON" : "OFF"})`
+      instructionsText.content = `ESC to return | V: Toggle View (${currentView.toUpperCase()}) | L: Line Numbers (${showLineNumbers ? "ON" : "OFF"}) | W: Wrap Mode (${currentWrapMode.toUpperCase()})`
     }
   }
 
@@ -131,6 +133,13 @@ export async function run(rendererInstance: CliRenderer): Promise<void> {
       showLineNumbers = !showLineNumbers
       if (diffRenderable) {
         diffRenderable.showLineNumbers = showLineNumbers
+      }
+      updateInstructions()
+    } else if (key.name === "w" && !key.ctrl && !key.meta) {
+      // Toggle wrap mode
+      currentWrapMode = currentWrapMode === "none" ? "word" : "none"
+      if (diffRenderable) {
+        diffRenderable.wrapMode = currentWrapMode
       }
       updateInstructions()
     }

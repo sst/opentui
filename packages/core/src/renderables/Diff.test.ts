@@ -1011,3 +1011,56 @@ test("DiffRenderable - switching between unified and split views multiple times"
   expect(frame).toContain('console.log("Hello")')
   expect(frame).toContain('console.log("Hello, World!")')
 })
+
+test("DiffRenderable - wrapMode works in unified view", async () => {
+  const syntaxStyle = SyntaxStyle.fromStyles({
+    default: { fg: RGBA.fromValues(1, 1, 1, 1) },
+  })
+
+  // Create a diff with a very long line that will wrap
+  const longLineDiff = `--- a/test.js
++++ b/test.js
+@@ -1,3 +1,3 @@
+ function hello() {
+-  console.log("This is a very long line that should wrap when wrapMode is set to word but not when it is set to none");
++  console.log("This is a very long line that has been modified and should wrap when wrapMode is set to word but not when it is set to none");
+ }`
+
+  const diffRenderable = new DiffRenderable(currentRenderer, {
+    id: "test-diff",
+    diff: longLineDiff,
+    view: "unified",
+    syntaxStyle,
+    showLineNumbers: true,
+    wrapMode: "none",
+    width: 80,
+    height: "100%",
+  })
+
+  currentRenderer.root.add(diffRenderable)
+  await renderOnce()
+
+  // Capture with wrapMode: none
+  const frameNone = captureFrame()
+  expect(frameNone).toMatchSnapshot("wrapMode-none")
+
+  // Change to wrapMode: word
+  diffRenderable.wrapMode = "word"
+  await renderOnce()
+
+  // Capture with wrapMode: word
+  const frameWord = captureFrame()
+  expect(frameWord).toMatchSnapshot("wrapMode-word")
+
+  // Frames should be different (word wrapping should create more lines)
+  expect(frameNone).not.toBe(frameWord)
+
+  // Change back to wrapMode: none
+  diffRenderable.wrapMode = "none"
+  await renderOnce()
+
+  // Should match the original
+  const frameNoneAgain = captureFrame()
+  expect(frameNoneAgain).toMatchSnapshot("wrapMode-none")
+  expect(frameNoneAgain).toBe(frameNone)
+})
