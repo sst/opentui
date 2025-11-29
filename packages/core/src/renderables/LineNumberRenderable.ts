@@ -129,6 +129,26 @@ class GutterRenderable extends Renderable {
     this.yogaNode.markDirty()
   }
 
+  public setLineNumberOffset(offset: number): void {
+    if (this._lineNumberOffset !== offset) {
+      this._lineNumberOffset = offset
+      this.yogaNode.markDirty()
+      this.requestRender()
+    }
+  }
+
+  public setHideLineNumbers(hideLineNumbers: Set<number>): void {
+    this._hideLineNumbers = hideLineNumbers
+    this.yogaNode.markDirty()
+    this.requestRender()
+  }
+
+  public setLineNumbers(lineNumbers: Map<number, number>): void {
+    this._lineNumbers = lineNumbers
+    this.yogaNode.markDirty()
+    this.requestRender()
+  }
+
   private calculateSignWidths(): void {
     this._maxBeforeWidth = 0
     this._maxAfterWidth = 0
@@ -593,9 +613,9 @@ export class LineNumberRenderable extends Renderable {
   public set lineNumberOffset(value: number) {
     if (this._lineNumberOffset !== value) {
       this._lineNumberOffset = value
-      if (this.gutter && this.target) {
-        // Need to recreate gutter with new offset
-        this.recreateGutter()
+      if (this.gutter) {
+        // Update the gutter's offset using its setter
+        this.gutter.setLineNumberOffset(value)
       }
     }
   }
@@ -606,9 +626,9 @@ export class LineNumberRenderable extends Renderable {
 
   public setHideLineNumbers(hideLineNumbers: Set<number>): void {
     this._hideLineNumbers = hideLineNumbers
-    if (this.gutter && this.target) {
-      // Need to recreate gutter with new hideLineNumbers
-      this.recreateGutter()
+    if (this.gutter) {
+      // Update the gutter's hideLineNumbers using its setter
+      this.gutter.setHideLineNumbers(hideLineNumbers)
     }
   }
 
@@ -618,53 +638,13 @@ export class LineNumberRenderable extends Renderable {
 
   public setLineNumbers(lineNumbers: Map<number, number>): void {
     this._lineNumbers = lineNumbers
-    if (this.gutter && this.target) {
-      // Need to recreate gutter with new lineNumbers
-      this.recreateGutter()
+    if (this.gutter) {
+      // Update the gutter's lineNumbers using its setter
+      this.gutter.setLineNumbers(lineNumbers)
     }
   }
 
   public getLineNumbers(): Map<number, number> {
     return this._lineNumbers
-  }
-
-  /**
-   * Recreates the gutter with the current target and settings.
-   * This is used when gutter configuration changes but the target remains the same.
-   * Does NOT remove/re-add the event listener to avoid listener leaks.
-   */
-  private recreateGutter(): void {
-    if (!this.target || !this.gutter) return
-
-    // Find the current gutter index before removing it
-    const children = this.getChildren()
-    const gutterIndex = children.indexOf(this.gutter)
-
-    // Remove old gutter
-    super.remove(this.gutter.id)
-
-    // Create new gutter with updated configuration
-    this.gutter = new GutterRenderable(this.ctx, this.target, {
-      fg: this._fg,
-      bg: this._bg,
-      minWidth: this._minWidth,
-      paddingRight: this._paddingRight,
-      lineColorsGutter: this._lineColorsGutter,
-      lineColorsContent: this._lineColorsContent,
-      lineSigns: this._lineSigns,
-      lineNumberOffset: this._lineNumberOffset,
-      hideLineNumbers: this._hideLineNumbers,
-      lineNumbers: this._lineNumbers,
-      id: this.id ? `${this.id}-gutter` : undefined,
-      buffered: true,
-    })
-
-    // Add new gutter at the same position (should be before target)
-    if (gutterIndex >= 0) {
-      super.add(this.gutter, gutterIndex)
-    } else {
-      // Fallback: add at beginning if index wasn't found
-      super.add(this.gutter, 0)
-    }
   }
 }
