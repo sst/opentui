@@ -103,11 +103,11 @@ export class TabSelectRenderable extends Renderable {
   }
 
   private refreshFrameBuffer(): void {
-    if (!this.frameBuffer || this._options.length === 0) return
-
+    if (!this.frameBuffer) return
     // Use focused colors if focused
     const bgColor = this._focused ? this._focusedBackgroundColor : this._backgroundColor
     this.frameBuffer.clear(bgColor)
+    if (this._options.length === 0) return
 
     const contentX = 0
     const contentY = 0
