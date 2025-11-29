@@ -1845,3 +1845,195 @@ test("DiffRenderable - diff with only context lines (no changes)", async () => {
   const changedLines = frameLines.filter((l) => l.match(/[+-]\s*line/))
   expect(changedLines.length).toBe(0)
 })
+
+test("DiffRenderable - should not leak listeners on unified view updates", async () => {
+  const syntaxStyle = SyntaxStyle.fromStyles({
+    default: { fg: RGBA.fromValues(1, 1, 1, 1) },
+  })
+
+  const diffRenderable = new DiffRenderable(currentRenderer, {
+    id: "test-diff",
+    diff: simpleDiff,
+    view: "unified",
+    syntaxStyle,
+    width: "100%",
+    height: "100%",
+  })
+
+  currentRenderer.root.add(diffRenderable)
+  await renderOnce()
+
+  // Get the underlying CodeRenderable (leftCodeRenderable in unified view)
+  const codeRenderable = (diffRenderable as any).leftCodeRenderable
+  expect(codeRenderable).toBeDefined()
+
+  // Check initial listener count
+  const initialListenerCount = codeRenderable.listenerCount("line-info-change")
+  expect(initialListenerCount).toBeGreaterThanOrEqual(1)
+
+  // Update the diff multiple times - this should not add more listeners
+  for (let i = 0; i < 10; i++) {
+    diffRenderable.diff = simpleDiff.replace('"Hello"', `"Hello${i}"`)
+    await renderOnce()
+  }
+
+  // Check that listener count hasn't grown
+  const finalListenerCount = codeRenderable.listenerCount("line-info-change")
+  expect(finalListenerCount).toBe(initialListenerCount)
+})
+
+test("DiffRenderable - should not leak listeners on split view updates", async () => {
+  const syntaxStyle = SyntaxStyle.fromStyles({
+    default: { fg: RGBA.fromValues(1, 1, 1, 1) },
+  })
+
+  const diffRenderable = new DiffRenderable(currentRenderer, {
+    id: "test-diff",
+    diff: simpleDiff,
+    view: "split",
+    syntaxStyle,
+    width: "100%",
+    height: "100%",
+  })
+
+  currentRenderer.root.add(diffRenderable)
+  await renderOnce()
+
+  // Get the underlying CodeRenderables
+  const leftCodeRenderable = (diffRenderable as any).leftCodeRenderable
+  const rightCodeRenderable = (diffRenderable as any).rightCodeRenderable
+  expect(leftCodeRenderable).toBeDefined()
+  expect(rightCodeRenderable).toBeDefined()
+
+  // Check initial listener counts
+  const leftInitialCount = leftCodeRenderable.listenerCount("line-info-change")
+  const rightInitialCount = rightCodeRenderable.listenerCount("line-info-change")
+  expect(leftInitialCount).toBeGreaterThanOrEqual(1)
+  expect(rightInitialCount).toBeGreaterThanOrEqual(1)
+
+  // Update the diff multiple times - this should not add more listeners
+  for (let i = 0; i < 10; i++) {
+    diffRenderable.diff = simpleDiff.replace('"Hello"', `"Hello${i}"`)
+    await renderOnce()
+  }
+
+  // Check that listener counts haven't grown
+  const leftFinalCount = leftCodeRenderable.listenerCount("line-info-change")
+  const rightFinalCount = rightCodeRenderable.listenerCount("line-info-change")
+  expect(leftFinalCount).toBe(leftInitialCount)
+  expect(rightFinalCount).toBe(rightInitialCount)
+})
+
+test("DiffRenderable - should not leak listeners when switching views", async () => {
+  const syntaxStyle = SyntaxStyle.fromStyles({
+    default: { fg: RGBA.fromValues(1, 1, 1, 1) },
+  })
+
+  const diffRenderable = new DiffRenderable(currentRenderer, {
+    id: "test-diff",
+    diff: simpleDiff,
+    view: "unified",
+    syntaxStyle,
+    width: "100%",
+    height: "100%",
+  })
+
+  currentRenderer.root.add(diffRenderable)
+  await renderOnce()
+
+  // Get initial renderables
+  const leftCodeRenderable = (diffRenderable as any).leftCodeRenderable
+  expect(leftCodeRenderable).toBeDefined()
+  const initialLeftCount = leftCodeRenderable.listenerCount("line-info-change")
+
+  // Switch to split view and back multiple times
+  for (let i = 0; i < 5; i++) {
+    diffRenderable.view = "split"
+    await renderOnce()
+
+    diffRenderable.view = "unified"
+    await renderOnce()
+  }
+
+  const finalLeftCount = leftCodeRenderable.listenerCount("line-info-change")
+
+  // Listener count should remain stable (allow some flexibility for implementation details)
+  expect(finalLeftCount).toBeLessThanOrEqual(initialLeftCount + 2)
+})
+
+test("DiffRenderable - should not leak listeners on rapid property changes", async () => {
+  const syntaxStyle = SyntaxStyle.fromStyles({
+    default: { fg: RGBA.fromValues(1, 1, 1, 1) },
+  })
+
+  const diffRenderable = new DiffRenderable(currentRenderer, {
+    id: "test-diff",
+    diff: simpleDiff,
+    view: "split",
+    syntaxStyle,
+    width: "100%",
+    height: "100%",
+  })
+
+  currentRenderer.root.add(diffRenderable)
+  await renderOnce()
+
+  const leftCodeRenderable = (diffRenderable as any).leftCodeRenderable
+  const rightCodeRenderable = (diffRenderable as any).rightCodeRenderable
+  const leftInitialCount = leftCodeRenderable.listenerCount("line-info-change")
+  const rightInitialCount = rightCodeRenderable.listenerCount("line-info-change")
+
+  // Make rapid changes that trigger rebuilds
+  for (let i = 0; i < 10; i++) {
+    diffRenderable.wrapMode = i % 2 === 0 ? "word" : "char"
+    diffRenderable.addedBg = i % 2 === 0 ? "#ff0000" : "#00ff00"
+    diffRenderable.removedBg = i % 2 === 0 ? "#0000ff" : "#ffff00"
+    await renderOnce()
+  }
+
+  const leftFinalCount = leftCodeRenderable.listenerCount("line-info-change")
+  const rightFinalCount = rightCodeRenderable.listenerCount("line-info-change")
+
+  // Listener counts should remain stable
+  expect(leftFinalCount).toBe(leftInitialCount)
+  expect(rightFinalCount).toBe(rightInitialCount)
+})
+
+test("DiffRenderable - should handle resize with wrapping without leaking listeners", async () => {
+  const syntaxStyle = SyntaxStyle.fromStyles({
+    default: { fg: RGBA.fromValues(1, 1, 1, 1) },
+  })
+
+  const diffRenderable = new DiffRenderable(currentRenderer, {
+    id: "test-diff",
+    diff: simpleDiff,
+    view: "split",
+    syntaxStyle,
+    wrapMode: "word",
+    width: 100,
+    height: "100%",
+  })
+
+  currentRenderer.root.add(diffRenderable)
+  await renderOnce()
+
+  const leftCodeRenderable = (diffRenderable as any).leftCodeRenderable
+  const rightCodeRenderable = (diffRenderable as any).rightCodeRenderable
+  const leftInitialCount = leftCodeRenderable.listenerCount("line-info-change")
+  const rightInitialCount = rightCodeRenderable.listenerCount("line-info-change")
+
+  // Simulate multiple resizes (which trigger rebuilds in split view with wrapping)
+  for (let i = 0; i < 10; i++) {
+    diffRenderable.width = 50 + i * 5
+    await renderOnce()
+    // Wait for microtask rebuild
+    await new Promise((resolve) => setTimeout(resolve, 10))
+    await renderOnce()
+  }
+
+  const leftFinalCount = leftCodeRenderable.listenerCount("line-info-change")
+  const rightFinalCount = rightCodeRenderable.listenerCount("line-info-change")
+
+  expect(leftFinalCount).toBe(leftInitialCount)
+  expect(rightFinalCount).toBe(rightInitialCount)
+})
