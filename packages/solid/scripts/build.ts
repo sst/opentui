@@ -125,6 +125,10 @@ const exports = {
   "./preload": {
     import: "./scripts/preload.ts",
   },
+  "./bun-plugin": {
+    types: "./scripts/solid-plugin.d.ts",
+    import: "./scripts/solid-plugin.ts",
+  },
   "./jsx-runtime": "./jsx-runtime.d.ts",
   "./jsx-dev-runtime": "./jsx-runtime.d.ts",
 }
