@@ -37,8 +37,7 @@
     "bun-ffi-structs": "0.1.2",
     "bun-yoga": "^0.2.4",
     "jimp": "1.6.0"
-    "diff": "8.0.2",
-    "jimp": "1.6.0"
+    "diff": "8.0.2"
   },
   "peerDependencies": {
     "web-tree-sitter": "0.25.10"
