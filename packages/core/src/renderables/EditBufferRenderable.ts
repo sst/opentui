@@ -150,6 +150,7 @@ export abstract class EditBufferRenderable extends Renderable implements LineInf
     this.editBuffer.on("content-changed", () => {
       this.yogaNode.markDirty()
       this.requestRender()
+      this.emit("line-info-change")
       if (this._contentChangeListener) {
         this._contentChangeListener({})
       }

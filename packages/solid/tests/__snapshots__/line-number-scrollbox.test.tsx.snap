@@ -1,0 +1,405 @@
+// Bun Snapshot v1, https://bun.sh/docs/test/snapshots
+
+exports[`LineNumber in ScrollBox - Height and Overlap Issues single line_number with code in scrollbox should not have excessive height 1`] = `
+" 1 function hello() {                   
+ 2   console.log("Hello, World!");      
+ 3   return 42;                         
+ 4 }                                    
+                                        
+                                        
+                                        
+                                        
+                                        
+                                        
+                                        
+                                        
+                                        
+                                        
+                                        
+                                        
+                                        
+                                        
+                                        
+                                        
+                                        
+                                        
+                                        
+                                        
+                                        
+                                        
+                                        
+                                        
+                                        
+                                        
+"
+`;
+
+exports[`LineNumber in ScrollBox - Height and Overlap Issues WORKAROUND: flexShrink=0 fixes the height issue 1`] = `
+" 1 function hello() {                   
+ 2   console.log("Hello, World!");      
+ 3   return 42;                         
+ 4 }                                    
+                                        
+                                        
+                                        
+                                        
+                                        
+                                        
+                                        
+                                        
+                                        
+                                        
+                                        
+                                        
+                                        
+                                        
+                                        
+                                        
+                                        
+                                        
+                                        
+                                        
+                                        
+                                        
+                                        
+                                        
+                                        
+                                        
+"
+`;
+
+exports[`LineNumber in ScrollBox - Height and Overlap Issues REPRODUCES BUG: single line_number with code in scrollbox has excessive height 1`] = `
+" 1 function hello() {                   
+ 2   console.log("Hello, World!");      
+ 3   return 42;                         
+ 4 }                                    
+                                        
+                                        
+                                        
+                                        
+                                        
+                                        
+                                        
+                                        
+                                        
+                                        
+                                        
+                                        
+                                        
+                                        
+                                        
+                                        
+                                        
+                                        
+                                        
+                                        
+                                        
+                                        
+                                        
+                                        
+                                        
+                                        
+"
+`;
+
+exports[`LineNumber in ScrollBox - Height and Overlap Issues multiple line_number blocks should not overlap - realistic chat scenario 1`] = `
+"  Wrote src/hello.ts                              
+   1 export function hello() {                    
+   2   return "Hello, World!";                    
+   3 }                                            
+  I've created the hello function.                
+  Wrote src/test.ts                               
+   1 import { hello } from "./hello";             
+   2                                              
+   3 test("hello returns greeting", () => {       
+   4   expect(hello()).toBe("Hello, World!");     
+   5 });                                          
+  I've also added a test file.                    
+                                                  
+                                                  
+                                                  
+                                                  
+                                                  
+                                                  
+                                                  
+                                                  
+                                                  
+                                                  
+                                                  
+                                                  
+                                                  
+                                                  
+                                                  
+                                                  
+                                                  
+                                                  
+                                                  
+                                                  
+                                                  
+                                                  
+                                                  
+                                                  
+                                                  
+                                                  
+                                                  
+                                                  
+"
+`;
+
+exports[`LineNumber in ScrollBox - Height and Overlap Issues line_number height should match code content height, not double 1`] = `
+"--- START MARKER ---                    
+ 1 const x = 1;                         
+ 2 const y = 2;                         
+--- END MARKER ---                      
+                                        
+                                        
+                                        
+                                        
+                                        
+                                        
+                                        
+                                        
+                                        
+                                        
+                                        
+                                        
+                                        
+                                        
+                                        
+                                        
+                                        
+                                        
+                                        
+                                        
+                                        
+"
+`;
+
+exports[`LineNumber in ScrollBox - Height and Overlap Issues scrollbox with box container around line_number - no excessive height 1`] = `
+"                                                  
+  Message 1                                       
+  ┌────────────────────────────────────────────┐  
+  │ 1 function test() {                        │  
+  │ 2   return true;                           │  
+  │ 3 }                                        │  
+  └────────────────────────────────────────────┘  
+  Message 2                                       
+                                                  
+                                                  
+                                                  
+                                                  
+                                                  
+                                                  
+                                                  
+                                                  
+                                                  
+                                                  
+                                                  
+                                                  
+                                                  
+                                                  
+                                                  
+                                                  
+                                                  
+                                                  
+                                                  
+                                                  
+                                                  
+                                                  
+"
+`;
+
+exports[`LineNumber in ScrollBox - Height and Overlap Issues multiple messages with mixed content - verify no overlapping 1`] = `
+"                                                            
+  Let me create a file for you.                             
+  Wrote src/greet.ts                                        
+   1 export const greet = (name: string) => {               
+   2   return \`Hello, \${name}!\`;                            
+   3 };                                                     
+  I've created the greet function.                          
+  Wrote src/index.ts                                        
+   1 import { greet } from "./greet";                       
+   2                                                        
+   3 console.log(greet("World"));                           
+  Error [2:5]: Unused variable                              
+  And here's the main file.                                 
+                                                            
+                                                            
+                                                            
+                                                            
+                                                            
+                                                            
+                                                            
+                                                            
+                                                            
+                                                            
+                                                            
+                                                            
+                                                            
+                                                            
+                                                            
+                                                            
+                                                            
+                                                            
+                                                            
+                                                            
+                                                            
+                                                            
+                                                            
+                                                            
+                                                            
+                                                            
+                                                            
+                                                            
+                                                            
+                                                            
+                                                            
+                                                            
+                                                            
+                                                            
+                                                            
+                                                            
+                                                            
+"
+`;
+
+exports[`LineNumber in ScrollBox - Height and Overlap Issues scroll behavior - content should remain visible after scroll 1`] = `
+"Message 1                               
+ 1 const a = 1;                         
+Message 2                               
+ 1 const b = 2;                         
+                                        
+                                        
+                                        
+                                        
+                                        
+                                        
+                                        
+                                        
+                                        
+                                        
+                                        
+                                        
+                                        
+                                        
+                                        
+                                        
+                                        
+                                        
+                                        
+                                        
+                                        
+                                        
+                                        
+                                        
+                                        
+                                        
+"
+`;
+
+exports[`LineNumber in ScrollBox - Height and Overlap Issues scroll behavior - content should remain visible after scroll 2`] = `
+"Message 8                               
+ 1 const var8 = 8;                      
+Message 9                               
+ 1 const var9 = 9;                      
+Message 10                              
+ 1 const var10 = 10;                    
+Message 11                              
+ 1 const var11 = 11;                    
+Message 12                              
+ 1 const var12 = 12;                    
+Message 13                              
+ 1 const var13 = 13;                    
+Message 14                              
+ 1 const var14 = 14;                    
+Message 15                              
+ 1 const var15 = 15;                    
+Message 16                              
+ 1 const var16 = 16;                    
+Message 17                              
+ 1 const var17 = 17;                    
+Message 18                              
+ 1 const var18 = 18;                    
+Message 19                              
+ 1 const var19 = 19;                    
+Message 20                              
+ 1 const var20 = 20;                    
+Message 21                              
+ 1 const var21 = 21;                    
+Message 22                              
+ 1 const var22 = 22;                    
+"
+`;
+
+exports[`LineNumber in ScrollBox - Height and Overlap Issues scroll behavior - content should remain visible after scroll 3`] = `
+"Message 8                               
+ 1 const var8 = 8;                      
+Message 9                               
+ 1 const var9 = 9;                      
+Message 10                              
+ 1 const var10 = 10;                    
+Message 11                              
+ 1 const var11 = 11;                    
+Message 12                              
+ 1 const var12 = 12;                    
+Message 13                              
+ 1 const var13 = 13;                    
+Message 14                              
+ 1 const var14 = 14;                    
+Message 15                              
+ 1 const var15 = 15;                    
+Message 16                              
+ 1 const var16 = 16;                    
+Message 17                              
+ 1 const var17 = 17;                    
+Message 18                              
+ 1 const var18 = 18;                    
+Message 19                              
+ 1 const var19 = 19;                    
+Message 20                              
+ 1 const var20 = 20;                    
+Message 21                              
+ 1 const var21 = 21;                    
+Message 22                              
+ 1 const var22 = 22;                    
+"
+`;
+
+exports[`LineNumber in ScrollBox - Height and Overlap Issues VISUAL CHECK: box with line_number should have clean spacing 1`] = `
+"                                                  
+                                                  
+  ═══ Code Block 1 ═══                            
+  ┌────────────────────────────────────────────┐  
+  │ 1 const x = 1;                             │  
+  │ 2 const y = 2;                             │  
+  │ 3 const z = 3;                             │  
+  └────────────────────────────────────────────┘  
+  ═══ Code Block 2 ═══                            
+  ┌────────────────────────────────────────────┐  
+  │ 1 function test() {                        │  
+  │ 2   return 42;                             │  
+  │ 3 }                                        │  
+  └────────────────────────────────────────────┘  
+  ═══ End ═══                                     
+                                                  
+                                                  
+                                                  
+                                                  
+                                                  
+                                                  
+                                                  
+                                                  
+                                                  
+                                                  
+                                                  
+                                                  
+                                                  
+                                                  
+                                                  
+                                                  
+                                                  
+                                                  
+                                                  
+                                                  
+"
+`;

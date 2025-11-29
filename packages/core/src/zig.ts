@@ -495,6 +495,10 @@ function getOpenTUILib(libPath?: string) {
       args: ["ptr", "u32", "u32"],
       returns: "void",
     },
+    textBufferViewSetViewport: {
+      args: ["ptr", "u32", "u32", "u32", "u32"],
+      returns: "void",
+    },
     textBufferViewGetVirtualLineCount: {
       args: ["ptr"],
       returns: "u32",
@@ -1277,6 +1281,7 @@ export interface RenderLib {
   textBufferViewSetWrapWidth: (view: Pointer, width: number) => void
   textBufferViewSetWrapMode: (view: Pointer, mode: "none" | "char" | "word") => void
   textBufferViewSetViewportSize: (view: Pointer, width: number, height: number) => void
+  textBufferViewSetViewport: (view: Pointer, x: number, y: number, width: number, height: number) => void
   textBufferViewGetLineInfo: (view: Pointer) => LineInfo
   textBufferViewGetLogicalLineInfo: (view: Pointer) => LineInfo
   textBufferViewGetSelectedTextBytes: (view: Pointer, maxLength: number) => Uint8Array | null
@@ -2226,9 +2231,14 @@ class FFIRenderLib implements RenderLib {
     this.opentui.symbols.textBufferViewSetViewportSize(view, width, height)
   }
 
-  private unpackLineInfo(outBuffer: ArrayBuffer): LineInfo {
-    const struct = LineInfoStruct.unpack(outBuffer)
+  public textBufferViewSetViewport(view: Pointer, x: number, y: number, width: number, height: number): void {
+    this.opentui.symbols.textBufferViewSetViewport(view, x, y, width, height)
+  }
 
+  public textBufferViewGetLineInfo(view: Pointer): LineInfo {
+    const outBuffer = new ArrayBuffer(LineInfoStruct.size)
+    this.textBufferViewGetLineInfoDirect(view, ptr(outBuffer))
+    const struct = LineInfoStruct.unpack(outBuffer)
     return {
       maxLineWidth: struct.maxWidth,
       lineStarts: struct.starts as number[],
@@ -2238,16 +2248,17 @@ class FFIRenderLib implements RenderLib {
     }
   }
 
-  public textBufferViewGetLineInfo(view: Pointer): LineInfo {
-    const outBuffer = new ArrayBuffer(LineInfoStruct.size)
-    this.textBufferViewGetLineInfoDirect(view, ptr(outBuffer))
-    return this.unpackLineInfo(outBuffer)
-  }
-
   public textBufferViewGetLogicalLineInfo(view: Pointer): LineInfo {
     const outBuffer = new ArrayBuffer(LineInfoStruct.size)
     this.textBufferViewGetLogicalLineInfoDirect(view, ptr(outBuffer))
-    return this.unpackLineInfo(outBuffer)
+    const struct = LineInfoStruct.unpack(outBuffer)
+    return {
+      maxLineWidth: struct.maxWidth,
+      lineStarts: struct.starts as number[],
+      lineWidths: struct.widths as number[],
+      lineSources: struct.sources as number[],
+      lineWraps: struct.wraps as number[],
+    }
   }
 
   private textBufferViewGetLineCount(view: Pointer): number {
@@ -2439,13 +2450,27 @@ class FFIRenderLib implements RenderLib {
   public editorViewGetLineInfo(view: Pointer): LineInfo {
     const outBuffer = new ArrayBuffer(LineInfoStruct.size)
     this.opentui.symbols.editorViewGetLineInfoDirect(view, ptr(outBuffer))
-    return this.unpackLineInfo(outBuffer)
+    const struct = LineInfoStruct.unpack(outBuffer)
+    return {
+      maxLineWidth: struct.maxWidth,
+      lineStarts: struct.starts as number[],
+      lineWidths: struct.widths as number[],
+      lineSources: struct.sources as number[],
+      lineWraps: struct.wraps as number[],
+    }
   }
 
   public editorViewGetLogicalLineInfo(view: Pointer): LineInfo {
     const outBuffer = new ArrayBuffer(LineInfoStruct.size)
     this.opentui.symbols.editorViewGetLogicalLineInfoDirect(view, ptr(outBuffer))
-    return this.unpackLineInfo(outBuffer)
+    const struct = LineInfoStruct.unpack(outBuffer)
+    return {
+      maxLineWidth: struct.maxWidth,
+      lineStarts: struct.starts as number[],
+      lineWidths: struct.widths as number[],
+      lineSources: struct.sources as number[],
+      lineWraps: struct.wraps as number[],
+    }
   }
 
   // EditBuffer implementations

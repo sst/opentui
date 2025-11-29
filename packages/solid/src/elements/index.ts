@@ -2,6 +2,7 @@ import {
   ASCIIFontRenderable,
   BoxRenderable,
   CodeRenderable,
+  DiffRenderable,
   InputRenderable,
   LineNumberRenderable,
   ScrollBoxRenderable,
@@ -85,6 +86,7 @@ export const baseComponents = {
   tab_select: TabSelectRenderable,
   scrollbox: ScrollBoxRenderable,
   code: CodeRenderable,
+  diff: DiffRenderable,
   line_number: LineNumberRenderable,
 
   span: SpanRenderable,

@@ -2263,4 +2263,227 @@ describe("TextRenderable Selection", () => {
       expect(updatedFrame).toMatchSnapshot()
     })
   })
+
+  describe("Mouse Scrolling", () => {
+    it("should receive mouse scroll events", async () => {
+      resize(20, 10)
+
+      const longText = "Line 1\nLine 2\nLine 3\nLine 4\nLine 5\nLine 6\nLine 7\nLine 8\nLine 9\nLine 10"
+      const { text } = await createTextRenderable(currentRenderer, {
+        content: longText,
+        wrapMode: "none",
+      })
+
+      await renderOnce()
+
+      let scrollEventReceived = false
+      let scrollInfo: any = null
+
+      // Override the handler to capture events
+      const originalHandler = text.onMouseScroll
+      text.onMouseScroll = (event: any) => {
+        scrollEventReceived = true
+        scrollInfo = event.scroll
+        // Call original handler
+        if (originalHandler) {
+          originalHandler.call(text, event)
+        }
+      }
+
+      await currentMouse.scroll(text.x + 1, text.y + 1, "down")
+      await renderOnce()
+
+      expect(scrollEventReceived).toBe(true)
+      expect(scrollInfo).toBeDefined()
+      expect(scrollInfo?.direction).toBe("down")
+    })
+
+    it("should handle mouse scroll events for vertical scrolling", async () => {
+      resize(20, 5)
+
+      const longText = "Line 1\nLine 2\nLine 3\nLine 4\nLine 5\nLine 6\nLine 7\nLine 8\nLine 9\nLine 10"
+      const { text } = await createTextRenderable(currentRenderer, {
+        content: longText,
+        wrapMode: "none",
+      })
+
+      await renderOnce()
+
+      // Initially should be at scroll position 0
+      expect(text.scrollY).toBe(0)
+      expect(text.scrollX).toBe(0)
+
+      // Scroll down (each scroll event typically moves by 1)
+      await currentMouse.scroll(text.x + 1, text.y + 1, "down")
+      await currentMouse.scroll(text.x + 1, text.y + 1, "down")
+      await currentMouse.scroll(text.x + 1, text.y + 1, "down")
+      await renderOnce()
+
+      expect(text.scrollY).toBe(3)
+
+      // Scroll up
+      await currentMouse.scroll(text.x + 1, text.y + 1, "up")
+      await renderOnce()
+
+      expect(text.scrollY).toBe(2)
+    })
+
+    it("should handle mouse scroll events for horizontal scrolling with unwrapped text", async () => {
+      resize(80, 5)
+
+      const wideText =
+        "This is a very long line that extends way beyond the visible area and should definitely need scrolling"
+      const { text } = await createTextRenderable(currentRenderer, {
+        content: wideText,
+        wrapMode: "none",
+        width: 20,
+        maxWidth: 20,
+      })
+
+      await renderOnce()
+
+      expect(text.scrollX).toBe(0)
+      expect(text.scrollY).toBe(0)
+
+      // Scroll right
+      for (let i = 0; i < 5; i++) {
+        await currentMouse.scroll(text.x + 1, text.y, "right")
+      }
+      await renderOnce()
+
+      expect(text.scrollX).toBe(5)
+
+      // Scroll left
+      await currentMouse.scroll(text.x + 1, text.y, "left")
+      await currentMouse.scroll(text.x + 1, text.y, "left")
+      await renderOnce()
+
+      expect(text.scrollX).toBe(3)
+    })
+
+    it("should not allow horizontal scrolling when text is wrapped", async () => {
+      resize(20, 5)
+
+      const longText =
+        "Line 1 text\nLine 2 text\nLine 3 text\nLine 4 text\nLine 5 text\nLine 6 text\nLine 7 text\nLine 8 text"
+      const { text } = await createTextRenderable(currentRenderer, {
+        content: longText,
+        wrapMode: "word",
+        width: 15,
+        height: 3, // Constrain height to enable vertical scrolling
+      })
+
+      await renderOnce()
+
+      // Try to scroll horizontally
+      for (let i = 0; i < 5; i++) {
+        await currentMouse.scroll(text.x + 1, text.y + 1, "right")
+      }
+      await renderOnce()
+
+      // Should not scroll horizontally when wrapped
+      expect(text.scrollX).toBe(0)
+
+      // But vertical scrolling should still work if there's content
+      if (text.maxScrollY > 0) {
+        await currentMouse.scroll(text.x + 1, text.y + 1, "down")
+        await currentMouse.scroll(text.x + 1, text.y + 1, "down")
+        await renderOnce()
+
+        expect(text.scrollY).toBe(2)
+      }
+    })
+
+    it("should clamp scroll position to valid bounds", async () => {
+      resize(20, 5)
+
+      const shortText = "Line 1\nLine 2\nLine 3"
+      const { text } = await createTextRenderable(currentRenderer, {
+        content: shortText,
+        wrapMode: "none",
+      })
+
+      await renderOnce()
+
+      // Try to scroll beyond content
+      for (let i = 0; i < 10; i++) {
+        await currentMouse.scroll(text.x + 1, text.y + 1, "down")
+      }
+      await renderOnce()
+
+      // Should be clamped to maxScrollY
+      expect(text.scrollY).toBeLessThanOrEqual(text.maxScrollY)
+      expect(text.scrollY).toBeGreaterThanOrEqual(0)
+
+      // Try to scroll up beyond 0
+      for (let i = 0; i < 20; i++) {
+        await currentMouse.scroll(text.x + 1, text.y + 1, "up")
+      }
+      await renderOnce()
+
+      expect(text.scrollY).toBe(0)
+    })
+
+    it("should expose scrollWidth and scrollHeight getters", async () => {
+      resize(20, 5)
+
+      const text = "Line 1\nLine 2 with more content\nLine 3"
+      const { text: textRenderable } = await createTextRenderable(currentRenderer, {
+        content: text,
+        wrapMode: "none",
+      })
+
+      await renderOnce()
+
+      expect(textRenderable.scrollHeight).toBe(3) // 3 lines
+      expect(textRenderable.scrollWidth).toBeGreaterThan(0) // Max width of lines
+    })
+
+    it("should calculate maxScrollY and maxScrollX correctly", async () => {
+      resize(20, 5)
+
+      const text = "Line 1\nLine 2\nLine 3\nLine 4\nLine 5\nLine 6\nLine 7\nLine 8"
+      const { text: textRenderable } = await createTextRenderable(currentRenderer, {
+        content: text,
+        wrapMode: "none",
+        height: 5,
+      })
+
+      await renderOnce()
+
+      // maxScrollY should be scrollHeight - viewport height
+      expect(textRenderable.maxScrollY).toBe(Math.max(0, textRenderable.scrollHeight - textRenderable.height))
+
+      // maxScrollX should be scrollWidth - viewport width
+      expect(textRenderable.maxScrollX).toBe(Math.max(0, textRenderable.scrollWidth - textRenderable.width))
+    })
+
+    it("should update scroll position via setters", async () => {
+      resize(20, 5)
+
+      const longText =
+        "Line 1 with some extra content\nLine 2\nLine 3\nLine 4\nLine 5\nLine 6\nLine 7\nLine 8\nLine 9\nLine 10"
+      const { text } = await createTextRenderable(currentRenderer, {
+        content: longText,
+        wrapMode: "none",
+        width: 20, // Constrain width
+        height: 5, // Constrain height
+      })
+
+      await renderOnce()
+
+      // Set scroll position directly
+      text.scrollY = 3
+      await renderOnce()
+
+      expect(text.scrollY).toBe(3)
+
+      // Set scrollX (only works if there's horizontal scrollable content)
+      if (text.maxScrollX > 0) {
+        text.scrollX = 2
+        await renderOnce()
+        expect(text.scrollX).toBe(2)
+      }
+    })
+  })
 })
