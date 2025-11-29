@@ -1,0 +1,89 @@
+// Bun Snapshot v1, https://bun.sh/docs/test/snapshots
+
+exports[`LineNumber in ScrollBox - Simple Core Test LineNumber with Code in ScrollBox should wrap content height 1`] = `
+" 1 function test() {                              
+ 2   return true;                                 
+ 3 }                                              
+                                                  
+                                                  
+                                                  
+                                                  
+                                                  
+                                                  
+                                                  
+                                                  
+                                                  
+                                                  
+                                                  
+                                                  
+                                                  
+                                                  
+                                                  
+                                                  
+                                                  
+                                                  
+                                                  
+                                                  
+                                                  
+                                                  
+                                                  
+                                                  
+                                                  
+                                                  
+                                                  
+                                                  
+                                                  
+                                                  
+                                                  
+                                                  
+                                                  
+                                                  
+                                                  
+                                                  
+                                                  
+"
+`;
+
+exports[`LineNumber in ScrollBox - Simple Core Test Multiple LineNumber blocks in ScrollBox should each wrap content 1`] = `
+" 1 const x = 1;                                   
+ 1 const y = 2;                                   
+                                                  
+                                                  
+                                                  
+                                                  
+                                                  
+                                                  
+                                                  
+                                                  
+                                                  
+                                                  
+                                                  
+                                                  
+                                                  
+                                                  
+                                                  
+                                                  
+                                                  
+                                                  
+                                                  
+                                                  
+                                                  
+                                                  
+                                                  
+                                                  
+                                                  
+                                                  
+                                                  
+                                                  
+                                                  
+                                                  
+                                                  
+                                                  
+                                                  
+                                                  
+                                                  
+                                                  
+                                                  
+                                                  
+"
+`;

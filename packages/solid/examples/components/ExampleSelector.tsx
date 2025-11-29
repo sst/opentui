@@ -5,6 +5,7 @@ import { Session } from "../session.tsx"
 import { SplitModeDemo } from "./animation-demo.tsx"
 import AutocompleteDemo from "./autocomplete-demo.tsx"
 import { CodeDemo } from "./code-demo.tsx"
+import DiffDemo from "./diff-demo.tsx"
 import ExtendDemo from "./extend-demo.tsx"
 import InputScene from "./input-demo.tsx"
 import LineNumberDemo from "./line-number-demo.tsx"
@@ -17,6 +18,11 @@ import TextStyleScene from "./text-style-demo.tsx"
 import { TextareaDemo } from "./textarea-demo.tsx"
 
 const EXAMPLES = [
+  {
+    name: "Diff Viewer Demo",
+    description: "Unified and split diff view with syntax highlighting",
+    scene: "diff-demo",
+  },
   {
     name: "Line Numbers Demo",
     description: "Code with line numbers, diff highlights, and diagnostics",
@@ -144,6 +150,9 @@ const ExampleSelector = () => {
 
   return (
     <Switch>
+      <Match when={selectedScene() === "diff-demo"}>
+        <DiffDemo />
+      </Match>
       <Match when={selectedScene() === "line-number-demo"}>
         <LineNumberDemo />
       </Match>

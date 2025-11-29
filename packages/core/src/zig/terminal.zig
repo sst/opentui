@@ -42,7 +42,13 @@ pub const CursorStyle = enum {
 };
 
 pub const Options = struct {
-    kitty_keyboard_flags: u8 = 0b00001,
+    // Kitty keyboard protocol flags:
+    // Bit 0 (1): Report alternate keys
+    // Bit 1 (2): Report event types (press/repeat/release)
+    // Bit 2 (4): Report text associated with key
+    // Bit 3 (8): Report all keys as escape codes
+    // Default 0b00011 (3) = alternate keys + event types (for key release detection)
+    kitty_keyboard_flags: u8 = 0b00011,
 };
 
 pub const TerminalInfo = struct {
@@ -402,6 +408,24 @@ pub fn processCapabilityResponse(self: *Terminal, response: []const u8) void {
         self.caps.sixel = true;
         self.caps.bracketed_paste = true;
         self.caps.hyperlinks = true;
+    }
+
+    // Kitty keyboard protocol detection via CSI ? u response
+    // Terminals supporting the protocol respond to CSI ? u with CSI ? <flags> u
+    // Examples: \x1b[?0u (ghostty, alacritty), \x1b[?1u, etc.
+    if (std.mem.indexOf(u8, response, "\x1b[?") != null and std.mem.indexOf(u8, response, "u") != null) {
+        // Look for pattern \x1b[?Nu where N is 0-31
+        var i: usize = 0;
+        while (i + 4 < response.len) : (i += 1) {
+            if (response[i] == '\x1b' and i + 1 < response.len and response[i + 1] == '[' and i + 2 < response.len and response[i + 2] == '?') {
+                var num_end = i + 3;
+                while (num_end < response.len and response[num_end] >= '0' and response[num_end] <= '9') : (num_end += 1) {}
+                if (num_end > i + 3 and num_end < response.len and response[num_end] == 'u') {
+                    self.caps.kitty_keyboard = true;
+                    break;
+                }
+            }
+        }
     }
 
     if (std.mem.indexOf(u8, response, "tmux")) |_| {

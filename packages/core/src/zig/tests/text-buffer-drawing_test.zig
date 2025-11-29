@@ -1990,6 +1990,508 @@ test "setStyledText - highlight positioning with Unicode text" {
     try std.testing.expect(!has_green_bg);
 }
 
+test "drawTextBuffer - multiple syntax highlights with various horizontal viewport offsets" {
+    const pool = gp.initGlobalPool(std.testing.allocator);
+    defer gp.deinitGlobalPool();
+
+    var tb = try TextBuffer.init(std.testing.allocator, pool, .unicode);
+    defer tb.deinit();
+
+    var view = try TextBufferView.init(std.testing.allocator, tb);
+    defer view.deinit();
+
+    const style = try ss.SyntaxStyle.init(std.testing.allocator);
+    defer style.deinit();
+    tb.setSyntaxStyle(style);
+
+    // Register different color styles
+    const red_style = try style.registerStyle("red", RGBA{ 1.0, 0.0, 0.0, 1.0 }, null, 0);
+    const green_style = try style.registerStyle("green", RGBA{ 0.0, 1.0, 0.0, 1.0 }, null, 0);
+    const blue_style = try style.registerStyle("blue", RGBA{ 0.0, 0.0, 1.0, 1.0 }, null, 0);
+    const yellow_style = try style.registerStyle("yellow", RGBA{ 1.0, 1.0, 0.0, 1.0 }, null, 0);
+
+    // Text: "const x = function(y) { return y * 2; }"
+    const test_text = "const x = function(y) { return y * 2; }";
+    // Positions (0-indexed):
+    // "const" is at 0-5 (exclusive end, so 0,1,2,3,4)
+    // "function" is at 10-18 (chars 10-17)
+    // "return" is at 24-30 (chars 24-29)
+    // "2" is at 35-36 (char 35)
+
+    try tb.setText(test_text);
+
+    try tb.addHighlightByCharRange(0, 5, red_style, 1, 0); // "const"
+    try tb.addHighlightByCharRange(10, 18, green_style, 1, 0); // "function"
+    try tb.addHighlightByCharRange(24, 30, blue_style, 1, 0); // "return"
+    try tb.addHighlightByCharRange(35, 36, yellow_style, 1, 0); // "2"
+
+    view.setWrapMode(.none);
+    view.setWrapWidth(null);
+
+    const epsilon: f32 = 0.01;
+
+    // Test 1: Viewport at x=0 (no scroll)
+    {
+        view.setViewport(.{ .x = 0, .y = 0, .width = 40, .height = 1 });
+        var opt_buffer = try OptimizedBuffer.init(std.testing.allocator, 40, 1, .{ .pool = pool, .width_method = .unicode });
+        defer opt_buffer.deinit();
+
+        try opt_buffer.clear(.{ 0.0, 0.0, 0.0, 1.0 }, 32);
+        try opt_buffer.drawTextBuffer(view, 0, 0);
+
+        // Check "const" is red
+        const cell_0 = opt_buffer.get(0, 0) orelse unreachable;
+        try std.testing.expectEqual(@as(u32, 'c'), cell_0.char);
+        try std.testing.expect(@abs(cell_0.fg[0] - 1.0) < epsilon); // Red
+
+        const cell_4 = opt_buffer.get(4, 0) orelse unreachable;
+        try std.testing.expectEqual(@as(u32, 't'), cell_4.char);
+        try std.testing.expect(@abs(cell_4.fg[0] - 1.0) < epsilon); // Red
+
+        // Check "function" is green
+        const cell_10 = opt_buffer.get(10, 0) orelse unreachable;
+        try std.testing.expectEqual(@as(u32, 'f'), cell_10.char);
+        try std.testing.expect(@abs(cell_10.fg[1] - 1.0) < epsilon); // Green
+
+        const cell_17 = opt_buffer.get(17, 0) orelse unreachable;
+        try std.testing.expectEqual(@as(u32, 'n'), cell_17.char);
+        try std.testing.expect(@abs(cell_17.fg[1] - 1.0) < epsilon); // Green
+    }
+
+    // Test 2: Viewport scrolled to x=3 (showing "st x = fun...")
+    {
+        view.setViewport(.{ .x = 3, .y = 0, .width = 20, .height = 1 });
+        var opt_buffer = try OptimizedBuffer.init(std.testing.allocator, 20, 1, .{ .pool = pool, .width_method = .unicode });
+        defer opt_buffer.deinit();
+
+        try opt_buffer.clear(.{ 0.0, 0.0, 0.0, 1.0 }, 32);
+        try opt_buffer.drawTextBuffer(view, 0, 0);
+
+        // Buffer shows characters 3-22 from source: "st x = function(y) {"
+        // Position 0: 's' (source 3) - should be RED (part of "const" 0-5)
+        // Position 1: 't' (source 4) - should be RED (part of "const" 0-5)
+        // Position 2: ' ' (source 5) - NOT red (outside "const")
+        // Position 7: 'f' (source 10) - should be GREEN (start of "function" 10-18)
+        // Position 14: 'n' (source 17) - should be GREEN (part of "function")
+
+        const cell_0 = opt_buffer.get(0, 0) orelse unreachable;
+        try std.testing.expectEqual(@as(u32, 's'), cell_0.char);
+        try std.testing.expect(@abs(cell_0.fg[0] - 1.0) < epsilon); // Red
+        try std.testing.expect(@abs(cell_0.fg[1] - 0.0) < epsilon);
+        try std.testing.expect(@abs(cell_0.fg[2] - 0.0) < epsilon);
+
+        const cell_1 = opt_buffer.get(1, 0) orelse unreachable;
+        try std.testing.expectEqual(@as(u32, 't'), cell_1.char);
+        try std.testing.expect(@abs(cell_1.fg[0] - 1.0) < epsilon); // Red
+        try std.testing.expect(@abs(cell_1.fg[1] - 0.0) < epsilon);
+        try std.testing.expect(@abs(cell_1.fg[2] - 0.0) < epsilon);
+
+        const cell_2 = opt_buffer.get(2, 0) orelse unreachable;
+        try std.testing.expectEqual(@as(u32, ' '), cell_2.char);
+        try std.testing.expect(@abs(cell_2.fg[0] - 1.0) < epsilon); // White (default)
+        try std.testing.expect(@abs(cell_2.fg[1] - 1.0) < epsilon);
+        try std.testing.expect(@abs(cell_2.fg[2] - 1.0) < epsilon);
+
+        const cell_7 = opt_buffer.get(7, 0) orelse unreachable;
+        try std.testing.expectEqual(@as(u32, 'f'), cell_7.char);
+        try std.testing.expect(@abs(cell_7.fg[0] - 0.0) < epsilon); // Green
+        try std.testing.expect(@abs(cell_7.fg[1] - 1.0) < epsilon);
+        try std.testing.expect(@abs(cell_7.fg[2] - 0.0) < epsilon);
+
+        const cell_14 = opt_buffer.get(14, 0) orelse unreachable;
+        try std.testing.expectEqual(@as(u32, 'n'), cell_14.char);
+        try std.testing.expect(@abs(cell_14.fg[0] - 0.0) < epsilon); // Green
+        try std.testing.expect(@abs(cell_14.fg[1] - 1.0) < epsilon);
+        try std.testing.expect(@abs(cell_14.fg[2] - 0.0) < epsilon);
+    }
+
+    // Test 4: Viewport scrolled to x=30 (showing "y * 2; }" based on 40 char text)
+    {
+        view.setViewport(.{ .x = 30, .y = 0, .width = 20, .height = 1 });
+        var opt_buffer = try OptimizedBuffer.init(std.testing.allocator, 20, 1, .{ .pool = pool, .width_method = .unicode });
+        defer opt_buffer.deinit();
+
+        try opt_buffer.clear(.{ 0.0, 0.0, 0.0, 1.0 }, 32);
+        try opt_buffer.drawTextBuffer(view, 0, 0);
+
+        // Actual rendering shows: " y * 2; }"
+        // Source chars 30-38 are shown
+        // Position 0: ' ' (source 30) - white
+        // Position 5: '2' (source 35) - should be YELLOW (highlighted 35-36)
+
+        const cell_5 = opt_buffer.get(5, 0) orelse unreachable;
+        try std.testing.expectEqual(@as(u32, '2'), cell_5.char);
+        try std.testing.expect(@abs(cell_5.fg[0] - 1.0) < epsilon); // Yellow
+        try std.testing.expect(@abs(cell_5.fg[1] - 1.0) < epsilon);
+        try std.testing.expect(@abs(cell_5.fg[2] - 0.0) < epsilon);
+    }
+}
+
+test "drawTextBuffer - syntax highlighting with horizontal viewport offset" {
+    const pool = gp.initGlobalPool(std.testing.allocator);
+    defer gp.deinitGlobalPool();
+
+    var tb = try TextBuffer.init(std.testing.allocator, pool, .unicode);
+    defer tb.deinit();
+
+    var view = try TextBufferView.init(std.testing.allocator, tb);
+    defer view.deinit();
+
+    const style = try ss.SyntaxStyle.init(std.testing.allocator);
+    defer style.deinit();
+    tb.setSyntaxStyle(style);
+
+    // Register a red style
+    const red_style_id = try style.registerStyle("keyword", RGBA{ 1.0, 0.0, 0.0, 1.0 }, null, 0);
+
+    // Text: "const x = 1"
+    // Highlight "const" (characters 0-5) in red
+    try tb.setText("const x = 1");
+    try tb.addHighlightByCharRange(0, 5, red_style_id, 1, 0);
+
+    // Set viewport to skip first 3 characters, showing "st x = 1"
+    view.setWrapMode(.none);
+    view.setWrapWidth(null);
+    view.setViewport(.{ .x = 3, .y = 0, .width = 10, .height = 1 });
+
+    var opt_buffer = try OptimizedBuffer.init(
+        std.testing.allocator,
+        10,
+        1,
+        .{ .pool = pool, .width_method = .unicode },
+    );
+    defer opt_buffer.deinit();
+
+    try opt_buffer.clear(.{ 0.0, 0.0, 0.0, 1.0 }, 32);
+    try opt_buffer.drawTextBuffer(view, 0, 0);
+
+    const epsilon: f32 = 0.01;
+    const red_fg = RGBA{ 1.0, 0.0, 0.0, 1.0 };
+
+    // Check that 's' at buffer position 0 is RED
+    const cell_0 = opt_buffer.get(0, 0) orelse unreachable;
+    try std.testing.expectEqual(@as(u32, 's'), cell_0.char);
+    const is_red_0 = @abs(cell_0.fg[0] - red_fg[0]) < epsilon and
+        @abs(cell_0.fg[1] - red_fg[1]) < epsilon and
+        @abs(cell_0.fg[2] - red_fg[2]) < epsilon;
+    try std.testing.expect(is_red_0);
+
+    // Check that 't' at buffer position 1 is RED
+    const cell_1 = opt_buffer.get(1, 0) orelse unreachable;
+    try std.testing.expectEqual(@as(u32, 't'), cell_1.char);
+    const is_red_1 = @abs(cell_1.fg[0] - red_fg[0]) < epsilon and
+        @abs(cell_1.fg[1] - red_fg[1]) < epsilon and
+        @abs(cell_1.fg[2] - red_fg[2]) < epsilon;
+    try std.testing.expect(is_red_1);
+
+    // Check that ' ' at buffer position 2 is NOT RED
+    const cell_2 = opt_buffer.get(2, 0) orelse unreachable;
+    try std.testing.expectEqual(@as(u32, ' '), cell_2.char);
+    const is_red_2 = @abs(cell_2.fg[0] - red_fg[0]) < epsilon and
+        @abs(cell_2.fg[1] - red_fg[1]) < epsilon and
+        @abs(cell_2.fg[2] - red_fg[2]) < epsilon;
+    try std.testing.expect(!is_red_2);
+
+    // Check that 'x' at buffer position 3 is NOT RED
+    const cell_3 = opt_buffer.get(3, 0) orelse unreachable;
+    try std.testing.expectEqual(@as(u32, 'x'), cell_3.char);
+    const is_red_3 = @abs(cell_3.fg[0] - red_fg[0]) < epsilon and
+        @abs(cell_3.fg[1] - red_fg[1]) < epsilon and
+        @abs(cell_3.fg[2] - red_fg[2]) < epsilon;
+    try std.testing.expect(!is_red_3);
+}
+
+test "drawTextBuffer - setStyledText with multiple colors and horizontal scrolling" {
+    const pool = gp.initGlobalPool(std.testing.allocator);
+    defer gp.deinitGlobalPool();
+
+    var tb = try TextBuffer.init(std.testing.allocator, pool, .unicode);
+    defer tb.deinit();
+
+    var view = try TextBufferView.init(std.testing.allocator, tb);
+    defer view.deinit();
+
+    const style = try ss.SyntaxStyle.init(std.testing.allocator);
+    defer style.deinit();
+    tb.setSyntaxStyle(style);
+
+    // Simulate what code renderable does with setStyledText
+    // Text will be: "const x = function(y) { return y * 2; }"
+    // But split into colored chunks like syntax highlighting
+
+    const chunk1_text = "const";
+    const chunk2_text = " x = ";
+    const chunk3_text = "function";
+    const chunk4_text = "(y) { ";
+    const chunk5_text = "return";
+    const chunk6_text = " y * ";
+    const chunk7_text = "2";
+    const chunk8_text = "; }";
+
+    const red_color = [4]f32{ 1.0, 0.0, 0.0, 1.0 };
+    const white_color = [4]f32{ 1.0, 1.0, 1.0, 1.0 };
+    const green_color = [4]f32{ 0.0, 1.0, 0.0, 1.0 };
+    const blue_color = [4]f32{ 0.0, 0.0, 1.0, 1.0 };
+    const yellow_color = [4]f32{ 1.0, 1.0, 0.0, 1.0 };
+
+    const chunks = [_]StyledChunk{
+        .{ .text_ptr = chunk1_text.ptr, .text_len = chunk1_text.len, .fg_ptr = @ptrCast(&red_color), .bg_ptr = null, .attributes = 0 },
+        .{ .text_ptr = chunk2_text.ptr, .text_len = chunk2_text.len, .fg_ptr = @ptrCast(&white_color), .bg_ptr = null, .attributes = 0 },
+        .{ .text_ptr = chunk3_text.ptr, .text_len = chunk3_text.len, .fg_ptr = @ptrCast(&green_color), .bg_ptr = null, .attributes = 0 },
+        .{ .text_ptr = chunk4_text.ptr, .text_len = chunk4_text.len, .fg_ptr = @ptrCast(&white_color), .bg_ptr = null, .attributes = 0 },
+        .{ .text_ptr = chunk5_text.ptr, .text_len = chunk5_text.len, .fg_ptr = @ptrCast(&blue_color), .bg_ptr = null, .attributes = 0 },
+        .{ .text_ptr = chunk6_text.ptr, .text_len = chunk6_text.len, .fg_ptr = @ptrCast(&white_color), .bg_ptr = null, .attributes = 0 },
+        .{ .text_ptr = chunk7_text.ptr, .text_len = chunk7_text.len, .fg_ptr = @ptrCast(&yellow_color), .bg_ptr = null, .attributes = 0 },
+        .{ .text_ptr = chunk8_text.ptr, .text_len = chunk8_text.len, .fg_ptr = @ptrCast(&white_color), .bg_ptr = null, .attributes = 0 },
+    };
+
+    try tb.setStyledText(&chunks);
+
+    view.setWrapMode(.none);
+    view.setWrapWidth(null);
+
+    const epsilon: f32 = 0.01;
+
+    // Helper to check if color matches
+    const isRed = struct {
+        fn check(fg: RGBA, eps: f32) bool {
+            return @abs(fg[0] - 1.0) < eps and @abs(fg[1] - 0.0) < eps and @abs(fg[2] - 0.0) < eps;
+        }
+    }.check;
+
+    const isGreen = struct {
+        fn check(fg: RGBA, eps: f32) bool {
+            return @abs(fg[0] - 0.0) < eps and @abs(fg[1] - 1.0) < eps and @abs(fg[2] - 0.0) < eps;
+        }
+    }.check;
+
+    const isBlue = struct {
+        fn check(fg: RGBA, eps: f32) bool {
+            return @abs(fg[0] - 0.0) < eps and @abs(fg[1] - 0.0) < eps and @abs(fg[2] - 1.0) < eps;
+        }
+    }.check;
+
+    const isYellow = struct {
+        fn check(fg: RGBA, eps: f32) bool {
+            return @abs(fg[0] - 1.0) < eps and @abs(fg[1] - 1.0) < eps and @abs(fg[2] - 0.0) < eps;
+        }
+    }.check;
+
+    const isWhite = struct {
+        fn check(fg: RGBA, eps: f32) bool {
+            return @abs(fg[0] - 1.0) < eps and @abs(fg[1] - 1.0) < eps and @abs(fg[2] - 1.0) < eps;
+        }
+    }.check;
+
+    // Test at x=0 (no scroll)
+    {
+        view.setViewport(.{ .x = 0, .y = 0, .width = 40, .height = 1 });
+        var opt_buffer = try OptimizedBuffer.init(std.testing.allocator, 40, 1, .{ .pool = pool, .width_method = .unicode });
+        defer opt_buffer.deinit();
+
+        try opt_buffer.clear(.{ 0.0, 0.0, 0.0, 1.0 }, 32);
+        try opt_buffer.drawTextBuffer(view, 0, 0);
+
+        const cell_0 = opt_buffer.get(0, 0) orelse unreachable; // 'c' from "const"
+        try std.testing.expectEqual(@as(u32, 'c'), cell_0.char);
+        try std.testing.expect(isRed(cell_0.fg, epsilon));
+
+        const cell_10 = opt_buffer.get(10, 0) orelse unreachable; // 'f' from "function"
+        try std.testing.expectEqual(@as(u32, 'f'), cell_10.char);
+        try std.testing.expect(isGreen(cell_10.fg, epsilon));
+    }
+
+    // Test at x=5 (scrolled past "const")
+    {
+        view.setViewport(.{ .x = 5, .y = 0, .width = 20, .height = 1 });
+        var opt_buffer = try OptimizedBuffer.init(std.testing.allocator, 20, 1, .{ .pool = pool, .width_method = .unicode });
+        defer opt_buffer.deinit();
+
+        try opt_buffer.clear(.{ 0.0, 0.0, 0.0, 1.0 }, 32);
+        try opt_buffer.drawTextBuffer(view, 0, 0);
+
+
+        // At x=5, showing chars 5-24: " x = function(y) { "
+        // Position 0: ' ' (source 5) - should be white
+        // Position 5: 'f' (source 10) - should be GREEN
+        const cell_0 = opt_buffer.get(0, 0) orelse unreachable;
+        try std.testing.expectEqual(@as(u32, ' '), cell_0.char);
+        try std.testing.expect(isWhite(cell_0.fg, epsilon));
+
+        const cell_5 = opt_buffer.get(5, 0) orelse unreachable;
+        try std.testing.expectEqual(@as(u32, 'f'), cell_5.char);
+        try std.testing.expect(isGreen(cell_5.fg, epsilon));
+    }
+
+    // Test at x=15 (in middle of "function")
+    {
+        view.setViewport(.{ .x = 15, .y = 0, .width = 20, .height = 1 });
+        var opt_buffer = try OptimizedBuffer.init(std.testing.allocator, 20, 1, .{ .pool = pool, .width_method = .unicode });
+        defer opt_buffer.deinit();
+
+        try opt_buffer.clear(.{ 0.0, 0.0, 0.0, 1.0 }, 32);
+        try opt_buffer.drawTextBuffer(view, 0, 0);
+
+
+        // At x=15, showing chars 15-34: "ion(y) { return y * "
+        // "const x = function..."
+        //  0123456789012345678...
+        // Position 0: 'i' (source 15) - should be GREEN (part of "function" 10-18)
+        // Position 1: 'o' (source 16) - should be GREEN
+        // Position 2: 'n' (source 17) - should be GREEN
+        // Position 3: '(' (source 18) - should be WHITE (end of "function")
+        const cell_0 = opt_buffer.get(0, 0) orelse unreachable;
+        try std.testing.expectEqual(@as(u32, 'i'), cell_0.char);
+        try std.testing.expect(isGreen(cell_0.fg, epsilon));
+
+        const cell_1 = opt_buffer.get(1, 0) orelse unreachable;
+        try std.testing.expectEqual(@as(u32, 'o'), cell_1.char);
+        try std.testing.expect(isGreen(cell_1.fg, epsilon));
+
+        const cell_2 = opt_buffer.get(2, 0) orelse unreachable;
+        try std.testing.expectEqual(@as(u32, 'n'), cell_2.char);
+        try std.testing.expect(isGreen(cell_2.fg, epsilon));
+
+        const cell_3 = opt_buffer.get(3, 0) orelse unreachable;
+        try std.testing.expectEqual(@as(u32, '('), cell_3.char);
+        try std.testing.expect(isWhite(cell_3.fg, epsilon));
+
+        // Position 9: 'r' (source 24) - should be BLUE (start of "return" 24-30)
+        const cell_9 = opt_buffer.get(9, 0) orelse unreachable;
+        try std.testing.expectEqual(@as(u32, 'r'), cell_9.char);
+        try std.testing.expect(isBlue(cell_9.fg, epsilon));
+    }
+
+    // Test at x=25 (past "return")
+    {
+        view.setViewport(.{ .x = 25, .y = 0, .width = 20, .height = 1 });
+        var opt_buffer = try OptimizedBuffer.init(std.testing.allocator, 20, 1, .{ .pool = pool, .width_method = .unicode });
+        defer opt_buffer.deinit();
+
+        try opt_buffer.clear(.{ 0.0, 0.0, 0.0, 1.0 }, 32);
+        try opt_buffer.drawTextBuffer(view, 0, 0);
+
+
+        // At x=25, showing chars 25-44: "eturn y * 2; }"
+        // Position 0: 'e' (source 25) - should be BLUE (part of "return" 24-30)
+        // Position 4: 'n' (source 29) - should be BLUE
+        // Position 5: ' ' (source 30) - should be WHITE (end of "return")
+        // Position 10: '2' (source 35) - should be YELLOW
+        const cell_0 = opt_buffer.get(0, 0) orelse unreachable;
+        try std.testing.expectEqual(@as(u32, 'e'), cell_0.char);
+        try std.testing.expect(isBlue(cell_0.fg, epsilon));
+
+        const cell_4 = opt_buffer.get(4, 0) orelse unreachable;
+        try std.testing.expectEqual(@as(u32, 'n'), cell_4.char);
+        try std.testing.expect(isBlue(cell_4.fg, epsilon));
+
+        const cell_5 = opt_buffer.get(5, 0) orelse unreachable;
+        try std.testing.expectEqual(@as(u32, ' '), cell_5.char);
+        try std.testing.expect(isWhite(cell_5.fg, epsilon));
+
+        const cell_10 = opt_buffer.get(10, 0) orelse unreachable;
+        try std.testing.expectEqual(@as(u32, '2'), cell_10.char);
+        try std.testing.expect(isYellow(cell_10.fg, epsilon));
+    }
+}
+
+test "drawTextBuffer - selection with horizontal viewport offset" {
+    const pool = gp.initGlobalPool(std.testing.allocator);
+    defer gp.deinitGlobalPool();
+
+    var tb = try TextBuffer.init(std.testing.allocator, pool, .unicode);
+    defer tb.deinit();
+
+    var view = try TextBufferView.init(std.testing.allocator, tb);
+    defer view.deinit();
+
+    // Text: "0123456789ABCDEFGHIJ"
+    // We'll set viewport to x=5, showing "56789ABCDE"
+    // Then we'll select characters 7-12 (which are "789AB")
+    // Expected: in the rendered buffer, "789AB" should be highlighted
+    try tb.setText("0123456789ABCDEFGHIJ");
+
+    view.setWrapMode(.none);
+    view.setWrapWidth(null);
+    view.setViewport(.{ .x = 5, .y = 0, .width = 10, .height = 1 });
+
+    // Select characters at positions 7-12 in the original text ("789AB")
+    view.setSelection(7, 12, RGBA{ 1.0, 1.0, 0.0, 1.0 }, RGBA{ 0.0, 0.0, 0.0, 1.0 });
+
+    var opt_buffer = try OptimizedBuffer.init(
+        std.testing.allocator,
+        10,
+        1,
+        .{ .pool = pool, .width_method = .unicode },
+    );
+    defer opt_buffer.deinit();
+
+    try opt_buffer.clear(.{ 0.0, 0.0, 0.0, 1.0 }, 32);
+    try opt_buffer.drawTextBuffer(view, 0, 0);
+
+    // The viewport shows positions 5-14 of the text
+    // Characters 7-11 (0-indexed) should be highlighted
+    // In the buffer:
+    // Position 0: '5' - not highlighted
+    // Position 1: '6' - not highlighted
+    // Position 2: '7' - HIGHLIGHTED (char pos 7)
+    // Position 3: '8' - HIGHLIGHTED (char pos 8)
+    // Position 4: '9' - HIGHLIGHTED (char pos 9)
+    // Position 5: 'A' - HIGHLIGHTED (char pos 10)
+    // Position 6: 'B' - HIGHLIGHTED (char pos 11)
+    // Position 7: 'C' - not highlighted (char pos 12, selection end is exclusive)
+    // Position 8: 'D' - not highlighted
+    // Position 9: 'E' - not highlighted
+
+    const epsilon: f32 = 0.01;
+    const yellow_bg = RGBA{ 1.0, 1.0, 0.0, 1.0 };
+
+    // Check non-highlighted cells
+    const cell_0 = opt_buffer.get(0, 0) orelse unreachable;
+    try std.testing.expectEqual(@as(u32, '5'), cell_0.char);
+    const has_yellow_0 = @abs(cell_0.bg[0] - yellow_bg[0]) < epsilon and
+        @abs(cell_0.bg[1] - yellow_bg[1]) < epsilon and
+        @abs(cell_0.bg[2] - yellow_bg[2]) < epsilon;
+    try std.testing.expect(!has_yellow_0);
+
+    const cell_1 = opt_buffer.get(1, 0) orelse unreachable;
+    try std.testing.expectEqual(@as(u32, '6'), cell_1.char);
+    const has_yellow_1 = @abs(cell_1.bg[0] - yellow_bg[0]) < epsilon and
+        @abs(cell_1.bg[1] - yellow_bg[1]) < epsilon and
+        @abs(cell_1.bg[2] - yellow_bg[2]) < epsilon;
+    try std.testing.expect(!has_yellow_1);
+
+    // Check highlighted cells
+    const cell_2 = opt_buffer.get(2, 0) orelse unreachable;
+    try std.testing.expectEqual(@as(u32, '7'), cell_2.char);
+    const has_yellow_2 = @abs(cell_2.bg[0] - yellow_bg[0]) < epsilon and
+        @abs(cell_2.bg[1] - yellow_bg[1]) < epsilon and
+        @abs(cell_2.bg[2] - yellow_bg[2]) < epsilon;
+    try std.testing.expect(has_yellow_2);
+
+    const cell_3 = opt_buffer.get(3, 0) orelse unreachable;
+    try std.testing.expectEqual(@as(u32, '8'), cell_3.char);
+    const has_yellow_3 = @abs(cell_3.bg[0] - yellow_bg[0]) < epsilon and
+        @abs(cell_3.bg[1] - yellow_bg[1]) < epsilon and
+        @abs(cell_3.bg[2] - yellow_bg[2]) < epsilon;
+    try std.testing.expect(has_yellow_3);
+
+    const cell_6 = opt_buffer.get(6, 0) orelse unreachable;
+    try std.testing.expectEqual(@as(u32, 'B'), cell_6.char);
+    const has_yellow_6 = @abs(cell_6.bg[0] - yellow_bg[0]) < epsilon and
+        @abs(cell_6.bg[1] - yellow_bg[1]) < epsilon and
+        @abs(cell_6.bg[2] - yellow_bg[2]) < epsilon;
+    try std.testing.expect(has_yellow_6);
+
+    // Check cells after selection
+    const cell_7 = opt_buffer.get(7, 0) orelse unreachable;
+    try std.testing.expectEqual(@as(u32, 'C'), cell_7.char);
+    const has_yellow_7 = @abs(cell_7.bg[0] - yellow_bg[0]) < epsilon and
+        @abs(cell_7.bg[1] - yellow_bg[1]) < epsilon and
+        @abs(cell_7.bg[2] - yellow_bg[2]) < epsilon;
+    try std.testing.expect(!has_yellow_7);
+}
+
 test "drawTextBuffer - Chinese text with wrapping no stray bytes" {
     const pool = gp.initGlobalPool(std.testing.allocator);
     defer gp.deinitGlobalPool();

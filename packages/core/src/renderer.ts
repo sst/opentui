@@ -749,7 +749,7 @@ export class CliRenderer extends EventEmitter implements RenderContext {
     this.lib.disableMouse(this.rendererPtr)
   }
 
-  public enableKittyKeyboard(flags: number = 0b00001): void {
+  public enableKittyKeyboard(flags: number = 0b00011): void {
     this.lib.enableKittyKeyboard(this.rendererPtr, flags)
   }
 

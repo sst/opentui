@@ -49,15 +49,34 @@ export const useTerminalDimensions = () => {
   return terminalDimensions
 }
 
-export const useKeyboard = (callback: (key: KeyEvent) => void) => {
+export interface UseKeyboardOptions {
+  /** Include release events - callback receives events with eventType: "release" */
+  release?: boolean
+  /** Include repeat events - callback receives events with eventType: "repeat" */
+  repeat?: boolean
+}
+
+export const useKeyboard = (callback: (key: KeyEvent) => void, options?: UseKeyboardOptions) => {
   const renderer = useRenderer()
   const keyHandler = renderer.keyInput
   onMount(() => {
     keyHandler.on("keypress", callback)
+    if (options?.release) {
+      keyHandler.on("keyrelease", callback)
+    }
+    if (options?.repeat) {
+      keyHandler.on("keyrepeat", callback)
+    }
   })
 
   onCleanup(() => {
     keyHandler.off("keypress", callback)
+    if (options?.release) {
+      keyHandler.off("keyrelease", callback)
+    }
+    if (options?.repeat) {
+      keyHandler.off("keyrepeat", callback)
+    }
   })
 }
 
