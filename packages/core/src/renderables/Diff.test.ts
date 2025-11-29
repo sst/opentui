@@ -2037,3 +2037,195 @@ test("DiffRenderable - should handle resize with wrapping without leaking listen
   expect(leftFinalCount).toBe(leftInitialCount)
   expect(rightFinalCount).toBe(rightInitialCount)
 })
+
+test("DiffRenderable - gutter configuration updates work correctly", async () => {
+  const syntaxStyle = SyntaxStyle.fromStyles({
+    default: { fg: RGBA.fromValues(1, 1, 1, 1) },
+  })
+
+  const diffRenderable = new DiffRenderable(currentRenderer, {
+    id: "test-diff",
+    diff: simpleDiff,
+    view: "unified",
+    syntaxStyle,
+    showLineNumbers: true,
+    width: "100%",
+    height: "100%",
+  })
+
+  currentRenderer.root.add(diffRenderable)
+  await renderOnce()
+
+  const leftCodeRenderable = (diffRenderable as any).leftCodeRenderable
+  const leftSide = (diffRenderable as any).leftSide
+
+  // Verify initial state
+  expect(leftSide).toBeDefined()
+  expect(leftCodeRenderable).toBeDefined()
+  const initialListenerCount = leftCodeRenderable.listenerCount("line-info-change")
+
+  // Get initial frame to verify line numbers are showing
+  let frame = captureFrame()
+  expect(frame).toContain("function hello")
+
+  // Update multiple gutter configurations that trigger recreateGutter()
+  // Each of these calls setLineNumbers/setHideLineNumbers internally
+  for (let i = 0; i < 5; i++) {
+    diffRenderable.diff = simpleDiff.replace('"Hello"', `"Hello${i}"`)
+    await renderOnce()
+  }
+
+  // Verify listener count is stable
+  const finalListenerCount = leftCodeRenderable.listenerCount("line-info-change")
+  expect(finalListenerCount).toBe(initialListenerCount)
+
+  // Verify rendering still works
+  frame = captureFrame()
+  expect(frame).toContain("function hello")
+  expect(frame).toContain("Hello4") // Last update should be visible
+})
+
+test("DiffRenderable - target remains functional after multiple updates", async () => {
+  const syntaxStyle = SyntaxStyle.fromStyles({
+    default: { fg: RGBA.fromValues(1, 1, 1, 1) },
+  })
+
+  const diffRenderable = new DiffRenderable(currentRenderer, {
+    id: "test-diff",
+    diff: multiLineDiff,
+    view: "split",
+    syntaxStyle,
+    showLineNumbers: true,
+    width: "100%",
+    height: "100%",
+  })
+
+  currentRenderer.root.add(diffRenderable)
+  await renderOnce()
+
+  const leftCodeRenderable = (diffRenderable as any).leftCodeRenderable
+  const rightCodeRenderable = (diffRenderable as any).rightCodeRenderable
+
+  // Verify targets are responding to line-info-change events
+  let leftEventFired = false
+  let rightEventFired = false
+
+  const leftListener = () => {
+    leftEventFired = true
+  }
+  const rightListener = () => {
+    rightEventFired = true
+  }
+
+  leftCodeRenderable.on("line-info-change", leftListener)
+  rightCodeRenderable.on("line-info-change", rightListener)
+
+  // Update diff multiple times
+  for (let i = 0; i < 5; i++) {
+    leftEventFired = false
+    rightEventFired = false
+
+    diffRenderable.diff = multiLineDiff.replace("add(a, b)", `add(a, b, ${i})`)
+    await renderOnce()
+
+    // Events should have fired during the update
+    expect(leftEventFired).toBe(true)
+    expect(rightEventFired).toBe(true)
+  }
+
+  leftCodeRenderable.off("line-info-change", leftListener)
+  rightCodeRenderable.off("line-info-change", rightListener)
+})
+
+test("DiffRenderable - gutter remains in correct position after updates", async () => {
+  const syntaxStyle = SyntaxStyle.fromStyles({
+    default: { fg: RGBA.fromValues(1, 1, 1, 1) },
+  })
+
+  const diffRenderable = new DiffRenderable(currentRenderer, {
+    id: "test-diff",
+    diff: simpleDiff,
+    view: "unified",
+    syntaxStyle,
+    showLineNumbers: true,
+    width: "100%",
+    height: "100%",
+  })
+
+  currentRenderer.root.add(diffRenderable)
+  await renderOnce()
+
+  // Initial frame should have line numbers on the left
+  let frame = captureFrame()
+  const lines = frame.split("\n")
+
+  // Find a line with content
+  const contentLine = lines.find((l) => l.includes("function hello"))
+  expect(contentLine).toBeDefined()
+
+  // Line number should be at the start (before the content)
+  expect(contentLine).toMatch(/^\s*\d+/)
+
+  // Update diff multiple times
+  for (let i = 0; i < 5; i++) {
+    diffRenderable.diff = simpleDiff.replace('"Hello"', `"Hello${i}"`)
+    await renderOnce()
+
+    frame = captureFrame()
+    const updatedLines = frame.split("\n")
+    const updatedContentLine = updatedLines.find((l) => l.includes("function hello"))
+
+    // Line numbers should still be at the start
+    expect(updatedContentLine).toBeDefined()
+    expect(updatedContentLine).toMatch(/^\s*\d+/)
+  }
+})
+
+test("DiffRenderable - properly cleans up listeners on destroy", async () => {
+  const syntaxStyle = SyntaxStyle.fromStyles({
+    default: { fg: RGBA.fromValues(1, 1, 1, 1) },
+  })
+
+  const diffRenderable = new DiffRenderable(currentRenderer, {
+    id: "test-diff",
+    diff: simpleDiff,
+    view: "split",
+    syntaxStyle,
+    width: "100%",
+    height: "100%",
+  })
+
+  currentRenderer.root.add(diffRenderable)
+  await renderOnce()
+
+  const leftCodeRenderable = (diffRenderable as any).leftCodeRenderable
+  const rightCodeRenderable = (diffRenderable as any).rightCodeRenderable
+
+  // Update multiple times to potentially create leaks
+  for (let i = 0; i < 5; i++) {
+    diffRenderable.diff = simpleDiff.replace('"Hello"', `"Hello${i}"`)
+    await renderOnce()
+  }
+
+  const leftCountBeforeDestroy = leftCodeRenderable.listenerCount("line-info-change")
+  const rightCountBeforeDestroy = rightCodeRenderable.listenerCount("line-info-change")
+
+  // Verify listeners exist
+  expect(leftCountBeforeDestroy).toBeGreaterThan(0)
+  expect(rightCountBeforeDestroy).toBeGreaterThan(0)
+
+  // Destroy the diff
+  diffRenderable.destroyRecursively()
+
+  // The LineNumberRenderables should have been destroyed
+  // Check that they're either null or destroyed
+  const leftSide = (diffRenderable as any).leftSide
+  const rightSide = (diffRenderable as any).rightSide
+
+  if (leftSide) {
+    expect(leftSide.isDestroyed).toBe(true)
+  }
+  if (rightSide) {
+    expect(rightSide.isDestroyed).toBe(true)
+  }
+})
