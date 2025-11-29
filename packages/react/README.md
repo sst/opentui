@@ -60,6 +60,7 @@ OpenTUI React provides several built-in components that map to OpenTUI core rend
 - **`<input>`** - Text input field
 - **`<textarea>`** - Multi-line text input field
 - **`<code>`** - Code block with syntax highlighting
+- **`<line-number>`** - Code display with line numbers, diff highlights, and diagnostics
 - **`<select>`** - Selection dropdown
 - **`<scrollbox>`** - A scrollable box
 - **`<tab-select>`** - Tab-based selection
@@ -398,6 +399,62 @@ function App() {
   )
 }
 ```
+
+### Line Number Component
+
+Display code with line numbers, and optionally add diff highlights or diagnostic indicators.
+
+```tsx
+import type { LineNumberRenderable } from "@opentui/core"
+import { RGBA, SyntaxStyle } from "@opentui/core"
+import { useEffect, useRef } from "react"
+
+function App() {
+  const lineNumberRef = useRef<LineNumberRenderable>(null)
+
+  const syntaxStyle = SyntaxStyle.fromStyles({
+    keyword: { fg: RGBA.fromHex("#C792EA") },
+    string: { fg: RGBA.fromHex("#C3E88D") },
+    number: { fg: RGBA.fromHex("#F78C6C") },
+    default: { fg: RGBA.fromHex("#A6ACCD") },
+  })
+
+  const codeContent = `function fibonacci(n: number): number {
+  if (n <= 1) return n
+  return fibonacci(n - 1) + fibonacci(n - 2)
+}
+
+console.log(fibonacci(10))`
+
+  useEffect(() => {
+    // Add diff highlight - line was added
+    lineNumberRef.current?.setLineColor(1, "#1a4d1a")
+    lineNumberRef.current?.setLineSign(1, { after: " +", afterColor: "#22c55e" })
+
+    // Add diagnostic indicator
+    lineNumberRef.current?.setLineSign(4, { before: "⚠️", beforeColor: "#f59e0b" })
+  }, [])
+
+  return (
+    <box style={{ border: true, flexGrow: 1 }}>
+      <line-number
+        ref={lineNumberRef}
+        fg="#6b7280"
+        bg="#161b22"
+        minWidth={3}
+        paddingRight={1}
+        showLineNumbers={true}
+        width="100%"
+        height="100%"
+      >
+        <code content={codeContent} filetype="typescript" syntaxStyle={syntaxStyle} width="100%" height="100%" />
+      </line-number>
+    </box>
+  )
+}
+```
+
+For a more complete example with interactive diff highlights and diagnostics, see [`examples/line-number.tsx`](examples/line-number.tsx).
 
 ### Select Component
 
