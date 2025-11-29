@@ -49,24 +49,68 @@ For optimal TypeScript support, configure your `tsconfig.json`:
 }
 ```
 
+## Table of Contents
+
+- [Core Concepts](#core-concepts)
+  - [Components](#components)
+  - [Styling](#styling)
+- [API Reference](#api-reference)
+  - [createRoot(renderer)](#createrootrenderer)
+  - [render(element, config?)](#renderelement-config-deprecated)
+  - [Hooks](#hooks)
+    - [useRenderer()](#userenderer)
+    - [useKeyboard(handler, options?)](#usekeyboardhandler-options)
+    - [useOnResize(callback)](#useonresizecallback)
+    - [useTerminalDimensions()](#useterminaldimensions)
+    - [useTimeline(options?)](#usetimelineoptions)
+- [Components](#components-1)
+  - [Layout & Display Components](#layout--display-components)
+    - [Text Component](#text-component)
+    - [Box Component](#box-component)
+    - [Scrollbox Component](#scrollbox-component)
+    - [ASCII Font Component](#ascii-font-component)
+  - [Input Components](#input-components)
+    - [Input Component](#input-component)
+    - [Textarea Component](#textarea-component)
+    - [Select Component](#select-component)
+  - [Code & Diff Components](#code--diff-components)
+    - [Code Component](#code-component)
+    - [Line Number Component](#line-number-component)
+    - [Diff Component](#diff-component)
+- [Examples](#examples)
+  - [Login Form](#login-form)
+  - [Counter with Timer](#counter-with-timer)
+  - [System Monitor Animation](#system-monitor-animation)
+  - [Styled Text Showcase](#styled-text-showcase)
+- [Component Extension](#component-extension)
+
 ## Core Concepts
 
 ### Components
 
 OpenTUI React provides several built-in components that map to OpenTUI core renderables:
 
+**Layout & Display:**
+
 - **`<text>`** - Display text with styling
 - **`<box>`** - Container with borders and layout
-- **`<input>`** - Text input field
-- **`<textarea>`** - Multi-line text input field
-- **`<code>`** - Code block with syntax highlighting
-- **`<line-number>`** - Code display with line numbers, diff highlights, and diagnostics
-- **`<select>`** - Selection dropdown
 - **`<scrollbox>`** - A scrollable box
-- **`<tab-select>`** - Tab-based selection
 - **`<ascii-font>`** - Display ASCII art text with different font styles
 
-Helpers:
+**Input Components:**
+
+- **`<input>`** - Text input field
+- **`<textarea>`** - Multi-line text input field
+- **`<select>`** - Selection dropdown
+- **`<tab-select>`** - Tab-based selection
+
+**Code & Diff Components:**
+
+- **`<code>`** - Code block with syntax highlighting
+- **`<line-number>`** - Code display with line numbers, diff highlights, and diagnostics
+- **`<diff>`** - Unified or split diff viewer with syntax highlighting
+
+**Helpers:**
 
 - **`<span>`, `<strong>`, `<em>`, `<u>`, `<b>`, `<i>`, `<br>`** - Text modifiers (_must be used inside of the text component_)
 
@@ -296,7 +340,9 @@ function App() {
 
 ## Components
 
-### Text Component
+### Layout & Display Components
+
+#### Text Component
 
 Display text with rich formatting.
 
@@ -321,7 +367,7 @@ function App() {
 }
 ```
 
-### Box Component
+#### Box Component
 
 Container with borders and layout capabilities.
 
@@ -357,7 +403,109 @@ function App() {
 }
 ```
 
-### Input Component
+#### Scrollbox Component
+
+A scrollable box.
+
+```tsx
+function App() {
+  return (
+    <scrollbox
+      style={{
+        rootOptions: {
+          backgroundColor: "#24283b",
+        },
+        wrapperOptions: {
+          backgroundColor: "#1f2335",
+        },
+        viewportOptions: {
+          backgroundColor: "#1a1b26",
+        },
+        contentOptions: {
+          backgroundColor: "#16161e",
+        },
+        scrollbarOptions: {
+          showArrows: true,
+          trackOptions: {
+            foregroundColor: "#7aa2f7",
+            backgroundColor: "#414868",
+          },
+        },
+      }}
+      focused
+    >
+      {Array.from({ length: 1000 }).map((_, i) => (
+        <box
+          key={i}
+          style={{ width: "100%", padding: 1, marginBottom: 1, backgroundColor: i % 2 === 0 ? "#292e42" : "#2f3449" }}
+        >
+          <text content={`Box ${i}`} />
+        </box>
+      ))}
+    </scrollbox>
+  )
+}
+```
+
+#### ASCII Font Component
+
+Display ASCII art text with different font styles.
+
+```tsx
+import { useState } from "react"
+
+function App() {
+  const text = "ASCII"
+  const [font, setFont] = useState<"block" | "shade" | "slick" | "tiny">("tiny")
+
+  return (
+    <box style={{ border: true, paddingLeft: 1, paddingRight: 1 }}>
+      <box
+        style={{
+          height: 8,
+          border: true,
+          marginBottom: 1,
+        }}
+      >
+        <select
+          focused
+          onChange={(_, option) => setFont(option?.value)}
+          showScrollIndicator
+          options={[
+            {
+              name: "Tiny",
+              description: "Tiny font",
+              value: "tiny",
+            },
+            {
+              name: "Block",
+              description: "Block font",
+              value: "block",
+            },
+            {
+              name: "Slick",
+              description: "Slick font",
+              value: "slick",
+            },
+            {
+              name: "Shade",
+              description: "Shade font",
+              value: "shade",
+            },
+          ]}
+          style={{ flexGrow: 1 }}
+        />
+      </box>
+
+      <ascii-font text={text} font={font} />
+    </box>
+  )
+}
+```
+
+### Input Components
+
+#### Input Component
 
 Text input field with event handling.
 
@@ -380,7 +528,7 @@ function App() {
 }
 ```
 
-### Textarea Component
+#### Textarea Component
 
 ```tsx
 import type { TextareaRenderable } from "@opentui/core"
@@ -409,7 +557,42 @@ function App() {
 }
 ```
 
-### Code Component
+#### Select Component
+
+Dropdown selection component.
+
+```tsx
+import type { SelectOption } from "@opentui/core"
+import { useState } from "react"
+
+function App() {
+  const [selectedIndex, setSelectedIndex] = useState(0)
+
+  const options: SelectOption[] = [
+    { name: "Option 1", description: "Option 1 description", value: "opt1" },
+    { name: "Option 2", description: "Option 2 description", value: "opt2" },
+    { name: "Option 3", description: "Option 3 description", value: "opt3" },
+  ]
+
+  return (
+    <box style={{ border: true, height: 24 }}>
+      <select
+        style={{ height: 22 }}
+        options={options}
+        focused={true}
+        onChange={(index, option) => {
+          setSelectedIndex(index)
+          console.log("Selected:", option)
+        }}
+      />
+    </box>
+  )
+}
+```
+
+### Code & Diff Components
+
+#### Code Component
 
 ```tsx
 import { RGBA, SyntaxStyle } from "@opentui/core"
@@ -440,7 +623,7 @@ function App() {
 }
 ```
 
-### Line Number Component
+#### Line Number Component
 
 Display code with line numbers, and optionally add diff highlights or diagnostic indicators.
 
@@ -496,138 +679,11 @@ console.log(fibonacci(10))`
 
 For a more complete example with interactive diff highlights and diagnostics, see [`examples/line-number.tsx`](examples/line-number.tsx).
 
-### Select Component
+#### Diff Component
 
-Dropdown selection component.
+Display unified or split-view diffs with syntax highlighting, customizable themes, and line number support. Supports multiple view modes (unified/split), word wrapping, and theme customization.
 
-```tsx
-import type { SelectOption } from "@opentui/core"
-import { useState } from "react"
-
-function App() {
-  const [selectedIndex, setSelectedIndex] = useState(0)
-
-  const options: SelectOption[] = [
-    { name: "Option 1", description: "Option 1 description", value: "opt1" },
-    { name: "Option 2", description: "Option 2 description", value: "opt2" },
-    { name: "Option 3", description: "Option 3 description", value: "opt3" },
-  ]
-
-  return (
-    <box style={{ border: true, height: 24 }}>
-      <select
-        style={{ height: 22 }}
-        options={options}
-        focused={true}
-        onChange={(index, option) => {
-          setSelectedIndex(index)
-          console.log("Selected:", option)
-        }}
-      />
-    </box>
-  )
-}
-```
-
-### Scrollbox Component
-
-A scrollable box.
-
-```tsx
-function App() {
-  return (
-    <scrollbox
-      style={{
-        rootOptions: {
-          backgroundColor: "#24283b",
-        },
-        wrapperOptions: {
-          backgroundColor: "#1f2335",
-        },
-        viewportOptions: {
-          backgroundColor: "#1a1b26",
-        },
-        contentOptions: {
-          backgroundColor: "#16161e",
-        },
-        scrollbarOptions: {
-          showArrows: true,
-          trackOptions: {
-            foregroundColor: "#7aa2f7",
-            backgroundColor: "#414868",
-          },
-        },
-      }}
-      focused
-    >
-      {Array.from({ length: 1000 }).map((_, i) => (
-        <box
-          key={i}
-          style={{ width: "100%", padding: 1, marginBottom: 1, backgroundColor: i % 2 === 0 ? "#292e42" : "#2f3449" }}
-        >
-          <text content={`Box ${i}`} />
-        </box>
-      ))}
-    </scrollbox>
-  )
-}
-```
-
-### ASCII Font Component
-
-Display ASCII art text with different font styles.
-
-```tsx
-import { useState } from "react"
-
-function App() {
-  const text = "ASCII"
-  const [font, setFont] = useState<"block" | "shade" | "slick" | "tiny">("tiny")
-
-  return (
-    <box style={{ border: true, paddingLeft: 1, paddingRight: 1 }}>
-      <box
-        style={{
-          height: 8,
-          border: true,
-          marginBottom: 1,
-        }}
-      >
-        <select
-          focused
-          onChange={(_, option) => setFont(option?.value)}
-          showScrollIndicator
-          options={[
-            {
-              name: "Tiny",
-              description: "Tiny font",
-              value: "tiny",
-            },
-            {
-              name: "Block",
-              description: "Block font",
-              value: "block",
-            },
-            {
-              name: "Slick",
-              description: "Slick font",
-              value: "slick",
-            },
-            {
-              name: "Shade",
-              description: "Shade font",
-              value: "shade",
-            },
-          ]}
-          style={{ flexGrow: 1 }}
-        />
-      </box>
-
-      <ascii-font text={text} font={font} />
-    </box>
-  )
-}
-```
+For a complete interactive example with theme switching and keybindings, see [`examples/diff.tsx`](examples/diff.tsx).
 
 ## Examples
 
