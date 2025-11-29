@@ -89,21 +89,23 @@ test("parseKeypress - Kitty keyboard event types", () => {
   expect(pressWithModifier.ctrl).toBe(true)
   expect(pressWithModifier.eventType).toBe("press")
 
-  // Repeat event
+  // Repeat event (emitted as press with repeated=true)
   const repeat = parseKeypress("\x1b[97;1:2u", options)!
   expect(repeat.name).toBe("a")
-  expect(repeat.eventType).toBe("repeat")
+  expect(repeat.eventType).toBe("press")
+  expect(repeat.repeated).toBe(true)
 
   // Release event
   const release = parseKeypress("\x1b[97;1:3u", options)!
   expect(release.name).toBe("a")
   expect(release.eventType).toBe("release")
 
-  // Repeat event with modifier
+  // Repeat event with modifier (emitted as press with repeated=true)
   const repeatWithCtrl = parseKeypress("\x1b[97;5:2u", options)!
   expect(repeatWithCtrl.name).toBe("a")
   expect(repeatWithCtrl.ctrl).toBe(true)
-  expect(repeatWithCtrl.eventType).toBe("repeat")
+  expect(repeatWithCtrl.eventType).toBe("press")
+  expect(repeatWithCtrl.repeated).toBe(true)
 
   // Release event with modifier
   const releaseWithShift = parseKeypress("\x1b[97;2:3u", options)!
@@ -256,10 +258,11 @@ test("parseKeypress - Kitty keyboard function keys with event types", () => {
   expect(f1Press.name).toBe("f1")
   expect(f1Press.eventType).toBe("press")
 
-  // F1 repeat
+  // F1 repeat (emitted as press with repeated=true)
   const f1Repeat = parseKeypress("\x1b[57364;1:2u", options)!
   expect(f1Repeat.name).toBe("f1")
-  expect(f1Repeat.eventType).toBe("repeat")
+  expect(f1Repeat.eventType).toBe("press")
+  expect(f1Repeat.repeated).toBe(true)
 
   // F1 release
   const f1Release = parseKeypress("\x1b[57364;1:3u", options)!
@@ -275,11 +278,12 @@ test("parseKeypress - Kitty keyboard arrow keys with event types", () => {
   expect(upPress.name).toBe("up")
   expect(upPress.eventType).toBe("press")
 
-  // Up arrow repeat with Ctrl
+  // Up arrow repeat with Ctrl (emitted as press with repeated=true)
   const upRepeatCtrl = parseKeypress("\x1b[57352;5:2u", options)!
   expect(upRepeatCtrl.name).toBe("up")
   expect(upRepeatCtrl.ctrl).toBe(true)
-  expect(upRepeatCtrl.eventType).toBe("repeat")
+  expect(upRepeatCtrl.eventType).toBe("press")
+  expect(upRepeatCtrl.repeated).toBe(true)
 
   // Down arrow release
   const downRelease = parseKeypress("\x1b[57353;1:3u", options)!
@@ -303,10 +307,11 @@ test("parseKeypress - Kitty functional keys with event types", () => {
   expect(upRelease.eventType).toBe("release")
   expect(upRelease.source).toBe("kitty")
 
-  // Down arrow with repeat
+  // Down arrow with repeat (emitted as press with repeated=true)
   const downRepeat = parseKeypress("\x1b[1;1:2B", options)!
   expect(downRepeat.name).toBe("down")
-  expect(downRepeat.eventType).toBe("repeat")
+  expect(downRepeat.eventType).toBe("press")
+  expect(downRepeat.repeated).toBe(true)
 
   // Left arrow press
   const leftPress = parseKeypress("\x1b[1;1:1D", options)!
@@ -525,11 +530,13 @@ test("parseKeypress - Kitty sequences are NOT filtered by terminal response filt
   expect(withEventType?.eventType).toBe("release")
 
   // Keys with all fields (unicode:shifted:base; modifiers:event; text)
+  // repeat events are emitted as press with repeated=true
   const complex = parseKeypress("\x1b[97:65:113;5:2;97u", options)
   expect(complex).not.toBeNull()
   expect(complex?.source).toBe("kitty")
   expect(complex?.ctrl).toBe(true)
-  expect(complex?.eventType).toBe("repeat")
+  expect(complex?.eventType).toBe("press")
+  expect(complex?.repeated).toBe(true)
 
   // Unicode characters
   const unicode = parseKeypress("\x1b[233u", options) // é

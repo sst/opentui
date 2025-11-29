@@ -135,10 +135,6 @@ async function main() {
     addEvent("keyrelease", event)
   })
 
-  renderer.keyInput.on("keyrepeat", (event) => {
-    addEvent("keyrepeat", event)
-  })
-
   renderer.keyInput.on("paste", (event) => {
     addEvent("paste", event)
   })
