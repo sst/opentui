@@ -27,6 +27,7 @@ export interface LineNumberOptions extends RenderableOptions<LineNumberRenderabl
   lineNumberOffset?: number
   hideLineNumbers?: Set<number>
   lineNumbers?: Map<number, number>
+  showLineNumbers?: boolean
 }
 
 class GutterRenderable extends Renderable {
