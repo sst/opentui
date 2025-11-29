@@ -6,6 +6,7 @@ import type {
   ExtendedIntrinsicElements,
   InputProps,
   LineBreakProps,
+  LineNumberProps,
   OpenTUIComponents,
   ScrollBoxProps,
   SelectProps,
@@ -43,6 +44,7 @@ export namespace JSX {
     scrollbox: ScrollBoxProps
     "ascii-font": AsciiFontProps
     "tab-select": TabSelectProps
+    "line-number": LineNumberProps
     // Text modifiers
     b: SpanProps
     i: SpanProps
