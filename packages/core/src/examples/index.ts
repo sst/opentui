@@ -54,6 +54,7 @@ import * as textWrapExample from "./text-wrap"
 import * as editorDemo from "./editor-demo"
 import * as sliderDemo from "./slider-demo"
 import * as terminalDemo from "./terminal"
+import * as diffDemo from "./diff-demo"
 import { setupCommonDemoKeys } from "./lib/standalone-keys"
 
 interface Example {
@@ -124,6 +125,12 @@ const examples: Example[] = [
       "Code viewer with line numbers, diff highlights, and diagnostics using CodeRenderable + LineNumberRenderable",
     run: codeDemo.run,
     destroy: codeDemo.destroy,
+  },
+  {
+    name: "Diff Demo",
+    description: "Unified and split diff views with syntax highlighting and multiple themes",
+    run: diffDemo.run,
+    destroy: diffDemo.destroy,
   },
   {
     name: "Live State Management Demo",
