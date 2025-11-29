@@ -64,13 +64,11 @@ async function triggerKittyInput(sequence: string): Promise<KeyEvent> {
   return new Promise((resolve) => {
     const onKeypress = (parsedKey: KeyEvent) => {
       kittyRenderer.keyInput.removeListener("keypress", onKeypress)
-      kittyRenderer.keyInput.removeListener("keyrepeat", onKeypress)
       kittyRenderer.keyInput.removeListener("keyrelease", onKeypress)
       resolve(parsedKey)
     }
 
     kittyRenderer.keyInput.on("keypress", onKeypress)
-    kittyRenderer.keyInput.on("keyrepeat", onKeypress)
     kittyRenderer.keyInput.on("keyrelease", onKeypress)
 
     kittyRenderer.stdin.emit("data", Buffer.from(sequence))
@@ -749,10 +747,11 @@ test("Kitty keyboard event types via keyInput events", async () => {
     numLock: false,
   })
 
-  // Repeat event
+  // Repeat event (emitted as press with repeated=true)
   const repeat = await triggerKittyInput("\x1b[97;1:2u")
   expect(repeat).toMatchObject({
-    eventType: "repeat",
+    eventType: "press",
+    repeated: true,
     name: "a",
     ctrl: false,
     meta: false,
@@ -785,10 +784,11 @@ test("Kitty keyboard event types via keyInput events", async () => {
     numLock: false,
   })
 
-  // Repeat event with modifier
+  // Repeat event with modifier (emitted as press with repeated=true)
   const repeatWithCtrl = await triggerKittyInput("\x1b[97;5:2u")
   expect(repeatWithCtrl).toMatchObject({
-    eventType: "repeat",
+    eventType: "press",
+    repeated: true,
     name: "a",
     ctrl: true,
     meta: false,
@@ -1029,10 +1029,11 @@ test("Kitty keyboard function keys with event types via keyInput events", async 
   expect(f1Press.capsLock ?? false).toBe(false)
   expect(f1Press.numLock ?? false).toBe(false)
 
-  // F1 repeat
+  // F1 repeat (emitted as press with repeated=true)
   const f1Repeat = await triggerKittyInput("\x1b[57364;1:2u")
   expect(f1Repeat.name).toBe("f1")
-  expect(f1Repeat.eventType).toBe("repeat")
+  expect(f1Repeat.eventType).toBe("press")
+  expect(f1Repeat.repeated).toBe(true)
   expect(f1Repeat.super ?? false).toBe(false)
   expect(f1Repeat.hyper ?? false).toBe(false)
   expect(f1Repeat.capsLock ?? false).toBe(false)
@@ -1058,11 +1059,12 @@ test("Kitty keyboard arrow keys with event types via keyInput events", async () 
   expect(upPress.capsLock ?? false).toBe(false)
   expect(upPress.numLock ?? false).toBe(false)
 
-  // Up arrow repeat with Ctrl
+  // Up arrow repeat with Ctrl (emitted as press with repeated=true)
   const upRepeatCtrl = await triggerKittyInput("\x1b[57352;5:2u")
   expect(upRepeatCtrl.name).toBe("up")
   expect(upRepeatCtrl.ctrl).toBe(true)
-  expect(upRepeatCtrl.eventType).toBe("repeat")
+  expect(upRepeatCtrl.eventType).toBe("press")
+  expect(upRepeatCtrl.repeated).toBe(true)
   expect(upRepeatCtrl.super).toBe(false)
   expect(upRepeatCtrl.hyper).toBe(false)
   expect(upRepeatCtrl.capsLock).toBe(false)
