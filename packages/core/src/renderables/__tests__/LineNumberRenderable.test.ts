@@ -1105,8 +1105,10 @@ describe("LineNumberRenderable", () => {
 
     // Wait for render and highlighting
     await renderOnce()
-    // Give highlighting time to complete
-    await Bun.sleep(500)
+    // Give highlighting time to complete (increased for CI)
+    await Bun.sleep(1000)
+    await renderOnce()
+    await Bun.sleep(100)
     await renderOnce()
 
     frame = captureCharFrame()
