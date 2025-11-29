@@ -3,6 +3,7 @@ import type {
   AsciiFontProps,
   BoxProps,
   CodeProps,
+  DiffProps,
   ExtendedIntrinsicElements,
   InputProps,
   LineBreakProps,
@@ -38,6 +39,7 @@ export namespace JSX {
     text: TextProps
     span: SpanProps
     code: CodeProps
+    diff: DiffProps
     input: InputProps
     textarea: TextareaProps
     select: SelectProps

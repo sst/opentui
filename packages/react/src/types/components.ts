@@ -6,6 +6,8 @@ import type {
   BoxRenderable,
   CodeOptions,
   CodeRenderable,
+  DiffRenderable,
+  DiffRenderableOptions,
   InputRenderable,
   InputRenderableOptions,
   LineNumberOptions,
@@ -135,6 +137,8 @@ export type TextareaProps = ComponentProps<TextareaOptions, TextareaRenderable> 
 }
 
 export type CodeProps = ComponentProps<CodeOptions, CodeRenderable>
+
+export type DiffProps = ComponentProps<DiffRenderableOptions, DiffRenderable>
 
 export type SelectProps = ComponentProps<SelectRenderableOptions, SelectRenderable> & {
   focused?: boolean
