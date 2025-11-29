@@ -125,6 +125,7 @@ export interface ParsedKey {
   capsLock?: boolean
   numLock?: boolean
   baseCode?: number
+  repeated?: boolean
 }
 
 export type ParseKeypressOptions = {

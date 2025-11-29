@@ -10,6 +10,8 @@ import type {
   DiffRenderableOptions,
   InputRenderable,
   InputRenderableOptions,
+  LineNumberOptions,
+  LineNumberRenderable,
   RenderableOptions,
   RenderContext,
   ScrollBoxOptions,
@@ -154,6 +156,10 @@ export type TabSelectProps = ComponentProps<TabSelectRenderableOptions, TabSelec
   focused?: boolean
   onChange?: (index: number, option: TabSelectOption | null) => void
   onSelect?: (index: number, option: TabSelectOption | null) => void
+}
+
+export type LineNumberProps = ComponentProps<ContainerProps<LineNumberOptions>, LineNumberRenderable> & {
+  focused?: boolean
 }
 
 // ============================================================================
