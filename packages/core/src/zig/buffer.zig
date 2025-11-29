@@ -981,19 +981,19 @@ pub const OptimizedBuffer = struct {
             var lineBg = text_buffer.default_bg orelse RGBA{ 0.0, 0.0, 0.0, 0.0 };
             var lineAttributes = text_buffer.default_attributes orelse 0;
 
-            while (span_idx < spans.len and spans[span_idx].next_col <= col_offset) {
+            // Find the span that contains the starting render position (col_offset + horizontal_offset)
+            const start_col = col_offset + horizontal_offset;
+            while (span_idx < spans.len and spans[span_idx].next_col <= start_col) {
                 span_idx += 1;
             }
 
             var next_change_col: u32 = if (span_idx < spans.len)
-                if (spans[span_idx].next_col > col_offset)
-                    spans[span_idx].next_col - col_offset
-                else
-                    std.math.maxInt(u32)
+                spans[span_idx].next_col
             else
                 std.math.maxInt(u32);
 
-            if (span_idx < spans.len and spans[span_idx].col <= col_offset and spans[span_idx].style_id != 0) {
+            // Apply the style at the starting position
+            if (span_idx < spans.len and spans[span_idx].col <= start_col and spans[span_idx].style_id != 0) {
                 if (text_buffer.getSyntaxStyle()) |style| {
                     if (style.resolveById(spans[span_idx].style_id)) |resolved_style| {
                         if (resolved_style.fg) |fg| lineFg = fg;
@@ -1092,9 +1092,10 @@ pub const OptimizedBuffer = struct {
                         continue;
                     }
 
-                    const virt_col_pos = @as(u32, @intCast(currentX - x));
+                    // Track the actual column position in the source line (including horizontal offset)
+                    const source_col_pos = col_offset + column_in_line;
 
-                    if (virt_col_pos >= next_change_col and span_idx + 1 < spans.len) {
+                    if (source_col_pos >= next_change_col and span_idx + 1 < spans.len) {
                         span_idx += 1;
                         const new_span = spans[span_idx];
 
@@ -1112,10 +1113,7 @@ pub const OptimizedBuffer = struct {
                             }
                         }
 
-                        next_change_col = if (new_span.next_col > col_offset)
-                            new_span.next_col - col_offset
-                        else
-                            std.math.maxInt(u32);
+                        next_change_col = new_span.next_col;
                     }
 
                     var finalFg = lineFg;

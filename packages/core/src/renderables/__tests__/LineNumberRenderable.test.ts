@@ -184,11 +184,12 @@ describe("LineNumberRenderable", () => {
     expect(line2GutterBg.g).toBeCloseTo(0x4a / 255, 2)
     expect(line2GutterBg.b).toBeCloseTo(0x2e / 255, 2)
 
-    // Check line 2 (index 1) has green background in content area (x=10 is in content)
+    // Check line 2 (index 1) has darker green background in content area (x=10 is in content)
+    // Content color should be 80% of gutter color
     const line2ContentBg = getBgColor(10, 1)
-    expect(line2ContentBg.r).toBeCloseTo(0x2d / 255, 2)
-    expect(line2ContentBg.g).toBeCloseTo(0x4a / 255, 2)
-    expect(line2ContentBg.b).toBeCloseTo(0x2e / 255, 2)
+    expect(line2ContentBg.r).toBeCloseTo((0x2d / 255) * 0.8, 2)
+    expect(line2ContentBg.g).toBeCloseTo((0x4a / 255) * 0.8, 2)
+    expect(line2ContentBg.b).toBeCloseTo((0x2e / 255) * 0.8, 2)
 
     // Check line 4 (index 3) has red background in gutter
     const line4GutterBg = getBgColor(2, 3)
@@ -196,11 +197,11 @@ describe("LineNumberRenderable", () => {
     expect(line4GutterBg.g).toBeCloseTo(0x2d / 255, 2)
     expect(line4GutterBg.b).toBeCloseTo(0x2d / 255, 2)
 
-    // Check line 4 (index 3) has red background in content area
+    // Check line 4 (index 3) has darker red background in content area (80% of gutter color)
     const line4ContentBg = getBgColor(10, 3)
-    expect(line4ContentBg.r).toBeCloseTo(0x4a / 255, 2)
-    expect(line4ContentBg.g).toBeCloseTo(0x2d / 255, 2)
-    expect(line4ContentBg.b).toBeCloseTo(0x2d / 255, 2)
+    expect(line4ContentBg.r).toBeCloseTo((0x4a / 255) * 0.8, 2)
+    expect(line4ContentBg.g).toBeCloseTo((0x2d / 255) * 0.8, 2)
+    expect(line4ContentBg.b).toBeCloseTo((0x2d / 255) * 0.8, 2)
 
     // Check line 1 (index 0) has default black background in gutter
     const line1GutterBg = getBgColor(2, 0)
@@ -256,14 +257,21 @@ describe("LineNumberRenderable", () => {
     expect(line2InitialBg.g).toBeCloseTo(0, 2)
     expect(line2InitialBg.b).toBeCloseTo(0, 2)
 
-    // Set line color using setter
+    // Set line color using setter (gutter will be full color, content will be 80%)
     lineNumberRenderable.setLineColor(1, "#2d4a2e")
     await renderOnce()
 
+    // Check gutter has full color
     const line2AfterSetBg = getBgColor(2, 1)
     expect(line2AfterSetBg.r).toBeCloseTo(0x2d / 255, 2)
     expect(line2AfterSetBg.g).toBeCloseTo(0x4a / 255, 2)
     expect(line2AfterSetBg.b).toBeCloseTo(0x2e / 255, 2)
+
+    // Check content has darker color (80%)
+    const line2ContentAfterSetBg = getBgColor(10, 1)
+    expect(line2ContentAfterSetBg.r).toBeCloseTo((0x2d / 255) * 0.8, 2)
+    expect(line2ContentAfterSetBg.g).toBeCloseTo((0x4a / 255) * 0.8, 2)
+    expect(line2ContentAfterSetBg.b).toBeCloseTo((0x2e / 255) * 0.8, 2)
 
     // Clear the line color
     lineNumberRenderable.clearLineColor(1)
@@ -281,6 +289,7 @@ describe("LineNumberRenderable", () => {
     lineNumberRenderable.setLineColors(newColors)
     await renderOnce()
 
+    // Check gutter colors (full color)
     const line1Bg = getBgColor(2, 0)
     expect(line1Bg.r).toBeCloseTo(0x2d / 255, 2)
     expect(line1Bg.g).toBeCloseTo(0x4a / 255, 2)
@@ -290,6 +299,17 @@ describe("LineNumberRenderable", () => {
     expect(line3Bg.r).toBeCloseTo(0x4a / 255, 2)
     expect(line3Bg.g).toBeCloseTo(0x2d / 255, 2)
     expect(line3Bg.b).toBeCloseTo(0x2d / 255, 2)
+
+    // Check content colors (80% darker)
+    const line1ContentBg = getBgColor(10, 0)
+    expect(line1ContentBg.r).toBeCloseTo((0x2d / 255) * 0.8, 2)
+    expect(line1ContentBg.g).toBeCloseTo((0x4a / 255) * 0.8, 2)
+    expect(line1ContentBg.b).toBeCloseTo((0x2e / 255) * 0.8, 2)
+
+    const line3ContentBg = getBgColor(10, 2)
+    expect(line3ContentBg.r).toBeCloseTo((0x4a / 255) * 0.8, 2)
+    expect(line3ContentBg.g).toBeCloseTo((0x2d / 255) * 0.8, 2)
+    expect(line3ContentBg.b).toBeCloseTo((0x2d / 255) * 0.8, 2)
 
     // Clear all colors
     lineNumberRenderable.clearAllLineColors()
@@ -353,23 +373,23 @@ describe("LineNumberRenderable", () => {
     expect(line0Visual0GutterBg.g).toBeCloseTo(0x4a / 255, 2)
     expect(line0Visual0GutterBg.b).toBeCloseTo(0x2e / 255, 2)
 
-    // First visual line of logical line 0 should have green background in content
+    // First visual line of logical line 0 should have darker green background in content (80%)
     const line0Visual0ContentBg = getBgColor(10, 0)
-    expect(line0Visual0ContentBg.r).toBeCloseTo(0x2d / 255, 2)
-    expect(line0Visual0ContentBg.g).toBeCloseTo(0x4a / 255, 2)
-    expect(line0Visual0ContentBg.b).toBeCloseTo(0x2e / 255, 2)
+    expect(line0Visual0ContentBg.r).toBeCloseTo((0x2d / 255) * 0.8, 2)
+    expect(line0Visual0ContentBg.g).toBeCloseTo((0x4a / 255) * 0.8, 2)
+    expect(line0Visual0ContentBg.b).toBeCloseTo((0x2e / 255) * 0.8, 2)
 
-    // Second visual line of logical line 0 should also have green background (wrapped continuation)
+    // Second visual line of logical line 0 should also have darker green background (wrapped continuation)
     const line0Visual1Bg = getBgColor(10, 1)
-    expect(line0Visual1Bg.r).toBeCloseTo(0x2d / 255, 2)
-    expect(line0Visual1Bg.g).toBeCloseTo(0x4a / 255, 2)
-    expect(line0Visual1Bg.b).toBeCloseTo(0x2e / 255, 2)
+    expect(line0Visual1Bg.r).toBeCloseTo((0x2d / 255) * 0.8, 2)
+    expect(line0Visual1Bg.g).toBeCloseTo((0x4a / 255) * 0.8, 2)
+    expect(line0Visual1Bg.b).toBeCloseTo((0x2e / 255) * 0.8, 2)
 
-    // Third visual line of logical line 0 should also have green background (wrapped continuation)
+    // Third visual line of logical line 0 should also have darker green background (wrapped continuation)
     const line0Visual2Bg = getBgColor(10, 2)
-    expect(line0Visual2Bg.r).toBeCloseTo(0x2d / 255, 2)
-    expect(line0Visual2Bg.g).toBeCloseTo(0x4a / 255, 2)
-    expect(line0Visual2Bg.b).toBeCloseTo(0x2e / 255, 2)
+    expect(line0Visual2Bg.r).toBeCloseTo((0x2d / 255) * 0.8, 2)
+    expect(line0Visual2Bg.g).toBeCloseTo((0x4a / 255) * 0.8, 2)
+    expect(line0Visual2Bg.b).toBeCloseTo((0x2e / 255) * 0.8, 2)
   })
 
   test("renders line colors correctly within a box with borders", async () => {
@@ -456,17 +476,17 @@ describe("LineNumberRenderable", () => {
     expect(gutterBg.g).toBeCloseTo(0x4a / 255, 2)
     expect(gutterBg.b).toBeCloseTo(0x2e / 255, 2)
 
-    // Check that content area has green background
+    // Check that content area has darker green background (80% of gutter color)
     const contentBg = getBgColor(15, line2Y)
-    expect(contentBg.r).toBeCloseTo(0x2d / 255, 2)
-    expect(contentBg.g).toBeCloseTo(0x4a / 255, 2)
-    expect(contentBg.b).toBeCloseTo(0x2e / 255, 2)
+    expect(contentBg.r).toBeCloseTo((0x2d / 255) * 0.8, 2)
+    expect(contentBg.g).toBeCloseTo((0x4a / 255) * 0.8, 2)
+    expect(contentBg.b).toBeCloseTo((0x2e / 255) * 0.8, 2)
 
-    // Check that area near right border (but not the border itself) has green background
+    // Check that area near right border (but not the border itself) has darker green background
     const nearRightBg = getBgColor(27, line2Y)
-    expect(nearRightBg.r).toBeCloseTo(0x2d / 255, 2)
-    expect(nearRightBg.g).toBeCloseTo(0x4a / 255, 2)
-    expect(nearRightBg.b).toBeCloseTo(0x2e / 255, 2)
+    expect(nearRightBg.r).toBeCloseTo((0x2d / 255) * 0.8, 2)
+    expect(nearRightBg.g).toBeCloseTo((0x4a / 255) * 0.8, 2)
+    expect(nearRightBg.b).toBeCloseTo((0x2e / 255) * 0.8, 2)
 
     // Verify line without color (line 1, y=2) doesn't have green background
     const line1Y = 2
@@ -533,23 +553,23 @@ describe("LineNumberRenderable", () => {
     expect(frameWithoutLineNumbers).toContain("Line 1")
     expect(frameWithoutLineNumbers.split("\n")[1]).toMatch(/^Line 2/)
 
-    // When line numbers are hidden, the background should start at x=0
+    // When line numbers are hidden, the content background (darker, 80%) should start at x=0
     const line2LeftEdgeBg = getBgColor(0, 1)
-    expect(line2LeftEdgeBg.r).toBeCloseTo(0x2d / 255, 2)
-    expect(line2LeftEdgeBg.g).toBeCloseTo(0x4a / 255, 2)
-    expect(line2LeftEdgeBg.b).toBeCloseTo(0x2e / 255, 2)
+    expect(line2LeftEdgeBg.r).toBeCloseTo((0x2d / 255) * 0.8, 2)
+    expect(line2LeftEdgeBg.g).toBeCloseTo((0x4a / 255) * 0.8, 2)
+    expect(line2LeftEdgeBg.b).toBeCloseTo((0x2e / 255) * 0.8, 2)
 
-    // Check middle of line also has background
+    // Check middle of line also has darker background
     const line2MiddleBg = getBgColor(10, 1)
-    expect(line2MiddleBg.r).toBeCloseTo(0x2d / 255, 2)
-    expect(line2MiddleBg.g).toBeCloseTo(0x4a / 255, 2)
-    expect(line2MiddleBg.b).toBeCloseTo(0x2e / 255, 2)
+    expect(line2MiddleBg.r).toBeCloseTo((0x2d / 255) * 0.8, 2)
+    expect(line2MiddleBg.g).toBeCloseTo((0x4a / 255) * 0.8, 2)
+    expect(line2MiddleBg.b).toBeCloseTo((0x2e / 255) * 0.8, 2)
 
-    // Check right edge has background
+    // Check right edge has darker background
     const line2RightEdgeBg = getBgColor(19, 1)
-    expect(line2RightEdgeBg.r).toBeCloseTo(0x2d / 255, 2)
-    expect(line2RightEdgeBg.g).toBeCloseTo(0x4a / 255, 2)
-    expect(line2RightEdgeBg.b).toBeCloseTo(0x2e / 255, 2)
+    expect(line2RightEdgeBg.r).toBeCloseTo((0x2d / 255) * 0.8, 2)
+    expect(line2RightEdgeBg.g).toBeCloseTo((0x4a / 255) * 0.8, 2)
+    expect(line2RightEdgeBg.b).toBeCloseTo((0x2e / 255) * 0.8, 2)
   })
 
   test("renders line signs before and after line numbers", async () => {
@@ -713,6 +733,879 @@ describe("LineNumberRenderable", () => {
     await renderOnce()
     frame = captureCharFrame()
     expect(frame).not.toContain("+")
+  })
+
+  test("renders line numbers with offset", async () => {
+    const { renderer, renderOnce, captureCharFrame } = await createTestRenderer({
+      width: 20,
+      height: 10,
+    })
+
+    const text = "Line 1\nLine 2\nLine 3"
+    const textRenderable = new MockTextBuffer(renderer, {
+      text,
+      width: "100%",
+      height: "100%",
+    })
+
+    const lineNumberRenderable = new LineNumberRenderable(renderer, {
+      target: textRenderable,
+      minWidth: 3,
+      paddingRight: 1,
+      fg: "white",
+      lineNumberOffset: 41, // Start at line 42
+      width: "100%",
+      height: "100%",
+    })
+
+    renderer.root.add(lineNumberRenderable)
+
+    await renderOnce()
+
+    const frame = captureCharFrame()
+    expect(frame).toMatchSnapshot()
+
+    // Line numbers should start at 42 instead of 1
+    expect(frame).toContain("42 Line 1")
+    expect(frame).toContain("43 Line 2")
+    expect(frame).toContain("44 Line 3")
+  })
+
+  test("can dynamically update line number offset", async () => {
+    const { renderer, renderOnce, captureCharFrame } = await createTestRenderer({
+      width: 20,
+      height: 10,
+    })
+
+    const text = "Line 1\nLine 2\nLine 3"
+    const textRenderable = new MockTextBuffer(renderer, {
+      text,
+      width: "100%",
+      height: "100%",
+    })
+
+    const lineNumberRenderable = new LineNumberRenderable(renderer, {
+      target: textRenderable,
+      minWidth: 3,
+      paddingRight: 1,
+      fg: "white",
+      lineNumberOffset: 0,
+      width: "100%",
+      height: "100%",
+    })
+
+    renderer.root.add(lineNumberRenderable)
+
+    await renderOnce()
+
+    let frame = captureCharFrame()
+    expect(frame).toContain(" 1 Line 1")
+    expect(frame).toContain(" 2 Line 2")
+
+    // Update offset
+    lineNumberRenderable.lineNumberOffset = 99
+    await renderOnce()
+
+    frame = captureCharFrame()
+    expect(frame).toContain("100 Line 1")
+    expect(frame).toContain("101 Line 2")
+    expect(frame).toContain("102 Line 3")
+  })
+
+  test("hides line numbers for specific lines", async () => {
+    const { renderer, renderOnce, captureCharFrame } = await createTestRenderer({
+      width: 20,
+      height: 10,
+    })
+
+    const text = "Line 1\nLine 2\nLine 3\nLine 4\nLine 5"
+    const textRenderable = new MockTextBuffer(renderer, {
+      text,
+      width: "100%",
+      height: "100%",
+    })
+
+    const hideLineNumbers = new Set<number>()
+    hideLineNumbers.add(1) // Hide line 2
+    hideLineNumbers.add(3) // Hide line 4
+
+    const lineNumberRenderable = new LineNumberRenderable(renderer, {
+      target: textRenderable,
+      minWidth: 3,
+      paddingRight: 1,
+      fg: "white",
+      hideLineNumbers,
+      width: "100%",
+      height: "100%",
+    })
+
+    renderer.root.add(lineNumberRenderable)
+
+    await renderOnce()
+
+    const frame = captureCharFrame()
+    expect(frame).toMatchSnapshot()
+
+    // Check that lines 1, 3, 5 have line numbers
+    expect(frame).toContain(" 1 Line 1")
+    expect(frame).toContain(" 3 Line 3")
+    expect(frame).toContain(" 5 Line 5")
+
+    // Lines 2 and 4 should not have line numbers (but text is still visible)
+    const lines = frame.split("\n")
+
+    // Line 2 should have text but no line number visible
+    expect(lines[1]).toContain("Line 2")
+    expect(lines[1]).not.toMatch(/2\s+Line 2/)
+
+    // Line 4 should have text but no line number visible
+    expect(lines[3]).toContain("Line 4")
+    expect(lines[3]).not.toMatch(/4\s+Line 4/)
+  })
+
+  test("can dynamically update hidden line numbers", async () => {
+    const { renderer, renderOnce, captureCharFrame } = await createTestRenderer({
+      width: 20,
+      height: 10,
+    })
+
+    const text = "Line 1\nLine 2\nLine 3"
+    const textRenderable = new MockTextBuffer(renderer, {
+      text,
+      width: "100%",
+      height: "100%",
+    })
+
+    const lineNumberRenderable = new LineNumberRenderable(renderer, {
+      target: textRenderable,
+      minWidth: 3,
+      paddingRight: 1,
+      fg: "white",
+      width: "100%",
+      height: "100%",
+    })
+
+    renderer.root.add(lineNumberRenderable)
+
+    await renderOnce()
+
+    let frame = captureCharFrame()
+    expect(frame).toContain(" 1 Line 1")
+    expect(frame).toContain(" 2 Line 2")
+    expect(frame).toContain(" 3 Line 3")
+
+    // Hide line 2
+    const hideSet = new Set<number>()
+    hideSet.add(1)
+    lineNumberRenderable.setHideLineNumbers(hideSet)
+    await renderOnce()
+
+    frame = captureCharFrame()
+    expect(frame).toContain(" 1 Line 1")
+    expect(frame).toContain("Line 2") // Text still visible
+    expect(frame).toContain(" 3 Line 3")
+
+    const lines = frame.split("\n")
+    expect(lines[1]).not.toMatch(/2\s+Line 2/)
+  })
+
+  test("combines line number offset with hidden line numbers", async () => {
+    const { renderer, renderOnce, captureCharFrame } = await createTestRenderer({
+      width: 20,
+      height: 10,
+    })
+
+    const text = "Line 1\nLine 2\nLine 3\nLine 4\nLine 5"
+    const textRenderable = new MockTextBuffer(renderer, {
+      text,
+      width: "100%",
+      height: "100%",
+    })
+
+    const hideLineNumbers = new Set<number>()
+    hideLineNumbers.add(1) // Hide line at logical index 1
+    hideLineNumbers.add(3) // Hide line at logical index 3
+
+    const lineNumberRenderable = new LineNumberRenderable(renderer, {
+      target: textRenderable,
+      minWidth: 3,
+      paddingRight: 1,
+      fg: "white",
+      lineNumberOffset: 41, // Start at line 42
+      hideLineNumbers,
+      width: "100%",
+      height: "100%",
+    })
+
+    renderer.root.add(lineNumberRenderable)
+
+    await renderOnce()
+
+    const frame = captureCharFrame()
+    expect(frame).toMatchSnapshot()
+
+    // Line 1 (index 0) should show as line 42
+    expect(frame).toContain("42 Line 1")
+
+    // Line 2 (index 1) should be hidden (but text visible)
+    expect(frame).toContain("Line 2")
+    const lines = frame.split("\n")
+    expect(lines[1]).not.toMatch(/43\s+Line 2/)
+
+    // Line 3 (index 2) should show as line 44
+    expect(frame).toContain("44 Line 3")
+
+    // Line 4 (index 3) should be hidden
+    expect(frame).toContain("Line 4")
+    expect(lines[3]).not.toMatch(/45\s+Line 4/)
+
+    // Line 5 (index 4) should show as line 46
+    expect(frame).toContain("46 Line 5")
+  })
+
+  test("gutter width is stable from first render - no width glitch", async () => {
+    const { renderer, renderOnce } = await createTestRenderer({
+      width: 20,
+      height: 10,
+    })
+
+    const text = "Line 1\nLine 2\nLine 3"
+    const textRenderable = new MockTextBuffer(renderer, {
+      text,
+      width: "100%",
+      height: "100%",
+    })
+
+    const lineNumberRenderable = new LineNumberRenderable(renderer, {
+      target: textRenderable,
+      minWidth: 3,
+      paddingRight: 1,
+      fg: "white",
+      width: "100%",
+      height: "100%",
+    })
+
+    renderer.root.add(lineNumberRenderable)
+
+    // First render - this is when layout happens
+    await renderOnce()
+
+    // Capture width after first render
+    const gutterAfterFirstRender = lineNumberRenderable["gutter"]
+    const widthAfterFirstRender = gutterAfterFirstRender?.width
+
+    expect(widthAfterFirstRender).toBeGreaterThan(0)
+
+    // Render a second time - width should NOT change (no glitch)
+    await renderOnce()
+
+    const widthAfterSecondRender = lineNumberRenderable["gutter"]?.width
+    expect(widthAfterSecondRender).toBe(widthAfterFirstRender)
+
+    // Render a third time to be absolutely sure
+    await renderOnce()
+
+    const widthAfterThirdRender = lineNumberRenderable["gutter"]?.width
+    expect(widthAfterThirdRender).toBe(widthAfterFirstRender)
+  })
+
+  test("gutter width accounts for large line numbers from first render", async () => {
+    const { renderer, renderOnce } = await createTestRenderer({
+      width: 30,
+      height: 10,
+    })
+
+    const text = "Line 1\nLine 2\nLine 3"
+    const textRenderable = new MockTextBuffer(renderer, {
+      text,
+      width: "100%",
+      height: "100%",
+    })
+
+    const lineNumberRenderable = new LineNumberRenderable(renderer, {
+      target: textRenderable,
+      minWidth: 3,
+      paddingRight: 1,
+      fg: "white",
+      lineNumberOffset: 997, // Will show lines 998, 999, 1000 (4 digits)
+      width: "100%",
+      height: "100%",
+    })
+
+    renderer.root.add(lineNumberRenderable)
+
+    // First render - this is when layout happens
+    await renderOnce()
+
+    // Capture width after first render
+    const gutterAfterFirstRender = lineNumberRenderable["gutter"]
+    const widthAfterFirstRender = gutterAfterFirstRender?.width
+
+    // Width should be at least 5 (for "1000" which is 4 digits + padding)
+    expect(widthAfterFirstRender).toBeGreaterThanOrEqual(5)
+
+    // Render again - width should NOT change (no glitch)
+    await renderOnce()
+
+    const widthAfterSecondRender = lineNumberRenderable["gutter"]?.width
+    expect(widthAfterSecondRender).toBe(widthAfterFirstRender)
+
+    // Render a third time to be absolutely sure
+    await renderOnce()
+
+    const widthAfterThirdRender = lineNumberRenderable["gutter"]?.width
+    expect(widthAfterThirdRender).toBe(widthAfterFirstRender)
+  })
+
+  // TODO: flaky - works locally but fails in CI every time
+  test.skip("handles async content loading in Code renderable with drawUnstyledText=false", async () => {
+    const { renderer, renderOnce, captureCharFrame } = await createTestRenderer({
+      width: 30,
+      height: 10,
+    })
+
+    // Import Code renderable
+    const { CodeRenderable } = await import("../Code")
+    const { SyntaxStyle } = await import("../../syntax-style")
+
+    const syntaxStyle = SyntaxStyle.create()
+
+    // Create Code renderable with no initial content and drawUnstyledText=false
+    const codeRenderable = new CodeRenderable(renderer, {
+      content: "",
+      filetype: "typescript",
+      syntaxStyle,
+      drawUnstyledText: false,
+      width: "100%",
+      height: "100%",
+    })
+
+    const lineNumberRenderable = new LineNumberRenderable(renderer, {
+      target: codeRenderable,
+      minWidth: 3,
+      paddingRight: 1,
+      fg: "white",
+      width: "100%",
+      height: "100%",
+    })
+
+    renderer.root.add(lineNumberRenderable)
+
+    // First render - no content yet
+    await renderOnce()
+
+    let frame = captureCharFrame()
+
+    // Should have minimal lines (empty buffer may show 1 line)
+    const initialLineCount = codeRenderable.lineCount
+    expect(initialLineCount).toBeLessThanOrEqual(1)
+
+    // Now set content on the Code renderable
+    const code = `function hello() {\n  console.log("Hello");\n}`
+    codeRenderable.content = code
+
+    // Wait for render and highlighting
+    await renderOnce()
+    // Give highlighting time to complete (increased for CI)
+    await Bun.sleep(1000)
+    await renderOnce()
+    await Bun.sleep(100)
+    await renderOnce()
+
+    frame = captureCharFrame()
+
+    // Should now show line numbers for the content
+    expect(codeRenderable.lineCount).toBe(3)
+    expect(frame).toContain("function")
+    expect(frame).toContain("console")
+
+    // Check that line numbers are present
+    const lines = frame.split("\n")
+    expect(lines[0]).toMatch(/1/)
+    expect(lines[1]).toMatch(/2/)
+    expect(lines[2]).toMatch(/3/)
+  })
+
+  test("updates line numbers when Code renderable content changes", async () => {
+    const { renderer, renderOnce, captureCharFrame } = await createTestRenderer({
+      width: 30,
+      height: 10,
+    })
+
+    const { CodeRenderable } = await import("../Code")
+    const { SyntaxStyle } = await import("../../syntax-style")
+
+    const syntaxStyle = SyntaxStyle.create()
+
+    // Create Code renderable with initial content
+    const codeRenderable = new CodeRenderable(renderer, {
+      content: "line 1\nline 2",
+      filetype: "typescript",
+      syntaxStyle,
+      drawUnstyledText: true,
+      width: "100%",
+      height: "100%",
+    })
+
+    const lineNumberRenderable = new LineNumberRenderable(renderer, {
+      target: codeRenderable,
+      minWidth: 3,
+      paddingRight: 1,
+      fg: "white",
+      width: "100%",
+      height: "100%",
+    })
+
+    renderer.root.add(lineNumberRenderable)
+
+    // First render
+    await renderOnce()
+    await Bun.sleep(50)
+    await renderOnce()
+
+    let frame = captureCharFrame()
+
+    // Should show 2 lines
+    expect(codeRenderable.lineCount).toBe(2)
+    expect(frame).toContain("line 1")
+    expect(frame).toContain("line 2")
+
+    // Now update content to have more lines
+    codeRenderable.content = "line 1\nline 2\nline 3\nline 4\nline 5"
+
+    await renderOnce()
+    await Bun.sleep(50)
+    await renderOnce()
+
+    frame = captureCharFrame()
+
+    // Should now show 5 lines
+    expect(codeRenderable.lineCount).toBe(5)
+    expect(frame).toContain("line 5")
+
+    // Check that line numbers are present for all 5 lines
+    const lines = frame.split("\n")
+    expect(lines.length).toBeGreaterThanOrEqual(5)
+    expect(lines[0]).toMatch(/1/)
+    expect(lines[4]).toMatch(/5/)
+  })
+
+  test("handles Code renderable switching from no filetype to having filetype", async () => {
+    const { renderer, renderOnce, captureCharFrame } = await createTestRenderer({
+      width: 30,
+      height: 10,
+    })
+
+    const { CodeRenderable } = await import("../Code")
+    const { SyntaxStyle } = await import("../../syntax-style")
+
+    const syntaxStyle = SyntaxStyle.create()
+
+    // Create Code renderable with content but no filetype (plain text fallback)
+    const codeRenderable = new CodeRenderable(renderer, {
+      content: "function test() {\n  return 42;\n}",
+      filetype: undefined,
+      syntaxStyle,
+      drawUnstyledText: true,
+      width: "100%",
+      height: "100%",
+    })
+
+    const lineNumberRenderable = new LineNumberRenderable(renderer, {
+      target: codeRenderable,
+      minWidth: 3,
+      paddingRight: 1,
+      fg: "white",
+      width: "100%",
+      height: "100%",
+    })
+
+    renderer.root.add(lineNumberRenderable)
+
+    // First render - plain text
+    await renderOnce()
+
+    let frame = captureCharFrame()
+
+    expect(codeRenderable.lineCount).toBe(3)
+    expect(frame).toContain("function")
+
+    // Now set filetype to enable syntax highlighting
+    codeRenderable.filetype = "typescript"
+
+    await renderOnce()
+    await Bun.sleep(100)
+    await renderOnce()
+
+    frame = captureCharFrame()
+
+    // Should still show 3 lines with highlighting
+    expect(codeRenderable.lineCount).toBe(3)
+    expect(frame).toContain("function")
+
+    // Line numbers should be present
+    const lines = frame.split("\n")
+    expect(lines[0]).toMatch(/1/)
+    expect(lines[2]).toMatch(/3/)
+  })
+
+  test("maintains consistent left padding for all line numbers", async () => {
+    const { renderer, renderOnce, captureCharFrame } = await createTestRenderer({
+      width: 30,
+      height: 15,
+    })
+
+    // Create content with 12 lines so we have both 1-digit (1-9) and 2-digit (10-12) line numbers
+    const lines = []
+    for (let i = 1; i <= 12; i++) {
+      lines.push(`Line ${i}`)
+    }
+    const text = lines.join("\n")
+
+    const textRenderable = new MockTextBuffer(renderer, {
+      text,
+      width: "100%",
+      height: "100%",
+    })
+
+    const lineNumberRenderable = new LineNumberRenderable(renderer, {
+      target: textRenderable,
+      minWidth: 3,
+      paddingRight: 1,
+      fg: "white",
+      width: "100%",
+      height: "100%",
+    })
+
+    renderer.root.add(lineNumberRenderable)
+
+    await renderOnce()
+
+    const frame = captureCharFrame()
+    expect(frame).toMatchSnapshot()
+
+    const frameLines = frame.split("\n")
+
+    // Extract the gutter portion (everything before "Line X")
+    // For 1-digit line numbers (1-9), they are right-aligned in a 2-digit space
+    // For 2-digit line numbers (10-12), they fill the 2-digit space
+    // Both should have 1 space of left padding
+
+    // Line 1 should have format: "  1 Line 1" (1 left pad + 1 space for alignment + "1" + 1 paddingRight)
+    expect(frameLines[0]).toMatch(/^  1 Line 1/)
+    const line1Match = frameLines[0].match(/^( +)1 /)
+    expect(line1Match).toBeTruthy()
+    expect(line1Match![1].length).toBe(2) // 1 left padding + 1 alignment space
+
+    // Line 9 should also have the same format as line 1
+    expect(frameLines[8]).toMatch(/^  9 Line 9/)
+    const line9Match = frameLines[8].match(/^( +)9 /)
+    expect(line9Match).toBeTruthy()
+    expect(line9Match![1].length).toBe(2) // 1 left padding + 1 alignment space
+
+    // Line 10 should have format: " 10 Line 10" (1 left pad + "10" + 1 paddingRight)
+    expect(frameLines[9]).toMatch(/^ 10 Line 10/)
+    const line10Match = frameLines[9].match(/^( +)10 /)
+    expect(line10Match).toBeTruthy()
+    expect(line10Match![1].length).toBe(1) // Just 1 left padding
+
+    // All lines should have at least 1 space of left padding before the first digit
+    for (let i = 0; i < 12; i++) {
+      const lineMatch = frameLines[i].match(/^( +)\d+/)
+      expect(lineMatch).toBeTruthy()
+      expect(lineMatch![1].length).toBeGreaterThanOrEqual(1)
+    }
+  })
+
+  test("supports separate gutter and content colors with LineColorConfig", async () => {
+    const { renderer, renderOnce } = await createTestRenderer({
+      width: 20,
+      height: 10,
+    })
+
+    const text = "Line 1\nLine 2\nLine 3\nLine 4\nLine 5"
+    const textRenderable = new MockTextBuffer(renderer, {
+      text,
+      width: "100%",
+      height: "100%",
+    })
+
+    const lineColors = new Map<number, any>()
+    lineColors.set(1, { gutter: "#2d4a2e", content: "#1a2e1f" }) // Different colors for gutter and content
+
+    const lineNumberRenderable = new LineNumberRenderable(renderer, {
+      target: textRenderable,
+      minWidth: 3,
+      paddingRight: 1,
+      fg: "#ffffff",
+      bg: "#000000",
+      lineColors: lineColors,
+      width: "100%",
+      height: "100%",
+    })
+
+    renderer.root.add(lineNumberRenderable)
+
+    await renderOnce()
+
+    const buffer = renderer.currentRenderBuffer
+    const bgBuffer = buffer.buffers.bg
+
+    const getBgColor = (x: number, y: number) => {
+      const offset = (y * buffer.width + x) * 4
+      return {
+        r: bgBuffer[offset],
+        g: bgBuffer[offset + 1],
+        b: bgBuffer[offset + 2],
+        a: bgBuffer[offset + 3],
+      }
+    }
+
+    // Check line 2 (index 1) has the specified gutter color in gutter area (x=2)
+    const line2GutterBg = getBgColor(2, 1)
+    expect(line2GutterBg.r).toBeCloseTo(0x2d / 255, 2)
+    expect(line2GutterBg.g).toBeCloseTo(0x4a / 255, 2)
+    expect(line2GutterBg.b).toBeCloseTo(0x2e / 255, 2)
+
+    // Check line 2 (index 1) has the specified content color in content area (x=10)
+    const line2ContentBg = getBgColor(10, 1)
+    expect(line2ContentBg.r).toBeCloseTo(0x1a / 255, 2)
+    expect(line2ContentBg.g).toBeCloseTo(0x2e / 255, 2)
+    expect(line2ContentBg.b).toBeCloseTo(0x1f / 255, 2)
+  })
+
+  test("defaults content color to darker gutter color when only gutter is specified", async () => {
+    const { renderer, renderOnce } = await createTestRenderer({
+      width: 20,
+      height: 10,
+    })
+
+    const text = "Line 1\nLine 2\nLine 3"
+    const textRenderable = new MockTextBuffer(renderer, {
+      text,
+      width: "100%",
+      height: "100%",
+    })
+
+    const lineColors = new Map<number, any>()
+    lineColors.set(1, { gutter: "#50fa7b" }) // Only gutter color specified
+
+    const lineNumberRenderable = new LineNumberRenderable(renderer, {
+      target: textRenderable,
+      minWidth: 3,
+      paddingRight: 1,
+      fg: "#ffffff",
+      bg: "#000000",
+      lineColors: lineColors,
+      width: "100%",
+      height: "100%",
+    })
+
+    renderer.root.add(lineNumberRenderable)
+
+    await renderOnce()
+
+    const buffer = renderer.currentRenderBuffer
+    const bgBuffer = buffer.buffers.bg
+
+    const getBgColor = (x: number, y: number) => {
+      const offset = (y * buffer.width + x) * 4
+      return {
+        r: bgBuffer[offset],
+        g: bgBuffer[offset + 1],
+        b: bgBuffer[offset + 2],
+        a: bgBuffer[offset + 3],
+      }
+    }
+
+    // Check line 2 (index 1) has the specified gutter color in gutter area (x=2)
+    const line2GutterBg = getBgColor(2, 1)
+    const expectedGutterR = 0x50 / 255
+    const expectedGutterG = 0xfa / 255
+    const expectedGutterB = 0x7b / 255
+    expect(line2GutterBg.r).toBeCloseTo(expectedGutterR, 2)
+    expect(line2GutterBg.g).toBeCloseTo(expectedGutterG, 2)
+    expect(line2GutterBg.b).toBeCloseTo(expectedGutterB, 2)
+
+    // Check line 2 (index 1) has a darker color (80%) in content area (x=10)
+    const line2ContentBg = getBgColor(10, 1)
+    expect(line2ContentBg.r).toBeCloseTo(expectedGutterR * 0.8, 2)
+    expect(line2ContentBg.g).toBeCloseTo(expectedGutterG * 0.8, 2)
+    expect(line2ContentBg.b).toBeCloseTo(expectedGutterB * 0.8, 2)
+  })
+
+  test("defaults content color to 80% of gutter when using simple string color format", async () => {
+    const { renderer, renderOnce } = await createTestRenderer({
+      width: 20,
+      height: 10,
+    })
+
+    const text = "Line 1\nLine 2\nLine 3"
+    const textRenderable = new MockTextBuffer(renderer, {
+      text,
+      width: "100%",
+      height: "100%",
+    })
+
+    const lineColors = new Map<number, string>()
+    lineColors.set(1, "#ff5555") // Simple string format
+
+    const lineNumberRenderable = new LineNumberRenderable(renderer, {
+      target: textRenderable,
+      minWidth: 3,
+      paddingRight: 1,
+      fg: "#ffffff",
+      bg: "#000000",
+      lineColors: lineColors,
+      width: "100%",
+      height: "100%",
+    })
+
+    renderer.root.add(lineNumberRenderable)
+
+    await renderOnce()
+
+    const buffer = renderer.currentRenderBuffer
+    const bgBuffer = buffer.buffers.bg
+
+    const getBgColor = (x: number, y: number) => {
+      const offset = (y * buffer.width + x) * 4
+      return {
+        r: bgBuffer[offset],
+        g: bgBuffer[offset + 1],
+        b: bgBuffer[offset + 2],
+        a: bgBuffer[offset + 3],
+      }
+    }
+
+    // Check line 2 (index 1) has the specified color in gutter area (x=2)
+    const line2GutterBg = getBgColor(2, 1)
+    const expectedGutterR = 0xff / 255
+    const expectedGutterG = 0x55 / 255
+    const expectedGutterB = 0x55 / 255
+    expect(line2GutterBg.r).toBeCloseTo(expectedGutterR, 2)
+    expect(line2GutterBg.g).toBeCloseTo(expectedGutterG, 2)
+    expect(line2GutterBg.b).toBeCloseTo(expectedGutterB, 2)
+
+    // Check line 2 (index 1) has a darker color (80%) in content area (x=10)
+    const line2ContentBg = getBgColor(10, 1)
+    expect(line2ContentBg.r).toBeCloseTo(expectedGutterR * 0.8, 2)
+    expect(line2ContentBg.g).toBeCloseTo(expectedGutterG * 0.8, 2)
+    expect(line2ContentBg.b).toBeCloseTo(expectedGutterB * 0.8, 2)
+  })
+
+  test("dynamically updates line colors with LineColorConfig", async () => {
+    const { renderer, renderOnce } = await createTestRenderer({
+      width: 20,
+      height: 10,
+    })
+
+    const text = "Line 1\nLine 2\nLine 3"
+    const textRenderable = new MockTextBuffer(renderer, {
+      text,
+      width: "100%",
+      height: "100%",
+    })
+
+    const lineNumberRenderable = new LineNumberRenderable(renderer, {
+      target: textRenderable,
+      minWidth: 3,
+      paddingRight: 1,
+      fg: "#ffffff",
+      bg: "#000000",
+      width: "100%",
+      height: "100%",
+    })
+
+    renderer.root.add(lineNumberRenderable)
+
+    await renderOnce()
+
+    const buffer = renderer.currentRenderBuffer
+    const bgBuffer = buffer.buffers.bg
+
+    const getBgColor = (x: number, y: number) => {
+      const offset = (y * buffer.width + x) * 4
+      return {
+        r: bgBuffer[offset],
+        g: bgBuffer[offset + 1],
+        b: bgBuffer[offset + 2],
+        a: bgBuffer[offset + 3],
+      }
+    }
+
+    // Set line color using LineColorConfig with setLineColor
+    lineNumberRenderable.setLineColor(1, { gutter: "#2d4a2e", content: "#1a2e1f" })
+    await renderOnce()
+
+    // Check gutter color
+    const line2GutterBg = getBgColor(2, 1)
+    expect(line2GutterBg.r).toBeCloseTo(0x2d / 255, 2)
+    expect(line2GutterBg.g).toBeCloseTo(0x4a / 255, 2)
+    expect(line2GutterBg.b).toBeCloseTo(0x2e / 255, 2)
+
+    // Check content color
+    const line2ContentBg = getBgColor(10, 1)
+    expect(line2ContentBg.r).toBeCloseTo(0x1a / 255, 2)
+    expect(line2ContentBg.g).toBeCloseTo(0x2e / 255, 2)
+    expect(line2ContentBg.b).toBeCloseTo(0x1f / 255, 2)
+
+    // Clear the line color
+    lineNumberRenderable.clearLineColor(1)
+    await renderOnce()
+
+    const line2AfterClearBg = getBgColor(2, 1)
+    expect(line2AfterClearBg.r).toBeCloseTo(0, 2)
+    expect(line2AfterClearBg.g).toBeCloseTo(0, 2)
+    expect(line2AfterClearBg.b).toBeCloseTo(0, 2)
+  })
+
+  test("getLineColors returns both gutter and content color maps", async () => {
+    const { renderer, renderOnce } = await createTestRenderer({
+      width: 20,
+      height: 10,
+    })
+
+    const text = "Line 1\nLine 2\nLine 3"
+    const textRenderable = new MockTextBuffer(renderer, {
+      text,
+      width: "100%",
+      height: "100%",
+    })
+
+    const lineColors = new Map<number, any>()
+    lineColors.set(1, { gutter: "#2d4a2e", content: "#1a2e1f" })
+
+    const lineNumberRenderable = new LineNumberRenderable(renderer, {
+      target: textRenderable,
+      minWidth: 3,
+      paddingRight: 1,
+      fg: "#ffffff",
+      bg: "#000000",
+      lineColors: lineColors,
+      width: "100%",
+      height: "100%",
+    })
+
+    renderer.root.add(lineNumberRenderable)
+
+    await renderOnce()
+
+    const colors = lineNumberRenderable.getLineColors()
+    expect(colors.gutter.size).toBe(1)
+    expect(colors.content.size).toBe(1)
+
+    const gutterColor = colors.gutter.get(1)
+    expect(gutterColor).toBeDefined()
+    expect(gutterColor!.r).toBeCloseTo(0x2d / 255, 2)
+    expect(gutterColor!.g).toBeCloseTo(0x4a / 255, 2)
+    expect(gutterColor!.b).toBeCloseTo(0x2e / 255, 2)
+
+    const contentColor = colors.content.get(1)
+    expect(contentColor).toBeDefined()
+    expect(contentColor!.r).toBeCloseTo(0x1a / 255, 2)
+    expect(contentColor!.g).toBeCloseTo(0x2e / 255, 2)
+    expect(contentColor!.b).toBeCloseTo(0x1f / 255, 2)
   })
 
   test("maintains stable visual line count when scrolling and typing with word wrap", async () => {

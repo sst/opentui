@@ -50,6 +50,14 @@ export class CodeRenderable extends TextBufferRenderable {
     this._drawUnstyledText = options.drawUnstyledText ?? this._contentDefaultOptions.drawUnstyledText
     this._streaming = options.streaming ?? this._contentDefaultOptions.streaming
 
+    // Set initial content immediately so lineCount is correct for measure functions
+    // This prevents width glitches in parent components like LineNumberRenderable
+    // Only set if we would show unstyled text OR if there's no filetype (fallback to plain text)
+    if (this._content.length > 0 && (this._drawUnstyledText || !this._filetype)) {
+      this.textBuffer.setText(this._content)
+      this.updateTextInfo()
+    }
+
     // Mark as dirty if there's initial content (even without filetype, we need to show it)
     this._highlightsDirty = this._content.length > 0
   }
@@ -62,6 +70,13 @@ export class CodeRenderable extends TextBufferRenderable {
     if (this._content !== value) {
       this._content = value
       this._highlightsDirty = true
+
+      // Update text buffer immediately for measure functions (like gutter width calculation)
+      // Only do this if we're showing unstyled text or have no filetype
+      if (this._drawUnstyledText || !this._filetype) {
+        this.textBuffer.setText(value)
+        this.updateTextInfo()
+      }
     }
   }
 

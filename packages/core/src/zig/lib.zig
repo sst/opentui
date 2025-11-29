@@ -587,6 +587,15 @@ export fn textBufferViewSetViewportSize(view: *text_buffer_view.UnifiedTextBuffe
     view.setViewportSize(width, height);
 }
 
+export fn textBufferViewSetViewport(view: *text_buffer_view.UnifiedTextBufferView, x: u32, y: u32, width: u32, height: u32) void {
+    view.setViewport(text_buffer_view.Viewport{
+        .x = x,
+        .y = y,
+        .width = width,
+        .height = height,
+    });
+}
+
 export fn textBufferViewGetVirtualLineCount(view: *text_buffer_view.UnifiedTextBufferView) u32 {
     return view.getVirtualLineCount();
 }
