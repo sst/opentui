@@ -91,6 +91,11 @@ export class TextBufferView {
     this.lib.textBufferViewSetViewportSize(this.viewPtr, width, height)
   }
 
+  public setViewport(x: number, y: number, width: number, height: number): void {
+    this.guard()
+    this.lib.textBufferViewSetViewport(this.viewPtr, x, y, width, height)
+  }
+
   public get lineInfo(): LineInfo {
     this.guard()
     return this.lib.textBufferViewGetLineInfo(this.viewPtr)
