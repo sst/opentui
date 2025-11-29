@@ -135,7 +135,6 @@ async function main() {
     addEvent("keyrelease", event)
   })
 
-
   renderer.keyInput.on("paste", (event) => {
     addEvent("paste", event)
   })
