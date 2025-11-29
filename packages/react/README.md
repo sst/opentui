@@ -136,7 +136,7 @@ function App() {
 }
 ```
 
-#### `useKeyboard(handler)`
+#### `useKeyboard(handler, options?)`
 
 Handle keyboard events.
 
@@ -151,6 +151,46 @@ function App() {
   })
 
   return <text>Press ESC to exit</text>
+}
+```
+
+**Parameters:**
+
+- `handler`: Callback function that receives a `KeyEvent` object
+- `options?`: Optional configuration object:
+  - `release?`: Boolean to include key release events (default: `false`)
+
+By default, only receives press events (including key repeats with `repeated: true`). Set `options.release` to `true` to also receive release events.
+
+**Example with release events:**
+
+```tsx
+import { useKeyboard } from "@opentui/react"
+import { useState } from "react"
+
+function App() {
+  const [pressedKeys, setPressedKeys] = useState<Set<string>>(new Set())
+
+  useKeyboard(
+    (event) => {
+      setPressedKeys((keys) => {
+        const newKeys = new Set(keys)
+        if (event.eventType === "release") {
+          newKeys.delete(event.name)
+        } else {
+          newKeys.add(event.name)
+        }
+        return newKeys
+      })
+    },
+    { release: true },
+  )
+
+  return (
+    <box>
+      <text>Currently pressed: {Array.from(pressedKeys).join(", ") || "none"}</text>
+    </box>
+  )
 }
 ```
 
