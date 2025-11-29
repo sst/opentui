@@ -1,5 +1,4 @@
 import { dlopen, toArrayBuffer, JSCallback, ptr, type Pointer } from "bun:ffi"
-import { createRequire } from "node:module"
 import { existsSync } from "fs"
 import { EventEmitter } from "events"
 import { type CursorStyle, type DebugOverlayCorner, type WidthMethod, type Highlight, type LineInfo } from "./types"
@@ -20,9 +19,8 @@ import {
   MeasureResultStruct,
 } from "./zig-structs"
 
-const require = createRequire(import.meta.url)
-const mod = require(`@opentui/core-${process.platform}-${process.arch}/index.ts`)
-let targetLibPath = mod?.default ?? mod
+const module = await import(`@opentui/core-${process.platform}-${process.arch}/index.ts`)
+let targetLibPath = module.default
 
 if (/\$bunfs/.test(targetLibPath)) {
   targetLibPath = targetLibPath.replace("../", "")
