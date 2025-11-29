@@ -18,6 +18,24 @@
       "@opentui/core/*": ["../core/dist/*"]
     }
   },
-  "include": ["index.ts", "src/**/*", "jsx-runtime.d.ts"],
-  "exclude": ["**/*.test.ts", "**/*.spec.ts", "examples/**/*", "scripts/**/*", "node_modules/**/*", "../core/**/*"]
+  "include": [
+    "index.ts",
+    "src/**/*",
+    "jsx-runtime.d.ts",
+    // See the comment below
+    "scripts/solid-plugin.ts"
+  ],
+  "exclude": [
+    "**/*.test.ts",
+    "**/*.spec.ts",
+    "examples/**/*",
+    "node_modules/**/*",
+    "../core/**/*",
+    // We have to explicitly list each script to exclude rather than using "scripts/**/*"
+    // "exclude" is applied after "include"
+    // See: https://www.typescriptlang.org/tsconfig#exclude
+    "scripts/build.ts",
+    "scripts/publish.ts",
+    "scripts/preload.ts"
+  ]
 }
