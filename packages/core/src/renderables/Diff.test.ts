@@ -2274,11 +2274,11 @@ describe("computeInlineHighlights", () => {
 
   test("highlights changed words", () => {
     const result = computeInlineHighlights("hello world", "hello there")
-    
+
     // "world" should be highlighted as removed
     expect(result.oldHighlights.length).toBeGreaterThan(0)
     expect(result.oldHighlights[0].type).toBe("removed-word")
-    
+
     // "there" should be highlighted as added
     expect(result.newHighlights.length).toBeGreaterThan(0)
     expect(result.newHighlights[0].type).toBe("added-word")
@@ -2286,7 +2286,7 @@ describe("computeInlineHighlights", () => {
 
   test("computes correct column positions", () => {
     const result = computeInlineHighlights("const x = 1", "const x = 2")
-    
+
     // The "1" is at position 10, "2" is at position 10
     expect(result.oldHighlights[0].startCol).toBe(10)
     expect(result.oldHighlights[0].endCol).toBe(11)
@@ -2296,7 +2296,7 @@ describe("computeInlineHighlights", () => {
 
   test("handles multiple changes", () => {
     const result = computeInlineHighlights("a b c", "x b z")
-    
+
     // "a" and "c" should be removed, "x" and "z" should be added
     expect(result.oldHighlights.length).toBe(2)
     expect(result.newHighlights.length).toBe(2)
@@ -2460,7 +2460,7 @@ ${manyAdds}`
     })
 
     currentRenderer.root.add(diffRenderable)
-    
+
     // Should not throw or hang - large blocks are skipped
     await renderOnce()
 

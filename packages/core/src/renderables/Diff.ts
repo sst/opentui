@@ -227,9 +227,7 @@ export class DiffRenderable extends Renderable {
     this._showWordHighlights = options.showWordHighlights ?? true
     this._lineSimilarityThreshold = options.lineSimilarityThreshold ?? 0.4
     // Default word highlight colors: brighter versions of the line colors
-    this._addedWordBg = options.addedWordBg
-      ? parseColor(options.addedWordBg)
-      : this.brightenColor(this._addedBg, 1.5)
+    this._addedWordBg = options.addedWordBg ? parseColor(options.addedWordBg) : this.brightenColor(this._addedBg, 1.5)
     this._removedWordBg = options.removedWordBg
       ? parseColor(options.removedWordBg)
       : this.brightenColor(this._removedBg, 1.5)
