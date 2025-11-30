@@ -167,8 +167,7 @@ describe("renderer capabilities event", () => {
     ]
 
     for (const response of kittyResponses) {
-      // @ts-expect-error - accessing private for test
-      renderer._stdinBuffer.process(Buffer.from(response))
+      renderer.stdin.emit("data", Buffer.from(response))
       await new Promise((resolve) => setTimeout(resolve, 10))
     }
 
