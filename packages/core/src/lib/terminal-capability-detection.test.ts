@@ -132,3 +132,67 @@ describe("real-world terminal capability sequences", () => {
     expect(isCapabilityResponse("\x1b[?1016;2$y")).toBe(true)
   })
 })
+
+describe("renderer capabilities event", () => {
+  /**
+   * The renderer emits "capabilities" event each time a capability response is processed.
+   * This happens multiple times at startup because the terminal responds to multiple queries:
+   * - DECRPM queries (sgr_pixels, unicode, color_scheme, focus, bracketed_paste, sync)
+   * - CPR queries for width detection (explicit_width, scaled_text)
+   * - XTVersion (terminal name/version, kitty detection)
+   * - Kitty keyboard query response
+   *
+   * Each response arrives async and triggers the event, so consumers should expect
+   * multiple emissions and handle them reactively.
+   */
+  test("kitty terminal emits capabilities event for each response", async () => {
+    const { createTestRenderer } = await import("../testing/test-renderer")
+    const { renderer } = await createTestRenderer({})
+
+    const events: any[] = []
+    renderer.on("capabilities", (caps) => events.push({ ...caps }))
+
+    // Simulate all 10 Kitty capability responses (as they arrive separately)
+    const kittyResponses = [
+      "\x1b[?1016;2$y", // 1. sgr_pixels
+      "\x1b[?2027;0$y", // 2. unicode query
+      "\x1b[?2031;2$y", // 3. color_scheme_updates
+      "\x1b[?1004;2$y", // 4. focus_tracking
+      "\x1b[?2004;2$y", // 5. bracketed_paste
+      "\x1b[?2026;2$y", // 6. sync
+      "\x1b[1;2R", // 7. explicit_width (CPR)
+      "\x1b[1;3R", // 8. scaled_text (CPR)
+      "\x1bP>|kitty(0.42.2)\x1b\\", // 9. xtversion (triggers kitty detection)
+      "\x1b[?0u", // 10. kitty keyboard query
+    ]
+
+    for (const response of kittyResponses) {
+      renderer.stdin.emit("data", Buffer.from(response))
+      await new Promise((resolve) => setTimeout(resolve, 10))
+    }
+
+    // Should have received 10 capability events
+    expect(events.length).toBe(10)
+
+    // First event: sgr_pixels detected
+    expect(events[0].sgr_pixels).toBe(true)
+
+    // After xtversion (event 9): kitty_keyboard should be true
+    expect(events[8].kitty_keyboard).toBe(true)
+    expect(events[8].kitty_graphics).toBe(true)
+    expect(events[8].terminal.name).toBe("kitty")
+    expect(events[8].terminal.version).toBe("0.42.2")
+
+    // Final state should have all kitty capabilities
+    const finalCaps = events[9]
+    expect(finalCaps.kitty_keyboard).toBe(true)
+    expect(finalCaps.sgr_pixels).toBe(true)
+    expect(finalCaps.color_scheme_updates).toBe(true)
+    expect(finalCaps.focus_tracking).toBe(true)
+    expect(finalCaps.sync).toBe(true)
+    expect(finalCaps.explicit_width).toBe(true)
+    expect(finalCaps.scaled_text).toBe(true)
+
+    renderer.destroy()
+  })
+})
