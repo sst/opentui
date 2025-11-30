@@ -363,6 +363,8 @@ export abstract class Renderable extends BaseRenderable {
     this.keypressHandler = (key: KeyEvent) => {
       if (this._isDestroyed) return
       this._keyListeners["down"]?.(key)
+      // Check again after user listener - it might have destroyed the renderable
+      if (this._isDestroyed) return
       if (!key.defaultPrevented && this.handleKeyPress) {
         this.handleKeyPress(key)
       }
@@ -371,6 +373,8 @@ export abstract class Renderable extends BaseRenderable {
     this.pasteHandler = (event: PasteEvent) => {
       if (this._isDestroyed) return
       this._pasteListener?.call(this, event)
+      // Check again after user listener - it might have destroyed the renderable
+      if (this._isDestroyed) return
       if (!event.defaultPrevented && this.handlePaste) {
         this.handlePaste(event)
       }
