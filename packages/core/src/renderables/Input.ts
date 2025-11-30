@@ -273,7 +273,9 @@ export class InputRenderable extends Renderable {
           keySequence &&
           keySequence.length === 1 &&
           keySequence.charCodeAt(0) >= 32 &&
-          keySequence.charCodeAt(0) <= 126
+          keySequence.charCodeAt(0) <= 126 &&
+          // ensure no modifier keys are pressed
+          (typeof key === "string" || (!key.ctrl && !key.meta && !key.super && !key.hyper))
         ) {
           this.insertText(keySequence)
           return true
