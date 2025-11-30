@@ -197,7 +197,7 @@ yogaConfig.setPointScaleFactor(1)
 export abstract class Renderable extends BaseRenderable {
   static renderablesByNumber: Map<number, Renderable> = new Map()
 
-  private _isDestroyed: boolean = false
+  protected _isDestroyed: boolean = false
   protected _ctx: RenderContext
   protected _translateX: number = 0
   protected _translateY: number = 0
@@ -354,21 +354,27 @@ export abstract class Renderable extends BaseRenderable {
   }
 
   public focus(): void {
-    if (this._focused || !this._focusable) return
+    if (this._isDestroyed || this._focused || !this._focusable) return
 
     this._ctx.focusRenderable(this)
     this._focused = true
     this.requestRender()
 
     this.keypressHandler = (key: KeyEvent) => {
+      if (this._isDestroyed) return
       this._keyListeners["down"]?.(key)
+      // Check again after user listener - it might have destroyed the renderable
+      if (this._isDestroyed) return
       if (!key.defaultPrevented && this.handleKeyPress) {
         this.handleKeyPress(key)
       }
     }
 
     this.pasteHandler = (event: PasteEvent) => {
+      if (this._isDestroyed) return
       this._pasteListener?.call(this, event)
+      // Check again after user listener - it might have destroyed the renderable
+      if (this._isDestroyed) return
       if (!event.defaultPrevented && this.handlePaste) {
         this.handlePaste(event)
       }
@@ -1228,6 +1234,9 @@ export abstract class Renderable extends BaseRenderable {
 
     this.onUpdate(deltaTime)
 
+    // If destroyed during onUpdate, don't add to render list
+    if (this._isDestroyed) return
+
     // NOTE: worst case updateFromLayout is called throughout the whole tree,
     // which currently still has yoga performance issues.
     // This can be mitigated at some point when the layout tree moved to native,
@@ -1236,6 +1245,9 @@ export abstract class Renderable extends BaseRenderable {
     // That would allow us to to generate optimised render commands,
     // including the layout updates, in one pass.
     this.updateFromLayout()
+
+    // Check again after updateFromLayout, which calls onResize/onSizeChange
+    if (this._isDestroyed) return
 
     renderList.push({ action: "render", renderable: this })
 
@@ -1542,7 +1554,10 @@ export class RootRenderable extends Renderable {
       const command = this.renderList[i]
       switch (command.action) {
         case "render":
-          command.renderable.render(buffer, deltaTime)
+          // Skip if renderable was destroyed during a previous render callback
+          if (!command.renderable.isDestroyed) {
+            command.renderable.render(buffer, deltaTime)
+          }
           break
         case "pushScissorRect":
           buffer.pushScissorRect(command.x, command.y, command.width, command.height)

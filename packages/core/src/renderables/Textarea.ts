@@ -508,7 +508,9 @@ export class TextareaRenderable extends EditBufferRenderable {
 
   public blur(): void {
     super.blur()
-    this.updateColors()
+    if (!this.isDestroyed) {
+      this.updateColors()
+    }
   }
 
   get placeholder(): StyledText | string | null {
