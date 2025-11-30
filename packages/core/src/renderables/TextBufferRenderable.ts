@@ -131,7 +131,11 @@ export abstract class TextBufferRenderable extends Renderable implements LineInf
   }
 
   public get lineCount(): number {
-    return this.textBuffer.getLineCount()
+    // Return the visual line count (including wrapped lines), not the logical line count
+    // This is important for components like LineNumberRenderable that need to know
+    // how many visual lines to render
+    const lineInfo = this.lineInfo
+    return lineInfo.lineSources?.length ?? this.textBuffer.getLineCount()
   }
 
   public get scrollY(): number {
@@ -313,6 +317,10 @@ export abstract class TextBufferRenderable extends Renderable implements LineInf
   protected onResize(width: number, height: number): void {
     // Update viewport with current scroll position and new size
     this.textBufferView.setViewport(this._scrollX, this._scrollY, width, height)
+
+    // Notify listeners (like LineNumberRenderable) that line info may have changed
+    // due to wrapping changes from the resize
+    this.updateTextInfo()
 
     if (this.lastLocalSelection) {
       const changed = this.updateLocalSelection(this.lastLocalSelection)

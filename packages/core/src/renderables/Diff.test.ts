@@ -2229,3 +2229,132 @@ test("DiffRenderable - properly cleans up listeners on destroy", async () => {
     expect(rightSide.isDestroyed).toBe(true)
   }
 })
+
+test("DiffRenderable - line numbers update correctly after resize causes wrapping changes", async () => {
+  // Create a test renderer that we can resize
+  const testRenderer = await createTestRenderer({ width: 120, height: 40 })
+  const renderer = testRenderer.renderer
+  const renderOnce = testRenderer.renderOnce
+  const captureFrame = testRenderer.captureCharFrame
+  const resize = testRenderer.resize
+
+  const syntaxStyle = SyntaxStyle.fromStyles({
+    default: { fg: RGBA.fromValues(1, 1, 1, 1) },
+  })
+
+  // Create a diff with long lines that will wrap when the terminal is made smaller
+  const longLineDiff = `--- a/test.js
++++ b/test.js
+@@ -1,4 +1,4 @@
+ function calculateSomethingVeryComplexWithALongFunctionNameThatWillWrap() {
+-  const oldResultWithAVeryLongVariableNameThatWillDefinitelyWrapWhenRenderedInASmallerTerminal = 42;
++  const newResultWithAVeryLongVariableNameThatWillDefinitelyWrapWhenRenderedInASmallerTerminal = 100;
+   return result;
+ }`
+
+  const diffRenderable = new DiffRenderable(renderer, {
+    id: "test-diff",
+    diff: longLineDiff,
+    view: "unified",
+    syntaxStyle,
+    showLineNumbers: true,
+    wrapMode: "word",
+    width: "100%",
+    height: "100%",
+  })
+
+  renderer.root.add(diffRenderable)
+  await renderOnce()
+
+  // Get the underlying Code renderable to monitor its events
+  const leftCodeRenderable = (diffRenderable as any).leftCodeRenderable
+
+  // Track whether line-info-change event is emitted
+  let lineInfoChangeEmitted = false
+  const lineInfoChangeListener = () => {
+    lineInfoChangeEmitted = true
+  }
+  leftCodeRenderable.on("line-info-change", lineInfoChangeListener)
+
+  // Capture the frame before resize
+  const frameBefore = captureFrame()
+  expect(frameBefore).toMatchSnapshot("before resize - line numbers with no wrapping")
+
+  // Get the line info before resize
+  const lineInfoBefore = leftCodeRenderable.lineInfo
+  expect(lineInfoBefore.lineSources).toEqual([0, 1, 2, 3, 4]) // 5 logical lines, no wrapping
+  expect(leftCodeRenderable.lineCount).toBe(5) // Visual line count before wrapping
+
+  // Reset the flag
+  lineInfoChangeEmitted = false
+
+  // Now resize the renderer to be much smaller, causing lines to wrap
+  // The bug is that line-info-change is NOT emitted during resize AND
+  // lineCount doesn't reflect the new visual line count from wrapping
+  resize(60, 40)
+
+  // Wait a tiny bit for the resize to propagate and onResize to be called
+  await new Promise((resolve) => setTimeout(resolve, 10))
+
+  // Check if line-info-change was emitted after resize
+  // This is the key test - without updateTextInfo in onResize, this will be false
+  expect(lineInfoChangeEmitted).toBe(true)
+
+  // Check that lineCount now reflects the visual line count (with wrapping)
+  // This is the real fix - lineCount should return visual lines, not logical lines
+  expect(leftCodeRenderable.lineCount).toBe(11) // 11 visual lines after wrapping
+
+  await renderOnce()
+
+  // Wait for any microtask rebuilds
+  await new Promise((resolve) => setTimeout(resolve, 50))
+  await renderOnce()
+
+  // Capture the frame after resize
+  const frameAfter = captureFrame()
+  expect(frameAfter).toMatchSnapshot("after resize - line numbers with wrapping")
+
+  // Get the line info after resize
+  const lineInfoAfter = leftCodeRenderable.lineInfo
+  // Should now have 11 visual lines (with wrapping)
+  expect(lineInfoAfter.lineSources).toEqual([0, 0, 0, 1, 1, 1, 2, 2, 2, 3, 4])
+
+  // Parse the frames to check line numbers
+  const linesAfter = frameAfter.split("\n").filter((l) => l.trim().length > 0)
+
+  // Find lines with line numbers
+  const lineNumberMatches = linesAfter
+    .map((line, idx) => {
+      const match = line.match(/^\s*(\d+)\s+([+-]?)/)
+      if (match) {
+        return { lineIdx: idx, lineNum: parseInt(match[1]), sign: match[2], content: line }
+      }
+      return null
+    })
+    .filter((m) => m !== null)
+
+  // The line numbers should be present and correct (lines 1, 2, 2, 3, 4)
+  // Line 1: function declaration (context)
+  // Line 2: old const (removed)
+  // Line 2: new const (added)
+  // Line 3: return statement (context)
+  // Line 4: closing brace (context)
+
+  // Check that we have line numbers for the main logical lines
+  // After wrapping, we should have line numbers on visual lines 0, 3, 6, 9, 10
+  // (the first visual line of each logical line)
+  expect(lineNumberMatches.length).toBe(5) // 5 logical lines total
+
+  // Verify the line numbers are correct
+  expect(lineNumberMatches[0]!.lineNum).toBe(1) // function
+  expect(lineNumberMatches[1]!.lineNum).toBe(2) // old const (removed)
+  expect(lineNumberMatches[1]!.sign).toBe("-")
+  expect(lineNumberMatches[2]!.lineNum).toBe(2) // new const (added)
+  expect(lineNumberMatches[2]!.sign).toBe("+")
+  expect(lineNumberMatches[3]!.lineNum).toBe(3) // return
+  expect(lineNumberMatches[4]!.lineNum).toBe(4) // closing brace
+
+  // Clean up
+  leftCodeRenderable.off("line-info-change", lineInfoChangeListener)
+  renderer.destroy()
+})
