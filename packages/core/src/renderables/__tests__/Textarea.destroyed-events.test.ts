@@ -313,36 +313,53 @@ describe("Textarea - Destroyed Renderable Event Tests", () => {
     it("should clean up event listeners when destroyed while handling an event", async () => {
       let handlerCallCount = 0
       let shouldDestroy = false
+      let errorThrown = false
 
-      const { textarea: editor } = await createTextareaRenderable(currentRenderer, renderOnce, {
-        initialValue: "Test",
-        width: 40,
-        height: 10,
-        onKeyDown: () => {
-          handlerCallCount++
-          if (shouldDestroy) {
-            editor.destroy()
-          }
-        },
-      })
+      // Capture console.error to check for error logs
+      const originalConsoleError = console.error
+      console.error = (...args: any[]) => {
+        if (args[0]?.includes?.("[KeyHandler] Error in renderable")) {
+          errorThrown = true
+        }
+        originalConsoleError(...args)
+      }
 
-      editor.focus()
+      try {
+        const { textarea: editor } = await createTextareaRenderable(currentRenderer, renderOnce, {
+          initialValue: "Test",
+          width: 40,
+          height: 10,
+          onKeyDown: () => {
+            handlerCallCount++
+            if (shouldDestroy) {
+              editor.destroy()
+            }
+          },
+        })
 
-      // First keypress should work
-      currentMockInput.pressKey("A")
-      await new Promise((resolve) => setTimeout(resolve, 20))
-      expect(handlerCallCount).toBe(1)
+        editor.focus()
 
-      // Second keypress destroys the renderable
-      shouldDestroy = true
-      currentMockInput.pressKey("B")
-      await new Promise((resolve) => setTimeout(resolve, 20))
-      expect(handlerCallCount).toBe(2)
+        // First keypress should work
+        currentMockInput.pressKey("A")
+        await new Promise((resolve) => setTimeout(resolve, 20))
+        expect(handlerCallCount).toBe(1)
 
-      // Third keypress should not trigger anything
-      currentMockInput.pressKey("C")
-      await new Promise((resolve) => setTimeout(resolve, 20))
-      expect(handlerCallCount).toBe(2)
+        // Second keypress destroys the renderable
+        shouldDestroy = true
+        currentMockInput.pressKey("B")
+        await new Promise((resolve) => setTimeout(resolve, 20))
+        expect(handlerCallCount).toBe(2)
+
+        // Third keypress should not trigger anything
+        currentMockInput.pressKey("C")
+        await new Promise((resolve) => setTimeout(resolve, 20))
+        expect(handlerCallCount).toBe(2)
+
+        // CRITICAL: No error should be thrown when destroying during callback
+        expect(errorThrown).toBe(false)
+      } finally {
+        console.error = originalConsoleError
+      }
     })
   })
 
