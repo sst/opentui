@@ -1,5 +1,5 @@
-import { test, expect, beforeEach, afterEach } from "bun:test"
-import { DiffRenderable } from "./Diff"
+import { test, expect, beforeEach, afterEach, describe } from "bun:test"
+import { DiffRenderable, computeLineSimilarity, computeInlineHighlights } from "./Diff"
 import { SyntaxStyle } from "../syntax-style"
 import { RGBA } from "../lib/RGBA"
 import { createTestRenderer, type TestRenderer } from "../testing"
@@ -2228,4 +2228,244 @@ test("DiffRenderable - properly cleans up listeners on destroy", async () => {
   if (rightSide) {
     expect(rightSide.isDestroyed).toBe(true)
   }
+})
+
+// =============================================================================
+// Word-level highlight tests
+// =============================================================================
+
+describe("computeLineSimilarity", () => {
+  test("returns 1.0 for identical strings", () => {
+    expect(computeLineSimilarity("hello world", "hello world")).toBe(1.0)
+  })
+
+  test("returns 1.0 for both empty strings", () => {
+    expect(computeLineSimilarity("", "")).toBe(1.0)
+  })
+
+  test("returns 0.0 when one string is empty", () => {
+    expect(computeLineSimilarity("hello", "")).toBe(0.0)
+    expect(computeLineSimilarity("", "hello")).toBe(0.0)
+  })
+
+  test("returns high similarity for small changes", () => {
+    const similarity = computeLineSimilarity("const x = 1", "const x = 2")
+    expect(similarity).toBeGreaterThan(0.8)
+  })
+
+  test("returns low similarity for completely different strings", () => {
+    const similarity = computeLineSimilarity("abc", "xyz")
+    expect(similarity).toBe(0.0)
+  })
+
+  test("returns partial similarity for partially matching strings", () => {
+    const similarity = computeLineSimilarity("hello world", "hello there")
+    expect(similarity).toBeGreaterThan(0.4)
+    expect(similarity).toBeLessThan(0.7)
+  })
+})
+
+describe("computeInlineHighlights", () => {
+  test("returns empty highlights for identical strings", () => {
+    const result = computeInlineHighlights("hello world", "hello world")
+    expect(result.oldHighlights).toHaveLength(0)
+    expect(result.newHighlights).toHaveLength(0)
+  })
+
+  test("highlights changed words", () => {
+    const result = computeInlineHighlights("hello world", "hello there")
+    
+    // "world" should be highlighted as removed
+    expect(result.oldHighlights.length).toBeGreaterThan(0)
+    expect(result.oldHighlights[0].type).toBe("removed-word")
+    
+    // "there" should be highlighted as added
+    expect(result.newHighlights.length).toBeGreaterThan(0)
+    expect(result.newHighlights[0].type).toBe("added-word")
+  })
+
+  test("computes correct column positions", () => {
+    const result = computeInlineHighlights("const x = 1", "const x = 2")
+    
+    // The "1" is at position 10, "2" is at position 10
+    expect(result.oldHighlights[0].startCol).toBe(10)
+    expect(result.oldHighlights[0].endCol).toBe(11)
+    expect(result.newHighlights[0].startCol).toBe(10)
+    expect(result.newHighlights[0].endCol).toBe(11)
+  })
+
+  test("handles multiple changes", () => {
+    const result = computeInlineHighlights("a b c", "x b z")
+    
+    // "a" and "c" should be removed, "x" and "z" should be added
+    expect(result.oldHighlights.length).toBe(2)
+    expect(result.newHighlights.length).toBe(2)
+  })
+})
+
+describe("DiffRenderable word highlights", () => {
+  test("word highlight options have correct defaults", async () => {
+    const syntaxStyle = SyntaxStyle.fromStyles({
+      default: { fg: RGBA.fromValues(1, 1, 1, 1) },
+    })
+
+    const diffRenderable = new DiffRenderable(currentRenderer, {
+      id: "test-diff",
+      diff: simpleDiff,
+      view: "split",
+      syntaxStyle,
+    })
+
+    expect(diffRenderable.showWordHighlights).toBe(true)
+    expect(diffRenderable.lineSimilarityThreshold).toBe(0.4)
+    expect(diffRenderable.addedWordBg).toBeDefined()
+    expect(diffRenderable.removedWordBg).toBeDefined()
+  })
+
+  test("can disable word highlights", async () => {
+    const syntaxStyle = SyntaxStyle.fromStyles({
+      default: { fg: RGBA.fromValues(1, 1, 1, 1) },
+    })
+
+    const diffRenderable = new DiffRenderable(currentRenderer, {
+      id: "test-diff",
+      diff: simpleDiff,
+      view: "split",
+      syntaxStyle,
+      showWordHighlights: false,
+    })
+
+    expect(diffRenderable.showWordHighlights).toBe(false)
+
+    // Can update it
+    diffRenderable.showWordHighlights = true
+    expect(diffRenderable.showWordHighlights).toBe(true)
+  })
+
+  test("can customize word highlight colors", async () => {
+    const syntaxStyle = SyntaxStyle.fromStyles({
+      default: { fg: RGBA.fromValues(1, 1, 1, 1) },
+    })
+
+    const diffRenderable = new DiffRenderable(currentRenderer, {
+      id: "test-diff",
+      diff: simpleDiff,
+      view: "split",
+      syntaxStyle,
+      addedWordBg: "#00ff00",
+      removedWordBg: "#ff0000",
+    })
+
+    expect(diffRenderable.addedWordBg).toEqual(RGBA.fromHex("#00ff00"))
+    expect(diffRenderable.removedWordBg).toEqual(RGBA.fromHex("#ff0000"))
+  })
+
+  test("can adjust similarity threshold", async () => {
+    const syntaxStyle = SyntaxStyle.fromStyles({
+      default: { fg: RGBA.fromValues(1, 1, 1, 1) },
+    })
+
+    const diffRenderable = new DiffRenderable(currentRenderer, {
+      id: "test-diff",
+      diff: simpleDiff,
+      view: "split",
+      syntaxStyle,
+      lineSimilarityThreshold: 0.8,
+    })
+
+    expect(diffRenderable.lineSimilarityThreshold).toBe(0.8)
+
+    // Can update it
+    diffRenderable.lineSimilarityThreshold = 0.5
+    expect(diffRenderable.lineSimilarityThreshold).toBe(0.5)
+
+    // Values are clamped to 0-1
+    diffRenderable.lineSimilarityThreshold = 1.5
+    expect(diffRenderable.lineSimilarityThreshold).toBe(1.0)
+
+    diffRenderable.lineSimilarityThreshold = -0.5
+    expect(diffRenderable.lineSimilarityThreshold).toBe(0.0)
+  })
+
+  test("renders correctly with word highlights enabled in split view", async () => {
+    const syntaxStyle = SyntaxStyle.fromStyles({
+      default: { fg: RGBA.fromValues(1, 1, 1, 1) },
+    })
+
+    const diffRenderable = new DiffRenderable(currentRenderer, {
+      id: "test-diff",
+      diff: simpleDiff,
+      view: "split",
+      syntaxStyle,
+      showWordHighlights: true,
+      width: "100%",
+      height: "100%",
+    })
+
+    currentRenderer.root.add(diffRenderable)
+    await renderOnce()
+
+    const frame = captureFrame()
+    // Content should still render correctly
+    expect(frame).toContain("function hello")
+    expect(frame).toContain("console.log")
+  })
+
+  test("renders correctly with word highlights enabled in unified view", async () => {
+    const syntaxStyle = SyntaxStyle.fromStyles({
+      default: { fg: RGBA.fromValues(1, 1, 1, 1) },
+    })
+
+    const diffRenderable = new DiffRenderable(currentRenderer, {
+      id: "test-diff",
+      diff: simpleDiff,
+      view: "unified",
+      syntaxStyle,
+      showWordHighlights: true,
+      width: "100%",
+      height: "100%",
+    })
+
+    currentRenderer.root.add(diffRenderable)
+    await renderOnce()
+
+    const frame = captureFrame()
+    // Content should still render correctly
+    expect(frame).toContain("function hello")
+    expect(frame).toContain("console.log")
+  })
+
+  test("large change blocks skip word highlights for performance", async () => {
+    const syntaxStyle = SyntaxStyle.fromStyles({
+      default: { fg: RGBA.fromValues(1, 1, 1, 1) },
+    })
+
+    // Create a diff with more than 50 lines changed
+    const manyLines = Array.from({ length: 30 }, (_, i) => `-line${i}`).join("\n")
+    const manyAdds = Array.from({ length: 30 }, (_, i) => `+newline${i}`).join("\n")
+    const largeDiff = `--- a/test.js
++++ b/test.js
+@@ -1,30 +1,30 @@
+${manyLines}
+${manyAdds}`
+
+    const diffRenderable = new DiffRenderable(currentRenderer, {
+      id: "test-diff",
+      diff: largeDiff,
+      view: "split",
+      syntaxStyle,
+      showWordHighlights: true,
+      width: "100%",
+      height: "100%",
+    })
+
+    currentRenderer.root.add(diffRenderable)
+    
+    // Should not throw or hang - large blocks are skipped
+    await renderOnce()
+
+    const frame = captureFrame()
+    expect(frame).toContain("line0")
+    expect(frame).toContain("newline0")
+  })
 })

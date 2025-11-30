@@ -20,7 +20,7 @@ interface InlineHighlight {
 }
 
 /** Computes similarity between two strings (0.0 to 1.0) using character-level diff */
-function computeLineSimilarity(a: string, b: string): number {
+export function computeLineSimilarity(a: string, b: string): number {
   if (a === b) return 1.0
   if (a.length === 0 && b.length === 0) return 1.0
   if (a.length === 0 || b.length === 0) return 0.0
@@ -36,7 +36,7 @@ function computeLineSimilarity(a: string, b: string): number {
 }
 
 /** Computes word-level inline highlights for two strings */
-function computeInlineHighlights(
+export function computeInlineHighlights(
   oldContent: string,
   newContent: string,
 ): { oldHighlights: InlineHighlight[]; newHighlights: InlineHighlight[] } {
