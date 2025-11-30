@@ -130,7 +130,7 @@ const themes: DiffTheme[] = [
 
 const exampleDiff = `--- a/calculator.ts
 +++ b/calculator.ts
-@@ -1,18 +1,28 @@
+@@ -1,17 +1,24 @@
  class Calculator {
 -  // Basic math operations 🔢
 +  // Basic math operations ➕➖✖️➗
