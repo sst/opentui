@@ -2,7 +2,7 @@ import { Renderable, type RenderableOptions } from "../Renderable"
 import { OptimizedBuffer } from "../buffer"
 import type { RenderContext, LineInfoProvider } from "../types"
 import { RGBA, parseColor } from "../lib/RGBA"
-import { MeasureMode } from "yoga-layout"
+import { MeasureMode } from "bun-yoga"
 
 export interface LineSign {
   before?: string
