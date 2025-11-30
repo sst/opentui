@@ -2301,6 +2301,33 @@ describe("computeInlineHighlights", () => {
     expect(result.oldHighlights.length).toBe(2)
     expect(result.newHighlights.length).toBe(2)
   })
+
+  test("handles multi-width characters (CJK)", () => {
+    // CJK characters have display width of 2 each
+    const result = computeInlineHighlights("hello 世界", "hello 你好")
+
+    // "世界" is removed (display width 4), "你好" is added (display width 4)
+    expect(result.oldHighlights.length).toBe(1)
+    expect(result.newHighlights.length).toBe(1)
+
+    // "hello " has display width 6, so CJK starts at column 6
+    expect(result.oldHighlights[0].startCol).toBe(6)
+    expect(result.oldHighlights[0].endCol).toBe(10) // 6 + 4 (two CJK chars)
+    expect(result.newHighlights[0].startCol).toBe(6)
+    expect(result.newHighlights[0].endCol).toBe(10)
+  })
+
+  test("handles emoji characters", () => {
+    // Emoji typically have display width of 2
+    const result = computeInlineHighlights("test 👍", "test 👎")
+
+    expect(result.oldHighlights.length).toBe(1)
+    expect(result.newHighlights.length).toBe(1)
+
+    // "test " has display width 5
+    expect(result.oldHighlights[0].startCol).toBe(5)
+    expect(result.newHighlights[0].startCol).toBe(5)
+  })
 })
 
 describe("DiffRenderable word highlights", () => {

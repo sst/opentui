@@ -48,16 +48,18 @@ export function computeInlineHighlights(
   let newCol = 0
 
   for (const change of changes) {
-    const len = change.value.length
+    // Use Bun.stringWidth for display width instead of .length
+    // This handles multi-width characters (CJK, emoji) correctly
+    const displayWidth = Bun.stringWidth(change.value)
     if (change.added) {
-      newHighlights.push({ startCol: newCol, endCol: newCol + len, type: "added-word" })
-      newCol += len
+      newHighlights.push({ startCol: newCol, endCol: newCol + displayWidth, type: "added-word" })
+      newCol += displayWidth
     } else if (change.removed) {
-      oldHighlights.push({ startCol: oldCol, endCol: oldCol + len, type: "removed-word" })
-      oldCol += len
+      oldHighlights.push({ startCol: oldCol, endCol: oldCol + displayWidth, type: "removed-word" })
+      oldCol += displayWidth
     } else {
-      oldCol += len
-      newCol += len
+      oldCol += displayWidth
+      newCol += displayWidth
     }
   }
 
