@@ -213,7 +213,8 @@ function parseKittyFunctionalKey(sequence: string): ParsedKey | null {
   if (eventTypeStr === "1" || !eventTypeStr) {
     key.eventType = "press"
   } else if (eventTypeStr === "2") {
-    key.eventType = "repeat"
+    key.eventType = "press"
+    key.repeated = true
   } else if (eventTypeStr === "3") {
     key.eventType = "release"
   }
@@ -325,7 +326,8 @@ export function parseKittyKeyboard(sequence: string): ParsedKey | null {
     if (eventTypeStr === "1" || !eventTypeStr) {
       key.eventType = "press"
     } else if (eventTypeStr === "2") {
-      key.eventType = "repeat"
+      key.eventType = "press"
+      key.repeated = true
     } else if (eventTypeStr === "3") {
       key.eventType = "release"
     } else {

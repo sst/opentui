@@ -19,6 +19,7 @@ export class KeyEvent implements ParsedKey {
   capsLock?: boolean
   numLock?: boolean
   baseCode?: number
+  repeated?: boolean
 
   private _defaultPrevented: boolean = false
 
@@ -39,6 +40,7 @@ export class KeyEvent implements ParsedKey {
     this.capsLock = key.capsLock
     this.numLock = key.numLock
     this.baseCode = key.baseCode
+    this.repeated = key.repeated
   }
 
   get defaultPrevented(): boolean {
@@ -68,7 +70,6 @@ export class PasteEvent {
 
 export type KeyHandlerEventMap = {
   keypress: [KeyEvent]
-  keyrepeat: [KeyEvent]
   keyrelease: [KeyEvent]
   paste: [PasteEvent]
 }
@@ -78,7 +79,6 @@ export class KeyHandler extends EventEmitter<KeyHandlerEventMap> {
 
   constructor(useKittyKeyboard: boolean = false) {
     super()
-
     this.useKittyKeyboard = useKittyKeyboard
   }
 
@@ -93,9 +93,6 @@ export class KeyHandler extends EventEmitter<KeyHandlerEventMap> {
       switch (parsedKey.eventType) {
         case "press":
           this.emit("keypress", new KeyEvent(parsedKey))
-          break
-        case "repeat":
-          this.emit("keyrepeat", new KeyEvent(parsedKey))
           break
         case "release":
           this.emit("keyrelease", new KeyEvent(parsedKey))
@@ -155,7 +152,7 @@ export class InternalKeyHandler extends KeyHandler {
     if (renderableSet && renderableSet.size > 0) {
       hasRenderableListeners = true
 
-      if (event === "keypress" || event === "keyrepeat" || event === "keyrelease" || event === "paste") {
+      if (event === "keypress" || event === "keyrelease" || event === "paste") {
         const keyEvent = args[0]
         if (keyEvent.defaultPrevented) return hasGlobalListeners || hasRenderableListeners
       }

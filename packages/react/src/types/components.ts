@@ -6,8 +6,12 @@ import type {
   BoxRenderable,
   CodeOptions,
   CodeRenderable,
+  DiffRenderable,
+  DiffRenderableOptions,
   InputRenderable,
   InputRenderableOptions,
+  LineNumberOptions,
+  LineNumberRenderable,
   RenderableOptions,
   RenderContext,
   ScrollBoxOptions,
@@ -134,6 +138,8 @@ export type TextareaProps = ComponentProps<TextareaOptions, TextareaRenderable> 
 
 export type CodeProps = ComponentProps<CodeOptions, CodeRenderable>
 
+export type DiffProps = ComponentProps<DiffRenderableOptions, DiffRenderable>
+
 export type SelectProps = ComponentProps<SelectRenderableOptions, SelectRenderable> & {
   focused?: boolean
   onChange?: (index: number, option: SelectOption | null) => void
@@ -150,6 +156,10 @@ export type TabSelectProps = ComponentProps<TabSelectRenderableOptions, TabSelec
   focused?: boolean
   onChange?: (index: number, option: TabSelectOption | null) => void
   onSelect?: (index: number, option: TabSelectOption | null) => void
+}
+
+export type LineNumberProps = ComponentProps<ContainerProps<LineNumberOptions>, LineNumberRenderable> & {
+  focused?: boolean
 }
 
 // ============================================================================

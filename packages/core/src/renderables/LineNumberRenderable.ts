@@ -27,6 +27,7 @@ export interface LineNumberOptions extends RenderableOptions<LineNumberRenderabl
   lineNumberOffset?: number
   hideLineNumbers?: Set<number>
   lineNumbers?: Map<number, number>
+  showLineNumbers?: boolean
 }
 
 class GutterRenderable extends Renderable {
@@ -126,6 +127,26 @@ class GutterRenderable extends Renderable {
   public remeasure(): void {
     // Mark the yoga node as dirty to trigger re-measurement
     this.yogaNode.markDirty()
+  }
+
+  public setLineNumberOffset(offset: number): void {
+    if (this._lineNumberOffset !== offset) {
+      this._lineNumberOffset = offset
+      this.yogaNode.markDirty()
+      this.requestRender()
+    }
+  }
+
+  public setHideLineNumbers(hideLineNumbers: Set<number>): void {
+    this._hideLineNumbers = hideLineNumbers
+    this.yogaNode.markDirty()
+    this.requestRender()
+  }
+
+  public setLineNumbers(lineNumbers: Map<number, number>): void {
+    this._lineNumbers = lineNumbers
+    this.yogaNode.markDirty()
+    this.requestRender()
   }
 
   private calculateSignWidths(): void {
@@ -592,18 +613,9 @@ export class LineNumberRenderable extends Renderable {
   public set lineNumberOffset(value: number) {
     if (this._lineNumberOffset !== value) {
       this._lineNumberOffset = value
-      if (this.gutter && this.target) {
-        // Need to recreate gutter with new offset
-        const target = this.target
-
-        // Remove both gutter and target
-        super.remove(this.gutter.id)
-        super.remove(this.target.id)
-        this.gutter = null
-        this.target = null
-
-        // Re-create with new offset
-        this.setTarget(target)
+      if (this.gutter) {
+        // Update the gutter's offset using its setter
+        this.gutter.setLineNumberOffset(value)
       }
     }
   }
@@ -614,18 +626,9 @@ export class LineNumberRenderable extends Renderable {
 
   public setHideLineNumbers(hideLineNumbers: Set<number>): void {
     this._hideLineNumbers = hideLineNumbers
-    if (this.gutter && this.target) {
-      // Need to recreate gutter with new hideLineNumbers
-      const target = this.target
-
-      // Remove both gutter and target
-      super.remove(this.gutter.id)
-      super.remove(this.target.id)
-      this.gutter = null
-      this.target = null
-
-      // Re-create with new hideLineNumbers
-      this.setTarget(target)
+    if (this.gutter) {
+      // Update the gutter's hideLineNumbers using its setter
+      this.gutter.setHideLineNumbers(hideLineNumbers)
     }
   }
 
@@ -635,18 +638,9 @@ export class LineNumberRenderable extends Renderable {
 
   public setLineNumbers(lineNumbers: Map<number, number>): void {
     this._lineNumbers = lineNumbers
-    if (this.gutter && this.target) {
-      // Need to recreate gutter with new lineNumbers
-      const target = this.target
-
-      // Remove both gutter and target
-      super.remove(this.gutter.id)
-      super.remove(this.target.id)
-      this.gutter = null
-      this.target = null
-
-      // Re-create with new lineNumbers
-      this.setTarget(target)
+    if (this.gutter) {
+      // Update the gutter's lineNumbers using its setter
+      this.gutter.setLineNumbers(lineNumbers)
     }
   }
 

@@ -49,23 +49,68 @@ For optimal TypeScript support, configure your `tsconfig.json`:
 }
 ```
 
+## Table of Contents
+
+- [Core Concepts](#core-concepts)
+  - [Components](#components)
+  - [Styling](#styling)
+- [API Reference](#api-reference)
+  - [createRoot(renderer)](#createrootrenderer)
+  - [render(element, config?)](#renderelement-config-deprecated)
+  - [Hooks](#hooks)
+    - [useRenderer()](#userenderer)
+    - [useKeyboard(handler, options?)](#usekeyboardhandler-options)
+    - [useOnResize(callback)](#useonresizecallback)
+    - [useTerminalDimensions()](#useterminaldimensions)
+    - [useTimeline(options?)](#usetimelineoptions)
+- [Components](#components-1)
+  - [Layout & Display Components](#layout--display-components)
+    - [Text Component](#text-component)
+    - [Box Component](#box-component)
+    - [Scrollbox Component](#scrollbox-component)
+    - [ASCII Font Component](#ascii-font-component)
+  - [Input Components](#input-components)
+    - [Input Component](#input-component)
+    - [Textarea Component](#textarea-component)
+    - [Select Component](#select-component)
+  - [Code & Diff Components](#code--diff-components)
+    - [Code Component](#code-component)
+    - [Line Number Component](#line-number-component)
+    - [Diff Component](#diff-component)
+- [Examples](#examples)
+  - [Login Form](#login-form)
+  - [Counter with Timer](#counter-with-timer)
+  - [System Monitor Animation](#system-monitor-animation)
+  - [Styled Text Showcase](#styled-text-showcase)
+- [Component Extension](#component-extension)
+
 ## Core Concepts
 
 ### Components
 
 OpenTUI React provides several built-in components that map to OpenTUI core renderables:
 
+**Layout & Display:**
+
 - **`<text>`** - Display text with styling
 - **`<box>`** - Container with borders and layout
-- **`<input>`** - Text input field
-- **`<textarea>`** - Multi-line text input field
-- **`<code>`** - Code block with syntax highlighting
-- **`<select>`** - Selection dropdown
 - **`<scrollbox>`** - A scrollable box
-- **`<tab-select>`** - Tab-based selection
 - **`<ascii-font>`** - Display ASCII art text with different font styles
 
-Helpers:
+**Input Components:**
+
+- **`<input>`** - Text input field
+- **`<textarea>`** - Multi-line text input field
+- **`<select>`** - Selection dropdown
+- **`<tab-select>`** - Tab-based selection
+
+**Code & Diff Components:**
+
+- **`<code>`** - Code block with syntax highlighting
+- **`<line-number>`** - Code display with line numbers, diff highlights, and diagnostics
+- **`<diff>`** - Unified or split diff viewer with syntax highlighting
+
+**Helpers:**
 
 - **`<span>`, `<strong>`, `<em>`, `<u>`, `<b>`, `<i>`, `<br>`** - Text modifiers (_must be used inside of the text component_)
 
@@ -135,7 +180,7 @@ function App() {
 }
 ```
 
-#### `useKeyboard(handler)`
+#### `useKeyboard(handler, options?)`
 
 Handle keyboard events.
 
@@ -150,6 +195,46 @@ function App() {
   })
 
   return <text>Press ESC to exit</text>
+}
+```
+
+**Parameters:**
+
+- `handler`: Callback function that receives a `KeyEvent` object
+- `options?`: Optional configuration object:
+  - `release?`: Boolean to include key release events (default: `false`)
+
+By default, only receives press events (including key repeats with `repeated: true`). Set `options.release` to `true` to also receive release events.
+
+**Example with release events:**
+
+```tsx
+import { useKeyboard } from "@opentui/react"
+import { useState } from "react"
+
+function App() {
+  const [pressedKeys, setPressedKeys] = useState<Set<string>>(new Set())
+
+  useKeyboard(
+    (event) => {
+      setPressedKeys((keys) => {
+        const newKeys = new Set(keys)
+        if (event.eventType === "release") {
+          newKeys.delete(event.name)
+        } else {
+          newKeys.add(event.name)
+        }
+        return newKeys
+      })
+    },
+    { release: true },
+  )
+
+  return (
+    <box>
+      <text>Currently pressed: {Array.from(pressedKeys).join(", ") || "none"}</text>
+    </box>
+  )
 }
 ```
 
@@ -255,7 +340,9 @@ function App() {
 
 ## Components
 
-### Text Component
+### Layout & Display Components
+
+#### Text Component
 
 Display text with rich formatting.
 
@@ -280,7 +367,7 @@ function App() {
 }
 ```
 
-### Box Component
+#### Box Component
 
 Container with borders and layout capabilities.
 
@@ -316,123 +403,7 @@ function App() {
 }
 ```
 
-### Input Component
-
-Text input field with event handling.
-
-```tsx
-import { useState } from "react"
-
-function App() {
-  const [value, setValue] = useState("")
-
-  return (
-    <box title="Enter your name" style={{ border: true, height: 3 }}>
-      <input
-        placeholder="Type here..."
-        focused
-        onInput={setValue}
-        onSubmit={(value) => console.log("Submitted:", value)}
-      />
-    </box>
-  )
-}
-```
-
-### Textarea Component
-
-```tsx
-import type { TextareaRenderable } from "@opentui/core"
-import { useKeyboard, useRenderer } from "@opentui/react"
-import { useEffect, useRef } from "react"
-
-function App() {
-  const renderer = useRenderer()
-  const textareaRef = useRef<TextareaRenderable>(null)
-
-  useEffect(() => {
-    renderer.console.show()
-  }, [renderer])
-
-  useKeyboard((key) => {
-    if (key.name === "return") {
-      console.log(textareaRef.current?.plainText)
-    }
-  })
-
-  return (
-    <box title="Interactive Editor" style={{ border: true, flexGrow: 1 }}>
-      <textarea ref={textareaRef} placeholder="Type here..." focused />
-    </box>
-  )
-}
-```
-
-### Code Component
-
-```tsx
-import { RGBA, SyntaxStyle } from "@opentui/core"
-
-const syntaxStyle = SyntaxStyle.fromStyles({
-  keyword: { fg: RGBA.fromHex("#ff6b6b"), bold: true }, // red, bold
-  string: { fg: RGBA.fromHex("#51cf66") }, // green
-  comment: { fg: RGBA.fromHex("#868e96"), italic: true }, // gray, italic
-  number: { fg: RGBA.fromHex("#ffd43b") }, // yellow
-  default: { fg: RGBA.fromHex("#ffffff") }, // white
-})
-
-const codeExample = `function hello() {
-  // This is a comment
-
-  const message = "Hello, world!"
-  const count = 42
-
-  return message + " " + count
-}`
-
-function App() {
-  return (
-    <box style={{ border: true, flexGrow: 1 }}>
-      <code content={codeExample} filetype="javascript" syntaxStyle={syntaxStyle} />
-    </box>
-  )
-}
-```
-
-### Select Component
-
-Dropdown selection component.
-
-```tsx
-import type { SelectOption } from "@opentui/core"
-import { useState } from "react"
-
-function App() {
-  const [selectedIndex, setSelectedIndex] = useState(0)
-
-  const options: SelectOption[] = [
-    { name: "Option 1", description: "Option 1 description", value: "opt1" },
-    { name: "Option 2", description: "Option 2 description", value: "opt2" },
-    { name: "Option 3", description: "Option 3 description", value: "opt3" },
-  ]
-
-  return (
-    <box style={{ border: true, height: 24 }}>
-      <select
-        style={{ height: 22 }}
-        options={options}
-        focused={true}
-        onChange={(index, option) => {
-          setSelectedIndex(index)
-          console.log("Selected:", option)
-        }}
-      />
-    </box>
-  )
-}
-```
-
-### Scrollbox Component
+#### Scrollbox Component
 
 A scrollable box.
 
@@ -476,7 +447,7 @@ function App() {
 }
 ```
 
-### ASCII Font Component
+#### ASCII Font Component
 
 Display ASCII art text with different font styles.
 
@@ -531,6 +502,188 @@ function App() {
   )
 }
 ```
+
+### Input Components
+
+#### Input Component
+
+Text input field with event handling.
+
+```tsx
+import { useState } from "react"
+
+function App() {
+  const [value, setValue] = useState("")
+
+  return (
+    <box title="Enter your name" style={{ border: true, height: 3 }}>
+      <input
+        placeholder="Type here..."
+        focused
+        onInput={setValue}
+        onSubmit={(value) => console.log("Submitted:", value)}
+      />
+    </box>
+  )
+}
+```
+
+#### Textarea Component
+
+```tsx
+import type { TextareaRenderable } from "@opentui/core"
+import { useKeyboard, useRenderer } from "@opentui/react"
+import { useEffect, useRef } from "react"
+
+function App() {
+  const renderer = useRenderer()
+  const textareaRef = useRef<TextareaRenderable>(null)
+
+  useEffect(() => {
+    renderer.console.show()
+  }, [renderer])
+
+  useKeyboard((key) => {
+    if (key.name === "return") {
+      console.log(textareaRef.current?.plainText)
+    }
+  })
+
+  return (
+    <box title="Interactive Editor" style={{ border: true, flexGrow: 1 }}>
+      <textarea ref={textareaRef} placeholder="Type here..." focused />
+    </box>
+  )
+}
+```
+
+#### Select Component
+
+Dropdown selection component.
+
+```tsx
+import type { SelectOption } from "@opentui/core"
+import { useState } from "react"
+
+function App() {
+  const [selectedIndex, setSelectedIndex] = useState(0)
+
+  const options: SelectOption[] = [
+    { name: "Option 1", description: "Option 1 description", value: "opt1" },
+    { name: "Option 2", description: "Option 2 description", value: "opt2" },
+    { name: "Option 3", description: "Option 3 description", value: "opt3" },
+  ]
+
+  return (
+    <box style={{ border: true, height: 24 }}>
+      <select
+        style={{ height: 22 }}
+        options={options}
+        focused={true}
+        onChange={(index, option) => {
+          setSelectedIndex(index)
+          console.log("Selected:", option)
+        }}
+      />
+    </box>
+  )
+}
+```
+
+### Code & Diff Components
+
+#### Code Component
+
+```tsx
+import { RGBA, SyntaxStyle } from "@opentui/core"
+
+const syntaxStyle = SyntaxStyle.fromStyles({
+  keyword: { fg: RGBA.fromHex("#ff6b6b"), bold: true }, // red, bold
+  string: { fg: RGBA.fromHex("#51cf66") }, // green
+  comment: { fg: RGBA.fromHex("#868e96"), italic: true }, // gray, italic
+  number: { fg: RGBA.fromHex("#ffd43b") }, // yellow
+  default: { fg: RGBA.fromHex("#ffffff") }, // white
+})
+
+const codeExample = `function hello() {
+  // This is a comment
+
+  const message = "Hello, world!"
+  const count = 42
+
+  return message + " " + count
+}`
+
+function App() {
+  return (
+    <box style={{ border: true, flexGrow: 1 }}>
+      <code content={codeExample} filetype="javascript" syntaxStyle={syntaxStyle} />
+    </box>
+  )
+}
+```
+
+#### Line Number Component
+
+Display code with line numbers, and optionally add diff highlights or diagnostic indicators.
+
+```tsx
+import type { LineNumberRenderable } from "@opentui/core"
+import { RGBA, SyntaxStyle } from "@opentui/core"
+import { useEffect, useRef } from "react"
+
+function App() {
+  const lineNumberRef = useRef<LineNumberRenderable>(null)
+
+  const syntaxStyle = SyntaxStyle.fromStyles({
+    keyword: { fg: RGBA.fromHex("#C792EA") },
+    string: { fg: RGBA.fromHex("#C3E88D") },
+    number: { fg: RGBA.fromHex("#F78C6C") },
+    default: { fg: RGBA.fromHex("#A6ACCD") },
+  })
+
+  const codeContent = `function fibonacci(n: number): number {
+  if (n <= 1) return n
+  return fibonacci(n - 1) + fibonacci(n - 2)
+}
+
+console.log(fibonacci(10))`
+
+  useEffect(() => {
+    // Add diff highlight - line was added
+    lineNumberRef.current?.setLineColor(1, "#1a4d1a")
+    lineNumberRef.current?.setLineSign(1, { after: " +", afterColor: "#22c55e" })
+
+    // Add diagnostic indicator
+    lineNumberRef.current?.setLineSign(4, { before: "⚠️", beforeColor: "#f59e0b" })
+  }, [])
+
+  return (
+    <box style={{ border: true, flexGrow: 1 }}>
+      <line-number
+        ref={lineNumberRef}
+        fg="#6b7280"
+        bg="#161b22"
+        minWidth={3}
+        paddingRight={1}
+        showLineNumbers={true}
+        width="100%"
+        height="100%"
+      >
+        <code content={codeContent} filetype="typescript" syntaxStyle={syntaxStyle} width="100%" height="100%" />
+      </line-number>
+    </box>
+  )
+}
+```
+
+For a more complete example with interactive diff highlights and diagnostics, see [`examples/line-number.tsx`](examples/line-number.tsx).
+
+#### Diff Component
+
+Display unified or split-view diffs with syntax highlighting, customizable themes, and line number support. Supports multiple view modes (unified/split), word wrapping, and theme customization.
+
+For a complete interactive example with theme switching and keybindings, see [`examples/diff.tsx`](examples/diff.tsx).
 
 ## Examples
 

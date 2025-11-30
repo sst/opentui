@@ -52,10 +52,24 @@ export const useTerminalDimensions = () => {
 export interface UseKeyboardOptions {
   /** Include release events - callback receives events with eventType: "release" */
   release?: boolean
-  /** Include repeat events - callback receives events with eventType: "repeat" */
-  repeat?: boolean
 }
 
+/**
+ * Subscribe to keyboard events.
+ *
+ * By default, only receives press events (including key repeats with `repeated: true`).
+ * Use `options.release` to also receive release events.
+ *
+ * @example
+ * // Basic press handling (includes repeats)
+ * useKeyboard((e) => console.log(e.name, e.repeated ? "(repeat)" : ""))
+ *
+ * // With release events
+ * useKeyboard((e) => {
+ *   if (e.eventType === "release") keys.delete(e.name)
+ *   else keys.add(e.name)
+ * }, { release: true })
+ */
 export const useKeyboard = (callback: (key: KeyEvent) => void, options?: UseKeyboardOptions) => {
   const renderer = useRenderer()
   const keyHandler = renderer.keyInput
@@ -64,18 +78,12 @@ export const useKeyboard = (callback: (key: KeyEvent) => void, options?: UseKeyb
     if (options?.release) {
       keyHandler.on("keyrelease", callback)
     }
-    if (options?.repeat) {
-      keyHandler.on("keyrepeat", callback)
-    }
   })
 
   onCleanup(() => {
     keyHandler.off("keypress", callback)
     if (options?.release) {
       keyHandler.off("keyrelease", callback)
-    }
-    if (options?.repeat) {
-      keyHandler.off("keyrepeat", callback)
     }
   })
 }
