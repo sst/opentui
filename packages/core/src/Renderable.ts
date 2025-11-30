@@ -1246,6 +1246,9 @@ export abstract class Renderable extends BaseRenderable {
     // including the layout updates, in one pass.
     this.updateFromLayout()
 
+    // Check again after updateFromLayout, which calls onResize/onSizeChange
+    if (this._isDestroyed) return
+
     renderList.push({ action: "render", renderable: this })
 
     this.ensureZIndexSorted()
