@@ -154,16 +154,16 @@ describe("renderer capabilities event", () => {
 
     // Simulate all 10 Kitty capability responses (as they arrive separately)
     const kittyResponses = [
-      "\x1b[?1016;2$y",           // 1. sgr_pixels
-      "\x1b[?2027;0$y",           // 2. unicode query
-      "\x1b[?2031;2$y",           // 3. color_scheme_updates
-      "\x1b[?1004;2$y",           // 4. focus_tracking
-      "\x1b[?2004;2$y",           // 5. bracketed_paste
-      "\x1b[?2026;2$y",           // 6. sync
-      "\x1b[1;2R",                // 7. explicit_width (CPR)
-      "\x1b[1;3R",                // 8. scaled_text (CPR)
+      "\x1b[?1016;2$y", // 1. sgr_pixels
+      "\x1b[?2027;0$y", // 2. unicode query
+      "\x1b[?2031;2$y", // 3. color_scheme_updates
+      "\x1b[?1004;2$y", // 4. focus_tracking
+      "\x1b[?2004;2$y", // 5. bracketed_paste
+      "\x1b[?2026;2$y", // 6. sync
+      "\x1b[1;2R", // 7. explicit_width (CPR)
+      "\x1b[1;3R", // 8. scaled_text (CPR)
       "\x1bP>|kitty(0.42.2)\x1b\\", // 9. xtversion (triggers kitty detection)
-      "\x1b[?0u",                 // 10. kitty keyboard query
+      "\x1b[?0u", // 10. kitty keyboard query
     ]
 
     for (const response of kittyResponses) {
