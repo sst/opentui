@@ -1234,6 +1234,9 @@ export abstract class Renderable extends BaseRenderable {
 
     this.onUpdate(deltaTime)
 
+    // If destroyed during onUpdate, don't add to render list
+    if (this._isDestroyed) return
+
     // NOTE: worst case updateFromLayout is called throughout the whole tree,
     // which currently still has yoga performance issues.
     // This can be mitigated at some point when the layout tree moved to native,
@@ -1548,7 +1551,10 @@ export class RootRenderable extends Renderable {
       const command = this.renderList[i]
       switch (command.action) {
         case "render":
-          command.renderable.render(buffer, deltaTime)
+          // Skip if renderable was destroyed during a previous render callback
+          if (!command.renderable.isDestroyed) {
+            command.renderable.render(buffer, deltaTime)
+          }
           break
         case "pushScissorRect":
           buffer.pushScissorRect(command.x, command.y, command.width, command.height)
