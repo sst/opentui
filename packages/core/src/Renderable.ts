@@ -197,7 +197,7 @@ yogaConfig.setPointScaleFactor(1)
 export abstract class Renderable extends BaseRenderable {
   static renderablesByNumber: Map<number, Renderable> = new Map()
 
-  private _isDestroyed: boolean = false
+  protected _isDestroyed: boolean = false
   protected _ctx: RenderContext
   protected _translateX: number = 0
   protected _translateY: number = 0
@@ -354,13 +354,14 @@ export abstract class Renderable extends BaseRenderable {
   }
 
   public focus(): void {
-    if (this._focused || !this._focusable) return
+    if (this._isDestroyed || this._focused || !this._focusable) return
 
     this._ctx.focusRenderable(this)
     this._focused = true
     this.requestRender()
 
     this.keypressHandler = (key: KeyEvent) => {
+      if (this._isDestroyed) return
       this._keyListeners["down"]?.(key)
       if (!key.defaultPrevented && this.handleKeyPress) {
         this.handleKeyPress(key)
@@ -368,6 +369,7 @@ export abstract class Renderable extends BaseRenderable {
     }
 
     this.pasteHandler = (event: PasteEvent) => {
+      if (this._isDestroyed) return
       this._pasteListener?.call(this, event)
       if (!event.defaultPrevented && this.handlePaste) {
         this.handlePaste(event)
