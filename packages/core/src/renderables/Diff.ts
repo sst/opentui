@@ -343,6 +343,7 @@ export class DiffRenderable extends Renderable {
       // Update existing CodeRenderable
       existingRenderable.content = content
       existingRenderable.wrapMode = wrapMode ?? "none"
+      existingRenderable.conceal = this._conceal
       if (drawUnstyledText !== undefined) {
         existingRenderable.drawUnstyledText = drawUnstyledText
       }
