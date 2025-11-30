@@ -6,6 +6,7 @@ import { RGBA, parseColor } from "../lib/RGBA"
 import { SyntaxStyle } from "../syntax-style"
 import { parsePatch, type StructuredPatch } from "diff"
 import { TextRenderable } from "./Text"
+import type { TreeSitterClient } from "../lib/tree-sitter"
 
 interface LogicalLine {
   content: string
@@ -27,6 +28,7 @@ export interface DiffRenderableOptions extends RenderableOptions<DiffRenderable>
   conceal?: boolean
   selectionBg?: string | RGBA
   selectionFg?: string | RGBA
+  treeSitterClient?: TreeSitterClient
 
   // LineNumberRenderable options
   showLineNumbers?: boolean
@@ -59,6 +61,7 @@ export class DiffRenderable extends Renderable {
   private _conceal: boolean
   private _selectionBg?: RGBA
   private _selectionFg?: RGBA
+  private _treeSitterClient?: TreeSitterClient
 
   // LineNumberRenderable options
   private _showLineNumbers: boolean
@@ -116,6 +119,7 @@ export class DiffRenderable extends Renderable {
     this._conceal = options.conceal ?? true
     this._selectionBg = options.selectionBg ? parseColor(options.selectionBg) : undefined
     this._selectionFg = options.selectionFg ? parseColor(options.selectionFg) : undefined
+    this._treeSitterClient = options.treeSitterClient
 
     // LineNumberRenderable options
     this._showLineNumbers = options.showLineNumbers ?? true
@@ -279,6 +283,7 @@ export class DiffRenderable extends Renderable {
         width: "100%",
         flexGrow: 1,
         flexShrink: 1,
+        ...(this._treeSitterClient !== undefined && { treeSitterClient: this._treeSitterClient }),
       })
       super.add(this.errorCodeRenderable)
     } else {
@@ -317,6 +322,7 @@ export class DiffRenderable extends Renderable {
         ...(drawUnstyledText !== undefined && { drawUnstyledText }),
         ...(this._selectionBg !== undefined && { selectionBg: this._selectionBg }),
         ...(this._selectionFg !== undefined && { selectionFg: this._selectionFg }),
+        ...(this._treeSitterClient !== undefined && { treeSitterClient: this._treeSitterClient }),
       }
       const newRenderable = new CodeRenderable(this.ctx, codeOptions)
 
@@ -660,11 +666,10 @@ export class DiffRenderable extends Renderable {
     const preLeftContent = leftLogicalLines.map((l) => l.content).join("\n")
     const preRightContent = rightLogicalLines.map((l) => l.content).join("\n")
 
-    const effectiveWrapMode = canDoWrapAlignment ? this._wrapMode! : "none"
-
     // Create or update CodeRenderables with initial content
-    const leftCodeRenderable = this.createOrUpdateCodeRenderable("left", preLeftContent, effectiveWrapMode, true)
-    const rightCodeRenderable = this.createOrUpdateCodeRenderable("right", preRightContent, effectiveWrapMode, true)
+    // Always use the actual wrapMode - the alignment logic below handles whether to align based on canDoWrapAlignment
+    const leftCodeRenderable = this.createOrUpdateCodeRenderable("left", preLeftContent, this._wrapMode, true)
+    const rightCodeRenderable = this.createOrUpdateCodeRenderable("right", preRightContent, this._wrapMode, true)
 
     // Step 3: Align lines using lineInfo (if we can)
     let finalLeftLines: LogicalLine[]
