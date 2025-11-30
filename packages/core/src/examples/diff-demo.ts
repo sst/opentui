@@ -286,6 +286,17 @@ const contentExamples: ContentExample[] = [
 +See the [documentation](./docs) for detailed usage instructions.`,
   },
   {
+    name: "Markdown (Conceal Test)",
+    filetype: "markdown",
+    diff: `--- a/test.md
++++ b/test.md
+@@ -1,2 +1,2 @@
+-Some text **boldtext**
+-Short
++Some text **boldtext**
++More text **formats**`,
+  },
+  {
     name: "JSON",
     filetype: "json",
     diff: `--- a/config.json
