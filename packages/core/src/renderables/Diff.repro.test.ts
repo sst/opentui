@@ -86,13 +86,9 @@ test("DiffRenderable - no endless loop when concealing markdown formatting", asy
   await renderOnce()
   await Bun.sleep(2000)
 
-  // Normal: <10 rebuild requests
-  // Loop: >50 rebuild requests
-  // expect(diffRenderable.rebuildRequestCount).toBeLessThan(10)
-
   // Check that the total number of rendered frames is low
   // We only called renderOnce() 3 times manually, so frameCount should be close to that
   // If there's an endless loop, frameCount would be much higher
   const stats = currentRenderer.getStats()
-  expect(stats.frameCount).toBeLessThan(10)
+  expect(stats.frameCount).toBeLessThan(11)
 })

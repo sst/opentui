@@ -98,6 +98,7 @@ export class DiffRenderable extends Renderable {
   // This avoids expensive re-parsing and re-rendering on rapid changes (e.g., width changes).
   // CodeRenderables are reused and only their content is updated.
   private pendingRebuild: boolean = false
+  private _lastWidth: number = 0
 
   // Error renderables for displaying parse errors
   private errorTextRenderable: TextRenderable | null = null
@@ -196,9 +197,14 @@ export class DiffRenderable extends Renderable {
   protected override onResize(width: number, height: number): void {
     super.onResize(width, height)
 
-    // For split view with wrapping, rebuild on width changes to realign wrapped lines
+    // For split view with wrapping, rebuild ONLY on width changes (not height)
+    // Height is a consequence of content, not an input to wrapping
+    // Rebuilding on height changes creates an endless loop
     if (this._view === "split" && this._wrapMode !== "none" && this._wrapMode !== undefined) {
-      this.requestRebuild()
+      if (this._lastWidth !== width) {
+        this._lastWidth = width
+        this.requestRebuild()
+      }
     }
   }
 
