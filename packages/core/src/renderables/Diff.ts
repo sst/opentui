@@ -108,11 +108,11 @@ export interface DiffRenderableOptions extends RenderableOptions<DiffRenderable>
 
   // Word-level highlighting options
   /**
-   * Enable word-level highlighting within modified lines.
-   * When enabled, individual words/characters that changed are highlighted.
-   * @default true
+   * Disable word-level highlighting within modified lines.
+   * When false (default), individual words/characters that changed are highlighted.
+   * @default false
    */
-  showWordHighlights?: boolean
+  disableWordHighlights?: boolean
   /**
    * Background color for added words within modified lines.
    * @default A brighter version of addedBg
@@ -163,7 +163,7 @@ export class DiffRenderable extends Renderable {
   private _removedLineNumberBg: RGBA
 
   // Word-level highlighting
-  private _showWordHighlights: boolean
+  private _disableWordHighlights: boolean
   private _addedWordBg: RGBA
   private _removedWordBg: RGBA
   private _lineSimilarityThreshold: number
@@ -226,7 +226,7 @@ export class DiffRenderable extends Renderable {
     this._removedLineNumberBg = parseColor(options.removedLineNumberBg ?? "transparent")
 
     // Word-level highlighting
-    this._showWordHighlights = options.showWordHighlights ?? true
+    this._disableWordHighlights = options.disableWordHighlights ?? false
     this._lineSimilarityThreshold = options.lineSimilarityThreshold ?? 0.4
     // Default word highlight colors: brighter versions of the line colors
     this._addedWordBg = options.addedWordBg ? parseColor(options.addedWordBg) : this.brightenColor(this._addedBg, 1.5)
@@ -283,7 +283,7 @@ export class DiffRenderable extends Renderable {
     // Skip word highlights for large blocks to prevent CPU spikes
     const blockSize = removes.length + adds.length
     const shouldComputeWordHighlights =
-      this._showWordHighlights && blockSize <= DiffRenderable.MAX_WORD_HIGHLIGHT_BLOCK_SIZE
+      !this._disableWordHighlights && blockSize <= DiffRenderable.MAX_WORD_HIGHLIGHT_BLOCK_SIZE
 
     for (let j = 0; j < maxLength; j++) {
       const remove = j < removes.length ? removes[j] : null
@@ -1400,13 +1400,13 @@ export class DiffRenderable extends Renderable {
 
   // Word-level highlighting getters and setters
 
-  public get showWordHighlights(): boolean {
-    return this._showWordHighlights
+  public get disableWordHighlights(): boolean {
+    return this._disableWordHighlights
   }
 
-  public set showWordHighlights(value: boolean) {
-    if (this._showWordHighlights !== value) {
-      this._showWordHighlights = value
+  public set disableWordHighlights(value: boolean) {
+    if (this._disableWordHighlights !== value) {
+      this._disableWordHighlights = value
       this.rebuildView()
     }
   }

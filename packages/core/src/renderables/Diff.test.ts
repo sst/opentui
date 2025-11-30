@@ -2343,7 +2343,7 @@ describe("DiffRenderable word highlights", () => {
       syntaxStyle,
     })
 
-    expect(diffRenderable.showWordHighlights).toBe(true)
+    expect(diffRenderable.disableWordHighlights).toBe(false)
     expect(diffRenderable.lineSimilarityThreshold).toBe(0.4)
     expect(diffRenderable.addedWordBg).toBeDefined()
     expect(diffRenderable.removedWordBg).toBeDefined()
@@ -2359,14 +2359,14 @@ describe("DiffRenderable word highlights", () => {
       diff: simpleDiff,
       view: "split",
       syntaxStyle,
-      showWordHighlights: false,
+      disableWordHighlights: true,
     })
 
-    expect(diffRenderable.showWordHighlights).toBe(false)
+    expect(diffRenderable.disableWordHighlights).toBe(true)
 
     // Can update it
-    diffRenderable.showWordHighlights = true
-    expect(diffRenderable.showWordHighlights).toBe(true)
+    diffRenderable.disableWordHighlights = false
+    expect(diffRenderable.disableWordHighlights).toBe(false)
   })
 
   test("can customize word highlight colors", async () => {
@@ -2424,7 +2424,6 @@ describe("DiffRenderable word highlights", () => {
       diff: simpleDiff,
       view: "split",
       syntaxStyle,
-      showWordHighlights: true,
       width: "100%",
       height: "100%",
     })
@@ -2448,7 +2447,6 @@ describe("DiffRenderable word highlights", () => {
       diff: simpleDiff,
       view: "unified",
       syntaxStyle,
-      showWordHighlights: true,
       width: "100%",
       height: "100%",
     })
@@ -2481,7 +2479,6 @@ ${manyAdds}`
       diff: largeDiff,
       view: "split",
       syntaxStyle,
-      showWordHighlights: true,
       width: "100%",
       height: "100%",
     })
