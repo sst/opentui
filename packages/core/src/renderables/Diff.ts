@@ -674,8 +674,24 @@ export class DiffRenderable extends Renderable {
 
     // Create or update CodeRenderables with initial content
     // Always use the actual wrapMode - the alignment logic below handles whether to align based on canDoWrapAlignment
-    const leftCodeRenderable = this.createOrUpdateCodeRenderable("left", preLeftContent, this._wrapMode, true)
-    const rightCodeRenderable = this.createOrUpdateCodeRenderable("right", preRightContent, this._wrapMode, true)
+    // IMPORTANT: When using wrap mode WITH concealing, don't draw unstyled text to prevent wrapping
+    // before highlights/concealing are applied. This ensures both sides wrap with the same concealing state,
+    // avoiding race conditions where one side wraps with unconcealed text and the other with concealed text.
+    const needsConsistentConcealing =
+      (this._wrapMode === "word" || this._wrapMode === "char") && this._conceal && this._filetype
+    const drawUnstyledText = !needsConsistentConcealing
+    const leftCodeRenderable = this.createOrUpdateCodeRenderable(
+      "left",
+      preLeftContent,
+      this._wrapMode,
+      drawUnstyledText,
+    )
+    const rightCodeRenderable = this.createOrUpdateCodeRenderable(
+      "right",
+      preRightContent,
+      this._wrapMode,
+      drawUnstyledText,
+    )
 
     // Step 3: Align lines using lineInfo (if we can)
     let finalLeftLines: LogicalLine[]
