@@ -766,6 +766,134 @@ class ParserWorker {
     this.bufferParsers.delete(bufferId)
   }
 
+  /**
+   * Get display width of text using tree-sitter to find concealed characters (backticks, bold **, italic *, etc).
+   */
+  private async getDisplayWidth(text: string): Promise<number> {
+    const parserState = await this.getReusableParser("markdown_inline")
+    if (!parserState) return text.length
+
+    const tree = parserState.parser.parse(text)
+    if (!tree) return text.length
+
+    try {
+      const matches = parserState.filetypeParser.queries.highlights.matches(tree.rootNode)
+      let concealedCount = 0
+
+      for (const match of matches) {
+        // Check for conceal property the same way getSimpleHighlights does
+        const concealValue = match.setProperties?.conceal
+        if (concealValue !== undefined) {
+          for (const capture of match.captures) {
+            concealedCount += capture.node.endIndex - capture.node.startIndex
+          }
+        }
+      }
+
+      return text.length - concealedCount
+    } finally {
+      tree.delete()
+    }
+  }
+
+  /**
+   * Format a markdown table string with aligned columns.
+   */
+  private async formatTable(tableText: string): Promise<string> {
+    // Preserve trailing whitespace (newlines after table)
+    const trailingMatch = tableText.match(/(\s*)$/)
+    const trailingWhitespace = trailingMatch ? trailingMatch[1] : ""
+
+    const lines = tableText.split("\n").filter((line) => line.trim())
+    if (lines.length < 2) return tableText
+
+    // Parse rows into cells
+    const rows = lines.map((line) => {
+      const trimmed = line.trim()
+      const inner = trimmed.startsWith("|") ? trimmed.slice(1) : trimmed
+      const cells = (inner.endsWith("|") ? inner.slice(0, -1) : inner).split("|").map((c) => c.trim())
+      return cells
+    })
+
+    // Calculate column widths using display width
+    const colCount = Math.max(...rows.map((r) => r.length))
+    const colWidths = new Array(colCount).fill(3)
+
+    // Pre-calculate all display widths
+    const displayWidths: number[][] = []
+    for (let rowIdx = 0; rowIdx < rows.length; rowIdx++) {
+      const row = rows[rowIdx]
+      const isDelimiter = rowIdx === 1 && row.every((c) => /^:?-+:?$/.test(c))
+      const rowWidths: number[] = []
+
+      for (let col = 0; col < row.length; col++) {
+        const width = isDelimiter ? row[col].length : await this.getDisplayWidth(row[col])
+        rowWidths.push(width)
+        if (!isDelimiter) {
+          colWidths[col] = Math.max(colWidths[col], width)
+        }
+      }
+      displayWidths.push(rowWidths)
+    }
+
+    // Rebuild table with padding
+    const formatted = rows
+      .map((row, rowIdx) => {
+        const isDelimiter = rowIdx === 1 && row.every((c) => /^:?-+:?$/.test(c))
+        const cells = row.map((cell, col) => {
+          const width = colWidths[col]
+          if (isDelimiter) {
+            const left = cell.startsWith(":")
+            const right = cell.endsWith(":")
+            if (left && right) return ":" + "-".repeat(width - 2) + ":"
+            if (left) return ":" + "-".repeat(width - 1)
+            if (right) return "-".repeat(width - 1) + ":"
+            return "-".repeat(width)
+          }
+          const pad = width - displayWidths[rowIdx][col]
+          return cell + " ".repeat(pad)
+        })
+        return "| " + cells.join(" | ") + " |"
+      })
+      .join("\n")
+
+    return formatted + trailingWhitespace
+  }
+
+  /**
+   * Format all markdown tables in content using tree-sitter to find them.
+   */
+  private async formatMarkdownTables(content: string, tree: Tree): Promise<string | null> {
+    // Find all pipe_table nodes
+    const tables: Array<{ start: number; end: number }> = []
+    const findTables = (node: any) => {
+      if (node.type === "pipe_table") {
+        tables.push({ start: node.startIndex, end: node.endIndex })
+      }
+      for (let i = 0; i < node.childCount; i++) {
+        findTables(node.child(i))
+      }
+    }
+    findTables(tree.rootNode)
+
+    if (tables.length === 0) return null
+
+    // Replace each table with formatted version
+    let result = content
+    let offset = 0
+
+    for (const table of tables) {
+      const start = table.start + offset
+      const end = table.end + offset
+      const original = result.slice(start, end)
+      const formatted = await this.formatTable(original)
+      result = result.slice(0, start) + formatted + result.slice(end)
+      offset += formatted.length - original.length
+    }
+
+    return result
+  }
+
   async handleOneShotHighlight(content: string, filetype: string, messageId: string): Promise<void> {
     const reusableState = await this.getReusableParser(filetype)
 
@@ -781,7 +909,7 @@ class ParserWorker {
 
     // Markdown Parser BUG: For markdown, ensure content ends with newline so closing delimiters are parsed correctly
     // The tree-sitter markdown parser only creates closing delimiter nodes when followed by newline
-    const parseContent = filetype === "markdown" && content.endsWith("```") ? content + "\n" : content
+    let parseContent = filetype === "markdown" && content.endsWith("```") ? content + "\n" : content
 
     const tree = reusableState.parser.parse(parseContent)
 
@@ -796,6 +924,62 @@ class ParserWorker {
     }
 
     try {
+      // For markdown, format tables and re-parse if needed
+      let finalContent = parseContent
+      let transformedContent: string | undefined
+
+      if (filetype === "markdown") {
+        const formatted = await this.formatMarkdownTables(parseContent, tree)
+        if (formatted) {
+          finalContent = formatted
+          transformedContent = formatted
+
+          // Re-parse with formatted content
+          tree.delete()
+          const newTree = reusableState.parser.parse(finalContent)
+          if (!newTree) {
+            self.postMessage({
+              type: "ONESHOT_HIGHLIGHT_RESPONSE",
+              messageId,
+              hasParser: false,
+              error: "Failed to parse formatted content",
+            })
+            return
+          }
+
+          // Use the new tree for highlighting
+          const matches = reusableState.filetypeParser.queries.highlights.captures(newTree.rootNode)
+
+          let injectionRanges = new Map<string, Array<{ start: number; end: number }>>()
+          if (reusableState.filetypeParser.queries.injections) {
+            const parserState: ParserState = {
+              parser: reusableState.parser,
+              tree: newTree,
+              queries: reusableState.filetypeParser.queries,
+              filetype,
+              content: finalContent,
+              injectionMapping: reusableState.filetypeParser.injectionMapping,
+            }
+            const injectionResult = await this.processInjections(parserState)
+            matches.push(...injectionResult.captures)
+            injectionRanges = injectionResult.injectionRanges
+          }
+
+          const highlights = this.getSimpleHighlights(matches, injectionRanges)
+
+          newTree.delete()
+
+          self.postMessage({
+            type: "ONESHOT_HIGHLIGHT_RESPONSE",
+            messageId,
+            hasParser: true,
+            highlights,
+            transformedContent,
+          })
+          return
+        }
+      }
+
       const matches = reusableState.filetypeParser.queries.highlights.captures(tree.rootNode)
 
       let injectionRanges = new Map<string, Array<{ start: number; end: number }>>()
@@ -805,7 +989,7 @@ class ParserWorker {
           tree,
           queries: reusableState.filetypeParser.queries,
           filetype,
-          content,
+          content: parseContent,
           injectionMapping: reusableState.filetypeParser.injectionMapping,
         }
         const injectionResult = await this.processInjections(parserState)

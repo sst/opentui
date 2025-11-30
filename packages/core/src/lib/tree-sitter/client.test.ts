@@ -1036,3 +1036,235 @@ describe("TreeSitterClient Edge Cases", () => {
     }
   })
 })
+
+describe("Markdown Table Formatting", () => {
+  let client: TreeSitterClient
+  const sharedDataPath = join(tmpdir(), "tree-sitter-shared-test-data")
+
+  beforeEach(async () => {
+    client = new TreeSitterClient({ dataPath: sharedDataPath })
+    await client.initialize()
+  })
+
+  afterEach(async () => {
+    if (client) {
+      await client.destroy()
+    }
+  })
+
+  test("should format basic table with aligned columns", async () => {
+    const markdown = `| Name | Age |
+|---|---|
+| Alice | 30 |
+| Bob | 5 |`
+
+    const result = await client.highlightOnce(markdown, "markdown")
+
+    expect(result.transformedContent).toBeDefined()
+    const lines = result.transformedContent!.split("\n")
+    // All rows should have same column widths
+    expect(lines[0]).toBe("| Name  | Age |")
+    expect(lines[1]).toBe("| ----- | --- |")
+    expect(lines[2]).toBe("| Alice | 30  |")
+    expect(lines[3]).toBe("| Bob   | 5   |")
+  })
+
+  test("should format table with inline code (backticks)", async () => {
+    const markdown = `| Command | Description |
+|---|---|
+| \`npm install\` | Install deps |
+| \`npm run build\` | Build |
+| \`npm test\` | Test |`
+
+    const result = await client.highlightOnce(markdown, "markdown")
+
+    expect(result.transformedContent).toBeDefined()
+    const lines = result.transformedContent!.split("\n")
+    // Column width should be based on display width (without backticks)
+    // "npm run build" = 13 chars (longest), so Command column = 13
+    expect(lines[0]).toBe("| Command       | Description  |")
+    expect(lines[1]).toBe("| ------------- | ------------ |")
+    expect(lines[2]).toBe("| `npm install`   | Install deps |")
+    expect(lines[3]).toBe("| `npm run build` | Build        |")
+    expect(lines[4]).toBe("| `npm test`      | Test         |")
+  })
+
+  test("should format table with bold text", async () => {
+    const markdown = `| Feature | Status |
+|---|---|
+| **Auth** | Done |
+| **API** | WIP |`
+
+    const result = await client.highlightOnce(markdown, "markdown")
+
+    expect(result.transformedContent).toBeDefined()
+    const lines = result.transformedContent!.split("\n")
+    // "Feature" = 7, "Auth" = 4 (without **), "API" = 3, so column = 7
+    // "Status" = 6, "Done" = 4, "WIP" = 3, so column = 6
+    expect(lines[0]).toBe("| Feature | Status |")
+    expect(lines[1]).toBe("| ------- | ------ |")
+    expect(lines[2]).toBe("| **Auth**    | Done   |")
+    expect(lines[3]).toBe("| **API**     | WIP    |")
+  })
+
+  test("should format table with italic text", async () => {
+    const markdown = `| Item | Note |
+|---|---|
+| One | *important* |
+| Two | *ok* |`
+
+    const result = await client.highlightOnce(markdown, "markdown")
+
+    expect(result.transformedContent).toBeDefined()
+    const lines = result.transformedContent!.split("\n")
+    // "important" = 9 (without *), "Note" = 4, so column = 9
+    expect(lines[0]).toBe("| Item | Note      |")
+    expect(lines[1]).toBe("| ---- | --------- |")
+    expect(lines[2]).toBe("| One  | *important* |")
+    expect(lines[3]).toBe("| Two  | *ok*        |")
+  })
+
+  test("should format table with mixed formatting", async () => {
+    const markdown = `| Type | Value | Notes |
+|---|---|---|
+| **Bold** | \`code\` | *italic* |
+| Plain | **strong** | \`cmd\` |`
+
+    const result = await client.highlightOnce(markdown, "markdown")
+
+    expect(result.transformedContent).toBeDefined()
+    const lines = result.transformedContent!.split("\n")
+    // Type: max("Type"=4, "Bold"=4, "Plain"=5) = 5
+    // Value: max("Value"=5, "code"=4, "strong"=6) = 6
+    // Notes: max("Notes"=5, "italic"=6, "cmd"=3) = 6
+    expect(lines[0]).toBe("| Type  | Value  | Notes  |")
+    expect(lines[1]).toBe("| ----- | ------ | ------ |")
+    expect(lines[2]).toBe("| **Bold**  | `code`   | *italic* |")
+    expect(lines[3]).toBe("| Plain | **strong** | `cmd`    |")
+  })
+
+  test("should preserve alignment markers in delimiter row", async () => {
+    const markdown = `| Left | Center | Right |
+|:---|:---:|---:|
+| A | B | C |`
+
+    const result = await client.highlightOnce(markdown, "markdown")
+
+    expect(result.transformedContent).toBeDefined()
+    const lines = result.transformedContent!.split("\n")
+    expect(lines[0]).toBe("| Left | Center | Right |")
+    expect(lines[1]).toBe("| :--- | :----: | ----: |")
+    expect(lines[2]).toBe("| A    | B      | C     |")
+  })
+
+  test("should handle table with varying column counts gracefully", async () => {
+    const markdown = `| A | B | C |
+|---|---|---|
+| 1 | 2 | 3 |
+| X | Y | Z |`
+
+    const result = await client.highlightOnce(markdown, "markdown")
+
+    expect(result.transformedContent).toBeDefined()
+    // Should not throw and should produce valid output
+    expect(result.transformedContent).toContain("|")
+  })
+
+  test("should not format tables inside code blocks", async () => {
+    const markdown = `\`\`\`
+| Not | A | Table |
+|---|---|---|
+| Should | Stay | Unformatted |
+\`\`\`
+
+| Real | Table |
+|---|---|
+| Is | Formatted |`
+
+    const result = await client.highlightOnce(markdown, "markdown")
+
+    expect(result.transformedContent).toBeDefined()
+    // The code block table should remain unformatted
+    expect(result.transformedContent).toContain("| Not | A | Table |")
+    // The real table should be formatted (columns aligned)
+    expect(result.transformedContent).toContain("| Real | Table     |")
+    expect(result.transformedContent).toContain("| Is   | Formatted |")
+  })
+
+  test("should handle empty cells", async () => {
+    const markdown = `| A | B |
+|---|---|
+| X |  |
+|  | Y |`
+
+    const result = await client.highlightOnce(markdown, "markdown")
+
+    expect(result.transformedContent).toBeDefined()
+    const lines = result.transformedContent!.split("\n")
+    // Minimum column width is 3 for delimiter ---
+    expect(lines[0]).toBe("| A   | B   |")
+    expect(lines[1]).toBe("| --- | --- |")
+    expect(lines[2]).toBe("| X   |     |")
+    expect(lines[3]).toBe("|     | Y   |")
+  })
+
+  test("should handle wide unicode characters correctly", async () => {
+    const markdown = `| Name | Symbol |
+|---|---|
+| Alpha | A |
+| Beta | B |`
+
+    const result = await client.highlightOnce(markdown, "markdown")
+
+    expect(result.transformedContent).toBeDefined()
+    // Basic ASCII should align correctly
+    expect(result.transformedContent).toContain("| Alpha | A      |")
+  })
+
+  test("should return undefined transformedContent when no tables present", async () => {
+    const markdown = `# Just a heading
+
+Some paragraph text without any tables.
+
+- List item 1
+- List item 2`
+
+    const result = await client.highlightOnce(markdown, "markdown")
+
+    // No tables means no transformation needed
+    expect(result.transformedContent).toBeUndefined()
+  })
+
+  test("should handle multiple tables in same document", async () => {
+    const markdown = `| Table1 | Col |
+|---|---|
+| A | B |
+
+Some text between.
+
+| Table2 | Column |
+|---|---|
+| X | Y |`
+
+    const result = await client.highlightOnce(markdown, "markdown")
+
+    expect(result.transformedContent).toBeDefined()
+    // Both tables should be formatted
+    expect(result.transformedContent).toContain("| Table1 | Col |")
+    expect(result.transformedContent).toContain("| Table2 | Column |")
+  })
+
+  test("should handle table with long content", async () => {
+    const markdown = `| Short | Very Long Column Header |
+|---|---|
+| A | B |`
+
+    const result = await client.highlightOnce(markdown, "markdown")
+
+    expect(result.transformedContent).toBeDefined()
+    const lines = result.transformedContent!.split("\n")
+    expect(lines[0]).toBe("| Short | Very Long Column Header |")
+    expect(lines[1]).toBe("| ----- | ----------------------- |")
+    expect(lines[2]).toBe("| A     | B                       |")
+  })
+})
