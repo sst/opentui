@@ -133,7 +133,7 @@ const exampleDiff = `--- a/calculator.ts
 @@ -1,17 +1,24 @@
  class Calculator {
 -  // Basic math operations 🔢
-+  // Basic math operations ➕➖✖️➗
++  // Basic math operations ➕➗
    add(a: number, b: number): number {
      return a + b;
    }
