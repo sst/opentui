@@ -86,9 +86,6 @@ test("DiffRenderable - no endless loop when concealing markdown formatting", asy
   await renderOnce()
   await Bun.sleep(2000)
 
-  // Check that the total number of rendered frames is low
-  // We only called renderOnce() 3 times manually, so frameCount should be close to that
-  // If there's an endless loop, frameCount would be much higher
   const stats = currentRenderer.getStats()
   expect(stats.frameCount).toBeLessThan(11)
 })
@@ -138,7 +135,6 @@ test("DiffRenderable - line number alignment and gutter heights in split view wi
   box.add(diffRenderable)
   currentRenderer.root.add(box)
 
-  // Step 1: Unified view (default, wrapMode=none)
   await renderOnce()
   const unifiedFrame = captureFrame()
 
@@ -147,7 +143,6 @@ test("DiffRenderable - line number alignment and gutter heights in split view wi
   expect(unifiedFrame).toContain("1 + Some text")
   expect(unifiedFrame).toContain("2 + More text")
 
-  // Step 2: Switch to split view (wrapMode still none)
   diffRenderable.view = "split"
   await renderOnce()
   const splitFrame = captureFrame()
@@ -157,7 +152,6 @@ test("DiffRenderable - line number alignment and gutter heights in split view wi
   expect(splitFrame).toContain("2 - Short")
   expect(splitFrame).toContain("2 + More text")
 
-  // Step 3: Enable word wrapping in split view
   diffRenderable.wrapMode = "word"
   await renderOnce()
   await Bun.sleep(10)
@@ -197,7 +191,6 @@ test("DiffRenderable - line number alignment and gutter heights in split view wi
   expect(leftGutter.height).toBe(leftVisualLines)
   expect(rightGutter.height).toBe(rightVisualLines)
 
-  // Step 4: Toggle wrapMode to verify alignment persists
   diffRenderable.wrapMode = "none"
   await renderOnce()
   diffRenderable.wrapMode = "word"

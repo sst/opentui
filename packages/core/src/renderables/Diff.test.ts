@@ -2008,7 +2008,6 @@ test("DiffRenderable - can toggle conceal with markdown diff", async () => {
   const { MockTreeSitterClient } = await import("../testing")
   const mockClient = new MockTreeSitterClient()
 
-  // Use markdown diff with formatting that can be concealed
   const markdownDiff = `--- a/test.md
 +++ b/test.md
 @@ -1,3 +1,3 @@
@@ -2017,8 +2016,6 @@ test("DiffRenderable - can toggle conceal with markdown diff", async () => {
 +Some text **boldtext** and *italic*
  End line`
 
-  // Mock highlights with conceal metadata - concealing ** and *
-  // Content in unified view: "First line\nSome text **boldtext** and *italic*\nEnd line"
   const mockHighlightsWithConceal: SimpleHighlight[] = [
     [21, 23, "conceal", { isInjection: true, injectionLang: "markdown_inline", conceal: "" }], // **
     [31, 33, "conceal", { isInjection: true, injectionLang: "markdown_inline", conceal: "" }], // **
@@ -2043,17 +2040,14 @@ test("DiffRenderable - can toggle conceal with markdown diff", async () => {
   currentRenderer.root.add(diffRenderable)
   await renderOnce()
 
-  // Wait for highlighting to complete
   mockClient.resolveAllHighlightOnce()
   await new Promise((resolve) => setTimeout(resolve, 50))
   await renderOnce()
 
-  // Capture with conceal enabled (should hide ** and * markup)
   const frameWithConceal = captureFrame()
   expect(frameWithConceal).toMatchSnapshot("markdown diff with conceal enabled")
   expect(diffRenderable.conceal).toBe(true)
 
-  // Toggle conceal off
   diffRenderable.conceal = false
   await renderOnce()
 
@@ -2062,25 +2056,20 @@ test("DiffRenderable - can toggle conceal with markdown diff", async () => {
   await new Promise((resolve) => setTimeout(resolve, 50))
   await renderOnce()
 
-  // Capture with conceal disabled (should show ** and * markup)
   const frameWithoutConceal = captureFrame()
   expect(frameWithoutConceal).toMatchSnapshot("markdown diff with conceal disabled")
   expect(diffRenderable.conceal).toBe(false)
 
-  // Frames should be different (concealing hides markup characters)
   expect(frameWithConceal).not.toBe(frameWithoutConceal)
 
-  // Toggle conceal back on
   diffRenderable.conceal = true
   await renderOnce()
 
-  // Wait for re-highlighting
   mockClient.resolveAllHighlightOnce()
   await new Promise((resolve) => setTimeout(resolve, 50))
   await renderOnce()
 
   const frameWithConcealAgain = captureFrame()
-  // Should match the first frame
   expect(frameWithConcealAgain).toBe(frameWithConceal)
 })
 
@@ -2100,7 +2089,6 @@ test("DiffRenderable - conceal works in split view", async () => {
 +Some **new** text
  End line`
 
-  // Mock highlights with conceal metadata for the ** markers
   const mockHighlightsWithConceal: SimpleHighlight[] = [
     [16, 18, "conceal", { isInjection: true, injectionLang: "markdown_inline", conceal: "" }], // **
     [21, 23, "conceal", { isInjection: true, injectionLang: "markdown_inline", conceal: "" }], // **
@@ -2123,7 +2111,6 @@ test("DiffRenderable - conceal works in split view", async () => {
   currentRenderer.root.add(diffRenderable)
   await renderOnce()
 
-  // Wait for highlighting
   mockClient.resolveAllHighlightOnce()
   await new Promise((resolve) => setTimeout(resolve, 50))
   await renderOnce()
@@ -2135,7 +2122,6 @@ test("DiffRenderable - conceal works in split view", async () => {
   diffRenderable.conceal = false
   await renderOnce()
 
-  // Wait for re-highlighting
   mockClient.resolveAllHighlightOnce()
   await new Promise((resolve) => setTimeout(resolve, 50))
   await renderOnce()
@@ -2144,7 +2130,6 @@ test("DiffRenderable - conceal works in split view", async () => {
   expect(frameWithoutConceal).toMatchSnapshot("split view markdown diff with conceal disabled")
   expect(diffRenderable.conceal).toBe(false)
 
-  // Frames should be different
   expect(frameWithConceal).not.toBe(frameWithoutConceal)
 })
 
@@ -2166,7 +2151,6 @@ test("DiffRenderable - conceal defaults to false when not specified", async () =
   currentRenderer.root.add(diffRenderable)
   await renderOnce()
 
-  // Should default to false (as per constructor default)
   expect(diffRenderable.conceal).toBe(false)
 })
 
@@ -2402,7 +2386,6 @@ test("DiffRenderable - properly cleans up listeners on destroy", async () => {
 })
 
 test("DiffRenderable - line numbers update correctly after resize causes wrapping changes", async () => {
-  // Create a test renderer that we can resize
   const testRenderer = await createTestRenderer({ width: 120, height: 40 })
   const renderer = testRenderer.renderer
   const renderOnce = testRenderer.renderOnce
@@ -2413,7 +2396,6 @@ test("DiffRenderable - line numbers update correctly after resize causes wrappin
     default: { fg: RGBA.fromValues(1, 1, 1, 1) },
   })
 
-  // Create a diff with long lines that will wrap when the terminal is made smaller
   const longLineDiff = `--- a/test.js
 +++ b/test.js
 @@ -1,4 +1,4 @@
@@ -2437,63 +2419,43 @@ test("DiffRenderable - line numbers update correctly after resize causes wrappin
   renderer.root.add(diffRenderable)
   await renderOnce()
 
-  // Get the underlying Code renderable to monitor its events
   const leftCodeRenderable = (diffRenderable as any).leftCodeRenderable
 
-  // Track whether line-info-change event is emitted
   let lineInfoChangeEmitted = false
   const lineInfoChangeListener = () => {
     lineInfoChangeEmitted = true
   }
   leftCodeRenderable.on("line-info-change", lineInfoChangeListener)
 
-  // Capture the frame before resize
   const frameBefore = captureFrame()
   expect(frameBefore).toMatchSnapshot("before resize - line numbers with no wrapping")
 
-  // Get the line info before resize
   const lineInfoBefore = leftCodeRenderable.lineInfo
-  expect(lineInfoBefore.lineSources).toEqual([0, 1, 2, 3, 4]) // 5 logical lines, no wrapping
-  expect(leftCodeRenderable.virtualLineCount).toBe(5) // Visual line count before wrapping
+  expect(lineInfoBefore.lineSources).toEqual([0, 1, 2, 3, 4])
+  expect(leftCodeRenderable.virtualLineCount).toBe(5)
 
-  // Reset the flag
   lineInfoChangeEmitted = false
 
-  // Now resize the renderer to be much smaller, causing lines to wrap
-  // The bug is that line-info-change is NOT emitted during resize AND
-  // lineCount doesn't reflect the new visual line count from wrapping
   resize(60, 40)
 
-  // Wait a tiny bit for the resize to propagate and onResize to be called
   await new Promise((resolve) => setTimeout(resolve, 10))
 
-  // Check if line-info-change was emitted after resize
-  // This is the key test - without updateTextInfo in onResize, this will be false
   expect(lineInfoChangeEmitted).toBe(true)
-
-  // Check that virtualLineCount now reflects the visual line count (with wrapping)
-  // This is the real fix - virtualLineCount should return visual lines, not logical lines
-  expect(leftCodeRenderable.virtualLineCount).toBe(11) // 11 visual lines after wrapping
+  expect(leftCodeRenderable.virtualLineCount).toBe(11)
 
   await renderOnce()
 
-  // Wait for any microtask rebuilds
   await new Promise((resolve) => setTimeout(resolve, 50))
   await renderOnce()
 
-  // Capture the frame after resize
   const frameAfter = captureFrame()
   expect(frameAfter).toMatchSnapshot("after resize - line numbers with wrapping")
 
-  // Get the line info after resize
   const lineInfoAfter = leftCodeRenderable.lineInfo
-  // Should now have 11 visual lines (with wrapping)
   expect(lineInfoAfter.lineSources).toEqual([0, 0, 0, 1, 1, 1, 2, 2, 2, 3, 4])
 
-  // Parse the frames to check line numbers
   const linesAfter = frameAfter.split("\n").filter((l) => l.trim().length > 0)
 
-  // Find lines with line numbers
   const lineNumberMatches = linesAfter
     .map((line, idx) => {
       const match = line.match(/^\s*(\d+)\s+([+-]?)/)
@@ -2504,28 +2466,16 @@ test("DiffRenderable - line numbers update correctly after resize causes wrappin
     })
     .filter((m) => m !== null)
 
-  // The line numbers should be present and correct (lines 1, 2, 2, 3, 4)
-  // Line 1: function declaration (context)
-  // Line 2: old const (removed)
-  // Line 2: new const (added)
-  // Line 3: return statement (context)
-  // Line 4: closing brace (context)
+  expect(lineNumberMatches.length).toBe(5)
 
-  // Check that we have line numbers for the main logical lines
-  // After wrapping, we should have line numbers on visual lines 0, 3, 6, 9, 10
-  // (the first visual line of each logical line)
-  expect(lineNumberMatches.length).toBe(5) // 5 logical lines total
-
-  // Verify the line numbers are correct
-  expect(lineNumberMatches[0]!.lineNum).toBe(1) // function
-  expect(lineNumberMatches[1]!.lineNum).toBe(2) // old const (removed)
+  expect(lineNumberMatches[0]!.lineNum).toBe(1)
+  expect(lineNumberMatches[1]!.lineNum).toBe(2)
   expect(lineNumberMatches[1]!.sign).toBe("-")
-  expect(lineNumberMatches[2]!.lineNum).toBe(2) // new const (added)
+  expect(lineNumberMatches[2]!.lineNum).toBe(2)
   expect(lineNumberMatches[2]!.sign).toBe("+")
-  expect(lineNumberMatches[3]!.lineNum).toBe(3) // return
-  expect(lineNumberMatches[4]!.lineNum).toBe(4) // closing brace
+  expect(lineNumberMatches[3]!.lineNum).toBe(3)
+  expect(lineNumberMatches[4]!.lineNum).toBe(4)
 
-  // Clean up
   leftCodeRenderable.off("line-info-change", lineInfoChangeListener)
   renderer.destroy()
 })
