@@ -161,6 +161,10 @@ export abstract class EditBufferRenderable extends Renderable implements LineInf
     return this.editBuffer.getLineCount()
   }
 
+  public get virtualLineCount(): number {
+    return this.editorView.getVirtualLineCount()
+  }
+
   public get scrollY(): number {
     return this.editorView.getViewport().offsetY
   }
@@ -495,13 +499,24 @@ export abstract class EditBufferRenderable extends Renderable implements LineInf
     }
   }
 
-  destroy(): void {
+  override destroy(): void {
+    if (this.isDestroyed) return
+
     if (this._focused) {
       this._ctx.setCursorPosition(0, 0, false)
+      // Manually blur to unhook event handlers BEFORE setting destroyed flag
+      // This prevents the guard in super.destroy() from skipping blur()
+      this.blur()
     }
-    super.destroy()
+
+    // Destroy dependent resources in correct order BEFORE calling super
+    // EditorView depends on EditBuffer, so destroy it first
     this.editorView.destroy()
     this.editBuffer.destroy()
+
+    // Finally clean up parent resources
+    // Note: super.destroy() will try to blur() again, but blur() has guards to prevent double-blur
+    super.destroy()
   }
 
   public set onCursorChange(handler: ((event: CursorChangeEvent) => void) | undefined) {

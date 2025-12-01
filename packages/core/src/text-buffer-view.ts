@@ -146,6 +146,11 @@ export class TextBufferView {
     return this.lib.textBufferViewMeasureForDimensions(this.viewPtr, width, height)
   }
 
+  public getVirtualLineCount(): number {
+    this.guard()
+    return this.lib.textBufferViewGetVirtualLineCount(this.viewPtr)
+  }
+
   public destroy(): void {
     if (this._destroyed) return
     this._destroyed = true
