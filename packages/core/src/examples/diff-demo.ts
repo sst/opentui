@@ -355,6 +355,7 @@ let currentThemeIndex = 0
 let currentContentIndex = 0
 let showMalformedDiff = false
 let showingHelp = false
+let concealEnabled = true
 
 const applyTheme = (themeIndex: number) => {
   const theme = themes[themeIndex]
@@ -456,6 +457,7 @@ export async function run(rendererInstance: CliRenderer): Promise<void> {
   V : Toggle view mode (Unified/Split)
   L : Toggle line numbers
   W : Toggle wrap mode (None/Word)
+  O : Toggle conceal (hide/show markup)
 
 Theme & Display:
   T : Cycle through themes
@@ -483,6 +485,7 @@ Other:
     syntaxStyle,
     showLineNumbers,
     wrapMode: currentWrapMode,
+    conceal: concealEnabled,
     addedBg: theme.addedBg,
     removedBg: theme.removedBg,
     contextBg: theme.contextBg,
@@ -551,6 +554,12 @@ Other:
         const theme = themes[currentThemeIndex]
         const contentName = contentExamples[currentContentIndex].name
         titleBox.title = `Diff Demo - ${theme.name} - ${contentName}`
+      }
+    } else if (key.name === "o" && !key.ctrl && !key.meta) {
+      // Toggle conceal
+      concealEnabled = !concealEnabled
+      if (diffRenderable) {
+        diffRenderable.conceal = concealEnabled
       }
     }
   }

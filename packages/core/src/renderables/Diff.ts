@@ -1141,4 +1141,15 @@ export class DiffRenderable extends Renderable {
       }
     }
   }
+
+  public get conceal(): boolean {
+    return this._conceal
+  }
+
+  public set conceal(value: boolean) {
+    if (this._conceal !== value) {
+      this._conceal = value
+      this.rebuildView()
+    }
+  }
 }
