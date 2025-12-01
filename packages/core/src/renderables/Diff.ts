@@ -6,6 +6,7 @@ import { RGBA, parseColor } from "../lib/RGBA"
 import { SyntaxStyle } from "../syntax-style"
 import { parsePatch, type StructuredPatch } from "diff"
 import { TextRenderable } from "./Text"
+import type { TreeSitterClient } from "../lib/tree-sitter"
 
 interface LogicalLine {
   content: string
@@ -27,6 +28,7 @@ export interface DiffRenderableOptions extends RenderableOptions<DiffRenderable>
   conceal?: boolean
   selectionBg?: string | RGBA
   selectionFg?: string | RGBA
+  treeSitterClient?: TreeSitterClient
 
   // LineNumberRenderable options
   showLineNumbers?: boolean
@@ -59,6 +61,7 @@ export class DiffRenderable extends Renderable {
   private _conceal: boolean
   private _selectionBg?: RGBA
   private _selectionFg?: RGBA
+  private _treeSitterClient?: TreeSitterClient
 
   // LineNumberRenderable options
   private _showLineNumbers: boolean
@@ -95,6 +98,7 @@ export class DiffRenderable extends Renderable {
   // This avoids expensive re-parsing and re-rendering on rapid changes (e.g., width changes).
   // CodeRenderables are reused and only their content is updated.
   private pendingRebuild: boolean = false
+  private _lastWidth: number = 0
 
   // Error renderables for displaying parse errors
   private errorTextRenderable: TextRenderable | null = null
@@ -113,9 +117,10 @@ export class DiffRenderable extends Renderable {
     this._filetype = options.filetype
     this._syntaxStyle = options.syntaxStyle
     this._wrapMode = options.wrapMode
-    this._conceal = options.conceal ?? true
+    this._conceal = options.conceal ?? false
     this._selectionBg = options.selectionBg ? parseColor(options.selectionBg) : undefined
     this._selectionFg = options.selectionFg ? parseColor(options.selectionFg) : undefined
+    this._treeSitterClient = options.treeSitterClient
 
     // LineNumberRenderable options
     this._showLineNumbers = options.showLineNumbers ?? true
@@ -192,9 +197,12 @@ export class DiffRenderable extends Renderable {
   protected override onResize(width: number, height: number): void {
     super.onResize(width, height)
 
-    // For split view with wrapping, rebuild on width changes to realign wrapped lines
+    // Only rebuild on width changes to avoid endless loops (height is a consequence of wrapping, not an input)
     if (this._view === "split" && this._wrapMode !== "none" && this._wrapMode !== undefined) {
-      this.requestRebuild()
+      if (this._lastWidth !== width) {
+        this._lastWidth = width
+        this.requestRebuild()
+      }
     }
   }
 
@@ -279,6 +287,7 @@ export class DiffRenderable extends Renderable {
         width: "100%",
         flexGrow: 1,
         flexShrink: 1,
+        ...(this._treeSitterClient !== undefined && { treeSitterClient: this._treeSitterClient }),
       })
       super.add(this.errorCodeRenderable)
     } else {
@@ -317,6 +326,7 @@ export class DiffRenderable extends Renderable {
         ...(drawUnstyledText !== undefined && { drawUnstyledText }),
         ...(this._selectionBg !== undefined && { selectionBg: this._selectionBg }),
         ...(this._selectionFg !== undefined && { selectionFg: this._selectionFg }),
+        ...(this._treeSitterClient !== undefined && { treeSitterClient: this._treeSitterClient }),
       }
       const newRenderable = new CodeRenderable(this.ctx, codeOptions)
 
@@ -331,6 +341,7 @@ export class DiffRenderable extends Renderable {
       // Update existing CodeRenderable
       existingRenderable.content = content
       existingRenderable.wrapMode = wrapMode ?? "none"
+      existingRenderable.conceal = this._conceal
       if (drawUnstyledText !== undefined) {
         existingRenderable.drawUnstyledText = drawUnstyledText
       }
@@ -660,11 +671,22 @@ export class DiffRenderable extends Renderable {
     const preLeftContent = leftLogicalLines.map((l) => l.content).join("\n")
     const preRightContent = rightLogicalLines.map((l) => l.content).join("\n")
 
-    const effectiveWrapMode = canDoWrapAlignment ? this._wrapMode! : "none"
-
-    // Create or update CodeRenderables with initial content
-    const leftCodeRenderable = this.createOrUpdateCodeRenderable("left", preLeftContent, effectiveWrapMode, true)
-    const rightCodeRenderable = this.createOrUpdateCodeRenderable("right", preRightContent, effectiveWrapMode, true)
+    // Don't draw unstyled text when using wrap+conceal to avoid race conditions where sides wrap differently
+    const needsConsistentConcealing =
+      (this._wrapMode === "word" || this._wrapMode === "char") && this._conceal && this._filetype
+    const drawUnstyledText = !needsConsistentConcealing
+    const leftCodeRenderable = this.createOrUpdateCodeRenderable(
+      "left",
+      preLeftContent,
+      this._wrapMode,
+      drawUnstyledText,
+    )
+    const rightCodeRenderable = this.createOrUpdateCodeRenderable(
+      "right",
+      preRightContent,
+      this._wrapMode,
+      drawUnstyledText,
+    )
 
     // Step 3: Align lines using lineInfo (if we can)
     let finalLeftLines: LogicalLine[]
@@ -1111,6 +1133,17 @@ export class DiffRenderable extends Renderable {
       if (this.rightCodeRenderable) {
         this.rightCodeRenderable.selectionFg = parsed
       }
+    }
+  }
+
+  public get conceal(): boolean {
+    return this._conceal
+  }
+
+  public set conceal(value: boolean) {
+    if (this._conceal !== value) {
+      this._conceal = value
+      this.rebuildView()
     }
   }
 }

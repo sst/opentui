@@ -161,6 +161,10 @@ export abstract class EditBufferRenderable extends Renderable implements LineInf
     return this.editBuffer.getLineCount()
   }
 
+  public get virtualLineCount(): number {
+    return this.editorView.getVirtualLineCount()
+  }
+
   public get scrollY(): number {
     return this.editorView.getViewport().offsetY
   }

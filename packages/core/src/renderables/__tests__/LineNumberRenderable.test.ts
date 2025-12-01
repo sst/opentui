@@ -1097,7 +1097,7 @@ describe("LineNumberRenderable", () => {
     let frame = captureCharFrame()
 
     // Should have minimal lines (empty buffer may show 1 line)
-    const initialLineCount = codeRenderable.lineCount
+    const initialLineCount = codeRenderable.virtualLineCount
     expect(initialLineCount).toBeLessThanOrEqual(1)
 
     // Now set content on the Code renderable
@@ -1115,7 +1115,7 @@ describe("LineNumberRenderable", () => {
     frame = captureCharFrame()
 
     // Should now show line numbers for the content
-    expect(codeRenderable.lineCount).toBe(3)
+    expect(codeRenderable.virtualLineCount).toBe(3)
     expect(frame).toContain("function")
     expect(frame).toContain("console")
 
@@ -1166,7 +1166,7 @@ describe("LineNumberRenderable", () => {
     let frame = captureCharFrame()
 
     // Should show 2 lines
-    expect(codeRenderable.lineCount).toBe(2)
+    expect(codeRenderable.virtualLineCount).toBe(2)
     expect(frame).toContain("line 1")
     expect(frame).toContain("line 2")
 
@@ -1180,7 +1180,7 @@ describe("LineNumberRenderable", () => {
     frame = captureCharFrame()
 
     // Should now show 5 lines
-    expect(codeRenderable.lineCount).toBe(5)
+    expect(codeRenderable.virtualLineCount).toBe(5)
     expect(frame).toContain("line 5")
 
     // Check that line numbers are present for all 5 lines
@@ -1227,7 +1227,7 @@ describe("LineNumberRenderable", () => {
 
     let frame = captureCharFrame()
 
-    expect(codeRenderable.lineCount).toBe(3)
+    expect(codeRenderable.virtualLineCount).toBe(3)
     expect(frame).toContain("function")
 
     // Now set filetype to enable syntax highlighting
@@ -1240,7 +1240,7 @@ describe("LineNumberRenderable", () => {
     frame = captureCharFrame()
 
     // Should still show 3 lines with highlighting
-    expect(codeRenderable.lineCount).toBe(3)
+    expect(codeRenderable.virtualLineCount).toBe(3)
     expect(frame).toContain("function")
 
     // Line numbers should be present

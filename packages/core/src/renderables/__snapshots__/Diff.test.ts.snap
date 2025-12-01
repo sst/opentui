@@ -1,15 +1,87 @@
 // Bun Snapshot v1, https://bun.sh/docs/test/snapshots
 
-exports[`DiffRenderable - invalid diff format shows error with raw diff: invalid diff format with error 1`] = `
-"Error parsing diff: Unknown line 5 "-  console.log(\\"Hello\\");"                 
+exports[`DiffRenderable - can toggle conceal with markdown diff: markdown diff with conceal enabled 1`] = `
+" 1   First line                                                                 
+ 2 - Some text old**                                                            
+ 2 + So text**boldext** and *italic*                                            
+ 3   End line                                                                   
                                                                                 
---- a/test.js                                                                   
-+++ b/test.js                                                                   
-@@ -a,b +c,d @@                                                                 
- function hello() {                                                             
--  console.log("Hello");                                                        
-+  console.log("Hello, World!");                                                
- }                                                                              
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+"
+`;
+
+exports[`DiffRenderable - can toggle conceal with markdown diff: markdown diff with conceal disabled 1`] = `
+" 1   First line                                                                 
+ 2 - Some text **old**                                                          
+ 2 + Some text **boldtext** and *italic*                                        
+ 3   End line                                                                   
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+"
+`;
+
+exports[`DiffRenderable - conceal works in split view: split view markdown diff with conceal enabled 1`] = `
+" 1   First line                          1   First line                         
+ 2 - Some old text                       2 + Some new text                      
+ 3   End line                            3   End line                           
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+"
+`;
+
+exports[`DiffRenderable - conceal works in split view: split view markdown diff with conceal disabled 1`] = `
+" 1   First line                          1   First line                         
+ 2 - Some **old** text                   2 + Some **new** text                  
+ 3   End line                            3   End line                           
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
                                                                                 
                                                                                 
                                                                                 
@@ -576,6 +648,30 @@ exports[`DiffRenderable - very long lines wrapping multiple times in split view:
 "
 `;
 
+exports[`DiffRenderable - invalid diff format shows error with raw diff: invalid diff format with error 1`] = `
+"Error parsing diff: Unknown line 5 "-  console.log(\\"Hello\\");"                 
+                                                                                
+--- a/test.js                                                                   
++++ b/test.js                                                                   
+@@ -a,b +c,d @@                                                                 
+ function hello() {                                                             
+-  console.log("Hello");                                                        
++  console.log("Hello, World!");                                                
+ }                                                                              
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+"
+`;
+
 exports[`DiffRenderable - diff with only context lines (no changes): diff with only context lines 1`] = `
 " 1 line1                                                                        
  2 line2                                                                        
@@ -597,5 +693,93 @@ exports[`DiffRenderable - diff with only context lines (no changes): diff with o
                                                                                 
                                                                                 
                                                                                 
+"
+`;
+
+exports[`DiffRenderable - line numbers update correctly after resize causes wrapping changes: before resize - line numbers with no wrapping 1`] = `
+" 1   function calculateSomethingVeryComplexWithALongFunctionNameThatWillWrap() {                                        
+ 2 -   const oldResultWithAVeryLongVariableNameThatWillDefinitelyWrapWhenRenderedInASmallerTerminal = 42;               
+ 2 +   const newResultWithAVeryLongVariableNameThatWillDefinitelyWrapWhenRenderedInASmallerTerminal = 100;              
+ 3     return result;                                                                                                   
+ 4   }                                                                                                                  
+                                                                                                                        
+                                                                                                                        
+                                                                                                                        
+                                                                                                                        
+                                                                                                                        
+                                                                                                                        
+                                                                                                                        
+                                                                                                                        
+                                                                                                                        
+                                                                                                                        
+                                                                                                                        
+                                                                                                                        
+                                                                                                                        
+                                                                                                                        
+                                                                                                                        
+                                                                                                                        
+                                                                                                                        
+                                                                                                                        
+                                                                                                                        
+                                                                                                                        
+                                                                                                                        
+                                                                                                                        
+                                                                                                                        
+                                                                                                                        
+                                                                                                                        
+                                                                                                                        
+                                                                                                                        
+                                                                                                                        
+                                                                                                                        
+                                                                                                                        
+                                                                                                                        
+                                                                                                                        
+                                                                                                                        
+                                                                                                                        
+                                                                                                                        
+"
+`;
+
+exports[`DiffRenderable - line numbers update correctly after resize causes wrapping changes: after resize - line numbers with wrapping 1`] = `
+"  1   function                                              
+      calculateSomethingVeryComplexWithALongFunctionNameThat
+      WillWrap() {                                          
+  2 -   const                                               
+      oldResultWithAVeryLongVariableNameThatWillDefinitelyWr
+      apWhenRenderedInASmallerTerminal = 42;                
+  2 +   const                                               
+      newResultWithAVeryLongVariableNameThatWillDefinitelyWr
+      apWhenRenderedInASmallerTerminal = 100;               
+  3     return result;                                      
+  4   }                                                     
+                                                            
+                                                            
+                                                            
+                                                            
+                                                            
+                                                            
+                                                            
+                                                            
+                                                            
+                                                            
+                                                            
+                                                            
+                                                            
+                                                            
+                                                            
+                                                            
+                                                            
+                                                            
+                                                            
+                                                            
+                                                            
+                                                            
+                                                            
+                                                            
+                                                            
+                                                            
+                                                            
+                                                            
+                                                            
 "
 `;

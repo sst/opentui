@@ -1293,6 +1293,7 @@ export interface RenderLib {
     width: number,
     height: number,
   ) => { lineCount: number; maxWidth: number } | null
+  textBufferViewGetVirtualLineCount: (view: Pointer) => number
 
   readonly encoder: TextEncoder
   readonly decoder: TextDecoder
@@ -2261,7 +2262,7 @@ class FFIRenderLib implements RenderLib {
     }
   }
 
-  private textBufferViewGetLineCount(view: Pointer): number {
+  public textBufferViewGetVirtualLineCount(view: Pointer): number {
     return this.opentui.symbols.textBufferViewGetVirtualLineCount(view)
   }
 
