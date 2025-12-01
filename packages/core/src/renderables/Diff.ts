@@ -117,7 +117,7 @@ export class DiffRenderable extends Renderable {
     this._filetype = options.filetype
     this._syntaxStyle = options.syntaxStyle
     this._wrapMode = options.wrapMode
-    this._conceal = options.conceal ?? true
+    this._conceal = options.conceal ?? false
     this._selectionBg = options.selectionBg ? parseColor(options.selectionBg) : undefined
     this._selectionFg = options.selectionFg ? parseColor(options.selectionFg) : undefined
     this._treeSitterClient = options.treeSitterClient

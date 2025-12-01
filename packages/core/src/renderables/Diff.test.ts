@@ -2148,7 +2148,7 @@ test("DiffRenderable - conceal works in split view", async () => {
   expect(frameWithConceal).not.toBe(frameWithoutConceal)
 })
 
-test("DiffRenderable - conceal defaults to true when not specified", async () => {
+test("DiffRenderable - conceal defaults to false when not specified", async () => {
   const syntaxStyle = SyntaxStyle.fromStyles({
     default: { fg: RGBA.fromValues(1, 1, 1, 1) },
   })
@@ -2166,8 +2166,8 @@ test("DiffRenderable - conceal defaults to true when not specified", async () =>
   currentRenderer.root.add(diffRenderable)
   await renderOnce()
 
-  // Should default to true (as per constructor default)
-  expect(diffRenderable.conceal).toBe(true)
+  // Should default to false (as per constructor default)
+  expect(diffRenderable.conceal).toBe(false)
 })
 
 test("DiffRenderable - should handle resize with wrapping without leaking listeners", async () => {
