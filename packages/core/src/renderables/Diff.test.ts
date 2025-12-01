@@ -3,6 +3,7 @@ import { DiffRenderable } from "./Diff"
 import { SyntaxStyle } from "../syntax-style"
 import { RGBA } from "../lib/RGBA"
 import { createTestRenderer, type TestRenderer } from "../testing"
+import type { SimpleHighlight } from "../lib/tree-sitter/types"
 
 let currentRenderer: TestRenderer
 let renderOnce: () => Promise<void>
@@ -1997,6 +1998,176 @@ test("DiffRenderable - should not leak listeners on rapid property changes", asy
   // Listener counts should remain stable
   expect(leftFinalCount).toBe(leftInitialCount)
   expect(rightFinalCount).toBe(rightInitialCount)
+})
+
+test("DiffRenderable - can toggle conceal with markdown diff", async () => {
+  const syntaxStyle = SyntaxStyle.fromStyles({
+    default: { fg: RGBA.fromValues(1, 1, 1, 1) },
+  })
+
+  const { MockTreeSitterClient } = await import("../testing")
+  const mockClient = new MockTreeSitterClient()
+
+  // Use markdown diff with formatting that can be concealed
+  const markdownDiff = `--- a/test.md
++++ b/test.md
+@@ -1,3 +1,3 @@
+ First line
+-Some text **old**
++Some text **boldtext** and *italic*
+ End line`
+
+  // Mock highlights with conceal metadata - concealing ** and *
+  // Content in unified view: "First line\nSome text **boldtext** and *italic*\nEnd line"
+  const mockHighlightsWithConceal: SimpleHighlight[] = [
+    [21, 23, "conceal", { isInjection: true, injectionLang: "markdown_inline", conceal: "" }], // **
+    [31, 33, "conceal", { isInjection: true, injectionLang: "markdown_inline", conceal: "" }], // **
+    [38, 39, "conceal", { isInjection: true, injectionLang: "markdown_inline", conceal: "" }], // *
+    [45, 46, "conceal", { isInjection: true, injectionLang: "markdown_inline", conceal: "" }], // *
+  ]
+
+  mockClient.setMockResult({ highlights: mockHighlightsWithConceal })
+
+  const diffRenderable = new DiffRenderable(currentRenderer, {
+    id: "test-diff",
+    diff: markdownDiff,
+    view: "unified",
+    syntaxStyle,
+    filetype: "markdown",
+    conceal: true,
+    treeSitterClient: mockClient,
+    width: "100%",
+    height: "100%",
+  })
+
+  currentRenderer.root.add(diffRenderable)
+  await renderOnce()
+
+  // Wait for highlighting to complete
+  mockClient.resolveAllHighlightOnce()
+  await new Promise((resolve) => setTimeout(resolve, 50))
+  await renderOnce()
+
+  // Capture with conceal enabled (should hide ** and * markup)
+  const frameWithConceal = captureFrame()
+  expect(frameWithConceal).toMatchSnapshot("markdown diff with conceal enabled")
+  expect(diffRenderable.conceal).toBe(true)
+
+  // Toggle conceal off
+  diffRenderable.conceal = false
+  await renderOnce()
+
+  // Wait for re-highlighting
+  mockClient.resolveAllHighlightOnce()
+  await new Promise((resolve) => setTimeout(resolve, 50))
+  await renderOnce()
+
+  // Capture with conceal disabled (should show ** and * markup)
+  const frameWithoutConceal = captureFrame()
+  expect(frameWithoutConceal).toMatchSnapshot("markdown diff with conceal disabled")
+  expect(diffRenderable.conceal).toBe(false)
+
+  // Frames should be different (concealing hides markup characters)
+  expect(frameWithConceal).not.toBe(frameWithoutConceal)
+
+  // Toggle conceal back on
+  diffRenderable.conceal = true
+  await renderOnce()
+
+  // Wait for re-highlighting
+  mockClient.resolveAllHighlightOnce()
+  await new Promise((resolve) => setTimeout(resolve, 50))
+  await renderOnce()
+
+  const frameWithConcealAgain = captureFrame()
+  // Should match the first frame
+  expect(frameWithConcealAgain).toBe(frameWithConceal)
+})
+
+test("DiffRenderable - conceal works in split view", async () => {
+  const syntaxStyle = SyntaxStyle.fromStyles({
+    default: { fg: RGBA.fromValues(1, 1, 1, 1) },
+  })
+
+  const { MockTreeSitterClient } = await import("../testing")
+  const mockClient = new MockTreeSitterClient()
+
+  const markdownDiff = `--- a/test.md
++++ b/test.md
+@@ -1,3 +1,3 @@
+ First line
+-Some **old** text
++Some **new** text
+ End line`
+
+  // Mock highlights with conceal metadata for the ** markers
+  const mockHighlightsWithConceal: SimpleHighlight[] = [
+    [16, 18, "conceal", { isInjection: true, injectionLang: "markdown_inline", conceal: "" }], // **
+    [21, 23, "conceal", { isInjection: true, injectionLang: "markdown_inline", conceal: "" }], // **
+  ]
+
+  mockClient.setMockResult({ highlights: mockHighlightsWithConceal })
+
+  const diffRenderable = new DiffRenderable(currentRenderer, {
+    id: "test-diff",
+    diff: markdownDiff,
+    view: "split",
+    syntaxStyle,
+    filetype: "markdown",
+    conceal: true,
+    treeSitterClient: mockClient,
+    width: "100%",
+    height: "100%",
+  })
+
+  currentRenderer.root.add(diffRenderable)
+  await renderOnce()
+
+  // Wait for highlighting
+  mockClient.resolveAllHighlightOnce()
+  await new Promise((resolve) => setTimeout(resolve, 50))
+  await renderOnce()
+
+  const frameWithConceal = captureFrame()
+  expect(frameWithConceal).toMatchSnapshot("split view markdown diff with conceal enabled")
+  expect(diffRenderable.conceal).toBe(true)
+
+  diffRenderable.conceal = false
+  await renderOnce()
+
+  // Wait for re-highlighting
+  mockClient.resolveAllHighlightOnce()
+  await new Promise((resolve) => setTimeout(resolve, 50))
+  await renderOnce()
+
+  const frameWithoutConceal = captureFrame()
+  expect(frameWithoutConceal).toMatchSnapshot("split view markdown diff with conceal disabled")
+  expect(diffRenderable.conceal).toBe(false)
+
+  // Frames should be different
+  expect(frameWithConceal).not.toBe(frameWithoutConceal)
+})
+
+test("DiffRenderable - conceal defaults to true when not specified", async () => {
+  const syntaxStyle = SyntaxStyle.fromStyles({
+    default: { fg: RGBA.fromValues(1, 1, 1, 1) },
+  })
+
+  const diffRenderable = new DiffRenderable(currentRenderer, {
+    id: "test-diff",
+    diff: simpleDiff,
+    view: "unified",
+    syntaxStyle,
+    filetype: "javascript",
+    width: "100%",
+    height: "100%",
+  })
+
+  currentRenderer.root.add(diffRenderable)
+  await renderOnce()
+
+  // Should default to true (as per constructor default)
+  expect(diffRenderable.conceal).toBe(true)
 })
 
 test("DiffRenderable - should handle resize with wrapping without leaking listeners", async () => {
