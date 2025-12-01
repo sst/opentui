@@ -197,9 +197,7 @@ export class DiffRenderable extends Renderable {
   protected override onResize(width: number, height: number): void {
     super.onResize(width, height)
 
-    // For split view with wrapping, rebuild ONLY on width changes (not height)
-    // Height is a consequence of content, not an input to wrapping
-    // Rebuilding on height changes creates an endless loop
+    // Only rebuild on width changes to avoid endless loops (height is a consequence of wrapping, not an input)
     if (this._view === "split" && this._wrapMode !== "none" && this._wrapMode !== undefined) {
       if (this._lastWidth !== width) {
         this._lastWidth = width
@@ -673,11 +671,7 @@ export class DiffRenderable extends Renderable {
     const preLeftContent = leftLogicalLines.map((l) => l.content).join("\n")
     const preRightContent = rightLogicalLines.map((l) => l.content).join("\n")
 
-    // Create or update CodeRenderables with initial content
-    // Always use the actual wrapMode - the alignment logic below handles whether to align based on canDoWrapAlignment
-    // IMPORTANT: When using wrap mode WITH concealing, don't draw unstyled text to prevent wrapping
-    // before highlights/concealing are applied. This ensures both sides wrap with the same concealing state,
-    // avoiding race conditions where one side wraps with unconcealed text and the other with concealed text.
+    // Don't draw unstyled text when using wrap+conceal to avoid race conditions where sides wrap differently
     const needsConsistentConcealing =
       (this._wrapMode === "word" || this._wrapMode === "char") && this._conceal && this._filetype
     const drawUnstyledText = !needsConsistentConcealing
