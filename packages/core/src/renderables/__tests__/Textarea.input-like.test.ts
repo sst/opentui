@@ -612,6 +612,32 @@ describe("Textarea - Input-like Functionality Tests", () => {
       expect(editor.logicalCursor.col).toBe(11) // End of line
       expect(editor.plainText).toBe("hello world") // Text unchanged
     })
+
+    it("should not insert text for keys with super modifier", async () => {
+      const { textarea: editor } = await createTextareaRenderable(currentRenderer, renderOnce, {
+        width: 40,
+        height: 10,
+      })
+
+      editor.focus()
+
+      // Super+x should not insert "x"
+      currentMockInput.pressKey("x", { super: true })
+      expect(editor.plainText).toBe("") // Should not insert text
+    })
+
+    it("should not insert text for keys with hyper modifier", async () => {
+      const { textarea: editor } = await createTextareaRenderable(currentRenderer, renderOnce, {
+        width: 40,
+        height: 10,
+      })
+
+      editor.focus()
+
+      // Hyper+y should not insert "y"
+      currentMockInput.pressKey("y", { hyper: true })
+      expect(editor.plainText).toBe("") // Should not insert text
+    })
   })
 
   describe("Combined INPUT and CHANGE Events", () => {
