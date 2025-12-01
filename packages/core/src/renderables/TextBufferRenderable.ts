@@ -131,11 +131,11 @@ export abstract class TextBufferRenderable extends Renderable implements LineInf
   }
 
   public get lineCount(): number {
-    // Return the visual line count (including wrapped lines), not the logical line count
-    // This is important for components like LineNumberRenderable that need to know
-    // how many visual lines to render
-    const lineInfo = this.lineInfo
-    return lineInfo.lineSources?.length ?? this.textBuffer.getLineCount()
+    return this.textBuffer.getLineCount()
+  }
+
+  public get virtualLineCount(): number {
+    return this.textBufferView.getVirtualLineCount()
   }
 
   public get scrollY(): number {

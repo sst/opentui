@@ -2283,7 +2283,7 @@ test("DiffRenderable - line numbers update correctly after resize causes wrappin
   // Get the line info before resize
   const lineInfoBefore = leftCodeRenderable.lineInfo
   expect(lineInfoBefore.lineSources).toEqual([0, 1, 2, 3, 4]) // 5 logical lines, no wrapping
-  expect(leftCodeRenderable.lineCount).toBe(5) // Visual line count before wrapping
+  expect(leftCodeRenderable.virtualLineCount).toBe(5) // Visual line count before wrapping
 
   // Reset the flag
   lineInfoChangeEmitted = false
@@ -2300,9 +2300,9 @@ test("DiffRenderable - line numbers update correctly after resize causes wrappin
   // This is the key test - without updateTextInfo in onResize, this will be false
   expect(lineInfoChangeEmitted).toBe(true)
 
-  // Check that lineCount now reflects the visual line count (with wrapping)
-  // This is the real fix - lineCount should return visual lines, not logical lines
-  expect(leftCodeRenderable.lineCount).toBe(11) // 11 visual lines after wrapping
+  // Check that virtualLineCount now reflects the visual line count (with wrapping)
+  // This is the real fix - virtualLineCount should return visual lines, not logical lines
+  expect(leftCodeRenderable.virtualLineCount).toBe(11) // 11 visual lines after wrapping
 
   await renderOnce()
 
