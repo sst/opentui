@@ -374,7 +374,14 @@ export class TextareaRenderable extends EditBufferRenderable {
     const select = options?.select ?? false
     this.updateSelectionForMovement(select, true)
     const cursor = this.editorView.getCursor()
-    this.editBuffer.setCursor(cursor.row, 0)
+    if (cursor.col === 0 && cursor.row > 0) {
+      this.editBuffer.setCursor(cursor.row - 1, 0)
+      const prevLineEol = this.editBuffer.getEOL()
+      this.editBuffer.setCursor(prevLineEol.row, prevLineEol.col)
+    } else {
+      this.editBuffer.setCursor(cursor.row, 0)
+    }
+
     this.updateSelectionForMovement(select, false)
     this.requestRender()
     return true
@@ -383,8 +390,15 @@ export class TextareaRenderable extends EditBufferRenderable {
   public gotoLineEnd(options?: { select?: boolean }): boolean {
     const select = options?.select ?? false
     this.updateSelectionForMovement(select, true)
+    const cursor = this.editorView.getCursor()
     const eol = this.editBuffer.getEOL()
-    this.editBuffer.setCursor(eol.row, eol.col)
+    const lineCount = this.editBuffer.getLineCount()
+    if (cursor.col === eol.col && cursor.row < lineCount - 1) {
+      this.editBuffer.setCursor(cursor.row + 1, 0)
+    } else {
+      this.editBuffer.setCursor(eol.row, eol.col)
+    }
+
     this.updateSelectionForMovement(select, false)
     this.requestRender()
     return true
