@@ -4,6 +4,8 @@ import { resolveRenderLib } from "../zig"
 import { createMockKeys } from "./mock-keys"
 import { createMockMouse } from "./mock-mouse"
 
+export { TestRecorder, type RecordedFrame } from "./test-recorder"
+
 export interface TestRendererOptions extends CliRendererConfig {
   width?: number
   height?: number
