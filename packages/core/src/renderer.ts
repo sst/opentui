@@ -341,6 +341,8 @@ export class CliRenderer extends EventEmitter implements RenderContext {
   private inputHandlers: ((sequence: string) => boolean)[] = []
   private prependedInputHandlers: ((sequence: string) => boolean)[] = []
 
+  private idleResolvers: (() => void)[] = []
+
   private handleError: (error: Error) => void = ((error: Error) => {
     console.error(error)
 
@@ -550,9 +552,10 @@ export class CliRenderer extends EventEmitter implements RenderContext {
       this._controlState !== RendererControlState.EXPLICIT_SUSPENDED
     ) {
       this.updateScheduled = true
-      process.nextTick(() => {
-        this.loop()
+      process.nextTick(async () => {
+        await this.loop()
         this.updateScheduled = false
+        this.resolveIdleIfNeeded()
       })
     }
   }
@@ -572,6 +575,32 @@ export class CliRenderer extends EventEmitter implements RenderContext {
 
   public get isRunning(): boolean {
     return this._isRunning
+  }
+
+  private isIdleNow(): boolean {
+    return (
+      !this._isRunning &&
+      !this.rendering &&
+      !this.renderTimeout &&
+      !this.updateScheduled &&
+      !this.immediateRerenderRequested
+    )
+  }
+
+  private resolveIdleIfNeeded(): void {
+    if (!this.isIdleNow()) return
+    const resolvers = this.idleResolvers.splice(0)
+    for (const resolve of resolvers) {
+      resolve()
+    }
+  }
+
+  public idle(): Promise<void> {
+    if (this._isDestroyed) return Promise.resolve()
+    if (this.isIdleNow()) return Promise.resolve()
+    return new Promise<void>((resolve) => {
+      this.idleResolvers.push(resolve)
+    })
   }
 
   public get resolution(): PixelResolution | null {
@@ -1348,6 +1377,12 @@ export class CliRenderer extends EventEmitter implements RenderContext {
         clearTimeout(this.renderTimeout)
         this.renderTimeout = null
       }
+
+      // If we're currently rendering, the frame will resolve idle when it completes
+      // Otherwise, resolve immediately
+      if (!this.rendering) {
+        this.resolveIdleIfNeeded()
+      }
     }
   }
 
@@ -1413,6 +1448,9 @@ export class CliRenderer extends EventEmitter implements RenderContext {
         console.error("Error in onDestroy callback:", e instanceof Error ? e.stack : String(e))
       }
     }
+
+    // Resolve any pending idle() calls
+    this.resolveIdleIfNeeded()
   }
 
   private startRenderLoop(): void {
@@ -1502,7 +1540,9 @@ export class CliRenderer extends EventEmitter implements RenderContext {
     if (this.immediateRerenderRequested) {
       this.immediateRerenderRequested = false
       this.loop()
+      return
     }
+    this.resolveIdleIfNeeded()
   }
 
   public intermediateRender(): void {
