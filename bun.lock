@@ -4,9 +4,6 @@
   "workspaces": {
     "": {
       "name": "@opentui",
-      "dependencies": {
-        "bun-yoga": "^0.2.12",
-      },
       "devDependencies": {
         "prettier": "3.6.2",
       },

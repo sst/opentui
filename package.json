@@ -24,8 +24,5 @@
   "prettier": {
     "semi": false,
     "printWidth": 120
-  },
-  "dependencies": {
-    "bun-yoga": "^0.2.12"
   }
 }
