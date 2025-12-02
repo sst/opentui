@@ -67,6 +67,7 @@ export interface CliRendererConfig {
   exitOnCtrlC?: boolean
   debounceDelay?: number
   targetFps?: number
+  maxFps?: number
   memorySnapshotInterval?: number
   useThread?: boolean
   gatherStats?: boolean
@@ -234,6 +235,7 @@ export class CliRenderer extends EventEmitter implements RenderContext {
   public currentRenderBuffer: OptimizedBuffer
   private _isRunning: boolean = false
   private targetFps: number = 30
+  private maxFps: number = 60
   private automaticMemorySnapshot: boolean = false
   private memorySnapshotInterval: number
   private memorySnapshotTimer: Timer | null = null
@@ -260,7 +262,8 @@ export class CliRenderer extends EventEmitter implements RenderContext {
   private frameCount: number = 0
   private lastFpsTime: number = 0
   private currentFps: number = 0
-  private targetFrameTime: number = 0
+  private targetFrameTime: number = 1000 / this.targetFps
+  private minTargetFrameTime: number = 1000 / this.maxFps
   private immediateRerenderRequested: boolean = false
   private updateScheduled: boolean = false
 
@@ -424,7 +427,9 @@ export class CliRenderer extends EventEmitter implements RenderContext {
     this.exitOnCtrlC = config.exitOnCtrlC === undefined ? true : config.exitOnCtrlC
     this.resizeDebounceDelay = config.debounceDelay || 100
     this.targetFps = config.targetFps || 30
+    this.maxFps = config.maxFps || 60
     this.targetFrameTime = 1000 / this.targetFps
+    this.minTargetFrameTime = 1000 / this.maxFps
     this.memorySnapshotInterval = config.memorySnapshotInterval ?? 0
     this.gatherStats = config.gatherStats || false
     this.maxStatSamples = config.maxStatSamples || 300
@@ -1536,6 +1541,7 @@ export class CliRenderer extends EventEmitter implements RenderContext {
       this.renderNative()
 
       const overallFrameTime = performance.now() - overallStart
+
       // TODO: Add animationRequestTime to stats
       this.lib.updateStats(this.rendererPtr, overallFrameTime, this.renderStats.fps, this.renderStats.frameCallbackTime)
 
@@ -1543,8 +1549,9 @@ export class CliRenderer extends EventEmitter implements RenderContext {
         this.collectStatSample(overallFrameTime)
       }
 
-      const delay = Math.max(1, this.targetFrameTime - Math.floor(overallFrameTime))
       if (this._isRunning || this.immediateRerenderRequested) {
+        const targetFrameTime = this.immediateRerenderRequested ? this.minTargetFrameTime : this.targetFrameTime
+        const delay = Math.max(1, targetFrameTime - Math.floor(overallFrameTime))
         this.immediateRerenderRequested = false
         this.renderTimeout = setTimeout(() => {
           this.renderTimeout = null
