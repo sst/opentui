@@ -16,7 +16,7 @@
       "version": "0.1.54",
       "dependencies": {
         "bun-ffi-structs": "0.1.2",
-        "bun-yoga": "^0.2.11",
+        "bun-yoga": "^0.2.12",
         "diff": "8.0.2",
         "jimp": "1.6.0",
       },
