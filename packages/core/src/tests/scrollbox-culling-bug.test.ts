@@ -2,93 +2,132 @@ import { test, expect, beforeEach, afterEach } from "bun:test"
 import { createTestRenderer, type TestRenderer } from "../testing"
 import { ScrollBoxRenderable } from "../renderables/ScrollBox"
 import { BoxRenderable } from "../renderables/Box"
+import { TextRenderable } from "../renderables/Text"
+import { TestRecorder } from "../testing/test-recorder"
 
 let testRenderer: TestRenderer
-let renderOnce: () => Promise<void>
 
 beforeEach(async () => {
-  ;({ renderer: testRenderer, renderOnce } = await createTestRenderer({ width: 95, height: 29 }))
+  ;({ renderer: testRenderer } = await createTestRenderer({ width: 50, height: 12 }))
 })
 
 afterEach(() => {
   testRenderer.destroy()
 })
 
-test("viewport culling bug: reports 1 visible when translateY changes but child positions are stale", async () => {
-  // BUG from console logs _console_1764695860206 line 1007-1088:
-  // Sequence:
-  //   1. content.updateFromLayout() updates content size, triggers onSizeChange
-  //   2. onSizeChange -> recalculateBarProps -> changes translateY from -845 to -863
-  //   3. _getVisibleChildren() is called (within same updateLayout)
-  //   4. BUT children haven't had updateFromLayout called yet, so their _y values are from previous frame
-  //   5. Result: culling incorrectly reports 1 visible instead of 2
+test("scrollbox culling issue: last item not visible in frame after content grows with stickyScroll", async () => {
+  // ISSUE: During updateLayout, when content.onSizeChange triggers recalculateBarProps,
+  // it changes translateY via the scrollbar onChange callback. Then _getVisibleChildren()
+  // is called for culling, but it uses the NEW translateY value with OLD child layout
+  // positions (since children haven't had updateFromLayout called yet). This causes
+  // incorrect culling where the last item is not rendered even though it should be visible.
+
+  // Container box with border to see constraints clearly
+  const container = new BoxRenderable(testRenderer, {
+    width: 48,
+    height: 10,
+    border: true,
+  })
+  testRenderer.root.add(container)
 
   const scrollBox = new ScrollBoxRenderable(testRenderer, {
-    width: 92,
-    height: 27,
+    width: "100%",
+    height: "100%",
     stickyScroll: true,
     stickyStart: "bottom",
   })
+  container.add(scrollBox)
 
-  testRenderer.root.add(scrollBox)
-  await renderOnce()
+  // Start recording frames
+  const recorder = new TestRecorder(testRenderer)
+  recorder.rec()
 
-  // Add 48 items, each 18px tall (17px height + 1px margin)
-  // Total = 48 * 18 = 864px, maxScroll = 864 - 27 = 837
-  for (let i = 0; i < 48; i++) {
+  // Add 5 items with sleep after each to give renderer time
+  for (let i = 0; i < 50; i++) {
     const item = new BoxRenderable(testRenderer, {
-      id: `event-${i}`,
-      height: 17,
-      marginBottom: 1,
+      id: `item-${i}`,
+      height: 3,
+      border: true,
     })
+
+    const text = new TextRenderable(testRenderer, {
+      content: `Item ${i}`,
+    })
+    item.add(text)
+
     scrollBox.add(item)
+    await Bun.sleep(10)
   }
 
-  await renderOnce()
+  // Wait for renderer to be idle
+  await testRenderer.idle()
 
-  // Verify scrolled to bottom
-  const maxScroll48 = Math.max(0, scrollBox.scrollHeight - scrollBox.viewport.height)
-  expect(scrollBox.scrollTop).toBe(maxScroll48)
+  // Stop recording
+  recorder.stop()
 
-  // Should have 2 items visible (viewport 27px, items 18px each)
-  const visibleBefore = (scrollBox.content as any)._getVisibleChildren().length
-  expect(visibleBefore).toBe(2)
+  // Get all frames
+  const frames = recorder.recordedFrames
+  console.log(`\nRecorded ${frames.length} frames\n`)
 
-  // Add item #48 - this grows content from 864px to 882px
-  // maxScroll changes from 837 to 855
-  // recalculateBarProps will set scroll to 855 (jump of 18px)
-  const item48 = new BoxRenderable(testRenderer, {
-    id: `event-48`,
-    height: 17,
-    marginBottom: 1,
-  })
-  scrollBox.add(item48)
+  // Check ALL frames to see if the bug occurs in any of them
+  for (let i = 0; i < frames.length; i++) {
+    const frame = frames[i].frame
+    console.log(`Frame ${i}:`)
+    console.log(frame)
+    console.log("---\n")
+  }
 
-  // DON'T render yet - trigger the internal update sequence manually
-  // to catch the bug at the exact moment it happens
+  // Check EVERY frame after the first item is added
+  // With stickyScroll to bottom, there should NEVER be empty space at the bottom
+  // when there are items available to render
 
-  // Manually trigger what happens during updateLayout:
-  // 1. Parent updateFromLayout updates size
-  testRenderer.root.yogaNode.calculateLayout(testRenderer.width, testRenderer.height, 0)
-  scrollBox.updateFromLayout()
-  scrollBox.wrapper.updateFromLayout()
-  scrollBox.viewport.updateFromLayout()
+  for (let frameIdx = 0; frameIdx < frames.length; frameIdx++) {
+    const frame = frames[frameIdx].frame
+    const lines = frame.split("\n")
 
-  // 2. Content updateFromLayout triggers onSizeChange which calls recalculateBarProps
-  const oldTranslateY = scrollBox.content.translateY
-  scrollBox.content.updateFromLayout() // This triggers onSizeChange -> recalculateBarProps
-  const newTranslateY = scrollBox.content.translateY
+    // Find the container borders - look for borders that start at column 0
+    const containerStart = lines.findIndex((line) => line.startsWith("┌"))
+    // The container bottom is at a known position (line containerStart + container.height - 1)
+    const containerEnd = containerStart + 10 - 1 // container height is 10
 
-  // Verify translateY changed
-  expect(newTranslateY).not.toBe(oldTranslateY)
-  expect(Math.abs(newTranslateY - oldTranslateY)).toBeGreaterThan(10)
+    if (containerStart >= 0 && containerEnd > containerStart && containerEnd < lines.length) {
+      const contentLines = lines.slice(containerStart + 1, containerEnd)
 
-  // 3. NOW call _getVisibleChildren - this is where the bug happens
-  // Children's _y values haven't been updated yet (updateFromLayout not called on them)
-  // but translateY has changed, causing incorrect culling
-  const visibleDuringBug = (scrollBox.content as any)._getVisibleChildren().length
+      // Count empty lines at bottom (lines with no actual content, just borders/whitespace)
+      let emptyLinesAtBottom = 0
 
-  // THE BUG: This will be 1, but should be 2
-  // With viewport=27px and items=18px each, 2 items should fit
-  expect(visibleDuringBug).toBe(2)
+      for (let i = contentLines.length - 1; i >= 0; i--) {
+        const line = contentLines[i]
+        // Remove left/right borders, scrollbar chars, and whitespace
+        // An empty content line will have nothing left
+        const content = line.replace(/^[│\s]*/, "").replace(/[│█▄\s]*$/, "")
+
+        if (content.length === 0) {
+          emptyLinesAtBottom++
+        } else {
+          break
+        }
+      }
+
+      // Check how many items should exist at this frame
+      // Frame 0 = 1 item, Frame 1 = 2 items, etc.
+      const expectedItems = frameIdx + 1
+
+      console.log(`Frame ${frameIdx}: ${expectedItems} items, ${emptyLinesAtBottom} empty lines at bottom`)
+
+      // With stickyScroll to bottom, once we have enough items to fill the viewport,
+      // there should be NO empty space at the bottom
+      // Viewport is 8 lines (10 - 2 for borders), items are 3 lines each
+      // So with 3+ items (9 lines of content), we should always fill the viewport
+      if (expectedItems >= 3) {
+        expect(emptyLinesAtBottom).toBe(0)
+      }
+    }
+  }
+
+  // Also verify the last item text is in the final frame
+  const finalFrame = frames[frames.length - 1].frame
+  const hasLastItem = finalFrame.includes("Item 4")
+  console.log(`\nFinal frame contains "Item 4": ${hasLastItem}`)
+  expect(hasLastItem).toBe(true)
 })
