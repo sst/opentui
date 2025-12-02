@@ -153,9 +153,8 @@ test("DiffRenderable - line number alignment and gutter heights in split view wi
   expect(splitFrame).toContain("2 + More text")
 
   diffRenderable.wrapMode = "word"
-  await renderOnce()
-  await Bun.sleep(10)
-  await renderOnce()
+  await currentRenderer.idle()
+  await Bun.sleep(200)
   const splitWrapFrame = captureFrame()
 
   const diffChildren = diffRenderable.getChildren()
