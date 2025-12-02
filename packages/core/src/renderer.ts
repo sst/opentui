@@ -1469,6 +1469,11 @@ export class CliRenderer extends EventEmitter implements RenderContext {
       } catch (error) {
         console.error("Error in frame callback:", error)
       }
+      // Check if renderer was destroyed during callback
+      if (this._isDestroyed) {
+        this.rendering = false
+        return
+      }
     }
     const end = performance.now()
     this.renderStats.frameCallbackTime = end - start
@@ -1752,8 +1757,10 @@ export class CliRenderer extends EventEmitter implements RenderContext {
     }
 
     if (!this._paletteDetector) {
-      const isTmux = this.capabilities?.terminal?.name?.toLowerCase()?.includes("tmux")
-      this._paletteDetector = createTerminalPalette(this.stdin, this.stdout, this.writeOut.bind(this), isTmux)
+      const isLegacyTmux =
+        this.capabilities?.terminal?.name?.toLowerCase()?.includes("tmux") &&
+        this.capabilities?.terminal?.version?.localeCompare("3.6") < 0
+      this._paletteDetector = createTerminalPalette(this.stdin, this.stdout, this.writeOut.bind(this), isLegacyTmux)
     }
 
     this._paletteDetectionPromise = this._paletteDetector.detect(options).then((result) => {

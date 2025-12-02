@@ -63,20 +63,20 @@ export class TerminalPalette implements TerminalPaletteDetector {
   private writeFn: WriteFunction
   private activeListeners: Array<{ event: string; handler: (...args: any[]) => void }> = []
   private activeTimers: Array<NodeJS.Timeout> = []
-  private inTmux: boolean
+  private inLegacyTmux: boolean
 
-  constructor(stdin: NodeJS.ReadStream, stdout: NodeJS.WriteStream, writeFn?: WriteFunction, isTmux?: boolean) {
+  constructor(stdin: NodeJS.ReadStream, stdout: NodeJS.WriteStream, writeFn?: WriteFunction, isLegacyTmux?: boolean) {
     this.stdin = stdin
     this.stdout = stdout
     this.writeFn = writeFn || ((data: string | Buffer) => stdout.write(data))
-    this.inTmux = isTmux ?? false
+    this.inLegacyTmux = isLegacyTmux ?? false
   }
 
   /**
    * Write an OSC sequence, wrapping for tmux if needed
    */
   private writeOsc(osc: string): boolean {
-    const data = this.inTmux ? wrapForTmux(osc) : osc
+    const data = this.inLegacyTmux ? wrapForTmux(osc) : osc
     return this.writeFn(data)
   }
 
@@ -340,7 +340,7 @@ export function createTerminalPalette(
   stdin: NodeJS.ReadStream,
   stdout: NodeJS.WriteStream,
   writeFn?: WriteFunction,
-  isTmux?: boolean,
+  isLegacyTmux?: boolean,
 ): TerminalPaletteDetector {
-  return new TerminalPalette(stdin, stdout, writeFn, isTmux)
+  return new TerminalPalette(stdin, stdout, writeFn, isLegacyTmux)
 }
