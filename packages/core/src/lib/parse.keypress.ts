@@ -231,7 +231,7 @@ export const parseKeypress = (s: Buffer | string = "", options: ParseKeypressOpt
     const charCode = parseInt(modifyOtherKeysMatch[2]!, 10)
 
     key.ctrl = !!(modifier & 4)
-    key.meta = !!(modifier & 10) // 10 = 0x0A = bits 1 and 3 = Alt OR Meta
+    key.meta = !!(modifier & 2) // Alt/Option sets meta
     key.shift = !!(modifier & 1)
     key.option = !!(modifier & 2)
     key.super = !!(modifier & 8)
@@ -339,9 +339,9 @@ export const parseKeypress = (s: Buffer | string = "", options: ParseKeypressOpt
 
     // Parse the key modifier
     // Terminal modifier bits: 1=Shift, 2=Alt/Option, 4=Ctrl, 8=Super, 16=Hyper
-    // Note: meta flag is set if either Alt (2) OR Meta (8) bits are present
+    // Note: meta flag is set for Alt/Option (bit 2)
     key.ctrl = !!(modifier & 4)
-    key.meta = !!(modifier & 10) // 10 = 0x0A = bits 1 and 3 = Alt OR Meta
+    key.meta = !!(modifier & 2) // Alt/Option sets meta
     key.shift = !!(modifier & 1)
     key.option = !!(modifier & 2) // Alt/Option modifier specifically
     key.super = !!(modifier & 8)
