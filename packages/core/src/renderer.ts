@@ -1469,11 +1469,6 @@ export class CliRenderer extends EventEmitter implements RenderContext {
       } catch (error) {
         console.error("Error in frame callback:", error)
       }
-      // Check if renderer was destroyed during callback
-      if (this._isDestroyed) {
-        this.rendering = false
-        return
-      }
     }
     const end = performance.now()
     this.renderStats.frameCallbackTime = end - start
