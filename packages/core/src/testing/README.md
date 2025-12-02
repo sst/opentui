@@ -59,7 +59,7 @@ mockInput.pasteBracketedText("paste content")
 
 ### KeyCodes
 
-Special keycodes available: `ENTER`, `TAB`, `BACKSPACE`, `DELETE`, `HOME`, `END`, `ESCAPE`, `ARROW_UP`, `ARROW_DOWN`, `ARROW_LEFT`, `ARROW_RIGHT`, `F1`-`F12`
+Special keycodes available: `RETURN`, `LINEFEED`, `TAB`, `BACKSPACE`, `DELETE`, `HOME`, `END`, `ESCAPE`, `ARROW_UP`, `ARROW_DOWN`, `ARROW_LEFT`, `ARROW_RIGHT`, `F1`-`F12`
 
 ### Modifiers
 
