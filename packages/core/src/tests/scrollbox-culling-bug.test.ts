@@ -42,7 +42,7 @@ test("scrollbox culling issue: last item not visible in frame after content grow
   const recorder = new TestRecorder(testRenderer)
   recorder.rec()
 
-  // Add 5 items with sleep after each to give renderer time
+  // Add 50 items with sleep after each to give renderer time
   for (let i = 0; i < 50; i++) {
     const item = new BoxRenderable(testRenderer, {
       id: `item-${i}`,
@@ -59,7 +59,7 @@ test("scrollbox culling issue: last item not visible in frame after content grow
     await Bun.sleep(10)
   }
 
-  // Wait for renderer to be idle
+  // Wait for renderer to be idle and for any deferred callbacks to complete
   await testRenderer.idle()
 
   // Stop recording
@@ -125,9 +125,10 @@ test("scrollbox culling issue: last item not visible in frame after content grow
     }
   }
 
-  // Also verify the last item text is in the final frame
+  // Also verify the last item is visible in the final frame
+  // With stickyScroll to bottom, the last item should be visible after all items are added
   const finalFrame = frames[frames.length - 1].frame
-  const hasLastItem = finalFrame.includes("Item 4")
-  console.log(`\nFinal frame contains "Item 4": ${hasLastItem}`)
-  expect(hasLastItem).toBe(true)
+  const hasItem49 = finalFrame.includes("Item 49")
+  console.log(`\nFinal frame contains "Item 49": ${hasItem49}`)
+  expect(hasItem49).toBe(true)
 })
