@@ -135,6 +135,60 @@ spy.calls // any[][]
 spy.reset()
 ```
 
+## Test Recorder
+
+Record frames during rendering for testing or analysis.
+
+```ts
+import { TestRecorder } from "@opentui/core/testing"
+
+const { renderer, renderOnce } = await createTestRenderer({ width: 80, height: 24 })
+const recorder = new TestRecorder(renderer)
+
+// Start recording
+recorder.rec()
+
+// Add content and trigger renders
+const text = new TextRenderable(renderer, { content: "Hello" })
+renderer.root.add(text)
+await Bun.sleep(1) // Wait for automatic render from add()
+
+text.content = "World"
+await Bun.sleep(1) // Wait for automatic render from content change
+
+// Stop recording
+recorder.stop()
+
+// Access recorded frames
+const frames = recorder.recordedFrames
+console.log(`Recorded ${frames.length} frames`)
+
+frames.forEach((frame) => {
+  console.log(`Frame ${frame.frameNumber} at ${frame.timestamp}ms:`)
+  console.log(frame.frame)
+})
+
+// Clear and start new recording
+recorder.clear()
+recorder.rec()
+```
+
+### TestRecorder API
+
+- `rec()` - Start recording frames
+- `stop()` - Stop recording frames
+- `clear()` - Clear all recorded frames
+- `isRecording` - Check if currently recording
+- `recordedFrames` - Get array of recorded frames (returns a copy)
+
+### RecordedFrame
+
+Each frame contains:
+
+- `frame: string` - The captured frame content
+- `timestamp: number` - Time in milliseconds since recording started
+- `frameNumber: number` - Sequential frame number (0-indexed)
+
 ## Example
 
 ```ts
