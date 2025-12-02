@@ -227,6 +227,36 @@ describe("mock-keys", () => {
     expect(mockRenderer.getEmittedData()).toBe("\x1b[1;3B")
   })
 
+  test("pressKey with super modifier", () => {
+    const mockRenderer = new MockRenderer()
+    const mockKeys = createMockKeys(mockRenderer as any)
+
+    mockKeys.pressKey(KeyCodes.ARROW_UP, { super: true })
+
+    // Arrow up with super: \x1b[1;9A (1 base + 8 super = 9)
+    expect(mockRenderer.getEmittedData()).toBe("\x1b[1;9A")
+  })
+
+  test("pressKey with hyper modifier", () => {
+    const mockRenderer = new MockRenderer()
+    const mockKeys = createMockKeys(mockRenderer as any)
+
+    mockKeys.pressKey(KeyCodes.ARROW_LEFT, { hyper: true })
+
+    // Arrow left with hyper: \x1b[1;17D (1 base + 16 hyper = 17)
+    expect(mockRenderer.getEmittedData()).toBe("\x1b[1;17D")
+  })
+
+  test("pressKey with super+hyper modifiers", () => {
+    const mockRenderer = new MockRenderer()
+    const mockKeys = createMockKeys(mockRenderer as any)
+
+    mockKeys.pressKey(KeyCodes.ARROW_RIGHT, { super: true, hyper: true })
+
+    // Arrow right with super+hyper: \x1b[1;25C (1 base + 8 super + 16 hyper = 25)
+    expect(mockRenderer.getEmittedData()).toBe("\x1b[1;25C")
+  })
+
   test("pressArrow with shift modifier", () => {
     const mockRenderer = new MockRenderer()
     const mockKeys = createMockKeys(mockRenderer as any)
@@ -830,6 +860,46 @@ describe("mock-keys", () => {
       )
     })
 
+    test("character with super modifier in kitty mode", () => {
+      const mockRenderer = new MockRenderer()
+      const mockKeys = createMockKeys(mockRenderer as any, { kittyKeyboard: true })
+
+      mockKeys.pressKey("a", { super: true })
+
+      // 'a' (97) with super modifier (8+1=9)
+      expect(mockRenderer.getEmittedData()).toBe("\x1b[97;9u")
+    })
+
+    test("character with hyper modifier in kitty mode", () => {
+      const mockRenderer = new MockRenderer()
+      const mockKeys = createMockKeys(mockRenderer as any, { kittyKeyboard: true })
+
+      mockKeys.pressKey("a", { hyper: true })
+
+      // 'a' (97) with hyper modifier (16+1=17)
+      expect(mockRenderer.getEmittedData()).toBe("\x1b[97;17u")
+    })
+
+    test("character with super+hyper modifiers in kitty mode", () => {
+      const mockRenderer = new MockRenderer()
+      const mockKeys = createMockKeys(mockRenderer as any, { kittyKeyboard: true })
+
+      mockKeys.pressKey("a", { super: true, hyper: true })
+
+      // 'a' (97) with super+hyper (8+16+1=25)
+      expect(mockRenderer.getEmittedData()).toBe("\x1b[97;25u")
+    })
+
+    test("character with all modifiers in kitty mode", () => {
+      const mockRenderer = new MockRenderer()
+      const mockKeys = createMockKeys(mockRenderer as any, { kittyKeyboard: true })
+
+      mockKeys.pressKey("a", { shift: true, ctrl: true, meta: true, super: true, hyper: true })
+
+      // 'a' (97) with all modifiers: shift(1) + meta(2) + ctrl(4) + super(8) + hyper(16) = 31, +1 = 32
+      expect(mockRenderer.getEmittedData()).toBe("\x1b[97;32u")
+    })
+
     test("kitty mode vs regular mode comparison", () => {
       const kittyRenderer = new MockRenderer()
       const regularRenderer = new MockRenderer()
@@ -1076,6 +1146,46 @@ describe("mock-keys", () => {
       mockRenderer.emittedData = []
       mockKeys.pressKey("a", { shift: true, ctrl: true, meta: true })
       expect(mockRenderer.getEmittedData()).toBe("\x1b[27;8;97~")
+    })
+
+    test("character with super modifier in modifyOtherKeys mode", () => {
+      const mockRenderer = new MockRenderer()
+      const mockKeys = createMockKeys(mockRenderer as any, { otherModifiersMode: true })
+
+      mockKeys.pressKey("a", { super: true })
+
+      // 'a' is charCode 97, super is 8, modifier is 8+1=9
+      expect(mockRenderer.getEmittedData()).toBe("\x1b[27;9;97~")
+    })
+
+    test("character with hyper modifier in modifyOtherKeys mode", () => {
+      const mockRenderer = new MockRenderer()
+      const mockKeys = createMockKeys(mockRenderer as any, { otherModifiersMode: true })
+
+      mockKeys.pressKey("a", { hyper: true })
+
+      // 'a' is charCode 97, hyper is 16, modifier is 16+1=17
+      expect(mockRenderer.getEmittedData()).toBe("\x1b[27;17;97~")
+    })
+
+    test("character with super+hyper modifiers in modifyOtherKeys mode", () => {
+      const mockRenderer = new MockRenderer()
+      const mockKeys = createMockKeys(mockRenderer as any, { otherModifiersMode: true })
+
+      mockKeys.pressKey("a", { super: true, hyper: true })
+
+      // super(8) + hyper(16) = 24, +1 = 25
+      expect(mockRenderer.getEmittedData()).toBe("\x1b[27;25;97~")
+    })
+
+    test("character with all modifiers in modifyOtherKeys mode", () => {
+      const mockRenderer = new MockRenderer()
+      const mockKeys = createMockKeys(mockRenderer as any, { otherModifiersMode: true })
+
+      mockKeys.pressKey("a", { shift: true, ctrl: true, meta: true, super: true, hyper: true })
+
+      // shift(1) + meta(2) + ctrl(4) + super(8) + hyper(16) = 31, +1 = 32
+      expect(mockRenderer.getEmittedData()).toBe("\x1b[27;32;97~")
     })
 
     test("arrow keys with modifiers fall through to regular mode in modifyOtherKeys", () => {

@@ -250,6 +250,139 @@ describe("Textarea - Keybinding Tests", () => {
     })
   })
 
+  describe("Key Event Handling - Modifier Keys", () => {
+    let kittyRenderer: TestRenderer
+    let kittyRenderOnce: () => Promise<void>
+    let kittyMockInput: MockInput
+
+    beforeEach(async () => {
+      ;({
+        renderer: kittyRenderer,
+        renderOnce: kittyRenderOnce,
+        mockInput: kittyMockInput,
+      } = await createTestRenderer({
+        width: 80,
+        height: 24,
+        kittyKeyboard: true,
+      }))
+    })
+
+    afterEach(() => {
+      kittyRenderer.destroy()
+    })
+
+    it("should not insert text when ctrl modifier is pressed", async () => {
+      const { textarea: editor } = await createTextareaRenderable(kittyRenderer, kittyRenderOnce, {
+        initialValue: "",
+        width: 40,
+        height: 10,
+      })
+
+      editor.focus()
+
+      // Try to type 'a' with ctrl - should not insert
+      kittyMockInput.pressKey("a", { ctrl: true })
+      expect(editor.plainText).toBe("")
+
+      // Try to type 'x' with ctrl - should not insert
+      kittyMockInput.pressKey("x", { ctrl: true })
+      expect(editor.plainText).toBe("")
+    })
+
+    it("should not insert text when meta modifier is pressed", async () => {
+      const { textarea: editor } = await createTextareaRenderable(kittyRenderer, kittyRenderOnce, {
+        initialValue: "",
+        width: 40,
+        height: 10,
+      })
+
+      editor.focus()
+
+      // Try to type 'a' with meta - should not insert
+      kittyMockInput.pressKey("a", { meta: true })
+      expect(editor.plainText).toBe("")
+
+      // Try to type 'x' with meta - should not insert
+      kittyMockInput.pressKey("x", { meta: true })
+      expect(editor.plainText).toBe("")
+    })
+
+    it("should not insert text when super modifier is pressed", async () => {
+      const { textarea: editor } = await createTextareaRenderable(kittyRenderer, kittyRenderOnce, {
+        initialValue: "",
+        width: 40,
+        height: 10,
+      })
+
+      editor.focus()
+
+      // Try to type 'a' with super - should not insert
+      kittyMockInput.pressKey("a", { super: true })
+      expect(editor.plainText).toBe("")
+
+      // Try to type 'x' with super - should not insert
+      kittyMockInput.pressKey("x", { super: true })
+      expect(editor.plainText).toBe("")
+    })
+
+    it("should not insert text when hyper modifier is pressed", async () => {
+      const { textarea: editor } = await createTextareaRenderable(kittyRenderer, kittyRenderOnce, {
+        initialValue: "",
+        width: 40,
+        height: 10,
+      })
+
+      editor.focus()
+
+      // Try to type 'a' with hyper - should not insert
+      kittyMockInput.pressKey("a", { hyper: true })
+      expect(editor.plainText).toBe("")
+
+      // Try to type 'x' with hyper - should not insert
+      kittyMockInput.pressKey("x", { hyper: true })
+      expect(editor.plainText).toBe("")
+    })
+
+    it("should not insert text when multiple modifiers are pressed", async () => {
+      const { textarea: editor } = await createTextareaRenderable(kittyRenderer, kittyRenderOnce, {
+        initialValue: "",
+        width: 40,
+        height: 10,
+      })
+
+      editor.focus()
+
+      // Try to type with ctrl+meta - should not insert
+      kittyMockInput.pressKey("a", { ctrl: true, meta: true })
+      expect(editor.plainText).toBe("")
+
+      // Try to type with ctrl+super - should not insert
+      kittyMockInput.pressKey("b", { ctrl: true, super: true })
+      expect(editor.plainText).toBe("")
+
+      // Try to type with meta+hyper - should not insert
+      kittyMockInput.pressKey("c", { meta: true, hyper: true })
+      expect(editor.plainText).toBe("")
+    })
+
+    it("should insert text when only shift modifier is pressed", async () => {
+      const { textarea: editor } = await createTextareaRenderable(kittyRenderer, kittyRenderOnce, {
+        initialValue: "",
+        width: 40,
+        height: 10,
+      })
+
+      editor.focus()
+
+      // Shift is okay for uppercase letters
+      kittyMockInput.pressKey("A", { shift: true })
+      expect(editor.plainText).toBe("A")
+
+      kittyMockInput.pressKey("B", { shift: true })
+      expect(editor.plainText).toBe("AB")
+    })
+  })
+
   describe("Key Event Handling", () => {
     it("should only handle KeyEvents, not raw escape sequences", async () => {
       const { textarea: editor } = await createTextareaRenderable(currentRenderer, renderOnce, {
