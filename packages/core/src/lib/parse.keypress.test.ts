@@ -283,6 +283,8 @@ test("parseKeypress - function keys", () => {
     sequence: "\x1bOP",
     raw: "\x1bOP",
     code: "OP",
+    super: false,
+    hyper: false,
     source: "raw",
   })
 
@@ -297,6 +299,8 @@ test("parseKeypress - function keys", () => {
     sequence: "\x1b[11~",
     raw: "\x1b[11~",
     code: "[11~",
+    super: false,
+    hyper: false,
     source: "raw",
   })
 
@@ -311,6 +315,8 @@ test("parseKeypress - function keys", () => {
     sequence: "\x1b[24~",
     raw: "\x1b[24~",
     code: "[24~",
+    super: false,
+    hyper: false,
     source: "raw",
   })
 })
@@ -327,6 +333,8 @@ test("parseKeypress - arrow keys", () => {
     sequence: "\x1b[A",
     raw: "\x1b[A",
     code: "[A",
+    super: false,
+    hyper: false,
     source: "raw",
   })
 
@@ -341,6 +349,8 @@ test("parseKeypress - arrow keys", () => {
     sequence: "\x1b[B",
     raw: "\x1b[B",
     code: "[B",
+    super: false,
+    hyper: false,
     source: "raw",
   })
 
@@ -355,6 +365,8 @@ test("parseKeypress - arrow keys", () => {
     sequence: "\x1b[C",
     raw: "\x1b[C",
     code: "[C",
+    super: false,
+    hyper: false,
     source: "raw",
   })
 
@@ -369,6 +381,8 @@ test("parseKeypress - arrow keys", () => {
     sequence: "\x1b[D",
     raw: "\x1b[D",
     code: "[D",
+    super: false,
+    hyper: false,
     source: "raw",
   })
 })
@@ -385,6 +399,8 @@ test("parseKeypress - navigation keys", () => {
     sequence: "\x1b[H",
     raw: "\x1b[H",
     code: "[H",
+    super: false,
+    hyper: false,
     source: "raw",
   })
 
@@ -399,6 +415,8 @@ test("parseKeypress - navigation keys", () => {
     sequence: "\x1b[F",
     raw: "\x1b[F",
     code: "[F",
+    super: false,
+    hyper: false,
     source: "raw",
   })
 
@@ -413,6 +431,8 @@ test("parseKeypress - navigation keys", () => {
     sequence: "\x1b[5~",
     raw: "\x1b[5~",
     code: "[5~",
+    super: false,
+    hyper: false,
     source: "raw",
   })
 
@@ -427,6 +447,8 @@ test("parseKeypress - navigation keys", () => {
     sequence: "\x1b[6~",
     raw: "\x1b[6~",
     code: "[6~",
+    super: false,
+    hyper: false,
     source: "raw",
   })
 })
@@ -444,6 +466,8 @@ test("parseKeypress - modifier combinations", () => {
     sequence: "\x1b[1;2A",
     raw: "\x1b[1;2A",
     code: "[A",
+    super: false,
+    hyper: false,
     source: "raw",
   })
 
@@ -460,6 +484,8 @@ test("parseKeypress - modifier combinations", () => {
     sequence: "\x1b[1;3A",
     raw: "\x1b[1;3A",
     code: "[A",
+    super: false,
+    hyper: false,
     source: "raw",
   })
 
@@ -475,6 +501,8 @@ test("parseKeypress - modifier combinations", () => {
     sequence: "\x1b[1;4A",
     raw: "\x1b[1;4A",
     code: "[A",
+    super: false,
+    hyper: false,
     source: "raw",
   })
 
@@ -490,6 +518,8 @@ test("parseKeypress - modifier combinations", () => {
     sequence: "\x1b[1;5A",
     raw: "\x1b[1;5A",
     code: "[A",
+    super: false,
+    hyper: false,
     source: "raw",
   })
 
@@ -506,45 +536,47 @@ test("parseKeypress - modifier combinations", () => {
     sequence: "\x1b[1;8A",
     raw: "\x1b[1;8A",
     code: "[A",
+    super: false,
+    hyper: false,
     source: "raw",
   })
 
-  // Meta modifier bit only: modifier value 9 = bits 8 (0b1000)
-  // NOTE: This is theoretical - Cmd/Win keys don't reach terminals in practice (OS intercepts them)
-  // This tests the ANSI standard's Meta bit (bit 8) which is distinct from Alt bit (bit 2)
+  // Super modifier bit only: modifier value 9 = bits 8 (0b1000)
+  // NOTE: This is bit 8 which is the Super key
   expect(parseKeypress("\x1b[1;9A")).toEqual({
     eventType: "press",
     name: "up",
     ctrl: false,
-    meta: true,
+    meta: false,
     shift: false,
     option: false,
     number: false,
     sequence: "\x1b[1;9A",
     raw: "\x1b[1;9A",
     code: "[A",
+    super: true,
+    hyper: false,
     source: "raw",
   })
 
-  // Shift+Meta: modifier value 10 = bits 9 (0b1001 = Shift(1) + Meta(8))
-  // NOTE: Theoretical - testing ANSI Meta bit which doesn't occur in practice
+  // Shift+Super: modifier value 10 = bits 9 (0b1001 = Shift(1) + Super(8))
   expect(parseKeypress("\x1b[1;10A")).toEqual({
     eventType: "press",
     name: "up",
     ctrl: false,
-    meta: true,
+    meta: false,
     shift: true,
     option: false,
     number: false,
     sequence: "\x1b[1;10A",
     raw: "\x1b[1;10A",
     code: "[A",
+    super: true,
+    hyper: false,
     source: "raw",
   })
 
-  // Alt/Option+Meta: modifier value 11 = bits 10 (0b1010 = Alt/Option(2) + Meta(8))
-  // NOTE: Theoretical - testing both Alt bit and Meta bit together
-  // In practice, only Alt/Option key generates events that reach the terminal
+  // Alt/Option+Super: modifier value 11 = bits 10 (0b1010 = Alt/Option(2) + Super(8))
   expect(parseKeypress("\x1b[1;11A")).toEqual({
     eventType: "press",
     name: "up",
@@ -556,11 +588,12 @@ test("parseKeypress - modifier combinations", () => {
     sequence: "\x1b[1;11A",
     raw: "\x1b[1;11A",
     code: "[A",
+    super: true,
+    hyper: false,
     source: "raw",
   })
 
-  // All ANSI modifier bits: modifier value 16 = bits 15 (0b1111 = Shift(1) + Alt(2) + Ctrl(4) + Meta(8))
-  // NOTE: Partially theoretical - Meta bit doesn't occur in practice, but tests complete ANSI decoding
+  // All ANSI modifier bits: modifier value 16 = bits 15 (0b1111 = Shift(1) + Alt(2) + Ctrl(4) + Super(8))
   expect(parseKeypress("\x1b[1;16A")).toEqual({
     eventType: "press",
     name: "up",
@@ -572,6 +605,8 @@ test("parseKeypress - modifier combinations", () => {
     sequence: "\x1b[1;16A",
     raw: "\x1b[1;16A",
     code: "[A",
+    super: true,
+    hyper: false,
     source: "raw",
   })
 })
@@ -588,6 +623,8 @@ test("parseKeypress - delete key", () => {
     sequence: "\x1b[3~",
     raw: "\x1b[3~",
     code: "[3~",
+    super: false,
+    hyper: false,
     source: "raw",
   })
 })
@@ -720,6 +757,8 @@ test("parseKeypress - rxvt style arrow keys with modifiers", () => {
     sequence: "\x1b[a",
     raw: "\x1b[a",
     code: "[a",
+    super: false,
+    hyper: false,
     source: "raw",
   })
 
@@ -734,6 +773,8 @@ test("parseKeypress - rxvt style arrow keys with modifiers", () => {
     sequence: "\x1b[2$",
     raw: "\x1b[2$",
     code: "[2$",
+    super: false,
+    hyper: false,
     source: "raw",
   })
 })
@@ -750,6 +791,8 @@ test("parseKeypress - ctrl modifier keys", () => {
     sequence: "\x1bOa",
     raw: "\x1bOa",
     code: "Oa",
+    super: false,
+    hyper: false,
     source: "raw",
   })
 
@@ -764,6 +807,8 @@ test("parseKeypress - ctrl modifier keys", () => {
     sequence: "\x1b[2^",
     raw: "\x1b[2^",
     code: "[2^",
+    super: false,
+    hyper: false,
     source: "raw",
   })
 })
@@ -825,27 +870,28 @@ test("parseKeypress - modifier bit calculations and meta/option relationship", (
   expect(ctrlOnly.shift).toBe(false)
   expect(ctrlOnly.option).toBe(false)
 
-  // Meta modifier is bit 3 (value 8), so modifier value 9 = 8 + 1
-  // NOTE: This is THEORETICAL - Cmd/Win keys don't reach terminals in practice
-  // This tests the ANSI standard's "Meta" bit which is distinct from Alt
-  // If a terminal/emulator ever sends this, it means Meta without Alt
-  const metaOnly = parseKeypress("\x1b[1;9A")!
-  expect(metaOnly.name).toBe("up")
-  expect(metaOnly.meta).toBe(true) // Meta bit sets meta flag
-  expect(metaOnly.option).toBe(false) // Meta bit does NOT set option flag
-  expect(metaOnly.ctrl).toBe(false)
-  expect(metaOnly.shift).toBe(false)
+  // Super modifier is bit 3 (value 8), so modifier value 9 = 8 + 1
+  // Super is the Command/Windows key
+  const superOnly = parseKeypress("\x1b[1;9A")!
+  expect(superOnly.name).toBe("up")
+  expect(superOnly.meta).toBe(false)
+  expect(superOnly.option).toBe(false)
+  expect(superOnly.ctrl).toBe(false)
+  expect(superOnly.shift).toBe(false)
+  expect(superOnly.super).toBe(true)
+  expect(superOnly.hyper).toBe(false)
 
   // Combined modifiers to test the relationships
 
-  // Ctrl+Meta = 4 + 8 = 12, so modifier value 13 = 12 + 1
-  // NOTE: Theoretical - tests ANSI Meta bit without Alt bit
-  const ctrlMeta = parseKeypress("\x1b[1;13A")!
-  expect(ctrlMeta.name).toBe("up")
-  expect(ctrlMeta.ctrl).toBe(true)
-  expect(ctrlMeta.meta).toBe(true)
-  expect(ctrlMeta.shift).toBe(false)
-  expect(ctrlMeta.option).toBe(false) // No Alt bit, so option is false
+  // Ctrl+Super = 4 + 8 = 12, so modifier value 13 = 12 + 1
+  const ctrlSuper = parseKeypress("\x1b[1;13A")!
+  expect(ctrlSuper.name).toBe("up")
+  expect(ctrlSuper.ctrl).toBe(true)
+  expect(ctrlSuper.meta).toBe(false)
+  expect(ctrlSuper.shift).toBe(false)
+  expect(ctrlSuper.option).toBe(false)
+  expect(ctrlSuper.super).toBe(true)
+  expect(ctrlSuper.hyper).toBe(false)
 
   // Shift+Alt/Option = 1 + 2 = 3, so modifier value 4 = 3 + 1
   // Should have meta=true, option=true (Alt/Option key is pressed)
@@ -903,22 +949,25 @@ test("parseKeypress - distinguishing between Alt/Option and theoretical Meta mod
   expect(altArrow.ctrl).toBe(false)
   expect(altArrow.shift).toBe(false)
 
-  // Theoretical: ANSI Meta bit (bit 8) without Alt bit (bit 2)
-  // This sequence is valid per ANSI standard but unlikely to occur in practice
-  const metaArrow = parseKeypress("\x1b[1;9C")! // Theoretical: Meta bit only
-  expect(metaArrow.name).toBe("right")
-  expect(metaArrow.meta).toBe(true)
-  expect(metaArrow.option).toBe(false) // No Alt bit, so option is false
-  expect(metaArrow.ctrl).toBe(false)
-  expect(metaArrow.shift).toBe(false)
+  // Super key: bit 8
+  const superArrow = parseKeypress("\x1b[1;9C")! // Super bit only
+  expect(superArrow.name).toBe("right")
+  expect(superArrow.meta).toBe(false)
+  expect(superArrow.option).toBe(false)
+  expect(superArrow.ctrl).toBe(false)
+  expect(superArrow.shift).toBe(false)
+  expect(superArrow.super).toBe(true)
+  expect(superArrow.hyper).toBe(false)
 
   // To detect if Alt/Option was pressed in ANSI sequences: check option=true
   expect(altArrow.option).toBe(true)
 
-  // Theoretical: Both ANSI Alt bit and Meta bit set
-  const altMetaArrow = parseKeypress("\x1b[1;11C")! // Theoretical: Alt+Meta bits
-  expect(altMetaArrow.meta).toBe(true)
-  expect(altMetaArrow.option).toBe(true)
+  // Both Alt and Super bits set
+  const altSuperArrow = parseKeypress("\x1b[1;11C")! // Alt+Super bits
+  expect(altSuperArrow.meta).toBe(true)
+  expect(altSuperArrow.option).toBe(true)
+  expect(altSuperArrow.super).toBe(true)
+  expect(altSuperArrow.hyper).toBe(false)
 })
 
 test("parseKeypress - modifier combinations with function keys", () => {
@@ -938,13 +987,15 @@ test("parseKeypress - modifier combinations with function keys", () => {
   expect(altF1.ctrl).toBe(false)
   expect(altF1.eventType).toBe("press")
 
-  // Theoretical: ANSI Meta bit (bit 8) - rarely/never occurs in practice
-  const metaF1 = parseKeypress("\x1b[11;9~")!
-  expect(metaF1.name).toBe("f1")
-  expect(metaF1.meta).toBe(true)
-  expect(metaF1.option).toBe(false)
-  expect(metaF1.ctrl).toBe(false)
-  expect(metaF1.eventType).toBe("press")
+  // Super key (bit 8)
+  const superF1 = parseKeypress("\x1b[11;9~")!
+  expect(superF1.name).toBe("f1")
+  expect(superF1.meta).toBe(false)
+  expect(superF1.option).toBe(false)
+  expect(superF1.ctrl).toBe(false)
+  expect(superF1.super).toBe(true)
+  expect(superF1.hyper).toBe(false)
+  expect(superF1.eventType).toBe("press")
 
   // Shift+Ctrl+F1 - may work depending on OS/terminal configuration
   const shiftCtrlF1 = parseKeypress("\x1b[11;6~")!
