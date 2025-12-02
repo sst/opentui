@@ -424,6 +424,7 @@ export class CliRenderer extends EventEmitter implements RenderContext {
     this.exitOnCtrlC = config.exitOnCtrlC === undefined ? true : config.exitOnCtrlC
     this.resizeDebounceDelay = config.debounceDelay || 100
     this.targetFps = config.targetFps || 30
+    this.targetFrameTime = 1000 / this.targetFps
     this.memorySnapshotInterval = config.memorySnapshotInterval ?? 0
     this.gatherStats = config.gatherStats || false
     this.maxStatSamples = config.maxStatSamples || 300
@@ -545,16 +546,28 @@ export class CliRenderer extends EventEmitter implements RenderContext {
   }
 
   public requestRender() {
-    if (
-      !this.rendering &&
-      !this.updateScheduled &&
-      !this._isRunning &&
-      this._controlState !== RendererControlState.EXPLICIT_SUSPENDED
-    ) {
+    if (this._controlState === RendererControlState.EXPLICIT_SUSPENDED) {
+      return
+    }
+
+    // If the renderer is already running, do nothing - it's already rendering at targetFps
+    if (this._isRunning) {
+      return
+    }
+
+    // If currently rendering, flag for immediate rerender after current frame
+    // This respects the targetFps timing
+    if (this.rendering) {
+      this.immediateRerenderRequested = true
+      return
+    }
+
+    // If not running or rendering, schedule a single frame via nextTick
+    if (!this.updateScheduled && !this.renderTimeout) {
       this.updateScheduled = true
       process.nextTick(async () => {
-        this.updateScheduled = false
         await this.loop()
+        this.updateScheduled = false
         this.resolveIdleIfNeeded()
       })
     }
@@ -1460,7 +1473,6 @@ export class CliRenderer extends EventEmitter implements RenderContext {
     this.frameCount = 0
     this.lastFpsTime = this.lastTime
     this.currentFps = 0
-    this.targetFrameTime = 1000 / this.targetFps
 
     this.loop()
   }
@@ -1531,17 +1543,17 @@ export class CliRenderer extends EventEmitter implements RenderContext {
         this.collectStatSample(overallFrameTime)
       }
 
-      if (this._isRunning) {
-        const delay = Math.max(1, this.targetFrameTime - Math.floor(overallFrameTime))
-        this.renderTimeout = setTimeout(() => this.loop(), delay)
+      const delay = Math.max(1, this.targetFrameTime - Math.floor(overallFrameTime))
+      if (this._isRunning || this.immediateRerenderRequested) {
+        this.immediateRerenderRequested = false
+        this.renderTimeout = setTimeout(() => {
+          this.renderTimeout = null
+          this.loop()
+        }, delay)
       }
     }
+
     this.rendering = false
-    if (this.immediateRerenderRequested) {
-      this.immediateRerenderRequested = false
-      this.loop()
-      return
-    }
     this.resolveIdleIfNeeded()
   }
 
