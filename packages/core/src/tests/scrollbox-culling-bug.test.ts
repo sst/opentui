@@ -38,11 +38,9 @@ test("scrollbox culling issue: last item not visible in frame after content grow
   })
   container.add(scrollBox)
 
-  // Start recording frames
   const recorder = new TestRecorder(testRenderer)
   recorder.rec()
 
-  // Add 50 items with sleep after each to give renderer time
   for (let i = 0; i < 50; i++) {
     const item = new BoxRenderable(testRenderer, {
       id: `item-${i}`,
@@ -59,13 +57,10 @@ test("scrollbox culling issue: last item not visible in frame after content grow
     await Bun.sleep(10)
   }
 
-  // Wait for renderer to be idle and for any deferred callbacks to complete
   await testRenderer.idle()
 
-  // Stop recording
   recorder.stop()
 
-  // Get all frames
   const frames = recorder.recordedFrames
 
   // With stickyScroll to bottom, there should NEVER be empty space at the bottom
@@ -75,21 +70,16 @@ test("scrollbox culling issue: last item not visible in frame after content grow
     const frame = frames[frameIdx].frame
     const lines = frame.split("\n")
 
-    // Find the container borders - look for borders that start at column 0
     const containerStart = lines.findIndex((line) => line.startsWith("┌"))
-    // The container bottom is at a known position (line containerStart + container.height - 1)
-    const containerEnd = containerStart + 10 - 1 // container height is 10
+    const containerEnd = containerStart + 10 - 1
 
     if (containerStart >= 0 && containerEnd > containerStart && containerEnd < lines.length) {
       const contentLines = lines.slice(containerStart + 1, containerEnd)
 
-      // Count empty lines at bottom (lines with no actual content, just borders/whitespace)
       let emptyLinesAtBottom = 0
 
       for (let i = contentLines.length - 1; i >= 0; i--) {
         const line = contentLines[i]
-        // Remove left/right borders, scrollbar chars, and whitespace
-        // An empty content line will have nothing left
         const content = line.replace(/^[│\s]*/, "").replace(/[│█▄\s]*$/, "")
 
         if (content.length === 0) {
@@ -99,8 +89,6 @@ test("scrollbox culling issue: last item not visible in frame after content grow
         }
       }
 
-      // Check how many items should exist at this frame
-      // Frame 0 = 1 item, Frame 1 = 2 items, etc.
       const expectedItems = frameIdx + 1
 
       // With stickyScroll to bottom, once we have enough items to fill the viewport,
@@ -113,7 +101,6 @@ test("scrollbox culling issue: last item not visible in frame after content grow
     }
   }
 
-  // Also verify the last item is visible in the final frame
   // With stickyScroll to bottom, the last item should be visible after all items are added
   const finalFrame = frames[frames.length - 1].frame
   const hasItem49 = finalFrame.includes("Item 49")

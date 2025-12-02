@@ -42,7 +42,6 @@ describe("TestRecorder", () => {
 
     const text = new TextRenderable(renderer, { content: "Hello World" })
     renderer.root.add(text)
-    // add() triggers a requestRender() which schedules a render via process.nextTick()
     await Bun.sleep(1)
 
     expect(recorder.recordedFrames.length).toBe(1)
@@ -141,7 +140,7 @@ describe("TestRecorder", () => {
 
     recorder.stop()
     await renderOnce()
-    expect(recorder.recordedFrames.length).toBe(1) // Should still be 1
+    expect(recorder.recordedFrames.length).toBe(1)
   })
 
   test("should clear recorded frames", async () => {
@@ -163,14 +162,12 @@ describe("TestRecorder", () => {
   test("should handle multiple rec/stop cycles", async () => {
     const text = new TextRenderable(renderer, { content: "Cycle Test" })
 
-    // First recording
     recorder.rec()
     renderer.root.add(text)
     await Bun.sleep(1)
     recorder.stop()
     expect(recorder.recordedFrames.length).toBe(1)
 
-    // Second recording
     recorder.clear()
     recorder.rec()
     await renderOnce()
@@ -181,7 +178,7 @@ describe("TestRecorder", () => {
 
   test("should not duplicate frames when rec is called multiple times", async () => {
     recorder.rec()
-    recorder.rec() // Call again while already recording
+    recorder.rec()
 
     const text = new TextRenderable(renderer, { content: "Duplicate Test" })
     renderer.root.add(text)
@@ -189,24 +186,21 @@ describe("TestRecorder", () => {
 
     recorder.stop()
 
-    expect(recorder.recordedFrames.length).toBe(1) // Should only have 1 frame
+    expect(recorder.recordedFrames.length).toBe(1)
   })
 
   test("should restore original renderNative after stop", async () => {
     const text = new TextRenderable(renderer, { content: "Restore Test" })
 
-    // Capture original behavior
     recorder.rec()
     renderer.root.add(text)
     await Bun.sleep(1)
     recorder.stop()
 
-    // Clear and render without recording
     recorder.clear()
     await renderOnce()
     expect(recorder.recordedFrames.length).toBe(0)
 
-    // Should be able to record again
     recorder.rec()
     await renderOnce()
     recorder.stop()
@@ -220,7 +214,7 @@ describe("TestRecorder", () => {
     renderer.root.add(text)
     await Bun.sleep(1)
 
-    await Bun.sleep(10) // Small delay
+    await Bun.sleep(10)
     await renderOnce()
 
     const frames = recorder.recordedFrames
@@ -241,18 +235,16 @@ describe("TestRecorder", () => {
     const frames2 = recorder.recordedFrames
 
     expect(frames1).toEqual(frames2)
-    expect(frames1).not.toBe(frames2) // Should be different array instances
+    expect(frames1).not.toBe(frames2)
 
     recorder.stop()
   })
 
   test("should handle empty renders", async () => {
-    // No content mounted
     recorder.rec()
     await renderOnce()
 
     expect(recorder.recordedFrames.length).toBe(1)
-    // Frame should exist but be mostly empty/whitespace
     expect(recorder.recordedFrames[0].frame).toBeDefined()
 
     recorder.stop()
@@ -268,7 +260,6 @@ describe("TestRecorder", () => {
     await Bun.sleep(1)
 
     const frame = recorder.recordedFrames[0].frame
-    // Both texts should be in the frame somewhere
     expect(frame).toContain("Line 1")
     expect(frame).toContain("Line 2")
 
@@ -282,7 +273,6 @@ describe("TestRecorder", () => {
     renderer.root.add(text)
     await Bun.sleep(1)
 
-    // Rapid renders
     for (let i = 0; i < 4; i++) {
       await renderOnce()
     }
