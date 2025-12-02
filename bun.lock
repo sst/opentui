@@ -4,6 +4,9 @@
   "workspaces": {
     "": {
       "name": "@opentui",
+      "dependencies": {
+        "bun-yoga": "^0.2.12",
+      },
       "devDependencies": {
         "prettier": "3.6.2",
       },
@@ -331,7 +334,7 @@
 
     "bun-webgpu-win32-x64": ["bun-webgpu-win32-x64@0.1.4", "", { "os": "win32", "cpu": "x64" }, "sha512-Z5yAK28xrcm8Wb5k7TZ8FJKpOI/r+aVCRdlHYAqI2SDJFN3nD4mJs900X6kNVmG/xFzb5yOuKVYWGg+6ZXWbyA=="],
 
-    "bun-yoga": ["bun-yoga@0.2.11", "", {}, "sha512-pus82525M9yZa+GGqMEL6NDDa2stfLcfcF64XvZGCTODlmjnHyAInXm+/pUB6S5LI0TllyIH//CPxoiQ2eIBaA=="],
+    "bun-yoga": ["bun-yoga@0.2.12", "", {}, "sha512-D85hKxuqi38amanxjoVw4kgZdJBEJEpFnmTpE8UBe28UjIp/mF1S07dOeZiZ4NcoWQbnIUtdnSMQacS68zWZkA=="],
 
     "caniuse-lite": ["caniuse-lite@1.0.30001737", "", {}, "sha512-BiloLiXtQNrY5UyF0+1nSJLXUENuhka2pzy2Fx5pGxqavdrxSCW4U6Pn/PoG3Efspi2frRbHpBV2XsrPE6EDlw=="],
 

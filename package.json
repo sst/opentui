@@ -25,5 +25,7 @@
     "semi": false,
     "printWidth": 120
   },
-  "dependencies": {}
+  "dependencies": {
+    "bun-yoga": "^0.2.12"
+  }
 }
