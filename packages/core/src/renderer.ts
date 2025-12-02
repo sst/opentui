@@ -553,8 +553,8 @@ export class CliRenderer extends EventEmitter implements RenderContext {
     ) {
       this.updateScheduled = true
       process.nextTick(async () => {
-        await this.loop()
         this.updateScheduled = false
+        await this.loop()
         this.resolveIdleIfNeeded()
       })
     }
