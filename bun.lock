@@ -13,7 +13,7 @@
       "version": "0.1.54",
       "dependencies": {
         "bun-ffi-structs": "0.1.2",
-        "bun-yoga": "^0.2.9",
+        "bun-yoga": "^0.2.10",
         "diff": "8.0.2",
         "jimp": "1.6.0",
       },
@@ -331,7 +331,7 @@
 
     "bun-webgpu-win32-x64": ["bun-webgpu-win32-x64@0.1.4", "", { "os": "win32", "cpu": "x64" }, "sha512-Z5yAK28xrcm8Wb5k7TZ8FJKpOI/r+aVCRdlHYAqI2SDJFN3nD4mJs900X6kNVmG/xFzb5yOuKVYWGg+6ZXWbyA=="],
 
-    "bun-yoga": ["bun-yoga@0.2.9", "", {}, "sha512-19tTt2FN0GeylUnmdMsUNGrolKHfWYhRU4/yHTG3US33gDbneNkBwK05NPPaFUARgw+ood+9BQeqQCWf8Dg8GA=="],
+    "bun-yoga": ["bun-yoga@0.2.10", "", {}, "sha512-cgUpBO3eCJTTU1HMG1MN/AERTk4CMdCb0tpskez6rq5i2xPz/P+5OZAAgNQnzVw8OXwAlT8Lydrc4ECALe+JSQ=="],
 
     "caniuse-lite": ["caniuse-lite@1.0.30001737", "", {}, "sha512-BiloLiXtQNrY5UyF0+1nSJLXUENuhka2pzy2Fx5pGxqavdrxSCW4U6Pn/PoG3Efspi2frRbHpBV2XsrPE6EDlw=="],
 
