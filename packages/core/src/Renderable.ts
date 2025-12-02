@@ -1254,7 +1254,7 @@ export abstract class Renderable extends BaseRenderable {
     // This ensures their positions are current when culling happens
     if (this._shouldUpdateBefore.size > 0) {
       for (const child of this._shouldUpdateBefore) {
-        child.updateFromLayout()
+        if (!child.isDestroyed) { child.updateFromLayout() }
       }
       this._shouldUpdateBefore.clear()
     }
