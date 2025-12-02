@@ -67,17 +67,7 @@ test("scrollbox culling issue: last item not visible in frame after content grow
 
   // Get all frames
   const frames = recorder.recordedFrames
-  console.log(`\nRecorded ${frames.length} frames\n`)
 
-  // Check ALL frames to see if the bug occurs in any of them
-  for (let i = 0; i < frames.length; i++) {
-    const frame = frames[i].frame
-    console.log(`Frame ${i}:`)
-    console.log(frame)
-    console.log("---\n")
-  }
-
-  // Check EVERY frame after the first item is added
   // With stickyScroll to bottom, there should NEVER be empty space at the bottom
   // when there are items available to render
 
@@ -113,8 +103,6 @@ test("scrollbox culling issue: last item not visible in frame after content grow
       // Frame 0 = 1 item, Frame 1 = 2 items, etc.
       const expectedItems = frameIdx + 1
 
-      console.log(`Frame ${frameIdx}: ${expectedItems} items, ${emptyLinesAtBottom} empty lines at bottom`)
-
       // With stickyScroll to bottom, once we have enough items to fill the viewport,
       // there should be NO empty space at the bottom
       // Viewport is 8 lines (10 - 2 for borders), items are 3 lines each
@@ -129,6 +117,5 @@ test("scrollbox culling issue: last item not visible in frame after content grow
   // With stickyScroll to bottom, the last item should be visible after all items are added
   const finalFrame = frames[frames.length - 1].frame
   const hasItem49 = finalFrame.includes("Item 49")
-  console.log(`\nFinal frame contains "Item 49": ${hasItem49}`)
   expect(hasItem49).toBe(true)
 })
