@@ -1480,7 +1480,7 @@ export class CliRenderer extends EventEmitter implements RenderContext {
 
   private async loop(): Promise<void> {
     if (this.rendering || this._isDestroyed) return
-              this.renderTimeout = null
+    this.renderTimeout = null
 
     this.rendering = true
     if (this.renderTimeout) {
