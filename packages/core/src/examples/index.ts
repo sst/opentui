@@ -437,10 +437,9 @@ class ExampleSelector {
             break
         }
       }
-      switch (key.raw) {
-        case "\u0003":
-          this.cleanup()
-          return
+      if (key.name === "c" && key.ctrl) {
+        this.cleanup()
+        return
       }
       switch (key.name) {
         case "c":

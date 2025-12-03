@@ -623,10 +623,10 @@ world
       scrollBox.add(wrapper)
     }
 
-    await new Promise((resolve) => setTimeout(resolve, 0))
+    await Bun.sleep(20)
 
     mockTreeSitterClient.resolveAllHighlightOnce()
-    await new Promise((resolve) => setTimeout(resolve, 1))
+    await Bun.sleep(20)
 
     await renderOnce()
 
