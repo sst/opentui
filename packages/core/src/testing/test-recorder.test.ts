@@ -105,12 +105,12 @@ describe("TestRecorder", () => {
 
     const text = new TextRenderable(renderer, { content: "Initial" })
     renderer.root.add(text)
-    await Bun.sleep(1)
+    await Bun.sleep(20)
 
     const frame1 = recorder.recordedFrames[0].frame
 
     text.content = "Changed"
-    await Bun.sleep(1)
+    await Bun.sleep(20)
 
     const frame2 = recorder.recordedFrames[1].frame
 

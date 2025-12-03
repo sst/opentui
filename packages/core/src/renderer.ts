@@ -555,19 +555,15 @@ export class CliRenderer extends EventEmitter implements RenderContext {
       return
     }
 
-    // If the renderer is already running, do nothing - it's already rendering at targetFps
     if (this._isRunning) {
       return
     }
 
-    // If currently rendering, flag for immediate rerender after current frame
-    // This respects the targetFps timing
     if (this.rendering) {
       this.immediateRerenderRequested = true
       return
     }
 
-    // If not running or rendering, schedule a single frame via nextTick
     if (!this.updateScheduled && !this.renderTimeout) {
       this.updateScheduled = true
       process.nextTick(async () => {
@@ -1484,6 +1480,8 @@ export class CliRenderer extends EventEmitter implements RenderContext {
 
   private async loop(): Promise<void> {
     if (this.rendering || this._isDestroyed) return
+              this.renderTimeout = null
+
     this.rendering = true
     if (this.renderTimeout) {
       clearTimeout(this.renderTimeout)
@@ -1557,6 +1555,9 @@ export class CliRenderer extends EventEmitter implements RenderContext {
           this.renderTimeout = null
           this.loop()
         }, delay)
+      } else {
+        clearTimeout(this.renderTimeout!)
+        this.renderTimeout = null
       }
     }
 
