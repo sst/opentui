@@ -1,34 +1,11 @@
 #!/usr/bin/env bun
 
-import {
-  type CliRenderer,
-  createCliRenderer,
-  BoxRenderable,
-  CodeRenderable,
-  TextRenderable,
-  addDefaultParsers,
-  type KeyEvent,
-} from "../index"
+import { type CliRenderer, createCliRenderer, BoxRenderable, TextRenderable, type KeyEvent } from "../index"
 import { ScrollBoxRenderable } from "../renderables/ScrollBox"
-import { SyntaxStyle } from "../syntax-style"
-import { parseColor } from "../lib/RGBA"
+import { TextNodeRenderable } from "../renderables/TextNode"
 import { setupCommonDemoKeys } from "./lib/standalone-keys"
 
-const parsers = [
-  {
-    filetype: "json",
-    wasm: "https://github.com/tree-sitter/tree-sitter-json/releases/download/v0.24.8/tree-sitter-json.wasm",
-    queries: {
-      highlights: [
-        "https://raw.githubusercontent.com/nvim-treesitter/nvim-treesitter/refs/heads/master/queries/json/highlights.scm",
-      ],
-    },
-  },
-]
-addDefaultParsers(parsers)
-
 let scrollBox: ScrollBoxRenderable | null = null
-let syntaxStyle: SyntaxStyle | null = null
 let eventCount = 0
 let helpModal: BoxRenderable | null = null
 let showingHelp = false
@@ -37,16 +14,109 @@ let keypressHandler: ((event: KeyEvent) => void) | null = null
 let keyreleaseHandler: ((event: KeyEvent) => void) | null = null
 let pasteHandler: ((event: { text: string }) => void) | null = null
 
+function formatEventAsText(renderer: CliRenderer, eventType: string, event: any): TextRenderable {
+  const eventText = new TextRenderable(renderer, {
+    id: `event-text-${eventCount}`,
+  })
+
+  // Event type header with icon
+  let icon = "⌨️ "
+  let typeColor = "#A5D6FF"
+  if (eventType === "keypress") {
+    icon = "↓ "
+    typeColor = "#7EE787"
+  } else if (eventType === "keyrelease") {
+    icon = "↑ "
+    typeColor = "#FFA657"
+  } else if (eventType === "paste") {
+    icon = "📋 "
+    typeColor = "#D2A8FF"
+  } else if (eventType === "capabilities") {
+    icon = "ℹ️  "
+    typeColor = "#79C0FF"
+  }
+
+  const typeNode = TextNodeRenderable.fromString(`${icon}${eventType.toUpperCase()}`, {
+    fg: typeColor,
+    attributes: 1, // bold
+  })
+  eventText.textNode.add(typeNode)
+
+  // Key name (if available)
+  if (event.name) {
+    const keyNode = TextNodeRenderable.fromString(` ${event.name}`, {
+      fg: "#FFA657",
+      attributes: 1,
+    })
+    eventText.textNode.add(keyNode)
+  }
+
+  // Modifiers
+  const modifiers: string[] = []
+  if (event.ctrl) modifiers.push("Ctrl")
+  if (event.meta) modifiers.push("Meta")
+  if (event.shift) modifiers.push("Shift")
+  if (event.option) modifiers.push("Option")
+  if (event.super) modifiers.push("Super")
+  if (event.hyper) modifiers.push("Hyper")
+
+  if (modifiers.length > 0) {
+    const modNode = TextNodeRenderable.fromString(` [${modifiers.join("+")}]`, {
+      fg: "#D2A8FF",
+    })
+    eventText.textNode.add(modNode)
+  }
+
+  // Sequence/Raw
+  if (event.raw || event.sequence) {
+    const raw = event.raw || event.sequence
+    const displayRaw = JSON.stringify(raw)
+    const rawNode = TextNodeRenderable.fromString(` ${displayRaw}`, {
+      fg: "#79C0FF",
+    })
+    eventText.textNode.add(rawNode)
+  }
+
+  // Source
+  if (event.source) {
+    const sourceNode = TextNodeRenderable.fromString(` (${event.source})`, {
+      fg: "#8B949E",
+    })
+    eventText.textNode.add(sourceNode)
+  }
+
+  // Paste text
+  if (event.text && eventType === "paste") {
+    const textPreview = event.text.length > 50 ? event.text.substring(0, 47) + "..." : event.text
+    const pasteNode = TextNodeRenderable.fromString(`\n  "${textPreview}"`, {
+      fg: "#A5D6FF",
+    })
+    eventText.textNode.add(pasteNode)
+  }
+
+  // Capabilities info - show full details
+  if (eventType === "capabilities") {
+    const capsText = JSON.stringify(event, null, 2)
+    const capsNode = TextNodeRenderable.fromString(`\n${capsText}`, {
+      fg: "#8B949E",
+    })
+    eventText.textNode.add(capsNode)
+  }
+
+  // Timestamp
+  const time = new Date().toLocaleTimeString()
+  const timeNode = TextNodeRenderable.fromString(`\n  ${time}`, {
+    fg: "#6E7681",
+  })
+  eventText.textNode.add(timeNode)
+
+  return eventText
+}
+
 function addEvent(renderer: CliRenderer, eventType: string, event: object) {
-  if (!scrollBox || !syntaxStyle) return
+  if (!scrollBox) return
 
   eventCount++
-
-  const eventData = {
-    type: eventType,
-    timestamp: new Date().toISOString(),
-    ...event,
-  }
 
   const eventBox = new BoxRenderable(renderer, {
     id: `event-${eventCount}`,
@@ -54,18 +124,13 @@ function addEvent(renderer: CliRenderer, eventType: string, event: object) {
     marginBottom: 1,
     padding: 1,
     backgroundColor: "#1f2937",
+    borderColor: "#374151",
+    borderStyle: "single",
+    border: true,
   })
 
-  const codeDisplay = new CodeRenderable(renderer, {
-    id: `event-code-${eventCount}`,
-    content: JSON.stringify(eventData, null, 2),
-    filetype: "json",
-    conceal: false,
-    syntaxStyle,
-    bg: "#1f2937",
-  })
-
-  eventBox.add(codeDisplay)
+  const eventDisplay = formatEventAsText(renderer, eventType, event)
+  eventBox.add(eventDisplay)
   scrollBox.add(eventBox)
 
   const children = scrollBox.getChildren()
@@ -148,14 +213,6 @@ input events in real-time as JSON.`,
   helpModal.add(helpContent)
   renderer.root.add(helpModal)
 
-  syntaxStyle = SyntaxStyle.fromStyles({
-    string: { fg: parseColor("#A5D6FF") },
-    number: { fg: parseColor("#79C0FF") },
-    boolean: { fg: parseColor("#79C0FF") },
-    keyword: { fg: parseColor("#FF7B72") },
-    default: { fg: parseColor("#E6EDF3") },
-  })
-
   addEvent(renderer, "capabilities", renderer.capabilities)
 
   inputHandler = (sequence: string) => {
@@ -230,7 +287,6 @@ export function destroy(renderer: CliRenderer): void {
   helpModal?.destroy()
   helpModal = null
 
-  syntaxStyle = null
   eventCount = 0
   showingHelp = false
 }
