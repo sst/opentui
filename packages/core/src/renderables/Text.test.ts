@@ -32,6 +32,8 @@ describe("TextRenderable Selection", () => {
       })
 
       await currentMouse.drag(text.x, text.y, text.x + 5, text.y)
+      // Add delay to ensure all drag events are processed on slow CI machines
+      await new Promise((resolve) => setTimeout(resolve, 50))
       await renderOnce()
 
       const selectedText = text.getSelectedText()
@@ -46,6 +48,8 @@ describe("TextRenderable Selection", () => {
 
       // Select "Hello 🌍" (7 characters: H,e,l,l,o, ,🌍)
       await currentMouse.drag(text.x, text.y, text.x + 7, text.y)
+      // Add delay to ensure all drag events are processed on slow CI machines
+      await new Promise((resolve) => setTimeout(resolve, 50))
       await renderOnce()
 
       const selectedText = text.getSelectedText()
