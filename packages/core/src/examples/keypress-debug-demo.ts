@@ -16,6 +16,8 @@ registerEnvVar({
 let scrollBox: ScrollBoxRenderable | null = null
 let eventCount = 0
 let helpModal: BoxRenderable | null = null
+let helpContent: TextRenderable | null = null
+let scrollHint: TextRenderable | null = null
 let showingHelp = false
 let showJson = false
 let inputHandler: ((sequence: string) => boolean) | null = null
@@ -196,36 +198,34 @@ export function run(renderer: CliRenderer): void {
   helpModal = new BoxRenderable(renderer, {
     id: "help-modal",
     position: "absolute",
-    left: "50%",
-    top: "50%",
-    width: 50,
-    height: 12,
-    marginLeft: -25, // Center horizontally
-    marginTop: -6, // Center vertically
+    left: "5%",
+    top: "5%",
+    width: "90%",
+    height: "90%",
     border: true,
     borderStyle: "double",
     borderColor: "#4ECDC4",
     backgroundColor: "#0D1117",
     title: "Keybindings",
     titleAlignment: "center",
-    padding: 2,
+    flexDirection: "column",
     zIndex: 100,
     visible: false,
   })
 
-  const helpContent = new TextRenderable(renderer, {
+  helpContent = new TextRenderable(renderer, {
     id: "help-content",
-    content: `Events Captured:
-  • All keypress events
-  • All keyrelease events
-  • Paste events
-  • Raw input sequences
-
-Actions:
+    content: `Actions:
   Shift+C : Refresh terminal capabilities
   Shift+J : Toggle JSON view (show full JSON)
   ?       : Toggle this help screen
   ESC     : Return to main menu
+
+Events Captured:
+  • All keypress events
+  • All keyrelease events
+  • Paste events
+  • Raw input sequences
 
 Env Vars:
   OTUI_KEYPRESS_DEBUG_SHOW_JSON=true
@@ -234,9 +234,23 @@ Env Vars:
 The debug tool displays all keyboard and
 input events in real-time.`,
     fg: "#E6EDF3",
+    flexGrow: 1,
+    flexShrink: 1,
   })
 
   helpModal.add(helpContent)
+
+  // Scroll hint (shown only when there's content to scroll)
+  scrollHint = new TextRenderable(renderer, {
+    id: "scroll-hint",
+    content: "↑↓ to scroll",
+    fg: "#6E7681",
+    flexShrink: 0,
+    height: 1,
+    visible: false,
+  })
+  helpModal.add(scrollHint)
+
   renderer.root.add(helpModal)
 
   addEvent(renderer, "capabilities", renderer.capabilities)
@@ -252,7 +266,24 @@ input events in real-time.`,
     if (event.raw === "?" && helpModal) {
       showingHelp = !showingHelp
       helpModal.visible = showingHelp
+
+      // Update scroll hint visibility when modal opens
+      if (showingHelp && helpContent && scrollHint) {
+        const canScroll = helpContent.maxScrollY > 0
+        scrollHint.visible = canScroll
+      }
       return
+    }
+
+    // Handle scrolling when help modal is open
+    if (showingHelp && helpContent) {
+      if (event.name === "up") {
+        helpContent.scrollY = Math.max(0, helpContent.scrollY - 1)
+        return
+      } else if (event.name === "down") {
+        helpContent.scrollY = Math.min(helpContent.maxScrollY, helpContent.scrollY + 1)
+        return
+      }
     }
 
     // Handle JSON view toggle
@@ -318,6 +349,8 @@ export function destroy(renderer: CliRenderer): void {
 
   helpModal?.destroy()
   helpModal = null
+  helpContent = null
+  scrollHint = null
 
   eventCount = 0
   showingHelp = false
