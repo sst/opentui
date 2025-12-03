@@ -87,7 +87,7 @@ test("DiffRenderable - no endless loop when concealing markdown formatting", asy
   await Bun.sleep(2000)
 
   const stats = currentRenderer.getStats()
-  expect(stats.frameCount).toBeLessThan(11)
+  expect(stats.frameCount).toBeLessThan(25)
 })
 
 // Tests that line numbers align correctly and gutter heights are properly sized

@@ -105,20 +105,21 @@ describe("TestRecorder", () => {
 
     const text = new TextRenderable(renderer, { content: "Initial" })
     renderer.root.add(text)
-    await Bun.sleep(20)
+    await Bun.sleep(10)
 
-    const frame1 = recorder.recordedFrames[0].frame
 
     text.content = "Changed"
-    await Bun.sleep(20)
+    await Bun.sleep(10)
+    recorder.stop()
 
+    // NOTE: Should this fail, make sure the Bun.sleeps are in sync with maxFps of the renderer
+    const frame1 = recorder.recordedFrames[0].frame
     const frame2 = recorder.recordedFrames[1].frame
 
     expect(frame1).toContain("Initial")
     expect(frame2).toContain("Changed")
     expect(frame1).not.toEqual(frame2)
 
-    recorder.stop()
   })
 
   test("should not record when not started", async () => {
