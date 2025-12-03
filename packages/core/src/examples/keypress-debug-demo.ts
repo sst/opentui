@@ -4,11 +4,20 @@ import { type CliRenderer, createCliRenderer, BoxRenderable, TextRenderable, typ
 import { ScrollBoxRenderable } from "../renderables/ScrollBox"
 import { TextNodeRenderable } from "../renderables/TextNode"
 import { setupCommonDemoKeys } from "./lib/standalone-keys"
+import { env, registerEnvVar } from "../lib/env"
+
+registerEnvVar({
+  name: "OTUI_KEYPRESS_DEBUG_SHOW_JSON",
+  description: "Show full JSON alongside formatted output in keypress debug tool",
+  type: "boolean",
+  default: false,
+})
 
 let scrollBox: ScrollBoxRenderable | null = null
 let eventCount = 0
 let helpModal: BoxRenderable | null = null
 let showingHelp = false
+let showJson = false
 let inputHandler: ((sequence: string) => boolean) | null = null
 let keypressHandler: ((event: KeyEvent) => void) | null = null
 let keyreleaseHandler: ((event: KeyEvent) => void) | null = null
@@ -110,6 +119,15 @@ function formatEventAsText(renderer: CliRenderer, eventType: string, event: any)
   })
   eventText.textNode.add(timeNode)
 
+  // Show full JSON if enabled
+  if (showJson && eventType !== "capabilities") {
+    const jsonText = JSON.stringify({ type: eventType, timestamp: new Date().toISOString(), ...event }, null, 2)
+    const jsonNode = TextNodeRenderable.fromString(`\n\n${jsonText}`, {
+      fg: "#8B949E",
+    })
+    eventText.textNode.add(jsonNode)
+  }
+
   return eventText
 }
 
@@ -145,6 +163,9 @@ function addEvent(renderer: CliRenderer, eventType: string, event: object) {
 
 export function run(renderer: CliRenderer): void {
   renderer.setBackgroundColor("#0D1117")
+
+  // Initialize showJson from env var
+  showJson = env.OTUI_KEYPRESS_DEBUG_SHOW_JSON
 
   const mainContainer = new BoxRenderable(renderer, {
     id: "main-container",
@@ -202,11 +223,16 @@ export function run(renderer: CliRenderer): void {
 
 Actions:
   Shift+C : Refresh terminal capabilities
+  Shift+J : Toggle JSON view (show full JSON)
   ?       : Toggle this help screen
   ESC     : Return to main menu
 
+Env Vars:
+  OTUI_KEYPRESS_DEBUG_SHOW_JSON=true
+    Enable JSON view at startup
+
 The debug tool displays all keyboard and
-input events in real-time as JSON.`,
+input events in real-time.`,
     fg: "#E6EDF3",
   })
 
@@ -226,6 +252,12 @@ input events in real-time as JSON.`,
     if (event.raw === "?" && helpModal) {
       showingHelp = !showingHelp
       helpModal.visible = showingHelp
+      return
+    }
+
+    // Handle JSON view toggle
+    if (event.name === "j" && event.shift) {
+      showJson = !showJson
       return
     }
 
@@ -289,6 +321,7 @@ export function destroy(renderer: CliRenderer): void {
 
   eventCount = 0
   showingHelp = false
+  showJson = false
 }
 
 if (import.meta.main) {
