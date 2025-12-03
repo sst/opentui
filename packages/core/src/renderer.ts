@@ -566,12 +566,23 @@ export class CliRenderer extends EventEmitter implements RenderContext {
 
     if (!this.updateScheduled && !this.renderTimeout) {
       this.updateScheduled = true
-      process.nextTick(async () => {
-        await this.loop()
-        this.updateScheduled = false
-        this.resolveIdleIfNeeded()
-      })
+      const now = Date.now()
+      const elapsed = now - this.lastTime
+      const delay = Math.max(this.minTargetFrameTime - elapsed, 0)
+
+      if (delay === 0) {
+        process.nextTick(() => this.activateFrame())
+        return
+      }
+
+      setTimeout(() => this.activateFrame(), delay)
     }
+  }
+
+  private async activateFrame() {
+    await this.loop()
+    this.updateScheduled = false
+    this.resolveIdleIfNeeded()
   }
 
   public get useConsole(): boolean {

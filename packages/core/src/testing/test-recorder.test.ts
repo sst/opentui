@@ -107,7 +107,6 @@ describe("TestRecorder", () => {
     renderer.root.add(text)
     await Bun.sleep(10)
 
-
     text.content = "Changed"
     await Bun.sleep(10)
     recorder.stop()
@@ -119,7 +118,6 @@ describe("TestRecorder", () => {
     expect(frame1).toContain("Initial")
     expect(frame2).toContain("Changed")
     expect(frame1).not.toEqual(frame2)
-
   })
 
   test("should not record when not started", async () => {
