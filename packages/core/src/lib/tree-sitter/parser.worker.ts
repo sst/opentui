@@ -93,7 +93,7 @@ class ParserWorker {
         })
 
         if (isBunfsPath(treeWasm)) {
-          treeWasm = normalizeBunfsPath(treeWasm, path.parse(treeWasm).base)
+          treeWasm = normalizeBunfsPath(path.parse(treeWasm).base)
         }
 
         await Parser.init({

@@ -183,7 +183,7 @@ export class TreeSitterClient extends EventEmitter<TreeSitterClientEvents> {
       return path
     }
     if (isBunfsPath(path)) {
-      return normalizeBunfsPath(path, parse(path).base)
+      return normalizeBunfsPath(parse(path).base)
     }
     if (!isAbsolute(path)) {
       return resolve(path)
