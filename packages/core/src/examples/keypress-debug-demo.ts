@@ -32,6 +32,10 @@ let syntaxStyle: SyntaxStyle | null = null
 let eventCount = 0
 let helpModal: BoxRenderable | null = null
 let showingHelp = false
+let inputHandler: ((sequence: string) => boolean) | null = null
+let keypressHandler: ((event: KeyEvent) => void) | null = null
+let keyreleaseHandler: ((event: KeyEvent) => void) | null = null
+let pasteHandler: ((event: { text: string }) => void) | null = null
 
 function addEvent(renderer: CliRenderer, eventType: string, event: object) {
   if (!scrollBox || !syntaxStyle) return
@@ -154,12 +158,13 @@ input events in real-time as JSON.`,
 
   addEvent(renderer, "capabilities", renderer.capabilities)
 
-  renderer.addInputHandler((sequence) => {
+  inputHandler = (sequence: string) => {
     addEvent(renderer, "raw-input", { sequence })
     return false
-  })
+  }
+  renderer.addInputHandler(inputHandler)
 
-  renderer.keyInput.on("keypress", (event: KeyEvent) => {
+  keypressHandler = (event: KeyEvent) => {
     // Handle help modal toggle
     if (event.raw === "?" && helpModal) {
       showingHelp = !showingHelp
@@ -177,21 +182,45 @@ input events in real-time as JSON.`,
     if (event.name === "c" && event.shift) {
       addEvent(renderer, "capabilities", renderer.capabilities)
     }
-  })
+  }
+  renderer.keyInput.on("keypress", keypressHandler)
 
-  renderer.keyInput.on("keyrelease", (event) => {
+  keyreleaseHandler = (event: KeyEvent) => {
     addEvent(renderer, "keyrelease", event)
-  })
+  }
+  renderer.keyInput.on("keyrelease", keyreleaseHandler)
 
-  renderer.keyInput.on("paste", (event) => {
+  pasteHandler = (event: { text: string }) => {
     addEvent(renderer, "paste", event)
-  })
+  }
+  renderer.keyInput.on("paste", pasteHandler)
 
   renderer.requestRender()
 }
 
 export function destroy(renderer: CliRenderer): void {
   renderer.clearFrameCallbacks()
+
+  // Remove event listeners
+  if (keypressHandler) {
+    renderer.keyInput.off("keypress", keypressHandler)
+    keypressHandler = null
+  }
+
+  if (keyreleaseHandler) {
+    renderer.keyInput.off("keyrelease", keyreleaseHandler)
+    keyreleaseHandler = null
+  }
+
+  if (pasteHandler) {
+    renderer.keyInput.off("paste", pasteHandler)
+    pasteHandler = null
+  }
+
+  if (inputHandler) {
+    renderer.removeInputHandler(inputHandler)
+    inputHandler = null
+  }
 
   if (scrollBox) {
     renderer.root.remove("main-container")
