@@ -55,6 +55,7 @@ import * as editorDemo from "./editor-demo"
 import * as sliderDemo from "./slider-demo"
 import * as terminalDemo from "./terminal"
 import * as diffDemo from "./diff-demo"
+import * as keypressDebugDemo from "./keypress-debug-demo"
 import { setupCommonDemoKeys } from "./lib/standalone-keys"
 
 interface Example {
@@ -311,6 +312,12 @@ const examples: Example[] = [
     description: "Renderer confined to bottom area with normal terminal output above",
     run: splitModeExample.run,
     destroy: splitModeExample.destroy,
+  },
+  {
+    name: "Keypress Debug Tool",
+    description: "Debug tool to inspect keypress events, raw input, and terminal capabilities",
+    run: keypressDebugDemo.run,
+    destroy: keypressDebugDemo.destroy,
   },
 ]
 
