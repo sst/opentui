@@ -1,6 +1,14 @@
 #!/usr/bin/env bun
 
-import { type CliRenderer, createCliRenderer, BoxRenderable, CodeRenderable, addDefaultParsers } from "../index"
+import {
+  type CliRenderer,
+  createCliRenderer,
+  BoxRenderable,
+  CodeRenderable,
+  TextRenderable,
+  addDefaultParsers,
+  type KeyEvent,
+} from "../index"
 import { ScrollBoxRenderable } from "../renderables/ScrollBox"
 import { SyntaxStyle } from "../syntax-style"
 import { parseColor } from "../lib/RGBA"
@@ -22,6 +30,8 @@ addDefaultParsers(parsers)
 let scrollBox: ScrollBoxRenderable | null = null
 let syntaxStyle: SyntaxStyle | null = null
 let eventCount = 0
+let helpModal: BoxRenderable | null = null
+let showingHelp = false
 
 function addEvent(renderer: CliRenderer, eventType: string, event: object) {
   if (!scrollBox || !syntaxStyle) return
@@ -81,7 +91,7 @@ export function run(renderer: CliRenderer): void {
     stickyStart: "bottom",
     border: true,
     borderColor: "#6BCF7F",
-    title: "Keypress Debug Tool (Escape: return to menu)",
+    title: "Keypress Debug Tool (Press ? for keys)",
     titleAlignment: "center",
     contentOptions: {
       paddingLeft: 1,
@@ -91,6 +101,48 @@ export function run(renderer: CliRenderer): void {
   })
 
   mainContainer.add(scrollBox)
+
+  // Create help modal (hidden by default)
+  helpModal = new BoxRenderable(renderer, {
+    id: "help-modal",
+    position: "absolute",
+    left: "50%",
+    top: "50%",
+    width: 50,
+    height: 12,
+    marginLeft: -25, // Center horizontally
+    marginTop: -6, // Center vertically
+    border: true,
+    borderStyle: "double",
+    borderColor: "#4ECDC4",
+    backgroundColor: "#0D1117",
+    title: "Keybindings",
+    titleAlignment: "center",
+    padding: 2,
+    zIndex: 100,
+    visible: false,
+  })
+
+  const helpContent = new TextRenderable(renderer, {
+    id: "help-content",
+    content: `Events Captured:
+  • All keypress events
+  • All keyrelease events
+  • Paste events
+  • Raw input sequences
+
+Actions:
+  Shift+C : Refresh terminal capabilities
+  ?       : Toggle this help screen
+  ESC     : Return to main menu
+
+The debug tool displays all keyboard and
+input events in real-time as JSON.`,
+    fg: "#E6EDF3",
+  })
+
+  helpModal.add(helpContent)
+  renderer.root.add(helpModal)
 
   syntaxStyle = SyntaxStyle.fromStyles({
     string: { fg: parseColor("#A5D6FF") },
@@ -107,7 +159,19 @@ export function run(renderer: CliRenderer): void {
     return false
   })
 
-  renderer.keyInput.on("keypress", (event) => {
+  renderer.keyInput.on("keypress", (event: KeyEvent) => {
+    // Handle help modal toggle
+    if (event.raw === "?" && helpModal) {
+      showingHelp = !showingHelp
+      helpModal.visible = showingHelp
+      return
+    }
+
+    // Don't log modal toggle key
+    if (showingHelp && event.raw === "?") {
+      return
+    }
+
     addEvent(renderer, "keypress", event)
 
     if (event.name === "c" && event.shift) {
@@ -134,8 +198,12 @@ export function destroy(renderer: CliRenderer): void {
     scrollBox = null
   }
 
+  helpModal?.destroy()
+  helpModal = null
+
   syntaxStyle = null
   eventCount = 0
+  showingHelp = false
 }
 
 if (import.meta.main) {
