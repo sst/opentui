@@ -25,6 +25,32 @@ let keypressHandler: ((event: KeyEvent) => void) | null = null
 let keyreleaseHandler: ((event: KeyEvent) => void) | null = null
 let pasteHandler: ((event: { text: string }) => void) | null = null
 
+// Storage for all captured data
+let allRawInputs: Array<{ timestamp: string; sequence: string }> = []
+let allKeyEvents: Array<{ timestamp: string; type: string; event: any }> = []
+
+function saveToFile() {
+  const timestamp = new Date().toISOString().replace(/[:.]/g, "-")
+  const filename = `keypress-debug-${timestamp}.json`
+
+  const data = {
+    exportedAt: new Date().toISOString(),
+    rawInputs: allRawInputs,
+    keyEvents: allKeyEvents,
+    summary: {
+      totalRawInputs: allRawInputs.length,
+      totalKeyEvents: allKeyEvents.length,
+    },
+  }
+
+  try {
+    Bun.write(filename, JSON.stringify(data, null, 2))
+    console.log(`Saved debug data to ${filename}`)
+  } catch (error) {
+    console.error(`Failed to save file: ${error}`)
+  }
+}
+
 function formatEventAsText(renderer: CliRenderer, eventType: string, event: any): TextRenderable {
   const eventText = new TextRenderable(renderer, {
     id: `event-text-${eventCount}`,
@@ -218,6 +244,7 @@ export function run(renderer: CliRenderer): void {
     content: `Actions:
   Shift+C : Refresh terminal capabilities
   Shift+J : Toggle JSON view (show full JSON)
+  Shift+S : Save all captured data to JSON file
   ?       : Toggle this help screen
   ESC     : Return to main menu
 
@@ -225,14 +252,16 @@ Events Captured:
   • All keypress events
   • All keyrelease events
   • Paste events
-  • Raw input sequences
+  • Raw input sequences (including unhandled)
 
 Env Vars:
   OTUI_KEYPRESS_DEBUG_SHOW_JSON=true
     Enable JSON view at startup
 
 The debug tool displays all keyboard and
-input events in real-time.`,
+input events in real-time. Use Shift+S to
+save all captured data to a timestamped
+JSON file in the current directory.`,
     fg: "#E6EDF3",
     flexGrow: 1,
     flexShrink: 1,
@@ -256,12 +285,26 @@ input events in real-time.`,
   addEvent(renderer, "capabilities", renderer.capabilities)
 
   inputHandler = (sequence: string) => {
+    // Store all raw input
+    allRawInputs.push({
+      timestamp: new Date().toISOString(),
+      sequence,
+    })
+
     addEvent(renderer, "raw-input", { sequence })
     return false
   }
-  renderer.addInputHandler(inputHandler)
+  // Prepend to capture everything, even what other handlers process
+  renderer.prependInputHandler(inputHandler)
 
   keypressHandler = (event: KeyEvent) => {
+    // Store all keypress events
+    allKeyEvents.push({
+      timestamp: new Date().toISOString(),
+      type: "keypress",
+      event: { ...event },
+    })
+
     // Handle help modal toggle
     if (event.raw === "?" && helpModal) {
       showingHelp = !showingHelp
@@ -292,6 +335,12 @@ input events in real-time.`,
       return
     }
 
+    // Handle save to file
+    if (event.name === "s" && event.shift) {
+      saveToFile()
+      return
+    }
+
     // Don't log modal toggle key
     if (showingHelp && event.raw === "?") {
       return
@@ -306,11 +355,25 @@ input events in real-time.`,
   renderer.keyInput.on("keypress", keypressHandler)
 
   keyreleaseHandler = (event: KeyEvent) => {
+    // Store all keyrelease events
+    allKeyEvents.push({
+      timestamp: new Date().toISOString(),
+      type: "keyrelease",
+      event: { ...event },
+    })
+
     addEvent(renderer, "keyrelease", event)
   }
   renderer.keyInput.on("keyrelease", keyreleaseHandler)
 
   pasteHandler = (event: { text: string }) => {
+    // Store all paste events
+    allKeyEvents.push({
+      timestamp: new Date().toISOString(),
+      type: "paste",
+      event: { ...event },
+    })
+
     addEvent(renderer, "paste", event)
   }
   renderer.keyInput.on("paste", pasteHandler)
@@ -355,6 +418,10 @@ export function destroy(renderer: CliRenderer): void {
   eventCount = 0
   showingHelp = false
   showJson = false
+
+  // Clear captured data
+  allRawInputs = []
+  allKeyEvents = []
 }
 
 if (import.meta.main) {
