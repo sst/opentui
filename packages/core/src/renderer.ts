@@ -559,6 +559,8 @@ export class CliRenderer extends EventEmitter implements RenderContext {
       return
     }
 
+    // NOTE: Using a frame callback that causes a re-render while already rendering
+    // leads to a continuous loop of renders.
     if (this.rendering) {
       this.immediateRerenderRequested = true
       return
