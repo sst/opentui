@@ -183,6 +183,7 @@ if (buildLib) {
   mkdirSync(distDir, { recursive: true })
 
   const externalDeps: string[] = [
+    ...Object.keys(packageJson.dependencies || {}),
     ...Object.keys(packageJson.optionalDependencies || {}),
     ...Object.keys(packageJson.peerDependencies || {}),
   ]
