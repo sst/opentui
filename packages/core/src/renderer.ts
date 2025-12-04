@@ -61,6 +61,13 @@ registerEnvVar({
   default: true,
 })
 
+registerEnvVar({
+  name: "OTUI_DEBUG",
+  description: "Enable debug mode to capture all raw input for debugging purposes.",
+  type: "boolean",
+  default: false,
+})
+
 export interface CliRendererConfig {
   stdin?: NodeJS.ReadStream
   stdout?: NodeJS.WriteStream
@@ -345,6 +352,9 @@ export class CliRenderer extends EventEmitter implements RenderContext {
   private prependedInputHandlers: ((sequence: string) => boolean)[] = []
 
   private idleResolvers: (() => void)[] = []
+
+  private _debugInputs: Array<{ timestamp: string; sequence: string }> = []
+  private _debugModeEnabled: boolean = env.OTUI_DEBUG
 
   private handleError: (error: Error) => void = ((error: Error) => {
     console.error(error)
@@ -690,6 +700,10 @@ export class CliRenderer extends EventEmitter implements RenderContext {
     return this._capabilities
   }
 
+  public getDebugInputs(): Array<{ timestamp: string; sequence: string }> {
+    return [...this._debugInputs]
+  }
+
   public get useKittyKeyboard(): boolean {
     return this.lib.getUseKittyKeyboard(this.rendererPtr)
   }
@@ -912,6 +926,14 @@ export class CliRenderer extends EventEmitter implements RenderContext {
     this.stdin.setEncoding("utf8")
     this.stdin.on("data", this.stdinListener)
     this._stdinBuffer.on("data", (sequence: string) => {
+      // Capture all input in debug mode
+      if (this._debugModeEnabled) {
+        this._debugInputs.push({
+          timestamp: new Date().toISOString(),
+          sequence,
+        })
+      }
+
       for (const handler of this.inputHandlers) {
         if (handler(sequence)) {
           return

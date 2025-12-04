@@ -195,6 +195,13 @@ export function run(renderer: CliRenderer): void {
   // Initialize showJson from env var
   showJson = env.OTUI_KEYPRESS_DEBUG_SHOW_JSON
 
+  // Get any debug inputs captured before this tool started (e.g., during setupTerminal)
+  const cachedDebugInputs = renderer.getDebugInputs()
+  if (cachedDebugInputs.length > 0) {
+    allRawInputs.push(...cachedDebugInputs)
+    console.log(`Loaded ${cachedDebugInputs.length} pre-captured debug inputs (including terminal setup)`)
+  }
+
   const mainContainer = new BoxRenderable(renderer, {
     id: "main-container",
     flexGrow: 1,
