@@ -76,7 +76,6 @@ let diagnosticsEnabled: boolean = false
 
 export async function run(rendererInstance: CliRenderer): Promise<void> {
   renderer = rendererInstance
-  renderer.start()
   renderer.setBackgroundColor("#0D1117")
 
   parentContainer = new BoxRenderable(renderer, {

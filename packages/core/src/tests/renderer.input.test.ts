@@ -1033,7 +1033,7 @@ test("Kitty keyboard function keys with event types via keyInput events", async 
   const f1Repeat = await triggerKittyInput("\x1b[57364;1:2u")
   expect(f1Repeat.name).toBe("f1")
   expect(f1Repeat.eventType).toBe("press")
-  expect(f1Repeat.repeated).toBe(true)
+  expect((f1Repeat as any).repeated).toBe(true)
   expect(f1Repeat.super ?? false).toBe(false)
   expect(f1Repeat.hyper ?? false).toBe(false)
   expect(f1Repeat.capsLock ?? false).toBe(false)
@@ -1064,7 +1064,7 @@ test("Kitty keyboard arrow keys with event types via keyInput events", async () 
   expect(upRepeatCtrl.name).toBe("up")
   expect(upRepeatCtrl.ctrl).toBe(true)
   expect(upRepeatCtrl.eventType).toBe("press")
-  expect(upRepeatCtrl.repeated).toBe(true)
+  expect((upRepeatCtrl as any).repeated).toBe(true)
   expect(upRepeatCtrl.super).toBe(false)
   expect(upRepeatCtrl.hyper).toBe(false)
   expect(upRepeatCtrl.capsLock).toBe(false)
@@ -1184,13 +1184,15 @@ test("ctrl modifier keys via keyInput events", async () => {
 })
 
 test("modifier bit calculations and meta/alt relationship via keyInput events", async () => {
-  // Meta modifier is bit 3 (value 8), so modifier value 9 = 8 + 1 (base)
-  const metaOnly = await triggerInput("\x1b[1;9A")
-  expect(metaOnly.name).toBe("up")
-  expect(metaOnly.meta).toBe(true)
-  expect(metaOnly.ctrl).toBe(false)
-  expect(metaOnly.shift).toBe(false)
-  expect(metaOnly.option).toBe(false)
+  // Super modifier is bit 8, so modifier value 9 = 8 + 1 (base)
+  const superOnly = await triggerInput("\x1b[1;9A")
+  expect(superOnly.name).toBe("up")
+  expect(superOnly.meta).toBe(false)
+  expect(superOnly.ctrl).toBe(false)
+  expect(superOnly.shift).toBe(false)
+  expect(superOnly.option).toBe(false)
+  expect((superOnly as any).super).toBe(true)
+  expect((superOnly as any).hyper).toBe(false)
 
   // Alt/Option modifier is bit 1 (value 2), so modifier value 3 = 2 + 1
   const altOnly = await triggerInput("\x1b[1;3A")
@@ -1217,13 +1219,15 @@ test("modifier bit calculations and meta/alt relationship via keyInput events", 
   expect(shiftOnly.option).toBe(false)
 
   // Combined modifiers
-  // Ctrl+Meta = 4 + 8 = 12, so modifier value 13 = 12 + 1
-  const ctrlMeta = await triggerInput("\x1b[1;13A")
-  expect(ctrlMeta.name).toBe("up")
-  expect(ctrlMeta.ctrl).toBe(true)
-  expect(ctrlMeta.meta).toBe(true)
-  expect(ctrlMeta.shift).toBe(false)
-  expect(ctrlMeta.option).toBe(false)
+  // Ctrl+Super = 4 + 8 = 12, so modifier value 13 = 12 + 1
+  const ctrlSuper = await triggerInput("\x1b[1;13A")
+  expect(ctrlSuper.name).toBe("up")
+  expect(ctrlSuper.ctrl).toBe(true)
+  expect(ctrlSuper.meta).toBe(false)
+  expect(ctrlSuper.shift).toBe(false)
+  expect(ctrlSuper.option).toBe(false)
+  expect((ctrlSuper as any).super).toBe(true)
+  expect((ctrlSuper as any).hyper).toBe(false)
 
   // Shift+Alt = 1 + 2 = 3, so modifier value 4 = 3 + 1
   const shiftAlt = await triggerInput("\x1b[1;4A")
@@ -1250,12 +1254,14 @@ test("modifier combinations with function keys via keyInput events", async () =>
   expect(ctrlF1.meta).toBe(false)
   expect(ctrlF1.eventType).toBe("press")
 
-  // Meta+F1
-  const metaF1 = await triggerInput("\x1b[11;9~")
-  expect(metaF1.name).toBe("f1")
-  expect(metaF1.meta).toBe(true)
-  expect(metaF1.ctrl).toBe(false)
-  expect(metaF1.eventType).toBe("press")
+  // Super+F1
+  const superF1 = await triggerInput("\x1b[11;9~")
+  expect(superF1.name).toBe("f1")
+  expect(superF1.meta).toBe(false)
+  expect(superF1.ctrl).toBe(false)
+  expect(superF1.super).toBe(true)
+  expect(superF1.hyper).toBe(false)
+  expect(superF1.eventType).toBe("press")
 
   // Shift+Ctrl+F1
   const shiftCtrlF1 = await triggerInput("\x1b[11;6~")

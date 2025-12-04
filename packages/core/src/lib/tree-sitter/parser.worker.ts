@@ -12,6 +12,7 @@ import type {
 } from "./types"
 import { DownloadUtils } from "./download-utils"
 import { isMainThread } from "worker_threads"
+import { isBunfsPath, normalizeBunfsPath } from "../bunfs"
 
 const self = globalThis
 
@@ -91,8 +92,8 @@ class ParserWorker {
           with: { type: "wasm" },
         })
 
-        if (/\$bunfs/.test(treeWasm)) {
-          treeWasm = "/$bunfs/root/" + path.parse(treeWasm).base
+        if (isBunfsPath(treeWasm)) {
+          treeWasm = normalizeBunfsPath(path.parse(treeWasm).base)
         }
 
         await Parser.init({

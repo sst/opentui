@@ -12,10 +12,10 @@ import type {
   SimpleHighlight,
 } from "./types"
 import { getParsers } from "./default-parsers"
-import { resolve, isAbsolute } from "path"
+import { resolve, isAbsolute, parse } from "path"
 import { existsSync } from "fs"
 import { registerEnvVar, env } from "../env"
-import { parse } from "path"
+import { isBunfsPath, normalizeBunfsPath } from "../bunfs"
 
 registerEnvVar({
   name: "OTUI_TREE_SITTER_WORKER_PATH",
@@ -182,8 +182,8 @@ export class TreeSitterClient extends EventEmitter<TreeSitterClientEvents> {
     if (isUrl(path)) {
       return path
     }
-    if (/\$bunfs/.test(path)) {
-      return "/$bunfs/root/" + parse(path).base
+    if (isBunfsPath(path)) {
+      return normalizeBunfsPath(parse(path).base)
     }
     if (!isAbsolute(path)) {
       return resolve(path)

@@ -63,19 +63,6 @@ describe("LineNumber in ScrollBox - Simple Core Test", () => {
     const frame = captureCharFrame()
     expect(frame).toMatchSnapshot()
 
-    console.log("=== Dimensions ===")
-    console.log("LineNumber:", { width: lineNumberRenderable.width, height: lineNumberRenderable.height })
-    console.log("Code:", {
-      width: codeRenderable.width,
-      height: codeRenderable.height,
-      lineCount: codeRenderable.lineCount,
-    })
-    console.log("Gutter:", {
-      width: lineNumberRenderable["gutter"]?.width,
-      height: lineNumberRenderable["gutter"]?.height,
-    })
-
-    // Code has 3 lines
     expect(codeRenderable.lineCount).toBe(3)
 
     // LineNumber should wrap to content height (3 lines), not fill viewport (40 lines)
@@ -145,15 +132,6 @@ describe("LineNumber in ScrollBox - Simple Core Test", () => {
     const frame = captureCharFrame()
     expect(frame).toMatchSnapshot()
 
-    console.log("=== Block 1 ===")
-    console.log("LineNum1:", { height: lineNum1.height })
-    console.log("Code1:", { height: code1.height, lineCount: code1.lineCount })
-
-    console.log("=== Block 2 ===")
-    console.log("LineNum2:", { height: lineNum2.height })
-    console.log("Code2:", { height: code2.height, lineCount: code2.lineCount })
-
-    // Both blocks should be 1 line tall
     expect(lineNum1.height).toBe(1)
     expect(code1.height).toBe(1)
     expect(lineNum2.height).toBe(1)

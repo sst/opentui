@@ -240,6 +240,7 @@ export abstract class Renderable extends BaseRenderable {
 
   private childrenPrimarySortDirty: boolean = true
   private childrenSortedByPrimaryAxis: Renderable[] = []
+  private _shouldUpdateBefore: Set<Renderable> = new Set()
 
   public onLifecyclePass: (() => void) | null = null
 
@@ -1101,6 +1102,7 @@ export abstract class Renderable extends BaseRenderable {
     this.yogaNode.insertChild(childLayoutNode, insertedIndex)
 
     this.childrenPrimarySortDirty = true
+    this._shouldUpdateBefore.add(renderable)
 
     this.requestRender()
 
@@ -1169,6 +1171,8 @@ export abstract class Renderable extends BaseRenderable {
 
     this._childrenInLayoutOrder.splice(insertedIndex, 0, renderable)
     this.yogaNode.insertChild(renderable.getLayoutNode(), insertedIndex)
+
+    this._shouldUpdateBefore.add(renderable)
 
     this.requestRender()
 
@@ -1245,6 +1249,17 @@ export abstract class Renderable extends BaseRenderable {
     // That would allow us to to generate optimised render commands,
     // including the layout updates, in one pass.
     this.updateFromLayout()
+
+    // Update newly added children before getting visible children
+    // This ensures their positions are current when culling happens
+    if (this._shouldUpdateBefore.size > 0) {
+      for (const child of this._shouldUpdateBefore) {
+        if (!child.isDestroyed) {
+          child.updateFromLayout()
+        }
+      }
+      this._shouldUpdateBefore.clear()
+    }
 
     // Check again after updateFromLayout, which calls onResize/onSizeChange
     if (this._isDestroyed) return

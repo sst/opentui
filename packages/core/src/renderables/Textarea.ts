@@ -221,6 +221,7 @@ export class TextareaRenderable extends EditBufferRenderable {
     const keyShift = typeof key === "string" ? false : key.shift
     const keyMeta = typeof key === "string" ? false : key.meta
     const keySuper = typeof key === "string" ? false : key.super
+    const keyHyper = typeof key === "string" ? false : key.hyper
 
     const bindingKey = getKeyBindingKey({
       name: keyName,
@@ -240,7 +241,8 @@ export class TextareaRenderable extends EditBufferRenderable {
       }
     }
 
-    if (keySequence && !keyCtrl && !keyMeta) {
+    // Only insert text if no modifier keys are pressed (except shift for uppercase)
+    if (keySequence && !keyCtrl && !keyMeta && !keySuper && !keyHyper) {
       const firstCharCode = keySequence.charCodeAt(0)
 
       if (firstCharCode < 32) {

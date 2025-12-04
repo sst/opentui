@@ -18,11 +18,12 @@ import {
   LineInfoStruct,
   MeasureResultStruct,
 } from "./zig-structs"
+import { isBunfsPath } from "./lib/bunfs"
 
 const module = await import(`@opentui/core-${process.platform}-${process.arch}/index.ts`)
 let targetLibPath = module.default
 
-if (/\$bunfs/.test(targetLibPath)) {
+if (isBunfsPath(targetLibPath)) {
   targetLibPath = targetLibPath.replace("../", "")
 }
 
