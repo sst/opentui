@@ -81,7 +81,6 @@ export class InputRenderable extends Renderable {
   private _keyBindingsMap: Map<string, InputAction>
   private _keyAliasMap: KeyAliasMap
   private _keyBindings: KeyBinding[]
-  private _actionHandlers: Map<InputAction, () => boolean>
 
   protected _defaultOptions = {
     backgroundColor: "transparent",
@@ -124,65 +123,6 @@ export class InputRenderable extends Renderable {
     this._keyBindings = options.keyBindings || []
     const mergedBindings = mergeKeyBindings(defaultInputKeybindings, this._keyBindings)
     this._keyBindingsMap = buildKeyBindingsMap(mergedBindings, this._keyAliasMap)
-    this._actionHandlers = this.buildActionHandlers()
-  }
-
-  private buildActionHandlers(): Map<InputAction, () => boolean> {
-    return new Map([
-      [
-        "move-left",
-        () => {
-          this.cursorPosition = this._cursorPosition - 1
-          return true
-        },
-      ],
-      [
-        "move-right",
-        () => {
-          this.cursorPosition = this._cursorPosition + 1
-          return true
-        },
-      ],
-      [
-        "move-home",
-        () => {
-          this.cursorPosition = 0
-          return true
-        },
-      ],
-      [
-        "move-end",
-        () => {
-          this.cursorPosition = this._value.length
-          return true
-        },
-      ],
-      [
-        "delete-backward",
-        () => {
-          this.deleteCharacter("backward")
-          return true
-        },
-      ],
-      [
-        "delete-forward",
-        () => {
-          this.deleteCharacter("forward")
-          return true
-        },
-      ],
-      [
-        "submit",
-        () => {
-          if (this._value !== this._lastCommittedValue) {
-            this._lastCommittedValue = this._value
-            this.emit(InputRenderableEvents.CHANGE, this._value)
-          }
-          this.emit(InputRenderableEvents.ENTER, this._value)
-          return true
-        },
-      ],
-    ])
   }
 
   private updateCursorPosition(): void {
@@ -358,9 +298,32 @@ export class InputRenderable extends Renderable {
     const action = this._keyBindingsMap.get(bindingKey)
 
     if (action) {
-      const handler = this._actionHandlers.get(action)
-      if (handler) {
-        return handler()
+      switch (action) {
+        case "move-left":
+          this.cursorPosition = this._cursorPosition - 1
+          return true
+        case "move-right":
+          this.cursorPosition = this._cursorPosition + 1
+          return true
+        case "move-home":
+          this.cursorPosition = 0
+          return true
+        case "move-end":
+          this.cursorPosition = this._value.length
+          return true
+        case "delete-backward":
+          this.deleteCharacter("backward")
+          return true
+        case "delete-forward":
+          this.deleteCharacter("forward")
+          return true
+        case "submit":
+          if (this._value !== this._lastCommittedValue) {
+            this._lastCommittedValue = this._value
+            this.emit(InputRenderableEvents.CHANGE, this._value)
+          }
+          this.emit(InputRenderableEvents.ENTER, this._value)
+          return true
       }
     }
 
