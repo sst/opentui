@@ -1971,4 +1971,53 @@ describe("Textarea - Keybinding Tests", () => {
       expect(editor.logicalCursor.col).toBe(0)
     })
   })
+
+  describe("Line Home/End Wrap Behavior", () => {
+    it("should wrap to end of previous line when at start of line", async () => {
+      const { textarea: editor } = await createTextareaRenderable(currentRenderer, renderOnce, {
+        initialValue: "Line 1\nLine 2",
+        width: 40,
+        height: 10,
+      })
+
+      editor.focus()
+      editor.gotoLine(1) // Start of Line 2
+      expect(editor.logicalCursor).toMatchObject({ row: 1, col: 0 })
+
+      editor.gotoLineHome()
+      expect(editor.logicalCursor).toMatchObject({ row: 0, col: 6 }) // End of Line 1
+    })
+
+    it("should wrap to start of next line when at end of line", async () => {
+      const { textarea: editor } = await createTextareaRenderable(currentRenderer, renderOnce, {
+        initialValue: "Line 1\nLine 2",
+        width: 40,
+        height: 10,
+      })
+
+      editor.focus()
+      editor.gotoLineEnd() // End of Line 1
+      expect(editor.logicalCursor).toMatchObject({ row: 0, col: 6 })
+
+      editor.gotoLineEnd()
+      expect(editor.logicalCursor).toMatchObject({ row: 1, col: 0 }) // Start of Line 2
+    })
+
+    it("should stay at buffer boundaries", async () => {
+      const { textarea: editor } = await createTextareaRenderable(currentRenderer, renderOnce, {
+        initialValue: "Line 1\nLine 2",
+        width: 40,
+        height: 10,
+      })
+
+      editor.focus()
+      editor.gotoLineHome() // Already at start of buffer
+      expect(editor.logicalCursor).toMatchObject({ row: 0, col: 0 })
+
+      editor.gotoLine(1)
+      editor.gotoLineEnd() // End of last line
+      editor.gotoLineEnd() // Should stay
+      expect(editor.logicalCursor).toMatchObject({ row: 1, col: 6 })
+    })
+  })
 })
