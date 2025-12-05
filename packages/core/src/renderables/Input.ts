@@ -22,9 +22,9 @@ export type InputAction =
   | "delete-forward"
   | "submit"
 
-export type KeyBinding = BaseKeyBinding<InputAction>
+export type InputKeyBinding = BaseKeyBinding<InputAction>
 
-const defaultInputKeybindings: KeyBinding[] = [
+const defaultInputKeybindings: InputKeyBinding[] = [
   { name: "left", action: "move-left" },
   { name: "right", action: "move-right" },
   { name: "home", action: "move-home" },
@@ -52,7 +52,7 @@ export interface InputRenderableOptions extends RenderableOptions<InputRenderabl
   cursorStyle?: CursorStyleOptions
   maxLength?: number
   value?: string
-  keyBindings?: KeyBinding[]
+  keyBindings?: InputKeyBinding[]
   keyAliasMap?: KeyAliasMap
 }
 
@@ -80,7 +80,7 @@ export class InputRenderable extends Renderable {
   private _lastCommittedValue: string = ""
   private _keyBindingsMap: Map<string, InputAction>
   private _keyAliasMap: KeyAliasMap
-  private _keyBindings: KeyBinding[]
+  private _keyBindings: InputKeyBinding[]
 
   protected _defaultOptions = {
     backgroundColor: "transparent",
@@ -433,7 +433,7 @@ export class InputRenderable extends Renderable {
     }
   }
 
-  public set keyBindings(bindings: KeyBinding[]) {
+  public set keyBindings(bindings: InputKeyBinding[]) {
     this._keyBindings = bindings
     const mergedBindings = mergeKeyBindings(defaultInputKeybindings, bindings)
     this._keyBindingsMap = buildKeyBindingsMap(mergedBindings, this._keyAliasMap)

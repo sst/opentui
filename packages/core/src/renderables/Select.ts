@@ -22,9 +22,9 @@ export interface SelectOption {
 
 export type SelectAction = "move-up" | "move-down" | "move-up-fast" | "move-down-fast" | "select-current"
 
-export type KeyBinding = BaseKeyBinding<SelectAction>
+export type SelectKeyBinding = BaseKeyBinding<SelectAction>
 
-const defaultSelectKeybindings: KeyBinding[] = [
+const defaultSelectKeybindings: SelectKeyBinding[] = [
   { name: "up", action: "move-up" },
   { name: "k", action: "move-up" },
   { name: "down", action: "move-down" },
@@ -52,7 +52,7 @@ export interface SelectRenderableOptions extends RenderableOptions<SelectRendera
   font?: keyof typeof fonts
   itemSpacing?: number
   fastScrollStep?: number
-  keyBindings?: KeyBinding[]
+  keyBindings?: SelectKeyBinding[]
   keyAliasMap?: KeyAliasMap
 }
 
@@ -87,7 +87,7 @@ export class SelectRenderable extends Renderable {
   private _fastScrollStep: number
   private _keyBindingsMap: Map<string, SelectAction>
   private _keyAliasMap: KeyAliasMap
-  private _keyBindings: KeyBinding[]
+  private _keyBindings: SelectKeyBinding[]
 
   protected _defaultOptions = {
     backgroundColor: "transparent",
@@ -505,7 +505,7 @@ export class SelectRenderable extends Renderable {
     this._fastScrollStep = step
   }
 
-  public set keyBindings(bindings: KeyBinding[]) {
+  public set keyBindings(bindings: SelectKeyBinding[]) {
     this._keyBindings = bindings
     const mergedBindings = mergeKeyBindings(defaultSelectKeybindings, bindings)
     this._keyBindingsMap = buildKeyBindingsMap(mergedBindings, this._keyAliasMap)

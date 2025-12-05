@@ -21,9 +21,9 @@ export interface TabSelectOption {
 
 export type TabSelectAction = "move-left" | "move-right" | "select-current"
 
-export type KeyBinding = BaseKeyBinding<TabSelectAction>
+export type TabSelectKeyBinding = BaseKeyBinding<TabSelectAction>
 
-const defaultTabSelectKeybindings: KeyBinding[] = [
+const defaultTabSelectKeybindings: TabSelectKeyBinding[] = [
   { name: "left", action: "move-left" },
   { name: "[", action: "move-left" },
   { name: "right", action: "move-right" },
@@ -47,7 +47,7 @@ export interface TabSelectRenderableOptions extends Omit<RenderableOptions<TabSe
   showDescription?: boolean
   showUnderline?: boolean
   wrapSelection?: boolean
-  keyBindings?: KeyBinding[]
+  keyBindings?: TabSelectKeyBinding[]
   keyAliasMap?: KeyAliasMap
 }
 
@@ -92,7 +92,7 @@ export class TabSelectRenderable extends Renderable {
   private _wrapSelection: boolean
   private _keyBindingsMap: Map<string, TabSelectAction>
   private _keyAliasMap: KeyAliasMap
-  private _keyBindings: KeyBinding[]
+  private _keyBindings: TabSelectKeyBinding[]
 
   constructor(ctx: RenderContext, options: TabSelectRenderableOptions) {
     const calculatedHeight = calculateDynamicHeight(options.showUnderline ?? true, options.showDescription ?? true)
@@ -447,7 +447,7 @@ export class TabSelectRenderable extends Renderable {
     this.requestRender()
   }
 
-  public set keyBindings(bindings: KeyBinding[]) {
+  public set keyBindings(bindings: TabSelectKeyBinding[]) {
     this._keyBindings = bindings
     const mergedBindings = mergeKeyBindings(defaultTabSelectKeybindings, bindings)
     this._keyBindingsMap = buildKeyBindingsMap(mergedBindings, this._keyAliasMap)
