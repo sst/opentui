@@ -47,7 +47,7 @@
     "react": ">=19.0.0"
   },
   "dependencies": {
-    "@opentui/core": "workspace:*",
+    "@opentui/core": "file:../core",
     "react-reconciler": "^0.32.0"
   }
 }

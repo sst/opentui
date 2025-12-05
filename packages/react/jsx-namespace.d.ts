@@ -6,6 +6,7 @@ import type {
   DiffProps,
   ExtendedIntrinsicElements,
   InputProps,
+  ImageProps,
   LineBreakProps,
   LineNumberProps,
   OpenTUIComponents,
@@ -42,6 +43,7 @@ export namespace JSX {
     diff: DiffProps
     input: InputProps
     textarea: TextareaProps
+    image: ImageProps
     select: SelectProps
     scrollbox: ScrollBoxProps
     "ascii-font": AsciiFontProps

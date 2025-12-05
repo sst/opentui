@@ -28,6 +28,8 @@ import type {
   TextNodeRenderable,
   TextOptions,
   TextRenderable,
+  ImageOptions,
+  ImageRenderable,
 } from "@opentui/core"
 import type React from "react"
 
@@ -151,6 +153,8 @@ export type ScrollBoxProps = ComponentProps<ContainerProps<ScrollBoxOptions>, Sc
 }
 
 export type AsciiFontProps = ComponentProps<ASCIIFontOptions, ASCIIFontRenderable>
+
+export type ImageProps = ComponentProps<ImageOptions, ImageRenderable>
 
 export type TabSelectProps = ComponentProps<TabSelectRenderableOptions, TabSelectRenderable> & {
   focused?: boolean
