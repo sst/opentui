@@ -71,7 +71,6 @@ interface LogicalLine {
   color?: string | RGBA
   sign?: LineSign
   type: "context" | "add" | "remove" | "empty"
-  /** Inline highlights for word-level diff */
   inlineHighlights?: InlineHighlight[]
 }
 
@@ -103,8 +102,6 @@ export interface DiffRenderableOptions extends RenderableOptions<DiffRenderable>
   removedSignColor?: string | RGBA
   addedLineNumberBg?: string | RGBA
   removedLineNumberBg?: string | RGBA
-
-  // Word-level highlighting options
   /**
    * Disable word-level highlighting within modified lines.
    * When false (default), individual words/characters that changed are highlighted.
@@ -159,8 +156,6 @@ export class DiffRenderable extends Renderable {
   private _removedSignColor: RGBA
   private _addedLineNumberBg: RGBA
   private _removedLineNumberBg: RGBA
-
-  // Word-level highlighting
   private _disableWordHighlights: boolean
   private _addedWordBg: RGBA
   private _removedWordBg: RGBA
@@ -222,11 +217,8 @@ export class DiffRenderable extends Renderable {
     this._removedSignColor = parseColor(options.removedSignColor ?? "#ef4444")
     this._addedLineNumberBg = parseColor(options.addedLineNumberBg ?? "transparent")
     this._removedLineNumberBg = parseColor(options.removedLineNumberBg ?? "transparent")
-
-    // Word-level highlighting
     this._disableWordHighlights = options.disableWordHighlights ?? false
     this._lineSimilarityThreshold = options.lineSimilarityThreshold ?? 0.4
-    // Default word highlight colors: brighter versions of the line colors
     this._addedWordBg = options.addedWordBg ? parseColor(options.addedWordBg) : this.brightenColor(this._addedBg, 1.5)
     this._removedWordBg = options.removedWordBg
       ? parseColor(options.removedWordBg)
@@ -246,6 +238,10 @@ export class DiffRenderable extends Renderable {
       Math.min(1, color.b * factor),
       color.a,
     )
+  }
+
+  private toLineHighlights(highlights: InlineHighlight[], bg: RGBA): LineInlineHighlight[] {
+    return highlights.map((h) => ({ startCol: h.startCol, endCol: h.endCol, bg }))
   }
 
   // Skip word highlights for blocks larger than this
@@ -685,77 +681,30 @@ export class DiffRenderable extends Renderable {
             i++
           }
 
-          // Process the block with word-level highlighting
           const processedBlock = this.processChangeBlockWithHighlights(removes, adds)
 
-          // In unified view, output removes first, then adds
-          // Collect lines from the processed block, preserving their highlights
-          for (const leftLine of processedBlock.leftLines) {
-            if (leftLine.type !== "empty") {
-              contentLines.push(leftLine.content)
-              const config: LineColorConfig = {
-                gutter: this._removedLineNumberBg,
-              }
-              if (this._removedContentBg) {
-                config.content = this._removedContentBg
-              } else {
-                config.content = this._removedBg
-              }
-              lineColors.set(lineIndex, config)
-              lineSigns.set(lineIndex, {
-                after: " -",
-                afterColor: this._removedSignColor,
-              })
-              if (leftLine.lineNum !== undefined) {
-                lineNumbers.set(lineIndex, leftLine.lineNum)
-              }
-              // Add word highlights for this line
-              if (leftLine.inlineHighlights && leftLine.inlineHighlights.length > 0) {
-                inlineHighlights.set(
-                  lineIndex,
-                  leftLine.inlineHighlights.map((h) => ({
-                    startCol: h.startCol,
-                    endCol: h.endCol,
-                    bg: this._removedWordBg,
-                  })),
-                )
-              }
-              lineIndex++
+          for (const line of processedBlock.leftLines) {
+            if (line.type === "empty") continue
+            contentLines.push(line.content)
+            lineColors.set(lineIndex, { gutter: this._removedLineNumberBg, content: this._removedContentBg ?? this._removedBg })
+            lineSigns.set(lineIndex, { after: " -", afterColor: this._removedSignColor })
+            if (line.lineNum !== undefined) lineNumbers.set(lineIndex, line.lineNum)
+            if (line.inlineHighlights?.length) {
+              inlineHighlights.set(lineIndex, this.toLineHighlights(line.inlineHighlights, this._removedWordBg))
             }
+            lineIndex++
           }
 
-          for (const rightLine of processedBlock.rightLines) {
-            if (rightLine.type !== "empty") {
-              contentLines.push(rightLine.content)
-              const config: LineColorConfig = {
-                gutter: this._addedLineNumberBg,
-              }
-              if (this._addedContentBg) {
-                config.content = this._addedContentBg
-              } else {
-                config.content = this._addedBg
-              }
-              lineColors.set(lineIndex, config)
-              lineSigns.set(lineIndex, {
-                after: " +",
-                afterColor: this._addedSignColor,
-              })
-              if (rightLine.lineNum !== undefined) {
-                lineNumbers.set(lineIndex, rightLine.lineNum)
-              }
-              // Add word highlights for this line
-              if (rightLine.inlineHighlights && rightLine.inlineHighlights.length > 0) {
-                inlineHighlights.set(
-                  lineIndex,
-                  rightLine.inlineHighlights.map((h) => ({
-                    startCol: h.startCol,
-                    endCol: h.endCol,
-                    bg: this._addedWordBg,
-                  })),
-                )
-              }
-              lineIndex++
+          for (const line of processedBlock.rightLines) {
+            if (line.type === "empty") continue
+            contentLines.push(line.content)
+            lineColors.set(lineIndex, { gutter: this._addedLineNumberBg, content: this._addedContentBg ?? this._addedBg })
+            lineSigns.set(lineIndex, { after: " +", afterColor: this._addedSignColor })
+            if (line.lineNum !== undefined) lineNumbers.set(lineIndex, line.lineNum)
+            if (line.inlineHighlights?.length) {
+              inlineHighlights.set(lineIndex, this.toLineHighlights(line.inlineHighlights, this._addedWordBg))
             }
+            lineIndex++
           }
         }
       }
@@ -990,90 +939,30 @@ export class DiffRenderable extends Renderable {
     const rightInlineHighlights = new Map<number, LineInlineHighlight[]>()
 
     finalLeftLines.forEach((line, index) => {
-      if (line.lineNum !== undefined) {
-        leftLineNumbers.set(index, line.lineNum)
-      }
-      if (line.hideLineNumber) {
-        leftHideLineNumbers.add(index)
-      }
+      if (line.lineNum !== undefined) leftLineNumbers.set(index, line.lineNum)
+      if (line.hideLineNumber) leftHideLineNumbers.add(index)
       if (line.type === "remove") {
-        const config: LineColorConfig = {
-          gutter: this._removedLineNumberBg,
-        }
-        if (this._removedContentBg) {
-          config.content = this._removedContentBg
-        } else {
-          config.content = this._removedBg
-        }
-        leftLineColors.set(index, config)
+        leftLineColors.set(index, { gutter: this._removedLineNumberBg, content: this._removedContentBg ?? this._removedBg })
       } else if (line.type === "context") {
-        const config: LineColorConfig = {
-          gutter: this._lineNumberBg,
-        }
-        if (this._contextContentBg) {
-          config.content = this._contextContentBg
-        } else {
-          config.content = this._contextBg
-        }
-        leftLineColors.set(index, config)
+        leftLineColors.set(index, { gutter: this._lineNumberBg, content: this._contextContentBg ?? this._contextBg })
       }
-      if (line.sign) {
-        leftLineSigns.set(index, line.sign)
-      }
-      // Add inline highlights for word-level diff
-      if (line.inlineHighlights && line.inlineHighlights.length > 0) {
-        leftInlineHighlights.set(
-          index,
-          line.inlineHighlights.map((h) => ({
-            startCol: h.startCol,
-            endCol: h.endCol,
-            bg: this._removedWordBg,
-          })),
-        )
+      if (line.sign) leftLineSigns.set(index, line.sign)
+      if (line.inlineHighlights?.length) {
+        leftInlineHighlights.set(index, this.toLineHighlights(line.inlineHighlights, this._removedWordBg))
       }
     })
 
     finalRightLines.forEach((line, index) => {
-      if (line.lineNum !== undefined) {
-        rightLineNumbers.set(index, line.lineNum)
-      }
-      if (line.hideLineNumber) {
-        rightHideLineNumbers.add(index)
-      }
+      if (line.lineNum !== undefined) rightLineNumbers.set(index, line.lineNum)
+      if (line.hideLineNumber) rightHideLineNumbers.add(index)
       if (line.type === "add") {
-        const config: LineColorConfig = {
-          gutter: this._addedLineNumberBg,
-        }
-        if (this._addedContentBg) {
-          config.content = this._addedContentBg
-        } else {
-          config.content = this._addedBg
-        }
-        rightLineColors.set(index, config)
+        rightLineColors.set(index, { gutter: this._addedLineNumberBg, content: this._addedContentBg ?? this._addedBg })
       } else if (line.type === "context") {
-        const config: LineColorConfig = {
-          gutter: this._lineNumberBg,
-        }
-        if (this._contextContentBg) {
-          config.content = this._contextContentBg
-        } else {
-          config.content = this._contextBg
-        }
-        rightLineColors.set(index, config)
+        rightLineColors.set(index, { gutter: this._lineNumberBg, content: this._contextContentBg ?? this._contextBg })
       }
-      if (line.sign) {
-        rightLineSigns.set(index, line.sign)
-      }
-      // Add inline highlights for word-level diff
-      if (line.inlineHighlights && line.inlineHighlights.length > 0) {
-        rightInlineHighlights.set(
-          index,
-          line.inlineHighlights.map((h) => ({
-            startCol: h.startCol,
-            endCol: h.endCol,
-            bg: this._addedWordBg,
-          })),
-        )
+      if (line.sign) rightLineSigns.set(index, line.sign)
+      if (line.inlineHighlights?.length) {
+        rightInlineHighlights.set(index, this.toLineHighlights(line.inlineHighlights, this._addedWordBg))
       }
     })
 
@@ -1367,8 +1256,6 @@ export class DiffRenderable extends Renderable {
       }
     }
   }
-
-  // Word-level highlighting getters and setters
 
   public get disableWordHighlights(): boolean {
     return this._disableWordHighlights
