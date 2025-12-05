@@ -268,12 +268,24 @@ pub const OptimizedBuffer = struct {
     }
 
     pub fn pushScissorRect(self: *OptimizedBuffer, x: i32, y: i32, width: u32, height: u32) !void {
-        const rect = ClipRect{
+        var rect = ClipRect{
             .x = x,
             .y = y,
             .width = width,
             .height = height,
         };
+
+        // Intersect with current scissor (if any) so nested scissor rects always clip to parents.
+        if (self.getCurrentScissorRect() != null) {
+            const intersect = self.clipRectToScissor(rect.x, rect.y, rect.width, rect.height);
+            if (intersect) |clipped| {
+                rect = clipped;
+            } else {
+                // Completely outside current scissor; push a degenerate rect so nothing renders.
+                rect = ClipRect{ .x = 0, .y = 0, .width = 0, .height = 0 };
+            }
+        }
+
         try self.scissor_stack.append(rect);
     }
 
