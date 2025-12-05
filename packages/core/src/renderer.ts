@@ -72,6 +72,7 @@ export interface CliRendererConfig {
   stdin?: NodeJS.ReadStream
   stdout?: NodeJS.WriteStream
   exitOnCtrlC?: boolean
+  exitSignals?: NodeJS.Signals[]
   debounceDelay?: number
   targetFps?: number
   maxFps?: number
@@ -152,14 +153,6 @@ export enum MouseButton {
   WHEEL_DOWN = 5,
 }
 
-singleton("ProcessExitSignals", () => {
-  ;["SIGINT", "SIGTERM", "SIGQUIT", "SIGABRT"].forEach((signal) => {
-    process.on(signal, () => {
-      process.exit()
-    })
-  })
-})
-
 const rendererTracker = singleton("RendererTracker", () => {
   const renderers = new Set<CliRenderer>()
   return {
@@ -237,6 +230,8 @@ export class CliRenderer extends EventEmitter implements RenderContext {
   public stdin: NodeJS.ReadStream
   private stdout: NodeJS.WriteStream
   private exitOnCtrlC: boolean
+  private exitSignals: NodeJS.Signals[]
+  private _exitListenersAdded: boolean = false
   private _isDestroyed: boolean = false
   public nextRenderBuffer: OptimizedBuffer
   public currentRenderBuffer: OptimizedBuffer
@@ -435,6 +430,7 @@ export class CliRenderer extends EventEmitter implements RenderContext {
 
     this.rendererPtr = rendererPtr
     this.exitOnCtrlC = config.exitOnCtrlC === undefined ? true : config.exitOnCtrlC
+    this.exitSignals = config.exitSignals || ["SIGINT", "SIGTERM", "SIGQUIT", "SIGABRT"]
     this.resizeDebounceDelay = config.debounceDelay || 100
     this.targetFps = config.targetFps || 30
     this.maxFps = config.maxFps || 60
@@ -468,7 +464,7 @@ export class CliRenderer extends EventEmitter implements RenderContext {
 
     process.on("uncaughtException", this.handleError)
     process.on("unhandledRejection", this.handleError)
-    process.on("exit", this.exitHandler)
+    process.on("beforeExit", this.exitHandler)
 
     this._keyHandler = new InternalKeyHandler(config.useKittyKeyboard ?? true)
     this._keyHandler.on("keypress", (event) => {
@@ -479,6 +475,8 @@ export class CliRenderer extends EventEmitter implements RenderContext {
         return
       }
     })
+
+    this.addExitListeners()
 
     this._stdinBuffer = new StdinBuffer({ timeout: 5 })
 
@@ -513,6 +511,26 @@ export class CliRenderer extends EventEmitter implements RenderContext {
     }
 
     this.setupInput()
+  }
+
+  private addExitListeners(): void {
+    if (this._exitListenersAdded || this.exitSignals.length === 0) return
+
+    this.exitSignals.forEach((signal) => {
+      process.addListener(signal, this.exitHandler)
+    })
+
+    this._exitListenersAdded = true
+  }
+
+  private removeExitListeners(): void {
+    if (!this._exitListenersAdded || this.exitSignals.length === 0) return
+
+    this.exitSignals.forEach((signal) => {
+      process.removeListener(signal, this.exitHandler)
+    })
+
+    this._exitListenersAdded = false
   }
 
   public get isDestroyed(): boolean {
@@ -1361,6 +1379,7 @@ export class CliRenderer extends EventEmitter implements RenderContext {
     this._suspendedMouseEnabled = this._useMouse
 
     this.disableMouse()
+    this.removeExitListeners()
     this._stdinBuffer.clear()
     this.stdin.removeListener("data", this.stdinListener)
     this.lib.suspendRenderer(this.rendererPtr)
@@ -1378,6 +1397,7 @@ export class CliRenderer extends EventEmitter implements RenderContext {
     }
 
     this.stdin.resume()
+    this.addExitListeners()
 
     setImmediate(() => {
       // Consume any existing stdin data to avoid processing stale input
