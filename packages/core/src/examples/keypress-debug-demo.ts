@@ -29,7 +29,7 @@ let pasteHandler: ((event: { text: string }) => void) | null = null
 let allRawInputs: Array<{ timestamp: string; sequence: string }> = []
 let allKeyEvents: Array<{ timestamp: string; type: string; event: any }> = []
 
-function saveToFile() {
+function saveToFile(capabilities: CliRenderer["capabilities"]) {
   const timestamp = new Date().toISOString().replace(/[:.]/g, "-")
   const filename = `keypress-debug-${timestamp}.json`
 
@@ -41,6 +41,7 @@ function saveToFile() {
       totalRawInputs: allRawInputs.length,
       totalKeyEvents: allKeyEvents.length,
     },
+    capabilities,
   }
 
   try {
@@ -344,7 +345,7 @@ JSON file in the current directory.`,
 
     // Handle save to file
     if (event.name === "s" && event.shift) {
-      saveToFile()
+      saveToFile(renderer.capabilities)
       return
     }
 
