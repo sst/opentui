@@ -939,28 +939,72 @@ export class DiffRenderable extends Renderable {
     const rightInlineHighlights = new Map<number, LineInlineHighlight[]>()
 
     finalLeftLines.forEach((line, index) => {
-      if (line.lineNum !== undefined) leftLineNumbers.set(index, line.lineNum)
-      if (line.hideLineNumber) leftHideLineNumbers.add(index)
-      if (line.type === "remove") {
-        leftLineColors.set(index, { gutter: this._removedLineNumberBg, content: this._removedContentBg ?? this._removedBg })
-      } else if (line.type === "context") {
-        leftLineColors.set(index, { gutter: this._lineNumberBg, content: this._contextContentBg ?? this._contextBg })
+      if (line.lineNum !== undefined) {
+        leftLineNumbers.set(index, line.lineNum)
       }
-      if (line.sign) leftLineSigns.set(index, line.sign)
+      if (line.hideLineNumber) {
+        leftHideLineNumbers.add(index)
+      }
+      if (line.type === "remove") {
+        const config: LineColorConfig = {
+          gutter: this._removedLineNumberBg,
+        }
+        if (this._removedContentBg) {
+          config.content = this._removedContentBg
+        } else {
+          config.content = this._removedBg
+        }
+        leftLineColors.set(index, config)
+      } else if (line.type === "context") {
+        const config: LineColorConfig = {
+          gutter: this._lineNumberBg,
+        }
+        if (this._contextContentBg) {
+          config.content = this._contextContentBg
+        } else {
+          config.content = this._contextBg
+        }
+        leftLineColors.set(index, config)
+      }
+      if (line.sign) {
+        leftLineSigns.set(index, line.sign)
+      }
       if (line.inlineHighlights?.length) {
         leftInlineHighlights.set(index, this.toLineHighlights(line.inlineHighlights, this._removedWordBg))
       }
     })
 
     finalRightLines.forEach((line, index) => {
-      if (line.lineNum !== undefined) rightLineNumbers.set(index, line.lineNum)
-      if (line.hideLineNumber) rightHideLineNumbers.add(index)
-      if (line.type === "add") {
-        rightLineColors.set(index, { gutter: this._addedLineNumberBg, content: this._addedContentBg ?? this._addedBg })
-      } else if (line.type === "context") {
-        rightLineColors.set(index, { gutter: this._lineNumberBg, content: this._contextContentBg ?? this._contextBg })
+      if (line.lineNum !== undefined) {
+        rightLineNumbers.set(index, line.lineNum)
       }
-      if (line.sign) rightLineSigns.set(index, line.sign)
+      if (line.hideLineNumber) {
+        rightHideLineNumbers.add(index)
+      }
+      if (line.type === "add") {
+        const config: LineColorConfig = {
+          gutter: this._addedLineNumberBg,
+        }
+        if (this._addedContentBg) {
+          config.content = this._addedContentBg
+        } else {
+          config.content = this._addedBg
+        }
+        rightLineColors.set(index, config)
+      } else if (line.type === "context") {
+        const config: LineColorConfig = {
+          gutter: this._lineNumberBg,
+        }
+        if (this._contextContentBg) {
+          config.content = this._contextContentBg
+        } else {
+          config.content = this._contextBg
+        }
+        rightLineColors.set(index, config)
+      }
+      if (line.sign) {
+        rightLineSigns.set(index, line.sign)
+      }
       if (line.inlineHighlights?.length) {
         rightInlineHighlights.set(index, this.toLineHighlights(line.inlineHighlights, this._addedWordBg))
       }
