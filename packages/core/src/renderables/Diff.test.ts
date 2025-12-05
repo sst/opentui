@@ -2230,10 +2230,6 @@ test("DiffRenderable - properly cleans up listeners on destroy", async () => {
   }
 })
 
-// =============================================================================
-// Word-level highlight tests
-// =============================================================================
-
 describe("computeLineSimilarity", () => {
   test("returns 1.0 for identical strings", () => {
     expect(computeLineSimilarity("hello world", "hello world")).toBe(1.0)
@@ -2274,20 +2270,14 @@ describe("computeInlineHighlights", () => {
 
   test("highlights changed words", () => {
     const result = computeInlineHighlights("hello world", "hello there")
-
-    // "world" should be highlighted as removed
     expect(result.oldHighlights.length).toBeGreaterThan(0)
     expect(result.oldHighlights[0].type).toBe("removed-word")
-
-    // "there" should be highlighted as added
     expect(result.newHighlights.length).toBeGreaterThan(0)
     expect(result.newHighlights[0].type).toBe("added-word")
   })
 
   test("computes correct column positions", () => {
     const result = computeInlineHighlights("const x = 1", "const x = 2")
-
-    // The "1" is at position 10, "2" is at position 10
     expect(result.oldHighlights[0].startCol).toBe(10)
     expect(result.oldHighlights[0].endCol).toBe(11)
     expect(result.newHighlights[0].startCol).toBe(10)
@@ -2296,35 +2286,24 @@ describe("computeInlineHighlights", () => {
 
   test("handles multiple changes", () => {
     const result = computeInlineHighlights("a b c", "x b z")
-
-    // "a" and "c" should be removed, "x" and "z" should be added
     expect(result.oldHighlights.length).toBe(2)
     expect(result.newHighlights.length).toBe(2)
   })
 
   test("handles multi-width characters (CJK)", () => {
-    // CJK characters have display width of 2 each
     const result = computeInlineHighlights("hello 世界", "hello 你好")
-
-    // "世界" is removed (display width 4), "你好" is added (display width 4)
     expect(result.oldHighlights.length).toBe(1)
     expect(result.newHighlights.length).toBe(1)
-
-    // "hello " has display width 6, so CJK starts at column 6
     expect(result.oldHighlights[0].startCol).toBe(6)
-    expect(result.oldHighlights[0].endCol).toBe(10) // 6 + 4 (two CJK chars)
+    expect(result.oldHighlights[0].endCol).toBe(10)
     expect(result.newHighlights[0].startCol).toBe(6)
     expect(result.newHighlights[0].endCol).toBe(10)
   })
 
   test("handles emoji characters", () => {
-    // Emoji typically have display width of 2
     const result = computeInlineHighlights("test 👍", "test 👎")
-
     expect(result.oldHighlights.length).toBe(1)
     expect(result.newHighlights.length).toBe(1)
-
-    // "test " has display width 5
     expect(result.oldHighlights[0].startCol).toBe(5)
     expect(result.newHighlights[0].startCol).toBe(5)
   })
@@ -2363,8 +2342,6 @@ describe("DiffRenderable word highlights", () => {
     })
 
     expect(diffRenderable.disableWordHighlights).toBe(true)
-
-    // Can update it
     diffRenderable.disableWordHighlights = false
     expect(diffRenderable.disableWordHighlights).toBe(false)
   })
@@ -2401,12 +2378,8 @@ describe("DiffRenderable word highlights", () => {
     })
 
     expect(diffRenderable.lineSimilarityThreshold).toBe(0.8)
-
-    // Can update it
     diffRenderable.lineSimilarityThreshold = 0.5
     expect(diffRenderable.lineSimilarityThreshold).toBe(0.5)
-
-    // Values are clamped to 0-1
     diffRenderable.lineSimilarityThreshold = 1.5
     expect(diffRenderable.lineSimilarityThreshold).toBe(1.0)
 
@@ -2432,7 +2405,6 @@ describe("DiffRenderable word highlights", () => {
     await renderOnce()
 
     const frame = captureFrame()
-    // Content should still render correctly
     expect(frame).toContain("function hello")
     expect(frame).toContain("console.log")
   })
@@ -2455,7 +2427,6 @@ describe("DiffRenderable word highlights", () => {
     await renderOnce()
 
     const frame = captureFrame()
-    // Content should still render correctly
     expect(frame).toContain("function hello")
     expect(frame).toContain("console.log")
   })
@@ -2465,7 +2436,6 @@ describe("DiffRenderable word highlights", () => {
       default: { fg: RGBA.fromValues(1, 1, 1, 1) },
     })
 
-    // Create a diff with more than 50 lines changed
     const manyLines = Array.from({ length: 30 }, (_, i) => `-line${i}`).join("\n")
     const manyAdds = Array.from({ length: 30 }, (_, i) => `+newline${i}`).join("\n")
     const largeDiff = `--- a/test.js
@@ -2484,8 +2454,6 @@ ${manyAdds}`
     })
 
     currentRenderer.root.add(diffRenderable)
-
-    // Should not throw or hang - large blocks are skipped
     await renderOnce()
 
     const frame = captureFrame()

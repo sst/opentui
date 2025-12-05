@@ -48,8 +48,6 @@ export function computeInlineHighlights(
   let newCol = 0
 
   for (const change of changes) {
-    // Use Bun.stringWidth for display width instead of .length
-    // This handles multi-width characters (CJK, emoji) correctly
     const displayWidth = Bun.stringWidth(change.value)
     if (change.added) {
       newHighlights.push({ startCol: newCol, endCol: newCol + displayWidth, type: "added-word" })
@@ -241,10 +239,6 @@ export class DiffRenderable extends Renderable {
     }
   }
 
-  /**
-   * Brightens a color by a given factor.
-   * Used to create word highlight colors from line colors.
-   */
   private brightenColor(color: RGBA, factor: number): RGBA {
     return RGBA.fromValues(
       Math.min(1, color.r * factor),
@@ -254,20 +248,7 @@ export class DiffRenderable extends Renderable {
     )
   }
 
-  /**
-   * Processes a change block (consecutive removes and adds) with word-level highlighting.
-   *
-   * This method preserves the original positional pairing behavior for alignment
-   * (first remove with first add, etc.) while adding word-level highlights for
-   * lines that are similar enough to be considered modifications.
-   *
-   * The approach:
-   * 1. Use positional pairing for alignment (as the original code did)
-   * 2. Compute word highlights only when lines are similar enough
-   */
-  // Maximum lines in a change block before skipping word highlights.
-  // Large blocks likely indicate bulk changes where word-level diffs aren't useful,
-  // and computing them would cause unnecessary CPU usage.
+  // Skip word highlights for blocks larger than this
   private static readonly MAX_WORD_HIGHLIGHT_BLOCK_SIZE = 50
 
   private processChangeBlockWithHighlights(
@@ -277,10 +258,7 @@ export class DiffRenderable extends Renderable {
     const leftLines: LogicalLine[] = []
     const rightLines: LogicalLine[] = []
 
-    // Use positional pairing (original behavior) for alignment
     const maxLength = Math.max(removes.length, adds.length)
-
-    // Skip word highlights for large blocks to prevent CPU spikes
     const blockSize = removes.length + adds.length
     const shouldComputeWordHighlights =
       !this._disableWordHighlights && blockSize <= DiffRenderable.MAX_WORD_HIGHLIGHT_BLOCK_SIZE
@@ -292,10 +270,6 @@ export class DiffRenderable extends Renderable {
       let leftHighlights: InlineHighlight[] = []
       let rightHighlights: InlineHighlight[] = []
 
-      // Compute word highlights only when:
-      // 1. Word highlights are enabled and block is small enough
-      // 2. Both lines exist (positional pair)
-      // 3. Lines are similar enough (above threshold)
       if (shouldComputeWordHighlights && remove && add) {
         const similarity = computeLineSimilarity(remove.content, add.content)
         if (similarity >= this._lineSimilarityThreshold) {
@@ -305,7 +279,6 @@ export class DiffRenderable extends Renderable {
         }
       }
 
-      // Build left (old/remove) line
       if (remove) {
         leftLines.push({
           content: remove.content,
@@ -319,7 +292,6 @@ export class DiffRenderable extends Renderable {
           inlineHighlights: leftHighlights,
         })
       } else {
-        // Empty placeholder for alignment
         leftLines.push({
           content: "",
           hideLineNumber: true,
@@ -327,7 +299,6 @@ export class DiffRenderable extends Renderable {
         })
       }
 
-      // Build right (new/add) line
       if (add) {
         rightLines.push({
           content: add.content,
@@ -341,7 +312,6 @@ export class DiffRenderable extends Renderable {
           inlineHighlights: rightHighlights,
         })
       } else {
-        // Empty placeholder for alignment
         rightLines.push({
           content: "",
           hideLineNumber: true,
