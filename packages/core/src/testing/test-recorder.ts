@@ -16,7 +16,7 @@ export class TestRecorder {
   private recording: boolean = false
   private frameNumber: number = 0
   private startTime: number = 0
-  private originalRenderNative?: () => void
+  private originalRenderNative?: () => Promise<void>
   private decoder = new TextDecoder()
 
   constructor(renderer: TestRenderer) {
@@ -40,9 +40,9 @@ export class TestRecorder {
     this.originalRenderNative = this.renderer["renderNative"].bind(this.renderer)
 
     // Override renderNative to capture frames after each render
-    this.renderer["renderNative"] = () => {
+    this.renderer["renderNative"] = async () => {
       // Call the original renderNative
-      this.originalRenderNative!()
+      await this.originalRenderNative!()
 
       // Capture the frame after rendering
       this.captureFrame()
