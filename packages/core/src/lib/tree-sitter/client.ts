@@ -214,7 +214,7 @@ export class TreeSitterClient extends EventEmitter<TreeSitterClientEvents> {
   public async highlightOnce(
     content: string,
     filetype: string,
-  ): Promise<{ highlights?: SimpleHighlight[]; warning?: string; error?: string }> {
+  ): Promise<{ highlights?: SimpleHighlight[]; warning?: string; error?: string; transformedContent?: string }> {
     if (!this.initialized) {
       try {
         await this.initialize()
@@ -236,7 +236,8 @@ export class TreeSitterClient extends EventEmitter<TreeSitterClientEvents> {
   }
 
   private handleWorkerMessage(event: MessageEvent) {
-    const { type, bufferId, error, highlights, warning, messageId, hasParser, performance, version } = event.data
+    const { type, bufferId, error, highlights, warning, messageId, hasParser, performance, version, transformedContent } =
+      event.data
 
     if (type === "HIGHLIGHT_RESPONSE") {
       const buffer = this.buffers.get(bufferId)
@@ -304,7 +305,7 @@ export class TreeSitterClient extends EventEmitter<TreeSitterClientEvents> {
       const callback = this.messageCallbacks.get(messageId)
       if (callback) {
         this.messageCallbacks.delete(messageId)
-        callback({ highlights, warning, error })
+        callback({ highlights, warning, error, transformedContent })
       }
       return
     }

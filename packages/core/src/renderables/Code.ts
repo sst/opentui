@@ -224,19 +224,22 @@ export class CodeRenderable extends TextBufferRenderable {
 
       if (this.isDestroyed) return
 
+      // Use transformed content if available (e.g., for formatted markdown tables)
+      const displayContent = result.transformedContent ?? content
+
       if (result.highlights && result.highlights.length > 0) {
         if (this._streaming) {
           this._lastHighlights = result.highlights
         }
 
-        const chunks = treeSitterToTextChunks(content, result.highlights, this._syntaxStyle, {
+        const chunks = treeSitterToTextChunks(displayContent, result.highlights, this._syntaxStyle, {
           enabled: this._conceal,
         })
         const styledText = new StyledText(chunks)
         this.textBuffer.setStyledText(styledText)
       } else {
         // No highlights, use plain text
-        this.textBuffer.setText(content)
+        this.textBuffer.setText(displayContent)
       }
 
       this._shouldRenderTextBuffer = true
