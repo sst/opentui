@@ -1,5 +1,12 @@
 import { describe, expect, it } from "bun:test"
-import { mergeKeyBindings, getKeyBindingKey, buildKeyBindingsMap } from "./keymapping"
+import {
+  mergeKeyBindings,
+  getKeyBindingKey,
+  buildKeyBindingsMap,
+  mergeKeyAliases,
+  defaultKeyAliases,
+  type KeyAliasMap,
+} from "./keymapping"
 
 describe("keymapping", () => {
   describe("getKeyBindingKey", () => {
@@ -82,6 +89,96 @@ describe("keymapping", () => {
 
       const map = buildKeyBindingsMap(bindings)
       expect(map.get("a:0:0:1:0")).toBe("action1")
+    })
+
+    it("should handle aliases and normalize key names", () => {
+      const bindings = [{ name: "return", action: "submit" as const }]
+      const aliases: KeyAliasMap = { enter: "return" }
+
+      const map = buildKeyBindingsMap(bindings, aliases)
+
+      // Original binding should work
+      expect(map.get("return:0:0:0:0")).toBe("submit")
+      // Alias should not be added since "enter" wasn't in the binding
+      expect(map.get("enter:0:0:0:0")).toBeUndefined()
+    })
+
+    it("should create aliased mappings for aliased key names", () => {
+      const bindings = [{ name: "enter", action: "submit" as const }]
+      const aliases: KeyAliasMap = { enter: "return" }
+
+      const map = buildKeyBindingsMap(bindings, aliases)
+
+      // Original binding with "enter" name
+      expect(map.get("enter:0:0:0:0")).toBe("submit")
+      // Aliased version with normalized "return" name
+      expect(map.get("return:0:0:0:0")).toBe("submit")
+    })
+
+    it("should handle multiple aliases", () => {
+      const bindings = [
+        { name: "enter", action: "submit" as const },
+        { name: "esc", action: "cancel" as const },
+      ]
+      const aliases: KeyAliasMap = { enter: "return", esc: "escape" }
+
+      const map = buildKeyBindingsMap(bindings, aliases)
+
+      expect(map.get("enter:0:0:0:0")).toBe("submit")
+      expect(map.get("return:0:0:0:0")).toBe("submit")
+      expect(map.get("esc:0:0:0:0")).toBe("cancel")
+      expect(map.get("escape:0:0:0:0")).toBe("cancel")
+    })
+
+    it("should handle aliases with modifiers", () => {
+      const bindings = [{ name: "enter", meta: true, action: "special-submit" as const }]
+      const aliases: KeyAliasMap = { enter: "return" }
+
+      const map = buildKeyBindingsMap(bindings, aliases)
+
+      expect(map.get("enter:0:0:1:0")).toBe("special-submit")
+      expect(map.get("return:0:0:1:0")).toBe("special-submit")
+    })
+  })
+
+  describe("mergeKeyAliases", () => {
+    it("should merge default and custom aliases", () => {
+      const defaults: KeyAliasMap = { enter: "return" }
+      const custom: KeyAliasMap = { esc: "escape" }
+
+      const merged = mergeKeyAliases(defaults, custom)
+
+      expect(merged.enter).toBe("return")
+      expect(merged.esc).toBe("escape")
+    })
+
+    it("should allow custom aliases to override defaults", () => {
+      const defaults: KeyAliasMap = { enter: "return" }
+      const custom: KeyAliasMap = { enter: "custom-return" }
+
+      const merged = mergeKeyAliases(defaults, custom)
+
+      expect(merged.enter).toBe("custom-return")
+    })
+
+    it("should preserve defaults when no custom aliases provided", () => {
+      const defaults: KeyAliasMap = { enter: "return", esc: "escape" }
+      const custom: KeyAliasMap = {}
+
+      const merged = mergeKeyAliases(defaults, custom)
+
+      expect(merged.enter).toBe("return")
+      expect(merged.esc).toBe("escape")
+    })
+  })
+
+  describe("defaultKeyAliases", () => {
+    it("should have enter -> return alias", () => {
+      expect(defaultKeyAliases.enter).toBe("return")
+    })
+
+    it("should have esc -> escape alias", () => {
+      expect(defaultKeyAliases.esc).toBe("escape")
     })
   })
 })

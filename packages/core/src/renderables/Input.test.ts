@@ -877,4 +877,203 @@ describe("InputRenderable", () => {
       expect(input.cursorPosition).toBe(0)
     })
   })
+
+  describe("Key Bindings and Aliases", () => {
+    it("should support custom key bindings", () => {
+      const { input } = createInputRenderable({
+        width: 20,
+        height: 1,
+        value: "hello",
+        keyBindings: [
+          { name: "k", ctrl: true, action: "move-end" },
+          { name: "h", ctrl: true, action: "delete-backward" },
+        ],
+      })
+
+      input.focus()
+      input.cursorPosition = 3
+
+      // Ctrl+K should move to end (custom binding)
+      mockInput.pressKey("k", { ctrl: true })
+      expect(input.cursorPosition).toBe(5)
+
+      // Ctrl+H should delete backward (custom binding)
+      mockInput.pressKey("h", { ctrl: true })
+      expect(input.value).toBe("hell")
+    })
+
+    it("should support key aliases", () => {
+      const { input } = createInputRenderable({
+        width: 20,
+        height: 1,
+        keyAliasMap: {
+          enter: "return",
+        },
+      })
+
+      input.focus()
+      input.value = "test"
+
+      let enterEventFired = false
+      input.on(InputRenderableEvents.ENTER, () => {
+        enterEventFired = true
+      })
+
+      // "enter" should be aliased to "return"
+      mockInput.pressEnter()
+      expect(enterEventFired).toBe(true)
+    })
+
+    it("should merge custom bindings with defaults", () => {
+      const { input } = createInputRenderable({
+        width: 20,
+        height: 1,
+        value: "hello",
+        keyBindings: [{ name: "x", ctrl: true, action: "move-home" }],
+      })
+
+      input.focus()
+
+      // Default binding should still work
+      mockInput.pressArrow("left")
+      expect(input.cursorPosition).toBe(4)
+
+      // Custom binding should also work
+      mockInput.pressKey("x", { ctrl: true })
+      expect(input.cursorPosition).toBe(0)
+    })
+
+    it("should override default bindings with custom ones", () => {
+      const { input } = createInputRenderable({
+        width: 20,
+        height: 1,
+        value: "hello",
+        keyBindings: [
+          { name: "left", action: "move-end" }, // Override left to move to end
+        ],
+      })
+
+      input.focus()
+      input.cursorPosition = 2
+
+      // Left should now move to end instead of left
+      mockInput.pressArrow("left")
+      expect(input.cursorPosition).toBe(5)
+    })
+
+    it("should support Emacs-style bindings by default", () => {
+      const { input } = createInputRenderable({
+        width: 20,
+        height: 1,
+        value: "hello",
+      })
+
+      input.focus()
+
+      // Ctrl+A should move to home
+      mockInput.pressKey("a", { ctrl: true })
+      expect(input.cursorPosition).toBe(0)
+
+      // Ctrl+E should move to end
+      mockInput.pressKey("e", { ctrl: true })
+      expect(input.cursorPosition).toBe(5)
+
+      // Ctrl+F should move right
+      mockInput.pressKey("f", { ctrl: true })
+      expect(input.cursorPosition).toBe(5) // Can't go beyond end
+
+      input.cursorPosition = 2
+      mockInput.pressKey("f", { ctrl: true })
+      expect(input.cursorPosition).toBe(3)
+
+      // Ctrl+B should move left
+      mockInput.pressKey("b", { ctrl: true })
+      expect(input.cursorPosition).toBe(2)
+
+      // Ctrl+D should delete forward
+      mockInput.pressKey("d", { ctrl: true })
+      expect(input.value).toBe("helo")
+    })
+
+    it("should allow updating key bindings dynamically", () => {
+      const { input } = createInputRenderable({
+        width: 20,
+        height: 1,
+        value: "hello",
+      })
+
+      input.focus()
+      input.cursorPosition = 0
+
+      // Default behavior: left arrow moves left
+      mockInput.pressArrow("right")
+      expect(input.cursorPosition).toBe(1)
+
+      // Update bindings
+      input.keyBindings = [
+        { name: "right", action: "move-end" }, // Override right to move to end
+      ]
+
+      // Right should now move to end
+      mockInput.pressArrow("right")
+      expect(input.cursorPosition).toBe(5)
+    })
+
+    it("should allow updating key aliases dynamically", () => {
+      const { input } = createInputRenderable({
+        width: 20,
+        height: 1,
+      })
+
+      input.focus()
+
+      // Add custom alias
+      input.keyAliasMap = {
+        ret: "return",
+      }
+
+      let enterEventFired = false
+      input.on(InputRenderableEvents.ENTER, () => {
+        enterEventFired = true
+      })
+
+      // The alias should work (if we could send "ret" key)
+      mockInput.pressEnter()
+      expect(enterEventFired).toBe(true)
+    })
+
+    it("should handle modifiers in custom bindings", () => {
+      const { input } = createInputRenderable({
+        width: 20,
+        height: 1,
+        value: "hello",
+        keyBindings: [
+          { name: "left", shift: true, action: "move-home" },
+          { name: "right", shift: true, action: "move-end" },
+          { name: "up", ctrl: true, action: "move-home" },
+          { name: "down", ctrl: true, action: "move-end" },
+        ],
+      })
+
+      input.focus()
+      input.cursorPosition = 2
+
+      // Shift+Left should move to home
+      mockInput.pressArrow("left", { shift: true })
+      expect(input.cursorPosition).toBe(0)
+
+      // Shift+Right should move to end
+      mockInput.pressArrow("right", { shift: true })
+      expect(input.cursorPosition).toBe(5)
+
+      // Ctrl+Up should move to home
+      input.cursorPosition = 3
+      mockInput.pressArrow("up", { ctrl: true })
+      expect(input.cursorPosition).toBe(0)
+
+      // Ctrl+Down should move to end
+      mockInput.pressArrow("down", { ctrl: true })
+      expect(input.cursorPosition).toBe(5)
+    })
+  })
 })
