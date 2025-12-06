@@ -22,6 +22,7 @@ export interface DiffRenderableOptions extends RenderableOptions<DiffRenderable>
   view?: "unified" | "split"
 
   // CodeRenderable options
+  fg?: string | RGBA
   filetype?: string
   syntaxStyle?: SyntaxStyle
   wrapMode?: "word" | "char" | "none"
@@ -55,6 +56,7 @@ export class DiffRenderable extends Renderable {
   private _parseError: Error | null = null
 
   // CodeRenderable options
+  private _fg?: RGBA
   private _filetype?: string
   private _syntaxStyle?: SyntaxStyle
   private _wrapMode?: "word" | "char" | "none"
@@ -114,6 +116,7 @@ export class DiffRenderable extends Renderable {
     this._view = options.view ?? "unified"
 
     // CodeRenderable options
+    this._fg = options.fg ? parseColor(options.fg) : undefined
     this._filetype = options.filetype
     this._syntaxStyle = options.syntaxStyle
     this._wrapMode = options.wrapMode
@@ -323,6 +326,7 @@ export class DiffRenderable extends Renderable {
         syntaxStyle: this._syntaxStyle ?? SyntaxStyle.create(),
         width: "100%",
         height: "100%",
+        ...(this._fg !== undefined && { fg: this._fg }),
         ...(drawUnstyledText !== undefined && { drawUnstyledText }),
         ...(this._selectionBg !== undefined && { selectionBg: this._selectionBg }),
         ...(this._selectionFg !== undefined && { selectionFg: this._selectionFg }),
@@ -356,6 +360,9 @@ export class DiffRenderable extends Renderable {
       }
       if (this._selectionFg !== undefined) {
         existingRenderable.selectionFg = this._selectionFg
+      }
+      if (this._fg !== undefined) {
+        existingRenderable.fg = this._fg
       }
 
       return existingRenderable
@@ -1144,6 +1151,23 @@ export class DiffRenderable extends Renderable {
     if (this._conceal !== value) {
       this._conceal = value
       this.rebuildView()
+    }
+  }
+
+  public get fg(): RGBA | undefined {
+    return this._fg
+  }
+
+  public set fg(value: string | RGBA | undefined) {
+    const parsed = value ? parseColor(value) : undefined
+    if (this._fg !== parsed) {
+      this._fg = parsed
+      if (this.leftCodeRenderable) {
+        this.leftCodeRenderable.fg = parsed
+      }
+      if (this.rightCodeRenderable) {
+        this.rightCodeRenderable.fg = parsed
+      }
     }
   }
 }
