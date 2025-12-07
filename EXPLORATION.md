@@ -24,6 +24,8 @@ packages/
 
 ### Core Package Architecture
 
+**Note**: Counts as of 2025-12-07 exploration date.
+
 **Total TypeScript Files**: ~220  
 **Total Zig Native Files**: 58  
 **Example Demos**: 46  

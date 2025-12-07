@@ -51,7 +51,7 @@ These improve compatibility and developer experience:
    - **Estimated Effort**: Small per issue
 
 5. **Top-Level Await Removal (#355)**
-   - **Impact**: Blocks bytecode compilation (44ms vs 520ms startup)
+   - **Impact**: Blocks bytecode compilation (startup time: 44ms vs 520ms)
    - **Root Cause**: Async yoga-layout WASM init
    - **Recommendation**:
      - Replace yoga-layout with native FFI binding
@@ -374,25 +374,27 @@ Popular components users will need:
 
 ## Migration Path to 1.0
 
-### Phase 1: Stabilization (Q1 2026)
+**Note**: Timeline represents suggested phases from document creation date (2025-12-07). Actual dates may vary based on project priorities and resources.
+
+### Phase 1: Stabilization (Next 3-4 months)
 - Fix critical bugs (#255, #391, #388)
 - Stabilize API surface
 - Comprehensive test coverage
 - Production deployment guide
 
-### Phase 2: Enhancement (Q2 2026)
+### Phase 2: Enhancement (Months 4-6)
 - Terminal compatibility fixes
 - Performance optimizations
 - Remove top-level await
 - Image protocol support
 
-### Phase 3: Ecosystem (Q3 2026)
+### Phase 3: Ecosystem (Months 7-9)
 - Component library
 - Starter templates
 - Official website
 - Plugin system
 
-### Phase 4: Polish (Q4 2026)
+### Phase 4: Polish (Months 10-12)
 - API documentation
 - Migration guides
 - Security audit

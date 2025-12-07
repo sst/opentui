@@ -274,9 +274,10 @@ Frame N+1:
 ```typescript
 TypeScript Side:
 ┌─────────────────────────────────────┐
-│ import { opentui } from "./zig"     │
+│ // Import native bindings           │
+│ import { nativeLib } from "./zig"   │
 │                                     │
-│ opentui.buffer_create(width, height)│
+│ nativeLib.buffer_create(w, h)      │
 │        │                            │
 └────────┼────────────────────────────┘
          │
