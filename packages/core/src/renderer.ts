@@ -942,7 +942,21 @@ export class CliRenderer extends EventEmitter implements RenderContext {
 
     this.stdin.resume()
     this.stdin.setEncoding("utf8")
-    this.stdin.on("data", this.stdinListener)
+
+    // Guard against double subscription
+    const existingListeners = this.stdin.listeners("data")
+    const isAlreadyRegistered = existingListeners.indexOf(this.stdinListener) !== -1
+
+    if (isAlreadyRegistered) {
+      const stack = new Error().stack
+      console.warn("[CliRenderer] stdin listener already registered in setupInput(), skipping duplicate registration")
+      console.warn("[CliRenderer] Current listener count:", this.stdin.listenerCount("data"))
+      console.warn("[CliRenderer] Stack trace:", stack)
+    } else {
+      console.debug("[CliRenderer] Adding stdin listener in setupInput()")
+      this.stdin.on("data", this.stdinListener)
+    }
+
     this._stdinBuffer.on("data", (sequence: string) => {
       // Capture all input in debug mode
       if (this._debugModeEnabled) {
@@ -1381,6 +1395,7 @@ export class CliRenderer extends EventEmitter implements RenderContext {
     this.disableMouse()
     this.removeExitListeners()
     this._stdinBuffer.clear()
+    console.debug("[CliRenderer] Removing stdin listener in suspend()")
     this.stdin.removeListener("data", this.stdinListener)
     this.lib.suspendRenderer(this.rendererPtr)
 
@@ -1402,7 +1417,20 @@ export class CliRenderer extends EventEmitter implements RenderContext {
     setImmediate(() => {
       // Consume any existing stdin data to avoid processing stale input
       while (this.stdin.read() !== null) {}
-      this.stdin.on("data", this.stdinListener)
+
+      // Guard against double subscription
+      const existingListeners = this.stdin.listeners("data")
+      const isAlreadyRegistered = existingListeners.indexOf(this.stdinListener) !== -1
+
+      if (isAlreadyRegistered) {
+        const stack = new Error().stack
+        console.warn("[CliRenderer] stdin listener already registered in resume(), skipping duplicate registration")
+        console.warn("[CliRenderer] Current listener count:", this.stdin.listenerCount("data"))
+        console.warn("[CliRenderer] Stack trace:", stack)
+      } else {
+        console.debug("[CliRenderer] Adding stdin listener in resume()")
+        this.stdin.on("data", this.stdinListener)
+      }
     })
 
     this.lib.resumeRenderer(this.rendererPtr)
@@ -1505,6 +1533,7 @@ export class CliRenderer extends EventEmitter implements RenderContext {
     if (this.stdin.setRawMode) {
       this.stdin.setRawMode(false)
     }
+    console.debug("[CliRenderer] Removing stdin listener in destroy()")
     this.stdin.removeListener("data", this.stdinListener)
 
     this.lib.destroyRenderer(this.rendererPtr)
