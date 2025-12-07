@@ -172,6 +172,8 @@ Available UI components:
 
 ## Open Issues Analysis
 
+**Note**: Issue numbers and details verified via GitHub API on 2025-12-07. Out of 35 total open issues, the following represent the most impactful.
+
 ### Critical Issues (Affecting Core Functionality)
 
 1. **#391** - Flex layout bug with state changes
