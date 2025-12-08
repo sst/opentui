@@ -1670,3 +1670,61 @@ describe("EditBuffer Clear Method", () => {
     })
   })
 })
+
+describe("EditBuffer Memory Registry Limits", () => {
+  let buffer: EditBuffer
+
+  beforeEach(() => {
+    buffer = EditBuffer.create("wcwidth")
+  })
+
+  afterEach(() => {
+    buffer.destroy()
+  })
+
+  describe("setText with history enabled", () => {
+    it("should handle many setText calls with history enabled without exceeding 255 buffer limit", () => {
+      // When history is enabled (default), each setText registers a new memory buffer
+      // The memory registry has a limit of 255 buffers per TextBuffer
+      // This test verifies we can call setText at least 260 times without error
+
+      for (let i = 0; i < 260; i++) {
+        buffer.setText(`Text ${i}`, { history: true })
+      }
+
+      // Should not throw "Failed to register memory buffer"
+      expect(buffer.getText()).toBe("Text 259")
+    })
+
+    it("should handle many setText calls with history disabled without exceeding limit", () => {
+      // When history is disabled, setText should reuse the same memory buffer slot
+      // This should allow unlimited setText calls
+
+      for (let i = 0; i < 300; i++) {
+        buffer.setText(`Text ${i}`, { history: false })
+      }
+
+      // Should not throw
+      expect(buffer.getText()).toBe("Text 299")
+    })
+
+    it("should handle mixed history enabled and disabled calls", () => {
+      // Mix of history enabled and disabled
+      for (let i = 0; i < 100; i++) {
+        buffer.setText(`With history ${i}`, { history: true })
+      }
+
+      for (let i = 0; i < 200; i++) {
+        buffer.setText(`Without history ${i}`, { history: false })
+      }
+
+      // More with history
+      for (let i = 100; i < 200; i++) {
+        buffer.setText(`With history ${i}`, { history: true })
+      }
+
+      // Should not throw
+      expect(buffer.getText()).toBe("With history 199")
+    })
+  })
+})
