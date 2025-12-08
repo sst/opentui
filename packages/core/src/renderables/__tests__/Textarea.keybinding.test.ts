@@ -1971,7 +1971,7 @@ describe("Textarea - Keybinding Tests", () => {
       expect(editor.logicalCursor.col).toBe(0)
     })
   })
-  
+
   describe("Line Home/End Wrap Behavior", () => {
     it("should wrap to end of previous line when at start of line", async () => {
       const { textarea: editor } = await createTextareaRenderable(currentRenderer, renderOnce, {
@@ -1985,7 +1985,7 @@ describe("Textarea - Keybinding Tests", () => {
       editor.gotoLineHome()
       expect(editor.logicalCursor).toMatchObject({ row: 0, col: 6 })
     })
-    
+
     it("should wrap to start of next line when at end of line", async () => {
       const { textarea: editor } = await createTextareaRenderable(currentRenderer, renderOnce, {
         initialValue: "Line 1\nLine 2",
@@ -1998,7 +1998,7 @@ describe("Textarea - Keybinding Tests", () => {
       editor.gotoLineEnd()
       expect(editor.logicalCursor).toMatchObject({ row: 1, col: 0 })
     })
-    
+
     it("should stay at buffer boundaries", async () => {
       const { textarea: editor } = await createTextareaRenderable(currentRenderer, renderOnce, {
         initialValue: "Line 1\nLine 2",
@@ -2014,7 +2014,7 @@ describe("Textarea - Keybinding Tests", () => {
       expect(editor.logicalCursor).toMatchObject({ row: 1, col: 6 })
     })
   })
-  
+
   describe("Key Aliases", () => {
     it("should support binding 'enter' alias which maps to 'return'", async () => {
       const { textarea: editor } = await createTextareaRenderable(currentRenderer, renderOnce, {
@@ -2031,7 +2031,7 @@ describe("Textarea - Keybinding Tests", () => {
       expect(editor.logicalCursor.row).toBe(0)
       expect(editor.logicalCursor.col).toBe(0)
     })
-    
+
     it("should allow binding 'return' directly", async () => {
       const { textarea: editor } = await createTextareaRenderable(currentRenderer, renderOnce, {
         initialValue: "Hello",
@@ -2045,7 +2045,7 @@ describe("Textarea - Keybinding Tests", () => {
       expect(editor.logicalCursor.row).toBe(0)
       expect(editor.logicalCursor.col).toBe(0)
     })
-    
+
     it("should support custom aliases via keyAliasMap", async () => {
       const { textarea: editor } = await createTextareaRenderable(currentRenderer, renderOnce, {
         initialValue: "Line 1\nLine 2",
@@ -2062,7 +2062,7 @@ describe("Textarea - Keybinding Tests", () => {
       expect(editor.logicalCursor.row).toBe(0)
       expect(editor.logicalCursor.col).toBe(0)
     })
-    
+
     it("should merge custom aliases with defaults", async () => {
       const { textarea: editor } = await createTextareaRenderable(currentRenderer, renderOnce, {
         initialValue: "Hello",
@@ -2083,7 +2083,7 @@ describe("Textarea - Keybinding Tests", () => {
       currentMockInput.pressKey("e")
       expect(editor.logicalCursor.col).toBe(5)
     })
-    
+
     it("should update aliases dynamically with setter", async () => {
       const { textarea: editor } = await createTextareaRenderable(currentRenderer, renderOnce, {
         initialValue: "Line 1\nLine 2",
@@ -2106,7 +2106,7 @@ describe("Textarea - Keybinding Tests", () => {
       expect(editor.logicalCursor.row).toBe(0)
       expect(editor.logicalCursor.col).toBe(0)
     })
-    
+
     it("should handle aliases with modifiers", async () => {
       const { textarea: editor } = await createTextareaRenderable(currentRenderer, renderOnce, {
         initialValue: "Line 1\nLine 2",
