@@ -12,7 +12,7 @@ import { createContext, createSignal, onCleanup, onMount, useContext } from "sol
 export const RendererContext = createContext<CliRenderer>()
 
 export const useRenderer = () => {
-  const renderer = useContext(RendererContext)
+  const renderer = useContext(RendererContext) ?? engine.renderer
 
   if (!renderer) {
     throw new Error("No renderer found")
