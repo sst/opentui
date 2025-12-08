@@ -1972,6 +1972,49 @@ describe("Textarea - Keybinding Tests", () => {
     })
   })
 
+  describe("Line Home/End Wrap Behavior", () => {
+    it("should wrap to end of previous line when at start of line", async () => {
+      const { textarea: editor } = await createTextareaRenderable(currentRenderer, renderOnce, {
+        initialValue: "Line 1\nLine 2",
+        width: 40,
+        height: 10,
+      })
+      editor.focus()
+      editor.gotoLine(1)
+      expect(editor.logicalCursor).toMatchObject({ row: 1, col: 0 })
+      editor.gotoLineHome()
+      expect(editor.logicalCursor).toMatchObject({ row: 0, col: 6 })
+    })
+
+    it("should wrap to start of next line when at end of line", async () => {
+      const { textarea: editor } = await createTextareaRenderable(currentRenderer, renderOnce, {
+        initialValue: "Line 1\nLine 2",
+        width: 40,
+        height: 10,
+      })
+      editor.focus()
+      editor.gotoLineEnd()
+      expect(editor.logicalCursor).toMatchObject({ row: 0, col: 6 })
+      editor.gotoLineEnd()
+      expect(editor.logicalCursor).toMatchObject({ row: 1, col: 0 })
+    })
+
+    it("should stay at buffer boundaries", async () => {
+      const { textarea: editor } = await createTextareaRenderable(currentRenderer, renderOnce, {
+        initialValue: "Line 1\nLine 2",
+        width: 40,
+        height: 10,
+      })
+      editor.focus()
+      editor.gotoLineHome()
+      expect(editor.logicalCursor).toMatchObject({ row: 0, col: 0 })
+      editor.gotoLine(1)
+      editor.gotoLineEnd()
+      editor.gotoLineEnd()
+      expect(editor.logicalCursor).toMatchObject({ row: 1, col: 6 })
+    })
+  })
+
   describe("Key Aliases", () => {
     it("should support binding 'enter' alias which maps to 'return'", async () => {
       const { textarea: editor } = await createTextareaRenderable(currentRenderer, renderOnce, {
@@ -1980,10 +2023,8 @@ describe("Textarea - Keybinding Tests", () => {
         height: 10,
         keyBindings: [{ name: "enter", action: "buffer-home" }],
       })
-
       editor.focus()
       editor.gotoLine(9999)
-
       // When user binds "enter", and "return" key is pressed (the actual Enter key)
       // it should work due to the default alias enter->return
       currentMockInput.pressEnter()
@@ -1998,10 +2039,8 @@ describe("Textarea - Keybinding Tests", () => {
         height: 10,
         keyBindings: [{ name: "return", action: "buffer-home" }],
       })
-
       editor.focus()
       editor.gotoLine(9999)
-
       currentMockInput.pressEnter()
       expect(editor.logicalCursor.row).toBe(0)
       expect(editor.logicalCursor.col).toBe(0)
@@ -2015,10 +2054,8 @@ describe("Textarea - Keybinding Tests", () => {
         keyBindings: [{ name: "myenter", action: "buffer-home" }],
         keyAliasMap: { myenter: "return" },
       })
-
       editor.focus()
       editor.gotoLine(9999)
-
       // Pressing Enter key (which comes in as "return") should trigger buffer-home
       // because "myenter" is aliased to "return"
       currentMockInput.pressEnter()
@@ -2037,14 +2074,11 @@ describe("Textarea - Keybinding Tests", () => {
         ],
         keyAliasMap: { customkey: "e", enter: "return" },
       })
-
       editor.focus()
-
       // Default alias should still work (enter -> return)
       currentMockInput.pressEnter()
       expect(editor.logicalCursor.row).toBe(0)
       expect(editor.logicalCursor.col).toBe(0)
-
       // Custom alias should work (customkey -> e)
       currentMockInput.pressKey("e")
       expect(editor.logicalCursor.col).toBe(5)
@@ -2057,21 +2091,16 @@ describe("Textarea - Keybinding Tests", () => {
         height: 10,
         keyBindings: [{ name: "mykey", action: "buffer-home" }],
       })
-
       editor.focus()
       editor.gotoLine(9999)
       expect(editor.logicalCursor.row).toBe(1)
-
       // Initially "mykey" doesn't map to "return", so Enter won't trigger buffer-home
       currentMockInput.pressEnter()
       expect(editor.plainText).toBe("Line 1\nLine 2\n") // newline was inserted
-
       // Set alias to map "mykey" to "return"
       editor.keyAliasMap = { mykey: "return" }
-
       // Now remove the newline we just added
       editor.deleteCharBackward()
-
       // Now pressing Enter should trigger buffer-home
       currentMockInput.pressEnter()
       expect(editor.logicalCursor.row).toBe(0)
@@ -2085,11 +2114,9 @@ describe("Textarea - Keybinding Tests", () => {
         height: 10,
         keyBindings: [{ name: "enter", meta: true, action: "buffer-home" }],
       })
-
       editor.focus()
       editor.gotoLine(9999)
       expect(editor.logicalCursor.row).toBe(1)
-
       // Meta+Enter should trigger buffer-home due to alias (enter -> return)
       currentMockInput.pressEnter({ meta: true })
       expect(editor.logicalCursor.row).toBe(0)
