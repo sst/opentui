@@ -343,7 +343,7 @@ describe("React Renderer | Layout Tests", () => {
       expect(frame).toMatchSnapshot()
     })
 
-  it("should render scrollbox with sticky scroll and spacer", async () => {
+    it("should render scrollbox with sticky scroll and spacer", async () => {
       testSetup = await testRender(
         <box maxHeight={"100%"} maxWidth={"100%"}>
           <scrollbox
@@ -372,34 +372,20 @@ describe("React Renderer | Layout Tests", () => {
 
       await testSetup.renderOnce()
       const frame = testSetup.captureCharFrame()
-    expect(frame).toMatchSnapshot()
-  })
+      expect(frame).toMatchSnapshot()
+    })
 
-  it("should clip nested scrollbox content (React) [issue #388]", async () => {
-    const innerLines = Array.from({ length: 12 }, (_, i) => `LEAK-${i}`)
+    it("should clip nested scrollbox content (React) [issue #388]", async () => {
+      const innerLines = Array.from({ length: 12 }, (_, i) => `LEAK-${i}`)
 
-    testSetup = await testRender(
-      <box style={{ width: 50, height: 18, flexDirection: "column", border: true, gap: 0 }}>
-        <text>HEADER</text>
-        <scrollbox
-          id="outer-scroll"
-          style={{
-            width: 48,
-            height: 12,
-            border: true,
-            overflow: "hidden",
-            paddingTop: 0,
-            paddingBottom: 0,
-            paddingLeft: 0,
-            paddingRight: 0,
-          }}
-          scrollY
-        >
+      testSetup = await testRender(
+        <box style={{ width: 50, height: 18, flexDirection: "column", border: true, gap: 0 }}>
+          <text>HEADER</text>
           <scrollbox
-            id="inner-scroll"
+            id="outer-scroll"
             style={{
-              width: 44,
-              height: 6,
+              width: 48,
+              height: 12,
               border: true,
               overflow: "hidden",
               paddingTop: 0,
@@ -409,42 +395,56 @@ describe("React Renderer | Layout Tests", () => {
             }}
             scrollY
           >
-            {innerLines.map((line) => (
-              <text key={line}>{line}</text>
-            ))}
+            <scrollbox
+              id="inner-scroll"
+              style={{
+                width: 44,
+                height: 6,
+                border: true,
+                overflow: "hidden",
+                paddingTop: 0,
+                paddingBottom: 0,
+                paddingLeft: 0,
+                paddingRight: 0,
+              }}
+              scrollY
+            >
+              {innerLines.map((line) => (
+                <text key={line}>{line}</text>
+              ))}
+            </scrollbox>
           </scrollbox>
-        </scrollbox>
-        <text>FOOTER</text>
-      </box>,
-      {
-        width: 52,
-        height: 20,
-      },
-    )
+          <text>FOOTER</text>
+        </box>,
+        {
+          width: 52,
+          height: 20,
+        },
+      )
 
-    await testSetup.renderOnce()
+      await testSetup.renderOnce()
 
-    const outer = testSetup.renderer.root.findDescendantById?.("outer-scroll") as any
-    const inner = testSetup.renderer.root.findDescendantById?.("inner-scroll") as any
-    // Force both scrollboxes to scroll to exercise translation + clipping
-    if (inner && typeof inner.scrollTo === "function") {
-      inner.scrollTo({ x: 0, y: 100 })
-    }
-    if (outer && typeof outer.scrollTo === "function") {
-      outer.scrollTo({ x: 0, y: 50 })
-    }
-    await testSetup.renderOnce()
+      const outer = testSetup.renderer.root.findDescendantById?.("outer-scroll") as any
+      const inner = testSetup.renderer.root.findDescendantById?.("inner-scroll") as any
+      // Force both scrollboxes to scroll to exercise translation + clipping
+      if (inner && typeof inner.scrollTo === "function") {
+        inner.scrollTo({ x: 0, y: 100 })
+      }
+      if (outer && typeof outer.scrollTo === "function") {
+        outer.scrollTo({ x: 0, y: 50 })
+      }
+      await testSetup.renderOnce()
 
-    const frame = testSetup.captureCharFrame()
-    const visibleLeakLines = frame.split("\n").filter((line) => line.includes("LEAK-"))
+      const frame = testSetup.captureCharFrame()
+      const visibleLeakLines = frame.split("\n").filter((line) => line.includes("LEAK-"))
 
-    // The inner viewport height is 4 (6 minus 2 for borders). Currently, the renderer leaks and shows more.
-    expect(visibleLeakLines.length).toBeLessThanOrEqual(4)
+      // The inner viewport height is 4 (6 minus 2 for borders). Currently, the renderer leaks and shows more.
+      expect(visibleLeakLines.length).toBeLessThanOrEqual(4)
 
-    // Ensure header/footer are still present for context
-    expect(frame).toContain("HEADER")
-    expect(frame).toContain("FOOTER")
-  })
+      // Ensure header/footer are still present for context
+      expect(frame).toContain("HEADER")
+      expect(frame).toContain("FOOTER")
+    })
   })
 
   describe("Empty and Edge Cases", () => {

@@ -33,8 +33,8 @@ class ContentRenderable extends BoxRenderable {
 
   protected _getVisibleChildren(): number[] {
     if (this._viewportCulling) {
-      return getObjectsInViewport(this.viewport, this.getChildrenSortedByPrimaryAxis(), this.primaryAxis, 0).map((child) =>
-        child.num,
+      return getObjectsInViewport(this.viewport, this.getChildrenSortedByPrimaryAxis(), this.primaryAxis, 0).map(
+        (child) => child.num,
       )
     }
     return this.getChildrenSortedByPrimaryAxis().map((child) => child.num)
