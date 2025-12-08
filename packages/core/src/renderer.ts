@@ -1821,9 +1821,9 @@ export class CliRenderer extends EventEmitter implements RenderContext {
     try {
       const jimpModule: unknown = await import("jimp")
       const Jimp =
-        typeof (jimpModule as any).default === "function"
-          ? ((jimpModule as any).default as typeof import("jimp").default)
-          : (jimpModule as typeof import("jimp"))
+        (jimpModule as { Jimp?: any }).Jimp ??
+        (jimpModule as { default?: any }).default ??
+        (jimpModule as any)
       const input = typeof src === "string" ? src : Buffer.from(src)
       const image = await Jimp.read(input)
 
