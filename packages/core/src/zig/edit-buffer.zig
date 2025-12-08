@@ -507,11 +507,17 @@ pub const EditBuffer = struct {
 
         try self.tb.setTextFromMemId(mem_id);
 
-        const new_mem = try self.allocator.alloc(u8, self.add_buffer.cap);
-        const new_mem_id = try self.tb.registerMemBuffer(new_mem, true);
-        self.add_buffer.mem_id = new_mem_id;
-        self.add_buffer.ptr = new_mem.ptr;
-        self.add_buffer.len = 0;
+        // When retain_history is true, keep the existing add_buffer as-is
+        // The undo system will handle reverting the buffer state, and we can
+        // continue appending to the same add_buffer without needing a new one
+        if (!retain_history) {
+            // Only create a new add_buffer when NOT retaining history
+            const new_mem = try self.allocator.alloc(u8, self.add_buffer.cap);
+            const new_mem_id = try self.tb.registerMemBuffer(new_mem, true);
+            self.add_buffer.mem_id = new_mem_id;
+            self.add_buffer.ptr = new_mem.ptr;
+            self.add_buffer.len = 0;
+        }
 
         try self.setCursor(0, 0);
         self.emitNativeEvent("content-changed");

@@ -1216,3 +1216,168 @@ test "EditBuffer - wcwidth each visible emoji requires exactly one cursor move" 
     cursor = eb.getPrimaryCursor();
     try std.testing.expectEqual(@as(u32, 0), cursor.col);
 }
+
+test "EditBuffer - setText with retain_history does not leak mem registry slots" {
+    const pool = gp.initGlobalPool(std.testing.allocator);
+    defer gp.deinitGlobalPool();
+
+    var eb = try EditBuffer.init(std.testing.allocator, pool, .wcwidth);
+    defer eb.deinit();
+
+    // Get initial registry state
+    const initial_slots = eb.tb.mem_registry.getUsedSlots();
+
+    // Call setText with retain_history=true multiple times
+    try eb.setText("First text", true);
+    const after_first = eb.tb.mem_registry.getUsedSlots();
+
+    try eb.setText("Second text", true);
+    const after_second = eb.tb.mem_registry.getUsedSlots();
+
+    try eb.setText("Third text", true);
+    const after_third = eb.tb.mem_registry.getUsedSlots();
+
+    try eb.setText("Fourth text", true);
+    const after_fourth = eb.tb.mem_registry.getUsedSlots();
+
+    // Each setText with retain_history=true should only add ONE slot (for the text itself)
+    // NOT two slots (text + new add_buffer)
+    try std.testing.expectEqual(after_first - initial_slots, @as(usize, 1));
+    try std.testing.expectEqual(after_second - after_first, @as(usize, 1));
+    try std.testing.expectEqual(after_third - after_second, @as(usize, 1));
+    try std.testing.expectEqual(after_fourth - after_third, @as(usize, 1));
+
+    // Verify the text was actually set correctly
+    var buffer: [100]u8 = undefined;
+    const len = eb.getText(&buffer);
+    try std.testing.expectEqualStrings("Fourth text", buffer[0..len]);
+}
+
+test "EditBuffer - setText with retain_history=false creates new add_buffer" {
+    const pool = gp.initGlobalPool(std.testing.allocator);
+    defer gp.deinitGlobalPool();
+
+    var eb = try EditBuffer.init(std.testing.allocator, pool, .wcwidth);
+    defer eb.deinit();
+
+    // Get initial registry state
+    const initial_slots = eb.tb.mem_registry.getUsedSlots();
+
+    // Call setText with retain_history=false
+    try eb.setText("First text", false);
+    const after_first = eb.tb.mem_registry.getUsedSlots();
+
+    // With retain_history=false, we should register:
+    // 1. The text itself
+    // 2. A new add_buffer
+    // So expect 2 new slots
+    try std.testing.expectEqual(after_first - initial_slots, @as(usize, 2));
+
+    // Verify the text was set correctly
+    var buffer: [100]u8 = undefined;
+    const len = eb.getText(&buffer);
+    try std.testing.expectEqualStrings("First text", buffer[0..len]);
+}
+
+test "EditBuffer - setText with retain_history allows undo" {
+    const pool = gp.initGlobalPool(std.testing.allocator);
+    defer gp.deinitGlobalPool();
+
+    var eb = try EditBuffer.init(std.testing.allocator, pool, .wcwidth);
+    defer eb.deinit();
+
+    // Set initial text
+    try eb.setText("Initial", false);
+
+    var buffer: [100]u8 = undefined;
+    var len = eb.getText(&buffer);
+    try std.testing.expectEqualStrings("Initial", buffer[0..len]);
+
+    // Set new text with retain_history=true
+    try eb.setText("Modified", true);
+    len = eb.getText(&buffer);
+    try std.testing.expectEqualStrings("Modified", buffer[0..len]);
+
+    // Should be able to undo
+    try std.testing.expect(eb.canUndo());
+    _ = try eb.undo();
+
+    // Should be back to "Initial"
+    len = eb.getText(&buffer);
+    try std.testing.expectEqualStrings("Initial", buffer[0..len]);
+}
+
+test "EditBuffer - setText with retain_history=false preserves undo history" {
+    const pool = gp.initGlobalPool(std.testing.allocator);
+    defer gp.deinitGlobalPool();
+
+    var eb = try EditBuffer.init(std.testing.allocator, pool, .wcwidth);
+    defer eb.deinit();
+
+    // Set initial text
+    try eb.insertText("Initial");
+
+    // Should have undo history
+    try std.testing.expect(eb.canUndo());
+
+    var buffer: [100]u8 = undefined;
+    var len = eb.getText(&buffer);
+    try std.testing.expectEqualStrings("Initial", buffer[0..len]);
+
+    // Set text with retain_history=false
+    // This does NOT call autoStoreUndo(), so setText itself creates no undo point
+    // But rope.clear() preserves existing undo history
+    try eb.setText("New", false);
+
+    len = eb.getText(&buffer);
+    try std.testing.expectEqualStrings("New", buffer[0..len]);
+
+    // Undo history is still preserved (rope.clear() design)
+    try std.testing.expect(eb.canUndo());
+
+    // Undo goes back to the state before the insertText("Initial")
+    // Since setText didn't create an undo point, we skip over it
+    _ = try eb.undo();
+    const len2 = eb.getText(&buffer);
+    // We're back to empty buffer (state before insertText("Initial"))
+    try std.testing.expectEqualStrings("", buffer[0..len2]);
+}
+
+test "EditBuffer - multiple setText with retain_history keeps add_buffer functional" {
+    const pool = gp.initGlobalPool(std.testing.allocator);
+    defer gp.deinitGlobalPool();
+
+    var eb = try EditBuffer.init(std.testing.allocator, pool, .wcwidth);
+    defer eb.deinit();
+
+    // Set text with retain_history=true
+    try eb.setText("Line 1", true);
+
+    // Insert more text using the add_buffer
+    try eb.insertText("\nLine 2");
+
+    // Set text again with retain_history=true
+    // This sets cursor to (0, 0)
+    try eb.setText("Reset", true);
+
+    // Insert more text using the add_buffer (should still work)
+    // Since cursor is at (0, 0), text is inserted at the beginning
+    try eb.insertText(" and more");
+
+    var buffer: [100]u8 = undefined;
+    const len = eb.getText(&buffer);
+    // Text is inserted at cursor position (0, 0), so it appears before "Reset"
+    try std.testing.expectEqualStrings(" and moreReset", buffer[0..len]);
+
+    // Verify we can undo
+    try std.testing.expect(eb.canUndo());
+
+    // Move cursor to end and insert more text
+    const line_count = eb.tb.lineCount();
+    const last_line_width = iter_mod.lineWidthAt(&eb.tb.rope, line_count - 1);
+    try eb.setCursor(line_count - 1, last_line_width);
+    try eb.insertText(" more");
+
+    const len2 = eb.getText(&buffer);
+    try std.testing.expectEqualStrings(" and moreReset more", buffer[0..len2]);
+}

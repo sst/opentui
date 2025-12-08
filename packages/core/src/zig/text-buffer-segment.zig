@@ -92,6 +92,14 @@ pub const MemRegistry = struct {
         }
         self.buffers.clearRetainingCapacity();
     }
+
+    pub fn getUsedSlots(self: *const MemRegistry) usize {
+        return self.buffers.items.len;
+    }
+
+    pub fn getFreeSlots(self: *const MemRegistry) usize {
+        return 255 - self.buffers.items.len;
+    }
 };
 
 /// A chunk represents a contiguous sequence of UTF-8 bytes from a specific memory buffer
