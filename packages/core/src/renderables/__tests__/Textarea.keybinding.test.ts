@@ -250,6 +250,139 @@ describe("Textarea - Keybinding Tests", () => {
     })
   })
 
+  describe("Key Event Handling - Modifier Keys", () => {
+    let kittyRenderer: TestRenderer
+    let kittyRenderOnce: () => Promise<void>
+    let kittyMockInput: MockInput
+
+    beforeEach(async () => {
+      ;({
+        renderer: kittyRenderer,
+        renderOnce: kittyRenderOnce,
+        mockInput: kittyMockInput,
+      } = await createTestRenderer({
+        width: 80,
+        height: 24,
+        kittyKeyboard: true,
+      }))
+    })
+
+    afterEach(() => {
+      kittyRenderer.destroy()
+    })
+
+    it("should not insert text when ctrl modifier is pressed", async () => {
+      const { textarea: editor } = await createTextareaRenderable(kittyRenderer, kittyRenderOnce, {
+        initialValue: "",
+        width: 40,
+        height: 10,
+      })
+
+      editor.focus()
+
+      // Try to type 'a' with ctrl - should not insert
+      kittyMockInput.pressKey("a", { ctrl: true })
+      expect(editor.plainText).toBe("")
+
+      // Try to type 'x' with ctrl - should not insert
+      kittyMockInput.pressKey("x", { ctrl: true })
+      expect(editor.plainText).toBe("")
+    })
+
+    it("should not insert text when meta modifier is pressed", async () => {
+      const { textarea: editor } = await createTextareaRenderable(kittyRenderer, kittyRenderOnce, {
+        initialValue: "",
+        width: 40,
+        height: 10,
+      })
+
+      editor.focus()
+
+      // Try to type 'a' with meta - should not insert
+      kittyMockInput.pressKey("a", { meta: true })
+      expect(editor.plainText).toBe("")
+
+      // Try to type 'x' with meta - should not insert
+      kittyMockInput.pressKey("x", { meta: true })
+      expect(editor.plainText).toBe("")
+    })
+
+    it("should not insert text when super modifier is pressed", async () => {
+      const { textarea: editor } = await createTextareaRenderable(kittyRenderer, kittyRenderOnce, {
+        initialValue: "",
+        width: 40,
+        height: 10,
+      })
+
+      editor.focus()
+
+      // Try to type 'a' with super - should not insert
+      kittyMockInput.pressKey("a", { super: true })
+      expect(editor.plainText).toBe("")
+
+      // Try to type 'x' with super - should not insert
+      kittyMockInput.pressKey("x", { super: true })
+      expect(editor.plainText).toBe("")
+    })
+
+    it("should not insert text when hyper modifier is pressed", async () => {
+      const { textarea: editor } = await createTextareaRenderable(kittyRenderer, kittyRenderOnce, {
+        initialValue: "",
+        width: 40,
+        height: 10,
+      })
+
+      editor.focus()
+
+      // Try to type 'a' with hyper - should not insert
+      kittyMockInput.pressKey("a", { hyper: true })
+      expect(editor.plainText).toBe("")
+
+      // Try to type 'x' with hyper - should not insert
+      kittyMockInput.pressKey("x", { hyper: true })
+      expect(editor.plainText).toBe("")
+    })
+
+    it("should not insert text when multiple modifiers are pressed", async () => {
+      const { textarea: editor } = await createTextareaRenderable(kittyRenderer, kittyRenderOnce, {
+        initialValue: "",
+        width: 40,
+        height: 10,
+      })
+
+      editor.focus()
+
+      // Try to type with ctrl+meta - should not insert
+      kittyMockInput.pressKey("a", { ctrl: true, meta: true })
+      expect(editor.plainText).toBe("")
+
+      // Try to type with ctrl+super - should not insert
+      kittyMockInput.pressKey("b", { ctrl: true, super: true })
+      expect(editor.plainText).toBe("")
+
+      // Try to type with meta+hyper - should not insert
+      kittyMockInput.pressKey("c", { meta: true, hyper: true })
+      expect(editor.plainText).toBe("")
+    })
+
+    it("should insert text when only shift modifier is pressed", async () => {
+      const { textarea: editor } = await createTextareaRenderable(kittyRenderer, kittyRenderOnce, {
+        initialValue: "",
+        width: 40,
+        height: 10,
+      })
+
+      editor.focus()
+
+      // Shift is okay for uppercase letters
+      kittyMockInput.pressKey("A", { shift: true })
+      expect(editor.plainText).toBe("A")
+
+      kittyMockInput.pressKey("B", { shift: true })
+      expect(editor.plainText).toBe("AB")
+    })
+  })
+
   describe("Key Event Handling", () => {
     it("should only handle KeyEvents, not raw escape sequences", async () => {
       const { textarea: editor } = await createTextareaRenderable(currentRenderer, renderOnce, {
@@ -1838,7 +1971,7 @@ describe("Textarea - Keybinding Tests", () => {
       expect(editor.logicalCursor.col).toBe(0)
     })
   })
-
+  
   describe("Line Home/End Wrap Behavior", () => {
     it("should wrap to end of previous line when at start of line", async () => {
       const { textarea: editor } = await createTextareaRenderable(currentRenderer, renderOnce, {
@@ -1846,45 +1979,148 @@ describe("Textarea - Keybinding Tests", () => {
         width: 40,
         height: 10,
       })
-
       editor.focus()
       editor.gotoLine(1)
       expect(editor.logicalCursor).toMatchObject({ row: 1, col: 0 })
-
       editor.gotoLineHome()
       expect(editor.logicalCursor).toMatchObject({ row: 0, col: 6 })
     })
-
+    
     it("should wrap to start of next line when at end of line", async () => {
       const { textarea: editor } = await createTextareaRenderable(currentRenderer, renderOnce, {
         initialValue: "Line 1\nLine 2",
         width: 40,
         height: 10,
       })
-
       editor.focus()
       editor.gotoLineEnd()
       expect(editor.logicalCursor).toMatchObject({ row: 0, col: 6 })
-
       editor.gotoLineEnd()
       expect(editor.logicalCursor).toMatchObject({ row: 1, col: 0 })
     })
-
+    
     it("should stay at buffer boundaries", async () => {
       const { textarea: editor } = await createTextareaRenderable(currentRenderer, renderOnce, {
         initialValue: "Line 1\nLine 2",
         width: 40,
         height: 10,
       })
-
       editor.focus()
       editor.gotoLineHome()
       expect(editor.logicalCursor).toMatchObject({ row: 0, col: 0 })
-
       editor.gotoLine(1)
       editor.gotoLineEnd()
       editor.gotoLineEnd()
       expect(editor.logicalCursor).toMatchObject({ row: 1, col: 6 })
+    })
+  })
+  
+  describe("Key Aliases", () => {
+    it("should support binding 'enter' alias which maps to 'return'", async () => {
+      const { textarea: editor } = await createTextareaRenderable(currentRenderer, renderOnce, {
+        initialValue: "Hello",
+        width: 40,
+        height: 10,
+        keyBindings: [{ name: "enter", action: "buffer-home" }],
+      })
+      editor.focus()
+      editor.gotoLine(9999)
+      // When user binds "enter", and "return" key is pressed (the actual Enter key)
+      // it should work due to the default alias enter->return
+      currentMockInput.pressEnter()
+      expect(editor.logicalCursor.row).toBe(0)
+      expect(editor.logicalCursor.col).toBe(0)
+    })
+    
+    it("should allow binding 'return' directly", async () => {
+      const { textarea: editor } = await createTextareaRenderable(currentRenderer, renderOnce, {
+        initialValue: "Hello",
+        width: 40,
+        height: 10,
+        keyBindings: [{ name: "return", action: "buffer-home" }],
+      })
+      editor.focus()
+      editor.gotoLine(9999)
+      currentMockInput.pressEnter()
+      expect(editor.logicalCursor.row).toBe(0)
+      expect(editor.logicalCursor.col).toBe(0)
+    })
+    
+    it("should support custom aliases via keyAliasMap", async () => {
+      const { textarea: editor } = await createTextareaRenderable(currentRenderer, renderOnce, {
+        initialValue: "Line 1\nLine 2",
+        width: 40,
+        height: 10,
+        keyBindings: [{ name: "myenter", action: "buffer-home" }],
+        keyAliasMap: { myenter: "return" },
+      })
+      editor.focus()
+      editor.gotoLine(9999)
+      // Pressing Enter key (which comes in as "return") should trigger buffer-home
+      // because "myenter" is aliased to "return"
+      currentMockInput.pressEnter()
+      expect(editor.logicalCursor.row).toBe(0)
+      expect(editor.logicalCursor.col).toBe(0)
+    })
+    
+    it("should merge custom aliases with defaults", async () => {
+      const { textarea: editor } = await createTextareaRenderable(currentRenderer, renderOnce, {
+        initialValue: "Hello",
+        width: 40,
+        height: 10,
+        keyBindings: [
+          { name: "enter", action: "buffer-home" },
+          { name: "customkey", action: "line-end" },
+        ],
+        keyAliasMap: { customkey: "e", enter: "return" },
+      })
+      editor.focus()
+      // Default alias should still work (enter -> return)
+      currentMockInput.pressEnter()
+      expect(editor.logicalCursor.row).toBe(0)
+      expect(editor.logicalCursor.col).toBe(0)
+      // Custom alias should work (customkey -> e)
+      currentMockInput.pressKey("e")
+      expect(editor.logicalCursor.col).toBe(5)
+    })
+    
+    it("should update aliases dynamically with setter", async () => {
+      const { textarea: editor } = await createTextareaRenderable(currentRenderer, renderOnce, {
+        initialValue: "Line 1\nLine 2",
+        width: 40,
+        height: 10,
+        keyBindings: [{ name: "mykey", action: "buffer-home" }],
+      })
+      editor.focus()
+      editor.gotoLine(9999)
+      expect(editor.logicalCursor.row).toBe(1)
+      // Initially "mykey" doesn't map to "return", so Enter won't trigger buffer-home
+      currentMockInput.pressEnter()
+      expect(editor.plainText).toBe("Line 1\nLine 2\n") // newline was inserted
+      // Set alias to map "mykey" to "return"
+      editor.keyAliasMap = { mykey: "return" }
+      // Now remove the newline we just added
+      editor.deleteCharBackward()
+      // Now pressing Enter should trigger buffer-home
+      currentMockInput.pressEnter()
+      expect(editor.logicalCursor.row).toBe(0)
+      expect(editor.logicalCursor.col).toBe(0)
+    })
+    
+    it("should handle aliases with modifiers", async () => {
+      const { textarea: editor } = await createTextareaRenderable(currentRenderer, renderOnce, {
+        initialValue: "Line 1\nLine 2",
+        width: 40,
+        height: 10,
+        keyBindings: [{ name: "enter", meta: true, action: "buffer-home" }],
+      })
+      editor.focus()
+      editor.gotoLine(9999)
+      expect(editor.logicalCursor.row).toBe(1)
+      // Meta+Enter should trigger buffer-home due to alias (enter -> return)
+      currentMockInput.pressEnter({ meta: true })
+      expect(editor.logicalCursor.row).toBe(0)
+      expect(editor.logicalCursor.col).toBe(0)
     })
   })
 })

@@ -809,4 +809,167 @@ describe("SelectRenderable", () => {
       expect(select.focused).toBe(false)
     })
   })
+
+  describe("Key Bindings and Aliases", () => {
+    test("should support custom key bindings", async () => {
+      const { select } = await createSelectRenderable(currentRenderer, {
+        width: 20,
+        height: 10,
+        options: sampleOptions,
+        keyBindings: [
+          { name: "h", action: "move-up" },
+          { name: "l", action: "move-down" },
+        ],
+      })
+
+      select.focus()
+      expect(select.getSelectedIndex()).toBe(0)
+
+      // H should move up (but we're at top)
+      currentMockInput.pressKey("h")
+      expect(select.getSelectedIndex()).toBe(0)
+
+      // L should move down
+      currentMockInput.pressKey("l")
+      expect(select.getSelectedIndex()).toBe(1)
+    })
+
+    test("should support key aliases", async () => {
+      const { select } = await createSelectRenderable(currentRenderer, {
+        width: 20,
+        height: 10,
+        options: sampleOptions,
+        keyAliasMap: {
+          enter: "return",
+        },
+      })
+
+      select.focus()
+      select.setSelectedIndex(1)
+
+      let itemSelected = false
+      select.on(SelectRenderableEvents.ITEM_SELECTED, () => {
+        itemSelected = true
+      })
+
+      currentMockInput.pressEnter()
+      expect(itemSelected).toBe(true)
+    })
+
+    test("should merge custom bindings with defaults", async () => {
+      const { select } = await createSelectRenderable(currentRenderer, {
+        width: 20,
+        height: 10,
+        options: sampleOptions,
+        keyBindings: [{ name: "n", action: "move-down" }],
+      })
+
+      select.focus()
+      expect(select.getSelectedIndex()).toBe(0)
+
+      // Default binding should still work
+      currentMockInput.pressArrow("down")
+      expect(select.getSelectedIndex()).toBe(1)
+
+      // Custom binding should also work
+      currentMockInput.pressKey("n")
+      expect(select.getSelectedIndex()).toBe(2)
+    })
+
+    test("should override default bindings with custom ones", async () => {
+      const { select } = await createSelectRenderable(currentRenderer, {
+        width: 20,
+        height: 10,
+        options: sampleOptions,
+        keyBindings: [
+          { name: "k", action: "move-down" }, // Override k to move down instead of up
+        ],
+      })
+
+      select.focus()
+      expect(select.getSelectedIndex()).toBe(0)
+
+      // K should now move down instead of up
+      currentMockInput.pressKey("k")
+      expect(select.getSelectedIndex()).toBe(1)
+    })
+
+    test("should support fast scroll with shift by default", async () => {
+      const { select } = await createSelectRenderable(currentRenderer, {
+        width: 20,
+        height: 10,
+        options: sampleOptions,
+        fastScrollStep: 3,
+      })
+
+      select.focus()
+      expect(select.getSelectedIndex()).toBe(0)
+
+      // Shift+Down should fast scroll
+      currentMockInput.pressArrow("down", { shift: true })
+      expect(select.getSelectedIndex()).toBe(3)
+    })
+
+    test("should allow custom bindings for fast scroll", async () => {
+      const { select } = await createSelectRenderable(currentRenderer, {
+        width: 20,
+        height: 10,
+        options: sampleOptions,
+        fastScrollStep: 2,
+        keyBindings: [{ name: "down", ctrl: true, action: "move-down-fast" }],
+      })
+
+      select.focus()
+      expect(select.getSelectedIndex()).toBe(0)
+
+      // Ctrl+Down should fast scroll down
+      currentMockInput.pressArrow("down", { ctrl: true })
+      expect(select.getSelectedIndex()).toBe(2)
+    })
+
+    test("should allow updating key bindings dynamically", async () => {
+      const { select } = await createSelectRenderable(currentRenderer, {
+        width: 20,
+        height: 10,
+        options: sampleOptions,
+      })
+
+      select.focus()
+      expect(select.getSelectedIndex()).toBe(0)
+
+      // Move down with default binding
+      currentMockInput.pressArrow("down")
+      expect(select.getSelectedIndex()).toBe(1)
+
+      // Update bindings
+      select.keyBindings = [{ name: "x", action: "move-down" }]
+
+      // X should now move down
+      currentMockInput.pressKey("x")
+      expect(select.getSelectedIndex()).toBe(2)
+    })
+
+    test("should handle modifiers in custom bindings", async () => {
+      const { select } = await createSelectRenderable(currentRenderer, {
+        width: 20,
+        height: 10,
+        options: sampleOptions,
+        keyBindings: [
+          { name: "n", ctrl: true, action: "move-down" },
+          { name: "p", ctrl: true, action: "move-up" },
+        ],
+      })
+
+      select.focus()
+      select.setSelectedIndex(2)
+
+      // Ctrl+P should move up
+      currentMockInput.pressKey("p", { ctrl: true })
+      expect(select.getSelectedIndex()).toBe(1)
+
+      // Ctrl+N should move down
+      currentMockInput.pressKey("n", { ctrl: true })
+      expect(select.getSelectedIndex()).toBe(2)
+    })
+  })
 })

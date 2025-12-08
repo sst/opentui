@@ -7,6 +7,9 @@ import {
   mergeKeyBindings,
   getKeyBindingKey,
   buildKeyBindingsMap,
+  type KeyAliasMap,
+  defaultKeyAliases,
+  mergeKeyAliases,
 } from "../lib/keymapping"
 import { type StyledText, fg } from "../lib/styled-text"
 import type { ExtmarksController } from "../lib/extmarks"
@@ -103,6 +106,7 @@ export interface TextareaOptions extends EditBufferOptions {
   focusedTextColor?: ColorInput
   placeholder?: StyledText | string | null
   keyBindings?: KeyBinding[]
+  keyAliasMap?: KeyAliasMap
   onSubmit?: (event: SubmitEvent) => void
 }
 
@@ -113,6 +117,8 @@ export class TextareaRenderable extends EditBufferRenderable {
   private _focusedBackgroundColor: RGBA
   private _focusedTextColor: RGBA
   private _keyBindingsMap: Map<string, TextareaAction>
+  private _keyAliasMap: KeyAliasMap
+  private _keyBindings: KeyBinding[]
   private _actionHandlers: Map<TextareaAction, () => boolean>
   private _initialValueSet: boolean = false
   private _submitListener: ((event: SubmitEvent) => void) | undefined = undefined
@@ -145,8 +151,10 @@ export class TextareaRenderable extends EditBufferRenderable {
     this._focusedTextColor = parseColor(options.focusedTextColor || options.textColor || defaults.focusedTextColor)
     this._placeholder = options.placeholder ?? defaults.placeholder
 
-    const mergedBindings = mergeKeyBindings(defaultTextareaKeybindings, options.keyBindings || [])
-    this._keyBindingsMap = buildKeyBindingsMap(mergedBindings)
+    this._keyAliasMap = mergeKeyAliases(defaultKeyAliases, options.keyAliasMap || {})
+    this._keyBindings = options.keyBindings || []
+    const mergedBindings = mergeKeyBindings(defaultTextareaKeybindings, this._keyBindings)
+    this._keyBindingsMap = buildKeyBindingsMap(mergedBindings, this._keyAliasMap)
     this._actionHandlers = this.buildActionHandlers()
     this._submitListener = options.onSubmit
 
@@ -221,6 +229,7 @@ export class TextareaRenderable extends EditBufferRenderable {
     const keyShift = typeof key === "string" ? false : key.shift
     const keyMeta = typeof key === "string" ? false : key.meta
     const keySuper = typeof key === "string" ? false : key.super
+    const keyHyper = typeof key === "string" ? false : key.hyper
 
     const bindingKey = getKeyBindingKey({
       name: keyName,
@@ -240,7 +249,8 @@ export class TextareaRenderable extends EditBufferRenderable {
       }
     }
 
-    if (keySequence && !keyCtrl && !keyMeta) {
+    // Only insert text if no modifier keys are pressed (except shift for uppercase)
+    if (keySequence && !keyCtrl && !keyMeta && !keySuper && !keyHyper) {
       const firstCharCode = keySequence.charCodeAt(0)
 
       if (firstCharCode < 32) {
@@ -602,8 +612,15 @@ export class TextareaRenderable extends EditBufferRenderable {
   }
 
   public set keyBindings(bindings: KeyBinding[]) {
+    this._keyBindings = bindings
     const mergedBindings = mergeKeyBindings(defaultTextareaKeybindings, bindings)
-    this._keyBindingsMap = buildKeyBindingsMap(mergedBindings)
+    this._keyBindingsMap = buildKeyBindingsMap(mergedBindings, this._keyAliasMap)
+  }
+
+  public set keyAliasMap(aliases: KeyAliasMap) {
+    this._keyAliasMap = mergeKeyAliases(defaultKeyAliases, aliases)
+    const mergedBindings = mergeKeyBindings(defaultTextareaKeybindings, this._keyBindings)
+    this._keyBindingsMap = buildKeyBindingsMap(mergedBindings, this._keyAliasMap)
   }
 
   public get extmarks(): ExtmarksController {
