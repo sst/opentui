@@ -1253,7 +1253,7 @@ test "EditBuffer - setText with retain_history does not leak mem registry slots"
     try std.testing.expectEqualStrings("Fourth text", buffer[0..len]);
 }
 
-test "EditBuffer - setText with retain_history=false creates new add_buffer" {
+test "EditBuffer - setText does not create new add_buffer" {
     const pool = gp.initGlobalPool(std.testing.allocator);
     defer gp.deinitGlobalPool();
 
@@ -1267,16 +1267,23 @@ test "EditBuffer - setText with retain_history=false creates new add_buffer" {
     try eb.setText("First text", false);
     const after_first = eb.tb.mem_registry.getUsedSlots();
 
-    // With retain_history=false, we should register:
-    // 1. The text itself
-    // 2. A new add_buffer
-    // So expect 2 new slots
-    try std.testing.expectEqual(after_first - initial_slots, @as(usize, 2));
+    // setText should only register the text itself, NOT a new add_buffer
+    // So expect only 1 new slot
+    try std.testing.expectEqual(after_first - initial_slots, @as(usize, 1));
 
     // Verify the text was set correctly
     var buffer: [100]u8 = undefined;
     const len = eb.getText(&buffer);
     try std.testing.expectEqualStrings("First text", buffer[0..len]);
+
+    // Move cursor to end, then verify add_buffer still works for insertText
+    const line_count = eb.tb.lineCount();
+    const last_line_width = iter_mod.lineWidthAt(&eb.tb.rope, line_count - 1);
+    try eb.setCursor(line_count - 1, last_line_width);
+
+    try eb.insertText(" more");
+    const len2 = eb.getText(&buffer);
+    try std.testing.expectEqualStrings("First text more", buffer[0..len2]);
 }
 
 test "EditBuffer - setText with retain_history allows undo" {
