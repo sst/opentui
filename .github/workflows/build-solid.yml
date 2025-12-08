@@ -16,8 +16,7 @@ jobs:
       - name: Setup Bun
         uses: oven-sh/setup-bun@v2
         with:
-          # Latest Bun (1.3.x) intermittently crashes after tests complete; pin to a stable release
-          bun-version: 1.2.2
+          bun-version: latest
 
       - name: Setup Zig
         uses: goto-bus-stop/setup-zig@v2
@@ -28,16 +27,22 @@ jobs:
         run: bun install
 
       - name: Build core
+        env:
+          BUN_TEST_CONCURRENCY: 1
         run: |
           cd packages/core
           bun run build
 
       - name: Build
+        env:
+          BUN_TEST_CONCURRENCY: 1
         run: |
           cd packages/solid
           bun run build --ci
 
       - name: Run tests
+        env:
+          BUN_TEST_CONCURRENCY: 1
         run: |
           cd packages/solid
           bun run test
