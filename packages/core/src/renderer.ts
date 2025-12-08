@@ -14,7 +14,6 @@ import { resolveRenderLib, type RenderLib } from "./zig"
 import { TerminalConsole, type ConsoleOptions, capture } from "./console"
 import { MouseParser, type MouseEventType, type RawMouseEvent, type ScrollInfo } from "./lib/parse.mouse"
 import { Selection } from "./lib/selection"
-import { clamp } from "./lib/utils"
 import {
   detectGraphicsSupport,
   encodeItermImage,
@@ -1728,21 +1727,19 @@ export class CliRenderer extends EventEmitter implements RenderContext {
       const height = Math.max(renderable.height, 1)
       const srcKey = typeof renderable.src === "string" ? renderable.src : renderable.src.toString("base64")
       const previous = this.imageCache.get(renderable.num)
-      let data = previous?.data
+      let data: Buffer | null = previous?.data ?? null
       const pixelWidth =
-        renderable.pixelWidth ??
-        (metrics ? Math.max(1, Math.round(width * metrics.pxPerCellX)) : Math.max(1, width))
+        renderable.pixelWidth ?? (metrics ? Math.max(1, Math.round(width * metrics.pxPerCellX)) : Math.max(1, width))
       const pixelHeight =
-        renderable.pixelHeight ??
-        (metrics ? Math.max(1, Math.round(height * metrics.pxPerCellY)) : Math.max(1, height))
+        renderable.pixelHeight ?? (metrics ? Math.max(1, Math.round(height * metrics.pxPerCellY)) : Math.max(1, height))
       const changedImage =
         !data ||
-        previous.srcKey !== srcKey ||
-        previous.width !== width ||
-        previous.height !== height ||
-        previous.fit !== renderable.fit ||
-        previous.pixelWidth !== pixelWidth ||
-        previous.pixelHeight !== pixelHeight
+        previous?.srcKey !== srcKey ||
+        previous?.width !== width ||
+        previous?.height !== height ||
+        previous?.fit !== renderable.fit ||
+        previous?.pixelWidth !== pixelWidth ||
+        previous?.pixelHeight !== pixelHeight
       if (changedImage) {
         data = await this.loadImage(renderable.src, pixelWidth, pixelHeight, renderable.fit)
       }
@@ -1755,7 +1752,7 @@ export class CliRenderer extends EventEmitter implements RenderContext {
       }
       const positionChanged = !previous || previous.x !== x || previous.y !== y
       const needsSend = changedImage || positionChanged
-      if (needsSend && previous && this._graphicsSupport.protocol === "kitty" && previous.kittyId !== undefined) {
+      if (needsSend && previous?.kittyId !== undefined && this._graphicsSupport.protocol === "kitty") {
         this.writeOut(encodeKittyDelete(previous.kittyId))
       }
 

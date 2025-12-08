@@ -46,8 +46,7 @@ describe("renderer image support", () => {
 
     await renderOnce!()
 
-    const expected =
-      `\u001b[2;2H` + `\u001b_Gf=100,a=T,s=2,v=3,i=1;${Buffer.from("img").toString("base64")}\u001b\\`
+    const expected = `\u001b[2;2H` + `\u001b_Gf=100,a=T,s=2,v=3,i=1;${Buffer.from("img").toString("base64")}\u001b\\`
     expect(writes).toContain(expected)
   })
 
