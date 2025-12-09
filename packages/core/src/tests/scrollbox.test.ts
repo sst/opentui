@@ -524,15 +524,15 @@ world
       scrollBox.add(wrapper)
     }
 
-    await new Promise((resolve) => setTimeout(resolve, 0))
+    await testRenderer.idle()
 
     mockTreeSitterClient.resolveAllHighlightOnce()
     await new Promise((resolve) => setTimeout(resolve, 1))
 
-    await renderOnce()
+    await testRenderer.idle()
 
     scrollBox.scrollTo(scrollBox.scrollHeight)
-    await renderOnce()
+    await testRenderer.idle()
 
     const frameAfterScroll = captureCharFrame()
 
@@ -1097,7 +1097,7 @@ console.log(processor.reduce((acc, val) => acc + val, 0))`
     root.add(footer)
 
     renderer.root.add(root)
-    await renderOnce()
+    await renderer.idle()
     expect(outer.width).toBeGreaterThan(0)
     expect(outer.height).toBeGreaterThan(0)
 
