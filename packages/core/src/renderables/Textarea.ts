@@ -249,26 +249,26 @@ export class TextareaRenderable extends EditBufferRenderable {
       }
     }
 
-    // Handle space key specifically (including shift+space)
-    if (keyName === "space" && !keyCtrl && !keyMeta && !keySuper && !keyHyper) {
-      this.insertText(" ")
-      return true
-    }
-
-    // Only insert text if no modifier keys are pressed (except shift for uppercase)
-    if (keySequence && !keyCtrl && !keyMeta && !keySuper && !keyHyper) {
-      const firstCharCode = keySequence.charCodeAt(0)
-
-      if (firstCharCode < 32) {
-        return false
+    if (!keyCtrl && !keyMeta && !keySuper && !keyHyper) {
+      if (keyName === "space") {
+        this.insertText(" ")
+        return true
       }
 
-      if (firstCharCode === 127) {
-        return false
-      }
+      if (keySequence) {
+        const firstCharCode = keySequence.charCodeAt(0)
 
-      this.insertText(keySequence)
-      return true
+        if (firstCharCode < 32) {
+          return false
+        }
+
+        if (firstCharCode === 127) {
+          return false
+        }
+
+        this.insertText(keySequence)
+        return true
+      }
     }
 
     return false
