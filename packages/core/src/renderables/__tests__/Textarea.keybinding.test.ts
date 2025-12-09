@@ -1972,6 +1972,96 @@ describe("Textarea - Keybinding Tests", () => {
     })
   })
 
+  describe("Shift+Space Key Handling", () => {
+    let modifierRenderer: TestRenderer
+    let modifierRenderOnce: () => Promise<void>
+    let modifierMockInput: MockInput
+
+    beforeEach(async () => {
+      ;({
+        renderer: modifierRenderer,
+        renderOnce: modifierRenderOnce,
+        mockInput: modifierMockInput,
+      } = await createTestRenderer({
+        width: 80,
+        height: 24,
+        otherModifiersMode: true,
+      }))
+    })
+
+    afterEach(() => {
+      modifierRenderer.destroy()
+    })
+
+    it("should insert a space when shift+space is pressed", async () => {
+      const { textarea: editor } = await createTextareaRenderable(modifierRenderer, modifierRenderOnce, {
+        initialValue: "",
+        width: 40,
+        height: 10,
+      })
+
+      editor.focus()
+
+      // Type "hello"
+      modifierMockInput.pressKey("h")
+      modifierMockInput.pressKey("e")
+      modifierMockInput.pressKey("l")
+      modifierMockInput.pressKey("l")
+      modifierMockInput.pressKey("o")
+      expect(editor.plainText).toBe("hello")
+
+      // Press shift+space - should insert a space
+      modifierMockInput.pressKey(" ", { shift: true })
+      expect(editor.plainText).toBe("hello ")
+      expect(editor.logicalCursor.col).toBe(6)
+
+      // Type "world"
+      modifierMockInput.pressKey("w")
+      modifierMockInput.pressKey("o")
+      modifierMockInput.pressKey("r")
+      modifierMockInput.pressKey("l")
+      modifierMockInput.pressKey("d")
+      expect(editor.plainText).toBe("hello world")
+    })
+
+    it("should insert multiple spaces with shift+space", async () => {
+      const { textarea: editor } = await createTextareaRenderable(modifierRenderer, modifierRenderOnce, {
+        initialValue: "test",
+        width: 40,
+        height: 10,
+      })
+
+      editor.focus()
+      editor.gotoLineEnd()
+
+      modifierMockInput.pressKey(" ", { shift: true })
+      modifierMockInput.pressKey(" ", { shift: true })
+      modifierMockInput.pressKey(" ", { shift: true })
+
+      expect(editor.plainText).toBe("test   ")
+      expect(editor.logicalCursor.col).toBe(7)
+    })
+
+    it("should insert space at middle of text with shift+space", async () => {
+      const { textarea: editor } = await createTextareaRenderable(modifierRenderer, modifierRenderOnce, {
+        initialValue: "helloworld",
+        width: 40,
+        height: 10,
+      })
+
+      editor.focus()
+      for (let i = 0; i < 5; i++) {
+        editor.moveCursorRight()
+      }
+      expect(editor.logicalCursor.col).toBe(5)
+
+      modifierMockInput.pressKey(" ", { shift: true })
+
+      expect(editor.plainText).toBe("hello world")
+      expect(editor.logicalCursor.col).toBe(6)
+    })
+  })
+
   describe("Line Home/End Wrap Behavior", () => {
     it("should wrap to end of previous line when at start of line", async () => {
       const { textarea: editor } = await createTextareaRenderable(currentRenderer, renderOnce, {
