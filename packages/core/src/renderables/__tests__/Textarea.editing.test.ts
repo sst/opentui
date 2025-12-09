@@ -1250,7 +1250,7 @@ describe("Textarea - Editing Tests", () => {
       expect(cursor.col).toBe(6) // "Line 2" is 6 chars
     })
 
-    it("should delete word forward with Ctrl+D", async () => {
+    it("should delete character forward with Ctrl+D", async () => {
       const { textarea: editor } = await createTextareaRenderable(currentRenderer, renderOnce, {
         initialValue: "Line 1\nLine 2\nLine 3",
         width: 40,
@@ -1261,7 +1261,33 @@ describe("Textarea - Editing Tests", () => {
       editor.gotoLine(1)
 
       currentMockInput.pressKey("d", { ctrl: true })
+      expect(editor.plainText).toBe("Line 1\nine 2\nLine 3")
+    })
+
+    it("should delete word forward with Ctrl+Shift+W (requires Kitty keyboard protocol)", async () => {
+      const {
+        renderer: kittyRenderer,
+        renderOnce: kittyRenderOnce,
+        mockInput: kittyMockInput,
+      } = await createTestRenderer({
+        width: 80,
+        height: 24,
+        kittyKeyboard: true,
+      })
+
+      const { textarea: editor } = await createTextareaRenderable(kittyRenderer, kittyRenderOnce, {
+        initialValue: "Line 1\nLine 2\nLine 3",
+        width: 40,
+        height: 10,
+      })
+
+      editor.focus()
+      editor.gotoLine(1)
+
+      kittyMockInput.pressKey("w", { ctrl: true, shift: true })
       expect(editor.plainText).toBe("Line 1\n2\nLine 3")
+
+      kittyRenderer.destroy()
     })
 
     it("should delete to line end with Ctrl+K", async () => {
