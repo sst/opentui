@@ -436,8 +436,7 @@ if (import.meta.main) {
   const renderer = await createCliRenderer({
     exitOnCtrlC: true,
     targetFps: 60,
-    useKittyKeyboard: true,
-    useKittyKeyboardEvents: true,
+    useKittyKeyboard: { events: true },
   })
   run(renderer)
   setupCommonDemoKeys(renderer)
