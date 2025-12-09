@@ -409,6 +409,10 @@ export fn getUseKittyKeyboard(rendererPtr: *renderer.CliRenderer) bool {
     return rendererPtr.getUseKittyKeyboard();
 }
 
+export fn setKittyKeyboardFlags(rendererPtr: *renderer.CliRenderer, flags: u8) void {
+    rendererPtr.setKittyKeyboardFlags(flags);
+}
+
 export fn setupTerminal(rendererPtr: *renderer.CliRenderer, useAlternateScreen: bool) void {
     rendererPtr.setupTerminal(useAlternateScreen);
 }

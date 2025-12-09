@@ -88,6 +88,7 @@ export interface CliRendererConfig {
   useConsole?: boolean
   experimental_splitHeight?: number
   useKittyKeyboard?: boolean
+  useKittyKeyboardEvents?: boolean
   backgroundColor?: ColorInput
   openConsoleOnError?: boolean
   prependInputHandlers?: ((sequence: string) => boolean)[]
@@ -97,6 +98,34 @@ export interface CliRendererConfig {
 export type PixelResolution = {
   width: number
   height: number
+}
+
+// Kitty keyboard protocol flags
+// See: https://sw.kovidgoyal.net/kitty/keyboard-protocol/
+const KITTY_FLAG_ALTERNATE_KEYS = 0b0001 // Report alternate keys (e.g., numpad vs regular)
+const KITTY_FLAG_EVENT_TYPES = 0b0010 // Report event types (press/repeat/release)
+const KITTY_FLAG_REPORT_TEXT = 0b0100 // Report text associated with key events
+const KITTY_FLAG_ALL_KEYS_AS_ESCAPES = 0b1000 // Report all keys as escape codes
+
+/**
+ * Build kitty keyboard protocol flags based on configuration
+ * @param useKitty Whether kitty keyboard protocol should be used
+ * @param useEvents Whether to request event type reporting (press/repeat/release)
+ * @returns The combined flags value
+ * @internal Exported for testing
+ */
+export function buildKittyKeyboardFlags(useKitty: boolean, useEvents: boolean): number {
+  if (!useKitty) {
+    return 0
+  }
+
+  let flags = KITTY_FLAG_ALTERNATE_KEYS
+
+  if (useEvents) {
+    flags |= KITTY_FLAG_EVENT_TYPES
+  }
+
+  return flags
 }
 
 export class MouseEvent {
@@ -202,6 +231,10 @@ export async function createCliRenderer(config: CliRendererConfig = {}): Promise
   ziglib.setUseThread(rendererPtr, config.useThread)
 
   const useKittyKeyboard = config.useKittyKeyboard ?? true
+  const useKittyKeyboardEvents = config.useKittyKeyboardEvents ?? false
+  const kittyFlags = buildKittyKeyboardFlags(useKittyKeyboard, useKittyKeyboardEvents)
+
+  ziglib.setKittyKeyboardFlags(rendererPtr, kittyFlags)
   ziglib.setUseKittyKeyboard(rendererPtr, useKittyKeyboard)
 
   const renderer = new CliRenderer(ziglib, rendererPtr, stdin, stdout, width, height, config)

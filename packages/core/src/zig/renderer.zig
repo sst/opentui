@@ -963,6 +963,10 @@ pub const CliRenderer = struct {
         return self.useKittyKeyboard;
     }
 
+    pub fn setKittyKeyboardFlags(self: *CliRenderer, flags: u8) void {
+        self.terminal.setKittyKeyboardFlags(flags);
+    }
+
     fn renderDebugOverlay(self: *CliRenderer) void {
         if (!self.debugOverlay.enabled) return;
 

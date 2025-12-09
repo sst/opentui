@@ -76,6 +76,7 @@ async function main() {
     exitOnCtrlC: true,
     targetFps: 60,
     useKittyKeyboard: true,
+    useKittyKeyboardEvents: true,
     prependInputHandlers,
   })
 
