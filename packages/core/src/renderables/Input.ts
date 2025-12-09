@@ -327,19 +327,21 @@ export class InputRenderable extends Renderable {
       }
     }
 
-    // Only insert text if no modifier keys are pressed (except shift for uppercase)
-    if (
-      keySequence &&
-      keySequence.length === 1 &&
-      keySequence.charCodeAt(0) >= 32 &&
-      keySequence.charCodeAt(0) <= 126 &&
-      !keyCtrl &&
-      !keyMeta &&
-      !keySuper &&
-      !keyHyper
-    ) {
-      this.insertText(keySequence)
-      return true
+    if (!keyCtrl && !keyMeta && !keySuper && !keyHyper) {
+      if (keyName === "space") {
+        this.insertText(" ")
+        return true
+      }
+
+      if (
+        keySequence &&
+        keySequence.length === 1 &&
+        keySequence.charCodeAt(0) >= 32 &&
+        keySequence.charCodeAt(0) <= 126
+      ) {
+        this.insertText(keySequence)
+        return true
+      }
     }
 
     return false

@@ -1,4 +1,4 @@
-import { describe, expect, it, afterAll } from "bun:test"
+import { describe, expect, it, afterAll, beforeAll } from "bun:test"
 import { InputRenderable, type InputRenderableOptions, InputRenderableEvents } from "./Input"
 import { createTestRenderer } from "../testing/test-renderer"
 import type { KeyEvent } from "../lib/KeyHandler"
@@ -791,6 +791,90 @@ describe("InputRenderable", () => {
     expect(onKeyDownCalled).toBe(true)
     expect(inputEventFired).toBe(true)
     expect(input.value).toBe("initialb")
+  })
+
+  describe("Shift+Space Key Handling with modifyOtherKeys", () => {
+    let modRenderer: any
+    let modMockInput: any
+
+    beforeAll(async () => {
+      const result = await createTestRenderer({ otherModifiersMode: true })
+      modRenderer = result.renderer
+      modMockInput = result.mockInput
+    })
+
+    afterAll(() => {
+      if (modRenderer) {
+        modRenderer.destroy()
+      }
+    })
+
+    function createInputRenderableForMod(options: Partial<InputRenderableOptions>): {
+      input: InputRenderable
+      root: any
+    } {
+      const inputRenderable = new InputRenderable(modRenderer, {
+        width: 20,
+        height: 1,
+        ...options,
+      })
+      modRenderer.root.add(inputRenderable)
+      modRenderer.requestRender()
+
+      return { input: inputRenderable, root: modRenderer.root }
+    }
+
+    it("should insert a space when shift+space is pressed", () => {
+      const { input } = createInputRenderableForMod({ value: "" })
+
+      input.focus()
+
+      // Type "hello"
+      modMockInput.pressKey("h")
+      modMockInput.pressKey("e")
+      modMockInput.pressKey("l")
+      modMockInput.pressKey("l")
+      modMockInput.pressKey("o")
+      expect(input.value).toBe("hello")
+
+      // Press shift+space - should insert a space
+      modMockInput.pressKey(" ", { shift: true })
+      expect(input.value).toBe("hello ")
+      expect(input.cursorPosition).toBe(6)
+
+      // Type "world"
+      modMockInput.pressKey("w")
+      modMockInput.pressKey("o")
+      modMockInput.pressKey("r")
+      modMockInput.pressKey("l")
+      modMockInput.pressKey("d")
+      expect(input.value).toBe("hello world")
+    })
+
+    it("should insert multiple spaces with shift+space", () => {
+      const { input } = createInputRenderableForMod({ value: "test" })
+
+      input.focus()
+
+      modMockInput.pressKey(" ", { shift: true })
+      modMockInput.pressKey(" ", { shift: true })
+      modMockInput.pressKey(" ", { shift: true })
+
+      expect(input.value).toBe("test   ")
+      expect(input.cursorPosition).toBe(7)
+    })
+
+    it("should insert space at middle of text with shift+space", () => {
+      const { input } = createInputRenderableForMod({ value: "helloworld" })
+
+      input.focus()
+      input.cursorPosition = 5
+
+      modMockInput.pressKey(" ", { shift: true })
+
+      expect(input.value).toBe("hello world")
+      expect(input.cursorPosition).toBe(6)
+    })
   })
 
   describe("Edge Cases", () => {
