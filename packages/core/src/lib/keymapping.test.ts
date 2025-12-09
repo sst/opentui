@@ -181,4 +181,56 @@ describe("keymapping", () => {
       expect(defaultKeyAliases.esc).toBe("escape")
     })
   })
+
+  describe("alias override behavior", () => {
+    it("should override 'return' binding when custom provides 'enter' binding with aliases", () => {
+      const defaults = [{ name: "return", action: "newline" as const }]
+      const custom = [{ name: "enter", action: "submit" as const }]
+      const aliases: KeyAliasMap = { enter: "return" }
+
+      const merged = mergeKeyBindings(defaults, custom)
+      const map = buildKeyBindingsMap(merged, aliases)
+
+      const returnAction = map.get("return:0:0:0:0")
+      const enterAction = map.get("enter:0:0:0:0")
+
+      expect(returnAction).toBe("submit")
+      expect(enterAction).toBe("submit")
+    })
+
+    it("should also allow direct override using canonical name", () => {
+      const defaults = [{ name: "return", action: "newline" as const }]
+      const custom = [{ name: "return", action: "submit" as const }]
+      const aliases: KeyAliasMap = { enter: "return" }
+
+      const merged = mergeKeyBindings(defaults, custom)
+      const map = buildKeyBindingsMap(merged, aliases)
+
+      const returnAction = map.get("return:0:0:0:0")
+      const enterAction = map.get("enter:0:0:0:0")
+
+      expect(returnAction).toBe("submit")
+      expect(enterAction).toBeUndefined()
+    })
+
+    it("should handle the Textarea scenario: defaults with 'return', custom with 'enter'", () => {
+      const defaults = [
+        { name: "return", action: "newline" as const },
+        { name: "return", meta: true, action: "submit" as const },
+      ]
+      const custom = [{ name: "enter", action: "custom-submit" as const }]
+      const aliases: KeyAliasMap = { enter: "return" }
+
+      const merged = mergeKeyBindings(defaults, custom)
+      const map = buildKeyBindingsMap(merged, aliases)
+
+      const returnNoMod = map.get("return:0:0:0:0")
+      const returnWithMeta = map.get("return:0:0:1:0")
+      const enterNoMod = map.get("enter:0:0:0:0")
+
+      expect(returnNoMod).toBe("custom-submit")
+      expect(enterNoMod).toBe("custom-submit")
+      expect(returnWithMeta).toBe("submit")
+    })
+  })
 })
