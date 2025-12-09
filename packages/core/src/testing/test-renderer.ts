@@ -25,8 +25,13 @@ export async function createTestRenderer(options: TestRendererOptions): Promise<
   resize: (width: number, height: number) => void
 }> {
   process.env.OTUI_USE_CONSOLE = "false"
+
+  // Convert legacy kittyKeyboard boolean to new format
+  const useKittyKeyboard = options.kittyKeyboard ? { events: true } : options.useKittyKeyboard
+
   const renderer = await setupTestRenderer({
     ...options,
+    useKittyKeyboard,
     useAlternateScreen: false,
     useConsole: false,
   })

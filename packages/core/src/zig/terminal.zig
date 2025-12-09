@@ -43,12 +43,13 @@ pub const CursorStyle = enum {
 
 pub const Options = struct {
     // Kitty keyboard protocol flags:
-    // Bit 0 (1): Report alternate keys
+    // Bit 0 (1): Report alternate keys (e.g., numpad vs regular keys)
     // Bit 1 (2): Report event types (press/repeat/release)
-    // Bit 2 (4): Report text associated with key
+    // Bit 2 (4): Report text associated with key events
     // Bit 3 (8): Report all keys as escape codes
-    // Default 0b00011 (3) = alternate keys + event types (for key release detection)
-    kitty_keyboard_flags: u8 = 0b00011,
+    // Default 0b00001 (1) = alternate keys only (no event types)
+    // Use 0b00011 (3) to enable event types for key release detection
+    kitty_keyboard_flags: u8 = 0b00001,
 };
 
 pub const TerminalInfo = struct {
@@ -503,6 +504,10 @@ pub fn getCursorStyle(self: *Terminal) struct { style: CursorStyle, blinking: bo
 
 pub fn getCursorColor(self: *Terminal) [4]f32 {
     return self.state.cursor.color;
+}
+
+pub fn setKittyKeyboardFlags(self: *Terminal, flags: u8) void {
+    self.opts.kitty_keyboard_flags = flags;
 }
 
 pub fn setTerminalTitle(_: *Terminal, tty: anytype, title: []const u8) void {
