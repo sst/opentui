@@ -87,7 +87,9 @@ export interface CliRendererConfig {
   useAlternateScreen?: boolean
   useConsole?: boolean
   experimental_splitHeight?: number
-  useKittyKeyboard?: boolean
+  useKittyKeyboard?: {
+    events?: boolean // Enable event types (press/repeat/release)
+  } | null
   backgroundColor?: ColorInput
   openConsoleOnError?: boolean
   prependInputHandlers?: ((sequence: string) => boolean)[]
@@ -97,6 +99,33 @@ export interface CliRendererConfig {
 export type PixelResolution = {
   width: number
   height: number
+}
+
+// Kitty keyboard protocol flags
+// See: https://sw.kovidgoyal.net/kitty/keyboard-protocol/
+const KITTY_FLAG_ALTERNATE_KEYS = 0b0001 // Report alternate keys (e.g., numpad vs regular)
+const KITTY_FLAG_EVENT_TYPES = 0b0010 // Report event types (press/repeat/release)
+const KITTY_FLAG_REPORT_TEXT = 0b0100 // Report text associated with key events
+const KITTY_FLAG_ALL_KEYS_AS_ESCAPES = 0b1000 // Report all keys as escape codes
+
+/**
+ * Build kitty keyboard protocol flags based on configuration
+ * @param config Kitty keyboard configuration object (null/undefined = disabled)
+ * @returns The combined flags value (0 = disabled, >0 = enabled)
+ * @internal Exported for testing
+ */
+export function buildKittyKeyboardFlags(config: { events?: boolean } | null | undefined): number {
+  if (!config) {
+    return 0
+  }
+
+  let flags = KITTY_FLAG_ALTERNATE_KEYS
+
+  if (config.events) {
+    flags |= KITTY_FLAG_EVENT_TYPES
+  }
+
+  return flags
 }
 
 export class MouseEvent {
@@ -201,8 +230,10 @@ export async function createCliRenderer(config: CliRendererConfig = {}): Promise
   }
   ziglib.setUseThread(rendererPtr, config.useThread)
 
-  const useKittyKeyboard = config.useKittyKeyboard ?? true
-  ziglib.setUseKittyKeyboard(rendererPtr, useKittyKeyboard)
+  const kittyConfig = config.useKittyKeyboard ?? {}
+  const kittyFlags = buildKittyKeyboardFlags(kittyConfig)
+
+  ziglib.setKittyKeyboardFlags(rendererPtr, kittyFlags)
 
   const renderer = new CliRenderer(ziglib, rendererPtr, stdin, stdout, width, height, config)
   await renderer.setupTerminal()
@@ -466,7 +497,9 @@ export class CliRenderer extends EventEmitter implements RenderContext {
     process.on("unhandledRejection", this.handleError)
     process.on("beforeExit", this.exitHandler)
 
-    this._keyHandler = new InternalKeyHandler(config.useKittyKeyboard ?? true)
+    const kittyConfig = config.useKittyKeyboard ?? {}
+    const useKittyForParsing = kittyConfig !== null
+    this._keyHandler = new InternalKeyHandler(useKittyForParsing)
     this._keyHandler.on("keypress", (event) => {
       if (this.exitOnCtrlC && event.name === "c" && event.ctrl) {
         process.nextTick(() => {
@@ -723,11 +756,12 @@ export class CliRenderer extends EventEmitter implements RenderContext {
   }
 
   public get useKittyKeyboard(): boolean {
-    return this.lib.getUseKittyKeyboard(this.rendererPtr)
+    return this.lib.getKittyKeyboardFlags(this.rendererPtr) > 0
   }
 
   public set useKittyKeyboard(use: boolean) {
-    this.lib.setUseKittyKeyboard(this.rendererPtr, use)
+    const flags = use ? KITTY_FLAG_ALTERNATE_KEYS : 0
+    this.lib.setKittyKeyboardFlags(this.rendererPtr, flags)
   }
 
   public set experimental_splitHeight(splitHeight: number) {

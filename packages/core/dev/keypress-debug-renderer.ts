@@ -75,7 +75,7 @@ async function main() {
   renderer = await createCliRenderer({
     exitOnCtrlC: true,
     targetFps: 60,
-    useKittyKeyboard: true,
+    useKittyKeyboard: { events: true },
     prependInputHandlers,
   })
 

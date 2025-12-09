@@ -401,12 +401,12 @@ export fn disableKittyKeyboard(rendererPtr: *renderer.CliRenderer) void {
     rendererPtr.disableKittyKeyboard();
 }
 
-export fn setUseKittyKeyboard(rendererPtr: *renderer.CliRenderer, use: bool) void {
-    rendererPtr.setUseKittyKeyboard(use);
+export fn setKittyKeyboardFlags(rendererPtr: *renderer.CliRenderer, flags: u8) void {
+    rendererPtr.setKittyKeyboardFlags(flags);
 }
 
-export fn getUseKittyKeyboard(rendererPtr: *renderer.CliRenderer) bool {
-    return rendererPtr.getUseKittyKeyboard();
+export fn getKittyKeyboardFlags(rendererPtr: *renderer.CliRenderer) u8 {
+    return rendererPtr.getKittyKeyboardFlags();
 }
 
 export fn setupTerminal(rendererPtr: *renderer.CliRenderer, useAlternateScreen: bool) void {
