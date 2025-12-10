@@ -2,6 +2,7 @@ const std = @import("std");
 const Allocator = std.mem.Allocator;
 const seg_mod = @import("text-buffer-segment.zig");
 const iter_mod = @import("text-buffer-iterators.zig");
+const mem_registry_mod = @import("mem-registry.zig");
 const ss = @import("syntax-style.zig");
 const gp = @import("grapheme.zig");
 
@@ -16,7 +17,7 @@ const LineInfo = iter_mod.LineInfo;
 
 // Re-export types from segment module
 pub const TextChunk = seg_mod.TextChunk;
-pub const MemRegistry = seg_mod.MemRegistry;
+pub const MemRegistry = mem_registry_mod.MemRegistry;
 pub const RGBA = seg_mod.RGBA;
 pub const TextSelection = seg_mod.TextSelection;
 pub const TextBufferError = seg_mod.TextBufferError;

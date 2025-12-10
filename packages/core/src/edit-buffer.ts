@@ -72,31 +72,53 @@ export class EditBuffer extends EventEmitter {
     return this.bufferPtr
   }
 
-  public setText(text: string, opts?: { history?: boolean }): void {
+  /**
+   * Set text and completely reset the buffer state (clears history, resets add_buffer).
+   * Use this for initial text setting or when you want a clean slate.
+   */
+  public setText(text: string): void {
     this.guard()
-    const history = opts?.history ?? true
     const textBytes = this.lib.encoder.encode(text)
 
-    if (history) {
-      this._textBytes.push(textBytes)
-      const memId = this.lib.textBufferRegisterMemBuffer(this.textBufferPtr, textBytes, false)
-      this.lib.editBufferSetTextFromMem(this.bufferPtr, memId, true)
+    if (this._singleTextMemId !== null) {
+      this.lib.textBufferReplaceMemBuffer(this.textBufferPtr, this._singleTextMemId, textBytes, false)
     } else {
-      if (this._singleTextMemId !== null) {
-        this.lib.textBufferReplaceMemBuffer(this.textBufferPtr, this._singleTextMemId, textBytes, false)
-      } else {
-        this._singleTextMemId = this.lib.textBufferRegisterMemBuffer(this.textBufferPtr, textBytes, false)
-      }
-      this._singleTextBytes = textBytes
-      this.lib.editBufferSetTextFromMem(this.bufferPtr, this._singleTextMemId, false)
+      this._singleTextMemId = this.lib.textBufferRegisterMemBuffer(this.textBufferPtr, textBytes, false)
     }
+    this._singleTextBytes = textBytes
+    this.lib.editBufferSetTextFromMem(this.bufferPtr, this._singleTextMemId)
   }
 
-  public setTextOwned(text: string, opts?: { history?: boolean }): void {
+  /**
+   * Set text using owned memory and completely reset the buffer state (clears history, resets add_buffer).
+   * The native code takes ownership of the memory.
+   */
+  public setTextOwned(text: string): void {
     this.guard()
-    const history = opts?.history ?? true
     const textBytes = this.lib.encoder.encode(text)
-    this.lib.editBufferSetText(this.bufferPtr, textBytes, history)
+    this.lib.editBufferSetText(this.bufferPtr, textBytes)
+  }
+
+  /**
+   * Replace text while preserving undo history (creates an undo point).
+   * Use this when you want the setText operation to be undoable.
+   */
+  public replaceText(text: string): void {
+    this.guard()
+    const textBytes = this.lib.encoder.encode(text)
+    this._textBytes.push(textBytes)
+    const memId = this.lib.textBufferRegisterMemBuffer(this.textBufferPtr, textBytes, false)
+    this.lib.editBufferReplaceTextFromMem(this.bufferPtr, memId)
+  }
+
+  /**
+   * Replace text using owned memory while preserving undo history (creates an undo point).
+   * The native code takes ownership of the memory.
+   */
+  public replaceTextOwned(text: string): void {
+    this.guard()
+    const textBytes = this.lib.encoder.encode(text)
+    this.lib.editBufferReplaceText(this.bufferPtr, textBytes)
   }
 
   public getLineCount(): number {

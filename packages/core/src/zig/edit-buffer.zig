@@ -493,27 +493,38 @@ pub const EditBuffer = struct {
         self.emitNativeEvent("cursor-changed");
     }
 
-    pub fn setText(self: *EditBuffer, text: []const u8, retain_history: bool) !void {
-        // Register text as owned memory, then delegate to setTextFromMemId
+    /// Set text and completely reset the buffer state (clears history, resets add_buffer)
+    pub fn setText(self: *EditBuffer, text: []const u8) !void {
         const owned_text = try self.allocator.dupe(u8, text);
         const mem_id = try self.tb.registerMemBuffer(owned_text, true);
-        try self.setTextFromMemId(mem_id, retain_history);
+        try self.setTextFromMemId(mem_id);
     }
 
-    pub fn setTextFromMemId(self: *EditBuffer, mem_id: u8, retain_history: bool) !void {
-        if (retain_history) {
-            try self.autoStoreUndo();
-        }
-
-        try self.tb.setTextFromMemId(mem_id);
-
-        const new_mem = try self.allocator.alloc(u8, self.add_buffer.cap);
-        const new_mem_id = try self.tb.registerMemBuffer(new_mem, true);
-        self.add_buffer.mem_id = new_mem_id;
-        self.add_buffer.ptr = new_mem.ptr;
+    /// Set text from memory ID and completely reset the buffer state (clears history, resets add_buffer)
+    pub fn setTextFromMemId(self: *EditBuffer, mem_id: u8) !void {
+        self.tb.rope.clear_history();
         self.add_buffer.len = 0;
 
+        try self.tb.setTextFromMemId(mem_id);
         try self.setCursor(0, 0);
+
+        self.emitNativeEvent("content-changed");
+    }
+
+    /// Replace text while preserving undo history (creates an undo point)
+    pub fn replaceText(self: *EditBuffer, text: []const u8) !void {
+        const owned_text = try self.allocator.dupe(u8, text);
+        const mem_id = try self.tb.registerMemBuffer(owned_text, true);
+        try self.replaceTextFromMemId(mem_id);
+    }
+
+    /// Replace text from memory ID while preserving undo history (creates an undo point)
+    pub fn replaceTextFromMemId(self: *EditBuffer, mem_id: u8) !void {
+        try self.autoStoreUndo();
+
+        try self.tb.setTextFromMemId(mem_id);
+        try self.setCursor(0, 0);
+
         self.emitNativeEvent("content-changed");
     }
 

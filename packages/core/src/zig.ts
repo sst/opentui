@@ -613,11 +613,19 @@ function getOpenTUILib(libPath?: string) {
       returns: "void",
     },
     editBufferSetText: {
-      args: ["ptr", "ptr", "usize", "bool"],
+      args: ["ptr", "ptr", "usize"],
       returns: "void",
     },
     editBufferSetTextFromMem: {
-      args: ["ptr", "u8", "bool"],
+      args: ["ptr", "u8"],
+      returns: "void",
+    },
+    editBufferReplaceText: {
+      args: ["ptr", "ptr", "usize"],
+      returns: "void",
+    },
+    editBufferReplaceTextFromMem: {
+      args: ["ptr", "u8"],
       returns: "void",
     },
     editBufferGetText: {
@@ -1320,8 +1328,10 @@ export interface RenderLib {
   // EditBuffer methods
   createEditBuffer: (widthMethod: WidthMethod) => Pointer
   destroyEditBuffer: (buffer: Pointer) => void
-  editBufferSetText: (buffer: Pointer, textBytes: Uint8Array, retainHistory?: boolean) => void
-  editBufferSetTextFromMem: (buffer: Pointer, memId: number, retainHistory?: boolean) => void
+  editBufferSetText: (buffer: Pointer, textBytes: Uint8Array) => void
+  editBufferSetTextFromMem: (buffer: Pointer, memId: number) => void
+  editBufferReplaceText: (buffer: Pointer, textBytes: Uint8Array) => void
+  editBufferReplaceTextFromMem: (buffer: Pointer, memId: number) => void
   editBufferGetText: (buffer: Pointer, maxLength: number) => Uint8Array | null
   editBufferInsertChar: (buffer: Pointer, char: string) => void
   editBufferInsertText: (buffer: Pointer, text: string) => void
@@ -2509,12 +2519,20 @@ class FFIRenderLib implements RenderLib {
     this.opentui.symbols.destroyEditBuffer(buffer)
   }
 
-  public editBufferSetText(buffer: Pointer, textBytes: Uint8Array, retainHistory: boolean = true): void {
-    this.opentui.symbols.editBufferSetText(buffer, textBytes, textBytes.length, retainHistory)
+  public editBufferSetText(buffer: Pointer, textBytes: Uint8Array): void {
+    this.opentui.symbols.editBufferSetText(buffer, textBytes, textBytes.length)
   }
 
-  public editBufferSetTextFromMem(buffer: Pointer, memId: number, retainHistory: boolean = true): void {
-    this.opentui.symbols.editBufferSetTextFromMem(buffer, memId, retainHistory)
+  public editBufferSetTextFromMem(buffer: Pointer, memId: number): void {
+    this.opentui.symbols.editBufferSetTextFromMem(buffer, memId)
+  }
+
+  public editBufferReplaceText(buffer: Pointer, textBytes: Uint8Array): void {
+    this.opentui.symbols.editBufferReplaceText(buffer, textBytes, textBytes.length)
+  }
+
+  public editBufferReplaceTextFromMem(buffer: Pointer, memId: number): void {
+    this.opentui.symbols.editBufferReplaceTextFromMem(buffer, memId)
   }
 
   public editBufferGetText(buffer: Pointer, maxLength: number): Uint8Array | null {
