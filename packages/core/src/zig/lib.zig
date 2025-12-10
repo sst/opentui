@@ -796,13 +796,22 @@ export fn editBufferGetTextRangeByCoords(edit_buffer: *edit_buffer_mod.EditBuffe
     return edit_buffer.getTextRangeByCoords(start_row, start_col, end_row, end_col, outBuffer);
 }
 
-export fn editBufferSetText(edit_buffer: *edit_buffer_mod.EditBuffer, textPtr: [*]const u8, textLen: usize, retain_history: bool) void {
+export fn editBufferSetText(edit_buffer: *edit_buffer_mod.EditBuffer, textPtr: [*]const u8, textLen: usize) void {
     const text = textPtr[0..textLen];
-    edit_buffer.setText(text, retain_history) catch {};
+    edit_buffer.setText(text) catch {};
 }
 
-export fn editBufferSetTextFromMem(edit_buffer: *edit_buffer_mod.EditBuffer, mem_id: u8, retain_history: bool) void {
-    edit_buffer.setTextFromMemId(mem_id, retain_history) catch {};
+export fn editBufferSetTextFromMem(edit_buffer: *edit_buffer_mod.EditBuffer, mem_id: u8) void {
+    edit_buffer.setTextFromMemId(mem_id) catch {};
+}
+
+export fn editBufferReplaceText(edit_buffer: *edit_buffer_mod.EditBuffer, textPtr: [*]const u8, textLen: usize) void {
+    const text = textPtr[0..textLen];
+    edit_buffer.replaceText(text) catch {};
+}
+
+export fn editBufferReplaceTextFromMem(edit_buffer: *edit_buffer_mod.EditBuffer, mem_id: u8) void {
+    edit_buffer.replaceTextFromMemId(mem_id) catch {};
 }
 
 export fn editBufferGetText(edit_buffer: *edit_buffer_mod.EditBuffer, outPtr: [*]u8, maxLen: usize) usize {

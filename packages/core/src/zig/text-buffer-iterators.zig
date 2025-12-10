@@ -1,12 +1,13 @@
 const std = @import("std");
 const Allocator = std.mem.Allocator;
 const seg_mod = @import("text-buffer-segment.zig");
+const mem_registry_mod = @import("mem-registry.zig");
 const utf8 = @import("utf8.zig");
 
 const Segment = seg_mod.Segment;
 const UnifiedRope = seg_mod.UnifiedRope;
 const TextChunk = seg_mod.TextChunk;
-const MemRegistry = seg_mod.MemRegistry;
+const MemRegistry = mem_registry_mod.MemRegistry;
 
 pub const LineInfo = struct {
     line_idx: u32,

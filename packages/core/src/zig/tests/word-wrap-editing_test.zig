@@ -20,7 +20,7 @@ test "Word wrap - editing around wrap boundary creates correct wrap" {
     view.setWrapMode(.word);
     view.setWrapWidth(18);
 
-    try eb.setText("hello my good", false);
+    try eb.setText("hello my good");
 
     const vlines1 = view.getVirtualLines();
     try std.testing.expectEqual(@as(usize, 1), vlines1.len);
@@ -49,7 +49,7 @@ test "Word wrap - backspace and retype near boundary" {
     view.setWrapMode(.word);
     view.setWrapWidth(18);
 
-    try eb.setText("hello my good friend", false);
+    try eb.setText("hello my good friend");
 
     var vlines = view.getVirtualLines();
     try std.testing.expectEqual(@as(usize, 2), vlines.len);
@@ -86,7 +86,7 @@ test "Word wrap - type character by character near boundary" {
     view.setWrapMode(.word);
     view.setWrapWidth(18);
 
-    try eb.setText("hello my good ", false);
+    try eb.setText("hello my good ");
 
     var vlines = view.getVirtualLines();
     try std.testing.expectEqual(@as(usize, 1), vlines.len);
@@ -139,7 +139,7 @@ test "Word wrap - insert word in middle causes rewrap" {
     view.setWrapMode(.word);
     view.setWrapWidth(20);
 
-    try eb.setText("hello friend", false);
+    try eb.setText("hello friend");
 
     var vlines = view.getVirtualLines();
     try std.testing.expectEqual(@as(usize, 1), vlines.len);
@@ -165,7 +165,7 @@ test "Word wrap - delete word causes rewrap" {
     view.setWrapMode(.word);
     view.setWrapWidth(18);
 
-    try eb.setText("hello my good friend buddy", false);
+    try eb.setText("hello my good friend buddy");
 
     var vlines = view.getVirtualLines();
     try std.testing.expect(vlines.len >= 2);
@@ -194,7 +194,7 @@ test "Word wrap - rapid edits maintain correct wrapping" {
     view.setWrapMode(.word);
     view.setWrapWidth(18);
 
-    try eb.setText("hello my ", false);
+    try eb.setText("hello my ");
     try eb.setCursor(0, 9);
     try eb.insertText("g");
     try eb.insertText("o");
@@ -229,7 +229,7 @@ test "Word wrap - fragmented at exact word boundary" {
     view.setWrapMode(.word);
     view.setWrapWidth(18);
 
-    try eb.setText("hello ", false);
+    try eb.setText("hello ");
     try eb.setCursor(0, 6);
     try eb.insertText("my ");
     try eb.insertText("good ");
@@ -255,7 +255,7 @@ test "Word wrap - chunk boundary at start of word" {
     view.setWrapMode(.word);
     view.setWrapWidth(18);
 
-    try eb.setText("hello my good ", false);
+    try eb.setText("hello my good ");
     try eb.setCursor(0, 14);
 
     try eb.insertText("f");
@@ -284,7 +284,7 @@ test "Word wrap - multiple edits create complex fragmentation" {
     view.setWrapMode(.word);
     view.setWrapWidth(20);
 
-    try eb.setText("hello ", false);
+    try eb.setText("hello ");
     try eb.setCursor(0, 6);
     try eb.insertText("w");
     try eb.backspace();
@@ -327,7 +327,7 @@ test "Word wrap - insert at wrap boundary with existing wrap" {
     view.setWrapMode(.word);
     view.setWrapWidth(15);
 
-    try eb.setText("hello world test", false);
+    try eb.setText("hello world test");
 
     var vlines = view.getVirtualLines();
     try std.testing.expect(vlines.len >= 2);
@@ -358,7 +358,7 @@ test "Word wrap - word at exact wrap width" {
     view.setWrapMode(.word);
     view.setWrapWidth(20);
 
-    try eb.setText("12345678901234567890", false);
+    try eb.setText("12345678901234567890");
 
     var vlines = view.getVirtualLines();
     try std.testing.expectEqual(@as(usize, 1), vlines.len);
@@ -386,7 +386,7 @@ test "Word wrap - debug virtual line contents" {
     view.setWrapMode(.word);
     view.setWrapWidth(18);
 
-    try eb.setText("hello my good ", false);
+    try eb.setText("hello my good ");
     try eb.setCursor(0, 14);
     try eb.insertText("f");
     try eb.backspace();
@@ -411,7 +411,7 @@ test "Word wrap - incremental character edits near boundary" {
     view.setWrapMode(.word);
     view.setWrapWidth(18);
 
-    try eb.setText("hello my good ", false);
+    try eb.setText("hello my good ");
 
     var vlines = view.getVirtualLines();
     try std.testing.expectEqual(@as(usize, 1), vlines.len);

@@ -573,8 +573,22 @@ export abstract class EditBufferRenderable extends Renderable implements LineInf
     return this.editBuffer.getLineHighlights(lineIdx)
   }
 
-  public setText(text: string, opts?: { history?: boolean }): void {
-    this.editBuffer.setText(text, opts)
+  /**
+   * Set text and completely reset the buffer state (clears history, resets add_buffer).
+   * Use this for initial text setting or when you want a clean slate.
+   */
+  public setText(text: string): void {
+    this.editBuffer.setText(text)
+    this.yogaNode.markDirty()
+    this.requestRender()
+  }
+
+  /**
+   * Replace text while preserving undo history (creates an undo point).
+   * Use this when you want the setText operation to be undoable.
+   */
+  public replaceText(text: string): void {
+    this.editBuffer.replaceText(text)
     this.yogaNode.markDirty()
     this.requestRender()
   }
