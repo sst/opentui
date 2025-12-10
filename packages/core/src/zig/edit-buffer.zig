@@ -502,13 +502,9 @@ pub const EditBuffer = struct {
 
     /// Set text from memory ID and completely reset the buffer state (clears history, resets add_buffer)
     pub fn setTextFromMemId(self: *EditBuffer, mem_id: u8) !void {
-        // Clear all history
         self.tb.rope.clear_history();
-
-        // Reset add_buffer
         self.add_buffer.len = 0;
 
-        // Set the new text
         try self.tb.setTextFromMemId(mem_id);
         try self.setCursor(0, 0);
 
