@@ -1486,3 +1486,86 @@ test "OptimizedBuffer - link reuse after free" {
     const url = try local_link_pool.get(link_id2);
     try std.testing.expect(std.mem.eql(u8, url, "https://second.com"));
 }
+
+test "OptimizedBuffer - alpha blending preserves overlay link not dest link" {
+    const pool = gp.initGlobalPool(std.testing.allocator);
+    defer gp.deinitGlobalPool();
+
+    var local_link_pool = link.LinkPool.init(std.testing.allocator);
+    defer local_link_pool.deinit();
+
+    var buf = try OptimizedBuffer.init(
+        std.testing.allocator,
+        20,
+        5,
+        .{ .pool = pool, .id = "test-buffer", .link_pool = &local_link_pool },
+    );
+    defer buf.deinit();
+
+    const bg_opaque = RGBA{ 0.0, 0.0, 0.0, 1.0 };
+    const bg_alpha = RGBA{ 0.5, 0.5, 0.5, 0.5 };
+    const fg = RGBA{ 1.0, 1.0, 1.0, 1.0 };
+    try buf.clear(bg_opaque, null);
+
+    // Draw underlying text with link A
+    const link_id_a = try local_link_pool.alloc("https://underlying.com");
+    const attr_a = ansi.TextAttributes.setLinkId(ansi.TextAttributes.BOLD, link_id_a);
+    try buf.drawText("X", 5, 0, fg, bg_opaque, attr_a);
+
+    // Verify dest cell has link A
+    const dest_cell = buf.get(5, 0).?;
+    try std.testing.expectEqual(link_id_a, ansi.TextAttributes.getLinkId(dest_cell.attributes));
+    try std.testing.expectEqual(@as(u32, 'X'), dest_cell.char);
+
+    // Draw space with alpha and link B over it (will preserve 'X' but blend colors)
+    const link_id_b = try local_link_pool.alloc("https://overlay.com");
+    const attr_b = ansi.TextAttributes.setLinkId(0, link_id_b);
+    try buf.drawText(" ", 5, 0, fg, bg_alpha, attr_b);
+
+    // Result: char should be preserved 'X', but link should be from overlay (B), not dest (A)
+    const result_cell = buf.get(5, 0).?;
+    try std.testing.expectEqual(@as(u32, 'X'), result_cell.char);
+    try std.testing.expectEqual(link_id_b, ansi.TextAttributes.getLinkId(result_cell.attributes));
+    try std.testing.expect(ansi.TextAttributes.getLinkId(result_cell.attributes) != link_id_a);
+}
+
+test "OptimizedBuffer - alpha blending with no link clears underlying link" {
+    const pool = gp.initGlobalPool(std.testing.allocator);
+    defer gp.deinitGlobalPool();
+
+    var local_link_pool = link.LinkPool.init(std.testing.allocator);
+    defer local_link_pool.deinit();
+
+    var buf = try OptimizedBuffer.init(
+        std.testing.allocator,
+        20,
+        5,
+        .{ .pool = pool, .id = "test-buffer", .link_pool = &local_link_pool },
+    );
+    defer buf.deinit();
+
+    const bg_opaque = RGBA{ 0.0, 0.0, 0.0, 1.0 };
+    const bg_alpha = RGBA{ 0.5, 0.5, 0.5, 0.5 };
+    const fg = RGBA{ 1.0, 1.0, 1.0, 1.0 };
+    try buf.clear(bg_opaque, null);
+
+    // Draw underlying text with link
+    const link_id = try local_link_pool.alloc("https://underlying.com");
+    const attr_link = ansi.TextAttributes.setLinkId(ansi.TextAttributes.BOLD, link_id);
+    try buf.drawText("X", 5, 0, fg, bg_opaque, attr_link);
+
+    // Verify dest cell has link
+    const dest_cell = buf.get(5, 0).?;
+    try std.testing.expectEqual(link_id, ansi.TextAttributes.getLinkId(dest_cell.attributes));
+
+    // Draw space with alpha but NO link over it (will preserve 'X')
+    try buf.drawText(" ", 5, 0, fg, bg_alpha, 0);
+
+    // Result: char 'X' preserved, but link should be CLEARED (0), not preserved
+    const result_cell = buf.get(5, 0).?;
+    try std.testing.expectEqual(@as(u32, 'X'), result_cell.char);
+    try std.testing.expectEqual(@as(u32, 0), ansi.TextAttributes.getLinkId(result_cell.attributes));
+
+    // Link should no longer be tracked
+    try std.testing.expect(!ansi.TextAttributes.hasLink(result_cell.attributes));
+}

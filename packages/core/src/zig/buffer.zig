@@ -672,11 +672,14 @@ pub const OptimizedBuffer = struct {
                 finalFg = if (hasFgAlpha) blendColors(overlayCell.fg, destCell.bg) else overlayCell.fg;
             }
 
-            // Preserve base attributes but always use overlay's link (if any)
+            // When preserving char, preserve its base attributes but NOT its link
+            // Links ALWAYS come from overlay, never from destination
+            // Even if overlay has no link (link_id=0), it clears the destination's link
             const baseAttrs = if (preserveChar)
                 ansi.TextAttributes.getBaseAttributes(destCell.attributes)
             else
                 ansi.TextAttributes.getBaseAttributes(overlayCell.attributes);
+            // Overlay link always wins - whether it's a real link or 0 (no link)
             const overlayLinkId = ansi.TextAttributes.getLinkId(overlayCell.attributes);
             const finalAttributes = ansi.TextAttributes.setLinkId(@as(u32, baseAttrs), overlayLinkId);
 
