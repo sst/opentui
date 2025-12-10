@@ -97,6 +97,7 @@ export interface RenderableOptions<T extends BaseRenderable = BaseRenderable> ex
   visible?: boolean
   buffered?: boolean
   live?: boolean
+  opacity?: number
 
   // hooks for custom render logic
   renderBefore?: (this: T, buffer: OptimizedBuffer, deltaTime: number) => void
@@ -230,6 +231,7 @@ export abstract class Renderable extends BaseRenderable {
   protected _positionType: PositionTypeString = "relative"
   protected _overflow: OverflowString = "visible"
   protected _position: Position = {}
+  protected _opacity: number = 1.0
   private _flexShrink: number = 1
 
   private renderableMapById: Map<string, Renderable> = new Map()
@@ -273,6 +275,7 @@ export abstract class Renderable extends BaseRenderable {
     this.buffered = options.buffered ?? false
     this._live = options.live ?? false
     this._liveCount = this._live && this._visible ? 1 : 0
+    this._opacity = options.opacity !== undefined ? Math.max(0, Math.min(1, options.opacity)) : 1.0
 
     // TODO: use a global yoga config
     this.yogaNode = Yoga.Node.create(yogaConfig)
@@ -334,6 +337,18 @@ export abstract class Renderable extends BaseRenderable {
       this.blur()
     }
     this.requestRender()
+  }
+
+  public get opacity(): number {
+    return this._opacity
+  }
+
+  public set opacity(value: number) {
+    const clamped = Math.max(0, Math.min(1, value))
+    if (this._opacity !== clamped) {
+      this._opacity = clamped
+      this.requestRender()
+    }
   }
 
   public hasSelection(): boolean {
@@ -1264,6 +1279,12 @@ export abstract class Renderable extends BaseRenderable {
     // Check again after updateFromLayout, which calls onResize/onSizeChange
     if (this._isDestroyed) return
 
+    // Push opacity BEFORE rendering this element so it affects this element and all children
+    const shouldPushOpacity = this._opacity < 1.0
+    if (shouldPushOpacity) {
+      renderList.push({ action: "pushOpacity", opacity: this._opacity })
+    }
+
     renderList.push({ action: "render", renderable: this })
 
     this.ensureZIndexSorted()
@@ -1290,6 +1311,9 @@ export abstract class Renderable extends BaseRenderable {
 
     if (shouldPushScissor) {
       renderList.push({ action: "popScissorRect" })
+    }
+    if (shouldPushOpacity) {
+      renderList.push({ action: "popOpacity" })
     }
   }
 
@@ -1500,7 +1524,7 @@ export abstract class Renderable extends BaseRenderable {
 }
 
 interface RenderCommandBase {
-  action: "render" | "pushScissorRect" | "popScissorRect"
+  action: "render" | "pushScissorRect" | "popScissorRect" | "pushOpacity" | "popOpacity"
 }
 
 interface RenderCommandPushScissorRect extends RenderCommandBase {
@@ -1520,7 +1544,21 @@ interface RenderCommandRender extends RenderCommandBase {
   renderable: Renderable
 }
 
-export type RenderCommand = RenderCommandPushScissorRect | RenderCommandPopScissorRect | RenderCommandRender
+interface RenderCommandPushOpacity extends RenderCommandBase {
+  action: "pushOpacity"
+  opacity: number
+}
+
+interface RenderCommandPopOpacity extends RenderCommandBase {
+  action: "popOpacity"
+}
+
+export type RenderCommand =
+  | RenderCommandPushScissorRect
+  | RenderCommandPopScissorRect
+  | RenderCommandRender
+  | RenderCommandPushOpacity
+  | RenderCommandPopOpacity
 
 export class RootRenderable extends Renderable {
   private renderList: RenderCommand[] = []
@@ -1579,6 +1617,12 @@ export class RootRenderable extends Renderable {
           break
         case "popScissorRect":
           buffer.popScissorRect()
+          break
+        case "pushOpacity":
+          buffer.pushOpacity(command.opacity)
+          break
+        case "popOpacity":
+          buffer.popOpacity()
           break
       }
     }

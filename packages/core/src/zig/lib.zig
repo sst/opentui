@@ -309,7 +309,25 @@ export fn bufferClearScissorRects(bufferPtr: *buffer.OptimizedBuffer) void {
     bufferPtr.clearScissorRects();
 }
 
+// Opacity stack functions
+export fn bufferPushOpacity(bufferPtr: *buffer.OptimizedBuffer, opacity: f32) void {
+    bufferPtr.pushOpacity(opacity) catch {};
+}
+
+export fn bufferPopOpacity(bufferPtr: *buffer.OptimizedBuffer) void {
+    bufferPtr.popOpacity();
+}
+
+export fn bufferGetCurrentOpacity(bufferPtr: *buffer.OptimizedBuffer) f32 {
+    return bufferPtr.getCurrentOpacity();
+}
+
+export fn bufferClearOpacity(bufferPtr: *buffer.OptimizedBuffer) void {
+    bufferPtr.clearOpacity();
+}
+
 export fn bufferDrawSuperSampleBuffer(bufferPtr: *buffer.OptimizedBuffer, x: u32, y: u32, pixelData: [*]const u8, len: usize, format: u8, alignedBytesPerRow: u32) void {
+
     bufferPtr.drawSuperSampleBuffer(x, y, pixelData, len, format, alignedBytesPerRow) catch {};
 }
 

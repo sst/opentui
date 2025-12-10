@@ -262,6 +262,22 @@ function getOpenTUILib(libPath?: string) {
       args: ["ptr"],
       returns: "void",
     },
+    bufferPushOpacity: {
+      args: ["ptr", "f32"],
+      returns: "void",
+    },
+    bufferPopOpacity: {
+      args: ["ptr"],
+      returns: "void",
+    },
+    bufferGetCurrentOpacity: {
+      args: ["ptr"],
+      returns: "f32",
+    },
+    bufferClearOpacity: {
+      args: ["ptr"],
+      returns: "void",
+    },
 
     addToHitGrid: {
       args: ["ptr", "i32", "i32", "u32", "u32", "u32"],
@@ -1405,6 +1421,10 @@ export interface RenderLib {
   bufferPushScissorRect: (buffer: Pointer, x: number, y: number, width: number, height: number) => void
   bufferPopScissorRect: (buffer: Pointer) => void
   bufferClearScissorRects: (buffer: Pointer) => void
+  bufferPushOpacity: (buffer: Pointer, opacity: number) => void
+  bufferPopOpacity: (buffer: Pointer) => void
+  bufferGetCurrentOpacity: (buffer: Pointer) => number
+  bufferClearOpacity: (buffer: Pointer) => void
   textBufferAddHighlightByCharRange: (buffer: Pointer, highlight: Highlight) => void
   textBufferAddHighlight: (buffer: Pointer, lineIdx: number, highlight: Highlight) => void
   textBufferRemoveHighlightsByRef: (buffer: Pointer, hlRef: number) => void
@@ -2820,6 +2840,22 @@ class FFIRenderLib implements RenderLib {
 
   public bufferClearScissorRects(buffer: Pointer): void {
     this.opentui.symbols.bufferClearScissorRects(buffer)
+  }
+
+  public bufferPushOpacity(buffer: Pointer, opacity: number): void {
+    this.opentui.symbols.bufferPushOpacity(buffer, opacity)
+  }
+
+  public bufferPopOpacity(buffer: Pointer): void {
+    this.opentui.symbols.bufferPopOpacity(buffer)
+  }
+
+  public bufferGetCurrentOpacity(buffer: Pointer): number {
+    return this.opentui.symbols.bufferGetCurrentOpacity(buffer)
+  }
+
+  public bufferClearOpacity(buffer: Pointer): void {
+    this.opentui.symbols.bufferClearOpacity(buffer)
   }
 
   public getTerminalCapabilities(renderer: Pointer) {
