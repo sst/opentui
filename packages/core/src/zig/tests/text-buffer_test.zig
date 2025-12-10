@@ -1526,7 +1526,7 @@ test "TextBuffer setText - then deleteRange via EditBuffer - validate markers" {
     var eb = try edit_buffer.EditBuffer.init(std.testing.allocator, pool, .wcwidth);
     defer eb.deinit();
 
-    try eb.setText("Line 1\nLine 2\nLine 3", false);
+    try eb.setText("Line 1\nLine 2\nLine 3");
 
     try eb.deleteRange(.{ .row = 2, .col = 0 }, .{ .row = 2, .col = 6 });
 
