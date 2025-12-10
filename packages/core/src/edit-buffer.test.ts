@@ -1666,14 +1666,10 @@ describe("EditBuffer Clear Method", () => {
 
   describe("Regression Tests", () => {
     it("should handle moving left in a long line (potential BoundedArray overflow)", () => {
-      // Create a string longer than 256 chars (the size of BoundedArray in getPrevGraphemeStartWCWidth)
       const longText = "a".repeat(500)
       buffer.setText(longText)
 
-      // Move cursor to the end (or near the end)
       buffer.setCursorToLineCol(0, 500)
-
-      // Move left should not crash
       buffer.moveCursorLeft()
 
       const cursor = buffer.getCursorPosition()
@@ -1695,42 +1691,39 @@ describe("EditBuffer Memory Registry Limits", () => {
 
   describe("Memory buffer management", () => {
     it("should handle many setText calls without exceeding limit", () => {
-      // setText reuses the same memory buffer slot
-      // This should allow unlimited setText calls
-
       for (let i = 0; i < 300; i++) {
         buffer.setText(`Text ${i}`)
       }
 
-      // Should not throw
       expect(buffer.getText()).toBe("Text 299")
     })
 
-    it("should handle limited replaceText calls before hitting buffer limit", () => {
-      // replaceText registers new memory buffers for history
-      // The memory registry has a limit of 255 buffers per TextBuffer
-      // This test verifies we can call replaceText at least 200 times
+    it("should handle 1000 setText calls without memory registry errors", () => {
+      for (let i = 0; i < 1000; i++) {
+        buffer.setText(`Text ${i}`)
+      }
 
+      expect(buffer.getText()).toBe("Text 999")
+      expect(buffer.canUndo()).toBe(false)
+    })
+
+    it("should handle limited replaceText calls before hitting buffer limit", () => {
       for (let i = 0; i < 200; i++) {
         buffer.replaceText(`Text ${i}`)
       }
 
-      // Should work fine with 200 calls
       expect(buffer.getText()).toBe("Text 199")
     })
 
     it("should handle mixed replaceText and setText calls", () => {
-      // Mix of replaceText (uses new buffers) and setText (reuses buffer)
       for (let i = 0; i < 100; i++) {
         buffer.replaceText(`With history ${i}`)
       }
 
-      // setText should work unlimited times
       for (let i = 0; i < 300; i++) {
         buffer.setText(`Without history ${i}`)
       }
 
-      // Should not throw
       expect(buffer.getText()).toBe("Without history 299")
     })
   })
