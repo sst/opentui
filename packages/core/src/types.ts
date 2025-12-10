@@ -16,6 +16,18 @@ export const TextAttributes = {
   STRIKETHROUGH: 1 << 7, // 128
 }
 
+// Constants for attribute bit packing
+export const ATTRIBUTE_BASE_BITS = 8
+export const ATTRIBUTE_BASE_MASK = 0xff
+
+/**
+ * Extract the base 8 bits of attributes from a u32 attribute value.
+ * Currently we only use the first 8 bits for standard text attributes.
+ */
+export function getBaseAttributes(attr: number): number {
+  return attr & ATTRIBUTE_BASE_MASK
+}
+
 export type CursorStyle = "block" | "line" | "underline"
 
 export interface CursorStyleOptions {

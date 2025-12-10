@@ -85,7 +85,7 @@ pub const Cell = struct {
     char: u32,
     fg: RGBA,
     bg: RGBA,
-    attributes: u8,
+    attributes: u32,
 };
 
 fn isRGBAWithAlpha(color: RGBA) bool {
@@ -124,7 +124,7 @@ pub const OptimizedBuffer = struct {
         char: []u32,
         fg: []RGBA,
         bg: []RGBA,
-        attributes: []u8,
+        attributes: []u32,
     },
     width: u32,
     height: u32,
@@ -170,7 +170,7 @@ pub const OptimizedBuffer = struct {
                 .char = allocator.alloc(u32, size) catch return BufferError.OutOfMemory,
                 .fg = allocator.alloc(RGBA, size) catch return BufferError.OutOfMemory,
                 .bg = allocator.alloc(RGBA, size) catch return BufferError.OutOfMemory,
-                .attributes = allocator.alloc(u8, size) catch return BufferError.OutOfMemory,
+                .attributes = allocator.alloc(u32, size) catch return BufferError.OutOfMemory,
             },
             .width = width,
             .height = height,
@@ -204,7 +204,7 @@ pub const OptimizedBuffer = struct {
         return self.buffer.bg.ptr;
     }
 
-    pub fn getAttributesPtr(self: *OptimizedBuffer) [*]u8 {
+    pub fn getAttributesPtr(self: *OptimizedBuffer) [*]u32 {
         return self.buffer.attributes.ptr;
     }
 
@@ -603,7 +603,7 @@ pub const OptimizedBuffer = struct {
         char: u32,
         fg: RGBA,
         bg: RGBA,
-        attributes: u8,
+        attributes: u32,
     ) !void {
         if (!self.isPointInScissor(@intCast(x), @intCast(y))) return;
 
@@ -629,7 +629,7 @@ pub const OptimizedBuffer = struct {
         char: u32,
         fg: RGBA,
         bg: RGBA,
-        attributes: u8,
+        attributes: u32,
     ) !void {
         if (!self.isPointInScissor(@intCast(x), @intCast(y))) return;
 
@@ -659,7 +659,7 @@ pub const OptimizedBuffer = struct {
         y: u32,
         fg: RGBA,
         bg: RGBA,
-        attributes: u8,
+        attributes: u32,
     ) !void {
         if (!self.isPointInScissor(@intCast(x), @intCast(y))) return;
 
@@ -743,7 +743,7 @@ pub const OptimizedBuffer = struct {
         y: u32,
         fg: RGBA,
         bg: ?RGBA,
-        attributes: u8,
+        attributes: u32,
     ) BufferError!void {
         if (x >= self.width or y >= self.height) return;
         if (text.len == 0) return;

@@ -152,15 +152,25 @@ pub const TextAttributes = struct {
     pub const HIDDEN: u8 = 1 << 6;
     pub const STRIKETHROUGH: u8 = 1 << 7;
 
-    pub fn applyAttributesOutputWriter(writer: anytype, attributes: u8) AnsiError!void {
-        if (attributes & BOLD != 0) writer.writeAll(ANSI.bold) catch return AnsiError.WriteFailed;
-        if (attributes & DIM != 0) writer.writeAll(ANSI.dim) catch return AnsiError.WriteFailed;
-        if (attributes & ITALIC != 0) writer.writeAll(ANSI.italic) catch return AnsiError.WriteFailed;
-        if (attributes & UNDERLINE != 0) writer.writeAll(ANSI.underline) catch return AnsiError.WriteFailed;
-        if (attributes & BLINK != 0) writer.writeAll(ANSI.blink) catch return AnsiError.WriteFailed;
-        if (attributes & INVERSE != 0) writer.writeAll(ANSI.inverse) catch return AnsiError.WriteFailed;
-        if (attributes & HIDDEN != 0) writer.writeAll(ANSI.hidden) catch return AnsiError.WriteFailed;
-        if (attributes & STRIKETHROUGH != 0) writer.writeAll(ANSI.strikethrough) catch return AnsiError.WriteFailed;
+    // Constants for attribute bit packing
+    pub const ATTRIBUTE_BASE_BITS: u5 = 8;
+    pub const ATTRIBUTE_BASE_MASK: u32 = 0xFF;
+
+    /// Extract the base 8 bits of attributes from a u32 attribute value
+    pub fn getBaseAttributes(attr: u32) u8 {
+        return @intCast(attr & ATTRIBUTE_BASE_MASK);
+    }
+
+    pub fn applyAttributesOutputWriter(writer: anytype, attributes: u32) AnsiError!void {
+        const base_attr = getBaseAttributes(attributes);
+        if (base_attr & BOLD != 0) writer.writeAll(ANSI.bold) catch return AnsiError.WriteFailed;
+        if (base_attr & DIM != 0) writer.writeAll(ANSI.dim) catch return AnsiError.WriteFailed;
+        if (base_attr & ITALIC != 0) writer.writeAll(ANSI.italic) catch return AnsiError.WriteFailed;
+        if (base_attr & UNDERLINE != 0) writer.writeAll(ANSI.underline) catch return AnsiError.WriteFailed;
+        if (base_attr & BLINK != 0) writer.writeAll(ANSI.blink) catch return AnsiError.WriteFailed;
+        if (base_attr & INVERSE != 0) writer.writeAll(ANSI.inverse) catch return AnsiError.WriteFailed;
+        if (base_attr & HIDDEN != 0) writer.writeAll(ANSI.hidden) catch return AnsiError.WriteFailed;
+        if (base_attr & STRIKETHROUGH != 0) writer.writeAll(ANSI.strikethrough) catch return AnsiError.WriteFailed;
     }
 };
 

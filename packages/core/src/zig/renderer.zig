@@ -567,7 +567,7 @@ pub const CliRenderer = struct {
 
         var currentFg: ?RGBA = null;
         var currentBg: ?RGBA = null;
-        var currentAttributes: i16 = -1;
+        var currentAttributes: i32 = -1;
         var utf8Buf: [4]u8 = undefined;
 
         const colorEpsilon: f32 = COLOR_EPSILON_DEFAULT;
@@ -606,7 +606,7 @@ pub const CliRenderer = struct {
 
                 const fgMatch = currentFg != null and buf.rgbaEqual(currentFg.?, cell.fg, colorEpsilon);
                 const bgMatch = currentBg != null and buf.rgbaEqual(currentBg.?, cell.bg, colorEpsilon);
-                const sameAttributes = fgMatch and bgMatch and @as(i16, cell.attributes) == currentAttributes;
+                const sameAttributes = fgMatch and bgMatch and @as(i32, @intCast(cell.attributes)) == currentAttributes;
 
                 if (!sameAttributes or runStart == -1) {
                     if (runLength > 0) {
@@ -618,7 +618,7 @@ pub const CliRenderer = struct {
 
                     currentFg = cell.fg;
                     currentBg = cell.bg;
-                    currentAttributes = @intCast(cell.attributes);
+                    currentAttributes = @as(i32, @intCast(cell.attributes));
 
                     ansi.ANSI.moveToOutput(writer, x + 1, y + 1 + self.renderOffset) catch {};
 
