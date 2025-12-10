@@ -9,6 +9,7 @@ import {
   green,
   bgYellow,
   fg,
+  link,
   BoxRenderable,
   type KeyEvent,
 } from "../index"
@@ -209,7 +210,8 @@ ${underline("Features demonstrated:")}
 • Background colors like ${bgYellow(fg("black")("this"))}
 • Custom hex colors like ${fg("#FF6B6B")("this red")}
 • Dynamic updates with ${green("controllable frequency")}
-• Complex templates with ${red("many variables")}`
+• Complex templates with ${red("many variables")}
+• Hyperlinks: ${underline(blue(link("https://opentui.org")("opentui.org")))}`
 
   const instructionsDisplay = new TextRenderable(renderer, {
     id: "instructions",

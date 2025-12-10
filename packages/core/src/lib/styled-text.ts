@@ -125,6 +125,24 @@ export const bg =
   (input: StylableInput): TextChunk =>
     applyStyle(input, { bg: color })
 
+// Link function
+export const link =
+  (url: string) =>
+  (input: StylableInput): TextChunk => {
+    const chunk =
+      typeof input === "object" && "__isChunk" in input
+        ? (input as TextChunk)
+        : {
+            __isChunk: true as const,
+            text: String(input),
+          }
+
+    return {
+      ...chunk,
+      link: { url },
+    }
+  }
+
 /**
  * Template literal handler for styled text (non-cached version).
  * Returns a StyledText object containing chunks of text with optional styles.
