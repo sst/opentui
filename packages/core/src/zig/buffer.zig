@@ -486,6 +486,12 @@ pub const OptimizedBuffer = struct {
             if (new_link_id != 0 and new_link_id != prev_link_id) {
                 self.link_tracker.addCellRef(new_link_id);
             }
+            if (prev_link_id != 0 and prev_link_id != new_link_id) {
+                self.link_tracker.removeCellRef(prev_link_id);
+            }
+            if (new_link_id != 0 and new_link_id != prev_link_id) {
+                self.link_tracker.addCellRef(new_link_id);
+            }
 
             if (width > 1) {
                 const row_end_index: u32 = (y * self.width) + self.width - 1;
@@ -666,7 +672,13 @@ pub const OptimizedBuffer = struct {
                 finalFg = if (hasFgAlpha) blendColors(overlayCell.fg, destCell.bg) else overlayCell.fg;
             }
 
-            const finalAttributes = if (preserveChar) destCell.attributes else overlayCell.attributes;
+            // Preserve base attributes but always use overlay's link (if any)
+            const baseAttrs = if (preserveChar)
+                ansi.TextAttributes.getBaseAttributes(destCell.attributes)
+            else
+                ansi.TextAttributes.getBaseAttributes(overlayCell.attributes);
+            const overlayLinkId = ansi.TextAttributes.getLinkId(overlayCell.attributes);
+            const finalAttributes = ansi.TextAttributes.setLinkId(@as(u32, baseAttrs), overlayLinkId);
 
             // When overlay background is fully transparent, preserve destination background alpha
             const finalBgAlpha = if (overlayCell.bg[3] == 0.0) destCell.bg[3] else overlayCell.bg[3];

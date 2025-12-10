@@ -1384,17 +1384,24 @@ test "OptimizedBuffer - link tracker per-cell counting" {
     // Draw text covering 3 cells
     try buf.drawText("ABC", 0, 0, fg, bg, attributes);
 
-    // Verify link tracker has 1 unique link with 3 cell refs
+    // Verify link tracker has 1 unique link
+    // Pool refcount is 1 (tracker owns one ref, tracks 3 cells internally)
     try std.testing.expectEqual(@as(u32, 1), buf.link_tracker.getLinkCount());
     const pool_refcount = try local_link_pool.getRefcount(link_id);
-    try std.testing.expectEqual(@as(u32, 3), pool_refcount);
+    try std.testing.expectEqual(@as(u32, 1), pool_refcount);
+
+    // Verify tracker knows about 3 cells
+    const cell_count = buf.link_tracker.used_ids.get(link_id).?;
+    try std.testing.expectEqual(@as(u32, 3), cell_count);
 
     // Overwrite one cell without link
     try buf.drawText("X", 0, 0, fg, bg, 0);
 
-    // Refcount should drop to 2
+    // Tracker cell count should drop to 2, pool refcount stays 1
+    const cell_count2 = buf.link_tracker.used_ids.get(link_id).?;
+    try std.testing.expectEqual(@as(u32, 2), cell_count2);
     const pool_refcount2 = try local_link_pool.getRefcount(link_id);
-    try std.testing.expectEqual(@as(u32, 2), pool_refcount2);
+    try std.testing.expectEqual(@as(u32, 1), pool_refcount2);
 
     // Clear all - refcount should be 0 and link freed
     try buf.clear(bg, null);

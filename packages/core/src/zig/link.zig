@@ -201,24 +201,28 @@ pub const LinkTracker = struct {
 
     pub fn addCellRef(self: *LinkTracker, id: u32) void {
         const res = self.used_ids.getOrPut(id) catch |err| {
-            std.debug.panic("LinkTracker.addCellRef failed: {}\n", .{err});
+            std.debug.panic("LinkTracker.addCellRef getOrPut failed: {}\n", .{err});
         };
         if (!res.found_existing) {
-            res.value_ptr.* = 0;
+            // First time seeing this ID - try to incref in pool
+            self.pool.incref(id) catch {
+                // Invalid ID (not allocated in pool) - silently ignore
+                // This can happen with garbage in attribute bits
+                return;
+            };
+            res.value_ptr.* = 1;
+        } else {
+            res.value_ptr.* += 1;
         }
-        res.value_ptr.* += 1;
-        self.pool.incref(id) catch |err| {
-            std.debug.panic("LinkTracker.addCellRef incref failed: {}\n", .{err});
-        };
     }
 
     pub fn removeCellRef(self: *LinkTracker, id: u32) void {
         if (self.used_ids.getPtr(id)) |count_ptr| {
             if (count_ptr.* > 0) {
                 count_ptr.* -= 1;
-                self.pool.decref(id) catch {};
                 if (count_ptr.* == 0) {
                     _ = self.used_ids.remove(id);
+                    self.pool.decref(id) catch {};
                 }
             }
         }
