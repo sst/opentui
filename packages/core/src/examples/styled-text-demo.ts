@@ -211,7 +211,7 @@ ${underline("Features demonstrated:")}
 • Custom hex colors like ${fg("#FF6B6B")("this red")}
 • Dynamic updates with ${green("controllable frequency")}
 • Complex templates with ${red("many variables")}
-• Hyperlinks: ${underline(blue(link("https://opentui.org")("opentui.org")))}`
+• Hyperlinks: ${underline(blue(link("https://opentui.com")("opentui")))}`
 
   const instructionsDisplay = new TextRenderable(renderer, {
     id: "instructions",
