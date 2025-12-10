@@ -59,6 +59,7 @@ function applyStyle(input: StylableInput, style: StyleAttrs): TextChunk {
       fg,
       bg,
       attributes: mergedAttrs,
+      link: existingChunk.link,
     }
   } else {
     const plainTextStr = String(input)

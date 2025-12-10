@@ -92,6 +92,7 @@ export class TextBuffer {
       fg: chunk.fg || null,
       bg: chunk.bg || null,
       attributes: chunk.attributes ?? 0,
+      link: chunk.link,
     }))
 
     this.lib.textBufferSetStyledText(this.bufferPtr, chunks)
