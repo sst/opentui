@@ -5,6 +5,8 @@ const text_buffer_view = @import("../text-buffer-view.zig");
 const buffer = @import("../buffer.zig");
 const gp = @import("../grapheme.zig");
 const ss = @import("../syntax-style.zig");
+const link = @import("../link.zig");
+const ansi = @import("../ansi.zig");
 
 const CliRenderer = renderer.CliRenderer;
 const TextBuffer = text_buffer.TextBuffer;
@@ -15,7 +17,6 @@ const RGBA = text_buffer.RGBA;
 test "renderer - create and destroy" {
     const pool = gp.initGlobalPool(std.testing.allocator);
     defer gp.deinitGlobalPool();
-
 
     var cli_renderer = try CliRenderer.create(
         std.testing.allocator,
@@ -34,7 +35,6 @@ test "renderer - create and destroy" {
 test "renderer - simple text rendering to currentRenderBuffer" {
     const pool = gp.initGlobalPool(std.testing.allocator);
     defer gp.deinitGlobalPool();
-
 
     var tb = try TextBuffer.init(std.testing.allocator, pool, .unicode);
     defer tb.deinit();
@@ -77,7 +77,6 @@ test "renderer - multi-line text rendering" {
     const pool = gp.initGlobalPool(std.testing.allocator);
     defer gp.deinitGlobalPool();
 
-
     var tb = try TextBuffer.init(std.testing.allocator, pool, .unicode);
     defer tb.deinit();
 
@@ -117,7 +116,6 @@ test "renderer - multi-line text rendering" {
 test "renderer - emoji (wide grapheme) rendering" {
     const pool = gp.initGlobalPool(std.testing.allocator);
     defer gp.deinitGlobalPool();
-
 
     var tb = try TextBuffer.init(std.testing.allocator, pool, .unicode);
     defer tb.deinit();
@@ -175,7 +173,6 @@ test "renderer - CJK characters rendering" {
     const pool = gp.initGlobalPool(std.testing.allocator);
     defer gp.deinitGlobalPool();
 
-
     var tb = try TextBuffer.init(std.testing.allocator, pool, .unicode);
     defer tb.deinit();
 
@@ -227,7 +224,6 @@ test "renderer - CJK characters rendering" {
 test "renderer - mixed ASCII, emoji, and CJK" {
     const pool = gp.initGlobalPool(std.testing.allocator);
     defer gp.deinitGlobalPool();
-
 
     var tb = try TextBuffer.init(std.testing.allocator, pool, .unicode);
     defer tb.deinit();
@@ -285,7 +281,6 @@ test "renderer - resize updates dimensions" {
     const pool = gp.initGlobalPool(std.testing.allocator);
     defer gp.deinitGlobalPool();
 
-
     var cli_renderer = try CliRenderer.create(
         std.testing.allocator,
         80,
@@ -308,7 +303,6 @@ test "renderer - background color setting" {
     const pool = gp.initGlobalPool(std.testing.allocator);
     defer gp.deinitGlobalPool();
 
-
     var cli_renderer = try CliRenderer.create(
         std.testing.allocator,
         80,
@@ -327,7 +321,6 @@ test "renderer - background color setting" {
 test "renderer - empty text buffer renders correctly" {
     const pool = gp.initGlobalPool(std.testing.allocator);
     defer gp.deinitGlobalPool();
-
 
     var tb = try TextBuffer.init(std.testing.allocator, pool, .unicode);
     defer tb.deinit();
@@ -354,7 +347,6 @@ test "renderer - empty text buffer renders correctly" {
 test "renderer - multiple renders update currentRenderBuffer" {
     const pool = gp.initGlobalPool(std.testing.allocator);
     defer gp.deinitGlobalPool();
-
 
     var tb = try TextBuffer.init(std.testing.allocator, pool, .unicode);
     defer tb.deinit();
@@ -395,7 +387,6 @@ test "renderer - multiple renders update currentRenderBuffer" {
 test "renderer - 1000 frame render loop with setStyledText" {
     const pool = gp.initGlobalPool(std.testing.allocator);
     defer gp.deinitGlobalPool();
-
 
     var tb = try TextBuffer.init(std.testing.allocator, pool, .unicode);
     defer tb.deinit();
@@ -481,7 +472,6 @@ test "renderer - grapheme pool refcounting with frame buffer fast path" {
     });
     defer gp.deinitGlobalPool();
 
-
     var tb = try TextBuffer.init(std.testing.allocator, limited_pool, .unicode);
     defer tb.deinit();
 
@@ -552,4 +542,145 @@ test "renderer - grapheme pool refcounting with frame buffer fast path" {
     const current_buffer = cli_renderer.getCurrentBuffer();
     const rendered_cell = current_buffer.get(0, 0);
     try std.testing.expect(rendered_cell != null);
+}
+
+test "renderer - hyperlinks enabled with OSC 8 output" {
+    const pool = gp.initGlobalPool(std.testing.allocator);
+    defer gp.deinitGlobalPool();
+
+    const link_pool = link.initGlobalLinkPool(std.testing.allocator);
+    defer link.deinitGlobalLinkPool();
+
+    var cli_renderer = try CliRenderer.create(
+        std.testing.allocator,
+        80,
+        24,
+        pool,
+        true,
+    );
+    defer cli_renderer.destroy();
+
+    // Enable hyperlinks capability
+    cli_renderer.terminal.caps.hyperlinks = true;
+
+    // Allocate a link
+    const link_id = try link_pool.alloc("https://example.com");
+    const attributes = ansi.TextAttributes.setLinkId(ansi.TextAttributes.BOLD, link_id);
+
+    const next_buffer = cli_renderer.getNextBuffer();
+
+    const fg = RGBA{ 1.0, 1.0, 1.0, 1.0 };
+    const bg = RGBA{ 0.0, 0.0, 0.0, 1.0 };
+    try next_buffer.drawText("Click here", 0, 0, fg, bg, attributes);
+
+    cli_renderer.render(false);
+
+    const output = cli_renderer.getLastOutputForTest();
+
+    // Verify output contains OSC 8 start sequence with URL
+    try std.testing.expect(std.mem.indexOf(u8, output, "\x1b]8;;https://example.com\x1b\\") != null);
+
+    // Verify output contains OSC 8 end sequence
+    const end_seq = "\x1b]8;;\x1b\\";
+    var count: usize = 0;
+    var pos: usize = 0;
+    while (std.mem.indexOf(u8, output[pos..], end_seq)) |found| {
+        count += 1;
+        pos += found + end_seq.len;
+    }
+    try std.testing.expect(count >= 1);
+}
+
+test "renderer - hyperlinks disabled no OSC 8 output" {
+    const pool = gp.initGlobalPool(std.testing.allocator);
+    defer gp.deinitGlobalPool();
+
+    const link_pool = link.initGlobalLinkPool(std.testing.allocator);
+    defer link.deinitGlobalLinkPool();
+
+    var cli_renderer = try CliRenderer.create(
+        std.testing.allocator,
+        80,
+        24,
+        pool,
+        true,
+    );
+    defer cli_renderer.destroy();
+
+    // Hyperlinks disabled by default
+    cli_renderer.terminal.caps.hyperlinks = false;
+
+    // Allocate a link
+    const link_id = try link_pool.alloc("https://example.com");
+    const attributes = ansi.TextAttributes.setLinkId(0, link_id);
+
+    const next_buffer = cli_renderer.getNextBuffer();
+
+    const fg = RGBA{ 1.0, 1.0, 1.0, 1.0 };
+    const bg = RGBA{ 0.0, 0.0, 0.0, 1.0 };
+    try next_buffer.drawText("Click here", 0, 0, fg, bg, attributes);
+
+    cli_renderer.render(false);
+
+    const output = cli_renderer.getLastOutputForTest();
+
+    // Verify output does NOT contain OSC 8 sequences
+    try std.testing.expect(std.mem.indexOf(u8, output, "]8;;") == null);
+}
+
+test "renderer - link transition mid-line" {
+    const pool = gp.initGlobalPool(std.testing.allocator);
+    defer gp.deinitGlobalPool();
+
+    const link_pool = link.initGlobalLinkPool(std.testing.allocator);
+    defer link.deinitGlobalLinkPool();
+
+    var cli_renderer = try CliRenderer.create(
+        std.testing.allocator,
+        80,
+        24,
+        pool,
+        true,
+    );
+    defer cli_renderer.destroy();
+
+    // Enable hyperlinks
+    cli_renderer.terminal.caps.hyperlinks = true;
+
+    const next_buffer = cli_renderer.getNextBuffer();
+
+    // Allocate two different links
+    const link_id1 = try link_pool.alloc("https://first.com");
+    const link_id2 = try link_pool.alloc("https://second.com");
+
+    const attr1 = ansi.TextAttributes.setLinkId(0, link_id1);
+    const attr2 = ansi.TextAttributes.setLinkId(0, link_id2);
+
+    const fg = RGBA{ 1.0, 1.0, 1.0, 1.0 };
+    const bg = RGBA{ 0.0, 0.0, 0.0, 1.0 };
+
+    // Draw first link
+    try next_buffer.drawText("First", 0, 0, fg, bg, attr1);
+    // Draw second link
+    try next_buffer.drawText("Second", 6, 0, fg, bg, attr2);
+    // Draw no link
+    try next_buffer.drawText("Normal", 13, 0, fg, bg, 0);
+
+    cli_renderer.render(false);
+
+    const output = cli_renderer.getLastOutputForTest();
+
+    // Should contain both URLs
+    try std.testing.expect(std.mem.indexOf(u8, output, "https://first.com") != null);
+    try std.testing.expect(std.mem.indexOf(u8, output, "https://second.com") != null);
+
+    // Should have multiple OSC 8 end sequences (at least 2 transitions)
+    const end_seq = "\x1b]8;;\x1b\\";
+    var count: usize = 0;
+    var pos: usize = 0;
+    while (std.mem.indexOf(u8, output[pos..], end_seq)) |found| {
+        count += 1;
+        pos += found + end_seq.len;
+    }
+    try std.testing.expect(count >= 2);
 }

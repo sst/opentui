@@ -5,6 +5,7 @@ const ansi = @import("ansi.zig");
 const buffer = @import("buffer.zig");
 const renderer = @import("renderer.zig");
 const gp = @import("grapheme.zig");
+const link = @import("link.zig");
 const text_buffer = @import("text-buffer.zig");
 const text_buffer_view = @import("text-buffer-view.zig");
 const edit_buffer_mod = @import("edit-buffer.zig");
@@ -43,6 +44,7 @@ export fn createRenderer(width: u32, height: u32, testing: bool) ?*renderer.CliR
     }
 
     const pool = gp.initGlobalPool(globalArena);
+    _ = link.initGlobalLinkPool(globalArena);
     return renderer.CliRenderer.create(std.heap.page_allocator, width, height, pool, testing) catch |err| {
         logger.err("Failed to create renderer: {}", .{err});
         return null;
@@ -100,6 +102,7 @@ export fn createOptimizedBuffer(width: u32, height: u32, respectAlpha: bool, wid
     }
 
     const pool = gp.initGlobalPool(globalArena);
+    const link_pool = link.initGlobalLinkPool(globalArena);
     const wMethod: utf8.WidthMethod = if (widthMethod == 0) .wcwidth else .unicode;
     const id = idPtr[0..idLen];
 
@@ -108,6 +111,7 @@ export fn createOptimizedBuffer(width: u32, height: u32, respectAlpha: bool, wid
         .pool = pool,
         .width_method = wMethod,
         .id = id,
+        .link_pool = link_pool,
     }) catch |err| {
         logger.err("Failed to create optimized buffer: {}", .{err});
         return null;
@@ -328,6 +332,29 @@ export fn bufferClearOpacity(bufferPtr: *buffer.OptimizedBuffer) void {
 
 export fn bufferDrawSuperSampleBuffer(bufferPtr: *buffer.OptimizedBuffer, x: u32, y: u32, pixelData: [*]const u8, len: usize, format: u8, alignedBytesPerRow: u32) void {
     bufferPtr.drawSuperSampleBuffer(x, y, pixelData, len, format, alignedBytesPerRow) catch {};
+}
+
+// Link API exports
+export fn linkAlloc(urlPtr: [*]const u8, urlLen: usize) u32 {
+    const url = urlPtr[0..urlLen];
+    const link_pool = link.initGlobalLinkPool(globalArena);
+    return link_pool.alloc(url) catch 0;
+}
+
+export fn linkGetUrl(id: u32, outPtr: [*]u8, maxLen: usize) usize {
+    const link_pool = link.initGlobalLinkPool(globalArena);
+    const url_bytes = link_pool.get(id) catch return 0;
+    const copyLen = @min(url_bytes.len, maxLen);
+    @memcpy(outPtr[0..copyLen], url_bytes[0..copyLen]);
+    return copyLen;
+}
+
+export fn attributesWithLink(baseAttributes: u32, linkId: u32) u32 {
+    return ansi.TextAttributes.setLinkId(baseAttributes, linkId);
+}
+
+export fn attributesGetLinkId(attributes: u32) u32 {
+    return ansi.TextAttributes.getLinkId(attributes);
 }
 
 export fn bufferDrawBox(
