@@ -493,17 +493,38 @@ pub const EditBuffer = struct {
         self.emitNativeEvent("cursor-changed");
     }
 
-    pub fn setText(self: *EditBuffer, text: []const u8, retain_history: bool) !void {
-        // Register text as owned memory, then delegate to setTextFromMemId
+    /// Set text and completely reset the buffer state (clears history, resets add_buffer)
+    pub fn setText(self: *EditBuffer, text: []const u8) !void {
         const owned_text = try self.allocator.dupe(u8, text);
         const mem_id = try self.tb.registerMemBuffer(owned_text, true);
-        try self.setTextFromMemId(mem_id, retain_history);
+        try self.setTextFromMemId(mem_id);
     }
 
-    pub fn setTextFromMemId(self: *EditBuffer, mem_id: u8, retain_history: bool) !void {
-        if (retain_history) {
-            try self.autoStoreUndo();
-        }
+    /// Set text from memory ID and completely reset the buffer state (clears history, resets add_buffer)
+    pub fn setTextFromMemId(self: *EditBuffer, mem_id: u8) !void {
+        // Clear all history
+        self.tb.rope.clear_history();
+
+        // Reset add_buffer
+        self.add_buffer.len = 0;
+
+        // Set the new text
+        try self.tb.setTextFromMemId(mem_id);
+        try self.setCursor(0, 0);
+
+        self.emitNativeEvent("content-changed");
+    }
+
+    /// Replace text while preserving undo history (creates an undo point)
+    pub fn replaceText(self: *EditBuffer, text: []const u8) !void {
+        const owned_text = try self.allocator.dupe(u8, text);
+        const mem_id = try self.tb.registerMemBuffer(owned_text, true);
+        try self.replaceTextFromMemId(mem_id);
+    }
+
+    /// Replace text from memory ID while preserving undo history (creates an undo point)
+    pub fn replaceTextFromMemId(self: *EditBuffer, mem_id: u8) !void {
+        try self.autoStoreUndo();
 
         try self.tb.setTextFromMemId(mem_id);
         try self.setCursor(0, 0);

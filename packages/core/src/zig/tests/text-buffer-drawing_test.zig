@@ -2910,7 +2910,7 @@ test "drawTextBuffer - wcwidth cursor movement matches rendered output" {
 
     // Use the exact text from user's request
     const test_text = "👩🏽‍💻  👨‍👩‍👧‍👦";
-    try eb.setText(test_text, false);
+    try eb.setText(test_text);
 
     // Create a text buffer view and render it
     const tb = eb.getTextBuffer();
