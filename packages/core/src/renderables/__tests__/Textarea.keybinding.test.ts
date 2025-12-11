@@ -1875,6 +1875,117 @@ describe("Textarea - Keybinding Tests", () => {
       expect(editor.logicalCursor.col).toBe(5)
     })
 
+    it("should delete word forward with ctrl+delete", async () => {
+      const { textarea: editor } = await createTextareaRenderable(currentRenderer, renderOnce, {
+        initialValue: "hello world test",
+        width: 40,
+        height: 10,
+      })
+
+      editor.focus()
+      expect(editor.logicalCursor.col).toBe(0)
+
+      currentMockInput.pressKey("DELETE", { ctrl: true })
+      expect(editor.plainText).toBe("world test")
+      expect(editor.logicalCursor.col).toBe(0)
+
+      currentMockInput.pressKey("DELETE", { ctrl: true })
+      expect(editor.plainText).toBe("test")
+      expect(editor.logicalCursor.col).toBe(0)
+    })
+
+    it("should delete word forward from middle of word with ctrl+delete", async () => {
+      const { textarea: editor } = await createTextareaRenderable(currentRenderer, renderOnce, {
+        initialValue: "hello world",
+        width: 40,
+        height: 10,
+      })
+
+      editor.focus()
+      for (let i = 0; i < 3; i++) {
+        editor.moveCursorRight()
+      }
+      expect(editor.logicalCursor.col).toBe(3)
+
+      currentMockInput.pressKey("DELETE", { ctrl: true })
+      expect(editor.plainText).toBe("helworld")
+      expect(editor.logicalCursor.col).toBe(3)
+    })
+
+    it("should delete word forward from space with ctrl+delete", async () => {
+      const { textarea: editor } = await createTextareaRenderable(currentRenderer, renderOnce, {
+        initialValue: "hello world test",
+        width: 40,
+        height: 10,
+      })
+
+      editor.focus()
+      for (let i = 0; i < 5; i++) {
+        editor.moveCursorRight()
+      }
+      expect(editor.logicalCursor.col).toBe(5)
+
+      currentMockInput.pressKey("DELETE", { ctrl: true })
+      expect(editor.plainText).toBe("hellotest")
+      expect(editor.logicalCursor.col).toBe(5)
+    })
+
+    it("should delete word backward with ctrl+backspace", async () => {
+      const { textarea: editor } = await createTextareaRenderable(currentRenderer, renderOnce, {
+        initialValue: "hello world test",
+        width: 40,
+        height: 10,
+      })
+
+      editor.focus()
+      editor.gotoLineEnd()
+      expect(editor.logicalCursor.col).toBe(16)
+
+      currentMockInput.pressBackspace({ ctrl: true })
+      expect(editor.plainText).toBe("hello world ")
+      expect(editor.logicalCursor.col).toBe(12)
+
+      currentMockInput.pressBackspace({ ctrl: true })
+      expect(editor.plainText).toBe("hello ")
+      expect(editor.logicalCursor.col).toBe(6)
+    })
+
+    it("should delete word backward from middle of word with ctrl+backspace", async () => {
+      const { textarea: editor } = await createTextareaRenderable(currentRenderer, renderOnce, {
+        initialValue: "hello world",
+        width: 40,
+        height: 10,
+      })
+
+      editor.focus()
+      for (let i = 0; i < 8; i++) {
+        editor.moveCursorRight()
+      }
+      expect(editor.logicalCursor.col).toBe(8)
+
+      currentMockInput.pressBackspace({ ctrl: true })
+      expect(editor.plainText).toBe("hello rld")
+      expect(editor.logicalCursor.col).toBe(6)
+    })
+
+    it("should delete word backward from space with ctrl+backspace", async () => {
+      const { textarea: editor } = await createTextareaRenderable(currentRenderer, renderOnce, {
+        initialValue: "hello world test",
+        width: 40,
+        height: 10,
+      })
+
+      editor.focus()
+      for (let i = 0; i < 6; i++) {
+        editor.moveCursorRight()
+      }
+      expect(editor.logicalCursor.col).toBe(6)
+
+      currentMockInput.pressBackspace({ ctrl: true })
+      expect(editor.plainText).toBe("world test")
+      expect(editor.logicalCursor.col).toBe(0)
+    })
+
     it("should delete line with ctrl+shift+d (requires Kitty keyboard protocol)", async () => {
       const {
         renderer: kittyRenderer,

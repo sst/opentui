@@ -293,8 +293,20 @@ export function createMockKeys(renderer: CliRenderer, options?: MockKeysOptions)
         // For regular characters and single-char control codes with modifiers
         let char = keyCode
 
-        // Handle ctrl modifier for characters
-        if (modifiers.ctrl) {
+        // Special handling for backspace with modifiers - use modifyOtherKeys format
+        // Terminals send Ctrl+Backspace as CSI 27;5;127~ (or CSI 27;5;8~)
+        if (char === "\b" && (modifiers.ctrl || modifiers.shift || modifiers.super || modifiers.hyper)) {
+          const modifier =
+            1 +
+            (modifiers.shift ? 1 : 0) +
+            (modifiers.meta ? 2 : 0) +
+            (modifiers.ctrl ? 4 : 0) +
+            (modifiers.super ? 8 : 0) +
+            (modifiers.hyper ? 16 : 0)
+          // Use charcode 127 for backspace (DEL)
+          keyCode = `\x1b[27;${modifier};127~`
+        } else if (modifiers.ctrl) {
+          // Handle ctrl modifier for characters
           // Ctrl+letter produces control codes (0x01-0x1a for a-z)
           if (char >= "a" && char <= "z") {
             keyCode = String.fromCharCode(char.charCodeAt(0) - 96)

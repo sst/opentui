@@ -724,6 +724,61 @@ test("parseKeypress - delete key with modifiers (Kitty keyboard protocol)", () =
   expect(ctrlDelete.source).toBe("kitty")
 })
 
+test("parseKeypress - backspace key with modifiers (modifyOtherKeys format)", () => {
+  // Backspace is typically \x7f or \b, but with modifiers uses modifyOtherKeys format
+
+  // Shift+Backspace: \x1b[27;2;127~ (using charcode 127)
+  const shiftBackspace = parseKeypress("\x1b[27;2;127~")!
+  expect(shiftBackspace.name).toBe("backspace")
+  expect(shiftBackspace.shift).toBe(true)
+  expect(shiftBackspace.ctrl).toBe(false)
+  expect(shiftBackspace.meta).toBe(false)
+  expect(shiftBackspace.option).toBe(false)
+
+  // Ctrl+Backspace: \x1b[27;5;127~
+  const ctrlBackspace = parseKeypress("\x1b[27;5;127~")!
+  expect(ctrlBackspace.name).toBe("backspace")
+  expect(ctrlBackspace.ctrl).toBe(true)
+  expect(ctrlBackspace.shift).toBe(false)
+  expect(ctrlBackspace.meta).toBe(false)
+  expect(ctrlBackspace.option).toBe(false)
+
+  // Option/Meta+Backspace: \x1b[27;3;127~
+  const metaBackspace = parseKeypress("\x1b[27;3;127~")!
+  expect(metaBackspace.name).toBe("backspace")
+  expect(metaBackspace.meta).toBe(true)
+  expect(metaBackspace.option).toBe(true)
+  expect(metaBackspace.ctrl).toBe(false)
+  expect(metaBackspace.shift).toBe(false)
+})
+
+test("parseKeypress - backspace key with modifiers (Kitty keyboard protocol)", () => {
+  // Backspace key in Kitty protocol uses code 127
+  // Ctrl+Backspace: \x1b[127;5u
+  const ctrlBackspace = parseKeypress("\x1b[127;5u", { useKittyKeyboard: true })!
+  expect(ctrlBackspace.name).toBe("backspace")
+  expect(ctrlBackspace.ctrl).toBe(true)
+  expect(ctrlBackspace.shift).toBe(false)
+  expect(ctrlBackspace.meta).toBe(false)
+  expect(ctrlBackspace.source).toBe("kitty")
+
+  // Option/Meta+Backspace: \x1b[127;3u
+  const metaBackspace = parseKeypress("\x1b[127;3u", { useKittyKeyboard: true })!
+  expect(metaBackspace.name).toBe("backspace")
+  expect(metaBackspace.meta).toBe(true)
+  expect(metaBackspace.ctrl).toBe(false)
+  expect(metaBackspace.shift).toBe(false)
+  expect(metaBackspace.source).toBe("kitty")
+
+  // Shift+Backspace: \x1b[127;2u
+  const shiftBackspace = parseKeypress("\x1b[127;2u", { useKittyKeyboard: true })!
+  expect(shiftBackspace.name).toBe("backspace")
+  expect(shiftBackspace.shift).toBe(true)
+  expect(shiftBackspace.ctrl).toBe(false)
+  expect(shiftBackspace.meta).toBe(false)
+  expect(shiftBackspace.source).toBe("kitty")
+})
+
 test("parseKeypress - Buffer input", () => {
   const buf = Buffer.from("a")
   expect(parseKeypress(buf)).toEqual({
