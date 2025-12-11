@@ -326,19 +326,13 @@ export class SelectRenderable extends Renderable {
     this.requestRender()
   }
 
-  public handleKeyPress(key: KeyEvent | string): boolean {
-    const keyName = typeof key === "string" ? key : key.name
-    const keyCtrl = typeof key === "string" ? false : key.ctrl
-    const keyShift = typeof key === "string" ? false : key.shift
-    const keyMeta = typeof key === "string" ? false : key.meta
-    const keySuper = typeof key === "string" ? false : key.super
-
+  public handleKeyPress(key: KeyEvent): boolean {
     const bindingKey = getKeyBindingKey({
-      name: keyName,
-      ctrl: keyCtrl,
-      shift: keyShift,
-      meta: keyMeta,
-      super: keySuper,
+      name: key.name,
+      ctrl: key.ctrl,
+      shift: key.shift,
+      meta: key.meta,
+      super: key.super,
       action: "move-up" as SelectAction,
     })
 

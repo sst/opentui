@@ -629,6 +629,156 @@ test("parseKeypress - delete key", () => {
   })
 })
 
+test("parseKeypress - delete key with modifiers (modifyOtherKeys format)", () => {
+  // Delete key without modifiers: \x1b[3~
+  const plainDelete = parseKeypress("\x1b[3~")!
+  expect(plainDelete.name).toBe("delete")
+  expect(plainDelete.shift).toBe(false)
+  expect(plainDelete.ctrl).toBe(false)
+  expect(plainDelete.meta).toBe(false)
+  expect(plainDelete.option).toBe(false)
+
+  // Shift+Delete: \x1b[3;2~
+  const shiftDelete = parseKeypress("\x1b[3;2~")!
+  expect(shiftDelete.name).toBe("delete")
+  expect(shiftDelete.shift).toBe(true)
+  expect(shiftDelete.ctrl).toBe(false)
+  expect(shiftDelete.meta).toBe(false)
+  expect(shiftDelete.option).toBe(false)
+  expect(shiftDelete.sequence).toBe("\x1b[3;2~")
+  expect(shiftDelete.code).toBe("[3~")
+
+  // Option/Meta+Delete: \x1b[3;3~
+  const metaDelete = parseKeypress("\x1b[3;3~")!
+  expect(metaDelete.name).toBe("delete")
+  expect(metaDelete.meta).toBe(true)
+  expect(metaDelete.option).toBe(true)
+  expect(metaDelete.ctrl).toBe(false)
+  expect(metaDelete.shift).toBe(false)
+  expect(metaDelete.sequence).toBe("\x1b[3;3~")
+  expect(metaDelete.code).toBe("[3~")
+
+  // Ctrl+Delete: \x1b[3;5~
+  const ctrlDelete = parseKeypress("\x1b[3;5~")!
+  expect(ctrlDelete.name).toBe("delete")
+  expect(ctrlDelete.ctrl).toBe(true)
+  expect(ctrlDelete.shift).toBe(false)
+  expect(ctrlDelete.meta).toBe(false)
+  expect(ctrlDelete.option).toBe(false)
+  expect(ctrlDelete.sequence).toBe("\x1b[3;5~")
+  expect(ctrlDelete.code).toBe("[3~")
+
+  // Shift+Option+Delete: \x1b[3;4~
+  const shiftMetaDelete = parseKeypress("\x1b[3;4~")!
+  expect(shiftMetaDelete.name).toBe("delete")
+  expect(shiftMetaDelete.shift).toBe(true)
+  expect(shiftMetaDelete.meta).toBe(true)
+  expect(shiftMetaDelete.option).toBe(true)
+  expect(shiftMetaDelete.ctrl).toBe(false)
+  expect(shiftMetaDelete.sequence).toBe("\x1b[3;4~")
+  expect(shiftMetaDelete.code).toBe("[3~")
+
+  // Ctrl+Option+Delete: \x1b[3;7~
+  const ctrlMetaDelete = parseKeypress("\x1b[3;7~")!
+  expect(ctrlMetaDelete.name).toBe("delete")
+  expect(ctrlMetaDelete.ctrl).toBe(true)
+  expect(ctrlMetaDelete.meta).toBe(true)
+  expect(ctrlMetaDelete.option).toBe(true)
+  expect(ctrlMetaDelete.shift).toBe(false)
+  expect(ctrlMetaDelete.sequence).toBe("\x1b[3;7~")
+  expect(ctrlMetaDelete.code).toBe("[3~")
+})
+
+test("parseKeypress - delete key with modifiers (Kitty keyboard protocol)", () => {
+  // Delete key in Kitty protocol uses code 57349
+  // Without modifiers: \x1b[57349u
+  const plainDelete = parseKeypress("\x1b[57349u", { useKittyKeyboard: true })!
+  expect(plainDelete.name).toBe("delete")
+  expect(plainDelete.shift).toBe(false)
+  expect(plainDelete.ctrl).toBe(false)
+  expect(plainDelete.meta).toBe(false)
+  expect(plainDelete.source).toBe("kitty")
+
+  // Shift+Delete: \x1b[57349;2u
+  const shiftDelete = parseKeypress("\x1b[57349;2u", { useKittyKeyboard: true })!
+  expect(shiftDelete.name).toBe("delete")
+  expect(shiftDelete.shift).toBe(true)
+  expect(shiftDelete.ctrl).toBe(false)
+  expect(shiftDelete.meta).toBe(false)
+  expect(shiftDelete.source).toBe("kitty")
+
+  // Option/Meta+Delete: \x1b[57349;3u
+  const metaDelete = parseKeypress("\x1b[57349;3u", { useKittyKeyboard: true })!
+  expect(metaDelete.name).toBe("delete")
+  expect(metaDelete.meta).toBe(true)
+  expect(metaDelete.ctrl).toBe(false)
+  expect(metaDelete.shift).toBe(false)
+  expect(metaDelete.source).toBe("kitty")
+
+  // Ctrl+Delete: \x1b[57349;5u
+  const ctrlDelete = parseKeypress("\x1b[57349;5u", { useKittyKeyboard: true })!
+  expect(ctrlDelete.name).toBe("delete")
+  expect(ctrlDelete.ctrl).toBe(true)
+  expect(ctrlDelete.shift).toBe(false)
+  expect(ctrlDelete.meta).toBe(false)
+  expect(ctrlDelete.source).toBe("kitty")
+})
+
+test("parseKeypress - backspace key with modifiers (modifyOtherKeys format)", () => {
+  // Backspace is typically \x7f or \b, but with modifiers uses modifyOtherKeys format
+
+  // Shift+Backspace: \x1b[27;2;127~ (using charcode 127)
+  const shiftBackspace = parseKeypress("\x1b[27;2;127~")!
+  expect(shiftBackspace.name).toBe("backspace")
+  expect(shiftBackspace.shift).toBe(true)
+  expect(shiftBackspace.ctrl).toBe(false)
+  expect(shiftBackspace.meta).toBe(false)
+  expect(shiftBackspace.option).toBe(false)
+
+  // Ctrl+Backspace: \x1b[27;5;127~
+  const ctrlBackspace = parseKeypress("\x1b[27;5;127~")!
+  expect(ctrlBackspace.name).toBe("backspace")
+  expect(ctrlBackspace.ctrl).toBe(true)
+  expect(ctrlBackspace.shift).toBe(false)
+  expect(ctrlBackspace.meta).toBe(false)
+  expect(ctrlBackspace.option).toBe(false)
+
+  // Option/Meta+Backspace: \x1b[27;3;127~
+  const metaBackspace = parseKeypress("\x1b[27;3;127~")!
+  expect(metaBackspace.name).toBe("backspace")
+  expect(metaBackspace.meta).toBe(true)
+  expect(metaBackspace.option).toBe(true)
+  expect(metaBackspace.ctrl).toBe(false)
+  expect(metaBackspace.shift).toBe(false)
+})
+
+test("parseKeypress - backspace key with modifiers (Kitty keyboard protocol)", () => {
+  // Backspace key in Kitty protocol uses code 127
+  // Ctrl+Backspace: \x1b[127;5u
+  const ctrlBackspace = parseKeypress("\x1b[127;5u", { useKittyKeyboard: true })!
+  expect(ctrlBackspace.name).toBe("backspace")
+  expect(ctrlBackspace.ctrl).toBe(true)
+  expect(ctrlBackspace.shift).toBe(false)
+  expect(ctrlBackspace.meta).toBe(false)
+  expect(ctrlBackspace.source).toBe("kitty")
+
+  // Option/Meta+Backspace: \x1b[127;3u
+  const metaBackspace = parseKeypress("\x1b[127;3u", { useKittyKeyboard: true })!
+  expect(metaBackspace.name).toBe("backspace")
+  expect(metaBackspace.meta).toBe(true)
+  expect(metaBackspace.ctrl).toBe(false)
+  expect(metaBackspace.shift).toBe(false)
+  expect(metaBackspace.source).toBe("kitty")
+
+  // Shift+Backspace: \x1b[127;2u
+  const shiftBackspace = parseKeypress("\x1b[127;2u", { useKittyKeyboard: true })!
+  expect(shiftBackspace.name).toBe("backspace")
+  expect(shiftBackspace.shift).toBe(true)
+  expect(shiftBackspace.ctrl).toBe(false)
+  expect(shiftBackspace.meta).toBe(false)
+  expect(shiftBackspace.source).toBe("kitty")
+})
+
 test("parseKeypress - Buffer input", () => {
   const buf = Buffer.from("a")
   expect(parseKeypress(buf)).toEqual({
