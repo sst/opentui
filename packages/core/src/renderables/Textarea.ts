@@ -89,6 +89,8 @@ const defaultTextareaKeybindings: KeyBinding[] = [
   { name: "b", meta: true, action: "word-backward" },
   { name: "right", meta: true, action: "word-forward" },
   { name: "left", meta: true, action: "word-backward" },
+  { name: "right", ctrl: true, action: "word-forward" },
+  { name: "left", ctrl: true, action: "word-backward" },
   { name: "f", meta: true, shift: true, action: "select-word-forward" },
   { name: "b", meta: true, shift: true, action: "select-word-backward" },
   { name: "right", meta: true, shift: true, action: "select-word-forward" },
