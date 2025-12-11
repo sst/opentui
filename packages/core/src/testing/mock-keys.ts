@@ -268,6 +268,7 @@ export function createMockKeys(renderer: CliRenderer, options?: MockKeysOptions)
       if (keyCode.startsWith("\x1b[") && keyCode.length > 2) {
         // Arrow keys: \x1b[A, \x1b[B, \x1b[C, \x1b[D
         // With shift modifier: \x1b[1;2A, \x1b[1;2B, \x1b[1;2C, \x1b[1;2D
+        // Special keys like delete: \x1b[3~ becomes \x1b[3;2~ with meta
         const modifier =
           1 +
           (modifiers.shift ? 1 : 0) +
@@ -276,9 +277,17 @@ export function createMockKeys(renderer: CliRenderer, options?: MockKeysOptions)
           (modifiers.super ? 8 : 0) +
           (modifiers.hyper ? 16 : 0)
         if (modifier > 1) {
-          // Insert modifier into sequence
-          const ending = keyCode.slice(-1)
-          keyCode = `\x1b[1;${modifier}${ending}`
+          // Check if it's a sequence like \x1b[3~ (delete, insert, pageup, etc.)
+          const tildeMatch = keyCode.match(/^\x1b\[(\d+)~$/)
+          if (tildeMatch) {
+            // Format: \x1b[number;modifier~
+            keyCode = `\x1b[${tildeMatch[1]};${modifier}~`
+          } else {
+            // Arrow keys and other single-letter endings
+            // Insert modifier into sequence
+            const ending = keyCode.slice(-1)
+            keyCode = `\x1b[1;${modifier}${ending}`
+          }
         }
       } else if (keyCode.length === 1) {
         // For regular characters and single-char control codes with modifiers

@@ -78,6 +78,7 @@ const defaultTextareaKeybindings: KeyBinding[] = [
   { name: "b", ctrl: true, action: "move-left" },
   { name: "w", ctrl: true, action: "delete-word-backward" },
   { name: "d", meta: true, action: "delete-word-forward" },
+  { name: "delete", meta: true, action: "delete-word-forward" },
   { name: "d", ctrl: true, shift: true, action: "delete-line" },
   { name: "k", ctrl: true, action: "delete-to-line-end" },
   { name: "u", ctrl: true, action: "delete-to-line-start" },

@@ -1820,6 +1820,61 @@ describe("Textarea - Keybinding Tests", () => {
       expect(editor.logicalCursor.col).toBe(5)
     })
 
+    it("should delete word forward with meta+delete", async () => {
+      const { textarea: editor } = await createTextareaRenderable(currentRenderer, renderOnce, {
+        initialValue: "hello world test",
+        width: 40,
+        height: 10,
+      })
+
+      editor.focus()
+      expect(editor.logicalCursor.col).toBe(0)
+
+      currentMockInput.pressKey("DELETE", { meta: true })
+      expect(editor.plainText).toBe("world test")
+      expect(editor.logicalCursor.col).toBe(0)
+
+      currentMockInput.pressKey("DELETE", { meta: true })
+      expect(editor.plainText).toBe("test")
+      expect(editor.logicalCursor.col).toBe(0)
+    })
+
+    it("should delete word forward from middle of word with meta+delete", async () => {
+      const { textarea: editor } = await createTextareaRenderable(currentRenderer, renderOnce, {
+        initialValue: "hello world",
+        width: 40,
+        height: 10,
+      })
+
+      editor.focus()
+      for (let i = 0; i < 3; i++) {
+        editor.moveCursorRight()
+      }
+      expect(editor.logicalCursor.col).toBe(3)
+
+      currentMockInput.pressKey("DELETE", { meta: true })
+      expect(editor.plainText).toBe("helworld")
+      expect(editor.logicalCursor.col).toBe(3)
+    })
+
+    it("should delete word forward from space with meta+delete", async () => {
+      const { textarea: editor } = await createTextareaRenderable(currentRenderer, renderOnce, {
+        initialValue: "hello world test",
+        width: 40,
+        height: 10,
+      })
+
+      editor.focus()
+      for (let i = 0; i < 5; i++) {
+        editor.moveCursorRight()
+      }
+      expect(editor.logicalCursor.col).toBe(5)
+
+      currentMockInput.pressKey("DELETE", { meta: true })
+      expect(editor.plainText).toBe("hellotest")
+      expect(editor.logicalCursor.col).toBe(5)
+    })
+
     it("should delete line with ctrl+shift+d (requires Kitty keyboard protocol)", async () => {
       const {
         renderer: kittyRenderer,
