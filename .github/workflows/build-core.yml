@@ -27,11 +27,15 @@ jobs:
         run: bun install
 
       - name: Build
+        env:
+          BUN_TEST_CONCURRENCY: 1
         run: |
           cd packages/core
           bun run build
 
       - name: Run tests
+        env:
+          BUN_TEST_CONCURRENCY: 1
         run: |
           cd packages/core
           bun run test

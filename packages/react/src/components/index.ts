@@ -4,6 +4,7 @@ import {
   CodeRenderable,
   DiffRenderable,
   InputRenderable,
+  ImageRenderable,
   LineNumberRenderable,
   ScrollBoxRenderable,
   SelectRenderable,
@@ -32,6 +33,7 @@ export const baseComponents = {
   "ascii-font": ASCIIFontRenderable,
   "tab-select": TabSelectRenderable,
   "line-number": LineNumberRenderable,
+  image: ImageRenderable,
 
   // Text modifiers
   span: SpanRenderable,

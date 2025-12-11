@@ -15,6 +15,7 @@ import {
   TextNodeRenderable,
   TextRenderable,
   type TextNodeOptions,
+  engine,
 } from "@opentui/core"
 import { useContext } from "solid-js"
 import { createRenderer } from "./renderer"
@@ -169,7 +170,7 @@ export const {
   createElement(tagName: string): DomNode {
     log("Creating element:", tagName)
     const id = getNextId(tagName)
-    const solidRenderer = useContext(RendererContext)
+    const solidRenderer = useContext(RendererContext) ?? engine.renderer
     if (!solidRenderer) {
       throw new Error("No renderer found")
     }

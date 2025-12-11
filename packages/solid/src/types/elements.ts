@@ -6,6 +6,8 @@ import type {
   BoxRenderable,
   CodeOptions,
   CodeRenderable,
+  ImageOptions,
+  ImageRenderable,
   InputRenderable,
   InputRenderableOptions,
   RenderableOptions,
@@ -133,6 +135,8 @@ export type SelectProps = ComponentProps<SelectRenderableOptions, SelectRenderab
 }
 
 export type AsciiFontProps = ComponentProps<ASCIIFontOptions, ASCIIFontRenderable>
+
+export type ImageProps = ComponentProps<ImageOptions, ImageRenderable>
 
 export type TabSelectProps = ComponentProps<TabSelectRenderableOptions, TabSelectRenderable> & {
   focused?: boolean

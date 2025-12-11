@@ -133,7 +133,7 @@ test("requestRender() does not trigger when renderer is suspended", async () => 
   // @ts-expect-error - renderNative is private
   const originalRender = renderer.renderNative.bind(renderer)
   // @ts-expect-error - renderNative is private
-  renderer.renderNative = () => {
+  renderer.renderNative = async () => {
     renderCalled = true
     return originalRender()
   }
@@ -156,7 +156,7 @@ test("requestRender() does trigger when renderer is paused", async () => {
   // @ts-expect-error - renderNative is private
   const originalRender = renderer.renderNative.bind(renderer)
   // @ts-expect-error - renderNative is private
-  renderer.renderNative = () => {
+  renderer.renderNative = async () => {
     renderCalled = true
     return originalRender()
   }
