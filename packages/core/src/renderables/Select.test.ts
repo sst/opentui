@@ -1,6 +1,41 @@
 import { test, expect, beforeEach, afterEach, describe } from "bun:test"
 import { SelectRenderable, type SelectRenderableOptions, SelectRenderableEvents, type SelectOption } from "./Select"
 import { createTestRenderer, type MockInput, type TestRenderer } from "../testing/test-renderer"
+import { KeyEvent } from "../lib/KeyHandler"
+
+// Helper function to create a KeyEvent from a string or object
+function createKeyEvent(
+  input: string | { name: string; shift?: boolean; ctrl?: boolean; meta?: boolean; super?: boolean },
+): KeyEvent {
+  if (typeof input === "string") {
+    return new KeyEvent({
+      name: input,
+      sequence: input,
+      ctrl: false,
+      meta: false,
+      shift: false,
+      option: false,
+      number: false,
+      raw: input,
+      eventType: "press",
+      source: "raw",
+    })
+  } else {
+    return new KeyEvent({
+      name: input.name,
+      sequence: input.name === "space" ? " " : input.name,
+      ctrl: input.ctrl ?? false,
+      meta: input.meta ?? false,
+      shift: input.shift ?? false,
+      super: input.super ?? false,
+      option: false,
+      number: false,
+      raw: input.name,
+      eventType: "press",
+      source: "raw",
+    })
+  }
+}
 
 let currentRenderer: TestRenderer
 let currentMockInput: MockInput
@@ -331,12 +366,12 @@ describe("SelectRenderable", () => {
       select.focus()
 
       // Test down arrow
-      const downHandled = select.handleKeyPress("down")
+      const downHandled = select.handleKeyPress(createKeyEvent("down"))
       expect(downHandled).toBe(true)
       expect(select.getSelectedIndex()).toBe(2)
 
       // Test up arrow
-      const upHandled = select.handleKeyPress("up")
+      const upHandled = select.handleKeyPress(createKeyEvent("up"))
       expect(upHandled).toBe(true)
       expect(select.getSelectedIndex()).toBe(1)
     })
@@ -352,12 +387,12 @@ describe("SelectRenderable", () => {
       select.focus()
 
       // Test 'j' (down)
-      const jHandled = select.handleKeyPress("j")
+      const jHandled = select.handleKeyPress(createKeyEvent("j"))
       expect(jHandled).toBe(true)
       expect(select.getSelectedIndex()).toBe(2)
 
       // Test 'k' (up)
-      const kHandled = select.handleKeyPress("k")
+      const kHandled = select.handleKeyPress(createKeyEvent("k"))
       expect(kHandled).toBe(true)
       expect(select.getSelectedIndex()).toBe(1)
     })
@@ -380,7 +415,7 @@ describe("SelectRenderable", () => {
         selectedIndex = index
       })
 
-      const enterHandled = select.handleKeyPress("return")
+      const enterHandled = select.handleKeyPress(createKeyEvent("return"))
       expect(enterHandled).toBe(true)
       expect(itemSelectedFired).toBe(true)
       expect(selectedIndex).toBe(2)
@@ -402,7 +437,7 @@ describe("SelectRenderable", () => {
         itemSelectedFired = true
       })
 
-      const linefeedHandled = select.handleKeyPress("linefeed")
+      const linefeedHandled = select.handleKeyPress(createKeyEvent("linefeed"))
       expect(linefeedHandled).toBe(true)
       expect(itemSelectedFired).toBe(true)
     })
@@ -419,12 +454,12 @@ describe("SelectRenderable", () => {
       select.focus()
 
       // Test shift+down
-      const shiftDownHandled = select.handleKeyPress({ name: "down", shift: true })
+      const shiftDownHandled = select.handleKeyPress(createKeyEvent({ name: "down", shift: true }))
       expect(shiftDownHandled).toBe(true)
       expect(select.getSelectedIndex()).toBe(3) // Should move 3 steps
 
       // Test shift+up
-      const shiftUpHandled = select.handleKeyPress({ name: "up", shift: true })
+      const shiftUpHandled = select.handleKeyPress(createKeyEvent({ name: "up", shift: true }))
       expect(shiftUpHandled).toBe(true)
       expect(select.getSelectedIndex()).toBe(0) // Should move back 3 steps
     })
@@ -442,7 +477,7 @@ describe("SelectRenderable", () => {
       const originalIndex = select.getSelectedIndex()
 
       // Test unhandled key
-      const handled = select.handleKeyPress("a")
+      const handled = select.handleKeyPress(createKeyEvent("a"))
       expect(handled).toBe(false)
       expect(select.getSelectedIndex()).toBe(originalIndex)
     })

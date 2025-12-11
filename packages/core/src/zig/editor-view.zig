@@ -471,6 +471,87 @@ pub const EditorView = struct {
         return self.logicalToVisualCursor(logical_cursor.row, logical_cursor.col);
     }
 
+    /// Get the start of the current visual line (SOL = Start Of Line)
+    /// Returns a cursor at column 0 of the current visual line
+    pub fn getVisualSOL(self: *EditorView) VisualCursor {
+        const cursor = self.edit_buffer.getPrimaryCursor();
+        const vcursor = self.logicalToVisualCursor(cursor.row, cursor.col);
+
+        self.text_buffer_view.updateVirtualLines();
+        const vlines = self.text_buffer_view.virtual_lines.items;
+
+        if (vcursor.visual_row >= vlines.len) {
+            // Fallback: return cursor at column 0 of current logical line
+            const offset = iter_mod.coordsToOffset(&self.edit_buffer.tb.rope, cursor.row, 0) orelse 0;
+            return VisualCursor{
+                .visual_row = vcursor.visual_row,
+                .visual_col = 0,
+                .logical_row = cursor.row,
+                .logical_col = 0,
+                .offset = offset,
+            };
+        }
+
+        const vline = &vlines[vcursor.visual_row];
+        const logical_col = vline.source_col_offset; // Start column of this visual line
+        const logical_row = @as(u32, @intCast(vline.source_line));
+        const offset = iter_mod.coordsToOffset(&self.edit_buffer.tb.rope, logical_row, logical_col) orelse 0;
+
+        return VisualCursor{
+            .visual_row = vcursor.visual_row,
+            .visual_col = 0,
+            .logical_row = logical_row,
+            .logical_col = logical_col,
+            .offset = offset,
+        };
+    }
+
+    /// Get the end of the current visual line (EOL = End Of Line)
+    /// Returns a cursor at the last position of the current visual line
+    /// For wrapped lines, this is the position just before the wrap boundary to ensure
+    /// the cursor stays on the current visual line when used with setCursor()
+    pub fn getVisualEOL(self: *EditorView) VisualCursor {
+        const cursor = self.edit_buffer.getPrimaryCursor();
+        const vcursor = self.logicalToVisualCursor(cursor.row, cursor.col);
+
+        self.text_buffer_view.updateVirtualLines();
+        const vlines = self.text_buffer_view.virtual_lines.items;
+
+        if (vcursor.visual_row >= vlines.len) {
+            // Fallback: return end of current logical line
+            const logical_cursor = self.edit_buffer.getEOL();
+            return self.logicalToVisualCursor(logical_cursor.row, logical_cursor.col);
+        }
+
+        const vline = &vlines[vcursor.visual_row];
+        const logical_row = @as(u32, @intCast(vline.source_line));
+
+        // Determine the logical column at the end of this visual line
+        var logical_col: u32 = undefined;
+        if (vcursor.visual_row + 1 < vlines.len) {
+            const next_vline = &vlines[vcursor.visual_row + 1];
+            if (next_vline.source_line == vline.source_line) {
+                // Next visual line is a continuation of the same logical line
+                // The wrap boundary is at next_vline.source_col_offset
+                // To stay on the current visual line, we need to be one position BEFORE the boundary
+                // However, if width is 0, just use the start position
+                if (vline.width > 0) {
+                    logical_col = vline.source_col_offset + vline.width - 1;
+                } else {
+                    logical_col = vline.source_col_offset;
+                }
+            } else {
+                // Next visual line is a different logical line, so we're at the end
+                logical_col = iter_mod.lineWidthAt(&self.edit_buffer.tb.rope, logical_row);
+            }
+        } else {
+            // This is the last visual line, use end of logical line
+            logical_col = iter_mod.lineWidthAt(&self.edit_buffer.tb.rope, logical_row);
+        }
+
+        return self.logicalToVisualCursor(logical_row, logical_col);
+    }
+
     // ============================================================================
     // Placeholder - Visual Only
     // ============================================================================

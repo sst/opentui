@@ -328,6 +328,7 @@ export const parseKeypress = (s: Buffer | string = "", options: ParseKeypressOpt
 
     if (segs[0] === "\u001b" && segs[1] === "\u001b") {
       key.option = true
+      key.meta = true
     }
 
     // ansi escape sequence

@@ -1083,6 +1083,28 @@ export fn editorViewGetEOL(view: *editor_view.EditorView, outPtr: *ExternalVisua
     };
 }
 
+export fn editorViewGetVisualSOL(view: *editor_view.EditorView, outPtr: *ExternalVisualCursor) void {
+    const vcursor = view.getVisualSOL();
+    outPtr.* = .{
+        .visual_row = vcursor.visual_row,
+        .visual_col = vcursor.visual_col,
+        .logical_row = vcursor.logical_row,
+        .logical_col = vcursor.logical_col,
+        .offset = vcursor.offset,
+    };
+}
+
+export fn editorViewGetVisualEOL(view: *editor_view.EditorView, outPtr: *ExternalVisualCursor) void {
+    const vcursor = view.getVisualEOL();
+    outPtr.* = .{
+        .visual_row = vcursor.visual_row,
+        .visual_col = vcursor.visual_col,
+        .logical_row = vcursor.logical_row,
+        .logical_col = vcursor.logical_col,
+        .offset = vcursor.offset,
+    };
+}
+
 export fn editorViewSetPlaceholderStyledText(
     view: *editor_view.EditorView,
     chunksPtr: [*]const text_buffer.StyledChunk,
