@@ -507,7 +507,9 @@ pub const EditorView = struct {
     }
 
     /// Get the end of the current visual line (EOL = End Of Line)
-    /// Returns a cursor at the last column of the current visual line
+    /// Returns a cursor at the last position of the current visual line
+    /// For wrapped lines, this is the position just before the wrap boundary to ensure
+    /// the cursor stays on the current visual line when used with setCursor()
     pub fn getVisualEOL(self: *EditorView) VisualCursor {
         const cursor = self.edit_buffer.getPrimaryCursor();
         const vcursor = self.logicalToVisualCursor(cursor.row, cursor.col);
@@ -525,14 +527,19 @@ pub const EditorView = struct {
         const logical_row = @as(u32, @intCast(vline.source_line));
 
         // Determine the logical column at the end of this visual line
-        // If there's a next visual line on the same logical line, use its start column
-        // Otherwise, use the end of the logical line
         var logical_col: u32 = undefined;
         if (vcursor.visual_row + 1 < vlines.len) {
             const next_vline = &vlines[vcursor.visual_row + 1];
             if (next_vline.source_line == vline.source_line) {
                 // Next visual line is a continuation of the same logical line
-                logical_col = next_vline.source_col_offset;
+                // The wrap boundary is at next_vline.source_col_offset
+                // To stay on the current visual line, we need to be one position BEFORE the boundary
+                // However, if width is 0, just use the start position
+                if (vline.width > 0) {
+                    logical_col = vline.source_col_offset + vline.width - 1;
+                } else {
+                    logical_col = vline.source_col_offset;
+                }
             } else {
                 // Next visual line is a different logical line, so we're at the end
                 logical_col = iter_mod.lineWidthAt(&self.edit_buffer.tb.rope, logical_row);
@@ -542,15 +549,7 @@ pub const EditorView = struct {
             logical_col = iter_mod.lineWidthAt(&self.edit_buffer.tb.rope, logical_row);
         }
 
-        const offset = iter_mod.coordsToOffset(&self.edit_buffer.tb.rope, logical_row, logical_col) orelse 0;
-
-        return VisualCursor{
-            .visual_row = vcursor.visual_row,
-            .visual_col = vline.width,
-            .logical_row = logical_row,
-            .logical_col = logical_col,
-            .offset = offset,
-        };
+        return self.logicalToVisualCursor(logical_row, logical_col);
     }
 
     // ============================================================================

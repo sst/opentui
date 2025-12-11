@@ -685,9 +685,9 @@ describe("EditorView", () => {
 
         const eol = view.getVisualEOL()
         expect(eol.logicalRow).toBe(0)
-        expect(eol.logicalCol).toBe(10) // First wrap point
+        expect(eol.logicalCol).toBe(9) // Last char of first wrapped line (before wrap point)
         expect(eol.visualRow).toBe(0)
-        expect(eol.visualCol).toBe(10)
+        expect(eol.visualCol).toBe(9)
       })
 
       it("should get SOL of second wrapped line", () => {
@@ -715,9 +715,9 @@ describe("EditorView", () => {
 
         const eol = view.getVisualEOL()
         expect(eol.logicalRow).toBe(0)
-        expect(eol.logicalCol).toBe(20) // End of second wrapped line
+        expect(eol.logicalCol).toBe(19) // Last char of second wrapped line (before wrap point)
         expect(eol.visualRow).toBe(1)
-        expect(eol.visualCol).toBe(10)
+        expect(eol.visualCol).toBe(9)
       })
 
       it("should get EOL of last wrapped line (end of logical line)", () => {
@@ -756,6 +756,27 @@ describe("EditorView", () => {
         expect(eol.visualRow).toBe(vcursor.visualRow)
         expect(eol.logicalRow).toBe(0)
         expect(eol.logicalCol).toBeGreaterThan(sol.logicalCol)
+      })
+
+      it("should move cursor to END of current visual line, NOT start of next line", () => {
+        buffer.setText("ABCDEFGHIJKLMNOPQRSTUVWXYZ")
+        view.setWrapMode("char")
+        view.setViewportSize(10, 10)
+
+        // Set cursor in middle of first visual line
+        buffer.setCursorToLineCol(0, 5)
+        let vcursor = view.getVisualCursor()
+        expect(vcursor.visualRow).toBe(0)
+        expect(vcursor.logicalCol).toBe(5)
+
+        const eol = view.getVisualEOL()
+        buffer.setCursor(eol.logicalRow, eol.logicalCol)
+
+        const finalCursor = buffer.getCursorPosition()
+        const finalVCursor = view.getVisualCursor()
+
+        expect(finalVCursor.visualRow).toBe(0)
+        expect(finalCursor.col).toBe(9)
       })
 
       it("should navigate through multiple wrapped lines", () => {
@@ -919,8 +940,8 @@ describe("EditorView", () => {
         // Logical EOL should go to end of entire line
         expect(logicalEOL.logicalCol).toBe(26)
 
-        // Visual EOL should only go to end of current wrapped segment
-        expect(visualEOL.logicalCol).toBe(10)
+        // Visual EOL should only go to end of current wrapped segment (last char before wrap)
+        expect(visualEOL.logicalCol).toBe(9)
         expect(visualEOL.visualRow).toBe(0)
       })
     })
