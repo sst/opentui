@@ -295,7 +295,8 @@ export function createMockKeys(renderer: CliRenderer, options?: MockKeysOptions)
 
         // Special handling for backspace with modifiers - use modifyOtherKeys format
         // Terminals send Ctrl+Backspace as CSI 27;5;127~ (or CSI 27;5;8~)
-        if (char === "\b" && (modifiers.ctrl || modifiers.shift || modifiers.super || modifiers.hyper)) {
+        // Only use modifyOtherKeys for ctrl, super, or hyper (not shift or meta alone)
+        if (char === "\b" && (modifiers.ctrl || modifiers.super || modifiers.hyper)) {
           const modifier =
             1 +
             (modifiers.shift ? 1 : 0) +
