@@ -2367,4 +2367,178 @@ describe("Textarea - Keybinding Tests", () => {
       expect(editor.logicalCursor.col).toBe(0)
     })
   })
+
+  describe("Selection with ctrl+shift+a/e (line home/end)", () => {
+    let kittyRenderer: TestRenderer
+    let kittyRenderOnce: () => Promise<void>
+    let kittyMockInput: MockInput
+
+    beforeEach(async () => {
+      ;({
+        renderer: kittyRenderer,
+        renderOnce: kittyRenderOnce,
+        mockInput: kittyMockInput,
+      } = await createTestRenderer({
+        width: 80,
+        height: 24,
+        kittyKeyboard: true,
+      }))
+    })
+
+    afterEach(() => {
+      kittyRenderer.destroy()
+    })
+
+    it("should select to line start with ctrl+shift+a", async () => {
+      const { textarea: editor } = await createTextareaRenderable(kittyRenderer, kittyRenderOnce, {
+        initialValue: "Hello World",
+        width: 40,
+        height: 10,
+      })
+
+      editor.focus()
+      editor.editBuffer.setCursor(0, 11) // End of line
+
+      kittyMockInput.pressKey("a", { ctrl: true, shift: true })
+
+      expect(editor.hasSelection()).toBe(true)
+      const selection = editor.getSelection()
+      expect(selection).not.toBeNull()
+      expect(selection!.start).toBe(0)
+      expect(selection!.end).toBe(11)
+      expect(editor.getSelectedText()).toBe("Hello World")
+    })
+
+    it("should select to line end with ctrl+shift+e", async () => {
+      const { textarea: editor } = await createTextareaRenderable(kittyRenderer, kittyRenderOnce, {
+        initialValue: "Hello World",
+        width: 40,
+        height: 10,
+      })
+
+      editor.focus()
+      editor.editBuffer.setCursor(0, 0) // Start of line
+
+      kittyMockInput.pressKey("e", { ctrl: true, shift: true })
+
+      expect(editor.hasSelection()).toBe(true)
+      const selection = editor.getSelection()
+      expect(selection).not.toBeNull()
+      expect(selection!.start).toBe(0)
+      expect(selection!.end).toBe(11)
+      expect(editor.getSelectedText()).toBe("Hello World")
+    })
+
+    it("should select to line start from middle with ctrl+shift+a", async () => {
+      const { textarea: editor } = await createTextareaRenderable(kittyRenderer, kittyRenderOnce, {
+        initialValue: "Hello World",
+        width: 40,
+        height: 10,
+      })
+
+      editor.focus()
+      editor.editBuffer.setCursor(0, 6) // After "Hello "
+
+      kittyMockInput.pressKey("a", { ctrl: true, shift: true })
+
+      expect(editor.hasSelection()).toBe(true)
+      expect(editor.getSelectedText()).toBe("Hello W")
+    })
+
+    it("should select to line end from middle with ctrl+shift+e", async () => {
+      const { textarea: editor } = await createTextareaRenderable(kittyRenderer, kittyRenderOnce, {
+        initialValue: "Hello World",
+        width: 40,
+        height: 10,
+      })
+
+      editor.focus()
+      editor.editBuffer.setCursor(0, 6) // After "Hello "
+
+      kittyMockInput.pressKey("e", { ctrl: true, shift: true })
+
+      expect(editor.hasSelection()).toBe(true)
+      expect(editor.getSelectedText()).toBe("World")
+    })
+
+    it("should work on multiline text", async () => {
+      const { textarea: editor } = await createTextareaRenderable(kittyRenderer, kittyRenderOnce, {
+        initialValue: "Line 1\nLine 2\nLine 3",
+        width: 40,
+        height: 10,
+      })
+
+      editor.focus()
+      editor.editBuffer.setCursor(1, 4) // Middle of second line
+
+      // Select to start of line 2
+      kittyMockInput.pressKey("a", { ctrl: true, shift: true })
+      expect(editor.getSelectedText()).toBe("Line ")
+
+      // Clear selection and move to same position
+      editor.editBuffer.setCursor(1, 4)
+
+      // Select to end of line 2
+      kittyMockInput.pressKey("e", { ctrl: true, shift: true })
+      expect(editor.getSelectedText()).toBe(" 2")
+    })
+
+    it("should handle line wrapping behavior", async () => {
+      const { textarea: editor } = await createTextareaRenderable(kittyRenderer, kittyRenderOnce, {
+        initialValue: "Line 1\nLine 2",
+        width: 40,
+        height: 10,
+      })
+
+      editor.focus()
+      // At end of line 1
+      editor.editBuffer.setCursor(0, 6)
+
+      // First ctrl+shift+a from EOL should select entire line
+      kittyMockInput.pressKey("a", { ctrl: true, shift: true })
+      expect(editor.getSelectedText()).toBe("Line 1")
+
+      // Reset
+      editor.editBuffer.setCursor(0, 0)
+
+      // From start, ctrl+shift+e should select line, then wrap to next line
+      kittyMockInput.pressKey("e", { ctrl: true, shift: true })
+      const cursor = editor.editBuffer.getCursorPosition()
+      expect(cursor.col).toBeGreaterThan(0)
+    })
+
+    it("should not interfere with ctrl+a (without shift)", async () => {
+      const { textarea: editor } = await createTextareaRenderable(currentRenderer, renderOnce, {
+        initialValue: "Hello World",
+        width: 40,
+        height: 10,
+      })
+
+      editor.focus()
+      editor.editBuffer.setCursor(0, 11)
+
+      // ctrl+a (without shift) should just move, not select
+      currentMockInput.pressKey("a", { ctrl: true })
+
+      expect(editor.hasSelection()).toBe(false)
+      expect(editor.logicalCursor.col).toBe(0)
+    })
+
+    it("should not interfere with ctrl+e (without shift)", async () => {
+      const { textarea: editor } = await createTextareaRenderable(currentRenderer, renderOnce, {
+        initialValue: "Hello World",
+        width: 40,
+        height: 10,
+      })
+
+      editor.focus()
+      editor.editBuffer.setCursor(0, 0)
+
+      // ctrl+e (without shift) should just move, not select
+      currentMockInput.pressKey("e", { ctrl: true })
+
+      expect(editor.hasSelection()).toBe(false)
+      expect(editor.logicalCursor.col).toBe(11)
+    })
+  })
 })

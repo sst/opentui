@@ -68,6 +68,8 @@ const defaultTextareaKeybindings: KeyBinding[] = [
   { name: "end", shift: true, action: "select-buffer-end" },
   { name: "a", ctrl: true, action: "line-home" },
   { name: "e", ctrl: true, action: "line-end" },
+  { name: "a", ctrl: true, shift: true, action: "select-line-home" },
+  { name: "e", ctrl: true, shift: true, action: "select-line-end" },
   { name: "f", ctrl: true, action: "move-right" },
   { name: "b", ctrl: true, action: "move-left" },
   { name: "w", ctrl: true, action: "delete-word-backward" },
