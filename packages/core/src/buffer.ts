@@ -353,6 +353,26 @@ export class OptimizedBuffer {
     this.lib.bufferClearScissorRects(this.bufferPtr)
   }
 
+  public pushOpacity(opacity: number): void {
+    this.guard()
+    this.lib.bufferPushOpacity(this.bufferPtr, Math.max(0, Math.min(1, opacity)))
+  }
+
+  public popOpacity(): void {
+    this.guard()
+    this.lib.bufferPopOpacity(this.bufferPtr)
+  }
+
+  public getCurrentOpacity(): number {
+    this.guard()
+    return this.lib.bufferGetCurrentOpacity(this.bufferPtr)
+  }
+
+  public clearOpacity(): void {
+    this.guard()
+    this.lib.bufferClearOpacity(this.bufferPtr)
+  }
+
   public encodeUnicode(text: string): { ptr: Pointer; data: Array<{ width: number; char: number }> } | null {
     this.guard()
     return this.lib.encodeUnicode(text, this._widthMethod)
