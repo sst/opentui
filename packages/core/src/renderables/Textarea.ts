@@ -27,6 +27,10 @@ export type TextareaAction =
   | "line-end"
   | "select-line-home"
   | "select-line-end"
+  | "visual-line-home"
+  | "visual-line-end"
+  | "select-visual-line-home"
+  | "select-visual-line-end"
   | "buffer-home"
   | "buffer-end"
   | "select-buffer-home"
@@ -199,6 +203,10 @@ export class TextareaRenderable extends EditBufferRenderable {
       ["line-end", () => this.gotoLineEnd()],
       ["select-line-home", () => this.gotoLineHome({ select: true })],
       ["select-line-end", () => this.gotoLineEnd({ select: true })],
+      ["visual-line-home", () => this.gotoVisualLineHome()],
+      ["visual-line-end", () => this.gotoVisualLineEnd()],
+      ["select-visual-line-home", () => this.gotoVisualLineHome({ select: true })],
+      ["select-visual-line-end", () => this.gotoVisualLineEnd({ select: true })],
       ["select-buffer-home", () => this.gotoBufferHome({ select: true })],
       ["select-buffer-end", () => this.gotoBufferEnd({ select: true })],
       ["buffer-home", () => this.gotoBufferHome()],
@@ -417,6 +425,30 @@ export class TextareaRenderable extends EditBufferRenderable {
     } else {
       this.editBuffer.setCursor(eol.row, eol.col)
     }
+
+    this.updateSelectionForMovement(select, false)
+    this.requestRender()
+    return true
+  }
+
+  public gotoVisualLineHome(options?: { select?: boolean }): boolean {
+    const select = options?.select ?? false
+    this.updateSelectionForMovement(select, true)
+
+    const sol = this.editorView.getVisualSOL()
+    this.editBuffer.setCursor(sol.logicalRow, sol.logicalCol)
+
+    this.updateSelectionForMovement(select, false)
+    this.requestRender()
+    return true
+  }
+
+  public gotoVisualLineEnd(options?: { select?: boolean }): boolean {
+    const select = options?.select ?? false
+    this.updateSelectionForMovement(select, true)
+
+    const eol = this.editorView.getVisualEOL()
+    this.editBuffer.setCursor(eol.logicalRow, eol.logicalCol)
 
     this.updateSelectionForMovement(select, false)
     this.requestRender()
