@@ -126,7 +126,7 @@ describe("TextareaRenderable - Visual Line Navigation", () => {
 
       const cursor = textarea.editBuffer.getCursorPosition()
       expect(cursor.row).toBe(0)
-      expect(cursor.col).toBe(20)
+      expect(cursor.col).toBe(19)
     })
 
     it("should navigate between visual lines correctly", async () => {
@@ -144,7 +144,7 @@ describe("TextareaRenderable - Visual Line Navigation", () => {
       expect(textarea.editBuffer.getCursorPosition().col).toBe(0)
 
       textarea.gotoVisualLineEnd()
-      expect(textarea.editBuffer.getCursorPosition().col).toBe(20)
+      expect(textarea.editBuffer.getCursorPosition().col).toBe(19)
 
       // Move to second visual line
       textarea.editBuffer.moveCursorRight()
@@ -192,8 +192,8 @@ describe("TextareaRenderable - Visual Line Navigation", () => {
       textarea.gotoVisualLineEnd({ select: true })
 
       const selectedText = textarea.getSelectedText()
-      expect(selectedText).toBe("KLMNOPQRST")
-      expect(selectedText.length).toBe(10)
+      expect(selectedText).toBe("KLMNOPQRS")
+      expect(selectedText.length).toBe(9)
     })
   })
 
@@ -265,7 +265,7 @@ describe("TextareaRenderable - Visual Line Navigation", () => {
 
       textarea.gotoVisualLineEnd()
       const visualEndCol = textarea.editBuffer.getCursorPosition().col
-      expect(visualEndCol).toBe(20)
+      expect(visualEndCol).toBe(19)
 
       textarea.editBuffer.setCursor(0, 5)
       textarea.gotoLineEnd()

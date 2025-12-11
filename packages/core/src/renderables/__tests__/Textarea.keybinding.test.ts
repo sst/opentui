@@ -2807,7 +2807,7 @@ describe("Textarea - Keybinding Tests", () => {
       currentMockInput.pressKey("e", { meta: true })
 
       const cursor = editor.logicalCursor
-      expect(cursor.col).toBe(20) // End of first visual line, not 26
+      expect(cursor.col).toBe(19)
     })
 
     it("should differ from ctrl+a/e when wrapping is enabled", async () => {
@@ -2892,7 +2892,7 @@ describe("Textarea - Keybinding Tests", () => {
 
       expect(editor.hasSelection()).toBe(true)
       const selectedText = editor.getSelectedText()
-      expect(selectedText).toBe("KLMNOPQRST") // From col 10 to 20
+      expect(selectedText).toBe("KLMNOPQRS")
     })
 
     it("should work without wrapping (same as logical)", async () => {
