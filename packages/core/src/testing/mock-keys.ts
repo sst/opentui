@@ -268,6 +268,7 @@ export function createMockKeys(renderer: CliRenderer, options?: MockKeysOptions)
       if (keyCode.startsWith("\x1b[") && keyCode.length > 2) {
         // Arrow keys: \x1b[A, \x1b[B, \x1b[C, \x1b[D
         // With shift modifier: \x1b[1;2A, \x1b[1;2B, \x1b[1;2C, \x1b[1;2D
+        // Special keys like delete: \x1b[3~ becomes \x1b[3;2~ with meta
         const modifier =
           1 +
           (modifiers.shift ? 1 : 0) +
@@ -276,16 +277,37 @@ export function createMockKeys(renderer: CliRenderer, options?: MockKeysOptions)
           (modifiers.super ? 8 : 0) +
           (modifiers.hyper ? 16 : 0)
         if (modifier > 1) {
-          // Insert modifier into sequence
-          const ending = keyCode.slice(-1)
-          keyCode = `\x1b[1;${modifier}${ending}`
+          // Check if it's a sequence like \x1b[3~ (delete, insert, pageup, etc.)
+          const tildeMatch = keyCode.match(/^\x1b\[(\d+)~$/)
+          if (tildeMatch) {
+            // Format: \x1b[number;modifier~
+            keyCode = `\x1b[${tildeMatch[1]};${modifier}~`
+          } else {
+            // Arrow keys and other single-letter endings
+            // Insert modifier into sequence
+            const ending = keyCode.slice(-1)
+            keyCode = `\x1b[1;${modifier}${ending}`
+          }
         }
       } else if (keyCode.length === 1) {
         // For regular characters and single-char control codes with modifiers
         let char = keyCode
 
-        // Handle ctrl modifier for characters
-        if (modifiers.ctrl) {
+        // Special handling for backspace with modifiers - use modifyOtherKeys format
+        // Terminals send Ctrl+Backspace as CSI 27;5;127~ (or CSI 27;5;8~)
+        // Only use modifyOtherKeys for ctrl, super, or hyper (not shift or meta alone)
+        if (char === "\b" && (modifiers.ctrl || modifiers.super || modifiers.hyper)) {
+          const modifier =
+            1 +
+            (modifiers.shift ? 1 : 0) +
+            (modifiers.meta ? 2 : 0) +
+            (modifiers.ctrl ? 4 : 0) +
+            (modifiers.super ? 8 : 0) +
+            (modifiers.hyper ? 16 : 0)
+          // Use charcode 127 for backspace (DEL)
+          keyCode = `\x1b[27;${modifier};127~`
+        } else if (modifiers.ctrl) {
+          // Handle ctrl modifier for characters
           // Ctrl+letter produces control codes (0x01-0x1a for a-z)
           if (char >= "a" && char <= "z") {
             keyCode = String.fromCharCode(char.charCodeAt(0) - 96)

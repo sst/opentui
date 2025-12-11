@@ -27,6 +27,10 @@ export type TextareaAction =
   | "line-end"
   | "select-line-home"
   | "select-line-end"
+  | "visual-line-home"
+  | "visual-line-end"
+  | "select-visual-line-home"
+  | "select-visual-line-end"
   | "buffer-home"
   | "buffer-end"
   | "select-buffer-home"
@@ -64,10 +68,20 @@ const defaultTextareaKeybindings: KeyBinding[] = [
   { name: "end", shift: true, action: "select-buffer-end" },
   { name: "a", ctrl: true, action: "line-home" },
   { name: "e", ctrl: true, action: "line-end" },
+  { name: "a", ctrl: true, shift: true, action: "select-line-home" },
+  { name: "e", ctrl: true, shift: true, action: "select-line-end" },
+  { name: "a", meta: true, action: "visual-line-home" },
+  { name: "e", meta: true, action: "visual-line-end" },
+  { name: "a", meta: true, shift: true, action: "select-visual-line-home" },
+  { name: "e", meta: true, shift: true, action: "select-visual-line-end" },
   { name: "f", ctrl: true, action: "move-right" },
   { name: "b", ctrl: true, action: "move-left" },
-  { name: "w", ctrl: true, shift: true, action: "delete-word-forward" },
   { name: "w", ctrl: true, action: "delete-word-backward" },
+  { name: "backspace", ctrl: true, action: "delete-word-backward" },
+  { name: "d", meta: true, action: "delete-word-forward" },
+  { name: "delete", meta: true, action: "delete-word-forward" },
+  { name: "delete", ctrl: true, action: "delete-word-forward" },
+  { name: "d", ctrl: true, shift: true, action: "delete-line" },
   { name: "k", ctrl: true, action: "delete-to-line-end" },
   { name: "u", ctrl: true, action: "delete-to-line-start" },
   { name: "backspace", action: "backspace" },
@@ -89,11 +103,12 @@ const defaultTextareaKeybindings: KeyBinding[] = [
   { name: "b", meta: true, action: "word-backward" },
   { name: "right", meta: true, action: "word-forward" },
   { name: "left", meta: true, action: "word-backward" },
+  { name: "right", ctrl: true, action: "word-forward" },
+  { name: "left", ctrl: true, action: "word-backward" },
   { name: "f", meta: true, shift: true, action: "select-word-forward" },
   { name: "b", meta: true, shift: true, action: "select-word-backward" },
   { name: "right", meta: true, shift: true, action: "select-word-forward" },
   { name: "left", meta: true, shift: true, action: "select-word-backward" },
-  { name: "d", meta: true, action: "delete-line" },
   { name: "backspace", meta: true, action: "delete-word-backward" },
 ]
 
@@ -197,6 +212,10 @@ export class TextareaRenderable extends EditBufferRenderable {
       ["line-end", () => this.gotoLineEnd()],
       ["select-line-home", () => this.gotoLineHome({ select: true })],
       ["select-line-end", () => this.gotoLineEnd({ select: true })],
+      ["visual-line-home", () => this.gotoVisualLineHome()],
+      ["visual-line-end", () => this.gotoVisualLineEnd()],
+      ["select-visual-line-home", () => this.gotoVisualLineHome({ select: true })],
+      ["select-visual-line-end", () => this.gotoVisualLineEnd({ select: true })],
       ["select-buffer-home", () => this.gotoBufferHome({ select: true })],
       ["select-buffer-end", () => this.gotoBufferEnd({ select: true })],
       ["buffer-home", () => this.gotoBufferHome()],
@@ -223,21 +242,13 @@ export class TextareaRenderable extends EditBufferRenderable {
     this.insertText(event.text)
   }
 
-  public handleKeyPress(key: KeyEvent | string): boolean {
-    const keyName = typeof key === "string" ? key : key.name
-    const keySequence = typeof key === "string" ? key : key.sequence
-    const keyCtrl = typeof key === "string" ? false : key.ctrl
-    const keyShift = typeof key === "string" ? false : key.shift
-    const keyMeta = typeof key === "string" ? false : key.meta
-    const keySuper = typeof key === "string" ? false : key.super
-    const keyHyper = typeof key === "string" ? false : key.hyper
-
+  public handleKeyPress(key: KeyEvent): boolean {
     const bindingKey = getKeyBindingKey({
-      name: keyName,
-      ctrl: keyCtrl,
-      shift: keyShift,
-      meta: keyMeta,
-      super: keySuper,
+      name: key.name,
+      ctrl: key.ctrl,
+      shift: key.shift,
+      meta: key.meta,
+      super: key.super,
       action: "move-left" as TextareaAction,
     })
 
@@ -250,14 +261,14 @@ export class TextareaRenderable extends EditBufferRenderable {
       }
     }
 
-    if (!keyCtrl && !keyMeta && !keySuper && !keyHyper) {
-      if (keyName === "space") {
+    if (!key.ctrl && !key.meta && !key.super && !key.hyper) {
+      if (key.name === "space") {
         this.insertText(" ")
         return true
       }
 
-      if (keySequence) {
-        const firstCharCode = keySequence.charCodeAt(0)
+      if (key.sequence) {
+        const firstCharCode = key.sequence.charCodeAt(0)
 
         if (firstCharCode < 32) {
           return false
@@ -267,7 +278,7 @@ export class TextareaRenderable extends EditBufferRenderable {
           return false
         }
 
-        this.insertText(keySequence)
+        this.insertText(key.sequence)
         return true
       }
     }
@@ -415,6 +426,30 @@ export class TextareaRenderable extends EditBufferRenderable {
     } else {
       this.editBuffer.setCursor(eol.row, eol.col)
     }
+
+    this.updateSelectionForMovement(select, false)
+    this.requestRender()
+    return true
+  }
+
+  public gotoVisualLineHome(options?: { select?: boolean }): boolean {
+    const select = options?.select ?? false
+    this.updateSelectionForMovement(select, true)
+
+    const sol = this.editorView.getVisualSOL()
+    this.editBuffer.setCursor(sol.logicalRow, sol.logicalCol)
+
+    this.updateSelectionForMovement(select, false)
+    this.requestRender()
+    return true
+  }
+
+  public gotoVisualLineEnd(options?: { select?: boolean }): boolean {
+    const select = options?.select ?? false
+    this.updateSelectionForMovement(select, true)
+
+    const eol = this.editorView.getVisualEOL()
+    this.editBuffer.setCursor(eol.logicalRow, eol.logicalCol)
 
     this.updateSelectionForMovement(select, false)
     this.requestRender()

@@ -181,6 +181,16 @@ export class EditorView {
     return this.lib.editorViewGetEOL(this.viewPtr)
   }
 
+  public getVisualSOL(): VisualCursor {
+    this.guard()
+    return this.lib.editorViewGetVisualSOL(this.viewPtr)
+  }
+
+  public getVisualEOL(): VisualCursor {
+    this.guard()
+    return this.lib.editorViewGetVisualEOL(this.viewPtr)
+  }
+
   public getLineInfo(): LineInfo {
     this.guard()
     return this.lib.editorViewGetLineInfo(this.viewPtr)

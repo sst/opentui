@@ -462,7 +462,7 @@ export class ScrollBoxRenderable extends BoxRenderable {
     }
   }
 
-  public handleKeyPress(key: KeyEvent | string): boolean {
+  public handleKeyPress(key: KeyEvent): boolean {
     // Let scrollbars handle their own acceleration
     if (this.verticalScrollBar.handleKeyPress(key)) {
       this._hasManualScroll = true

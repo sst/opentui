@@ -833,6 +833,14 @@ function getOpenTUILib(libPath?: string) {
       args: ["ptr", "ptr"],
       returns: "void",
     },
+    editorViewGetVisualSOL: {
+      args: ["ptr", "ptr"],
+      returns: "void",
+    },
+    editorViewGetVisualEOL: {
+      args: ["ptr", "ptr"],
+      returns: "void",
+    },
     editorViewSetPlaceholderStyledText: {
       args: ["ptr", "ptr", "usize"],
       returns: "void",
@@ -1419,6 +1427,8 @@ export interface RenderLib {
   editorViewGetNextWordBoundary: (view: Pointer) => VisualCursor
   editorViewGetPrevWordBoundary: (view: Pointer) => VisualCursor
   editorViewGetEOL: (view: Pointer) => VisualCursor
+  editorViewGetVisualSOL: (view: Pointer) => VisualCursor
+  editorViewGetVisualEOL: (view: Pointer) => VisualCursor
   editorViewGetLineInfo: (view: Pointer) => LineInfo
   editorViewGetLogicalLineInfo: (view: Pointer) => LineInfo
   editorViewSetPlaceholderStyledText: (
@@ -2845,6 +2855,18 @@ class FFIRenderLib implements RenderLib {
   public editorViewGetEOL(view: Pointer): VisualCursor {
     const cursorBuffer = new ArrayBuffer(VisualCursorStruct.size)
     this.opentui.symbols.editorViewGetEOL(view, ptr(cursorBuffer))
+    return VisualCursorStruct.unpack(cursorBuffer)
+  }
+
+  public editorViewGetVisualSOL(view: Pointer): VisualCursor {
+    const cursorBuffer = new ArrayBuffer(VisualCursorStruct.size)
+    this.opentui.symbols.editorViewGetVisualSOL(view, ptr(cursorBuffer))
+    return VisualCursorStruct.unpack(cursorBuffer)
+  }
+
+  public editorViewGetVisualEOL(view: Pointer): VisualCursor {
+    const cursorBuffer = new ArrayBuffer(VisualCursorStruct.size)
+    this.opentui.symbols.editorViewGetVisualEOL(view, ptr(cursorBuffer))
     return VisualCursorStruct.unpack(cursorBuffer)
   }
 

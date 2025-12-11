@@ -448,7 +448,7 @@ export abstract class Renderable extends BaseRenderable {
     this.parent?.propagateLiveCount(delta)
   }
 
-  public handleKeyPress?(key: KeyEvent | string): boolean
+  public handleKeyPress?(key: KeyEvent): boolean
   public handlePaste?(event: PasteEvent): void
 
   public findDescendantById(id: string): Renderable | undefined {
