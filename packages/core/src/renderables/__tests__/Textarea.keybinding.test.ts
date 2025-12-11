@@ -1987,6 +1987,69 @@ describe("Textarea - Keybinding Tests", () => {
       expect(editor.logicalCursor.col).toBe(0)
     })
 
+    it("should move forward one word with ctrl+right", async () => {
+      const { textarea: editor } = await createTextareaRenderable(currentRenderer, renderOnce, {
+        initialValue: "hello world test",
+        width: 40,
+        height: 10,
+      })
+
+      editor.focus()
+      expect(editor.logicalCursor.col).toBe(0)
+
+      currentMockInput.pressArrow("right", { ctrl: true })
+      expect(editor.logicalCursor.col).toBe(6)
+
+      currentMockInput.pressArrow("right", { ctrl: true })
+      expect(editor.logicalCursor.col).toBe(12)
+
+      currentMockInput.pressArrow("right", { ctrl: true })
+      expect(editor.logicalCursor.col).toBe(16)
+    })
+
+    it("should move backward one word with ctrl+left", async () => {
+      const { textarea: editor } = await createTextareaRenderable(currentRenderer, renderOnce, {
+        initialValue: "hello world test",
+        width: 40,
+        height: 10,
+      })
+
+      editor.focus()
+      editor.gotoLineEnd()
+      expect(editor.logicalCursor.col).toBe(16)
+
+      currentMockInput.pressArrow("left", { ctrl: true })
+      expect(editor.logicalCursor.col).toBe(12)
+
+      currentMockInput.pressArrow("left", { ctrl: true })
+      expect(editor.logicalCursor.col).toBe(6)
+
+      currentMockInput.pressArrow("left", { ctrl: true })
+      expect(editor.logicalCursor.col).toBe(0)
+    })
+
+    it("should combine ctrl+left and ctrl+right for word navigation", async () => {
+      const { textarea: editor } = await createTextareaRenderable(currentRenderer, renderOnce, {
+        initialValue: "one two three four",
+        width: 40,
+        height: 10,
+      })
+
+      editor.focus()
+
+      currentMockInput.pressArrow("right", { ctrl: true })
+      expect(editor.logicalCursor.col).toBe(4)
+
+      currentMockInput.pressArrow("right", { ctrl: true })
+      expect(editor.logicalCursor.col).toBe(8)
+
+      currentMockInput.pressArrow("left", { ctrl: true })
+      expect(editor.logicalCursor.col).toBe(4)
+
+      currentMockInput.pressArrow("left", { ctrl: true })
+      expect(editor.logicalCursor.col).toBe(0)
+    })
+
     it("should not insert 'f' when using ctrl+f for movement", async () => {
       const { textarea: editor } = await createTextareaRenderable(currentRenderer, renderOnce, {
         initialValue: "test",
