@@ -709,7 +709,8 @@ pub const OptimizedBuffer = struct {
         const clippedEndX = @min(endX, @as(u32, @intCast(clippedRect.x + @as(i32, @intCast(clippedRect.width)) - 1)));
         const clippedEndY = @min(endY, @as(u32, @intCast(clippedRect.y + @as(i32, @intCast(clippedRect.height)) - 1)));
 
-        const hasAlpha = isRGBAWithAlpha(bg);
+        const opacity = self.getCurrentOpacity();
+        const hasAlpha = isRGBAWithAlpha(bg) or opacity < 1.0;
 
         if (hasAlpha or self.grapheme_tracker.hasAny()) {
             var fillY = clippedStartY;
