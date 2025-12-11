@@ -242,21 +242,13 @@ export class TextareaRenderable extends EditBufferRenderable {
     this.insertText(event.text)
   }
 
-  public handleKeyPress(key: KeyEvent | string): boolean {
-    const keyName = typeof key === "string" ? key : key.name
-    const keySequence = typeof key === "string" ? key : key.sequence
-    const keyCtrl = typeof key === "string" ? false : key.ctrl
-    const keyShift = typeof key === "string" ? false : key.shift
-    const keyMeta = typeof key === "string" ? false : key.meta
-    const keySuper = typeof key === "string" ? false : key.super
-    const keyHyper = typeof key === "string" ? false : key.hyper
-
+  public handleKeyPress(key: KeyEvent): boolean {
     const bindingKey = getKeyBindingKey({
-      name: keyName,
-      ctrl: keyCtrl,
-      shift: keyShift,
-      meta: keyMeta,
-      super: keySuper,
+      name: key.name,
+      ctrl: key.ctrl,
+      shift: key.shift,
+      meta: key.meta,
+      super: key.super,
       action: "move-left" as TextareaAction,
     })
 
@@ -269,14 +261,14 @@ export class TextareaRenderable extends EditBufferRenderable {
       }
     }
 
-    if (!keyCtrl && !keyMeta && !keySuper && !keyHyper) {
-      if (keyName === "space") {
+    if (!key.ctrl && !key.meta && !key.super && !key.hyper) {
+      if (key.name === "space") {
         this.insertText(" ")
         return true
       }
 
-      if (keySequence) {
-        const firstCharCode = keySequence.charCodeAt(0)
+      if (key.sequence) {
+        const firstCharCode = key.sequence.charCodeAt(0)
 
         if (firstCharCode < 32) {
           return false
@@ -286,7 +278,7 @@ export class TextareaRenderable extends EditBufferRenderable {
           return false
         }
 
-        this.insertText(keySequence)
+        this.insertText(key.sequence)
         return true
       }
     }

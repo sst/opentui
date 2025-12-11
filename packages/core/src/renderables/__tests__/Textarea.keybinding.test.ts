@@ -1,6 +1,41 @@
 import { describe, expect, it, afterAll, beforeEach, afterEach } from "bun:test"
 import { createTestRenderer, type TestRenderer, type MockMouse, type MockInput } from "../../testing/test-renderer"
 import { createTextareaRenderable } from "./renderable-test-utils"
+import { KeyEvent } from "../../lib/KeyHandler"
+
+// Helper function to create a KeyEvent from a string
+function createKeyEvent(
+  input: string | { name: string; shift?: boolean; ctrl?: boolean; meta?: boolean; super?: boolean },
+): KeyEvent {
+  if (typeof input === "string") {
+    return new KeyEvent({
+      name: input,
+      sequence: input,
+      ctrl: false,
+      meta: false,
+      shift: false,
+      option: false,
+      number: false,
+      raw: input,
+      eventType: "press",
+      source: "raw",
+    })
+  } else {
+    return new KeyEvent({
+      name: input.name,
+      sequence: input.name === "space" ? " " : input.name,
+      ctrl: input.ctrl ?? false,
+      meta: input.meta ?? false,
+      shift: input.shift ?? false,
+      super: input.super ?? false,
+      option: false,
+      number: false,
+      raw: input.name,
+      eventType: "press",
+      source: "raw",
+    })
+  }
+}
 
 let currentRenderer: TestRenderer
 let renderOnce: () => Promise<void>
@@ -394,7 +429,7 @@ describe("Textarea - Keybinding Tests", () => {
       editor.focus()
 
       const rawEscapeSequence = "\x1b[<35;86;19M"
-      const handled = editor.handleKeyPress(rawEscapeSequence)
+      const handled = editor.handleKeyPress(createKeyEvent(rawEscapeSequence))
 
       expect(handled).toBe(false)
 
@@ -423,7 +458,7 @@ describe("Textarea - Keybinding Tests", () => {
 
       for (const seq of controlSequences) {
         const before = editor.plainText
-        editor.handleKeyPress(seq)
+        editor.handleKeyPress(createKeyEvent(seq))
         const after = editor.plainText
 
         // Content should not change for control sequences
@@ -441,11 +476,11 @@ describe("Textarea - Keybinding Tests", () => {
       editor.focus()
 
       // These should be handled
-      const handled1 = editor.handleKeyPress("a")
+      const handled1 = editor.handleKeyPress(createKeyEvent("a"))
       expect(handled1).toBe(true)
       expect(editor.plainText).toBe("a")
 
-      const handled2 = editor.handleKeyPress("b")
+      const handled2 = editor.handleKeyPress(createKeyEvent("b"))
       expect(handled2).toBe(true)
       expect(editor.plainText).toBe("ab")
     })
@@ -460,18 +495,18 @@ describe("Textarea - Keybinding Tests", () => {
       editor.focus()
 
       // Emoji (multi-byte UTF-8)
-      const emojiHandled = editor.handleKeyPress("🌟")
+      const emojiHandled = editor.handleKeyPress(createKeyEvent("🌟"))
       expect(emojiHandled).toBe(true)
       expect(editor.plainText).toBe("🌟")
 
       // CJK characters (multi-byte UTF-8)
-      const cjkHandled = editor.handleKeyPress("世")
+      const cjkHandled = editor.handleKeyPress(createKeyEvent("世"))
       expect(cjkHandled).toBe(true)
       expect(editor.plainText).toBe("🌟世")
 
       // Another emoji
       editor.insertText(" ")
-      const emoji2Handled = editor.handleKeyPress("👍")
+      const emoji2Handled = editor.handleKeyPress(createKeyEvent("👍"))
       expect(emoji2Handled).toBe(true)
       expect(editor.plainText).toBe("🌟世 👍")
     })
@@ -488,7 +523,7 @@ describe("Textarea - Keybinding Tests", () => {
 
       // Escape character (0x1b) - should not be inserted
       const escapeChar = String.fromCharCode(0x1b)
-      const handled = editor.handleKeyPress(escapeChar)
+      const handled = editor.handleKeyPress(createKeyEvent(escapeChar))
 
       // Should not insert escape character
       expect(editor.plainText).toBe("Test")

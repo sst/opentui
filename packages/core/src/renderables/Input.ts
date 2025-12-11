@@ -277,21 +277,13 @@ export class InputRenderable extends Renderable {
     }
   }
 
-  public handleKeyPress(key: KeyEvent | string): boolean {
-    const keyName = typeof key === "string" ? key : key.name
-    const keySequence = typeof key === "string" ? key : key.sequence
-    const keyCtrl = typeof key === "string" ? false : key.ctrl
-    const keyShift = typeof key === "string" ? false : key.shift
-    const keyMeta = typeof key === "string" ? false : key.meta
-    const keySuper = typeof key === "string" ? false : key.super
-    const keyHyper = typeof key === "string" ? false : key.hyper
-
+  public handleKeyPress(key: KeyEvent): boolean {
     const bindingKey = getKeyBindingKey({
-      name: keyName,
-      ctrl: keyCtrl,
-      shift: keyShift,
-      meta: keyMeta,
-      super: keySuper,
+      name: key.name,
+      ctrl: key.ctrl,
+      shift: key.shift,
+      meta: key.meta,
+      super: key.super,
       action: "move-left" as InputAction,
     })
 
@@ -327,19 +319,19 @@ export class InputRenderable extends Renderable {
       }
     }
 
-    if (!keyCtrl && !keyMeta && !keySuper && !keyHyper) {
-      if (keyName === "space") {
+    if (!key.ctrl && !key.meta && !key.super && !key.hyper) {
+      if (key.name === "space") {
         this.insertText(" ")
         return true
       }
 
       if (
-        keySequence &&
-        keySequence.length === 1 &&
-        keySequence.charCodeAt(0) >= 32 &&
-        keySequence.charCodeAt(0) <= 126
+        key.sequence &&
+        key.sequence.length === 1 &&
+        key.sequence.charCodeAt(0) >= 32 &&
+        key.sequence.charCodeAt(0) <= 126
       ) {
-        this.insertText(keySequence)
+        this.insertText(key.sequence)
         return true
       }
     }
