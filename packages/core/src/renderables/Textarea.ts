@@ -66,8 +66,8 @@ const defaultTextareaKeybindings: KeyBinding[] = [
   { name: "e", ctrl: true, action: "line-end" },
   { name: "f", ctrl: true, action: "move-right" },
   { name: "b", ctrl: true, action: "move-left" },
-  { name: "w", ctrl: true, shift: true, action: "delete-word-forward" },
   { name: "w", ctrl: true, action: "delete-word-backward" },
+  { name: "d", ctrl: true, shift: true, action: "delete-line" },
   { name: "k", ctrl: true, action: "delete-to-line-end" },
   { name: "u", ctrl: true, action: "delete-to-line-start" },
   { name: "backspace", action: "backspace" },
@@ -93,7 +93,7 @@ const defaultTextareaKeybindings: KeyBinding[] = [
   { name: "b", meta: true, shift: true, action: "select-word-backward" },
   { name: "right", meta: true, shift: true, action: "select-word-forward" },
   { name: "left", meta: true, shift: true, action: "select-word-backward" },
-  { name: "d", meta: true, action: "delete-line" },
+  { name: "d", meta: true, action: "delete-word-forward" },
   { name: "backspace", meta: true, action: "delete-word-backward" },
 ]
 
