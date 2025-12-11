@@ -34,7 +34,7 @@
   "devDependencies": {
     "@types/babel__core": "7.20.5",
     "@types/bun": "latest",
-    "@types/node": "latest",
+    "@types/node": "^24.0.0",
     "typescript": "^5"
   },
   "dependencies": {
