@@ -2541,4 +2541,203 @@ describe("Textarea - Keybinding Tests", () => {
       expect(editor.logicalCursor.col).toBe(11)
     })
   })
+
+  describe("Visual line navigation with meta+a/e", () => {
+    it("should navigate to visual line start with meta+a (no wrapping)", async () => {
+      const { textarea: editor } = await createTextareaRenderable(currentRenderer, renderOnce, {
+        initialValue: "Hello World",
+        width: 40,
+        height: 10,
+        wrapMode: "none",
+      })
+
+      editor.focus()
+      editor.editBuffer.setCursor(0, 6)
+
+      currentMockInput.pressKey("a", { meta: true })
+
+      expect(editor.logicalCursor.col).toBe(0)
+    })
+
+    it("should navigate to visual line end with meta+e (no wrapping)", async () => {
+      const { textarea: editor } = await createTextareaRenderable(currentRenderer, renderOnce, {
+        initialValue: "Hello World",
+        width: 40,
+        height: 10,
+        wrapMode: "none",
+      })
+
+      editor.focus()
+      editor.editBuffer.setCursor(0, 6)
+
+      currentMockInput.pressKey("e", { meta: true })
+
+      expect(editor.logicalCursor.col).toBe(11)
+    })
+
+    it("should navigate to visual line start with meta+a (with wrapping)", async () => {
+      const { textarea: editor } = await createTextareaRenderable(currentRenderer, renderOnce, {
+        initialValue: "ABCDEFGHIJKLMNOPQRSTUVWXYZ",
+        width: 20,
+        height: 10,
+        wrapMode: "char",
+      })
+
+      editor.focus()
+      editor.editBuffer.setCursor(0, 22) // In second visual line
+
+      currentMockInput.pressKey("a", { meta: true })
+
+      const cursor = editor.logicalCursor
+      expect(cursor.col).toBe(20) // Start of second visual line, not 0
+    })
+
+    it("should navigate to visual line end with meta+e (with wrapping)", async () => {
+      const { textarea: editor } = await createTextareaRenderable(currentRenderer, renderOnce, {
+        initialValue: "ABCDEFGHIJKLMNOPQRSTUVWXYZ",
+        width: 20,
+        height: 10,
+        wrapMode: "char",
+      })
+
+      editor.focus()
+      editor.editBuffer.setCursor(0, 5) // In first visual line
+
+      currentMockInput.pressKey("e", { meta: true })
+
+      const cursor = editor.logicalCursor
+      expect(cursor.col).toBe(20) // End of first visual line, not 26
+    })
+
+    it("should differ from ctrl+a/e when wrapping is enabled", async () => {
+      const { textarea: editor } = await createTextareaRenderable(currentRenderer, renderOnce, {
+        initialValue: "ABCDEFGHIJKLMNOPQRSTUVWXYZ",
+        width: 20,
+        height: 10,
+        wrapMode: "char",
+      })
+
+      editor.focus()
+      editor.editBuffer.setCursor(0, 22)
+
+      // meta+a goes to visual line start (col 20)
+      currentMockInput.pressKey("a", { meta: true })
+      const visualHomeCol = editor.logicalCursor.col
+      expect(visualHomeCol).toBe(20)
+
+      // Reset cursor
+      editor.editBuffer.setCursor(0, 22)
+
+      // ctrl+a goes to logical line start (col 0)
+      currentMockInput.pressKey("a", { ctrl: true })
+      const logicalHomeCol = editor.logicalCursor.col
+      expect(logicalHomeCol).toBe(0)
+
+      expect(visualHomeCol).not.toBe(logicalHomeCol)
+    })
+  })
+
+  describe("Visual line selection with meta+shift+a/e", () => {
+    let kittyRenderer: TestRenderer
+    let kittyRenderOnce: () => Promise<void>
+    let kittyMockInput: MockInput
+
+    beforeEach(async () => {
+      ;({
+        renderer: kittyRenderer,
+        renderOnce: kittyRenderOnce,
+        mockInput: kittyMockInput,
+      } = await createTestRenderer({
+        width: 80,
+        height: 24,
+        kittyKeyboard: true,
+      }))
+    })
+
+    afterEach(() => {
+      kittyRenderer.destroy()
+    })
+
+    it("should select to visual line start with meta+shift+a", async () => {
+      const { textarea: editor } = await createTextareaRenderable(kittyRenderer, kittyRenderOnce, {
+        initialValue: "ABCDEFGHIJKLMNOPQRSTUVWXYZ",
+        width: 20,
+        height: 10,
+        wrapMode: "char",
+      })
+
+      editor.focus()
+      editor.editBuffer.setCursor(0, 25) // In second visual line
+
+      kittyMockInput.pressKey("a", { meta: true, shift: true })
+
+      expect(editor.hasSelection()).toBe(true)
+      const selectedText = editor.getSelectedText()
+      expect(selectedText.length).toBe(6) // From col 20 to 26 (includes char at 25)
+    })
+
+    it("should select to visual line end with meta+shift+e", async () => {
+      const { textarea: editor } = await createTextareaRenderable(kittyRenderer, kittyRenderOnce, {
+        initialValue: "ABCDEFGHIJKLMNOPQRSTUVWXYZ",
+        width: 20,
+        height: 10,
+        wrapMode: "char",
+      })
+
+      editor.focus()
+      editor.editBuffer.setCursor(0, 10) // In first visual line
+
+      kittyMockInput.pressKey("e", { meta: true, shift: true })
+
+      expect(editor.hasSelection()).toBe(true)
+      const selectedText = editor.getSelectedText()
+      expect(selectedText).toBe("KLMNOPQRST") // From col 10 to 20
+    })
+
+    it("should work without wrapping (same as logical)", async () => {
+      const { textarea: editor } = await createTextareaRenderable(kittyRenderer, kittyRenderOnce, {
+        initialValue: "Hello World",
+        width: 40,
+        height: 10,
+        wrapMode: "none",
+      })
+
+      editor.focus()
+      editor.editBuffer.setCursor(0, 6)
+
+      kittyMockInput.pressKey("a", { meta: true, shift: true })
+      expect(editor.getSelectedText()).toBe("Hello W")
+
+      editor.editBuffer.setCursor(0, 6)
+      kittyMockInput.pressKey("e", { meta: true, shift: true })
+      expect(editor.getSelectedText()).toBe("World")
+    })
+
+    it("should differ from ctrl+shift+a/e when wrapping is enabled", async () => {
+      const { textarea: editor } = await createTextareaRenderable(kittyRenderer, kittyRenderOnce, {
+        initialValue: "ABCDEFGHIJKLMNOPQRSTUVWXYZ",
+        width: 20,
+        height: 10,
+        wrapMode: "char",
+      })
+
+      editor.focus()
+      editor.editBuffer.setCursor(0, 25) // In second visual line
+
+      // meta+shift+a selects to visual line start
+      kittyMockInput.pressKey("a", { meta: true, shift: true })
+      const visualSelection = editor.getSelectedText()
+      expect(visualSelection.length).toBe(6) // From 20 to 26
+
+      // Reset
+      editor.editBuffer.setCursor(0, 25)
+
+      // ctrl+shift+a selects to logical line start
+      kittyMockInput.pressKey("a", { ctrl: true, shift: true })
+      const logicalSelection = editor.getSelectedText()
+      expect(logicalSelection.length).toBe(26) // From 0 to 26
+
+      expect(visualSelection).not.toBe(logicalSelection)
+    })
+  })
 })
