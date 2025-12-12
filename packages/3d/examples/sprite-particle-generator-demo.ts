@@ -11,7 +11,7 @@ import {
   type KeyEvent,
 } from "@opentui/core"
 import { setupCommonDemoKeys } from "./lib/standalone-keys"
-import { THREE } from "@opentui/3d"
+import * as THREE from "three"
 import {
   SpriteAnimator,
   type TiledSprite,
