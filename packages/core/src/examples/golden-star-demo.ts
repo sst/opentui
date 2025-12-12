@@ -24,7 +24,7 @@ import {
   Quaternion,
   ConeGeometry,
 } from "three"
-import { ThreeCliRenderer } from "../3d"
+import { ThreeCliRenderer } from "@opentui/3d"
 import { setupCommonDemoKeys } from "./lib/standalone-keys"
 
 interface StarParticle {

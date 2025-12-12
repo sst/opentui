@@ -1,0 +1,42 @@
+{
+  "name": "@opentui/3d",
+  "description": "3D rendering module for OpenTUI",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/sst/opentui",
+    "directory": "packages/3d"
+  },
+  "types": "src/index.ts",
+  "module": "src/index.ts",
+  "main": "src/index.ts",
+  "version": "0.1.60",
+  "type": "module",
+  "scripts": {
+    "build": "bun scripts/build.ts",
+    "publish": "bun scripts/publish.ts"
+  },
+  "license": "MIT",
+  "devDependencies": {
+    "@types/bun": "latest",
+    "@types/three": "0.177.0",
+    "typescript": "^5"
+  },
+  "dependencies": {
+    "@opentui/core": "workspace:*"
+  },
+  "optionalDependencies": {
+    "@dimforge/rapier2d-simd-compat": "^0.17.3",
+    "bun-webgpu": "0.1.4",
+    "planck": "^1.4.2",
+    "three": "0.177.0"
+  },
+  "exports": {
+    ".": {
+      "types": "./src/index.ts",
+      "import": "./src/index.ts"
+    }
+  },
+  "engines": {
+    "bun": ">=1.2.0"
+  }
+}

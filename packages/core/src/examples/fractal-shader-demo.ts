@@ -21,7 +21,7 @@ import {
   Fn,
   int,
 } from "three/tsl"
-import { ThreeCliRenderer } from "../3d"
+import { ThreeCliRenderer } from "@opentui/3d"
 
 let engine: ThreeCliRenderer | null = null
 let sceneRoot: ThreeScene | null = null

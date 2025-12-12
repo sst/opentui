@@ -11,16 +11,16 @@ import {
   type KeyEvent,
 } from "../index"
 import { setupCommonDemoKeys } from "./lib/standalone-keys"
-import * as THREE from "three"
+import { THREE } from "@opentui/3d"
 import {
   SpriteAnimator,
   type TiledSprite,
   type SpriteDefinition,
   type AnimationDefinition,
-} from "../3d/animation/SpriteAnimator"
-import { SpriteResourceManager, type ResourceConfig } from "../3d/SpriteResourceManager"
-import { SpriteParticleGenerator, type ParticleEffectParameters } from "../3d/animation/SpriteParticleGenerator"
-import { ThreeCliRenderer } from "../3d"
+} from "@opentui/3d"
+import { SpriteResourceManager, type ResourceConfig } from "@opentui/3d"
+import { SpriteParticleGenerator, type ParticleEffectParameters } from "@opentui/3d"
+import { ThreeCliRenderer } from "@opentui/3d"
 
 // @ts-ignore
 import heartPath from "./assets/heart.png" with { type: "image/png" }

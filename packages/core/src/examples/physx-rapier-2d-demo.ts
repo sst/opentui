@@ -9,19 +9,19 @@ import {
   type KeyEvent,
 } from "../index"
 import { setupCommonDemoKeys } from "./lib/standalone-keys"
-import * as THREE from "three"
+import { THREE } from "@opentui/3d"
 import {
   SpriteAnimator,
   TiledSprite,
   type SpriteDefinition,
   type AnimationDefinition,
-} from "../3d/animation/SpriteAnimator"
-import { SpriteResourceManager, type ResourceConfig } from "../3d/SpriteResourceManager"
-import { PhysicsExplosionManager, type PhysicsExplosionHandle } from "../3d/animation/PhysicsExplodingSpriteEffect"
-import { RapierPhysicsWorld } from "../3d/physics/RapierPhysicsAdapter"
+} from "@opentui/3d"
+import { SpriteResourceManager, type ResourceConfig } from "@opentui/3d"
+import { PhysicsExplosionManager, type PhysicsExplosionHandle } from "@opentui/3d"
+import { RapierPhysicsWorld } from "@opentui/3d"
 import RAPIER from "@dimforge/rapier2d-simd-compat"
 import { MeshLambertNodeMaterial } from "three/webgpu"
-import { ThreeCliRenderer } from "../3d"
+import { ThreeCliRenderer } from "@opentui/3d"
 
 // @ts-ignore
 import cratePath from "./assets/concrete.png" with { type: "image/png" }

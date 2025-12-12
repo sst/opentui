@@ -10,9 +10,9 @@ import {
   type KeyEvent,
 } from "../index"
 import { setupCommonDemoKeys } from "./lib/standalone-keys"
-import * as THREE from "three"
-import { ThreeCliRenderer } from "../3d"
-import { SpriteUtils } from "../3d/SpriteUtils"
+import { THREE } from "@opentui/3d"
+import { ThreeCliRenderer } from "@opentui/3d"
+import { SpriteUtils } from "@opentui/3d"
 
 // @ts-ignore - Bun specific import attribute for assets
 import staticImagePath from "./assets/main_char_idle.png" with { type: "image/png" }

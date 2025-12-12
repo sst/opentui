@@ -1,3 +1,4 @@
+export * as THREE from "three"
 export * from "./WGPURenderer"
 export * from "./TextureUtils"
 export * from "./canvas"
