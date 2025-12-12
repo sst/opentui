@@ -1,23 +1,23 @@
 {
   "name": "@opentui/3d",
+  "version": "0.1.60",
   "description": "3D rendering module for OpenTUI",
   "repository": {
     "type": "git",
     "url": "https://github.com/sst/opentui",
     "directory": "packages/3d"
   },
-  "types": "src/index.ts",
   "module": "src/index.ts",
-  "main": "src/index.ts",
-  "version": "0.1.60",
   "type": "module",
+  "main": "src/index.ts",
+  "license": "MIT",
   "scripts": {
     "build": "bun scripts/build.ts",
     "publish": "bun scripts/publish.ts"
   },
-  "license": "MIT",
   "devDependencies": {
     "@types/bun": "latest",
+    "@types/node": "^24.0.0",
     "@types/three": "0.177.0",
     "typescript": "^5"
   },
