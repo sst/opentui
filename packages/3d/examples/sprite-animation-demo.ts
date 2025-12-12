@@ -8,7 +8,7 @@ import {
   FrameBufferRenderable,
   BoxRenderable,
   type KeyEvent,
-} from "../index"
+} from "@opentui/core"
 import { setupCommonDemoKeys } from "./lib/standalone-keys"
 import { THREE } from "@opentui/3d"
 import {
@@ -16,19 +16,19 @@ import {
   TiledSprite,
   type SpriteDefinition,
   type AnimationDefinition,
-} from "@opentui/3d"
-import { SpriteResourceManager, type ResourceConfig } from "@opentui/3d"
+} from "../src"
+import { SpriteResourceManager, type ResourceConfig } from "../src"
 import {
   ExplosionManager,
   type ExplosionHandle,
   type ExplosionEffectParameters,
-} from "@opentui/3d"
+} from "../src"
 
 // @ts-ignore
 import mainCharIdlePath from "./assets/main_char_idle.png" with { type: "image/png" }
 import { randFloat } from "three/src/math/MathUtils.js"
 import { MeshLambertNodeMaterial } from "three/webgpu"
-import { ThreeCliRenderer } from "@opentui/3d"
+import { ThreeCliRenderer } from "../src"
 
 interface SpriteAnimationDemoState {
   engine: ThreeCliRenderer
