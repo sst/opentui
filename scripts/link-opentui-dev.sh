@@ -291,6 +291,34 @@ if [ "$LINK_SUBDEPS" = true ]; then
             fi
         fi
         
+        # Link yoga-layout if it exists
+        if [ -d "$location_path/yoga-layout" ] || [ -L "$location_path/yoga-layout" ]; then
+            remove_if_exists "$location_path/yoga-layout"
+            if [ -d "$OPENTUI_ROOT/node_modules/yoga-layout" ]; then
+                ln -s "$OPENTUI_ROOT/node_modules/yoga-layout" "$location_path/yoga-layout"
+                echo "    ✓ Linked yoga-layout in $location_desc"
+                linked_any=true
+            elif [ -d "$OPENTUI_ROOT/packages/core/node_modules/yoga-layout" ]; then
+                ln -s "$OPENTUI_ROOT/packages/core/node_modules/yoga-layout" "$location_path/yoga-layout"
+                echo "    ✓ Linked yoga-layout in $location_desc"
+                linked_any=true
+            fi
+        fi
+        
+        # Link solid-js if it exists
+        if [ -d "$location_path/solid-js" ] || [ -L "$location_path/solid-js" ]; then
+            remove_if_exists "$location_path/solid-js"
+            if [ -d "$OPENTUI_ROOT/node_modules/solid-js" ]; then
+                ln -s "$OPENTUI_ROOT/node_modules/solid-js" "$location_path/solid-js"
+                echo "    ✓ Linked solid-js in $location_desc"
+                linked_any=true
+            elif [ -d "$OPENTUI_ROOT/packages/solid/node_modules/solid-js" ]; then
+                ln -s "$OPENTUI_ROOT/packages/solid/node_modules/solid-js" "$location_path/solid-js"
+                echo "    ✓ Linked solid-js in $location_desc"
+                linked_any=true
+            fi
+        fi
+        
         return 0
     }
     
