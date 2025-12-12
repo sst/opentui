@@ -8,6 +8,24 @@
         "prettier": "3.6.2",
       },
     },
+    "packages/3d": {
+      "name": "@opentui/3d",
+      "version": "0.1.60",
+      "dependencies": {
+        "@opentui/core": "workspace:*",
+      },
+      "devDependencies": {
+        "@types/bun": "latest",
+        "@types/three": "0.177.0",
+        "typescript": "^5",
+      },
+      "optionalDependencies": {
+        "@dimforge/rapier2d-simd-compat": "^0.17.3",
+        "bun-webgpu": "0.1.4",
+        "planck": "^1.4.2",
+        "three": "0.177.0",
+      },
+    },
     "packages/core": {
       "name": "@opentui/core",
       "version": "0.1.60",
@@ -20,22 +38,17 @@
       "devDependencies": {
         "@types/bun": "latest",
         "@types/node": "^24.0.0",
-        "@types/three": "0.177.0",
         "commander": "^13.1.0",
         "typescript": "^5",
         "web-tree-sitter": "0.25.10",
       },
       "optionalDependencies": {
-        "@dimforge/rapier2d-simd-compat": "^0.17.3",
         "@opentui/core-darwin-arm64": "0.1.60",
         "@opentui/core-darwin-x64": "0.1.60",
         "@opentui/core-linux-arm64": "0.1.60",
         "@opentui/core-linux-x64": "0.1.60",
         "@opentui/core-win32-arm64": "0.1.60",
         "@opentui/core-win32-x64": "0.1.60",
-        "bun-webgpu": "0.1.4",
-        "planck": "^1.4.2",
-        "three": "0.177.0",
       },
       "peerDependencies": {
         "web-tree-sitter": "0.25.10",
@@ -224,6 +237,8 @@
     "@jridgewell/sourcemap-codec": ["@jridgewell/sourcemap-codec@1.5.5", "", {}, "sha512-cYQ9310grqxueWbl+WuIUIaiUaDcj7WOq5fVhEljNVgRfOUhY9fy2zTvfoqWsnebh8Sl70VScFbICvJnLKB0Og=="],
 
     "@jridgewell/trace-mapping": ["@jridgewell/trace-mapping@0.3.30", "", { "dependencies": { "@jridgewell/resolve-uri": "^3.1.0", "@jridgewell/sourcemap-codec": "^1.4.14" } }, "sha512-GQ7Nw5G2lTu/BtHTKfXhKHok2WGetd4XYcVKGx00SjAk8GMwgJM3zr6zORiPGuOE+/vkc90KtTosSSvaCjKb2Q=="],
+
+    "@opentui/3d": ["@opentui/3d@workspace:packages/3d"],
 
     "@opentui/core": ["@opentui/core@workspace:packages/core"],
 

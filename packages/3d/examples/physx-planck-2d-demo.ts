@@ -7,33 +7,21 @@ import {
   BoxRenderable,
   createCliRenderer,
   type KeyEvent,
-} from "../index"
+} from "@opentui/core"
 import { setupCommonDemoKeys } from "./lib/standalone-keys"
 import * as THREE from "three"
-import {
-  SpriteAnimator,
-  TiledSprite,
-  type SpriteDefinition,
-  type AnimationDefinition,
-} from "../3d/animation/SpriteAnimator"
-import { SpriteResourceManager, type ResourceConfig } from "../3d/SpriteResourceManager"
-import { PhysicsExplosionManager, type PhysicsExplosionHandle } from "../3d/animation/PhysicsExplodingSpriteEffect"
-import { RapierPhysicsWorld } from "../3d/physics/RapierPhysicsAdapter"
-import RAPIER from "@dimforge/rapier2d-simd-compat"
-import { MeshLambertNodeMaterial } from "three/webgpu"
-import { ThreeCliRenderer } from "../3d"
+import { SpriteAnimator, TiledSprite, type SpriteDefinition, type AnimationDefinition } from "../src"
+import { SpriteResourceManager, type ResourceConfig } from "../src"
+import { PhysicsExplosionManager, type PhysicsExplosionHandle } from "../src"
+import { PlanckPhysicsWorld } from "../src"
+import * as planck from "planck"
+import { ThreeCliRenderer } from "../src"
 
 // @ts-ignore
-import cratePath from "./assets/concrete.png" with { type: "image/png" }
-
-const SUBDIVISION = 4
-const DENSITY = 2.2
-const EXPLOSION_FORCE = 2.0
-const EXPLOSION_FORCE_VARIATION = 0.2
-const TORQUE_STRENGTH = 2.0
+import cratePath from "./assets/crate.png" with { type: "image/png" }
 
 interface PhysicsBox {
-  rigidBody: RAPIER.RigidBody
+  rigidBody: planck.Body
   sprite: TiledSprite
   width: number
   height: number
@@ -41,8 +29,8 @@ interface PhysicsBox {
 }
 
 interface PhysicsWorld {
-  world: RAPIER.World
-  ground: RAPIER.Collider
+  world: planck.World
+  ground: planck.Body
   boxes: PhysicsBox[]
 }
 
@@ -77,26 +65,20 @@ let demoState: DemoState | null = null
 const spawnInterval = 800
 const orthoViewHeight = 20.0
 
-const materialFactory = () =>
-  new MeshLambertNodeMaterial({
-    transparent: true,
-    alphaTest: 0.01,
-    depthWrite: false,
-  })
-
 export async function run(renderer: CliRenderer): Promise<void> {
   renderer.start()
   const initialTermWidth = renderer.terminalWidth
   const initialTermHeight = renderer.terminalHeight
 
   const parentContainer = new BoxRenderable(renderer, {
-    id: "rapier-container",
+    id: "planck-container",
     zIndex: 15,
+    visible: true,
   })
   renderer.root.add(parentContainer)
 
   const framebufferRenderable = new FrameBufferRenderable(renderer, {
-    id: "rapier-main",
+    id: "planck-main",
     width: initialTermWidth,
     height: initialTermHeight,
     zIndex: 10,
@@ -138,6 +120,7 @@ export async function run(renderer: CliRenderer): Promise<void> {
   }
 
   const crateResource = await resourceManager.createResource(crateResourceConfig)
+
   const crateIdleAnimation: AnimationDefinition = {
     resource: crateResource,
     frameDuration: 1000,
@@ -152,14 +135,16 @@ export async function run(renderer: CliRenderer): Promise<void> {
   }
 
   // Initialize physics
-  await RAPIER.init()
+  const gravity = planck.Vec2(0.0, -9.81)
+  const world = planck.World(gravity)
 
-  const gravity = { x: 0.0, y: -9.81 }
-  const world = new RAPIER.World(gravity)
-
-  const groundColliderDesc = RAPIER.ColliderDesc.cuboid(15.0, 0.2)
-  const ground = world.createCollider(groundColliderDesc)
-  ground.setTranslation({ x: 0.0, y: -8.0 })
+  const groundShape = planck.Box(15.0, 0.2)
+  const ground = world.createBody({
+    position: planck.Vec2(0.0, -8.0),
+  })
+  ground.createFixture({
+    shape: groundShape,
+  })
 
   const physicsWorld: PhysicsWorld = {
     world,
@@ -167,29 +152,16 @@ export async function run(renderer: CliRenderer): Promise<void> {
     boxes: [],
   }
 
-  const physicsExplosionManager = new PhysicsExplosionManager(scene, RapierPhysicsWorld.createFromRapierWorld(world))
-  physicsExplosionManager.fillPool(crateResource, 512, { numRows: SUBDIVISION, numCols: SUBDIVISION, materialFactory })
+  const physicsExplosionManager = new PhysicsExplosionManager(scene, PlanckPhysicsWorld.createFromPlanckWorld(world))
 
   // Setup lighting
-  const ambientLight = new THREE.AmbientLight(0x6666ff, 3.2)
+  const ambientLight = new THREE.AmbientLight(0xffffff, 1.2)
   scene.add(ambientLight)
 
-  const spotlight1 = new THREE.SpotLight(0xff9999, 6.5)
-  spotlight1.position.set(-5, 0, 6)
-  spotlight1.target.position.set(-2, -2.5, 0)
-  spotlight1.penumbra = 0.3
-  spotlight1.angle = Math.PI / 1.7
-  spotlight1.distance = 25.0
-  spotlight1.power = 500
-  scene.add(spotlight1.target)
-  scene.add(spotlight1)
-
-  const spotlight2 = spotlight1.clone()
-  spotlight2.color.set(0x99ff99)
-  spotlight2.position.set(5, 0, 6)
-  spotlight2.target.position.set(2, -2.5, 0)
-  scene.add(spotlight2.target)
-  scene.add(spotlight2)
+  const directionalLight = new THREE.DirectionalLight(0xffffff, 1.5)
+  directionalLight.position.set(5, 10, 5)
+  directionalLight.castShadow = false
+  scene.add(directionalLight)
 
   const groundGeometry = new THREE.BoxGeometry(30, 0.4, 0.2)
   const groundMaterial = new THREE.MeshPhongMaterial({
@@ -203,8 +175,8 @@ export async function run(renderer: CliRenderer): Promise<void> {
 
   // Create UI elements
   const instructionsText = new TextRenderable(renderer, {
-    id: "rapier-instructions",
-    content: "Rapier.js 2D Demo - Falling Crates (Instanced Sprites)",
+    id: "planck-instructions",
+    content: "Planck.js 2D Demo - Falling Crates (Instanced Sprites)",
     position: "absolute",
     left: 1,
     top: 1,
@@ -214,7 +186,7 @@ export async function run(renderer: CliRenderer): Promise<void> {
   parentContainer.add(instructionsText)
 
   const controlsText = new TextRenderable(renderer, {
-    id: "rapier-controls",
+    id: "planck-controls",
     content: "Press: [Space] spawn crate, [E] explode crate, [R] reset, [T] toggle debug, [C] clear crates",
     position: "absolute",
     left: 1,
@@ -225,7 +197,7 @@ export async function run(renderer: CliRenderer): Promise<void> {
   parentContainer.add(controlsText)
 
   const statsText = new TextRenderable(renderer, {
-    id: "rapier-stats",
+    id: "planck-stats",
     content: "",
     position: "absolute",
     left: 1,
@@ -269,25 +241,29 @@ export async function run(renderer: CliRenderer): Promise<void> {
   ): Promise<PhysicsBox | null> {
     if (!state.isInitialized) return null
 
-    const rigidBodyDesc = RAPIER.RigidBodyDesc.dynamic()
-      .setTranslation(x, y)
-      .setRotation(Math.random() * 0.5 - 0.25)
+    const bodyDef: planck.BodyDef = {
+      type: "dynamic",
+      position: planck.Vec2(x, y),
+      angle: Math.random() * 0.5 - 0.25,
+    }
 
-    const rigidBody = state.physicsWorld.world.createRigidBody(rigidBodyDesc)
+    const rigidBody = state.physicsWorld.world.createBody(bodyDef)
 
-    const colliderDesc = RAPIER.ColliderDesc.cuboid(width * 0.6, height * 0.6)
-    state.physicsWorld.world.createCollider(colliderDesc, rigidBody)
+    const shape = planck.Box(width * 0.6, height * 0.6)
+    rigidBody.createFixture({
+      shape: shape,
+      density: 1.0,
+      friction: 0.7,
+      restitution: 0.3,
+    })
 
     const id = `box_${state.boxIdCounter++}`
 
     try {
-      const sprite = await state.spriteAnimator.createSprite(
-        {
-          ...state.crateDef,
-          id: id,
-        },
-        materialFactory,
-      )
+      const sprite = await state.spriteAnimator.createSprite({
+        ...state.crateDef,
+        id: id,
+      })
 
       const spriteScale = Math.min(width, height) * 1.2
       sprite.setScale(new THREE.Vector3(spriteScale, spriteScale, spriteScale))
@@ -304,7 +280,7 @@ export async function run(renderer: CliRenderer): Promise<void> {
       state.physicsWorld.boxes.push(box)
       return box
     } catch (error) {
-      state.physicsWorld.world.removeRigidBody(rigidBody)
+      state.physicsWorld.world.destroyBody(rigidBody)
       console.warn(`Failed to create crate sprite: ${error instanceof Error ? error.message : String(error)}`)
       return null
     }
@@ -316,23 +292,22 @@ export async function run(renderer: CliRenderer): Promise<void> {
     const randomIndex = Math.floor(Math.random() * state.physicsWorld.boxes.length)
     const boxToExplode = state.physicsWorld.boxes[randomIndex]
 
-    state.physicsWorld.world.removeRigidBody(boxToExplode.rigidBody)
+    state.physicsWorld.world.destroyBody(boxToExplode.rigidBody)
     state.physicsWorld.boxes.splice(randomIndex, 1)
 
     const explosionHandle = await state.physicsExplosionManager.createExplosionForSprite(boxToExplode.sprite, {
-      numRows: SUBDIVISION,
-      numCols: SUBDIVISION,
-      explosionForce: EXPLOSION_FORCE,
-      forceVariation: EXPLOSION_FORCE_VARIATION,
-      torqueStrength: TORQUE_STRENGTH,
-      durationMs: 10000,
+      numRows: 4,
+      numCols: 4,
+      explosionForce: 2.0,
+      forceVariation: 0.4,
+      torqueStrength: 2.0,
+      durationMs: 5000,
       fadeOut: false,
       linearDamping: 1.2,
       angularDamping: 0.8,
       restitution: 0.3,
       friction: 0.9,
-      density: DENSITY,
-      materialFactory,
+      density: 1.2,
     })
 
     if (explosionHandle) {
@@ -344,21 +319,21 @@ export async function run(renderer: CliRenderer): Promise<void> {
   function updatePhysics(deltaTime: number): void {
     if (!state.isInitialized) return
 
-    state.physicsWorld.world.step()
+    state.physicsWorld.world.step(deltaTime / 1000, 8, 3)
 
     for (const box of state.physicsWorld.boxes) {
-      const position = box.rigidBody.translation()
-      const rotation = box.rigidBody.rotation()
+      const position = box.rigidBody.getPosition()
+      const rotation = box.rigidBody.getAngle()
 
       box.sprite.setPosition(new THREE.Vector3(position.x, position.y, 0))
       box.sprite.setRotation(new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(0, 0, 1), rotation))
     }
 
     state.physicsWorld.boxes = state.physicsWorld.boxes.filter((box) => {
-      const pos = box.rigidBody.translation()
+      const pos = box.rigidBody.getPosition()
       if (pos.y < -15) {
         box.sprite.destroy()
-        state.physicsWorld.world.removeRigidBody(box.rigidBody)
+        state.physicsWorld.world.destroyBody(box.rigidBody)
         return false
       }
       return true
@@ -421,7 +396,7 @@ export async function run(renderer: CliRenderer): Promise<void> {
     if (keyStr === "r" && state.isInitialized) {
       for (const box of state.physicsWorld.boxes) {
         box.sprite.destroy()
-        state.physicsWorld.world.removeRigidBody(box.rigidBody)
+        state.physicsWorld.world.destroyBody(box.rigidBody)
       }
       state.physicsWorld.boxes = []
       state.boxSpawnCount = 0
@@ -435,7 +410,7 @@ export async function run(renderer: CliRenderer): Promise<void> {
     if (keyStr === "c" && state.isInitialized) {
       for (const box of state.physicsWorld.boxes) {
         box.sprite.destroy()
-        state.physicsWorld.world.removeRigidBody(box.rigidBody)
+        state.physicsWorld.world.destroyBody(box.rigidBody)
       }
       state.physicsWorld.boxes = []
       state.boxSpawnCount = 0
@@ -484,12 +459,13 @@ export async function run(renderer: CliRenderer): Promise<void> {
     }
   }, 100)
 
+  // Register handlers
   renderer.setFrameCallback(state.frameCallback)
   renderer.keyInput.on("keypress", state.keyHandler)
   renderer.on("resize", state.resizeHandler)
 
   demoState = state
-  console.log("Rapier physics demo initialized!")
+  console.log("Planck physics demo initialized!")
 }
 
 export function destroy(renderer: CliRenderer): void {
@@ -503,17 +479,17 @@ export function destroy(renderer: CliRenderer): void {
 
   for (const box of demoState.physicsWorld.boxes) {
     box.sprite.destroy()
-    demoState.physicsWorld.world.removeRigidBody(box.rigidBody)
+    demoState.physicsWorld.world.destroyBody(box.rigidBody)
   }
 
   demoState.physicsExplosionManager.disposeAll()
   demoState.engine.destroy()
 
-  renderer.root.remove("rapier-main")
-  renderer.root.remove("rapier-container")
+  renderer.root.remove("planck-main")
+  renderer.root.remove("planck-container")
 
   demoState = null
-  console.log("Rapier physics demo cleaned up!")
+  console.log("Planck physics demo cleaned up!")
 }
 
 if (import.meta.main) {

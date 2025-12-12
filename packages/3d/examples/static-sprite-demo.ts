@@ -8,11 +8,11 @@ import {
   FrameBufferRenderable,
   BoxRenderable,
   type KeyEvent,
-} from "../index"
+} from "@opentui/core"
 import { setupCommonDemoKeys } from "./lib/standalone-keys"
 import * as THREE from "three"
-import { ThreeCliRenderer } from "../3d"
-import { SpriteUtils } from "../3d/SpriteUtils"
+import { ThreeCliRenderer } from "../src"
+import { SpriteUtils } from "../src"
 
 // @ts-ignore - Bun specific import attribute for assets
 import staticImagePath from "./assets/main_char_idle.png" with { type: "image/png" }

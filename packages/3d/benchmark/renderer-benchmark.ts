@@ -1,8 +1,7 @@
 #!/usr/bin/env bun
 
-import { createCliRenderer, RGBA, TextRenderable, BoxRenderable, FrameBufferRenderable } from "../index"
-import { ThreeCliRenderer } from "../3d/WGPURenderer"
-import { TextureUtils } from "../3d/TextureUtils"
+import { createCliRenderer, RGBA, TextRenderable, BoxRenderable, FrameBufferRenderable } from "@opentui/core"
+import { ThreeCliRenderer, TextureUtils } from "../src"
 import {
   Scene as ThreeScene,
   Mesh as ThreeMesh,
@@ -16,6 +15,7 @@ import {
   SpotLight as ThreeSpotLight,
   AmbientLight as ThreeAmbientLight,
 } from "three"
+import type { Mesh, MeshPhongMaterial as MeshPhongMaterialType } from "three"
 import { MeshPhongNodeMaterial } from "three/webgpu"
 import { lights } from "three/tsl"
 import { Command } from "commander"
@@ -205,7 +205,7 @@ let benchmarkStartTime = 0
 let benchmarkActive = true
 const results: ScenarioResult[] = []
 let currentMemorySnapshots: MemorySnapshot[] = []
-let cubeMeshNodes: ThreeMesh[] = []
+let cubeMeshNodes: Mesh[] = []
 const RADIUS = 1
 const MULTIPLE_CUBES_COUNT = 8
 
@@ -228,7 +228,7 @@ const singleCubeMaterial = new MeshPhongMaterial({
 
 const cullingCubeMaterial = new MeshPhongMaterial({ color: 0x555555, shininess: 10 })
 let texturedMaterial: MeshPhongNodeMaterial | null = null
-let multiCubeMaterials: MeshPhongMaterial[] = []
+let multiCubeMaterials: MeshPhongMaterialType[] = []
 for (let i = 0; i < MULTIPLE_CUBES_COUNT; i++) {
   const baseColor = new Color()
   const hue = i / MULTIPLE_CUBES_COUNT

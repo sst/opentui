@@ -9,18 +9,13 @@ import {
   TextRenderable,
   FrameBufferRenderable,
   type KeyEvent,
-} from "../index"
+} from "@opentui/core"
 import { setupCommonDemoKeys } from "./lib/standalone-keys"
 import * as THREE from "three"
-import {
-  SpriteAnimator,
-  type TiledSprite,
-  type SpriteDefinition,
-  type AnimationDefinition,
-} from "../3d/animation/SpriteAnimator"
-import { SpriteResourceManager, type ResourceConfig } from "../3d/SpriteResourceManager"
-import { SpriteParticleGenerator, type ParticleEffectParameters } from "../3d/animation/SpriteParticleGenerator"
-import { ThreeCliRenderer } from "../3d"
+import { SpriteAnimator, type TiledSprite, type SpriteDefinition, type AnimationDefinition } from "../src"
+import { SpriteResourceManager, type ResourceConfig } from "../src"
+import { SpriteParticleGenerator, type ParticleEffectParameters } from "../src"
+import { ThreeCliRenderer } from "../src"
 
 // @ts-ignore
 import heartPath from "./assets/heart.png" with { type: "image/png" }
