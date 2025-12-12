@@ -10,12 +10,7 @@ import {
 } from "@opentui/core"
 import { setupCommonDemoKeys } from "./lib/standalone-keys"
 import * as THREE from "three"
-import {
-  SpriteAnimator,
-  TiledSprite,
-  type SpriteDefinition,
-  type AnimationDefinition,
-} from "../src"
+import { SpriteAnimator, TiledSprite, type SpriteDefinition, type AnimationDefinition } from "../src"
 import { SpriteResourceManager, type ResourceConfig } from "../src"
 import { PhysicsExplosionManager, type PhysicsExplosionHandle } from "../src"
 import { PlanckPhysicsWorld } from "../src"

@@ -12,12 +12,7 @@ import {
 } from "@opentui/core"
 import { setupCommonDemoKeys } from "./lib/standalone-keys"
 import * as THREE from "three"
-import {
-  SpriteAnimator,
-  type TiledSprite,
-  type SpriteDefinition,
-  type AnimationDefinition,
-} from "../src"
+import { SpriteAnimator, type TiledSprite, type SpriteDefinition, type AnimationDefinition } from "../src"
 import { SpriteResourceManager, type ResourceConfig } from "../src"
 import { SpriteParticleGenerator, type ParticleEffectParameters } from "../src"
 import { ThreeCliRenderer } from "../src"
