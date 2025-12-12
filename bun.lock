@@ -36,7 +36,6 @@
         "yoga-layout": "3.2.1",
       },
       "devDependencies": {
-        "@opentui/3d": "workspace:*",
         "@types/bun": "latest",
         "@types/node": "^24.0.0",
         "commander": "^13.1.0",

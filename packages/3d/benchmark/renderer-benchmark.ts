@@ -1,7 +1,7 @@
 #!/usr/bin/env bun
 
-import { createCliRenderer, RGBA, TextRenderable, BoxRenderable, FrameBufferRenderable } from "../index"
-import { ThreeCliRenderer, TextureUtils } from "@opentui/3d"
+import { createCliRenderer, RGBA, TextRenderable, BoxRenderable, FrameBufferRenderable } from "@opentui/core"
+import { ThreeCliRenderer, TextureUtils } from "../src"
 import {
   Scene as ThreeScene,
   Mesh as ThreeMesh,
