@@ -1027,14 +1027,15 @@ function convertToDebugSymbols<T extends Record<string, any>>(symbols: T): T {
 
       allStats.sort((a, b) => b.total - a.total)
 
-      console.log("\n--- OpenTUI FFI Call Performance ---")
-      console.log("Sorted by total time spent (descending)")
-      console.log(
+      const lines: string[] = []
+      lines.push("\n--- OpenTUI FFI Call Performance ---")
+      lines.push("Sorted by total time spent (descending)")
+      lines.push(
         "-------------------------------------------------------------------------------------------------------------------------",
       )
 
       if (allStats.length === 0) {
-        console.log("No trace data collected or all symbols had zero calls.")
+        lines.push("No trace data collected or all symbols had zero calls.")
       } else {
         const nameHeader = "Symbol"
         const callsHeader = "Calls"
@@ -1056,8 +1057,7 @@ function convertToDebugSymbols<T extends Record<string, any>>(symbols: T): T {
         const p90Width = Math.max(p90Header.length, ...allStats.map((s) => s.p90.toFixed(2).length))
         const p99Width = Math.max(p99Header.length, ...allStats.map((s) => s.p99.toFixed(2).length))
 
-        // Header
-        console.log(
+        lines.push(
           `${nameHeader.padEnd(nameWidth)} | ` +
             `${callsHeader.padStart(countWidth)} | ` +
             `${totalHeader.padStart(totalWidth)} | ` +
@@ -1068,13 +1068,12 @@ function convertToDebugSymbols<T extends Record<string, any>>(symbols: T): T {
             `${p90Header.padStart(p90Width)} | ` +
             `${p99Header.padStart(p99Width)}`,
         )
-        // Separator
-        console.log(
+        lines.push(
           `${"-".repeat(nameWidth)}-+-${"-".repeat(countWidth)}-+-${"-".repeat(totalWidth)}-+-${"-".repeat(avgWidth)}-+-${"-".repeat(minWidth)}-+-${"-".repeat(maxWidth)}-+-${"-".repeat(medianWidth)}-+-${"-".repeat(p90Width)}-+-${"-".repeat(p99Width)}`,
         )
 
         allStats.forEach((stat) => {
-          console.log(
+          lines.push(
             `${stat.name.padEnd(nameWidth)} | ` +
               `${String(stat.count).padStart(countWidth)} | ` +
               `${stat.total.toFixed(2).padStart(totalWidth)} | ` +
@@ -1087,9 +1086,21 @@ function convertToDebugSymbols<T extends Record<string, any>>(symbols: T): T {
           )
         })
       }
-      console.log(
+      lines.push(
         "-------------------------------------------------------------------------------------------------------------------------",
       )
+
+      const output = lines.join("\n")
+      console.log(output)
+
+      try {
+        const now = new Date()
+        const timestamp = now.toISOString().replace(/[:.]/g, "-").replace(/T/, "_").split("Z")[0]
+        const traceFilePath = `ffi_otui_trace_${timestamp}.log`
+        Bun.write(traceFilePath, output)
+      } catch (e) {
+        console.error("Failed to write FFI trace file:", e)
+      }
     })
   }
 
