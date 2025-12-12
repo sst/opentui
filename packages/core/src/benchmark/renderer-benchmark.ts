@@ -1,21 +1,21 @@
 #!/usr/bin/env bun
 
 import { createCliRenderer, RGBA, TextRenderable, BoxRenderable, FrameBufferRenderable } from "../index"
-import { ThreeCliRenderer, TextureUtils, THREE } from "@opentui/3d"
-import type { Mesh, MeshPhongMaterial as MeshPhongMaterialType } from "three"
-const {
-  Scene: ThreeScene,
-  Mesh: ThreeMesh,
+import { ThreeCliRenderer, TextureUtils } from "@opentui/3d"
+import {
+  Scene as ThreeScene,
+  Mesh as ThreeMesh,
   PerspectiveCamera,
   Color,
-  Vector2: ThreeVector2,
-  DirectionalLight: ThreeDirectionalLight,
-  PointLight: ThreePointLight,
+  Vector2 as ThreeVector2,
+  DirectionalLight as ThreeDirectionalLight,
+  PointLight as ThreePointLight,
   MeshPhongMaterial,
   BoxGeometry,
-  SpotLight: ThreeSpotLight,
-  AmbientLight: ThreeAmbientLight,
-} = THREE
+  SpotLight as ThreeSpotLight,
+  AmbientLight as ThreeAmbientLight,
+} from "three"
+import type { Mesh, MeshPhongMaterial as MeshPhongMaterialType } from "three"
 import { MeshPhongNodeMaterial } from "three/webgpu"
 import { lights } from "three/tsl"
 import { Command } from "commander"

@@ -11,10 +11,7 @@
   "main": "src/index.ts",
   "version": "0.1.60",
   "type": "module",
-  "scripts": {
-    "build": "bun scripts/build.ts",
-    "publish": "bun scripts/publish.ts"
-  },
+  "scripts": {},
   "license": "MIT",
   "devDependencies": {
     "@types/bun": "latest",
