@@ -351,5 +351,66 @@ describe("TerminalConsole", () => {
       const bounds = terminalConsole.bounds
       expect(terminalConsole.handleMouse(bounds.x + 1, bounds.y + 1, "down", 0)).toBe(true)
     })
+
+    test("should not start selection on right-click", () => {
+      terminalConsole = new TerminalConsole(mockRenderer as any, {
+        position: ConsolePosition.BOTTOM,
+        sizePercent: 30,
+      })
+      terminalConsole["isVisible"] = true
+      terminalConsole["_displayLines"] = [{ text: "Test", level: "LOG" as any, indent: false }]
+
+      const bounds = terminalConsole.bounds
+      terminalConsole.handleMouse(bounds.x + 1, bounds.y + 1, "down", 2)
+
+      expect(terminalConsole["_isSelecting"]).toBe(false)
+      expect(terminalConsole["_selectionStart"]).toBeNull()
+    })
+  })
+
+  describe("Edge Cases", () => {
+    test("should extract correct text for indented line selection", () => {
+      terminalConsole = new TerminalConsole(mockRenderer as any, {
+        position: ConsolePosition.BOTTOM,
+        sizePercent: 30,
+      })
+
+      terminalConsole["_displayLines"] = [
+        { text: "Parent", level: "LOG" as any, indent: false },
+        { text: "Child", level: "LOG" as any, indent: true },
+      ]
+      terminalConsole["_selectionStart"] = { line: 1, col: 0 }
+      terminalConsole["_selectionEnd"] = { line: 1, col: 7 }
+
+      expect(terminalConsole["getSelectedText"]()).toBe("  Child")
+    })
+
+    test("should handle selection extending beyond display lines", () => {
+      terminalConsole = new TerminalConsole(mockRenderer as any, {
+        position: ConsolePosition.BOTTOM,
+        sizePercent: 30,
+      })
+
+      terminalConsole["_displayLines"] = [
+        { text: "Only Line", level: "LOG" as any, indent: false },
+      ]
+      terminalConsole["_selectionStart"] = { line: 0, col: 0 }
+      terminalConsole["_selectionEnd"] = { line: 5, col: 10 }
+
+      expect(terminalConsole["getSelectedText"]()).toBe("Only Line")
+    })
+
+    test("should not crash when onCopySelection is not provided", () => {
+      terminalConsole = new TerminalConsole(mockRenderer as any, {
+        position: ConsolePosition.BOTTOM,
+        sizePercent: 30,
+      })
+
+      terminalConsole["_displayLines"] = [{ text: "Test", level: "LOG" as any, indent: false }]
+      terminalConsole["_selectionStart"] = { line: 0, col: 0 }
+      terminalConsole["_selectionEnd"] = { line: 0, col: 4 }
+
+      expect(() => terminalConsole["triggerCopy"]()).not.toThrow()
+    })
   })
 })

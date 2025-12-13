@@ -894,7 +894,11 @@ export class TerminalConsole extends EventEmitter {
     if (!this.hasSelection()) return
     const text = this.getSelectedText()
     if (text && this.options.onCopySelection) {
-      this.options.onCopySelection(text)
+      try {
+        this.options.onCopySelection(text)
+      } catch {
+        // Silently handle callback errors - consumer responsibility
+      }
       this.clearSelection()
       this.markNeedsRerender()
     }

@@ -342,6 +342,9 @@ if (import.meta.main) {
     consoleOptions: {
       onCopySelection: (text) => {
         // Write to system clipboard using Bun's native process
+        // NOTE: pbcopy is macOS-only. For cross-platform, use:
+        // - Windows: clip.exe
+        // - Linux: xclip -selection clipboard or xsel --clipboard
         const proc = Bun.spawn(["pbcopy"], {
           stdin: "pipe",
         })
