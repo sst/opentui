@@ -339,6 +339,17 @@ export function destroy(renderer: CliRenderer): void {
 if (import.meta.main) {
   const renderer = await createCliRenderer({
     exitOnCtrlC: true,
+    consoleOptions: {
+      onCopySelection: (text) => {
+        // Write to system clipboard using Bun's native process
+        const proc = Bun.spawn(["pbcopy"], {
+          stdin: "pipe",
+        })
+        proc.stdin.write(text)
+        proc.stdin.end()
+        console.info(`Copied to clipboard: "${text.substring(0, 50)}${text.length > 50 ? "..." : ""}"`)
+      },
+    },
   })
   run(renderer)
   setupCommonDemoKeys(renderer)

@@ -197,6 +197,19 @@ export enum ConsolePosition {
   RIGHT = "right",
 }
 
+interface ConsoleSelection {
+  startLine: number
+  startCol: number
+  endLine: number
+  endCol: number
+}
+
+interface CopyShortcut {
+  key: string
+  ctrl?: boolean
+  shift?: boolean
+}
+
 export interface ConsoleOptions {
   position?: ConsolePosition
   sizePercent?: number
@@ -214,9 +227,13 @@ export interface ConsoleOptions {
   cursorColor?: ColorInput
   maxStoredLogs?: number
   maxDisplayLines?: number
+  onCopySelection?: (text: string) => void
+  copyShortcut?: CopyShortcut
+  selectionColor?: ColorInput
+  copyButtonColor?: ColorInput
 }
 
-const DEFAULT_CONSOLE_OPTIONS: Required<ConsoleOptions> = {
+const DEFAULT_CONSOLE_OPTIONS: Required<Omit<ConsoleOptions, "onCopySelection">> & { onCopySelection?: (text: string) => void } = {
   position: ConsolePosition.BOTTOM,
   sizePercent: 30,
   zIndex: Infinity,
@@ -233,6 +250,10 @@ const DEFAULT_CONSOLE_OPTIONS: Required<ConsoleOptions> = {
   cursorColor: "#00A0FF",
   maxStoredLogs: 2000,
   maxDisplayLines: 3000,
+  onCopySelection: undefined,
+  copyShortcut: { key: "c", ctrl: true, shift: true },
+  selectionColor: RGBA.fromValues(0.3, 0.5, 0.8, 0.5),
+  copyButtonColor: "#00A0FF",
 }
 
 const INDENT_WIDTH = 2
@@ -248,7 +269,7 @@ export class TerminalConsole extends EventEmitter {
   private isFocused: boolean = false
   private renderer: CliRenderer
   private keyHandler: (event: KeyEvent) => void
-  private options: Required<ConsoleOptions>
+  private options: Required<Omit<ConsoleOptions, "onCopySelection">> & { onCopySelection?: (text: string) => void }
   private _debugModeEnabled: boolean = false
 
   private frameBuffer: OptimizedBuffer | null = null
@@ -263,6 +284,11 @@ export class TerminalConsole extends EventEmitter {
   private _allLogEntries: [Date, LogLevel, any[], CallerInfo | null][] = []
   private _needsFrameBufferUpdate: boolean = false
   private _entryListener: (logEntry: [Date, LogLevel, any[], CallerInfo | null]) => void
+
+  private _selectionStart: { line: number; col: number } | null = null
+  private _selectionEnd: { line: number; col: number } | null = null
+  private _isSelecting: boolean = false
+  private _copyButtonBounds: { x: number; y: number; width: number; height: number } = { x: 0, y: 0, width: 0, height: 0 }
 
   private markNeedsRerender(): void {
     this._needsFrameBufferUpdate = true
@@ -279,6 +305,8 @@ export class TerminalConsole extends EventEmitter {
   private _rgbaTitleBarText: RGBA
   private _title: string
   private _rgbaCursor: RGBA
+  private _rgbaSelection: RGBA
+  private _rgbaCopyButton: RGBA
 
   private _positions: ConsolePosition[] = [
     ConsolePosition.TOP,
@@ -305,6 +333,8 @@ export class TerminalConsole extends EventEmitter {
     this._rgbaTitleBarText = parseColor(this.options.titleBarTextColor || this.options.colorDefault)
     this._title = this.options.title
     this._rgbaCursor = parseColor(this.options.cursorColor)
+    this._rgbaSelection = parseColor(this.options.selectionColor)
+    this._rgbaCopyButton = parseColor(this.options.copyButtonColor)
 
     this._updateConsoleDimensions()
     this._scrollToBottom(true)
@@ -353,8 +383,8 @@ export class TerminalConsole extends EventEmitter {
   }
 
   private _updateConsoleDimensions(termWidth?: number, termHeight?: number): void {
-    const width = termWidth ?? this.renderer.terminalWidth
-    const height = termHeight ?? this.renderer.terminalHeight
+    const width = termWidth ?? this.renderer.width
+    const height = termHeight ?? this.renderer.height
     const sizePercent = this.options.sizePercent / 100
 
     switch (this.options.position) {
@@ -441,21 +471,28 @@ export class TerminalConsole extends EventEmitter {
       // Ctrl+p (Previous position)
       const prevIndex = (currentPositionIndex - 1 + this._positions.length) % this._positions.length
       this.options.position = this._positions[prevIndex]
-      this.resize(this.renderer.terminalWidth, this.renderer.terminalHeight)
+      this.resize(this.renderer.width, this.renderer.height)
     } else if (event.name === "o" && event.ctrl) {
       // Ctrl+o (Next/Other position)
       const nextIndex = (currentPositionIndex + 1) % this._positions.length
       this.options.position = this._positions[nextIndex]
-      this.resize(this.renderer.terminalWidth, this.renderer.terminalHeight)
+      this.resize(this.renderer.width, this.renderer.height)
     } else if (event.name === "+" || (event.name === "=" && event.shift)) {
       this.options.sizePercent = Math.min(100, this.options.sizePercent + 5)
-      this.resize(this.renderer.terminalWidth, this.renderer.terminalHeight)
+      this.resize(this.renderer.width, this.renderer.height)
     } else if (event.name === "-") {
       this.options.sizePercent = Math.max(10, this.options.sizePercent - 5)
-      this.resize(this.renderer.terminalWidth, this.renderer.terminalHeight)
+      this.resize(this.renderer.width, this.renderer.height)
     } else if (event.name === "s" && event.ctrl) {
       // Ctrl+s (Save logs)
       this.saveLogsToFile()
+    } else if (
+      this.options.copyShortcut &&
+      event.name === this.options.copyShortcut.key &&
+      event.ctrl === (this.options.copyShortcut.ctrl ?? false) &&
+      event.shift === (this.options.copyShortcut.shift ?? false)
+    ) {
+      this.triggerCopy()
     }
 
     if (needsRedraw) {
@@ -618,13 +655,29 @@ export class TerminalConsole extends EventEmitter {
     const titleX = Math.max(0, Math.floor((this.consoleWidth - dynamicTitle.length) / 2))
     this.frameBuffer.drawText(dynamicTitle, titleX, 0, this._rgbaTitleBarText, this._rgbaTitleBar)
 
+    // --- Draw [Copy] Button ---
+    const copyLabel = "[Copy]"
+    const copyButtonX = this.consoleWidth - copyLabel.length - 1
+    if (copyButtonX >= 0) {
+      const copyButtonEnabled = this.hasSelection()
+      const disabledColor = RGBA.fromInts(100, 100, 100, 255)
+      const copyColor = copyButtonEnabled ? this._rgbaCopyButton : disabledColor
+      this.frameBuffer.drawText(copyLabel, copyButtonX, 0, copyColor, this._rgbaTitleBar)
+      this._copyButtonBounds = { x: copyButtonX, y: 0, width: copyLabel.length, height: 1 }
+    } else {
+      this._copyButtonBounds = { x: -1, y: -1, width: 0, height: 0 }
+    }
+
     const startIndex = this.scrollTopIndex
     const endIndex = Math.min(startIndex + logAreaHeight, displayLineCount)
     const visibleDisplayLines = displayLines.slice(startIndex, endIndex)
 
     let lineY = 1
-    for (const displayLine of visibleDisplayLines) {
+    for (let i = 0; i < visibleDisplayLines.length; i++) {
       if (lineY >= this.consoleHeight) break
+
+      const displayLine = visibleDisplayLines[i]
+      const absoluteLineIndex = startIndex + i
 
       let levelColor = this._rgbaDefault
       switch (displayLine.level) {
@@ -653,7 +706,28 @@ export class TerminalConsole extends EventEmitter {
         this.frameBuffer.drawText(" ", 0, lineY, this._rgbaDefault, this.backgroundColor)
       }
 
-      this.frameBuffer.drawText(`${linePrefix}${textToDraw.substring(0, textAvailableWidth)}`, 1, lineY, levelColor)
+      const fullText = `${linePrefix}${textToDraw.substring(0, textAvailableWidth)}`
+      const selectionRange = this.getLineSelectionRange(absoluteLineIndex)
+
+      if (selectionRange) {
+        const adjustedStart = Math.max(0, selectionRange.start)
+        const adjustedEnd = Math.min(fullText.length, selectionRange.end)
+
+        if (adjustedStart > 0) {
+          this.frameBuffer.drawText(fullText.substring(0, adjustedStart), 1, lineY, levelColor)
+        }
+
+        if (adjustedStart < adjustedEnd) {
+          this.frameBuffer.fillRect(1 + adjustedStart, lineY, adjustedEnd - adjustedStart, 1, this._rgbaSelection)
+          this.frameBuffer.drawText(fullText.substring(adjustedStart, adjustedEnd), 1 + adjustedStart, lineY, levelColor, this._rgbaSelection)
+        }
+
+        if (adjustedEnd < fullText.length) {
+          this.frameBuffer.drawText(fullText.substring(adjustedEnd), 1 + adjustedEnd, lineY, levelColor)
+        }
+      } else {
+        this.frameBuffer.drawText(fullText, 1, lineY, levelColor)
+      }
 
       lineY++
     }
@@ -749,6 +823,176 @@ export class TerminalConsole extends EventEmitter {
 
     if (this._displayLines.length > this.options.maxDisplayLines) {
       this._displayLines.splice(0, this._displayLines.length - this.options.maxDisplayLines)
+    }
+  }
+
+  private hasSelection(): boolean {
+    return this._selectionStart !== null && this._selectionEnd !== null
+  }
+
+  private normalizeSelection(): ConsoleSelection | null {
+    if (!this._selectionStart || !this._selectionEnd) return null
+
+    const start = this._selectionStart
+    const end = this._selectionEnd
+
+    const startBeforeEnd =
+      start.line < end.line || (start.line === end.line && start.col <= end.col)
+
+    if (startBeforeEnd) {
+      return {
+        startLine: start.line,
+        startCol: start.col,
+        endLine: end.line,
+        endCol: end.col,
+      }
+    } else {
+      return {
+        startLine: end.line,
+        startCol: end.col,
+        endLine: start.line,
+        endCol: start.col,
+      }
+    }
+  }
+
+  private getSelectedText(): string {
+    const selection = this.normalizeSelection()
+    if (!selection) return ""
+
+    const lines: string[] = []
+    for (let i = selection.startLine; i <= selection.endLine; i++) {
+      if (i < 0 || i >= this._displayLines.length) continue
+      const line = this._displayLines[i]
+      // Build full text as rendered (including indent prefix)
+      const linePrefix = line.indent ? " ".repeat(INDENT_WIDTH) : ""
+      const textAvailableWidth = this.consoleWidth - 1 - (line.indent ? INDENT_WIDTH : 0)
+      const fullText = linePrefix + line.text.substring(0, textAvailableWidth)
+      let text = fullText
+
+      if (i === selection.startLine && i === selection.endLine) {
+        text = fullText.substring(selection.startCol, selection.endCol)
+      } else if (i === selection.startLine) {
+        text = fullText.substring(selection.startCol)
+      } else if (i === selection.endLine) {
+        text = fullText.substring(0, selection.endCol)
+      }
+
+      lines.push(text)
+    }
+
+    return lines.join("\n")
+  }
+
+  private clearSelection(): void {
+    this._selectionStart = null
+    this._selectionEnd = null
+    this._isSelecting = false
+  }
+
+  private triggerCopy(): void {
+    if (!this.hasSelection()) return
+    const text = this.getSelectedText()
+    if (text && this.options.onCopySelection) {
+      this.options.onCopySelection(text)
+      this.clearSelection()
+      this.markNeedsRerender()
+    }
+  }
+
+  private getLineSelectionRange(lineIndex: number): { start: number; end: number } | null {
+    const selection = this.normalizeSelection()
+    if (!selection) return null
+
+    if (lineIndex < selection.startLine || lineIndex > selection.endLine) {
+      return null
+    }
+
+    const line = this._displayLines[lineIndex]
+    if (!line) return null
+
+    // Calculate the full text length as rendered (including indent prefix)
+    const linePrefix = line.indent ? " ".repeat(INDENT_WIDTH) : ""
+    const textAvailableWidth = this.consoleWidth - 1 - (line.indent ? INDENT_WIDTH : 0)
+    const fullTextLength = linePrefix.length + Math.min(line.text.length, textAvailableWidth)
+
+    let start = 0
+    let end = fullTextLength
+
+    if (lineIndex === selection.startLine) {
+      start = Math.max(0, selection.startCol)
+    }
+    if (lineIndex === selection.endLine) {
+      end = Math.min(fullTextLength, selection.endCol)
+    }
+
+    if (start >= end) return null
+    return { start, end }
+  }
+
+  public handleMouse(x: number, y: number, type: "down" | "drag" | "up", button: number): boolean {
+    if (!this.isVisible) return false
+
+    const localX = x - this.consoleX
+    const localY = y - this.consoleY
+
+    if (localX < 0 || localX >= this.consoleWidth || localY < 0 || localY >= this.consoleHeight) {
+      return false
+    }
+
+    if (localY === 0) {
+      if (
+        type === "down" &&
+        button === 0 &&
+        localX >= this._copyButtonBounds.x &&
+        localX < this._copyButtonBounds.x + this._copyButtonBounds.width
+      ) {
+        this.triggerCopy()
+        return true
+      }
+      return true
+    }
+
+    const lineIndex = this.scrollTopIndex + (localY - 1)
+    const colIndex = Math.max(0, localX - 1)
+
+    if (type === "down" && button === 0) {
+      this.clearSelection()
+      this._selectionStart = { line: lineIndex, col: colIndex }
+      this._selectionEnd = { line: lineIndex, col: colIndex }
+      this._isSelecting = true
+      this.markNeedsRerender()
+      return true
+    }
+
+    if (type === "drag" && this._isSelecting) {
+      this._selectionEnd = { line: lineIndex, col: colIndex }
+      this.markNeedsRerender()
+      return true
+    }
+
+    if (type === "up") {
+      if (this._isSelecting) {
+        this._selectionEnd = { line: lineIndex, col: colIndex }
+        this._isSelecting = false
+        this.markNeedsRerender()
+      }
+      return true
+    }
+
+    return true
+  }
+
+  public get visible(): boolean {
+    return this.isVisible
+  }
+
+  public get bounds(): { x: number; y: number; width: number; height: number } {
+    return {
+      x: this.consoleX,
+      y: this.consoleY,
+      width: this.consoleWidth,
+      height: this.consoleHeight,
     }
   }
 
