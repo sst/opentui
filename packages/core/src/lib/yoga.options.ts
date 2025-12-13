@@ -69,6 +69,36 @@ export function parseAlign(value: string | null | undefined): Align {
   }
 }
 
+// parseAlignItems returns Stretch as default (CSS flexbox spec default for align-items)
+// This differs from parseAlign which returns Auto (used for align-self where auto means inherit)
+export function parseAlignItems(value: string | null | undefined): Align {
+  if (value == null) {
+    return Align.Stretch
+  }
+  switch (value.toLowerCase()) {
+    case "auto":
+      return Align.Auto
+    case "flex-start":
+      return Align.FlexStart
+    case "center":
+      return Align.Center
+    case "flex-end":
+      return Align.FlexEnd
+    case "stretch":
+      return Align.Stretch
+    case "baseline":
+      return Align.Baseline
+    case "space-between":
+      return Align.SpaceBetween
+    case "space-around":
+      return Align.SpaceAround
+    case "space-evenly":
+      return Align.SpaceEvenly
+    default:
+      return Align.Stretch
+  }
+}
+
 export function parseBoxSizing(value: string): BoxSizing {
   if (value == null) {
     return BoxSizing.BorderBox
