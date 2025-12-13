@@ -220,6 +220,21 @@ if [ "$LINK_SUBDEPS" = true ]; then
     echo
     echo "Discovering packages that depend on opentui..."
     
+    # Fix symlinks that point to cached opentui packages
+    echo "Fixing symlinks that point to cached opentui packages..."
+    
+    # Find and replace symlinks in all cache packages that point to cached opentui/solid-js
+    find "$TARGET_ROOT/node_modules/.bun" -name "*@*" -type d 2>/dev/null | while read -r pkg_cache; do
+        if [ -L "$pkg_cache/node_modules/solid-js" ] && readlink "$pkg_cache/node_modules/solid-js" | grep -q "\.bun/solid-js@"; then
+            echo "  Replacing solid-js symlink in $(basename "$pkg_cache")"
+            rm "$pkg_cache/node_modules/solid-js"
+            ln -sf "$TARGET_ROOT/node_modules/solid-js" "$pkg_cache/node_modules/solid-js"
+            echo "    ✓ Fixed solid-js symlink in $(basename "$pkg_cache")"
+        fi
+    done
+    
+    echo "✓ Fixed cached opentui symlinks"
+    
     # Function to find packages with opentui dependencies in bun.lock
     find_opentui_dependents_in_lockfile() {
         if [ ! -f "$TARGET_ROOT/bun.lock" ]; then
@@ -257,37 +272,88 @@ if [ "$LINK_SUBDEPS" = true ]; then
         
         # Link @opentui/core if it exists
         if [ -d "$location_path/@opentui/core" ] || [ -L "$location_path/@opentui/core" ]; then
-            remove_if_exists "$location_path/@opentui/core"
             CORE_PATH="$OPENTUI_ROOT/packages/core$SUFFIX"
             if [ -d "$CORE_PATH" ]; then
                 mkdir -p "$location_path/@opentui"
-                ln -s "$CORE_PATH" "$location_path/@opentui/core"
-                echo "    ✓ Linked @opentui/core in $location_desc"
-                linked_any=true
+                # Check if existing link points to the correct location
+                if [ -L "$location_path/@opentui/core" ]; then
+                    CURRENT_TARGET=$(readlink -f "$location_path/@opentui/core" 2>/dev/null)
+                    DESIRED_TARGET=$(readlink -f "$CORE_PATH" 2>/dev/null)
+                    if [ "$CURRENT_TARGET" = "$DESIRED_TARGET" ]; then
+                        echo "    ✓ @opentui/core already correctly linked in $location_desc"
+                        linked_any=true
+                    else
+                        echo "    → Updating @opentui/core link in $location_desc"
+                        remove_if_exists "$location_path/@opentui/core"
+                        ln -s "$CORE_PATH" "$location_path/@opentui/core"
+                        echo "    ✓ Linked @opentui/core in $location_desc"
+                        linked_any=true
+                    fi
+                else
+                    echo "    → Creating @opentui/core link in $location_desc"
+                    remove_if_exists "$location_path/@opentui/core"
+                    ln -s "$CORE_PATH" "$location_path/@opentui/core"
+                    echo "    ✓ Linked @opentui/core in $location_desc"
+                    linked_any=true
+                fi
             fi
         fi
         
         # Link @opentui/react if it exists
         if [ -d "$location_path/@opentui/react" ] || [ -L "$location_path/@opentui/react" ]; then
-            remove_if_exists "$location_path/@opentui/react"
             REACT_PATH="$OPENTUI_ROOT/packages/react$SUFFIX"
             if [ -d "$REACT_PATH" ]; then
                 mkdir -p "$location_path/@opentui"
-                ln -s "$REACT_PATH" "$location_path/@opentui/react"
-                echo "    ✓ Linked @opentui/react in $location_desc"
-                linked_any=true
+                # Check if existing link points to the correct location
+                if [ -L "$location_path/@opentui/react" ]; then
+                    CURRENT_TARGET=$(readlink -f "$location_path/@opentui/react" 2>/dev/null)
+                    DESIRED_TARGET=$(readlink -f "$REACT_PATH" 2>/dev/null)
+                    if [ "$CURRENT_TARGET" = "$DESIRED_TARGET" ]; then
+                        echo "    ✓ @opentui/react already correctly linked in $location_desc"
+                        linked_any=true
+                    else
+                        echo "    → Updating @opentui/react link in $location_desc"
+                        remove_if_exists "$location_path/@opentui/react"
+                        ln -s "$REACT_PATH" "$location_path/@opentui/react"
+                        echo "    ✓ Linked @opentui/react in $location_desc"
+                        linked_any=true
+                    fi
+                else
+                    echo "    → Creating @opentui/react link in $location_desc"
+                    remove_if_exists "$location_path/@opentui/react"
+                    ln -s "$REACT_PATH" "$location_path/@opentui/react"
+                    echo "    ✓ Linked @opentui/react in $location_desc"
+                    linked_any=true
+                fi
             fi
         fi
         
         # Link @opentui/solid if it exists
         if [ -d "$location_path/@opentui/solid" ] || [ -L "$location_path/@opentui/solid" ]; then
-            remove_if_exists "$location_path/@opentui/solid"
             SOLID_PATH="$OPENTUI_ROOT/packages/solid$SUFFIX"
             if [ -d "$SOLID_PATH" ]; then
                 mkdir -p "$location_path/@opentui"
-                ln -s "$SOLID_PATH" "$location_path/@opentui/solid"
-                echo "    ✓ Linked @opentui/solid in $location_desc"
-                linked_any=true
+                # Check if existing link points to the correct location
+                if [ -L "$location_path/@opentui/solid" ]; then
+                    CURRENT_TARGET=$(readlink -f "$location_path/@opentui/solid" 2>/dev/null)
+                    DESIRED_TARGET=$(readlink -f "$SOLID_PATH" 2>/dev/null)
+                    if [ "$CURRENT_TARGET" = "$DESIRED_TARGET" ]; then
+                        echo "    ✓ @opentui/solid already correctly linked in $location_desc"
+                        linked_any=true
+                    else
+                        echo "    → Updating @opentui/solid link in $location_desc"
+                        remove_if_exists "$location_path/@opentui/solid"
+                        ln -s "$SOLID_PATH" "$location_path/@opentui/solid"
+                        echo "    ✓ Linked @opentui/solid in $location_desc"
+                        linked_any=true
+                    fi
+                else
+                    echo "    → Creating @opentui/solid link in $location_desc"
+                    remove_if_exists "$location_path/@opentui/solid"
+                    ln -s "$SOLID_PATH" "$location_path/@opentui/solid"
+                    echo "    ✓ Linked @opentui/solid in $location_desc"
+                    linked_any=true
+                fi
             fi
         fi
         
@@ -295,13 +361,19 @@ if [ "$LINK_SUBDEPS" = true ]; then
         if [ -d "$location_path/yoga-layout" ] || [ -L "$location_path/yoga-layout" ]; then
             remove_if_exists "$location_path/yoga-layout"
             if [ -d "$OPENTUI_ROOT/node_modules/yoga-layout" ]; then
-                ln -s "$OPENTUI_ROOT/node_modules/yoga-layout" "$location_path/yoga-layout"
-                echo "    ✓ Linked yoga-layout in $location_desc"
-                linked_any=true
-            elif [ -d "$OPENTUI_ROOT/packages/core/node_modules/yoga-layout" ]; then
-                ln -s "$OPENTUI_ROOT/packages/core/node_modules/yoga-layout" "$location_path/yoga-layout"
-                echo "    ✓ Linked yoga-layout in $location_desc"
-                linked_any=true
+                if ln -s "$OPENTUI_ROOT/node_modules/yoga-layout" "$location_path/yoga-layout" 2>/dev/null; then
+                    echo "    ✓ Linked yoga-layout in $location_desc"
+                    linked_any=true
+                elif [ -d "$OPENTUI_ROOT/packages/core/node_modules/yoga-layout" ]; then
+                    if ln -s "$OPENTUI_ROOT/packages/core/node_modules/yoga-layout" "$location_path/yoga-layout" 2>/dev/null; then
+                        echo "    ✓ Linked yoga-layout in $location_desc"
+                        linked_any=true
+                    else
+                        echo "    ⚠ Warning: Failed to link yoga-layout in $location_desc (may already be linked correctly)"
+                    fi
+                else
+                    echo "    ⚠ Warning: Failed to link yoga-layout in $location_desc (may already be linked correctly)"
+                fi
             fi
         fi
         
@@ -309,14 +381,24 @@ if [ "$LINK_SUBDEPS" = true ]; then
         if [ -d "$location_path/solid-js" ] || [ -L "$location_path/solid-js" ]; then
             remove_if_exists "$location_path/solid-js"
             if [ -d "$OPENTUI_ROOT/node_modules/solid-js" ]; then
-                ln -s "$OPENTUI_ROOT/node_modules/solid-js" "$location_path/solid-js"
-                echo "    ✓ Linked solid-js in $location_desc"
-                linked_any=true
-            elif [ -d "$OPENTUI_ROOT/packages/solid/node_modules/solid-js" ]; then
-                ln -s "$OPENTUI_ROOT/packages/solid/node_modules/solid-js" "$location_path/solid-js"
-                echo "    ✓ Linked solid-js in $location_desc"
-                linked_any=true
+                if ln -s "$OPENTUI_ROOT/node_modules/solid-js" "$location_path/solid-js" 2>/dev/null; then
+                    echo "    ✓ Linked solid-js in $location_desc"
+                    linked_any=true
+                elif [ -d "$OPENTUI_ROOT/packages/solid/node_modules/solid-js" ]; then
+                    if ln -s "$OPENTUI_ROOT/packages/solid/node_modules/solid-js" "$location_path/solid-js" 2>/dev/null; then
+                        echo "    ✓ Linked solid-js in $location_desc"
+                        linked_any=true
+                    else
+                        echo "    ⚠ Warning: Failed to link solid-js in $location_desc (may already be linked correctly)"
+                    fi
+                else
+                    echo "    ⚠ Warning: Failed to link solid-js in $location_desc (may already be linked correctly)"
+                fi
             fi
+        fi
+        
+        if [ "$linked_any" = false ]; then
+            echo "    ℹ No packages needed linking in $location_desc"
         fi
         
         return 0
@@ -338,17 +420,7 @@ if [ "$LINK_SUBDEPS" = true ]; then
         for pkg in $dependents; do
             echo "  Processing $pkg..."
             
-            # Check in workspace packages' node_modules
-            if [ -d "$TARGET_ROOT/packages" ]; then
-                find "$TARGET_ROOT/packages" -type d -name "node_modules" 2>/dev/null | while read -r pkg_node_modules; do
-                    if [ -d "$pkg_node_modules/$pkg/node_modules" ]; then
-                        workspace_pkg_name=$(basename "$(dirname "$pkg_node_modules")")
-                        link_opentui_in_location "$pkg_node_modules/$pkg/node_modules" "$pkg (in workspace: $workspace_pkg_name)"
-                    fi
-                done
-            fi
-            
-            # Check in bun's cache directories
+            # Check in bun's cache directories (main place to check)
             if [ -d "$NODE_MODULES_DIR/.bun" ]; then
                 find "$NODE_MODULES_DIR/.bun" -type d -maxdepth 1 -name "*$pkg@*" 2>/dev/null | while read -r bun_pkg_cache; do
                     # Bun stores packages as: .bun/package@version/node_modules/@opentui/...
