@@ -58,6 +58,12 @@ registerEnvVar({
   type: "boolean",
   default: false,
 })
+registerEnvVar({
+  name: "OPENTUI_NO_GRAPHICS",
+  description: "Disable Kitty graphics protocol detection",
+  type: "boolean",
+  default: false,
+})
 
 function getOpenTUILib(libPath?: string) {
   const resolvedLibPath = libPath || targetLibPath

@@ -63,6 +63,9 @@ pub const TerminalInfo = struct {
 caps: Capabilities = .{},
 opts: Options = .{},
 
+in_tmux: bool = false,
+skip_graphics_query: bool = false,
+
 state: struct {
     alt_screen: bool = false,
     kitty_keyboard: bool = false,
@@ -177,14 +180,17 @@ pub fn queryTerminalSend(self: *Terminal, tty: anytype) !void {
 
         // Version and capability queries
         ansi.ANSI.xtversion ++
-        ansi.ANSI.csiUQuery ++
-        // Kitty graphics detection: sends dummy query + DA1
-        // Terminal will respond with ESC_Gi=31337;OK/ERROR ESC\ if supported, or just DA1 if not
-        // NOTE: deactivated temporarily due to issues with tmux showing the query as pane title
-        // ansi.ANSI.kittyGraphicsQuery ++
-        ansi.ANSI.restoreCursorState
-            // ++ ansi.ANSI.sixelGeometryQuery
-    );
+        ansi.ANSI.csiUQuery);
+
+    if (!self.skip_graphics_query) {
+        if (self.in_tmux) {
+            try tty.writeAll(ansi.ANSI.kittyGraphicsQueryTmux);
+        } else {
+            try tty.writeAll(ansi.ANSI.kittyGraphicsQuery);
+        }
+    }
+
+    try tty.writeAll(ansi.ANSI.restoreCursorState);
 }
 
 pub fn enableDetectedFeatures(self: *Terminal, tty: anytype, use_kitty_keyboard: bool) !void {
@@ -221,6 +227,9 @@ pub fn enableDetectedFeatures(self: *Terminal, tty: anytype, use_kitty_keyboard:
 }
 
 fn checkEnvironmentOverrides(self: *Terminal) void {
+    self.in_tmux = false;
+    self.skip_graphics_query = false;
+
     var env_map = std.process.getEnvMap(std.heap.page_allocator) catch return;
     defer env_map.deinit();
 
@@ -228,11 +237,20 @@ fn checkEnvironmentOverrides(self: *Terminal) void {
     self.caps.bracketed_paste = true;
 
     if (env_map.get("TMUX")) |_| {
+        self.in_tmux = true;
         self.caps.unicode = .wcwidth;
     } else if (env_map.get("TERM")) |term| {
-        if (std.mem.startsWith(u8, term, "tmux") or std.mem.startsWith(u8, term, "screen")) {
+        if (std.mem.startsWith(u8, term, "tmux")) {
+            self.in_tmux = true;
+            self.caps.unicode = .wcwidth;
+        } else if (std.mem.startsWith(u8, term, "screen")) {
+            self.skip_graphics_query = true;
             self.caps.unicode = .wcwidth;
         }
+    }
+
+    if (env_map.get("OPENTUI_NO_GRAPHICS")) |_| {
+        self.skip_graphics_query = true;
     }
 
     // Extract terminal name and version from environment variables
