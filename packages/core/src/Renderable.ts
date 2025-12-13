@@ -490,7 +490,7 @@ export abstract class Renderable extends BaseRenderable {
   }
 
   public get x(): number {
-    if (this.parent && this._positionType === "relative") {
+    if (this.parent) {
       return this.parent.x + this._x + this._translateX
     }
     return this._x + this._translateX
@@ -541,7 +541,7 @@ export abstract class Renderable extends BaseRenderable {
   }
 
   public get y(): number {
-    if (this.parent && this._positionType === "relative") {
+    if (this.parent) {
       return this.parent.y + this._y + this._translateY
     }
     return this._y + this._translateY
