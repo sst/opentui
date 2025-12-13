@@ -6,6 +6,7 @@ import type { MouseEventType } from "./lib/parse.mouse"
 import type { Selection } from "./lib/selection"
 import {
   parseAlign,
+  parseAlignItems,
   parseFlexDirection,
   parseJustify,
   parseOverflow,
@@ -664,21 +665,14 @@ export abstract class Renderable extends BaseRenderable {
       node.setFlexShrink(this._flexShrink)
     }
 
-    if (options.flexDirection !== undefined) {
-      node.setFlexDirection(parseFlexDirection(options.flexDirection))
-    }
-    if (options.flexWrap !== undefined) {
-      node.setFlexWrap(parseWrap(options.flexWrap))
-    }
-    if (options.alignItems !== undefined) {
-      node.setAlignItems(parseAlign(options.alignItems))
-    }
-    if (options.justifyContent !== undefined) {
-      node.setJustifyContent(parseJustify(options.justifyContent))
-    }
-    if (options.alignSelf !== undefined) {
-      node.setAlignSelf(parseAlign(options.alignSelf))
-    }
+    // Always initialize flex layout properties unconditionally to ensure
+    // consistent defaults and avoid coupling to Yoga's internal defaults.
+    // This matches the pattern used for flexGrow/flexShrink above.
+    node.setFlexDirection(parseFlexDirection(options.flexDirection))
+    node.setFlexWrap(parseWrap(options.flexWrap))
+    node.setAlignItems(parseAlignItems(options.alignItems))
+    node.setJustifyContent(parseJustify(options.justifyContent))
+    node.setAlignSelf(parseAlign(options.alignSelf))
 
     if (isDimensionType(options.width)) {
       this._width = options.width
@@ -856,7 +850,7 @@ export abstract class Renderable extends BaseRenderable {
   }
 
   public set alignItems(alignItems: AlignString | null | undefined) {
-    this.yogaNode.setAlignItems(parseAlign(alignItems))
+    this.yogaNode.setAlignItems(parseAlignItems(alignItems))
     this.requestRender()
   }
 

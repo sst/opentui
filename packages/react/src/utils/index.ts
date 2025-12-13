@@ -20,20 +20,27 @@ function initEventListeners(instance: Instance, eventName: string, listener: any
 }
 
 function setStyle(instance: Instance, styles: any, oldStyles: any) {
-  if (styles && typeof styles === "object") {
-    if (oldStyles != null) {
-      for (const styleName in styles) {
-        const value = styles[styleName]
-        if (styles.hasOwnProperty(styleName) && oldStyles[styleName] !== value) {
-          // @ts-expect-error props are not strongly typed in the reconciler, so we need to allow dynamic property access
-          instance[styleName] = value
+  // Clear removed style keys first
+  if (oldStyles != null && typeof oldStyles === "object") {
+    for (const styleName in oldStyles) {
+      if (oldStyles.hasOwnProperty(styleName)) {
+        // If the key existed in old styles but not in new styles, reset it
+        if (styles == null || !styles.hasOwnProperty(styleName)) {
+          // @ts-expect-error props are not strongly typed in the reconciler
+          instance[styleName] = null
         }
       }
-    } else {
-      for (const styleName in styles) {
-        if (styles.hasOwnProperty(styleName)) {
-          const value = styles[styleName]
-          // @ts-expect-error props are not strongly typed in the reconciler, so we need to allow dynamic property access
+    }
+  }
+
+  // Set new/changed style keys
+  if (styles != null && typeof styles === "object") {
+    for (const styleName in styles) {
+      if (styles.hasOwnProperty(styleName)) {
+        const value = styles[styleName]
+        const oldValue = oldStyles?.[styleName]
+        if (value !== oldValue) {
+          // @ts-expect-error props are not strongly typed in the reconciler
           instance[styleName] = value
         }
       }

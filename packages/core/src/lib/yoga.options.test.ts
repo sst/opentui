@@ -10,6 +10,7 @@ import {
   parseMeasureMode,
   parseUnit,
   parseAlign,
+  parseAlignItems,
   parseFlexDirection,
   parseJustify,
   parseOverflow,
@@ -403,6 +404,60 @@ describe("parseAlign", () => {
 
   test("returns default for invalid value", () => {
     expect(parseAlign("invalid")).toBe(Align.Auto)
+  })
+})
+
+describe("parseAlignItems", () => {
+  test("parses auto", () => {
+    expect(parseAlignItems("auto")).toBe(Align.Auto)
+  })
+
+  test("parses flex-start", () => {
+    expect(parseAlignItems("flex-start")).toBe(Align.FlexStart)
+  })
+
+  test("parses center", () => {
+    expect(parseAlignItems("center")).toBe(Align.Center)
+  })
+
+  test("parses flex-end", () => {
+    expect(parseAlignItems("flex-end")).toBe(Align.FlexEnd)
+  })
+
+  test("parses stretch", () => {
+    expect(parseAlignItems("stretch")).toBe(Align.Stretch)
+  })
+
+  test("parses baseline", () => {
+    expect(parseAlignItems("baseline")).toBe(Align.Baseline)
+  })
+
+  test("parses space-between", () => {
+    expect(parseAlignItems("space-between")).toBe(Align.SpaceBetween)
+  })
+
+  test("parses space-around", () => {
+    expect(parseAlignItems("space-around")).toBe(Align.SpaceAround)
+  })
+
+  test("parses space-evenly", () => {
+    expect(parseAlignItems("space-evenly")).toBe(Align.SpaceEvenly)
+  })
+
+  test("handles null - returns Stretch (CSS default for align-items)", () => {
+    expect(parseAlignItems(null)).toBe(Align.Stretch)
+  })
+
+  test("handles undefined - returns Stretch (CSS default for align-items)", () => {
+    expect(parseAlignItems(undefined)).toBe(Align.Stretch)
+  })
+
+  test("handles uppercase", () => {
+    expect(parseAlignItems("CENTER")).toBe(Align.Center)
+  })
+
+  test("returns Stretch for invalid value", () => {
+    expect(parseAlignItems("invalid")).toBe(Align.Stretch)
   })
 })
 
