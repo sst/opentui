@@ -2,8 +2,6 @@ import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, mock 
 import { useState } from "react"
 import { act } from "react"
 import { testRender } from "../src/test-utils"
-import { createTestRenderer } from "@opentui/core/testing"
-import { createRoot } from "../src/reconciler/renderer"
 
 let testSetup: Awaited<ReturnType<typeof testRender>>
 
@@ -513,15 +511,11 @@ describe("React Renderer | Layout Tests", () => {
         )
       }
 
-      const testRenderer = await createTestRenderer({ width: 40, height: 5 })
-      const root = createRoot(testRenderer.renderer)
+      testSetup = await testRender(<TestComponent />, { width: 40, height: 5 })
 
       // Initial render with centered alignment
-      act(() => {
-        root.render(<TestComponent />)
-      })
-      await testRenderer.renderOnce()
-      const centeredFrame = testRenderer.captureCharFrame()
+      await testSetup.renderOnce()
+      const centeredFrame = testSetup.captureCharFrame()
 
       // Verify text is centered (has leading spaces)
       const centeredLines = centeredFrame.split("\n")
@@ -533,8 +527,8 @@ describe("React Renderer | Layout Tests", () => {
       act(() => {
         setToggle(true)
       })
-      await testRenderer.renderOnce()
-      const defaultFrame = testRenderer.captureCharFrame()
+      await testSetup.renderOnce()
+      const defaultFrame = testSetup.captureCharFrame()
 
       // Text should now be at the start (default alignment), NOT centered or right-aligned
       const defaultLines = defaultFrame.split("\n")
@@ -542,12 +536,6 @@ describe("React Renderer | Layout Tests", () => {
       expect(defaultTextLine).toBeDefined()
       // Default aligned text should start at position 0 (no leading spaces before text)
       expect(defaultTextLine!.indexOf("Default")).toBe(0)
-
-      // Cleanup
-      act(() => {
-        root.unmount()
-      })
-      testRenderer.renderer.destroy()
     })
 
     it("should correctly align text when box has no explicit alignItems", async () => {
@@ -588,15 +576,11 @@ describe("React Renderer | Layout Tests", () => {
         )
       }
 
-      const testRenderer = await createTestRenderer({ width: 40, height: 5 })
-      const root = createRoot(testRenderer.renderer)
+      testSetup = await testRender(<TestComponent />, { width: 40, height: 5 })
 
       // Initial render with centered alignment
-      act(() => {
-        root.render(<TestComponent />)
-      })
-      await testRenderer.renderOnce()
-      const centeredFrame = testRenderer.captureCharFrame()
+      await testSetup.renderOnce()
+      const centeredFrame = testSetup.captureCharFrame()
 
       // Verify text is centered
       const centeredLines = centeredFrame.split("\n")
@@ -608,19 +592,14 @@ describe("React Renderer | Layout Tests", () => {
       act(() => {
         setStyle({})
       })
-      await testRenderer.renderOnce()
-      const defaultFrame = testRenderer.captureCharFrame()
+      await testSetup.renderOnce()
+      const defaultFrame = testSetup.captureCharFrame()
 
       // Text should now be at position 0 (default alignment after reset)
       const defaultLines = defaultFrame.split("\n")
       const defaultTextLine = defaultLines.find((line) => line.includes("Test"))
       expect(defaultTextLine).toBeDefined()
       expect(defaultTextLine!.indexOf("Test")).toBe(0)
-
-      act(() => {
-        root.unmount()
-      })
-      testRenderer.renderer.destroy()
     })
   })
 })
