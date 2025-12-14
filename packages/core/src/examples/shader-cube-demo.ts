@@ -7,10 +7,10 @@ import {
   BoxRenderable,
   FrameBufferRenderable,
   type KeyEvent,
-} from "@opentui/core"
+} from "../index"
 import { setupCommonDemoKeys } from "./lib/standalone-keys"
 import { RGBA } from "../lib"
-import { TextureUtils } from "../src"
+import { TextureUtils, ThreeCliRenderer } from "@opentui/3d"
 import {
   Scene as ThreeScene,
   Mesh as ThreeMesh,
@@ -25,7 +25,6 @@ import {
 import * as Filters from "../post/filters"
 import { DistortionEffect, VignetteEffect, BrightnessEffect, BlurEffect, BloomEffect } from "../post/filters"
 import type { OptimizedBuffer } from "../buffer"
-import { ThreeCliRenderer } from "../src"
 
 // State management for the demo
 interface ShaderCubeDemoState {

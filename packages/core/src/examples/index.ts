@@ -14,8 +14,18 @@ import {
   ASCIIFontRenderable,
 } from "../index"
 import { measureText } from "../lib/ascii.font"
+import * as goldenStarDemo from "./golden-star-demo"
 import * as boxExample from "./fonts"
+import * as fractalShaderExample from "./fractal-shader-demo"
 import * as framebufferExample from "./framebuffer-demo"
+import * as lightsPhongExample from "./lights-phong-demo"
+import * as physxPlanckExample from "./physx-planck-2d-demo"
+import * as physxRapierExample from "./physx-rapier-2d-demo"
+import * as shaderCubeExample from "./shader-cube-demo"
+import * as spriteAnimationExample from "./sprite-animation-demo"
+import * as spriteParticleExample from "./sprite-particle-generator-demo"
+import * as staticSpriteExample from "./static-sprite-demo"
+import * as textureLoadingExample from "./texture-loading-demo"
 import * as opentuiDemo from "./opentui-demo"
 import * as nestedZIndexDemo from "./nested-zindex-demo"
 import * as relativePositioningDemo from "./relative-positioning-demo"
@@ -56,6 +66,12 @@ interface Example {
 }
 
 const examples: Example[] = [
+  {
+    name: "Golden Star Demo",
+    description: "3D golden star with particle effects and animated text celebrating 5000 stars",
+    run: goldenStarDemo.run,
+    destroy: goldenStarDemo.destroy,
+  },
   {
     name: "Mouse Interaction Demo",
     description: "Interactive mouse trails and clickable cells demonstration",
@@ -166,10 +182,34 @@ const examples: Example[] = [
     destroy: transparencyDemo.destroy,
   },
   {
+    name: "Static Sprite",
+    description: "Static sprite rendering demo",
+    run: staticSpriteExample.run,
+    destroy: staticSpriteExample.destroy,
+  },
+  {
+    name: "Sprite Animation",
+    description: "Animated sprite sequences",
+    run: spriteAnimationExample.run,
+    destroy: spriteAnimationExample.destroy,
+  },
+  {
+    name: "Sprite Particles",
+    description: "Particle system with sprites",
+    run: spriteParticleExample.run,
+    destroy: spriteParticleExample.destroy,
+  },
+  {
     name: "Framebuffer Demo",
     description: "Framebuffer rendering techniques",
     run: framebufferExample.run,
     destroy: framebufferExample.destroy,
+  },
+  {
+    name: "Texture Loading",
+    description: "Loading and displaying textures",
+    run: textureLoadingExample.run,
+    destroy: textureLoadingExample.destroy,
   },
   {
     name: "ScrollBox Demo",
@@ -182,6 +222,36 @@ const examples: Example[] = [
     description: "ScrollBox with sticky scroll behavior - maintains position at borders when content changes",
     run: stickyScrollExample.run,
     destroy: stickyScrollExample.destroy,
+  },
+  {
+    name: "Shader Cube",
+    description: "3D cube with custom shaders",
+    run: shaderCubeExample.run,
+    destroy: shaderCubeExample.destroy,
+  },
+  {
+    name: "Fractal Shader",
+    description: "Fractal rendering with shaders",
+    run: fractalShaderExample.run,
+    destroy: fractalShaderExample.destroy,
+  },
+  {
+    name: "Phong Lighting",
+    description: "Phong lighting model demo",
+    run: lightsPhongExample.run,
+    destroy: lightsPhongExample.destroy,
+  },
+  {
+    name: "Physics Planck",
+    description: "2D physics with Planck.js",
+    run: physxPlanckExample.run,
+    destroy: physxPlanckExample.destroy,
+  },
+  {
+    name: "Physics Rapier",
+    description: "2D physics with Rapier",
+    run: physxRapierExample.run,
+    destroy: physxRapierExample.destroy,
   },
   {
     name: "Timeline Example",

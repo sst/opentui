@@ -7,7 +7,7 @@ import {
   BoxRenderable,
   createCliRenderer,
   type KeyEvent,
-} from "@opentui/core"
+} from "../index"
 import { setupCommonDemoKeys } from "./lib/standalone-keys"
 import * as THREE from "three"
 import {
@@ -15,12 +15,14 @@ import {
   TiledSprite,
   type SpriteDefinition,
   type AnimationDefinition,
-} from "../src"
-import { SpriteResourceManager, type ResourceConfig } from "../src"
-import { PhysicsExplosionManager, type PhysicsExplosionHandle } from "../src"
-import { PlanckPhysicsWorld } from "../src"
+  SpriteResourceManager,
+  type ResourceConfig,
+  PhysicsExplosionManager,
+  type PhysicsExplosionHandle,
+  PlanckPhysicsWorld,
+  ThreeCliRenderer,
+} from "@opentui/3d"
 import * as planck from "planck"
-import { ThreeCliRenderer } from "../src"
 
 // @ts-ignore
 import cratePath from "./assets/crate.png" with { type: "image/png" }

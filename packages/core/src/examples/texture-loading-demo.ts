@@ -9,9 +9,9 @@ import {
   TextRenderable,
   FrameBufferRenderable,
   type KeyEvent,
-} from "@opentui/core"
+} from "../index"
 import { setupCommonDemoKeys } from "./lib/standalone-keys"
-import { TextureUtils } from "../src"
+import { TextureUtils, ThreeCliRenderer, SuperSampleAlgorithm } from "@opentui/3d"
 import {
   Scene as ThreeScene,
   Mesh as ThreeMesh,
@@ -24,7 +24,6 @@ import {
 } from "three"
 import { MeshPhongNodeMaterial } from "three/webgpu"
 import { lights } from "three/tsl"
-import { ThreeCliRenderer, SuperSampleAlgorithm } from "../src"
 
 // @ts-ignore
 import cratePath from "./assets/crate.png" with { type: "image/png" }

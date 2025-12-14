@@ -26,9 +26,9 @@ import { mkdir } from "node:fs/promises"
 type MemorySnapshot = { heapUsed: number; heapTotal: number; arrayBuffers: number }
 
 // @ts-ignore
-import cratePath from "../examples/assets/crate.png" with { type: "image/png" }
+import cratePath from "@opentui/core/src/examples/assets/crate.png" with { type: "image/png" }
 // @ts-ignore
-import crateEmissivePath from "../examples/assets/crate_emissive.png" with { type: "image/png" }
+import crateEmissivePath from "@opentui/core/src/examples/assets/crate_emissive.png" with { type: "image/png" }
 
 // Setup command line options
 const program = new Command()

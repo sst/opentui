@@ -8,9 +8,9 @@ import {
   TextRenderable,
   FrameBufferRenderable,
   type KeyEvent,
-} from "@opentui/core"
+} from "../index"
 import { setupCommonDemoKeys } from "./lib/standalone-keys"
-import { TextureUtils } from "../src"
+import { TextureUtils, ThreeCliRenderer } from "@opentui/3d"
 import {
   Scene as ThreeScene,
   Mesh as ThreeMesh,
@@ -29,7 +29,6 @@ import { TeapotGeometry } from "three/addons/geometries/TeapotGeometry.js"
 import normalTexPath from "./assets/Water_2_M_Normal.jpg" with { type: "image/jpeg" }
 // @ts-ignore
 import alphaTexPath from "./assets/roughness_map.jpg" with { type: "image/jpeg" }
-import { ThreeCliRenderer } from "../src"
 
 interface PhongDemoState {
   camera: PerspectiveCamera

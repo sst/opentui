@@ -7,7 +7,7 @@ import {
   BoxRenderable,
   createCliRenderer,
   type KeyEvent,
-} from "@opentui/core"
+} from "../index"
 import { setupCommonDemoKeys } from "./lib/standalone-keys"
 import * as THREE from "three"
 import {
@@ -15,13 +15,15 @@ import {
   TiledSprite,
   type SpriteDefinition,
   type AnimationDefinition,
-} from "../src"
-import { SpriteResourceManager, type ResourceConfig } from "../src"
-import { PhysicsExplosionManager, type PhysicsExplosionHandle } from "../src"
-import { RapierPhysicsWorld } from "../src"
+  SpriteResourceManager,
+  type ResourceConfig,
+  PhysicsExplosionManager,
+  type PhysicsExplosionHandle,
+  RapierPhysicsWorld,
+  ThreeCliRenderer,
+} from "@opentui/3d"
 import RAPIER from "@dimforge/rapier2d-simd-compat"
 import { MeshLambertNodeMaterial } from "three/webgpu"
-import { ThreeCliRenderer } from "../src"
 
 // @ts-ignore
 import cratePath from "./assets/concrete.png" with { type: "image/png" }
