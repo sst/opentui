@@ -61,12 +61,21 @@ registerEnvVar({
   default: true,
 })
 
+registerEnvVar({
+  name: "OTUI_DEBUG",
+  description: "Enable debug mode to capture all raw input for debugging purposes.",
+  type: "boolean",
+  default: false,
+})
+
 export interface CliRendererConfig {
   stdin?: NodeJS.ReadStream
   stdout?: NodeJS.WriteStream
   exitOnCtrlC?: boolean
+  exitSignals?: NodeJS.Signals[]
   debounceDelay?: number
   targetFps?: number
+  maxFps?: number
   memorySnapshotInterval?: number
   useThread?: boolean
   gatherStats?: boolean
@@ -78,7 +87,9 @@ export interface CliRendererConfig {
   useAlternateScreen?: boolean
   useConsole?: boolean
   experimental_splitHeight?: number
-  useKittyKeyboard?: boolean
+  useKittyKeyboard?: {
+    events?: boolean // Enable event types (press/repeat/release)
+  } | null
   backgroundColor?: ColorInput
   openConsoleOnError?: boolean
   prependInputHandlers?: ((sequence: string) => boolean)[]
@@ -88,6 +99,33 @@ export interface CliRendererConfig {
 export type PixelResolution = {
   width: number
   height: number
+}
+
+// Kitty keyboard protocol flags
+// See: https://sw.kovidgoyal.net/kitty/keyboard-protocol/
+const KITTY_FLAG_ALTERNATE_KEYS = 0b0001 // Report alternate keys (e.g., numpad vs regular)
+const KITTY_FLAG_EVENT_TYPES = 0b0010 // Report event types (press/repeat/release)
+const KITTY_FLAG_REPORT_TEXT = 0b0100 // Report text associated with key events
+const KITTY_FLAG_ALL_KEYS_AS_ESCAPES = 0b1000 // Report all keys as escape codes
+
+/**
+ * Build kitty keyboard protocol flags based on configuration
+ * @param config Kitty keyboard configuration object (null/undefined = disabled)
+ * @returns The combined flags value (0 = disabled, >0 = enabled)
+ * @internal Exported for testing
+ */
+export function buildKittyKeyboardFlags(config: { events?: boolean } | null | undefined): number {
+  if (!config) {
+    return 0
+  }
+
+  let flags = KITTY_FLAG_ALTERNATE_KEYS
+
+  if (config.events) {
+    flags |= KITTY_FLAG_EVENT_TYPES
+  }
+
+  return flags
 }
 
 export class MouseEvent {
@@ -144,14 +182,6 @@ export enum MouseButton {
   WHEEL_DOWN = 5,
 }
 
-singleton("ProcessExitSignals", () => {
-  ;["SIGINT", "SIGTERM", "SIGQUIT", "SIGABRT"].forEach((signal) => {
-    process.on(signal, () => {
-      process.exit()
-    })
-  })
-})
-
 const rendererTracker = singleton("RendererTracker", () => {
   const renderers = new Set<CliRenderer>()
   return {
@@ -200,8 +230,10 @@ export async function createCliRenderer(config: CliRendererConfig = {}): Promise
   }
   ziglib.setUseThread(rendererPtr, config.useThread)
 
-  const useKittyKeyboard = config.useKittyKeyboard ?? true
-  ziglib.setUseKittyKeyboard(rendererPtr, useKittyKeyboard)
+  const kittyConfig = config.useKittyKeyboard ?? {}
+  const kittyFlags = buildKittyKeyboardFlags(kittyConfig)
+
+  ziglib.setKittyKeyboardFlags(rendererPtr, kittyFlags)
 
   const renderer = new CliRenderer(ziglib, rendererPtr, stdin, stdout, width, height, config)
   await renderer.setupTerminal()
@@ -229,11 +261,14 @@ export class CliRenderer extends EventEmitter implements RenderContext {
   public stdin: NodeJS.ReadStream
   private stdout: NodeJS.WriteStream
   private exitOnCtrlC: boolean
+  private exitSignals: NodeJS.Signals[]
+  private _exitListenersAdded: boolean = false
   private _isDestroyed: boolean = false
   public nextRenderBuffer: OptimizedBuffer
   public currentRenderBuffer: OptimizedBuffer
   private _isRunning: boolean = false
   private targetFps: number = 30
+  private maxFps: number = 60
   private automaticMemorySnapshot: boolean = false
   private memorySnapshotInterval: number
   private memorySnapshotTimer: Timer | null = null
@@ -260,7 +295,8 @@ export class CliRenderer extends EventEmitter implements RenderContext {
   private frameCount: number = 0
   private lastFpsTime: number = 0
   private currentFps: number = 0
-  private targetFrameTime: number = 0
+  private targetFrameTime: number = 1000 / this.targetFps
+  private minTargetFrameTime: number = 1000 / this.maxFps
   private immediateRerenderRequested: boolean = false
   private updateScheduled: boolean = false
 
@@ -341,6 +377,11 @@ export class CliRenderer extends EventEmitter implements RenderContext {
   private inputHandlers: ((sequence: string) => boolean)[] = []
   private prependedInputHandlers: ((sequence: string) => boolean)[] = []
 
+  private idleResolvers: (() => void)[] = []
+
+  private _debugInputs: Array<{ timestamp: string; sequence: string }> = []
+  private _debugModeEnabled: boolean = env.OTUI_DEBUG
+
   private handleError: (error: Error) => void = ((error: Error) => {
     console.error(error)
 
@@ -420,8 +461,12 @@ export class CliRenderer extends EventEmitter implements RenderContext {
 
     this.rendererPtr = rendererPtr
     this.exitOnCtrlC = config.exitOnCtrlC === undefined ? true : config.exitOnCtrlC
+    this.exitSignals = config.exitSignals || ["SIGINT", "SIGTERM", "SIGQUIT", "SIGABRT"]
     this.resizeDebounceDelay = config.debounceDelay || 100
     this.targetFps = config.targetFps || 30
+    this.maxFps = config.maxFps || 60
+    this.targetFrameTime = 1000 / this.targetFps
+    this.minTargetFrameTime = 1000 / this.maxFps
     this.memorySnapshotInterval = config.memorySnapshotInterval ?? 0
     this.gatherStats = config.gatherStats || false
     this.maxStatSamples = config.maxStatSamples || 300
@@ -450,9 +495,11 @@ export class CliRenderer extends EventEmitter implements RenderContext {
 
     process.on("uncaughtException", this.handleError)
     process.on("unhandledRejection", this.handleError)
-    process.on("exit", this.exitHandler)
+    process.on("beforeExit", this.exitHandler)
 
-    this._keyHandler = new InternalKeyHandler(config.useKittyKeyboard ?? true)
+    const kittyConfig = config.useKittyKeyboard ?? {}
+    const useKittyForParsing = kittyConfig !== null
+    this._keyHandler = new InternalKeyHandler(useKittyForParsing)
     this._keyHandler.on("keypress", (event) => {
       if (this.exitOnCtrlC && event.name === "c" && event.ctrl) {
         process.nextTick(() => {
@@ -461,6 +508,8 @@ export class CliRenderer extends EventEmitter implements RenderContext {
         return
       }
     })
+
+    this.addExitListeners()
 
     this._stdinBuffer = new StdinBuffer({ timeout: 5 })
 
@@ -495,6 +544,26 @@ export class CliRenderer extends EventEmitter implements RenderContext {
     }
 
     this.setupInput()
+  }
+
+  private addExitListeners(): void {
+    if (this._exitListenersAdded || this.exitSignals.length === 0) return
+
+    this.exitSignals.forEach((signal) => {
+      process.addListener(signal, this.exitHandler)
+    })
+
+    this._exitListenersAdded = true
+  }
+
+  private removeExitListeners(): void {
+    if (!this._exitListenersAdded || this.exitSignals.length === 0) return
+
+    this.exitSignals.forEach((signal) => {
+      process.removeListener(signal, this.exitHandler)
+    })
+
+    this._exitListenersAdded = false
   }
 
   public get isDestroyed(): boolean {
@@ -543,18 +612,40 @@ export class CliRenderer extends EventEmitter implements RenderContext {
   }
 
   public requestRender() {
-    if (
-      !this.rendering &&
-      !this.updateScheduled &&
-      !this._isRunning &&
-      this._controlState !== RendererControlState.EXPLICIT_SUSPENDED
-    ) {
-      this.updateScheduled = true
-      process.nextTick(() => {
-        this.loop()
-        this.updateScheduled = false
-      })
+    if (this._controlState === RendererControlState.EXPLICIT_SUSPENDED) {
+      return
     }
+
+    if (this._isRunning) {
+      return
+    }
+
+    // NOTE: Using a frame callback that causes a re-render while already rendering
+    // leads to a continuous loop of renders.
+    if (this.rendering) {
+      this.immediateRerenderRequested = true
+      return
+    }
+
+    if (!this.updateScheduled && !this.renderTimeout) {
+      this.updateScheduled = true
+      const now = Date.now()
+      const elapsed = now - this.lastTime
+      const delay = Math.max(this.minTargetFrameTime - elapsed, 0)
+
+      if (delay === 0) {
+        process.nextTick(() => this.activateFrame())
+        return
+      }
+
+      setTimeout(() => this.activateFrame(), delay)
+    }
+  }
+
+  private async activateFrame() {
+    await this.loop()
+    this.updateScheduled = false
+    this.resolveIdleIfNeeded()
   }
 
   public get useConsole(): boolean {
@@ -572,6 +663,32 @@ export class CliRenderer extends EventEmitter implements RenderContext {
 
   public get isRunning(): boolean {
     return this._isRunning
+  }
+
+  private isIdleNow(): boolean {
+    return (
+      !this._isRunning &&
+      !this.rendering &&
+      !this.renderTimeout &&
+      !this.updateScheduled &&
+      !this.immediateRerenderRequested
+    )
+  }
+
+  private resolveIdleIfNeeded(): void {
+    if (!this.isIdleNow()) return
+    const resolvers = this.idleResolvers.splice(0)
+    for (const resolve of resolvers) {
+      resolve()
+    }
+  }
+
+  public idle(): Promise<void> {
+    if (this._isDestroyed) return Promise.resolve()
+    if (this.isIdleNow()) return Promise.resolve()
+    return new Promise<void>((resolve) => {
+      this.idleResolvers.push(resolve)
+    })
   }
 
   public get resolution(): PixelResolution | null {
@@ -634,12 +751,17 @@ export class CliRenderer extends EventEmitter implements RenderContext {
     return this._capabilities
   }
 
+  public getDebugInputs(): Array<{ timestamp: string; sequence: string }> {
+    return [...this._debugInputs]
+  }
+
   public get useKittyKeyboard(): boolean {
-    return this.lib.getUseKittyKeyboard(this.rendererPtr)
+    return this.lib.getKittyKeyboardFlags(this.rendererPtr) > 0
   }
 
   public set useKittyKeyboard(use: boolean) {
-    this.lib.setUseKittyKeyboard(this.rendererPtr, use)
+    const flags = use ? KITTY_FLAG_ALTERNATE_KEYS : 0
+    this.lib.setKittyKeyboardFlags(this.rendererPtr, flags)
   }
 
   public set experimental_splitHeight(splitHeight: number) {
@@ -808,6 +930,7 @@ export class CliRenderer extends EventEmitter implements RenderContext {
     if (isCapabilityResponse(sequence)) {
       this.lib.processCapabilityResponse(this.rendererPtr, sequence)
       this._capabilities = this.lib.getTerminalCapabilities(this.rendererPtr)
+      this.emit("capabilities", this._capabilities)
       return true
     }
     return false
@@ -855,6 +978,14 @@ export class CliRenderer extends EventEmitter implements RenderContext {
     this.stdin.setEncoding("utf8")
     this.stdin.on("data", this.stdinListener)
     this._stdinBuffer.on("data", (sequence: string) => {
+      // Capture all input in debug mode
+      if (this._debugModeEnabled) {
+        this._debugInputs.push({
+          timestamp: new Date().toISOString(),
+          sequence,
+        })
+      }
+
       for (const handler of this.inputHandlers) {
         if (handler(sequence)) {
           return
@@ -1282,6 +1413,7 @@ export class CliRenderer extends EventEmitter implements RenderContext {
     this._suspendedMouseEnabled = this._useMouse
 
     this.disableMouse()
+    this.removeExitListeners()
     this._stdinBuffer.clear()
     this.stdin.removeListener("data", this.stdinListener)
     this.lib.suspendRenderer(this.rendererPtr)
@@ -1299,6 +1431,7 @@ export class CliRenderer extends EventEmitter implements RenderContext {
     }
 
     this.stdin.resume()
+    this.addExitListeners()
 
     setImmediate(() => {
       // Consume any existing stdin data to avoid processing stale input
@@ -1346,6 +1479,12 @@ export class CliRenderer extends EventEmitter implements RenderContext {
       if (this.renderTimeout) {
         clearTimeout(this.renderTimeout)
         this.renderTimeout = null
+      }
+
+      // If we're currently rendering, the frame will resolve idle when it completes
+      // Otherwise, resolve immediately
+      if (!this.rendering) {
+        this.resolveIdleIfNeeded()
       }
     }
   }
@@ -1412,6 +1551,9 @@ export class CliRenderer extends EventEmitter implements RenderContext {
         console.error("Error in onDestroy callback:", e instanceof Error ? e.stack : String(e))
       }
     }
+
+    // Resolve any pending idle() calls
+    this.resolveIdleIfNeeded()
   }
 
   private startRenderLoop(): void {
@@ -1421,13 +1563,14 @@ export class CliRenderer extends EventEmitter implements RenderContext {
     this.frameCount = 0
     this.lastFpsTime = this.lastTime
     this.currentFps = 0
-    this.targetFrameTime = 1000 / this.targetFps
 
     this.loop()
   }
 
   private async loop(): Promise<void> {
     if (this.rendering || this._isDestroyed) return
+    this.renderTimeout = null
+
     this.rendering = true
     if (this.renderTimeout) {
       clearTimeout(this.renderTimeout)
@@ -1485,6 +1628,7 @@ export class CliRenderer extends EventEmitter implements RenderContext {
       this.renderNative()
 
       const overallFrameTime = performance.now() - overallStart
+
       // TODO: Add animationRequestTime to stats
       this.lib.updateStats(this.rendererPtr, overallFrameTime, this.renderStats.fps, this.renderStats.frameCallbackTime)
 
@@ -1492,16 +1636,22 @@ export class CliRenderer extends EventEmitter implements RenderContext {
         this.collectStatSample(overallFrameTime)
       }
 
-      if (this._isRunning) {
-        const delay = Math.max(1, this.targetFrameTime - Math.floor(overallFrameTime))
-        this.renderTimeout = setTimeout(() => this.loop(), delay)
+      if (this._isRunning || this.immediateRerenderRequested) {
+        const targetFrameTime = this.immediateRerenderRequested ? this.minTargetFrameTime : this.targetFrameTime
+        const delay = Math.max(1, targetFrameTime - Math.floor(overallFrameTime))
+        this.immediateRerenderRequested = false
+        this.renderTimeout = setTimeout(() => {
+          this.renderTimeout = null
+          this.loop()
+        }, delay)
+      } else {
+        clearTimeout(this.renderTimeout!)
+        this.renderTimeout = null
       }
     }
+
     this.rendering = false
-    if (this.immediateRerenderRequested) {
-      this.immediateRerenderRequested = false
-      this.loop()
-    }
+    this.resolveIdleIfNeeded()
   }
 
   public intermediateRender(): void {
@@ -1751,8 +1901,10 @@ export class CliRenderer extends EventEmitter implements RenderContext {
     }
 
     if (!this._paletteDetector) {
-      const isTmux = this.capabilities?.terminal?.name?.toLowerCase()?.includes("tmux")
-      this._paletteDetector = createTerminalPalette(this.stdin, this.stdout, this.writeOut.bind(this), isTmux)
+      const isLegacyTmux =
+        this.capabilities?.terminal?.name?.toLowerCase()?.includes("tmux") &&
+        this.capabilities?.terminal?.version?.localeCompare("3.6") < 0
+      this._paletteDetector = createTerminalPalette(this.stdin, this.stdout, this.writeOut.bind(this), isLegacyTmux)
     }
 
     this._paletteDetectionPromise = this._paletteDetector.detect(options).then((result) => {

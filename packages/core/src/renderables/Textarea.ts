@@ -7,6 +7,9 @@ import {
   mergeKeyBindings,
   getKeyBindingKey,
   buildKeyBindingsMap,
+  type KeyAliasMap,
+  defaultKeyAliases,
+  mergeKeyAliases,
 } from "../lib/keymapping"
 import { type StyledText, fg } from "../lib/styled-text"
 import type { ExtmarksController } from "../lib/extmarks"
@@ -24,6 +27,10 @@ export type TextareaAction =
   | "line-end"
   | "select-line-home"
   | "select-line-end"
+  | "visual-line-home"
+  | "visual-line-end"
+  | "select-visual-line-home"
+  | "select-visual-line-end"
   | "buffer-home"
   | "buffer-end"
   | "select-buffer-home"
@@ -61,14 +68,25 @@ const defaultTextareaKeybindings: KeyBinding[] = [
   { name: "end", shift: true, action: "select-buffer-end" },
   { name: "a", ctrl: true, action: "line-home" },
   { name: "e", ctrl: true, action: "line-end" },
+  { name: "a", ctrl: true, shift: true, action: "select-line-home" },
+  { name: "e", ctrl: true, shift: true, action: "select-line-end" },
+  { name: "a", meta: true, action: "visual-line-home" },
+  { name: "e", meta: true, action: "visual-line-end" },
+  { name: "a", meta: true, shift: true, action: "select-visual-line-home" },
+  { name: "e", meta: true, shift: true, action: "select-visual-line-end" },
   { name: "f", ctrl: true, action: "move-right" },
   { name: "b", ctrl: true, action: "move-left" },
-  { name: "d", ctrl: true, action: "delete-word-forward" },
   { name: "w", ctrl: true, action: "delete-word-backward" },
+  { name: "backspace", ctrl: true, action: "delete-word-backward" },
+  { name: "d", meta: true, action: "delete-word-forward" },
+  { name: "delete", meta: true, action: "delete-word-forward" },
+  { name: "delete", ctrl: true, action: "delete-word-forward" },
+  { name: "d", ctrl: true, shift: true, action: "delete-line" },
   { name: "k", ctrl: true, action: "delete-to-line-end" },
   { name: "u", ctrl: true, action: "delete-to-line-start" },
   { name: "backspace", action: "backspace" },
   { name: "backspace", shift: true, action: "backspace" },
+  { name: "d", ctrl: true, action: "delete" },
   { name: "delete", action: "delete" },
   { name: "delete", shift: true, action: "delete" },
   { name: "return", action: "newline" },
@@ -85,11 +103,12 @@ const defaultTextareaKeybindings: KeyBinding[] = [
   { name: "b", meta: true, action: "word-backward" },
   { name: "right", meta: true, action: "word-forward" },
   { name: "left", meta: true, action: "word-backward" },
+  { name: "right", ctrl: true, action: "word-forward" },
+  { name: "left", ctrl: true, action: "word-backward" },
   { name: "f", meta: true, shift: true, action: "select-word-forward" },
   { name: "b", meta: true, shift: true, action: "select-word-backward" },
   { name: "right", meta: true, shift: true, action: "select-word-forward" },
   { name: "left", meta: true, shift: true, action: "select-word-backward" },
-  { name: "d", meta: true, action: "delete-line" },
   { name: "backspace", meta: true, action: "delete-word-backward" },
 ]
 
@@ -103,6 +122,7 @@ export interface TextareaOptions extends EditBufferOptions {
   focusedTextColor?: ColorInput
   placeholder?: StyledText | string | null
   keyBindings?: KeyBinding[]
+  keyAliasMap?: KeyAliasMap
   onSubmit?: (event: SubmitEvent) => void
 }
 
@@ -113,6 +133,8 @@ export class TextareaRenderable extends EditBufferRenderable {
   private _focusedBackgroundColor: RGBA
   private _focusedTextColor: RGBA
   private _keyBindingsMap: Map<string, TextareaAction>
+  private _keyAliasMap: KeyAliasMap
+  private _keyBindings: KeyBinding[]
   private _actionHandlers: Map<TextareaAction, () => boolean>
   private _initialValueSet: boolean = false
   private _submitListener: ((event: SubmitEvent) => void) | undefined = undefined
@@ -145,8 +167,10 @@ export class TextareaRenderable extends EditBufferRenderable {
     this._focusedTextColor = parseColor(options.focusedTextColor || options.textColor || defaults.focusedTextColor)
     this._placeholder = options.placeholder ?? defaults.placeholder
 
-    const mergedBindings = mergeKeyBindings(defaultTextareaKeybindings, options.keyBindings || [])
-    this._keyBindingsMap = buildKeyBindingsMap(mergedBindings)
+    this._keyAliasMap = mergeKeyAliases(defaultKeyAliases, options.keyAliasMap || {})
+    this._keyBindings = options.keyBindings || []
+    const mergedBindings = mergeKeyBindings(defaultTextareaKeybindings, this._keyBindings)
+    this._keyBindingsMap = buildKeyBindingsMap(mergedBindings, this._keyAliasMap)
     this._actionHandlers = this.buildActionHandlers()
     this._submitListener = options.onSubmit
 
@@ -188,6 +212,10 @@ export class TextareaRenderable extends EditBufferRenderable {
       ["line-end", () => this.gotoLineEnd()],
       ["select-line-home", () => this.gotoLineHome({ select: true })],
       ["select-line-end", () => this.gotoLineEnd({ select: true })],
+      ["visual-line-home", () => this.gotoVisualLineHome()],
+      ["visual-line-end", () => this.gotoVisualLineEnd()],
+      ["select-visual-line-home", () => this.gotoVisualLineHome({ select: true })],
+      ["select-visual-line-end", () => this.gotoVisualLineEnd({ select: true })],
       ["select-buffer-home", () => this.gotoBufferHome({ select: true })],
       ["select-buffer-end", () => this.gotoBufferEnd({ select: true })],
       ["buffer-home", () => this.gotoBufferHome()],
@@ -214,20 +242,13 @@ export class TextareaRenderable extends EditBufferRenderable {
     this.insertText(event.text)
   }
 
-  public handleKeyPress(key: KeyEvent | string): boolean {
-    const keyName = typeof key === "string" ? key : key.name
-    const keySequence = typeof key === "string" ? key : key.sequence
-    const keyCtrl = typeof key === "string" ? false : key.ctrl
-    const keyShift = typeof key === "string" ? false : key.shift
-    const keyMeta = typeof key === "string" ? false : key.meta
-    const keySuper = typeof key === "string" ? false : key.super
-
+  public handleKeyPress(key: KeyEvent): boolean {
     const bindingKey = getKeyBindingKey({
-      name: keyName,
-      ctrl: keyCtrl,
-      shift: keyShift,
-      meta: keyMeta,
-      super: keySuper,
+      name: key.name,
+      ctrl: key.ctrl,
+      shift: key.shift,
+      meta: key.meta,
+      super: key.super,
       action: "move-left" as TextareaAction,
     })
 
@@ -240,19 +261,26 @@ export class TextareaRenderable extends EditBufferRenderable {
       }
     }
 
-    if (keySequence && !keyCtrl && !keyMeta) {
-      const firstCharCode = keySequence.charCodeAt(0)
-
-      if (firstCharCode < 32) {
-        return false
+    if (!key.ctrl && !key.meta && !key.super && !key.hyper) {
+      if (key.name === "space") {
+        this.insertText(" ")
+        return true
       }
 
-      if (firstCharCode === 127) {
-        return false
-      }
+      if (key.sequence) {
+        const firstCharCode = key.sequence.charCodeAt(0)
 
-      this.insertText(keySequence)
-      return true
+        if (firstCharCode < 32) {
+          return false
+        }
+
+        if (firstCharCode === 127) {
+          return false
+        }
+
+        this.insertText(key.sequence)
+        return true
+      }
     }
 
     return false
@@ -374,7 +402,14 @@ export class TextareaRenderable extends EditBufferRenderable {
     const select = options?.select ?? false
     this.updateSelectionForMovement(select, true)
     const cursor = this.editorView.getCursor()
-    this.editBuffer.setCursor(cursor.row, 0)
+    if (cursor.col === 0 && cursor.row > 0) {
+      this.editBuffer.setCursor(cursor.row - 1, 0)
+      const prevLineEol = this.editBuffer.getEOL()
+      this.editBuffer.setCursor(prevLineEol.row, prevLineEol.col)
+    } else {
+      this.editBuffer.setCursor(cursor.row, 0)
+    }
+
     this.updateSelectionForMovement(select, false)
     this.requestRender()
     return true
@@ -383,8 +418,39 @@ export class TextareaRenderable extends EditBufferRenderable {
   public gotoLineEnd(options?: { select?: boolean }): boolean {
     const select = options?.select ?? false
     this.updateSelectionForMovement(select, true)
+    const cursor = this.editorView.getCursor()
     const eol = this.editBuffer.getEOL()
-    this.editBuffer.setCursor(eol.row, eol.col)
+    const lineCount = this.editBuffer.getLineCount()
+    if (cursor.col === eol.col && cursor.row < lineCount - 1) {
+      this.editBuffer.setCursor(cursor.row + 1, 0)
+    } else {
+      this.editBuffer.setCursor(eol.row, eol.col)
+    }
+
+    this.updateSelectionForMovement(select, false)
+    this.requestRender()
+    return true
+  }
+
+  public gotoVisualLineHome(options?: { select?: boolean }): boolean {
+    const select = options?.select ?? false
+    this.updateSelectionForMovement(select, true)
+
+    const sol = this.editorView.getVisualSOL()
+    this.editBuffer.setCursor(sol.logicalRow, sol.logicalCol)
+
+    this.updateSelectionForMovement(select, false)
+    this.requestRender()
+    return true
+  }
+
+  public gotoVisualLineEnd(options?: { select?: boolean }): boolean {
+    const select = options?.select ?? false
+    this.updateSelectionForMovement(select, true)
+
+    const eol = this.editorView.getVisualEOL()
+    this.editBuffer.setCursor(eol.logicalRow, eol.logicalCol)
+
     this.updateSelectionForMovement(select, false)
     this.requestRender()
     return true
@@ -508,7 +574,9 @@ export class TextareaRenderable extends EditBufferRenderable {
 
   public blur(): void {
     super.blur()
-    this.updateColors()
+    if (!this.isDestroyed) {
+      this.updateColors()
+    }
   }
 
   get placeholder(): StyledText | string | null {
@@ -586,8 +654,15 @@ export class TextareaRenderable extends EditBufferRenderable {
   }
 
   public set keyBindings(bindings: KeyBinding[]) {
+    this._keyBindings = bindings
     const mergedBindings = mergeKeyBindings(defaultTextareaKeybindings, bindings)
-    this._keyBindingsMap = buildKeyBindingsMap(mergedBindings)
+    this._keyBindingsMap = buildKeyBindingsMap(mergedBindings, this._keyAliasMap)
+  }
+
+  public set keyAliasMap(aliases: KeyAliasMap) {
+    this._keyAliasMap = mergeKeyAliases(defaultKeyAliases, aliases)
+    const mergedBindings = mergeKeyBindings(defaultTextareaKeybindings, this._keyBindings)
+    this._keyBindingsMap = buildKeyBindingsMap(mergedBindings, this._keyAliasMap)
   }
 
   public get extmarks(): ExtmarksController {

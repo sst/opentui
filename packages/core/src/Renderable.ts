@@ -97,6 +97,7 @@ export interface RenderableOptions<T extends BaseRenderable = BaseRenderable> ex
   visible?: boolean
   buffered?: boolean
   live?: boolean
+  opacity?: number
 
   // hooks for custom render logic
   renderBefore?: (this: T, buffer: OptimizedBuffer, deltaTime: number) => void
@@ -197,7 +198,7 @@ yogaConfig.setPointScaleFactor(1)
 export abstract class Renderable extends BaseRenderable {
   static renderablesByNumber: Map<number, Renderable> = new Map()
 
-  private _isDestroyed: boolean = false
+  protected _isDestroyed: boolean = false
   protected _ctx: RenderContext
   protected _translateX: number = 0
   protected _translateY: number = 0
@@ -230,6 +231,7 @@ export abstract class Renderable extends BaseRenderable {
   protected _positionType: PositionTypeString = "relative"
   protected _overflow: OverflowString = "visible"
   protected _position: Position = {}
+  protected _opacity: number = 1.0
   private _flexShrink: number = 1
 
   private renderableMapById: Map<string, Renderable> = new Map()
@@ -240,6 +242,7 @@ export abstract class Renderable extends BaseRenderable {
 
   private childrenPrimarySortDirty: boolean = true
   private childrenSortedByPrimaryAxis: Renderable[] = []
+  private _shouldUpdateBefore: Set<Renderable> = new Set()
 
   public onLifecyclePass: (() => void) | null = null
 
@@ -272,6 +275,7 @@ export abstract class Renderable extends BaseRenderable {
     this.buffered = options.buffered ?? false
     this._live = options.live ?? false
     this._liveCount = this._live && this._visible ? 1 : 0
+    this._opacity = options.opacity !== undefined ? Math.max(0, Math.min(1, options.opacity)) : 1.0
 
     // TODO: use a global yoga config
     this.yogaNode = Yoga.Node.create(yogaConfig)
@@ -335,6 +339,18 @@ export abstract class Renderable extends BaseRenderable {
     this.requestRender()
   }
 
+  public get opacity(): number {
+    return this._opacity
+  }
+
+  public set opacity(value: number) {
+    const clamped = Math.max(0, Math.min(1, value))
+    if (this._opacity !== clamped) {
+      this._opacity = clamped
+      this.requestRender()
+    }
+  }
+
   public hasSelection(): boolean {
     return false
   }
@@ -354,21 +370,27 @@ export abstract class Renderable extends BaseRenderable {
   }
 
   public focus(): void {
-    if (this._focused || !this._focusable) return
+    if (this._isDestroyed || this._focused || !this._focusable) return
 
     this._ctx.focusRenderable(this)
     this._focused = true
     this.requestRender()
 
     this.keypressHandler = (key: KeyEvent) => {
+      if (this._isDestroyed) return
       this._keyListeners["down"]?.(key)
+      // Check again after user listener - it might have destroyed the renderable
+      if (this._isDestroyed) return
       if (!key.defaultPrevented && this.handleKeyPress) {
         this.handleKeyPress(key)
       }
     }
 
     this.pasteHandler = (event: PasteEvent) => {
+      if (this._isDestroyed) return
       this._pasteListener?.call(this, event)
+      // Check again after user listener - it might have destroyed the renderable
+      if (this._isDestroyed) return
       if (!event.defaultPrevented && this.handlePaste) {
         this.handlePaste(event)
       }
@@ -426,7 +448,7 @@ export abstract class Renderable extends BaseRenderable {
     this.parent?.propagateLiveCount(delta)
   }
 
-  public handleKeyPress?(key: KeyEvent | string): boolean
+  public handleKeyPress?(key: KeyEvent): boolean
   public handlePaste?(event: PasteEvent): void
 
   public findDescendantById(id: string): Renderable | undefined {
@@ -1095,6 +1117,7 @@ export abstract class Renderable extends BaseRenderable {
     this.yogaNode.insertChild(childLayoutNode, insertedIndex)
 
     this.childrenPrimarySortDirty = true
+    this._shouldUpdateBefore.add(renderable)
 
     this.requestRender()
 
@@ -1164,6 +1187,8 @@ export abstract class Renderable extends BaseRenderable {
     this._childrenInLayoutOrder.splice(insertedIndex, 0, renderable)
     this.yogaNode.insertChild(renderable.getLayoutNode(), insertedIndex)
 
+    this._shouldUpdateBefore.add(renderable)
+
     this.requestRender()
 
     return insertedIndex
@@ -1228,6 +1253,9 @@ export abstract class Renderable extends BaseRenderable {
 
     this.onUpdate(deltaTime)
 
+    // If destroyed during onUpdate, don't add to render list
+    if (this._isDestroyed) return
+
     // NOTE: worst case updateFromLayout is called throughout the whole tree,
     // which currently still has yoga performance issues.
     // This can be mitigated at some point when the layout tree moved to native,
@@ -1236,6 +1264,26 @@ export abstract class Renderable extends BaseRenderable {
     // That would allow us to to generate optimised render commands,
     // including the layout updates, in one pass.
     this.updateFromLayout()
+
+    // Update newly added children before getting visible children
+    // This ensures their positions are current when culling happens
+    if (this._shouldUpdateBefore.size > 0) {
+      for (const child of this._shouldUpdateBefore) {
+        if (!child.isDestroyed) {
+          child.updateFromLayout()
+        }
+      }
+      this._shouldUpdateBefore.clear()
+    }
+
+    // Check again after updateFromLayout, which calls onResize/onSizeChange
+    if (this._isDestroyed) return
+
+    // Push opacity BEFORE rendering this element so it affects this element and all children
+    const shouldPushOpacity = this._opacity < 1.0
+    if (shouldPushOpacity) {
+      renderList.push({ action: "pushOpacity", opacity: this._opacity })
+    }
 
     renderList.push({ action: "render", renderable: this })
 
@@ -1263,6 +1311,9 @@ export abstract class Renderable extends BaseRenderable {
 
     if (shouldPushScissor) {
       renderList.push({ action: "popScissorRect" })
+    }
+    if (shouldPushOpacity) {
+      renderList.push({ action: "popOpacity" })
     }
   }
 
@@ -1473,7 +1524,7 @@ export abstract class Renderable extends BaseRenderable {
 }
 
 interface RenderCommandBase {
-  action: "render" | "pushScissorRect" | "popScissorRect"
+  action: "render" | "pushScissorRect" | "popScissorRect" | "pushOpacity" | "popOpacity"
 }
 
 interface RenderCommandPushScissorRect extends RenderCommandBase {
@@ -1493,7 +1544,21 @@ interface RenderCommandRender extends RenderCommandBase {
   renderable: Renderable
 }
 
-export type RenderCommand = RenderCommandPushScissorRect | RenderCommandPopScissorRect | RenderCommandRender
+interface RenderCommandPushOpacity extends RenderCommandBase {
+  action: "pushOpacity"
+  opacity: number
+}
+
+interface RenderCommandPopOpacity extends RenderCommandBase {
+  action: "popOpacity"
+}
+
+export type RenderCommand =
+  | RenderCommandPushScissorRect
+  | RenderCommandPopScissorRect
+  | RenderCommandRender
+  | RenderCommandPushOpacity
+  | RenderCommandPopOpacity
 
 export class RootRenderable extends Renderable {
   private renderList: RenderCommand[] = []
@@ -1542,13 +1607,22 @@ export class RootRenderable extends Renderable {
       const command = this.renderList[i]
       switch (command.action) {
         case "render":
-          command.renderable.render(buffer, deltaTime)
+          // Skip if renderable was destroyed during a previous render callback
+          if (!command.renderable.isDestroyed) {
+            command.renderable.render(buffer, deltaTime)
+          }
           break
         case "pushScissorRect":
           buffer.pushScissorRect(command.x, command.y, command.width, command.height)
           break
         case "popScissorRect":
           buffer.popScissorRect()
+          break
+        case "pushOpacity":
+          buffer.pushOpacity(command.opacity)
+          break
+        case "popOpacity":
+          buffer.popOpacity()
           break
       }
     }

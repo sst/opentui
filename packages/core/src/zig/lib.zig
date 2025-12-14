@@ -309,7 +309,25 @@ export fn bufferClearScissorRects(bufferPtr: *buffer.OptimizedBuffer) void {
     bufferPtr.clearScissorRects();
 }
 
+// Opacity stack functions
+export fn bufferPushOpacity(bufferPtr: *buffer.OptimizedBuffer, opacity: f32) void {
+    bufferPtr.pushOpacity(opacity) catch {};
+}
+
+export fn bufferPopOpacity(bufferPtr: *buffer.OptimizedBuffer) void {
+    bufferPtr.popOpacity();
+}
+
+export fn bufferGetCurrentOpacity(bufferPtr: *buffer.OptimizedBuffer) f32 {
+    return bufferPtr.getCurrentOpacity();
+}
+
+export fn bufferClearOpacity(bufferPtr: *buffer.OptimizedBuffer) void {
+    bufferPtr.clearOpacity();
+}
+
 export fn bufferDrawSuperSampleBuffer(bufferPtr: *buffer.OptimizedBuffer, x: u32, y: u32, pixelData: [*]const u8, len: usize, format: u8, alignedBytesPerRow: u32) void {
+
     bufferPtr.drawSuperSampleBuffer(x, y, pixelData, len, format, alignedBytesPerRow) catch {};
 }
 
@@ -401,12 +419,12 @@ export fn disableKittyKeyboard(rendererPtr: *renderer.CliRenderer) void {
     rendererPtr.disableKittyKeyboard();
 }
 
-export fn setUseKittyKeyboard(rendererPtr: *renderer.CliRenderer, use: bool) void {
-    rendererPtr.setUseKittyKeyboard(use);
+export fn setKittyKeyboardFlags(rendererPtr: *renderer.CliRenderer, flags: u8) void {
+    rendererPtr.setKittyKeyboardFlags(flags);
 }
 
-export fn getUseKittyKeyboard(rendererPtr: *renderer.CliRenderer) bool {
-    return rendererPtr.getUseKittyKeyboard();
+export fn getKittyKeyboardFlags(rendererPtr: *renderer.CliRenderer) u8 {
+    return rendererPtr.getKittyKeyboardFlags();
 }
 
 export fn setupTerminal(rendererPtr: *renderer.CliRenderer, useAlternateScreen: bool) void {
@@ -796,13 +814,22 @@ export fn editBufferGetTextRangeByCoords(edit_buffer: *edit_buffer_mod.EditBuffe
     return edit_buffer.getTextRangeByCoords(start_row, start_col, end_row, end_col, outBuffer);
 }
 
-export fn editBufferSetText(edit_buffer: *edit_buffer_mod.EditBuffer, textPtr: [*]const u8, textLen: usize, retain_history: bool) void {
+export fn editBufferSetText(edit_buffer: *edit_buffer_mod.EditBuffer, textPtr: [*]const u8, textLen: usize) void {
     const text = textPtr[0..textLen];
-    edit_buffer.setText(text, retain_history) catch {};
+    edit_buffer.setText(text) catch {};
 }
 
-export fn editBufferSetTextFromMem(edit_buffer: *edit_buffer_mod.EditBuffer, mem_id: u8, retain_history: bool) void {
-    edit_buffer.setTextFromMemId(mem_id, retain_history) catch {};
+export fn editBufferSetTextFromMem(edit_buffer: *edit_buffer_mod.EditBuffer, mem_id: u8) void {
+    edit_buffer.setTextFromMemId(mem_id) catch {};
+}
+
+export fn editBufferReplaceText(edit_buffer: *edit_buffer_mod.EditBuffer, textPtr: [*]const u8, textLen: usize) void {
+    const text = textPtr[0..textLen];
+    edit_buffer.replaceText(text) catch {};
+}
+
+export fn editBufferReplaceTextFromMem(edit_buffer: *edit_buffer_mod.EditBuffer, mem_id: u8) void {
+    edit_buffer.replaceTextFromMemId(mem_id) catch {};
 }
 
 export fn editBufferGetText(edit_buffer: *edit_buffer_mod.EditBuffer, outPtr: [*]u8, maxLen: usize) usize {
@@ -1065,6 +1092,28 @@ export fn editorViewGetPrevWordBoundary(view: *editor_view.EditorView, outPtr: *
 
 export fn editorViewGetEOL(view: *editor_view.EditorView, outPtr: *ExternalVisualCursor) void {
     const vcursor = view.getEOL();
+    outPtr.* = .{
+        .visual_row = vcursor.visual_row,
+        .visual_col = vcursor.visual_col,
+        .logical_row = vcursor.logical_row,
+        .logical_col = vcursor.logical_col,
+        .offset = vcursor.offset,
+    };
+}
+
+export fn editorViewGetVisualSOL(view: *editor_view.EditorView, outPtr: *ExternalVisualCursor) void {
+    const vcursor = view.getVisualSOL();
+    outPtr.* = .{
+        .visual_row = vcursor.visual_row,
+        .visual_col = vcursor.visual_col,
+        .logical_row = vcursor.logical_row,
+        .logical_col = vcursor.logical_col,
+        .offset = vcursor.offset,
+    };
+}
+
+export fn editorViewGetVisualEOL(view: *editor_view.EditorView, outPtr: *ExternalVisualCursor) void {
+    const vcursor = view.getVisualEOL();
     outPtr.* = .{
         .visual_row = vcursor.visual_row,
         .visual_col = vcursor.visual_col,

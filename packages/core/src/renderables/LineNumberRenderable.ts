@@ -98,14 +98,14 @@ class GutterRenderable extends Renderable {
     this._lineNumberOffset = options.lineNumberOffset
     this._hideLineNumbers = options.hideLineNumbers
     this._lineNumbers = options.lineNumbers ?? new Map()
-    this._lastKnownLineCount = this.target.lineCount
+    this._lastKnownLineCount = this.target.virtualLineCount
     this._lastKnownScrollY = this.target.scrollY
     this.calculateSignWidths()
     this.setupMeasureFunc()
 
     // Use lifecycle pass to detect line count changes BEFORE layout
     this.onLifecyclePass = () => {
-      const currentLineCount = this.target.lineCount
+      const currentLineCount = this.target.virtualLineCount
       if (currentLineCount !== this._lastKnownLineCount) {
         this._lastKnownLineCount = currentLineCount
         this.yogaNode.markDirty()
@@ -124,9 +124,9 @@ class GutterRenderable extends Renderable {
       // Calculate the gutter width based on the target's line count
       const gutterWidth = this.calculateWidth()
 
-      // Calculate gutter height based on target's actual line count
+      // Calculate gutter height based on target's actual virtual line count
       // The gutter should match the height of the content it's numbering
-      const gutterHeight = this.target.lineCount
+      const gutterHeight = this.target.virtualLineCount
 
       // Return calculated dimensions based on content, not parent constraints
       return {
@@ -180,7 +180,7 @@ class GutterRenderable extends Renderable {
   }
 
   private calculateWidth(): number {
-    const totalLines = this.target.lineCount
+    const totalLines = this.target.virtualLineCount
 
     // Find max line number, considering both calculated and custom line numbers
     let maxLineNumber = totalLines + this._lineNumberOffset
@@ -463,7 +463,13 @@ export class LineNumberRenderable extends Renderable {
   // Override add to intercept and set as target if it's a LineInfoProvider
   public override add(child: Renderable): number {
     // If this is a LineInfoProvider and we don't have a target yet, set it
-    if (!this.target && "lineInfo" in child && "lineCount" in child && "scrollY" in child) {
+    if (
+      !this.target &&
+      "lineInfo" in child &&
+      "lineCount" in child &&
+      "virtualLineCount" in child &&
+      "scrollY" in child
+    ) {
       this.setTarget(child as Renderable & LineInfoProvider)
       return this.getChildrenCount() - 1
     }

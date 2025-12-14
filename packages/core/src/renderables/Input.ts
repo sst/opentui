@@ -3,6 +3,43 @@ import type { KeyEvent } from "../lib/KeyHandler"
 import { RGBA, parseColor, type ColorInput } from "../lib/RGBA"
 import { Renderable, type RenderableOptions } from "../Renderable"
 import type { RenderContext, CursorStyleOptions } from "../types"
+import {
+  type KeyBinding as BaseKeyBinding,
+  mergeKeyBindings,
+  getKeyBindingKey,
+  buildKeyBindingsMap,
+  type KeyAliasMap,
+  defaultKeyAliases,
+  mergeKeyAliases,
+} from "../lib/keymapping"
+
+export type InputAction =
+  | "move-left"
+  | "move-right"
+  | "move-home"
+  | "move-end"
+  | "delete-backward"
+  | "delete-forward"
+  | "submit"
+
+export type InputKeyBinding = BaseKeyBinding<InputAction>
+
+const defaultInputKeybindings: InputKeyBinding[] = [
+  { name: "left", action: "move-left" },
+  { name: "right", action: "move-right" },
+  { name: "home", action: "move-home" },
+  { name: "end", action: "move-end" },
+  { name: "backspace", action: "delete-backward" },
+  { name: "delete", action: "delete-forward" },
+  { name: "return", action: "submit" },
+  { name: "linefeed", action: "submit" },
+  // Emacs-style bindings
+  { name: "a", ctrl: true, action: "move-home" },
+  { name: "e", ctrl: true, action: "move-end" },
+  { name: "f", ctrl: true, action: "move-right" },
+  { name: "b", ctrl: true, action: "move-left" },
+  { name: "d", ctrl: true, action: "delete-forward" },
+]
 
 export interface InputRenderableOptions extends RenderableOptions<InputRenderable> {
   backgroundColor?: ColorInput
@@ -15,6 +52,8 @@ export interface InputRenderableOptions extends RenderableOptions<InputRenderabl
   cursorStyle?: CursorStyleOptions
   maxLength?: number
   value?: string
+  keyBindings?: InputKeyBinding[]
+  keyAliasMap?: KeyAliasMap
 }
 
 // TODO: make this just plain strings instead of an enum (same for other events)
@@ -39,6 +78,9 @@ export class InputRenderable extends Renderable {
   private _cursorStyle: CursorStyleOptions
   private _maxLength: number
   private _lastCommittedValue: string = ""
+  private _keyBindingsMap: Map<string, InputAction>
+  private _keyAliasMap: KeyAliasMap
+  private _keyBindings: InputKeyBinding[]
 
   protected _defaultOptions = {
     backgroundColor: "transparent",
@@ -76,6 +118,11 @@ export class InputRenderable extends Renderable {
     this._placeholderColor = parseColor(options.placeholderColor || this._defaultOptions.placeholderColor)
     this._cursorColor = parseColor(options.cursorColor || this._defaultOptions.cursorColor)
     this._cursorStyle = options.cursorStyle || this._defaultOptions.cursorStyle
+
+    this._keyAliasMap = mergeKeyAliases(defaultKeyAliases, options.keyAliasMap || {})
+    this._keyBindings = options.keyBindings || []
+    const mergedBindings = mergeKeyBindings(defaultInputKeybindings, this._keyBindings)
+    this._keyBindingsMap = buildKeyBindingsMap(mergedBindings, this._keyAliasMap)
   }
 
   private updateCursorPosition(): void {
@@ -230,55 +277,63 @@ export class InputRenderable extends Renderable {
     }
   }
 
-  public handleKeyPress(key: KeyEvent | string): boolean {
-    const keyName = typeof key === "string" ? key : key.name
-    const keySequence = typeof key === "string" ? key : key.sequence
+  public handleKeyPress(key: KeyEvent): boolean {
+    const bindingKey = getKeyBindingKey({
+      name: key.name,
+      ctrl: key.ctrl,
+      shift: key.shift,
+      meta: key.meta,
+      super: key.super,
+      action: "move-left" as InputAction,
+    })
 
-    switch (keyName) {
-      case "left":
-        this.cursorPosition = this._cursorPosition - 1
-        return true
+    const action = this._keyBindingsMap.get(bindingKey)
 
-      case "right":
-        this.cursorPosition = this._cursorPosition + 1
-        return true
-
-      case "home":
-        this.cursorPosition = 0
-        return true
-
-      case "end":
-        this.cursorPosition = this._value.length
-        return true
-
-      case "backspace":
-        this.deleteCharacter("backward")
-        return true
-
-      case "delete":
-        this.deleteCharacter("forward")
-        return true
-
-      case "return":
-      case "linefeed":
-        if (this._value !== this._lastCommittedValue) {
-          this._lastCommittedValue = this._value
-          this.emit(InputRenderableEvents.CHANGE, this._value)
-        }
-        this.emit(InputRenderableEvents.ENTER, this._value)
-        return true
-
-      default:
-        if (
-          keySequence &&
-          keySequence.length === 1 &&
-          keySequence.charCodeAt(0) >= 32 &&
-          keySequence.charCodeAt(0) <= 126
-        ) {
-          this.insertText(keySequence)
+    if (action) {
+      switch (action) {
+        case "move-left":
+          this.cursorPosition = this._cursorPosition - 1
           return true
-        }
-        break
+        case "move-right":
+          this.cursorPosition = this._cursorPosition + 1
+          return true
+        case "move-home":
+          this.cursorPosition = 0
+          return true
+        case "move-end":
+          this.cursorPosition = this._value.length
+          return true
+        case "delete-backward":
+          this.deleteCharacter("backward")
+          return true
+        case "delete-forward":
+          this.deleteCharacter("forward")
+          return true
+        case "submit":
+          if (this._value !== this._lastCommittedValue) {
+            this._lastCommittedValue = this._value
+            this.emit(InputRenderableEvents.CHANGE, this._value)
+          }
+          this.emit(InputRenderableEvents.ENTER, this._value)
+          return true
+      }
+    }
+
+    if (!key.ctrl && !key.meta && !key.super && !key.hyper) {
+      if (key.name === "space") {
+        this.insertText(" ")
+        return true
+      }
+
+      if (
+        key.sequence &&
+        key.sequence.length === 1 &&
+        key.sequence.charCodeAt(0) >= 32 &&
+        key.sequence.charCodeAt(0) <= 126
+      ) {
+        this.insertText(key.sequence)
+        return true
+      }
     }
 
     return false
@@ -370,5 +425,17 @@ export class InputRenderable extends Renderable {
     if (this._focused) {
       this._ctx.setCursorPosition(0, 0, false)
     }
+  }
+
+  public set keyBindings(bindings: InputKeyBinding[]) {
+    this._keyBindings = bindings
+    const mergedBindings = mergeKeyBindings(defaultInputKeybindings, bindings)
+    this._keyBindingsMap = buildKeyBindingsMap(mergedBindings, this._keyAliasMap)
+  }
+
+  public set keyAliasMap(aliases: KeyAliasMap) {
+    this._keyAliasMap = mergeKeyAliases(defaultKeyAliases, aliases)
+    const mergedBindings = mergeKeyBindings(defaultInputKeybindings, this._keyBindings)
+    this._keyBindingsMap = buildKeyBindingsMap(mergedBindings, this._keyAliasMap)
   }
 }

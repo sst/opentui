@@ -18,11 +18,12 @@ import {
   LineInfoStruct,
   MeasureResultStruct,
 } from "./zig-structs"
+import { isBunfsPath } from "./lib/bunfs"
 
 const module = await import(`@opentui/core-${process.platform}-${process.arch}/index.ts`)
 let targetLibPath = module.default
 
-if (/\$bunfs/.test(targetLibPath)) {
+if (isBunfsPath(targetLibPath)) {
   targetLibPath = targetLibPath.replace("../", "")
 }
 
@@ -261,6 +262,22 @@ function getOpenTUILib(libPath?: string) {
       args: ["ptr"],
       returns: "void",
     },
+    bufferPushOpacity: {
+      args: ["ptr", "f32"],
+      returns: "void",
+    },
+    bufferPopOpacity: {
+      args: ["ptr"],
+      returns: "void",
+    },
+    bufferGetCurrentOpacity: {
+      args: ["ptr"],
+      returns: "f32",
+    },
+    bufferClearOpacity: {
+      args: ["ptr"],
+      returns: "void",
+    },
 
     addToHitGrid: {
       args: ["ptr", "i32", "i32", "u32", "u32", "u32"],
@@ -298,13 +315,13 @@ function getOpenTUILib(libPath?: string) {
       args: ["ptr"],
       returns: "void",
     },
-    setUseKittyKeyboard: {
-      args: ["ptr", "bool"],
+    setKittyKeyboardFlags: {
+      args: ["ptr", "u8"],
       returns: "void",
     },
-    getUseKittyKeyboard: {
+    getKittyKeyboardFlags: {
       args: ["ptr"],
-      returns: "bool",
+      returns: "u8",
     },
     setupTerminal: {
       args: ["ptr", "bool"],
@@ -596,11 +613,19 @@ function getOpenTUILib(libPath?: string) {
       returns: "void",
     },
     editBufferSetText: {
-      args: ["ptr", "ptr", "usize", "bool"],
+      args: ["ptr", "ptr", "usize"],
       returns: "void",
     },
     editBufferSetTextFromMem: {
-      args: ["ptr", "u8", "bool"],
+      args: ["ptr", "u8"],
+      returns: "void",
+    },
+    editBufferReplaceText: {
+      args: ["ptr", "ptr", "usize"],
+      returns: "void",
+    },
+    editBufferReplaceTextFromMem: {
+      args: ["ptr", "u8"],
       returns: "void",
     },
     editBufferGetText: {
@@ -805,6 +830,14 @@ function getOpenTUILib(libPath?: string) {
       returns: "void",
     },
     editorViewGetEOL: {
+      args: ["ptr", "ptr"],
+      returns: "void",
+    },
+    editorViewGetVisualSOL: {
+      args: ["ptr", "ptr"],
+      returns: "void",
+    },
+    editorViewGetVisualEOL: {
       args: ["ptr", "ptr"],
       returns: "void",
     },
@@ -1207,8 +1240,8 @@ export interface RenderLib {
   disableMouse: (renderer: Pointer) => void
   enableKittyKeyboard: (renderer: Pointer, flags: number) => void
   disableKittyKeyboard: (renderer: Pointer) => void
-  setUseKittyKeyboard: (renderer: Pointer, use: boolean) => void
-  getUseKittyKeyboard: (renderer: Pointer) => boolean
+  setKittyKeyboardFlags: (renderer: Pointer, flags: number) => void
+  getKittyKeyboardFlags: (renderer: Pointer) => number
   setupTerminal: (renderer: Pointer, useAlternateScreen: boolean) => void
   suspendRenderer: (renderer: Pointer) => void
   resumeRenderer: (renderer: Pointer) => void
@@ -1293,6 +1326,7 @@ export interface RenderLib {
     width: number,
     height: number,
   ) => { lineCount: number; maxWidth: number } | null
+  textBufferViewGetVirtualLineCount: (view: Pointer) => number
 
   readonly encoder: TextEncoder
   readonly decoder: TextDecoder
@@ -1302,8 +1336,10 @@ export interface RenderLib {
   // EditBuffer methods
   createEditBuffer: (widthMethod: WidthMethod) => Pointer
   destroyEditBuffer: (buffer: Pointer) => void
-  editBufferSetText: (buffer: Pointer, textBytes: Uint8Array, retainHistory?: boolean) => void
-  editBufferSetTextFromMem: (buffer: Pointer, memId: number, retainHistory?: boolean) => void
+  editBufferSetText: (buffer: Pointer, textBytes: Uint8Array) => void
+  editBufferSetTextFromMem: (buffer: Pointer, memId: number) => void
+  editBufferReplaceText: (buffer: Pointer, textBytes: Uint8Array) => void
+  editBufferReplaceTextFromMem: (buffer: Pointer, memId: number) => void
   editBufferGetText: (buffer: Pointer, maxLength: number) => Uint8Array | null
   editBufferInsertChar: (buffer: Pointer, char: string) => void
   editBufferInsertText: (buffer: Pointer, text: string) => void
@@ -1391,6 +1427,8 @@ export interface RenderLib {
   editorViewGetNextWordBoundary: (view: Pointer) => VisualCursor
   editorViewGetPrevWordBoundary: (view: Pointer) => VisualCursor
   editorViewGetEOL: (view: Pointer) => VisualCursor
+  editorViewGetVisualSOL: (view: Pointer) => VisualCursor
+  editorViewGetVisualEOL: (view: Pointer) => VisualCursor
   editorViewGetLineInfo: (view: Pointer) => LineInfo
   editorViewGetLogicalLineInfo: (view: Pointer) => LineInfo
   editorViewSetPlaceholderStyledText: (
@@ -1403,6 +1441,10 @@ export interface RenderLib {
   bufferPushScissorRect: (buffer: Pointer, x: number, y: number, width: number, height: number) => void
   bufferPopScissorRect: (buffer: Pointer) => void
   bufferClearScissorRects: (buffer: Pointer) => void
+  bufferPushOpacity: (buffer: Pointer, opacity: number) => void
+  bufferPopOpacity: (buffer: Pointer) => void
+  bufferGetCurrentOpacity: (buffer: Pointer) => number
+  bufferClearOpacity: (buffer: Pointer) => void
   textBufferAddHighlightByCharRange: (buffer: Pointer, highlight: Highlight) => void
   textBufferAddHighlight: (buffer: Pointer, lineIdx: number, highlight: Highlight) => void
   textBufferRemoveHighlightsByRef: (buffer: Pointer, hlRef: number) => void
@@ -1942,12 +1984,12 @@ class FFIRenderLib implements RenderLib {
     this.opentui.symbols.disableKittyKeyboard(renderer)
   }
 
-  public setUseKittyKeyboard(renderer: Pointer, use: boolean): void {
-    this.opentui.symbols.setUseKittyKeyboard(renderer, use)
+  public setKittyKeyboardFlags(renderer: Pointer, flags: number): void {
+    this.opentui.symbols.setKittyKeyboardFlags(renderer, flags)
   }
 
-  public getUseKittyKeyboard(renderer: Pointer): boolean {
-    return this.opentui.symbols.getUseKittyKeyboard(renderer)
+  public getKittyKeyboardFlags(renderer: Pointer): number {
+    return this.opentui.symbols.getKittyKeyboardFlags(renderer)
   }
 
   public setupTerminal(renderer: Pointer, useAlternateScreen: boolean): void {
@@ -2261,7 +2303,7 @@ class FFIRenderLib implements RenderLib {
     }
   }
 
-  private textBufferViewGetLineCount(view: Pointer): number {
+  public textBufferViewGetVirtualLineCount(view: Pointer): number {
     return this.opentui.symbols.textBufferViewGetVirtualLineCount(view)
   }
 
@@ -2487,12 +2529,20 @@ class FFIRenderLib implements RenderLib {
     this.opentui.symbols.destroyEditBuffer(buffer)
   }
 
-  public editBufferSetText(buffer: Pointer, textBytes: Uint8Array, retainHistory: boolean = true): void {
-    this.opentui.symbols.editBufferSetText(buffer, textBytes, textBytes.length, retainHistory)
+  public editBufferSetText(buffer: Pointer, textBytes: Uint8Array): void {
+    this.opentui.symbols.editBufferSetText(buffer, textBytes, textBytes.length)
   }
 
-  public editBufferSetTextFromMem(buffer: Pointer, memId: number, retainHistory: boolean = true): void {
-    this.opentui.symbols.editBufferSetTextFromMem(buffer, memId, retainHistory)
+  public editBufferSetTextFromMem(buffer: Pointer, memId: number): void {
+    this.opentui.symbols.editBufferSetTextFromMem(buffer, memId)
+  }
+
+  public editBufferReplaceText(buffer: Pointer, textBytes: Uint8Array): void {
+    this.opentui.symbols.editBufferReplaceText(buffer, textBytes, textBytes.length)
+  }
+
+  public editBufferReplaceTextFromMem(buffer: Pointer, memId: number): void {
+    this.opentui.symbols.editBufferReplaceTextFromMem(buffer, memId)
   }
 
   public editBufferGetText(buffer: Pointer, maxLength: number): Uint8Array | null {
@@ -2808,6 +2858,18 @@ class FFIRenderLib implements RenderLib {
     return VisualCursorStruct.unpack(cursorBuffer)
   }
 
+  public editorViewGetVisualSOL(view: Pointer): VisualCursor {
+    const cursorBuffer = new ArrayBuffer(VisualCursorStruct.size)
+    this.opentui.symbols.editorViewGetVisualSOL(view, ptr(cursorBuffer))
+    return VisualCursorStruct.unpack(cursorBuffer)
+  }
+
+  public editorViewGetVisualEOL(view: Pointer): VisualCursor {
+    const cursorBuffer = new ArrayBuffer(VisualCursorStruct.size)
+    this.opentui.symbols.editorViewGetVisualEOL(view, ptr(cursorBuffer))
+    return VisualCursorStruct.unpack(cursorBuffer)
+  }
+
   public bufferPushScissorRect(buffer: Pointer, x: number, y: number, width: number, height: number): void {
     this.opentui.symbols.bufferPushScissorRect(buffer, x, y, width, height)
   }
@@ -2818,6 +2880,22 @@ class FFIRenderLib implements RenderLib {
 
   public bufferClearScissorRects(buffer: Pointer): void {
     this.opentui.symbols.bufferClearScissorRects(buffer)
+  }
+
+  public bufferPushOpacity(buffer: Pointer, opacity: number): void {
+    this.opentui.symbols.bufferPushOpacity(buffer, opacity)
+  }
+
+  public bufferPopOpacity(buffer: Pointer): void {
+    this.opentui.symbols.bufferPopOpacity(buffer)
+  }
+
+  public bufferGetCurrentOpacity(buffer: Pointer): number {
+    return this.opentui.symbols.bufferGetCurrentOpacity(buffer)
+  }
+
+  public bufferClearOpacity(buffer: Pointer): void {
+    this.opentui.symbols.bufferClearOpacity(buffer)
   }
 
   public getTerminalCapabilities(renderer: Pointer) {

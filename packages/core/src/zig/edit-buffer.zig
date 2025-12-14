@@ -493,27 +493,38 @@ pub const EditBuffer = struct {
         self.emitNativeEvent("cursor-changed");
     }
 
-    pub fn setText(self: *EditBuffer, text: []const u8, retain_history: bool) !void {
-        // Register text as owned memory, then delegate to setTextFromMemId
+    /// Set text and completely reset the buffer state (clears history, resets add_buffer)
+    pub fn setText(self: *EditBuffer, text: []const u8) !void {
         const owned_text = try self.allocator.dupe(u8, text);
         const mem_id = try self.tb.registerMemBuffer(owned_text, true);
-        try self.setTextFromMemId(mem_id, retain_history);
+        try self.setTextFromMemId(mem_id);
     }
 
-    pub fn setTextFromMemId(self: *EditBuffer, mem_id: u8, retain_history: bool) !void {
-        if (retain_history) {
-            try self.autoStoreUndo();
-        }
-
-        try self.tb.setTextFromMemId(mem_id);
-
-        const new_mem = try self.allocator.alloc(u8, self.add_buffer.cap);
-        const new_mem_id = try self.tb.registerMemBuffer(new_mem, true);
-        self.add_buffer.mem_id = new_mem_id;
-        self.add_buffer.ptr = new_mem.ptr;
+    /// Set text from memory ID and completely reset the buffer state (clears history, resets add_buffer)
+    pub fn setTextFromMemId(self: *EditBuffer, mem_id: u8) !void {
+        self.tb.rope.clear_history();
         self.add_buffer.len = 0;
 
+        try self.tb.setTextFromMemId(mem_id);
         try self.setCursor(0, 0);
+
+        self.emitNativeEvent("content-changed");
+    }
+
+    /// Replace text while preserving undo history (creates an undo point)
+    pub fn replaceText(self: *EditBuffer, text: []const u8) !void {
+        const owned_text = try self.allocator.dupe(u8, text);
+        const mem_id = try self.tb.registerMemBuffer(owned_text, true);
+        try self.replaceTextFromMemId(mem_id);
+    }
+
+    /// Replace text from memory ID while preserving undo history (creates an undo point)
+    pub fn replaceTextFromMemId(self: *EditBuffer, mem_id: u8) !void {
+        try self.autoStoreUndo();
+
+        try self.tb.setTextFromMemId(mem_id);
+        try self.setCursor(0, 0);
+
         self.emitNativeEvent("content-changed");
     }
 
@@ -646,6 +657,7 @@ pub const EditBuffer = struct {
         const linestart = self.tb.rope.getMarker(.linestart, cursor.row) orelse return cursor;
         var seg_idx = linestart.leaf_index + 1;
         var cols_before: u32 = 0;
+        var passed_cursor = false;
 
         while (seg_idx < self.tb.rope.count()) : (seg_idx += 1) {
             const seg = self.tb.rope.get(seg_idx) orelse break;
@@ -653,17 +665,22 @@ pub const EditBuffer = struct {
             if (seg.asText()) |chunk| {
                 const next_cols = cols_before + chunk.width;
 
-                if (cursor.col < next_cols) {
+                // Check this chunk if cursor is within it OR if we've already passed the cursor
+                if (cursor.col < next_cols or passed_cursor) {
                     const wrap_offsets = chunk.getWrapOffsets(&self.tb.mem_registry, self.tb.allocator, self.tb.width_method) catch {
                         cols_before = next_cols;
+                        passed_cursor = true;
                         continue;
                     };
 
-                    const local_col = cursor.col - cols_before;
+                    // For chunks containing or after the cursor, find the first break after cursor position
+                    const local_cursor_col = if (cursor.col > cols_before) cursor.col - cols_before else 0;
 
                     for (wrap_offsets) |wrap_break| {
                         const break_col = @as(u32, wrap_break.char_offset);
-                        if (break_col > local_col) {
+                        // If we've passed the cursor chunk, any break is valid
+                        // If we're in the cursor chunk, break must be after cursor position
+                        if (passed_cursor or break_col > local_cursor_col) {
                             const target_col = cols_before + break_col + 1;
                             if (target_col <= line_width) {
                                 const offset = iter_mod.coordsToOffset(&self.tb.rope, cursor.row, target_col) orelse cursor.offset;
@@ -671,7 +688,11 @@ pub const EditBuffer = struct {
                             }
                         }
                     }
+
+                    // Mark that we've processed/passed the cursor position
+                    passed_cursor = true;
                 }
+                cols_before = next_cols;
             }
         }
 

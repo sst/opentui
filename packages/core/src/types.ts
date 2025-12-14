@@ -95,5 +95,6 @@ export interface LineInfo {
 export interface LineInfoProvider {
   get lineInfo(): LineInfo
   get lineCount(): number
+  get virtualLineCount(): number
   get scrollY(): number
 }

@@ -3,12 +3,34 @@ import { OptimizedBuffer } from "../buffer"
 import { RGBA, parseColor, type ColorInput } from "../lib/RGBA"
 import type { KeyEvent } from "../lib/KeyHandler"
 import type { RenderContext } from "../types"
+import {
+  type KeyBinding as BaseKeyBinding,
+  mergeKeyBindings,
+  getKeyBindingKey,
+  buildKeyBindingsMap,
+  type KeyAliasMap,
+  defaultKeyAliases,
+  mergeKeyAliases,
+} from "../lib/keymapping"
 
 export interface TabSelectOption {
   name: string
   description: string
   value?: any
 }
+
+export type TabSelectAction = "move-left" | "move-right" | "select-current"
+
+export type TabSelectKeyBinding = BaseKeyBinding<TabSelectAction>
+
+const defaultTabSelectKeybindings: TabSelectKeyBinding[] = [
+  { name: "left", action: "move-left" },
+  { name: "[", action: "move-left" },
+  { name: "right", action: "move-right" },
+  { name: "]", action: "move-right" },
+  { name: "return", action: "select-current" },
+  { name: "linefeed", action: "select-current" },
+]
 
 export interface TabSelectRenderableOptions extends Omit<RenderableOptions<TabSelectRenderable>, "height"> {
   height?: number
@@ -25,6 +47,8 @@ export interface TabSelectRenderableOptions extends Omit<RenderableOptions<TabSe
   showDescription?: boolean
   showUnderline?: boolean
   wrapSelection?: boolean
+  keyBindings?: TabSelectKeyBinding[]
+  keyAliasMap?: KeyAliasMap
 }
 
 export enum TabSelectRenderableEvents {
@@ -66,6 +90,9 @@ export class TabSelectRenderable extends Renderable {
   private _showDescription: boolean
   private _showUnderline: boolean
   private _wrapSelection: boolean
+  private _keyBindingsMap: Map<string, TabSelectAction>
+  private _keyAliasMap: KeyAliasMap
+  private _keyBindings: TabSelectKeyBinding[]
 
   constructor(ctx: RenderContext, options: TabSelectRenderableOptions) {
     const calculatedHeight = calculateDynamicHeight(options.showUnderline ?? true, options.showDescription ?? true)
@@ -88,6 +115,11 @@ export class TabSelectRenderable extends Renderable {
     this._selectedBackgroundColor = parseColor(options.selectedBackgroundColor || "#334455")
     this._selectedTextColor = parseColor(options.selectedTextColor || "#FFFF00")
     this._selectedDescriptionColor = parseColor(options.selectedDescriptionColor || "#CCCCCC")
+
+    this._keyAliasMap = mergeKeyAliases(defaultKeyAliases, options.keyAliasMap || {})
+    this._keyBindings = options.keyBindings || []
+    const mergedBindings = mergeKeyBindings(defaultTabSelectKeybindings, this._keyBindings)
+    this._keyBindingsMap = buildKeyBindingsMap(mergedBindings, this._keyAliasMap)
   }
 
   private calculateDynamicHeight(): number {
@@ -275,22 +307,30 @@ export class TabSelectRenderable extends Renderable {
     return this._tabWidth
   }
 
-  public handleKeyPress(key: KeyEvent | string): boolean {
-    const keyName = typeof key === "string" ? key : key.name
+  public handleKeyPress(key: KeyEvent): boolean {
+    const bindingKey = getKeyBindingKey({
+      name: key.name,
+      ctrl: key.ctrl,
+      shift: key.shift,
+      meta: key.meta,
+      super: key.super,
+      action: "move-left" as TabSelectAction,
+    })
 
-    switch (keyName) {
-      case "left":
-      case "[":
-        this.moveLeft()
-        return true
-      case "right":
-      case "]":
-        this.moveRight()
-        return true
-      case "return":
-      case "linefeed":
-        this.selectCurrent()
-        return true
+    const action = this._keyBindingsMap.get(bindingKey)
+
+    if (action) {
+      switch (action) {
+        case "move-left":
+          this.moveLeft()
+          return true
+        case "move-right":
+          this.moveRight()
+          return true
+        case "select-current":
+          this.selectCurrent()
+          return true
+      }
     }
 
     return false
@@ -399,5 +439,17 @@ export class TabSelectRenderable extends Renderable {
 
     this.updateScrollOffset()
     this.requestRender()
+  }
+
+  public set keyBindings(bindings: TabSelectKeyBinding[]) {
+    this._keyBindings = bindings
+    const mergedBindings = mergeKeyBindings(defaultTabSelectKeybindings, bindings)
+    this._keyBindingsMap = buildKeyBindingsMap(mergedBindings, this._keyAliasMap)
+  }
+
+  public set keyAliasMap(aliases: KeyAliasMap) {
+    this._keyAliasMap = mergeKeyAliases(defaultKeyAliases, aliases)
+    const mergedBindings = mergeKeyBindings(defaultTabSelectKeybindings, this._keyBindings)
+    this._keyBindingsMap = buildKeyBindingsMap(mergedBindings, this._keyAliasMap)
   }
 }

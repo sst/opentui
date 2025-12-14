@@ -161,6 +161,10 @@ export abstract class EditBufferRenderable extends Renderable implements LineInf
     return this.editBuffer.getLineCount()
   }
 
+  public get virtualLineCount(): number {
+    return this.editorView.getVirtualLineCount()
+  }
+
   public get scrollY(): number {
     return this.editorView.getViewport().offsetY
   }
@@ -495,13 +499,24 @@ export abstract class EditBufferRenderable extends Renderable implements LineInf
     }
   }
 
-  destroy(): void {
+  override destroy(): void {
+    if (this.isDestroyed) return
+
     if (this._focused) {
       this._ctx.setCursorPosition(0, 0, false)
+      // Manually blur to unhook event handlers BEFORE setting destroyed flag
+      // This prevents the guard in super.destroy() from skipping blur()
+      this.blur()
     }
-    super.destroy()
+
+    // Destroy dependent resources in correct order BEFORE calling super
+    // EditorView depends on EditBuffer, so destroy it first
     this.editorView.destroy()
     this.editBuffer.destroy()
+
+    // Finally clean up parent resources
+    // Note: super.destroy() will try to blur() again, but blur() has guards to prevent double-blur
+    super.destroy()
   }
 
   public set onCursorChange(handler: ((event: CursorChangeEvent) => void) | undefined) {
@@ -558,8 +573,22 @@ export abstract class EditBufferRenderable extends Renderable implements LineInf
     return this.editBuffer.getLineHighlights(lineIdx)
   }
 
-  public setText(text: string, opts?: { history?: boolean }): void {
-    this.editBuffer.setText(text, opts)
+  /**
+   * Set text and completely reset the buffer state (clears history, resets add_buffer).
+   * Use this for initial text setting or when you want a clean slate.
+   */
+  public setText(text: string): void {
+    this.editBuffer.setText(text)
+    this.yogaNode.markDirty()
+    this.requestRender()
+  }
+
+  /**
+   * Replace text while preserving undo history (creates an undo point).
+   * Use this when you want the setText operation to be undoable.
+   */
+  public replaceText(text: string): void {
+    this.editBuffer.replaceText(text)
     this.yogaNode.markDirty()
     this.requestRender()
   }

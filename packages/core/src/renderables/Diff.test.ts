@@ -3,6 +3,7 @@ import { DiffRenderable, computeLineSimilarity, computeInlineHighlights } from "
 import { SyntaxStyle } from "../syntax-style"
 import { RGBA } from "../lib/RGBA"
 import { createTestRenderer, type TestRenderer } from "../testing"
+import type { SimpleHighlight } from "../lib/tree-sitter/types"
 
 let currentRenderer: TestRenderer
 let renderOnce: () => Promise<void>
@@ -1999,6 +2000,160 @@ test("DiffRenderable - should not leak listeners on rapid property changes", asy
   expect(rightFinalCount).toBe(rightInitialCount)
 })
 
+test("DiffRenderable - can toggle conceal with markdown diff", async () => {
+  const syntaxStyle = SyntaxStyle.fromStyles({
+    default: { fg: RGBA.fromValues(1, 1, 1, 1) },
+  })
+
+  const { MockTreeSitterClient } = await import("../testing")
+  const mockClient = new MockTreeSitterClient()
+
+  const markdownDiff = `--- a/test.md
++++ b/test.md
+@@ -1,3 +1,3 @@
+ First line
+-Some text **old**
++Some text **boldtext** and *italic*
+ End line`
+
+  const mockHighlightsWithConceal: SimpleHighlight[] = [
+    [21, 23, "conceal", { isInjection: true, injectionLang: "markdown_inline", conceal: "" }], // **
+    [31, 33, "conceal", { isInjection: true, injectionLang: "markdown_inline", conceal: "" }], // **
+    [38, 39, "conceal", { isInjection: true, injectionLang: "markdown_inline", conceal: "" }], // *
+    [45, 46, "conceal", { isInjection: true, injectionLang: "markdown_inline", conceal: "" }], // *
+  ]
+
+  mockClient.setMockResult({ highlights: mockHighlightsWithConceal })
+
+  const diffRenderable = new DiffRenderable(currentRenderer, {
+    id: "test-diff",
+    diff: markdownDiff,
+    view: "unified",
+    syntaxStyle,
+    filetype: "markdown",
+    conceal: true,
+    treeSitterClient: mockClient,
+    width: "100%",
+    height: "100%",
+  })
+
+  currentRenderer.root.add(diffRenderable)
+  await renderOnce()
+
+  mockClient.resolveAllHighlightOnce()
+  await new Promise((resolve) => setTimeout(resolve, 50))
+  await renderOnce()
+
+  const frameWithConceal = captureFrame()
+  expect(frameWithConceal).toMatchSnapshot("markdown diff with conceal enabled")
+  expect(diffRenderable.conceal).toBe(true)
+
+  diffRenderable.conceal = false
+  await renderOnce()
+
+  // Wait for re-highlighting
+  mockClient.resolveAllHighlightOnce()
+  await new Promise((resolve) => setTimeout(resolve, 50))
+  await renderOnce()
+
+  const frameWithoutConceal = captureFrame()
+  expect(frameWithoutConceal).toMatchSnapshot("markdown diff with conceal disabled")
+  expect(diffRenderable.conceal).toBe(false)
+
+  expect(frameWithConceal).not.toBe(frameWithoutConceal)
+
+  diffRenderable.conceal = true
+  await renderOnce()
+
+  mockClient.resolveAllHighlightOnce()
+  await new Promise((resolve) => setTimeout(resolve, 50))
+  await renderOnce()
+
+  const frameWithConcealAgain = captureFrame()
+  expect(frameWithConcealAgain).toBe(frameWithConceal)
+})
+
+test("DiffRenderable - conceal works in split view", async () => {
+  const syntaxStyle = SyntaxStyle.fromStyles({
+    default: { fg: RGBA.fromValues(1, 1, 1, 1) },
+  })
+
+  const { MockTreeSitterClient } = await import("../testing")
+  const mockClient = new MockTreeSitterClient()
+
+  const markdownDiff = `--- a/test.md
++++ b/test.md
+@@ -1,3 +1,3 @@
+ First line
+-Some **old** text
++Some **new** text
+ End line`
+
+  const mockHighlightsWithConceal: SimpleHighlight[] = [
+    [16, 18, "conceal", { isInjection: true, injectionLang: "markdown_inline", conceal: "" }], // **
+    [21, 23, "conceal", { isInjection: true, injectionLang: "markdown_inline", conceal: "" }], // **
+  ]
+
+  mockClient.setMockResult({ highlights: mockHighlightsWithConceal })
+
+  const diffRenderable = new DiffRenderable(currentRenderer, {
+    id: "test-diff",
+    diff: markdownDiff,
+    view: "split",
+    syntaxStyle,
+    filetype: "markdown",
+    conceal: true,
+    treeSitterClient: mockClient,
+    width: "100%",
+    height: "100%",
+  })
+
+  currentRenderer.root.add(diffRenderable)
+  await renderOnce()
+
+  mockClient.resolveAllHighlightOnce()
+  await new Promise((resolve) => setTimeout(resolve, 50))
+  await renderOnce()
+
+  const frameWithConceal = captureFrame()
+  expect(frameWithConceal).toMatchSnapshot("split view markdown diff with conceal enabled")
+  expect(diffRenderable.conceal).toBe(true)
+
+  diffRenderable.conceal = false
+  await renderOnce()
+
+  mockClient.resolveAllHighlightOnce()
+  await new Promise((resolve) => setTimeout(resolve, 50))
+  await renderOnce()
+
+  const frameWithoutConceal = captureFrame()
+  expect(frameWithoutConceal).toMatchSnapshot("split view markdown diff with conceal disabled")
+  expect(diffRenderable.conceal).toBe(false)
+
+  expect(frameWithConceal).not.toBe(frameWithoutConceal)
+})
+
+test("DiffRenderable - conceal defaults to false when not specified", async () => {
+  const syntaxStyle = SyntaxStyle.fromStyles({
+    default: { fg: RGBA.fromValues(1, 1, 1, 1) },
+  })
+
+  const diffRenderable = new DiffRenderable(currentRenderer, {
+    id: "test-diff",
+    diff: simpleDiff,
+    view: "unified",
+    syntaxStyle,
+    filetype: "javascript",
+    width: "100%",
+    height: "100%",
+  })
+
+  currentRenderer.root.add(diffRenderable)
+  await renderOnce()
+
+  expect(diffRenderable.conceal).toBe(false)
+})
+
 test("DiffRenderable - should handle resize with wrapping without leaking listeners", async () => {
   const syntaxStyle = SyntaxStyle.fromStyles({
     default: { fg: RGBA.fromValues(1, 1, 1, 1) },
@@ -2228,6 +2383,289 @@ test("DiffRenderable - properly cleans up listeners on destroy", async () => {
   if (rightSide) {
     expect(rightSide.isDestroyed).toBe(true)
   }
+})
+
+test("DiffRenderable - line numbers update correctly after resize causes wrapping changes", async () => {
+  const testRenderer = await createTestRenderer({ width: 120, height: 40 })
+  const renderer = testRenderer.renderer
+  const renderOnce = testRenderer.renderOnce
+  const captureFrame = testRenderer.captureCharFrame
+  const resize = testRenderer.resize
+
+  const syntaxStyle = SyntaxStyle.fromStyles({
+    default: { fg: RGBA.fromValues(1, 1, 1, 1) },
+  })
+
+  const longLineDiff = `--- a/test.js
++++ b/test.js
+@@ -1,4 +1,4 @@
+ function calculateSomethingVeryComplexWithALongFunctionNameThatWillWrap() {
+-  const oldResultWithAVeryLongVariableNameThatWillDefinitelyWrapWhenRenderedInASmallerTerminal = 42;
++  const newResultWithAVeryLongVariableNameThatWillDefinitelyWrapWhenRenderedInASmallerTerminal = 100;
+   return result;
+ }`
+
+  const diffRenderable = new DiffRenderable(renderer, {
+    id: "test-diff",
+    diff: longLineDiff,
+    view: "unified",
+    syntaxStyle,
+    showLineNumbers: true,
+    wrapMode: "word",
+    width: "100%",
+    height: "100%",
+  })
+
+  renderer.root.add(diffRenderable)
+  await renderOnce()
+
+  const leftCodeRenderable = (diffRenderable as any).leftCodeRenderable
+
+  let lineInfoChangeEmitted = false
+  const lineInfoChangeListener = () => {
+    lineInfoChangeEmitted = true
+  }
+  leftCodeRenderable.on("line-info-change", lineInfoChangeListener)
+
+  const frameBefore = captureFrame()
+  expect(frameBefore).toMatchSnapshot("before resize - line numbers with no wrapping")
+
+  const lineInfoBefore = leftCodeRenderable.lineInfo
+  expect(lineInfoBefore.lineSources).toEqual([0, 1, 2, 3, 4])
+  expect(leftCodeRenderable.virtualLineCount).toBe(5)
+
+  lineInfoChangeEmitted = false
+
+  resize(60, 40)
+
+  await new Promise((resolve) => setTimeout(resolve, 10))
+
+  expect(lineInfoChangeEmitted).toBe(true)
+  expect(leftCodeRenderable.virtualLineCount).toBe(11)
+
+  await renderOnce()
+
+  await new Promise((resolve) => setTimeout(resolve, 50))
+  await renderOnce()
+
+  const frameAfter = captureFrame()
+  expect(frameAfter).toMatchSnapshot("after resize - line numbers with wrapping")
+
+  const lineInfoAfter = leftCodeRenderable.lineInfo
+  expect(lineInfoAfter.lineSources).toEqual([0, 0, 0, 1, 1, 1, 2, 2, 2, 3, 4])
+
+  const linesAfter = frameAfter.split("\n").filter((l) => l.trim().length > 0)
+
+  const lineNumberMatches = linesAfter
+    .map((line, idx) => {
+      const match = line.match(/^\s*(\d+)\s+([+-]?)/)
+      if (match) {
+        return { lineIdx: idx, lineNum: parseInt(match[1]), sign: match[2], content: line }
+      }
+      return null
+    })
+    .filter((m) => m !== null)
+
+  expect(lineNumberMatches.length).toBe(5)
+
+  expect(lineNumberMatches[0]!.lineNum).toBe(1)
+  expect(lineNumberMatches[1]!.lineNum).toBe(2)
+  expect(lineNumberMatches[1]!.sign).toBe("-")
+  expect(lineNumberMatches[2]!.lineNum).toBe(2)
+  expect(lineNumberMatches[2]!.sign).toBe("+")
+  expect(lineNumberMatches[3]!.lineNum).toBe(3)
+  expect(lineNumberMatches[4]!.lineNum).toBe(4)
+
+  leftCodeRenderable.off("line-info-change", lineInfoChangeListener)
+  renderer.destroy()
+})
+
+test("DiffRenderable - fg prop is passed to CodeRenderable on construction", async () => {
+  const syntaxStyle = SyntaxStyle.fromStyles({
+    default: { fg: RGBA.fromValues(1, 1, 1, 1) },
+  })
+  const customFg = "#000000"
+
+  const diffRenderable = new DiffRenderable(currentRenderer, {
+    id: "test-diff",
+    diff: simpleDiff,
+    view: "unified",
+    syntaxStyle,
+    fg: customFg,
+    width: "100%",
+    height: "100%",
+  })
+
+  currentRenderer.root.add(diffRenderable)
+  await renderOnce()
+
+  expect(diffRenderable.fg).toEqual(RGBA.fromHex(customFg))
+
+  const leftCodeRenderable = (diffRenderable as any).leftCodeRenderable
+  expect(leftCodeRenderable).toBeDefined()
+  expect(leftCodeRenderable.fg).toEqual(RGBA.fromHex(customFg))
+})
+
+test("DiffRenderable - fg prop can be updated via setter", async () => {
+  const syntaxStyle = SyntaxStyle.fromStyles({
+    default: { fg: RGBA.fromValues(1, 1, 1, 1) },
+  })
+  const initialFg = "#000000"
+  const updatedFg = "#333333"
+
+  const diffRenderable = new DiffRenderable(currentRenderer, {
+    id: "test-diff",
+    diff: simpleDiff,
+    view: "unified",
+    syntaxStyle,
+    fg: initialFg,
+    width: "100%",
+    height: "100%",
+  })
+
+  currentRenderer.root.add(diffRenderable)
+  await renderOnce()
+
+  diffRenderable.fg = updatedFg
+  await renderOnce()
+
+  expect(diffRenderable.fg).toEqual(RGBA.fromHex(updatedFg))
+
+  const leftCodeRenderable = (diffRenderable as any).leftCodeRenderable
+  expect(leftCodeRenderable.fg).toEqual(RGBA.fromHex(updatedFg))
+})
+
+test("DiffRenderable - fg prop is passed to both CodeRenderables in split view", async () => {
+  const syntaxStyle = SyntaxStyle.fromStyles({
+    default: { fg: RGBA.fromValues(1, 1, 1, 1) },
+  })
+  const customFg = "#222222"
+
+  const diffRenderable = new DiffRenderable(currentRenderer, {
+    id: "test-diff",
+    diff: simpleDiff,
+    view: "split",
+    syntaxStyle,
+    fg: customFg,
+    width: "100%",
+    height: "100%",
+  })
+
+  currentRenderer.root.add(diffRenderable)
+  await renderOnce()
+
+  expect(diffRenderable.fg).toEqual(RGBA.fromHex(customFg))
+
+  const leftCodeRenderable = (diffRenderable as any).leftCodeRenderable
+  const rightCodeRenderable = (diffRenderable as any).rightCodeRenderable
+
+  expect(leftCodeRenderable).toBeDefined()
+  expect(rightCodeRenderable).toBeDefined()
+  expect(leftCodeRenderable.fg).toEqual(RGBA.fromHex(customFg))
+  expect(rightCodeRenderable.fg).toEqual(RGBA.fromHex(customFg))
+})
+
+test("DiffRenderable - fg prop updates both CodeRenderables in split view", async () => {
+  const syntaxStyle = SyntaxStyle.fromStyles({
+    default: { fg: RGBA.fromValues(1, 1, 1, 1) },
+  })
+  const initialFg = "#111111"
+  const updatedFg = "#444444"
+
+  const diffRenderable = new DiffRenderable(currentRenderer, {
+    id: "test-diff",
+    diff: simpleDiff,
+    view: "split",
+    syntaxStyle,
+    fg: initialFg,
+    width: "100%",
+    height: "100%",
+  })
+
+  currentRenderer.root.add(diffRenderable)
+  await renderOnce()
+
+  const leftCodeRenderable = (diffRenderable as any).leftCodeRenderable
+  const rightCodeRenderable = (diffRenderable as any).rightCodeRenderable
+
+  diffRenderable.fg = updatedFg
+  await renderOnce()
+
+  expect(diffRenderable.fg).toEqual(RGBA.fromHex(updatedFg))
+  expect(leftCodeRenderable.fg).toEqual(RGBA.fromHex(updatedFg))
+  expect(rightCodeRenderable.fg).toEqual(RGBA.fromHex(updatedFg))
+})
+
+test("DiffRenderable - fg prop defaults to undefined when not specified", async () => {
+  const syntaxStyle = SyntaxStyle.fromStyles({
+    default: { fg: RGBA.fromValues(1, 1, 1, 1) },
+  })
+
+  const diffRenderable = new DiffRenderable(currentRenderer, {
+    id: "test-diff",
+    diff: simpleDiff,
+    view: "unified",
+    syntaxStyle,
+    width: "100%",
+    height: "100%",
+  })
+
+  currentRenderer.root.add(diffRenderable)
+  await renderOnce()
+
+  expect(diffRenderable.fg).toBeUndefined()
+})
+
+test("DiffRenderable - fg prop can be set to undefined to clear it", async () => {
+  const syntaxStyle = SyntaxStyle.fromStyles({
+    default: { fg: RGBA.fromValues(1, 1, 1, 1) },
+  })
+  const initialFg = "#000000"
+
+  const diffRenderable = new DiffRenderable(currentRenderer, {
+    id: "test-diff",
+    diff: simpleDiff,
+    view: "unified",
+    syntaxStyle,
+    fg: initialFg,
+    width: "100%",
+    height: "100%",
+  })
+
+  currentRenderer.root.add(diffRenderable)
+  await renderOnce()
+
+  expect(diffRenderable.fg).toEqual(RGBA.fromHex(initialFg))
+
+  diffRenderable.fg = undefined
+  await renderOnce()
+
+  expect(diffRenderable.fg).toBeUndefined()
+})
+
+test("DiffRenderable - fg prop accepts RGBA directly", async () => {
+  const syntaxStyle = SyntaxStyle.fromStyles({
+    default: { fg: RGBA.fromValues(1, 1, 1, 1) },
+  })
+  const customFg = RGBA.fromValues(0.2, 0.2, 0.2, 1)
+
+  const diffRenderable = new DiffRenderable(currentRenderer, {
+    id: "test-diff",
+    diff: simpleDiff,
+    view: "unified",
+    syntaxStyle,
+    fg: customFg,
+    width: "100%",
+    height: "100%",
+  })
+
+  currentRenderer.root.add(diffRenderable)
+  await renderOnce()
+
+  expect(diffRenderable.fg).toEqual(customFg)
+
+  const leftCodeRenderable = (diffRenderable as any).leftCodeRenderable
+  expect(leftCodeRenderable.fg).toEqual(customFg)
 })
 
 describe("computeLineSimilarity", () => {

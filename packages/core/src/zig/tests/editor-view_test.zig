@@ -305,7 +305,7 @@ test "EditorView - setText resets viewport to top" {
     var vp = ev.getViewport().?;
     try std.testing.expect(vp.y > 0);
 
-    try eb.setText("New Line 0\nNew Line 1\nNew Line 2", false);
+    try eb.setText("New Line 0\nNew Line 1\nNew Line 2");
 
     const cursor = ev.getPrimaryCursor();
     try std.testing.expectEqual(@as(u32, 0), cursor.row);
@@ -449,7 +449,7 @@ test "EditorView - VisualCursor with character wrapping" {
 
     ev.setWrapMode(.char);
 
-    try eb.setText("This is a very long line that will definitely wrap at 20 characters", false);
+    try eb.setText("This is a very long line that will definitely wrap at 20 characters");
 
     try eb.setCursor(0, 25);
 
@@ -472,7 +472,7 @@ test "EditorView - VisualCursor with word wrapping" {
 
     ev.setWrapMode(.word);
 
-    try eb.setText("Hello world this is a test of word wrapping", false);
+    try eb.setText("Hello world this is a test of word wrapping");
 
     const line_count = eb.getTextBuffer().getLineCount();
     try std.testing.expectEqual(@as(u32, 1), line_count);
@@ -492,7 +492,7 @@ test "EditorView - moveUpVisual with wrapping" {
 
     ev.setWrapMode(.char);
 
-    try eb.setText("This is a very long line that will definitely wrap multiple times at twenty characters", false);
+    try eb.setText("This is a very long line that will definitely wrap multiple times at twenty characters");
 
     try eb.setCursor(0, 50);
 
@@ -520,7 +520,7 @@ test "EditorView - moveDownVisual with wrapping" {
 
     ev.setWrapMode(.char);
 
-    try eb.setText("This is a very long line that will definitely wrap multiple times at twenty characters", false);
+    try eb.setText("This is a very long line that will definitely wrap multiple times at twenty characters");
 
     try eb.setCursor(0, 0);
 
@@ -548,7 +548,7 @@ test "EditorView - visualToLogicalCursor conversion" {
 
     ev.setWrapMode(.char);
 
-    try eb.setText("12345678901234567890123456789012345", false);
+    try eb.setText("12345678901234567890123456789012345");
 
     if (ev.visualToLogicalCursor(1, 5)) |vcursor| {
         try std.testing.expectEqual(@as(u32, 1), vcursor.visual_row);
@@ -568,7 +568,7 @@ test "EditorView - moveUpVisual at top boundary" {
     defer ev.deinit();
 
     ev.setWrapMode(.char);
-    try eb.setText("Short line", false);
+    try eb.setText("Short line");
 
     try eb.setCursor(0, 0);
 
@@ -591,7 +591,7 @@ test "EditorView - moveDownVisual at bottom boundary" {
     defer ev.deinit();
 
     ev.setWrapMode(.char);
-    try eb.setText("Short line\nSecond line", false);
+    try eb.setText("Short line\nSecond line");
 
     try eb.setCursor(1, 0);
 
@@ -614,7 +614,7 @@ test "EditorView - VisualCursor preserves desired column across wrapped lines" {
 
     ev.setWrapMode(.char);
 
-    try eb.setText("12345678901234567890123456789012345678901234567890", false);
+    try eb.setText("12345678901234567890123456789012345678901234567890");
 
     try eb.setCursor(0, 15);
 
@@ -639,7 +639,7 @@ test "EditorView - VisualCursor with multiple logical lines and wrapping" {
 
     ev.setWrapMode(.char);
 
-    try eb.setText("Short line 1\nThis is a very long line that will wrap multiple times\nShort line 3", false);
+    try eb.setText("Short line 1\nThis is a very long line that will wrap multiple times\nShort line 3");
 
     try eb.setCursor(1, 30);
 
@@ -659,7 +659,7 @@ test "EditorView - logicalToVisualCursor handles cursor past line end" {
     var ev = try EditorView.init(std.testing.allocator, eb, 80, 10);
     defer ev.deinit();
 
-    try eb.setText("Short", false);
+    try eb.setText("Short");
 
     const vcursor = ev.logicalToVisualCursor(0, 100);
 
@@ -726,7 +726,7 @@ test "EditorView - moveDownVisual across empty line preserves desired column" {
     var ev = try EditorView.init(std.testing.allocator, eb, 80, 10);
     defer ev.deinit();
 
-    try eb.setText("Line with some text\n\nAnother line with text", false);
+    try eb.setText("Line with some text\n\nAnother line with text");
 
     try eb.setCursor(0, 10);
 
@@ -756,7 +756,7 @@ test "EditorView - moveUpVisual across empty line preserves desired column" {
     var ev = try EditorView.init(std.testing.allocator, eb, 80, 10);
     defer ev.deinit();
 
-    try eb.setText("Line with some text\n\nAnother line with text", false);
+    try eb.setText("Line with some text\n\nAnother line with text");
 
     try eb.setCursor(2, 10);
 
@@ -786,7 +786,7 @@ test "EditorView - horizontal movement resets desired visual column" {
     var ev = try EditorView.init(std.testing.allocator, eb, 80, 10);
     defer ev.deinit();
 
-    try eb.setText("Line with some text\n\nAnother line with text", false);
+    try eb.setText("Line with some text\n\nAnother line with text");
 
     try eb.setCursor(0, 10);
 
@@ -998,7 +998,7 @@ test "EditorView - viewport scrolling with wrapped lines: down + edit + up" {
     tbv.setWrapMode(.char);
     ev.setViewport(Viewport{ .x = 0, .y = 0, .width = 20, .height = 10 });
 
-    try eb.setText("AAAAAAAAAABBBBBBBBBBCCCCCCCCCCDDDDDDDDDDEEEEEEEEEEFFFFFFFFFFFFGGGGGGGGGGHHHHHHHHHHIIIIIIIIIIJJJJJJJJJJKKKKKKKKKKLLLLLLLLLLMMMMMMMMMMNNNNNNNNNNOOOOOOOOOOPPPPPPPPPPQQQQQQQQQQRRRRRRRRRRSSSSSSSSSSTTTTTTTTTTUUUUUUUUUUVVVVVVVVVVWWWWWWWWWWXXXXXXXXXXYYYYYYYYYYZZZZZZZZZZ", false);
+    try eb.setText("AAAAAAAAAABBBBBBBBBBCCCCCCCCCCDDDDDDDDDDEEEEEEEEEEFFFFFFFFFFFFGGGGGGGGGGHHHHHHHHHHIIIIIIIIIIJJJJJJJJJJKKKKKKKKKKLLLLLLLLLLMMMMMMMMMMNNNNNNNNNNOOOOOOOOOOPPPPPPPPPPQQQQQQQQQQRRRRRRRRRRSSSSSSSSSSTTTTTTTTTTUUUUUUUUUUVVVVVVVVVVWWWWWWWWWWXXXXXXXXXXYYYYYYYYYYZZZZZZZZZZ");
 
     try eb.setCursor(0, 0);
     _ = ev.getVirtualLines();
@@ -1051,7 +1051,7 @@ test "EditorView - viewport scrolling with wrapped lines: aggressive down + edit
     tbv.setWrapMode(.char);
     ev.setViewport(Viewport{ .x = 0, .y = 0, .width = 20, .height = 10 });
 
-    try eb.setText("AAAAAAAAAABBBBBBBBBBCCCCCCCCCCDDDDDDDDDDEEEEEEEEEEFFFFFFFFFFFFGGGGGGGGGGHHHHHHHHHHIIIIIIIIIIJJJJJJJJJJKKKKKKKKKKLLLLLLLLLLMMMMMMMMMMNNNNNNNNNNOOOOOOOOOOPPPPPPPPPPQQQQQQQQQQRRRRRRRRRRSSSSSSSSSSTTTTTTTTTTUUUUUUUUUUVVVVVVVVVVWWWWWWWWWWXXXXXXXXXXYYYYYYYYYYZZZZZZZZZZ", false);
+    try eb.setText("AAAAAAAAAABBBBBBBBBBCCCCCCCCCCDDDDDDDDDDEEEEEEEEEEFFFFFFFFFFFFGGGGGGGGGGHHHHHHHHHHIIIIIIIIIIJJJJJJJJJJKKKKKKKKKKLLLLLLLLLLMMMMMMMMMMNNNNNNNNNNOOOOOOOOOOPPPPPPPPPPQQQQQQQQQQRRRRRRRRRRSSSSSSSSSSTTTTTTTTTTUUUUUUUUUUVVVVVVVVVVWWWWWWWWWWXXXXXXXXXXYYYYYYYYYYZZZZZZZZZZ");
 
     try eb.setCursor(0, 0);
     _ = ev.getVirtualLines();
@@ -1101,7 +1101,7 @@ test "EditorView - viewport scrolling with wrapped lines: multiple edits and mov
     tbv.setWrapMode(.char);
     ev.setViewport(Viewport{ .x = 0, .y = 0, .width = 15, .height = 8 });
 
-    try eb.setText("AAAAAAAAAABBBBBBBBBBCCCCCCCCCCDDDDDDDDDDEEEEEEEEEEFFFFFFFFFFFFGGGGGGGGGGHHHHHHHHHHIIIIIIIIIIJJJJJJJJJJKKKKKKKKKKLLLLLLLLLLMMMMMMMMMMNNNNNNNNNNOOOOOOOOOOPPPPPPPPPPQQQQQQQQQQRRRRRRRRRRSSSSSSSSSSTTTTTTTTTTUUUUUUUUUUVVVVVVVVVV", false);
+    try eb.setText("AAAAAAAAAABBBBBBBBBBCCCCCCCCCCDDDDDDDDDDEEEEEEEEEEFFFFFFFFFFFFGGGGGGGGGGHHHHHHHHHHIIIIIIIIIIJJJJJJJJJJKKKKKKKKKKLLLLLLLLLLMMMMMMMMMMNNNNNNNNNNOOOOOOOOOOPPPPPPPPPPQQQQQQQQQQRRRRRRRRRRSSSSSSSSSSTTTTTTTTTTUUUUUUUUUUVVVVVVVVVV");
 
     try eb.setCursor(0, 0);
     _ = ev.getVirtualLines();
@@ -1145,7 +1145,7 @@ test "EditorView - viewport scrolling with wrapped lines: verify viewport consis
     tbv.setWrapMode(.char);
     ev.setViewport(Viewport{ .x = 0, .y = 0, .width = 20, .height = 10 });
 
-    try eb.setText("AAAAAAAAAABBBBBBBBBBCCCCCCCCCCDDDDDDDDDDEEEEEEEEEEFFFFFFFFFFFFGGGGGGGGGGHHHHHHHHHHIIIIIIIIIIJJJJJJJJJJKKKKKKKKKKLLLLLLLLLLMMMMMMMMMMNNNNNNNNNNOOOOOOOOOOPPPPPPPPPPQQQQQQQQQQRRRRRRRRRRSSSSSSSSSSTTTTTTTTTTUUUUUUUUUUVVVVVVVVVVWWWWWWWWWWXXXXXXXXXXYYYYYYYYYYZZZZZZZZZZ", false);
+    try eb.setText("AAAAAAAAAABBBBBBBBBBCCCCCCCCCCDDDDDDDDDDEEEEEEEEEEFFFFFFFFFFFFGGGGGGGGGGHHHHHHHHHHIIIIIIIIIIJJJJJJJJJJKKKKKKKKKKLLLLLLLLLLMMMMMMMMMMNNNNNNNNNNOOOOOOOOOOPPPPPPPPPPQQQQQQQQQQRRRRRRRRRRSSSSSSSSSSTTTTTTTTTTUUUUUUUUUUVVVVVVVVVVWWWWWWWWWWXXXXXXXXXXYYYYYYYYYYZZZZZZZZZZ");
 
     try eb.setCursor(0, 0);
     _ = ev.getVirtualLines();
@@ -1200,7 +1200,7 @@ test "EditorView - viewport scrolling with wrapped lines: backspace after scroll
     tbv.setWrapMode(.char);
     ev.setViewport(Viewport{ .x = 0, .y = 0, .width = 20, .height = 10 });
 
-    try eb.setText("AAAAAAAAAABBBBBBBBBBCCCCCCCCCCDDDDDDDDDDEEEEEEEEEEFFFFFFFFFFFFGGGGGGGGGGHHHHHHHHHHIIIIIIIIIIJJJJJJJJJJKKKKKKKKKKLLLLLLLLLLMMMMMMMMMMNNNNNNNNNNOOOOOOOOOOPPPPPPPPPPQQQQQQQQQQRRRRRRRRRRSSSSSSSSSSTTTTTTTTTTUUUUUUUUUUVVVVVVVVVVWWWWWWWWWWXXXXXXXXXXYYYYYYYYYYZZZZZZZZZZ", false);
+    try eb.setText("AAAAAAAAAABBBBBBBBBBCCCCCCCCCCDDDDDDDDDDEEEEEEEEEEFFFFFFFFFFFFGGGGGGGGGGHHHHHHHHHHIIIIIIIIIIJJJJJJJJJJKKKKKKKKKKLLLLLLLLLLMMMMMMMMMMNNNNNNNNNNOOOOOOOOOOPPPPPPPPPPQQQQQQQQQQRRRRRRRRRRSSSSSSSSSSTTTTTTTTTTUUUUUUUUUUVVVVVVVVVVWWWWWWWWWWXXXXXXXXXXYYYYYYYYYYZZZZZZZZZZ");
 
     try eb.setCursor(0, 0);
     _ = ev.getVirtualLines();
@@ -1237,7 +1237,7 @@ test "EditorView - viewport scrolling with wrapped lines: viewport follows curso
     tbv.setWrapMode(.char);
     ev.setViewport(Viewport{ .x = 0, .y = 0, .width = 20, .height = 5 });
 
-    try eb.setText("AAAAAAAAAABBBBBBBBBBCCCCCCCCCCDDDDDDDDDDEEEEEEEEEEFFFFFFFFFFFFGGGGGGGGGGHHHHHHHHHHIIIIIIIIIIJJJJJJJJJJKKKKKKKKKKLLLLLLLLLLMMMMMMMMMMNNNNNNNNNNOOOOOOOOOOPPPPPPPPPPQQQQQQQQQQRRRRRRRRRRSSSSSSSSSSTTTTTTTTTTUUUUUUUUUUVVVVVVVVVVWWWWWWWWWWXXXXXXXXXXYYYYYYYYYYZZZZZZZZZZ", false);
+    try eb.setText("AAAAAAAAAABBBBBBBBBBCCCCCCCCCCDDDDDDDDDDEEEEEEEEEEFFFFFFFFFFFFGGGGGGGGGGHHHHHHHHHHIIIIIIIIIIJJJJJJJJJJKKKKKKKKKKLLLLLLLLLLMMMMMMMMMMNNNNNNNNNNOOOOOOOOOOPPPPPPPPPPQQQQQQQQQQRRRRRRRRRRSSSSSSSSSSTTTTTTTTTTUUUUUUUUUUVVVVVVVVVVWWWWWWWWWWXXXXXXXXXXYYYYYYYYYYZZZZZZZZZZ");
 
     try eb.setCursor(0, 0);
     _ = ev.getVirtualLines();
@@ -1295,7 +1295,7 @@ test "EditorView - wrapped lines: specific scenario with insert and deletions" {
     tbv.setWrapMode(.char);
     ev.setViewport(Viewport{ .x = 0, .y = 0, .width = 20, .height = 10 });
 
-    try eb.setText("AAAAAAAAAABBBBBBBBBBCCCCCCCCCCDDDDDDDDDDEEEEEEEEEEFFFFFFFFFFFFGGGGGGGGGGHHHHHHHHHHIIIIIIIIIIJJJJJJJJJJKKKKKKKKKKLLLLLLLLLLMMMMMMMMMMNNNNNNNNNNOOOOOOOOOOPPPPPPPPPPQQQQQQQQQQRRRRRRRRRRSSSSSSSSSSTTTTTTTTTTUUUUUUUUUUVVVVVVVVVVWWWWWWWWWWXXXXXXXXXXYYYYYYYYYYZZZZZZZZZZ", false);
+    try eb.setText("AAAAAAAAAABBBBBBBBBBCCCCCCCCCCDDDDDDDDDDEEEEEEEEEEFFFFFFFFFFFFGGGGGGGGGGHHHHHHHHHHIIIIIIIIIIJJJJJJJJJJKKKKKKKKKKLLLLLLLLLLMMMMMMMMMMNNNNNNNNNNOOOOOOOOOOPPPPPPPPPPQQQQQQQQQQRRRRRRRRRRSSSSSSSSSSTTTTTTTTTTUUUUUUUUUUVVVVVVVVVVWWWWWWWWWWXXXXXXXXXXYYYYYYYYYYZZZZZZZZZZ");
 
     try eb.setCursor(0, 0);
     _ = ev.getVirtualLines();
@@ -1355,7 +1355,7 @@ test "EditorView - wrapped lines: many small edits with viewport scrolling" {
     tbv.setWrapMode(.char);
     ev.setViewport(Viewport{ .x = 0, .y = 0, .width = 15, .height = 8 });
 
-    try eb.setText("AAAAAAAAAABBBBBBBBBBCCCCCCCCCCDDDDDDDDDDEEEEEEEEEEFFFFFFFFFFFFGGGGGGGGGGHHHHHHHHHHIIIIIIIIIIJJJJJJJJJJKKKKKKKKKKLLLLLLLLLLMMMMMMMMMMNNNNNNNNNNOOOOOOOOOOPPPPPPPPPPQQQQQQQQQQRRRRRRRRRRSSSSSSSSSSTTTTTTTTTTUUUUUUUUUUVVVVVVVVVV", false);
+    try eb.setText("AAAAAAAAAABBBBBBBBBBCCCCCCCCCCDDDDDDDDDDEEEEEEEEEEFFFFFFFFFFFFGGGGGGGGGGHHHHHHHHHHIIIIIIIIIIJJJJJJJJJJKKKKKKKKKKLLLLLLLLLLMMMMMMMMMMNNNNNNNNNNOOOOOOOOOOPPPPPPPPPPQQQQQQQQQQRRRRRRRRRRSSSSSSSSSSTTTTTTTTTTUUUUUUUUUUVVVVVVVVVV");
 
     try eb.setCursor(0, 0);
     _ = ev.getVirtualLines();
@@ -1407,7 +1407,7 @@ test "EditorView - horizontal scroll: cursor moves right beyond viewport" {
     var ev = try EditorView.init(std.testing.allocator, eb, 20, 10);
     defer ev.deinit();
 
-    try eb.setText("This is a very long line that exceeds the viewport width of 20 characters", false);
+    try eb.setText("This is a very long line that exceeds the viewport width of 20 characters");
 
     try eb.setCursor(0, 0);
     _ = ev.getVirtualLines();
@@ -1436,7 +1436,7 @@ test "EditorView - horizontal scroll: cursor moves left to beginning" {
     var ev = try EditorView.init(std.testing.allocator, eb, 20, 10);
     defer ev.deinit();
 
-    try eb.setText("This is a very long line that exceeds the viewport width of 20 characters", false);
+    try eb.setText("This is a very long line that exceeds the viewport width of 20 characters");
 
     try eb.setCursor(0, 50);
     _ = ev.getVirtualLines();
@@ -1461,7 +1461,7 @@ test "EditorView - horizontal scroll: moveRight scrolls viewport" {
     var ev = try EditorView.init(std.testing.allocator, eb, 20, 10);
     defer ev.deinit();
 
-    try eb.setText("AAAAAAAAAABBBBBBBBBBCCCCCCCCCCDDDDDDDDDDEEEEEEEEEEFFFFFFFFFFFFGGGGGGGGGGHHHHHHHHHHIIIIIIIIIIJJJJJJJJJJKKKKKKKKKKLLLLLLLLLLMMMMMMMMMMNNNNNNNNNNOOOOOOOOOOPPPPPPPPPP", false);
+    try eb.setText("AAAAAAAAAABBBBBBBBBBCCCCCCCCCCDDDDDDDDDDEEEEEEEEEEFFFFFFFFFFFFGGGGGGGGGGHHHHHHHHHHIIIIIIIIIIJJJJJJJJJJKKKKKKKKKKLLLLLLLLLLMMMMMMMMMMNNNNNNNNNNOOOOOOOOOOPPPPPPPPPP");
 
     try eb.setCursor(0, 0);
     _ = ev.getVirtualLines();
@@ -1495,7 +1495,7 @@ test "EditorView - horizontal scroll: moveLeft scrolls viewport back" {
     var ev = try EditorView.init(std.testing.allocator, eb, 20, 10);
     defer ev.deinit();
 
-    try eb.setText("AAAAAAAAAABBBBBBBBBBCCCCCCCCCCDDDDDDDDDDEEEEEEEEEEFFFFFFFFFFFFGGGGGGGGGGHHHHHHHHHHIIIIIIIIIIJJJJJJJJJJKKKKKKKKKKLLLLLLLLLLMMMMMMMMMMNNNNNNNNNNOOOOOOOOOOPPPPPPPPPP", false);
+    try eb.setText("AAAAAAAAAABBBBBBBBBBCCCCCCCCCCDDDDDDDDDDEEEEEEEEEEFFFFFFFFFFFFGGGGGGGGGGHHHHHHHHHHIIIIIIIIIIJJJJJJJJJJKKKKKKKKKKLLLLLLLLLLMMMMMMMMMMNNNNNNNNNNOOOOOOOOOOPPPPPPPPPP");
 
     try eb.setCursor(0, 50);
     _ = ev.getVirtualLines();
@@ -1529,7 +1529,7 @@ test "EditorView - horizontal scroll: editing in scrolled view" {
     var ev = try EditorView.init(std.testing.allocator, eb, 20, 10);
     defer ev.deinit();
 
-    try eb.setText("AAAAAAAAAABBBBBBBBBBCCCCCCCCCCDDDDDDDDDDEEEEEEEEEEFFFFFFFFFFFFGGGGGGGGGGHHHHHHHHHHIIIIIIIIIIJJJJJJJJJJKKKKKKKKKKLLLLLLLLLLMMMMMMMMMMNNNNNNNNNNOOOOOOOOOOPPPPPPPPPP", false);
+    try eb.setText("AAAAAAAAAABBBBBBBBBBCCCCCCCCCCDDDDDDDDDDEEEEEEEEEEFFFFFFFFFFFFGGGGGGGGGGHHHHHHHHHHIIIIIIIIIIJJJJJJJJJJKKKKKKKKKKLLLLLLLLLLMMMMMMMMMMNNNNNNNNNNOOOOOOOOOOPPPPPPPPPP");
 
     try eb.setCursor(0, 50);
     _ = ev.getVirtualLines();
@@ -1562,7 +1562,7 @@ test "EditorView - horizontal scroll: backspace in scrolled view" {
     var ev = try EditorView.init(std.testing.allocator, eb, 20, 10);
     defer ev.deinit();
 
-    try eb.setText("AAAAAAAAAABBBBBBBBBBCCCCCCCCCCDDDDDDDDDDEEEEEEEEEEFFFFFFFFFFFFGGGGGGGGGGHHHHHHHHHHIIIIIIIIIIJJJJJJJJJJKKKKKKKKKKLLLLLLLLLLMMMMMMMMMMNNNNNNNNNNOOOOOOOOOOPPPPPPPPPP", false);
+    try eb.setText("AAAAAAAAAABBBBBBBBBBCCCCCCCCCCDDDDDDDDDDEEEEEEEEEEFFFFFFFFFFFFGGGGGGGGGGHHHHHHHHHHIIIIIIIIIIJJJJJJJJJJKKKKKKKKKKLLLLLLLLLLMMMMMMMMMMNNNNNNNNNNOOOOOOOOOOPPPPPPPPPP");
 
     try eb.setCursor(0, 50);
     _ = ev.getVirtualLines();
@@ -1592,7 +1592,7 @@ test "EditorView - horizontal scroll: short lines reset scroll" {
     var ev = try EditorView.init(std.testing.allocator, eb, 20, 10);
     defer ev.deinit();
 
-    try eb.setText("Short line\nAAAAAAAAABBBBBBBBBBCCCCCCCCCCDDDDDDDDDDEEEEEEEEEEFFFFFFFFFFGGGGGGGGGGHHHHHHHHHHIIIIIIIIIIJJJJJJJJJJ\nAnother short", false);
+    try eb.setText("Short line\nAAAAAAAAABBBBBBBBBBCCCCCCCCCCDDDDDDDDDDEEEEEEEEEEFFFFFFFFFFGGGGGGGGGGHHHHHHHHHHIIIIIIIIIIJJJJJJJJJJ\nAnother short");
 
     try eb.setCursor(1, 50);
     _ = ev.getVirtualLines();
@@ -1625,7 +1625,7 @@ test "EditorView - horizontal scroll: scroll margin works" {
 
     ev.setScrollMargin(0.2);
 
-    try eb.setText("AAAAAAAAAABBBBBBBBBBCCCCCCCCCCDDDDDDDDDDEEEEEEEEEEFFFFFFFFFFFFGGGGGGGGGGHHHHHHHHHHIIIIIIIIIIJJJJJJJJJJKKKKKKKKKKLLLLLLLLLLMMMMMMMMMMNNNNNNNNNNOOOOOOOOOOPPPPPPPPPP", false);
+    try eb.setText("AAAAAAAAAABBBBBBBBBBCCCCCCCCCCDDDDDDDDDDEEEEEEEEEEFFFFFFFFFFFFGGGGGGGGGGHHHHHHHHHHIIIIIIIIIIJJJJJJJJJJKKKKKKKKKKLLLLLLLLLLMMMMMMMMMMNNNNNNNNNNOOOOOOOOOOPPPPPPPPPP");
 
     try eb.setCursor(0, 0);
     _ = ev.getVirtualLines();
@@ -1657,7 +1657,7 @@ test "EditorView - horizontal scroll: no scrolling with wrapping enabled" {
 
     ev.setWrapMode(.char);
 
-    try eb.setText("AAAAAAAAAABBBBBBBBBBCCCCCCCCCCDDDDDDDDDDEEEEEEEEEEFFFFFFFFFFFFGGGGGGGGGGHHHHHHHHHHIIIIIIIIIIJJJJJJJJJJKKKKKKKKKKLLLLLLLLLLMMMMMMMMMMNNNNNNNNNNOOOOOOOOOOPPPPPPPPPP", false);
+    try eb.setText("AAAAAAAAAABBBBBBBBBBCCCCCCCCCCDDDDDDDDDDEEEEEEEEEEFFFFFFFFFFFFGGGGGGGGGGHHHHHHHHHHIIIIIIIIIIJJJJJJJJJJKKKKKKKKKKLLLLLLLLLLMMMMMMMMMMNNNNNNNNNNOOOOOOOOOOPPPPPPPPPP");
 
     try eb.setCursor(0, 50);
     _ = ev.getVirtualLines();
@@ -1676,7 +1676,7 @@ test "EditorView - horizontal scroll: cursor position correct after scrolling" {
     var ev = try EditorView.init(std.testing.allocator, eb, 20, 10);
     defer ev.deinit();
 
-    try eb.setText("AAAAAAAAAABBBBBBBBBBCCCCCCCCCCDDDDDDDDDDEEEEEEEEEEFFFFFFFFFFFFGGGGGGGGGGHHHHHHHHHHIIIIIIIIIIJJJJJJJJJJKKKKKKKKKKLLLLLLLLLLMMMMMMMMMMNNNNNNNNNNOOOOOOOOOOPPPPPPPPPP", false);
+    try eb.setText("AAAAAAAAAABBBBBBBBBBCCCCCCCCCCDDDDDDDDDDEEEEEEEEEEFFFFFFFFFFFFGGGGGGGGGGHHHHHHHHHHIIIIIIIIIIJJJJJJJJJJKKKKKKKKKKLLLLLLLLLLMMMMMMMMMMNNNNNNNNNNOOOOOOOOOOPPPPPPPPPP");
 
     try eb.setCursor(0, 0);
     _ = ev.getVirtualLines();
@@ -1706,7 +1706,7 @@ test "EditorView - horizontal scroll: rapid movements maintain visibility" {
     var ev = try EditorView.init(std.testing.allocator, eb, 20, 10);
     defer ev.deinit();
 
-    try eb.setText("AAAAAAAAAABBBBBBBBBBCCCCCCCCCCDDDDDDDDDDEEEEEEEEEEFFFFFFFFFFFFGGGGGGGGGGHHHHHHHHHHIIIIIIIIIIJJJJJJJJJJKKKKKKKKKKLLLLLLLLLLMMMMMMMMMMNNNNNNNNNNOOOOOOOOOOPPPPPPPPPP", false);
+    try eb.setText("AAAAAAAAAABBBBBBBBBBCCCCCCCCCCDDDDDDDDDDEEEEEEEEEEFFFFFFFFFFFFGGGGGGGGGGHHHHHHHHHHIIIIIIIIIIJJJJJJJJJJKKKKKKKKKKLLLLLLLLLLMMMMMMMMMMNNNNNNNNNNOOOOOOOOOOPPPPPPPPPP");
 
     try eb.setCursor(0, 0);
     try eb.setCursor(0, 80);
@@ -1735,7 +1735,7 @@ test "EditorView - horizontal scroll: goto end of long line" {
     defer ev.deinit();
 
     const long_line = "AAAAAAAAAABBBBBBBBBBCCCCCCCCCCDDDDDDDDDDEEEEEEEEEEFFFFFFFFFFFFGGGGGGGGGGHHHHHHHHHHIIIIIIIIIIJJJJJJJJJJKKKKKKKKKKLLLLLLLLLLMMMMMMMMMMNNNNNNNNNNOOOOOOOOOOPPPPPPPPPP";
-    try eb.setText(long_line, false);
+    try eb.setText(long_line);
 
     try eb.setCursor(0, 0);
     _ = ev.getVirtualLines();
@@ -1761,7 +1761,7 @@ test "EditorView - cursor at second cell of width=2 grapheme moveLeft should jum
     var ev = try EditorView.init(std.testing.allocator, eb, 80, 24);
     defer ev.deinit();
 
-    try eb.setText("(emoji 🌟 and CJK 世界)", false);
+    try eb.setText("(emoji 🌟 and CJK 世界)");
 
     try eb.setCursor(0, 7);
     var cursor = eb.getPrimaryCursor();
@@ -1803,7 +1803,7 @@ test "EditorView - cursor should be able to land after closing paren on line wit
     var ev = try EditorView.init(std.testing.allocator, eb, 80, 24);
     defer ev.deinit();
 
-    try eb.setText("(emoji 🌟 and CJK 世界)\nNext line", false);
+    try eb.setText("(emoji 🌟 and CJK 世界)\nNext line");
 
     try eb.setCursor(0, 0);
     var cursor = eb.getPrimaryCursor();
@@ -1843,7 +1843,7 @@ test "EditorView - visual cursor should stay on same line when moving to line en
     var ev = try EditorView.init(std.testing.allocator, eb, 80, 24);
     defer ev.deinit();
 
-    try eb.setText("(emoji 🌟 and CJK 世界)\nNext line", false);
+    try eb.setText("(emoji 🌟 and CJK 世界)\nNext line");
 
     try eb.setCursor(0, 0);
 
@@ -2014,7 +2014,7 @@ test "EditorView - word boundary with wrapping" {
 
     ev.setWrapMode(.char);
 
-    try eb.setText("This is a very long line that will wrap and has multiple words", false);
+    try eb.setText("This is a very long line that will wrap and has multiple words");
     try eb.setCursor(0, 0);
 
     const next_vcursor = ev.getNextWordBoundary();
@@ -2141,7 +2141,7 @@ test "EditorView - horizontal scroll: combined vertical and horizontal scrolling
     }
 
     const text = fbs.getWritten();
-    try eb.setText(text, false);
+    try eb.setText(text);
 
     try eb.setCursor(15, 60);
     _ = ev.getVirtualLines();
@@ -2168,7 +2168,7 @@ test "EditorView - deleteSelectedText single line" {
     var ev = try EditorView.init(std.testing.allocator, eb_inst, 80, 24);
     defer ev.deinit();
 
-    try eb_inst.setText("Hello World", false);
+    try eb_inst.setText("Hello World");
 
     ev.text_buffer_view.setSelection(0, 5, null, null);
 
@@ -2201,7 +2201,7 @@ test "EditorView - deleteSelectedText multi-line" {
     var ev = try EditorView.init(std.testing.allocator, eb_inst, 80, 24);
     defer ev.deinit();
 
-    try eb_inst.setText("Line 1\nLine 2\nLine 3", false);
+    try eb_inst.setText("Line 1\nLine 2\nLine 3");
 
     ev.text_buffer_view.setSelection(2, 15, null, null);
 
@@ -2228,7 +2228,7 @@ test "EditorView - deleteSelectedText with wrapping" {
 
     ev.setWrapMode(.char);
 
-    try eb_inst.setText("ABCDEFGHIJKLMNOPQRSTUVWXYZ", false);
+    try eb_inst.setText("ABCDEFGHIJKLMNOPQRSTUVWXYZ");
 
     const vline_count = ev.getTotalVirtualLineCount();
     try std.testing.expect(vline_count >= 2);
@@ -2256,7 +2256,7 @@ test "EditorView - deleteSelectedText with viewport scrolled" {
     var ev = try EditorView.init(std.testing.allocator, eb_inst, 40, 5);
     defer ev.deinit();
 
-    try eb_inst.setText("Line 0\nLine 1\nLine 2\nLine 3\nLine 4\nLine 5\nLine 6\nLine 7\nLine 8\nLine 9\nLine 10\nLine 11\nLine 12\nLine 13\nLine 14\nLine 15\nLine 16\nLine 17\nLine 18\nLine 19", false);
+    try eb_inst.setText("Line 0\nLine 1\nLine 2\nLine 3\nLine 4\nLine 5\nLine 6\nLine 7\nLine 8\nLine 9\nLine 10\nLine 11\nLine 12\nLine 13\nLine 14\nLine 15\nLine 16\nLine 17\nLine 18\nLine 19");
 
     try eb_inst.gotoLine(10);
     _ = ev.getVirtualLines();
@@ -2286,7 +2286,7 @@ test "EditorView - deleteSelectedText with no selection" {
     var ev = try EditorView.init(std.testing.allocator, eb_inst, 80, 24);
     defer ev.deinit();
 
-    try eb_inst.setText("Hello World", false);
+    try eb_inst.setText("Hello World");
 
     try ev.deleteSelectedText();
 
@@ -2305,7 +2305,7 @@ test "EditorView - deleteSelectedText entire line" {
     var ev = try EditorView.init(std.testing.allocator, eb_inst, 80, 24);
     defer ev.deinit();
 
-    try eb_inst.setText("First\nSecond\nThird\n", false);
+    try eb_inst.setText("First\nSecond\nThird\n");
 
     ev.text_buffer_view.setSelection(5, 13, null, null);
 
@@ -2332,7 +2332,7 @@ test "EditorView - deleteSelectedText respects selection with empty lines" {
 
     ev.setWrapMode(.word);
 
-    try eb_inst.setText("AAAA\n\nBBBB\n\nCCCC", false);
+    try eb_inst.setText("AAAA\n\nBBBB\n\nCCCC");
 
     try eb_inst.setCursor(2, 0);
 
@@ -2373,7 +2373,7 @@ test "EditorView - word wrapping with space insertion maintains cursor sync" {
     ev.setWrapMode(.word);
     ev.setViewport(Viewport{ .x = 0, .y = 0, .width = 15, .height = 10 });
 
-    try eb.setText("AAAAAAAAAAAAAAAAAAA", false);
+    try eb.setText("AAAAAAAAAAAAAAAAAAA");
     try eb.setCursor(0, 7);
     try eb.insertText(" ");
 
@@ -2420,7 +2420,7 @@ test "EditorView - logicalToVisualCursor clamps row beyond last line" {
     var ev = try EditorView.init(std.testing.allocator, eb, 80, 24);
     defer ev.deinit();
 
-    try eb.setText("Line 1\nLine 2\nLine 3", false);
+    try eb.setText("Line 1\nLine 2\nLine 3");
 
     const vcursor = ev.logicalToVisualCursor(100, 0);
     try std.testing.expectEqual(@as(u32, 2), vcursor.logical_row);
@@ -2437,7 +2437,7 @@ test "EditorView - logicalToVisualCursor clamps col beyond line width" {
     var ev = try EditorView.init(std.testing.allocator, eb, 80, 24);
     defer ev.deinit();
 
-    try eb.setText("Hello", false);
+    try eb.setText("Hello");
 
     const vcursor = ev.logicalToVisualCursor(0, 100);
     try std.testing.expectEqual(@as(u32, 0), vcursor.logical_row);
@@ -2811,7 +2811,7 @@ test "EditorView - cursor movement with emoji skin tone modifier wcwidth" {
     // "👋🏿" is a waving hand emoji with dark skin tone modifier
     // In wcwidth mode (tmux-style), each codepoint has width 2, total = 4 columns
     // IMPORTANT: In wcwidth mode, each codepoint is treated as a separate char for cursor movement
-    try eb.setText("👋🏿", false);
+    try eb.setText("👋🏿");
 
     // Start at position 0 (before the first codepoint)
     try eb.setCursor(0, 0);
@@ -2852,7 +2852,7 @@ test "EditorView - cursor movement with emoji skin tone modifier unicode" {
 
     // "👋🏿" is a waving hand emoji with dark skin tone modifier
     // In unicode mode (modern terminals), skin tone is 0-width, total = 2 columns
-    try eb.setText("👋🏿", false);
+    try eb.setText("👋🏿");
 
     // Start at position 0 (before the grapheme cluster)
     try eb.setCursor(0, 0);
@@ -2883,7 +2883,7 @@ test "EditorView - backspace emoji with skin tone modifier wcwidth" {
     // "👋🏿" is a waving hand emoji with dark skin tone modifier
     // In wcwidth mode, this renders as 4 columns (2+2)
     // In wcwidth mode, each codepoint is treated as a separate char
-    try eb.setText("👋🏿", false);
+    try eb.setText("👋🏿");
 
     // Move cursor to col 2 (after first codepoint)
     eb.moveRight();
@@ -2938,7 +2938,7 @@ test "EditorView - backspace emoji with skin tone modifier unicode" {
 
     // "👋🏿" is a waving hand emoji with dark skin tone modifier
     // In unicode mode, this renders as 2 columns (modifier is 0-width)
-    try eb.setText("👋🏿", false);
+    try eb.setText("👋🏿");
 
     // Move cursor to AFTER the grapheme cluster (2 columns total in unicode mode)
     eb.moveRight();
