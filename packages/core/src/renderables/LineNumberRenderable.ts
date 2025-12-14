@@ -555,10 +555,29 @@ export class LineNumberRenderable extends Renderable {
         // Account for horizontal scrolling - target may have scrollX property
         const scrollX = (this.target as any).scrollX ?? 0
 
+        // Get the wrap offset for this visual line (how many columns into the logical line)
+        const wrapOffset = lineInfo.lineWraps?.[visualLineIndex] ?? 0
+
+        // Calculate where the next visual line starts (to know the visible range)
+        const nextWrapOffset =
+          visualLineIndex + 1 < sources.length && sources[visualLineIndex + 1] === logicalLine
+            ? (lineInfo.lineWraps?.[visualLineIndex + 1] ?? contentWidth)
+            : Infinity
+
         for (const highlight of inlineHighlights) {
+          // Check if this highlight is visible on this wrapped line
+          // Highlight must overlap with the range [wrapOffset, nextWrapOffset)
+          if (highlight.endCol <= wrapOffset || highlight.startCol >= nextWrapOffset) {
+            continue // Highlight is not on this visual line
+          }
+
+          // Calculate visible portion of highlight on this wrapped line
+          const visibleStartCol = Math.max(highlight.startCol, wrapOffset) - wrapOffset
+          const visibleEndCol = Math.min(highlight.endCol, nextWrapOffset) - wrapOffset
+
           // Adjust highlight position by scrollX so highlights scroll with content
-          const highlightStartX = contentStartX + highlight.startCol - scrollX
-          const highlightWidth = highlight.endCol - highlight.startCol
+          const highlightStartX = contentStartX + visibleStartCol - scrollX
+          const highlightWidth = visibleEndCol - visibleStartCol
 
           // Clamp to visible content area
           const clampedStartX = Math.max(highlightStartX, contentStartX)
