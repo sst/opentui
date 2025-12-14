@@ -1,6 +1,13 @@
 #!/usr/bin/env bun
 
-import { createCliRenderer, CliRenderer, FrameBufferRenderable, BoxRenderable, RGBA, ASCIIFontRenderable } from "../index"
+import {
+  createCliRenderer,
+  CliRenderer,
+  FrameBufferRenderable,
+  BoxRenderable,
+  RGBA,
+  ASCIIFontRenderable,
+} from "../index"
 import type { ASCIIFontName } from "../lib/ascii.font"
 import {
   Scene as ThreeScene,
