@@ -549,17 +549,12 @@ export class LineNumberRenderable extends Renderable {
         buffer.fillRect(contentStartX, this.y + i, contentWidth, 1, lineBg)
       }
 
-      // Draw inline highlights for this line (word-level diff highlighting)
       const inlineHighlights = this._inlineHighlights.get(logicalLine)
       if (inlineHighlights && inlineHighlights.length > 0) {
-        // Account for horizontal scrolling - target may have scrollX property
         const scrollX = (this.target as any).scrollX ?? 0
-
-        // lineWraps contains the wrap INDEX (0, 1, 2...), not the column offset
-        // We need to compute the actual column offset by summing widths of previous wrapped segments
         const wrapIndex = lineInfo.lineWraps?.[visualLineIndex] ?? 0
 
-        // Calculate column offset by summing widths of previous visual lines belonging to this logical line
+        // Sum widths of previous wrapped segments to get column offset
         let columnOffset = 0
         if (wrapIndex > 0 && lineInfo.lineWidths) {
           for (let j = visualLineIndex - 1; j >= 0 && sources[j] === logicalLine; j--) {
@@ -567,25 +562,18 @@ export class LineNumberRenderable extends Renderable {
           }
         }
 
-        // Get the width of this visual line to determine the visible column range
         const thisLineWidth = lineInfo.lineWidths?.[visualLineIndex] ?? contentWidth
 
         for (const highlight of inlineHighlights) {
-          // Check if this highlight is visible on this wrapped line
-          // Highlight must overlap with the range [columnOffset, columnOffset + thisLineWidth)
           if (highlight.endCol <= columnOffset || highlight.startCol >= columnOffset + thisLineWidth) {
-            continue // Highlight is not on this visual line
+            continue
           }
 
-          // Calculate visible portion of highlight on this wrapped line
           const visibleStartCol = Math.max(highlight.startCol, columnOffset) - columnOffset
           const visibleEndCol = Math.min(highlight.endCol, columnOffset + thisLineWidth) - columnOffset
-
-          // Adjust highlight position by scrollX so highlights scroll with content
           const highlightStartX = contentStartX + visibleStartCol - scrollX
           const highlightWidth = visibleEndCol - visibleStartCol
 
-          // Clamp to visible content area
           const clampedStartX = Math.max(highlightStartX, contentStartX)
           const clampedEndX = Math.min(highlightStartX + highlightWidth, contentStartX + contentWidth)
           const clampedWidth = clampedEndX - clampedStartX
