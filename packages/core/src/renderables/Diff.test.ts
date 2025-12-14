@@ -2824,5 +2824,4 @@ describe("DiffRenderable word highlights", () => {
     diffRenderable.lineSimilarityThreshold = -0.5
     expect(diffRenderable.lineSimilarityThreshold).toBe(0.0)
   })
-
 })
