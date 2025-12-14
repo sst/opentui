@@ -2904,8 +2904,6 @@ ${manyAdds}`
       default: { fg: RGBA.fromValues(1, 1, 1, 1) },
     })
 
-    // Create a diff with long lines that will extend beyond viewport
-    // The word "OLDVALUE" changes to "NEWVALUE" - this creates word highlights
     const longLineDiff = `--- a/test.js
 +++ b/test.js
 @@ -1,3 +1,3 @@
@@ -2919,39 +2917,43 @@ ${manyAdds}`
       diff: longLineDiff,
       view: "unified",
       syntaxStyle,
-      wrapMode: "none", // No wrapping - content can scroll horizontally
-      width: 40, // Narrow width to ensure content extends beyond
-      height: 10,
+      wrapMode: "none",
+      width: 60,
+      height: 6,
     })
 
     currentRenderer.root.add(diffRenderable)
     await renderOnce()
 
-    // Get the internal CodeRenderable
     const codeRenderable = (diffRenderable as any).leftCodeRenderable
     expect(codeRenderable).toBeDefined()
     expect(codeRenderable.scrollX).toBe(0)
 
-    // Capture frame at scrollX=0
-    const frameAtScroll0 = captureFrame()
-    expect(frameAtScroll0).toMatchSnapshot("word-highlights-scrollX-0")
+    const trim = (s: string) =>
+      s
+        .split("\n")
+        .map((l) => l.trimEnd())
+        .join("\n")
+        .trimEnd()
 
-    // The beginning of the line should be visible
-    expect(frameAtScroll0).toContain("someVeryLong")
+    expect("\n" + trim(captureFrame())).toMatchInlineSnapshot(`
+      "
+       1   const config = {
+       2 -   someVeryLongPropertyNameThatExtendsBeyondViewport: "O
+       2 +   someVeryLongPropertyNameThatExtendsBeyondViewport: "N
+       3   }"
+    `)
 
-    // Scroll horizontally to reveal the changed values
     codeRenderable.scrollX = 40
     await renderOnce()
 
-    const frameAtScroll40 = captureFrame()
-    expect(frameAtScroll40).toMatchSnapshot("word-highlights-scrollX-40")
-
-    // After scrolling, different content should be visible
-    // The "VALUE" part of OLDVALUE/NEWVALUE should now be visible
-    expect(frameAtScroll40).toContain("VALUE")
-
-    // Frames should be different (content shifted)
-    expect(frameAtScroll0).not.toBe(frameAtScroll40)
+    expect("\n" + trim(captureFrame())).toMatchInlineSnapshot(`
+      "
+       1   fig = {
+       2 - yLongPropertyNameThatExtendsBeyondViewport: "OLDVALUE",
+       2 + yLongPropertyNameThatExtendsBeyondViewport: "NEWVALUE",
+       3"
+    `)
   })
 
   test("word highlights in split view scroll correctly with scrollX", async () => {
@@ -2973,32 +2975,41 @@ ${manyAdds}`
       view: "split",
       syntaxStyle,
       wrapMode: "none",
-      width: 60, // Each side gets ~30 chars
-      height: 10,
+      width: 70,
+      height: 5,
     })
 
     currentRenderer.root.add(diffRenderable)
     await renderOnce()
 
-    // Get internal CodeRenderables for both sides
     const leftCode = (diffRenderable as any).leftCodeRenderable
     const rightCode = (diffRenderable as any).rightCodeRenderable
     expect(leftCode).toBeDefined()
     expect(rightCode).toBeDefined()
 
-    // Capture initial frame
-    const frameInitial = captureFrame()
-    expect(frameInitial).toMatchSnapshot("split-word-highlights-initial")
+    const trim = (s: string) =>
+      s
+        .split("\n")
+        .map((l) => l.trimEnd())
+        .join("\n")
+        .trimEnd()
 
-    // Scroll both sides
+    expect("\n" + trim(captureFrame())).toMatchInlineSnapshot(`
+      "
+       1   const config = {               1   const config = {
+       2 -   veryLongPropertyName: "REMOV 2 +   veryLongPropertyName: "ADDED
+       3   }                              3   }"
+    `)
+
     leftCode.scrollX = 20
     rightCode.scrollX = 20
     await renderOnce()
 
-    const frameScrolled = captureFrame()
-    expect(frameScrolled).toMatchSnapshot("split-word-highlights-scrolled")
-
-    // Content should have shifted
-    expect(frameInitial).not.toBe(frameScrolled)
+    expect("\n" + trim(captureFrame())).toMatchInlineSnapshot(`
+      "
+       1                                  1
+       2 - ame: "REMOVED_OLD_VALUE_HERE", 2 + yName: "ADDED_NEW_VALUE_HERE",
+       3                                  3"
+    `)
   })
 })
