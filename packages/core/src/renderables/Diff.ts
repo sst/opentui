@@ -704,7 +704,10 @@ export class DiffRenderable extends Renderable {
           for (const line of processedBlock.leftLines) {
             if (line.type === "empty") continue
             contentLines.push(line.content)
-            lineColors.set(lineIndex, { gutter: this._removedLineNumberBg, content: this._removedContentBg ?? this._removedBg })
+            lineColors.set(lineIndex, {
+              gutter: this._removedLineNumberBg,
+              content: this._removedContentBg ?? this._removedBg,
+            })
             lineSigns.set(lineIndex, { after: " -", afterColor: this._removedSignColor })
             if (line.lineNum !== undefined) lineNumbers.set(lineIndex, line.lineNum)
             if (line.inlineHighlights?.length) {
@@ -716,7 +719,10 @@ export class DiffRenderable extends Renderable {
           for (const line of processedBlock.rightLines) {
             if (line.type === "empty") continue
             contentLines.push(line.content)
-            lineColors.set(lineIndex, { gutter: this._addedLineNumberBg, content: this._addedContentBg ?? this._addedBg })
+            lineColors.set(lineIndex, {
+              gutter: this._addedLineNumberBg,
+              content: this._addedContentBg ?? this._addedBg,
+            })
             lineSigns.set(lineIndex, { after: " +", afterColor: this._addedSignColor })
             if (line.lineNum !== undefined) lineNumbers.set(lineIndex, line.lineNum)
             if (line.inlineHighlights?.length) {
