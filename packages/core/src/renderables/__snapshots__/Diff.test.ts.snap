@@ -1,101 +1,5 @@
 // Bun Snapshot v1, https://bun.sh/docs/test/snapshots
 
-exports[`DiffRenderable - can toggle conceal with markdown diff: markdown diff with conceal enabled 1`] = `
-" 1   First line                                                                 
- 2 - Some text old**                                                            
- 2 + So text**boldext** and *italic*                                            
- 3   End line                                                                   
-                                                                                
-                                                                                
-                                                                                
-                                                                                
-                                                                                
-                                                                                
-                                                                                
-                                                                                
-                                                                                
-                                                                                
-                                                                                
-                                                                                
-                                                                                
-                                                                                
-                                                                                
-                                                                                
-"
-`;
-
-exports[`DiffRenderable - can toggle conceal with markdown diff: markdown diff with conceal disabled 1`] = `
-" 1   First line                                                                 
- 2 - Some text **old**                                                          
- 2 + Some text **boldtext** and *italic*                                        
- 3   End line                                                                   
-                                                                                
-                                                                                
-                                                                                
-                                                                                
-                                                                                
-                                                                                
-                                                                                
-                                                                                
-                                                                                
-                                                                                
-                                                                                
-                                                                                
-                                                                                
-                                                                                
-                                                                                
-                                                                                
-"
-`;
-
-exports[`DiffRenderable - conceal works in split view: split view markdown diff with conceal enabled 1`] = `
-" 1   First line                          1   First line                         
- 2 - Some old text                       2 + Some new text                      
- 3   End line                            3   End line                           
-                                                                                
-                                                                                
-                                                                                
-                                                                                
-                                                                                
-                                                                                
-                                                                                
-                                                                                
-                                                                                
-                                                                                
-                                                                                
-                                                                                
-                                                                                
-                                                                                
-                                                                                
-                                                                                
-                                                                                
-"
-`;
-
-exports[`DiffRenderable - conceal works in split view: split view markdown diff with conceal disabled 1`] = `
-" 1   First line                          1   First line                         
- 2 - Some **old** text                   2 + Some **new** text                  
- 3   End line                            3   End line                           
-                                                                                
-                                                                                
-                                                                                
-                                                                                
-                                                                                
-                                                                                
-                                                                                
-                                                                                
-                                                                                
-                                                                                
-                                                                                
-                                                                                
-                                                                                
-                                                                                
-                                                                                
-                                                                                
-                                                                                
-"
-`;
-
 exports[`DiffRenderable - unified view renders correctly: unified view simple diff 1`] = `
 " 1   function hello() {                                                         
  2 -   console.log("Hello");                                                    
@@ -696,6 +600,102 @@ exports[`DiffRenderable - diff with only context lines (no changes): diff with o
 "
 `;
 
+exports[`DiffRenderable - can toggle conceal with markdown diff: markdown diff with conceal enabled 1`] = `
+" 1   First line                                                                 
+ 2 - Some text old**                                                            
+ 2 + So text**boldext** and *italic*                                            
+ 3   End line                                                                   
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+"
+`;
+
+exports[`DiffRenderable - can toggle conceal with markdown diff: markdown diff with conceal disabled 1`] = `
+" 1   First line                                                                 
+ 2 - Some text **old**                                                          
+ 2 + Some text **boldtext** and *italic*                                        
+ 3   End line                                                                   
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+"
+`;
+
+exports[`DiffRenderable - conceal works in split view: split view markdown diff with conceal enabled 1`] = `
+" 1   First line                          1   First line                         
+ 2 - Some old text                       2 + Some new text                      
+ 3   End line                            3   End line                           
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+"
+`;
+
+exports[`DiffRenderable - conceal works in split view: split view markdown diff with conceal disabled 1`] = `
+" 1   First line                          1   First line                         
+ 2 - Some **old** text                   2 + Some **new** text                  
+ 3   End line                            3   End line                           
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+"
+`;
+
 exports[`DiffRenderable - line numbers update correctly after resize causes wrapping changes: before resize - line numbers with no wrapping 1`] = `
 " 1   function calculateSomethingVeryComplexWithALongFunctionNameThatWillWrap() {                                        
  2 -   const oldResultWithAVeryLongVariableNameThatWillDefinitelyWrapWhenRenderedInASmallerTerminal = 42;               
@@ -781,101 +781,5 @@ exports[`DiffRenderable - line numbers update correctly after resize causes wrap
                                                             
                                                             
                                                             
-"
-`;
-
-exports[`DiffRenderable word highlights word highlights scroll with content when scrollX is non-zero: word-highlights-scrollX-0 1`] = `
-" 1   const config = {                                                           
- 2 -   someVeryLongPropertyNameThatExten                                        
- 2 +   someVeryLongPropertyNameThatExten                                        
- 3   }                                                                          
-                                                                                
-                                                                                
-                                                                                
-                                                                                
-                                                                                
-                                                                                
-                                                                                
-                                                                                
-                                                                                
-                                                                                
-                                                                                
-                                                                                
-                                                                                
-                                                                                
-                                                                                
-                                                                                
-"
-`;
-
-exports[`DiffRenderable word highlights word highlights scroll with content when scrollX is non-zero: word-highlights-scrollX-40 1`] = `
-" 1                                                                              
- 2 - tExtendsBeyondViewport: "OLDVALUE",                                        
- 2 + tExtendsBeyondViewport: "NEWVALUE",                                        
- 3                                                                              
-                                                                                
-                                                                                
-                                                                                
-                                                                                
-                                                                                
-                                                                                
-                                                                                
-                                                                                
-                                                                                
-                                                                                
-                                                                                
-                                                                                
-                                                                                
-                                                                                
-                                                                                
-                                                                                
-"
-`;
-
-exports[`DiffRenderable word highlights word highlights in split view scroll correctly with scrollX: split-word-highlights-initial 1`] = `
-" 1   const config = {          1   const config = {                             
- 2 -   veryLongPropertyName: " 2 +   veryLongPropertyName: "                    
- 3   }                         3   }                                            
-                                                                                
-                                                                                
-                                                                                
-                                                                                
-                                                                                
-                                                                                
-                                                                                
-                                                                                
-                                                                                
-                                                                                
-                                                                                
-                                                                                
-                                                                                
-                                                                                
-                                                                                
-                                                                                
-                                                                                
-"
-`;
-
-exports[`DiffRenderable word highlights word highlights in split view scroll correctly with scrollX: split-word-highlights-scrolled 1`] = `
-" 1                             1                                                
- 2 - me: "REMOVED_OLD_VALUE_HE 2 + me: "ADDED_NEW_VALUE_HERE                    
- 3                             3                                                
-                                                                                
-                                                                                
-                                                                                
-                                                                                
-                                                                                
-                                                                                
-                                                                                
-                                                                                
-                                                                                
-                                                                                
-                                                                                
-                                                                                
-                                                                                
-                                                                                
-                                                                                
-                                                                                
-                                                                                
 "
 `;
