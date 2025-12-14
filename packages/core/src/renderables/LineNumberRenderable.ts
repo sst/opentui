@@ -552,8 +552,12 @@ export class LineNumberRenderable extends Renderable {
       // Draw inline highlights for this line (word-level diff highlighting)
       const inlineHighlights = this._inlineHighlights.get(logicalLine)
       if (inlineHighlights && inlineHighlights.length > 0) {
+        // Account for horizontal scrolling - target may have scrollX property
+        const scrollX = (this.target as any).scrollX ?? 0
+
         for (const highlight of inlineHighlights) {
-          const highlightStartX = contentStartX + highlight.startCol
+          // Adjust highlight position by scrollX so highlights scroll with content
+          const highlightStartX = contentStartX + highlight.startCol - scrollX
           const highlightWidth = highlight.endCol - highlight.startCol
 
           // Clamp to visible content area

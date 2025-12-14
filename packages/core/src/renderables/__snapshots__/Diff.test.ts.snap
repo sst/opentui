@@ -783,3 +783,99 @@ exports[`DiffRenderable - line numbers update correctly after resize causes wrap
                                                             
 "
 `;
+
+exports[`DiffRenderable word highlights word highlights scroll with content when scrollX is non-zero: word-highlights-scrollX-0 1`] = `
+" 1   const config = {                                                           
+ 2 -   someVeryLongPropertyNameThatExten                                        
+ 2 +   someVeryLongPropertyNameThatExten                                        
+ 3   }                                                                          
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+"
+`;
+
+exports[`DiffRenderable word highlights word highlights scroll with content when scrollX is non-zero: word-highlights-scrollX-40 1`] = `
+" 1                                                                              
+ 2 - tExtendsBeyondViewport: "OLDVALUE",                                        
+ 2 + tExtendsBeyondViewport: "NEWVALUE",                                        
+ 3                                                                              
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+"
+`;
+
+exports[`DiffRenderable word highlights word highlights in split view scroll correctly with scrollX: split-word-highlights-initial 1`] = `
+" 1   const config = {          1   const config = {                             
+ 2 -   veryLongPropertyName: " 2 +   veryLongPropertyName: "                    
+ 3   }                         3   }                                            
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+"
+`;
+
+exports[`DiffRenderable word highlights word highlights in split view scroll correctly with scrollX: split-word-highlights-scrolled 1`] = `
+" 1                             1                                                
+ 2 - me: "REMOVED_OLD_VALUE_HE 2 + me: "ADDED_NEW_VALUE_HERE                    
+ 3                             3                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+"
+`;
