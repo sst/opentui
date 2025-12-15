@@ -349,7 +349,6 @@ export class TerminalConsole extends EventEmitter {
   }
 
   private getCopyButtonLabel(): string {
-    // Find the last binding for copy-selection (custom bindings override defaults)
     const copyBindings = this._mergedKeyBindings.filter((b) => b.action === "copy-selection")
     const copyBinding = copyBindings[copyBindings.length - 1]
     if (copyBinding) {
@@ -400,7 +399,6 @@ export class TerminalConsole extends EventEmitter {
     this._rgbaSelection = parseColor(this.options.selectionColor)
     this._rgbaCopyButton = parseColor(this.options.copyButtonColor)
 
-    // Initialize key bindings
     this._keyAliasMap = mergeKeyAliases(defaultKeyAliases, options.keyAliasMap || {})
     this._keyBindings = options.keyBindings || []
     this._mergedKeyBindings = mergeKeyBindings(defaultConsoleKeybindings, this._keyBindings)
@@ -508,7 +506,6 @@ export class TerminalConsole extends EventEmitter {
       return
     }
 
-    // Check for key binding actions
     const bindingKey = getKeyBindingKey({
       name: event.name,
       ctrl: event.ctrl,
@@ -529,7 +526,6 @@ export class TerminalConsole extends EventEmitter {
     }
   }
 
-  // Action methods
   private scrollUp(): boolean {
     const logAreaHeight = Math.max(1, this.consoleHeight - 1)
 
@@ -886,14 +882,14 @@ export class TerminalConsole extends EventEmitter {
     this._keyBindings = bindings
     this._mergedKeyBindings = mergeKeyBindings(defaultConsoleKeybindings, bindings)
     this._keyBindingsMap = buildKeyBindingsMap(this._mergedKeyBindings, this._keyAliasMap)
-    this.markNeedsRerender() // Rerender to update copy button label
+    this.markNeedsRerender()
   }
 
   public set keyAliasMap(aliases: KeyAliasMap) {
     this._keyAliasMap = mergeKeyAliases(defaultKeyAliases, aliases)
     this._mergedKeyBindings = mergeKeyBindings(defaultConsoleKeybindings, this._keyBindings)
     this._keyBindingsMap = buildKeyBindingsMap(this._mergedKeyBindings, this._keyAliasMap)
-    this.markNeedsRerender() // Rerender to update copy button label
+    this.markNeedsRerender()
   }
 
   public set onCopySelection(callback: ((text: string) => void) | undefined) {
@@ -1013,7 +1009,6 @@ export class TerminalConsole extends EventEmitter {
     for (let i = selection.startLine; i <= selection.endLine; i++) {
       if (i < 0 || i >= this._displayLines.length) continue
       const line = this._displayLines[i]
-      // Build full text as rendered (including indent prefix)
       const linePrefix = line.indent ? " ".repeat(INDENT_WIDTH) : ""
       const textAvailableWidth = this.consoleWidth - 1 - (line.indent ? INDENT_WIDTH : 0)
       const fullText = linePrefix + line.text.substring(0, textAvailableWidth)
@@ -1045,9 +1040,7 @@ export class TerminalConsole extends EventEmitter {
     if (text && this.options.onCopySelection) {
       try {
         this.options.onCopySelection(text)
-      } catch {
-        // Silently handle callback errors - consumer responsibility
-      }
+      } catch {}
       this.clearSelection()
       this.markNeedsRerender()
     }
@@ -1064,7 +1057,6 @@ export class TerminalConsole extends EventEmitter {
     const line = this._displayLines[lineIndex]
     if (!line) return null
 
-    // Calculate the full text length as rendered (including indent prefix)
     const linePrefix = line.indent ? " ".repeat(INDENT_WIDTH) : ""
     const textAvailableWidth = this.consoleWidth - 1 - (line.indent ? INDENT_WIDTH : 0)
     const fullTextLength = linePrefix.length + Math.min(line.text.length, textAvailableWidth)
@@ -1093,7 +1085,6 @@ export class TerminalConsole extends EventEmitter {
       return false
     }
 
-    // Handle scroll events
     if (event.type === "scroll" && event.scroll) {
       if (event.scroll.direction === "up") {
         this.scrollUp()
@@ -1103,7 +1094,6 @@ export class TerminalConsole extends EventEmitter {
       return true
     }
 
-    // Handle title bar clicks (copy button)
     if (localY === 0) {
       if (
         event.type === "down" &&

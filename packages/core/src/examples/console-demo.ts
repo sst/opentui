@@ -182,10 +182,8 @@ class ConsoleButton extends BoxRenderable {
 export function run(renderer: CliRenderer): void {
   renderer.start()
 
-  // Configure console copy functionality
   renderer.console.keyBindings = [{ name: "y", ctrl: true, action: "copy-selection" }]
   renderer.console.onCopySelection = (text) => {
-    // Write to system clipboard using Bun's native process
     // NOTE: pbcopy is macOS-only. For cross-platform, use:
     // - Windows: clip.exe
     // - Linux: xclip -selection clipboard or xsel --clipboard
@@ -354,7 +352,7 @@ export function destroy(renderer: CliRenderer): void {
 
 if (import.meta.main) {
   const renderer = await createCliRenderer({
-    exitOnCtrlC: true, // Ctrl+C will exit the demo
+    exitOnCtrlC: true,
   })
   run(renderer)
   setupCommonDemoKeys(renderer)

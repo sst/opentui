@@ -1011,7 +1011,6 @@ export class CliRenderer extends EventEmitter implements RenderContext {
       this._latestPointer.x = mouseEvent.x
       this._latestPointer.y = mouseEvent.y
 
-      // Route mouse events to console if visible and in bounds
       if (this._console.visible) {
         const consoleBounds = this._console.bounds
         if (
