@@ -349,7 +349,9 @@ export class TerminalConsole extends EventEmitter {
   }
 
   private getCopyButtonLabel(): string {
-    const copyBinding = this._mergedKeyBindings.find((b) => b.action === "copy-selection")
+    // Find the last binding for copy-selection (custom bindings override defaults)
+    const copyBindings = this._mergedKeyBindings.filter((b) => b.action === "copy-selection")
+    const copyBinding = copyBindings[copyBindings.length - 1]
     if (copyBinding) {
       const shortcut = keyBindingToString(copyBinding)
       return `[Copy (${shortcut})]`

@@ -1,5 +1,6 @@
 import { test, expect, describe, mock, beforeEach } from "bun:test"
 import { TerminalConsole, ConsolePosition } from "./console"
+import { MouseEvent } from "./renderer"
 
 interface MockRenderer {
   terminalWidth: number
@@ -13,6 +14,24 @@ interface MockRenderer {
     on: (event: string, handler: any) => void
     off: (event: string, handler: any) => void
   }
+}
+
+// Helper function to create MouseEvent objects for testing
+function createMouseEvent(
+  x: number,
+  y: number,
+  type: "down" | "up" | "move" | "drag" | "scroll",
+  button: number = 0,
+  scroll?: { direction: "up" | "down" | "left" | "right"; delta: number },
+): MouseEvent {
+  return new MouseEvent(null, {
+    type,
+    button,
+    x,
+    y,
+    modifiers: { shift: false, alt: false, ctrl: false },
+    scroll,
+  })
 }
 
 describe("TerminalConsole", () => {
@@ -115,7 +134,6 @@ describe("TerminalConsole", () => {
         position: ConsolePosition.BOTTOM,
         sizePercent: 30,
       })
-      // Manually set visible state without calling show() to avoid native buffer creation
       terminalConsole["isVisible"] = true
 
       terminalConsole["_displayLines"] = [
@@ -124,7 +142,8 @@ describe("TerminalConsole", () => {
       ]
 
       const bounds = terminalConsole.bounds
-      terminalConsole.handleMouse(bounds.x + 5, bounds.y + 1, "down", 0)
+      const mouseEvent = createMouseEvent(bounds.x + 5, bounds.y + 1, "down", 0)
+      terminalConsole.handleMouse(mouseEvent)
 
       expect(terminalConsole["_selectionStart"]).not.toBeNull()
       expect(terminalConsole["_isSelecting"]).toBe(true)
@@ -143,8 +162,10 @@ describe("TerminalConsole", () => {
       ]
 
       const bounds = terminalConsole.bounds
-      terminalConsole.handleMouse(bounds.x + 1, bounds.y + 1, "down", 0)
-      terminalConsole.handleMouse(bounds.x + 10, bounds.y + 1, "drag", 0)
+      const downEvent = createMouseEvent(bounds.x + 1, bounds.y + 1, "down", 0)
+      terminalConsole.handleMouse(downEvent)
+      const dragEvent = createMouseEvent(bounds.x + 10, bounds.y + 1, "drag", 0)
+      terminalConsole.handleMouse(dragEvent)
 
       expect(terminalConsole["_selectionEnd"]?.col).toBe(9)
     })
@@ -156,14 +177,12 @@ describe("TerminalConsole", () => {
       })
       terminalConsole["isVisible"] = true
 
-      terminalConsole["_displayLines"] = [
-        { text: "Hello World", level: "LOG" as any, indent: false },
-      ]
+      terminalConsole["_displayLines"] = [{ text: "Hello World", level: "LOG" as any, indent: false }]
 
       const bounds = terminalConsole.bounds
-      terminalConsole.handleMouse(bounds.x + 1, bounds.y + 1, "down", 0)
-      terminalConsole.handleMouse(bounds.x + 5, bounds.y + 1, "drag", 0)
-      terminalConsole.handleMouse(bounds.x + 5, bounds.y + 1, "up", 0)
+      terminalConsole.handleMouse(createMouseEvent(bounds.x + 1, bounds.y + 1, "down", 0))
+      terminalConsole.handleMouse(createMouseEvent(bounds.x + 5, bounds.y + 1, "drag", 0))
+      terminalConsole.handleMouse(createMouseEvent(bounds.x + 5, bounds.y + 1, "up", 0))
 
       expect(terminalConsole["_isSelecting"]).toBe(false)
       expect(terminalConsole["hasSelection"]()).toBe(true)
@@ -192,9 +211,7 @@ describe("TerminalConsole", () => {
         sizePercent: 30,
       })
 
-      terminalConsole["_displayLines"] = [
-        { text: "Hello World Test", level: "LOG" as any, indent: false },
-      ]
+      terminalConsole["_displayLines"] = [{ text: "Hello World Test", level: "LOG" as any, indent: false }]
       terminalConsole["_selectionStart"] = { line: 0, col: 0 }
       terminalConsole["_selectionEnd"] = { line: 0, col: 5 }
 
@@ -246,18 +263,16 @@ describe("TerminalConsole", () => {
         onCopySelection: onCopy,
       })
       terminalConsole["isVisible"] = true
-      // Set up copy button bounds manually since we're not calling show()
       terminalConsole["_copyButtonBounds"] = { x: 93, y: 0, width: 6, height: 1 }
 
-      terminalConsole["_displayLines"] = [
-        { text: "Hello World", level: "LOG" as any, indent: false },
-      ]
+      terminalConsole["_displayLines"] = [{ text: "Hello World", level: "LOG" as any, indent: false }]
       terminalConsole["_selectionStart"] = { line: 0, col: 0 }
       terminalConsole["_selectionEnd"] = { line: 0, col: 5 }
 
       const bounds = terminalConsole.bounds
       const copyButtonX = bounds.x + terminalConsole["_copyButtonBounds"].x
-      terminalConsole.handleMouse(copyButtonX, bounds.y, "down", 0)
+      const mouseEvent = createMouseEvent(copyButtonX, bounds.y, "down", 0)
+      terminalConsole.handleMouse(mouseEvent)
 
       expect(onCopy).toHaveBeenCalledWith("Hello")
     })
@@ -274,7 +289,8 @@ describe("TerminalConsole", () => {
 
       const bounds = terminalConsole.bounds
       const copyButtonX = bounds.x + terminalConsole["_copyButtonBounds"].x
-      terminalConsole.handleMouse(copyButtonX, bounds.y, "down", 0)
+      const mouseEvent = createMouseEvent(copyButtonX, bounds.y, "down", 0)
+      terminalConsole.handleMouse(mouseEvent)
 
       expect(onCopy).not.toHaveBeenCalled()
     })
@@ -289,13 +305,11 @@ describe("TerminalConsole", () => {
         onCopySelection: onCopy,
       })
 
-      terminalConsole["_displayLines"] = [
-        { text: "Hello World", level: "LOG" as any, indent: false },
-      ]
+      terminalConsole["_displayLines"] = [{ text: "Hello World", level: "LOG" as any, indent: false }]
       terminalConsole["_selectionStart"] = { line: 0, col: 0 }
       terminalConsole["_selectionEnd"] = { line: 0, col: 5 }
 
-      terminalConsole["handleKeyPress"]({ name: "c", ctrl: true, shift: true } as any)
+      terminalConsole["handleKeyPress"]({ name: "c", ctrl: true, shift: true, meta: false } as any)
 
       expect(onCopy).toHaveBeenCalledWith("Hello")
     })
@@ -308,31 +322,55 @@ describe("TerminalConsole", () => {
         onCopySelection: onCopy,
       })
 
-      terminalConsole["handleKeyPress"]({ name: "c", ctrl: true, shift: true } as any)
+      terminalConsole["handleKeyPress"]({ name: "c", ctrl: true, shift: true, meta: false } as any)
 
       expect(onCopy).not.toHaveBeenCalled()
     })
 
-    test("should respect custom copyShortcut config", () => {
+    test("should respect custom key bindings", () => {
       const onCopy = mock(() => {})
       terminalConsole = new TerminalConsole(mockRenderer as any, {
         position: ConsolePosition.BOTTOM,
         sizePercent: 30,
         onCopySelection: onCopy,
-        copyShortcut: { key: "y", ctrl: true, shift: false },
+        keyBindings: [{ name: "y", ctrl: true, action: "copy-selection" }],
       })
 
-      terminalConsole["_displayLines"] = [
-        { text: "Test", level: "LOG" as any, indent: false },
-      ]
+      terminalConsole["_displayLines"] = [{ text: "Test", level: "LOG" as any, indent: false }]
+
+      // Test default binding (Ctrl+Shift+C) still works
       terminalConsole["_selectionStart"] = { line: 0, col: 0 }
       terminalConsole["_selectionEnd"] = { line: 0, col: 4 }
-
-      terminalConsole["handleKeyPress"]({ name: "c", ctrl: true, shift: true } as any)
-      expect(onCopy).not.toHaveBeenCalled()
-
-      terminalConsole["handleKeyPress"]({ name: "y", ctrl: true, shift: false } as any)
+      terminalConsole["handleKeyPress"]({ name: "c", ctrl: true, shift: true, meta: false } as any)
       expect(onCopy).toHaveBeenCalledWith("Test")
+      expect(terminalConsole["hasSelection"]()).toBe(false) // Selection cleared after copy
+      onCopy.mockClear()
+
+      // Test custom binding (Ctrl+Y) also works
+      terminalConsole["_selectionStart"] = { line: 0, col: 0 }
+      terminalConsole["_selectionEnd"] = { line: 0, col: 4 }
+      terminalConsole["handleKeyPress"]({ name: "y", ctrl: true, shift: false, meta: false } as any)
+      expect(onCopy).toHaveBeenCalledWith("Test")
+      expect(terminalConsole["hasSelection"]()).toBe(false) // Selection cleared after copy
+    })
+
+    test("should update copy button label when key bindings change", () => {
+      terminalConsole = new TerminalConsole(mockRenderer as any, {
+        position: ConsolePosition.BOTTOM,
+        sizePercent: 30,
+      })
+
+      // Check default label (lowercase)
+      const defaultLabel = terminalConsole["getCopyButtonLabel"]()
+      expect(defaultLabel).toContain("ctrl+shift+c")
+
+      // Update key bindings - last binding for the action wins in the label
+      terminalConsole.keyBindings = [{ name: "y", ctrl: true, action: "copy-selection" }]
+
+      // Check updated label - should show the last binding for copy-selection
+      const updatedLabel = terminalConsole["getCopyButtonLabel"]()
+      expect(updatedLabel).toContain("ctrl+y")
+      expect(updatedLabel).not.toContain("ctrl+shift+c")
     })
   })
 
@@ -345,11 +383,13 @@ describe("TerminalConsole", () => {
       terminalConsole["isVisible"] = true
 
       // Outside bounds
-      expect(terminalConsole.handleMouse(0, 0, "down", 0)).toBe(false)
+      const outsideEvent = createMouseEvent(0, 0, "down", 0)
+      expect(terminalConsole.handleMouse(outsideEvent)).toBe(false)
 
       // Inside bounds
       const bounds = terminalConsole.bounds
-      expect(terminalConsole.handleMouse(bounds.x + 1, bounds.y + 1, "down", 0)).toBe(true)
+      const insideEvent = createMouseEvent(bounds.x + 1, bounds.y + 1, "down", 0)
+      expect(terminalConsole.handleMouse(insideEvent)).toBe(true)
     })
 
     test("should not start selection on right-click", () => {
@@ -361,7 +401,8 @@ describe("TerminalConsole", () => {
       terminalConsole["_displayLines"] = [{ text: "Test", level: "LOG" as any, indent: false }]
 
       const bounds = terminalConsole.bounds
-      terminalConsole.handleMouse(bounds.x + 1, bounds.y + 1, "down", 2)
+      const rightClickEvent = createMouseEvent(bounds.x + 1, bounds.y + 1, "down", 2)
+      terminalConsole.handleMouse(rightClickEvent)
 
       expect(terminalConsole["_isSelecting"]).toBe(false)
       expect(terminalConsole["_selectionStart"]).toBeNull()
@@ -391,9 +432,7 @@ describe("TerminalConsole", () => {
         sizePercent: 30,
       })
 
-      terminalConsole["_displayLines"] = [
-        { text: "Only Line", level: "LOG" as any, indent: false },
-      ]
+      terminalConsole["_displayLines"] = [{ text: "Only Line", level: "LOG" as any, indent: false }]
       terminalConsole["_selectionStart"] = { line: 0, col: 0 }
       terminalConsole["_selectionEnd"] = { line: 5, col: 10 }
 
