@@ -36,6 +36,11 @@ export class TextBufferView {
     this.lib.textBufferViewSetSelection(this.viewPtr, start, end, bgColor || null, fgColor || null)
   }
 
+  public updateSelection(end: number, bgColor?: RGBA, fgColor?: RGBA): void {
+    this.guard()
+    this.lib.textBufferViewUpdateSelection(this.viewPtr, end, bgColor || null, fgColor || null)
+  }
+
   public resetSelection(): void {
     this.guard()
     this.lib.textBufferViewResetSelection(this.viewPtr)
@@ -69,6 +74,11 @@ export class TextBufferView {
       bgColor || null,
       fgColor || null,
     )
+  }
+
+  public updateLocalSelection(focusX: number, focusY: number, bgColor?: RGBA, fgColor?: RGBA): boolean {
+    this.guard()
+    return this.lib.textBufferViewUpdateLocalSelection(this.viewPtr, focusX, focusY, bgColor || null, fgColor || null)
   }
 
   public resetLocalSelection(): void {
