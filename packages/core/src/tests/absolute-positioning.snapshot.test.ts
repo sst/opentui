@@ -9,7 +9,12 @@ let captureFrame: () => string
 let resize: (width: number, height: number) => void
 
 beforeEach(async () => {
-  ;({ renderer: testRenderer, renderOnce, captureCharFrame: captureFrame, resize } = await createTestRenderer({
+  ;({
+    renderer: testRenderer,
+    renderOnce,
+    captureCharFrame: captureFrame,
+    resize,
+  } = await createTestRenderer({
     width: 40,
     height: 20,
   }))
