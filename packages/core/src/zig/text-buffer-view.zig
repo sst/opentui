@@ -444,6 +444,17 @@ pub const UnifiedTextBufferView = struct {
         };
     }
 
+    pub fn updateSelection(self: *Self, end: u32, bgColor: ?RGBA, fgColor: ?RGBA) void {
+        if (self.selection) |sel| {
+            self.selection = TextSelection{
+                .start = sel.start,
+                .end = end,
+                .bgColor = bgColor,
+                .fgColor = fgColor,
+            };
+        }
+    }
+
     pub fn resetSelection(self: *Self) void {
         self.selection = null;
     }
@@ -483,6 +494,52 @@ pub const UnifiedTextBufferView = struct {
                 old_sel.focusX != new_local_sel.focusX or
                 old_sel.focusY != new_local_sel.focusY;
         } else true;
+
+        self.local_selection = new_local_sel;
+
+        const char_selection = self.calculateMultiLineSelection();
+        var selection_changed = coords_changed;
+
+        if (char_selection) |sel| {
+            const new_selection = TextSelection{
+                .start = sel.start,
+                .end = sel.end,
+                .bgColor = bgColor,
+                .fgColor = fgColor,
+            };
+
+            if (self.selection) |old_sel| {
+                if (old_sel.start != new_selection.start or old_sel.end != new_selection.end) {
+                    selection_changed = true;
+                }
+            } else {
+                selection_changed = true;
+            }
+
+            self.selection = new_selection;
+        } else {
+            if (self.selection != null) {
+                selection_changed = true;
+            }
+            self.selection = null;
+        }
+
+        return selection_changed;
+    }
+
+    pub fn updateLocalSelection(self: *Self, focusX: i32, focusY: i32, bgColor: ?RGBA, fgColor: ?RGBA) bool {
+        const local_sel = self.local_selection orelse return false;
+
+        const new_local_sel = LocalSelection{
+            .anchorX = local_sel.anchorX,
+            .anchorY = local_sel.anchorY,
+            .focusX = focusX,
+            .focusY = focusY,
+            .isActive = true,
+        };
+
+        const coords_changed = local_sel.focusX != new_local_sel.focusX or
+            local_sel.focusY != new_local_sel.focusY;
 
         self.local_selection = new_local_sel;
 
