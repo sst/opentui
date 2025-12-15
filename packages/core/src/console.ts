@@ -336,6 +336,7 @@ export class TerminalConsole extends EventEmitter {
     width: 0,
     height: 0,
   }
+  private _autoScrollInterval: number | null = null
 
   private _keyBindingsMap: Map<string, ConsoleAction>
   private _keyAliasMap: KeyAliasMap
@@ -745,6 +746,7 @@ export class TerminalConsole extends EventEmitter {
   }
 
   public destroy(): void {
+    this.stopAutoScroll()
     this.hide()
     this.deactivate()
     terminalConsoleCache.off("entry", this._entryListener)
@@ -1032,6 +1034,53 @@ export class TerminalConsole extends EventEmitter {
     this._selectionStart = null
     this._selectionEnd = null
     this._isSelecting = false
+    this.stopAutoScroll()
+  }
+
+  private stopAutoScroll(): void {
+    if (this._autoScrollInterval !== null) {
+      clearInterval(this._autoScrollInterval)
+      this._autoScrollInterval = null
+    }
+  }
+
+  private startAutoScroll(direction: "up" | "down"): void {
+    this.stopAutoScroll()
+    this._autoScrollInterval = setInterval(() => {
+      if (direction === "up") {
+        if (this.scrollTopIndex > 0) {
+          this.scrollTopIndex--
+          this.isScrolledToBottom = false
+          if (this._selectionEnd) {
+            this._selectionEnd = {
+              line: this.scrollTopIndex,
+              col: this._selectionEnd.col,
+            }
+          }
+          this.markNeedsRerender()
+        } else {
+          this.stopAutoScroll()
+        }
+      } else {
+        const displayLineCount = this._displayLines.length
+        const logAreaHeight = Math.max(1, this.consoleHeight - 1)
+        const maxScrollTop = Math.max(0, displayLineCount - logAreaHeight)
+        if (this.scrollTopIndex < maxScrollTop) {
+          this.scrollTopIndex++
+          this.isScrolledToBottom = this.scrollTopIndex === maxScrollTop
+          if (this._selectionEnd) {
+            const maxLine = this.scrollTopIndex + logAreaHeight - 1
+            this._selectionEnd = {
+              line: Math.min(maxLine, displayLineCount - 1),
+              col: this._selectionEnd.col,
+            }
+          }
+          this.markNeedsRerender()
+        } else {
+          this.stopAutoScroll()
+        }
+      }
+    }, 50) as any
   }
 
   private triggerCopy(): void {
@@ -1121,6 +1170,22 @@ export class TerminalConsole extends EventEmitter {
 
     if (event.type === "drag" && this._isSelecting) {
       this._selectionEnd = { line: lineIndex, col: colIndex }
+
+      // Check if drag is at the edge and trigger auto-scroll
+      const logAreaHeight = Math.max(1, this.consoleHeight - 1)
+      const relativeY = localY - 1 // Subtract 1 for title bar
+
+      if (relativeY <= 0) {
+        // Dragging at top edge
+        this.startAutoScroll("up")
+      } else if (relativeY >= logAreaHeight - 1) {
+        // Dragging at bottom edge
+        this.startAutoScroll("down")
+      } else {
+        // Not at edge, stop auto-scrolling
+        this.stopAutoScroll()
+      }
+
       this.markNeedsRerender()
       return true
     }
@@ -1129,6 +1194,7 @@ export class TerminalConsole extends EventEmitter {
       if (this._isSelecting) {
         this._selectionEnd = { line: lineIndex, col: colIndex }
         this._isSelecting = false
+        this.stopAutoScroll()
         this.markNeedsRerender()
       }
       return true

@@ -409,6 +409,156 @@ describe("TerminalConsole", () => {
     })
   })
 
+  describe("Auto-scroll during selection", () => {
+    test("should auto-scroll up when dragging at top edge", async () => {
+      terminalConsole = new TerminalConsole(mockRenderer as any, {
+        position: ConsolePosition.BOTTOM,
+        sizePercent: 30,
+      })
+      terminalConsole["isVisible"] = true
+
+      // Create many display lines
+      const lines = []
+      for (let i = 0; i < 50; i++) {
+        lines.push({ text: `Line ${i}`, level: "LOG" as any, indent: false })
+      }
+      terminalConsole["_displayLines"] = lines
+
+      // Scroll to middle
+      terminalConsole["scrollTopIndex"] = 20
+
+      const bounds = terminalConsole.bounds
+      // Start selection in middle
+      terminalConsole.handleMouse(createMouseEvent(bounds.x + 1, bounds.y + 5, "down", 0))
+
+      // Drag to top edge
+      terminalConsole.handleMouse(createMouseEvent(bounds.x + 1, bounds.y + 1, "drag", 0))
+
+      // Check that auto-scroll interval was started
+      expect(terminalConsole["_autoScrollInterval"]).not.toBeNull()
+
+      // Wait for auto-scroll to happen
+      await new Promise((resolve) => setTimeout(resolve, 100))
+
+      // Should have scrolled up
+      expect(terminalConsole["scrollTopIndex"]).toBeLessThan(20)
+
+      // Stop selecting
+      terminalConsole.handleMouse(createMouseEvent(bounds.x + 1, bounds.y + 1, "up", 0))
+
+      // Auto-scroll should be stopped
+      expect(terminalConsole["_autoScrollInterval"]).toBeNull()
+    })
+
+    test("should auto-scroll down when dragging at bottom edge", async () => {
+      terminalConsole = new TerminalConsole(mockRenderer as any, {
+        position: ConsolePosition.BOTTOM,
+        sizePercent: 30,
+      })
+      terminalConsole["isVisible"] = true
+
+      // Create many display lines
+      const lines = []
+      for (let i = 0; i < 50; i++) {
+        lines.push({ text: `Line ${i}`, level: "LOG" as any, indent: false })
+      }
+      terminalConsole["_displayLines"] = lines
+
+      // Scroll to beginning
+      terminalConsole["scrollTopIndex"] = 0
+
+      const bounds = terminalConsole.bounds
+      const logAreaHeight = Math.max(1, bounds.height - 1)
+
+      // Start selection in middle
+      terminalConsole.handleMouse(createMouseEvent(bounds.x + 1, bounds.y + 5, "down", 0))
+
+      // Drag to bottom edge
+      terminalConsole.handleMouse(createMouseEvent(bounds.x + 1, bounds.y + logAreaHeight, "drag", 0))
+
+      // Check that auto-scroll interval was started
+      expect(terminalConsole["_autoScrollInterval"]).not.toBeNull()
+
+      // Wait for auto-scroll to happen
+      await new Promise((resolve) => setTimeout(resolve, 100))
+
+      // Should have scrolled down
+      expect(terminalConsole["scrollTopIndex"]).toBeGreaterThan(0)
+
+      // Stop selecting
+      terminalConsole.handleMouse(createMouseEvent(bounds.x + 1, bounds.y + logAreaHeight, "up", 0))
+
+      // Auto-scroll should be stopped
+      expect(terminalConsole["_autoScrollInterval"]).toBeNull()
+    })
+
+    test("should stop auto-scroll when dragging away from edge", async () => {
+      terminalConsole = new TerminalConsole(mockRenderer as any, {
+        position: ConsolePosition.BOTTOM,
+        sizePercent: 30,
+      })
+      terminalConsole["isVisible"] = true
+
+      // Create many display lines
+      const lines = []
+      for (let i = 0; i < 50; i++) {
+        lines.push({ text: `Line ${i}`, level: "LOG" as any, indent: false })
+      }
+      terminalConsole["_displayLines"] = lines
+      terminalConsole["scrollTopIndex"] = 20
+
+      const bounds = terminalConsole.bounds
+
+      // Start selection
+      terminalConsole.handleMouse(createMouseEvent(bounds.x + 1, bounds.y + 5, "down", 0))
+
+      // Drag to top edge to start auto-scroll
+      terminalConsole.handleMouse(createMouseEvent(bounds.x + 1, bounds.y + 1, "drag", 0))
+      expect(terminalConsole["_autoScrollInterval"]).not.toBeNull()
+
+      // Drag away from edge
+      terminalConsole.handleMouse(createMouseEvent(bounds.x + 1, bounds.y + 5, "drag", 0))
+
+      // Auto-scroll should be stopped
+      expect(terminalConsole["_autoScrollInterval"]).toBeNull()
+    })
+
+    test("should extend selection as auto-scroll happens", async () => {
+      terminalConsole = new TerminalConsole(mockRenderer as any, {
+        position: ConsolePosition.BOTTOM,
+        sizePercent: 30,
+      })
+      terminalConsole["isVisible"] = true
+
+      // Create many display lines
+      const lines = []
+      for (let i = 0; i < 50; i++) {
+        lines.push({ text: `Line ${i}`, level: "LOG" as any, indent: false })
+      }
+      terminalConsole["_displayLines"] = lines
+      terminalConsole["scrollTopIndex"] = 20
+
+      const bounds = terminalConsole.bounds
+
+      // Start selection
+      terminalConsole.handleMouse(createMouseEvent(bounds.x + 1, bounds.y + 5, "down", 0))
+      const initialStartLine = terminalConsole["_selectionStart"]?.line
+
+      // Drag to top edge
+      terminalConsole.handleMouse(createMouseEvent(bounds.x + 1, bounds.y + 1, "drag", 0))
+
+      // Wait for auto-scroll
+      await new Promise((resolve) => setTimeout(resolve, 100))
+
+      // Selection end should have moved with the scroll
+      const endLine = terminalConsole["_selectionEnd"]?.line
+      expect(endLine).toBeLessThan(initialStartLine!)
+
+      // Stop selecting
+      terminalConsole.handleMouse(createMouseEvent(bounds.x + 1, bounds.y + 1, "up", 0))
+    })
+  })
+
   describe("Edge Cases", () => {
     test("should extract correct text for indented line selection", () => {
       terminalConsole = new TerminalConsole(mockRenderer as any, {
