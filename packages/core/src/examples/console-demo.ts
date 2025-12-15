@@ -181,6 +181,22 @@ class ConsoleButton extends BoxRenderable {
 
 export function run(renderer: CliRenderer): void {
   renderer.start()
+
+  // Configure console copy functionality
+  renderer.console.keyBindings = [{ name: "y", ctrl: true, action: "copy-selection" }]
+  renderer.console.onCopySelection = (text) => {
+    // Write to system clipboard using Bun's native process
+    // NOTE: pbcopy is macOS-only. For cross-platform, use:
+    // - Windows: clip.exe
+    // - Linux: xclip -selection clipboard or xsel --clipboard
+    const proc = Bun.spawn(["pbcopy"], {
+      stdin: "pipe",
+    })
+    proc.stdin.write(text)
+    proc.stdin.end()
+    console.info(`Copied to clipboard: "${text.substring(0, 50)}${text.length > 50 ? "..." : ""}"`)
+  }
+
   renderer.console.show()
 
   const backgroundColor = RGBA.fromInts(18, 22, 35, 255)
@@ -201,7 +217,7 @@ export function run(renderer: CliRenderer): void {
   instructionsText = new TextRenderable(renderer, {
     id: "console_demo_instructions",
     content:
-      "Click buttons to trigger different console log levels • Press ` to toggle console • Escape: return to menu",
+      "Click buttons to trigger different console log levels • Press ` to toggle console • Ctrl+Y to copy selection • Escape: return to menu",
     position: "absolute",
     left: 2,
     top: 2,
@@ -338,8 +354,9 @@ export function destroy(renderer: CliRenderer): void {
 
 if (import.meta.main) {
   const renderer = await createCliRenderer({
-    exitOnCtrlC: true,
+    exitOnCtrlC: true, // Ctrl+C will exit the demo
     consoleOptions: {
+      keyBindings: [{ name: "y", ctrl: true, action: "copy-selection" }], // Use Ctrl+Y to copy selection
       onCopySelection: (text) => {
         // Write to system clipboard using Bun's native process
         // NOTE: pbcopy is macOS-only. For cross-platform, use:
