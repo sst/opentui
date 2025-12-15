@@ -10,6 +10,15 @@ import { parseColor, RGBA } from "./lib/RGBA"
 import { singleton } from "./lib/singleton"
 import { env, registerEnvVar } from "./lib/env"
 import type { KeyEvent } from "./lib/KeyHandler"
+import {
+  type KeyBinding as BaseKeyBinding,
+  mergeKeyBindings,
+  getKeyBindingKey,
+  buildKeyBindingsMap,
+  type KeyAliasMap,
+  defaultKeyAliases,
+  mergeKeyAliases,
+} from "./lib/keymapping"
 
 interface CallerInfo {
   functionName: string
@@ -204,11 +213,33 @@ interface ConsoleSelection {
   endCol: number
 }
 
-interface CopyShortcut {
-  key: string
-  ctrl?: boolean
-  shift?: boolean
-}
+export type ConsoleAction =
+  | "scroll-up"
+  | "scroll-down"
+  | "scroll-to-top"
+  | "scroll-to-bottom"
+  | "position-previous"
+  | "position-next"
+  | "size-increase"
+  | "size-decrease"
+  | "save-logs"
+  | "copy-selection"
+
+export type ConsoleKeyBinding = BaseKeyBinding<ConsoleAction>
+
+const defaultConsoleKeybindings: ConsoleKeyBinding[] = [
+  { name: "up", action: "scroll-up" },
+  { name: "down", action: "scroll-down" },
+  { name: "up", shift: true, action: "scroll-to-top" },
+  { name: "down", shift: true, action: "scroll-to-bottom" },
+  { name: "p", ctrl: true, action: "position-previous" },
+  { name: "o", ctrl: true, action: "position-next" },
+  { name: "+", action: "size-increase" },
+  { name: "=", shift: true, action: "size-increase" },
+  { name: "-", action: "size-decrease" },
+  { name: "s", ctrl: true, action: "save-logs" },
+  { name: "c", ctrl: true, shift: true, action: "copy-selection" },
+]
 
 export interface ConsoleOptions {
   position?: ConsolePosition
@@ -228,12 +259,17 @@ export interface ConsoleOptions {
   maxStoredLogs?: number
   maxDisplayLines?: number
   onCopySelection?: (text: string) => void
-  copyShortcut?: CopyShortcut
+  keyBindings?: ConsoleKeyBinding[]
+  keyAliasMap?: KeyAliasMap
   selectionColor?: ColorInput
   copyButtonColor?: ColorInput
 }
 
-const DEFAULT_CONSOLE_OPTIONS: Required<Omit<ConsoleOptions, "onCopySelection">> & { onCopySelection?: (text: string) => void } = {
+const DEFAULT_CONSOLE_OPTIONS: Required<Omit<ConsoleOptions, "onCopySelection" | "keyBindings" | "keyAliasMap">> & {
+  onCopySelection?: (text: string) => void
+  keyBindings?: ConsoleKeyBinding[]
+  keyAliasMap?: KeyAliasMap
+} = {
   position: ConsolePosition.BOTTOM,
   sizePercent: 30,
   zIndex: Infinity,
@@ -251,7 +287,8 @@ const DEFAULT_CONSOLE_OPTIONS: Required<Omit<ConsoleOptions, "onCopySelection">>
   maxStoredLogs: 2000,
   maxDisplayLines: 3000,
   onCopySelection: undefined,
-  copyShortcut: { key: "c", ctrl: true, shift: true },
+  keyBindings: undefined,
+  keyAliasMap: undefined,
   selectionColor: RGBA.fromValues(0.3, 0.5, 0.8, 0.5),
   copyButtonColor: "#00A0FF",
 }
@@ -269,7 +306,11 @@ export class TerminalConsole extends EventEmitter {
   private isFocused: boolean = false
   private renderer: CliRenderer
   private keyHandler: (event: KeyEvent) => void
-  private options: Required<Omit<ConsoleOptions, "onCopySelection">> & { onCopySelection?: (text: string) => void }
+  private options: Required<Omit<ConsoleOptions, "onCopySelection" | "keyBindings" | "keyAliasMap">> & {
+    onCopySelection?: (text: string) => void
+    keyBindings?: ConsoleKeyBinding[]
+    keyAliasMap?: KeyAliasMap
+  }
   private _debugModeEnabled: boolean = false
 
   private frameBuffer: OptimizedBuffer | null = null
@@ -288,7 +329,17 @@ export class TerminalConsole extends EventEmitter {
   private _selectionStart: { line: number; col: number } | null = null
   private _selectionEnd: { line: number; col: number } | null = null
   private _isSelecting: boolean = false
-  private _copyButtonBounds: { x: number; y: number; width: number; height: number } = { x: 0, y: 0, width: 0, height: 0 }
+  private _copyButtonBounds: { x: number; y: number; width: number; height: number } = {
+    x: 0,
+    y: 0,
+    width: 0,
+    height: 0,
+  }
+
+  private _keyBindingsMap: Map<string, ConsoleAction>
+  private _keyAliasMap: KeyAliasMap
+  private _keyBindings: ConsoleKeyBinding[]
+  private _actionHandlers: Map<ConsoleAction, () => boolean>
 
   private markNeedsRerender(): void {
     this._needsFrameBufferUpdate = true
@@ -336,6 +387,13 @@ export class TerminalConsole extends EventEmitter {
     this._rgbaSelection = parseColor(this.options.selectionColor)
     this._rgbaCopyButton = parseColor(this.options.copyButtonColor)
 
+    // Initialize key bindings
+    this._keyAliasMap = mergeKeyAliases(defaultKeyAliases, options.keyAliasMap || {})
+    this._keyBindings = options.keyBindings || []
+    const mergedBindings = mergeKeyBindings(defaultConsoleKeybindings, this._keyBindings)
+    this._keyBindingsMap = buildKeyBindingsMap(mergedBindings, this._keyAliasMap)
+    this._actionHandlers = this.buildActionHandlers()
+
     this._updateConsoleDimensions()
     this._scrollToBottom(true)
 
@@ -347,6 +405,21 @@ export class TerminalConsole extends EventEmitter {
     if (env.SHOW_CONSOLE) {
       this.show()
     }
+  }
+
+  private buildActionHandlers(): Map<ConsoleAction, () => boolean> {
+    return new Map([
+      ["scroll-up", () => this.scrollUp()],
+      ["scroll-down", () => this.scrollDown()],
+      ["scroll-to-top", () => this.scrollToTop()],
+      ["scroll-to-bottom", () => this.scrollToBottomAction()],
+      ["position-previous", () => this.positionPrevious()],
+      ["position-next", () => this.positionNext()],
+      ["size-increase", () => this.sizeIncrease()],
+      ["size-decrease", () => this.sizeDecrease()],
+      ["save-logs", () => this.saveLogsAction()],
+      ["copy-selection", () => this.triggerCopyAction()],
+    ])
   }
 
   public activate(): void {
@@ -417,87 +490,121 @@ export class TerminalConsole extends EventEmitter {
   }
 
   private handleKeyPress(event: KeyEvent): void {
-    let needsRedraw = false
-    const displayLineCount = this._displayLines.length
-    const logAreaHeight = Math.max(1, this.consoleHeight - 1)
-    const maxScrollTop = Math.max(0, displayLineCount - logAreaHeight)
-    const currentPositionIndex = this._positions.indexOf(this.options.position)
-
     if (event.name === "escape") {
       this.blur()
       return
     }
 
-    if (event.name === "up" && event.shift) {
-      // Shift+UpArrow - Scroll to top
-      if (this.scrollTopIndex > 0 || this.currentLineIndex > 0) {
-        this.scrollTopIndex = 0
-        this.currentLineIndex = 0
-        this.isScrolledToBottom = this._displayLines.length <= Math.max(1, this.consoleHeight - 1)
-        needsRedraw = true
-      }
-    } else if (event.name === "down" && event.shift) {
-      // Shift+DownArrow - Scroll to bottom
-      const logAreaHeightForScroll = Math.max(1, this.consoleHeight - 1)
-      const maxScrollPossible = Math.max(0, this._displayLines.length - logAreaHeightForScroll)
-      if (this.scrollTopIndex < maxScrollPossible || !this.isScrolledToBottom) {
-        this._scrollToBottom(true)
-        needsRedraw = true
-      }
-    } else if (event.name === "up") {
-      // Up arrow
-      if (this.currentLineIndex > 0) {
-        this.currentLineIndex--
-        needsRedraw = true
-      } else if (this.scrollTopIndex > 0) {
-        this.scrollTopIndex--
-        this.isScrolledToBottom = false
-        needsRedraw = true
-      }
-    } else if (event.name === "down") {
-      // Down arrow
-      const canCursorMoveDown =
-        this.currentLineIndex < logAreaHeight - 1 && this.scrollTopIndex + this.currentLineIndex < displayLineCount - 1
+    // Check for key binding actions
+    const bindingKey = getKeyBindingKey({
+      name: event.name,
+      ctrl: event.ctrl,
+      shift: event.shift,
+      meta: event.meta,
+      super: event.super,
+      action: "scroll-up" as ConsoleAction,
+    })
 
-      if (canCursorMoveDown) {
-        this.currentLineIndex++
-        needsRedraw = true
-      } else if (this.scrollTopIndex < maxScrollTop) {
-        this.scrollTopIndex++
-        this.isScrolledToBottom = this.scrollTopIndex === maxScrollTop
-        needsRedraw = true
+    const action = this._keyBindingsMap.get(bindingKey)
+
+    if (action) {
+      const handler = this._actionHandlers.get(action)
+      if (handler) {
+        handler()
+        return
       }
-    } else if (event.name === "p" && event.ctrl) {
-      // Ctrl+p (Previous position)
-      const prevIndex = (currentPositionIndex - 1 + this._positions.length) % this._positions.length
-      this.options.position = this._positions[prevIndex]
-      this.resize(this.renderer.width, this.renderer.height)
-    } else if (event.name === "o" && event.ctrl) {
-      // Ctrl+o (Next/Other position)
-      const nextIndex = (currentPositionIndex + 1) % this._positions.length
-      this.options.position = this._positions[nextIndex]
-      this.resize(this.renderer.width, this.renderer.height)
-    } else if (event.name === "+" || (event.name === "=" && event.shift)) {
-      this.options.sizePercent = Math.min(100, this.options.sizePercent + 5)
-      this.resize(this.renderer.width, this.renderer.height)
-    } else if (event.name === "-") {
-      this.options.sizePercent = Math.max(10, this.options.sizePercent - 5)
-      this.resize(this.renderer.width, this.renderer.height)
-    } else if (event.name === "s" && event.ctrl) {
-      // Ctrl+s (Save logs)
-      this.saveLogsToFile()
-    } else if (
-      this.options.copyShortcut &&
-      event.name === this.options.copyShortcut.key &&
-      event.ctrl === (this.options.copyShortcut.ctrl ?? false) &&
-      event.shift === (this.options.copyShortcut.shift ?? false)
-    ) {
-      this.triggerCopy()
     }
+  }
 
-    if (needsRedraw) {
+  // Action methods
+  private scrollUp(): boolean {
+    const logAreaHeight = Math.max(1, this.consoleHeight - 1)
+
+    if (this.currentLineIndex > 0) {
+      this.currentLineIndex--
+      this.markNeedsRerender()
+    } else if (this.scrollTopIndex > 0) {
+      this.scrollTopIndex--
+      this.isScrolledToBottom = false
       this.markNeedsRerender()
     }
+    return true
+  }
+
+  private scrollDown(): boolean {
+    const displayLineCount = this._displayLines.length
+    const logAreaHeight = Math.max(1, this.consoleHeight - 1)
+    const maxScrollTop = Math.max(0, displayLineCount - logAreaHeight)
+    const canCursorMoveDown =
+      this.currentLineIndex < logAreaHeight - 1 && this.scrollTopIndex + this.currentLineIndex < displayLineCount - 1
+
+    if (canCursorMoveDown) {
+      this.currentLineIndex++
+      this.markNeedsRerender()
+    } else if (this.scrollTopIndex < maxScrollTop) {
+      this.scrollTopIndex++
+      this.isScrolledToBottom = this.scrollTopIndex === maxScrollTop
+      this.markNeedsRerender()
+    }
+    return true
+  }
+
+  private scrollToTop(): boolean {
+    if (this.scrollTopIndex > 0 || this.currentLineIndex > 0) {
+      this.scrollTopIndex = 0
+      this.currentLineIndex = 0
+      this.isScrolledToBottom = this._displayLines.length <= Math.max(1, this.consoleHeight - 1)
+      this.markNeedsRerender()
+    }
+    return true
+  }
+
+  private scrollToBottomAction(): boolean {
+    const logAreaHeightForScroll = Math.max(1, this.consoleHeight - 1)
+    const maxScrollPossible = Math.max(0, this._displayLines.length - logAreaHeightForScroll)
+    if (this.scrollTopIndex < maxScrollPossible || !this.isScrolledToBottom) {
+      this._scrollToBottom(true)
+      this.markNeedsRerender()
+    }
+    return true
+  }
+
+  private positionPrevious(): boolean {
+    const currentPositionIndex = this._positions.indexOf(this.options.position)
+    const prevIndex = (currentPositionIndex - 1 + this._positions.length) % this._positions.length
+    this.options.position = this._positions[prevIndex]
+    this.resize(this.renderer.width, this.renderer.height)
+    return true
+  }
+
+  private positionNext(): boolean {
+    const currentPositionIndex = this._positions.indexOf(this.options.position)
+    const nextIndex = (currentPositionIndex + 1) % this._positions.length
+    this.options.position = this._positions[nextIndex]
+    this.resize(this.renderer.width, this.renderer.height)
+    return true
+  }
+
+  private sizeIncrease(): boolean {
+    this.options.sizePercent = Math.min(100, this.options.sizePercent + 5)
+    this.resize(this.renderer.width, this.renderer.height)
+    return true
+  }
+
+  private sizeDecrease(): boolean {
+    this.options.sizePercent = Math.max(10, this.options.sizePercent - 5)
+    this.resize(this.renderer.width, this.renderer.height)
+    return true
+  }
+
+  private saveLogsAction(): boolean {
+    this.saveLogsToFile()
+    return true
+  }
+
+  private triggerCopyAction(): boolean {
+    this.triggerCopy()
+    return true
   }
 
   private attachStdin(): void {
@@ -719,7 +826,13 @@ export class TerminalConsole extends EventEmitter {
 
         if (adjustedStart < adjustedEnd) {
           this.frameBuffer.fillRect(1 + adjustedStart, lineY, adjustedEnd - adjustedStart, 1, this._rgbaSelection)
-          this.frameBuffer.drawText(fullText.substring(adjustedStart, adjustedEnd), 1 + adjustedStart, lineY, levelColor, this._rgbaSelection)
+          this.frameBuffer.drawText(
+            fullText.substring(adjustedStart, adjustedEnd),
+            1 + adjustedStart,
+            lineY,
+            levelColor,
+            this._rgbaSelection,
+          )
         }
 
         if (adjustedEnd < fullText.length) {
@@ -754,6 +867,26 @@ export class TerminalConsole extends EventEmitter {
 
   public toggleDebugMode(): void {
     this.setDebugMode(!this._debugModeEnabled)
+  }
+
+  public set keyBindings(bindings: ConsoleKeyBinding[]) {
+    this._keyBindings = bindings
+    const mergedBindings = mergeKeyBindings(defaultConsoleKeybindings, bindings)
+    this._keyBindingsMap = buildKeyBindingsMap(mergedBindings, this._keyAliasMap)
+  }
+
+  public set keyAliasMap(aliases: KeyAliasMap) {
+    this._keyAliasMap = mergeKeyAliases(defaultKeyAliases, aliases)
+    const mergedBindings = mergeKeyBindings(defaultConsoleKeybindings, this._keyBindings)
+    this._keyBindingsMap = buildKeyBindingsMap(mergedBindings, this._keyAliasMap)
+  }
+
+  public set onCopySelection(callback: ((text: string) => void) | undefined) {
+    this.options.onCopySelection = callback
+  }
+
+  public get onCopySelection(): ((text: string) => void) | undefined {
+    return this.options.onCopySelection
   }
 
   private _scrollToBottom(forceCursorToLastLine: boolean = false): void {
@@ -836,8 +969,7 @@ export class TerminalConsole extends EventEmitter {
     const start = this._selectionStart
     const end = this._selectionEnd
 
-    const startBeforeEnd =
-      start.line < end.line || (start.line === end.line && start.col <= end.col)
+    const startBeforeEnd = start.line < end.line || (start.line === end.line && start.col <= end.col)
 
     if (startBeforeEnd) {
       return {
