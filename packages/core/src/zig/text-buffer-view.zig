@@ -110,6 +110,7 @@ pub const UnifiedTextBufferView = struct {
     original_text_buffer: *UnifiedTextBuffer,
     view_id: u32,
     selection: ?TextSelection,
+    selection_anchor_offset: ?u32,
     viewport: ?Viewport,
     wrap_width: ?u32,
     wrap_mode: WrapMode,
@@ -141,6 +142,7 @@ pub const UnifiedTextBufferView = struct {
             .original_text_buffer = text_buffer,
             .view_id = view_id,
             .selection = null,
+            .selection_anchor_offset = null,
             .viewport = null,
             .wrap_width = null,
             .wrap_mode = .none,
@@ -458,10 +460,6 @@ pub const UnifiedTextBufferView = struct {
     }
 
     pub fn getSelection(self: *const Self) ?TextSelection {
-        // Don't expose zero-width selections
-        if (self.selection) |sel| {
-            if (sel.start == sel.end) return null;
-        }
         return self.selection;
     }
 
@@ -487,6 +485,7 @@ pub const UnifiedTextBufferView = struct {
             // Invalid coordinates - clear selection
             const had_selection = self.selection != null;
             self.selection = null;
+            self.selection_anchor_offset = null;
             return had_selection;
         };
 
@@ -494,8 +493,12 @@ pub const UnifiedTextBufferView = struct {
             // Invalid coordinates - clear selection
             const had_selection = self.selection != null;
             self.selection = null;
+            self.selection_anchor_offset = null;
             return had_selection;
         };
+
+        // Store the anchor offset separately to preserve it across updates
+        self.selection_anchor_offset = anchor_offset;
 
         const new_start = @min(anchor_offset, focus_offset);
         const new_end = @max(anchor_offset, focus_offset);
@@ -518,21 +521,21 @@ pub const UnifiedTextBufferView = struct {
     }
 
     pub fn updateLocalSelection(self: *Self, focusX: i32, focusY: i32, bgColor: ?RGBA, fgColor: ?RGBA) bool {
-        // Requires existing selection - the anchor must have been set by setLocalSelection
-        const current_selection = self.selection orelse return false;
+        // Requires existing anchor - must have been set by setLocalSelection
+        const anchor_offset = self.selection_anchor_offset orelse return false;
 
         // Convert new focus coordinates to character offset
         const focus_char_offset = self.coordsToCharOffset(focusX, focusY) orelse return false;
 
-        // Use existing selection.start as the anchor (preserves original anchor position)
-        const anchor_offset = current_selection.start;
-
+        // Use stored anchor offset (never changes during updates)
         const new_start = @min(anchor_offset, focus_char_offset);
         const new_end = @max(anchor_offset, focus_char_offset);
 
         // Check if selection actually changed
-        if (new_start == current_selection.start and new_end == current_selection.end) {
-            return false;
+        if (self.selection) |current_sel| {
+            if (new_start == current_sel.start and new_end == current_sel.end) {
+                return false;
+            }
         }
 
         // Always store selection, even if zero-width
@@ -548,6 +551,7 @@ pub const UnifiedTextBufferView = struct {
 
     pub fn resetLocalSelection(self: *Self) void {
         self.selection = null;
+        self.selection_anchor_offset = null;
     }
 
     // Convert viewport-relative coordinates to a character offset

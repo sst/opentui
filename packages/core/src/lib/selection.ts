@@ -52,16 +52,8 @@ export class Selection {
     return { ...this._normalizedAnchor }
   }
 
-  get realAnchor(): { x: number; y: number } {
-    return { x: this._anchor.x, y: this._anchor.y }
-  }
-
   get focus(): { x: number; y: number } {
     return { ...this._normalizedFocus }
-  }
-
-  get realFocus(): { x: number; y: number } {
-    return { ...this._originalFocus }
   }
 
   set focus(value: { x: number; y: number }) {
@@ -164,10 +156,10 @@ export function convertGlobalToLocalSelection(
   }
 
   return {
-    anchorX: globalSelection.realAnchor.x - localX,
-    anchorY: globalSelection.realAnchor.y - localY,
-    focusX: globalSelection.realFocus.x - localX,
-    focusY: globalSelection.realFocus.y - localY,
+    anchorX: globalSelection.anchor.x - localX,
+    anchorY: globalSelection.anchor.y - localY,
+    focusX: globalSelection.focus.x - localX,
+    focusY: globalSelection.focus.y - localY,
     isActive: true,
   }
 }

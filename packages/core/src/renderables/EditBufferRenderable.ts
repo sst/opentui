@@ -355,13 +355,7 @@ export abstract class EditBufferRenderable extends Renderable implements LineInf
       this.editorView.resetLocalSelection()
       return true
     }
-    const viewport = this.editorView.getViewport()
-    console.log(`[updateLocalSelection] Calling setLocalSelection:`, {
-      anchor: { x: localSelection.anchorX, y: localSelection.anchorY },
-      focus: { x: localSelection.focusX, y: localSelection.focusY },
-      viewport: { offsetX: viewport.offsetX, offsetY: viewport.offsetY },
-    })
-    const result = this.editorView.setLocalSelection(
+    return this.editorView.setLocalSelection(
       localSelection.anchorX,
       localSelection.anchorY,
       localSelection.focusX,
@@ -369,9 +363,6 @@ export abstract class EditBufferRenderable extends Renderable implements LineInf
       this._selectionBg,
       this._selectionFg,
     )
-    const sel = this.editorView.getSelection()
-    console.log(`[updateLocalSelection] Result:`, { changed: result, selection: sel })
-    return result
   }
 
   shouldStartSelection(x: number, y: number): boolean {
