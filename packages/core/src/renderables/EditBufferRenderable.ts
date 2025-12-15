@@ -53,12 +53,6 @@ export abstract class EditBufferRenderable extends Renderable implements LineInf
   protected lastLocalSelection: LocalSelectionBounds | null = null
   protected _tabIndicator?: string | number
   protected _tabIndicatorColor?: RGBA
-  private _selectionAnchorState: {
-    screenX: number
-    screenY: number
-    viewportX: number
-    viewportY: number
-  } | null = null
 
   private _cursorChangeListener: ((event: CursorChangeEvent) => void) | undefined = undefined
   private _contentChangeListener: ((event: ContentChangeEvent) => void) | undefined = undefined
@@ -361,7 +355,13 @@ export abstract class EditBufferRenderable extends Renderable implements LineInf
       this.editorView.resetLocalSelection()
       return true
     }
-    return this.editorView.setLocalSelection(
+    const viewport = this.editorView.getViewport()
+    console.log(`[updateLocalSelection] Calling setLocalSelection:`, {
+      anchor: { x: localSelection.anchorX, y: localSelection.anchorY },
+      focus: { x: localSelection.focusX, y: localSelection.focusY },
+      viewport: { offsetX: viewport.offsetX, offsetY: viewport.offsetY },
+    })
+    const result = this.editorView.setLocalSelection(
       localSelection.anchorX,
       localSelection.anchorY,
       localSelection.focusX,
@@ -369,6 +369,9 @@ export abstract class EditBufferRenderable extends Renderable implements LineInf
       this._selectionBg,
       this._selectionFg,
     )
+    const sel = this.editorView.getSelection()
+    console.log(`[updateLocalSelection] Result:`, { changed: result, selection: sel })
+    return result
   }
 
   shouldStartSelection(x: number, y: number): boolean {
@@ -384,6 +387,8 @@ export abstract class EditBufferRenderable extends Renderable implements LineInf
     const localSelection = convertGlobalToLocalSelection(selection, this.x, this.y)
     this.lastLocalSelection = localSelection
 
+    // Always use setLocalSelection for now since it handles viewport offsets correctly
+    // The native layer will handle coordinate transformations
     const changed = this.updateLocalSelection(localSelection)
 
     if (changed) {
@@ -624,57 +629,53 @@ export abstract class EditBufferRenderable extends Renderable implements LineInf
     if (!this.selectable) return
 
     if (!shiftPressed) {
+      this.editorView.resetLocalSelection()
       this._ctx.clearSelection()
-      this._selectionAnchorState = null
       return
     }
 
     const visualCursor = this.editorView.getVisualCursor()
     const viewport = this.editorView.getViewport()
 
-    const cursorX = this.x + visualCursor.visualCol
-    const cursorY = this.y + visualCursor.visualRow
+    console.log(`[updateSelectionForMovement] ${isBeforeMovement ? "BEFORE" : "AFTER"}`, {
+      visualCursor: { row: visualCursor.visualRow, col: visualCursor.visualCol },
+      logicalCursor: { row: visualCursor.logicalRow, col: visualCursor.logicalCol },
+      viewport: { offsetY: viewport.offsetY, offsetX: viewport.offsetX },
+      hasSelection: this.editorView.hasSelection(),
+    })
 
     if (isBeforeMovement) {
-      if (!this._ctx.hasSelection) {
-        this._ctx.startSelection(this, cursorX, cursorY)
-        this._selectionAnchorState = {
-          screenX: cursorX,
-          screenY: cursorY,
-          viewportX: viewport.offsetX,
-          viewportY: viewport.offsetY,
-        }
-      } else if (!this._selectionAnchorState) {
-        // Selection exists but we don't have state (e.g. from mouse), capture it
-        const selection = this._ctx.getSelection()
-        if (selection && selection.isActive) {
-          this._selectionAnchorState = {
-            screenX: selection.anchor.x,
-            screenY: selection.anchor.y,
-            viewportX: viewport.offsetX,
-            viewportY: viewport.offsetY,
-          }
-        }
+      if (!this.editorView.hasSelection()) {
+        console.log(
+          `[updateSelectionForMovement] Starting selection at visual (${visualCursor.visualCol}, ${visualCursor.visualRow})`,
+        )
+        // Start native selection at current cursor position (viewport-relative)
+        this.editorView.setLocalSelection(
+          visualCursor.visualCol,
+          visualCursor.visualRow,
+          visualCursor.visualCol,
+          visualCursor.visualRow,
+          this._selectionBg,
+          this._selectionFg,
+        )
+        const sel = this.editorView.getSelection()
+        console.log(`[updateSelectionForMovement] After setLocalSelection:`, sel)
       }
     } else {
-      // After movement - check if viewport changed
-      if (this._selectionAnchorState) {
-        const deltaY = viewport.offsetY - this._selectionAnchorState.viewportY
-        const deltaX = viewport.offsetX - this._selectionAnchorState.viewportX
-
-        if (deltaY !== 0 || deltaX !== 0) {
-          const newAnchorX = this._selectionAnchorState.screenX - deltaX
-          const newAnchorY = this._selectionAnchorState.screenY - deltaY
-
-          // We need to update the anchor without losing focus position
-          // startSelection sets both anchor and focus to the same point
-          this._ctx.startSelection(this, newAnchorX, newAnchorY)
-          this._ctx.updateSelection(this, cursorX, cursorY)
-        } else {
-          this._ctx.updateSelection(this, cursorX, cursorY)
-        }
-      } else {
-        this._ctx.updateSelection(this, cursorX, cursorY)
+      console.log(
+        `[updateSelectionForMovement] Updating selection to visual (${visualCursor.visualCol}, ${visualCursor.visualRow})`,
+      )
+      // Update native selection focus to new cursor position (viewport-relative)
+      const changed = this.editorView.updateLocalSelection(
+        visualCursor.visualCol,
+        visualCursor.visualRow,
+        this._selectionBg,
+        this._selectionFg,
+      )
+      const sel = this.editorView.getSelection()
+      console.log(`[updateSelectionForMovement] After updateLocalSelection:`, { changed, selection: sel })
+      if (changed) {
+        this.requestRender()
       }
     }
   }

@@ -891,6 +891,7 @@ describe("Textarea - Selection Tests", () => {
       expect(viewport.offsetY).toBeGreaterThan(0)
 
       const sel = editor.getSelection()
+      console.log("Selection after scrolling:", sel, "Selected text:", editor.getSelectedText())
       expect(sel).not.toBe(null)
       // Should start at 0 (Line 0)
       expect(sel!.start).toBe(0)

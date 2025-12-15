@@ -110,7 +110,6 @@ pub const UnifiedTextBufferView = struct {
     original_text_buffer: *UnifiedTextBuffer,
     view_id: u32,
     selection: ?TextSelection,
-    local_selection: ?LocalSelection,
     viewport: ?Viewport,
     wrap_width: ?u32,
     wrap_mode: WrapMode,
@@ -142,7 +141,6 @@ pub const UnifiedTextBufferView = struct {
             .original_text_buffer = text_buffer,
             .view_id = view_id,
             .selection = null,
-            .local_selection = null,
             .viewport = null,
             .wrap_width = null,
             .wrap_mode = .none,
@@ -460,6 +458,10 @@ pub const UnifiedTextBufferView = struct {
     }
 
     pub fn getSelection(self: *const Self) ?TextSelection {
+        // Don't expose zero-width selections
+        if (self.selection) |sel| {
+            if (sel.start == sel.end) return null;
+        }
         return self.selection;
     }
 
@@ -480,109 +482,101 @@ pub const UnifiedTextBufferView = struct {
     }
 
     pub fn setLocalSelection(self: *Self, anchorX: i32, anchorY: i32, focusX: i32, focusY: i32, bgColor: ?RGBA, fgColor: ?RGBA) bool {
-        const new_local_sel = LocalSelection{
-            .anchorX = anchorX,
-            .anchorY = anchorY,
-            .focusX = focusX,
-            .focusY = focusY,
-            .isActive = true,
+        // Convert anchor and focus to character offsets
+        const anchor_offset = self.coordsToCharOffset(anchorX, anchorY) orelse {
+            // Invalid coordinates - clear selection
+            const had_selection = self.selection != null;
+            self.selection = null;
+            return had_selection;
         };
 
-        const coords_changed = if (self.local_selection) |old_sel| blk: {
-            break :blk old_sel.anchorX != new_local_sel.anchorX or
-                old_sel.anchorY != new_local_sel.anchorY or
-                old_sel.focusX != new_local_sel.focusX or
-                old_sel.focusY != new_local_sel.focusY;
-        } else true;
-
-        self.local_selection = new_local_sel;
-
-        const char_selection = self.calculateMultiLineSelection();
-        var selection_changed = coords_changed;
-
-        if (char_selection) |sel| {
-            const new_selection = TextSelection{
-                .start = sel.start,
-                .end = sel.end,
-                .bgColor = bgColor,
-                .fgColor = fgColor,
-            };
-
-            if (self.selection) |old_sel| {
-                if (old_sel.start != new_selection.start or old_sel.end != new_selection.end) {
-                    selection_changed = true;
-                }
-            } else {
-                selection_changed = true;
-            }
-
-            self.selection = new_selection;
-        } else {
-            if (self.selection != null) {
-                selection_changed = true;
-            }
+        const focus_offset = self.coordsToCharOffset(focusX, focusY) orelse {
+            // Invalid coordinates - clear selection
+            const had_selection = self.selection != null;
             self.selection = null;
-        }
+            return had_selection;
+        };
 
+        const new_start = @min(anchor_offset, focus_offset);
+        const new_end = @max(anchor_offset, focus_offset);
+
+        // Always store selection, even if zero-width, to preserve anchor for updateLocalSelection
+        const new_selection = TextSelection{
+            .start = new_start,
+            .end = new_end,
+            .bgColor = bgColor,
+            .fgColor = fgColor,
+        };
+
+        const selection_changed = if (self.selection) |old_sel|
+            old_sel.start != new_selection.start or old_sel.end != new_selection.end
+        else
+            true;
+
+        self.selection = new_selection;
         return selection_changed;
     }
 
     pub fn updateLocalSelection(self: *Self, focusX: i32, focusY: i32, bgColor: ?RGBA, fgColor: ?RGBA) bool {
-        const local_sel = self.local_selection orelse return false;
+        // Requires existing selection - the anchor must have been set by setLocalSelection
+        const current_selection = self.selection orelse return false;
 
-        const new_local_sel = LocalSelection{
-            .anchorX = local_sel.anchorX,
-            .anchorY = local_sel.anchorY,
-            .focusX = focusX,
-            .focusY = focusY,
-            .isActive = true,
-        };
+        // Convert new focus coordinates to character offset
+        const focus_char_offset = self.coordsToCharOffset(focusX, focusY) orelse return false;
 
-        const coords_changed = local_sel.focusX != new_local_sel.focusX or
-            local_sel.focusY != new_local_sel.focusY;
+        // Use existing selection.start as the anchor (preserves original anchor position)
+        const anchor_offset = current_selection.start;
 
-        self.local_selection = new_local_sel;
+        const new_start = @min(anchor_offset, focus_char_offset);
+        const new_end = @max(anchor_offset, focus_char_offset);
 
-        const char_selection = self.calculateMultiLineSelection();
-        var selection_changed = coords_changed;
-
-        if (char_selection) |sel| {
-            const new_selection = TextSelection{
-                .start = sel.start,
-                .end = sel.end,
-                .bgColor = bgColor,
-                .fgColor = fgColor,
-            };
-
-            if (self.selection) |old_sel| {
-                if (old_sel.start != new_selection.start or old_sel.end != new_selection.end) {
-                    selection_changed = true;
-                }
-            } else {
-                selection_changed = true;
-            }
-
-            self.selection = new_selection;
-        } else {
-            if (self.selection != null) {
-                selection_changed = true;
-            }
-            self.selection = null;
+        // Check if selection actually changed
+        if (new_start == current_selection.start and new_end == current_selection.end) {
+            return false;
         }
 
-        return selection_changed;
+        // Always store selection, even if zero-width
+        self.selection = TextSelection{
+            .start = new_start,
+            .end = new_end,
+            .bgColor = bgColor,
+            .fgColor = fgColor,
+        };
+
+        return true;
     }
 
     pub fn resetLocalSelection(self: *Self) void {
-        self.local_selection = null;
         self.selection = null;
     }
 
-    // Local coordinates are viewport-relative (if viewport is set)
-    fn calculateMultiLineSelection(self: *Self) ?struct { start: u32, end: u32 } {
-        const local_sel = self.local_selection orelse return null;
-        if (!local_sel.isActive) return null;
+    // Convert viewport-relative coordinates to a character offset
+    fn coordsToCharOffset(self: *Self, x: i32, y: i32) ?u32 {
+        self.updateVirtualLines();
 
+        // Apply viewport offsets to convert viewport-relative to absolute coordinates
+        const y_offset: i32 = if (self.viewport) |vp| @intCast(vp.y) else 0;
+        const x_offset: i32 = if (self.viewport) |vp|
+            (if (self.wrap_mode == .none) @intCast(vp.x) else 0)
+        else
+            0;
+
+        const abs_y = y + y_offset;
+        const abs_x = x + x_offset;
+
+        if (abs_y < 0 or abs_y >= self.virtual_lines.items.len) return null;
+
+        const vline_idx: usize = @intCast(abs_y);
+        const vline = &self.virtual_lines.items[vline_idx];
+        const lineStart = vline.char_offset;
+        const lineWidth = vline.width;
+
+        const localX = @max(0, @min(abs_x, @as(i32, @intCast(lineWidth))));
+        return lineStart + @as(u32, @intCast(localX));
+    }
+
+    // Local coordinates are viewport-relative (if viewport is set)
+    fn calculateSelectionFromCoords(self: *Self, anchorX: i32, anchorY: i32, focusX: i32, focusY: i32) ?struct { start: u32, end: u32 } {
         self.updateVirtualLines();
 
         // Apply viewport offsets to convert viewport-relative to absolute coordinates
@@ -596,20 +590,18 @@ pub const UnifiedTextBufferView = struct {
         var selectionEnd: ?u32 = null;
 
         // Convert viewport-relative Y coordinates to absolute virtual line indices
-        const startY = @min(local_sel.anchorY + y_offset, local_sel.focusY + y_offset);
-        const endY = @max(local_sel.anchorY + y_offset, local_sel.focusY + y_offset);
+        const startY = @min(anchorY + y_offset, focusY + y_offset);
+        const endY = @max(anchorY + y_offset, focusY + y_offset);
 
         var selStartX: i32 = undefined;
         var selEndX: i32 = undefined;
 
-        if (local_sel.anchorY < local_sel.focusY or
-            (local_sel.anchorY == local_sel.focusY and local_sel.anchorX <= local_sel.focusX))
-        {
-            selStartX = local_sel.anchorX + x_offset;
-            selEndX = local_sel.focusX + x_offset;
+        if (anchorY < focusY or (anchorY == focusY and anchorX <= focusX)) {
+            selStartX = anchorX + x_offset;
+            selEndX = focusX + x_offset;
         } else {
-            selStartX = local_sel.focusX + x_offset;
-            selEndX = local_sel.anchorX + x_offset;
+            selStartX = focusX + x_offset;
+            selEndX = anchorX + x_offset;
         }
 
         for (self.virtual_lines.items, 0..) |vline, i| {
@@ -652,8 +644,13 @@ pub const UnifiedTextBufferView = struct {
     }
 
     /// Pack selection info into u64 for efficient passing
+    /// Returns 0xFFFF_FFFF_FFFF_FFFF for no selection or zero-width selection
     pub fn packSelectionInfo(self: *const Self) u64 {
         if (self.selection) |sel| {
+            // Don't expose zero-width selections
+            if (sel.start == sel.end) {
+                return 0xFFFF_FFFF_FFFF_FFFF;
+            }
             return (@as(u64, sel.start) << 32) | @as(u64, sel.end);
         } else {
             return 0xFFFF_FFFF_FFFF_FFFF;
@@ -663,6 +660,8 @@ pub const UnifiedTextBufferView = struct {
     /// Get selected text into buffer - using efficient single-pass API
     pub fn getSelectedTextIntoBuffer(self: *Self, out_buffer: []u8) usize {
         const selection = self.selection orelse return 0;
+        // Don't extract text for zero-width selections
+        if (selection.start == selection.end) return 0;
         return iter_mod.extractTextBetweenOffsets(
             &self.text_buffer.rope,
             &self.text_buffer.mem_registry,
