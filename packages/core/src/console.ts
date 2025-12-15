@@ -18,6 +18,7 @@ import {
   type KeyAliasMap,
   defaultKeyAliases,
   mergeKeyAliases,
+  keyBindingToString,
 } from "./lib/keymapping"
 
 interface CallerInfo {
@@ -339,11 +340,21 @@ export class TerminalConsole extends EventEmitter {
   private _keyBindingsMap: Map<string, ConsoleAction>
   private _keyAliasMap: KeyAliasMap
   private _keyBindings: ConsoleKeyBinding[]
+  private _mergedKeyBindings: ConsoleKeyBinding[]
   private _actionHandlers: Map<ConsoleAction, () => boolean>
 
   private markNeedsRerender(): void {
     this._needsFrameBufferUpdate = true
     this.renderer.requestRender()
+  }
+
+  private getCopyButtonLabel(): string {
+    const copyBinding = this._mergedKeyBindings.find((b) => b.action === "copy-selection")
+    if (copyBinding) {
+      const shortcut = keyBindingToString(copyBinding)
+      return `[Copy (${shortcut})]`
+    }
+    return "[Copy]"
   }
 
   private _rgbaInfo: RGBA
@@ -390,8 +401,8 @@ export class TerminalConsole extends EventEmitter {
     // Initialize key bindings
     this._keyAliasMap = mergeKeyAliases(defaultKeyAliases, options.keyAliasMap || {})
     this._keyBindings = options.keyBindings || []
-    const mergedBindings = mergeKeyBindings(defaultConsoleKeybindings, this._keyBindings)
-    this._keyBindingsMap = buildKeyBindingsMap(mergedBindings, this._keyAliasMap)
+    this._mergedKeyBindings = mergeKeyBindings(defaultConsoleKeybindings, this._keyBindings)
+    this._keyBindingsMap = buildKeyBindingsMap(this._mergedKeyBindings, this._keyAliasMap)
     this._actionHandlers = this.buildActionHandlers()
 
     this._updateConsoleDimensions()
@@ -763,7 +774,7 @@ export class TerminalConsole extends EventEmitter {
     this.frameBuffer.drawText(dynamicTitle, titleX, 0, this._rgbaTitleBarText, this._rgbaTitleBar)
 
     // --- Draw [Copy] Button ---
-    const copyLabel = "[Copy]"
+    const copyLabel = this.getCopyButtonLabel()
     const copyButtonX = this.consoleWidth - copyLabel.length - 1
     if (copyButtonX >= 0) {
       const copyButtonEnabled = this.hasSelection()
@@ -871,14 +882,16 @@ export class TerminalConsole extends EventEmitter {
 
   public set keyBindings(bindings: ConsoleKeyBinding[]) {
     this._keyBindings = bindings
-    const mergedBindings = mergeKeyBindings(defaultConsoleKeybindings, bindings)
-    this._keyBindingsMap = buildKeyBindingsMap(mergedBindings, this._keyAliasMap)
+    this._mergedKeyBindings = mergeKeyBindings(defaultConsoleKeybindings, bindings)
+    this._keyBindingsMap = buildKeyBindingsMap(this._mergedKeyBindings, this._keyAliasMap)
+    this.markNeedsRerender() // Rerender to update copy button label
   }
 
   public set keyAliasMap(aliases: KeyAliasMap) {
     this._keyAliasMap = mergeKeyAliases(defaultKeyAliases, aliases)
-    const mergedBindings = mergeKeyBindings(defaultConsoleKeybindings, this._keyBindings)
-    this._keyBindingsMap = buildKeyBindingsMap(mergedBindings, this._keyAliasMap)
+    this._mergedKeyBindings = mergeKeyBindings(defaultConsoleKeybindings, this._keyBindings)
+    this._keyBindingsMap = buildKeyBindingsMap(this._mergedKeyBindings, this._keyAliasMap)
+    this.markNeedsRerender() // Rerender to update copy button label
   }
 
   public set onCopySelection(callback: ((text: string) => void) | undefined) {
