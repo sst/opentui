@@ -1020,11 +1020,9 @@ export class CliRenderer extends EventEmitter implements RenderContext {
           mouseEvent.y >= consoleBounds.y &&
           mouseEvent.y < consoleBounds.y + consoleBounds.height
         ) {
-          const eventType = mouseEvent.type as "down" | "drag" | "up"
-          if (eventType === "down" || eventType === "drag" || eventType === "up") {
-            const handled = this._console.handleMouse(mouseEvent.x, mouseEvent.y, eventType, mouseEvent.button)
-            if (handled) return true
-          }
+          const event = new MouseEvent(null, mouseEvent)
+          const handled = this._console.handleMouse(event)
+          if (handled) return true
         }
       }
 

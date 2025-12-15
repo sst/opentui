@@ -3,7 +3,7 @@ import { Console } from "node:console"
 import fs from "node:fs"
 import path from "node:path"
 import util from "node:util"
-import type { CliRenderer, ColorInput } from "."
+import type { CliRenderer, ColorInput, MouseEvent } from "."
 import { OptimizedBuffer } from "./buffer"
 import { Capture, CapturedWritableStream } from "./lib/output.capture"
 import { parseColor, RGBA } from "./lib/RGBA"
@@ -1068,20 +1068,31 @@ export class TerminalConsole extends EventEmitter {
     return { start, end }
   }
 
-  public handleMouse(x: number, y: number, type: "down" | "drag" | "up", button: number): boolean {
+  public handleMouse(event: MouseEvent): boolean {
     if (!this.isVisible) return false
 
-    const localX = x - this.consoleX
-    const localY = y - this.consoleY
+    const localX = event.x - this.consoleX
+    const localY = event.y - this.consoleY
 
     if (localX < 0 || localX >= this.consoleWidth || localY < 0 || localY >= this.consoleHeight) {
       return false
     }
 
+    // Handle scroll events
+    if (event.type === "scroll" && event.scroll) {
+      if (event.scroll.direction === "up") {
+        this.scrollUp()
+      } else if (event.scroll.direction === "down") {
+        this.scrollDown()
+      }
+      return true
+    }
+
+    // Handle title bar clicks (copy button)
     if (localY === 0) {
       if (
-        type === "down" &&
-        button === 0 &&
+        event.type === "down" &&
+        event.button === 0 &&
         localX >= this._copyButtonBounds.x &&
         localX < this._copyButtonBounds.x + this._copyButtonBounds.width
       ) {
@@ -1094,7 +1105,7 @@ export class TerminalConsole extends EventEmitter {
     const lineIndex = this.scrollTopIndex + (localY - 1)
     const colIndex = Math.max(0, localX - 1)
 
-    if (type === "down" && button === 0) {
+    if (event.type === "down" && event.button === 0) {
       this.clearSelection()
       this._selectionStart = { line: lineIndex, col: colIndex }
       this._selectionEnd = { line: lineIndex, col: colIndex }
@@ -1103,13 +1114,13 @@ export class TerminalConsole extends EventEmitter {
       return true
     }
 
-    if (type === "drag" && this._isSelecting) {
+    if (event.type === "drag" && this._isSelecting) {
       this._selectionEnd = { line: lineIndex, col: colIndex }
       this.markNeedsRerender()
       return true
     }
 
-    if (type === "up") {
+    if (event.type === "up") {
       if (this._isSelecting) {
         this._selectionEnd = { line: lineIndex, col: colIndex }
         this._isSelecting = false
