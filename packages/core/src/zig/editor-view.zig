@@ -239,6 +239,38 @@ pub const EditorView = struct {
         return self.text_buffer_view.selection;
     }
 
+    pub fn setSelection(self: *EditorView, start: u32, end: u32, bgColor: ?tb.RGBA, fgColor: ?tb.RGBA) void {
+        self.text_buffer_view.setSelection(start, end, bgColor, fgColor);
+    }
+
+    pub fn updateSelection(self: *EditorView, end: u32, bgColor: ?tb.RGBA, fgColor: ?tb.RGBA) void {
+        self.text_buffer_view.updateSelection(end, bgColor, fgColor);
+    }
+
+    pub fn resetSelection(self: *EditorView) void {
+        self.text_buffer_view.resetSelection();
+    }
+
+    pub fn setLocalSelection(self: *EditorView, anchorX: i32, anchorY: i32, focusX: i32, focusY: i32, bgColor: ?tb.RGBA, fgColor: ?tb.RGBA) bool {
+        return self.text_buffer_view.setLocalSelection(anchorX, anchorY, focusX, focusY, bgColor, fgColor);
+    }
+
+    pub fn updateLocalSelection(self: *EditorView, focusX: i32, focusY: i32, bgColor: ?tb.RGBA, fgColor: ?tb.RGBA) bool {
+        return self.text_buffer_view.updateLocalSelection(focusX, focusY, bgColor, fgColor);
+    }
+
+    pub fn resetLocalSelection(self: *EditorView) void {
+        self.text_buffer_view.resetLocalSelection();
+    }
+
+    pub fn getSelectedTextIntoBuffer(self: *EditorView, out_buffer: []u8) usize {
+        return self.text_buffer_view.getSelectedTextIntoBuffer(out_buffer);
+    }
+
+    pub fn packSelectionInfo(self: *const EditorView) u64 {
+        return self.text_buffer_view.packSelectionInfo();
+    }
+
     /// This is a convenience method that preserves existing offset
     pub fn setViewportSize(self: *EditorView, width: u32, height: u32) void {
         self.text_buffer_view.setViewportSize(width, height);
