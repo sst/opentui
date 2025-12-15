@@ -1013,6 +1013,20 @@ export class CliRenderer extends EventEmitter implements RenderContext {
       this._latestPointer.x = mouseEvent.x
       this._latestPointer.y = mouseEvent.y
 
+      if (this._console.visible) {
+        const consoleBounds = this._console.bounds
+        if (
+          mouseEvent.x >= consoleBounds.x &&
+          mouseEvent.x < consoleBounds.x + consoleBounds.width &&
+          mouseEvent.y >= consoleBounds.y &&
+          mouseEvent.y < consoleBounds.y + consoleBounds.height
+        ) {
+          const event = new MouseEvent(null, mouseEvent)
+          const handled = this._console.handleMouse(event)
+          if (handled) return true
+        }
+      }
+
       if (mouseEvent.type === "scroll") {
         const maybeRenderableId = this.lib.checkHit(this.rendererPtr, mouseEvent.x, mouseEvent.y)
         const maybeRenderable = Renderable.renderablesByNumber.get(maybeRenderableId)
