@@ -620,54 +620,31 @@ export abstract class EditBufferRenderable extends Renderable implements LineInf
     if (!this.selectable) return
 
     if (!shiftPressed) {
-      this.editorView.resetLocalSelection()
       this._ctx.clearSelection()
       return
     }
 
     const visualCursor = this.editorView.getVisualCursor()
-    const viewport = this.editorView.getViewport()
+
+    // Convert viewport-relative cursor to screen-absolute coordinates for global selection
+    const cursorX = this.x + visualCursor.visualCol
+    const cursorY = this.y + visualCursor.visualRow
 
     console.log(`[updateSelectionForMovement] ${isBeforeMovement ? "BEFORE" : "AFTER"}`, {
       visualCursor: { row: visualCursor.visualRow, col: visualCursor.visualCol },
-      logicalCursor: { row: visualCursor.logicalRow, col: visualCursor.logicalCol },
-      viewport: { offsetY: viewport.offsetY, offsetX: viewport.offsetX },
-      hasSelection: this.editorView.hasSelection(),
+      screenCoords: { x: cursorX, y: cursorY },
+      renderablePos: { x: this.x, y: this.y },
+      hasGlobalSelection: this._ctx.hasSelection,
     })
 
     if (isBeforeMovement) {
-      if (!this.editorView.hasSelection()) {
-        console.log(
-          `[updateSelectionForMovement] Starting selection at visual (${visualCursor.visualCol}, ${visualCursor.visualRow})`,
-        )
-        // Start native selection at current cursor position (viewport-relative)
-        this.editorView.setLocalSelection(
-          visualCursor.visualCol,
-          visualCursor.visualRow,
-          visualCursor.visualCol,
-          visualCursor.visualRow,
-          this._selectionBg,
-          this._selectionFg,
-        )
-        const sel = this.editorView.getSelection()
-        console.log(`[updateSelectionForMovement] After setLocalSelection:`, sel)
+      if (!this._ctx.hasSelection) {
+        console.log(`[updateSelectionForMovement] Starting global selection at screen (${cursorX}, ${cursorY})`)
+        this._ctx.startSelection(this, cursorX, cursorY)
       }
     } else {
-      console.log(
-        `[updateSelectionForMovement] Updating selection to visual (${visualCursor.visualCol}, ${visualCursor.visualRow})`,
-      )
-      // Update native selection focus to new cursor position (viewport-relative)
-      const changed = this.editorView.updateLocalSelection(
-        visualCursor.visualCol,
-        visualCursor.visualRow,
-        this._selectionBg,
-        this._selectionFg,
-      )
-      const sel = this.editorView.getSelection()
-      console.log(`[updateSelectionForMovement] After updateLocalSelection:`, { changed, selection: sel })
-      if (changed) {
-        this.requestRender()
-      }
+      console.log(`[updateSelectionForMovement] Updating global selection to screen (${cursorX}, ${cursorY})`)
+      this._ctx.updateSelection(this, cursorX, cursorY)
     }
   }
 }

@@ -568,15 +568,25 @@ pub const UnifiedTextBufferView = struct {
         const abs_y = y + y_offset;
         const abs_x = x + x_offset;
 
-        if (abs_y < 0 or abs_y >= self.virtual_lines.items.len) return null;
+        std.debug.print("[coordsToCharOffset] input=({},{}), y_offset={}, x_offset={}, abs=({},{})\n", .{ x, y, y_offset, x_offset, abs_x, abs_y });
+
+        if (abs_y < 0 or abs_y >= self.virtual_lines.items.len) {
+            std.debug.print("[coordsToCharOffset] Out of bounds, returning null\n", .{});
+            return null;
+        }
 
         const vline_idx: usize = @intCast(abs_y);
         const vline = &self.virtual_lines.items[vline_idx];
         const lineStart = vline.char_offset;
         const lineWidth = vline.width;
 
+        std.debug.print("[coordsToCharOffset] vline: char_offset={}, width={}\n", .{ lineStart, lineWidth });
+
         const localX = @max(0, @min(abs_x, @as(i32, @intCast(lineWidth))));
-        return lineStart + @as(u32, @intCast(localX));
+        const result = lineStart + @as(u32, @intCast(localX));
+
+        std.debug.print("[coordsToCharOffset] localX={}, result={}\n", .{ localX, result });
+        return result;
     }
 
     // Local coordinates are viewport-relative (if viewport is set)
