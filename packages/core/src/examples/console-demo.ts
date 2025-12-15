@@ -355,21 +355,6 @@ export function destroy(renderer: CliRenderer): void {
 if (import.meta.main) {
   const renderer = await createCliRenderer({
     exitOnCtrlC: true, // Ctrl+C will exit the demo
-    consoleOptions: {
-      keyBindings: [{ name: "y", ctrl: true, action: "copy-selection" }], // Use Ctrl+Y to copy selection
-      onCopySelection: (text) => {
-        // Write to system clipboard using Bun's native process
-        // NOTE: pbcopy is macOS-only. For cross-platform, use:
-        // - Windows: clip.exe
-        // - Linux: xclip -selection clipboard or xsel --clipboard
-        const proc = Bun.spawn(["pbcopy"], {
-          stdin: "pipe",
-        })
-        proc.stdin.write(text)
-        proc.stdin.end()
-        console.info(`Copied to clipboard: "${text.substring(0, 50)}${text.length > 50 ? "..." : ""}"`)
-      },
-    },
   })
   run(renderer)
   setupCommonDemoKeys(renderer)
