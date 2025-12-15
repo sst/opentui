@@ -960,7 +960,9 @@ export class TerminalConsole extends EventEmitter {
   }
 
   private hasSelection(): boolean {
-    return this._selectionStart !== null && this._selectionEnd !== null
+    if (this._selectionStart === null || this._selectionEnd === null) return false
+
+    return this._selectionStart.line !== this._selectionEnd.line || this._selectionStart.col !== this._selectionEnd.col
   }
 
   private normalizeSelection(): ConsoleSelection | null {
