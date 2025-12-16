@@ -15,6 +15,7 @@ import { TerminalConsole, type ConsoleOptions, capture } from "./console"
 import { MouseParser, type MouseEventType, type RawMouseEvent, type ScrollInfo } from "./lib/parse.mouse"
 import { Selection } from "./lib/selection"
 import { EventEmitter } from "events"
+import { constants as osConstants } from "os"
 import { destroySingleton, hasSingleton, singleton } from "./lib/singleton"
 import { getObjectsInViewport } from "./lib/objects-in-viewport"
 import { KeyHandler, InternalKeyHandler } from "./lib/KeyHandler"
@@ -213,7 +214,8 @@ singleton("ProcessExitSignals", () => {
       for (const renderer of rendererTracker.getRenderers()) {
         renderer.destroy()
       }
-      process.exit(signal === "SIGINT" ? 0 : 1)
+      const signum = osConstants.signals[signal as keyof typeof osConstants.signals] ?? 0
+      process.exit(128 + signum)
     })
   })
 })
