@@ -59,6 +59,11 @@ registerEnvVar({
   default: false,
 })
 
+// Global singleton state for FFI tracing to prevent duplicate exit handlers
+let globalTraceSymbols: Record<string, number[]> | null = null
+let globalFFILogWriter: ReturnType<ReturnType<typeof Bun.file>["writer"]> | null = null
+let exitHandlerRegistered = false
+
 function getOpenTUILib(libPath?: string) {
   const resolvedLibPath = libPath || targetLibPath
 
@@ -916,22 +921,28 @@ function getOpenTUILib(libPath?: string) {
 }
 
 function convertToDebugSymbols<T extends Record<string, any>>(symbols: T): T {
+  // Initialize global state on first call
+  if (!globalTraceSymbols) {
+    globalTraceSymbols = {}
+  }
+
+  // Initialize global debug log writer on first call
+  if (env.OTUI_DEBUG_FFI && !globalFFILogWriter) {
+    const now = new Date()
+    const timestamp = now.toISOString().replace(/[:.]/g, "-").replace(/T/, "_").split("Z")[0]
+    const logFilePath = `ffi_otui_debug_${timestamp}.log`
+    globalFFILogWriter = Bun.file(logFilePath).writer()
+  }
+
   const debugSymbols: Record<string, any> = {}
-  const traceSymbols: Record<string, any> = {}
   let hasTracing = false
-  let ffiLogWriter: ReturnType<ReturnType<typeof Bun.file>["writer"]> | null = null
 
   Object.entries(symbols).forEach(([key, value]) => {
     debugSymbols[key] = value
   })
 
-  if (env.OTUI_DEBUG_FFI) {
-    const now = new Date()
-    const timestamp = now.toISOString().replace(/[:.]/g, "-").replace(/T/, "_").split("Z")[0]
-    const logFilePath = `ffi_otui_debug_${timestamp}.log`
-    ffiLogWriter = Bun.file(logFilePath).writer()
-
-    const writer = ffiLogWriter
+  if (env.OTUI_DEBUG_FFI && globalFFILogWriter) {
+    const writer = globalFFILogWriter
     const writeSync = (msg: string) => {
       const buffer = new TextEncoder().encode(msg + "\n")
       writer.write(buffer)
@@ -954,142 +965,160 @@ function convertToDebugSymbols<T extends Record<string, any>>(symbols: T): T {
     hasTracing = true
     Object.entries(symbols).forEach(([key, value]) => {
       if (typeof value === "function") {
-        traceSymbols[key] = []
+        // Initialize trace array for this symbol if not exists
+        if (!globalTraceSymbols![key]) {
+          globalTraceSymbols![key] = []
+        }
+
         const originalFunc = debugSymbols[key]
         debugSymbols[key] = (...args: any[]) => {
           const start = performance.now()
           const result = originalFunc(...args)
           const end = performance.now()
-          traceSymbols[key].push(end - start)
+          globalTraceSymbols![key].push(end - start)
           return result
         }
       }
     })
   }
 
-  if (env.OTUI_DEBUG_FFI && ffiLogWriter) {
+  // Register exit handler only once
+  if ((env.OTUI_DEBUG_FFI || env.OTUI_TRACE_FFI) && !exitHandlerRegistered) {
+    exitHandlerRegistered = true
+
     process.on("exit", () => {
       try {
-        ffiLogWriter.end()
+        if (globalFFILogWriter) {
+          globalFFILogWriter.end()
+        }
       } catch (e) {
         // Ignore errors on exit
       }
-    })
-  }
 
-  if (hasTracing) {
-    process.on("exit", () => {
-      const allStats: Array<{
-        name: string
-        count: number
-        total: number
-        average: number
-        min: number
-        max: number
-        median: number
-        p90: number
-        p99: number
-      }> = []
+      if (globalTraceSymbols) {
+        const allStats: Array<{
+          name: string
+          count: number
+          total: number
+          average: number
+          min: number
+          max: number
+          median: number
+          p90: number
+          p99: number
+        }> = []
 
-      for (const [key, timings] of Object.entries(traceSymbols)) {
-        if (!Array.isArray(timings) || timings.length === 0) {
-          continue
+        for (const [key, timings] of Object.entries(globalTraceSymbols)) {
+          if (!Array.isArray(timings) || timings.length === 0) {
+            continue
+          }
+
+          const sortedTimings = [...timings].sort((a, b) => a - b)
+          const count = sortedTimings.length
+
+          const total = sortedTimings.reduce((acc, t) => acc + t, 0)
+          const average = total / count
+          const min = sortedTimings[0]
+          const max = sortedTimings[count - 1]
+
+          const medianIndex = Math.floor(count / 2)
+          const p90Index = Math.floor(count * 0.9)
+          const p99Index = Math.floor(count * 0.99)
+
+          const median = sortedTimings[medianIndex]
+          const p90 = sortedTimings[Math.min(p90Index, count - 1)]
+          const p99 = sortedTimings[Math.min(p99Index, count - 1)]
+
+          allStats.push({
+            name: key,
+            count,
+            total,
+            average,
+            min,
+            max,
+            median,
+            p90,
+            p99,
+          })
         }
 
-        const sortedTimings = [...timings].sort((a, b) => a - b)
-        const count = sortedTimings.length
+        allStats.sort((a, b) => b.total - a.total)
 
-        const total = sortedTimings.reduce((acc, t) => acc + t, 0)
-        const average = total / count
-        const min = sortedTimings[0]
-        const max = sortedTimings[count - 1]
-
-        const medianIndex = Math.floor(count / 2)
-        const p90Index = Math.floor(count * 0.9)
-        const p99Index = Math.floor(count * 0.99)
-
-        const median = sortedTimings[medianIndex]
-        const p90 = sortedTimings[Math.min(p90Index, count - 1)]
-        const p99 = sortedTimings[Math.min(p99Index, count - 1)]
-
-        allStats.push({
-          name: key,
-          count,
-          total,
-          average,
-          min,
-          max,
-          median,
-          p90,
-          p99,
-        })
-      }
-
-      allStats.sort((a, b) => b.total - a.total)
-
-      console.log("\n--- OpenTUI FFI Call Performance ---")
-      console.log("Sorted by total time spent (descending)")
-      console.log(
-        "-------------------------------------------------------------------------------------------------------------------------",
-      )
-
-      if (allStats.length === 0) {
-        console.log("No trace data collected or all symbols had zero calls.")
-      } else {
-        const nameHeader = "Symbol"
-        const callsHeader = "Calls"
-        const totalHeader = "Total (ms)"
-        const avgHeader = "Avg (ms)"
-        const minHeader = "Min (ms)"
-        const maxHeader = "Max (ms)"
-        const medHeader = "Med (ms)"
-        const p90Header = "P90 (ms)"
-        const p99Header = "P99 (ms)"
-
-        const nameWidth = Math.max(nameHeader.length, ...allStats.map((s) => s.name.length))
-        const countWidth = Math.max(callsHeader.length, ...allStats.map((s) => String(s.count).length))
-        const totalWidth = Math.max(totalHeader.length, ...allStats.map((s) => s.total.toFixed(2).length))
-        const avgWidth = Math.max(avgHeader.length, ...allStats.map((s) => s.average.toFixed(2).length))
-        const minWidth = Math.max(minHeader.length, ...allStats.map((s) => s.min.toFixed(2).length))
-        const maxWidth = Math.max(maxHeader.length, ...allStats.map((s) => s.max.toFixed(2).length))
-        const medianWidth = Math.max(medHeader.length, ...allStats.map((s) => s.median.toFixed(2).length))
-        const p90Width = Math.max(p90Header.length, ...allStats.map((s) => s.p90.toFixed(2).length))
-        const p99Width = Math.max(p99Header.length, ...allStats.map((s) => s.p99.toFixed(2).length))
-
-        // Header
-        console.log(
-          `${nameHeader.padEnd(nameWidth)} | ` +
-            `${callsHeader.padStart(countWidth)} | ` +
-            `${totalHeader.padStart(totalWidth)} | ` +
-            `${avgHeader.padStart(avgWidth)} | ` +
-            `${minHeader.padStart(minWidth)} | ` +
-            `${maxHeader.padStart(maxWidth)} | ` +
-            `${medHeader.padStart(medianWidth)} | ` +
-            `${p90Header.padStart(p90Width)} | ` +
-            `${p99Header.padStart(p99Width)}`,
-        )
-        // Separator
-        console.log(
-          `${"-".repeat(nameWidth)}-+-${"-".repeat(countWidth)}-+-${"-".repeat(totalWidth)}-+-${"-".repeat(avgWidth)}-+-${"-".repeat(minWidth)}-+-${"-".repeat(maxWidth)}-+-${"-".repeat(medianWidth)}-+-${"-".repeat(p90Width)}-+-${"-".repeat(p99Width)}`,
+        const lines: string[] = []
+        lines.push("\n--- OpenTUI FFI Call Performance ---")
+        lines.push("Sorted by total time spent (descending)")
+        lines.push(
+          "-------------------------------------------------------------------------------------------------------------------------",
         )
 
-        allStats.forEach((stat) => {
-          console.log(
-            `${stat.name.padEnd(nameWidth)} | ` +
-              `${String(stat.count).padStart(countWidth)} | ` +
-              `${stat.total.toFixed(2).padStart(totalWidth)} | ` +
-              `${stat.average.toFixed(2).padStart(avgWidth)} | ` +
-              `${stat.min.toFixed(2).padStart(minWidth)} | ` +
-              `${stat.max.toFixed(2).padStart(maxWidth)} | ` +
-              `${stat.median.toFixed(2).padStart(medianWidth)} | ` +
-              `${stat.p90.toFixed(2).padStart(p90Width)} | ` +
-              `${stat.p99.toFixed(2).padStart(p99Width)}`,
+        if (allStats.length === 0) {
+          lines.push("No trace data collected or all symbols had zero calls.")
+        } else {
+          const nameHeader = "Symbol"
+          const callsHeader = "Calls"
+          const totalHeader = "Total (ms)"
+          const avgHeader = "Avg (ms)"
+          const minHeader = "Min (ms)"
+          const maxHeader = "Max (ms)"
+          const medHeader = "Med (ms)"
+          const p90Header = "P90 (ms)"
+          const p99Header = "P99 (ms)"
+
+          const nameWidth = Math.max(nameHeader.length, ...allStats.map((s) => s.name.length))
+          const countWidth = Math.max(callsHeader.length, ...allStats.map((s) => String(s.count).length))
+          const totalWidth = Math.max(totalHeader.length, ...allStats.map((s) => s.total.toFixed(2).length))
+          const avgWidth = Math.max(avgHeader.length, ...allStats.map((s) => s.average.toFixed(2).length))
+          const minWidth = Math.max(minHeader.length, ...allStats.map((s) => s.min.toFixed(2).length))
+          const maxWidth = Math.max(maxHeader.length, ...allStats.map((s) => s.max.toFixed(2).length))
+          const medianWidth = Math.max(medHeader.length, ...allStats.map((s) => s.median.toFixed(2).length))
+          const p90Width = Math.max(p90Header.length, ...allStats.map((s) => s.p90.toFixed(2).length))
+          const p99Width = Math.max(p99Header.length, ...allStats.map((s) => s.p99.toFixed(2).length))
+
+          lines.push(
+            `${nameHeader.padEnd(nameWidth)} | ` +
+              `${callsHeader.padStart(countWidth)} | ` +
+              `${totalHeader.padStart(totalWidth)} | ` +
+              `${avgHeader.padStart(avgWidth)} | ` +
+              `${minHeader.padStart(minWidth)} | ` +
+              `${maxHeader.padStart(maxWidth)} | ` +
+              `${medHeader.padStart(medianWidth)} | ` +
+              `${p90Header.padStart(p90Width)} | ` +
+              `${p99Header.padStart(p99Width)}`,
           )
-        })
+          lines.push(
+            `${"-".repeat(nameWidth)}-+-${"-".repeat(countWidth)}-+-${"-".repeat(totalWidth)}-+-${"-".repeat(avgWidth)}-+-${"-".repeat(minWidth)}-+-${"-".repeat(maxWidth)}-+-${"-".repeat(medianWidth)}-+-${"-".repeat(p90Width)}-+-${"-".repeat(p99Width)}`,
+          )
+
+          allStats.forEach((stat) => {
+            lines.push(
+              `${stat.name.padEnd(nameWidth)} | ` +
+                `${String(stat.count).padStart(countWidth)} | ` +
+                `${stat.total.toFixed(2).padStart(totalWidth)} | ` +
+                `${stat.average.toFixed(2).padStart(avgWidth)} | ` +
+                `${stat.min.toFixed(2).padStart(minWidth)} | ` +
+                `${stat.max.toFixed(2).padStart(maxWidth)} | ` +
+                `${stat.median.toFixed(2).padStart(medianWidth)} | ` +
+                `${stat.p90.toFixed(2).padStart(p90Width)} | ` +
+                `${stat.p99.toFixed(2).padStart(p99Width)}`,
+            )
+          })
+        }
+        lines.push(
+          "-------------------------------------------------------------------------------------------------------------------------",
+        )
+
+        const output = lines.join("\n")
+        console.log(output)
+
+        try {
+          const now = new Date()
+          const timestamp = now.toISOString().replace(/[:.]/g, "-").replace(/T/, "_").split("Z")[0]
+          const traceFilePath = `ffi_otui_trace_${timestamp}.log`
+          Bun.write(traceFilePath, output)
+        } catch (e) {
+          console.error("Failed to write FFI trace file:", e)
+        }
       }
-      console.log(
-        "-------------------------------------------------------------------------------------------------------------------------",
-      )
     })
   }
 
