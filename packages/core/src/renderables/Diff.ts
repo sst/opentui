@@ -226,7 +226,7 @@ export class DiffRenderable extends Renderable {
     this._addedLineNumberBg = parseColor(options.addedLineNumberBg ?? "transparent")
     this._removedLineNumberBg = parseColor(options.removedLineNumberBg ?? "transparent")
     this._disableWordHighlights = options.disableWordHighlights ?? false
-    this._lineSimilarityThreshold = options.lineSimilarityThreshold ?? 0.4
+    this._lineSimilarityThreshold = options.lineSimilarityThreshold ?? 0.5
     this._addedWordBg = options.addedWordBg ? parseColor(options.addedWordBg) : this.brightenColor(this._addedBg, 1.5)
     this._removedWordBg = options.removedWordBg
       ? parseColor(options.removedWordBg)
