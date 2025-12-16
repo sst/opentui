@@ -9,7 +9,7 @@ import {
 } from "./LineNumberRenderable"
 import { RGBA, parseColor } from "../lib/RGBA"
 import { SyntaxStyle } from "../syntax-style"
-import { parsePatch, diffChars, diffWordsWithSpace, type StructuredPatch } from "diff"
+import { parsePatch, diffWordsWithSpace, type StructuredPatch } from "diff"
 import { TextRenderable } from "./Text"
 import type { TreeSitterClient } from "../lib/tree-sitter"
 
@@ -20,13 +20,13 @@ interface InlineHighlight {
   type: "added-word" | "removed-word"
 }
 
-/** Computes similarity between two strings (0.0 to 1.0) using character-level diff */
+/** Computes similarity between two strings (0.0 to 1.0) using word-level diff */
 export function computeLineSimilarity(a: string, b: string): number {
   if (a === b) return 1.0
   if (a.length === 0 && b.length === 0) return 1.0
   if (a.length === 0 || b.length === 0) return 0.0
 
-  const changes = diffChars(a, b)
+  const changes = diffWordsWithSpace(a, b)
   let unchangedLength = 0
   for (const change of changes) {
     if (!change.added && !change.removed) {
