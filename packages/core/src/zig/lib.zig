@@ -1,5 +1,6 @@
 const std = @import("std");
 const Allocator = std.mem.Allocator;
+const builtin = @import("builtin");
 
 const ansi = @import("ansi.zig");
 const buffer = @import("buffer.zig");
@@ -1436,4 +1437,134 @@ export fn bufferDrawChar(
     const rgbaFg = utils.f32PtrToRGBA(fg);
     const rgbaBg = utils.f32PtrToRGBA(bg);
     bufferPtr.drawChar(char, x, y, rgbaFg, rgbaBg, attributes) catch {};
+}
+
+// Windows Console Control Handler
+// On Windows with ConPTY (Windows Terminal), Ctrl+C triggers CTRL_C_EVENT at the Windows API level,
+// but ConPTY does not pass the 0x03 byte through to stdin. This handler intercepts CTRL_C_EVENT
+// and injects the 0x03 byte into stdin via WriteConsoleInputW, allowing the app's normal Ctrl+C
+// handling to work and trigger graceful shutdown with proper terminal restoration.
+const win32 = if (builtin.os.tag == .windows) struct {
+    usingnamespace std.os.windows;
+
+    pub extern "kernel32" fn SetConsoleCtrlHandler(
+        HandlerRoutine: ?*const fn (dwCtrlType: DWORD) callconv(WINAPI) BOOL,
+        Add: BOOL,
+    ) callconv(WINAPI) BOOL;
+
+    pub extern "kernel32" fn WriteConsoleInputW(
+        hConsoleInput: HANDLE,
+        lpBuffer: [*]const INPUT_RECORD,
+        nLength: DWORD,
+        lpNumberOfEventsWritten: *DWORD,
+    ) callconv(WINAPI) BOOL;
+
+    pub const KEY_EVENT_RECORD = extern struct {
+        bKeyDown: BOOL,
+        wRepeatCount: WORD,
+        wVirtualKeyCode: WORD,
+        wVirtualScanCode: WORD,
+        uChar: extern union {
+            UnicodeChar: WCHAR,
+            AsciiChar: u8,
+        },
+        dwControlKeyState: DWORD,
+    };
+
+    // INPUT_RECORD structure - matches Windows SDK layout.
+    // The union requires 4-byte alignment (KEY_EVENT_RECORD starts with BOOL),
+    // so there's implicit 2-byte padding after EventType (WORD).
+    // We make this explicit for clarity and correctness with extern struct.
+    pub const INPUT_RECORD = extern struct {
+        EventType: WORD,
+        _padding: u16 = 0,
+        Event: extern union {
+            KeyEvent: KEY_EVENT_RECORD,
+            MouseEvent: [16]u8,
+            WindowBufferSizeEvent: [4]u8,
+            MenuEvent: [4]u8,
+            FocusEvent: [4]u8,
+        },
+    };
+
+    pub const CTRL_C_EVENT: DWORD = 0;
+    pub const KEY_EVENT: WORD = 0x0001;
+    pub const TRUE: BOOL = 1;
+    pub const FALSE: BOOL = 0;
+
+    fn ctrlHandler(ctrlType: DWORD) callconv(WINAPI) BOOL {
+        if (ctrlType == CTRL_C_EVENT) {
+            const handle = GetStdHandle(std.os.windows.STD_INPUT_HANDLE);
+            if (handle == INVALID_HANDLE_VALUE) return FALSE;
+
+            var records = [_]INPUT_RECORD{
+                .{
+                    .EventType = KEY_EVENT,
+                    .Event = .{
+                        .KeyEvent = .{
+                            .bKeyDown = TRUE,
+                            .wRepeatCount = 1,
+                            .wVirtualKeyCode = 0,
+                            .wVirtualScanCode = 0,
+                            .uChar = .{ .UnicodeChar = 0x03 },
+                            .dwControlKeyState = 0,
+                        },
+                    },
+                },
+                .{
+                    .EventType = KEY_EVENT,
+                    .Event = .{
+                        .KeyEvent = .{
+                            .bKeyDown = FALSE,
+                            .wRepeatCount = 1,
+                            .wVirtualKeyCode = 0,
+                            .wVirtualScanCode = 0,
+                            .uChar = .{ .UnicodeChar = 0x03 },
+                            .dwControlKeyState = 0,
+                        },
+                    },
+                },
+            };
+
+            var written: DWORD = 0;
+            const result = WriteConsoleInputW(handle, &records, 2, &written);
+            if (result == FALSE or written != 2) {
+                // Failed to inject Ctrl+C into stdin - fall back to default behavior
+                // which will terminate the process without graceful shutdown
+                return FALSE;
+            }
+            return TRUE; // Signal handled, prevent default SIGINT behavior
+        }
+        return FALSE; // Let other handlers process this event
+    }
+} else struct {};
+
+/// Installs the Windows console control handler that converts Ctrl+C events into stdin input.
+/// This allows graceful shutdown with proper terminal state restoration on Windows.
+/// On non-Windows platforms, this is a no-op (Ctrl+C handling works natively via stdin).
+/// Returns true on success, false on failure. Always returns true on non-Windows platforms.
+export fn installCtrlCHandler() bool {
+    if (builtin.os.tag == .windows) {
+        const result = win32.SetConsoleCtrlHandler(win32.ctrlHandler, 1);
+        if (result == 0) {
+            logger.err("Failed to install Windows console control handler", .{});
+            return false;
+        }
+        return true;
+    }
+    return true;
+}
+
+/// Removes the Windows console control handler.
+/// Returns true on success, false on failure. Always returns true on non-Windows platforms.
+export fn removeCtrlCHandler() bool {
+    if (builtin.os.tag == .windows) {
+        const result = win32.SetConsoleCtrlHandler(win32.ctrlHandler, 0);
+        if (result == 0) {
+            logger.err("Failed to remove Windows console control handler", .{});
+            return false;
+        }
+        return true;
+    }
+    return true;
 }
