@@ -2761,7 +2761,7 @@ describe("DiffRenderable word highlights", () => {
     })
 
     expect(diffRenderable.disableWordHighlights).toBe(false)
-    expect(diffRenderable.lineSimilarityThreshold).toBe(0.4)
+    expect(diffRenderable.lineSimilarityThreshold).toBe(0.5)
     expect(diffRenderable.addedWordBg).toBeDefined()
     expect(diffRenderable.removedWordBg).toBeDefined()
   })
