@@ -212,7 +212,7 @@ singleton("ProcessExitSignals", () => {
       for (const renderer of rendererTracker.getRenderers()) {
         renderer.destroy()
       }
-      process.exit()
+      process.exit(signal === "SIGINT" ? 0 : 1)
     })
   })
 })
