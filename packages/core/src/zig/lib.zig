@@ -1445,7 +1445,21 @@ export fn bufferDrawChar(
 // and injects the 0x03 byte into stdin via WriteConsoleInputW, allowing the app's normal Ctrl+C
 // handling to work and trigger graceful shutdown with proper terminal restoration.
 const win32 = if (builtin.os.tag == .windows) struct {
-    usingnamespace std.os.windows;
+    const windows = std.os.windows;
+    const BOOL = windows.BOOL;
+    const DWORD = windows.DWORD;
+    const WORD = windows.WORD;
+    const WCHAR = windows.WCHAR;
+    const HANDLE = windows.HANDLE;
+    const WINAPI = windows.WINAPI;
+    const INVALID_HANDLE_VALUE = windows.INVALID_HANDLE_VALUE;
+    const GetStdHandle = windows.kernel32.GetStdHandle;
+    const STD_INPUT_HANDLE = windows.STD_INPUT_HANDLE;
+
+    const TRUE: BOOL = 1;
+    const FALSE: BOOL = 0;
+    const CTRL_C_EVENT: DWORD = 0;
+    const KEY_EVENT: WORD = 0x0001;
 
     pub extern "kernel32" fn SetConsoleCtrlHandler(
         HandlerRoutine: ?*const fn (dwCtrlType: DWORD) callconv(WINAPI) BOOL,
@@ -1459,7 +1473,7 @@ const win32 = if (builtin.os.tag == .windows) struct {
         lpNumberOfEventsWritten: *DWORD,
     ) callconv(WINAPI) BOOL;
 
-    pub const KEY_EVENT_RECORD = extern struct {
+    const KEY_EVENT_RECORD = extern struct {
         bKeyDown: BOOL,
         wRepeatCount: WORD,
         wVirtualKeyCode: WORD,
@@ -1475,7 +1489,7 @@ const win32 = if (builtin.os.tag == .windows) struct {
     // The union requires 4-byte alignment (KEY_EVENT_RECORD starts with BOOL),
     // so there's implicit 2-byte padding after EventType (WORD).
     // We make this explicit for clarity and correctness with extern struct.
-    pub const INPUT_RECORD = extern struct {
+    const INPUT_RECORD = extern struct {
         EventType: WORD,
         _padding: u16 = 0,
         Event: extern union {
@@ -1487,14 +1501,9 @@ const win32 = if (builtin.os.tag == .windows) struct {
         },
     };
 
-    pub const CTRL_C_EVENT: DWORD = 0;
-    pub const KEY_EVENT: WORD = 0x0001;
-    pub const TRUE: BOOL = 1;
-    pub const FALSE: BOOL = 0;
-
     fn ctrlHandler(ctrlType: DWORD) callconv(WINAPI) BOOL {
         if (ctrlType == CTRL_C_EVENT) {
-            const handle = GetStdHandle(std.os.windows.STD_INPUT_HANDLE);
+            const handle = GetStdHandle(STD_INPUT_HANDLE);
             if (handle == INVALID_HANDLE_VALUE) return FALSE;
 
             var records = [_]INPUT_RECORD{
