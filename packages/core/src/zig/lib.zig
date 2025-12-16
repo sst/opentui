@@ -1503,7 +1503,7 @@ const win32 = if (builtin.os.tag == .windows) struct {
 
     fn ctrlHandler(ctrlType: DWORD) callconv(WINAPI) BOOL {
         if (ctrlType == CTRL_C_EVENT) {
-            const handle = GetStdHandle(STD_INPUT_HANDLE);
+            const handle = GetStdHandle(STD_INPUT_HANDLE) orelse return FALSE;
             if (handle == INVALID_HANDLE_VALUE) return FALSE;
 
             var records = [_]INPUT_RECORD{
