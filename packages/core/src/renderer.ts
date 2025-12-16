@@ -182,6 +182,19 @@ export enum MouseButton {
   WHEEL_DOWN = 5,
 }
 
+singleton("ProcessExitSignals", () => {
+  ;["SIGINT", "SIGTERM", "SIGQUIT", "SIGABRT"].forEach((signal) => {
+    process.on(signal, () => {
+      // On Windows, process.exit() from a signal handler may not allow
+      // exit handlers to complete properly. Destroy all renderers first
+      // to ensure terminal cleanup (mouse tracking, raw mode, etc.)
+      for (const renderer of rendererTracker.getRenderers()) {
+        renderer.destroy()
+      }
+      process.exit()
+    })
+  })
+})
 const rendererTracker = singleton("RendererTracker", () => {
   const renderers = new Set<CliRenderer>()
   return {
@@ -199,6 +212,7 @@ const rendererTracker = singleton("RendererTracker", () => {
         }
       }
     },
+    getRenderers: () => renderers,
   }
 })
 
