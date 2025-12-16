@@ -204,7 +204,8 @@ const rendererTracker = singleton("RendererTracker", () => {
 })
 
 singleton("ProcessExitSignals", () => {
-  ;["SIGINT", "SIGTERM", "SIGQUIT", "SIGABRT"].forEach((signal) => {
+  const signals = process.platform === "win32" ? ["SIGINT", "SIGTERM"] : ["SIGINT", "SIGTERM", "SIGQUIT", "SIGABRT"]
+  signals.forEach((signal) => {
     process.on(signal, () => {
       // On Windows, process.exit() from a signal handler may not allow
       // exit handlers to complete properly. Destroy all renderers first
