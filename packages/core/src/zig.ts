@@ -506,7 +506,7 @@ function getOpenTUILib(libPath?: string) {
       returns: "void",
     },
     textBufferViewUpdateLocalSelection: {
-      args: ["ptr", "i32", "i32", "ptr", "ptr"],
+      args: ["ptr", "i32", "i32", "i32", "i32", "ptr", "ptr"],
       returns: "bool",
     },
     textBufferViewResetLocalSelection: {
@@ -800,7 +800,7 @@ function getOpenTUILib(libPath?: string) {
       returns: "void",
     },
     editorViewUpdateLocalSelection: {
-      args: ["ptr", "i32", "i32", "ptr", "ptr"],
+      args: ["ptr", "i32", "i32", "i32", "i32", "ptr", "ptr"],
       returns: "bool",
     },
     editorViewResetLocalSelection: {
@@ -1358,6 +1358,8 @@ export interface RenderLib {
   textBufferViewUpdateSelection: (view: Pointer, end: number, bgColor: RGBA | null, fgColor: RGBA | null) => void
   textBufferViewUpdateLocalSelection: (
     view: Pointer,
+    anchorX: number,
+    anchorY: number,
     focusX: number,
     focusY: number,
     bgColor: RGBA | null,
@@ -1471,6 +1473,8 @@ export interface RenderLib {
   editorViewUpdateSelection: (view: Pointer, end: number, bgColor: RGBA | null, fgColor: RGBA | null) => void
   editorViewUpdateLocalSelection: (
     view: Pointer,
+    anchorX: number,
+    anchorY: number,
     focusX: number,
     focusY: number,
     bgColor: RGBA | null,
@@ -2325,6 +2329,8 @@ class FFIRenderLib implements RenderLib {
 
   public textBufferViewUpdateLocalSelection(
     view: Pointer,
+    anchorX: number,
+    anchorY: number,
     focusX: number,
     focusY: number,
     bgColor: RGBA | null,
@@ -2332,7 +2338,7 @@ class FFIRenderLib implements RenderLib {
   ): boolean {
     const bg = bgColor ? bgColor.buffer : null
     const fg = fgColor ? fgColor.buffer : null
-    return this.opentui.symbols.textBufferViewUpdateLocalSelection(view, focusX, focusY, bg, fg)
+    return this.opentui.symbols.textBufferViewUpdateLocalSelection(view, anchorX, anchorY, focusX, focusY, bg, fg)
   }
 
   public textBufferViewResetLocalSelection(view: Pointer): void {
@@ -2878,6 +2884,8 @@ class FFIRenderLib implements RenderLib {
 
   public editorViewUpdateLocalSelection(
     view: Pointer,
+    anchorX: number,
+    anchorY: number,
     focusX: number,
     focusY: number,
     bgColor: RGBA | null,
@@ -2885,7 +2893,7 @@ class FFIRenderLib implements RenderLib {
   ): boolean {
     const bg = bgColor ? bgColor.buffer : null
     const fg = fgColor ? fgColor.buffer : null
-    return this.opentui.symbols.editorViewUpdateLocalSelection(view, focusX, focusY, bg, fg)
+    return this.opentui.symbols.editorViewUpdateLocalSelection(view, anchorX, anchorY, focusX, focusY, bg, fg)
   }
 
   public editorViewResetLocalSelection(view: Pointer): void {

@@ -480,24 +480,50 @@ pub const UnifiedTextBufferView = struct {
     }
 
     pub fn setLocalSelection(self: *Self, anchorX: i32, anchorY: i32, focusX: i32, focusY: i32, bgColor: ?RGBA, fgColor: ?RGBA) bool {
-        // Convert anchor and focus to character offsets
-        const anchor_offset = self.coordsToCharOffset(anchorX, anchorY) orelse {
-            // Invalid coordinates - clear selection
+        self.updateVirtualLines();
+
+        const anchor_above = anchorY < 0;
+        const focus_above = focusY < 0;
+        const max_y = @as(i32, @intCast(self.virtual_lines.items.len)) - 1;
+        const anchor_below = anchorY > max_y;
+        const focus_below = focusY > max_y;
+
+        if ((anchor_above and focus_above) or (anchor_below and focus_below)) {
             const had_selection = self.selection != null;
             self.selection = null;
             self.selection_anchor_offset = null;
             return had_selection;
-        };
+        }
 
-        const focus_offset = self.coordsToCharOffset(focusX, focusY) orelse {
-            // Invalid coordinates - clear selection
-            const had_selection = self.selection != null;
-            self.selection = null;
-            self.selection_anchor_offset = null;
-            return had_selection;
-        };
+        // Get the actual end position (end of last line)
+        const last_line_idx = if (self.virtual_lines.items.len > 0) self.virtual_lines.items.len - 1 else 0;
+        const last_vline = if (self.virtual_lines.items.len > 0) &self.virtual_lines.items[last_line_idx] else null;
+        const text_end_offset = if (last_vline) |vline| vline.char_offset + vline.width else 0;
 
-        // Store the anchor offset separately to preserve it across updates
+        const anchor_offset = if (anchor_above or anchorX < 0)
+            0
+        else if (anchor_below)
+            text_end_offset
+        else
+            self.coordsToCharOffset(anchorX, anchorY) orelse {
+                const had_selection = self.selection != null;
+                self.selection = null;
+                self.selection_anchor_offset = null;
+                return had_selection;
+            };
+
+        const focus_offset = if (focus_above or focusX < 0)
+            0
+        else if (focus_below)
+            text_end_offset
+        else
+            self.coordsToCharOffset(focusX, focusY) orelse {
+                const had_selection = self.selection != null;
+                self.selection = null;
+                self.selection_anchor_offset = null;
+                return had_selection;
+            };
+
         self.selection_anchor_offset = anchor_offset;
 
         const new_start = @min(anchor_offset, focus_offset);
@@ -520,25 +546,42 @@ pub const UnifiedTextBufferView = struct {
         return selection_changed;
     }
 
-    pub fn updateLocalSelection(self: *Self, focusX: i32, focusY: i32, bgColor: ?RGBA, fgColor: ?RGBA) bool {
-        // Requires existing anchor - must have been set by setLocalSelection
+    pub fn updateLocalSelection(self: *Self, anchorX: i32, anchorY: i32, focusX: i32, focusY: i32, bgColor: ?RGBA, fgColor: ?RGBA) bool {
+        if (self.selection_anchor_offset) |_| {
+            return self.updateLocalSelectionFocusOnly(focusX, focusY, bgColor, fgColor);
+        } else {
+            return self.setLocalSelection(anchorX, anchorY, focusX, focusY, bgColor, fgColor);
+        }
+    }
+
+    fn updateLocalSelectionFocusOnly(self: *Self, focusX: i32, focusY: i32, bgColor: ?RGBA, fgColor: ?RGBA) bool {
         const anchor_offset = self.selection_anchor_offset orelse return false;
 
-        // Convert new focus coordinates to character offset
-        const focus_char_offset = self.coordsToCharOffset(focusX, focusY) orelse return false;
+        self.updateVirtualLines();
 
-        // Use stored anchor offset (never changes during updates)
+        const focus_above = focusY < 0;
+        const max_y = @as(i32, @intCast(self.virtual_lines.items.len)) - 1;
+        const focus_below = focusY > max_y;
+
+        const last_line_idx = if (self.virtual_lines.items.len > 0) self.virtual_lines.items.len - 1 else 0;
+        const last_vline = if (self.virtual_lines.items.len > 0) &self.virtual_lines.items[last_line_idx] else null;
+        const text_end_offset = if (last_vline) |vline| vline.char_offset + vline.width else 0;
+
+        const focus_char_offset = if (focus_above or focusX < 0)
+            0
+        else if (focus_below)
+            text_end_offset
+        else
+            self.coordsToCharOffset(focusX, focusY) orelse return false;
+
         const new_start = @min(anchor_offset, focus_char_offset);
-        const new_end = @max(anchor_offset, focus_char_offset);
+        var new_end = @max(anchor_offset, focus_char_offset);
 
-        // Check if selection actually changed
-        if (self.selection) |current_sel| {
-            if (new_start == current_sel.start and new_end == current_sel.end) {
-                return false;
-            }
+        const focus_clamped = focus_above or focus_below or focusX < 0;
+        if (focus_char_offset < anchor_offset and !focus_clamped) {
+            new_end = @min(new_end + 1, text_end_offset);
         }
 
-        // Always store selection, even if zero-width
         self.selection = TextSelection{
             .start = new_start,
             .end = new_end,
@@ -554,46 +597,38 @@ pub const UnifiedTextBufferView = struct {
         self.selection_anchor_offset = null;
     }
 
-    // Convert viewport-relative coordinates to a character offset
     fn coordsToCharOffset(self: *Self, x: i32, y: i32) ?u32 {
         self.updateVirtualLines();
 
-        // Apply viewport offsets to convert viewport-relative to absolute coordinates
         const y_offset: i32 = if (self.viewport) |vp| @intCast(vp.y) else 0;
         const x_offset: i32 = if (self.viewport) |vp|
             (if (self.wrap_mode == .none) @intCast(vp.x) else 0)
         else
             0;
 
+        if (self.virtual_lines.items.len == 0) {
+            return 0;
+        }
+
         const abs_y = y + y_offset;
         const abs_x = x + x_offset;
 
-        std.debug.print("[coordsToCharOffset] input=({},{}), y_offset={}, x_offset={}, abs=({},{})\n", .{ x, y, y_offset, x_offset, abs_x, abs_y });
+        const clamped_y = @max(0, @min(abs_y, @as(i32, @intCast(self.virtual_lines.items.len)) - 1));
 
-        if (abs_y < 0 or abs_y >= self.virtual_lines.items.len) {
-            std.debug.print("[coordsToCharOffset] Out of bounds, returning null\n", .{});
-            return null;
-        }
-
-        const vline_idx: usize = @intCast(abs_y);
+        const vline_idx: usize = @intCast(clamped_y);
         const vline = &self.virtual_lines.items[vline_idx];
         const lineStart = vline.char_offset;
         const lineWidth = vline.width;
 
-        std.debug.print("[coordsToCharOffset] vline: char_offset={}, width={}\n", .{ lineStart, lineWidth });
-
         const localX = @max(0, @min(abs_x, @as(i32, @intCast(lineWidth))));
         const result = lineStart + @as(u32, @intCast(localX));
 
-        std.debug.print("[coordsToCharOffset] localX={}, result={}\n", .{ localX, result });
         return result;
     }
 
-    // Local coordinates are viewport-relative (if viewport is set)
     fn calculateSelectionFromCoords(self: *Self, anchorX: i32, anchorY: i32, focusX: i32, focusY: i32) ?struct { start: u32, end: u32 } {
         self.updateVirtualLines();
 
-        // Apply viewport offsets to convert viewport-relative to absolute coordinates
         const y_offset: i32 = if (self.viewport) |vp| @intCast(vp.y) else 0;
         const x_offset: i32 = if (self.viewport) |vp|
             (if (self.wrap_mode == .none) @intCast(vp.x) else 0)
@@ -603,7 +638,6 @@ pub const UnifiedTextBufferView = struct {
         var selectionStart: ?u32 = null;
         var selectionEnd: ?u32 = null;
 
-        // Convert viewport-relative Y coordinates to absolute virtual line indices
         const startY = @min(anchorY + y_offset, focusY + y_offset);
         const endY = @max(anchorY + y_offset, focusY + y_offset);
 
@@ -615,7 +649,7 @@ pub const UnifiedTextBufferView = struct {
             selEndX = focusX + x_offset;
         } else {
             selStartX = focusX + x_offset;
-            selEndX = anchorX + x_offset;
+            selEndX = anchorX + x_offset + 1;
         }
 
         for (self.virtual_lines.items, 0..) |vline, i| {
@@ -625,7 +659,6 @@ pub const UnifiedTextBufferView = struct {
 
             const lineStart = vline.char_offset;
             const lineWidth = vline.width;
-            // lineEnd is the end of the line content, excluding the newline
             const lineEnd = lineStart + lineWidth;
 
             if (lineY > startY and lineY < endY) {
@@ -661,7 +694,6 @@ pub const UnifiedTextBufferView = struct {
     /// Returns 0xFFFF_FFFF_FFFF_FFFF for no selection or zero-width selection
     pub fn packSelectionInfo(self: *const Self) u64 {
         if (self.selection) |sel| {
-            // Don't expose zero-width selections
             if (sel.start == sel.end) {
                 return 0xFFFF_FFFF_FFFF_FFFF;
             }
@@ -674,7 +706,6 @@ pub const UnifiedTextBufferView = struct {
     /// Get selected text into buffer - using efficient single-pass API
     pub fn getSelectedTextIntoBuffer(self: *Self, out_buffer: []u8) usize {
         const selection = self.selection orelse return 0;
-        // Don't extract text for zero-width selections
         if (selection.start == selection.end) return 0;
         return iter_mod.extractTextBetweenOffsets(
             &self.text_buffer.rope,

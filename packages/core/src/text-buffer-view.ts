@@ -76,9 +76,24 @@ export class TextBufferView {
     )
   }
 
-  public updateLocalSelection(focusX: number, focusY: number, bgColor?: RGBA, fgColor?: RGBA): boolean {
+  public updateLocalSelection(
+    anchorX: number,
+    anchorY: number,
+    focusX: number,
+    focusY: number,
+    bgColor?: RGBA,
+    fgColor?: RGBA,
+  ): boolean {
     this.guard()
-    return this.lib.textBufferViewUpdateLocalSelection(this.viewPtr, focusX, focusY, bgColor || null, fgColor || null)
+    return this.lib.textBufferViewUpdateLocalSelection(
+      this.viewPtr,
+      anchorX,
+      anchorY,
+      focusX,
+      focusY,
+      bgColor || null,
+      fgColor || null,
+    )
   }
 
   public resetLocalSelection(): void {

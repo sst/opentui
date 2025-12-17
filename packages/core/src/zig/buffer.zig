@@ -624,7 +624,6 @@ pub const OptimizedBuffer = struct {
         }
     }
 
-
     pub fn setCellWithAlphaBlendingRaw(
         self: *OptimizedBuffer,
         x: u32,
@@ -654,7 +653,6 @@ pub const OptimizedBuffer = struct {
             self.setRaw(x, y, overlayCell);
         }
     }
-
 
     pub fn drawChar(
         self: *OptimizedBuffer,

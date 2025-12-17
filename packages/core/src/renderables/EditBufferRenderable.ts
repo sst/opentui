@@ -378,9 +378,29 @@ export abstract class EditBufferRenderable extends Renderable implements LineInf
     const localSelection = convertGlobalToLocalSelection(selection, this.x, this.y)
     this.lastLocalSelection = localSelection
 
-    // Always use setLocalSelection for now since it handles viewport offsets correctly
-    // The native layer will handle coordinate transformations
-    const changed = this.updateLocalSelection(localSelection)
+    let changed: boolean
+    if (!localSelection?.isActive) {
+      this.editorView.resetLocalSelection()
+      changed = true
+    } else if (selection?.isStart) {
+      changed = this.editorView.setLocalSelection(
+        localSelection.anchorX,
+        localSelection.anchorY,
+        localSelection.focusX,
+        localSelection.focusY,
+        this._selectionBg,
+        this._selectionFg,
+      )
+    } else {
+      changed = this.editorView.updateLocalSelection(
+        localSelection.anchorX,
+        localSelection.anchorY,
+        localSelection.focusX,
+        localSelection.focusY,
+        this._selectionBg,
+        this._selectionFg,
+      )
+    }
 
     if (changed) {
       this.requestRender()
@@ -625,25 +645,14 @@ export abstract class EditBufferRenderable extends Renderable implements LineInf
     }
 
     const visualCursor = this.editorView.getVisualCursor()
-
-    // Convert viewport-relative cursor to screen-absolute coordinates for global selection
     const cursorX = this.x + visualCursor.visualCol
     const cursorY = this.y + visualCursor.visualRow
 
-    console.log(`[updateSelectionForMovement] ${isBeforeMovement ? "BEFORE" : "AFTER"}`, {
-      visualCursor: { row: visualCursor.visualRow, col: visualCursor.visualCol },
-      screenCoords: { x: cursorX, y: cursorY },
-      renderablePos: { x: this.x, y: this.y },
-      hasGlobalSelection: this._ctx.hasSelection,
-    })
-
     if (isBeforeMovement) {
       if (!this._ctx.hasSelection) {
-        console.log(`[updateSelectionForMovement] Starting global selection at screen (${cursorX}, ${cursorY})`)
         this._ctx.startSelection(this, cursorX, cursorY)
       }
     } else {
-      console.log(`[updateSelectionForMovement] Updating global selection to screen (${cursorX}, ${cursorY})`)
       this._ctx.updateSelection(this, cursorX, cursorY)
     }
   }

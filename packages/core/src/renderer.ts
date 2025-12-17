@@ -1878,7 +1878,8 @@ export class CliRenderer extends EventEmitter implements RenderContext {
       selectionBounds,
       container.getChildrenSortedByPrimaryAxis(),
       container.primaryAxis,
-      0,
+      0, // padding
+      0, // minTriggerSize - always perform overlap checks for selection
     )
 
     for (const child of children) {

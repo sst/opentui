@@ -3,6 +3,7 @@ import { createTestRenderer, type TestRenderer, type MockMouse, type MockInput }
 import { createTextareaRenderable } from "./renderable-test-utils"
 import { RGBA } from "../../lib/RGBA"
 import { OptimizedBuffer } from "../../buffer"
+import { TextRenderable } from "../Text"
 
 let currentRenderer: TestRenderer
 let renderOnce: () => Promise<void>
@@ -735,7 +736,7 @@ describe("Textarea - Selection Tests", () => {
 
     it("should delete selected text with delete key", async () => {
       const { textarea: editor } = await createTextareaRenderable(currentRenderer, renderOnce, {
-        initialValue: "Hello World",
+        initialValue: "Hello World!",
         width: 40,
         height: 10,
         selectable: true,
@@ -743,15 +744,14 @@ describe("Textarea - Selection Tests", () => {
 
       editor.focus()
 
-      // Select "World"
       const cursor = editor.logicalCursor
-      editor.editBuffer.setCursorToLineCol(cursor.row, 9999) // Move to end of line
-      for (let i = 0; i < 5; i++) {
+      editor.editBuffer.setCursorToLineCol(cursor.row, 9999)
+      for (let i = 0; i < 6; i++) {
         currentMockInput.pressArrow("left", { shift: true })
       }
 
-      expect(editor.getSelectedText()).toBe("World")
-      expect(editor.plainText).toBe("Hello World")
+      expect(editor.getSelectedText()).toBe("World!")
+      expect(editor.plainText).toBe("Hello World!")
 
       // Delete should delete the selected text
       currentMockInput.pressKey("DELETE")
@@ -891,10 +891,266 @@ describe("Textarea - Selection Tests", () => {
       expect(viewport.offsetY).toBeGreaterThan(0)
 
       const sel = editor.getSelection()
-      console.log("Selection after scrolling:", sel, "Selected text:", editor.getSelectedText())
       expect(sel).not.toBe(null)
       // Should start at 0 (Line 0)
       expect(sel!.start).toBe(0)
+    })
+
+    it("BUG REPRO: should NOT start selection in textarea when clicking in text renderable below after scrolling", async () => {
+      // Create a textarea with many lines, scrolled down
+      const { textarea: editor } = await createTextareaRenderable(currentRenderer, renderOnce, {
+        initialValue: Array.from({ length: 20 }, (_, i) => `Textarea Line ${i}`).join("\n"),
+        width: 40,
+        height: 5,
+        selectable: true,
+        top: 0,
+      })
+
+      // Create a TextRenderable below the textarea
+      const textBelow = new TextRenderable(currentRenderer, {
+        id: "text-below",
+        content: "This is text below the textarea",
+        selectable: true,
+        top: 5, // Position it right below the textarea (textarea has height 5)
+        left: 0,
+        width: 40,
+        height: 1,
+      })
+      currentRenderer.root.add(textBelow)
+
+      editor.focus()
+
+      // Scroll the textarea down to the end
+      editor.gotoBufferEnd()
+      await renderOnce()
+
+      const viewport = editor.editorView.getViewport()
+      expect(viewport.offsetY).toBeGreaterThan(10) // Should be scrolled significantly
+
+      // Start selection in the TextRenderable below
+      await currentMouse.drag(textBelow.x, textBelow.y, textBelow.x + 10, textBelow.y)
+      await renderOnce()
+
+      // EXPECTED: textarea should NOT have selection
+      expect(editor.hasSelection()).toBe(false)
+      expect(editor.getSelectedText()).toBe("")
+
+      // EXPECTED: textBelow should have selection
+      expect(textBelow.hasSelection()).toBe(true)
+      expect(textBelow.getSelectedText()).toBe("This is te")
+
+      textBelow.destroy()
+    })
+
+    it("should maintain selection in text-below when dragging up into textarea", async () => {
+      // Create a textarea with many lines, scrolled down
+      const { textarea: editor } = await createTextareaRenderable(currentRenderer, renderOnce, {
+        initialValue: Array.from({ length: 20 }, (_, i) => `Textarea Line ${i}`).join("\n"),
+        width: 40,
+        height: 5,
+        selectable: true,
+        top: 0,
+      })
+
+      // Create a TextRenderable below the textarea
+      const textBelow = new TextRenderable(currentRenderer, {
+        id: "text-below",
+        content: "This is text below the textarea",
+        selectable: true,
+        top: 5, // Position it right below the textarea (textarea has height 5)
+        left: 0,
+        width: 40,
+        height: 1,
+      })
+      currentRenderer.root.add(textBelow)
+
+      editor.focus()
+
+      // Scroll the textarea down to the end
+      editor.gotoBufferEnd()
+      await renderOnce()
+
+      const viewport = editor.editorView.getViewport()
+      expect(viewport.offsetY).toBeGreaterThan(10)
+
+      // Start selection in text-below and drag UP into the textarea
+      const startX = textBelow.x + 5
+      const startY = textBelow.y // Y=5 (in text-below, which is positioned at Y=5 with height 1, so it occupies Y=5)
+      const endX = editor.x + 15
+      const endY = editor.y + 3 // Y=3 (in textarea)
+
+      await currentMouse.drag(startX, startY, endX, endY)
+      await renderOnce()
+
+      // EXPECTED: Both should have selection since the selection spans both renderables
+      // The selection was anchored in text-below at (5, 5) and dragged to (15, 3) in textarea
+      // So the selection region spans from Y=3 to Y=5, covering both renderables
+
+      // Text-below should have selection from the anchor point to its top edge
+      expect(textBelow.hasSelection()).toBe(true)
+      const textBelowSelection = textBelow.getSelectedText()
+      expect(textBelowSelection.length).toBeGreaterThan(0)
+
+      // Textarea should have selection from Y=3 to its bottom edge (Y=5)
+      expect(editor.hasSelection()).toBe(true)
+      const textareaSelection = editor.getSelectedText()
+      expect(textareaSelection.length).toBeGreaterThan(0)
+
+      textBelow.destroy()
+    })
+
+    it("BUG: should handle cross-renderable selection from bottom-left text to top-right text correctly", async () => {
+      const { BoxRenderable } = await import("../Box")
+
+      // Recreate a simplified version of text-selection-demo.ts layout
+      // Bottom text on the left, code box with multiple texts on the right
+
+      // Create bottom-left text (like "Click and drag..." in the demo)
+      const bottomText = new TextRenderable(currentRenderer, {
+        id: "bottom-instructions",
+        content: "Click and drag to select text across any elements",
+        left: 5,
+        top: 20,
+        width: 50,
+        height: 1,
+        selectable: true,
+      })
+      currentRenderer.root.add(bottomText)
+
+      // Create a box on the right side (like "Code Example" box)
+      const rightBox = new BoxRenderable(currentRenderer, {
+        id: "right-box",
+        left: 50,
+        top: 5,
+        width: 30,
+        height: 10,
+        padding: 1,
+        flexDirection: "column",
+      })
+      currentRenderer.root.add(rightBox)
+
+      // Add multiple text renderables inside the right box (like code lines)
+      const codeText1 = new TextRenderable(currentRenderer, {
+        id: "code-line-1",
+        content: "function handleSelection() {",
+        selectable: true,
+      })
+      rightBox.add(codeText1)
+
+      const codeText2 = new TextRenderable(currentRenderer, {
+        id: "code-line-2",
+        content: "  const selected = getText()",
+        selectable: true,
+      })
+      rightBox.add(codeText2)
+
+      const codeText3 = new TextRenderable(currentRenderer, {
+        id: "code-line-3",
+        content: "  console.log(selected)",
+        selectable: true,
+      })
+      rightBox.add(codeText3)
+
+      const codeText4 = new TextRenderable(currentRenderer, {
+        id: "code-line-4",
+        content: "}",
+        selectable: true,
+      })
+      rightBox.add(codeText4)
+
+      await renderOnce()
+
+      console.log(`Layout after render:`)
+      console.log(`  bottomText: (${bottomText.x}, ${bottomText.y}, ${bottomText.width}, ${bottomText.height})`)
+      console.log(`  rightBox: (${rightBox.x}, ${rightBox.y}, ${rightBox.width}, ${rightBox.height})`)
+      console.log(`  codeText1: (${codeText1.x}, ${codeText1.y}, ${codeText1.width}, ${codeText1.height})`)
+      console.log(`  codeText2: (${codeText2.x}, ${codeText2.y}, ${codeText2.width}, ${codeText2.height})`)
+      console.log(`  codeText3: (${codeText3.x}, ${codeText3.y}, ${codeText3.width}, ${codeText3.height})`)
+      console.log(`  codeText4: (${codeText4.x}, ${codeText4.y}, ${codeText4.width}, ${codeText4.height})`)
+
+      // Start selection at the beginning of bottom text "Click and drag..."
+      // Drag up and to the right into the code box, ending in the middle of codeText2
+      const startX = bottomText.x + 10 // "Click and "
+      const startY = bottomText.y // Y=20
+      const endX = codeText2.x + 15 // Middle of codeText2
+      const endY = codeText2.y // Should be around Y=7 (inside rightBox)
+
+      console.log(`Selection drag: from (${startX}, ${startY}) to (${endX}, ${endY})`)
+
+      await currentMouse.drag(startX, startY, endX, endY)
+      await renderOnce()
+
+      console.log(`After selection:`)
+      console.log(`  bottomText has selection: ${bottomText.hasSelection()}`)
+      if (bottomText.hasSelection()) {
+        console.log(`    bottomText selected: "${bottomText.getSelectedText()}"`)
+      }
+      console.log(`  codeText1 has selection: ${codeText1.hasSelection()}`)
+      if (codeText1.hasSelection()) {
+        console.log(`    codeText1 selected: "${codeText1.getSelectedText()}"`)
+      }
+      console.log(`  codeText2 has selection: ${codeText2.hasSelection()}`)
+      if (codeText2.hasSelection()) {
+        console.log(`    codeText2 selected: "${codeText2.getSelectedText()}"`)
+        console.log(`    codeText2 selection range: ${JSON.stringify(codeText2.getSelection())}`)
+      }
+      console.log(`  codeText3 has selection: ${codeText3.hasSelection()}`)
+      console.log(`  codeText4 has selection: ${codeText4.hasSelection()}`)
+
+      // Let's analyze what actually got selected and if it makes sense
+
+      // 1. bottomText: Started at X=15 ("Click and [d]rag..."), dragged up
+      //    Should select from anchor (X=15) backwards to the start
+      expect(bottomText.hasSelection()).toBe(true)
+      const bottomSelected = bottomText.getSelectedText()
+      console.log(`  bottomText selected "${bottomSelected}" - checking if this makes sense...`)
+      // The global selection anchor is at (15, 20), so local to bottomText at (15-5=10, 20-20=0)
+      // Focus is at (66, 8), so local to bottomText at (66-5=61, 8-20=-12)
+      // Since focus.y < 0, the selection should go from anchor backwards
+      // Expected: chars 0-10 of "Click and drag..." = "Click and "
+      expect(bottomSelected).toBe("Click and ")
+
+      // 2. codeText1 at Y=7 is ABOVE the selection bounds (Y=8-21), so it should NOT be selected
+      expect(codeText1.hasSelection()).toBe(false)
+
+      // 3. codeText2 at Y=8: This is where it gets interesting
+      //    Global anchor: (15, 20), Global focus: (66, 8)
+      //    Local to codeText2 (at position 51, 8):
+      //      anchor: (15-51=-36, 20-8=12)
+      //      focus: (66-51=15, 8-8=0)
+      //
+      //    Since anchor.x=-36 (LEFT of renderable), it gets clamped to position 0
+      //    Since focus.x=15, focus.y=0 (inside), it maps to character position 15
+      //    So the selection is from 0 to 15
+      //
+      //    Content: "  const selected = getText()" (29 chars)
+      //    Expected: chars 0-15 = "  const selecte"
+
+      expect(codeText2.hasSelection()).toBe(true)
+      const codeText2Selected = codeText2.getSelectedText()
+      console.log(`  codeText2 selected: "${codeText2Selected}"`)
+      const codeText2FullContent = codeText2.content.toString()
+      console.log(`  codeText2 full content: "${codeText2FullContent}"`)
+      console.log(`  codeText2 content length: ${codeText2FullContent.length}`)
+      console.log(`  codeText2 local anchor: (${15 - codeText2.x}, ${20 - codeText2.y})`)
+      console.log(`  codeText2 local focus: (${66 - codeText2.x}, ${8 - codeText2.y})`)
+      console.log(`  Since anchor.x < 0, anchor maps to position 0`)
+      console.log(`  Since focus is inside at (15, 0), focus maps to position 15`)
+      console.log(`  Expected selection: indices 0 to 15`)
+      console.log(`  Actual selection: indices ${codeText2.getSelection()?.start} to ${codeText2.getSelection()?.end}`)
+
+      // The selection correctly goes from start (0) to position 15
+      const codeText2Content = "  const selected = getText()"
+      expect(codeText2Selected).toBe(codeText2Content.substring(0, 15))
+
+      // 4. codeText3 and codeText4 are at Y=9 and Y=10, within selection bounds Y=8-21
+      //    So they should have some selection too!
+      //    But the focus point Y=8 is above them, so they might not be included depending on bounds
+      console.log(`  codeText3 has selection: ${codeText3.hasSelection()}`)
+      console.log(`  codeText4 has selection: ${codeText4.hasSelection()}`)
+
+      bottomText.destroy()
+      rightBox.destroy()
     })
   })
 })

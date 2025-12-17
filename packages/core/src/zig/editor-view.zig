@@ -255,8 +255,8 @@ pub const EditorView = struct {
         return self.text_buffer_view.setLocalSelection(anchorX, anchorY, focusX, focusY, bgColor, fgColor);
     }
 
-    pub fn updateLocalSelection(self: *EditorView, focusX: i32, focusY: i32, bgColor: ?tb.RGBA, fgColor: ?tb.RGBA) bool {
-        return self.text_buffer_view.updateLocalSelection(focusX, focusY, bgColor, fgColor);
+    pub fn updateLocalSelection(self: *EditorView, anchorX: i32, anchorY: i32, focusX: i32, focusY: i32, bgColor: ?tb.RGBA, fgColor: ?tb.RGBA) bool {
+        return self.text_buffer_view.updateLocalSelection(anchorX, anchorY, focusX, focusY, bgColor, fgColor);
     }
 
     pub fn resetLocalSelection(self: *EditorView) void {
@@ -462,10 +462,16 @@ pub const EditorView = struct {
     }
 
     pub fn deleteSelectedText(self: *EditorView) !void {
-        const selection = self.text_buffer_view.getSelection() orelse return;
+        const selection = self.text_buffer_view.getSelection() orelse {
+            return;
+        };
 
-        const start_coords = iter_mod.offsetToCoords(&self.edit_buffer.tb.rope, selection.start) orelse return;
-        const end_coords = iter_mod.offsetToCoords(&self.edit_buffer.tb.rope, selection.end) orelse return;
+        const start_coords = iter_mod.offsetToCoords(&self.edit_buffer.tb.rope, selection.start) orelse {
+            return;
+        };
+        const end_coords = iter_mod.offsetToCoords(&self.edit_buffer.tb.rope, selection.end) orelse {
+            return;
+        };
 
         const start_cursor = eb.Cursor{
             .row = start_coords.row,

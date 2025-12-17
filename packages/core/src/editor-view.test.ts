@@ -225,7 +225,7 @@ describe("EditorView", () => {
       expect(changed1).toBe(true)
       expect(view.getSelectedText()).toBe("Hello")
 
-      const changed2 = view.updateLocalSelection(11, 0)
+      const changed2 = view.updateLocalSelection(0, 0, 11, 0)
       expect(changed2).toBe(true)
       expect(view.getSelectedText()).toBe("Hello World")
     })
@@ -235,7 +235,7 @@ describe("EditorView", () => {
 
       view.setLocalSelection(2, 0, 2, 0)
 
-      const changed = view.updateLocalSelection(4, 1)
+      const changed = view.updateLocalSelection(2, 0, 4, 1)
       expect(changed).toBe(true)
 
       const selectedText = view.getSelectedText()
@@ -243,12 +243,13 @@ describe("EditorView", () => {
       expect(selectedText).toContain("Line")
     })
 
-    it("should return false when updateLocalSelection called with no selection", () => {
+    it("should fallback to setLocalSelection when updateLocalSelection called with no existing anchor", () => {
       buffer.setText("Hello World")
 
-      const changed = view.updateLocalSelection(5, 0)
-      expect(changed).toBe(false)
-      expect(view.hasSelection()).toBe(false)
+      const changed = view.updateLocalSelection(0, 0, 5, 0)
+      expect(changed).toBe(true)
+      expect(view.hasSelection()).toBe(true)
+      expect(view.getSelectedText()).toBe("Hello")
     })
 
     it("should preserve anchor when updating local selection", () => {
@@ -257,10 +258,10 @@ describe("EditorView", () => {
       view.setLocalSelection(0, 0, 5, 0)
       expect(view.getSelectedText()).toBe("Hello")
 
-      view.updateLocalSelection(11, 0)
+      view.updateLocalSelection(0, 0, 11, 0)
       expect(view.getSelectedText()).toBe("Hello World")
 
-      view.updateLocalSelection(3, 0)
+      view.updateLocalSelection(0, 0, 3, 0)
       expect(view.getSelectedText()).toBe("Hel")
     })
 
@@ -269,7 +270,7 @@ describe("EditorView", () => {
 
       view.setLocalSelection(11, 0, 11, 0)
 
-      const changed = view.updateLocalSelection(6, 0)
+      const changed = view.updateLocalSelection(11, 0, 6, 0)
       expect(changed).toBe(true)
       expect(view.getSelectedText()).toBe("World")
     })
@@ -282,7 +283,7 @@ describe("EditorView", () => {
 
       view.setLocalSelection(0, 0, 0, 0)
 
-      const changed = view.updateLocalSelection(5, 1)
+      const changed = view.updateLocalSelection(0, 0, 5, 1)
       expect(changed).toBe(true)
       expect(view.getSelectedText()).toBe("ABCDEFGHIJKLMNO")
     })

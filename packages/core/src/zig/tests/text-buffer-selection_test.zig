@@ -739,7 +739,7 @@ test "Selection - updateLocalSelection extends focus position" {
     try std.testing.expectEqual(@as(u32, 5), end);
 
     // Update focus to (11,0) - should keep anchor at (0,0)
-    const changed = view.updateLocalSelection(11, 0, null, null);
+    const changed = view.updateLocalSelection(0, 0, 11, 0, null, null);
     try std.testing.expect(changed);
 
     packed_info = view.packSelectionInfo();
@@ -754,7 +754,7 @@ test "Selection - updateLocalSelection extends focus position" {
     try std.testing.expectEqualStrings("Hello World", text);
 }
 
-test "Selection - updateLocalSelection with no existing selection returns false" {
+test "Selection - updateLocalSelection with no existing selection falls back to setLocalSelection" {
     const pool = gp.initGlobalPool(std.testing.allocator);
     defer gp.deinitGlobalPool();
 
@@ -766,12 +766,15 @@ test "Selection - updateLocalSelection with no existing selection returns false"
 
     try tb.setText("Hello World");
 
-    // No selection set
-    const changed = view.updateLocalSelection(5, 0, null, null);
-    try std.testing.expect(!changed);
+    // No selection set - updateLocalSelection now falls back to setLocalSelection
+    const changed = view.updateLocalSelection(0, 0, 5, 0, null, null);
+    try std.testing.expect(changed);
 
     const packed_info = view.packSelectionInfo();
-    try std.testing.expectEqual(@as(u64, 0xFFFFFFFF_FFFFFFFF), packed_info);
+    const start = @as(u32, @intCast(packed_info >> 32));
+    const end = @as(u32, @intCast(packed_info & 0xFFFFFFFF));
+    try std.testing.expectEqual(@as(u32, 0), start);
+    try std.testing.expectEqual(@as(u32, 5), end);
 }
 
 test "Selection - updateLocalSelection can shrink selection" {
@@ -789,7 +792,7 @@ test "Selection - updateLocalSelection can shrink selection" {
     _ = view.setLocalSelection(0, 0, 11, 0, null, null);
 
     // Shrink focus to 5
-    const changed = view.updateLocalSelection(5, 0, null, null);
+    const changed = view.updateLocalSelection(0, 0, 5, 0, null, null);
     try std.testing.expect(changed);
 
     const packed_info = view.packSelectionInfo();
@@ -820,7 +823,7 @@ test "Selection - updateLocalSelection across multiple lines" {
     _ = view.setLocalSelection(2, 0, 2, 0, null, null);
 
     // Extend to (4, 1) - should select from "ne 1\nLine"
-    const changed = view.updateLocalSelection(4, 1, null, null);
+    const changed = view.updateLocalSelection(2, 0, 4, 1, null, null);
     try std.testing.expect(changed);
 
     var out_buffer: [100]u8 = undefined;
@@ -842,25 +845,26 @@ test "Selection - updateLocalSelection backward selection" {
     var view = try TextBufferView.init(std.testing.allocator, tb);
     defer view.deinit();
 
-    try tb.setText("Hello World");
+    try tb.setText("Hello World!");
 
-    // Set anchor at (11, 0) - at the end
+    // Set anchor at (11, 0) - after "World"
     _ = view.setLocalSelection(11, 0, 11, 0, null, null);
 
     // Move focus backward to (6, 0) - start of "World"
-    const changed = view.updateLocalSelection(6, 0, null, null);
+    // Backward selection adds +1 to make it inclusive, so [6, 12) = "World!"
+    const changed = view.updateLocalSelection(11, 0, 6, 0, null, null);
     try std.testing.expect(changed);
 
     const packed_info = view.packSelectionInfo();
     const start = @as(u32, @intCast(packed_info >> 32));
     const end = @as(u32, @intCast(packed_info & 0xFFFFFFFF));
     try std.testing.expectEqual(@as(u32, 6), start);
-    try std.testing.expectEqual(@as(u32, 11), end);
+    try std.testing.expectEqual(@as(u32, 12), end);
 
     var out_buffer: [100]u8 = undefined;
     const len = view.getSelectedTextIntoBuffer(&out_buffer);
     const text = out_buffer[0..len];
-    try std.testing.expectEqualStrings("World", text);
+    try std.testing.expectEqualStrings("World!", text);
 }
 
 test "Selection - updateLocalSelection with wrapped lines" {
@@ -884,7 +888,7 @@ test "Selection - updateLocalSelection with wrapped lines" {
     _ = view.setLocalSelection(0, 0, 0, 0, null, null);
 
     // Extend to second wrapped line (5, 1)
-    const changed = view.updateLocalSelection(5, 1, null, null);
+    const changed = view.updateLocalSelection(0, 0, 5, 1, null, null);
     try std.testing.expect(changed);
 
     const packed_info = view.packSelectionInfo();
@@ -899,7 +903,7 @@ test "Selection - updateLocalSelection with wrapped lines" {
     try std.testing.expectEqualStrings("ABCDEFGHIJKLMNO", text);
 }
 
-test "Selection - updateLocalSelection returns false when focus unchanged" {
+test "Selection - updateLocalSelection with same focus position maintains selection" {
     const pool = gp.initGlobalPool(std.testing.allocator);
     defer gp.deinitGlobalPool();
 
@@ -913,9 +917,14 @@ test "Selection - updateLocalSelection returns false when focus unchanged" {
 
     _ = view.setLocalSelection(0, 0, 5, 0, null, null);
 
-    // Update to same focus position
-    const changed = view.updateLocalSelection(5, 0, null, null);
-    try std.testing.expect(!changed);
+    // Update to same focus position - selection should remain the same
+    _ = view.updateLocalSelection(0, 0, 5, 0, null, null);
+
+    const packed_info = view.packSelectionInfo();
+    const start = @as(u32, @intCast(packed_info >> 32));
+    const end = @as(u32, @intCast(packed_info & 0xFFFFFFFF));
+    try std.testing.expectEqual(@as(u32, 0), start);
+    try std.testing.expectEqual(@as(u32, 5), end);
 }
 
 test "Selection - updateLocalSelection preserves anchor correctly" {
@@ -934,9 +943,9 @@ test "Selection - updateLocalSelection preserves anchor correctly" {
     _ = view.setLocalSelection(3, 1, 3, 1, null, null);
 
     // Update focus multiple times - last one to (6, 2) which is end of "Line 3"
-    _ = view.updateLocalSelection(6, 1, null, null);
-    _ = view.updateLocalSelection(2, 2, null, null);
-    _ = view.updateLocalSelection(6, 2, null, null);
+    _ = view.updateLocalSelection(3, 1, 6, 1, null, null);
+    _ = view.updateLocalSelection(3, 1, 2, 2, null, null);
+    _ = view.updateLocalSelection(3, 1, 6, 2, null, null);
 
     // Final selection should still have anchor at (3, 1)
     var out_buffer: [100]u8 = undefined;
