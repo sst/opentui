@@ -236,8 +236,18 @@ export class TreeSitterClient extends EventEmitter<TreeSitterClientEvents> {
   }
 
   private handleWorkerMessage(event: MessageEvent) {
-    const { type, bufferId, error, highlights, warning, messageId, hasParser, performance, version, transformedContent } =
-      event.data
+    const {
+      type,
+      bufferId,
+      error,
+      highlights,
+      warning,
+      messageId,
+      hasParser,
+      performance,
+      version,
+      transformedContent,
+    } = event.data
 
     if (type === "HIGHLIGHT_RESPONSE") {
       const buffer = this.buffers.get(bufferId)
