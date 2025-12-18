@@ -26,6 +26,7 @@ export interface EditBufferOptions extends RenderableOptions<EditBufferRenderabl
   attributes?: number
   wrapMode?: "none" | "char" | "word"
   scrollMargin?: number
+  scrollSpeed?: number
   showCursor?: boolean
   cursorColor?: string | RGBA
   cursorStyle?: CursorStyleOptions
@@ -60,7 +61,7 @@ export abstract class EditBufferRenderable extends Renderable implements LineInf
   // Auto-scroll state for selection
   private _autoScrollVelocity: number = 0 // Lines per second
   private _autoScrollAccumulator: number = 0 // Accumulated fractional scroll
-  private readonly _autoScrollSpeed: number = 10 // Lines per second when at boundary
+  private _scrollSpeed: number = 10 // Lines per second when at boundary
 
   public readonly editBuffer: EditBuffer
   public readonly editorView: EditorView
@@ -74,6 +75,7 @@ export abstract class EditBufferRenderable extends Renderable implements LineInf
     attributes: 0,
     wrapMode: "word" as "none" | "char" | "word",
     scrollMargin: 0.2,
+    scrollSpeed: 10,
     showCursor: true,
     cursorColor: RGBA.fromValues(1, 1, 1, 1),
     cursorStyle: {
@@ -95,6 +97,7 @@ export abstract class EditBufferRenderable extends Renderable implements LineInf
     this.selectable = options.selectable ?? this._defaultOptions.selectable
     this._wrapMode = options.wrapMode ?? this._defaultOptions.wrapMode
     this._scrollMargin = options.scrollMargin ?? this._defaultOptions.scrollMargin
+    this._scrollSpeed = options.scrollSpeed ?? this._defaultOptions.scrollSpeed
     this._showCursor = options.showCursor ?? this._defaultOptions.showCursor
     this._cursorColor = parseColor(options.cursorColor ?? this._defaultOptions.cursorColor)
     this._cursorStyle = options.cursorStyle ?? this._defaultOptions.cursorStyle
@@ -338,6 +341,14 @@ export abstract class EditBufferRenderable extends Renderable implements LineInf
     }
   }
 
+  get scrollSpeed(): number {
+    return this._scrollSpeed
+  }
+
+  set scrollSpeed(value: number) {
+    this._scrollSpeed = Math.max(0, value)
+  }
+
   protected onResize(width: number, height: number): void {
     this.editorView.setViewportSize(width, height)
     if (this.lastLocalSelection) {
@@ -422,10 +433,10 @@ export abstract class EditBufferRenderable extends Renderable implements LineInf
       // Determine scroll direction based on where focus is
       if (focusY < scrollMargin) {
         // Focus above viewport - scroll up
-        this._autoScrollVelocity = -this._autoScrollSpeed
+        this._autoScrollVelocity = -this._scrollSpeed
       } else if (focusY >= viewport.height - scrollMargin) {
         // Focus below viewport - scroll down
-        this._autoScrollVelocity = this._autoScrollSpeed
+        this._autoScrollVelocity = this._scrollSpeed
       } else {
         // Focus within viewport - no scroll
         this._autoScrollVelocity = 0
