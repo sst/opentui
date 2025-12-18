@@ -327,7 +327,6 @@ export fn bufferClearOpacity(bufferPtr: *buffer.OptimizedBuffer) void {
 }
 
 export fn bufferDrawSuperSampleBuffer(bufferPtr: *buffer.OptimizedBuffer, x: u32, y: u32, pixelData: [*]const u8, len: usize, format: u8, alignedBytesPerRow: u32) void {
-
     bufferPtr.drawSuperSampleBuffer(x, y, pixelData, len, format, alignedBytesPerRow) catch {};
 }
 
@@ -581,6 +580,18 @@ export fn textBufferViewSetLocalSelection(view: *text_buffer_view.UnifiedTextBuf
     const bg = if (bgColor) |bgPtr| utils.f32PtrToRGBA(bgPtr) else null;
     const fg = if (fgColor) |fgPtr| utils.f32PtrToRGBA(fgPtr) else null;
     return view.setLocalSelection(anchorX, anchorY, focusX, focusY, bg, fg);
+}
+
+export fn textBufferViewUpdateSelection(view: *text_buffer_view.UnifiedTextBufferView, end: u32, bgColor: ?[*]const f32, fgColor: ?[*]const f32) void {
+    const bg = if (bgColor) |bgPtr| utils.f32PtrToRGBA(bgPtr) else null;
+    const fg = if (fgColor) |fgPtr| utils.f32PtrToRGBA(fgPtr) else null;
+    view.updateSelection(end, bg, fg);
+}
+
+export fn textBufferViewUpdateLocalSelection(view: *text_buffer_view.UnifiedTextBufferView, anchorX: i32, anchorY: i32, focusX: i32, focusY: i32, bgColor: ?[*]const f32, fgColor: ?[*]const f32) bool {
+    const bg = if (bgColor) |bgPtr| utils.f32PtrToRGBA(bgPtr) else null;
+    const fg = if (fgColor) |fgPtr| utils.f32PtrToRGBA(fgPtr) else null;
+    return view.updateLocalSelection(anchorX, anchorY, focusX, focusY, bg, fg);
 }
 
 export fn textBufferViewResetLocalSelection(view: *text_buffer_view.UnifiedTextBufferView) void {
@@ -1016,6 +1027,18 @@ export fn editorViewSetLocalSelection(view: *editor_view.EditorView, anchorX: i3
     const bg = if (bgColor) |bgPtr| utils.f32PtrToRGBA(bgPtr) else null;
     const fg = if (fgColor) |fgPtr| utils.f32PtrToRGBA(fgPtr) else null;
     return view.text_buffer_view.setLocalSelection(anchorX, anchorY, focusX, focusY, bg, fg);
+}
+
+export fn editorViewUpdateSelection(view: *editor_view.EditorView, end: u32, bgColor: ?[*]const f32, fgColor: ?[*]const f32) void {
+    const bg = if (bgColor) |bgPtr| utils.f32PtrToRGBA(bgPtr) else null;
+    const fg = if (fgColor) |fgPtr| utils.f32PtrToRGBA(fgPtr) else null;
+    view.updateSelection(end, bg, fg);
+}
+
+export fn editorViewUpdateLocalSelection(view: *editor_view.EditorView, anchorX: i32, anchorY: i32, focusX: i32, focusY: i32, bgColor: ?[*]const f32, fgColor: ?[*]const f32) bool {
+    const bg = if (bgColor) |bgPtr| utils.f32PtrToRGBA(bgPtr) else null;
+    const fg = if (fgColor) |fgPtr| utils.f32PtrToRGBA(fgPtr) else null;
+    return view.updateLocalSelection(anchorX, anchorY, focusX, focusY, bg, fg);
 }
 
 export fn editorViewResetLocalSelection(view: *editor_view.EditorView) void {
