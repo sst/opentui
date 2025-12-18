@@ -312,19 +312,8 @@ export abstract class TextBufferRenderable extends Renderable implements LineInf
   }
 
   protected onResize(width: number, height: number): void {
-    // Update viewport with current scroll position and new size
     this.textBufferView.setViewport(this._scrollX, this._scrollY, width, height)
-
-    // Notify listeners (like LineNumberRenderable) that line info may have changed
-    // due to wrapping changes from the resize
     this.updateTextInfo()
-
-    if (this.lastLocalSelection) {
-      const changed = this.updateLocalSelection(this.lastLocalSelection)
-      if (changed) {
-        this.requestRender()
-      }
-    }
   }
 
   protected refreshLocalSelection(): boolean {
@@ -351,10 +340,6 @@ export abstract class TextBufferRenderable extends Renderable implements LineInf
   }
 
   protected updateTextInfo(): void {
-    if (this.lastLocalSelection) {
-      this.updateLocalSelection(this.lastLocalSelection)
-    }
-
     this.yogaNode.markDirty()
     this.requestRender()
     this.emit("line-info-change")

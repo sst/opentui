@@ -389,12 +389,6 @@ export abstract class EditBufferRenderable extends Renderable implements LineInf
 
   protected onResize(width: number, height: number): void {
     this.editorView.setViewportSize(width, height)
-    if (this.lastLocalSelection) {
-      const changed = this.updateLocalSelection(this.lastLocalSelection)
-      if (changed) {
-        this.requestRender()
-      }
-    }
   }
 
   protected refreshLocalSelection(): boolean {
