@@ -294,5 +294,58 @@ describe("Textarea - Scroll Tests", () => {
 
       editor.destroy()
     })
+
+    it("should allow mouse wheel scroll after selection auto-scroll", async () => {
+      const { textarea: editor } = await createTextareaRenderable(currentRenderer, renderOnce, {
+        initialValue: Array.from({ length: 100 }, (_, i) => `Line ${i}`).join("\n"),
+        width: 40,
+        height: 10,
+        selectable: true,
+      })
+
+      // Position at top
+      editor.editBuffer.gotoLine(0)
+      await renderOnce()
+
+      const viewportInitial = editor.editorView.getViewport()
+      expect(viewportInitial.offsetY).toBe(0)
+
+      // Start renderer for auto-scroll
+      currentRenderer.start()
+
+      // Drag selection from top to way below viewport to trigger auto-scroll to bottom
+      await currentMouse.pressDown(editor.x, editor.y)
+      await currentMouse.moveTo(editor.x + 5, editor.y + editor.height - 1)
+
+      // Wait 2 seconds for auto-scroll to reach near the end
+      await new Promise((resolve) => setTimeout(resolve, 2000))
+
+      // Release mouse to complete selection
+      await currentMouse.release(editor.x + 5, editor.y + editor.height - 1)
+
+      const viewportAfterSelection = editor.editorView.getViewport()
+      console.log("Viewport after selection scroll:", viewportAfterSelection)
+
+      // Should have scrolled down significantly
+      expect(viewportAfterSelection.offsetY).toBeGreaterThan(20)
+
+      // Now use mouse wheel to scroll all the way back up
+      for (let i = 0; i < 100; i++) {
+        await currentMouse.scroll(editor.x + 5, editor.y + 5, "up")
+      }
+
+      // Wait 2 seconds to ensure all scroll events are processed
+      await new Promise((resolve) => setTimeout(resolve, 2000))
+
+      const viewportFinal = editor.editorView.getViewport()
+      console.log("Viewport after scrolling up:", viewportFinal)
+
+      currentRenderer.pause()
+
+      // Should have scrolled all the way back to top
+      expect(viewportFinal.offsetY).toBe(0)
+
+      editor.destroy()
+    })
   })
 })
