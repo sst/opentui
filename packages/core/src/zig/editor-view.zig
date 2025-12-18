@@ -252,15 +252,71 @@ pub const EditorView = struct {
     }
 
     pub fn setLocalSelection(self: *EditorView, anchorX: i32, anchorY: i32, focusX: i32, focusY: i32, bgColor: ?tb.RGBA, fgColor: ?tb.RGBA) bool {
-        return self.text_buffer_view.setLocalSelection(anchorX, anchorY, focusX, focusY, bgColor, fgColor);
+        const changed = self.text_buffer_view.setLocalSelection(anchorX, anchorY, focusX, focusY, bgColor, fgColor);
+
+        // Update cursor to selection focus position to enable automatic viewport scrolling
+        if (changed) {
+            self.updateCursorToSelectionFocus(focusX, focusY);
+        }
+
+        return changed;
     }
 
     pub fn updateLocalSelection(self: *EditorView, anchorX: i32, anchorY: i32, focusX: i32, focusY: i32, bgColor: ?tb.RGBA, fgColor: ?tb.RGBA) bool {
-        return self.text_buffer_view.updateLocalSelection(anchorX, anchorY, focusX, focusY, bgColor, fgColor);
+        const changed = self.text_buffer_view.updateLocalSelection(anchorX, anchorY, focusX, focusY, bgColor, fgColor);
+
+        // Update cursor to selection focus position to enable automatic viewport scrolling
+        if (changed) {
+            self.updateCursorToSelectionFocus(focusX, focusY);
+        }
+
+        return changed;
     }
 
     pub fn resetLocalSelection(self: *EditorView) void {
         self.text_buffer_view.resetLocalSelection();
+    }
+
+    /// Updates the cursor position to match the selection focus position.
+    /// This enables automatic viewport scrolling via ensureCursorVisible.
+    /// Instead of using the raw focus coordinates (which may be outside buffer bounds),
+    /// we determine the focus offset from the selection's anchor and use that.
+    fn updateCursorToSelectionFocus(self: *EditorView, _: i32, _: i32) void {
+        const selection = self.text_buffer_view.getSelection() orelse return;
+
+        // Determine which end of the selection is the focus (where user is dragging to)
+        // The selection_anchor_offset tells us where the drag started
+        const focus_offset = if (self.text_buffer_view.selection_anchor_offset) |anchor| blk: {
+            // If anchor == start, then focus is at end; otherwise focus is at start
+            if (anchor == selection.start) {
+                break :blk selection.end;
+            } else {
+                break :blk selection.start;
+            }
+        } else blk: {
+            // No anchor stored, assume focus is at end
+            break :blk selection.end;
+        };
+
+        // Convert the focus offset to logical coordinates
+        const focus_coords = iter_mod.offsetToCoords(&self.edit_buffer.tb.rope, focus_offset) orelse return;
+
+        // Verify the position is within buffer bounds
+        const line_count = iter_mod.getLineCount(&self.edit_buffer.tb.rope);
+        if (focus_coords.row >= line_count) return;
+
+        const line_width = iter_mod.lineWidthAt(&self.edit_buffer.tb.rope, focus_coords.row);
+        if (focus_coords.col > line_width) return;
+
+        // Update cursor to focus position (this will trigger ensureCursorVisible in updateBeforeRender)
+        if (self.edit_buffer.cursors.items.len > 0) {
+            self.edit_buffer.cursors.items[0] = .{
+                .row = focus_coords.row,
+                .col = focus_coords.col,
+                .desired_col = focus_coords.col,
+                .offset = focus_offset,
+            };
+        }
     }
 
     pub fn getSelectedTextIntoBuffer(self: *EditorView, out_buffer: []u8) usize {
