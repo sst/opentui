@@ -951,10 +951,6 @@ export fn editorViewSetScrollMargin(view: *editor_view.EditorView, margin: f32) 
     view.setScrollMargin(margin);
 }
 
-export fn editorViewEnsureCursorVisible(view: *editor_view.EditorView, cursor_line: u32) void {
-    view.ensureCursorVisible(cursor_line);
-}
-
 export fn editorViewGetVirtualLineCount(view: *editor_view.EditorView) u32 {
     // TODO: There is a getter for that directly, no?
     return @intCast(view.getVirtualLines().len);
