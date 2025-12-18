@@ -6,6 +6,8 @@ let currentRenderer: TestRenderer
 let renderOnce: () => Promise<void>
 let currentMouse: MockMouse
 
+const sleep = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms))
+
 describe("Textarea - Scroll Tests", () => {
   beforeEach(async () => {
     ;({
@@ -84,6 +86,105 @@ describe("Textarea - Scroll Tests", () => {
 
       // Cursor should have moved to the selection focus position
       expect(cursorAfter.row).toBeGreaterThan(cursorBefore.row)
+
+      editor.destroy()
+    })
+
+    it("should auto-scroll up when dragging selection above viewport", async () => {
+      const { textarea: editor } = await createTextareaRenderable(currentRenderer, renderOnce, {
+        initialValue: Array.from({ length: 100 }, (_, i) => `Line ${i}`).join("\n"),
+        width: 40,
+        height: 10,
+        selectable: true,
+      })
+
+      // Start somewhere in the middle so we can scroll up
+      editor.editBuffer.gotoLine(40)
+      await renderOnce()
+
+      const viewportBefore = editor.editorView.getViewport()
+      expect(viewportBefore.offsetY).toBeGreaterThan(0)
+
+      currentRenderer.start()
+
+      // Start dragging from within viewport
+      await currentMouse.pressDown(editor.x + 2, editor.y + 5)
+      // Drag to the top edge (within bounds) to trigger upward auto-scroll
+      await currentMouse.moveTo(editor.x + 2, editor.y)
+
+      await sleep(1000)
+
+      const viewportAfter = editor.editorView.getViewport()
+
+      await currentMouse.release(editor.x + 2, editor.y)
+      currentRenderer.pause()
+
+      expect(viewportAfter.offsetY).toBeLessThan(viewportBefore.offsetY)
+
+      editor.destroy()
+    })
+
+    it("should stop auto-scroll when selection ends", async () => {
+      const { textarea: editor } = await createTextareaRenderable(currentRenderer, renderOnce, {
+        initialValue: Array.from({ length: 100 }, (_, i) => `Line ${i}`).join("\n"),
+        width: 40,
+        height: 10,
+        selectable: true,
+      })
+
+      editor.editBuffer.gotoLine(0)
+      await renderOnce()
+
+      currentRenderer.start()
+
+      await currentMouse.pressDown(editor.x + 2, editor.y)
+      await currentMouse.moveTo(editor.x + 2, editor.y + editor.height - 1)
+
+      await sleep(1000)
+
+      // End selection (mouse up) and wait a moment
+      await currentMouse.release(editor.x + 2, editor.y + editor.height - 1)
+      await sleep(200)
+
+      const viewportAfterRelease = editor.editorView.getViewport()
+
+      // If selection-end notifications work, viewport should remain stable
+      await sleep(1000)
+
+      const viewportFinal = editor.editorView.getViewport()
+
+      currentRenderer.pause()
+
+      expect(viewportFinal.offsetY).toBe(viewportAfterRelease.offsetY)
+
+      editor.destroy()
+    })
+  })
+
+  describe("Selection Focus Clamping", () => {
+    it("should clamp cursor when dragging selection focus beyond buffer bounds", async () => {
+      const { textarea: editor } = await createTextareaRenderable(currentRenderer, renderOnce, {
+        initialValue: Array.from({ length: 10 }, (_, i) => `Line ${i}`).join("\n"),
+        width: 40,
+        height: 10,
+        selectable: true,
+      })
+
+      await renderOnce()
+
+      // Start selection at the top of the buffer
+      await currentMouse.pressDown(editor.x, editor.y)
+      await renderOnce()
+
+      // Drag selection far below the renderable's bounds (focusY way beyond buffer)
+      await currentMouse.moveTo(editor.x + 2, editor.y + 200)
+      await renderOnce()
+
+      const cursor = editor.logicalCursor
+      expect(cursor.row).toBe(9)
+
+      await currentMouse.release(editor.x + 2, editor.y + 200)
+      await renderOnce()
 
       editor.destroy()
     })
@@ -222,6 +323,37 @@ describe("Textarea - Scroll Tests", () => {
       editor.destroy()
     })
 
+    it("should move cursor into the viewport when wheel scrolling", async () => {
+      const { textarea: editor } = await createTextareaRenderable(currentRenderer, renderOnce, {
+        initialValue: Array.from({ length: 50 }, (_, i) => `Line ${i}`).join("\n"),
+        width: 40,
+        height: 10,
+        selectable: true,
+      })
+
+      editor.editBuffer.gotoLine(0)
+      await renderOnce()
+
+      const cursorBefore = editor.logicalCursor
+      expect(cursorBefore.row).toBe(0)
+
+      // Scroll down a few lines
+      for (let i = 0; i < 3; i++) {
+        await currentMouse.scroll(editor.x + 5, editor.y + 5, "down")
+      }
+      await renderOnce()
+
+      const viewportAfter = editor.editorView.getViewport()
+      const cursorAfter = editor.logicalCursor
+
+      // Wheel scrolling uses setViewport(..., moveCursor=true), which moves the cursor to stay visible
+      expect(cursorAfter.row).toBeGreaterThan(cursorBefore.row)
+      expect(cursorAfter.row).toBeGreaterThanOrEqual(viewportAfter.offsetY)
+      expect(cursorAfter.row).toBeLessThan(viewportAfter.offsetY + viewportAfter.height)
+
+      editor.destroy()
+    })
+
     it("should scroll up on mouse wheel up", async () => {
       const { textarea: editor } = await createTextareaRenderable(currentRenderer, renderOnce, {
         initialValue: Array.from({ length: 50 }, (_, i) => `Line ${i}`).join("\n"),
@@ -342,6 +474,74 @@ describe("Textarea - Scroll Tests", () => {
 
       // Should have scrolled all the way back to top
       expect(viewportFinal.offsetY).toBe(0)
+
+      editor.destroy()
+    })
+  })
+
+  describe("Mouse Wheel Horizontal Scrolling", () => {
+    it("should scroll horizontally with wheel when wrapping is disabled", async () => {
+      const { textarea: editor } = await createTextareaRenderable(currentRenderer, renderOnce, {
+        initialValue: "A".repeat(200),
+        width: 20,
+        height: 5,
+        wrapMode: "none",
+        selectable: true,
+      })
+
+      await renderOnce()
+
+      // Keep a selection active so native updateBeforeRender doesn't auto-scroll viewport back to cursor
+      await currentMouse.drag(editor.x, editor.y, editor.x + 1, editor.y)
+      await renderOnce()
+
+      const viewportBefore = editor.editorView.getViewport()
+      expect(viewportBefore.offsetX).toBe(0)
+
+      for (let i = 0; i < 5; i++) {
+        await currentMouse.scroll(editor.x + 2, editor.y + 2, "right")
+      }
+      await renderOnce()
+
+      const viewportAfterRight = editor.editorView.getViewport()
+      expect(viewportAfterRight.offsetX).toBe(5)
+
+      for (let i = 0; i < 3; i++) {
+        await currentMouse.scroll(editor.x + 2, editor.y + 2, "left")
+      }
+      await renderOnce()
+
+      const viewportAfterLeft = editor.editorView.getViewport()
+      expect(viewportAfterLeft.offsetX).toBe(2)
+
+      editor.destroy()
+    })
+
+    it("should not scroll horizontally with wheel when wrapping is enabled", async () => {
+      const { textarea: editor } = await createTextareaRenderable(currentRenderer, renderOnce, {
+        initialValue: "A".repeat(200),
+        width: 20,
+        height: 5,
+        wrapMode: "word",
+        selectable: true,
+      })
+
+      await renderOnce()
+
+      // Keep selection active to avoid cursor-driven viewport changes
+      await currentMouse.drag(editor.x, editor.y, editor.x + 1, editor.y)
+      await renderOnce()
+
+      const viewportBefore = editor.editorView.getViewport()
+      expect(viewportBefore.offsetX).toBe(0)
+
+      for (let i = 0; i < 5; i++) {
+        await currentMouse.scroll(editor.x + 2, editor.y + 2, "right")
+      }
+      await renderOnce()
+
+      const viewportAfter = editor.editorView.getViewport()
+      expect(viewportAfter.offsetX).toBe(0)
 
       editor.destroy()
     })
