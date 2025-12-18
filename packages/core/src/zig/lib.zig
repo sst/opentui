@@ -948,7 +948,7 @@ export fn editorViewSetScrollMargin(view: *editor_view.EditorView, margin: f32) 
 }
 
 export fn editorViewEnsureCursorVisible(view: *editor_view.EditorView, cursor_line: u32) void {
-    view.ensureCursorVisible(cursor_line);
+    view.ensureCursorVisible(cursor_line, null);
 }
 
 export fn editorViewGetVirtualLineCount(view: *editor_view.EditorView) u32 {

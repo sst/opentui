@@ -126,15 +126,22 @@ pub const EditorView = struct {
 
     /// Ensure the cursor is visible within the viewport, adjusting viewport.y and viewport.x if needed
     /// cursor_line: The virtual line index where the cursor is located
-    pub fn ensureCursorVisible(self: *EditorView, cursor_line: u32) void {
+    /// margin_override: Optional override for scroll margin (in lines/cols), useful for selection scrolling
+    pub fn ensureCursorVisible(self: *EditorView, cursor_line: u32, margin_override: ?u32) void {
         const vp = self.text_buffer_view.getViewport() orelse return;
 
         const viewport_height = vp.height;
         const viewport_width = vp.width;
         if (viewport_height == 0 or viewport_width == 0) return;
 
-        const margin_lines = @max(1, @as(u32, @intFromFloat(@as(f32, @floatFromInt(viewport_height)) * self.scroll_margin)));
-        const margin_cols = @max(1, @as(u32, @intFromFloat(@as(f32, @floatFromInt(viewport_width)) * self.scroll_margin)));
+        const margin_lines = if (margin_override) |m|
+            m
+        else
+            @max(1, @as(u32, @intFromFloat(@as(f32, @floatFromInt(viewport_height)) * self.scroll_margin)));
+        const margin_cols = if (margin_override) |m|
+            m
+        else
+            @max(1, @as(u32, @intFromFloat(@as(f32, @floatFromInt(viewport_width)) * self.scroll_margin)));
 
         // Get total virtual line count to determine max vertical offset
         const total_lines = self.text_buffer_view.getVirtualLineCount();
@@ -203,7 +210,7 @@ pub const EditorView = struct {
         if (!suppress_scroll and !has_selection) {
             const cursor = self.edit_buffer.getPrimaryCursor();
             const vcursor = self.logicalToVisualCursor(cursor.row, cursor.col);
-            self.ensureCursorVisible(vcursor.visual_row);
+            self.ensureCursorVisible(vcursor.visual_row, null);
         }
     }
 
@@ -332,7 +339,8 @@ pub const EditorView = struct {
         const focus_outside_viewport = vcursor.visual_row < vp.y or vcursor.visual_row >= vp.y + vp.height;
 
         if (focus_outside_viewport) {
-            self.ensureCursorVisible(vcursor.visual_row);
+            // Use minimal margin (1 line) for selection scrolling to avoid big jumps
+            self.ensureCursorVisible(vcursor.visual_row, 1);
         }
     }
 
@@ -491,7 +499,7 @@ pub const EditorView = struct {
                     .desired_col = new_vcursor.logical_col,
                     .offset = new_vcursor.offset,
                 };
-                self.ensureCursorVisible(new_vcursor.visual_row);
+                self.ensureCursorVisible(new_vcursor.visual_row, null);
 
                 // Restore desired_visual_col after the cursor change event resets it
                 self.desired_visual_col = desired_visual_col;
@@ -526,7 +534,7 @@ pub const EditorView = struct {
                     .desired_col = new_vcursor.logical_col,
                     .offset = new_vcursor.offset,
                 };
-                self.ensureCursorVisible(new_vcursor.visual_row);
+                self.ensureCursorVisible(new_vcursor.visual_row, null);
 
                 // Restore desired_visual_col after the cursor change event resets it
                 self.desired_visual_col = desired_visual_col;
