@@ -47,6 +47,11 @@ export class EditorView {
     this.lib.editorViewSetViewportSize(this.viewPtr, width, height)
   }
 
+  public setViewport(x: number, y: number, width: number, height: number): void {
+    this.guard()
+    this.lib.editorViewSetViewport(this.viewPtr, x, y, width, height)
+  }
+
   public getViewport(): Viewport {
     this.guard()
     return this.lib.editorViewGetViewport(this.viewPtr)

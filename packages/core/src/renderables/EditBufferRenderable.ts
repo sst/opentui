@@ -57,6 +57,11 @@ export abstract class EditBufferRenderable extends Renderable implements LineInf
   private _cursorChangeListener: ((event: CursorChangeEvent) => void) | undefined = undefined
   private _contentChangeListener: ((event: ContentChangeEvent) => void) | undefined = undefined
 
+  // Auto-scroll state for selection
+  private _autoScrollVelocity: number = 0 // Lines per second
+  private _autoScrollAccumulator: number = 0 // Accumulated fractional scroll
+  private readonly _autoScrollSpeed: number = 10 // Lines per second when at boundary
+
   public readonly editBuffer: EditBuffer
   public readonly editorView: EditorView
 
@@ -379,7 +384,11 @@ export abstract class EditBufferRenderable extends Renderable implements LineInf
     const localSelection = convertGlobalToLocalSelection(selection, this.x, this.y)
     this.lastLocalSelection = localSelection
 
-    // Always update cursor during mouse selection to enable automatic viewport scrolling
+    console.log(
+      `onSelectionChanged: selection=${!!selection}, localSelection.isActive=${localSelection?.isActive}, selection.isSelecting=${selection?.isSelecting}`,
+    )
+
+    // Always update cursor during mouse selection
     const updateCursor = true
 
     let changed: boolean
@@ -408,11 +417,74 @@ export abstract class EditBufferRenderable extends Renderable implements LineInf
       )
     }
 
+    console.log(`  changed=${changed}, localSelection?.isActive=${localSelection?.isActive}`)
+
+    // Calculate auto-scroll velocity based on selection focus position
+    if (changed && localSelection?.isActive) {
+      const viewport = this.editorView.getViewport()
+      const focusY = localSelection.focusY
+      const scrollMargin = Math.max(1, Math.floor(viewport.height * this._scrollMargin))
+
+      // Determine scroll direction based on where focus is
+      if (focusY < scrollMargin) {
+        // Focus above viewport - scroll up
+        this._autoScrollVelocity = -this._autoScrollSpeed
+      } else if (focusY >= viewport.height - scrollMargin) {
+        // Focus below viewport - scroll down
+        this._autoScrollVelocity = this._autoScrollSpeed
+      } else {
+        // Focus within viewport - no scroll
+        this._autoScrollVelocity = 0
+      }
+    } else {
+      // No active selection - stop scrolling
+      this._autoScrollVelocity = 0
+      this._autoScrollAccumulator = 0
+    }
+
     if (changed) {
       this.requestRender()
     }
 
     return this.hasSelection()
+  }
+
+  protected override onUpdate(deltaTime: number): void {
+    super.onUpdate(deltaTime)
+
+    console.log(
+      `onUpdate called: deltaTime=${deltaTime}, velocity=${this._autoScrollVelocity}, hasSelection=${this.hasSelection()}`,
+    )
+
+    // Handle auto-scroll during selection
+    if (this._autoScrollVelocity !== 0 && this.hasSelection()) {
+      const deltaSeconds = deltaTime / 1000
+      this._autoScrollAccumulator += this._autoScrollVelocity * deltaSeconds
+
+      console.log(`  accumulator=${this._autoScrollAccumulator}, deltaSeconds=${deltaSeconds}`)
+
+      // Only scroll by full lines
+      const linesToScroll = Math.floor(Math.abs(this._autoScrollAccumulator))
+      if (linesToScroll > 0) {
+        const direction = this._autoScrollVelocity > 0 ? 1 : -1
+        const viewport = this.editorView.getViewport()
+        const totalVirtualLines = this.editorView.getTotalVirtualLineCount()
+        const maxOffsetY = Math.max(0, totalVirtualLines - viewport.height)
+        const newOffsetY = Math.max(0, Math.min(viewport.offsetY + direction * linesToScroll, maxOffsetY))
+
+        console.log(
+          `  Scrolling: linesToScroll=${linesToScroll}, direction=${direction}, viewport.offsetY=${viewport.offsetY}, totalVirtualLines=${totalVirtualLines}, maxOffsetY=${maxOffsetY}, newOffsetY=${newOffsetY}`,
+        )
+
+        if (newOffsetY !== viewport.offsetY) {
+          console.log(`  Calling setViewport with offsetY=${newOffsetY}`)
+          this.editorView.setViewport(viewport.offsetX, newOffsetY, viewport.width, viewport.height)
+        }
+
+        // Keep fractional part for next frame
+        this._autoScrollAccumulator -= direction * linesToScroll
+      }
+    }
   }
 
   getSelectedText(): string {
