@@ -1783,11 +1783,13 @@ export class CliRenderer extends EventEmitter implements RenderContext {
     this.clearSelection()
     this.selectionContainers.push(renderable.parent || this.root)
     this.currentSelection = new Selection(renderable, { x, y }, { x, y })
+    this.currentSelection.isStart = true
     this.notifySelectablesOfSelectionChange()
   }
 
   public updateSelection(currentRenderable: Renderable | undefined, x: number, y: number): void {
     if (this.currentSelection) {
+      this.currentSelection.isStart = false
       this.currentSelection.focus = { x, y }
 
       if (this.selectionContainers.length > 0) {
@@ -1876,7 +1878,8 @@ export class CliRenderer extends EventEmitter implements RenderContext {
       selectionBounds,
       container.getChildrenSortedByPrimaryAxis(),
       container.primaryAxis,
-      0,
+      0, // padding
+      0, // minTriggerSize - always perform overlap checks for selection
     )
 
     for (const child of children) {
