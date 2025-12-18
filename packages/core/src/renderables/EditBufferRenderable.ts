@@ -61,7 +61,7 @@ export abstract class EditBufferRenderable extends Renderable implements LineInf
   // Auto-scroll state for selection
   private _autoScrollVelocity: number = 0 // Lines per second
   private _autoScrollAccumulator: number = 0 // Accumulated fractional scroll
-  private _scrollSpeed: number = 10 // Lines per second when at boundary
+  private _scrollSpeed: number = 16 // Lines per second when at boundary
 
   public readonly editBuffer: EditBuffer
   public readonly editorView: EditorView
@@ -75,7 +75,7 @@ export abstract class EditBufferRenderable extends Renderable implements LineInf
     attributes: 0,
     wrapMode: "word" as "none" | "char" | "word",
     scrollMargin: 0.2,
-    scrollSpeed: 10,
+    scrollSpeed: 16,
     showCursor: true,
     cursorColor: RGBA.fromValues(1, 1, 1, 1),
     cursorStyle: {

@@ -54,6 +54,8 @@ VIEW:
   • Shift+L to toggle line numbers
   • Shift+H to toggle diff highlights (colors + +/- signs)
   • Shift+D to toggle diagnostics (error/warning/info emojis)
+  • Ctrl+] to increase scroll speed
+  • Ctrl+[ to decrease scroll speed
 
 FEATURES:
   ✓ Grapheme-aware cursor movement
@@ -141,7 +143,8 @@ export async function run(rendererInstance: CliRenderer): Promise<void> {
         const wrap = editor.wrapMode !== "none" ? "ON" : "OFF"
         const highlights = highlightsEnabled ? "ON" : "OFF"
         const diagnostics = diagnosticsEnabled ? "ON" : "OFF"
-        statusText.content = `Line ${cursor.row + 1}, Col ${cursor.col + 1} | Wrap: ${wrap} | Diff: ${highlights} | Diag: ${diagnostics}`
+        const scrollSpeed = editor.scrollSpeed
+        statusText.content = `Line ${cursor.row + 1}, Col ${cursor.col + 1} | Wrap: ${wrap} | Diff: ${highlights} | Diag: ${diagnostics} | Scroll: ${scrollSpeed} lines/s`
       } catch (error) {
         // Ignore errors during shutdown
       }
@@ -274,6 +277,18 @@ export async function run(rendererInstance: CliRenderer): Promise<void> {
         } else {
           editor.gotoBufferEnd()
         }
+      }
+    }
+    if (key.ctrl && key.name === "]") {
+      key.preventDefault()
+      if (editor && !editor.isDestroyed) {
+        editor.scrollSpeed = Math.min(100, editor.scrollSpeed + 4)
+      }
+    }
+    if (key.ctrl && key.name === "[") {
+      key.preventDefault()
+      if (editor && !editor.isDestroyed) {
+        editor.scrollSpeed = Math.max(4, editor.scrollSpeed - 4)
       }
     }
   })
