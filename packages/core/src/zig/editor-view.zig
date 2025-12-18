@@ -390,8 +390,16 @@ pub const EditorView = struct {
     }
 
     /// This is a convenience method that preserves existing offset
+    /// After resize, ensures cursor is visible even if selection is active
     pub fn setViewportSize(self: *EditorView, width: u32, height: u32) void {
         self.text_buffer_view.setViewportSize(width, height);
+
+        // After resize, wrapping may change drastically, pushing cursor far outside viewport
+        // Always ensure cursor is visible, even if selection is active
+        // (updateBeforeRender skips ensureCursorVisible when selection exists, but resize needs it)
+        const cursor = self.edit_buffer.getPrimaryCursor();
+        const vcursor = self.logicalToVisualCursor(cursor.row, cursor.col);
+        self.ensureCursorVisible(vcursor.visual_row);
     }
 
     pub fn setWrapMode(self: *EditorView, mode: tb.WrapMode) void {
