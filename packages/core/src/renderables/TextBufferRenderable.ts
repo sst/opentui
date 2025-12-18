@@ -313,7 +313,9 @@ export abstract class TextBufferRenderable extends Renderable implements LineInf
 
   protected onResize(width: number, height: number): void {
     this.textBufferView.setViewport(this._scrollX, this._scrollY, width, height)
-    this.updateTextInfo()
+    this.yogaNode.markDirty()
+    this.requestRender()
+    this.emit("line-info-change")
   }
 
   protected refreshLocalSelection(): boolean {
@@ -340,6 +342,10 @@ export abstract class TextBufferRenderable extends Renderable implements LineInf
   }
 
   protected updateTextInfo(): void {
+    if (this.lastLocalSelection) {
+      this.updateLocalSelection(this.lastLocalSelection)
+    }
+
     this.yogaNode.markDirty()
     this.requestRender()
     this.emit("line-info-change")
