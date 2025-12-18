@@ -378,6 +378,8 @@ export abstract class EditBufferRenderable extends Renderable implements LineInf
     const localSelection = convertGlobalToLocalSelection(selection, this.x, this.y)
     this.lastLocalSelection = localSelection
 
+    const isSelecting = selection?.isSelecting ?? false
+
     let changed: boolean
     if (!localSelection?.isActive) {
       this.editorView.resetLocalSelection()
@@ -390,6 +392,7 @@ export abstract class EditBufferRenderable extends Renderable implements LineInf
         localSelection.focusY,
         this._selectionBg,
         this._selectionFg,
+        isSelecting,
       )
     } else {
       changed = this.editorView.updateLocalSelection(
@@ -399,6 +402,7 @@ export abstract class EditBufferRenderable extends Renderable implements LineInf
         localSelection.focusY,
         this._selectionBg,
         this._selectionFg,
+        isSelecting,
       )
     }
 

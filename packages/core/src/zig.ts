@@ -792,7 +792,7 @@ function getOpenTUILib(libPath?: string) {
       returns: "u64",
     },
     editorViewSetLocalSelection: {
-      args: ["ptr", "i32", "i32", "i32", "i32", "ptr", "ptr"],
+      args: ["ptr", "i32", "i32", "i32", "i32", "ptr", "ptr", "bool"],
       returns: "bool",
     },
     editorViewUpdateSelection: {
@@ -800,7 +800,7 @@ function getOpenTUILib(libPath?: string) {
       returns: "void",
     },
     editorViewUpdateLocalSelection: {
-      args: ["ptr", "i32", "i32", "i32", "i32", "ptr", "ptr"],
+      args: ["ptr", "i32", "i32", "i32", "i32", "ptr", "ptr", "bool"],
       returns: "bool",
     },
     editorViewResetLocalSelection: {
@@ -1469,6 +1469,7 @@ export interface RenderLib {
     focusY: number,
     bgColor: RGBA | null,
     fgColor: RGBA | null,
+    isSelecting: boolean,
   ) => boolean
   editorViewUpdateSelection: (view: Pointer, end: number, bgColor: RGBA | null, fgColor: RGBA | null) => void
   editorViewUpdateLocalSelection: (
@@ -1479,6 +1480,7 @@ export interface RenderLib {
     focusY: number,
     bgColor: RGBA | null,
     fgColor: RGBA | null,
+    isSelecting: boolean,
   ) => boolean
   editorViewResetLocalSelection: (view: Pointer) => void
   editorViewGetSelectedTextBytes: (view: Pointer, maxLength: number) => Uint8Array | null
@@ -2870,10 +2872,11 @@ class FFIRenderLib implements RenderLib {
     focusY: number,
     bgColor: RGBA | null,
     fgColor: RGBA | null,
+    isSelecting: boolean,
   ): boolean {
     const bg = bgColor ? bgColor.buffer : null
     const fg = fgColor ? fgColor.buffer : null
-    return this.opentui.symbols.editorViewSetLocalSelection(view, anchorX, anchorY, focusX, focusY, bg, fg)
+    return this.opentui.symbols.editorViewSetLocalSelection(view, anchorX, anchorY, focusX, focusY, bg, fg, isSelecting)
   }
 
   public editorViewUpdateSelection(view: Pointer, end: number, bgColor: RGBA | null, fgColor: RGBA | null): void {
@@ -2890,10 +2893,20 @@ class FFIRenderLib implements RenderLib {
     focusY: number,
     bgColor: RGBA | null,
     fgColor: RGBA | null,
+    isSelecting: boolean,
   ): boolean {
     const bg = bgColor ? bgColor.buffer : null
     const fg = fgColor ? fgColor.buffer : null
-    return this.opentui.symbols.editorViewUpdateLocalSelection(view, anchorX, anchorY, focusX, focusY, bg, fg)
+    return this.opentui.symbols.editorViewUpdateLocalSelection(
+      view,
+      anchorX,
+      anchorY,
+      focusX,
+      focusY,
+      bg,
+      fg,
+      isSelecting,
+    )
   }
 
   public editorViewResetLocalSelection(view: Pointer): void {
