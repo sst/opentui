@@ -996,7 +996,7 @@ test "EditorView - viewport scrolling with wrapped lines: down + edit + up" {
 
     const tbv = ev.getTextBufferView();
     tbv.setWrapMode(.char);
-    ev.setViewport(Viewport{ .x = 0, .y = 0, .width = 20, .height = 10 });
+    ev.setViewport(Viewport{ .x = 0, .y = 0, .width = 20, .height = 10 }, true);
 
     try eb.setText("AAAAAAAAAABBBBBBBBBBCCCCCCCCCCDDDDDDDDDDEEEEEEEEEEFFFFFFFFFFFFGGGGGGGGGGHHHHHHHHHHIIIIIIIIIIJJJJJJJJJJKKKKKKKKKKLLLLLLLLLLMMMMMMMMMMNNNNNNNNNNOOOOOOOOOOPPPPPPPPPPQQQQQQQQQQRRRRRRRRRRSSSSSSSSSSTTTTTTTTTTUUUUUUUUUUVVVVVVVVVVWWWWWWWWWWXXXXXXXXXXYYYYYYYYYYZZZZZZZZZZ");
 
@@ -1049,7 +1049,7 @@ test "EditorView - viewport scrolling with wrapped lines: aggressive down + edit
 
     const tbv = ev.getTextBufferView();
     tbv.setWrapMode(.char);
-    ev.setViewport(Viewport{ .x = 0, .y = 0, .width = 20, .height = 10 });
+    ev.setViewport(Viewport{ .x = 0, .y = 0, .width = 20, .height = 10 }, true);
 
     try eb.setText("AAAAAAAAAABBBBBBBBBBCCCCCCCCCCDDDDDDDDDDEEEEEEEEEEFFFFFFFFFFFFGGGGGGGGGGHHHHHHHHHHIIIIIIIIIIJJJJJJJJJJKKKKKKKKKKLLLLLLLLLLMMMMMMMMMMNNNNNNNNNNOOOOOOOOOOPPPPPPPPPPQQQQQQQQQQRRRRRRRRRRSSSSSSSSSSTTTTTTTTTTUUUUUUUUUUVVVVVVVVVVWWWWWWWWWWXXXXXXXXXXYYYYYYYYYYZZZZZZZZZZ");
 
@@ -1099,7 +1099,7 @@ test "EditorView - viewport scrolling with wrapped lines: multiple edits and mov
 
     const tbv = ev.getTextBufferView();
     tbv.setWrapMode(.char);
-    ev.setViewport(Viewport{ .x = 0, .y = 0, .width = 15, .height = 8 });
+    ev.setViewport(Viewport{ .x = 0, .y = 0, .width = 15, .height = 8 }, true);
 
     try eb.setText("AAAAAAAAAABBBBBBBBBBCCCCCCCCCCDDDDDDDDDDEEEEEEEEEEFFFFFFFFFFFFGGGGGGGGGGHHHHHHHHHHIIIIIIIIIIJJJJJJJJJJKKKKKKKKKKLLLLLLLLLLMMMMMMMMMMNNNNNNNNNNOOOOOOOOOOPPPPPPPPPPQQQQQQQQQQRRRRRRRRRRSSSSSSSSSSTTTTTTTTTTUUUUUUUUUUVVVVVVVVVV");
 
@@ -1143,7 +1143,7 @@ test "EditorView - viewport scrolling with wrapped lines: verify viewport consis
 
     const tbv = ev.getTextBufferView();
     tbv.setWrapMode(.char);
-    ev.setViewport(Viewport{ .x = 0, .y = 0, .width = 20, .height = 10 });
+    ev.setViewport(Viewport{ .x = 0, .y = 0, .width = 20, .height = 10 }, true);
 
     try eb.setText("AAAAAAAAAABBBBBBBBBBCCCCCCCCCCDDDDDDDDDDEEEEEEEEEEFFFFFFFFFFFFGGGGGGGGGGHHHHHHHHHHIIIIIIIIIIJJJJJJJJJJKKKKKKKKKKLLLLLLLLLLMMMMMMMMMMNNNNNNNNNNOOOOOOOOOOPPPPPPPPPPQQQQQQQQQQRRRRRRRRRRSSSSSSSSSSTTTTTTTTTTUUUUUUUUUUVVVVVVVVVVWWWWWWWWWWXXXXXXXXXXYYYYYYYYYYZZZZZZZZZZ");
 
@@ -1198,7 +1198,7 @@ test "EditorView - viewport scrolling with wrapped lines: backspace after scroll
 
     const tbv = ev.getTextBufferView();
     tbv.setWrapMode(.char);
-    ev.setViewport(Viewport{ .x = 0, .y = 0, .width = 20, .height = 10 });
+    ev.setViewport(Viewport{ .x = 0, .y = 0, .width = 20, .height = 10 }, true);
 
     try eb.setText("AAAAAAAAAABBBBBBBBBBCCCCCCCCCCDDDDDDDDDDEEEEEEEEEEFFFFFFFFFFFFGGGGGGGGGGHHHHHHHHHHIIIIIIIIIIJJJJJJJJJJKKKKKKKKKKLLLLLLLLLLMMMMMMMMMMNNNNNNNNNNOOOOOOOOOOPPPPPPPPPPQQQQQQQQQQRRRRRRRRRRSSSSSSSSSSTTTTTTTTTTUUUUUUUUUUVVVVVVVVVVWWWWWWWWWWXXXXXXXXXXYYYYYYYYYYZZZZZZZZZZ");
 
@@ -1235,7 +1235,7 @@ test "EditorView - viewport scrolling with wrapped lines: viewport follows curso
 
     const tbv = ev.getTextBufferView();
     tbv.setWrapMode(.char);
-    ev.setViewport(Viewport{ .x = 0, .y = 0, .width = 20, .height = 5 });
+    ev.setViewport(Viewport{ .x = 0, .y = 0, .width = 20, .height = 5 }, true);
 
     try eb.setText("AAAAAAAAAABBBBBBBBBBCCCCCCCCCCDDDDDDDDDDEEEEEEEEEEFFFFFFFFFFFFGGGGGGGGGGHHHHHHHHHHIIIIIIIIIIJJJJJJJJJJKKKKKKKKKKLLLLLLLLLLMMMMMMMMMMNNNNNNNNNNOOOOOOOOOOPPPPPPPPPPQQQQQQQQQQRRRRRRRRRRSSSSSSSSSSTTTTTTTTTTUUUUUUUUUUVVVVVVVVVVWWWWWWWWWWXXXXXXXXXXYYYYYYYYYYZZZZZZZZZZ");
 
@@ -1293,7 +1293,7 @@ test "EditorView - wrapped lines: specific scenario with insert and deletions" {
 
     const tbv = ev.getTextBufferView();
     tbv.setWrapMode(.char);
-    ev.setViewport(Viewport{ .x = 0, .y = 0, .width = 20, .height = 10 });
+    ev.setViewport(Viewport{ .x = 0, .y = 0, .width = 20, .height = 10 }, true);
 
     try eb.setText("AAAAAAAAAABBBBBBBBBBCCCCCCCCCCDDDDDDDDDDEEEEEEEEEEFFFFFFFFFFFFGGGGGGGGGGHHHHHHHHHHIIIIIIIIIIJJJJJJJJJJKKKKKKKKKKLLLLLLLLLLMMMMMMMMMMNNNNNNNNNNOOOOOOOOOOPPPPPPPPPPQQQQQQQQQQRRRRRRRRRRSSSSSSSSSSTTTTTTTTTTUUUUUUUUUUVVVVVVVVVVWWWWWWWWWWXXXXXXXXXXYYYYYYYYYYZZZZZZZZZZ");
 
@@ -1353,7 +1353,7 @@ test "EditorView - wrapped lines: many small edits with viewport scrolling" {
 
     const tbv = ev.getTextBufferView();
     tbv.setWrapMode(.char);
-    ev.setViewport(Viewport{ .x = 0, .y = 0, .width = 15, .height = 8 });
+    ev.setViewport(Viewport{ .x = 0, .y = 0, .width = 15, .height = 8 }, true);
 
     try eb.setText("AAAAAAAAAABBBBBBBBBBCCCCCCCCCCDDDDDDDDDDEEEEEEEEEEFFFFFFFFFFFFGGGGGGGGGGHHHHHHHHHHIIIIIIIIIIJJJJJJJJJJKKKKKKKKKKLLLLLLLLLLMMMMMMMMMMNNNNNNNNNNOOOOOOOOOOPPPPPPPPPPQQQQQQQQQQRRRRRRRRRRSSSSSSSSSSTTTTTTTTTTUUUUUUUUUUVVVVVVVVVV");
 
@@ -2371,7 +2371,7 @@ test "EditorView - word wrapping with space insertion maintains cursor sync" {
     defer ev.deinit();
 
     ev.setWrapMode(.word);
-    ev.setViewport(Viewport{ .x = 0, .y = 0, .width = 15, .height = 10 });
+    ev.setViewport(Viewport{ .x = 0, .y = 0, .width = 15, .height = 10 }, true);
 
     try eb.setText("AAAAAAAAAAAAAAAAAAA");
     try eb.setCursor(0, 7);

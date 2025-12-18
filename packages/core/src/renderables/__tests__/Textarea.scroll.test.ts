@@ -194,4 +194,105 @@ describe("Textarea - Scroll Tests", () => {
       editor.destroy()
     })
   })
+
+  describe("Mouse Wheel Scrolling", () => {
+    it("should scroll down on mouse wheel down", async () => {
+      const { textarea: editor } = await createTextareaRenderable(currentRenderer, renderOnce, {
+        initialValue: Array.from({ length: 50 }, (_, i) => `Line ${i}`).join("\n"),
+        width: 40,
+        height: 10,
+        selectable: true,
+      })
+
+      editor.editBuffer.gotoLine(0)
+      await renderOnce()
+
+      const viewportBefore = editor.editorView.getViewport()
+      expect(viewportBefore.offsetY).toBe(0)
+
+      // Scroll down by 3 lines
+      for (let i = 0; i < 3; i++) {
+        await currentMouse.scroll(editor.x + 5, editor.y + 5, "down")
+      }
+      await renderOnce()
+
+      const viewportAfter = editor.editorView.getViewport()
+      expect(viewportAfter.offsetY).toBe(3)
+
+      editor.destroy()
+    })
+
+    it("should scroll up on mouse wheel up", async () => {
+      const { textarea: editor } = await createTextareaRenderable(currentRenderer, renderOnce, {
+        initialValue: Array.from({ length: 50 }, (_, i) => `Line ${i}`).join("\n"),
+        width: 40,
+        height: 10,
+        selectable: true,
+      })
+
+      // Start at line 20
+      editor.editBuffer.gotoLine(20)
+      await renderOnce()
+
+      const viewportBefore = editor.editorView.getViewport()
+      expect(viewportBefore.offsetY).toBeGreaterThan(10)
+      const offsetBefore = viewportBefore.offsetY
+
+      // Scroll up by 5 lines
+      for (let i = 0; i < 5; i++) {
+        await currentMouse.scroll(editor.x + 5, editor.y + 5, "up")
+      }
+      await renderOnce()
+
+      const viewportAfter = editor.editorView.getViewport()
+      expect(viewportAfter.offsetY).toBe(offsetBefore - 5)
+
+      editor.destroy()
+    })
+
+    it("should not scroll beyond top", async () => {
+      const { textarea: editor } = await createTextareaRenderable(currentRenderer, renderOnce, {
+        initialValue: Array.from({ length: 50 }, (_, i) => `Line ${i}`).join("\n"),
+        width: 40,
+        height: 10,
+        selectable: true,
+      })
+
+      editor.editBuffer.gotoLine(2)
+      await renderOnce()
+
+      // Scroll up by 100 lines (should clamp to 0)
+      for (let i = 0; i < 100; i++) {
+        await currentMouse.scroll(editor.x + 5, editor.y + 5, "up")
+      }
+      await renderOnce()
+
+      const viewport = editor.editorView.getViewport()
+      expect(viewport.offsetY).toBe(0)
+
+      editor.destroy()
+    })
+
+    it("should not scroll beyond bottom", async () => {
+      const { textarea: editor } = await createTextareaRenderable(currentRenderer, renderOnce, {
+        initialValue: Array.from({ length: 20 }, (_, i) => `Line ${i}`).join("\n"),
+        width: 40,
+        height: 10,
+        selectable: true,
+      })
+
+      await renderOnce()
+
+      // Scroll down by 100 lines (should clamp to maxOffsetY = 20 - 10 = 10)
+      for (let i = 0; i < 100; i++) {
+        await currentMouse.scroll(editor.x + 5, editor.y + 5, "down")
+      }
+      await renderOnce()
+
+      const viewport = editor.editorView.getViewport()
+      expect(viewport.offsetY).toBe(10) // 20 lines - 10 viewport height
+
+      editor.destroy()
+    })
+  })
 })

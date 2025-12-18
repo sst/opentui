@@ -110,12 +110,68 @@ pub const EditorView = struct {
 
     /// Set the viewport. If wrapping is enabled and viewport width differs from current wrap width,
     /// this will trigger a reflow by updating the TextBufferView's wrap width.
-    pub fn setViewport(self: *EditorView, vp: ?tbv.Viewport) void {
+    /// moveCursor: if true, moves cursor to stay within viewport bounds (prevents viewport reset)
+    pub fn setViewport(self: *EditorView, vp: ?tbv.Viewport, moveCursor: bool) void {
         self.text_buffer_view.setViewport(vp);
+
+        // After setting viewport, optionally move cursor to be within the new viewport bounds
+        // This prevents ensureCursorVisible from resetting the viewport on next render
+        if (moveCursor) {
+            self.makeCursorVisible();
+        }
     }
 
     pub fn getViewport(self: *const EditorView) ?tbv.Viewport {
         return self.text_buffer_view.getViewport();
+    }
+
+    /// Move the cursor to be within the current viewport if it's outside.
+    /// Unlike ensureCursorVisible, this moves the cursor, not the viewport.
+    /// Respects scroll margins to prevent immediate re-scrolling by ensureCursorVisible.
+    pub fn makeCursorVisible(self: *EditorView) void {
+        const vp = self.text_buffer_view.getViewport() orelse return;
+        const cursor = self.edit_buffer.getPrimaryCursor();
+        const vcursor = self.logicalToVisualCursor(cursor.row, cursor.col);
+
+        const viewport_height = vp.height;
+        const margin_lines = @max(1, @as(u32, @intFromFloat(@as(f32, @floatFromInt(viewport_height)) * self.scroll_margin)));
+
+        // Check if cursor is outside viewport bounds (considering margin)
+        const cursor_above_viewport = vcursor.visual_row < vp.y;
+        const cursor_below_viewport = vcursor.visual_row >= vp.y + vp.height;
+        const cursor_too_close_to_top = vcursor.visual_row < vp.y + margin_lines;
+        const cursor_too_close_to_bottom = vcursor.visual_row >= vp.y + vp.height - margin_lines;
+
+        if (cursor_above_viewport or cursor_below_viewport or cursor_too_close_to_top or cursor_too_close_to_bottom) {
+            // Move cursor to a safe position within viewport (respecting margins)
+            const target_visual_row = if (cursor_above_viewport or cursor_too_close_to_top)
+                vp.y + margin_lines // Position at margin from top
+            else
+                vp.y + vp.height - margin_lines - 1; // Position at margin from bottom
+
+            // Convert target visual row to logical position
+            self.text_buffer_view.updateVirtualLines();
+            const vlines = self.text_buffer_view.virtual_lines.items;
+            if (target_visual_row < vlines.len) {
+                const target_vline = &vlines[target_visual_row];
+                const target_logical_row = @as(u32, @intCast(target_vline.source_line));
+
+                // Preserve column position if possible
+                const line_width = iter_mod.lineWidthAt(&self.edit_buffer.tb.rope, target_logical_row);
+                const target_col = @min(cursor.col, line_width);
+
+                // Update cursor position
+                if (self.edit_buffer.cursors.items.len > 0) {
+                    const offset = iter_mod.coordsToOffset(&self.edit_buffer.tb.rope, target_logical_row, target_col) orelse return;
+                    self.edit_buffer.cursors.items[0] = .{
+                        .row = target_logical_row,
+                        .col = target_col,
+                        .desired_col = target_col,
+                        .offset = offset,
+                    };
+                }
+            }
+        }
     }
 
     /// Set the scroll margin as a fraction of viewport height (0.0 to 0.5)

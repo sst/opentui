@@ -587,6 +587,10 @@ function getOpenTUILib(libPath?: string) {
       args: ["ptr", "u32", "u32", "u32", "u32"],
       returns: "void",
     },
+    editorViewSetViewportNoMoveCursor: {
+      args: ["ptr", "u32", "u32", "u32", "u32"],
+      returns: "void",
+    },
     editorViewGetViewport: {
       args: ["ptr", "ptr", "ptr", "ptr", "ptr"],
       returns: "void",
@@ -1451,6 +1455,7 @@ export interface RenderLib {
   destroyEditorView: (view: Pointer) => void
   editorViewSetViewportSize: (view: Pointer, width: number, height: number) => void
   editorViewSetViewport: (view: Pointer, x: number, y: number, width: number, height: number) => void
+  editorViewSetViewportNoMoveCursor: (view: Pointer, x: number, y: number, width: number, height: number) => void
   editorViewGetViewport: (view: Pointer) => { offsetY: number; offsetX: number; height: number; width: number }
   editorViewSetScrollMargin: (view: Pointer, margin: number) => void
   editorViewSetWrapMode: (view: Pointer, mode: "none" | "char" | "word") => void
@@ -2542,6 +2547,10 @@ class FFIRenderLib implements RenderLib {
 
   public editorViewSetViewport(view: Pointer, x: number, y: number, width: number, height: number): void {
     this.opentui.symbols.editorViewSetViewport(view, x, y, width, height)
+  }
+
+  public editorViewSetViewportNoMoveCursor(view: Pointer, x: number, y: number, width: number, height: number): void {
+    this.opentui.symbols.editorViewSetViewportNoMoveCursor(view, x, y, width, height)
   }
 
   public editorViewGetViewport(view: Pointer): { offsetY: number; offsetX: number; height: number; width: number } {

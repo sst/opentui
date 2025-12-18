@@ -923,11 +923,15 @@ export fn destroyEditorView(view: *editor_view.EditorView) void {
 }
 
 export fn editorViewSetViewport(view: *editor_view.EditorView, x: u32, y: u32, width: u32, height: u32) void {
-    view.setViewport(text_buffer_view.Viewport{ .x = x, .y = y, .width = width, .height = height });
+    view.setViewport(text_buffer_view.Viewport{ .x = x, .y = y, .width = width, .height = height }, true);
+}
+
+export fn editorViewSetViewportNoMoveCursor(view: *editor_view.EditorView, x: u32, y: u32, width: u32, height: u32) void {
+    view.setViewport(text_buffer_view.Viewport{ .x = x, .y = y, .width = width, .height = height }, false);
 }
 
 export fn editorViewClearViewport(view: *editor_view.EditorView) void {
-    view.setViewport(null);
+    view.setViewport(null, false);
 }
 
 export fn editorViewGetViewport(view: *editor_view.EditorView, outX: *u32, outY: *u32, outWidth: *u32, outHeight: *u32) bool {

@@ -349,6 +349,45 @@ export abstract class EditBufferRenderable extends Renderable implements LineInf
     this._scrollSpeed = Math.max(0, value)
   }
 
+  protected override onMouseEvent(event: any): void {
+    if (event.type === "scroll") {
+      this.handleScroll(event)
+    }
+  }
+
+  protected handleScroll(event: any): void {
+    if (!event.scroll) return
+
+    const { direction, delta } = event.scroll
+    const viewport = this.editorView.getViewport()
+    const cursor = this.logicalCursor
+
+    if (direction === "up") {
+      const newOffsetY = Math.max(0, viewport.offsetY - delta)
+      this.editorView.setViewport(viewport.offsetX, newOffsetY, viewport.width, viewport.height, true)
+      this.requestRender()
+    } else if (direction === "down") {
+      const totalVirtualLines = this.editorView.getTotalVirtualLineCount()
+      const maxOffsetY = Math.max(0, totalVirtualLines - viewport.height)
+      const newOffsetY = Math.min(viewport.offsetY + delta, maxOffsetY)
+      this.editorView.setViewport(viewport.offsetX, newOffsetY, viewport.width, viewport.height, true)
+      this.requestRender()
+    }
+
+    // Horizontal scrolling only when wrapping is disabled
+    if (this._wrapMode === "none") {
+      if (direction === "left") {
+        const newOffsetX = Math.max(0, viewport.offsetX - delta)
+        this.editorView.setViewport(newOffsetX, viewport.offsetY, viewport.width, viewport.height, true)
+        this.requestRender()
+      } else if (direction === "right") {
+        const newOffsetX = viewport.offsetX + delta
+        this.editorView.setViewport(newOffsetX, viewport.offsetY, viewport.width, viewport.height, true)
+        this.requestRender()
+      }
+    }
+  }
+
   protected onResize(width: number, height: number): void {
     this.editorView.setViewportSize(width, height)
     if (this.lastLocalSelection) {
@@ -472,7 +511,7 @@ export abstract class EditBufferRenderable extends Renderable implements LineInf
         const newOffsetY = Math.max(0, Math.min(viewport.offsetY + direction * linesToScroll, maxOffsetY))
 
         if (newOffsetY !== viewport.offsetY) {
-          this.editorView.setViewport(viewport.offsetX, newOffsetY, viewport.width, viewport.height)
+          this.editorView.setViewport(viewport.offsetX, newOffsetY, viewport.width, viewport.height, false)
         }
 
         // Keep fractional part for next frame
