@@ -7,6 +7,7 @@ const iter_mod = @import("text-buffer-iterators.zig");
 const gp = @import("grapheme.zig");
 const ss = @import("syntax-style.zig");
 const event_emitter = @import("event-emitter.zig");
+const logger = @import("logger.zig");
 
 const EditBuffer = eb.EditBuffer;
 
@@ -390,9 +391,34 @@ pub const EditorView = struct {
     }
 
     /// This is a convenience method that preserves existing offset
-    /// After resize, ensures cursor is visible even if selection is active
+    /// After resize, ensures cursor is visible and clamps viewport offset to valid range
     pub fn setViewportSize(self: *EditorView, width: u32, height: u32) void {
         self.text_buffer_view.setViewportSize(width, height);
+
+        // After resize, wrapping changes may invalidate the current offset
+        // Clamp viewport offset to valid range
+        const vp = self.text_buffer_view.getViewport() orelse return;
+        const total_lines = self.text_buffer_view.getVirtualLineCount();
+        const max_offset_y = if (total_lines > vp.height) total_lines - vp.height else 0;
+
+        // Clamp horizontal offset when wrap mode is none
+        var new_offset_x = vp.x;
+        if (self.text_buffer_view.wrap_mode == .none) {
+            const max_line_width = iter_mod.getMaxLineWidth(&self.edit_buffer.tb.rope);
+            const max_offset_x = if (max_line_width > vp.width) max_line_width - vp.width else 0;
+            if (vp.x > max_offset_x) {
+                new_offset_x = max_offset_x;
+            }
+        }
+
+        if (vp.y > max_offset_y or new_offset_x != vp.x) {
+            self.text_buffer_view.setViewport(tbv.Viewport{
+                .x = new_offset_x,
+                .y = @min(vp.y, max_offset_y),
+                .width = vp.width,
+                .height = vp.height,
+            });
+        }
 
         // After resize, wrapping may change drastically, pushing cursor far outside viewport
         // Always ensure cursor is visible, even if selection is active

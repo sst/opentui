@@ -544,4 +544,86 @@ describe("Textarea - Scroll Tests", () => {
       editor.destroy()
     })
   })
+
+  describe("Viewport Offset After Resize", () => {
+    it("should keep content at bottom when resizing from narrow wrapped to wide unwrapped", async () => {
+      const { textarea: editor, root } = await createTextareaRenderable(currentRenderer, renderOnce, {
+        initialValue: Array.from(
+          { length: 15 },
+          (_, i) => `This is line ${i.toString().padStart(2, "0")} with enough text to wrap when narrow`,
+        ).join("\n"),
+        width: 10,
+        height: 10,
+        wrapMode: "word",
+        selectable: true,
+      })
+
+      await renderOnce()
+
+      editor.focus()
+
+      // Scroll to the very bottom
+      editor.editBuffer.gotoLine(999)
+      await renderOnce()
+
+      const viewportAtBottom = editor.editorView.getViewport()
+      const totalVirtualLinesNarrow = editor.editorView.getTotalVirtualLineCount()
+
+      expect(viewportAtBottom.offsetY).toBeGreaterThan(10)
+
+      // Resize to much wider - this will unwrap most lines
+      editor.width = 80
+      root.yogaNode.calculateLayout(80, 24)
+      await renderOnce()
+
+      const viewportAfterResize = editor.editorView.getViewport()
+      const totalVirtualLinesWide = editor.editorView.getTotalVirtualLineCount()
+
+      // After unwrapping, total lines should be much less (close to 15 logical lines)
+      expect(totalVirtualLinesWide).toBeLessThan(totalVirtualLinesNarrow)
+
+      // Content should still be at the bottom of the viewport
+      // The last line should be visible at the bottom
+      const maxOffsetYWide = Math.max(0, totalVirtualLinesWide - viewportAfterResize.height)
+      expect(viewportAfterResize.offsetY).toBe(maxOffsetYWide)
+
+      editor.destroy()
+    })
+
+    it("should clamp horizontal viewport offset when resizing wider with no wrap", async () => {
+      const { textarea: editor, root } = await createTextareaRenderable(currentRenderer, renderOnce, {
+        initialValue: "A".repeat(200),
+        width: 20,
+        height: 10,
+        wrapMode: "none",
+        selectable: true,
+      })
+
+      await renderOnce()
+
+      // Scroll horizontally to the far right
+      editor.focus()
+      for (let i = 0; i < 100; i++) {
+        editor.moveCursorRight()
+      }
+      await renderOnce()
+
+      const viewportNarrow = editor.editorView.getViewport()
+
+      expect(viewportNarrow.offsetX).toBeGreaterThan(50)
+
+      // Resize to much wider - viewport offsetX might now exceed valid range
+      editor.width = 250
+      root.yogaNode.calculateLayout(80, 24)
+      await renderOnce()
+
+      const viewportWide = editor.editorView.getViewport()
+      const totalLineWidthWide = editor.lineInfo.maxLineWidth
+      const maxOffsetXWide = Math.max(0, totalLineWidthWide - viewportWide.width)
+
+      expect(viewportWide.offsetX).toBeLessThanOrEqual(maxOffsetXWide)
+
+      editor.destroy()
+    })
+  })
 })
