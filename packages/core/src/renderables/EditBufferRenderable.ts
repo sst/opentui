@@ -464,7 +464,8 @@ export abstract class EditBufferRenderable extends Renderable implements LineInf
     }
 
     // Calculate auto-scroll velocity based on selection focus position
-    if (changed && localSelection?.isActive) {
+    // Only auto-scroll while actively dragging (isSelecting=true)
+    if (changed && localSelection?.isActive && selection?.isSelecting) {
       const viewport = this.editorView.getViewport()
       const focusY = localSelection.focusY
       const scrollMargin = Math.max(1, Math.floor(viewport.height * this._scrollMargin))
@@ -481,7 +482,7 @@ export abstract class EditBufferRenderable extends Renderable implements LineInf
         this._autoScrollVelocity = 0
       }
     } else {
-      // No active selection - stop scrolling
+      // Selection finished (isSelecting=false) or not active - stop auto-scrolling
       this._autoScrollVelocity = 0
       this._autoScrollAccumulator = 0
     }
