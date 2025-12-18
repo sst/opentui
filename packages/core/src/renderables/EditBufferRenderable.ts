@@ -384,10 +384,6 @@ export abstract class EditBufferRenderable extends Renderable implements LineInf
     const localSelection = convertGlobalToLocalSelection(selection, this.x, this.y)
     this.lastLocalSelection = localSelection
 
-    console.log(
-      `onSelectionChanged: selection=${!!selection}, localSelection.isActive=${localSelection?.isActive}, selection.isSelecting=${selection?.isSelecting}`,
-    )
-
     // Always update cursor during mouse selection
     const updateCursor = true
 
@@ -416,8 +412,6 @@ export abstract class EditBufferRenderable extends Renderable implements LineInf
         updateCursor,
       )
     }
-
-    console.log(`  changed=${changed}, localSelection?.isActive=${localSelection?.isActive}`)
 
     // Calculate auto-scroll velocity based on selection focus position
     if (changed && localSelection?.isActive) {
@@ -452,16 +446,10 @@ export abstract class EditBufferRenderable extends Renderable implements LineInf
   protected override onUpdate(deltaTime: number): void {
     super.onUpdate(deltaTime)
 
-    console.log(
-      `onUpdate called: deltaTime=${deltaTime}, velocity=${this._autoScrollVelocity}, hasSelection=${this.hasSelection()}`,
-    )
-
     // Handle auto-scroll during selection
     if (this._autoScrollVelocity !== 0 && this.hasSelection()) {
       const deltaSeconds = deltaTime / 1000
       this._autoScrollAccumulator += this._autoScrollVelocity * deltaSeconds
-
-      console.log(`  accumulator=${this._autoScrollAccumulator}, deltaSeconds=${deltaSeconds}`)
 
       // Only scroll by full lines
       const linesToScroll = Math.floor(Math.abs(this._autoScrollAccumulator))
@@ -472,12 +460,7 @@ export abstract class EditBufferRenderable extends Renderable implements LineInf
         const maxOffsetY = Math.max(0, totalVirtualLines - viewport.height)
         const newOffsetY = Math.max(0, Math.min(viewport.offsetY + direction * linesToScroll, maxOffsetY))
 
-        console.log(
-          `  Scrolling: linesToScroll=${linesToScroll}, direction=${direction}, viewport.offsetY=${viewport.offsetY}, totalVirtualLines=${totalVirtualLines}, maxOffsetY=${maxOffsetY}, newOffsetY=${newOffsetY}`,
-        )
-
         if (newOffsetY !== viewport.offsetY) {
-          console.log(`  Calling setViewport with offsetY=${newOffsetY}`)
           this.editorView.setViewport(viewport.offsetX, newOffsetY, viewport.width, viewport.height)
         }
 
