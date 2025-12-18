@@ -360,7 +360,6 @@ export abstract class EditBufferRenderable extends Renderable implements LineInf
 
     const { direction, delta } = event.scroll
     const viewport = this.editorView.getViewport()
-    const cursor = this.logicalCursor
 
     if (direction === "up") {
       const newOffsetY = Math.max(0, viewport.offsetY - delta)

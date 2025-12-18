@@ -324,7 +324,6 @@ describe("Textarea - Scroll Tests", () => {
       await currentMouse.release(editor.x + 5, editor.y + editor.height - 1)
 
       const viewportAfterSelection = editor.editorView.getViewport()
-      console.log("Viewport after selection scroll:", viewportAfterSelection)
 
       // Should have scrolled down significantly
       expect(viewportAfterSelection.offsetY).toBeGreaterThan(20)
@@ -338,7 +337,6 @@ describe("Textarea - Scroll Tests", () => {
       await new Promise((resolve) => setTimeout(resolve, 2000))
 
       const viewportFinal = editor.editorView.getViewport()
-      console.log("Viewport after scrolling up:", viewportFinal)
 
       currentRenderer.pause()
 
