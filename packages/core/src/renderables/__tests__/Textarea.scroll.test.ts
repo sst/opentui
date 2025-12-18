@@ -6,8 +6,6 @@ let currentRenderer: TestRenderer
 let renderOnce: () => Promise<void>
 let currentMouse: MockMouse
 
-const sleep = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms))
-
 describe("Textarea - Scroll Tests", () => {
   beforeEach(async () => {
     ;({
@@ -50,7 +48,7 @@ describe("Textarea - Scroll Tests", () => {
       await currentMouse.moveTo(editor.x + 5, editor.y + editor.height - 1)
 
       // Wait 1 second for auto-scroll to happen
-      await new Promise((resolve) => setTimeout(resolve, 1000))
+      await Bun.sleep(1000)
 
       const viewportAfter = editor.editorView.getViewport()
 
@@ -112,7 +110,7 @@ describe("Textarea - Scroll Tests", () => {
       // Drag to the top edge (within bounds) to trigger upward auto-scroll
       await currentMouse.moveTo(editor.x + 2, editor.y)
 
-      await sleep(1000)
+      await Bun.sleep(1000)
 
       const viewportAfter = editor.editorView.getViewport()
 
@@ -140,16 +138,16 @@ describe("Textarea - Scroll Tests", () => {
       await currentMouse.pressDown(editor.x + 2, editor.y)
       await currentMouse.moveTo(editor.x + 2, editor.y + editor.height - 1)
 
-      await sleep(1000)
+      await Bun.sleep(1000)
 
       // End selection (mouse up) and wait a moment
       await currentMouse.release(editor.x + 2, editor.y + editor.height - 1)
-      await sleep(200)
+      await Bun.sleep(200)
 
       const viewportAfterRelease = editor.editorView.getViewport()
 
       // If selection-end notifications work, viewport should remain stable
-      await sleep(1000)
+      await Bun.sleep(1000)
 
       const viewportFinal = editor.editorView.getViewport()
 
@@ -450,7 +448,7 @@ describe("Textarea - Scroll Tests", () => {
       await currentMouse.moveTo(editor.x + 5, editor.y + editor.height - 1)
 
       // Wait 2 seconds for auto-scroll to reach near the end
-      await new Promise((resolve) => setTimeout(resolve, 2000))
+      await Bun.sleep(2000)
 
       // Release mouse to complete selection
       await currentMouse.release(editor.x + 5, editor.y + editor.height - 1)
@@ -466,7 +464,7 @@ describe("Textarea - Scroll Tests", () => {
       }
 
       // Wait 2 seconds to ensure all scroll events are processed
-      await new Promise((resolve) => setTimeout(resolve, 2000))
+      await Bun.sleep(2000)
 
       const viewportFinal = editor.editorView.getViewport()
 
