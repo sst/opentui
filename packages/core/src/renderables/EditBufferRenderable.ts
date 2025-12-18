@@ -362,6 +362,7 @@ export abstract class EditBufferRenderable extends Renderable implements LineInf
       localSelection.focusY,
       this._selectionBg,
       this._selectionFg,
+      false, // Don't update cursor during resize
     )
   }
 
@@ -378,9 +379,8 @@ export abstract class EditBufferRenderable extends Renderable implements LineInf
     const localSelection = convertGlobalToLocalSelection(selection, this.x, this.y)
     this.lastLocalSelection = localSelection
 
-    // Only update cursor when selection is complete (not actively dragging)
-    // This prevents viewport scrolling during drag which breaks coordinate mapping
-    const updateCursor = !(selection?.isSelecting ?? false)
+    // Always update cursor during mouse selection to enable automatic viewport scrolling
+    const updateCursor = true
 
     let changed: boolean
     if (!localSelection?.isActive) {

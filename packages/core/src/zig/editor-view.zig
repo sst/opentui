@@ -193,22 +193,29 @@ pub const EditorView = struct {
     }
 
     /// Always ensures cursor visibility since cursor movements don't mark buffer dirty
-    pub fn updateBeforeRender(self: *EditorView) void {
+    /// suppress_scroll: if true, skip ensureCursorVisible (used during selection to prevent coordinate breakage)
+    pub fn updateBeforeRender(self: *EditorView, suppress_scroll: bool) void {
         self.updatePlaceholderVisibility();
-        const cursor = self.edit_buffer.getPrimaryCursor();
-        const vcursor = self.logicalToVisualCursor(cursor.row, cursor.col);
-        self.ensureCursorVisible(vcursor.visual_row);
+
+        // Don't auto-scroll if there's an active selection (prevents viewport changes during drag)
+        const has_selection = self.text_buffer_view.selection != null;
+
+        if (!suppress_scroll and !has_selection) {
+            const cursor = self.edit_buffer.getPrimaryCursor();
+            const vcursor = self.logicalToVisualCursor(cursor.row, cursor.col);
+            self.ensureCursorVisible(vcursor.visual_row);
+        }
     }
 
     /// Automatically ensures cursor is visible before rendering
     pub fn getVirtualLines(self: *EditorView) []const VirtualLine {
-        self.updateBeforeRender();
+        self.updateBeforeRender(false);
         return self.text_buffer_view.getVirtualLines();
     }
 
     /// Automatically ensures cursor is visible before rendering
     pub fn getCachedLineInfo(self: *EditorView) tbv.LineInfo {
-        self.updateBeforeRender();
+        self.updateBeforeRender(false);
         return self.text_buffer_view.getCachedLineInfo();
     }
 
@@ -278,9 +285,8 @@ pub const EditorView = struct {
     }
 
     /// Updates the cursor position to match the selection focus position.
-    /// This enables automatic viewport scrolling via ensureCursorVisible.
-    /// Instead of using the raw focus coordinates (which may be outside buffer bounds),
-    /// we determine the focus offset from the selection's anchor and use that.
+    /// Only triggers viewport scrolling if the focus is outside the current viewport.
+    /// This allows cursor to follow selection without breaking coordinate mapping for in-viewport drags.
     fn updateCursorToSelectionFocus(self: *EditorView, _: i32, _: i32) void {
         const selection = self.text_buffer_view.getSelection() orelse return;
 
@@ -308,7 +314,7 @@ pub const EditorView = struct {
         const line_width = iter_mod.lineWidthAt(&self.edit_buffer.tb.rope, focus_coords.row);
         if (focus_coords.col > line_width) return;
 
-        // Update cursor to focus position (this will trigger ensureCursorVisible in updateBeforeRender)
+        // Update cursor to focus position
         if (self.edit_buffer.cursors.items.len > 0) {
             self.edit_buffer.cursors.items[0] = .{
                 .row = focus_coords.row,
@@ -316,6 +322,17 @@ pub const EditorView = struct {
                 .desired_col = focus_coords.col,
                 .offset = focus_offset,
             };
+        }
+
+        // Only trigger viewport scrolling if focus is outside current viewport
+        // This prevents scroll during in-viewport drags while enabling scroll for boundary crossing
+        const vcursor = self.logicalToVisualCursor(focus_coords.row, focus_coords.col);
+        const vp = self.text_buffer_view.getViewport() orelse return;
+
+        const focus_outside_viewport = vcursor.visual_row < vp.y or vcursor.visual_row >= vp.y + vp.height;
+
+        if (focus_outside_viewport) {
+            self.ensureCursorVisible(vcursor.visual_row);
         }
     }
 
@@ -359,7 +376,7 @@ pub const EditorView = struct {
 
     /// Returns viewport-relative visual coordinates for external API consumers
     pub fn getVisualCursor(self: *EditorView) VisualCursor {
-        self.updateBeforeRender();
+        self.updateBeforeRender(false);
         const cursor = self.edit_buffer.getPrimaryCursor();
         const vcursor = self.logicalToVisualCursor(cursor.row, cursor.col);
 
@@ -542,12 +559,12 @@ pub const EditorView = struct {
 
         try self.edit_buffer.deleteRange(start_cursor, end_cursor);
         self.text_buffer_view.resetLocalSelection();
-        self.updateBeforeRender();
+        self.updateBeforeRender(false);
     }
 
     pub fn setCursorByOffset(self: *EditorView, offset: u32) !void {
         try self.edit_buffer.setCursorByOffset(offset);
-        self.updateBeforeRender();
+        self.updateBeforeRender(false);
     }
 
     pub fn getNextWordBoundary(self: *EditorView) VisualCursor {

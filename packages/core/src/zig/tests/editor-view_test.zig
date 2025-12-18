@@ -1920,7 +1920,7 @@ test "EditorView - placeholder with styled text renders with correct highlights"
     const written = eb.getText(&out_buffer);
     try std.testing.expectEqual(@as(usize, 0), written);
 
-    ev.updateBeforeRender();
+    ev.updateBeforeRender(false);
 
     const tbv_ptr = ev.getTextBufferView();
 
