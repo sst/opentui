@@ -389,6 +389,30 @@ export abstract class EditBufferRenderable extends Renderable implements LineInf
 
   protected onResize(width: number, height: number): void {
     this.editorView.setViewportSize(width, height)
+    // Don't re-apply lastLocalSelection - the native TextSelection uses character offsets
+    // which remain valid across viewport/wrapping changes. Re-applying viewport coordinates
+    // would select different text when wrapping changes the virtual line layout.
+
+    // After resize, wrapping may change and push cursor outside viewport
+    // Need to scroll viewport to show cursor, even if selection is active
+    // getVisualCursor() returns viewport-relative coordinates
+    const vcursor = this.editorView.getVisualCursor()
+    const viewport = this.editorView.getViewport()
+
+    if (vcursor.visualRow >= viewport.height || vcursor.visualRow < 0) {
+      // Calculate absolute visual row from viewport-relative
+      const absoluteVisualRow = viewport.offsetY + vcursor.visualRow
+
+      // Center the cursor vertically if possible
+      let newOffsetY = Math.max(0, absoluteVisualRow - Math.floor(viewport.height / 2))
+
+      const totalVirtualLines = this.editorView.getTotalVirtualLineCount()
+      const maxOffsetY = Math.max(0, totalVirtualLines - viewport.height)
+      newOffsetY = Math.min(newOffsetY, maxOffsetY)
+
+      this.editorView.setViewport(viewport.offsetX, newOffsetY, viewport.width, viewport.height, false)
+      this.requestRender()
+    }
   }
 
   protected refreshLocalSelection(): boolean {

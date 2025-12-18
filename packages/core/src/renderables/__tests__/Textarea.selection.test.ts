@@ -1300,6 +1300,59 @@ describe("Textarea - Selection Tests", () => {
       buffer.destroy()
       editor.destroy()
     })
+
+    it("should keep cursor within textarea bounds after resize causes wrapping with scrolled selection", async () => {
+      const { textarea: editor, root } = await createTextareaRenderable(currentRenderer, renderOnce, {
+        initialValue: Array.from(
+          { length: 50 },
+          (_, i) =>
+            `This is a long line ${i.toString().padStart(2, "0")} with enough text to cause wrapping when narrow`,
+        ).join("\n"),
+        width: 60,
+        height: 10,
+        top: 0,
+        wrapMode: "word",
+        selectable: true,
+        showCursor: true,
+      })
+
+      const textBelow = new TextRenderable(currentRenderer, {
+        id: "text-below",
+        content: "Element below textarea",
+        top: 10,
+        left: 0,
+      })
+      currentRenderer.root.add(textBelow)
+
+      await renderOnce()
+
+      editor.focus()
+      editor.gotoLine(15)
+      await renderOnce()
+
+      await currentMouse.drag(editor.x + 5, editor.y + 3, editor.x + 10, editor.y + 9)
+      await renderOnce()
+
+      const viewportAfterSelection = editor.editorView.getViewport()
+
+      expect(editor.hasSelection()).toBe(true)
+      expect(viewportAfterSelection.offsetY).toBeGreaterThan(0)
+
+      editor.width = 8
+      root.yogaNode.calculateLayout(80, 24)
+      await renderOnce()
+
+      const viewportAfterResize = editor.editorView.getViewport()
+      const cursorAfterResize = editor.visualCursor
+
+      expect(cursorAfterResize.visualRow).toBeGreaterThanOrEqual(0)
+      expect(cursorAfterResize.visualRow).toBeLessThan(editor.height)
+      expect(cursorAfterResize.visualCol).toBeGreaterThanOrEqual(0)
+      expect(cursorAfterResize.visualCol).toBeLessThan(editor.width)
+
+      textBelow.destroy()
+      editor.destroy()
+    })
   })
 })
 
