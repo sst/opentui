@@ -113,12 +113,12 @@ export interface DiffRenderableOptions extends RenderableOptions<DiffRenderable>
   disableWordHighlights?: boolean
   /**
    * Background color for added words within modified lines.
-   * @default A brighter version of addedBg
+   * @default addedBg brightened 1.5x with +0.15 opacity
    */
   addedWordBg?: string | RGBA
   /**
    * Background color for removed words within modified lines.
-   * @default A brighter version of removedBg
+   * @default removedBg brightened 1.5x with +0.15 opacity
    */
   removedWordBg?: string | RGBA
   /**
@@ -227,10 +227,12 @@ export class DiffRenderable extends Renderable {
     this._removedLineNumberBg = parseColor(options.removedLineNumberBg ?? "transparent")
     this._disableWordHighlights = options.disableWordHighlights ?? false
     this._lineSimilarityThreshold = options.lineSimilarityThreshold ?? 0.5
-    this._addedWordBg = options.addedWordBg ? parseColor(options.addedWordBg) : this.brightenColor(this._addedBg, 1.5)
+    this._addedWordBg = options.addedWordBg
+      ? parseColor(options.addedWordBg)
+      : this.brightenAndIncreaseOpacity(this._addedBg, 1.5, 0.15)
     this._removedWordBg = options.removedWordBg
       ? parseColor(options.removedWordBg)
-      : this.brightenColor(this._removedBg, 1.5)
+      : this.brightenAndIncreaseOpacity(this._removedBg, 1.5, 0.15)
 
     // Only parse and build if diff is provided
     if (this._diff) {
@@ -239,12 +241,12 @@ export class DiffRenderable extends Renderable {
     }
   }
 
-  private brightenColor(color: RGBA, factor: number): RGBA {
+  private brightenAndIncreaseOpacity(color: RGBA, brightenFactor: number, opacityIncrease: number): RGBA {
     return RGBA.fromValues(
-      Math.min(1, color.r * factor),
-      Math.min(1, color.g * factor),
-      Math.min(1, color.b * factor),
-      color.a,
+      Math.min(1, color.r * brightenFactor),
+      Math.min(1, color.g * brightenFactor),
+      Math.min(1, color.b * brightenFactor),
+      Math.min(1, color.a + opacityIncrease),
     )
   }
 
