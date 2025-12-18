@@ -378,7 +378,9 @@ export abstract class EditBufferRenderable extends Renderable implements LineInf
     const localSelection = convertGlobalToLocalSelection(selection, this.x, this.y)
     this.lastLocalSelection = localSelection
 
-    const isSelecting = selection?.isSelecting ?? false
+    // Only update cursor when selection is complete (not actively dragging)
+    // This prevents viewport scrolling during drag which breaks coordinate mapping
+    const updateCursor = !(selection?.isSelecting ?? false)
 
     let changed: boolean
     if (!localSelection?.isActive) {
@@ -392,7 +394,7 @@ export abstract class EditBufferRenderable extends Renderable implements LineInf
         localSelection.focusY,
         this._selectionBg,
         this._selectionFg,
-        isSelecting,
+        updateCursor,
       )
     } else {
       changed = this.editorView.updateLocalSelection(
@@ -402,7 +404,7 @@ export abstract class EditBufferRenderable extends Renderable implements LineInf
         localSelection.focusY,
         this._selectionBg,
         this._selectionFg,
-        isSelecting,
+        updateCursor,
       )
     }
 

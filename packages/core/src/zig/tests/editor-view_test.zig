@@ -2993,7 +2993,7 @@ test "EditorView - mouse selection scrolls viewport down when dragging below" {
 
     // Simulate mouse selection from line 0 to line 45 (way below viewport)
     // anchorX=0, anchorY=0 (top left), focusX=5, focusY=45 (line 45)
-    _ = ev.setLocalSelection(0, 0, 5, 45, null, null, false);
+    _ = ev.setLocalSelection(0, 0, 5, 45, null, null, true);
 
     // Force viewport update
     _ = ev.getVirtualLines();
@@ -3045,7 +3045,7 @@ test "EditorView - mouse selection scrolls viewport up when dragging above" {
     const anchor_y: i32 = @intCast(49 - vp_initial.y);
     const focus_y: i32 = -10; // Way above viewport
 
-    _ = ev.setLocalSelection(0, anchor_y, 5, focus_y, null, null, false);
+    _ = ev.setLocalSelection(0, anchor_y, 5, focus_y, null, null, true);
 
     // Force viewport update
     _ = ev.getVirtualLines();
@@ -3089,14 +3089,14 @@ test "EditorView - updateLocalSelection continues scrolling as mouse moves" {
     _ = ev.getVirtualLines();
 
     // Start selection at line 0
-    _ = ev.setLocalSelection(0, 0, 5, 0, null, null, false);
+    _ = ev.setLocalSelection(0, 0, 5, 0, null, null, true);
     _ = ev.getVirtualLines();
 
     const vp_start = ev.getViewport().?;
     try std.testing.expectEqual(@as(u32, 0), vp_start.y);
 
     // Extend selection to line 15
-    _ = ev.updateLocalSelection(0, 0, 5, 15, null, null, false);
+    _ = ev.updateLocalSelection(0, 0, 5, 15, null, null, true);
     _ = ev.getVirtualLines();
 
     const vp_mid = ev.getViewport().?;
@@ -3106,7 +3106,7 @@ test "EditorView - updateLocalSelection continues scrolling as mouse moves" {
     try std.testing.expectEqual(@as(u32, 15), cursor_mid.row);
 
     // Extend selection further to line 45
-    _ = ev.updateLocalSelection(0, 0, 5, 45, null, null, false);
+    _ = ev.updateLocalSelection(0, 0, 5, 45, null, null, true);
     _ = ev.getVirtualLines();
 
     const vp_end = ev.getViewport().?;
@@ -3151,7 +3151,7 @@ test "EditorView - mouse selection with wrapping scrolls correctly" {
 
     // Simulate mouse drag to virtual line 50 (if it exists)
     const target_vline = @min(50, total_vlines - 1);
-    _ = ev.setLocalSelection(0, 0, 10, @intCast(target_vline), null, null, false);
+    _ = ev.setLocalSelection(0, 0, 10, @intCast(target_vline), null, null, true);
 
     // Force viewport update
     _ = ev.getVirtualLines();
@@ -3190,7 +3190,7 @@ test "EditorView - mouse selection doesn't scroll when focus is within viewport"
     try std.testing.expectEqual(@as(u32, 0), vp_initial.y);
 
     // Simulate selection within the viewport (lines 0-5, all visible)
-    _ = ev.setLocalSelection(0, 0, 5, 5, null, null, false);
+    _ = ev.setLocalSelection(0, 0, 5, 5, null, null, true);
     _ = ev.getVirtualLines();
 
     const vp_after = ev.getViewport().?;
@@ -3224,7 +3224,7 @@ test "EditorView - mouse selection focus outside buffer bounds clamps correctly"
     _ = ev.getVirtualLines();
 
     // Try to select way beyond buffer (to line 100)
-    _ = ev.setLocalSelection(0, 0, 5, 100, null, null, false);
+    _ = ev.setLocalSelection(0, 0, 5, 100, null, null, true);
     _ = ev.getVirtualLines();
 
     const cursor = ev.getPrimaryCursor();

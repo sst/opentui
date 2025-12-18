@@ -251,24 +251,22 @@ pub const EditorView = struct {
         self.text_buffer_view.resetSelection();
     }
 
-    pub fn setLocalSelection(self: *EditorView, anchorX: i32, anchorY: i32, focusX: i32, focusY: i32, bgColor: ?tb.RGBA, fgColor: ?tb.RGBA, isSelecting: bool) bool {
+    pub fn setLocalSelection(self: *EditorView, anchorX: i32, anchorY: i32, focusX: i32, focusY: i32, bgColor: ?tb.RGBA, fgColor: ?tb.RGBA, updateCursor: bool) bool {
         const changed = self.text_buffer_view.setLocalSelection(anchorX, anchorY, focusX, focusY, bgColor, fgColor);
 
-        // Only update cursor to selection focus position when selection is complete (not actively dragging)
-        // This prevents viewport scrolling during the drag which would break coordinate mapping
-        if (changed and !isSelecting) {
+        // Update cursor to selection focus position to enable automatic viewport scrolling
+        if (changed and updateCursor) {
             self.updateCursorToSelectionFocus(focusX, focusY);
         }
 
         return changed;
     }
 
-    pub fn updateLocalSelection(self: *EditorView, anchorX: i32, anchorY: i32, focusX: i32, focusY: i32, bgColor: ?tb.RGBA, fgColor: ?tb.RGBA, isSelecting: bool) bool {
+    pub fn updateLocalSelection(self: *EditorView, anchorX: i32, anchorY: i32, focusX: i32, focusY: i32, bgColor: ?tb.RGBA, fgColor: ?tb.RGBA, updateCursor: bool) bool {
         const changed = self.text_buffer_view.updateLocalSelection(anchorX, anchorY, focusX, focusY, bgColor, fgColor);
 
-        // Only update cursor to selection focus position when selection is complete (not actively dragging)
-        // This prevents viewport scrolling during the drag which would break coordinate mapping
-        if (changed and !isSelecting) {
+        // Update cursor to selection focus position to enable automatic viewport scrolling
+        if (changed and updateCursor) {
             self.updateCursorToSelectionFocus(focusX, focusY);
         }
 

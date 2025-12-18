@@ -1469,7 +1469,7 @@ export interface RenderLib {
     focusY: number,
     bgColor: RGBA | null,
     fgColor: RGBA | null,
-    isSelecting: boolean,
+    updateCursor: boolean,
   ) => boolean
   editorViewUpdateSelection: (view: Pointer, end: number, bgColor: RGBA | null, fgColor: RGBA | null) => void
   editorViewUpdateLocalSelection: (
@@ -1480,7 +1480,7 @@ export interface RenderLib {
     focusY: number,
     bgColor: RGBA | null,
     fgColor: RGBA | null,
-    isSelecting: boolean,
+    updateCursor: boolean,
   ) => boolean
   editorViewResetLocalSelection: (view: Pointer) => void
   editorViewGetSelectedTextBytes: (view: Pointer, maxLength: number) => Uint8Array | null
@@ -2872,11 +2872,20 @@ class FFIRenderLib implements RenderLib {
     focusY: number,
     bgColor: RGBA | null,
     fgColor: RGBA | null,
-    isSelecting: boolean,
+    updateCursor: boolean,
   ): boolean {
     const bg = bgColor ? bgColor.buffer : null
     const fg = fgColor ? fgColor.buffer : null
-    return this.opentui.symbols.editorViewSetLocalSelection(view, anchorX, anchorY, focusX, focusY, bg, fg, isSelecting)
+    return this.opentui.symbols.editorViewSetLocalSelection(
+      view,
+      anchorX,
+      anchorY,
+      focusX,
+      focusY,
+      bg,
+      fg,
+      updateCursor,
+    )
   }
 
   public editorViewUpdateSelection(view: Pointer, end: number, bgColor: RGBA | null, fgColor: RGBA | null): void {
@@ -2893,7 +2902,7 @@ class FFIRenderLib implements RenderLib {
     focusY: number,
     bgColor: RGBA | null,
     fgColor: RGBA | null,
-    isSelecting: boolean,
+    updateCursor: boolean,
   ): boolean {
     const bg = bgColor ? bgColor.buffer : null
     const fg = fgColor ? fgColor.buffer : null
@@ -2905,7 +2914,7 @@ class FFIRenderLib implements RenderLib {
       focusY,
       bg,
       fg,
-      isSelecting,
+      updateCursor,
     )
   }
 

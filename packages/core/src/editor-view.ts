@@ -104,7 +104,7 @@ export class EditorView {
     focusY: number,
     bgColor?: RGBA,
     fgColor?: RGBA,
-    isSelecting?: boolean,
+    updateCursor?: boolean,
   ): boolean {
     this.guard()
     return this.lib.editorViewSetLocalSelection(
@@ -115,7 +115,7 @@ export class EditorView {
       focusY,
       bgColor || null,
       fgColor || null,
-      isSelecting ?? false,
+      updateCursor ?? false,
     )
   }
 
@@ -126,7 +126,7 @@ export class EditorView {
     focusY: number,
     bgColor?: RGBA,
     fgColor?: RGBA,
-    isSelecting?: boolean,
+    updateCursor?: boolean,
   ): boolean {
     this.guard()
     return this.lib.editorViewUpdateLocalSelection(
@@ -137,7 +137,7 @@ export class EditorView {
       focusY,
       bgColor || null,
       fgColor || null,
-      isSelecting ?? false,
+      updateCursor ?? false,
     )
   }
 
