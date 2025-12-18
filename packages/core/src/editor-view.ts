@@ -77,6 +77,11 @@ export class EditorView {
     this.lib.editorViewSetSelection(this.viewPtr, start, end, bgColor || null, fgColor || null)
   }
 
+  public updateSelection(end: number, bgColor?: RGBA, fgColor?: RGBA): void {
+    this.guard()
+    this.lib.editorViewUpdateSelection(this.viewPtr, end, bgColor || null, fgColor || null)
+  }
+
   public resetSelection(): void {
     this.guard()
     this.lib.editorViewResetSelection(this.viewPtr)
@@ -102,6 +107,26 @@ export class EditorView {
   ): boolean {
     this.guard()
     return this.lib.editorViewSetLocalSelection(
+      this.viewPtr,
+      anchorX,
+      anchorY,
+      focusX,
+      focusY,
+      bgColor || null,
+      fgColor || null,
+    )
+  }
+
+  public updateLocalSelection(
+    anchorX: number,
+    anchorY: number,
+    focusX: number,
+    focusY: number,
+    bgColor?: RGBA,
+    fgColor?: RGBA,
+  ): boolean {
+    this.guard()
+    return this.lib.editorViewUpdateLocalSelection(
       this.viewPtr,
       anchorX,
       anchorY,
@@ -179,6 +204,16 @@ export class EditorView {
   public getEOL(): VisualCursor {
     this.guard()
     return this.lib.editorViewGetEOL(this.viewPtr)
+  }
+
+  public getVisualSOL(): VisualCursor {
+    this.guard()
+    return this.lib.editorViewGetVisualSOL(this.viewPtr)
+  }
+
+  public getVisualEOL(): VisualCursor {
+    this.guard()
+    return this.lib.editorViewGetVisualEOL(this.viewPtr)
   }
 
   public getLineInfo(): LineInfo {

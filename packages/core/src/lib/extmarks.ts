@@ -53,6 +53,7 @@ export class ExtmarksController {
   private originalInsertChar: typeof EditBuffer.prototype.insertChar
   private originalDeleteRange: typeof EditBuffer.prototype.deleteRange
   private originalSetText: typeof EditBuffer.prototype.setText
+  private originalReplaceText: typeof EditBuffer.prototype.replaceText
   private originalClear: typeof EditBuffer.prototype.clear
   private originalNewLine: typeof EditBuffer.prototype.newLine
   private originalDeleteLine: typeof EditBuffer.prototype.deleteLine
@@ -75,6 +76,7 @@ export class ExtmarksController {
     this.originalInsertChar = editBuffer.insertChar.bind(editBuffer)
     this.originalDeleteRange = editBuffer.deleteRange.bind(editBuffer)
     this.originalSetText = editBuffer.setText.bind(editBuffer)
+    this.originalReplaceText = editBuffer.replaceText.bind(editBuffer)
     this.originalClear = editBuffer.clear.bind(editBuffer)
     this.originalNewLine = editBuffer.newLine.bind(editBuffer)
     this.originalDeleteLine = editBuffer.deleteLine.bind(editBuffer)
@@ -412,18 +414,25 @@ export class ExtmarksController {
       this.adjustExtmarksAfterInsertion(currentOffset, 1)
     }
 
-    this.editBuffer.setText = (text: string, opts?: { history?: boolean }): void => {
+    this.editBuffer.setText = (text: string): void => {
       if (this.destroyed) {
-        this.originalSetText(text, opts)
+        this.originalSetText(text)
         return
       }
 
-      if (opts?.history !== false) {
-        this.saveSnapshot()
+      this.clear()
+      this.originalSetText(text)
+    }
+
+    this.editBuffer.replaceText = (text: string): void => {
+      if (this.destroyed) {
+        this.originalReplaceText(text)
+        return
       }
 
+      this.saveSnapshot()
       this.clear()
-      this.originalSetText(text, opts)
+      this.originalReplaceText(text)
     }
 
     this.editBuffer.clear = (): void => {
@@ -808,6 +817,7 @@ export class ExtmarksController {
     this.editBuffer.insertChar = this.originalInsertChar
     this.editBuffer.deleteRange = this.originalDeleteRange
     this.editBuffer.setText = this.originalSetText
+    this.editBuffer.replaceText = this.originalReplaceText
     this.editBuffer.clear = this.originalClear
     this.editBuffer.newLine = this.originalNewLine
     this.editBuffer.deleteLine = this.originalDeleteLine

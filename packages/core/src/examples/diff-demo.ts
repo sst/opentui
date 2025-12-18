@@ -217,7 +217,17 @@ const themes: DiffTheme[] = [
   },
 ]
 
-const exampleDiff = `--- a/calculator.ts
+interface ContentExample {
+  name: string
+  filetype: "typescript" | "markdown" | "json"
+  diff: string
+}
+
+const contentExamples: ContentExample[] = [
+  {
+    name: "TypeScript",
+    filetype: "typescript",
+    diff: `--- a/calculator.ts
 +++ b/calculator.ts
 @@ -1,13 +1,20 @@
  class Calculator {
@@ -241,7 +251,79 @@ const exampleDiff = `--- a/calculator.ts
 +    }
 +    return a / b;
 +  }
- }`
+ }`,
+  },
+  {
+    name: "Markdown",
+    filetype: "markdown",
+    diff: `--- a/README.md
++++ b/README.md
+@@ -1,12 +1,21 @@
+ # Project Name
+ 
+-A simple project description.
++A comprehensive project description with detailed features.
+ 
+ ## Features
+ 
+-- Feature 1
+-- Feature 2
++- **Feature 1**: Enhanced with new capabilities
++- **Feature 2**: Now supports multiple formats
++- **Feature 3**: Added real-time synchronization
+ 
+ ## Installation
+ 
+-\`npm install\`
++\`\`\`bash
++npm install
++# or
++yarn install
++\`\`\`
++
++## Usage
++
++See the [documentation](./docs) for detailed usage instructions.`,
+  },
+  {
+    name: "Markdown (Conceal Test)",
+    filetype: "markdown",
+    diff: `--- a/test.md
++++ b/test.md
+@@ -1,2 +1,2 @@
+-Some text **boldtext**
+-Short
++Some text **boldtext**
++More text **formats**`,
+  },
+  {
+    name: "JSON",
+    filetype: "json",
+    diff: `--- a/config.json
++++ b/config.json
+@@ -1,9 +1,15 @@
+ {
+-  "name": "my-app",
+-  "version": "1.0.0",
++  "name": "my-awesome-app",
++  "version": "2.0.0",
+   "config": {
+-    "port": 3000,
+-    "host": "localhost"
++    "port": 8080,
++    "host": "0.0.0.0",
++    "ssl": true,
++    "timeout": 30000
+   },
+-  "debug": false
++  "debug": true,
++  "features": {
++    "analytics": true,
++    "logging": "verbose"
++  }
+ }`,
+  },
+]
 
 const malformedDiff = `--- a/calculator.ts
 +++ b/calculator.ts
@@ -270,8 +352,10 @@ let currentView: "unified" | "split" = "unified"
 let showLineNumbers = true
 let currentWrapMode: "none" | "word" = "none"
 let currentThemeIndex = 0
+let currentContentIndex = 0
 let showMalformedDiff = false
 let showingHelp = false
+let concealEnabled = true
 
 const applyTheme = (themeIndex: number) => {
   const theme = themes[themeIndex]
@@ -283,7 +367,8 @@ const applyTheme = (themeIndex: number) => {
   if (titleBox) {
     titleBox.borderColor = theme.borderColor
     titleBox.backgroundColor = theme.backgroundColor
-    titleBox.title = `Diff Demo - ${theme.name}`
+    const contentName = contentExamples[currentContentIndex].name
+    titleBox.title = `Diff Demo - ${theme.name} - ${contentName}`
   }
 
   if (helpModal) {
@@ -332,7 +417,7 @@ export async function run(rendererInstance: CliRenderer): Promise<void> {
     borderStyle: "double",
     borderColor: theme.borderColor,
     backgroundColor: theme.backgroundColor,
-    title: `Diff Demo - ${theme.name}`,
+    title: `Diff Demo - ${theme.name} - ${contentExamples[currentContentIndex].name}`,
     titleAlignment: "center",
     border: true,
   })
@@ -372,9 +457,11 @@ export async function run(rendererInstance: CliRenderer): Promise<void> {
   V : Toggle view mode (Unified/Split)
   L : Toggle line numbers
   W : Toggle wrap mode (None/Word)
+  O : Toggle conceal (hide/show markup)
 
 Theme & Display:
   T : Cycle through themes
+  C : Cycle content type (TypeScript/Markdown/JSON)
   M : Toggle malformed diff example
 
 Other:
@@ -389,14 +476,16 @@ Other:
   syntaxStyle = SyntaxStyle.fromStyles(theme.syntaxStyle)
 
   // Create diff display
+  const currentContent = contentExamples[currentContentIndex]
   diffRenderable = new DiffRenderable(renderer, {
     id: "diff-display",
-    diff: exampleDiff,
+    diff: currentContent.diff,
     view: currentView,
-    filetype: "typescript",
+    filetype: currentContent.filetype,
     syntaxStyle,
     showLineNumbers,
     wrapMode: currentWrapMode,
+    conceal: concealEnabled,
     addedBg: theme.addedBg,
     removedBg: theme.removedBg,
     contextBg: theme.contextBg,
@@ -451,7 +540,26 @@ Other:
       // Toggle malformed diff
       showMalformedDiff = !showMalformedDiff
       if (diffRenderable) {
-        diffRenderable.diff = showMalformedDiff ? malformedDiff : exampleDiff
+        diffRenderable.diff = showMalformedDiff ? malformedDiff : contentExamples[currentContentIndex].diff
+      }
+    } else if (key.name === "c" && !key.ctrl && !key.meta) {
+      // Cycle through content types
+      currentContentIndex = (currentContentIndex + 1) % contentExamples.length
+      if (diffRenderable) {
+        const currentContent = contentExamples[currentContentIndex]
+        diffRenderable.diff = showMalformedDiff ? malformedDiff : currentContent.diff
+        diffRenderable.filetype = currentContent.filetype
+      }
+      if (titleBox) {
+        const theme = themes[currentThemeIndex]
+        const contentName = contentExamples[currentContentIndex].name
+        titleBox.title = `Diff Demo - ${theme.name} - ${contentName}`
+      }
+    } else if (key.name === "o" && !key.ctrl && !key.meta) {
+      // Toggle conceal
+      concealEnabled = !concealEnabled
+      if (diffRenderable) {
+        diffRenderable.conceal = concealEnabled
       }
     }
   }

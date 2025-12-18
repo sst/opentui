@@ -73,7 +73,7 @@ const kittyKeyCodeMap: Record<string, number> = {
 
 function encodeKittySequence(
   codepoint: number,
-  modifiers?: { shift?: boolean; ctrl?: boolean; meta?: boolean },
+  modifiers?: { shift?: boolean; ctrl?: boolean; meta?: boolean; super?: boolean; hyper?: boolean },
 ): string {
   // Kitty keyboard protocol: CSI unicode-key-code ; modifiers u
   // Modifier encoding: shift=1, alt=2, ctrl=4, super=8, hyper=16, meta=32, caps=64, num=128
@@ -81,6 +81,8 @@ function encodeKittySequence(
   if (modifiers?.shift) modMask |= 1
   if (modifiers?.meta) modMask |= 2 // alt/meta
   if (modifiers?.ctrl) modMask |= 4
+  if (modifiers?.super) modMask |= 8
+  if (modifiers?.hyper) modMask |= 16
 
   if (modMask === 0) {
     // No modifiers
@@ -93,15 +95,17 @@ function encodeKittySequence(
 
 function encodeModifyOtherKeysSequence(
   charCode: number,
-  modifiers?: { shift?: boolean; ctrl?: boolean; meta?: boolean },
+  modifiers?: { shift?: boolean; ctrl?: boolean; meta?: boolean; super?: boolean; hyper?: boolean },
 ): string {
   // modifyOtherKeys protocol: CSI 27 ; modifier ; code ~
   // This is the format used by xterm, iTerm2, Ghostty with modifyOtherKeys enabled
-  // Modifier encoding: shift=1, alt/option=2, ctrl=4, meta=8 (1-based, so add 1)
+  // Modifier encoding: shift=1, alt/option=2, ctrl=4, super=8, hyper=16 (1-based, so add 1)
   let modMask = 0
   if (modifiers?.shift) modMask |= 1
   if (modifiers?.meta) modMask |= 2 // alt/option/meta
   if (modifiers?.ctrl) modMask |= 4
+  if (modifiers?.super) modMask |= 8
+  if (modifiers?.hyper) modMask |= 16
 
   // modifyOtherKeys is only used when modifiers are present
   // Without modifiers, use the standard key sequence
@@ -163,7 +167,10 @@ export function createMockKeys(renderer: CliRenderer, options?: MockKeysOptions)
     }
   }
 
-  const pressKey = (key: KeyInput, modifiers?: { shift?: boolean; ctrl?: boolean; meta?: boolean }): void => {
+  const pressKey = (
+    key: KeyInput,
+    modifiers?: { shift?: boolean; ctrl?: boolean; meta?: boolean; super?: boolean; hyper?: boolean },
+  ): void => {
     // Handle Kitty keyboard protocol mode
     if (useKittyKeyboard) {
       // Resolve the key to its string representation or keycode value
@@ -261,18 +268,46 @@ export function createMockKeys(renderer: CliRenderer, options?: MockKeysOptions)
       if (keyCode.startsWith("\x1b[") && keyCode.length > 2) {
         // Arrow keys: \x1b[A, \x1b[B, \x1b[C, \x1b[D
         // With shift modifier: \x1b[1;2A, \x1b[1;2B, \x1b[1;2C, \x1b[1;2D
-        const modifier = 1 + (modifiers.shift ? 1 : 0) + (modifiers.meta ? 2 : 0) + (modifiers.ctrl ? 4 : 0)
+        // Special keys like delete: \x1b[3~ becomes \x1b[3;2~ with meta
+        const modifier =
+          1 +
+          (modifiers.shift ? 1 : 0) +
+          (modifiers.meta ? 2 : 0) +
+          (modifiers.ctrl ? 4 : 0) +
+          (modifiers.super ? 8 : 0) +
+          (modifiers.hyper ? 16 : 0)
         if (modifier > 1) {
-          // Insert modifier into sequence
-          const ending = keyCode.slice(-1)
-          keyCode = `\x1b[1;${modifier}${ending}`
+          // Check if it's a sequence like \x1b[3~ (delete, insert, pageup, etc.)
+          const tildeMatch = keyCode.match(/^\x1b\[(\d+)~$/)
+          if (tildeMatch) {
+            // Format: \x1b[number;modifier~
+            keyCode = `\x1b[${tildeMatch[1]};${modifier}~`
+          } else {
+            // Arrow keys and other single-letter endings
+            // Insert modifier into sequence
+            const ending = keyCode.slice(-1)
+            keyCode = `\x1b[1;${modifier}${ending}`
+          }
         }
       } else if (keyCode.length === 1) {
         // For regular characters and single-char control codes with modifiers
         let char = keyCode
 
-        // Handle ctrl modifier for characters
-        if (modifiers.ctrl) {
+        // Special handling for backspace with modifiers - use modifyOtherKeys format
+        // Terminals send Ctrl+Backspace as CSI 27;5;127~ (or CSI 27;5;8~)
+        // Only use modifyOtherKeys for ctrl, super, or hyper (not shift or meta alone)
+        if (char === "\b" && (modifiers.ctrl || modifiers.super || modifiers.hyper)) {
+          const modifier =
+            1 +
+            (modifiers.shift ? 1 : 0) +
+            (modifiers.meta ? 2 : 0) +
+            (modifiers.ctrl ? 4 : 0) +
+            (modifiers.super ? 8 : 0) +
+            (modifiers.hyper ? 16 : 0)
+          // Use charcode 127 for backspace (DEL)
+          keyCode = `\x1b[27;${modifier};127~`
+        } else if (modifiers.ctrl) {
+          // Handle ctrl modifier for characters
           // Ctrl+letter produces control codes (0x01-0x1a for a-z)
           if (char >= "a" && char <= "z") {
             keyCode = String.fromCharCode(char.charCodeAt(0) - 96)
@@ -333,25 +368,49 @@ export function createMockKeys(renderer: CliRenderer, options?: MockKeysOptions)
     await pressKeys(keys, delayMs)
   }
 
-  const pressReturn = (modifiers?: { shift?: boolean; ctrl?: boolean; meta?: boolean }): void => {
+  const pressReturn = (modifiers?: {
+    shift?: boolean
+    ctrl?: boolean
+    meta?: boolean
+    super?: boolean
+    hyper?: boolean
+  }): void => {
     pressKey(KeyCodes.RETURN, modifiers)
   }
 
-  const pressEscape = (modifiers?: { shift?: boolean; ctrl?: boolean; meta?: boolean }): void => {
+  const pressEscape = (modifiers?: {
+    shift?: boolean
+    ctrl?: boolean
+    meta?: boolean
+    super?: boolean
+    hyper?: boolean
+  }): void => {
     pressKey(KeyCodes.ESCAPE, modifiers)
   }
 
-  const pressTab = (modifiers?: { shift?: boolean; ctrl?: boolean; meta?: boolean }): void => {
+  const pressTab = (modifiers?: {
+    shift?: boolean
+    ctrl?: boolean
+    meta?: boolean
+    super?: boolean
+    hyper?: boolean
+  }): void => {
     pressKey(KeyCodes.TAB, modifiers)
   }
 
-  const pressBackspace = (modifiers?: { shift?: boolean; ctrl?: boolean; meta?: boolean }): void => {
+  const pressBackspace = (modifiers?: {
+    shift?: boolean
+    ctrl?: boolean
+    meta?: boolean
+    super?: boolean
+    hyper?: boolean
+  }): void => {
     pressKey(KeyCodes.BACKSPACE, modifiers)
   }
 
   const pressArrow = (
     direction: "up" | "down" | "left" | "right",
-    modifiers?: { shift?: boolean; ctrl?: boolean; meta?: boolean },
+    modifiers?: { shift?: boolean; ctrl?: boolean; meta?: boolean; super?: boolean; hyper?: boolean },
   ): void => {
     const keyMap = {
       up: KeyCodes.ARROW_UP,

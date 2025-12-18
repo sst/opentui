@@ -336,6 +336,59 @@ test("parseKeypress - Kitty functional keys with event types", () => {
   expect(ctrlDownRelease.eventType).toBe("release")
 })
 
+test("parseKeypress - Kitty tilde keys with event types", () => {
+  const options: ParseKeypressOptions = { useKittyKeyboard: true }
+
+  // Page Up press
+  const pageUpPress = parseKeypress("\x1b[5;1:1~", options)!
+  expect(pageUpPress.name).toBe("pageup")
+  expect(pageUpPress.eventType).toBe("press")
+  expect(pageUpPress.source).toBe("kitty")
+
+  // Page Up repeat
+  const pageUpRepeat = parseKeypress("\x1b[5;1:2~", options)!
+  expect(pageUpRepeat.name).toBe("pageup")
+  expect(pageUpRepeat.eventType).toBe("press")
+  expect(pageUpRepeat.repeated).toBe(true)
+
+  // Page Up release
+  const pageUpRelease = parseKeypress("\x1b[5;1:3~", options)!
+  expect(pageUpRelease.name).toBe("pageup")
+  expect(pageUpRelease.eventType).toBe("release")
+
+  // Page Down
+  const pageDownRepeat = parseKeypress("\x1b[6;1:2~", options)!
+  expect(pageDownRepeat.name).toBe("pagedown")
+  expect(pageDownRepeat.repeated).toBe(true)
+
+  // Insert with shift
+  const shiftInsert = parseKeypress("\x1b[2;2:1~", options)!
+  expect(shiftInsert.name).toBe("insert")
+  expect(shiftInsert.shift).toBe(true)
+  expect(shiftInsert.eventType).toBe("press")
+
+  // Delete with ctrl
+  const ctrlDelete = parseKeypress("\x1b[3;5:1~", options)!
+  expect(ctrlDelete.name).toBe("delete")
+  expect(ctrlDelete.ctrl).toBe(true)
+
+  // Home/End
+  const homePress = parseKeypress("\x1b[1;1:1~", options)!
+  expect(homePress.name).toBe("home")
+
+  const endRelease = parseKeypress("\x1b[4;1:3~", options)!
+  expect(endRelease.name).toBe("end")
+  expect(endRelease.eventType).toBe("release")
+
+  // F5-F12
+  const f5Press = parseKeypress("\x1b[15;1:1~", options)!
+  expect(f5Press.name).toBe("f5")
+
+  const f12Repeat = parseKeypress("\x1b[24;1:2~", options)!
+  expect(f12Repeat.name).toBe("f12")
+  expect(f12Repeat.repeated).toBe(true)
+})
+
 test("parseKeypress - Kitty keyboard invalid event types", () => {
   const options: ParseKeypressOptions = { useKittyKeyboard: true }
 

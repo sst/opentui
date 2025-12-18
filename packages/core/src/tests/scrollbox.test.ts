@@ -79,6 +79,49 @@ describe("ScrollBoxRenderable - child delegation", () => {
   })
 })
 
+describe("ScrollBoxRenderable - clipping", () => {
+  test("clips nested scrollbox content to inner viewport (see issue #388)", async () => {
+    const root = new BoxRenderable(testRenderer, {
+      flexDirection: "column",
+      gap: 0,
+      width: 32,
+      height: 16,
+    })
+
+    const outer = new ScrollBoxRenderable(testRenderer, {
+      width: 30,
+      height: 10,
+      border: true,
+      overflow: "hidden",
+      scrollY: true,
+    })
+
+    const inner = new ScrollBoxRenderable(testRenderer, {
+      width: 26,
+      height: 6,
+      border: true,
+      overflow: "hidden",
+      scrollY: true,
+    })
+
+    for (let index = 0; index < 6; index += 1) {
+      inner.add(new TextRenderable(testRenderer, { content: `LEAK-${index}` }))
+    }
+
+    outer.add(inner)
+    root.add(outer)
+    testRenderer.root.add(root)
+
+    await renderOnce()
+
+    const frame = captureCharFrame()
+    const innerViewportHeight = 4 // height 6 minus top/bottom border
+    const visibleLines = frame.split("\n").filter((line) => line.includes("LEAK-"))
+
+    expect(visibleLines.length).toBeLessThanOrEqual(innerViewportHeight)
+  })
+})
+
 describe("ScrollBoxRenderable - destroyRecursively", () => {
   test("destroys internal ScrollBox components", () => {
     const parent = new ScrollBoxRenderable(testRenderer, { id: "scroll-parent" })
@@ -481,15 +524,15 @@ world
       scrollBox.add(wrapper)
     }
 
-    await new Promise((resolve) => setTimeout(resolve, 0))
+    await testRenderer.idle()
 
     mockTreeSitterClient.resolveAllHighlightOnce()
     await new Promise((resolve) => setTimeout(resolve, 1))
 
-    await renderOnce()
+    await testRenderer.idle()
 
     scrollBox.scrollTo(scrollBox.scrollHeight)
-    await renderOnce()
+    await testRenderer.idle()
 
     const frameAfterScroll = captureCharFrame()
 
@@ -623,10 +666,10 @@ world
       scrollBox.add(wrapper)
     }
 
-    await new Promise((resolve) => setTimeout(resolve, 0))
+    await Bun.sleep(20)
 
     mockTreeSitterClient.resolveAllHighlightOnce()
-    await new Promise((resolve) => setTimeout(resolve, 1))
+    await Bun.sleep(20)
 
     await renderOnce()
 
@@ -1012,5 +1055,96 @@ console.log(processor.reduce((acc, val) => acc + val, 0))`
     for (let i = 0; i < scrollPositions.length; i++) {
       expect(scrollPositions[i]).toBe(maxScrollPositions[i])
     }
+  })
+
+  test("clips nested scrollboxes when multiple stacked children overflow (app-style tool blocks)", async () => {
+    const custom = await createTestRenderer({ width: 120, height: 40 })
+    const { renderer, renderOnce, captureCharFrame } = custom
+
+    const root = new BoxRenderable(renderer, { flexDirection: "column", width: 118, height: 38, gap: 0 })
+    const header = new BoxRenderable(renderer, { height: 3, border: true })
+    header.add(new TextRenderable(testRenderer, { content: "HEADER" }))
+    root.add(header)
+
+    const outer = new ScrollBoxRenderable(renderer, { height: 25, border: true, overflow: "hidden", scrollY: true })
+    expect((outer as any)._overflow).toBe("hidden")
+
+    const addToolBlock = (id: number) => {
+      const wrapper = new BoxRenderable(renderer, { border: true, padding: 0, marginTop: 0, marginBottom: 0 })
+      const inner = new ScrollBoxRenderable(renderer, {
+        height: 10,
+        border: true,
+        overflow: "hidden",
+        scrollY: true,
+        contentOptions: { paddingTop: 0, paddingBottom: 0, paddingLeft: 0, paddingRight: 0 },
+      })
+      expect((inner as any)._overflow).toBe("hidden")
+      for (let i = 0; i < 15; i += 1) {
+        inner.add(new TextRenderable(renderer, { content: `[tool ${id}] line ${i}` }))
+      }
+      wrapper.add(inner)
+      outer.add(wrapper)
+    }
+
+    addToolBlock(1)
+    addToolBlock(2)
+    addToolBlock(3)
+
+    root.add(outer)
+
+    const footer = new BoxRenderable(renderer, { height: 3, border: true })
+    footer.add(new TextRenderable(renderer, { content: "FOOTER" }))
+    root.add(footer)
+
+    renderer.root.add(root)
+    await renderer.idle()
+    expect(outer.width).toBeGreaterThan(0)
+    expect(outer.height).toBeGreaterThan(0)
+
+    const frame = captureCharFrame()
+
+    // The third tool block should be clipped entirely (outer height fits ~two blocks).
+    expect(frame).not.toMatch(/\[tool 3\] line 1/)
+
+    renderer.destroy()
+  })
+
+  test("does not overdraw above header when scrolling nested tool blocks upward", async () => {
+    const custom = await createTestRenderer({ width: 120, height: 24 })
+    const { renderer, renderOnce, captureCharFrame } = custom
+
+    const root = new BoxRenderable(renderer, { flexDirection: "column", width: 118, height: 22, gap: 0 })
+    const header = new BoxRenderable(renderer, { height: 3, border: true })
+    header.add(new TextRenderable(renderer, { content: "HEADER" }))
+    root.add(header)
+
+    const outer = new ScrollBoxRenderable(renderer, { height: 14, border: true, overflow: "hidden", scrollY: true })
+    const inner = new ScrollBoxRenderable(renderer, { height: 10, border: true, overflow: "hidden", scrollY: true })
+    for (let i = 0; i < 12; i += 1) {
+      inner.add(new TextRenderable(renderer, { content: `[tool] line ${i}` }))
+    }
+    outer.add(inner)
+    root.add(outer)
+
+    const footer = new BoxRenderable(renderer, { height: 3, border: true })
+    footer.add(new TextRenderable(renderer, { content: "FOOTER" }))
+    root.add(footer)
+
+    renderer.root.add(root)
+    await renderOnce()
+
+    // Scroll up to try to draw above header
+    inner.scrollTo({ x: 0, y: -100 })
+    outer.scrollTo({ x: 0, y: -100 })
+    await renderOnce()
+
+    const frame = captureCharFrame()
+    const headerIndex = frame.indexOf("HEADER")
+    const firstToolIndex = frame.indexOf("[tool] line 0")
+
+    expect(headerIndex).toBeGreaterThan(-1)
+    expect(firstToolIndex).toBeGreaterThan(headerIndex)
+
+    renderer.destroy()
   })
 })

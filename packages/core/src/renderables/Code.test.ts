@@ -2,19 +2,24 @@ import { test, expect, beforeEach, afterEach } from "bun:test"
 import { CodeRenderable } from "./Code"
 import { SyntaxStyle } from "../syntax-style"
 import { RGBA } from "../lib/RGBA"
-import { createTestRenderer, type TestRenderer, MockTreeSitterClient } from "../testing"
+import { createTestRenderer, type TestRenderer, MockTreeSitterClient, type MockMouse } from "../testing"
 import { TreeSitterClient } from "../lib/tree-sitter"
 import type { SimpleHighlight } from "../lib/tree-sitter/types"
+import { BoxRenderable } from "./Box"
 
 let currentRenderer: TestRenderer
 let renderOnce: () => Promise<void>
 let captureFrame: () => string
+let mockMouse: MockMouse
+let resize: (width: number, height: number) => void
 
 beforeEach(async () => {
-  const testRenderer = await createTestRenderer({ width: 32, height: 2 })
+  const testRenderer = await createTestRenderer({ width: 80, height: 24 })
   currentRenderer = testRenderer.renderer
   renderOnce = testRenderer.renderOnce
   captureFrame = testRenderer.captureCharFrame
+  mockMouse = testRenderer.mockMouse
+  resize = testRenderer.resize
 })
 
 afterEach(async () => {
@@ -276,6 +281,8 @@ test("CodeRenderable - empty content does not trigger highlighting", async () =>
 })
 
 test("CodeRenderable - text renders immediately before highlighting completes", async () => {
+  resize(32, 2)
+
   const syntaxStyle = SyntaxStyle.fromStyles({
     default: { fg: RGBA.fromValues(1, 1, 1, 1) },
     keyword: { fg: RGBA.fromValues(0, 0, 1, 1) },
@@ -1303,4 +1310,76 @@ test("CodeRenderable - streaming mode handles empty cached highlights gracefully
 
   expect(codeRenderable.content).toBe("more plain text")
   expect(codeRenderable.plainText).toBe("more plain text")
+})
+
+test("CodeRenderable - selection across two Code renderables in flex row", async () => {
+  const syntaxStyle = SyntaxStyle.fromStyles({
+    default: { fg: RGBA.fromValues(1, 1, 1, 1) },
+  })
+
+  const container = new BoxRenderable(currentRenderer, {
+    id: "container",
+    width: 80,
+    height: 10,
+    flexDirection: "row",
+    left: 0,
+    top: 0,
+  })
+  currentRenderer.root.add(container)
+
+  const leftCode = new CodeRenderable(currentRenderer, {
+    id: "left-code",
+    content: "line1\nline2\nline3\nline4\nline5",
+    syntaxStyle,
+    selectable: true,
+    wrapMode: "none",
+    width: 20,
+    height: 5,
+  })
+
+  const rightCode = new CodeRenderable(currentRenderer, {
+    id: "right-code",
+    content: "lineA\nlineB\nlineC\nlineD\nlineE",
+    syntaxStyle,
+    selectable: true,
+    wrapMode: "none",
+    width: 20,
+    height: 5,
+  })
+
+  container.add(leftCode)
+  container.add(rightCode)
+
+  await renderOnce()
+
+  expect(leftCode.x).toBe(0)
+  expect(rightCode.x).toBeGreaterThan(leftCode.x)
+
+  const startX = leftCode.x + 2
+  const startY = leftCode.y + 2
+  const endX = rightCode.x + 3
+  const endY = rightCode.y + rightCode.height + 2
+
+  await mockMouse.drag(startX, startY, endX, endY)
+  await renderOnce()
+
+  expect(leftCode.hasSelection()).toBe(true)
+  expect(rightCode.hasSelection()).toBe(true)
+
+  const leftSelection = leftCode.getSelectedText()
+  const rightSelection = rightCode.getSelectedText()
+  const leftSelectionObj = leftCode.getSelection()
+  const rightSelectionObj = rightCode.getSelection()
+
+  expect(leftSelectionObj).not.toBeNull()
+  expect(rightSelectionObj).not.toBeNull()
+
+  if (leftSelectionObj && rightSelectionObj) {
+    expect(leftSelectionObj.start).toBeGreaterThan(0)
+    expect(leftSelectionObj.end).toBe(29)
+    expect(rightSelectionObj.start).toBe(0)
+    expect(rightSelectionObj.end).toBe(29)
+    expect(leftSelection).toBe("ne3\nline4\nline5")
+    expect(rightSelection).toBe("lineA\nlineB\nlineC\nlineD\nlineE")
+  }
 })

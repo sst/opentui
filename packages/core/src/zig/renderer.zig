@@ -50,7 +50,6 @@ pub const CliRenderer = struct {
     terminal: Terminal,
     testing: bool = false,
     useAlternateScreen: bool = true,
-    useKittyKeyboard: bool = true,
     terminalSetup: bool = false,
 
     renderStats: struct {
@@ -292,7 +291,8 @@ pub const CliRenderer = struct {
         }
 
         self.terminal.setCursorPosition(1, 1, false);
-        self.terminal.enableDetectedFeatures(writer, self.useKittyKeyboard) catch {};
+        const useKitty = self.terminal.opts.kitty_keyboard_flags > 0;
+        self.terminal.enableDetectedFeatures(writer, useKitty) catch {};
 
         bufferedWriter.flush() catch {};
     }
@@ -940,7 +940,8 @@ pub const CliRenderer = struct {
     pub fn processCapabilityResponse(self: *CliRenderer, response: []const u8) void {
         self.terminal.processCapabilityResponse(response);
         const writer = self.stdoutWriter.writer();
-        self.terminal.enableDetectedFeatures(writer, self.useKittyKeyboard) catch {};
+        const useKitty = self.terminal.opts.kitty_keyboard_flags > 0;
+        self.terminal.enableDetectedFeatures(writer, useKitty) catch {};
     }
 
     pub fn setCursorPosition(self: *CliRenderer, x: u32, y: u32, visible: bool) void {
@@ -955,12 +956,12 @@ pub const CliRenderer = struct {
         self.terminal.setCursorColor(color);
     }
 
-    pub fn setUseKittyKeyboard(self: *CliRenderer, use: bool) void {
-        self.useKittyKeyboard = use;
+    pub fn setKittyKeyboardFlags(self: *CliRenderer, flags: u8) void {
+        self.terminal.setKittyKeyboardFlags(flags);
     }
 
-    pub fn getUseKittyKeyboard(self: *CliRenderer) bool {
-        return self.useKittyKeyboard;
+    pub fn getKittyKeyboardFlags(self: *CliRenderer) u8 {
+        return self.terminal.opts.kitty_keyboard_flags;
     }
 
     fn renderDebugOverlay(self: *CliRenderer) void {

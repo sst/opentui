@@ -2,7 +2,7 @@ import { test, expect, beforeEach, afterEach, beforeAll, describe } from "bun:te
 import { TreeSitterClient } from "./client"
 import { tmpdir } from "os"
 import { join } from "path"
-import { mkdir, writeFile } from "fs/promises"
+import { mkdir, writeFile, unlink } from "fs/promises"
 import { getDataPaths } from "../data-paths"
 import { getTreeSitterClient } from "."
 
@@ -350,29 +350,37 @@ describe("TreeSitterClient", () => {
   })
 
   test("should support local file paths for parser configuration", async () => {
-    const testQueryPath = join(dataPath, "test-highlights.scm")
+    const testQueryPath = join(dataPath, `test-highlights-${Date.now()}.scm`)
     const simpleQuery = "(identifier) @variable"
     await writeFile(testQueryPath, simpleQuery, "utf8")
 
-    client.addFiletypeParser({
-      filetype: "test-lang",
-      queries: {
-        highlights: [testQueryPath],
-      },
-      wasm: "https://github.com/tree-sitter/tree-sitter-javascript/releases/download/v0.23.1/tree-sitter-javascript.wasm",
-    })
+    try {
+      client.addFiletypeParser({
+        filetype: "test-lang",
+        queries: {
+          highlights: [testQueryPath],
+        },
+        wasm: "https://github.com/tree-sitter/tree-sitter-javascript/releases/download/v0.23.1/tree-sitter-javascript.wasm",
+      })
 
-    await client.initialize()
+      await client.initialize()
 
-    const hasParser = await client.preloadParser("test-lang")
-    expect(hasParser).toBe(true)
+      const hasParser = await client.preloadParser("test-lang")
+      expect(hasParser).toBe(true)
 
-    const testCode = "const myVariable = 42;"
-    const result = await client.highlightOnce(testCode, "test-lang")
+      const testCode = "const myVariable = 42;"
+      const result = await client.highlightOnce(testCode, "test-lang")
 
-    expect(result.highlights).toBeDefined()
-    expect(result.error).toBeUndefined()
-    expect(result.warning).toBeUndefined()
+      expect(result.highlights).toBeDefined()
+      expect(result.error).toBeUndefined()
+      expect(result.warning).toBeUndefined()
+    } finally {
+      try {
+        await unlink(testQueryPath)
+      } catch (e) {
+        // Ignore cleanup errors
+      }
+    }
   })
 
   test("should handle concurrent highlightOnce calls efficiently (no duplicate parser loading)", async () => {

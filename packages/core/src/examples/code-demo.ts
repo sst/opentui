@@ -492,7 +492,7 @@ Other:
         highlightsEnabled = !highlightsEnabled
         if (highlightsEnabled) {
           // Add diff-style highlights for demonstration
-          const lineCount = codeDisplay.lineCount
+          const lineCount = codeDisplay.virtualLineCount
           for (let i = 0; i < lineCount; i += 7) {
             if (i % 14 === 0) {
               codeWithLineNumbers.setLineColor(i, "#1a4d1a")
@@ -524,7 +524,7 @@ Other:
         diagnosticsEnabled = !diagnosticsEnabled
         if (diagnosticsEnabled) {
           // Add diagnostic signs for demonstration
-          const lineCount = codeDisplay.lineCount
+          const lineCount = codeDisplay.virtualLineCount
           for (let i = 0; i < lineCount; i += 9) {
             if (i % 27 === 0) {
               codeWithLineNumbers.setLineSign(i, { before: "❌", beforeColor: "#ef4444" })

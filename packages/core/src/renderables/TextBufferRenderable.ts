@@ -90,7 +90,6 @@ export abstract class TextBufferRenderable extends Renderable implements LineInf
       this.textBufferView.setWrapWidth(this.width)
     }
 
-    // Initialize viewport if dimensions are available
     if (this.width > 0 && this.height > 0) {
       this.textBufferView.setViewport(this._scrollX, this._scrollY, this.width, this.height)
     }
@@ -109,14 +108,12 @@ export abstract class TextBufferRenderable extends Renderable implements LineInf
 
     const { direction, delta } = event.scroll
 
-    // Handle vertical scrolling
     if (direction === "up") {
       this.scrollY -= delta
     } else if (direction === "down") {
       this.scrollY += delta
     }
 
-    // Handle horizontal scrolling (only when wrap mode is "none")
     if (this._wrapMode === "none") {
       if (direction === "left") {
         this.scrollX -= delta
@@ -132,6 +129,10 @@ export abstract class TextBufferRenderable extends Renderable implements LineInf
 
   public get lineCount(): number {
     return this.textBuffer.getLineCount()
+  }
+
+  public get virtualLineCount(): number {
+    return this.textBufferView.getVirtualLineCount()
   }
 
   public get scrollY(): number {
@@ -314,6 +315,10 @@ export abstract class TextBufferRenderable extends Renderable implements LineInf
     // Update viewport with current scroll position and new size
     this.textBufferView.setViewport(this._scrollX, this._scrollY, width, height)
 
+    // Notify listeners (like LineNumberRenderable) that line info may have changed
+    // due to wrapping changes from the resize
+    this.updateTextInfo()
+
     if (this.lastLocalSelection) {
       const changed = this.updateLocalSelection(this.lastLocalSelection)
       if (changed) {
@@ -417,7 +422,29 @@ export abstract class TextBufferRenderable extends Renderable implements LineInf
     const localSelection = convertGlobalToLocalSelection(selection, this.x, this.y)
     this.lastLocalSelection = localSelection
 
-    const changed = this.updateLocalSelection(localSelection)
+    let changed: boolean
+    if (!localSelection?.isActive) {
+      this.textBufferView.resetLocalSelection()
+      changed = true
+    } else if (selection?.isStart) {
+      changed = this.textBufferView.setLocalSelection(
+        localSelection.anchorX,
+        localSelection.anchorY,
+        localSelection.focusX,
+        localSelection.focusY,
+        this._selectionBg,
+        this._selectionFg,
+      )
+    } else {
+      changed = this.textBufferView.updateLocalSelection(
+        localSelection.anchorX,
+        localSelection.anchorY,
+        localSelection.focusX,
+        localSelection.focusY,
+        this._selectionBg,
+        this._selectionFg,
+      )
+    }
 
     if (changed) {
       this.requestRender()

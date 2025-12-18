@@ -53,12 +53,6 @@ export abstract class EditBufferRenderable extends Renderable implements LineInf
   protected lastLocalSelection: LocalSelectionBounds | null = null
   protected _tabIndicator?: string | number
   protected _tabIndicatorColor?: RGBA
-  private _selectionAnchorState: {
-    screenX: number
-    screenY: number
-    viewportX: number
-    viewportY: number
-  } | null = null
 
   private _cursorChangeListener: ((event: CursorChangeEvent) => void) | undefined = undefined
   private _contentChangeListener: ((event: ContentChangeEvent) => void) | undefined = undefined
@@ -159,6 +153,10 @@ export abstract class EditBufferRenderable extends Renderable implements LineInf
 
   public get lineCount(): number {
     return this.editBuffer.getLineCount()
+  }
+
+  public get virtualLineCount(): number {
+    return this.editorView.getVirtualLineCount()
   }
 
   public get scrollY(): number {
@@ -380,7 +378,29 @@ export abstract class EditBufferRenderable extends Renderable implements LineInf
     const localSelection = convertGlobalToLocalSelection(selection, this.x, this.y)
     this.lastLocalSelection = localSelection
 
-    const changed = this.updateLocalSelection(localSelection)
+    let changed: boolean
+    if (!localSelection?.isActive) {
+      this.editorView.resetLocalSelection()
+      changed = true
+    } else if (selection?.isStart) {
+      changed = this.editorView.setLocalSelection(
+        localSelection.anchorX,
+        localSelection.anchorY,
+        localSelection.focusX,
+        localSelection.focusY,
+        this._selectionBg,
+        this._selectionFg,
+      )
+    } else {
+      changed = this.editorView.updateLocalSelection(
+        localSelection.anchorX,
+        localSelection.anchorY,
+        localSelection.focusX,
+        localSelection.focusY,
+        this._selectionBg,
+        this._selectionFg,
+      )
+    }
 
     if (changed) {
       this.requestRender()
@@ -495,13 +515,24 @@ export abstract class EditBufferRenderable extends Renderable implements LineInf
     }
   }
 
-  destroy(): void {
+  override destroy(): void {
+    if (this.isDestroyed) return
+
     if (this._focused) {
       this._ctx.setCursorPosition(0, 0, false)
+      // Manually blur to unhook event handlers BEFORE setting destroyed flag
+      // This prevents the guard in super.destroy() from skipping blur()
+      this.blur()
     }
-    super.destroy()
+
+    // Destroy dependent resources in correct order BEFORE calling super
+    // EditorView depends on EditBuffer, so destroy it first
     this.editorView.destroy()
     this.editBuffer.destroy()
+
+    // Finally clean up parent resources
+    // Note: super.destroy() will try to blur() again, but blur() has guards to prevent double-blur
+    super.destroy()
   }
 
   public set onCursorChange(handler: ((event: CursorChangeEvent) => void) | undefined) {
@@ -558,8 +589,22 @@ export abstract class EditBufferRenderable extends Renderable implements LineInf
     return this.editBuffer.getLineHighlights(lineIdx)
   }
 
-  public setText(text: string, opts?: { history?: boolean }): void {
-    this.editBuffer.setText(text, opts)
+  /**
+   * Set text and completely reset the buffer state (clears history, resets add_buffer).
+   * Use this for initial text setting or when you want a clean slate.
+   */
+  public setText(text: string): void {
+    this.editBuffer.setText(text)
+    this.yogaNode.markDirty()
+    this.requestRender()
+  }
+
+  /**
+   * Replace text while preserving undo history (creates an undo point).
+   * Use this when you want the setText operation to be undoable.
+   */
+  public replaceText(text: string): void {
+    this.editBuffer.replaceText(text)
     this.yogaNode.markDirty()
     this.requestRender()
   }
@@ -596,57 +641,19 @@ export abstract class EditBufferRenderable extends Renderable implements LineInf
 
     if (!shiftPressed) {
       this._ctx.clearSelection()
-      this._selectionAnchorState = null
       return
     }
 
     const visualCursor = this.editorView.getVisualCursor()
-    const viewport = this.editorView.getViewport()
-
     const cursorX = this.x + visualCursor.visualCol
     const cursorY = this.y + visualCursor.visualRow
 
     if (isBeforeMovement) {
       if (!this._ctx.hasSelection) {
         this._ctx.startSelection(this, cursorX, cursorY)
-        this._selectionAnchorState = {
-          screenX: cursorX,
-          screenY: cursorY,
-          viewportX: viewport.offsetX,
-          viewportY: viewport.offsetY,
-        }
-      } else if (!this._selectionAnchorState) {
-        // Selection exists but we don't have state (e.g. from mouse), capture it
-        const selection = this._ctx.getSelection()
-        if (selection && selection.isActive) {
-          this._selectionAnchorState = {
-            screenX: selection.anchor.x,
-            screenY: selection.anchor.y,
-            viewportX: viewport.offsetX,
-            viewportY: viewport.offsetY,
-          }
-        }
       }
     } else {
-      // After movement - check if viewport changed
-      if (this._selectionAnchorState) {
-        const deltaY = viewport.offsetY - this._selectionAnchorState.viewportY
-        const deltaX = viewport.offsetX - this._selectionAnchorState.viewportX
-
-        if (deltaY !== 0 || deltaX !== 0) {
-          const newAnchorX = this._selectionAnchorState.screenX - deltaX
-          const newAnchorY = this._selectionAnchorState.screenY - deltaY
-
-          // We need to update the anchor without losing focus position
-          // startSelection sets both anchor and focus to the same point
-          this._ctx.startSelection(this, newAnchorX, newAnchorY)
-          this._ctx.updateSelection(this, cursorX, cursorY)
-        } else {
-          this._ctx.updateSelection(this, cursorX, cursorY)
-        }
-      } else {
-        this._ctx.updateSelection(this, cursorX, cursorY)
-      }
+      this._ctx.updateSelection(this, cursorX, cursorY)
     }
   }
 }

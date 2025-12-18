@@ -149,6 +149,7 @@ test("requestRender() does not trigger when renderer is suspended", async () => 
 
 test("requestRender() does trigger when renderer is paused", async () => {
   renderer.start()
+  await Bun.sleep(20)
   renderer.pause()
 
   let renderCalled = false
@@ -161,7 +162,7 @@ test("requestRender() does trigger when renderer is paused", async () => {
   }
 
   renderer.requestRender()
-  await new Promise((resolve) => setTimeout(resolve, 0))
+  await Bun.sleep(20)
 
   expect(renderCalled).toBe(true)
 

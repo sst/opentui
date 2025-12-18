@@ -263,10 +263,8 @@ export class ScrollBarRenderable extends Renderable {
     }
   }
 
-  public handleKeyPress(key: KeyEvent | string): boolean {
-    const keyName = typeof key === "string" ? key : key.name
-
-    switch (keyName) {
+  public handleKeyPress(key: KeyEvent): boolean {
+    switch (key.name) {
       case "left":
       case "h":
         if (this.orientation !== "horizontal") return false

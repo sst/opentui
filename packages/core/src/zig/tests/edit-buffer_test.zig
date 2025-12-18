@@ -831,7 +831,7 @@ test "EditBuffer - wcwidth mode treats multi-codepoint emoji as separate chars" 
     // Girl with laptop: U+1F469 (woman) + U+200D (ZWJ) + U+1F4BB (laptop)
     const girl_laptop = "👩‍💻"; // woman + ZWJ + laptop
 
-    try eb.setText(hand_with_skin_tone, false);
+    try eb.setText(hand_with_skin_tone);
     try eb.setCursor(0, 0);
 
     // In wcwidth mode:
@@ -857,7 +857,7 @@ test "EditBuffer - wcwidth mode treats multi-codepoint emoji as separate chars" 
     cursor = eb.getPrimaryCursor();
     try std.testing.expectEqual(@as(u32, 4), cursor.col); // After second codepoint (width 2)
 
-    try eb.setText(family, false);
+    try eb.setText(family);
     const line_width_family = iter_mod.lineWidthAt(&eb.tb.rope, 0);
 
     // Family: man (width 2) + ZWJ (width 0) + woman (width 2) + ZWJ (width 0) + girl (width 2)
@@ -877,7 +877,7 @@ test "EditBuffer - wcwidth mode treats multi-codepoint emoji as separate chars" 
     cursor = eb.getPrimaryCursor();
     try std.testing.expectEqual(@as(u32, 6), cursor.col);
 
-    try eb.setText(girl_laptop, false);
+    try eb.setText(girl_laptop);
     const line_width_laptop = iter_mod.lineWidthAt(&eb.tb.rope, 0);
 
     // Woman (width 2) + ZWJ (width 0) + laptop (width 2) = 4 in wcwidth mode
@@ -910,7 +910,7 @@ test "EditBuffer - wcwidth comprehensive emoji cursor movement and backspace" {
     _ = "🇯🇵"; // Japanese flag (unused but documented)
     _ = "🇮🇳"; // Indian flag (unused but documented)
 
-    try eb.setText(woman_tech, false);
+    try eb.setText(woman_tech);
     const width1 = iter_mod.lineWidthAt(&eb.tb.rope, 0);
     try std.testing.expectEqual(@as(u32, 6), width1);
 
@@ -974,7 +974,7 @@ test "EditBuffer - wcwidth comprehensive emoji cursor movement and backspace" {
     len = eb.getText(&buf);
     try std.testing.expectEqual(@as(usize, 0), len);
 
-    try eb.setText(family, false);
+    try eb.setText(family);
     const width2 = iter_mod.lineWidthAt(&eb.tb.rope, 0);
     try std.testing.expectEqual(@as(u32, 8), width2);
 
@@ -1009,7 +1009,7 @@ test "EditBuffer - wcwidth comprehensive emoji cursor movement and backspace" {
     cursor = eb.getPrimaryCursor();
     try std.testing.expectEqual(@as(u32, 2), cursor.col);
 
-    try eb.setText(rainbow_flag, false);
+    try eb.setText(rainbow_flag);
     const width3 = iter_mod.lineWidthAt(&eb.tb.rope, 0);
     try std.testing.expectEqual(@as(u32, 3), width3);
 
@@ -1022,7 +1022,7 @@ test "EditBuffer - wcwidth comprehensive emoji cursor movement and backspace" {
     cursor = eb.getPrimaryCursor();
     try std.testing.expectEqual(@as(u32, 3), cursor.col);
 
-    try eb.setText(us_flag, false);
+    try eb.setText(us_flag);
     const width4 = iter_mod.lineWidthAt(&eb.tb.rope, 0);
     try std.testing.expectEqual(@as(u32, 2), width4);
 
@@ -1045,7 +1045,7 @@ test "EditBuffer - wcwidth comprehensive emoji cursor movement and backspace" {
     try std.testing.expectEqual(@as(u32, 0), cursor.col);
 
     const mixed_text = "A 👩🏽‍💻 B 👨‍👩‍👧‍👦 C";
-    try eb.setText(mixed_text, false);
+    try eb.setText(mixed_text);
     const mixed_width = iter_mod.lineWidthAt(&eb.tb.rope, 0);
     // A(1) + space(1) + woman_tech(6) + space(1) + B(1) + space(1) + family(8) + space(1) + C(1) = 21
     try std.testing.expectEqual(@as(u32, 21), mixed_width);
@@ -1090,7 +1090,7 @@ test "EditBuffer - wcwidth ZWJ does not appear in rendered text" {
     defer eb.deinit();
 
     const woman_tech = "👩🏽‍💻"; // Contains ZWJ at byte position
-    try eb.setText(woman_tech, false);
+    try eb.setText(woman_tech);
 
     // Get the raw bytes - ZWJ should be present in the buffer
     var buf: [100]u8 = undefined;
@@ -1140,7 +1140,7 @@ test "EditBuffer - wcwidth each visible emoji requires exactly one cursor move" 
     defer eb.deinit();
 
     // Test 1: Simple laptop emoji (no ZWJ)
-    try eb.setText("💻", false);
+    try eb.setText("💻");
     const width1 = iter_mod.lineWidthAt(&eb.tb.rope, 0);
     try std.testing.expectEqual(@as(u32, 2), width1);
 
@@ -1150,21 +1150,21 @@ test "EditBuffer - wcwidth each visible emoji requires exactly one cursor move" 
     try std.testing.expectEqual(@as(u32, 2), cursor.col);
 
     // Test 2: Woman emoji (no modifiers)
-    try eb.setText("👩", false);
+    try eb.setText("👩");
     try eb.setCursor(0, 0);
     eb.moveRight(); // Should move past woman in ONE move
     cursor = eb.getPrimaryCursor();
     try std.testing.expectEqual(@as(u32, 2), cursor.col);
 
     // Test 3: Skin tone emoji alone
-    try eb.setText("🏽", false);
+    try eb.setText("🏽");
     try eb.setCursor(0, 0);
     eb.moveRight(); // Should move past skin in ONE move
     cursor = eb.getPrimaryCursor();
     try std.testing.expectEqual(@as(u32, 2), cursor.col);
 
     // Test 4: Woman + skin (no ZWJ yet)
-    try eb.setText("👩🏽", false);
+    try eb.setText("👩🏽");
     const width4 = iter_mod.lineWidthAt(&eb.tb.rope, 0);
     try std.testing.expectEqual(@as(u32, 4), width4); // 2+2
 
@@ -1178,7 +1178,7 @@ test "EditBuffer - wcwidth each visible emoji requires exactly one cursor move" 
     try std.testing.expectEqual(@as(u32, 4), cursor.col);
 
     // Test 5: Woman + skin + ZWJ + laptop (full technologist)
-    try eb.setText("👩🏽‍💻", false);
+    try eb.setText("👩🏽‍💻");
     const width5 = iter_mod.lineWidthAt(&eb.tb.rope, 0);
     try std.testing.expectEqual(@as(u32, 6), width5); // 2+2+0+2
 
@@ -1215,4 +1215,131 @@ test "EditBuffer - wcwidth each visible emoji requires exactly one cursor move" 
     eb.moveLeft(); // Should move back to start
     cursor = eb.getPrimaryCursor();
     try std.testing.expectEqual(@as(u32, 0), cursor.col);
+}
+
+test "EditBuffer - replaceText allows undo" {
+    const pool = gp.initGlobalPool(std.testing.allocator);
+    defer gp.deinitGlobalPool();
+
+    var eb = try EditBuffer.init(std.testing.allocator, pool, .wcwidth);
+    defer eb.deinit();
+
+    // Set initial text (resets everything)
+    try eb.setText("Initial");
+
+    var buffer: [100]u8 = undefined;
+    var len = eb.getText(&buffer);
+    try std.testing.expectEqualStrings("Initial", buffer[0..len]);
+
+    // Replace text with history preserved
+    try eb.replaceText("Modified");
+    len = eb.getText(&buffer);
+    try std.testing.expectEqualStrings("Modified", buffer[0..len]);
+
+    // Should be able to undo
+    try std.testing.expect(eb.canUndo());
+    _ = try eb.undo();
+
+    // Should be back to "Initial"
+    len = eb.getText(&buffer);
+    try std.testing.expectEqualStrings("Initial", buffer[0..len]);
+}
+
+test "EditBuffer - setText clears all history" {
+    const pool = gp.initGlobalPool(std.testing.allocator);
+    defer gp.deinitGlobalPool();
+
+    var eb = try EditBuffer.init(std.testing.allocator, pool, .wcwidth);
+    defer eb.deinit();
+
+    // Insert some text that creates undo history
+    try eb.insertText("Initial");
+
+    // Should have undo history
+    try std.testing.expect(eb.canUndo());
+
+    var buffer: [100]u8 = undefined;
+    var len = eb.getText(&buffer);
+    try std.testing.expectEqualStrings("Initial", buffer[0..len]);
+
+    // setText now completely resets the buffer (clears history)
+    try eb.setText("New");
+
+    len = eb.getText(&buffer);
+    try std.testing.expectEqualStrings("New", buffer[0..len]);
+
+    // History should be cleared
+    try std.testing.expect(!eb.canUndo());
+}
+
+test "EditBuffer - multiple replaceText with history keeps add_buffer functional" {
+    const pool = gp.initGlobalPool(std.testing.allocator);
+    defer gp.deinitGlobalPool();
+
+    var eb = try EditBuffer.init(std.testing.allocator, pool, .wcwidth);
+    defer eb.deinit();
+
+    // Use replaceText to preserve history
+    try eb.replaceText("Line 1");
+
+    // Insert more text using the add_buffer
+    try eb.insertText("\nLine 2");
+
+    // Replace text again (preserves history)
+    // This sets cursor to (0, 0)
+    try eb.replaceText("Reset");
+
+    // Insert more text using the add_buffer (should still work)
+    // Since cursor is at (0, 0), text is inserted at the beginning
+    try eb.insertText(" and more");
+
+    var buffer: [100]u8 = undefined;
+    const len = eb.getText(&buffer);
+    // Text is inserted at cursor position (0, 0), so it appears before "Reset"
+    try std.testing.expectEqualStrings(" and moreReset", buffer[0..len]);
+
+    // Verify we can undo
+    try std.testing.expect(eb.canUndo());
+
+    // Move cursor to end and insert more text
+    const line_count = eb.tb.lineCount();
+    const last_line_width = iter_mod.lineWidthAt(&eb.tb.rope, line_count - 1);
+    try eb.setCursor(line_count - 1, last_line_width);
+    try eb.insertText(" more");
+
+    const len2 = eb.getText(&buffer);
+    try std.testing.expectEqualStrings(" and moreReset more", buffer[0..len2]);
+}
+
+test "EditBuffer - setText resets add_buffer" {
+    const pool = gp.initGlobalPool(std.testing.allocator);
+    defer gp.deinitGlobalPool();
+
+    var eb = try EditBuffer.init(std.testing.allocator, pool, .wcwidth);
+    defer eb.deinit();
+
+    // Insert text that uses add_buffer
+    try eb.insertText("First");
+    try eb.insertText(" Second");
+
+    var buffer: [100]u8 = undefined;
+    var len = eb.getText(&buffer);
+    try std.testing.expectEqualStrings("First Second", buffer[0..len]);
+
+    // setText should reset add_buffer.len to 0
+    try eb.setText("Reset");
+
+    len = eb.getText(&buffer);
+    try std.testing.expectEqualStrings("Reset", buffer[0..len]);
+
+    // After setText, add_buffer should be reset and work fine
+    // setText places cursor at (0,0), so move to end of text
+    const line_count = eb.tb.lineCount();
+    const last_line_width = iter_mod.lineWidthAt(&eb.tb.rope, line_count - 1);
+    try eb.setCursor(line_count - 1, last_line_width);
+
+    try eb.insertText(" More");
+
+    len = eb.getText(&buffer);
+    try std.testing.expectEqualStrings("Reset More", buffer[0..len]);
 }
