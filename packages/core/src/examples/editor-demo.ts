@@ -25,29 +25,37 @@ Emojis:
 
 NAVIGATION:
   • Arrow keys to move cursor
-  • Home/End for line navigation
-  • Ctrl+A/Ctrl+E for buffer start/end
+  • Ctrl+A/Ctrl+E for line start/end
+  • Home/End for buffer start/end
+  • Ctrl+F/Ctrl+B to move right/left (Emacs-style)
   • Alt+F/Alt+B for word forward/backward
   • Alt+Left/Alt+Right for word forward/backward
+  • Ctrl+Left/Ctrl+Right for word forward/backward
+  • Alt+A/Alt+E for visual line start/end
 
 SELECTION:
   • Shift+Arrow keys to select
-  • Shift+Home/End to select to line start/end
+  • Ctrl+Shift+A/E to select to line start/end
+  • Shift+Home/End to select to buffer start/end
   • Alt+Shift+F/B to select word forward/backward
   • Alt+Shift+Left/Right to select word forward/backward
+  • Alt+Shift+A/E to select to visual line start/end
 
 EDITING:
   • Type any text to insert
   • Backspace/Delete to remove text
   • Enter to create new lines
-  • Ctrl+D to delete current line
+  • Ctrl+Shift+D to delete current line
+  • Ctrl+D to delete character forward
   • Ctrl+K to delete to line end
+  • Ctrl+U to delete to line start
   • Alt+D to delete word forward
   • Alt+Backspace or Ctrl+W to delete word backward
+  • Ctrl+Delete or Alt+Delete to delete word forward
 
 UNDO/REDO:
-  • Ctrl+Z to undo
-  • Ctrl+Shift+Z or Ctrl+Y to redo
+  • Ctrl+- to undo or Cmd+Z (Mac)
+  • Ctrl+. to redo or Cmd+Shift+Z (Mac)
 
 VIEW:
   • Shift+W to toggle wrap mode (word/char/none)
