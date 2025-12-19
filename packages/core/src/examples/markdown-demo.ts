@@ -60,7 +60,7 @@ const md = new MarkdownRenderable(renderer, {
 |---|---|---|
 | Bold | \`**text**\` | **bold text** |
 | Italic | \`*text*\` | *italic text* |
-| Code | \`\\\`code\\\`\` | \`inline code\` |
+| Code | \`code\` | \`inline code\` |
 | Link | \`[text](url)\` | [OpenTUI](https://github.com) |
 
 ## Mixed Content
