@@ -53,7 +53,9 @@ async function renderTable(markdown: string, conceal: boolean = true): Promise<s
   await new Promise((resolve) => setTimeout(resolve, 100))
   await renderOnce()
 
-  return "\n" + captureFrame().trimEnd()
+  // Trim each line to remove terminal width padding
+  const lines = captureFrame().split("\n").map((line) => line.trimEnd())
+  return "\n" + lines.join("\n").trimEnd()
 }
 
 test("basic table alignment", async () => {
@@ -64,9 +66,9 @@ test("basic table alignment", async () => {
 
   expect(await renderTable(markdown)).toMatchInlineSnapshot(`
     "
-    | Name  | Age |                                             
-    | ----- | --- |                                             
-    | Alice | 30  |                                             
+    | Name  | Age |
+    | ----- | --- |
+    | Alice | 30  |
     | Bob   | 5   |"
   `)
 })
@@ -80,10 +82,10 @@ test("table with inline code (backticks)", async () => {
 
   expect(await renderTable(markdown)).toMatchInlineSnapshot(`
     "
-    | Command       | Description   |                           
-    | ------------- | ------------- |                           
-    | npm install   | Install deps  |                           
-    | npm run build | Build project |                           
+    | Command       | Description   |
+    | ------------- | ------------- |
+    | npm install   | Install deps  |
+    | npm run build | Build project |
     | npm test      | Run tests     |"
   `)
 })
@@ -96,9 +98,9 @@ test("table with bold text", async () => {
 
   expect(await renderTable(markdown)).toMatchInlineSnapshot(`
     "
-    | Feature        | Status |                                 
-    | -------------- | ------ |                                 
-    | Authentication | Done   |                                 
+    | Feature        | Status |
+    | -------------- | ------ |
+    | Authentication | Done   |
     | API            | WIP    |"
   `)
 })
@@ -111,9 +113,9 @@ test("table with italic text", async () => {
 
   expect(await renderTable(markdown)).toMatchInlineSnapshot(`
     "
-    | Item | Note      |                                        
-    | ---- | --------- |                                        
-    | One  | important |                                        
+    | Item | Note      |
+    | ---- | --------- |
+    | One  | important |
     | Two  | ok        |"
   `)
 })
@@ -126,9 +128,9 @@ test("table with mixed formatting", async () => {
 
   expect(await renderTable(markdown)).toMatchInlineSnapshot(`
     "
-    | Type  | Value  | Notes  |                                 
-    | ----- | ------ | ------ |                                 
-    | Bold  | code   | italic |                                 
+    | Type  | Value  | Notes  |
+    | ----- | ------ | ------ |
+    | Bold  | code   | italic |
     | Plain | strong | cmd    |"
   `)
 })
@@ -141,9 +143,9 @@ test("table with alignment markers (left, center, right)", async () => {
 
   expect(await renderTable(markdown)).toMatchInlineSnapshot(`
     "
-    | Left      | Center | Right |                              
-    | :-------- | :----: | ----: |                              
-    | A         | B      | C     |                              
+    | Left      | Center | Right |
+    | :-------- | :----: | ----: |
+    | A         | B      | C     |
     | Long text | X      | Y     |"
   `)
 })
@@ -156,9 +158,9 @@ test("table with empty cells", async () => {
 
   expect(await renderTable(markdown)).toMatchInlineSnapshot(`
     "
-    | A   | B   |                                               
-    | --- | --- |                                               
-    | X   |     |                                               
+    | A   | B   |
+    | --- | --- |
+    | X   |     |
     |     | Y   |"
   `)
 })
@@ -170,8 +172,8 @@ test("table with long header and short content", async () => {
 
   expect(await renderTable(markdown)).toMatchInlineSnapshot(`
     "
-    | Very Long Column Header | Short |                         
-    | ----------------------- | ----- |                         
+    | Very Long Column Header | Short |
+    | ----------------------- | ----- |
     | A                       | B     |"
   `)
 })
@@ -183,8 +185,8 @@ test("table with short header and long content", async () => {
 
   expect(await renderTable(markdown)).toMatchInlineSnapshot(`
     "
-    | X                         | Y     |                       
-    | ------------------------- | ----- |                       
+    | X                         | Y     |
+    | ------------------------- | ----- |
     | This is very long content | Short |"
   `)
 })
@@ -202,12 +204,12 @@ test("table inside code block should NOT be formatted", async () => {
 
   expect(await renderTable(markdown)).toMatchInlineSnapshot(`
     "
-    | Not | A | Table |                                         
-    |---|---|---|                                               
-    | Should | Stay | Raw |                                     
-                                                                
-    | Real | Table     |                                        
-    | ---- | --------- |                                        
+    | Not | A | Table |
+    |---|---|---|
+    | Should | Stay | Raw |
+
+    | Real | Table     |
+    | ---- | --------- |
     | Is   | Formatted |"
   `)
 })
@@ -225,13 +227,14 @@ Some text between.
 
   expect(await renderTable(markdown)).toMatchInlineSnapshot(`
     "
-    | Table1 | A   |                                            
-    | ------ | --- |                                            
-    | X      | Y   |                                            
-    Some text between.                                          
-                                                                
-    | Table2       | BB  |                                      
-    | ------------ | --- |                                      
+    | Table1 | A   |
+    | ------ | --- |
+    | X      | Y   |
+
+    Some text between.
+
+    | Table2       | BB  |
+    | ------------ | --- |
     | Long content | Z   |"
   `)
 })
@@ -244,9 +247,9 @@ test("table with escaped pipe character", async () => {
 
   expect(await renderTable(markdown)).toMatchInlineSnapshot(`
     "
-    | Command    | Output   |                                   
-    | ---------- | -------- |                                   
-    | echo       | Hello    |                                   
+    | Command    | Output   |
+    | ---------- | -------- |
+    | echo       | Hello    |
     | ls \\| grep | Filtered |"
   `)
 })
@@ -260,10 +263,10 @@ test("table with unicode characters", async () => {
 
   expect(await renderTable(markdown)).toMatchInlineSnapshot(`
     "
-    | Emoji  | Name     |                                       
-    | ------ | -------- |                                       
-    | 🎉     | Party    |                                       
-    | 🚀     | Rocket   |                                       
+    | Emoji  | Name     |
+    | ------ | -------- |
+    | 🎉     | Party    |
+    | 🚀     | Rocket   |
     | 日本語 | Japanese |"
   `)
 })
@@ -276,9 +279,9 @@ test("table with links", async () => {
 
   expect(await renderTable(markdown)).toMatchInlineSnapshot(`
     "
-    | Name   | Link                     |                       
-    | ------ | ------------------------ |                       
-    | Google | link (https://google.com) |                      
+    | Name   | Link                     |
+    | ------ | ------------------------ |
+    | Google | link (https://google.com) |
     | GitHub | gh (https://github.com)   |"
   `)
 })
@@ -289,7 +292,7 @@ test("single row table (header + delimiter only)", async () => {
 
   expect(await renderTable(markdown)).toMatchInlineSnapshot(`
     "
-    | Only | Header |                                           
+    | Only | Header |
     |---|---|"
   `)
 })
@@ -301,8 +304,8 @@ test("table with many columns", async () => {
 
   expect(await renderTable(markdown)).toMatchInlineSnapshot(`
     "
-    | A   | B   | C   | D   | E   |                             
-    | --- | --- | --- | --- | --- |                             
+    | A   | B   | C   | D   | E   |
+    | --- | --- | --- | --- | --- |
     | 1   | 2   | 3   | 4   | 5   |"
   `)
 })
@@ -316,10 +319,10 @@ Some paragraph text.
 
   expect(await renderTable(markdown)).toMatchInlineSnapshot(`
     "
-    Just a heading                                              
-                                                                
-    Some paragraph text.                                        
-                                                                
+    Just a heading
+
+    Some paragraph text.
+
     - List item"
   `)
 })
@@ -332,9 +335,9 @@ test("table with nested inline formatting", async () => {
 
   expect(await renderTable(markdown)).toMatchInlineSnapshot(`
     "
-    | Description                     |                         
-    | ------------------------------- |                         
-    | This has bold and code together |                         
+    | Description                     |
+    | ------------------------------- |
+    | This has bold and code together |
     | And italic with nested bold     |"
   `)
 })
@@ -349,9 +352,9 @@ test("conceal=false: table with bold text", async () => {
 
   expect(await renderTable(markdown, false)).toMatchInlineSnapshot(`
     "
-    | Feature            | Status |                             
-    | ------------------ | ------ |                             
-    | **Authentication** | Done   |                             
+    | Feature            | Status |
+    | ------------------ | ------ |
+    | **Authentication** | Done   |
     | **API**            | WIP    |"
   `)
 })
@@ -364,9 +367,9 @@ test("conceal=false: table with inline code", async () => {
 
   expect(await renderTable(markdown, false)).toMatchInlineSnapshot(`
     "
-    | Command         | Description   |                         
-    | --------------- | ------------- |                         
-    | \`npm install\`   | Install deps  |                         
+    | Command         | Description   |
+    | --------------- | ------------- |
+    | \`npm install\`   | Install deps  |
     | \`npm run build\` | Build project |"
   `)
 })
@@ -379,9 +382,9 @@ test("conceal=false: table with italic text", async () => {
 
   expect(await renderTable(markdown, false)).toMatchInlineSnapshot(`
     "
-    | Item | Note        |                                      
-    | ---- | ----------- |                                      
-    | One  | *important* |                                      
+    | Item | Note        |
+    | ---- | ----------- |
+    | One  | *important* |
     | Two  | *ok*        |"
   `)
 })
@@ -394,9 +397,9 @@ test("conceal=false: table with mixed formatting", async () => {
 
   expect(await renderTable(markdown, false)).toMatchInlineSnapshot(`
     "
-    | Type     | Value      | Notes    |                        
-    | -------- | ---------- | -------- |                        
-    | **Bold** | \`code\`     | *italic* |                        
+    | Type     | Value      | Notes    |
+    | -------- | ---------- | -------- |
+    | **Bold** | \`code\`     | *italic* |
     | Plain    | **strong** | \`cmd\`    |"
   `)
 })
@@ -410,10 +413,10 @@ test("conceal=false: table with unicode characters", async () => {
 
   expect(await renderTable(markdown, false)).toMatchInlineSnapshot(`
     "
-    | Emoji  | Name     |                                       
-    | ------ | -------- |                                       
-    | 🎉     | Party    |                                       
-    | 🚀     | Rocket   |                                       
+    | Emoji  | Name     |
+    | ------ | -------- |
+    | 🎉     | Party    |
+    | 🚀     | Rocket   |
     | 日本語 | Japanese |"
   `)
 })
@@ -426,9 +429,9 @@ test("conceal=false: basic table alignment", async () => {
 
   expect(await renderTable(markdown, false)).toMatchInlineSnapshot(`
     "
-    | Name  | Age |                                             
-    | ----- | --- |                                             
-    | Alice | 30  |                                             
+    | Name  | Age |
+    | ----- | --- |
+    | Alice | 30  |
     | Bob   | 5   |"
   `)
 })
@@ -444,12 +447,12 @@ This is a paragraph after the table.`
 
   expect(await renderTable(markdown)).toMatchInlineSnapshot(`
     "
-    This is a paragraph before the table.                       
-                                                                
-    | Name  | Age |                                             
-    | ----- | --- |                                             
-    | Alice | 30  |                                             
-                                                                
+    This is a paragraph before the table.
+
+    | Name  | Age |
+    | ----- | --- |
+    | Alice | 30  |
+
     This is a paragraph after the table."
   `)
 })
