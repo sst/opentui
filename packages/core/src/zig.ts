@@ -599,6 +599,10 @@ function getOpenTUILib(libPath?: string) {
       args: ["ptr", "u32", "u32"],
       returns: "void",
     },
+    editorViewSetViewport: {
+      args: ["ptr", "u32", "u32", "u32", "u32", "bool"],
+      returns: "void",
+    },
     editorViewGetViewport: {
       args: ["ptr", "ptr", "ptr", "ptr", "ptr"],
       returns: "void",
@@ -808,7 +812,7 @@ function getOpenTUILib(libPath?: string) {
       returns: "u64",
     },
     editorViewSetLocalSelection: {
-      args: ["ptr", "i32", "i32", "i32", "i32", "ptr", "ptr"],
+      args: ["ptr", "i32", "i32", "i32", "i32", "ptr", "ptr", "bool"],
       returns: "bool",
     },
     editorViewUpdateSelection: {
@@ -816,7 +820,7 @@ function getOpenTUILib(libPath?: string) {
       returns: "void",
     },
     editorViewUpdateLocalSelection: {
-      args: ["ptr", "i32", "i32", "i32", "i32", "ptr", "ptr"],
+      args: ["ptr", "i32", "i32", "i32", "i32", "ptr", "ptr", "bool"],
       returns: "bool",
     },
     editorViewResetLocalSelection: {
@@ -1466,6 +1470,14 @@ export interface RenderLib {
   createEditorView: (editBufferPtr: Pointer, viewportWidth: number, viewportHeight: number) => Pointer
   destroyEditorView: (view: Pointer) => void
   editorViewSetViewportSize: (view: Pointer, width: number, height: number) => void
+  editorViewSetViewport: (
+    view: Pointer,
+    x: number,
+    y: number,
+    width: number,
+    height: number,
+    moveCursor: boolean,
+  ) => void
   editorViewGetViewport: (view: Pointer) => { offsetY: number; offsetX: number; height: number; width: number }
   editorViewSetScrollMargin: (view: Pointer, margin: number) => void
   editorViewSetWrapMode: (view: Pointer, mode: "none" | "char" | "word") => void
@@ -1489,6 +1501,7 @@ export interface RenderLib {
     focusY: number,
     bgColor: RGBA | null,
     fgColor: RGBA | null,
+    updateCursor: boolean,
   ) => boolean
   editorViewUpdateSelection: (view: Pointer, end: number, bgColor: RGBA | null, fgColor: RGBA | null) => void
   editorViewUpdateLocalSelection: (
@@ -1499,6 +1512,7 @@ export interface RenderLib {
     focusY: number,
     bgColor: RGBA | null,
     fgColor: RGBA | null,
+    updateCursor: boolean,
   ) => boolean
   editorViewResetLocalSelection: (view: Pointer) => void
   editorViewGetSelectedTextBytes: (view: Pointer, maxLength: number) => Uint8Array | null
@@ -2576,6 +2590,17 @@ class FFIRenderLib implements RenderLib {
     this.opentui.symbols.editorViewSetViewportSize(view, width, height)
   }
 
+  public editorViewSetViewport(
+    view: Pointer,
+    x: number,
+    y: number,
+    width: number,
+    height: number,
+    moveCursor: boolean,
+  ): void {
+    this.opentui.symbols.editorViewSetViewport(view, x, y, width, height, moveCursor)
+  }
+
   public editorViewGetViewport(view: Pointer): { offsetY: number; offsetX: number; height: number; width: number } {
     const x = new Uint32Array(1)
     const y = new Uint32Array(1)
@@ -2913,10 +2938,20 @@ class FFIRenderLib implements RenderLib {
     focusY: number,
     bgColor: RGBA | null,
     fgColor: RGBA | null,
+    updateCursor: boolean,
   ): boolean {
     const bg = bgColor ? bgColor.buffer : null
     const fg = fgColor ? fgColor.buffer : null
-    return this.opentui.symbols.editorViewSetLocalSelection(view, anchorX, anchorY, focusX, focusY, bg, fg)
+    return this.opentui.symbols.editorViewSetLocalSelection(
+      view,
+      anchorX,
+      anchorY,
+      focusX,
+      focusY,
+      bg,
+      fg,
+      updateCursor,
+    )
   }
 
   public editorViewUpdateSelection(view: Pointer, end: number, bgColor: RGBA | null, fgColor: RGBA | null): void {
@@ -2933,10 +2968,20 @@ class FFIRenderLib implements RenderLib {
     focusY: number,
     bgColor: RGBA | null,
     fgColor: RGBA | null,
+    updateCursor: boolean,
   ): boolean {
     const bg = bgColor ? bgColor.buffer : null
     const fg = fgColor ? fgColor.buffer : null
-    return this.opentui.symbols.editorViewUpdateLocalSelection(view, anchorX, anchorY, focusX, focusY, bg, fg)
+    return this.opentui.symbols.editorViewUpdateLocalSelection(
+      view,
+      anchorX,
+      anchorY,
+      focusX,
+      focusY,
+      bg,
+      fg,
+      updateCursor,
+    )
   }
 
   public editorViewResetLocalSelection(view: Pointer): void {

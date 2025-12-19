@@ -1,9 +1,26 @@
 import type { TestRenderer } from "./test-renderer"
 
+export interface RecordBuffersOptions {
+  fg?: boolean
+  bg?: boolean
+  attributes?: boolean
+}
+
+export interface RecordedBuffers {
+  fg?: Float32Array
+  bg?: Float32Array
+  attributes?: Uint8Array
+}
+
 export interface RecordedFrame {
   frame: string
   timestamp: number
   frameNumber: number
+  buffers?: RecordedBuffers
+}
+
+export interface TestRecorderOptions {
+  recordBuffers?: RecordBuffersOptions
 }
 
 /**
@@ -18,9 +35,11 @@ export class TestRecorder {
   private startTime: number = 0
   private originalRenderNative?: () => void
   private decoder = new TextDecoder()
+  private recordBuffers: RecordBuffersOptions
 
-  constructor(renderer: TestRenderer) {
+  constructor(renderer: TestRenderer, options?: TestRecorderOptions) {
     this.renderer = renderer
+    this.recordBuffers = options?.recordBuffers || {}
   }
 
   /**
@@ -96,10 +115,28 @@ export class TestRecorder {
     const frameBytes = currentBuffer.getRealCharBytes(true)
     const frame = this.decoder.decode(frameBytes)
 
-    this.frames.push({
+    const recordedFrame: RecordedFrame = {
       frame,
       timestamp: Date.now() - this.startTime,
       frameNumber: this.frameNumber++,
-    })
+    }
+
+    // Optionally record buffer data from currentRenderBuffer
+    if (this.recordBuffers.fg || this.recordBuffers.bg || this.recordBuffers.attributes) {
+      const buffers = currentBuffer.buffers
+      recordedFrame.buffers = {}
+
+      if (this.recordBuffers.fg) {
+        recordedFrame.buffers.fg = new Float32Array(buffers.fg)
+      }
+      if (this.recordBuffers.bg) {
+        recordedFrame.buffers.bg = new Float32Array(buffers.bg)
+      }
+      if (this.recordBuffers.attributes) {
+        recordedFrame.buffers.attributes = new Uint8Array(buffers.attributes)
+      }
+    }
+
+    this.frames.push(recordedFrame)
   }
 }
