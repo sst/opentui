@@ -996,7 +996,7 @@ test "EditorView - viewport scrolling with wrapped lines: down + edit + up" {
 
     const tbv = ev.getTextBufferView();
     tbv.setWrapMode(.char);
-    ev.setViewport(Viewport{ .x = 0, .y = 0, .width = 20, .height = 10 });
+    ev.setViewport(Viewport{ .x = 0, .y = 0, .width = 20, .height = 10 }, true);
 
     try eb.setText("AAAAAAAAAABBBBBBBBBBCCCCCCCCCCDDDDDDDDDDEEEEEEEEEEFFFFFFFFFFFFGGGGGGGGGGHHHHHHHHHHIIIIIIIIIIJJJJJJJJJJKKKKKKKKKKLLLLLLLLLLMMMMMMMMMMNNNNNNNNNNOOOOOOOOOOPPPPPPPPPPQQQQQQQQQQRRRRRRRRRRSSSSSSSSSSTTTTTTTTTTUUUUUUUUUUVVVVVVVVVVWWWWWWWWWWXXXXXXXXXXYYYYYYYYYYZZZZZZZZZZ");
 
@@ -1049,7 +1049,7 @@ test "EditorView - viewport scrolling with wrapped lines: aggressive down + edit
 
     const tbv = ev.getTextBufferView();
     tbv.setWrapMode(.char);
-    ev.setViewport(Viewport{ .x = 0, .y = 0, .width = 20, .height = 10 });
+    ev.setViewport(Viewport{ .x = 0, .y = 0, .width = 20, .height = 10 }, true);
 
     try eb.setText("AAAAAAAAAABBBBBBBBBBCCCCCCCCCCDDDDDDDDDDEEEEEEEEEEFFFFFFFFFFFFGGGGGGGGGGHHHHHHHHHHIIIIIIIIIIJJJJJJJJJJKKKKKKKKKKLLLLLLLLLLMMMMMMMMMMNNNNNNNNNNOOOOOOOOOOPPPPPPPPPPQQQQQQQQQQRRRRRRRRRRSSSSSSSSSSTTTTTTTTTTUUUUUUUUUUVVVVVVVVVVWWWWWWWWWWXXXXXXXXXXYYYYYYYYYYZZZZZZZZZZ");
 
@@ -1099,7 +1099,7 @@ test "EditorView - viewport scrolling with wrapped lines: multiple edits and mov
 
     const tbv = ev.getTextBufferView();
     tbv.setWrapMode(.char);
-    ev.setViewport(Viewport{ .x = 0, .y = 0, .width = 15, .height = 8 });
+    ev.setViewport(Viewport{ .x = 0, .y = 0, .width = 15, .height = 8 }, true);
 
     try eb.setText("AAAAAAAAAABBBBBBBBBBCCCCCCCCCCDDDDDDDDDDEEEEEEEEEEFFFFFFFFFFFFGGGGGGGGGGHHHHHHHHHHIIIIIIIIIIJJJJJJJJJJKKKKKKKKKKLLLLLLLLLLMMMMMMMMMMNNNNNNNNNNOOOOOOOOOOPPPPPPPPPPQQQQQQQQQQRRRRRRRRRRSSSSSSSSSSTTTTTTTTTTUUUUUUUUUUVVVVVVVVVV");
 
@@ -1143,7 +1143,7 @@ test "EditorView - viewport scrolling with wrapped lines: verify viewport consis
 
     const tbv = ev.getTextBufferView();
     tbv.setWrapMode(.char);
-    ev.setViewport(Viewport{ .x = 0, .y = 0, .width = 20, .height = 10 });
+    ev.setViewport(Viewport{ .x = 0, .y = 0, .width = 20, .height = 10 }, true);
 
     try eb.setText("AAAAAAAAAABBBBBBBBBBCCCCCCCCCCDDDDDDDDDDEEEEEEEEEEFFFFFFFFFFFFGGGGGGGGGGHHHHHHHHHHIIIIIIIIIIJJJJJJJJJJKKKKKKKKKKLLLLLLLLLLMMMMMMMMMMNNNNNNNNNNOOOOOOOOOOPPPPPPPPPPQQQQQQQQQQRRRRRRRRRRSSSSSSSSSSTTTTTTTTTTUUUUUUUUUUVVVVVVVVVVWWWWWWWWWWXXXXXXXXXXYYYYYYYYYYZZZZZZZZZZ");
 
@@ -1198,7 +1198,7 @@ test "EditorView - viewport scrolling with wrapped lines: backspace after scroll
 
     const tbv = ev.getTextBufferView();
     tbv.setWrapMode(.char);
-    ev.setViewport(Viewport{ .x = 0, .y = 0, .width = 20, .height = 10 });
+    ev.setViewport(Viewport{ .x = 0, .y = 0, .width = 20, .height = 10 }, true);
 
     try eb.setText("AAAAAAAAAABBBBBBBBBBCCCCCCCCCCDDDDDDDDDDEEEEEEEEEEFFFFFFFFFFFFGGGGGGGGGGHHHHHHHHHHIIIIIIIIIIJJJJJJJJJJKKKKKKKKKKLLLLLLLLLLMMMMMMMMMMNNNNNNNNNNOOOOOOOOOOPPPPPPPPPPQQQQQQQQQQRRRRRRRRRRSSSSSSSSSSTTTTTTTTTTUUUUUUUUUUVVVVVVVVVVWWWWWWWWWWXXXXXXXXXXYYYYYYYYYYZZZZZZZZZZ");
 
@@ -1235,7 +1235,7 @@ test "EditorView - viewport scrolling with wrapped lines: viewport follows curso
 
     const tbv = ev.getTextBufferView();
     tbv.setWrapMode(.char);
-    ev.setViewport(Viewport{ .x = 0, .y = 0, .width = 20, .height = 5 });
+    ev.setViewport(Viewport{ .x = 0, .y = 0, .width = 20, .height = 5 }, true);
 
     try eb.setText("AAAAAAAAAABBBBBBBBBBCCCCCCCCCCDDDDDDDDDDEEEEEEEEEEFFFFFFFFFFFFGGGGGGGGGGHHHHHHHHHHIIIIIIIIIIJJJJJJJJJJKKKKKKKKKKLLLLLLLLLLMMMMMMMMMMNNNNNNNNNNOOOOOOOOOOPPPPPPPPPPQQQQQQQQQQRRRRRRRRRRSSSSSSSSSSTTTTTTTTTTUUUUUUUUUUVVVVVVVVVVWWWWWWWWWWXXXXXXXXXXYYYYYYYYYYZZZZZZZZZZ");
 
@@ -1293,7 +1293,7 @@ test "EditorView - wrapped lines: specific scenario with insert and deletions" {
 
     const tbv = ev.getTextBufferView();
     tbv.setWrapMode(.char);
-    ev.setViewport(Viewport{ .x = 0, .y = 0, .width = 20, .height = 10 });
+    ev.setViewport(Viewport{ .x = 0, .y = 0, .width = 20, .height = 10 }, true);
 
     try eb.setText("AAAAAAAAAABBBBBBBBBBCCCCCCCCCCDDDDDDDDDDEEEEEEEEEEFFFFFFFFFFFFGGGGGGGGGGHHHHHHHHHHIIIIIIIIIIJJJJJJJJJJKKKKKKKKKKLLLLLLLLLLMMMMMMMMMMNNNNNNNNNNOOOOOOOOOOPPPPPPPPPPQQQQQQQQQQRRRRRRRRRRSSSSSSSSSSTTTTTTTTTTUUUUUUUUUUVVVVVVVVVVWWWWWWWWWWXXXXXXXXXXYYYYYYYYYYZZZZZZZZZZ");
 
@@ -1353,7 +1353,7 @@ test "EditorView - wrapped lines: many small edits with viewport scrolling" {
 
     const tbv = ev.getTextBufferView();
     tbv.setWrapMode(.char);
-    ev.setViewport(Viewport{ .x = 0, .y = 0, .width = 15, .height = 8 });
+    ev.setViewport(Viewport{ .x = 0, .y = 0, .width = 15, .height = 8 }, true);
 
     try eb.setText("AAAAAAAAAABBBBBBBBBBCCCCCCCCCCDDDDDDDDDDEEEEEEEEEEFFFFFFFFFFFFGGGGGGGGGGHHHHHHHHHHIIIIIIIIIIJJJJJJJJJJKKKKKKKKKKLLLLLLLLLLMMMMMMMMMMNNNNNNNNNNOOOOOOOOOOPPPPPPPPPPQQQQQQQQQQRRRRRRRRRRSSSSSSSSSSTTTTTTTTTTUUUUUUUUUUVVVVVVVVVV");
 
@@ -2371,7 +2371,7 @@ test "EditorView - word wrapping with space insertion maintains cursor sync" {
     defer ev.deinit();
 
     ev.setWrapMode(.word);
-    ev.setViewport(Viewport{ .x = 0, .y = 0, .width = 15, .height = 10 });
+    ev.setViewport(Viewport{ .x = 0, .y = 0, .width = 15, .height = 10 }, true);
 
     try eb.setText("AAAAAAAAAAAAAAAAAAA");
     try eb.setCursor(0, 7);
@@ -2962,4 +2962,79 @@ test "EditorView - backspace emoji with skin tone modifier unicode" {
     const len_after = eb.getText(&buffer_after);
     try std.testing.expectEqual(@as(usize, 0), len_after);
     try std.testing.expectEqualStrings("", buffer_after[0..len_after]);
+}
+
+
+
+
+
+test "EditorView - mouse selection doesn't scroll when focus is within viewport" {
+    const pool = gp.initGlobalPool(std.testing.allocator);
+    defer gp.deinitGlobalPool();
+
+    var eb = try EditBuffer.init(std.testing.allocator, pool, .wcwidth);
+    defer eb.deinit();
+
+    var ev = try EditorView.init(std.testing.allocator, eb, 40, 10);
+    defer ev.deinit();
+
+    // Create 50 lines of text
+    var i: u32 = 0;
+    while (i < 50) : (i += 1) {
+        if (i > 0) try eb.insertText("\n");
+        try eb.insertText("Line ");
+        var num_buf: [10]u8 = undefined;
+        const num_str = try std.fmt.bufPrint(&num_buf, "{d}", .{i});
+        try eb.insertText(num_str);
+    }
+
+    // Reset cursor to top
+    try eb.setCursor(0, 0);
+    _ = ev.getVirtualLines();
+
+    const vp_initial = ev.getViewport().?;
+    try std.testing.expectEqual(@as(u32, 0), vp_initial.y);
+
+    // Simulate selection within the viewport (lines 0-5, all visible)
+    _ = ev.setLocalSelection(0, 0, 5, 5, null, null, true);
+    _ = ev.getVirtualLines();
+
+    const vp_after = ev.getViewport().?;
+
+    // Viewport should not have changed
+    try std.testing.expectEqual(vp_initial.y, vp_after.y);
+    try std.testing.expectEqual(vp_initial.x, vp_after.x);
+}
+
+test "EditorView - mouse selection focus outside buffer bounds clamps correctly" {
+    const pool = gp.initGlobalPool(std.testing.allocator);
+    defer gp.deinitGlobalPool();
+
+    var eb = try EditBuffer.init(std.testing.allocator, pool, .wcwidth);
+    defer eb.deinit();
+
+    var ev = try EditorView.init(std.testing.allocator, eb, 40, 10);
+    defer ev.deinit();
+
+    // Create just 10 lines
+    var i: u32 = 0;
+    while (i < 10) : (i += 1) {
+        if (i > 0) try eb.insertText("\n");
+        try eb.insertText("Line ");
+        var num_buf: [10]u8 = undefined;
+        const num_str = try std.fmt.bufPrint(&num_buf, "{d}", .{i});
+        try eb.insertText(num_str);
+    }
+
+    try eb.setCursor(0, 0);
+    _ = ev.getVirtualLines();
+
+    // Try to select way beyond buffer (to line 100)
+    _ = ev.setLocalSelection(0, 0, 5, 100, null, null, true);
+    _ = ev.getVirtualLines();
+
+    const cursor = ev.getPrimaryCursor();
+
+    // Cursor should be clamped to last line (line 9)
+    try std.testing.expectEqual(@as(u32, 9), cursor.row);
 }
