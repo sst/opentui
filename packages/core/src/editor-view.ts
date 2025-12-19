@@ -49,11 +49,7 @@ export class EditorView {
 
   public setViewport(x: number, y: number, width: number, height: number, moveCursor: boolean = true): void {
     this.guard()
-    if (moveCursor) {
-      this.lib.editorViewSetViewport(this.viewPtr, x, y, width, height)
-    } else {
-      this.lib.editorViewSetViewportNoMoveCursor(this.viewPtr, x, y, width, height)
-    }
+    this.lib.editorViewSetViewport(this.viewPtr, x, y, width, height, moveCursor)
   }
 
   public getViewport(): Viewport {

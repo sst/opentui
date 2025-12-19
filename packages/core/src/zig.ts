@@ -584,11 +584,7 @@ function getOpenTUILib(libPath?: string) {
       returns: "void",
     },
     editorViewSetViewport: {
-      args: ["ptr", "u32", "u32", "u32", "u32"],
-      returns: "void",
-    },
-    editorViewSetViewportNoMoveCursor: {
-      args: ["ptr", "u32", "u32", "u32", "u32"],
+      args: ["ptr", "u32", "u32", "u32", "u32", "bool"],
       returns: "void",
     },
     editorViewGetViewport: {
@@ -1454,8 +1450,14 @@ export interface RenderLib {
   createEditorView: (editBufferPtr: Pointer, viewportWidth: number, viewportHeight: number) => Pointer
   destroyEditorView: (view: Pointer) => void
   editorViewSetViewportSize: (view: Pointer, width: number, height: number) => void
-  editorViewSetViewport: (view: Pointer, x: number, y: number, width: number, height: number) => void
-  editorViewSetViewportNoMoveCursor: (view: Pointer, x: number, y: number, width: number, height: number) => void
+  editorViewSetViewport: (
+    view: Pointer,
+    x: number,
+    y: number,
+    width: number,
+    height: number,
+    moveCursor: boolean,
+  ) => void
   editorViewGetViewport: (view: Pointer) => { offsetY: number; offsetX: number; height: number; width: number }
   editorViewSetScrollMargin: (view: Pointer, margin: number) => void
   editorViewSetWrapMode: (view: Pointer, mode: "none" | "char" | "word") => void
@@ -2545,12 +2547,15 @@ class FFIRenderLib implements RenderLib {
     this.opentui.symbols.editorViewSetViewportSize(view, width, height)
   }
 
-  public editorViewSetViewport(view: Pointer, x: number, y: number, width: number, height: number): void {
-    this.opentui.symbols.editorViewSetViewport(view, x, y, width, height)
-  }
-
-  public editorViewSetViewportNoMoveCursor(view: Pointer, x: number, y: number, width: number, height: number): void {
-    this.opentui.symbols.editorViewSetViewportNoMoveCursor(view, x, y, width, height)
+  public editorViewSetViewport(
+    view: Pointer,
+    x: number,
+    y: number,
+    width: number,
+    height: number,
+    moveCursor: boolean,
+  ): void {
+    this.opentui.symbols.editorViewSetViewport(view, x, y, width, height, moveCursor)
   }
 
   public editorViewGetViewport(view: Pointer): { offsetY: number; offsetX: number; height: number; width: number } {
