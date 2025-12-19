@@ -103,10 +103,11 @@ export type PixelResolution = {
 
 // Kitty keyboard protocol flags
 // See: https://sw.kovidgoyal.net/kitty/keyboard-protocol/
-const KITTY_FLAG_ALTERNATE_KEYS = 0b0001 // Report alternate keys (e.g., numpad vs regular)
-const KITTY_FLAG_EVENT_TYPES = 0b0010 // Report event types (press/repeat/release)
-const KITTY_FLAG_REPORT_TEXT = 0b0100 // Report text associated with key events
+const KITTY_FLAG_DISAMBIGUATE = 0b1 // Report disambiguated escape codes
+const KITTY_FLAG_EVENT_TYPES = 0b10 // Report event types (press/repeat/release)
+const KITTY_FLAG_ALTERNATE_KEYS = 0b100 // Report alternate keys (e.g., numpad vs regular)
 const KITTY_FLAG_ALL_KEYS_AS_ESCAPES = 0b1000 // Report all keys as escape codes
+const KITTY_FLAG_REPORT_TEXT = 0b10000 // Report text associated with key events
 
 /**
  * Build kitty keyboard protocol flags based on configuration
