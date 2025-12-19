@@ -113,6 +113,7 @@ pub const GraphemePool = struct {
 
     pub fn incref(self: *GraphemePool, id: IdPayload) GraphemePoolError!void {
         const class_id: u32 = (id >> (GENERATION_BITS + SLOT_BITS)) & CLASS_MASK;
+        if (class_id >= MAX_CLASSES) return GraphemePoolError.InvalidId;
         const slot_index: u32 = id & SLOT_MASK;
         const generation: u32 = (id >> SLOT_BITS) & GENERATION_MASK;
         try self.classes[class_id].incref(slot_index, generation);
@@ -120,6 +121,7 @@ pub const GraphemePool = struct {
 
     pub fn decref(self: *GraphemePool, id: IdPayload) GraphemePoolError!void {
         const class_id: u32 = (id >> (GENERATION_BITS + SLOT_BITS)) & CLASS_MASK;
+        if (class_id >= MAX_CLASSES) return GraphemePoolError.InvalidId;
         const slot_index: u32 = id & SLOT_MASK;
         const generation: u32 = (id >> SLOT_BITS) & GENERATION_MASK;
         try self.classes[class_id].decref(slot_index, generation);
@@ -127,6 +129,7 @@ pub const GraphemePool = struct {
 
     pub fn get(self: *GraphemePool, id: IdPayload) GraphemePoolError![]const u8 {
         const class_id: u32 = (id >> (GENERATION_BITS + SLOT_BITS)) & CLASS_MASK;
+        if (class_id >= MAX_CLASSES) return GraphemePoolError.InvalidId;
         const slot_index: u32 = id & SLOT_MASK;
         const generation: u32 = (id >> SLOT_BITS) & GENERATION_MASK;
         return self.classes[class_id].get(slot_index, generation);
@@ -134,6 +137,7 @@ pub const GraphemePool = struct {
 
     pub fn getRefcount(self: *GraphemePool, id: IdPayload) GraphemePoolError!u32 {
         const class_id: u32 = (id >> (GENERATION_BITS + SLOT_BITS)) & CLASS_MASK;
+        if (class_id >= MAX_CLASSES) return GraphemePoolError.InvalidId;
         const slot_index: u32 = id & SLOT_MASK;
         const generation: u32 = (id >> SLOT_BITS) & GENERATION_MASK;
         return self.classes[class_id].getRefcount(slot_index, generation);
