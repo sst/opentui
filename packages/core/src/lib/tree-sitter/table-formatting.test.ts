@@ -54,7 +54,9 @@ async function renderTable(markdown: string, conceal: boolean = true): Promise<s
   await renderOnce()
 
   // Trim each line to remove terminal width padding
-  const lines = captureFrame().split("\n").map((line) => line.trimEnd())
+  const lines = captureFrame()
+    .split("\n")
+    .map((line) => line.trimEnd())
   return "\n" + lines.join("\n").trimEnd()
 }
 
