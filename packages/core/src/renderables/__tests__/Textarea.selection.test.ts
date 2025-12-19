@@ -1001,4 +1001,380 @@ describe("Textarea - Selection Tests", () => {
       rightBox.destroy()
     })
   })
+
+  describe("Selection After Resize", () => {
+    it("should maintain selection correctly after resize - same text selected and rendered properly", async () => {
+      const buffer = OptimizedBuffer.create(80, 24, "wcwidth")
+
+      const { textarea: editor, root } = await createTextareaRenderable(currentRenderer, renderOnce, {
+        initialValue: Array.from({ length: 30 }, (_, i) => `Line ${i.toString().padStart(2, "0")}`).join("\n"),
+        width: 40,
+        height: 10,
+        selectable: true,
+        selectionBg: RGBA.fromValues(0, 1, 0, 1),
+        selectionFg: RGBA.fromValues(0, 0, 0, 1),
+      })
+
+      editor.gotoLine(5)
+      await renderOnce()
+
+      await currentMouse.drag(editor.x + 5, editor.y + 2, editor.x + 10, editor.y + 4)
+      await renderOnce()
+
+      const selectedTextBefore = editor.getSelectedText()
+      const selectionBefore = editor.getSelection()
+
+      expect(editor.hasSelection()).toBe(true)
+      expect(selectedTextBefore).toBeTruthy()
+
+      buffer.clear(RGBA.fromValues(0, 0, 0, 1))
+      buffer.drawEditorView(editor.editorView, editor.x, editor.y)
+
+      const { bg: bgBefore } = buffer.buffers
+      const bufferWidth = buffer.width
+
+      const selectedCellsBefore: Array<{ x: number; y: number }> = []
+      for (let y = 0; y < editor.height; y++) {
+        for (let x = 0; x < editor.width; x++) {
+          const bufferIdx = (editor.y + y) * bufferWidth + (editor.x + x)
+          const bgG = bgBefore[bufferIdx * 4 + 1]
+          if (Math.abs(bgG - 1.0) < 0.01) {
+            selectedCellsBefore.push({ x, y })
+          }
+        }
+      }
+
+      expect(selectedCellsBefore.length).toBeGreaterThan(0)
+
+      editor.width = 50
+      editor.height = 15
+      root.yogaNode.calculateLayout(80, 24)
+      await renderOnce()
+
+      const selectedTextAfter = editor.getSelectedText()
+      const selectionAfter = editor.getSelection()
+
+      expect(editor.hasSelection()).toBe(true)
+      expect(selectedTextAfter).toBe(selectedTextBefore)
+      expect(selectionAfter?.start).toBe(selectionBefore?.start)
+      expect(selectionAfter?.end).toBe(selectionBefore?.end)
+
+      buffer.clear(RGBA.fromValues(0, 0, 0, 1))
+      buffer.drawEditorView(editor.editorView, editor.x, editor.y)
+
+      const { bg: bgAfter } = buffer.buffers
+
+      const selectedCellsAfter: Array<{ x: number; y: number }> = []
+      for (let y = 0; y < editor.height; y++) {
+        for (let x = 0; x < editor.width; x++) {
+          const bufferIdx = (editor.y + y) * bufferWidth + (editor.x + x)
+          const bgG = bgAfter[bufferIdx * 4 + 1]
+          if (Math.abs(bgG - 1.0) < 0.01) {
+            selectedCellsAfter.push({ x, y })
+          }
+        }
+      }
+
+      expect(selectedCellsAfter.length).toBeGreaterThan(0)
+      expect(selectedCellsAfter.length).toBe(selectedCellsBefore.length)
+
+      buffer.destroy()
+      editor.destroy()
+    })
+
+    it("should maintain exact same text selected after wrap width changes", async () => {
+      const buffer = OptimizedBuffer.create(80, 24, "wcwidth")
+
+      const { textarea: editor, root } = await createTextareaRenderable(currentRenderer, renderOnce, {
+        initialValue: "AAAAA BBBBB CCCCC DDDDD EEEEE FFFFF GGGGG HHHHH",
+        width: 50,
+        height: 10,
+        wrapMode: "word",
+        selectable: true,
+        selectionBg: RGBA.fromValues(1, 0, 1, 1),
+        selectionFg: RGBA.fromValues(1, 1, 1, 1),
+      })
+
+      await renderOnce()
+
+      await currentMouse.drag(editor.x + 6, editor.y, editor.x + 17, editor.y)
+      await renderOnce()
+
+      const selectedTextBefore = editor.getSelectedText()
+      const selectionBefore = editor.getSelection()
+
+      expect(editor.hasSelection()).toBe(true)
+      expect(selectedTextBefore).toBe("BBBBB CCCCC")
+
+      editor.width = 15
+      editor.height = 15
+      root.yogaNode.calculateLayout(80, 24)
+      await renderOnce()
+
+      const selectedTextAfterNarrow = editor.getSelectedText()
+      const selectionAfterNarrow = editor.getSelection()
+
+      expect(editor.hasSelection()).toBe(true)
+      expect(selectedTextAfterNarrow).toBe("BBBBB CCCCC")
+      expect(selectionAfterNarrow?.start).toBe(selectionBefore?.start)
+      expect(selectionAfterNarrow?.end).toBe(selectionBefore?.end)
+
+      buffer.clear(RGBA.fromValues(0, 0, 0, 1))
+      buffer.drawEditorView(editor.editorView, editor.x, editor.y)
+
+      const { bg: bgNarrow } = buffer.buffers
+      const bufferWidth = buffer.width
+
+      let selectedCellsNarrow = 0
+      for (let y = 0; y < editor.height; y++) {
+        for (let x = 0; x < editor.width; x++) {
+          const bufferIdx = (editor.y + y) * bufferWidth + (editor.x + x)
+          const bgR = bgNarrow[bufferIdx * 4 + 0]
+          const bgB = bgNarrow[bufferIdx * 4 + 2]
+          if (Math.abs(bgR - 1.0) < 0.01 && Math.abs(bgB - 1.0) < 0.01) {
+            selectedCellsNarrow++
+          }
+        }
+      }
+
+      expect(selectedCellsNarrow).toBe(11)
+
+      editor.width = 50
+      editor.height = 10
+      root.yogaNode.calculateLayout(80, 24)
+      await renderOnce()
+
+      const selectedTextAfterWide = editor.getSelectedText()
+      const selectionAfterWide = editor.getSelection()
+
+      expect(editor.hasSelection()).toBe(true)
+      expect(selectedTextAfterWide).toBe("BBBBB CCCCC")
+      expect(selectionAfterWide?.start).toBe(selectionBefore?.start)
+      expect(selectionAfterWide?.end).toBe(selectionBefore?.end)
+
+      buffer.clear(RGBA.fromValues(0, 0, 0, 1))
+      buffer.drawEditorView(editor.editorView, editor.x, editor.y)
+
+      const { bg: bgWide } = buffer.buffers
+
+      let selectedCellsWide = 0
+      for (let y = 0; y < editor.height; y++) {
+        for (let x = 0; x < editor.width; x++) {
+          const bufferIdx = (editor.y + y) * bufferWidth + (editor.x + x)
+          const bgR = bgWide[bufferIdx * 4 + 0]
+          const bgB = bgWide[bufferIdx * 4 + 2]
+          if (Math.abs(bgR - 1.0) < 0.01 && Math.abs(bgB - 1.0) < 0.01) {
+            selectedCellsWide++
+          }
+        }
+      }
+
+      expect(selectedCellsWide).toBe(11)
+
+      buffer.destroy()
+      editor.destroy()
+    })
+
+    it("should handle resize during active mouse selection drag", async () => {
+      const buffer = OptimizedBuffer.create(80, 24, "wcwidth")
+
+      const { textarea: editor, root } = await createTextareaRenderable(currentRenderer, renderOnce, {
+        initialValue: Array.from({ length: 50 }, (_, i) => `Line ${i}`).join("\n"),
+        width: 40,
+        height: 10,
+        selectable: true,
+        selectionBg: RGBA.fromValues(0, 1, 1, 1),
+      })
+
+      await renderOnce()
+
+      await currentMouse.pressDown(editor.x + 2, editor.y + 1)
+      await currentMouse.moveTo(editor.x + 8, editor.y + 3)
+      await renderOnce()
+
+      expect(editor.hasSelection()).toBe(true)
+      const selectedBeforeResize = editor.getSelectedText()
+
+      editor.width = 30
+      editor.height = 8
+      root.yogaNode.calculateLayout(80, 24)
+      await renderOnce()
+
+      await currentMouse.moveTo(editor.x + 10, editor.y + 2)
+      await renderOnce()
+
+      expect(editor.hasSelection()).toBe(true)
+
+      await currentMouse.release(editor.x + 10, editor.y + 2)
+      await renderOnce()
+
+      buffer.clear(RGBA.fromValues(0, 0, 0, 1))
+      buffer.drawEditorView(editor.editorView, editor.x, editor.y)
+
+      const { bg: bgAfterResize } = buffer.buffers
+      const bufferWidth = buffer.width
+
+      let selectedCellsAfterResize = 0
+      for (let y = 0; y < editor.height; y++) {
+        for (let x = 0; x < editor.width; x++) {
+          const bufferIdx = (editor.y + y) * bufferWidth + (editor.x + x)
+          const bgG = bgAfterResize[bufferIdx * 4 + 1]
+          const bgB = bgAfterResize[bufferIdx * 4 + 2]
+          if (Math.abs(bgG - 1.0) < 0.01 && Math.abs(bgB - 1.0) < 0.01) {
+            selectedCellsAfterResize++
+          }
+        }
+      }
+
+      expect(selectedCellsAfterResize).toBeGreaterThan(0)
+
+      buffer.destroy()
+      editor.destroy()
+    })
+
+    it("should maintain selection correctly when renderable position changes during resize", async () => {
+      const buffer = OptimizedBuffer.create(80, 24, "wcwidth")
+
+      const { textarea: editor, root } = await createTextareaRenderable(currentRenderer, renderOnce, {
+        initialValue: Array.from({ length: 20 }, (_, i) => `Line ${i.toString().padStart(2, "0")}`).join("\n"),
+        left: 10,
+        top: 5,
+        width: 40,
+        height: 10,
+        selectable: true,
+        selectionBg: RGBA.fromValues(1, 1, 0, 1),
+        selectionFg: RGBA.fromValues(0, 0, 0, 1),
+      })
+
+      await renderOnce()
+
+      const initialX = editor.x
+      const initialY = editor.y
+
+      await currentMouse.drag(editor.x + 5, editor.y + 2, editor.x + 10, editor.y + 4)
+      await renderOnce()
+
+      const selectedTextBefore = editor.getSelectedText()
+      const selectionBefore = editor.getSelection()
+
+      expect(editor.hasSelection()).toBe(true)
+      expect(selectedTextBefore).toBeTruthy()
+
+      buffer.clear(RGBA.fromValues(0, 0, 0, 1))
+      buffer.drawEditorView(editor.editorView, editor.x, editor.y)
+
+      const { bg: bgBefore } = buffer.buffers
+      const bufferWidth = buffer.width
+
+      const selectedCellsBeforeCount = countSelectedCells(bgBefore, bufferWidth, editor, 1, 1, 0)
+      expect(selectedCellsBeforeCount).toBeGreaterThan(0)
+
+      editor.left = 20
+      editor.top = 10
+      root.yogaNode.calculateLayout(80, 24)
+      await renderOnce()
+
+      const newX = editor.x
+      const newY = editor.y
+
+      expect(newX).not.toBe(initialX)
+      expect(newY).not.toBe(initialY)
+
+      const selectedTextAfter = editor.getSelectedText()
+      const selectionAfter = editor.getSelection()
+
+      expect(editor.hasSelection()).toBe(true)
+      expect(selectedTextAfter).toBe(selectedTextBefore)
+      expect(selectionAfter?.start).toBe(selectionBefore?.start)
+      expect(selectionAfter?.end).toBe(selectionBefore?.end)
+
+      buffer.clear(RGBA.fromValues(0, 0, 0, 1))
+      buffer.drawEditorView(editor.editorView, editor.x, editor.y)
+
+      const { bg: bgAfter } = buffer.buffers
+      const selectedCellsAfterCount = countSelectedCells(bgAfter, bufferWidth, editor, 1, 1, 0)
+
+      expect(selectedCellsAfterCount).toBe(selectedCellsBeforeCount)
+      expect(selectedCellsAfterCount).toBeGreaterThan(0)
+
+      buffer.destroy()
+      editor.destroy()
+    })
+
+    it("should keep cursor within textarea bounds after resize causes wrapping with scrolled selection", async () => {
+      const { textarea: editor, root } = await createTextareaRenderable(currentRenderer, renderOnce, {
+        initialValue: Array.from(
+          { length: 50 },
+          (_, i) =>
+            `This is a long line ${i.toString().padStart(2, "0")} with enough text to cause wrapping when narrow`,
+        ).join("\n"),
+        width: 60,
+        height: 10,
+        top: 0,
+        wrapMode: "word",
+        selectable: true,
+        showCursor: true,
+      })
+
+      const textBelow = new TextRenderable(currentRenderer, {
+        id: "text-below",
+        content: "Element below textarea",
+        top: 10,
+        left: 0,
+      })
+      currentRenderer.root.add(textBelow)
+
+      await renderOnce()
+
+      editor.focus()
+      editor.gotoLine(15)
+      await renderOnce()
+
+      await currentMouse.drag(editor.x + 5, editor.y + 3, editor.x + 10, editor.y + 9)
+      await renderOnce()
+
+      const viewportAfterSelection = editor.editorView.getViewport()
+
+      expect(editor.hasSelection()).toBe(true)
+      expect(viewportAfterSelection.offsetY).toBeGreaterThan(0)
+
+      editor.width = 8
+      root.yogaNode.calculateLayout(80, 24)
+      await renderOnce()
+
+      const viewportAfterResize = editor.editorView.getViewport()
+      const cursorAfterResize = editor.visualCursor
+
+      expect(cursorAfterResize.visualRow).toBeGreaterThanOrEqual(0)
+      expect(cursorAfterResize.visualRow).toBeLessThan(editor.height)
+      expect(cursorAfterResize.visualCol).toBeGreaterThanOrEqual(0)
+      expect(cursorAfterResize.visualCol).toBeLessThan(editor.width)
+
+      textBelow.destroy()
+      editor.destroy()
+    })
+  })
 })
+
+function countSelectedCells(
+  bg: Float32Array,
+  bufferWidth: number,
+  editor: { x: number; y: number; height: number; width: number },
+  r: number,
+  g: number,
+  b: number,
+): number {
+  let count = 0
+  for (let y = 0; y < editor.height; y++) {
+    for (let x = 0; x < editor.width; x++) {
+      const bufferIdx = (editor.y + y) * bufferWidth + (editor.x + x)
+      const bgR = bg[bufferIdx * 4 + 0]
+      const bgG = bg[bufferIdx * 4 + 1]
+      const bgB = bg[bufferIdx * 4 + 2]
+      if (Math.abs(bgR - r) < 0.01 && Math.abs(bgG - g) < 0.01 && Math.abs(bgB - b) < 0.01) {
+        count++
+      }
+    }
+  }
+  return count
+}
