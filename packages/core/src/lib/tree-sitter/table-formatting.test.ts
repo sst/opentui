@@ -49,7 +49,9 @@ async function renderTable(markdown: string, conceal: boolean = true): Promise<s
 
   renderer.root.add(code)
   await renderOnce()
-  // Wait for async highlighting to complete
+  // Wait for async highlighting to complete (longer timeout for CI)
+  await new Promise((resolve) => setTimeout(resolve, 500))
+  await renderOnce()
   await new Promise((resolve) => setTimeout(resolve, 100))
   await renderOnce()
 
