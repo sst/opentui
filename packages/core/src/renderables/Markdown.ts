@@ -777,7 +777,7 @@ export class MarkdownRenderable extends Renderable {
    * Get cache key for a token.
    */
   private getCacheKey(token: MarkedToken): string {
-    return `${token.type}:${token.raw}`
+    return `${token.type}:${this._conceal}:${token.raw}`
   }
 
   /**

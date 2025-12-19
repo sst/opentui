@@ -398,8 +398,6 @@ Other:
       concealEnabled = !concealEnabled
       if (markdownDisplay) {
         markdownDisplay.conceal = concealEnabled
-        // Clear cache to force re-alignment with new conceal setting
-        markdownDisplay.clearTableCache()
       }
       updateStatusText()
     } else if (key.name === "l" && !key.ctrl && !key.meta) {
