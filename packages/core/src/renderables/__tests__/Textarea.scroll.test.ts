@@ -1,6 +1,8 @@
 import { describe, expect, it, beforeEach, afterEach } from "bun:test"
 import { createTestRenderer, type TestRenderer, type MockMouse } from "../../testing/test-renderer"
 import { createTextareaRenderable } from "./renderable-test-utils"
+import { TestRecorder } from "../../testing/test-recorder"
+import { RGBA } from "../../lib/RGBA"
 
 let currentRenderer: TestRenderer
 let renderOnce: () => Promise<void>
@@ -673,6 +675,70 @@ describe("Textarea - Scroll Tests", () => {
 
       expect(editor.hasSelection()).toBe(true)
       expect(selectedText.length).toBeGreaterThan(0)
+
+      editor.destroy()
+    })
+
+    it("should continuously update selection during auto-scroll without mouse movement", async () => {
+      const { textarea: editor } = await createTextareaRenderable(currentRenderer, renderOnce, {
+        initialValue: Array.from({ length: 100 }, (_, i) => `Line ${i.toString().padStart(2, "0")}`).join("\n"),
+        width: 40,
+        height: 10,
+        selectable: true,
+        selectionBg: RGBA.fromValues(0, 1, 0, 1), // Bright green for easy detection
+      })
+
+      await renderOnce()
+
+      const recorder = new TestRecorder(currentRenderer, { recordBuffers: { bg: true } })
+
+      editor.editBuffer.gotoLine(0)
+      await renderOnce()
+
+      recorder.rec()
+      currentRenderer.start()
+
+      await currentMouse.pressDown(editor.x + 2, editor.y)
+      await currentMouse.moveTo(editor.x + 2, editor.y + editor.height - 1)
+
+      // Wait for auto-scroll WITHOUT moving mouse
+      await Bun.sleep(2000)
+
+      await currentMouse.release(editor.x + 2, editor.y + editor.height - 1)
+      currentRenderer.pause()
+      await currentRenderer.idle()
+      recorder.stop()
+
+      const frames = recorder.recordedFrames
+      expect(frames.length).toBeGreaterThan(10)
+
+      const bufferWidth = currentRenderer.width
+      const selectionCellCounts: number[] = []
+
+      for (const frame of frames) {
+        if (!frame.buffers?.bg) continue
+
+        let selectedCells = 0
+        for (let y = editor.y; y < editor.y + editor.height; y++) {
+          for (let x = editor.x; x < editor.x + editor.width; x++) {
+            const bufferIdx = y * bufferWidth + x
+            const bgG = frame.buffers.bg[bufferIdx * 4 + 1]
+            if (Math.abs(bgG - 1.0) < 0.01) {
+              selectedCells++
+            }
+          }
+        }
+        selectionCellCounts.push(selectedCells)
+      }
+
+      const firstFrameSelection = selectionCellCounts[0] || 0
+      const lastFrameSelection = selectionCellCounts[selectionCellCounts.length - 1] || 0
+
+      const framesWithoutSelection = selectionCellCounts.filter((count, i) => i > 0 && count === 0).length
+
+      // Selection should expand and be continuously visible (no flicker)
+      expect(lastFrameSelection).toBeGreaterThan(firstFrameSelection)
+      expect(framesWithoutSelection).toBe(0)
 
       editor.destroy()
     })

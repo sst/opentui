@@ -510,6 +510,9 @@ export abstract class EditBufferRenderable extends Renderable implements LineInf
 
         if (newOffsetY !== viewport.offsetY) {
           this.editorView.setViewport(viewport.offsetX, newOffsetY, viewport.width, viewport.height, false)
+
+          // Update selection to extend to current mouse position after viewport scroll
+          this._ctx.requestSelectionUpdate()
         }
 
         // Keep fractional part for next frame
