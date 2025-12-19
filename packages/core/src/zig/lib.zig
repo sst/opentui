@@ -327,7 +327,6 @@ export fn bufferClearOpacity(bufferPtr: *buffer.OptimizedBuffer) void {
 }
 
 export fn bufferDrawSuperSampleBuffer(bufferPtr: *buffer.OptimizedBuffer, x: u32, y: u32, pixelData: [*]const u8, len: usize, format: u8, alignedBytesPerRow: u32) void {
-
     bufferPtr.drawSuperSampleBuffer(x, y, pixelData, len, format, alignedBytesPerRow) catch {};
 }
 
@@ -1340,6 +1339,26 @@ export fn encodeUnicode(
     const estimated_count = if (is_ascii_only) text.len else text.len * 2;
     var result = std.heap.page_allocator.alloc(EncodedChar, estimated_count) catch return false;
     var result_idx: usize = 0;
+    var success = false;
+    var pending_gid: ?u32 = null; // Track grapheme allocated but not yet stored in result
+
+    // Clean up result array and any allocated grapheme IDs on failure
+    defer {
+        if (!success) {
+            // Decref pending grapheme that wasn't stored yet
+            if (pending_gid) |gid| {
+                pool.decref(gid) catch {};
+            }
+            // Decref any grapheme IDs we allocated before the failure
+            for (result[0..result_idx]) |encoded_char| {
+                if (gp.isGraphemeChar(encoded_char.char)) {
+                    const gid = gp.graphemeIdFromChar(encoded_char.char);
+                    pool.decref(gid) catch {};
+                }
+            }
+            std.heap.page_allocator.free(result);
+        }
+    }
 
     var byte_offset: u32 = 0;
     var col: u32 = 0;
@@ -1378,9 +1397,13 @@ export fn encodeUnicode(
         } else {
             // Multi-byte or special character - allocate in pool
             const gid = pool.alloc(grapheme_bytes) catch return false;
+            pending_gid = gid; // Track until stored in result
             encoded_char = gp.packGraphemeStart(gid & gp.GRAPHEME_ID_MASK, cell_width);
 
             // Incref since we're handing this off to the caller
+            // Note: incref can only fail if gid is invalid, which shouldn't happen
+            // for a freshly allocated gid. If it does fail, the slot leaks but
+            // this is an edge case that indicates a bug elsewhere.
             pool.incref(gid) catch return false;
         }
 
@@ -1394,6 +1417,7 @@ export fn encodeUnicode(
             .width = @intCast(cell_width),
             .char = encoded_char,
         };
+        pending_gid = null; // Successfully stored, no longer pending
         result_idx += 1;
         col += g_width;
     }
@@ -1403,6 +1427,7 @@ export fn encodeUnicode(
 
     outPtr.* = result.ptr;
     outLenPtr.* = result_idx;
+    success = true;
     return true;
 }
 
