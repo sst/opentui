@@ -1,129 +1,194 @@
+import { Renderable, type RenderableOptions } from "../Renderable"
 import { type RenderContext } from "../types"
-import { SyntaxStyle } from "../syntax-style"
-import { type TreeSitterClient } from "../lib/tree-sitter"
-import { CodeRenderable, type CodeOptions } from "./Code"
-import { remark } from "remark"
-import remarkGfm from "remark-gfm"
-import type { Root, RootContent, Table, TableRow, TableCell, AlignType, PhrasingContent } from "mdast"
+import { SyntaxStyle, type StyleDefinition } from "../syntax-style"
+import { StyledText } from "../lib/styled-text"
+import type { TextChunk } from "../text-buffer"
+import { createTextAttributes } from "../utils"
+import { Lexer, type MarkedToken, type Token, type Tokens } from "marked"
+import { TextRenderable } from "./Text"
+import { CodeRenderable } from "./Code"
+import type { TreeSitterClient } from "../lib/tree-sitter"
 
-export interface MarkdownOptions extends Omit<CodeOptions, "filetype"> {
+export interface MarkdownOptions extends RenderableOptions<MarkdownRenderable> {
   content?: string
   syntaxStyle: SyntaxStyle
-  treeSitterClient?: TreeSitterClient
   conceal?: boolean
+  treeSitterClient?: TreeSitterClient
+  /**
+   * Custom node renderer. Return a Renderable to override default rendering,
+   * or undefined/null to use default rendering.
+   */
+  renderNode?: (token: Token, context: RenderNodeContext) => Renderable | undefined | null
 }
 
-interface CachedTableAlignment {
-  originalText: string
-  alignedText: string
+export interface RenderNodeContext {
+  syntaxStyle: SyntaxStyle
+  conceal: boolean
+  treeSitterClient?: TreeSitterClient
+  /** Creates default renderable for this token */
+  defaultRender: () => Renderable | null
 }
 
-export class MarkdownRenderable extends CodeRenderable {
-  // Cache for table alignments (keyed by original table text)
-  private _tableAlignmentCache: Map<string, CachedTableAlignment> = new Map()
+interface BlockChild {
+  token: MarkedToken
+  renderable: Renderable
+}
 
-  // Remark processor instance (reused)
-  private _remarkProcessor = remark().use(remarkGfm)
+export class MarkdownRenderable extends Renderable {
+  private _content: string = ""
+  private _syntaxStyle: SyntaxStyle
+  private _conceal: boolean
+  private _treeSitterClient?: TreeSitterClient
+  private _renderNode?: MarkdownOptions["renderNode"]
 
-  // Store raw content before transformation
-  private _rawContent: string = ""
+  // Track block children for incremental updates
+  private _blockChildren: BlockChild[] = []
+  // Cache token.raw -> Renderable for reuse
+  private _childCache: Map<string, Renderable> = new Map()
+
+  protected _contentDefaultOptions = {
+    content: "",
+    conceal: true,
+  } satisfies Partial<MarkdownOptions>
 
   constructor(ctx: RenderContext, options: MarkdownOptions) {
-    // Transform content before passing to CodeRenderable
-    const rawContent = options.content ?? ""
-    const transformedContent = rawContent
-
     super(ctx, {
       ...options,
-      content: transformedContent,
-      filetype: "markdown",
+      flexDirection: "column",
     })
 
-    this._rawContent = rawContent
+    this._syntaxStyle = options.syntaxStyle
+    this._conceal = options.conceal ?? this._contentDefaultOptions.conceal
+    this._content = options.content ?? this._contentDefaultOptions.content
+    this._treeSitterClient = options.treeSitterClient
+    this._renderNode = options.renderNode
 
-    // Now transform and update
-    if (rawContent.length > 0) {
-      const processed = this.processMarkdown(rawContent)
-      if (processed !== rawContent) {
-        super.content = processed
-      }
-    }
+    this.rebuildChildren()
   }
 
   get content(): string {
-    return this._rawContent
+    return this._content
   }
 
   set content(value: string) {
-    if (this._rawContent !== value) {
-      this._rawContent = value
-      // Transform and pass to parent
-      const processed = this.processMarkdown(value)
-      super.content = processed
+    if (this._content !== value) {
+      this._content = value
+      this.rebuildChildren()
+      this.requestRender()
+    }
+  }
+
+  get syntaxStyle(): SyntaxStyle {
+    return this._syntaxStyle
+  }
+
+  set syntaxStyle(value: SyntaxStyle) {
+    if (this._syntaxStyle !== value) {
+      this._syntaxStyle = value
+      this._childCache.clear()
+      this.rebuildChildren()
+      this.requestRender()
+    }
+  }
+
+  get conceal(): boolean {
+    return this._conceal
+  }
+
+  set conceal(value: boolean) {
+    if (this._conceal !== value) {
+      this._conceal = value
+      this.rebuildChildren()
+      this.requestRender()
     }
   }
 
   /**
-   * Count concealed characters in an AST node recursively.
-   * Concealed chars are formatting markers like `, *, **
+   * Get style for a token group, with fallback to base scope.
    */
-  private countConcealedChars(node: PhrasingContent): number {
+  private getStyle(group: string): StyleDefinition | undefined {
+    let style = this._syntaxStyle.getStyle(group)
+    if (!style && group.includes(".")) {
+      const baseName = group.split(".")[0]
+      style = this._syntaxStyle.getStyle(baseName)
+    }
+    return style
+  }
+
+  /**
+   * Create a text chunk with the given style.
+   */
+  private createChunk(text: string, group: string): TextChunk {
+    const style = this.getStyle(group) || this.getStyle("default")
+    return {
+      __isChunk: true,
+      text,
+      fg: style?.fg,
+      bg: style?.bg,
+      attributes: style
+        ? createTextAttributes({
+            bold: style.bold,
+            italic: style.italic,
+            underline: style.underline,
+            dim: style.dim,
+          })
+        : 0,
+    }
+  }
+
+  /**
+   * Create a text chunk with default style.
+   */
+  private createDefaultChunk(text: string): TextChunk {
+    return this.createChunk(text, "default")
+  }
+
+  /**
+   * Count concealed characters in a token recursively.
+   */
+  private countConcealedChars(token: MarkedToken): number {
     let count = 0
 
-    switch (node.type) {
-      case "inlineCode":
-        // Backticks: 2 chars (one on each side)
+    switch (token.type) {
+      case "codespan":
         count += 2
         break
       case "strong":
-        // Bold markers: 4 chars (** on each side)
         count += 4
-        // Recurse into children
-        if ("children" in node) {
-          for (const child of node.children) {
-            count += this.countConcealedChars(child)
+        if (token.tokens) {
+          for (const child of token.tokens) {
+            count += this.countConcealedChars(child as MarkedToken)
           }
         }
         break
-      case "emphasis":
-        // Italic markers: 2 chars (* on each side)
+      case "em":
         count += 2
-        // Recurse into children
-        if ("children" in node) {
-          for (const child of node.children) {
-            count += this.countConcealedChars(child)
+        if (token.tokens) {
+          for (const child of token.tokens) {
+            count += this.countConcealedChars(child as MarkedToken)
           }
         }
         break
-      case "delete":
-        // Strikethrough: 4 chars (~~ on each side)
+      case "del":
         count += 4
-        // Recurse into children
-        if ("children" in node) {
-          for (const child of node.children) {
-            count += this.countConcealedChars(child)
+        if (token.tokens) {
+          for (const child of token.tokens) {
+            count += this.countConcealedChars(child as MarkedToken)
           }
         }
         break
       case "link":
-        // Links have []() syntax, but we keep the text visible
-        // Concealed: [ ] ( url )
-        if ("children" in node) {
-          for (const child of node.children) {
-            count += this.countConcealedChars(child)
+        if (token.tokens) {
+          for (const child of token.tokens) {
+            count += this.countConcealedChars(child as MarkedToken)
           }
         }
-        // Add brackets and parens + url length
-        count += 4 // []()
-        if (node.url) {
-          count += node.url.length
-        }
+        count += 2
         break
       default:
-        // For other container nodes, recurse into children
-        if ("children" in node && Array.isArray((node as any).children)) {
-          for (const child of (node as any).children) {
-            count += this.countConcealedChars(child)
+        if ("tokens" in token && Array.isArray(token.tokens)) {
+          for (const child of token.tokens) {
+            count += this.countConcealedChars(child as MarkedToken)
           }
         }
         break
@@ -133,219 +198,545 @@ export class MarkdownRenderable extends CodeRenderable {
   }
 
   /**
-   * Get display width of a table cell using AST for accurate concealment calculation.
-   * When conceal is true, excludes markdown formatting characters.
+   * Get display width of a table cell using tokens.
    */
-  private getCellDisplayWidth(cell: TableCell, cellText: string, conceal: boolean): number {
-    const baseWidth = Bun.stringWidth(cellText.trim())
-    if (!conceal) return baseWidth
+  private getCellDisplayWidth(cell: Tokens.TableCell): number {
+    const baseWidth = Bun.stringWidth(cell.text.trim())
+    if (!this._conceal) return baseWidth
 
-    // Count concealed chars by traversing AST
     let concealedChars = 0
-    for (const child of cell.children) {
-      concealedChars += this.countConcealedChars(child)
+    for (const child of cell.tokens) {
+      concealedChars += this.countConcealedChars(child as MarkedToken)
     }
 
     return Math.max(0, baseWidth - concealedChars)
   }
 
   /**
-   * Format a table node from the AST with aligned columns.
+   * Render inline content (tokens) to chunks.
    */
-  private formatTable(table: Table, content: string): string {
-    const rows = table.children as TableRow[]
-    if (rows.length < 2) {
-      // Need at least header and delimiter row
-      return content.slice(table.position!.start.offset!, table.position!.end.offset!)
+  private renderInlineContent(tokens: Token[], chunks: TextChunk[]): void {
+    for (const token of tokens) {
+      this.renderInlineToken(token as MarkedToken, chunks)
+    }
+  }
+
+  /**
+   * Render a single inline token.
+   */
+  private renderInlineToken(token: MarkedToken, chunks: TextChunk[]): void {
+    switch (token.type) {
+      case "text":
+        chunks.push(this.createDefaultChunk(token.text))
+        break
+
+      case "escape":
+        chunks.push(this.createDefaultChunk(token.text))
+        break
+
+      case "codespan":
+        if (this._conceal) {
+          chunks.push(this.createChunk(token.text, "markup.raw"))
+        } else {
+          chunks.push(this.createChunk("`", "markup.raw"))
+          chunks.push(this.createChunk(token.text, "markup.raw"))
+          chunks.push(this.createChunk("`", "markup.raw"))
+        }
+        break
+
+      case "strong":
+        if (!this._conceal) {
+          chunks.push(this.createChunk("**", "markup.strong"))
+        }
+        for (const child of token.tokens) {
+          this.renderInlineTokenWithStyle(child as MarkedToken, chunks, "markup.strong")
+        }
+        if (!this._conceal) {
+          chunks.push(this.createChunk("**", "markup.strong"))
+        }
+        break
+
+      case "em":
+        if (!this._conceal) {
+          chunks.push(this.createChunk("*", "markup.italic"))
+        }
+        for (const child of token.tokens) {
+          this.renderInlineTokenWithStyle(child as MarkedToken, chunks, "markup.italic")
+        }
+        if (!this._conceal) {
+          chunks.push(this.createChunk("*", "markup.italic"))
+        }
+        break
+
+      case "del":
+        if (!this._conceal) {
+          chunks.push(this.createChunk("~~", "markup.strikethrough"))
+        }
+        for (const child of token.tokens) {
+          this.renderInlineTokenWithStyle(child as MarkedToken, chunks, "markup.strikethrough")
+        }
+        if (!this._conceal) {
+          chunks.push(this.createChunk("~~", "markup.strikethrough"))
+        }
+        break
+
+      case "link":
+        if (this._conceal) {
+          for (const child of token.tokens) {
+            this.renderInlineTokenWithStyle(child as MarkedToken, chunks, "markup.link.label")
+          }
+          chunks.push(this.createChunk(" (", "markup.link"))
+          chunks.push(this.createChunk(token.href, "markup.link.url"))
+          chunks.push(this.createChunk(")", "markup.link"))
+        } else {
+          chunks.push(this.createChunk("[", "markup.link"))
+          for (const child of token.tokens) {
+            this.renderInlineTokenWithStyle(child as MarkedToken, chunks, "markup.link.label")
+          }
+          chunks.push(this.createChunk("](", "markup.link"))
+          chunks.push(this.createChunk(token.href, "markup.link.url"))
+          chunks.push(this.createChunk(")", "markup.link"))
+        }
+        break
+
+      case "image":
+        if (this._conceal) {
+          chunks.push(this.createChunk(token.text || "image", "markup.link.label"))
+        } else {
+          chunks.push(this.createChunk("![", "markup.link"))
+          chunks.push(this.createChunk(token.text || "", "markup.link.label"))
+          chunks.push(this.createChunk("](", "markup.link"))
+          chunks.push(this.createChunk(token.href, "markup.link.url"))
+          chunks.push(this.createChunk(")", "markup.link"))
+        }
+        break
+
+      case "br":
+        chunks.push(this.createDefaultChunk("\n"))
+        break
+
+      default:
+        if ("tokens" in token && Array.isArray(token.tokens)) {
+          this.renderInlineContent(token.tokens, chunks)
+        } else if ("text" in token) {
+          chunks.push(this.createDefaultChunk((token as any).text))
+        }
+        break
+    }
+  }
+
+  /**
+   * Render inline token with a specific style applied.
+   */
+  private renderInlineTokenWithStyle(token: MarkedToken, chunks: TextChunk[], styleGroup: string): void {
+    switch (token.type) {
+      case "text":
+        chunks.push(this.createChunk(token.text, styleGroup))
+        break
+
+      case "escape":
+        chunks.push(this.createChunk(token.text, styleGroup))
+        break
+
+      case "codespan":
+        if (this._conceal) {
+          chunks.push(this.createChunk(token.text, "markup.raw"))
+        } else {
+          chunks.push(this.createChunk("`", "markup.raw"))
+          chunks.push(this.createChunk(token.text, "markup.raw"))
+          chunks.push(this.createChunk("`", "markup.raw"))
+        }
+        break
+
+      default:
+        this.renderInlineToken(token, chunks)
+        break
+    }
+  }
+
+  /**
+   * Render a heading token to chunks.
+   */
+  private renderHeadingChunks(token: Tokens.Heading): TextChunk[] {
+    const chunks: TextChunk[] = []
+    const group = `markup.heading.${token.depth}`
+    const marker = "#".repeat(token.depth) + " "
+
+    if (!this._conceal) {
+      chunks.push(this.createChunk(marker, group))
     }
 
-    // Extract cell data from each row, keeping AST nodes for width calculation
-    const rowData: Array<{
-      cells: Array<{ text: string; node: TableCell | null }>
-      isDelimiter: boolean
-    }> = []
-    const alignments: AlignType[] = table.align || []
+    for (const child of token.tokens) {
+      this.renderInlineTokenWithStyle(child as MarkedToken, chunks, group)
+    }
 
-    for (let i = 0; i < rows.length; i++) {
-      const row = rows[i]
-      const cells: Array<{ text: string; node: TableCell | null }> = []
+    return chunks
+  }
 
-      for (const cell of row.children as TableCell[]) {
-        // Get the raw text of the cell from the source
-        if (cell.position) {
-          const cellText = content.slice(cell.position.start.offset!, cell.position.end.offset!)
-          cells.push({ text: cellText.trim(), node: cell })
-        } else {
-          cells.push({ text: "", node: null })
-        }
+  /**
+   * Render a paragraph token to chunks.
+   */
+  private renderParagraphChunks(token: Tokens.Paragraph): TextChunk[] {
+    const chunks: TextChunk[] = []
+    this.renderInlineContent(token.tokens, chunks)
+    return chunks
+  }
+
+  /**
+   * Render a blockquote to chunks.
+   */
+  private renderBlockquoteChunks(token: Tokens.Blockquote): TextChunk[] {
+    const chunks: TextChunk[] = []
+    for (const child of token.tokens) {
+      chunks.push(this.createChunk("> ", "punctuation.special"))
+      const childChunks = this.renderTokenToChunks(child as MarkedToken)
+      chunks.push(...childChunks)
+      chunks.push(this.createDefaultChunk("\n"))
+    }
+    return chunks
+  }
+
+  /**
+   * Render a list to chunks.
+   */
+  private renderListChunks(token: Tokens.List): TextChunk[] {
+    const chunks: TextChunk[] = []
+    let index = typeof token.start === "number" ? token.start : 1
+
+    for (const item of token.items) {
+      if (token.ordered) {
+        chunks.push(this.createChunk(`${index}. `, "markup.list"))
+        index++
+      } else {
+        chunks.push(this.createChunk("- ", "markup.list"))
       }
 
-      // First row after header is the delimiter row
-      // We detect it by checking if all cells look like ---
-      const isDelimiter = i === 1 && cells.every((c) => /^:?-+:?$/.test(c.text))
-
-      rowData.push({ cells, isDelimiter })
+      for (let i = 0; i < item.tokens.length; i++) {
+        const child = item.tokens[i]
+        if (child.type === "text" && i === 0 && "tokens" in child && child.tokens) {
+          this.renderInlineContent(child.tokens, chunks)
+          chunks.push(this.createDefaultChunk("\n"))
+        } else if (child.type === "paragraph" && i === 0) {
+          this.renderInlineContent((child as Tokens.Paragraph).tokens, chunks)
+          chunks.push(this.createDefaultChunk("\n"))
+        } else {
+          const childChunks = this.renderTokenToChunks(child as MarkedToken)
+          chunks.push(...childChunks)
+          chunks.push(this.createDefaultChunk("\n"))
+        }
+      }
     }
 
-    // Calculate column count
-    const colCount = Math.max(...rowData.map((r) => r.cells.length))
-    if (colCount === 0) {
-      return content.slice(table.position!.start.offset!, table.position!.end.offset!)
+    return chunks
+  }
+
+  /**
+   * Render a thematic break to chunks.
+   */
+  private renderThematicBreakChunks(): TextChunk[] {
+    return [this.createChunk("---", "punctuation.special")]
+  }
+
+  /**
+   * Render a table to chunks.
+   */
+  private renderTableChunks(table: Tokens.Table): TextChunk[] {
+    const chunks: TextChunk[] = []
+
+    if (table.header.length === 0) {
+      return chunks
     }
 
-    // Calculate column widths based on display width using AST
-    const colWidths: number[] = new Array(colCount).fill(3) // Minimum width of 3 for "---"
+    if (table.rows.length === 0) {
+      chunks.push(this.createDefaultChunk(table.raw))
+      return chunks
+    }
 
-    for (const row of rowData) {
-      if (row.isDelimiter) continue
+    const alignments = table.align
+    const colCount = table.header.length
+    const colWidths: number[] = new Array(colCount).fill(3)
 
-      for (let col = 0; col < row.cells.length; col++) {
-        const cell = row.cells[col]
-        const displayWidth = cell.node
-          ? this.getCellDisplayWidth(cell.node, cell.text, this.conceal)
-          : Bun.stringWidth(cell.text)
+    for (let col = 0; col < colCount; col++) {
+      const cell = table.header[col]
+      const displayWidth = this.getCellDisplayWidth(cell)
+      colWidths[col] = Math.max(colWidths[col], displayWidth)
+    }
+
+    for (const row of table.rows) {
+      for (let col = 0; col < row.length; col++) {
+        const cell = row[col]
+        const displayWidth = this.getCellDisplayWidth(cell)
         colWidths[col] = Math.max(colWidths[col], displayWidth)
       }
     }
 
-    // Build formatted table
-    const formattedRows: string[] = []
+    // Header row
+    chunks.push(this.createChunk("| ", "punctuation.special"))
+    for (let col = 0; col < colCount; col++) {
+      const width = colWidths[col]
+      const cell = table.header[col]
+      const displayWidth = this.getCellDisplayWidth(cell)
+      const pad = width - displayWidth
 
-    for (const row of rowData) {
-      const formattedCells: string[] = []
+      const cellChunks: TextChunk[] = []
+      this.renderInlineContent(cell.tokens, cellChunks)
+      const style = this.getStyle("markup.heading") || this.getStyle("default")
+      for (const chunk of cellChunks) {
+        chunks.push({
+          ...chunk,
+          fg: style?.fg ?? chunk.fg,
+          bg: style?.bg ?? chunk.bg,
+          attributes: style
+            ? createTextAttributes({
+                bold: style.bold,
+                italic: style.italic,
+                underline: style.underline,
+                dim: style.dim,
+              })
+            : chunk.attributes,
+        })
+      }
 
+      if (pad > 0) {
+        chunks.push(this.createDefaultChunk(" ".repeat(pad)))
+      }
+      chunks.push(this.createChunk(" | ", "punctuation.special"))
+    }
+
+    const lastChunk = chunks[chunks.length - 1]
+    if (lastChunk.text === " | ") {
+      lastChunk.text = " |"
+    }
+    chunks.push(this.createDefaultChunk("\n"))
+
+    // Delimiter row
+    chunks.push(this.createChunk("| ", "punctuation.special"))
+    for (let col = 0; col < colCount; col++) {
+      const width = colWidths[col]
+      const align = alignments[col]
+      let delimiter: string
+      if (align === "center") {
+        delimiter = ":" + "-".repeat(Math.max(1, width - 2)) + ":"
+      } else if (align === "left") {
+        delimiter = ":" + "-".repeat(Math.max(1, width - 1))
+      } else if (align === "right") {
+        delimiter = "-".repeat(Math.max(1, width - 1)) + ":"
+      } else {
+        delimiter = "-".repeat(width)
+      }
+      chunks.push(this.createChunk(delimiter, "punctuation.special"))
+      chunks.push(this.createChunk(" | ", "punctuation.special"))
+    }
+    const lastDelimChunk = chunks[chunks.length - 1]
+    if (lastDelimChunk.text === " | ") {
+      lastDelimChunk.text = " |"
+    }
+    chunks.push(this.createDefaultChunk("\n"))
+
+    // Data rows
+    for (const row of table.rows) {
+      chunks.push(this.createChunk("| ", "punctuation.special"))
       for (let col = 0; col < colCount; col++) {
         const width = colWidths[col]
-        const cell = row.cells[col] || { text: "", node: null }
+        const cell = row[col]
+        const displayWidth = cell ? this.getCellDisplayWidth(cell) : 0
+        const pad = width - displayWidth
 
-        if (row.isDelimiter) {
-          // Rebuild delimiter with proper width and alignment markers
-          const align = alignments[col]
-          if (align === "center") {
-            formattedCells.push(":" + "-".repeat(width - 2) + ":")
-          } else if (align === "left") {
-            formattedCells.push(":" + "-".repeat(width - 1))
-          } else if (align === "right") {
-            formattedCells.push("-".repeat(width - 1) + ":")
-          } else {
-            formattedCells.push("-".repeat(width))
-          }
-        } else {
-          // Pad content cell to column width
-          const displayWidth = cell.node
-            ? this.getCellDisplayWidth(cell.node, cell.text, this.conceal)
-            : Bun.stringWidth(cell.text)
-          const pad = width - displayWidth
-          formattedCells.push(cell.text + " ".repeat(Math.max(0, pad)))
+        const cellChunks: TextChunk[] = []
+        if (cell) {
+          this.renderInlineContent(cell.tokens, cellChunks)
         }
+        chunks.push(...cellChunks)
+
+        if (pad > 0) {
+          chunks.push(this.createDefaultChunk(" ".repeat(pad)))
+        }
+        chunks.push(this.createChunk(" | ", "punctuation.special"))
       }
 
-      formattedRows.push("| " + formattedCells.join(" | ") + " |")
+      const lastRowChunk = chunks[chunks.length - 1]
+      if (lastRowChunk.text === " | ") {
+        lastRowChunk.text = " |"
+      }
+      chunks.push(this.createDefaultChunk("\n"))
     }
 
-    return formattedRows.join("\n")
+    return chunks
   }
 
   /**
-   * Process markdown content, aligning tables.
-   * Returns the processed content with aligned tables.
+   * Render a token to chunks (for non-code blocks).
    */
-  private processMarkdown(content: string): string {
-    if (!content) return content
+  private renderTokenToChunks(token: MarkedToken): TextChunk[] {
+    switch (token.type) {
+      case "heading":
+        return this.renderHeadingChunks(token)
+      case "paragraph":
+        return this.renderParagraphChunks(token)
+      case "blockquote":
+        return this.renderBlockquoteChunks(token)
+      case "list":
+        return this.renderListChunks(token)
+      case "hr":
+        return this.renderThematicBreakChunks()
+      case "table":
+        return this.renderTableChunks(token)
+      case "space":
+        return []
+      default:
+        if ("raw" in token && token.raw) {
+          return [this.createDefaultChunk(token.raw)]
+        }
+        return []
+    }
+  }
 
-    // Parse markdown with remark
-    let ast: Root
+  /**
+   * Create a TextRenderable for text content.
+   */
+  private createTextRenderable(chunks: TextChunk[], id: string, marginBottom: number = 0): TextRenderable {
+    return new TextRenderable(this.ctx, {
+      id,
+      content: new StyledText(chunks),
+      width: "100%",
+      marginBottom,
+    })
+  }
+
+  /**
+   * Create a CodeRenderable for code blocks.
+   * When conceal=false, returns TextRenderable with fences visible.
+   */
+  private createCodeRenderable(token: Tokens.Code, id: string, marginBottom: number = 0): Renderable {
+    if (this._conceal) {
+      // Use CodeRenderable for syntax highlighting
+      return new CodeRenderable(this.ctx, {
+        id,
+        content: token.text,
+        filetype: token.lang || undefined,
+        syntaxStyle: this._syntaxStyle,
+        conceal: true,
+        treeSitterClient: this._treeSitterClient,
+        width: "100%",
+        marginBottom,
+      })
+    } else {
+      // Show markdown fences in non-concealed mode
+      const chunks: TextChunk[] = []
+      chunks.push(this.createChunk("```", "markup.raw.block"))
+      if (token.lang) {
+        chunks.push(this.createChunk(token.lang, "label"))
+      }
+      chunks.push(this.createDefaultChunk("\n"))
+      chunks.push(this.createChunk(token.text, "markup.raw.block"))
+      chunks.push(this.createDefaultChunk("\n"))
+      chunks.push(this.createChunk("```", "markup.raw.block"))
+      return this.createTextRenderable(chunks, id, marginBottom)
+    }
+  }
+
+  /**
+   * Create default renderable for a token.
+   */
+  private createDefaultRenderable(token: MarkedToken, index: number, hasNextToken: boolean = false): Renderable | null {
+    const id = `${this.id}-block-${index}`
+    // Add 1 line margin between blocks (blank line)
+    const marginBottom = hasNextToken ? 1 : 0
+
+    if (token.type === "code") {
+      return this.createCodeRenderable(token, id, marginBottom)
+    }
+
+    if (token.type === "space") {
+      return null
+    }
+
+    const chunks = this.renderTokenToChunks(token)
+    if (chunks.length === 0) {
+      return null
+    }
+
+    return this.createTextRenderable(chunks, id, marginBottom)
+  }
+
+  /**
+   * Get cache key for a token.
+   */
+  private getCacheKey(token: MarkedToken): string {
+    return `${token.type}:${token.raw}`
+  }
+
+  /**
+   * Rebuild children from parsed markdown tokens.
+   */
+  private rebuildChildren(): void {
+    // Remove old children
+    for (const child of this._blockChildren) {
+      this.remove(child.renderable.id)
+    }
+    this._blockChildren = []
+
+    if (!this._content) return
+
+    let tokens: MarkedToken[]
     try {
-      ast = this._remarkProcessor.parse(content)
+      tokens = Lexer.lex(this._content, { gfm: true }) as MarkedToken[]
     } catch {
-      // If parsing fails, return original content
-      return content
+      // Fallback to plain text
+      const text = this.createTextRenderable([this.createDefaultChunk(this._content)], `${this.id}-fallback`)
+      this.add(text)
+      this._blockChildren.push({ token: { type: "text", raw: this._content, text: this._content } as MarkedToken, renderable: text })
+      return
     }
 
-    // Find all table nodes and their positions
-    const tableSections: Array<{
-      startOffset: number
-      endOffset: number
-      originalText: string
-      processedText: string
-    }> = []
+    const newCache = new Map<string, Renderable>()
 
-    const findTables = (node: Root | RootContent) => {
-      if (node.type === "table" && node.position) {
-        const originalText = content.slice(node.position.start.offset!, node.position.end.offset!)
+    for (let i = 0; i < tokens.length; i++) {
+      const token = tokens[i]
+      // Check if there's a non-space token after this one
+      const hasNextToken = tokens.slice(i + 1).some((t) => t.type !== "space")
+      const cacheKey = this.getCacheKey(token)
 
-        // Check cache
-        const cached = this._tableAlignmentCache.get(originalText)
-        if (cached) {
-          tableSections.push({
-            startOffset: node.position.start.offset!,
-            endOffset: node.position.end.offset!,
-            originalText,
-            processedText: cached.alignedText,
-          })
-        } else {
-          // Format the table
-          const alignedText = this.formatTable(node as Table, content)
+      // Check if we can reuse cached renderable
+      let renderable = this._childCache.get(cacheKey)
 
-          // Cache the result
-          this._tableAlignmentCache.set(originalText, {
-            originalText,
-            alignedText,
-          })
+      if (!renderable) {
+        // Check for custom renderer
+        if (this._renderNode) {
+          const context: RenderNodeContext = {
+            syntaxStyle: this._syntaxStyle,
+            conceal: this._conceal,
+            treeSitterClient: this._treeSitterClient,
+            defaultRender: () => this.createDefaultRenderable(token, i, hasNextToken),
+          }
+          const custom = this._renderNode(token, context)
+          if (custom) {
+            renderable = custom
+          }
+        }
 
-          tableSections.push({
-            startOffset: node.position.start.offset!,
-            endOffset: node.position.end.offset!,
-            originalText,
-            processedText: alignedText,
-          })
+        // Fall back to default rendering
+        if (!renderable) {
+          renderable = this.createDefaultRenderable(token, i, hasNextToken) ?? undefined
         }
       }
 
-      // Recurse into children
-      if ("children" in node) {
-        for (const child of node.children) {
-          findTables(child as RootContent)
-        }
+      if (renderable) {
+        this.add(renderable)
+        this._blockChildren.push({ token, renderable })
+        newCache.set(cacheKey, renderable)
       }
     }
 
-    findTables(ast)
-
-    // If no tables found, return original content
-    if (tableSections.length === 0) {
-      return content
-    }
-
-    // Sort sections by start offset
-    tableSections.sort((a, b) => a.startOffset - b.startOffset)
-
-    // Build processed content by replacing table sections
-    let result = ""
-    let lastEnd = 0
-
-    for (const section of tableSections) {
-      // Add content before this section
-      result += content.slice(lastEnd, section.startOffset)
-      // Add processed section
-      result += section.processedText
-      lastEnd = section.endOffset
-    }
-
-    // Add remaining content after last section
-    result += content.slice(lastEnd)
-
-    return result
+    this._childCache = newCache
   }
 
   /**
-   * Clear the table alignment cache.
-   * Useful when you want to force re-computation of all tables.
+   * Clear the cache and rebuild.
    */
-  public clearTableCache(): void {
-    this._tableAlignmentCache.clear()
-    // Re-process content
-    const processed = this.processMarkdown(this._rawContent)
-    super.content = processed
+  public clearCache(): void {
+    this._childCache.clear()
+    this.rebuildChildren()
+    this.requestRender()
   }
 }
