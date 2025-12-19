@@ -58,10 +58,9 @@ export abstract class EditBufferRenderable extends Renderable implements LineInf
   private _cursorChangeListener: ((event: CursorChangeEvent) => void) | undefined = undefined
   private _contentChangeListener: ((event: ContentChangeEvent) => void) | undefined = undefined
 
-  // Auto-scroll state for selection
-  private _autoScrollVelocity: number = 0 // Lines per second
-  private _autoScrollAccumulator: number = 0 // Accumulated fractional scroll
-  private _scrollSpeed: number = 16 // Lines per second when at boundary
+  private _autoScrollVelocity: number = 0
+  private _autoScrollAccumulator: number = 0
+  private _scrollSpeed: number = 16
 
   public readonly editBuffer: EditBuffer
   public readonly editorView: EditorView
@@ -373,7 +372,6 @@ export abstract class EditBufferRenderable extends Renderable implements LineInf
       this.requestRender()
     }
 
-    // Horizontal scrolling only when wrapping is disabled
     if (this._wrapMode === "none") {
       if (direction === "left") {
         const newOffsetX = Math.max(0, viewport.offsetX - delta)
@@ -388,11 +386,7 @@ export abstract class EditBufferRenderable extends Renderable implements LineInf
   }
 
   protected onResize(width: number, height: number): void {
-    // setViewportSize handles cursor visibility adjustment in native layer
     this.editorView.setViewportSize(width, height)
-    // Don't re-apply lastLocalSelection - the native TextSelection uses character offsets
-    // which remain valid across viewport/wrapping changes. Re-applying viewport coordinates
-    // would select different text when wrapping changes the virtual line layout.
   }
 
   protected refreshLocalSelection(): boolean {
@@ -414,7 +408,7 @@ export abstract class EditBufferRenderable extends Renderable implements LineInf
       localSelection.focusY,
       this._selectionBg,
       this._selectionFg,
-      false, // Don't update cursor during resize
+      false,
     )
   }
 
@@ -431,7 +425,6 @@ export abstract class EditBufferRenderable extends Renderable implements LineInf
     const localSelection = convertGlobalToLocalSelection(selection, this.x, this.y)
     this.lastLocalSelection = localSelection
 
-    // Always update cursor during mouse selection
     const updateCursor = true
 
     let changed: boolean
@@ -460,26 +453,19 @@ export abstract class EditBufferRenderable extends Renderable implements LineInf
       )
     }
 
-    // Calculate auto-scroll velocity based on selection focus position
-    // Only auto-scroll while actively dragging (isSelecting=true)
     if (changed && localSelection?.isActive && selection?.isSelecting) {
       const viewport = this.editorView.getViewport()
       const focusY = localSelection.focusY
       const scrollMargin = Math.max(1, Math.floor(viewport.height * this._scrollMargin))
 
-      // Determine scroll direction based on where focus is
       if (focusY < scrollMargin) {
-        // Focus above viewport - scroll up
         this._autoScrollVelocity = -this._scrollSpeed
       } else if (focusY >= viewport.height - scrollMargin) {
-        // Focus below viewport - scroll down
         this._autoScrollVelocity = this._scrollSpeed
       } else {
-        // Focus within viewport - no scroll
         this._autoScrollVelocity = 0
       }
     } else {
-      // Selection finished (isSelecting=false) or not active - stop auto-scrolling
       this._autoScrollVelocity = 0
       this._autoScrollAccumulator = 0
     }
@@ -494,12 +480,10 @@ export abstract class EditBufferRenderable extends Renderable implements LineInf
   protected override onUpdate(deltaTime: number): void {
     super.onUpdate(deltaTime)
 
-    // Handle auto-scroll during selection
     if (this._autoScrollVelocity !== 0 && this.hasSelection()) {
       const deltaSeconds = deltaTime / 1000
       this._autoScrollAccumulator += this._autoScrollVelocity * deltaSeconds
 
-      // Only scroll by full lines
       const linesToScroll = Math.floor(Math.abs(this._autoScrollAccumulator))
       if (linesToScroll > 0) {
         const direction = this._autoScrollVelocity > 0 ? 1 : -1
@@ -511,11 +495,9 @@ export abstract class EditBufferRenderable extends Renderable implements LineInf
         if (newOffsetY !== viewport.offsetY) {
           this.editorView.setViewport(viewport.offsetX, newOffsetY, viewport.width, viewport.height, false)
 
-          // Update selection to extend to current mouse position after viewport scroll
           this._ctx.requestSelectionUpdate()
         }
 
-        // Keep fractional part for next frame
         this._autoScrollAccumulator -= direction * linesToScroll
       }
     }
