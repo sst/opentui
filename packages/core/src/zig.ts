@@ -304,6 +304,18 @@ function getOpenTUILib(libPath?: string) {
       args: ["ptr", "i64"],
       returns: "void",
     },
+    registerLink: {
+      args: ["ptr", "ptr", "u64"],
+      returns: "u16",
+    },
+    getLink: {
+      args: ["ptr", "u16", "ptr", "u64"],
+      returns: "u64",
+    },
+    clearLinks: {
+      args: ["ptr"],
+      returns: "void",
+    },
     enableMouse: {
       args: ["ptr", "bool"],
       returns: "void",
@@ -556,6 +568,10 @@ function getOpenTUILib(libPath?: string) {
     textBufferViewSetTabIndicatorColor: {
       args: ["ptr", "ptr"],
       returns: "void",
+    },
+    textBufferViewGetLinkIdAtPosition: {
+      args: ["ptr", "u32", "u32"],
+      returns: "u16",
     },
     textBufferViewMeasureForDimensions: {
       args: ["ptr", "u32", "u32", "ptr"],
@@ -1281,6 +1297,9 @@ export interface RenderLib {
   dumpHitGrid: (renderer: Pointer) => void
   dumpBuffers: (renderer: Pointer, timestamp?: number) => void
   dumpStdoutBuffer: (renderer: Pointer, timestamp?: number) => void
+  registerLink: (renderer: Pointer, uri: string) => number
+  getLink: (renderer: Pointer, linkId: number) => string | null
+  clearLinks: (renderer: Pointer) => void
   enableMouse: (renderer: Pointer, enableMovement: boolean) => void
   disableMouse: (renderer: Pointer) => void
   enableKittyKeyboard: (renderer: Pointer, flags: number) => void
@@ -1376,6 +1395,7 @@ export interface RenderLib {
   textBufferViewGetPlainTextBytes: (view: Pointer, maxLength: number) => Uint8Array | null
   textBufferViewSetTabIndicator: (view: Pointer, indicator: number) => void
   textBufferViewSetTabIndicatorColor: (view: Pointer, color: RGBA) => void
+  textBufferViewGetLinkIdAtPosition: (view: Pointer, x: number, y: number) => number
   textBufferViewMeasureForDimensions: (
     view: Pointer,
     width: number,
@@ -2033,6 +2053,25 @@ class FFIRenderLib implements RenderLib {
     this.opentui.symbols.dumpStdoutBuffer(renderer, ts)
   }
 
+  public registerLink(renderer: Pointer, uri: string): number {
+    const uriBytes = this.encoder.encode(uri)
+    return this.opentui.symbols.registerLink(renderer, ptr(uriBytes), uriBytes.length)
+  }
+
+  public getLink(renderer: Pointer, linkId: number): string | null {
+    if (linkId === 0) return null
+    const maxLen = 2048 // Max URL length
+    const outBuffer = new Uint8Array(maxLen)
+    const actualLen = this.opentui.symbols.getLink(renderer, linkId, ptr(outBuffer), maxLen)
+    const len = typeof actualLen === "bigint" ? Number(actualLen) : actualLen
+    if (len === 0) return null
+    return this.decoder.decode(outBuffer.slice(0, len))
+  }
+
+  public clearLinks(renderer: Pointer): void {
+    this.opentui.symbols.clearLinks(renderer)
+  }
+
   public enableMouse(renderer: Pointer, enableMovement: boolean): void {
     this.opentui.symbols.enableMouse(renderer, enableMovement)
   }
@@ -2171,7 +2210,7 @@ class FFIRenderLib implements RenderLib {
 
   public textBufferSetStyledText(
     buffer: Pointer,
-    chunks: Array<{ text: string; fg?: RGBA | null; bg?: RGBA | null; attributes?: number }>,
+    chunks: Array<{ text: string; fg?: RGBA | null; bg?: RGBA | null; attributes?: number; link_id?: number }>,
   ): void {
     // TODO: This should be a filter on the struct packing to not iterate twice
     const nonEmptyChunks = chunks.filter((c) => c.text.length > 0)
@@ -2440,6 +2479,10 @@ class FFIRenderLib implements RenderLib {
 
   public textBufferViewSetTabIndicatorColor(view: Pointer, color: RGBA): void {
     this.opentui.symbols.textBufferViewSetTabIndicatorColor(view, color.buffer)
+  }
+
+  public textBufferViewGetLinkIdAtPosition(view: Pointer, x: number, y: number): number {
+    return this.opentui.symbols.textBufferViewGetLinkIdAtPosition(view, x, y)
   }
 
   public textBufferViewMeasureForDimensions(

@@ -603,6 +603,18 @@ export class CliRenderer extends EventEmitter implements RenderContext {
     }
   }
 
+  public registerLink(uri: string): number {
+    return this.lib.registerLink(this.rendererPtr, uri)
+  }
+
+  public getLink(linkId: number): string | null {
+    return this.lib.getLink(this.rendererPtr, linkId)
+  }
+
+  public clearLinks(): void {
+    this.lib.clearLinks(this.rendererPtr)
+  }
+
   public get widthMethod(): WidthMethod {
     const caps = this.capabilities
     return caps?.unicode === "wcwidth" ? "wcwidth" : "unicode"
@@ -1047,7 +1059,8 @@ export class CliRenderer extends EventEmitter implements RenderContext {
         mouseEvent.type === "down" &&
         mouseEvent.button === MouseButton.LEFT &&
         !this.currentSelection?.isSelecting &&
-        !mouseEvent.modifiers.ctrl
+        !mouseEvent.modifiers.ctrl &&
+        !mouseEvent.modifiers.alt // alt+click is reserved for link activation
       ) {
         if (
           maybeRenderable &&

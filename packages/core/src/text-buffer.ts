@@ -11,7 +11,10 @@ export interface TextChunk {
   fg?: RGBA
   bg?: RGBA
   attributes?: number
+  href?: string
 }
+
+export type LinkResolver = (uri: string) => number
 
 export class TextBuffer {
   private lib: RenderLib
@@ -24,10 +27,15 @@ export class TextBuffer {
   private _textBytes?: Uint8Array
   private _memId?: number
   private _appendedChunks: Uint8Array[] = []
+  private _linkResolver?: LinkResolver
 
   constructor(lib: RenderLib, ptr: Pointer) {
     this.lib = lib
     this.bufferPtr = ptr
+  }
+
+  public setLinkResolver(resolver: LinkResolver | undefined): void {
+    this._linkResolver = resolver
   }
 
   static create(widthMethod: WidthMethod): TextBuffer {
@@ -85,13 +93,20 @@ export class TextBuffer {
   public setStyledText(text: StyledText): void {
     this.guard()
 
-    // TODO: This should not be necessary anymore, the struct packing should take care of this
-    const chunks = text.chunks.map((chunk) => ({
-      text: chunk.text,
-      fg: chunk.fg || null,
-      bg: chunk.bg || null,
-      attributes: chunk.attributes ?? 0,
-    }))
+    // Map chunks and resolve hrefs to link_ids if a resolver is available
+    const chunks = text.chunks.map((chunk) => {
+      let link_id = 0
+      if (chunk.href && this._linkResolver) {
+        link_id = this._linkResolver(chunk.href)
+      }
+      return {
+        text: chunk.text,
+        fg: chunk.fg || null,
+        bg: chunk.bg || null,
+        attributes: chunk.attributes ?? 0,
+        link_id,
+      }
+    })
 
     this.lib.textBufferSetStyledText(this.bufferPtr, chunks)
 

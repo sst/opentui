@@ -17,6 +17,7 @@ export interface StyleAttrs {
   dim?: boolean
   reverse?: boolean
   blink?: boolean
+  href?: string
 }
 
 export function isStyledText(obj: any): obj is StyledText {
@@ -49,6 +50,7 @@ function applyStyle(input: StylableInput, style: StyleAttrs): TextChunk {
 
     const fg = style.fg ? parseColor(style.fg) : existingChunk.fg
     const bg = style.bg ? parseColor(style.bg) : existingChunk.bg
+    const href = style.href ?? existingChunk.href
 
     const newAttrs = createTextAttributes(style)
     const mergedAttrs = existingChunk.attributes ? existingChunk.attributes | newAttrs : newAttrs
@@ -59,6 +61,7 @@ function applyStyle(input: StylableInput, style: StyleAttrs): TextChunk {
       fg,
       bg,
       attributes: mergedAttrs,
+      href,
     }
   } else {
     const plainTextStr = String(input)
@@ -72,6 +75,7 @@ function applyStyle(input: StylableInput, style: StyleAttrs): TextChunk {
       fg,
       bg,
       attributes,
+      href: style.href,
     }
   }
 }
@@ -124,6 +128,12 @@ export const bg =
   (color: Color) =>
   (input: StylableInput): TextChunk =>
     applyStyle(input, { bg: color })
+
+// Hyperlink function - applies underline style and href
+export const link =
+  (url: string) =>
+  (input: StylableInput): TextChunk =>
+    applyStyle(input, { href: url, underline: true })
 
 /**
  * Template literal handler for styled text (non-cached version).

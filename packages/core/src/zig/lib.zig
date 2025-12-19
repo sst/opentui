@@ -398,6 +398,26 @@ export fn dumpStdoutBuffer(rendererPtr: *renderer.CliRenderer, timestamp: i64) v
     rendererPtr.dumpStdoutBuffer(timestamp);
 }
 
+// Link registry functions for hyperlinks
+export fn registerLink(rendererPtr: *renderer.CliRenderer, uriPtr: [*]const u8, uriLen: usize) u16 {
+    if (uriLen == 0) return 0;
+    const uri = uriPtr[0..uriLen];
+    return rendererPtr.registerLink(uri);
+}
+
+export fn getLink(rendererPtr: *renderer.CliRenderer, linkId: u16, outPtr: [*]u8, maxLen: usize) usize {
+    if (rendererPtr.getLink(linkId)) |uri| {
+        const copyLen = @min(uri.len, maxLen);
+        @memcpy(outPtr[0..copyLen], uri[0..copyLen]);
+        return copyLen;
+    }
+    return 0;
+}
+
+export fn clearLinks(rendererPtr: *renderer.CliRenderer) void {
+    rendererPtr.clearLinks();
+}
+
 export fn enableMouse(rendererPtr: *renderer.CliRenderer, enableMovement: bool) void {
     rendererPtr.enableMouse(enableMovement);
 }
@@ -669,6 +689,10 @@ export fn textBufferViewGetSelectedText(view: *text_buffer_view.UnifiedTextBuffe
 export fn textBufferViewGetPlainText(view: *text_buffer_view.UnifiedTextBufferView, outPtr: [*]u8, maxLen: usize) usize {
     const outBuffer = outPtr[0..maxLen];
     return view.getPlainTextIntoBuffer(outBuffer);
+}
+
+export fn textBufferViewGetLinkIdAtPosition(view: *text_buffer_view.UnifiedTextBufferView, x: u32, y: u32) u16 {
+    return view.getLinkIdAtPosition(x, y);
 }
 
 export fn textBufferViewSetTabIndicator(view: *text_buffer_view.UnifiedTextBufferView, indicator: u32) void {

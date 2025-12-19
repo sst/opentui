@@ -259,6 +259,15 @@ fn checkEnvironmentOverrides(self: *Terminal) void {
             self.caps.unicode = .unicode;
         } else if (std.mem.eql(u8, prog, "Apple_Terminal")) {
             self.caps.unicode = .wcwidth;
+        } else if (std.mem.eql(u8, prog, "ghostty")) {
+            // Ghostty supports OSC 8 hyperlinks
+            self.caps.hyperlinks = true;
+        } else if (std.mem.eql(u8, prog, "iTerm.app")) {
+            // iTerm2 supports OSC 8 hyperlinks
+            self.caps.hyperlinks = true;
+        } else if (std.mem.eql(u8, prog, "WezTerm")) {
+            // WezTerm supports OSC 8 hyperlinks
+            self.caps.hyperlinks = true;
         }
     }
 
@@ -407,6 +416,15 @@ pub fn processCapabilityResponse(self: *Terminal, response: []const u8) void {
         self.caps.unicode = .unicode;
         self.caps.rgb = true;
         self.caps.sixel = true;
+        self.caps.bracketed_paste = true;
+        self.caps.hyperlinks = true;
+    }
+
+    // Ghostty detection - supports OSC 8 hyperlinks
+    if (std.mem.indexOf(u8, response, "ghostty")) |_| {
+        self.caps.kitty_keyboard = true;
+        self.caps.unicode = .unicode;
+        self.caps.rgb = true;
         self.caps.bracketed_paste = true;
         self.caps.hyperlinks = true;
     }

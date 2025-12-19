@@ -749,6 +749,42 @@ pub const UnifiedTextBufferView = struct {
         return self.tab_indicator_color;
     }
 
+    /// Get the link_id at a given screen position (relative to the text buffer view)
+    /// Returns 0 if no link at that position, or the link_id if there is one
+    /// x, y are in viewport coordinates (0-based, relative to the visible area)
+    pub fn getLinkIdAtPosition(self: *const Self, screen_x: u32, screen_y: u32) u16 {
+        // Convert screen position to virtual line index (accounting for viewport scroll)
+        const vline_idx: usize = if (self.viewport) |vp|
+            vp.y + screen_y
+        else
+            screen_y;
+
+        if (vline_idx >= self.virtual_lines.items.len) {
+            return 0;
+        }
+
+        // Get the virtual line and its spans
+        const vline = &self.virtual_lines.items[vline_idx];
+        const spans = self.text_buffer.getLineSpans(vline.source_line);
+
+        if (spans.len == 0) {
+            return 0;
+        }
+
+        // Calculate the column in the source line (accounting for viewport scroll and wrap offset)
+        const horizontal_offset: u32 = if (self.viewport) |vp| vp.x else 0;
+        const source_col = vline.source_col_offset + horizontal_offset + screen_x;
+
+        // Find the span that contains this column
+        for (spans) |span| {
+            if (source_col >= span.col and source_col < span.next_col) {
+                return span.link_id;
+            }
+        }
+
+        return 0;
+    }
+
     /// Measure dimensions for given width/height WITHOUT modifying virtual lines cache
     /// This is useful for Yoga measure functions that need to know dimensions without committing changes
     /// Special case: width=0 means "measure intrinsic/max-content width" (no wrapping)

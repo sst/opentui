@@ -139,6 +139,30 @@ pub const ANSI = struct {
             writer.writeByteNTimes('\n', height - 1) catch return AnsiError.WriteFailed;
         }
     }
+
+    // OSC 8 - Hyperlinks
+    // Format: OSC 8 ; params ; URI ST (where ST is \x1b\\ or \x07)
+    // Using \x1b\\ (ESC + backslash) as the string terminator for better compatibility
+
+    /// Start a hyperlink with the given URI
+    pub fn hyperlinkStartOutput(writer: anytype, uri: []const u8) AnsiError!void {
+        // Format: ESC ] 8 ; ; <uri> ESC \
+        writer.writeAll("\x1b]8;;") catch return AnsiError.WriteFailed;
+        writer.writeAll(uri) catch return AnsiError.WriteFailed;
+        writer.writeAll("\x1b\\") catch return AnsiError.WriteFailed;
+    }
+
+    /// Start a hyperlink with a unique ID and the given URI
+    pub fn hyperlinkStartWithIdOutput(writer: anytype, id: u16, uri: []const u8) AnsiError!void {
+        // Format: ESC ] 8 ; id=<id> ; <uri> ESC \
+        std.fmt.format(writer, "\x1b]8;id={d};{s}\x1b\\", .{ id, uri }) catch return AnsiError.WriteFailed;
+    }
+
+    /// End the current hyperlink
+    pub fn hyperlinkEndOutput(writer: anytype) AnsiError!void {
+        // Format: ESC ] 8 ; ; ESC \
+        writer.writeAll("\x1b]8;;\x1b\\") catch return AnsiError.WriteFailed;
+    }
 };
 
 pub const TextAttributes = struct {

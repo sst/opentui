@@ -171,6 +171,11 @@ export class TextBufferView {
     return this.lib.textBufferViewMeasureForDimensions(this.viewPtr, width, height)
   }
 
+  public getLinkIdAtPosition(x: number, y: number): number {
+    this.guard()
+    return this.lib.textBufferViewGetLinkIdAtPosition(this.viewPtr, x, y)
+  }
+
   public getVirtualLineCount(): number {
     this.guard()
     return this.lib.textBufferViewGetVirtualLineCount(this.viewPtr)

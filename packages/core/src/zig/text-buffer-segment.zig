@@ -140,6 +140,7 @@ pub const Highlight = struct {
     style_id: u32,
     priority: u8,
     hl_ref: u16 = 0,
+    link_id: u16 = 0, // 0 = no link, >0 = link registry ID
 };
 
 /// Pre-computed style span for efficient rendering
@@ -148,6 +149,7 @@ pub const StyleSpan = struct {
     col: u32,
     style_id: u32,
     next_col: u32,
+    link_id: u16 = 0, // 0 = no link, >0 = link registry ID
 };
 
 /// A segment in the unified rope - either text content or a line break marker

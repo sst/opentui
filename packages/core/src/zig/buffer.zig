@@ -86,6 +86,7 @@ pub const Cell = struct {
     fg: RGBA,
     bg: RGBA,
     attributes: u8,
+    link_id: u16 = 0, // 0 = no link, >0 = index into link registry
 };
 
 fn isRGBAWithAlpha(color: RGBA) bool {
@@ -583,6 +584,8 @@ pub const OptimizedBuffer = struct {
             }
 
             const finalAttributes = if (preserveChar) destCell.attributes else overlayCell.attributes;
+            // Prefer overlay link_id if set, otherwise preserve destination
+            const finalLinkId = if (overlayCell.link_id != 0) overlayCell.link_id else destCell.link_id;
 
             // When overlay background is fully transparent, preserve destination background alpha
             const finalBgAlpha = if (overlayCell.bg[3] == 0.0) destCell.bg[3] else overlayCell.bg[3];
@@ -592,6 +595,7 @@ pub const OptimizedBuffer = struct {
                 .fg = finalFg,
                 .bg = .{ blendedBgRgb[0], blendedBgRgb[1], blendedBgRgb[2], finalBgAlpha },
                 .attributes = finalAttributes,
+                .link_id = finalLinkId,
             };
         }
 
@@ -607,6 +611,19 @@ pub const OptimizedBuffer = struct {
         bg: RGBA,
         attributes: u8,
     ) !void {
+        return self.setCellWithAlphaBlendingAndLink(x, y, char, fg, bg, attributes, 0);
+    }
+
+    pub fn setCellWithAlphaBlendingAndLink(
+        self: *OptimizedBuffer,
+        x: u32,
+        y: u32,
+        char: u32,
+        fg: RGBA,
+        bg: RGBA,
+        attributes: u8,
+        link_id: u16,
+    ) !void {
         if (!self.isPointInScissor(@intCast(x), @intCast(y))) return;
 
         // Apply current opacity from the stack
@@ -614,7 +631,7 @@ pub const OptimizedBuffer = struct {
         const effectiveFg = RGBA{ fg[0], fg[1], fg[2], fg[3] * opacity };
         const effectiveBg = RGBA{ bg[0], bg[1], bg[2], bg[3] * opacity };
 
-        const overlayCell = Cell{ .char = char, .fg = effectiveFg, .bg = effectiveBg, .attributes = attributes };
+        const overlayCell = Cell{ .char = char, .fg = effectiveFg, .bg = effectiveBg, .attributes = attributes, .link_id = link_id };
 
         if (self.get(x, y)) |destCell| {
             const blendedCell = blendCells(overlayCell, destCell);
@@ -1036,6 +1053,7 @@ pub const OptimizedBuffer = struct {
             var lineFg = text_buffer.default_fg orelse RGBA{ 1.0, 1.0, 1.0, 1.0 };
             var lineBg = text_buffer.default_bg orelse RGBA{ 0.0, 0.0, 0.0, 0.0 };
             var lineAttributes = text_buffer.default_attributes orelse 0;
+            var lineLinkId: u16 = 0; // Current link ID for hyperlinks
 
             // Find the span that contains the starting render position (col_offset + horizontal_offset)
             const start_col = col_offset + horizontal_offset;
@@ -1049,12 +1067,15 @@ pub const OptimizedBuffer = struct {
                 std.math.maxInt(u32);
 
             // Apply the style at the starting position
-            if (span_idx < spans.len and spans[span_idx].col <= start_col and spans[span_idx].style_id != 0) {
-                if (text_buffer.getSyntaxStyle()) |style| {
-                    if (style.resolveById(spans[span_idx].style_id)) |resolved_style| {
-                        if (resolved_style.fg) |fg| lineFg = fg;
-                        if (resolved_style.bg) |bg| lineBg = bg;
-                        lineAttributes |= resolved_style.attributes;
+            if (span_idx < spans.len and spans[span_idx].col <= start_col) {
+                lineLinkId = spans[span_idx].link_id;
+                if (spans[span_idx].style_id != 0) {
+                    if (text_buffer.getSyntaxStyle()) |style| {
+                        if (style.resolveById(spans[span_idx].style_id)) |resolved_style| {
+                            if (resolved_style.fg) |fg| lineFg = fg;
+                            if (resolved_style.bg) |bg| lineBg = bg;
+                            lineAttributes |= resolved_style.attributes;
+                        }
                     }
                 }
             }
@@ -1158,6 +1179,7 @@ pub const OptimizedBuffer = struct {
                         lineFg = text_buffer.default_fg orelse RGBA{ 1.0, 1.0, 1.0, 1.0 };
                         lineBg = text_buffer.default_bg orelse RGBA{ 0.0, 0.0, 0.0, 0.0 };
                         lineAttributes = text_buffer.default_attributes orelse 0;
+                        lineLinkId = new_span.link_id;
 
                         if (text_buffer.getSyntaxStyle()) |style| {
                             if (new_span.style_id != 0) {
@@ -1223,13 +1245,14 @@ pub const OptimizedBuffer = struct {
                             const char = if (tab_col == 0 and tab_indicator != null) tab_indicator.? else DEFAULT_SPACE_CHAR;
                             const fg = if (tab_col == 0 and tab_indicator_color != null) tab_indicator_color.? else drawFg;
 
-                            try self.setCellWithAlphaBlending(
+                            try self.setCellWithAlphaBlendingAndLink(
                                 @intCast(currentX + @as(i32, @intCast(tab_col))),
                                 @intCast(currentY),
                                 char,
                                 fg,
                                 drawBg,
                                 drawAttributes,
+                                lineLinkId,
                             );
                         }
                     } else {
@@ -1247,13 +1270,14 @@ pub const OptimizedBuffer = struct {
                             encoded_char = gp.packGraphemeStart(gid & gp.GRAPHEME_ID_MASK, g_width);
                         }
 
-                        try self.setCellWithAlphaBlending(
+                        try self.setCellWithAlphaBlendingAndLink(
                             @intCast(currentX),
                             @intCast(currentY),
                             encoded_char,
                             drawFg,
                             drawBg,
                             drawAttributes,
+                            lineLinkId,
                         );
                     }
 

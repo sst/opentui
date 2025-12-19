@@ -22,6 +22,92 @@ function getSpecificity(group: string): number {
   return group.split(".").length
 }
 
+/**
+ * Check if a highlight group represents a URL/link that should be clickable
+ */
+function isLinkUrlGroup(group: string): boolean {
+  return group === "markup.link.url" || group === "string.special.url"
+}
+
+/**
+ * Regular expression to match URLs in text
+ * Matches http://, https://, and common URL patterns
+ */
+const URL_REGEX = /https?:\/\/[^\s<>\[\]()'"`,;]+[^\s<>\[\]()'"`,;.!?:]/g
+
+/**
+ * Extract plain URLs from a text chunk and split it into multiple chunks
+ * with proper href attributes for the URL portions
+ */
+function splitChunkByUrls(chunk: TextChunk): TextChunk[] {
+  // If chunk already has href, don't process it
+  if (chunk.href) {
+    return [chunk]
+  }
+
+  const text = chunk.text
+  const results: TextChunk[] = []
+  let lastIndex = 0
+
+  // Reset regex state
+  URL_REGEX.lastIndex = 0
+
+  let match: RegExpExecArray | null
+  while ((match = URL_REGEX.exec(text)) !== null) {
+    const url = match[0]
+    const startIndex = match.index
+
+    // Add text before the URL (if any)
+    if (startIndex > lastIndex) {
+      results.push({
+        ...chunk,
+        text: text.slice(lastIndex, startIndex),
+        href: undefined,
+      })
+    }
+
+    // Add the URL chunk with href and underline
+    const urlAttributes = chunk.attributes ?? 0
+    const underlineAttr = createTextAttributes({ underline: true })
+
+    results.push({
+      ...chunk,
+      text: url,
+      href: url,
+      attributes: urlAttributes | underlineAttr,
+    })
+
+    lastIndex = startIndex + url.length
+  }
+
+  // Add remaining text after the last URL (if any)
+  if (lastIndex < text.length) {
+    results.push({
+      ...chunk,
+      text: text.slice(lastIndex),
+      href: undefined,
+    })
+  }
+
+  // If no URLs were found, return the original chunk
+  if (results.length === 0) {
+    return [chunk]
+  }
+
+  return results
+}
+
+/**
+ * Process all chunks to extract plain URLs and make them clickable
+ */
+function processChunksForUrls(chunks: TextChunk[]): TextChunk[] {
+  const result: TextChunk[] = []
+  for (const chunk of chunks) {
+    result.push(...splitChunkByUrls(chunk))
+  }
+  return result
+}
+
 function shouldSuppressInInjection(group: string, meta: any): boolean {
   if (meta?.isInjection) {
     return false
@@ -182,6 +268,11 @@ export function treeSitterToTextChunks(
         // Use merged style, falling back to default if nothing was merged
         const finalStyle = Object.keys(mergedStyle).length > 0 ? mergedStyle : defaultStyle
 
+        // Check if this segment is a URL that should be clickable
+        // For markup.link.url groups, the segment text itself is the URL
+        const linkUrlGroup = sortedGroups.find((h) => isLinkUrlGroup(h.group))
+        const href = linkUrlGroup ? segmentText : undefined
+
         chunks.push({
           __isChunk: true,
           text: segmentText,
@@ -191,10 +282,11 @@ export function treeSitterToTextChunks(
             ? createTextAttributes({
                 bold: finalStyle.bold,
                 italic: finalStyle.italic,
-                underline: finalStyle.underline,
+                underline: finalStyle.underline || !!href, // Underline links
                 dim: finalStyle.dim,
               })
             : 0,
+          href,
         })
       }
     } else if (currentOffset < boundary.offset) {
@@ -272,7 +364,8 @@ export function treeSitterToTextChunks(
     })
   }
 
-  return chunks
+  // Post-process chunks to extract plain URLs and make them clickable
+  return processChunksForUrls(chunks)
 }
 
 export interface TreeSitterToStyledTextOptions {

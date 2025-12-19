@@ -944,6 +944,117 @@ Normal paragraph with [link](https://example.com).`
     })
   })
 
+  describe("URL/Link href extraction", () => {
+    test("should extract href from autolink URLs", async () => {
+      // Autolinks in markdown use angle brackets
+      const markdownCode = "Check out <https://example.com> for more info"
+
+      const styledText = await treeSitterToStyledText(markdownCode, "markdown", syntaxStyle, client, {
+        conceal: { enabled: false },
+      })
+      const chunks = styledText.chunks
+
+      // Find the URL chunk (includes angle brackets in text)
+      const urlChunk = chunks.find((c) => c.text.includes("https://example.com"))
+      expect(urlChunk).toBeDefined()
+
+      // The href should be set to the URL text (with angle brackets since that's how tree-sitter parses it)
+      expect(urlChunk!.href).toBe("<https://example.com>")
+    })
+
+    test("should extract href from inline markdown links", async () => {
+      const markdownCode = "[Click here](https://test.org)"
+
+      const styledText = await treeSitterToStyledText(markdownCode, "markdown", syntaxStyle, client, {
+        conceal: { enabled: false },
+      })
+      const chunks = styledText.chunks
+
+      // Find the URL chunk (in the parentheses, without the parens)
+      const urlChunk = chunks.find((c) => c.text === "https://test.org")
+      expect(urlChunk).toBeDefined()
+      expect(urlChunk!.href).toBe("https://test.org")
+    })
+
+    test("should add underline attribute to URL chunks with href", async () => {
+      const markdownCode = "[Link](<https://example.com>)"
+
+      const styledText = await treeSitterToStyledText(markdownCode, "markdown", syntaxStyle, client, {
+        conceal: { enabled: false },
+      })
+      const chunks = styledText.chunks
+
+      // Find the chunk with href set
+      const urlChunk = chunks.find((c) => c.href !== undefined)
+      expect(urlChunk).toBeDefined()
+
+      // Should have underline attribute
+      const underlineAttr = createTextAttributes({ underline: true })
+      expect(urlChunk!.attributes! & underlineAttr).toBe(underlineAttr)
+    })
+
+    test("should not set href for non-URL text chunks", async () => {
+      const markdownCode = "Regular text without URLs"
+
+      const styledText = await treeSitterToStyledText(markdownCode, "markdown", syntaxStyle, client, {
+        conceal: { enabled: false },
+      })
+      const chunks = styledText.chunks
+
+      // None of the chunks should have href set
+      for (const chunk of chunks) {
+        expect(chunk.href).toBeUndefined()
+      }
+    })
+
+    test("should extract href from plain URLs without markdown syntax", async () => {
+      // Plain URLs should be automatically detected and made clickable
+      const markdownCode = "Visit https://example.com today"
+
+      const styledText = await treeSitterToStyledText(markdownCode, "markdown", syntaxStyle, client, {
+        conceal: { enabled: false },
+      })
+      const chunks = styledText.chunks
+
+      // Should find a chunk with the URL as href
+      const urlChunk = chunks.find((c) => c.href === "https://example.com")
+      expect(urlChunk).toBeDefined()
+      expect(urlChunk!.text).toBe("https://example.com")
+
+      // Should have underline attribute
+      const underlineAttr = createTextAttributes({ underline: true })
+      expect(urlChunk!.attributes! & underlineAttr).toBe(underlineAttr)
+    })
+
+    test("should handle multiple plain URLs in text", async () => {
+      const markdownCode = "Check https://first.com and https://second.com for info"
+
+      const styledText = await treeSitterToStyledText(markdownCode, "markdown", syntaxStyle, client, {
+        conceal: { enabled: false },
+      })
+      const chunks = styledText.chunks
+
+      const urlChunks = chunks.filter((c) => c.href !== undefined)
+      expect(urlChunks.length).toBe(2)
+      expect(urlChunks[0].href).toBe("https://first.com")
+      expect(urlChunks[1].href).toBe("https://second.com")
+    })
+
+    test("should handle URLs at start and end of text", async () => {
+      const markdownCode = "https://start.com is good and so is https://end.com"
+
+      const styledText = await treeSitterToStyledText(markdownCode, "markdown", syntaxStyle, client, {
+        conceal: { enabled: false },
+      })
+      const chunks = styledText.chunks
+
+      const urlChunks = chunks.filter((c) => c.href !== undefined)
+      expect(urlChunks.length).toBe(2)
+      expect(urlChunks[0].href).toBe("https://start.com")
+      expect(urlChunks[1].href).toBe("https://end.com")
+    })
+  })
+
   describe("Style Inheritance", () => {
     test("should merge styles from nested highlights with child overriding parent", () => {
       const mockHighlights: SimpleHighlight[] = [

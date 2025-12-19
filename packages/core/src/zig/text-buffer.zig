@@ -37,6 +37,8 @@ pub const StyledChunk = extern struct {
     fg_ptr: ?[*]const f32,
     bg_ptr: ?[*]const f32,
     attributes: u8,
+    _pad1: u8 = 0, // Padding for alignment
+    link_id: u16 = 0, // 0 = no link, >0 = link registry ID
 };
 
 pub const UnifiedTextBuffer = struct {
@@ -583,6 +585,19 @@ pub const UnifiedTextBuffer = struct {
         priority: u8,
         hl_ref: u16,
     ) TextBufferError!void {
+        return self.addHighlightWithLink(line_idx, col_start, col_end, style_id, priority, hl_ref, 0);
+    }
+
+    pub fn addHighlightWithLink(
+        self: *Self,
+        line_idx: usize,
+        col_start: u32,
+        col_end: u32,
+        style_id: u32,
+        priority: u8,
+        hl_ref: u16,
+        link_id: u16,
+    ) TextBufferError!void {
         const line_count = self.getLineCount();
         if (line_idx >= line_count) {
             return TextBufferError.InvalidIndex;
@@ -600,6 +615,7 @@ pub const UnifiedTextBuffer = struct {
             .style_id = style_id,
             .priority = priority,
             .hl_ref = hl_ref,
+            .link_id = link_id,
         };
 
         try self.line_highlights.items[line_idx].append(self.global_allocator, hl);
@@ -671,15 +687,20 @@ pub const UnifiedTextBuffer = struct {
         var current_col: u32 = 0;
 
         for (events.items) |event| {
-            // Find current highest priority style before processing event
+            // Find current highest priority style and link before processing event
             var current_priority: i16 = -1;
             var current_style: u32 = 0;
+            var current_link: u16 = 0;
             var it = active.keyIterator();
             while (it.next()) |hl_idx| {
                 const hl = highlights[hl_idx.*];
                 if (hl.priority > current_priority) {
                     current_priority = @intCast(hl.priority);
                     current_style = hl.style_id;
+                }
+                // Use highest priority link_id (non-zero takes precedence)
+                if (hl.link_id != 0 and current_link == 0) {
+                    current_link = hl.link_id;
                 }
             }
 
@@ -689,6 +710,7 @@ pub const UnifiedTextBuffer = struct {
                     .col = current_col,
                     .style_id = current_style,
                     .next_col = event.col,
+                    .link_id = current_link,
                 });
                 current_col = event.col;
             }
@@ -794,6 +816,77 @@ pub const UnifiedTextBuffer = struct {
             .style_id = style_id,
             .priority = priority,
             .hl_ref = hl_ref,
+        };
+        iter_mod.walkLines(&self.rope, &ctx, Context.callback, false);
+    }
+
+    /// Add highlight by character range with link ID
+    pub fn addHighlightByCharRangeWithLink(
+        self: *Self,
+        char_start: u32,
+        char_end: u32,
+        style_id: u32,
+        priority: u8,
+        hl_ref: u16,
+        link_id: u16,
+    ) TextBufferError!void {
+        const line_count = self.getLineCount();
+        if (char_start >= char_end or line_count == 0) {
+            return;
+        }
+
+        // Walk lines to find which lines this highlight affects
+        const Context = struct {
+            buffer: *Self,
+            char_start: u32,
+            char_end: u32,
+            style_id: u32,
+            priority: u8,
+            hl_ref: u16,
+            link_id: u16,
+            start_line_idx: ?usize = null,
+
+            fn callback(ctx_ptr: *anyopaque, line_info: LineInfo) void {
+                const ctx = @as(*@This(), @ptrCast(@alignCast(ctx_ptr)));
+                const line_start_char = line_info.char_offset;
+                const line_end_char = line_info.char_offset + line_info.width;
+
+                // Skip lines before the highlight
+                if (line_end_char <= ctx.char_start) return;
+                // Stop after the highlight ends
+                if (line_start_char >= ctx.char_end) return;
+
+                // This line overlaps with the highlight
+                const col_start = if (ctx.char_start > line_start_char)
+                    ctx.char_start - line_start_char
+                else
+                    0;
+
+                const col_end = if (ctx.char_end < line_end_char)
+                    ctx.char_end - line_start_char
+                else
+                    line_info.width;
+
+                ctx.buffer.addHighlightWithLink(
+                    line_info.line_idx,
+                    col_start,
+                    col_end,
+                    ctx.style_id,
+                    ctx.priority,
+                    ctx.hl_ref,
+                    ctx.link_id,
+                ) catch {};
+            }
+        };
+
+        var ctx = Context{
+            .buffer = self,
+            .char_start = char_start,
+            .char_end = char_end,
+            .style_id = style_id,
+            .priority = priority,
+            .hl_ref = hl_ref,
+            .link_id = link_id,
         };
         iter_mod.walkLines(&self.rope, &ctx, Context.callback, false);
     }
@@ -936,7 +1029,7 @@ pub const UnifiedTextBuffer = struct {
                     const style_name = std.fmt.bufPrint(&style_name_buf, "chunk{d}", .{i}) catch continue;
                     const style_id = (@constCast(style)).registerStyle(style_name, fg, bg, chunk.attributes) catch continue;
 
-                    self.addHighlightByCharRange(char_pos, char_pos + chunk_len, style_id, 1, 0) catch {};
+                    self.addHighlightByCharRangeWithLink(char_pos, char_pos + chunk_len, style_id, 1, 0, chunk.link_id) catch {};
                 }
 
                 char_pos += chunk_len;

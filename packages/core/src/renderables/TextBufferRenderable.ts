@@ -8,6 +8,9 @@ import type { OptimizedBuffer } from "../buffer"
 import { MeasureMode } from "yoga-layout"
 import type { LineInfo } from "../zig"
 import { SyntaxStyle } from "../syntax-style"
+import type { MouseEvent } from "../renderer"
+
+export type LinkClickHandler = (url: string, event: MouseEvent) => void
 
 export interface TextBufferOptions extends RenderableOptions<TextBufferRenderable> {
   fg?: string | RGBA
@@ -19,6 +22,7 @@ export interface TextBufferOptions extends RenderableOptions<TextBufferRenderabl
   wrapMode?: "none" | "char" | "word"
   tabIndicator?: string | number
   tabIndicatorColor?: string | RGBA
+  onLinkClick?: LinkClickHandler
 }
 
 export abstract class TextBufferRenderable extends Renderable implements LineInfoProvider {
@@ -35,6 +39,7 @@ export abstract class TextBufferRenderable extends Renderable implements LineInf
   protected _tabIndicatorColor?: RGBA
   protected _scrollX: number = 0
   protected _scrollY: number = 0
+  protected _onLinkClick?: LinkClickHandler
 
   protected textBuffer: TextBuffer
   protected textBufferView: TextBufferView
@@ -65,9 +70,13 @@ export abstract class TextBufferRenderable extends Renderable implements LineInf
     this._tabIndicatorColor = options.tabIndicatorColor
       ? parseColor(options.tabIndicatorColor)
       : this._defaultOptions.tabIndicatorColor
+    this._onLinkClick = options.onLinkClick
 
     this.textBuffer = TextBuffer.create(this._ctx.widthMethod)
     this.textBufferView = TextBufferView.create(this.textBuffer)
+
+    // Set up link resolver for hyperlink support
+    this.textBuffer.setLinkResolver((uri: string) => this._ctx.registerLink(uri))
 
     const style = SyntaxStyle.create()
     this.textBuffer.setSyntaxStyle(style)
@@ -97,9 +106,39 @@ export abstract class TextBufferRenderable extends Renderable implements LineInf
     this.updateTextInfo()
   }
 
-  protected onMouseEvent(event: any): void {
+  protected onMouseEvent(event: MouseEvent): void {
     if (event.type === "scroll") {
       this.handleScroll(event)
+      return
+    }
+
+    // Handle link clicks with alt (Option on macOS) or ctrl modifier
+    const isLinkModifier = event.modifiers.alt || event.modifiers.ctrl
+    if (event.type === "down" && event.button === 0 && isLinkModifier && this._onLinkClick) {
+      this.handleLinkClick(event)
+    }
+  }
+
+  /**
+   * Check if a click at the given position is on a link with alt or ctrl modifier held
+   * Used to determine if we should activate a link instead of starting selection
+   */
+  protected isLinkActivation(event: MouseEvent): boolean {
+    const isLinkModifier = event.modifiers.alt || event.modifiers.ctrl
+    if (!isLinkModifier) return false
+    const linkId = this.getLinkIdAt(event.x, event.y)
+    return linkId !== 0
+  }
+
+  /**
+   * Handle alt+click on links - calls the onLinkClick handler if set
+   */
+  protected handleLinkClick(event: MouseEvent): void {
+    const url = this.getLinkAt(event.x, event.y)
+    if (url && this._onLinkClick) {
+      event.preventDefault()
+      event.stopPropagation()
+      this._onLinkClick(url, event)
     }
   }
 
@@ -463,6 +502,45 @@ export abstract class TextBufferRenderable extends Renderable implements LineInf
 
   getSelection(): { start: number; end: number } | null {
     return this.textBufferView.getSelection()
+  }
+
+  /**
+   * Get the link ID at a given screen position (absolute coordinates)
+   * Returns 0 if no link at that position
+   */
+  getLinkIdAt(screenX: number, screenY: number): number {
+    const localX = screenX - this.x
+    const localY = screenY - this.y
+
+    if (localX < 0 || localY < 0 || localX >= this.width || localY >= this.height) {
+      return 0
+    }
+
+    return this.textBufferView.getLinkIdAtPosition(localX, localY)
+  }
+
+  /**
+   * Get the link URL at a given screen position (absolute coordinates)
+   * Returns null if no link at that position
+   */
+  getLinkAt(screenX: number, screenY: number): string | null {
+    const linkId = this.getLinkIdAt(screenX, screenY)
+    if (linkId === 0) return null
+    return this._ctx.getLink(linkId)
+  }
+
+  /**
+   * Get the current link click handler
+   */
+  get onLinkClick(): LinkClickHandler | undefined {
+    return this._onLinkClick
+  }
+
+  /**
+   * Set the link click handler for alt+click on hyperlinks
+   */
+  set onLinkClick(handler: LinkClickHandler | undefined) {
+    this._onLinkClick = handler
   }
 
   render(buffer: OptimizedBuffer, deltaTime: number): void {

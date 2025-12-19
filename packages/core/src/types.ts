@@ -65,6 +65,10 @@ export interface RenderContext extends EventEmitter {
   clearSelection: () => void
   startSelection: (renderable: Renderable, x: number, y: number) => void
   updateSelection: (currentRenderable: Renderable | undefined, x: number, y: number) => void
+  // Hyperlink support
+  registerLink: (uri: string) => number
+  getLink: (linkId: number) => string | null
+  clearLinks: () => void
 }
 
 export type Timeout = ReturnType<typeof setTimeout> | undefined

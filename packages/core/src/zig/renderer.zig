@@ -5,10 +5,12 @@ const buf = @import("buffer.zig");
 const gp = @import("grapheme.zig");
 const Terminal = @import("terminal.zig");
 const logger = @import("logger.zig");
+const link_registry = @import("link-registry.zig");
 
 pub const RGBA = ansi.RGBA;
 pub const OptimizedBuffer = buf.OptimizedBuffer;
 pub const TextAttributes = ansi.TextAttributes;
+pub const LinkRegistry = link_registry.LinkRegistry;
 pub const CursorStyle = Terminal.CursorStyle;
 
 const CLEAR_CHAR = '\u{0a00}';
@@ -106,6 +108,9 @@ pub const CliRenderer = struct {
     lastCursorBlinking: ?bool = null,
     lastCursorColorRGB: ?[3]u8 = null,
 
+    // Link registry for hyperlinks
+    link_registry: LinkRegistry,
+
     // Preallocated output buffer
     var outputBuffer: [OUTPUT_BUFFER_SIZE]u8 = undefined;
     var outputBufferLen: usize = 0;
@@ -189,6 +194,7 @@ pub const CliRenderer = struct {
             .lastCursorStyleTag = null,
             .lastCursorBlinking = null,
             .lastCursorColorRGB = null,
+            .link_registry = LinkRegistry.init(allocator),
 
             .renderStats = .{
                 .lastFrameTime = 0,
@@ -260,6 +266,8 @@ pub const CliRenderer = struct {
 
         self.allocator.free(self.currentHitGrid);
         self.allocator.free(self.nextHitGrid);
+
+        self.link_registry.deinit();
 
         self.allocator.destroy(self);
     }
@@ -555,9 +563,11 @@ pub const CliRenderer = struct {
         var currentFg: ?RGBA = null;
         var currentBg: ?RGBA = null;
         var currentAttributes: i16 = -1;
+        var currentLinkId: u16 = 0;
         var utf8Buf: [4]u8 = undefined;
 
         const colorEpsilon: f32 = COLOR_EPSILON_DEFAULT;
+        const hyperlinksEnabled = self.terminal.getCapabilities().hyperlinks;
 
         for (0..self.height) |uy| {
             const y = @as(u32, @intCast(uy));
@@ -575,8 +585,9 @@ pub const CliRenderer = struct {
                 if (!force) {
                     const charEqual = currentCell.?.char == nextCell.?.char;
                     const attrEqual = currentCell.?.attributes == nextCell.?.attributes;
+                    const linkEqual = currentCell.?.link_id == nextCell.?.link_id;
 
-                    if (charEqual and attrEqual and
+                    if (charEqual and attrEqual and linkEqual and
                         buf.rgbaEqual(currentCell.?.fg, nextCell.?.fg, colorEpsilon) and
                         buf.rgbaEqual(currentCell.?.bg, nextCell.?.bg, colorEpsilon))
                     {
@@ -630,6 +641,21 @@ pub const CliRenderer = struct {
                     ansi.TextAttributes.applyAttributesOutputWriter(writer, cell.attributes) catch {};
                 }
 
+                // Handle hyperlinks - emit OSC 8 when link_id changes
+                if (hyperlinksEnabled and cell.link_id != currentLinkId) {
+                    // End previous hyperlink if there was one
+                    if (currentLinkId != 0) {
+                        ansi.ANSI.hyperlinkEndOutput(writer) catch {};
+                    }
+                    // Start new hyperlink if this cell has one
+                    if (cell.link_id != 0) {
+                        if (self.link_registry.get(cell.link_id)) |uri| {
+                            ansi.ANSI.hyperlinkStartWithIdOutput(writer, cell.link_id, uri) catch {};
+                        }
+                    }
+                    currentLinkId = cell.link_id;
+                }
+
                 // Handle grapheme characters
                 if (gp.isGraphemeChar(cell.char)) {
                     const gid: u32 = gp.graphemeIdFromChar(cell.char);
@@ -671,6 +697,11 @@ pub const CliRenderer = struct {
 
                 cellsUpdated += 1;
             }
+        }
+
+        // Close any open hyperlink before resetting
+        if (hyperlinksEnabled and currentLinkId != 0) {
+            ansi.ANSI.hyperlinkEndOutput(writer) catch {};
         }
 
         writer.writeAll(ansi.ANSI.reset) catch {};
@@ -808,6 +839,19 @@ pub const CliRenderer = struct {
             }
             writer.writeByte('\n') catch return;
         }
+    }
+
+    // Link registry methods for hyperlinks
+    pub fn registerLink(self: *CliRenderer, uri: []const u8) u16 {
+        return self.link_registry.register(uri) catch 0;
+    }
+
+    pub fn getLink(self: *const CliRenderer, link_id: u16) ?[]const u8 {
+        return self.link_registry.get(link_id);
+    }
+
+    pub fn clearLinks(self: *CliRenderer) void {
+        self.link_registry.clear();
     }
 
     fn dumpSingleBuffer(self: *CliRenderer, buffer: *OptimizedBuffer, buffer_name: []const u8, timestamp: i64) void {
