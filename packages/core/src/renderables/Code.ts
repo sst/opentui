@@ -215,7 +215,7 @@ export class CodeRenderable extends TextBufferRenderable {
     this._isHighlighting = true
 
     try {
-      const result = await this._treeSitterClient.highlightOnce(content, filetype)
+      const result = await this._treeSitterClient.highlightOnce(content, filetype, { conceal: this._conceal })
 
       // Check if this result is stale (newer highlight was started)
       if (snapshotId !== this._highlightSnapshotId) {

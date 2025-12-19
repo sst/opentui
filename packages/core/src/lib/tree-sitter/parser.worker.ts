@@ -768,14 +768,23 @@ class ParserWorker {
   }
 
   /**
-   * Get display width of text using tree-sitter to find concealed characters (backticks, bold **, italic *, etc).
+   * Get display width of text, optionally using tree-sitter to find concealed characters.
+   * Uses Bun.stringWidth for proper unicode/emoji width calculation.
+   * When conceal is true, subtracts concealed characters (backticks, bold **, italic *, etc).
+   * When conceal is false, returns the full terminal display width.
    */
-  private async getDisplayWidth(text: string): Promise<number> {
+  private async getDisplayWidth(text: string, conceal: boolean): Promise<number> {
+    const baseWidth = Bun.stringWidth(text)
+
+    if (!conceal) {
+      return baseWidth
+    }
+
     const parserState = await this.getReusableParser("markdown_inline")
-    if (!parserState) return text.length
+    if (!parserState) return baseWidth
 
     const tree = parserState.parser.parse(text)
-    if (!tree) return text.length
+    if (!tree) return baseWidth
 
     try {
       const matches = parserState.filetypeParser.queries.highlights.matches(tree.rootNode)
@@ -786,90 +795,175 @@ class ParserWorker {
         const concealValue = match.setProperties?.conceal
         if (concealValue !== undefined) {
           for (const capture of match.captures) {
-            concealedCount += capture.node.endIndex - capture.node.startIndex
+            // Get the width of the concealed text
+            const concealedText = text.slice(capture.node.startIndex, capture.node.endIndex)
+            concealedCount += Bun.stringWidth(concealedText)
           }
         }
       }
 
-      return text.length - concealedCount
+      return baseWidth - concealedCount
     } finally {
       tree.delete()
     }
   }
 
   /**
-   * Format a markdown table string with aligned columns.
+   * Format a markdown table using tree-sitter AST for cell parsing.
+   * This is more robust than string splitting as it handles escaped pipes correctly.
+   * @param conceal - Whether concealed characters should be excluded from width calculation
    */
-  private async formatTable(tableText: string): Promise<string> {
-    // Preserve trailing whitespace (newlines after table)
-    const trailingMatch = tableText.match(/(\s*)$/)
-    const trailingWhitespace = trailingMatch ? trailingMatch[1] : ""
+  private async formatTableFromAST(tableNode: any, content: string, conceal: boolean): Promise<string> {
+    // Type for parsed table rows
+    type TableRow = {
+      type: "header" | "delimiter" | "data"
+      cells: Array<{
+        text: string
+        alignLeft?: boolean
+        alignRight?: boolean
+      }>
+    }
 
-    const lines = tableText.split("\n").filter((line) => line.trim())
-    if (lines.length < 2) return tableText
+    // Parse table structure from AST nodes
+    const parseTableRows = (): TableRow[] => {
+      const rows: TableRow[] = []
 
-    // Parse rows into cells
-    const rows = lines.map((line) => {
-      const trimmed = line.trim()
-      const inner = trimmed.startsWith("|") ? trimmed.slice(1) : trimmed
-      const cells = (inner.endsWith("|") ? inner.slice(0, -1) : inner).split("|").map((c) => c.trim())
-      return cells
-    })
+      for (let i = 0; i < tableNode.namedChildCount; i++) {
+        const rowNode = tableNode.namedChild(i)
+        const rowType = rowNode.type
 
-    // Calculate column widths using display width
-    const colCount = Math.max(...rows.map((r) => r.length))
+        if (rowType === "pipe_table_header") {
+          const cells: TableRow["cells"] = []
+          for (let j = 0; j < rowNode.namedChildCount; j++) {
+            const cellNode = rowNode.namedChild(j)
+            if (cellNode.type === "pipe_table_cell") {
+              cells.push({ text: cellNode.text.trim() })
+            }
+          }
+          rows.push({ type: "header", cells })
+        } else if (rowType === "pipe_table_delimiter_row") {
+          const cells: TableRow["cells"] = []
+          for (let j = 0; j < rowNode.namedChildCount; j++) {
+            const cellNode = rowNode.namedChild(j)
+            if (cellNode.type === "pipe_table_delimiter_cell") {
+              const text = cellNode.text
+              cells.push({
+                text,
+                alignLeft: text.startsWith(":"),
+                alignRight: text.endsWith(":"),
+              })
+            }
+          }
+          rows.push({ type: "delimiter", cells })
+        } else if (rowType === "pipe_table_row") {
+          const cells: TableRow["cells"] = []
+          for (let j = 0; j < rowNode.namedChildCount; j++) {
+            const cellNode = rowNode.namedChild(j)
+            if (cellNode.type === "pipe_table_cell") {
+              cells.push({ text: cellNode.text.trim() })
+            }
+          }
+          rows.push({ type: "data", cells })
+        }
+      }
+
+      return rows
+    }
+
+    const rows = parseTableRows()
+    if (rows.length < 2) {
+      // Return original text if table is malformed
+      return content.slice(tableNode.startIndex, tableNode.endIndex)
+    }
+
+    // Calculate column count from max cells in any row
+    const colCount = Math.max(...rows.map((r) => r.cells.length))
+    if (colCount === 0) {
+      return content.slice(tableNode.startIndex, tableNode.endIndex)
+    }
+
+    // Minimum column width is 3 (for "---")
     const colWidths = new Array(colCount).fill(3)
 
-    // Pre-calculate all display widths
+    // Pre-calculate all display widths and determine max column widths
     const displayWidths: number[][] = []
-    for (let rowIdx = 0; rowIdx < rows.length; rowIdx++) {
-      const row = rows[rowIdx]
-      const isDelimiter = rowIdx === 1 && row.every((c) => /^:?-+:?$/.test(c))
+    for (const row of rows) {
       const rowWidths: number[] = []
-
-      for (let col = 0; col < row.length; col++) {
-        const width = isDelimiter ? row[col].length : await this.getDisplayWidth(row[col])
-        rowWidths.push(width)
-        if (!isDelimiter) {
+      for (let col = 0; col < row.cells.length; col++) {
+        const cell = row.cells[col]
+        if (row.type === "delimiter") {
+          // Delimiter cells don't contribute to column width
+          rowWidths.push(Bun.stringWidth(cell.text))
+        } else {
+          const width = await this.getDisplayWidth(cell.text, conceal)
+          rowWidths.push(width)
           colWidths[col] = Math.max(colWidths[col], width)
         }
+      }
+      // Fill missing columns with 0 width
+      while (rowWidths.length < colCount) {
+        rowWidths.push(0)
       }
       displayWidths.push(rowWidths)
     }
 
     // Rebuild table with padding
-    const formatted = rows
-      .map((row, rowIdx) => {
-        const isDelimiter = rowIdx === 1 && row.every((c) => /^:?-+:?$/.test(c))
-        const cells = row.map((cell, col) => {
-          const width = colWidths[col]
-          if (isDelimiter) {
-            const left = cell.startsWith(":")
-            const right = cell.endsWith(":")
-            if (left && right) return ":" + "-".repeat(width - 2) + ":"
-            if (left) return ":" + "-".repeat(width - 1)
-            if (right) return "-".repeat(width - 1) + ":"
-            return "-".repeat(width)
-          }
-          const pad = width - displayWidths[rowIdx][col]
-          return cell + " ".repeat(pad)
-        })
-        return "| " + cells.join(" | ") + " |"
-      })
-      .join("\n")
+    const formattedRows = rows.map((row, rowIdx) => {
+      const cells: string[] = []
 
-    return formatted + trailingWhitespace
+      for (let col = 0; col < colCount; col++) {
+        const width = colWidths[col]
+        const cell = row.cells[col]
+
+        if (!cell) {
+          // Missing cell - fill with spaces or dashes
+          cells.push(row.type === "delimiter" ? "-".repeat(width) : " ".repeat(width))
+          continue
+        }
+
+        if (row.type === "delimiter") {
+          // Rebuild delimiter with proper width and alignment markers
+          const left = cell.alignLeft
+          const right = cell.alignRight
+          if (left && right) {
+            cells.push(":" + "-".repeat(width - 2) + ":")
+          } else if (left) {
+            cells.push(":" + "-".repeat(width - 1))
+          } else if (right) {
+            cells.push("-".repeat(width - 1) + ":")
+          } else {
+            cells.push("-".repeat(width))
+          }
+        } else {
+          // Pad content cell to column width
+          const displayWidth = displayWidths[rowIdx][col]
+          const pad = width - displayWidth
+          cells.push(cell.text + " ".repeat(pad))
+        }
+      }
+
+      return "| " + cells.join(" | ") + " |"
+    })
+
+    // Preserve trailing whitespace from the original table
+    const originalTable = content.slice(tableNode.startIndex, tableNode.endIndex)
+    const trailingMatch = originalTable.match(/(\s*)$/)
+    const trailingWhitespace = trailingMatch ? trailingMatch[1] : ""
+
+    return formattedRows.join("\n") + trailingWhitespace
   }
 
   /**
-   * Format all markdown tables in content using tree-sitter to find them.
+   * Format all markdown tables in content using tree-sitter AST.
+   * Uses AST nodes directly for robust cell parsing.
+   * @param conceal - Whether concealed characters should be excluded from width calculation
    */
-  private async formatMarkdownTables(content: string, tree: Tree): Promise<string | null> {
-    // Find all pipe_table nodes
-    const tables: Array<{ start: number; end: number }> = []
+  private async formatMarkdownTables(content: string, tree: Tree, conceal: boolean): Promise<string | null> {
+    // Find all pipe_table nodes with their AST references
+    const tableNodes: any[] = []
     const findTables = (node: any) => {
       if (node.type === "pipe_table") {
-        tables.push({ start: node.startIndex, end: node.endIndex })
+        tableNodes.push(node)
       }
       for (let i = 0; i < node.childCount; i++) {
         findTables(node.child(i))
@@ -877,25 +971,29 @@ class ParserWorker {
     }
     findTables(tree.rootNode)
 
-    if (tables.length === 0) return null
+    if (tableNodes.length === 0) return null
 
     // Replace each table with formatted version
+    // Process in reverse order to maintain correct offsets
     let result = content
-    let offset = 0
 
-    for (const table of tables) {
-      const start = table.start + offset
-      const end = table.end + offset
-      const original = result.slice(start, end)
-      const formatted = await this.formatTable(original)
+    for (let i = tableNodes.length - 1; i >= 0; i--) {
+      const tableNode = tableNodes[i]
+      const start = tableNode.startIndex
+      const end = tableNode.endIndex
+      const formatted = await this.formatTableFromAST(tableNode, content, conceal)
       result = result.slice(0, start) + formatted + result.slice(end)
-      offset += formatted.length - original.length
     }
 
     return result
   }
 
-  async handleOneShotHighlight(content: string, filetype: string, messageId: string): Promise<void> {
+  async handleOneShotHighlight(
+    content: string,
+    filetype: string,
+    messageId: string,
+    conceal: boolean = true,
+  ): Promise<void> {
     const reusableState = await this.getReusableParser(filetype)
 
     if (!reusableState) {
@@ -930,7 +1028,7 @@ class ParserWorker {
       let transformedContent: string | undefined
 
       if (filetype === "markdown") {
-        const formatted = await this.formatMarkdownTables(parseContent, tree)
+        const formatted = await this.formatMarkdownTables(parseContent, tree, conceal)
         if (formatted) {
           finalContent = formatted
           transformedContent = formatted
@@ -1064,7 +1162,7 @@ if (!isMainThread) {
 
   // @ts-ignore - we'll fix this in the future for sure
   self.onmessage = async (e: MessageEvent) => {
-    const { type, bufferId, version, content, filetype, edits, filetypeParser, messageId, dataPath } = e.data
+    const { type, bufferId, version, content, filetype, edits, filetypeParser, messageId, dataPath, conceal } = e.data
 
     try {
       switch (type) {
@@ -1125,7 +1223,7 @@ if (!isMainThread) {
           break
 
         case "ONESHOT_HIGHLIGHT":
-          await worker.handleOneShotHighlight(content, filetype, messageId)
+          await worker.handleOneShotHighlight(content, filetype, messageId, conceal ?? true)
           break
 
         case "UPDATE_DATA_PATH":

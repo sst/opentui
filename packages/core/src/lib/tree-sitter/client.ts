@@ -214,6 +214,7 @@ export class TreeSitterClient extends EventEmitter<TreeSitterClientEvents> {
   public async highlightOnce(
     content: string,
     filetype: string,
+    options?: { conceal?: boolean },
   ): Promise<{ highlights?: SimpleHighlight[]; warning?: string; error?: string; transformedContent?: string }> {
     if (!this.initialized) {
       try {
@@ -231,6 +232,7 @@ export class TreeSitterClient extends EventEmitter<TreeSitterClientEvents> {
         content,
         filetype,
         messageId,
+        conceal: options?.conceal ?? true,
       })
     })
   }

@@ -1,13 +1,20 @@
 import { TreeSitterClient } from "../lib/tree-sitter"
 import type { SimpleHighlight } from "../lib/tree-sitter/types"
 
+type HighlightResult = {
+  highlights?: SimpleHighlight[]
+  warning?: string
+  error?: string
+  transformedContent?: string
+}
+
 export class MockTreeSitterClient extends TreeSitterClient {
   private _highlightPromises: Array<{
-    promise: Promise<{ highlights?: SimpleHighlight[]; warning?: string; error?: string }>
-    resolve: (result: { highlights?: SimpleHighlight[]; warning?: string; error?: string }) => void
+    promise: Promise<HighlightResult>
+    resolve: (result: HighlightResult) => void
     timeout?: ReturnType<typeof setTimeout>
   }> = []
-  private _mockResult: { highlights?: SimpleHighlight[]; warning?: string; error?: string } = { highlights: [] }
+  private _mockResult: HighlightResult = { highlights: [] }
   private _autoResolveTimeout?: number
 
   constructor(options?: { autoResolveTimeout?: number }) {
@@ -15,15 +22,8 @@ export class MockTreeSitterClient extends TreeSitterClient {
     this._autoResolveTimeout = options?.autoResolveTimeout
   }
 
-  async highlightOnce(
-    content: string,
-    filetype: string,
-  ): Promise<{ highlights?: SimpleHighlight[]; warning?: string; error?: string }> {
-    const { promise, resolve } = Promise.withResolvers<{
-      highlights?: SimpleHighlight[]
-      warning?: string
-      error?: string
-    }>()
+  async highlightOnce(content: string, filetype: string, options?: { conceal?: boolean }): Promise<HighlightResult> {
+    const { promise, resolve } = Promise.withResolvers<HighlightResult>()
 
     let timeout: ReturnType<typeof setTimeout> | undefined
 
@@ -42,7 +42,7 @@ export class MockTreeSitterClient extends TreeSitterClient {
     return promise
   }
 
-  setMockResult(result: { highlights?: SimpleHighlight[]; warning?: string; error?: string }) {
+  setMockResult(result: HighlightResult) {
     this._mockResult = result
   }
 
