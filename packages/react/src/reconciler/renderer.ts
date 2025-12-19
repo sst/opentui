@@ -3,7 +3,9 @@ import React, { type ReactNode } from "react"
 import type { OpaqueRoot } from "react-reconciler"
 import { AppContext } from "../components/app"
 import { ErrorBoundary } from "../components/error-boundary"
-import { _render, reconciler } from "./reconciler"
+import { _render, reconciler, flushSync } from "./reconciler"
+
+export { flushSync }
 
 export type Root = {
   render: (node: ReactNode) => void
