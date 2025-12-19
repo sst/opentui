@@ -7,6 +7,7 @@ import { createTextAttributes } from "../utils"
 import { Lexer, type MarkedToken, type Token, type Tokens } from "marked"
 import { TextRenderable } from "./Text"
 import { CodeRenderable } from "./Code"
+import { BoxRenderable } from "./Box"
 import type { TreeSitterClient } from "../lib/tree-sitter"
 
 export interface MarkdownOptions extends RenderableOptions<MarkdownRenderable> {
@@ -636,6 +637,115 @@ export class MarkdownRenderable extends Renderable {
   }
 
   /**
+   * Create a table renderable using flexbox layout with boxes.
+   * Each column is a Box containing stacked cells, laid out horizontally.
+   */
+  private createTableRenderable(table: Tokens.Table, id: string, marginBottom: number = 0): Renderable {
+    const colCount = table.header.length
+
+    if (colCount === 0 || table.rows.length === 0) {
+      // Fallback for empty tables
+      return this.createTextRenderable([this.createDefaultChunk(table.raw)], id, marginBottom)
+    }
+
+    // Table container - columns laid out horizontally
+    const tableBox = new BoxRenderable(this.ctx, {
+      id,
+      flexDirection: "row",
+      marginBottom,
+    })
+
+    const borderColor = this.getStyle("punctuation.special")?.fg ?? "#888888"
+
+    // Create a column for each table column
+    for (let col = 0; col < colCount; col++) {
+      const isLastCol = col === colCount - 1
+
+      // Column container - cells stacked vertically
+      const columnBox = new BoxRenderable(this.ctx, {
+        id: `${id}-col-${col}`,
+        flexDirection: "column",
+        border: isLastCol ? true : ["top", "bottom", "left"],
+        borderColor,
+      })
+
+      // Header cell
+      const headerCell = table.header[col]
+      const headerChunks: TextChunk[] = []
+      this.renderInlineContent(headerCell.tokens, headerChunks)
+      const headingStyle = this.getStyle("markup.heading") || this.getStyle("default")
+      const styledHeaderChunks = headerChunks.map((chunk) => ({
+        ...chunk,
+        fg: headingStyle?.fg ?? chunk.fg,
+        bg: headingStyle?.bg ?? chunk.bg,
+        attributes: headingStyle
+          ? createTextAttributes({
+              bold: headingStyle.bold,
+              italic: headingStyle.italic,
+              underline: headingStyle.underline,
+              dim: headingStyle.dim,
+            })
+          : chunk.attributes,
+      }))
+
+      // Header wrapped in box with bottom border separator
+      const headerBox = new BoxRenderable(this.ctx, {
+        id: `${id}-col-${col}-header-box`,
+        border: ["bottom"],
+        borderColor,
+      })
+      headerBox.add(
+        new TextRenderable(this.ctx, {
+          id: `${id}-col-${col}-header`,
+          content: new StyledText(styledHeaderChunks),
+          height: 1,
+          overflow: "hidden",
+          paddingLeft: 1,
+          paddingRight: 1,
+        })
+      )
+      columnBox.add(headerBox)
+
+      // Data rows
+      for (let row = 0; row < table.rows.length; row++) {
+        const cell = table.rows[row][col]
+        const cellChunks: TextChunk[] = []
+        if (cell) {
+          this.renderInlineContent(cell.tokens, cellChunks)
+        }
+
+        const isLastRow = row === table.rows.length - 1
+        const cellText = new TextRenderable(this.ctx, {
+          id: `${id}-col-${col}-row-${row}`,
+          content: new StyledText(cellChunks.length > 0 ? cellChunks : [this.createDefaultChunk(" ")]),
+          height: 1,
+          overflow: "hidden",
+          paddingLeft: 1,
+          paddingRight: 1,
+        })
+
+        if (isLastRow) {
+          // Last row - no bottom border
+          columnBox.add(cellText)
+        } else {
+          // Wrap in box with bottom border
+          const cellBox = new BoxRenderable(this.ctx, {
+            id: `${id}-col-${col}-row-${row}-box`,
+            border: ["bottom"],
+            borderColor,
+          })
+          cellBox.add(cellText)
+          columnBox.add(cellBox)
+        }
+      }
+
+      tableBox.add(columnBox)
+    }
+
+    return tableBox
+  }
+
+  /**
    * Create default renderable for a token.
    */
   private createDefaultRenderable(token: MarkedToken, index: number, hasNextToken: boolean = false): Renderable | null {
@@ -645,6 +755,10 @@ export class MarkdownRenderable extends Renderable {
 
     if (token.type === "code") {
       return this.createCodeRenderable(token, id, marginBottom)
+    }
+
+    if (token.type === "table") {
+      return this.createTableRenderable(token, id, marginBottom)
     }
 
     if (token.type === "space") {
