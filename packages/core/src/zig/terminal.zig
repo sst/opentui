@@ -65,6 +65,7 @@ opts: Options = .{},
 
 in_tmux: bool = false,
 skip_graphics_query: bool = false,
+graphics_query_pending: bool = false,
 
 state: struct {
     alt_screen: bool = false,
@@ -158,8 +159,10 @@ pub fn exitAltScreen(self: *Terminal, tty: anytype) !void {
 
 pub fn queryTerminalSend(self: *Terminal, tty: anytype) !void {
     self.checkEnvironmentOverrides();
+    self.graphics_query_pending = !self.skip_graphics_query;
 
-    try tty.writeAll(ansi.ANSI.hideCursor ++
+    try tty.writeAll(ansi.ANSI.xtversion ++
+        ansi.ANSI.hideCursor ++
         ansi.ANSI.saveCursorState ++
         ansi.ANSI.decrqmSgrPixels ++
         ansi.ANSI.decrqmUnicode ++
@@ -179,18 +182,29 @@ pub fn queryTerminalSend(self: *Terminal, tty: anytype) !void {
         ansi.ANSI.cursorPositionRequest ++
 
         // Version and capability queries
-        ansi.ANSI.xtversion ++
         ansi.ANSI.csiUQuery);
 
-    if (!self.skip_graphics_query) {
-        if (self.in_tmux) {
-            try tty.writeAll(ansi.ANSI.kittyGraphicsQueryTmux);
-        } else {
-            try tty.writeAll(ansi.ANSI.kittyGraphicsQuery);
-        }
+    try tty.writeAll(ansi.ANSI.restoreCursorState);
+}
+
+pub fn sendPendingGraphicsQuery(self: *Terminal, tty: anytype) !bool {
+    if (!self.graphics_query_pending) return false;
+    if (self.skip_graphics_query) {
+        self.graphics_query_pending = false;
+        return false;
     }
 
-    try tty.writeAll(ansi.ANSI.restoreCursorState);
+    if (!self.term_info.from_xtversion and !self.in_tmux) return false;
+
+    const is_tmux = self.in_tmux or self.isXtversionTmux();
+    if (is_tmux) {
+        try tty.writeAll(ansi.ANSI.kittyGraphicsQueryTmux);
+    } else {
+        try tty.writeAll(ansi.ANSI.kittyGraphicsQuery);
+    }
+
+    self.graphics_query_pending = false;
+    return true;
 }
 
 pub fn enableDetectedFeatures(self: *Terminal, tty: anytype, use_kitty_keyboard: bool) !void {
@@ -575,6 +589,10 @@ fn parseXtversion(self: *Terminal, term_str: []const u8) void {
         self.term_info.name[0..self.term_info.name_len],
         self.term_info.version[0..self.term_info.version_len],
     });
+}
+
+fn isXtversionTmux(self: *Terminal) bool {
+    return self.term_info.from_xtversion and std.mem.eql(u8, self.getTerminalName(), "tmux");
 }
 
 pub fn getTerminalInfo(self: *Terminal) TerminalInfo {

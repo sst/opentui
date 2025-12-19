@@ -940,6 +940,15 @@ pub const CliRenderer = struct {
     pub fn processCapabilityResponse(self: *CliRenderer, response: []const u8) void {
         self.terminal.processCapabilityResponse(response);
         const writer = self.stdoutWriter.writer();
+        const did_send = self.terminal.sendPendingGraphicsQuery(writer) catch |err| blk: {
+            logger.warn("Failed to send kitty graphics query: {}", .{err});
+            break :blk false;
+        };
+        if (did_send) {
+            self.stdoutWriter.flush() catch |err| {
+                logger.warn("Failed to flush kitty graphics query: {}", .{err});
+            };
+        }
         const useKitty = self.terminal.opts.kitty_keyboard_flags > 0;
         self.terminal.enableDetectedFeatures(writer, useKitty) catch {};
     }
