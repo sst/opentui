@@ -702,7 +702,7 @@ export class MarkdownRenderable extends Renderable {
           overflow: "hidden",
           paddingLeft: 1,
           paddingRight: 1,
-        })
+        }),
       )
       columnBox.add(headerBox)
 
@@ -799,7 +799,10 @@ export class MarkdownRenderable extends Renderable {
       // Fallback to plain text
       const text = this.createTextRenderable([this.createDefaultChunk(this._content)], `${this.id}-fallback`)
       this.add(text)
-      this._blockChildren.push({ token: { type: "text", raw: this._content, text: this._content } as MarkedToken, renderable: text })
+      this._blockChildren.push({
+        token: { type: "text", raw: this._content, text: this._content } as MarkedToken,
+        renderable: text,
+      })
       return
     }
 

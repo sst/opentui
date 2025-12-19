@@ -333,7 +333,6 @@ Other:
     selectionFg: "#FFFFFF",
     conceal: concealEnabled,
     width: "100%",
-
   })
 
   markdownScrollBox.add(markdownDisplay)
