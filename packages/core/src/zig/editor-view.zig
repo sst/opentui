@@ -52,6 +52,13 @@ pub const EditorView = struct {
         const self: *EditorView = @ptrCast(@alignCast(ctx));
         // Reset desired visual column when cursor changes via non-visual means
         self.desired_visual_col = null;
+
+        const has_selection = self.text_buffer_view.selection != null;
+        if (!has_selection) {
+            const cursor = self.edit_buffer.getPrimaryCursor();
+            const vcursor = self.logicalToVisualCursor(cursor.row, cursor.col);
+            self.ensureCursorVisible(vcursor.visual_row);
+        }
     }
 
     pub fn init(global_allocator: Allocator, edit_buffer: *EditBuffer, viewport_width: u32, viewport_height: u32) EditorViewError!*EditorView {
@@ -250,6 +257,7 @@ pub const EditorView = struct {
     }
 
     /// Always ensures cursor visibility since cursor movements don't mark buffer dirty
+    /// Note: With eager viewport updates in onCursorChanged, this is mainly for rendering methods
     pub fn updateBeforeRender(self: *EditorView) void {
         self.updatePlaceholderVisibility();
 

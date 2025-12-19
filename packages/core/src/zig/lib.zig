@@ -935,8 +935,6 @@ export fn editorViewClearViewport(view: *editor_view.EditorView) void {
 }
 
 export fn editorViewGetViewport(view: *editor_view.EditorView, outX: *u32, outY: *u32, outWidth: *u32, outHeight: *u32) bool {
-    view.updateBeforeRender();
-
     if (view.getViewport()) |vp| {
         outX.* = vp.x;
         outY.* = vp.y;

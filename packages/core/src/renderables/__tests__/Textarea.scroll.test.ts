@@ -625,5 +625,56 @@ describe("Textarea - Scroll Tests", () => {
 
       editor.destroy()
     })
+
+    it("should allow scrolling and selecting last line immediately after resize from wide to narrow", async () => {
+      const { textarea: editor, root } = await createTextareaRenderable(currentRenderer, renderOnce, {
+        initialValue: Array.from(
+          { length: 20 },
+          (_, i) =>
+            `Line ${i.toString().padStart(2, "0")} with enough text content to cause wrapping when viewport becomes narrow`,
+        ).join("\n"),
+        width: 80,
+        height: 10,
+        wrapMode: "word",
+        selectable: true,
+      })
+
+      await renderOnce()
+
+      // Resize to very narrow - this will cause heavy wrapping
+      editor.width = 10
+      root.yogaNode.calculateLayout(80, 24)
+      await renderOnce()
+
+      const viewportAfterResize = editor.editorView.getViewport()
+      const totalVirtualLinesNarrow = editor.editorView.getTotalVirtualLineCount()
+
+      expect(totalVirtualLinesNarrow).toBeGreaterThan(20)
+
+      // Immediately try to scroll down to the bottom with mouse wheel
+      const maxOffsetY = Math.max(0, totalVirtualLinesNarrow - viewportAfterResize.height)
+
+      for (let i = 0; i < maxOffsetY + 20; i++) {
+        await currentMouse.scroll(editor.x + 2, editor.y + 2, "down")
+      }
+      await renderOnce()
+
+      const viewportAfterScroll = editor.editorView.getViewport()
+
+      // Should have scrolled close to the bottom (within scroll margin tolerance)
+      expect(viewportAfterScroll.offsetY).toBeGreaterThan(maxOffsetY - 5)
+      expect(viewportAfterScroll.offsetY).toBeLessThanOrEqual(maxOffsetY)
+
+      // Now try to select text on the last visible line
+      await currentMouse.drag(editor.x, editor.y + editor.height - 1, editor.x + 8, editor.y + editor.height - 1)
+      await renderOnce()
+
+      const selectedText = editor.getSelectedText()
+
+      expect(editor.hasSelection()).toBe(true)
+      expect(selectedText.length).toBeGreaterThan(0)
+
+      editor.destroy()
+    })
   })
 })
