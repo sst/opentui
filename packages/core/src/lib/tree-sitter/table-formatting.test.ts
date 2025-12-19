@@ -1,26 +1,18 @@
 import { test, expect, beforeEach, afterEach } from "bun:test"
-import { TreeSitterClient } from "./client"
-import { CodeRenderable } from "../../renderables/Code"
+import { MarkdownRenderable } from "../../renderables/Markdown"
 import { SyntaxStyle } from "../../syntax-style"
 import { RGBA } from "../RGBA"
 import { createTestRenderer, type TestRenderer } from "../../testing"
-import { tmpdir } from "os"
-import { join } from "path"
 
-let client: TreeSitterClient
 let renderer: TestRenderer
 let renderOnce: () => Promise<void>
 let captureFrame: () => string
-const dataPath = join(tmpdir(), "tree-sitter-table-test")
 
 const syntaxStyle = SyntaxStyle.fromStyles({
   default: { fg: RGBA.fromValues(1, 1, 1, 1) },
 })
 
 beforeEach(async () => {
-  client = new TreeSitterClient({ dataPath })
-  await client.initialize()
-
   const testRenderer = await createTestRenderer({ width: 60, height: 20 })
   renderer = testRenderer.renderer
   renderOnce = testRenderer.renderOnce
@@ -31,28 +23,17 @@ afterEach(async () => {
   if (renderer) {
     renderer.destroy()
   }
-  if (client) {
-    await client.destroy()
-  }
 })
 
 async function renderTable(markdown: string, conceal: boolean = true): Promise<string> {
-  // Let CodeRenderable handle the transformation via its treeSitterClient
-  const code = new CodeRenderable(renderer, {
+  const md = new MarkdownRenderable(renderer, {
     id: "table",
     content: markdown,
-    filetype: "markdown",
     syntaxStyle,
     conceal,
-    treeSitterClient: client,
   })
 
-  renderer.root.add(code)
-  await renderOnce()
-  // Wait for async highlighting to complete (longer timeout for CI)
-  await new Promise((resolve) => setTimeout(resolve, 500))
-  await renderOnce()
-  await new Promise((resolve) => setTimeout(resolve, 100))
+  renderer.root.add(md)
   await renderOnce()
 
   // Trim each line to remove terminal width padding
@@ -235,6 +216,7 @@ Some text between.
     | ------ | --- |
     | X      | Y   |
 
+
     Some text between.
 
     | Table2       | BB  |
@@ -251,10 +233,10 @@ test("table with escaped pipe character", async () => {
 
   expect(await renderTable(markdown)).toMatchInlineSnapshot(`
     "
-    | Command    | Output   |
-    | ---------- | -------- |
-    | echo       | Hello    |
-    | ls \\| grep | Filtered |"
+    | Command   | Output   |
+    | --------- | -------- |
+    | echo      | Hello    |
+    | ls | grep | Filtered |"
   `)
 })
 
@@ -457,6 +439,96 @@ This is a paragraph after the table.`
     | ----- | --- |
     | Alice | 30  |
 
+
     This is a paragraph after the table."
+  `)
+})
+
+// Code block tests
+
+test("code block with language", async () => {
+  const markdown = `\`\`\`typescript
+const x = 1;
+console.log(x);
+\`\`\``
+
+  expect(await renderTable(markdown)).toMatchInlineSnapshot(`
+    "
+    const x = 1;
+    console.log(x);"
+  `)
+})
+
+test("code block without language", async () => {
+  const markdown = `\`\`\`
+plain code block
+with multiple lines
+\`\`\``
+
+  expect(await renderTable(markdown)).toMatchInlineSnapshot(`
+    "
+    plain code block
+    with multiple lines"
+  `)
+})
+
+test("code block mixed with text", async () => {
+  const markdown = `Here is some code:
+
+\`\`\`js
+function hello() {
+  return "world";
+}
+\`\`\`
+
+And here is more text after.`
+
+  expect(await renderTable(markdown)).toMatchInlineSnapshot(`
+    "
+    Here is some code:
+
+    function hello() {
+      return "world";
+    }
+
+    And here is more text after."
+  `)
+})
+
+test("multiple code blocks", async () => {
+  const markdown = `First block:
+
+\`\`\`python
+print("hello")
+\`\`\`
+
+Second block:
+
+\`\`\`rust
+fn main() {}
+\`\`\``
+
+  expect(await renderTable(markdown)).toMatchInlineSnapshot(`
+    "
+    First block:
+
+    print("hello")
+
+    Second block:
+
+    fn main() {}"
+  `)
+})
+
+test("code block in conceal=false mode", async () => {
+  const markdown = `\`\`\`js
+const x = 1;
+\`\`\``
+
+  expect(await renderTable(markdown, false)).toMatchInlineSnapshot(`
+    "
+    \`\`\`js
+    const x = 1;
+    \`\`\`"
   `)
 })
