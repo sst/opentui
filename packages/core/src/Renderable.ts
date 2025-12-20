@@ -47,6 +47,35 @@ export enum RenderableEvents {
   BLURRED = "blurred",
 }
 
+export type AccessibilityRole =
+  | "none"
+  | "button"
+  | "text"
+  | "input"
+  | "checkbox"
+  | "radio"
+  | "list"
+  | "listItem"
+  | "menu"
+  | "menuItem"
+  | "dialog"
+  | "alert"
+  | "progressbar"
+  | "slider"
+  | "scrollbar"
+  | "group"
+
+export type AccessibilityLive = "off" | "polite" | "assertive"
+
+export interface AccessibilityOptions {
+  accessibilityRole?: AccessibilityRole
+  accessibilityLabel?: string
+  accessibilityValue?: string | number
+  accessibilityHint?: string
+  accessibilityHidden?: boolean
+  accessibilityLive?: AccessibilityLive
+}
+
 export interface Position {
   top?: number | "auto" | `${number}%`
   right?: number | "auto" | `${number}%`
@@ -90,7 +119,9 @@ export interface LayoutOptions extends BaseRenderableOptions {
   enableLayout?: boolean
 }
 
-export interface RenderableOptions<T extends BaseRenderable = BaseRenderable> extends Partial<LayoutOptions> {
+export interface RenderableOptions<T extends BaseRenderable = BaseRenderable>
+  extends Partial<LayoutOptions>,
+    AccessibilityOptions {
   width?: number | "auto" | `${number}%`
   height?: number | "auto" | `${number}%`
   zIndex?: number
@@ -234,6 +265,14 @@ export abstract class Renderable extends BaseRenderable {
   protected _opacity: number = 1.0
   private _flexShrink: number = 1
 
+  // Accessibility properties
+  protected _accessibilityRole: AccessibilityRole = "none"
+  protected _accessibilityLabel: string | undefined = undefined
+  protected _accessibilityValue: string | number | undefined = undefined
+  protected _accessibilityHint: string | undefined = undefined
+  protected _accessibilityHidden: boolean = false
+  protected _accessibilityLive: AccessibilityLive = "off"
+
   private renderableMapById: Map<string, Renderable> = new Map()
   protected _childrenInLayoutOrder: Renderable[] = []
   protected _childrenInZIndexOrder: Renderable[] = []
@@ -276,6 +315,14 @@ export abstract class Renderable extends BaseRenderable {
     this._live = options.live ?? false
     this._liveCount = this._live && this._visible ? 1 : 0
     this._opacity = options.opacity !== undefined ? Math.max(0, Math.min(1, options.opacity)) : 1.0
+
+    // Initialize accessibility options
+    this._accessibilityRole = options.accessibilityRole ?? "none"
+    this._accessibilityLabel = options.accessibilityLabel
+    this._accessibilityValue = options.accessibilityValue
+    this._accessibilityHint = options.accessibilityHint
+    this._accessibilityHidden = options.accessibilityHidden ?? false
+    this._accessibilityLive = options.accessibilityLive ?? "off"
 
     // TODO: use a global yoga config
     this.yogaNode = Yoga.Node.create(yogaConfig)
@@ -349,6 +396,78 @@ export abstract class Renderable extends BaseRenderable {
       this._opacity = clamped
       this.requestRender()
     }
+  }
+
+  // Accessibility getters and setters
+  public get accessibilityRole(): AccessibilityRole {
+    return this._accessibilityRole
+  }
+
+  public set accessibilityRole(value: AccessibilityRole) {
+    if (this._accessibilityRole !== value) {
+      this._accessibilityRole = value
+      this.onAccessibilityChange()
+    }
+  }
+
+  public get accessibilityLabel(): string | undefined {
+    return this._accessibilityLabel
+  }
+
+  public set accessibilityLabel(value: string | undefined) {
+    if (this._accessibilityLabel !== value) {
+      this._accessibilityLabel = value
+      this.onAccessibilityChange()
+    }
+  }
+
+  public get accessibilityValue(): string | number | undefined {
+    return this._accessibilityValue
+  }
+
+  public set accessibilityValue(value: string | number | undefined) {
+    if (this._accessibilityValue !== value) {
+      this._accessibilityValue = value
+      this.onAccessibilityChange()
+    }
+  }
+
+  public get accessibilityHint(): string | undefined {
+    return this._accessibilityHint
+  }
+
+  public set accessibilityHint(value: string | undefined) {
+    if (this._accessibilityHint !== value) {
+      this._accessibilityHint = value
+      this.onAccessibilityChange()
+    }
+  }
+
+  public get accessibilityHidden(): boolean {
+    return this._accessibilityHidden
+  }
+
+  public set accessibilityHidden(value: boolean) {
+    if (this._accessibilityHidden !== value) {
+      this._accessibilityHidden = value
+      this.onAccessibilityChange()
+    }
+  }
+
+  public get accessibilityLive(): AccessibilityLive {
+    return this._accessibilityLive
+  }
+
+  public set accessibilityLive(value: AccessibilityLive) {
+    if (this._accessibilityLive !== value) {
+      this._accessibilityLive = value
+      this.onAccessibilityChange()
+    }
+  }
+
+  protected onAccessibilityChange(): void {
+    // Hook for subclasses and future accessibility manager integration
+    // Will be used to notify platform accessibility APIs of changes
   }
 
   public hasSelection(): boolean {
