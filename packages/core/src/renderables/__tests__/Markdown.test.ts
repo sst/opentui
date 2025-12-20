@@ -592,9 +592,7 @@ const x = 1;
 
   expect(await renderMarkdown(markdown, false)).toMatchInlineSnapshot(`
     "
-    \`\`\`js
-    const x = 1;
-    \`\`\`"
+    const x = 1;"
   `)
 })
 
@@ -826,5 +824,109 @@ Visit [GitHub](https://github.com) for more.
     ---
 
     Press ? for help"
+  `)
+})
+
+// Custom renderNode tests
+
+test("custom renderNode can override heading rendering", async () => {
+  const { TextRenderable } = await import("../Text")
+  const { StyledText } = await import("../../lib/styled-text")
+
+  const md = new MarkdownRenderable(renderer, {
+    id: "custom-heading",
+    content: `# Custom Heading
+
+Regular paragraph.`,
+    syntaxStyle,
+    renderNode: (token, ctx) => {
+      if (token.type === "heading") {
+        return new TextRenderable(renderer, {
+          id: "custom",
+          content: new StyledText([{ __isChunk: true, text: `[CUSTOM] ${(token as any).text}`, attributes: 0 }]),
+          width: "100%",
+        })
+      }
+      return ctx.defaultRender()
+    },
+  })
+
+  renderer.root.add(md)
+  await renderOnce()
+
+  const lines = captureFrame()
+    .split("\n")
+    .map((line) => line.trimEnd())
+  expect("\n" + lines.join("\n").trimEnd()).toMatchInlineSnapshot(`
+    "
+    [CUSTOM] Custom Heading
+    Regular paragraph."
+  `)
+})
+
+test("custom renderNode can override code block rendering", async () => {
+  const { BoxRenderable } = await import("../Box")
+  const { TextRenderable } = await import("../Text")
+
+  const md = new MarkdownRenderable(renderer, {
+    id: "custom-code",
+    content: `\`\`\`js
+const x = 1;
+\`\`\``,
+    syntaxStyle,
+    renderNode: (token, ctx) => {
+      if (token.type === "code") {
+        const box = new BoxRenderable(renderer, {
+          id: "code-box",
+          border: true,
+          borderStyle: "single",
+        })
+        box.add(
+          new TextRenderable(renderer, {
+            id: "code-text",
+            content: `CODE: ${(token as any).text}`,
+          }),
+        )
+        return box
+      }
+      return ctx.defaultRender()
+    },
+  })
+
+  renderer.root.add(md)
+  await renderOnce()
+
+  const lines = captureFrame()
+    .split("\n")
+    .map((line) => line.trimEnd())
+  expect("\n" + lines.join("\n").trimEnd()).toMatchInlineSnapshot(`
+    "
+    ┌──────────────────────────────────────────────────────────┐
+    │CODE: const x = 1;                                        │
+    └──────────────────────────────────────────────────────────┘"
+  `)
+})
+
+test("custom renderNode returning null uses default", async () => {
+  const md = new MarkdownRenderable(renderer, {
+    id: "custom-null",
+    content: `# Heading
+
+Paragraph text.`,
+    syntaxStyle,
+    renderNode: () => null,
+  })
+
+  renderer.root.add(md)
+  await renderOnce()
+
+  const lines = captureFrame()
+    .split("\n")
+    .map((line) => line.trimEnd())
+  expect("\n" + lines.join("\n").trimEnd()).toMatchInlineSnapshot(`
+    "
+    Heading
+
+    Paragraph text."
   `)
 })

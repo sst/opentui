@@ -555,29 +555,16 @@ export class MarkdownRenderable extends Renderable {
   }
 
   private createCodeRenderable(token: Tokens.Code, id: string, marginBottom: number = 0): Renderable {
-    if (this._conceal) {
-      return new CodeRenderable(this.ctx, {
-        id,
-        content: token.text,
-        filetype: token.lang || undefined,
-        syntaxStyle: this._syntaxStyle,
-        conceal: true,
-        treeSitterClient: this._treeSitterClient,
-        width: "100%",
-        marginBottom,
-      })
-    } else {
-      const chunks: TextChunk[] = []
-      chunks.push(this.createChunk("```", "markup.raw.block"))
-      if (token.lang) {
-        chunks.push(this.createChunk(token.lang, "label"))
-      }
-      chunks.push(this.createDefaultChunk("\n"))
-      chunks.push(this.createChunk(token.text, "markup.raw.block"))
-      chunks.push(this.createDefaultChunk("\n"))
-      chunks.push(this.createChunk("```", "markup.raw.block"))
-      return this.createTextRenderable(chunks, id, marginBottom)
-    }
+    return new CodeRenderable(this.ctx, {
+      id,
+      content: token.text,
+      filetype: token.lang || undefined,
+      syntaxStyle: this._syntaxStyle,
+      conceal: this._conceal,
+      treeSitterClient: this._treeSitterClient,
+      width: "100%",
+      marginBottom,
+    })
   }
 
   private createTableRenderable(table: Tokens.Table, id: string, marginBottom: number = 0): Renderable {
