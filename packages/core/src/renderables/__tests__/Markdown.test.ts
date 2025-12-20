@@ -930,3 +930,99 @@ Paragraph text.`,
     Paragraph text."
   `)
 })
+
+// Incomplete/invalid markdown tests
+
+test("incomplete code block (no closing fence)", async () => {
+  const markdown = `Here is some code:
+
+\`\`\`javascript
+const x = 1;
+console.log(x);`
+
+  expect(await renderMarkdown(markdown)).toMatchInlineSnapshot(`
+    "
+    Here is some code:
+
+    const x = 1;
+    console.log(x);"
+  `)
+})
+
+test("incomplete bold (no closing **)", async () => {
+  const markdown = `This has **unclosed bold text`
+
+  expect(await renderMarkdown(markdown)).toMatchInlineSnapshot(`
+    "
+    This has **unclosed bold text"
+  `)
+})
+
+test("incomplete italic (no closing *)", async () => {
+  const markdown = `This has *unclosed italic text`
+
+  expect(await renderMarkdown(markdown)).toMatchInlineSnapshot(`
+    "
+    This has *unclosed italic text"
+  `)
+})
+
+test("incomplete link (no closing paren)", async () => {
+  const markdown = `Check out [this link](https://example.com`
+
+  expect(await renderMarkdown(markdown)).toMatchInlineSnapshot(`
+    "
+    Check out [this link](https://example.com (https://example.
+    com)"
+  `)
+})
+
+test("incomplete table (only header)", async () => {
+  const markdown = `| Header1 | Header2 |`
+
+  expect(await renderMarkdown(markdown)).toMatchInlineSnapshot(`
+    "
+    | Header1 | Header2 |"
+  `)
+})
+
+test("incomplete table (header + delimiter, no rows)", async () => {
+  const markdown = `| Header1 | Header2 |
+|---|---|`
+
+  expect(await renderMarkdown(markdown)).toMatchInlineSnapshot(`
+    "
+    | Header1 | Header2 |
+    |---|---|"
+  `)
+})
+
+test("streaming-like content with partial code block", async () => {
+  const markdown = `# Title
+
+Some text before code.
+
+\`\`\`py`
+
+  expect(await renderMarkdown(markdown)).toMatchInlineSnapshot(`
+    "
+    Title
+
+    Some text before code."
+  `)
+})
+
+test("malformed table with missing pipes", async () => {
+  const markdown = `| A | B
+|---|---
+| 1 | 2`
+
+  expect(await renderMarkdown(markdown)).toMatchInlineSnapshot(`
+    "
+    ┌───┌───┐
+    │A  │B  │
+    │───│───│
+    │1  │2  │
+    └───└───┘"
+  `)
+})
