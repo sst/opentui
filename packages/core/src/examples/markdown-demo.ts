@@ -51,7 +51,7 @@ const md = new MarkdownRenderable(renderer, {
 | Method | Parameters | Returns | Description |
 |---|---|---|---|
 | \`constructor\` | \`ctx, options\` | \`MarkdownRenderable\` | Create new instance |
-| \`clearTableCache\` | none | \`void\` | Force re-align tables |
+| \`clearCache\` | none | \`void\` | Force re-render content |
 
 ## Inline Formatting Examples
 
