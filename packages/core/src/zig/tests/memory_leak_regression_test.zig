@@ -57,7 +57,7 @@ test "GraphemePool - pending grapheme cleanup on failure" {
     defer result_graphemes.deinit();
 
     var pending_gid: ?u32 = null;
-    var success = false;
+    const success = false; // intentionally never true to test cleanup path
 
     defer {
         if (!success) {
