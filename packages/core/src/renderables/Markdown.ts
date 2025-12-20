@@ -42,9 +42,7 @@ export class MarkdownRenderable extends Renderable {
   private _treeSitterClient?: TreeSitterClient
   private _renderNode?: MarkdownOptions["renderNode"]
 
-  // Track block children for incremental updates
   private _blockChildren: BlockChild[] = []
-  // Cache token.raw -> Renderable for reuse
   private _childCache: Map<string, Renderable> = new Map()
 
   protected _contentDefaultOptions = {
@@ -104,9 +102,6 @@ export class MarkdownRenderable extends Renderable {
     }
   }
 
-  /**
-   * Get style for a token group, with fallback to base scope.
-   */
   private getStyle(group: string): StyleDefinition | undefined {
     let style = this._syntaxStyle.getStyle(group)
     if (!style && group.includes(".")) {
@@ -116,9 +111,6 @@ export class MarkdownRenderable extends Renderable {
     return style
   }
 
-  /**
-   * Create a text chunk with the given style.
-   */
   private createChunk(text: string, group: string): TextChunk {
     const style = this.getStyle(group) || this.getStyle("default")
     return {
@@ -137,16 +129,10 @@ export class MarkdownRenderable extends Renderable {
     }
   }
 
-  /**
-   * Create a text chunk with default style.
-   */
   private createDefaultChunk(text: string): TextChunk {
     return this.createChunk(text, "default")
   }
 
-  /**
-   * Count concealed characters in a token recursively.
-   */
   private countConcealedChars(token: MarkedToken): number {
     let count = 0
 
@@ -198,9 +184,6 @@ export class MarkdownRenderable extends Renderable {
     return count
   }
 
-  /**
-   * Get display width of a table cell using tokens.
-   */
   private getCellDisplayWidth(cell: Tokens.TableCell): number {
     const baseWidth = Bun.stringWidth(cell.text.trim())
     if (!this._conceal) return baseWidth
@@ -213,18 +196,12 @@ export class MarkdownRenderable extends Renderable {
     return Math.max(0, baseWidth - concealedChars)
   }
 
-  /**
-   * Render inline content (tokens) to chunks.
-   */
   private renderInlineContent(tokens: Token[], chunks: TextChunk[]): void {
     for (const token of tokens) {
       this.renderInlineToken(token as MarkedToken, chunks)
     }
   }
 
-  /**
-   * Render a single inline token.
-   */
   private renderInlineToken(token: MarkedToken, chunks: TextChunk[]): void {
     switch (token.type) {
       case "text":
@@ -319,16 +296,13 @@ export class MarkdownRenderable extends Renderable {
       default:
         if ("tokens" in token && Array.isArray(token.tokens)) {
           this.renderInlineContent(token.tokens, chunks)
-        } else if ("text" in token) {
-          chunks.push(this.createDefaultChunk((token as any).text))
+        } else if ("text" in token && typeof token.text === "string") {
+          chunks.push(this.createDefaultChunk(token.text))
         }
         break
     }
   }
 
-  /**
-   * Render inline token with a specific style applied.
-   */
   private renderInlineTokenWithStyle(token: MarkedToken, chunks: TextChunk[], styleGroup: string): void {
     switch (token.type) {
       case "text":
@@ -355,9 +329,6 @@ export class MarkdownRenderable extends Renderable {
     }
   }
 
-  /**
-   * Render a heading token to chunks.
-   */
   private renderHeadingChunks(token: Tokens.Heading): TextChunk[] {
     const chunks: TextChunk[] = []
     const group = `markup.heading.${token.depth}`
@@ -374,18 +345,12 @@ export class MarkdownRenderable extends Renderable {
     return chunks
   }
 
-  /**
-   * Render a paragraph token to chunks.
-   */
   private renderParagraphChunks(token: Tokens.Paragraph): TextChunk[] {
     const chunks: TextChunk[] = []
     this.renderInlineContent(token.tokens, chunks)
     return chunks
   }
 
-  /**
-   * Render a blockquote to chunks.
-   */
   private renderBlockquoteChunks(token: Tokens.Blockquote): TextChunk[] {
     const chunks: TextChunk[] = []
     for (const child of token.tokens) {
@@ -397,9 +362,6 @@ export class MarkdownRenderable extends Renderable {
     return chunks
   }
 
-  /**
-   * Render a list to chunks.
-   */
   private renderListChunks(token: Tokens.List): TextChunk[] {
     const chunks: TextChunk[] = []
     let index = typeof token.start === "number" ? token.start : 1
@@ -431,16 +393,10 @@ export class MarkdownRenderable extends Renderable {
     return chunks
   }
 
-  /**
-   * Render a thematic break to chunks.
-   */
   private renderThematicBreakChunks(): TextChunk[] {
     return [this.createChunk("---", "punctuation.special")]
   }
 
-  /**
-   * Render a table to chunks.
-   */
   private renderTableChunks(table: Tokens.Table): TextChunk[] {
     const chunks: TextChunk[] = []
 
@@ -565,9 +521,6 @@ export class MarkdownRenderable extends Renderable {
     return chunks
   }
 
-  /**
-   * Render a token to chunks (for non-code blocks).
-   */
   private renderTokenToChunks(token: MarkedToken): TextChunk[] {
     switch (token.type) {
       case "heading":
@@ -592,9 +545,6 @@ export class MarkdownRenderable extends Renderable {
     }
   }
 
-  /**
-   * Create a TextRenderable for text content.
-   */
   private createTextRenderable(chunks: TextChunk[], id: string, marginBottom: number = 0): TextRenderable {
     return new TextRenderable(this.ctx, {
       id,
@@ -604,13 +554,8 @@ export class MarkdownRenderable extends Renderable {
     })
   }
 
-  /**
-   * Create a CodeRenderable for code blocks.
-   * When conceal=false, returns TextRenderable with fences visible.
-   */
   private createCodeRenderable(token: Tokens.Code, id: string, marginBottom: number = 0): Renderable {
     if (this._conceal) {
-      // Use CodeRenderable for syntax highlighting
       return new CodeRenderable(this.ctx, {
         id,
         content: token.text,
@@ -622,7 +567,6 @@ export class MarkdownRenderable extends Renderable {
         marginBottom,
       })
     } else {
-      // Show markdown fences in non-concealed mode
       const chunks: TextChunk[] = []
       chunks.push(this.createChunk("```", "markup.raw.block"))
       if (token.lang) {
@@ -636,19 +580,13 @@ export class MarkdownRenderable extends Renderable {
     }
   }
 
-  /**
-   * Create a table renderable using flexbox layout with boxes.
-   * Each column is a Box containing stacked cells, laid out horizontally.
-   */
   private createTableRenderable(table: Tokens.Table, id: string, marginBottom: number = 0): Renderable {
     const colCount = table.header.length
 
     if (colCount === 0 || table.rows.length === 0) {
-      // Fallback for empty tables
       return this.createTextRenderable([this.createDefaultChunk(table.raw)], id, marginBottom)
     }
 
-    // Table container - columns laid out horizontally
     const tableBox = new BoxRenderable(this.ctx, {
       id,
       flexDirection: "row",
@@ -657,11 +595,9 @@ export class MarkdownRenderable extends Renderable {
 
     const borderColor = this.getStyle("punctuation.special")?.fg ?? "#888888"
 
-    // Create a column for each table column
     for (let col = 0; col < colCount; col++) {
       const isLastCol = col === colCount - 1
 
-      // Column container - cells stacked vertically
       const columnBox = new BoxRenderable(this.ctx, {
         id: `${id}-col-${col}`,
         flexDirection: "column",
@@ -669,7 +605,6 @@ export class MarkdownRenderable extends Renderable {
         borderColor,
       })
 
-      // Header cell
       const headerCell = table.header[col]
       const headerChunks: TextChunk[] = []
       this.renderInlineContent(headerCell.tokens, headerChunks)
@@ -688,7 +623,6 @@ export class MarkdownRenderable extends Renderable {
           : chunk.attributes,
       }))
 
-      // Header wrapped in box with bottom border separator
       const headerBox = new BoxRenderable(this.ctx, {
         id: `${id}-col-${col}-header-box`,
         border: ["bottom"],
@@ -706,7 +640,6 @@ export class MarkdownRenderable extends Renderable {
       )
       columnBox.add(headerBox)
 
-      // Data rows
       for (let row = 0; row < table.rows.length; row++) {
         const cell = table.rows[row][col]
         const cellChunks: TextChunk[] = []
@@ -725,10 +658,8 @@ export class MarkdownRenderable extends Renderable {
         })
 
         if (isLastRow) {
-          // Last row - no bottom border
           columnBox.add(cellText)
         } else {
-          // Wrap in box with bottom border
           const cellBox = new BoxRenderable(this.ctx, {
             id: `${id}-col-${col}-row-${row}-box`,
             border: ["bottom"],
@@ -745,12 +676,8 @@ export class MarkdownRenderable extends Renderable {
     return tableBox
   }
 
-  /**
-   * Create default renderable for a token.
-   */
   private createDefaultRenderable(token: MarkedToken, index: number, hasNextToken: boolean = false): Renderable | null {
     const id = `${this.id}-block-${index}`
-    // Add 1 line margin between blocks (blank line)
     const marginBottom = hasNextToken ? 1 : 0
 
     if (token.type === "code") {
@@ -773,18 +700,11 @@ export class MarkdownRenderable extends Renderable {
     return this.createTextRenderable(chunks, id, marginBottom)
   }
 
-  /**
-   * Get cache key for a token.
-   */
   private getCacheKey(token: MarkedToken): string {
     return `${token.type}:${this._conceal}:${token.raw}`
   }
 
-  /**
-   * Rebuild children from parsed markdown tokens.
-   */
   private rebuildChildren(): void {
-    // Remove old children
     for (const child of this._blockChildren) {
       this.remove(child.renderable.id)
     }
@@ -796,7 +716,6 @@ export class MarkdownRenderable extends Renderable {
     try {
       tokens = Lexer.lex(this._content, { gfm: true }) as MarkedToken[]
     } catch {
-      // Fallback to plain text
       const text = this.createTextRenderable([this.createDefaultChunk(this._content)], `${this.id}-fallback`)
       this.add(text)
       this._blockChildren.push({
@@ -810,15 +729,12 @@ export class MarkdownRenderable extends Renderable {
 
     for (let i = 0; i < tokens.length; i++) {
       const token = tokens[i]
-      // Check if there's a non-space token after this one
       const hasNextToken = tokens.slice(i + 1).some((t) => t.type !== "space")
       const cacheKey = this.getCacheKey(token)
 
-      // Check if we can reuse cached renderable
       let renderable = this._childCache.get(cacheKey)
 
       if (!renderable) {
-        // Check for custom renderer
         if (this._renderNode) {
           const context: RenderNodeContext = {
             syntaxStyle: this._syntaxStyle,
@@ -832,7 +748,6 @@ export class MarkdownRenderable extends Renderable {
           }
         }
 
-        // Fall back to default rendering
         if (!renderable) {
           renderable = this.createDefaultRenderable(token, i, hasNextToken) ?? undefined
         }
@@ -848,9 +763,6 @@ export class MarkdownRenderable extends Renderable {
     this._childCache = newCache
   }
 
-  /**
-   * Clear the cache and rebuild.
-   */
   public clearCache(): void {
     this._childCache.clear()
     this.rebuildChildren()
