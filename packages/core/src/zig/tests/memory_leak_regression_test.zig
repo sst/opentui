@@ -83,15 +83,25 @@ test "GraphemePool - pending grapheme cleanup on failure" {
 }
 
 test "encodeUnicode - cleanup on mid-operation failure" {
+    const SimulateResult = struct {
+        success: bool,
+        captured_ids: [2]u32,
+        captured_count: usize,
+    };
+
     const simulateEncodeUnicode = struct {
-        fn run(pool: *GraphemePool, should_fail: bool) bool {
-            var success = false;
+        fn run(pool: *GraphemePool, should_fail: bool) SimulateResult {
+            var result = SimulateResult{
+                .success = false,
+                .captured_ids = undefined,
+                .captured_count = 0,
+            };
             var pending_gid: ?u32 = null;
             var stored_ids: [8]u32 = undefined;
             var stored_count: usize = 0;
 
             defer {
-                if (!success) {
+                if (!result.success) {
                     if (pending_gid) |pgid| {
                         pool.decref(pgid) catch {};
                     }
@@ -101,33 +111,49 @@ test "encodeUnicode - cleanup on mid-operation failure" {
                 }
             }
 
-            const gid1 = pool.alloc("emoji1") catch return false;
+            const gid1 = pool.alloc("emoji1") catch return result;
+            result.captured_ids[result.captured_count] = gid1;
+            result.captured_count += 1;
             pending_gid = gid1;
-            pool.incref(gid1) catch return false;
+            pool.incref(gid1) catch return result;
             stored_ids[stored_count] = gid1;
             stored_count += 1;
             pending_gid = null;
 
-            const gid2 = pool.alloc("emoji2") catch return false;
+            const gid2 = pool.alloc("emoji2") catch return result;
+            result.captured_ids[result.captured_count] = gid2;
+            result.captured_count += 1;
             pending_gid = gid2;
-            pool.incref(gid2) catch return false;
+            pool.incref(gid2) catch return result;
 
             if (should_fail) {
-                return false;
+                return result;
             }
 
             stored_ids[stored_count] = gid2;
             stored_count += 1;
             pending_gid = null;
 
-            success = true;
-            return true;
+            result.success = true;
+            return result;
         }
     }.run;
 
     var pool = GraphemePool.init(std.testing.allocator);
     defer pool.deinit();
 
-    const result = simulateEncodeUnicode(&pool, true);
-    try std.testing.expect(!result);
+    const sim_result = simulateEncodeUnicode(&pool, true);
+    try std.testing.expect(!sim_result.success);
+    try std.testing.expectEqual(@as(usize, 2), sim_result.captured_count);
+
+    // Force slot reuse by allocating enough graphemes to cycle through freed slots
+    // Allocate more than captured to ensure freed slots get reused
+    for (0..4) |_| {
+        _ = try pool.alloc("reuse");
+    }
+
+    // Verify cleanup: old IDs should now have wrong generation
+    for (sim_result.captured_ids[0..sim_result.captured_count]) |old_id| {
+        try std.testing.expectError(GraphemePoolError.WrongGeneration, pool.get(old_id));
+    }
 }
