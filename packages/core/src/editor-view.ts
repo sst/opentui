@@ -47,6 +47,11 @@ export class EditorView {
     this.lib.editorViewSetViewportSize(this.viewPtr, width, height)
   }
 
+  public setViewport(x: number, y: number, width: number, height: number, moveCursor: boolean = true): void {
+    this.guard()
+    this.lib.editorViewSetViewport(this.viewPtr, x, y, width, height, moveCursor)
+  }
+
   public getViewport(): Viewport {
     this.guard()
     return this.lib.editorViewGetViewport(this.viewPtr)
@@ -77,6 +82,11 @@ export class EditorView {
     this.lib.editorViewSetSelection(this.viewPtr, start, end, bgColor || null, fgColor || null)
   }
 
+  public updateSelection(end: number, bgColor?: RGBA, fgColor?: RGBA): void {
+    this.guard()
+    this.lib.editorViewUpdateSelection(this.viewPtr, end, bgColor || null, fgColor || null)
+  }
+
   public resetSelection(): void {
     this.guard()
     this.lib.editorViewResetSelection(this.viewPtr)
@@ -99,6 +109,7 @@ export class EditorView {
     focusY: number,
     bgColor?: RGBA,
     fgColor?: RGBA,
+    updateCursor?: boolean,
   ): boolean {
     this.guard()
     return this.lib.editorViewSetLocalSelection(
@@ -109,6 +120,29 @@ export class EditorView {
       focusY,
       bgColor || null,
       fgColor || null,
+      updateCursor ?? false,
+    )
+  }
+
+  public updateLocalSelection(
+    anchorX: number,
+    anchorY: number,
+    focusX: number,
+    focusY: number,
+    bgColor?: RGBA,
+    fgColor?: RGBA,
+    updateCursor?: boolean,
+  ): boolean {
+    this.guard()
+    return this.lib.editorViewUpdateLocalSelection(
+      this.viewPtr,
+      anchorX,
+      anchorY,
+      focusX,
+      focusY,
+      bgColor || null,
+      fgColor || null,
+      updateCursor ?? false,
     )
   }
 

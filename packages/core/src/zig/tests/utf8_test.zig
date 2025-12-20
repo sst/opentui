@@ -2034,6 +2034,45 @@ test "calculateTextWidth: Devanagari नमस्ते width 4" {
 }
 
 // ============================================================================
+// UNICODE WARNING SIGNS WIDTH TESTS
+// ============================================================================
+
+test "calculateTextWidth: U+26A0 warning sign should be width 2" {
+    const result = utf8.calculateTextWidth("⚠", 4, false, .unicode);
+    try testing.expectEqual(@as(u32, 2), result);
+}
+
+test "calculateTextWidth: U+2049 exclamation question mark should be width 2" {
+    const result = utf8.calculateTextWidth("⁉", 4, false, .unicode);
+    try testing.expectEqual(@as(u32, 2), result);
+}
+
+test "calculateTextWidth: U+203C double exclamation mark should be width 2" {
+    const result = utf8.calculateTextWidth("‼", 4, false, .unicode);
+    try testing.expectEqual(@as(u32, 2), result);
+}
+
+test "calculateTextWidth: U+26D1 rescue worker helmet should be width 2" {
+    const result = utf8.calculateTextWidth("⛑", 4, false, .unicode);
+    try testing.expectEqual(@as(u32, 2), result);
+}
+
+test "calculateTextWidth: U+2622 radioactive sign should be width 2" {
+    const result = utf8.calculateTextWidth("☢", 4, false, .unicode);
+    try testing.expectEqual(@as(u32, 2), result);
+}
+
+test "calculateTextWidth: U+2623 biohazard sign should be width 2" {
+    const result = utf8.calculateTextWidth("☣", 4, false, .unicode);
+    try testing.expectEqual(@as(u32, 2), result);
+}
+
+test "calculateTextWidth: U+269B atom symbol should be width 2" {
+    const result = utf8.calculateTextWidth("⚛", 4, false, .unicode);
+    try testing.expectEqual(@as(u32, 2), result);
+}
+
+// ============================================================================
 // GRAPHEME INFO TESTS (for caching multi-byte graphemes and tabs)
 // ============================================================================
 

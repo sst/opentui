@@ -280,4 +280,136 @@ describe("TestRecorder", () => {
 
     recorder.stop()
   })
+
+  test("should optionally record fg buffer", async () => {
+    const recorderWithFg = new TestRecorder(renderer, { recordBuffers: { fg: true } })
+    recorderWithFg.rec()
+
+    const text = new TextRenderable(renderer, { content: "Buffer Test" })
+    renderer.root.add(text)
+    await Bun.sleep(1)
+
+    const frames = recorderWithFg.recordedFrames
+    expect(frames.length).toBe(1)
+    expect(frames[0].buffers).toBeDefined()
+    expect(frames[0].buffers?.fg).toBeInstanceOf(Float32Array)
+    expect(frames[0].buffers?.bg).toBeUndefined()
+    expect(frames[0].buffers?.attributes).toBeUndefined()
+
+    recorderWithFg.stop()
+  })
+
+  test("should optionally record bg buffer", async () => {
+    const recorderWithBg = new TestRecorder(renderer, { recordBuffers: { bg: true } })
+    recorderWithBg.rec()
+
+    const text = new TextRenderable(renderer, { content: "Buffer Test" })
+    renderer.root.add(text)
+    await Bun.sleep(1)
+
+    const frames = recorderWithBg.recordedFrames
+    expect(frames.length).toBe(1)
+    expect(frames[0].buffers).toBeDefined()
+    expect(frames[0].buffers?.bg).toBeInstanceOf(Float32Array)
+    expect(frames[0].buffers?.fg).toBeUndefined()
+    expect(frames[0].buffers?.attributes).toBeUndefined()
+
+    recorderWithBg.stop()
+  })
+
+  test("should optionally record attributes buffer", async () => {
+    const recorderWithAttrs = new TestRecorder(renderer, { recordBuffers: { attributes: true } })
+    recorderWithAttrs.rec()
+
+    const text = new TextRenderable(renderer, { content: "Buffer Test" })
+    renderer.root.add(text)
+    await Bun.sleep(1)
+
+    const frames = recorderWithAttrs.recordedFrames
+    expect(frames.length).toBe(1)
+    expect(frames[0].buffers).toBeDefined()
+    expect(frames[0].buffers?.attributes).toBeInstanceOf(Uint8Array)
+    expect(frames[0].buffers?.fg).toBeUndefined()
+    expect(frames[0].buffers?.bg).toBeUndefined()
+
+    recorderWithAttrs.stop()
+  })
+
+  test("should record multiple buffers when requested", async () => {
+    const recorderWithAll = new TestRecorder(renderer, {
+      recordBuffers: { fg: true, bg: true, attributes: true },
+    })
+    recorderWithAll.rec()
+
+    const text = new TextRenderable(renderer, { content: "Buffer Test" })
+    renderer.root.add(text)
+    await Bun.sleep(1)
+
+    const frames = recorderWithAll.recordedFrames
+    expect(frames.length).toBe(1)
+    expect(frames[0].buffers).toBeDefined()
+    expect(frames[0].buffers?.fg).toBeInstanceOf(Float32Array)
+    expect(frames[0].buffers?.bg).toBeInstanceOf(Float32Array)
+    expect(frames[0].buffers?.attributes).toBeInstanceOf(Uint8Array)
+
+    recorderWithAll.stop()
+  })
+
+  test("should not record buffers when not requested", async () => {
+    recorder.rec()
+
+    const text = new TextRenderable(renderer, { content: "No Buffer Test" })
+    renderer.root.add(text)
+    await Bun.sleep(1)
+
+    const frames = recorder.recordedFrames
+    expect(frames.length).toBe(1)
+    expect(frames[0].buffers).toBeUndefined()
+
+    recorder.stop()
+  })
+
+  test("should record independent buffer copies", async () => {
+    const recorderWithBuffers = new TestRecorder(renderer, { recordBuffers: { fg: true } })
+    recorderWithBuffers.rec()
+
+    const text = new TextRenderable(renderer, { content: "Copy Test" })
+    renderer.root.add(text)
+    await Bun.sleep(1)
+
+    await renderOnce()
+
+    const frames = recorderWithBuffers.recordedFrames
+    expect(frames.length).toBe(2)
+
+    const frame1Fg = frames[0].buffers?.fg
+    const frame2Fg = frames[1].buffers?.fg
+
+    expect(frame1Fg).toBeDefined()
+    expect(frame2Fg).toBeDefined()
+    expect(frame1Fg).not.toBe(frame2Fg)
+
+    recorderWithBuffers.stop()
+  })
+
+  test("should have correct buffer sizes", async () => {
+    const recorderWithAll = new TestRecorder(renderer, {
+      recordBuffers: { fg: true, bg: true, attributes: true },
+    })
+    recorderWithAll.rec()
+
+    const text = new TextRenderable(renderer, { content: "Size Test" })
+    renderer.root.add(text)
+    await Bun.sleep(1)
+
+    const frames = recorderWithAll.recordedFrames
+    expect(frames.length).toBe(1)
+
+    const expectedSize = renderer.width * renderer.height
+    expect(frames[0].buffers?.fg?.length).toBe(expectedSize * 4)
+    expect(frames[0].buffers?.bg?.length).toBe(expectedSize * 4)
+    expect(frames[0].buffers?.attributes?.length).toBe(expectedSize)
+
+    recorderWithAll.stop()
+  })
 })

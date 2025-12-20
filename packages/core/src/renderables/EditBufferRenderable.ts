@@ -26,6 +26,7 @@ export interface EditBufferOptions extends RenderableOptions<EditBufferRenderabl
   attributes?: number
   wrapMode?: "none" | "char" | "word"
   scrollMargin?: number
+  scrollSpeed?: number
   showCursor?: boolean
   cursorColor?: string | RGBA
   cursorStyle?: CursorStyleOptions
@@ -53,15 +54,13 @@ export abstract class EditBufferRenderable extends Renderable implements LineInf
   protected lastLocalSelection: LocalSelectionBounds | null = null
   protected _tabIndicator?: string | number
   protected _tabIndicatorColor?: RGBA
-  private _selectionAnchorState: {
-    screenX: number
-    screenY: number
-    viewportX: number
-    viewportY: number
-  } | null = null
 
   private _cursorChangeListener: ((event: CursorChangeEvent) => void) | undefined = undefined
   private _contentChangeListener: ((event: ContentChangeEvent) => void) | undefined = undefined
+
+  private _autoScrollVelocity: number = 0
+  private _autoScrollAccumulator: number = 0
+  private _scrollSpeed: number = 16
 
   public readonly editBuffer: EditBuffer
   public readonly editorView: EditorView
@@ -75,6 +74,7 @@ export abstract class EditBufferRenderable extends Renderable implements LineInf
     attributes: 0,
     wrapMode: "word" as "none" | "char" | "word",
     scrollMargin: 0.2,
+    scrollSpeed: 16,
     showCursor: true,
     cursorColor: RGBA.fromValues(1, 1, 1, 1),
     cursorStyle: {
@@ -96,6 +96,7 @@ export abstract class EditBufferRenderable extends Renderable implements LineInf
     this.selectable = options.selectable ?? this._defaultOptions.selectable
     this._wrapMode = options.wrapMode ?? this._defaultOptions.wrapMode
     this._scrollMargin = options.scrollMargin ?? this._defaultOptions.scrollMargin
+    this._scrollSpeed = options.scrollSpeed ?? this._defaultOptions.scrollSpeed
     this._showCursor = options.showCursor ?? this._defaultOptions.showCursor
     this._cursorColor = parseColor(options.cursorColor ?? this._defaultOptions.cursorColor)
     this._cursorStyle = options.cursorStyle ?? this._defaultOptions.cursorStyle
@@ -339,14 +340,53 @@ export abstract class EditBufferRenderable extends Renderable implements LineInf
     }
   }
 
-  protected onResize(width: number, height: number): void {
-    this.editorView.setViewportSize(width, height)
-    if (this.lastLocalSelection) {
-      const changed = this.updateLocalSelection(this.lastLocalSelection)
-      if (changed) {
+  get scrollSpeed(): number {
+    return this._scrollSpeed
+  }
+
+  set scrollSpeed(value: number) {
+    this._scrollSpeed = Math.max(0, value)
+  }
+
+  protected override onMouseEvent(event: any): void {
+    if (event.type === "scroll") {
+      this.handleScroll(event)
+    }
+  }
+
+  protected handleScroll(event: any): void {
+    if (!event.scroll) return
+
+    const { direction, delta } = event.scroll
+    const viewport = this.editorView.getViewport()
+
+    if (direction === "up") {
+      const newOffsetY = Math.max(0, viewport.offsetY - delta)
+      this.editorView.setViewport(viewport.offsetX, newOffsetY, viewport.width, viewport.height, true)
+      this.requestRender()
+    } else if (direction === "down") {
+      const totalVirtualLines = this.editorView.getTotalVirtualLineCount()
+      const maxOffsetY = Math.max(0, totalVirtualLines - viewport.height)
+      const newOffsetY = Math.min(viewport.offsetY + delta, maxOffsetY)
+      this.editorView.setViewport(viewport.offsetX, newOffsetY, viewport.width, viewport.height, true)
+      this.requestRender()
+    }
+
+    if (this._wrapMode === "none") {
+      if (direction === "left") {
+        const newOffsetX = Math.max(0, viewport.offsetX - delta)
+        this.editorView.setViewport(newOffsetX, viewport.offsetY, viewport.width, viewport.height, true)
+        this.requestRender()
+      } else if (direction === "right") {
+        const newOffsetX = viewport.offsetX + delta
+        this.editorView.setViewport(newOffsetX, viewport.offsetY, viewport.width, viewport.height, true)
         this.requestRender()
       }
     }
+  }
+
+  protected onResize(width: number, height: number): void {
+    this.editorView.setViewportSize(width, height)
   }
 
   protected refreshLocalSelection(): boolean {
@@ -368,6 +408,7 @@ export abstract class EditBufferRenderable extends Renderable implements LineInf
       localSelection.focusY,
       this._selectionBg,
       this._selectionFg,
+      false,
     )
   }
 
@@ -384,13 +425,82 @@ export abstract class EditBufferRenderable extends Renderable implements LineInf
     const localSelection = convertGlobalToLocalSelection(selection, this.x, this.y)
     this.lastLocalSelection = localSelection
 
-    const changed = this.updateLocalSelection(localSelection)
+    const updateCursor = true
+
+    let changed: boolean
+    if (!localSelection?.isActive) {
+      this.editorView.resetLocalSelection()
+      changed = true
+    } else if (selection?.isStart) {
+      changed = this.editorView.setLocalSelection(
+        localSelection.anchorX,
+        localSelection.anchorY,
+        localSelection.focusX,
+        localSelection.focusY,
+        this._selectionBg,
+        this._selectionFg,
+        updateCursor,
+      )
+    } else {
+      changed = this.editorView.updateLocalSelection(
+        localSelection.anchorX,
+        localSelection.anchorY,
+        localSelection.focusX,
+        localSelection.focusY,
+        this._selectionBg,
+        this._selectionFg,
+        updateCursor,
+      )
+    }
+
+    if (changed && localSelection?.isActive && selection?.isSelecting) {
+      const viewport = this.editorView.getViewport()
+      const focusY = localSelection.focusY
+      const scrollMargin = Math.max(1, Math.floor(viewport.height * this._scrollMargin))
+
+      if (focusY < scrollMargin) {
+        this._autoScrollVelocity = -this._scrollSpeed
+      } else if (focusY >= viewport.height - scrollMargin) {
+        this._autoScrollVelocity = this._scrollSpeed
+      } else {
+        this._autoScrollVelocity = 0
+      }
+    } else {
+      this._autoScrollVelocity = 0
+      this._autoScrollAccumulator = 0
+    }
 
     if (changed) {
       this.requestRender()
     }
 
     return this.hasSelection()
+  }
+
+  protected override onUpdate(deltaTime: number): void {
+    super.onUpdate(deltaTime)
+
+    if (this._autoScrollVelocity !== 0 && this.hasSelection()) {
+      const deltaSeconds = deltaTime / 1000
+      this._autoScrollAccumulator += this._autoScrollVelocity * deltaSeconds
+
+      const linesToScroll = Math.floor(Math.abs(this._autoScrollAccumulator))
+      if (linesToScroll > 0) {
+        const direction = this._autoScrollVelocity > 0 ? 1 : -1
+        const viewport = this.editorView.getViewport()
+        const totalVirtualLines = this.editorView.getTotalVirtualLineCount()
+        const maxOffsetY = Math.max(0, totalVirtualLines - viewport.height)
+        const newOffsetY = Math.max(0, Math.min(viewport.offsetY + direction * linesToScroll, maxOffsetY))
+
+        if (newOffsetY !== viewport.offsetY) {
+          this.editorView.setViewport(viewport.offsetX, newOffsetY, viewport.width, viewport.height, false)
+
+          this._ctx.requestSelectionUpdate()
+        }
+
+        this._autoScrollAccumulator -= direction * linesToScroll
+      }
+    }
   }
 
   getSelectedText(): string {
@@ -625,57 +735,19 @@ export abstract class EditBufferRenderable extends Renderable implements LineInf
 
     if (!shiftPressed) {
       this._ctx.clearSelection()
-      this._selectionAnchorState = null
       return
     }
 
     const visualCursor = this.editorView.getVisualCursor()
-    const viewport = this.editorView.getViewport()
-
     const cursorX = this.x + visualCursor.visualCol
     const cursorY = this.y + visualCursor.visualRow
 
     if (isBeforeMovement) {
       if (!this._ctx.hasSelection) {
         this._ctx.startSelection(this, cursorX, cursorY)
-        this._selectionAnchorState = {
-          screenX: cursorX,
-          screenY: cursorY,
-          viewportX: viewport.offsetX,
-          viewportY: viewport.offsetY,
-        }
-      } else if (!this._selectionAnchorState) {
-        // Selection exists but we don't have state (e.g. from mouse), capture it
-        const selection = this._ctx.getSelection()
-        if (selection && selection.isActive) {
-          this._selectionAnchorState = {
-            screenX: selection.anchor.x,
-            screenY: selection.anchor.y,
-            viewportX: viewport.offsetX,
-            viewportY: viewport.offsetY,
-          }
-        }
       }
     } else {
-      // After movement - check if viewport changed
-      if (this._selectionAnchorState) {
-        const deltaY = viewport.offsetY - this._selectionAnchorState.viewportY
-        const deltaX = viewport.offsetX - this._selectionAnchorState.viewportX
-
-        if (deltaY !== 0 || deltaX !== 0) {
-          const newAnchorX = this._selectionAnchorState.screenX - deltaX
-          const newAnchorY = this._selectionAnchorState.screenY - deltaY
-
-          // We need to update the anchor without losing focus position
-          // startSelection sets both anchor and focus to the same point
-          this._ctx.startSelection(this, newAnchorX, newAnchorY)
-          this._ctx.updateSelection(this, cursorX, cursorY)
-        } else {
-          this._ctx.updateSelection(this, cursorX, cursorY)
-        }
-      } else {
-        this._ctx.updateSelection(this, cursorX, cursorY)
-      }
+      this._ctx.updateSelection(this, cursorX, cursorY)
     }
   }
 }
