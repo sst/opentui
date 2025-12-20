@@ -133,69 +133,6 @@ export class MarkdownRenderable extends Renderable {
     return this.createChunk(text, "default")
   }
 
-  private countConcealedChars(token: MarkedToken): number {
-    let count = 0
-
-    switch (token.type) {
-      case "codespan":
-        count += 2
-        break
-      case "strong":
-        count += 4
-        if (token.tokens) {
-          for (const child of token.tokens) {
-            count += this.countConcealedChars(child as MarkedToken)
-          }
-        }
-        break
-      case "em":
-        count += 2
-        if (token.tokens) {
-          for (const child of token.tokens) {
-            count += this.countConcealedChars(child as MarkedToken)
-          }
-        }
-        break
-      case "del":
-        count += 4
-        if (token.tokens) {
-          for (const child of token.tokens) {
-            count += this.countConcealedChars(child as MarkedToken)
-          }
-        }
-        break
-      case "link":
-        if (token.tokens) {
-          for (const child of token.tokens) {
-            count += this.countConcealedChars(child as MarkedToken)
-          }
-        }
-        count += 2
-        break
-      default:
-        if ("tokens" in token && Array.isArray(token.tokens)) {
-          for (const child of token.tokens) {
-            count += this.countConcealedChars(child as MarkedToken)
-          }
-        }
-        break
-    }
-
-    return count
-  }
-
-  private getCellDisplayWidth(cell: Tokens.TableCell): number {
-    const baseWidth = Bun.stringWidth(cell.text.trim())
-    if (!this._conceal) return baseWidth
-
-    let concealedChars = 0
-    for (const child of cell.tokens) {
-      concealedChars += this.countConcealedChars(child as MarkedToken)
-    }
-
-    return Math.max(0, baseWidth - concealedChars)
-  }
-
   private renderInlineContent(tokens: Token[], chunks: TextChunk[]): void {
     for (const token of tokens) {
       this.renderInlineToken(token as MarkedToken, chunks)
@@ -397,130 +334,6 @@ export class MarkdownRenderable extends Renderable {
     return [this.createChunk("---", "punctuation.special")]
   }
 
-  private renderTableChunks(table: Tokens.Table): TextChunk[] {
-    const chunks: TextChunk[] = []
-
-    if (table.header.length === 0) {
-      return chunks
-    }
-
-    if (table.rows.length === 0) {
-      chunks.push(this.createDefaultChunk(table.raw))
-      return chunks
-    }
-
-    const alignments = table.align
-    const colCount = table.header.length
-    const colWidths: number[] = new Array(colCount).fill(3)
-
-    for (let col = 0; col < colCount; col++) {
-      const cell = table.header[col]
-      const displayWidth = this.getCellDisplayWidth(cell)
-      colWidths[col] = Math.max(colWidths[col], displayWidth)
-    }
-
-    for (const row of table.rows) {
-      for (let col = 0; col < row.length; col++) {
-        const cell = row[col]
-        const displayWidth = this.getCellDisplayWidth(cell)
-        colWidths[col] = Math.max(colWidths[col], displayWidth)
-      }
-    }
-
-    // Header row
-    chunks.push(this.createChunk("| ", "punctuation.special"))
-    for (let col = 0; col < colCount; col++) {
-      const width = colWidths[col]
-      const cell = table.header[col]
-      const displayWidth = this.getCellDisplayWidth(cell)
-      const pad = width - displayWidth
-
-      const cellChunks: TextChunk[] = []
-      this.renderInlineContent(cell.tokens, cellChunks)
-      const style = this.getStyle("markup.heading") || this.getStyle("default")
-      for (const chunk of cellChunks) {
-        chunks.push({
-          ...chunk,
-          fg: style?.fg ?? chunk.fg,
-          bg: style?.bg ?? chunk.bg,
-          attributes: style
-            ? createTextAttributes({
-                bold: style.bold,
-                italic: style.italic,
-                underline: style.underline,
-                dim: style.dim,
-              })
-            : chunk.attributes,
-        })
-      }
-
-      if (pad > 0) {
-        chunks.push(this.createDefaultChunk(" ".repeat(pad)))
-      }
-      chunks.push(this.createChunk(" | ", "punctuation.special"))
-    }
-
-    const lastChunk = chunks[chunks.length - 1]
-    if (lastChunk.text === " | ") {
-      lastChunk.text = " |"
-    }
-    chunks.push(this.createDefaultChunk("\n"))
-
-    // Delimiter row
-    chunks.push(this.createChunk("| ", "punctuation.special"))
-    for (let col = 0; col < colCount; col++) {
-      const width = colWidths[col]
-      const align = alignments[col]
-      let delimiter: string
-      if (align === "center") {
-        delimiter = ":" + "-".repeat(Math.max(1, width - 2)) + ":"
-      } else if (align === "left") {
-        delimiter = ":" + "-".repeat(Math.max(1, width - 1))
-      } else if (align === "right") {
-        delimiter = "-".repeat(Math.max(1, width - 1)) + ":"
-      } else {
-        delimiter = "-".repeat(width)
-      }
-      chunks.push(this.createChunk(delimiter, "punctuation.special"))
-      chunks.push(this.createChunk(" | ", "punctuation.special"))
-    }
-    const lastDelimChunk = chunks[chunks.length - 1]
-    if (lastDelimChunk.text === " | ") {
-      lastDelimChunk.text = " |"
-    }
-    chunks.push(this.createDefaultChunk("\n"))
-
-    // Data rows
-    for (const row of table.rows) {
-      chunks.push(this.createChunk("| ", "punctuation.special"))
-      for (let col = 0; col < colCount; col++) {
-        const width = colWidths[col]
-        const cell = row[col]
-        const displayWidth = cell ? this.getCellDisplayWidth(cell) : 0
-        const pad = width - displayWidth
-
-        const cellChunks: TextChunk[] = []
-        if (cell) {
-          this.renderInlineContent(cell.tokens, cellChunks)
-        }
-        chunks.push(...cellChunks)
-
-        if (pad > 0) {
-          chunks.push(this.createDefaultChunk(" ".repeat(pad)))
-        }
-        chunks.push(this.createChunk(" | ", "punctuation.special"))
-      }
-
-      const lastRowChunk = chunks[chunks.length - 1]
-      if (lastRowChunk.text === " | ") {
-        lastRowChunk.text = " |"
-      }
-      chunks.push(this.createDefaultChunk("\n"))
-    }
-
-    return chunks
-  }
-
   private renderTokenToChunks(token: MarkedToken): TextChunk[] {
     switch (token.type) {
       case "heading":
@@ -533,8 +346,6 @@ export class MarkdownRenderable extends Renderable {
         return this.renderListChunks(token)
       case "hr":
         return this.renderThematicBreakChunks()
-      case "table":
-        return this.renderTableChunks(token)
       case "space":
         return []
       default:
