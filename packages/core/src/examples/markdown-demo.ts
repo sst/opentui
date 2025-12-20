@@ -5,7 +5,6 @@ import {
   TextRenderable,
   type ParsedKey,
   ScrollBoxRenderable,
-  LineNumberRenderable,
 } from "../index"
 import { MarkdownRenderable } from "../renderables/Markdown"
 import { setupCommonDemoKeys } from "./lib/standalone-keys"
@@ -219,13 +218,11 @@ let keyboardHandler: ((key: ParsedKey) => void) | null = null
 let parentContainer: BoxRenderable | null = null
 let markdownScrollBox: ScrollBoxRenderable | null = null
 let markdownDisplay: MarkdownRenderable | null = null
-let markdownWithLineNumbers: LineNumberRenderable | null = null
 let statusText: TextRenderable | null = null
 let syntaxStyle: SyntaxStyle | null = null
 let helpModal: BoxRenderable | null = null
 let currentThemeIndex = 0
 let concealEnabled = true
-let showLineNumbers = false
 let showingHelp = false
 
 function getCurrentTheme() {
@@ -293,7 +290,6 @@ export async function run(rendererInstance: CliRenderer): Promise<void> {
 
 View Controls:
   C : Toggle concealment (hide **, \`, etc.)
-  L : Toggle line numbers
 
 Other:
   ? : Toggle this help screen
@@ -349,8 +345,7 @@ Other:
   const updateStatusText = () => {
     if (statusText) {
       const theme = getCurrentTheme()
-      const lineNums = showLineNumbers ? "ON" : "OFF"
-      statusText.content = `Theme: ${theme.name} | Conceal: ${concealEnabled ? "ON" : "OFF"} | Lines: ${lineNums} | Press T to change theme, C to toggle conceal`
+      statusText.content = `Theme: ${theme.name} | Conceal: ${concealEnabled ? "ON" : "OFF"} | Press T to change theme, C to toggle conceal`
     }
   }
 
@@ -393,17 +388,9 @@ Other:
 
       updateStatusText()
     } else if (key.name === "c" && !key.ctrl && !key.meta) {
-      // Toggle conceal
       concealEnabled = !concealEnabled
       if (markdownDisplay) {
         markdownDisplay.conceal = concealEnabled
-      }
-      updateStatusText()
-    } else if (key.name === "l" && !key.ctrl && !key.meta) {
-      // Toggle line numbers
-      showLineNumbers = !showLineNumbers
-      if (markdownWithLineNumbers) {
-        markdownWithLineNumbers.showLineNumbers = showLineNumbers
       }
       updateStatusText()
     }
@@ -423,7 +410,6 @@ export function destroy(rendererInstance: CliRenderer): void {
   parentContainer = null
   markdownScrollBox = null
   markdownDisplay = null
-  markdownWithLineNumbers = null
   statusText = null
   syntaxStyle = null
   helpModal = null
