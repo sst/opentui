@@ -1363,9 +1363,13 @@ export fn encodeUnicode(
     // Clean up result array and any allocated grapheme IDs on failure
     defer {
         if (!success) {
-            // Decref pending grapheme that wasn't stored yet
+            // Clean up pending grapheme that wasn't stored yet
             if (pending_gid) |gid| {
-                pool.decref(gid) catch {};
+                // Try decref first (works if incref was called, refcount >= 1)
+                // If that fails (refcount was 0), use freeUnreferenced
+                pool.decref(gid) catch {
+                    pool.freeUnreferenced(gid) catch {};
+                };
             }
             // Decref any grapheme IDs we allocated before the failure
             for (result[0..result_idx]) |encoded_char| {

@@ -995,6 +995,21 @@ describe("TreeSitterClient Edge Cases", () => {
     await client.destroy()
   })
 
+  test("should handle destroy() during pending initialization", async () => {
+    const client = new TreeSitterClient({ dataPath })
+
+    // Start init but don't await
+    const initPromise = client.initialize()
+
+    // Immediately destroy
+    await client.destroy()
+
+    // Init promise should reject with specific error
+    await expect(initPromise).rejects.toThrow("Client destroyed during initialization")
+
+    expect(client.isInitialized()).toBe(false)
+  })
+
   test("should handle worker errors gracefully", async () => {
     const client = new TreeSitterClient({ dataPath })
 
