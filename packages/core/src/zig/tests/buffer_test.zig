@@ -1298,3 +1298,23 @@ test "OptimizedBuffer - drawTextBuffer with negative y coordinate should not pan
     try std.testing.expectEqual(@as(u32, ' '), buf.get(4, 0).?.char);
     try std.testing.expectEqual(@as(u32, '3'), buf.get(5, 0).?.char);
 }
+
+test "OptimizedBuffer - cells are initialized after resize grow" {
+    const pool = gp.initGlobalPool(std.testing.allocator);
+    defer gp.deinitGlobalPool();
+
+    var buf = try OptimizedBuffer.init(
+        std.testing.allocator,
+        10,
+        10,
+        .{ .pool = pool, .id = "test-buffer" },
+    );
+    defer buf.deinit();
+
+    try buf.resize(20, 20);
+
+    // Verify new cells have default values (space = 32), not garbage
+    const cell = buf.get(15, 15);
+    try std.testing.expect(cell != null);
+    try std.testing.expectEqual(@as(u32, 32), cell.?.char);
+}
