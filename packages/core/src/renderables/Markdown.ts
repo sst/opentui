@@ -51,7 +51,6 @@ export class MarkdownRenderable extends Renderable {
   private _treeSitterClient?: TreeSitterClient
   private _renderNode?: MarkdownOptions["renderNode"]
 
-  // Incremental parsing state (exposed for testing)
   _parseState: ParseState | null = null
   private _streaming: boolean = false
   _blockStates: BlockState[] = []
@@ -97,7 +96,6 @@ export class MarkdownRenderable extends Renderable {
   set syntaxStyle(value: SyntaxStyle) {
     if (this._syntaxStyle !== value) {
       this._syntaxStyle = value
-      // Force full rebuild by clearing parse state
       this._parseState = null
       this.updateBlocks()
       this.requestRender()
@@ -111,7 +109,6 @@ export class MarkdownRenderable extends Renderable {
   set conceal(value: boolean) {
     if (this._conceal !== value) {
       this._conceal = value
-      // Force full rebuild by clearing parse state
       this._parseState = null
       this.updateBlocks()
       this.requestRender()
@@ -125,7 +122,6 @@ export class MarkdownRenderable extends Renderable {
   set streaming(value: boolean) {
     if (this._streaming !== value) {
       this._streaming = value
-      // Reset parse state when streaming mode changes
       this._parseState = null
       this.updateBlocks()
       this.requestRender()
@@ -531,14 +527,10 @@ export class MarkdownRenderable extends Renderable {
     return this.createTextRenderable(chunks, id, marginBottom)
   }
 
-  /**
-   * Update block renderable in-place when token content changes but type is the same.
-   */
   private updateBlockRenderable(state: BlockState, token: MarkedToken, index: number, hasNextToken: boolean): void {
     const marginBottom = hasNextToken ? 1 : 0
 
     if (token.type === "code") {
-      // CodeRenderable has its own dirty tracking - just update content
       const codeRenderable = state.renderable as CodeRenderable
       const codeToken = token as Tokens.Code
       codeRenderable.content = codeToken.text
@@ -553,18 +545,16 @@ export class MarkdownRenderable extends Renderable {
       const prevTable = state.token as Tokens.Table
       const newTable = token as Tokens.Table
 
-      // During streaming, we show N-1 rows (skip potentially incomplete last row)
-      // Only rebuild when number of complete rows changes
+      // During streaming, only rebuild when complete row count changes (skip incomplete last row)
       if (this._streaming) {
         const prevCompleteRows = Math.max(0, prevTable.rows.length - 1)
         const newCompleteRows = Math.max(0, newTable.rows.length - 1)
 
         if (prevCompleteRows === newCompleteRows && prevTable.header.length === newTable.header.length) {
-          return // Skip - same number of complete rows
+          return
         }
       }
 
-      // Rebuild table (always when not streaming, or when complete row count changed during streaming)
       this.remove(state.renderable.id)
       const newRenderable = this.createTableRenderable(newTable, `${this.id}-block-${index}`, marginBottom)
       this.add(newRenderable)
@@ -579,13 +569,8 @@ export class MarkdownRenderable extends Renderable {
     textRenderable.marginBottom = marginBottom
   }
 
-  /**
-   * Incrementally update blocks based on content changes.
-   * Uses incremental parsing to reuse unchanged tokens.
-   */
   private updateBlocks(): void {
     if (!this._content) {
-      // Clear all blocks
       for (const state of this._blockStates) {
         this.remove(state.renderable.id)
       }
@@ -594,15 +579,13 @@ export class MarkdownRenderable extends Renderable {
       return
     }
 
-    // Incremental parse - reuses unchanged tokens (same object references)
     const trailingUnstable = this._streaming ? 2 : 0
     this._parseState = parseMarkdownIncremental(this._content, this._parseState, trailingUnstable)
 
     const tokens = this._parseState.tokens
 
-    // Handle parse failure (empty tokens with content)
+    // Parse failure fallback
     if (tokens.length === 0 && this._content.length > 0) {
-      // Clear existing blocks and show fallback
       for (const state of this._blockStates) {
         this.remove(state.renderable.id)
       }
@@ -618,7 +601,6 @@ export class MarkdownRenderable extends Renderable {
       return
     }
 
-    // Filter out space tokens and find last non-space for margin calculation
     const blockTokens: Array<{ token: MarkedToken; originalIndex: number }> = []
     for (let i = 0; i < tokens.length; i++) {
       if (tokens[i].type !== "space") {
@@ -628,29 +610,26 @@ export class MarkdownRenderable extends Renderable {
 
     const lastBlockIndex = blockTokens.length - 1
 
-    // Sync _blockStates with blockTokens
     let blockIndex = 0
     for (let i = 0; i < blockTokens.length; i++) {
       const { token } = blockTokens[i]
       const hasNextToken = i < lastBlockIndex
       const existing = this._blockStates[blockIndex]
 
-      // Case 1: Same token object (from incremental parse stable portion)
-      // This means content is definitely unchanged - skip entirely
+      // Same token object reference means unchanged
       if (existing && existing.token === token) {
         blockIndex++
         continue
       }
 
-      // Case 2: Same raw content - token was re-parsed but content identical
+      // Same content, update reference
       if (existing && existing.tokenRaw === token.raw && existing.token.type === token.type) {
-        // Update token reference but content unchanged
         existing.token = token
         blockIndex++
         continue
       }
 
-      // Case 3: Same type, different content - update existing renderable
+      // Same type, different content - update in place
       if (existing && existing.token.type === token.type) {
         this.updateBlockRenderable(existing, token, blockIndex, hasNextToken)
         existing.token = token
@@ -659,14 +638,13 @@ export class MarkdownRenderable extends Renderable {
         continue
       }
 
-      // Case 4: Different type or new block - create new renderable
+      // Different type or new block
       if (existing) {
         this.remove(existing.renderable.id)
       }
 
       let renderable: Renderable | undefined
 
-      // Check for custom renderer
       if (this._renderNode) {
         const context: RenderNodeContext = {
           syntaxStyle: this._syntaxStyle,
@@ -695,7 +673,6 @@ export class MarkdownRenderable extends Renderable {
       blockIndex++
     }
 
-    // Remove extra blocks that are no longer needed
     while (this._blockStates.length > blockIndex) {
       const removed = this._blockStates.pop()!
       this.remove(removed.renderable.id)
