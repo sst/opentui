@@ -142,3 +142,54 @@ test("disambiguate flag solves key ambiguity issues", () => {
   // to integrate into the application event loop."
   // No more timing-based hacks to distinguish ESC from escape sequences!
 })
+
+test("can explicitly disable disambiguate", () => {
+  const flags = buildKittyKeyboardFlags({ disambiguate: false })
+  expect(flags & KITTY_FLAG_DISAMBIGUATE).toBeFalsy()
+  expect(flags & KITTY_FLAG_ALTERNATE_KEYS).toBeTruthy() // still enabled by default
+})
+
+test("can explicitly disable alternateKeys", () => {
+  const flags = buildKittyKeyboardFlags({ alternateKeys: false })
+  expect(flags & KITTY_FLAG_ALTERNATE_KEYS).toBeFalsy()
+  expect(flags & KITTY_FLAG_DISAMBIGUATE).toBeTruthy() // still enabled by default
+})
+
+test("can disable both disambiguate and alternateKeys", () => {
+  const flags = buildKittyKeyboardFlags({ disambiguate: false, alternateKeys: false })
+  expect(flags).toBe(0)
+})
+
+test("can enable all flags", () => {
+  const flags = buildKittyKeyboardFlags({
+    disambiguate: true,
+    alternateKeys: true,
+    events: true,
+    allKeysAsEscapes: true,
+    reportText: true,
+  })
+
+  const expected =
+    KITTY_FLAG_DISAMBIGUATE |
+    KITTY_FLAG_ALTERNATE_KEYS |
+    KITTY_FLAG_EVENT_TYPES |
+    KITTY_FLAG_ALL_KEYS_AS_ESCAPES |
+    KITTY_FLAG_REPORT_TEXT
+
+  expect(flags).toBe(expected)
+  expect(flags).toBe(0b11111)
+  expect(flags).toBe(31)
+})
+
+test("optional flags default to false", () => {
+  const flags = buildKittyKeyboardFlags({})
+
+  // These default to true
+  expect(flags & KITTY_FLAG_DISAMBIGUATE).toBeTruthy()
+  expect(flags & KITTY_FLAG_ALTERNATE_KEYS).toBeTruthy()
+
+  // These default to false
+  expect(flags & KITTY_FLAG_EVENT_TYPES).toBeFalsy()
+  expect(flags & KITTY_FLAG_ALL_KEYS_AS_ESCAPES).toBeFalsy()
+  expect(flags & KITTY_FLAG_REPORT_TEXT).toBeFalsy()
+})

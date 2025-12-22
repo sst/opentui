@@ -88,7 +88,11 @@ export interface CliRendererConfig {
   useConsole?: boolean
   experimental_splitHeight?: number
   useKittyKeyboard?: {
-    events?: boolean // Enable event types (press/repeat/release)
+    disambiguate?: boolean // Disambiguate escape codes (fixes ESC timing, alt+key ambiguity, ctrl+c as event). Default: true
+    alternateKeys?: boolean // Report alternate keys (numpad, shifted, base layout) for cross-keyboard shortcuts. Default: true
+    events?: boolean // Report event types (press/repeat/release). Default: false
+    allKeysAsEscapes?: boolean // Report all keys as escape codes. Default: false
+    reportText?: boolean // Report text associated with key events. Default: false
   } | null
   backgroundColor?: ColorInput
   openConsoleOnError?: boolean
@@ -115,18 +119,49 @@ const KITTY_FLAG_REPORT_TEXT = 0b10000 // Report text associated with key events
  * @returns The combined flags value (0 = disabled, >0 = enabled)
  * @internal Exported for testing
  */
-export function buildKittyKeyboardFlags(config: { events?: boolean } | null | undefined): number {
+export function buildKittyKeyboardFlags(
+  config:
+    | {
+        disambiguate?: boolean
+        alternateKeys?: boolean
+        events?: boolean
+        allKeysAsEscapes?: boolean
+        reportText?: boolean
+      }
+    | null
+    | undefined,
+): number {
   if (!config) {
     return 0
   }
 
-  // Default: disambiguate + alternate keys
+  let flags = 0
+
+  // Default: disambiguate + alternate keys (both default to true)
   // - Disambiguate (0b1): Fixes ESC timing issues, alt+key ambiguity, makes ctrl+c a key event
   // - Alternate keys (0b100): Reports shifted/base-layout keys for cross-keyboard shortcuts
-  let flags = KITTY_FLAG_DISAMBIGUATE | KITTY_FLAG_ALTERNATE_KEYS
 
-  if (config.events) {
+  // disambiguate defaults to true unless explicitly set to false
+  if (config.disambiguate !== false) {
+    flags |= KITTY_FLAG_DISAMBIGUATE
+  }
+
+  // alternateKeys defaults to true unless explicitly set to false
+  if (config.alternateKeys !== false) {
+    flags |= KITTY_FLAG_ALTERNATE_KEYS
+  }
+
+  // Optional flags (default to false, only enabled when explicitly true)
+  if (config.events === true) {
     flags |= KITTY_FLAG_EVENT_TYPES
+  }
+
+  if (config.allKeysAsEscapes === true) {
+    flags |= KITTY_FLAG_ALL_KEYS_AS_ESCAPES
+  }
+
+  if (config.reportText === true) {
+    flags |= KITTY_FLAG_REPORT_TEXT
   }
 
   return flags
