@@ -525,9 +525,18 @@ export class MarkdownRenderable extends Renderable {
 
     const newCache = new Map<string, Renderable>()
 
+    let lastNonSpaceIndex = -1
+    for (let i = tokens.length - 1; i >= 0; i--) {
+      if (tokens[i].type !== "space") {
+        lastNonSpaceIndex = i
+        break
+      }
+    }
+
     for (let i = 0; i < tokens.length; i++) {
       const token = tokens[i]
-      const hasNextToken = tokens.slice(i + 1).some((t) => t.type !== "space")
+      const hasNextToken = i < lastNonSpaceIndex
+
       const cacheKey = this.getCacheKey(token)
 
       let renderable = this._childCache.get(cacheKey)

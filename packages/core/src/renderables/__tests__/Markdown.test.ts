@@ -1026,3 +1026,88 @@ test("malformed table with missing pipes", async () => {
     └───└───┘"
   `)
 })
+
+test("trailing blank lines do not add spacing", async () => {
+  const markdown = `# Heading
+
+Paragraph text.
+
+
+`
+
+  expect(await renderMarkdown(markdown)).toMatchInlineSnapshot(`
+    "
+    Heading
+
+    Paragraph text."
+  `)
+})
+
+test("multiple trailing blank lines do not add spacing", async () => {
+  const markdown = `First paragraph.
+
+Second paragraph.
+
+
+
+`
+
+  expect(await renderMarkdown(markdown)).toMatchInlineSnapshot(`
+    "
+    First paragraph.
+
+    Second paragraph."
+  `)
+})
+
+test("blank lines between blocks add spacing", async () => {
+  const markdown = `First
+
+Second
+
+Third`
+
+  expect(await renderMarkdown(markdown)).toMatchInlineSnapshot(`
+    "
+    First
+
+    Second
+
+    Third"
+  `)
+})
+
+test("code block at end with trailing blank lines", async () => {
+  const markdown = `Text before
+
+\`\`\`js
+const x = 1;
+\`\`\`
+
+`
+
+  expect(await renderMarkdown(markdown)).toMatchInlineSnapshot(`
+    "
+    Text before
+
+    const x = 1;"
+  `)
+})
+
+test("table at end with trailing blank lines", async () => {
+  const markdown = `| A | B |
+|---|---|
+| 1 | 2 |
+
+
+`
+
+  expect(await renderMarkdown(markdown)).toMatchInlineSnapshot(`
+    "
+    ┌───┌───┐
+    │A  │B  │
+    │───│───│
+    │1  │2  │
+    └───└───┘"
+  `)
+})
