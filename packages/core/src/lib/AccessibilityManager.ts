@@ -120,6 +120,14 @@ export class AccessibilityManager extends EventEmitter {
         type: AccessibilityEventType.FOCUS_CHANGED,
         targetId: newFocusedId ?? 0,
       })
+
+      // Speak the focused element for TUI accessibility
+      if (renderable) {
+        const label = renderable.accessibilityLabel || ""
+        const role = renderable.accessibilityRole || "element"
+        const announcement = label ? `${label}, ${role}` : role
+        this.speakForPlatform(announcement)
+      }
     }
   }
 
@@ -142,6 +150,67 @@ export class AccessibilityManager extends EventEmitter {
       targetId: 0,
       data: { message, priority },
     })
+
+    // Speak directly for TUI accessibility
+    this.speakForPlatform(message, priority)
+  }
+
+  private speakForPlatform(message: string, priority: "polite" | "assertive" = "polite"): void {
+    if (process.platform === "linux") {
+      this.speakViaSpdSay(message, priority)
+    } else if (process.platform === "win32") {
+      this.speakViaSapi(message)
+    } else if (process.platform === "darwin") {
+      this.speakViaSay(message)
+    }
+  }
+
+  private speakViaSpdSay(message: string, priority: "polite" | "assertive"): void {
+    try {
+      // Use Bun.spawn to run spd-say asynchronously
+      // spd-say priority: important, message, text, notification, progress
+      const args = priority === "assertive" ? ["-P", "important", message] : [message]
+      Bun.spawn(["spd-say", ...args], {
+        stdout: "ignore",
+        stderr: "ignore",
+      })
+    } catch {
+      // spd-say not available, silently ignore
+    }
+  }
+
+  private speakViaSapi(message: string): void {
+    try {
+      // Use PowerShell to speak via Windows SAPI
+      const escapedMessage = message.replace(/'/g, "''").replace(/"/g, '`"')
+      Bun.spawn(
+        [
+          "powershell",
+          "-NoProfile",
+          "-Command",
+          `Add-Type -AssemblyName System.Speech; (New-Object System.Speech.Synthesis.SpeechSynthesizer).Speak('${escapedMessage}')`,
+        ],
+        {
+          stdout: "ignore",
+          stderr: "ignore",
+        },
+      )
+    } catch {
+      // PowerShell/SAPI not available, silently ignore
+    }
+  }
+
+  private speakViaSay(message: string): void {
+    try {
+      // Use macOS say command
+      const escapedMessage = message.replace(/'/g, "'\\''")
+      Bun.spawn(["say", escapedMessage], {
+        stdout: "ignore",
+        stderr: "ignore",
+      })
+    } catch {
+      // say command not available, silently ignore
+    }
   }
 
   public getNode(id: number): AccessibilityNode | undefined {
