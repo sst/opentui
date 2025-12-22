@@ -1551,3 +1551,26 @@ test("streaming table can transition back to raw fallback when rows are removed"
   expect(frame).toContain("|---|")
   expect(frame).toContain("| 1 |")
 })
+
+test("conceal change updates rendered content", async () => {
+  const md = new MarkdownRenderable(renderer, {
+    id: "markdown",
+    content: "# Hello **bold**",
+    syntaxStyle,
+    conceal: true,
+  })
+
+  renderer.root.add(md)
+  await renderOnce()
+
+  const frame1 = captureFrame()
+  expect(frame1).not.toContain("**")
+  expect(frame1).not.toContain("#")
+
+  md.conceal = false
+  await renderOnce()
+
+  const frame2 = captureFrame()
+  expect(frame2).toContain("**")
+  expect(frame2).toContain("#")
+})

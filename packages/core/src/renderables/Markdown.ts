@@ -97,6 +97,7 @@ export class MarkdownRenderable extends Renderable {
     if (this._syntaxStyle !== value) {
       this._syntaxStyle = value
       this._parseState = null
+      this.clearBlockStates()
       this.updateBlocks()
       this.requestRender()
     }
@@ -110,6 +111,7 @@ export class MarkdownRenderable extends Renderable {
     if (this._conceal !== value) {
       this._conceal = value
       this._parseState = null
+      this.clearBlockStates()
       this.updateBlocks()
       this.requestRender()
     }
@@ -689,8 +691,16 @@ export class MarkdownRenderable extends Renderable {
     }
   }
 
+  private clearBlockStates(): void {
+    for (const state of this._blockStates) {
+      this.remove(state.renderable.id)
+    }
+    this._blockStates = []
+  }
+
   public clearCache(): void {
     this._parseState = null
+    this.clearBlockStates()
     this.updateBlocks()
     this.requestRender()
   }
