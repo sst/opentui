@@ -6,6 +6,8 @@ import { hostConfig } from "./host-config"
 
 export const reconciler = ReactReconciler(hostConfig)
 
+export const flushSync = reconciler.flushSync
+
 export function _render(element: React.ReactNode, root: RootRenderable) {
   const container = reconciler.createContainer(
     root,

@@ -7,6 +7,7 @@ const iter_mod = @import("text-buffer-iterators.zig");
 const gp = @import("grapheme.zig");
 const ss = @import("syntax-style.zig");
 const event_emitter = @import("event-emitter.zig");
+const logger = @import("logger.zig");
 
 const EditBuffer = eb.EditBuffer;
 
@@ -49,8 +50,14 @@ pub const EditorView = struct {
 
     fn onCursorChanged(ctx: *anyopaque) void {
         const self: *EditorView = @ptrCast(@alignCast(ctx));
-        // Reset desired visual column when cursor changes via non-visual means
         self.desired_visual_col = null;
+
+        const has_selection = self.text_buffer_view.selection != null;
+        if (!has_selection) {
+            const cursor = self.edit_buffer.getPrimaryCursor();
+            const vcursor = self.logicalToVisualCursor(cursor.row, cursor.col);
+            self.ensureCursorVisible(vcursor.visual_row);
+        }
     }
 
     pub fn init(global_allocator: Allocator, edit_buffer: *EditBuffer, viewport_width: u32, viewport_height: u32) EditorViewError!*EditorView {
@@ -76,13 +83,10 @@ pub const EditorView = struct {
             .global_allocator = global_allocator,
         };
 
-        // Set self reference in listener
         self.cursor_changed_listener.ctx = self;
 
-        // Register listener with EditBuffer
         edit_buffer.events.on(.cursorChanged, self.cursor_changed_listener) catch return EditorViewError.OutOfMemory;
 
-        // Set initial viewport on the text buffer view
         text_buffer_view.setViewport(tbv.Viewport{
             .x = 0,
             .y = 0,
@@ -110,12 +114,61 @@ pub const EditorView = struct {
 
     /// Set the viewport. If wrapping is enabled and viewport width differs from current wrap width,
     /// this will trigger a reflow by updating the TextBufferView's wrap width.
-    pub fn setViewport(self: *EditorView, vp: ?tbv.Viewport) void {
+    /// moveCursor: if true, moves cursor to stay within viewport bounds (prevents viewport reset)
+    pub fn setViewport(self: *EditorView, vp: ?tbv.Viewport, moveCursor: bool) void {
         self.text_buffer_view.setViewport(vp);
+
+        if (moveCursor) {
+            self.makeCursorVisible();
+        }
     }
 
     pub fn getViewport(self: *const EditorView) ?tbv.Viewport {
         return self.text_buffer_view.getViewport();
+    }
+
+    /// Move the cursor to be within the current viewport if it's outside.
+    /// Unlike ensureCursorVisible, this moves the cursor, not the viewport.
+    /// Respects scroll margins to prevent immediate re-scrolling by ensureCursorVisible.
+    pub fn makeCursorVisible(self: *EditorView) void {
+        const vp = self.text_buffer_view.getViewport() orelse return;
+        const cursor = self.edit_buffer.getPrimaryCursor();
+        const vcursor = self.logicalToVisualCursor(cursor.row, cursor.col);
+
+        const viewport_height = vp.height;
+        const margin_lines = @max(1, @as(u32, @intFromFloat(@as(f32, @floatFromInt(viewport_height)) * self.scroll_margin)));
+
+        const cursor_above_viewport = vcursor.visual_row < vp.y;
+        const cursor_below_viewport = vcursor.visual_row >= vp.y + vp.height;
+        const cursor_too_close_to_top = vcursor.visual_row < vp.y + margin_lines;
+        const cursor_too_close_to_bottom = vcursor.visual_row >= vp.y + vp.height - margin_lines;
+
+        if (cursor_above_viewport or cursor_below_viewport or cursor_too_close_to_top or cursor_too_close_to_bottom) {
+            const target_visual_row = if (cursor_above_viewport or cursor_too_close_to_top)
+                vp.y + margin_lines
+            else
+                vp.y + vp.height - margin_lines - 1;
+
+            self.text_buffer_view.updateVirtualLines();
+            const vlines = self.text_buffer_view.virtual_lines.items;
+            if (target_visual_row < vlines.len) {
+                const target_vline = &vlines[target_visual_row];
+                const target_logical_row = @as(u32, @intCast(target_vline.source_line));
+
+                const line_width = iter_mod.lineWidthAt(&self.edit_buffer.tb.rope, target_logical_row);
+                const target_col = @min(cursor.col, line_width);
+
+                if (self.edit_buffer.cursors.items.len > 0) {
+                    const offset = iter_mod.coordsToOffset(&self.edit_buffer.tb.rope, target_logical_row, target_col) orelse return;
+                    self.edit_buffer.cursors.items[0] = .{
+                        .row = target_logical_row,
+                        .col = target_col,
+                        .desired_col = target_col,
+                        .offset = offset,
+                    };
+                }
+            }
+        }
     }
 
     /// Set the scroll margin as a fraction of viewport height (0.0 to 0.5)
@@ -136,52 +189,38 @@ pub const EditorView = struct {
         const margin_lines = @max(1, @as(u32, @intFromFloat(@as(f32, @floatFromInt(viewport_height)) * self.scroll_margin)));
         const margin_cols = @max(1, @as(u32, @intFromFloat(@as(f32, @floatFromInt(viewport_width)) * self.scroll_margin)));
 
-        // Get total virtual line count to determine max vertical offset
         const total_lines = self.text_buffer_view.getVirtualLineCount();
         const max_offset_y = if (total_lines > viewport_height) total_lines - viewport_height else 0;
 
         var new_offset_y = vp.y;
         var new_offset_x = vp.x;
 
-        // Vertical scrolling
-        // Check if cursor is above viewport (with margin)
         if (cursor_line < vp.y + margin_lines) {
-            // Scroll up to show cursor at margin from top
             if (cursor_line >= margin_lines) {
                 new_offset_y = cursor_line - margin_lines;
             } else {
                 new_offset_y = 0;
             }
-        }
-        // Check if cursor is below viewport (with margin)
-        else if (cursor_line >= vp.y + viewport_height - margin_lines) {
-            // Scroll down to show cursor at margin from bottom
+        } else if (cursor_line >= vp.y + viewport_height - margin_lines) {
             const desired_offset = cursor_line + margin_lines - viewport_height + 1;
             new_offset_y = @min(desired_offset, max_offset_y);
         }
 
-        // Horizontal scrolling (only when wrapping is disabled)
         if (self.text_buffer_view.wrap_mode == .none) {
             const cursor = self.edit_buffer.getPrimaryCursor();
             const cursor_col = cursor.col;
 
-            // Check if cursor is left of viewport (with margin)
             if (cursor_col < vp.x + margin_cols) {
-                // Scroll left to show cursor at margin from left edge
                 if (cursor_col >= margin_cols) {
                     new_offset_x = cursor_col - margin_cols;
                 } else {
                     new_offset_x = 0;
                 }
-            }
-            // Check if cursor is right of viewport (with margin)
-            else if (cursor_col >= vp.x + viewport_width - margin_cols) {
-                // Scroll right to show cursor at margin from right edge
+            } else if (cursor_col >= vp.x + viewport_width - margin_cols) {
                 new_offset_x = cursor_col + margin_cols - viewport_width + 1;
             }
         }
 
-        // Update viewport if offset changed
         if (new_offset_y != vp.y or new_offset_x != vp.x) {
             self.text_buffer_view.setViewport(tbv.Viewport{
                 .x = new_offset_x,
@@ -193,11 +232,17 @@ pub const EditorView = struct {
     }
 
     /// Always ensures cursor visibility since cursor movements don't mark buffer dirty
+    /// Note: With eager viewport updates in onCursorChanged, this is mainly for rendering methods
     pub fn updateBeforeRender(self: *EditorView) void {
         self.updatePlaceholderVisibility();
-        const cursor = self.edit_buffer.getPrimaryCursor();
-        const vcursor = self.logicalToVisualCursor(cursor.row, cursor.col);
-        self.ensureCursorVisible(vcursor.visual_row);
+
+        const has_selection = self.text_buffer_view.selection != null;
+
+        if (!has_selection) {
+            const cursor = self.edit_buffer.getPrimaryCursor();
+            const vcursor = self.logicalToVisualCursor(cursor.row, cursor.col);
+            self.ensureCursorVisible(vcursor.visual_row);
+        }
     }
 
     /// Automatically ensures cursor is visible before rendering
@@ -251,16 +296,62 @@ pub const EditorView = struct {
         self.text_buffer_view.resetSelection();
     }
 
-    pub fn setLocalSelection(self: *EditorView, anchorX: i32, anchorY: i32, focusX: i32, focusY: i32, bgColor: ?tb.RGBA, fgColor: ?tb.RGBA) bool {
-        return self.text_buffer_view.setLocalSelection(anchorX, anchorY, focusX, focusY, bgColor, fgColor);
+    pub fn setLocalSelection(self: *EditorView, anchorX: i32, anchorY: i32, focusX: i32, focusY: i32, bgColor: ?tb.RGBA, fgColor: ?tb.RGBA, updateCursor: bool) bool {
+        const changed = self.text_buffer_view.setLocalSelection(anchorX, anchorY, focusX, focusY, bgColor, fgColor);
+
+        if (changed and updateCursor) {
+            self.updateCursorToSelectionFocus(focusX, focusY);
+        }
+
+        return changed;
     }
 
-    pub fn updateLocalSelection(self: *EditorView, anchorX: i32, anchorY: i32, focusX: i32, focusY: i32, bgColor: ?tb.RGBA, fgColor: ?tb.RGBA) bool {
-        return self.text_buffer_view.updateLocalSelection(anchorX, anchorY, focusX, focusY, bgColor, fgColor);
+    pub fn updateLocalSelection(self: *EditorView, anchorX: i32, anchorY: i32, focusX: i32, focusY: i32, bgColor: ?tb.RGBA, fgColor: ?tb.RGBA, updateCursor: bool) bool {
+        const changed = self.text_buffer_view.updateLocalSelection(anchorX, anchorY, focusX, focusY, bgColor, fgColor);
+
+        if (changed and updateCursor) {
+            self.updateCursorToSelectionFocus(focusX, focusY);
+        }
+
+        return changed;
     }
 
     pub fn resetLocalSelection(self: *EditorView) void {
         self.text_buffer_view.resetLocalSelection();
+    }
+
+    /// Updates the cursor position to match the selection focus position.
+    /// Does NOT trigger viewport scrolling - TypeScript layer handles that.
+    fn updateCursorToSelectionFocus(self: *EditorView, _: i32, _: i32) void {
+        const selection = self.text_buffer_view.getSelection() orelse return;
+
+        const focus_offset = if (self.text_buffer_view.selection_anchor_offset) |anchor| blk: {
+            if (anchor == selection.start) {
+                break :blk selection.end;
+            } else {
+                break :blk selection.start;
+            }
+        } else blk: {
+            break :blk selection.end;
+        };
+
+        const focus_coords = iter_mod.offsetToCoords(&self.edit_buffer.tb.rope, focus_offset) orelse return;
+
+        const line_count = iter_mod.getLineCount(&self.edit_buffer.tb.rope);
+        if (focus_coords.row >= line_count) return;
+
+        const line_width = iter_mod.lineWidthAt(&self.edit_buffer.tb.rope, focus_coords.row);
+        if (focus_coords.col > line_width) return;
+
+        // Update cursor to focus position
+        if (self.edit_buffer.cursors.items.len > 0) {
+            self.edit_buffer.cursors.items[0] = .{
+                .row = focus_coords.row,
+                .col = focus_coords.col,
+                .desired_col = focus_coords.col,
+                .offset = focus_offset,
+            };
+        }
     }
 
     pub fn getSelectedTextIntoBuffer(self: *EditorView, out_buffer: []u8) usize {
@@ -272,8 +363,35 @@ pub const EditorView = struct {
     }
 
     /// This is a convenience method that preserves existing offset
+    /// After resize, ensures cursor is visible and clamps viewport offset to valid range
     pub fn setViewportSize(self: *EditorView, width: u32, height: u32) void {
         self.text_buffer_view.setViewportSize(width, height);
+
+        const vp = self.text_buffer_view.getViewport() orelse return;
+        const total_lines = self.text_buffer_view.getVirtualLineCount();
+        const max_offset_y = if (total_lines > vp.height) total_lines - vp.height else 0;
+
+        var new_offset_x = vp.x;
+        if (self.text_buffer_view.wrap_mode == .none) {
+            const max_line_width = iter_mod.getMaxLineWidth(&self.edit_buffer.tb.rope);
+            const max_offset_x = if (max_line_width > vp.width) max_line_width - vp.width else 0;
+            if (vp.x > max_offset_x) {
+                new_offset_x = max_offset_x;
+            }
+        }
+
+        if (vp.y > max_offset_y or new_offset_x != vp.x) {
+            self.text_buffer_view.setViewport(tbv.Viewport{
+                .x = new_offset_x,
+                .y = @min(vp.y, max_offset_y),
+                .width = vp.width,
+                .height = vp.height,
+            });
+        }
+
+        const cursor = self.edit_buffer.getPrimaryCursor();
+        const vcursor = self.logicalToVisualCursor(cursor.row, cursor.col);
+        self.ensureCursorVisible(vcursor.visual_row);
     }
 
     pub fn setWrapMode(self: *EditorView, mode: tb.WrapMode) void {

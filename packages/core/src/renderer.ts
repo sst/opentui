@@ -1841,6 +1841,8 @@ export class CliRenderer extends EventEmitter implements RenderContext {
     if (this.currentSelection) {
       this.currentSelection.isSelecting = false
       this.emit("selection", this.currentSelection)
+      // Notify renderables that selection is finished (no longer dragging)
+      this.notifySelectablesOfSelectionChange()
     }
   }
 

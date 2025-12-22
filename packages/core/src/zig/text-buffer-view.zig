@@ -163,6 +163,9 @@ pub const UnifiedTextBufferView = struct {
         return self;
     }
 
+    /// IMPORTANT: Views must be destroyed BEFORE their associated TextBuffer.
+    /// Destroying the TextBuffer first will cause use-after-free when calling deinit.
+    /// The TypeScript wrappers enforce this order via the destroy() methods.
     pub fn deinit(self: *Self) void {
         self.original_text_buffer.unregisterView(self.view_id);
         self.virtual_lines_arena.deinit();
@@ -624,70 +627,6 @@ pub const UnifiedTextBufferView = struct {
         const result = lineStart + @as(u32, @intCast(localX));
 
         return result;
-    }
-
-    fn calculateSelectionFromCoords(self: *Self, anchorX: i32, anchorY: i32, focusX: i32, focusY: i32) ?struct { start: u32, end: u32 } {
-        self.updateVirtualLines();
-
-        const y_offset: i32 = if (self.viewport) |vp| @intCast(vp.y) else 0;
-        const x_offset: i32 = if (self.viewport) |vp|
-            (if (self.wrap_mode == .none) @intCast(vp.x) else 0)
-        else
-            0;
-
-        var selectionStart: ?u32 = null;
-        var selectionEnd: ?u32 = null;
-
-        const startY = @min(anchorY + y_offset, focusY + y_offset);
-        const endY = @max(anchorY + y_offset, focusY + y_offset);
-
-        var selStartX: i32 = undefined;
-        var selEndX: i32 = undefined;
-
-        if (anchorY < focusY or (anchorY == focusY and anchorX <= focusX)) {
-            selStartX = anchorX + x_offset;
-            selEndX = focusX + x_offset;
-        } else {
-            selStartX = focusX + x_offset;
-            selEndX = anchorX + x_offset + 1;
-        }
-
-        for (self.virtual_lines.items, 0..) |vline, i| {
-            const lineY = @as(i32, @intCast(i));
-
-            if (lineY < startY or lineY > endY) continue;
-
-            const lineStart = vline.char_offset;
-            const lineWidth = vline.width;
-            const lineEnd = lineStart + lineWidth;
-
-            if (lineY > startY and lineY < endY) {
-                if (selectionStart == null) selectionStart = lineStart;
-                selectionEnd = lineEnd;
-            } else if (lineY == startY and lineY == endY) {
-                const localStartX = @max(0, @min(selStartX, @as(i32, @intCast(lineWidth))));
-                const localEndX = @max(0, @min(selEndX, @as(i32, @intCast(lineWidth))));
-                if (localStartX != localEndX) {
-                    selectionStart = lineStart + @as(u32, @intCast(localStartX));
-                    selectionEnd = lineStart + @as(u32, @intCast(localEndX));
-                }
-            } else if (lineY == startY) {
-                const localStartX = @max(0, @min(selStartX, @as(i32, @intCast(lineWidth))));
-                if (localStartX < lineWidth) {
-                    selectionStart = lineStart + @as(u32, @intCast(localStartX));
-                    selectionEnd = lineEnd;
-                }
-            } else if (lineY == endY) {
-                const localEndX = @max(0, @min(selEndX, @as(i32, @intCast(lineWidth))));
-                if (selectionStart == null) selectionStart = lineStart;
-                selectionEnd = lineStart + @as(u32, @intCast(localEndX));
-            }
-        }
-
-        return if (selectionStart != null and selectionEnd != null and selectionStart.? < selectionEnd.?)
-            .{ .start = selectionStart.?, .end = selectionEnd.? }
-        else
-            null;
     }
 
     /// Pack selection info into u64 for efficient passing

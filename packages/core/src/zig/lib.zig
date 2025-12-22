@@ -922,17 +922,15 @@ export fn destroyEditorView(view: *editor_view.EditorView) void {
     view.deinit();
 }
 
-export fn editorViewSetViewport(view: *editor_view.EditorView, x: u32, y: u32, width: u32, height: u32) void {
-    view.setViewport(text_buffer_view.Viewport{ .x = x, .y = y, .width = width, .height = height });
+export fn editorViewSetViewport(view: *editor_view.EditorView, x: u32, y: u32, width: u32, height: u32, moveCursor: bool) void {
+    view.setViewport(text_buffer_view.Viewport{ .x = x, .y = y, .width = width, .height = height }, moveCursor);
 }
 
 export fn editorViewClearViewport(view: *editor_view.EditorView) void {
-    view.setViewport(null);
+    view.setViewport(null, false);
 }
 
 export fn editorViewGetViewport(view: *editor_view.EditorView, outX: *u32, outY: *u32, outWidth: *u32, outHeight: *u32) bool {
-    view.updateBeforeRender();
-
     if (view.getViewport()) |vp| {
         outX.* = vp.x;
         outY.* = vp.y;
@@ -945,10 +943,6 @@ export fn editorViewGetViewport(view: *editor_view.EditorView, outX: *u32, outY:
 
 export fn editorViewSetScrollMargin(view: *editor_view.EditorView, margin: f32) void {
     view.setScrollMargin(margin);
-}
-
-export fn editorViewEnsureCursorVisible(view: *editor_view.EditorView, cursor_line: u32) void {
-    view.ensureCursorVisible(cursor_line);
 }
 
 export fn editorViewGetVirtualLineCount(view: *editor_view.EditorView) u32 {
@@ -1023,10 +1017,10 @@ export fn editorViewGetSelection(view: *editor_view.EditorView) u64 {
     return view.text_buffer_view.packSelectionInfo();
 }
 
-export fn editorViewSetLocalSelection(view: *editor_view.EditorView, anchorX: i32, anchorY: i32, focusX: i32, focusY: i32, bgColor: ?[*]const f32, fgColor: ?[*]const f32) bool {
+export fn editorViewSetLocalSelection(view: *editor_view.EditorView, anchorX: i32, anchorY: i32, focusX: i32, focusY: i32, bgColor: ?[*]const f32, fgColor: ?[*]const f32, updateCursor: bool) bool {
     const bg = if (bgColor) |bgPtr| utils.f32PtrToRGBA(bgPtr) else null;
     const fg = if (fgColor) |fgPtr| utils.f32PtrToRGBA(fgPtr) else null;
-    return view.text_buffer_view.setLocalSelection(anchorX, anchorY, focusX, focusY, bg, fg);
+    return view.setLocalSelection(anchorX, anchorY, focusX, focusY, bg, fg, updateCursor);
 }
 
 export fn editorViewUpdateSelection(view: *editor_view.EditorView, end: u32, bgColor: ?[*]const f32, fgColor: ?[*]const f32) void {
@@ -1035,10 +1029,10 @@ export fn editorViewUpdateSelection(view: *editor_view.EditorView, end: u32, bgC
     view.updateSelection(end, bg, fg);
 }
 
-export fn editorViewUpdateLocalSelection(view: *editor_view.EditorView, anchorX: i32, anchorY: i32, focusX: i32, focusY: i32, bgColor: ?[*]const f32, fgColor: ?[*]const f32) bool {
+export fn editorViewUpdateLocalSelection(view: *editor_view.EditorView, anchorX: i32, anchorY: i32, focusX: i32, focusY: i32, bgColor: ?[*]const f32, fgColor: ?[*]const f32, updateCursor: bool) bool {
     const bg = if (bgColor) |bgPtr| utils.f32PtrToRGBA(bgPtr) else null;
     const fg = if (fgColor) |fgPtr| utils.f32PtrToRGBA(fgPtr) else null;
-    return view.updateLocalSelection(anchorX, anchorY, focusX, focusY, bg, fg);
+    return view.updateLocalSelection(anchorX, anchorY, focusX, focusY, bg, fg, updateCursor);
 }
 
 export fn editorViewResetLocalSelection(view: *editor_view.EditorView) void {
@@ -1363,6 +1357,30 @@ export fn encodeUnicode(
     const estimated_count = if (is_ascii_only) text.len else text.len * 2;
     var result = std.heap.page_allocator.alloc(EncodedChar, estimated_count) catch return false;
     var result_idx: usize = 0;
+    var success = false;
+    var pending_gid: ?u32 = null; // Track grapheme allocated but not yet stored in result
+
+    // Clean up result array and any allocated grapheme IDs on failure
+    defer {
+        if (!success) {
+            // Clean up pending grapheme that wasn't stored yet
+            if (pending_gid) |gid| {
+                // Try decref first (works if incref was called, refcount >= 1)
+                // If that fails (refcount was 0), use freeUnreferenced
+                pool.decref(gid) catch {
+                    pool.freeUnreferenced(gid) catch {};
+                };
+            }
+            // Decref any grapheme IDs we allocated before the failure
+            for (result[0..result_idx]) |encoded_char| {
+                if (gp.isGraphemeChar(encoded_char.char)) {
+                    const gid = gp.graphemeIdFromChar(encoded_char.char);
+                    pool.decref(gid) catch {};
+                }
+            }
+            std.heap.page_allocator.free(result);
+        }
+    }
 
     var byte_offset: u32 = 0;
     var col: u32 = 0;
@@ -1401,9 +1419,13 @@ export fn encodeUnicode(
         } else {
             // Multi-byte or special character - allocate in pool
             const gid = pool.alloc(grapheme_bytes) catch return false;
+            pending_gid = gid; // Track until stored in result
             encoded_char = gp.packGraphemeStart(gid & gp.GRAPHEME_ID_MASK, cell_width);
 
             // Incref since we're handing this off to the caller
+            // Note: incref can only fail if gid is invalid, which shouldn't happen
+            // for a freshly allocated gid. If it does fail, the slot leaks but
+            // this is an edge case that indicates a bug elsewhere.
             pool.incref(gid) catch return false;
         }
 
@@ -1417,6 +1439,7 @@ export fn encodeUnicode(
             .width = @intCast(cell_width),
             .char = encoded_char,
         };
+        pending_gid = null; // Successfully stored, no longer pending
         result_idx += 1;
         col += g_width;
     }
@@ -1426,6 +1449,7 @@ export fn encodeUnicode(
 
     outPtr.* = result.ptr;
     outLenPtr.* = result_idx;
+    success = true;
     return true;
 }
 
