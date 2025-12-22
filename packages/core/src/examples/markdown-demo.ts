@@ -228,8 +228,24 @@ let streamingMode = false
 let streamingTimer: Timer | null = null
 let streamPosition = 0
 
+// Streaming speed presets: [minDelay, maxDelay] in milliseconds
+const streamSpeeds = [
+  { name: "Slowest", min: 200, max: 500 }, // 0: Default
+  { name: "Slower", min: 150, max: 350 }, // 1
+  { name: "Slow", min: 100, max: 250 }, // 2
+  { name: "Medium", min: 70, max: 150 }, // 3
+  { name: "Fast", min: 40, max: 100 }, // 4
+  { name: "Faster", min: 20, max: 60 }, // 5
+  { name: "Fastest", min: 10, max: 50 }, // 6
+]
+let currentSpeedIndex = 0
+
 function getCurrentTheme() {
   return themes[themeKeys[currentThemeIndex]]
+}
+
+function getCurrentSpeed() {
+  return streamSpeeds[currentSpeedIndex]
 }
 
 function stopStreaming() {
@@ -255,7 +271,8 @@ function startStreaming() {
   // Update status
   if (statusText) {
     const theme = getCurrentTheme()
-    statusText.content = `Theme: ${theme.name} | Conceal: ${concealEnabled ? "ON" : "OFF"} | Streaming: IN PROGRESS | Press S to restart stream`
+    const speed = getCurrentSpeed()
+    statusText.content = `Theme: ${theme.name} | Conceal: ${concealEnabled ? "ON" : "OFF"} | Streaming: IN PROGRESS (${speed.name}) | Press S to restart`
   }
 
   function streamNextChunk() {
@@ -270,15 +287,18 @@ function startStreaming() {
     streamPosition = nextPosition
 
     if (streamPosition < markdownContent.length) {
-      // Random delay between 200-500ms
-      const delay = Math.floor(Math.random() * 300) + 200
+      // Random delay based on current speed setting
+      const speed = getCurrentSpeed()
+      const delayRange = speed.max - speed.min
+      const delay = Math.floor(Math.random() * delayRange) + speed.min
       streamingTimer = setTimeout(streamNextChunk, delay)
     } else {
       // Streaming complete
       streamingMode = false
       if (statusText) {
         const theme = getCurrentTheme()
-        statusText.content = `Theme: ${theme.name} | Conceal: ${concealEnabled ? "ON" : "OFF"} | Streaming: COMPLETE | Press S to restart stream`
+        const speed = getCurrentSpeed()
+        statusText.content = `Theme: ${theme.name} | Conceal: ${concealEnabled ? "ON" : "OFF"} | Streaming: COMPLETE (${speed.name}) | Press S to restart`
       }
     }
   }
@@ -326,9 +346,9 @@ export async function run(rendererInstance: CliRenderer): Promise<void> {
     left: "50%",
     top: "50%",
     width: 55,
-    height: 15,
+    height: 18,
     marginLeft: -27,
-    marginTop: -7,
+    marginTop: -9,
     border: true,
     borderStyle: "double",
     borderColor: "#4ECDC4",
@@ -347,7 +367,11 @@ export async function run(rendererInstance: CliRenderer): Promise<void> {
 
 View Controls:
   C : Toggle concealment (hide **, \`, etc.)
+
+Streaming:
   S : Start/restart streaming simulation
+  [ : Decrease speed (slower)
+  ] : Increase speed (faster)
 
 Other:
   ? : Toggle this help screen
@@ -400,8 +424,9 @@ Other:
   const updateStatusText = () => {
     if (statusText) {
       const theme = getCurrentTheme()
+      const speed = getCurrentSpeed()
       const streamStatus = streamingMode ? "STREAMING" : "NORMAL"
-      statusText.content = `Theme: ${theme.name} | Conceal: ${concealEnabled ? "ON" : "OFF"} | Mode: ${streamStatus} | Press T (theme), C (conceal), S (stream)`
+      statusText.content = `Theme: ${theme.name} | Conceal: ${concealEnabled ? "ON" : "OFF"} | Mode: ${streamStatus} | Speed: ${speed.name} | Press T/C/S/[/]`
     }
   }
 
@@ -421,6 +446,18 @@ Other:
     if (key.name === "s" && !key.ctrl && !key.meta) {
       // Start/restart streaming simulation
       startStreaming()
+    } else if (key.raw === "[" && !key.ctrl && !key.meta) {
+      // Decrease streaming speed (slower)
+      if (currentSpeedIndex > 0) {
+        currentSpeedIndex--
+        updateStatusText()
+      }
+    } else if (key.raw === "]" && !key.ctrl && !key.meta) {
+      // Increase streaming speed (faster)
+      if (currentSpeedIndex < streamSpeeds.length - 1) {
+        currentSpeedIndex++
+        updateStatusText()
+      }
     } else if (key.name === "t" && !key.ctrl && !key.meta) {
       // Cycle through themes
       currentThemeIndex = (currentThemeIndex + 1) % themeKeys.length
