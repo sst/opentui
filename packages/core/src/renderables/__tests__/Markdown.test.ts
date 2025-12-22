@@ -1155,14 +1155,22 @@ test("streaming mode keeps trailing tokens unstable", async () => {
   renderer.root.add(md)
   await renderOnce()
 
-  const frame1 = captureFrame().split("\n").map((line) => line.trimEnd()).join("\n").trimEnd()
+  const frame1 = captureFrame()
+    .split("\n")
+    .map((line) => line.trimEnd())
+    .join("\n")
+    .trimEnd()
   expect(frame1).toContain("Hello")
 
   // Extend the heading
   md.content = "# Hello World"
   await renderOnce()
 
-  const frame2 = captureFrame().split("\n").map((line) => line.trimEnd()).join("\n").trimEnd()
+  const frame2 = captureFrame()
+    .split("\n")
+    .map((line) => line.trimEnd())
+    .join("\n")
+    .trimEnd()
   expect(frame2).toContain("Hello World")
 })
 
@@ -1242,7 +1250,11 @@ test("streaming property can be toggled", async () => {
 
   await renderOnce()
 
-  const frame = captureFrame().split("\n").map((line) => line.trimEnd()).join("\n").trimEnd()
+  const frame = captureFrame()
+    .split("\n")
+    .map((line) => line.trimEnd())
+    .join("\n")
+    .trimEnd()
   expect(frame).toContain("Hello")
 })
 
@@ -1307,7 +1319,10 @@ test("table shows all rows when streaming is false", async () => {
   await renderOnce()
 
   // Non-streaming should show all rows including the last
-  const frame = captureFrame().split("\n").map((line) => line.trimEnd()).join("\n")
+  const frame = captureFrame()
+    .split("\n")
+    .map((line) => line.trimEnd())
+    .join("\n")
   expect(frame).toContain("1")
 })
 
