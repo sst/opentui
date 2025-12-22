@@ -9,12 +9,18 @@ import { TextRenderable } from "./Text"
 import { CodeRenderable } from "./Code"
 import { BoxRenderable } from "./Box"
 import type { TreeSitterClient } from "../lib/tree-sitter"
+import { parseMarkdownIncremental, type ParseState } from "./markdown-parser"
 
 export interface MarkdownOptions extends RenderableOptions<MarkdownRenderable> {
   content?: string
   syntaxStyle: SyntaxStyle
   conceal?: boolean
   treeSitterClient?: TreeSitterClient
+  /**
+   * Enable streaming mode for incremental content updates.
+   * When true, trailing tokens are kept unstable to handle incomplete content.
+   */
+  streaming?: boolean
   /**
    * Custom node renderer. Return a Renderable to override default rendering,
    * or undefined/null to use default rendering.
@@ -30,10 +36,13 @@ export interface RenderNodeContext {
   defaultRender: () => Renderable | null
 }
 
-interface BlockChild {
+export interface BlockState {
   token: MarkedToken
+  tokenRaw: string // Cache raw for comparison
   renderable: Renderable
 }
+
+export type { ParseState }
 
 export class MarkdownRenderable extends Renderable {
   private _content: string = ""
@@ -42,12 +51,15 @@ export class MarkdownRenderable extends Renderable {
   private _treeSitterClient?: TreeSitterClient
   private _renderNode?: MarkdownOptions["renderNode"]
 
-  private _blockChildren: BlockChild[] = []
-  private _childCache: Map<string, Renderable> = new Map()
+  // Incremental parsing state (exposed for testing)
+  _parseState: ParseState | null = null
+  private _streaming: boolean = false
+  _blockStates: BlockState[] = []
 
   protected _contentDefaultOptions = {
     content: "",
     conceal: true,
+    streaming: false,
   } satisfies Partial<MarkdownOptions>
 
   constructor(ctx: RenderContext, options: MarkdownOptions) {
@@ -61,8 +73,9 @@ export class MarkdownRenderable extends Renderable {
     this._content = options.content ?? this._contentDefaultOptions.content
     this._treeSitterClient = options.treeSitterClient
     this._renderNode = options.renderNode
+    this._streaming = options.streaming ?? this._contentDefaultOptions.streaming
 
-    this.rebuildChildren()
+    this.updateBlocks()
   }
 
   get content(): string {
@@ -72,7 +85,7 @@ export class MarkdownRenderable extends Renderable {
   set content(value: string) {
     if (this._content !== value) {
       this._content = value
-      this.rebuildChildren()
+      this.updateBlocks()
       this.requestRender()
     }
   }
@@ -84,8 +97,9 @@ export class MarkdownRenderable extends Renderable {
   set syntaxStyle(value: SyntaxStyle) {
     if (this._syntaxStyle !== value) {
       this._syntaxStyle = value
-      this._childCache.clear()
-      this.rebuildChildren()
+      // Force full rebuild by clearing parse state
+      this._parseState = null
+      this.updateBlocks()
       this.requestRender()
     }
   }
@@ -97,7 +111,23 @@ export class MarkdownRenderable extends Renderable {
   set conceal(value: boolean) {
     if (this._conceal !== value) {
       this._conceal = value
-      this.rebuildChildren()
+      // Force full rebuild by clearing parse state
+      this._parseState = null
+      this.updateBlocks()
+      this.requestRender()
+    }
+  }
+
+  get streaming(): boolean {
+    return this._streaming
+  }
+
+  set streaming(value: boolean) {
+    if (this._streaming !== value) {
+      this._streaming = value
+      // Reset parse state when streaming mode changes
+      this._parseState = null
+      this.updateBlocks()
       this.requestRender()
     }
   }
@@ -498,81 +528,166 @@ export class MarkdownRenderable extends Renderable {
     return this.createTextRenderable(chunks, id, marginBottom)
   }
 
-  private getCacheKey(token: MarkedToken): string {
-    return `${token.type}:${this._conceal}:${token.raw}`
-  }
+  /**
+   * Update block renderable in-place when token content changes but type is the same.
+   */
+  private updateBlockRenderable(state: BlockState, token: MarkedToken, index: number, hasNextToken: boolean): void {
+    const marginBottom = hasNextToken ? 1 : 0
 
-  private rebuildChildren(): void {
-    for (const child of this._blockChildren) {
-      this.remove(child.renderable.id)
-    }
-    this._blockChildren = []
-
-    if (!this._content) return
-
-    let tokens: MarkedToken[]
-    try {
-      tokens = Lexer.lex(this._content, { gfm: true }) as MarkedToken[]
-    } catch {
-      const text = this.createTextRenderable([this.createDefaultChunk(this._content)], `${this.id}-fallback`)
-      this.add(text)
-      this._blockChildren.push({
-        token: { type: "text", raw: this._content, text: this._content } as MarkedToken,
-        renderable: text,
-      })
+    if (token.type === "code") {
+      // CodeRenderable has its own dirty tracking - just update content
+      const codeRenderable = state.renderable as CodeRenderable
+      const codeToken = token as Tokens.Code
+      codeRenderable.content = codeToken.text
+      if (codeToken.lang) {
+        codeRenderable.filetype = codeToken.lang
+      }
+      codeRenderable.marginBottom = marginBottom
       return
     }
 
-    const newCache = new Map<string, Renderable>()
+    if (token.type === "table") {
+      // Tables are complex structures - recreate for now
+      this.remove(state.renderable.id)
+      const newRenderable = this.createTableRenderable(token as Tokens.Table, `${this.id}-block-${index}`, marginBottom)
+      this.add(newRenderable)
+      state.renderable = newRenderable
+      return
+    }
 
-    let lastNonSpaceIndex = -1
-    for (let i = tokens.length - 1; i >= 0; i--) {
+    // Text-based renderables (paragraph, heading, list, blockquote, hr)
+    const textRenderable = state.renderable as TextRenderable
+    const chunks = this.renderTokenToChunks(token)
+    textRenderable.content = new StyledText(chunks)
+    textRenderable.marginBottom = marginBottom
+  }
+
+  /**
+   * Incrementally update blocks based on content changes.
+   * Uses incremental parsing to reuse unchanged tokens.
+   */
+  private updateBlocks(): void {
+    if (!this._content) {
+      // Clear all blocks
+      for (const state of this._blockStates) {
+        this.remove(state.renderable.id)
+      }
+      this._blockStates = []
+      this._parseState = null
+      return
+    }
+
+    // Incremental parse - reuses unchanged tokens (same object references)
+    const trailingUnstable = this._streaming ? 2 : 0
+    this._parseState = parseMarkdownIncremental(this._content, this._parseState, trailingUnstable)
+
+    const tokens = this._parseState.tokens
+
+    // Handle parse failure (empty tokens with content)
+    if (tokens.length === 0 && this._content.length > 0) {
+      // Clear existing blocks and show fallback
+      for (const state of this._blockStates) {
+        this.remove(state.renderable.id)
+      }
+      const text = this.createTextRenderable([this.createDefaultChunk(this._content)], `${this.id}-fallback`)
+      this.add(text)
+      this._blockStates = [
+        {
+          token: { type: "text", raw: this._content, text: this._content } as MarkedToken,
+          tokenRaw: this._content,
+          renderable: text,
+        },
+      ]
+      return
+    }
+
+    // Filter out space tokens and find last non-space for margin calculation
+    const blockTokens: Array<{ token: MarkedToken; originalIndex: number }> = []
+    for (let i = 0; i < tokens.length; i++) {
       if (tokens[i].type !== "space") {
-        lastNonSpaceIndex = i
-        break
+        blockTokens.push({ token: tokens[i], originalIndex: i })
       }
     }
 
-    for (let i = 0; i < tokens.length; i++) {
-      const token = tokens[i]
-      const hasNextToken = i < lastNonSpaceIndex
+    const lastBlockIndex = blockTokens.length - 1
 
-      const cacheKey = this.getCacheKey(token)
+    // Sync _blockStates with blockTokens
+    let blockIndex = 0
+    for (let i = 0; i < blockTokens.length; i++) {
+      const { token } = blockTokens[i]
+      const hasNextToken = i < lastBlockIndex
+      const existing = this._blockStates[blockIndex]
 
-      let renderable = this._childCache.get(cacheKey)
+      // Case 1: Same token object (from incremental parse stable portion)
+      // This means content is definitely unchanged - skip entirely
+      if (existing && existing.token === token) {
+        blockIndex++
+        continue
+      }
+
+      // Case 2: Same raw content - token was re-parsed but content identical
+      if (existing && existing.tokenRaw === token.raw && existing.token.type === token.type) {
+        // Update token reference but content unchanged
+        existing.token = token
+        blockIndex++
+        continue
+      }
+
+      // Case 3: Same type, different content - update existing renderable
+      if (existing && existing.token.type === token.type) {
+        this.updateBlockRenderable(existing, token, blockIndex, hasNextToken)
+        existing.token = token
+        existing.tokenRaw = token.raw
+        blockIndex++
+        continue
+      }
+
+      // Case 4: Different type or new block - create new renderable
+      if (existing) {
+        this.remove(existing.renderable.id)
+      }
+
+      let renderable: Renderable | undefined
+
+      // Check for custom renderer
+      if (this._renderNode) {
+        const context: RenderNodeContext = {
+          syntaxStyle: this._syntaxStyle,
+          conceal: this._conceal,
+          treeSitterClient: this._treeSitterClient,
+          defaultRender: () => this.createDefaultRenderable(token, blockIndex, hasNextToken),
+        }
+        const custom = this._renderNode(token, context)
+        if (custom) {
+          renderable = custom
+        }
+      }
 
       if (!renderable) {
-        if (this._renderNode) {
-          const context: RenderNodeContext = {
-            syntaxStyle: this._syntaxStyle,
-            conceal: this._conceal,
-            treeSitterClient: this._treeSitterClient,
-            defaultRender: () => this.createDefaultRenderable(token, i, hasNextToken),
-          }
-          const custom = this._renderNode(token, context)
-          if (custom) {
-            renderable = custom
-          }
-        }
-
-        if (!renderable) {
-          renderable = this.createDefaultRenderable(token, i, hasNextToken) ?? undefined
-        }
+        renderable = this.createDefaultRenderable(token, blockIndex, hasNextToken) ?? undefined
       }
 
       if (renderable) {
         this.add(renderable)
-        this._blockChildren.push({ token, renderable })
-        newCache.set(cacheKey, renderable)
+        this._blockStates[blockIndex] = {
+          token,
+          tokenRaw: token.raw,
+          renderable,
+        }
       }
+      blockIndex++
     }
 
-    this._childCache = newCache
+    // Remove extra blocks that are no longer needed
+    while (this._blockStates.length > blockIndex) {
+      const removed = this._blockStates.pop()!
+      this.remove(removed.renderable.id)
+    }
   }
 
   public clearCache(): void {
-    this._childCache.clear()
-    this.rebuildChildren()
+    this._parseState = null
+    this.updateBlocks()
     this.requestRender()
   }
 }

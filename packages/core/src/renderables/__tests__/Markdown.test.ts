@@ -1119,3 +1119,149 @@ test("table at end with trailing blank lines", async () => {
     └───└───┘"
   `)
 })
+
+// Incremental parsing tests
+test("incremental update reuses unchanged blocks when appending", async () => {
+  const md = new MarkdownRenderable(renderer, {
+    id: "markdown",
+    content: "# Hello\n\nParagraph 1",
+    syntaxStyle,
+    streaming: true,
+  })
+
+  renderer.root.add(md)
+  await renderOnce()
+
+  // Get reference to first block
+  const firstBlockBefore = md._blockStates[0]?.renderable
+
+  // Append content
+  md.content = "# Hello\n\nParagraph 1\n\nParagraph 2"
+  await renderOnce()
+
+  // First block should be reused (same object reference)
+  const firstBlockAfter = md._blockStates[0]?.renderable
+  expect(firstBlockAfter).toBe(firstBlockBefore)
+})
+
+test("streaming mode keeps trailing tokens unstable", async () => {
+  const md = new MarkdownRenderable(renderer, {
+    id: "markdown",
+    content: "# Hello",
+    syntaxStyle,
+    streaming: true,
+  })
+
+  renderer.root.add(md)
+  await renderOnce()
+
+  const frame1 = captureFrame().split("\n").map((line) => line.trimEnd()).join("\n").trimEnd()
+  expect(frame1).toContain("Hello")
+
+  // Extend the heading
+  md.content = "# Hello World"
+  await renderOnce()
+
+  const frame2 = captureFrame().split("\n").map((line) => line.trimEnd()).join("\n").trimEnd()
+  expect(frame2).toContain("Hello World")
+})
+
+test("non-streaming mode parses all tokens as stable", async () => {
+  const md = new MarkdownRenderable(renderer, {
+    id: "markdown",
+    content: "# Hello\n\nPara 1\n\nPara 2",
+    syntaxStyle,
+    streaming: false,
+  })
+
+  renderer.root.add(md)
+  await renderOnce()
+
+  // Get parse state
+  const parseState = md._parseState
+  expect(parseState).not.toBeNull()
+  expect(parseState!.tokens.length).toBeGreaterThan(0)
+})
+
+test("content update with same text does not rebuild", async () => {
+  const md = new MarkdownRenderable(renderer, {
+    id: "markdown",
+    content: "# Hello",
+    syntaxStyle,
+  })
+
+  renderer.root.add(md)
+  await renderOnce()
+
+  const blockBefore = md._blockStates[0]?.renderable
+
+  // Set same content
+  md.content = "# Hello"
+  await renderOnce()
+
+  const blockAfter = md._blockStates[0]?.renderable
+  expect(blockAfter).toBe(blockBefore)
+})
+
+test("block type change creates new renderable", async () => {
+  const md = new MarkdownRenderable(renderer, {
+    id: "markdown",
+    content: "# Hello",
+    syntaxStyle,
+  })
+
+  renderer.root.add(md)
+  await renderOnce()
+
+  const blockBefore = md._blockStates[0]?.renderable
+
+  // Change from heading to paragraph
+  md.content = "Hello"
+  await renderOnce()
+
+  const blockAfter = md._blockStates[0]?.renderable
+  // Should be different renderable since type changed
+  expect(blockAfter).not.toBe(blockBefore)
+})
+
+test("streaming property can be toggled", async () => {
+  const md = new MarkdownRenderable(renderer, {
+    id: "markdown",
+    content: "# Hello",
+    syntaxStyle,
+    streaming: false,
+  })
+
+  renderer.root.add(md)
+  await renderOnce()
+
+  expect(md.streaming).toBe(false)
+
+  md.streaming = true
+  expect(md.streaming).toBe(true)
+
+  await renderOnce()
+
+  const frame = captureFrame().split("\n").map((line) => line.trimEnd()).join("\n").trimEnd()
+  expect(frame).toContain("Hello")
+})
+
+test("clearCache forces full rebuild", async () => {
+  const md = new MarkdownRenderable(renderer, {
+    id: "markdown",
+    content: "# Hello\n\nWorld",
+    syntaxStyle,
+  })
+
+  renderer.root.add(md)
+  await renderOnce()
+
+  const parseStateBefore = md._parseState
+
+  md.clearCache()
+  await renderOnce()
+
+  const parseStateAfter = md._parseState
+  // Parse state should be different (was cleared and rebuilt)
+  expect(parseStateAfter).not.toBe(parseStateBefore)
+})
