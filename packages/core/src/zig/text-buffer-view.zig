@@ -163,6 +163,9 @@ pub const UnifiedTextBufferView = struct {
         return self;
     }
 
+    /// IMPORTANT: Views must be destroyed BEFORE their associated TextBuffer.
+    /// Destroying the TextBuffer first will cause use-after-free when calling deinit.
+    /// The TypeScript wrappers enforce this order via the destroy() methods.
     pub fn deinit(self: *Self) void {
         self.original_text_buffer.unregisterView(self.view_id);
         self.virtual_lines_arena.deinit();
