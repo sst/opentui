@@ -44,14 +44,14 @@ pub const CursorStyle = enum {
 pub const Options = struct {
     // Kitty keyboard protocol flags (progressive enhancement):
     // See: https://sw.kovidgoyal.net/kitty/keyboard-protocol/#progressive-enhancement
-    // Bit 0 (0b1):     Disambiguate escape codes
+    // Bit 0 (0b1):     Disambiguate escape codes (fixes ESC timing, alt+key ambiguity, ctrl+c as event)
     // Bit 1 (0b10):    Report event types (press/repeat/release)
     // Bit 2 (0b100):   Report alternate keys (e.g., numpad vs regular, shifted, base layout)
     // Bit 3 (0b1000):  Report all keys as escape codes
     // Bit 4 (0b10000): Report text associated with key events
-    // Default 0b00100 (4) = alternate keys only
-    // Use 0b00110 (6) to enable event types for key release detection
-    kitty_keyboard_flags: u8 = 0b00100,
+    // Default 0b00101 (5) = disambiguate + alternate keys
+    // Use 0b00111 (7) to also enable event types for key release detection
+    kitty_keyboard_flags: u8 = 0b00101,
 };
 
 pub const TerminalInfo = struct {

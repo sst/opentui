@@ -14,35 +14,40 @@ test("buildKittyKeyboardFlags - null/undefined returns 0", () => {
   expect(buildKittyKeyboardFlags(undefined)).toBe(0)
 })
 
-test("buildKittyKeyboardFlags - empty object returns ALTERNATE_KEYS (0b100)", () => {
-  // Default behavior: alternate keys only (enables kitty mode with base feature)
-  // This allows terminals to report shifted/base-layout keys for robust shortcut matching
-  expect(buildKittyKeyboardFlags({})).toBe(KITTY_FLAG_ALTERNATE_KEYS)
-  expect(buildKittyKeyboardFlags({})).toBe(0b100)
-  expect(buildKittyKeyboardFlags({})).toBe(4)
+test("buildKittyKeyboardFlags - empty object returns DISAMBIGUATE | ALTERNATE_KEYS (0b101)", () => {
+  // Default behavior: disambiguate + alternate keys
+  // - Disambiguate fixes ESC timing issues, alt+key ambiguity, makes ctrl+c a key event
+  // - Alternate keys enables shifted/base-layout keys for robust shortcut matching
+  const expected = KITTY_FLAG_DISAMBIGUATE | KITTY_FLAG_ALTERNATE_KEYS
+  expect(buildKittyKeyboardFlags({})).toBe(expected)
+  expect(buildKittyKeyboardFlags({})).toBe(0b101)
+  expect(buildKittyKeyboardFlags({})).toBe(5)
 })
 
-test("buildKittyKeyboardFlags - events: false returns ALTERNATE_KEYS (0b100)", () => {
-  // Explicit no events: alternate keys only
-  expect(buildKittyKeyboardFlags({ events: false })).toBe(KITTY_FLAG_ALTERNATE_KEYS)
-  expect(buildKittyKeyboardFlags({ events: false })).toBe(0b100)
-  expect(buildKittyKeyboardFlags({ events: false })).toBe(4)
+test("buildKittyKeyboardFlags - events: false returns DISAMBIGUATE | ALTERNATE_KEYS (0b101)", () => {
+  // Explicit no events: disambiguate + alternate keys
+  const expected = KITTY_FLAG_DISAMBIGUATE | KITTY_FLAG_ALTERNATE_KEYS
+  expect(buildKittyKeyboardFlags({ events: false })).toBe(expected)
+  expect(buildKittyKeyboardFlags({ events: false })).toBe(0b101)
+  expect(buildKittyKeyboardFlags({ events: false })).toBe(5)
 })
 
-test("buildKittyKeyboardFlags - events: true returns ALTERNATE_KEYS | EVENT_TYPES (0b110)", () => {
-  // With event types: alternate keys + event types (press/repeat/release)
-  const expected = KITTY_FLAG_ALTERNATE_KEYS | KITTY_FLAG_EVENT_TYPES
+test("buildKittyKeyboardFlags - events: true returns DISAMBIGUATE | ALTERNATE_KEYS | EVENT_TYPES (0b111)", () => {
+  // With event types: disambiguate + alternate keys + event types (press/repeat/release)
+  const expected = KITTY_FLAG_DISAMBIGUATE | KITTY_FLAG_ALTERNATE_KEYS | KITTY_FLAG_EVENT_TYPES
   expect(buildKittyKeyboardFlags({ events: true })).toBe(expected)
-  expect(buildKittyKeyboardFlags({ events: true })).toBe(0b110)
-  expect(buildKittyKeyboardFlags({ events: true })).toBe(6)
+  expect(buildKittyKeyboardFlags({ events: true })).toBe(0b111)
+  expect(buildKittyKeyboardFlags({ events: true })).toBe(7)
 })
 
 test("buildKittyKeyboardFlags - flag values match kitty spec constants", () => {
-  // Just alternate keys (default)
-  expect(buildKittyKeyboardFlags({})).toBe(KITTY_FLAG_ALTERNATE_KEYS)
+  // Default: disambiguate + alternate keys
+  expect(buildKittyKeyboardFlags({})).toBe(KITTY_FLAG_DISAMBIGUATE | KITTY_FLAG_ALTERNATE_KEYS)
 
-  // Alternate keys + event types
-  expect(buildKittyKeyboardFlags({ events: true })).toBe(KITTY_FLAG_ALTERNATE_KEYS | KITTY_FLAG_EVENT_TYPES)
+  // With events: disambiguate + alternate keys + event types
+  expect(buildKittyKeyboardFlags({ events: true })).toBe(
+    KITTY_FLAG_DISAMBIGUATE | KITTY_FLAG_ALTERNATE_KEYS | KITTY_FLAG_EVENT_TYPES,
+  )
 })
 
 test("kitty flag constants match spec bit positions", () => {
@@ -79,30 +84,29 @@ test("flags can be combined with bitwise OR", () => {
 test("escape sequences match kitty spec format", () => {
   // According to the spec, the push escape code is: CSI > flags u
   // Where CSI = 0x1b 0x5b = \x1b[
-  // So the format should be: \x1b[>4u for ALTERNATE_KEYS
-  // and \x1b[>6u for ALTERNATE_KEYS | EVENT_TYPES
+  // So the format should be: \x1b[>5u for DISAMBIGUATE | ALTERNATE_KEYS
+  // and \x1b[>7u for DISAMBIGUATE | ALTERNATE_KEYS | EVENT_TYPES
 
-  const alternateKeysFlags = buildKittyKeyboardFlags({})
-  expect(alternateKeysFlags).toBe(4)
-  // The escape sequence would be: \x1b[>4u
+  const defaultFlags = buildKittyKeyboardFlags({})
+  expect(defaultFlags).toBe(5)
+  // The escape sequence would be: \x1b[>5u
 
   const withEventsFlags = buildKittyKeyboardFlags({ events: true })
-  expect(withEventsFlags).toBe(6)
-  // The escape sequence would be: \x1b[>6u
+  expect(withEventsFlags).toBe(7)
+  // The escape sequence would be: \x1b[>7u
 })
 
-test("default config enables alternate keys for robust shortcut matching", () => {
-  // Per the kitty spec, alternate keys enhancement allows reporting:
-  // - The shifted key (e.g., 'A' when shift+'a' is pressed)
-  // - The base layout key (e.g., 'c' for ctrl+С on Cyrillic keyboard)
-  // This is essential for cross-keyboard-layout shortcut matching
+test("default config enables disambiguate and alternate keys", () => {
+  // Default enables two key enhancements:
+  // 1. Disambiguate (0b1): Fixes ESC timing, alt+key ambiguity, ctrl+c becomes key event
+  // 2. Alternate keys (0b100): Reports shifted/base-layout keys for cross-keyboard shortcuts
   const flags = buildKittyKeyboardFlags({})
 
-  // Should have alternate keys bit set
+  // Should have disambiguate and alternate keys bits set
+  expect(flags & KITTY_FLAG_DISAMBIGUATE).toBeTruthy()
   expect(flags & KITTY_FLAG_ALTERNATE_KEYS).toBeTruthy()
 
   // Should NOT have other enhancements by default
-  expect(flags & KITTY_FLAG_DISAMBIGUATE).toBeFalsy()
   expect(flags & KITTY_FLAG_EVENT_TYPES).toBeFalsy()
   expect(flags & KITTY_FLAG_ALL_KEYS_AS_ESCAPES).toBeFalsy()
   expect(flags & KITTY_FLAG_REPORT_TEXT).toBeFalsy()
@@ -112,12 +116,29 @@ test("events config adds event type reporting", () => {
   // With events enabled, we should be able to detect press/repeat/release
   const flags = buildKittyKeyboardFlags({ events: true })
 
-  // Should have both alternate keys and event types
+  // Should have disambiguate, alternate keys, and event types
+  expect(flags & KITTY_FLAG_DISAMBIGUATE).toBeTruthy()
   expect(flags & KITTY_FLAG_ALTERNATE_KEYS).toBeTruthy()
   expect(flags & KITTY_FLAG_EVENT_TYPES).toBeTruthy()
 
   // Should NOT have other enhancements
-  expect(flags & KITTY_FLAG_DISAMBIGUATE).toBeFalsy()
   expect(flags & KITTY_FLAG_ALL_KEYS_AS_ESCAPES).toBeFalsy()
   expect(flags & KITTY_FLAG_REPORT_TEXT).toBeFalsy()
+})
+
+test("disambiguate flag solves key ambiguity issues", () => {
+  // The disambiguate flag (0b1) fixes several critical problems:
+  // 1. ESC key: Without it, sends raw 0x1b (ambiguous with escape sequence start)
+  //    With it: sends CSI 27;1u (unambiguous)
+  // 2. Alt+[: Without it, sends 0x1b 0x5b (same as CSI!)
+  //    With it: sends CSI 91;3u (unambiguous)
+  // 3. Ctrl+C: Without it, sends 0x03 (generates SIGINT, kills process)
+  //    With it: sends CSI 99;5u (delivered as key event to app)
+
+  const flags = buildKittyKeyboardFlags({})
+  expect(flags & KITTY_FLAG_DISAMBIGUATE).toBeTruthy()
+
+  // Per the spec: "This has the nice side effect of making it much easier
+  // to integrate into the application event loop."
+  // No more timing-based hacks to distinguish ESC from escape sequences!
 })

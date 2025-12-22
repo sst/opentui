@@ -120,7 +120,10 @@ export function buildKittyKeyboardFlags(config: { events?: boolean } | null | un
     return 0
   }
 
-  let flags = KITTY_FLAG_ALTERNATE_KEYS
+  // Default: disambiguate + alternate keys
+  // - Disambiguate (0b1): Fixes ESC timing issues, alt+key ambiguity, makes ctrl+c a key event
+  // - Alternate keys (0b100): Reports shifted/base-layout keys for cross-keyboard shortcuts
+  let flags = KITTY_FLAG_DISAMBIGUATE | KITTY_FLAG_ALTERNATE_KEYS
 
   if (config.events) {
     flags |= KITTY_FLAG_EVENT_TYPES
@@ -762,7 +765,7 @@ export class CliRenderer extends EventEmitter implements RenderContext {
   }
 
   public set useKittyKeyboard(use: boolean) {
-    const flags = use ? KITTY_FLAG_ALTERNATE_KEYS : 0
+    const flags = use ? KITTY_FLAG_DISAMBIGUATE | KITTY_FLAG_ALTERNATE_KEYS : 0
     this.lib.setKittyKeyboardFlags(this.rendererPtr, flags)
   }
 
