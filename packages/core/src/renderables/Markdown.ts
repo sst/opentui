@@ -425,6 +425,7 @@ export class MarkdownRenderable extends Renderable {
     const borderColor = this.getStyle("punctuation.special")?.fg ?? "#888888"
 
     for (let col = 0; col < colCount; col++) {
+      const isFirstCol = col === 0
       const isLastCol = col === colCount - 1
 
       const columnBox = new BoxRenderable(this.ctx, {
@@ -432,6 +433,22 @@ export class MarkdownRenderable extends Renderable {
         flexDirection: "column",
         border: isLastCol ? true : ["top", "bottom", "left"],
         borderColor,
+        // Use T-joins for non-first columns to connect with previous column
+        customBorderChars: isFirstCol
+          ? undefined
+          : {
+              topLeft: "┬",
+              topRight: "┐",
+              bottomLeft: "┴",
+              bottomRight: "┘",
+              horizontal: "─",
+              vertical: "│",
+              topT: "┬",
+              bottomT: "┴",
+              leftT: "├",
+              rightT: "┤",
+              cross: "┼",
+            },
       })
 
       const headerCell = table.header[col]
