@@ -833,17 +833,25 @@ test("custom renderNode can override heading rendering", async () => {
   const { TextRenderable } = await import("../Text")
   const { StyledText } = await import("../../lib/styled-text")
 
+  // Helper to extract text from marked tokens
+  const extractText = (node: any): string => {
+    if (node.type === "text") return node.text
+    if (node.tokens) return node.tokens.map(extractText).join("")
+    return ""
+  }
+
   const md = new MarkdownRenderable(renderer, {
     id: "custom-heading",
     content: `# Custom Heading
 
 Regular paragraph.`,
     syntaxStyle,
-    renderNode: (token, ctx) => {
-      if (token.type === "heading") {
+    renderNode: (node, ctx) => {
+      if (node.type === "heading") {
+        const text = extractText(node)
         return new TextRenderable(renderer, {
           id: "custom",
-          content: new StyledText([{ __isChunk: true, text: `[CUSTOM] ${(token as any).text}`, attributes: 0 }]),
+          content: new StyledText([{ __isChunk: true, text: `[CUSTOM] ${text}`, attributes: 0 }]),
           width: "100%",
         })
       }
@@ -874,8 +882,8 @@ test("custom renderNode can override code block rendering", async () => {
 const x = 1;
 \`\`\``,
     syntaxStyle,
-    renderNode: (token, ctx) => {
-      if (token.type === "code") {
+    renderNode: (node, ctx) => {
+      if (node.type === "code") {
         const box = new BoxRenderable(renderer, {
           id: "code-box",
           border: true,
@@ -884,7 +892,7 @@ const x = 1;
         box.add(
           new TextRenderable(renderer, {
             id: "code-text",
-            content: `CODE: ${(token as any).text}`,
+            content: `CODE: ${(node as any).text}`,
           }),
         )
         return box
