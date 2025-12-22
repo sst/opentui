@@ -411,7 +411,10 @@ export class MarkdownRenderable extends Renderable {
   private createTableRenderable(table: Tokens.Table, id: string, marginBottom: number = 0): Renderable {
     const colCount = table.header.length
 
-    if (colCount === 0 || table.rows.length === 0) {
+    // During streaming, skip the last row (might be incomplete)
+    const rowsToRender = this._streaming && table.rows.length > 0 ? table.rows.slice(0, -1) : table.rows
+
+    if (colCount === 0 || rowsToRender.length === 0) {
       return this.createTextRenderable([this.createDefaultChunk(table.raw)], id, marginBottom)
     }
 
@@ -468,14 +471,14 @@ export class MarkdownRenderable extends Renderable {
       )
       columnBox.add(headerBox)
 
-      for (let row = 0; row < table.rows.length; row++) {
-        const cell = table.rows[row][col]
+      for (let row = 0; row < rowsToRender.length; row++) {
+        const cell = rowsToRender[row][col]
         const cellChunks: TextChunk[] = []
         if (cell) {
           this.renderInlineContent(cell.tokens, cellChunks)
         }
 
-        const isLastRow = row === table.rows.length - 1
+        const isLastRow = row === rowsToRender.length - 1
         const cellText = new TextRenderable(this.ctx, {
           id: `${id}-col-${col}-row-${row}`,
           content: new StyledText(cellChunks.length > 0 ? cellChunks : [this.createDefaultChunk(" ")]),
@@ -547,9 +550,23 @@ export class MarkdownRenderable extends Renderable {
     }
 
     if (token.type === "table") {
-      // Tables are complex structures - recreate for now
+      const prevTable = state.token as Tokens.Table
+      const newTable = token as Tokens.Table
+
+      // During streaming, we show N-1 rows (skip potentially incomplete last row)
+      // Only rebuild when number of complete rows changes
+      if (this._streaming) {
+        const prevCompleteRows = Math.max(0, prevTable.rows.length - 1)
+        const newCompleteRows = Math.max(0, newTable.rows.length - 1)
+
+        if (prevCompleteRows === newCompleteRows && prevTable.header.length === newTable.header.length) {
+          return // Skip - same number of complete rows
+        }
+      }
+
+      // Rebuild table (always when not streaming, or when complete row count changed during streaming)
       this.remove(state.renderable.id)
-      const newRenderable = this.createTableRenderable(token as Tokens.Table, `${this.id}-block-${index}`, marginBottom)
+      const newRenderable = this.createTableRenderable(newTable, `${this.id}-block-${index}`, marginBottom)
       this.add(newRenderable)
       state.renderable = newRenderable
       return

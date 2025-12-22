@@ -1265,3 +1265,71 @@ test("clearCache forces full rebuild", async () => {
   // Parse state should be different (was cleared and rebuilt)
   expect(parseStateAfter).not.toBe(parseStateBefore)
 })
+
+test("table only rebuilds when complete row count changes during streaming", async () => {
+  const md = new MarkdownRenderable(renderer, {
+    id: "markdown",
+    content: "| A |\n|---|\n| 1 |",
+    syntaxStyle,
+    streaming: true,
+  })
+
+  renderer.root.add(md)
+  await renderOnce()
+
+  // During streaming with 1 row, we show 0 complete rows (last row is incomplete)
+  const tableBefore = md._blockStates[0]?.renderable
+
+  // Change cell content but same row count - should NOT rebuild
+  md.content = "| B |\n|---|\n| 2 |"
+  await renderOnce()
+
+  const tableAfterSameRows = md._blockStates[0]?.renderable
+  expect(tableAfterSameRows).toBe(tableBefore)
+
+  // Add second row - now we have 1 complete row, should rebuild
+  md.content = "| B |\n|---|\n| 2 |\n| 3 |"
+  await renderOnce()
+
+  const tableAfterNewRow = md._blockStates[0]?.renderable
+  expect(tableAfterNewRow).not.toBe(tableBefore)
+})
+
+test("table shows all rows when streaming is false", async () => {
+  const md = new MarkdownRenderable(renderer, {
+    id: "markdown",
+    content: "| A |\n|---|\n| 1 |",
+    syntaxStyle,
+    streaming: false,
+  })
+
+  renderer.root.add(md)
+  await renderOnce()
+
+  // Non-streaming should show all rows including the last
+  const frame = captureFrame().split("\n").map((line) => line.trimEnd()).join("\n")
+  expect(frame).toContain("1")
+})
+
+test("table updates content when not streaming", async () => {
+  const md = new MarkdownRenderable(renderer, {
+    id: "markdown",
+    content: "| A |\n|---|\n| 1 |",
+    syntaxStyle,
+    streaming: false,
+  })
+
+  renderer.root.add(md)
+  await renderOnce()
+
+  const frame1 = captureFrame()
+  expect(frame1).toContain("1")
+
+  // Change cell content - should update immediately when not streaming
+  md.content = "| A |\n|---|\n| 2 |"
+  await renderOnce()
+
+  const frame2 = captureFrame()
+  expect(frame2).toContain("2")
+  expect(frame2).not.toContain("1")
+})
