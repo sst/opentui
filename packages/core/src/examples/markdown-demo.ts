@@ -262,11 +262,15 @@ function startStreaming() {
   streamingMode = true
   streamPosition = 0
 
-  if (!markdownDisplay) return
+  if (!markdownDisplay || !markdownScrollBox) return
 
   // Reset to empty and enable streaming mode
   markdownDisplay.streaming = true
   markdownDisplay.content = ""
+
+  // Enable sticky scroll to bottom for streaming
+  markdownScrollBox.stickyScroll = true
+  markdownScrollBox.stickyStart = "bottom"
 
   // Update status
   if (statusText) {
