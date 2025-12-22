@@ -550,7 +550,17 @@ export class MarkdownRenderable extends Renderable {
         const prevCompleteRows = Math.max(0, prevTable.rows.length - 1)
         const newCompleteRows = Math.max(0, newTable.rows.length - 1)
 
+        // Check if both previous and new are in raw fallback mode (no complete rows to render)
+        const prevIsRawFallback = prevTable.header.length === 0 || prevCompleteRows === 0
+        const newIsRawFallback = newTable.header.length === 0 || newCompleteRows === 0
+
         if (prevCompleteRows === newCompleteRows && prevTable.header.length === newTable.header.length) {
+          // If both are in raw fallback mode and the raw content changed, update the TextRenderable
+          if (prevIsRawFallback && newIsRawFallback && prevTable.raw !== newTable.raw) {
+            const textRenderable = state.renderable as TextRenderable
+            textRenderable.content = new StyledText([this.createDefaultChunk(newTable.raw)])
+            textRenderable.marginBottom = marginBottom
+          }
           return
         }
       }

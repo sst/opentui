@@ -1348,3 +1348,206 @@ test("table updates content when not streaming", async () => {
   expect(frame2).toContain("2")
   expect(frame2).not.toContain("1")
 })
+
+test("streaming table with incomplete first row falls back to raw text and updates", async () => {
+  const md = new MarkdownRenderable(renderer, {
+    id: "markdown",
+    content: "| A |\n|---|\n|",
+    syntaxStyle,
+    streaming: true,
+  })
+
+  renderer.root.add(md)
+  await renderOnce()
+
+  // With streaming=true and 1 data row, rowsToRender drops last row -> length 0
+  // Should show raw fallback text
+  const frame1 = captureFrame()
+    .split("\n")
+    .map((line) => line.trimEnd())
+    .join("\n")
+
+  // Raw fallback should show the incomplete table markdown
+  expect(frame1).toContain("| A |")
+  expect(frame1).toContain("|---|")
+  // Should NOT have box drawing characters yet
+  expect(frame1).not.toMatch(/[┌│└]/)
+
+  // Now append more characters to the incomplete row
+  md.content = "| A |\n|---|\n| 1"
+  await renderOnce()
+
+  const frame2 = captureFrame()
+    .split("\n")
+    .map((line) => line.trimEnd())
+    .join("\n")
+
+  // Should update to show the new content in raw fallback
+  expect(frame2).toContain("| 1")
+  // Still no box drawing
+  expect(frame2).not.toMatch(/[┌│└]/)
+
+  // Complete the row by adding closing pipe - still only 1 row, so still 0 complete rows
+  md.content = "| A |\n|---|\n| 1 |"
+  await renderOnce()
+
+  const frame3 = captureFrame()
+    .split("\n")
+    .map((line) => line.trimEnd())
+    .join("\n")
+
+  // Still showing raw fallback with completed first row
+  expect(frame3).toContain("| 1 |")
+  // Still no box drawing
+  expect(frame3).not.toMatch(/[┌│└]/)
+
+  // Add second row - now we have 1 complete row (first row), should render as table
+  md.content = "| A |\n|---|\n| 1 |\n| 2 |"
+  await renderOnce()
+
+  const frame4 = captureFrame()
+    .split("\n")
+    .map((line) => line.trimEnd())
+    .join("\n")
+
+  // Should now render as a proper table with box drawing and show the first complete row
+  expect(frame4).toMatch(/[┌│└]/) // Box drawing characters
+  expect(frame4).toContain("1")
+  // Second row should not be shown (it's the incomplete trailing row)
+  expect(frame4).not.toContain("2")
+
+  // Complete the second row - now we have 2 rows, so 1 complete row still (drops last)
+  md.content = "| A |\n|---|\n| 1 |\n| 2 |"
+  await renderOnce()
+
+  const frame5 = captureFrame()
+    .split("\n")
+    .map((line) => line.trimEnd())
+    .join("\n")
+
+  // Should still show proper table with only first row
+  expect(frame5).toMatch(/[┌│└]/)
+  expect(frame5).toContain("1")
+  expect(frame5).not.toContain("2")
+
+  // Add third row - now we have 2 complete rows to show
+  md.content = "| A |\n|---|\n| 1 |\n| 2 |\n| 3 |"
+  await renderOnce()
+
+  const frame6 = captureFrame()
+    .split("\n")
+    .map((line) => line.trimEnd())
+    .join("\n")
+
+  // Should show proper table with first two rows (third is incomplete)
+  expect(frame6).toMatch(/[┌│└]/)
+  expect(frame6).toContain("1")
+  expect(frame6).toContain("2")
+  expect(frame6).not.toContain("3")
+})
+
+test("streaming table transitions cleanly from raw fallback to proper table", async () => {
+  const md = new MarkdownRenderable(renderer, {
+    id: "markdown",
+    content: "| Header |",
+    syntaxStyle,
+    streaming: true,
+  })
+
+  renderer.root.add(md)
+  await renderOnce()
+
+  // Just header, no delimiter yet - raw fallback
+  let frame = captureFrame()
+    .split("\n")
+    .map((line) => line.trimEnd())
+    .join("\n")
+  expect(frame).toContain("| Header |")
+  expect(frame).not.toMatch(/[┌│└]/)
+
+  // Add delimiter
+  md.content = "| Header |\n|---|"
+  await renderOnce()
+
+  frame = captureFrame()
+    .split("\n")
+    .map((line) => line.trimEnd())
+    .join("\n")
+  // Still raw fallback (no data rows)
+  expect(frame).toContain("|---|")
+  expect(frame).not.toMatch(/[┌│└]/)
+
+  // Start first data row
+  md.content = "| Header |\n|---|\n| D"
+  await renderOnce()
+
+  frame = captureFrame()
+    .split("\n")
+    .map((line) => line.trimEnd())
+    .join("\n")
+  // Still raw fallback (incomplete first row)
+  expect(frame).toContain("| D")
+  expect(frame).not.toMatch(/[┌│└]/)
+
+  // Complete first row - still only 1 row total, so 0 complete (drops last)
+  md.content = "| Header |\n|---|\n| Data1 |"
+  await renderOnce()
+
+  frame = captureFrame()
+    .split("\n")
+    .map((line) => line.trimEnd())
+    .join("\n")
+  // Still raw fallback
+  expect(frame).toContain("| Data1 |")
+  expect(frame).not.toMatch(/[┌│└]/)
+
+  // Add start of second row
+  md.content = "| Header |\n|---|\n| Data1 |\n| D"
+  await renderOnce()
+
+  frame = captureFrame()
+    .split("\n")
+    .map((line) => line.trimEnd())
+    .join("\n")
+  // NOW should render as proper table showing first complete row
+  expect(frame).toMatch(/[┌│└]/)
+  expect(frame).toContain("Data1")
+  // Should NOT show the raw markdown pipes anymore
+  expect(frame).not.toContain("|---|")
+  // Should not show incomplete second row
+  expect(frame).not.toContain("| D")
+})
+
+test("streaming table can transition back to raw fallback when rows are removed", async () => {
+  const md = new MarkdownRenderable(renderer, {
+    id: "markdown",
+    content: "| A |\n|---|\n| 1 |\n| 2 |",
+    syntaxStyle,
+    streaming: true,
+  })
+
+  renderer.root.add(md)
+  await renderOnce()
+
+  // With 2 rows, we have 1 complete row - should render as table
+  let frame = captureFrame()
+    .split("\n")
+    .map((line) => line.trimEnd())
+    .join("\n")
+  expect(frame).toMatch(/[┌│└]/)
+  expect(frame).toContain("1")
+
+  // Remove second row - back to 1 row, so 0 complete rows
+  md.content = "| A |\n|---|\n| 1 |"
+  await renderOnce()
+
+  frame = captureFrame()
+    .split("\n")
+    .map((line) => line.trimEnd())
+    .join("\n")
+  // Should fall back to raw text
+  expect(frame).not.toMatch(/[┌│└]/)
+  expect(frame).toContain("| A |")
+  expect(frame).toContain("|---|")
+  expect(frame).toContain("| 1 |")
+})
