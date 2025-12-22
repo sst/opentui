@@ -87,13 +87,7 @@ export interface CliRendererConfig {
   useAlternateScreen?: boolean
   useConsole?: boolean
   experimental_splitHeight?: number
-  useKittyKeyboard?: {
-    disambiguate?: boolean // Disambiguate escape codes (fixes ESC timing, alt+key ambiguity, ctrl+c as event). Default: true
-    alternateKeys?: boolean // Report alternate keys (numpad, shifted, base layout) for cross-keyboard shortcuts. Default: true
-    events?: boolean // Report event types (press/repeat/release). Default: false
-    allKeysAsEscapes?: boolean // Report all keys as escape codes. Default: false
-    reportText?: boolean // Report text associated with key events. Default: false
-  } | null
+  useKittyKeyboard?: KittyKeyboardOptions | null
   backgroundColor?: ColorInput
   openConsoleOnError?: boolean
   prependInputHandlers?: ((sequence: string) => boolean)[]
@@ -114,23 +108,29 @@ const KITTY_FLAG_ALL_KEYS_AS_ESCAPES = 0b1000 // Report all keys as escape codes
 const KITTY_FLAG_REPORT_TEXT = 0b10000 // Report text associated with key events
 
 /**
+ * Kitty Keyboard Protocol configuration options
+ * See: https://sw.kovidgoyal.net/kitty/keyboard-protocol/#progressive-enhancement
+ */
+export interface KittyKeyboardOptions {
+  /** Disambiguate escape codes (fixes ESC timing, alt+key ambiguity, ctrl+c as event). Default: true */
+  disambiguate?: boolean
+  /** Report alternate keys (numpad, shifted, base layout) for cross-keyboard shortcuts. Default: true */
+  alternateKeys?: boolean
+  /** Report event types (press/repeat/release). Default: false */
+  events?: boolean
+  /** Report all keys as escape codes. Default: false */
+  allKeysAsEscapes?: boolean
+  /** Report text associated with key events. Default: false */
+  reportText?: boolean
+}
+
+/**
  * Build kitty keyboard protocol flags based on configuration
  * @param config Kitty keyboard configuration object (null/undefined = disabled)
  * @returns The combined flags value (0 = disabled, >0 = enabled)
  * @internal Exported for testing
  */
-export function buildKittyKeyboardFlags(
-  config:
-    | {
-        disambiguate?: boolean
-        alternateKeys?: boolean
-        events?: boolean
-        allKeysAsEscapes?: boolean
-        reportText?: boolean
-      }
-    | null
-    | undefined,
-): number {
+export function buildKittyKeyboardFlags(config: KittyKeyboardOptions | null | undefined): number {
   if (!config) {
     return 0
   }
