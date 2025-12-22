@@ -224,9 +224,66 @@ let helpModal: BoxRenderable | null = null
 let currentThemeIndex = 0
 let concealEnabled = true
 let showingHelp = false
+let streamingMode = false
+let streamingTimer: Timer | null = null
+let streamPosition = 0
 
 function getCurrentTheme() {
   return themes[themeKeys[currentThemeIndex]]
+}
+
+function stopStreaming() {
+  if (streamingTimer) {
+    clearTimeout(streamingTimer)
+    streamingTimer = null
+  }
+  streamingMode = false
+  streamPosition = 0
+}
+
+function startStreaming() {
+  stopStreaming()
+  streamingMode = true
+  streamPosition = 0
+
+  if (!markdownDisplay) return
+
+  // Reset to empty and enable streaming mode
+  markdownDisplay.streaming = true
+  markdownDisplay.content = ""
+
+  // Update status
+  if (statusText) {
+    const theme = getCurrentTheme()
+    statusText.content = `Theme: ${theme.name} | Conceal: ${concealEnabled ? "ON" : "OFF"} | Streaming: IN PROGRESS | Press S to restart stream`
+  }
+
+  function streamNextChunk() {
+    if (!streamingMode || !markdownDisplay) return
+
+    // Random chunk size between 1 and 50 characters
+    const chunkSize = Math.floor(Math.random() * 50) + 1
+    const nextPosition = Math.min(streamPosition + chunkSize, markdownContent.length)
+    const chunk = markdownContent.slice(0, nextPosition)
+
+    markdownDisplay.content = chunk
+    streamPosition = nextPosition
+
+    if (streamPosition < markdownContent.length) {
+      // Random delay between 200-500ms
+      const delay = Math.floor(Math.random() * 300) + 200
+      streamingTimer = setTimeout(streamNextChunk, delay)
+    } else {
+      // Streaming complete
+      streamingMode = false
+      if (statusText) {
+        const theme = getCurrentTheme()
+        statusText.content = `Theme: ${theme.name} | Conceal: ${concealEnabled ? "ON" : "OFF"} | Streaming: COMPLETE | Press S to restart stream`
+      }
+    }
+  }
+
+  streamNextChunk()
 }
 
 export async function run(rendererInstance: CliRenderer): Promise<void> {
@@ -269,7 +326,7 @@ export async function run(rendererInstance: CliRenderer): Promise<void> {
     left: "50%",
     top: "50%",
     width: 55,
-    height: 14,
+    height: 15,
     marginLeft: -27,
     marginTop: -7,
     border: true,
@@ -290,6 +347,7 @@ export async function run(rendererInstance: CliRenderer): Promise<void> {
 
 View Controls:
   C : Toggle concealment (hide **, \`, etc.)
+  S : Start/restart streaming simulation
 
 Other:
   ? : Toggle this help screen
@@ -319,14 +377,11 @@ Other:
   // Create syntax style from current theme
   syntaxStyle = SyntaxStyle.fromStyles(theme.styles)
 
-  // Create markdown display using MarkdownRenderable wrapped in LineNumberRenderable
+  // Create markdown display using MarkdownRenderable
   markdownDisplay = new MarkdownRenderable(renderer, {
     id: "markdown-display",
     content: markdownContent,
     syntaxStyle,
-    selectable: true,
-    selectionBg: "#264F78",
-    selectionFg: "#FFFFFF",
     conceal: concealEnabled,
     width: "100%",
   })
@@ -345,7 +400,8 @@ Other:
   const updateStatusText = () => {
     if (statusText) {
       const theme = getCurrentTheme()
-      statusText.content = `Theme: ${theme.name} | Conceal: ${concealEnabled ? "ON" : "OFF"} | Press T to change theme, C to toggle conceal`
+      const streamStatus = streamingMode ? "STREAMING" : "NORMAL"
+      statusText.content = `Theme: ${theme.name} | Conceal: ${concealEnabled ? "ON" : "OFF"} | Mode: ${streamStatus} | Press T (theme), C (conceal), S (stream)`
     }
   }
 
@@ -362,7 +418,10 @@ Other:
     // Don't process other keys when help is showing
     if (showingHelp) return
 
-    if (key.name === "t" && !key.ctrl && !key.meta) {
+    if (key.name === "s" && !key.ctrl && !key.meta) {
+      // Start/restart streaming simulation
+      startStreaming()
+    } else if (key.name === "t" && !key.ctrl && !key.meta) {
       // Cycle through themes
       currentThemeIndex = (currentThemeIndex + 1) % themeKeys.length
       const theme = getCurrentTheme()
@@ -388,9 +447,14 @@ Other:
 
       updateStatusText()
     } else if (key.name === "c" && !key.ctrl && !key.meta) {
+      // Stop streaming when toggling conceal
+      stopStreaming()
+
       concealEnabled = !concealEnabled
       if (markdownDisplay) {
         markdownDisplay.conceal = concealEnabled
+        markdownDisplay.streaming = false
+        markdownDisplay.content = markdownContent
       }
       updateStatusText()
     }
@@ -400,6 +464,8 @@ Other:
 }
 
 export function destroy(rendererInstance: CliRenderer): void {
+  stopStreaming()
+
   if (keyboardHandler) {
     rendererInstance.keyInput.off("keypress", keyboardHandler)
     keyboardHandler = null
