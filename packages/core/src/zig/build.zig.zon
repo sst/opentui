@@ -9,8 +9,14 @@
             .hash = "uucode-0.1.0-ZZjBPvoGQACkgWDKIrtI8CQcSXIufU3Kvty-pIfh02i2",
         },
         .ghostty = .{
-            .url = "git+https://github.com/ghostty-org/ghostty.git?ref=HEAD#d9529947a40e16f8e7efd8a1f680d01ff99f213b",
-            .hash = "ghostty-1.3.0-dev-5UdBCw48PQQf5CPUefWgaNNjp--V0UlOtQ9TRz0c0ItK",
+            .url = "git+https://github.com/ghostty-org/ghostty.git",
+            .hash = "ghostty-1.3.0-dev-5UdBC_dRRAS-mGtQa1JGeQPgcubWBeell0hGr_47fW75",
+        },
+        // macOS SDK for cross-compilation from Linux (same SDK used by Ghostty)
+        .macos_sdk = .{
+            .url = "git+https://github.com/mitchellh/zig-build-macos-sdk.git",
+            .hash = "N-V-__8AAG0-dAOcye47JFbtpStxz5rnfcxwf6Qsn51omWtb",
+            .lazy = true,
         },
     },
     .paths = .{
