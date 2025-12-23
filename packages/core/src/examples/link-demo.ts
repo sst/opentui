@@ -19,7 +19,7 @@ export function run(rendererInstance: CliRenderer): void {
   // Example with hyperlinks
   const linkText = t`${underline(blue(link("https://github.com/sst/opentui")("OpenTUI on GitHub")))}
 
-Visit our ${link("https://opentui.org")("website")} for more info.
+Visit our ${link("https://opentui.com")("website")} for more info.
 
 Check out the ${underline(link("https://github.com/sst/opentui/blob/main/README.md")("README"))}`
 
