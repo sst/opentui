@@ -30,8 +30,25 @@ const SUPPORTED_TARGETS = [_]SupportedTarget{
 const LIB_NAME = "opentui";
 const ROOT_SOURCE_FILE = "lib.zig";
 
+/// Configure macOS SDK paths for cross-compilation from non-macOS hosts
+fn configureMacOSSDK(b: *std.Build, module: *std.Build.Module) void {
+    // Only needed when cross-compiling to macOS from a non-macOS host
+    if (b.lazyDependency("macos_sdk", .{})) |sdk| {
+        // Add SDK paths from mitchellh/zig-build-macos-sdk
+        module.addSystemFrameworkPath(sdk.path("Frameworks"));
+        module.addSystemIncludePath(sdk.path("include"));
+        module.addLibraryPath(sdk.path("lib"));
+    }
+}
+
 /// Apply dependencies to a module
 fn applyDependencies(b: *std.Build, module: *std.Build.Module, optimize: std.builtin.OptimizeMode, target: std.Build.ResolvedTarget) void {
+    // Configure macOS SDK for cross-compilation before loading dependencies
+    // This ensures SDK paths are available when ghostty's packages compile
+    if (target.result.os.tag.isDarwin() and builtin.os.tag != .macos) {
+        configureMacOSSDK(b, module);
+    }
+
     // Add uucode for grapheme break detection
     if (b.lazyDependency("uucode", .{
         .target = target,
@@ -150,14 +167,6 @@ pub fn build(b: *std.Build) void {
 
 fn buildAllTargets(b: *std.Build, optimize: std.builtin.OptimizeMode) void {
     for (SUPPORTED_TARGETS) |supported_target| {
-        // Skip macOS targets when building on non-macOS hosts
-        // Cross-compilation to macOS from Linux is not supported by ghostty's apple-sdk
-        const target_query = std.Target.Query.parse(.{ .arch_os_abi = supported_target.zig_target }) catch continue;
-        if (target_query.os_tag == .macos and builtin.os.tag != .macos) {
-            std.debug.print("Skipping {s}: cross-compilation to macOS requires macOS host\n", .{supported_target.description});
-            continue;
-        }
-
         buildTarget(b, supported_target.zig_target, supported_target.output_name, supported_target.description, optimize) catch |err| {
             std.debug.print("Failed to build target {s}: {}\n", .{ supported_target.description, err });
             continue;
