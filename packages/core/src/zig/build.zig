@@ -86,7 +86,8 @@ pub fn build(b: *std.Build) void {
     checkZigVersion();
 
     const optimize = b.standardOptimizeOption(.{});
-    const target_option = b.option([]const u8, "target", "Build for specific target (e.g., 'x86_64-linux-gnu'). If not specified, builds for all supported targets.");
+    const target_option = b.option([]const u8, "target", "Build for specific target (e.g., 'x86_64-linux-gnu').");
+    const build_all = b.option(bool, "all", "Build for all supported targets") orelse false;
 
     if (target_option) |target_str| {
         // Build single target
@@ -94,9 +95,12 @@ pub fn build(b: *std.Build) void {
             std.debug.print("Error building target '{s}': {}\n", .{ target_str, err });
             std.process.exit(1);
         };
-    } else {
+    } else if (build_all) {
         // Build all supported targets
         buildAllTargets(b, optimize);
+    } else {
+        // Build for native target only (default)
+        buildNativeTarget(b, optimize);
     }
 
     // Test step (native only)
@@ -155,6 +159,26 @@ fn buildAllTargets(b: *std.Build, optimize: std.builtin.OptimizeMode) void {
             continue;
         };
     }
+}
+
+fn buildNativeTarget(b: *std.Build, optimize: std.builtin.OptimizeMode) void {
+    // Find the matching supported target for the native platform
+    const native_arch = @tagName(builtin.cpu.arch);
+    const native_os = @tagName(builtin.os.tag);
+
+    for (SUPPORTED_TARGETS) |supported_target| {
+        // Check if this target matches the native platform
+        if (std.mem.indexOf(u8, supported_target.zig_target, native_arch) != null and
+            std.mem.indexOf(u8, supported_target.zig_target, native_os) != null)
+        {
+            buildTarget(b, supported_target.zig_target, supported_target.output_name, supported_target.description, optimize) catch |err| {
+                std.debug.print("Failed to build native target {s}: {}\n", .{ supported_target.description, err });
+            };
+            return;
+        }
+    }
+
+    std.debug.print("No matching supported target for native platform ({s}-{s})\n", .{ native_arch, native_os });
 }
 
 fn buildSingleTarget(b: *std.Build, target_str: []const u8, optimize: std.builtin.OptimizeMode) !void {
