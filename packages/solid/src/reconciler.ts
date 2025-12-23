@@ -221,7 +221,6 @@ export const {
         return
       }
 
-      // For other properties on TextNodes, just return (don't set them)
       return
     }
 

@@ -32,7 +32,6 @@ describe("Link Rendering Tests", () => {
     await testSetup.renderOnce()
     const frame = testSetup.captureCharFrame()
 
-    // Check that the text renders correctly
     expect(frame).toContain("Visit opentui.com for more info")
   })
 
@@ -56,7 +55,6 @@ describe("Link Rendering Tests", () => {
     await testSetup.renderOnce()
     const frame = testSetup.captureCharFrame()
 
-    // Check that the text renders
     expect(frame).toContain("opentui.com")
   })
 
@@ -77,7 +75,6 @@ describe("Link Rendering Tests", () => {
     await testSetup.renderOnce()
     const frame = testSetup.captureCharFrame()
 
-    // Check that both links render
     expect(frame).toContain("GitHub")
     expect(frame).toContain("our website")
   })

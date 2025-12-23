@@ -126,7 +126,6 @@ export const bg =
   (input: StylableInput): TextChunk =>
     applyStyle(input, { bg: color })
 
-// Link function
 export const link =
   (url: string) =>
   (input: StylableInput): TextChunk => {
