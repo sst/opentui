@@ -3,6 +3,7 @@ import type { EventEmitter } from "events"
 import type { Selection } from "./lib/selection"
 import type { Renderable } from "./Renderable"
 import type { InternalKeyHandler, KeyHandler } from "./lib/KeyHandler"
+import type { GraphicsSupport } from "./graphics/protocol"
 
 export const TextAttributes = {
   NONE: 0,
@@ -65,6 +66,8 @@ export interface RenderContext extends EventEmitter {
   clearSelection: () => void
   startSelection: (renderable: Renderable, x: number, y: number) => void
   updateSelection: (currentRenderable: Renderable | undefined, x: number, y: number) => void
+  graphicsSupport?: GraphicsSupport
+  getCellMetrics?: () => { pxPerCellX: number; pxPerCellY: number } | null
 }
 
 export type Timeout = ReturnType<typeof setTimeout> | undefined

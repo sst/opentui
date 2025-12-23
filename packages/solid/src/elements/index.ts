@@ -4,6 +4,7 @@ import {
   CodeRenderable,
   DiffRenderable,
   InputRenderable,
+  ImageRenderable,
   LineNumberRenderable,
   ScrollBoxRenderable,
   SelectRenderable,
@@ -88,6 +89,7 @@ export const baseComponents = {
   code: CodeRenderable,
   diff: DiffRenderable,
   line_number: LineNumberRenderable,
+  image: ImageRenderable,
 
   span: SpanRenderable,
   strong: BoldSpanRenderable,

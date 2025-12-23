@@ -14,6 +14,13 @@ import { resolveRenderLib, type RenderLib } from "./zig"
 import { TerminalConsole, type ConsoleOptions, capture } from "./console"
 import { MouseParser, type MouseEventType, type RawMouseEvent, type ScrollInfo } from "./lib/parse.mouse"
 import { Selection } from "./lib/selection"
+import {
+  detectGraphicsSupport,
+  encodeItermImage,
+  encodeKittyDelete,
+  encodeKittyImage,
+  type GraphicsSupport,
+} from "./graphics/protocol"
 import { EventEmitter } from "events"
 import { destroySingleton, hasSingleton, singleton } from "./lib/singleton"
 import { getObjectsInViewport } from "./lib/objects-in-viewport"
@@ -32,6 +39,7 @@ import {
   isPixelResolutionResponse,
   parsePixelResolution,
 } from "./lib/terminal-capability-detection"
+import { ImageRenderable, type ImageFit } from "./renderables/Image"
 
 registerEnvVar({
   name: "OTUI_DUMP_CAPTURES",
@@ -97,6 +105,10 @@ export interface CliRendererConfig {
 export type PixelResolution = {
   width: number
   height: number
+}
+export type CellMetrics = {
+  pxPerCellX: number
+  pxPerCellY: number
 }
 
 // Kitty keyboard protocol flags
@@ -419,6 +431,25 @@ export class CliRenderer extends EventEmitter implements RenderContext {
 
   private idleResolvers: (() => void)[] = []
 
+  private _graphicsSupport: GraphicsSupport = detectGraphicsSupport()
+  private kittyImageId = 1
+  private imageCache: Map<
+    number,
+    {
+      srcKey: string
+      x: number
+      y: number
+      width: number
+      height: number
+      fit: ImageFit
+      pixelWidth?: number
+      pixelHeight?: number
+      data: Buffer
+      kittyId?: number
+    }
+  > = new Map()
+  private cellMetrics: CellMetrics | null = null
+
   private _debugInputs: Array<{ timestamp: string; sequence: string }> = []
   private _debugModeEnabled: boolean = env.OTUI_DEBUG
 
@@ -466,6 +497,10 @@ export class CliRenderer extends EventEmitter implements RenderContext {
 
   public get controlState(): RendererControlState {
     return this._controlState
+  }
+
+  public get graphicsSupport(): GraphicsSupport {
+    return this._graphicsSupport
   }
 
   constructor(
@@ -576,7 +611,7 @@ export class CliRenderer extends EventEmitter implements RenderContext {
 
     // Prevents output from being written to the terminal, useful for debugging
     if (env.OTUI_NO_NATIVE_RENDER) {
-      this.renderNative = () => {
+      this.renderNative = async () => {
         if (this._splitHeight > 0) {
           this.flushStdoutCache(this._splitHeight)
         }
@@ -971,7 +1006,9 @@ export class CliRenderer extends EventEmitter implements RenderContext {
     if (isCapabilityResponse(sequence)) {
       this.lib.processCapabilityResponse(this.rendererPtr, sequence)
       this._capabilities = this.lib.getTerminalCapabilities(this.rendererPtr)
+      this.cellMetrics = null
       this.emit("capabilities", this._capabilities)
+      this.logDebug(`capabilities updated: ${JSON.stringify(this._capabilities)}`)
       return true
     }
     return false
@@ -995,14 +1032,30 @@ export class CliRenderer extends EventEmitter implements RenderContext {
     }
 
     this.addInputHandler((sequence: string) => {
-      if (isPixelResolutionResponse(sequence) && this.waitingForPixelResolution) {
+      if (isPixelResolutionResponse(sequence)) {
         const resolution = parsePixelResolution(sequence)
         if (resolution) {
           this._resolution = resolution
+          this._capabilities = { ...(this._capabilities ?? {}), pixelResolution: resolution }
+          this.cellMetrics = null
           this.waitingForPixelResolution = false
+          this.requestRender()
+          this.emit("pixelResolution", resolution)
+          this.logDebug(`pixelResolution response: ${JSON.stringify(resolution)}`)
+          return true
         }
-        return true
+        this.logDebug(`pixelResolution parse failed for sequence: ${JSON.stringify(sequence)}`)
+        return false
       }
+
+      if (env.OTUI_DEBUG) {
+        const numeric = sequence
+          .split("")
+          .map((c) => c.charCodeAt(0))
+          .join(",")
+        this.logDebug(`unhandled sequence: text=${JSON.stringify(sequence)} codes=[${numeric}]`)
+      }
+
       return false
     })
     this.addInputHandler(this.capabilityHandler)
@@ -1272,6 +1325,7 @@ export class CliRenderer extends EventEmitter implements RenderContext {
 
     this._terminalWidth = width
     this._terminalHeight = height
+    this.cellMetrics = null
     this.queryPixelResolution()
 
     this.capturedRenderable = undefined
@@ -1692,7 +1746,7 @@ export class CliRenderer extends EventEmitter implements RenderContext {
     this._console.renderToBuffer(this.nextRenderBuffer)
 
     if (!this._isDestroyed) {
-      this.renderNative()
+      await this.renderNative()
 
       const overallFrameTime = performance.now() - overallStart
 
@@ -1726,7 +1780,7 @@ export class CliRenderer extends EventEmitter implements RenderContext {
     this.loop()
   }
 
-  private renderNative(): void {
+  private async renderNative(): Promise<void> {
     if (this.renderingNative) {
       console.error("Rendering called concurrently")
       throw new Error("Rendering called concurrently")
@@ -1741,8 +1795,157 @@ export class CliRenderer extends EventEmitter implements RenderContext {
 
     this.renderingNative = true
     this.lib.render(this.rendererPtr, force)
+    await this.flushImages()
     // this.dumpStdoutBuffer(Date.now())
     this.renderingNative = false
+  }
+
+  public getCellMetrics(): CellMetrics | null {
+    if (this.cellMetrics) return this.cellMetrics
+    const cols = this.width
+    const rows = this.height
+    const pixelRes = (this._capabilities?.pixelResolution as PixelResolution | undefined) ?? this._resolution
+    if (!pixelRes || cols <= 0 || rows <= 0) return null
+    const pxPerCellX = pixelRes.width / cols
+    const pxPerCellY = pixelRes.height / rows
+    this.cellMetrics = { pxPerCellX, pxPerCellY }
+    return this.cellMetrics
+  }
+
+  private async flushImages(): Promise<void> {
+    if (this._graphicsSupport.protocol === "none") {
+      return
+    }
+    const images = this.collectImageRenderables(this.root)
+    const metrics = this.getCellMetrics()
+    const seen: Set<number> = new Set()
+    for (const { renderable, x, y } of images) {
+      if (!renderable.src || !renderable.visible) continue
+      if ((renderable.pixelWidth !== undefined || renderable.pixelHeight !== undefined) && !metrics) {
+        continue
+      }
+      const width = Math.max(renderable.width, 1)
+      const height = Math.max(renderable.height, 1)
+      const srcKey = typeof renderable.src === "string" ? renderable.src : renderable.src.toString("base64")
+      const previous = this.imageCache.get(renderable.num)
+      let data: Buffer | null = previous?.data ?? null
+      const pixelWidth =
+        renderable.pixelWidth ?? (metrics ? Math.max(1, Math.round(width * metrics.pxPerCellX)) : Math.max(1, width))
+      const pixelHeight =
+        renderable.pixelHeight ?? (metrics ? Math.max(1, Math.round(height * metrics.pxPerCellY)) : Math.max(1, height))
+      const changedImage =
+        !data ||
+        previous?.srcKey !== srcKey ||
+        previous?.width !== width ||
+        previous?.height !== height ||
+        previous?.fit !== renderable.fit ||
+        previous?.pixelWidth !== pixelWidth ||
+        previous?.pixelHeight !== pixelHeight
+      if (changedImage) {
+        data = await this.loadImage(renderable.src, pixelWidth, pixelHeight, renderable.fit)
+      }
+      if (!data) continue
+      let kittyId = previous?.kittyId
+      if (this._graphicsSupport.protocol === "kitty") {
+        if (kittyId === undefined) {
+          kittyId = this.kittyImageId++
+        }
+      }
+      const positionChanged = !previous || previous.x !== x || previous.y !== y
+      const needsSend = changedImage || positionChanged
+      if (needsSend && previous?.kittyId !== undefined && this._graphicsSupport.protocol === "kitty") {
+        this.writeOut(encodeKittyDelete(previous.kittyId))
+      }
+
+      this.imageCache.set(renderable.num, {
+        srcKey,
+        x,
+        y,
+        width,
+        height,
+        fit: renderable.fit,
+        pixelWidth,
+        pixelHeight,
+        data,
+        kittyId,
+      })
+      seen.add(renderable.num)
+      if (!needsSend) {
+        continue
+      }
+
+      let offsetX = 0
+      let offsetY = 0
+      if (metrics) {
+        const layoutPxWidth = width * metrics.pxPerCellX
+        const layoutPxHeight = height * metrics.pxPerCellY
+        offsetX = Math.max(0, Math.round((layoutPxWidth - pixelWidth) / (2 * metrics.pxPerCellX)))
+        offsetY = Math.max(0, Math.round((layoutPxHeight - pixelHeight) / (2 * metrics.pxPerCellY)))
+      }
+
+      const move = `\u001b[${y + offsetY + 1};${x + offsetX + 1}H`
+      if (this._graphicsSupport.protocol === "iterm2") {
+        this.writeOut(move + encodeItermImage(data, pixelWidth, pixelHeight))
+      } else if (this._graphicsSupport.protocol === "kitty") {
+        this.writeOut(move + encodeKittyImage(kittyId ?? this.kittyImageId++, data, pixelWidth, pixelHeight))
+      }
+    }
+
+    // Drop cache entries for images no longer in the tree
+    for (const key of this.imageCache.keys()) {
+      if (!seen.has(key)) {
+        const cached = this.imageCache.get(key)
+        if (cached?.kittyId !== undefined && this._graphicsSupport.protocol === "kitty") {
+          this.writeOut(encodeKittyDelete(cached.kittyId))
+        }
+        this.imageCache.delete(key)
+      }
+    }
+  }
+
+  private collectImageRenderables(root: Renderable): { renderable: ImageRenderable; x: number; y: number }[] {
+    const out: { renderable: ImageRenderable; x: number; y: number }[] = []
+    const queue: Renderable[] = [root]
+    while (queue.length > 0) {
+      const current = queue.shift()!
+      for (const child of current.getChildren()) {
+        if (child instanceof ImageRenderable) {
+          out.push({ renderable: child, x: child.x, y: child.y })
+        }
+        queue.push(child)
+      }
+    }
+    return out
+  }
+
+  private async loadImage(src: string | Buffer, width: number, height: number, fit: ImageFit): Promise<Buffer | null> {
+    try {
+      const jimpModule: unknown = await import("jimp")
+      const Jimp =
+        (jimpModule as { Jimp?: any }).Jimp ??
+        (jimpModule as { default?: any }).default ??
+        (jimpModule as any)
+      const input = typeof src === "string" ? src : Buffer.from(src)
+      const image = await Jimp.read(input)
+
+      switch (fit) {
+        case "cover":
+          image.cover(width, height)
+          break
+        case "fill":
+          image.resize(width, height)
+          break
+        case "contain":
+        default:
+          image.contain(width, height)
+          break
+      }
+
+      return await image.getBuffer("image/png")
+    } catch (error) {
+      console.error("Failed to load image", error)
+      return null
+    }
   }
 
   private collectStatSample(frameTime: number): void {
@@ -1883,6 +2086,8 @@ export class CliRenderer extends EventEmitter implements RenderContext {
       this.notifySelectablesOfSelectionChange()
     }
   }
+
+  private logDebug(_message: string): void {}
 
   private notifySelectablesOfSelectionChange(): void {
     const selectedRenderables: Renderable[] = []
