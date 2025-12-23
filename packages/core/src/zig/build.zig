@@ -30,25 +30,8 @@ const SUPPORTED_TARGETS = [_]SupportedTarget{
 const LIB_NAME = "opentui";
 const ROOT_SOURCE_FILE = "lib.zig";
 
-/// Configure macOS SDK paths for cross-compilation from non-macOS hosts
-fn configureMacOSSDK(b: *std.Build, module: *std.Build.Module) void {
-    // Only needed when cross-compiling to macOS from a non-macOS host
-    if (b.lazyDependency("macos_sdk", .{})) |sdk| {
-        // Add SDK paths from joseluisq/macosx-sdks
-        module.addSystemFrameworkPath(sdk.path("System/Library/Frameworks"));
-        module.addSystemIncludePath(sdk.path("usr/include"));
-        module.addLibraryPath(sdk.path("usr/lib"));
-    }
-}
-
 /// Apply dependencies to a module
 fn applyDependencies(b: *std.Build, module: *std.Build.Module, optimize: std.builtin.OptimizeMode, target: std.Build.ResolvedTarget) void {
-    // Configure macOS SDK for cross-compilation before loading dependencies
-    // This ensures SDK paths are available when ghostty's packages compile
-    if (target.result.os.tag.isDarwin() and builtin.os.tag != .macos) {
-        configureMacOSSDK(b, module);
-    }
-
     // Add uucode for grapheme break detection
     if (b.lazyDependency("uucode", .{
         .target = target,
