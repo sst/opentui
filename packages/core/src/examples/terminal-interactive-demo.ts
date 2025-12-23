@@ -1,10 +1,4 @@
-import {
-  createCliRenderer,
-  TerminalRenderable,
-  BoxRenderable,
-  type CliRenderer,
-  type KeyEvent,
-} from "../index"
+import { createCliRenderer, TerminalRenderable, BoxRenderable, type CliRenderer, type KeyEvent } from "../index"
 import { TextRenderable } from "../renderables/Text"
 import { setupCommonDemoKeys } from "./lib/standalone-keys"
 

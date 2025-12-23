@@ -6,7 +6,13 @@ import { resolveRenderLib, type RenderLib } from "../zig"
 import { vtermDataToStyledText, type VTermData } from "../lib/vterm-ffi"
 
 // Re-export types from vterm-ffi for backwards compatibility
-export { VTermStyleFlags, type VTermSpan, type VTermLine, type VTermData, vtermDataToStyledText } from "../lib/vterm-ffi"
+export {
+  VTermStyleFlags,
+  type VTermSpan,
+  type VTermLine,
+  type VTermData,
+  vtermDataToStyledText,
+} from "../lib/vterm-ffi"
 
 const DEFAULT_FG = RGBA.fromHex("#d4d4d4")
 

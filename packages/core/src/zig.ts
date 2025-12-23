@@ -1627,7 +1627,10 @@ export interface RenderLib {
 
   // VTerm functions
   vtermFreeArena: () => void
-  vtermPtyToJson: (input: Buffer | Uint8Array | string, options?: { cols?: number; rows?: number; offset?: number; limit?: number }) => any
+  vtermPtyToJson: (
+    input: Buffer | Uint8Array | string,
+    options?: { cols?: number; rows?: number; offset?: number; limit?: number },
+  ) => any
   vtermPtyToText: (input: Buffer | Uint8Array | string, options?: { cols?: number; rows?: number }) => string
   vtermCreateTerminal: (id: number, cols: number, rows: number) => boolean
   vtermDestroyTerminal: (id: number) => void
@@ -3370,7 +3373,15 @@ class FFIRenderLib implements RenderLib {
     const outLenBuffer = new BigUint64Array(1)
     const outLenPtr = ptr(outLenBuffer)
 
-    const resultPtr = this.opentui.symbols.vtermPtyToJson(inputPtr, inputBuffer.length, cols, rows, offset, limit, outLenPtr)
+    const resultPtr = this.opentui.symbols.vtermPtyToJson(
+      inputPtr,
+      inputBuffer.length,
+      cols,
+      rows,
+      offset,
+      limit,
+      outLenPtr,
+    )
 
     const jsonStr = this.readVTermStringFromPointer(resultPtr, outLenBuffer)
 
