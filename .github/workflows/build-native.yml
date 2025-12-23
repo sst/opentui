@@ -39,7 +39,10 @@ jobs:
         run: bun install
 
       - name: Build packages (cross-compile for all platforms)
-        run: bun run build
+        run: |
+          cd packages/core
+          bun run build:native --all
+          bun run build:lib
 
       - name: Verify build outputs
         run: |
