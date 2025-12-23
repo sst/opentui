@@ -150,6 +150,14 @@ pub fn build(b: *std.Build) void {
 
 fn buildAllTargets(b: *std.Build, optimize: std.builtin.OptimizeMode) void {
     for (SUPPORTED_TARGETS) |supported_target| {
+        // Skip macOS targets when building on non-macOS hosts
+        // Cross-compilation to macOS from Linux is not supported by ghostty's apple-sdk
+        const target_query = std.Target.Query.parse(.{ .arch_os_abi = supported_target.zig_target }) catch continue;
+        if (target_query.os_tag == .macos and builtin.os.tag != .macos) {
+            std.debug.print("Skipping {s}: cross-compilation to macOS requires macOS host\n", .{supported_target.description});
+            continue;
+        }
+
         buildTarget(b, supported_target.zig_target, supported_target.output_name, supported_target.description, optimize) catch |err| {
             std.debug.print("Failed to build target {s}: {}\n", .{ supported_target.description, err });
             continue;
