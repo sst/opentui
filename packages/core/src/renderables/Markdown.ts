@@ -734,7 +734,7 @@ export class MarkdownRenderable extends Renderable {
         const newRenderable = this.createTableRenderable(
           state.token as Tokens.Table,
           `${this.id}-block-${i}`,
-          marginBottom
+          marginBottom,
         )
         this.add(newRenderable)
         state.renderable = newRenderable
