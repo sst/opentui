@@ -367,7 +367,7 @@ pub fn findTabStops(text: []const u8, result: *TabStopResult) !void {
             var i: usize = 0;
             while (i < vector_len) : (i += 1) {
                 if (text[pos + i] == '\t') {
-                    try result.positions.append(pos + i);
+                    try result.positions.append(result.allocator, pos + i);
                 }
             }
         }
@@ -376,7 +376,7 @@ pub fn findTabStops(text: []const u8, result: *TabStopResult) !void {
 
     while (pos < text.len) : (pos += 1) {
         if (text[pos] == '\t') {
-            try result.positions.append(pos);
+            try result.positions.append(result.allocator, pos);
         }
     }
 }
