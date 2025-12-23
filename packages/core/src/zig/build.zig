@@ -34,10 +34,10 @@ const ROOT_SOURCE_FILE = "lib.zig";
 fn configureMacOSSDK(b: *std.Build, module: *std.Build.Module) void {
     // Only needed when cross-compiling to macOS from a non-macOS host
     if (b.lazyDependency("macos_sdk", .{})) |sdk| {
-        // Add SDK paths from mitchellh/zig-build-macos-sdk
-        module.addSystemFrameworkPath(sdk.path("Frameworks"));
-        module.addSystemIncludePath(sdk.path("include"));
-        module.addLibraryPath(sdk.path("lib"));
+        // Add SDK paths from joseluisq/macosx-sdks
+        module.addSystemFrameworkPath(sdk.path("System/Library/Frameworks"));
+        module.addSystemIncludePath(sdk.path("usr/include"));
+        module.addLibraryPath(sdk.path("usr/lib"));
     }
 }
 
