@@ -3509,8 +3509,13 @@ test "calculateTextWidth: complex text with emojis and multiple scripts" {
 
 test "calculateTextWidth: validate against unicode-width-map.zon" {
     const zon_content = @embedFile("unicode-width-map.zon");
-    const zon_with_null = try testing.allocator.dupeZ(u8, zon_content);
-    defer testing.allocator.free(zon_with_null);
+
+    // Use arena allocator to avoid memory leaks from ZON parser string allocations
+    var arena = std.heap.ArenaAllocator.init(testing.allocator);
+    defer arena.deinit();
+    const allocator = arena.allocator();
+
+    const zon_with_null = try allocator.dupeZ(u8, zon_content);
 
     const WidthEntry = struct {
         codepoint: []const u8,
@@ -3519,14 +3524,13 @@ test "calculateTextWidth: validate against unicode-width-map.zon" {
 
     const width_entries = std.zon.parse.fromSlice(
         []const WidthEntry,
-        testing.allocator,
+        allocator,
         zon_with_null,
         null,
         .{},
     ) catch |err| {
         return err;
     };
-    defer testing.allocator.free(width_entries);
 
     var successes: usize = 0;
     var failures: usize = 0;
