@@ -19,7 +19,7 @@ env:
 jobs:
   build-native:
     name: Build Native Libraries
-    runs-on: macos-large
+    runs-on: macos-latest
 
     steps:
       - name: Checkout code

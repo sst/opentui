@@ -8,7 +8,7 @@ on:
 jobs:
   build:
     name: Core - Build and Test
-    runs-on: macos-large
+    runs-on: macos-latest
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
@@ -34,4 +34,4 @@ jobs:
       - name: Run tests
         run: |
           cd packages/core
-          bun run test
+          bun run test:js
