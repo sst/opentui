@@ -485,12 +485,7 @@ describe("React Renderer | Layout Tests", () => {
   })
 
   describe("Layout Property Reset on Component Change (Issue #391)", () => {
-    it("should use default alignItems when conditionally switching components with React state", async () => {
-      // This test reproduces the exact bug from issue #391:
-      // When React state changes cause a component tree to switch between
-      // <box alignItems="center"> to <box> (without alignItems),
-      // the text position should reset to default alignment
-
+    it("should reset alignItems when conditionally switching components", async () => {
       let setToggle: (value: boolean) => void
 
       function TestComponent() {
@@ -513,33 +508,25 @@ describe("React Renderer | Layout Tests", () => {
 
       testSetup = await testRender(<TestComponent />, { width: 40, height: 5 })
 
-      // Initial render with centered alignment
       await testSetup.renderOnce()
       const centeredFrame = testSetup.captureCharFrame()
-
-      // Verify text is centered (has leading spaces)
       const centeredLines = centeredFrame.split("\n")
       const centeredTextLine = centeredLines.find((line) => line.includes("Centered"))
       expect(centeredTextLine).toBeDefined()
       expect(centeredTextLine!.trimStart()).not.toBe(centeredTextLine)
 
-      // Toggle state to switch to non-centered component
       act(() => {
         setToggle(true)
       })
       await testSetup.renderOnce()
       const defaultFrame = testSetup.captureCharFrame()
-
-      // Text should now be at the start (default alignment), NOT centered or right-aligned
       const defaultLines = defaultFrame.split("\n")
       const defaultTextLine = defaultLines.find((line) => line.includes("Default"))
       expect(defaultTextLine).toBeDefined()
-      // Default aligned text should start at position 0 (no leading spaces before text)
       expect(defaultTextLine!.indexOf("Default")).toBe(0)
     })
 
-    it("should correctly align text when box has no explicit alignItems", async () => {
-      // Verify that a box without alignItems uses the default (stretch)
+    it("should use default alignment when alignItems is not specified", async () => {
       testSetup = await testRender(
         <box width={40} height={3}>
           <text>Left aligned</text>
@@ -552,17 +539,13 @@ describe("React Renderer | Layout Tests", () => {
 
       await testSetup.renderOnce()
       const frame = testSetup.captureCharFrame()
-
-      // Text should start at position 0
       const lines = frame.split("\n")
       const textLine = lines.find((line) => line.includes("Left aligned"))
       expect(textLine).toBeDefined()
       expect(textLine!.indexOf("Left aligned")).toBe(0)
     })
 
-    it("should reset alignItems when style prop removes the property", async () => {
-      // Tests the setStyle reset logic directly: same element, style prop changes
-      // from {alignItems: "center"} to {} (property removed)
+    it("should reset alignItems when removed from style prop", async () => {
       let setStyle: (style: Record<string, string>) => void
 
       function TestComponent() {
@@ -578,24 +561,18 @@ describe("React Renderer | Layout Tests", () => {
 
       testSetup = await testRender(<TestComponent />, { width: 40, height: 5 })
 
-      // Initial render with centered alignment
       await testSetup.renderOnce()
       const centeredFrame = testSetup.captureCharFrame()
-
-      // Verify text is centered
       const centeredLines = centeredFrame.split("\n")
       const centeredTextLine = centeredLines.find((line) => line.includes("Test"))
       expect(centeredTextLine).toBeDefined()
       expect(centeredTextLine!.trimStart()).not.toBe(centeredTextLine)
 
-      // Remove alignItems from style (empty object)
       act(() => {
         setStyle({})
       })
       await testSetup.renderOnce()
       const defaultFrame = testSetup.captureCharFrame()
-
-      // Text should now be at position 0 (default alignment after reset)
       const defaultLines = defaultFrame.split("\n")
       const defaultTextLine = defaultLines.find((line) => line.includes("Test"))
       expect(defaultTextLine).toBeDefined()

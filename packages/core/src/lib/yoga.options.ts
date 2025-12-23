@@ -69,8 +69,6 @@ export function parseAlign(value: string | null | undefined): Align {
   }
 }
 
-// parseAlignItems returns Stretch as default (CSS flexbox spec default for align-items)
-// This differs from parseAlign which returns Auto (used for align-self where auto means inherit)
 export function parseAlignItems(value: string | null | undefined): Align {
   if (value == null) {
     return Align.Stretch

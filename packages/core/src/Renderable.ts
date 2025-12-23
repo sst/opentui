@@ -665,9 +665,6 @@ export abstract class Renderable extends BaseRenderable {
       node.setFlexShrink(this._flexShrink)
     }
 
-    // Always initialize flex layout properties unconditionally to ensure
-    // consistent defaults and avoid coupling to Yoga's internal defaults.
-    // This matches the pattern used for flexGrow/flexShrink above.
     node.setFlexDirection(parseFlexDirection(options.flexDirection))
     node.setFlexWrap(parseWrap(options.flexWrap))
     node.setAlignItems(parseAlignItems(options.alignItems))

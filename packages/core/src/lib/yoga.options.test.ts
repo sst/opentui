@@ -444,11 +444,11 @@ describe("parseAlignItems", () => {
     expect(parseAlignItems("space-evenly")).toBe(Align.SpaceEvenly)
   })
 
-  test("handles null - returns Stretch (CSS default for align-items)", () => {
+  test("returns Stretch for null", () => {
     expect(parseAlignItems(null)).toBe(Align.Stretch)
   })
 
-  test("handles undefined - returns Stretch (CSS default for align-items)", () => {
+  test("returns Stretch for undefined", () => {
     expect(parseAlignItems(undefined)).toBe(Align.Stretch)
   })
 

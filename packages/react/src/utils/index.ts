@@ -20,11 +20,9 @@ function initEventListeners(instance: Instance, eventName: string, listener: any
 }
 
 function setStyle(instance: Instance, styles: any, oldStyles: any) {
-  // Clear removed style keys first
   if (oldStyles != null && typeof oldStyles === "object") {
     for (const styleName in oldStyles) {
       if (oldStyles.hasOwnProperty(styleName)) {
-        // If the key existed in old styles but not in new styles, reset it
         if (styles == null || !styles.hasOwnProperty(styleName)) {
           // @ts-expect-error props are not strongly typed in the reconciler
           instance[styleName] = null
@@ -33,7 +31,6 @@ function setStyle(instance: Instance, styles: any, oldStyles: any) {
     }
   }
 
-  // Set new/changed style keys
   if (styles != null && typeof styles === "object") {
     for (const styleName in styles) {
       if (styles.hasOwnProperty(styleName)) {
