@@ -488,7 +488,7 @@ describe("React Renderer | Layout Tests", () => {
     it("should use default alignItems when conditionally switching components with React state", async () => {
       // This test reproduces the exact bug from issue #391:
       // When React state changes cause a component tree to switch between
-      // <box alignItems="center"> to <box> (without alignItems), 
+      // <box alignItems="center"> to <box> (without alignItems),
       // the text position should reset to default alignment
 
       let setToggle: (value: boolean) => void
