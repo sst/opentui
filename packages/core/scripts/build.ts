@@ -124,16 +124,10 @@ if (buildNative) {
     }
 
     if (copiedFiles === 0) {
-      console.error(`Error: No dynamic libraries found for ${platform}-${arch} in ${libDir}`)
-      console.error(`Expected to find files like: libopentui.so, libopentui.dylib, opentui.dll`)
-      console.error(`Found files in ${libDir}:`)
-      if (existsSync(libDir)) {
-        const files = spawnSync("ls", ["-la", libDir], { stdio: "pipe" })
-        if (files.stdout) console.error(files.stdout.toString())
-      } else {
-        console.error("Directory does not exist")
-      }
-      process.exit(1)
+      // Skip platforms that weren't built (e.g., macOS when cross-compiling from Linux)
+      console.log(`Skipping ${platform}-${arch}: no libraries found (cross-compilation may not be supported)`)
+      rmSync(nativeDir, { recursive: true, force: true })
+      continue
     }
 
     const indexTsContent = `const module = await import("./${libraryFileName}", { with: { type: "file" } })
