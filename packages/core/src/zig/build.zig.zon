@@ -15,7 +15,7 @@
         // macOS SDK for cross-compilation from Linux (same SDK used by Ghostty)
         .macos_sdk = .{
             .url = "git+https://github.com/mitchellh/zig-build-macos-sdk.git#a4ea24f105902111633c6ae9f888b676ac5e36df",
-            .hash = "N-V-__8AAG0-dAOcye47JFbtpStxz5rnfcxwf6Qsn51omWtb",
+            .hash = "N-V-__8AAG0-dAOcye43JFbtpStxz5rnfcxwf6Qsn51omWtb",
             .lazy = true,
         },
     },
