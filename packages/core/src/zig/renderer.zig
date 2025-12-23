@@ -464,7 +464,8 @@ pub const CliRenderer = struct {
             const outputLen = self.currentOutputLen;
 
             const writeStart = std.time.microTimestamp();
-            if (outputLen > 0) {
+            // Skip stdout writes in testing mode to avoid blocking
+            if (outputLen > 0 and !self.testing) {
                 var stdoutWriter = std.fs.File.stdout().writer(&self.stdoutBuffer);
                 const w = &stdoutWriter.interface;
                 w.writeAll(outputData[0..outputLen]) catch {};
@@ -512,10 +513,13 @@ pub const CliRenderer = struct {
             self.renderMutex.unlock();
         } else {
             const writeStart = std.time.microTimestamp();
-            var stdoutWriter = std.fs.File.stdout().writer(&self.stdoutBuffer);
-            const w = &stdoutWriter.interface;
-            w.writeAll(outputBuffer[0..outputBufferLen]) catch {};
-            w.flush() catch {};
+            // Skip stdout writes in testing mode to avoid blocking
+            if (!self.testing) {
+                var stdoutWriter = std.fs.File.stdout().writer(&self.stdoutBuffer);
+                const w = &stdoutWriter.interface;
+                w.writeAll(outputBuffer[0..outputBufferLen]) catch {};
+                w.flush() catch {};
+            }
             self.renderStats.stdoutWriteTime = @as(f64, @floatFromInt(std.time.microTimestamp() - writeStart));
         }
 

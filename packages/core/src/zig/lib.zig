@@ -17,6 +17,7 @@ const logger = @import("logger.zig");
 const event_bus = @import("event-bus.zig");
 const utils = @import("utils.zig");
 const ghostty = @import("ghostty-vt");
+const vterm = @import("vterm.zig");
 
 pub const OptimizedBuffer = buffer.OptimizedBuffer;
 pub const CliRenderer = renderer.CliRenderer;
@@ -1512,7 +1513,68 @@ export fn bufferDrawChar(
     bufferPtr.drawChar(char, x, y, rgbaFg, rgbaBg, attributes) catch {};
 }
 
-// Temp: ensures ghostty-vt gets bundled into lib to test build works
-export fn ghosttyGetTerminalSize() usize {
-    return @sizeOf(ghostty.Terminal);
+// =============================================================================
+// VTerm FFI Export Functions
+// =============================================================================
+
+export fn vtermFreeArena() void {
+    _ = arena.reset(.free_all);
+}
+
+export fn vtermPtyToJson(
+    input_ptr: [*]const u8,
+    input_len: usize,
+    cols: u16,
+    rows: u16,
+    offset: usize,
+    limit: usize,
+    out_len: *usize,
+) ?[*]u8 {
+    return vterm.ptyToJson(globalArena, input_ptr, input_len, cols, rows, offset, limit, out_len);
+}
+
+export fn vtermPtyToText(
+    input_ptr: [*]const u8,
+    input_len: usize,
+    cols: u16,
+    rows: u16,
+    out_len: *usize,
+) ?[*]u8 {
+    return vterm.ptyToText(globalArena, input_ptr, input_len, cols, rows, out_len);
+}
+
+export fn vtermCreateTerminal(id: u32, cols: u32, rows: u32) bool {
+    return vterm.createTerminal(id, cols, rows);
+}
+
+export fn vtermDestroyTerminal(id: u32) void {
+    vterm.destroyTerminal(id);
+}
+
+export fn vtermFeedTerminal(id: u32, data_ptr: [*]const u8, data_len: usize) bool {
+    return vterm.feedTerminal(id, data_ptr, data_len);
+}
+
+export fn vtermResizeTerminal(id: u32, cols: u32, rows: u32) bool {
+    return vterm.resizeTerminal(id, cols, rows);
+}
+
+export fn vtermResetTerminal(id: u32) bool {
+    return vterm.resetTerminal(id);
+}
+
+export fn vtermGetTerminalJson(id: u32, offset: u32, limit: u32, out_len: *usize) ?[*]u8 {
+    return vterm.getTerminalJson(globalArena, id, offset, limit, out_len);
+}
+
+export fn vtermGetTerminalText(id: u32, out_len: *usize) ?[*]u8 {
+    return vterm.getTerminalText(globalArena, id, out_len);
+}
+
+export fn vtermGetTerminalCursor(id: u32, out_len: *usize) ?[*]u8 {
+    return vterm.getTerminalCursor(globalArena, id, out_len);
+}
+
+export fn vtermIsTerminalReady(id: u32) i32 {
+    return vterm.isTerminalReady(id);
 }

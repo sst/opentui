@@ -948,6 +948,56 @@ function getOpenTUILib(libPath?: string) {
       args: ["ptr", "u32", "u32", "u32", "ptr", "ptr", "u32"],
       returns: "void",
     },
+
+    // VTerm functions
+    vtermFreeArena: {
+      args: [] as const,
+      returns: "void",
+    },
+    vtermPtyToJson: {
+      args: ["ptr", "usize" as const, "u16", "u16", "usize" as const, "usize" as const, "ptr"] as const,
+      returns: "ptr",
+    },
+    vtermPtyToText: {
+      args: ["ptr", "usize" as const, "u16", "u16", "ptr"] as const,
+      returns: "ptr",
+    },
+    vtermCreateTerminal: {
+      args: ["u32", "u32", "u32"] as const,
+      returns: "bool",
+    },
+    vtermDestroyTerminal: {
+      args: ["u32"] as const,
+      returns: "void",
+    },
+    vtermFeedTerminal: {
+      args: ["u32", "ptr", "usize" as const] as const,
+      returns: "bool",
+    },
+    vtermResizeTerminal: {
+      args: ["u32", "u32", "u32"] as const,
+      returns: "bool",
+    },
+    vtermResetTerminal: {
+      args: ["u32"] as const,
+      returns: "bool",
+    },
+    vtermGetTerminalJson: {
+      args: ["u32", "u32", "u32", "ptr"] as const,
+      returns: "ptr",
+    },
+    vtermGetTerminalText: {
+      args: ["u32", "ptr"] as const,
+      returns: "ptr",
+    },
+    vtermGetTerminalCursor: {
+      args: ["u32", "ptr"] as const,
+      returns: "ptr",
+    },
+    vtermIsTerminalReady: {
+      args: ["u32"] as const,
+      returns: "i32",
+    },
   })
 
   if (env.OTUI_DEBUG_FFI || env.OTUI_TRACE_FFI) {
@@ -1574,6 +1624,20 @@ export interface RenderLib {
   onceNativeEvent: (name: string, handler: (data: ArrayBuffer) => void) => void
   offNativeEvent: (name: string, handler: (data: ArrayBuffer) => void) => void
   onAnyNativeEvent: (handler: (name: string, data: ArrayBuffer) => void) => void
+
+  // VTerm functions
+  vtermFreeArena: () => void
+  vtermPtyToJson: (input: Buffer | Uint8Array | string, options?: { cols?: number; rows?: number; offset?: number; limit?: number }) => any
+  vtermPtyToText: (input: Buffer | Uint8Array | string, options?: { cols?: number; rows?: number }) => string
+  vtermCreateTerminal: (id: number, cols: number, rows: number) => boolean
+  vtermDestroyTerminal: (id: number) => void
+  vtermFeedTerminal: (id: number, data: Buffer | Uint8Array | string) => boolean
+  vtermResizeTerminal: (id: number, cols: number, rows: number) => boolean
+  vtermResetTerminal: (id: number) => boolean
+  vtermGetTerminalJson: (id: number, options?: { offset?: number; limit?: number }) => any
+  vtermGetTerminalText: (id: number) => string
+  vtermGetTerminalCursor: (id: number) => [number, number]
+  vtermIsTerminalReady: (id: number) => boolean
 }
 
 class FFIRenderLib implements RenderLib {
@@ -3260,6 +3324,203 @@ class FFIRenderLib implements RenderLib {
 
   public onAnyNativeEvent(handler: (name: string, data: ArrayBuffer) => void): void {
     this._anyEventHandlers.push(handler)
+  }
+
+  // VTerm methods
+  public vtermFreeArena(): void {
+    this.opentui.symbols.vtermFreeArena()
+  }
+
+  private readVTermStringFromPointer(resultPtr: Pointer | null, outLenBuffer: BigUint64Array): string {
+    if (!resultPtr) {
+      throw new Error("VTerm native function returned null")
+    }
+
+    const outLen = Number(outLenBuffer[0])
+    const buffer = toArrayBuffer(resultPtr, 0, outLen)
+    const str = this.decoder.decode(buffer)
+
+    this.vtermFreeArena()
+
+    return str
+  }
+
+  public vtermPtyToJson(
+    input: Buffer | Uint8Array | string,
+    options: { cols?: number; rows?: number; offset?: number; limit?: number } = {},
+  ): any {
+    const { cols = 120, rows = 40, offset = 0, limit = 0 } = options
+
+    const inputStr = typeof input === "string" ? input : input.toString("utf-8")
+
+    if (inputStr.length === 0) {
+      return {
+        cols,
+        rows,
+        cursor: [0, 0],
+        offset,
+        totalLines: 0,
+        lines: [],
+      }
+    }
+
+    const inputBuffer = Buffer.from(inputStr)
+    const inputPtr = ptr(inputBuffer)
+
+    const outLenBuffer = new BigUint64Array(1)
+    const outLenPtr = ptr(outLenBuffer)
+
+    const resultPtr = this.opentui.symbols.vtermPtyToJson(inputPtr, inputBuffer.length, cols, rows, offset, limit, outLenPtr)
+
+    const jsonStr = this.readVTermStringFromPointer(resultPtr, outLenBuffer)
+
+    const raw = JSON.parse(jsonStr) as {
+      cols: number
+      rows: number
+      cursor: [number, number]
+      offset: number
+      totalLines: number
+      lines: Array<Array<[string, string | null, string | null, number, number]>>
+    }
+
+    return {
+      cols: raw.cols,
+      rows: raw.rows,
+      cursor: raw.cursor,
+      offset: raw.offset,
+      totalLines: raw.totalLines,
+      lines: raw.lines.map((line) => ({
+        spans: line.map(([text, fg, bg, flags, width]) => ({
+          text,
+          fg,
+          bg,
+          flags,
+          width,
+        })),
+      })),
+    }
+  }
+
+  public vtermPtyToText(input: Buffer | Uint8Array | string, options: { cols?: number; rows?: number } = {}): string {
+    const { cols = 500, rows = 256 } = options
+
+    const inputStr = typeof input === "string" ? input : input.toString("utf-8")
+
+    if (inputStr.length === 0) {
+      return ""
+    }
+
+    const inputBuffer = Buffer.from(inputStr)
+    const inputPtr = ptr(inputBuffer)
+
+    const outLenBuffer = new BigUint64Array(1)
+    const outLenPtr = ptr(outLenBuffer)
+
+    const resultPtr = this.opentui.symbols.vtermPtyToText(inputPtr, inputBuffer.length, cols, rows, outLenPtr)
+
+    return this.readVTermStringFromPointer(resultPtr, outLenBuffer)
+  }
+
+  public vtermCreateTerminal(id: number, cols: number, rows: number): boolean {
+    return this.opentui.symbols.vtermCreateTerminal(id, cols, rows)
+  }
+
+  public vtermDestroyTerminal(id: number): void {
+    this.opentui.symbols.vtermDestroyTerminal(id)
+  }
+
+  public vtermFeedTerminal(id: number, data: Buffer | Uint8Array | string): boolean {
+    let str: string
+    if (typeof data === "string") {
+      str = data
+    } else if (Buffer.isBuffer(data)) {
+      str = data.toString("utf-8")
+    } else {
+      str = new TextDecoder("utf-8").decode(data)
+    }
+
+    const buffer = Buffer.from(str)
+    return this.opentui.symbols.vtermFeedTerminal(id, ptr(buffer), buffer.length)
+  }
+
+  public vtermResizeTerminal(id: number, cols: number, rows: number): boolean {
+    return this.opentui.symbols.vtermResizeTerminal(id, cols, rows)
+  }
+
+  public vtermResetTerminal(id: number): boolean {
+    return this.opentui.symbols.vtermResetTerminal(id)
+  }
+
+  public vtermGetTerminalJson(id: number, options: { offset?: number; limit?: number } = {}): any {
+    const { offset = 0, limit = 0 } = options
+
+    const outLenBuffer = new BigUint64Array(1)
+    const outLenPtr = ptr(outLenBuffer)
+
+    const resultPtr = this.opentui.symbols.vtermGetTerminalJson(id, offset, limit, outLenPtr)
+    if (!resultPtr) {
+      throw new Error("Failed to get terminal JSON - terminal may not exist")
+    }
+
+    const jsonStr = this.readVTermStringFromPointer(resultPtr, outLenBuffer)
+    const raw = JSON.parse(jsonStr) as {
+      cols: number
+      rows: number
+      cursor: [number, number]
+      offset: number
+      totalLines: number
+      lines: Array<Array<[string, string | null, string | null, number, number]>>
+    }
+
+    return {
+      cols: raw.cols,
+      rows: raw.rows,
+      cursor: raw.cursor,
+      offset: raw.offset,
+      totalLines: raw.totalLines,
+      lines: raw.lines.map((line) => ({
+        spans: line.map(([text, fg, bg, flags, width]) => ({
+          text,
+          fg,
+          bg,
+          flags,
+          width,
+        })),
+      })),
+    }
+  }
+
+  public vtermGetTerminalText(id: number): string {
+    const outLenBuffer = new BigUint64Array(1)
+    const outLenPtr = ptr(outLenBuffer)
+
+    const resultPtr = this.opentui.symbols.vtermGetTerminalText(id, outLenPtr)
+    if (!resultPtr) {
+      throw new Error("Failed to get terminal text - terminal may not exist")
+    }
+
+    return this.readVTermStringFromPointer(resultPtr, outLenBuffer)
+  }
+
+  public vtermGetTerminalCursor(id: number): [number, number] {
+    const outLenBuffer = new BigUint64Array(1)
+    const outLenPtr = ptr(outLenBuffer)
+
+    const resultPtr = this.opentui.symbols.vtermGetTerminalCursor(id, outLenPtr)
+    if (!resultPtr) {
+      throw new Error("Failed to get terminal cursor - terminal may not exist")
+    }
+
+    const jsonStr = this.readVTermStringFromPointer(resultPtr, outLenBuffer)
+    return JSON.parse(jsonStr) as [number, number]
+  }
+
+  public vtermIsTerminalReady(id: number): boolean {
+    const result = this.opentui.symbols.vtermIsTerminalReady(id)
+    if (result === -1) {
+      throw new Error("Failed to check terminal ready state - terminal may not exist")
+    }
+    return result === 1
   }
 }
 
