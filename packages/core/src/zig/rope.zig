@@ -291,13 +291,13 @@ pub fn Rope(comptime T: type) type {
                 };
             }
 
-            fn collect(self: *const Node, list: *std.ArrayList(*const Node)) !void {
+            fn collect(self: *const Node, list: *std.ArrayListUnmanaged(*const Node), allocator: Allocator) !void {
                 switch (self.*) {
                     .branch => |*b| {
-                        try b.left.collect(list);
-                        try b.right.collect(list);
+                        try b.left.collect(list, allocator);
+                        try b.right.collect(list, allocator);
                     },
-                    .leaf => try list.append(self),
+                    .leaf => try list.append(allocator, self),
                 }
             }
 
@@ -318,11 +318,11 @@ pub fn Rope(comptime T: type) type {
             pub fn rebalance(self: *const Node, allocator: Allocator, tmp_allocator: Allocator) !*const Node {
                 if (self.is_balanced()) return self;
 
-                var leaves = std.ArrayList(*const Node).init(tmp_allocator);
-                defer leaves.deinit();
+                var leaves: std.ArrayListUnmanaged(*const Node) = .{};
+                defer leaves.deinit(tmp_allocator);
 
-                try leaves.ensureTotalCapacity(self.count());
-                try self.collect(&leaves);
+                try leaves.ensureTotalCapacity(tmp_allocator, self.count());
+                try self.collect(&leaves, tmp_allocator);
 
                 return try merge_leaves(leaves.items, allocator);
             }
@@ -670,7 +670,8 @@ pub fn Rope(comptime T: type) type {
             if (start >= end) return &[_]T{};
 
             const SliceContext = struct {
-                items: std.ArrayList(T),
+                items: std.ArrayListUnmanaged(T),
+                allocator: Allocator,
                 start: u32,
                 end: u32,
                 current_index: u32 = 0,
@@ -679,7 +680,7 @@ pub fn Rope(comptime T: type) type {
                     _ = idx;
                     const context = @as(*@This(), @ptrCast(@alignCast(ctx)));
                     if (context.current_index >= context.start and context.current_index < context.end) {
-                        context.items.append(data.*) catch |e| return .{ .err = e };
+                        context.items.append(context.allocator, data.*) catch |e| return .{ .err = e };
                     }
                     context.current_index += 1;
                     if (context.current_index >= context.end) {
@@ -690,14 +691,15 @@ pub fn Rope(comptime T: type) type {
             };
 
             var context = SliceContext{
-                .items = std.ArrayList(T).init(allocator),
+                .items = .{},
+                .allocator = allocator,
                 .start = start,
                 .end = end,
             };
-            errdefer context.items.deinit();
+            errdefer context.items.deinit(allocator);
 
             try self.walk(&context, SliceContext.walker);
-            return context.items.toOwnedSlice();
+            return context.items.toOwnedSlice(allocator);
         }
 
         pub fn delete_range(self: *Self, start: u32, end: u32) !void {
@@ -728,23 +730,25 @@ pub fn Rope(comptime T: type) type {
 
         pub fn to_array(self: *const Self, allocator: Allocator) ![]T {
             const ToArrayContext = struct {
-                items: std.ArrayList(T),
+                items: std.ArrayListUnmanaged(T),
+                allocator: Allocator,
 
                 fn walker(ctx: *anyopaque, data: *const T, idx: u32) Node.WalkerResult {
                     _ = idx;
                     const context = @as(*@This(), @ptrCast(@alignCast(ctx)));
-                    context.items.append(data.*) catch |e| return .{ .err = e };
+                    context.items.append(context.allocator, data.*) catch |e| return .{ .err = e };
                     return .{};
                 }
             };
 
             var context = ToArrayContext{
-                .items = std.ArrayList(T).init(allocator),
+                .items = .{},
+                .allocator = allocator,
             };
-            errdefer context.items.deinit();
+            errdefer context.items.deinit(allocator);
 
             try self.walk(&context, ToArrayContext.walker);
-            return context.items.toOwnedSlice();
+            return context.items.toOwnedSlice(allocator);
         }
 
         pub fn toText(self: *const Self, allocator: Allocator) ![]u8 {
