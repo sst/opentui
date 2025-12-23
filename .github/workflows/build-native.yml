@@ -14,7 +14,7 @@ on:
         default: false
 
 env:
-  ZIG_VERSION: 0.14.1
+  ZIG_VERSION: 0.15.2
 
 jobs:
   build-native:
