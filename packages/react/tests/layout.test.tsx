@@ -1,4 +1,6 @@
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, mock } from "bun:test"
+import { useState } from "react"
+import { act } from "react"
 import { testRender } from "../src/test-utils"
 
 let testSetup: Awaited<ReturnType<typeof testRender>>
@@ -479,6 +481,102 @@ describe("React Renderer | Layout Tests", () => {
       await testSetup.renderOnce()
       const frame = testSetup.captureCharFrame()
       expect(frame).toMatchSnapshot()
+    })
+  })
+
+  describe("Layout Property Reset on Component Change (Issue #391)", () => {
+    it("should reset alignItems when conditionally switching components", async () => {
+      let setToggle: (value: boolean) => void
+
+      function TestComponent() {
+        const [toggle, _setToggle] = useState(false)
+        setToggle = _setToggle
+
+        if (!toggle) {
+          return (
+            <box alignItems="center" width={40} height={3}>
+              <text>Centered</text>
+            </box>
+          )
+        }
+        return (
+          <box width={40} height={3}>
+            <text>Default</text>
+          </box>
+        )
+      }
+
+      testSetup = await testRender(<TestComponent />, { width: 40, height: 5 })
+
+      await testSetup.renderOnce()
+      const centeredFrame = testSetup.captureCharFrame()
+      const centeredLines = centeredFrame.split("\n")
+      const centeredTextLine = centeredLines.find((line) => line.includes("Centered"))
+      expect(centeredTextLine).toBeDefined()
+      expect(centeredTextLine!.trimStart()).not.toBe(centeredTextLine)
+
+      act(() => {
+        setToggle(true)
+      })
+      await testSetup.renderOnce()
+      const defaultFrame = testSetup.captureCharFrame()
+      const defaultLines = defaultFrame.split("\n")
+      const defaultTextLine = defaultLines.find((line) => line.includes("Default"))
+      expect(defaultTextLine).toBeDefined()
+      expect(defaultTextLine!.indexOf("Default")).toBe(0)
+    })
+
+    it("should use default alignment when alignItems is not specified", async () => {
+      testSetup = await testRender(
+        <box width={40} height={3}>
+          <text>Left aligned</text>
+        </box>,
+        {
+          width: 40,
+          height: 5,
+        },
+      )
+
+      await testSetup.renderOnce()
+      const frame = testSetup.captureCharFrame()
+      const lines = frame.split("\n")
+      const textLine = lines.find((line) => line.includes("Left aligned"))
+      expect(textLine).toBeDefined()
+      expect(textLine!.indexOf("Left aligned")).toBe(0)
+    })
+
+    it("should reset alignItems when removed from style prop", async () => {
+      let setStyle: (style: Record<string, string>) => void
+
+      function TestComponent() {
+        const [style, _setStyle] = useState<Record<string, string>>({ alignItems: "center" })
+        setStyle = _setStyle
+
+        return (
+          <box style={style} width={40} height={3}>
+            <text>Test</text>
+          </box>
+        )
+      }
+
+      testSetup = await testRender(<TestComponent />, { width: 40, height: 5 })
+
+      await testSetup.renderOnce()
+      const centeredFrame = testSetup.captureCharFrame()
+      const centeredLines = centeredFrame.split("\n")
+      const centeredTextLine = centeredLines.find((line) => line.includes("Test"))
+      expect(centeredTextLine).toBeDefined()
+      expect(centeredTextLine!.trimStart()).not.toBe(centeredTextLine)
+
+      act(() => {
+        setStyle({})
+      })
+      await testSetup.renderOnce()
+      const defaultFrame = testSetup.captureCharFrame()
+      const defaultLines = defaultFrame.split("\n")
+      const defaultTextLine = defaultLines.find((line) => line.includes("Test"))
+      expect(defaultTextLine).toBeDefined()
+      expect(defaultTextLine!.indexOf("Test")).toBe(0)
     })
   })
 })

@@ -69,6 +69,34 @@ export function parseAlign(value: string | null | undefined): Align {
   }
 }
 
+export function parseAlignItems(value: string | null | undefined): Align {
+  if (value == null) {
+    return Align.Stretch
+  }
+  switch (value.toLowerCase()) {
+    case "auto":
+      return Align.Auto
+    case "flex-start":
+      return Align.FlexStart
+    case "center":
+      return Align.Center
+    case "flex-end":
+      return Align.FlexEnd
+    case "stretch":
+      return Align.Stretch
+    case "baseline":
+      return Align.Baseline
+    case "space-between":
+      return Align.SpaceBetween
+    case "space-around":
+      return Align.SpaceAround
+    case "space-evenly":
+      return Align.SpaceEvenly
+    default:
+      return Align.Stretch
+  }
+}
+
 export function parseBoxSizing(value: string): BoxSizing {
   if (value == null) {
     return BoxSizing.BorderBox
