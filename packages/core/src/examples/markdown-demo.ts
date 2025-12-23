@@ -270,6 +270,7 @@ function startStreaming() {
 
   // Enable sticky scroll to bottom for streaming
   markdownScrollBox.stickyScroll = true
+
   markdownScrollBox.stickyStart = "bottom"
 
   // Update status
@@ -389,6 +390,7 @@ Other:
   markdownScrollBox = new ScrollBoxRenderable(renderer, {
     id: "markdown-scroll-box",
     borderStyle: "single",
+
     borderColor: "#6BCF7F",
     backgroundColor: theme.bg,
     title: `MarkdownRenderable - ${theme.name}`,
@@ -400,6 +402,7 @@ Other:
     flexShrink: 1,
     padding: 2,
   })
+  markdownScrollBox.focus()
   parentContainer.add(markdownScrollBox)
 
   // Create syntax style from current theme
