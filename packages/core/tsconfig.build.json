@@ -7,7 +7,7 @@
     "outDir": "./dist",
     "noEmit": false,
     "rootDir": "./src",
-    "types": ["bun", "node", "three"],
+    "types": ["bun", "node"],
     "skipLibCheck": true
   },
   "include": ["src/**/*"],
