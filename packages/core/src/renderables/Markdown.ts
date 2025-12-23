@@ -10,6 +10,7 @@ import { CodeRenderable } from "./Code"
 import { BoxRenderable } from "./Box"
 import type { TreeSitterClient } from "../lib/tree-sitter"
 import { parseMarkdownIncremental, type ParseState } from "./markdown-parser"
+import type { OptimizedBuffer } from "../buffer"
 
 export interface MarkdownOptions extends RenderableOptions<MarkdownRenderable> {
   content?: string
@@ -54,6 +55,7 @@ export class MarkdownRenderable extends Renderable {
   _parseState: ParseState | null = null
   private _streaming: boolean = false
   _blockStates: BlockState[] = []
+  private _styleDirty: boolean = false
 
   protected _contentDefaultOptions = {
     content: "",
@@ -96,10 +98,8 @@ export class MarkdownRenderable extends Renderable {
   set syntaxStyle(value: SyntaxStyle) {
     if (this._syntaxStyle !== value) {
       this._syntaxStyle = value
-      this._parseState = null
-      this.clearBlockStates()
-      this.updateBlocks()
-      this.requestRender()
+      // Mark dirty - actual re-render happens in renderSelf
+      this._styleDirty = true
     }
   }
 
@@ -110,10 +110,8 @@ export class MarkdownRenderable extends Renderable {
   set conceal(value: boolean) {
     if (this._conceal !== value) {
       this._conceal = value
-      this._parseState = null
-      this.clearBlockStates()
-      this.updateBlocks()
-      this.requestRender()
+      // Mark dirty - actual re-render happens in renderSelf
+      this._styleDirty = true
     }
   }
 
@@ -715,10 +713,55 @@ export class MarkdownRenderable extends Renderable {
     this._blockStates = []
   }
 
+  /**
+   * Re-render existing blocks without rebuilding the parse state or block structure.
+   * Used when only style/conceal changes - much faster than full rebuild.
+   */
+  private rerenderBlocks(): void {
+    for (let i = 0; i < this._blockStates.length; i++) {
+      const state = this._blockStates[i]
+      const hasNextToken = i < this._blockStates.length - 1
+
+      if (state.token.type === "code") {
+        // CodeRenderable handles style/conceal changes efficiently
+        const codeRenderable = state.renderable as CodeRenderable
+        codeRenderable.syntaxStyle = this._syntaxStyle
+        codeRenderable.conceal = this._conceal
+      } else if (state.token.type === "table") {
+        // Tables are complex nested structures - rebuild them
+        const marginBottom = hasNextToken ? 1 : 0
+        this.remove(state.renderable.id)
+        const newRenderable = this.createTableRenderable(
+          state.token as Tokens.Table,
+          `${this.id}-block-${i}`,
+          marginBottom
+        )
+        this.add(newRenderable)
+        state.renderable = newRenderable
+      } else {
+        // TextRenderable blocks - regenerate chunks with new style/conceal
+        const textRenderable = state.renderable as TextRenderable
+        const chunks = this.renderTokenToChunks(state.token)
+        if (chunks.length > 0) {
+          textRenderable.content = new StyledText(chunks)
+        }
+      }
+    }
+  }
+
   public clearCache(): void {
     this._parseState = null
     this.clearBlockStates()
     this.updateBlocks()
     this.requestRender()
+  }
+
+  protected renderSelf(buffer: OptimizedBuffer, deltaTime: number): void {
+    // Check if style/conceal changed - re-render blocks before rendering
+    if (this._styleDirty) {
+      this._styleDirty = false
+      this.rerenderBlocks()
+    }
+    super.renderSelf(buffer, deltaTime)
   }
 }
