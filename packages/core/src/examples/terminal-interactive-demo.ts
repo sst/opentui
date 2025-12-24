@@ -172,21 +172,33 @@ export async function run(rendererInstance: CliRenderer): Promise<void> {
   })
   rightPanel.add(terminalTitle)
 
-  terminalDisplay = new TerminalRenderable(renderer, {
-    id: "terminal-display",
-    cols: terminalCols,
-    rows: terminalRows,
-    trimEnd: true,
-    flexGrow: 1,
-  })
-  rightPanel.add(terminalDisplay)
-
   try {
     pty = await initPty(terminalCols, terminalRows)
 
-    pty.onData((data: string) => {
-      terminalDisplay?.feed(data)
+    // Create streams from PTY
+    const readable = new ReadableStream<string>({
+      start(controller) {
+        pty.onData((data: string) => controller.enqueue(data))
+        pty.onExit(() => controller.close())
+      },
     })
+
+    const writable = new WritableStream<string>({
+      write(chunk) {
+        pty.write(chunk)
+      },
+    })
+
+    terminalDisplay = new TerminalRenderable(renderer, {
+      id: "terminal-display",
+      cols: terminalCols,
+      rows: terminalRows,
+      trimEnd: true,
+      flexGrow: 1,
+      readable,
+      writable,
+    })
+    rightPanel.add(terminalDisplay)
 
     pty.onExit(({ exitCode }: { exitCode: number }) => {
       status = `Process exited with code ${exitCode}`

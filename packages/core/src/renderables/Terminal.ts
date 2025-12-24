@@ -4,6 +4,7 @@ import type { RenderContext } from "../types"
 import type { OptimizedBuffer } from "../buffer"
 import { resolveRenderLib, type RenderLib } from "../zig"
 import { vtermDataToStyledText, type VTermData } from "../lib/vterm-ffi"
+import type { MouseEvent } from "../renderer"
 
 // Re-export types from vterm-ffi for backwards compatibility
 export {
@@ -144,10 +145,11 @@ export class StatelessTerminalRenderable extends TextBufferRenderable {
 }
 
 export interface TerminalOptions extends TextBufferOptions {
-  ansi?: string | Buffer
   cols?: number
   rows?: number
   trimEnd?: boolean
+  readable?: ReadableStream<string>
+  writable?: WritableStream<string>
 }
 
 let nextTerminalId = 1
@@ -161,6 +163,8 @@ export class TerminalRenderable extends TextBufferRenderable {
   private _terminalId: number
   private _lib: RenderLib
   private _destroyed = false
+  private _reader?: ReadableStreamDefaultReader<string>
+  private _writer?: WritableStreamDefaultWriter<string>
 
   constructor(ctx: RenderContext, options: TerminalOptions) {
     super(ctx, { ...options, fg: DEFAULT_FG, wrapMode: "none" })
@@ -171,14 +175,37 @@ export class TerminalRenderable extends TextBufferRenderable {
     this._lib = resolveRenderLib()
     this._terminalId = nextTerminalId++
 
+
     const success = this._lib.vtermCreateTerminal(this._terminalId, this._cols, this._rows)
     if (!success) {
       throw new Error("Failed to create terminal")
     }
 
-    const ansi = options.ansi
-    if (ansi && (typeof ansi === "string" ? ansi.length > 0 : ansi.length > 0)) {
-      this._lib.vtermFeedTerminal(this._terminalId, ansi)
+    if (options.readable) {
+      this._reader = options.readable.getReader()
+      this.startReading()
+    }
+
+    if (options.writable) {
+      this._writer = options.writable.getWriter()
+    }
+  }
+
+  private async startReading(): Promise<void> {
+    if (!this._reader) return
+
+    try {
+      while (!this._destroyed) {
+        const { done, value } = await this._reader.read()
+        if (done || this._destroyed) break
+        if (value) {
+          this._lib.vtermFeedTerminal(this._terminalId, value)
+          this._contentDirty = true
+          this.requestRender()
+        }
+      }
+    } catch {
+      // Stream closed or errored
     }
   }
 
@@ -224,6 +251,35 @@ export class TerminalRenderable extends TextBufferRenderable {
     }
   }
 
+  get readable(): ReadableStream<string> | undefined {
+    return undefined // Write-only, reader is consumed
+  }
+
+  set readable(value: ReadableStream<string> | undefined) {
+    if (this._reader) {
+      this._reader.cancel()
+      this._reader = undefined
+    }
+    if (value) {
+      this._reader = value.getReader()
+      this.startReading()
+    }
+  }
+
+  get writable(): WritableStream<string> | undefined {
+    return undefined // Write-only, writer is consumed
+  }
+
+  set writable(value: WritableStream<string> | undefined) {
+    if (this._writer) {
+      this._writer.close().catch(() => {})
+      this._writer = undefined
+    }
+    if (value) {
+      this._writer = value.getWriter()
+    }
+  }
+
   feed(data: string | Buffer): void {
     this._lib.vtermFeedTerminal(this._terminalId, data)
     this._contentDirty = true
@@ -248,9 +304,64 @@ export class TerminalRenderable extends TextBufferRenderable {
     return this._lib.vtermIsTerminalReady(this._terminalId)
   }
 
+  protected override onMouseEvent(event: MouseEvent): void {
+    super.onMouseEvent(event)
+    if (!this._writer) return
+
+    const { x, y, type, button, modifiers, scroll } = event
+
+    // Check bounds
+    if (x < this.x || x >= this.x + this.width || y < this.y || y >= this.y + this.height) return
+
+    // Transform to 1-based terminal coordinates
+    const col = x - this.x + 1
+    const row = y - this.y + 1
+
+    let encoded: string | null = null
+
+    if (scroll) {
+      // Scroll: button 64=up, 65=down, 66=left, 67=right
+      const buttonMap = { up: 64, down: 65, left: 66, right: 67 }
+      const scrollBtn = buttonMap[scroll.direction]
+      encoded = this.encodeMouse("press", scrollBtn, col, row, modifiers)
+    } else {
+      // Mouse events
+      let encodeType: "press" | "release" | "move" | null = null
+      if (type === "down") encodeType = "press"
+      else if (type === "up") encodeType = "release"
+      else if (type === "move" || type === "drag") encodeType = "move"
+
+      if (encodeType) {
+        encoded = this.encodeMouse(encodeType, button, col, row, modifiers)
+      }
+    }
+
+    if (encoded) {
+      this._writer.write(encoded)
+    }
+  }
+
+  private encodeMouse(
+    type: "press" | "release" | "move",
+    button: number,
+    col: number,
+    row: number,
+    modifiers?: { shift: boolean; alt: boolean; ctrl: boolean },
+  ): string {
+    let btn = button
+    if (modifiers?.shift) btn |= 4
+    if (modifiers?.alt) btn |= 8
+    if (modifiers?.ctrl) btn |= 16
+    if (type === "move") btn |= 32
+    const suffix = type === "release" ? "m" : "M"
+    return `\x1b[<${btn};${col};${row}${suffix}`
+  }
+
   destroy(): void {
     if (!this._destroyed) {
       this._destroyed = true
+      this._reader?.cancel()
+      this._writer?.close()
       this._lib.vtermDestroyTerminal(this._terminalId)
     }
     super.destroy()
@@ -268,12 +379,5 @@ export class TerminalRenderable extends TextBufferRenderable {
       this._contentDirty = false
     }
     super.renderSelf(buffer)
-  }
-
-  getScrollPositionForLine(lineNumber: number): number {
-    const clampedLine = Math.max(0, Math.min(lineNumber, this._lineCount - 1))
-    const lineStarts = this.textBufferView.logicalLineInfo.lineStarts
-    const lineYOffset = lineStarts?.[clampedLine] ?? clampedLine
-    return this.y + lineYOffset
   }
 }
