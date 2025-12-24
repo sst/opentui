@@ -5,19 +5,6 @@ const pagepkg = ghostty_vt.page;
 const formatter = ghostty_vt.formatter;
 const Screen = ghostty_vt.Screen;
 
-// Disable all logging from ghostty-vt
-pub const std_options: std.Options = .{
-    .log_level = .err,
-    .logFn = struct {
-        pub fn logFn(
-            comptime _: std.log.Level,
-            comptime _: @Type(.enum_literal),
-            comptime _: []const u8,
-            _: anytype,
-        ) void {}
-    }.logFn,
-};
-
 // Reusable arena for stateless functions (ptyToJson, ptyToText).
 // Reset after each call to reuse allocated pages - avoids mmap/munmap per call.
 var stateless_arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
