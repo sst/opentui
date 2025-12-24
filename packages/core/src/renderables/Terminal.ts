@@ -163,6 +163,8 @@ export class TerminalRenderable extends TextBufferRenderable {
   private _terminalId: number
   private _lib: RenderLib
   private _destroyed = false
+  private _readable?: ReadableStream<string>
+  private _writable?: WritableStream<string>
   private _reader?: ReadableStreamDefaultReader<string>
   private _writer?: WritableStreamDefaultWriter<string>
 
@@ -182,11 +184,13 @@ export class TerminalRenderable extends TextBufferRenderable {
     }
 
     if (options.readable) {
+      this._readable = options.readable
       this._reader = options.readable.getReader()
       this.startReading()
     }
 
     if (options.writable) {
+      this._writable = options.writable
       this._writer = options.writable.getWriter()
     }
   }
@@ -252,14 +256,15 @@ export class TerminalRenderable extends TextBufferRenderable {
   }
 
   get readable(): ReadableStream<string> | undefined {
-    return undefined // Write-only, reader is consumed
+    return this._readable
   }
 
   set readable(value: ReadableStream<string> | undefined) {
-    if (this._reader) {
-      this._reader.cancel()
-      this._reader = undefined
+    if (value === this._readable) return
+    if (this._readable && value) {
+      throw new Error("TerminalRenderable: changing readable stream is not supported")
     }
+    this._readable = value
     if (value) {
       this._reader = value.getReader()
       this.startReading()
@@ -267,14 +272,15 @@ export class TerminalRenderable extends TextBufferRenderable {
   }
 
   get writable(): WritableStream<string> | undefined {
-    return undefined // Write-only, writer is consumed
+    return this._writable
   }
 
   set writable(value: WritableStream<string> | undefined) {
-    if (this._writer) {
-      this._writer.close().catch(() => {})
-      this._writer = undefined
+    if (value === this._writable) return
+    if (this._writable && value) {
+      throw new Error("TerminalRenderable: changing writable stream is not supported")
     }
+    this._writable = value
     if (value) {
       this._writer = value.getWriter()
     }
