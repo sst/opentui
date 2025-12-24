@@ -950,10 +950,6 @@ function getOpenTUILib(libPath?: string) {
     },
 
     // VTerm functions
-    vtermFreeArena: {
-      args: [] as const,
-      returns: "void",
-    },
     vtermPtyToJson: {
       args: ["ptr", "usize" as const, "u16", "u16", "usize" as const, "usize" as const, "ptr"] as const,
       returns: "ptr",
@@ -1626,7 +1622,6 @@ export interface RenderLib {
   onAnyNativeEvent: (handler: (name: string, data: ArrayBuffer) => void) => void
 
   // VTerm functions
-  vtermFreeArena: () => void
   vtermPtyToJson: (
     input: Buffer | Uint8Array | string,
     options?: { cols?: number; rows?: number; offset?: number; limit?: number },
@@ -3330,10 +3325,6 @@ class FFIRenderLib implements RenderLib {
   }
 
   // VTerm methods
-  public vtermFreeArena(): void {
-    this.opentui.symbols.vtermFreeArena()
-  }
-
   private readVTermStringFromPointer(resultPtr: Pointer | null, outLenBuffer: BigUint64Array): string {
     if (!resultPtr) {
       throw new Error("VTerm native function returned null")
@@ -3341,11 +3332,7 @@ class FFIRenderLib implements RenderLib {
 
     const outLen = Number(outLenBuffer[0])
     const buffer = toArrayBuffer(resultPtr, 0, outLen)
-    const str = this.decoder.decode(buffer)
-
-    this.vtermFreeArena()
-
-    return str
+    return this.decoder.decode(buffer)
   }
 
   public vtermPtyToJson(

@@ -1517,9 +1517,9 @@ export fn bufferDrawChar(
 // VTerm FFI Export Functions
 // =============================================================================
 
-export fn vtermFreeArena() void {
-    _ = arena.reset(.free_all);
-}
+// NOTE: vterm.zig has its own arena allocator, separate from globalArena.
+// This is critical because globalArena is shared with text buffers, editor views, etc.
+// The vterm arena is allowed to grow and is never reset, avoiding use-after-free issues.
 
 export fn vtermPtyToJson(
     input_ptr: [*]const u8,
@@ -1530,7 +1530,7 @@ export fn vtermPtyToJson(
     limit: usize,
     out_len: *usize,
 ) ?[*]u8 {
-    return vterm.ptyToJson(globalArena, input_ptr, input_len, cols, rows, offset, limit, out_len);
+    return vterm.ptyToJson(input_ptr, input_len, cols, rows, offset, limit, out_len);
 }
 
 export fn vtermPtyToText(
@@ -1540,7 +1540,7 @@ export fn vtermPtyToText(
     rows: u16,
     out_len: *usize,
 ) ?[*]u8 {
-    return vterm.ptyToText(globalArena, input_ptr, input_len, cols, rows, out_len);
+    return vterm.ptyToText(input_ptr, input_len, cols, rows, out_len);
 }
 
 export fn vtermCreateTerminal(id: u32, cols: u32, rows: u32) bool {
@@ -1564,15 +1564,15 @@ export fn vtermResetTerminal(id: u32) bool {
 }
 
 export fn vtermGetTerminalJson(id: u32, offset: u32, limit: u32, out_len: *usize) ?[*]u8 {
-    return vterm.getTerminalJson(globalArena, id, offset, limit, out_len);
+    return vterm.getTerminalJson(id, offset, limit, out_len);
 }
 
 export fn vtermGetTerminalText(id: u32, out_len: *usize) ?[*]u8 {
-    return vterm.getTerminalText(globalArena, id, out_len);
+    return vterm.getTerminalText(id, out_len);
 }
 
 export fn vtermGetTerminalCursor(id: u32, out_len: *usize) ?[*]u8 {
-    return vterm.getTerminalCursor(globalArena, id, out_len);
+    return vterm.getTerminalCursor(id, out_len);
 }
 
 export fn vtermIsTerminalReady(id: u32) i32 {

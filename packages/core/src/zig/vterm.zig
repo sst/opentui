@@ -5,6 +5,12 @@ const pagepkg = ghostty_vt.page;
 const formatter = ghostty_vt.formatter;
 const Screen = ghostty_vt.Screen;
 
+// Global arena allocator for vterm FFI functions.
+// This arena is allowed to grow and is never reset, avoiding use-after-free issues.
+// Memory usage is minimal since terminal output is typically small.
+var arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
+const globalArena = arena.allocator();
+
 pub const StyleFlags = packed struct(u8) {
     bold: bool = false,
     italic: bool = false,
@@ -315,7 +321,6 @@ fn getTerminalsMap() *std.AutoHashMap(u32, *PersistentTerminal) {
 }
 
 pub fn ptyToJson(
-    globalArena: std.mem.Allocator,
     input_ptr: [*]const u8,
     input_len: usize,
     cols: u16,
@@ -367,7 +372,6 @@ pub fn ptyToJson(
 }
 
 pub fn ptyToText(
-    globalArena: std.mem.Allocator,
     input_ptr: [*]const u8,
     input_len: usize,
     cols: u16,
@@ -475,7 +479,7 @@ pub fn resetTerminal(id: u32) bool {
     return true;
 }
 
-pub fn getTerminalJson(globalArena: std.mem.Allocator, id: u32, offset: u32, limit: u32, out_len: *usize) ?[*]u8 {
+pub fn getTerminalJson(id: u32, offset: u32, limit: u32, out_len: *usize) ?[*]u8 {
     terminals_mutex.lock();
     defer terminals_mutex.unlock();
 
@@ -491,7 +495,7 @@ pub fn getTerminalJson(globalArena: std.mem.Allocator, id: u32, offset: u32, lim
     return output.items.ptr;
 }
 
-pub fn getTerminalText(globalArena: std.mem.Allocator, id: u32, out_len: *usize) ?[*]u8 {
+pub fn getTerminalText(id: u32, out_len: *usize) ?[*]u8 {
     terminals_mutex.lock();
     defer terminals_mutex.unlock();
 
@@ -507,7 +511,7 @@ pub fn getTerminalText(globalArena: std.mem.Allocator, id: u32, out_len: *usize)
     return @constCast(output.ptr);
 }
 
-pub fn getTerminalCursor(globalArena: std.mem.Allocator, id: u32, out_len: *usize) ?[*]u8 {
+pub fn getTerminalCursor(id: u32, out_len: *usize) ?[*]u8 {
     terminals_mutex.lock();
     defer terminals_mutex.unlock();
 
