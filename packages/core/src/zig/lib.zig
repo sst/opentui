@@ -1519,12 +1519,8 @@ export fn bufferDrawChar(
 
 // NOTE: vterm.zig has its own arena allocator, separate from globalArena.
 // This is critical because globalArena is shared with text buffers, editor views, etc.
-// Stateless vterm functions (ptyToJson, ptyToText) use GPA - JS must free via vtermFreeBuffer.
-// Persistent terminal functions use per-terminal arenas - freed when terminal is destroyed.
-
-export fn vtermFreeBuffer(ptr: [*]u8, len: usize) void {
-    vterm.freeBuffer(ptr, len);
-}
+// VTerm functions use caller-provides-buffer pattern (outPtr, maxLen) like rest of codebase.
+// No memory management needed - JS owns the buffer.
 
 export fn vtermPtyToJson(
     input_ptr: [*]const u8,
@@ -1533,9 +1529,10 @@ export fn vtermPtyToJson(
     rows: u16,
     offset: usize,
     limit: usize,
-    out_len: *usize,
-) ?[*]u8 {
-    return vterm.ptyToJson(input_ptr, input_len, cols, rows, offset, limit, out_len);
+    out_ptr: [*]u8,
+    max_len: usize,
+) usize {
+    return vterm.ptyToJson(input_ptr, input_len, cols, rows, offset, limit, out_ptr, max_len);
 }
 
 export fn vtermPtyToText(
@@ -1543,9 +1540,10 @@ export fn vtermPtyToText(
     input_len: usize,
     cols: u16,
     rows: u16,
-    out_len: *usize,
-) ?[*]u8 {
-    return vterm.ptyToText(input_ptr, input_len, cols, rows, out_len);
+    out_ptr: [*]u8,
+    max_len: usize,
+) usize {
+    return vterm.ptyToText(input_ptr, input_len, cols, rows, out_ptr, max_len);
 }
 
 export fn vtermCreateTerminal(id: u32, cols: u32, rows: u32) bool {
@@ -1568,16 +1566,16 @@ export fn vtermResetTerminal(id: u32) bool {
     return vterm.resetTerminal(id);
 }
 
-export fn vtermGetTerminalJson(id: u32, offset: u32, limit: u32, out_len: *usize) ?[*]u8 {
-    return vterm.getTerminalJson(id, offset, limit, out_len);
+export fn vtermGetTerminalJson(id: u32, offset: u32, limit: u32, out_ptr: [*]u8, max_len: usize) usize {
+    return vterm.getTerminalJson(id, offset, limit, out_ptr, max_len);
 }
 
-export fn vtermGetTerminalText(id: u32, out_len: *usize) ?[*]u8 {
-    return vterm.getTerminalText(id, out_len);
+export fn vtermGetTerminalText(id: u32, out_ptr: [*]u8, max_len: usize) usize {
+    return vterm.getTerminalText(id, out_ptr, max_len);
 }
 
-export fn vtermGetTerminalCursor(id: u32, out_len: *usize) ?[*]u8 {
-    return vterm.getTerminalCursor(id, out_len);
+export fn vtermGetTerminalCursor(id: u32, out_ptr: [*]u8, max_len: usize) usize {
+    return vterm.getTerminalCursor(id, out_ptr, max_len);
 }
 
 export fn vtermIsTerminalReady(id: u32) i32 {

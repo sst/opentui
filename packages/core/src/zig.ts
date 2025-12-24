@@ -949,18 +949,14 @@ function getOpenTUILib(libPath?: string) {
       returns: "void",
     },
 
-    // VTerm functions
-    vtermFreeBuffer: {
-      args: ["ptr", "usize" as const] as const,
-      returns: "void",
-    },
+    // VTerm functions - use caller-provides-buffer pattern like rest of codebase
     vtermPtyToJson: {
-      args: ["ptr", "usize" as const, "u16", "u16", "usize" as const, "usize" as const, "ptr"] as const,
-      returns: "ptr",
+      args: ["ptr", "usize" as const, "u16", "u16", "usize" as const, "usize" as const, "ptr", "usize" as const] as const,
+      returns: "usize" as const,
     },
     vtermPtyToText: {
-      args: ["ptr", "usize" as const, "u16", "u16", "ptr"] as const,
-      returns: "ptr",
+      args: ["ptr", "usize" as const, "u16", "u16", "ptr", "usize" as const] as const,
+      returns: "usize" as const,
     },
     vtermCreateTerminal: {
       args: ["u32", "u32", "u32"] as const,
@@ -983,16 +979,16 @@ function getOpenTUILib(libPath?: string) {
       returns: "bool",
     },
     vtermGetTerminalJson: {
-      args: ["u32", "u32", "u32", "ptr"] as const,
-      returns: "ptr",
+      args: ["u32", "u32", "u32", "ptr", "usize" as const] as const,
+      returns: "usize" as const,
     },
     vtermGetTerminalText: {
-      args: ["u32", "ptr"] as const,
-      returns: "ptr",
+      args: ["u32", "ptr", "usize" as const] as const,
+      returns: "usize" as const,
     },
     vtermGetTerminalCursor: {
-      args: ["u32", "ptr"] as const,
-      returns: "ptr",
+      args: ["u32", "ptr", "usize" as const] as const,
+      returns: "usize" as const,
     },
     vtermIsTerminalReady: {
       args: ["u32"] as const,
@@ -3328,39 +3324,17 @@ class FFIRenderLib implements RenderLib {
     this._anyEventHandlers.push(handler)
   }
 
-  // VTerm methods
+  // VTerm methods - use caller-provides-buffer pattern like rest of codebase
 
-  /**
-   * Read string from pointer and free the Zig-allocated buffer.
-   * Used for stateless functions (ptyToJson, ptyToText) that allocate with GPA.
-   */
-  private readAndFreeVTermBuffer(resultPtr: Pointer | null, outLenBuffer: BigUint64Array): string {
-    if (!resultPtr) {
-      throw new Error("VTerm native function returned null")
+  // Reusable buffer for vterm output (avoids 4MB allocation per call)
+  private vtermBuffer: Uint8Array | null = null
+  private readonly vtermBufferSize = 4 * 1024 * 1024
+
+  private getVtermBuffer(): Uint8Array {
+    if (!this.vtermBuffer) {
+      this.vtermBuffer = new Uint8Array(this.vtermBufferSize)
     }
-
-    const outLen = Number(outLenBuffer[0])
-    const buffer = toArrayBuffer(resultPtr, 0, outLen)
-    const str = this.decoder.decode(buffer)
-
-    // Free the Zig-allocated buffer
-    this.opentui.symbols.vtermFreeBuffer(resultPtr, outLen)
-
-    return str
-  }
-
-  /**
-   * Read string from pointer without freeing.
-   * Used for persistent terminal functions where memory is freed with the terminal.
-   */
-  private readVTermStringFromPointer(resultPtr: Pointer | null, outLenBuffer: BigUint64Array): string {
-    if (!resultPtr) {
-      throw new Error("VTerm native function returned null")
-    }
-
-    const outLen = Number(outLenBuffer[0])
-    const buffer = toArrayBuffer(resultPtr, 0, outLen)
-    return this.decoder.decode(buffer)
+    return this.vtermBuffer
   }
 
   public vtermPtyToJson(
@@ -3383,22 +3357,25 @@ class FFIRenderLib implements RenderLib {
     }
 
     const inputBuffer = Buffer.from(inputStr)
-    const inputPtr = ptr(inputBuffer)
+    const outBuffer = this.getVtermBuffer()
 
-    const outLenBuffer = new BigUint64Array(1)
-    const outLenPtr = ptr(outLenBuffer)
-
-    const resultPtr = this.opentui.symbols.vtermPtyToJson(
-      inputPtr,
+    const actualLen = this.opentui.symbols.vtermPtyToJson(
+      ptr(inputBuffer),
       inputBuffer.length,
       cols,
       rows,
       offset,
       limit,
-      outLenPtr,
+      ptr(outBuffer),
+      outBuffer.length,
     )
 
-    const jsonStr = this.readAndFreeVTermBuffer(resultPtr, outLenBuffer)
+    const len = typeof actualLen === "bigint" ? Number(actualLen) : actualLen
+    if (len === 0) {
+      throw new Error("VTerm ptyToJson failed or output exceeded buffer size")
+    }
+
+    const jsonStr = this.decoder.decode(outBuffer.subarray(0, len))
 
     const raw = JSON.parse(jsonStr) as {
       cols: number
@@ -3437,14 +3414,23 @@ class FFIRenderLib implements RenderLib {
     }
 
     const inputBuffer = Buffer.from(inputStr)
-    const inputPtr = ptr(inputBuffer)
+    const outBuffer = this.getVtermBuffer()
 
-    const outLenBuffer = new BigUint64Array(1)
-    const outLenPtr = ptr(outLenBuffer)
+    const actualLen = this.opentui.symbols.vtermPtyToText(
+      ptr(inputBuffer),
+      inputBuffer.length,
+      cols,
+      rows,
+      ptr(outBuffer),
+      outBuffer.length,
+    )
 
-    const resultPtr = this.opentui.symbols.vtermPtyToText(inputPtr, inputBuffer.length, cols, rows, outLenPtr)
+    const len = typeof actualLen === "bigint" ? Number(actualLen) : actualLen
+    if (len === 0) {
+      return ""
+    }
 
-    return this.readAndFreeVTermBuffer(resultPtr, outLenBuffer)
+    return this.decoder.decode(outBuffer.subarray(0, len))
   }
 
   public vtermCreateTerminal(id: number, cols: number, rows: number): boolean {
@@ -3480,15 +3466,16 @@ class FFIRenderLib implements RenderLib {
   public vtermGetTerminalJson(id: number, options: { offset?: number; limit?: number } = {}): any {
     const { offset = 0, limit = 0 } = options
 
-    const outLenBuffer = new BigUint64Array(1)
-    const outLenPtr = ptr(outLenBuffer)
+    const outBuffer = this.getVtermBuffer()
 
-    const resultPtr = this.opentui.symbols.vtermGetTerminalJson(id, offset, limit, outLenPtr)
-    if (!resultPtr) {
-      throw new Error("Failed to get terminal JSON - terminal may not exist")
+    const actualLen = this.opentui.symbols.vtermGetTerminalJson(id, offset, limit, ptr(outBuffer), outBuffer.length)
+
+    const len = typeof actualLen === "bigint" ? Number(actualLen) : actualLen
+    if (len === 0) {
+      throw new Error("Failed to get terminal JSON - terminal may not exist or output exceeded buffer")
     }
 
-    const jsonStr = this.readVTermStringFromPointer(resultPtr, outLenBuffer)
+    const jsonStr = this.decoder.decode(outBuffer.subarray(0, len))
     const raw = JSON.parse(jsonStr) as {
       cols: number
       rows: number
@@ -3517,27 +3504,30 @@ class FFIRenderLib implements RenderLib {
   }
 
   public vtermGetTerminalText(id: number): string {
-    const outLenBuffer = new BigUint64Array(1)
-    const outLenPtr = ptr(outLenBuffer)
+    const outBuffer = this.getVtermBuffer()
 
-    const resultPtr = this.opentui.symbols.vtermGetTerminalText(id, outLenPtr)
-    if (!resultPtr) {
-      throw new Error("Failed to get terminal text - terminal may not exist")
+    const actualLen = this.opentui.symbols.vtermGetTerminalText(id, ptr(outBuffer), outBuffer.length)
+
+    const len = typeof actualLen === "bigint" ? Number(actualLen) : actualLen
+    if (len === 0) {
+      return ""
     }
 
-    return this.readVTermStringFromPointer(resultPtr, outLenBuffer)
+    return this.decoder.decode(outBuffer.subarray(0, len))
   }
 
   public vtermGetTerminalCursor(id: number): [number, number] {
-    const outLenBuffer = new BigUint64Array(1)
-    const outLenPtr = ptr(outLenBuffer)
+    // Cursor JSON is small: "[x,y]" - 32 bytes is plenty
+    const outBuffer = new Uint8Array(32)
 
-    const resultPtr = this.opentui.symbols.vtermGetTerminalCursor(id, outLenPtr)
-    if (!resultPtr) {
+    const actualLen = this.opentui.symbols.vtermGetTerminalCursor(id, ptr(outBuffer), outBuffer.length)
+
+    const len = typeof actualLen === "bigint" ? Number(actualLen) : actualLen
+    if (len === 0) {
       throw new Error("Failed to get terminal cursor - terminal may not exist")
     }
 
-    const jsonStr = this.readVTermStringFromPointer(resultPtr, outLenBuffer)
+    const jsonStr = this.decoder.decode(outBuffer.subarray(0, len))
     return JSON.parse(jsonStr) as [number, number]
   }
 

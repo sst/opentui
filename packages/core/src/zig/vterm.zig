@@ -5,10 +5,22 @@ const pagepkg = ghostty_vt.page;
 const formatter = ghostty_vt.formatter;
 const Screen = ghostty_vt.Screen;
 
-// General purpose allocator for stateless vterm functions (ptyToJson, ptyToText).
-// Memory is freed via vtermFreeBuffer which JS calls via toArrayBuffer's finalization callback.
-var gpa = std.heap.GeneralPurposeAllocator(.{}){};
-const statelessAllocator = gpa.allocator();
+// Disable all logging from ghostty-vt
+pub const std_options: std.Options = .{
+    .log_level = .err,
+    .logFn = struct {
+        pub fn logFn(
+            comptime _: std.log.Level,
+            comptime _: @Type(.enum_literal),
+            comptime _: []const u8,
+            _: anytype,
+        ) void {}
+    }.logFn,
+};
+
+// Reusable arena for stateless functions (ptyToJson, ptyToText).
+// Reset after each call to reuse allocated pages - avoids mmap/munmap per call.
+var stateless_arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
 
 pub const StyleFlags = packed struct(u8) {
     bold: bool = false,
@@ -326,14 +338,8 @@ fn getTerminalsMap() *std.AutoHashMap(u32, *PersistentTerminal) {
     return &terminals.?;
 }
 
-/// Free a buffer allocated by ptyToJson or ptyToText.
-/// JS should call this via toArrayBuffer's finalization callback.
-pub fn freeBuffer(ptr: [*]u8, len: usize) void {
-    if (len > 0) {
-        statelessAllocator.free(ptr[0..len]);
-    }
-}
-
+/// Stateless: parse PTY input and write JSON to caller-provided buffer.
+/// Returns bytes written, or 0 on error.
 pub fn ptyToJson(
     input_ptr: [*]const u8,
     input_len: usize,
@@ -341,21 +347,22 @@ pub fn ptyToJson(
     rows: u16,
     offset: usize,
     limit: usize,
-    out_len: *usize,
-) ?[*]u8 {
+    out_ptr: [*]u8,
+    max_len: usize,
+) usize {
+    // Reset arena after use - keeps allocated pages for next call
+    defer _ = stateless_arena.reset(.retain_capacity);
+    const alloc = stateless_arena.allocator();
+
     const input = input_ptr[0..input_len];
     const lim: ?usize = if (limit == 0) null else limit;
+    const out_buffer = out_ptr[0..max_len];
 
-    // Use a temporary arena for terminal internals and initial output buffer
-    var temp_arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
-    defer temp_arena.deinit();
-    const temp_alloc = temp_arena.allocator();
-
-    var t: ghostty_vt.Terminal = ghostty_vt.Terminal.init(temp_alloc, .{
+    var t: ghostty_vt.Terminal = ghostty_vt.Terminal.init(alloc, .{
         .cols = cols,
         .rows = rows,
         .max_scrollback = std.math.maxInt(usize),
-    }) catch return null;
+    }) catch return 0;
 
     t.modes.set(.linefeed, true);
 
@@ -369,7 +376,7 @@ pub fn ptyToJson(
 
         while (pos < input.len) {
             const end = @min(pos + chunk_size, input.len);
-            stream.nextSlice(input[pos..end]) catch return null;
+            stream.nextSlice(input[pos..end]) catch return 0;
             pos = end;
 
             if (stream.parser.state == .ground) {
@@ -379,61 +386,56 @@ pub fn ptyToJson(
             }
         }
     } else {
-        stream.nextSlice(input) catch return null;
+        stream.nextSlice(input) catch return 0;
     }
 
-    // Write to temp arena first, then copy to exact-size GPA allocation for proper freeing
-    var temp_output: std.ArrayListAligned(u8, null) = .empty;
-    writeJsonOutput(temp_output.writer(temp_alloc), &t, offset, lim) catch return null;
+    // Write directly to the caller-provided buffer
+    var fbs = std.io.fixedBufferStream(out_buffer);
+    writeJsonOutput(fbs.writer(), &t, offset, lim) catch return 0;
 
-    // Allocate exact size from GPA (so freeBuffer can free it correctly)
-    const result = statelessAllocator.alloc(u8, temp_output.items.len) catch return null;
-    @memcpy(result, temp_output.items);
-
-    out_len.* = result.len;
-    return result.ptr;
+    return fbs.pos;
 }
 
+/// Stateless: parse PTY input and write plain text to caller-provided buffer.
+/// Returns bytes written, or 0 on error.
 pub fn ptyToText(
     input_ptr: [*]const u8,
     input_len: usize,
     cols: u16,
     rows: u16,
-    out_len: *usize,
-) ?[*]u8 {
+    out_ptr: [*]u8,
+    max_len: usize,
+) usize {
+    // Reset arena after use - keeps allocated pages for next call
+    defer _ = stateless_arena.reset(.retain_capacity);
+    const alloc = stateless_arena.allocator();
+
     const input = input_ptr[0..input_len];
+    const out_buffer = out_ptr[0..max_len];
 
-    // Use a temporary arena for terminal internals and initial output buffer
-    var temp_arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
-    defer temp_arena.deinit();
-    const temp_alloc = temp_arena.allocator();
-
-    var t: ghostty_vt.Terminal = ghostty_vt.Terminal.init(temp_alloc, .{
+    var t: ghostty_vt.Terminal = ghostty_vt.Terminal.init(alloc, .{
         .cols = cols,
         .rows = rows,
         .max_scrollback = std.math.maxInt(usize),
-    }) catch return null;
+    }) catch return 0;
 
     t.modes.set(.linefeed, true);
 
     var stream = t.vtStream();
     defer stream.deinit();
 
-    stream.nextSlice(input) catch return null;
+    stream.nextSlice(input) catch return 0;
 
-    // Write to temp arena first
-    var builder: std.Io.Writer.Allocating = .init(temp_alloc);
+    // TerminalFormatter requires std.Io.Writer.Allocating, so write to temp buffer first
+    var builder: std.Io.Writer.Allocating = .init(alloc);
     var fmt: formatter.TerminalFormatter = formatter.TerminalFormatter.init(&t, .plain);
-    fmt.format(&builder.writer) catch return null;
+    fmt.format(&builder.writer) catch return 0;
 
     const temp_output = builder.writer.buffered();
+    const copy_len = @min(temp_output.len, max_len);
+    @memcpy(out_buffer[0..copy_len], temp_output[0..copy_len]);
 
-    // Allocate exact size from GPA (so freeBuffer can free it correctly)
-    const result = statelessAllocator.alloc(u8, temp_output.len) catch return null;
-    @memcpy(result, temp_output);
-
-    out_len.* = result.len;
-    return result.ptr;
+    return copy_len;
 }
 
 pub fn createTerminal(id: u32, cols: u32, rows: u32) bool {
@@ -512,53 +514,60 @@ pub fn resetTerminal(id: u32) bool {
     return true;
 }
 
-pub fn getTerminalJson(id: u32, offset: u32, limit: u32, out_len: *usize) ?[*]u8 {
+/// Write terminal JSON to caller-provided buffer. Returns bytes written.
+pub fn getTerminalJson(id: u32, offset: u32, limit: u32, out_ptr: [*]u8, max_len: usize) usize {
     terminals_mutex.lock();
     defer terminals_mutex.unlock();
 
     const map = getTerminalsMap();
-    const term = map.get(id) orelse return null;
+    const term = map.get(id) orelse return 0;
 
     const lim: ?usize = if (limit == 0) null else @intCast(limit);
+    const out_buffer = out_ptr[0..max_len];
 
-    // Output allocated from terminal's arena - freed when terminal is destroyed
-    var output: std.ArrayListAligned(u8, null) = .empty;
-    writeJsonOutput(output.writer(term.allocator()), &term.terminal, @intCast(offset), lim) catch return null;
+    var fbs = std.io.fixedBufferStream(out_buffer);
+    writeJsonOutput(fbs.writer(), &term.terminal, @intCast(offset), lim) catch return 0;
 
-    out_len.* = output.items.len;
-    return output.items.ptr;
+    return fbs.pos;
 }
 
-pub fn getTerminalText(id: u32, out_len: *usize) ?[*]u8 {
+/// Write terminal plain text to caller-provided buffer. Returns bytes written.
+pub fn getTerminalText(id: u32, out_ptr: [*]u8, max_len: usize) usize {
     terminals_mutex.lock();
     defer terminals_mutex.unlock();
 
     const map = getTerminalsMap();
-    const term = map.get(id) orelse return null;
+    const term = map.get(id) orelse return 0;
 
-    // Output allocated from terminal's arena - freed when terminal is destroyed
+    const out_buffer = out_ptr[0..max_len];
+
+    // TerminalFormatter requires std.Io.Writer.Allocating, so write to temp buffer first
     var builder: std.Io.Writer.Allocating = .init(term.allocator());
     var fmt: formatter.TerminalFormatter = formatter.TerminalFormatter.init(&term.terminal, .plain);
-    fmt.format(&builder.writer) catch return null;
+    fmt.format(&builder.writer) catch return 0;
 
-    const output = builder.writer.buffered();
-    out_len.* = output.len;
-    return @constCast(output.ptr);
+    const temp_output = builder.writer.buffered();
+    const copy_len = @min(temp_output.len, max_len);
+    @memcpy(out_buffer[0..copy_len], temp_output[0..copy_len]);
+
+    return copy_len;
 }
 
-pub fn getTerminalCursor(id: u32, out_len: *usize) ?[*]u8 {
+/// Write terminal cursor position JSON to caller-provided buffer. Returns bytes written.
+pub fn getTerminalCursor(id: u32, out_ptr: [*]u8, max_len: usize) usize {
     terminals_mutex.lock();
     defer terminals_mutex.unlock();
 
     const map = getTerminalsMap();
-    const term = map.get(id) orelse return null;
+    const term = map.get(id) orelse return 0;
 
     const screen = term.terminal.screens.active;
+    const out_buffer = out_ptr[0..max_len];
 
-    // Output allocated from terminal's arena - freed when terminal is destroyed
-    const output = std.fmt.allocPrint(term.allocator(), "[{},{}]", .{ screen.cursor.x, screen.cursor.y }) catch return null;
-    out_len.* = output.len;
-    return @constCast(output.ptr);
+    var fbs = std.io.fixedBufferStream(out_buffer);
+    fbs.writer().print("[{},{}]", .{ screen.cursor.x, screen.cursor.y }) catch return 0;
+
+    return fbs.pos;
 }
 
 pub fn isTerminalReady(id: u32) i32 {
