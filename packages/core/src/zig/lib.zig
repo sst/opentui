@@ -1,6 +1,34 @@
 const std = @import("std");
 const Allocator = std.mem.Allocator;
 
+// Suppress ghostty-vt logs. Zig's std.log calls `@import("root").std_options.logFn`,
+// so defining this in the root file (lib.zig) overrides logging for all modules.
+pub const std_options: std.Options = .{
+    .logFn = struct {
+        pub fn logFn(
+            comptime level: std.log.Level,
+            comptime scope: @Type(.enum_literal),
+            comptime format: []const u8,
+            args: anytype,
+        ) void {
+            // Suppress ghostty-vt related scopes
+            const scope_name = @tagName(scope);
+            const suppressed = std.mem.eql(u8, scope_name, "osc") or
+                std.mem.eql(u8, scope_name, "terminal") or
+                std.mem.eql(u8, scope_name, "stream") or
+                std.mem.eql(u8, scope_name, "page") or
+                std.mem.eql(u8, scope_name, "sgr") or
+                std.mem.eql(u8, scope_name, "kitty") or
+                std.mem.eql(u8, scope_name, "csi") or
+                std.mem.eql(u8, scope_name, "modes");
+            if (suppressed) return;
+
+            // Use default logging for other scopes (opentui's own logs)
+            std.log.defaultLog(level, scope, format, args);
+        }
+    }.logFn,
+};
+
 const ansi = @import("ansi.zig");
 const buffer = @import("buffer.zig");
 const renderer = @import("renderer.zig");
