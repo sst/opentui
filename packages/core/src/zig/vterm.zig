@@ -134,12 +134,21 @@ pub fn writeJsonOutput(
     t: *ghostty_vt.Terminal,
     offset: usize,
     limit: ?usize,
+    show_cursor: bool,
 ) !void {
     const screen = t.screens.active;
     const palette = &t.colors.palette.current;
     const terminal_bg = t.colors.background.get();
 
     const total_lines = countLines(screen);
+
+    // Calculate cursor row in absolute screen coordinates (for inverting cursor cell)
+    const cursor_abs_row: ?usize = if (show_cursor) blk: {
+        const rows: usize = screen.pages.rows;
+        const viewport_start = if (total_lines >= rows) total_lines - rows else 0;
+        break :blk viewport_start + screen.cursor.y;
+    } else null;
+    const cursor_col: usize = screen.cursor.x;
 
     try writer.writeAll("{");
     try writer.print("\"cols\":{},\"rows\":{},", .{ screen.pages.cols, screen.pages.rows });
@@ -172,11 +181,47 @@ pub fn writeJsonOutput(
         var text_len: usize = 0;
         var span_idx: usize = 0;
 
+        // Check if cursor is on this row
+        const is_cursor_row = if (cursor_abs_row) |crow| row_idx == crow else false;
+
         for (cells, 0..) |*cell, col_idx| {
             if (cell.wide == .spacer_tail) continue;
 
             const cp = cell.codepoint();
             const is_null = cp == 0;
+
+            // Check if this cell is at cursor position
+            const is_cursor_cell = is_cursor_row and col_idx == cursor_col;
+
+            // Handle cursor on empty cell - emit a single-char inverted span
+            if (is_null and is_cursor_cell) {
+                // First flush any pending span
+                if (text_len > 0) {
+                    if (span_idx > 0) try writer.writeByte(',');
+                    try writer.writeByte('[');
+                    try writeJsonString(writer, text_buf[0..text_len]);
+                    try writer.writeByte(',');
+                    try writeColor(writer, current_style.?.fg);
+                    try writer.writeByte(',');
+                    try writeColor(writer, current_style.?.bg);
+                    try writer.print(",{},{}", .{ current_style.?.flags.toInt(), span_len });
+                    try writer.writeByte(']');
+                    span_idx += 1;
+                    text_len = 0;
+                    span_len = 0;
+                    current_style = null;
+                }
+                // Emit cursor span with space and inverse flag
+                if (span_idx > 0) try writer.writeByte(',');
+                try writer.writeByte('[');
+                try writeJsonString(writer, " ");
+                try writer.writeAll(",null,null,");
+                const cursor_flags = StyleFlags{ .inverse = true };
+                try writer.print("{},1", .{cursor_flags.toInt()});
+                try writer.writeByte(']');
+                span_idx += 1;
+                continue;
+            }
 
             if (is_null) {
                 if (text_len > 0) {
@@ -197,7 +242,13 @@ pub fn writeJsonOutput(
                 continue;
             }
 
-            const style = getStyleFromCell(cell, pin, palette, terminal_bg);
+            var style = getStyleFromCell(cell, pin, palette, terminal_bg);
+
+            // Toggle inverse for cursor cell
+            if (is_cursor_cell) {
+                style.flags.inverse = !style.flags.inverse;
+            }
+
             const style_changed = if (current_style) |cs| !cs.eql(style) else true;
 
             if (style_changed and text_len > 0) {
@@ -378,7 +429,7 @@ pub fn ptyToJson(
 
     // Write directly to the caller-provided buffer
     var fbs = std.io.fixedBufferStream(out_buffer);
-    writeJsonOutput(fbs.writer(), &t, offset, lim) catch return 0;
+    writeJsonOutput(fbs.writer(), &t, offset, lim, false) catch return 0;
 
     return fbs.pos;
 }
@@ -513,7 +564,7 @@ pub fn getTerminalJson(id: u32, offset: u32, limit: u32, out_ptr: [*]u8, max_len
     const out_buffer = out_ptr[0..max_len];
 
     var fbs = std.io.fixedBufferStream(out_buffer);
-    writeJsonOutput(fbs.writer(), &term.terminal, @intCast(offset), lim) catch return 0;
+    writeJsonOutput(fbs.writer(), &term.terminal, @intCast(offset), lim, true) catch return 0;
 
     return fbs.pos;
 }
