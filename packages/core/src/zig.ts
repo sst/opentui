@@ -950,6 +950,10 @@ function getOpenTUILib(libPath?: string) {
     },
 
     // VTerm functions
+    vtermFreeBuffer: {
+      args: ["ptr", "usize" as const] as const,
+      returns: "void",
+    },
     vtermPtyToJson: {
       args: ["ptr", "usize" as const, "u16", "u16", "usize" as const, "usize" as const, "ptr"] as const,
       returns: "ptr",
@@ -3325,6 +3329,30 @@ class FFIRenderLib implements RenderLib {
   }
 
   // VTerm methods
+
+  /**
+   * Read string from pointer and free the Zig-allocated buffer.
+   * Used for stateless functions (ptyToJson, ptyToText) that allocate with GPA.
+   */
+  private readAndFreeVTermBuffer(resultPtr: Pointer | null, outLenBuffer: BigUint64Array): string {
+    if (!resultPtr) {
+      throw new Error("VTerm native function returned null")
+    }
+
+    const outLen = Number(outLenBuffer[0])
+    const buffer = toArrayBuffer(resultPtr, 0, outLen)
+    const str = this.decoder.decode(buffer)
+
+    // Free the Zig-allocated buffer
+    this.opentui.symbols.vtermFreeBuffer(resultPtr, outLen)
+
+    return str
+  }
+
+  /**
+   * Read string from pointer without freeing.
+   * Used for persistent terminal functions where memory is freed with the terminal.
+   */
   private readVTermStringFromPointer(resultPtr: Pointer | null, outLenBuffer: BigUint64Array): string {
     if (!resultPtr) {
       throw new Error("VTerm native function returned null")
@@ -3370,7 +3398,7 @@ class FFIRenderLib implements RenderLib {
       outLenPtr,
     )
 
-    const jsonStr = this.readVTermStringFromPointer(resultPtr, outLenBuffer)
+    const jsonStr = this.readAndFreeVTermBuffer(resultPtr, outLenBuffer)
 
     const raw = JSON.parse(jsonStr) as {
       cols: number
@@ -3416,7 +3444,7 @@ class FFIRenderLib implements RenderLib {
 
     const resultPtr = this.opentui.symbols.vtermPtyToText(inputPtr, inputBuffer.length, cols, rows, outLenPtr)
 
-    return this.readVTermStringFromPointer(resultPtr, outLenBuffer)
+    return this.readAndFreeVTermBuffer(resultPtr, outLenBuffer)
   }
 
   public vtermCreateTerminal(id: number, cols: number, rows: number): boolean {

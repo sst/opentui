@@ -5,11 +5,10 @@ const pagepkg = ghostty_vt.page;
 const formatter = ghostty_vt.formatter;
 const Screen = ghostty_vt.Screen;
 
-// Global arena allocator for vterm FFI functions.
-// This arena is allowed to grow and is never reset, avoiding use-after-free issues.
-// Memory usage is minimal since terminal output is typically small.
-var arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
-const globalArena = arena.allocator();
+// General purpose allocator for stateless vterm functions (ptyToJson, ptyToText).
+// Memory is freed via vtermFreeBuffer which JS calls via toArrayBuffer's finalization callback.
+var gpa = std.heap.GeneralPurposeAllocator(.{}){};
+const statelessAllocator = gpa.allocator();
 
 pub const StyleFlags = packed struct(u8) {
     bold: bool = false,
@@ -256,23 +255,28 @@ const ReadonlyStream = @typeInfo(@TypeOf(ghostty_vt.Terminal.vtStream)).@"fn".re
 
 pub const PersistentTerminal = struct {
     terminal: ghostty_vt.Terminal,
-    allocator: std.mem.Allocator,
+    arena: std.heap.ArenaAllocator,
     stream: ?ReadonlyStream,
 
-    pub fn init(alloc: std.mem.Allocator, cols: u16, rows: u16) !PersistentTerminal {
-        var terminal = try ghostty_vt.Terminal.init(alloc, .{
+    /// Create an uninitialized PersistentTerminal. Must call initTerminal() after
+    /// the struct is in its final memory location (heap-allocated).
+    pub fn create(backing_alloc: std.mem.Allocator) PersistentTerminal {
+        return .{
+            .terminal = undefined,
+            .arena = std.heap.ArenaAllocator.init(backing_alloc),
+            .stream = null,
+        };
+    }
+
+    /// Initialize the terminal. Must be called after the struct is heap-allocated
+    /// so the arena's address is stable when stored in the terminal.
+    pub fn initTerminal(self: *PersistentTerminal, cols: u16, rows: u16) !void {
+        self.terminal = try ghostty_vt.Terminal.init(self.arena.allocator(), .{
             .cols = cols,
             .rows = rows,
             .max_scrollback = std.math.maxInt(usize),
         });
-
-        terminal.modes.set(.linefeed, true);
-
-        return .{
-            .terminal = terminal,
-            .allocator = alloc,
-            .stream = null,
-        };
+        self.terminal.modes.set(.linefeed, true);
     }
 
     pub fn initStream(self: *PersistentTerminal) void {
@@ -280,10 +284,12 @@ pub const PersistentTerminal = struct {
     }
 
     pub fn deinit(self: *PersistentTerminal) void {
-        if (self.stream) |*s| {
-            s.deinit();
-        }
-        self.terminal.deinit(self.allocator);
+        // Arena deinit frees everything: terminal internals, stream, and output strings
+        self.arena.deinit();
+    }
+
+    pub fn allocator(self: *PersistentTerminal) std.mem.Allocator {
+        return self.arena.allocator();
     }
 
     pub fn feed(self: *PersistentTerminal, data: []const u8) !void {
@@ -298,7 +304,7 @@ pub const PersistentTerminal = struct {
     }
 
     pub fn resize(self: *PersistentTerminal, cols: u16, rows: u16) !void {
-        try self.terminal.resize(self.allocator, cols, rows);
+        try self.terminal.resize(self.arena.allocator(), cols, rows);
     }
 
     pub fn reset(self: *PersistentTerminal) void {
@@ -320,6 +326,14 @@ fn getTerminalsMap() *std.AutoHashMap(u32, *PersistentTerminal) {
     return &terminals.?;
 }
 
+/// Free a buffer allocated by ptyToJson or ptyToText.
+/// JS should call this via toArrayBuffer's finalization callback.
+pub fn freeBuffer(ptr: [*]u8, len: usize) void {
+    if (len > 0) {
+        statelessAllocator.free(ptr[0..len]);
+    }
+}
+
 pub fn ptyToJson(
     input_ptr: [*]const u8,
     input_len: usize,
@@ -332,12 +346,16 @@ pub fn ptyToJson(
     const input = input_ptr[0..input_len];
     const lim: ?usize = if (limit == 0) null else limit;
 
-    var t: ghostty_vt.Terminal = ghostty_vt.Terminal.init(globalArena, .{
+    // Use a temporary arena for terminal internals and initial output buffer
+    var temp_arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
+    defer temp_arena.deinit();
+    const temp_alloc = temp_arena.allocator();
+
+    var t: ghostty_vt.Terminal = ghostty_vt.Terminal.init(temp_alloc, .{
         .cols = cols,
         .rows = rows,
         .max_scrollback = std.math.maxInt(usize),
     }) catch return null;
-    defer t.deinit(globalArena);
 
     t.modes.set(.linefeed, true);
 
@@ -364,11 +382,16 @@ pub fn ptyToJson(
         stream.nextSlice(input) catch return null;
     }
 
-    var output: std.ArrayListAligned(u8, null) = .empty;
-    writeJsonOutput(output.writer(globalArena), &t, offset, lim) catch return null;
+    // Write to temp arena first, then copy to exact-size GPA allocation for proper freeing
+    var temp_output: std.ArrayListAligned(u8, null) = .empty;
+    writeJsonOutput(temp_output.writer(temp_alloc), &t, offset, lim) catch return null;
 
-    out_len.* = output.items.len;
-    return output.items.ptr;
+    // Allocate exact size from GPA (so freeBuffer can free it correctly)
+    const result = statelessAllocator.alloc(u8, temp_output.items.len) catch return null;
+    @memcpy(result, temp_output.items);
+
+    out_len.* = result.len;
+    return result.ptr;
 }
 
 pub fn ptyToText(
@@ -380,12 +403,16 @@ pub fn ptyToText(
 ) ?[*]u8 {
     const input = input_ptr[0..input_len];
 
-    var t: ghostty_vt.Terminal = ghostty_vt.Terminal.init(globalArena, .{
+    // Use a temporary arena for terminal internals and initial output buffer
+    var temp_arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
+    defer temp_arena.deinit();
+    const temp_alloc = temp_arena.allocator();
+
+    var t: ghostty_vt.Terminal = ghostty_vt.Terminal.init(temp_alloc, .{
         .cols = cols,
         .rows = rows,
         .max_scrollback = std.math.maxInt(usize),
     }) catch return null;
-    defer t.deinit(globalArena);
 
     t.modes.set(.linefeed, true);
 
@@ -394,13 +421,19 @@ pub fn ptyToText(
 
     stream.nextSlice(input) catch return null;
 
-    var builder: std.Io.Writer.Allocating = .init(globalArena);
+    // Write to temp arena first
+    var builder: std.Io.Writer.Allocating = .init(temp_alloc);
     var fmt: formatter.TerminalFormatter = formatter.TerminalFormatter.init(&t, .plain);
     fmt.format(&builder.writer) catch return null;
 
-    const output = builder.writer.buffered();
-    out_len.* = output.len;
-    return @constCast(output.ptr);
+    const temp_output = builder.writer.buffered();
+
+    // Allocate exact size from GPA (so freeBuffer can free it correctly)
+    const result = statelessAllocator.alloc(u8, temp_output.len) catch return null;
+    @memcpy(result, temp_output);
+
+    out_len.* = result.len;
+    return result.ptr;
 }
 
 pub fn createTerminal(id: u32, cols: u32, rows: u32) bool {
@@ -415,13 +448,13 @@ pub fn createTerminal(id: u32, cols: u32, rows: u32) bool {
         _ = map.remove(id);
     }
 
+    // Two-phase init: first allocate struct to heap, then init terminal in-place.
+    // This ensures the arena's address is stable when stored in the terminal.
     const term_ptr = std.heap.page_allocator.create(PersistentTerminal) catch return false;
+    term_ptr.* = PersistentTerminal.create(std.heap.page_allocator);
 
-    term_ptr.* = PersistentTerminal.init(
-        std.heap.page_allocator,
-        @intCast(cols),
-        @intCast(rows),
-    ) catch {
+    term_ptr.initTerminal(@intCast(cols), @intCast(rows)) catch {
+        term_ptr.arena.deinit();
         std.heap.page_allocator.destroy(term_ptr);
         return false;
     };
@@ -488,8 +521,9 @@ pub fn getTerminalJson(id: u32, offset: u32, limit: u32, out_len: *usize) ?[*]u8
 
     const lim: ?usize = if (limit == 0) null else @intCast(limit);
 
+    // Output allocated from terminal's arena - freed when terminal is destroyed
     var output: std.ArrayListAligned(u8, null) = .empty;
-    writeJsonOutput(output.writer(globalArena), &term.terminal, @intCast(offset), lim) catch return null;
+    writeJsonOutput(output.writer(term.allocator()), &term.terminal, @intCast(offset), lim) catch return null;
 
     out_len.* = output.items.len;
     return output.items.ptr;
@@ -502,7 +536,8 @@ pub fn getTerminalText(id: u32, out_len: *usize) ?[*]u8 {
     const map = getTerminalsMap();
     const term = map.get(id) orelse return null;
 
-    var builder: std.Io.Writer.Allocating = .init(globalArena);
+    // Output allocated from terminal's arena - freed when terminal is destroyed
+    var builder: std.Io.Writer.Allocating = .init(term.allocator());
     var fmt: formatter.TerminalFormatter = formatter.TerminalFormatter.init(&term.terminal, .plain);
     fmt.format(&builder.writer) catch return null;
 
@@ -520,7 +555,8 @@ pub fn getTerminalCursor(id: u32, out_len: *usize) ?[*]u8 {
 
     const screen = term.terminal.screens.active;
 
-    const output = std.fmt.allocPrint(globalArena, "[{},{}]", .{ screen.cursor.x, screen.cursor.y }) catch return null;
+    // Output allocated from terminal's arena - freed when terminal is destroyed
+    const output = std.fmt.allocPrint(term.allocator(), "[{},{}]", .{ screen.cursor.x, screen.cursor.y }) catch return null;
     out_len.* = output.len;
     return @constCast(output.ptr);
 }

@@ -1519,7 +1519,12 @@ export fn bufferDrawChar(
 
 // NOTE: vterm.zig has its own arena allocator, separate from globalArena.
 // This is critical because globalArena is shared with text buffers, editor views, etc.
-// The vterm arena is allowed to grow and is never reset, avoiding use-after-free issues.
+// Stateless vterm functions (ptyToJson, ptyToText) use GPA - JS must free via vtermFreeBuffer.
+// Persistent terminal functions use per-terminal arenas - freed when terminal is destroyed.
+
+export fn vtermFreeBuffer(ptr: [*]u8, len: usize) void {
+    vterm.freeBuffer(ptr, len);
+}
 
 export fn vtermPtyToJson(
     input_ptr: [*]const u8,
