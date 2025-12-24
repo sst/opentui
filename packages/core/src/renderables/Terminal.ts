@@ -177,7 +177,6 @@ export class TerminalRenderable extends TextBufferRenderable {
     this._lib = resolveRenderLib()
     this._terminalId = nextTerminalId++
 
-
     const success = this._lib.vtermCreateTerminal(this._terminalId, this._cols, this._rows)
     if (!success) {
       throw new Error("Failed to create terminal")

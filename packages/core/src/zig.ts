@@ -951,7 +951,16 @@ function getOpenTUILib(libPath?: string) {
 
     // VTerm functions - use caller-provides-buffer pattern like rest of codebase
     vtermPtyToJson: {
-      args: ["ptr", "usize" as const, "u16", "u16", "usize" as const, "usize" as const, "ptr", "usize" as const] as const,
+      args: [
+        "ptr",
+        "usize" as const,
+        "u16",
+        "u16",
+        "usize" as const,
+        "usize" as const,
+        "ptr",
+        "usize" as const,
+      ] as const,
       returns: "usize" as const,
     },
     vtermPtyToText: {

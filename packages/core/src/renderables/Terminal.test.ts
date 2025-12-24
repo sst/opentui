@@ -717,7 +717,8 @@ test("TerminalRenderable - feed with cursor movement sequences", async () => {
   })
 
   // Various cursor movement and control sequences
-  const ansi = `\x1b[2J\x1b[H` + // Clear screen and home
+  const ansi =
+    `\x1b[2J\x1b[H` + // Clear screen and home
     `\x1b[5;10HPosition 5,10` + // Move to row 5, col 10
     `\x1b[10;20HPosition 10,20` + // Move to row 10, col 20
     `\x1b[A\x1b[A\x1b[A` + // Move up 3 times
