@@ -1,28 +1,20 @@
 import { type KeyEvent } from "@opentui/core"
+import { spawn, type IPty } from "bun-pty"
 import { useKeyboard, useRenderer, useTerminalDimensions } from "@opentui/solid"
 import { createSignal, onCleanup, onMount, For, createEffect } from "solid-js"
-
-interface PtyHandle {
-  write: (data: string) => void
-  resize: (cols: number, rows: number) => void
-  kill: () => void
-  onData: (callback: (data: string) => void) => void
-  onExit: (callback: (info: { exitCode: number }) => void) => void
-}
 
 interface TerminalStream {
   readable: ReadableStream<string>
   writable: WritableStream<string>
-  pty: PtyHandle
+  pty: IPty
 }
 
 const GRID_COLS = 2
 const GRID_ROWS = 2
 const TOTAL_TERMINALS = GRID_COLS * GRID_ROWS
 
-async function spawnPty(cols: number, rows: number): Promise<PtyHandle | null> {
+async function spawnPty(cols: number, rows: number) {
   try {
-    const { spawn } = await import("bun-pty")
     return spawn("opencode", [], {
       name: "xterm-256color",
       cols,
@@ -57,21 +49,17 @@ export default function TerminalGridDemo() {
 
       if (pty) {
         const readable = new ReadableStream<string>({
-
           start(controller) {
             pty.onData((data) => controller.enqueue(data))
 
             pty.onExit(() => controller.close())
           },
-
-
         })
 
         const writable = new WritableStream<string>({
           write(chunk) {
             pty.write(chunk)
           },
-
         })
 
         newStreams.push({ readable, writable, pty })
@@ -116,7 +104,6 @@ export default function TerminalGridDemo() {
       process.exit(0)
     }
 
-    // Forward keyboard to focused terminal's PTY
     const stream = streams()[focusedIndex()]
     if (stream && key.raw) {
       stream.pty.write(key.raw)
