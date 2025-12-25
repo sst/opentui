@@ -341,14 +341,12 @@ pub const OptimizedBuffer = struct {
         self.buffer.bg = self.allocator.realloc(self.buffer.bg, size) catch return BufferError.OutOfMemory;
         self.buffer.attributes = self.allocator.realloc(self.buffer.attributes, size) catch return BufferError.OutOfMemory;
 
-        // TODO: Only when resizing down,
-        // do we need to clear the graphemes from the  removed area?
-        if (width < self.width or height < self.height) {
-            try self.clear(.{ 0.0, 0.0, 0.0, 1.0 }, null);
-        }
-
         self.width = width;
         self.height = height;
+
+        // Always clear after resize to initialize cells (realloc doesn't zero memory)
+        // This handles both growing (new cells are garbage) and shrinking (grapheme cleanup)
+        try self.clear(.{ 0.0, 0.0, 0.0, 1.0 }, null);
     }
 
     fn coordsToIndex(self: *const OptimizedBuffer, x: u32, y: u32) u32 {
@@ -624,7 +622,6 @@ pub const OptimizedBuffer = struct {
         }
     }
 
-
     pub fn setCellWithAlphaBlendingRaw(
         self: *OptimizedBuffer,
         x: u32,
@@ -654,7 +651,6 @@ pub const OptimizedBuffer = struct {
             self.setRaw(x, y, overlayCell);
         }
     }
-
 
     pub fn drawChar(
         self: *OptimizedBuffer,

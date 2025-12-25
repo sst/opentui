@@ -379,8 +379,21 @@ pub const CliRenderer = struct {
             }
         } else {
             if (self.renderThread) |thread| {
+                // Signal the render thread to terminate (same pattern as destroy)
+                self.renderMutex.lock();
+                while (self.renderInProgress) {
+                    self.renderCondition.wait(&self.renderMutex);
+                }
+                self.shouldTerminate = true;
+                self.renderRequested = true;
+                self.renderCondition.signal();
+                self.renderMutex.unlock();
+
                 thread.join();
                 self.renderThread = null;
+
+                // Reset termination flag so thread can be re-enabled later
+                self.shouldTerminate = false;
             }
         }
 

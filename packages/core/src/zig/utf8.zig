@@ -571,16 +571,20 @@ inline fn eastAsianWidth(cp: u21) u32 {
         (cp >= 0x25FD and cp <= 0x25FE) or // White/Black Medium Small Square
         // Miscellaneous Symbols (U+2600-26FF) - only specific emoji are width 2
         (cp >= 0x2614 and cp <= 0x2615) or // Umbrella symbols
+        cp == 0x2622 or cp == 0x2623 or // Radioactive, Biohazard
         (cp >= 0x2630 and cp <= 0x2637) or // Trigrams
         (cp >= 0x2648 and cp <= 0x2653) or // Zodiac signs
         cp == 0x267F or // Wheelchair symbol
         (cp >= 0x268A and cp <= 0x268F) or // Monogram symbols
         cp == 0x2693 or // Anchor
+        cp == 0x269B or // Atom symbol
+        cp == 0x26A0 or // Warning sign
         cp == 0x26A1 or // High voltage
         (cp >= 0x26AA and cp <= 0x26AB) or // White/Black circles
         (cp >= 0x26BD and cp <= 0x26BE) or // Soccer/Baseball
         (cp >= 0x26C4 and cp <= 0x26C5) or // Snowman
         cp == 0x26CE or // Ophiuchus
+        cp == 0x26D1 or // Rescue worker helmet
         cp == 0x26D4 or // No Entry
         cp == 0x26EA or // Church
         cp == 0x26F2 or cp == 0x26F3 or // Fountain, Golf flag
@@ -588,6 +592,8 @@ inline fn eastAsianWidth(cp: u21) u32 {
         cp == 0x26FA or // Tent
         cp == 0x26FD or // Fuel pump
         // Dingbats (U+2700-27BF) - only specific ones are width 2
+        cp == 0x203C or // Double exclamation mark
+        cp == 0x2049 or // Exclamation question mark
         cp == 0x2705 or // White Heavy Check Mark
         (cp >= 0x270A and cp <= 0x270B) or // Raised fist/hand
         cp == 0x2728 or // Sparkles

@@ -25,45 +25,36 @@ class SelectionAnchor {
 
 export class Selection {
   private _anchor: SelectionAnchor
-  private _originalFocus: { x: number; y: number }
-  private _normalizedAnchor!: { x: number; y: number }
-  private _normalizedFocus!: { x: number; y: number }
+  private _focus: { x: number; y: number }
   private _selectedRenderables: Renderable[] = []
   private _touchedRenderables: Renderable[] = []
   private _isActive: boolean = true
   private _isSelecting: boolean = true
+  private _isStart: boolean = false
 
   constructor(anchorRenderable: Renderable, anchor: { x: number; y: number }, focus: { x: number; y: number }) {
     this._anchor = new SelectionAnchor(anchorRenderable, anchor.x, anchor.y)
-    this._originalFocus = { ...focus }
-    this._updateNormalizedSelection()
+    this._focus = { ...focus }
+  }
+
+  get isStart(): boolean {
+    return this._isStart
+  }
+
+  set isStart(value: boolean) {
+    this._isStart = value
   }
 
   get anchor(): { x: number; y: number } {
-    return { ...this._normalizedAnchor }
+    return { x: this._anchor.x, y: this._anchor.y }
   }
 
   get focus(): { x: number; y: number } {
-    return { ...this._normalizedFocus }
+    return { ...this._focus }
   }
 
   set focus(value: { x: number; y: number }) {
-    this._originalFocus = { ...value }
-    this._updateNormalizedSelection()
-  }
-
-  private _updateNormalizedSelection(): void {
-    const anchorBeforeFocus =
-      this._anchor.y < this._originalFocus.y ||
-      (this._anchor.y === this._originalFocus.y && this._anchor.x <= this._originalFocus.x)
-
-    if (anchorBeforeFocus) {
-      this._normalizedAnchor = { x: this._anchor.x, y: this._anchor.y }
-      this._normalizedFocus = { ...this._originalFocus }
-    } else {
-      this._normalizedAnchor = { ...this._originalFocus }
-      this._normalizedFocus = { x: this._anchor.x + 1, y: this._anchor.y }
-    }
+    this._focus = { ...value }
   }
 
   get isActive(): boolean {
@@ -83,15 +74,22 @@ export class Selection {
   }
 
   get bounds(): ViewportBounds {
+    const minX = Math.min(this._anchor.x, this._focus.x)
+    const maxX = Math.max(this._anchor.x, this._focus.x)
+    const minY = Math.min(this._anchor.y, this._focus.y)
+    const maxY = Math.max(this._anchor.y, this._focus.y)
+
+    // Selection bounds are inclusive of both anchor and focus
+    // A selection from (0,0) to (0,0) covers 1 cell
+    // A selection from (0,0) to (5,3) covers cells from (0,0) to (5,3) inclusive
+    const width = maxX - minX + 1
+    const height = maxY - minY + 1
+
     return {
-      x: Math.min(this._normalizedAnchor.x, this._normalizedFocus.x),
-      y: Math.min(this._normalizedAnchor.y, this._normalizedFocus.y),
-      width:
-        Math.max(this._normalizedAnchor.x, this._normalizedFocus.x) -
-        Math.min(this._normalizedAnchor.x, this._normalizedFocus.x),
-      height:
-        Math.max(this._normalizedAnchor.y, this._normalizedFocus.y) -
-        Math.min(this._normalizedAnchor.y, this._normalizedFocus.y),
+      x: minX,
+      y: minY,
+      width,
+      height,
     }
   }
 

@@ -1,0 +1,481 @@
+// Bun Snapshot v1, https://bun.sh/docs/test/snapshots
+
+exports[`Absolute Positioning - Snapshot Tests Basic absolute positioning absolute positioned box at top-left: absolute positioned box at top-left 1`] = `
+"┌─────────────┐                         
+│Top Left     │                         
+│             │                         
+│             │                         
+└─────────────┘                         
+                                        
+                                        
+                                        
+                                        
+                                        
+                                        
+                                        
+                                        
+                                        
+                                        
+                                        
+                                        
+                                        
+                                        
+                                        
+"
+`;
+
+exports[`Absolute Positioning - Snapshot Tests Basic absolute positioning absolute positioned box at bottom-right using right/bottom: absolute positioned box at bottom-right 1`] = `
+"                                        
+                                        
+                                        
+                                        
+                                        
+                                        
+                                        
+                                        
+                                        
+                                        
+                                        
+                                        
+                                        
+                                        
+                                        
+                         ┌─────────────┐
+                         │Bottom Right │
+                         │             │
+                         │             │
+                         └─────────────┘
+"
+`;
+
+exports[`Absolute Positioning - Snapshot Tests Basic absolute positioning absolute positioned box centered with left/top: absolute positioned box centered 1`] = `
+"                                        
+                                        
+                                        
+                                        
+                                        
+          ┌──────────────────┐          
+          │Centered          │          
+          │                  │          
+          │                  │          
+          │                  │          
+          │                  │          
+          │                  │          
+          └──────────────────┘          
+                                        
+                                        
+                                        
+                                        
+                                        
+                                        
+                                        
+"
+`;
+
+exports[`Absolute Positioning - Snapshot Tests Nested absolute positioning absolute child inside absolute parent - basic: nested absolute - child inside parent at left/top 1`] = `
+"                                        
+                                        
+                                        
+     ┌────────────────────────────┐     
+     │                            │     
+     │  ┌──────────┐              │     
+     │  │Nested    │              │     
+     │  │          │              │     
+     │  └──────────┘              │     
+     │                            │     
+     │                            │     
+     │                            │     
+     │                            │     
+     │                            │     
+     └────────────────────────────┘     
+                                        
+                                        
+                                        
+                                        
+                                        
+"
+`;
+
+exports[`Absolute Positioning - Snapshot Tests Nested absolute positioning absolute child at bottom:0 inside absolute parent (issue #406 fix): nested absolute - child at bottom:0 of parent 1`] = `
+"                                        
+                                        
+     ┌────────────────────────────┐     
+     │                            │     
+     │                            │     
+     │                            │     
+     │                            │     
+     │                            │     
+     │                            │     
+     │                            │     
+     │                            │     
+     │                            │     
+     │  ┌─────────────┐           │     
+     │  │At Bottom    │           │     
+     │  └─────────────┘           │     
+     └────────────────────────────┘     
+                                        
+                                        
+                                        
+                                        
+"
+`;
+
+exports[`Absolute Positioning - Snapshot Tests Nested absolute positioning absolute child at right:0 inside absolute parent: nested absolute - child at right:0 of parent 1`] = `
+"                                        
+                                        
+  ┌─────────────────────────────────┐   
+  │                                 │   
+  │                     ┌──────────┐│   
+  │                     │At Right  ││   
+  │                     │          ││   
+  │                     └──────────┘│   
+  │                                 │   
+  │                                 │   
+  │                                 │   
+  │                                 │   
+  │                                 │   
+  └─────────────────────────────────┘   
+                                        
+                                        
+                                        
+                                        
+                                        
+                                        
+"
+`;
+
+exports[`Absolute Positioning - Snapshot Tests Nested absolute positioning absolute child at bottom-right corner inside absolute parent: nested absolute - child at bottom-right corner 1`] = `
+"                                        
+   ┌────────────────────────────────┐   
+   │                                │   
+   │                                │   
+   │                                │   
+   │                                │   
+   │                                │   
+   │                                │   
+   │                                │   
+   │                                │   
+   │                                │   
+   │                 ┌────────────┐ │   
+   │                 │Corner      │ │   
+   │                 │            │ │   
+   │                 └────────────┘ │   
+   │                                │   
+   └────────────────────────────────┘   
+                                        
+                                        
+                                        
+"
+`;
+
+exports[`Absolute Positioning - Snapshot Tests Nested absolute positioning multiple absolute children inside absolute parent at different positions: nested absolute - four corners inside parent 1`] = `
+"                                        
+  ┌──────────────────────────────────┐  
+  │                                  │  
+  │ ┌────────┐            ┌────────┐ │  
+  │ │TL      │            │TR      │ │  
+  │ └────────┘            └────────┘ │  
+  │                                  │  
+  │                                  │  
+  │                                  │  
+  │                                  │  
+  │                                  │  
+  │                                  │  
+  │                                  │  
+  │ ┌────────┐            ┌────────┐ │  
+  │ │BL      │            │BR      │ │  
+  │ └────────┘            └────────┘ │  
+  │                                  │  
+  └──────────────────────────────────┘  
+                                        
+                                        
+"
+`;
+
+exports[`Absolute Positioning - Snapshot Tests Three-level nesting deeply nested absolute positioning - grandchild at bottom: three-level nested absolute - grandchild at bottom 1`] = `
+"                                        
+ ┌────────────────────────────────────┐ 
+ │                                    │ 
+ │                                    │ 
+ │  ┌──────────────────────────────┐  │ 
+ │  │                              │  │ 
+ │  │                              │  │ 
+ │  │                              │  │ 
+ │  │                              │  │ 
+ │  │                              │  │ 
+ │  │                              │  │ 
+ │  │  ┌─────────────┐             │  │ 
+ │  │  │Deep         │             │  │ 
+ │  │  └─────────────┘             │  │ 
+ │  │                              │  │ 
+ │  └──────────────────────────────┘  │ 
+ │                                    │ 
+ │                                    │ 
+ └────────────────────────────────────┘ 
+                                        
+"
+`;
+
+exports[`Absolute Positioning - Snapshot Tests Mixed positioning absolute child inside relative parent: absolute child inside relative parent 1`] = `
+"                                        
+                                        
+   ┌────────────────────────────┐       
+   │                            │       
+   │                            │       
+   │                            │       
+   │                            │       
+   │                            │       
+   │                            │       
+   │                            │       
+   │               ┌──────────┐ │       
+   │               │Absolute  │ │       
+   │               │          │ │       
+   │               └──────────┘ │       
+   │                            │       
+   └────────────────────────────┘       
+                                        
+                                        
+                                        
+                                        
+"
+`;
+
+exports[`Absolute Positioning - Snapshot Tests Mixed positioning sibling absolute elements at same level: sibling absolute elements overlapping 1`] = `
+"┌─────────────┐                         
+│Box 1        │                         
+│             │                         
+│             │                         
+│           ┌─────────────┐             
+└───────────│Box 2        │             
+            │             │             
+            │             │             
+            │           ┌─────────────┐ 
+            └───────────│Box 3        │ 
+                        │             │ 
+                        │             │ 
+                        │             │ 
+                        └─────────────┘ 
+                                        
+                                        
+                                        
+                                        
+                                        
+                                        
+"
+`;
+
+exports[`Absolute Positioning - Snapshot Tests Edge cases absolute positioned box with negative coordinates (partially off-screen): absolute box with negative coordinates 1`] = `
+"              │                         
+              │                         
+              │                         
+              │                         
+              │                         
+──────────────┘                         
+                                        
+                                        
+                                        
+                                        
+                                        
+                                        
+                                        
+                                        
+                                        
+                                        
+                                        
+                                        
+                                        
+                                        
+"
+`;
+
+exports[`Absolute Positioning - Snapshot Tests Edge cases absolute positioned box extending beyond viewport: absolute box extending beyond viewport 1`] = `
+"                                        
+                                        
+                                        
+                                        
+                                        
+                                        
+                                        
+                                        
+                                        
+                                        
+                                        
+                                        
+                                        
+                                        
+                                        
+                              ┌─────────
+                              │Overflow 
+                              │         
+                              │         
+                              │         
+"
+`;
+
+exports[`Absolute Positioning - Snapshot Tests Edge cases absolute child fills parent completely: absolute child fills parent with inset 0 1`] = `
+"                                        
+                                        
+                                        
+     ┌────────────────────────────┐     
+     │╔══════════════════════════╗│     
+     │║Full                      ║│     
+     │║                          ║│     
+     │║                          ║│     
+     │║                          ║│     
+     │║                          ║│     
+     │║                          ║│     
+     │║                          ║│     
+     │║                          ║│     
+     │╚══════════════════════════╝│     
+     └────────────────────────────┘     
+                                        
+                                        
+                                        
+                                        
+                                        
+"
+`;
+
+exports[`Absolute Positioning - Snapshot Tests Edge cases absolute positioned box with percentage width inside absolute parent: absolute child with percentage width 1`] = `
+"                                                  
+                                                  
+     ┌──────────────────────────────────────┐     
+     │                                      │     
+     │                                      │     
+     │                                      │     
+     │                                      │     
+     │                                      │     
+     │                                      │     
+     │                                      │     
+     │                                      │     
+     │  ┌─────────────────┐                 │     
+     │  │50%              │                 │     
+     │  │                 │                 │     
+     │  └─────────────────┘                 │     
+     │                                      │     
+     └──────────────────────────────────────┘     
+                                                  
+                                                  
+                                                  
+"
+`;
+
+exports[`Absolute Positioning - Snapshot Tests Edge cases absolute positioned box with percentage height inside absolute parent: absolute child with percentage height 1`] = `
+"                                        
+                                        
+     ┌────────────────────────────┐     
+     │                            │     
+     │  ┌─────────────┐           │     
+     │  │50% H        │           │     
+     │  │             │           │     
+     │  │             │           │     
+     │  │             │           │     
+     │  │             │           │     
+     │  └─────────────┘           │     
+     │                            │     
+     │                            │     
+     │                            │     
+     │                            │     
+     │                            │     
+     │                            │     
+     └────────────────────────────┘     
+                                        
+                                        
+"
+`;
+
+exports[`Absolute Positioning - Snapshot Tests Edge cases absolute child with conflicting insets (left and right without explicit width): absolute child with left and right insets (no explicit width) 1`] = `
+"                                        
+                                        
+   ┌────────────────────────────────┐   
+   │                                │   
+   │                                │   
+   │  ┌──────────────────────────┐  │   
+   │  │Stretch                   │  │   
+   │  │                          │  │   
+   │  │                          │  │   
+   │  └──────────────────────────┘  │   
+   │                                │   
+   │                                │   
+   │                                │   
+   │                                │   
+   │                                │   
+   └────────────────────────────────┘   
+                                        
+                                        
+                                        
+                                        
+"
+`;
+
+exports[`Absolute Positioning - Snapshot Tests Edge cases absolute child with conflicting insets (top and bottom without explicit height): absolute child with top and bottom insets (no explicit height) 1`] = `
+"                                        
+     ┌────────────────────────────┐     
+     │                            │     
+     │  ┌─────────────┐           │     
+     │  │VStretch     │           │     
+     │  │             │           │     
+     │  │             │           │     
+     │  │             │           │     
+     │  │             │           │     
+     │  │             │           │     
+     │  │             │           │     
+     │  │             │           │     
+     │  │             │           │     
+     │  │             │           │     
+     │  └─────────────┘           │     
+     │                            │     
+     └────────────────────────────┘     
+                                        
+                                        
+                                        
+"
+`;
+
+exports[`Absolute Positioning - Snapshot Tests Complex hierarchies relative parent with absolute child containing absolute grandchild: relative -> absolute -> absolute hierarchy 1`] = `
+"                                        
+  ┌─────────────────────────────────┐   
+  │                                 │   
+  │  ┌──────────────────────────┐   │   
+  │  │                          │   │   
+  │  │                          │   │   
+  │  │                          │   │   
+  │  │                          │   │   
+  │  │                          │   │   
+  │  │             ┌──────────┐ │   │   
+  │  │             │Grand     │ │   │   
+  │  │             │          │ │   │   
+  │  │             └──────────┘ │   │   
+  │  │                          │   │   
+  │  └──────────────────────────┘   │   
+  │                                 │   
+  └─────────────────────────────────┘   
+                                        
+                                        
+                                        
+"
+`;
+
+exports[`Absolute Positioning - Snapshot Tests Complex hierarchies multiple nested relative and absolute layers: relative -> absolute -> relative -> absolute hierarchy 1`] = `
+"┌────────────────────────────────────┐  
+│                                    │  
+│  ┌──────────────────────────────┐  │  
+│  │                              │  │  
+│  │ ┌──────────────────────────┐ │  │  
+│  │ │                          │ │  │  
+│  │ │                          │ │  │  
+│  │ │                          │ │  │  
+│  │ │                          │ │  │  
+│  │ │               ┌────────┐ │ │  │  
+│  │ │               │Deep    │ │ │  │  
+│  │ │               └────────┘ │ │  │  
+│  │ │                          │ │  │  
+│  │ └──────────────────────────┘ │  │  
+│  │                              │  │  
+│  └──────────────────────────────┘  │  
+│                                    │  
+└────────────────────────────────────┘  
+                                        
+                                        
+"
+`;
