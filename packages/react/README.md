@@ -83,6 +83,7 @@ For optimal TypeScript support, configure your `tsconfig.json`:
   - [System Monitor Animation](#system-monitor-animation)
   - [Styled Text Showcase](#styled-text-showcase)
 - [Component Extension](#component-extension)
+- [Using React DevTools](#using-react-devtools)
 
 ## Core Concepts
 
@@ -970,3 +971,31 @@ function App() {
 const renderer = await createCliRenderer()
 createRoot(renderer).render(<App />)
 ```
+
+## Using React DevTools
+
+OpenTUI React supports [React DevTools](https://github.com/facebook/react/tree/master/packages/react-devtools) for debugging your terminal applications. To enable DevTools integration:
+
+1. Install the optional peer dependency:
+
+```bash
+bun add --dev react-devtools-core@7
+```
+
+2. Start the standalone React DevTools:
+
+```bash
+npx npx react-devtools@7
+```
+
+3. Run your app with the `DEV` environment variable:
+
+```bash
+DEV=true bun run your-app.ts
+```
+
+After the app starts, you should see the component tree in React DevTools. You can inspect and modify props in real-time, and changes will be reflected immediately in your terminal UI.
+
+### Process Exit with DevTools
+
+When DevTools is connected, the WebSocket connection may prevent your process from exiting naturally.
