@@ -227,6 +227,7 @@ let showingHelp = false
 let streamingMode = false
 let streamingTimer: Timer | null = null
 let streamPosition = 0
+let endlessMode = false
 
 // Streaming speed presets: [minDelay, maxDelay] in milliseconds
 const streamSpeeds = [
@@ -277,7 +278,8 @@ function startStreaming() {
   if (statusText) {
     const theme = getCurrentTheme()
     const speed = getCurrentSpeed()
-    statusText.content = `Theme: ${theme.name} | Conceal: ${concealEnabled ? "ON" : "OFF"} | Streaming: IN PROGRESS (${speed.name}) | Press S to restart`
+    const mode = endlessMode ? "ENDLESS" : "NORMAL"
+    statusText.content = `Theme: ${theme.name} | Conceal: ${concealEnabled ? "ON" : "OFF"} | Streaming: IN PROGRESS (${speed.name}, ${mode}) | Press X to stop`
   }
 
   function streamNextChunk() {
@@ -285,20 +287,32 @@ function startStreaming() {
 
     // Random chunk size between 1 and 50 characters
     const chunkSize = Math.floor(Math.random() * 50) + 1
-    const nextPosition = Math.min(streamPosition + chunkSize, markdownContent.length)
-    const chunk = markdownContent.slice(0, nextPosition)
 
-    markdownDisplay.content = chunk
-    streamPosition = nextPosition
+    // Calculate which iteration we're on and position within that iteration
+    const positionInCurrentIteration = streamPosition % markdownContent.length
+    const nextPositionInIteration = Math.min(positionInCurrentIteration + chunkSize, markdownContent.length)
 
-    if (streamPosition < markdownContent.length) {
+    // Build content by repeating the markdown as many times as needed
+    const fullIterations = Math.floor(streamPosition / markdownContent.length)
+    const currentIterationContent = markdownContent.slice(0, nextPositionInIteration)
+
+    // Construct full content: (full iterations of content) + (partial current iteration)
+    let fullContent = markdownContent.repeat(fullIterations) + currentIterationContent
+
+    markdownDisplay.content = fullContent
+    streamPosition += chunkSize
+
+    // In endless mode, never stop. In normal mode, stop after first iteration
+    const shouldContinue = endlessMode || streamPosition < markdownContent.length
+
+    if (shouldContinue) {
       // Random delay based on current speed setting
       const speed = getCurrentSpeed()
       const delayRange = speed.max - speed.min
       const delay = Math.floor(Math.random() * delayRange) + speed.min
       streamingTimer = setTimeout(streamNextChunk, delay)
     } else {
-      // Streaming complete
+      // Normal mode - streaming complete
       streamingMode = false
       if (statusText) {
         const theme = getCurrentTheme()
@@ -350,10 +364,10 @@ export async function run(rendererInstance: CliRenderer): Promise<void> {
     position: "absolute",
     left: "50%",
     top: "50%",
-    width: 55,
-    height: 18,
-    marginLeft: -27,
-    marginTop: -9,
+    width: 60,
+    height: 20,
+    marginLeft: -30,
+    marginTop: -10,
     border: true,
     borderStyle: "double",
     borderColor: "#4ECDC4",
@@ -375,6 +389,8 @@ View Controls:
 
 Streaming:
   S : Start/restart streaming simulation
+  E : Toggle endless mode (repeats content forever)
+  X : Stop streaming (when in endless mode)
   [ : Decrease speed (slower)
   ] : Increase speed (faster)
 
@@ -433,7 +449,8 @@ Other:
       const theme = getCurrentTheme()
       const speed = getCurrentSpeed()
       const streamStatus = streamingMode ? "STREAMING" : "NORMAL"
-      statusText.content = `Theme: ${theme.name} | Conceal: ${concealEnabled ? "ON" : "OFF"} | Mode: ${streamStatus} | Speed: ${speed.name} | Press T/C/S/[/]`
+      const endlessStatus = endlessMode ? " [ENDLESS]" : ""
+      statusText.content = `Theme: ${theme.name} | Conceal: ${concealEnabled ? "ON" : "OFF"} | Mode: ${streamStatus}${endlessStatus} | Speed: ${speed.name} | Press T/C/S/E/[/]`
     }
   }
 
@@ -453,6 +470,17 @@ Other:
     if (key.name === "s" && !key.ctrl && !key.meta) {
       // Start/restart streaming simulation
       startStreaming()
+    } else if (key.name === "e" && !key.ctrl && !key.meta) {
+      // Toggle endless mode
+      endlessMode = !endlessMode
+      updateStatusText()
+    } else if (key.name === "x" && !key.ctrl && !key.meta) {
+      // Stop streaming (for endless mode)
+      stopStreaming()
+      if (markdownDisplay) {
+        markdownDisplay.streaming = false
+      }
+      updateStatusText()
     } else if (key.raw === "[" && !key.ctrl && !key.meta) {
       // Decrease streaming speed (slower)
       if (currentSpeedIndex > 0) {
