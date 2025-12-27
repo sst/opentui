@@ -611,16 +611,13 @@ pub const CliRenderer = struct {
                 const bgMatch = currentBg != null and buf.rgbaEqual(currentBg.?, cell.bg, colorEpsilon);
                 const sameAttributes = fgMatch and bgMatch and @as(i32, @intCast(cell.attributes)) == currentAttributes;
 
-                // Check for link changes
                 const linkId = if (hyperlinksEnabled) ansi.TextAttributes.getLinkId(cell.attributes) else 0;
 
                 if (hyperlinksEnabled and linkId != currentLinkId) {
-                    // Close current link if any
                     if (currentLinkId != 0) {
                         writer.writeAll("\x1b]8;;\x1b\\") catch {};
                     }
                     currentLinkId = linkId;
-                    // Open new link if any
                     if (currentLinkId != 0) {
                         const lp = link.initGlobalLinkPool(self.allocator);
                         if (lp.get(currentLinkId)) |url_bytes| {
@@ -710,7 +707,6 @@ pub const CliRenderer = struct {
             }
         }
 
-        // Close any open link before final reset
         if (hyperlinksEnabled and currentLinkId != 0) {
             writer.writeAll("\x1b]8;;\x1b\\") catch {};
         }

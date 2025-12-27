@@ -334,7 +334,6 @@ export fn bufferDrawSuperSampleBuffer(bufferPtr: *buffer.OptimizedBuffer, x: u32
     bufferPtr.drawSuperSampleBuffer(x, y, pixelData, len, format, alignedBytesPerRow) catch {};
 }
 
-// Link API exports
 export fn linkAlloc(urlPtr: [*]const u8, urlLen: usize) u32 {
     const url = urlPtr[0..urlLen];
     const link_pool = link.initGlobalLinkPool(globalArena);

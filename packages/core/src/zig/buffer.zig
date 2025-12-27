@@ -384,7 +384,6 @@ pub const OptimizedBuffer = struct {
         if (!self.isPointInScissor(@intCast(x), @intCast(y))) return;
         const index = self.coordsToIndex(x, y);
 
-        // Track link changes
         const prev_attr = self.buffer.attributes[index];
         const prev_link_id = ansi.TextAttributes.getLinkId(prev_attr);
         const new_link_id = ansi.TextAttributes.getLinkId(cell.attributes);
@@ -394,7 +393,6 @@ pub const OptimizedBuffer = struct {
         self.buffer.bg[index] = cell.bg;
         self.buffer.attributes[index] = cell.attributes;
 
-        // Update link tracker
         if (prev_link_id != 0 and prev_link_id != new_link_id) {
             self.link_tracker.removeCellRef(prev_link_id);
         }
@@ -426,7 +424,6 @@ pub const OptimizedBuffer = struct {
             const span_end = index + @min(right, row_end - index);
             const span_len = span_end - span_start + 1;
 
-            // Remove link refs for all cells in the span
             var span_i: u32 = span_start;
             while (span_i < span_start + span_len) : (span_i += 1) {
                 const span_link_id = ansi.TextAttributes.getLinkId(self.buffer.attributes[span_i]);
@@ -445,7 +442,6 @@ pub const OptimizedBuffer = struct {
 
             if (x + width > self.width) {
                 const end_of_line = (y + 1) * self.width;
-                // Remove link refs for cells being overwritten
                 var eol_i = index;
                 while (eol_i < end_of_line) : (eol_i += 1) {
                     const eol_link_id = ansi.TextAttributes.getLinkId(self.buffer.attributes[eol_i]);
@@ -457,7 +453,6 @@ pub const OptimizedBuffer = struct {
                 @memset(self.buffer.attributes[index..end_of_line], cell.attributes);
                 @memset(self.buffer.fg[index..end_of_line], cell.fg);
                 @memset(self.buffer.bg[index..end_of_line], cell.bg);
-                // Add link ref for all cells with the new link
                 const new_link_id = ansi.TextAttributes.getLinkId(cell.attributes);
                 if (new_link_id != 0) {
                     const cells_written = end_of_line - index;
@@ -469,7 +464,6 @@ pub const OptimizedBuffer = struct {
                 return;
             }
 
-            // Update main cell
             self.buffer.char[index] = cell.char;
             self.buffer.fg[index] = cell.fg;
             self.buffer.bg[index] = cell.bg;
@@ -478,7 +472,6 @@ pub const OptimizedBuffer = struct {
             const id: u32 = gp.graphemeIdFromChar(cell.char);
             self.grapheme_tracker.add(id);
 
-            // Update link for main cell
             const new_link_id = ansi.TextAttributes.getLinkId(cell.attributes);
             if (prev_link_id != 0 and prev_link_id != new_link_id) {
                 self.link_tracker.removeCellRef(prev_link_id);
@@ -497,7 +490,6 @@ pub const OptimizedBuffer = struct {
                 const row_end_index: u32 = (y * self.width) + self.width - 1;
                 const max_right = @min(right, row_end_index - index);
                 if (max_right > 0) {
-                    // Remove link refs for continuation cells being overwritten
                     var cont_i: u32 = 1;
                     while (cont_i <= max_right) : (cont_i += 1) {
                         const cont_link_id = ansi.TextAttributes.getLinkId(self.buffer.attributes[index + cont_i]);
@@ -513,7 +505,6 @@ pub const OptimizedBuffer = struct {
                     while (k <= max_right) : (k += 1) {
                         const cont = gp.packContinuation(k, max_right - k, id);
                         self.buffer.char[index + k] = cont;
-                        // Add link ref for each continuation cell
                         if (new_link_id != 0) {
                             self.link_tracker.addCellRef(new_link_id);
                         }
@@ -521,13 +512,11 @@ pub const OptimizedBuffer = struct {
                 }
             }
         } else {
-            // Simple non-grapheme cell
             self.buffer.char[index] = cell.char;
             self.buffer.fg[index] = cell.fg;
             self.buffer.bg[index] = cell.bg;
             self.buffer.attributes[index] = cell.attributes;
 
-            // Update link tracker
             const new_link_id = ansi.TextAttributes.getLinkId(cell.attributes);
             if (prev_link_id != 0 and prev_link_id != new_link_id) {
                 self.link_tracker.removeCellRef(prev_link_id);
