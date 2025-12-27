@@ -264,37 +264,44 @@ export class ScrollBarRenderable extends Renderable {
   }
 
   public handleKeyPress(key: KeyEvent): boolean {
+    // Don't handle keys with modifiers - let other components handle them
+    // (e.g., shift+arrows for selection, cmd+arrows for navigation)
+    const hasModifier = key.ctrl || key.meta || key.super || key.shift
     switch (key.name) {
       case "left":
       case "h":
-        if (this.orientation !== "horizontal") return false
+        if (hasModifier || this.orientation !== "horizontal") return false
         this.scrollBy(-1 / 5, "viewport")
         return true
       case "right":
       case "l":
-        if (this.orientation !== "horizontal") return false
+        if (hasModifier || this.orientation !== "horizontal") return false
         this.scrollBy(1 / 5, "viewport")
         return true
       case "up":
       case "k":
-        if (this.orientation !== "vertical") return false
+        if (hasModifier || this.orientation !== "vertical") return false
         this.scrollBy(-1 / 5, "viewport")
         return true
       case "down":
       case "j":
-        if (this.orientation !== "vertical") return false
+        if (hasModifier || this.orientation !== "vertical") return false
         this.scrollBy(1 / 5, "viewport")
         return true
       case "pageup":
+        if (hasModifier) return false
         this.scrollBy(-1 / 2, "viewport")
         return true
       case "pagedown":
+        if (hasModifier) return false
         this.scrollBy(1 / 2, "viewport")
         return true
       case "home":
+        if (hasModifier) return false
         this.scrollBy(-1, "content")
         return true
       case "end":
+        if (hasModifier) return false
         this.scrollBy(1, "content")
         return true
     }
