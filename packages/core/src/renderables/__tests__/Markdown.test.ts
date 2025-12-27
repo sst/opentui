@@ -1574,3 +1574,132 @@ test("conceal change updates rendered content", async () => {
   expect(frame2).toContain("**")
   expect(frame2).toContain("#")
 })
+
+test("theme switching (syntaxStyle change)", async () => {
+  const theme1 = SyntaxStyle.fromStyles({
+    default: { fg: RGBA.fromValues(1, 0, 0, 1) }, // Red
+    "markup.heading.1": { fg: RGBA.fromValues(0, 1, 0, 1), bold: true }, // Green
+  })
+
+  const theme2 = SyntaxStyle.fromStyles({
+    default: { fg: RGBA.fromValues(0, 0, 1, 1) }, // Blue
+    "markup.heading.1": { fg: RGBA.fromValues(1, 1, 0, 1), bold: true }, // Yellow
+  })
+
+  // Use the EXACT content from markdown-demo.ts to reproduce the issue
+  const content = `# OpenTUI Markdown Demo
+
+Welcome to the **MarkdownRenderable** showcase! This demonstrates automatic table alignment and syntax highlighting.
+
+## Features
+
+- Automatic **table column alignment** based on content width
+- Proper handling of \`inline code\`, **bold**, and *italic* in tables
+- Multiple syntax themes to choose from
+- Conceal mode hides formatting markers
+
+## Comparison Table
+
+| Feature | Status | Priority | Notes |
+|---|---|---|---|
+| Table alignment | **Done** | High | Uses \`marked\` parser |
+| Conceal mode | *Working* | Medium | Hides \`**\`, \`\`\`, etc. |
+| Theme switching | **Done** | Low | 3 themes available |
+| Unicode support | 日本語 | High | CJK characters |
+
+## Code Examples
+
+Here's how to use it:
+
+\`\`\`typescript
+import { MarkdownRenderable } from "@opentui/core"
+
+const md = new MarkdownRenderable(renderer, {
+  content: "# Hello World",
+  syntaxStyle: mySyntaxStyle,
+  conceal: true, // Hide formatting markers
+})
+\`\`\`
+
+### API Reference
+
+| Method | Parameters | Returns | Description |
+|---|---|---|---|
+| \`constructor\` | \`ctx, options\` | \`MarkdownRenderable\` | Create new instance |
+| \`clearCache\` | none | \`void\` | Force re-render content |
+
+## Inline Formatting Examples
+
+| Style | Syntax | Rendered |
+|---|---|---|
+| Bold | \`**text**\` | **bold text** |
+| Italic | \`*text*\` | *italic text* |
+| Code | \`code\` | \`inline code\` |
+| Link | \`[text](url)\` | [OpenTUI](https://github.com) |
+
+## Mixed Content
+
+> **Note**: This blockquote contains **bold** and \`code\` formatting.
+> It should render correctly with proper styling.
+
+### Emoji Support
+
+| Emoji | Name | Category |
+|---|---|---|
+| 🚀 | Rocket | Transport |
+| 🎨 | Palette | Art |
+| ⚡ | Lightning | Nature |
+| 🔥 | Fire | Nature |
+
+---
+
+## Alignment Examples
+
+| Left | Center | Right |
+|:---|:---:|---:|
+| L1 | C1 | R1 |
+| Left aligned | Centered text | Right aligned |
+| Short | Medium length | Longer content here |
+
+## Performance
+
+The table alignment uses:
+1. AST-based parsing with \`marked\`
+2. Caching for repeated content
+3. Smart width calculation accounting for concealed chars
+
+---
+
+*Press \`?\` for keybindings*
+`
+
+  const md = new MarkdownRenderable(renderer, {
+    id: "markdown",
+    content,
+    syntaxStyle: theme1,
+    conceal: true,
+  })
+
+  renderer.root.add(md)
+  await renderOnce()
+
+  const frame1 = captureFrame()
+  expect(frame1).toContain("OpenTUI")
+
+  // Switch theme
+  const startTime = performance.now()
+  md.syntaxStyle = theme2
+  await renderOnce()
+  const endTime = performance.now()
+
+  const frame2 = captureFrame()
+  expect(frame2).toContain("OpenTUI")
+
+  // Theme switch should be fast (< 10ms for this content after optimization)
+  // This is a performance regression test
+  const renderTime = endTime - startTime
+  if (renderTime >= 10) {
+    console.warn(`Theme switch took ${renderTime.toFixed(2)}ms, expected < 10ms`)
+  }
+  expect(renderTime).toBeLessThan(10)
+})

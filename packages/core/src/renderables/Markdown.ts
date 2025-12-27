@@ -404,6 +404,86 @@ export class MarkdownRenderable extends Renderable {
     })
   }
 
+  /**
+   * Update an existing table renderable in-place for style/conceal changes.
+   * Much faster than rebuilding the entire table structure.
+   */
+  private updateTableRenderable(tableBox: Renderable, table: Tokens.Table, marginBottom: number): void {
+    tableBox.marginBottom = marginBottom
+    const borderColor = this.getStyle("punctuation.special")?.fg ?? "#888888"
+    const headingStyle = this.getStyle("markup.heading") || this.getStyle("default")
+
+    const rowsToRender = this._streaming && table.rows.length > 0 ? table.rows.slice(0, -1) : table.rows
+    const colCount = table.header.length
+
+    // Traverse existing table structure: tableBox -> columnBoxes -> cells
+    const columns = (tableBox as any)._childrenInLayoutOrder as Renderable[]
+    for (let col = 0; col < colCount; col++) {
+      const columnBox = columns[col]
+      if (!columnBox) continue
+
+      // Update column border colors
+      if (columnBox instanceof BoxRenderable) {
+        columnBox.borderColor = borderColor
+      }
+
+      const columnChildren = (columnBox as any)._childrenInLayoutOrder as Renderable[]
+
+      // Update header (first child of column)
+      const headerBox = columnChildren[0]
+      if (headerBox instanceof BoxRenderable) {
+        headerBox.borderColor = borderColor
+        const headerChildren = (headerBox as any)._childrenInLayoutOrder as Renderable[]
+        const headerText = headerChildren[0]
+        if (headerText instanceof TextRenderable) {
+          const headerCell = table.header[col]
+          const headerChunks: TextChunk[] = []
+          this.renderInlineContent(headerCell.tokens, headerChunks)
+          const styledHeaderChunks = headerChunks.map((chunk) => ({
+            ...chunk,
+            fg: headingStyle?.fg ?? chunk.fg,
+            bg: headingStyle?.bg ?? chunk.bg,
+            attributes: headingStyle
+              ? createTextAttributes({
+                  bold: headingStyle.bold,
+                  italic: headingStyle.italic,
+                  underline: headingStyle.underline,
+                  dim: headingStyle.dim,
+                })
+              : chunk.attributes,
+          }))
+          headerText.content = new StyledText(styledHeaderChunks)
+        }
+      }
+
+      // Update data rows (remaining children)
+      for (let row = 0; row < rowsToRender.length; row++) {
+        const childIndex = row + 1 // +1 because header is first child
+        const cellContainer = columnChildren[childIndex]
+
+        let cellText: TextRenderable | undefined
+        if (cellContainer instanceof BoxRenderable) {
+          // Cell has a border box wrapper
+          cellContainer.borderColor = borderColor
+          const cellChildren = (cellContainer as any)._childrenInLayoutOrder as Renderable[]
+          cellText = cellChildren[0] as TextRenderable
+        } else if (cellContainer instanceof TextRenderable) {
+          // Last row, no border box
+          cellText = cellContainer
+        }
+
+        if (cellText) {
+          const cell = rowsToRender[row][col]
+          const cellChunks: TextChunk[] = []
+          if (cell) {
+            this.renderInlineContent(cell.tokens, cellChunks)
+          }
+          cellText.content = new StyledText(cellChunks.length > 0 ? cellChunks : [this.createDefaultChunk(" ")])
+        }
+      }
+    }
+  }
+
   private createTableRenderable(table: Tokens.Table, id: string, marginBottom: number = 0): Renderable {
     const colCount = table.header.length
 
@@ -728,16 +808,9 @@ export class MarkdownRenderable extends Renderable {
         codeRenderable.syntaxStyle = this._syntaxStyle
         codeRenderable.conceal = this._conceal
       } else if (state.token.type === "table") {
-        // Tables are complex nested structures - rebuild them
+        // Tables - update in place for better performance
         const marginBottom = hasNextToken ? 1 : 0
-        this.remove(state.renderable.id)
-        const newRenderable = this.createTableRenderable(
-          state.token as Tokens.Table,
-          `${this.id}-block-${i}`,
-          marginBottom,
-        )
-        this.add(newRenderable)
-        state.renderable = newRenderable
+        this.updateTableRenderable(state.renderable, state.token as Tokens.Table, marginBottom)
       } else {
         // TextRenderable blocks - regenerate chunks with new style/conceal
         const textRenderable = state.renderable as TextRenderable
