@@ -6,12 +6,8 @@ import { hostConfig } from "./host-config"
 
 export const reconciler = ReactReconciler(hostConfig)
 
-// Allows Enabling React Refresh (hot reloading)
-reconciler.injectIntoDevTools({
-  bundleType: 0, // disables warning logs
-  version: React.version,
-  rendererPackageName: "@opentui/react",
-})
+// @ts-expect-error the types for `react-reconciler` are not up to date with the library.
+reconciler.injectIntoDevTools()
 
 export const flushSync = reconciler.flushSync
 
