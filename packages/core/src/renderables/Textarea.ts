@@ -110,6 +110,16 @@ const defaultTextareaKeybindings: KeyBinding[] = [
   { name: "right", meta: true, shift: true, action: "select-word-forward" },
   { name: "left", meta: true, shift: true, action: "select-word-backward" },
   { name: "backspace", meta: true, action: "delete-word-backward" },
+
+  // super (cmd/win) + arrow keys for Kitty Keyboard mode
+  { name: "left", super: true, action: "visual-line-home" },
+  { name: "right", super: true, action: "visual-line-end" },
+  { name: "up", super: true, action: "buffer-home" },
+  { name: "down", super: true, action: "buffer-end" },
+  { name: "left", super: true, shift: true, action: "select-visual-line-home" },
+  { name: "right", super: true, shift: true, action: "select-visual-line-end" },
+  { name: "up", super: true, shift: true, action: "select-buffer-home" },
+  { name: "down", super: true, shift: true, action: "select-buffer-end" },
 ]
 
 export interface SubmitEvent {}
