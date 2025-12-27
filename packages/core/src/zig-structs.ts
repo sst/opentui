@@ -26,7 +26,7 @@ export const StyledChunkStruct = defineStruct([
       unpackTransform: rgbaUnpackTransform,
     },
   ],
-  ["attributes", "u8", { optional: true }],
+  ["attributes", "u32", { optional: true }],
 ])
 
 export const HighlightStruct = defineStruct([
