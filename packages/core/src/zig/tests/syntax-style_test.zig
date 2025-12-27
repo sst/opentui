@@ -54,7 +54,7 @@ test "SyntaxStyle - register style with attributes" {
     defer style.deinit();
 
     const fg = RGBA{ 1.0, 0.0, 0.0, 1.0 };
-    const attributes: u8 = 0b0001; // Bold
+    const attributes: u32 = 0b0001; // Bold
     const id = try style.registerStyle("bold-keyword", fg, null, attributes);
 
     try std.testing.expect(id > 0);
@@ -68,7 +68,7 @@ test "SyntaxStyle - register style with all attributes" {
     defer style.deinit();
 
     const fg = RGBA{ 1.0, 0.0, 0.0, 1.0 };
-    const attributes: u8 = 0b1111; // Bold, italic, underline, dim
+    const attributes: u32 = 0b1111; // Bold, italic, underline, dim
     const id = try style.registerStyle("all-attrs", fg, null, attributes);
 
     try std.testing.expect(id > 0);
@@ -169,7 +169,7 @@ test "SyntaxStyle - resolveById returns correct style" {
 
     const fg = RGBA{ 1.0, 0.0, 0.0, 1.0 };
     const bg = RGBA{ 0.0, 0.0, 0.0, 1.0 };
-    const attributes: u8 = 0b0011; // Bold + italic
+    const attributes: u32 = 0b0011; // Bold + italic
 
     const id = try style.registerStyle("test", fg, bg, attributes);
     const resolved = style.resolveById(id).?;
@@ -245,7 +245,7 @@ test "SyntaxStyle - merge single style" {
     defer style.deinit();
 
     const fg = RGBA{ 1.0, 0.0, 0.0, 1.0 };
-    const attributes: u8 = 0b0001;
+    const attributes: u32 = 0b0001;
 
     const id = try style.registerStyle("keyword", fg, null, attributes);
 
@@ -272,7 +272,7 @@ test "SyntaxStyle - merge two styles" {
 
     try std.testing.expectEqual(fg2[0], merged.fg.?[0]);
     try std.testing.expectEqual(bg2[0], merged.bg.?[0]);
-    try std.testing.expectEqual(@as(u8, 0b0011), merged.attributes);
+    try std.testing.expectEqual(@as(u32, 0b0011), merged.attributes);
 }
 
 test "SyntaxStyle - merge three styles" {
@@ -291,7 +291,7 @@ test "SyntaxStyle - merge three styles" {
     const merged = try style.mergeStyles(&ids);
 
     try std.testing.expectEqual(fg3[0], merged.fg.?[0]);
-    try std.testing.expectEqual(@as(u8, 0b0111), merged.attributes);
+    try std.testing.expectEqual(@as(u32, 0b0111), merged.attributes);
 }
 
 test "SyntaxStyle - merge empty array" {
@@ -303,7 +303,7 @@ test "SyntaxStyle - merge empty array" {
 
     try std.testing.expect(merged.fg == null);
     try std.testing.expect(merged.bg == null);
-    try std.testing.expectEqual(@as(u8, 0), merged.attributes);
+    try std.testing.expectEqual(@as(u32, 0), merged.attributes);
 }
 
 test "SyntaxStyle - merge with invalid ID skips it" {
@@ -317,7 +317,7 @@ test "SyntaxStyle - merge with invalid ID skips it" {
     const merged = try style.mergeStyles(&ids);
 
     try std.testing.expectEqual(fg[0], merged.fg.?[0]);
-    try std.testing.expectEqual(@as(u8, 0b0001), merged.attributes);
+    try std.testing.expectEqual(@as(u32, 0b0001), merged.attributes);
 }
 
 test "SyntaxStyle - merge caches results" {

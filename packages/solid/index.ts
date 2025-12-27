@@ -5,10 +5,14 @@ import { RendererContext } from "./src/elements"
 import { _render as renderInternal, createComponent } from "./src/reconciler"
 
 export const render = async (node: () => JSX.Element, renderConfig: CliRendererConfig = {}) => {
+  let isDisposed = false
   const renderer = await createCliRenderer({
     ...renderConfig,
     onDestroy: () => {
-      dispose()
+      if (!isDisposed) {
+        isDisposed = true
+        dispose()
+      }
       renderConfig.onDestroy?.()
     },
   })
@@ -29,10 +33,14 @@ export const render = async (node: () => JSX.Element, renderConfig: CliRendererC
 }
 
 export const testRender = async (node: () => JSX.Element, renderConfig: TestRendererOptions = {}) => {
+  let isDisposed = false
   const testSetup = await createTestRenderer({
     ...renderConfig,
     onDestroy: () => {
-      dispose()
+      if (!isDisposed) {
+        isDisposed = true
+        dispose()
+      }
       renderConfig.onDestroy?.()
     },
   })

@@ -8,6 +8,7 @@ import type {
   InputProps,
   LineBreakProps,
   LineNumberProps,
+  LinkProps,
   OpenTUIComponents,
   ScrollBoxProps,
   SelectProps,
@@ -54,5 +55,6 @@ export namespace JSX {
     strong: SpanProps
     em: SpanProps
     br: LineBreakProps
+    a: LinkProps
   }
 }

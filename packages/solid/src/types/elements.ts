@@ -108,6 +108,10 @@ export type SpanProps = ComponentProps<{}, TextNodeRenderable> & {
   children?: TextChildren | Array<TextChildren>
 }
 
+export type LinkProps = SpanProps & {
+  href: string
+}
+
 export type BoxProps = ComponentProps<ContainerProps<BoxOptions>, BoxRenderable>
 
 export type InputProps = ComponentProps<InputRenderableOptions, InputRenderable> & {
