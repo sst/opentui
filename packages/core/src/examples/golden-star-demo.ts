@@ -1,8 +1,13 @@
 #!/usr/bin/env bun
 
-import { createCliRenderer, CliRenderer, FrameBufferRenderable, BoxRenderable } from "../index"
-import { RGBA } from "../lib"
-import { ASCIIFontRenderable } from "../renderables/ASCIIFont"
+import {
+  createCliRenderer,
+  CliRenderer,
+  FrameBufferRenderable,
+  BoxRenderable,
+  RGBA,
+  ASCIIFontRenderable,
+} from "../index"
 import type { ASCIIFontName } from "../lib/ascii.font"
 import {
   Scene as ThreeScene,
@@ -24,7 +29,7 @@ import {
   Quaternion,
   ConeGeometry,
 } from "three"
-import { ThreeCliRenderer } from "../3d"
+import { ThreeCliRenderer } from "@opentui/3d"
 import { setupCommonDemoKeys } from "./lib/standalone-keys"
 
 interface StarParticle {

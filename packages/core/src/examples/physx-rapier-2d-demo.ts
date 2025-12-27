@@ -15,13 +15,15 @@ import {
   TiledSprite,
   type SpriteDefinition,
   type AnimationDefinition,
-} from "../3d/animation/SpriteAnimator"
-import { SpriteResourceManager, type ResourceConfig } from "../3d/SpriteResourceManager"
-import { PhysicsExplosionManager, type PhysicsExplosionHandle } from "../3d/animation/PhysicsExplodingSpriteEffect"
-import { RapierPhysicsWorld } from "../3d/physics/RapierPhysicsAdapter"
+  SpriteResourceManager,
+  type ResourceConfig,
+  PhysicsExplosionManager,
+  type PhysicsExplosionHandle,
+  RapierPhysicsWorld,
+  ThreeCliRenderer,
+} from "@opentui/3d"
 import RAPIER from "@dimforge/rapier2d-simd-compat"
 import { MeshLambertNodeMaterial } from "three/webgpu"
-import { ThreeCliRenderer } from "../3d"
 
 // @ts-ignore
 import cratePath from "./assets/concrete.png" with { type: "image/png" }

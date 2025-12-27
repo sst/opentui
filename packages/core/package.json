@@ -26,9 +26,9 @@
   },
   "license": "MIT",
   "devDependencies": {
+    "@opentui/3d": "workspace:*",
     "@types/bun": "latest",
     "@types/node": "^24.0.0",
-    "@types/three": "0.177.0",
     "commander": "^13.1.0",
     "typescript": "^5",
     "web-tree-sitter": "0.25.10"
@@ -43,10 +43,6 @@
     "web-tree-sitter": "0.25.10"
   },
   "optionalDependencies": {
-    "@dimforge/rapier2d-simd-compat": "^0.17.3",
-    "bun-webgpu": "0.1.4",
-    "planck": "^1.4.2",
-    "three": "0.177.0",
     "@opentui/core-darwin-x64": "0.1.63",
     "@opentui/core-darwin-arm64": "0.1.63",
     "@opentui/core-linux-x64": "0.1.63",
@@ -58,10 +54,6 @@
     ".": {
       "types": "./src/index.ts",
       "import": "./src/index.ts"
-    },
-    "./3d": {
-      "types": "./src/3d.ts",
-      "import": "./src/3d.ts"
     },
     "./testing": {
       "types": "./src/testing.ts",

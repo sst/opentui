@@ -1,8 +1,8 @@
 #!/usr/bin/env bun
 
-import { createCliRenderer, RGBA, TextRenderable, BoxRenderable, FrameBufferRenderable } from "../index"
-import { ThreeCliRenderer } from "../3d/WGPURenderer"
-import { TextureUtils } from "../3d/TextureUtils"
+import { createCliRenderer, RGBA, TextRenderable, BoxRenderable, FrameBufferRenderable } from "@opentui/core"
+import { ThreeCliRenderer, TextureUtils } from "../src"
+import type { Mesh, MeshPhongMaterial as MeshPhongMaterialType } from "three"
 import {
   Scene as ThreeScene,
   Mesh as ThreeMesh,
@@ -26,9 +26,9 @@ import { mkdir } from "node:fs/promises"
 type MemorySnapshot = { heapUsed: number; heapTotal: number; arrayBuffers: number }
 
 // @ts-ignore
-import cratePath from "../examples/assets/crate.png" with { type: "image/png" }
+import cratePath from "@opentui/core/src/examples/assets/crate.png" with { type: "image/png" }
 // @ts-ignore
-import crateEmissivePath from "../examples/assets/crate_emissive.png" with { type: "image/png" }
+import crateEmissivePath from "@opentui/core/src/examples/assets/crate_emissive.png" with { type: "image/png" }
 
 // Setup command line options
 const program = new Command()
@@ -205,7 +205,7 @@ let benchmarkStartTime = 0
 let benchmarkActive = true
 const results: ScenarioResult[] = []
 let currentMemorySnapshots: MemorySnapshot[] = []
-let cubeMeshNodes: ThreeMesh[] = []
+let cubeMeshNodes: Mesh[] = []
 const RADIUS = 1
 const MULTIPLE_CUBES_COUNT = 8
 
@@ -228,7 +228,7 @@ const singleCubeMaterial = new MeshPhongMaterial({
 
 const cullingCubeMaterial = new MeshPhongMaterial({ color: 0x555555, shininess: 10 })
 let texturedMaterial: MeshPhongNodeMaterial | null = null
-let multiCubeMaterials: MeshPhongMaterial[] = []
+let multiCubeMaterials: MeshPhongMaterialType[] = []
 for (let i = 0; i < MULTIPLE_CUBES_COUNT; i++) {
   const baseColor = new Color()
   const hue = i / MULTIPLE_CUBES_COUNT

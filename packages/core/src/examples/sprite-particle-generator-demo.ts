@@ -17,10 +17,12 @@ import {
   type TiledSprite,
   type SpriteDefinition,
   type AnimationDefinition,
-} from "../3d/animation/SpriteAnimator"
-import { SpriteResourceManager, type ResourceConfig } from "../3d/SpriteResourceManager"
-import { SpriteParticleGenerator, type ParticleEffectParameters } from "../3d/animation/SpriteParticleGenerator"
-import { ThreeCliRenderer } from "../3d"
+  SpriteResourceManager,
+  type ResourceConfig,
+  SpriteParticleGenerator,
+  type ParticleEffectParameters,
+  ThreeCliRenderer,
+} from "@opentui/3d"
 
 // @ts-ignore
 import heartPath from "./assets/heart.png" with { type: "image/png" }

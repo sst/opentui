@@ -193,7 +193,7 @@ if (buildLib) {
     process.exit(1)
   }
 
-  const entryPoints: string[] = [packageJson.module, "src/3d.ts", "src/testing.ts"]
+  const entryPoints: string[] = [packageJson.module, "src/testing.ts"]
 
   // Build main entry points with code splitting
   // External patterns to prevent bundling tree-sitter assets and default-parsers
@@ -248,7 +248,7 @@ if (buildLib) {
   // See: https://github.com/oven-sh/bun/issues/5344
   // and: https://github.com/oven-sh/bun/issues/10631
   console.log("Post-processing bundled files to fix duplicate exports...")
-  const bundledFiles = ["dist/index.js", "dist/3d.js", "dist/testing.js", "dist/lib/tree-sitter/parser.worker.js"]
+  const bundledFiles = ["dist/index.js", "dist/testing.js", "dist/lib/tree-sitter/parser.worker.js"]
   for (const filePath of bundledFiles) {
     const fullPath = join(rootDir, filePath)
     if (existsSync(fullPath)) {
@@ -317,11 +317,6 @@ if (buildLib) {
       import: "./index.js",
       require: "./index.js",
       types: "./index.d.ts",
-    },
-    "./3d": {
-      import: "./3d.js",
-      require: "./3d.js",
-      types: "./3d.d.ts",
     },
     "./testing": {
       import: "./testing.js",

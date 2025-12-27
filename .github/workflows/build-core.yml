@@ -26,9 +26,14 @@ jobs:
       - name: Install dependencies
         run: bun install
 
-      - name: Build
+      - name: Build Core package
         run: |
           cd packages/core
+          bun run build
+
+      - name: Build 3D package
+        run: |
+          cd packages/3d
           bun run build
 
       - name: Run tests
