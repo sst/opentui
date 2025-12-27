@@ -1545,6 +1545,9 @@ export class CliRenderer extends EventEmitter implements RenderContext {
   }
 
   public destroy(): void {
+    if (this._isDestroyed) return
+    this._isDestroyed = true
+
     process.removeListener("SIGWINCH", this.sigwinchHandler)
     process.removeListener("uncaughtException", this.handleError)
     process.removeListener("unhandledRejection", this.handleError)
@@ -1574,9 +1577,6 @@ export class CliRenderer extends EventEmitter implements RenderContext {
     }
     this._paletteDetectionPromise = null
     this._cachedPalette = null
-
-    if (this._isDestroyed) return
-    this._isDestroyed = true
 
     this.emit(CliRenderEvents.DESTROY)
 
