@@ -122,7 +122,7 @@ export class MarkdownRenderable extends Renderable {
   set streaming(value: boolean) {
     if (this._streaming !== value) {
       this._streaming = value
-      this._parseState = null
+      // Don't clear parseState - incremental parser handles streaming correctly
       this.updateBlocks()
       this.requestRender()
     }
