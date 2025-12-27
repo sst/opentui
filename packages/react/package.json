@@ -44,7 +44,17 @@
     "typescript": "^5"
   },
   "peerDependencies": {
-    "react": ">=19.0.0"
+    "react": ">=19.0.0",
+    "react-devtools-core": "^7.0.1",
+    "ws": "^8.18.0"
+  },
+  "peerDependenciesMeta": {
+    "react-devtools-core": {
+      "optional": true
+    },
+    "ws": {
+      "optional": true
+    }
   },
   "dependencies": {
     "@opentui/core": "workspace:*",
