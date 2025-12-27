@@ -6,6 +6,13 @@ import { hostConfig } from "./host-config"
 
 export const reconciler = ReactReconciler(hostConfig)
 
+// Enable React Refresh (hot reloading)
+reconciler.injectIntoDevTools({
+  bundleType: 0,
+  version: "1.0.0",
+  rendererPackageName: "@opentui/react",
+})
+
 export const flushSync = reconciler.flushSync
 
 export function _render(element: React.ReactNode, root: RootRenderable) {
