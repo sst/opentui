@@ -3,9 +3,9 @@ import React, { type ReactNode } from "react"
 import type { OpaqueRoot } from "react-reconciler"
 import { AppContext } from "../components/app"
 import { ErrorBoundary } from "../components/error-boundary"
-import { _render, reconciler, flushSync } from "./reconciler"
+import { _render, reconciler } from "./reconciler"
 
-export { flushSync }
+const { flushSync, createPortal } = reconciler
 
 export type Root = {
   render: (node: ReactNode) => void
@@ -51,3 +51,5 @@ export function createRoot(renderer: CliRenderer): Root {
     },
   }
 }
+
+export { createPortal, flushSync }

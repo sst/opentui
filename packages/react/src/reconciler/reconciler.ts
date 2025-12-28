@@ -13,8 +13,6 @@ reconciler.injectIntoDevTools({
   rendererPackageName: "@opentui/react",
 })
 
-export const flushSync = reconciler.flushSync
-
 export function _render(element: React.ReactNode, root: RootRenderable) {
   const container = reconciler.createContainer(
     root,
