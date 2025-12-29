@@ -50,17 +50,12 @@ export class CodeRenderable extends TextBufferRenderable {
     this._drawUnstyledText = options.drawUnstyledText ?? this._contentDefaultOptions.drawUnstyledText
     this._streaming = options.streaming ?? this._contentDefaultOptions.streaming
 
-    // Always set initial content so lineCount is correct for measure functions
-    // This prevents width glitches in parent components like LineNumberRenderable
-    // The _shouldRenderTextBuffer flag controls whether we actually draw it
     if (this._content.length > 0) {
       this.textBuffer.setText(this._content)
       this.updateTextInfo()
-      // Only render if drawUnstyledText is true or there's no filetype (fallback mode)
       this._shouldRenderTextBuffer = this._drawUnstyledText || !this._filetype
     }
 
-    // Mark as dirty if there's initial content (even without filetype, we need to show it)
     this._highlightsDirty = this._content.length > 0
   }
 
@@ -72,11 +67,8 @@ export class CodeRenderable extends TextBufferRenderable {
     if (this._content !== value) {
       this._content = value
       this._highlightsDirty = true
-      // Invalidate any in-flight highlight operations so they don't overwrite with stale content
       this._highlightSnapshotId++
 
-      // Always update text buffer for measure functions (like gutter width calculation)
-      // The _shouldRenderTextBuffer flag controls whether we actually draw it
       this.textBuffer.setText(value)
       this.updateTextInfo()
     }
@@ -155,20 +147,15 @@ export class CodeRenderable extends TextBufferRenderable {
 
     const content = this._content
 
-    // No filetype means fallback - always render
     if (!this._filetype) {
       this._shouldRenderTextBuffer = true
       return
     }
 
-    // Determine if this is initial content when streaming
     const isInitialContent = this._streaming && !this._hadInitialContent
-
-    // Handle initial fallback display
     const shouldDrawUnstyledNow = this._streaming ? isInitialContent && this._drawUnstyledText : this._drawUnstyledText
 
     if (this._streaming && !isInitialContent) {
-      // Use cached highlights for partial styling if available
       if (this._lastHighlights.length > 0) {
         const chunks = treeSitterToTextChunks(content, this._lastHighlights, this._syntaxStyle, {
           enabled: this._conceal,
@@ -178,30 +165,23 @@ export class CodeRenderable extends TextBufferRenderable {
         this._shouldRenderTextBuffer = true
         this.updateTextInfo()
       } else {
-        // No cached highlights - render plain text (buffer already has content)
         this._shouldRenderTextBuffer = true
       }
     } else if (shouldDrawUnstyledNow) {
-      // Show plain text before highlights arrive
-      // Reset to plain text in case buffer has styled text from previous highlight
       this.textBuffer.setText(content)
       this._shouldRenderTextBuffer = true
     } else {
-      // Don't show anything until highlights arrive
-      // Text buffer still has content for lineCount etc, just don't render it
       this._shouldRenderTextBuffer = false
     }
   }
 
   private async startHighlight(): Promise<void> {
-    // Capture snapshot of current state
     const content = this._content
     const filetype = this._filetype
     const snapshotId = ++this._highlightSnapshotId
 
     if (!filetype) return
 
-    // Mark as initial content if streaming
     const isInitialContent = this._streaming && !this._hadInitialContent
     if (isInitialContent) {
       this._hadInitialContent = true
@@ -212,7 +192,6 @@ export class CodeRenderable extends TextBufferRenderable {
     try {
       const result = await this._treeSitterClient.highlightOnce(content, filetype)
 
-      // Check if this result is stale (newer highlight was started)
       if (snapshotId !== this._highlightSnapshotId) {
         return
       }
@@ -230,17 +209,15 @@ export class CodeRenderable extends TextBufferRenderable {
         const styledText = new StyledText(chunks)
         this.textBuffer.setStyledText(styledText)
       } else {
-        // No highlights, use plain text
         this.textBuffer.setText(content)
       }
 
       this._shouldRenderTextBuffer = true
       this._isHighlighting = false
       this._highlightsDirty = false
-      this.updateTextInfo() // Must be after _isHighlighting = false so listeners see correct state
+      this.updateTextInfo()
       this.requestRender()
     } catch (error) {
-      // Check if this result is stale
       if (snapshotId !== this._highlightSnapshotId) {
         return
       }
@@ -251,7 +228,7 @@ export class CodeRenderable extends TextBufferRenderable {
       this._shouldRenderTextBuffer = true
       this._isHighlighting = false
       this._highlightsDirty = false
-      this.updateTextInfo() // Must be after _isHighlighting = false so listeners see correct state
+      this.updateTextInfo()
       this.requestRender()
     }
   }
@@ -265,15 +242,12 @@ export class CodeRenderable extends TextBufferRenderable {
       if (this.isDestroyed) return
 
       if (this._content.length === 0) {
-        // Empty content - nothing to render
         this._shouldRenderTextBuffer = false
         this._highlightsDirty = false
       } else if (!this._filetype) {
-        // No filetype - render plain text (buffer already has content)
         this._shouldRenderTextBuffer = true
         this._highlightsDirty = false
       } else {
-        // Has filetype - determine visibility and start highlighting
         this.ensureVisibleTextBeforeHighlight()
         this._highlightsDirty = false
         this.startHighlight()

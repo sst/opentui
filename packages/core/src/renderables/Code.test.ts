@@ -1393,13 +1393,6 @@ test("CodeRenderable - selection across two Code renderables in flex row", async
 })
 
 test("CodeRenderable - content update during async highlighting does not get overwritten by stale highlight result", async () => {
-  // This test covers a race condition bug where:
-  // 1. Content is set to "old content"
-  // 2. Async highlighting starts for "old content"
-  // 3. Content is updated to "new content" before highlighting completes
-  // 4. Old highlighting completes and should NOT overwrite the textBuffer with "old content"
-  // 5. The textBuffer should have "new content"
-
   const syntaxStyle = SyntaxStyle.fromStyles({
     default: { fg: RGBA.fromValues(1, 1, 1, 1) },
     keyword: { fg: RGBA.fromValues(0, 0, 1, 1) },
@@ -1422,36 +1415,27 @@ test("CodeRenderable - content update during async highlighting does not get ove
   currentRenderer.root.add(codeRenderable)
   await renderOnce()
 
-  // Highlighting is now in progress for "line1\nline2\nline3"
   expect(mockClient.isHighlighting()).toBe(true)
   expect(codeRenderable.lineCount).toBe(3)
 
-  // Update content to have more lines BEFORE highlighting completes
   codeRenderable.content = "line1\nline2\nline3\nline4\nline5"
   expect(codeRenderable.lineCount).toBe(5)
 
-  // Now resolve the FIRST highlight (which was for the old 3-line content)
-  // This should NOT overwrite our 5-line content
   mockClient.resolveHighlightOnce(0)
   await new Promise((resolve) => setTimeout(resolve, 10))
 
-  // The content should still be 5 lines, not reverted to 3 lines
   expect(codeRenderable.content).toBe("line1\nline2\nline3\nline4\nline5")
   expect(codeRenderable.lineCount).toBe(5)
 
-  // Render and check again
   await renderOnce()
   expect(codeRenderable.lineCount).toBe(5)
 
-  // The second highlight (for 5-line content) should still be pending
   expect(mockClient.isHighlighting()).toBe(true)
 
-  // Resolve the second highlight
   mockClient.resolveHighlightOnce(0)
   await new Promise((resolve) => setTimeout(resolve, 10))
   await renderOnce()
 
-  // Final state should be 5 lines
   expect(codeRenderable.content).toBe("line1\nline2\nline3\nline4\nline5")
   expect(codeRenderable.lineCount).toBe(5)
   expect(codeRenderable.plainText).toBe("line1\nline2\nline3\nline4\nline5")
@@ -1474,18 +1458,15 @@ test("CodeRenderable - lineCount is correct immediately with drawUnstyledText=fa
     drawUnstyledText: false,
   })
 
-  // lineCount should be correct immediately, even before render or highlighting
   expect(codeRenderable.lineCount).toBe(5)
   expect(codeRenderable.content).toBe("line1\nline2\nline3\nline4\nline5")
 
   currentRenderer.root.add(codeRenderable)
   await renderOnce()
 
-  // Still correct while highlighting
   expect(mockClient.isHighlighting()).toBe(true)
   expect(codeRenderable.lineCount).toBe(5)
 
-  // Frame should be empty (drawUnstyledText=false)
   const frameBeforeHighlighting = captureFrame()
   expect(frameBeforeHighlighting.trim()).toBe("")
 
@@ -1493,7 +1474,6 @@ test("CodeRenderable - lineCount is correct immediately with drawUnstyledText=fa
   await new Promise((resolve) => setTimeout(resolve, 10))
   await renderOnce()
 
-  // After highlighting, still correct and now renders
   expect(codeRenderable.lineCount).toBe(5)
   const frameAfterHighlighting = captureFrame()
   expect(frameAfterHighlighting).toContain("line1")
@@ -1521,15 +1501,12 @@ test("CodeRenderable - lineCount updates correctly when content changes with dra
   currentRenderer.root.add(codeRenderable)
   await renderOnce()
 
-  // Update content to have more lines
   codeRenderable.content = "line1\nline2\nline3\nline4\nline5\nline6\nline7"
-  // lineCount should be correct immediately after setting content
   expect(codeRenderable.lineCount).toBe(7)
 
   await renderOnce()
   expect(codeRenderable.lineCount).toBe(7)
 
-  // Update content to have fewer lines
   codeRenderable.content = "line1\nline2"
   expect(codeRenderable.lineCount).toBe(2)
 
@@ -1556,13 +1533,11 @@ test("CodeRenderable - lineInfo is accessible with drawUnstyledText=false before
 
   currentRenderer.root.add(codeRenderable)
 
-  // Before any render, lineInfo should be available
   expect(codeRenderable.lineCount).toBe(3)
   expect(codeRenderable.lineInfo.lineStarts.length).toBe(3)
 
   await renderOnce()
 
-  // During highlighting, still available
   expect(mockClient.isHighlighting()).toBe(true)
   expect(codeRenderable.lineInfo.lineStarts.length).toBe(3)
   expect(codeRenderable.lineInfo.lineSources.length).toBe(3)
@@ -1571,7 +1546,6 @@ test("CodeRenderable - lineInfo is accessible with drawUnstyledText=false before
   await new Promise((resolve) => setTimeout(resolve, 10))
   await renderOnce()
 
-  // After highlighting
   expect(codeRenderable.lineInfo.lineStarts.length).toBe(3)
   expect(codeRenderable.lineInfo.lineSources.length).toBe(3)
 })
@@ -1593,21 +1567,17 @@ test("CodeRenderable - plainText reflects content immediately with drawUnstyledT
     drawUnstyledText: false,
   })
 
-  // plainText should reflect content immediately
   expect(codeRenderable.plainText).toBe("initial content")
 
   currentRenderer.root.add(codeRenderable)
   await renderOnce()
 
-  // During highlighting
   expect(mockClient.isHighlighting()).toBe(true)
   expect(codeRenderable.plainText).toBe("initial content")
 
-  // Update content
   codeRenderable.content = "updated content"
   expect(codeRenderable.plainText).toBe("updated content")
 
-  // Frame still empty
   await renderOnce()
   const frame = captureFrame()
   expect(frame.trim()).toBe("")
@@ -1616,7 +1586,6 @@ test("CodeRenderable - plainText reflects content immediately with drawUnstyledT
   await new Promise((resolve) => setTimeout(resolve, 10))
   await renderOnce()
 
-  // After all highlights resolve, content renders
   expect(codeRenderable.plainText).toBe("updated content")
   const finalFrame = captureFrame()
   expect(finalFrame).toContain("updated content")
@@ -1640,7 +1609,6 @@ test("CodeRenderable - textLength is correct with drawUnstyledText=false", async
     drawUnstyledText: false,
   })
 
-  // textLength should be correct immediately
   expect(codeRenderable.textLength).toBe(content.length)
 
   currentRenderer.root.add(codeRenderable)
@@ -1648,7 +1616,6 @@ test("CodeRenderable - textLength is correct with drawUnstyledText=false", async
 
   expect(codeRenderable.textLength).toBe(content.length)
 
-  // Update content
   const newContent = "longer content here"
   codeRenderable.content = newContent
   expect(codeRenderable.textLength).toBe(newContent.length)
@@ -1677,14 +1644,12 @@ test("CodeRenderable - streaming mode with drawUnstyledText=false has correct li
   currentRenderer.root.add(codeRenderable)
   await renderOnce()
 
-  // Frame should be empty initially
   const frameBeforeHighlighting = captureFrame()
   expect(frameBeforeHighlighting.trim()).toBe("")
 
   mockClient.resolveHighlightOnce(0)
   await new Promise((resolve) => setTimeout(resolve, 10))
 
-  // Simulate streaming - add more lines
   codeRenderable.content = "line1\nline2\nline3\nline4"
   expect(codeRenderable.lineCount).toBe(4)
 
