@@ -142,6 +142,10 @@ export class CodeRenderable extends TextBufferRenderable {
     }
   }
 
+  get isHighlighting(): boolean {
+    return this._isHighlighting
+  }
+
   private ensureVisibleTextBeforeHighlight(): void {
     if (this.isDestroyed) return
 

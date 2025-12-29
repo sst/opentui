@@ -221,8 +221,8 @@ export class DiffRenderable extends Renderable {
     if (!this._waitingForHighlight) return
     if (!this.leftCodeRenderable || !this.rightCodeRenderable) return
 
-    const leftIsHighlighting = (this.leftCodeRenderable as any)._isHighlighting as boolean
-    const rightIsHighlighting = (this.rightCodeRenderable as any)._isHighlighting as boolean
+    const leftIsHighlighting = this.leftCodeRenderable.isHighlighting
+    const rightIsHighlighting = this.rightCodeRenderable.isHighlighting
 
     if (!leftIsHighlighting && !rightIsHighlighting) {
       this._waitingForHighlight = false
@@ -672,8 +672,8 @@ export class DiffRenderable extends Renderable {
     let finalLeftLines: LogicalLine[]
     let finalRightLines: LogicalLine[]
 
-    const leftIsHighlighting = (leftCodeRenderable as any)._isHighlighting as boolean
-    const rightIsHighlighting = (rightCodeRenderable as any)._isHighlighting as boolean
+    const leftIsHighlighting = leftCodeRenderable.isHighlighting
+    const rightIsHighlighting = rightCodeRenderable.isHighlighting
     const highlightingInProgress = needsConsistentConcealing && (leftIsHighlighting || rightIsHighlighting)
 
     if (highlightingInProgress) {
