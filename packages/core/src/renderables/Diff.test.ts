@@ -2669,9 +2669,11 @@ test("DiffRenderable - fg prop accepts RGBA directly", async () => {
 })
 
 test("DiffRenderable - split view with word wrapping: toggling vs setting from start should match", async () => {
-  const testRenderer = await createTestRenderer({ width: 120, height: 40 })
+  const { BoxRenderable } = await import("./Box")
+
+  // Use a wider terminal to match real-world usage where wrapping behavior matters
+  const testRenderer = await createTestRenderer({ width: 116, height: 30 })
   const renderer = testRenderer.renderer
-  const renderOnce = testRenderer.renderOnce
   const captureFrame = testRenderer.captureCharFrame
 
   const syntaxStyle = SyntaxStyle.fromStyles({
@@ -2682,8 +2684,35 @@ test("DiffRenderable - split view with word wrapping: toggling vs setting from s
     default: { fg: RGBA.fromValues(0.9, 0.93, 0.95, 1) },
   })
 
-  // Use the actual diff content from the demo
-  const diffContent = `Index: packages/core/src/examples/index.ts
+  // First diff content (like TypeScript example in demo - index 0)
+  const firstDiffContent = `--- a/calculator.ts
++++ b/calculator.ts
+@@ -1,13 +1,20 @@
+ class Calculator {
+   add(a: number, b: number): number {
+     return a + b;
+   }
+ 
+-  subtract(a: number, b: number): number {
+-    return a - b;
++  subtract(a: number, b: number, c: number = 0): number {
++    return a - b - c;
+   }
+ 
+   multiply(a: number, b: number): number {
+     return a * b;
+   }
++
++  divide(a: number, b: number): number {
++    if (b === 0) {
++      throw new Error("Division by zero");
++    }
++    return a / b;
++  }
+ }`
+
+  // Second diff content (Real Session: Text Demo - index 1)
+  const secondDiffContent = `Index: packages/core/src/examples/index.ts
 ===================================================================
 --- packages/core/src/examples/index.ts	before
 +++ packages/core/src/examples/index.ts	after
@@ -2709,61 +2738,65 @@ test("DiffRenderable - split view with word wrapping: toggling vs setting from s
      description: "Text selection with ASCII fonts - precise character-level selection across different font types",
      run: asciiFontSelectionExample.run,`
 
-  // First approach: Start without wrapping, then switch to word wrapping
-  const diffToggle = new DiffRenderable(renderer, {
-    id: "test-diff-toggle",
-    diff: diffContent,
-    view: "split",
+  const parentContainer = new BoxRenderable(renderer, {
+    id: "parent-container",
+    padding: 1,
+  })
+  renderer.root.add(parentContainer)
+
+  const diff = new DiffRenderable(renderer, {
+    id: "test-diff",
+    diff: firstDiffContent,
+    view: "unified",
     filetype: "typescript",
     syntaxStyle,
     showLineNumbers: true,
     wrapMode: "none",
-    width: "100%",
-    height: "100%",
+    conceal: true,
+    flexGrow: 1,
+    flexShrink: 1,
   })
 
-  renderer.root.add(diffToggle)
-  await renderOnce()
+  parentContainer.add(diff)
+  await Bun.sleep(100)
 
-  // Toggle to word wrapping
-  diffToggle.wrapMode = "word"
-  await renderOnce()
+  // Step 1: Press V - switch to split view
+  diff.view = "split"
+  await Bun.sleep(100)
 
-  // Wait for deferred rebuild with wrap alignment
-  await new Promise((resolve) => setTimeout(resolve, 200))
-  await renderOnce()
+  // Step 2: Press W - enable word wrap
+  diff.wrapMode = "word"
+  await Bun.sleep(300)
 
-  const frameAfterToggle = captureFrame()
+  // Step 3: Press C - change to second diff content (this is where the bug occurs)
+  // The bug: when diff content changes, rebuildView uses queueMicrotask.
+  // The microtask runs and reads lineInfo, but lineInfo is STALE (from previous content).
+  // We need to wait for the microtask to execute and render, but not long enough for
+  // additional rebuilds to fix the stale lineInfo.
+  diff.diff = secondDiffContent
 
-  // Clean up first setup
-  renderer.root.remove(diffToggle.id)
-  diffToggle.destroyRecursively()
+  // Wait for microtask to execute and one render cycle
+  await Bun.sleep(10)
 
-  // Second approach: Start with word wrapping from the beginning
-  const diffFromStart = new DiffRenderable(renderer, {
-    id: "test-diff-from-start",
-    diff: diffContent,
-    view: "split",
-    filetype: "typescript",
-    syntaxStyle,
-    showLineNumbers: true,
-    wrapMode: "word",
-    width: "100%",
-    height: "100%",
-  })
+  const frameAfterChangingDiff = captureFrame()
 
-  renderer.root.add(diffFromStart)
-  await renderOnce()
+  // Step 4: Press W twice - toggle word wrap OFF then ON (this fixes alignment)
+  diff.wrapMode = "none"
+  await Bun.sleep(100)
+  diff.wrapMode = "word"
+  await Bun.sleep(300)
 
-  // Wait for deferred rebuild with wrap alignment
-  await new Promise((resolve) => setTimeout(resolve, 200))
-  await renderOnce()
+  const frameAfterTogglingWrap = captureFrame()
 
-  const frameFromStart = captureFrame()
-
-  // EXPECTATION: Both approaches should produce identical output
-  // Currently this FAILS - word wrapping from the start produces misaligned line numbers and text
-  expect(frameAfterToggle).toBe(frameFromStart)
+  // EXPECTATION: Both frames should be identical
+  //
+  // BUG: When diff content changes while in split view with word wrap + conceal enabled,
+  // the lineInfo from the CodeRenderable is STALE (contains data from previous diff content).
+  // This causes misaligned left/right sides because wrap alignment uses incorrect lineSources.
+  //
+  // Reproduction steps in demo: V (split) -> W (word wrap) -> C (change diff) -> see misalignment
+  // Workaround: Toggle wrap off/on (W -> W) which forces a fresh lineInfo computation.
+  expect(frameAfterChangingDiff).toBe(frameAfterTogglingWrap)
 
   // Clean up
   renderer.destroy()
