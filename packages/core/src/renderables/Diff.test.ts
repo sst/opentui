@@ -2668,24 +2668,54 @@ test("DiffRenderable - fg prop accepts RGBA directly", async () => {
   expect(leftCodeRenderable.fg).toEqual(customFg)
 })
 
-test("DiffRenderable - split view with word wrapping: toggling vs setting from start should match", async () => {
+test("DiffRenderable - split view with word wrapping: changing diff content should not misalign sides", async () => {
   const { BoxRenderable } = await import("./Box")
+  const { parseColor } = await import("../lib/RGBA")
 
-  // Use a wider terminal to match real-world usage where wrapping behavior matters
+  // Use terminal width that matches the demo (~116 chars)
   const testRenderer = await createTestRenderer({ width: 116, height: 30 })
   const renderer = testRenderer.renderer
   const captureFrame = testRenderer.captureCharFrame
 
+  // GitHub Dark theme - EXACTLY as in diff-demo.ts
+  const theme = {
+    backgroundColor: "#0D1117",
+    addedBg: "#1a4d1a",
+    removedBg: "#4d1a1a",
+    contextBg: "transparent",
+    addedSignColor: "#22c55e",
+    removedSignColor: "#ef4444",
+    lineNumberFg: "#6b7280",
+    lineNumberBg: "#161b22",
+    addedLineNumberBg: "#0d3a0d",
+    removedLineNumberBg: "#3a0d0d",
+    selectionBg: "#264F78",
+    selectionFg: "#FFFFFF",
+  }
+
+  // Syntax style EXACTLY as in diff-demo.ts GitHub Dark theme
   const syntaxStyle = SyntaxStyle.fromStyles({
-    keyword: { fg: RGBA.fromValues(0.78, 0.57, 0.92, 1) },
-    string: { fg: RGBA.fromValues(0.65, 0.84, 1, 1) },
-    comment: { fg: RGBA.fromValues(0.55, 0.58, 0.62, 1) },
-    function: { fg: RGBA.fromValues(0.51, 0.67, 1, 1) },
-    default: { fg: RGBA.fromValues(0.9, 0.93, 0.95, 1) },
+    keyword: { fg: parseColor("#FF7B72"), bold: true },
+    "keyword.import": { fg: parseColor("#FF7B72"), bold: true },
+    string: { fg: parseColor("#A5D6FF") },
+    comment: { fg: parseColor("#8B949E"), italic: true },
+    number: { fg: parseColor("#79C0FF") },
+    boolean: { fg: parseColor("#79C0FF") },
+    constant: { fg: parseColor("#79C0FF") },
+    function: { fg: parseColor("#D2A8FF") },
+    "function.call": { fg: parseColor("#D2A8FF") },
+    constructor: { fg: parseColor("#FFA657") },
+    type: { fg: parseColor("#FFA657") },
+    operator: { fg: parseColor("#FF7B72") },
+    variable: { fg: parseColor("#E6EDF3") },
+    property: { fg: parseColor("#79C0FF") },
+    bracket: { fg: parseColor("#F0F6FC") },
+    punctuation: { fg: parseColor("#F0F6FC") },
+    default: { fg: parseColor("#E6EDF3") },
   })
 
-  // First diff content (like TypeScript example in demo - index 0)
-  const firstDiffContent = `--- a/calculator.ts
+  // contentExamples[0] - TypeScript Calculator diff
+  const calculatorDiff = `--- a/calculator.ts
 +++ b/calculator.ts
 @@ -1,13 +1,20 @@
  class Calculator {
@@ -2711,8 +2741,8 @@ test("DiffRenderable - split view with word wrapping: toggling vs setting from s
 +  }
  }`
 
-  // Second diff content (Real Session: Text Demo - index 1)
-  const secondDiffContent = `Index: packages/core/src/examples/index.ts
+  // contentExamples[1] - Real Session: Text Demo
+  const textDemoDiff = `Index: packages/core/src/examples/index.ts
 ===================================================================
 --- packages/core/src/examples/index.ts	before
 +++ packages/core/src/examples/index.ts	after
@@ -2738,66 +2768,119 @@ test("DiffRenderable - split view with word wrapping: toggling vs setting from s
      description: "Text selection with ASCII fonts - precise character-level selection across different font types",
      run: asciiFontSelectionExample.run,`
 
-  const parentContainer = new BoxRenderable(renderer, {
-    id: "parent-container",
+  renderer.setBackgroundColor(theme.backgroundColor)
+
+  // PART 1: CORRECT PATH
+  // Start with textDemoDiff, view="unified", wrapMode="none"
+  // Then toggle to split, then toggle to word wrap
+  // This produces CORRECT alignment
+  const parentContainer1 = new BoxRenderable(renderer, {
+    id: "parent-container-1",
     padding: 1,
   })
-  renderer.root.add(parentContainer)
+  renderer.root.add(parentContainer1)
 
-  const diff = new DiffRenderable(renderer, {
-    id: "test-diff",
-    diff: firstDiffContent,
+  const correctDiff = new DiffRenderable(renderer, {
+    id: "correct-diff",
+    diff: textDemoDiff, // Start with textDemoDiff directly
     view: "unified",
     filetype: "typescript",
     syntaxStyle,
     showLineNumbers: true,
     wrapMode: "none",
     conceal: true,
+    addedBg: theme.addedBg,
+    removedBg: theme.removedBg,
+    contextBg: theme.contextBg,
+    addedSignColor: theme.addedSignColor,
+    removedSignColor: theme.removedSignColor,
+    lineNumberFg: theme.lineNumberFg,
+    lineNumberBg: theme.lineNumberBg,
+    addedLineNumberBg: theme.addedLineNumberBg,
+    removedLineNumberBg: theme.removedLineNumberBg,
+    selectionBg: theme.selectionBg,
+    selectionFg: theme.selectionFg,
     flexGrow: 1,
     flexShrink: 1,
   })
 
-  parentContainer.add(diff)
+  parentContainer1.add(correctDiff)
+  await Bun.sleep(200)
+
+  // Press V - toggle to split view
+  correctDiff.view = "split"
+  await Bun.sleep(200)
+
+  // Press W - toggle to word wrap
+  correctDiff.wrapMode = "word"
+  await Bun.sleep(500)
+
+  const correctFrame = captureFrame()
+
+  // Clean up
+  parentContainer1.destroyRecursively()
+  renderer.root.remove("parent-container-1")
   await Bun.sleep(100)
 
-  // Step 1: Press V - switch to split view
-  diff.view = "split"
-  await Bun.sleep(100)
+  // PART 2: BUGGY PATH
+  // Start with calculatorDiff, view="unified", wrapMode="none"
+  // Press V (split), Press W (word), Press C (change to textDemoDiff)
+  // This produces WRONG alignment due to stale lineInfo
+  const parentContainer2 = new BoxRenderable(renderer, {
+    id: "parent-container-2",
+    padding: 1,
+  })
+  renderer.root.add(parentContainer2)
 
-  // Step 2: Press W - enable word wrap
-  diff.wrapMode = "word"
-  await Bun.sleep(300)
+  const buggyDiff = new DiffRenderable(renderer, {
+    id: "buggy-diff",
+    diff: calculatorDiff, // Start with calculatorDiff (contentExamples[0])
+    view: "unified",
+    filetype: "typescript",
+    syntaxStyle,
+    showLineNumbers: true,
+    wrapMode: "none",
+    conceal: true,
+    addedBg: theme.addedBg,
+    removedBg: theme.removedBg,
+    contextBg: theme.contextBg,
+    addedSignColor: theme.addedSignColor,
+    removedSignColor: theme.removedSignColor,
+    lineNumberFg: theme.lineNumberFg,
+    lineNumberBg: theme.lineNumberBg,
+    addedLineNumberBg: theme.addedLineNumberBg,
+    removedLineNumberBg: theme.removedLineNumberBg,
+    selectionBg: theme.selectionBg,
+    selectionFg: theme.selectionFg,
+    flexGrow: 1,
+    flexShrink: 1,
+  })
 
-  // Step 3: Press C - change to second diff content (this is where the bug occurs)
-  // The bug: when diff content changes, rebuildView uses queueMicrotask.
-  // The microtask runs and reads lineInfo, but lineInfo is STALE (from previous content).
-  // We need to wait for the microtask to execute and render, but not long enough for
-  // additional rebuilds to fix the stale lineInfo.
-  diff.diff = secondDiffContent
+  parentContainer2.add(buggyDiff)
+  await Bun.sleep(200)
 
-  // Wait for microtask to execute and one render cycle
-  await Bun.sleep(10)
+  // Press V - toggle to split view
+  buggyDiff.view = "split"
+  await Bun.sleep(200)
 
-  const frameAfterChangingDiff = captureFrame()
+  // Press W - toggle to word wrap
+  buggyDiff.wrapMode = "word"
+  await Bun.sleep(200)
 
-  // Step 4: Press W twice - toggle word wrap OFF then ON (this fixes alignment)
-  diff.wrapMode = "none"
-  await Bun.sleep(100)
-  diff.wrapMode = "word"
-  await Bun.sleep(300)
+  // Press C - change diff content to textDemoDiff
+  // THIS IS WHERE THE BUG MANIFESTS - lineInfo is STALE
+  buggyDiff.diff = textDemoDiff
+  buggyDiff.filetype = "typescript"
+  await Bun.sleep(500)
 
-  const frameAfterTogglingWrap = captureFrame()
-
-  // EXPECTATION: Both frames should be identical
-  //
-  // BUG: When diff content changes while in split view with word wrap + conceal enabled,
-  // the lineInfo from the CodeRenderable is STALE (contains data from previous diff content).
-  // This causes misaligned left/right sides because wrap alignment uses incorrect lineSources.
-  //
-  // Reproduction steps in demo: V (split) -> W (word wrap) -> C (change diff) -> see misalignment
-  // Workaround: Toggle wrap off/on (W -> W) which forces a fresh lineInfo computation.
-  expect(frameAfterChangingDiff).toBe(frameAfterTogglingWrap)
+  const buggyFrame = captureFrame()
 
   // Clean up
   renderer.destroy()
+
+  // ASSERTION: Both frames should be identical since they show the same diff content
+  // with the same view settings (split + word wrap)
+  // But due to the bug, the buggy frame has misaligned left/right sides because
+  // the lineInfo from CodeRenderable is STALE after changing diff content
+  expect(buggyFrame).toBe(correctFrame)
 })
