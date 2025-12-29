@@ -235,9 +235,9 @@ export class CodeRenderable extends TextBufferRenderable {
       }
 
       this._shouldRenderTextBuffer = true
-      this.updateTextInfo()
       this._isHighlighting = false
       this._highlightsDirty = false
+      this.updateTextInfo() // Must be after _isHighlighting = false so listeners see correct state
       this.requestRender()
     } catch (error) {
       // Check if this result is stale
@@ -249,9 +249,9 @@ export class CodeRenderable extends TextBufferRenderable {
       if (this.isDestroyed) return
       this.textBuffer.setText(content)
       this._shouldRenderTextBuffer = true
-      this.updateTextInfo()
       this._isHighlighting = false
       this._highlightsDirty = false
+      this.updateTextInfo() // Must be after _isHighlighting = false so listeners see correct state
       this.requestRender()
     }
   }

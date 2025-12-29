@@ -106,6 +106,11 @@ export class DiffRenderable extends Renderable {
   private errorTextRenderable: TextRenderable | null = null
   private errorCodeRenderable: CodeRenderable | null = null
 
+  // Track whether we're waiting for highlighting to complete before alignment
+  // Used to trigger exactly one rebuild when both sides finish highlighting
+  private _waitingForHighlight: boolean = false
+  private _lineInfoChangeHandler: (() => void) | null = null
+
   constructor(ctx: RenderContext, options: DiffRenderableOptions) {
     super(ctx, {
       ...options,
@@ -233,7 +238,50 @@ export class DiffRenderable extends Renderable {
     }
   }
 
+  private handleLineInfoChange = (): void => {
+    // Only act if we're waiting for highlights to complete
+    if (!this._waitingForHighlight) {
+      console.log("[DEBUG] handleLineInfoChange: not waiting, skipping")
+      return
+    }
+    if (!this.leftCodeRenderable || !this.rightCodeRenderable) return
+
+    const leftIsHighlighting = (this.leftCodeRenderable as any)._isHighlighting as boolean
+    const rightIsHighlighting = (this.rightCodeRenderable as any)._isHighlighting as boolean
+
+    console.log(`[DEBUG] handleLineInfoChange: leftHL=${leftIsHighlighting} rightHL=${rightIsHighlighting}`)
+
+    // When both sides are done highlighting, trigger one rebuild
+    if (!leftIsHighlighting && !rightIsHighlighting) {
+      console.log("[DEBUG] handleLineInfoChange: both done, triggering rebuild")
+      this._waitingForHighlight = false
+      this.requestRebuild()
+    }
+  }
+
+  private attachLineInfoListeners(): void {
+    if (this._lineInfoChangeHandler) return // Already attached
+    if (!this.leftCodeRenderable || !this.rightCodeRenderable) return
+
+    this._lineInfoChangeHandler = this.handleLineInfoChange
+    this.leftCodeRenderable.on("line-info-change", this._lineInfoChangeHandler)
+    this.rightCodeRenderable.on("line-info-change", this._lineInfoChangeHandler)
+  }
+
+  private detachLineInfoListeners(): void {
+    if (!this._lineInfoChangeHandler) return
+
+    if (this.leftCodeRenderable) {
+      this.leftCodeRenderable.off("line-info-change", this._lineInfoChangeHandler)
+    }
+    if (this.rightCodeRenderable) {
+      this.rightCodeRenderable.off("line-info-change", this._lineInfoChangeHandler)
+    }
+    this._lineInfoChangeHandler = null
+  }
+
   public override destroyRecursively(): void {
+    this.detachLineInfoListeners()
     this.pendingRebuild = false
     this.leftSideAdded = false
     this.rightSideAdded = false
@@ -699,7 +747,25 @@ export class DiffRenderable extends Renderable {
     let finalLeftLines: LogicalLine[]
     let finalRightLines: LogicalLine[]
 
-    if (canDoWrapAlignment) {
+    // When conceal is enabled, we need to wait for highlighting to complete before aligning
+    // because concealing changes line lengths and thus wrapping behavior
+    const leftIsHighlighting = (leftCodeRenderable as any)._isHighlighting as boolean
+    const rightIsHighlighting = (rightCodeRenderable as any)._isHighlighting as boolean
+    const highlightingInProgress = needsConsistentConcealing && (leftIsHighlighting || rightIsHighlighting)
+
+    // If highlighting is in progress with conceal, attach listeners and skip alignment for now
+    if (highlightingInProgress) {
+      this._waitingForHighlight = true
+      this.attachLineInfoListeners()
+    }
+
+    const shouldDoAlignment = canDoWrapAlignment && !highlightingInProgress
+
+    console.log(
+      `[DEBUG] buildSplitView: canDoWrap=${canDoWrapAlignment} highlightInProg=${highlightingInProgress} shouldAlign=${shouldDoAlignment} leftHL=${leftIsHighlighting} rightHL=${rightIsHighlighting}`,
+    )
+
+    if (shouldDoAlignment) {
       const leftLineInfo = leftCodeRenderable.lineInfo
       const rightLineInfo = rightCodeRenderable.lineInfo
 
@@ -891,6 +957,7 @@ export class DiffRenderable extends Renderable {
   public set diff(value: string) {
     if (this._diff !== value) {
       this._diff = value
+      this._waitingForHighlight = false
       this.parseDiff()
       this.rebuildView()
     }
