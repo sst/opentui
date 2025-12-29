@@ -182,7 +182,9 @@ export class CodeRenderable extends TextBufferRenderable {
         this._shouldRenderTextBuffer = true
       }
     } else if (shouldDrawUnstyledNow) {
-      // Show plain text before highlights arrive (buffer already has content)
+      // Show plain text before highlights arrive
+      // Reset to plain text in case buffer has styled text from previous highlight
+      this.textBuffer.setText(content)
       this._shouldRenderTextBuffer = true
     } else {
       // Don't show anything until highlights arrive
