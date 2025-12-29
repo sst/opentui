@@ -49,4 +49,4 @@ jobs:
         working-directory: packages/vue
 
       - name: Publish preview packages
-        run: npx pkg-pr-new publish --compact './packages/core/dist' './packages/react/dist' './packages/solid/dist' './packages/vue/dist'
+        run: npx pkg-pr-new publish './packages/core/dist' './packages/react/dist' './packages/solid/dist' './packages/vue/dist'
