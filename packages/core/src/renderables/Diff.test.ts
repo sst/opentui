@@ -2667,3 +2667,104 @@ test("DiffRenderable - fg prop accepts RGBA directly", async () => {
   const leftCodeRenderable = (diffRenderable as any).leftCodeRenderable
   expect(leftCodeRenderable.fg).toEqual(customFg)
 })
+
+test("DiffRenderable - split view with word wrapping: toggling vs setting from start should match", async () => {
+  const testRenderer = await createTestRenderer({ width: 120, height: 40 })
+  const renderer = testRenderer.renderer
+  const renderOnce = testRenderer.renderOnce
+  const captureFrame = testRenderer.captureCharFrame
+
+  const syntaxStyle = SyntaxStyle.fromStyles({
+    keyword: { fg: RGBA.fromValues(0.78, 0.57, 0.92, 1) },
+    string: { fg: RGBA.fromValues(0.65, 0.84, 1, 1) },
+    comment: { fg: RGBA.fromValues(0.55, 0.58, 0.62, 1) },
+    function: { fg: RGBA.fromValues(0.51, 0.67, 1, 1) },
+    default: { fg: RGBA.fromValues(0.9, 0.93, 0.95, 1) },
+  })
+
+  // Use the actual diff content from the demo
+  const diffContent = `Index: packages/core/src/examples/index.ts
+===================================================================
+--- packages/core/src/examples/index.ts	before
++++ packages/core/src/examples/index.ts	after
+@@ -56,6 +56,7 @@
+ import * as terminalDemo from "./terminal"
+ import * as diffDemo from "./diff-demo"
+ import * as keypressDebugDemo from "./keypress-debug-demo"
++import * as textTruncationDemo from "./text-truncation-demo"
+ import { setupCommonDemoKeys } from "./lib/standalone-keys"
+ 
+ interface Example {
+@@ -85,6 +86,12 @@
+     destroy: textSelectionExample.destroy,
+   },
+   {
++    name: "Text Truncation Demo",
++    description: "Middle truncation with ellipsis - toggle with 'T' key and resize to test responsive behavior",
++    run: textTruncationDemo.run,
++    destroy: textTruncationDemo.destroy,
++  },
++  {
+     name: "ASCII Font Selection Demo",
+     description: "Text selection with ASCII fonts - precise character-level selection across different font types",
+     run: asciiFontSelectionExample.run,`
+
+  // First approach: Start without wrapping, then switch to word wrapping
+  const diffToggle = new DiffRenderable(renderer, {
+    id: "test-diff-toggle",
+    diff: diffContent,
+    view: "split",
+    filetype: "typescript",
+    syntaxStyle,
+    showLineNumbers: true,
+    wrapMode: "none",
+    width: "100%",
+    height: "100%",
+  })
+
+  renderer.root.add(diffToggle)
+  await renderOnce()
+
+  // Toggle to word wrapping
+  diffToggle.wrapMode = "word"
+  await renderOnce()
+
+  // Wait for deferred rebuild with wrap alignment
+  await new Promise((resolve) => setTimeout(resolve, 200))
+  await renderOnce()
+
+  const frameAfterToggle = captureFrame()
+
+  // Clean up first setup
+  renderer.root.remove(diffToggle.id)
+  diffToggle.destroyRecursively()
+
+  // Second approach: Start with word wrapping from the beginning
+  const diffFromStart = new DiffRenderable(renderer, {
+    id: "test-diff-from-start",
+    diff: diffContent,
+    view: "split",
+    filetype: "typescript",
+    syntaxStyle,
+    showLineNumbers: true,
+    wrapMode: "word",
+    width: "100%",
+    height: "100%",
+  })
+
+  renderer.root.add(diffFromStart)
+  await renderOnce()
+
+  // Wait for deferred rebuild with wrap alignment
+  await new Promise((resolve) => setTimeout(resolve, 200))
+  await renderOnce()
+
+  const frameFromStart = captureFrame()
+
+  // EXPECTATION: Both approaches should produce identical output
+  // Currently this FAILS - word wrapping from the start produces misaligned line numbers and text
+  expect(frameAfterToggle).toBe(frameFromStart)
+
+  // Clean up
+  renderer.destroy()
+})
