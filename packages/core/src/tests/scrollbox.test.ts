@@ -741,6 +741,9 @@ world
 
   test("stays scrolled to bottom with growing code renderables in sticky scroll mode", async () => {
     const syntaxStyle = SyntaxStyle.fromTheme([])
+    // Use auto-resolving mock client to avoid timing issues with stale highlight detection
+    const autoResolvingClient = new MockTreeSitterClient({ autoResolveTimeout: 1 })
+    autoResolvingClient.setMockResult({ highlights: [] })
 
     const parent = new BoxRenderable(testRenderer, {
       flexDirection: "column",
@@ -764,8 +767,6 @@ world
     parent.add(footer)
     testRenderer.root.add(parent)
 
-    await renderOnce()
-
     const scrollPositions: number[] = []
     const maxScrollPositions: number[] = []
     const wrapper1 = new BoxRenderable(testRenderer, {
@@ -777,18 +778,18 @@ world
       filetype: "javascript",
       syntaxStyle,
       drawUnstyledText: false,
-      treeSitterClient: mockTreeSitterClient,
+      treeSitterClient: autoResolvingClient,
     })
     wrapper1.add(code1)
     scrollBox.add(wrapper1)
 
-    mockTreeSitterClient.resolveAllHighlightOnce()
-    await new Promise((resolve) => setTimeout(resolve, 1))
-    await renderOnce()
+    await Bun.sleep(10)
+    await testRenderer.idle()
 
     scrollPositions.push(scrollBox.scrollTop)
     maxScrollPositions.push(Math.max(0, scrollBox.scrollHeight - scrollBox.viewport.height))
     expect(scrollBox.scrollTop).toBe(maxScrollPositions[0])
+
     code1.content = `console.log('hello')
 const foo = 'bar'
 const baz = 'qux'
@@ -797,13 +798,13 @@ function test() {
 }
 console.log(test())`
 
-    mockTreeSitterClient.resolveAllHighlightOnce()
-    await new Promise((resolve) => setTimeout(resolve, 1))
-    await renderOnce()
+    await Bun.sleep(10)
+    await testRenderer.idle()
 
     scrollPositions.push(scrollBox.scrollTop)
     maxScrollPositions.push(Math.max(0, scrollBox.scrollHeight - scrollBox.viewport.height))
     expect(scrollBox.scrollTop).toBe(maxScrollPositions[1])
+
     const wrapper2 = new BoxRenderable(testRenderer, {
       marginTop: 1,
       marginBottom: 1,
@@ -813,18 +814,18 @@ console.log(test())`
       filetype: "javascript",
       syntaxStyle,
       drawUnstyledText: false,
-      treeSitterClient: mockTreeSitterClient,
+      treeSitterClient: autoResolvingClient,
     })
     wrapper2.add(code2)
     scrollBox.add(wrapper2)
 
-    mockTreeSitterClient.resolveAllHighlightOnce()
-    await new Promise((resolve) => setTimeout(resolve, 1))
-    await renderOnce()
+    await Bun.sleep(10)
+    await testRenderer.idle()
 
     scrollPositions.push(scrollBox.scrollTop)
     maxScrollPositions.push(Math.max(0, scrollBox.scrollHeight - scrollBox.viewport.height))
     expect(scrollBox.scrollTop).toBe(maxScrollPositions[2])
+
     code2.content = `const x = 10
 const y = 20
 const z = x + y
@@ -835,13 +836,13 @@ function multiply(a, b) {
 const result = multiply(x, y)
 console.log('Result:', result)`
 
-    mockTreeSitterClient.resolveAllHighlightOnce()
-    await new Promise((resolve) => setTimeout(resolve, 1))
-    await renderOnce()
+    await Bun.sleep(10)
+    await testRenderer.idle()
 
     scrollPositions.push(scrollBox.scrollTop)
     maxScrollPositions.push(Math.max(0, scrollBox.scrollHeight - scrollBox.viewport.height))
     expect(scrollBox.scrollTop).toBe(maxScrollPositions[3])
+
     const wrapper3 = new BoxRenderable(testRenderer, {
       marginTop: 1,
       marginBottom: 1,
@@ -851,18 +852,18 @@ console.log('Result:', result)`
       filetype: "javascript",
       syntaxStyle,
       drawUnstyledText: false,
-      treeSitterClient: mockTreeSitterClient,
+      treeSitterClient: autoResolvingClient,
     })
     wrapper3.add(code3)
     scrollBox.add(wrapper3)
 
-    mockTreeSitterClient.resolveAllHighlightOnce()
-    await new Promise((resolve) => setTimeout(resolve, 1))
-    await renderOnce()
+    await Bun.sleep(10)
+    await testRenderer.idle()
 
     scrollPositions.push(scrollBox.scrollTop)
     maxScrollPositions.push(Math.max(0, scrollBox.scrollHeight - scrollBox.viewport.height))
     expect(scrollBox.scrollTop).toBe(maxScrollPositions[4])
+
     code3.content = `// Final code block
 const final = 'done'
 
@@ -889,9 +890,8 @@ console.log(processor.process())
 console.log(processor.filter(x => x > 2))
 console.log(processor.reduce((acc, val) => acc + val, 0))`
 
-    mockTreeSitterClient.resolveAllHighlightOnce()
-    await new Promise((resolve) => setTimeout(resolve, 1))
-    await renderOnce()
+    await Bun.sleep(10)
+    await testRenderer.idle()
 
     scrollPositions.push(scrollBox.scrollTop)
     maxScrollPositions.push(Math.max(0, scrollBox.scrollHeight - scrollBox.viewport.height))

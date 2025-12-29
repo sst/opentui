@@ -357,4 +357,92 @@ describe("DiffRenderable with SolidJS", () => {
     // Diff should be visible again
     expect(frame).toContain("function hello")
   })
+
+  test("split diff with word wrapping: toggling vs setting from start should match", async () => {
+    const syntaxStyle = SyntaxStyle.fromStyles({
+      keyword: { fg: RGBA.fromValues(0.78, 0.57, 0.92, 1) },
+      "keyword.import": { fg: RGBA.fromValues(0.78, 0.57, 0.92, 1) },
+      string: { fg: RGBA.fromValues(0.65, 0.84, 1, 1) },
+      comment: { fg: RGBA.fromValues(0.55, 0.58, 0.62, 1), italic: true },
+      function: { fg: RGBA.fromValues(0.51, 0.67, 1, 1) },
+      default: { fg: RGBA.fromValues(0.9, 0.93, 0.95, 1) },
+    })
+
+    // Use the actual diff content from the demo
+    const diffContent = `Index: packages/core/src/examples/index.ts
+===================================================================
+--- packages/core/src/examples/index.ts	before
++++ packages/core/src/examples/index.ts	after
+@@ -56,6 +56,7 @@
+ import * as terminalDemo from "./terminal"
+ import * as diffDemo from "./diff-demo"
+ import * as keypressDebugDemo from "./keypress-debug-demo"
++import * as textTruncationDemo from "./text-truncation-demo"
+ import { setupCommonDemoKeys } from "./lib/standalone-keys"
+ 
+ interface Example {
+@@ -85,6 +86,12 @@
+     destroy: textSelectionExample.destroy,
+   },
+   {
++    name: "Text Truncation Demo",
++    description: "Middle truncation with ellipsis - toggle with 'T' key and resize to test responsive behavior",
++    run: textTruncationDemo.run,
++    destroy: textTruncationDemo.destroy,
++  },
++  {
+     name: "ASCII Font Selection Demo",
+     description: "Text selection with ASCII fonts - precise character-level selection across different font types",
+     run: asciiFontSelectionExample.run,`
+
+    const [wrapMode, setWrapMode] = createSignal<"none" | "word">("none")
+
+    testSetup = await testRender(() => (
+      <box id="root" width="100%" height="100%">
+        <diff
+          id="test-diff-toggle"
+          diff={diffContent}
+          view="split"
+          filetype="typescript"
+          syntaxStyle={syntaxStyle}
+          showLineNumbers={true}
+          wrapMode={wrapMode()}
+          width="100%"
+          height="100%"
+        />
+      </box>
+    ))
+
+    await testSetup.renderOnce()
+    setWrapMode("word")
+    await Bun.sleep(10)
+    await testSetup.renderer.idle()
+
+    const frameAfterToggle = testSetup.captureCharFrame()
+
+    testSetup.renderer.destroy()
+
+    testSetup = await testRender(() => (
+      <box id="root" width="100%" height="100%">
+        <diff
+          id="test-diff-from-start"
+          diff={diffContent}
+          view="split"
+          filetype="typescript"
+          syntaxStyle={syntaxStyle}
+          showLineNumbers={true}
+          wrapMode="word"
+          width="100%"
+          height="100%"
+        />
+      </box>
+    ))
+
+    await Bun.sleep(10)
+    await testSetup.renderer.idle()
+
+    const frameFromStart = testSetup.captureCharFrame()
+
+    expect(frameAfterToggle).toBe(frameFromStart)
+  })
 })
