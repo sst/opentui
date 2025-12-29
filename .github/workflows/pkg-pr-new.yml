@@ -44,9 +44,5 @@ jobs:
         run: bun run build --ci
         working-directory: packages/solid
 
-      - name: Build vue
-        run: bun run build
-        working-directory: packages/vue
-
       - name: Publish preview packages
-        run: npx pkg-pr-new publish --no-template './packages/core/dist' './packages/react/dist' './packages/solid/dist' './packages/vue/dist'
+        run: npx pkg-pr-new publish --no-template './packages/core/dist' './packages/react/dist' './packages/solid/dist'
