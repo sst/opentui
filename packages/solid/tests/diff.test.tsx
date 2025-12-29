@@ -415,9 +415,8 @@ describe("DiffRenderable with SolidJS", () => {
 
     await testSetup.renderOnce()
     setWrapMode("word")
-    await Bun.sleep(0)
-    await testSetup.renderOnce()
-    await testSetup.renderOnce()
+    await Bun.sleep(10)
+    await testSetup.renderer.idle()
 
     const frameAfterToggle = testSetup.captureCharFrame()
 
@@ -439,10 +438,8 @@ describe("DiffRenderable with SolidJS", () => {
       </box>
     ))
 
-    await testSetup.renderOnce()
-    await Bun.sleep(0)
-    await testSetup.renderOnce()
-    await testSetup.renderOnce()
+    await Bun.sleep(10)
+    await testSetup.renderer.idle()
 
     const frameFromStart = testSetup.captureCharFrame()
 
