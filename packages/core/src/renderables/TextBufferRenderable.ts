@@ -379,6 +379,7 @@ export abstract class TextBufferRenderable extends Renderable implements LineInf
       }
 
       const flooredWidth = Math.floor(effectiveWidth)
+      const effectiveHeight = isNaN(height) ? 1 : height
 
       const version = this.textBuffer.version
       if (version !== this._measureCacheVersion) {
@@ -391,13 +392,11 @@ export abstract class TextBufferRenderable extends Renderable implements LineInf
         if (widthMode === MeasureMode.AtMost && this._positionType !== "absolute") {
           return {
             width: Math.min(effectiveWidth, cached.width),
-            height: cached.height,
+            height: Math.min(effectiveHeight, cached.height),
           }
         }
         return cached
       }
-
-      const effectiveHeight = isNaN(height) ? 1 : height
 
       const measureResult = this.textBufferView.measureForDimensions(flooredWidth, Math.floor(effectiveHeight))
 
