@@ -240,20 +240,14 @@ export class DiffRenderable extends Renderable {
 
   private handleLineInfoChange = (): void => {
     // Only act if we're waiting for highlights to complete
-    if (!this._waitingForHighlight) {
-      console.log("[DEBUG] handleLineInfoChange: not waiting, skipping")
-      return
-    }
+    if (!this._waitingForHighlight) return
     if (!this.leftCodeRenderable || !this.rightCodeRenderable) return
 
     const leftIsHighlighting = (this.leftCodeRenderable as any)._isHighlighting as boolean
     const rightIsHighlighting = (this.rightCodeRenderable as any)._isHighlighting as boolean
 
-    console.log(`[DEBUG] handleLineInfoChange: leftHL=${leftIsHighlighting} rightHL=${rightIsHighlighting}`)
-
     // When both sides are done highlighting, trigger one rebuild
     if (!leftIsHighlighting && !rightIsHighlighting) {
-      console.log("[DEBUG] handleLineInfoChange: both done, triggering rebuild")
       this._waitingForHighlight = false
       this.requestRebuild()
     }
@@ -760,10 +754,6 @@ export class DiffRenderable extends Renderable {
     }
 
     const shouldDoAlignment = canDoWrapAlignment && !highlightingInProgress
-
-    console.log(
-      `[DEBUG] buildSplitView: canDoWrap=${canDoWrapAlignment} highlightInProg=${highlightingInProgress} shouldAlign=${shouldDoAlignment} leftHL=${leftIsHighlighting} rightHL=${rightIsHighlighting}`,
-    )
 
     if (shouldDoAlignment) {
       const leftLineInfo = leftCodeRenderable.lineInfo
