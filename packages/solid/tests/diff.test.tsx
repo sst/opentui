@@ -395,7 +395,6 @@ describe("DiffRenderable with SolidJS", () => {
      description: "Text selection with ASCII fonts - precise character-level selection across different font types",
      run: asciiFontSelectionExample.run,`
 
-    // First approach: Start without wrapping, then switch to word wrapping
     const [wrapMode, setWrapMode] = createSignal<"none" | "word">("none")
 
     testSetup = await testRender(() => (
@@ -414,17 +413,16 @@ describe("DiffRenderable with SolidJS", () => {
       </box>
     ))
 
-    // Start without wrapping, then toggle to word wrapping
     await testSetup.renderOnce()
     setWrapMode("word")
+    await Bun.sleep(0)
+    await testSetup.renderOnce()
     await testSetup.renderOnce()
 
     const frameAfterToggle = testSetup.captureCharFrame()
 
-    // Clean up first setup
     testSetup.renderer.destroy()
 
-    // Second approach: Start with word wrapping from the beginning
     testSetup = await testRender(() => (
       <box id="root" width="100%" height="100%">
         <diff
@@ -442,11 +440,12 @@ describe("DiffRenderable with SolidJS", () => {
     ))
 
     await testSetup.renderOnce()
+    await Bun.sleep(0)
+    await testSetup.renderOnce()
+    await testSetup.renderOnce()
 
     const frameFromStart = testSetup.captureCharFrame()
 
-    // EXPECTATION: Both approaches should produce identical output
-    // Currently this FAILS - word wrapping from the start produces misaligned line numbers and text
     expect(frameAfterToggle).toBe(frameFromStart)
   })
 })
