@@ -1383,3 +1383,68 @@ test("CodeRenderable - selection across two Code renderables in flex row", async
     expect(rightSelection).toBe("lineA\nlineB\nlineC\nlineD\nlineE")
   }
 })
+
+test("CodeRenderable - content update during async highlighting does not get overwritten by stale highlight result", async () => {
+  // This test covers a race condition bug where:
+  // 1. Content is set to "old content"
+  // 2. Async highlighting starts for "old content"
+  // 3. Content is updated to "new content" before highlighting completes
+  // 4. Old highlighting completes and should NOT overwrite the textBuffer with "old content"
+  // 5. The textBuffer should have "new content"
+
+  const syntaxStyle = SyntaxStyle.fromStyles({
+    default: { fg: RGBA.fromValues(1, 1, 1, 1) },
+    keyword: { fg: RGBA.fromValues(0, 0, 1, 1) },
+  })
+
+  const mockClient = new MockTreeSitterClient()
+  mockClient.setMockResult({
+    highlights: [[0, 5, "keyword"]] as SimpleHighlight[],
+  })
+
+  const codeRenderable = new CodeRenderable(currentRenderer, {
+    id: "test-code",
+    content: "line1\nline2\nline3",
+    filetype: "javascript",
+    syntaxStyle,
+    treeSitterClient: mockClient,
+    drawUnstyledText: true,
+  })
+
+  currentRenderer.root.add(codeRenderable)
+  await renderOnce()
+
+  // Highlighting is now in progress for "line1\nline2\nline3"
+  expect(mockClient.isHighlighting()).toBe(true)
+  expect(codeRenderable.lineCount).toBe(3)
+
+  // Update content to have more lines BEFORE highlighting completes
+  codeRenderable.content = "line1\nline2\nline3\nline4\nline5"
+  expect(codeRenderable.lineCount).toBe(5)
+
+  // Now resolve the FIRST highlight (which was for the old 3-line content)
+  // This should NOT overwrite our 5-line content
+  mockClient.resolveHighlightOnce(0)
+  await new Promise((resolve) => setTimeout(resolve, 10))
+
+  // The content should still be 5 lines, not reverted to 3 lines
+  expect(codeRenderable.content).toBe("line1\nline2\nline3\nline4\nline5")
+  expect(codeRenderable.lineCount).toBe(5)
+
+  // Render and check again
+  await renderOnce()
+  expect(codeRenderable.lineCount).toBe(5)
+
+  // The second highlight (for 5-line content) should still be pending
+  expect(mockClient.isHighlighting()).toBe(true)
+
+  // Resolve the second highlight
+  mockClient.resolveHighlightOnce(0)
+  await new Promise((resolve) => setTimeout(resolve, 10))
+  await renderOnce()
+
+  // Final state should be 5 lines
+  expect(codeRenderable.content).toBe("line1\nline2\nline3\nline4\nline5")
+  expect(codeRenderable.lineCount).toBe(5)
+  expect(codeRenderable.plainText).toBe("line1\nline2\nline3\nline4\nline5")
+})

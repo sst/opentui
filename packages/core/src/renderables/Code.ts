@@ -70,6 +70,8 @@ export class CodeRenderable extends TextBufferRenderable {
     if (this._content !== value) {
       this._content = value
       this._highlightsDirty = true
+      // Invalidate any in-flight highlight operations so they don't overwrite with stale content
+      this._highlightSnapshotId++
 
       // Update text buffer immediately for measure functions (like gutter width calculation)
       // Only do this if we're showing unstyled text or have no filetype
