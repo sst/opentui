@@ -17,8 +17,10 @@ import {
   EncodedCharStruct,
   LineInfoStruct,
   MeasureResultStruct,
+  CursorStateStruct,
 } from "./zig-structs"
 import { isBunfsPath } from "./lib/bunfs"
+import { attributesWithLink } from "./utils"
 
 const module = await import(`@opentui/core-${process.platform}-${process.arch}/index.ts`)
 let targetLibPath = module.default
@@ -194,15 +196,15 @@ function getOpenTUILib(libPath?: string) {
     },
 
     bufferDrawText: {
-      args: ["ptr", "ptr", "u32", "u32", "u32", "ptr", "ptr", "u8"],
+      args: ["ptr", "ptr", "u32", "u32", "u32", "ptr", "ptr", "u32"],
       returns: "void",
     },
     bufferSetCellWithAlphaBlending: {
-      args: ["ptr", "u32", "u32", "u32", "ptr", "ptr", "u8"],
+      args: ["ptr", "u32", "u32", "u32", "ptr", "ptr", "u32"],
       returns: "void",
     },
     bufferSetCell: {
-      args: ["ptr", "u32", "u32", "u32", "ptr", "ptr", "u8"],
+      args: ["ptr", "u32", "u32", "u32", "ptr", "ptr", "u32"],
       returns: "void",
     },
     bufferFillRect: {
@@ -212,6 +214,24 @@ function getOpenTUILib(libPath?: string) {
     bufferResize: {
       args: ["ptr", "u32", "u32"],
       returns: "void",
+    },
+
+    // Link API
+    linkAlloc: {
+      args: ["ptr", "u32"],
+      returns: "u32",
+    },
+    linkGetUrl: {
+      args: ["u32", "ptr", "u32"],
+      returns: "u32",
+    },
+    attributesWithLink: {
+      args: ["u32", "u32"],
+      returns: "u32",
+    },
+    attributesGetLinkId: {
+      args: ["u32"],
+      returns: "u32",
     },
 
     resizeRenderer: {
@@ -229,6 +249,10 @@ function getOpenTUILib(libPath?: string) {
       returns: "void",
     },
     setCursorColor: {
+      args: ["ptr", "ptr"],
+      returns: "void",
+    },
+    getCursorState: {
       args: ["ptr", "ptr"],
       returns: "void",
     },
@@ -932,7 +956,7 @@ function getOpenTUILib(libPath?: string) {
       returns: "void",
     },
     bufferDrawChar: {
-      args: ["ptr", "u32", "u32", "u32", "ptr", "ptr", "u8"],
+      args: ["ptr", "u32", "u32", "u32", "ptr", "ptr", "u32"],
       returns: "void",
     },
   })
@@ -1179,6 +1203,15 @@ export interface LogicalCursor {
   offset: number
 }
 
+export interface CursorState {
+  x: number
+  y: number
+  visible: boolean
+  style: CursorStyle
+  blinking: boolean
+  color: RGBA
+}
+
 export interface RenderLib {
   createRenderer: (width: number, height: number, options?: { testing: boolean }) => Pointer | null
   destroyRenderer: (renderer: Pointer) => void
@@ -1283,6 +1316,7 @@ export interface RenderLib {
   setCursorPosition: (renderer: Pointer, x: number, y: number, visible: boolean) => void
   setCursorStyle: (renderer: Pointer, style: CursorStyle, blinking: boolean) => void
   setCursorColor: (renderer: Pointer, color: RGBA) => void
+  getCursorState: (renderer: Pointer) => CursorState
   setDebugOverlay: (renderer: Pointer, enabled: boolean, corner: DebugOverlayCorner) => void
   clearTerminal: (renderer: Pointer) => void
   setTerminalTitle: (renderer: Pointer, title: string) => void
@@ -1319,7 +1353,7 @@ export interface RenderLib {
   textBufferLoadFile: (buffer: Pointer, path: string) => boolean
   textBufferSetStyledText: (
     buffer: Pointer,
-    chunks: Array<{ text: string; fg?: RGBA | null; bg?: RGBA | null; attributes?: number }>,
+    chunks: Array<{ text: string; fg?: RGBA | null; bg?: RGBA | null; attributes?: number; link?: { url: string } }>,
   ) => void
   textBufferSetDefaultFg: (buffer: Pointer, fg: RGBA | null) => void
   textBufferSetDefaultBg: (buffer: Pointer, bg: RGBA | null) => void
@@ -1947,6 +1981,26 @@ class FFIRenderLib implements RenderLib {
     this.opentui.symbols.bufferResize(buffer, width, height)
   }
 
+  // Link API
+  public linkAlloc(url: string): number {
+    const urlBytes = this.encoder.encode(url)
+    return this.opentui.symbols.linkAlloc(urlBytes, urlBytes.length)
+  }
+
+  public linkGetUrl(linkId: number, maxLen: number = 512): string {
+    const outBuffer = new Uint8Array(maxLen)
+    const actualLen = this.opentui.symbols.linkGetUrl(linkId, outBuffer, maxLen)
+    return this.decoder.decode(outBuffer.slice(0, actualLen))
+  }
+
+  public attributesWithLink(baseAttributes: number, linkId: number): number {
+    return this.opentui.symbols.attributesWithLink(baseAttributes, linkId)
+  }
+
+  public attributesGetLinkId(attributes: number): number {
+    return this.opentui.symbols.attributesGetLinkId(attributes)
+  }
+
   public resizeRenderer(renderer: Pointer, width: number, height: number) {
     this.opentui.symbols.resizeRenderer(renderer, width, height)
   }
@@ -1962,6 +2016,27 @@ class FFIRenderLib implements RenderLib {
 
   public setCursorColor(renderer: Pointer, color: RGBA) {
     this.opentui.symbols.setCursorColor(renderer, color.buffer)
+  }
+
+  public getCursorState(renderer: Pointer): CursorState {
+    const cursorBuffer = new ArrayBuffer(CursorStateStruct.size)
+    this.opentui.symbols.getCursorState(renderer, ptr(cursorBuffer))
+    const struct = CursorStateStruct.unpack(cursorBuffer)
+
+    const styleMap: Record<number, CursorStyle> = {
+      0: "block",
+      1: "line",
+      2: "underline",
+    }
+
+    return {
+      x: struct.x,
+      y: struct.y,
+      visible: struct.visible,
+      style: styleMap[struct.style] || "block",
+      blinking: struct.blinking,
+      color: RGBA.fromValues(struct.r, struct.g, struct.b, struct.a),
+    }
   }
 
   public render(renderer: Pointer, force: boolean) {
@@ -2191,7 +2266,7 @@ class FFIRenderLib implements RenderLib {
 
   public textBufferSetStyledText(
     buffer: Pointer,
-    chunks: Array<{ text: string; fg?: RGBA | null; bg?: RGBA | null; attributes?: number }>,
+    chunks: Array<{ text: string; fg?: RGBA | null; bg?: RGBA | null; attributes?: number; link?: { url: string } }>,
   ): void {
     // TODO: This should be a filter on the struct packing to not iterate twice
     const nonEmptyChunks = chunks.filter((c) => c.text.length > 0)
@@ -2200,9 +2275,21 @@ class FFIRenderLib implements RenderLib {
       return
     }
 
-    const chunksBuffer = StyledChunkStruct.packList(nonEmptyChunks)
+    // Allocate link IDs and pack them into attributes
+    const processedChunks = nonEmptyChunks.map((chunk) => {
+      if (chunk.link) {
+        const linkId = this.linkAlloc(chunk.link.url)
+        return {
+          ...chunk,
+          attributes: attributesWithLink(chunk.attributes ?? 0, linkId),
+        }
+      }
+      return chunk
+    })
 
-    this.opentui.symbols.textBufferSetStyledText(buffer, ptr(chunksBuffer), nonEmptyChunks.length)
+    const chunksBuffer = StyledChunkStruct.packList(processedChunks)
+
+    this.opentui.symbols.textBufferSetStyledText(buffer, ptr(chunksBuffer), processedChunks.length)
   }
 
   public textBufferGetLineCount(buffer: Pointer): number {

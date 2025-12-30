@@ -5,6 +5,7 @@ const ansi = @import("ansi.zig");
 const buffer = @import("buffer.zig");
 const renderer = @import("renderer.zig");
 const gp = @import("grapheme.zig");
+const link = @import("link.zig");
 const text_buffer = @import("text-buffer.zig");
 const text_buffer_view = @import("text-buffer-view.zig");
 const edit_buffer_mod = @import("edit-buffer.zig");
@@ -43,6 +44,7 @@ export fn createRenderer(width: u32, height: u32, testing: bool) ?*renderer.CliR
     }
 
     const pool = gp.initGlobalPool(globalArena);
+    _ = link.initGlobalLinkPool(globalArena);
     return renderer.CliRenderer.create(std.heap.page_allocator, width, height, pool, testing) catch |err| {
         logger.err("Failed to create renderer: {}", .{err});
         return null;
@@ -100,6 +102,7 @@ export fn createOptimizedBuffer(width: u32, height: u32, respectAlpha: bool, wid
     }
 
     const pool = gp.initGlobalPool(globalArena);
+    const link_pool = link.initGlobalLinkPool(globalArena);
     const wMethod: utf8.WidthMethod = if (widthMethod == 0) .wcwidth else .unicode;
     const id = idPtr[0..idLen];
 
@@ -108,6 +111,7 @@ export fn createOptimizedBuffer(width: u32, height: u32, respectAlpha: bool, wid
         .pool = pool,
         .width_method = wMethod,
         .id = id,
+        .link_pool = link_pool,
     }) catch |err| {
         logger.err("Failed to create optimized buffer: {}", .{err});
         return null;
@@ -197,6 +201,42 @@ export fn setCursorColor(rendererPtr: *renderer.CliRenderer, color: [*]const f32
     rendererPtr.terminal.setCursorColor(utils.f32PtrToRGBA(color));
 }
 
+pub const ExternalCursorState = extern struct {
+    x: u32,
+    y: u32,
+    visible: bool,
+    style: u8,
+    blinking: bool,
+    r: f32,
+    g: f32,
+    b: f32,
+    a: f32,
+};
+
+export fn getCursorState(rendererPtr: *renderer.CliRenderer, outPtr: *ExternalCursorState) void {
+    const pos = rendererPtr.terminal.getCursorPosition();
+    const style = rendererPtr.terminal.getCursorStyle();
+    const color = rendererPtr.terminal.getCursorColor();
+
+    const styleTag: u8 = switch (style.style) {
+        .block => 0,
+        .line => 1,
+        .underline => 2,
+    };
+
+    outPtr.* = .{
+        .x = pos.x,
+        .y = pos.y,
+        .visible = pos.visible,
+        .style = styleTag,
+        .blinking = style.blinking,
+        .r = color[0],
+        .g = color[1],
+        .b = color[2],
+        .a = color[3],
+    };
+}
+
 export fn setDebugOverlay(rendererPtr: *renderer.CliRenderer, enabled: bool, corner: u8) void {
     const cornerEnum: renderer.DebugOverlayCorner = switch (corner) {
         0 => .topLeft,
@@ -236,7 +276,7 @@ export fn bufferGetBgPtr(bufferPtr: *buffer.OptimizedBuffer) [*]RGBA {
     return bufferPtr.getBgPtr();
 }
 
-export fn bufferGetAttributesPtr(bufferPtr: *buffer.OptimizedBuffer) [*]u8 {
+export fn bufferGetAttributesPtr(bufferPtr: *buffer.OptimizedBuffer) [*]u32 {
     return bufferPtr.getAttributesPtr();
 }
 
@@ -264,19 +304,19 @@ export fn bufferWriteResolvedChars(bufferPtr: *buffer.OptimizedBuffer, outputPtr
     return bufferPtr.writeResolvedChars(output_slice, addLineBreaks) catch 0;
 }
 
-export fn bufferDrawText(bufferPtr: *buffer.OptimizedBuffer, text: [*]const u8, textLen: usize, x: u32, y: u32, fg: [*]const f32, bg: ?[*]const f32, attributes: u8) void {
+export fn bufferDrawText(bufferPtr: *buffer.OptimizedBuffer, text: [*]const u8, textLen: usize, x: u32, y: u32, fg: [*]const f32, bg: ?[*]const f32, attributes: u32) void {
     const rgbaFg = utils.f32PtrToRGBA(fg);
     const rgbaBg = if (bg) |bgPtr| utils.f32PtrToRGBA(bgPtr) else null;
     bufferPtr.drawText(text[0..textLen], x, y, rgbaFg, rgbaBg, attributes) catch {};
 }
 
-export fn bufferSetCellWithAlphaBlending(bufferPtr: *buffer.OptimizedBuffer, x: u32, y: u32, char: u32, fg: [*]const f32, bg: [*]const f32, attributes: u8) void {
+export fn bufferSetCellWithAlphaBlending(bufferPtr: *buffer.OptimizedBuffer, x: u32, y: u32, char: u32, fg: [*]const f32, bg: [*]const f32, attributes: u32) void {
     const rgbaFg = utils.f32PtrToRGBA(fg);
     const rgbaBg = utils.f32PtrToRGBA(bg);
     bufferPtr.setCellWithAlphaBlending(x, y, char, rgbaFg, rgbaBg, attributes) catch {};
 }
 
-export fn bufferSetCell(bufferPtr: *buffer.OptimizedBuffer, x: u32, y: u32, char: u32, fg: [*]const f32, bg: [*]const f32, attributes: u8) void {
+export fn bufferSetCell(bufferPtr: *buffer.OptimizedBuffer, x: u32, y: u32, char: u32, fg: [*]const f32, bg: [*]const f32, attributes: u32) void {
     const rgbaFg = utils.f32PtrToRGBA(fg);
     const rgbaBg = utils.f32PtrToRGBA(bg);
     const cell = buffer.Cell{
@@ -328,6 +368,28 @@ export fn bufferClearOpacity(bufferPtr: *buffer.OptimizedBuffer) void {
 
 export fn bufferDrawSuperSampleBuffer(bufferPtr: *buffer.OptimizedBuffer, x: u32, y: u32, pixelData: [*]const u8, len: usize, format: u8, alignedBytesPerRow: u32) void {
     bufferPtr.drawSuperSampleBuffer(x, y, pixelData, len, format, alignedBytesPerRow) catch {};
+}
+
+export fn linkAlloc(urlPtr: [*]const u8, urlLen: usize) u32 {
+    const url = urlPtr[0..urlLen];
+    const link_pool = link.initGlobalLinkPool(globalArena);
+    return link_pool.alloc(url) catch 0;
+}
+
+export fn linkGetUrl(id: u32, outPtr: [*]u8, maxLen: usize) usize {
+    const link_pool = link.initGlobalLinkPool(globalArena);
+    const url_bytes = link_pool.get(id) catch return 0;
+    const copyLen = @min(url_bytes.len, maxLen);
+    @memcpy(outPtr[0..copyLen], url_bytes[0..copyLen]);
+    return copyLen;
+}
+
+export fn attributesWithLink(baseAttributes: u32, linkId: u32) u32 {
+    return ansi.TextAttributes.setLinkId(baseAttributes, linkId);
+}
+
+export fn attributesGetLinkId(attributes: u32) u32 {
+    return ansi.TextAttributes.getLinkId(attributes);
 }
 
 export fn bufferDrawBox(
@@ -479,7 +541,7 @@ export fn textBufferSetDefaultBg(tb: *text_buffer.UnifiedTextBuffer, bg: ?[*]con
     tb.setDefaultBg(bgColor);
 }
 
-export fn textBufferSetDefaultAttributes(tb: *text_buffer.UnifiedTextBuffer, attr: ?[*]const u8) void {
+export fn textBufferSetDefaultAttributes(tb: *text_buffer.UnifiedTextBuffer, attr: ?[*]const u32) void {
     const attributes = if (attr) |a| a[0] else null;
     tb.setDefaultAttributes(attributes);
 }
@@ -1308,7 +1370,7 @@ export fn destroySyntaxStyle(style: *syntax_style.SyntaxStyle) void {
     style.deinit();
 }
 
-export fn syntaxStyleRegister(style: *syntax_style.SyntaxStyle, namePtr: [*]const u8, nameLen: usize, fg: ?[*]const f32, bg: ?[*]const f32, attributes: u8) u32 {
+export fn syntaxStyleRegister(style: *syntax_style.SyntaxStyle, namePtr: [*]const u8, nameLen: usize, fg: ?[*]const f32, bg: ?[*]const f32, attributes: u32) u32 {
     const name = namePtr[0..nameLen];
     const fgColor = if (fg) |fgPtr| utils.f32PtrToRGBA(fgPtr) else null;
     const bgColor = if (bg) |bgPtr| utils.f32PtrToRGBA(bgPtr) else null;
@@ -1478,7 +1540,7 @@ export fn bufferDrawChar(
     y: u32,
     fg: [*]const f32,
     bg: [*]const f32,
-    attributes: u8,
+    attributes: u32,
 ) void {
     const rgbaFg = utils.f32PtrToRGBA(fg);
     const rgbaBg = utils.f32PtrToRGBA(bg);

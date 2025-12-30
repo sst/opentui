@@ -3,6 +3,7 @@ const Allocator = std.mem.Allocator;
 const ansi = @import("ansi.zig");
 const buf = @import("buffer.zig");
 const gp = @import("grapheme.zig");
+const link = @import("link.zig");
 const Terminal = @import("terminal.zig");
 const logger = @import("logger.zig");
 
@@ -567,10 +568,12 @@ pub const CliRenderer = struct {
 
         var currentFg: ?RGBA = null;
         var currentBg: ?RGBA = null;
-        var currentAttributes: i16 = -1;
+        var currentAttributes: i32 = -1;
+        var currentLinkId: u32 = 0;
         var utf8Buf: [4]u8 = undefined;
 
         const colorEpsilon: f32 = COLOR_EPSILON_DEFAULT;
+        const hyperlinksEnabled = self.terminal.getCapabilities().hyperlinks;
 
         for (0..self.height) |uy| {
             const y = @as(u32, @intCast(uy));
@@ -606,7 +609,25 @@ pub const CliRenderer = struct {
 
                 const fgMatch = currentFg != null and buf.rgbaEqual(currentFg.?, cell.fg, colorEpsilon);
                 const bgMatch = currentBg != null and buf.rgbaEqual(currentBg.?, cell.bg, colorEpsilon);
-                const sameAttributes = fgMatch and bgMatch and @as(i16, cell.attributes) == currentAttributes;
+                const sameAttributes = fgMatch and bgMatch and @as(i32, @intCast(cell.attributes)) == currentAttributes;
+
+                const linkId = if (hyperlinksEnabled) ansi.TextAttributes.getLinkId(cell.attributes) else 0;
+
+                if (hyperlinksEnabled and linkId != currentLinkId) {
+                    if (currentLinkId != 0) {
+                        writer.writeAll("\x1b]8;;\x1b\\") catch {};
+                    }
+                    currentLinkId = linkId;
+                    if (currentLinkId != 0) {
+                        const lp = link.initGlobalLinkPool(self.allocator);
+                        if (lp.get(currentLinkId)) |url_bytes| {
+                            std.fmt.format(writer, "\x1b]8;;{s}\x1b\\", .{url_bytes}) catch {};
+                        } else |_| {
+                            // Link not found, treat as no link
+                            currentLinkId = 0;
+                        }
+                    }
+                }
 
                 if (!sameAttributes or runStart == -1) {
                     if (runLength > 0) {
@@ -618,7 +639,7 @@ pub const CliRenderer = struct {
 
                     currentFg = cell.fg;
                     currentBg = cell.bg;
-                    currentAttributes = @intCast(cell.attributes);
+                    currentAttributes = @as(i32, @intCast(cell.attributes));
 
                     ansi.ANSI.moveToOutput(writer, x + 1, y + 1 + self.renderOffset) catch {};
 
@@ -684,6 +705,10 @@ pub const CliRenderer = struct {
 
                 cellsUpdated += 1;
             }
+        }
+
+        if (hyperlinksEnabled and currentLinkId != 0) {
+            writer.writeAll("\x1b]8;;\x1b\\") catch {};
         }
 
         writer.writeAll(ansi.ANSI.reset) catch {};
@@ -861,6 +886,14 @@ pub const CliRenderer = struct {
             }
             writer.writeByte('\n') catch return;
         }
+    }
+
+    pub fn getLastOutputForTest(_: *CliRenderer) []const u8 {
+        // In non-threaded mode, we want the current active buffer
+        // In threaded mode, we want the previously rendered buffer
+        const currentBuffer = if (activeBuffer == .A) &outputBuffer else &outputBufferB;
+        const currentLen = if (activeBuffer == .A) outputBufferLen else outputBufferBLen;
+        return currentBuffer.*[0..currentLen];
     }
 
     pub fn dumpStdoutBuffer(self: *CliRenderer, timestamp: i64) void {

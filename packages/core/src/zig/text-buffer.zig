@@ -36,7 +36,7 @@ pub const StyledChunk = extern struct {
     text_len: usize,
     fg_ptr: ?[*]const f32,
     bg_ptr: ?[*]const f32,
-    attributes: u8,
+    attributes: u32,
 };
 
 pub const UnifiedTextBuffer = struct {
@@ -45,7 +45,7 @@ pub const UnifiedTextBuffer = struct {
     mem_registry: MemRegistry,
     default_fg: ?RGBA,
     default_bg: ?RGBA,
-    default_attributes: ?u8,
+    default_attributes: ?u32,
 
     allocator: Allocator,
     global_allocator: Allocator,
@@ -280,7 +280,7 @@ pub const UnifiedTextBuffer = struct {
         self.default_bg = bg;
     }
 
-    pub fn setDefaultAttributes(self: *Self, attributes: ?u8) void {
+    pub fn setDefaultAttributes(self: *Self, attributes: ?u32) void {
         self.default_attributes = attributes;
     }
 
