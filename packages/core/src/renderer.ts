@@ -1391,6 +1391,10 @@ export class CliRenderer extends EventEmitter implements RenderContext {
     this.lib.setCursorColor(this.rendererPtr, color)
   }
 
+  public getCursorState() {
+    return this.lib.getCursorState(this.rendererPtr)
+  }
+
   public addPostProcessFn(processFn: (buffer: OptimizedBuffer, deltaTime: number) => void): void {
     this.postProcessFns.push(processFn)
   }
