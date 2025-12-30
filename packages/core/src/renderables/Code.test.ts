@@ -1083,13 +1083,13 @@ test("CodeRenderable - streaming mode respects drawUnstyledText only for initial
   expect(codeRenderable.content).toBe("const updated = 'world';")
 })
 
-test("CodeRenderable - streaming mode uses cached highlights for partial styling", async () => {
+test("CodeRenderable - streaming mode with drawUnstyledText=false waits for new highlights", async () => {
   const syntaxStyle = SyntaxStyle.fromStyles({
     default: { fg: RGBA.fromValues(1, 1, 1, 1) },
     keyword: { fg: RGBA.fromValues(0, 0, 1, 1) },
   })
 
-  const mockClient = new MockTreeSitterClient()
+  const mockClient = new MockTreeSitterClient({ autoResolveTimeout: 10 })
   mockClient.setMockResult({
     highlights: [[0, 5, "keyword"]] as SimpleHighlight[],
   })
@@ -1107,22 +1107,26 @@ test("CodeRenderable - streaming mode uses cached highlights for partial styling
   })
 
   currentRenderer.root.add(codeRenderable)
+  currentRenderer.start()
 
-  mockClient.resolveHighlightOnce(0)
-  await new Promise((resolve) => setTimeout(resolve, 10))
-  await renderOnce()
+  // Wait for initial highlights to complete
+  await Bun.sleep(30)
+
+  expect(codeRenderable.plainText).toBe("const initial = 'hello';")
 
   codeRenderable.content = "const updated = 'world';"
-  await new Promise((resolve) => queueMicrotask(resolve))
-  await renderOnce()
 
+  // With streaming=true and drawUnstyledText=false, text buffer is not updated
+  // immediately when content changes - it keeps showing old content
+  expect(codeRenderable.plainText).toBe("const initial = 'hello';")
+
+  // Wait for new highlights to be applied
+  await Bun.sleep(30)
+
+  // After highlights complete, text buffer is updated with new content
   expect(codeRenderable.plainText).toBe("const updated = 'world';")
 
-  mockClient.resolveHighlightOnce(0)
-  await new Promise((resolve) => setTimeout(resolve, 10))
-  await renderOnce()
-
-  expect(codeRenderable.plainText).toBe("const updated = 'world';")
+  currentRenderer.stop()
 })
 
 test("CodeRenderable - streaming mode caches highlights between updates", async () => {
@@ -1639,6 +1643,7 @@ test("CodeRenderable - streaming mode with drawUnstyledText=false has correct li
     drawUnstyledText: false,
   })
 
+  // Initial content is set in constructor for lineCount measurement
   expect(codeRenderable.lineCount).toBe(2)
 
   currentRenderer.root.add(codeRenderable)
@@ -1649,18 +1654,25 @@ test("CodeRenderable - streaming mode with drawUnstyledText=false has correct li
 
   mockClient.resolveHighlightOnce(0)
   await new Promise((resolve) => setTimeout(resolve, 10))
+  await renderOnce()
+
+  // After first highlight, lineCount is correct
+  expect(codeRenderable.lineCount).toBe(2)
 
   codeRenderable.content = "line1\nline2\nline3\nline4"
-  expect(codeRenderable.lineCount).toBe(4)
+  // Text buffer not updated yet, still shows old lineCount
+  expect(codeRenderable.lineCount).toBe(2)
 
   codeRenderable.content = "line1\nline2\nline3\nline4\nline5\nline6"
-  expect(codeRenderable.lineCount).toBe(6)
+  // Text buffer still not updated
+  expect(codeRenderable.lineCount).toBe(2)
 
   await renderOnce()
   mockClient.resolveAllHighlightOnce()
   await new Promise((resolve) => setTimeout(resolve, 10))
   await renderOnce()
 
+  // After highlights complete, lineCount reflects the actual content
   expect(codeRenderable.lineCount).toBe(6)
   const finalFrame = captureFrame()
   expect(finalFrame).toContain("line1")
