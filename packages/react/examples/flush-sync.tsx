@@ -14,7 +14,7 @@ import { useState } from "react"
  */
 export const App = () => {
   const [items, setItems] = useState<string[]>([])
-  const [lastAction, setLastAction] = useState<string>("Press 'a' for async add, 's' for sync add, 'q' to quit")
+  const [lastAction, setLastAction] = useState<string>("")
 
   useKeyboard((key) => {
     if (key.name === "q") {
@@ -47,7 +47,8 @@ export const App = () => {
   return (
     <box style={{ flexDirection: "column", padding: 1 }}>
       <text content="flushSync Example" style={{ fg: "#FFFF00", attributes: 1 }} />
-      <text content={lastAction} style={{ fg: "#888888", marginTop: 1 }} />
+      <text content="'a' async add | 's' sync add | 'q' quit" style={{ fg: "#666666", marginTop: 1 }} />
+      {lastAction && <text content={lastAction} style={{ fg: "#888888" }} />}
 
       <box title={`Items (${items.length})`} style={{ border: true, marginTop: 1, flexDirection: "column" }}>
         {items.length === 0 ? (
