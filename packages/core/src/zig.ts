@@ -17,6 +17,7 @@ import {
   EncodedCharStruct,
   LineInfoStruct,
   MeasureResultStruct,
+  CursorStateStruct,
 } from "./zig-structs"
 import { isBunfsPath } from "./lib/bunfs"
 import { attributesWithLink } from "./utils"
@@ -242,6 +243,10 @@ function getOpenTUILib(libPath?: string) {
       returns: "void",
     },
     setCursorColor: {
+      args: ["ptr", "ptr"],
+      returns: "void",
+    },
+    getCursorState: {
       args: ["ptr", "ptr"],
       returns: "void",
     },
@@ -1192,6 +1197,15 @@ export interface LogicalCursor {
   offset: number
 }
 
+export interface CursorState {
+  x: number
+  y: number
+  visible: boolean
+  style: CursorStyle
+  blinking: boolean
+  color: RGBA
+}
+
 export interface RenderLib {
   createRenderer: (width: number, height: number, options?: { testing: boolean }) => Pointer | null
   destroyRenderer: (renderer: Pointer) => void
@@ -1296,6 +1310,7 @@ export interface RenderLib {
   setCursorPosition: (renderer: Pointer, x: number, y: number, visible: boolean) => void
   setCursorStyle: (renderer: Pointer, style: CursorStyle, blinking: boolean) => void
   setCursorColor: (renderer: Pointer, color: RGBA) => void
+  getCursorState: (renderer: Pointer) => CursorState
   setDebugOverlay: (renderer: Pointer, enabled: boolean, corner: DebugOverlayCorner) => void
   clearTerminal: (renderer: Pointer) => void
   setTerminalTitle: (renderer: Pointer, title: string) => void
@@ -1995,6 +2010,27 @@ class FFIRenderLib implements RenderLib {
 
   public setCursorColor(renderer: Pointer, color: RGBA) {
     this.opentui.symbols.setCursorColor(renderer, color.buffer)
+  }
+
+  public getCursorState(renderer: Pointer): CursorState {
+    const cursorBuffer = new ArrayBuffer(CursorStateStruct.size)
+    this.opentui.symbols.getCursorState(renderer, ptr(cursorBuffer))
+    const struct = CursorStateStruct.unpack(cursorBuffer)
+
+    const styleMap: Record<number, CursorStyle> = {
+      0: "block",
+      1: "line",
+      2: "underline",
+    }
+
+    return {
+      x: struct.x,
+      y: struct.y,
+      visible: struct.visible,
+      style: styleMap[struct.style] || "block",
+      blinking: struct.blinking,
+      color: RGBA.fromValues(struct.r, struct.g, struct.b, struct.a),
+    }
   }
 
   public render(renderer: Pointer, force: boolean) {
