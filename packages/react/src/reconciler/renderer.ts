@@ -6,7 +6,9 @@ import { ErrorBoundary } from "../components/error-boundary"
 import { _render, reconciler } from "./reconciler"
 
 // flushSync was renamed to flushSyncFromReconciler in react-reconciler 0.32.0
-const flushSync = (reconciler as any).flushSyncFromReconciler ?? (reconciler as any).flushSync
+// the types for react-reconciler are not up to date with the library
+const _r = reconciler as typeof reconciler & { flushSyncFromReconciler?: typeof reconciler.flushSync }
+const flushSync = _r.flushSyncFromReconciler ?? _r.flushSync
 const { createPortal } = reconciler
 
 export type Root = {
