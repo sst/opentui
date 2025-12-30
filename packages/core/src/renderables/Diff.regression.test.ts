@@ -194,7 +194,7 @@ test("DiffRenderable - line number alignment and gutter heights in split view wi
   await renderOnce()
   diffRenderable.wrapMode = "word"
   await renderOnce()
-  await Bun.sleep(10)
+  await Bun.sleep(200) // Give time for highlight rebuild
   await renderOnce()
   const splitWrapFrame2 = captureFrame()
   const lines2 = splitWrapFrame2.split("\n")
