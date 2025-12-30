@@ -39,11 +39,6 @@ export abstract class TextBufferRenderable extends Renderable implements LineInf
   protected textBuffer: TextBuffer
   protected textBufferView: TextBufferView
 
-  // Cache measure results to avoid redundant measureForDimensions calls
-  // Yoga may call measureFunc multiple times per layout pass with different widths
-  private _measureCache: Map<number, { width: number; height: number }> = new Map()
-  private _measureCacheVersion: number = -1
-
   protected _defaultOptions = {
     fg: RGBA.fromValues(1, 1, 1, 1),
     bg: RGBA.fromValues(0, 0, 0, 0),
@@ -282,7 +277,6 @@ export abstract class TextBufferRenderable extends Renderable implements LineInf
         this.textBufferView.setWrapWidth(this.width)
       }
       // Changing wrap mode can change dimensions, so mark yoga node dirty to trigger re-measurement
-      this._measureCache.clear()
       this.yogaNode.markDirty()
       this.requestRender()
     }
@@ -378,33 +372,11 @@ export abstract class TextBufferRenderable extends Renderable implements LineInf
         effectiveWidth = width
       }
 
-      const flooredWidth = Math.floor(effectiveWidth)
       const effectiveHeight = isNaN(height) ? 1 : height
-
-      const version = this.textBuffer.version
-      if (version !== this._measureCacheVersion) {
-        this._measureCache.clear()
-        this._measureCacheVersion = version
-      }
-
-      const cached = this._measureCache.get(flooredWidth)
-      if (cached) {
-        if (widthMode === MeasureMode.AtMost && this._positionType !== "absolute") {
-          return {
-            width: Math.min(effectiveWidth, cached.width),
-            height: Math.min(effectiveHeight, cached.height),
-          }
-        }
-        return cached
-      }
-
-      const measureResult = this.textBufferView.measureForDimensions(flooredWidth, Math.floor(effectiveHeight))
+      const measureResult = this.textBufferView.measureForDimensions(effectiveWidth, effectiveHeight)
 
       const measuredWidth = measureResult ? Math.max(1, measureResult.maxWidth) : 1
       const measuredHeight = measureResult ? Math.max(1, measureResult.lineCount) : 1
-
-      // Cache the raw measurement
-      this._measureCache.set(flooredWidth, { width: measuredWidth, height: measuredHeight })
 
       if (widthMode === MeasureMode.AtMost && this._positionType !== "absolute") {
         return {
