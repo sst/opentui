@@ -1083,13 +1083,13 @@ test("CodeRenderable - streaming mode respects drawUnstyledText only for initial
   expect(codeRenderable.content).toBe("const updated = 'world';")
 })
 
-test("CodeRenderable - streaming mode uses cached highlights for partial styling", async () => {
+test("CodeRenderable - streaming mode with drawUnstyledText=false waits for new highlights", async () => {
   const syntaxStyle = SyntaxStyle.fromStyles({
     default: { fg: RGBA.fromValues(1, 1, 1, 1) },
     keyword: { fg: RGBA.fromValues(0, 0, 1, 1) },
   })
 
-  const mockClient = new MockTreeSitterClient()
+  const mockClient = new MockTreeSitterClient({ autoResolveTimeout: 10 })
   mockClient.setMockResult({
     highlights: [[0, 5, "keyword"]] as SimpleHighlight[],
   })
@@ -1107,22 +1107,20 @@ test("CodeRenderable - streaming mode uses cached highlights for partial styling
   })
 
   currentRenderer.root.add(codeRenderable)
+  currentRenderer.start()
 
-  mockClient.resolveHighlightOnce(0)
-  await new Promise((resolve) => setTimeout(resolve, 10))
-  await renderOnce()
+  await Bun.sleep(30)
+
+  expect(codeRenderable.plainText).toBe("const initial = 'hello';")
 
   codeRenderable.content = "const updated = 'world';"
-  await new Promise((resolve) => queueMicrotask(resolve))
-  await renderOnce()
+  expect(codeRenderable.plainText).toBe("const initial = 'hello';")
+
+  await Bun.sleep(30)
 
   expect(codeRenderable.plainText).toBe("const updated = 'world';")
 
-  mockClient.resolveHighlightOnce(0)
-  await new Promise((resolve) => setTimeout(resolve, 10))
-  await renderOnce()
-
-  expect(codeRenderable.plainText).toBe("const updated = 'world';")
+  currentRenderer.stop()
 })
 
 test("CodeRenderable - streaming mode caches highlights between updates", async () => {
@@ -1649,12 +1647,15 @@ test("CodeRenderable - streaming mode with drawUnstyledText=false has correct li
 
   mockClient.resolveHighlightOnce(0)
   await new Promise((resolve) => setTimeout(resolve, 10))
+  await renderOnce()
+
+  expect(codeRenderable.lineCount).toBe(2)
 
   codeRenderable.content = "line1\nline2\nline3\nline4"
-  expect(codeRenderable.lineCount).toBe(4)
+  expect(codeRenderable.lineCount).toBe(2)
 
   codeRenderable.content = "line1\nline2\nline3\nline4\nline5\nline6"
-  expect(codeRenderable.lineCount).toBe(6)
+  expect(codeRenderable.lineCount).toBe(2)
 
   await renderOnce()
   mockClient.resolveAllHighlightOnce()
@@ -1664,4 +1665,131 @@ test("CodeRenderable - streaming mode with drawUnstyledText=false has correct li
   expect(codeRenderable.lineCount).toBe(6)
   const finalFrame = captureFrame()
   expect(finalFrame).toContain("line1")
+})
+
+test("CodeRenderable - streaming with conceal and drawUnstyledText=false should not jump when fenced code blocks are concealed", async () => {
+  resize(80, 20)
+
+  const syntaxStyle = SyntaxStyle.fromStyles({
+    default: { fg: RGBA.fromValues(1, 1, 1, 1) },
+    keyword: { fg: RGBA.fromValues(0, 0, 1, 1) },
+    string: { fg: RGBA.fromValues(0, 1, 0, 1) },
+    "markup.heading.1": { fg: RGBA.fromValues(0, 0, 1, 1) },
+    "markup.raw.block": { fg: RGBA.fromValues(0.5, 0.5, 0.5, 1) },
+  })
+
+  const codeRenderable = new CodeRenderable(currentRenderer, {
+    id: "test-markdown",
+    content: "# Example",
+    filetype: "markdown",
+    syntaxStyle,
+    streaming: true,
+    conceal: true,
+    drawUnstyledText: false,
+    left: 0,
+    top: 0,
+  })
+
+  currentRenderer.root.add(codeRenderable)
+
+  // Use TestRecorder to capture frames
+  const { TestRecorder } = await import("../testing/test-recorder")
+  const recorder = new TestRecorder(currentRenderer)
+
+  // Start renderer and recorder
+  currentRenderer.start()
+  recorder.rec()
+
+  // Wait for initial highlighting to complete
+  await new Promise((resolve) => setTimeout(resolve, 100))
+
+  // Now simulate streaming: add more content including fenced code block
+  codeRenderable.content = `# Example\n\nHere's some code:\n\n\`\`\`typescript\nconst x = 1;\n\`\`\``
+
+  // Wait for highlighting to process the update
+  await new Promise((resolve) => setTimeout(resolve, 150))
+
+  // Stop everything
+  currentRenderer.stop()
+  recorder.stop()
+
+  const frames = recorder.recordedFrames
+
+  // Analyze frames to detect the presence of backticks
+  const frameAnalysis: Array<{ hasBackticks: boolean; lineCount: number; isEmpty: boolean }> = []
+
+  for (const recordedFrame of frames) {
+    const frame = recordedFrame.frame
+    const hasBackticks = frame.includes("```")
+    const lines = frame.split("\n").filter((line) => line.trim().length > 0)
+    const isEmpty = frame.trim().length === 0
+
+    frameAnalysis.push({
+      hasBackticks,
+      lineCount: lines.length,
+      isEmpty,
+    })
+  }
+
+  let hasFlickering = false
+  for (let i = 2; i < frameAnalysis.length; i++) {
+    const prev = frameAnalysis[i - 1]
+    const curr = frameAnalysis[i]
+    if (!prev.isEmpty && curr.isEmpty) {
+      hasFlickering = true
+    }
+  }
+
+  const framesWithBackticks = frameAnalysis.filter((f) => f.hasBackticks && !f.isEmpty)
+
+  expect(framesWithBackticks.length).toBe(0)
+  expect(hasFlickering).toBe(false)
+
+  const finalFrame = frameAnalysis[frameAnalysis.length - 1]
+  expect(finalFrame.isEmpty).toBe(false)
+  expect(finalFrame.hasBackticks).toBe(false)
+  expect(finalFrame.lineCount).toBe(3)
+
+  const finalFrameText = frames[frames.length - 1].frame
+  expect(finalFrameText).toContain("Example")
+  expect(finalFrameText).toContain("Here's some code")
+  expect(finalFrameText).toContain("const x = 1")
+  expect(finalFrameText).not.toContain("```")
+})
+
+test("CodeRenderable - streaming with drawUnstyledText=false falls back to unstyled text when highlights fail", async () => {
+  const syntaxStyle = SyntaxStyle.fromStyles({
+    default: { fg: RGBA.fromValues(1, 1, 1, 1) },
+  })
+
+  const mockClient = new MockTreeSitterClient({ autoResolveTimeout: 10 })
+
+  const codeRenderable = new CodeRenderable(currentRenderer, {
+    id: "test-code",
+    content: "const initial = 'hello';",
+    filetype: "javascript",
+    syntaxStyle,
+    treeSitterClient: mockClient,
+    streaming: true,
+    drawUnstyledText: false,
+    left: 0,
+    top: 0,
+  })
+
+  currentRenderer.root.add(codeRenderable)
+  currentRenderer.start()
+
+  await Bun.sleep(30)
+
+  mockClient.highlightOnce = async () => {
+    throw new Error("Highlighting failed")
+  }
+
+  codeRenderable.content = "const updated = 'world';"
+
+  await Bun.sleep(30)
+
+  expect(codeRenderable.plainText).toBe("const updated = 'world';")
+
+  currentRenderer.stop()
 })

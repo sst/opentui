@@ -69,6 +69,10 @@ export class CodeRenderable extends TextBufferRenderable {
       this._highlightsDirty = true
       this._highlightSnapshotId++
 
+      if (this._streaming && !this._drawUnstyledText && this._filetype) {
+        return
+      }
+
       this.textBuffer.setText(value)
       this.updateTextInfo()
     }
@@ -160,17 +164,7 @@ export class CodeRenderable extends TextBufferRenderable {
     const shouldDrawUnstyledNow = this._streaming ? isInitialContent && this._drawUnstyledText : this._drawUnstyledText
 
     if (this._streaming && !isInitialContent) {
-      if (this._lastHighlights.length > 0) {
-        const chunks = treeSitterToTextChunks(content, this._lastHighlights, this._syntaxStyle, {
-          enabled: this._conceal,
-        })
-        const partialStyledText = new StyledText(chunks)
-        this.textBuffer.setStyledText(partialStyledText)
-        this._shouldRenderTextBuffer = true
-        this.updateTextInfo()
-      } else {
-        this._shouldRenderTextBuffer = true
-      }
+      this._shouldRenderTextBuffer = true
     } else if (shouldDrawUnstyledNow) {
       this.textBuffer.setText(content)
       this._shouldRenderTextBuffer = true
