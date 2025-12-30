@@ -1750,6 +1750,19 @@ test("CodeRenderable - streaming with conceal and drawUnstyledText=false should 
   // Should not flicker (go from content to empty back to content)
   expect(hasFlickering).toBe(false)
 
+  // Verify the final frame has the correct content (3 lines: heading, blank, code)
+  const finalFrame = frameAnalysis[frameAnalysis.length - 1]
+  expect(finalFrame.isEmpty).toBe(false)
+  expect(finalFrame.hasBackticks).toBe(false)
+  expect(finalFrame.lineCount).toBe(3)
+
+  // Verify final content is fully rendered with concealment
+  const finalFrameText = frames[frames.length - 1].frame
+  expect(finalFrameText).toContain("Example")
+  expect(finalFrameText).toContain("Here's some code")
+  expect(finalFrameText).toContain("const x = 1")
+  expect(finalFrameText).not.toContain("```")
+
   // Note: Line count changing from 1 -> 3 is expected when content grows during streaming
   // The bug was specifically about backticks appearing/disappearing, not content growth
 })
