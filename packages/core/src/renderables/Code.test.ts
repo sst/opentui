@@ -1665,3 +1665,87 @@ test("CodeRenderable - streaming mode with drawUnstyledText=false has correct li
   const finalFrame = captureFrame()
   expect(finalFrame).toContain("line1")
 })
+
+test("CodeRenderable - streaming with conceal and drawUnstyledText=false should not jump when fenced code blocks are concealed", async () => {
+  resize(80, 20)
+
+  const syntaxStyle = SyntaxStyle.fromStyles({
+    default: { fg: RGBA.fromValues(1, 1, 1, 1) },
+    keyword: { fg: RGBA.fromValues(0, 0, 1, 1) },
+    string: { fg: RGBA.fromValues(0, 1, 0, 1) },
+    "markup.heading.1": { fg: RGBA.fromValues(0, 0, 1, 1) },
+    "markup.raw.block": { fg: RGBA.fromValues(0.5, 0.5, 0.5, 1) },
+  })
+
+  const codeRenderable = new CodeRenderable(currentRenderer, {
+    id: "test-markdown",
+    content: "# Example",
+    filetype: "markdown",
+    syntaxStyle,
+    streaming: true,
+    conceal: true,
+    drawUnstyledText: false,
+    left: 0,
+    top: 0,
+  })
+
+  currentRenderer.root.add(codeRenderable)
+
+  // Use TestRecorder to capture frames
+  const { TestRecorder } = await import("../testing/test-recorder")
+  const recorder = new TestRecorder(currentRenderer)
+
+  // Start renderer and recorder
+  currentRenderer.start()
+  recorder.rec()
+
+  // Wait for initial highlighting to complete
+  await new Promise((resolve) => setTimeout(resolve, 100))
+
+  // Now simulate streaming: add more content including fenced code block
+  codeRenderable.content = `# Example\n\nHere's some code:\n\n\`\`\`typescript\nconst x = 1;\n\`\`\``
+
+  // Wait for highlighting to process the update
+  await new Promise((resolve) => setTimeout(resolve, 150))
+
+  // Stop everything
+  currentRenderer.stop()
+  recorder.stop()
+
+  const frames = recorder.recordedFrames
+
+  // Analyze frames to detect the presence of backticks
+  const frameAnalysis: Array<{ hasBackticks: boolean; lineCount: number; isEmpty: boolean }> = []
+
+  for (const recordedFrame of frames) {
+    const frame = recordedFrame.frame
+    const hasBackticks = frame.includes("```")
+    const lines = frame.split("\n").filter((line) => line.trim().length > 0)
+    const isEmpty = frame.trim().length === 0
+
+    frameAnalysis.push({
+      hasBackticks,
+      lineCount: lines.length,
+      isEmpty,
+    })
+  }
+
+  // The issue: with drawUnstyledText=false and streaming=true and conceal=true:
+  // After initial highlighting completes, when content updates in streaming mode,
+  // it uses cached highlights from previous content. But if the structure changes
+  // (like adding fenced code blocks), the cached highlights don't match anymore.
+  // This causes the content to be rendered with the OLD highlights (which might show backticks)
+  // before the NEW highlights arrive (which conceal backticks), causing a visual jump.
+
+  // Check if backticks ever appear in frames (they shouldn't with conceal=true)
+  const framesWithBackticks = frameAnalysis.filter((f) => f.hasBackticks && !f.isEmpty)
+
+  // With conceal=true, backticks should be concealed in all rendered frames.
+  // But the bug causes backticks to appear temporarily when streaming new content,
+  // because cached highlights from old content are applied before new highlights arrive.
+  // This creates a visual "jump" as the line count changes from with-backticks to without.
+
+  // This test currently FAILS (as expected) because the bug exists.
+  // When the bug is fixed, backticks should never appear in frames.
+  expect(framesWithBackticks.length).toBe(0)
+})
