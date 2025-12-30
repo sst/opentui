@@ -69,6 +69,15 @@ export class CodeRenderable extends TextBufferRenderable {
       this._highlightsDirty = true
       this._highlightSnapshotId++
 
+      // In streaming mode with drawUnstyledText=false, don't update the text buffer yet
+      // Keep showing the old content to avoid flickering or showing unstyled text
+      // Wait for new highlights to arrive, which will update with setStyledText
+      if (this._streaming && !this._drawUnstyledText && this._filetype) {
+        // Just cache the content, text buffer will be updated when highlights arrive
+        return
+      }
+
+      // Otherwise, update text buffer immediately for lineCount and measurements
       this.textBuffer.setText(value)
       this.updateTextInfo()
     }
@@ -160,17 +169,9 @@ export class CodeRenderable extends TextBufferRenderable {
     const shouldDrawUnstyledNow = this._streaming ? isInitialContent && this._drawUnstyledText : this._drawUnstyledText
 
     if (this._streaming && !isInitialContent) {
-      if (this._lastHighlights.length > 0) {
-        const chunks = treeSitterToTextChunks(content, this._lastHighlights, this._syntaxStyle, {
-          enabled: this._conceal,
-        })
-        const partialStyledText = new StyledText(chunks)
-        this.textBuffer.setStyledText(partialStyledText)
-        this._shouldRenderTextBuffer = true
-        this.updateTextInfo()
-      } else {
-        this._shouldRenderTextBuffer = true
-      }
+      // In streaming mode after initial content, keep rendering the old buffer
+      // (don't touch it) until new highlights arrive
+      this._shouldRenderTextBuffer = true
     } else if (shouldDrawUnstyledNow) {
       this.textBuffer.setText(content)
       this._shouldRenderTextBuffer = true

@@ -1730,22 +1730,26 @@ test("CodeRenderable - streaming with conceal and drawUnstyledText=false should 
     })
   }
 
-  // The issue: with drawUnstyledText=false and streaming=true and conceal=true:
-  // After initial highlighting completes, when content updates in streaming mode,
-  // it uses cached highlights from previous content. But if the structure changes
-  // (like adding fenced code blocks), the cached highlights don't match anymore.
-  // This causes the content to be rendered with the OLD highlights (which might show backticks)
-  // before the NEW highlights arrive (which conceal backticks), causing a visual jump.
+  // Check for flickering (frames going from content to empty back to content)
+  let hasFlickering = false
+  for (let i = 2; i < frameAnalysis.length; i++) {
+    const prev = frameAnalysis[i - 1]
+    const curr = frameAnalysis[i]
+    // Flickering: non-empty -> empty when we already had content
+    if (!prev.isEmpty && curr.isEmpty) {
+      hasFlickering = true
+    }
+  }
 
-  // Check if backticks ever appear in frames (they shouldn't with conceal=true)
   const framesWithBackticks = frameAnalysis.filter((f) => f.hasBackticks && !f.isEmpty)
 
-  // With conceal=true, backticks should be concealed in all rendered frames.
-  // But the bug causes backticks to appear temporarily when streaming new content,
-  // because cached highlights from old content are applied before new highlights arrive.
-  // This creates a visual "jump" as the line count changes from with-backticks to without.
-
-  // This test currently FAILS (as expected) because the bug exists.
-  // When the bug is fixed, backticks should never appear in frames.
+  // The main issue: backticks should NEVER appear in frames with conceal=true
+  // This was the "jumping" bug - backticks would appear, then disappear when concealed
   expect(framesWithBackticks.length).toBe(0)
+
+  // Should not flicker (go from content to empty back to content)
+  expect(hasFlickering).toBe(false)
+
+  // Note: Line count changing from 1 -> 3 is expected when content grows during streaming
+  // The bug was specifically about backticks appearing/disappearing, not content growth
 })
