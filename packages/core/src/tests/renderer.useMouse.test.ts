@@ -3,12 +3,7 @@ import { Readable } from "node:stream"
 import { createCliRenderer } from "../renderer"
 import tty from "tty"
 
-const MOUSE_ENABLE_SEQUENCES = [
-  "\x1b[?1000h",
-  "\x1b[?1002h",
-  "\x1b[?1003h",
-  "\x1b[?1006h",
-]
+const MOUSE_ENABLE_SEQUENCES = ["\x1b[?1000h", "\x1b[?1002h", "\x1b[?1003h", "\x1b[?1006h"]
 
 function createMockStreams() {
   const mockStdin = new Readable({ read() {} }) as tty.ReadStream
