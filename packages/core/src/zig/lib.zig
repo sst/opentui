@@ -197,6 +197,42 @@ export fn setCursorColor(rendererPtr: *renderer.CliRenderer, color: [*]const f32
     rendererPtr.terminal.setCursorColor(utils.f32PtrToRGBA(color));
 }
 
+pub const ExternalCursorState = extern struct {
+    x: u32,
+    y: u32,
+    visible: bool,
+    style: u8,
+    blinking: bool,
+    r: f32,
+    g: f32,
+    b: f32,
+    a: f32,
+};
+
+export fn getCursorState(rendererPtr: *renderer.CliRenderer, outPtr: *ExternalCursorState) void {
+    const pos = rendererPtr.terminal.getCursorPosition();
+    const style = rendererPtr.terminal.getCursorStyle();
+    const color = rendererPtr.terminal.getCursorColor();
+
+    const styleTag: u8 = switch (style.style) {
+        .block => 0,
+        .line => 1,
+        .underline => 2,
+    };
+
+    outPtr.* = .{
+        .x = pos.x,
+        .y = pos.y,
+        .visible = pos.visible,
+        .style = styleTag,
+        .blinking = style.blinking,
+        .r = color[0],
+        .g = color[1],
+        .b = color[2],
+        .a = color[3],
+    };
+}
+
 export fn setDebugOverlay(rendererPtr: *renderer.CliRenderer, enabled: bool, corner: u8) void {
     const cornerEnum: renderer.DebugOverlayCorner = switch (corner) {
         0 => .topLeft,

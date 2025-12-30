@@ -279,7 +279,6 @@ export abstract class EditBufferRenderable extends Renderable implements LineInf
   set showCursor(value: boolean) {
     if (this._showCursor !== value) {
       this._showCursor = value
-      // Hide cursor when showCursor changes to false while focused
       if (!value && this._focused) {
         this._ctx.setCursorPosition(0, 0, false)
       }
