@@ -1,39 +1,15 @@
 import { test, expect, describe } from "bun:test"
-import { Readable } from "node:stream"
-import { createCliRenderer } from "../renderer"
-import tty from "tty"
+import { createTestRenderer } from "../testing/test-renderer"
 
-const MOUSE_ENABLE_SEQUENCES = ["\x1b[?1000h", "\x1b[?1002h", "\x1b[?1003h", "\x1b[?1006h"]
-
-function createMockStreams() {
-  const mockStdin = new Readable({ read() {} }) as tty.ReadStream
-  mockStdin.isTTY = true
-  mockStdin.setRawMode = () => mockStdin
-  mockStdin.resume = () => mockStdin
-  mockStdin.pause = () => mockStdin
-  mockStdin.setEncoding = () => mockStdin
-
-  const writes: string[] = []
-  const mockStdout = {
-    isTTY: true,
-    columns: 80,
-    rows: 24,
-    write: (data: string | Buffer) => {
-      writes.push(data.toString())
-      return true
-    },
-  } as any
-
-  return { mockStdin, mockStdout, writes }
-}
-
+// NOTE: These tests are not running the mouse activation sequences,
+// only verifying that the configuration is applied correctly.
+// Tests avoid actually outputting to the terminal during test runs,
+// to not mess up the terminal state.
+// What actually gets written can be tested properly when
+// https://github.com/sst/opentui/pull/238 is merged.
 describe("useMouse configuration", () => {
   test("useMouse: true sets renderer.useMouse to true", async () => {
-    const { mockStdin, mockStdout } = createMockStreams()
-
-    const renderer = await createCliRenderer({
-      stdin: mockStdin,
-      stdout: mockStdout,
+    const { renderer } = await createTestRenderer({
       useMouse: true,
       exitOnCtrlC: false,
       useAlternateScreen: false,
@@ -44,32 +20,18 @@ describe("useMouse configuration", () => {
   })
 
   test("useMouse: false disables mouse tracking", async () => {
-    const { mockStdin, mockStdout, writes } = createMockStreams()
-
-    const renderer = await createCliRenderer({
-      stdin: mockStdin,
-      stdout: mockStdout,
+    const { renderer } = await createTestRenderer({
       useMouse: false,
       exitOnCtrlC: false,
       useAlternateScreen: false,
     })
 
     expect(renderer.useMouse).toBe(false)
-
-    const allOutput = writes.join("")
-    for (const seq of MOUSE_ENABLE_SEQUENCES) {
-      expect(allOutput.includes(seq)).toBe(false)
-    }
-
     renderer.destroy()
   })
 
   test("toggling useMouse property updates renderer state", async () => {
-    const { mockStdin, mockStdout } = createMockStreams()
-
-    const renderer = await createCliRenderer({
-      stdin: mockStdin,
-      stdout: mockStdout,
+    const { renderer } = await createTestRenderer({
       useMouse: false,
       exitOnCtrlC: false,
       useAlternateScreen: false,
