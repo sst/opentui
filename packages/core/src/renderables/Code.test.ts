@@ -1109,21 +1109,15 @@ test("CodeRenderable - streaming mode with drawUnstyledText=false waits for new 
   currentRenderer.root.add(codeRenderable)
   currentRenderer.start()
 
-  // Wait for initial highlights to complete
   await Bun.sleep(30)
 
   expect(codeRenderable.plainText).toBe("const initial = 'hello';")
 
   codeRenderable.content = "const updated = 'world';"
-
-  // With streaming=true and drawUnstyledText=false, text buffer is not updated
-  // immediately when content changes - it keeps showing old content
   expect(codeRenderable.plainText).toBe("const initial = 'hello';")
 
-  // Wait for new highlights to be applied
   await Bun.sleep(30)
 
-  // After highlights complete, text buffer is updated with new content
   expect(codeRenderable.plainText).toBe("const updated = 'world';")
 
   currentRenderer.stop()
@@ -1643,7 +1637,6 @@ test("CodeRenderable - streaming mode with drawUnstyledText=false has correct li
     drawUnstyledText: false,
   })
 
-  // Initial content is set in constructor for lineCount measurement
   expect(codeRenderable.lineCount).toBe(2)
 
   currentRenderer.root.add(codeRenderable)
@@ -1656,15 +1649,12 @@ test("CodeRenderable - streaming mode with drawUnstyledText=false has correct li
   await new Promise((resolve) => setTimeout(resolve, 10))
   await renderOnce()
 
-  // After first highlight, lineCount is correct
   expect(codeRenderable.lineCount).toBe(2)
 
   codeRenderable.content = "line1\nline2\nline3\nline4"
-  // Text buffer not updated yet, still shows old lineCount
   expect(codeRenderable.lineCount).toBe(2)
 
   codeRenderable.content = "line1\nline2\nline3\nline4\nline5\nline6"
-  // Text buffer still not updated
   expect(codeRenderable.lineCount).toBe(2)
 
   await renderOnce()
@@ -1672,7 +1662,6 @@ test("CodeRenderable - streaming mode with drawUnstyledText=false has correct li
   await new Promise((resolve) => setTimeout(resolve, 10))
   await renderOnce()
 
-  // After highlights complete, lineCount reflects the actual content
   expect(codeRenderable.lineCount).toBe(6)
   const finalFrame = captureFrame()
   expect(finalFrame).toContain("line1")
@@ -1742,12 +1731,10 @@ test("CodeRenderable - streaming with conceal and drawUnstyledText=false should 
     })
   }
 
-  // Check for flickering (frames going from content to empty back to content)
   let hasFlickering = false
   for (let i = 2; i < frameAnalysis.length; i++) {
     const prev = frameAnalysis[i - 1]
     const curr = frameAnalysis[i]
-    // Flickering: non-empty -> empty when we already had content
     if (!prev.isEmpty && curr.isEmpty) {
       hasFlickering = true
     }
@@ -1755,26 +1742,17 @@ test("CodeRenderable - streaming with conceal and drawUnstyledText=false should 
 
   const framesWithBackticks = frameAnalysis.filter((f) => f.hasBackticks && !f.isEmpty)
 
-  // The main issue: backticks should NEVER appear in frames with conceal=true
-  // This was the "jumping" bug - backticks would appear, then disappear when concealed
   expect(framesWithBackticks.length).toBe(0)
-
-  // Should not flicker (go from content to empty back to content)
   expect(hasFlickering).toBe(false)
 
-  // Verify the final frame has the correct content (3 lines: heading, blank, code)
   const finalFrame = frameAnalysis[frameAnalysis.length - 1]
   expect(finalFrame.isEmpty).toBe(false)
   expect(finalFrame.hasBackticks).toBe(false)
   expect(finalFrame.lineCount).toBe(3)
 
-  // Verify final content is fully rendered with concealment
   const finalFrameText = frames[frames.length - 1].frame
   expect(finalFrameText).toContain("Example")
   expect(finalFrameText).toContain("Here's some code")
   expect(finalFrameText).toContain("const x = 1")
   expect(finalFrameText).not.toContain("```")
-
-  // Note: Line count changing from 1 -> 3 is expected when content grows during streaming
-  // The bug was specifically about backticks appearing/disappearing, not content growth
 })
