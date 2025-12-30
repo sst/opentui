@@ -44,7 +44,10 @@ export const App = () => {
     <box style={{ flexDirection: "column", padding: 1 }}>
       <text content="flushSync Demo" style={{ fg: "#FFFF00", attributes: 1 }} />
       <text content="'a' = batched | 's' = flushSync | 'q' = quit" style={{ fg: "#666666" }} />
-      <text content={`a=${a} b=${b} c=${c}  (renders: ${renderCount.current})`} style={{ fg: "#00FF00", marginTop: 1 }} />
+      <text
+        content={`a=${a} b=${b} c=${c}  (renders: ${renderCount.current})`}
+        style={{ fg: "#00FF00", marginTop: 1 }}
+      />
       <box title="Log" style={{ border: true, marginTop: 1, flexDirection: "column", width: 55 }}>
         {log.map((l, i) => (
           <text key={i} content={l} style={{ fg: l.startsWith("flush") ? "#00FFFF" : "#FF8800" }} />
