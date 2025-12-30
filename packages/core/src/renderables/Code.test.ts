@@ -1756,3 +1756,40 @@ test("CodeRenderable - streaming with conceal and drawUnstyledText=false should 
   expect(finalFrameText).toContain("const x = 1")
   expect(finalFrameText).not.toContain("```")
 })
+
+test("CodeRenderable - streaming with drawUnstyledText=false falls back to unstyled text when highlights fail", async () => {
+  const syntaxStyle = SyntaxStyle.fromStyles({
+    default: { fg: RGBA.fromValues(1, 1, 1, 1) },
+  })
+
+  const mockClient = new MockTreeSitterClient({ autoResolveTimeout: 10 })
+
+  const codeRenderable = new CodeRenderable(currentRenderer, {
+    id: "test-code",
+    content: "const initial = 'hello';",
+    filetype: "javascript",
+    syntaxStyle,
+    treeSitterClient: mockClient,
+    streaming: true,
+    drawUnstyledText: false,
+    left: 0,
+    top: 0,
+  })
+
+  currentRenderer.root.add(codeRenderable)
+  currentRenderer.start()
+
+  await Bun.sleep(30)
+
+  mockClient.highlightOnce = async () => {
+    throw new Error("Highlighting failed")
+  }
+
+  codeRenderable.content = "const updated = 'world';"
+
+  await Bun.sleep(30)
+
+  expect(codeRenderable.plainText).toBe("const updated = 'world';")
+
+  currentRenderer.stop()
+})
