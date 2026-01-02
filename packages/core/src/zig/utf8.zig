@@ -96,8 +96,8 @@ pub const TabStopResult = struct {
 };
 
 pub const WrapBreak = struct {
-    byte_offset: u16,
-    char_offset: u16,
+    byte_offset: u32,
+    char_offset: u32,
 };
 
 pub const WrapBreakResult = struct {
@@ -183,7 +183,7 @@ pub fn findWrapBreaks(text: []const u8, result: *WrapBreakResult, width_method: 
     const vector_len = 16;
 
     var pos: usize = 0;
-    var char_offset: u16 = 0;
+    var char_offset: u32 = 0;
     var prev_cp: ?u21 = null; // Track previous codepoint for grapheme detection
     var break_state: uucode.grapheme.BreakState = .default;
 
@@ -235,7 +235,7 @@ pub fn findWrapBreaks(text: []const u8, result: *WrapBreakResult, width_method: 
                 const bit_pos = @ctz(bitmask);
                 try result.breaks.append(.{
                     .byte_offset = @intCast(pos + bit_pos),
-                    .char_offset = char_offset + @as(u16, @intCast(bit_pos)),
+                    .char_offset = char_offset + @as(u32, @intCast(bit_pos)),
                 });
                 bitmask &= bitmask - 1;
             }
