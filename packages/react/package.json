@@ -1,6 +1,6 @@
 {
   "name": "@opentui/react",
-  "version": "0.1.63",
+  "version": "0.1.67",
   "description": "React renderer for building terminal user interfaces using OpenTUI core",
   "license": "MIT",
   "repository": {
@@ -41,10 +41,24 @@
     "@types/node": "^24.0.0",
     "@types/react": "^19.0.0",
     "@types/react-reconciler": "^0.32.0",
-    "typescript": "^5"
+    "@types/ws": "^8.18.1",
+    "react": ">=19.0.0",
+    "react-devtools-core": "^7.0.1",
+    "typescript": "^5",
+    "ws": "^8.18.0"
   },
   "peerDependencies": {
-    "react": ">=19.0.0"
+    "react": ">=19.0.0",
+    "react-devtools-core": "^7.0.1",
+    "ws": "^8.18.0"
+  },
+  "peerDependenciesMeta": {
+    "react-devtools-core": {
+      "optional": true
+    },
+    "ws": {
+      "optional": true
+    }
   },
   "dependencies": {
     "@opentui/core": "workspace:*",

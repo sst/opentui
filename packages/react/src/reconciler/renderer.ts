@@ -3,9 +3,13 @@ import React, { type ReactNode } from "react"
 import type { OpaqueRoot } from "react-reconciler"
 import { AppContext } from "../components/app"
 import { ErrorBoundary } from "../components/error-boundary"
-import { _render, reconciler, flushSync } from "./reconciler"
+import { _render, reconciler } from "./reconciler"
 
-export { flushSync }
+// flushSync was renamed to flushSyncFromReconciler in react-reconciler 0.32.0
+// the types for react-reconciler are not up to date with the library
+const _r = reconciler as typeof reconciler & { flushSyncFromReconciler?: typeof reconciler.flushSync }
+const flushSync = _r.flushSyncFromReconciler ?? _r.flushSync
+const { createPortal } = reconciler
 
 export type Root = {
   render: (node: ReactNode) => void
@@ -51,3 +55,5 @@ export function createRoot(renderer: CliRenderer): Root {
     },
   }
 }
+
+export { createPortal, flushSync }
