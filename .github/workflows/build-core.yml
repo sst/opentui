@@ -34,4 +34,4 @@ jobs:
       - name: Run tests
         run: |
           cd packages/core
-          bun run test:js
+          bun run test
