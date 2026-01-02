@@ -30,7 +30,7 @@ class SpanRenderable extends TextNodeRenderable {
   }
 }
 
-export const textNodeKeys = ["span", "b", "strong", "i", "em", "u"] as const
+export const textNodeKeys = ["span", "b", "strong", "i", "em", "u", "a"] as const
 export type TextNodeKey = (typeof textNodeKeys)[number]
 
 class TextModifierRenderable extends SpanRenderable {
@@ -77,6 +77,20 @@ export class LineBreakRenderable extends SpanRenderable {
   }
 }
 
+export interface LinkOptions extends TextNodeOptions {
+  href: string
+}
+
+export class LinkRenderable extends SpanRenderable {
+  constructor(_ctx: RenderContext | null, options: LinkOptions) {
+    const linkOptions: TextNodeOptions = {
+      ...options,
+      link: { url: options.href },
+    }
+    super(null, linkOptions)
+  }
+}
+
 export const baseComponents = {
   box: BoxRenderable,
   text: TextRenderable,
@@ -98,6 +112,7 @@ export const baseComponents = {
   i: ItalicSpanRenderable,
   u: UnderlineSpanRenderable,
   br: LineBreakRenderable,
+  a: LinkRenderable,
 }
 
 type ComponentCatalogue = Record<string, RenderableConstructor>

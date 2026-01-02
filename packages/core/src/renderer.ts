@@ -510,7 +510,7 @@ export class CliRenderer extends EventEmitter implements RenderContext {
     this.memorySnapshotInterval = config.memorySnapshotInterval ?? 0
     this.gatherStats = config.gatherStats || false
     this.maxStatSamples = config.maxStatSamples || 300
-    this.enableMouseMovement = config.enableMouseMovement || true
+    this.enableMouseMovement = config.enableMouseMovement ?? true
     this._useMouse = config.useMouse ?? true
     this._useAlternateScreen = config.useAlternateScreen ?? env.OTUI_USE_ALTERNATE_SCREEN
     this.nextRenderBuffer = this.lib.getNextBuffer(this.rendererPtr)
@@ -1391,6 +1391,10 @@ export class CliRenderer extends EventEmitter implements RenderContext {
     this.lib.setCursorColor(this.rendererPtr, color)
   }
 
+  public getCursorState() {
+    return this.lib.getCursorState(this.rendererPtr)
+  }
+
   public addPostProcessFn(processFn: (buffer: OptimizedBuffer, deltaTime: number) => void): void {
     this.postProcessFns.push(processFn)
   }
@@ -1545,6 +1549,9 @@ export class CliRenderer extends EventEmitter implements RenderContext {
   }
 
   public destroy(): void {
+    if (this._isDestroyed) return
+    this._isDestroyed = true
+
     process.removeListener("SIGWINCH", this.sigwinchHandler)
     process.removeListener("uncaughtException", this.handleError)
     process.removeListener("unhandledRejection", this.handleError)
@@ -1574,9 +1581,6 @@ export class CliRenderer extends EventEmitter implements RenderContext {
     }
     this._paletteDetectionPromise = null
     this._cachedPalette = null
-
-    if (this._isDestroyed) return
-    this._isDestroyed = true
 
     this.emit(CliRenderEvents.DESTROY)
 

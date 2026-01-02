@@ -8,6 +8,7 @@ const ss = @import("syntax-style.zig");
 const math = std.math;
 
 const gp = @import("grapheme.zig");
+const link = @import("link.zig");
 
 const logger = @import("logger.zig");
 const utf8 = @import("utf8.zig");
@@ -85,7 +86,7 @@ pub const Cell = struct {
     char: u32,
     fg: RGBA,
     bg: RGBA,
-    attributes: u8,
+    attributes: u32,
 };
 
 fn isRGBAWithAlpha(color: RGBA) bool {
@@ -124,15 +125,17 @@ pub const OptimizedBuffer = struct {
         char: []u32,
         fg: []RGBA,
         bg: []RGBA,
-        attributes: []u8,
+        attributes: []u32,
     },
     width: u32,
     height: u32,
     respectAlpha: bool,
     allocator: Allocator,
     pool: *gp.GraphemePool,
+    link_pool: *link.LinkPool,
 
     grapheme_tracker: gp.GraphemeTracker,
+    link_tracker: link.LinkTracker,
     width_method: utf8.WidthMethod,
     id: []const u8,
     scissor_stack: std.ArrayList(ClipRect),
@@ -143,6 +146,7 @@ pub const OptimizedBuffer = struct {
         pool: *gp.GraphemePool,
         width_method: utf8.WidthMethod = .unicode,
         id: []const u8 = "unnamed buffer",
+        link_pool: ?*link.LinkPool = null,
     };
 
     pub fn init(allocator: Allocator, width: u32, height: u32, options: InitOptions) BufferError!*OptimizedBuffer {
@@ -165,19 +169,23 @@ pub const OptimizedBuffer = struct {
         var opacity_stack = std.ArrayList(f32).init(allocator);
         errdefer opacity_stack.deinit();
 
+        const lp = options.link_pool orelse link.initGlobalLinkPool(allocator);
+
         self.* = .{
             .buffer = .{
                 .char = allocator.alloc(u32, size) catch return BufferError.OutOfMemory,
                 .fg = allocator.alloc(RGBA, size) catch return BufferError.OutOfMemory,
                 .bg = allocator.alloc(RGBA, size) catch return BufferError.OutOfMemory,
-                .attributes = allocator.alloc(u8, size) catch return BufferError.OutOfMemory,
+                .attributes = allocator.alloc(u32, size) catch return BufferError.OutOfMemory,
             },
             .width = width,
             .height = height,
             .respectAlpha = options.respectAlpha,
             .allocator = allocator,
             .pool = options.pool,
+            .link_pool = lp,
             .grapheme_tracker = gp.GraphemeTracker.init(allocator, options.pool),
+            .link_tracker = link.LinkTracker.init(allocator, lp),
             .width_method = options.width_method,
             .id = owned_id,
             .scissor_stack = scissor_stack,
@@ -204,13 +212,14 @@ pub const OptimizedBuffer = struct {
         return self.buffer.bg.ptr;
     }
 
-    pub fn getAttributesPtr(self: *OptimizedBuffer) [*]u8 {
+    pub fn getAttributesPtr(self: *OptimizedBuffer) [*]u32 {
         return self.buffer.attributes.ptr;
     }
 
     pub fn deinit(self: *OptimizedBuffer) void {
         self.opacity_stack.deinit();
         self.scissor_stack.deinit();
+        self.link_tracker.deinit();
         self.grapheme_tracker.deinit();
         self.allocator.free(self.buffer.char);
         self.allocator.free(self.buffer.fg);
@@ -362,6 +371,7 @@ pub const OptimizedBuffer = struct {
 
     pub fn clear(self: *OptimizedBuffer, bg: RGBA, char: ?u32) !void {
         const cellChar = char orelse DEFAULT_SPACE_CHAR;
+        self.link_tracker.clear();
         self.grapheme_tracker.clear();
         @memset(self.buffer.char, @intCast(cellChar));
         @memset(self.buffer.attributes, 0);
@@ -373,10 +383,22 @@ pub const OptimizedBuffer = struct {
         if (x >= self.width or y >= self.height) return;
         if (!self.isPointInScissor(@intCast(x), @intCast(y))) return;
         const index = self.coordsToIndex(x, y);
+
+        const prev_attr = self.buffer.attributes[index];
+        const prev_link_id = ansi.TextAttributes.getLinkId(prev_attr);
+        const new_link_id = ansi.TextAttributes.getLinkId(cell.attributes);
+
         self.buffer.char[index] = cell.char;
         self.buffer.fg[index] = cell.fg;
         self.buffer.bg[index] = cell.bg;
         self.buffer.attributes[index] = cell.attributes;
+
+        if (prev_link_id != 0 and prev_link_id != new_link_id) {
+            self.link_tracker.removeCellRef(prev_link_id);
+        }
+        if (new_link_id != 0 and new_link_id != prev_link_id) {
+            self.link_tracker.addCellRef(new_link_id);
+        }
     }
 
     pub fn set(self: *OptimizedBuffer, x: u32, y: u32, cell: Cell) void {
@@ -385,6 +407,8 @@ pub const OptimizedBuffer = struct {
 
         const index = self.coordsToIndex(x, y);
         const prev_char = self.buffer.char[index];
+        const prev_attr = self.buffer.attributes[index];
+        const prev_link_id = ansi.TextAttributes.getLinkId(prev_attr);
 
         // If overwriting a grapheme span (start or continuation) with a different char, clear that span first
         if ((gp.isGraphemeChar(prev_char) or gp.isContinuationChar(prev_char)) and prev_char != cell.char) {
@@ -399,6 +423,15 @@ pub const OptimizedBuffer = struct {
             const span_start = index - @min(left, index - row_start);
             const span_end = index + @min(right, row_end - index);
             const span_len = span_end - span_start + 1;
+
+            var span_i: u32 = span_start;
+            while (span_i < span_start + span_len) : (span_i += 1) {
+                const span_link_id = ansi.TextAttributes.getLinkId(self.buffer.attributes[span_i]);
+                if (span_link_id != 0) {
+                    self.link_tracker.removeCellRef(span_link_id);
+                }
+            }
+
             @memset(self.buffer.char[span_start .. span_start + span_len], @intCast(DEFAULT_SPACE_CHAR));
             @memset(self.buffer.attributes[span_start .. span_start + span_len], 0);
         }
@@ -409,10 +442,25 @@ pub const OptimizedBuffer = struct {
 
             if (x + width > self.width) {
                 const end_of_line = (y + 1) * self.width;
+                var eol_i = index;
+                while (eol_i < end_of_line) : (eol_i += 1) {
+                    const eol_link_id = ansi.TextAttributes.getLinkId(self.buffer.attributes[eol_i]);
+                    if (eol_link_id != 0) {
+                        self.link_tracker.removeCellRef(eol_link_id);
+                    }
+                }
                 @memset(self.buffer.char[index..end_of_line], @intCast(DEFAULT_SPACE_CHAR));
                 @memset(self.buffer.attributes[index..end_of_line], cell.attributes);
                 @memset(self.buffer.fg[index..end_of_line], cell.fg);
                 @memset(self.buffer.bg[index..end_of_line], cell.bg);
+                const new_link_id = ansi.TextAttributes.getLinkId(cell.attributes);
+                if (new_link_id != 0) {
+                    const cells_written = end_of_line - index;
+                    var link_i: u32 = 0;
+                    while (link_i < cells_written) : (link_i += 1) {
+                        self.link_tracker.addCellRef(new_link_id);
+                    }
+                }
                 return;
             }
 
@@ -424,10 +472,32 @@ pub const OptimizedBuffer = struct {
             const id: u32 = gp.graphemeIdFromChar(cell.char);
             self.grapheme_tracker.add(id);
 
+            const new_link_id = ansi.TextAttributes.getLinkId(cell.attributes);
+            if (prev_link_id != 0 and prev_link_id != new_link_id) {
+                self.link_tracker.removeCellRef(prev_link_id);
+            }
+            if (new_link_id != 0 and new_link_id != prev_link_id) {
+                self.link_tracker.addCellRef(new_link_id);
+            }
+            if (prev_link_id != 0 and prev_link_id != new_link_id) {
+                self.link_tracker.removeCellRef(prev_link_id);
+            }
+            if (new_link_id != 0 and new_link_id != prev_link_id) {
+                self.link_tracker.addCellRef(new_link_id);
+            }
+
             if (width > 1) {
                 const row_end_index: u32 = (y * self.width) + self.width - 1;
                 const max_right = @min(right, row_end_index - index);
                 if (max_right > 0) {
+                    var cont_i: u32 = 1;
+                    while (cont_i <= max_right) : (cont_i += 1) {
+                        const cont_link_id = ansi.TextAttributes.getLinkId(self.buffer.attributes[index + cont_i]);
+                        if (cont_link_id != 0) {
+                            self.link_tracker.removeCellRef(cont_link_id);
+                        }
+                    }
+
                     @memset(self.buffer.fg[index + 1 .. index + 1 + max_right], cell.fg);
                     @memset(self.buffer.bg[index + 1 .. index + 1 + max_right], cell.bg);
                     @memset(self.buffer.attributes[index + 1 .. index + 1 + max_right], cell.attributes);
@@ -435,6 +505,9 @@ pub const OptimizedBuffer = struct {
                     while (k <= max_right) : (k += 1) {
                         const cont = gp.packContinuation(k, max_right - k, id);
                         self.buffer.char[index + k] = cont;
+                        if (new_link_id != 0) {
+                            self.link_tracker.addCellRef(new_link_id);
+                        }
                     }
                 }
             }
@@ -443,6 +516,14 @@ pub const OptimizedBuffer = struct {
             self.buffer.fg[index] = cell.fg;
             self.buffer.bg[index] = cell.bg;
             self.buffer.attributes[index] = cell.attributes;
+
+            const new_link_id = ansi.TextAttributes.getLinkId(cell.attributes);
+            if (prev_link_id != 0 and prev_link_id != new_link_id) {
+                self.link_tracker.removeCellRef(prev_link_id);
+            }
+            if (new_link_id != 0 and new_link_id != prev_link_id) {
+                self.link_tracker.addCellRef(new_link_id);
+            }
         }
     }
 
@@ -580,7 +661,16 @@ pub const OptimizedBuffer = struct {
                 finalFg = if (hasFgAlpha) blendColors(overlayCell.fg, destCell.bg) else overlayCell.fg;
             }
 
-            const finalAttributes = if (preserveChar) destCell.attributes else overlayCell.attributes;
+            // When preserving char, preserve its base attributes but NOT its link
+            // Links ALWAYS come from overlay, never from destination
+            // Even if overlay has no link (link_id=0), it clears the destination's link
+            const baseAttrs = if (preserveChar)
+                ansi.TextAttributes.getBaseAttributes(destCell.attributes)
+            else
+                ansi.TextAttributes.getBaseAttributes(overlayCell.attributes);
+            // Overlay link always wins - whether it's a real link or 0 (no link)
+            const overlayLinkId = ansi.TextAttributes.getLinkId(overlayCell.attributes);
+            const finalAttributes = ansi.TextAttributes.setLinkId(@as(u32, baseAttrs), overlayLinkId);
 
             // When overlay background is fully transparent, preserve destination background alpha
             const finalBgAlpha = if (overlayCell.bg[3] == 0.0) destCell.bg[3] else overlayCell.bg[3];
@@ -603,7 +693,7 @@ pub const OptimizedBuffer = struct {
         char: u32,
         fg: RGBA,
         bg: RGBA,
-        attributes: u8,
+        attributes: u32,
     ) !void {
         if (!self.isPointInScissor(@intCast(x), @intCast(y))) return;
 
@@ -629,7 +719,7 @@ pub const OptimizedBuffer = struct {
         char: u32,
         fg: RGBA,
         bg: RGBA,
-        attributes: u8,
+        attributes: u32,
     ) !void {
         if (!self.isPointInScissor(@intCast(x), @intCast(y))) return;
 
@@ -659,7 +749,7 @@ pub const OptimizedBuffer = struct {
         y: u32,
         fg: RGBA,
         bg: RGBA,
-        attributes: u8,
+        attributes: u32,
     ) !void {
         if (!self.isPointInScissor(@intCast(x), @intCast(y))) return;
 
@@ -707,8 +797,9 @@ pub const OptimizedBuffer = struct {
 
         const opacity = self.getCurrentOpacity();
         const hasAlpha = isRGBAWithAlpha(bg) or opacity < 1.0;
+        const linkAware = self.link_tracker.hasAny();
 
-        if (hasAlpha or self.grapheme_tracker.hasAny()) {
+        if (hasAlpha or self.grapheme_tracker.hasAny() or linkAware) {
             var fillY = clippedStartY;
             while (fillY <= clippedEndY) : (fillY += 1) {
                 var fillX = clippedStartX;
@@ -717,7 +808,7 @@ pub const OptimizedBuffer = struct {
                 }
             }
         } else {
-            // For non-alpha (fully opaque) backgrounds, we can do direct filling
+            // For non-alpha (fully opaque) backgrounds with no graphemes or links, we can do direct filling
             var fillY = clippedStartY;
             while (fillY <= clippedEndY) : (fillY += 1) {
                 const rowStartIndex = self.coordsToIndex(@intCast(clippedStartX), @intCast(fillY));
@@ -743,7 +834,7 @@ pub const OptimizedBuffer = struct {
         y: u32,
         fg: RGBA,
         bg: ?RGBA,
-        attributes: u8,
+        attributes: u32,
     ) BufferError!void {
         if (x >= self.width or y >= self.height) return;
         if (text.len == 0) return;
@@ -885,6 +976,7 @@ pub const OptimizedBuffer = struct {
         if (!self.isRectInScissor(startDestX, startDestY, destWidth, destHeight)) return;
 
         const graphemeAware = self.grapheme_tracker.hasAny() or frameBuffer.grapheme_tracker.hasAny();
+        const linkAware = self.link_tracker.hasAny() or frameBuffer.link_tracker.hasAny();
 
         // Calculate clipping once for both paths
         const clippedRect = self.clipRectToScissor(startDestX, startDestY, destWidth, destHeight) orelse return;
@@ -893,7 +985,7 @@ pub const OptimizedBuffer = struct {
         const clippedEndX = @min(endDestX, @as(i32, @intCast(clippedRect.x + @as(i32, @intCast(clippedRect.width)) - 1)));
         const clippedEndY = @min(endDestY, @as(i32, @intCast(clippedRect.y + @as(i32, @intCast(clippedRect.height)) - 1)));
 
-        if (!graphemeAware and !frameBuffer.respectAlpha) {
+        if (!graphemeAware and !frameBuffer.respectAlpha and !linkAware) {
             // Fast path: direct memory copy
             var dY = clippedStartY;
 

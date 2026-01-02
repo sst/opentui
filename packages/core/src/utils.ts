@@ -34,6 +34,21 @@ export function createTextAttributes({
   return attributes
 }
 
+// Link attribute helpers (bits 8-31 encode link_id)
+const ATTRIBUTE_BASE_MASK = 0xff
+const LINK_ID_SHIFT = 8
+const LINK_ID_PAYLOAD_MASK = 0xffffff
+
+export function attributesWithLink(baseAttributes: number, linkId: number): number {
+  const base = baseAttributes & ATTRIBUTE_BASE_MASK
+  const linkBits = (linkId & LINK_ID_PAYLOAD_MASK) << LINK_ID_SHIFT
+  return base | linkBits
+}
+
+export function getLinkId(attributes: number): number {
+  return (attributes >>> LINK_ID_SHIFT) & LINK_ID_PAYLOAD_MASK
+}
+
 // For debugging purposes
 export function visualizeRenderableTree(renderable: Renderable, maxDepth: number = 10): void {
   function buildTreeLines(

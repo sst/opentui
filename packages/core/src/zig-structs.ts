@@ -26,7 +26,7 @@ export const StyledChunkStruct = defineStruct([
       unpackTransform: rgbaUnpackTransform,
     },
   ],
-  ["attributes", "u8", { optional: true }],
+  ["attributes", "u32", { optional: true }],
 ])
 
 export const HighlightStruct = defineStruct([
@@ -94,4 +94,16 @@ export const LineInfoStruct = defineStruct([
 export const MeasureResultStruct = defineStruct([
   ["lineCount", "u32"],
   ["maxWidth", "u32"],
+])
+
+export const CursorStateStruct = defineStruct([
+  ["x", "u32"],
+  ["y", "u32"],
+  ["visible", "bool_u8"],
+  ["style", "u8"],
+  ["blinking", "bool_u8"],
+  ["r", "f32"],
+  ["g", "f32"],
+  ["b", "f32"],
+  ["a", "f32"],
 ])

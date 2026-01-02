@@ -288,6 +288,24 @@ fn checkEnvironmentOverrides(self: *Terminal) void {
     if (env_map.get("OPENTUI_FORCE_UNICODE")) |_| {
         self.caps.unicode = .unicode;
     }
+
+    // Enable hyperlinks for modern terminals that support them
+    // Most terminals with RGB color support also support OSC 8 hyperlinks
+    if (self.caps.rgb) {
+        self.caps.hyperlinks = true;
+    }
+
+    // Explicitly enable for known terminals
+    if (env_map.get("TERM")) |term| {
+        if (std.mem.indexOf(u8, term, "ghostty") != null or
+            std.mem.indexOf(u8, term, "kitty") != null or
+            std.mem.indexOf(u8, term, "wezterm") != null or
+            std.mem.indexOf(u8, term, "alacritty") != null or
+            std.mem.indexOf(u8, term, "iterm") != null)
+        {
+            self.caps.hyperlinks = true;
+        }
+    }
 }
 
 // TODO: Allow pixel mouse mode to be enabled,

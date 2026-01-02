@@ -17,6 +17,7 @@ import {
   BoldSpanRenderable,
   ItalicSpanRenderable,
   LineBreakRenderable,
+  LinkRenderable,
   SpanRenderable,
   UnderlineSpanRenderable,
 } from "./text"
@@ -43,6 +44,7 @@ export const baseComponents = {
   i: ItalicSpanRenderable,
   em: ItalicSpanRenderable,
   u: UnderlineSpanRenderable,
+  a: LinkRenderable,
 }
 
 type ComponentCatalogue = Record<string, RenderableConstructor>

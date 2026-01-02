@@ -125,6 +125,10 @@ export type SpanProps = ComponentProps<TextNodeOptions, TextNodeRenderable> & {
   children?: TextChildren
 }
 
+export type LinkProps = SpanProps & {
+  href: string
+}
+
 export type LineBreakProps = Pick<SpanProps, "id">
 
 export type BoxProps = ComponentProps<ContainerProps<BoxOptions>, BoxRenderable>
