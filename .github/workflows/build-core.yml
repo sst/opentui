@@ -35,3 +35,20 @@ jobs:
         run: |
           cd packages/core
           bun run test
+
+  # Test native Windows build to see the actual error
+  build-windows-native:
+    name: Windows - Native Zig Build Test
+    runs-on: windows-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Zig
+        uses: goto-bus-stop/setup-zig@v2
+        with:
+          version: 0.15.2
+
+      - name: Build native with Zig (Windows)
+        working-directory: packages/core/src/zig
+        run: zig build -Doptimize=ReleaseFast
