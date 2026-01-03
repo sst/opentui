@@ -29,9 +29,12 @@ jobs:
       - name: Install dependencies
         run: bun install
 
+      # Workaround for Zig 0.15.2 bug on Windows (https://github.com/ziglang/zig/issues/25805)
+      # When cwd and cache path are on different drives, build fails
+      # Setting cache dir explicitly to be on the same drive as the source
       - name: Build native with Zig (Windows only)
         working-directory: packages/core/src/zig
-        run: zig build -Doptimize=ReleaseFast
+        run: zig build -Doptimize=ReleaseFast --cache-dir .zig-cache --global-cache-dir .zig-cache
 
       - name: Copy native binaries to node_modules
         working-directory: packages/core
@@ -49,7 +52,7 @@ jobs:
 
       - name: Run native tests
         working-directory: packages/core/src/zig
-        run: zig build test --summary all
+        run: zig build test --summary all --cache-dir .zig-cache --global-cache-dir .zig-cache
 
       - name: Build lib
         working-directory: packages/core
