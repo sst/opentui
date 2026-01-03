@@ -76,34 +76,25 @@ jobs:
         run: bun install
 
       - name: Setup cross-compiled binaries
-        shell: pwsh
+        shell: bash
         run: |
           # Create the target directory
-          $targetDir = "packages/core/node_modules/@opentui/core-win32-x64"
-          New-Item -ItemType Directory -Force -Path $targetDir
+          targetDir="packages/core/node_modules/@opentui/core-win32-x64"
+          mkdir -p "$targetDir"
           
           # Copy the cross-compiled DLL
-          Copy-Item "artifacts/opentui.dll" -Destination $targetDir
+          cp artifacts/opentui.dll "$targetDir/"
           
           # Create index.ts that exports the path to the DLL
-          @"
-const module = await import("./opentui.dll", { with: { type: "file" } })
-const path = module.default
-export default path;
-"@ | Set-Content -Path "$targetDir/index.ts"
+          echo 'const module = await import("./opentui.dll", { with: { type: "file" } })' > "$targetDir/index.ts"
+          echo 'const path = module.default' >> "$targetDir/index.ts"
+          echo 'export default path;' >> "$targetDir/index.ts"
           
-          # Create package.json
-          @"
-{
-  "name": "@opentui/core-win32-x64",
-  "version": "0.0.0",
-  "main": "index.ts",
-  "types": "index.ts"
-}
-"@ | Set-Content -Path "$targetDir/package.json"
+          # Create package.json  
+          echo '{"name":"@opentui/core-win32-x64","version":"0.0.0","main":"index.ts","types":"index.ts"}' > "$targetDir/package.json"
           
-          Write-Host "Cross-compiled binary placed at:"
-          Get-ChildItem $targetDir
+          echo "Cross-compiled binary placed at:"
+          ls -la "$targetDir"
 
       - name: Build lib (uses cross-compiled binary)
         working-directory: packages/core
