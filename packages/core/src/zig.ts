@@ -60,6 +60,12 @@ registerEnvVar({
   type: "boolean",
   default: false,
 })
+registerEnvVar({
+  name: "OPENTUI_NO_GRAPHICS",
+  description: "Disable Kitty graphics protocol detection",
+  type: "boolean",
+  default: false,
+})
 
 // Global singleton state for FFI tracing to prevent duplicate exit handlers
 let globalTraceSymbols: Record<string, number[]> | null = null
