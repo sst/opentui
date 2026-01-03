@@ -9,121 +9,12 @@ env:
   ZIG_VERSION: 0.15.2
 
 jobs:
-  build-native-windows:
-    name: Windows - Native Build and Test
-    runs-on: windows-latest
-    steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
-
-      - name: Setup Bun
-        uses: oven-sh/setup-bun@v2
-        with:
-          bun-version: latest
-
-      - name: Setup Zig
-        uses: goto-bus-stop/setup-zig@v2
-        with:
-          version: ${{ env.ZIG_VERSION }}
-
-      - name: Install dependencies
-        run: bun install
-
-      # Workaround for Zig 0.15.2 bug on Windows (https://github.com/ziglang/zig/issues/25805)
-      # When cwd and cache path are on different drives, build fails
-      # Setting cache dir explicitly to be on the same drive as the source
-      - name: Build native with Zig (Windows only)
-        working-directory: packages/core/src/zig
-        run: zig build -Doptimize=ReleaseFast --cache-dir .zig-cache --global-cache-dir .zig-cache
-
-      - name: Copy native binaries to node_modules
-        working-directory: packages/core
-        run: bun scripts/build.ts --native --skip-zig-build
-
-      - name: Verify Windows binary exists
-        run: |
-          if (!(Test-Path "packages/core/node_modules/@opentui/core-win32-x64/opentui.dll")) {
-            Write-Error "Windows x64 binary missing!"
-            exit 1
-          }
-          Write-Host "Windows x64 binary exists"
-          Get-ChildItem "packages/core/node_modules/@opentui/core-win32-x64/"
-        shell: pwsh
-
-      - name: Run native tests
-        working-directory: packages/core/src/zig
-        run: zig build test --summary all --cache-dir .zig-cache --global-cache-dir .zig-cache
-
-      - name: Build lib
-        working-directory: packages/core
-        run: bun run build:lib
-
-      - name: Run JS tests
-        working-directory: packages/core
-        run: bun run test:js
-
-  test-cross-compiled-on-windows:
-    name: Windows - Test macOS Cross-Compiled Binaries
-    runs-on: windows-latest
-    needs: build-on-macos
-    steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
-
-      - name: Setup Bun
-        uses: oven-sh/setup-bun@v2
-        with:
-          bun-version: latest
-
-      - name: Download cross-compiled Windows binaries
-        uses: actions/download-artifact@v4
-        with:
-          name: windows-binaries-cross-compiled
-          path: artifacts/
-
-      - name: Install dependencies
-        run: bun install
-
-      - name: Extract and place cross-compiled binaries
-        run: |
-          # Create the target directory
-          $targetDir = "packages/core/node_modules/@opentui/core-win32-x64"
-          New-Item -ItemType Directory -Force -Path $targetDir
-          
-          # Copy the cross-compiled DLL
-          Copy-Item "artifacts/opentui.dll" -Destination $targetDir
-          
-          # Create index.ts that exports the path to the DLL
-          $indexContent = @"
-const module = await import("./opentui.dll", { with: { type: "file" } })
-const path = module.default
-export default path;
-"@
-          Set-Content -Path "$targetDir/index.ts" -Value $indexContent
-          
-          # Create package.json
-          $packageJson = @"
-{
-  "name": "@opentui/core-win32-x64",
-  "version": "0.0.0",
-  "main": "index.ts",
-  "types": "index.ts"
-}
-"@
-          Set-Content -Path "$targetDir/package.json" -Value $packageJson
-          
-          Write-Host "Cross-compiled binary placed at:"
-          Get-ChildItem $targetDir
-        shell: pwsh
-
-      - name: Build lib (uses cross-compiled binary)
-        working-directory: packages/core
-        run: bun run build:lib
-
-      - name: Run JS tests with cross-compiled binary
-        working-directory: packages/core
-        run: bun run test:js
-
+  # NOTE: Native Windows builds are disabled due to Zig 0.15.2 bugs on Windows:
+  # - https://github.com/ziglang/zig/issues/25805 (path handling on different drives)
+  # - ftruncate issues with ghostty code generators
+  # These should be fixed in Zig 0.16.0
+  # For now, we cross-compile from macOS and test on Windows
+  
   build-on-macos:
     name: macOS - Cross-compile for Windows
     runs-on: macos-latest
@@ -161,3 +52,63 @@ export default path;
           path: artifacts/opentui.dll
           if-no-files-found: error
           retention-days: 1
+
+  test-cross-compiled-on-windows:
+    name: Windows - Test macOS Cross-Compiled Binaries
+    runs-on: windows-latest
+    needs: build-on-macos
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+
+      - name: Download cross-compiled Windows binaries
+        uses: actions/download-artifact@v4
+        with:
+          name: windows-binaries-cross-compiled
+          path: artifacts/
+
+      - name: Install dependencies
+        run: bun install
+
+      - name: Setup cross-compiled binaries
+        shell: pwsh
+        run: |
+          # Create the target directory
+          $targetDir = "packages/core/node_modules/@opentui/core-win32-x64"
+          New-Item -ItemType Directory -Force -Path $targetDir
+          
+          # Copy the cross-compiled DLL
+          Copy-Item "artifacts/opentui.dll" -Destination $targetDir
+          
+          # Create index.ts that exports the path to the DLL
+          @"
+const module = await import("./opentui.dll", { with: { type: "file" } })
+const path = module.default
+export default path;
+"@ | Set-Content -Path "$targetDir/index.ts"
+          
+          # Create package.json
+          @"
+{
+  "name": "@opentui/core-win32-x64",
+  "version": "0.0.0",
+  "main": "index.ts",
+  "types": "index.ts"
+}
+"@ | Set-Content -Path "$targetDir/package.json"
+          
+          Write-Host "Cross-compiled binary placed at:"
+          Get-ChildItem $targetDir
+
+      - name: Build lib (uses cross-compiled binary)
+        working-directory: packages/core
+        run: bun run build:lib
+
+      - name: Run JS tests with cross-compiled binary
+        working-directory: packages/core
+        run: bun run test:js
