@@ -9,15 +9,9 @@ env:
   ZIG_VERSION: 0.15.2
 
 jobs:
-  # NOTE: Native Windows builds are disabled due to Zig 0.15.2 bugs on Windows:
-  # - https://github.com/ziglang/zig/issues/25805 (path handling on different drives)
-  # - ftruncate issues with ghostty code generators
-  # These should be fixed in Zig 0.16.0
-  # For now, we cross-compile from macOS and test on Windows
-  
-  build-on-macos:
-    name: macOS - Cross-compile for Windows
-    runs-on: macos-latest
+  build-native-windows:
+    name: Windows - Native Build and Test
+    runs-on: windows-latest
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
@@ -35,23 +29,35 @@ jobs:
       - name: Install dependencies
         run: bun install
 
-      - name: Build for Windows (cross-compile)
-        working-directory: packages/core/src/zig
-        run: zig build -Dtarget=x86_64-windows-gnu -Doptimize=ReleaseFast
-
-      - name: Package Windows binaries
+      - name: Build native (Windows only)
         run: |
-          mkdir -p artifacts
-          cp packages/core/src/zig/lib/x86_64-windows/opentui.dll artifacts/
-          ls -la artifacts/
+          cd packages/core
+          bun run build:native
 
-      - name: Upload cross-compiled Windows binaries
-        uses: actions/upload-artifact@v4
-        with:
-          name: windows-binaries-cross-compiled
-          path: artifacts/opentui.dll
-          if-no-files-found: error
-          retention-days: 1
+      - name: Verify Windows binary exists
+        run: |
+          if (!(Test-Path "packages/core/node_modules/@opentui/core-win32-x64/opentui.dll")) {
+            Write-Error "Windows x64 binary missing!"
+            exit 1
+          }
+          Write-Host "Windows x64 binary exists"
+          Get-ChildItem "packages/core/node_modules/@opentui/core-win32-x64/"
+        shell: pwsh
+
+      - name: Run native tests
+        run: |
+          cd packages/core
+          bun run test:native
+
+      - name: Build lib
+        run: |
+          cd packages/core
+          bun run build:lib
+
+      - name: Run JS tests
+        run: |
+          cd packages/core
+          bun run test:js
 
   test-cross-compiled-on-windows:
     name: Windows - Test macOS Cross-Compiled Binaries
@@ -75,31 +81,64 @@ jobs:
       - name: Install dependencies
         run: bun install
 
-      - name: Setup cross-compiled binaries
-        shell: bash
+      - name: Extract and place cross-compiled binaries
         run: |
           # Create the target directory
-          targetDir="packages/core/node_modules/@opentui/core-win32-x64"
-          mkdir -p "$targetDir"
+          $targetDir = "packages/core/node_modules/@opentui/core-win32-x64"
+          New-Item -ItemType Directory -Force -Path $targetDir
           
           # Copy the cross-compiled DLL
-          cp artifacts/opentui.dll "$targetDir/"
+          Copy-Item "artifacts/opentui.dll" -Destination $targetDir
           
-          # Create index.ts that exports the path to the DLL
-          echo 'const module = await import("./opentui.dll", { with: { type: "file" } })' > "$targetDir/index.ts"
-          echo 'const path = module.default' >> "$targetDir/index.ts"
-          echo 'export default path;' >> "$targetDir/index.ts"
-          
-          # Create package.json  
-          echo '{"name":"@opentui/core-win32-x64","version":"0.0.0","main":"index.ts","types":"index.ts"}' > "$targetDir/package.json"
-          
-          echo "Cross-compiled binary placed at:"
-          ls -la "$targetDir"
+          Write-Host "Cross-compiled binary placed at:"
+          Get-ChildItem $targetDir
+        shell: pwsh
 
       - name: Build lib (uses cross-compiled binary)
-        working-directory: packages/core
-        run: bun run build:lib
+        run: |
+          cd packages/core
+          bun run build:lib
 
       - name: Run JS tests with cross-compiled binary
-        working-directory: packages/core
-        run: bun run test:js
+        run: |
+          cd packages/core
+          bun run test:js
+
+  build-on-macos:
+    name: macOS - Cross-compile for Windows
+    runs-on: macos-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+
+      - name: Setup Zig
+        uses: goto-bus-stop/setup-zig@v2
+        with:
+          version: ${{ env.ZIG_VERSION }}
+
+      - name: Install dependencies
+        run: bun install
+
+      - name: Build for Windows (cross-compile)
+        run: |
+          cd packages/core/src/zig
+          zig build -Dtarget=x86_64-windows-gnu -Doptimize=ReleaseFast
+
+      - name: Package Windows binaries
+        run: |
+          mkdir -p artifacts
+          cp packages/core/src/zig/lib/x86_64-windows/opentui.dll artifacts/
+          ls -la artifacts/
+
+      - name: Upload cross-compiled Windows binaries
+        uses: actions/upload-artifact@v4
+        with:
+          name: windows-binaries-cross-compiled
+          path: artifacts/opentui.dll
+          if-no-files-found: error
+          retention-days: 1
