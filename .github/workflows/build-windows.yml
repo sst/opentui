@@ -93,6 +93,25 @@ jobs:
           # Copy the cross-compiled DLL
           Copy-Item "artifacts/opentui.dll" -Destination $targetDir
           
+          # Create index.ts that exports the path to the DLL
+          $indexContent = @"
+const module = await import("./opentui.dll", { with: { type: "file" } })
+const path = module.default
+export default path;
+"@
+          Set-Content -Path "$targetDir/index.ts" -Value $indexContent
+          
+          # Create package.json
+          $packageJson = @"
+{
+  "name": "@opentui/core-win32-x64",
+  "version": "0.0.0",
+  "main": "index.ts",
+  "types": "index.ts"
+}
+"@
+          Set-Content -Path "$targetDir/package.json" -Value $packageJson
+          
           Write-Host "Cross-compiled binary placed at:"
           Get-ChildItem $targetDir
         shell: pwsh
