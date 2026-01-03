@@ -61,7 +61,9 @@ pub fn formatBytes(bytes: usize) struct { value: f64, unit: []const u8 } {
 pub fn printResults(writer: anytype, results: []const BenchResult) !void {
     if (results.len == 0) return;
 
-    var arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
+    var gpa = std.heap.GeneralPurposeAllocator(.{}){};
+    defer _ = gpa.deinit();
+    var arena = std.heap.ArenaAllocator.init(gpa.allocator());
     defer arena.deinit();
     const allocator = arena.allocator();
 

@@ -223,7 +223,9 @@ pub fn enableDetectedFeatures(self: *Terminal, tty: anytype, use_kitty_keyboard:
 }
 
 fn checkEnvironmentOverrides(self: *Terminal) void {
-    var env_map = std.process.getEnvMap(std.heap.page_allocator) catch return;
+    var gpa = std.heap.GeneralPurposeAllocator(.{}){};
+    defer _ = gpa.deinit();
+    var env_map = std.process.getEnvMap(gpa.allocator()) catch return;
     defer env_map.deinit();
 
     // Always just try to enable bracketed paste, even if it was reported as not supported
