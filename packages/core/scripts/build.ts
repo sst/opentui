@@ -41,6 +41,7 @@ const buildLib = args.find((arg) => arg === "--lib")
 const buildNative = args.find((arg) => arg === "--native")
 const isDev = args.includes("--dev")
 const buildAll = args.includes("--all") // Build for all platforms (requires macOS or cross-compilation setup)
+const skipZigBuild = args.includes("--skip-zig-build") // Skip zig build, just copy existing binaries
 
 const variants: Variant[] = [
   { platform: "darwin", arch: "x64" },
@@ -79,26 +80,30 @@ if (missingRequired.length > 0) {
 }
 
 if (buildNative) {
-  console.log(`Building native ${isDev ? "dev" : "prod"} binaries${buildAll ? " for all platforms" : ""}...`)
+  if (skipZigBuild) {
+    console.log("Skipping zig build, copying existing binaries...")
+  } else {
+    console.log(`Building native ${isDev ? "dev" : "prod"} binaries${buildAll ? " for all platforms" : ""}...`)
 
-  const zigArgs = ["build", `-Doptimize=${isDev ? "Debug" : "ReleaseFast"}`]
-  if (buildAll) {
-    zigArgs.push("-Dall")
-  }
+    const zigArgs = ["build", `-Doptimize=${isDev ? "Debug" : "ReleaseFast"}`]
+    if (buildAll) {
+      zigArgs.push("-Dall")
+    }
 
-  const zigBuild: SpawnSyncReturns<Buffer> = spawnSync("zig", zigArgs, {
-    cwd: join(rootDir, "src", "zig"),
-    stdio: "inherit",
-  })
+    const zigBuild: SpawnSyncReturns<Buffer> = spawnSync("zig", zigArgs, {
+      cwd: join(rootDir, "src", "zig"),
+      stdio: "inherit",
+    })
 
-  if (zigBuild.error) {
-    console.error("Error: Zig is not installed or not in PATH")
-    process.exit(1)
-  }
+    if (zigBuild.error) {
+      console.error("Error: Zig is not installed or not in PATH")
+      process.exit(1)
+    }
 
-  if (zigBuild.status !== 0) {
-    console.error("Error: Zig build failed")
-    process.exit(1)
+    if (zigBuild.status !== 0) {
+      console.error("Error: Zig build failed")
+      process.exit(1)
+    }
   }
 
   for (const { platform, arch } of variants) {

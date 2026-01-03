@@ -29,10 +29,13 @@ jobs:
       - name: Install dependencies
         run: bun install
 
-      - name: Build native (Windows only)
-        run: |
-          cd packages/core
-          bun run build:native
+      - name: Build native with Zig (Windows only)
+        working-directory: packages/core/src/zig
+        run: zig build -Doptimize=ReleaseFast
+
+      - name: Copy native binaries to node_modules
+        working-directory: packages/core
+        run: bun scripts/build.ts --native --skip-zig-build
 
       - name: Verify Windows binary exists
         run: |
@@ -45,19 +48,16 @@ jobs:
         shell: pwsh
 
       - name: Run native tests
-        run: |
-          cd packages/core
-          bun run test:native
+        working-directory: packages/core/src/zig
+        run: zig build test --summary all
 
       - name: Build lib
-        run: |
-          cd packages/core
-          bun run build:lib
+        working-directory: packages/core
+        run: bun run build:lib
 
       - name: Run JS tests
-        run: |
-          cd packages/core
-          bun run test:js
+        working-directory: packages/core
+        run: bun run test:js
 
   test-cross-compiled-on-windows:
     name: Windows - Test macOS Cross-Compiled Binaries
@@ -95,14 +95,12 @@ jobs:
         shell: pwsh
 
       - name: Build lib (uses cross-compiled binary)
-        run: |
-          cd packages/core
-          bun run build:lib
+        working-directory: packages/core
+        run: bun run build:lib
 
       - name: Run JS tests with cross-compiled binary
-        run: |
-          cd packages/core
-          bun run test:js
+        working-directory: packages/core
+        run: bun run test:js
 
   build-on-macos:
     name: macOS - Cross-compile for Windows
@@ -125,9 +123,8 @@ jobs:
         run: bun install
 
       - name: Build for Windows (cross-compile)
-        run: |
-          cd packages/core/src/zig
-          zig build -Dtarget=x86_64-windows-gnu -Doptimize=ReleaseFast
+        working-directory: packages/core/src/zig
+        run: zig build -Dtarget=x86_64-windows-gnu -Doptimize=ReleaseFast
 
       - name: Package Windows binaries
         run: |
