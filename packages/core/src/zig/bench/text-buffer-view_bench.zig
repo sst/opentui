@@ -86,8 +86,6 @@ pub fn generateLargeTextSingleLine(allocator: std.mem.Allocator, target_bytes: u
 fn benchSetText(
     allocator: std.mem.Allocator,
     pool: *gp.GraphemePool,
-    
-    
     iterations: usize,
     show_mem: bool,
 ) ![]BenchResult {
@@ -202,8 +200,6 @@ fn benchSetText(
 fn benchWrap(
     allocator: std.mem.Allocator,
     pool: *gp.GraphemePool,
-    
-    
     text: []const u8,
     wrap_width: u32,
     wrap_mode: WrapMode,
@@ -260,6 +256,85 @@ fn benchWrap(
     };
 }
 
+fn benchMeasureForDimensions(
+    allocator: std.mem.Allocator,
+    pool: *gp.GraphemePool,
+    text: []const u8,
+    streaming: bool,
+    iterations: usize,
+    show_mem: bool,
+) !BenchData {
+    const steps: usize = 200;
+    const wrap_width: u32 = 80;
+
+    var min_ns: u64 = std.math.maxInt(u64);
+    var max_ns: u64 = 0;
+    var total_ns: u64 = 0;
+    var final_tb_mem: usize = 0;
+    var final_view_mem: usize = 0;
+
+    const token = "token ";
+    const newline = "\n";
+    const newline_stride: usize = 20;
+
+    var i: usize = 0;
+    while (i < iterations) : (i += 1) {
+        var tb = try UnifiedTextBuffer.init(allocator, pool, .unicode);
+        defer tb.deinit();
+
+        try tb.setText(text);
+
+        var view = try UnifiedTextBufferView.init(allocator, tb);
+        defer view.deinit();
+
+        view.setWrapMode(.word);
+
+        var token_mem_id: u8 = 0;
+        var newline_mem_id: u8 = 0;
+        if (streaming) {
+            token_mem_id = try tb.registerMemBuffer(token, false);
+            newline_mem_id = try tb.registerMemBuffer(newline, false);
+        }
+
+        var timer = try std.time.Timer.start();
+        var step: usize = 0;
+        while (step < steps) : (step += 1) {
+            _ = try view.measureForDimensions(wrap_width, 24);
+            if (streaming) {
+                try tb.appendFromMemId(token_mem_id);
+                if ((step + 1) % newline_stride == 0) {
+                    try tb.appendFromMemId(newline_mem_id);
+                }
+            }
+        }
+        const elapsed = timer.read();
+
+        min_ns = @min(min_ns, elapsed);
+        max_ns = @max(max_ns, elapsed);
+        total_ns += elapsed;
+
+        if (i == iterations - 1 and show_mem) {
+            final_tb_mem = tb.getArenaAllocatedBytes();
+            final_view_mem = view.getArenaAllocatedBytes();
+        }
+    }
+
+    const mem_stats: ?[]const MemStat = if (show_mem) blk: {
+        const stats = try allocator.alloc(MemStat, 2);
+        stats[0] = .{ .name = "TB", .bytes = final_tb_mem };
+        stats[1] = .{ .name = "View", .bytes = final_view_mem };
+        break :blk stats;
+    } else null;
+
+    return .{
+        .min_ns = min_ns,
+        .avg_ns = total_ns / iterations,
+        .max_ns = max_ns,
+        .total_ns = total_ns,
+        .mem = mem_stats,
+    };
+}
+
 pub fn run(
     allocator: std.mem.Allocator,
     show_mem: bool,
@@ -268,8 +343,6 @@ pub fn run(
 
     // Global pool and unicode data are initialized once in bench.zig
     const pool = gp.initGlobalPool(allocator);
-    
-    
 
     if (show_mem) {
         try stdout.print("Memory stats enabled\n", .{});
@@ -304,6 +377,36 @@ pub fn run(
 
     try stdout.print("Generated {d:.2} MiB multiline text ({d} lines)\n", .{ text_mb_multi, line_count_multi });
     try stdout.print("Generated {d:.2} MiB single-line text\n", .{text_mb_single});
+
+    // Run measureForDimensions benchmarks
+    for ([_]bool{ false, true }) |streaming| {
+        const label = if (streaming) "streaming" else "static";
+        const bench_name = try std.fmt.allocPrint(
+            allocator,
+            "TextBufferView measureForDimensions ({s}, {d:.2} MiB)",
+            .{ label, text_mb_multi },
+        );
+        errdefer allocator.free(bench_name);
+
+        const bench_data = try benchMeasureForDimensions(
+            allocator,
+            pool,
+            text_multiline,
+            streaming,
+            iterations,
+            show_mem,
+        );
+
+        try all_results.append(BenchResult{
+            .name = bench_name,
+            .min_ns = bench_data.min_ns,
+            .avg_ns = bench_data.avg_ns,
+            .max_ns = bench_data.max_ns,
+            .total_ns = bench_data.total_ns,
+            .iterations = iterations,
+            .mem_stats = bench_data.mem,
+        });
+    }
 
     // Test wrapping scenarios
     const scenarios = [_]struct {
