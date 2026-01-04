@@ -3637,3 +3637,163 @@ test "findGraphemeInfo: comprehensive multilingual text" {
     const final_computed_width = utf8.calculateTextWidth(text, 4, false, .unicode);
     try testing.expectEqual(expected_width, final_computed_width);
 }
+
+// ============================================================================
+// FIND WORD WRAP POSITION TESTS
+// ============================================================================
+
+test "findWordWrapPosition: empty text" {
+    const result = utf8.findWordWrapPosition("", 80, 4, false, .unicode);
+    try testing.expect(!result.found);
+    try testing.expectEqual(@as(u32, 0), result.width_to_boundary);
+    try testing.expectEqual(@as(u32, 0), result.byte_offset);
+}
+
+test "findWordWrapPosition: zero max_width" {
+    const result = utf8.findWordWrapPosition("hello world", 0, 4, false, .unicode);
+    try testing.expect(!result.found);
+}
+
+test "findWordWrapPosition: basic word boundary (ASCII)" {
+    const result = utf8.findWordWrapPosition("hello world", 10, 4, false, .unicode);
+    try testing.expect(result.found);
+    // "hello " is 6 chars, boundary is after space at position 5
+    try testing.expectEqual(@as(u32, 6), result.width_to_boundary);
+    try testing.expectEqual(@as(u32, 5), result.byte_offset);
+}
+
+test "findWordWrapPosition: no boundary within width" {
+    const result = utf8.findWordWrapPosition("verylongword", 8, 4, false, .unicode);
+    try testing.expect(!result.found);
+}
+
+test "findWordWrapPosition: boundary at exact width" {
+    const result = utf8.findWordWrapPosition("hello world", 6, 4, false, .unicode);
+    try testing.expect(result.found);
+    // "hello " is exactly 6 chars
+    try testing.expectEqual(@as(u32, 6), result.width_to_boundary);
+    try testing.expectEqual(@as(u32, 5), result.byte_offset);
+}
+
+test "findWordWrapPosition: multiple boundaries selects last fitting" {
+    const result = utf8.findWordWrapPosition("a b c d e", 7, 4, false, .unicode);
+    try testing.expect(result.found);
+    // "a b c " is 6 chars, last boundary that fits in width 7
+    try testing.expectEqual(@as(u32, 6), result.width_to_boundary);
+}
+
+test "findWordWrapPosition: dash boundary" {
+    const result = utf8.findWordWrapPosition("pre-post", 10, 4, false, .unicode);
+    try testing.expect(result.found);
+    // "pre-" is 4 chars
+    try testing.expectEqual(@as(u32, 4), result.width_to_boundary);
+    try testing.expectEqual(@as(u32, 3), result.byte_offset);
+}
+
+test "findWordWrapPosition: tab width expansion" {
+    const result = utf8.findWordWrapPosition("a\tb", 10, 4, false, .unicode);
+    try testing.expect(result.found);
+    // "a\t" with tab_width=4: 'a'=1, '\t'=4 (always tab_width), total=5
+    try testing.expectEqual(@as(u32, 5), result.width_to_boundary);
+    try testing.expectEqual(@as(u32, 1), result.byte_offset);
+}
+
+test "findWordWrapPosition: zero width space (U+200B)" {
+    const result = utf8.findWordWrapPosition("a\u{200B}b", 10, 4, false, .unicode);
+    try testing.expect(result.found);
+    // "a" + ZWSP = 1 char (ZWSP is zero-width but is a boundary)
+    try testing.expectEqual(@as(u32, 1), result.width_to_boundary);
+    try testing.expectEqual(@as(u32, 1), result.byte_offset);
+}
+
+test "findWordWrapPosition: ZWSP at start returns zero width boundary" {
+    // Edge case: ZWSP at position 0 returns width_to_boundary=0, which can stall callers
+    const result = utf8.findWordWrapPosition("\u{200B}text", 10, 4, false, .unicode);
+    try testing.expect(result.found);
+    // ZWSP at start: width_to_boundary = 0 (zero-width char is boundary)
+    try testing.expectEqual(@as(u32, 0), result.width_to_boundary);
+    try testing.expectEqual(@as(u32, 0), result.byte_offset);
+}
+
+test "findWordWrapPosition: soft hyphen (U+00AD)" {
+    const result = utf8.findWordWrapPosition("pre\u{00AD}post", 10, 4, false, .unicode);
+    try testing.expect(result.found);
+    // "pre" + soft hyphen = 4 chars (soft hyphen has width 1 in charWidth)
+    try testing.expectEqual(@as(u32, 4), result.width_to_boundary);
+}
+
+test "findWordWrapPosition: unicode space (em space U+2003)" {
+    const result = utf8.findWordWrapPosition("a\u{2003}b", 10, 4, false, .unicode);
+    try testing.expect(result.found);
+    // "a" + em space = 2 chars
+    try testing.expectEqual(@as(u32, 2), result.width_to_boundary);
+}
+
+test "findWordWrapPosition: CJK text with ideographic space" {
+    const result = utf8.findWordWrapPosition("漢\u{3000}字", 10, 4, false, .unicode);
+    try testing.expect(result.found);
+    // 漢 is 2 wide, ideographic space is 2 wide = 4 total
+    try testing.expectEqual(@as(u32, 4), result.width_to_boundary);
+}
+
+test "findWordWrapPosition: width truncation" {
+    // Stop scanning at max_width even if text continues
+    const result = utf8.findWordWrapPosition("hello world this is long", 5, 4, false, .unicode);
+    try testing.expect(!result.found);
+    // "hello" is 5 chars, no boundary within first 5 chars (space is at 6)
+}
+
+test "findWordWrapPosition: multiple consecutive spaces" {
+    const result = utf8.findWordWrapPosition("a  b", 3, 4, false, .unicode);
+    try testing.expect(result.found);
+    // "a  " is 3 chars (both spaces are boundaries), last boundary at column 3
+    try testing.expectEqual(@as(u32, 3), result.width_to_boundary);
+}
+
+test "findWordWrapPosition: only spaces" {
+    const result = utf8.findWordWrapPosition("   ", 10, 4, false, .unicode);
+    try testing.expect(result.found);
+    // Last space boundary
+    try testing.expectEqual(@as(u32, 3), result.width_to_boundary);
+}
+
+test "findWordWrapPosition: unicode grapheme cluster preserved" {
+    // café with combining acute (U+0301)
+    const result = utf8.findWordWrapPosition("caf\u{0065}\u{0301} test", 10, 4, false, .unicode);
+    try testing.expect(result.found);
+    // "café " is 5 visual chars (e + combining = 1 grapheme)
+    try testing.expectEqual(@as(u32, 5), result.width_to_boundary);
+}
+
+test "findWordWrapPosition: NBSP is a boundary" {
+    const result = utf8.findWordWrapPosition("a\u{00A0}b", 10, 4, false, .unicode);
+    try testing.expect(result.found);
+    // "a" + NBSP = 2 chars
+    try testing.expectEqual(@as(u32, 2), result.width_to_boundary);
+}
+
+test "findWordWrapPosition: punctuation boundaries" {
+    // Test comma boundary
+    const result = utf8.findWordWrapPosition("hello, world", 10, 4, false, .unicode);
+    try testing.expect(result.found);
+    // "hello," is 6 chars, then space at 7
+    try testing.expectEqual(@as(u32, 7), result.width_to_boundary);
+}
+
+test "findWordWrapPosition: ASCII fast path with is_ascii_only=true" {
+    // Pure ASCII with fast path enabled
+    const text = "The quick brown fox jumps over the lazy dog.";
+    const result = utf8.findWordWrapPosition(text, 20, 4, true, .unicode);
+    try testing.expect(result.found);
+    // "The quick brown fox " = 20 chars
+    try testing.expectEqual(@as(u32, 20), result.width_to_boundary);
+}
+
+test "findWordWrapPosition: ASCII fast path with is_ascii_only=false" {
+    // Unicode path on ASCII text should match the fast path result
+    const text = "The quick brown fox jumps over the lazy dog.";
+    const result = utf8.findWordWrapPosition(text, 20, 4, false, .unicode);
+    try testing.expect(result.found);
+    // Should give same result as fast path
+    try testing.expectEqual(@as(u32, 20), result.width_to_boundary);
+}

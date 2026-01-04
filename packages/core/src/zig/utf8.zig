@@ -178,7 +178,6 @@ inline fn isUnicodeWrapBreak(cp: u21) bool {
 // Nothing needed here - using uucode.grapheme.isBreak directly
 
 pub fn findWrapBreaks(text: []const u8, result: *WrapBreakResult, width_method: WidthMethod) !void {
-    _ = width_method; // Currently unused, but kept for API consistency
     result.reset();
     const vector_len = 16;
 
@@ -253,12 +252,8 @@ pub fn findWrapBreaks(text: []const u8, result: *WrapBreakResult, width_method: 
             if (b0 < 0x80) {
                 const curr_cp: u21 = b0;
 
-                // Check if this starts a new grapheme cluster
-                // Skip invalid/replacement codepoints or codepoints that might be outside the grapheme table range
-                const is_break = if (curr_cp == 0xFFFD or curr_cp > 0x10FFFF) true else if (prev_cp) |p| blk: {
-                    if (p == 0xFFFD or p > 0x10FFFF) break :blk true;
-                    break :blk uucode.grapheme.isBreak(p, curr_cp, &break_state);
-                } else true;
+                // Check if this starts a new grapheme cluster, using width_method-aware function
+                const is_break = isGraphemeBreak(prev_cp, curr_cp, &break_state, width_method);
 
                 if (isAsciiWrapBreak(b0)) {
                     try result.breaks.append(.{
@@ -275,12 +270,8 @@ pub fn findWrapBreaks(text: []const u8, result: *WrapBreakResult, width_method: 
                 const dec = decodeUtf8Unchecked(text, pos + i);
                 if (pos + i + dec.len > text.len) break;
 
-                // Check if this starts a new grapheme cluster
-                // Skip invalid/replacement codepoints or codepoints that might be outside the grapheme table range
-                const is_break = if (dec.cp == 0xFFFD or dec.cp > 0x10FFFF) true else if (prev_cp) |p| blk: {
-                    if (p == 0xFFFD or p > 0x10FFFF) break :blk true;
-                    break :blk uucode.grapheme.isBreak(p, dec.cp, &break_state);
-                } else true;
+                // Check if this starts a new grapheme cluster, using width_method-aware function
+                const is_break = isGraphemeBreak(prev_cp, dec.cp, &break_state, width_method);
 
                 if (isUnicodeWrapBreak(dec.cp)) {
                     try result.breaks.append(.{
@@ -304,10 +295,8 @@ pub fn findWrapBreaks(text: []const u8, result: *WrapBreakResult, width_method: 
         const b0 = text[i];
         if (b0 < 0x80) {
             const curr_cp: u21 = b0;
-            const is_break = if (prev_cp) |p| blk: {
-                if (p == 0xFFFD or p > 0x10FFFF) break :blk true;
-                break :blk uucode.grapheme.isBreak(p, curr_cp, &break_state);
-            } else true;
+            // Use width_method-aware grapheme break detection
+            const is_break = isGraphemeBreak(prev_cp, curr_cp, &break_state, width_method);
 
             if (isAsciiWrapBreak(b0)) {
                 try result.breaks.append(.{
@@ -324,10 +313,8 @@ pub fn findWrapBreaks(text: []const u8, result: *WrapBreakResult, width_method: 
             const dec = decodeUtf8Unchecked(text, i);
             if (i + dec.len > text.len) break;
 
-            const is_break = if (dec.cp == 0xFFFD or dec.cp > 0x10FFFF) true else if (prev_cp) |p| blk: {
-                if (p == 0xFFFD or p > 0x10FFFF) break :blk true;
-                break :blk uucode.grapheme.isBreak(p, dec.cp, &break_state);
-            } else true;
+            // Use width_method-aware grapheme break detection
+            const is_break = isGraphemeBreak(prev_cp, dec.cp, &break_state, width_method);
 
             if (isUnicodeWrapBreak(dec.cp)) {
                 try result.breaks.append(.{
@@ -342,6 +329,149 @@ pub fn findWrapBreaks(text: []const u8, result: *WrapBreakResult, width_method: 
             prev_cp = dec.cp;
         }
     }
+}
+
+/// Word boundary search result. Used by the streaming word wrap path.
+pub const WordWrapResult = struct {
+    /// Total columns from the start of text up to and including the boundary
+    /// character. For "hello world" with boundary at space, this is 6.
+    width_to_boundary: u32,
+
+    /// Byte position of the boundary character in the input slice.
+    byte_offset: u32,
+
+    /// True if a word boundary exists within max_width. When false, the caller
+    /// should fall back to character-based wrapping.
+    found: bool,
+};
+
+/// Streaming word wrap: find the last word boundary within max_width columns.
+///
+/// This function scans only up to max_width columns, then stops. Compare to
+/// getWrapOffsets(), which precomputes every word boundary in the text.
+///
+/// Why two approaches? For small chunks (<64KB), precomputing all boundaries
+/// pays off through cache locality. For large chunks (multi-MB minified JS),
+/// most boundaries go unused since we only need one per line. Streaming avoids
+/// allocating huge boundary arrays that we barely touch.
+///
+/// Example: For "hello world" with max_width=10, this returns the position
+/// after the space (column 6). That's the last place we can break.
+///
+/// Tradeoff: skips full grapheme clustering. Complex sequences (emoji with
+/// ZWJ, Indic scripts) may wrap at slightly different positions than the
+/// cached path. This only affects chunks >64KB that contain such sequences
+/// at wrap boundaries. Rare in practice.
+pub fn findWordWrapPosition(
+    text: []const u8,
+    max_width: u32,
+    tab_width: u8,
+    is_ascii_only: bool,
+    width_method: WidthMethod,
+) WordWrapResult {
+    if (text.len == 0 or max_width == 0) {
+        return .{ .width_to_boundary = 0, .byte_offset = 0, .found = false };
+    }
+
+    var pos: usize = 0;
+    var char_offset: u32 = 0;
+    var last_boundary_char_offset: ?u32 = null;
+    var last_boundary_byte_offset: u32 = 0;
+    var prev_cp: ?u21 = null;
+    var break_state: uucode.grapheme.BreakState = .default;
+
+    // ASCII fast path: one byte equals one column, except tabs expand to
+    // tab_width. Skip UTF-8 decoding when the chunk is pure ASCII.
+    if (is_ascii_only) {
+        while (pos < text.len) {
+            const b = text[pos];
+            const width = asciiCharWidth(b, tab_width);
+
+            // Stop before exceeding max_width. We want the last boundary that
+            // fits, not the first one past the limit.
+            if (char_offset + width > max_width) break;
+
+            // Record word boundaries as we pass them. Keep the last one that
+            // fits since we want to wrap as late as possible.
+            if (isAsciiWrapBreak(b)) {
+                last_boundary_char_offset = char_offset + width;
+                last_boundary_byte_offset = @intCast(pos);
+            }
+
+            char_offset += width;
+            pos += 1;
+        }
+
+        if (last_boundary_char_offset) |boundary_width| {
+            return .{
+                .width_to_boundary = boundary_width,
+                .byte_offset = last_boundary_byte_offset,
+                .found = true,
+            };
+        }
+        return .{ .width_to_boundary = 0, .byte_offset = 0, .found = false };
+    }
+
+    // Unicode path: decode UTF-8 and respect grapheme boundaries. We track
+    // grapheme state so that combining characters (accents, ZWJ sequences)
+    // stay attached to their base. Only complete graphemes count toward
+    // char_offset.
+    while (pos < text.len) {
+        const b0 = text[pos];
+
+        if (b0 < 0x80) {
+            // ASCII byte in mixed content. Still need grapheme state for
+            // sequences like "e" followed by combining acute.
+            const curr_cp: u21 = b0;
+            const width = asciiCharWidth(b0, tab_width);
+            const is_break = isGraphemeBreak(prev_cp, curr_cp, &break_state, width_method);
+
+            // Only check width limit at grapheme boundaries. Combining characters
+            // attach to the previous character without starting a new grapheme.
+            if (is_break) {
+                if (char_offset + width > max_width) break;
+            }
+
+            if (isAsciiWrapBreak(b0)) {
+                last_boundary_char_offset = char_offset + width;
+                last_boundary_byte_offset = @intCast(pos);
+            }
+
+            if (is_break) char_offset += width;
+            prev_cp = curr_cp;
+            pos += 1;
+        } else {
+            // Multi-byte UTF-8 codepoint.
+            const dec = decodeUtf8Unchecked(text, pos);
+            if (pos + dec.len > text.len) break;
+
+            const is_break = isGraphemeBreak(prev_cp, dec.cp, &break_state, width_method);
+            const cp_width: u32 = charWidth(b0, dec.cp, tab_width);
+
+            if (is_break) {
+                if (char_offset + cp_width > max_width) break;
+            }
+
+            // Check for Unicode word boundaries: spaces, soft hyphens, ZWSP.
+            if (isUnicodeWrapBreak(dec.cp)) {
+                last_boundary_char_offset = char_offset + cp_width;
+                last_boundary_byte_offset = @intCast(pos);
+            }
+
+            if (is_break) char_offset += cp_width;
+            prev_cp = dec.cp;
+            pos += dec.len;
+        }
+    }
+
+    if (last_boundary_char_offset) |boundary_width| {
+        return .{
+            .width_to_boundary = boundary_width,
+            .byte_offset = last_boundary_byte_offset,
+            .found = true,
+        };
+    }
+    return .{ .width_to_boundary = 0, .byte_offset = 0, .found = false };
 }
 
 pub fn findTabStops(text: []const u8, result: *TabStopResult) !void {

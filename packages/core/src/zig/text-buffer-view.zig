@@ -863,146 +863,342 @@ pub const UnifiedTextBufferView = struct {
 
                     if (wctx.wrap_mode == .word) {
                         const chunk_bytes = chunk.getBytes(&wctx.text_buffer.mem_registry);
-                        const wrap_offsets = chunk.getWrapOffsets(&wctx.text_buffer.mem_registry, wctx.text_buffer.allocator, wctx.text_buffer.width_method) catch &[_]utf8.WrapBreak{};
+                        const is_ascii_only = (chunk.flags & TextChunk.Flags.ASCII_ONLY) != 0;
 
-                        var char_offset: u32 = 0;
-                        var wrap_idx: usize = 0;
-                        while (char_offset < chunk.width) {
-                            const remaining_in_chunk = chunk.width - char_offset;
-                            const remaining_on_line = if (wctx.line_position < wctx.wrap_w) wctx.wrap_w - wctx.line_position else 0;
+                        // Hybrid word wrap strategy based on chunk size.
+                        //
+                        // Small chunks (<64KB): Precompute all word boundary positions once,
+                        // then look them up during wrapping. The upfront cost pays off
+                        // because sequential access is cache-friendly.
+                        //
+                        // Large chunks (>64KB): Scan for boundaries on demand, stopping as
+                        // soon as we find one that fits. For a 5MB minified JS file with
+                        // 80-column wrap, we scan about 80 chars per line instead of 5M
+                        // upfront. Memory drops from O(n) boundary array to O(1).
+                        //
+                        // The 64KB threshold (roughly 4000 words) is where streaming's
+                        // early-exit advantage outweighs caching's locality advantage.
+                        const streaming_threshold: u32 = 65536;
+                        const chunk_byte_len = chunk.byte_end - chunk.byte_start;
+                        const use_streaming = chunk_byte_len > streaming_threshold;
 
-                            var last_wrap_that_fits: ?u32 = null;
-                            var saved_wrap_idx = wrap_idx;
-                            while (wrap_idx < wrap_offsets.len) : (wrap_idx += 1) {
-                                const wrap_break = wrap_offsets[wrap_idx];
-                                const offset = @as(u32, wrap_break.char_offset);
-                                if (offset < char_offset) continue;
-                                const width_to_boundary = offset - char_offset + 1;
-                                if (width_to_boundary > remaining_on_line or width_to_boundary > remaining_in_chunk) break;
-                                last_wrap_that_fits = width_to_boundary;
-                                saved_wrap_idx = wrap_idx + 1;
-                            }
-                            wrap_idx = saved_wrap_idx;
+                        if (use_streaming) {
+                            // STREAMING PATH: process the chunk incrementally. For each
+                            // line, scan just enough text to find a word boundary within
+                            // the remaining line width.
+                            var char_offset: u32 = 0;
+                            var byte_offset: u32 = 0;
 
-                            var to_add: u32 = 0;
-                            var has_wrap_after: bool = false;
+                            while (char_offset < chunk.width) {
+                                const remaining_in_chunk = chunk.width - char_offset;
+                                const remaining_on_line = if (wctx.line_position < wctx.wrap_w) wctx.wrap_w - wctx.line_position else 0;
 
-                            if (remaining_in_chunk <= remaining_on_line) {
-                                if (last_wrap_that_fits) |boundary_w| {
-                                    const would_fill_line = wctx.line_position + remaining_in_chunk >= wctx.wrap_w;
-                                    if (would_fill_line and boundary_w < remaining_in_chunk) {
-                                        to_add = boundary_w;
-                                        has_wrap_after = true;
+                                // Scan for the last word boundary within available space.
+                                // scan_width limits how far we look. No need to check beyond
+                                // what fits on this line or remains in this chunk.
+                                const remaining_bytes = chunk_bytes[byte_offset..];
+                                const scan_width = @min(remaining_on_line, remaining_in_chunk);
+                                const wrap_result = utf8.findWordWrapPosition(
+                                    remaining_bytes,
+                                    scan_width,
+                                    wctx.text_buffer.tab_width,
+                                    is_ascii_only,
+                                    wctx.text_buffer.width_method,
+                                );
+
+                                var to_add: u32 = 0;
+                                var has_wrap_after: bool = false;
+                                var bytes_consumed: u32 = 0;
+
+                                if (remaining_in_chunk <= remaining_on_line) {
+                                    // Case 1: The rest of this chunk fits on the current line.
+                                    // Still track word boundaries for future backtracking. If
+                                    // the next chunk overflows with no boundary, we backtrack
+                                    // to a boundary recorded here.
+                                    //
+                                    // Ignore zero-width boundaries like ZWSP at position 0.
+                                    // They would cause infinite loops since to_add would be 0.
+                                    const has_usable_boundary = wrap_result.found and wrap_result.width_to_boundary > 0;
+                                    if (has_usable_boundary) {
+                                        const would_fill_line = wctx.line_position + remaining_in_chunk >= wctx.wrap_w;
+                                        if (would_fill_line and wrap_result.width_to_boundary < remaining_in_chunk) {
+                                            to_add = wrap_result.width_to_boundary;
+                                            has_wrap_after = true;
+                                        } else {
+                                            to_add = remaining_in_chunk;
+                                            bytes_consumed = @intCast(remaining_bytes.len);
+                                            has_wrap_after = true;
+                                        }
                                     } else {
                                         to_add = remaining_in_chunk;
-                                        has_wrap_after = true;
+                                        bytes_consumed = @intCast(remaining_bytes.len);
                                     }
-                                } else {
-                                    to_add = remaining_in_chunk;
-                                }
-                            } else if (last_wrap_that_fits) |boundary_w| {
-                                to_add = boundary_w;
-                                has_wrap_after = true;
-                            } else if (wctx.line_position == 0) {
-                                const is_ascii_only = (chunk.flags & TextChunk.Flags.ASCII_ONLY) != 0;
-                                var byte_offset: u32 = 0;
-                                if (char_offset > 0) {
-                                    const pos_result = utf8.findPosByWidth(chunk_bytes, char_offset, wctx.text_buffer.tab_width, is_ascii_only, false, wctx.text_buffer.width_method);
-                                    byte_offset = pos_result.byte_offset;
-                                }
-                                const remaining_bytes = chunk_bytes[byte_offset..];
-                                const wrap_result = utf8.findWrapPosByWidth(remaining_bytes, remaining_on_line, wctx.text_buffer.tab_width, is_ascii_only, wctx.text_buffer.width_method);
-                                to_add = wrap_result.columns_used;
-                                if (to_add == 0) to_add = 1;
-                            } else if (wctx.last_wrap_chunk_count > 0) {
-                                var accumulated_width: u32 = 0;
-                                for (wctx.current_vline.chunks.items[0..wctx.last_wrap_chunk_count]) |vchunk| {
-                                    accumulated_width += vchunk.width;
-                                }
+                                } else if (wrap_result.found) {
+                                    // Case 2: Found a word boundary. Wrap there.
+                                    to_add = wrap_result.width_to_boundary;
+                                    has_wrap_after = true;
 
-                                const chunks_after_wrap = wctx.current_vline.chunks.items[wctx.last_wrap_chunk_count..];
-                                var chunks_to_move_count = chunks_after_wrap.len;
-                                var split_chunk: ?VirtualChunk = null;
-
-                                if (accumulated_width > wctx.last_wrap_line_position) {
-                                    const last_chunk_idx = wctx.last_wrap_chunk_count - 1;
-                                    const last_chunk = wctx.current_vline.chunks.items[last_chunk_idx];
-                                    const overhang = accumulated_width - wctx.last_wrap_line_position;
-
-                                    split_chunk = VirtualChunk{
-                                        .grapheme_start = last_chunk.grapheme_start + last_chunk.width - overhang,
-                                        .width = overhang,
-                                        .chunk = last_chunk.chunk,
-                                    };
-
-                                    wctx.current_vline.chunks.items[last_chunk_idx].width -= overhang;
-
-                                    chunks_to_move_count += 1;
-                                }
-
-                                const saved_chunks_result = wctx.allocator.alloc(VirtualChunk, chunks_to_move_count);
-                                if (saved_chunks_result) |saved_chunks| {
-                                    var saved_idx: usize = 0;
-
-                                    if (split_chunk) |sc| {
-                                        saved_chunks[saved_idx] = sc;
-                                        saved_idx += 1;
+                                    // Edge case: Zero-Width Space (U+200B) at the start gives
+                                    // width_to_boundary = 0. Consume at least one character to
+                                    // make progress. Otherwise the loop runs forever.
+                                    if (to_add == 0) {
+                                        const char_wrap_result = utf8.findWrapPosByWidth(remaining_bytes, 1, wctx.text_buffer.tab_width, is_ascii_only, wctx.text_buffer.width_method);
+                                        to_add = @max(1, char_wrap_result.columns_used);
+                                        bytes_consumed = @max(1, char_wrap_result.byte_offset);
+                                        has_wrap_after = false; // Don't record as backtrack point
+                                    }
+                                } else if (wctx.line_position == 0) {
+                                    // Case 3: No word boundary, but we are at column 0. A single
+                                    // word is wider than the wrap width. Force-break at the
+                                    // character level to make progress.
+                                    const char_wrap_result = utf8.findWrapPosByWidth(remaining_bytes, remaining_on_line, wctx.text_buffer.tab_width, is_ascii_only, wctx.text_buffer.width_method);
+                                    to_add = char_wrap_result.columns_used;
+                                    bytes_consumed = char_wrap_result.byte_offset;
+                                    if (to_add == 0) to_add = 1;
+                                } else if (wctx.last_wrap_chunk_count > 0) {
+                                    // Case 4: No word boundary in this scan, but we recorded
+                                    // one from an earlier chunk. Backtrack: undo the chunks
+                                    // added since that point, commit the line, then re-add
+                                    // those chunks to the new line.
+                                    var accumulated_width: u32 = 0;
+                                    for (wctx.current_vline.chunks.items[0..wctx.last_wrap_chunk_count]) |vchunk| {
+                                        accumulated_width += vchunk.width;
                                     }
 
-                                    @memcpy(saved_chunks[saved_idx..], chunks_after_wrap);
+                                    const chunks_after_wrap = wctx.current_vline.chunks.items[wctx.last_wrap_chunk_count..];
+                                    var chunks_to_move_count = chunks_after_wrap.len;
+                                    var split_chunk: ?VirtualChunk = null;
 
-                                    wctx.line_position = wctx.last_wrap_line_position;
-                                    wctx.global_char_offset = wctx.last_wrap_global_offset;
-                                    wctx.current_vline.chunks.items.len = wctx.last_wrap_chunk_count;
+                                    if (accumulated_width > wctx.last_wrap_line_position) {
+                                        const last_chunk_idx = wctx.last_wrap_chunk_count - 1;
+                                        const last_chunk = wctx.current_vline.chunks.items[last_chunk_idx];
+                                        const overhang = accumulated_width - wctx.last_wrap_line_position;
 
-                                    commitVirtualLine(wctx);
+                                        split_chunk = VirtualChunk{
+                                            .grapheme_start = last_chunk.grapheme_start + last_chunk.width - overhang,
+                                            .width = overhang,
+                                            .chunk = last_chunk.chunk,
+                                        };
 
-                                    for (saved_chunks) |vchunk| {
-                                        wctx.current_vline.chunks.append(wctx.allocator, vchunk) catch {};
-                                        wctx.global_char_offset += vchunk.width;
-                                        wctx.line_position += vchunk.width;
+                                        wctx.current_vline.chunks.items[last_chunk_idx].width -= overhang;
+                                        chunks_to_move_count += 1;
                                     }
-                                } else |_| {
-                                    logger.err("Failed to allocate space for saved chunks", .{});
-                                    commitVirtualLine(wctx);
-                                }
 
-                                continue;
-                            } else {
-                                commitVirtualLine(wctx);
-                                const is_ascii_only = (chunk.flags & TextChunk.Flags.ASCII_ONLY) != 0;
-                                var byte_offset: u32 = 0;
-                                if (char_offset > 0) {
-                                    const pos_result = utf8.findPosByWidth(chunk_bytes, char_offset, wctx.text_buffer.tab_width, is_ascii_only, false, wctx.text_buffer.width_method);
-                                    byte_offset = pos_result.byte_offset;
-                                }
-                                const remaining_bytes = chunk_bytes[byte_offset..];
-                                const wrap_result = utf8.findWrapPosByWidth(remaining_bytes, wctx.wrap_w, wctx.text_buffer.tab_width, is_ascii_only, wctx.text_buffer.width_method);
-                                to_add = wrap_result.columns_used;
-                                if (to_add == 0) to_add = 1;
-                            }
+                                    const saved_chunks_result = wctx.allocator.alloc(VirtualChunk, chunks_to_move_count);
+                                    if (saved_chunks_result) |saved_chunks| {
+                                        var saved_idx: usize = 0;
+                                        if (split_chunk) |sc| {
+                                            saved_chunks[saved_idx] = sc;
+                                            saved_idx += 1;
+                                        }
+                                        @memcpy(saved_chunks[saved_idx..], chunks_after_wrap);
 
-                            if (to_add > 0) {
-                                const position_before_add = wctx.line_position;
-                                const offset_before_add = wctx.global_char_offset;
+                                        wctx.line_position = wctx.last_wrap_line_position;
+                                        wctx.global_char_offset = wctx.last_wrap_global_offset;
+                                        wctx.current_vline.chunks.items.len = wctx.last_wrap_chunk_count;
 
-                                addVirtualChunk(wctx, chunk, chunk_idx_in_line, char_offset, to_add);
-                                char_offset += to_add;
-
-                                if (has_wrap_after) {
-                                    const wrap_pos_in_added = if (last_wrap_that_fits) |boundary_w|
-                                        @min(boundary_w, to_add)
-                                    else
-                                        to_add;
-
-                                    wctx.last_wrap_chunk_count = @intCast(wctx.current_vline.chunks.items.len);
-                                    wctx.last_wrap_line_position = position_before_add + wrap_pos_in_added;
-                                    wctx.last_wrap_global_offset = offset_before_add + wrap_pos_in_added;
-                                }
-
-                                if (wctx.line_position >= wctx.wrap_w and char_offset < chunk.width) {
-                                    if (has_wrap_after or wctx.last_wrap_chunk_count > 0) {
                                         commitVirtualLine(wctx);
+
+                                        for (saved_chunks) |vchunk| {
+                                            wctx.current_vline.chunks.append(wctx.allocator, vchunk) catch {};
+                                            wctx.global_char_offset += vchunk.width;
+                                            wctx.line_position += vchunk.width;
+                                        }
+                                    } else |_| {
+                                        logger.err("Failed to allocate space for saved chunks", .{});
+                                        commitVirtualLine(wctx);
+                                    }
+                                    continue;
+                                } else {
+                                    // Case 5: No word boundary and no backtrack point.
+                                    //
+                                    // We're mid-line with no good place to break. Start a new
+                                    // line and force-break at the character level.
+                                    commitVirtualLine(wctx);
+                                    const char_wrap_result = utf8.findWrapPosByWidth(remaining_bytes, wctx.wrap_w, wctx.text_buffer.tab_width, is_ascii_only, wctx.text_buffer.width_method);
+                                    to_add = char_wrap_result.columns_used;
+                                    bytes_consumed = char_wrap_result.byte_offset;
+                                    if (to_add == 0) to_add = 1;
+                                }
+
+                                // Add the computed slice to the current line.
+                                if (to_add > 0) {
+                                    const position_before_add = wctx.line_position;
+                                    const offset_before_add = wctx.global_char_offset;
+
+                                    addVirtualChunk(wctx, chunk, chunk_idx_in_line, char_offset, to_add);
+                                    char_offset += to_add;
+
+                                    // Keep byte_offset in sync with char_offset for the next
+                                    // iteration's slice into chunk_bytes.
+                                    if (bytes_consumed == 0 and char_offset < chunk.width) {
+                                        if (is_ascii_only) {
+                                            bytes_consumed = to_add; // One-to-one for ASCII.
+                                        } else {
+                                            // Recompute byte position for Unicode. Slower, but only
+                                            // happens when we did not get bytes_consumed from the
+                                            // wrap result above.
+                                            const pos_result = utf8.findWrapPosByWidth(remaining_bytes, to_add, wctx.text_buffer.tab_width, false, wctx.text_buffer.width_method);
+                                            bytes_consumed = pos_result.byte_offset;
+                                        }
+                                    }
+                                    byte_offset += bytes_consumed;
+
+                                    // Record as a potential backtrack point for future chunks
+                                    // that might overflow without a boundary.
+                                    if (has_wrap_after) {
+                                        wctx.last_wrap_chunk_count = @intCast(wctx.current_vline.chunks.items.len);
+                                        wctx.last_wrap_line_position = position_before_add + wrap_result.width_to_boundary;
+                                        wctx.last_wrap_global_offset = offset_before_add + wrap_result.width_to_boundary;
+                                    }
+
+                                    // Line is full and more content remains. Commit and start fresh.
+                                    if (wctx.line_position >= wctx.wrap_w and char_offset < chunk.width) {
+                                        if (has_wrap_after or wctx.last_wrap_chunk_count > 0) {
+                                            commitVirtualLine(wctx);
+                                        }
+                                    }
+                                }
+                            }
+                        } else {
+                            // CACHED PATH: for small chunks, precompute all word boundary
+                            // positions upfront. Array lookup is cache-friendly and avoids
+                            // repeated scanning.
+                            const wrap_offsets = chunk.getWrapOffsets(&wctx.text_buffer.mem_registry, wctx.text_buffer.allocator, wctx.text_buffer.width_method) catch &[_]utf8.WrapBreak{};
+
+                            var char_offset: u32 = 0;
+                            var wrap_idx: usize = 0;
+                            while (char_offset < chunk.width) {
+                                const remaining_in_chunk = chunk.width - char_offset;
+                                const remaining_on_line = if (wctx.line_position < wctx.wrap_w) wctx.wrap_w - wctx.line_position else 0;
+
+                                var last_wrap_that_fits: ?u32 = null;
+                                var saved_wrap_idx = wrap_idx;
+                                while (wrap_idx < wrap_offsets.len) : (wrap_idx += 1) {
+                                    const wrap_break = wrap_offsets[wrap_idx];
+                                    const offset = @as(u32, wrap_break.char_offset);
+                                    if (offset < char_offset) continue;
+                                    const width_to_boundary = offset - char_offset + 1;
+                                    if (width_to_boundary > remaining_on_line or width_to_boundary > remaining_in_chunk) break;
+                                    last_wrap_that_fits = width_to_boundary;
+                                    saved_wrap_idx = wrap_idx + 1;
+                                }
+                                wrap_idx = saved_wrap_idx;
+
+                                var to_add: u32 = 0;
+                                var has_wrap_after: bool = false;
+
+                                if (remaining_in_chunk <= remaining_on_line) {
+                                    if (last_wrap_that_fits) |boundary_w| {
+                                        const would_fill_line = wctx.line_position + remaining_in_chunk >= wctx.wrap_w;
+                                        if (would_fill_line and boundary_w < remaining_in_chunk) {
+                                            to_add = boundary_w;
+                                            has_wrap_after = true;
+                                        } else {
+                                            to_add = remaining_in_chunk;
+                                            has_wrap_after = true;
+                                        }
+                                    } else {
+                                        to_add = remaining_in_chunk;
+                                    }
+                                } else if (last_wrap_that_fits) |boundary_w| {
+                                    to_add = boundary_w;
+                                    has_wrap_after = true;
+                                } else if (wctx.line_position == 0) {
+                                    var byte_offset_inner: u32 = 0;
+                                    if (char_offset > 0) {
+                                        const pos_result = utf8.findPosByWidth(chunk_bytes, char_offset, wctx.text_buffer.tab_width, is_ascii_only, false, wctx.text_buffer.width_method);
+                                        byte_offset_inner = pos_result.byte_offset;
+                                    }
+                                    const remaining_bytes = chunk_bytes[byte_offset_inner..];
+                                    const wrap_result = utf8.findWrapPosByWidth(remaining_bytes, remaining_on_line, wctx.text_buffer.tab_width, is_ascii_only, wctx.text_buffer.width_method);
+                                    to_add = wrap_result.columns_used;
+                                    if (to_add == 0) to_add = 1;
+                                } else if (wctx.last_wrap_chunk_count > 0) {
+                                    var accumulated_width: u32 = 0;
+                                    for (wctx.current_vline.chunks.items[0..wctx.last_wrap_chunk_count]) |vchunk| {
+                                        accumulated_width += vchunk.width;
+                                    }
+
+                                    const chunks_after_wrap = wctx.current_vline.chunks.items[wctx.last_wrap_chunk_count..];
+                                    var chunks_to_move_count = chunks_after_wrap.len;
+                                    var split_chunk: ?VirtualChunk = null;
+
+                                    if (accumulated_width > wctx.last_wrap_line_position) {
+                                        const last_chunk_idx = wctx.last_wrap_chunk_count - 1;
+                                        const last_chunk = wctx.current_vline.chunks.items[last_chunk_idx];
+                                        const overhang = accumulated_width - wctx.last_wrap_line_position;
+
+                                        split_chunk = VirtualChunk{
+                                            .grapheme_start = last_chunk.grapheme_start + last_chunk.width - overhang,
+                                            .width = overhang,
+                                            .chunk = last_chunk.chunk,
+                                        };
+
+                                        wctx.current_vline.chunks.items[last_chunk_idx].width -= overhang;
+                                        chunks_to_move_count += 1;
+                                    }
+
+                                    const saved_chunks_result = wctx.allocator.alloc(VirtualChunk, chunks_to_move_count);
+                                    if (saved_chunks_result) |saved_chunks| {
+                                        var saved_idx: usize = 0;
+                                        if (split_chunk) |sc| {
+                                            saved_chunks[saved_idx] = sc;
+                                            saved_idx += 1;
+                                        }
+                                        @memcpy(saved_chunks[saved_idx..], chunks_after_wrap);
+
+                                        wctx.line_position = wctx.last_wrap_line_position;
+                                        wctx.global_char_offset = wctx.last_wrap_global_offset;
+                                        wctx.current_vline.chunks.items.len = wctx.last_wrap_chunk_count;
+
+                                        commitVirtualLine(wctx);
+
+                                        for (saved_chunks) |vchunk| {
+                                            wctx.current_vline.chunks.append(wctx.allocator, vchunk) catch {};
+                                            wctx.global_char_offset += vchunk.width;
+                                            wctx.line_position += vchunk.width;
+                                        }
+                                    } else |_| {
+                                        logger.err("Failed to allocate space for saved chunks", .{});
+                                        commitVirtualLine(wctx);
+                                    }
+                                    continue;
+                                } else {
+                                    commitVirtualLine(wctx);
+                                    var byte_offset_inner: u32 = 0;
+                                    if (char_offset > 0) {
+                                        const pos_result = utf8.findPosByWidth(chunk_bytes, char_offset, wctx.text_buffer.tab_width, is_ascii_only, false, wctx.text_buffer.width_method);
+                                        byte_offset_inner = pos_result.byte_offset;
+                                    }
+                                    const remaining_bytes = chunk_bytes[byte_offset_inner..];
+                                    const wrap_result = utf8.findWrapPosByWidth(remaining_bytes, wctx.wrap_w, wctx.text_buffer.tab_width, is_ascii_only, wctx.text_buffer.width_method);
+                                    to_add = wrap_result.columns_used;
+                                    if (to_add == 0) to_add = 1;
+                                }
+
+                                if (to_add > 0) {
+                                    const position_before_add = wctx.line_position;
+                                    const offset_before_add = wctx.global_char_offset;
+
+                                    addVirtualChunk(wctx, chunk, chunk_idx_in_line, char_offset, to_add);
+                                    char_offset += to_add;
+
+                                    if (has_wrap_after) {
+                                        const wrap_pos_in_added = if (last_wrap_that_fits) |boundary_w|
+                                            @min(boundary_w, to_add)
+                                        else
+                                            to_add;
+
+                                        wctx.last_wrap_chunk_count = @intCast(wctx.current_vline.chunks.items.len);
+                                        wctx.last_wrap_line_position = position_before_add + wrap_pos_in_added;
+                                        wctx.last_wrap_global_offset = offset_before_add + wrap_pos_in_added;
+                                    }
+
+                                    if (wctx.line_position >= wctx.wrap_w and char_offset < chunk.width) {
+                                        if (has_wrap_after or wctx.last_wrap_chunk_count > 0) {
+                                            commitVirtualLine(wctx);
+                                        }
                                     }
                                 }
                             }
