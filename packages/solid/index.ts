@@ -1,21 +1,26 @@
-import { createCliRenderer, engine, type CliRendererConfig } from "@opentui/core"
+import { CliRenderer, createCliRenderer, engine, type CliRendererConfig } from "@opentui/core"
 import { createTestRenderer, type TestRendererOptions } from "@opentui/core/testing"
 import type { JSX } from "./jsx-runtime"
 import { RendererContext } from "./src/elements"
 import { _render as renderInternal, createComponent } from "./src/reconciler"
 
-export const render = async (node: () => JSX.Element, renderConfig: CliRendererConfig = {}) => {
+export const render = async (node: () => JSX.Element, rendererOrConfig: CliRenderer | CliRendererConfig = {}) => {
   let isDisposed = false
-  const renderer = await createCliRenderer({
-    ...renderConfig,
-    onDestroy: () => {
-      if (!isDisposed) {
-        isDisposed = true
-        dispose()
-      }
-      renderConfig.onDestroy?.()
-    },
-  })
+
+  const renderer =
+    rendererOrConfig instanceof CliRenderer
+      ? rendererOrConfig
+      : await createCliRenderer({
+          ...rendererOrConfig,
+          onDestroy: () => {
+            if (!isDisposed) {
+              isDisposed = true
+              dispose()
+            }
+            rendererOrConfig.onDestroy?.()
+          },
+        })
+
   engine.attach(renderer)
 
   const dispose = renderInternal(
@@ -30,6 +35,8 @@ export const render = async (node: () => JSX.Element, renderConfig: CliRendererC
       }),
     renderer.root,
   )
+
+  return { dispose }
 }
 
 export const testRender = async (node: () => JSX.Element, renderConfig: TestRendererOptions = {}) => {
