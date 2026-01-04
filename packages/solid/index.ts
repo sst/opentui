@@ -6,6 +6,7 @@ import { _render as renderInternal, createComponent } from "./src/reconciler"
 
 export const render = async (node: () => JSX.Element, rendererOrConfig: CliRenderer | CliRendererConfig = {}) => {
   let isDisposed = false
+  let dispose: () => void
 
   const renderer =
     rendererOrConfig instanceof CliRenderer
@@ -21,9 +22,18 @@ export const render = async (node: () => JSX.Element, rendererOrConfig: CliRende
           },
         })
 
+  if (rendererOrConfig instanceof CliRenderer) {
+    renderer.on("destroy", () => {
+      if (!isDisposed) {
+        isDisposed = true
+        dispose()
+      }
+    })
+  }
+
   engine.attach(renderer)
 
-  const dispose = renderInternal(
+  dispose = renderInternal(
     () =>
       createComponent(RendererContext.Provider, {
         get value() {
@@ -35,8 +45,6 @@ export const render = async (node: () => JSX.Element, rendererOrConfig: CliRende
       }),
     renderer.root,
   )
-
-  return { dispose }
 }
 
 export const testRender = async (node: () => JSX.Element, renderConfig: TestRendererOptions = {}) => {
