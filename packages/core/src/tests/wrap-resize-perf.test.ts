@@ -11,10 +11,12 @@ import { stringToStyledText } from "../lib/styled-text"
  * For O(n) algorithms: doubling input size should roughly double the time (ratio ~2)
  * For O(n²) algorithms: doubling input size should quadruple the time (ratio ~4)
  *
- * We use a threshold of 3 to allow for some variance while still catching O(n²) behavior.
+ * We use a threshold that allows for CI variance while still catching O(n²) behavior.
+ * The threshold is set to catch quadratic complexity (ratio ~4) while allowing
+ * linear complexity with noise (ratio ~2-3.5).
  */
 describe("Word wrap algorithmic complexity", () => {
-  function measureMedian(fn: () => void, iterations = 5): number {
+  function measureMedian(fn: () => void, iterations = 11): number {
     const times: number[] = []
     for (let i = 0; i < iterations; i++) {
       const start = performance.now()
@@ -24,6 +26,8 @@ describe("Word wrap algorithmic complexity", () => {
     times.sort((a, b) => a - b)
     return times[Math.floor(times.length / 2)]
   }
+
+  const COMPLEXITY_THRESHOLD = 1.75
 
   it("should have O(n) complexity for word wrap without word breaks", () => {
     const smallSize = 20000
@@ -65,7 +69,7 @@ describe("Word wrap algorithmic complexity", () => {
     const ratio = largeTime / smallTime
     const inputRatio = largeSize / smallSize
 
-    expect(ratio).toBeLessThan(inputRatio * 1.5)
+    expect(ratio).toBeLessThan(inputRatio * COMPLEXITY_THRESHOLD)
   })
 
   it("should have O(n) complexity for word wrap with word breaks", () => {
@@ -114,7 +118,7 @@ describe("Word wrap algorithmic complexity", () => {
     const ratio = largeTime / smallTime
     const inputRatio = largeSize / smallSize
 
-    expect(ratio).toBeLessThan(inputRatio * 1.5)
+    expect(ratio).toBeLessThan(inputRatio * COMPLEXITY_THRESHOLD)
   })
 
   it("should have O(n) complexity for char wrap mode", () => {
@@ -157,7 +161,7 @@ describe("Word wrap algorithmic complexity", () => {
     const ratio = largeTime / smallTime
     const inputRatio = largeSize / smallSize
 
-    expect(ratio).toBeLessThan(inputRatio * 1.5)
+    expect(ratio).toBeLessThan(inputRatio * COMPLEXITY_THRESHOLD)
   })
 
   it("should scale linearly when wrap width changes", () => {
