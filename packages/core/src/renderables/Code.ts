@@ -50,15 +50,12 @@ export class CodeRenderable extends TextBufferRenderable {
     this._drawUnstyledText = options.drawUnstyledText ?? this._contentDefaultOptions.drawUnstyledText
     this._streaming = options.streaming ?? this._contentDefaultOptions.streaming
 
-    // Set initial content immediately so lineCount is correct for measure functions
-    // This prevents width glitches in parent components like LineNumberRenderable
-    // Only set if we would show unstyled text OR if there's no filetype (fallback to plain text)
-    if (this._content.length > 0 && (this._drawUnstyledText || !this._filetype)) {
+    if (this._content.length > 0) {
       this.textBuffer.setText(this._content)
       this.updateTextInfo()
+      this._shouldRenderTextBuffer = this._drawUnstyledText || !this._filetype
     }
 
-    // Mark as dirty if there's initial content (even without filetype, we need to show it)
     this._highlightsDirty = this._content.length > 0
   }
 
@@ -70,13 +67,14 @@ export class CodeRenderable extends TextBufferRenderable {
     if (this._content !== value) {
       this._content = value
       this._highlightsDirty = true
+      this._highlightSnapshotId++
 
-      // Update text buffer immediately for measure functions (like gutter width calculation)
-      // Only do this if we're showing unstyled text or have no filetype
-      if (this._drawUnstyledText || !this._filetype) {
-        this.textBuffer.setText(value)
-        this.updateTextInfo()
+      if (this._streaming && !this._drawUnstyledText && this._filetype) {
+        return
       }
+
+      this.textBuffer.setText(value)
+      this.updateTextInfo()
     }
   }
 
@@ -148,65 +146,40 @@ export class CodeRenderable extends TextBufferRenderable {
     }
   }
 
+  get isHighlighting(): boolean {
+    return this._isHighlighting
+  }
+
   private ensureVisibleTextBeforeHighlight(): void {
+    if (this.isDestroyed) return
+
     const content = this._content
 
-    // No filetype means fallback
     if (!this._filetype) {
-      if (this.isDestroyed) return
-      this.textBuffer.setText(content)
       this._shouldRenderTextBuffer = true
-      this.updateTextInfo()
       return
     }
 
-    // Determine if this is initial content when streaming
     const isInitialContent = this._streaming && !this._hadInitialContent
-
-    // Handle initial fallback display
     const shouldDrawUnstyledNow = this._streaming ? isInitialContent && this._drawUnstyledText : this._drawUnstyledText
 
     if (this._streaming && !isInitialContent) {
-      // Use cached highlights for partial styling if available
-      if (this._lastHighlights.length > 0) {
-        const chunks = treeSitterToTextChunks(content, this._lastHighlights, this._syntaxStyle, {
-          enabled: this._conceal,
-        })
-        const partialStyledText = new StyledText(chunks)
-        if (this.isDestroyed) return
-        this.textBuffer.setStyledText(partialStyledText)
-        this._shouldRenderTextBuffer = true
-        this.updateTextInfo()
-      } else {
-        // No cached highlights, fallback to plain text
-        if (this.isDestroyed) return
-        this.textBuffer.setText(content)
-        this._shouldRenderTextBuffer = true
-        this.updateTextInfo()
-      }
+      this._shouldRenderTextBuffer = true
     } else if (shouldDrawUnstyledNow) {
-      // Show plain text before highlights arrive
-      if (this.isDestroyed) return
       this.textBuffer.setText(content)
       this._shouldRenderTextBuffer = true
-      this.updateTextInfo()
     } else {
-      // Don't show anything until highlights arrive
-      if (this.isDestroyed) return
       this._shouldRenderTextBuffer = false
-      this.updateTextInfo()
     }
   }
 
   private async startHighlight(): Promise<void> {
-    // Capture snapshot of current state
     const content = this._content
     const filetype = this._filetype
     const snapshotId = ++this._highlightSnapshotId
 
     if (!filetype) return
 
-    // Mark as initial content if streaming
     const isInitialContent = this._streaming && !this._hadInitialContent
     if (isInitialContent) {
       this._hadInitialContent = true
@@ -217,7 +190,6 @@ export class CodeRenderable extends TextBufferRenderable {
     try {
       const result = await this._treeSitterClient.highlightOnce(content, filetype)
 
-      // Check if this result is stale (newer highlight was started)
       if (snapshotId !== this._highlightSnapshotId) {
         return
       }
@@ -235,17 +207,15 @@ export class CodeRenderable extends TextBufferRenderable {
         const styledText = new StyledText(chunks)
         this.textBuffer.setStyledText(styledText)
       } else {
-        // No highlights, use plain text
         this.textBuffer.setText(content)
       }
 
       this._shouldRenderTextBuffer = true
-      this.updateTextInfo()
       this._isHighlighting = false
       this._highlightsDirty = false
+      this.updateTextInfo()
       this.requestRender()
     } catch (error) {
-      // Check if this result is stale
       if (snapshotId !== this._highlightSnapshotId) {
         return
       }
@@ -254,9 +224,9 @@ export class CodeRenderable extends TextBufferRenderable {
       if (this.isDestroyed) return
       this.textBuffer.setText(content)
       this._shouldRenderTextBuffer = true
-      this.updateTextInfo()
       this._isHighlighting = false
       this._highlightsDirty = false
+      this.updateTextInfo()
       this.requestRender()
     }
   }
@@ -267,18 +237,14 @@ export class CodeRenderable extends TextBufferRenderable {
 
   protected renderSelf(buffer: OptimizedBuffer): void {
     if (this._highlightsDirty) {
+      if (this.isDestroyed) return
+
       if (this._content.length === 0) {
-        if (this.isDestroyed) return
-        this.textBuffer.setText("")
         this._shouldRenderTextBuffer = false
         this._highlightsDirty = false
-        this.updateTextInfo()
       } else if (!this._filetype) {
-        if (this.isDestroyed) return
-        this.textBuffer.setText(this._content)
         this._shouldRenderTextBuffer = true
         this._highlightsDirty = false
-        this.updateTextInfo()
       } else {
         this.ensureVisibleTextBeforeHighlight()
         this._highlightsDirty = false
