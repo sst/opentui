@@ -61,12 +61,6 @@ test "word wrap complexity - width changes are O(n)" {
 
     const ratio = @as(f64, @floatFromInt(max_time)) / @as(f64, @floatFromInt(min_time));
 
-    std.debug.print("\nWidth change times:\n", .{});
-    for (widths, times) |width, time| {
-        std.debug.print("  Width {}: {}ms\n", .{ width, time / 1_000_000 });
-    }
-    std.debug.print("  Max/min ratio: {d:.2}\n", .{ratio});
-
     // All times should be roughly similar (within 3x) since text size is constant
     try std.testing.expect(ratio < 3.0);
 }
