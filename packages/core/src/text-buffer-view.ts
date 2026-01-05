@@ -188,7 +188,12 @@ export class TextBufferView {
       return cached
     }
 
-    const result = this.lib.textBufferViewMeasureForDimensions(this.viewPtr, flooredWidth, Math.floor(height))
+    // Always measure with effectively infinite height to ensure the result is
+    // cacheable and represents the true content dimensions for this width.
+    // If we passed the constrained 'height', we might cache a truncated result
+    // (e.g. lineCount: 1) and wrongly return it for a subsequent call with a larger height.
+    const UNLIMITED_HEIGHT = 1 << 30
+    const result = this.lib.textBufferViewMeasureForDimensions(this.viewPtr, flooredWidth, UNLIMITED_HEIGHT)
     if (result) {
       this._measureCache.set(flooredWidth, result)
     }
