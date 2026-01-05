@@ -5,7 +5,7 @@ for reviews. Feature suggestions are subject to discussion via issues.
 
 ## Code style
 
-Reference existing [AGENTS.md](https://github.com/sst/opentui/blob/main/AGENTS.md) or project conventions if applicable.
+Reference existing [AGENTS.md](https://github.com/anomalyco/opentui/blob/main/AGENTS.md) or project conventions if applicable.
 
 ## Code of conduct
 

@@ -1,6 +1,6 @@
 # OpenTUI Go
 
-Go bindings for [OpenTUI](https://github.com/sst/opentui), a high-performance terminal user interface library built with Zig.
+Go bindings for [OpenTUI](https://github.com/anomalyco/opentui), a high-performance terminal user interface library built with Zig.
 
 ## Features
 
@@ -17,7 +17,7 @@ Go bindings for [OpenTUI](https://github.com/sst/opentui), a high-performance te
 First, install OpenTUI headers and libraries system-wide:
 
 ```bash
-curl -L https://github.com/sst/opentui/releases/latest/download/install.sh | sh
+curl -L https://github.com/anomalyco/opentui/releases/latest/download/install.sh | sh
 ```
 
 This downloads the latest compiled libraries and headers for your platform and installs them to standard system locations.
@@ -27,7 +27,7 @@ This downloads the latest compiled libraries and headers for your platform and i
 Then use in your Go projects:
 
 ```bash
-go get github.com/sst/opentui/packages/go
+go get github.com/anomalyco/opentui/packages/go
 ```
 
 ### Requirements
@@ -44,7 +44,7 @@ package main
 import (
     "time"
 
-    "github.com/sst/opentui/packages/go"
+    "github.com/anomalyco/opentui/packages/go"
 )
 
 func main() {

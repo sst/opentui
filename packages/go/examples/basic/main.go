@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"time"
 	
-	opentui "github.com/sst/opentui/packages/go"
+	opentui "github.com/anomalyco/opentui/packages/go"
 )
 
 func main() {

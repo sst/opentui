@@ -1,6 +1,6 @@
 # @opentui/vue
 
-Vue.js support for [OpenTUI](https://github.com/sst/opentui).
+Vue.js support for [OpenTUI](https://github.com/anomalyco/opentui).
 
 ## Run examples locally
 

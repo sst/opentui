@@ -17,11 +17,11 @@ export function run(rendererInstance: CliRenderer): void {
   renderer.root.add(parentContainer)
 
   // Example with hyperlinks
-  const linkText = t`${underline(blue(link("https://github.com/sst/opentui")("OpenTUI on GitHub")))}
+  const linkText = t`${underline(blue(link("https://github.com/anomalyco/opentui")("OpenTUI on GitHub")))}
 
 Visit our ${link("https://opentui.com")("website")} for more info.
 
-Check out the ${underline(link("https://github.com/sst/opentui/blob/main/README.md")("README"))}`
+Check out the ${underline(link("https://github.com/anomalyco/opentui/blob/main/README.md")("README"))}`
 
   const linkDisplay = new TextRenderable(renderer, {
     id: "link-text",

@@ -4,7 +4,7 @@ set -e
 # OpenTUI System Installation Script
 # Installs OpenTUI headers and libraries system-wide
 
-REPO="sst/opentui"
+REPO="anomalyco/opentui"
 RELEASE_URL="https://github.com/$REPO/releases/latest/download"
 
 # Colors for output
