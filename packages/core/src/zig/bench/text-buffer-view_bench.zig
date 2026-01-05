@@ -256,16 +256,17 @@ fn benchWrap(
     };
 }
 
-fn benchMeasureForDimensions(
+fn benchMeasureForDimensionsLayout(
     allocator: std.mem.Allocator,
     pool: *gp.GraphemePool,
     text: []const u8,
     streaming: bool,
+    measure_width: u32,
+    layout_passes: usize,
     iterations: usize,
     show_mem: bool,
 ) !BenchData {
     const steps: usize = 200;
-    const wrap_width: u32 = 80;
 
     var min_ns: u64 = std.math.maxInt(u64);
     var max_ns: u64 = 0;
@@ -299,12 +300,17 @@ fn benchMeasureForDimensions(
         var timer = try std.time.Timer.start();
         var step: usize = 0;
         while (step < steps) : (step += 1) {
-            _ = try view.measureForDimensions(wrap_width, 24);
             if (streaming) {
                 try tb.appendFromMemId(token_mem_id);
                 if ((step + 1) % newline_stride == 0) {
                     try tb.appendFromMemId(newline_mem_id);
                 }
+            }
+
+            // Simulate Yoga's repeated measure calls within a single layout pass.
+            var pass: usize = 0;
+            while (pass < layout_passes) : (pass += 1) {
+                _ = try view.measureForDimensions(measure_width, 24);
             }
         }
         const elapsed = timer.read();
@@ -379,20 +385,33 @@ pub fn run(
     try stdout.print("Generated {d:.2} MiB single-line text\n", .{text_mb_single});
 
     // Run measureForDimensions benchmarks
-    for ([_]bool{ false, true }) |streaming| {
-        const label = if (streaming) "streaming" else "static";
+    const layout_passes: usize = 3;
+    const wrap_width: u32 = 80;
+    const measure_scenarios = [_]struct {
+        label: []const u8,
+        streaming: bool,
+        width: u32,
+    }{
+        .{ .label = "layout streaming wrap", .streaming = true, .width = wrap_width },
+        .{ .label = "layout streaming intrinsic", .streaming = true, .width = 0 },
+        .{ .label = "layout static wrap", .streaming = false, .width = wrap_width },
+    };
+
+    for (measure_scenarios) |scenario| {
         const bench_name = try std.fmt.allocPrint(
             allocator,
             "TextBufferView measureForDimensions ({s}, {d:.2} MiB)",
-            .{ label, text_mb_multi },
+            .{ scenario.label, text_mb_multi },
         );
         errdefer allocator.free(bench_name);
 
-        const bench_data = try benchMeasureForDimensions(
+        const bench_data = try benchMeasureForDimensionsLayout(
             allocator,
             pool,
             text_multiline,
-            streaming,
+            scenario.streaming,
+            scenario.width,
+            layout_passes,
             iterations,
             show_mem,
         );
