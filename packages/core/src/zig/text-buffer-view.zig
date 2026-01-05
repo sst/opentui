@@ -867,7 +867,7 @@ pub const UnifiedTextBufferView = struct {
                         const is_ascii_only = (chunk.flags & TextChunk.Flags.ASCII_ONLY) != 0;
 
                         var char_offset: u32 = 0;
-                        var byte_offset: u32 = 0; // Track byte offset to avoid O(n²) findPosByWidth calls
+                        var byte_offset: u32 = 0;
                         var wrap_idx: usize = 0;
                         while (char_offset < chunk.width) {
                             const remaining_in_chunk = chunk.width - char_offset;
@@ -906,7 +906,6 @@ pub const UnifiedTextBufferView = struct {
                                 to_add = boundary_w;
                                 has_wrap_after = true;
                             } else if (wctx.line_position == 0) {
-                                // No word break found and we're at the start of a line - force wrap at char boundary
                                 // Use tracked byte_offset instead of recalculating from scratch (avoids O(n²))
                                 const remaining_bytes = chunk_bytes[byte_offset..];
                                 const wrap_result = utf8.findWrapPosByWidth(remaining_bytes, remaining_on_line, wctx.text_buffer.tab_width, is_ascii_only, wctx.text_buffer.width_method);
@@ -914,7 +913,6 @@ pub const UnifiedTextBufferView = struct {
                                 byte_offset += wrap_result.byte_offset;
                                 if (to_add == 0) {
                                     to_add = 1;
-                                    // Handle edge case: wide char at position 0
                                     const single_result = utf8.findWrapPosByWidth(remaining_bytes, 1, wctx.text_buffer.tab_width, is_ascii_only, wctx.text_buffer.width_method);
                                     byte_offset += single_result.byte_offset;
                                 }
@@ -973,16 +971,13 @@ pub const UnifiedTextBufferView = struct {
 
                                 continue;
                             } else {
-                                // No word break found and line has content - commit current line and start fresh
                                 commitVirtualLine(wctx);
-                                // Use tracked byte_offset instead of recalculating from scratch (avoids O(n²))
                                 const remaining_bytes = chunk_bytes[byte_offset..];
                                 const wrap_result = utf8.findWrapPosByWidth(remaining_bytes, wctx.wrap_w, wctx.text_buffer.tab_width, is_ascii_only, wctx.text_buffer.width_method);
                                 to_add = wrap_result.columns_used;
                                 byte_offset += wrap_result.byte_offset;
                                 if (to_add == 0) {
                                     to_add = 1;
-                                    // Handle edge case: wide char at position 0
                                     const single_result = utf8.findWrapPosByWidth(remaining_bytes, 1, wctx.text_buffer.tab_width, is_ascii_only, wctx.text_buffer.width_method);
                                     byte_offset += single_result.byte_offset;
                                 }
