@@ -1,6 +1,6 @@
 # @opentui/solid
 
-Solid.js support for [OpenTUI](https://github.com/sst/opentui).
+Solid.js support for [OpenTUI](https://github.com/anomalyco/opentui).
 
 ## Installation
 
@@ -37,7 +37,7 @@ render(() => <text>Hello, World!</text>)
 
 4. Run with `bun index.tsx`.
 
-5. To build use [Bun.build](https://bun.com/docs/bundler) ([source](https://github.com/sst/opentui/issues/122)):
+5. To build use [Bun.build](https://bun.com/docs/bundler) ([source](https://github.com/anomalyco/opentui/issues/122)):
 
 ```ts
 import solidPlugin from "@opentui/solid/bun-plugin"

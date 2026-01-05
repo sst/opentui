@@ -8,7 +8,7 @@
 ## Setup
 
 ```bash
-git clone https://github.com/sst/opentui.git
+git clone https://github.com/anomalyco/opentui.git
 cd opentui
 bun install
 ```

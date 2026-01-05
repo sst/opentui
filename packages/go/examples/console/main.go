@@ -6,7 +6,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/sst/opentui/packages/go"
+	"github.com/anomalyco/opentui/packages/go"
 )
 
 // ConsoleButton represents a clickable button with hover and press states

@@ -6,7 +6,7 @@ import { createTestRenderer } from "../testing/test-renderer"
 // Tests avoid actually outputting to the terminal during test runs,
 // to not mess up the terminal state.
 // What actually gets written can be tested properly when
-// https://github.com/sst/opentui/pull/238 is merged.
+// https://github.com/anomalyco/opentui/pull/238 is merged.
 describe("useMouse configuration", () => {
   test("useMouse: true sets renderer.useMouse to true", async () => {
     const { renderer } = await createTestRenderer({
