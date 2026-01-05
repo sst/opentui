@@ -353,16 +353,6 @@ export class OptimizedBuffer {
     this.lib.bufferClearScissorRects(this.bufferPtr)
   }
 
-  public clipRectToScissor(
-    x: number,
-    y: number,
-    width: number,
-    height: number,
-  ): { x: number; y: number; width: number; height: number } | null {
-    this.guard()
-    return this.lib.bufferClipRectToScissor(this.bufferPtr, x, y, width, height)
-  }
-
   public pushOpacity(opacity: number): void {
     this.guard()
     this.lib.bufferPushOpacity(this.bufferPtr, Math.max(0, Math.min(1, opacity)))

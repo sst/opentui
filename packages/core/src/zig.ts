@@ -291,10 +291,6 @@ function getOpenTUILib(libPath?: string) {
       args: ["ptr"],
       returns: "void",
     },
-    bufferClipRectToScissor: {
-      args: ["ptr", "i32", "i32", "u32", "u32", "ptr"],
-      returns: "bool",
-    },
     bufferPushOpacity: {
       args: ["ptr", "f32"],
       returns: "void",
@@ -1558,13 +1554,6 @@ export interface RenderLib {
   bufferPushScissorRect: (buffer: Pointer, x: number, y: number, width: number, height: number) => void
   bufferPopScissorRect: (buffer: Pointer) => void
   bufferClearScissorRects: (buffer: Pointer) => void
-  bufferClipRectToScissor: (
-    buffer: Pointer,
-    x: number,
-    y: number,
-    width: number,
-    height: number,
-  ) => { x: number; y: number; width: number; height: number } | null
   bufferPushOpacity: (buffer: Pointer, opacity: number) => void
   bufferPopOpacity: (buffer: Pointer) => void
   bufferGetCurrentOpacity: (buffer: Pointer) => number
@@ -3128,20 +3117,6 @@ class FFIRenderLib implements RenderLib {
 
   public bufferClearScissorRects(buffer: Pointer): void {
     this.opentui.symbols.bufferClearScissorRects(buffer)
-  }
-
-  public bufferClipRectToScissor(
-    buffer: Pointer,
-    x: number,
-    y: number,
-    width: number,
-    height: number,
-  ): { x: number; y: number; width: number; height: number } | null {
-    const out = new Int32Array(4)
-    if (!this.opentui.symbols.bufferClipRectToScissor(buffer, x, y, width, height, ptr(out))) {
-      return null
-    }
-    return { x: out[0], y: out[1], width: out[2], height: out[3] }
   }
 
   public bufferPushOpacity(buffer: Pointer, opacity: number): void {

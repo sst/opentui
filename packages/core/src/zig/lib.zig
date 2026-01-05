@@ -351,25 +351,6 @@ export fn bufferClearScissorRects(bufferPtr: *buffer.OptimizedBuffer) void {
     bufferPtr.clearScissorRects();
 }
 
-export fn bufferClipRectToScissor(
-    bufferPtr: *buffer.OptimizedBuffer,
-    x: i32,
-    y: i32,
-    width: u32,
-    height: u32,
-    out: [*]i32,
-) bool {
-    const clipped = bufferPtr.clipRectToScissor(x, y, width, height);
-    if (clipped) |rect| {
-        out[0] = rect.x;
-        out[1] = rect.y;
-        out[2] = @intCast(rect.width);
-        out[3] = @intCast(rect.height);
-        return true;
-    }
-    return false;
-}
-
 // Opacity stack functions
 export fn bufferPushOpacity(bufferPtr: *buffer.OptimizedBuffer, opacity: f32) void {
     bufferPtr.pushOpacity(opacity) catch {};

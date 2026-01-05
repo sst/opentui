@@ -570,10 +570,7 @@ export abstract class EditBufferRenderable extends Renderable implements LineInf
     if (this.isDestroyed) return
 
     this.markClean()
-    const clippedRect = buffer.clipRectToScissor(this.x, this.y, this.width, this.height)
-    if (clippedRect) {
-      this._ctx.addToHitGrid(clippedRect.x, clippedRect.y, clippedRect.width, clippedRect.height, this.num)
-    }
+    this._ctx.addToHitGrid(this.x, this.y, this.width, this.height, this.num)
 
     this.renderSelf(buffer)
     this.renderCursor(buffer)

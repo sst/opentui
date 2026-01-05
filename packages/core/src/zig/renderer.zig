@@ -796,10 +796,12 @@ pub const CliRenderer = struct {
     }
 
     pub fn addToHitGrid(self: *CliRenderer, x: i32, y: i32, width: u32, height: u32, id: u32) void {
-        const startX = @max(0, x);
-        const startY = @max(0, y);
-        const endX = @min(@as(i32, @intCast(self.hitGridWidth)), x + @as(i32, @intCast(width)));
-        const endY = @min(@as(i32, @intCast(self.hitGridHeight)), y + @as(i32, @intCast(height)));
+        const clipped = self.nextRenderBuffer.clipRectToScissor(x, y, width, height) orelse return;
+
+        const startX = @max(0, clipped.x);
+        const startY = @max(0, clipped.y);
+        const endX = @min(@as(i32, @intCast(self.hitGridWidth)), clipped.x + @as(i32, @intCast(clipped.width)));
+        const endY = @min(@as(i32, @intCast(self.hitGridHeight)), clipped.y + @as(i32, @intCast(clipped.height)));
 
         if (startX >= endX or startY >= endY) return;
 
