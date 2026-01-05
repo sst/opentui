@@ -873,66 +873,50 @@ pub const UnifiedTextBufferView = struct {
                             const remaining_in_chunk = chunk.width - char_offset;
                             const remaining_on_line = if (wctx.line_position < wctx.wrap_w) wctx.wrap_w - wctx.line_position else 0;
 
-                            // Skip wrap breaks that are before our current position.
-                            // Since wrap_offsets are sorted and char_offset only increases,
-                            // wrap_idx moves forward monotonically through the chunk.
-                            while (wrap_idx < wrap_offsets.len and wrap_offsets[wrap_idx].char_offset < char_offset) {
-                                wrap_idx += 1;
-                            }
-
                             var last_wrap_that_fits: ?u32 = null;
-                            var scan_idx = wrap_idx;
-                            while (scan_idx < wrap_offsets.len) : (scan_idx += 1) {
-                                const wrap_break = wrap_offsets[scan_idx];
+                            var saved_wrap_idx = wrap_idx;
+                            while (wrap_idx < wrap_offsets.len) : (wrap_idx += 1) {
+                                const wrap_break = wrap_offsets[wrap_idx];
                                 const offset = @as(u32, wrap_break.char_offset);
+                                if (offset < char_offset) continue;
                                 const width_to_boundary = offset - char_offset + 1;
                                 if (width_to_boundary > remaining_on_line or width_to_boundary > remaining_in_chunk) break;
                                 last_wrap_that_fits = width_to_boundary;
-                                wrap_idx = scan_idx + 1;
+                                saved_wrap_idx = wrap_idx + 1;
                             }
+                            wrap_idx = saved_wrap_idx;
 
                             var to_add: u32 = 0;
-                            var bytes_to_add: u32 = 0; // Track bytes for this iteration
                             var has_wrap_after: bool = false;
-                            var need_byte_calc: bool = true; // Whether we need to calculate bytes_to_add
 
                             if (remaining_in_chunk <= remaining_on_line) {
                                 if (last_wrap_that_fits) |boundary_w| {
                                     const would_fill_line = wctx.line_position + remaining_in_chunk >= wctx.wrap_w;
                                     if (would_fill_line and boundary_w < remaining_in_chunk) {
                                         to_add = boundary_w;
-                                        // bytes_to_add will be calculated below
                                         has_wrap_after = true;
                                     } else {
-                                        // Taking entire remaining chunk - bytes_to_add = remaining bytes
                                         to_add = remaining_in_chunk;
-                                        bytes_to_add = @intCast(chunk_bytes.len - byte_offset);
-                                        need_byte_calc = false;
                                         has_wrap_after = true;
                                     }
                                 } else {
-                                    // Taking entire remaining chunk - bytes_to_add = remaining bytes
                                     to_add = remaining_in_chunk;
-                                    bytes_to_add = @intCast(chunk_bytes.len - byte_offset);
-                                    need_byte_calc = false;
                                 }
                             } else if (last_wrap_that_fits) |boundary_w| {
                                 to_add = boundary_w;
-                                // bytes_to_add will be calculated below
                                 has_wrap_after = true;
                             } else if (wctx.line_position == 0) {
                                 // No word break found and we're at the start of a line - force wrap at char boundary
-                                // Use tracked byte_offset instead of recalculating (avoids O(n²))
+                                // Use tracked byte_offset instead of recalculating from scratch (avoids O(n²))
                                 const remaining_bytes = chunk_bytes[byte_offset..];
                                 const wrap_result = utf8.findWrapPosByWidth(remaining_bytes, remaining_on_line, wctx.text_buffer.tab_width, is_ascii_only, wctx.text_buffer.width_method);
                                 to_add = wrap_result.columns_used;
-                                bytes_to_add = wrap_result.byte_offset;
-                                need_byte_calc = false;
+                                byte_offset += wrap_result.byte_offset;
                                 if (to_add == 0) {
                                     to_add = 1;
-                                    // For single char, use findWrapPosByWidth with width=1
+                                    // Handle edge case: wide char at position 0
                                     const single_result = utf8.findWrapPosByWidth(remaining_bytes, 1, wctx.text_buffer.tab_width, is_ascii_only, wctx.text_buffer.width_method);
-                                    bytes_to_add = if (single_result.byte_offset > 0) single_result.byte_offset else 1;
+                                    byte_offset += single_result.byte_offset;
                                 }
                             } else if (wctx.last_wrap_chunk_count > 0) {
                                 var accumulated_width: u32 = 0;
@@ -991,17 +975,16 @@ pub const UnifiedTextBufferView = struct {
                             } else {
                                 // No word break found and line has content - commit current line and start fresh
                                 commitVirtualLine(wctx);
-                                // Use tracked byte_offset instead of recalculating (avoids O(n²))
+                                // Use tracked byte_offset instead of recalculating from scratch (avoids O(n²))
                                 const remaining_bytes = chunk_bytes[byte_offset..];
                                 const wrap_result = utf8.findWrapPosByWidth(remaining_bytes, wctx.wrap_w, wctx.text_buffer.tab_width, is_ascii_only, wctx.text_buffer.width_method);
                                 to_add = wrap_result.columns_used;
-                                bytes_to_add = wrap_result.byte_offset;
-                                need_byte_calc = false;
+                                byte_offset += wrap_result.byte_offset;
                                 if (to_add == 0) {
                                     to_add = 1;
-                                    // For single char, use findWrapPosByWidth with width=1
+                                    // Handle edge case: wide char at position 0
                                     const single_result = utf8.findWrapPosByWidth(remaining_bytes, 1, wctx.text_buffer.tab_width, is_ascii_only, wctx.text_buffer.width_method);
-                                    bytes_to_add = if (single_result.byte_offset > 0) single_result.byte_offset else 1;
+                                    byte_offset += single_result.byte_offset;
                                 }
                             }
 
@@ -1009,16 +992,8 @@ pub const UnifiedTextBufferView = struct {
                                 const position_before_add = wctx.line_position;
                                 const offset_before_add = wctx.global_char_offset;
 
-                                // Calculate bytes_to_add if not already computed
-                                if (need_byte_calc) {
-                                    const remaining_bytes = chunk_bytes[byte_offset..];
-                                    const calc_result = utf8.findWrapPosByWidth(remaining_bytes, to_add, wctx.text_buffer.tab_width, is_ascii_only, wctx.text_buffer.width_method);
-                                    bytes_to_add = calc_result.byte_offset;
-                                }
-
                                 addVirtualChunk(wctx, chunk, chunk_idx_in_line, char_offset, to_add);
                                 char_offset += to_add;
-                                byte_offset += bytes_to_add;
 
                                 if (has_wrap_after) {
                                     const wrap_pos_in_added = if (last_wrap_that_fits) |boundary_w|
