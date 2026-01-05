@@ -521,3 +521,173 @@ start
                                                                       
 "
 `;
+
+exports[`Textarea Layout Tests Measure Cache Edge Cases should correctly measure text after content change 1`] = `
+"┌──────────────────────────────────────┐          
+│Short text                            │          
+└──────────────────────────────────────┘          
+                                                  
+                                                  
+                                                  
+                                                  
+                                                  
+                                                  
+                                                  
+                                                  
+                                                  
+                                                  
+                                                  
+                                                  
+"
+`;
+
+exports[`Textarea Layout Tests Measure Cache Edge Cases should correctly measure text after content change 2`] = `
+"┌──────────────────────────────────────┐          
+│This is a much longer text that will  │          
+│definitely wrap to multiple lines     │          
+│when rendered                         │          
+└──────────────────────────────────────┘          
+                                                  
+                                                  
+                                                  
+                                                  
+                                                  
+                                                  
+                                                  
+                                                  
+                                                  
+                                                  
+"
+`;
+
+exports[`Textarea Layout Tests Measure Cache Edge Cases should handle rapid content updates correctly 1`] = `
+"┌────────────────────────────┐          
+│Update 4: some text here    │          
+└────────────────────────────┘          
+                                        
+                                        
+                                        
+                                        
+                                        
+                                        
+                                        
+"
+`;
+
+exports[`Textarea Layout Tests Measure Cache Edge Cases should handle width changes with cached measures 1`] = `
+"┌────────────────────────────┐                              
+│Content that will wrap      │                              
+│differently at different    │                              
+│widths                      │                              
+└────────────────────────────┘                              
+                                                            
+                                                            
+                                                            
+                                                            
+                                                            
+                                                            
+                                                            
+                                                            
+                                                            
+                                                            
+"
+`;
+
+exports[`Textarea Layout Tests Measure Cache Edge Cases should handle width changes with cached measures 2`] = `
+"┌────────────────────────────────────────────────┐          
+│Content that will wrap differently at different │          
+│widths                                          │          
+└────────────────────────────────────────────────┘          
+                                                            
+                                                            
+                                                            
+                                                            
+                                                            
+                                                            
+                                                            
+                                                            
+                                                            
+                                                            
+                                                            
+"
+`;
+
+exports[`Textarea Layout Tests Measure Cache Edge Cases should handle width changes with cached measures 3`] = `
+"┌──────────────────┐                                        
+│Content that will │                                        
+│wrap differently  │                                        
+│at different      │                                        
+│widths            │                                        
+└──────────────────┘                                        
+                                                            
+                                                            
+                                                            
+                                                            
+                                                            
+                                                            
+                                                            
+                                                            
+                                                            
+"
+`;
+
+exports[`Textarea Layout Tests Measure Cache Edge Cases should handle empty to non-empty content transition 1`] = `
+"┌──────────────────────────────────────┐          
+│                                      │          
+└──────────────────────────────────────┘          
+                                                  
+                                                  
+                                                  
+                                                  
+                                                  
+                                                  
+                                                  
+"
+`;
+
+exports[`Textarea Layout Tests Measure Cache Edge Cases should handle empty to non-empty content transition 2`] = `
+"┌──────────────────────────────────────┐          
+│Now with content                      │          
+└──────────────────────────────────────┘          
+                                                  
+                                                  
+                                                  
+                                                  
+                                                  
+                                                  
+                                                  
+"
+`;
+
+exports[`Textarea Layout Tests Measure Cache Edge Cases should handle empty to non-empty content transition 3`] = `
+"┌──────────────────────────────────────┐          
+│                                      │          
+└──────────────────────────────────────┘          
+                                                  
+                                                  
+                                                  
+                                                  
+                                                  
+                                                  
+                                                  
+"
+`;
+
+exports[`Textarea Layout Tests Measure Cache Edge Cases should correctly measure multiline content with unicode 1`] = `
+"┌────────────────────────────┐          
+│Hello 世界                  │          
+│こんにちは                  │          
+│🌟 Emoji 🚀                 │          
+└────────────────────────────┘          
+                                        
+                                        
+                                        
+                                        
+                                        
+                                        
+                                        
+                                        
+                                        
+                                        
+"
+`;

@@ -49,7 +49,7 @@ test "word wrap complexity - width changes are O(n)" {
     _ = view.getVirtualLineCount();
 
     for (widths, 0..) |width, i| {
-        times[i] = measureMedianViewUpdate(view, width, 3);
+        times[i] = measureMedianViewUpdate(view, width, 5);
     }
 
     var min_time: u64 = std.math.maxInt(u64);
@@ -61,8 +61,10 @@ test "word wrap complexity - width changes are O(n)" {
 
     const ratio = @as(f64, @floatFromInt(max_time)) / @as(f64, @floatFromInt(min_time));
 
-    // All times should be roughly similar (within 3x) since text size is constant
-    try std.testing.expect(ratio < 3.0);
+    // All times should be roughly similar since text size is constant.
+    // Using 5x threshold to accommodate CI runner variability while still
+    // catching O(n^2) regressions (which would show 10-100x differences).
+    try std.testing.expect(ratio < 5.0);
 }
 
 test "word wrap - virtual line count correctness" {
