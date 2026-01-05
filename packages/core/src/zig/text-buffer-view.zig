@@ -864,8 +864,10 @@ pub const UnifiedTextBufferView = struct {
                     if (wctx.wrap_mode == .word) {
                         const chunk_bytes = chunk.getBytes(&wctx.text_buffer.mem_registry);
                         const wrap_offsets = chunk.getWrapOffsets(&wctx.text_buffer.mem_registry, wctx.text_buffer.allocator, wctx.text_buffer.width_method) catch &[_]utf8.WrapBreak{};
+                        const is_ascii_only = (chunk.flags & TextChunk.Flags.ASCII_ONLY) != 0;
 
                         var char_offset: u32 = 0;
+                        var byte_offset: u32 = 0;
                         var wrap_idx: usize = 0;
                         while (char_offset < chunk.width) {
                             const remaining_in_chunk = chunk.width - char_offset;
@@ -904,16 +906,16 @@ pub const UnifiedTextBufferView = struct {
                                 to_add = boundary_w;
                                 has_wrap_after = true;
                             } else if (wctx.line_position == 0) {
-                                const is_ascii_only = (chunk.flags & TextChunk.Flags.ASCII_ONLY) != 0;
-                                var byte_offset: u32 = 0;
-                                if (char_offset > 0) {
-                                    const pos_result = utf8.findPosByWidth(chunk_bytes, char_offset, wctx.text_buffer.tab_width, is_ascii_only, false, wctx.text_buffer.width_method);
-                                    byte_offset = pos_result.byte_offset;
-                                }
+                                // Use tracked byte_offset instead of recalculating from scratch (avoids O(n²))
                                 const remaining_bytes = chunk_bytes[byte_offset..];
                                 const wrap_result = utf8.findWrapPosByWidth(remaining_bytes, remaining_on_line, wctx.text_buffer.tab_width, is_ascii_only, wctx.text_buffer.width_method);
                                 to_add = wrap_result.columns_used;
-                                if (to_add == 0) to_add = 1;
+                                byte_offset += wrap_result.byte_offset;
+                                if (to_add == 0) {
+                                    to_add = 1;
+                                    const single_result = utf8.findWrapPosByWidth(remaining_bytes, 1, wctx.text_buffer.tab_width, is_ascii_only, wctx.text_buffer.width_method);
+                                    byte_offset += single_result.byte_offset;
+                                }
                             } else if (wctx.last_wrap_chunk_count > 0) {
                                 var accumulated_width: u32 = 0;
                                 for (wctx.current_vline.chunks.items[0..wctx.last_wrap_chunk_count]) |vchunk| {
@@ -970,16 +972,15 @@ pub const UnifiedTextBufferView = struct {
                                 continue;
                             } else {
                                 commitVirtualLine(wctx);
-                                const is_ascii_only = (chunk.flags & TextChunk.Flags.ASCII_ONLY) != 0;
-                                var byte_offset: u32 = 0;
-                                if (char_offset > 0) {
-                                    const pos_result = utf8.findPosByWidth(chunk_bytes, char_offset, wctx.text_buffer.tab_width, is_ascii_only, false, wctx.text_buffer.width_method);
-                                    byte_offset = pos_result.byte_offset;
-                                }
                                 const remaining_bytes = chunk_bytes[byte_offset..];
                                 const wrap_result = utf8.findWrapPosByWidth(remaining_bytes, wctx.wrap_w, wctx.text_buffer.tab_width, is_ascii_only, wctx.text_buffer.width_method);
                                 to_add = wrap_result.columns_used;
-                                if (to_add == 0) to_add = 1;
+                                byte_offset += wrap_result.byte_offset;
+                                if (to_add == 0) {
+                                    to_add = 1;
+                                    const single_result = utf8.findWrapPosByWidth(remaining_bytes, 1, wctx.text_buffer.tab_width, is_ascii_only, wctx.text_buffer.width_method);
+                                    byte_offset += single_result.byte_offset;
+                                }
                             }
 
                             if (to_add > 0) {
