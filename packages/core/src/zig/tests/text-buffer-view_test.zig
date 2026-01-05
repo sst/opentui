@@ -1,5 +1,6 @@
 const std = @import("std");
 const text_buffer = @import("../text-buffer.zig");
+const iter_mod = @import("../text-buffer-iterators.zig");
 const text_buffer_view = @import("../text-buffer-view.zig");
 const gp = @import("../grapheme.zig");
 
@@ -1913,6 +1914,107 @@ test "TextBufferView measureForDimensions - does not modify cache" {
     const actual_count = view.getVirtualLineCount();
     // Should be 1 line because wrap_width is 100
     try std.testing.expectEqual(@as(u32, 1), actual_count);
+}
+
+test "TextBufferView measureForDimensions - cache invalidates after updateVirtualLines" {
+    const pool = gp.initGlobalPool(std.testing.allocator);
+    defer gp.deinitGlobalPool();
+
+    var tb = try TextBuffer.init(std.testing.allocator, pool, .wcwidth);
+    defer tb.deinit();
+
+    var view = try TextBufferView.init(std.testing.allocator, tb);
+    defer view.deinit();
+
+    try tb.setText("AAAAA");
+    view.setWrapMode(.char);
+    view.setWrapWidth(5);
+
+    const result1 = try view.measureForDimensions(5, 10);
+    try std.testing.expectEqual(@as(u32, 1), result1.line_count);
+    try std.testing.expectEqual(@as(u32, 5), result1.max_width);
+
+    try tb.setText("AAAAAAAAAA");
+
+    // This clears the dirty flag, which would cause a false cache hit
+    // if we keyed on dirty instead of epoch.
+    _ = view.getVirtualLineCount();
+
+    const result2 = try view.measureForDimensions(5, 10);
+    try std.testing.expectEqual(@as(u32, 2), result2.line_count);
+    try std.testing.expectEqual(@as(u32, 5), result2.max_width);
+}
+
+test "TextBufferView measureForDimensions - width 0 uses intrinsic line widths" {
+    const pool = gp.initGlobalPool(std.testing.allocator);
+    defer gp.deinitGlobalPool();
+
+    var tb = try TextBuffer.init(std.testing.allocator, pool, .wcwidth);
+    defer tb.deinit();
+
+    var view = try TextBufferView.init(std.testing.allocator, tb);
+    defer view.deinit();
+
+    try tb.setText("abc\ndefghij");
+    view.setWrapMode(.char);
+
+    const result = try view.measureForDimensions(0, 24);
+    try std.testing.expectEqual(tb.getLineCount(), result.line_count);
+    try std.testing.expectEqual(iter_mod.getMaxLineWidth(&tb.rope), result.max_width);
+}
+
+test "TextBufferView measureForDimensions - no wrap matches multi-segment line widths" {
+    const pool = gp.initGlobalPool(std.testing.allocator);
+    defer gp.deinitGlobalPool();
+
+    var tb = try TextBuffer.init(std.testing.allocator, pool, .wcwidth);
+    defer tb.deinit();
+
+    var view = try TextBufferView.init(std.testing.allocator, tb);
+    defer view.deinit();
+
+    try tb.setText("AAAA");
+    try tb.append("BBBB");
+    view.setWrapMode(.none);
+
+    const line_info = view.getCachedLineInfo();
+    var expected_max: u32 = 0;
+    for (line_info.widths) |w| {
+        expected_max = @max(expected_max, w);
+    }
+
+    const result = try view.measureForDimensions(80, 24);
+    try std.testing.expectEqual(expected_max, result.max_width);
+    try std.testing.expectEqual(@as(u32, @intCast(line_info.widths.len)), result.line_count);
+}
+
+test "TextBufferView measureForDimensions - cache invalidates on switchToBuffer" {
+    const pool = gp.initGlobalPool(std.testing.allocator);
+    defer gp.deinitGlobalPool();
+
+    var tb = try TextBuffer.init(std.testing.allocator, pool, .wcwidth);
+    defer tb.deinit();
+
+    var other_tb = try TextBuffer.init(std.testing.allocator, pool, .wcwidth);
+    defer other_tb.deinit();
+
+    var view = try TextBufferView.init(std.testing.allocator, tb);
+    defer view.deinit();
+
+    try tb.setText("AAAAAA");
+    view.setWrapMode(.char);
+
+    const result1 = try view.measureForDimensions(10, 10);
+    try std.testing.expectEqual(@as(u32, 6), result1.max_width);
+
+    try other_tb.setText("BBBBBBBBBB");
+    try std.testing.expectEqual(tb.getContentEpoch(), other_tb.getContentEpoch());
+
+    view.switchToBuffer(other_tb);
+
+    const result2 = try view.measureForDimensions(10, 10);
+    try std.testing.expectEqual(@as(u32, 10), result2.max_width);
+    try std.testing.expectEqual(@as(u32, 1), result2.line_count);
 }
 
 test "TextBufferView measureForDimensions - char wrap" {
