@@ -698,13 +698,27 @@ pub const CliRenderer = struct {
                     const bgB = rgbaComponentToU8(cell.bg[2]);
                     const bgA = cell.bg[3];
 
-                    ansi.ANSI.fgColorOutput(writer, fgR, fgG, fgB) catch {};
+                    // Check if terminal supports truecolor (24-bit RGB)
+                    const caps = self.terminal.getCapabilities();
+                    if (caps.rgb) {
+                        // Use truecolor (24-bit) output
+                        ansi.ANSI.fgColorOutput(writer, fgR, fgG, fgB) catch {};
+                    } else {
+                        // Fall back to 256-color mode
+                        const fgIndex = ansi.rgbTo256Color(fgR, fgG, fgB);
+                        ansi.ANSI.fgColor256Output(writer, fgIndex) catch {};
+                    }
 
                     // If alpha is 0 (transparent), use terminal default background instead of black
                     if (bgA < 0.001) {
                         writer.writeAll("\x1b[49m") catch {};
                     } else {
-                        ansi.ANSI.bgColorOutput(writer, bgR, bgG, bgB) catch {};
+                        if (caps.rgb) {
+                            ansi.ANSI.bgColorOutput(writer, bgR, bgG, bgB) catch {};
+                        } else {
+                            const bgIndex = ansi.rgbTo256Color(bgR, bgG, bgB);
+                            ansi.ANSI.bgColor256Output(writer, bgIndex) catch {};
+                        }
                     }
 
                     ansi.TextAttributes.applyAttributesOutputWriter(writer, cell.attributes) catch {};

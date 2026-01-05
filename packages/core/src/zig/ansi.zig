@@ -32,6 +32,15 @@ pub const ANSI = struct {
         writer.print("\x1b[48;2;{d};{d};{d}m", .{ r, g, b }) catch return AnsiError.WriteFailed;
     }
 
+    // 256-color mode output functions (for terminals without truecolor support)
+    pub fn fgColor256Output(writer: anytype, index: u8) AnsiError!void {
+        std.fmt.format(writer, "\x1b[38;5;{d}m", .{index}) catch return AnsiError.WriteFailed;
+    }
+
+    pub fn bgColor256Output(writer: anytype, index: u8) AnsiError!void {
+        std.fmt.format(writer, "\x1b[48;5;{d}m", .{index}) catch return AnsiError.WriteFailed;
+    }
+
     // Text attribute constants
     pub const bold = "\x1b[1m";
     pub const dim = "\x1b[2m";
@@ -238,6 +247,88 @@ pub const TextAttributes = struct {
         if (base_attr & STRIKETHROUGH != 0) writer.writeAll(ANSI.strikethrough) catch return AnsiError.WriteFailed;
     }
 };
+
+// 256-color palette conversion
+// The 256-color palette is structured as:
+// - 0-15: Standard colors (system colors, not predictable)
+// - 16-231: 6x6x6 color cube (216 colors)
+// - 232-255: Grayscale ramp (24 shades)
+
+// The 6x6x6 color cube levels: 0, 95, 135, 175, 215, 255
+const color_cube_levels = [6]u8{ 0, 95, 135, 175, 215, 255 };
+
+/// Convert an 8-bit RGB component to the nearest 6x6x6 cube index (0-5)
+fn rgbTo6Level(value: u8) u8 {
+    // Find the nearest level in the color cube
+    if (value < 48) return 0; // 0
+    if (value < 115) return 1; // 95
+    if (value < 155) return 2; // 135
+    if (value < 195) return 3; // 175
+    if (value < 235) return 4; // 215
+    return 5; // 255
+}
+
+/// Convert an 8-bit grayscale value to the nearest grayscale index (232-255)
+fn grayTo24Level(value: u8) u8 {
+    // Grayscale ramp: 232-255 represents 24 shades
+    // Values are: 8, 18, 28, ..., 238 (step of 10)
+    // We map 0-255 to 0-23, then add 232
+    if (value < 4) return 232; // Closest to black
+    if (value > 243) return 255; // Closest to white
+    // Linear interpolation: (value - 8) / 10 + 232
+    return @as(u8, @intCast((@as(u16, value) - 8) / 10 + 232));
+}
+
+/// Calculate the squared distance between two RGB colors
+fn colorDistanceSquared(r1: u8, g1: u8, b1: u8, r2: u8, g2: u8, b2: u8) u32 {
+    const dr = @as(i32, r1) - @as(i32, r2);
+    const dg = @as(i32, g1) - @as(i32, g2);
+    const db = @as(i32, b1) - @as(i32, b2);
+    return @intCast(dr * dr + dg * dg + db * db);
+}
+
+/// Convert RGB (0-255) to the nearest 256-color palette index
+/// This chooses between the color cube (16-231) and grayscale ramp (232-255)
+pub fn rgbTo256Color(r: u8, g: u8, b: u8) u8 {
+    // Get the nearest color cube index
+    const cube_r = rgbTo6Level(r);
+    const cube_g = rgbTo6Level(g);
+    const cube_b = rgbTo6Level(b);
+    const cube_index = 16 + 36 * cube_r + 6 * cube_g + cube_b;
+
+    // Get the actual RGB values for this cube color
+    const cube_r_val = color_cube_levels[cube_r];
+    const cube_g_val = color_cube_levels[cube_g];
+    const cube_b_val = color_cube_levels[cube_b];
+
+    // Calculate distance to the cube color
+    const cube_dist = colorDistanceSquared(r, g, b, cube_r_val, cube_g_val, cube_b_val);
+
+    // Check if this might be better represented as grayscale
+    // Only consider grayscale if the color is relatively neutral
+    const max_component = @max(r, @max(g, b));
+    const min_component = @min(r, @min(g, b));
+
+    // If the color is fairly neutral (max - min < 32), try grayscale
+    if (max_component - min_component < 32) {
+        // Use average for grayscale
+        const gray = @as(u8, @intCast((@as(u16, r) + @as(u16, g) + @as(u16, b)) / 3));
+        const gray_index = grayTo24Level(gray);
+
+        // Calculate the actual grayscale value for this index
+        const gray_val: u8 = if (gray_index < 232) 0 else @as(u8, @intCast((gray_index - 232) * 10 + 8));
+
+        // Calculate distance to grayscale
+        const gray_dist = colorDistanceSquared(r, g, b, gray_val, gray_val, gray_val);
+
+        // Choose whichever is closer
+        if (gray_dist < cube_dist) {
+            return gray_index;
+        }
+    }
+
+    return cube_index;
+}
 
 const HSV_SECTOR_COUNT = 6;
 const HUE_SECTOR_DEGREES = 60.0;
