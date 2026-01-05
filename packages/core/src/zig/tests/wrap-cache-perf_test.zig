@@ -6,7 +6,6 @@ const gp = @import("../grapheme.zig");
 const TextBuffer = text_buffer.UnifiedTextBuffer;
 const TextBufferView = text_buffer_view.UnifiedTextBufferView;
 
-// Helper to measure median time of multiple runs
 fn measureMedianViewUpdate(view: *TextBufferView, width: u32, iterations: usize) u64 {
     var times: [16]u64 = undefined;
     const actual_iterations = @min(iterations, 16);
@@ -18,7 +17,6 @@ fn measureMedianViewUpdate(view: *TextBufferView, width: u32, iterations: usize)
         times[i] = timer.read();
     }
 
-    // Sort and return median
     std.mem.sort(u64, times[0..actual_iterations], {}, std.sort.asc(u64));
     return times[actual_iterations / 2];
 }
@@ -32,7 +30,6 @@ test "word wrap complexity - width changes are O(n)" {
 
     const size: usize = 100_000;
 
-    // Text without word breaks
     const text = try std.testing.allocator.alloc(u8, size);
     defer std.testing.allocator.free(text);
     @memset(text, 'x');
@@ -45,11 +42,9 @@ test "word wrap complexity - width changes are O(n)" {
     defer view.deinit();
     view.setWrapMode(.word);
 
-    // Measure time for multiple width changes
     const widths = [_]u32{ 60, 70, 80, 90, 100 };
     var times: [widths.len]u64 = undefined;
 
-    // Warm up
     view.setWrapWidth(widths[0]);
     _ = view.getVirtualLineCount();
 
@@ -76,7 +71,6 @@ test "word wrap complexity - width changes are O(n)" {
     try std.testing.expect(ratio < 3.0);
 }
 
-// Tests that virtual line counts are correct and consistent.
 test "word wrap - virtual line count correctness" {
     const pool = gp.initGlobalPool(std.testing.allocator);
     defer gp.deinitGlobalPool();
@@ -87,7 +81,6 @@ test "word wrap - virtual line count correctness" {
     var view = try TextBufferView.init(std.testing.allocator, tb);
     defer view.deinit();
 
-    // Test with a known pattern
     const pattern = "var abc=123;function foo(){return bar+baz;}if(x>0){y=z*2;}else{y=0;}";
     const size = 10_000;
     var text = try std.testing.allocator.alloc(u8, size);
@@ -104,7 +97,6 @@ test "word wrap - virtual line count correctness" {
     try tb.setText(text);
     view.setWrapMode(.word);
 
-    // Test different widths
     view.setWrapWidth(80);
     const count_80 = view.getVirtualLineCount();
 
@@ -117,9 +109,8 @@ test "word wrap - virtual line count correctness" {
     view.setWrapWidth(80);
     const count_80_again = view.getVirtualLineCount();
 
-    // Verify relationships
-    try std.testing.expect(count_80 > 100); // Should have reasonable number of lines
-    try std.testing.expectEqual(count_80, count_80_again); // Same width = same count
-    try std.testing.expect(count_100 < count_80); // Wider = fewer lines
-    try std.testing.expect(count_60 > count_80); // Narrower = more lines
+    try std.testing.expect(count_80 > 100);
+    try std.testing.expectEqual(count_80, count_80_again);
+    try std.testing.expect(count_100 < count_80);
+    try std.testing.expect(count_60 > count_80);
 }
