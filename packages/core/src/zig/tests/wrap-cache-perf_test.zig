@@ -174,7 +174,7 @@ test "word wrap complexity - width changes are O(n)" {
     _ = view.getVirtualLineCount();
 
     for (widths, 0..) |width, i| {
-        times[i] = measureMedianViewUpdate(&view, width, 3);
+        times[i] = measureMedianViewUpdate(view, width, 3);
     }
 
     var min_time: u64 = std.math.maxInt(u64);
