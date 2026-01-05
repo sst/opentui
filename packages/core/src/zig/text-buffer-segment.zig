@@ -121,12 +121,13 @@ pub const TextChunk = struct {
 
         const chunk_bytes = self.getBytes(mem_registry);
         var wrap_result = utf8.WrapBreakResult.init(allocator);
-        defer wrap_result.deinit();
+        errdefer wrap_result.deinit();
 
         try utf8.findWrapBreaks(chunk_bytes, &wrap_result, width_method);
 
         // TODO: Do not cache for chunks < 64 bytes, as it does not profit from the cache
-        const wrap_offsets = try allocator.dupe(utf8.WrapBreak, wrap_result.breaks.items);
+        // Use toOwnedSlice to transfer ownership without copying
+        const wrap_offsets = try wrap_result.breaks.toOwnedSlice();
         mut_self.wrap_offsets = wrap_offsets;
 
         return wrap_offsets;
