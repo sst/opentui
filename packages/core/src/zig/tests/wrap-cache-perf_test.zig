@@ -6,7 +6,198 @@ const gp = @import("../grapheme.zig");
 const TextBuffer = text_buffer.UnifiedTextBuffer;
 const TextBufferView = text_buffer_view.UnifiedTextBufferView;
 
-test "wrap break cache - large single line performance" {
+// Helper to measure median time of multiple runs
+fn measureMedianViewUpdate(view: *TextBufferView, width: u32, iterations: usize) u64 {
+    var times: [16]u64 = undefined;
+    const actual_iterations = @min(iterations, 16);
+
+    for (0..actual_iterations) |i| {
+        var timer = std.time.Timer.start() catch unreachable;
+        view.setWrapWidth(width);
+        _ = view.getVirtualLineCount();
+        times[i] = timer.read();
+    }
+
+    // Sort and return median
+    std.mem.sort(u64, times[0..actual_iterations], {}, std.sort.asc(u64));
+    return times[actual_iterations / 2];
+}
+
+// Tests that word wrap has O(n) complexity for text WITHOUT word breaks.
+// This was previously O(n²) due to findPosByWidth being called from the start
+// of each chunk for every virtual line.
+//
+// We verify O(n) by checking that doubling the input size roughly doubles the time.
+// For O(n²), doubling input would quadruple the time (ratio ~4).
+test "word wrap complexity - O(n) for text without word breaks" {
+    const pool = gp.initGlobalPool(std.testing.allocator);
+    defer gp.deinitGlobalPool();
+
+    const small_size: usize = 50_000;
+    const large_size: usize = 100_000; // 2x small
+
+    // Create text WITHOUT word breaks - this triggers the fallback path
+    const small_text = try std.testing.allocator.alloc(u8, small_size);
+    defer std.testing.allocator.free(small_text);
+    @memset(small_text, 'x');
+
+    const large_text = try std.testing.allocator.alloc(u8, large_size);
+    defer std.testing.allocator.free(large_text);
+    @memset(large_text, 'x');
+
+    // Setup small buffer
+    var small_tb = try TextBuffer.init(std.testing.allocator, pool, .wcwidth);
+    defer small_tb.deinit();
+    try small_tb.setText(small_text);
+
+    var small_view = try TextBufferView.init(std.testing.allocator, small_tb);
+    defer small_view.deinit();
+    small_view.setWrapMode(.word);
+    small_view.setWrapWidth(80);
+
+    // Setup large buffer
+    var large_tb = try TextBuffer.init(std.testing.allocator, pool, .wcwidth);
+    defer large_tb.deinit();
+    try large_tb.setText(large_text);
+
+    var large_view = try TextBufferView.init(std.testing.allocator, large_tb);
+    defer large_view.deinit();
+    large_view.setWrapMode(.word);
+    large_view.setWrapWidth(80);
+
+    // Warm up - populate caches
+    _ = small_view.getVirtualLineCount();
+    _ = large_view.getVirtualLineCount();
+
+    // Measure with median of 5 runs
+    const small_time = measureMedianViewUpdate(small_view, 81, 5);
+    const large_time = measureMedianViewUpdate(large_view, 81, 5);
+
+    // Calculate ratio
+    const ratio = @as(f64, @floatFromInt(large_time)) / @as(f64, @floatFromInt(small_time));
+    const input_ratio: f64 = @as(f64, @floatFromInt(large_size)) / @as(f64, @floatFromInt(small_size)); // 2.0
+
+    std.debug.print("\nComplexity test (no word breaks):\n", .{});
+    std.debug.print("  Small ({} bytes): {}ms\n", .{ small_size, small_time / 1_000_000 });
+    std.debug.print("  Large ({} bytes): {}ms\n", .{ large_size, large_time / 1_000_000 });
+    std.debug.print("  Time ratio: {d:.2} (input ratio: {d:.1})\n", .{ ratio, input_ratio });
+
+    // For O(n): ratio should be ~2 when input doubles
+    // For O(n²): ratio would be ~4
+    // Allow 50% variance: ratio should be < input_ratio * 1.5 = 3.0
+    try std.testing.expect(ratio < input_ratio * 1.5);
+}
+
+// Tests that word wrap has O(n) complexity for text WITH word breaks.
+test "word wrap complexity - O(n) for text with word breaks" {
+    const pool = gp.initGlobalPool(std.testing.allocator);
+    defer gp.deinitGlobalPool();
+
+    const small_size: usize = 50_000;
+    const large_size: usize = 100_000;
+
+    // Create text WITH word breaks (spaces every 10 chars)
+    const small_text = try std.testing.allocator.alloc(u8, small_size);
+    defer std.testing.allocator.free(small_text);
+    for (small_text, 0..) |*c, i| {
+        c.* = if (i % 11 == 10) ' ' else 'x';
+    }
+
+    const large_text = try std.testing.allocator.alloc(u8, large_size);
+    defer std.testing.allocator.free(large_text);
+    for (large_text, 0..) |*c, i| {
+        c.* = if (i % 11 == 10) ' ' else 'x';
+    }
+
+    var small_tb = try TextBuffer.init(std.testing.allocator, pool, .wcwidth);
+    defer small_tb.deinit();
+    try small_tb.setText(small_text);
+
+    var small_view = try TextBufferView.init(std.testing.allocator, small_tb);
+    defer small_view.deinit();
+    small_view.setWrapMode(.word);
+    small_view.setWrapWidth(80);
+
+    var large_tb = try TextBuffer.init(std.testing.allocator, pool, .wcwidth);
+    defer large_tb.deinit();
+    try large_tb.setText(large_text);
+
+    var large_view = try TextBufferView.init(std.testing.allocator, large_tb);
+    defer large_view.deinit();
+    large_view.setWrapMode(.word);
+    large_view.setWrapWidth(80);
+
+    // Warm up
+    _ = small_view.getVirtualLineCount();
+    _ = large_view.getVirtualLineCount();
+
+    const small_time = measureMedianViewUpdate(small_view, 81, 5);
+    const large_time = measureMedianViewUpdate(large_view, 81, 5);
+
+    const ratio = @as(f64, @floatFromInt(large_time)) / @as(f64, @floatFromInt(small_time));
+    const input_ratio: f64 = @as(f64, @floatFromInt(large_size)) / @as(f64, @floatFromInt(small_size));
+
+    std.debug.print("\nComplexity test (with word breaks):\n", .{});
+    std.debug.print("  Small ({} bytes): {}ms\n", .{ small_size, small_time / 1_000_000 });
+    std.debug.print("  Large ({} bytes): {}ms\n", .{ large_size, large_time / 1_000_000 });
+    std.debug.print("  Time ratio: {d:.2} (input ratio: {d:.1})\n", .{ ratio, input_ratio });
+
+    try std.testing.expect(ratio < input_ratio * 1.5);
+}
+
+// Tests that wrap width changes scale linearly with text size, not quadratically.
+test "word wrap complexity - width changes are O(n)" {
+    const pool = gp.initGlobalPool(std.testing.allocator);
+    defer gp.deinitGlobalPool();
+
+    const size: usize = 100_000;
+
+    // Text without word breaks
+    const text = try std.testing.allocator.alloc(u8, size);
+    defer std.testing.allocator.free(text);
+    @memset(text, 'x');
+
+    var tb = try TextBuffer.init(std.testing.allocator, pool, .wcwidth);
+    defer tb.deinit();
+    try tb.setText(text);
+
+    var view = try TextBufferView.init(std.testing.allocator, tb);
+    defer view.deinit();
+    view.setWrapMode(.word);
+
+    // Measure time for multiple width changes
+    const widths = [_]u32{ 60, 70, 80, 90, 100 };
+    var times: [widths.len]u64 = undefined;
+
+    // Warm up
+    view.setWrapWidth(widths[0]);
+    _ = view.getVirtualLineCount();
+
+    for (widths, 0..) |width, i| {
+        times[i] = measureMedianViewUpdate(&view, width, 3);
+    }
+
+    var min_time: u64 = std.math.maxInt(u64);
+    var max_time: u64 = 0;
+    for (times) |t| {
+        min_time = @min(min_time, t);
+        max_time = @max(max_time, t);
+    }
+
+    const ratio = @as(f64, @floatFromInt(max_time)) / @as(f64, @floatFromInt(min_time));
+
+    std.debug.print("\nWidth change times:\n", .{});
+    for (widths, times) |width, time| {
+        std.debug.print("  Width {}: {}ms\n", .{ width, time / 1_000_000 });
+    }
+    std.debug.print("  Max/min ratio: {d:.2}\n", .{ratio});
+
+    // All times should be roughly similar (within 3x) since text size is constant
+    try std.testing.expect(ratio < 3.0);
+}
+
+// Tests that virtual line counts are correct and consistent.
+test "word wrap - virtual line count correctness" {
     const pool = gp.initGlobalPool(std.testing.allocator);
     defer gp.deinitGlobalPool();
 
@@ -16,92 +207,39 @@ test "wrap break cache - large single line performance" {
     var view = try TextBufferView.init(std.testing.allocator, tb);
     defer view.deinit();
 
-    // Create a large single-line string simulating minified JS
-    // Using 1MB for testing to better simulate the issue
-    const size = 1_000_000;
-    var large_text = try std.testing.allocator.alloc(u8, size);
-    defer std.testing.allocator.free(large_text);
-
-    // Fill with pattern simulating minified JS: "var a=1;var b=2;function foo(){...}"
-    // Words of varying length separated by operators and punctuation
+    // Test with a known pattern
     const pattern = "var abc=123;function foo(){return bar+baz;}if(x>0){y=z*2;}else{y=0;}";
-    const pattern_len = pattern.len;
+    const size = 10_000;
+    var text = try std.testing.allocator.alloc(u8, size);
+    defer std.testing.allocator.free(text);
+
     var i: usize = 0;
     while (i < size) {
         const remaining = size - i;
-        const copy_len = @min(pattern_len, remaining);
-        @memcpy(large_text[i .. i + copy_len], pattern[0..copy_len]);
+        const copy_len = @min(pattern.len, remaining);
+        @memcpy(text[i .. i + copy_len], pattern[0..copy_len]);
         i += copy_len;
     }
 
-    try tb.setText(large_text);
-
-    std.debug.print("\nText size: {} bytes\n", .{size});
-
+    try tb.setText(text);
     view.setWrapMode(.word);
 
-    // First render - populate the cache
-    std.debug.print("\n=== First render (width=80) - populating cache ===\n", .{});
-    var timer = try std.time.Timer.start();
+    // Test different widths
     view.setWrapWidth(80);
-    const count1 = view.getVirtualLineCount();
-    const first_render_ns = timer.read();
-    std.debug.print("First render: {} virtual lines in {}ms\n", .{ count1, first_render_ns / 1_000_000 });
+    const count_80 = view.getVirtualLineCount();
 
-    // Second render - same width, should be instant (no-op due to dirty flag)
-    std.debug.print("\n=== Second render (same width=80) - should be no-op ===\n", .{});
-    timer.reset();
-    const count2 = view.getVirtualLineCount();
-    const second_render_ns = timer.read();
-    std.debug.print("Second render: {} virtual lines in {}ms\n", .{ count2, second_render_ns / 1_000_000 });
-
-    // Third render - different width, should reuse wrap break cache
-    std.debug.print("\n=== Third render (width=100) - should reuse wrap break cache ===\n", .{});
-    timer.reset();
     view.setWrapWidth(100);
-    const count3 = view.getVirtualLineCount();
-    const third_render_ns = timer.read();
-    std.debug.print("Third render: {} virtual lines in {}ms\n", .{ count3, third_render_ns / 1_000_000 });
+    const count_100 = view.getVirtualLineCount();
 
-    // Fourth render - another width change
-    std.debug.print("\n=== Fourth render (width=60) - should reuse wrap break cache ===\n", .{});
-    timer.reset();
     view.setWrapWidth(60);
-    const count4 = view.getVirtualLineCount();
-    const fourth_render_ns = timer.read();
-    std.debug.print("Fourth render: {} virtual lines in {}ms\n", .{ count4, fourth_render_ns / 1_000_000 });
+    const count_60 = view.getVirtualLineCount();
 
-    // Fifth render - back to original width
-    std.debug.print("\n=== Fifth render (width=80 again) - should reuse wrap break cache ===\n", .{});
-    timer.reset();
     view.setWrapWidth(80);
-    const count5 = view.getVirtualLineCount();
-    const fifth_render_ns = timer.read();
-    std.debug.print("Fifth render: {} virtual lines in {}ms\n", .{ count5, fifth_render_ns / 1_000_000 });
+    const count_80_again = view.getVirtualLineCount();
 
-    // Verify counts are reasonable
-    // Note: Due to u16 chunk width limits and word wrapping behavior,
-    // the actual line count may be less than size/width
-    std.debug.print("Expected ~{} virtual lines at width 80 (but chunks limit this)\n", .{size / 80});
-    try std.testing.expect(count1 > 100); // Should have reasonable number of virtual lines
-    try std.testing.expectEqual(count1, count2); // Same width = same count
-    try std.testing.expectEqual(count1, count5); // Same width = same count
-    try std.testing.expect(count3 < count1); // Wider = fewer lines
-    try std.testing.expect(count4 > count1); // Narrower = more lines
-
-    // Performance assertions:
-    // After first render, subsequent renders with different widths should be
-    // significantly faster because wrap break cache is already populated
-    std.debug.print("\n=== Performance summary ===\n", .{});
-    std.debug.print("First render (cache miss): {}ms\n", .{first_render_ns / 1_000_000});
-    std.debug.print("Third render (cache hit, width change): {}ms\n", .{third_render_ns / 1_000_000});
-    std.debug.print("Fourth render (cache hit, width change): {}ms\n", .{fourth_render_ns / 1_000_000});
-    std.debug.print("Fifth render (cache hit, width change): {}ms\n", .{fifth_render_ns / 1_000_000});
-
-    // The third/fourth/fifth renders should be reasonably fast (< 500ms for 1MB)
-    // If they're slow, the cache isn't being reused properly
-    const max_cached_render_time_ns: u64 = 500_000_000; // 500ms
-    try std.testing.expect(third_render_ns < max_cached_render_time_ns);
-    try std.testing.expect(fourth_render_ns < max_cached_render_time_ns);
-    try std.testing.expect(fifth_render_ns < max_cached_render_time_ns);
+    // Verify relationships
+    try std.testing.expect(count_80 > 100); // Should have reasonable number of lines
+    try std.testing.expectEqual(count_80, count_80_again); // Same width = same count
+    try std.testing.expect(count_100 < count_80); // Wider = fewer lines
+    try std.testing.expect(count_60 > count_80); // Narrower = more lines
 }
