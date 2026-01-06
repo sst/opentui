@@ -616,7 +616,7 @@ pub const CliRenderer = struct {
                     if (currentLinkId != 0) {
                         const lp = link.initGlobalLinkPool(self.allocator);
                         if (lp.get(currentLinkId)) |url_bytes| {
-                            std.fmt.format(writer, "\x1b]8;;{s}\x1b\\", .{url_bytes}) catch {};
+                            writer.print("\x1b]8;;{s}\x1b\\", .{url_bytes}) catch {};
                         } else |_| {
                             // Link not found, treat as no link
                             currentLinkId = 0;
