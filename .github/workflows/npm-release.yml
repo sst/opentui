@@ -26,7 +26,7 @@ jobs:
       - name: Setup Zig
         uses: goto-bus-stop/setup-zig@v2
         with:
-          version: 0.14.1
+          version: 0.15.2
 
       - name: Extract version from tag
         id: extract_version
@@ -52,8 +52,13 @@ jobs:
       - name: Prepare release versions
         run: bun run prepare-release "${{ steps.version_scheme.outputs.version }}"
 
-      - name: Build packages
-        run: bun run build
+      - name: Build packages (cross-compile for all platforms)
+        run: |
+          cd packages/core
+          bun run build:native --all
+          bun run build:lib
+          cd ../solid && bun run build
+          cd ../react && bun run build
 
       - name: Publish packages
         run: bun run publish
