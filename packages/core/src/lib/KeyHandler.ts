@@ -130,6 +130,7 @@ export class InternalKeyHandler extends KeyHandler {
     super(useKittyKeyboard)
   }
 
+  // @ts-expect-error - emit override with priority handling for key events
   public emit<K extends keyof KeyHandlerEventMap>(event: K, ...args: KeyHandlerEventMap[K]): boolean {
     return this.emitWithPriority(event, ...args)
   }

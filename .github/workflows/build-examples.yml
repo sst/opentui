@@ -16,7 +16,7 @@ on:
 jobs:
   build-examples:
     name: Build Example Executables
-    runs-on: macos-latest
+    runs-on: ubuntu-latest
 
     steps:
       - name: Checkout code

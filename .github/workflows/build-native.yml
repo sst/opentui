@@ -19,7 +19,7 @@ env:
 jobs:
   build-native:
     name: Build Native Libraries
-    runs-on: macos-latest
+    runs-on: ubuntu-latest
 
     steps:
       - name: Checkout code

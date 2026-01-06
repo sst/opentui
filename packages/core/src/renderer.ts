@@ -740,7 +740,7 @@ export class CliRenderer extends EventEmitter implements RenderContext {
   }
 
   public get keyInput(): KeyHandler {
-    return this._keyHandler
+    return this._keyHandler as KeyHandler
   }
 
   public get _internalKeyInput(): InternalKeyHandler {
