@@ -465,6 +465,26 @@ export fn addToHitGrid(rendererPtr: *renderer.CliRenderer, x: i32, y: i32, width
     rendererPtr.addToHitGrid(x, y, width, height, id);
 }
 
+export fn clearCurrentHitGrid(rendererPtr: *renderer.CliRenderer) void {
+    rendererPtr.clearCurrentHitGrid();
+}
+
+export fn hitGridPushScissorRect(rendererPtr: *renderer.CliRenderer, x: i32, y: i32, width: u32, height: u32) void {
+    rendererPtr.hitGridPushScissorRect(x, y, width, height);
+}
+
+export fn hitGridPopScissorRect(rendererPtr: *renderer.CliRenderer) void {
+    rendererPtr.hitGridPopScissorRect();
+}
+
+export fn hitGridClearScissorRects(rendererPtr: *renderer.CliRenderer) void {
+    rendererPtr.hitGridClearScissorRects();
+}
+
+export fn addToCurrentHitGridClipped(rendererPtr: *renderer.CliRenderer, x: i32, y: i32, width: u32, height: u32, id: u32) void {
+    rendererPtr.addToCurrentHitGridClipped(x, y, width, height, id);
+}
+
 export fn checkHit(rendererPtr: *renderer.CliRenderer, x: u32, y: u32) u32 {
     return rendererPtr.checkHit(x, y);
 }

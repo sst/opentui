@@ -54,6 +54,10 @@ export interface RendererEvents {
 
 export interface RenderContext extends EventEmitter {
   addToHitGrid: (x: number, y: number, width: number, height: number, id: number) => void
+  pushHitGridScissorRect: (x: number, y: number, width: number, height: number) => void
+  popHitGridScissorRect: () => void
+  clearHitGridScissorRects: () => void
+  recheckHoverState: () => void
   width: number
   height: number
   requestRender: () => void

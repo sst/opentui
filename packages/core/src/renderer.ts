@@ -1,5 +1,5 @@
 import { ANSI } from "./ansi"
-import { Renderable, RootRenderable } from "./Renderable"
+import { Renderable, RootRenderable, type HitGridCommand } from "./Renderable"
 import {
   type CursorStyle,
   DebugOverlayCorner,
@@ -405,6 +405,12 @@ export class CliRenderer extends EventEmitter implements RenderContext {
   }).bind(this)
   private _capabilities: any | null = null
   private _latestPointer: { x: number; y: number } = { x: 0, y: 0 }
+  private _hasPointer: boolean = false
+  private hitGridDirty: boolean = true
+  private hitGridSyncing: boolean = false
+  private hitGridDirtyDuringRender: boolean = false
+  private hitGridDirtyDuringSync: boolean = false
+  private hitGridCommands: HitGridCommand[] = []
 
   private _currentFocusedRenderable: Renderable | null = null
   private lifecyclePasses: Set<Renderable> = new Set()
@@ -636,10 +642,40 @@ export class CliRenderer extends EventEmitter implements RenderContext {
     this._currentFocusedRenderable = renderable
   }
 
+  private markHitGridDirty(): void {
+    this.hitGridDirty = true
+    if (this.rendering) {
+      this.hitGridDirtyDuringRender = true
+    }
+    if (this.hitGridSyncing) {
+      this.hitGridDirtyDuringSync = true
+    }
+  }
+
+  private setCapturedRenderable(renderable: Renderable | undefined): void {
+    if (this.capturedRenderable === renderable) {
+      return
+    }
+    this.capturedRenderable = renderable
+    this.markHitGridDirty()
+  }
+
   public addToHitGrid(x: number, y: number, width: number, height: number, id: number) {
     if (id !== this.capturedRenderable?.num) {
       this.lib.addToHitGrid(this.rendererPtr, x, y, width, height, id)
     }
+  }
+
+  public pushHitGridScissorRect(x: number, y: number, width: number, height: number): void {
+    this.lib.hitGridPushScissorRect(this.rendererPtr, x, y, width, height)
+  }
+
+  public popHitGridScissorRect(): void {
+    this.lib.hitGridPopScissorRect(this.rendererPtr)
+  }
+
+  public clearHitGridScissorRects(): void {
+    this.lib.hitGridClearScissorRects(this.rendererPtr)
   }
 
   public get widthMethod(): WidthMethod {
@@ -652,6 +688,7 @@ export class CliRenderer extends EventEmitter implements RenderContext {
   }
 
   public requestRender() {
+    this.markHitGridDirty()
     if (this._controlState === RendererControlState.EXPLICIT_SUSPENDED) {
       return
     }
@@ -906,7 +943,7 @@ export class CliRenderer extends EventEmitter implements RenderContext {
 
   private disableMouse(): void {
     this._useMouse = false
-    this.capturedRenderable = undefined
+    this.setCapturedRenderable(undefined)
     this.mouseParser.reset()
     this.lib.disableMouse(this.rendererPtr)
   }
@@ -1051,6 +1088,7 @@ export class CliRenderer extends EventEmitter implements RenderContext {
 
       this._latestPointer.x = mouseEvent.x
       this._latestPointer.y = mouseEvent.y
+      this._hasPointer = true
 
       if (this._console.visible) {
         const consoleBounds = this._console.bounds
@@ -1067,7 +1105,7 @@ export class CliRenderer extends EventEmitter implements RenderContext {
       }
 
       if (mouseEvent.type === "scroll") {
-        const maybeRenderableId = this.lib.checkHit(this.rendererPtr, mouseEvent.x, mouseEvent.y)
+        const maybeRenderableId = this.hitTest(mouseEvent.x, mouseEvent.y)
         const maybeRenderable = Renderable.renderablesByNumber.get(maybeRenderableId)
 
         if (maybeRenderable) {
@@ -1077,7 +1115,7 @@ export class CliRenderer extends EventEmitter implements RenderContext {
         return true
       }
 
-      const maybeRenderableId = this.lib.checkHit(this.rendererPtr, mouseEvent.x, mouseEvent.y)
+      const maybeRenderableId = this.hitTest(mouseEvent.x, mouseEvent.y)
       const sameElement = maybeRenderableId === this.lastOverRenderableNum
       this.lastOverRenderableNum = maybeRenderableId
       const maybeRenderable = Renderable.renderablesByNumber.get(maybeRenderableId)
@@ -1166,7 +1204,7 @@ export class CliRenderer extends EventEmitter implements RenderContext {
         }
         this.lastOverRenderable = this.capturedRenderable
         this.lastOverRenderableNum = this.capturedRenderable.num
-        this.capturedRenderable = undefined
+        this.setCapturedRenderable(undefined)
         // Dropping the renderable needs to push another frame when the renderer is not live
         // to update the hit grid, otherwise capturedRenderable won't be in the hit grid and will not receive mouse events
         this.requestRender()
@@ -1175,14 +1213,14 @@ export class CliRenderer extends EventEmitter implements RenderContext {
       let event: MouseEvent | undefined = undefined
       if (maybeRenderable) {
         if (mouseEvent.type === "drag" && mouseEvent.button === MouseButton.LEFT) {
-          this.capturedRenderable = maybeRenderable
+          this.setCapturedRenderable(maybeRenderable)
         } else {
-          this.capturedRenderable = undefined
+          this.setCapturedRenderable(undefined)
         }
         event = new MouseEvent(maybeRenderable, mouseEvent)
         maybeRenderable.processMouseEvent(event)
       } else {
-        this.capturedRenderable = undefined
+        this.setCapturedRenderable(undefined)
         this.lastOverRenderable = undefined
       }
 
@@ -1194,6 +1232,110 @@ export class CliRenderer extends EventEmitter implements RenderContext {
     }
 
     return false
+  }
+
+  private syncHitGridIfNeeded(): void {
+    if (!this.hitGridDirty || this.hitGridSyncing) {
+      return
+    }
+
+    this.hitGridSyncing = true
+    this.hitGridDirtyDuringSync = false
+    try {
+      if (this.root.layoutDirty) {
+        this.root.calculateLayout()
+        this.root.updateFromLayoutRecursive()
+      }
+
+      this.hitGridCommands.length = 0
+      this.root.collectHitGridCommands(this.hitGridCommands)
+
+      this.clearHitGridScissorRects()
+      this.lib.clearCurrentHitGrid(this.rendererPtr)
+
+      for (const command of this.hitGridCommands) {
+        switch (command.action) {
+          case "pushScissorRect":
+            this.lib.hitGridPushScissorRect(
+              this.rendererPtr,
+              command.x,
+              command.y,
+              command.width,
+              command.height,
+            )
+            break
+          case "popScissorRect":
+            this.lib.hitGridPopScissorRect(this.rendererPtr)
+            break
+          case "render": {
+            const renderable = command.renderable
+            if (renderable.isDestroyed || renderable === this.root) {
+              break
+            }
+            if (this.capturedRenderable && renderable.num === this.capturedRenderable.num) {
+              break
+            }
+            this.lib.addToCurrentHitGridClipped(
+              this.rendererPtr,
+              renderable.x,
+              renderable.y,
+              renderable.width,
+              renderable.height,
+              renderable.num,
+            )
+            break
+          }
+        }
+      }
+
+      this.hitGridDirty = this.hitGridDirtyDuringSync
+    } finally {
+      this.hitGridDirtyDuringSync = false
+      this.hitGridSyncing = false
+    }
+  }
+
+  public hitTest(x: number, y: number): number {
+    this.syncHitGridIfNeeded()
+    return this.lib.checkHit(this.rendererPtr, x, y)
+  }
+
+  public recheckHoverState(): void {
+    if (!this._hasPointer) {
+      return
+    }
+    const pointer = this._latestPointer
+    const maybeRenderableId = this.hitTest(pointer.x, pointer.y)
+
+    if (maybeRenderableId === this.lastOverRenderableNum) {
+      return
+    }
+
+    const maybeRenderable = Renderable.renderablesByNumber.get(maybeRenderableId)
+    const mouseEvent = {
+      x: pointer.x,
+      y: pointer.y,
+      type: "move" as const,
+      button: 0,
+      modifiers: { shift: false, alt: false, ctrl: false },
+    }
+
+    if (this.lastOverRenderable && this.lastOverRenderable !== this.capturedRenderable) {
+      const event = new MouseEvent(this.lastOverRenderable, { ...mouseEvent, type: "out" })
+      this.lastOverRenderable.processMouseEvent(event)
+    }
+
+    this.lastOverRenderableNum = maybeRenderableId
+    this.lastOverRenderable = maybeRenderable
+
+    if (maybeRenderable) {
+      const event = new MouseEvent(maybeRenderable, {
+        ...mouseEvent,
+        type: "over",
+        source: this.capturedRenderable,
+      })
+      maybeRenderable.processMouseEvent(event)
+    }
   }
 
   private takeMemorySnapshot(): void {
@@ -1274,7 +1416,7 @@ export class CliRenderer extends EventEmitter implements RenderContext {
     this._terminalHeight = height
     this.queryPixelResolution()
 
-    this.capturedRenderable = undefined
+    this.setCapturedRenderable(undefined)
     this.mouseParser.reset()
 
     if (this._splitHeight > 0) {
@@ -1591,7 +1733,7 @@ export class CliRenderer extends EventEmitter implements RenderContext {
     this._isRunning = false
 
     this.waitingForPixelResolution = false
-    this.capturedRenderable = undefined
+    this.setCapturedRenderable(undefined)
 
     try {
       this.root.destroyRecursively()
@@ -1720,6 +1862,11 @@ export class CliRenderer extends EventEmitter implements RenderContext {
         this.renderTimeout = null
       }
     }
+
+    if (!this.hitGridDirtyDuringRender) {
+      this.hitGridDirty = false
+    }
+    this.hitGridDirtyDuringRender = false
 
     this.rendering = false
     this.resolveIdleIfNeeded()
@@ -1863,7 +2010,7 @@ export class CliRenderer extends EventEmitter implements RenderContext {
     if (this.currentSelection?.isSelecting) {
       const pointer = this._latestPointer
 
-      const maybeRenderableId = this.lib.checkHit(this.rendererPtr, pointer.x, pointer.y)
+      const maybeRenderableId = this.hitTest(pointer.x, pointer.y)
       const maybeRenderable = Renderable.renderablesByNumber.get(maybeRenderableId)
 
       this.updateSelection(maybeRenderable, pointer.x, pointer.y)

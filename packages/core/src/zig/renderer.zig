@@ -98,10 +98,29 @@ pub const CliRenderer = struct {
     currentOutputBuffer: []u8 = &[_]u8{},
     currentOutputLen: usize = 0,
 
+    // Hit grid for mouse event dispatch.
+    //
+    // The hit grid is a screen-sized array where each cell stores the renderable ID
+    // at that position. Mouse events query checkHit(x, y) to find which element to
+    // dispatch to.
+    //
+    // Double buffering: During render, addToHitGrid writes to nextHitGrid. After
+    // render completes, the buffers swap. This keeps hit testing consistent during
+    // a frame. Queries see the previous frame's state, not a half-built grid.
+    //
+    // On-demand sync: When scroll/translate changes between renders, the TypeScript
+    // layer can rebuild currentHitGrid directly via addToCurrentHitGridClipped. This
+    // updates hover states immediately rather than waiting for the next render.
+    //
+    // Scissor clipping: The hitScissorStack mirrors overflow:hidden regions. Elements
+    // outside their parent's visible area are excluded from hit testing. The stack
+    // uses screen coordinates. Buffered renderables need getHitGridScissorRect() to
+    // convert from buffer-local (0,0) to their actual screen position.
     currentHitGrid: []u32,
     nextHitGrid: []u32,
     hitGridWidth: u32,
     hitGridHeight: u32,
+    hitScissorStack: std.ArrayList(buf.ClipRect),
 
     lastCursorStyleTag: ?u8 = null,
     lastCursorBlinking: ?bool = null,
@@ -165,6 +184,7 @@ pub const CliRenderer = struct {
         const nextHitGrid = try allocator.alloc(u32, hitGridSize);
         @memset(currentHitGrid, 0); // Initialize with 0 (no renderable)
         @memset(nextHitGrid, 0);
+        const hitScissorStack = std.ArrayList(buf.ClipRect).init(allocator);
 
         self.* = .{
             .width = width,
@@ -211,6 +231,7 @@ pub const CliRenderer = struct {
             .nextHitGrid = nextHitGrid,
             .hitGridWidth = width,
             .hitGridHeight = height,
+            .hitScissorStack = hitScissorStack,
         };
 
         try currentBuffer.clear(.{ self.backgroundColor[0], self.backgroundColor[1], self.backgroundColor[2], self.backgroundColor[3] }, CLEAR_CHAR);
@@ -250,6 +271,7 @@ pub const CliRenderer = struct {
 
         self.allocator.free(self.currentHitGrid);
         self.allocator.free(self.nextHitGrid);
+        self.hitScissorStack.deinit();
 
         self.allocator.destroy(self);
     }
@@ -773,6 +795,9 @@ pub const CliRenderer = struct {
 
         self.nextRenderBuffer.clear(.{ self.backgroundColor[0], self.backgroundColor[1], self.backgroundColor[2], self.backgroundColor[3] }, null) catch {};
 
+        // Swap hit grids: nextHitGrid (built this frame) becomes the active grid for
+        // hit testing. The old currentHitGrid becomes nextHitGrid and is cleared for
+        // the next frame.
         const temp = self.currentHitGrid;
         self.currentHitGrid = self.nextHitGrid;
         self.nextHitGrid = temp;
@@ -791,11 +816,24 @@ pub const CliRenderer = struct {
         w.flush() catch {};
     }
 
+    /// Write a renderable's bounds to nextHitGrid for the upcoming frame.
+    ///
+    /// Called during render for each visible renderable. The rect is clipped to
+    /// the current hit scissor stack, so elements inside overflow:hidden parents
+    /// only register hits within the visible region. Later renderables overwrite
+    /// earlier ones. Z-order is determined by render order.
     pub fn addToHitGrid(self: *CliRenderer, x: i32, y: i32, width: u32, height: u32, id: u32) void {
-        const startX = @max(0, x);
-        const startY = @max(0, y);
-        const endX = @min(@as(i32, @intCast(self.hitGridWidth)), x + @as(i32, @intCast(width)));
-        const endY = @min(@as(i32, @intCast(self.hitGridHeight)), y + @as(i32, @intCast(height)));
+        const clipped = self.clipRectToHitScissor(x, y, width, height) orelse return;
+        const startX = @max(0, clipped.x);
+        const startY = @max(0, clipped.y);
+        const endX = @min(
+            @as(i32, @intCast(self.hitGridWidth)),
+            clipped.x + @as(i32, @intCast(clipped.width)),
+        );
+        const endY = @min(
+            @as(i32, @intCast(self.hitGridHeight)),
+            clipped.y + @as(i32, @intCast(clipped.height)),
+        );
 
         if (startX >= endX or startY >= endY) return;
 
@@ -813,6 +851,15 @@ pub const CliRenderer = struct {
         }
     }
 
+    /// Clear currentHitGrid before an immediate rebuild.
+    ///
+    /// Used by syncHitGridIfNeeded in TypeScript when scroll/translate changes
+    /// require updating hit targets without waiting for the next render.
+    pub fn clearCurrentHitGrid(self: *CliRenderer) void {
+        @memset(self.currentHitGrid, 0);
+    }
+
+    /// Return the renderable ID at screen position (x, y), or 0 if none.
     pub fn checkHit(self: *CliRenderer, x: u32, y: u32) u32 {
         if (x >= self.hitGridWidth or y >= self.hitGridHeight) {
             return 0;
@@ -820,6 +867,110 @@ pub const CliRenderer = struct {
 
         const index = y * self.hitGridWidth + x;
         return self.currentHitGrid[index];
+    }
+
+    /// Return the current (topmost) hit scissor rect, or null if the stack is empty.
+    fn getCurrentHitScissorRect(self: *const CliRenderer) ?buf.ClipRect {
+        if (self.hitScissorStack.items.len == 0) return null;
+        return self.hitScissorStack.items[self.hitScissorStack.items.len - 1];
+    }
+
+    /// Intersect a rect with the current hit scissor. Returns null if fully clipped.
+    fn clipRectToHitScissor(self: *const CliRenderer, x: i32, y: i32, width: u32, height: u32) ?buf.ClipRect {
+        const scissor = self.getCurrentHitScissorRect() orelse return buf.ClipRect{
+            .x = x,
+            .y = y,
+            .width = width,
+            .height = height,
+        };
+
+        const rect_end_x = x + @as(i32, @intCast(width));
+        const rect_end_y = y + @as(i32, @intCast(height));
+        const scissor_end_x = scissor.x + @as(i32, @intCast(scissor.width));
+        const scissor_end_y = scissor.y + @as(i32, @intCast(scissor.height));
+
+        const intersect_x = @max(x, scissor.x);
+        const intersect_y = @max(y, scissor.y);
+        const intersect_end_x = @min(rect_end_x, scissor_end_x);
+        const intersect_end_y = @min(rect_end_y, scissor_end_y);
+
+        if (intersect_x >= intersect_end_x or intersect_y >= intersect_end_y) {
+            return null;
+        }
+
+        return buf.ClipRect{
+            .x = intersect_x,
+            .y = intersect_y,
+            .width = @intCast(intersect_end_x - intersect_x),
+            .height = @intCast(intersect_end_y - intersect_y),
+        };
+    }
+
+    /// Push a scissor rect for hit grid clipping.
+    ///
+    /// The rect is intersected with any existing scissor, so nested overflow:hidden
+    /// containers compound correctly. All coordinates are in screen space.
+    pub fn hitGridPushScissorRect(self: *CliRenderer, x: i32, y: i32, width: u32, height: u32) void {
+        var rect = buf.ClipRect{
+            .x = x,
+            .y = y,
+            .width = width,
+            .height = height,
+        };
+
+        if (self.getCurrentHitScissorRect() != null) {
+            const intersect = self.clipRectToHitScissor(rect.x, rect.y, rect.width, rect.height);
+            if (intersect) |clipped| {
+                rect = clipped;
+            } else {
+                rect = buf.ClipRect{ .x = 0, .y = 0, .width = 0, .height = 0 };
+            }
+        }
+
+        self.hitScissorStack.append(rect) catch |err| {
+            logger.warn("Failed to push hit-grid scissor rect: {}", .{err});
+        };
+    }
+
+    pub fn hitGridPopScissorRect(self: *CliRenderer) void {
+        if (self.hitScissorStack.items.len > 0) {
+            _ = self.hitScissorStack.pop();
+        }
+    }
+
+    /// Clear all hit grid scissors. Called at start of render to reset state.
+    pub fn hitGridClearScissorRects(self: *CliRenderer) void {
+        self.hitScissorStack.clearRetainingCapacity();
+    }
+
+    /// Write directly to currentHitGrid with scissor clipping.
+    ///
+    /// Used for immediate hit grid sync when scroll/translate changes. Unlike
+    /// addToHitGrid (which writes to nextHitGrid for the upcoming frame), this
+    /// updates the grid that checkHit reads right now. Lets hover states update
+    /// without waiting for the next render.
+    pub fn addToCurrentHitGridClipped(self: *CliRenderer, x: i32, y: i32, width: u32, height: u32, id: u32) void {
+        const clipped = self.clipRectToHitScissor(x, y, width, height) orelse return;
+
+        const startX = @max(0, clipped.x);
+        const startY = @max(0, clipped.y);
+        const endX = @min(@as(i32, @intCast(self.hitGridWidth)), clipped.x + @as(i32, @intCast(clipped.width)));
+        const endY = @min(@as(i32, @intCast(self.hitGridHeight)), clipped.y + @as(i32, @intCast(clipped.height)));
+
+        if (startX >= endX or startY >= endY) return;
+
+        const uStartX: u32 = @intCast(startX);
+        const uStartY: u32 = @intCast(startY);
+        const uEndX: u32 = @intCast(endX);
+        const uEndY: u32 = @intCast(endY);
+
+        for (uStartY..uEndY) |row| {
+            const rowStart = row * self.hitGridWidth;
+            const startIdx = rowStart + uStartX;
+            const endIdx = rowStart + uEndX;
+
+            @memset(self.currentHitGrid[startIdx..endIdx], id);
+        }
     }
 
     pub fn dumpHitGrid(self: *CliRenderer) void {

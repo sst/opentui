@@ -475,8 +475,9 @@ export abstract class Renderable extends BaseRenderable {
   public set translateX(value: number) {
     if (this._translateX === value) return
     this._translateX = value
-    this.requestRender()
     if (this.parent) this.parent.childrenPrimarySortDirty = true
+    this.requestRender()
+    this._ctx.recheckHoverState()
   }
 
   public get translateY(): number {
@@ -486,8 +487,9 @@ export abstract class Renderable extends BaseRenderable {
   public set translateY(value: number) {
     if (this._translateY === value) return
     this._translateY = value
-    this.requestRender()
     if (this.parent) this.parent.childrenPrimarySortDirty = true
+    this.requestRender()
+    this._ctx.recheckHoverState()
   }
 
   public get x(): number {
@@ -1003,6 +1005,25 @@ export abstract class Renderable extends BaseRenderable {
     }
   }
 
+  public updateFromLayoutRecursive(): void {
+    if (this._isDestroyed) return
+    this.updateFromLayout()
+    for (const child of this._childrenInLayoutOrder) {
+      child.updateFromLayoutRecursive()
+    }
+  }
+
+  protected hasDirtyLayoutRecursive(): boolean {
+    if (this._isDestroyed) return false
+    if (this.yogaNode.isDirty()) return true
+    for (const child of this._childrenInLayoutOrder) {
+      if (child.hasDirtyLayoutRecursive()) {
+        return true
+      }
+    }
+    return false
+  }
+
   protected onLayoutResize(width: number, height: number): void {
     if (this._visible) {
       // TODO: Should probably .markDirty()
@@ -1283,12 +1304,17 @@ export abstract class Renderable extends BaseRenderable {
     const shouldPushScissor = this._overflow !== "visible" && this.width > 0 && this.height > 0
     if (shouldPushScissor) {
       const scissorRect = this.getScissorRect()
+      const hitGridRect = this.getHitGridScissorRect()
       renderList.push({
         action: "pushScissorRect",
         x: scissorRect.x,
         y: scissorRect.y,
         width: scissorRect.width,
         height: scissorRect.height,
+        hitGridX: hitGridRect.x,
+        hitGridY: hitGridRect.y,
+        hitGridWidth: hitGridRect.width,
+        hitGridHeight: hitGridRect.height,
       })
     }
     const visibleChildren = this._getVisibleChildren()
@@ -1305,6 +1331,47 @@ export abstract class Renderable extends BaseRenderable {
     }
     if (shouldPushOpacity) {
       renderList.push({ action: "popOpacity" })
+    }
+  }
+
+  public collectHitGridCommands(renderList: HitGridCommand[] = []): void {
+    if (!this.visible || this._isDestroyed) return
+
+    if (this._shouldUpdateBefore.size > 0) {
+      for (const child of this._shouldUpdateBefore) {
+        if (!child.isDestroyed) {
+          child.updateFromLayout()
+        }
+      }
+      this._shouldUpdateBefore.clear()
+    }
+
+    renderList.push({ action: "render", renderable: this })
+
+    this.ensureZIndexSorted()
+
+    const shouldPushScissor = this._overflow !== "visible" && this.width > 0 && this.height > 0
+    if (shouldPushScissor) {
+      const scissorRect = this.getHitGridScissorRect()
+      renderList.push({
+        action: "pushScissorRect",
+        x: scissorRect.x,
+        y: scissorRect.y,
+        width: scissorRect.width,
+        height: scissorRect.height,
+      })
+    }
+
+    const visibleChildren = this._getVisibleChildren()
+    for (const child of this._childrenInZIndexOrder) {
+      if (!visibleChildren.includes(child.num)) {
+        continue
+      }
+      child.collectHitGridCommands(renderList)
+    }
+
+    if (shouldPushScissor) {
+      renderList.push({ action: "popScissorRect" })
     }
   }
 
@@ -1345,6 +1412,15 @@ export abstract class Renderable extends BaseRenderable {
     return {
       x: this.buffered ? 0 : this.x,
       y: this.buffered ? 0 : this.y,
+      width: this.width,
+      height: this.height,
+    }
+  }
+
+  protected getHitGridScissorRect(): { x: number; y: number; width: number; height: number } {
+    return {
+      x: this.x,
+      y: this.y,
       width: this.width,
       height: this.height,
     }
@@ -1524,6 +1600,10 @@ interface RenderCommandPushScissorRect extends RenderCommandBase {
   y: number
   width: number
   height: number
+  hitGridX: number
+  hitGridY: number
+  hitGridWidth: number
+  hitGridHeight: number
 }
 
 interface RenderCommandPopScissorRect extends RenderCommandBase {
@@ -1550,6 +1630,29 @@ export type RenderCommand =
   | RenderCommandRender
   | RenderCommandPushOpacity
   | RenderCommandPopOpacity
+
+interface HitGridCommandBase {
+  action: "render" | "pushScissorRect" | "popScissorRect"
+}
+
+interface HitGridCommandPushScissorRect extends HitGridCommandBase {
+  action: "pushScissorRect"
+  x: number
+  y: number
+  width: number
+  height: number
+}
+
+interface HitGridCommandPopScissorRect extends HitGridCommandBase {
+  action: "popScissorRect"
+}
+
+interface HitGridCommandRender extends HitGridCommandBase {
+  action: "render"
+  renderable: Renderable
+}
+
+export type HitGridCommand = HitGridCommandPushScissorRect | HitGridCommandPopScissorRect | HitGridCommandRender
 
 export class RootRenderable extends Renderable {
   private renderList: RenderCommand[] = []
@@ -1594,6 +1697,7 @@ export class RootRenderable extends Renderable {
     this.updateLayout(deltaTime, this.renderList)
 
     // 3. Render all collected renderables
+    this._ctx.clearHitGridScissorRects()
     for (let i = 1; i < this.renderList.length; i++) {
       const command = this.renderList[i]
       switch (command.action) {
@@ -1605,9 +1709,16 @@ export class RootRenderable extends Renderable {
           break
         case "pushScissorRect":
           buffer.pushScissorRect(command.x, command.y, command.width, command.height)
+          this._ctx.pushHitGridScissorRect(
+            command.hitGridX,
+            command.hitGridY,
+            command.hitGridWidth,
+            command.hitGridHeight,
+          )
           break
         case "popScissorRect":
           buffer.popScissorRect()
+          this._ctx.popHitGridScissorRect()
           break
         case "pushOpacity":
           buffer.pushOpacity(command.opacity)
@@ -1633,6 +1744,10 @@ export class RootRenderable extends Renderable {
   public calculateLayout(): void {
     this.yogaNode.calculateLayout(this.width, this.height, Direction.LTR)
     this.emit(LayoutEvents.LAYOUT_CHANGED)
+  }
+
+  public get layoutDirty(): boolean {
+    return this.hasDirtyLayoutRecursive()
   }
 
   public resize(width: number, height: number): void {
