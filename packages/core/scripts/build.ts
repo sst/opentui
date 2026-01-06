@@ -40,7 +40,7 @@ const args = process.argv.slice(2)
 const buildLib = args.find((arg) => arg === "--lib")
 const buildNative = args.find((arg) => arg === "--native")
 const isDev = args.includes("--dev")
-const buildAll = args.includes("--all") // Build for all platforms (requires macOS or cross-compilation setup)
+const buildAll = args.includes("--all") // Build for all platforms
 
 const variants: Variant[] = [
   { platform: "darwin", arch: "x64" },
@@ -126,8 +126,8 @@ if (buildNative) {
     }
 
     if (copiedFiles === 0) {
-      // Skip platforms that weren't built (e.g., macOS when cross-compiling from Linux)
-      console.log(`Skipping ${platform}-${arch}: no libraries found (cross-compilation may not be supported)`)
+      // Skip platforms that weren't built
+      console.log(`Skipping ${platform}-${arch}: no libraries found`)
       rmSync(nativeDir, { recursive: true, force: true })
       continue
     }
