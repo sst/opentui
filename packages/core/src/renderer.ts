@@ -888,10 +888,15 @@ export class CliRenderer extends EventEmitter implements RenderContext {
     if (space > 0) {
       const backgroundColor = this.backgroundColor.toInts()
       const newlines = " ".repeat(this.width) + "\n".repeat(space)
-      clear =
-        ANSI.setRgbBackground(backgroundColor[0], backgroundColor[1], backgroundColor[2]) +
-        newlines +
-        ANSI.resetBackground
+      // Check if background is transparent (alpha = 0)
+      if (backgroundColor[3] === 0) {
+        clear = newlines
+      } else {
+        clear =
+          ANSI.setRgbBackground(backgroundColor[0], backgroundColor[1], backgroundColor[2]) +
+          newlines +
+          ANSI.resetBackground
+      }
     }
 
     this.writeOut(flush + move + output + clear)
