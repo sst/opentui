@@ -127,7 +127,7 @@ pub const TextChunk = struct {
 
         // TODO: Do not cache for chunks < 64 bytes, as it does not profit from the cache
         // Use toOwnedSlice to transfer ownership without copying
-        const wrap_offsets = try wrap_result.breaks.toOwnedSlice();
+        const wrap_offsets = try wrap_result.breaks.toOwnedSlice(allocator);
         mut_self.wrap_offsets = wrap_offsets;
 
         return wrap_offsets;

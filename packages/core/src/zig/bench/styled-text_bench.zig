@@ -5,6 +5,7 @@ const syntax_style_mod = @import("../syntax-style.zig");
 const gp = @import("../grapheme.zig");
 
 const BenchResult = bench_utils.BenchResult;
+const BenchStats = bench_utils.BenchStats;
 const MemStats = bench_utils.MemStats;
 const TextBuffer = text_buffer_mod.UnifiedTextBuffer;
 const StyledChunk = text_buffer_mod.StyledChunk; // Use the unified type from text-buffer
@@ -18,7 +19,8 @@ fn rgbaToPtr(rgba: *const [4]f32) [*]const f32 {
 }
 
 fn benchSetStyledTextOperations(allocator: std.mem.Allocator, iterations: usize) ![]BenchResult {
-    var results = std.ArrayList(BenchResult).init(allocator);
+    var results: std.ArrayListUnmanaged(BenchResult) = .{};
+    errdefer results.deinit(allocator);
 
     // Setup global resources
     var arena = std.heap.ArenaAllocator.init(allocator);
@@ -26,20 +28,15 @@ fn benchSetStyledTextOperations(allocator: std.mem.Allocator, iterations: usize)
     const global_alloc = arena.allocator();
 
     const pool = gp.initGlobalPool(global_alloc);
-    
-    
 
     // Single chunk - baseline
     {
-        var min_ns: u64 = std.math.maxInt(u64);
-        var max_ns: u64 = 0;
-        var total_ns: u64 = 0;
+        var stats = BenchStats{};
 
         const text = "Hello, World! This is a test of styled text rendering.";
         const fg_color = [4]f32{ 1.0, 1.0, 1.0, 1.0 };
 
-        var iter: usize = 0;
-        while (iter < iterations) : (iter += 1) {
+        for (0..iterations) |_| {
             const tb = try TextBuffer.init(allocator, pool, .wcwidth);
             defer tb.deinit();
 
@@ -57,20 +54,15 @@ fn benchSetStyledTextOperations(allocator: std.mem.Allocator, iterations: usize)
 
             var timer = try std.time.Timer.start();
             try tb.setStyledText(&chunks);
-            const elapsed = timer.read();
-
-            min_ns = @min(min_ns, elapsed);
-            max_ns = @max(max_ns, elapsed);
-            total_ns += elapsed;
+            stats.record(timer.read());
         }
 
-        const name = try std.fmt.allocPrint(allocator, "setStyledText - single chunk (55 chars)", .{});
-        try results.append(BenchResult{
-            .name = name,
-            .min_ns = min_ns,
-            .avg_ns = total_ns / iterations,
-            .max_ns = max_ns,
-            .total_ns = total_ns,
+        try results.append(allocator, BenchResult{
+            .name = "setStyledText - single chunk (55 chars)",
+            .min_ns = stats.min_ns,
+            .avg_ns = stats.avg(),
+            .max_ns = stats.max_ns,
+            .total_ns = stats.total_ns,
             .iterations = iterations,
             .mem_stats = null,
         });
@@ -78,9 +70,7 @@ fn benchSetStyledTextOperations(allocator: std.mem.Allocator, iterations: usize)
 
     // Multiple small chunks
     {
-        var min_ns: u64 = std.math.maxInt(u64);
-        var max_ns: u64 = 0;
-        var total_ns: u64 = 0;
+        var stats = BenchStats{};
 
         const red = [4]f32{ 1.0, 0.0, 0.0, 1.0 };
         const green = [4]f32{ 0.0, 1.0, 0.0, 1.0 };
@@ -89,8 +79,7 @@ fn benchSetStyledTextOperations(allocator: std.mem.Allocator, iterations: usize)
         const cyan = [4]f32{ 0.0, 1.0, 1.0, 1.0 };
         const magenta = [4]f32{ 1.0, 0.0, 1.0, 1.0 };
 
-        var iter: usize = 0;
-        while (iter < iterations) : (iter += 1) {
+        for (0..iterations) |_| {
             const tb = try TextBuffer.init(allocator, pool, .wcwidth);
             defer tb.deinit();
 
@@ -116,20 +105,15 @@ fn benchSetStyledTextOperations(allocator: std.mem.Allocator, iterations: usize)
 
             var timer = try std.time.Timer.start();
             try tb.setStyledText(&chunks);
-            const elapsed = timer.read();
-
-            min_ns = @min(min_ns, elapsed);
-            max_ns = @max(max_ns, elapsed);
-            total_ns += elapsed;
+            stats.record(timer.read());
         }
 
-        const name = try std.fmt.allocPrint(allocator, "setStyledText - 6 small chunks (~6 chars each)", .{});
-        try results.append(BenchResult{
-            .name = name,
-            .min_ns = min_ns,
-            .avg_ns = total_ns / iterations,
-            .max_ns = max_ns,
-            .total_ns = total_ns,
+        try results.append(allocator, BenchResult{
+            .name = "setStyledText - 6 small chunks (~6 chars each)",
+            .min_ns = stats.min_ns,
+            .avg_ns = stats.avg(),
+            .max_ns = stats.max_ns,
+            .total_ns = stats.total_ns,
             .iterations = iterations,
             .mem_stats = null,
         });
@@ -137,17 +121,14 @@ fn benchSetStyledTextOperations(allocator: std.mem.Allocator, iterations: usize)
 
     // Many chunks (simulating syntax highlighted code)
     {
-        var min_ns: u64 = std.math.maxInt(u64);
-        var max_ns: u64 = 0;
-        var total_ns: u64 = 0;
+        var stats = BenchStats{};
 
         const keyword_color = [4]f32{ 0.8, 0.4, 1.0, 1.0 };
         const identifier_color = [4]f32{ 0.7, 0.9, 1.0, 1.0 };
         const operator_color = [4]f32{ 1.0, 1.0, 1.0, 1.0 };
         const number_color = [4]f32{ 0.7, 1.0, 0.7, 1.0 };
 
-        var iter: usize = 0;
-        while (iter < iterations) : (iter += 1) {
+        for (0..iterations) |_| {
             const tb = try TextBuffer.init(allocator, pool, .wcwidth);
             defer tb.deinit();
 
@@ -178,20 +159,15 @@ fn benchSetStyledTextOperations(allocator: std.mem.Allocator, iterations: usize)
 
             var timer = try std.time.Timer.start();
             try tb.setStyledText(&chunks);
-            const elapsed = timer.read();
-
-            min_ns = @min(min_ns, elapsed);
-            max_ns = @max(max_ns, elapsed);
-            total_ns += elapsed;
+            stats.record(timer.read());
         }
 
-        const name = try std.fmt.allocPrint(allocator, "setStyledText - 8 chunks (syntax highlighting)", .{});
-        try results.append(BenchResult{
-            .name = name,
-            .min_ns = min_ns,
-            .avg_ns = total_ns / iterations,
-            .max_ns = max_ns,
-            .total_ns = total_ns,
+        try results.append(allocator, BenchResult{
+            .name = "setStyledText - 8 chunks (syntax highlighting)",
+            .min_ns = stats.min_ns,
+            .avg_ns = stats.avg(),
+            .max_ns = stats.max_ns,
+            .total_ns = stats.total_ns,
             .iterations = iterations,
             .mem_stats = null,
         });
@@ -199,14 +175,11 @@ fn benchSetStyledTextOperations(allocator: std.mem.Allocator, iterations: usize)
 
     // Large text with many chunks (simplified)
     {
-        var min_ns: u64 = std.math.maxInt(u64);
-        var max_ns: u64 = 0;
-        var total_ns: u64 = 0;
+        var stats = BenchStats{};
 
         const text = "Lorem ipsum ";
 
-        var iter: usize = 0;
-        while (iter < iterations) : (iter += 1) {
+        for (0..iterations) |_| {
             const tb = try TextBuffer.init(allocator, pool, .wcwidth);
             defer tb.deinit();
 
@@ -231,20 +204,15 @@ fn benchSetStyledTextOperations(allocator: std.mem.Allocator, iterations: usize)
 
             var timer = try std.time.Timer.start();
             try tb.setStyledText(&chunks);
-            const elapsed = timer.read();
-
-            min_ns = @min(min_ns, elapsed);
-            max_ns = @max(max_ns, elapsed);
-            total_ns += elapsed;
+            stats.record(timer.read());
         }
 
-        const name = try std.fmt.allocPrint(allocator, "setStyledText - 10 chunks (~120 chars total)", .{});
-        try results.append(BenchResult{
-            .name = name,
-            .min_ns = min_ns,
-            .avg_ns = total_ns / iterations,
-            .max_ns = max_ns,
-            .total_ns = total_ns,
+        try results.append(allocator, BenchResult{
+            .name = "setStyledText - 10 chunks (~120 chars total)",
+            .min_ns = stats.min_ns,
+            .avg_ns = stats.avg(),
+            .max_ns = stats.max_ns,
+            .total_ns = stats.total_ns,
             .iterations = iterations,
             .mem_stats = null,
         });
@@ -252,12 +220,9 @@ fn benchSetStyledTextOperations(allocator: std.mem.Allocator, iterations: usize)
 
     // Chunks with attributes (bold, italic, etc.)
     {
-        var min_ns: u64 = std.math.maxInt(u64);
-        var max_ns: u64 = 0;
-        var total_ns: u64 = 0;
+        var stats = BenchStats{};
 
-        var iter: usize = 0;
-        while (iter < iterations) : (iter += 1) {
+        for (0..iterations) |_| {
             const tb = try TextBuffer.init(allocator, pool, .wcwidth);
             defer tb.deinit();
 
@@ -281,30 +246,26 @@ fn benchSetStyledTextOperations(allocator: std.mem.Allocator, iterations: usize)
 
             var timer = try std.time.Timer.start();
             try tb.setStyledText(&chunks);
-            const elapsed = timer.read();
-
-            min_ns = @min(min_ns, elapsed);
-            max_ns = @max(max_ns, elapsed);
-            total_ns += elapsed;
+            stats.record(timer.read());
         }
 
-        const name = try std.fmt.allocPrint(allocator, "setStyledText - 5 chunks with attributes", .{});
-        try results.append(BenchResult{
-            .name = name,
-            .min_ns = min_ns,
-            .avg_ns = total_ns / iterations,
-            .max_ns = max_ns,
-            .total_ns = total_ns,
+        try results.append(allocator, BenchResult{
+            .name = "setStyledText - 5 chunks with attributes",
+            .min_ns = stats.min_ns,
+            .avg_ns = stats.avg(),
+            .max_ns = stats.max_ns,
+            .total_ns = stats.total_ns,
             .iterations = iterations,
             .mem_stats = null,
         });
     }
 
-    return try results.toOwnedSlice();
+    return try results.toOwnedSlice(allocator);
 }
 
 fn benchHighlightOperations(allocator: std.mem.Allocator, iterations: usize) ![]BenchResult {
-    var results = std.ArrayList(BenchResult).init(allocator);
+    var results: std.ArrayListUnmanaged(BenchResult) = .{};
+    errdefer results.deinit(allocator);
 
     // Setup global resources
     var arena = std.heap.ArenaAllocator.init(allocator);
@@ -312,17 +273,12 @@ fn benchHighlightOperations(allocator: std.mem.Allocator, iterations: usize) ![]
     const global_alloc = arena.allocator();
 
     const pool = gp.initGlobalPool(global_alloc);
-    
-    
 
     // Baseline: 1000 sequential addHighlightByCharRange calls (unbatched)
     {
-        var min_ns: u64 = std.math.maxInt(u64);
-        var max_ns: u64 = 0;
-        var total_ns: u64 = 0;
+        var stats = BenchStats{};
 
-        var iter: usize = 0;
-        while (iter < iterations) : (iter += 1) {
+        for (0..iterations) |_| {
             const tb = try TextBuffer.init(allocator, pool, .wcwidth);
             defer tb.deinit();
 
@@ -337,28 +293,22 @@ fn benchHighlightOperations(allocator: std.mem.Allocator, iterations: usize) ![]
             var timer = try std.time.Timer.start();
 
             // Add 1000 highlights sequentially
-            var i: u32 = 0;
-            while (i < 1000) : (i += 1) {
-                const start_char = (i * 2) % 50;
+            for (0..1000) |i| {
+                const start_char: u32 = @intCast((i * 2) % 50);
                 const end_char = start_char + 3;
-                const style_id = (i % 5) + 1;
+                const style_id: u32 = @intCast((i % 5) + 1);
                 tb.addHighlightByCharRange(start_char, end_char, style_id, 1, 0) catch {};
             }
 
-            const elapsed = timer.read();
-
-            min_ns = @min(min_ns, elapsed);
-            max_ns = @max(max_ns, elapsed);
-            total_ns += elapsed;
+            stats.record(timer.read());
         }
 
-        const name = try std.fmt.allocPrint(allocator, "addHighlightByCharRange - 1000 calls (unbatched)", .{});
-        try results.append(BenchResult{
-            .name = name,
-            .min_ns = min_ns,
-            .avg_ns = total_ns / iterations,
-            .max_ns = max_ns,
-            .total_ns = total_ns,
+        try results.append(allocator, BenchResult{
+            .name = "addHighlightByCharRange - 1000 calls (unbatched)",
+            .min_ns = stats.min_ns,
+            .avg_ns = stats.avg(),
+            .max_ns = stats.max_ns,
+            .total_ns = stats.total_ns,
             .iterations = iterations,
             .mem_stats = null,
         });
@@ -366,12 +316,9 @@ fn benchHighlightOperations(allocator: std.mem.Allocator, iterations: usize) ![]
 
     // Batched: 1000 sequential addHighlightByCharRange calls in a transaction
     {
-        var min_ns: u64 = std.math.maxInt(u64);
-        var max_ns: u64 = 0;
-        var total_ns: u64 = 0;
+        var stats = BenchStats{};
 
-        var iter: usize = 0;
-        while (iter < iterations) : (iter += 1) {
+        for (0..iterations) |_| {
             const tb = try TextBuffer.init(allocator, pool, .wcwidth);
             defer tb.deinit();
 
@@ -390,28 +337,22 @@ fn benchHighlightOperations(allocator: std.mem.Allocator, iterations: usize) ![]
             defer tb.endHighlightsTransaction();
 
             // Add 1000 highlights sequentially
-            var i: u32 = 0;
-            while (i < 1000) : (i += 1) {
-                const start_char = (i * 2) % 50;
+            for (0..1000) |i| {
+                const start_char: u32 = @intCast((i * 2) % 50);
                 const end_char = start_char + 3;
-                const style_id = (i % 5) + 1;
+                const style_id: u32 = @intCast((i % 5) + 1);
                 tb.addHighlightByCharRange(start_char, end_char, style_id, 1, 0) catch {};
             }
 
-            const elapsed = timer.read();
-
-            min_ns = @min(min_ns, elapsed);
-            max_ns = @max(max_ns, elapsed);
-            total_ns += elapsed;
+            stats.record(timer.read());
         }
 
-        const name = try std.fmt.allocPrint(allocator, "addHighlightByCharRange - 1000 calls (batched)", .{});
-        try results.append(BenchResult{
-            .name = name,
-            .min_ns = min_ns,
-            .avg_ns = total_ns / iterations,
-            .max_ns = max_ns,
-            .total_ns = total_ns,
+        try results.append(allocator, BenchResult{
+            .name = "addHighlightByCharRange - 1000 calls (batched)",
+            .min_ns = stats.min_ns,
+            .avg_ns = stats.avg(),
+            .max_ns = stats.max_ns,
+            .total_ns = stats.total_ns,
             .iterations = iterations,
             .mem_stats = null,
         });
@@ -419,13 +360,11 @@ fn benchHighlightOperations(allocator: std.mem.Allocator, iterations: usize) ![]
 
     // setStyledText with 100 chunks (realistic syntax highlighting scenario)
     {
-        var min_ns: u64 = std.math.maxInt(u64);
-        var max_ns: u64 = 0;
-        var total_ns: u64 = 0;
+        var stats = BenchStats{};
 
         // Build a realistic multi-line code snippet with 100 chunks
-        var chunk_list = std.ArrayList(StyledChunk).init(allocator);
-        defer chunk_list.deinit();
+        var chunk_list: std.ArrayListUnmanaged(StyledChunk) = .{};
+        defer chunk_list.deinit(allocator);
 
         const keyword_color = [4]f32{ 0.8, 0.4, 1.0, 1.0 };
         const identifier_color = [4]f32{ 0.7, 0.9, 1.0, 1.0 };
@@ -434,22 +373,20 @@ fn benchHighlightOperations(allocator: std.mem.Allocator, iterations: usize) ![]
         const string_color = [4]f32{ 0.9, 0.8, 0.5, 1.0 };
 
         // Repeat a pattern to create 100 chunks
-        var chunk_idx: usize = 0;
-        while (chunk_idx < 10) : (chunk_idx += 1) {
-            try chunk_list.append(.{ .text_ptr = "const".ptr, .text_len = 5, .fg_ptr = rgbaToPtr(&keyword_color), .bg_ptr = null, .attributes = 0 });
-            try chunk_list.append(.{ .text_ptr = " ".ptr, .text_len = 1, .fg_ptr = null, .bg_ptr = null, .attributes = 0 });
-            try chunk_list.append(.{ .text_ptr = "myVar".ptr, .text_len = 5, .fg_ptr = rgbaToPtr(&identifier_color), .bg_ptr = null, .attributes = 0 });
-            try chunk_list.append(.{ .text_ptr = " ".ptr, .text_len = 1, .fg_ptr = null, .bg_ptr = null, .attributes = 0 });
-            try chunk_list.append(.{ .text_ptr = "=".ptr, .text_len = 1, .fg_ptr = rgbaToPtr(&operator_color), .bg_ptr = null, .attributes = 0 });
-            try chunk_list.append(.{ .text_ptr = " ".ptr, .text_len = 1, .fg_ptr = null, .bg_ptr = null, .attributes = 0 });
-            try chunk_list.append(.{ .text_ptr = "42".ptr, .text_len = 2, .fg_ptr = rgbaToPtr(&number_color), .bg_ptr = null, .attributes = 0 });
-            try chunk_list.append(.{ .text_ptr = ";".ptr, .text_len = 1, .fg_ptr = rgbaToPtr(&operator_color), .bg_ptr = null, .attributes = 0 });
-            try chunk_list.append(.{ .text_ptr = "\n".ptr, .text_len = 1, .fg_ptr = null, .bg_ptr = null, .attributes = 0 });
-            try chunk_list.append(.{ .text_ptr = "\"str\"".ptr, .text_len = 5, .fg_ptr = rgbaToPtr(&string_color), .bg_ptr = null, .attributes = 0 });
+        for (0..10) |_| {
+            try chunk_list.append(allocator, .{ .text_ptr = "const".ptr, .text_len = 5, .fg_ptr = rgbaToPtr(&keyword_color), .bg_ptr = null, .attributes = 0 });
+            try chunk_list.append(allocator, .{ .text_ptr = " ".ptr, .text_len = 1, .fg_ptr = null, .bg_ptr = null, .attributes = 0 });
+            try chunk_list.append(allocator, .{ .text_ptr = "myVar".ptr, .text_len = 5, .fg_ptr = rgbaToPtr(&identifier_color), .bg_ptr = null, .attributes = 0 });
+            try chunk_list.append(allocator, .{ .text_ptr = " ".ptr, .text_len = 1, .fg_ptr = null, .bg_ptr = null, .attributes = 0 });
+            try chunk_list.append(allocator, .{ .text_ptr = "=".ptr, .text_len = 1, .fg_ptr = rgbaToPtr(&operator_color), .bg_ptr = null, .attributes = 0 });
+            try chunk_list.append(allocator, .{ .text_ptr = " ".ptr, .text_len = 1, .fg_ptr = null, .bg_ptr = null, .attributes = 0 });
+            try chunk_list.append(allocator, .{ .text_ptr = "42".ptr, .text_len = 2, .fg_ptr = rgbaToPtr(&number_color), .bg_ptr = null, .attributes = 0 });
+            try chunk_list.append(allocator, .{ .text_ptr = ";".ptr, .text_len = 1, .fg_ptr = rgbaToPtr(&operator_color), .bg_ptr = null, .attributes = 0 });
+            try chunk_list.append(allocator, .{ .text_ptr = "\n".ptr, .text_len = 1, .fg_ptr = null, .bg_ptr = null, .attributes = 0 });
+            try chunk_list.append(allocator, .{ .text_ptr = "\"str\"".ptr, .text_len = 5, .fg_ptr = rgbaToPtr(&string_color), .bg_ptr = null, .attributes = 0 });
         }
 
-        var iter: usize = 0;
-        while (iter < iterations) : (iter += 1) {
+        for (0..iterations) |_| {
             const tb = try TextBuffer.init(allocator, pool, .wcwidth);
             defer tb.deinit();
 
@@ -459,26 +396,21 @@ fn benchHighlightOperations(allocator: std.mem.Allocator, iterations: usize) ![]
 
             var timer = try std.time.Timer.start();
             try tb.setStyledText(chunk_list.items);
-            const elapsed = timer.read();
-
-            min_ns = @min(min_ns, elapsed);
-            max_ns = @max(max_ns, elapsed);
-            total_ns += elapsed;
+            stats.record(timer.read());
         }
 
-        const name = try std.fmt.allocPrint(allocator, "setStyledText - 100 chunks (realistic code)", .{});
-        try results.append(BenchResult{
-            .name = name,
-            .min_ns = min_ns,
-            .avg_ns = total_ns / iterations,
-            .max_ns = max_ns,
-            .total_ns = total_ns,
+        try results.append(allocator, BenchResult{
+            .name = "setStyledText - 100 chunks (realistic code)",
+            .min_ns = stats.min_ns,
+            .avg_ns = stats.avg(),
+            .max_ns = stats.max_ns,
+            .total_ns = stats.total_ns,
             .iterations = iterations,
             .mem_stats = null,
         });
     }
 
-    return try results.toOwnedSlice();
+    return try results.toOwnedSlice(allocator);
 }
 
 pub fn run(
@@ -487,17 +419,16 @@ pub fn run(
 ) ![]BenchResult {
     _ = show_mem;
 
-    var all_results = std.ArrayList(BenchResult).init(allocator);
+    var all_results: std.ArrayListUnmanaged(BenchResult) = .{};
+    errdefer all_results.deinit(allocator);
 
     const iterations: usize = 100;
 
     const styled_text_results = try benchSetStyledTextOperations(allocator, iterations);
-    defer allocator.free(styled_text_results);
-    try all_results.appendSlice(styled_text_results);
+    try all_results.appendSlice(allocator, styled_text_results);
 
     const highlight_results = try benchHighlightOperations(allocator, iterations);
-    defer allocator.free(highlight_results);
-    try all_results.appendSlice(highlight_results);
+    try all_results.appendSlice(allocator, highlight_results);
 
-    return try all_results.toOwnedSlice();
+    return try all_results.toOwnedSlice(allocator);
 }

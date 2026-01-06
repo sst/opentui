@@ -93,7 +93,7 @@ async function setupTestRenderer(config: TestRendererOptions) {
 
   process.off("SIGWINCH", renderer["sigwinchHandler"])
 
-  // Do not setup the terminal for testing as we will not actualy output anything to the terminal
+  // Do not setup the terminal for testing as we will not actually output anything to the terminal
   // await renderer.setupTerminal()
 
   return renderer
