@@ -1,6 +1,6 @@
 #!/usr/bin/env bun
 
-import { createCliRenderer, CliRenderer, FrameBufferRenderable, BoxRenderable } from "../index"
+import { createCliRenderer, CliRenderer, FrameBufferRenderable, BoxRenderable, OptimizedBuffer } from "../index"
 import { RGBA } from "../lib"
 import { ASCIIFontRenderable } from "../renderables/ASCIIFont"
 import type { ASCIIFontName } from "../lib/ascii.font"
@@ -299,6 +299,15 @@ export async function run(renderer: CliRenderer): Promise<void> {
   const HEIGHT = renderer.terminalHeight
   const CAM_DISTANCE = 3
 
+  const framebufferRenderable = new FrameBufferRenderable(renderer, {
+    id: "golden-star-main",
+    width: WIDTH,
+    height: HEIGHT,
+    zIndex: 10,
+  })
+  renderer.root.add(framebufferRenderable)
+  const framebuffer = framebufferRenderable.frameBuffer
+
   const engine = new ThreeCliRenderer(renderer, {
     width: WIDTH,
     height: HEIGHT,
@@ -450,6 +459,9 @@ export async function run(renderer: CliRenderer): Promise<void> {
   const particleSystem = new StarParticleSystem(sceneRoot, 150)
 
   const resizeHandler = (width: number, height: number) => {
+    if (framebuffer) {
+      framebuffer.resize(width, height)
+    }
     if (cameraNode) {
       cameraNode.aspect = engine.aspectRatio
       cameraNode.updateProjectionMatrix()
@@ -899,7 +911,7 @@ export async function run(renderer: CliRenderer): Promise<void> {
       char.bottom = Math.round(Math.max(0, jump))
     }
 
-    engine.drawScene(sceneRoot, renderer.nextRenderBuffer, deltaTime)
+    engine.drawScene(sceneRoot, framebuffer, deltaTime)
   })
 }
 
