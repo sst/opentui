@@ -124,8 +124,21 @@ pub const UnifiedTextBufferView = struct {
     cached_line_vline_counts: std.ArrayListUnmanaged(u32),
     global_allocator: Allocator,
     virtual_lines_arena: *std.heap.ArenaAllocator,
+
+    /// Persistent arena for measureForDimensions. Each call resets it with
+    /// retain_capacity to avoid mmap/munmap churn during streaming.
+    measure_arena: std.heap.ArenaAllocator,
     tab_indicator: ?u32,
     tab_indicator_color: ?RGBA,
+
+    // Measurement cache for Yoga layout. Keyed by (buffer, epoch, width, wrap_mode).
+    // Using epoch instead of dirty flag prevents stale returns when unrelated
+    // code paths clear dirty (e.g., updateVirtualLines).
+    cached_measure_width: ?u32,
+    cached_measure_wrap_mode: WrapMode,
+    cached_measure_result: ?MeasureResult,
+    cached_measure_epoch: u64,
+    cached_measure_buffer: ?*UnifiedTextBuffer,
 
     pub fn init(global_allocator: Allocator, text_buffer: *UnifiedTextBuffer) TextBufferViewError!*Self {
         const self = global_allocator.create(Self) catch return TextBufferViewError.OutOfMemory;
@@ -156,8 +169,14 @@ pub const UnifiedTextBufferView = struct {
             .cached_line_vline_counts = .{},
             .global_allocator = global_allocator,
             .virtual_lines_arena = virtual_lines_internal_arena,
+            .measure_arena = std.heap.ArenaAllocator.init(global_allocator),
             .tab_indicator = null,
             .tab_indicator_color = null,
+            .cached_measure_width = null,
+            .cached_measure_wrap_mode = .none,
+            .cached_measure_result = null,
+            .cached_measure_epoch = 0,
+            .cached_measure_buffer = null,
         };
 
         return self;
@@ -170,6 +189,7 @@ pub const UnifiedTextBufferView = struct {
         self.original_text_buffer.unregisterView(self.view_id);
         self.virtual_lines_arena.deinit();
         self.global_allocator.destroy(self.virtual_lines_arena);
+        self.measure_arena.deinit();
         self.global_allocator.destroy(self);
     }
 
@@ -690,14 +710,47 @@ pub const UnifiedTextBufferView = struct {
 
     /// Measure dimensions for given width/height WITHOUT modifying virtual lines cache
     /// This is useful for Yoga measure functions that need to know dimensions without committing changes
-    /// Special case: width=0 means "measure intrinsic/max-content width" (no wrapping)
-    pub fn measureForDimensions(self: *const Self, width: u32, height: u32) TextBufferViewError!MeasureResult {
+    /// Special case: width=0 or wrap_mode=.none means "measure intrinsic/max-content width" (no wrapping)
+    pub fn measureForDimensions(self: *Self, width: u32, height: u32) TextBufferViewError!MeasureResult {
         _ = height; // Height is for future use, currently only width affects layout
 
-        // Create temporary arena for measurement
-        var measure_arena = std.heap.ArenaAllocator.init(self.global_allocator);
-        defer measure_arena.deinit();
-        const measure_allocator = measure_arena.allocator();
+        const epoch = self.text_buffer.getContentEpoch();
+        if (self.cached_measure_result) |result| {
+            if (self.cached_measure_epoch == epoch and self.cached_measure_buffer == self.text_buffer) {
+                if (self.cached_measure_width) |cached_width| {
+                    if (cached_width == width and self.cached_measure_wrap_mode == self.wrap_mode) {
+                        return result;
+                    }
+                }
+            }
+        }
+
+        // No-wrap path avoids allocations by using marker-based line widths.
+        if (width == 0 or self.wrap_mode == .none) {
+            const line_count = self.text_buffer.getLineCount();
+            var max_width: u32 = 0;
+            var row: u32 = 0;
+            while (row < line_count) : (row += 1) {
+                max_width = @max(max_width, iter_mod.lineWidthAt(&self.text_buffer.rope, row));
+            }
+
+            const result = MeasureResult{
+                .line_count = line_count,
+                .max_width = max_width,
+            };
+
+            self.cached_measure_width = width;
+            self.cached_measure_wrap_mode = self.wrap_mode;
+            self.cached_measure_result = result;
+            self.cached_measure_epoch = epoch;
+            self.cached_measure_buffer = self.text_buffer;
+
+            return result;
+        }
+
+        // Reuse arena capacity to avoid allocation overhead during streaming.
+        _ = self.measure_arena.reset(.retain_capacity);
+        const measure_allocator = self.measure_arena.allocator();
 
         // Create temporary output structures
         var temp_virtual_lines = std.ArrayListUnmanaged(VirtualLine){};
@@ -719,7 +772,6 @@ pub const UnifiedTextBufferView = struct {
         };
 
         // Use width for wrap calculation
-        // Special case: width=0 means get intrinsic width (no wrapping), so pass null
         const wrap_width_for_measure = if (self.wrap_mode != .none and width > 0) width else null;
 
         // Call generic calculation with temporary structures
@@ -737,10 +789,18 @@ pub const UnifiedTextBufferView = struct {
             max_width = @max(max_width, w);
         }
 
-        return MeasureResult{
+        const result = MeasureResult{
             .line_count = @intCast(temp_virtual_lines.items.len),
             .max_width = max_width,
         };
+
+        self.cached_measure_width = width;
+        self.cached_measure_wrap_mode = self.wrap_mode;
+        self.cached_measure_result = result;
+        self.cached_measure_epoch = epoch;
+        self.cached_measure_buffer = self.text_buffer;
+
+        return result;
     }
 
     /// Generic virtual line calculation that writes to provided output structures
@@ -864,8 +924,10 @@ pub const UnifiedTextBufferView = struct {
                     if (wctx.wrap_mode == .word) {
                         const chunk_bytes = chunk.getBytes(&wctx.text_buffer.mem_registry);
                         const wrap_offsets = chunk.getWrapOffsets(&wctx.text_buffer.mem_registry, wctx.text_buffer.allocator, wctx.text_buffer.width_method) catch &[_]utf8.WrapBreak{};
+                        const is_ascii_only = (chunk.flags & TextChunk.Flags.ASCII_ONLY) != 0;
 
                         var char_offset: u32 = 0;
+                        var byte_offset: u32 = 0;
                         var wrap_idx: usize = 0;
                         while (char_offset < chunk.width) {
                             const remaining_in_chunk = chunk.width - char_offset;
@@ -904,16 +966,16 @@ pub const UnifiedTextBufferView = struct {
                                 to_add = boundary_w;
                                 has_wrap_after = true;
                             } else if (wctx.line_position == 0) {
-                                const is_ascii_only = (chunk.flags & TextChunk.Flags.ASCII_ONLY) != 0;
-                                var byte_offset: u32 = 0;
-                                if (char_offset > 0) {
-                                    const pos_result = utf8.findPosByWidth(chunk_bytes, char_offset, wctx.text_buffer.tab_width, is_ascii_only, false, wctx.text_buffer.width_method);
-                                    byte_offset = pos_result.byte_offset;
-                                }
+                                // Use tracked byte_offset instead of recalculating from scratch (avoids O(n²))
                                 const remaining_bytes = chunk_bytes[byte_offset..];
                                 const wrap_result = utf8.findWrapPosByWidth(remaining_bytes, remaining_on_line, wctx.text_buffer.tab_width, is_ascii_only, wctx.text_buffer.width_method);
                                 to_add = wrap_result.columns_used;
-                                if (to_add == 0) to_add = 1;
+                                byte_offset += wrap_result.byte_offset;
+                                if (to_add == 0) {
+                                    to_add = 1;
+                                    const single_result = utf8.findWrapPosByWidth(remaining_bytes, 1, wctx.text_buffer.tab_width, is_ascii_only, wctx.text_buffer.width_method);
+                                    byte_offset += single_result.byte_offset;
+                                }
                             } else if (wctx.last_wrap_chunk_count > 0) {
                                 var accumulated_width: u32 = 0;
                                 for (wctx.current_vline.chunks.items[0..wctx.last_wrap_chunk_count]) |vchunk| {
@@ -970,16 +1032,15 @@ pub const UnifiedTextBufferView = struct {
                                 continue;
                             } else {
                                 commitVirtualLine(wctx);
-                                const is_ascii_only = (chunk.flags & TextChunk.Flags.ASCII_ONLY) != 0;
-                                var byte_offset: u32 = 0;
-                                if (char_offset > 0) {
-                                    const pos_result = utf8.findPosByWidth(chunk_bytes, char_offset, wctx.text_buffer.tab_width, is_ascii_only, false, wctx.text_buffer.width_method);
-                                    byte_offset = pos_result.byte_offset;
-                                }
                                 const remaining_bytes = chunk_bytes[byte_offset..];
                                 const wrap_result = utf8.findWrapPosByWidth(remaining_bytes, wctx.wrap_w, wctx.text_buffer.tab_width, is_ascii_only, wctx.text_buffer.width_method);
                                 to_add = wrap_result.columns_used;
-                                if (to_add == 0) to_add = 1;
+                                byte_offset += wrap_result.byte_offset;
+                                if (to_add == 0) {
+                                    to_add = 1;
+                                    const single_result = utf8.findWrapPosByWidth(remaining_bytes, 1, wctx.text_buffer.tab_width, is_ascii_only, wctx.text_buffer.width_method);
+                                    byte_offset += single_result.byte_offset;
+                                }
                             }
 
                             if (to_add > 0) {
