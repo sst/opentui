@@ -4,6 +4,7 @@ const seg_mod = @import("../text-buffer-segment.zig");
 const iter_mod = @import("../text-buffer-iterators.zig");
 
 const BenchResult = bench_utils.BenchResult;
+const BenchStats = bench_utils.BenchStats;
 const Segment = seg_mod.Segment;
 const TextChunk = seg_mod.TextChunk;
 const UnifiedRope = seg_mod.UnifiedRope;
@@ -12,13 +13,12 @@ pub const benchName = "TextBuffer Coordinate Conversion";
 
 /// Create a text buffer with N lines for testing
 fn createTestBuffer(allocator: std.mem.Allocator, line_count: u32, chars_per_line: u32) !UnifiedRope {
-    var segments = std.ArrayList(Segment).init(allocator);
-    defer segments.deinit();
+    var segments: std.ArrayListUnmanaged(Segment) = .{};
+    defer segments.deinit(allocator);
 
-    var i: u32 = 0;
-    while (i < line_count) : (i += 1) {
+    for (0..line_count) |i| {
         // Add text segment
-        try segments.append(Segment{
+        try segments.append(allocator, Segment{
             .text = TextChunk{
                 .mem_id = 0,
                 .byte_start = 0,
@@ -29,7 +29,7 @@ fn createTestBuffer(allocator: std.mem.Allocator, line_count: u32, chars_per_lin
         });
         // Add line break (except for last line)
         if (i < line_count - 1) {
-            try segments.append(Segment{ .brk = {} });
+            try segments.append(allocator, Segment{ .brk = {} });
         }
     }
 
@@ -37,42 +37,34 @@ fn createTestBuffer(allocator: std.mem.Allocator, line_count: u32, chars_per_lin
 }
 
 fn benchCoordsToOffsetCurrent(allocator: std.mem.Allocator, iterations: usize) ![]BenchResult {
-    var results = std.ArrayList(BenchResult).init(allocator);
+    var results: std.ArrayListUnmanaged(BenchResult) = .{};
+    errdefer results.deinit(allocator);
 
     // Small buffer - 100 lines
     {
-        var min_ns: u64 = std.math.maxInt(u64);
-        var max_ns: u64 = 0;
-        var total_ns: u64 = 0;
+        var stats = BenchStats{};
 
-        var iter: usize = 0;
-        while (iter < iterations) : (iter += 1) {
-            var arena = std.heap.ArenaAllocator.init(allocator);
+        for (0..iterations) |_| {
+            var arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
             defer arena.deinit();
 
             var rope = try createTestBuffer(arena.allocator(), 100, 50);
 
             var timer = try std.time.Timer.start();
             // Access lines throughout the buffer
-            var i: u32 = 0;
-            while (i < 100) : (i += 1) {
-                const line = i % 100;
+            for (0..100) |i| {
+                const line: u32 = @intCast(i % 100);
                 _ = iter_mod.coordsToOffset(&rope, line, 25);
             }
-            const elapsed = timer.read();
-
-            min_ns = @min(min_ns, elapsed);
-            max_ns = @max(max_ns, elapsed);
-            total_ns += elapsed;
+            stats.record(timer.read());
         }
 
-        const name = try std.fmt.allocPrint(allocator, "[CURRENT] coordsToOffset: 100 calls, 100 lines", .{});
-        try results.append(BenchResult{
-            .name = name,
-            .min_ns = min_ns,
-            .avg_ns = total_ns / iterations,
-            .max_ns = max_ns,
-            .total_ns = total_ns,
+        try results.append(allocator, BenchResult{
+            .name = "[CURRENT] coordsToOffset: 100 calls, 100 lines",
+            .min_ns = stats.min_ns,
+            .avg_ns = stats.avg(),
+            .max_ns = stats.max_ns,
+            .total_ns = stats.total_ns,
             .iterations = iterations,
             .mem_stats = null,
         });
@@ -80,37 +72,28 @@ fn benchCoordsToOffsetCurrent(allocator: std.mem.Allocator, iterations: usize) !
 
     // Medium buffer - 1k lines
     {
-        var min_ns: u64 = std.math.maxInt(u64);
-        var max_ns: u64 = 0;
-        var total_ns: u64 = 0;
+        var stats = BenchStats{};
 
-        var iter: usize = 0;
-        while (iter < iterations) : (iter += 1) {
-            var arena = std.heap.ArenaAllocator.init(allocator);
+        for (0..iterations) |_| {
+            var arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
             defer arena.deinit();
 
             var rope = try createTestBuffer(arena.allocator(), 1000, 50);
 
             var timer = try std.time.Timer.start();
-            var i: u32 = 0;
-            while (i < 100) : (i += 1) {
-                const line = (i * 10) % 1000;
+            for (0..100) |i| {
+                const line: u32 = @intCast((i * 10) % 1000);
                 _ = iter_mod.coordsToOffset(&rope, line, 25);
             }
-            const elapsed = timer.read();
-
-            min_ns = @min(min_ns, elapsed);
-            max_ns = @max(max_ns, elapsed);
-            total_ns += elapsed;
+            stats.record(timer.read());
         }
 
-        const name = try std.fmt.allocPrint(allocator, "[CURRENT] coordsToOffset: 100 calls, 1k lines", .{});
-        try results.append(BenchResult{
-            .name = name,
-            .min_ns = min_ns,
-            .avg_ns = total_ns / iterations,
-            .max_ns = max_ns,
-            .total_ns = total_ns,
+        try results.append(allocator, BenchResult{
+            .name = "[CURRENT] coordsToOffset: 100 calls, 1k lines",
+            .min_ns = stats.min_ns,
+            .avg_ns = stats.avg(),
+            .max_ns = stats.max_ns,
+            .total_ns = stats.total_ns,
             .iterations = iterations,
             .mem_stats = null,
         });
@@ -118,37 +101,28 @@ fn benchCoordsToOffsetCurrent(allocator: std.mem.Allocator, iterations: usize) !
 
     // Large buffer - 10k lines
     {
-        var min_ns: u64 = std.math.maxInt(u64);
-        var max_ns: u64 = 0;
-        var total_ns: u64 = 0;
+        var stats = BenchStats{};
 
-        var iter: usize = 0;
-        while (iter < iterations) : (iter += 1) {
-            var arena = std.heap.ArenaAllocator.init(allocator);
+        for (0..iterations) |_| {
+            var arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
             defer arena.deinit();
 
             var rope = try createTestBuffer(arena.allocator(), 10000, 50);
 
             var timer = try std.time.Timer.start();
-            var i: u32 = 0;
-            while (i < 100) : (i += 1) {
-                const line = (i * 100) % 10000;
+            for (0..100) |i| {
+                const line: u32 = @intCast((i * 100) % 10000);
                 _ = iter_mod.coordsToOffset(&rope, line, 25);
             }
-            const elapsed = timer.read();
-
-            min_ns = @min(min_ns, elapsed);
-            max_ns = @max(max_ns, elapsed);
-            total_ns += elapsed;
+            stats.record(timer.read());
         }
 
-        const name = try std.fmt.allocPrint(allocator, "[CURRENT] coordsToOffset: 100 calls, 10k lines", .{});
-        try results.append(BenchResult{
-            .name = name,
-            .min_ns = min_ns,
-            .avg_ns = total_ns / iterations,
-            .max_ns = max_ns,
-            .total_ns = total_ns,
+        try results.append(allocator, BenchResult{
+            .name = "[CURRENT] coordsToOffset: 100 calls, 10k lines",
+            .min_ns = stats.min_ns,
+            .avg_ns = stats.avg(),
+            .max_ns = stats.max_ns,
+            .total_ns = stats.total_ns,
             .iterations = iterations,
             .mem_stats = null,
         });
@@ -156,56 +130,45 @@ fn benchCoordsToOffsetCurrent(allocator: std.mem.Allocator, iterations: usize) !
 
     // Worst case: access last line repeatedly
     {
-        var min_ns: u64 = std.math.maxInt(u64);
-        var max_ns: u64 = 0;
-        var total_ns: u64 = 0;
+        var stats = BenchStats{};
 
-        var iter: usize = 0;
-        while (iter < iterations) : (iter += 1) {
-            var arena = std.heap.ArenaAllocator.init(allocator);
+        for (0..iterations) |_| {
+            var arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
             defer arena.deinit();
 
             var rope = try createTestBuffer(arena.allocator(), 1000, 50);
 
             var timer = try std.time.Timer.start();
-            var i: u32 = 0;
-            while (i < 100) : (i += 1) {
+            for (0..100) |_| {
                 _ = iter_mod.coordsToOffset(&rope, 999, 25); // Last line
             }
-            const elapsed = timer.read();
-
-            min_ns = @min(min_ns, elapsed);
-            max_ns = @max(max_ns, elapsed);
-            total_ns += elapsed;
+            stats.record(timer.read());
         }
 
-        const name = try std.fmt.allocPrint(allocator, "[CURRENT] coordsToOffset: 100 calls to LAST line, 1k lines (worst case)", .{});
-        try results.append(BenchResult{
-            .name = name,
-            .min_ns = min_ns,
-            .avg_ns = total_ns / iterations,
-            .max_ns = max_ns,
-            .total_ns = total_ns,
+        try results.append(allocator, BenchResult{
+            .name = "[CURRENT] coordsToOffset: 100 calls to LAST line, 1k lines (worst case)",
+            .min_ns = stats.min_ns,
+            .avg_ns = stats.avg(),
+            .max_ns = stats.max_ns,
+            .total_ns = stats.total_ns,
             .iterations = iterations,
             .mem_stats = null,
         });
     }
 
-    return try results.toOwnedSlice();
+    return try results.toOwnedSlice(allocator);
 }
 
 fn benchOffsetToCoordsCurrent(allocator: std.mem.Allocator, iterations: usize) ![]BenchResult {
-    var results = std.ArrayList(BenchResult).init(allocator);
+    var results: std.ArrayListUnmanaged(BenchResult) = .{};
+    errdefer results.deinit(allocator);
 
     // Small buffer
     {
-        var min_ns: u64 = std.math.maxInt(u64);
-        var max_ns: u64 = 0;
-        var total_ns: u64 = 0;
+        var stats = BenchStats{};
 
-        var iter: usize = 0;
-        while (iter < iterations) : (iter += 1) {
-            var arena = std.heap.ArenaAllocator.init(allocator);
+        for (0..iterations) |_| {
+            var arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
             defer arena.deinit();
 
             var rope = try createTestBuffer(arena.allocator(), 100, 50);
@@ -215,25 +178,19 @@ fn benchOffsetToCoordsCurrent(allocator: std.mem.Allocator, iterations: usize) !
             const random = prng.random();
 
             var timer = try std.time.Timer.start();
-            var i: u32 = 0;
-            while (i < 100) : (i += 1) {
+            for (0..100) |_| {
                 const offset = random.intRangeAtMost(u32, 0, total_width);
                 _ = iter_mod.offsetToCoords(&rope, offset);
             }
-            const elapsed = timer.read();
-
-            min_ns = @min(min_ns, elapsed);
-            max_ns = @max(max_ns, elapsed);
-            total_ns += elapsed;
+            stats.record(timer.read());
         }
 
-        const name = try std.fmt.allocPrint(allocator, "[CURRENT] offsetToCoords: 100 calls, 100 lines", .{});
-        try results.append(BenchResult{
-            .name = name,
-            .min_ns = min_ns,
-            .avg_ns = total_ns / iterations,
-            .max_ns = max_ns,
-            .total_ns = total_ns,
+        try results.append(allocator, BenchResult{
+            .name = "[CURRENT] offsetToCoords: 100 calls, 100 lines",
+            .min_ns = stats.min_ns,
+            .avg_ns = stats.avg(),
+            .max_ns = stats.max_ns,
+            .total_ns = stats.total_ns,
             .iterations = iterations,
             .mem_stats = null,
         });
@@ -241,13 +198,10 @@ fn benchOffsetToCoordsCurrent(allocator: std.mem.Allocator, iterations: usize) !
 
     // Medium buffer
     {
-        var min_ns: u64 = std.math.maxInt(u64);
-        var max_ns: u64 = 0;
-        var total_ns: u64 = 0;
+        var stats = BenchStats{};
 
-        var iter: usize = 0;
-        while (iter < iterations) : (iter += 1) {
-            var arena = std.heap.ArenaAllocator.init(allocator);
+        for (0..iterations) |_| {
+            var arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
             defer arena.deinit();
 
             var rope = try createTestBuffer(arena.allocator(), 1000, 50);
@@ -257,25 +211,19 @@ fn benchOffsetToCoordsCurrent(allocator: std.mem.Allocator, iterations: usize) !
             const random = prng.random();
 
             var timer = try std.time.Timer.start();
-            var i: u32 = 0;
-            while (i < 100) : (i += 1) {
+            for (0..100) |_| {
                 const offset = random.intRangeAtMost(u32, 0, total_width);
                 _ = iter_mod.offsetToCoords(&rope, offset);
             }
-            const elapsed = timer.read();
-
-            min_ns = @min(min_ns, elapsed);
-            max_ns = @max(max_ns, elapsed);
-            total_ns += elapsed;
+            stats.record(timer.read());
         }
 
-        const name = try std.fmt.allocPrint(allocator, "[CURRENT] offsetToCoords: 100 calls, 1k lines", .{});
-        try results.append(BenchResult{
-            .name = name,
-            .min_ns = min_ns,
-            .avg_ns = total_ns / iterations,
-            .max_ns = max_ns,
-            .total_ns = total_ns,
+        try results.append(allocator, BenchResult{
+            .name = "[CURRENT] offsetToCoords: 100 calls, 1k lines",
+            .min_ns = stats.min_ns,
+            .avg_ns = stats.avg(),
+            .max_ns = stats.max_ns,
+            .total_ns = stats.total_ns,
             .iterations = iterations,
             .mem_stats = null,
         });
@@ -283,13 +231,10 @@ fn benchOffsetToCoordsCurrent(allocator: std.mem.Allocator, iterations: usize) !
 
     // Large buffer
     {
-        var min_ns: u64 = std.math.maxInt(u64);
-        var max_ns: u64 = 0;
-        var total_ns: u64 = 0;
+        var stats = BenchStats{};
 
-        var iter: usize = 0;
-        while (iter < iterations) : (iter += 1) {
-            var arena = std.heap.ArenaAllocator.init(allocator);
+        for (0..iterations) |_| {
+            var arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
             defer arena.deinit();
 
             var rope = try createTestBuffer(arena.allocator(), 10000, 50);
@@ -299,74 +244,60 @@ fn benchOffsetToCoordsCurrent(allocator: std.mem.Allocator, iterations: usize) !
             const random = prng.random();
 
             var timer = try std.time.Timer.start();
-            var i: u32 = 0;
-            while (i < 100) : (i += 1) {
+            for (0..100) |_| {
                 const offset = random.intRangeAtMost(u32, 0, total_width);
                 _ = iter_mod.offsetToCoords(&rope, offset);
             }
-            const elapsed = timer.read();
-
-            min_ns = @min(min_ns, elapsed);
-            max_ns = @max(max_ns, elapsed);
-            total_ns += elapsed;
+            stats.record(timer.read());
         }
 
-        const name = try std.fmt.allocPrint(allocator, "[CURRENT] offsetToCoords: 100 calls, 10k lines", .{});
-        try results.append(BenchResult{
-            .name = name,
-            .min_ns = min_ns,
-            .avg_ns = total_ns / iterations,
-            .max_ns = max_ns,
-            .total_ns = total_ns,
+        try results.append(allocator, BenchResult{
+            .name = "[CURRENT] offsetToCoords: 100 calls, 10k lines",
+            .min_ns = stats.min_ns,
+            .avg_ns = stats.avg(),
+            .max_ns = stats.max_ns,
+            .total_ns = stats.total_ns,
             .iterations = iterations,
             .mem_stats = null,
         });
     }
 
-    return try results.toOwnedSlice();
+    return try results.toOwnedSlice(allocator);
 }
 
 fn benchGetLineCount(allocator: std.mem.Allocator, iterations: usize) ![]BenchResult {
-    var results = std.ArrayList(BenchResult).init(allocator);
+    var results: std.ArrayListUnmanaged(BenchResult) = .{};
+    errdefer results.deinit(allocator);
 
     // getLineCount is already optimized with metrics
     {
-        var min_ns: u64 = std.math.maxInt(u64);
-        var max_ns: u64 = 0;
-        var total_ns: u64 = 0;
+        var stats = BenchStats{};
 
-        var iter: usize = 0;
-        while (iter < iterations) : (iter += 1) {
-            var arena = std.heap.ArenaAllocator.init(allocator);
+        for (0..iterations) |_| {
+            var arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
             defer arena.deinit();
 
             var rope = try createTestBuffer(arena.allocator(), 10000, 50);
 
             var timer = try std.time.Timer.start();
-            var i: u32 = 0;
-            while (i < 100000) : (i += 1) {
+            for (0..100000) |_| {
                 _ = iter_mod.getLineCount(&rope);
             }
-            const elapsed = timer.read();
-
-            min_ns = @min(min_ns, elapsed);
-            max_ns = @max(max_ns, elapsed);
-            total_ns += elapsed;
+            stats.record(timer.read());
         }
 
-        const name = try std.fmt.allocPrint(allocator, "getLineCount: 100k calls (already O(1) via metrics)", .{});
-        try results.append(BenchResult{
-            .name = name,
-            .min_ns = min_ns,
-            .avg_ns = total_ns / iterations,
-            .max_ns = max_ns,
-            .total_ns = total_ns,
+        try results.append(allocator, BenchResult{
+            .name = "getLineCount: 100k calls (already O(1) via metrics)",
+            .min_ns = stats.min_ns,
+            .avg_ns = stats.avg(),
+            .max_ns = stats.max_ns,
+            .total_ns = stats.total_ns,
             .iterations = iterations,
             .mem_stats = null,
         });
     }
 
-    return try results.toOwnedSlice();
+    return try results.toOwnedSlice(allocator);
 }
 
 pub fn run(
@@ -375,22 +306,20 @@ pub fn run(
 ) ![]BenchResult {
     _ = show_mem;
 
-    var all_results = std.ArrayList(BenchResult).init(allocator);
+    var all_results: std.ArrayListUnmanaged(BenchResult) = .{};
+    errdefer all_results.deinit(allocator);
 
     const iterations: usize = 10;
 
     // Current implementation benchmarks
     const coords_results = try benchCoordsToOffsetCurrent(allocator, iterations);
-    defer allocator.free(coords_results);
-    try all_results.appendSlice(coords_results);
+    try all_results.appendSlice(allocator, coords_results);
 
     const offset_results = try benchOffsetToCoordsCurrent(allocator, iterations);
-    defer allocator.free(offset_results);
-    try all_results.appendSlice(offset_results);
+    try all_results.appendSlice(allocator, offset_results);
 
     const count_results = try benchGetLineCount(allocator, iterations);
-    defer allocator.free(count_results);
-    try all_results.appendSlice(count_results);
+    try all_results.appendSlice(allocator, count_results);
 
-    return try all_results.toOwnedSlice();
+    return try all_results.toOwnedSlice(allocator);
 }
