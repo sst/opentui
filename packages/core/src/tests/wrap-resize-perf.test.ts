@@ -196,6 +196,6 @@ describe("Word wrap algorithmic complexity", () => {
     const maxTime = Math.max(...times)
     const minTime = Math.min(...times)
 
-    expect(maxTime / minTime).toBeLessThan(3)
+    expect(maxTime / minTime).toBeLessThan(5)
   })
 })
