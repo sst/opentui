@@ -7,6 +7,8 @@ import { createRoot } from "../src/reconciler/renderer"
  * Regression test for: Native Yoga crash when renderer.destroy() is called
  * with pending React state updates.
  *
+ * Bug report: https://gist.github.com/rauchg/b2e1e964f88773a5d08f5f682dce2224
+ *
  * Issue: When calling renderer.destroy() while async operations (intervals,
  * promises, etc.) are still updating React state, Yoga crashes with:
  * "Cannot add child: Nodes with measure functions cannot have children."
@@ -14,10 +16,15 @@ import { createRoot } from "../src/reconciler/renderer"
  *
  * The crash happens because:
  * 1. renderer.destroy() is called (WITHOUT unmounting React first)
- * 2. This calls root.destroyRecursively() which frees all Yoga nodes
+ * 2. This calls root.destroyRecursively() which calls yogaNode.free() on all nodes
  * 3. The interval keeps firing setLines() because React wasn't unmounted
- * 4. React tries to re-render, calling appendChild/insertChild on freed Yoga nodes
- * 5. Yoga WASM crashes with out-of-bounds memory access
+ * 4. React tries to re-render, calling appendChild() which calls add()
+ * 5. add() calls yogaNode.insertChild() on a freed (parent) yoga node
+ * 6. Yoga WASM crashes with out-of-bounds memory access
+ *
+ * The "Cannot add child: Nodes with measure functions cannot have children"
+ * error message is misleading - it's actually a use-after-free crash where
+ * the freed yoga node's memory has been reused/corrupted.
  *
  * CRITICAL: The bug only occurs when React is NOT unmounted before/during destroy.
  * In the bug report, there is NO root.unmount() call - just renderer.destroy().
