@@ -752,6 +752,22 @@ test("parseKeypress - backspace key with modifiers (modifyOtherKeys format)", ()
   expect(metaBackspace.shift).toBe(false)
 })
 
+test("parseKeypress - legacy terminal Option+Backspace", () => {
+  const legacyMetaBackspace = parseKeypress("\x1b\x7f")!
+  expect(legacyMetaBackspace.name).toBe("backspace")
+  expect(legacyMetaBackspace.meta).toBe(true)
+  expect(legacyMetaBackspace.option).toBe(true)
+  expect(legacyMetaBackspace.ctrl).toBe(false)
+  expect(legacyMetaBackspace.shift).toBe(false)
+
+  const legacyMetaBackspaceBS = parseKeypress("\x1b\b")!
+  expect(legacyMetaBackspaceBS.name).toBe("backspace")
+  expect(legacyMetaBackspaceBS.meta).toBe(true)
+  expect(legacyMetaBackspaceBS.option).toBe(true)
+  expect(legacyMetaBackspaceBS.ctrl).toBe(false)
+  expect(legacyMetaBackspaceBS.shift).toBe(false)
+})
+
 test("parseKeypress - backspace key with modifiers (Kitty keyboard protocol)", () => {
   // Backspace key in Kitty protocol uses code 127
   // Ctrl+Backspace: \x1b[127;5u

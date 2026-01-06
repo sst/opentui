@@ -270,8 +270,11 @@ export const parseKeypress = (s: Buffer | string = "", options: ParseKeypressOpt
   } else if (s === "\b" || s === "\x1b\b" || s === "\x7f" || s === "\x1b\x7f") {
     // backspace or ctrl+h
     // On OSX, \x7f is also backspace
+    // ESC prefix indicates Alt/Option modifier (legacy terminal encoding)
     key.name = "backspace"
-    key.meta = s.charAt(0) === "\x1b"
+    const hasEscPrefix = s.charAt(0) === "\x1b"
+    key.meta = hasEscPrefix
+    key.option = hasEscPrefix
   } else if (s === "\x1b" || s === "\x1b\x1b") {
     // escape key
     key.name = "escape"
