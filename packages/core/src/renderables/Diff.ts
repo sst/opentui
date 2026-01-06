@@ -82,29 +82,23 @@ export class DiffRenderable extends Renderable {
   private _addedLineNumberBg: RGBA
   private _removedLineNumberBg: RGBA
 
-  // Child renderables - reused for both unified and split views
-  // Unified view uses only leftSide, split view uses both leftSide and rightSide
   private leftSide: LineNumberRenderable | null = null
   private rightSide: LineNumberRenderable | null = null
 
-  // Track whether renderables are currently in the render tree
   private leftSideAdded: boolean = false
   private rightSideAdded: boolean = false
 
-  // Reusable CodeRenderables (not recreated on rebuild)
-  // These are created once and updated with new content to avoid expensive recreation
   private leftCodeRenderable: CodeRenderable | null = null
   private rightCodeRenderable: CodeRenderable | null = null
 
-  // Lazy rebuild strategy: For split view, use microtask to coalesce rebuilds.
-  // This avoids expensive re-parsing and re-rendering on rapid changes (e.g., width changes).
-  // CodeRenderables are reused and only their content is updated.
   private pendingRebuild: boolean = false
   private _lastWidth: number = 0
 
-  // Error renderables for displaying parse errors
   private errorTextRenderable: TextRenderable | null = null
   private errorCodeRenderable: CodeRenderable | null = null
+
+  private _waitingForHighlight: boolean = false
+  private _lineInfoChangeHandler: (() => void) | null = null
 
   constructor(ctx: RenderContext, options: DiffRenderableOptions) {
     super(ctx, {
@@ -142,7 +136,6 @@ export class DiffRenderable extends Renderable {
     this._addedLineNumberBg = parseColor(options.addedLineNumberBg ?? "transparent")
     this._removedLineNumberBg = parseColor(options.removedLineNumberBg ?? "transparent")
 
-    // Only parse and build if diff is provided
     if (this._diff) {
       this.parseDiff()
       this.buildView()
@@ -157,7 +150,6 @@ export class DiffRenderable extends Renderable {
     }
 
     try {
-      // Use jsdiff's parsePatch to parse the diff string
       const patches = parsePatch(this._diff)
 
       if (patches.length === 0) {
@@ -166,21 +158,15 @@ export class DiffRenderable extends Renderable {
         return
       }
 
-      // Use the first patch (most diffs have only one file)
       this._parsedDiff = patches[0]
       this._parseError = null
     } catch (error) {
-      // Catch parsing errors from invalid diff format
       this._parsedDiff = null
       this._parseError = error instanceof Error ? error : new Error(String(error))
     }
   }
 
   private buildView(): void {
-    // Never destroy anything - just update existing renderables or create new ones
-    // Unified view uses leftSide only, split view uses both leftSide and rightSide
-
-    // If there's a parse error, show error message instead
     if (this._parseError) {
       this.buildErrorView()
       return
@@ -200,7 +186,6 @@ export class DiffRenderable extends Renderable {
   protected override onResize(width: number, height: number): void {
     super.onResize(width, height)
 
-    // Only rebuild on width changes to avoid endless loops (height is a consequence of wrapping, not an input)
     if (this._view === "split" && this._wrapMode !== "none" && this._wrapMode !== undefined) {
       if (this._lastWidth !== width) {
         this._lastWidth = width
@@ -225,7 +210,6 @@ export class DiffRenderable extends Renderable {
   }
 
   private rebuildView(): void {
-    // Use microtask rebuild for split view, immediate for unified
     if (this._view === "split") {
       this.requestRebuild()
     } else {
@@ -233,22 +217,51 @@ export class DiffRenderable extends Renderable {
     }
   }
 
+  private handleLineInfoChange = (): void => {
+    if (!this._waitingForHighlight) return
+    if (!this.leftCodeRenderable || !this.rightCodeRenderable) return
+
+    const leftIsHighlighting = this.leftCodeRenderable.isHighlighting
+    const rightIsHighlighting = this.rightCodeRenderable.isHighlighting
+
+    if (!leftIsHighlighting && !rightIsHighlighting) {
+      this._waitingForHighlight = false
+      this.requestRebuild()
+    }
+  }
+
+  private attachLineInfoListeners(): void {
+    if (this._lineInfoChangeHandler) return
+    if (!this.leftCodeRenderable || !this.rightCodeRenderable) return
+
+    this._lineInfoChangeHandler = this.handleLineInfoChange
+    this.leftCodeRenderable.on("line-info-change", this._lineInfoChangeHandler)
+    this.rightCodeRenderable.on("line-info-change", this._lineInfoChangeHandler)
+  }
+
+  private detachLineInfoListeners(): void {
+    if (!this._lineInfoChangeHandler) return
+
+    if (this.leftCodeRenderable) {
+      this.leftCodeRenderable.off("line-info-change", this._lineInfoChangeHandler)
+    }
+    if (this.rightCodeRenderable) {
+      this.rightCodeRenderable.off("line-info-change", this._lineInfoChangeHandler)
+    }
+    this._lineInfoChangeHandler = null
+  }
+
   public override destroyRecursively(): void {
+    this.detachLineInfoListeners()
     this.pendingRebuild = false
     this.leftSideAdded = false
     this.rightSideAdded = false
     super.destroyRecursively()
   }
 
-  /**
-   * Create or update a CodeRenderable with the given content and options.
-   * Reuses existing instances to avoid expensive recreation.
-   */
   private buildErrorView(): void {
-    // Ensure column layout for error view
     this.flexDirection = "column"
 
-    // Remove any existing diff view renderables
     if (this.leftSide && this.leftSideAdded) {
       super.remove(this.leftSide.id)
       this.leftSideAdded = false
@@ -258,7 +271,6 @@ export class DiffRenderable extends Renderable {
       this.rightSideAdded = false
     }
 
-    // Create or update error text renderable
     const errorMessage = `Error parsing diff: ${this._parseError?.message || "Unknown error"}\n`
     if (!this.errorTextRenderable) {
       this.errorTextRenderable = new TextRenderable(this.ctx, {
@@ -271,14 +283,12 @@ export class DiffRenderable extends Renderable {
       super.add(this.errorTextRenderable)
     } else {
       this.errorTextRenderable.content = errorMessage
-      // Ensure it's in the render tree
       const errorTextIndex = this.getChildren().indexOf(this.errorTextRenderable)
       if (errorTextIndex === -1) {
         super.add(this.errorTextRenderable)
       }
     }
 
-    // Create or update error code renderable to show the raw diff
     if (!this.errorCodeRenderable) {
       this.errorCodeRenderable = new CodeRenderable(this.ctx, {
         id: this.id ? `${this.id}-error-code` : undefined,
@@ -299,7 +309,6 @@ export class DiffRenderable extends Renderable {
       if (this._syntaxStyle) {
         this.errorCodeRenderable.syntaxStyle = this._syntaxStyle
       }
-      // Ensure it's in the render tree
       const errorCodeIndex = this.getChildren().indexOf(this.errorCodeRenderable)
       if (errorCodeIndex === -1) {
         super.add(this.errorCodeRenderable)
@@ -316,7 +325,6 @@ export class DiffRenderable extends Renderable {
     const existingRenderable = side === "left" ? this.leftCodeRenderable : this.rightCodeRenderable
 
     if (!existingRenderable) {
-      // Create new CodeRenderable
       const codeOptions: CodeOptions = {
         id: this.id ? `${this.id}-${side}-code` : undefined,
         content,
@@ -342,7 +350,6 @@ export class DiffRenderable extends Renderable {
 
       return newRenderable
     } else {
-      // Update existing CodeRenderable
       existingRenderable.content = content
       existingRenderable.wrapMode = wrapMode ?? "none"
       existingRenderable.conceal = this._conceal
@@ -369,10 +376,6 @@ export class DiffRenderable extends Renderable {
     }
   }
 
-  /**
-   * Create or update a LineNumberRenderable side panel.
-   * Handles both creation and updates, ensuring the side is properly added to the render tree.
-   */
   private createOrUpdateSide(
     side: "left" | "right",
     target: CodeRenderable,
@@ -386,7 +389,6 @@ export class DiffRenderable extends Renderable {
     const addedFlag = side === "left" ? this.leftSideAdded : this.rightSideAdded
 
     if (!sideRef) {
-      // Create new LineNumberRenderable
       const newSide = new LineNumberRenderable(this.ctx, {
         id: this.id ? `${this.id}-${side}` : undefined,
         target,
@@ -411,14 +413,12 @@ export class DiffRenderable extends Renderable {
         this.rightSideAdded = true
       }
     } else {
-      // Update existing LineNumberRenderable
       sideRef.width = width
       sideRef.setLineColors(lineColors)
       sideRef.setLineSigns(lineSigns)
       sideRef.setLineNumbers(lineNumbers)
       sideRef.setHideLineNumbers(hideLineNumbers)
 
-      // Ensure side is added if not already
       if (!addedFlag) {
         super.add(sideRef)
         if (side === "left") {
@@ -433,10 +433,8 @@ export class DiffRenderable extends Renderable {
   private buildUnifiedView(): void {
     if (!this._parsedDiff) return
 
-    // Ensure column layout for unified view
     this.flexDirection = "column"
 
-    // Remove error renderables if they exist
     if (this.errorTextRenderable) {
       const errorTextIndex = this.getChildren().indexOf(this.errorTextRenderable)
       if (errorTextIndex !== -1) {
@@ -457,7 +455,6 @@ export class DiffRenderable extends Renderable {
 
     let lineIndex = 0
 
-    // Process each hunk
     for (const hunk of this._parsedDiff.hunks) {
       let oldLineNum = hunk.oldStart
       let newLineNum = hunk.newStart
@@ -467,12 +464,10 @@ export class DiffRenderable extends Renderable {
         const content = line.slice(1)
 
         if (firstChar === "+") {
-          // Added line
           contentLines.push(content)
           const config: LineColorConfig = {
             gutter: this._addedLineNumberBg,
           }
-          // If explicit content background is set, use it; otherwise use gutter color (will be darkened)
           if (this._addedContentBg) {
             config.content = this._addedContentBg
           } else {
@@ -487,12 +482,10 @@ export class DiffRenderable extends Renderable {
           newLineNum++
           lineIndex++
         } else if (firstChar === "-") {
-          // Removed line
           contentLines.push(content)
           const config: LineColorConfig = {
             gutter: this._removedLineNumberBg,
           }
-          // If explicit content background is set, use it; otherwise use gutter color (will be darkened)
           if (this._removedContentBg) {
             config.content = this._removedContentBg
           } else {
@@ -507,12 +500,10 @@ export class DiffRenderable extends Renderable {
           oldLineNum++
           lineIndex++
         } else if (firstChar === " ") {
-          // Context line
           contentLines.push(content)
           const config: LineColorConfig = {
             gutter: this._lineNumberBg,
           }
-          // If explicit content background is set, use it; otherwise use contextBg
           if (this._contextContentBg) {
             config.content = this._contextContentBg
           } else {
@@ -524,19 +515,15 @@ export class DiffRenderable extends Renderable {
           newLineNum++
           lineIndex++
         }
-        // Skip "\ No newline at end of file" lines
       }
     }
 
     const content = contentLines.join("\n")
 
-    // Create or update CodeRenderable for left side (used for unified view)
     const codeRenderable = this.createOrUpdateCodeRenderable("left", content, this._wrapMode)
 
-    // Create or update LineNumberRenderable (leftSide used for unified view)
     this.createOrUpdateSide("left", codeRenderable, lineColors, lineSigns, lineNumbers, new Set<number>(), "100%")
 
-    // Remove rightSide from render tree for unified view
     if (this.rightSide && this.rightSideAdded) {
       super.remove(this.rightSide.id)
       this.rightSideAdded = false
@@ -546,10 +533,8 @@ export class DiffRenderable extends Renderable {
   private buildSplitView(): void {
     if (!this._parsedDiff) return
 
-    // Ensure row layout for split view
     this.flexDirection = "row"
 
-    // Remove error renderables if they exist
     if (this.errorTextRenderable) {
       const errorTextIndex = this.getChildren().indexOf(this.errorTextRenderable)
       if (errorTextIndex !== -1) {
@@ -563,11 +548,9 @@ export class DiffRenderable extends Renderable {
       }
     }
 
-    // Step 1: Build initial content without wrapping alignment
     const leftLogicalLines: LogicalLine[] = []
     const rightLogicalLines: LogicalLine[] = []
 
-    // Process each hunk to build logical lines
     for (const hunk of this._parsedDiff.hunks) {
       let oldLineNum = hunk.oldStart
       let newLineNum = hunk.newStart
@@ -578,7 +561,6 @@ export class DiffRenderable extends Renderable {
         const firstChar = line[0]
 
         if (firstChar === " ") {
-          // Context line - add to both sides
           const content = line.slice(1)
           leftLogicalLines.push({
             content,
@@ -596,10 +578,8 @@ export class DiffRenderable extends Renderable {
           newLineNum++
           i++
         } else if (firstChar === "\\") {
-          // Skip "\ No newline at end of file"
           i++
         } else {
-          // Collect consecutive removes and adds as a block
           const removes: { content: string; lineNum: number }[] = []
           const adds: { content: string; lineNum: number }[] = []
 
@@ -623,7 +603,6 @@ export class DiffRenderable extends Renderable {
             i++
           }
 
-          // Align the block: pair up removes and adds, padding as needed
           const maxLength = Math.max(removes.length, adds.length)
 
           for (let j = 0; j < maxLength; j++) {
@@ -669,16 +648,11 @@ export class DiffRenderable extends Renderable {
       }
     }
 
-    // Step 2: Determine if we can do wrap-aware alignment
-    // We need valid widths for wrap calculation, which requires a layout pass
-    // On first build (from constructor), widths are 0, so we skip wrap alignment
-    // and schedule a rebuild after layout
     const canDoWrapAlignment = this.width > 0 && (this._wrapMode === "word" || this._wrapMode === "char")
 
     const preLeftContent = leftLogicalLines.map((l) => l.content).join("\n")
     const preRightContent = rightLogicalLines.map((l) => l.content).join("\n")
 
-    // Don't draw unstyled text when using wrap+conceal to avoid race conditions where sides wrap differently
     const needsConsistentConcealing =
       (this._wrapMode === "word" || this._wrapMode === "char") && this._conceal && this._filetype
     const drawUnstyledText = !needsConsistentConcealing
@@ -695,18 +669,27 @@ export class DiffRenderable extends Renderable {
       drawUnstyledText,
     )
 
-    // Step 3: Align lines using lineInfo (if we can)
     let finalLeftLines: LogicalLine[]
     let finalRightLines: LogicalLine[]
 
-    if (canDoWrapAlignment) {
+    const leftIsHighlighting = leftCodeRenderable.isHighlighting
+    const rightIsHighlighting = rightCodeRenderable.isHighlighting
+    const highlightingInProgress = needsConsistentConcealing && (leftIsHighlighting || rightIsHighlighting)
+
+    if (highlightingInProgress) {
+      this._waitingForHighlight = true
+      this.attachLineInfoListeners()
+    }
+
+    const shouldDoAlignment = canDoWrapAlignment && !highlightingInProgress
+
+    if (shouldDoAlignment) {
       const leftLineInfo = leftCodeRenderable.lineInfo
       const rightLineInfo = rightCodeRenderable.lineInfo
 
       const leftSources = leftLineInfo.lineSources || []
       const rightSources = rightLineInfo.lineSources || []
 
-      // Build visual count per logical line
       const leftVisualCounts = new Map<number, number>()
       const rightVisualCounts = new Map<number, number>()
 
@@ -717,8 +700,6 @@ export class DiffRenderable extends Renderable {
         rightVisualCounts.set(logicalLine, (rightVisualCounts.get(logicalLine) || 0) + 1)
       }
 
-      // Align by inserting padding to ensure both sides stay synchronized
-      // Each logical line should start at the same visual position on both sides
       finalLeftLines = []
       finalRightLines = []
 
@@ -732,8 +713,6 @@ export class DiffRenderable extends Renderable {
         const leftVisualCount = leftVisualCounts.get(i) || 1
         const rightVisualCount = rightVisualCounts.get(i) || 1
 
-        // Both logical lines should start at the same visual position
-        // If they don't, add padding to whichever side is behind
         if (leftVisualPos < rightVisualPos) {
           const pad = rightVisualPos - leftVisualPos
           for (let p = 0; p < pad; p++) {
@@ -748,16 +727,13 @@ export class DiffRenderable extends Renderable {
           rightVisualPos += pad
         }
 
-        // Now add the actual content line
         finalLeftLines.push(leftLine)
         finalRightLines.push(rightLine)
 
-        // Update visual positions
         leftVisualPos += leftVisualCount
         rightVisualPos += rightVisualCount
       }
 
-      // Final padding to make totals equal
       if (leftVisualPos < rightVisualPos) {
         const pad = rightVisualPos - leftVisualPos
         for (let p = 0; p < pad; p++) {
@@ -770,15 +746,10 @@ export class DiffRenderable extends Renderable {
         }
       }
     } else {
-      // Can't do wrap alignment yet (no width), use logical lines as-is
       finalLeftLines = leftLogicalLines
       finalRightLines = rightLogicalLines
-
-      // If wrapMode is set but we can't align yet, onResize will trigger a rebuild
-      // once widths are available (no manual scheduling needed here)
     }
 
-    // Step 4: Build final content and metadata
     const leftLineColors = new Map<number, string | RGBA | LineColorConfig>()
     const rightLineColors = new Map<number, string | RGBA | LineColorConfig>()
     const leftLineSigns = new Map<number, LineSign>()
@@ -857,12 +828,9 @@ export class DiffRenderable extends Renderable {
     const leftContentFinal = finalLeftLines.map((l) => l.content).join("\n")
     const rightContentFinal = finalRightLines.map((l) => l.content).join("\n")
 
-    // Step 5: Update CodeRenderables with final content
     leftCodeRenderable.content = leftContentFinal
     rightCodeRenderable.content = rightContentFinal
 
-    // Create or update LineNumberRenderables (they wrap the CodeRenderables)
-    // leftSide might already exist from unified view, so we reuse it
     this.createOrUpdateSide(
       "left",
       leftCodeRenderable,
@@ -883,7 +851,6 @@ export class DiffRenderable extends Renderable {
     )
   }
 
-  // Getters and setters
   public get diff(): string {
     return this._diff
   }
@@ -891,6 +858,7 @@ export class DiffRenderable extends Renderable {
   public set diff(value: string) {
     if (this._diff !== value) {
       this._diff = value
+      this._waitingForHighlight = false
       this.parseDiff()
       this.rebuildView()
     }
@@ -904,7 +872,6 @@ export class DiffRenderable extends Renderable {
     if (this._view !== value) {
       this._view = value
       this.flexDirection = value === "split" ? "row" : "column"
-      // Always rebuild immediately when changing view mode
       this.buildView()
     }
   }
@@ -939,11 +906,9 @@ export class DiffRenderable extends Renderable {
     if (this._wrapMode !== value) {
       this._wrapMode = value
 
-      // For unified view, directly update wrapMode on the CodeRenderable
       if (this._view === "unified" && this.leftCodeRenderable) {
         this.leftCodeRenderable.wrapMode = value ?? "none"
       } else if (this._view === "split") {
-        // For split view, wrapMode affects alignment, so rebuild
         this.requestRebuild()
       }
     }

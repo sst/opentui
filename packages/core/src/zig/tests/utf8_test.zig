@@ -972,6 +972,29 @@ test "wrap breaks: large buffer" {
     try testing.expect(result.breaks.items.len > 0);
 }
 
+test "wrap breaks: buffer exceeding 64KB" {
+    const size = 100_000;
+    const buf = try testing.allocator.alloc(u8, size);
+    defer testing.allocator.free(buf);
+
+    @memset(buf, 'a');
+
+    // Place a space at 70000, with u16, this will truncate to 4464 (70000 % 65536)
+    const break_pos: usize = 70_000;
+    buf[break_pos] = ' ';
+
+    var result = utf8.WrapBreakResult.init(testing.allocator);
+    defer result.deinit();
+    try utf8.findWrapBreaks(buf, &result, .unicode);
+
+    // Should find exactly one wrap break
+    try testing.expectEqual(@as(usize, 1), result.breaks.items.len);
+
+    // The byte_offset must be the actual position, not truncated
+    try testing.expectEqual(@as(u32, break_pos), result.breaks.items[0].byte_offset);
+    try testing.expectEqual(@as(u32, break_pos), result.breaks.items[0].char_offset);
+}
+
 // ============================================================================
 // EDGE CASES AND INTEGRATION TESTS
 // ============================================================================
