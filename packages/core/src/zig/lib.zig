@@ -16,7 +16,6 @@ const utf8 = @import("utf8.zig");
 const logger = @import("logger.zig");
 const event_bus = @import("event-bus.zig");
 const utils = @import("utils.zig");
-const ghostty = @import("ghostty-vt");
 
 pub const OptimizedBuffer = buffer.OptimizedBuffer;
 pub const CliRenderer = renderer.CliRenderer;
@@ -1546,9 +1545,4 @@ export fn bufferDrawChar(
     const rgbaFg = utils.f32PtrToRGBA(fg);
     const rgbaBg = utils.f32PtrToRGBA(bg);
     bufferPtr.drawChar(char, x, y, rgbaFg, rgbaBg, attributes) catch {};
-}
-
-// Temp: ensures ghostty-vt gets bundled into lib to test build works
-export fn ghosttyGetTerminalSize() usize {
-    return @sizeOf(ghostty.Terminal);
 }

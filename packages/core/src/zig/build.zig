@@ -17,7 +17,6 @@ const SupportedTarget = struct {
     description: []const u8,
 };
 
-// Note: Linux targets use -gnu suffix to avoid PIC errors with ghostty's C++ deps (simdutf, highway)
 const SUPPORTED_TARGETS = [_]SupportedTarget{
     .{ .zig_target = "x86_64-linux-gnu", .output_name = "x86_64-linux", .description = "Linux x86_64" },
     .{ .zig_target = "aarch64-linux-gnu", .output_name = "aarch64-linux", .description = "Linux aarch64" },
@@ -43,10 +42,6 @@ fn applyDependencies(b: *std.Build, module: *std.Build.Module, optimize: std.bui
         module.addImport("uucode", uucode_dep.module("uucode"));
     }
 
-    // Add ghostty for terminal emulation
-    if (b.lazyDependency("ghostty", .{ .target = target, .optimize = optimize })) |ghostty_dep| {
-        module.addImport("ghostty-vt", ghostty_dep.module("ghostty-vt"));
-    }
 }
 
 fn checkZigVersion() void {
