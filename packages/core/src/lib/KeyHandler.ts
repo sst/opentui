@@ -2,26 +2,29 @@ import { EventEmitter } from "events"
 import { parseKeypress, type KeyEventType, type ParsedKey } from "./parse.keypress"
 import { getGraphemeSegmenter } from "./grapheme-segmenter"
 
+// Grapheme cluster extenders per UAX #29 (https://unicode.org/reports/tr29/)
+// and emoji sequences per UTS #51 (https://unicode.org/reports/tr51/)
 function isGraphemeExtender(codepoint: number): boolean {
   return (
-    codepoint === 0x200d || // ZWJ
-    (codepoint >= 0xfe00 && codepoint <= 0xfe0f) || // Variation Selectors
-    (codepoint >= 0x1f3fb && codepoint <= 0x1f3ff) || // Skin Tone Modifiers
-    (codepoint >= 0x1f1e6 && codepoint <= 0x1f1ff) || // Regional Indicators (can extend other RI)
-    codepoint === 0x20e3 || // Combining Enclosing Keycap
-    (codepoint >= 0xe0020 && codepoint <= 0xe007f) // Tag characters
+    codepoint === 0x200d || // ZWJ (Grapheme_Cluster_Break=ZWJ)
+    (codepoint >= 0xfe00 && codepoint <= 0xfe0f) || // Variation Selectors (Grapheme_Cluster_Break=Extend)
+    (codepoint >= 0x1f3fb && codepoint <= 0x1f3ff) || // Emoji Modifiers (Emoji_Modifier=Yes → Extend)
+    (codepoint >= 0x1f1e6 && codepoint <= 0x1f1ff) || // Regional Indicators (form RI pairs)
+    codepoint === 0x20e3 || // Combining Enclosing Keycap (emoji_keycap_sequence)
+    (codepoint >= 0xe0020 && codepoint <= 0xe007f) // Tag Characters (Grapheme_Cluster_Break=Extend)
   )
 }
 
+// Codepoints that can start multi-codepoint emoji sequences per UTS #51
 function canStartGraphemeCluster(codepoint: number): boolean {
   return (
-    (codepoint >= 0x1f1e6 && codepoint <= 0x1f1ff) || // Regional Indicators
-    (codepoint >= 0x1f300 && codepoint <= 0x1faff) || // Emoji ranges
-    codepoint === 0x1f3f4 || // Black Flag (for subdivision flags)
-    codepoint === 0x23 || // # for keycap
-    codepoint === 0x2a || // * for keycap
-    (codepoint >= 0x30 && codepoint <= 0x39) || // 0-9 for keycaps
-    (codepoint >= 0x2600 && codepoint <= 0x27bf) // Misc Symbols & Dingbats
+    (codepoint >= 0x1f1e6 && codepoint <= 0x1f1ff) || // Regional Indicators (emoji_flag_sequence)
+    (codepoint >= 0x1f300 && codepoint <= 0x1faff) || // Emoji ranges (Emoji=Yes)
+    codepoint === 0x1f3f4 || // Black Flag (emoji_tag_sequence base)
+    codepoint === 0x23 || // # (emoji_keycap_sequence)
+    codepoint === 0x2a || // * (emoji_keycap_sequence)
+    (codepoint >= 0x30 && codepoint <= 0x39) || // 0-9 (emoji_keycap_sequence)
+    (codepoint >= 0x2600 && codepoint <= 0x27bf) // Misc Symbols & Dingbats (Emoji=Yes)
   )
 }
 
