@@ -68,7 +68,6 @@ export interface RenderContext extends EventEmitter {
   capabilities: any | null
   requestLive: () => void
   dropLive: () => void
-  isDestroyed: boolean
   hasSelection: boolean
   getSelection: () => Selection | null
   requestSelectionUpdate: () => void

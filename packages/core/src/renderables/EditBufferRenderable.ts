@@ -568,7 +568,6 @@ export abstract class EditBufferRenderable extends Renderable implements LineInf
   render(buffer: OptimizedBuffer, deltaTime: number): void {
     if (!this.visible) return
     if (this.isDestroyed) return
-    if (this._ctx.isDestroyed) return
 
     this.markClean()
     this._ctx.addToHitGrid(this.x, this.y, this.width, this.height, this.num)

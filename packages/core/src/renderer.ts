@@ -303,6 +303,8 @@ export class CliRenderer extends EventEmitter implements RenderContext {
   private exitSignals: NodeJS.Signals[]
   private _exitListenersAdded: boolean = false
   private _isDestroyed: boolean = false
+  private _destroyPending: boolean = false
+  private _destroyFinalized: boolean = false
   public nextRenderBuffer: OptimizedBuffer
   public currentRenderBuffer: OptimizedBuffer
   private _isRunning: boolean = false
@@ -1687,6 +1689,20 @@ export class CliRenderer extends EventEmitter implements RenderContext {
   public destroy(): void {
     if (this._isDestroyed) return
     this._isDestroyed = true
+    this._destroyPending = true
+
+    if (this.rendering) {
+      // Defer teardown until the active frame completes to avoid freeing native resources mid-render.
+      return
+    }
+
+    this.finalizeDestroy()
+  }
+
+  private finalizeDestroy(): void {
+    if (this._destroyFinalized) return
+    this._destroyFinalized = true
+    this._destroyPending = false
 
     process.removeListener("SIGWINCH", this.sigwinchHandler)
     process.removeListener("uncaughtException", this.handleError)
@@ -1783,106 +1799,91 @@ export class CliRenderer extends EventEmitter implements RenderContext {
       clearTimeout(this.renderTimeout)
       this.renderTimeout = null
     }
-    const stopRendering = () => {
+    try {
+      const now = Date.now()
+      const elapsed = now - this.lastTime
+
+      const deltaTime = elapsed
+      this.lastTime = now
+
+      this.frameCount++
+      if (now - this.lastFpsTime >= 1000) {
+        this.currentFps = this.frameCount
+        this.frameCount = 0
+        this.lastFpsTime = now
+      }
+
+      this.renderStats.frameCount++
+      this.renderStats.fps = this.currentFps
+      const overallStart = performance.now()
+
+      const frameRequests = Array.from(this.animationRequest.values())
+      this.animationRequest.clear()
+      const animationRequestStart = performance.now()
+      for (const callback of frameRequests) {
+        callback(deltaTime)
+        this.dropLive()
+      }
+      const animationRequestEnd = performance.now()
+      const animationRequestTime = animationRequestEnd - animationRequestStart
+
+      const start = performance.now()
+      for (const frameCallback of this.frameCallbacks) {
+        try {
+          await frameCallback(deltaTime)
+        } catch (error) {
+          console.error("Error in frame callback:", error)
+        }
+      }
+      const end = performance.now()
+      this.renderStats.frameCallbackTime = end - start
+
+      this.root.render(this.nextRenderBuffer, deltaTime)
+
+      for (const postProcessFn of this.postProcessFns) {
+        postProcessFn(this.nextRenderBuffer, deltaTime)
+      }
+
+      this._console.renderToBuffer(this.nextRenderBuffer)
+
+      // If destroy() was requested during this frame, skip native work and scheduling.
+      if (!this._isDestroyed) {
+        this.renderNative()
+
+        const overallFrameTime = performance.now() - overallStart
+
+        // TODO: Add animationRequestTime to stats
+        this.lib.updateStats(this.rendererPtr, overallFrameTime, this.renderStats.fps, this.renderStats.frameCallbackTime)
+
+        if (this.gatherStats) {
+          this.collectStatSample(overallFrameTime)
+        }
+
+        if (this._isRunning || this.immediateRerenderRequested) {
+          const targetFrameTime = this.immediateRerenderRequested ? this.minTargetFrameTime : this.targetFrameTime
+          const delay = Math.max(1, targetFrameTime - Math.floor(overallFrameTime))
+          this.immediateRerenderRequested = false
+          this.renderTimeout = setTimeout(() => {
+            this.renderTimeout = null
+            this.loop()
+          }, delay)
+        } else {
+          clearTimeout(this.renderTimeout!)
+          this.renderTimeout = null
+        }
+      }
+
+      if (!this.hitGridDirtyDuringRender) {
+        this.hitGridDirty = false
+      }
+      this.hitGridDirtyDuringRender = false
+    } finally {
       this.rendering = false
+      if (this._destroyPending) {
+        this.finalizeDestroy()
+      }
       this.resolveIdleIfNeeded()
     }
-
-    const now = Date.now()
-    const elapsed = now - this.lastTime
-
-    const deltaTime = elapsed
-    this.lastTime = now
-
-    this.frameCount++
-    if (now - this.lastFpsTime >= 1000) {
-      this.currentFps = this.frameCount
-      this.frameCount = 0
-      this.lastFpsTime = now
-    }
-
-    this.renderStats.frameCount++
-    this.renderStats.fps = this.currentFps
-    const overallStart = performance.now()
-
-    const frameRequests = Array.from(this.animationRequest.values())
-    this.animationRequest.clear()
-    const animationRequestStart = performance.now()
-    for (const callback of frameRequests) {
-      callback(deltaTime)
-      this.dropLive()
-      if (this._isDestroyed) {
-        stopRendering()
-        return
-      }
-    }
-    const animationRequestEnd = performance.now()
-    const animationRequestTime = animationRequestEnd - animationRequestStart
-
-    const start = performance.now()
-    for (const frameCallback of this.frameCallbacks) {
-      try {
-        await frameCallback(deltaTime)
-      } catch (error) {
-        console.error("Error in frame callback:", error)
-      }
-      if (this._isDestroyed) {
-        stopRendering()
-        return
-      }
-    }
-    const end = performance.now()
-    this.renderStats.frameCallbackTime = end - start
-
-    this.root.render(this.nextRenderBuffer, deltaTime)
-    if (this._isDestroyed) {
-      stopRendering()
-      return
-    }
-
-    for (const postProcessFn of this.postProcessFns) {
-      postProcessFn(this.nextRenderBuffer, deltaTime)
-      if (this._isDestroyed) {
-        stopRendering()
-        return
-      }
-    }
-
-    this._console.renderToBuffer(this.nextRenderBuffer)
-
-    if (!this._isDestroyed) {
-      this.renderNative()
-
-      const overallFrameTime = performance.now() - overallStart
-
-      // TODO: Add animationRequestTime to stats
-      this.lib.updateStats(this.rendererPtr, overallFrameTime, this.renderStats.fps, this.renderStats.frameCallbackTime)
-
-      if (this.gatherStats) {
-        this.collectStatSample(overallFrameTime)
-      }
-
-      if (this._isRunning || this.immediateRerenderRequested) {
-        const targetFrameTime = this.immediateRerenderRequested ? this.minTargetFrameTime : this.targetFrameTime
-        const delay = Math.max(1, targetFrameTime - Math.floor(overallFrameTime))
-        this.immediateRerenderRequested = false
-        this.renderTimeout = setTimeout(() => {
-          this.renderTimeout = null
-          this.loop()
-        }, delay)
-      } else {
-        clearTimeout(this.renderTimeout!)
-        this.renderTimeout = null
-      }
-    }
-
-    if (!this.hitGridDirtyDuringRender) {
-      this.hitGridDirty = false
-    }
-    this.hitGridDirtyDuringRender = false
-
-    this.rendering = false
-    this.resolveIdleIfNeeded()
   }
 
   public intermediateRender(): void {
