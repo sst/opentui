@@ -34,6 +34,7 @@
     "web-tree-sitter": "0.25.10"
   },
   "dependencies": {
+    "@formatjs/intl-segmenter": "^12.0.7",
     "bun-ffi-structs": "0.1.2",
     "diff": "8.0.2",
     "jimp": "1.6.0",
