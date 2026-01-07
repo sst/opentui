@@ -1977,10 +1977,8 @@ export class CliRenderer extends EventEmitter implements RenderContext {
     }
 
     if (!this._paletteDetector) {
-      const isLegacyTmux =
-        this.capabilities?.terminal?.name?.toLowerCase()?.includes("tmux") &&
-        this.capabilities?.terminal?.version?.localeCompare("3.6") < 0
-      this._paletteDetector = createTerminalPalette(this.stdin, this.stdout, this.writeOut.bind(this), isLegacyTmux)
+      const inTmux = this.capabilities?.terminal?.name?.toLowerCase()?.includes("tmux") ?? false
+      this._paletteDetector = createTerminalPalette(this.stdin, this.stdout, this.writeOut.bind(this), inTmux)
     }
 
     this._paletteDetectionPromise = this._paletteDetector.detect(options).then((result) => {

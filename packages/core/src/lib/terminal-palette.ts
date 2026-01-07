@@ -57,14 +57,6 @@ function wrapForTmux(osc: string): string {
   return `\x1bPtmux;${escaped}\x1b\\`
 }
 
-const DEBUG_PALETTE = process.env.DEBUG_PALETTE === "1"
-
-function debugLog(...args: any[]) {
-  if (DEBUG_PALETTE) {
-    console.log("[palette]", ...args)
-  }
-}
-
 export class TerminalPalette implements TerminalPaletteDetector {
   private stdin: NodeJS.ReadStream
   private stdout: NodeJS.WriteStream
@@ -72,24 +64,13 @@ export class TerminalPalette implements TerminalPaletteDetector {
   private activeListeners: Array<{ event: string; handler: (...args: any[]) => void }> = []
   private activeTimers: Array<NodeJS.Timeout> = []
   private inTmux: boolean
-  private useTmuxPassthrough: boolean | null = null // null = auto-detect
+  private useTmuxPassthrough: boolean | null = null
 
-  constructor(stdin: NodeJS.ReadStream, stdout: NodeJS.WriteStream, writeFn?: WriteFunction, isLegacyTmux?: boolean) {
+  constructor(stdin: NodeJS.ReadStream, stdout: NodeJS.WriteStream, writeFn?: WriteFunction, inTmux?: boolean) {
     this.stdin = stdin
     this.stdout = stdout
     this.writeFn = writeFn || ((data: string | Buffer) => stdout.write(data))
-    // Detect if we're in tmux from environment
-    this.inTmux = !!process.env.TMUX
-    // isLegacyTmux hint - if provided and true, we'll try wrapped first
-    // But we'll auto-detect the best approach regardless
-    if (isLegacyTmux === true) {
-      this.useTmuxPassthrough = true
-    }
-    debugLog("TerminalPalette created", {
-      inTmux: this.inTmux,
-      isLegacyTmux,
-      useTmuxPassthrough: this.useTmuxPassthrough,
-    })
+    this.inTmux = inTmux ?? false
   }
 
   /**
@@ -98,7 +79,6 @@ export class TerminalPalette implements TerminalPaletteDetector {
   private writeOsc(osc: string, forceWrapped?: boolean): boolean {
     const useWrapped = forceWrapped ?? this.useTmuxPassthrough ?? false
     const data = useWrapped ? wrapForTmux(osc) : osc
-    debugLog("writeOsc", { useWrapped, dataHex: Buffer.from(data).toString("hex").slice(0, 100) })
     return this.writeFn(data)
   }
 
@@ -128,21 +108,14 @@ export class TerminalPalette implements TerminalPaletteDetector {
 
       const onData = (chunk: string | Buffer) => {
         buffer += chunk.toString()
-        debugLog("tryDetectOSCSupport onData", {
-          useWrapped,
-          bufferHex: Buffer.from(buffer).toString("hex").slice(0, 200),
-        })
-        // Reset regex lastIndex before testing due to global flag
         OSC4_RESPONSE.lastIndex = 0
         if (OSC4_RESPONSE.test(buffer)) {
-          debugLog("tryDetectOSCSupport matched!", { useWrapped })
           cleanup()
           resolve(true)
         }
       }
 
       const onTimeout = () => {
-        debugLog("tryDetectOSCSupport timeout", { useWrapped, bufferLength: buffer.length })
         cleanup()
         resolve(false)
       }
@@ -150,7 +123,6 @@ export class TerminalPalette implements TerminalPaletteDetector {
       const cleanup = () => {
         clearTimeout(timer)
         inp.removeListener("data", onData)
-        // Remove from active tracking
         const listenerIdx = this.activeListeners.findIndex((l) => l.handler === onData)
         if (listenerIdx !== -1) this.activeListeners.splice(listenerIdx, 1)
         const timerIdx = this.activeTimers.indexOf(timer)
@@ -161,7 +133,6 @@ export class TerminalPalette implements TerminalPaletteDetector {
       this.activeTimers.push(timer)
       inp.on("data", onData)
       this.activeListeners.push({ event: "data", handler: onData })
-      debugLog("tryDetectOSCSupport sending query", { useWrapped })
       this.writeOsc("\x1b]4;0;?\x07", useWrapped)
     })
   }
@@ -170,39 +141,29 @@ export class TerminalPalette implements TerminalPaletteDetector {
     const out = this.stdout
     const inp = this.stdin
 
-    if (!out.isTTY || !inp.isTTY) {
-      debugLog("detectOSCSupport: not a TTY")
-      return false
-    }
+    if (!out.isTTY || !inp.isTTY) return false
 
     // If we already know which mode works, use that
     if (this.useTmuxPassthrough !== null) {
-      debugLog("detectOSCSupport: using cached mode", { useTmuxPassthrough: this.useTmuxPassthrough })
       return this.tryDetectOSCSupport(timeoutMs, this.useTmuxPassthrough)
     }
 
-    // Auto-detect: try bare first (works in native terminals and tmux >= 3.6 with passthrough)
-    debugLog("detectOSCSupport: trying bare first")
+    // Try bare OSC first (works in native terminals and tmux with passthrough)
     const bareWorks = await this.tryDetectOSCSupport(timeoutMs, false)
     if (bareWorks) {
-      debugLog("detectOSCSupport: bare works!")
       this.useTmuxPassthrough = false
       return true
     }
 
-    // If we're in tmux and bare didn't work, try wrapped passthrough
+    // If in tmux and bare didn't work, try wrapped DCS passthrough
     if (this.inTmux) {
-      debugLog("detectOSCSupport: bare failed in tmux, trying wrapped")
       const wrappedWorks = await this.tryDetectOSCSupport(timeoutMs, true)
       if (wrappedWorks) {
-        debugLog("detectOSCSupport: wrapped works!")
         this.useTmuxPassthrough = true
         return true
       }
-      debugLog("detectOSCSupport: wrapped also failed")
     }
 
-    debugLog("detectOSCSupport: no mode works")
     return false
   }
 
@@ -218,12 +179,10 @@ export class TerminalPalette implements TerminalPaletteDetector {
 
     return new Promise<Map<number, Hex>>((resolve) => {
       let buffer = ""
-      let lastResponseTime = Date.now()
       let idleTimer: NodeJS.Timeout | null = null
 
       const onData = (chunk: string | Buffer) => {
         buffer += chunk.toString()
-        lastResponseTime = Date.now()
 
         let m: RegExpExecArray | null
         OSC4_RESPONSE.lastIndex = 0
@@ -258,7 +217,6 @@ export class TerminalPalette implements TerminalPaletteDetector {
         clearTimeout(timer)
         if (idleTimer) clearTimeout(idleTimer)
         inp.removeListener("data", onData)
-        // Remove from active tracking
         const listenerIdx = this.activeListeners.findIndex((l) => l.handler === onData)
         if (listenerIdx !== -1) this.activeListeners.splice(listenerIdx, 1)
         const timerIdx = this.activeTimers.indexOf(timer)
@@ -412,7 +370,7 @@ export function createTerminalPalette(
   stdin: NodeJS.ReadStream,
   stdout: NodeJS.WriteStream,
   writeFn?: WriteFunction,
-  isLegacyTmux?: boolean,
+  inTmux?: boolean,
 ): TerminalPaletteDetector {
-  return new TerminalPalette(stdin, stdout, writeFn, isLegacyTmux)
+  return new TerminalPalette(stdin, stdout, writeFn, inTmux)
 }
