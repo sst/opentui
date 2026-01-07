@@ -42,14 +42,16 @@ pub const CursorStyle = enum {
 };
 
 pub const Options = struct {
-    // Kitty keyboard protocol flags:
-    // Bit 0 (1): Report alternate keys (e.g., numpad vs regular keys)
-    // Bit 1 (2): Report event types (press/repeat/release)
-    // Bit 2 (4): Report text associated with key events
-    // Bit 3 (8): Report all keys as escape codes
-    // Default 0b00001 (1) = alternate keys only (no event types)
-    // Use 0b00011 (3) to enable event types for key release detection
-    kitty_keyboard_flags: u8 = 0b00001,
+    // Kitty keyboard protocol flags (progressive enhancement):
+    // See: https://sw.kovidgoyal.net/kitty/keyboard-protocol/#progressive-enhancement
+    // Bit 0 (0b1):     Disambiguate escape codes (fixes ESC timing, alt+key ambiguity, ctrl+c as event)
+    // Bit 1 (0b10):    Report event types (press/repeat/release)
+    // Bit 2 (0b100):   Report alternate keys (e.g., numpad vs regular, shifted, base layout)
+    // Bit 3 (0b1000):  Report all keys as escape codes
+    // Bit 4 (0b10000): Report text associated with key events
+    // Default 0b00101 (5) = disambiguate + alternate keys
+    // Use 0b00111 (7) to also enable event types for key release detection
+    kitty_keyboard_flags: u8 = 0b00101,
 };
 
 pub const TerminalInfo = struct {
@@ -285,6 +287,24 @@ fn checkEnvironmentOverrides(self: *Terminal) void {
     }
     if (env_map.get("OPENTUI_FORCE_UNICODE")) |_| {
         self.caps.unicode = .unicode;
+    }
+
+    // Enable hyperlinks for modern terminals that support them
+    // Most terminals with RGB color support also support OSC 8 hyperlinks
+    if (self.caps.rgb) {
+        self.caps.hyperlinks = true;
+    }
+
+    // Explicitly enable for known terminals
+    if (env_map.get("TERM")) |term| {
+        if (std.mem.indexOf(u8, term, "ghostty") != null or
+            std.mem.indexOf(u8, term, "kitty") != null or
+            std.mem.indexOf(u8, term, "wezterm") != null or
+            std.mem.indexOf(u8, term, "alacritty") != null or
+            std.mem.indexOf(u8, term, "iterm") != null)
+        {
+            self.caps.hyperlinks = true;
+        }
     }
 }
 

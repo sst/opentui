@@ -94,13 +94,13 @@ pub const TextChunk = struct {
 
         const chunk_bytes = self.getBytes(mem_registry);
 
-        var grapheme_list = std.ArrayList(GraphemeInfo).init(allocator);
-        errdefer grapheme_list.deinit();
+        var grapheme_list: std.ArrayListUnmanaged(GraphemeInfo) = .{};
+        errdefer grapheme_list.deinit(allocator);
 
-        try utf8.findGraphemeInfo(chunk_bytes, tabwidth, self.isAsciiOnly(), width_method, &grapheme_list);
+        try utf8.findGraphemeInfo(chunk_bytes, tabwidth, self.isAsciiOnly(), width_method, allocator, &grapheme_list);
 
         // TODO: Calling this with an arena allocator will just double the memory usage?
-        const graphemes = try grapheme_list.toOwnedSlice();
+        const graphemes = try grapheme_list.toOwnedSlice(allocator);
 
         mut_self.graphemes = graphemes;
         return graphemes;
@@ -121,12 +121,13 @@ pub const TextChunk = struct {
 
         const chunk_bytes = self.getBytes(mem_registry);
         var wrap_result = utf8.WrapBreakResult.init(allocator);
-        defer wrap_result.deinit();
+        errdefer wrap_result.deinit();
 
         try utf8.findWrapBreaks(chunk_bytes, &wrap_result, width_method);
 
         // TODO: Do not cache for chunks < 64 bytes, as it does not profit from the cache
-        const wrap_offsets = try allocator.dupe(utf8.WrapBreak, wrap_result.breaks.items);
+        // Use toOwnedSlice to transfer ownership without copying
+        const wrap_offsets = try wrap_result.breaks.toOwnedSlice(allocator);
         mut_self.wrap_offsets = wrap_offsets;
 
         return wrap_offsets;

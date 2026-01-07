@@ -87,9 +87,7 @@ export interface CliRendererConfig {
   useAlternateScreen?: boolean
   useConsole?: boolean
   experimental_splitHeight?: number
-  useKittyKeyboard?: {
-    events?: boolean // Enable event types (press/repeat/release)
-  } | null
+  useKittyKeyboard?: KittyKeyboardOptions | null
   backgroundColor?: ColorInput
   openConsoleOnError?: boolean
   prependInputHandlers?: ((sequence: string) => boolean)[]
@@ -103,10 +101,28 @@ export type PixelResolution = {
 
 // Kitty keyboard protocol flags
 // See: https://sw.kovidgoyal.net/kitty/keyboard-protocol/
-const KITTY_FLAG_ALTERNATE_KEYS = 0b0001 // Report alternate keys (e.g., numpad vs regular)
-const KITTY_FLAG_EVENT_TYPES = 0b0010 // Report event types (press/repeat/release)
-const KITTY_FLAG_REPORT_TEXT = 0b0100 // Report text associated with key events
+const KITTY_FLAG_DISAMBIGUATE = 0b1 // Report disambiguated escape codes
+const KITTY_FLAG_EVENT_TYPES = 0b10 // Report event types (press/repeat/release)
+const KITTY_FLAG_ALTERNATE_KEYS = 0b100 // Report alternate keys (e.g., numpad vs regular)
 const KITTY_FLAG_ALL_KEYS_AS_ESCAPES = 0b1000 // Report all keys as escape codes
+const KITTY_FLAG_REPORT_TEXT = 0b10000 // Report text associated with key events
+
+/**
+ * Kitty Keyboard Protocol configuration options
+ * See: https://sw.kovidgoyal.net/kitty/keyboard-protocol/#progressive-enhancement
+ */
+export interface KittyKeyboardOptions {
+  /** Disambiguate escape codes (fixes ESC timing, alt+key ambiguity, ctrl+c as event). Default: true */
+  disambiguate?: boolean
+  /** Report alternate keys (numpad, shifted, base layout) for cross-keyboard shortcuts. Default: true */
+  alternateKeys?: boolean
+  /** Report event types (press/repeat/release). Default: false */
+  events?: boolean
+  /** Report all keys as escape codes. Default: false */
+  allKeysAsEscapes?: boolean
+  /** Report text associated with key events. Default: false */
+  reportText?: boolean
+}
 
 /**
  * Build kitty keyboard protocol flags based on configuration
@@ -114,15 +130,38 @@ const KITTY_FLAG_ALL_KEYS_AS_ESCAPES = 0b1000 // Report all keys as escape codes
  * @returns The combined flags value (0 = disabled, >0 = enabled)
  * @internal Exported for testing
  */
-export function buildKittyKeyboardFlags(config: { events?: boolean } | null | undefined): number {
+export function buildKittyKeyboardFlags(config: KittyKeyboardOptions | null | undefined): number {
   if (!config) {
     return 0
   }
 
-  let flags = KITTY_FLAG_ALTERNATE_KEYS
+  let flags = 0
 
-  if (config.events) {
+  // Default: disambiguate + alternate keys (both default to true)
+  // - Disambiguate (0b1): Fixes ESC timing issues, alt+key ambiguity, makes ctrl+c a key event
+  // - Alternate keys (0b100): Reports shifted/base-layout keys for cross-keyboard shortcuts
+
+  // disambiguate defaults to true unless explicitly set to false
+  if (config.disambiguate !== false) {
+    flags |= KITTY_FLAG_DISAMBIGUATE
+  }
+
+  // alternateKeys defaults to true unless explicitly set to false
+  if (config.alternateKeys !== false) {
+    flags |= KITTY_FLAG_ALTERNATE_KEYS
+  }
+
+  // Optional flags (default to false, only enabled when explicitly true)
+  if (config.events === true) {
     flags |= KITTY_FLAG_EVENT_TYPES
+  }
+
+  if (config.allKeysAsEscapes === true) {
+    flags |= KITTY_FLAG_ALL_KEYS_AS_ESCAPES
+  }
+
+  if (config.reportText === true) {
+    flags |= KITTY_FLAG_REPORT_TEXT
   }
 
   return flags
@@ -471,7 +510,7 @@ export class CliRenderer extends EventEmitter implements RenderContext {
     this.memorySnapshotInterval = config.memorySnapshotInterval ?? 0
     this.gatherStats = config.gatherStats || false
     this.maxStatSamples = config.maxStatSamples || 300
-    this.enableMouseMovement = config.enableMouseMovement || true
+    this.enableMouseMovement = config.enableMouseMovement ?? true
     this._useMouse = config.useMouse ?? true
     this._useAlternateScreen = config.useAlternateScreen ?? env.OTUI_USE_ALTERNATE_SCREEN
     this.nextRenderBuffer = this.lib.getNextBuffer(this.rendererPtr)
@@ -761,7 +800,7 @@ export class CliRenderer extends EventEmitter implements RenderContext {
   }
 
   public set useKittyKeyboard(use: boolean) {
-    const flags = use ? KITTY_FLAG_ALTERNATE_KEYS : 0
+    const flags = use ? KITTY_FLAG_DISAMBIGUATE | KITTY_FLAG_ALTERNATE_KEYS : 0
     this.lib.setKittyKeyboardFlags(this.rendererPtr, flags)
   }
 
@@ -1352,6 +1391,10 @@ export class CliRenderer extends EventEmitter implements RenderContext {
     this.lib.setCursorColor(this.rendererPtr, color)
   }
 
+  public getCursorState() {
+    return this.lib.getCursorState(this.rendererPtr)
+  }
+
   public addPostProcessFn(processFn: (buffer: OptimizedBuffer, deltaTime: number) => void): void {
     this.postProcessFns.push(processFn)
   }
@@ -1506,6 +1549,9 @@ export class CliRenderer extends EventEmitter implements RenderContext {
   }
 
   public destroy(): void {
+    if (this._isDestroyed) return
+    this._isDestroyed = true
+
     process.removeListener("SIGWINCH", this.sigwinchHandler)
     process.removeListener("uncaughtException", this.handleError)
     process.removeListener("unhandledRejection", this.handleError)
@@ -1535,9 +1581,6 @@ export class CliRenderer extends EventEmitter implements RenderContext {
     }
     this._paletteDetectionPromise = null
     this._cachedPalette = null
-
-    if (this._isDestroyed) return
-    this._isDestroyed = true
 
     this.emit(CliRenderEvents.DESTROY)
 
@@ -1840,6 +1883,8 @@ export class CliRenderer extends EventEmitter implements RenderContext {
     if (this.currentSelection) {
       this.currentSelection.isSelecting = false
       this.emit("selection", this.currentSelection)
+      // Notify renderables that selection is finished (no longer dragging)
+      this.notifySelectablesOfSelectionChange()
     }
   }
 

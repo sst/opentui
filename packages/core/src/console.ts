@@ -107,6 +107,10 @@ class TerminalConsoleCache extends EventEmitter {
     const mockStdout = new CapturedWritableStream("stdout", capture)
     const mockStderr = new CapturedWritableStream("stderr", capture)
 
+    // TODO: The Console constructor doesn't return a full Console interface implementation,
+    // it only provides a subset of methods (log, info, warn, error, debug, etc.).
+    // TypeScript's Console interface requires all methods (assert, clear, count, etc.).
+    // Using 'as any' as a workaround since we override the methods we use immediately after.
     global.console = new Console({
       stdout: mockStdout,
       stderr: mockStderr,
@@ -116,7 +120,7 @@ class TerminalConsoleCache extends EventEmitter {
         breakLength: 80,
         depth: 2,
       },
-    })
+    }) as any
   }
 
   private overrideConsoleMethods(): void {

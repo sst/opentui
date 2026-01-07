@@ -8,7 +8,7 @@ pub const RGBA = buffer.RGBA;
 pub const StyleDefinition = struct {
     fg: ?RGBA,
     bg: ?RGBA,
-    attributes: u8,
+    attributes: u32,
 };
 
 pub const SyntaxStyleError = error{
@@ -64,7 +64,7 @@ pub const SyntaxStyle = struct {
         self.global_allocator.destroy(self);
     }
 
-    pub fn registerStyle(self: *SyntaxStyle, name: []const u8, fg: ?RGBA, bg: ?RGBA, attributes: u8) SyntaxStyleError!u32 {
+    pub fn registerStyle(self: *SyntaxStyle, name: []const u8, fg: ?RGBA, bg: ?RGBA, attributes: u32) SyntaxStyleError!u32 {
         if (self.name_to_id.get(name)) |existing_id| {
             try self.id_to_style.put(self.allocator, existing_id, StyleDefinition{
                 .fg = fg,
@@ -109,7 +109,7 @@ pub const SyntaxStyle = struct {
 
         for (ids, 0..) |id, i| {
             if (i > 0) writer.writeByte(':') catch return SyntaxStyleError.OutOfMemory;
-            std.fmt.formatInt(id, 10, .lower, .{}, writer) catch return SyntaxStyleError.OutOfMemory;
+            writer.print("{d}", .{id}) catch return SyntaxStyleError.OutOfMemory;
         }
 
         const cache_key = cache_key_stream.getWritten();

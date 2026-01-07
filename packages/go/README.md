@@ -232,7 +232,7 @@ cd examples/console && go run .
 To build with a custom OpenTUI library:
 
 ```bash
-# Build Zig library (requires Zig 0.14+)
+# Build Zig library (requires Zig 0.15.2+)
 cd ../../core/src/zig
 zig build -Doptimize=ReleaseFast
 

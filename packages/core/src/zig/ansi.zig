@@ -21,15 +21,15 @@ pub const ANSI = struct {
 
     // Direct writing to any writer - the most efficient option
     pub fn moveToOutput(writer: anytype, x: u32, y: u32) AnsiError!void {
-        std.fmt.format(writer, "\x1b[{d};{d}H", .{ y, x }) catch return AnsiError.WriteFailed;
+        writer.print("\x1b[{d};{d}H", .{ y, x }) catch return AnsiError.WriteFailed;
     }
 
     pub fn fgColorOutput(writer: anytype, r: u8, g: u8, b: u8) AnsiError!void {
-        std.fmt.format(writer, "\x1b[38;2;{d};{d};{d}m", .{ r, g, b }) catch return AnsiError.WriteFailed;
+        writer.print("\x1b[38;2;{d};{d};{d}m", .{ r, g, b }) catch return AnsiError.WriteFailed;
     }
 
     pub fn bgColorOutput(writer: anytype, r: u8, g: u8, b: u8) AnsiError!void {
-        std.fmt.format(writer, "\x1b[48;2;{d};{d};{d}m", .{ r, g, b }) catch return AnsiError.WriteFailed;
+        writer.print("\x1b[48;2;{d};{d};{d}m", .{ r, g, b }) catch return AnsiError.WriteFailed;
     }
 
     // Text attribute constants
@@ -51,11 +51,11 @@ pub const ANSI = struct {
     pub const cursorUnderlineBlink = "\x1b[3 q";
 
     pub fn cursorColorOutputWriter(writer: anytype, r: u8, g: u8, b: u8) AnsiError!void {
-        std.fmt.format(writer, "\x1b]12;#{x:0>2}{x:0>2}{x:0>2}\x07", .{ r, g, b }) catch return AnsiError.WriteFailed;
+        writer.print("\x1b]12;#{x:0>2}{x:0>2}{x:0>2}\x07", .{ r, g, b }) catch return AnsiError.WriteFailed;
     }
 
     pub fn explicitWidthOutput(writer: anytype, width: u32, text: []const u8) AnsiError!void {
-        std.fmt.format(writer, "\x1b]66;w={d};{s}\x1b\\", .{ width, text }) catch return AnsiError.WriteFailed;
+        writer.print("\x1b]66;w={d};{s}\x1b\\", .{ width, text }) catch return AnsiError.WriteFailed;
     }
 
     pub const resetCursorColor = "\x1b]112\x07";
@@ -131,12 +131,15 @@ pub const ANSI = struct {
     pub const setTerminalTitle = "\x1b]0;{s}\x07";
 
     pub fn setTerminalTitleOutput(writer: anytype, title: []const u8) AnsiError!void {
-        std.fmt.format(writer, setTerminalTitle, .{title}) catch return AnsiError.WriteFailed;
+        writer.print(setTerminalTitle, .{title}) catch return AnsiError.WriteFailed;
     }
 
     pub fn makeRoomForRendererOutput(writer: anytype, height: u32) AnsiError!void {
         if (height > 1) {
-            writer.writeByteNTimes('\n', height - 1) catch return AnsiError.WriteFailed;
+            var i: u32 = 0;
+            while (i < height - 1) : (i += 1) {
+                writer.writeByte('\n') catch return AnsiError.WriteFailed;
+            }
         }
     }
 };
@@ -152,15 +155,48 @@ pub const TextAttributes = struct {
     pub const HIDDEN: u8 = 1 << 6;
     pub const STRIKETHROUGH: u8 = 1 << 7;
 
-    pub fn applyAttributesOutputWriter(writer: anytype, attributes: u8) AnsiError!void {
-        if (attributes & BOLD != 0) writer.writeAll(ANSI.bold) catch return AnsiError.WriteFailed;
-        if (attributes & DIM != 0) writer.writeAll(ANSI.dim) catch return AnsiError.WriteFailed;
-        if (attributes & ITALIC != 0) writer.writeAll(ANSI.italic) catch return AnsiError.WriteFailed;
-        if (attributes & UNDERLINE != 0) writer.writeAll(ANSI.underline) catch return AnsiError.WriteFailed;
-        if (attributes & BLINK != 0) writer.writeAll(ANSI.blink) catch return AnsiError.WriteFailed;
-        if (attributes & INVERSE != 0) writer.writeAll(ANSI.inverse) catch return AnsiError.WriteFailed;
-        if (attributes & HIDDEN != 0) writer.writeAll(ANSI.hidden) catch return AnsiError.WriteFailed;
-        if (attributes & STRIKETHROUGH != 0) writer.writeAll(ANSI.strikethrough) catch return AnsiError.WriteFailed;
+    // Constants for attribute bit packing
+    pub const ATTRIBUTE_BASE_BITS: u5 = 8;
+    pub const ATTRIBUTE_BASE_MASK: u32 = 0xFF;
+
+    // Constants for link_id packing (bits 8-31)
+    pub const LINK_ID_BITS: u8 = 24;
+    pub const LINK_ID_SHIFT: u5 = ATTRIBUTE_BASE_BITS;
+    pub const LINK_ID_PAYLOAD_MASK: u32 = ((@as(u32, 1) << LINK_ID_BITS) - 1);
+    pub const LINK_ID_MASK: u32 = LINK_ID_PAYLOAD_MASK << LINK_ID_SHIFT;
+
+    /// Extract the base 8 bits of attributes from a u32 attribute value
+    pub fn getBaseAttributes(attr: u32) u8 {
+        return @intCast(attr & ATTRIBUTE_BASE_MASK);
+    }
+
+    /// Extract the link_id from bits 8-31 of attributes
+    pub fn getLinkId(attr: u32) u32 {
+        return (attr & LINK_ID_MASK) >> LINK_ID_SHIFT;
+    }
+
+    /// Set the link_id in an attribute value, preserving base attributes
+    pub fn setLinkId(attr: u32, link_id: u32) u32 {
+        const base = attr & ATTRIBUTE_BASE_MASK;
+        const link_bits = (link_id & LINK_ID_PAYLOAD_MASK) << LINK_ID_SHIFT;
+        return base | link_bits;
+    }
+
+    /// Check if an attribute value has a link
+    pub fn hasLink(attr: u32) bool {
+        return getLinkId(attr) != 0;
+    }
+
+    pub fn applyAttributesOutputWriter(writer: anytype, attributes: u32) AnsiError!void {
+        const base_attr = getBaseAttributes(attributes);
+        if (base_attr & BOLD != 0) writer.writeAll(ANSI.bold) catch return AnsiError.WriteFailed;
+        if (base_attr & DIM != 0) writer.writeAll(ANSI.dim) catch return AnsiError.WriteFailed;
+        if (base_attr & ITALIC != 0) writer.writeAll(ANSI.italic) catch return AnsiError.WriteFailed;
+        if (base_attr & UNDERLINE != 0) writer.writeAll(ANSI.underline) catch return AnsiError.WriteFailed;
+        if (base_attr & BLINK != 0) writer.writeAll(ANSI.blink) catch return AnsiError.WriteFailed;
+        if (base_attr & INVERSE != 0) writer.writeAll(ANSI.inverse) catch return AnsiError.WriteFailed;
+        if (base_attr & HIDDEN != 0) writer.writeAll(ANSI.hidden) catch return AnsiError.WriteFailed;
+        if (base_attr & STRIKETHROUGH != 0) writer.writeAll(ANSI.strikethrough) catch return AnsiError.WriteFailed;
     }
 };
 

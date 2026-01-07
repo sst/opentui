@@ -88,6 +88,7 @@ export class TextRenderable extends TextBufferRenderable {
         fg: this._defaultFg,
         bg: this._defaultBg,
         attributes: this._defaultAttributes,
+        link: undefined,
       })
       this.textBuffer.setStyledText(new StyledText(chunks))
       this.refreshLocalSelection()

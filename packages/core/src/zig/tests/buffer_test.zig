@@ -3,6 +3,8 @@ const buffer_mod = @import("../buffer.zig");
 const text_buffer = @import("../text-buffer.zig");
 const text_buffer_view = @import("../text-buffer-view.zig");
 const gp = @import("../grapheme.zig");
+const link = @import("../link.zig");
+const ansi = @import("../ansi.zig");
 
 const OptimizedBuffer = buffer_mod.OptimizedBuffer;
 const TextBuffer = text_buffer.UnifiedTextBuffer;
@@ -249,14 +251,14 @@ test "OptimizedBuffer - large text buffer with wrapping repeated render" {
     var view = try TextBufferView.init(std.testing.allocator, tb);
     defer view.deinit();
 
-    var text_builder = std.ArrayList(u8).init(std.testing.allocator);
-    defer text_builder.deinit();
+    var text_builder: std.ArrayListUnmanaged(u8) = .{};
+    defer text_builder.deinit(std.testing.allocator);
 
     var line: u32 = 0;
     while (line < 20) : (line += 1) {
-        try text_builder.appendSlice("Line ");
-        try std.fmt.format(text_builder.writer(), "{d}", .{line});
-        try text_builder.appendSlice(": 🌟 测试 🎨 Test 🚀\n");
+        try text_builder.appendSlice(std.testing.allocator, "Line ");
+        try text_builder.writer(std.testing.allocator).print("{d}", .{line});
+        try text_builder.appendSlice(std.testing.allocator, ": 🌟 测试 🎨 Test 🚀\n");
     }
 
     try tb.setText(text_builder.items);
@@ -414,12 +416,12 @@ test "OptimizedBuffer - stress test with many graphemes" {
     var view = try TextBufferView.init(std.testing.allocator, tb);
     defer view.deinit();
 
-    var text_builder = std.ArrayList(u8).init(std.testing.allocator);
-    defer text_builder.deinit();
+    var text_builder: std.ArrayListUnmanaged(u8) = .{};
+    defer text_builder.deinit(std.testing.allocator);
 
     var line: u32 = 0;
     while (line < 10) : (line += 1) {
-        try text_builder.appendSlice("🌟🎨🚀🍕🍔🍟🌈🎭🎪🎨🎬🎤🎧🎼🎹🎺🎸🎻\n");
+        try text_builder.appendSlice(std.testing.allocator, "🌟🎨🚀🍕🍔🍟🌈🎭🎪🎨🎬🎤🎧🎼🎹🎺🎸🎻\n");
     }
 
     try tb.setText(text_builder.items);
@@ -513,8 +515,8 @@ test "OptimizedBuffer - many unique graphemes with small pool" {
     var failure_count: u32 = 0;
 
     while (render_count < 1000) : (render_count += 1) {
-        var text_builder = std.ArrayList(u8).init(std.testing.allocator);
-        defer text_builder.deinit();
+        var text_builder: std.ArrayListUnmanaged(u8) = .{};
+        defer text_builder.deinit(std.testing.allocator);
 
         const base_codepoint: u21 = 0x2600 + @as(u21, @intCast(render_count % 500));
         const char_bytes = [_]u8{
@@ -522,9 +524,9 @@ test "OptimizedBuffer - many unique graphemes with small pool" {
             @intCast(0x80 | ((base_codepoint >> 6) & 0x3F)),
             @intCast(0x80 | (base_codepoint & 0x3F)),
         };
-        try text_builder.appendSlice(&char_bytes);
-        try text_builder.appendSlice(" ");
-        try text_builder.appendSlice(&char_bytes);
+        try text_builder.appendSlice(std.testing.allocator, &char_bytes);
+        try text_builder.appendSlice(std.testing.allocator, " ");
+        try text_builder.appendSlice(std.testing.allocator, &char_bytes);
 
         tb.setText(text_builder.items) catch {
             failure_count += 1;
@@ -1297,4 +1299,273 @@ test "OptimizedBuffer - drawTextBuffer with negative y coordinate should not pan
     try std.testing.expectEqual(@as(u32, 'e'), buf.get(3, 0).?.char);
     try std.testing.expectEqual(@as(u32, ' '), buf.get(4, 0).?.char);
     try std.testing.expectEqual(@as(u32, '3'), buf.get(5, 0).?.char);
+}
+
+test "OptimizedBuffer - cells are initialized after resize grow" {
+    const pool = gp.initGlobalPool(std.testing.allocator);
+    defer gp.deinitGlobalPool();
+
+    var buf = try OptimizedBuffer.init(
+        std.testing.allocator,
+        10,
+        10,
+        .{ .pool = pool, .id = "test-buffer" },
+    );
+    defer buf.deinit();
+
+    try buf.resize(20, 20);
+
+    // Verify new cells have default values (space = 32), not garbage
+    const cell = buf.get(15, 15);
+    try std.testing.expect(cell != null);
+    try std.testing.expectEqual(@as(u32, 32), cell.?.char);
+}
+
+test "OptimizedBuffer - link encoding round-trip" {
+    const pool = gp.initGlobalPool(std.testing.allocator);
+    defer gp.deinitGlobalPool();
+
+    var local_link_pool = link.LinkPool.init(std.testing.allocator);
+    defer local_link_pool.deinit();
+
+    var buf = try OptimizedBuffer.init(
+        std.testing.allocator,
+        20,
+        5,
+        .{ .pool = pool, .id = "test-buffer", .link_pool = &local_link_pool },
+    );
+    defer buf.deinit();
+
+    const bg = RGBA{ 0.0, 0.0, 0.0, 1.0 };
+    const fg = RGBA{ 1.0, 1.0, 1.0, 1.0 };
+    try buf.clear(bg, null);
+
+    // Allocate a link
+    const link_id = try local_link_pool.alloc("https://example.com");
+    const attributes = ansi.TextAttributes.setLinkId(ansi.TextAttributes.BOLD, link_id);
+
+    // Draw text with link
+    try buf.drawText("Click", 0, 0, fg, bg, attributes);
+
+    // Verify cell has correct char and attributes
+    const cell = buf.get(0, 0).?;
+    try std.testing.expectEqual(@as(u32, 'C'), cell.char);
+    try std.testing.expectEqual(ansi.TextAttributes.BOLD, ansi.TextAttributes.getBaseAttributes(cell.attributes));
+    try std.testing.expectEqual(link_id, ansi.TextAttributes.getLinkId(cell.attributes));
+
+    // Verify link tracker has the link
+    try std.testing.expect(buf.link_tracker.hasAny());
+    try std.testing.expectEqual(@as(u32, 1), buf.link_tracker.getLinkCount());
+}
+
+test "OptimizedBuffer - link tracker per-cell counting" {
+    const pool = gp.initGlobalPool(std.testing.allocator);
+    defer gp.deinitGlobalPool();
+
+    var local_link_pool = link.LinkPool.init(std.testing.allocator);
+    defer local_link_pool.deinit();
+
+    var buf = try OptimizedBuffer.init(
+        std.testing.allocator,
+        20,
+        5,
+        .{ .pool = pool, .id = "test-buffer", .link_pool = &local_link_pool },
+    );
+    defer buf.deinit();
+
+    const bg = RGBA{ 0.0, 0.0, 0.0, 1.0 };
+    const fg = RGBA{ 1.0, 1.0, 1.0, 1.0 };
+    try buf.clear(bg, null);
+
+    // Allocate a link
+    const link_id = try local_link_pool.alloc("https://example.com");
+    const attributes = ansi.TextAttributes.setLinkId(0, link_id);
+
+    // Draw text covering 3 cells
+    try buf.drawText("ABC", 0, 0, fg, bg, attributes);
+
+    // Verify link tracker has 1 unique link
+    // Pool refcount is 1 (tracker owns one ref, tracks 3 cells internally)
+    try std.testing.expectEqual(@as(u32, 1), buf.link_tracker.getLinkCount());
+    const pool_refcount = try local_link_pool.getRefcount(link_id);
+    try std.testing.expectEqual(@as(u32, 1), pool_refcount);
+
+    // Verify tracker knows about 3 cells
+    const cell_count = buf.link_tracker.used_ids.get(link_id).?;
+    try std.testing.expectEqual(@as(u32, 3), cell_count);
+
+    // Overwrite one cell without link
+    try buf.drawText("X", 0, 0, fg, bg, 0);
+
+    // Tracker cell count should drop to 2, pool refcount stays 1
+    const cell_count2 = buf.link_tracker.used_ids.get(link_id).?;
+    try std.testing.expectEqual(@as(u32, 2), cell_count2);
+    const pool_refcount2 = try local_link_pool.getRefcount(link_id);
+    try std.testing.expectEqual(@as(u32, 1), pool_refcount2);
+
+    // Clear all - refcount should be 0 and link freed
+    try buf.clear(bg, null);
+    try std.testing.expectEqual(@as(u32, 0), buf.link_tracker.getLinkCount());
+}
+
+test "OptimizedBuffer - fillRect removes links" {
+    const pool = gp.initGlobalPool(std.testing.allocator);
+    defer gp.deinitGlobalPool();
+
+    var local_link_pool = link.LinkPool.init(std.testing.allocator);
+    defer local_link_pool.deinit();
+
+    var buf = try OptimizedBuffer.init(
+        std.testing.allocator,
+        20,
+        5,
+        .{ .pool = pool, .id = "test-buffer", .link_pool = &local_link_pool },
+    );
+    defer buf.deinit();
+
+    const bg = RGBA{ 0.0, 0.0, 0.0, 1.0 };
+    const fg = RGBA{ 1.0, 1.0, 1.0, 1.0 };
+    try buf.clear(bg, null);
+
+    // Allocate a link
+    const link_id = try local_link_pool.alloc("https://example.com");
+    const attributes = ansi.TextAttributes.setLinkId(0, link_id);
+
+    // Draw linked text
+    try buf.drawText("Linked", 0, 0, fg, bg, attributes);
+    try buf.drawText("Text", 10, 0, fg, bg, attributes);
+
+    // Verify links exist
+    try std.testing.expect(ansi.TextAttributes.hasLink(buf.get(0, 0).?.attributes));
+    try std.testing.expect(ansi.TextAttributes.hasLink(buf.get(10, 0).?.attributes));
+
+    // Fill rect over first link
+    try buf.fillRect(0, 0, 6, 1, bg);
+
+    // Cells in rect should have no link
+    try std.testing.expect(!ansi.TextAttributes.hasLink(buf.get(0, 0).?.attributes));
+    try std.testing.expect(!ansi.TextAttributes.hasLink(buf.get(5, 0).?.attributes));
+
+    // Cells outside rect should preserve link
+    try std.testing.expect(ansi.TextAttributes.hasLink(buf.get(10, 0).?.attributes));
+}
+
+test "OptimizedBuffer - link reuse after free" {
+    const pool = gp.initGlobalPool(std.testing.allocator);
+    defer gp.deinitGlobalPool();
+
+    var local_link_pool = link.LinkPool.init(std.testing.allocator);
+    defer local_link_pool.deinit();
+
+    var buf = try OptimizedBuffer.init(
+        std.testing.allocator,
+        20,
+        5,
+        .{ .pool = pool, .id = "test-buffer", .link_pool = &local_link_pool },
+    );
+    defer buf.deinit();
+
+    const bg = RGBA{ 0.0, 0.0, 0.0, 1.0 };
+    const fg = RGBA{ 1.0, 1.0, 1.0, 1.0 };
+
+    // Allocate first link
+    const link_id1 = try local_link_pool.alloc("https://first.com");
+    const attr1 = ansi.TextAttributes.setLinkId(0, link_id1);
+    try buf.drawText("A", 0, 0, fg, bg, attr1);
+
+    // Clear - should free the link
+    try buf.clear(bg, null);
+
+    // Allocate second link - should reuse same slot but different generation
+    const link_id2 = try local_link_pool.alloc("https://second.com");
+    try std.testing.expect(link_id1 != link_id2); // Different due to generation
+
+    const attr2 = ansi.TextAttributes.setLinkId(0, link_id2);
+    try buf.drawText("B", 0, 0, fg, bg, attr2);
+
+    const url = try local_link_pool.get(link_id2);
+    try std.testing.expect(std.mem.eql(u8, url, "https://second.com"));
+}
+
+test "OptimizedBuffer - alpha blending preserves overlay link not dest link" {
+    const pool = gp.initGlobalPool(std.testing.allocator);
+    defer gp.deinitGlobalPool();
+
+    var local_link_pool = link.LinkPool.init(std.testing.allocator);
+    defer local_link_pool.deinit();
+
+    var buf = try OptimizedBuffer.init(
+        std.testing.allocator,
+        20,
+        5,
+        .{ .pool = pool, .id = "test-buffer", .link_pool = &local_link_pool },
+    );
+    defer buf.deinit();
+
+    const bg_opaque = RGBA{ 0.0, 0.0, 0.0, 1.0 };
+    const bg_alpha = RGBA{ 0.5, 0.5, 0.5, 0.5 };
+    const fg = RGBA{ 1.0, 1.0, 1.0, 1.0 };
+    try buf.clear(bg_opaque, null);
+
+    // Draw underlying text with link A
+    const link_id_a = try local_link_pool.alloc("https://underlying.com");
+    const attr_a = ansi.TextAttributes.setLinkId(ansi.TextAttributes.BOLD, link_id_a);
+    try buf.drawText("X", 5, 0, fg, bg_opaque, attr_a);
+
+    // Verify dest cell has link A
+    const dest_cell = buf.get(5, 0).?;
+    try std.testing.expectEqual(link_id_a, ansi.TextAttributes.getLinkId(dest_cell.attributes));
+    try std.testing.expectEqual(@as(u32, 'X'), dest_cell.char);
+
+    // Draw space with alpha and link B over it (will preserve 'X' but blend colors)
+    const link_id_b = try local_link_pool.alloc("https://overlay.com");
+    const attr_b = ansi.TextAttributes.setLinkId(0, link_id_b);
+    try buf.drawText(" ", 5, 0, fg, bg_alpha, attr_b);
+
+    // Result: char should be preserved 'X', but link should be from overlay (B), not dest (A)
+    const result_cell = buf.get(5, 0).?;
+    try std.testing.expectEqual(@as(u32, 'X'), result_cell.char);
+    try std.testing.expectEqual(link_id_b, ansi.TextAttributes.getLinkId(result_cell.attributes));
+    try std.testing.expect(ansi.TextAttributes.getLinkId(result_cell.attributes) != link_id_a);
+}
+
+test "OptimizedBuffer - alpha blending with no link clears underlying link" {
+    const pool = gp.initGlobalPool(std.testing.allocator);
+    defer gp.deinitGlobalPool();
+
+    var local_link_pool = link.LinkPool.init(std.testing.allocator);
+    defer local_link_pool.deinit();
+
+    var buf = try OptimizedBuffer.init(
+        std.testing.allocator,
+        20,
+        5,
+        .{ .pool = pool, .id = "test-buffer", .link_pool = &local_link_pool },
+    );
+    defer buf.deinit();
+
+    const bg_opaque = RGBA{ 0.0, 0.0, 0.0, 1.0 };
+    const bg_alpha = RGBA{ 0.5, 0.5, 0.5, 0.5 };
+    const fg = RGBA{ 1.0, 1.0, 1.0, 1.0 };
+    try buf.clear(bg_opaque, null);
+
+    // Draw underlying text with link
+    const link_id = try local_link_pool.alloc("https://underlying.com");
+    const attr_link = ansi.TextAttributes.setLinkId(ansi.TextAttributes.BOLD, link_id);
+    try buf.drawText("X", 5, 0, fg, bg_opaque, attr_link);
+
+    // Verify dest cell has link
+    const dest_cell = buf.get(5, 0).?;
+    try std.testing.expectEqual(link_id, ansi.TextAttributes.getLinkId(dest_cell.attributes));
+
+    // Draw space with alpha but NO link over it (will preserve 'X')
+    try buf.drawText(" ", 5, 0, fg, bg_alpha, 0);
+
+    // Result: char 'X' preserved, but link should be CLEARED (0), not preserved
+    const result_cell = buf.get(5, 0).?;
+    try std.testing.expectEqual(@as(u32, 'X'), result_cell.char);
+    try std.testing.expectEqual(@as(u32, 0), ansi.TextAttributes.getLinkId(result_cell.attributes));
+
+    // Link should no longer be tracked
+    try std.testing.expect(!ansi.TextAttributes.hasLink(result_cell.attributes));
 }
