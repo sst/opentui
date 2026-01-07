@@ -1403,6 +1403,43 @@ describe("TextRenderable Selection", () => {
       expect(frame).toMatchSnapshot()
     })
 
+    it("should render CJK text with wrapping at boundary correctly", async () => {
+      await createTextRenderable(currentRenderer, {
+        content: "123456789中文测试",
+        wrapMode: "char",
+        width: 10,
+        left: 0,
+        top: 0,
+      })
+
+      const frame = captureFrame()
+      expect(frame).not.toContain("?")
+      expect(frame).toContain("中")
+      expect(frame).toContain("文")
+    })
+
+    it("should render CJK correctly during streaming append", async () => {
+      const { text } = await createTextRenderable(currentRenderer, {
+        content: "12345678",
+        wrapMode: "char",
+        width: 10,
+        left: 0,
+        top: 0,
+      })
+
+      await renderOnce()
+      const frame1 = captureFrame()
+      expect(frame1).toContain("12345678")
+
+      text.appendText("9中文")
+      await renderOnce()
+
+      const frame2 = captureFrame()
+      expect(frame2).not.toContain("?")
+      expect(frame2).toContain("中")
+      expect(frame2).toContain("文")
+    })
+
     it("should render wrapped multiline text correctly", async () => {
       await createTextRenderable(currentRenderer, {
         content: "First line with long content\nSecond line also with content\nThird line",
