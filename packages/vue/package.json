@@ -22,6 +22,7 @@
     "build": "bun scripts/build.ts",
     "publish": "bun scripts/publish.ts",
     "start:example": "bun run typecheck && bun scripts/build-examples.ts && bun example/dist/main.js",
+    "test": "bun test",
     "typecheck": "bunx vue-tsc --noEmit -p tsconfig.typecheck.json"
   },
   "dependencies": {
