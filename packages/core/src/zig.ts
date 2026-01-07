@@ -22,9 +22,11 @@ import {
 import { isBunfsPath } from "./lib/bunfs"
 import { attributesWithLink } from "./utils"
 
-// Detect musl vs glibc on Linux
-const muslLoader = process.arch === "arm64" ? "/lib/ld-musl-aarch64.so.1" : "/lib/ld-musl-x86_64.so.1"
-const isMusl = process.platform === "linux" && existsSync(muslLoader)
+// Detect musl vs glibc on Linux using Node's built-in report
+const isMusl =
+  process.platform === "linux" &&
+  process.report?.getReport &&
+  !(process.report.getReport() as any)?.header?.glibcVersionRuntime
 const platformName = isMusl ? "linux-musl" : process.platform
 
 const module = await import(`@opentui/core-${platformName}-${process.arch}/index.ts`)
