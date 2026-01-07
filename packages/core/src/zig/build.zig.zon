@@ -8,9 +8,10 @@
             .url = "https://github.com/jacobsandlund/uucode/archive/84ceda8561a17ba4a9b96ac5c583f779660bbd4e.tar.gz",
             .hash = "uucode-0.1.0-ZZjBPtA_TQCWp5PIKmfm5tu1WOkKWFmBGFEMxircPfkA",
         },
+        // TODO: switch back to ghostty-org/ghostty when merged: https://github.com/ghostty-org/ghostty/pull/10198
         .ghostty = .{
-            .url = "git+https://github.com/ghostty-org/ghostty.git#45abfa91905a5dafdddb711dd9402d45947cdfbb",
-            .hash = "ghostty-1.3.0-dev-5UdBC8b5QwRW0zdnjdhJbXjGiOItwRSgHIIzbEjv2za9",
+            .url = "git+https://github.com/remorses/ghostty.git#a87633a5cc619a21672e4e9cf449c7f1c29ef966",
+            .hash = "ghostty-1.3.0-dev-5UdBC1sKRAQDnZ_wL5BuiJYvO-ZaJ3vxwh4IPV1gCfCE",
         },
     },
     .paths = .{
