@@ -1,6 +1,35 @@
 import { EventEmitter } from "events"
 import { parseKeypress, type KeyEventType, type ParsedKey } from "./parse.keypress"
-import { ANSI } from "../ansi"
+import { getGraphemeSegmenter } from "./grapheme-segmenter"
+
+function isGraphemeExtender(codepoint: number): boolean {
+  return (
+    codepoint === 0x200d || // ZWJ
+    (codepoint >= 0xfe00 && codepoint <= 0xfe0f) || // Variation Selectors
+    (codepoint >= 0x1f3fb && codepoint <= 0x1f3ff) || // Skin Tone Modifiers
+    (codepoint >= 0x1f1e6 && codepoint <= 0x1f1ff) || // Regional Indicators (can extend other RI)
+    codepoint === 0x20e3 || // Combining Enclosing Keycap
+    (codepoint >= 0xe0020 && codepoint <= 0xe007f) // Tag characters
+  )
+}
+
+function canStartGraphemeCluster(codepoint: number): boolean {
+  return (
+    (codepoint >= 0x1f1e6 && codepoint <= 0x1f1ff) || // Regional Indicators
+    (codepoint >= 0x1f300 && codepoint <= 0x1faff) || // Emoji ranges
+    codepoint === 0x1f3f4 || // Black Flag (for subdivision flags)
+    codepoint === 0x23 || // # for keycap
+    codepoint === 0x2a || // * for keycap
+    (codepoint >= 0x30 && codepoint <= 0x39) || // 0-9 for keycaps
+    (codepoint >= 0x2600 && codepoint <= 0x27bf) // Misc Symbols & Dingbats
+  )
+}
+
+type EmojiBuffer = {
+  codepoints: number[]
+  rawSequences: string[]
+  baseParsedKey: ParsedKey
+}
 
 export class KeyEvent implements ParsedKey {
   name: string
@@ -74,12 +103,120 @@ export type KeyHandlerEventMap = {
   paste: [PasteEvent]
 }
 
+export type KeyHandlerOptions = {
+  useKittyKeyboard?: boolean
+  emojiBufferTimeout?: number
+}
+
 export class KeyHandler extends EventEmitter<KeyHandlerEventMap> {
   protected useKittyKeyboard: boolean
+  private emojiBuffer: EmojiBuffer | null = null
+  private emojiTimeout: Timer | null = null
+  private readonly emojiBufferTimeoutMs: number
 
-  constructor(useKittyKeyboard: boolean = false) {
+  constructor(options: KeyHandlerOptions | boolean = false) {
     super()
-    this.useKittyKeyboard = useKittyKeyboard
+    if (typeof options === "boolean") {
+      this.useKittyKeyboard = options
+      this.emojiBufferTimeoutMs = 10
+    } else {
+      this.useKittyKeyboard = options.useKittyKeyboard ?? false
+      this.emojiBufferTimeoutMs = options.emojiBufferTimeout ?? 10
+    }
+  }
+
+  private getCodepointFromKittyKey(parsedKey: ParsedKey): number | null {
+    if (parsedKey.source !== "kitty") return null
+    if (parsedKey.name.length === 0) return null
+
+    const codepoint = parsedKey.name.codePointAt(0)
+    if (codepoint === undefined) return null
+    if (parsedKey.name.length !== String.fromCodePoint(codepoint).length) return null
+
+    return codepoint
+  }
+
+  private shouldBufferForEmoji(parsedKey: ParsedKey): boolean {
+    if (parsedKey.source !== "kitty") return false
+    if (parsedKey.eventType !== "press") return false
+    if (parsedKey.ctrl || parsedKey.meta || parsedKey.super || parsedKey.hyper) return false
+
+    const codepoint = this.getCodepointFromKittyKey(parsedKey)
+    if (codepoint === null) return false
+
+    if (this.emojiBuffer !== null) {
+      if (isGraphemeExtender(codepoint)) return true
+      const lastCp = this.emojiBuffer.codepoints[this.emojiBuffer.codepoints.length - 1]!
+      const ZWJ = 0x200d
+      if (lastCp === ZWJ) return true
+      return false
+    }
+
+    return canStartGraphemeCluster(codepoint)
+  }
+
+  private bufferEmojiCodepoint(parsedKey: ParsedKey, rawSequence: string): void {
+    const codepoint = this.getCodepointFromKittyKey(parsedKey)!
+
+    if (this.emojiBuffer === null) {
+      this.emojiBuffer = {
+        codepoints: [codepoint],
+        rawSequences: [rawSequence],
+        baseParsedKey: parsedKey,
+      }
+    } else {
+      this.emojiBuffer.codepoints.push(codepoint)
+      this.emojiBuffer.rawSequences.push(rawSequence)
+    }
+
+    this.scheduleEmojiFlush()
+  }
+
+  private scheduleEmojiFlush(): void {
+    if (this.emojiTimeout) {
+      clearTimeout(this.emojiTimeout)
+    }
+    this.emojiTimeout = setTimeout(() => {
+      this.flushEmojiBuffer()
+    }, this.emojiBufferTimeoutMs)
+  }
+
+  private assembleGraphemes(codepoints: number[]): string[] {
+    const text = String.fromCodePoint(...codepoints)
+    return [...getGraphemeSegmenter().segment(text)].map((seg) => seg.segment)
+  }
+
+  public flushEmojiBuffer(): void {
+    if (this.emojiTimeout) {
+      clearTimeout(this.emojiTimeout)
+      this.emojiTimeout = null
+    }
+
+    if (this.emojiBuffer === null) return
+
+    const { codepoints, rawSequences, baseParsedKey } = this.emojiBuffer
+    this.emojiBuffer = null
+
+    const graphemes = this.assembleGraphemes(codepoints)
+
+    for (const grapheme of graphemes) {
+      const keyEvent: ParsedKey = {
+        ...baseParsedKey,
+        name: grapheme,
+        sequence: grapheme,
+        raw: rawSequences.join(""),
+      }
+
+      try {
+        if (keyEvent.eventType === "press") {
+          this.emit("keypress", new KeyEvent(keyEvent))
+        } else {
+          this.emit("keyrelease", new KeyEvent(keyEvent))
+        }
+      } catch (error) {
+        console.error(`[KeyHandler] Error emitting buffered emoji:`, error)
+      }
+    }
   }
 
   public processInput(data: string): boolean {
@@ -88,6 +225,13 @@ export class KeyHandler extends EventEmitter<KeyHandlerEventMap> {
     if (!parsedKey) {
       return false
     }
+
+    if (this.shouldBufferForEmoji(parsedKey)) {
+      this.bufferEmojiCodepoint(parsedKey, data)
+      return true
+    }
+
+    this.flushEmojiBuffer()
 
     try {
       switch (parsedKey.eventType) {
@@ -117,17 +261,21 @@ export class KeyHandler extends EventEmitter<KeyHandlerEventMap> {
       console.error(`[KeyHandler] Error processing paste:`, error)
     }
   }
+
+  public destroy(): void {
+    if (this.emojiTimeout) {
+      clearTimeout(this.emojiTimeout)
+      this.emojiTimeout = null
+    }
+    this.emojiBuffer = null
+  }
 }
 
-/**
- * This class is used internally by the renderer to ensure global handlers
- * can preventDefault before renderable handlers process events.
- */
 export class InternalKeyHandler extends KeyHandler {
   private renderableHandlers: Map<keyof KeyHandlerEventMap, Set<Function>> = new Map()
 
-  constructor(useKittyKeyboard: boolean = false) {
-    super(useKittyKeyboard)
+  constructor(options: KeyHandlerOptions | boolean = false) {
+    super(options)
   }
 
   public emit<K extends keyof KeyHandlerEventMap>(event: K, ...args: KeyHandlerEventMap[K]): boolean {
@@ -144,8 +292,6 @@ export class InternalKeyHandler extends KeyHandler {
     }
 
     const renderableSet = this.renderableHandlers.get(event)
-    // Snapshot the handler list so listeners added during dispatch (e.g., via focus changes)
-    // do not receive the in-flight key event.
     const renderableHandlers = renderableSet && renderableSet.size > 0 ? [...renderableSet] : []
     let hasRenderableListeners = false
 
@@ -187,5 +333,10 @@ export class InternalKeyHandler extends KeyHandler {
     if (handlers) {
       handlers.delete(handler)
     }
+  }
+
+  public override destroy(): void {
+    super.destroy()
+    this.renderableHandlers.clear()
   }
 }
