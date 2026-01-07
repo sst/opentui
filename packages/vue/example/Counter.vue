@@ -1,11 +1,11 @@
 <script setup lang="ts">
 import { RGBA, type KeyEvent } from "@opentui/core"
-import { onUnmounted, ref } from "vue"
-import { useCliRenderer } from ".."
+import { ref } from "vue"
+import { useKeyboard } from "@opentui/vue"
 
 const count = ref(0)
 
-function handleKeyPress(key: KeyEvent): void {
+useKeyboard((key: KeyEvent) => {
   switch (key.name) {
     case "up":
     case "+":
@@ -21,13 +21,6 @@ function handleKeyPress(key: KeyEvent): void {
       count.value = 0
       break
   }
-}
-
-const renderer = useCliRenderer()
-renderer.keyInput.on("keypress", handleKeyPress)
-
-onUnmounted(() => {
-  renderer.keyInput.off("keypress", handleKeyPress)
 })
 
 const textStyles = { fg: RGBA.fromHex("#0000ff") }

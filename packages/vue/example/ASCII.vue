@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { measureText } from "@opentui/core"
+import type { SelectOption } from "@opentui/core"
 import { ref, computed } from "vue"
 
 const text = "ASCII"
@@ -12,8 +13,9 @@ const dimensions = computed(() => {
   })
 })
 
-const handleFontChange = (_: any, option: any) => {
-  font.value = option?.value
+const handleFontChange = (_index: number, option: SelectOption | null) => {
+  if (!option?.value) return
+  font.value = option.value as typeof font.value
 }
 
 const selectOptions = [

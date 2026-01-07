@@ -1,18 +1,18 @@
 <script setup lang="ts">
 import { bold, fg, italic, t, TextAttributes, type KeyEvent } from "@opentui/core"
-import { ref, onMounted, onUnmounted, computed } from "vue"
-import { useCliRenderer } from ".."
+import { ref, computed } from "vue"
+import { useKeyboard } from "@opentui/vue"
 
 const username = ref("")
 const password = ref("")
 const focused = ref<"username" | "password">("username")
 const status = ref<"idle" | "invalid" | "success">("idle")
 
-const handleKeyPress = (key: KeyEvent) => {
+useKeyboard((key: KeyEvent) => {
   if (key.name === "tab") {
     focused.value = focused.value === "username" ? "password" : "username"
   }
-}
+})
 
 const handleUsernameChange = (value: string) => {
   username.value = value
@@ -29,15 +29,6 @@ const handleSubmit = () => {
     status.value = "invalid"
   }
 }
-
-const renderer = useCliRenderer()
-onMounted(() => {
-  renderer.keyInput.on("keypress", handleKeyPress)
-})
-
-onUnmounted(() => {
-  renderer.keyInput.off("keypress", handleKeyPress)
-})
 
 const titleTextStyles = {
   fg: "#FFFF00",

@@ -7,13 +7,22 @@ import {
   TabSelectRenderable,
   TabSelectRenderableEvents,
   TextRenderable,
+  TextareaRenderable,
   StyledText,
+  TextNodeRenderable,
   type TextChunk,
   Renderable,
   type CliRenderer,
 } from "@opentui/core"
 import { getNextId } from "./utils"
-import { type OpenTUINode, type OpenTUIElement, TextNode, WhiteSpaceNode, ChunkToTextNodeMap } from "./nodes"
+import {
+  type OpenTUINode,
+  type OpenTUIElement,
+  CommentNode,
+  TextNode,
+  WhiteSpaceNode,
+  ChunkToTextNodeMap,
+} from "./nodes"
 import { elements, type Element } from "./elements"
 import { insertNode, removeNode } from "./noOps"
 
@@ -29,22 +38,27 @@ export function createOpenTUIRenderer(cliRenderer: CliRenderer) {
       typeof value === "object" && "__isChunk" in value
         ? value
         : {
-            __isChunk: true,
-            text: `${value}`,
-          }
+          __isChunk: true,
+          text: `${value}`,
+        }
     const textNode = new TextNode(chunk)
     ChunkToTextNodeMap.set(chunk, textNode)
     return textNode
   }
 
   return createRenderer<OpenTUINode, OpenTUIElement>({
-    createElement(type: string, _isSVG: undefined, _anchor: any, props) {
+    createElement(
+      type: string,
+      _namespace?: string,
+      _isCustomizedBuiltIn?: string,
+      vnodeProps?: Record<string, any> | null,
+    ) {
       const RenderableClass = elements[type as Element]
       if (!RenderableClass) throw new Error(`${type} is not a valid element`)
 
       const id = getNextId(type)
       //we don't pass content directly, we handle it in patchProp
-      const { style = {}, content, ...options } = props || {}
+      const { style = {}, content, ...options } = vnodeProps || {}
       return new RenderableClass(cliRenderer, { id, ...style, ...options })
     },
 
@@ -65,10 +79,12 @@ export function createOpenTUIRenderer(cliRenderer: CliRenderer) {
 
       switch (key) {
         case "focused":
-          if (nextValue) {
-            el.focus()
-          } else {
-            el.blur()
+          if (el instanceof Renderable) {
+            if (nextValue) {
+              el.focus()
+            } else {
+              el.blur()
+            }
           }
           break
 
@@ -92,9 +108,11 @@ export function createOpenTUIRenderer(cliRenderer: CliRenderer) {
           break
 
         case "onSelect":
-          let selectEvent: SelectRenderableEvents.ITEM_SELECTED | undefined = undefined
+          let selectEvent: string | undefined = undefined
           if (el instanceof SelectRenderable) {
             selectEvent = SelectRenderableEvents.ITEM_SELECTED
+          } else if (el instanceof TabSelectRenderable) {
+            selectEvent = TabSelectRenderableEvents.ITEM_SELECTED
           }
           if (selectEvent) {
             if (prevValue) {
@@ -125,6 +143,26 @@ export function createOpenTUIRenderer(cliRenderer: CliRenderer) {
             if (nextValue) {
               el.on(InputRenderableEvents.ENTER, nextValue)
             }
+          } else if (el instanceof TextareaRenderable) {
+            el.onSubmit = nextValue
+          }
+          break
+
+        case "onKeyDown":
+          if (el instanceof Renderable) {
+            el.onKeyDown = nextValue
+          }
+          break
+
+        case "onContentChange":
+          if (el instanceof TextareaRenderable) {
+            el.onContentChange = nextValue
+          }
+          break
+
+        case "onCursorChange":
+          if (el instanceof TextareaRenderable) {
+            el.onCursorChange = nextValue
           }
           break
 
@@ -190,6 +228,8 @@ export function createOpenTUIRenderer(cliRenderer: CliRenderer) {
     },
 
     remove(el) {
+      if (!el) return
+
       const parent = el.parent
       if (parent) {
         removeNode(parent, el)
@@ -211,6 +251,12 @@ export function createOpenTUIRenderer(cliRenderer: CliRenderer) {
 
     setText(node, text) {
       if (node instanceof TextNode) {
+        if (node.nodeRenderable) {
+          node.nodeRenderable.children = [text]
+          node.nodeRenderable.requestRender()
+          return
+        }
+
         const textParent = node.textParent
         if (textParent instanceof TextRenderable) {
           textParent.content = text
@@ -222,14 +268,37 @@ export function createOpenTUIRenderer(cliRenderer: CliRenderer) {
     parentNode: (node) => node.parent! as OpenTUIElement,
 
     nextSibling(node) {
+      if (!node) return null
+
       const parent = node.parent
       if (!parent) return null
 
-      if (node instanceof TextNode && parent instanceof TextRenderable) {
-        const siblings = parent.content.chunks
-        const index = siblings.indexOf(node.chunk)
-        const nextChunk = siblings[index + 1]
-        return nextChunk ? ChunkToTextNodeMap.get(nextChunk) || null : null
+      if (node instanceof TextNode) {
+        if (parent instanceof TextNodeRenderable && node.nodeRenderable) {
+          const siblings = parent.getChildren()
+          const index = siblings.findIndex((child) => child.id === node.nodeRenderable?.id)
+          return siblings[index + 1] || null
+        }
+
+        const textParent = node.textParent
+
+        if (textParent instanceof TextRenderable) {
+          const chunks = textParent.content.chunks
+          const index = chunks.indexOf(node.chunk)
+          const nextChunk = chunks[index + 1]
+          if (nextChunk) {
+            return ChunkToTextNodeMap.get(nextChunk) || null
+          }
+
+          const container = textParent.parent
+          if (!container) return null
+
+          const siblings = container.getChildren()
+          const textParentIndex = siblings.findIndex((child) => child.id === textParent.id)
+          return siblings[textParentIndex + 1] || null
+        }
+
+        return null
       }
 
       const siblings = parent.getChildren()
@@ -248,7 +317,6 @@ export function createOpenTUIRenderer(cliRenderer: CliRenderer) {
       return cloned
     },
 
-    //@ts-expect-error : we don't do anything we comments
-    createComment: () => null,
+    createComment: () => new CommentNode(cliRenderer),
   })
 }

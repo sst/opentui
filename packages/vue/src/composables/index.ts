@@ -1,4 +1,7 @@
 export { useTerminalDimensions } from "./useTerminalDimensions"
 export { useOnResize } from "./useOnResize"
-export { useKeyboard } from "./useKeyboard"
+export { useKeyboard, type UseKeyboardOptions } from "./useKeyboard"
 export { useCliRenderer } from "./useCliRenderer"
+export { useTimeline } from "./useTimeline"
+export { usePaste } from "./usePaste"
+export { useSelectionHandler } from "./useSelectionHandler"
