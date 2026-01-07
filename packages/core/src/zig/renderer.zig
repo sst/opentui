@@ -120,7 +120,7 @@ pub const CliRenderer = struct {
     nextHitGrid: []u32,
     hitGridWidth: u32,
     hitGridHeight: u32,
-    hitScissorStack: std.ArrayList(buf.ClipRect),
+    hitScissorStack: std.ArrayListUnmanaged(buf.ClipRect),
 
     lastCursorStyleTag: ?u8 = null,
     lastCursorBlinking: ?bool = null,
@@ -184,7 +184,7 @@ pub const CliRenderer = struct {
         const nextHitGrid = try allocator.alloc(u32, hitGridSize);
         @memset(currentHitGrid, 0); // Initialize with 0 (no renderable)
         @memset(nextHitGrid, 0);
-        const hitScissorStack = std.ArrayList(buf.ClipRect).init(allocator);
+        const hitScissorStack: std.ArrayListUnmanaged(buf.ClipRect) = .{};
 
         self.* = .{
             .width = width,
@@ -271,7 +271,7 @@ pub const CliRenderer = struct {
 
         self.allocator.free(self.currentHitGrid);
         self.allocator.free(self.nextHitGrid);
-        self.hitScissorStack.deinit();
+        self.hitScissorStack.deinit(self.allocator);
 
         self.allocator.destroy(self);
     }
@@ -927,7 +927,7 @@ pub const CliRenderer = struct {
             }
         }
 
-        self.hitScissorStack.append(rect) catch |err| {
+        self.hitScissorStack.append(self.allocator, rect) catch |err| {
             logger.warn("Failed to push hit-grid scissor rect: {}", .{err});
         };
     }
