@@ -387,6 +387,10 @@ export function parseKittyKeyboard(sequence: string): ParsedKey | null {
       // Use shifted codepoint if shift is active and we have one
       if (key.shift && shiftedCodepoint) {
         text = String.fromCodePoint(shiftedCodepoint)
+      } else if (key.shift && key.name.length === 1) {
+        // When shift is pressed but terminal didn't provide shifted codepoint,
+        // convert the character to uppercase (works for Unicode including Cyrillic)
+        text = key.name.toLocaleUpperCase()
       } else {
         text = key.name
       }
