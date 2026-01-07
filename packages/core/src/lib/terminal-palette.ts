@@ -1,10 +1,10 @@
 type Hex = string | null
 
 const OSC4_RESPONSE =
-  /\x1b]4;(\d+);(?:(?:rgb:)([0-9a-fA-F]+)\/([0-9a-fA-F]+)\/([0-9a-fA-F]+)|#([0-9a-fA-F]{6}))(?:\x07|\x1b\\)/g
+  /\x1b\]4;(\d+);(?:(?:rgb:)([0-9a-fA-F]+)\/([0-9a-fA-F]+)\/([0-9a-fA-F]+)|#([0-9a-fA-F]{6}))(?:\x07|\x1b\\)/g
 
 const OSC_SPECIAL_RESPONSE =
-  /\x1b](\d+);(?:(?:rgb:)([0-9a-fA-F]+)\/([0-9a-fA-F]+)\/([0-9a-fA-F]+)|#([0-9a-fA-F]{6}))(?:\x07|\x1b\\)/g
+  /\x1b\](\d+);(?:(?:rgb:)([0-9a-fA-F]+)\/([0-9a-fA-F]+)\/([0-9a-fA-F]+)|#([0-9a-fA-F]{6}))(?:\x07|\x1b\\)/g
 
 export type WriteFunction = (data: string | Buffer) => boolean
 
@@ -57,26 +57,48 @@ function wrapForTmux(osc: string): string {
   return `\x1bPtmux;${escaped}\x1b\\`
 }
 
+const DEBUG_PALETTE = process.env.DEBUG_PALETTE === "1"
+
+function debugLog(...args: any[]) {
+  if (DEBUG_PALETTE) {
+    console.log("[palette]", ...args)
+  }
+}
+
 export class TerminalPalette implements TerminalPaletteDetector {
   private stdin: NodeJS.ReadStream
   private stdout: NodeJS.WriteStream
   private writeFn: WriteFunction
   private activeListeners: Array<{ event: string; handler: (...args: any[]) => void }> = []
   private activeTimers: Array<NodeJS.Timeout> = []
-  private inLegacyTmux: boolean
+  private inTmux: boolean
+  private useTmuxPassthrough: boolean | null = null // null = auto-detect
 
   constructor(stdin: NodeJS.ReadStream, stdout: NodeJS.WriteStream, writeFn?: WriteFunction, isLegacyTmux?: boolean) {
     this.stdin = stdin
     this.stdout = stdout
     this.writeFn = writeFn || ((data: string | Buffer) => stdout.write(data))
-    this.inLegacyTmux = isLegacyTmux ?? false
+    // Detect if we're in tmux from environment
+    this.inTmux = !!process.env.TMUX
+    // isLegacyTmux hint - if provided and true, we'll try wrapped first
+    // But we'll auto-detect the best approach regardless
+    if (isLegacyTmux === true) {
+      this.useTmuxPassthrough = true
+    }
+    debugLog("TerminalPalette created", {
+      inTmux: this.inTmux,
+      isLegacyTmux,
+      useTmuxPassthrough: this.useTmuxPassthrough,
+    })
   }
 
   /**
-   * Write an OSC sequence, wrapping for tmux if needed
+   * Write an OSC sequence, optionally wrapping for tmux passthrough
    */
-  private writeOsc(osc: string): boolean {
-    const data = this.inLegacyTmux ? wrapForTmux(osc) : osc
+  private writeOsc(osc: string, forceWrapped?: boolean): boolean {
+    const useWrapped = forceWrapped ?? this.useTmuxPassthrough ?? false
+    const data = useWrapped ? wrapForTmux(osc) : osc
+    debugLog("writeOsc", { useWrapped, dataHex: Buffer.from(data).toString("hex").slice(0, 100) })
     return this.writeFn(data)
   }
 
@@ -92,7 +114,10 @@ export class TerminalPalette implements TerminalPaletteDetector {
     this.activeTimers = []
   }
 
-  async detectOSCSupport(timeoutMs = 300): Promise<boolean> {
+  /**
+   * Try to detect OSC support with a specific wrapping mode
+   */
+  private async tryDetectOSCSupport(timeoutMs: number, useWrapped: boolean): Promise<boolean> {
     const out = this.stdout
     const inp = this.stdin
 
@@ -103,15 +128,21 @@ export class TerminalPalette implements TerminalPaletteDetector {
 
       const onData = (chunk: string | Buffer) => {
         buffer += chunk.toString()
+        debugLog("tryDetectOSCSupport onData", {
+          useWrapped,
+          bufferHex: Buffer.from(buffer).toString("hex").slice(0, 200),
+        })
         // Reset regex lastIndex before testing due to global flag
         OSC4_RESPONSE.lastIndex = 0
         if (OSC4_RESPONSE.test(buffer)) {
+          debugLog("tryDetectOSCSupport matched!", { useWrapped })
           cleanup()
           resolve(true)
         }
       }
 
       const onTimeout = () => {
+        debugLog("tryDetectOSCSupport timeout", { useWrapped, bufferLength: buffer.length })
         cleanup()
         resolve(false)
       }
@@ -130,8 +161,49 @@ export class TerminalPalette implements TerminalPaletteDetector {
       this.activeTimers.push(timer)
       inp.on("data", onData)
       this.activeListeners.push({ event: "data", handler: onData })
-      this.writeOsc("\x1b]4;0;?\x07")
+      debugLog("tryDetectOSCSupport sending query", { useWrapped })
+      this.writeOsc("\x1b]4;0;?\x07", useWrapped)
     })
+  }
+
+  async detectOSCSupport(timeoutMs = 300): Promise<boolean> {
+    const out = this.stdout
+    const inp = this.stdin
+
+    if (!out.isTTY || !inp.isTTY) {
+      debugLog("detectOSCSupport: not a TTY")
+      return false
+    }
+
+    // If we already know which mode works, use that
+    if (this.useTmuxPassthrough !== null) {
+      debugLog("detectOSCSupport: using cached mode", { useTmuxPassthrough: this.useTmuxPassthrough })
+      return this.tryDetectOSCSupport(timeoutMs, this.useTmuxPassthrough)
+    }
+
+    // Auto-detect: try bare first (works in native terminals and tmux >= 3.6 with passthrough)
+    debugLog("detectOSCSupport: trying bare first")
+    const bareWorks = await this.tryDetectOSCSupport(timeoutMs, false)
+    if (bareWorks) {
+      debugLog("detectOSCSupport: bare works!")
+      this.useTmuxPassthrough = false
+      return true
+    }
+
+    // If we're in tmux and bare didn't work, try wrapped passthrough
+    if (this.inTmux) {
+      debugLog("detectOSCSupport: bare failed in tmux, trying wrapped")
+      const wrappedWorks = await this.tryDetectOSCSupport(timeoutMs, true)
+      if (wrappedWorks) {
+        debugLog("detectOSCSupport: wrapped works!")
+        this.useTmuxPassthrough = true
+        return true
+      }
+      debugLog("detectOSCSupport: wrapped also failed")
+    }
+
+    debugLog("detectOSCSupport: no mode works")
+    return false
   }
 
   private async queryPalette(indices: number[], timeoutMs = 1200): Promise<Map<number, Hex>> {
