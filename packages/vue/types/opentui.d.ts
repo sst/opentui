@@ -103,7 +103,6 @@ export type TabSelectProps = VueComponentProps<TabSelectRenderableOptions, NonSt
 export type TextareaProps = VueComponentProps<TextareaOptions, NonStyledProps> & {
   focused?: boolean
   onKeyDown?: (event: KeyEvent) => void
-  onKeyPress?: (event: KeyEvent) => void
   onContentChange?: (content: string) => void
   onCursorChange?: (position: { line: number; visualColumn: number }) => void
 }
