@@ -5,10 +5,15 @@ import { TreeSitterClient } from "./tree-sitter/client"
 import type { SimpleHighlight } from "./tree-sitter/types"
 import { createTextAttributes } from "../utils"
 import { registerEnvVar, env } from "./env"
+import { processContentWithTables, type TableRenderOptions } from "./table-renderer"
 
 registerEnvVar({ name: "OTUI_TS_STYLE_WARN", default: false, description: "Enable warnings for missing syntax styles" })
 
 interface ConcealOptions {
+  enabled: boolean
+}
+
+export interface TableOptions extends TableRenderOptions {
   enabled: boolean
 }
 
@@ -35,15 +40,42 @@ function shouldSuppressInInjection(group: string, meta: any): boolean {
   return group === "markup.raw.block"
 }
 
+export interface TreeSitterToTextChunksOptions {
+  conceal?: ConcealOptions
+  table?: TableOptions
+}
+
 export function treeSitterToTextChunks(
   content: string,
   highlights: SimpleHighlight[],
   syntaxStyle: SyntaxStyle,
-  options?: ConcealOptions,
+  options?: TreeSitterToTextChunksOptions,
+): TextChunk[] {
+  const tableEnabled = options?.table?.enabled ?? false
+
+  if (tableEnabled) {
+    return processContentWithTables(
+      content,
+      highlights,
+      syntaxStyle,
+      options?.table,
+      (nonTableContent, nonTableHighlights, style) =>
+        treeSitterToTextChunksCore(nonTableContent, nonTableHighlights, style, options?.conceal),
+    )
+  }
+
+  return treeSitterToTextChunksCore(content, highlights, syntaxStyle, options?.conceal)
+}
+
+function treeSitterToTextChunksCore(
+  content: string,
+  highlights: SimpleHighlight[],
+  syntaxStyle: SyntaxStyle,
+  concealOptions?: ConcealOptions,
 ): TextChunk[] {
   const chunks: TextChunk[] = []
   const defaultStyle = syntaxStyle.getStyle("default")
-  const concealEnabled = options?.enabled ?? true
+  const concealEnabled = concealOptions?.enabled ?? true
 
   const injectionContainerRanges: Array<{ start: number; end: number }> = []
   const boundaries: Boundary[] = []
@@ -277,6 +309,7 @@ export function treeSitterToTextChunks(
 
 export interface TreeSitterToStyledTextOptions {
   conceal?: ConcealOptions
+  table?: TableOptions
 }
 
 export async function treeSitterToStyledText(
@@ -288,7 +321,10 @@ export async function treeSitterToStyledText(
 ): Promise<StyledText> {
   const result = await client.highlightOnce(content, filetype)
   if (result.highlights && result.highlights.length > 0) {
-    const chunks = treeSitterToTextChunks(content, result.highlights, syntaxStyle, options?.conceal)
+    const chunks = treeSitterToTextChunks(content, result.highlights, syntaxStyle, {
+      conceal: options?.conceal,
+      table: options?.table,
+    })
     return new StyledText(chunks)
   } else {
     const defaultStyle = syntaxStyle.mergeStyles("default")

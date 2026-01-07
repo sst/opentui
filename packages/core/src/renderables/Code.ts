@@ -5,7 +5,7 @@ import { getTreeSitterClient, treeSitterToStyledText, TreeSitterClient } from ".
 import { TextBufferRenderable, type TextBufferOptions } from "./TextBufferRenderable"
 import type { OptimizedBuffer } from "../buffer"
 import type { SimpleHighlight } from "../lib/tree-sitter/types"
-import { treeSitterToTextChunks } from "../lib/tree-sitter-styled-text"
+import { treeSitterToTextChunks, type TableOptions } from "../lib/tree-sitter-styled-text"
 
 export interface CodeOptions extends TextBufferOptions {
   content?: string
@@ -15,6 +15,7 @@ export interface CodeOptions extends TextBufferOptions {
   conceal?: boolean
   drawUnstyledText?: boolean
   streaming?: boolean
+  table?: TableOptions
 }
 
 export class CodeRenderable extends TextBufferRenderable {
@@ -31,6 +32,7 @@ export class CodeRenderable extends TextBufferRenderable {
   private _streaming: boolean
   private _hadInitialContent: boolean = false
   private _lastHighlights: SimpleHighlight[] = []
+  private _table?: TableOptions
 
   protected _contentDefaultOptions = {
     content: "",
@@ -49,6 +51,7 @@ export class CodeRenderable extends TextBufferRenderable {
     this._conceal = options.conceal ?? this._contentDefaultOptions.conceal
     this._drawUnstyledText = options.drawUnstyledText ?? this._contentDefaultOptions.drawUnstyledText
     this._streaming = options.streaming ?? this._contentDefaultOptions.streaming
+    this._table = options.table
 
     if (this._content.length > 0) {
       this.textBuffer.setText(this._content)
@@ -146,6 +149,17 @@ export class CodeRenderable extends TextBufferRenderable {
     }
   }
 
+  get table(): TableOptions | undefined {
+    return this._table
+  }
+
+  set table(value: TableOptions | undefined) {
+    if (this._table !== value) {
+      this._table = value
+      this._highlightsDirty = true
+    }
+  }
+
   get isHighlighting(): boolean {
     return this._isHighlighting
   }
@@ -202,7 +216,8 @@ export class CodeRenderable extends TextBufferRenderable {
         }
 
         const chunks = treeSitterToTextChunks(content, result.highlights, this._syntaxStyle, {
-          enabled: this._conceal,
+          conceal: { enabled: this._conceal },
+          table: this._table,
         })
         const styledText = new StyledText(chunks)
         this.textBuffer.setStyledText(styledText)

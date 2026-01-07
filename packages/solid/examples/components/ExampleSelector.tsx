@@ -16,8 +16,14 @@ import TabSelectDemo from "./tab-select-demo.tsx"
 import TextSelectionDemo from "./text-selection-demo.tsx"
 import TextStyleScene from "./text-style-demo.tsx"
 import { TextareaDemo } from "./textarea-demo.tsx"
+import { TableDemo } from "./table-demo.tsx"
 
 const EXAMPLES = [
+  {
+    name: "Table Rendering Demo",
+    description: "Markdown table rendering with Unicode/ASCII styles and CJK support",
+    scene: "table-demo",
+  },
   {
     name: "Diff Viewer Demo",
     description: "Unified and split diff view with syntax highlighting",
@@ -150,6 +156,9 @@ const ExampleSelector = () => {
 
   return (
     <Switch>
+      <Match when={selectedScene() === "table-demo"}>
+        <TableDemo />
+      </Match>
       <Match when={selectedScene() === "diff-demo"}>
         <DiffDemo />
       </Match>
