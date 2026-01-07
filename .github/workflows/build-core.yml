@@ -8,7 +8,7 @@ on:
 jobs:
   build-native:
     name: Build Native (All Platforms)
-    runs-on: ubuntu-latest
+    runs-on: macos-latest
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
@@ -25,9 +25,6 @@ jobs:
 
       - name: Install dependencies
         run: bun install
-
-      - name: Install multilib headers
-        run: sudo apt-get update && sudo apt-get install -y gcc-multilib g++-multilib
 
       - name: Build native for all platforms
         run: |
