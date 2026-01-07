@@ -1256,13 +1256,7 @@ export class CliRenderer extends EventEmitter implements RenderContext {
       for (const command of this.hitGridCommands) {
         switch (command.action) {
           case "pushScissorRect":
-            this.lib.hitGridPushScissorRect(
-              this.rendererPtr,
-              command.x,
-              command.y,
-              command.width,
-              command.height,
-            )
+            this.lib.hitGridPushScissorRect(this.rendererPtr, command.x, command.y, command.width, command.height)
             break
           case "popScissorRect":
             this.lib.hitGridPopScissorRect(this.rendererPtr)
