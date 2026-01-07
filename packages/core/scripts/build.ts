@@ -59,7 +59,12 @@ if (!buildLib && !buildNative) {
 }
 
 const getZigTarget = (platform: string, arch: string): string => {
-  const platformMap: Record<string, string> = { darwin: "macos", win32: "windows", linux: "linux", "linux-musl": "linux-musl" }
+  const platformMap: Record<string, string> = {
+    darwin: "macos",
+    win32: "windows",
+    linux: "linux",
+    "linux-musl": "linux-musl",
+  }
   const archMap: Record<string, string> = { x64: "x86_64", arm64: "aarch64" }
   return `${archMap[arch] ?? arch}-${platformMap[platform] ?? platform}`
 }
