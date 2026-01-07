@@ -165,13 +165,6 @@ jobs:
             echo "⚠️  Solid dist not found (skipping)"
           fi
 
-          if [ -d packages/vue/dist ]; then
-            cp -r packages/vue/dist artifacts/npm-packages/vue-dist
-            echo "✅ Vue dist packaged"
-          else
-            echo "⚠️  Vue dist not found (skipping)"
-          fi
-
           cd artifacts
           zip -r npm-packages.zip npm-packages/
           test -f npm-packages.zip || (echo "❌ Failed to create npm-packages zip" && exit 1)
