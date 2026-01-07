@@ -26,6 +26,9 @@ jobs:
       - name: Install dependencies
         run: bun install
 
+      - name: Install multilib headers
+        run: sudo apt-get update && sudo apt-get install -y gcc-multilib g++-multilib
+
       - name: Build native for all platforms
         run: |
           cd packages/core
