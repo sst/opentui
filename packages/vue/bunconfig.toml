@@ -1,9 +1,0 @@
-[jsx]
-runtime = "automatic"
-importSource = "vue"
-
-[build]
-target = "bun"
-format = "esm"
-splitting = false
-outdir = "dist"
