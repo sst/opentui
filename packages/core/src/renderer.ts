@@ -1853,7 +1853,12 @@ export class CliRenderer extends EventEmitter implements RenderContext {
         const overallFrameTime = performance.now() - overallStart
 
         // TODO: Add animationRequestTime to stats
-        this.lib.updateStats(this.rendererPtr, overallFrameTime, this.renderStats.fps, this.renderStats.frameCallbackTime)
+        this.lib.updateStats(
+          this.rendererPtr,
+          overallFrameTime,
+          this.renderStats.fps,
+          this.renderStats.frameCallbackTime,
+        )
 
         if (this.gatherStats) {
           this.collectStatSample(overallFrameTime)
