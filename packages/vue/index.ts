@@ -55,9 +55,14 @@ export function getCurrentCliRenderer(): CliRenderer | null {
   return currentCliRenderer
 }
 
-export async function render(component: Component, rendererConfig: CliRendererConfig = {}): Promise<void> {
+export async function render(
+  component: Component,
+  rendererOrConfig: CliRenderer | CliRendererConfig = {},
+): Promise<void> {
   const { shouldEnableDevtools, devtoolsCleanup } = await initializeDevtools()
-  const cliRenderer = await createCliRenderer(rendererConfig)
+
+  const cliRenderer =
+    rendererOrConfig instanceof CliRenderer ? rendererOrConfig : await createCliRenderer(rendererOrConfig)
   currentCliRenderer = cliRenderer
 
   engine.attach(cliRenderer)
@@ -83,7 +88,7 @@ export async function render(component: Component, rendererConfig: CliRendererCo
     try {
       const { setupOpenTUIDevtools } = await import("./src/devtools")
 
-        ; (app.config as unknown as Record<string, unknown>).devtools = true
+      ;(app.config as unknown as Record<string, unknown>).devtools = true
       setupOpenTUIDevtools(app as App, cliRenderer)
     } catch (e) {
       if (process.env["NODE_ENV"] === "development") {

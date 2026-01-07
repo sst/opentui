@@ -55,11 +55,10 @@ declare module "*.vue" {
 
 ```ts
 // index.ts
-import { createApp } from "vue"
 import { render } from "@opentui/vue"
 import App from "./App.vue"
 
-render(createApp(App))
+render(App)
 ```
 
 ### 6. Create a build script build.ts.
