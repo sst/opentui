@@ -1783,6 +1783,10 @@ export class CliRenderer extends EventEmitter implements RenderContext {
       clearTimeout(this.renderTimeout)
       this.renderTimeout = null
     }
+    const stopRendering = () => {
+      this.rendering = false
+      this.resolveIdleIfNeeded()
+    }
 
     const now = Date.now()
     const elapsed = now - this.lastTime
@@ -1804,10 +1808,14 @@ export class CliRenderer extends EventEmitter implements RenderContext {
     const frameRequests = Array.from(this.animationRequest.values())
     this.animationRequest.clear()
     const animationRequestStart = performance.now()
-    frameRequests.forEach((callback) => {
+    for (const callback of frameRequests) {
       callback(deltaTime)
       this.dropLive()
-    })
+      if (this._isDestroyed) {
+        stopRendering()
+        return
+      }
+    }
     const animationRequestEnd = performance.now()
     const animationRequestTime = animationRequestEnd - animationRequestStart
 
@@ -1818,15 +1826,26 @@ export class CliRenderer extends EventEmitter implements RenderContext {
       } catch (error) {
         console.error("Error in frame callback:", error)
       }
+      if (this._isDestroyed) {
+        stopRendering()
+        return
+      }
     }
     const end = performance.now()
     this.renderStats.frameCallbackTime = end - start
 
-    // Render the renderable tree
     this.root.render(this.nextRenderBuffer, deltaTime)
+    if (this._isDestroyed) {
+      stopRendering()
+      return
+    }
 
     for (const postProcessFn of this.postProcessFns) {
       postProcessFn(this.nextRenderBuffer, deltaTime)
+      if (this._isDestroyed) {
+        stopRendering()
+        return
+      }
     }
 
     this._console.renderToBuffer(this.nextRenderBuffer)

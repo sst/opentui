@@ -1376,6 +1376,7 @@ export abstract class Renderable extends BaseRenderable {
   }
 
   public render(buffer: OptimizedBuffer, deltaTime: number): void {
+    if (this._isDestroyed || this._ctx.isDestroyed) return
     let renderBuffer = buffer
     if (this.buffered && this.frameBuffer) {
       renderBuffer = this.frameBuffer
@@ -1383,12 +1384,15 @@ export abstract class Renderable extends BaseRenderable {
 
     if (this.renderBefore) {
       this.renderBefore.call(this, renderBuffer, deltaTime)
+      if (this._isDestroyed || this._ctx.isDestroyed) return
     }
 
     this.renderSelf(renderBuffer, deltaTime)
+    if (this._isDestroyed || this._ctx.isDestroyed) return
 
     if (this.renderAfter) {
       this.renderAfter.call(this, renderBuffer, deltaTime)
+      if (this._isDestroyed || this._ctx.isDestroyed) return
     }
 
     this.markClean()
@@ -1695,10 +1699,12 @@ export class RootRenderable extends Renderable {
     // 2. Update layout throughout the tree and collect render list
     this.renderList.length = 0
     this.updateLayout(deltaTime, this.renderList)
+    if (this._ctx.isDestroyed) return
 
     // 3. Render all collected renderables
     this._ctx.clearHitGridScissorRects()
     for (let i = 1; i < this.renderList.length; i++) {
+      if (this._ctx.isDestroyed) return
       const command = this.renderList[i]
       switch (command.action) {
         case "render":
