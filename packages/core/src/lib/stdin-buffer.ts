@@ -15,6 +15,7 @@
  */
 
 import { EventEmitter } from "events"
+import { firstGrapheme } from "./grapheme-segmenter"
 
 const ESC = "\x1b"
 const BRACKETED_PASTE_START = "\x1b[200~"
@@ -122,58 +123,15 @@ function isCompleteCsiSequence(data: string): "complete" | "incomplete" {
   return "incomplete"
 }
 
-/**
- * Check if OSC sequence is complete
- * OSC sequences: ESC ] ... ST (where ST is ESC \ or BEL)
- */
-function isCompleteOscSequence(data: string): "complete" | "incomplete" {
-  if (!data.startsWith(ESC + "]")) {
-    return "complete"
-  }
-
-  // OSC sequences end with ST (ESC \) or BEL (\x07)
-  if (data.endsWith(ESC + "\\") || data.endsWith("\x07")) {
-    return "complete"
-  }
-
+function isCompleteStTerminatedSequence(data: string, prefix: string, allowBel = false): "complete" | "incomplete" {
+  if (!data.startsWith(ESC + prefix)) return "complete"
+  if (data.endsWith(ESC + "\\") || (allowBel && data.endsWith("\x07"))) return "complete"
   return "incomplete"
 }
 
-/**
- * Check if DCS (Device Control String) sequence is complete
- * DCS sequences: ESC P ... ST (where ST is ESC \)
- * Used for XTVersion responses like ESC P >| ... ESC \
- */
-function isCompleteDcsSequence(data: string): "complete" | "incomplete" {
-  if (!data.startsWith(ESC + "P")) {
-    return "complete"
-  }
-
-  // DCS sequences end with ST (ESC \)
-  if (data.endsWith(ESC + "\\")) {
-    return "complete"
-  }
-
-  return "incomplete"
-}
-
-/**
- * Check if APC (Application Program Command) sequence is complete
- * APC sequences: ESC _ ... ST (where ST is ESC \)
- * Used for Kitty graphics responses like ESC _ G ... ESC \
- */
-function isCompleteApcSequence(data: string): "complete" | "incomplete" {
-  if (!data.startsWith(ESC + "_")) {
-    return "complete"
-  }
-
-  // APC sequences end with ST (ESC \)
-  if (data.endsWith(ESC + "\\")) {
-    return "complete"
-  }
-
-  return "incomplete"
-}
+const isCompleteOscSequence = (data: string) => isCompleteStTerminatedSequence(data, "]", true)
+const isCompleteDcsSequence = (data: string) => isCompleteStTerminatedSequence(data, "P")
+const isCompleteApcSequence = (data: string) => isCompleteStTerminatedSequence(data, "_")
 
 /**
  * Split accumulated buffer into complete sequences
@@ -211,9 +169,11 @@ function extractCompleteSequences(buffer: string): { sequences: string[]; remain
         return { sequences, remainder: remaining }
       }
     } else {
-      // Not an escape sequence - take a single character
-      sequences.push(remaining[0])
-      pos++
+      // Not an escape sequence - take a single grapheme cluster
+      // This correctly handles emoji, CJK characters, and other multi-byte sequences
+      const grapheme = firstGrapheme(remaining)
+      sequences.push(grapheme)
+      pos += grapheme.length
     }
   }
 
@@ -249,6 +209,20 @@ export class StdinBuffer extends EventEmitter<StdinBufferEventMap> {
     this.timeoutMs = options.timeout ?? 10
   }
 
+  private tryCompletePaste(): { completed: boolean; remaining: string } {
+    const endIndex = this.pasteBuffer.indexOf(BRACKETED_PASTE_END)
+    if (endIndex === -1) return { completed: false, remaining: "" }
+
+    const pastedContent = this.pasteBuffer.slice(0, endIndex)
+    const remaining = this.pasteBuffer.slice(endIndex + BRACKETED_PASTE_END.length)
+
+    this.pasteMode = false
+    this.pasteBuffer = ""
+    this.emit("paste", pastedContent)
+
+    return { completed: true, remaining }
+  }
+
   public process(data: string | Buffer): void {
     // Clear any pending timeout
     if (this.timeout) {
@@ -281,71 +255,57 @@ export class StdinBuffer extends EventEmitter<StdinBufferEventMap> {
     if (this.pasteMode) {
       this.pasteBuffer += this.buffer
       this.buffer = ""
-
-      const endIndex = this.pasteBuffer.indexOf(BRACKETED_PASTE_END)
-      if (endIndex !== -1) {
-        const pastedContent = this.pasteBuffer.slice(0, endIndex)
-        const remaining = this.pasteBuffer.slice(endIndex + BRACKETED_PASTE_END.length)
-
-        this.pasteMode = false
-        this.pasteBuffer = ""
-
-        this.emit("paste", pastedContent)
-
-        if (remaining.length > 0) {
-          this.process(remaining)
-        }
+      const result = this.tryCompletePaste()
+      if (result.remaining.length > 0) {
+        this.buffer = result.remaining
+        return this.processNonPasteBuffer()
       }
       return
     }
 
-    const startIndex = this.buffer.indexOf(BRACKETED_PASTE_START)
-    if (startIndex !== -1) {
-      if (startIndex > 0) {
-        const beforePaste = this.buffer.slice(0, startIndex)
-        const result = extractCompleteSequences(beforePaste)
-        for (const sequence of result.sequences) {
-          this.emit("data", sequence)
+    this.processNonPasteBuffer()
+  }
+
+  private processNonPasteBuffer(): void {
+    while (true) {
+      const startIndex = this.buffer.indexOf(BRACKETED_PASTE_START)
+      if (startIndex !== -1) {
+        if (startIndex > 0) {
+          const result = extractCompleteSequences(this.buffer.slice(0, startIndex))
+          for (const seq of result.sequences) {
+            this.emit("data", seq)
+          }
         }
+
+        this.buffer = this.buffer.slice(startIndex + BRACKETED_PASTE_START.length)
+        this.pasteMode = true
+        this.pasteBuffer = this.buffer
+        this.buffer = ""
+        const result = this.tryCompletePaste()
+        if (result.remaining.length > 0) {
+          this.buffer = result.remaining
+          continue
+        }
+        return
       }
 
-      this.buffer = this.buffer.slice(startIndex + BRACKETED_PASTE_START.length)
-      this.pasteMode = true
-      this.pasteBuffer = this.buffer
-      this.buffer = ""
+      const result = extractCompleteSequences(this.buffer)
+      this.buffer = result.remainder
 
-      const endIndex = this.pasteBuffer.indexOf(BRACKETED_PASTE_END)
-      if (endIndex !== -1) {
-        const pastedContent = this.pasteBuffer.slice(0, endIndex)
-        const remaining = this.pasteBuffer.slice(endIndex + BRACKETED_PASTE_END.length)
+      for (const seq of result.sequences) {
+        this.emit("data", seq)
+      }
 
-        this.pasteMode = false
-        this.pasteBuffer = ""
+      if (this.buffer.length > 0) {
+        this.timeout = setTimeout(() => {
+          const flushed = this.flush()
 
-        this.emit("paste", pastedContent)
-
-        if (remaining.length > 0) {
-          this.process(remaining)
-        }
+          for (const sequence of flushed) {
+            this.emit("data", sequence)
+          }
+        }, this.timeoutMs)
       }
       return
-    }
-
-    const result = extractCompleteSequences(this.buffer)
-    this.buffer = result.remainder
-
-    for (const sequence of result.sequences) {
-      this.emit("data", sequence)
-    }
-
-    if (this.buffer.length > 0) {
-      this.timeout = setTimeout(() => {
-        const flushed = this.flush()
-
-        for (const sequence of flushed) {
-          this.emit("data", sequence)
-        }
-      }, this.timeoutMs)
     }
   }
 
@@ -355,12 +315,13 @@ export class StdinBuffer extends EventEmitter<StdinBufferEventMap> {
       this.timeout = null
     }
 
-    if (this.buffer.length === 0) {
-      return []
+    const sequences: string[] = []
+
+    if (this.buffer.length > 0) {
+      sequences.push(this.buffer)
+      this.buffer = ""
     }
 
-    const sequences = [this.buffer]
-    this.buffer = ""
     return sequences
   }
 

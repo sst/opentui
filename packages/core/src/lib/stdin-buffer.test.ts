@@ -15,12 +15,16 @@ describe("StdinBuffer", () => {
     })
   })
 
-  // Helper to process data through the buffer
   function processInput(data: string | Buffer): void {
     buffer.process(data)
   }
 
-  // Helper to wait for async operations
+  function flushBuffer(): void {
+    for (const seq of buffer.flush()) {
+      emittedSequences.push(seq)
+    }
+  }
+
   async function wait(ms: number): Promise<void> {
     return new Promise((resolve) => setTimeout(resolve, ms))
   }
@@ -663,6 +667,95 @@ describe("StdinBuffer", () => {
 
       expect(emittedPaste).toEqual(["The text \\x1b[200~ is literal"])
       expect(emittedSequences).toEqual([])
+    })
+  })
+
+  describe("Grapheme Cluster Handling", () => {
+    it("should keep basic emoji as single sequence", () => {
+      processInput("🌟")
+      expect(emittedSequences).toEqual(["🌟"])
+    })
+
+    it("should keep multiple basic emoji as separate sequences", () => {
+      processInput("🌟👍🎉")
+      expect(emittedSequences).toEqual(["🌟", "👍", "🎉"])
+    })
+
+    it("should keep ZWJ family emoji as single sequence", () => {
+      processInput("👨‍👩‍👧‍👦")
+      expect(emittedSequences).toEqual(["👨‍👩‍👧‍👦"])
+    })
+
+    it("should keep flag emoji as single sequence", () => {
+      processInput("🇺🇸")
+      expect(emittedSequences).toEqual(["🇺🇸"])
+    })
+
+    it("should keep skin tone emoji as single sequence", () => {
+      processInput("👋🏻")
+      expect(emittedSequences).toEqual(["👋🏻"])
+    })
+
+    it("should keep emoji with VS16 as single sequence", () => {
+      processInput("❤️")
+      expect(emittedSequences).toEqual(["❤️"])
+    })
+
+    it("should handle mixed ASCII and emoji", () => {
+      processInput("Hi👋there")
+      expect(emittedSequences).toEqual(["H", "i", "👋", "t", "h", "e", "r", "e"])
+    })
+
+    it("should handle mixed CJK and emoji", () => {
+      processInput("世界🌍")
+      expect(emittedSequences).toEqual(["世", "界", "🌍"])
+    })
+
+    it("should handle complex ZWJ sequences", () => {
+      processInput("👩‍🚀")
+      expect(emittedSequences).toEqual(["👩‍🚀"])
+    })
+
+    it("should handle rainbow flag", () => {
+      processInput("🏳️‍🌈")
+      expect(emittedSequences).toEqual(["🏳️‍🌈"])
+    })
+
+    it("should handle emoji between escape sequences", () => {
+      processInput("\x1b[A🌟\x1b[B")
+      expect(emittedSequences).toEqual(["\x1b[A", "🌟", "\x1b[B"])
+    })
+
+    it("should handle ASCII with variation selector (keycap)", () => {
+      processInput("#️⃣")
+      expect(emittedSequences).toEqual(["#️⃣"])
+    })
+  })
+
+  describe("Kitty Keyboard Protocol Sequences", () => {
+    const kitty = (codepoint: number) => `\x1b[${codepoint}u`
+
+    it("should preserve Kitty sequences as-is for downstream parsing", () => {
+      processInput(kitty(97))
+      expect(emittedSequences).toEqual([kitty(97)])
+    })
+
+    it("should preserve Kitty emoji sequences as-is", () => {
+      processInput(kitty(0x1f600))
+      expect(emittedSequences).toEqual([kitty(0x1f600)])
+    })
+
+    it("should handle mixed Kitty and regular escape sequences", () => {
+      processInput(kitty(0x1f600))
+      processInput("\x1b[A")
+      expect(emittedSequences).toEqual([kitty(0x1f600), "\x1b[A"])
+    })
+
+    it("should handle multiple Kitty sequences", () => {
+      processInput(kitty(0x1f468))
+      processInput(kitty(0x200d))
+      processInput(kitty(0x1f469))
+      expect(emittedSequences).toEqual([kitty(0x1f468), kitty(0x200d), kitty(0x1f469)])
     })
   })
 
