@@ -46,9 +46,9 @@ timeline.add(
 </script>
 
 <template>
-  <boxRenderable :style="{ zIndex: 5 }">
+  <box :style="{ zIndex: 5 }">
     <!-- System Monitor Panel -->
-    <boxRenderable
+    <box
       title="SYSTEM MONITOR"
       titleAlignment="center"
       :style="{
@@ -64,7 +64,7 @@ timeline.add(
         borderColor: '#4a4a4a',
       }"
     >
-      <boxRenderable
+      <box
         v-for="system in systems"
         :key="system.name"
         :style="{
@@ -75,7 +75,7 @@ timeline.add(
           paddingRight: 2,
         }"
       >
-        <textRenderable
+        <Text
           :style="{
             fg: system.color,
             zIndex: 2,
@@ -83,8 +83,8 @@ timeline.add(
           }"
         >
           {{ system.name }}
-        </textRenderable>
-        <boxRenderable
+        </Text>
+        <box
           :style="{
             height: 1,
             backgroundColor: '#333333',
@@ -92,7 +92,7 @@ timeline.add(
             flexGrow: 1,
           }"
         >
-          <boxRenderable
+          <box
             :style="{
               width: `${animatedSystem[system.animKey]}%`,
               height: 1,
@@ -100,12 +100,12 @@ timeline.add(
               zIndex: 2,
             }"
           />
-        </boxRenderable>
-      </boxRenderable>
-    </boxRenderable>
+        </box>
+      </box>
+    </box>
 
     <!-- Real-time Stats Panel -->
-    <boxRenderable
+    <box
       title="◇ REAL-TIME STATS ◇"
       titleAlignment="center"
       :style="{
@@ -123,7 +123,7 @@ timeline.add(
     />
 
     <!-- Stats Labels -->
-    <textRenderable
+    <Text
       v-for="(label, index) in stats"
       :key="label"
       :style="{
@@ -135,10 +135,10 @@ timeline.add(
       }"
     >
       {{ label }}: 0
-    </textRenderable>
+    </Text>
 
     <!-- Top Left Indicators -->
-    <boxRenderable
+    <box
       v-for="(color, index) in topColors"
       :key="`top-${index}`"
       :style="{
@@ -153,7 +153,7 @@ timeline.add(
     />
 
     <!-- Top Right Indicators -->
-    <boxRenderable
+    <box
       v-for="(color, index) in rightColors"
       :key="`right-${index}`"
       :style="{
@@ -168,7 +168,7 @@ timeline.add(
     />
 
     <!-- Instructions -->
-    <textRenderable
+    <Text
       :style="{
         position: 'absolute',
         left: 2,
@@ -177,6 +177,6 @@ timeline.add(
       }"
     >
       Press ESC to return to menu
-    </textRenderable>
-  </boxRenderable>
+    </Text>
+  </box>
 </template>

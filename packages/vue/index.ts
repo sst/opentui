@@ -8,10 +8,11 @@ import {
 } from "@opentui/core"
 import { createOpenTUIRenderer } from "./src/renderer"
 import { defineComponent, h, shallowRef, type App, type Component, type InjectionKey } from "vue"
-import { elements } from "./src/elements"
+import { elements, textNodeKeys, type Element, type TextNodeKey } from "./src/elements"
 import { initializeDevtools } from "./src/devtools"
 export * from "./src/composables/index"
 export * from "./src/extend"
+export { OpenTUIResolver } from "./src/resolver"
 export { testRender } from "./src/test-utils"
 export { Portal, type PortalProps } from "./src/components/Portal"
 export { setupOpenTUIDevtools, type OpenTUIDevtoolsSettings } from "./src/devtools"
@@ -99,3 +100,34 @@ export async function render(
 
   app.mount(cliRenderer.root)
 }
+
+// Component catalogue exports (matching Solid API)
+export { elements, textNodeKeys, type Element, type TextNodeKey }
+
+/**
+ * Base components (non-text-node components).
+ * Derived from elements by excluding text node keys.
+ */
+export const baseComponents = Object.fromEntries(
+  Object.entries(elements).filter(([key]) => !textNodeKeys.includes(key as TextNodeKey)),
+) as Omit<typeof elements, TextNodeKey>
+
+export type {
+  TextProps,
+  BoxProps,
+  ScrollBoxProps,
+  InputProps,
+  SelectProps,
+  TabSelectProps,
+  TextareaProps,
+  CodeProps,
+  DiffProps,
+  LineNumberProps,
+  AsciiFontProps,
+  SpanProps,
+  LinkProps,
+  RenderableConstructor,
+  ExtendedComponentProps,
+  ExtendedIntrinsicElements,
+  OpenTUIComponents,
+} from "./types/opentui"

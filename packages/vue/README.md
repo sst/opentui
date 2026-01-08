@@ -45,9 +45,9 @@ declare module "*.vue" {
 </script>
 
 <template>
-    <textRenderable :style="{ fg: '#ff0000' }">
+    <Text :style="{ fg: '#ff0000' }">
         Hello World
-    </textRenderable>
+    </Text>
 </template>
 ```
 
@@ -103,9 +103,9 @@ bun run dist/index.js
 
 ## Note
 
-Important Note on <textRenderable>
+Important Note on `<Text>`
 
-The <textRenderable> component only accepts plain text as a direct child. For styled text or text chunks, you must use the content prop.
+The `<Text>` component only accepts plain text as a direct child. For styled text or text chunks, you must use the content prop.
 
 ```jsx
 <script setup lang="ts">
@@ -116,10 +116,10 @@ const textChunk: TextChunk = bold(`This is a text chunk.`)
 </script>
 
 <template>
-  <textRenderable :content="styledText" />
-  <textRenderable :content="textChunk" />
+  <Text :content="styledText" />
+  <Text :content="textChunk" />
 
-<textRenderable>This is plain text.</textRenderable>
+  <Text>This is plain text.</Text>
 </template>
 ```
 
@@ -155,9 +155,9 @@ useKeyboard((key: KeyEvent) => {
 </script>
 
 <template>
-  <textRenderable>
+  <Text>
     Last key pressed: {{ lastKey }}
-  </textRenderable>
+  </Text>
 </template>
 ```
 
@@ -187,9 +187,9 @@ const dimensions = useTerminalDimensions()
 </script>
 
 <template>
-  <textRenderable>
+  <Text>
     Width: {{ dimensions.width }}, Height: {{ dimensions.height }}
-  </textRenderable>
+  </Text>
 </template>
 ```
 
@@ -249,7 +249,7 @@ export class ConsoleButtonRenderable extends BoxRenderable {
 
 #### 2. Register the new component
 
-In your application's entry point (e.g., `main.ts`), import the `extend` function and your custom component. Then, call `extend` with an object where the key is the component's tag name (in camelCase) and the value is the component class.
+In your application's entry point (e.g., `main.ts`), import the `extend` function and your custom component. Then, call `extend` with an object where the key is the component's tag name (in PascalCase) and the value is the component class.
 
 `main.ts`:
 
@@ -259,7 +259,7 @@ import { ConsoleButtonRenderable } from "./CustomButtonRenderable"
 import App from "./App.vue"
 
 // Register the custom component
-extend({ consoleButtonRenderable: ConsoleButtonRenderable })
+extend({ ConsoleButton: ConsoleButtonRenderable })
 
 // Render the app
 render(App)
@@ -278,7 +278,7 @@ import { ConsoleButtonRenderable } from "./CustomButtonRenderable"
 
 declare module "@opentui/vue" {
   export interface OpenTUIComponents {
-    consoleButtonRenderable: typeof ConsoleButtonRenderable
+    ConsoleButton: typeof ConsoleButtonRenderable
   }
 }
 ```
@@ -287,21 +287,21 @@ _Note: Make sure this file is included in your `tsconfig.json`._
 
 #### 4. Use your custom component
 
-Now you can use `<consoleButtonRenderable>` in your Vue components just like any other OpenTUI component.
+Now you can use `<ConsoleButton>` in your Vue components just like any other OpenTUI component.
 
 `ExtendExample.vue`:
 
 ```vue
 <template>
-  <boxRenderable :style="{ flexDirection: 'column' }">
-    <textRenderable>Custom Button Example</textRenderable>
-    <consoleButtonRenderable
+  <box :style="{ flexDirection: 'column' }">
+    <Text>Custom Button Example</Text>
+    <ConsoleButton
       label="Another Button"
       :style="{
         backgroundColor: 'green',
       }"
     />
-  </boxRenderable>
+  </box>
 </template>
 
 <script setup lang="ts"></script>

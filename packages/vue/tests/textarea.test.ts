@@ -23,7 +23,7 @@ describe("Vue Renderer | Textarea Layout Tests", () => {
       const TestComponent = defineComponent({
         setup() {
           return () =>
-            h("textareaRenderable", {
+            h("Textarea", {
               initialValue: "Hello World",
               width: 20,
               height: 5,
@@ -47,7 +47,7 @@ describe("Vue Renderer | Textarea Layout Tests", () => {
       const TestComponent = defineComponent({
         setup() {
           return () =>
-            h("textareaRenderable", {
+            h("Textarea", {
               initialValue: "Line 1\nLine 2\nLine 3",
               width: 20,
               height: 10,
@@ -71,7 +71,7 @@ describe("Vue Renderer | Textarea Layout Tests", () => {
       const TestComponent = defineComponent({
         setup() {
           return () =>
-            h("textareaRenderable", {
+            h("Textarea", {
               initialValue: "This is a very long line that should wrap to multiple lines when word wrapping is enabled",
               wrapMode: "word",
               width: 20,
@@ -95,7 +95,7 @@ describe("Vue Renderer | Textarea Layout Tests", () => {
       const TestComponent = defineComponent({
         setup() {
           return () =>
-            h("textareaRenderable", {
+            h("Textarea", {
               initialValue: "",
               placeholder: "Type something here...",
               placeholderColor: "#666666",
@@ -123,15 +123,15 @@ describe("Vue Renderer | Textarea Layout Tests", () => {
       const TestComponent = defineComponent({
         setup() {
           return () =>
-            h("boxRenderable", { border: true, borderColor: "#444444" }, [
-              h("boxRenderable", { flexDirection: "row" }, [
+            h("box", { border: true, borderColor: "#444444" }, [
+              h("box", { flexDirection: "row" }, [
                 h(
-                  "boxRenderable",
+                  "box",
                   { width: 3, justifyContent: "center", alignItems: "center", backgroundColor: "#2d2d2d" },
-                  [h("textRenderable", { attributes: TextAttributes.BOLD, fg: "#00ff00" }, ">")],
+                  [h("Text", { attributes: TextAttributes.BOLD, fg: "#00ff00" }, ">")],
                 ),
-                h("boxRenderable", { paddingTop: 1, paddingBottom: 1, backgroundColor: "#1e1e1e", flexGrow: 1 }, [
-                  h("textareaRenderable", {
+                h("box", { paddingTop: 1, paddingBottom: 1, backgroundColor: "#1e1e1e", flexGrow: 1 }, [
+                  h("Textarea", {
                     initialValue: "Hello from the prompt",
                     flexShrink: 1,
                     backgroundColor: "#1e1e1e",
@@ -139,15 +139,15 @@ describe("Vue Renderer | Textarea Layout Tests", () => {
                     cursorColor: "#00ff00",
                   }),
                 ]),
-                h("boxRenderable", { backgroundColor: "#1e1e1e", width: 1 }),
+                h("box", { backgroundColor: "#1e1e1e", width: 1 }),
               ]),
-              h("boxRenderable", { flexDirection: "row", justifyContent: "space-between" }, [
-                h("textRenderable", { wrapMode: "none" }, [
-                  h("spanRenderable", { style: { fg: "#888888" } }, "provider"),
+              h("box", { flexDirection: "row", justifyContent: "space-between" }, [
+                h("Text", { wrapMode: "none" }, [
+                  h("Span", { style: { fg: "#888888" } }, "provider"),
                   " ",
-                  h("spanRenderable", { style: { bold: true } }, "model-name"),
+                  h("Span", { style: { bold: true } }, "model-name"),
                 ]),
-                h("textRenderable", { fg: "#888888" }, "ctrl+p commands"),
+                h("Text", { fg: "#888888" }, "ctrl+p commands"),
               ]),
             ])
         },
@@ -167,15 +167,15 @@ describe("Vue Renderer | Textarea Layout Tests", () => {
       const TestComponent = defineComponent({
         setup() {
           return () =>
-            h("boxRenderable", { border: true, borderColor: "#444444", width: "100%" }, [
-              h("boxRenderable", { flexDirection: "row", width: "100%" }, [
+            h("box", { border: true, borderColor: "#444444", width: "100%" }, [
+              h("box", { flexDirection: "row", width: "100%" }, [
                 h(
-                  "boxRenderable",
+                  "box",
                   { width: 3, justifyContent: "center", alignItems: "center", backgroundColor: "#2d2d2d" },
-                  [h("textRenderable", { attributes: TextAttributes.BOLD, fg: "#00ff00" }, ">")],
+                  [h("Text", { attributes: TextAttributes.BOLD, fg: "#00ff00" }, ">")],
                 ),
-                h("boxRenderable", { paddingTop: 1, paddingBottom: 1, backgroundColor: "#1e1e1e", flexGrow: 1 }, [
-                  h("textareaRenderable", {
+                h("box", { paddingTop: 1, paddingBottom: 1, backgroundColor: "#1e1e1e", flexGrow: 1 }, [
+                  h("Textarea", {
                     initialValue:
                       "This is a very long prompt that will wrap across multiple lines in the textarea. It should maintain proper layout with the indicator on the left.",
                     wrapMode: "word",
@@ -184,13 +184,13 @@ describe("Vue Renderer | Textarea Layout Tests", () => {
                     textColor: "#ffffff",
                   }),
                 ]),
-                h("boxRenderable", { backgroundColor: "#1e1e1e", width: 1 }),
+                h("box", { backgroundColor: "#1e1e1e", width: 1 }),
               ]),
-              h("boxRenderable", { flexDirection: "row" }, [
-                h("textRenderable", { wrapMode: "none" }, [
-                  h("spanRenderable", { style: { fg: "#888888" } }, "openai"),
+              h("box", { flexDirection: "row" }, [
+                h("Text", { wrapMode: "none" }, [
+                  h("Span", { style: { fg: "#888888" } }, "openai"),
                   " ",
-                  h("spanRenderable", { style: { bold: true } }, "gpt-4"),
+                  h("Span", { style: { bold: true } }, "gpt-4"),
                 ]),
               ]),
             ])
@@ -211,15 +211,15 @@ describe("Vue Renderer | Textarea Layout Tests", () => {
       const TestComponent = defineComponent({
         setup() {
           return () =>
-            h("boxRenderable", { border: true, borderColor: "#ff9900" }, [
-              h("boxRenderable", { flexDirection: "row" }, [
+            h("box", { border: true, borderColor: "#ff9900" }, [
+              h("box", { flexDirection: "row" }, [
                 h(
-                  "boxRenderable",
+                  "box",
                   { width: 3, justifyContent: "center", alignItems: "center", backgroundColor: "#2d2d2d" },
-                  [h("textRenderable", { attributes: TextAttributes.BOLD, fg: "#ff9900" }, "!")],
+                  [h("Text", { attributes: TextAttributes.BOLD, fg: "#ff9900" }, "!")],
                 ),
-                h("boxRenderable", { paddingTop: 1, paddingBottom: 1, backgroundColor: "#1e1e1e", flexGrow: 1 }, [
-                  h("textareaRenderable", {
+                h("box", { paddingTop: 1, paddingBottom: 1, backgroundColor: "#1e1e1e", flexGrow: 1 }, [
+                  h("Textarea", {
                     initialValue: "ls -la",
                     flexShrink: 1,
                     backgroundColor: "#1e1e1e",
@@ -227,9 +227,9 @@ describe("Vue Renderer | Textarea Layout Tests", () => {
                     cursorColor: "#ff9900",
                   }),
                 ]),
-                h("boxRenderable", { backgroundColor: "#1e1e1e", width: 1 }),
+                h("box", { backgroundColor: "#1e1e1e", width: 1 }),
               ]),
-              h("boxRenderable", { flexDirection: "row" }, [h("textRenderable", { fg: "#888888" }, "shell mode")]),
+              h("box", { flexDirection: "row" }, [h("Text", { fg: "#888888" }, "shell mode")]),
             ])
         },
       })
@@ -250,14 +250,14 @@ describe("Vue Renderer | Textarea Layout Tests", () => {
       const TestComponent = defineComponent({
         setup() {
           return () =>
-            h("boxRenderable", { border: true, title: "Chat" }, [
-              h("boxRenderable", { border: true, borderColor: "#00ff00", marginBottom: 1 }, [
-                h("boxRenderable", { flexDirection: "row" }, [
-                  h("boxRenderable", { width: 5, backgroundColor: "#2d2d2d" }, [
-                    h("textRenderable", { fg: "#00ff00" }, "User"),
+            h("box", { border: true, title: "Chat" }, [
+              h("box", { border: true, borderColor: "#00ff00", marginBottom: 1 }, [
+                h("box", { flexDirection: "row" }, [
+                  h("box", { width: 5, backgroundColor: "#2d2d2d" }, [
+                    h("Text", { fg: "#00ff00" }, "User"),
                   ]),
-                  h("boxRenderable", { paddingLeft: 1, backgroundColor: "#1e1e1e", flexGrow: 1 }, [
-                    h("textareaRenderable", {
+                  h("box", { paddingLeft: 1, backgroundColor: "#1e1e1e", flexGrow: 1 }, [
+                    h("Textarea", {
                       initialValue: "What is the weather like today?",
                       wrapMode: "word",
                       backgroundColor: "#1e1e1e",
@@ -266,13 +266,13 @@ describe("Vue Renderer | Textarea Layout Tests", () => {
                   ]),
                 ]),
               ]),
-              h("boxRenderable", { border: true, borderColor: "#0088ff" }, [
-                h("boxRenderable", { flexDirection: "row" }, [
-                  h("boxRenderable", { width: 5, backgroundColor: "#2d2d2d" }, [
-                    h("textRenderable", { fg: "#0088ff" }, "AI"),
+              h("box", { border: true, borderColor: "#0088ff" }, [
+                h("box", { flexDirection: "row" }, [
+                  h("box", { width: 5, backgroundColor: "#2d2d2d" }, [
+                    h("Text", { fg: "#0088ff" }, "AI"),
                   ]),
-                  h("boxRenderable", { paddingLeft: 1, backgroundColor: "#1e1e1e", flexGrow: 1 }, [
-                    h("textareaRenderable", {
+                  h("box", { paddingLeft: 1, backgroundColor: "#1e1e1e", flexGrow: 1 }, [
+                    h("Textarea", {
                       initialValue:
                         "I don't have access to real-time weather data, but I can help you find that information through various weather services.",
                       wrapMode: "word",
@@ -300,11 +300,11 @@ describe("Vue Renderer | Textarea Layout Tests", () => {
       const TestComponent = defineComponent({
         setup() {
           return () =>
-            h("boxRenderable", { style: { width: 50, border: true }, title: "Layout Test" }, [
-              h("boxRenderable", { flexDirection: "row", gap: 1 }, [
-                h("boxRenderable", { width: 20, border: true, borderColor: "#00ff00" }, [
-                  h("textRenderable", { fg: "#00ff00" }, "Input 1:"),
-                  h("textareaRenderable", {
+            h("box", { style: { width: 50, border: true }, title: "Layout Test" }, [
+              h("box", { flexDirection: "row", gap: 1 }, [
+                h("box", { width: 20, border: true, borderColor: "#00ff00" }, [
+                  h("Text", { fg: "#00ff00" }, "Input 1:"),
+                  h("Textarea", {
                     initialValue: "Left panel content",
                     wrapMode: "word",
                     backgroundColor: "#1e1e1e",
@@ -312,9 +312,9 @@ describe("Vue Renderer | Textarea Layout Tests", () => {
                     flexShrink: 1,
                   }),
                 ]),
-                h("boxRenderable", { flexGrow: 1, border: true, borderColor: "#0088ff" }, [
-                  h("textRenderable", { fg: "#0088ff" }, "Input 2:"),
-                  h("textareaRenderable", {
+                h("box", { flexGrow: 1, border: true, borderColor: "#0088ff" }, [
+                  h("Text", { fg: "#0088ff" }, "Input 2:"),
+                  h("Textarea", {
                     initialValue: "Right panel with longer content that may wrap",
                     wrapMode: "word",
                     backgroundColor: "#1e1e1e",
@@ -323,9 +323,9 @@ describe("Vue Renderer | Textarea Layout Tests", () => {
                   }),
                 ]),
               ]),
-              h("boxRenderable", { border: true, borderColor: "#ff9900", marginTop: 1 }, [
-                h("textRenderable", { fg: "#ff9900" }, "Bottom input:"),
-                h("textareaRenderable", {
+              h("box", { border: true, borderColor: "#ff9900", marginTop: 1 }, [
+                h("Text", { fg: "#ff9900" }, "Bottom input:"),
+                h("Textarea", {
                   initialValue: "Bottom panel spanning full width",
                   wrapMode: "word",
                   backgroundColor: "#1e1e1e",
@@ -355,13 +355,13 @@ describe("Vue Renderer | Textarea Layout Tests", () => {
       const TestComponent = defineComponent({
         setup() {
           return () =>
-            h("boxRenderable", { border: true }, [
-              h("boxRenderable", { flexDirection: "row" }, [
-                h("boxRenderable", { width: indicatorWidth.value, backgroundColor: "#f00" }, [
-                  h("textRenderable", {}, ">"),
+            h("box", { border: true }, [
+              h("box", { flexDirection: "row" }, [
+                h("box", { width: indicatorWidth.value, backgroundColor: "#f00" }, [
+                  h("Text", {}, ">"),
                 ]),
-                h("boxRenderable", { backgroundColor: "#0f0", flexGrow: 1 }, [
-                  h("textRenderable", {}, "Content that takes up space"),
+                h("box", { backgroundColor: "#0f0", flexGrow: 1 }, [
+                  h("Text", {}, "Content that takes up space"),
                 ]),
               ]),
             ])
@@ -385,15 +385,15 @@ describe("Vue Renderer | Textarea Layout Tests", () => {
       const TestComponent = defineComponent({
         setup() {
           return () =>
-            h("boxRenderable", { border: true, width: 25, height: 10 }, [
-              h("boxRenderable", { flexDirection: "column", height: "100%" }, [
-                h("boxRenderable", { height: headerHeight.value, backgroundColor: "#f00" }, [
-                  h("textRenderable", {}, "Header"),
+            h("box", { border: true, width: 25, height: 10 }, [
+              h("box", { flexDirection: "column", height: "100%" }, [
+                h("box", { height: headerHeight.value, backgroundColor: "#f00" }, [
+                  h("Text", {}, "Header"),
                 ]),
-                h("boxRenderable", { backgroundColor: "#0f0", flexGrow: 1 }, [
-                  h("textareaRenderable", { initialValue: "Line1\nLine2\nLine3\nLine4\nLine5\nLine6\nLine7\nLine8" }),
+                h("box", { backgroundColor: "#0f0", flexGrow: 1 }, [
+                  h("Textarea", { initialValue: "Line1\nLine2\nLine3\nLine4\nLine5\nLine6\nLine7\nLine8" }),
                 ]),
-                h("boxRenderable", { height: 2, backgroundColor: "#00f" }, [h("textRenderable", {}, "Footer")]),
+                h("box", { height: 2, backgroundColor: "#00f" }, [h("Text", {}, "Footer")]),
               ]),
             ])
         },
@@ -416,11 +416,11 @@ describe("Vue Renderer | Textarea Layout Tests", () => {
       const TestComponent = defineComponent({
         setup() {
           return () =>
-            h("boxRenderable", { border: true }, [
-              h("boxRenderable", { flexDirection: "row" }, [
-                h("boxRenderable", { width: 3, backgroundColor: "#2d2d2d" }, [h("textRenderable", {}, ">")]),
-                h("boxRenderable", { backgroundColor: "#1e1e1e", flexGrow: 1, paddingTop: 1, paddingBottom: 1 }, [
-                  h("textareaRenderable", {
+            h("box", { border: true }, [
+              h("box", { flexDirection: "row" }, [
+                h("box", { width: 3, backgroundColor: "#2d2d2d" }, [h("Text", {}, ">")]),
+                h("box", { backgroundColor: "#1e1e1e", flexGrow: 1, paddingTop: 1, paddingBottom: 1 }, [
+                  h("Textarea", {
                     initialValue: "Focused textarea",
                     backgroundColor: "#1e1e1e",
                     textColor: "#888888",
@@ -448,15 +448,15 @@ describe("Vue Renderer | Textarea Layout Tests", () => {
       const TestComponent = defineComponent({
         setup() {
           return () =>
-            h("boxRenderable", { border: true, borderColor: "#444444" }, [
-              h("boxRenderable", { flexDirection: "row" }, [
+            h("box", { border: true, borderColor: "#444444" }, [
+              h("box", { flexDirection: "row" }, [
                 h(
-                  "boxRenderable",
+                  "box",
                   { width: 3, justifyContent: "center", alignItems: "center", backgroundColor: "#2d2d2d" },
-                  [h("textRenderable", { attributes: TextAttributes.BOLD, fg: "#00ff00" }, ">")],
+                  [h("Text", { attributes: TextAttributes.BOLD, fg: "#00ff00" }, ">")],
                 ),
-                h("boxRenderable", { paddingTop: 1, paddingBottom: 1, backgroundColor: "#1e1e1e", flexGrow: 1 }, [
-                  h("textareaRenderable", {
+                h("box", { paddingTop: 1, paddingBottom: 1, backgroundColor: "#1e1e1e", flexGrow: 1 }, [
+                  h("Textarea", {
                     initialValue: "",
                     placeholder: "Enter your prompt here...",
                     placeholderColor: "#666666",
@@ -465,9 +465,9 @@ describe("Vue Renderer | Textarea Layout Tests", () => {
                     textColor: "#ffffff",
                   }),
                 ]),
-                h("boxRenderable", { backgroundColor: "#1e1e1e", width: 1 }),
+                h("box", { backgroundColor: "#1e1e1e", width: 1 }),
               ]),
-              h("boxRenderable", { flexDirection: "row" }, [h("textRenderable", { fg: "#888888" }, "Ready to chat")]),
+              h("box", { flexDirection: "row" }, [h("Text", { fg: "#888888" }, "Ready to chat")]),
             ])
         },
       })
@@ -486,11 +486,11 @@ describe("Vue Renderer | Textarea Layout Tests", () => {
       const TestComponent = defineComponent({
         setup() {
           return () =>
-            h("boxRenderable", { border: true }, [
-              h("boxRenderable", { flexDirection: "row" }, [
-                h("boxRenderable", { width: 3, backgroundColor: "#2d2d2d" }, [h("textRenderable", {}, ">")]),
-                h("boxRenderable", { backgroundColor: "#1e1e1e", flexGrow: 1, paddingTop: 1, paddingBottom: 1 }, [
-                  h("textareaRenderable", {
+            h("box", { border: true }, [
+              h("box", { flexDirection: "row" }, [
+                h("box", { width: 3, backgroundColor: "#2d2d2d" }, [h("Text", {}, ">")]),
+                h("box", { backgroundColor: "#1e1e1e", flexGrow: 1, paddingTop: 1, paddingBottom: 1 }, [
+                  h("Textarea", {
                     initialValue: "ThisIsAVeryLongLineWithNoSpacesThatWillWrapByCharacterWhenCharWrappingIsEnabled",
                     wrapMode: "char",
                     flexShrink: 1,
@@ -517,16 +517,16 @@ describe("Vue Renderer | Textarea Layout Tests", () => {
       const TestComponent = defineComponent({
         setup() {
           return () =>
-            h("boxRenderable", {}, [
-              h("boxRenderable", { border: true, borderColor: "#444444" }, [
-                h("boxRenderable", { flexDirection: "row" }, [
+            h("box", {}, [
+              h("box", { border: true, borderColor: "#444444" }, [
+                h("box", { flexDirection: "row" }, [
                   h(
-                    "boxRenderable",
+                    "box",
                     { width: 3, justifyContent: "center", alignItems: "center", backgroundColor: "#2d2d2d" },
-                    [h("textRenderable", { attributes: TextAttributes.BOLD, fg: "#00ff00" }, ">")],
+                    [h("Text", { attributes: TextAttributes.BOLD, fg: "#00ff00" }, ">")],
                   ),
-                  h("boxRenderable", { paddingTop: 1, paddingBottom: 1, backgroundColor: "#1e1e1e", flexGrow: 1 }, [
-                    h("textareaRenderable", {
+                  h("box", { paddingTop: 1, paddingBottom: 1, backgroundColor: "#1e1e1e", flexGrow: 1 }, [
+                    h("Textarea", {
                       initialValue: "Explain how async/await works in JavaScript and provide some examples",
                       wrapMode: "word",
                       flexShrink: 1,
@@ -535,25 +535,25 @@ describe("Vue Renderer | Textarea Layout Tests", () => {
                       cursorColor: "#00ff00",
                     }),
                   ]),
-                  h("boxRenderable", {
+                  h("box", {
                     backgroundColor: "#1e1e1e",
                     width: 1,
                     justifyContent: "center",
                     alignItems: "center",
                   }),
                 ]),
-                h("boxRenderable", { flexDirection: "row", justifyContent: "space-between" }, [
-                  h("textRenderable", { flexShrink: 0, wrapMode: "none" }, [
-                    h("spanRenderable", { style: { fg: "#888888" } }, "openai"),
+                h("box", { flexDirection: "row", justifyContent: "space-between" }, [
+                  h("Text", { flexShrink: 0, wrapMode: "none" }, [
+                    h("Span", { style: { fg: "#888888" } }, "openai"),
                     " ",
-                    h("spanRenderable", { style: { bold: true } }, "gpt-4-turbo"),
+                    h("Span", { style: { bold: true } }, "gpt-4-turbo"),
                   ]),
-                  h("textRenderable", {}, ["ctrl+p ", h("spanRenderable", { style: { fg: "#888888" } }, "commands")]),
+                  h("Text", {}, ["ctrl+p ", h("Span", { style: { fg: "#888888" } }, "commands")]),
                 ]),
               ]),
-              h("boxRenderable", { marginTop: 1 }, [
+              h("box", { marginTop: 1 }, [
                 h(
-                  "textRenderable",
+                  "Text",
                   { fg: "#666666", wrapMode: "word" },
                   "Tip: Use arrow keys to navigate through history when cursor is at the start",
                 ),

@@ -23,10 +23,10 @@ describe("Vue Renderer | Portal Tests", () => {
       const TestComponent = defineComponent({
         components: { Portal },
         render() {
-          return h("boxRenderable", {}, [
-            h("textRenderable", {}, "Before portal"),
-            h(Portal, {}, () => [h("textRenderable", {}, "Portal content")]),
-            h("textRenderable", {}, "After portal"),
+          return h("box", {}, [
+            h("Text", {}, "Before portal"),
+            h(Portal, {}, () => [h("Text", {}, "Portal content")]),
+            h("Text", {}, "After portal"),
           ])
         },
       })
@@ -47,10 +47,10 @@ describe("Vue Renderer | Portal Tests", () => {
       const TestComponent = defineComponent({
         components: { Portal },
         render() {
-          return h("boxRenderable", {}, [
+          return h("box", {}, [
             h(Portal, {}, () => [
-              h("boxRenderable", { style: { border: true }, title: "Portal Box" }, [
-                h("textRenderable", {}, "Portal content"),
+              h("box", { style: { border: true }, title: "Portal Box" }, [
+                h("Text", {}, "Portal content"),
               ]),
             ]),
           ])
@@ -74,8 +74,8 @@ describe("Vue Renderer | Portal Tests", () => {
       const TestComponent = defineComponent({
         components: { Portal },
         render() {
-          return h("boxRenderable", {}, [
-            h(Portal, {}, () => [h("textRenderable", {}, "Nested text 1"), h("textRenderable", {}, "Nested text 2")]),
+          return h("box", {}, [
+            h(Portal, {}, () => [h("Text", {}, "Nested text 1"), h("Text", {}, "Nested text 2")]),
           ])
         },
       })
@@ -100,8 +100,8 @@ describe("Vue Renderer | Portal Tests", () => {
           return { showPortal }
         },
         render() {
-          return h("boxRenderable", {}, [
-            showPortal.value ? h(Portal, {}, () => [h("textRenderable", {}, "Portal content")]) : null,
+          return h("box", {}, [
+            showPortal.value ? h(Portal, {}, () => [h("Text", {}, "Portal content")]) : null,
           ])
         },
       })
@@ -130,9 +130,9 @@ describe("Vue Renderer | Portal Tests", () => {
       const TestComponent = defineComponent({
         components: { Portal },
         render() {
-          return h("boxRenderable", {}, [
-            h(Portal, {}, () => [h("textRenderable", {}, "First portal")]),
-            h(Portal, {}, () => [h("textRenderable", {}, "Second portal")]),
+          return h("box", {}, [
+            h(Portal, {}, () => [h("Text", {}, "First portal")]),
+            h(Portal, {}, () => [h("Text", {}, "Second portal")]),
           ])
         },
       })

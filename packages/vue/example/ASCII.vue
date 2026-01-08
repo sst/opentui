@@ -47,16 +47,16 @@ const selectStyles = { flexGrow: 1 }
 </script>
 
 <template>
-  <boxRenderable :style="groupStyles">
-    <boxRenderable :style="boxStyles">
-      <selectRenderable
+  <box :style="groupStyles">
+    <box :style="boxStyles">
+      <Select
         :focused="true"
         showScrollIndicator
         :onChange="handleFontChange"
         :options="selectOptions"
         :style="selectStyles"
-      ></selectRenderable>
-    </boxRenderable>
-    <asciiFontRenderable :style="{ width: dimensions.width, height: dimensions.height }" :text="text" :font="font" />
-  </boxRenderable>
+      ></Select>
+    </box>
+    <ascii-font :style="{ width: dimensions.width, height: dimensions.height }" :text="text" :font="font" />
+  </box>
 </template>

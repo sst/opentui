@@ -23,7 +23,7 @@ describe("Vue Renderer | Link Rendering Tests", () => {
 
     const TestComponent = defineComponent({
       render() {
-        return h("textRenderable", { content: styledText })
+        return h("Text", { content: styledText })
       },
     })
 
@@ -43,7 +43,7 @@ describe("Vue Renderer | Link Rendering Tests", () => {
 
     const TestComponent = defineComponent({
       render() {
-        return h("textRenderable", { content: styledText })
+        return h("Text", { content: styledText })
       },
     })
 
@@ -63,7 +63,7 @@ describe("Vue Renderer | Link Rendering Tests", () => {
 
     const TestComponent = defineComponent({
       render() {
-        return h("textRenderable", { content: styledText })
+        return h("Text", { content: styledText })
       },
     })
 

@@ -22,8 +22,8 @@ const description = computed(
 </script>
 
 <template>
-  <boxRenderable :style="{ flexDirection: 'column', flexGrow: 1 }">
-    <tabSelectRenderable
+  <box :style="{ flexDirection: 'column', flexGrow: 1 }">
+    <tab-select
       :height="2"
       width="100%"
       :options="tabs"
@@ -31,8 +31,8 @@ const description = computed(
       :onChange="onTabChange"
       :focused="true"
     />
-    <boxRenderable :style="{ paddingTop: 1 }">
-      <textRenderable :content="description" />
-    </boxRenderable>
-  </boxRenderable>
+    <box :style="{ paddingTop: 1 }">
+      <Text :content="description" />
+    </box>
+  </box>
 </template>

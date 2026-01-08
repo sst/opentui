@@ -137,49 +137,24 @@ export function extend<T extends Record<string, RenderableConstructor>>(componen
 
 declare module "@vue/runtime-core" {
   export interface GlobalComponents extends ExtendedIntrinsicElements<OpenTUIComponents> {
-    asciiFontRenderable: DefineComponent<AsciiFontProps>
-    boxRenderable: DefineComponent<BoxProps>
-    inputRenderable: DefineComponent<InputProps>
-    selectRenderable: DefineComponent<SelectProps>
-    tabSelectRenderable: DefineComponent<TabSelectProps>
-    textRenderable: DefineComponent<TextProps>
-    scrollBoxRenderable: DefineComponent<ScrollBoxProps>
-    textareaRenderable: DefineComponent<TextareaProps>
-    codeRenderable: DefineComponent<CodeProps>
-    diffRenderable: DefineComponent<DiffProps>
-    lineNumberRenderable: DefineComponent<LineNumberProps>
-    spanRenderable: DefineComponent<SpanProps>
-    strongRenderable: DefineComponent<SpanProps>
-    bRenderable: DefineComponent<SpanProps>
-    emRenderable: DefineComponent<SpanProps>
-    iRenderable: DefineComponent<SpanProps>
-    uRenderable: DefineComponent<SpanProps>
-    brRenderable: DefineComponent<{}>
-    aRenderable: DefineComponent<LinkProps>
-  }
-}
-
-// Augment for JSX/TSX support in Vue
-declare module "@vue/runtime-dom" {
-  export interface IntrinsicElementAttributes extends ExtendedIntrinsicElements<OpenTUIComponents> {
-    asciiFontRenderable: AsciiFontProps
-    boxRenderable: BoxProps
-    inputRenderable: InputProps
-    selectRenderable: SelectProps
-    tabSelectRenderable: TabSelectProps
-    textRenderable: TextProps
-    scrollBoxRenderable: ScrollBoxProps
-    textareaRenderable: TextareaProps
-    codeRenderable: CodeProps
-    diffRenderable: DiffProps
-    lineNumberRenderable: LineNumberProps
-    spanRenderable: SpanProps
-    strongRenderable: SpanProps
-    bRenderable: SpanProps
-    emRenderable: SpanProps
-    iRenderable: SpanProps
-    uRenderable: SpanProps
-    brRenderable: {}
-    aRenderable: LinkProps
+    "ascii-font": DefineComponent<AsciiFontProps>
+    box: DefineComponent<BoxProps>
+    Input: DefineComponent<InputProps>
+    Select: DefineComponent<SelectProps>
+    "tab-select": DefineComponent<TabSelectProps>
+    Text: DefineComponent<TextProps>
+    scrollbox: DefineComponent<ScrollBoxProps>
+    Textarea: DefineComponent<TextareaProps>
+    Code: DefineComponent<CodeProps>
+    diff: DefineComponent<DiffProps>
+    "line-number": DefineComponent<LineNumberProps>
+    Span: DefineComponent<SpanProps>
+    Strong: DefineComponent<SpanProps>
+    B: DefineComponent<SpanProps>
+    Em: DefineComponent<SpanProps>
+    I: DefineComponent<SpanProps>
+    U: DefineComponent<SpanProps>
+    Br: DefineComponent<{}>
+    A: DefineComponent<LinkProps>
   }
 }

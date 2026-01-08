@@ -22,15 +22,7 @@ class SpanRenderable extends TextNodeRenderable {
   }
 }
 
-export const textNodeKeys = [
-  "spanRenderable",
-  "bRenderable",
-  "strongRenderable",
-  "iRenderable",
-  "emRenderable",
-  "uRenderable",
-  "aRenderable",
-] as const
+export const textNodeKeys = ["Span", "B", "Strong", "I", "Em", "U", "A"] as const
 export type TextNodeKey = (typeof textNodeKeys)[number]
 
 class TextModifierRenderable extends SpanRenderable {
@@ -92,27 +84,46 @@ export class LinkRenderable extends SpanRenderable {
 }
 
 export const elements = {
-  // Existing components
-  asciiFontRenderable: ASCIIFontRenderable,
-  boxRenderable: BoxRenderable,
-  inputRenderable: InputRenderable,
-  selectRenderable: SelectRenderable,
-  tabSelectRenderable: TabSelectRenderable,
-  textRenderable: TextRenderable,
-  scrollBoxRenderable: ScrollBoxRenderable,
-  // New components
-  codeRenderable: CodeRenderable,
-  diffRenderable: DiffRenderable,
-  lineNumberRenderable: LineNumberRenderable,
-  textareaRenderable: TextareaRenderable,
-  // Text modifiers
-  spanRenderable: SpanRenderable,
-  strongRenderable: BoldSpanRenderable,
-  bRenderable: BoldSpanRenderable,
-  emRenderable: ItalicSpanRenderable,
-  iRenderable: ItalicSpanRenderable,
-  uRenderable: UnderlineSpanRenderable,
-  brRenderable: LineBreakRenderable,
-  aRenderable: LinkRenderable,
+  box: BoxRenderable,
+  Text: TextRenderable,
+  Input: InputRenderable,
+  Select: SelectRenderable,
+  Textarea: TextareaRenderable,
+  scrollbox: ScrollBoxRenderable,
+  Code: CodeRenderable,
+  diff: DiffRenderable,
+  "ascii-font": ASCIIFontRenderable,
+  "tab-select": TabSelectRenderable,
+  "line-number": LineNumberRenderable,
+  Span: SpanRenderable,
+  B: BoldSpanRenderable,
+  Strong: BoldSpanRenderable,
+  I: ItalicSpanRenderable,
+  Em: ItalicSpanRenderable,
+  U: UnderlineSpanRenderable,
+  Br: LineBreakRenderable,
+  A: LinkRenderable,
 }
 export type Element = keyof typeof elements
+
+export const baseComponents = {
+  box: BoxRenderable,
+  Text: TextRenderable,
+  Input: InputRenderable,
+  Select: SelectRenderable,
+  Textarea: TextareaRenderable,
+  scrollbox: ScrollBoxRenderable,
+  Code: CodeRenderable,
+  diff: DiffRenderable,
+  "ascii-font": ASCIIFontRenderable,
+  "tab-select": TabSelectRenderable,
+  "line-number": LineNumberRenderable,
+  Span: SpanRenderable,
+  B: BoldSpanRenderable,
+  Strong: BoldSpanRenderable,
+  I: ItalicSpanRenderable,
+  Em: ItalicSpanRenderable,
+  U: UnderlineSpanRenderable,
+  Br: LineBreakRenderable,
+  A: LinkRenderable,
+}

@@ -44,8 +44,8 @@ describe("DiffRenderable with Vue", () => {
     const TestComponent = defineComponent({
       setup() {
         return () =>
-          h("boxRenderable", { id: "root", width: "100%", height: "100%" }, [
-            h("diffRenderable", {
+          h("box", { id: "root", width: "100%", height: "100%" }, [
+            h("diff", {
               id: "test-diff",
               diff: diffContent,
               view: "unified",
@@ -64,9 +64,9 @@ describe("DiffRenderable with Vue", () => {
     // Wait for automatic initial render
     await Bun.sleep(50)
 
-    const boxRenderable = testSetup.renderer.root.getRenderable("root")
-    const diffRenderable = boxRenderable?.getRenderable("test-diff") as any
-    const leftSide = diffRenderable?.getRenderable("test-diff-left") as any
+    const box = testSetup.renderer.root.getRenderable("root")
+    const diff = box?.getRenderable("test-diff") as any
+    const leftSide = diff?.getRenderable("test-diff-left") as any
     const gutterAfterAutoRender = leftSide?.["gutter"]
     const widthAfterAutoRender = gutterAfterAutoRender?.width
 
@@ -119,8 +119,8 @@ describe("DiffRenderable with Vue", () => {
     const TestComponent = defineComponent({
       setup() {
         return () =>
-          h("boxRenderable", { id: "root", width: "100%", height: "100%" }, [
-            h("diffRenderable", {
+          h("box", { id: "root", width: "100%", height: "100%" }, [
+            h("diff", {
               id: "test-diff",
               diff: diffContent,
               view: "split",
@@ -173,8 +173,8 @@ describe("DiffRenderable with Vue", () => {
     const TestComponent = defineComponent({
       setup() {
         return () =>
-          h("boxRenderable", { id: "root", width: "100%", height: "100%" }, [
-            h("diffRenderable", {
+          h("box", { id: "root", width: "100%", height: "100%" }, [
+            h("diff", {
               id: "test-diff",
               diff: diffWith10PlusLines,
               view: "unified",
@@ -248,9 +248,9 @@ describe("DiffRenderable with Vue", () => {
     const TestComponent = defineComponent({
       setup() {
         return () =>
-          h("boxRenderable", { id: "root", width: "100%", height: "100%" }, [
+          h("box", { id: "root", width: "100%", height: "100%" }, [
             showDiff.value
-              ? h("diffRenderable", {
+              ? h("diff", {
                   id: "test-diff",
                   diff: diffContent,
                   view: "unified",
@@ -260,7 +260,7 @@ describe("DiffRenderable with Vue", () => {
                   width: "100%",
                   height: "100%",
                 })
-              : h("textRenderable", { id: "fallback-text", width: "100%", height: "100%" }, "No diff to display"),
+              : h("Text", { id: "fallback-text", width: "100%", height: "100%" }, "No diff to display"),
           ])
       },
     })
@@ -322,9 +322,9 @@ describe("DiffRenderable with Vue", () => {
     const TestComponent = defineComponent({
       setup() {
         return () =>
-          h("boxRenderable", { id: "root", width: "100%", height: "100%" }, [
+          h("box", { id: "root", width: "100%", height: "100%" }, [
             showDiff.value
-              ? h("diffRenderable", {
+              ? h("diff", {
                   id: "test-diff",
                   diff: diffContent,
                   view: "split",
@@ -334,7 +334,7 @@ describe("DiffRenderable with Vue", () => {
                   width: "100%",
                   height: "100%",
                 })
-              : h("textRenderable", { id: "fallback-text", width: "100%", height: "100%" }, "No diff to display"),
+              : h("Text", { id: "fallback-text", width: "100%", height: "100%" }, "No diff to display"),
           ])
       },
     })
@@ -414,8 +414,8 @@ describe("DiffRenderable with Vue", () => {
     const TestComponent = defineComponent({
       setup() {
         return () =>
-          h("boxRenderable", { id: "root", width: "100%", height: "100%" }, [
-            h("diffRenderable", {
+          h("box", { id: "root", width: "100%", height: "100%" }, [
+            h("diff", {
               id: "test-diff-toggle",
               diff: diffContent,
               view: "split",
@@ -446,8 +446,8 @@ describe("DiffRenderable with Vue", () => {
     const TestComponentFromStart = defineComponent({
       setup() {
         return () =>
-          h("boxRenderable", { id: "root", width: "100%", height: "100%" }, [
-            h("diffRenderable", {
+          h("box", { id: "root", width: "100%", height: "100%" }, [
+            h("diff", {
               id: "test-diff-from-start",
               diff: diffContent,
               view: "split",

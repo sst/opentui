@@ -1,5 +1,5 @@
 <template>
-  <scrollBoxRenderable
+  <scrollbox
     width="100%"
     height="100%"
     :border="true"
@@ -18,10 +18,10 @@
       },
     }"
   >
-    <boxRenderable flexDirection="column" :gap="2">
-      <textRenderable v-for="item in items" :key="item"> Item {{ item }} </textRenderable>
-    </boxRenderable>
-  </scrollBoxRenderable>
+    <box flexDirection="column" :gap="2">
+      <Text v-for="item in items" :key="item"> Item {{ item }} </Text>
+    </box>
+  </scrollbox>
 </template>
 
 <script setup lang="ts">

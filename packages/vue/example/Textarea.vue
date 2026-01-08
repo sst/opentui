@@ -87,8 +87,8 @@ const placeholder = t`${fg("#333333")("Enter")} ${cyan(bold("text"))} ${fg("#333
 </script>
 
 <template>
-  <boxRenderable :style="{ padding: 1, flexDirection: 'column' }">
-    <boxRenderable
+  <box :style="{ padding: 1, flexDirection: 'column' }">
+    <box
       title="Interactive Editor (TextareaRenderable)"
       titleAlignment="left"
       :style="{
@@ -101,7 +101,7 @@ const placeholder = t`${fg("#333333")("Enter")} ${cyan(bold("text"))} ${fg("#333
         flexGrow: 1,
       }"
     >
-      <textareaRenderable
+      <Textarea
         :ref="setTextareaRef"
         :initialValue="initialContent"
         :placeholder="placeholder"
@@ -115,12 +115,10 @@ const placeholder = t`${fg("#333333")("Enter")} ${cyan(bold("text"))} ${fg("#333
         :focused="true"
         :style="{ flexGrow: 1 }"
       />
-    </boxRenderable>
-    <textRenderable :style="{ fg: '#A5D6FF', height: 1 }">
+    </box>
+    <Text :style="{ fg: '#A5D6FF', height: 1 }">
       {{ statusText }}
-    </textRenderable>
-    <textRenderable :style="{ fg: '#565f89', height: 1 }">
-      Shift+W: wrap mode | Tab: cursor style | ESC: menu
-    </textRenderable>
-  </boxRenderable>
+    </Text>
+    <Text :style="{ fg: '#565f89', height: 1 }"> Shift+W: wrap mode | Tab: cursor style | ESC: menu </Text>
+  </box>
 </template>

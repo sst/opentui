@@ -53,7 +53,7 @@ useKeyboard((key) => {
 </script>
 
 <template>
-  <boxRenderable
+  <box
     :style="{
       flexDirection: 'column',
       width: '100%',
@@ -61,7 +61,7 @@ useKeyboard((key) => {
       gap: 1,
     }"
   >
-    <boxRenderable
+    <box
       :style="{
         flexDirection: 'column',
         backgroundColor: '#0D1117',
@@ -70,15 +70,13 @@ useKeyboard((key) => {
         borderColor: '#30363D',
       }"
     >
-      <textRenderable :style="{ fg: '#4ECDC4' }"> Diff Demo - Unified & Split View </textRenderable>
-      <textRenderable :style="{ fg: '#888888' }">Keybindings:</textRenderable>
-      <textRenderable :style="{ fg: '#AAAAAA' }"> V - Toggle view ({{ currentView.toUpperCase() }}) </textRenderable>
-      <textRenderable :style="{ fg: '#AAAAAA' }">
-        L - Toggle line numbers ({{ showLineNumbers ? "ON" : "OFF" }})
-      </textRenderable>
-    </boxRenderable>
+      <Text :style="{ fg: '#4ECDC4' }"> Diff Demo - Unified & Split View </Text>
+      <Text :style="{ fg: '#888888' }">Keybindings:</Text>
+      <Text :style="{ fg: '#AAAAAA' }"> V - Toggle view ({{ currentView.toUpperCase() }}) </Text>
+      <Text :style="{ fg: '#AAAAAA' }"> L - Toggle line numbers ({{ showLineNumbers ? "ON" : "OFF" }}) </Text>
+    </box>
 
-    <boxRenderable
+    <box
       :style="{
         flexGrow: 1,
         border: true,
@@ -87,7 +85,7 @@ useKeyboard((key) => {
         backgroundColor: '#0D1117',
       }"
     >
-      <diffRenderable
+      <diff
         :diff="exampleDiff"
         :view="currentView"
         filetype="typescript"
@@ -102,6 +100,6 @@ useKeyboard((key) => {
         width="100%"
         height="100%"
       />
-    </boxRenderable>
-  </boxRenderable>
+    </box>
+  </box>
 </template>

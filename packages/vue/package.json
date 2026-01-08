@@ -16,6 +16,22 @@
     ".": {
       "types": "./index.ts",
       "import": "./index.ts"
+    },
+    "./composables": {
+      "types": "./src/composables/index.ts",
+      "import": "./src/composables/index.ts"
+    },
+    "./components": {
+      "types": "./src/elements.ts",
+      "import": "./src/elements.ts"
+    },
+    "./devtools": {
+      "types": "./src/devtools/index.ts",
+      "import": "./src/devtools/index.ts"
+    },
+    "./resolver": {
+      "types": "./src/resolver.ts",
+      "import": "./src/resolver.ts"
     }
   },
   "scripts": {

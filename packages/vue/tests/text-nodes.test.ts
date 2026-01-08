@@ -22,7 +22,7 @@ describe("Vue Renderer | TextNode Tests", () => {
     const TestComponent = defineComponent({
       render() {
         return h(
-          "boxRenderable",
+          "box",
           { id: "container", style: { width: 20, height: 5, border: true } },
           "Hello",
         )
@@ -47,7 +47,7 @@ describe("Vue Renderer | TextNode Tests", () => {
     const TestComponent = defineComponent({
       render() {
         return h(
-          "boxRenderable",
+          "box",
           { id: "container", style: { width: 20, height: 5, border: true } },
           show.value ? "Hi" : undefined,
         )
@@ -72,8 +72,8 @@ describe("Vue Renderer | TextNode Tests", () => {
     expect(remaining.length).toBe(1)
     const ghost = remaining[0]!
     expect(ghost).toBeInstanceOf(TextRenderable)
-    const textRenderable = ghost as TextRenderable
-    const contentChunks = textRenderable.content.chunks
+    const text = ghost as TextRenderable
+    const contentChunks = text.content.chunks
     const combinedText = contentChunks.map((c) => c.text).join("")
     const trimmedText = combinedText.trim()
     expect(trimmedText).toBe("")

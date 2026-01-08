@@ -15,7 +15,7 @@ const style = { margin: 1 }
 </script>
 
 <template>
-  <textRenderable :content="styledText" :style="style" />
-  <textRenderable :content="textChunks" :style="style" />
-  <textRenderable>{{ plainText }}</textRenderable>
+  <Text :content="styledText" :style="style" />
+  <Text :content="textChunks" :style="style" />
+  <Text>{{ plainText }}</Text>
 </template>

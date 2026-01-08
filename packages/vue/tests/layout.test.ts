@@ -21,7 +21,7 @@ describe("Vue Renderer | Layout Tests", () => {
     it("should render simple text correctly", async () => {
       const TestComponent = defineComponent({
         render() {
-          return h("textRenderable", {}, "Hello World")
+          return h("Text", {}, "Hello World")
         },
       })
 
@@ -38,10 +38,10 @@ describe("Vue Renderer | Layout Tests", () => {
     it("should render multiline text correctly", async () => {
       const TestComponent = defineComponent({
         render() {
-          return h("boxRenderable", {}, [
-            h("textRenderable", {}, "Line 1"),
-            h("textRenderable", {}, "Line 2"),
-            h("textRenderable", {}, "Line 3"),
+          return h("box", {}, [
+            h("Text", {}, "Line 1"),
+            h("Text", {}, "Line 2"),
+            h("Text", {}, "Line 3"),
           ])
         },
       })
@@ -61,7 +61,7 @@ describe("Vue Renderer | Layout Tests", () => {
 
       const TestComponent = defineComponent({
         render() {
-          return h("textRenderable", {}, `Counter: ${counter}`)
+          return h("Text", {}, `Counter: ${counter}`)
         },
       })
 
@@ -81,11 +81,11 @@ describe("Vue Renderer | Layout Tests", () => {
       const TestComponent = defineComponent({
         render() {
           return h(
-            "boxRenderable",
+            "box",
             {
               style: { width: 20, height: 5, border: true },
             },
-            [h("textRenderable", {}, "Inside Box")],
+            [h("Text", {}, "Inside Box")],
           )
         },
       })
@@ -104,21 +104,21 @@ describe("Vue Renderer | Layout Tests", () => {
       const TestComponent = defineComponent({
         render() {
           return h(
-            "boxRenderable",
+            "box",
             {
               style: { width: 30, height: 10, border: true },
               title: "Parent Box",
             },
             [
               h(
-                "boxRenderable",
+                "box",
                 {
                   style: { left: 2, top: 2, width: 10, height: 3, border: true },
                 },
-                [h("textRenderable", {}, "Nested")],
+                [h("Text", {}, "Nested")],
               ),
               h(
-                "textRenderable",
+                "Text",
                 {
                   style: { left: 15, top: 2 },
                 },
@@ -144,7 +144,7 @@ describe("Vue Renderer | Layout Tests", () => {
         render() {
           return h(Fragment, [
             h(
-              "boxRenderable",
+              "box",
               {
                 style: {
                   position: "absolute",
@@ -156,10 +156,10 @@ describe("Vue Renderer | Layout Tests", () => {
                   backgroundColor: "red",
                 },
               },
-              [h("textRenderable", {}, "Box 1")],
+              [h("Text", {}, "Box 1")],
             ),
             h(
-              "boxRenderable",
+              "box",
               {
                 style: {
                   position: "absolute",
@@ -171,7 +171,7 @@ describe("Vue Renderer | Layout Tests", () => {
                   backgroundColor: "blue",
                 },
               },
-              [h("textRenderable", {}, "Box 2")],
+              [h("Text", {}, "Box 2")],
             ),
           ])
         },
@@ -191,12 +191,12 @@ describe("Vue Renderer | Layout Tests", () => {
       const TestComponent = defineComponent({
         render() {
           return h(
-            "boxRenderable",
+            "box",
             {
               style: { width: 20, height: 5 },
               borderStyle: "single",
             },
-            [h("textRenderable", {}, "With Border")],
+            [h("Text", {}, "With Border")],
           )
         },
       })
@@ -215,12 +215,12 @@ describe("Vue Renderer | Layout Tests", () => {
       const TestComponent = defineComponent({
         render() {
           return h(
-            "boxRenderable",
+            "box",
             {
               style: { width: 20, height: 5 },
               borderColor: "cyan",
             },
-            [h("textRenderable", {}, "Colored Border")],
+            [h("Text", {}, "Colored Border")],
           )
         },
       })
@@ -241,36 +241,36 @@ describe("Vue Renderer | Layout Tests", () => {
       const TestComponent = defineComponent({
         render() {
           return h(
-            "boxRenderable",
+            "box",
             {
               style: { width: 40, border: true },
               title: "Complex Layout",
             },
             [
               h(
-                "boxRenderable",
+                "box",
                 {
                   style: { left: 2, width: 15, height: 5, border: true, backgroundColor: "#333" },
                 },
                 [
-                  h("textRenderable", { style: { fg: "cyan" }, wrapMode: "none" }, "Header Section"),
-                  h("textRenderable", { style: { fg: "yellow" }, wrapMode: "none" }, "Menu Item 1"),
-                  h("textRenderable", { style: { fg: "yellow" }, wrapMode: "none" }, "Menu Item 2"),
+                  h("Text", { style: { fg: "cyan" }, wrapMode: "none" }, "Header Section"),
+                  h("Text", { style: { fg: "yellow" }, wrapMode: "none" }, "Menu Item 1"),
+                  h("Text", { style: { fg: "yellow" }, wrapMode: "none" }, "Menu Item 2"),
                 ],
               ),
               h(
-                "boxRenderable",
+                "box",
                 {
                   style: { left: 18, width: 18, height: 8, border: true, backgroundColor: "#222" },
                 },
                 [
-                  h("textRenderable", { style: { fg: "green" }, wrapMode: "none" }, "Content Area"),
-                  h("textRenderable", { style: { fg: "white" }, wrapMode: "none" }, "Some content here"),
-                  h("textRenderable", { style: { fg: "white" }, wrapMode: "none" }, "More content"),
-                  h("textRenderable", { style: { fg: "magenta" }, wrapMode: "none" }, "Footer text"),
+                  h("Text", { style: { fg: "green" }, wrapMode: "none" }, "Content Area"),
+                  h("Text", { style: { fg: "white" }, wrapMode: "none" }, "Some content here"),
+                  h("Text", { style: { fg: "white" }, wrapMode: "none" }, "More content"),
+                  h("Text", { style: { fg: "magenta" }, wrapMode: "none" }, "Footer text"),
                 ],
               ),
-              h("textRenderable", { style: { left: 2, fg: "gray" } }, "Status: Ready"),
+              h("Text", { style: { left: 2, fg: "gray" } }, "Status: Ready"),
             ],
           )
         },
@@ -290,21 +290,21 @@ describe("Vue Renderer | Layout Tests", () => {
       const TestComponent = defineComponent({
         render() {
           return h(
-            "boxRenderable",
+            "box",
             {
               style: { width: 35, height: 8, border: true },
             },
             [
-              h("textRenderable", {}, [
-                h("spanRenderable", { style: { fg: "red", bold: true } }, "ERROR:"),
+              h("Text", {}, [
+                h("Span", { style: { fg: "red", bold: true } }, "ERROR:"),
                 " Something went wrong",
               ]),
-              h("textRenderable", {}, [
-                h("spanRenderable", { style: { fg: "yellow" } }, "WARNING:"),
+              h("Text", {}, [
+                h("Span", { style: { fg: "yellow" } }, "WARNING:"),
                 " Check your settings",
               ]),
-              h("textRenderable", {}, [
-                h("spanRenderable", { style: { fg: "green" } }, "SUCCESS:"),
+              h("Text", {}, [
+                h("Span", { style: { fg: "green" } }, "SUCCESS:"),
                 " All systems operational",
               ]),
             ],
@@ -326,14 +326,14 @@ describe("Vue Renderer | Layout Tests", () => {
       const TestComponent = defineComponent({
         render() {
           return h(
-            "boxRenderable",
+            "box",
             {
               maxHeight: "100%",
               maxWidth: "100%",
             },
             [
               h(
-                "scrollBoxRenderable",
+                "scrollbox",
                 {
                   scrollbarOptions: { visible: false },
                   stickyScroll: true,
@@ -346,17 +346,17 @@ describe("Vue Renderer | Layout Tests", () => {
                   },
                   border: true,
                 },
-                [h("boxRenderable", { border: true, height: 10, title: "hi" })],
+                [h("box", { border: true, height: 10, title: "hi" })],
               ),
               h(
-                "boxRenderable",
+                "box",
                 {
                   border: true,
                   height: 10,
                   title: "spacer",
                   flexShrink: 0,
                 },
-                [h("textRenderable", {}, "spacer")],
+                [h("Text", {}, "spacer")],
               ),
             ],
           )
@@ -395,7 +395,7 @@ describe("Vue Renderer | Layout Tests", () => {
     it("should handle component with no children", async () => {
       const TestComponent = defineComponent({
         render() {
-          return h("boxRenderable", { style: { width: 10, height: 5 } })
+          return h("box", { style: { width: 10, height: 5 } })
         },
       })
 
@@ -412,7 +412,7 @@ describe("Vue Renderer | Layout Tests", () => {
     it("should handle very small dimensions", async () => {
       const TestComponent = defineComponent({
         render() {
-          return h("textRenderable", {}, "Hi")
+          return h("Text", {}, "Hi")
         },
       })
 

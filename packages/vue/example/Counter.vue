@@ -27,10 +27,10 @@ const textStyles = { fg: RGBA.fromHex("#0000ff") }
 </script>
 
 <template>
-  <boxRenderable title="Counter" :style="{ backgroundColor: '#00ff00' }">
-    <textRenderable :style="textStyles">Count : {{ count }}</textRenderable>
-    <textRenderable :style="textStyles">Press Up/Down to increment/decrement, R to reset</textRenderable>
-    <textRenderable :style="textStyles">Press + or = to increment, - to decrement</textRenderable>
-    <textRenderable :style="{ fg: '#ff00ff' }">Press R to reset</textRenderable>
-  </boxRenderable>
+  <box title="Counter" :style="{ backgroundColor: '#00ff00' }">
+    <Text :style="textStyles">Count : {{ count }}</Text>
+    <Text :style="textStyles">Press Up/Down to increment/decrement, R to reset</Text>
+    <Text :style="textStyles">Press + or = to increment, - to decrement</Text>
+    <Text :style="{ fg: '#ff00ff' }">Press R to reset</Text>
+  </box>
 </template>

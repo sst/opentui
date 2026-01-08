@@ -25,9 +25,9 @@ describe("Vue Renderer | Control Flow Tests", () => {
         setup() {
           return () =>
             h(
-              "boxRenderable",
+              "box",
               {},
-              items.map((item, index) => h("textRenderable", { key: item }, `${index + 1}. ${item}`)),
+              items.map((item, index) => h("Text", { key: item }, `${index + 1}. ${item}`)),
             )
         },
       })
@@ -51,9 +51,9 @@ describe("Vue Renderer | Control Flow Tests", () => {
         setup() {
           return () =>
             h(
-              "boxRenderable",
+              "box",
               {},
-              items.value.map((item) => h("textRenderable", { key: item }, `Item: ${item}`)),
+              items.value.map((item) => h("Text", { key: item }, `Item: ${item}`)),
             )
         },
       })
@@ -83,9 +83,9 @@ describe("Vue Renderer | Control Flow Tests", () => {
         setup() {
           return () =>
             h(
-              "boxRenderable",
+              "box",
               {},
-              items.value.map((item) => h("textRenderable", { key: item }, item)),
+              items.value.map((item) => h("Text", { key: item }, item)),
             )
         },
       })
@@ -114,10 +114,10 @@ describe("Vue Renderer | Control Flow Tests", () => {
         setup() {
           return () =>
             h(
-              "boxRenderable",
+              "box",
               {},
               todos.value.map((todo, index) =>
-                h("textRenderable", { key: todo.id }, `${index + 1}. ${todo.done ? "[x]" : "[ ]"} ${todo.text}`),
+                h("Text", { key: todo.id }, `${index + 1}. ${todo.done ? "[x]" : "[ ]"} ${todo.text}`),
               ),
             )
         },
@@ -138,9 +138,9 @@ describe("Vue Renderer | Control Flow Tests", () => {
         setup() {
           return () =>
             h(
-              "boxRenderable",
+              "box",
               {},
-              items.value.map((item) => h("textRenderable", { key: item }, `Item: ${item}`)),
+              items.value.map((item) => h("Text", { key: item }, `Item: ${item}`)),
             )
         },
       })
@@ -172,10 +172,10 @@ describe("Vue Renderer | Control Flow Tests", () => {
         setup() {
           return () =>
             h(
-              "boxRenderable",
+              "box",
               { id: "container" },
               items.value.map((item) =>
-                h("boxRenderable", { key: item, id: `item-${item}` }, [h("textRenderable", {}, item)]),
+                h("box", { key: item, id: `item-${item}` }, [h("Text", {}, item)]),
               ),
             )
         },
@@ -208,8 +208,8 @@ describe("Vue Renderer | Control Flow Tests", () => {
       const TestComponent = defineComponent({
         setup() {
           return () =>
-            h("boxRenderable", {}, [
-              showContent.value ? h("textRenderable", {}, "Main content") : h("textRenderable", {}, "Fallback content"),
+            h("box", {}, [
+              showContent.value ? h("Text", {}, "Main content") : h("Text", {}, "Fallback content"),
             ])
         },
       })
@@ -237,11 +237,11 @@ describe("Vue Renderer | Control Flow Tests", () => {
         setup() {
           return () =>
             h(
-              "boxRenderable",
+              "box",
               {},
               [
-                visible.value && h("textRenderable", {}, "Visible content"),
-                h("textRenderable", {}, "Always visible"),
+                visible.value && h("Text", {}, "Visible content"),
+                h("Text", {}, "Always visible"),
               ].filter(Boolean),
             )
         },
@@ -269,10 +269,10 @@ describe("Vue Renderer | Control Flow Tests", () => {
       const TestComponent = defineComponent({
         setup() {
           return () =>
-            h("boxRenderable", {}, [
+            h("box", {}, [
               count.value > 3
-                ? h("textRenderable", {}, `Count is high: ${count.value}`)
-                : h("textRenderable", {}, "Count too low"),
+                ? h("Text", {}, `Count is high: ${count.value}`)
+                : h("Text", {}, "Count too low"),
             ])
         },
       })
@@ -299,12 +299,12 @@ describe("Vue Renderer | Control Flow Tests", () => {
         setup() {
           return () =>
             h(
-              "boxRenderable",
+              "box",
               { id: "container" },
               [
-                h("boxRenderable", { id: "first" }),
-                showContent.value ? h("boxRenderable", { id: "second" }) : null,
-                h("boxRenderable", { id: "third" }),
+                h("box", { id: "first" }),
+                showContent.value ? h("box", { id: "second" }) : null,
+                h("box", { id: "third" }),
               ].filter(Boolean),
             )
         },
@@ -332,12 +332,12 @@ describe("Vue Renderer | Control Flow Tests", () => {
         setup() {
           return () =>
             h(
-              "boxRenderable",
+              "box",
               { id: "fragment-container" },
               [
-                h("boxRenderable", { id: "first" }),
-                showContent.value ? h("boxRenderable", { id: "second" }) : null,
-                h("boxRenderable", { id: "third" }),
+                h("box", { id: "first" }),
+                showContent.value ? h("box", { id: "second" }) : null,
+                h("box", { id: "third" }),
               ].filter(Boolean),
             )
         },
@@ -367,12 +367,12 @@ describe("Vue Renderer | Control Flow Tests", () => {
         setup() {
           return () =>
             h(
-              "boxRenderable",
+              "box",
               {},
               [
-                showFirst.value ? h("textRenderable", {}, "First") : null,
-                showSecond.value ? h("textRenderable", {}, "Second") : undefined,
-                showThird.value ? h("textRenderable", {}, "Third") : null,
+                showFirst.value ? h("Text", {}, "First") : null,
+                showSecond.value ? h("Text", {}, "Second") : undefined,
+                showThird.value ? h("Text", {}, "Third") : null,
               ].filter(Boolean),
             )
         },
@@ -405,15 +405,15 @@ describe("Vue Renderer | Control Flow Tests", () => {
       const TestComponent = defineComponent({
         setup() {
           return () =>
-            h("boxRenderable", {}, [
+            h("box", {}, [
               (() => {
                 switch (value.value) {
                   case "option1":
-                    return h("textRenderable", {}, "Option 1 selected")
+                    return h("Text", {}, "Option 1 selected")
                   case "option2":
-                    return h("textRenderable", {}, "Option 2 selected")
+                    return h("Text", {}, "Option 2 selected")
                   default:
-                    return h("textRenderable", {}, "No match")
+                    return h("Text", {}, "No match")
                 }
               })(),
             ])
@@ -449,16 +449,16 @@ describe("Vue Renderer | Control Flow Tests", () => {
       const TestComponent = defineComponent({
         setup() {
           return () =>
-            h("boxRenderable", {}, [
+            h("box", {}, [
               (() => {
                 if (score.value >= 90) {
-                  return h("textRenderable", {}, "Grade: A")
+                  return h("Text", {}, "Grade: A")
                 } else if (score.value >= 80) {
-                  return h("textRenderable", {}, "Grade: B")
+                  return h("Text", {}, "Grade: B")
                 } else if (score.value >= 70) {
-                  return h("textRenderable", {}, "Grade: C")
+                  return h("Text", {}, "Grade: C")
                 } else {
-                  return h("textRenderable", {}, "Grade: F")
+                  return h("Text", {}, "Grade: F")
                 }
               })(),
             ])
@@ -492,16 +492,16 @@ describe("Vue Renderer | Control Flow Tests", () => {
 
       const renderStatus = (s: Status) => {
         const renderers: Record<Status, () => ReturnType<typeof h>> = {
-          loading: () => h("textRenderable", {}, "Loading..."),
-          success: () => h("textRenderable", {}, "Success!"),
-          error: () => h("textRenderable", {}, "Error occurred"),
+          loading: () => h("Text", {}, "Loading..."),
+          success: () => h("Text", {}, "Success!"),
+          error: () => h("Text", {}, "Error occurred"),
         }
         return renderers[s]()
       }
 
       const TestComponent = defineComponent({
         setup() {
-          return () => h("boxRenderable", {}, [renderStatus(status.value)])
+          return () => h("box", {}, [renderStatus(status.value)])
         },
       })
 
@@ -541,7 +541,7 @@ describe("Vue Renderer | Control Flow Tests", () => {
             if (props.shouldError) {
               throw new Error("Test error")
             }
-            return h("textRenderable", {}, "Normal content")
+            return h("Text", {}, "Normal content")
           }
         },
       })
@@ -554,9 +554,9 @@ describe("Vue Renderer | Control Flow Tests", () => {
           })
 
           return () =>
-            h("boxRenderable", {}, [
+            h("box", {}, [
               errorMessage.value
-                ? h("textRenderable", {}, `Error caught: ${errorMessage.value}`)
+                ? h("Text", {}, `Error caught: ${errorMessage.value}`)
                 : h(ErrorComponent, { shouldError: shouldError.value }),
             ])
         },
@@ -588,11 +588,11 @@ describe("Vue Renderer | Control Flow Tests", () => {
         setup() {
           return () =>
             h(
-              "boxRenderable",
+              "box",
               {},
               showList.value
-                ? items.value.map((item) => h("textRenderable", { key: item }, `Item: ${item}`))
-                : [h("textRenderable", {}, "List is hidden")],
+                ? items.value.map((item) => h("Text", { key: item }, `Item: ${item}`))
+                : [h("Text", {}, "List is hidden")],
             )
         },
       })
@@ -627,11 +627,11 @@ describe("Vue Renderer | Control Flow Tests", () => {
         setup() {
           return () =>
             h(
-              "boxRenderable",
+              "box",
               {},
               items
                 .filter((item) => visibleItems.value.has(item))
-                .map((item) => h("textRenderable", { key: item }, `Item: ${item}`)),
+                .map((item) => h("Text", { key: item }, `Item: ${item}`)),
             )
         },
       })
@@ -663,15 +663,15 @@ describe("Vue Renderer | Control Flow Tests", () => {
       const TestComponent = defineComponent({
         setup() {
           return () =>
-            h("boxRenderable", {}, [
+            h("box", {}, [
               showOuter.value
-                ? h("boxRenderable", {}, [
-                    h("textRenderable", {}, "Outer content"),
+                ? h("box", {}, [
+                    h("Text", {}, "Outer content"),
                     showInner.value
-                      ? h("textRenderable", {}, "Inner content")
-                      : h("textRenderable", {}, "Inner hidden"),
+                      ? h("Text", {}, "Inner content")
+                      : h("Text", {}, "Inner hidden"),
                   ])
-                : h("textRenderable", {}, "Outer hidden"),
+                : h("Text", {}, "Outer hidden"),
             ])
         },
       })
@@ -708,21 +708,21 @@ describe("Vue Renderer | Control Flow Tests", () => {
       const TestComponent = defineComponent({
         setup() {
           return () =>
-            h("boxRenderable", {}, [
+            h("box", {}, [
               (() => {
                 switch (mode.value) {
                   case "list":
                     return h(
                       Fragment,
-                      items.map((item) => h("textRenderable", { key: `list-${item}` }, `* ${item}`)),
+                      items.map((item) => h("Text", { key: `list-${item}` }, `* ${item}`)),
                     )
                   case "grid":
                     return h(
                       Fragment,
-                      items.map((item) => h("textRenderable", { key: `grid-${item}` }, `[${item}]`)),
+                      items.map((item) => h("Text", { key: `grid-${item}` }, `[${item}]`)),
                     )
                   default:
-                    return h("textRenderable", {}, "Unknown mode")
+                    return h("Text", {}, "Unknown mode")
                 }
               })(),
             ])
@@ -766,15 +766,15 @@ describe("Vue Renderer | Control Flow Tests", () => {
         setup() {
           return () =>
             h(
-              "boxRenderable",
+              "box",
               {},
               items.value
                 .filter((item) => item.visible)
                 .map((item) =>
-                  h("boxRenderable", { key: item.id }, [
-                    h("textRenderable", {}, `Name: ${item.name}`),
+                  h("box", { key: item.id }, [
+                    h("Text", {}, `Name: ${item.name}`),
                     ...(item.children
-                      ? item.children.map((child) => h("textRenderable", { key: child }, `  - ${child}`))
+                      ? item.children.map((child) => h("Text", { key: child }, `  - ${child}`))
                       : []),
                   ]),
                 ),
@@ -815,16 +815,16 @@ describe("Vue Renderer | Control Flow Tests", () => {
         setup() {
           return () =>
             h(
-              "boxRenderable",
+              "box",
               { id: "parent-box" },
               [
-                h("boxRenderable", { id: "always-visible", style: { border: true }, title: "Always" }),
+                h("box", { id: "always-visible", style: { border: true }, title: "Always" }),
                 showContent.value
-                  ? h("boxRenderable", { id: "conditional-child", style: { border: true }, title: "Conditional" }, [
-                      h("boxRenderable", { id: "nested-child", style: { border: true }, title: "Nested" }),
+                  ? h("box", { id: "conditional-child", style: { border: true }, title: "Conditional" }, [
+                      h("box", { id: "nested-child", style: { border: true }, title: "Nested" }),
                     ])
                   : null,
-                h("boxRenderable", { id: "another-visible", style: { border: true }, title: "Another" }),
+                h("box", { id: "another-visible", style: { border: true }, title: "Another" }),
               ].filter(Boolean),
             )
         },
@@ -847,10 +847,10 @@ describe("Vue Renderer | Control Flow Tests", () => {
       const TestComponent = defineComponent({
         setup() {
           return () =>
-            h("boxRenderable", {}, [
+            h("box", {}, [
               count.value % 2 === 0
-                ? h("textRenderable", {}, `Even: ${count.value}`)
-                : h("textRenderable", {}, `Odd: ${count.value}`),
+                ? h("Text", {}, `Even: ${count.value}`)
+                : h("Text", {}, `Odd: ${count.value}`),
             ])
         },
       })
@@ -878,11 +878,11 @@ describe("Vue Renderer | Control Flow Tests", () => {
         setup() {
           return () =>
             h(
-              "boxRenderable",
+              "box",
               {},
               [
-                h("textRenderable", {}, "Base text"),
-                showExtra.value ? h("textRenderable", { style: { fg: "red" } }, "Extra text") : null,
+                h("Text", {}, "Base text"),
+                showExtra.value ? h("Text", { style: { fg: "red" } }, "Extra text") : null,
               ].filter(Boolean),
             )
         },
@@ -913,12 +913,12 @@ describe("Vue Renderer | Control Flow Tests", () => {
         setup() {
           return () =>
             h(
-              "boxRenderable",
+              "box",
               {},
               [
-                h("textRenderable", {}, "Before"),
-                show.value ? h("textRenderable", {}, "Conditional") : null,
-                h("textRenderable", {}, "After"),
+                h("Text", {}, "Before"),
+                show.value ? h("Text", {}, "Conditional") : null,
+                h("Text", {}, "After"),
               ].filter(Boolean),
             )
         },
@@ -952,17 +952,17 @@ describe("Vue Renderer | Control Flow Tests", () => {
         setup() {
           return () =>
             h(
-              "boxRenderable",
+              "box",
               {},
               data.value.map((group) =>
                 h(
-                  "boxRenderable",
+                  "box",
                   { key: group.id },
                   group.items.map((item) =>
                     h(
-                      "boxRenderable",
+                      "box",
                       { key: item.id },
-                      item.values.map((value) => h("textRenderable", { key: value }, value)),
+                      item.values.map((value) => h("Text", { key: value }, value)),
                     ),
                   ),
                 ),
@@ -988,14 +988,14 @@ describe("Vue Renderer | Control Flow Tests", () => {
         setup() {
           return () =>
             h(
-              "boxRenderable",
+              "box",
               {},
               [
-                h("textRenderable", {}, "First"),
+                h("Text", {}, "First"),
                 false,
-                h("textRenderable", {}, "Second"),
+                h("Text", {}, "Second"),
                 null,
-                h("textRenderable", {}, "Third"),
+                h("Text", {}, "Third"),
               ].filter(Boolean),
             )
         },

@@ -27,15 +27,15 @@ describe("Vue Renderer | Event Tests", () => {
       const TestComponent = defineComponent({
         setup() {
           return () =>
-            h("boxRenderable", {}, [
-              h("inputRenderable", {
+            h("box", {}, [
+              h("Input", {
                 focused: true,
                 onInput: (val: string) => {
                   onInputSpy(val)
                   value.value = val
                 },
               }),
-              h("textRenderable", { content: `Value: ${value.value}` }),
+              h("Text", { content: `Value: ${value.value}` }),
             ])
         },
       })
@@ -57,8 +57,8 @@ describe("Vue Renderer | Event Tests", () => {
       const TestComponent = defineComponent({
         setup() {
           return () =>
-            h("boxRenderable", {}, [
-              h("inputRenderable", {
+            h("box", {}, [
+              h("Input", {
                 focused: true,
                 onInput: (val: string) => {
                   submittedValue.value = val
@@ -85,8 +85,8 @@ describe("Vue Renderer | Event Tests", () => {
       const TestComponent = defineComponent({
         setup() {
           return () =>
-            h("boxRenderable", {}, [
-              h("inputRenderable", {
+            h("box", {}, [
+              h("Input", {
                 id: "input",
                 focused: true,
                 onChange: (val: string) => onChangeSpy(val),
@@ -112,8 +112,8 @@ describe("Vue Renderer | Event Tests", () => {
       const TestComponent = defineComponent({
         setup() {
           return () =>
-            h("boxRenderable", {}, [
-              h("inputRenderable", {
+            h("box", {}, [
+              h("Input", {
                 focused: true,
                 onInput: inputSpy,
               }),
@@ -145,8 +145,8 @@ describe("Vue Renderer | Event Tests", () => {
       const TestComponent = defineComponent({
         setup() {
           return () =>
-            h("boxRenderable", {}, [
-              h("selectRenderable", {
+            h("box", {}, [
+              h("Select", {
                 focused: true,
                 options,
                 onChange: (index: number, option: (typeof options)[0]) => {
@@ -154,7 +154,7 @@ describe("Vue Renderer | Event Tests", () => {
                   selectedIndex.value = index
                 },
               }),
-              h("textRenderable", { content: `Selected: ${selectedIndex.value}` }),
+              h("Text", { content: `Selected: ${selectedIndex.value}` }),
             ])
         },
       })
@@ -180,8 +180,8 @@ describe("Vue Renderer | Event Tests", () => {
       const TestComponent = defineComponent({
         setup() {
           return () =>
-            h("boxRenderable", {}, [
-              h("selectRenderable", {
+            h("box", {}, [
+              h("Select", {
                 focused: true,
                 options,
                 onSelect: (index: number, option: (typeof options)[0]) => {
@@ -211,8 +211,8 @@ describe("Vue Renderer | Event Tests", () => {
       const TestComponent = defineComponent({
         setup() {
           return () =>
-            h("boxRenderable", {}, [
-              h("selectRenderable", {
+            h("box", {}, [
+              h("Select", {
                 focused: true,
                 options: [
                   { name: "Option 1", value: "opt1", description: "First option" },
@@ -224,7 +224,7 @@ describe("Vue Renderer | Event Tests", () => {
                   selectedValue.value = option?.value || ""
                 },
               }),
-              h("textRenderable", { content: `Selected: ${selectedValue.value}` }),
+              h("Text", { content: `Selected: ${selectedValue.value}` }),
             ])
         },
       })
@@ -248,7 +248,7 @@ describe("Vue Renderer | Event Tests", () => {
   })
 
   describe("TabSelect Events", () => {
-    it("should handle tab_select onSelect events", async () => {
+    it("should handle tab-select onSelect events", async () => {
       const onSelectSpy = createSpy()
       const activeTab = ref(0)
 
@@ -257,8 +257,8 @@ describe("Vue Renderer | Event Tests", () => {
       const TestComponent = defineComponent({
         setup() {
           return () =>
-            h("boxRenderable", {}, [
-              h("tabSelectRenderable", {
+            h("box", {}, [
+              h("tab-select", {
                 focused: true,
                 options: tabs.map((tab, index) => ({
                   name: tab.title,
@@ -270,7 +270,7 @@ describe("Vue Renderer | Event Tests", () => {
                   activeTab.value = index
                 },
               }),
-              h("textRenderable", { content: `Active tab: ${activeTab.value}` }),
+              h("Text", { content: `Active tab: ${activeTab.value}` }),
             ])
         },
       })
@@ -292,8 +292,8 @@ describe("Vue Renderer | Event Tests", () => {
       const TestComponent = defineComponent({
         setup() {
           return () =>
-            h("boxRenderable", {}, [
-              h("tabSelectRenderable", {
+            h("box", {}, [
+              h("tab-select", {
                 focused: true,
                 options: [
                   { name: "Tab 1", value: 0, description: "" },
@@ -326,12 +326,12 @@ describe("Vue Renderer | Event Tests", () => {
       const TestComponent = defineComponent({
         setup() {
           return () =>
-            h("boxRenderable", {}, [
-              h("inputRenderable", {
+            h("box", {}, [
+              h("Input", {
                 focused: input1Focused.value,
                 onInput: input1Spy,
               }),
-              h("inputRenderable", {
+              h("Input", {
                 focused: input2Focused.value,
                 onInput: input2Spy,
               }),
@@ -367,8 +367,8 @@ describe("Vue Renderer | Event Tests", () => {
       const TestComponent = defineComponent({
         setup() {
           return () =>
-            h("boxRenderable", {}, [
-              h("textareaRenderable", {
+            h("box", {}, [
+              h("Textarea", {
                 focused: true,
                 initialValue: "test content",
                 onSubmit: () => onSubmitSpy(),
@@ -391,8 +391,8 @@ describe("Vue Renderer | Event Tests", () => {
       const TestComponent = defineComponent({
         setup() {
           return () =>
-            h("boxRenderable", {}, [
-              h("textareaRenderable", {
+            h("box", {}, [
+              h("Textarea", {
                 focused: true,
                 initialValue: "",
                 onContentChange: (content: string) => onContentChangeSpy(content),
@@ -417,8 +417,8 @@ describe("Vue Renderer | Event Tests", () => {
       const TestComponent = defineComponent({
         setup() {
           return () =>
-            h("boxRenderable", {}, [
-              h("inputRenderable", {
+            h("box", {}, [
+              h("Input", {
                 focused: true,
                 onInput: inputSpy,
               }),
@@ -457,15 +457,15 @@ describe("Vue Renderer | Event Tests", () => {
       const TestComponent = defineComponent({
         setup() {
           return () =>
-            h("boxRenderable", {}, [
-              h("inputRenderable", {
+            h("box", {}, [
+              h("Input", {
                 focused: true,
                 onInput: (val: string) => {
                   inputSpy(val)
                   value.value = val
                 },
               }),
-              h("textRenderable", { content: `Value: ${value.value}` }),
+              h("Text", { content: `Value: ${value.value}` }),
             ])
         },
       })
@@ -500,8 +500,8 @@ describe("Vue Renderer | Event Tests", () => {
       const TestComponent = defineComponent({
         setup() {
           return () =>
-            h("boxRenderable", {}, [
-              h("inputRenderable", {
+            h("box", {}, [
+              h("Input", {
                 focused: true,
                 onInput: inputSpy,
               }),
@@ -551,8 +551,8 @@ describe("Vue Renderer | Event Tests", () => {
       const TestComponent = defineComponent({
         setup() {
           return () =>
-            h("boxRenderable", {}, [
-              h("selectRenderable", {
+            h("box", {}, [
+              h("Select", {
                 focused: true,
                 wrapSelection: true,
                 options: [
@@ -565,7 +565,7 @@ describe("Vue Renderer | Event Tests", () => {
                   selectedIndex.value = index
                 },
               }),
-              h("textRenderable", { content: `Selected: ${selectedIndex.value}` }),
+              h("Text", { content: `Selected: ${selectedIndex.value}` }),
             ])
         },
       })
@@ -601,8 +601,8 @@ describe("Vue Renderer | Event Tests", () => {
       const TestComponent = defineComponent({
         setup() {
           return () =>
-            h("boxRenderable", {}, [
-              h("inputRenderable", {
+            h("box", {}, [
+              h("Input", {
                 focused: true,
                 onInput: inputSpy,
               }),
@@ -647,8 +647,8 @@ describe("Vue Renderer | Event Tests", () => {
       const TestComponent = defineComponent({
         setup() {
           return () =>
-            h("boxRenderable", {}, [
-              h("inputRenderable", {
+            h("box", {}, [
+              h("Input", {
                 focused: true,
                 onPaste: (val: PasteEvent) => {
                   pasteSpy(val)
@@ -696,9 +696,9 @@ describe("Vue Renderer | Event Tests", () => {
         setup() {
           return () =>
             h(
-              "boxRenderable",
+              "box",
               {},
-              items.value.map((item) => h("textRenderable", { content: item })),
+              items.value.map((item) => h("Text", { content: item })),
             )
         },
       })
@@ -731,9 +731,9 @@ describe("Vue Renderer | Event Tests", () => {
       const TestComponent = defineComponent({
         setup() {
           return () =>
-            h("boxRenderable", {}, [
-              h("textRenderable", { content: `Static: ${dynamicText.value}` }),
-              h("textRenderable", { content: "Direct content" }),
+            h("box", {}, [
+              h("Text", { content: `Static: ${dynamicText.value}` }),
+              h("Text", { content: "Direct content" }),
             ])
         },
       })

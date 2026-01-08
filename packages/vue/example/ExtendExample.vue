@@ -1,13 +1,13 @@
 <template>
-  <boxRenderable :style="{ flexDirection: 'column' }">
-    <textRenderable>Custom Button Example</textRenderable>
-    <consoleButtonRenderable
+  <box :style="{ flexDirection: 'column' }">
+    <Text>Custom Button Example</Text>
+    <ConsoleButton
       label="Another Button"
       :style="{
         backgroundColor: 'green',
       }"
     />
-  </boxRenderable>
+  </box>
 </template>
 
 <script setup lang="ts"></script>

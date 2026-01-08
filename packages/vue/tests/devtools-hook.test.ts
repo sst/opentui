@@ -63,7 +63,7 @@ describe("DevTools integration | hook timing", () => {
     const count = ref(0)
     const TestComponent = defineComponent({
       setup() {
-        return () => h("textRenderable", { content: `count:${count.value}` })
+        return () => h("Text", { content: `count:${count.value}` })
       },
     })
 
@@ -82,7 +82,7 @@ describe("DevTools integration | hook timing", () => {
     const count = ref(0)
     const TestComponent = defineComponent({
       setup() {
-        return () => h("textRenderable", { content: `count:${count.value}` })
+        return () => h("Text", { content: `count:${count.value}` })
       },
     })
 

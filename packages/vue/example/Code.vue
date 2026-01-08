@@ -35,14 +35,14 @@ greet(alice) // Output: Hello, Alice`
 </script>
 
 <template>
-  <boxRenderable
+  <box
     :style="{
       flexDirection: 'column',
       padding: 1,
       gap: 1,
     }"
   >
-    <boxRenderable
+    <box
       :style="{
         backgroundColor: '#1a1b26',
         padding: 1,
@@ -51,10 +51,10 @@ greet(alice) // Output: Hello, Alice`
         borderColor: '#7aa2f7',
       }"
     >
-      <textRenderable :style="{ fg: '#7aa2f7' }"> Code Syntax Highlighting Demo </textRenderable>
-    </boxRenderable>
+      <Text :style="{ fg: '#7aa2f7' }"> Code Syntax Highlighting Demo </Text>
+    </box>
 
-    <boxRenderable
+    <box
       title="typescript"
       titleAlignment="left"
       :style="{
@@ -66,9 +66,9 @@ greet(alice) // Output: Hello, Alice`
         padding: 1,
       }"
     >
-      <codeRenderable :content="codeExample" filetype="typescript" :syntaxStyle="syntaxStyle" />
-    </boxRenderable>
+      <Code :content="codeExample" filetype="typescript" :syntaxStyle="syntaxStyle" />
+    </box>
 
-    <textRenderable :style="{ fg: '#565f89', height: 1 }"> Press ESC to return to menu </textRenderable>
-  </boxRenderable>
+    <Text :style="{ fg: '#565f89', height: 1 }"> Press ESC to return to menu </Text>
+  </box>
 </template>

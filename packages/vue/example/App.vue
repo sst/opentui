@@ -62,14 +62,14 @@ const selectStyles = { flexGrow: 1 }
   <Textarea v-else-if="selectedExample?.value === 'textarea'" />
   <Animation v-else-if="selectedExample?.value === 'animation'" />
   <LineNumber v-else-if="selectedExample?.value === 'lineNumber'" />
-  <boxRenderable v-else :style="boxStyles">
-    <selectRenderable
+  <box v-else :style="boxStyles">
+    <Select
       :style="selectStyles"
       :focused="true"
       showScrollIndicator
       :options="exampleOptions"
       :onSelect="onSelectExample"
       :value="selectedExample"
-    ></selectRenderable>
-  </boxRenderable>
+    ></Select>
+  </box>
 </template>

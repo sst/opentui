@@ -69,7 +69,7 @@ useKeyboard((key) => {
 </script>
 
 <template>
-  <boxRenderable
+  <box
     :style="{
       flexDirection: 'column',
       padding: 1,
@@ -77,7 +77,7 @@ useKeyboard((key) => {
     }"
   >
     <!-- Header -->
-    <boxRenderable
+    <box
       :style="{
         backgroundColor: '#1e293b',
         padding: 1,
@@ -86,27 +86,25 @@ useKeyboard((key) => {
         borderColor: '#3b82f6',
       }"
     >
-      <textRenderable :style="{ fg: '#3b82f6' }"> Line Number Demo </textRenderable>
-    </boxRenderable>
+      <Text :style="{ fg: '#3b82f6' }"> Line Number Demo </Text>
+    </box>
 
     <!-- Controls -->
-    <boxRenderable
+    <box
       :style="{
         flexDirection: 'row',
         gap: 2,
         height: 1,
       }"
     >
-      <textRenderable :style="{ fg: '#94a3b8' }">
-        L: line numbers ({{ showLineNumbers ? "ON" : "OFF" }})
-      </textRenderable>
-      <textRenderable :style="{ fg: '#94a3b8' }"> J/K: navigate </textRenderable>
-      <textRenderable :style="{ fg: '#94a3b8' }"> W: wrap ({{ wrapMode }}) </textRenderable>
-      <textRenderable :style="{ fg: '#64748b' }"> Line {{ currentLine + 1 }}/{{ lineCount }} </textRenderable>
-    </boxRenderable>
+      <Text :style="{ fg: '#94a3b8' }"> L: line numbers ({{ showLineNumbers ? "ON" : "OFF" }}) </Text>
+      <Text :style="{ fg: '#94a3b8' }"> J/K: navigate </Text>
+      <Text :style="{ fg: '#94a3b8' }"> W: wrap ({{ wrapMode }}) </Text>
+      <Text :style="{ fg: '#64748b' }"> Line {{ currentLine + 1 }}/{{ lineCount }} </Text>
+    </box>
 
     <!-- Content Area -->
-    <boxRenderable
+    <box
       :style="{
         flexGrow: 1,
         border: true,
@@ -115,7 +113,7 @@ useKeyboard((key) => {
         backgroundColor: '#0f172a',
       }"
     >
-      <lineNumberRenderable
+      <line-number
         ref="lineNumberRef"
         :showLineNumbers="showLineNumbers"
         fg="#64748b"
@@ -125,7 +123,7 @@ useKeyboard((key) => {
         width="100%"
         height="100%"
       >
-        <textareaRenderable
+        <Textarea
           :initialValue="content"
           :wrapMode="wrapMode"
           textColor="#e2e8f0"
@@ -135,10 +133,10 @@ useKeyboard((key) => {
           width="100%"
           height="100%"
         />
-      </lineNumberRenderable>
-    </boxRenderable>
+      </line-number>
+    </box>
 
     <!-- Footer -->
-    <textRenderable :style="{ fg: '#565f89', height: 1 }"> Press ESC to return to menu </textRenderable>
-  </boxRenderable>
+    <Text :style="{ fg: '#565f89', height: 1 }"> Press ESC to return to menu </Text>
+  </box>
 </template>

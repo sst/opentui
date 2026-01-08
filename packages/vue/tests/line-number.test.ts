@@ -37,9 +37,9 @@ console.log(test())`
     const TestComponent = defineComponent({
       setup() {
         return () =>
-          h("boxRenderable", { id: "root", style: { width: "100%", height: "100%" } }, [
+          h("box", { id: "root", style: { width: "100%", height: "100%" } }, [
             h(
-              "lineNumberRenderable",
+              "line-number",
               {
                 id: "line-numbers",
                 fg: "#888888",
@@ -49,7 +49,7 @@ console.log(test())`
                 style: { width: "100%", height: "100%" },
               },
               [
-                h("codeRenderable", {
+                h("Code", {
                   id: "code-content",
                   content: codeContent,
                   filetype: "javascript",
@@ -101,10 +101,10 @@ console.log(test())`
     const TestComponent = defineComponent({
       setup() {
         return () =>
-          h("boxRenderable", { id: "root", style: { width: "100%", height: "100%" } }, [
+          h("box", { id: "root", style: { width: "100%", height: "100%" } }, [
             showLineNumbers.value
               ? h(
-                  "lineNumberRenderable",
+                  "line-number",
                   {
                     id: "line-numbers",
                     fg: "#888888",
@@ -114,7 +114,7 @@ console.log(test())`
                     style: { width: "100%", height: "100%" },
                   },
                   [
-                    h("codeRenderable", {
+                    h("Code", {
                       id: "code-content",
                       content: codeContent,
                       filetype: "javascript",
@@ -124,7 +124,7 @@ console.log(test())`
                     }),
                   ],
                 )
-              : h("codeRenderable", {
+              : h("Code", {
                   id: "code-content-no-lines",
                   content: codeContent,
                   filetype: "javascript",
