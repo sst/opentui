@@ -1004,26 +1004,7 @@ export abstract class Renderable extends BaseRenderable {
       if (this.parent) this.parent.childrenPrimarySortDirty = true
     }
   }
-
-  public updateFromLayoutRecursive(): void {
-    if (this._isDestroyed) return
-    this.updateFromLayout()
-    for (const child of this._childrenInLayoutOrder) {
-      child.updateFromLayoutRecursive()
-    }
-  }
-
-  protected hasDirtyLayoutRecursive(): boolean {
-    if (this._isDestroyed) return false
-    if (this.yogaNode.isDirty()) return true
-    for (const child of this._childrenInLayoutOrder) {
-      if (child.hasDirtyLayoutRecursive()) {
-        return true
-      }
-    }
-    return false
-  }
-
+  
   protected onLayoutResize(width: number, height: number): void {
     if (this._visible) {
       // TODO: Should probably .markDirty()
@@ -1744,10 +1725,6 @@ export class RootRenderable extends Renderable {
   public calculateLayout(): void {
     this.yogaNode.calculateLayout(this.width, this.height, Direction.LTR)
     this.emit(LayoutEvents.LAYOUT_CHANGED)
-  }
-
-  public get layoutDirty(): boolean {
-    return this.hasDirtyLayoutRecursive()
   }
 
   public resize(width: number, height: number): void {
