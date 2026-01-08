@@ -1285,11 +1285,12 @@ export abstract class Renderable extends BaseRenderable {
       const scissorRect = this.getScissorRect()
       renderList.push({
         action: "pushScissorRect",
-        renderable: this,
         x: scissorRect.x,
         y: scissorRect.y,
         width: scissorRect.width,
         height: scissorRect.height,
+        screenX: this.x,
+        screenY: this.y,
       })
     }
     const visibleChildren = this._getVisibleChildren()
@@ -1521,11 +1522,12 @@ interface RenderCommandBase {
 
 interface RenderCommandPushScissorRect extends RenderCommandBase {
   action: "pushScissorRect"
-  renderable: Renderable
   x: number
   y: number
   width: number
   height: number
+  screenX: number
+  screenY: number
 }
 
 interface RenderCommandPopScissorRect extends RenderCommandBase {
@@ -1608,13 +1610,7 @@ export class RootRenderable extends Renderable {
           break
         case "pushScissorRect":
           buffer.pushScissorRect(command.x, command.y, command.width, command.height)
-          // Hitgrid always uses absolute screen coordinates
-          this._ctx.pushHitGridScissorRect(
-            command.renderable.x,
-            command.renderable.y,
-            command.renderable.width,
-            command.renderable.height,
-          )
+          this._ctx.pushHitGridScissorRect(command.screenX, command.screenY, command.width, command.height)
           break
         case "popScissorRect":
           buffer.popScissorRect()
