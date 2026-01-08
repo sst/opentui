@@ -1,4 +1,4 @@
-import { CliRenderer, engine } from "@opentui/core"
+import { CliRenderer, CliRenderEvents, engine } from "@opentui/core"
 import React, { type ReactNode } from "react"
 import type { OpaqueRoot } from "react-reconciler"
 import { AppContext } from "../components/app"
@@ -29,6 +29,17 @@ export type Root = {
 export function createRoot(renderer: CliRenderer): Root {
   let container: OpaqueRoot | null = null
 
+  const cleanup = () => {
+    if (container) {
+      reconciler.updateContainer(null, container, null, () => {})
+      // @ts-expect-error the types for `react-reconciler` are not up to date with the library.
+      reconciler.flushSyncWork()
+      container = null
+    }
+  }
+
+  renderer.once(CliRenderEvents.DESTROY, cleanup)
+
   return {
     render: (node: ReactNode) => {
       engine.attach(renderer)
@@ -43,16 +54,7 @@ export function createRoot(renderer: CliRenderer): Root {
       )
     },
 
-    unmount: (): void => {
-      if (!container) {
-        return
-      }
-
-      reconciler.updateContainer(null, container, null, () => {})
-      // @ts-expect-error the types for `react-reconciler` are not up to date with the library.
-      reconciler.flushSyncWork()
-      container = null
-    },
+    unmount: cleanup,
   }
 }
 
