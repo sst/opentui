@@ -337,6 +337,7 @@ export abstract class Renderable extends BaseRenderable {
     if (this._focused) {
       this.blur()
     }
+    this._ctx.markHitGridDirty()
     this.requestRender()
   }
 
@@ -476,6 +477,7 @@ export abstract class Renderable extends BaseRenderable {
     if (this._translateX === value) return
     this._translateX = value
     if (this.parent) this.parent.childrenPrimarySortDirty = true
+    this._ctx.markHitGridDirty()
     this.requestRender()
   }
 
@@ -487,6 +489,7 @@ export abstract class Renderable extends BaseRenderable {
     if (this._translateY === value) return
     this._translateY = value
     if (this.parent) this.parent.childrenPrimarySortDirty = true
+    this._ctx.markHitGridDirty()
     this.requestRender()
   }
 
@@ -596,6 +599,7 @@ export abstract class Renderable extends BaseRenderable {
     if (this._zIndex !== value) {
       this._zIndex = value
       this.parent?.requestZIndexSort()
+      this._ctx.markHitGridDirty()
     }
   }
 
@@ -777,6 +781,7 @@ export abstract class Renderable extends BaseRenderable {
 
     this._overflow = overflow
     this.yogaNode.setOverflow(parseOverflow(overflow))
+    this._ctx.markHitGridDirty()
     this.requestRender()
   }
 
@@ -983,13 +988,15 @@ export abstract class Renderable extends BaseRenderable {
 
     const oldX = this._x
     const oldY = this._y
+    const oldWidth = this._widthValue
+    const oldHeight = this._heightValue
 
     this._x = layout.left
     this._y = layout.top
 
     const newWidth = Math.max(layout.width, 1)
     const newHeight = Math.max(layout.height, 1)
-    const sizeChanged = this.width !== newWidth || this.height !== newHeight
+    const sizeChanged = oldWidth !== newWidth || oldHeight !== newHeight
 
     this._widthValue = newWidth
     this._heightValue = newHeight
@@ -998,8 +1005,13 @@ export abstract class Renderable extends BaseRenderable {
       this.onLayoutResize(newWidth, newHeight)
     }
 
-    if (oldX !== this._x || oldY !== this._y) {
+    const positionChanged = oldX !== this._x || oldY !== this._y
+    if (positionChanged) {
       if (this.parent) this.parent.childrenPrimarySortDirty = true
+    }
+
+    if (sizeChanged || positionChanged) {
+      this._ctx.markHitGridDirty()
     }
   }
 
@@ -1110,6 +1122,7 @@ export abstract class Renderable extends BaseRenderable {
     this.childrenPrimarySortDirty = true
     this._shouldUpdateBefore.add(renderable)
 
+    this._ctx.markHitGridDirty()
     this.requestRender()
 
     return insertedIndex
@@ -1180,6 +1193,7 @@ export abstract class Renderable extends BaseRenderable {
 
     this._shouldUpdateBefore.add(renderable)
 
+    this._ctx.markHitGridDirty()
     this.requestRender()
 
     return insertedIndex
@@ -1204,6 +1218,7 @@ export abstract class Renderable extends BaseRenderable {
 
         const childLayoutNode = obj.getLayoutNode()
         this.yogaNode.removeChild(childLayoutNode)
+        this._ctx.markHitGridDirty()
         this.requestRender()
 
         obj.onRemove()

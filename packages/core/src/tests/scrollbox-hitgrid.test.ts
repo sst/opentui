@@ -7,8 +7,28 @@ import { Renderable } from "../Renderable"
 let testRenderer: TestRenderer
 let mockMouse: MockMouse
 
+const hoverDebounceDelay = 40
+const waitForHoverDebounce = async () => {
+  await new Promise((resolve) => setTimeout(resolve, hoverDebounceDelay + 10))
+}
+
+class MovingBoxRenderable extends BoxRenderable {
+  public shouldMove = false
+
+  protected onUpdate(_deltaTime: number): void {
+    if (this.shouldMove) {
+      this.shouldMove = false
+      this.translateY = 3
+    }
+  }
+}
+
 beforeEach(async () => {
-  ;({ renderer: testRenderer, mockMouse } = await createTestRenderer({ width: 50, height: 30 }))
+  ;({ renderer: testRenderer, mockMouse } = await createTestRenderer({
+    width: 50,
+    height: 30,
+    hoverDebounceDelay,
+  }))
 })
 
 afterEach(() => {
@@ -125,6 +145,163 @@ test("hover updates after scroll when pointer moves", async () => {
   expect(hoverEvents).toEqual(["over:item-0", "out:item-0", "over:item-1"])
 })
 
+test("hover updates after scroll without pointer movement", async () => {
+  const scrollBox = new ScrollBoxRenderable(testRenderer, {
+    width: 20,
+    height: 6,
+    scrollY: true,
+  })
+  testRenderer.root.add(scrollBox)
+
+  const hoverEvents: string[] = []
+  let hoveredId: string | null = null
+
+  const items: BoxRenderable[] = []
+  for (let i = 0; i < 5; i++) {
+    const itemId = `item-${i}`
+    const item = new BoxRenderable(testRenderer, {
+      id: itemId,
+      width: "100%",
+      height: 2,
+      onMouseOver: () => {
+        hoveredId = itemId
+        hoverEvents.push(`over:${itemId}`)
+      },
+      onMouseOut: () => {
+        if (hoveredId === itemId) {
+          hoveredId = null
+        }
+        hoverEvents.push(`out:${itemId}`)
+      },
+    })
+    items.push(item)
+    scrollBox.add(item)
+  }
+
+  await testRenderer.idle()
+
+  const pointerX = items[0].x + 1
+  const pointerY = items[0].y + 1
+
+  await mockMouse.moveTo(pointerX, pointerY)
+  expect(hoveredId).toBe("item-0")
+  expect(hoverEvents).toEqual(["over:item-0"])
+
+  scrollBox.scrollTop = 2
+  await testRenderer.idle()
+  await waitForHoverDebounce()
+
+  expect(hoveredId).toBe("item-1")
+  expect(hoverEvents).toEqual(["over:item-0", "out:item-0", "over:item-1"])
+})
+
+test("hover debounce coalesces rapid scroll changes", async () => {
+  const scrollBox = new ScrollBoxRenderable(testRenderer, {
+    width: 20,
+    height: 6,
+    scrollY: true,
+  })
+  testRenderer.root.add(scrollBox)
+
+  const hoverEvents: string[] = []
+  let hoveredId: string | null = null
+
+  const items: BoxRenderable[] = []
+  for (let i = 0; i < 5; i++) {
+    const itemId = `item-${i}`
+    const item = new BoxRenderable(testRenderer, {
+      id: itemId,
+      width: "100%",
+      height: 2,
+      onMouseOver: () => {
+        hoveredId = itemId
+        hoverEvents.push(`over:${itemId}`)
+      },
+      onMouseOut: () => {
+        if (hoveredId === itemId) {
+          hoveredId = null
+        }
+        hoverEvents.push(`out:${itemId}`)
+      },
+    })
+    items.push(item)
+    scrollBox.add(item)
+  }
+
+  await testRenderer.idle()
+
+  const pointerX = items[0].x + 1
+  const pointerY = items[0].y + 1
+
+  await mockMouse.moveTo(pointerX, pointerY)
+  expect(hoveredId).toBe("item-0")
+  expect(hoverEvents).toEqual(["over:item-0"])
+
+  scrollBox.scrollTop = 2
+  await testRenderer.idle()
+  await new Promise((resolve) => setTimeout(resolve, Math.max(1, Math.floor(hoverDebounceDelay / 2))))
+
+  scrollBox.scrollTop = 4
+  await testRenderer.idle()
+  await waitForHoverDebounce()
+
+  expect(hoveredId).toBe("item-2")
+  expect(hoverEvents).toEqual(["over:item-0", "out:item-0", "over:item-2"])
+})
+
+test("mouse move cancels pending hover debounce", async () => {
+  const scrollBox = new ScrollBoxRenderable(testRenderer, {
+    width: 20,
+    height: 6,
+    scrollY: true,
+  })
+  testRenderer.root.add(scrollBox)
+
+  const hoverEvents: string[] = []
+  let hoveredId: string | null = null
+
+  const items: BoxRenderable[] = []
+  for (let i = 0; i < 5; i++) {
+    const itemId = `item-${i}`
+    const item = new BoxRenderable(testRenderer, {
+      id: itemId,
+      width: "100%",
+      height: 2,
+      onMouseOver: () => {
+        hoveredId = itemId
+        hoverEvents.push(`over:${itemId}`)
+      },
+      onMouseOut: () => {
+        if (hoveredId === itemId) {
+          hoveredId = null
+        }
+        hoverEvents.push(`out:${itemId}`)
+      },
+    })
+    items.push(item)
+    scrollBox.add(item)
+  }
+
+  await testRenderer.idle()
+
+  const pointerX = items[0].x + 1
+  const pointerY = items[0].y + 1
+
+  await mockMouse.moveTo(pointerX, pointerY)
+  expect(hoveredId).toBe("item-0")
+  expect(hoverEvents).toEqual(["over:item-0"])
+
+  scrollBox.scrollTop = 2
+  await testRenderer.idle()
+
+  await mockMouse.moveTo(pointerX, pointerY)
+  expect(hoveredId).toBe("item-1")
+  expect(hoverEvents).toEqual(["over:item-0", "out:item-0", "over:item-1"])
+
+  await waitForHoverDebounce()
+  expect(hoverEvents).toEqual(["over:item-0", "out:item-0", "over:item-1"])
+})
+
 test("hit grid handles multiple scroll operations correctly", async () => {
   const scrollBox = new ScrollBoxRenderable(testRenderer, {
     width: 40,
@@ -221,6 +398,50 @@ test("hit grid respects scrollbox viewport clipping when offset", async () => {
   expect(viewportHit?.id).toBe("item-2")
 })
 
+test("hover recheck skips while dragging captured renderable", async () => {
+  const scrollBox = new ScrollBoxRenderable(testRenderer, {
+    width: 20,
+    height: 6,
+    scrollY: true,
+  })
+  testRenderer.root.add(scrollBox)
+
+  const hoverEvents: string[] = []
+
+  const items: BoxRenderable[] = []
+  for (let i = 0; i < 5; i++) {
+    const itemId = `item-${i}`
+    const item = new BoxRenderable(testRenderer, {
+      id: itemId,
+      width: "100%",
+      height: 2,
+      onMouseOver: () => {
+        hoverEvents.push(`over:${itemId}`)
+      },
+      onMouseOut: () => {
+        hoverEvents.push(`out:${itemId}`)
+      },
+    })
+    items.push(item)
+    scrollBox.add(item)
+  }
+
+  await testRenderer.idle()
+
+  const pointerX = items[0].x + 1
+  const pointerY = items[0].y + 1
+
+  await mockMouse.moveTo(pointerX, pointerY)
+  await mockMouse.pressDown(pointerX, pointerY)
+  await mockMouse.moveTo(pointerX, pointerY)
+
+  scrollBox.scrollTop = 2
+  await testRenderer.idle()
+  await waitForHoverDebounce()
+
+  expect(hoverEvents).toEqual(["over:item-0"])
+})
+
 test("captured renderable is not in hit grid during scroll", async () => {
   const scrollBox = new ScrollBoxRenderable(testRenderer, {
     width: 40,
@@ -306,6 +527,70 @@ test("buffered overflow scissor uses screen coordinates for hit grid", async () 
   const hitId = testRenderer.hitTest(container.x + 1, container.y + 1)
   const hit = Renderable.renderablesByNumber.get(hitId)
   expect(hit?.id).toBe("buffered-child")
+})
+
+test("hover updates after translate animation", async () => {
+  const hoverEvents: string[] = []
+  let hoveredId: string | null = null
+
+  const under = new BoxRenderable(testRenderer, {
+    id: "under",
+    position: "absolute",
+    left: 2,
+    top: 2,
+    width: 6,
+    height: 2,
+    zIndex: 0,
+    onMouseOver: () => {
+      hoveredId = "under"
+      hoverEvents.push("over:under")
+    },
+    onMouseOut: () => {
+      if (hoveredId === "under") {
+        hoveredId = null
+      }
+      hoverEvents.push("out:under")
+    },
+  })
+  testRenderer.root.add(under)
+
+  const moving = new MovingBoxRenderable(testRenderer, {
+    id: "moving",
+    position: "absolute",
+    left: 2,
+    top: 2,
+    width: 6,
+    height: 2,
+    zIndex: 1,
+    onMouseOver: () => {
+      hoveredId = "moving"
+      hoverEvents.push("over:moving")
+    },
+    onMouseOut: () => {
+      if (hoveredId === "moving") {
+        hoveredId = null
+      }
+      hoverEvents.push("out:moving")
+    },
+  })
+  testRenderer.root.add(moving)
+
+  await testRenderer.idle()
+
+  const pointerX = moving.x + 1
+  const pointerY = moving.y + 1
+
+  await mockMouse.moveTo(pointerX, pointerY)
+  expect(hoveredId).toBe("moving")
+  expect(hoverEvents).toEqual(["over:moving"])
+
+  moving.shouldMove = true
+  moving.requestRender()
+  await testRenderer.idle()
+  await waitForHoverDebounce()
+
+  expect(hoveredId).toBe("under")
+  expect(hoverEvents).toEqual(["over:moving", "out:moving", "over:under"])
 })
 
 test("scrolling does not steal clicks outside the list", async () => {
