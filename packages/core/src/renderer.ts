@@ -1,5 +1,5 @@
 import { ANSI } from "./ansi"
-import { Renderable, RootRenderable, type HitGridCommand } from "./Renderable"
+import { Renderable, RootRenderable } from "./Renderable"
 import {
   type CursorStyle,
   DebugOverlayCorner,
@@ -408,11 +408,6 @@ export class CliRenderer extends EventEmitter implements RenderContext {
   private _capabilities: any | null = null
   private _latestPointer: { x: number; y: number } = { x: 0, y: 0 }
   private _hasPointer: boolean = false
-  private hitGridDirty: boolean = true
-  private hitGridSyncing: boolean = false
-  private hitGridDirtyDuringRender: boolean = false
-  private hitGridDirtyDuringSync: boolean = false
-  private hitGridCommands: HitGridCommand[] = []
 
   private _currentFocusedRenderable: Renderable | null = null
   private lifecyclePasses: Set<Renderable> = new Set()
@@ -644,22 +639,11 @@ export class CliRenderer extends EventEmitter implements RenderContext {
     this._currentFocusedRenderable = renderable
   }
 
-  private markHitGridDirty(): void {
-    this.hitGridDirty = true
-    if (this.rendering) {
-      this.hitGridDirtyDuringRender = true
-    }
-    if (this.hitGridSyncing) {
-      this.hitGridDirtyDuringSync = true
-    }
-  }
-
   private setCapturedRenderable(renderable: Renderable | undefined): void {
     if (this.capturedRenderable === renderable) {
       return
     }
     this.capturedRenderable = renderable
-    this.markHitGridDirty()
   }
 
   public addToHitGrid(x: number, y: number, width: number, height: number, id: number) {
@@ -690,7 +674,6 @@ export class CliRenderer extends EventEmitter implements RenderContext {
   }
 
   public requestRender() {
-    this.markHitGridDirty()
     if (this._controlState === RendererControlState.EXPLICIT_SUSPENDED) {
       return
     }
@@ -1236,97 +1219,8 @@ export class CliRenderer extends EventEmitter implements RenderContext {
     return false
   }
 
-  private syncHitGridIfNeeded(): void {
-    if (!this.hitGridDirty || this.hitGridSyncing) {
-      return
-    }
-
-    this.hitGridSyncing = true
-    this.hitGridDirtyDuringSync = false
-    try {
-      this.hitGridCommands.length = 0
-      this.root.collectHitGridCommands(this.hitGridCommands)
-
-      this.clearHitGridScissorRects()
-      this.lib.clearCurrentHitGrid(this.rendererPtr)
-
-      for (const command of this.hitGridCommands) {
-        switch (command.action) {
-          case "pushScissorRect":
-            this.lib.hitGridPushScissorRect(this.rendererPtr, command.x, command.y, command.width, command.height)
-            break
-          case "popScissorRect":
-            this.lib.hitGridPopScissorRect(this.rendererPtr)
-            break
-          case "render": {
-            const renderable = command.renderable
-            if (renderable.isDestroyed || renderable === this.root) {
-              break
-            }
-            if (this.capturedRenderable && renderable.num === this.capturedRenderable.num) {
-              break
-            }
-            this.lib.addToCurrentHitGridClipped(
-              this.rendererPtr,
-              renderable.x,
-              renderable.y,
-              renderable.width,
-              renderable.height,
-              renderable.num,
-            )
-            break
-          }
-        }
-      }
-
-      this.hitGridDirty = this.hitGridDirtyDuringSync
-    } finally {
-      this.hitGridDirtyDuringSync = false
-      this.hitGridSyncing = false
-    }
-  }
-
   public hitTest(x: number, y: number): number {
-    this.syncHitGridIfNeeded()
     return this.lib.checkHit(this.rendererPtr, x, y)
-  }
-
-  public recheckHoverState(): void {
-    if (!this._hasPointer) {
-      return
-    }
-    const pointer = this._latestPointer
-    const maybeRenderableId = this.hitTest(pointer.x, pointer.y)
-
-    if (maybeRenderableId === this.lastOverRenderableNum) {
-      return
-    }
-
-    const maybeRenderable = Renderable.renderablesByNumber.get(maybeRenderableId)
-    const mouseEvent = {
-      x: pointer.x,
-      y: pointer.y,
-      type: "move" as const,
-      button: 0,
-      modifiers: { shift: false, alt: false, ctrl: false },
-    }
-
-    if (this.lastOverRenderable && this.lastOverRenderable !== this.capturedRenderable) {
-      const event = new MouseEvent(this.lastOverRenderable, { ...mouseEvent, type: "out" })
-      this.lastOverRenderable.processMouseEvent(event)
-    }
-
-    this.lastOverRenderableNum = maybeRenderableId
-    this.lastOverRenderable = maybeRenderable
-
-    if (maybeRenderable) {
-      const event = new MouseEvent(maybeRenderable, {
-        ...mouseEvent,
-        type: "over",
-        source: this.capturedRenderable,
-      })
-      maybeRenderable.processMouseEvent(event)
-    }
   }
 
   private takeMemorySnapshot(): void {
@@ -1872,11 +1766,6 @@ export class CliRenderer extends EventEmitter implements RenderContext {
           this.renderTimeout = null
         }
       }
-
-      if (!this.hitGridDirtyDuringRender) {
-        this.hitGridDirty = false
-      }
-      this.hitGridDirtyDuringRender = false
     } finally {
       this.rendering = false
       if (this._destroyPending) {

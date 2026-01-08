@@ -477,7 +477,6 @@ export abstract class Renderable extends BaseRenderable {
     this._translateX = value
     if (this.parent) this.parent.childrenPrimarySortDirty = true
     this.requestRender()
-    this._ctx.recheckHoverState()
   }
 
   public get translateY(): number {
@@ -489,7 +488,6 @@ export abstract class Renderable extends BaseRenderable {
     this._translateY = value
     if (this.parent) this.parent.childrenPrimarySortDirty = true
     this.requestRender()
-    this._ctx.recheckHoverState()
   }
 
   public get x(): number {
@@ -1004,7 +1002,7 @@ export abstract class Renderable extends BaseRenderable {
       if (this.parent) this.parent.childrenPrimarySortDirty = true
     }
   }
-  
+
   protected onLayoutResize(width: number, height: number): void {
     if (this._visible) {
       // TODO: Should probably .markDirty()
@@ -1285,17 +1283,13 @@ export abstract class Renderable extends BaseRenderable {
     const shouldPushScissor = this._overflow !== "visible" && this.width > 0 && this.height > 0
     if (shouldPushScissor) {
       const scissorRect = this.getScissorRect()
-      const hitGridRect = this.getHitGridScissorRect()
       renderList.push({
         action: "pushScissorRect",
+        renderable: this,
         x: scissorRect.x,
         y: scissorRect.y,
         width: scissorRect.width,
         height: scissorRect.height,
-        hitGridX: hitGridRect.x,
-        hitGridY: hitGridRect.y,
-        hitGridWidth: hitGridRect.width,
-        hitGridHeight: hitGridRect.height,
       })
     }
     const visibleChildren = this._getVisibleChildren()
@@ -1312,47 +1306,6 @@ export abstract class Renderable extends BaseRenderable {
     }
     if (shouldPushOpacity) {
       renderList.push({ action: "popOpacity" })
-    }
-  }
-
-  public collectHitGridCommands(renderList: HitGridCommand[] = []): void {
-    if (!this.visible || this._isDestroyed) return
-
-    if (this._shouldUpdateBefore.size > 0) {
-      for (const child of this._shouldUpdateBefore) {
-        if (!child.isDestroyed) {
-          child.updateFromLayout()
-        }
-      }
-      this._shouldUpdateBefore.clear()
-    }
-
-    renderList.push({ action: "render", renderable: this })
-
-    this.ensureZIndexSorted()
-
-    const shouldPushScissor = this._overflow !== "visible" && this.width > 0 && this.height > 0
-    if (shouldPushScissor) {
-      const scissorRect = this.getHitGridScissorRect()
-      renderList.push({
-        action: "pushScissorRect",
-        x: scissorRect.x,
-        y: scissorRect.y,
-        width: scissorRect.width,
-        height: scissorRect.height,
-      })
-    }
-
-    const visibleChildren = this._getVisibleChildren()
-    for (const child of this._childrenInZIndexOrder) {
-      if (!visibleChildren.includes(child.num)) {
-        continue
-      }
-      child.collectHitGridCommands(renderList)
-    }
-
-    if (shouldPushScissor) {
-      renderList.push({ action: "popScissorRect" })
     }
   }
 
@@ -1393,15 +1346,6 @@ export abstract class Renderable extends BaseRenderable {
     return {
       x: this.buffered ? 0 : this.x,
       y: this.buffered ? 0 : this.y,
-      width: this.width,
-      height: this.height,
-    }
-  }
-
-  protected getHitGridScissorRect(): { x: number; y: number; width: number; height: number } {
-    return {
-      x: this.x,
-      y: this.y,
       width: this.width,
       height: this.height,
     }
@@ -1577,14 +1521,11 @@ interface RenderCommandBase {
 
 interface RenderCommandPushScissorRect extends RenderCommandBase {
   action: "pushScissorRect"
+  renderable: Renderable
   x: number
   y: number
   width: number
   height: number
-  hitGridX: number
-  hitGridY: number
-  hitGridWidth: number
-  hitGridHeight: number
 }
 
 interface RenderCommandPopScissorRect extends RenderCommandBase {
@@ -1611,29 +1552,6 @@ export type RenderCommand =
   | RenderCommandRender
   | RenderCommandPushOpacity
   | RenderCommandPopOpacity
-
-interface HitGridCommandBase {
-  action: "render" | "pushScissorRect" | "popScissorRect"
-}
-
-interface HitGridCommandPushScissorRect extends HitGridCommandBase {
-  action: "pushScissorRect"
-  x: number
-  y: number
-  width: number
-  height: number
-}
-
-interface HitGridCommandPopScissorRect extends HitGridCommandBase {
-  action: "popScissorRect"
-}
-
-interface HitGridCommandRender extends HitGridCommandBase {
-  action: "render"
-  renderable: Renderable
-}
-
-export type HitGridCommand = HitGridCommandPushScissorRect | HitGridCommandPopScissorRect | HitGridCommandRender
 
 export class RootRenderable extends Renderable {
   private renderList: RenderCommand[] = []
@@ -1690,11 +1608,12 @@ export class RootRenderable extends Renderable {
           break
         case "pushScissorRect":
           buffer.pushScissorRect(command.x, command.y, command.width, command.height)
+          // Hitgrid always uses absolute screen coordinates
           this._ctx.pushHitGridScissorRect(
-            command.hitGridX,
-            command.hitGridY,
-            command.hitGridWidth,
-            command.hitGridHeight,
+            command.renderable.x,
+            command.renderable.y,
+            command.renderable.width,
+            command.renderable.height,
           )
           break
         case "popScissorRect":

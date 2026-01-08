@@ -15,7 +15,7 @@ afterEach(() => {
   testRenderer.destroy()
 })
 
-test("hit grid updates immediately when scrollbox scrolls - no stale positions", async () => {
+test("hit grid updates after render when scrollbox scrolls", async () => {
   const scrollBox = new ScrollBoxRenderable(testRenderer, {
     width: 40,
     height: 20,
@@ -64,22 +64,17 @@ test("hit grid updates immediately when scrollbox scrolls - no stale positions",
   expect(item5.y).toBe(0)
   expect(item9.y).toBe(8)
 
-  let hitAtItem5 = checkHitAt(5, item5.y)
-  expect(hitAtItem5?.id).toBe("item-5")
-
-  let hitAtItem9 = checkHitAt(5, item9.y)
-  expect(hitAtItem9?.id).toBe("item-9")
-
+  // Hit grid updates after render
   await testRenderer.idle()
 
-  hitAtItem5 = checkHitAt(5, item5.y)
+  const hitAtItem5 = checkHitAt(5, item5.y)
   expect(hitAtItem5?.id).toBe("item-5")
 
-  hitAtItem9 = checkHitAt(5, item9.y)
+  const hitAtItem9 = checkHitAt(5, item9.y)
   expect(hitAtItem9?.id).toBe("item-9")
 })
 
-test("hover updates immediately after scroll without moving the pointer", async () => {
+test("hover updates after scroll when pointer moves", async () => {
   const scrollBox = new ScrollBoxRenderable(testRenderer, {
     width: 20,
     height: 6,
@@ -122,11 +117,12 @@ test("hover updates immediately after scroll without moving the pointer", async 
   expect(hoverEvents).toEqual(["over:item-0"])
 
   scrollBox.scrollTop = 2
+  await testRenderer.idle()
 
+  // Hover updates when pointer moves after scroll and render
+  await mockMouse.moveTo(pointerX, pointerY)
   expect(hoveredId).toBe("item-1")
   expect(hoverEvents).toEqual(["over:item-0", "out:item-0", "over:item-1"])
-
-  await testRenderer.idle()
 })
 
 test("hit grid handles multiple scroll operations correctly", async () => {
@@ -156,16 +152,19 @@ test("hit grid handles multiple scroll operations correctly", async () => {
 
   scrollBox.scrollTop = 20
   expect(items[10].y).toBe(0)
+  await testRenderer.idle()
   let hit = checkHitAt(5, items[10].y)
   expect(hit?.id).toBe("item-10")
 
   scrollBox.scrollTop = 40
   expect(items[20].y).toBe(0)
+  await testRenderer.idle()
   hit = checkHitAt(5, items[20].y)
   expect(hit?.id).toBe("item-20")
 
   scrollBox.scrollTop = 0
   expect(items[0].y).toBe(0)
+  await testRenderer.idle()
   hit = checkHitAt(5, items[0].y)
   expect(hit?.id).toBe("item-0")
 })
@@ -213,6 +212,7 @@ test("hit grid respects scrollbox viewport clipping when offset", async () => {
   expect(headerHit?.id).toBe("header")
 
   scrollBox.scrollTop = 4
+  await testRenderer.idle()
 
   const headerHitAfterScroll = checkHitAt(2, header.y + 1)
   expect(headerHitAfterScroll?.id).toBe("header")
@@ -248,6 +248,7 @@ test("captured renderable is not in hit grid during scroll", async () => {
   await mockMouse.moveTo(pointerX, pointerY + 1)
 
   scrollBox.scrollTop = 4
+  await testRenderer.idle()
 
   const renderableId = testRenderer.hitTest(pointerX, pointerY)
   const hit = Renderable.renderablesByNumber.get(renderableId)
