@@ -10,8 +10,9 @@ function initializePolyfill(): Promise<void> {
       try {
         await import("@formatjs/intl-segmenter/polyfill-force.js")
       } catch (e) {
+        const message = e instanceof Error ? e.message : String(e)
         initError = new Error(
-          "Failed to load Intl.Segmenter polyfill. Please ensure @formatjs/intl-segmenter is installed or use a runtime that supports Intl.Segmenter natively.",
+          `Failed to load Intl.Segmenter polyfill: ${message}. Please ensure @formatjs/intl-segmenter is installed or use a runtime that supports Intl.Segmenter natively.`,
         )
       }
     }
@@ -70,7 +71,8 @@ export function firstGrapheme(str: string): string {
     if (str.length === 1) return str[0]!
     const secondCode = str.charCodeAt(1)
     if (secondCode < 128) return str[0]!
-  } else if (str.length === 1) {
+  } else if (str.length === 1 && (firstCode < 0xd800 || firstCode > 0xdfff)) {
+    // Single non-surrogate codepoint
     return str[0]!
   } else if (isHighSurrogate(firstCode)) {
     const secondCode = str.charCodeAt(1)
