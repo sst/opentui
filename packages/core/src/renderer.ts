@@ -303,6 +303,8 @@ export class CliRenderer extends EventEmitter implements RenderContext {
   private exitSignals: NodeJS.Signals[]
   private _exitListenersAdded: boolean = false
   private _isDestroyed: boolean = false
+  private _destroyPending: boolean = false
+  private _destroyFinalized: boolean = false
   public nextRenderBuffer: OptimizedBuffer
   public currentRenderBuffer: OptimizedBuffer
   private _isRunning: boolean = false
@@ -405,6 +407,7 @@ export class CliRenderer extends EventEmitter implements RenderContext {
   }).bind(this)
   private _capabilities: any | null = null
   private _latestPointer: { x: number; y: number } = { x: 0, y: 0 }
+  private _hasPointer: boolean = false
 
   private _currentFocusedRenderable: Renderable | null = null
   private lifecyclePasses: Set<Renderable> = new Set()
@@ -636,10 +639,29 @@ export class CliRenderer extends EventEmitter implements RenderContext {
     this._currentFocusedRenderable = renderable
   }
 
+  private setCapturedRenderable(renderable: Renderable | undefined): void {
+    if (this.capturedRenderable === renderable) {
+      return
+    }
+    this.capturedRenderable = renderable
+  }
+
   public addToHitGrid(x: number, y: number, width: number, height: number, id: number) {
     if (id !== this.capturedRenderable?.num) {
       this.lib.addToHitGrid(this.rendererPtr, x, y, width, height, id)
     }
+  }
+
+  public pushHitGridScissorRect(x: number, y: number, width: number, height: number): void {
+    this.lib.hitGridPushScissorRect(this.rendererPtr, x, y, width, height)
+  }
+
+  public popHitGridScissorRect(): void {
+    this.lib.hitGridPopScissorRect(this.rendererPtr)
+  }
+
+  public clearHitGridScissorRects(): void {
+    this.lib.hitGridClearScissorRects(this.rendererPtr)
   }
 
   public get widthMethod(): WidthMethod {
@@ -906,7 +928,7 @@ export class CliRenderer extends EventEmitter implements RenderContext {
 
   private disableMouse(): void {
     this._useMouse = false
-    this.capturedRenderable = undefined
+    this.setCapturedRenderable(undefined)
     this.mouseParser.reset()
     this.lib.disableMouse(this.rendererPtr)
   }
@@ -1051,6 +1073,7 @@ export class CliRenderer extends EventEmitter implements RenderContext {
 
       this._latestPointer.x = mouseEvent.x
       this._latestPointer.y = mouseEvent.y
+      this._hasPointer = true
 
       if (this._console.visible) {
         const consoleBounds = this._console.bounds
@@ -1067,7 +1090,7 @@ export class CliRenderer extends EventEmitter implements RenderContext {
       }
 
       if (mouseEvent.type === "scroll") {
-        const maybeRenderableId = this.lib.checkHit(this.rendererPtr, mouseEvent.x, mouseEvent.y)
+        const maybeRenderableId = this.hitTest(mouseEvent.x, mouseEvent.y)
         const maybeRenderable = Renderable.renderablesByNumber.get(maybeRenderableId)
 
         if (maybeRenderable) {
@@ -1077,7 +1100,7 @@ export class CliRenderer extends EventEmitter implements RenderContext {
         return true
       }
 
-      const maybeRenderableId = this.lib.checkHit(this.rendererPtr, mouseEvent.x, mouseEvent.y)
+      const maybeRenderableId = this.hitTest(mouseEvent.x, mouseEvent.y)
       const sameElement = maybeRenderableId === this.lastOverRenderableNum
       this.lastOverRenderableNum = maybeRenderableId
       const maybeRenderable = Renderable.renderablesByNumber.get(maybeRenderableId)
@@ -1166,7 +1189,7 @@ export class CliRenderer extends EventEmitter implements RenderContext {
         }
         this.lastOverRenderable = this.capturedRenderable
         this.lastOverRenderableNum = this.capturedRenderable.num
-        this.capturedRenderable = undefined
+        this.setCapturedRenderable(undefined)
         // Dropping the renderable needs to push another frame when the renderer is not live
         // to update the hit grid, otherwise capturedRenderable won't be in the hit grid and will not receive mouse events
         this.requestRender()
@@ -1175,14 +1198,14 @@ export class CliRenderer extends EventEmitter implements RenderContext {
       let event: MouseEvent | undefined = undefined
       if (maybeRenderable) {
         if (mouseEvent.type === "drag" && mouseEvent.button === MouseButton.LEFT) {
-          this.capturedRenderable = maybeRenderable
+          this.setCapturedRenderable(maybeRenderable)
         } else {
-          this.capturedRenderable = undefined
+          this.setCapturedRenderable(undefined)
         }
         event = new MouseEvent(maybeRenderable, mouseEvent)
         maybeRenderable.processMouseEvent(event)
       } else {
-        this.capturedRenderable = undefined
+        this.setCapturedRenderable(undefined)
         this.lastOverRenderable = undefined
       }
 
@@ -1194,6 +1217,10 @@ export class CliRenderer extends EventEmitter implements RenderContext {
     }
 
     return false
+  }
+
+  public hitTest(x: number, y: number): number {
+    return this.lib.checkHit(this.rendererPtr, x, y)
   }
 
   private takeMemorySnapshot(): void {
@@ -1274,7 +1301,7 @@ export class CliRenderer extends EventEmitter implements RenderContext {
     this._terminalHeight = height
     this.queryPixelResolution()
 
-    this.capturedRenderable = undefined
+    this.setCapturedRenderable(undefined)
     this.mouseParser.reset()
 
     if (this._splitHeight > 0) {
@@ -1551,6 +1578,20 @@ export class CliRenderer extends EventEmitter implements RenderContext {
   public destroy(): void {
     if (this._isDestroyed) return
     this._isDestroyed = true
+    this._destroyPending = true
+
+    if (this.rendering) {
+      // Defer teardown until the active frame completes to avoid freeing native resources mid-render.
+      return
+    }
+
+    this.finalizeDestroy()
+  }
+
+  private finalizeDestroy(): void {
+    if (this._destroyFinalized) return
+    this._destroyFinalized = true
+    this._destroyPending = false
 
     process.removeListener("SIGWINCH", this.sigwinchHandler)
     process.removeListener("uncaughtException", this.handleError)
@@ -1591,7 +1632,7 @@ export class CliRenderer extends EventEmitter implements RenderContext {
     this._isRunning = false
 
     this.waitingForPixelResolution = false
-    this.capturedRenderable = undefined
+    this.setCapturedRenderable(undefined)
 
     try {
       this.root.destroyRecursively()
@@ -1647,82 +1688,91 @@ export class CliRenderer extends EventEmitter implements RenderContext {
       clearTimeout(this.renderTimeout)
       this.renderTimeout = null
     }
+    try {
+      const now = Date.now()
+      const elapsed = now - this.lastTime
 
-    const now = Date.now()
-    const elapsed = now - this.lastTime
+      const deltaTime = elapsed
+      this.lastTime = now
 
-    const deltaTime = elapsed
-    this.lastTime = now
-
-    this.frameCount++
-    if (now - this.lastFpsTime >= 1000) {
-      this.currentFps = this.frameCount
-      this.frameCount = 0
-      this.lastFpsTime = now
-    }
-
-    this.renderStats.frameCount++
-    this.renderStats.fps = this.currentFps
-    const overallStart = performance.now()
-
-    const frameRequests = Array.from(this.animationRequest.values())
-    this.animationRequest.clear()
-    const animationRequestStart = performance.now()
-    frameRequests.forEach((callback) => {
-      callback(deltaTime)
-      this.dropLive()
-    })
-    const animationRequestEnd = performance.now()
-    const animationRequestTime = animationRequestEnd - animationRequestStart
-
-    const start = performance.now()
-    for (const frameCallback of this.frameCallbacks) {
-      try {
-        await frameCallback(deltaTime)
-      } catch (error) {
-        console.error("Error in frame callback:", error)
-      }
-    }
-    const end = performance.now()
-    this.renderStats.frameCallbackTime = end - start
-
-    // Render the renderable tree
-    this.root.render(this.nextRenderBuffer, deltaTime)
-
-    for (const postProcessFn of this.postProcessFns) {
-      postProcessFn(this.nextRenderBuffer, deltaTime)
-    }
-
-    this._console.renderToBuffer(this.nextRenderBuffer)
-
-    if (!this._isDestroyed) {
-      this.renderNative()
-
-      const overallFrameTime = performance.now() - overallStart
-
-      // TODO: Add animationRequestTime to stats
-      this.lib.updateStats(this.rendererPtr, overallFrameTime, this.renderStats.fps, this.renderStats.frameCallbackTime)
-
-      if (this.gatherStats) {
-        this.collectStatSample(overallFrameTime)
+      this.frameCount++
+      if (now - this.lastFpsTime >= 1000) {
+        this.currentFps = this.frameCount
+        this.frameCount = 0
+        this.lastFpsTime = now
       }
 
-      if (this._isRunning || this.immediateRerenderRequested) {
-        const targetFrameTime = this.immediateRerenderRequested ? this.minTargetFrameTime : this.targetFrameTime
-        const delay = Math.max(1, targetFrameTime - Math.floor(overallFrameTime))
-        this.immediateRerenderRequested = false
-        this.renderTimeout = setTimeout(() => {
+      this.renderStats.frameCount++
+      this.renderStats.fps = this.currentFps
+      const overallStart = performance.now()
+
+      const frameRequests = Array.from(this.animationRequest.values())
+      this.animationRequest.clear()
+      const animationRequestStart = performance.now()
+      for (const callback of frameRequests) {
+        callback(deltaTime)
+        this.dropLive()
+      }
+      const animationRequestEnd = performance.now()
+      const animationRequestTime = animationRequestEnd - animationRequestStart
+
+      const start = performance.now()
+      for (const frameCallback of this.frameCallbacks) {
+        try {
+          await frameCallback(deltaTime)
+        } catch (error) {
+          console.error("Error in frame callback:", error)
+        }
+      }
+      const end = performance.now()
+      this.renderStats.frameCallbackTime = end - start
+
+      this.root.render(this.nextRenderBuffer, deltaTime)
+
+      for (const postProcessFn of this.postProcessFns) {
+        postProcessFn(this.nextRenderBuffer, deltaTime)
+      }
+
+      this._console.renderToBuffer(this.nextRenderBuffer)
+
+      // If destroy() was requested during this frame, skip native work and scheduling.
+      if (!this._isDestroyed) {
+        this.renderNative()
+
+        const overallFrameTime = performance.now() - overallStart
+
+        // TODO: Add animationRequestTime to stats
+        this.lib.updateStats(
+          this.rendererPtr,
+          overallFrameTime,
+          this.renderStats.fps,
+          this.renderStats.frameCallbackTime,
+        )
+
+        if (this.gatherStats) {
+          this.collectStatSample(overallFrameTime)
+        }
+
+        if (this._isRunning || this.immediateRerenderRequested) {
+          const targetFrameTime = this.immediateRerenderRequested ? this.minTargetFrameTime : this.targetFrameTime
+          const delay = Math.max(1, targetFrameTime - Math.floor(overallFrameTime))
+          this.immediateRerenderRequested = false
+          this.renderTimeout = setTimeout(() => {
+            this.renderTimeout = null
+            this.loop()
+          }, delay)
+        } else {
+          clearTimeout(this.renderTimeout!)
           this.renderTimeout = null
-          this.loop()
-        }, delay)
-      } else {
-        clearTimeout(this.renderTimeout!)
-        this.renderTimeout = null
+        }
       }
+    } finally {
+      this.rendering = false
+      if (this._destroyPending) {
+        this.finalizeDestroy()
+      }
+      this.resolveIdleIfNeeded()
     }
-
-    this.rendering = false
-    this.resolveIdleIfNeeded()
   }
 
   public intermediateRender(): void {
@@ -1863,7 +1913,7 @@ export class CliRenderer extends EventEmitter implements RenderContext {
     if (this.currentSelection?.isSelecting) {
       const pointer = this._latestPointer
 
-      const maybeRenderableId = this.lib.checkHit(this.rendererPtr, pointer.x, pointer.y)
+      const maybeRenderableId = this.hitTest(pointer.x, pointer.y)
       const maybeRenderable = Renderable.renderablesByNumber.get(maybeRenderableId)
 
       this.updateSelection(maybeRenderable, pointer.x, pointer.y)
