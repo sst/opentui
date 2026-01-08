@@ -479,12 +479,6 @@ pub const OptimizedBuffer = struct {
             if (new_link_id != 0 and new_link_id != prev_link_id) {
                 self.link_tracker.addCellRef(new_link_id);
             }
-            if (prev_link_id != 0 and prev_link_id != new_link_id) {
-                self.link_tracker.removeCellRef(prev_link_id);
-            }
-            if (new_link_id != 0 and new_link_id != prev_link_id) {
-                self.link_tracker.addCellRef(new_link_id);
-            }
 
             if (width > 1) {
                 const row_end_index: u32 = (y * self.width) + self.width - 1;
