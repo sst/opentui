@@ -8,6 +8,10 @@
             .url = "https://github.com/jacobsandlund/uucode/archive/84ceda8561a17ba4a9b96ac5c583f779660bbd4e.tar.gz",
             .hash = "uucode-0.1.0-ZZjBPtA_TQCWp5PIKmfm5tu1WOkKWFmBGFEMxircPfkA",
         },
+        .ghostty = .{
+            .url = "git+https://github.com/ghostty-org/ghostty.git#ba1952c8c289d46be89c9a888c3c9aae97cf725b",
+            .hash = "ghostty-1.3.0-dev-5UdBC0kWRATOXjq9AZj8arNhe-3uVFrfjvGJg1aqjl6T",
+        },
     },
     .paths = .{
         "build.zig",

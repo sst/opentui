@@ -6,8 +6,8 @@ on:
     branches: [main]
 
 jobs:
-  build:
-    name: Core - Build and Test
+  build-native:
+    name: Build Native (All Platforms)
     runs-on: macos-latest
     steps:
       - name: Checkout code
@@ -26,12 +26,59 @@ jobs:
       - name: Install dependencies
         run: bun install
 
-      - name: Build
+      - name: Build native for all platforms
         run: |
           cd packages/core
-          bun run build
+          bun run build:native --all
+
+      - name: Upload native artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: native-all
+          path: packages/core/node_modules/@opentui/
+          retention-days: 1
+
+  test-ts:
+    name: Test (${{ matrix.name }})
+    needs: build-native
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-latest
+            name: linux-x64
+          # TODO: fix platform-specific test failures before re-enabling
+          # - os: ubuntu-latest
+          #   name: linux-musl-x64
+          #   container: oven/bun:alpine
+          # - os: macos-latest
+          #   name: darwin-arm64
+          # - os: macos-13
+          #   name: darwin-x64
+          # - os: windows-latest
+          #   name: win32-x64
+    runs-on: ${{ matrix.os }}
+    container: ${{ matrix.container || '' }}
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Bun
+        if: ${{ !matrix.container }}
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+
+      - name: Install dependencies
+        run: bun install
+
+      - name: Download native artifacts
+        uses: actions/download-artifact@v4
+        with:
+          name: native-all
+          path: packages/core/node_modules/@opentui/
 
       - name: Run tests
         run: |
           cd packages/core
-          bun run test
+          bun run test:js

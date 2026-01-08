@@ -40,13 +40,15 @@ const args = process.argv.slice(2)
 const buildLib = args.find((arg) => arg === "--lib")
 const buildNative = args.find((arg) => arg === "--native")
 const isDev = args.includes("--dev")
-const buildAll = args.includes("--all") // Build for all platforms
+const buildAll = args.includes("--all") // Build for all platforms (requires macOS or cross-compilation setup)
 
 const variants: Variant[] = [
   { platform: "darwin", arch: "x64" },
   { platform: "darwin", arch: "arm64" },
   { platform: "linux", arch: "x64" },
   { platform: "linux", arch: "arm64" },
+  { platform: "linux-musl", arch: "x64" },
+  { platform: "linux-musl", arch: "arm64" },
   { platform: "win32", arch: "x64" },
   { platform: "win32", arch: "arm64" },
 ]
@@ -57,7 +59,12 @@ if (!buildLib && !buildNative) {
 }
 
 const getZigTarget = (platform: string, arch: string): string => {
-  const platformMap: Record<string, string> = { darwin: "macos", win32: "windows", linux: "linux" }
+  const platformMap: Record<string, string> = {
+    darwin: "macos",
+    win32: "windows",
+    linux: "linux",
+    "linux-musl": "linux-musl",
+  }
   const archMap: Record<string, string> = { x64: "x86_64", arm64: "aarch64" }
   return `${archMap[arch] ?? arch}-${platformMap[platform] ?? platform}`
 }
@@ -126,8 +133,8 @@ if (buildNative) {
     }
 
     if (copiedFiles === 0) {
-      // Skip platforms that weren't built
-      console.log(`Skipping ${platform}-${arch}: no libraries found`)
+      // Skip platforms that weren't built (e.g., macOS when cross-compiling from Linux)
+      console.log(`Skipping ${platform}-${arch}: no libraries found (cross-compilation may not be supported)`)
       rmSync(nativeDir, { recursive: true, force: true })
       continue
     }

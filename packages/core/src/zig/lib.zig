@@ -1,6 +1,34 @@
 const std = @import("std");
 const Allocator = std.mem.Allocator;
 
+// Suppress ghostty-vt logs. Zig's std.log calls `@import("root").std_options.logFn`,
+// so defining this in the root file (lib.zig) overrides logging for all modules.
+pub const std_options: std.Options = .{
+    .logFn = struct {
+        pub fn logFn(
+            comptime level: std.log.Level,
+            comptime scope: @Type(.enum_literal),
+            comptime format: []const u8,
+            args: anytype,
+        ) void {
+            // Suppress ghostty-vt related scopes
+            const scope_name = @tagName(scope);
+            const suppressed = std.mem.eql(u8, scope_name, "osc") or
+                std.mem.eql(u8, scope_name, "terminal") or
+                std.mem.eql(u8, scope_name, "stream") or
+                std.mem.eql(u8, scope_name, "page") or
+                std.mem.eql(u8, scope_name, "sgr") or
+                std.mem.eql(u8, scope_name, "kitty") or
+                std.mem.eql(u8, scope_name, "csi") or
+                std.mem.eql(u8, scope_name, "modes");
+            if (suppressed) return;
+
+            // Use default logging for other scopes (opentui's own logs)
+            std.log.defaultLog(level, scope, format, args);
+        }
+    }.logFn,
+};
+
 const ansi = @import("ansi.zig");
 const buffer = @import("buffer.zig");
 const renderer = @import("renderer.zig");
@@ -16,6 +44,8 @@ const utf8 = @import("utf8.zig");
 const logger = @import("logger.zig");
 const event_bus = @import("event-bus.zig");
 const utils = @import("utils.zig");
+const ghostty = @import("ghostty-vt");
+const vterm = @import("vterm.zig");
 
 pub const OptimizedBuffer = buffer.OptimizedBuffer;
 pub const CliRenderer = renderer.CliRenderer;
@@ -1564,4 +1594,73 @@ export fn bufferDrawChar(
     const rgbaFg = utils.f32PtrToRGBA(fg);
     const rgbaBg = utils.f32PtrToRGBA(bg);
     bufferPtr.drawChar(char, x, y, rgbaFg, rgbaBg, attributes) catch {};
+}
+
+// =============================================================================
+// VTerm FFI Export Functions
+// =============================================================================
+
+// NOTE: vterm.zig has its own arena allocator, separate from globalArena.
+// This is critical because globalArena is shared with text buffers, editor views, etc.
+// VTerm functions use caller-provides-buffer pattern (outPtr, maxLen) like rest of codebase.
+// No memory management needed - JS owns the buffer.
+
+export fn vtermPtyToJson(
+    input_ptr: [*]const u8,
+    input_len: usize,
+    cols: u16,
+    rows: u16,
+    offset: usize,
+    limit: usize,
+    out_ptr: [*]u8,
+    max_len: usize,
+) usize {
+    return vterm.ptyToJson(input_ptr, input_len, cols, rows, offset, limit, out_ptr, max_len);
+}
+
+export fn vtermPtyToText(
+    input_ptr: [*]const u8,
+    input_len: usize,
+    cols: u16,
+    rows: u16,
+    out_ptr: [*]u8,
+    max_len: usize,
+) usize {
+    return vterm.ptyToText(input_ptr, input_len, cols, rows, out_ptr, max_len);
+}
+
+export fn vtermCreateTerminal(id: u32, cols: u32, rows: u32) bool {
+    return vterm.createTerminal(id, cols, rows);
+}
+
+export fn vtermDestroyTerminal(id: u32) void {
+    vterm.destroyTerminal(id);
+}
+
+export fn vtermFeedTerminal(id: u32, data_ptr: [*]const u8, data_len: usize) bool {
+    return vterm.feedTerminal(id, data_ptr, data_len);
+}
+
+export fn vtermResizeTerminal(id: u32, cols: u32, rows: u32) bool {
+    return vterm.resizeTerminal(id, cols, rows);
+}
+
+export fn vtermResetTerminal(id: u32) bool {
+    return vterm.resetTerminal(id);
+}
+
+export fn vtermGetTerminalJson(id: u32, offset: u32, limit: u32, out_ptr: [*]u8, max_len: usize) usize {
+    return vterm.getTerminalJson(id, offset, limit, out_ptr, max_len);
+}
+
+export fn vtermGetTerminalText(id: u32, out_ptr: [*]u8, max_len: usize) usize {
+    return vterm.getTerminalText(id, out_ptr, max_len);
+}
+
+export fn vtermGetTerminalCursor(id: u32, out_ptr: [*]u8, max_len: usize) usize {
+    return vterm.getTerminalCursor(id, out_ptr, max_len);
+}
+
+export fn vtermIsTerminalReady(id: u32) i32 {
+    return vterm.isTerminalReady(id);
 }

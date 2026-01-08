@@ -34,6 +34,7 @@
   "devDependencies": {
     "@types/babel__core": "7.20.5",
     "@types/bun": "latest",
+    "bun-pty": "^0.4.2",
     "@types/node": "^24.0.0",
     "typescript": "^5"
   },

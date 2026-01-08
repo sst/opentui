@@ -18,8 +18,10 @@ const SupportedTarget = struct {
 };
 
 const SUPPORTED_TARGETS = [_]SupportedTarget{
-    .{ .zig_target = "x86_64-linux", .output_name = "x86_64-linux", .description = "Linux x86_64" },
-    .{ .zig_target = "aarch64-linux", .output_name = "aarch64-linux", .description = "Linux aarch64" },
+    .{ .zig_target = "x86_64-linux-gnu", .output_name = "x86_64-linux", .description = "Linux x86_64 (glibc)" },
+    .{ .zig_target = "aarch64-linux-gnu", .output_name = "aarch64-linux", .description = "Linux aarch64 (glibc)" },
+    .{ .zig_target = "x86_64-linux-musl", .output_name = "x86_64-linux-musl", .description = "Linux x86_64 (musl/Alpine)" },
+    .{ .zig_target = "aarch64-linux-musl", .output_name = "aarch64-linux-musl", .description = "Linux aarch64 (musl/Alpine)" },
     .{ .zig_target = "x86_64-macos", .output_name = "x86_64-macos", .description = "macOS x86_64 (Intel)" },
     .{ .zig_target = "aarch64-macos", .output_name = "aarch64-macos", .description = "macOS aarch64 (Apple Silicon)" },
     .{ .zig_target = "x86_64-windows-gnu", .output_name = "x86_64-windows", .description = "Windows x86_64" },
@@ -42,6 +44,10 @@ fn applyDependencies(b: *std.Build, module: *std.Build.Module, optimize: std.bui
         module.addImport("uucode", uucode_dep.module("uucode"));
     }
 
+    // Add ghostty for terminal emulation
+    if (b.lazyDependency("ghostty", .{ .target = target, .optimize = optimize })) |ghostty_dep| {
+        module.addImport("ghostty-vt", ghostty_dep.module("ghostty-vt"));
+    }
 }
 
 fn checkZigVersion() void {
