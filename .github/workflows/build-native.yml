@@ -43,6 +43,10 @@ jobs:
           cd packages/core
           bun run build:native --all
           bun run build:lib
+          cd ../react
+          bun run build
+          cd ../solid
+          bun run build
 
       - name: Verify build outputs
         run: |
