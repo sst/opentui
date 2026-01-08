@@ -1244,11 +1244,6 @@ export class CliRenderer extends EventEmitter implements RenderContext {
     this.hitGridSyncing = true
     this.hitGridDirtyDuringSync = false
     try {
-      if (this.root.layoutDirty) {
-        this.root.calculateLayout()
-        this.root.updateFromLayoutRecursive()
-      }
-
       this.hitGridCommands.length = 0
       this.root.collectHitGridCommands(this.hitGridCommands)
 
