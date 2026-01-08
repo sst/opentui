@@ -6,6 +6,7 @@ const tbv = @import("text-buffer-view.zig");
 const edv = @import("editor-view.zig");
 const ss = @import("syntax-style.zig");
 const math = std.math;
+const assert = std.debug.assert;
 
 const gp = @import("grapheme.zig");
 const link = @import("link.zig");
@@ -91,6 +92,10 @@ pub const Cell = struct {
 
 fn isRGBAWithAlpha(color: RGBA) bool {
     return color[3] < 1.0;
+}
+
+inline fn isFullyOpaque(opacity: f32, fg: RGBA, bg: RGBA) bool {
+    return opacity == 1.0 and !isRGBAWithAlpha(fg) and !isRGBAWithAlpha(bg);
 }
 
 fn blendColors(overlay: RGBA, text: RGBA) RGBA {
@@ -693,6 +698,11 @@ pub const OptimizedBuffer = struct {
 
         // Apply current opacity from the stack
         const opacity = self.getCurrentOpacity();
+        if (isFullyOpaque(opacity, fg, bg)) {
+            self.set(x, y, Cell{ .char = char, .fg = fg, .bg = bg, .attributes = attributes });
+            return;
+        }
+
         const effectiveFg = RGBA{ fg[0], fg[1], fg[2], fg[3] * opacity };
         const effectiveBg = RGBA{ bg[0], bg[1], bg[2], bg[3] * opacity };
 
@@ -719,6 +729,14 @@ pub const OptimizedBuffer = struct {
 
         // Apply current opacity from the stack
         const opacity = self.getCurrentOpacity();
+        if (isFullyOpaque(opacity, fg, bg)) {
+            const overlayCell = Cell{ .char = char, .fg = fg, .bg = bg, .attributes = attributes };
+            assert(!gp.isGraphemeChar(char));
+            assert(!gp.isContinuationChar(char));
+            self.setRaw(x, y, overlayCell);
+            return;
+        }
+
         const effectiveFg = RGBA{ fg[0], fg[1], fg[2], fg[3] * opacity };
         const effectiveBg = RGBA{ bg[0], bg[1], bg[2], bg[3] * opacity };
 
@@ -726,12 +744,12 @@ pub const OptimizedBuffer = struct {
 
         if (self.get(x, y)) |destCell| {
             const blendedCell = blendCells(overlayCell, destCell);
-            // After blending, check if result contains a grapheme
-            if (gp.isGraphemeChar(blendedCell.char)) {
-                return self.set(x, y, blendedCell);
-            }
+            assert(!gp.isGraphemeChar(blendedCell.char));
+            assert(!gp.isContinuationChar(blendedCell.char));
             self.setRaw(x, y, blendedCell);
         } else {
+            assert(!gp.isGraphemeChar(overlayCell.char));
+            assert(!gp.isContinuationChar(overlayCell.char));
             self.setRaw(x, y, overlayCell);
         }
     }
