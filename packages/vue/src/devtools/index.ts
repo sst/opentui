@@ -153,6 +153,13 @@ export function setupOpenTUIDevtools(app: App, cliRenderer: CliRenderer): void {
               }
             },
           },
+          {
+            icon: "highlight_off",
+            tooltip: "Clear highlight",
+            action: () => {
+              highlightController.clear()
+            },
+          },
         ],
         nodeActions: [
           {
@@ -203,7 +210,10 @@ export function setupOpenTUIDevtools(app: App, cliRenderer: CliRenderer): void {
           return
         }
         const renderable = findRenderableById(cliRenderer, payload.nodeId)
-        if (!renderable) return
+        if (!renderable) {
+          highlightController.clear()
+          return
+        }
 
         payload.state = getRenderableState(renderable)
         if (getSettings().highlightOnSelect) {
