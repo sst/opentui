@@ -97,6 +97,9 @@ fn blendColors(overlay: RGBA, text: RGBA) RGBA {
     if (overlay[3] == 1.0) {
         return overlay;
     }
+    if (overlay[3] == 0.0) {
+        return text;
+    }
 
     const alpha = overlay[3];
     var perceptualAlpha: f32 = undefined;
