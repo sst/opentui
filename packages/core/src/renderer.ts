@@ -74,6 +74,7 @@ export interface CliRendererConfig {
   exitOnCtrlC?: boolean
   exitSignals?: NodeJS.Signals[]
   debounceDelay?: number
+  hoverDebounceDelay?: number
   targetFps?: number
   maxFps?: number
   memorySnapshotInterval?: number
@@ -371,6 +372,9 @@ export class CliRenderer extends EventEmitter implements RenderContext {
   private resizeTimeoutId: ReturnType<typeof setTimeout> | null = null
   private capabilityTimeoutId: ReturnType<typeof setTimeout> | null = null
   private resizeDebounceDelay: number = 100
+  private hoverDebounceDelay: number = 75
+  private hoverDebounceTimeoutId: ReturnType<typeof setTimeout> | null = null
+  private hitGridDirty: boolean = false
 
   private enableMouseMovement: boolean = false
   private _useMouse: boolean = true
@@ -408,6 +412,7 @@ export class CliRenderer extends EventEmitter implements RenderContext {
   private _capabilities: any | null = null
   private _latestPointer: { x: number; y: number } = { x: 0, y: 0 }
   private _hasPointer: boolean = false
+  private _lastPointerModifiers: RawMouseEvent["modifiers"] = { shift: false, alt: false, ctrl: false }
 
   private _currentFocusedRenderable: Renderable | null = null
   private lifecyclePasses: Set<Renderable> = new Set()
@@ -506,6 +511,7 @@ export class CliRenderer extends EventEmitter implements RenderContext {
     this.exitOnCtrlC = config.exitOnCtrlC === undefined ? true : config.exitOnCtrlC
     this.exitSignals = config.exitSignals || ["SIGINT", "SIGTERM", "SIGQUIT", "SIGABRT"]
     this.resizeDebounceDelay = config.debounceDelay || 100
+    this.hoverDebounceDelay = config.hoverDebounceDelay ?? 75
     this.targetFps = config.targetFps || 30
     this.maxFps = config.maxFps || 60
     this.targetFrameTime = 1000 / this.targetFps
@@ -650,6 +656,10 @@ export class CliRenderer extends EventEmitter implements RenderContext {
     if (id !== this.capturedRenderable?.num) {
       this.lib.addToHitGrid(this.rendererPtr, x, y, width, height, id)
     }
+  }
+
+  public markHitGridDirty(): void {
+    this.hitGridDirty = true
   }
 
   public pushHitGridScissorRect(x: number, y: number, width: number, height: number): void {
@@ -1079,6 +1089,11 @@ export class CliRenderer extends EventEmitter implements RenderContext {
       this._latestPointer.x = mouseEvent.x
       this._latestPointer.y = mouseEvent.y
       this._hasPointer = true
+      this._lastPointerModifiers = mouseEvent.modifiers
+
+      if (mouseEvent.type === "move" || mouseEvent.type === "drag") {
+        this.clearHoverDebounce()
+      }
 
       if (this._console.visible) {
         const consoleBounds = this._console.bounds
@@ -1222,6 +1237,74 @@ export class CliRenderer extends EventEmitter implements RenderContext {
     }
 
     return false
+  }
+
+  private clearHoverDebounce(): void {
+    if (this.hoverDebounceTimeoutId !== null) {
+      clearTimeout(this.hoverDebounceTimeoutId)
+      this.hoverDebounceTimeoutId = null
+    }
+  }
+
+  private scheduleHoverRecheck(): void {
+    if (!this.hitGridDirty) return
+
+    if (!this._hasPointer) {
+      this.hitGridDirty = false
+      return
+    }
+
+    if (this.capturedRenderable) {
+      return
+    }
+
+    this.hitGridDirty = false
+    this.clearHoverDebounce()
+
+    const debounceDelay = Math.max(0, this.hoverDebounceDelay)
+    this.hoverDebounceTimeoutId = setTimeout(() => {
+      this.hoverDebounceTimeoutId = null
+      this.runHoverRecheck()
+    }, debounceDelay)
+  }
+
+  private runHoverRecheck(): void {
+    if (this._isDestroyed || !this._hasPointer) return
+    if (this.capturedRenderable) return
+
+    const hitId = this.hitTest(this._latestPointer.x, this._latestPointer.y)
+    const hitRenderable = Renderable.renderablesByNumber.get(hitId)
+    const lastOver = this.lastOverRenderable
+
+    if (lastOver?.num === hitId) {
+      this.lastOverRenderableNum = hitId
+      return
+    }
+
+    const baseEvent: RawMouseEvent = {
+      type: "move",
+      button: 0,
+      x: this._latestPointer.x,
+      y: this._latestPointer.y,
+      modifiers: this._lastPointerModifiers ?? { shift: false, alt: false, ctrl: false },
+    }
+
+    if (lastOver && lastOver !== this.capturedRenderable) {
+      const event = new MouseEvent(lastOver, { ...baseEvent, type: "out" })
+      lastOver.processMouseEvent(event)
+    }
+
+    this.lastOverRenderable = hitRenderable
+    this.lastOverRenderableNum = hitId
+
+    if (hitRenderable) {
+      const event = new MouseEvent(hitRenderable, {
+        ...baseEvent,
+        type: "over",
+        source: this.capturedRenderable,
+      })
+      hitRenderable.processMouseEvent(event)
+    }
   }
 
   public hitTest(x: number, y: number): number {
@@ -1616,6 +1699,8 @@ export class CliRenderer extends EventEmitter implements RenderContext {
       this.capabilityTimeoutId = null
     }
 
+    this.clearHoverDebounce()
+
     if (this.memorySnapshotTimer) {
       clearInterval(this.memorySnapshotTimer)
     }
@@ -1743,6 +1828,7 @@ export class CliRenderer extends EventEmitter implements RenderContext {
       // If destroy() was requested during this frame, skip native work and scheduling.
       if (!this._isDestroyed) {
         this.renderNative()
+        this.scheduleHoverRecheck()
 
         const overallFrameTime = performance.now() - overallStart
 
