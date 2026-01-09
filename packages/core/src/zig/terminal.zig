@@ -573,7 +573,7 @@ fn parseXtversion(self: *Terminal, term_str: []const u8) void {
 
     self.term_info.from_xtversion = true;
 
-    log.info("Terminal detected via xtversion: {s} {s}", .{
+    log.debug("Terminal detected via xtversion: {s} {s}", .{
         self.term_info.name[0..self.term_info.name_len],
         self.term_info.version[0..self.term_info.version_len],
     });
