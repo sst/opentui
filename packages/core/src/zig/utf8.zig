@@ -971,37 +971,11 @@ fn findWrapPosByWidthUnicode(
 
     // ASCII-only fast path
     if (isASCIIOnly) {
-        const vector_len = 16;
-        var pos: usize = 0;
-        var columns_used: u32 = 0;
-
-        while (pos + vector_len <= text.len) {
-            var i: usize = 0;
-            while (i < vector_len) : (i += 1) {
-                const b = text[pos + i];
-                const width = asciiCharWidth(b, tab_width);
-                columns_used += width;
-
-                if (columns_used > max_columns) {
-                    return .{ .byte_offset = @intCast(pos + i), .grapheme_count = @intCast(pos + i), .columns_used = columns_used - width };
-                }
-            }
-            pos += vector_len;
+        if (max_columns >= text.len) {
+            return .{ .byte_offset = @intCast(text.len), .grapheme_count = @intCast(text.len), .columns_used = @intCast(text.len) };
+        } else {
+            return .{ .byte_offset = max_columns, .grapheme_count = max_columns, .columns_used = max_columns };
         }
-
-        // Tail
-        while (pos < text.len) {
-            const b = text[pos];
-            const width = asciiCharWidth(b, tab_width);
-            columns_used += width;
-
-            if (columns_used > max_columns) {
-                return .{ .byte_offset = @intCast(pos), .grapheme_count = @intCast(pos), .columns_used = columns_used - width };
-            }
-            pos += 1;
-        }
-
-        return .{ .byte_offset = @intCast(text.len), .grapheme_count = @intCast(text.len), .columns_used = columns_used };
     }
 
     const vector_len = 16;
@@ -1120,22 +1094,11 @@ fn findWrapPosByWidthWCWidth(
 
     // ASCII-only fast path
     if (isASCIIOnly) {
-        var pos: usize = 0;
-        var columns_used: u32 = 0;
-
-        while (pos < text.len) {
-            const b = text[pos];
-            const width = asciiCharWidth(b, tab_width);
-
-            if (columns_used + width > max_columns) {
-                return .{ .byte_offset = @intCast(pos), .grapheme_count = @intCast(pos), .columns_used = columns_used };
-            }
-
-            columns_used += width;
-            pos += 1;
+        if (max_columns >= text.len) {
+            return .{ .byte_offset = @intCast(text.len), .grapheme_count = @intCast(text.len), .columns_used = @intCast(text.len) };
+        } else {
+            return .{ .byte_offset = max_columns, .grapheme_count = max_columns, .columns_used = max_columns };
         }
-
-        return .{ .byte_offset = @intCast(text.len), .grapheme_count = @intCast(text.len), .columns_used = columns_used };
     }
 
     // Unicode path - process each codepoint independently
@@ -1209,40 +1172,11 @@ fn findPosByWidthUnicode(
 
     // ASCII-only fast path
     if (isASCIIOnly) {
-        const vector_len = 16;
-        var pos: usize = 0;
-        var columns_used: u32 = 0;
-
-        while (pos + vector_len <= text.len) {
-            var i: usize = 0;
-            while (i < vector_len) : (i += 1) {
-                const b = text[pos + i];
-                const prev_columns = columns_used;
-
-                columns_used += asciiCharWidth(b, tab_width);
-
-                // Check if this character starts at or after max_columns
-                if (prev_columns >= max_columns) {
-                    return .{ .byte_offset = @intCast(pos + i), .grapheme_count = @intCast(pos + i), .columns_used = prev_columns };
-                }
-            }
-            pos += vector_len;
+        if (max_columns >= text.len) {
+            return .{ .byte_offset = @intCast(text.len), .grapheme_count = @intCast(text.len), .columns_used = @intCast(text.len) };
+        } else {
+            return .{ .byte_offset = max_columns, .grapheme_count = max_columns, .columns_used = max_columns };
         }
-
-        // Tail
-        while (pos < text.len) {
-            const b = text[pos];
-            const prev_columns = columns_used;
-
-            columns_used += asciiCharWidth(b, tab_width);
-
-            if (prev_columns >= max_columns) {
-                return .{ .byte_offset = @intCast(pos), .grapheme_count = @intCast(pos), .columns_used = prev_columns };
-            }
-            pos += 1;
-        }
-
-        return .{ .byte_offset = @intCast(text.len), .grapheme_count = @intCast(text.len), .columns_used = columns_used };
     }
 
     const vector_len = 16;
@@ -1364,25 +1298,11 @@ fn findPosByWidthWCWidth(
 
     // ASCII-only fast path
     if (isASCIIOnly) {
-        var pos: usize = 0;
-        var columns_used: u32 = 0;
-
-        while (pos < text.len) {
-            const b = text[pos];
-            const prev_columns = columns_used;
-            const width = asciiCharWidth(b, tab_width);
-
-            columns_used += width;
-
-            // Check if this character starts at or after max_columns
-            if (prev_columns >= max_columns) {
-                return .{ .byte_offset = @intCast(pos), .grapheme_count = @intCast(pos), .columns_used = prev_columns };
-            }
-
-            pos += 1;
+        if (max_columns >= text.len) {
+            return .{ .byte_offset = @intCast(text.len), .grapheme_count = @intCast(text.len), .columns_used = @intCast(text.len) };
+        } else {
+            return .{ .byte_offset = max_columns, .grapheme_count = max_columns, .columns_used = max_columns };
         }
-
-        return .{ .byte_offset = @intCast(text.len), .grapheme_count = @intCast(text.len), .columns_used = columns_used };
     }
 
     // Unicode path - process each codepoint independently
@@ -1602,11 +1522,7 @@ fn calculateTextWidthUnicode(text: []const u8, tab_width: u8, isASCIIOnly: bool,
 
     // ASCII-only fast path
     if (isASCIIOnly) {
-        var width: u32 = 0;
-        for (text) |b| {
-            width += asciiCharWidth(b, tab_width);
-        }
-        return width;
+        return @intCast(text.len);
     }
 
     // General case with Unicode support and grapheme cluster handling
@@ -1655,11 +1571,7 @@ fn calculateTextWidthWCWidth(text: []const u8, tab_width: u8, isASCIIOnly: bool)
 
     // ASCII-only fast path
     if (isASCIIOnly) {
-        var width: u32 = 0;
-        for (text) |b| {
-            width += asciiCharWidth(b, tab_width);
-        }
-        return width;
+        return @intCast(text.len);
     }
 
     // Unicode path - sum width of all codepoints

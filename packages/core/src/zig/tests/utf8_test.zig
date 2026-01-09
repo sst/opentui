@@ -1157,7 +1157,7 @@ test "wrap breaks: mixed graphemes and ASCII" {
 // ============================================================================
 
 test "wrap by width: empty string" {
-    const result = utf8.findWrapPosByWidth("", 10, 4, true, .unicode);
+    const result = utf8.findWrapPosByWidth("", 10, 4, false, .unicode);
     try testing.expectEqual(@as(u32, 0), result.byte_offset);
     try testing.expectEqual(@as(u32, 0), result.grapheme_count);
     try testing.expectEqual(@as(u32, 0), result.columns_used);
@@ -1199,7 +1199,7 @@ test "wrap by width: combining mark" {
 }
 
 test "wrap by width: tab handling" {
-    const result = utf8.findWrapPosByWidth("a\tb", 5, 4, true, .unicode);
+    const result = utf8.findWrapPosByWidth("a\tb", 5, 4, false, .unicode);
     try testing.expectEqual(@as(u32, 2), result.byte_offset); // After "a\t"
     try testing.expectEqual(@as(u32, 2), result.grapheme_count); // 'a' + tab
     try testing.expectEqual(@as(u32, 5), result.columns_used); // 'a' (1) + tab (4) = 5
@@ -1235,7 +1235,7 @@ test "wrap by width: consistency - Unicode text" {
 
 test "wrap by width: consistency - edge cases" {
     const edge_cases = [_]struct { text: []const u8, ascii: bool }{
-        .{ .text = "", .ascii = true },
+        .{ .text = "", .ascii = false },
         .{ .text = " ", .ascii = true },
         .{ .text = "a", .ascii = true },
         .{ .text = "abc", .ascii = true },
@@ -1244,7 +1244,7 @@ test "wrap by width: consistency - edge cases" {
         .{ .text = "no-spaces-here", .ascii = true },
         .{ .text = "/usr/local/bin", .ascii = true },
         .{ .text = "世界", .ascii = false },
-        .{ .text = "\t\t\t", .ascii = true },
+        .{ .text = "\t\t\t", .ascii = false },
     };
 
     for (edge_cases) |input| {
@@ -1402,7 +1402,7 @@ test "find pos by width: selection boundaries with multiple wide chars" {
 }
 
 test "find pos by width: empty string" {
-    const result = utf8.findPosByWidth("", 10, 4, true, true, .unicode);
+    const result = utf8.findPosByWidth("", 10, 4, false, true, .unicode);
     try testing.expectEqual(@as(u32, 0), result.byte_offset);
     try testing.expectEqual(@as(u32, 0), result.grapheme_count);
     try testing.expectEqual(@as(u32, 0), result.columns_used);
@@ -1470,7 +1470,7 @@ test "find pos by width: combining mark" {
 }
 
 test "find pos by width: tab handling" {
-    const result = utf8.findPosByWidth("a\tb", 5, 4, true, true, .unicode);
+    const result = utf8.findPosByWidth("a\tb", 5, 4, false, true, .unicode);
     try testing.expectEqual(@as(u32, 2), result.byte_offset); // After "a\t"
     try testing.expectEqual(@as(u32, 2), result.grapheme_count); // 'a' + tab
     try testing.expectEqual(@as(u32, 5), result.columns_used); // 'a' (1) + tab (4) = 5
@@ -1577,9 +1577,9 @@ test "split at weight: tab character" {
     const input = "a\tbc"; // a(1) tab(4 fixed) b(1) c(1) = 7 columns total
 
     // Split at column 4 - should stop before tab since it would exceed limit
-    const result4 = utf8.findPosByWidth(input, 4, 4, true, false, .unicode);
-    try testing.expectEqual(@as(u32, 2), result4.byte_offset); // After "a\t"
-    try testing.expectEqual(@as(u32, 5), result4.columns_used); // a(1) + tab(4) = 5
+    const result4 = utf8.findPosByWidth(input, 4, 4, false, false, .unicode);
+    try testing.expectEqual(@as(u32, 1), result4.byte_offset); // After "a"
+    try testing.expectEqual(@as(u32, 1), result4.columns_used); // a(1)
 }
 
 test "split at weight: complex mixed content" {
@@ -1959,7 +1959,7 @@ test "getPrevGraphemeStart: consecutive wide chars" {
 // ============================================================================
 
 test "calculateTextWidth: empty string" {
-    const result = utf8.calculateTextWidth("", 4, true, .unicode);
+    const result = utf8.calculateTextWidth("", 4, false, .unicode);
     try testing.expectEqual(@as(u32, 0), result);
 }
 
@@ -1969,38 +1969,38 @@ test "calculateTextWidth: simple ASCII" {
 }
 
 test "calculateTextWidth: single tab" {
-    const result = utf8.calculateTextWidth("\t", 4, true, .unicode);
+    const result = utf8.calculateTextWidth("\t", 4, false, .unicode);
     try testing.expectEqual(@as(u32, 4), result);
 }
 
 test "calculateTextWidth: tab with different widths" {
-    try testing.expectEqual(@as(u32, 2), utf8.calculateTextWidth("\t", 2, true, .unicode));
-    try testing.expectEqual(@as(u32, 4), utf8.calculateTextWidth("\t", 4, true, .unicode));
-    try testing.expectEqual(@as(u32, 8), utf8.calculateTextWidth("\t", 8, true, .unicode));
+    try testing.expectEqual(@as(u32, 2), utf8.calculateTextWidth("\t", 2, false, .unicode));
+    try testing.expectEqual(@as(u32, 4), utf8.calculateTextWidth("\t", 4, false, .unicode));
+    try testing.expectEqual(@as(u32, 8), utf8.calculateTextWidth("\t", 8, false, .unicode));
 }
 
 test "calculateTextWidth: multiple tabs" {
-    const result = utf8.calculateTextWidth("\t\t\t", 4, true, .unicode);
+    const result = utf8.calculateTextWidth("\t\t\t", 4, false, .unicode);
     try testing.expectEqual(@as(u32, 12), result); // 3 tabs * 4 = 12
 }
 
 test "calculateTextWidth: text with tabs" {
-    const result = utf8.calculateTextWidth("a\tb", 4, true, .unicode);
+    const result = utf8.calculateTextWidth("a\tb", 4, false, .unicode);
     try testing.expectEqual(@as(u32, 6), result); // a(1) + tab(4) + b(1) = 6
 }
 
 test "calculateTextWidth: multiple tabs between text" {
-    const result = utf8.calculateTextWidth("a\t\tb", 2, true, .unicode);
+    const result = utf8.calculateTextWidth("a\t\tb", 2, false, .unicode);
     try testing.expectEqual(@as(u32, 6), result); // a(1) + tab(2) + tab(2) + b(1) = 6
 }
 
 test "calculateTextWidth: tab at start" {
-    const result = utf8.calculateTextWidth("\tabc", 4, true, .unicode);
+    const result = utf8.calculateTextWidth("\tabc", 4, false, .unicode);
     try testing.expectEqual(@as(u32, 7), result); // tab(4) + a(1) + b(1) + c(1) = 7
 }
 
 test "calculateTextWidth: tab at end" {
-    const result = utf8.calculateTextWidth("abc\t", 4, true, .unicode);
+    const result = utf8.calculateTextWidth("abc\t", 4, false, .unicode);
     try testing.expectEqual(@as(u32, 7), result); // a(1) + b(1) + c(1) + tab(4) = 7
 }
 
@@ -2021,7 +2021,7 @@ test "calculateTextWidth: mixed ASCII and Unicode with tabs" {
 
 test "calculateTextWidth: realistic code with tabs" {
     const text = "\tif (x > 5) {\n\t\treturn true;\n\t}";
-    const result = utf8.calculateTextWidth(text, 2, true, .unicode);
+    const result = utf8.calculateTextWidth(text, 2, false, .unicode);
     // tab(2) + "if (x > 5) {" (12) + newline(0) + tab(2) + tab(2) + "return true;" (12) + newline(0) + tab(2) + "}" (1)
     // = 2 + 12 + 2 + 2 + 12 + 2 + 1 = 33
     try testing.expectEqual(@as(u32, 33), result);
@@ -2033,12 +2033,12 @@ test "calculateTextWidth: only spaces" {
 }
 
 test "calculateTextWidth: tabs and spaces mixed" {
-    const result = utf8.calculateTextWidth("  \t  \t  ", 4, true, .unicode);
+    const result = utf8.calculateTextWidth("  \t  \t  ", 4, false, .unicode);
     try testing.expectEqual(@as(u32, 14), result); // 2 + 4 + 2 + 4 + 2 = 14
 }
 
 test "calculateTextWidth: control characters" {
-    const result = utf8.calculateTextWidth("a\x00b\x1Fc", 4, true, .unicode);
+    const result = utf8.calculateTextWidth("a\x00b\x1Fc", 4, false, .unicode);
     try testing.expectEqual(@as(u32, 3), result); // Only printable chars: a, b, c
 }
 
@@ -2103,7 +2103,7 @@ test "findGraphemeInfo: empty string" {
     var result: std.ArrayListUnmanaged(utf8.GraphemeInfo) = .{};
     defer result.deinit(testing.allocator);
 
-    try utf8.findGraphemeInfo("", 4, true, .unicode, testing.allocator, &result);
+    try utf8.findGraphemeInfo("", 4, false, .unicode, testing.allocator, &result);
     try testing.expectEqual(@as(usize, 0), result.items.len);
 }
 
@@ -2390,7 +2390,7 @@ test "calculateTextWidth: fullwidth forms with tab" {
 }
 
 test "calculateTextWidth: ASCII fast path consistency" {
-    const text_ascii = "hello\tworld";
+    const text_ascii = "hello world";
     const result_fast = utf8.calculateTextWidth(text_ascii, 4, true, .unicode);
     const result_slow = utf8.calculateTextWidth(text_ascii, 4, false, .unicode);
     try testing.expectEqual(result_fast, result_slow);
@@ -2412,7 +2412,7 @@ test "calculateTextWidth: large text with many tabs" {
         }
     }
 
-    const result = utf8.calculateTextWidth(buf, 4, true, .unicode);
+    const result = utf8.calculateTextWidth(buf, 4, false, .unicode);
     try testing.expectEqual(expected, result);
 }
 

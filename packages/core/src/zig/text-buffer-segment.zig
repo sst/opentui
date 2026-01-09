@@ -45,7 +45,7 @@ pub const TextChunk = struct {
     wrap_offsets: ?[]utf8.WrapBreak = null,
 
     pub const Flags = struct {
-        pub const ASCII_ONLY: u8 = 0b00000001;
+        pub const ASCII_ONLY: u8 = 0b00000001; // Printable ASCII only (32..126).
     };
 
     pub fn isAsciiOnly(self: *const TextChunk) bool {
