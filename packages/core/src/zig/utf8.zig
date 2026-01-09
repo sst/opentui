@@ -204,29 +204,29 @@ pub fn findWrapBreaks(text: []const u8, result: *WrapBreakResult, width_method: 
             var match_mask: @Vector(vector_len, bool) = @splat(false);
 
             // Check whitespace
-            match_mask = @select(bool, chunk == @as(@Vector(vector_len, u8), @splat(' ')), @as(@Vector(vector_len, bool), @splat(true)), match_mask);
-            match_mask = @select(bool, chunk == @as(@Vector(vector_len, u8), @splat('\t')), @as(@Vector(vector_len, bool), @splat(true)), match_mask);
+            match_mask = match_mask | (chunk == @as(@Vector(vector_len, u8), @splat(' ')));
+            match_mask = match_mask | (chunk == @as(@Vector(vector_len, u8), @splat('\t')));
 
             // Check dashes and slashes
-            match_mask = @select(bool, chunk == @as(@Vector(vector_len, u8), @splat('-')), @as(@Vector(vector_len, bool), @splat(true)), match_mask);
-            match_mask = @select(bool, chunk == @as(@Vector(vector_len, u8), @splat('/')), @as(@Vector(vector_len, bool), @splat(true)), match_mask);
-            match_mask = @select(bool, chunk == @as(@Vector(vector_len, u8), @splat('\\')), @as(@Vector(vector_len, bool), @splat(true)), match_mask);
+            match_mask = match_mask | (chunk == @as(@Vector(vector_len, u8), @splat('-')));
+            match_mask = match_mask | (chunk == @as(@Vector(vector_len, u8), @splat('/')));
+            match_mask = match_mask | (chunk == @as(@Vector(vector_len, u8), @splat('\\')));
 
             // Check punctuation
-            match_mask = @select(bool, chunk == @as(@Vector(vector_len, u8), @splat('.')), @as(@Vector(vector_len, bool), @splat(true)), match_mask);
-            match_mask = @select(bool, chunk == @as(@Vector(vector_len, u8), @splat(',')), @as(@Vector(vector_len, bool), @splat(true)), match_mask);
-            match_mask = @select(bool, chunk == @as(@Vector(vector_len, u8), @splat(';')), @as(@Vector(vector_len, bool), @splat(true)), match_mask);
-            match_mask = @select(bool, chunk == @as(@Vector(vector_len, u8), @splat(':')), @as(@Vector(vector_len, bool), @splat(true)), match_mask);
-            match_mask = @select(bool, chunk == @as(@Vector(vector_len, u8), @splat('!')), @as(@Vector(vector_len, bool), @splat(true)), match_mask);
-            match_mask = @select(bool, chunk == @as(@Vector(vector_len, u8), @splat('?')), @as(@Vector(vector_len, bool), @splat(true)), match_mask);
+            match_mask = match_mask | (chunk == @as(@Vector(vector_len, u8), @splat('.')));
+            match_mask = match_mask | (chunk == @as(@Vector(vector_len, u8), @splat(',')));
+            match_mask = match_mask | (chunk == @as(@Vector(vector_len, u8), @splat(';')));
+            match_mask = match_mask | (chunk == @as(@Vector(vector_len, u8), @splat(':')));
+            match_mask = match_mask | (chunk == @as(@Vector(vector_len, u8), @splat('!')));
+            match_mask = match_mask | (chunk == @as(@Vector(vector_len, u8), @splat('?')));
 
             // Check brackets
-            match_mask = @select(bool, chunk == @as(@Vector(vector_len, u8), @splat('(')), @as(@Vector(vector_len, bool), @splat(true)), match_mask);
-            match_mask = @select(bool, chunk == @as(@Vector(vector_len, u8), @splat(')')), @as(@Vector(vector_len, bool), @splat(true)), match_mask);
-            match_mask = @select(bool, chunk == @as(@Vector(vector_len, u8), @splat('[')), @as(@Vector(vector_len, bool), @splat(true)), match_mask);
-            match_mask = @select(bool, chunk == @as(@Vector(vector_len, u8), @splat(']')), @as(@Vector(vector_len, bool), @splat(true)), match_mask);
-            match_mask = @select(bool, chunk == @as(@Vector(vector_len, u8), @splat('{')), @as(@Vector(vector_len, bool), @splat(true)), match_mask);
-            match_mask = @select(bool, chunk == @as(@Vector(vector_len, u8), @splat('}')), @as(@Vector(vector_len, bool), @splat(true)), match_mask);
+            match_mask = match_mask | (chunk == @as(@Vector(vector_len, u8), @splat('(')));
+            match_mask = match_mask | (chunk == @as(@Vector(vector_len, u8), @splat(')')));
+            match_mask = match_mask | (chunk == @as(@Vector(vector_len, u8), @splat('[')));
+            match_mask = match_mask | (chunk == @as(@Vector(vector_len, u8), @splat(']')));
+            match_mask = match_mask | (chunk == @as(@Vector(vector_len, u8), @splat('{')));
+            match_mask = match_mask | (chunk == @as(@Vector(vector_len, u8), @splat('}')));
 
             // Convert boolean mask to integer bitmask for faster iteration
             var bitmask: u16 = 0;
