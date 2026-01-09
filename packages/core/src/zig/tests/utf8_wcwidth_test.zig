@@ -6,7 +6,7 @@ test "findGraphemeInfo wcwidth: empty string" {
     var result: std.ArrayListUnmanaged(utf8.GraphemeInfo) = .{};
     defer result.deinit(testing.allocator);
 
-    try utf8.findGraphemeInfo("", 4, true, .wcwidth, testing.allocator, &result);
+    try utf8.findGraphemeInfo("", 4, false, .wcwidth, testing.allocator, &result);
     try testing.expectEqual(@as(usize, 0), result.items.len);
 }
 
