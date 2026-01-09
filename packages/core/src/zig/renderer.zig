@@ -286,6 +286,7 @@ pub const CliRenderer = struct {
         self.terminal.queryTerminalSend(writer) catch {
             logger.warn("Failed to query terminal capabilities", .{});
         };
+        writer.flush() catch {};
 
         self.setupTerminalWithoutDetection(useAlternateScreen);
     }
@@ -1145,6 +1146,7 @@ pub const CliRenderer = struct {
         const writer = &stdoutWriter.interface;
         const useKitty = self.terminal.opts.kitty_keyboard_flags > 0;
         self.terminal.enableDetectedFeatures(writer, useKitty) catch {};
+        writer.flush() catch {};
     }
 
     pub fn setCursorPosition(self: *CliRenderer, x: u32, y: u32, visible: bool) void {

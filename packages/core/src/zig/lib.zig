@@ -278,6 +278,7 @@ export fn setTerminalTitle(rendererPtr: *renderer.CliRenderer, titlePtr: [*]cons
     var stdoutWriter = std.fs.File.stdout().writer(&rendererPtr.stdoutBuffer);
     const writer = &stdoutWriter.interface;
     rendererPtr.terminal.setTerminalTitle(writer, title);
+    writer.flush() catch {};
 }
 
 // Buffer functions
