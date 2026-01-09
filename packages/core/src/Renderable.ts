@@ -600,6 +600,7 @@ export abstract class Renderable extends BaseRenderable {
       this._zIndex = value
       this.parent?.requestZIndexSort()
       this._ctx.markHitGridDirty()
+      this.requestRender()
     }
   }
 

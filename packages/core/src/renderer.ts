@@ -412,7 +412,7 @@ export class CliRenderer extends EventEmitter implements RenderContext {
   private _capabilities: any | null = null
   private _latestPointer: { x: number; y: number } = { x: 0, y: 0 }
   private _hasPointer: boolean = false
-  private _lastPointerEvent: RawMouseEvent | null = null
+  private _lastPointerModifiers: RawMouseEvent["modifiers"] = { shift: false, alt: false, ctrl: false }
 
   private _currentFocusedRenderable: Renderable | null = null
   private lifecyclePasses: Set<Renderable> = new Set()
@@ -1089,7 +1089,7 @@ export class CliRenderer extends EventEmitter implements RenderContext {
       this._latestPointer.x = mouseEvent.x
       this._latestPointer.y = mouseEvent.y
       this._hasPointer = true
-      this._lastPointerEvent = mouseEvent
+      this._lastPointerModifiers = mouseEvent.modifiers
 
       if (mouseEvent.type === "move" || mouseEvent.type === "drag") {
         this.clearHoverDebounce()
@@ -1261,15 +1261,11 @@ export class CliRenderer extends EventEmitter implements RenderContext {
     this.hitGridDirty = false
     this.clearHoverDebounce()
 
-    if (this.hoverDebounceDelay <= 0) {
-      this.runHoverRecheck()
-      return
-    }
-
+    const debounceDelay = Math.max(0, this.hoverDebounceDelay)
     this.hoverDebounceTimeoutId = setTimeout(() => {
       this.hoverDebounceTimeoutId = null
       this.runHoverRecheck()
-    }, this.hoverDebounceDelay)
+    }, debounceDelay)
   }
 
   private runHoverRecheck(): void {
@@ -1287,10 +1283,10 @@ export class CliRenderer extends EventEmitter implements RenderContext {
 
     const baseEvent: RawMouseEvent = {
       type: "move",
-      button: this._lastPointerEvent?.button ?? 0,
+      button: 0,
       x: this._latestPointer.x,
       y: this._latestPointer.y,
-      modifiers: this._lastPointerEvent?.modifiers ?? { shift: false, alt: false, ctrl: false },
+      modifiers: this._lastPointerModifiers ?? { shift: false, alt: false, ctrl: false },
     }
 
     if (lastOver && lastOver !== this.capturedRenderable) {
