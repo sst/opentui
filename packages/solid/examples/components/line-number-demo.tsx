@@ -120,7 +120,7 @@ console.log('Even numbers:', evens)`
 
   return (
     <box flexDirection="column" width="100%" height="100%" gap={1}>
-      <box flexDirection="column" backgroundColor="#0D1117" padding={1} border borderColor="#30363D">
+      <box flexDirection="column" backgroundColor="#0D1117" padding={1} border borderColor="#30363D" flexShrink={0}>
         <text fg="#4ECDC4" attributes={TextAttributes.BOLD}>
           Line Numbers Demo
         </text>
