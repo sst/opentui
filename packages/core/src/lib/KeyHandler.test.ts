@@ -651,3 +651,160 @@ test("KeyHandler - error in one event type does not prevent other event types fr
   expect(keypressCalled).toBe(true)
   expect(pasteCalled).toBe(true)
 })
+
+test("KeyHandler - Kitty emoji reassembly: basic emoji", async () => {
+  const handler = new InternalKeyHandler({ useKittyKeyboard: true, emojiBufferTimeout: 5 })
+  const events: KeyEvent[] = []
+  handler.on("keypress", (key: KeyEvent) => events.push(key))
+
+  handler.processInput("\x1b[128512u") // 😀 U+1F600
+  await new Promise((r) => setTimeout(r, 10))
+
+  expect(events).toHaveLength(1)
+  expect(events[0].name).toBe("😀")
+  expect(events[0].sequence).toBe("😀")
+  expect(events[0].raw).toBe("\x1b[128512u")
+  handler.destroy()
+})
+
+test("KeyHandler - Kitty emoji reassembly: ZWJ family", async () => {
+  const handler = new InternalKeyHandler({ useKittyKeyboard: true, emojiBufferTimeout: 5 })
+  const events: KeyEvent[] = []
+  handler.on("keypress", (key: KeyEvent) => events.push(key))
+
+  handler.processInput("\x1b[128104u") // 👨 U+1F468
+  handler.processInput("\x1b[8205u") // ZWJ U+200D
+  handler.processInput("\x1b[128105u") // 👩 U+1F469
+  handler.processInput("\x1b[8205u") // ZWJ
+  handler.processInput("\x1b[128103u") // 👧 U+1F467
+  await new Promise((r) => setTimeout(r, 10))
+
+  expect(events).toHaveLength(1)
+  expect(events[0].name).toBe("👨‍👩‍👧")
+  expect(events[0].sequence).toBe("👨‍👩‍👧")
+  expect(events[0].raw).toBe("\x1b[128104u\x1b[8205u\x1b[128105u\x1b[8205u\x1b[128103u")
+  handler.destroy()
+})
+
+test("KeyHandler - Kitty emoji reassembly: flag emoji", async () => {
+  const handler = new InternalKeyHandler({ useKittyKeyboard: true, emojiBufferTimeout: 5 })
+  const events: KeyEvent[] = []
+  handler.on("keypress", (key: KeyEvent) => events.push(key))
+
+  handler.processInput("\x1b[127482u") // 🇺 U+1F1FA
+  handler.processInput("\x1b[127480u") // 🇸 U+1F1F8
+  await new Promise((r) => setTimeout(r, 10))
+
+  expect(events).toHaveLength(1)
+  expect(events[0].name).toBe("🇺🇸")
+  expect(events[0].sequence).toBe("🇺🇸")
+  handler.destroy()
+})
+
+test("KeyHandler - Kitty emoji reassembly: skin tone modifier", async () => {
+  const handler = new InternalKeyHandler({ useKittyKeyboard: true, emojiBufferTimeout: 5 })
+  const events: KeyEvent[] = []
+  handler.on("keypress", (key: KeyEvent) => events.push(key))
+
+  handler.processInput("\x1b[128075u") // 👋 U+1F44B
+  handler.processInput("\x1b[127995u") // 🏻 U+1F3FB (light skin tone)
+  await new Promise((r) => setTimeout(r, 10))
+
+  expect(events).toHaveLength(1)
+  expect(events[0].name).toBe("👋🏻")
+  expect(events[0].sequence).toBe("👋🏻")
+  handler.destroy()
+})
+
+test("KeyHandler - Kitty emoji reassembly: keycap", async () => {
+  const handler = new InternalKeyHandler({ useKittyKeyboard: true, emojiBufferTimeout: 5 })
+  const events: KeyEvent[] = []
+  handler.on("keypress", (key: KeyEvent) => events.push(key))
+
+  handler.processInput("\x1b[35u") // # U+0023
+  handler.processInput("\x1b[65039u") // VS16 U+FE0F
+  handler.processInput("\x1b[8419u") // Keycap U+20E3
+  await new Promise((r) => setTimeout(r, 10))
+
+  expect(events).toHaveLength(1)
+  expect(events[0].name).toBe("#️⃣")
+  expect(events[0].sequence).toBe("#️⃣")
+  handler.destroy()
+})
+
+test("KeyHandler - Kitty emoji reassembly: flush on non-emoji input", async () => {
+  const handler = new InternalKeyHandler({ useKittyKeyboard: true, emojiBufferTimeout: 5 })
+  const events: KeyEvent[] = []
+  handler.on("keypress", (key: KeyEvent) => events.push(key))
+
+  handler.processInput("\x1b[128075u") // 👋
+  handler.processInput("\x1b[97u") // 'a' - not an extender, should flush
+
+  expect(events).toHaveLength(2)
+  expect(events[0].name).toBe("👋")
+  expect(events[1].name).toBe("a")
+  handler.destroy()
+})
+
+test("KeyHandler - Kitty emoji reassembly: non-emoji Kitty sequences pass through", () => {
+  const handler = new InternalKeyHandler({ useKittyKeyboard: true, emojiBufferTimeout: 5 })
+  const events: KeyEvent[] = []
+  handler.on("keypress", (key: KeyEvent) => events.push(key))
+
+  handler.processInput("\x1b[97u") // 'a'
+  handler.processInput("\x1b[98u") // 'b'
+
+  expect(events).toHaveLength(2)
+  expect(events[0].name).toBe("a")
+  expect(events[1].name).toBe("b")
+  handler.destroy()
+})
+
+test("KeyHandler - Kitty emoji reassembly: multiple flags split correctly", async () => {
+  const handler = new InternalKeyHandler({ useKittyKeyboard: true, emojiBufferTimeout: 5 })
+  const events: KeyEvent[] = []
+  handler.on("keypress", (key: KeyEvent) => events.push(key))
+
+  handler.processInput("\x1b[127482u") // 🇺 U+1F1FA
+  handler.processInput("\x1b[127480u") // 🇸 U+1F1F8
+  handler.processInput("\x1b[127471u") // 🇯 U+1F1EF
+  handler.processInput("\x1b[127477u") // 🇵 U+1F1F5
+  await new Promise((r) => setTimeout(r, 10))
+
+  expect(events).toHaveLength(2)
+  expect(events[0].name).toBe("🇺🇸")
+  expect(events[1].name).toBe("🇯🇵")
+  handler.destroy()
+})
+
+test("KeyHandler - Kitty emoji reassembly: modifiers prevent buffering", () => {
+  const handler = new InternalKeyHandler({ useKittyKeyboard: true, emojiBufferTimeout: 5 })
+  const events: KeyEvent[] = []
+  handler.on("keypress", (key: KeyEvent) => events.push(key))
+
+  handler.processInput("\x1b[128512;5u") // Ctrl+😀
+
+  expect(events).toHaveLength(1)
+  expect(events[0].name).toBe("😀")
+  expect(events[0].ctrl).toBe(true)
+  handler.destroy()
+})
+
+test("KeyHandler - Kitty emoji reassembly: subdivision flag", async () => {
+  const handler = new InternalKeyHandler({ useKittyKeyboard: true, emojiBufferTimeout: 5 })
+  const events: KeyEvent[] = []
+  handler.on("keypress", (key: KeyEvent) => events.push(key))
+
+  handler.processInput("\x1b[127988u") // 🏴 U+1F3F4
+  handler.processInput("\x1b[917607u") // Tag g U+E0067
+  handler.processInput("\x1b[917602u") // Tag b U+E0062
+  handler.processInput("\x1b[917605u") // Tag e U+E0065
+  handler.processInput("\x1b[917614u") // Tag n U+E006E
+  handler.processInput("\x1b[917607u") // Tag g U+E0067
+  handler.processInput("\x1b[917631u") // Tag cancel U+E007F
+  await new Promise((r) => setTimeout(r, 10))
+
+  expect(events).toHaveLength(1)
+  expect(events[0].name).toBe("🏴󠁧󠁢󠁥󠁮󠁧󠁿")
+  handler.destroy()
+})

@@ -1,0 +1,183 @@
+// Bun Snapshot v1, https://bun.sh/docs/test/snapshots
+
+exports[`Vue Renderer | Layout Tests Basic Text Rendering should render simple text correctly 1`] = `
+"Hello World         
+                    
+                    
+                    
+                    
+"
+`;
+
+exports[`Vue Renderer | Layout Tests Basic Text Rendering should render multiline text correctly 1`] = `
+"Line 1         
+Line 2         
+Line 3         
+               
+               
+"
+`;
+
+exports[`Vue Renderer | Layout Tests Basic Text Rendering should render text with dynamic content 1`] = `
+"Counter: 42         
+                    
+                    
+"
+`;
+
+exports[`Vue Renderer | Layout Tests Box Layout Rendering should render basic box layout correctly 1`] = `
+"┌──────────────────┐     
+│Inside Box        │     
+│                  │     
+│                  │     
+└──────────────────┘     
+                         
+                         
+                         
+"
+`;
+
+exports[`Vue Renderer | Layout Tests Box Layout Rendering should render nested boxes correctly 1`] = `
+"┌─Parent Box─────────────────┐     
+│                            │     
+│                            │     
+│  ┌────────┐                │     
+│  │Nested  │                │     
+│  └────────┘                │     
+│               Sibling      │     
+│                            │     
+│                            │     
+└────────────────────────────┘     
+                                   
+                                   
+"
+`;
+
+exports[`Vue Renderer | Layout Tests Box Layout Rendering should render absolute positioned boxes 1`] = `
+"┌────────┐               
+│Box 1   │               
+└────────┘  ┌────────┐   
+            │Box 2   │   
+            └────────┘   
+                         
+                         
+                         
+"
+`;
+
+exports[`Vue Renderer | Layout Tests Box Layout Rendering should auto-enable border when borderStyle is set 1`] = `
+"┌──────────────────┐     
+│With Border       │     
+│                  │     
+│                  │     
+└──────────────────┘     
+                         
+                         
+                         
+"
+`;
+
+exports[`Vue Renderer | Layout Tests Box Layout Rendering should auto-enable border when borderColor is set 1`] = `
+"┌──────────────────┐     
+│Colored Border    │     
+│                  │     
+│                  │     
+└──────────────────┘     
+                         
+                         
+                         
+"
+`;
+
+exports[`Vue Renderer | Layout Tests Complex Layouts should render complex nested layout correctly 1`] = `
+"┌─Complex Layout───────────────────────┐     
+│  ┌─────────────┐                     │     
+│  │Header Sectio│                     │     
+│  │Menu Item 1  │                     │     
+│  │Menu Item 2  │                     │     
+│  └─────────────┘                     │     
+│                  ┌────────────────┐  │     
+│                  │Content Area    │  │     
+│                  │Some content her│  │     
+│                  │More content    │  │     
+│                  │Footer text     │  │     
+│                  │                │  │     
+│                  │                │  │     
+│                  └────────────────┘  │     
+│  Status: Ready                       │     
+└──────────────────────────────────────┘     
+                                             
+                                             
+"
+`;
+
+exports[`Vue Renderer | Layout Tests Complex Layouts should render text with mixed styling and layout 1`] = `
+"┌─────────────────────────────────┐     
+│ Something went wrong            │     
+│ Check your settings             │     
+│ All systems operational         │     
+│                                 │     
+│                                 │     
+│                                 │     
+└─────────────────────────────────┘     
+                                        
+                                        
+"
+`;
+
+exports[`Vue Renderer | Layout Tests Complex Layouts should render scrollbox with sticky scroll and spacer 1`] = `
+"┌─scroll area────────────────┐
+│                            │
+│┌─hi───────────────────────┐│
+││                          ││
+││                          ││
+││                          ││
+││                          ││
+││                          ││
+││                          ││
+││                          ││
+││                          ││
+│└──────────────────────────┘│
+│                            │
+│                            │
+└────────────────────────────┘
+┌─spacer─────────────────────┐
+│spacer                      │
+│                            │
+│                            │
+│                            │
+│                            │
+│                            │
+│                            │
+│                            │
+└────────────────────────────┘
+"
+`;
+
+exports[`Vue Renderer | Layout Tests Empty and Edge Cases should handle empty component 1`] = `
+"          
+          
+          
+          
+          
+"
+`;
+
+exports[`Vue Renderer | Layout Tests Empty and Edge Cases should handle component with no children 1`] = `
+"               
+               
+               
+               
+               
+               
+               
+               
+"
+`;
+
+exports[`Vue Renderer | Layout Tests Empty and Edge Cases should handle very small dimensions 1`] = `
+"Hi   
+     
+     
+"
+`;

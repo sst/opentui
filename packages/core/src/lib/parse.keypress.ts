@@ -1,6 +1,7 @@
 // Copied from https://github.com/enquirer/enquirer/blob/36785f3399a41cd61e9d28d1eb9c2fcd73d69b4c/lib/keypress.js
 import { Buffer } from "node:buffer"
 import { parseKittyKeyboard } from "./parse.keypress-kitty"
+import { isSingleGrapheme } from "./grapheme-segmenter"
 
 const metaKeyCodeRe = /^(?:\x1b)([a-zA-Z0-9])$/
 
@@ -298,8 +299,8 @@ export const parseKeypress = (s: Buffer | string = "", options: ParseKeypressOpt
     // shift+letter
     key.name = s.toLowerCase()
     key.shift = true
-  } else if (s.length === 1) {
-    // Special characters (like $, ^, etc.) - preserve the character
+  } else if (isSingleGrapheme(s)) {
+    // Single grapheme: special characters, emoji, CJK, etc.
     key.name = s
   } else if ((parts = metaKeyCodeRe.exec(s))) {
     // meta+character key
