@@ -135,6 +135,11 @@ export abstract class TextBufferRenderable extends Renderable implements LineInf
     return this.textBufferView.getVirtualLineCount()
   }
 
+  public appendText(text: string): void {
+    this.textBuffer.append(text)
+    this.updateTextInfo()
+  }
+
   public get scrollY(): number {
     return this._scrollY
   }

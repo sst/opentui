@@ -2310,7 +2310,6 @@ test "drawTextBuffer - setStyledText with multiple colors and horizontal scrolli
         try opt_buffer.clear(.{ 0.0, 0.0, 0.0, 1.0 }, 32);
         try opt_buffer.drawTextBuffer(view, 0, 0);
 
-
         // At x=5, showing chars 5-24: " x = function(y) { "
         // Position 0: ' ' (source 5) - should be white
         // Position 5: 'f' (source 10) - should be GREEN
@@ -2331,7 +2330,6 @@ test "drawTextBuffer - setStyledText with multiple colors and horizontal scrolli
 
         try opt_buffer.clear(.{ 0.0, 0.0, 0.0, 1.0 }, 32);
         try opt_buffer.drawTextBuffer(view, 0, 0);
-
 
         // At x=15, showing chars 15-34: "ion(y) { return y * "
         // "const x = function..."
@@ -2370,7 +2368,6 @@ test "drawTextBuffer - setStyledText with multiple colors and horizontal scrolli
 
         try opt_buffer.clear(.{ 0.0, 0.0, 0.0, 1.0 }, 32);
         try opt_buffer.drawTextBuffer(view, 0, 0);
-
 
         // At x=25, showing chars 25-44: "eturn y * 2; }"
         // Position 0: 'e' (source 25) - should be BLUE (part of "return" 24-30)
@@ -3186,4 +3183,81 @@ test "drawTextBuffer - wcwidth cursor movement matches rendered output" {
     // All cells should now be spaces
     const cell_0_final = opt_buffer.get(0, 0) orelse unreachable;
     try std.testing.expectEqual(@as(u32, ' '), cell_0_final.char);
+}
+
+test "drawTextBuffer - streaming append with CJK should render all characters" {
+    const pool = gp.initGlobalPool(std.testing.allocator);
+    defer gp.deinitGlobalPool();
+
+    var tb = try TextBuffer.init(std.testing.allocator, pool, .unicode);
+    defer tb.deinit();
+
+    var view = try TextBufferView.init(std.testing.allocator, tb);
+    defer view.deinit();
+
+    // Initial content: "12345678" (8 ASCII chars)
+    try tb.setText("12345678");
+
+    // Set up char wrapping at width 10
+    view.setWrapMode(.char);
+    view.setWrapWidth(10);
+    view.updateVirtualLines();
+
+    var opt_buffer = try OptimizedBuffer.init(
+        std.testing.allocator,
+        20,
+        5,
+        .{ .pool = pool, .width_method = .unicode },
+    );
+    defer opt_buffer.deinit();
+
+    // First render
+    try opt_buffer.clear(.{ 0.0, 0.0, 0.0, 1.0 }, 32);
+    try opt_buffer.drawTextBuffer(view, 0, 0);
+
+    var buf: [500]u8 = undefined;
+    var buf_len = try opt_buffer.writeResolvedChars(&buf, false);
+    var result = buf[0..buf_len];
+
+    // Verify initial content
+    try std.testing.expect(std.mem.indexOf(u8, result, "12345678") != null);
+
+    // Now append "9中文" - this is the streaming append case
+    try tb.append("9中文");
+
+    // After append, the view should be dirty
+    try std.testing.expect(tb.isViewDirty(view.view_id));
+
+    // Update virtual lines (simulating what happens in render)
+    view.updateVirtualLines();
+
+    // View should no longer be dirty after update
+    try std.testing.expect(!tb.isViewDirty(view.view_id));
+
+    // Get virtual line count
+    const vline_count = view.getVirtualLineCount();
+    // Content "123456789中文" (9 ASCII + 2 CJK) = 9 + 4 = 13 columns
+    // With width 10: line 1 = "123456789" (9), line 2 = "中文" (4)
+    // So we should have 2 virtual lines
+    try std.testing.expectEqual(@as(u32, 2), vline_count);
+
+    // Second render after append
+    try opt_buffer.clear(.{ 0.0, 0.0, 0.0, 1.0 }, 32);
+    try opt_buffer.drawTextBuffer(view, 0, 0);
+
+    buf_len = try opt_buffer.writeResolvedChars(&buf, false);
+    result = buf[0..buf_len];
+
+    // Verify the content is valid UTF-8
+    try std.testing.expect(std.unicode.utf8ValidateSlice(result));
+
+    // Verify "123456789" is present
+    try std.testing.expect(std.mem.indexOf(u8, result, "123456789") != null);
+
+    // CRITICAL: Verify CJK characters are present
+    try std.testing.expect(std.mem.indexOf(u8, result, "中") != null);
+    try std.testing.expect(std.mem.indexOf(u8, result, "文") != null);
+
+    // Verify no question marks (corruption indicator)
+    try std.testing.expect(std.mem.indexOf(u8, result, "?") == null);
 }

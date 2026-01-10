@@ -547,6 +547,101 @@ describe("TextBufferView", () => {
     })
   })
 
+  describe("CJK character at line boundary", () => {
+    it("should NOT overflow when CJK character at position width-1", () => {
+      // Width 10, fill 9 ASCII chars, then a CJK char (width 2)
+      // "123456789中" - 中 should wrap to next line, leaving 1 space at end of first line
+      const text = "123456789中"
+      const styledText = stringToStyledText(text)
+      buffer.setStyledText(styledText)
+
+      view.setWrapMode("char")
+      view.setWrapWidth(10)
+
+      const lineInfo = view.lineInfo
+      // Should be 2 lines: "123456789" (9 cols) + "中" (2 cols)
+      expect(lineInfo.lineStarts.length).toBe(2)
+      // First line should NOT exceed wrap width
+      expect(lineInfo.lineWidths[0]).toBeLessThanOrEqual(10)
+      // CJK should be on second line
+      expect(lineInfo.lineWidths[1]).toBe(2)
+    })
+
+    it("should NOT overflow when CJK character exactly fills remaining space", () => {
+      // Width 10, fill 8 ASCII chars, then a CJK char (width 2) = exactly 10
+      const text = "12345678中"
+      const styledText = stringToStyledText(text)
+      buffer.setStyledText(styledText)
+
+      view.setWrapMode("char")
+      view.setWrapWidth(10)
+
+      const lineInfo = view.lineInfo
+      // Should fit on 1 line: "12345678中" = 8 + 2 = 10
+      expect(lineInfo.lineStarts.length).toBe(1)
+      expect(lineInfo.lineWidths[0]).toBe(10)
+    })
+
+    it("should handle multiple CJK chars near boundary correctly", () => {
+      // Width 10, "1234567中中" = 7 + 2 + 2 = 11, should wrap after first 中
+      const text = "1234567中中"
+      const styledText = stringToStyledText(text)
+      buffer.setStyledText(styledText)
+
+      view.setWrapMode("char")
+      view.setWrapWidth(10)
+
+      const lineInfo = view.lineInfo
+      // First line: "1234567中" = 7 + 2 = 9 (fits) or wrap before second 中
+      // Each line should NOT exceed 10
+      for (const width of lineInfo.lineWidths) {
+        expect(width).toBeLessThanOrEqual(10)
+      }
+    })
+
+    it("should handle streaming append with CJK at boundary", () => {
+      // Simulate streaming: first send "123456789", then append "中"
+      const styledText1 = stringToStyledText("123456789")
+      buffer.setStyledText(styledText1)
+
+      view.setWrapMode("char")
+      view.setWrapWidth(10)
+
+      const lineInfo1 = view.lineInfo
+      expect(lineInfo1.lineWidths[0]).toBe(9)
+
+      // Now append a CJK character
+      buffer.append("中")
+
+      const lineInfo2 = view.lineInfo
+      // Should be 2 lines now
+      expect(lineInfo2.lineStarts.length).toBe(2)
+      // Neither line should exceed wrap width
+      expect(lineInfo2.lineWidths[0]).toBeLessThanOrEqual(10)
+      expect(lineInfo2.lineWidths[1]).toBeLessThanOrEqual(10)
+    })
+
+    it("should leave padding when CJK cannot fit at line end", () => {
+      // Width 10, "123456789中文" = 9 + 2 + 2 = 13
+      // Line 1: "123456789" (9) - 中 doesn't fit (would be 11), leave 1 padding
+      // Line 2: "中文" (4)
+      const text = "123456789中文"
+      const styledText = stringToStyledText(text)
+      buffer.setStyledText(styledText)
+
+      view.setWrapMode("char")
+      view.setWrapWidth(10)
+
+      const lineInfo = view.lineInfo
+      // First line should be 9 (not 10, because CJK needs 2 cols)
+      expect(lineInfo.lineWidths[0]).toBeLessThanOrEqual(10)
+      // Ensure no line exceeds wrap width
+      for (const width of lineInfo.lineWidths) {
+        expect(width).toBeLessThanOrEqual(10)
+      }
+    })
+  })
+
   describe("measureForDimensions", () => {
     it("should measure without modifying cache", () => {
       const styledText = stringToStyledText("ABCDEFGHIJKLMNOPQRST")

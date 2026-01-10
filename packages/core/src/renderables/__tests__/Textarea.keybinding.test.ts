@@ -511,6 +511,52 @@ describe("Textarea - Keybinding Tests", () => {
       expect(editor.plainText).toBe("🌟世 👍")
     })
 
+    it("should handle ZWJ emoji sequences as single grapheme", async () => {
+      const { textarea: editor } = await createTextareaRenderable(currentRenderer, renderOnce, {
+        initialValue: "",
+        width: 40,
+        height: 10,
+      })
+
+      editor.focus()
+
+      const familyHandled = editor.handleKeyPress(createKeyEvent("👨‍👩‍👧‍👦"))
+      expect(familyHandled).toBe(true)
+      expect(editor.plainText).toBe("👨‍👩‍👧‍👦")
+
+      const astronautHandled = editor.handleKeyPress(createKeyEvent("👩‍🚀"))
+      expect(astronautHandled).toBe(true)
+      expect(editor.plainText).toBe("👨‍👩‍👧‍👦👩‍🚀")
+    })
+
+    it("should handle flag emoji as single grapheme", async () => {
+      const { textarea: editor } = await createTextareaRenderable(currentRenderer, renderOnce, {
+        initialValue: "",
+        width: 40,
+        height: 10,
+      })
+
+      editor.focus()
+
+      const flagHandled = editor.handleKeyPress(createKeyEvent("🇺🇸"))
+      expect(flagHandled).toBe(true)
+      expect(editor.plainText).toBe("🇺🇸")
+    })
+
+    it("should handle skin tone emoji as single grapheme", async () => {
+      const { textarea: editor } = await createTextareaRenderable(currentRenderer, renderOnce, {
+        initialValue: "",
+        width: 40,
+        height: 10,
+      })
+
+      editor.focus()
+
+      const skinToneHandled = editor.handleKeyPress(createKeyEvent("👋🏻"))
+      expect(skinToneHandled).toBe(true)
+      expect(editor.plainText).toBe("👋🏻")
+    })
+
     it("should filter escape sequences when they have non-printable characters", async () => {
       const { textarea: editor } = await createTextareaRenderable(currentRenderer, renderOnce, {
         initialValue: "Test",
