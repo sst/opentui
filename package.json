@@ -6,15 +6,12 @@
   ],
   "scripts": {
     "build": "cd packages/core && bun run build && cd ../solid && bun run build && cd ../react && bun run build",
-    "build:go": "cd packages/go && go build ./...",
     "pre-publish": "bun scripts/pre-publish.ts",
     "publish": "bun run pre-publish && bun run publish:core && bun run publish:react && bun run publish:solid",
     "publish:core": "cd packages/core && bun run publish",
     "publish:react": "cd packages/react && bun run publish",
     "publish:solid": "cd packages/solid && bun run publish",
-    "publish:vue": "cd packages/vue && bun run publish",
     "prepare-release": "bun scripts/prepare-release.ts",
-    "test:go": "cd packages/go && go test -v . && go build ./examples/...",
     "prettier:write": "prettier --write .",
     "test": "bun run --filter '@opentui/core' --filter '@opentui/solid' --filter '@opentui/react' --if-present test"
   },
