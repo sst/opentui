@@ -2766,6 +2766,32 @@ test "drawTextBuffer - word wrap CJK text preserves UTF-8 boundaries" {
     }
 }
 
+test "drawTextBuffer - word wrap CJK text with space boundary" {
+    const pool = gp.initGlobalPool(std.testing.allocator);
+    defer gp.deinitGlobalPool();
+
+    var tb = try TextBuffer.init(std.testing.allocator, pool, .wcwidth);
+    defer tb.deinit();
+
+    var view = try TextBufferView.init(std.testing.allocator, tb);
+    defer view.deinit();
+
+    // Text: "한글 English 中文 日本語"
+    // Layout: "한글" (4 cols) + " " (1 col) + "English" (7 cols) + " " (1 col) + "中文" (4 cols) + " " (1 col) + "日本語" (6 cols) = 24 cols
+    try tb.setText("한글 English 中文 日本語");
+
+    view.setWrapMode(.word);
+    view.setWrapWidth(14);
+    view.updateVirtualLines();
+
+    const vlines = view.getVirtualLines();
+
+    try std.testing.expectEqual(@as(usize, 2), vlines.len);
+    if (vlines.len >= 2) {
+        try std.testing.expectEqual(@as(u32, 11), vlines[1].width);
+    }
+}
+
 test "drawTextBuffer - wcwidth mode does not render ZWJ or VS16 as characters" {
     const pool = gp.initGlobalPool(std.testing.allocator);
     defer gp.deinitGlobalPool();
