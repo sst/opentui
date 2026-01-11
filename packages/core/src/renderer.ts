@@ -408,6 +408,7 @@ export class CliRenderer extends EventEmitter implements RenderContext {
   private _capabilities: any | null = null
   private _latestPointer: { x: number; y: number } = { x: 0, y: 0 }
   private _hasPointer: boolean = false
+  private _lastPointerModifiers: RawMouseEvent["modifiers"] = { shift: false, alt: false, ctrl: false }
 
   private _currentFocusedRenderable: Renderable | null = null
   private lifecyclePasses: Set<Renderable> = new Set()
@@ -1079,6 +1080,7 @@ export class CliRenderer extends EventEmitter implements RenderContext {
       this._latestPointer.x = mouseEvent.x
       this._latestPointer.y = mouseEvent.y
       this._hasPointer = true
+      this._lastPointerModifiers = mouseEvent.modifiers
 
       if (this._console.visible) {
         const consoleBounds = this._console.bounds
@@ -1248,7 +1250,7 @@ export class CliRenderer extends EventEmitter implements RenderContext {
       button: 0,
       x: this._latestPointer.x,
       y: this._latestPointer.y,
-      modifiers: { shift: false, alt: false, ctrl: false },
+      modifiers: this._lastPointerModifiers,
     }
 
     // Fire out on old element

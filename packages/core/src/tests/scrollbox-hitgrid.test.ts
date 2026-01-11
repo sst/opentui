@@ -250,11 +250,11 @@ test("hover recheck uses neutral button and modifiers", async () => {
   expect(hoverEvents).toHaveLength(3)
   const outEvent = hoverEvents[1]
   const overEvent = hoverEvents[2]
-  // Synthetic hover recheck events use neutral button and modifiers
+  // Synthetic hover recheck uses neutral button but preserves last known modifiers
   expect(outEvent.button).toBe(0)
-  expect(outEvent.modifiers).toEqual({ shift: false, alt: false, ctrl: false })
+  expect(outEvent.modifiers).toEqual({ shift: true, alt: false, ctrl: false })
   expect(overEvent.button).toBe(0)
-  expect(overEvent.modifiers).toEqual({ shift: false, alt: false, ctrl: false })
+  expect(overEvent.modifiers).toEqual({ shift: true, alt: false, ctrl: false })
 })
 
 test("hover updates on multiple scroll changes", async () => {
