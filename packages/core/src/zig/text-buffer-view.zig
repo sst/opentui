@@ -258,7 +258,7 @@ pub const UnifiedTextBufferView = struct {
         var first_boundary: ?u32 = null;
 
         for (wrap_offsets) |wrap_break| {
-            const offset = @as(u32, wrap_break.char_offset);
+            const offset = @as(u32, wrap_break.col_offset);
             if (offset < char_offset_in_chunk) continue;
 
             const local_offset = offset - char_offset_in_chunk;
@@ -937,7 +937,7 @@ pub const UnifiedTextBufferView = struct {
                             var saved_wrap_idx = wrap_idx;
                             while (wrap_idx < wrap_offsets.len) : (wrap_idx += 1) {
                                 const wrap_break = wrap_offsets[wrap_idx];
-                                const offset = @as(u32, wrap_break.char_offset);
+                                const offset = @as(u32, wrap_break.col_offset);
                                 if (offset < char_offset) continue;
                                 const width_to_boundary = offset - char_offset + 1;
                                 if (width_to_boundary > remaining_on_line or width_to_boundary > remaining_in_chunk) break;

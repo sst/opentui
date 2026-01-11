@@ -865,7 +865,7 @@ pub const OptimizedBuffer = struct {
             } else {
                 if (byte_offset >= text.len) break;
                 grapheme_bytes = text[byte_offset .. byte_offset + 1];
-                g_width = 1;
+                g_width = @intCast(utf8.getWidthAt(text, byte_offset, tab_width, self.width_method));
                 byte_offset += 1;
             }
 
@@ -1195,7 +1195,7 @@ pub const OptimizedBuffer = struct {
                         const cp_len = std.unicode.utf8ByteSequenceLength(chunk_bytes[byte_offset]) catch 1;
                         const next_byte_offset = @min(byte_offset + cp_len, chunk_bytes.len);
                         grapheme_bytes = chunk_bytes[byte_offset..next_byte_offset];
-                        g_width = 1; // Assuming width 1 for non-special characters (ASCII mostly)
+                        g_width = @intCast(utf8.getWidthAt(chunk_bytes, byte_offset, text_buffer.tab_width, text_buffer.width_method));
                         byte_offset = next_byte_offset;
                     }
 
