@@ -102,6 +102,7 @@ pub const TabStopResult = struct {
 pub const WrapBreak = struct {
     byte_offset: u32,
     char_offset: u32,
+    col_offset: u32,
 };
 
 pub const WrapBreakResult = struct {
@@ -190,6 +191,7 @@ pub fn findWrapBreaks(text: []const u8, result: *WrapBreakResult, width_method: 
 
     var pos: usize = 0;
     var char_offset: u32 = 0;
+    var col_offset: u32 = 0;
     var prev_cp: ?u21 = null; // Track previous codepoint for grapheme detection
     var break_state: uucode.grapheme.BreakState = .default;
 
@@ -242,12 +244,14 @@ pub fn findWrapBreaks(text: []const u8, result: *WrapBreakResult, width_method: 
                 try result.breaks.append(result.allocator, .{
                     .byte_offset = @intCast(pos + bit_pos),
                     .char_offset = char_offset + @as(u32, @intCast(bit_pos)),
+                    .col_offset = col_offset + @as(u32, @intCast(bit_pos)),
                 });
                 bitmask &= bitmask - 1;
             }
 
             pos += vector_len;
             char_offset += vector_len;
+            col_offset += vector_len;
             prev_cp = text[pos - 1]; // Last ASCII char
             continue;
         }
@@ -270,11 +274,13 @@ pub fn findWrapBreaks(text: []const u8, result: *WrapBreakResult, width_method: 
                     try result.breaks.append(result.allocator, .{
                         .byte_offset = @intCast(pos + i),
                         .char_offset = char_offset,
+                        .col_offset = col_offset,
                     });
                 }
                 i += 1;
                 if (is_break) {
                     char_offset += 1;
+                    col_offset += 1;
                 }
                 prev_cp = curr_cp;
             } else {
@@ -292,11 +298,13 @@ pub fn findWrapBreaks(text: []const u8, result: *WrapBreakResult, width_method: 
                     try result.breaks.append(result.allocator, .{
                         .byte_offset = @intCast(pos + i),
                         .char_offset = char_offset,
+                        .col_offset = col_offset,
                     });
                 }
                 i += dec.len;
                 if (is_break) {
                     char_offset += 1;
+                    col_offset += eastAsianWidth(dec.cp);
                 }
                 prev_cp = dec.cp;
             }
@@ -319,11 +327,13 @@ pub fn findWrapBreaks(text: []const u8, result: *WrapBreakResult, width_method: 
                 try result.breaks.append(result.allocator, .{
                     .byte_offset = @intCast(i),
                     .char_offset = char_offset,
+                    .col_offset = col_offset,
                 });
             }
             i += 1;
             if (is_break) {
                 char_offset += 1;
+                col_offset += 1;
             }
             prev_cp = curr_cp;
         } else {
@@ -339,11 +349,13 @@ pub fn findWrapBreaks(text: []const u8, result: *WrapBreakResult, width_method: 
                 try result.breaks.append(result.allocator, .{
                     .byte_offset = @intCast(i),
                     .char_offset = char_offset,
+                    .col_offset = col_offset,
                 });
             }
             i += dec.len;
             if (is_break) {
                 char_offset += 1;
+                col_offset += eastAsianWidth(dec.cp);
             }
             prev_cp = dec.cp;
         }
