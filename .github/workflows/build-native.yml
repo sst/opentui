@@ -14,7 +14,7 @@ on:
         default: false
 
 env:
-  ZIG_VERSION: 0.14.1
+  ZIG_VERSION: 0.15.2
 
 jobs:
   build-native:
@@ -39,7 +39,14 @@ jobs:
         run: bun install
 
       - name: Build packages (cross-compile for all platforms)
-        run: bun run build
+        run: |
+          cd packages/core
+          bun run build:native --all
+          bun run build:lib
+          cd ../react
+          bun run build
+          cd ../solid
+          bun run build
 
       - name: Verify build outputs
         run: |
@@ -160,13 +167,6 @@ jobs:
             echo "✅ Solid dist packaged"
           else
             echo "⚠️  Solid dist not found (skipping)"
-          fi
-
-          if [ -d packages/vue/dist ]; then
-            cp -r packages/vue/dist artifacts/npm-packages/vue-dist
-            echo "✅ Vue dist packaged"
-          else
-            echo "⚠️  Vue dist not found (skipping)"
           fi
 
           cd artifacts

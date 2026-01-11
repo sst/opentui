@@ -4,7 +4,7 @@ set -e
 # OpenTUI Examples Installation Script
 # Downloads and runs the latest opentui-examples binary
 
-REPO="sst/opentui"
+REPO="anomalyco/opentui"
 GITHUB_API="https://api.github.com/repos/$REPO"
 
 RED='\033[0;31m'
