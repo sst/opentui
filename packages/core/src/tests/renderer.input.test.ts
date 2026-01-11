@@ -12,8 +12,8 @@ let mockGetTerminalCapabilities: any
 beforeEach(async () => {
   // Small delay to ensure any pending StdinBuffer timeouts from previous tests complete
   await new Promise((resolve) => setTimeout(resolve, 15))
-    ; ({ renderer: currentRenderer } = await createTestRenderer({}))
-    ; ({ renderer: kittyRenderer } = await createTestRenderer({ useKittyKeyboard: true }))
+  ;({ renderer: currentRenderer } = await createTestRenderer({}))
+  ;({ renderer: kittyRenderer } = await createTestRenderer({ useKittyKeyboard: true }))
 
   // Mock native capability functions to avoid interfering with the test terminal
   // @ts-expect-error - mocking for test
@@ -22,12 +22,12 @@ beforeEach(async () => {
   mockGetTerminalCapabilities = currentRenderer.lib.getTerminalCapabilities
 
   // @ts-expect-error - mocking for test
-  currentRenderer.lib.processCapabilityResponse = () => { }
+  currentRenderer.lib.processCapabilityResponse = () => {}
   // @ts-expect-error - mocking for test
   currentRenderer.lib.getTerminalCapabilities = () => ({ unicode: "unicode" })
 
   // @ts-expect-error - mocking for test
-  kittyRenderer.lib.processCapabilityResponse = () => { }
+  kittyRenderer.lib.processCapabilityResponse = () => {}
   // @ts-expect-error - mocking for test
   kittyRenderer.lib.getTerminalCapabilities = () => ({ unicode: "unicode" })
 })
