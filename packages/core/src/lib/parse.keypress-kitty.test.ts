@@ -603,3 +603,21 @@ test("parseKeypress - Kitty sequences are NOT filtered by terminal response filt
   expect(emoji?.source).toBe("kitty")
   expect(emoji?.name).toBe("😀")
 })
+
+test("parseKeypress - Kitty keyboard shift+letter without shifted codepoint", () => {
+  const options: ParseKeypressOptions = { useKittyKeyboard: true }
+
+  const result = parseKeypress("\x1b[97;2u", options)!
+  expect(result.name).toBe("a")
+  expect(result.shift).toBe(true)
+  expect(result.sequence).toBe("A")
+})
+
+test("parseKeypress - Kitty keyboard shift+Cyrillic without shifted codepoint", () => {
+  const options: ParseKeypressOptions = { useKittyKeyboard: true }
+
+  const result = parseKeypress("\x1b[1072;2u", options)!
+  expect(result.name).toBe("а")
+  expect(result.shift).toBe(true)
+  expect(result.sequence).toBe("А")
+})

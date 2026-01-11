@@ -2,7 +2,7 @@
 
 <div align="center">
     <a href="https://www.npmjs.com/package/@opentui/core"><img alt="npm" src="https://img.shields.io/npm/v/@opentui/core?style=flat-square" /></a>
-    <a href="https://github.com/sst/opentui/actions/workflows/build-core.yml"><img alt="Build status" src="https://img.shields.io/github/actions/workflow/status/sst/opentui/build-core.yml?style=flat-square&branch=main" /></a>
+    <a href="https://github.com/anomalyco/opentui/actions/workflows/build-core.yml"><img alt="Build status" src="https://img.shields.io/github/actions/workflow/status/anomalyco/opentui/build-core.yml?style=flat-square&branch=main" /></a>
     <a href="https://github.com/msmps/awesome-opentui"><img alt="awesome opentui list" src="https://awesome.re/badge-flat.svg" /></a>
 </div>
 
@@ -39,12 +39,12 @@ You can quickly try out OpenTUI examples without cloning the repository:
 **For macOS, Linux, WSL, Git Bash:**
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/sst/opentui/main/packages/core/src/examples/install.sh | sh
+curl -fsSL https://raw.githubusercontent.com/anomalyco/opentui/main/packages/core/src/examples/install.sh | sh
 ```
 
 **For Windows (PowerShell/CMD):**
 
-Download the latest release directly from [GitHub Releases](https://github.com/sst/opentui/releases/latest)
+Download the latest release directly from [GitHub Releases](https://github.com/anomalyco/opentui/releases/latest)
 
 ## Running Examples (from the repo root)
 
