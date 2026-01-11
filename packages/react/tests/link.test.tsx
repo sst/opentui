@@ -57,7 +57,8 @@ describe("Link Rendering Tests", () => {
   test("should render link inside text with other elements", async () => {
     testSetup = await testRender(
       <text>
-        Check out <a href="https://github.com/sst/opentui">GitHub</a> and <a href="https://opentui.com">our website</a>
+        Check out <a href="https://github.com/anomalyco/opentui">GitHub</a> and{" "}
+        <a href="https://opentui.com">our website</a>
       </text>,
       {
         width: 60,
