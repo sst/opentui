@@ -2,7 +2,7 @@ import { TextNodeRenderable, TextRenderable, type Renderable } from "@opentui/co
 import pkgJson from "../../package.json"
 import { createContext } from "react"
 import type { HostConfig, ReactContext } from "react-reconciler"
-import { DefaultEventPriority, NoEventPriority } from "react-reconciler/constants"
+import { DefaultEventPriority, NoEventPriority } from "react-reconciler/constants.js"
 import { getComponentCatalogue } from "../components"
 import { textNodeKeys, type TextNodeKey } from "../components/text"
 import type { Container, HostContext, Instance, Props, PublicInstance, TextInstance, Type } from "../types/host"
