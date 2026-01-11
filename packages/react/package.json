@@ -5,7 +5,7 @@
   "license": "MIT",
   "repository": {
     "type": "git",
-    "url": "https://github.com/sst/opentui",
+    "url": "https://github.com/anomalyco/opentui",
     "directory": "packages/react"
   },
   "module": "src/index.ts",
