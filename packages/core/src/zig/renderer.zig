@@ -121,6 +121,7 @@ pub const CliRenderer = struct {
     hitGridWidth: u32,
     hitGridHeight: u32,
     hitScissorStack: std.ArrayListUnmanaged(buf.ClipRect),
+    hitGridDirty: bool = false,
 
     lastCursorStyleTag: ?u8 = null,
     lastCursorBlinking: ?bool = null,
@@ -796,6 +797,10 @@ pub const CliRenderer = struct {
 
         self.nextRenderBuffer.clear(.{ self.backgroundColor[0], self.backgroundColor[1], self.backgroundColor[2], self.backgroundColor[3] }, null) catch {};
 
+        // Compare hit grids before swap to detect changes. This allows TypeScript to
+        // know if hover state needs rechecking without manually tracking dirty state.
+        self.hitGridDirty = !std.mem.eql(u32, self.currentHitGrid, self.nextHitGrid);
+
         // Swap hit grids: nextHitGrid (built this frame) becomes the active grid for
         // hit testing. The old currentHitGrid becomes nextHitGrid and is cleared for
         // the next frame.
@@ -858,6 +863,13 @@ pub const CliRenderer = struct {
     /// require updating hit targets without waiting for the next render.
     pub fn clearCurrentHitGrid(self: *CliRenderer) void {
         @memset(self.currentHitGrid, 0);
+    }
+
+    /// Return whether the hit grid changed during the last render.
+    /// This is set by comparing the previous and current hit grids after render.
+    /// TypeScript can use this to decide if hover state needs rechecking.
+    pub fn getHitGridDirty(self: *CliRenderer) bool {
+        return self.hitGridDirty;
     }
 
     /// Return the renderable ID at screen position (x, y), or 0 if none.

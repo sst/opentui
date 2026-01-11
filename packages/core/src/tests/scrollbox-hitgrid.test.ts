@@ -7,11 +7,6 @@ import { Renderable } from "../Renderable"
 let testRenderer: TestRenderer
 let mockMouse: MockMouse
 
-const hoverDebounceDelay = 40
-const waitForHoverDebounce = async () => {
-  await new Promise((resolve) => setTimeout(resolve, hoverDebounceDelay + 10))
-}
-
 class MovingBoxRenderable extends BoxRenderable {
   public shouldMove = false
 
@@ -27,7 +22,6 @@ beforeEach(async () => {
   ;({ renderer: testRenderer, mockMouse } = await createTestRenderer({
     width: 50,
     height: 30,
-    hoverDebounceDelay,
   }))
 })
 
@@ -189,13 +183,12 @@ test("hover updates after scroll without pointer movement", async () => {
 
   scrollBox.scrollTop = 2
   await testRenderer.idle()
-  await waitForHoverDebounce()
 
   expect(hoveredId).toBe("item-1")
   expect(hoverEvents).toEqual(["over:item-0", "out:item-0", "over:item-1"])
 })
 
-test("debounced hover uses neutral button and last modifiers", async () => {
+test("hover recheck uses neutral button and modifiers", async () => {
   const scrollBox = new ScrollBoxRenderable(testRenderer, {
     width: 20,
     height: 6,
@@ -252,19 +245,19 @@ test("debounced hover uses neutral button and last modifiers", async () => {
 
   scrollBox.scrollTop = 2
   await testRenderer.idle()
-  await waitForHoverDebounce()
 
   expect(hoveredId).toBe("item-1")
   expect(hoverEvents).toHaveLength(3)
   const outEvent = hoverEvents[1]
   const overEvent = hoverEvents[2]
+  // Synthetic hover recheck events use neutral button and modifiers
   expect(outEvent.button).toBe(0)
-  expect(outEvent.modifiers).toEqual({ shift: true, alt: false, ctrl: false })
+  expect(outEvent.modifiers).toEqual({ shift: false, alt: false, ctrl: false })
   expect(overEvent.button).toBe(0)
-  expect(overEvent.modifiers).toEqual({ shift: true, alt: false, ctrl: false })
+  expect(overEvent.modifiers).toEqual({ shift: false, alt: false, ctrl: false })
 })
 
-test("hover debounce coalesces rapid scroll changes", async () => {
+test("hover updates on multiple scroll changes", async () => {
   const scrollBox = new ScrollBoxRenderable(testRenderer, {
     width: 20,
     height: 6,
@@ -306,19 +299,21 @@ test("hover debounce coalesces rapid scroll changes", async () => {
   expect(hoveredId).toBe("item-0")
   expect(hoverEvents).toEqual(["over:item-0"])
 
+  // First scroll - hover recheck happens immediately after render
   scrollBox.scrollTop = 2
   await testRenderer.idle()
-  await new Promise((resolve) => setTimeout(resolve, Math.max(1, Math.floor(hoverDebounceDelay / 2))))
+  expect(hoveredId).toBe("item-1")
 
+  // Second scroll - another immediate hover recheck
   scrollBox.scrollTop = 4
   await testRenderer.idle()
-  await waitForHoverDebounce()
 
   expect(hoveredId).toBe("item-2")
-  expect(hoverEvents).toEqual(["over:item-0", "out:item-0", "over:item-2"])
+  // Each render triggers immediate hover recheck, so we see all transitions
+  expect(hoverEvents).toEqual(["over:item-0", "out:item-0", "over:item-1", "out:item-1", "over:item-2"])
 })
 
-test("mouse move cancels pending hover debounce", async () => {
+test("mouse move during scroll triggers normal hover", async () => {
   const scrollBox = new ScrollBoxRenderable(testRenderer, {
     width: 20,
     height: 6,
@@ -360,25 +355,19 @@ test("mouse move cancels pending hover debounce", async () => {
   expect(hoveredId).toBe("item-0")
   expect(hoverEvents).toEqual(["over:item-0"])
 
+  // Scroll triggers render which triggers immediate hover recheck
   scrollBox.scrollTop = 2
   await testRenderer.idle()
-
-  await mockMouse.moveTo(pointerX, pointerY)
   expect(hoveredId).toBe("item-1")
   expect(hoverEvents).toEqual(["over:item-0", "out:item-0", "over:item-1"])
 
-  await waitForHoverDebounce()
+  // Mouse move also works and doesn't duplicate events since we're already on item-1
+  await mockMouse.moveTo(pointerX, pointerY)
+  expect(hoveredId).toBe("item-1")
   expect(hoverEvents).toEqual(["over:item-0", "out:item-0", "over:item-1"])
 })
 
-test("hover debounce with zero delay runs after the frame", async () => {
-  testRenderer.destroy()
-  ;({ renderer: testRenderer, mockMouse } = await createTestRenderer({
-    width: 50,
-    height: 30,
-    hoverDebounceDelay: 0,
-  }))
-
+test("hover updates immediately after render", async () => {
   const scrollBox = new ScrollBoxRenderable(testRenderer, {
     width: 20,
     height: 6,
@@ -416,12 +405,9 @@ test("hover debounce with zero delay runs after the frame", async () => {
   await mockMouse.moveTo(pointerX, pointerY)
   expect(hoveredId).toBe("item-0")
 
+  // Hover updates immediately after render - no delay needed
   scrollBox.scrollTop = 2
   await testRenderer.idle()
-
-  expect(hoveredId).toBe("item-0")
-
-  await new Promise((resolve) => setTimeout(resolve, 1))
   expect(hoveredId).toBe("item-1")
 })
 
@@ -560,8 +546,8 @@ test("hover recheck skips while dragging captured renderable", async () => {
 
   scrollBox.scrollTop = 2
   await testRenderer.idle()
-  await waitForHoverDebounce()
 
+  // Hover recheck is skipped when there's a captured renderable (during drag)
   expect(hoverEvents).toEqual(["over:item-0"])
 })
 
@@ -710,7 +696,6 @@ test("hover updates after translate animation", async () => {
   moving.shouldMove = true
   moving.requestRender()
   await testRenderer.idle()
-  await waitForHoverDebounce()
 
   expect(hoveredId).toBe("under")
   expect(hoverEvents).toEqual(["over:moving", "out:moving", "over:under"])
@@ -773,7 +758,6 @@ test("hover updates after z-index change", async () => {
 
   back.zIndex = 2
   await testRenderer.idle()
-  await waitForHoverDebounce()
 
   expect(hoveredId).toBe("back")
   expect(hoverEvents).toEqual(["over:front", "out:front", "over:back"])

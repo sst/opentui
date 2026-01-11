@@ -336,6 +336,10 @@ function getOpenTUILib(libPath?: string) {
       args: ["ptr", "u32", "u32"],
       returns: "u32",
     },
+    getHitGridDirty: {
+      args: ["ptr"],
+      returns: "bool",
+    },
     dumpHitGrid: {
       args: ["ptr"],
       returns: "void",
@@ -1348,6 +1352,7 @@ export interface RenderLib {
     id: number,
   ) => void
   checkHit: (renderer: Pointer, x: number, y: number) => number
+  getHitGridDirty: (renderer: Pointer) => boolean
   dumpHitGrid: (renderer: Pointer) => void
   dumpBuffers: (renderer: Pointer, timestamp?: number) => void
   dumpStdoutBuffer: (renderer: Pointer, timestamp?: number) => void
@@ -2165,6 +2170,10 @@ class FFIRenderLib implements RenderLib {
 
   public checkHit(renderer: Pointer, x: number, y: number): number {
     return this.opentui.symbols.checkHit(renderer, x, y)
+  }
+
+  public getHitGridDirty(renderer: Pointer): boolean {
+    return this.opentui.symbols.getHitGridDirty(renderer)
   }
 
   public dumpHitGrid(renderer: Pointer): void {

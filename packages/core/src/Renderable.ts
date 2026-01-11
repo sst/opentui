@@ -337,7 +337,6 @@ export abstract class Renderable extends BaseRenderable {
     if (this._focused) {
       this.blur()
     }
-    this._ctx.markHitGridDirty()
     this.requestRender()
   }
 
@@ -477,7 +476,6 @@ export abstract class Renderable extends BaseRenderable {
     if (this._translateX === value) return
     this._translateX = value
     if (this.parent) this.parent.childrenPrimarySortDirty = true
-    this._ctx.markHitGridDirty()
     this.requestRender()
   }
 
@@ -489,7 +487,6 @@ export abstract class Renderable extends BaseRenderable {
     if (this._translateY === value) return
     this._translateY = value
     if (this.parent) this.parent.childrenPrimarySortDirty = true
-    this._ctx.markHitGridDirty()
     this.requestRender()
   }
 
@@ -599,7 +596,6 @@ export abstract class Renderable extends BaseRenderable {
     if (this._zIndex !== value) {
       this._zIndex = value
       this.parent?.requestZIndexSort()
-      this._ctx.markHitGridDirty()
       this.requestRender()
     }
   }
@@ -782,7 +778,6 @@ export abstract class Renderable extends BaseRenderable {
 
     this._overflow = overflow
     this.yogaNode.setOverflow(parseOverflow(overflow))
-    this._ctx.markHitGridDirty()
     this.requestRender()
   }
 
@@ -1010,10 +1005,6 @@ export abstract class Renderable extends BaseRenderable {
     if (positionChanged) {
       if (this.parent) this.parent.childrenPrimarySortDirty = true
     }
-
-    if (sizeChanged || positionChanged) {
-      this._ctx.markHitGridDirty()
-    }
   }
 
   protected onLayoutResize(width: number, height: number): void {
@@ -1123,7 +1114,6 @@ export abstract class Renderable extends BaseRenderable {
     this.childrenPrimarySortDirty = true
     this._shouldUpdateBefore.add(renderable)
 
-    this._ctx.markHitGridDirty()
     this.requestRender()
 
     return insertedIndex
@@ -1194,7 +1184,6 @@ export abstract class Renderable extends BaseRenderable {
 
     this._shouldUpdateBefore.add(renderable)
 
-    this._ctx.markHitGridDirty()
     this.requestRender()
 
     return insertedIndex
@@ -1219,7 +1208,6 @@ export abstract class Renderable extends BaseRenderable {
 
         const childLayoutNode = obj.getLayoutNode()
         this.yogaNode.removeChild(childLayoutNode)
-        this._ctx.markHitGridDirty()
         this.requestRender()
 
         obj.onRemove()
