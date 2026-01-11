@@ -6,24 +6,6 @@ const gp = @import("../grapheme.zig");
 const TextBuffer = text_buffer.UnifiedTextBuffer;
 const TextBufferView = text_buffer_view.UnifiedTextBufferView;
 
-fn measureMedianViewUpdate(view: *TextBufferView, width: u32, iterations: usize) u64 {
-    var times: [16]u64 = undefined;
-    const actual_iterations = @min(iterations, 16);
-
-    for (0..actual_iterations) |i| {
-        var timer = std.time.Timer.start() catch unreachable;
-        view.setWrapWidth(width);
-        _ = view.getVirtualLineCount();
-        times[i] = timer.read();
-    }
-
-    std.mem.sort(u64, times[0..actual_iterations], {}, std.sort.asc(u64));
-    return times[actual_iterations / 2];
-}
-
-// Tests that wrap width changes scale linearly with text size, not quadratically.
-// This test effectively catches the O(n²) performance regression in word wrapping
-// by detecting when width changes cause disproportionately long execution times.
 test "word wrap complexity - width changes are O(n)" {
     const pool = gp.initGlobalPool(std.testing.allocator);
     defer gp.deinitGlobalPool();
@@ -43,18 +25,33 @@ test "word wrap complexity - width changes are O(n)" {
     view.setWrapMode(.word);
 
     const widths = [_]u32{ 60, 70, 80, 90, 100 };
-    var times: [widths.len]u64 = undefined;
 
-    view.setWrapWidth(widths[0]);
-    _ = view.getVirtualLineCount();
+    // Run multiple iterations and use median to reduce noise from CI variability
+    const iterations = 5;
+    var median_times: [widths.len]u64 = undefined;
 
-    for (widths, 0..) |width, i| {
-        times[i] = measureMedianViewUpdate(view, width, 5);
+    for (widths, 0..) |width, width_idx| {
+        var iter_times: [iterations]u64 = undefined;
+
+        for (0..iterations) |iter| {
+            // Reset cache by setting a different width first
+            view.setWrapWidth(50);
+            _ = view.getVirtualLineCount();
+
+            view.setWrapWidth(width);
+            var timer = std.time.Timer.start() catch unreachable;
+            _ = view.getVirtualLineCount();
+            iter_times[iter] = timer.read();
+        }
+
+        // Sort and take median
+        std.mem.sort(u64, &iter_times, {}, std.sort.asc(u64));
+        median_times[width_idx] = iter_times[iterations / 2];
     }
 
     var min_time: u64 = std.math.maxInt(u64);
     var max_time: u64 = 0;
-    for (times) |t| {
+    for (median_times) |t| {
         min_time = @min(min_time, t);
         max_time = @max(max_time, t);
     }
@@ -62,8 +59,7 @@ test "word wrap complexity - width changes are O(n)" {
     const ratio = @as(f64, @floatFromInt(max_time)) / @as(f64, @floatFromInt(min_time));
 
     // All times should be roughly similar since text size is constant.
-    // Using 5x threshold to accommodate CI runner variability while still
-    // catching O(n^2) regressions (which would show 10-100x differences).
+    // Use a generous threshold (5x) to account for CI runner variability.
     try std.testing.expect(ratio < 5.0);
 }
 

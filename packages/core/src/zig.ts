@@ -312,6 +312,26 @@ function getOpenTUILib(libPath?: string) {
       args: ["ptr", "i32", "i32", "u32", "u32", "u32"],
       returns: "void",
     },
+    clearCurrentHitGrid: {
+      args: ["ptr"],
+      returns: "void",
+    },
+    hitGridPushScissorRect: {
+      args: ["ptr", "i32", "i32", "u32", "u32"],
+      returns: "void",
+    },
+    hitGridPopScissorRect: {
+      args: ["ptr"],
+      returns: "void",
+    },
+    hitGridClearScissorRects: {
+      args: ["ptr"],
+      returns: "void",
+    },
+    addToCurrentHitGridClipped: {
+      args: ["ptr", "i32", "i32", "u32", "u32", "u32"],
+      returns: "void",
+    },
     checkHit: {
       args: ["ptr", "u32", "u32"],
       returns: "u32",
@@ -1315,6 +1335,18 @@ export interface RenderLib {
   clearTerminal: (renderer: Pointer) => void
   setTerminalTitle: (renderer: Pointer, title: string) => void
   addToHitGrid: (renderer: Pointer, x: number, y: number, width: number, height: number, id: number) => void
+  clearCurrentHitGrid: (renderer: Pointer) => void
+  hitGridPushScissorRect: (renderer: Pointer, x: number, y: number, width: number, height: number) => void
+  hitGridPopScissorRect: (renderer: Pointer) => void
+  hitGridClearScissorRects: (renderer: Pointer) => void
+  addToCurrentHitGridClipped: (
+    renderer: Pointer,
+    x: number,
+    y: number,
+    width: number,
+    height: number,
+    id: number,
+  ) => void
   checkHit: (renderer: Pointer, x: number, y: number) => number
   dumpHitGrid: (renderer: Pointer) => void
   dumpBuffers: (renderer: Pointer, timestamp?: number) => void
@@ -2102,6 +2134,33 @@ class FFIRenderLib implements RenderLib {
 
   public addToHitGrid(renderer: Pointer, x: number, y: number, width: number, height: number, id: number) {
     this.opentui.symbols.addToHitGrid(renderer, x, y, width, height, id)
+  }
+
+  public clearCurrentHitGrid(renderer: Pointer) {
+    this.opentui.symbols.clearCurrentHitGrid(renderer)
+  }
+
+  public hitGridPushScissorRect(renderer: Pointer, x: number, y: number, width: number, height: number) {
+    this.opentui.symbols.hitGridPushScissorRect(renderer, x, y, width, height)
+  }
+
+  public hitGridPopScissorRect(renderer: Pointer) {
+    this.opentui.symbols.hitGridPopScissorRect(renderer)
+  }
+
+  public hitGridClearScissorRects(renderer: Pointer) {
+    this.opentui.symbols.hitGridClearScissorRects(renderer)
+  }
+
+  public addToCurrentHitGridClipped(
+    renderer: Pointer,
+    x: number,
+    y: number,
+    width: number,
+    height: number,
+    id: number,
+  ) {
+    this.opentui.symbols.addToCurrentHitGridClipped(renderer, x, y, width, height, id)
   }
 
   public checkHit(renderer: Pointer, x: number, y: number): number {

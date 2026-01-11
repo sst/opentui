@@ -8,6 +8,7 @@ const utf8 = @import("../utf8.zig");
 const TextChunk = seg_mod.TextChunk;
 const MemRegistry = mem_registry_mod.MemRegistry;
 const BenchResult = bench_utils.BenchResult;
+const BenchStats = bench_utils.BenchStats;
 const MemStat = bench_utils.MemStat;
 
 pub const benchName = "TextChunk getGraphemes";
@@ -15,8 +16,8 @@ pub const benchName = "TextChunk getGraphemes";
 const TextType = enum { ascii, mixed, heavy_unicode };
 
 fn generateTestText(allocator: std.mem.Allocator, size: usize, text_type: TextType) ![]u8 {
-    var buffer = std.ArrayList(u8).init(allocator);
-    errdefer buffer.deinit();
+    var buffer: std.ArrayListUnmanaged(u8) = .{};
+    errdefer buffer.deinit(allocator);
 
     switch (text_type) {
         .ascii => {
@@ -31,7 +32,7 @@ fn generateTestText(allocator: std.mem.Allocator, size: usize, text_type: TextTy
             while (pos < size) {
                 const pattern = patterns[pos % patterns.len];
                 const to_add = @min(pattern.len, size - pos);
-                try buffer.appendSlice(pattern[0..to_add]);
+                try buffer.appendSlice(allocator, pattern[0..to_add]);
                 pos += to_add;
             }
         },
@@ -49,7 +50,7 @@ fn generateTestText(allocator: std.mem.Allocator, size: usize, text_type: TextTy
             while (pos < size) {
                 const pattern = patterns[pos % patterns.len];
                 const to_add = @min(pattern.len, size - pos);
-                try buffer.appendSlice(pattern[0..to_add]);
+                try buffer.appendSlice(allocator, pattern[0..to_add]);
                 pos += to_add;
             }
         },
@@ -67,13 +68,13 @@ fn generateTestText(allocator: std.mem.Allocator, size: usize, text_type: TextTy
             while (pos < size) {
                 const pattern = patterns[pos % patterns.len];
                 const to_add = @min(pattern.len, size - pos);
-                try buffer.appendSlice(pattern[0..to_add]);
+                try buffer.appendSlice(allocator, pattern[0..to_add]);
                 pos += to_add;
             }
         },
     }
 
-    return try buffer.toOwnedSlice();
+    return try buffer.toOwnedSlice(allocator);
 }
 
 fn benchGetGraphemes(
@@ -110,14 +111,11 @@ fn benchGetGraphemes(
         .flags = if (is_ascii) TextChunk.Flags.ASCII_ONLY else 0,
     };
 
-    var min_ns: u64 = std.math.maxInt(u64);
-    var max_ns: u64 = 0;
-    var total_ns: u64 = 0;
+    var stats = BenchStats{};
     var grapheme_count: usize = 0;
     var final_mem: usize = 0;
 
-    var i: usize = 0;
-    while (i < iterations) : (i += 1) {
+    for (0..iterations) |i| {
         // Create a fresh arena for each iteration
         var arena = std.heap.ArenaAllocator.init(allocator);
         defer arena.deinit();
@@ -133,11 +131,7 @@ fn benchGetGraphemes(
             4, // tab width
             .unicode,
         );
-        const elapsed = timer.read();
-
-        min_ns = @min(min_ns, elapsed);
-        max_ns = @max(max_ns, elapsed);
-        total_ns += elapsed;
+        stats.record(timer.read());
 
         if (i == 0) {
             grapheme_count = graphemes.len;
@@ -162,17 +156,17 @@ fn benchGetGraphemes(
     );
 
     const mem_stats: ?[]const MemStat = if (show_mem) blk: {
-        const stats = try allocator.alloc(MemStat, 1);
-        stats[0] = .{ .name = "Graphemes", .bytes = final_mem };
-        break :blk stats;
+        const mem_stat_slice = try allocator.alloc(MemStat, 1);
+        mem_stat_slice[0] = .{ .name = "Graphemes", .bytes = final_mem };
+        break :blk mem_stat_slice;
     } else null;
 
     return BenchResult{
         .name = name,
-        .min_ns = min_ns,
-        .avg_ns = total_ns / iterations,
-        .max_ns = max_ns,
-        .total_ns = total_ns,
+        .min_ns = stats.min_ns,
+        .avg_ns = stats.avg(),
+        .max_ns = stats.max_ns,
+        .total_ns = stats.total_ns,
         .iterations = iterations,
         .mem_stats = mem_stats,
     };
@@ -182,32 +176,17 @@ pub fn run(
     allocator: std.mem.Allocator,
     show_mem: bool,
 ) ![]BenchResult {
-    const stdout = std.io.getStdOut().writer();
-
     // Global pool and unicode data are initialized once in bench.zig
-    const pool = gp.initGlobalPool(allocator);
+    _ = gp.initGlobalPool(allocator);
 
-    if (show_mem) {
-        try stdout.print("Memory stats enabled\n", .{});
-    }
-    try stdout.print("\n", .{});
-
-    var results = std.ArrayList(BenchResult).init(allocator);
+    var results: std.ArrayListUnmanaged(BenchResult) = .{};
+    errdefer results.deinit(allocator);
 
     const iterations: usize = 100;
 
     // Test different chunk sizes: 100B, 1KB, 4KB, 16KB, 64KB
     const sizes = [_]usize{ 100, 1024, 4 * 1024, 16 * 1024, 64 * 1024 };
     const text_types = [_]TextType{ .ascii, .mixed, .heavy_unicode };
-
-    _ = pool; // unused
-
-    try stdout.print("Testing chunk sizes: ", .{});
-    for (sizes) |size| {
-        const kb = @as(f64, @floatFromInt(size)) / 1024.0;
-        try stdout.print("{d:.1}KB ", .{kb});
-    }
-    try stdout.print("\n\n", .{});
 
     for (text_types) |text_type| {
         for (sizes) |size| {
@@ -218,9 +197,9 @@ pub fn run(
                 iterations,
                 show_mem,
             );
-            try results.append(result);
+            try results.append(allocator, result);
         }
     }
 
-    return try results.toOwnedSlice();
+    return try results.toOwnedSlice(allocator);
 }

@@ -1692,6 +1692,16 @@ test("CodeRenderable - streaming with conceal and drawUnstyledText=false should 
 
   currentRenderer.root.add(codeRenderable)
 
+  const waitForHighlightingCycle = async (timeout = 2000) => {
+    const start = Date.now()
+    await renderOnce()
+    await new Promise((resolve) => setTimeout(resolve, 10))
+    while (codeRenderable.isHighlighting && Date.now() - start < timeout) {
+      await new Promise((resolve) => setTimeout(resolve, 10))
+    }
+    await renderOnce()
+  }
+
   // Use TestRecorder to capture frames
   const { TestRecorder } = await import("../testing/test-recorder")
   const recorder = new TestRecorder(currentRenderer)
@@ -1701,13 +1711,13 @@ test("CodeRenderable - streaming with conceal and drawUnstyledText=false should 
   recorder.rec()
 
   // Wait for initial highlighting to complete
-  await new Promise((resolve) => setTimeout(resolve, 100))
+  await waitForHighlightingCycle()
 
   // Now simulate streaming: add more content including fenced code block
   codeRenderable.content = `# Example\n\nHere's some code:\n\n\`\`\`typescript\nconst x = 1;\n\`\`\``
 
   // Wait for highlighting to process the update
-  await new Promise((resolve) => setTimeout(resolve, 150))
+  await waitForHighlightingCycle()
 
   // Stop everything
   currentRenderer.stop()

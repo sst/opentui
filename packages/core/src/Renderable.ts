@@ -475,8 +475,8 @@ export abstract class Renderable extends BaseRenderable {
   public set translateX(value: number) {
     if (this._translateX === value) return
     this._translateX = value
-    this.requestRender()
     if (this.parent) this.parent.childrenPrimarySortDirty = true
+    this.requestRender()
   }
 
   public get translateY(): number {
@@ -486,8 +486,8 @@ export abstract class Renderable extends BaseRenderable {
   public set translateY(value: number) {
     if (this._translateY === value) return
     this._translateY = value
-    this.requestRender()
     if (this.parent) this.parent.childrenPrimarySortDirty = true
+    this.requestRender()
   }
 
   public get x(): number {
@@ -1289,6 +1289,8 @@ export abstract class Renderable extends BaseRenderable {
         y: scissorRect.y,
         width: scissorRect.width,
         height: scissorRect.height,
+        screenX: this.x,
+        screenY: this.y,
       })
     }
     const visibleChildren = this._getVisibleChildren()
@@ -1524,6 +1526,8 @@ interface RenderCommandPushScissorRect extends RenderCommandBase {
   y: number
   width: number
   height: number
+  screenX: number
+  screenY: number
 }
 
 interface RenderCommandPopScissorRect extends RenderCommandBase {
@@ -1594,6 +1598,7 @@ export class RootRenderable extends Renderable {
     this.updateLayout(deltaTime, this.renderList)
 
     // 3. Render all collected renderables
+    this._ctx.clearHitGridScissorRects()
     for (let i = 1; i < this.renderList.length; i++) {
       const command = this.renderList[i]
       switch (command.action) {
@@ -1605,9 +1610,11 @@ export class RootRenderable extends Renderable {
           break
         case "pushScissorRect":
           buffer.pushScissorRect(command.x, command.y, command.width, command.height)
+          this._ctx.pushHitGridScissorRect(command.screenX, command.screenY, command.width, command.height)
           break
         case "popScissorRect":
           buffer.popScissorRect()
+          this._ctx.popHitGridScissorRect()
           break
         case "pushOpacity":
           buffer.pushOpacity(command.opacity)
