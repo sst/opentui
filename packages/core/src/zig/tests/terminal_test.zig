@@ -189,8 +189,9 @@ test "queryTerminalSend - sends DCS wrapped queries when in tmux" {
     // Should contain xtversion (unwrapped - used for detection)
     try testing.expect(std.mem.indexOf(u8, output, "\x1b[>0q") != null);
 
-    // Should contain tmux DCS wrapped queries (doubled ESC)
-    try testing.expect(std.mem.indexOf(u8, output, "\x1bPtmux;\x1b\x1b[?1016$p\x1b\\") != null);
+    // Should contain tmux DCS wrapper start and doubled ESC for queries
+    // wrapForTmux wraps all queries together with one DCS envelope
+    try testing.expect(std.mem.indexOf(u8, output, "\x1bPtmux;\x1b\x1b[?1016$p") != null);
 
     // Should NOT mark capability queries as pending (already sent wrapped)
     try testing.expect(!term.capability_queries_pending);
@@ -216,8 +217,8 @@ test "sendPendingQueries - sends wrapped queries after tmux detected via xtversi
 
     const output = writer.getWritten();
 
-    // Should send DCS wrapped capability queries
-    try testing.expect(std.mem.indexOf(u8, output, "\x1bPtmux;\x1b\x1b[?1016$p\x1b\\") != null);
+    // Should send DCS wrapped capability queries (wrapForTmux wraps all queries together)
+    try testing.expect(std.mem.indexOf(u8, output, "\x1bPtmux;\x1b\x1b[?1016$p") != null);
 
     // Should send DCS wrapped graphics query
     try testing.expect(std.mem.indexOf(u8, output, "\x1bPtmux;\x1b\x1b_G") != null);

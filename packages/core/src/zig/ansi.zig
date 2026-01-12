@@ -90,17 +90,7 @@ pub const ANSI = struct {
     pub const csiUQuery = "\x1b[?u";
     pub const kittyGraphicsQuery = "\x1b_Gi=31337,s=1,v=1,a=q,t=d,f=24;AAAA\x1b\\\x1b[c";
 
-    // tmux DCS passthrough variants (ESC chars doubled inside \x1bPtmux;...\x1b\\)
-    pub const kittyGraphicsQueryTmux = "\x1bPtmux;\x1b\x1b_Gi=31337,s=1,v=1,a=q,t=d,f=24;AAAA\x1b\x1b\\\x1b\x1b[c\x1b\\";
-    pub const decrqmSgrPixelsTmux = "\x1bPtmux;\x1b\x1b[?1016$p\x1b\\";
-    pub const decrqmUnicodeTmux = "\x1bPtmux;\x1b\x1b[?2027$p\x1b\\";
-    pub const decrqmColorSchemeTmux = "\x1bPtmux;\x1b\x1b[?2031$p\x1b\\";
-    pub const decrqmFocusTmux = "\x1bPtmux;\x1b\x1b[?1004$p\x1b\\";
-    pub const decrqmBracketedPasteTmux = "\x1bPtmux;\x1b\x1b[?2004$p\x1b\\";
-    pub const decrqmSyncTmux = "\x1bPtmux;\x1b\x1b[?2026$p\x1b\\";
-    pub const csiUQueryTmux = "\x1bPtmux;\x1b\x1b[?u\x1b\\";
-
-    // Combined capability queries (for non-tmux)
+    // Capability queries that need DCS wrapping for tmux
     pub const capabilityQueries = decrqmSgrPixels ++
         decrqmUnicode ++
         decrqmColorScheme ++
@@ -109,14 +99,28 @@ pub const ANSI = struct {
         decrqmSync ++
         csiUQuery;
 
-    // Combined tmux-wrapped capability queries
-    pub const capabilityQueriesTmux = decrqmSgrPixelsTmux ++
-        decrqmUnicodeTmux ++
-        decrqmColorSchemeTmux ++
-        decrqmFocusTmux ++
-        decrqmBracketedPasteTmux ++
-        decrqmSyncTmux ++
-        csiUQueryTmux;
+    // tmux DCS passthrough wrapper (ESC chars doubled)
+    pub const tmuxDcsStart = "\x1bPtmux;";
+    pub const tmuxDcsEnd = "\x1b\\";
+
+    // Helper to wrap a sequence for tmux passthrough
+    pub fn wrapForTmux(comptime seq: []const u8) []const u8 {
+        comptime {
+            var result: []const u8 = tmuxDcsStart;
+            for (seq) |c| {
+                if (c == '\x1b') {
+                    result = result ++ "\x1b\x1b";
+                } else {
+                    result = result ++ &[_]u8{c};
+                }
+            }
+            return result ++ tmuxDcsEnd;
+        }
+    }
+
+    // tmux DCS passthrough variants (ESC chars doubled)
+    pub const kittyGraphicsQueryTmux = wrapForTmux(kittyGraphicsQuery);
+    pub const capabilityQueriesTmux = wrapForTmux(capabilityQueries);
     pub const sixelGeometryQuery = "\x1b[?2;1;0S";
     pub const cursorPositionRequest = "\x1b[6n";
     pub const explicitWidthQuery = "\x1b]66;w=1; \x1b\\";
