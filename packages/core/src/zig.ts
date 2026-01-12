@@ -390,6 +390,10 @@ function getOpenTUILib(libPath?: string) {
       args: ["ptr"],
       returns: "void",
     },
+    writeOut: {
+      args: ["ptr", "ptr", "u64"],
+      returns: "void",
+    },
 
     // TextBuffer functions
     createTextBuffer: {
@@ -1367,6 +1371,7 @@ export interface RenderLib {
   suspendRenderer: (renderer: Pointer) => void
   resumeRenderer: (renderer: Pointer) => void
   queryPixelResolution: (renderer: Pointer) => void
+  writeOut: (renderer: Pointer, data: string | Uint8Array) => void
 
   // TextBuffer methods
   createTextBuffer: (widthMethod: WidthMethod) => TextBuffer
@@ -2225,6 +2230,17 @@ class FFIRenderLib implements RenderLib {
 
   public queryPixelResolution(renderer: Pointer): void {
     this.opentui.symbols.queryPixelResolution(renderer)
+  }
+
+  /**
+   * Write data to stdout, synchronizing with the render thread if necessary.
+   * This should be used for ALL stdout writes to avoid race conditions when
+   * the render thread is active.
+   */
+  public writeOut(renderer: Pointer, data: string | Uint8Array): void {
+    const bytes = typeof data === "string" ? new TextEncoder().encode(data) : data
+    if (bytes.length === 0) return
+    this.opentui.symbols.writeOut(renderer, ptr(bytes), bytes.length)
   }
 
   // TextBuffer methods

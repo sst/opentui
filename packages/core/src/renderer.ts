@@ -670,6 +670,15 @@ export class CliRenderer extends EventEmitter implements RenderContext {
   }
 
   private writeOut(chunk: any, encoding?: any, callback?: any): boolean {
+    if (this.rendererPtr && this._useThread) {
+      const data = typeof chunk === "string" ? chunk : (chunk?.toString() ?? "")
+      this.lib.writeOut(this.rendererPtr, data)
+      if (typeof callback === "function") {
+        process.nextTick(callback)
+      }
+      return true
+    }
+
     return this.realStdoutWrite.call(this.stdout, chunk, encoding, callback)
   }
 
