@@ -348,6 +348,10 @@ function getOpenTUILib(libPath?: string) {
       args: ["ptr", "i64"],
       returns: "void",
     },
+    getLastOutputForTest: {
+      args: ["ptr", "ptr"],
+      returns: "void",
+    },
     enableMouse: {
       args: ["ptr", "bool"],
       returns: "void",
@@ -382,6 +386,10 @@ function getOpenTUILib(libPath?: string) {
     },
     resumeRenderer: {
       args: ["ptr"],
+      returns: "void",
+    },
+    writeOut: {
+      args: ["ptr", "ptr", "u64"],
       returns: "void",
     },
 
@@ -1351,6 +1359,7 @@ export interface RenderLib {
   dumpHitGrid: (renderer: Pointer) => void
   dumpBuffers: (renderer: Pointer, timestamp?: number) => void
   dumpStdoutBuffer: (renderer: Pointer, timestamp?: number) => void
+  getLastOutputForTestString: (renderer: Pointer) => string
   enableMouse: (renderer: Pointer, enableMovement: boolean) => void
   disableMouse: (renderer: Pointer) => void
   enableKittyKeyboard: (renderer: Pointer, flags: number) => void
@@ -1361,6 +1370,7 @@ export interface RenderLib {
   suspendRenderer: (renderer: Pointer) => void
   resumeRenderer: (renderer: Pointer) => void
   queryPixelResolution: (renderer: Pointer) => void
+  writeOut: (renderer: Pointer, data: string | Uint8Array) => void
 
   // TextBuffer methods
   createTextBuffer: (widthMethod: WidthMethod) => TextBuffer
@@ -2181,6 +2191,24 @@ class FFIRenderLib implements RenderLib {
     this.opentui.symbols.dumpStdoutBuffer(renderer, ts)
   }
 
+  public getLastOutputForTestString(renderer: Pointer): string {
+    // Create a struct to receive the output slice
+    const outputSlice = new Uint8Array(16) // ptr (8 bytes) + len (8 bytes)
+    this.opentui.symbols.getLastOutputForTest(renderer, ptr(outputSlice))
+
+    // Read ptr and len from the struct
+    const view = new DataView(outputSlice.buffer)
+    const outputPtr = view.getBigUint64(0, true) // little endian
+    const outputLen = view.getBigUint64(8, true)
+
+    if (outputLen === 0n) return ""
+
+    // Create an ArrayBuffer from the pointer
+    const buffer = toArrayBuffer(Number(outputPtr) as unknown as Pointer, 0, Number(outputLen))
+    const decoder = new TextDecoder()
+    return decoder.decode(buffer)
+  }
+
   public enableMouse(renderer: Pointer, enableMovement: boolean): void {
     this.opentui.symbols.enableMouse(renderer, enableMovement)
   }
@@ -2219,6 +2247,17 @@ class FFIRenderLib implements RenderLib {
 
   public queryPixelResolution(renderer: Pointer): void {
     this.opentui.symbols.queryPixelResolution(renderer)
+  }
+
+  /**
+   * Write data to stdout, synchronizing with the render thread if necessary.
+   * This should be used for ALL stdout writes to avoid race conditions when
+   * the render thread is active.
+   */
+  public writeOut(renderer: Pointer, data: string | Uint8Array): void {
+    const bytes = typeof data === "string" ? new TextEncoder().encode(data) : data
+    if (bytes.length === 0) return
+    this.opentui.symbols.writeOut(renderer, ptr(bytes), bytes.length)
   }
 
   // TextBuffer methods
