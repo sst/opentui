@@ -67,6 +67,7 @@ opts: Options = .{},
 in_tmux: bool = false,
 skip_graphics_query: bool = false,
 graphics_query_pending: bool = false,
+capability_queries_pending: bool = false,
 
 state: struct {
     alt_screen: bool = false,
@@ -161,51 +162,63 @@ pub fn exitAltScreen(self: *Terminal, tty: anytype) !void {
 pub fn queryTerminalSend(self: *Terminal, tty: anytype) !void {
     self.checkEnvironmentOverrides();
     self.graphics_query_pending = !self.skip_graphics_query;
+    self.capability_queries_pending = false;
 
+    // Send xtversion first (doesn't need DCS wrapping - used for tmux detection)
     try tty.writeAll(ansi.ANSI.xtversion ++
         ansi.ANSI.hideCursor ++
-        ansi.ANSI.saveCursorState ++
-        ansi.ANSI.decrqmSgrPixels ++
-        ansi.ANSI.decrqmUnicode ++
-        ansi.ANSI.decrqmColorScheme ++
-        ansi.ANSI.decrqmFocus ++
-        ansi.ANSI.decrqmBracketedPaste ++
-        ansi.ANSI.decrqmSync ++
+        ansi.ANSI.saveCursorState);
 
-        // Explicit width detection
-        ansi.ANSI.home ++
+    // Send capability queries - DCS wrapped if tmux detected via env vars
+    if (self.in_tmux) {
+        try tty.writeAll(ansi.ANSI.capabilityQueriesTmux);
+    } else {
+        // Send unwrapped, but mark pending in case xtversion detects tmux
+        try tty.writeAll(ansi.ANSI.capabilityQueries);
+        self.capability_queries_pending = true;
+    }
+
+    // Explicit width detection
+    try tty.writeAll(ansi.ANSI.home ++
         ansi.ANSI.explicitWidthQuery ++
         ansi.ANSI.cursorPositionRequest ++
 
         // Scaled text detection
         ansi.ANSI.home ++
         ansi.ANSI.scaledTextQuery ++
-        ansi.ANSI.cursorPositionRequest ++
-
-        // Version and capability queries
-        ansi.ANSI.csiUQuery);
+        ansi.ANSI.cursorPositionRequest);
 
     try tty.writeAll(ansi.ANSI.restoreCursorState);
 }
 
-pub fn sendPendingGraphicsQuery(self: *Terminal, tty: anytype) !bool {
-    if (!self.graphics_query_pending) return false;
-    if (self.skip_graphics_query) {
-        self.graphics_query_pending = false;
-        return false;
-    }
-
+pub fn sendPendingQueries(self: *Terminal, tty: anytype) !bool {
     if (!self.term_info.from_xtversion and !self.in_tmux) return false;
 
+    var sent = false;
     const is_tmux = self.in_tmux or self.isXtversionTmux();
-    if (is_tmux) {
-        try tty.writeAll(ansi.ANSI.kittyGraphicsQueryTmux);
-    } else {
-        try tty.writeAll(ansi.ANSI.kittyGraphicsQuery);
+
+    // Re-send capability queries DCS wrapped if tmux detected via xtversion
+    if (self.capability_queries_pending) {
+        if (is_tmux) {
+            try tty.writeAll(ansi.ANSI.capabilityQueriesTmux);
+            sent = true;
+        }
+        // Clear pending flag regardless - non-tmux terminals already received unwrapped queries
+        self.capability_queries_pending = false;
     }
 
-    self.graphics_query_pending = false;
-    return true;
+    // Send graphics query
+    if (self.graphics_query_pending and !self.skip_graphics_query) {
+        if (is_tmux) {
+            try tty.writeAll(ansi.ANSI.kittyGraphicsQueryTmux);
+        } else {
+            try tty.writeAll(ansi.ANSI.kittyGraphicsQuery);
+        }
+        self.graphics_query_pending = false;
+        sent = true;
+    }
+
+    return sent;
 }
 
 pub fn enableDetectedFeatures(self: *Terminal, tty: anytype, use_kitty_keyboard: bool) !void {

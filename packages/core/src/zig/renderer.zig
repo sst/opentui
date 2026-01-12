@@ -1144,8 +1144,8 @@ pub const CliRenderer = struct {
         self.terminal.processCapabilityResponse(response);
         var stdoutWriter = std.fs.File.stdout().writer(&self.stdoutBuffer);
         const writer = &stdoutWriter.interface;
-        const did_send = self.terminal.sendPendingGraphicsQuery(writer) catch |err| blk: {
-            logger.warn("Failed to send kitty graphics query: {}", .{err});
+        const did_send = self.terminal.sendPendingQueries(writer) catch |err| blk: {
+            logger.warn("Failed to send pending queries: {}", .{err});
             break :blk false;
         };
         if (did_send) {
