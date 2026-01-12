@@ -85,6 +85,17 @@ export fn getCurrentBuffer(rendererPtr: *renderer.CliRenderer) *buffer.Optimized
     return rendererPtr.getCurrentBuffer();
 }
 
+const OutputSlice = extern struct {
+    ptr: [*]const u8,
+    len: usize,
+};
+
+export fn getLastOutputForTest(rendererPtr: *renderer.CliRenderer, outSlice: *OutputSlice) void {
+    const output = rendererPtr.getLastOutputForTest();
+    outSlice.ptr = output.ptr;
+    outSlice.len = output.len;
+}
+
 export fn setHyperlinksCapability(rendererPtr: *renderer.CliRenderer, enabled: bool) void {
     rendererPtr.terminal.caps.hyperlinks = enabled;
 }
