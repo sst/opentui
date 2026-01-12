@@ -1,11 +1,15 @@
-import { CliRenderer, engine } from "@opentui/core"
+import { CliRenderer, CliRenderEvents, engine } from "@opentui/core"
 import React, { type ReactNode } from "react"
 import type { OpaqueRoot } from "react-reconciler"
 import { AppContext } from "../components/app"
 import { ErrorBoundary } from "../components/error-boundary"
 import { _render, reconciler } from "./reconciler"
 
-const { flushSync, createPortal } = reconciler
+// flushSync was renamed to flushSyncFromReconciler in react-reconciler 0.32.0
+// the types for react-reconciler are not up to date with the library
+const _r = reconciler as typeof reconciler & { flushSyncFromReconciler?: typeof reconciler.flushSync }
+const flushSync = _r.flushSyncFromReconciler ?? _r.flushSync
+const { createPortal } = reconciler
 
 export type Root = {
   render: (node: ReactNode) => void
@@ -25,6 +29,17 @@ export type Root = {
 export function createRoot(renderer: CliRenderer): Root {
   let container: OpaqueRoot | null = null
 
+  const cleanup = () => {
+    if (container) {
+      reconciler.updateContainer(null, container, null, () => {})
+      // @ts-expect-error the types for `react-reconciler` are not up to date with the library.
+      reconciler.flushSyncWork()
+      container = null
+    }
+  }
+
+  renderer.once(CliRenderEvents.DESTROY, cleanup)
+
   return {
     render: (node: ReactNode) => {
       engine.attach(renderer)
@@ -39,16 +54,7 @@ export function createRoot(renderer: CliRenderer): Root {
       )
     },
 
-    unmount: (): void => {
-      if (!container) {
-        return
-      }
-
-      reconciler.updateContainer(null, container, null, () => {})
-      // @ts-expect-error the types for `react-reconciler` are not up to date with the library.
-      reconciler.flushSyncWork()
-      container = null
-    },
+    unmount: cleanup,
   }
 }
 

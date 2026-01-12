@@ -22,15 +22,17 @@ pub const CliRenderer = renderer.CliRenderer;
 pub const Terminal = terminal.Terminal;
 pub const RGBA = buffer.RGBA;
 
-export fn setLogCallback(callback: ?*const fn (level: u8, msgPtr: [*]const u8, msgLen: usize) callconv(.C) void) void {
+export fn setLogCallback(callback: ?*const fn (level: u8, msgPtr: [*]const u8, msgLen: usize) callconv(.c) void) void {
     logger.setLogCallback(callback);
 }
 
-export fn setEventCallback(callback: ?*const fn (namePtr: [*]const u8, nameLen: usize, dataPtr: [*]const u8, dataLen: usize) callconv(.C) void) void {
+export fn setEventCallback(callback: ?*const fn (namePtr: [*]const u8, nameLen: usize, dataPtr: [*]const u8, dataLen: usize) callconv(.c) void) void {
     event_bus.setEventCallback(callback);
 }
 
-var arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
+var gpa = std.heap.GeneralPurposeAllocator(.{}){};
+const globalAllocator = gpa.allocator();
+var arena = std.heap.ArenaAllocator.init(globalAllocator);
 const globalArena = arena.allocator();
 
 export fn getArenaAllocatedBytes() usize {
@@ -45,7 +47,7 @@ export fn createRenderer(width: u32, height: u32, testing: bool) ?*renderer.CliR
 
     const pool = gp.initGlobalPool(globalArena);
     _ = link.initGlobalLinkPool(globalArena);
-    return renderer.CliRenderer.create(std.heap.page_allocator, width, height, pool, testing) catch |err| {
+    return renderer.CliRenderer.create(globalAllocator, width, height, pool, testing) catch |err| {
         logger.err("Failed to create renderer: {}", .{err});
         return null;
     };
@@ -83,6 +85,25 @@ export fn getCurrentBuffer(rendererPtr: *renderer.CliRenderer) *buffer.Optimized
     return rendererPtr.getCurrentBuffer();
 }
 
+const OutputSlice = extern struct {
+    ptr: [*]const u8,
+    len: usize,
+};
+
+export fn getLastOutputForTest(rendererPtr: *renderer.CliRenderer, outSlice: *OutputSlice) void {
+    const output = rendererPtr.getLastOutputForTest();
+    outSlice.ptr = output.ptr;
+    outSlice.len = output.len;
+}
+
+export fn setHyperlinksCapability(rendererPtr: *renderer.CliRenderer, enabled: bool) void {
+    rendererPtr.terminal.caps.hyperlinks = enabled;
+}
+
+export fn clearGlobalLinkPool() void {
+    link.deinitGlobalLinkPool();
+}
+
 export fn getBufferWidth(bufferPtr: *buffer.OptimizedBuffer) u32 {
     return bufferPtr.width;
 }
@@ -106,7 +127,7 @@ export fn createOptimizedBuffer(width: u32, height: u32, respectAlpha: bool, wid
     const wMethod: utf8.WidthMethod = if (widthMethod == 0) .wcwidth else .unicode;
     const id = idPtr[0..idLen];
 
-    return buffer.OptimizedBuffer.init(std.heap.page_allocator, width, height, .{
+    return buffer.OptimizedBuffer.init(globalAllocator, width, height, .{
         .respectAlpha = respectAlpha,
         .pool = pool,
         .width_method = wMethod,
@@ -254,9 +275,10 @@ export fn clearTerminal(rendererPtr: *renderer.CliRenderer) void {
 
 export fn setTerminalTitle(rendererPtr: *renderer.CliRenderer, titlePtr: [*]const u8, titleLen: usize) void {
     const title = titlePtr[0..titleLen];
-    var bufferedWriter = &rendererPtr.stdoutWriter;
-    const writer = bufferedWriter.writer();
-    rendererPtr.terminal.setTerminalTitle(writer.any(), title);
+    var stdoutWriter = std.fs.File.stdout().writer(&rendererPtr.stdoutBuffer);
+    const writer = &stdoutWriter.interface;
+    rendererPtr.terminal.setTerminalTitle(writer, title);
+    writer.flush() catch {};
 }
 
 // Buffer functions
@@ -444,6 +466,26 @@ export fn addToHitGrid(rendererPtr: *renderer.CliRenderer, x: i32, y: i32, width
     rendererPtr.addToHitGrid(x, y, width, height, id);
 }
 
+export fn clearCurrentHitGrid(rendererPtr: *renderer.CliRenderer) void {
+    rendererPtr.clearCurrentHitGrid();
+}
+
+export fn hitGridPushScissorRect(rendererPtr: *renderer.CliRenderer, x: i32, y: i32, width: u32, height: u32) void {
+    rendererPtr.hitGridPushScissorRect(x, y, width, height);
+}
+
+export fn hitGridPopScissorRect(rendererPtr: *renderer.CliRenderer) void {
+    rendererPtr.hitGridPopScissorRect();
+}
+
+export fn hitGridClearScissorRects(rendererPtr: *renderer.CliRenderer) void {
+    rendererPtr.hitGridClearScissorRects();
+}
+
+export fn addToCurrentHitGridClipped(rendererPtr: *renderer.CliRenderer, x: i32, y: i32, width: u32, height: u32, id: u32) void {
+    rendererPtr.addToCurrentHitGridClipped(x, y, width, height, id);
+}
+
 export fn checkHit(rendererPtr: *renderer.CliRenderer, x: u32, y: u32) u32 {
     return rendererPtr.checkHit(x, y);
 }
@@ -504,7 +546,7 @@ export fn createTextBuffer(widthMethod: u8) ?*text_buffer.UnifiedTextBuffer {
     const pool = gp.initGlobalPool(globalArena);
     const wMethod: utf8.WidthMethod = if (widthMethod == 0) .wcwidth else .unicode;
 
-    const tb = text_buffer.UnifiedTextBuffer.init(std.heap.page_allocator, pool, wMethod) catch {
+    const tb = text_buffer.UnifiedTextBuffer.init(globalAllocator, pool, wMethod) catch {
         return null;
     };
 
@@ -614,7 +656,7 @@ export fn textBufferGetPlainText(tb: *text_buffer.UnifiedTextBuffer, outPtr: [*]
 
 // TextBufferView functions (Array-based for backward compatibility)
 export fn createTextBufferView(tb: *text_buffer.UnifiedTextBuffer) ?*text_buffer_view.UnifiedTextBufferView {
-    const view = text_buffer_view.UnifiedTextBufferView.init(std.heap.page_allocator, tb) catch {
+    const view = text_buffer_view.UnifiedTextBufferView.init(globalAllocator, tb) catch {
         return null;
     };
     return view;
@@ -762,7 +804,7 @@ export fn createEditBuffer(widthMethod: u8) ?*edit_buffer_mod.EditBuffer {
     const wMethod: utf8.WidthMethod = if (widthMethod == 0) .wcwidth else .unicode;
 
     return edit_buffer_mod.EditBuffer.init(
-        std.heap.page_allocator,
+        globalAllocator,
         pool,
         wMethod,
     ) catch null;
@@ -1322,8 +1364,7 @@ export fn textBufferGetLineHighlightsPtr(
         return null;
     }
 
-    const alloc = std.heap.page_allocator;
-    var slice = alloc.alloc(ExternalHighlight, highs.len) catch return null;
+    var slice = globalAllocator.alloc(ExternalHighlight, highs.len) catch return null;
 
     for (highs, 0..) |hl, i| {
         slice[i] = .{
@@ -1340,8 +1381,7 @@ export fn textBufferGetLineHighlightsPtr(
 }
 
 export fn textBufferFreeLineHighlights(ptr: [*]const ExternalHighlight, count: usize) void {
-    const alloc = std.heap.page_allocator;
-    alloc.free(@constCast(ptr)[0..count]);
+    globalAllocator.free(@constCast(ptr)[0..count]);
 }
 
 export fn textBufferGetHighlightCount(tb: *text_buffer.UnifiedTextBuffer) u32 {
@@ -1360,7 +1400,7 @@ export fn textBufferGetTextRangeByCoords(tb: *text_buffer.UnifiedTextBuffer, sta
 
 // SyntaxStyle functions
 export fn createSyntaxStyle() ?*syntax_style.SyntaxStyle {
-    return syntax_style.SyntaxStyle.init(std.heap.page_allocator) catch |err| {
+    return syntax_style.SyntaxStyle.init(globalAllocator) catch |err| {
         logger.err("Failed to create SyntaxStyle: {}", .{err});
         return null;
     };
@@ -1408,16 +1448,16 @@ export fn encodeUnicode(
     const is_ascii_only = utf8.isAsciiOnly(text);
 
     // Find grapheme info
-    var grapheme_list = std.ArrayList(utf8.GraphemeInfo).init(std.heap.page_allocator);
-    defer grapheme_list.deinit();
+    var grapheme_list: std.ArrayListUnmanaged(utf8.GraphemeInfo) = .{};
+    defer grapheme_list.deinit(globalAllocator);
 
     const tab_width: u8 = 2;
-    utf8.findGraphemeInfo(text, tab_width, is_ascii_only, wMethod, &grapheme_list) catch return false;
+    utf8.findGraphemeInfo(text, tab_width, is_ascii_only, wMethod, globalAllocator, &grapheme_list) catch return false;
     const specials = grapheme_list.items;
 
     // Allocate output array
     const estimated_count = if (is_ascii_only) text.len else text.len * 2;
-    var result = std.heap.page_allocator.alloc(EncodedChar, estimated_count) catch return false;
+    var result = globalAllocator.alloc(EncodedChar, estimated_count) catch return false;
     var result_idx: usize = 0;
     var success = false;
     var pending_gid: ?u32 = null; // Track grapheme allocated but not yet stored in result
@@ -1440,7 +1480,7 @@ export fn encodeUnicode(
                     pool.decref(gid) catch {};
                 }
             }
-            std.heap.page_allocator.free(result);
+            globalAllocator.free(result);
         }
     }
 
@@ -1494,7 +1534,7 @@ export fn encodeUnicode(
         // Ensure we have space
         if (result_idx >= result.len) {
             const new_len = result.len * 2;
-            result = std.heap.page_allocator.realloc(result, new_len) catch return false;
+            result = globalAllocator.realloc(result, new_len) catch return false;
         }
 
         result[result_idx] = EncodedChar{
@@ -1507,7 +1547,7 @@ export fn encodeUnicode(
     }
 
     // Trim to actual size
-    result = std.heap.page_allocator.realloc(result, result_idx) catch result;
+    result = globalAllocator.realloc(result, result_idx) catch result;
 
     outPtr.* = result.ptr;
     outLenPtr.* = result_idx;
@@ -1530,7 +1570,7 @@ export fn freeUnicode(charsPtr: [*]const EncodedChar, charsLen: usize) void {
     }
 
     // Free the array itself
-    std.heap.page_allocator.free(chars);
+    globalAllocator.free(chars);
 }
 
 export fn bufferDrawChar(

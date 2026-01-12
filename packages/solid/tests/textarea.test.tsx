@@ -847,4 +847,138 @@ describe("Textarea Layout Tests", () => {
       expect(frame).toMatchSnapshot()
     })
   })
+
+  describe("Measure Cache Edge Cases", () => {
+    it("should correctly measure text after content change", async () => {
+      const [value, setValue] = createSignal("Short text")
+
+      testSetup = await testRender(
+        () => (
+          <box border width={40}>
+            <text wrapMode="word" bg="#1e1e1e" fg="#ffffff">
+              {value()}
+            </text>
+          </box>
+        ),
+        { width: 50, height: 15 },
+      )
+
+      await testSetup.renderOnce()
+      const initialFrame = testSetup.captureCharFrame()
+
+      // Change to longer content that should cause more wrapping
+      setValue("This is a much longer text that will definitely wrap to multiple lines when rendered")
+      await testSetup.renderOnce()
+      const updatedFrame = testSetup.captureCharFrame()
+
+      expect(initialFrame).toMatchSnapshot()
+      expect(updatedFrame).toMatchSnapshot()
+      expect(updatedFrame).not.toBe(initialFrame)
+    })
+
+    it("should handle rapid content updates correctly", async () => {
+      const [value, setValue] = createSignal("Initial")
+
+      testSetup = await testRender(
+        () => (
+          <box border width={30}>
+            <text wrapMode="char" bg="#1e1e1e" fg="#ffffff">
+              {value()}
+            </text>
+          </box>
+        ),
+        { width: 40, height: 10 },
+      )
+
+      // Rapid updates to simulate typing
+      for (let i = 0; i < 5; i++) {
+        setValue(`Update ${i}: some text here`)
+        await testSetup.renderOnce()
+      }
+
+      const finalFrame = testSetup.captureCharFrame()
+      expect(finalFrame).toMatchSnapshot()
+    })
+
+    it("should handle width changes with cached measures", async () => {
+      const [width, setWidth] = createSignal(30)
+
+      testSetup = await testRender(
+        () => (
+          <box border width={width()}>
+            <text wrapMode="word" bg="#1e1e1e" fg="#ffffff">
+              Content that will wrap differently at different widths
+            </text>
+          </box>
+        ),
+        { width: 60, height: 15 },
+      )
+
+      await testSetup.renderOnce()
+      const frame30 = testSetup.captureCharFrame()
+
+      setWidth(50)
+      await testSetup.renderOnce()
+      const frame50 = testSetup.captureCharFrame()
+
+      setWidth(20)
+      await testSetup.renderOnce()
+      const frame20 = testSetup.captureCharFrame()
+
+      expect(frame30).toMatchSnapshot()
+      expect(frame50).toMatchSnapshot()
+      expect(frame20).toMatchSnapshot()
+    })
+
+    it("should handle empty to non-empty content transition", async () => {
+      const [value, setValue] = createSignal("")
+
+      testSetup = await testRender(
+        () => (
+          <box border width={40}>
+            <text wrapMode="word" bg="#1e1e1e" fg="#ffffff">
+              {value() || " "}
+            </text>
+          </box>
+        ),
+        { width: 50, height: 10 },
+      )
+
+      await testSetup.renderOnce()
+      const emptyFrame = testSetup.captureCharFrame()
+
+      setValue("Now with content")
+      await testSetup.renderOnce()
+      const contentFrame = testSetup.captureCharFrame()
+
+      setValue("")
+      await testSetup.renderOnce()
+      const emptyAgainFrame = testSetup.captureCharFrame()
+
+      expect(emptyFrame).toMatchSnapshot()
+      expect(contentFrame).toMatchSnapshot()
+      expect(emptyAgainFrame).toMatchSnapshot()
+    })
+
+    it("should correctly measure multiline content with unicode", async () => {
+      testSetup = await testRender(
+        () => (
+          <box border width={30}>
+            <text wrapMode="word" bg="#1e1e1e" fg="#ffffff">
+              Hello 世界
+              <br />
+              こんにちは
+              <br />
+              🌟 Emoji 🚀
+            </text>
+          </box>
+        ),
+        { width: 40, height: 15 },
+      )
+
+      await testSetup.renderOnce()
+      const frame = testSetup.captureCharFrame()
+      expect(frame).toMatchSnapshot()
+    })
+  })
 })

@@ -72,11 +72,6 @@ jobs:
             echo "Copied solid dist"
           fi
 
-          if [ -d "npm-packages/vue-dist" ]; then
-            cp -r npm-packages/vue-dist packages/vue/dist
-            echo "Copied vue dist"
-          fi
-
           echo "Package extraction complete"
 
       - name: Publish packages (dry-run)

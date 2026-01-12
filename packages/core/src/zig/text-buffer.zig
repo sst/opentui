@@ -62,6 +62,10 @@ pub const UnifiedTextBuffer = struct {
     next_view_id: u32,
     free_view_ids: std.ArrayListUnmanaged(u32),
 
+    /// Monotonic counter that increments on every content change. Views use this
+    /// to detect stale caches even after clearViewDirty() runs.
+    content_epoch: u64,
+
     // Per-line highlight cache (invalidated on edits)
     // Maps line_idx to highlights for that line
     line_highlights: std.ArrayListUnmanaged(std.ArrayListUnmanaged(Highlight)),
@@ -118,6 +122,7 @@ pub const UnifiedTextBuffer = struct {
             .view_dirty_flags = view_dirty_flags,
             .next_view_id = 0,
             .free_view_ids = free_view_ids,
+            .content_epoch = 0,
             .line_highlights = .{},
             .line_spans = .{},
             .highlight_batch_depth = 0,
@@ -198,7 +203,16 @@ pub const UnifiedTextBuffer = struct {
         }
     }
 
+    /// Returns the current content epoch. Use this to detect buffer changes
+    /// independent of the dirty flag (other code paths may clear dirty).
+    pub fn getContentEpoch(self: *const Self) u64 {
+        return self.content_epoch;
+    }
+
     fn markAllViewsDirty(self: *Self) void {
+        // Increment epoch first so views see the new value when checking caches.
+        // Use wrapping add for safety, though u64 won't overflow in practice.
+        self.content_epoch +%= 1;
         for (self.view_dirty_flags.items) |*flag| {
             flag.* = true;
         }
@@ -347,7 +361,7 @@ pub const UnifiedTextBuffer = struct {
 
         // The rope's boundary rewrite will handle normalization at join points
         var result = try self.textToSegments(self.global_allocator, text, mem_id, 0, false);
-        defer result.segments.deinit();
+        defer result.segments.deinit(result.allocator);
 
         const insert_pos = self.rope.count();
         try self.rope.insert_slice(insert_pos, result.segments.items);
@@ -363,7 +377,7 @@ pub const UnifiedTextBuffer = struct {
         }
 
         var result = try self.textToSegments(self.global_allocator, text, mem_id, 0, true);
-        defer result.segments.deinit();
+        defer result.segments.deinit(result.allocator);
 
         try self.rope.setSegments(result.segments.items);
 
@@ -406,16 +420,16 @@ pub const UnifiedTextBuffer = struct {
         mem_id: u8,
         byte_offset: u32,
         prepend_linestart: bool,
-    ) TextBufferError!struct { segments: std.ArrayList(Segment), total_width: u32 } {
+    ) TextBufferError!struct { segments: std.ArrayListUnmanaged(Segment), total_width: u32, allocator: Allocator } {
         var break_result = utf8.LineBreakResult.init(allocator);
         defer break_result.deinit();
         try utf8.findLineBreaks(text, &break_result);
 
-        var segments = std.ArrayList(Segment).init(allocator);
-        errdefer segments.deinit();
+        var segments: std.ArrayListUnmanaged(Segment) = .{};
+        errdefer segments.deinit(allocator);
 
         if (prepend_linestart) {
-            try segments.append(Segment{ .linestart = {} });
+            try segments.append(allocator, Segment{ .linestart = {} });
         }
 
         var local_start: u32 = 0;
@@ -430,23 +444,23 @@ pub const UnifiedTextBuffer = struct {
 
             if (local_end > local_start) {
                 const chunk = self.createChunk(mem_id, byte_offset + local_start, byte_offset + local_end);
-                try segments.append(Segment{ .text = chunk });
+                try segments.append(allocator, Segment{ .text = chunk });
                 total_width += chunk.width;
             }
 
-            try segments.append(Segment{ .brk = {} });
-            try segments.append(Segment{ .linestart = {} });
+            try segments.append(allocator, Segment{ .brk = {} });
+            try segments.append(allocator, Segment{ .linestart = {} });
 
             local_start = break_pos + 1;
         }
 
         if (local_start < text.len) {
             const chunk = self.createChunk(mem_id, byte_offset + local_start, byte_offset + @as(u32, @intCast(text.len)));
-            try segments.append(Segment{ .text = chunk });
+            try segments.append(allocator, Segment{ .text = chunk });
             total_width += chunk.width;
         }
 
-        return .{ .segments = segments, .total_width = total_width };
+        return .{ .segments = segments, .total_width = total_width, .allocator = allocator };
     }
 
     pub fn getLineCount(self: *const Self) u32 {
@@ -645,12 +659,12 @@ pub const UnifiedTextBuffer = struct {
             hl_idx: usize,
         };
 
-        var events = std.ArrayList(Event).init(self.global_allocator);
-        defer events.deinit();
+        var events: std.ArrayListUnmanaged(Event) = .{};
+        defer events.deinit(self.global_allocator);
 
         for (highlights, 0..) |hl, idx| {
-            try events.append(.{ .col = hl.col_start, .is_start = true, .hl_idx = idx });
-            try events.append(.{ .col = hl.col_end, .is_start = false, .hl_idx = idx });
+            try events.append(self.global_allocator, .{ .col = hl.col_start, .is_start = true, .hl_idx = idx });
+            try events.append(self.global_allocator, .{ .col = hl.col_end, .is_start = false, .hl_idx = idx });
         }
 
         // Sort by column, ends before starts at same position
@@ -972,10 +986,15 @@ pub const UnifiedTextBuffer = struct {
         return self.tab_width;
     }
 
-    /// Set tab width (will be rounded up to nearest multiple of 2)
+    /// Set tab width, rounding up to nearest multiple of 2 (minimum 2).
+    /// Marks all views dirty if the width actually changes, since tab width
+    /// affects measured line widths and virtual line calculations.
     pub fn setTabWidth(self: *Self, width: u8) void {
         const clamped_width = @max(2, width);
-        self.tab_width = if (clamped_width % 2 == 0) clamped_width else clamped_width + 1;
+        const new_width = if (clamped_width % 2 == 0) clamped_width else clamped_width + 1;
+        if (self.tab_width == new_width) return;
+        self.tab_width = new_width;
+        self.markAllViewsDirty();
     }
 
     /// Debug log the rope structure using rope.toText
