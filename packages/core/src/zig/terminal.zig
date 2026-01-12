@@ -618,7 +618,7 @@ fn parseXtversion(self: *Terminal, term_str: []const u8) void {
     self.term_info.from_xtversion = true;
 }
 
-fn isXtversionTmux(self: *Terminal) bool {
+pub fn isXtversionTmux(self: *Terminal) bool {
     return self.term_info.from_xtversion and std.mem.eql(u8, self.getTerminalName(), "tmux");
 }
 
