@@ -1080,14 +1080,6 @@ pub const CliRenderer = struct {
         writer.flush() catch {};
     }
 
-    pub fn getLastOutputForTest(_: *CliRenderer) []const u8 {
-        // In non-threaded mode, we want the current active buffer
-        // In threaded mode, we want the previously rendered buffer
-        const currentBuffer = if (activeBuffer == .A) &outputBuffer else &outputBufferB;
-        const currentLen = if (activeBuffer == .A) outputBufferLen else outputBufferBLen;
-        return currentBuffer.*[0..currentLen];
-    }
-
     pub fn dumpStdoutBuffer(self: *CliRenderer, timestamp: i64) void {
         _ = self;
         std.fs.cwd().makeDir("buffer_dump") catch |err| switch (err) {

@@ -348,10 +348,6 @@ function getOpenTUILib(libPath?: string) {
       args: ["ptr", "i64"],
       returns: "void",
     },
-    getLastOutputForTest: {
-      args: ["ptr", "ptr"],
-      returns: "void",
-    },
     enableMouse: {
       args: ["ptr", "bool"],
       returns: "void",
@@ -1359,7 +1355,6 @@ export interface RenderLib {
   dumpHitGrid: (renderer: Pointer) => void
   dumpBuffers: (renderer: Pointer, timestamp?: number) => void
   dumpStdoutBuffer: (renderer: Pointer, timestamp?: number) => void
-  getLastOutputForTestString: (renderer: Pointer) => string
   enableMouse: (renderer: Pointer, enableMovement: boolean) => void
   disableMouse: (renderer: Pointer) => void
   enableKittyKeyboard: (renderer: Pointer, flags: number) => void
@@ -2189,21 +2184,6 @@ class FFIRenderLib implements RenderLib {
   public dumpStdoutBuffer(renderer: Pointer, timestamp?: number): void {
     const ts = timestamp ?? Date.now()
     this.opentui.symbols.dumpStdoutBuffer(renderer, ts)
-  }
-
-  public getLastOutputForTestString(renderer: Pointer): string {
-    const outputSlice = new Uint8Array(16)
-    this.opentui.symbols.getLastOutputForTest(renderer, ptr(outputSlice))
-
-    const view = new DataView(outputSlice.buffer)
-    const outputPtr = view.getBigUint64(0, true)
-    const outputLen = view.getBigUint64(8, true)
-
-    if (outputLen === 0n) return ""
-
-    const buffer = toArrayBuffer(Number(outputPtr) as unknown as Pointer, 0, Number(outputLen))
-    const decoder = new TextDecoder()
-    return decoder.decode(buffer)
   }
 
   public enableMouse(renderer: Pointer, enableMovement: boolean): void {
