@@ -257,6 +257,67 @@ test("hover recheck uses neutral button and modifiers", async () => {
   expect(overEvent.modifiers).toEqual({ shift: true, alt: false, ctrl: false })
 })
 
+test("hover recheck over event has no source when not dragging", async () => {
+  const scrollBox = new ScrollBoxRenderable(testRenderer, {
+    width: 20,
+    height: 6,
+    scrollY: true,
+  })
+  testRenderer.root.add(scrollBox)
+
+  const hoverEvents: Array<{
+    type: "over" | "out"
+    source: Renderable | undefined
+  }> = []
+
+  const items: BoxRenderable[] = []
+  for (let i = 0; i < 5; i++) {
+    const itemId = `item-${i}`
+    const item = new BoxRenderable(testRenderer, {
+      id: itemId,
+      width: "100%",
+      height: 2,
+      onMouseOver: (event) => {
+        hoverEvents.push({
+          type: "over",
+          source: event.source,
+        })
+      },
+      onMouseOut: (event) => {
+        hoverEvents.push({
+          type: "out",
+          source: event.source,
+        })
+      },
+    })
+    items.push(item)
+    scrollBox.add(item)
+  }
+
+  await testRenderer.idle()
+
+  const pointerX = items[0].x + 1
+  const pointerY = items[0].y + 1
+
+  // Move to item-0 (not dragging)
+  await mockMouse.moveTo(pointerX, pointerY)
+  expect(hoverEvents).toHaveLength(1)
+  expect(hoverEvents[0].type).toBe("over")
+  expect(hoverEvents[0].source).toBeUndefined()
+
+  // Scroll to trigger hover recheck - should have no source since we're not dragging
+  scrollBox.scrollTop = 2
+  await testRenderer.idle()
+
+  expect(hoverEvents).toHaveLength(3)
+  // out event from item-0
+  expect(hoverEvents[1].type).toBe("out")
+  expect(hoverEvents[1].source).toBeUndefined()
+  // over event to item-1 - source should be undefined (not dragging)
+  expect(hoverEvents[2].type).toBe("over")
+  expect(hoverEvents[2].source).toBeUndefined()
+})
+
 test("hover updates on multiple scroll changes", async () => {
   const scrollBox = new ScrollBoxRenderable(testRenderer, {
     width: 20,
