@@ -669,12 +669,7 @@ export class CliRenderer extends EventEmitter implements RenderContext {
     return caps?.unicode === "wcwidth" ? "wcwidth" : "unicode"
   }
 
-  /**
-   * Write to stdout, synchronizing with the native render thread if necessary.
-   * This method ensures that stdout writes don't interleave with render thread output.
-   */
   private writeOut(chunk: any, encoding?: any, callback?: any): boolean {
-    // Use native synchronized write if we have a renderer pointer and threading is enabled
     if (this.rendererPtr && this._useThread) {
       const data = typeof chunk === "string" ? chunk : (chunk?.toString() ?? "")
       this.lib.writeOut(this.rendererPtr, data)
@@ -684,7 +679,6 @@ export class CliRenderer extends EventEmitter implements RenderContext {
       return true
     }
 
-    // Fallback to direct write when not using threading
     return this.realStdoutWrite.call(this.stdout, chunk, encoding, callback)
   }
 

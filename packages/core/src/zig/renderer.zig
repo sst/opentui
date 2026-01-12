@@ -814,13 +814,9 @@ pub const CliRenderer = struct {
         self.writeOut(ansi.ANSI.clearAndHome);
     }
 
-    /// Write data to stdout, synchronizing with the render thread if necessary.
-    /// This method should be used for ALL stdout writes to avoid race conditions
-    /// when the render thread is active.
     pub fn writeOut(self: *CliRenderer, data: []const u8) void {
         if (data.len == 0) return;
 
-        // If using threaded rendering, wait for any in-progress render to complete
         if (self.useThread) {
             self.renderMutex.lock();
             while (self.renderInProgress) {
@@ -835,9 +831,7 @@ pub const CliRenderer = struct {
         w.flush() catch {};
     }
 
-    /// Write multiple data slices to stdout atomically, synchronizing with the render thread.
     pub fn writeOutMultiple(self: *CliRenderer, data_slices: []const []const u8) void {
-        // If using threaded rendering, wait for any in-progress render to complete
         if (self.useThread) {
             self.renderMutex.lock();
             while (self.renderInProgress) {
@@ -1137,8 +1131,7 @@ pub const CliRenderer = struct {
     }
 
     pub fn enableMouse(self: *CliRenderer, enableMovement: bool) void {
-        _ = enableMovement; // TODO: Use this to control motion tracking levels
-        // Use a temporary buffer to build the mouse mode sequence, then write atomically
+        _ = enableMovement;
         var tempBuf: [256]u8 = undefined;
         var tempWriter = std.io.fixedBufferStream(&tempBuf);
         const tw = tempWriter.writer();

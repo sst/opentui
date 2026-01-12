@@ -539,8 +539,6 @@ export fn resumeRenderer(rendererPtr: *renderer.CliRenderer) void {
     rendererPtr.resumeRenderer();
 }
 
-/// Write data to stdout, synchronizing with the render thread if necessary.
-/// This should be used for ALL stdout writes from TypeScript to avoid race conditions.
 export fn writeOut(rendererPtr: *renderer.CliRenderer, dataPtr: [*]const u8, dataLen: usize) void {
     if (dataLen == 0) return;
     const data = dataPtr[0..dataLen];

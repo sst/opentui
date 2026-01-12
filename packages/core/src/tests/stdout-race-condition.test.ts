@@ -3,16 +3,9 @@ import { createTestRenderer, type TestRenderer } from "../testing/test-renderer"
 import { Renderable } from "../Renderable"
 import { resolveRenderLib } from "../zig"
 
-/**
- * Tests to verify ANSI sequence integrity in render output.
- * These tests ensure that concurrent stdout writes don't corrupt ANSI escape sequences.
- */
-
 function findBrokenAnsiSequences(output: string): string[] {
   const broken: string[] = []
 
-  // Look for sequences that appear to be truncated at the start
-  // e.g., "8;2;255;255;255m" instead of proper "\x1b[38;2;255;255;255m"
   const truncatedColorPattern = /(?<!\x1b\[\d?)(\d;2;\d+;\d+;\d+m)/g
   let match
   while ((match = truncatedColorPattern.exec(output)) !== null) {
@@ -28,7 +21,6 @@ function findBrokenAnsiSequences(output: string): string[] {
 function validateAnsiSequences(output: string): { valid: boolean; errors: string[] } {
   const errors: string[] = []
 
-  // Check that all CSI sequences are complete: \x1b[ ... <letter>
   let i = 0
   while (i < output.length) {
     if (output[i] === "\x1b" && i + 1 < output.length && output[i + 1] === "[") {
@@ -51,7 +43,6 @@ function validateAnsiSequences(output: string): { valid: boolean; errors: string
     }
   }
 
-  // Check for orphaned fragments
   const brokenFragments = findBrokenAnsiSequences(output)
   for (const fragment of brokenFragments) {
     errors.push(`Orphaned ANSI fragment: ${JSON.stringify(fragment)}`)

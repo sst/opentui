@@ -2192,18 +2192,15 @@ class FFIRenderLib implements RenderLib {
   }
 
   public getLastOutputForTestString(renderer: Pointer): string {
-    // Create a struct to receive the output slice
-    const outputSlice = new Uint8Array(16) // ptr (8 bytes) + len (8 bytes)
+    const outputSlice = new Uint8Array(16)
     this.opentui.symbols.getLastOutputForTest(renderer, ptr(outputSlice))
 
-    // Read ptr and len from the struct
     const view = new DataView(outputSlice.buffer)
-    const outputPtr = view.getBigUint64(0, true) // little endian
+    const outputPtr = view.getBigUint64(0, true)
     const outputLen = view.getBigUint64(8, true)
 
     if (outputLen === 0n) return ""
 
-    // Create an ArrayBuffer from the pointer
     const buffer = toArrayBuffer(Number(outputPtr) as unknown as Pointer, 0, Number(outputLen))
     const decoder = new TextDecoder()
     return decoder.decode(buffer)
