@@ -2219,6 +2219,7 @@ export class CliRenderer extends EventEmitter implements RenderContext {
       },
       true,
     )
+    this._useMouse = false
     this.setCapturedRenderable(undefined)
 
     this.stdin.removeListener("data", this.stdinListener)

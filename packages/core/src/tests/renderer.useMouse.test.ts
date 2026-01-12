@@ -44,4 +44,18 @@ describe("useMouse configuration", () => {
 
     renderer.destroy()
   })
+
+  test("destroy disables mouse tracking", async () => {
+    const { renderer } = await createTestRenderer({
+      useMouse: true,
+      exitOnCtrlC: false,
+      useAlternateScreen: false,
+    })
+
+    expect(renderer.useMouse).toBe(true)
+
+    renderer.destroy()
+
+    expect(renderer.useMouse).toBe(false)
+  })
 })

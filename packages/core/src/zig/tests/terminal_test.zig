@@ -205,6 +205,10 @@ const TestWriter = struct {
         try self.buffer.appendSlice(self.allocator, data);
     }
 
+    pub fn writeByte(self: *TestWriter, byte: u8) !void {
+        try self.buffer.append(self.allocator, byte);
+    }
+
     pub fn print(self: *TestWriter, comptime fmt: []const u8, args: anytype) !void {
         try self.buffer.writer(self.allocator).print(fmt, args);
     }
@@ -751,4 +755,41 @@ test "restoreTerminalModes - respects mouse movement setting" {
     try testing.expect(idx_enable_mouse < idx_enable_button);
     try testing.expect(idx_enable_button < idx_enable_sgr);
     try testing.expect(std.mem.indexOf(u8, output, ansi.ANSI.enableAnyEventTracking) == null);
+}
+
+test "resetState - force-disables mouse when cleanup is pending and state drifted false" {
+    var term = Terminal.init(.{});
+    term.state.mouse = false;
+    term.state.mouse_movement = false;
+    term.state.mouse_was_enabled = true;
+
+    var writer = TestWriter.init(testing.allocator);
+    defer writer.deinit();
+
+    try term.resetState(&writer);
+
+    const output = writer.getWritten();
+    const idx_disable_any = std.mem.indexOf(u8, output, ansi.ANSI.disableAnyEventTracking).?;
+    const idx_disable_button = std.mem.indexOf(u8, output, ansi.ANSI.disableButtonEventTracking).?;
+    const idx_disable_mouse = std.mem.indexOf(u8, output, ansi.ANSI.disableMouseTracking).?;
+    const idx_disable_sgr = std.mem.indexOf(u8, output, ansi.ANSI.disableSGRMouseMode).?;
+    try testing.expect(idx_disable_any < idx_disable_button);
+    try testing.expect(idx_disable_button < idx_disable_mouse);
+    try testing.expect(idx_disable_mouse < idx_disable_sgr);
+    try testing.expect(!term.state.mouse);
+}
+
+test "resetState - skips mouse disable when mouse was never enabled" {
+    var term = Terminal.init(.{});
+
+    var writer = TestWriter.init(testing.allocator);
+    defer writer.deinit();
+
+    try term.resetState(&writer);
+
+    const output = writer.getWritten();
+    try testing.expect(std.mem.indexOf(u8, output, ansi.ANSI.disableAnyEventTracking) == null);
+    try testing.expect(std.mem.indexOf(u8, output, ansi.ANSI.disableButtonEventTracking) == null);
+    try testing.expect(std.mem.indexOf(u8, output, ansi.ANSI.disableMouseTracking) == null);
+    try testing.expect(std.mem.indexOf(u8, output, ansi.ANSI.disableSGRMouseMode) == null);
 }
