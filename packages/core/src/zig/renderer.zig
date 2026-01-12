@@ -81,6 +81,7 @@ pub const CliRenderer = struct {
     allocator: Allocator,
     renderThread: ?std.Thread = null,
     stdoutBuffer: [4096]u8,
+    writeOutBuf: [1024]u8 = undefined,
     debugOverlay: struct {
         enabled: bool,
         corner: DebugOverlayCorner,
@@ -1132,14 +1133,9 @@ pub const CliRenderer = struct {
 
     pub fn enableMouse(self: *CliRenderer, enableMovement: bool) void {
         _ = enableMovement;
-        var tempBuf: [256]u8 = undefined;
-        var tempWriter = std.io.fixedBufferStream(&tempBuf);
-        const tw = tempWriter.writer();
-
-        self.terminal.setMouseMode(tw, true) catch {};
-
-        const written = tempWriter.getWritten();
-        self.writeOut(written);
+        var stream = std.io.fixedBufferStream(&self.writeOutBuf);
+        self.terminal.setMouseMode(stream.writer(), true) catch {};
+        self.writeOut(stream.getWritten());
     }
 
     pub fn queryPixelResolution(self: *CliRenderer) void {
@@ -1147,36 +1143,21 @@ pub const CliRenderer = struct {
     }
 
     pub fn disableMouse(self: *CliRenderer) void {
-        var tempBuf: [256]u8 = undefined;
-        var tempWriter = std.io.fixedBufferStream(&tempBuf);
-        const tw = tempWriter.writer();
-
-        self.terminal.setMouseMode(tw, false) catch {};
-
-        const written = tempWriter.getWritten();
-        self.writeOut(written);
+        var stream = std.io.fixedBufferStream(&self.writeOutBuf);
+        self.terminal.setMouseMode(stream.writer(), false) catch {};
+        self.writeOut(stream.getWritten());
     }
 
     pub fn enableKittyKeyboard(self: *CliRenderer, flags: u8) void {
-        var tempBuf: [64]u8 = undefined;
-        var tempWriter = std.io.fixedBufferStream(&tempBuf);
-        const tw = tempWriter.writer();
-
-        self.terminal.setKittyKeyboard(tw, true, flags) catch {};
-
-        const written = tempWriter.getWritten();
-        self.writeOut(written);
+        var stream = std.io.fixedBufferStream(&self.writeOutBuf);
+        self.terminal.setKittyKeyboard(stream.writer(), true, flags) catch {};
+        self.writeOut(stream.getWritten());
     }
 
     pub fn disableKittyKeyboard(self: *CliRenderer) void {
-        var tempBuf: [64]u8 = undefined;
-        var tempWriter = std.io.fixedBufferStream(&tempBuf);
-        const tw = tempWriter.writer();
-
-        self.terminal.setKittyKeyboard(tw, false, 0) catch {};
-
-        const written = tempWriter.getWritten();
-        self.writeOut(written);
+        var stream = std.io.fixedBufferStream(&self.writeOutBuf);
+        self.terminal.setKittyKeyboard(stream.writer(), false, 0) catch {};
+        self.writeOut(stream.getWritten());
     }
 
     pub fn getTerminalCapabilities(self: *CliRenderer) Terminal.Capabilities {
@@ -1185,16 +1166,10 @@ pub const CliRenderer = struct {
 
     pub fn processCapabilityResponse(self: *CliRenderer, response: []const u8) void {
         self.terminal.processCapabilityResponse(response);
-
-        var tempBuf: [512]u8 = undefined;
-        var tempWriter = std.io.fixedBufferStream(&tempBuf);
-        const tw = tempWriter.writer();
-
+        var stream = std.io.fixedBufferStream(&self.writeOutBuf);
         const useKitty = self.terminal.opts.kitty_keyboard_flags > 0;
-        self.terminal.enableDetectedFeatures(tw, useKitty) catch {};
-
-        const written = tempWriter.getWritten();
-        self.writeOut(written);
+        self.terminal.enableDetectedFeatures(stream.writer(), useKitty) catch {};
+        self.writeOut(stream.getWritten());
     }
 
     pub fn setCursorPosition(self: *CliRenderer, x: u32, y: u32, visible: bool) void {
@@ -1218,14 +1193,9 @@ pub const CliRenderer = struct {
     }
 
     pub fn setTerminalTitle(self: *CliRenderer, title: []const u8) void {
-        var tempBuf: [1024]u8 = undefined;
-        var tempWriter = std.io.fixedBufferStream(&tempBuf);
-        const tw = tempWriter.writer();
-
-        self.terminal.setTerminalTitle(tw, title);
-
-        const written = tempWriter.getWritten();
-        self.writeOut(written);
+        var stream = std.io.fixedBufferStream(&self.writeOutBuf);
+        self.terminal.setTerminalTitle(stream.writer(), title);
+        self.writeOut(stream.getWritten());
     }
 
     fn renderDebugOverlay(self: *CliRenderer) void {
