@@ -7,44 +7,6 @@ const link = @import("link.zig");
 const Terminal = @import("terminal.zig");
 const logger = @import("logger.zig");
 
-// Debug logging for stdout race condition investigation
-// Set to true to capture stdout write timing across threads/sources
-const STDOUT_DEBUG_LOG = false;
-var stdoutDebugFile: ?std.fs.File = null;
-var stdoutWriteCounter: u64 = 0;
-var stdoutDebugMutex: std.Thread.Mutex = .{};
-
-fn initStdoutDebugLog() void {
-    if (!STDOUT_DEBUG_LOG) return;
-    if (stdoutDebugFile != null) return;
-
-    stdoutDebugFile = std.fs.cwd().createFile("stdout_debug.log", .{ .truncate = true }) catch null;
-}
-
-fn logStdoutWrite(source: []const u8, dataLen: usize) void {
-    if (!STDOUT_DEBUG_LOG) return;
-
-    stdoutDebugMutex.lock();
-    defer stdoutDebugMutex.unlock();
-
-    initStdoutDebugLog();
-
-    if (stdoutDebugFile) |file| {
-        stdoutWriteCounter += 1;
-        const timestamp = std.time.microTimestamp();
-        const threadId = std.Thread.getCurrentId();
-        var logBuf: [256]u8 = undefined;
-        const msg = std.fmt.bufPrint(&logBuf, "[{d}] t={d} tid={d} source={s} len={d}\n", .{
-            stdoutWriteCounter,
-            timestamp,
-            threadId,
-            source,
-            dataLen,
-        }) catch return;
-        _ = file.write(msg) catch {};
-    }
-}
-
 pub const RGBA = ansi.RGBA;
 pub const OptimizedBuffer = buf.OptimizedBuffer;
 pub const TextAttributes = ansi.TextAttributes;
@@ -318,7 +280,6 @@ pub const CliRenderer = struct {
         self.useAlternateScreen = useAlternateScreen;
         self.terminalSetup = true;
 
-        logStdoutWrite("setupTerminal", 0);
         var stdoutWriter = std.fs.File.stdout().writer(&self.stdoutBuffer);
         const writer = &stdoutWriter.interface;
 
@@ -362,7 +323,6 @@ pub const CliRenderer = struct {
     pub fn performShutdownSequence(self: *CliRenderer) void {
         if (!self.terminalSetup) return;
 
-        logStdoutWrite("performShutdownSequence", 0);
         var stdoutWriter = std.fs.File.stdout().writer(&self.stdoutBuffer);
         const direct = &stdoutWriter.interface;
         self.terminal.resetState(direct) catch {
@@ -529,7 +489,6 @@ pub const CliRenderer = struct {
             const writeStart = std.time.microTimestamp();
 
             if (outputLen > 0 and !self.testing) {
-                logStdoutWrite("renderThread", outputLen);
                 var stdoutWriter = std.fs.File.stdout().writer(&self.stdoutBuffer);
                 const w = &stdoutWriter.interface;
                 w.writeAll(outputData[0..outputLen]) catch {};
@@ -578,7 +537,6 @@ pub const CliRenderer = struct {
         } else {
             const writeStart = std.time.microTimestamp();
             if (!self.testing) {
-                logStdoutWrite("renderDirect", outputBufferLen);
                 var stdoutWriter = std.fs.File.stdout().writer(&self.stdoutBuffer);
                 const w = &stdoutWriter.interface;
                 w.writeAll(outputBuffer[0..outputBufferLen]) catch {};
@@ -871,8 +829,6 @@ pub const CliRenderer = struct {
             self.renderMutex.unlock();
         }
 
-        logStdoutWrite("writeOut", data.len);
-
         var stdoutWriter = std.fs.File.stdout().writer(&self.stdoutBuffer);
         const w = &stdoutWriter.interface;
         w.writeAll(data) catch {};
@@ -896,8 +852,6 @@ pub const CliRenderer = struct {
         }
 
         if (totalLen == 0) return;
-
-        logStdoutWrite("writeOutMultiple", totalLen);
 
         var stdoutWriter = std.fs.File.stdout().writer(&self.stdoutBuffer);
         const w = &stdoutWriter.interface;

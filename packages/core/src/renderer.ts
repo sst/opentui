@@ -68,35 +68,6 @@ registerEnvVar({
   default: false,
 })
 
-registerEnvVar({
-  name: "OTUI_DEBUG_STDOUT",
-  description: "Enable debug logging for stdout writes to investigate race conditions.",
-  type: "boolean",
-  default: false,
-})
-
-// Debug logging for stdout race condition investigation
-const STDOUT_DEBUG_LOG = env.OTUI_DEBUG_STDOUT
-let stdoutDebugFile: Bun.FileSink | null = null
-let stdoutWriteCounter = 0
-
-function initStdoutDebugLog() {
-  if (!STDOUT_DEBUG_LOG || stdoutDebugFile) return
-  stdoutDebugFile = Bun.file("stdout_debug_ts.log").writer()
-}
-
-function logStdoutWriteTS(source: string, dataLen: number) {
-  if (!STDOUT_DEBUG_LOG) return
-  initStdoutDebugLog()
-  if (stdoutDebugFile) {
-    stdoutWriteCounter++
-    const timestamp = performance.now()
-    const msg = `[${stdoutWriteCounter}] t=${timestamp.toFixed(3)} source=${source} len=${dataLen}\n`
-    stdoutDebugFile.write(msg)
-    stdoutDebugFile.flush()
-  }
-}
-
 export interface CliRendererConfig {
   stdin?: NodeJS.ReadStream
   stdout?: NodeJS.WriteStream
@@ -703,9 +674,6 @@ export class CliRenderer extends EventEmitter implements RenderContext {
    * This method ensures that stdout writes don't interleave with render thread output.
    */
   private writeOut(chunk: any, encoding?: any, callback?: any): boolean {
-    const len = typeof chunk === "string" ? chunk.length : (chunk?.length ?? 0)
-    logStdoutWriteTS("writeOut", len)
-
     // Use native synchronized write if we have a renderer pointer and threading is enabled
     if (this.rendererPtr && this._useThread) {
       const data = typeof chunk === "string" ? chunk : (chunk?.toString() ?? "")
@@ -968,9 +936,7 @@ export class CliRenderer extends EventEmitter implements RenderContext {
       }
     }
 
-    const fullOutput = flush + move + output + clear
-    logStdoutWriteTS("flushStdoutCache", fullOutput.length)
-    this.writeOut(fullOutput)
+    this.writeOut(flush + move + output + clear)
 
     return true
   }
