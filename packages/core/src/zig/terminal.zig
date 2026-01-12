@@ -169,21 +169,16 @@ pub fn queryTerminalSend(self: *Terminal, tty: anytype) !void {
         ansi.ANSI.hideCursor ++
         ansi.ANSI.saveCursorState);
 
-    // Send capability queries - DCS wrapped if tmux detected via env vars
     if (self.in_tmux) {
         try tty.writeAll(ansi.ANSI.capabilityQueriesTmux);
     } else {
-        // Send unwrapped, but mark pending in case xtversion detects tmux
         try tty.writeAll(ansi.ANSI.capabilityQueries);
         self.capability_queries_pending = true;
     }
 
-    // Explicit width detection
     try tty.writeAll(ansi.ANSI.home ++
         ansi.ANSI.explicitWidthQuery ++
         ansi.ANSI.cursorPositionRequest ++
-
-        // Scaled text detection
         ansi.ANSI.home ++
         ansi.ANSI.scaledTextQuery ++
         ansi.ANSI.cursorPositionRequest);
@@ -206,7 +201,6 @@ pub fn sendPendingQueries(self: *Terminal, tty: anytype) !bool {
         self.capability_queries_pending = false;
     }
 
-    // Send graphics query - always send if pending, wrapped only if we know we're in tmux
     if (self.graphics_query_pending and !self.skip_graphics_query) {
         if (is_tmux) {
             try tty.writeAll(ansi.ANSI.kittyGraphicsQueryTmux);

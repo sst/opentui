@@ -90,7 +90,6 @@ pub const ANSI = struct {
     pub const csiUQuery = "\x1b[?u";
     pub const kittyGraphicsQuery = "\x1b_Gi=31337,s=1,v=1,a=q,t=d,f=24;AAAA\x1b\\\x1b[c";
 
-    // Capability queries that need DCS wrapping for tmux
     pub const capabilityQueries = decrqmSgrPixels ++
         decrqmUnicode ++
         decrqmColorScheme ++
@@ -103,7 +102,6 @@ pub const ANSI = struct {
     pub const tmuxDcsStart = "\x1bPtmux;";
     pub const tmuxDcsEnd = "\x1b\\";
 
-    // Helper to wrap a sequence for tmux passthrough
     pub fn wrapForTmux(comptime seq: []const u8) []const u8 {
         comptime {
             var result: []const u8 = tmuxDcsStart;
@@ -118,7 +116,6 @@ pub const ANSI = struct {
         }
     }
 
-    // tmux DCS passthrough variants (ESC chars doubled)
     pub const kittyGraphicsQueryTmux = wrapForTmux(kittyGraphicsQuery);
     pub const capabilityQueriesTmux = wrapForTmux(capabilityQueries);
     pub const sixelGeometryQuery = "\x1b[?2;1;0S";
