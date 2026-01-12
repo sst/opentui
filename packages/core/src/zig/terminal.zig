@@ -192,14 +192,13 @@ pub fn queryTerminalSend(self: *Terminal, tty: anytype) !void {
 }
 
 pub fn sendPendingQueries(self: *Terminal, tty: anytype) !bool {
-    if (!self.term_info.from_xtversion and !self.in_tmux) return false;
-
     var sent = false;
     const is_tmux = self.in_tmux or self.isXtversionTmux();
 
     // Re-send capability queries DCS wrapped if tmux detected via xtversion
+    // Only needed if we got xtversion response indicating tmux
     if (self.capability_queries_pending) {
-        if (is_tmux) {
+        if (self.term_info.from_xtversion and is_tmux) {
             try tty.writeAll(ansi.ANSI.capabilityQueriesTmux);
             sent = true;
         }
@@ -207,7 +206,7 @@ pub fn sendPendingQueries(self: *Terminal, tty: anytype) !bool {
         self.capability_queries_pending = false;
     }
 
-    // Send graphics query
+    // Send graphics query - always send if pending, wrapped only if we know we're in tmux
     if (self.graphics_query_pending and !self.skip_graphics_query) {
         if (is_tmux) {
             try tty.writeAll(ansi.ANSI.kittyGraphicsQueryTmux);

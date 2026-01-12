@@ -259,7 +259,9 @@ test "sendPendingQueries - sends unwrapped graphics query for non-tmux terminal"
     try testing.expect(!term.graphics_query_pending);
 }
 
-test "sendPendingQueries - returns false when no xtversion and not in tmux" {
+test "sendPendingQueries - sends unwrapped graphics query even without xtversion response" {
+    // This covers terminals that support kitty graphics but don't respond to xtversion.
+    // The graphics query should still be sent (unwrapped) so we can detect graphics support.
     var term = Terminal.init(.{});
     term.in_tmux = false;
     term.term_info.from_xtversion = false;
@@ -271,12 +273,20 @@ test "sendPendingQueries - returns false when no xtversion and not in tmux" {
 
     const did_send = try term.sendPendingQueries(&writer);
 
-    try testing.expect(!did_send);
-    try testing.expectEqual(@as(usize, 0), writer.getWritten().len);
+    try testing.expect(did_send);
 
-    // Pending flags should remain unchanged
-    try testing.expect(term.capability_queries_pending);
-    try testing.expect(term.graphics_query_pending);
+    const output = writer.getWritten();
+
+    // Should send unwrapped graphics query (not tmux, so no DCS wrapper)
+    try testing.expect(std.mem.indexOf(u8, output, "\x1b_Gi=31337") != null);
+    try testing.expect(std.mem.indexOf(u8, output, "\x1bPtmux;") == null);
+
+    // Should clear graphics pending flag
+    try testing.expect(!term.graphics_query_pending);
+
+    // Capability queries should NOT be re-sent (no xtversion means we don't know if tmux,
+    // but they were already sent unwrapped in queryTerminalSend)
+    try testing.expect(!term.capability_queries_pending);
 }
 
 test "sendPendingQueries - skips graphics when skip_graphics_query is set" {
