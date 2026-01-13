@@ -1,6 +1,6 @@
 import { render } from "@opentui/solid"
 import { ConsolePosition } from "@opentui/core"
-import ExampleSelector from "./components/terminal-grid-demo"
+import ExampleSelector from "./components/ExampleSelector"
 
 // Uncomment to debug solidjs reconciler
 // process.env.DEBUG = "true"

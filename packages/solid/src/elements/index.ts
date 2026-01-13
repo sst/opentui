@@ -9,7 +9,6 @@ import {
   SelectRenderable,
   StatelessTerminalRenderable,
   TabSelectRenderable,
-  TerminalRenderable,
   TextareaRenderable,
   TextAttributes,
   TextNodeRenderable,
@@ -104,7 +103,6 @@ export const baseComponents = {
   code: CodeRenderable,
   diff: DiffRenderable,
   line_number: LineNumberRenderable,
-  terminal: TerminalRenderable,
   stateless_terminal: StatelessTerminalRenderable,
 
   span: SpanRenderable,

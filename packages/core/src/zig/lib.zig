@@ -1628,39 +1628,3 @@ export fn vtermPtyToText(
 ) usize {
     return vterm.ptyToText(input_ptr, input_len, cols, rows, out_ptr, max_len);
 }
-
-export fn vtermCreateTerminal(id: u32, cols: u32, rows: u32) bool {
-    return vterm.createTerminal(id, cols, rows);
-}
-
-export fn vtermDestroyTerminal(id: u32) void {
-    vterm.destroyTerminal(id);
-}
-
-export fn vtermFeedTerminal(id: u32, data_ptr: [*]const u8, data_len: usize) bool {
-    return vterm.feedTerminal(id, data_ptr, data_len);
-}
-
-export fn vtermResizeTerminal(id: u32, cols: u32, rows: u32) bool {
-    return vterm.resizeTerminal(id, cols, rows);
-}
-
-export fn vtermResetTerminal(id: u32) bool {
-    return vterm.resetTerminal(id);
-}
-
-export fn vtermGetTerminalJson(id: u32, offset: u32, limit: u32, out_ptr: [*]u8, max_len: usize) usize {
-    return vterm.getTerminalJson(id, offset, limit, out_ptr, max_len);
-}
-
-export fn vtermGetTerminalText(id: u32, out_ptr: [*]u8, max_len: usize) usize {
-    return vterm.getTerminalText(id, out_ptr, max_len);
-}
-
-export fn vtermGetTerminalCursor(id: u32, out_ptr: [*]u8, max_len: usize) usize {
-    return vterm.getTerminalCursor(id, out_ptr, max_len);
-}
-
-export fn vtermIsTerminalReady(id: u32) i32 {
-    return vterm.isTerminalReady(id);
-}

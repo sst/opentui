@@ -24,8 +24,6 @@ import type {
   TabSelectOption,
   TabSelectRenderable,
   TabSelectRenderableOptions,
-  TerminalOptions,
-  TerminalRenderable,
   TextareaOptions,
   TextareaRenderable,
   TextNodeOptions,
@@ -147,8 +145,6 @@ export type TextareaProps = ComponentProps<TextareaOptions, TextareaRenderable> 
 export type CodeProps = ComponentProps<CodeOptions, CodeRenderable>
 
 export type DiffProps = ComponentProps<DiffRenderableOptions, DiffRenderable>
-
-export type TerminalProps = ComponentProps<TerminalOptions, TerminalRenderable>
 
 export type StatelessTerminalProps = ComponentProps<StatelessTerminalOptions, StatelessTerminalRenderable>
 

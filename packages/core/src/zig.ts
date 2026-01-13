@@ -977,42 +977,6 @@ function getOpenTUILib(libPath?: string) {
       args: ["ptr", "usize" as const, "u16", "u16", "ptr", "usize" as const] as const,
       returns: "usize" as const,
     },
-    vtermCreateTerminal: {
-      args: ["u32", "u32", "u32"] as const,
-      returns: "bool",
-    },
-    vtermDestroyTerminal: {
-      args: ["u32"] as const,
-      returns: "void",
-    },
-    vtermFeedTerminal: {
-      args: ["u32", "ptr", "usize" as const] as const,
-      returns: "bool",
-    },
-    vtermResizeTerminal: {
-      args: ["u32", "u32", "u32"] as const,
-      returns: "bool",
-    },
-    vtermResetTerminal: {
-      args: ["u32"] as const,
-      returns: "bool",
-    },
-    vtermGetTerminalJson: {
-      args: ["u32", "u32", "u32", "ptr", "usize" as const] as const,
-      returns: "usize" as const,
-    },
-    vtermGetTerminalText: {
-      args: ["u32", "ptr", "usize" as const] as const,
-      returns: "usize" as const,
-    },
-    vtermGetTerminalCursor: {
-      args: ["u32", "ptr", "usize" as const] as const,
-      returns: "usize" as const,
-    },
-    vtermIsTerminalReady: {
-      args: ["u32"] as const,
-      returns: "i32",
-    },
   })
 
   if (env.OTUI_DEBUG_FFI || env.OTUI_TRACE_FFI) {
@@ -1656,15 +1620,6 @@ export interface RenderLib {
     options?: { cols?: number; rows?: number; offset?: number; limit?: number },
   ) => any
   vtermPtyToText: (input: Buffer | Uint8Array | string, options?: { cols?: number; rows?: number }) => string
-  vtermCreateTerminal: (id: number, cols: number, rows: number) => boolean
-  vtermDestroyTerminal: (id: number) => void
-  vtermFeedTerminal: (id: number, data: Buffer | Uint8Array | string) => boolean
-  vtermResizeTerminal: (id: number, cols: number, rows: number) => boolean
-  vtermResetTerminal: (id: number) => boolean
-  vtermGetTerminalJson: (id: number, options?: { offset?: number; limit?: number }) => any
-  vtermGetTerminalText: (id: number) => string
-  vtermGetTerminalCursor: (id: number) => [number, number]
-  vtermIsTerminalReady: (id: number) => boolean
 }
 
 class FFIRenderLib implements RenderLib {
@@ -3481,112 +3436,6 @@ class FFIRenderLib implements RenderLib {
     }
 
     return this.decoder.decode(outBuffer.subarray(0, len))
-  }
-
-  public vtermCreateTerminal(id: number, cols: number, rows: number): boolean {
-    return this.opentui.symbols.vtermCreateTerminal(id, cols, rows)
-  }
-
-  public vtermDestroyTerminal(id: number): void {
-    this.opentui.symbols.vtermDestroyTerminal(id)
-  }
-
-  public vtermFeedTerminal(id: number, data: Buffer | Uint8Array | string): boolean {
-    let str: string
-    if (typeof data === "string") {
-      str = data
-    } else if (Buffer.isBuffer(data)) {
-      str = data.toString("utf-8")
-    } else {
-      str = new TextDecoder("utf-8").decode(data)
-    }
-
-    const buffer = Buffer.from(str)
-    return this.opentui.symbols.vtermFeedTerminal(id, ptr(buffer), buffer.length)
-  }
-
-  public vtermResizeTerminal(id: number, cols: number, rows: number): boolean {
-    return this.opentui.symbols.vtermResizeTerminal(id, cols, rows)
-  }
-
-  public vtermResetTerminal(id: number): boolean {
-    return this.opentui.symbols.vtermResetTerminal(id)
-  }
-
-  public vtermGetTerminalJson(id: number, options: { offset?: number; limit?: number } = {}): any {
-    const { offset = 0, limit = 0 } = options
-
-    const outBuffer = this.getVtermBuffer()
-
-    const actualLen = this.opentui.symbols.vtermGetTerminalJson(id, offset, limit, ptr(outBuffer), outBuffer.length)
-
-    const len = typeof actualLen === "bigint" ? Number(actualLen) : actualLen
-    if (len === 0) {
-      throw new Error("Failed to get terminal JSON - terminal may not exist or output exceeded buffer")
-    }
-
-    const jsonStr = this.decoder.decode(outBuffer.subarray(0, len))
-    const raw = JSON.parse(jsonStr) as {
-      cols: number
-      rows: number
-      cursor: [number, number]
-      offset: number
-      totalLines: number
-      lines: Array<Array<[string, string | null, string | null, number, number]>>
-    }
-
-    return {
-      cols: raw.cols,
-      rows: raw.rows,
-      cursor: raw.cursor,
-      offset: raw.offset,
-      totalLines: raw.totalLines,
-      lines: raw.lines.map((line) => ({
-        spans: line.map(([text, fg, bg, flags, width]) => ({
-          text,
-          fg,
-          bg,
-          flags,
-          width,
-        })),
-      })),
-    }
-  }
-
-  public vtermGetTerminalText(id: number): string {
-    const outBuffer = this.getVtermBuffer()
-
-    const actualLen = this.opentui.symbols.vtermGetTerminalText(id, ptr(outBuffer), outBuffer.length)
-
-    const len = typeof actualLen === "bigint" ? Number(actualLen) : actualLen
-    if (len === 0) {
-      return ""
-    }
-
-    return this.decoder.decode(outBuffer.subarray(0, len))
-  }
-
-  public vtermGetTerminalCursor(id: number): [number, number] {
-    // Cursor JSON is small: "[x,y]" - 32 bytes is plenty
-    const outBuffer = new Uint8Array(32)
-
-    const actualLen = this.opentui.symbols.vtermGetTerminalCursor(id, ptr(outBuffer), outBuffer.length)
-
-    const len = typeof actualLen === "bigint" ? Number(actualLen) : actualLen
-    if (len === 0) {
-      throw new Error("Failed to get terminal cursor - terminal may not exist")
-    }
-
-    const jsonStr = this.decoder.decode(outBuffer.subarray(0, len))
-    return JSON.parse(jsonStr) as [number, number]
-  }
-
-  public vtermIsTerminalReady(id: number): boolean {
-    const result = this.opentui.symbols.vtermIsTerminalReady(id)
-    if (result === -1) {
-      throw new Error("Failed to check terminal ready state - terminal may not exist")
-    }
-    return result === 1
   }
 }
 

@@ -9,7 +9,6 @@ import {
   SelectRenderable,
   StatelessTerminalRenderable,
   TabSelectRenderable,
-  TerminalRenderable,
   TextareaRenderable,
   TextRenderable,
 } from "@opentui/core"
@@ -32,7 +31,6 @@ export const baseComponents = {
   select: SelectRenderable,
   textarea: TextareaRenderable,
   scrollbox: ScrollBoxRenderable,
-  terminal: TerminalRenderable,
   "stateless-terminal": StatelessTerminalRenderable,
   "ascii-font": ASCIIFontRenderable,
   "tab-select": TabSelectRenderable,
