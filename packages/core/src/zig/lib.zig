@@ -305,9 +305,7 @@ export fn clearTerminal(rendererPtr: *renderer.CliRenderer) void {
 
 export fn setTerminalTitle(rendererPtr: *renderer.CliRenderer, titlePtr: [*]const u8, titleLen: usize) void {
     const title = titlePtr[0..titleLen];
-    var stdoutWriter = std.fs.File.stdout().writer(&rendererPtr.stdoutBuffer);
-    const writer = &stdoutWriter.interface;
-    rendererPtr.terminal.setTerminalTitle(writer, title);
+    rendererPtr.setTerminalTitle(title);
 }
 
 // Buffer functions
@@ -495,8 +493,32 @@ export fn addToHitGrid(rendererPtr: *renderer.CliRenderer, x: i32, y: i32, width
     rendererPtr.addToHitGrid(x, y, width, height, id);
 }
 
+export fn clearCurrentHitGrid(rendererPtr: *renderer.CliRenderer) void {
+    rendererPtr.clearCurrentHitGrid();
+}
+
+export fn hitGridPushScissorRect(rendererPtr: *renderer.CliRenderer, x: i32, y: i32, width: u32, height: u32) void {
+    rendererPtr.hitGridPushScissorRect(x, y, width, height);
+}
+
+export fn hitGridPopScissorRect(rendererPtr: *renderer.CliRenderer) void {
+    rendererPtr.hitGridPopScissorRect();
+}
+
+export fn hitGridClearScissorRects(rendererPtr: *renderer.CliRenderer) void {
+    rendererPtr.hitGridClearScissorRects();
+}
+
+export fn addToCurrentHitGridClipped(rendererPtr: *renderer.CliRenderer, x: i32, y: i32, width: u32, height: u32, id: u32) void {
+    rendererPtr.addToCurrentHitGridClipped(x, y, width, height, id);
+}
+
 export fn checkHit(rendererPtr: *renderer.CliRenderer, x: u32, y: u32) u32 {
     return rendererPtr.checkHit(x, y);
+}
+
+export fn getHitGridDirty(rendererPtr: *renderer.CliRenderer) bool {
+    return rendererPtr.getHitGridDirty();
 }
 
 export fn dumpHitGrid(rendererPtr: *renderer.CliRenderer) void {
@@ -549,6 +571,12 @@ export fn suspendRenderer(rendererPtr: *renderer.CliRenderer) void {
 
 export fn resumeRenderer(rendererPtr: *renderer.CliRenderer) void {
     rendererPtr.resumeRenderer();
+}
+
+export fn writeOut(rendererPtr: *renderer.CliRenderer, dataPtr: [*]const u8, dataLen: usize) void {
+    if (dataLen == 0) return;
+    const data = dataPtr[0..dataLen];
+    rendererPtr.writeOut(data);
 }
 
 export fn createTextBuffer(widthMethod: u8) ?*text_buffer.UnifiedTextBuffer {

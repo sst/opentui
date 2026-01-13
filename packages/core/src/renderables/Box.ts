@@ -92,7 +92,7 @@ export class BoxRenderable extends Renderable {
   }
 
   private initializeBorder(): void {
-    // https://github.com/sst/opentui/issues/186
+    // https://github.com/anomalyco/opentui/issues/186
     // Solid-js reconciler does not pass props to constructor on init,
     // so we need to initialize the border when supporting properties are set.
     // borderStyle, borderColor, focusedBorderColor

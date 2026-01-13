@@ -43,6 +43,10 @@ jobs:
           cd packages/core
           bun run build:native --all
           bun run build:lib
+          cd ../react
+          bun run build
+          cd ../solid
+          bun run build
 
       - name: Verify build outputs
         run: |
@@ -163,13 +167,6 @@ jobs:
             echo "✅ Solid dist packaged"
           else
             echo "⚠️  Solid dist not found (skipping)"
-          fi
-
-          if [ -d packages/vue/dist ]; then
-            cp -r packages/vue/dist artifacts/npm-packages/vue-dist
-            echo "✅ Vue dist packaged"
-          else
-            echo "⚠️  Vue dist not found (skipping)"
           fi
 
           cd artifacts

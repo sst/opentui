@@ -109,3 +109,221 @@ test "parseXtversion - empty response" {
     try testing.expectEqual(initial_name_len, term.term_info.name_len);
     try testing.expectEqual(initial_version_len, term.term_info.version_len);
 }
+
+// Test buffer for capturing terminal output
+const TestWriter = struct {
+    buffer: std.ArrayListUnmanaged(u8),
+    allocator: std.mem.Allocator,
+
+    pub fn init(allocator: std.mem.Allocator) TestWriter {
+        return .{ .buffer = .{}, .allocator = allocator };
+    }
+
+    pub fn deinit(self: *TestWriter) void {
+        self.buffer.deinit(self.allocator);
+    }
+
+    pub fn writeAll(self: *TestWriter, data: []const u8) !void {
+        try self.buffer.appendSlice(self.allocator, data);
+    }
+
+    pub fn print(self: *TestWriter, comptime fmt: []const u8, args: anytype) !void {
+        try self.buffer.writer(self.allocator).print(fmt, args);
+    }
+
+    pub fn getWritten(self: *TestWriter) []const u8 {
+        return self.buffer.items;
+    }
+
+    pub fn reset(self: *TestWriter) void {
+        self.buffer.clearRetainingCapacity();
+    }
+};
+
+test "queryTerminalSend - sends unwrapped queries when not in tmux" {
+    // Note: This test may fail if running inside tmux since checkEnvironmentOverrides
+    // reads TMUX/TERM env vars. We test the logic directly instead.
+    var term = Terminal.init(.{});
+
+    // Skip test if actually running in tmux
+    if (term.in_tmux) return error.SkipZigTest;
+
+    var writer = TestWriter.init(testing.allocator);
+    defer writer.deinit();
+
+    try term.queryTerminalSend(&writer);
+
+    const output = writer.getWritten();
+
+    // Should contain xtversion
+    try testing.expect(std.mem.indexOf(u8, output, "\x1b[>0q") != null);
+
+    // Should contain unwrapped DECRQM queries (single ESC)
+    try testing.expect(std.mem.indexOf(u8, output, "\x1b[?1016$p") != null);
+    try testing.expect(std.mem.indexOf(u8, output, "\x1b[?2027$p") != null);
+    try testing.expect(std.mem.indexOf(u8, output, "\x1b[?u") != null);
+
+    // Should NOT contain tmux DCS wrapper
+    try testing.expect(std.mem.indexOf(u8, output, "\x1bPtmux;") == null);
+
+    // Should mark capability queries as pending
+    try testing.expect(term.capability_queries_pending);
+}
+
+test "queryTerminalSend - sends DCS wrapped queries when in tmux" {
+    // Note: This test checks logic when in_tmux is true.
+    // We can't easily force in_tmux=true since checkEnvironmentOverrides resets it,
+    // so we test this via sendPendingQueries tests instead.
+    var term = Terminal.init(.{});
+
+    // Only run the DCS wrapping test if actually in tmux
+    if (!term.in_tmux) return error.SkipZigTest;
+
+    var writer = TestWriter.init(testing.allocator);
+    defer writer.deinit();
+
+    try term.queryTerminalSend(&writer);
+
+    const output = writer.getWritten();
+
+    // Should contain xtversion (unwrapped - used for detection)
+    try testing.expect(std.mem.indexOf(u8, output, "\x1b[>0q") != null);
+
+    // Should contain tmux DCS wrapper start and doubled ESC for queries
+    // wrapForTmux wraps all queries together with one DCS envelope
+    try testing.expect(std.mem.indexOf(u8, output, "\x1bPtmux;\x1b\x1b[?1016$p") != null);
+
+    // Should NOT mark capability queries as pending (already sent wrapped)
+    try testing.expect(!term.capability_queries_pending);
+}
+
+test "sendPendingQueries - sends wrapped queries after tmux detected via xtversion" {
+    var term = Terminal.init(.{});
+    term.in_tmux = false;
+    term.capability_queries_pending = true;
+    term.graphics_query_pending = true;
+
+    // Simulate tmux detected via xtversion
+    term.term_info.from_xtversion = true;
+    term.term_info.name_len = 4;
+    @memcpy(term.term_info.name[0..4], "tmux");
+
+    var writer = TestWriter.init(testing.allocator);
+    defer writer.deinit();
+
+    const did_send = try term.sendPendingQueries(&writer);
+
+    try testing.expect(did_send);
+
+    const output = writer.getWritten();
+
+    // Should send DCS wrapped capability queries (wrapForTmux wraps all queries together)
+    try testing.expect(std.mem.indexOf(u8, output, "\x1bPtmux;\x1b\x1b[?1016$p") != null);
+
+    // Should send DCS wrapped graphics query
+    try testing.expect(std.mem.indexOf(u8, output, "\x1bPtmux;\x1b\x1b_G") != null);
+
+    // Should clear pending flags
+    try testing.expect(!term.capability_queries_pending);
+    try testing.expect(!term.graphics_query_pending);
+}
+
+test "sendPendingQueries - sends unwrapped graphics query for non-tmux terminal" {
+    var term = Terminal.init(.{});
+    term.in_tmux = false;
+    term.capability_queries_pending = true;
+    term.graphics_query_pending = true;
+
+    // Simulate non-tmux terminal detected via xtversion
+    term.term_info.from_xtversion = true;
+    term.term_info.name_len = 5;
+    @memcpy(term.term_info.name[0..5], "kitty");
+
+    var writer = TestWriter.init(testing.allocator);
+    defer writer.deinit();
+
+    const did_send = try term.sendPendingQueries(&writer);
+
+    try testing.expect(did_send);
+
+    const output = writer.getWritten();
+
+    // Should NOT send DCS wrapped capability queries (not tmux)
+    try testing.expect(std.mem.indexOf(u8, output, "\x1bPtmux;") == null);
+
+    // Should send unwrapped graphics query
+    try testing.expect(std.mem.indexOf(u8, output, "\x1b_Gi=31337") != null);
+
+    // Should clear pending flags
+    try testing.expect(!term.capability_queries_pending);
+    try testing.expect(!term.graphics_query_pending);
+}
+
+test "sendPendingQueries - sends unwrapped graphics query even without xtversion response" {
+    // This covers terminals that support kitty graphics but don't respond to xtversion.
+    // The graphics query should still be sent (unwrapped) so we can detect graphics support.
+    var term = Terminal.init(.{});
+    term.in_tmux = false;
+    term.term_info.from_xtversion = false;
+    term.capability_queries_pending = true;
+    term.graphics_query_pending = true;
+
+    var writer = TestWriter.init(testing.allocator);
+    defer writer.deinit();
+
+    const did_send = try term.sendPendingQueries(&writer);
+
+    try testing.expect(did_send);
+
+    const output = writer.getWritten();
+
+    // Should send unwrapped graphics query (not tmux, so no DCS wrapper)
+    try testing.expect(std.mem.indexOf(u8, output, "\x1b_Gi=31337") != null);
+    try testing.expect(std.mem.indexOf(u8, output, "\x1bPtmux;") == null);
+
+    // Should clear graphics pending flag
+    try testing.expect(!term.graphics_query_pending);
+
+    // Capability queries should NOT be re-sent (no xtversion means we don't know if tmux,
+    // but they were already sent unwrapped in queryTerminalSend)
+    try testing.expect(!term.capability_queries_pending);
+}
+
+test "sendPendingQueries - skips graphics when skip_graphics_query is set" {
+    var term = Terminal.init(.{});
+    term.in_tmux = true;
+    term.skip_graphics_query = true;
+    term.graphics_query_pending = true;
+    term.capability_queries_pending = false;
+
+    var writer = TestWriter.init(testing.allocator);
+    defer writer.deinit();
+
+    const did_send = try term.sendPendingQueries(&writer);
+
+    try testing.expect(!did_send);
+
+    const output = writer.getWritten();
+    try testing.expect(std.mem.indexOf(u8, output, "Gi=31337") == null);
+}
+
+test "isXtversionTmux - detects tmux from xtversion" {
+    var term = Terminal.init(.{});
+
+    // Not from xtversion
+    term.term_info.from_xtversion = false;
+    term.term_info.name_len = 4;
+    @memcpy(term.term_info.name[0..4], "tmux");
+    try testing.expect(!term.isXtversionTmux());
+
+    // From xtversion but not tmux
+    term.term_info.from_xtversion = true;
+    term.term_info.name_len = 5;
+    @memcpy(term.term_info.name[0..5], "kitty");
+    try testing.expect(!term.isXtversionTmux());
+
+    // From xtversion and is tmux
+    term.term_info.name_len = 4;
+    @memcpy(term.term_info.name[0..4], "tmux");
+    try testing.expect(term.isXtversionTmux());
+}

@@ -1,6 +1,6 @@
-import { createSignal, onMount } from "solid-js"
-import { SyntaxStyle } from "@opentui/core"
+import { RGBA, SyntaxStyle, TextAttributes } from "@opentui/core"
 import { useKeyboard } from "@opentui/solid"
+import { createSignal, onMount } from "solid-js"
 
 export default function LineNumberDemo() {
   const [showLineNumbers, setShowLineNumbers] = createSignal(true)
@@ -26,15 +26,15 @@ const evens = results.filter(n => n % 2 === 0)
 console.log('Even numbers:', evens)`
 
   const syntaxStyle = SyntaxStyle.fromStyles({
-    keyword: { fg: "#C792EA" },
-    function: { fg: "#82AAFF" },
-    string: { fg: "#C3E88D" },
-    number: { fg: "#F78C6C" },
-    comment: { fg: "#546E7A" },
-    type: { fg: "#FFCB6B" },
-    operator: { fg: "#89DDFF" },
-    variable: { fg: "#EEFFFF" },
-    default: { fg: "#A6ACCD" },
+    keyword: { fg: RGBA.fromHex("#C792EA") },
+    function: { fg: RGBA.fromHex("#82AAFF") },
+    string: { fg: RGBA.fromHex("#C3E88D") },
+    number: { fg: RGBA.fromHex("#F78C6C") },
+    comment: { fg: RGBA.fromHex("#546E7A") },
+    type: { fg: RGBA.fromHex("#FFCB6B") },
+    operator: { fg: RGBA.fromHex("#89DDFF") },
+    variable: { fg: RGBA.fromHex("#EEFFFF") },
+    default: { fg: RGBA.fromHex("#A6ACCD") },
   })
 
   let lineNumberRef: any
@@ -120,8 +120,8 @@ console.log('Even numbers:', evens)`
 
   return (
     <box flexDirection="column" width="100%" height="100%" gap={1}>
-      <box flexDirection="column" backgroundColor="#0D1117" padding={1} border borderColor="#30363D">
-        <text fg="#4ECDC4" bold>
+      <box flexDirection="column" backgroundColor="#0D1117" padding={1} border borderColor="#30363D" flexShrink={0}>
+        <text fg="#4ECDC4" attributes={TextAttributes.BOLD}>
           Line Numbers Demo
         </text>
         <text fg="#888888">Keybindings:</text>

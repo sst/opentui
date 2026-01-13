@@ -77,11 +77,6 @@ jobs:
             echo "✅ Solid dist copied"
           fi
 
-          if [ -d "npm-packages/vue-dist" ]; then
-            cp -r npm-packages/vue-dist packages/vue/dist
-            echo "✅ Vue dist copied"
-          fi
-
           echo ""
           echo "Package extraction complete:"
           ls -lah packages/core/dist/
