@@ -66,6 +66,12 @@ registerEnvVar({
   type: "boolean",
   default: false,
 })
+registerEnvVar({
+  name: "OPENTUI_FORCE_NOZWJ",
+  description: "Use no_zwj width method (Unicode without ZWJ joining)",
+  type: "boolean",
+  default: false,
+})
 
 // Global singleton state for FFI tracing to prevent duplicate exit handlers
 let globalTraceSymbols: Record<string, number[]> | null = null
@@ -3245,6 +3251,7 @@ class FFIRenderLib implements RenderLib {
       sync: caps.sync,
       bracketed_paste: caps.bracketed_paste,
       hyperlinks: caps.hyperlinks,
+      grapheme_cursor_positioning: caps.grapheme_cursor_positioning,
       terminal: {
         name: caps.term_name ?? "",
         version: caps.term_version ?? "",

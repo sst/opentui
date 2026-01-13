@@ -4,6 +4,7 @@ const atomic = std.atomic;
 const assert = std.debug.assert;
 const ansi = @import("ansi.zig");
 const utf8 = @import("utf8.zig");
+const logger = @import("logger.zig");
 
 const WidthMethod = utf8.WidthMethod;
 
@@ -24,6 +25,7 @@ pub const Capabilities = struct {
     sync: bool = false,
     bracketed_paste: bool = false,
     hyperlinks: bool = false,
+    grapheme_cursor_positioning: bool = false,
 };
 
 pub const MouseLevel = enum {
@@ -260,6 +262,7 @@ fn checkEnvironmentOverrides(self: *Terminal) void {
     if (env_map.get("TMUX")) |_| {
         self.in_tmux = true;
         self.caps.unicode = .wcwidth;
+        self.caps.grapheme_cursor_positioning = true;
     } else if (env_map.get("TERM")) |term| {
         if (std.mem.startsWith(u8, term, "tmux")) {
             self.in_tmux = true;
@@ -267,6 +270,11 @@ fn checkEnvironmentOverrides(self: *Terminal) void {
         } else if (std.mem.startsWith(u8, term, "screen")) {
             self.skip_graphics_query = true;
             self.caps.unicode = .wcwidth;
+            self.caps.grapheme_cursor_positioning = true;
+        }
+        // Alacritty needs explicit cursor positioning for graphemes
+        if (std.mem.indexOf(u8, term, "alacritty") != null) {
+            self.caps.grapheme_cursor_positioning = true;
         }
     }
 
@@ -298,6 +306,20 @@ fn checkEnvironmentOverrides(self: *Terminal) void {
             self.caps.unicode = .unicode;
         } else if (std.mem.eql(u8, prog, "Apple_Terminal")) {
             self.caps.unicode = .wcwidth;
+        } else if (std.mem.eql(u8, prog, "Alacritty")) {
+            // Alacritty needs explicit cursor positioning for graphemes
+            self.caps.grapheme_cursor_positioning = true;
+        }
+    }
+
+    // Alacritty detection via its specific environment variables
+    // (Alacritty doesn't set TERM_PROGRAM but sets these instead)
+    if (env_map.get("ALACRITTY_SOCKET") != null or env_map.get("ALACRITTY_LOG") != null) {
+        self.caps.grapheme_cursor_positioning = true;
+        if (!self.term_info.from_xtversion and self.term_info.name_len == 0) {
+            const name = "Alacritty";
+            @memcpy(self.term_info.name[0..name.len], name);
+            self.term_info.name_len = name.len;
         }
     }
 
@@ -324,6 +346,17 @@ fn checkEnvironmentOverrides(self: *Terminal) void {
     }
     if (env_map.get("OPENTUI_FORCE_UNICODE")) |_| {
         self.caps.unicode = .unicode;
+    }
+    if (env_map.get("OPENTUI_FORCE_NOZWJ")) |_| {
+        self.caps.unicode = .no_zwj;
+    }
+
+    if (env_map.get("OPENTUI_FORCE_EXPLICIT_WIDTH")) |val| {
+        if (std.mem.eql(u8, val, "true") or std.mem.eql(u8, val, "1")) {
+            self.caps.explicit_width = true;
+        } else if (std.mem.eql(u8, val, "false") or std.mem.eql(u8, val, "0")) {
+            self.caps.explicit_width = false;
+        }
     }
 
     // Enable hyperlinks for modern terminals that support them
@@ -488,6 +521,11 @@ pub fn processCapabilityResponse(self: *Terminal, response: []const u8) void {
 
     if (std.mem.indexOf(u8, response, "tmux")) |_| {
         self.caps.unicode = .wcwidth;
+        self.caps.grapheme_cursor_positioning = true;
+    }
+
+    if (std.mem.indexOf(u8, response, "alacritty")) |_| {
+        self.caps.grapheme_cursor_positioning = true;
     }
 
     // Sixel detection via device attributes (capability 4 in DA1 response ending with 'c')

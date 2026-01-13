@@ -65,6 +65,20 @@ Disable Kitty graphics protocol detection
 **Type:** `boolean`  
 **Default:** `false`
 
+## OPENTUI_FORCE_NOZWJ
+
+Use no_zwj width method (Unicode without ZWJ joining)
+
+**Type:** `boolean`  
+**Default:** `false`
+
+## OPENTUI_FORCE_EXPLICIT_WIDTH
+
+Force explicit width capability in terminal to true or false. Set to "true" or "1" to enable, "false" or "0" to disable.
+
+**Type:** `string`  
+**Values:** `"true"`, `"1"`, `"false"`, `"0"`
+
 ## OTUI_USE_CONSOLE
 
 Whether to use the console. Will not capture console output if set to false.

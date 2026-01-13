@@ -2310,7 +2310,6 @@ test "drawTextBuffer - setStyledText with multiple colors and horizontal scrolli
         try opt_buffer.clear(.{ 0.0, 0.0, 0.0, 1.0 }, 32);
         try opt_buffer.drawTextBuffer(view, 0, 0);
 
-
         // At x=5, showing chars 5-24: " x = function(y) { "
         // Position 0: ' ' (source 5) - should be white
         // Position 5: 'f' (source 10) - should be GREEN
@@ -2331,7 +2330,6 @@ test "drawTextBuffer - setStyledText with multiple colors and horizontal scrolli
 
         try opt_buffer.clear(.{ 0.0, 0.0, 0.0, 1.0 }, 32);
         try opt_buffer.drawTextBuffer(view, 0, 0);
-
 
         // At x=15, showing chars 15-34: "ion(y) { return y * "
         // "const x = function..."
@@ -2370,7 +2368,6 @@ test "drawTextBuffer - setStyledText with multiple colors and horizontal scrolli
 
         try opt_buffer.clear(.{ 0.0, 0.0, 0.0, 1.0 }, 32);
         try opt_buffer.drawTextBuffer(view, 0, 0);
-
 
         // At x=25, showing chars 25-44: "eturn y * 2; }"
         // Position 0: 'e' (source 25) - should be BLUE (part of "return" 24-30)
@@ -3186,4 +3183,57 @@ test "drawTextBuffer - wcwidth cursor movement matches rendered output" {
     // All cells should now be spaces
     const cell_0_final = opt_buffer.get(0, 0) orelse unreachable;
     try std.testing.expectEqual(@as(u32, ' '), cell_0_final.char);
+}
+
+test "drawTextBuffer - Thai ว่ grapheme in quotes occupies one cell" {
+    const pool = gp.initGlobalPool(std.testing.allocator);
+    defer gp.deinitGlobalPool();
+
+    var tb = try TextBuffer.init(std.testing.allocator, pool, .unicode);
+    defer tb.deinit();
+
+    var view = try TextBufferView.init(std.testing.allocator, tb);
+    defer view.deinit();
+
+    // ว่ is a single grapheme cluster: ว (U+0E27) + ่ (U+0E48, tone mark)
+    // With quotes: "ว่" should be 3 cells total (quote + grapheme + quote)
+    try tb.setText("\"ว่\"");
+
+    var opt_buffer = try OptimizedBuffer.init(
+        std.testing.allocator,
+        10,
+        1,
+        .{ .pool = pool, .width_method = .unicode },
+    );
+    defer opt_buffer.deinit();
+
+    try opt_buffer.clear(.{ 0.0, 0.0, 0.0, 1.0 }, 32);
+    try opt_buffer.drawTextBuffer(view, 0, 0);
+
+    // Cell 0: opening quote "
+    const cell_0 = opt_buffer.get(0, 0) orelse unreachable;
+    try std.testing.expectEqual(@as(u32, '"'), cell_0.char);
+
+    // Cell 1: Thai grapheme ว่ (stored as grapheme pool reference with high bit set)
+    const cell_1 = opt_buffer.get(1, 0) orelse unreachable;
+    // The cell uses grapheme pool - high bit indicates pool reference
+    // Just verify it's not a simple ASCII character and not a space
+    try std.testing.expect(cell_1.char != ' ');
+    try std.testing.expect(cell_1.char != '"');
+
+    // Cell 2: closing quote "
+    const cell_2 = opt_buffer.get(2, 0) orelse unreachable;
+    try std.testing.expectEqual(@as(u32, '"'), cell_2.char);
+
+    // Cell 3 should be a space (cleared)
+    const cell_3 = opt_buffer.get(3, 0) orelse unreachable;
+    try std.testing.expectEqual(@as(u32, ' '), cell_3.char);
+
+    // Verify ANSI output contains the Thai grapheme
+    var out_buffer: [100]u8 = undefined;
+    const written = try opt_buffer.writeResolvedChars(&out_buffer, false);
+    const result = out_buffer[0..written];
+
+    // The output should contain "ว่" - quotes with the Thai grapheme inside
+    try std.testing.expect(std.mem.indexOf(u8, result, "\"ว่\"") != null);
 }

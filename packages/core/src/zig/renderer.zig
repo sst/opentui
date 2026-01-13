@@ -693,11 +693,19 @@ pub const CliRenderer = struct {
                     };
                     if (bytes.len > 0) {
                         const capabilities = self.terminal.getCapabilities();
+                        const graphemeWidth = gp.charRightExtent(cell.char) + 1;
                         if (capabilities.explicit_width) {
-                            const graphemeWidth = gp.charRightExtent(cell.char) + 1;
                             ansi.ANSI.explicitWidthOutput(writer, graphemeWidth, bytes) catch {};
                         } else {
                             writer.writeAll(bytes) catch {};
+                            // For terminals with incorrect Unicode width calculation (tmux, alacritty),
+                            // explicitly position the cursor after the grapheme to ensure correct alignment
+                            if (capabilities.grapheme_cursor_positioning) {
+                                const nextX = x + graphemeWidth;
+                                if (nextX < self.width) {
+                                    ansi.ANSI.moveToOutput(writer, nextX + 1, y + 1 + self.renderOffset) catch {};
+                                }
+                            }
                         }
                     }
                 } else if (gp.isContinuationChar(cell.char)) {
