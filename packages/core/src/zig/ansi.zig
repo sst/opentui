@@ -89,6 +89,35 @@ pub const ANSI = struct {
     pub const decrqmColorScheme = "\x1b[?2031$p";
     pub const csiUQuery = "\x1b[?u";
     pub const kittyGraphicsQuery = "\x1b_Gi=31337,s=1,v=1,a=q,t=d,f=24;AAAA\x1b\\\x1b[c";
+
+    pub const capabilityQueries = decrqmSgrPixels ++
+        decrqmUnicode ++
+        decrqmColorScheme ++
+        decrqmFocus ++
+        decrqmBracketedPaste ++
+        decrqmSync ++
+        csiUQuery;
+
+    // tmux DCS passthrough wrapper (ESC chars doubled)
+    pub const tmuxDcsStart = "\x1bPtmux;";
+    pub const tmuxDcsEnd = "\x1b\\";
+
+    pub fn wrapForTmux(comptime seq: []const u8) []const u8 {
+        comptime {
+            var result: []const u8 = tmuxDcsStart;
+            for (seq) |c| {
+                if (c == '\x1b') {
+                    result = result ++ "\x1b\x1b";
+                } else {
+                    result = result ++ &[_]u8{c};
+                }
+            }
+            return result ++ tmuxDcsEnd;
+        }
+    }
+
+    pub const kittyGraphicsQueryTmux = wrapForTmux(kittyGraphicsQuery);
+    pub const capabilityQueriesTmux = wrapForTmux(capabilityQueries);
     pub const sixelGeometryQuery = "\x1b[?2;1;0S";
     pub const cursorPositionRequest = "\x1b[6n";
     pub const explicitWidthQuery = "\x1b]66;w=1; \x1b\\";

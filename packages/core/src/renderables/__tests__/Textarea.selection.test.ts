@@ -322,7 +322,10 @@ describe("Textarea - Selection Tests", () => {
       const viewport = editor.editorView.getViewport()
       expect(viewport.offsetY).toBeGreaterThan(0)
 
-      await currentMouse.drag(editor.x, editor.y, editor.x + 5, editor.y)
+      // Use manual drag steps instead of the drag helper to avoid timing issues
+      await currentMouse.pressDown(editor.x, editor.y)
+      await currentMouse.emitMouseEvent("drag", editor.x + 5, editor.y)
+      await currentMouse.release(editor.x + 5, editor.y)
       await renderOnce()
 
       buffer.clear(RGBA.fromValues(0, 0, 0, 1))

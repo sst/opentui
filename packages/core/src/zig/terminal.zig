@@ -64,6 +64,11 @@ pub const TerminalInfo = struct {
 caps: Capabilities = .{},
 opts: Options = .{},
 
+in_tmux: bool = false,
+skip_graphics_query: bool = false,
+graphics_query_pending: bool = false,
+capability_queries_pending: bool = false,
+
 state: struct {
     alt_screen: bool = false,
     kitty_keyboard: bool = false,
@@ -156,36 +161,57 @@ pub fn exitAltScreen(self: *Terminal, tty: anytype) !void {
 
 pub fn queryTerminalSend(self: *Terminal, tty: anytype) !void {
     self.checkEnvironmentOverrides();
+    self.graphics_query_pending = !self.skip_graphics_query;
+    self.capability_queries_pending = false;
 
-    try tty.writeAll(ansi.ANSI.hideCursor ++
-        ansi.ANSI.saveCursorState ++
-        ansi.ANSI.decrqmSgrPixels ++
-        ansi.ANSI.decrqmUnicode ++
-        ansi.ANSI.decrqmColorScheme ++
-        ansi.ANSI.decrqmFocus ++
-        ansi.ANSI.decrqmBracketedPaste ++
-        ansi.ANSI.decrqmSync ++
+    // Send xtversion first (doesn't need DCS wrapping - used for tmux detection)
+    try tty.writeAll(ansi.ANSI.xtversion ++
+        ansi.ANSI.hideCursor ++
+        ansi.ANSI.saveCursorState);
 
-        // Explicit width detection
-        ansi.ANSI.home ++
+    if (self.in_tmux) {
+        try tty.writeAll(ansi.ANSI.capabilityQueriesTmux);
+    } else {
+        try tty.writeAll(ansi.ANSI.capabilityQueries);
+        self.capability_queries_pending = true;
+    }
+
+    try tty.writeAll(ansi.ANSI.home ++
         ansi.ANSI.explicitWidthQuery ++
         ansi.ANSI.cursorPositionRequest ++
-
-        // Scaled text detection
         ansi.ANSI.home ++
         ansi.ANSI.scaledTextQuery ++
-        ansi.ANSI.cursorPositionRequest ++
+        ansi.ANSI.cursorPositionRequest);
 
-        // Version and capability queries
-        ansi.ANSI.xtversion ++
-        ansi.ANSI.csiUQuery ++
-        // Kitty graphics detection: sends dummy query + DA1
-        // Terminal will respond with ESC_Gi=31337;OK/ERROR ESC\ if supported, or just DA1 if not
-        // NOTE: deactivated temporarily due to issues with tmux showing the query as pane title
-        // ansi.ANSI.kittyGraphicsQuery ++
-        ansi.ANSI.restoreCursorState
-            // ++ ansi.ANSI.sixelGeometryQuery
-    );
+    try tty.writeAll(ansi.ANSI.restoreCursorState);
+}
+
+pub fn sendPendingQueries(self: *Terminal, tty: anytype) !bool {
+    var sent = false;
+    const is_tmux = self.in_tmux or self.isXtversionTmux();
+
+    // Re-send capability queries DCS wrapped if tmux detected via xtversion
+    // Only needed if we got xtversion response indicating tmux
+    if (self.capability_queries_pending) {
+        if (self.term_info.from_xtversion and is_tmux) {
+            try tty.writeAll(ansi.ANSI.capabilityQueriesTmux);
+            sent = true;
+        }
+        // Clear pending flag regardless - non-tmux terminals already received unwrapped queries
+        self.capability_queries_pending = false;
+    }
+
+    if (self.graphics_query_pending and !self.skip_graphics_query) {
+        if (is_tmux) {
+            try tty.writeAll(ansi.ANSI.kittyGraphicsQueryTmux);
+        } else {
+            try tty.writeAll(ansi.ANSI.kittyGraphicsQuery);
+        }
+        self.graphics_query_pending = false;
+        sent = true;
+    }
+
+    return sent;
 }
 
 pub fn enableDetectedFeatures(self: *Terminal, tty: anytype, use_kitty_keyboard: bool) !void {
@@ -222,6 +248,9 @@ pub fn enableDetectedFeatures(self: *Terminal, tty: anytype, use_kitty_keyboard:
 }
 
 fn checkEnvironmentOverrides(self: *Terminal) void {
+    self.in_tmux = false;
+    self.skip_graphics_query = false;
+
     var env_map = std.process.getEnvMap(std.heap.page_allocator) catch return;
     defer env_map.deinit();
 
@@ -229,11 +258,20 @@ fn checkEnvironmentOverrides(self: *Terminal) void {
     self.caps.bracketed_paste = true;
 
     if (env_map.get("TMUX")) |_| {
+        self.in_tmux = true;
         self.caps.unicode = .wcwidth;
     } else if (env_map.get("TERM")) |term| {
-        if (std.mem.startsWith(u8, term, "tmux") or std.mem.startsWith(u8, term, "screen")) {
+        if (std.mem.startsWith(u8, term, "tmux")) {
+            self.in_tmux = true;
+            self.caps.unicode = .wcwidth;
+        } else if (std.mem.startsWith(u8, term, "screen")) {
+            self.skip_graphics_query = true;
             self.caps.unicode = .wcwidth;
         }
+    }
+
+    if (env_map.get("OPENTUI_NO_GRAPHICS")) |_| {
+        self.skip_graphics_query = true;
     }
 
     // Extract terminal name and version from environment variables
@@ -571,6 +609,10 @@ fn parseXtversion(self: *Terminal, term_str: []const u8) void {
     }
 
     self.term_info.from_xtversion = true;
+}
+
+pub fn isXtversionTmux(self: *Terminal) bool {
+    return self.term_info.from_xtversion and std.mem.eql(u8, self.getTerminalName(), "tmux");
 }
 
 pub fn getTerminalInfo(self: *Terminal) TerminalInfo {
