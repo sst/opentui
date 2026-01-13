@@ -7,7 +7,8 @@ const Screen = ghostty_vt.Screen;
 
 // Reusable arena for stateless functions (ptyToJson, ptyToText).
 // Reset after each call to reuse allocated pages - avoids mmap/munmap per call.
-var stateless_arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
+// Using threadlocal for thread safety when called concurrently.
+threadlocal var stateless_arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
 
 pub const StyleFlags = packed struct(u8) {
     bold: bool = false,

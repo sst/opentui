@@ -3377,7 +3377,9 @@ class FFIRenderLib implements RenderLib {
 
     const len = typeof actualLen === "bigint" ? Number(actualLen) : actualLen
     if (len === 0) {
-      throw new Error("VTerm ptyToJson failed or output exceeded buffer size")
+      throw new Error(
+        "VTerm ptyToJson returned 0: either the FFI call failed to initialize/process, or the output exceeded the buffer size and was truncated",
+      )
     }
 
     const jsonStr = this.decoder.decode(outBuffer.subarray(0, len))
