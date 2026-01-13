@@ -3237,3 +3237,245 @@ test "drawTextBuffer - Thai ว่ grapheme in quotes occupies one cell" {
     // The output should contain "ว่" - quotes with the Thai grapheme inside
     try std.testing.expect(std.mem.indexOf(u8, result, "\"ว่\"") != null);
 }
+
+// ============================================================================
+// WCWIDTH MODE - COMBINING CHARACTER TESTS
+// ============================================================================
+
+test "drawTextBuffer wcwidth - Devanagari virama combining mark doesn't explode" {
+    // This tests the bug where combining marks in wcwidth mode would cause
+    // cells to be overwritten incorrectly on each render, leading to
+    // "exploding" text that grows with each frame.
+    //
+    // The text "क्ष" is Ka + Virama + Sha (a conjunct consonant)
+    // In wcwidth mode:
+    // - Ka has width 1
+    // - Virama (combining) has width 0
+    // - Sha has width 1
+    // Total width should be 2, and rendering should produce exactly 2 cells.
+    const pool = gp.initGlobalPool(std.testing.allocator);
+    defer gp.deinitGlobalPool();
+
+    var tb = try TextBuffer.init(std.testing.allocator, pool, .wcwidth);
+    defer tb.deinit();
+
+    var view = try TextBufferView.init(std.testing.allocator, tb);
+    defer view.deinit();
+
+    // Ka + Virama + Sha (conjunct ksha)
+    const text = "क्ष";
+    try tb.setText(text);
+
+    var opt_buffer = try OptimizedBuffer.init(
+        std.testing.allocator,
+        10,
+        1,
+        .{ .pool = pool, .width_method = .wcwidth },
+    );
+    defer opt_buffer.deinit();
+
+    // First render
+    try opt_buffer.clear(.{ 0.0, 0.0, 0.0, 1.0 }, ' ');
+    try opt_buffer.drawTextBuffer(view, 0, 0);
+
+    // Capture the state after first render
+    var out_buffer1: [100]u8 = undefined;
+    const written1 = try opt_buffer.writeResolvedChars(&out_buffer1, false);
+    const result1 = out_buffer1[0..written1];
+
+    // Second render (simulating next frame)
+    try opt_buffer.clear(.{ 0.0, 0.0, 0.0, 1.0 }, ' ');
+    try opt_buffer.drawTextBuffer(view, 0, 0);
+
+    // Capture the state after second render
+    var out_buffer2: [100]u8 = undefined;
+    const written2 = try opt_buffer.writeResolvedChars(&out_buffer2, false);
+    const result2 = out_buffer2[0..written2];
+
+    // The output should be identical between renders - no accumulation/explosion
+    try std.testing.expectEqualStrings(result1, result2);
+
+    // In wcwidth mode:
+    // - Ka (क) at col 0, width 1
+    // - Virama (्) has width 0 (combining mark) - should NOT render to any cell
+    // - Sha (ष) at col 1, width 1
+    // So we should have exactly 2 non-space characters, not 3
+
+    // Verify the cells are correct
+    // Cell 0: Ka (क)
+    const cell_0 = opt_buffer.get(0, 0) orelse unreachable;
+    try std.testing.expect(cell_0.char != ' ');
+
+    // Cell 1: Sha (ष)
+    const cell_1 = opt_buffer.get(1, 0) orelse unreachable;
+    try std.testing.expect(cell_1.char != ' ');
+
+    // Cell 2: Should be space (buffer was cleared with space)
+    const cell_2 = opt_buffer.get(2, 0) orelse unreachable;
+    try std.testing.expectEqual(@as(u32, ' '), cell_2.char);
+
+    // Also verify the text width is 2 (not 3)
+    const utf8 = @import("../utf8.zig");
+    const text_width = utf8.calculateTextWidth(text, 4, false, .wcwidth);
+    try std.testing.expectEqual(@as(u32, 2), text_width);
+}
+
+test "drawTextBuffer wcwidth - Thai combining vowel doesn't explode" {
+    // Thai text with combining vowels and tone marks
+    // In wcwidth mode, combining characters should have width 0 and not be
+    // rendered to separate cells
+    const pool = gp.initGlobalPool(std.testing.allocator);
+    defer gp.deinitGlobalPool();
+
+    var tb = try TextBuffer.init(std.testing.allocator, pool, .wcwidth);
+    defer tb.deinit();
+
+    var view = try TextBufferView.init(std.testing.allocator, tb);
+    defer view.deinit();
+
+    // Thai word with combining marks: ก + mai ek (tone mark above)
+    // ก่ = U+0E01 (ko kai, width 1) + U+0E48 (mai ek, combining, width 0)
+    const text = "ก่";
+    try tb.setText(text);
+
+    var opt_buffer = try OptimizedBuffer.init(
+        std.testing.allocator,
+        10,
+        1,
+        .{ .pool = pool, .width_method = .wcwidth },
+    );
+    defer opt_buffer.deinit();
+
+    // First render
+    try opt_buffer.clear(.{ 0.0, 0.0, 0.0, 1.0 }, ' ');
+    try opt_buffer.drawTextBuffer(view, 0, 0);
+
+    var out_buffer1: [100]u8 = undefined;
+    const written1 = try opt_buffer.writeResolvedChars(&out_buffer1, false);
+    const result1 = out_buffer1[0..written1];
+
+    // Second render
+    try opt_buffer.clear(.{ 0.0, 0.0, 0.0, 1.0 }, ' ');
+    try opt_buffer.drawTextBuffer(view, 0, 0);
+
+    var out_buffer2: [100]u8 = undefined;
+    const written2 = try opt_buffer.writeResolvedChars(&out_buffer2, false);
+    const result2 = out_buffer2[0..written2];
+
+    // The output should be identical between renders
+    try std.testing.expectEqualStrings(result1, result2);
+
+    // Verify width is 1 (base consonant only, tone mark has width 0)
+    const utf8 = @import("../utf8.zig");
+    const text_width = utf8.calculateTextWidth(text, 4, false, .wcwidth);
+    try std.testing.expectEqual(@as(u32, 1), text_width);
+
+    // Cell 0: Thai consonant with tone mark (stored in grapheme pool)
+    const cell_0 = opt_buffer.get(0, 0) orelse unreachable;
+    try std.testing.expect(cell_0.char != ' ');
+
+    // Cell 1: Should be space
+    const cell_1 = opt_buffer.get(1, 0) orelse unreachable;
+    try std.testing.expectEqual(@as(u32, ' '), cell_1.char);
+}
+
+test "drawTextBuffer wcwidth - combining mark mixed with ASCII" {
+    // Test mixing ASCII with combining marks in wcwidth mode
+    const pool = gp.initGlobalPool(std.testing.allocator);
+    defer gp.deinitGlobalPool();
+
+    var tb = try TextBuffer.init(std.testing.allocator, pool, .wcwidth);
+    defer tb.deinit();
+
+    var view = try TextBufferView.init(std.testing.allocator, tb);
+    defer view.deinit();
+
+    // "A" + Devanagari text + "B"
+    // "Aक्षB" should be: A(1) + Ka(1) + virama(0) + Sha(1) + B(1) = 4 cells
+    const text = "Aक्षB";
+    try tb.setText(text);
+
+    var opt_buffer = try OptimizedBuffer.init(
+        std.testing.allocator,
+        10,
+        1,
+        .{ .pool = pool, .width_method = .wcwidth },
+    );
+    defer opt_buffer.deinit();
+
+    try opt_buffer.clear(.{ 0.0, 0.0, 0.0, 1.0 }, ' ');
+    try opt_buffer.drawTextBuffer(view, 0, 0);
+
+    // Verify width calculation
+    const utf8 = @import("../utf8.zig");
+    const text_width = utf8.calculateTextWidth(text, 4, false, .wcwidth);
+    try std.testing.expectEqual(@as(u32, 4), text_width);
+
+    // Cell 0: 'A'
+    const cell_0 = opt_buffer.get(0, 0) orelse unreachable;
+    try std.testing.expectEqual(@as(u32, 'A'), cell_0.char);
+
+    // Cell 1: Ka (क)
+    const cell_1 = opt_buffer.get(1, 0) orelse unreachable;
+    try std.testing.expect(cell_1.char != ' ');
+    try std.testing.expect(cell_1.char != 'A');
+    try std.testing.expect(cell_1.char != 'B');
+
+    // Cell 2: Sha (ष)
+    const cell_2 = opt_buffer.get(2, 0) orelse unreachable;
+    try std.testing.expect(cell_2.char != ' ');
+    try std.testing.expect(cell_2.char != 'A');
+    try std.testing.expect(cell_2.char != 'B');
+
+    // Cell 3: 'B'
+    const cell_3 = opt_buffer.get(3, 0) orelse unreachable;
+    try std.testing.expectEqual(@as(u32, 'B'), cell_3.char);
+
+    // Cell 4: Should be space
+    const cell_4 = opt_buffer.get(4, 0) orelse unreachable;
+    try std.testing.expectEqual(@as(u32, ' '), cell_4.char);
+}
+
+test "drawTextBuffer wcwidth - combining acute accent doesn't take cell" {
+    // Test that combining marks with width 0 don't take up a cell in wcwidth mode.
+    // "A\u{0301}B" is 'A' + combining acute + 'B'
+    // Width should be: A(1) + combining(0) + B(1) = 2
+    const pool = gp.initGlobalPool(std.testing.allocator);
+    defer gp.deinitGlobalPool();
+
+    var tb = try TextBuffer.init(std.testing.allocator, pool, .wcwidth);
+    defer tb.deinit();
+
+    var view = try TextBufferView.init(std.testing.allocator, tb);
+    defer view.deinit();
+
+    const text = "A\u{0301}B";
+    try tb.setText(text);
+
+    const utf8 = @import("../utf8.zig");
+    const text_width = utf8.calculateTextWidth(text, 4, false, .wcwidth);
+    try std.testing.expectEqual(@as(u32, 2), text_width);
+
+    var opt_buffer = try OptimizedBuffer.init(
+        std.testing.allocator,
+        10,
+        1,
+        .{ .pool = pool, .width_method = .wcwidth },
+    );
+    defer opt_buffer.deinit();
+
+    try opt_buffer.clear(.{ 0.0, 0.0, 0.0, 1.0 }, '_');
+    try opt_buffer.drawTextBuffer(view, 0, 0);
+
+    // Cell 0: Should be 'A'
+    const cell_0 = opt_buffer.get(0, 0) orelse unreachable;
+    try std.testing.expectEqual(@as(u32, 'A'), cell_0.char);
+
+    // Cell 1: Should be 'B' (combining mark has width 0 and should be skipped)
+    const cell_1 = opt_buffer.get(1, 0) orelse unreachable;
+    try std.testing.expectEqual(@as(u32, 'B'), cell_1.char);
+
+    // Cell 2: Should be underscore (cleared char)
+    const cell_2 = opt_buffer.get(2, 0) orelse unreachable;
+    try std.testing.expectEqual(@as(u32, '_'), cell_2.char);
+}
