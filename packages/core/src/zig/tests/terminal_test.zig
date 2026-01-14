@@ -334,63 +334,47 @@ test "isXtversionTmux - detects tmux from xtversion" {
 // ============================================================================
 
 test "processCapabilityResponse - tmux sets grapheme_cursor_positioning" {
-    // Create terminal without environment checks by setting fields directly
     var term: Terminal = .{};
 
-    // Ensure initial state is clean (no environment influence)
     term.caps.grapheme_cursor_positioning = false;
     term.caps.unicode = .unicode;
 
-    // Simulate tmux xtversion response
     const response = "\x1bP>|tmux 3.5a\x1b\\";
     term.processCapabilityResponse(response);
 
-    // Should enable grapheme_cursor_positioning for tmux
     try testing.expect(term.caps.grapheme_cursor_positioning);
     try testing.expectEqual(utf8.WidthMethod.wcwidth, term.caps.unicode);
 }
 
 test "processCapabilityResponse - alacritty sets grapheme_cursor_positioning" {
-    // Create terminal without environment checks
     var term: Terminal = .{};
 
-    // Ensure initial state is clean
     term.caps.grapheme_cursor_positioning = false;
 
-    // Simulate alacritty response (alacritty in response string)
     const response = "\x1bP>|alacritty 0.13.0\x1b\\";
     term.processCapabilityResponse(response);
 
-    // Should enable grapheme_cursor_positioning for alacritty
     try testing.expect(term.caps.grapheme_cursor_positioning);
 }
 
 test "processCapabilityResponse - kitty does not set grapheme_cursor_positioning" {
-    // Create terminal without environment checks
     var term: Terminal = .{};
 
-    // Ensure initial state is clean
     term.caps.grapheme_cursor_positioning = false;
 
-    // Simulate kitty response
     const response = "\x1bP>|kitty(0.40.1)\x1b\\";
     term.processCapabilityResponse(response);
 
-    // kitty should NOT enable grapheme_cursor_positioning (it handles graphemes correctly)
     try testing.expect(!term.caps.grapheme_cursor_positioning);
 }
 
 test "processCapabilityResponse - ghostty does not set grapheme_cursor_positioning" {
-    // Create terminal without environment checks
     var term: Terminal = .{};
 
-    // Ensure initial state is clean
     term.caps.grapheme_cursor_positioning = false;
 
-    // Simulate ghostty response
     const response = "\x1bP>|ghostty 1.1.3\x1b\\";
     term.processCapabilityResponse(response);
 
-    // ghostty should NOT enable grapheme_cursor_positioning (it handles graphemes correctly)
     try testing.expect(!term.caps.grapheme_cursor_positioning);
 }

@@ -273,7 +273,6 @@ fn checkEnvironmentOverrides(self: *Terminal) void {
             self.caps.unicode = .wcwidth;
             self.caps.grapheme_cursor_positioning = true;
         }
-        // Alacritty needs explicit cursor positioning for graphemes
         if (std.mem.indexOf(u8, term, "alacritty") != null) {
             self.caps.grapheme_cursor_positioning = true;
         }
@@ -283,8 +282,6 @@ fn checkEnvironmentOverrides(self: *Terminal) void {
         self.skip_graphics_query = true;
     }
 
-    // Extract terminal name and version from environment variables
-    // These will be overridden by xtversion responses if available
     if (!self.term_info.from_xtversion) {
         if (env_map.get("TERM_PROGRAM")) |prog| {
             const copy_len = @min(prog.len, self.term_info.name.len);
@@ -301,20 +298,16 @@ fn checkEnvironmentOverrides(self: *Terminal) void {
 
     if (env_map.get("TERM_PROGRAM")) |prog| {
         if (std.mem.eql(u8, prog, "vscode")) {
-            // VSCode has limited capability
             self.caps.kitty_keyboard = false;
             self.caps.kitty_graphics = false;
             self.caps.unicode = .unicode;
         } else if (std.mem.eql(u8, prog, "Apple_Terminal")) {
             self.caps.unicode = .wcwidth;
         } else if (std.mem.eql(u8, prog, "Alacritty")) {
-            // Alacritty needs explicit cursor positioning for graphemes
             self.caps.grapheme_cursor_positioning = true;
         }
     }
 
-    // Alacritty detection via its specific environment variables
-    // (Alacritty doesn't set TERM_PROGRAM but sets these instead)
     if (env_map.get("ALACRITTY_SOCKET") != null or env_map.get("ALACRITTY_LOG") != null) {
         self.caps.grapheme_cursor_positioning = true;
         if (!self.term_info.from_xtversion and self.term_info.name_len == 0) {
@@ -360,13 +353,10 @@ fn checkEnvironmentOverrides(self: *Terminal) void {
         }
     }
 
-    // Enable hyperlinks for modern terminals that support them
-    // Most terminals with RGB color support also support OSC 8 hyperlinks
     if (self.caps.rgb) {
         self.caps.hyperlinks = true;
     }
 
-    // Explicitly enable for known terminals
     if (env_map.get("TERM")) |term| {
         if (std.mem.indexOf(u8, term, "ghostty") != null or
             std.mem.indexOf(u8, term, "kitty") != null or

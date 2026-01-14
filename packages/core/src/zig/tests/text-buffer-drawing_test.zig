@@ -3195,8 +3195,6 @@ test "drawTextBuffer - Thai ว่ grapheme in quotes occupies one cell" {
     var view = try TextBufferView.init(std.testing.allocator, tb);
     defer view.deinit();
 
-    // ว่ is a single grapheme cluster: ว (U+0E27) + ่ (U+0E48, tone mark)
-    // With quotes: "ว่" should be 3 cells total (quote + grapheme + quote)
     try tb.setText("\"ว่\"");
 
     var opt_buffer = try OptimizedBuffer.init(
@@ -3210,38 +3208,27 @@ test "drawTextBuffer - Thai ว่ grapheme in quotes occupies one cell" {
     try opt_buffer.clear(.{ 0.0, 0.0, 0.0, 1.0 }, 32);
     try opt_buffer.drawTextBuffer(view, 0, 0);
 
-    // Cell 0: opening quote "
     const cell_0 = opt_buffer.get(0, 0) orelse unreachable;
     try std.testing.expectEqual(@as(u32, '"'), cell_0.char);
 
-    // Cell 1: Thai grapheme ว่ (stored as grapheme pool reference with high bit set)
     const cell_1 = opt_buffer.get(1, 0) orelse unreachable;
-    // The cell uses grapheme pool - high bit indicates pool reference
-    // Just verify it's not a simple ASCII character and not a space
     try std.testing.expect(cell_1.char != ' ');
     try std.testing.expect(cell_1.char != '"');
 
-    // Cell 2: closing quote "
     const cell_2 = opt_buffer.get(2, 0) orelse unreachable;
     try std.testing.expectEqual(@as(u32, '"'), cell_2.char);
 
-    // Cell 3 should be a space (cleared)
     const cell_3 = opt_buffer.get(3, 0) orelse unreachable;
     try std.testing.expectEqual(@as(u32, ' '), cell_3.char);
 
-    // Verify ANSI output contains the Thai grapheme
     var out_buffer: [100]u8 = undefined;
     const written = try opt_buffer.writeResolvedChars(&out_buffer, false);
     const result = out_buffer[0..written];
 
-    // The output should contain "ว่" - quotes with the Thai grapheme inside
     try std.testing.expect(std.mem.indexOf(u8, result, "\"ว่\"") != null);
 }
 
 test "drawTextBuffer wcwidth - combining acute accent doesn't take cell" {
-    // Test that combining marks with width 0 don't take up a cell in wcwidth mode.
-    // "A\u{0301}B" is 'A' + combining acute + 'B'
-    // Width should be: A(1) + combining(0) + B(1) = 2
     const pool = gp.initGlobalPool(std.testing.allocator);
     defer gp.deinitGlobalPool();
 
@@ -3269,15 +3256,12 @@ test "drawTextBuffer wcwidth - combining acute accent doesn't take cell" {
     try opt_buffer.clear(.{ 0.0, 0.0, 0.0, 1.0 }, '_');
     try opt_buffer.drawTextBuffer(view, 0, 0);
 
-    // Cell 0: Should be 'A'
     const cell_0 = opt_buffer.get(0, 0) orelse unreachable;
     try std.testing.expectEqual(@as(u32, 'A'), cell_0.char);
 
-    // Cell 1: Should be 'B' (combining mark has width 0 and should be skipped)
     const cell_1 = opt_buffer.get(1, 0) orelse unreachable;
     try std.testing.expectEqual(@as(u32, 'B'), cell_1.char);
 
-    // Cell 2: Should be underscore (cleared char)
     const cell_2 = opt_buffer.get(2, 0) orelse unreachable;
     try std.testing.expectEqual(@as(u32, '_'), cell_2.char);
 }

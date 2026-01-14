@@ -698,8 +698,6 @@ pub const CliRenderer = struct {
                             ansi.ANSI.explicitWidthOutput(writer, graphemeWidth, bytes) catch {};
                         } else {
                             writer.writeAll(bytes) catch {};
-                            // For terminals with incorrect Unicode width calculation (tmux, alacritty),
-                            // explicitly position the cursor after the grapheme to ensure correct alignment
                             if (capabilities.grapheme_cursor_positioning) {
                                 const nextX = x + graphemeWidth;
                                 if (nextX < self.width) {

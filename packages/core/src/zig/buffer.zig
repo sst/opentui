@@ -1209,13 +1209,9 @@ pub const OptimizedBuffer = struct {
                         special_idx += 1;
                     } else {
                         if (byte_offset >= chunk_bytes.len) break;
-                        // Read the next UTF-8 codepoint properly
                         const cp_len = std.unicode.utf8ByteSequenceLength(chunk_bytes[byte_offset]) catch 1;
                         const next_byte_offset = @min(byte_offset + cp_len, chunk_bytes.len);
                         grapheme_bytes = chunk_bytes[byte_offset..next_byte_offset];
-                        // Calculate actual width - don't assume 1 for non-ASCII characters
-                        // This is critical for wcwidth mode where combining marks (width 0)
-                        // are not in the specials list but should still be skipped
                         g_width = @intCast(utf8.getWidthAt(chunk_bytes, byte_offset, text_buffer.tab_width, text_buffer.width_method));
                         byte_offset = next_byte_offset;
                     }
