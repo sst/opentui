@@ -794,6 +794,201 @@ describe("TextNodeRenderable", () => {
     })
   })
 
+  describe("Link Inheritance", () => {
+    it("should inherit link from parent to child", () => {
+      const parent = new TextNodeRenderable({
+        link: { url: "https://opentui.com" },
+      })
+
+      const child = new TextNodeRenderable({})
+      child.add("Child text")
+
+      parent.add("Parent text")
+      parent.add(child)
+
+      const chunks = parent.gatherWithInheritedStyle()
+
+      expect(chunks).toHaveLength(2)
+      expect(chunks[0].text).toBe("Parent text")
+      expect(chunks[0].link?.url).toBe("https://opentui.com")
+
+      expect(chunks[1].text).toBe("Child text")
+      expect(chunks[1].link?.url).toBe("https://opentui.com")
+    })
+
+    it("should allow child to override parent link", () => {
+      const parent = new TextNodeRenderable({
+        link: { url: "https://parent.com" },
+      })
+
+      const child = new TextNodeRenderable({
+        link: { url: "https://child.com" },
+      })
+      child.add("Child text")
+
+      parent.add("Parent text")
+      parent.add(child)
+
+      const chunks = parent.gatherWithInheritedStyle()
+
+      expect(chunks).toHaveLength(2)
+      expect(chunks[0].link?.url).toBe("https://parent.com")
+      expect(chunks[1].link?.url).toBe("https://child.com")
+    })
+
+    it("should inherit link through multiple nesting levels", () => {
+      const grandparent = new TextNodeRenderable({
+        link: { url: "https://example.com" },
+      })
+
+      const parent = new TextNodeRenderable({})
+      const child = new TextNodeRenderable({})
+
+      child.add("Grandchild")
+      parent.add(child)
+      grandparent.add(parent)
+
+      const chunks = grandparent.gatherWithInheritedStyle()
+
+      expect(chunks).toHaveLength(1)
+      expect(chunks[0].text).toBe("Grandchild")
+      expect(chunks[0].link?.url).toBe("https://example.com")
+    })
+
+    it("should merge link with other styles", () => {
+      const parent = new TextNodeRenderable({
+        fg: RGBA.fromInts(255, 0, 0, 255),
+        attributes: 1,
+        link: { url: "https://opentui.com" },
+      })
+
+      const child = new TextNodeRenderable({
+        bg: RGBA.fromInts(0, 0, 255, 255),
+        attributes: 2,
+      })
+      child.add("Styled linked text")
+
+      parent.add(child)
+
+      const chunks = parent.gatherWithInheritedStyle()
+
+      expect(chunks).toHaveLength(1)
+      expect(chunks[0].text).toBe("Styled linked text")
+      expect(chunks[0].fg).toEqual(RGBA.fromInts(255, 0, 0, 255))
+      expect(chunks[0].bg).toEqual(RGBA.fromInts(0, 0, 255, 255))
+      expect(chunks[0].attributes).toBe(3) // 1 | 2
+      expect(chunks[0].link?.url).toBe("https://opentui.com")
+    })
+
+    it("should handle undefined link in parent", () => {
+      const parent = new TextNodeRenderable({})
+
+      const child = new TextNodeRenderable({
+        link: { url: "https://child.com" },
+      })
+      child.add("Child with link")
+
+      parent.add("Parent without link")
+      parent.add(child)
+
+      const chunks = parent.gatherWithInheritedStyle()
+
+      expect(chunks).toHaveLength(2)
+      expect(chunks[0].link).toBeUndefined()
+      expect(chunks[1].link?.url).toBe("https://child.com")
+    })
+
+    it("should preserve link when merging styles", () => {
+      const node = new TextNodeRenderable({
+        link: { url: "https://example.com" },
+        attributes: 1,
+      })
+
+      const parentStyle = {
+        fg: RGBA.fromInts(255, 0, 0, 255),
+        bg: undefined,
+        attributes: 2,
+      }
+
+      const merged = node.mergeStyles(parentStyle)
+
+      expect(merged.link?.url).toBe("https://example.com")
+      expect(merged.fg).toEqual(RGBA.fromInts(255, 0, 0, 255))
+      expect(merged.attributes).toBe(3)
+    })
+
+    it("should inherit link when node has no link", () => {
+      const node = new TextNodeRenderable({
+        fg: RGBA.fromInts(0, 255, 0, 255),
+      })
+
+      const parentStyle = {
+        fg: undefined,
+        bg: undefined,
+        attributes: 0,
+        link: { url: "https://inherited.com" },
+      }
+
+      const merged = node.mergeStyles(parentStyle)
+
+      expect(merged.link?.url).toBe("https://inherited.com")
+      expect(merged.fg).toEqual(RGBA.fromInts(0, 255, 0, 255))
+    })
+
+    it("should handle complex link inheritance tree", () => {
+      // Grandparent with link
+      const grandparent = new TextNodeRenderable({
+        link: { url: "https://grandparent.com" },
+        fg: RGBA.fromInts(255, 0, 0, 255),
+      })
+
+      // Parent inherits link, adds bg
+      const parent = new TextNodeRenderable({
+        bg: RGBA.fromInts(0, 0, 255, 255),
+      })
+
+      // Child1 inherits link, overrides fg
+      const child1 = new TextNodeRenderable({
+        fg: RGBA.fromInts(0, 255, 0, 255),
+      })
+      child1.add("Child1")
+
+      // Child2 overrides link
+      const child2 = new TextNodeRenderable({
+        link: { url: "https://child2.com" },
+      })
+      child2.add("Child2")
+
+      // Child3 has no link set, should inherit from parent
+      const child3 = new TextNodeRenderable({
+        attributes: 1,
+      })
+      child3.add("Child3")
+
+      parent.add(child1)
+      parent.add(child2)
+      parent.add(child3)
+      grandparent.add(parent)
+
+      const chunks = grandparent.gatherWithInheritedStyle()
+
+      expect(chunks).toHaveLength(3)
+
+      // Child1: inherits link from grandparent
+      expect(chunks[0].text).toBe("Child1")
+      expect(chunks[0].link?.url).toBe("https://grandparent.com")
+      expect(chunks[0].fg).toEqual(RGBA.fromInts(0, 255, 0, 255))
+
+      // Child2: overrides link
+      expect(chunks[1].text).toBe("Child2")
+      expect(chunks[1].link?.url).toBe("https://child2.com")
+
+      // Child3: inherits link from grandparent
+      expect(chunks[2].text).toBe("Child3")
+      expect(chunks[2].link?.url).toBe("https://grandparent.com")
+    })
+  })
+
   describe("Edge Cases and Error Handling", () => {
     it("should handle empty strings", () => {
       const node = new TextNodeRenderable({})

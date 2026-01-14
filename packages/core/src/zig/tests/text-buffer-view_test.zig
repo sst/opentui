@@ -1,5 +1,6 @@
 const std = @import("std");
 const text_buffer = @import("../text-buffer.zig");
+const iter_mod = @import("../text-buffer-iterators.zig");
 const text_buffer_view = @import("../text-buffer-view.zig");
 const gp = @import("../grapheme.zig");
 
@@ -699,13 +700,13 @@ test "TextBufferView word wrapping - fragmented rope with word boundary" {
     const chunk2 = tb.createChunk(mem_id, 14, 15); // "f"
     const chunk3 = tb.createChunk(mem_id, 15, 20); // "riend"
 
-    var segments = std.ArrayList(Segment).init(std.testing.allocator);
-    defer segments.deinit();
+    var segments: std.ArrayListUnmanaged(Segment) = .{};
+    defer segments.deinit(std.testing.allocator);
 
-    try segments.append(Segment{ .linestart = {} });
-    try segments.append(Segment{ .text = chunk1 });
-    try segments.append(Segment{ .text = chunk2 });
-    try segments.append(Segment{ .text = chunk3 });
+    try segments.append(std.testing.allocator, Segment{ .linestart = {} });
+    try segments.append(std.testing.allocator, Segment{ .text = chunk1 });
+    try segments.append(std.testing.allocator, Segment{ .text = chunk2 });
+    try segments.append(std.testing.allocator, Segment{ .text = chunk3 });
 
     try tb.rope.setSegments(segments.items);
 
@@ -1436,11 +1437,11 @@ test "TextBufferView line info - lines with different widths" {
     var view = try TextBufferView.init(std.testing.allocator, tb);
     defer view.deinit();
 
-    var text_builder = std.ArrayList(u8).init(std.testing.allocator);
-    defer text_builder.deinit();
-    try text_builder.appendSlice("Short\n");
-    try text_builder.appendNTimes('A', 50);
-    try text_builder.appendSlice("\nMedium");
+    var text_builder: std.ArrayListUnmanaged(u8) = .{};
+    defer text_builder.deinit(std.testing.allocator);
+    try text_builder.appendSlice(std.testing.allocator, "Short\n");
+    try text_builder.appendNTimes(std.testing.allocator, 'A', 50);
+    try text_builder.appendSlice(std.testing.allocator, "\nMedium");
     const text = text_builder.items;
 
     try tb.setText(text);
@@ -1484,14 +1485,14 @@ test "TextBufferView line info - thousands of lines" {
     var view = try TextBufferView.init(std.testing.allocator, tb);
     defer view.deinit();
 
-    var text_builder = std.ArrayList(u8).init(std.testing.allocator);
-    defer text_builder.deinit();
+    var text_builder: std.ArrayListUnmanaged(u8) = .{};
+    defer text_builder.deinit(std.testing.allocator);
 
     var i: u32 = 0;
     while (i < 999) : (i += 1) {
-        try std.fmt.format(text_builder.writer(), "Line {}\n", .{i});
+        try text_builder.writer(std.testing.allocator).print("Line {}\n", .{i});
     }
-    try std.fmt.format(text_builder.writer(), "Line {}", .{i});
+    try text_builder.writer(std.testing.allocator).print("Line {}", .{i});
 
     try tb.setText(text_builder.items);
 
@@ -1913,6 +1914,107 @@ test "TextBufferView measureForDimensions - does not modify cache" {
     const actual_count = view.getVirtualLineCount();
     // Should be 1 line because wrap_width is 100
     try std.testing.expectEqual(@as(u32, 1), actual_count);
+}
+
+test "TextBufferView measureForDimensions - cache invalidates after updateVirtualLines" {
+    const pool = gp.initGlobalPool(std.testing.allocator);
+    defer gp.deinitGlobalPool();
+
+    var tb = try TextBuffer.init(std.testing.allocator, pool, .wcwidth);
+    defer tb.deinit();
+
+    var view = try TextBufferView.init(std.testing.allocator, tb);
+    defer view.deinit();
+
+    try tb.setText("AAAAA");
+    view.setWrapMode(.char);
+    view.setWrapWidth(5);
+
+    const result1 = try view.measureForDimensions(5, 10);
+    try std.testing.expectEqual(@as(u32, 1), result1.line_count);
+    try std.testing.expectEqual(@as(u32, 5), result1.max_width);
+
+    try tb.setText("AAAAAAAAAA");
+
+    // This clears the dirty flag, which would cause a false cache hit
+    // if we keyed on dirty instead of epoch.
+    _ = view.getVirtualLineCount();
+
+    const result2 = try view.measureForDimensions(5, 10);
+    try std.testing.expectEqual(@as(u32, 2), result2.line_count);
+    try std.testing.expectEqual(@as(u32, 5), result2.max_width);
+}
+
+test "TextBufferView measureForDimensions - width 0 uses intrinsic line widths" {
+    const pool = gp.initGlobalPool(std.testing.allocator);
+    defer gp.deinitGlobalPool();
+
+    var tb = try TextBuffer.init(std.testing.allocator, pool, .wcwidth);
+    defer tb.deinit();
+
+    var view = try TextBufferView.init(std.testing.allocator, tb);
+    defer view.deinit();
+
+    try tb.setText("abc\ndefghij");
+    view.setWrapMode(.char);
+
+    const result = try view.measureForDimensions(0, 24);
+    try std.testing.expectEqual(tb.getLineCount(), result.line_count);
+    try std.testing.expectEqual(iter_mod.getMaxLineWidth(&tb.rope), result.max_width);
+}
+
+test "TextBufferView measureForDimensions - no wrap matches multi-segment line widths" {
+    const pool = gp.initGlobalPool(std.testing.allocator);
+    defer gp.deinitGlobalPool();
+
+    var tb = try TextBuffer.init(std.testing.allocator, pool, .wcwidth);
+    defer tb.deinit();
+
+    var view = try TextBufferView.init(std.testing.allocator, tb);
+    defer view.deinit();
+
+    try tb.setText("AAAA");
+    try tb.append("BBBB");
+    view.setWrapMode(.none);
+
+    const line_info = view.getCachedLineInfo();
+    var expected_max: u32 = 0;
+    for (line_info.widths) |w| {
+        expected_max = @max(expected_max, w);
+    }
+
+    const result = try view.measureForDimensions(80, 24);
+    try std.testing.expectEqual(expected_max, result.max_width);
+    try std.testing.expectEqual(@as(u32, @intCast(line_info.widths.len)), result.line_count);
+}
+
+test "TextBufferView measureForDimensions - cache invalidates on switchToBuffer" {
+    const pool = gp.initGlobalPool(std.testing.allocator);
+    defer gp.deinitGlobalPool();
+
+    var tb = try TextBuffer.init(std.testing.allocator, pool, .wcwidth);
+    defer tb.deinit();
+
+    var other_tb = try TextBuffer.init(std.testing.allocator, pool, .wcwidth);
+    defer other_tb.deinit();
+
+    var view = try TextBufferView.init(std.testing.allocator, tb);
+    defer view.deinit();
+
+    try tb.setText("AAAAAA");
+    view.setWrapMode(.char);
+
+    const result1 = try view.measureForDimensions(10, 10);
+    try std.testing.expectEqual(@as(u32, 6), result1.max_width);
+
+    try other_tb.setText("BBBBBBBBBB");
+    try std.testing.expectEqual(tb.getContentEpoch(), other_tb.getContentEpoch());
+
+    view.switchToBuffer(other_tb);
+
+    const result2 = try view.measureForDimensions(10, 10);
+    try std.testing.expectEqual(@as(u32, 10), result2.max_width);
+    try std.testing.expectEqual(@as(u32, 1), result2.line_count);
 }
 
 test "TextBufferView measureForDimensions - char wrap" {
@@ -2488,14 +2590,14 @@ test "TextBufferView line info - line starts monotonically increasing" {
     var view = try TextBufferView.init(std.testing.allocator, tb);
     defer view.deinit();
 
-    var text_builder = std.ArrayList(u8).init(std.testing.allocator);
-    defer text_builder.deinit();
+    var text_builder: std.ArrayListUnmanaged(u8) = .{};
+    defer text_builder.deinit(std.testing.allocator);
 
     var i: u32 = 0;
     while (i < 99) : (i += 1) {
-        try std.fmt.format(text_builder.writer(), "Line {}\n", .{i});
+        try text_builder.writer(std.testing.allocator).print("Line {}\n", .{i});
     }
-    try std.fmt.format(text_builder.writer(), "Line {}", .{i});
+    try text_builder.writer(std.testing.allocator).print("Line {}", .{i});
 
     try tb.setText(text_builder.items);
 
@@ -2897,16 +2999,16 @@ test "TextBufferView word wrapping - chunk at exact wrap boundary" {
     const seg_mod = @import("../text-buffer-segment.zig");
     const Segment = seg_mod.Segment;
 
-    var segments = std.ArrayList(Segment).init(std.testing.allocator);
-    defer segments.deinit();
+    var segments: std.ArrayListUnmanaged(Segment) = .{};
+    defer segments.deinit(std.testing.allocator);
 
-    try segments.append(Segment{ .linestart = {} });
+    try segments.append(std.testing.allocator, Segment{ .linestart = {} });
 
     const chunk1 = tb.createChunk(mem_id, 0, 17);
-    try segments.append(Segment{ .text = chunk1 });
+    try segments.append(std.testing.allocator, Segment{ .text = chunk1 });
 
     const chunk2 = tb.createChunk(mem_id, 17, 21);
-    try segments.append(Segment{ .text = chunk2 });
+    try segments.append(std.testing.allocator, Segment{ .text = chunk2 });
 
     try tb.rope.setSegments(segments.items);
     view.virtual_lines_dirty = true;

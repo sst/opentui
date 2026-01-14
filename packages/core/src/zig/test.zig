@@ -18,6 +18,7 @@ const rope_nested_tests = @import("tests/rope-nested_test.zig");
 const rope_fuzz_tests = @import("tests/rope_fuzz_test.zig");
 const utf8_tests = @import("tests/utf8_test.zig");
 const utf8_wcwidth_tests = @import("tests/utf8_wcwidth_test.zig");
+const utf8_wcwidth_cursor_tests = @import("tests/utf8_wcwidth_cursor_test.zig");
 const utf8_no_zwj_tests = @import("tests/utf8_no_zwj_test.zig");
 const event_emitter_tests = @import("tests/event-emitter_test.zig");
 const buffer_tests = @import("tests/buffer_test.zig");
@@ -27,6 +28,7 @@ const renderer_tests = @import("tests/renderer_test.zig");
 const terminal_tests = @import("tests/terminal_test.zig");
 const mem_registry_tests = @import("tests/mem-registry_test.zig");
 const memory_leak_regression_tests = @import("tests/memory_leak_regression_test.zig");
+const wrap_cache_perf_tests = @import("tests/wrap-cache-perf_test.zig");
 // const example_tests = @import("example_test.zig");
 
 // Re-export test declarations from individual test files
@@ -49,6 +51,7 @@ comptime {
     _ = rope_fuzz_tests;
     _ = utf8_tests;
     _ = utf8_wcwidth_tests;
+    _ = utf8_wcwidth_cursor_tests;
     _ = utf8_no_zwj_tests;
     _ = event_emitter_tests;
     _ = buffer_tests;
@@ -58,5 +61,6 @@ comptime {
     _ = terminal_tests;
     _ = mem_registry_tests;
     _ = memory_leak_regression_tests;
+    _ = wrap_cache_perf_tests;
     // _ = example_tests;
 }

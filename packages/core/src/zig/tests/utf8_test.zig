@@ -972,6 +972,29 @@ test "wrap breaks: large buffer" {
     try testing.expect(result.breaks.items.len > 0);
 }
 
+test "wrap breaks: buffer exceeding 64KB" {
+    const size = 100_000;
+    const buf = try testing.allocator.alloc(u8, size);
+    defer testing.allocator.free(buf);
+
+    @memset(buf, 'a');
+
+    // Place a space at 70000, with u16, this will truncate to 4464 (70000 % 65536)
+    const break_pos: usize = 70_000;
+    buf[break_pos] = ' ';
+
+    var result = utf8.WrapBreakResult.init(testing.allocator);
+    defer result.deinit();
+    try utf8.findWrapBreaks(buf, &result, .unicode);
+
+    // Should find exactly one wrap break
+    try testing.expectEqual(@as(usize, 1), result.breaks.items.len);
+
+    // The byte_offset must be the actual position, not truncated
+    try testing.expectEqual(@as(u32, break_pos), result.breaks.items[0].byte_offset);
+    try testing.expectEqual(@as(u32, break_pos), result.breaks.items[0].char_offset);
+}
+
 // ============================================================================
 // EDGE CASES AND INTEGRATION TESTS
 // ============================================================================
@@ -1134,7 +1157,7 @@ test "wrap breaks: mixed graphemes and ASCII" {
 // ============================================================================
 
 test "wrap by width: empty string" {
-    const result = utf8.findWrapPosByWidth("", 10, 4, true, .unicode);
+    const result = utf8.findWrapPosByWidth("", 10, 4, false, .unicode);
     try testing.expectEqual(@as(u32, 0), result.byte_offset);
     try testing.expectEqual(@as(u32, 0), result.grapheme_count);
     try testing.expectEqual(@as(u32, 0), result.columns_used);
@@ -1176,7 +1199,7 @@ test "wrap by width: combining mark" {
 }
 
 test "wrap by width: tab handling" {
-    const result = utf8.findWrapPosByWidth("a\tb", 5, 4, true, .unicode);
+    const result = utf8.findWrapPosByWidth("a\tb", 5, 4, false, .unicode);
     try testing.expectEqual(@as(u32, 2), result.byte_offset); // After "a\t"
     try testing.expectEqual(@as(u32, 2), result.grapheme_count); // 'a' + tab
     try testing.expectEqual(@as(u32, 5), result.columns_used); // 'a' (1) + tab (4) = 5
@@ -1212,7 +1235,7 @@ test "wrap by width: consistency - Unicode text" {
 
 test "wrap by width: consistency - edge cases" {
     const edge_cases = [_]struct { text: []const u8, ascii: bool }{
-        .{ .text = "", .ascii = true },
+        .{ .text = "", .ascii = false },
         .{ .text = " ", .ascii = true },
         .{ .text = "a", .ascii = true },
         .{ .text = "abc", .ascii = true },
@@ -1221,7 +1244,7 @@ test "wrap by width: consistency - edge cases" {
         .{ .text = "no-spaces-here", .ascii = true },
         .{ .text = "/usr/local/bin", .ascii = true },
         .{ .text = "世界", .ascii = false },
-        .{ .text = "\t\t\t", .ascii = true },
+        .{ .text = "\t\t\t", .ascii = false },
     };
 
     for (edge_cases) |input| {
@@ -1379,7 +1402,7 @@ test "find pos by width: selection boundaries with multiple wide chars" {
 }
 
 test "find pos by width: empty string" {
-    const result = utf8.findPosByWidth("", 10, 4, true, true, .unicode);
+    const result = utf8.findPosByWidth("", 10, 4, false, true, .unicode);
     try testing.expectEqual(@as(u32, 0), result.byte_offset);
     try testing.expectEqual(@as(u32, 0), result.grapheme_count);
     try testing.expectEqual(@as(u32, 0), result.columns_used);
@@ -1447,7 +1470,7 @@ test "find pos by width: combining mark" {
 }
 
 test "find pos by width: tab handling" {
-    const result = utf8.findPosByWidth("a\tb", 5, 4, true, true, .unicode);
+    const result = utf8.findPosByWidth("a\tb", 5, 4, false, true, .unicode);
     try testing.expectEqual(@as(u32, 2), result.byte_offset); // After "a\t"
     try testing.expectEqual(@as(u32, 2), result.grapheme_count); // 'a' + tab
     try testing.expectEqual(@as(u32, 5), result.columns_used); // 'a' (1) + tab (4) = 5
@@ -1554,9 +1577,9 @@ test "split at weight: tab character" {
     const input = "a\tbc"; // a(1) tab(4 fixed) b(1) c(1) = 7 columns total
 
     // Split at column 4 - should stop before tab since it would exceed limit
-    const result4 = utf8.findPosByWidth(input, 4, 4, true, false, .unicode);
-    try testing.expectEqual(@as(u32, 2), result4.byte_offset); // After "a\t"
-    try testing.expectEqual(@as(u32, 5), result4.columns_used); // a(1) + tab(4) = 5
+    const result4 = utf8.findPosByWidth(input, 4, 4, false, false, .unicode);
+    try testing.expectEqual(@as(u32, 1), result4.byte_offset); // After "a"
+    try testing.expectEqual(@as(u32, 1), result4.columns_used); // a(1)
 }
 
 test "split at weight: complex mixed content" {
@@ -1936,7 +1959,7 @@ test "getPrevGraphemeStart: consecutive wide chars" {
 // ============================================================================
 
 test "calculateTextWidth: empty string" {
-    const result = utf8.calculateTextWidth("", 4, true, .unicode);
+    const result = utf8.calculateTextWidth("", 4, false, .unicode);
     try testing.expectEqual(@as(u32, 0), result);
 }
 
@@ -1946,38 +1969,38 @@ test "calculateTextWidth: simple ASCII" {
 }
 
 test "calculateTextWidth: single tab" {
-    const result = utf8.calculateTextWidth("\t", 4, true, .unicode);
+    const result = utf8.calculateTextWidth("\t", 4, false, .unicode);
     try testing.expectEqual(@as(u32, 4), result);
 }
 
 test "calculateTextWidth: tab with different widths" {
-    try testing.expectEqual(@as(u32, 2), utf8.calculateTextWidth("\t", 2, true, .unicode));
-    try testing.expectEqual(@as(u32, 4), utf8.calculateTextWidth("\t", 4, true, .unicode));
-    try testing.expectEqual(@as(u32, 8), utf8.calculateTextWidth("\t", 8, true, .unicode));
+    try testing.expectEqual(@as(u32, 2), utf8.calculateTextWidth("\t", 2, false, .unicode));
+    try testing.expectEqual(@as(u32, 4), utf8.calculateTextWidth("\t", 4, false, .unicode));
+    try testing.expectEqual(@as(u32, 8), utf8.calculateTextWidth("\t", 8, false, .unicode));
 }
 
 test "calculateTextWidth: multiple tabs" {
-    const result = utf8.calculateTextWidth("\t\t\t", 4, true, .unicode);
+    const result = utf8.calculateTextWidth("\t\t\t", 4, false, .unicode);
     try testing.expectEqual(@as(u32, 12), result); // 3 tabs * 4 = 12
 }
 
 test "calculateTextWidth: text with tabs" {
-    const result = utf8.calculateTextWidth("a\tb", 4, true, .unicode);
+    const result = utf8.calculateTextWidth("a\tb", 4, false, .unicode);
     try testing.expectEqual(@as(u32, 6), result); // a(1) + tab(4) + b(1) = 6
 }
 
 test "calculateTextWidth: multiple tabs between text" {
-    const result = utf8.calculateTextWidth("a\t\tb", 2, true, .unicode);
+    const result = utf8.calculateTextWidth("a\t\tb", 2, false, .unicode);
     try testing.expectEqual(@as(u32, 6), result); // a(1) + tab(2) + tab(2) + b(1) = 6
 }
 
 test "calculateTextWidth: tab at start" {
-    const result = utf8.calculateTextWidth("\tabc", 4, true, .unicode);
+    const result = utf8.calculateTextWidth("\tabc", 4, false, .unicode);
     try testing.expectEqual(@as(u32, 7), result); // tab(4) + a(1) + b(1) + c(1) = 7
 }
 
 test "calculateTextWidth: tab at end" {
-    const result = utf8.calculateTextWidth("abc\t", 4, true, .unicode);
+    const result = utf8.calculateTextWidth("abc\t", 4, false, .unicode);
     try testing.expectEqual(@as(u32, 7), result); // a(1) + b(1) + c(1) + tab(4) = 7
 }
 
@@ -1998,7 +2021,7 @@ test "calculateTextWidth: mixed ASCII and Unicode with tabs" {
 
 test "calculateTextWidth: realistic code with tabs" {
     const text = "\tif (x > 5) {\n\t\treturn true;\n\t}";
-    const result = utf8.calculateTextWidth(text, 2, true, .unicode);
+    const result = utf8.calculateTextWidth(text, 2, false, .unicode);
     // tab(2) + "if (x > 5) {" (12) + newline(0) + tab(2) + tab(2) + "return true;" (12) + newline(0) + tab(2) + "}" (1)
     // = 2 + 12 + 2 + 2 + 12 + 2 + 1 = 33
     try testing.expectEqual(@as(u32, 33), result);
@@ -2010,12 +2033,12 @@ test "calculateTextWidth: only spaces" {
 }
 
 test "calculateTextWidth: tabs and spaces mixed" {
-    const result = utf8.calculateTextWidth("  \t  \t  ", 4, true, .unicode);
+    const result = utf8.calculateTextWidth("  \t  \t  ", 4, false, .unicode);
     try testing.expectEqual(@as(u32, 14), result); // 2 + 4 + 2 + 4 + 2 = 14
 }
 
 test "calculateTextWidth: control characters" {
-    const result = utf8.calculateTextWidth("a\x00b\x1Fc", 4, true, .unicode);
+    const result = utf8.calculateTextWidth("a\x00b\x1Fc", 4, false, .unicode);
     try testing.expectEqual(@as(u32, 3), result); // Only printable chars: a, b, c
 }
 
@@ -2077,26 +2100,26 @@ test "calculateTextWidth: U+269B atom symbol should be width 2" {
 // ============================================================================
 
 test "findGraphemeInfo: empty string" {
-    var result = std.ArrayList(utf8.GraphemeInfo).init(testing.allocator);
-    defer result.deinit();
+    var result: std.ArrayListUnmanaged(utf8.GraphemeInfo) = .{};
+    defer result.deinit(testing.allocator);
 
-    try utf8.findGraphemeInfo("", 4, true, .unicode, &result);
+    try utf8.findGraphemeInfo("", 4, false, .unicode, testing.allocator, &result);
     try testing.expectEqual(@as(usize, 0), result.items.len);
 }
 
 test "findGraphemeInfo: ASCII-only returns empty" {
-    var result = std.ArrayList(utf8.GraphemeInfo).init(testing.allocator);
-    defer result.deinit();
+    var result: std.ArrayListUnmanaged(utf8.GraphemeInfo) = .{};
+    defer result.deinit(testing.allocator);
 
-    try utf8.findGraphemeInfo("hello world", 4, true, .unicode, &result);
+    try utf8.findGraphemeInfo("hello world", 4, true, .unicode, testing.allocator, &result);
     try testing.expectEqual(@as(usize, 0), result.items.len);
 }
 
 test "findGraphemeInfo: ASCII with tab" {
-    var result = std.ArrayList(utf8.GraphemeInfo).init(testing.allocator);
-    defer result.deinit();
+    var result: std.ArrayListUnmanaged(utf8.GraphemeInfo) = .{};
+    defer result.deinit(testing.allocator);
 
-    try utf8.findGraphemeInfo("hello\tworld", 4, false, .unicode, &result);
+    try utf8.findGraphemeInfo("hello\tworld", 4, false, .unicode, testing.allocator, &result);
 
     // Should have one entry for the tab
     try testing.expectEqual(@as(usize, 1), result.items.len);
@@ -2107,10 +2130,10 @@ test "findGraphemeInfo: ASCII with tab" {
 }
 
 test "findGraphemeInfo: multiple tabs" {
-    var result = std.ArrayList(utf8.GraphemeInfo).init(testing.allocator);
-    defer result.deinit();
+    var result: std.ArrayListUnmanaged(utf8.GraphemeInfo) = .{};
+    defer result.deinit(testing.allocator);
 
-    try utf8.findGraphemeInfo("a\tb\tc", 4, false, .unicode, &result);
+    try utf8.findGraphemeInfo("a\tb\tc", 4, false, .unicode, testing.allocator, &result);
 
     // Should have two entries for the tabs
     try testing.expectEqual(@as(usize, 2), result.items.len);
@@ -2129,11 +2152,11 @@ test "findGraphemeInfo: multiple tabs" {
 }
 
 test "findGraphemeInfo: CJK characters" {
-    var result = std.ArrayList(utf8.GraphemeInfo).init(testing.allocator);
-    defer result.deinit();
+    var result: std.ArrayListUnmanaged(utf8.GraphemeInfo) = .{};
+    defer result.deinit(testing.allocator);
 
     const text = "hello世界";
-    try utf8.findGraphemeInfo(text, 4, false, .unicode, &result);
+    try utf8.findGraphemeInfo(text, 4, false, .unicode, testing.allocator, &result);
 
     // Should have two entries for the CJK characters
     try testing.expectEqual(@as(usize, 2), result.items.len);
@@ -2152,11 +2175,11 @@ test "findGraphemeInfo: CJK characters" {
 }
 
 test "findGraphemeInfo: emoji with skin tone" {
-    var result = std.ArrayList(utf8.GraphemeInfo).init(testing.allocator);
-    defer result.deinit();
+    var result: std.ArrayListUnmanaged(utf8.GraphemeInfo) = .{};
+    defer result.deinit(testing.allocator);
 
     const text = "Hi👋🏿Bye"; // Hi + wave + dark skin tone + Bye
-    try utf8.findGraphemeInfo(text, 4, false, .unicode, &result);
+    try utf8.findGraphemeInfo(text, 4, false, .unicode, testing.allocator, &result);
 
     // Should have one entry for the emoji cluster
     try testing.expectEqual(@as(usize, 1), result.items.len);
@@ -2168,11 +2191,11 @@ test "findGraphemeInfo: emoji with skin tone" {
 }
 
 test "findGraphemeInfo: emoji with ZWJ" {
-    var result = std.ArrayList(utf8.GraphemeInfo).init(testing.allocator);
-    defer result.deinit();
+    var result: std.ArrayListUnmanaged(utf8.GraphemeInfo) = .{};
+    defer result.deinit(testing.allocator);
 
     const text = "a👩‍🚀b"; // a + woman astronaut + b
-    try utf8.findGraphemeInfo(text, 4, false, .unicode, &result);
+    try utf8.findGraphemeInfo(text, 4, false, .unicode, testing.allocator, &result);
 
     // Should have one entry for the emoji cluster
     try testing.expectEqual(@as(usize, 1), result.items.len);
@@ -2183,11 +2206,11 @@ test "findGraphemeInfo: emoji with ZWJ" {
 }
 
 test "findGraphemeInfo: combining mark" {
-    var result = std.ArrayList(utf8.GraphemeInfo).init(testing.allocator);
-    defer result.deinit();
+    var result: std.ArrayListUnmanaged(utf8.GraphemeInfo) = .{};
+    defer result.deinit(testing.allocator);
 
     const text = "cafe\u{0301}"; // café with combining acute
-    try utf8.findGraphemeInfo(text, 4, false, .unicode, &result);
+    try utf8.findGraphemeInfo(text, 4, false, .unicode, testing.allocator, &result);
 
     // Should have one entry for e + combining mark
     try testing.expectEqual(@as(usize, 1), result.items.len);
@@ -2199,11 +2222,11 @@ test "findGraphemeInfo: combining mark" {
 }
 
 test "findGraphemeInfo: flag emoji" {
-    var result = std.ArrayList(utf8.GraphemeInfo).init(testing.allocator);
-    defer result.deinit();
+    var result: std.ArrayListUnmanaged(utf8.GraphemeInfo) = .{};
+    defer result.deinit(testing.allocator);
 
     const text = "US🇺🇸"; // US + flag
-    try utf8.findGraphemeInfo(text, 4, false, .unicode, &result);
+    try utf8.findGraphemeInfo(text, 4, false, .unicode, testing.allocator, &result);
 
     // Should have one entry for the flag (two regional indicators)
     try testing.expectEqual(@as(usize, 1), result.items.len);
@@ -2215,11 +2238,11 @@ test "findGraphemeInfo: flag emoji" {
 }
 
 test "findGraphemeInfo: mixed content" {
-    var result = std.ArrayList(utf8.GraphemeInfo).init(testing.allocator);
-    defer result.deinit();
+    var result: std.ArrayListUnmanaged(utf8.GraphemeInfo) = .{};
+    defer result.deinit(testing.allocator);
 
     const text = "Hi\t世界!"; // Hi + tab + CJK + !
-    try utf8.findGraphemeInfo(text, 4, false, .unicode, &result);
+    try utf8.findGraphemeInfo(text, 4, false, .unicode, testing.allocator, &result);
 
     // Should have three entries: tab, 世, 界
     try testing.expectEqual(@as(usize, 3), result.items.len);
@@ -2244,21 +2267,21 @@ test "findGraphemeInfo: mixed content" {
 }
 
 test "findGraphemeInfo: only ASCII letters no cache" {
-    var result = std.ArrayList(utf8.GraphemeInfo).init(testing.allocator);
-    defer result.deinit();
+    var result: std.ArrayListUnmanaged(utf8.GraphemeInfo) = .{};
+    defer result.deinit(testing.allocator);
 
-    try utf8.findGraphemeInfo("abcdefghij", 4, false, .unicode, &result);
+    try utf8.findGraphemeInfo("abcdefghij", 4, false, .unicode, testing.allocator, &result);
 
     // No special characters, should be empty
     try testing.expectEqual(@as(usize, 0), result.items.len);
 }
 
 test "findGraphemeInfo: emoji with VS16" {
-    var result = std.ArrayList(utf8.GraphemeInfo).init(testing.allocator);
-    defer result.deinit();
+    var result: std.ArrayListUnmanaged(utf8.GraphemeInfo) = .{};
+    defer result.deinit(testing.allocator);
 
     const text = "I ❤️ U"; // I + space + heart + VS16 + space + U
-    try utf8.findGraphemeInfo(text, 4, false, .unicode, &result);
+    try utf8.findGraphemeInfo(text, 4, false, .unicode, testing.allocator, &result);
 
     // Should have one entry for the emoji cluster
     try testing.expectEqual(@as(usize, 1), result.items.len);
@@ -2269,22 +2292,22 @@ test "findGraphemeInfo: emoji with VS16" {
 }
 
 test "findGraphemeInfo: realistic text" {
-    var result = std.ArrayList(utf8.GraphemeInfo).init(testing.allocator);
-    defer result.deinit();
+    var result: std.ArrayListUnmanaged(utf8.GraphemeInfo) = .{};
+    defer result.deinit(testing.allocator);
 
     const text = "function test() {\n\tconst 世界 = 10;\n}";
-    try utf8.findGraphemeInfo(text, 4, false, .unicode, &result);
+    try utf8.findGraphemeInfo(text, 4, false, .unicode, testing.allocator, &result);
 
     // Should have entries for: tab, 世, 界
     try testing.expectEqual(@as(usize, 3), result.items.len);
 }
 
 test "findGraphemeInfo: hiragana" {
-    var result = std.ArrayList(utf8.GraphemeInfo).init(testing.allocator);
-    defer result.deinit();
+    var result: std.ArrayListUnmanaged(utf8.GraphemeInfo) = .{};
+    defer result.deinit(testing.allocator);
 
     const text = "こんにちは";
-    try utf8.findGraphemeInfo(text, 4, false, .unicode, &result);
+    try utf8.findGraphemeInfo(text, 4, false, .unicode, testing.allocator, &result);
 
     // Should have 5 entries (each hiragana is 3 bytes, width 2)
     try testing.expectEqual(@as(usize, 5), result.items.len);
@@ -2296,8 +2319,8 @@ test "findGraphemeInfo: hiragana" {
 }
 
 test "findGraphemeInfo: at SIMD boundary" {
-    var result = std.ArrayList(utf8.GraphemeInfo).init(testing.allocator);
-    defer result.deinit();
+    var result: std.ArrayListUnmanaged(utf8.GraphemeInfo) = .{};
+    defer result.deinit(testing.allocator);
 
     // Create text with multibyte char near SIMD boundary (16 bytes)
     var buf: [32]u8 = undefined;
@@ -2305,7 +2328,7 @@ test "findGraphemeInfo: at SIMD boundary" {
     const cjk = "世";
     @memcpy(buf[14..17], cjk); // Place CJK char at boundary
 
-    try utf8.findGraphemeInfo(&buf, 4, false, .unicode, &result);
+    try utf8.findGraphemeInfo(&buf, 4, false, .unicode, testing.allocator, &result);
 
     // Should find the CJK character
     var found = false;
@@ -2367,7 +2390,7 @@ test "calculateTextWidth: fullwidth forms with tab" {
 }
 
 test "calculateTextWidth: ASCII fast path consistency" {
-    const text_ascii = "hello\tworld";
+    const text_ascii = "hello world";
     const result_fast = utf8.calculateTextWidth(text_ascii, 4, true, .unicode);
     const result_slow = utf8.calculateTextWidth(text_ascii, 4, false, .unicode);
     try testing.expectEqual(result_fast, result_slow);
@@ -2389,7 +2412,7 @@ test "calculateTextWidth: large text with many tabs" {
         }
     }
 
-    const result = utf8.calculateTextWidth(buf, 4, true, .unicode);
+    const result = utf8.calculateTextWidth(buf, 4, false, .unicode);
     try testing.expectEqual(expected, result);
 }
 
@@ -2919,14 +2942,14 @@ test "calculateTextWidth: surrogate pair edge cases" {
 
 test "calculateTextWidth: long grapheme cluster chain" {
     // Create a base + many combining marks
-    var text = std.ArrayList(u8).init(testing.allocator);
-    defer text.deinit();
+    var text: std.ArrayListUnmanaged(u8) = .{};
+    defer text.deinit(testing.allocator);
 
-    try text.appendSlice("e");
+    try text.appendSlice(testing.allocator, "e");
     // Add 10 combining marks
     var i: usize = 0;
     while (i < 10) : (i += 1) {
-        try text.appendSlice("\u{0301}"); // Combining acute accent
+        try text.appendSlice(testing.allocator, "\u{0301}"); // Combining acute accent
     }
 
     const width = utf8.calculateTextWidth(text.items, 4, false, .unicode);
@@ -3509,32 +3532,28 @@ test "calculateTextWidth: complex text with emojis and multiple scripts" {
 
 test "calculateTextWidth: validate against unicode-width-map.zon" {
     const zon_content = @embedFile("unicode-width-map.zon");
-    const zon_with_null = try testing.allocator.dupeZ(u8, zon_content);
-    defer testing.allocator.free(zon_with_null);
+
+    // Use arena allocator to avoid memory leaks from ZON parser string allocations
+    var arena = std.heap.ArenaAllocator.init(testing.allocator);
+    defer arena.deinit();
+    const allocator = arena.allocator();
+
+    const zon_with_null = try allocator.dupeZ(u8, zon_content);
 
     const WidthEntry = struct {
         codepoint: []const u8,
         width: i32,
     };
 
-    var status: std.zon.parse.Status = .{};
-    defer status.deinit(testing.allocator);
-
     const width_entries = std.zon.parse.fromSlice(
         []const WidthEntry,
-        testing.allocator,
+        allocator,
         zon_with_null,
-        &status,
+        null,
         .{},
     ) catch |err| {
         return err;
     };
-    defer {
-        for (width_entries) |entry| {
-            testing.allocator.free(entry.codepoint);
-        }
-        testing.allocator.free(width_entries);
-    }
 
     var successes: usize = 0;
     var failures: usize = 0;
@@ -3592,10 +3611,10 @@ test "findGraphemeInfo: comprehensive multilingual text" {
 
     const expected_width = utf8.calculateTextWidth(text, 4, false, .unicode);
 
-    var result = std.ArrayList(utf8.GraphemeInfo).init(testing.allocator);
-    defer result.deinit();
+    var result: std.ArrayListUnmanaged(utf8.GraphemeInfo) = .{};
+    defer result.deinit(testing.allocator);
 
-    try utf8.findGraphemeInfo(text, 4, false, .unicode, &result);
+    try utf8.findGraphemeInfo(text, 4, false, .unicode, testing.allocator, &result);
     try testing.expect(result.items.len > 0);
 
     var prev_end_byte: usize = 0;
@@ -3613,4 +3632,182 @@ test "findGraphemeInfo: comprehensive multilingual text" {
 
     const final_computed_width = utf8.calculateTextWidth(text, 4, false, .unicode);
     try testing.expectEqual(expected_width, final_computed_width);
+}
+
+// ============================================================================
+// THAI DIACRITICS AND COMBINING MARKS TESTS
+// ============================================================================
+
+test "Thai: base consonants have width 1" {
+    const consonants = "กขคงจฉชซญฎฏฐดตถทธนบปผฝพฟภมยรลวศษสหอฮ";
+    const width = utf8.calculateTextWidth(consonants, 4, false, .unicode);
+    try testing.expectEqual(@as(u32, 36), width);
+}
+
+test "Thai: spacing vowels have width 1" {
+    const spacing_vowels = "าะแโใไ";
+    const width = utf8.calculateTextWidth(spacing_vowels, 4, false, .unicode);
+    try testing.expectEqual(@as(u32, 6), width);
+}
+
+test "Thai: combining vowels above have width 0" {
+    const base = "ก";
+    const with_sara_i = "กิ";
+    const with_sara_ii = "กี";
+    const with_sara_ue = "กึ";
+    const with_sara_uee = "กื";
+    const with_mai_han_akat = "กั";
+
+    try testing.expectEqual(@as(u32, 1), utf8.calculateTextWidth(base, 4, false, .unicode));
+    try testing.expectEqual(@as(u32, 1), utf8.calculateTextWidth(with_sara_i, 4, false, .unicode));
+    try testing.expectEqual(@as(u32, 1), utf8.calculateTextWidth(with_sara_ii, 4, false, .unicode));
+    try testing.expectEqual(@as(u32, 1), utf8.calculateTextWidth(with_sara_ue, 4, false, .unicode));
+    try testing.expectEqual(@as(u32, 1), utf8.calculateTextWidth(with_sara_uee, 4, false, .unicode));
+    try testing.expectEqual(@as(u32, 1), utf8.calculateTextWidth(with_mai_han_akat, 4, false, .unicode));
+}
+
+test "Thai: combining vowels below have width 0" {
+    const with_sara_u = "กุ";
+    const with_sara_uu = "กู";
+
+    try testing.expectEqual(@as(u32, 1), utf8.calculateTextWidth(with_sara_u, 4, false, .unicode));
+    try testing.expectEqual(@as(u32, 1), utf8.calculateTextWidth(with_sara_uu, 4, false, .unicode));
+}
+
+test "Thai: tone marks have width 0" {
+    const with_mai_ek = "ก่";
+    const with_mai_tho = "ก้";
+    const with_mai_tri = "ก๊";
+    const with_mai_chattawa = "ก๋";
+
+    try testing.expectEqual(@as(u32, 1), utf8.calculateTextWidth(with_mai_ek, 4, false, .unicode));
+    try testing.expectEqual(@as(u32, 1), utf8.calculateTextWidth(with_mai_tho, 4, false, .unicode));
+    try testing.expectEqual(@as(u32, 1), utf8.calculateTextWidth(with_mai_tri, 4, false, .unicode));
+    try testing.expectEqual(@as(u32, 1), utf8.calculateTextWidth(with_mai_chattawa, 4, false, .unicode));
+}
+
+test "Thai: other diacritics have width 0" {
+    const with_maitaikhu = "ก็";
+    const with_thanthakhat = "ก์";
+    const with_nikhahit = "กํ";
+
+    try testing.expectEqual(@as(u32, 1), utf8.calculateTextWidth(with_maitaikhu, 4, false, .unicode));
+    try testing.expectEqual(@as(u32, 1), utf8.calculateTextWidth(with_thanthakhat, 4, false, .unicode));
+    try testing.expectEqual(@as(u32, 1), utf8.calculateTextWidth(with_nikhahit, 4, false, .unicode));
+}
+
+test "Thai: combined vowel and tone mark" {
+    const text = "กี่";
+    try testing.expectEqual(@as(u32, 1), utf8.calculateTextWidth(text, 4, false, .unicode));
+
+    const text2 = "คือ";
+    try testing.expectEqual(@as(u32, 2), utf8.calculateTextWidth(text2, 4, false, .unicode));
+}
+
+test "Thai: word 'ภาษาไทย' (Thai language)" {
+    const text = "ภาษาไทย";
+    try testing.expectEqual(@as(u32, 7), utf8.calculateTextWidth(text, 4, false, .unicode));
+}
+
+test "Thai: word 'อย่าง' with tone mark" {
+    const text = "อย่าง";
+    try testing.expectEqual(@as(u32, 4), utf8.calculateTextWidth(text, 4, false, .unicode));
+}
+
+test "Thai: word 'อธิบาย' with vowel above" {
+    const text = "อธิบาย";
+    try testing.expectEqual(@as(u32, 5), utf8.calculateTextWidth(text, 4, false, .unicode));
+}
+
+test "Thai: full sentence with spaces" {
+    const text = "ภาษาไทย คืออะไร อธิบายมาอย่างละเอียด";
+    try testing.expectEqual(@as(u32, 32), utf8.calculateTextWidth(text, 4, false, .unicode));
+}
+
+test "Thai: wrap by width respects combining marks" {
+    const text = "คือ";
+
+    const result1 = utf8.findWrapPosByWidth(text, 1, 4, false, .unicode);
+    try testing.expectEqual(@as(u32, 6), result1.byte_offset);
+    try testing.expectEqual(@as(u32, 1), result1.columns_used);
+
+    const result2 = utf8.findWrapPosByWidth(text, 2, 4, false, .unicode);
+    try testing.expectEqual(@as(u32, 9), result2.byte_offset);
+    try testing.expectEqual(@as(u32, 2), result2.columns_used);
+}
+
+test "Thai: wrap by width with tone marks" {
+    const text = "ก่อน";
+
+    const result2 = utf8.findWrapPosByWidth(text, 2, 4, false, .unicode);
+    try testing.expectEqual(@as(u32, 2), result2.columns_used);
+
+    const result3 = utf8.findWrapPosByWidth(text, 3, 4, false, .unicode);
+    try testing.expectEqual(@as(u32, 3), result3.columns_used);
+}
+
+test "Thai: grapheme info for combining marks" {
+    const text = "กี่";
+
+    var result: std.ArrayListUnmanaged(utf8.GraphemeInfo) = .{};
+    defer result.deinit(testing.allocator);
+
+    try utf8.findGraphemeInfo(text, 4, false, .unicode, testing.allocator, &result);
+
+    try testing.expectEqual(@as(usize, 1), result.items.len);
+    try testing.expectEqual(@as(u8, 1), result.items[0].width);
+}
+
+test "Thai: grapheme info for word with combining marks" {
+    const text = "คือ";
+
+    var result: std.ArrayListUnmanaged(utf8.GraphemeInfo) = .{};
+    defer result.deinit(testing.allocator);
+
+    try utf8.findGraphemeInfo(text, 4, false, .unicode, testing.allocator, &result);
+
+    try testing.expectEqual(@as(usize, 2), result.items.len);
+    try testing.expectEqual(@as(u8, 1), result.items[0].width);
+    try testing.expectEqual(@as(u8, 1), result.items[1].width);
+}
+
+test "Thai: mixed Thai and ASCII" {
+    const text = "Hello ภาษาไทย World";
+    try testing.expectEqual(@as(u32, 19), utf8.calculateTextWidth(text, 4, false, .unicode));
+}
+
+test "Thai: mixed Thai and emoji" {
+    const text = "ภาษา 🇹🇭 ไทย";
+    try testing.expectEqual(@as(u32, 11), utf8.calculateTextWidth(text, 4, false, .unicode));
+}
+
+test "Thai: คำว่า width should be 3" {
+    const text = "คำว่า";
+    try testing.expectEqual(@as(u32, 3), utf8.calculateTextWidth(text, 4, false, .unicode));
+}
+
+test "Thai: ว่ width should be 1" {
+    const text = "ว่";
+    try testing.expectEqual(@as(u32, 1), utf8.calculateTextWidth(text, 4, false, .unicode));
+}
+
+test "Thai: ว่ wcwidth vs unicode mode comparison" {
+    const text = "ว่";
+    const wcwidth_result = utf8.calculateTextWidth(text, 4, false, .wcwidth);
+    const unicode_result = utf8.calculateTextWidth(text, 4, false, .unicode);
+
+    try testing.expectEqual(@as(u32, 1), wcwidth_result);
+    try testing.expectEqual(@as(u32, 1), unicode_result);
+}
+
+test "Thai: ว่ is a single grapheme cluster" {
+    const text = "ว่";
+
+    var result: std.ArrayListUnmanaged(utf8.GraphemeInfo) = .{};
+    defer result.deinit(testing.allocator);
+
+    try utf8.findGraphemeInfo(text, 4, false, .unicode, testing.allocator, &result);
+
+    try testing.expectEqual(@as(usize, 1), result.items.len);
+    try testing.expectEqual(@as(u8, 1), result.items[0].width);
 }

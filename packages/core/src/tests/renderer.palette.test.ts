@@ -261,6 +261,7 @@ describe("Palette detection with OSC responses", () => {
     const { renderer } = await createTestRenderer({
       stdin: mockStdin,
       stdout: mockStdout,
+      useThread: false,
     })
 
     const palette = await renderer.getPalette({ timeout: 300 })
@@ -312,6 +313,7 @@ describe("Palette detection with OSC responses", () => {
     const { renderer } = await createTestRenderer({
       stdin: mockStdin,
       stdout: mockStdout,
+      useThread: false,
     })
 
     const palette = await renderer.getPalette({ timeout: 300 })
@@ -601,6 +603,7 @@ describe("Palette cache with different sizes", () => {
     const { renderer } = await createTestRenderer({
       stdin: mockStdin,
       stdout: mockStdout,
+      useThread: false,
     })
 
     const palette1 = await renderer.getPalette({ size: 16, timeout: 300 })

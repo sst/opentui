@@ -637,5 +637,69 @@ describe("TextBufferView", () => {
       expect(result!.lineCount).toBe(4)
       expect(result!.maxWidth).toBe(10)
     })
+
+    it("should cache measure results for same width", () => {
+      const styledText = stringToStyledText("ABCDEFGHIJKLMNOPQRST")
+      buffer.setStyledText(styledText)
+
+      view.setWrapMode("char")
+
+      // First call - cache miss
+      const result1 = view.measureForDimensions(10, 10)
+      expect(result1).not.toBeNull()
+      expect(result1!.lineCount).toBe(2)
+
+      // Second call with same width - should return cached result
+      const result2 = view.measureForDimensions(10, 10)
+      expect(result2).not.toBeNull()
+      expect(result2!.lineCount).toBe(2)
+      expect(result2!.maxWidth).toBe(result1!.maxWidth)
+    })
+
+    it("should invalidate cache when content changes", () => {
+      const styledText1 = stringToStyledText("ABCDEFGHIJ")
+      buffer.setStyledText(styledText1)
+
+      view.setWrapMode("char")
+
+      // Measure with width 5 - should be 2 lines
+      const result1 = view.measureForDimensions(5, 10)
+      expect(result1!.lineCount).toBe(2)
+
+      // Change content to be longer
+      const styledText2 = stringToStyledText("ABCDEFGHIJKLMNOPQRST")
+      buffer.setStyledText(styledText2)
+
+      // Same width should now return different result
+      const result2 = view.measureForDimensions(5, 10)
+      expect(result2!.lineCount).toBe(4)
+    })
+
+    it("should invalidate cache when wrap mode changes", () => {
+      const styledText = stringToStyledText("Hello world test string here")
+      buffer.setStyledText(styledText)
+
+      view.setWrapMode("word")
+      const resultWord = view.measureForDimensions(10, 10)
+
+      view.setWrapMode("char")
+      const resultChar = view.measureForDimensions(10, 10)
+
+      // Word and char wrap should produce different results
+      expect(resultWord!.lineCount).not.toBe(resultChar!.lineCount)
+    })
+
+    it("should handle width 0 for intrinsic measurement", () => {
+      const styledText = stringToStyledText("Hello World")
+      buffer.setStyledText(styledText)
+
+      view.setWrapMode("word")
+
+      // Width 0 means get intrinsic width (no wrapping)
+      const result = view.measureForDimensions(0, 10)
+      expect(result).not.toBeNull()
+      expect(result!.lineCount).toBe(1)
+      expect(result!.maxWidth).toBe(11) // "Hello World" = 11 chars
+    })
   })
 })

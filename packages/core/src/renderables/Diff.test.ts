@@ -2667,3 +2667,220 @@ test("DiffRenderable - fg prop accepts RGBA directly", async () => {
   const leftCodeRenderable = (diffRenderable as any).leftCodeRenderable
   expect(leftCodeRenderable.fg).toEqual(customFg)
 })
+
+test("DiffRenderable - split view with word wrapping: changing diff content should not misalign sides", async () => {
+  const { BoxRenderable } = await import("./Box")
+  const { parseColor } = await import("../lib/RGBA")
+
+  // Use terminal width that matches the demo (~116 chars)
+  const testRenderer = await createTestRenderer({ width: 116, height: 30 })
+  const renderer = testRenderer.renderer
+  const captureFrame = testRenderer.captureCharFrame
+
+  // GitHub Dark theme - EXACTLY as in diff-demo.ts
+  const theme = {
+    backgroundColor: "#0D1117",
+    addedBg: "#1a4d1a",
+    removedBg: "#4d1a1a",
+    contextBg: "transparent",
+    addedSignColor: "#22c55e",
+    removedSignColor: "#ef4444",
+    lineNumberFg: "#6b7280",
+    lineNumberBg: "#161b22",
+    addedLineNumberBg: "#0d3a0d",
+    removedLineNumberBg: "#3a0d0d",
+    selectionBg: "#264F78",
+    selectionFg: "#FFFFFF",
+  }
+
+  // Syntax style EXACTLY as in diff-demo.ts GitHub Dark theme
+  const syntaxStyle = SyntaxStyle.fromStyles({
+    keyword: { fg: parseColor("#FF7B72"), bold: true },
+    "keyword.import": { fg: parseColor("#FF7B72"), bold: true },
+    string: { fg: parseColor("#A5D6FF") },
+    comment: { fg: parseColor("#8B949E"), italic: true },
+    number: { fg: parseColor("#79C0FF") },
+    boolean: { fg: parseColor("#79C0FF") },
+    constant: { fg: parseColor("#79C0FF") },
+    function: { fg: parseColor("#D2A8FF") },
+    "function.call": { fg: parseColor("#D2A8FF") },
+    constructor: { fg: parseColor("#FFA657") },
+    type: { fg: parseColor("#FFA657") },
+    operator: { fg: parseColor("#FF7B72") },
+    variable: { fg: parseColor("#E6EDF3") },
+    property: { fg: parseColor("#79C0FF") },
+    bracket: { fg: parseColor("#F0F6FC") },
+    punctuation: { fg: parseColor("#F0F6FC") },
+    default: { fg: parseColor("#E6EDF3") },
+  })
+
+  // contentExamples[0] - TypeScript Calculator diff
+  const calculatorDiff = `--- a/calculator.ts
++++ b/calculator.ts
+@@ -1,13 +1,20 @@
+ class Calculator {
+   add(a: number, b: number): number {
+     return a + b;
+   }
+ 
+-  subtract(a: number, b: number): number {
+-    return a - b;
++  subtract(a: number, b: number, c: number = 0): number {
++    return a - b - c;
+   }
+ 
+   multiply(a: number, b: number): number {
+     return a * b;
+   }
++
++  divide(a: number, b: number): number {
++    if (b === 0) {
++      throw new Error("Division by zero");
++    }
++    return a / b;
++  }
+ }`
+
+  // contentExamples[1] - Real Session: Text Demo
+  const textDemoDiff = `Index: packages/core/src/examples/index.ts
+===================================================================
+--- packages/core/src/examples/index.ts	before
++++ packages/core/src/examples/index.ts	after
+@@ -56,6 +56,7 @@
+ import * as terminalDemo from "./terminal"
+ import * as diffDemo from "./diff-demo"
+ import * as keypressDebugDemo from "./keypress-debug-demo"
++import * as textTruncationDemo from "./text-truncation-demo"
+ import { setupCommonDemoKeys } from "./lib/standalone-keys"
+ 
+ interface Example {
+@@ -85,6 +86,12 @@
+     destroy: textSelectionExample.destroy,
+   },
+   {
++    name: "Text Truncation Demo",
++    description: "Middle truncation with ellipsis - toggle with 'T' key and resize to test responsive behavior",
++    run: textTruncationDemo.run,
++    destroy: textTruncationDemo.destroy,
++  },
++  {
+     name: "ASCII Font Selection Demo",
+     description: "Text selection with ASCII fonts - precise character-level selection across different font types",
+     run: asciiFontSelectionExample.run,`
+
+  renderer.setBackgroundColor(theme.backgroundColor)
+
+  // PART 1: CORRECT PATH
+  // Start with textDemoDiff, view="unified", wrapMode="none"
+  // Then toggle to split, then toggle to word wrap
+  // This produces CORRECT alignment
+  const parentContainer1 = new BoxRenderable(renderer, {
+    id: "parent-container-1",
+    padding: 1,
+  })
+  renderer.root.add(parentContainer1)
+
+  const correctDiff = new DiffRenderable(renderer, {
+    id: "correct-diff",
+    diff: textDemoDiff, // Start with textDemoDiff directly
+    view: "unified",
+    filetype: "typescript",
+    syntaxStyle,
+    showLineNumbers: true,
+    wrapMode: "none",
+    conceal: true,
+    addedBg: theme.addedBg,
+    removedBg: theme.removedBg,
+    contextBg: theme.contextBg,
+    addedSignColor: theme.addedSignColor,
+    removedSignColor: theme.removedSignColor,
+    lineNumberFg: theme.lineNumberFg,
+    lineNumberBg: theme.lineNumberBg,
+    addedLineNumberBg: theme.addedLineNumberBg,
+    removedLineNumberBg: theme.removedLineNumberBg,
+    selectionBg: theme.selectionBg,
+    selectionFg: theme.selectionFg,
+    flexGrow: 1,
+    flexShrink: 1,
+  })
+
+  parentContainer1.add(correctDiff)
+  await Bun.sleep(200)
+
+  // Press V - toggle to split view
+  correctDiff.view = "split"
+  await Bun.sleep(200)
+
+  // Press W - toggle to word wrap
+  correctDiff.wrapMode = "word"
+  await Bun.sleep(500)
+
+  const correctFrame = captureFrame()
+
+  // Clean up
+  parentContainer1.destroyRecursively()
+  renderer.root.remove("parent-container-1")
+  await Bun.sleep(100)
+
+  // PART 2: BUGGY PATH
+  // Start with calculatorDiff, view="unified", wrapMode="none"
+  // Press V (split), Press W (word), Press C (change to textDemoDiff)
+  // This produces WRONG alignment due to stale lineInfo
+  const parentContainer2 = new BoxRenderable(renderer, {
+    id: "parent-container-2",
+    padding: 1,
+  })
+  renderer.root.add(parentContainer2)
+
+  const buggyDiff = new DiffRenderable(renderer, {
+    id: "buggy-diff",
+    diff: calculatorDiff, // Start with calculatorDiff (contentExamples[0])
+    view: "unified",
+    filetype: "typescript",
+    syntaxStyle,
+    showLineNumbers: true,
+    wrapMode: "none",
+    conceal: true,
+    addedBg: theme.addedBg,
+    removedBg: theme.removedBg,
+    contextBg: theme.contextBg,
+    addedSignColor: theme.addedSignColor,
+    removedSignColor: theme.removedSignColor,
+    lineNumberFg: theme.lineNumberFg,
+    lineNumberBg: theme.lineNumberBg,
+    addedLineNumberBg: theme.addedLineNumberBg,
+    removedLineNumberBg: theme.removedLineNumberBg,
+    selectionBg: theme.selectionBg,
+    selectionFg: theme.selectionFg,
+    flexGrow: 1,
+    flexShrink: 1,
+  })
+
+  parentContainer2.add(buggyDiff)
+  await Bun.sleep(200)
+
+  // Press V - toggle to split view
+  buggyDiff.view = "split"
+  await Bun.sleep(200)
+
+  // Press W - toggle to word wrap
+  buggyDiff.wrapMode = "word"
+  await Bun.sleep(200)
+
+  // Press C - change diff content to textDemoDiff
+  // THIS IS WHERE THE BUG MANIFESTS - lineInfo is STALE
+  buggyDiff.diff = textDemoDiff
+  buggyDiff.filetype = "typescript"
+  await Bun.sleep(500)
+
+  const buggyFrame = captureFrame()
+
+  // Clean up
+  renderer.destroy()
+
+  // ASSERTION: Both frames should be identical since they show the same diff content
+  // with the same view settings (split + word wrap)
+  // But due to the bug, the buggy frame has misaligned left/right sides because
+  // the lineInfo from CodeRenderable is STALE after changing diff content
+  expect(buggyFrame).toBe(correctFrame)
+})

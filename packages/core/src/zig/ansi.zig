@@ -21,15 +21,15 @@ pub const ANSI = struct {
 
     // Direct writing to any writer - the most efficient option
     pub fn moveToOutput(writer: anytype, x: u32, y: u32) AnsiError!void {
-        std.fmt.format(writer, "\x1b[{d};{d}H", .{ y, x }) catch return AnsiError.WriteFailed;
+        writer.print("\x1b[{d};{d}H", .{ y, x }) catch return AnsiError.WriteFailed;
     }
 
     pub fn fgColorOutput(writer: anytype, r: u8, g: u8, b: u8) AnsiError!void {
-        std.fmt.format(writer, "\x1b[38;2;{d};{d};{d}m", .{ r, g, b }) catch return AnsiError.WriteFailed;
+        writer.print("\x1b[38;2;{d};{d};{d}m", .{ r, g, b }) catch return AnsiError.WriteFailed;
     }
 
     pub fn bgColorOutput(writer: anytype, r: u8, g: u8, b: u8) AnsiError!void {
-        std.fmt.format(writer, "\x1b[48;2;{d};{d};{d}m", .{ r, g, b }) catch return AnsiError.WriteFailed;
+        writer.print("\x1b[48;2;{d};{d};{d}m", .{ r, g, b }) catch return AnsiError.WriteFailed;
     }
 
     // Text attribute constants
@@ -51,11 +51,11 @@ pub const ANSI = struct {
     pub const cursorUnderlineBlink = "\x1b[3 q";
 
     pub fn cursorColorOutputWriter(writer: anytype, r: u8, g: u8, b: u8) AnsiError!void {
-        std.fmt.format(writer, "\x1b]12;#{x:0>2}{x:0>2}{x:0>2}\x07", .{ r, g, b }) catch return AnsiError.WriteFailed;
+        writer.print("\x1b]12;#{x:0>2}{x:0>2}{x:0>2}\x07", .{ r, g, b }) catch return AnsiError.WriteFailed;
     }
 
     pub fn explicitWidthOutput(writer: anytype, width: u32, text: []const u8) AnsiError!void {
-        std.fmt.format(writer, "\x1b]66;w={d};{s}\x1b\\", .{ width, text }) catch return AnsiError.WriteFailed;
+        writer.print("\x1b]66;w={d};{s}\x1b\\", .{ width, text }) catch return AnsiError.WriteFailed;
     }
 
     pub const resetCursorColor = "\x1b]112\x07";
@@ -89,6 +89,35 @@ pub const ANSI = struct {
     pub const decrqmColorScheme = "\x1b[?2031$p";
     pub const csiUQuery = "\x1b[?u";
     pub const kittyGraphicsQuery = "\x1b_Gi=31337,s=1,v=1,a=q,t=d,f=24;AAAA\x1b\\\x1b[c";
+
+    pub const capabilityQueries = decrqmSgrPixels ++
+        decrqmUnicode ++
+        decrqmColorScheme ++
+        decrqmFocus ++
+        decrqmBracketedPaste ++
+        decrqmSync ++
+        csiUQuery;
+
+    // tmux DCS passthrough wrapper (ESC chars doubled)
+    pub const tmuxDcsStart = "\x1bPtmux;";
+    pub const tmuxDcsEnd = "\x1b\\";
+
+    pub fn wrapForTmux(comptime seq: []const u8) []const u8 {
+        comptime {
+            var result: []const u8 = tmuxDcsStart;
+            for (seq) |c| {
+                if (c == '\x1b') {
+                    result = result ++ "\x1b\x1b";
+                } else {
+                    result = result ++ &[_]u8{c};
+                }
+            }
+            return result ++ tmuxDcsEnd;
+        }
+    }
+
+    pub const kittyGraphicsQueryTmux = wrapForTmux(kittyGraphicsQuery);
+    pub const capabilityQueriesTmux = wrapForTmux(capabilityQueries);
     pub const sixelGeometryQuery = "\x1b[?2;1;0S";
     pub const cursorPositionRequest = "\x1b[6n";
     pub const explicitWidthQuery = "\x1b]66;w=1; \x1b\\";
@@ -131,12 +160,15 @@ pub const ANSI = struct {
     pub const setTerminalTitle = "\x1b]0;{s}\x07";
 
     pub fn setTerminalTitleOutput(writer: anytype, title: []const u8) AnsiError!void {
-        std.fmt.format(writer, setTerminalTitle, .{title}) catch return AnsiError.WriteFailed;
+        writer.print(setTerminalTitle, .{title}) catch return AnsiError.WriteFailed;
     }
 
     pub fn makeRoomForRendererOutput(writer: anytype, height: u32) AnsiError!void {
         if (height > 1) {
-            writer.writeByteNTimes('\n', height - 1) catch return AnsiError.WriteFailed;
+            var i: u32 = 0;
+            while (i < height - 1) : (i += 1) {
+                writer.writeByte('\n') catch return AnsiError.WriteFailed;
+            }
         }
     }
 };

@@ -17,6 +17,7 @@ import {
   EncodedCharStruct,
   LineInfoStruct,
   MeasureResultStruct,
+  CursorStateStruct,
 } from "./zig-structs"
 import { isBunfsPath } from "./lib/bunfs"
 import { attributesWithLink } from "./utils"
@@ -56,6 +57,18 @@ registerEnvVar({
 registerEnvVar({
   name: "OPENTUI_FORCE_UNICODE",
   description: "Force Mode 2026 Unicode support in terminal capabilities",
+  type: "boolean",
+  default: false,
+})
+registerEnvVar({
+  name: "OPENTUI_NO_GRAPHICS",
+  description: "Disable Kitty graphics protocol detection",
+  type: "boolean",
+  default: false,
+})
+registerEnvVar({
+  name: "OPENTUI_FORCE_NOZWJ",
+  description: "Use no_zwj width method (Unicode without ZWJ joining)",
   type: "boolean",
   default: false,
 })
@@ -245,6 +258,10 @@ function getOpenTUILib(libPath?: string) {
       args: ["ptr", "ptr"],
       returns: "void",
     },
+    getCursorState: {
+      args: ["ptr", "ptr"],
+      returns: "void",
+    },
 
     // Debug overlay
     setDebugOverlay: {
@@ -307,9 +324,33 @@ function getOpenTUILib(libPath?: string) {
       args: ["ptr", "i32", "i32", "u32", "u32", "u32"],
       returns: "void",
     },
+    clearCurrentHitGrid: {
+      args: ["ptr"],
+      returns: "void",
+    },
+    hitGridPushScissorRect: {
+      args: ["ptr", "i32", "i32", "u32", "u32"],
+      returns: "void",
+    },
+    hitGridPopScissorRect: {
+      args: ["ptr"],
+      returns: "void",
+    },
+    hitGridClearScissorRects: {
+      args: ["ptr"],
+      returns: "void",
+    },
+    addToCurrentHitGridClipped: {
+      args: ["ptr", "i32", "i32", "u32", "u32", "u32"],
+      returns: "void",
+    },
     checkHit: {
       args: ["ptr", "u32", "u32"],
       returns: "u32",
+    },
+    getHitGridDirty: {
+      args: ["ptr"],
+      returns: "bool",
     },
     dumpHitGrid: {
       args: ["ptr"],
@@ -357,6 +398,10 @@ function getOpenTUILib(libPath?: string) {
     },
     resumeRenderer: {
       args: ["ptr"],
+      returns: "void",
+    },
+    writeOut: {
+      args: ["ptr", "ptr", "u64"],
       returns: "void",
     },
 
@@ -1192,6 +1237,15 @@ export interface LogicalCursor {
   offset: number
 }
 
+export interface CursorState {
+  x: number
+  y: number
+  visible: boolean
+  style: CursorStyle
+  blinking: boolean
+  color: RGBA
+}
+
 export interface RenderLib {
   createRenderer: (width: number, height: number, options?: { testing: boolean }) => Pointer | null
   destroyRenderer: (renderer: Pointer) => void
@@ -1296,11 +1350,25 @@ export interface RenderLib {
   setCursorPosition: (renderer: Pointer, x: number, y: number, visible: boolean) => void
   setCursorStyle: (renderer: Pointer, style: CursorStyle, blinking: boolean) => void
   setCursorColor: (renderer: Pointer, color: RGBA) => void
+  getCursorState: (renderer: Pointer) => CursorState
   setDebugOverlay: (renderer: Pointer, enabled: boolean, corner: DebugOverlayCorner) => void
   clearTerminal: (renderer: Pointer) => void
   setTerminalTitle: (renderer: Pointer, title: string) => void
   addToHitGrid: (renderer: Pointer, x: number, y: number, width: number, height: number, id: number) => void
+  clearCurrentHitGrid: (renderer: Pointer) => void
+  hitGridPushScissorRect: (renderer: Pointer, x: number, y: number, width: number, height: number) => void
+  hitGridPopScissorRect: (renderer: Pointer) => void
+  hitGridClearScissorRects: (renderer: Pointer) => void
+  addToCurrentHitGridClipped: (
+    renderer: Pointer,
+    x: number,
+    y: number,
+    width: number,
+    height: number,
+    id: number,
+  ) => void
   checkHit: (renderer: Pointer, x: number, y: number) => number
+  getHitGridDirty: (renderer: Pointer) => boolean
   dumpHitGrid: (renderer: Pointer) => void
   dumpBuffers: (renderer: Pointer, timestamp?: number) => void
   dumpStdoutBuffer: (renderer: Pointer, timestamp?: number) => void
@@ -1314,6 +1382,7 @@ export interface RenderLib {
   suspendRenderer: (renderer: Pointer) => void
   resumeRenderer: (renderer: Pointer) => void
   queryPixelResolution: (renderer: Pointer) => void
+  writeOut: (renderer: Pointer, data: string | Uint8Array) => void
 
   // TextBuffer methods
   createTextBuffer: (widthMethod: WidthMethod) => TextBuffer
@@ -1997,6 +2066,27 @@ class FFIRenderLib implements RenderLib {
     this.opentui.symbols.setCursorColor(renderer, color.buffer)
   }
 
+  public getCursorState(renderer: Pointer): CursorState {
+    const cursorBuffer = new ArrayBuffer(CursorStateStruct.size)
+    this.opentui.symbols.getCursorState(renderer, ptr(cursorBuffer))
+    const struct = CursorStateStruct.unpack(cursorBuffer)
+
+    const styleMap: Record<number, CursorStyle> = {
+      0: "block",
+      1: "line",
+      2: "underline",
+    }
+
+    return {
+      x: struct.x,
+      y: struct.y,
+      visible: struct.visible,
+      style: styleMap[struct.style] || "block",
+      blinking: struct.blinking,
+      color: RGBA.fromValues(struct.r, struct.g, struct.b, struct.a),
+    }
+  }
+
   public render(renderer: Pointer, force: boolean) {
     this.opentui.symbols.render(renderer, force)
   }
@@ -2068,8 +2158,39 @@ class FFIRenderLib implements RenderLib {
     this.opentui.symbols.addToHitGrid(renderer, x, y, width, height, id)
   }
 
+  public clearCurrentHitGrid(renderer: Pointer) {
+    this.opentui.symbols.clearCurrentHitGrid(renderer)
+  }
+
+  public hitGridPushScissorRect(renderer: Pointer, x: number, y: number, width: number, height: number) {
+    this.opentui.symbols.hitGridPushScissorRect(renderer, x, y, width, height)
+  }
+
+  public hitGridPopScissorRect(renderer: Pointer) {
+    this.opentui.symbols.hitGridPopScissorRect(renderer)
+  }
+
+  public hitGridClearScissorRects(renderer: Pointer) {
+    this.opentui.symbols.hitGridClearScissorRects(renderer)
+  }
+
+  public addToCurrentHitGridClipped(
+    renderer: Pointer,
+    x: number,
+    y: number,
+    width: number,
+    height: number,
+    id: number,
+  ) {
+    this.opentui.symbols.addToCurrentHitGridClipped(renderer, x, y, width, height, id)
+  }
+
   public checkHit(renderer: Pointer, x: number, y: number): number {
     return this.opentui.symbols.checkHit(renderer, x, y)
+  }
+
+  public getHitGridDirty(renderer: Pointer): boolean {
+    return this.opentui.symbols.getHitGridDirty(renderer)
   }
 
   public dumpHitGrid(renderer: Pointer): void {
@@ -2124,6 +2245,17 @@ class FFIRenderLib implements RenderLib {
 
   public queryPixelResolution(renderer: Pointer): void {
     this.opentui.symbols.queryPixelResolution(renderer)
+  }
+
+  /**
+   * Write data to stdout, synchronizing with the render thread if necessary.
+   * This should be used for ALL stdout writes to avoid race conditions when
+   * the render thread is active.
+   */
+  public writeOut(renderer: Pointer, data: string | Uint8Array): void {
+    const bytes = typeof data === "string" ? new TextEncoder().encode(data) : data
+    if (bytes.length === 0) return
+    this.opentui.symbols.writeOut(renderer, ptr(bytes), bytes.length)
   }
 
   // TextBuffer methods
@@ -3119,6 +3251,7 @@ class FFIRenderLib implements RenderLib {
       sync: caps.sync,
       bracketed_paste: caps.bracketed_paste,
       hyperlinks: caps.hyperlinks,
+      explicit_cursor_positioning: caps.explicit_cursor_positioning,
       terminal: {
         name: caps.term_name ?? "",
         version: caps.term_version ?? "",
