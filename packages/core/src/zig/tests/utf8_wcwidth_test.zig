@@ -83,9 +83,21 @@ test "findGraphemeInfo wcwidth: emoji with ZWJ - each codepoint separate" {
     const text = "👩‍🚀"; // Woman + ZWJ + Rocket
     try utf8.findGraphemeInfo(text, 4, false, .wcwidth, testing.allocator, &result);
 
-    // In wcwidth mode, we see woman (width 2) and rocket (width 2)
-    // ZWJ has width 0 so it's not in the list
-    try testing.expectEqual(@as(usize, 2), result.items.len);
+    // In wcwidth mode, we see woman (width 2), ZWJ (width 0), and rocket (width 2)
+    // ZWJ is included with width 0 so the rendering loop knows its byte length
+    try testing.expectEqual(@as(usize, 3), result.items.len);
+
+    // Woman emoji
+    try testing.expectEqual(@as(u8, 4), result.items[0].byte_len);
+    try testing.expectEqual(@as(u8, 2), result.items[0].width);
+
+    // ZWJ (zero-width but tracked for byte length)
+    try testing.expectEqual(@as(u8, 3), result.items[1].byte_len);
+    try testing.expectEqual(@as(u8, 0), result.items[1].width);
+
+    // Rocket emoji
+    try testing.expectEqual(@as(u8, 4), result.items[2].byte_len);
+    try testing.expectEqual(@as(u8, 2), result.items[2].width);
 }
 
 test "findGraphemeInfo wcwidth: combining mark - base and mark separate" {
@@ -96,9 +108,12 @@ test "findGraphemeInfo wcwidth: combining mark - base and mark separate" {
     try utf8.findGraphemeInfo(text, 4, false, .wcwidth, testing.allocator, &result);
 
     // In wcwidth mode, combining mark is a separate codepoint with width 0
-    // So we don't see it in the results (only non-zero width codepoints)
-    // We only see 'e' (ASCII, not included) and no combining mark
-    try testing.expectEqual(@as(usize, 0), result.items.len);
+    // It's included so the rendering loop knows its byte length
+    // 'e' is ASCII (not included), combining mark is multi-byte (included with width 0)
+    try testing.expectEqual(@as(usize, 1), result.items.len);
+    try testing.expectEqual(@as(u32, 1), result.items[0].byte_offset); // After 'e'
+    try testing.expectEqual(@as(u8, 2), result.items[0].byte_len); // Combining mark is 2 bytes
+    try testing.expectEqual(@as(u8, 0), result.items[0].width); // Zero width
 }
 
 test "findGraphemeInfo wcwidth vs unicode: emoji with skin tone" {

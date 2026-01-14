@@ -1871,11 +1871,13 @@ fn findGraphemeInfoWCWidth(
 
         const cp_width = charWidth(b0, curr_cp, tab_width);
 
-        // In wcwidth mode, only track multi-byte codepoints and tabs that have non-zero width
+        // In wcwidth mode, track ALL multi-byte codepoints (including zero-width ones like ZWJ)
+        // and tabs. Zero-width chars must be tracked so the rendering loop knows to skip
+        // all their bytes and not treat them as width-1 ASCII characters.
         const is_tab = (b0 == '\t');
         const is_multibyte = (cp_len != 1);
 
-        if ((is_multibyte or is_tab) and cp_width > 0) {
+        if (is_multibyte or is_tab) {
             try result.append(allocator, GraphemeInfo{
                 .byte_offset = @intCast(pos),
                 .byte_len = @intCast(cp_len),
