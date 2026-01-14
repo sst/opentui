@@ -81,6 +81,7 @@ pub const CliRenderer = struct {
     allocator: Allocator,
     renderThread: ?std.Thread = null,
     stdoutBuffer: [4096]u8,
+    writeOutBuf: [1024]u8 = undefined,
     debugOverlay: struct {
         enabled: bool,
         corner: DebugOverlayCorner,
@@ -121,6 +122,7 @@ pub const CliRenderer = struct {
     hitGridWidth: u32,
     hitGridHeight: u32,
     hitScissorStack: std.ArrayListUnmanaged(buf.ClipRect),
+    hitGridDirty: bool = false,
 
     lastCursorStyleTag: ?u8 = null,
     lastCursorBlinking: ?bool = null,
@@ -691,11 +693,17 @@ pub const CliRenderer = struct {
                     };
                     if (bytes.len > 0) {
                         const capabilities = self.terminal.getCapabilities();
+                        const graphemeWidth = gp.charRightExtent(cell.char) + 1;
                         if (capabilities.explicit_width) {
-                            const graphemeWidth = gp.charRightExtent(cell.char) + 1;
                             ansi.ANSI.explicitWidthOutput(writer, graphemeWidth, bytes) catch {};
                         } else {
                             writer.writeAll(bytes) catch {};
+                            if (capabilities.explicit_cursor_positioning) {
+                                const nextX = x + graphemeWidth;
+                                if (nextX < self.width) {
+                                    ansi.ANSI.moveToOutput(writer, nextX + 1, y + 1 + self.renderOffset) catch {};
+                                }
+                            }
                         }
                     }
                 } else if (gp.isContinuationChar(cell.char)) {
@@ -796,6 +804,10 @@ pub const CliRenderer = struct {
 
         self.nextRenderBuffer.clear(.{ self.backgroundColor[0], self.backgroundColor[1], self.backgroundColor[2], self.backgroundColor[3] }, null) catch {};
 
+        // Compare hit grids before swap to detect changes. This allows TypeScript to
+        // know if hover state needs rechecking without manually tracking dirty state.
+        self.hitGridDirty = !std.mem.eql(u32, self.currentHitGrid, self.nextHitGrid);
+
         // Swap hit grids: nextHitGrid (built this frame) becomes the active grid for
         // hit testing. The old currentHitGrid becomes nextHitGrid and is cleared for
         // the next frame.
@@ -811,9 +823,47 @@ pub const CliRenderer = struct {
     }
 
     pub fn clearTerminal(self: *CliRenderer) void {
+        self.writeOut(ansi.ANSI.clearAndHome);
+    }
+
+    pub fn writeOut(self: *CliRenderer, data: []const u8) void {
+        if (data.len == 0) return;
+
+        if (self.useThread) {
+            self.renderMutex.lock();
+            while (self.renderInProgress) {
+                self.renderCondition.wait(&self.renderMutex);
+            }
+            self.renderMutex.unlock();
+        }
+
         var stdoutWriter = std.fs.File.stdout().writer(&self.stdoutBuffer);
         const w = &stdoutWriter.interface;
-        w.writeAll(ansi.ANSI.clearAndHome) catch {};
+        w.writeAll(data) catch {};
+        w.flush() catch {};
+    }
+
+    pub fn writeOutMultiple(self: *CliRenderer, data_slices: []const []const u8) void {
+        if (self.useThread) {
+            self.renderMutex.lock();
+            while (self.renderInProgress) {
+                self.renderCondition.wait(&self.renderMutex);
+            }
+            self.renderMutex.unlock();
+        }
+
+        var totalLen: usize = 0;
+        for (data_slices) |slice| {
+            totalLen += slice.len;
+        }
+
+        if (totalLen == 0) return;
+
+        var stdoutWriter = std.fs.File.stdout().writer(&self.stdoutBuffer);
+        const w = &stdoutWriter.interface;
+        for (data_slices) |slice| {
+            w.writeAll(slice) catch {};
+        }
         w.flush() catch {};
     }
 
@@ -858,6 +908,13 @@ pub const CliRenderer = struct {
     /// require updating hit targets without waiting for the next render.
     pub fn clearCurrentHitGrid(self: *CliRenderer) void {
         @memset(self.currentHitGrid, 0);
+    }
+
+    /// Return whether the hit grid changed during the last render.
+    /// This is set by comparing the previous and current hit grids after render.
+    /// TypeScript can use this to decide if hover state needs rechecking.
+    pub fn getHitGridDirty(self: *CliRenderer) bool {
+        return self.hitGridDirty;
     }
 
     /// Return the renderable ID at screen position (x, y), or 0 if none.
@@ -1093,47 +1150,32 @@ pub const CliRenderer = struct {
     }
 
     pub fn enableMouse(self: *CliRenderer, enableMovement: bool) void {
-        _ = enableMovement; // TODO: Use this to control motion tracking levels
-        var stdoutWriter = std.fs.File.stdout().writer(&self.stdoutBuffer);
-        const writer = &stdoutWriter.interface;
-
-        self.terminal.setMouseMode(writer, true) catch {};
-
-        writer.flush() catch {};
+        _ = enableMovement;
+        var stream = std.io.fixedBufferStream(&self.writeOutBuf);
+        self.terminal.setMouseMode(stream.writer(), true) catch {};
+        self.writeOut(stream.getWritten());
     }
 
     pub fn queryPixelResolution(self: *CliRenderer) void {
-        var stdoutWriter = std.fs.File.stdout().writer(&self.stdoutBuffer);
-        const writer = &stdoutWriter.interface;
-
-        writer.writeAll(ansi.ANSI.queryPixelSize) catch {};
-
-        writer.flush() catch {};
+        self.writeOut(ansi.ANSI.queryPixelSize);
     }
 
     pub fn disableMouse(self: *CliRenderer) void {
-        var stdoutWriter = std.fs.File.stdout().writer(&self.stdoutBuffer);
-        const writer = &stdoutWriter.interface;
-
-        self.terminal.setMouseMode(writer, false) catch {};
-
-        writer.flush() catch {};
+        var stream = std.io.fixedBufferStream(&self.writeOutBuf);
+        self.terminal.setMouseMode(stream.writer(), false) catch {};
+        self.writeOut(stream.getWritten());
     }
 
     pub fn enableKittyKeyboard(self: *CliRenderer, flags: u8) void {
-        var stdoutWriter = std.fs.File.stdout().writer(&self.stdoutBuffer);
-        const writer = &stdoutWriter.interface;
-
-        self.terminal.setKittyKeyboard(writer, true, flags) catch {};
-        writer.flush() catch {};
+        var stream = std.io.fixedBufferStream(&self.writeOutBuf);
+        self.terminal.setKittyKeyboard(stream.writer(), true, flags) catch {};
+        self.writeOut(stream.getWritten());
     }
 
     pub fn disableKittyKeyboard(self: *CliRenderer) void {
-        var stdoutWriter = std.fs.File.stdout().writer(&self.stdoutBuffer);
-        const writer = &stdoutWriter.interface;
-
-        self.terminal.setKittyKeyboard(writer, false, 0) catch {};
-        writer.flush() catch {};
+        var stream = std.io.fixedBufferStream(&self.writeOutBuf);
+        self.terminal.setKittyKeyboard(stream.writer(), false, 0) catch {};
+        self.writeOut(stream.getWritten());
     }
 
     pub fn getTerminalCapabilities(self: *CliRenderer) Terminal.Capabilities {
@@ -1142,11 +1184,14 @@ pub const CliRenderer = struct {
 
     pub fn processCapabilityResponse(self: *CliRenderer, response: []const u8) void {
         self.terminal.processCapabilityResponse(response);
-        var stdoutWriter = std.fs.File.stdout().writer(&self.stdoutBuffer);
-        const writer = &stdoutWriter.interface;
+        var stream = std.io.fixedBufferStream(&self.writeOutBuf);
+        _ = self.terminal.sendPendingQueries(stream.writer()) catch |err| blk: {
+            logger.warn("Failed to send pending queries: {}", .{err});
+            break :blk false;
+        };
         const useKitty = self.terminal.opts.kitty_keyboard_flags > 0;
-        self.terminal.enableDetectedFeatures(writer, useKitty) catch {};
-        writer.flush() catch {};
+        self.terminal.enableDetectedFeatures(stream.writer(), useKitty) catch {};
+        self.writeOut(stream.getWritten());
     }
 
     pub fn setCursorPosition(self: *CliRenderer, x: u32, y: u32, visible: bool) void {
@@ -1167,6 +1212,12 @@ pub const CliRenderer = struct {
 
     pub fn getKittyKeyboardFlags(self: *CliRenderer) u8 {
         return self.terminal.opts.kitty_keyboard_flags;
+    }
+
+    pub fn setTerminalTitle(self: *CliRenderer, title: []const u8) void {
+        var stream = std.io.fixedBufferStream(&self.writeOutBuf);
+        self.terminal.setTerminalTitle(stream.writer(), title);
+        self.writeOut(stream.getWritten());
     }
 
     fn renderDebugOverlay(self: *CliRenderer) void {

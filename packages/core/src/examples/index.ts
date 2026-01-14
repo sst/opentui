@@ -61,6 +61,8 @@ import * as extmarksDemo from "./extmarks-demo"
 import * as markdownDemo from "./markdown-demo"
 import * as linkDemo from "./link-demo"
 import * as opacityExample from "./opacity-example"
+import * as scrollboxOverlayHitTest from "./scrollbox-overlay-hit-test"
+import * as scrollboxMouseTest from "./scrollbox-mouse-test"
 import { setupCommonDemoKeys } from "./lib/standalone-keys"
 
 interface Example {
@@ -257,6 +259,18 @@ const examples: Example[] = [
     description: "ScrollBox with sticky scroll behavior - maintains position at borders when content changes",
     run: stickyScrollExample.run,
     destroy: stickyScrollExample.destroy,
+  },
+  {
+    name: "Scrollbox Mouse Test",
+    description: "Test scrollbox mouse hit detection with hover and click events",
+    run: scrollboxMouseTest.run,
+    destroy: scrollboxMouseTest.destroy,
+  },
+  {
+    name: "Scrollbox Overlay Hit Test",
+    description: "Test scrollbox hit detection with overlays and dialogs",
+    run: scrollboxOverlayHitTest.run,
+    destroy: scrollboxOverlayHitTest.destroy,
   },
   {
     name: "Shader Cube",

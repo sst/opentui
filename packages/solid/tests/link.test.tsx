@@ -62,7 +62,7 @@ describe("Link Rendering Tests", () => {
     testSetup = await testRender(
       () => (
         <text>
-          Check out <a href="https://github.com/sst/opentui">GitHub</a> and{" "}
+          Check out <a href="https://github.com/anomalyco/opentui">GitHub</a> and{" "}
           <a href="https://opentui.com">our website</a>
         </text>
       ),

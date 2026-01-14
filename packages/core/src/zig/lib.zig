@@ -174,6 +174,7 @@ pub const ExternalCapabilities = extern struct {
     sync: bool,
     bracketed_paste: bool,
     hyperlinks: bool,
+    explicit_cursor_positioning: bool,
     term_name_ptr: [*]const u8,
     term_name_len: usize,
     term_version_ptr: [*]const u8,
@@ -199,6 +200,7 @@ export fn getTerminalCapabilities(rendererPtr: *renderer.CliRenderer, capsPtr: *
         .sync = caps.sync,
         .bracketed_paste = caps.bracketed_paste,
         .hyperlinks = caps.hyperlinks,
+        .explicit_cursor_positioning = caps.explicit_cursor_positioning,
         .term_name_ptr = &term.term_info.name,
         .term_name_len = term.term_info.name_len,
         .term_version_ptr = &term.term_info.version,
@@ -275,10 +277,7 @@ export fn clearTerminal(rendererPtr: *renderer.CliRenderer) void {
 
 export fn setTerminalTitle(rendererPtr: *renderer.CliRenderer, titlePtr: [*]const u8, titleLen: usize) void {
     const title = titlePtr[0..titleLen];
-    var stdoutWriter = std.fs.File.stdout().writer(&rendererPtr.stdoutBuffer);
-    const writer = &stdoutWriter.interface;
-    rendererPtr.terminal.setTerminalTitle(writer, title);
-    writer.flush() catch {};
+    rendererPtr.setTerminalTitle(title);
 }
 
 // Buffer functions
@@ -490,6 +489,10 @@ export fn checkHit(rendererPtr: *renderer.CliRenderer, x: u32, y: u32) u32 {
     return rendererPtr.checkHit(x, y);
 }
 
+export fn getHitGridDirty(rendererPtr: *renderer.CliRenderer) bool {
+    return rendererPtr.getHitGridDirty();
+}
+
 export fn dumpHitGrid(rendererPtr: *renderer.CliRenderer) void {
     rendererPtr.dumpHitGrid();
 }
@@ -540,6 +543,12 @@ export fn suspendRenderer(rendererPtr: *renderer.CliRenderer) void {
 
 export fn resumeRenderer(rendererPtr: *renderer.CliRenderer) void {
     rendererPtr.resumeRenderer();
+}
+
+export fn writeOut(rendererPtr: *renderer.CliRenderer, dataPtr: [*]const u8, dataLen: usize) void {
+    if (dataLen == 0) return;
+    const data = dataPtr[0..dataLen];
+    rendererPtr.writeOut(data);
 }
 
 export fn createTextBuffer(widthMethod: u8) ?*text_buffer.UnifiedTextBuffer {
