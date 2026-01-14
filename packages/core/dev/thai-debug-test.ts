@@ -56,7 +56,6 @@ async function main() {
   })
   renderer.requestRender()
 
-
   renderer.keyInput.on("keypress", (event) => {
     if (event.name === "`") {
       renderer.console.toggle()
