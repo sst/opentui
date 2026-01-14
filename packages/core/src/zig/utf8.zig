@@ -666,7 +666,7 @@ const GraphemeWidthState = struct {
 
     /// Add a codepoint to the current grapheme cluster
     inline fn addCodepoint(self: *GraphemeWidthState, cp: u21, cp_width: u32) void {
-        // wcwidth mode: use proper wcwidth calculation for each codepoint
+        // wcwidth mode: sum all codepoint widths (tmux-style)
         if (self.width_method == .wcwidth) {
             const eaw = uucode.get(.east_asian_width, cp);
             const w = eawToWidth(cp, eaw);
@@ -677,63 +677,51 @@ const GraphemeWidthState = struct {
             return;
         }
 
-        // unicode and no_zwj modes: use grapheme-aware width (modifiers are 0-width)
-        // The difference is in grapheme break detection (ZWJ handling), not in width calculation
+        // unicode and no_zwj modes: use grapheme-aware width
         const is_ri = (cp >= 0x1F1E6 and cp <= 0x1F1FF);
         const is_vs16 = (cp == 0xFE0F); // Variation Selector-16 (emoji presentation)
 
-        // Check for Indic virama (halant) marks
-        const is_virama = (cp == 0x094D) or // Devanagari virama
-            (cp >= 0x09CD and cp <= 0x09CD) or // Bengali virama
-            (cp >= 0x0A4D and cp <= 0x0A4D) or // Gurmukhi virama
-            (cp >= 0x0ACD and cp <= 0x0ACD) or // Gujarati virama
-            (cp >= 0x0B4D and cp <= 0x0B4D) or // Oriya virama
-            (cp >= 0x0BCD and cp <= 0x0BCD) or // Tamil virama
-            (cp >= 0x0C4D and cp <= 0x0C4D) or // Telugu virama
-            (cp >= 0x0CCD and cp <= 0x0CCD) or // Kannada virama
-            (cp >= 0x0D4D and cp <= 0x0D4D); // Malayalam virama
+        // Check if this is a virama using general category
+        const gc = uucode.get(.general_category, cp);
+        const is_virama = gc == .mark_nonspacing;
 
-        // Check if this is RA (Devanagari) - which forms repha/subscript and doesn't add width
+        // Check if this is RA (Devanagari) - which forms repha/subscript
         const is_devanagari_ra = (cp == 0x0930);
 
-        // Check if this is a Devanagari base consonant (for regular conjuncts)
+        // Check if this is a Devanagari base consonant
         const is_devanagari_base = (cp >= 0x0915 and cp <= 0x0939) or (cp >= 0x0958 and cp <= 0x095F);
 
-        // Special case: VS16 changes presentation to emoji (width 2)
+        // VS16: emoji presentation selector forces width 2
         if (is_vs16) {
             self.has_vs16 = true;
-            // If we have a narrow character (width 1), VS16 makes it emoji presentation (width 2)
             if (self.has_width and self.width == 1) {
                 self.width = 2;
             }
             return;
         }
 
-        // Track virama
+        // Track virama for Indic conjunct handling
         if (is_virama) {
             self.has_indic_virama = true;
-            return; // Virama itself has width 0
+            return;
         }
 
-        // Special case: Regional Indicator pairs (flag emojis)
-        // Both RIs contribute to width (typically 1+1=2)
+        // Regional Indicator pair: both contribute to width (flag = 2)
         if (self.is_regional_indicator_pair and is_ri) {
             self.width += cp_width;
             self.has_width = true;
         } else if (!self.has_width and cp_width > 0) {
-            // Normal case: use first non-zero width codepoint
+            // First non-zero width codepoint in cluster
             self.width = cp_width;
             self.has_width = true;
         } else if (self.has_width and self.has_indic_virama and is_devanagari_base and cp_width > 0) {
-            // Devanagari conjunct: consonant + virama + consonant
-            // Special case: if the second consonant is RA, it forms repha (doesn't add width)
-            // Otherwise, both consonants contribute to width
+            // Devanagari conjunct: consonant after virama adds width (unless RA/repha)
             if (!is_devanagari_ra) {
                 self.width += cp_width;
             }
-            self.has_indic_virama = false; // Reset virama flag after processing
+            self.has_indic_virama = false;
         }
-        // Otherwise, ignore width of nonspacing modifiers, ZWJ, etc.
+        // Otherwise: ignore (combining marks, ZWJ, etc. have width 0)
     }
 };
 
@@ -1769,8 +1757,8 @@ fn findGraphemeInfoWCWidth(
 
         if (pos + cp_len > text.len) break;
 
-        // Use wcwidth break detection (each codepoint is separate)
-        const is_break = isGraphemeBreak(prev_cp, curr_cp, &break_state, .unicode);
+        // Use wcwidth break detection (each codepoint is separate, tmux-style)
+        const is_break = isGraphemeBreak(prev_cp, curr_cp, &break_state, .wcwidth);
 
         if (is_break) {
             if (cluster_started and (cluster_is_multibyte or cluster_is_tab)) {
@@ -1792,7 +1780,7 @@ fn findGraphemeInfoWCWidth(
             cluster_is_tab = (b0 == '\t');
             cluster_is_multibyte = (cp_len != 1);
             const cp_width = charWidth(b0, curr_cp, tab_width);
-            cluster_width_state = GraphemeWidthState.init(curr_cp, cp_width, .unicode);
+            cluster_width_state = GraphemeWidthState.init(curr_cp, cp_width, .wcwidth);
             cluster_started = true;
         } else {
             // Continuing cluster
