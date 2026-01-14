@@ -1847,6 +1847,10 @@ fn findGraphemeInfoWCWidth(
     allocator: std.mem.Allocator,
     result: *std.ArrayListUnmanaged(GraphemeInfo),
 ) !void {
+    // wcwidth mode should still produce the same grapheme cluster boundaries as Unicode
+    // (so ZWJ sequences and combining marks stay together), but the width of each cluster
+    // is calculated using wcwidth (sum of codepoint widths). This keeps rendering coherent
+    // while preserving tmux-style widths.
     if (isASCIIOnly) {
         return;
     }
@@ -1857,6 +1861,16 @@ fn findGraphemeInfoWCWidth(
 
     var pos: usize = 0;
     var col: u32 = 0;
+    var prev_cp: ?u21 = null;
+    var break_state: uucode.grapheme.BreakState = .default;
+
+    // Track current cluster
+    var cluster_start: usize = 0;
+    var cluster_start_col: u32 = 0;
+    var cluster_width_state: GraphemeWidthState = undefined;
+    var cluster_is_multibyte: bool = false;
+    var cluster_is_tab: bool = false;
+    var cluster_started = false;
 
     while (pos < text.len) {
         const b0 = text[pos];
@@ -1869,24 +1883,54 @@ fn findGraphemeInfoWCWidth(
 
         if (pos + cp_len > text.len) break;
 
-        const cp_width = charWidth(b0, curr_cp, tab_width);
+        // Use Unicode grapheme break detection so clusters match the unicode path
+        const is_break = isGraphemeBreak(prev_cp, curr_cp, &break_state, .unicode);
 
-        // In wcwidth mode, track ALL multi-byte codepoints (including zero-width ones like ZWJ)
-        // and tabs. Zero-width chars must be tracked so the rendering loop knows to skip
-        // all their bytes and not treat them as width-1 ASCII characters.
-        const is_tab = (b0 == '\t');
-        const is_multibyte = (cp_len != 1);
+        if (is_break) {
+            if (cluster_started and (cluster_is_multibyte or cluster_is_tab)) {
+                try result.append(allocator, GraphemeInfo{
+                    .byte_offset = @intCast(cluster_start),
+                    .byte_len = @intCast(pos - cluster_start),
+                    .width = @intCast(cluster_width_state.width),
+                    .col_offset = cluster_start_col,
+                });
+                col += cluster_width_state.width;
+            } else if (cluster_started) {
+                // Still need to advance col by cluster width even if not emitted
+                col += cluster_width_state.width;
+            }
 
-        if (is_multibyte or is_tab) {
-            try result.append(allocator, GraphemeInfo{
-                .byte_offset = @intCast(pos),
-                .byte_len = @intCast(cp_len),
-                .width = @intCast(cp_width),
-                .col_offset = col,
-            });
+            // Start a new cluster
+            cluster_start = pos;
+            cluster_start_col = col;
+            cluster_is_tab = (b0 == '\t');
+            cluster_is_multibyte = (cp_len != 1);
+            const cp_width = charWidth(b0, curr_cp, tab_width);
+            cluster_width_state = GraphemeWidthState.init(curr_cp, cp_width, .wcwidth);
+            cluster_started = true;
+        } else {
+            // Continuing cluster
+            cluster_is_multibyte = cluster_is_multibyte or (cp_len != 1);
+            const cp_width = charWidth(b0, curr_cp, tab_width);
+            cluster_width_state.addCodepoint(curr_cp, cp_width);
         }
 
-        col += cp_width;
+        prev_cp = curr_cp;
         pos += cp_len;
+    }
+
+    // Commit final cluster
+    if (cluster_started) {
+        if (cluster_is_multibyte or cluster_is_tab) {
+            try result.append(allocator, GraphemeInfo{
+                .byte_offset = @intCast(cluster_start),
+                .byte_len = @intCast(text.len - cluster_start),
+                .width = @intCast(cluster_width_state.width),
+                .col_offset = cluster_start_col,
+            });
+            col += cluster_width_state.width;
+        } else {
+            col += cluster_width_state.width;
+        }
     }
 }
