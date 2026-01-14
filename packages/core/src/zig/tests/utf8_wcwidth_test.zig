@@ -55,65 +55,55 @@ test "findGraphemeInfo wcwidth: CJK characters" {
     try testing.expectEqual(@as(u32, 7), result.items[1].col_offset);
 }
 
-test "findGraphemeInfo wcwidth: emoji with skin tone - each codepoint separate" {
+test "findGraphemeInfo wcwidth: emoji with skin tone - single grapheme cluster" {
     var result: std.ArrayListUnmanaged(utf8.GraphemeInfo) = .{};
     defer result.deinit(testing.allocator);
 
     const text = "👋🏿"; // Wave (4 bytes) + skin tone modifier (4 bytes)
     try utf8.findGraphemeInfo(text, 4, false, .wcwidth, testing.allocator, &result);
 
-    // In wcwidth mode, these are TWO separate codepoints
-    try testing.expectEqual(@as(usize, 2), result.items.len);
-
-    // First codepoint: wave emoji
-    try testing.expectEqual(@as(u32, 0), result.items[0].byte_offset);
-    try testing.expectEqual(@as(u8, 4), result.items[0].byte_len);
-    try testing.expectEqual(@as(u8, 2), result.items[0].width);
-
-    // Second codepoint: skin tone modifier
-    try testing.expectEqual(@as(u32, 4), result.items[1].byte_offset);
-    try testing.expectEqual(@as(u8, 4), result.items[1].byte_len);
-    try testing.expectEqual(@as(u8, 2), result.items[1].width);
-}
-
-test "findGraphemeInfo wcwidth: emoji with ZWJ - each codepoint separate" {
-    var result: std.ArrayListUnmanaged(utf8.GraphemeInfo) = .{};
-    defer result.deinit(testing.allocator);
-
-    const text = "👩‍🚀"; // Woman + ZWJ + Rocket
-    try utf8.findGraphemeInfo(text, 4, false, .wcwidth, testing.allocator, &result);
-
-    // In wcwidth mode, we see woman (width 2), ZWJ (width 0), and rocket (width 2)
-    // ZWJ is included with width 0 so the rendering loop knows its byte length
-    try testing.expectEqual(@as(usize, 3), result.items.len);
-
-    // Woman emoji
-    try testing.expectEqual(@as(u8, 4), result.items[0].byte_len);
-    try testing.expectEqual(@as(u8, 2), result.items[0].width);
-
-    // ZWJ (zero-width but tracked for byte length)
-    try testing.expectEqual(@as(u8, 3), result.items[1].byte_len);
-    try testing.expectEqual(@as(u8, 0), result.items[1].width);
-
-    // Rocket emoji
-    try testing.expectEqual(@as(u8, 4), result.items[2].byte_len);
-    try testing.expectEqual(@as(u8, 2), result.items[2].width);
-}
-
-test "findGraphemeInfo wcwidth: combining mark - base and mark separate" {
-    var result: std.ArrayListUnmanaged(utf8.GraphemeInfo) = .{};
-    defer result.deinit(testing.allocator);
-
-    const text = "e\u{0301}test"; // e + combining acute accent
-    try utf8.findGraphemeInfo(text, 4, false, .wcwidth, testing.allocator, &result);
-
-    // In wcwidth mode, combining mark is a separate codepoint with width 0
-    // It's included so the rendering loop knows its byte length
-    // 'e' is ASCII (not included), combining mark is multi-byte (included with width 0)
+    // In wcwidth mode, we still use Unicode grapheme clustering for rendering,
+    // but the width is calculated using wcwidth semantics (sum of codepoint widths)
+    // Wave + skin tone = 2 + 2 = 4 width, but same cluster as unicode
     try testing.expectEqual(@as(usize, 1), result.items.len);
-    try testing.expectEqual(@as(u32, 1), result.items[0].byte_offset); // After 'e'
-    try testing.expectEqual(@as(u8, 2), result.items[0].byte_len); // Combining mark is 2 bytes
-    try testing.expectEqual(@as(u8, 0), result.items[0].width); // Zero width
+
+    // The entire emoji sequence as one grapheme cluster
+    try testing.expectEqual(@as(u32, 0), result.items[0].byte_offset);
+    try testing.expectEqual(@as(u8, 8), result.items[0].byte_len);
+    try testing.expectEqual(@as(u8, 4), result.items[0].width); // 2 + 2 (wcwidth sum)
+}
+
+test "findGraphemeInfo wcwidth: emoji with ZWJ - single grapheme cluster" {
+    var result: std.ArrayListUnmanaged(utf8.GraphemeInfo) = .{};
+    defer result.deinit(testing.allocator);
+
+    const text = "👩‍🚀"; // Woman + ZWJ + Rocket (11 bytes total)
+    try utf8.findGraphemeInfo(text, 4, false, .wcwidth, testing.allocator, &result);
+
+    // In wcwidth mode, we still use Unicode grapheme clustering for proper rendering,
+    // so ZWJ sequence stays together as one cluster. Width is calculated using wcwidth.
+    // Woman (2) + ZWJ (0) + Rocket (2) = 4 width
+    try testing.expectEqual(@as(usize, 1), result.items.len);
+
+    // The entire ZWJ sequence as one grapheme cluster (11 bytes: 4 + 3 + 4)
+    try testing.expectEqual(@as(u8, 11), result.items[0].byte_len);
+    try testing.expectEqual(@as(u8, 4), result.items[0].width); // 2 + 0 + 2 = 4
+}
+
+test "findGraphemeInfo wcwidth: combining mark - part of base grapheme" {
+    var result: std.ArrayListUnmanaged(utf8.GraphemeInfo) = .{};
+    defer result.deinit(testing.allocator);
+
+    const text = "e\u{0301}test"; // e + combining acute accent + test
+    try utf8.findGraphemeInfo(text, 4, false, .wcwidth, testing.allocator, &result);
+
+    // In wcwidth mode, combining mark is part of the same grapheme cluster as base
+    // The 'e' + combining mark form a single cluster with width 1
+    // 'test' is ASCII so not included
+    try testing.expectEqual(@as(usize, 1), result.items.len);
+    try testing.expectEqual(@as(u32, 0), result.items[0].byte_offset); // Start at 'e'
+    try testing.expectEqual(@as(u8, 3), result.items[0].byte_len); // 'e' (1) + combining (2)
+    try testing.expectEqual(@as(u8, 1), result.items[0].width); // width is 1 (combining adds 0)
 }
 
 test "findGraphemeInfo wcwidth vs unicode: emoji with skin tone" {
@@ -127,13 +117,20 @@ test "findGraphemeInfo wcwidth vs unicode: emoji with skin tone" {
     try utf8.findGraphemeInfo(text, 4, false, .wcwidth, testing.allocator, &result_wcwidth);
     try utf8.findGraphemeInfo(text, 4, false, .unicode, testing.allocator, &result_unicode);
 
-    // wcwidth: 2 codepoints (wave + skin tone)
-    try testing.expectEqual(@as(usize, 2), result_wcwidth.items.len);
-
-    // unicode: 1 grapheme cluster
+    // Both modes now use Unicode grapheme clustering for proper rendering
+    try testing.expectEqual(@as(usize, 1), result_wcwidth.items.len);
     try testing.expectEqual(@as(usize, 1), result_unicode.items.len);
+
+    // Same byte_offset and byte_len for the emoji
+    try testing.expectEqual(@as(u32, 2), result_wcwidth.items[0].byte_offset);
+    try testing.expectEqual(@as(u8, 8), result_wcwidth.items[0].byte_len); // Both codepoints
+
     try testing.expectEqual(@as(u32, 2), result_unicode.items[0].byte_offset);
     try testing.expectEqual(@as(u8, 8), result_unicode.items[0].byte_len); // Both codepoints
+
+    // But different width calculation
+    try testing.expectEqual(@as(u8, 4), result_wcwidth.items[0].width); // 2 + 2 (wcwidth sum)
+    try testing.expectEqual(@as(u8, 2), result_unicode.items[0].width); // 2 (single cluster)
 }
 
 test "findGraphemeInfo wcwidth vs unicode: flag emoji" {
@@ -147,14 +144,14 @@ test "findGraphemeInfo wcwidth vs unicode: flag emoji" {
     try utf8.findGraphemeInfo(text, 4, false, .wcwidth, testing.allocator, &result_wcwidth);
     try utf8.findGraphemeInfo(text, 4, false, .unicode, testing.allocator, &result_unicode);
 
-    // wcwidth: 2 codepoints (two regional indicators, each width 1)
-    try testing.expectEqual(@as(usize, 2), result_wcwidth.items.len);
-    try testing.expectEqual(@as(u8, 1), result_wcwidth.items[0].width);
-    try testing.expectEqual(@as(u8, 1), result_wcwidth.items[1].width);
-
-    // unicode: 1 grapheme cluster (flag, width 2)
+    // Both modes now use Unicode grapheme clustering for proper rendering
+    // Regional indicators form a single grapheme cluster
+    try testing.expectEqual(@as(usize, 1), result_wcwidth.items.len);
     try testing.expectEqual(@as(usize, 1), result_unicode.items.len);
-    try testing.expectEqual(@as(u8, 2), result_unicode.items[0].width);
+
+    // But different width calculation
+    try testing.expectEqual(@as(u8, 2), result_wcwidth.items[0].width); // 1 + 1 (wcwidth sum)
+    try testing.expectEqual(@as(u8, 2), result_unicode.items[0].width); // 2 (single cluster)
 }
 
 // ============================================================================

@@ -614,18 +614,19 @@ inline fn isValidCodepoint(cp: u21) bool {
 /// - no_zwj mode: use grapheme breaks but treat ZWJ as a break (ignore joining)
 /// - unicode mode: use standard grapheme cluster segmentation
 inline fn isGraphemeBreak(prev_cp: ?u21, curr_cp: u21, break_state: *uucode.grapheme.BreakState, width_method: WidthMethod) bool {
-    if (!isValidCodepoint(curr_cp)) return true;
-
     // wcwidth mode uses Unicode grapheme clustering for proper rendering
     // (ZWJ sequences, skin tone modifiers stay together), but width is
     // calculated using wcwidth semantics (sum of codepoint widths)
     if (width_method == .wcwidth) {
-        if (prev_cp) |p| {
-            if (!isValidCodepoint(p)) return true;
-            return uucode.grapheme.isBreak(p, curr_cp, break_state);
-        }
-        return true;
+        // First codepoint always starts a new cluster
+        if (prev_cp == null) return true;
+
+        if (!isValidCodepoint(curr_cp)) return true;
+        if (!isValidCodepoint(prev_cp.?)) return true;
+        return uucode.grapheme.isBreak(prev_cp.?, curr_cp, break_state);
     }
+
+    if (!isValidCodepoint(curr_cp)) return true;
 
     // In no_zwj mode, treat ZWJ (U+200D) as NOT joining characters
     // When we see ZWJ after a character, it's part of that character's grapheme
@@ -1531,7 +1532,8 @@ fn findGraphemeInfoUnicode(
     allocator: std.mem.Allocator,
     result: *std.ArrayListUnmanaged(GraphemeInfo),
 ) !void {
-    if (isASCIIOnly) {
+    // In wcwidth mode, always process to capture combining marks on ASCII
+    if (isASCIIOnly and width_method != .wcwidth) {
         return;
     }
 
