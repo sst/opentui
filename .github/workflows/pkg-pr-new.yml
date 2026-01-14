@@ -36,6 +36,14 @@ jobs:
         run: bun run build
         working-directory: packages/core
 
+      - name: Get native package directories
+        id: native-packages
+        run: |
+          cd packages/core/node_modules
+          NATIVE_DIRS=$(find . -maxdepth 1 -type d -name 'opentui-*' -printf '%p ' | tr -d '\n' | sed 's/ $//')
+          echo "dirs=$NATIVE_DIRS" >> $GITHUB_OUTPUT
+          echo "Found native packages: $NATIVE_DIRS"
+
       - name: Build react
         run: bun run build --ci
         working-directory: packages/react
@@ -45,4 +53,6 @@ jobs:
         working-directory: packages/solid
 
       - name: Publish preview packages
-        run: npx pkg-pr-new publish --no-template './packages/core/dist' './packages/react/dist' './packages/solid/dist'
+        run: |
+          CORE_DIRS="./packages/core/dist ${{ steps.native-packages.outputs.dirs }}"
+          npx pkg-pr-new publish --no-template $CORE_DIRS './packages/react/dist' './packages/solid/dist'
