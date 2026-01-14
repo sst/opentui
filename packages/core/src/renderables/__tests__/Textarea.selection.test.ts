@@ -1318,6 +1318,106 @@ describe("Textarea - Selection Tests", () => {
       editor.destroy()
     })
   })
+
+  describe("Keyboard Selection with Viewport Scrolling", () => {
+    it("should select to buffer home with shift+super+up in scrollable textarea", async () => {
+      // Create textarea with content taller than visible area
+      const lines = Array.from({ length: 50 }, (_, i) => `Line ${i.toString().padStart(2, "0")}`)
+      const { textarea: editor } = await createTextareaRenderable(currentRenderer, renderOnce, {
+        initialValue: lines.join("\n"),
+        width: 40,
+        height: 10,
+        selectable: true,
+      })
+
+      // Move cursor to middle of content (line 25)
+      editor.focus()
+      editor.gotoLine(25)
+      await renderOnce()
+
+      // Verify viewport has scrolled
+      const viewportBefore = editor.editorView.getViewport()
+      expect(viewportBefore.offsetY).toBeGreaterThan(0)
+
+      // Select to buffer home (shift+super+up)
+      currentMockInput.pressKey("ARROW_UP", { shift: true, super: true })
+      await renderOnce()
+
+      // Should have selection
+      expect(editor.hasSelection()).toBe(true)
+
+      // Selection should include content from line 0 to line 25
+      const selectedText = editor.getSelectedText()
+      expect(selectedText).toContain("Line 00")
+      expect(selectedText).toContain("Line 24")
+      expect(selectedText.split("\n").length).toBeGreaterThanOrEqual(25)
+    })
+
+    it("should select to buffer end with shift+super+down in scrollable textarea", async () => {
+      // Create textarea with content taller than visible area
+      const lines = Array.from({ length: 50 }, (_, i) => `Line ${i.toString().padStart(2, "0")}`)
+      const { textarea: editor } = await createTextareaRenderable(currentRenderer, renderOnce, {
+        initialValue: lines.join("\n"),
+        width: 40,
+        height: 10,
+        selectable: true,
+      })
+
+      // Move cursor to line 20
+      editor.focus()
+      editor.gotoLine(20)
+      await renderOnce()
+
+      // Select to buffer end (shift+super+down)
+      currentMockInput.pressKey("ARROW_DOWN", { shift: true, super: true })
+      await renderOnce()
+
+      // Should have selection
+      expect(editor.hasSelection()).toBe(true)
+
+      // Selection should include content from line 20 to line 49
+      const selectedText = editor.getSelectedText()
+      expect(selectedText).toContain("Line 20")
+      expect(selectedText).toContain("Line 49")
+      expect(selectedText.split("\n").length).toBeGreaterThanOrEqual(29)
+    })
+
+    it("should handle selection across viewport boundaries correctly", async () => {
+      // Create textarea with content taller than visible area
+      const lines = Array.from({ length: 30 }, (_, i) => `Line ${i.toString().padStart(2, "0")}`)
+      const { textarea: editor } = await createTextareaRenderable(currentRenderer, renderOnce, {
+        initialValue: lines.join("\n"),
+        width: 40,
+        height: 5, // Small viewport
+        selectable: true,
+      })
+
+      // Move cursor to middle (line 15)
+      editor.focus()
+      editor.gotoLine(15)
+      // Move to column 5
+      for (let i = 0; i < 5; i++) {
+        editor.moveCursorRight()
+      }
+      await renderOnce()
+
+      const cursorBefore = editor.editorView.getVisualCursor()
+      expect(cursorBefore.logicalRow).toBe(15)
+      expect(cursorBefore.logicalCol).toBe(5)
+
+      // Select to buffer home
+      currentMockInput.pressKey("ARROW_UP", { shift: true, super: true })
+      await renderOnce()
+
+      expect(editor.hasSelection()).toBe(true)
+      const selectedText = editor.getSelectedText()
+
+      // Should select from (15, 5) to (0, 0)
+      // First line should be complete, last line should be partial
+      expect(selectedText.startsWith("Line 00")).toBe(true)
+      expect(selectedText).toContain("Line 14")
+    })
+  })
 })
 
 function countSelectedCells(
