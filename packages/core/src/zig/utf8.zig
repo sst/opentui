@@ -471,230 +471,110 @@ pub const PosByWidthResult = struct {
     columns_used: u32,
 };
 
-// East Asian Width detection based on Unicode 15.1.0
-// Returns the display width in columns (0, 1, or 2)
-inline fn eastAsianWidth(cp: u21) u32 {
-    // C1 control characters (0x80-0x9F) - zero width
-    if (cp >= 0x0080 and cp <= 0x009F) {
-        return 0;
+/// Calculate width from east asian width property and Unicode properties
+/// Returns -1 for control characters (they don't contribute to width)
+inline fn eawToWidth(cp: u21, eaw: uucode.types.EastAsianWidth) i16 {
+    if (cp == 0) return 0;
+    if (cp < 32 or (cp >= 0x7F and cp < 0xA0)) return -1;
+
+    const gc = uucode.get(.general_category, cp);
+    switch (gc) {
+        .mark_nonspacing, .mark_spacing_combining, .mark_enclosing => return 0,
+        else => {},
     }
 
-    // Zero-width characters: combining marks and format characters
-    if ((cp >= 0x0300 and cp <= 0x036F) or // Combining Diacritical Marks
-        (cp >= 0x1AB0 and cp <= 0x1AFF) or // Combining Diacritical Marks Extended
-        (cp >= 0x1DC0 and cp <= 0x1DFF) or // Combining Diacritical Marks Supplement
-        (cp >= 0x20D0 and cp <= 0x20FF) or // Combining Diacritical Marks for Symbols
-        (cp >= 0xFE00 and cp <= 0xFE0F) or // Variation Selectors
-        (cp >= 0xFE20 and cp <= 0xFE2F) or // Combining Half Marks
-        // Indic script combining marks (both Mn and Mc - all treated as zero-width for terminal display)
-        (cp >= 0x0900 and cp <= 0x0903) or // Devanagari combining
-        (cp >= 0x093A and cp <= 0x094F) or // Devanagari combining (includes both Mn and Mc vowel signs)
-        (cp >= 0x0951 and cp <= 0x0957) or // Devanagari combining
-        (cp >= 0x0962 and cp <= 0x0963) or // Devanagari combining
-        (cp >= 0x0981 and cp <= 0x0983) or // Bengali combining
-        (cp >= 0x09BC and cp <= 0x09C4) or // Bengali combining
-        (cp >= 0x09C7 and cp <= 0x09C8) or // Bengali combining
-        (cp >= 0x09CB and cp <= 0x09CD) or // Bengali combining
-        cp == 0x09D7 or cp == 0x09E2 or cp == 0x09E3 or cp == 0x09FE or // Bengali combining
-        (cp >= 0x0A01 and cp <= 0x0A03) or // Gurmukhi combining
-        (cp >= 0x0A3C and cp <= 0x0A42) or // Gurmukhi combining
-        (cp >= 0x0A47 and cp <= 0x0A48) or // Gurmukhi combining
-        (cp >= 0x0A4B and cp <= 0x0A4D) or // Gurmukhi combining
-        cp == 0x0A51 or (cp >= 0x0A70 and cp <= 0x0A71) or cp == 0x0A75 or // Gurmukhi combining
-        (cp >= 0x0A81 and cp <= 0x0A83) or // Gujarati combining
-        (cp >= 0x0ABC and cp <= 0x0AC5) or // Gujarati combining
-        (cp >= 0x0AC7 and cp <= 0x0AC9) or // Gujarati combining
-        (cp >= 0x0ACB and cp <= 0x0ACD) or // Gujarati combining
-        (cp >= 0x0AE2 and cp <= 0x0AE3) or // Gujarati combining
-        (cp >= 0x0AFA and cp <= 0x0AFF) or // Gujarati combining
-        (cp >= 0x0B01 and cp <= 0x0B03) or // Oriya combining
-        (cp >= 0x0B3C and cp <= 0x0B44) or // Oriya combining
-        (cp >= 0x0B47 and cp <= 0x0B48) or // Oriya combining
-        (cp >= 0x0B4B and cp <= 0x0B4D) or // Oriya combining
-        (cp >= 0x0B55 and cp <= 0x0B57) or // Oriya combining
-        (cp >= 0x0B62 and cp <= 0x0B63) or // Oriya combining
-        cp == 0x0B82 or // Tamil combining
-        (cp >= 0x0BBE and cp <= 0x0BC2) or // Tamil combining
-        (cp >= 0x0BC6 and cp <= 0x0BC8) or // Tamil combining
-        (cp >= 0x0BCA and cp <= 0x0BCD) or // Tamil combining
-        cp == 0x0BD7 or // Tamil combining
-        (cp >= 0x0C00 and cp <= 0x0C04) or // Telugu combining
-        (cp >= 0x0C3C and cp <= 0x0C44) or // Telugu combining
-        (cp >= 0x0C46 and cp <= 0x0C48) or // Telugu combining
-        (cp >= 0x0C4A and cp <= 0x0C4D) or // Telugu combining
-        (cp >= 0x0C55 and cp <= 0x0C56) or // Telugu combining
-        (cp >= 0x0C62 and cp <= 0x0C63) or // Telugu combining
-        (cp >= 0x0C81 and cp <= 0x0C83) or // Kannada combining
-        (cp >= 0x0CBC and cp <= 0x0CC4) or // Kannada combining
-        (cp >= 0x0CC6 and cp <= 0x0CC8) or // Kannada combining
-        (cp >= 0x0CCA and cp <= 0x0CCD) or // Kannada combining
-        (cp >= 0x0CD5 and cp <= 0x0CD6) or // Kannada combining
-        (cp >= 0x0CE2 and cp <= 0x0CE3) or cp == 0x0CF3 or // Kannada combining
-        (cp >= 0x0D00 and cp <= 0x0D03) or // Malayalam combining
-        (cp >= 0x0D3B and cp <= 0x0D3C) or // Malayalam combining
-        (cp >= 0x0D3E and cp <= 0x0D44) or // Malayalam combining
-        (cp >= 0x0D46 and cp <= 0x0D48) or // Malayalam combining
-        (cp >= 0x0D4A and cp <= 0x0D4D) or // Malayalam combining
-        cp == 0x0D57 or (cp >= 0x0D62 and cp <= 0x0D63) or // Malayalam combining
-        (cp >= 0x0D81 and cp <= 0x0D83) or // Sinhala combining
-        cp == 0x0DCA or (cp >= 0x0DCF and cp <= 0x0DD4) or cp == 0x0DD6 or // Sinhala combining
-        (cp >= 0x0DD8 and cp <= 0x0DDF) or (cp >= 0x0DF2 and cp <= 0x0DF3) or // Sinhala combining
-        cp == 0x0E31 or (cp >= 0x0E34 and cp <= 0x0E3A) or (cp >= 0x0E47 and cp <= 0x0E4E) or // Thai combining
-        cp == 0x0EB1 or (cp >= 0x0EB4 and cp <= 0x0EBC) or (cp >= 0x0EC8 and cp <= 0x0ECE) or // Lao combining
-        (cp >= 0x0F18 and cp <= 0x0F19) or cp == 0x0F35 or cp == 0x0F37 or cp == 0x0F39 or // Tibetan combining
-        (cp >= 0x0F3E and cp <= 0x0F3F) or (cp >= 0x0F71 and cp <= 0x0F84) or // Tibetan combining
-        (cp >= 0x0F86 and cp <= 0x0F87) or (cp >= 0x0F8D and cp <= 0x0F97) or // Tibetan combining
-        (cp >= 0x0F99 and cp <= 0x0FBC) or cp == 0x0FC6 or // Tibetan combining
-        // Format characters (Cf category) - zero width
-        // NOTE: U+00AD (Soft Hyphen) is NOT zero-width, it's width 1
-        (cp >= 0x0600 and cp <= 0x0605) or // Arabic format characters
-        cp == 0x061C or // Arabic Letter Mark
-        cp == 0x06DD or // Arabic End of Ayah
-        cp == 0x070F or // Syriac Abbreviation Mark
-        cp == 0x180E or // Mongolian Vowel Separator
-        (cp >= 0x200B and cp <= 0x200F) or // ZWSP, ZWNJ, ZWJ, LRM, RLM
-        (cp >= 0x2028 and cp <= 0x202E) or // Line/Para separators, directional formatting
-        (cp >= 0x2060 and cp <= 0x2064) or // Word Joiner, invisible operators
-        (cp >= 0x2066 and cp <= 0x206F) or // Directional formatting
-        cp == 0xFEFF or // Zero Width No-Break Space (BOM)
-        (cp >= 0xFFF9 and cp <= 0xFFFB) or // Interlinear Annotation
-        cp == 0x110BD or // Kaithi Number Sign
-        (cp >= 0x1BCA0 and cp <= 0x1BCA3) or // Shorthand Format
-        (cp >= 0x1D173 and cp <= 0x1D17A) or // Musical formatting
-        cp == 0xE0001 or // Language Tag
-        (cp >= 0xE0020 and cp <= 0xE007F)) // Tag characters
-    {
-        return 0;
-    }
+    if (cp == 0x200B) return 0;
+    if (cp == 0x200C) return 0;
+    if (cp == 0x200D) return 0;
+    if (cp == 0x2060) return 0;
+    if (cp == 0x034F) return 0;
+    if (cp == 0xFEFF) return 0;
+    if (cp >= 0x180B and cp <= 0x180D) return 0;
+    if (cp >= 0xFE00 and cp <= 0xFE0F) return 0;
+    if (cp >= 0xE0100 and cp <= 0xE01EF) return 0;
 
-    // Wide and Fullwidth characters (width 2)
-    if ((cp >= 0x1100 and cp <= 0x115F) or // Hangul Jamo
-        (cp >= 0x231A and cp <= 0x231B) or // Watch, Hourglass
-        (cp >= 0x2329 and cp <= 0x232A) or // Left/Right-Pointing Angle Bracket
-        (cp >= 0x23E9 and cp <= 0x23EC) or // Fast Forward, etc
-        (cp >= 0x23F0 and cp <= 0x23F0) or // Alarm Clock
-        (cp >= 0x23F3 and cp <= 0x23F3) or // Hourglass
-        (cp >= 0x25FD and cp <= 0x25FE) or // White/Black Medium Small Square
-        // Miscellaneous Symbols (U+2600-26FF) - only specific emoji are width 2
-        (cp >= 0x2614 and cp <= 0x2615) or // Umbrella symbols
-        cp == 0x2622 or cp == 0x2623 or // Radioactive, Biohazard
-        (cp >= 0x2630 and cp <= 0x2637) or // Trigrams
-        (cp >= 0x2648 and cp <= 0x2653) or // Zodiac signs
-        cp == 0x267F or // Wheelchair symbol
-        (cp >= 0x268A and cp <= 0x268F) or // Monogram symbols
-        cp == 0x2693 or // Anchor
-        cp == 0x269B or // Atom symbol
-        cp == 0x26A0 or // Warning sign
-        cp == 0x26A1 or // High voltage
-        (cp >= 0x26AA and cp <= 0x26AB) or // White/Black circles
-        (cp >= 0x26BD and cp <= 0x26BE) or // Soccer/Baseball
-        (cp >= 0x26C4 and cp <= 0x26C5) or // Snowman
-        cp == 0x26CE or // Ophiuchus
-        cp == 0x26D1 or // Rescue worker helmet
-        cp == 0x26D4 or // No Entry
-        cp == 0x26EA or // Church
-        cp == 0x26F2 or cp == 0x26F3 or // Fountain, Golf flag
-        cp == 0x26F5 or // Sailboat
-        cp == 0x26FA or // Tent
-        cp == 0x26FD or // Fuel pump
-        // Dingbats (U+2700-27BF) - only specific ones are width 2
-        cp == 0x203C or // Double exclamation mark
-        cp == 0x2049 or // Exclamation question mark
-        cp == 0x2705 or // White Heavy Check Mark
-        (cp >= 0x270A and cp <= 0x270B) or // Raised fist/hand
-        cp == 0x2728 or // Sparkles
-        cp == 0x274C or // Cross Mark
-        cp == 0x274E or // Negative Squared Cross Mark
-        (cp >= 0x2753 and cp <= 0x2755) or // Question marks
-        cp == 0x2757 or // Exclamation Mark Symbol
-        (cp >= 0x2760 and cp <= 0x2767) or // Heart and ornament emoji
-        (cp >= 0x2795 and cp <= 0x2797) or // Plus/Minus/Division signs
-        cp == 0x27B0 or // Curly Loop
-        cp == 0x27BF or // Double Curly Loop
-        (cp >= 0x2B1B and cp <= 0x2B1C) or // Black/White Large Square
-        (cp >= 0x2B50 and cp <= 0x2B50) or // White Medium Star
-        (cp >= 0x2B55 and cp <= 0x2B55) or // Heavy Large Circle
-        (cp >= 0x2E80 and cp <= 0x2EFF) or // CJK Radicals Supplement
-        (cp >= 0x2F00 and cp <= 0x2FDF) or // Kangxi Radicals
-        (cp >= 0x2FF0 and cp <= 0x2FFF) or // Ideographic Description Characters
-        (cp >= 0x3000 and cp <= 0x303E) or // CJK Symbols and Punctuation
-        (cp >= 0x3041 and cp <= 0x3096) or // Hiragana main (U+3040, U+3097-3098 are width 1)
-        (cp >= 0x309B and cp <= 0x309F) or // Hiragana combining marks and iteration marks
-        (cp >= 0x30A0 and cp <= 0x30FF) or // Katakana
-        (cp >= 0x3105 and cp <= 0x312F) or // Bopomofo (U+3100-3104 are width 1)
-        (cp >= 0x3131 and cp <= 0x318E) or // Hangul Compatibility Jamo
-        (cp >= 0x3190 and cp <= 0x31BA) or // Kanbun, Bopomofo Extended
-        (cp >= 0x31C0 and cp <= 0x31E3) or // CJK Strokes
-        (cp >= 0x31F0 and cp <= 0x31FF) or // Katakana Phonetic Extensions
-        (cp >= 0x3200 and cp <= 0x32FF) or // Enclosed CJK Letters and Months
-        (cp >= 0x3300 and cp <= 0x33FF) or // CJK Compatibility
-        (cp >= 0x3400 and cp <= 0x4DBF) or // CJK Unified Ideographs Extension A
-        (cp >= 0x4DC0 and cp <= 0x4DFF) or // Yijing Hexagram Symbols
-        (cp >= 0x4E00 and cp <= 0x9FFF) or // CJK Unified Ideographs
-        (cp >= 0xA000 and cp <= 0xA48F) or // Yi Syllables
-        (cp >= 0xA490 and cp <= 0xA4CF) or // Yi Radicals
-        (cp >= 0xAC00 and cp <= 0xD7A3) or // Hangul Syllables
-        (cp >= 0xF900 and cp <= 0xFAFF) or // CJK Compatibility Ideographs
-        (cp >= 0xFE10 and cp <= 0xFE19) or // Vertical Forms
-        (cp >= 0xFE30 and cp <= 0xFE6F) or // CJK Compatibility Forms
-        (cp >= 0xFF01 and cp <= 0xFF60) or // Fullwidth Forms
-        (cp >= 0xFFE0 and cp <= 0xFFE6) or // Fullwidth symbols
-        (cp >= 0x1F000 and cp <= 0x1F02B) or // Mahjong Tiles, Domino Tiles
-        (cp >= 0x1F030 and cp <= 0x1F093) or // Domino Tiles
-        (cp >= 0x1F0A0 and cp <= 0x1F0AE) or // Playing Cards
-        (cp >= 0x1F0B1 and cp <= 0x1F0BF) or // Playing Cards
-        (cp >= 0x1F0C1 and cp <= 0x1F0CF) or // Playing Cards
-        (cp >= 0x1F0D1 and cp <= 0x1F0F5) or // Playing Cards
-        (cp >= 0x1F100 and cp <= 0x1F10C) or // Enclosed Alphanumeric Supplement
-        (cp >= 0x1F110 and cp <= 0x1F16C) or // Enclosed Alphanumeric Supplement
-        (cp >= 0x1F170 and cp <= 0x1F1AC) or // Enclosed Alphanumeric Supplement
-        // NOTE: Regional Indicators (0x1F1E6-0x1F1FF) are handled specially - width 1 each, but pairs = width 2
-        (cp >= 0x1F200 and cp <= 0x1F202) or // Enclosed Ideographic Supplement
-        (cp >= 0x1F210 and cp <= 0x1F23B) or // Enclosed Ideographic Supplement
-        (cp >= 0x1F240 and cp <= 0x1F248) or // Enclosed Ideographic Supplement
-        (cp >= 0x1F250 and cp <= 0x1F251) or // Enclosed Ideographic Supplement
-        (cp >= 0x1F260 and cp <= 0x1F265) or // Enclosed Ideographic Supplement
-        // Miscellaneous Symbols and Pictographs, Transport and Map Symbols (U+1F300-1F6FF)
-        // Many characters in this range are width 1, so we need to be selective
-        (cp >= 0x1F300 and cp <= 0x1F320) or (cp >= 0x1F32D and cp <= 0x1F335) or
-        (cp >= 0x1F337 and cp <= 0x1F37C) or (cp >= 0x1F37E and cp <= 0x1F393) or
-        (cp >= 0x1F3A0 and cp <= 0x1F3CA) or (cp >= 0x1F3CF and cp <= 0x1F3D3) or
-        (cp >= 0x1F3E0 and cp <= 0x1F3F0) or cp == 0x1F3F4 or // Exclude U+1F3F5-1F3F7
-        (cp >= 0x1F3F8 and cp <= 0x1F3FF) or
-        (cp >= 0x1F400 and cp <= 0x1F43E) or cp == 0x1F440 or // Exclude U+1F43F, U+1F441
-        (cp >= 0x1F442 and cp <= 0x1F4FC) or (cp >= 0x1F4FF and cp <= 0x1F6C5) or cp == 0x1F6CC or // Exclude U+1F4FD-1F4FE
-        (cp >= 0x1F6D0 and cp <= 0x1F6D2) or (cp >= 0x1F6D5 and cp <= 0x1F6D7) or
-        (cp >= 0x1F6DC and cp <= 0x1F6DF) or (cp >= 0x1F6EB and cp <= 0x1F6EC) or
-        (cp >= 0x1F6F4 and cp <= 0x1F6FC) or
-        (cp >= 0x1F700 and cp <= 0x1F773) or // Alchemical Symbols
-        (cp >= 0x1F780 and cp <= 0x1F7D8) or // Geometric Shapes Extended
-        (cp >= 0x1F7E0 and cp <= 0x1F7EB) or // Geometric Shapes Extended
-        (cp >= 0x1F800 and cp <= 0x1F80B) or // Supplemental Arrows-C
-        (cp >= 0x1F810 and cp <= 0x1F847) or // Supplemental Arrows-C
-        (cp >= 0x1F850 and cp <= 0x1F859) or // Supplemental Arrows-C
-        (cp >= 0x1F860 and cp <= 0x1F887) or // Supplemental Arrows-C
-        (cp >= 0x1F890 and cp <= 0x1F8AD) or // Supplemental Arrows-C
-        (cp >= 0x1F8B0 and cp <= 0x1F8B1) or // Supplemental Arrows-C
-        // Supplemental Symbols and Pictographs (U+1F900-1FAFF) - exclude width-1 ranges
-        (cp >= 0x1F90C and cp <= 0x1F93A) or (cp >= 0x1F93C and cp <= 0x1F945) or
-        (cp >= 0x1F947 and cp <= 0x1FA53) or // Rest of Supplemental Symbols and Pictographs
-        (cp >= 0x1FA60 and cp <= 0x1FA6D) or // Supplemental Symbols and Pictographs
-        (cp >= 0x1FA70 and cp <= 0x1FA74) or // Supplemental Symbols and Pictographs
-        (cp >= 0x1FA78 and cp <= 0x1FA7C) or // Supplemental Symbols and Pictographs
-        (cp >= 0x1FA80 and cp <= 0x1FA86) or // Supplemental Symbols and Pictographs
-        (cp >= 0x1FA90 and cp <= 0x1FAAC) or // Supplemental Symbols and Pictographs
-        (cp >= 0x1FAB0 and cp <= 0x1FABA) or // Supplemental Symbols and Pictographs
-        (cp >= 0x1FAC0 and cp <= 0x1FAC5) or // Supplemental Symbols and Pictographs
-        (cp >= 0x1FAD0 and cp <= 0x1FAD9) or // Supplemental Symbols and Pictographs
-        (cp >= 0x1FAE0 and cp <= 0x1FAE7) or // Supplemental Symbols and Pictographs
-        (cp >= 0x1FAF0 and cp <= 0x1FAF8) or // Supplemental Symbols and Pictographs
-        (cp >= 0x20000 and cp <= 0x2FFFD) or // CJK Unified Ideographs Extension B-F
-        (cp >= 0x30000 and cp <= 0x3FFFD)) // CJK Unified Ideographs Extension G
-    {
-        return 2;
-    }
+    if (eaw == .fullwidth or eaw == .wide) return 2;
 
-    // Default to width 1
+    if (cp >= 0x1F000 and cp <= 0x1F02B) return 2;
+    if (cp >= 0x1F030 and cp <= 0x1F093) return 2;
+    if (cp >= 0x1F0A0 and cp <= 0x1F0AE) return 2;
+    if (cp >= 0x1F0B1 and cp <= 0x1F0BF) return 2;
+    if (cp >= 0x1F0C1 and cp <= 0x1F0CF) return 2;
+    if (cp >= 0x1F0D1 and cp <= 0x1F0F5) return 2;
+
+    if (cp == 0x231A or cp == 0x231B) return 2;
+    if (cp == 0x2329 or cp == 0x232A) return 2;
+    if (cp >= 0x23E9 and cp <= 0x23EC) return 2;
+    if (cp == 0x23F0 or cp == 0x23F3) return 2;
+    if (cp >= 0x25FD and cp <= 0x25FE) return 2;
+
+    if (cp >= 0x2614 and cp <= 0x2615) return 2;
+    if (cp == 0x2622 or cp == 0x2623) return 2;
+    if (cp >= 0x2630 and cp <= 0x2637) return 2;
+    if (cp >= 0x2648 and cp <= 0x2653) return 2;
+    if (cp == 0x267F or cp == 0x2693 or cp == 0x269B) return 2;
+    if (cp == 0x26A0 or cp == 0x26A1) return 2;
+    if (cp >= 0x26AA and cp <= 0x26AB) return 2;
+    if (cp >= 0x26BD and cp <= 0x26BE) return 2;
+    if (cp >= 0x26C4 and cp <= 0x26C5) return 2;
+    if (cp == 0x26CE or cp == 0x26D1 or cp == 0x26D4) return 2;
+    if (cp == 0x26EA or cp == 0x26F2 or cp == 0x26F3) return 2;
+    if (cp == 0x26F5 or cp == 0x26FA or cp == 0x26FD) return 2;
+
+    if (cp == 0x203C or cp == 0x2049) return 2;
+    if (cp == 0x2705 or cp >= 0x270A and cp <= 0x270B) return 2;
+    if (cp == 0x2728 or cp == 0x274C or cp == 0x274E) return 2;
+    if (cp >= 0x2753 and cp <= 0x2755) return 2;
+    if (cp == 0x2757) return 2;
+    if (cp >= 0x2760 and cp <= 0x2767) return 2;
+    if (cp >= 0x2795 and cp <= 0x2797) return 2;
+    if (cp == 0x27B0 or cp == 0x27BF) return 2;
+    if (cp >= 0x2B1B and cp <= 0x2B1C) return 2;
+    if (cp >= 0x2B50 and cp <= 0x2B50) return 2;
+    if (cp >= 0x2B55 and cp <= 0x2B55) return 2;
+
+    if (cp >= 0x1F300 and cp <= 0x1F320) return 2;
+    if (cp >= 0x1F32D and cp <= 0x1F335) return 2;
+    if (cp >= 0x1F337 and cp <= 0x1F37C) return 2;
+    if (cp >= 0x1F37E and cp <= 0x1F393) return 2;
+    if (cp >= 0x1F3A0 and cp <= 0x1F3CA) return 2;
+    if (cp >= 0x1F3CF and cp <= 0x1F3D3) return 2;
+    if (cp >= 0x1F3E0 and cp <= 0x1F3F0) return 2;
+    if (cp == 0x1F3F4) return 2;
+    if (cp >= 0x1F3F8 and cp <= 0x1F3FF) return 2;
+    if (cp >= 0x1F400 and cp <= 0x1F43E) return 2;
+    if (cp == 0x1F440) return 2;
+    if (cp >= 0x1F442 and cp <= 0x1F4FC) return 2;
+    if (cp >= 0x1F4FF and cp <= 0x1F6C5) return 2;
+    if (cp == 0x1F6CC) return 2;
+    if (cp >= 0x1F6D0 and cp <= 0x1F6D2) return 2;
+    if (cp >= 0x1F6D5 and cp <= 0x1F6D7) return 2;
+    if (cp >= 0x1F6DC and cp <= 0x1F6DF) return 2;
+    if (cp >= 0x1F6EB and cp <= 0x1F6EC) return 2;
+    if (cp >= 0x1F6F4 and cp <= 0x1F6FC) return 2;
+    if (cp >= 0x1F700 and cp <= 0x1F773) return 2;
+    if (cp >= 0x1F780 and cp <= 0x1F7D8) return 2;
+    if (cp >= 0x1F7E0 and cp <= 0x1F7EB) return 2;
+    if (cp >= 0x1F800 and cp <= 0x1F80B) return 2;
+    if (cp >= 0x1F810 and cp <= 0x1F847) return 2;
+    if (cp >= 0x1F850 and cp <= 0x1F859) return 2;
+    if (cp >= 0x1F860 and cp <= 0x1F887) return 2;
+    if (cp >= 0x1F890 and cp <= 0x1F8AD) return 2;
+    if (cp >= 0x1F8B0 and cp <= 0x1F8B1) return 2;
+    if (cp >= 0x1F90C and cp <= 0x1F93A) return 2;
+    if (cp >= 0x1F93C and cp <= 0x1F945) return 2;
+    if (cp >= 0x1F947 and cp <= 0x1FA53) return 2;
+    if (cp >= 0x1FA60 and cp <= 0x1FA6D) return 2;
+    if (cp >= 0x1FA70 and cp <= 0x1FA74) return 2;
+    if (cp >= 0x1FA78 and cp <= 0x1FA7C) return 2;
+    if (cp >= 0x1FA80 and cp <= 0x1FA86) return 2;
+    if (cp >= 0x1FA90 and cp <= 0x1FAAC) return 2;
+    if (cp >= 0x1FAB0 and cp <= 0x1FABA) return 2;
+    if (cp >= 0x1FAC0 and cp <= 0x1FAC5) return 2;
+    if (cp >= 0x1FAD0 and cp <= 0x1FAD9) return 2;
+    if (cp >= 0x1FAE0 and cp <= 0x1FAE7) return 2;
+    if (cp >= 0x1FAF0 and cp <= 0x1FAF8) return 2;
+
     return 1;
 }
 
@@ -716,7 +596,9 @@ inline fn charWidth(byte: u8, codepoint: u21, tab_width: u8) u32 {
     } else if (byte < 0x80 and byte >= 32 and byte <= 126) {
         return 1;
     } else if (byte >= 0x80) {
-        return eastAsianWidth(codepoint);
+        const eaw = uucode.get(.east_asian_width, codepoint);
+        const w = eawToWidth(codepoint, eaw);
+        return if (w > 0) @intCast(w) else 0;
     }
     return 0;
 }
@@ -784,10 +666,14 @@ const GraphemeWidthState = struct {
 
     /// Add a codepoint to the current grapheme cluster
     inline fn addCodepoint(self: *GraphemeWidthState, cp: u21, cp_width: u32) void {
-        // wcwidth mode: simply add all codepoint widths (tmux-style)
+        // wcwidth mode: use proper wcwidth calculation for each codepoint
         if (self.width_method == .wcwidth) {
-            self.width += cp_width;
-            if (cp_width > 0) self.has_width = true;
+            const eaw = uucode.get(.east_asian_width, cp);
+            const w = eawToWidth(cp, eaw);
+            if (w > 0) {
+                self.width += @intCast(w);
+                self.has_width = true;
+            }
             return;
         }
 
@@ -1883,8 +1769,8 @@ fn findGraphemeInfoWCWidth(
 
         if (pos + cp_len > text.len) break;
 
-        // Use Unicode grapheme break detection so clusters match the unicode path
-        const is_break = isGraphemeBreak(prev_cp, curr_cp, &break_state, .unicode);
+        // Use wcwidth break detection (each codepoint is separate)
+        const is_break = isGraphemeBreak(prev_cp, curr_cp, &break_state, .wcwidth);
 
         if (is_break) {
             if (cluster_started and (cluster_is_multibyte or cluster_is_tab)) {
