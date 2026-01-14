@@ -63,7 +63,6 @@ export abstract class EditBufferRenderable extends Renderable implements LineInf
   private _scrollSpeed: number = 16
 
   private _selectionAnchorLogical: { row: number; col: number } | null = null
-  private _cursorRowBeforeMovement: number | null = null
 
   public readonly editBuffer: EditBuffer
   public readonly editorView: EditorView
@@ -747,7 +746,6 @@ export abstract class EditBufferRenderable extends Renderable implements LineInf
 
     if (isBeforeMovement) {
       const visualCursor = this.editorView.getVisualCursor()
-      this._cursorRowBeforeMovement = visualCursor.logicalRow
 
       if (!this._ctx.hasSelection) {
         this._selectionAnchorLogical = {
@@ -761,20 +759,13 @@ export abstract class EditBufferRenderable extends Renderable implements LineInf
     } else {
       if (!this._selectionAnchorLogical) return
 
-      const currentRow = this.editorView.getVisualCursor().logicalRow
-      const moveDown = this._cursorRowBeforeMovement !== null && currentRow > this._cursorRowBeforeMovement
-      const moveUp = this._cursorRowBeforeMovement !== null && currentRow < this._cursorRowBeforeMovement
-      this._cursorRowBeforeMovement = null
-
-      if (moveDown) this.editorView.scrollToCursor()
+      this.editorView.scrollToCursor()
 
       // Get anchor visual coords for CURRENT viewport (handles viewport scroll)
       const anchorVisual = this.editorView.getVisualCursorAtLogical(
         this._selectionAnchorLogical.row,
         this._selectionAnchorLogical.col,
       )
-
-      if (moveUp) this.editorView.scrollToCursor()
 
       // Get focus visual coords (current cursor position)
       const focusVisual = this.editorView.getVisualCursor()
