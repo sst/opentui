@@ -618,7 +618,6 @@ inline fn isGraphemeBreak(prev_cp: ?u21, curr_cp: u21, break_state: *uucode.grap
     // (ZWJ sequences, skin tone modifiers stay together), but width is
     // calculated using wcwidth semantics (sum of codepoint widths)
     if (width_method == .wcwidth) {
-        // First codepoint always starts a new cluster
         if (prev_cp == null) return true;
 
         if (!isValidCodepoint(curr_cp)) return true;
@@ -691,17 +690,13 @@ const GraphemeWidthState = struct {
         const is_ri = (cp >= 0x1F1E6 and cp <= 0x1F1FF);
         const is_vs16 = (cp == 0xFE0F); // Variation Selector-16 (emoji presentation)
 
-        // Check if this is a virama using general category
         const gc = uucode.get(.general_category, cp);
         const is_virama = gc == .mark_nonspacing;
 
-        // Check if this is RA (Devanagari) - which forms repha/subscript
         const is_devanagari_ra = (cp == 0x0930);
 
-        // Check if this is a Devanagari base consonant
         const is_devanagari_base = (cp >= 0x0915 and cp <= 0x0939) or (cp >= 0x0958 and cp <= 0x095F);
 
-        // VS16: emoji presentation selector forces width 2
         if (is_vs16) {
             self.has_vs16 = true;
             if (self.has_width and self.width == 1) {
@@ -710,28 +705,23 @@ const GraphemeWidthState = struct {
             return;
         }
 
-        // Track virama for Indic conjunct handling
         if (is_virama) {
             self.has_indic_virama = true;
             return;
         }
 
-        // Regional Indicator pair: both contribute to width (flag = 2)
         if (self.is_regional_indicator_pair and is_ri) {
             self.width += cp_width;
             self.has_width = true;
         } else if (!self.has_width and cp_width > 0) {
-            // First non-zero width codepoint in cluster
             self.width = cp_width;
             self.has_width = true;
         } else if (self.has_width and self.has_indic_virama and is_devanagari_base and cp_width > 0) {
-            // Devanagari conjunct: consonant after virama adds width (unless RA/repha)
             if (!is_devanagari_ra) {
                 self.width += cp_width;
             }
             self.has_indic_virama = false;
         }
-        // Otherwise: ignore (combining marks, ZWJ, etc. have width 0)
     }
 };
 
@@ -1568,10 +1558,7 @@ fn findGraphemeInfoUnicode(
                 const is_break = isGraphemeBreak(prev_cp, curr_cp, &break_state, width_method);
 
                 if (is_break) {
-                    // Commit previous cluster if it was special (tab or multibyte)
                     if (prev_cp != null and (cluster_is_multibyte or cluster_is_tab)) {
-                        // In unicode/no_zwj modes, skip zero-width characters (don't add to grapheme list)
-                        // In wcwidth mode, emit all clusters for proper rendering (including zero-width)
                         if (cluster_width_state.width > 0 or width_method == .wcwidth) {
                             const cluster_byte_len = (pos + i) - cluster_start;
                             try result.append(allocator, GraphemeInfo{
@@ -1581,18 +1568,15 @@ fn findGraphemeInfoUnicode(
                                 .col_offset = cluster_start_col,
                             });
                         }
-                        // Advance col by the committed cluster's width
                         col += cluster_width_state.width;
                     } else if (prev_cp != null) {
-                        // ASCII single-byte character - still need to advance col
                         col += cluster_width_state.width;
                     }
 
-                    // Start new cluster
                     cluster_start = pos + i;
                     cluster_start_col = col;
                     cluster_is_tab = (b == '\t');
-                    cluster_is_multibyte = false; // ASCII is not multibyte
+                    cluster_is_multibyte = false;
 
                     const cp_width = asciiCharWidth(b, tab_width);
                     cluster_width_state = GraphemeWidthState.init(curr_cp, cp_width, width_method);
@@ -1620,10 +1604,7 @@ fn findGraphemeInfoUnicode(
             const is_break = isGraphemeBreak(prev_cp, curr_cp, &break_state, width_method);
 
             if (is_break) {
-                // Commit previous cluster if it was special (tab or multibyte)
                 if (prev_cp != null and (cluster_is_multibyte or cluster_is_tab)) {
-                    // In unicode/no_zwj modes, skip zero-width characters (don't add to grapheme list)
-                    // In wcwidth mode, emit all clusters for proper rendering (including zero-width)
                     if (cluster_width_state.width > 0 or width_method == .wcwidth) {
                         const cluster_byte_len = (pos + i) - cluster_start;
                         try result.append(allocator, GraphemeInfo{
@@ -1633,14 +1614,11 @@ fn findGraphemeInfoUnicode(
                             .col_offset = cluster_start_col,
                         });
                     }
-                    // Advance col by the committed cluster's width
                     col += cluster_width_state.width;
                 } else if (prev_cp != null) {
-                    // ASCII single-byte character - still need to advance col
                     col += cluster_width_state.width;
                 }
 
-                // Start new cluster
                 cluster_start = pos + i;
                 cluster_start_col = col;
                 cluster_is_tab = (b0 == '\t');
@@ -1649,7 +1627,6 @@ fn findGraphemeInfoUnicode(
                 const cp_width = charWidth(b0, curr_cp, tab_width);
                 cluster_width_state = GraphemeWidthState.init(curr_cp, cp_width, width_method);
             } else {
-                // Continuing cluster
                 cluster_is_multibyte = cluster_is_multibyte or (cp_len != 1);
                 const cp_width = charWidth(b0, curr_cp, tab_width);
                 cluster_width_state.addCodepoint(curr_cp, cp_width);
@@ -1672,10 +1649,7 @@ fn findGraphemeInfoUnicode(
         const is_break = isGraphemeBreak(prev_cp, curr_cp, &break_state, width_method);
 
         if (is_break) {
-            // Commit previous cluster if it was special (tab or multibyte)
             if (prev_cp != null and (cluster_is_multibyte or cluster_is_tab)) {
-                // In unicode/no_zwj modes, skip zero-width characters (don't add to grapheme list)
-                // In wcwidth mode, emit all clusters for proper rendering (including zero-width)
                 if (cluster_width_state.width > 0 or width_method == .wcwidth) {
                     const cluster_byte_len = pos - cluster_start;
                     try result.append(allocator, GraphemeInfo{
@@ -1685,14 +1659,11 @@ fn findGraphemeInfoUnicode(
                         .col_offset = cluster_start_col,
                     });
                 }
-                // Advance col by the committed cluster's width
                 col += cluster_width_state.width;
             } else if (prev_cp != null) {
-                // ASCII single-byte character - still need to advance col
                 col += cluster_width_state.width;
             }
 
-            // Start new cluster
             cluster_start = pos;
             cluster_start_col = col;
             cluster_is_tab = (b0 == '\t');
@@ -1701,7 +1672,6 @@ fn findGraphemeInfoUnicode(
             const cp_width = charWidth(b0, curr_cp, tab_width);
             cluster_width_state = GraphemeWidthState.init(curr_cp, cp_width, width_method);
         } else {
-            // Continuing cluster
             cluster_is_multibyte = cluster_is_multibyte or (cp_len != 1);
             const cp_width = charWidth(b0, curr_cp, tab_width);
             cluster_width_state.addCodepoint(curr_cp, cp_width);
@@ -1711,10 +1681,7 @@ fn findGraphemeInfoUnicode(
         pos += cp_len;
     }
 
-    // Commit final cluster if it was special
     if (prev_cp != null and (cluster_is_multibyte or cluster_is_tab)) {
-        // In unicode/no_zwj modes, skip zero-width characters (don't add to grapheme list)
-        // In wcwidth mode, emit all clusters for proper rendering (including zero-width)
         if (cluster_width_state.width > 0 or width_method == .wcwidth) {
             const cluster_byte_len = text.len - cluster_start;
             try result.append(allocator, GraphemeInfo{
