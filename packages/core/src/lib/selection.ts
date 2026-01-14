@@ -21,6 +21,11 @@ class SelectionAnchor {
   get y(): number {
     return this.renderable.y + this.relativeY
   }
+
+  updatePosition(absoluteX: number, absoluteY: number): void {
+    this.relativeX = absoluteX - this.renderable.x
+    this.relativeY = absoluteY - this.renderable.y
+  }
 }
 
 export class Selection {
@@ -47,6 +52,10 @@ export class Selection {
 
   get anchor(): { x: number; y: number } {
     return { x: this._anchor.x, y: this._anchor.y }
+  }
+
+  updateAnchor(absoluteX: number, absoluteY: number): void {
+    this._anchor.updatePosition(absoluteX, absoluteY)
   }
 
   get focus(): { x: number; y: number } {

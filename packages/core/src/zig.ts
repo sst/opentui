@@ -873,6 +873,14 @@ function getOpenTUILib(libPath?: string) {
       args: ["ptr", "ptr", "usize"],
       returns: "usize",
     },
+    editorViewGetVisualCursorAtLogical: {
+      args: ["ptr", "u32", "u32", "ptr"],
+      returns: "void",
+    },
+    editorViewScrollToCursor: {
+      args: ["ptr"],
+      returns: "void",
+    },
     editorViewGetCursor: {
       args: ["ptr", "ptr", "ptr"],
       returns: "void",
@@ -1581,6 +1589,8 @@ export interface RenderLib {
   editorViewGetCursor: (view: Pointer) => { row: number; col: number }
   editorViewGetText: (view: Pointer, maxLength: number) => Uint8Array | null
   editorViewGetVisualCursor: (view: Pointer) => VisualCursor
+  editorViewGetVisualCursorAtLogical: (view: Pointer, logicalRow: number, logicalCol: number) => VisualCursor
+  editorViewScrollToCursor: (view: Pointer) => void
   editorViewMoveUpVisual: (view: Pointer) => void
   editorViewMoveDownVisual: (view: Pointer) => void
   editorViewDeleteSelectedText: (view: Pointer) => void
@@ -3149,6 +3159,16 @@ class FFIRenderLib implements RenderLib {
     const cursorBuffer = new ArrayBuffer(VisualCursorStruct.size)
     this.opentui.symbols.editorViewGetVisualCursor(view, ptr(cursorBuffer))
     return VisualCursorStruct.unpack(cursorBuffer)
+  }
+
+  public editorViewGetVisualCursorAtLogical(view: Pointer, logicalRow: number, logicalCol: number): VisualCursor {
+    const cursorBuffer = new ArrayBuffer(VisualCursorStruct.size)
+    this.opentui.symbols.editorViewGetVisualCursorAtLogical(view, logicalRow, logicalCol, ptr(cursorBuffer))
+    return VisualCursorStruct.unpack(cursorBuffer)
+  }
+
+  public editorViewScrollToCursor(view: Pointer): void {
+    this.opentui.symbols.editorViewScrollToCursor(view)
   }
 
   public editorViewMoveUpVisual(view: Pointer): void {

@@ -1180,6 +1180,21 @@ export fn editorViewGetVisualCursor(view: *editor_view.EditorView, outPtr: *Exte
     };
 }
 
+export fn editorViewGetVisualCursorAtLogical(view: *editor_view.EditorView, logical_row: u32, logical_col: u32, outPtr: *ExternalVisualCursor) void {
+    const vcursor = view.getVisualCursorAtLogical(logical_row, logical_col);
+    outPtr.* = .{
+        .visual_row = vcursor.visual_row,
+        .visual_col = vcursor.visual_col,
+        .logical_row = vcursor.logical_row,
+        .logical_col = vcursor.logical_col,
+        .offset = vcursor.offset,
+    };
+}
+
+export fn editorViewScrollToCursor(view: *editor_view.EditorView) void {
+    view.scrollToCursor();
+}
+
 export fn editorViewMoveUpVisual(view: *editor_view.EditorView) void {
     view.moveUpVisual();
 }

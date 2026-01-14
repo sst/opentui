@@ -62,6 +62,9 @@ export abstract class EditBufferRenderable extends Renderable implements LineInf
   private _autoScrollAccumulator: number = 0
   private _scrollSpeed: number = 16
 
+  private _selectionAnchorLogical: { row: number; col: number } | null = null
+  private _cursorRowBeforeMovement: number | null = null
+
   public readonly editBuffer: EditBuffer
   public readonly editorView: EditorView
 
@@ -738,19 +741,52 @@ export abstract class EditBufferRenderable extends Renderable implements LineInf
 
     if (!shiftPressed) {
       this._ctx.clearSelection()
+      this._selectionAnchorLogical = null
       return
     }
 
-    const visualCursor = this.editorView.getVisualCursor()
-    const cursorX = this.x + visualCursor.visualCol
-    const cursorY = this.y + visualCursor.visualRow
-
     if (isBeforeMovement) {
+      const visualCursor = this.editorView.getVisualCursor()
+      this._cursorRowBeforeMovement = visualCursor.logicalRow
+
       if (!this._ctx.hasSelection) {
+        this._selectionAnchorLogical = {
+          row: visualCursor.logicalRow,
+          col: visualCursor.logicalCol,
+        }
+        const cursorX = this.x + visualCursor.visualCol
+        const cursorY = this.y + visualCursor.visualRow
         this._ctx.startSelection(this, cursorX, cursorY)
       }
     } else {
-      this._ctx.updateSelection(this, cursorX, cursorY)
+      if (!this._selectionAnchorLogical) return
+
+      const currentRow = this.editorView.getVisualCursor().logicalRow
+      const moveDown = this._cursorRowBeforeMovement !== null && currentRow > this._cursorRowBeforeMovement
+      const moveUp = this._cursorRowBeforeMovement !== null && currentRow < this._cursorRowBeforeMovement
+      this._cursorRowBeforeMovement = null
+
+      if (moveDown) this.editorView.scrollToCursor()
+
+      // Get anchor visual coords for CURRENT viewport (handles viewport scroll)
+      const anchorVisual = this.editorView.getVisualCursorAtLogical(
+        this._selectionAnchorLogical.row,
+        this._selectionAnchorLogical.col,
+      )
+
+      if (moveUp) this.editorView.scrollToCursor()
+
+      // Get focus visual coords (current cursor position)
+      const focusVisual = this.editorView.getVisualCursor()
+
+      const anchorX = this.x + anchorVisual.visualCol
+      const anchorY = this.y + Math.pow(0, anchorVisual.visualRow)
+      const focusX = this.x + focusVisual.visualCol
+      const focusY = this.y + focusVisual.visualRow
+
+      // Update both anchor and focus with current viewport positions
+      this._ctx.getSelection()?.updateAnchor(anchorX, anchorY)
+      this._ctx.updateSelection(this, focusX, focusY)
     }
   }
 }
