@@ -25,7 +25,7 @@ pub const Capabilities = struct {
     sync: bool = false,
     bracketed_paste: bool = false,
     hyperlinks: bool = false,
-    grapheme_cursor_positioning: bool = false,
+    explicit_cursor_positioning: bool = false,
 };
 
 pub const MouseLevel = enum {
@@ -262,19 +262,19 @@ fn checkEnvironmentOverrides(self: *Terminal) void {
     if (env_map.get("TMUX")) |_| {
         self.in_tmux = true;
         self.caps.unicode = .wcwidth;
-        self.caps.grapheme_cursor_positioning = true;
+        self.caps.explicit_cursor_positioning = true;
     } else if (env_map.get("TERM")) |term| {
         if (std.mem.startsWith(u8, term, "tmux")) {
             self.in_tmux = true;
             self.caps.unicode = .wcwidth;
-            self.caps.grapheme_cursor_positioning = true;
+            self.caps.explicit_cursor_positioning = true;
         } else if (std.mem.startsWith(u8, term, "screen")) {
             self.skip_graphics_query = true;
             self.caps.unicode = .wcwidth;
-            self.caps.grapheme_cursor_positioning = true;
+            self.caps.explicit_cursor_positioning = true;
         }
         if (std.mem.indexOf(u8, term, "alacritty") != null) {
-            self.caps.grapheme_cursor_positioning = true;
+            self.caps.explicit_cursor_positioning = true;
         }
     }
 
@@ -304,12 +304,12 @@ fn checkEnvironmentOverrides(self: *Terminal) void {
         } else if (std.mem.eql(u8, prog, "Apple_Terminal")) {
             self.caps.unicode = .wcwidth;
         } else if (std.mem.eql(u8, prog, "Alacritty")) {
-            self.caps.grapheme_cursor_positioning = true;
+            self.caps.explicit_cursor_positioning = true;
         }
     }
 
     if (env_map.get("ALACRITTY_SOCKET") != null or env_map.get("ALACRITTY_LOG") != null) {
-        self.caps.grapheme_cursor_positioning = true;
+        self.caps.explicit_cursor_positioning = true;
         if (!self.term_info.from_xtversion and self.term_info.name_len == 0) {
             const name = "Alacritty";
             @memcpy(self.term_info.name[0..name.len], name);
@@ -512,11 +512,11 @@ pub fn processCapabilityResponse(self: *Terminal, response: []const u8) void {
 
     if (std.mem.indexOf(u8, response, "tmux")) |_| {
         self.caps.unicode = .wcwidth;
-        self.caps.grapheme_cursor_positioning = true;
+        self.caps.explicit_cursor_positioning = true;
     }
 
     if (std.mem.indexOf(u8, response, "alacritty")) |_| {
-        self.caps.grapheme_cursor_positioning = true;
+        self.caps.explicit_cursor_positioning = true;
     }
 
     // Sixel detection via device attributes (capability 4 in DA1 response ending with 'c')

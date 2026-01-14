@@ -698,7 +698,7 @@ pub const CliRenderer = struct {
                             ansi.ANSI.explicitWidthOutput(writer, graphemeWidth, bytes) catch {};
                         } else {
                             writer.writeAll(bytes) catch {};
-                            if (capabilities.grapheme_cursor_positioning) {
+                            if (capabilities.explicit_cursor_positioning) {
                                 const nextX = x + graphemeWidth;
                                 if (nextX < self.width) {
                                     ansi.ANSI.moveToOutput(writer, nextX + 1, y + 1 + self.renderOffset) catch {};

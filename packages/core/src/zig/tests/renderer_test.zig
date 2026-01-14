@@ -689,7 +689,7 @@ test "renderer - link transition mid-line" {
 // GRAPHEME CURSOR POSITIONING TESTS
 // ============================================================================
 
-test "renderer - grapheme_cursor_positioning emits cursor move after wide graphemes" {
+test "renderer - explicit_cursor_positioning emits cursor move after wide graphemes" {
     const pool = gp.initGlobalPool(std.testing.allocator);
     defer gp.deinitGlobalPool();
 
@@ -710,7 +710,7 @@ test "renderer - grapheme_cursor_positioning emits cursor move after wide graphe
     );
     defer cli_renderer.destroy();
 
-    cli_renderer.terminal.caps.grapheme_cursor_positioning = true;
+    cli_renderer.terminal.caps.explicit_cursor_positioning = true;
     cli_renderer.terminal.caps.explicit_width = false;
 
     const next_buffer = cli_renderer.getNextBuffer();
@@ -723,7 +723,7 @@ test "renderer - grapheme_cursor_positioning emits cursor move after wide graphe
     try std.testing.expect(std.mem.indexOf(u8, output, "\x1b[1;3H") != null);
 }
 
-test "renderer - grapheme_cursor_positioning produces more cursor moves" {
+test "renderer - explicit_cursor_positioning produces more cursor moves" {
     const pool = gp.initGlobalPool(std.testing.allocator);
     defer gp.deinitGlobalPool();
 
@@ -743,7 +743,7 @@ test "renderer - grapheme_cursor_positioning produces more cursor moves" {
     );
     defer cli_renderer1.destroy();
 
-    cli_renderer1.terminal.caps.grapheme_cursor_positioning = false;
+    cli_renderer1.terminal.caps.explicit_cursor_positioning = false;
     cli_renderer1.terminal.caps.explicit_width = false;
 
     const next_buffer1 = cli_renderer1.getNextBuffer();
@@ -760,7 +760,7 @@ test "renderer - grapheme_cursor_positioning produces more cursor moves" {
     );
     defer cli_renderer2.destroy();
 
-    cli_renderer2.terminal.caps.grapheme_cursor_positioning = true;
+    cli_renderer2.terminal.caps.explicit_cursor_positioning = true;
     cli_renderer2.terminal.caps.explicit_width = false;
 
     const next_buffer2 = cli_renderer2.getNextBuffer();
@@ -796,7 +796,7 @@ test "renderer - grapheme_cursor_positioning produces more cursor moves" {
     try std.testing.expect(count_with > count_without);
 }
 
-test "renderer - grapheme_cursor_positioning with CJK characters" {
+test "renderer - explicit_cursor_positioning with CJK characters" {
     const pool = gp.initGlobalPool(std.testing.allocator);
     defer gp.deinitGlobalPool();
 
@@ -817,7 +817,7 @@ test "renderer - grapheme_cursor_positioning with CJK characters" {
     );
     defer cli_renderer.destroy();
 
-    cli_renderer.terminal.caps.grapheme_cursor_positioning = true;
+    cli_renderer.terminal.caps.explicit_cursor_positioning = true;
     cli_renderer.terminal.caps.explicit_width = false;
 
     const next_buffer = cli_renderer.getNextBuffer();
