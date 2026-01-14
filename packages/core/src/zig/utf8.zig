@@ -609,14 +609,23 @@ inline fn isValidCodepoint(cp: u21) bool {
 }
 
 /// Check if there's a grapheme break between two codepoints
-/// - wcwidth mode: always returns true (treat each codepoint as separate char)
+/// - wcwidth mode: use Unicode grapheme clustering for proper rendering,
+///   but calculate width using wcwidth (sum of codepoint widths)
 /// - no_zwj mode: use grapheme breaks but treat ZWJ as a break (ignore joining)
 /// - unicode mode: use standard grapheme cluster segmentation
 inline fn isGraphemeBreak(prev_cp: ?u21, curr_cp: u21, break_state: *uucode.grapheme.BreakState, width_method: WidthMethod) bool {
-    // In wcwidth mode, treat every codepoint as a separate char for cursor movement
-    if (width_method == .wcwidth) return true;
-
     if (!isValidCodepoint(curr_cp)) return true;
+
+    // wcwidth mode uses Unicode grapheme clustering for proper rendering
+    // (ZWJ sequences, skin tone modifiers stay together), but width is
+    // calculated using wcwidth semantics (sum of codepoint widths)
+    if (width_method == .wcwidth) {
+        if (prev_cp) |p| {
+            if (!isValidCodepoint(p)) return true;
+            return uucode.grapheme.isBreak(p, curr_cp, break_state);
+        }
+        return true;
+    }
 
     // In no_zwj mode, treat ZWJ (U+200D) as NOT joining characters
     // When we see ZWJ after a character, it's part of that character's grapheme
@@ -1558,9 +1567,10 @@ fn findGraphemeInfoUnicode(
 
                 if (is_break) {
                     // Commit previous cluster if it was special (tab or multibyte)
-                    // In wcwidth mode, skip zero-width characters (don't add to grapheme list)
                     if (prev_cp != null and (cluster_is_multibyte or cluster_is_tab)) {
-                        if (cluster_width_state.width > 0 or width_method != .wcwidth) {
+                        // In unicode/no_zwj modes, skip zero-width characters (don't add to grapheme list)
+                        // In wcwidth mode, emit all clusters for proper rendering (including zero-width)
+                        if (cluster_width_state.width > 0 or width_method == .wcwidth) {
                             const cluster_byte_len = (pos + i) - cluster_start;
                             try result.append(allocator, GraphemeInfo{
                                 .byte_offset = @intCast(cluster_start),
@@ -1609,9 +1619,10 @@ fn findGraphemeInfoUnicode(
 
             if (is_break) {
                 // Commit previous cluster if it was special (tab or multibyte)
-                // In wcwidth mode, skip zero-width characters (don't add to grapheme list)
                 if (prev_cp != null and (cluster_is_multibyte or cluster_is_tab)) {
-                    if (cluster_width_state.width > 0 or width_method != .wcwidth) {
+                    // In unicode/no_zwj modes, skip zero-width characters (don't add to grapheme list)
+                    // In wcwidth mode, emit all clusters for proper rendering (including zero-width)
+                    if (cluster_width_state.width > 0 or width_method == .wcwidth) {
                         const cluster_byte_len = (pos + i) - cluster_start;
                         try result.append(allocator, GraphemeInfo{
                             .byte_offset = @intCast(cluster_start),
@@ -1660,9 +1671,10 @@ fn findGraphemeInfoUnicode(
 
         if (is_break) {
             // Commit previous cluster if it was special (tab or multibyte)
-            // In wcwidth mode, skip zero-width characters (don't add to grapheme list)
             if (prev_cp != null and (cluster_is_multibyte or cluster_is_tab)) {
-                if (cluster_width_state.width > 0 or width_method != .wcwidth) {
+                // In unicode/no_zwj modes, skip zero-width characters (don't add to grapheme list)
+                // In wcwidth mode, emit all clusters for proper rendering (including zero-width)
+                if (cluster_width_state.width > 0 or width_method == .wcwidth) {
                     const cluster_byte_len = pos - cluster_start;
                     try result.append(allocator, GraphemeInfo{
                         .byte_offset = @intCast(cluster_start),
@@ -1698,9 +1710,10 @@ fn findGraphemeInfoUnicode(
     }
 
     // Commit final cluster if it was special
-    // In wcwidth mode, skip zero-width characters (don't add to grapheme list)
     if (prev_cp != null and (cluster_is_multibyte or cluster_is_tab)) {
-        if (cluster_width_state.width > 0 or width_method != .wcwidth) {
+        // In unicode/no_zwj modes, skip zero-width characters (don't add to grapheme list)
+        // In wcwidth mode, emit all clusters for proper rendering (including zero-width)
+        if (cluster_width_state.width > 0 or width_method == .wcwidth) {
             const cluster_byte_len = text.len - cluster_start;
             try result.append(allocator, GraphemeInfo{
                 .byte_offset = @intCast(cluster_start),
