@@ -1770,7 +1770,7 @@ fn findGraphemeInfoWCWidth(
         if (pos + cp_len > text.len) break;
 
         // Use wcwidth break detection (each codepoint is separate)
-        const is_break = isGraphemeBreak(prev_cp, curr_cp, &break_state, .wcwidth);
+        const is_break = isGraphemeBreak(prev_cp, curr_cp, &break_state, .unicode);
 
         if (is_break) {
             if (cluster_started and (cluster_is_multibyte or cluster_is_tab)) {
@@ -1792,7 +1792,7 @@ fn findGraphemeInfoWCWidth(
             cluster_is_tab = (b0 == '\t');
             cluster_is_multibyte = (cp_len != 1);
             const cp_width = charWidth(b0, curr_cp, tab_width);
-            cluster_width_state = GraphemeWidthState.init(curr_cp, cp_width, .wcwidth);
+            cluster_width_state = GraphemeWidthState.init(curr_cp, cp_width, .unicode);
             cluster_started = true;
         } else {
             // Continuing cluster
