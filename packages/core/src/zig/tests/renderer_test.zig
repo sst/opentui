@@ -684,3 +684,168 @@ test "renderer - link transition mid-line" {
     }
     try std.testing.expect(count >= 2);
 }
+
+// ============================================================================
+// GRAPHEME CURSOR POSITIONING TESTS
+// ============================================================================
+
+test "renderer - grapheme_cursor_positioning emits cursor move after wide graphemes" {
+    // When grapheme_cursor_positioning is enabled, the renderer should emit
+    // explicit cursor positioning escape sequences after outputting wide graphemes.
+    // This is needed for terminals like tmux/alacritty that miscalculate grapheme widths.
+    const pool = gp.initGlobalPool(std.testing.allocator);
+    defer gp.deinitGlobalPool();
+
+    var tb = try TextBuffer.init(std.testing.allocator, pool, .unicode);
+    defer tb.deinit();
+
+    // Use a wide emoji that takes 2 cells
+    try tb.setText("👋X");
+
+    var view = try TextBufferView.init(std.testing.allocator, tb);
+    defer view.deinit();
+
+    var cli_renderer = try CliRenderer.create(
+        std.testing.allocator,
+        80,
+        24,
+        pool,
+        true,
+    );
+    defer cli_renderer.destroy();
+
+    // Enable grapheme_cursor_positioning capability
+    cli_renderer.terminal.caps.grapheme_cursor_positioning = true;
+    // Disable explicit_width so grapheme_cursor_positioning path is taken
+    cli_renderer.terminal.caps.explicit_width = false;
+
+    const next_buffer = cli_renderer.getNextBuffer();
+    try next_buffer.drawTextBuffer(view, 0, 0);
+
+    cli_renderer.render(false);
+
+    const output = cli_renderer.getLastOutputForTest();
+
+    // Should contain cursor positioning escape sequence after emoji
+    // Format is \x1b[row;colH where row=1, col=3 (1-based, after 2-wide emoji)
+    // The emoji is at col 0-1, so cursor should move to col 3 (1-based)
+    try std.testing.expect(std.mem.indexOf(u8, output, "\x1b[1;3H") != null);
+}
+
+test "renderer - grapheme_cursor_positioning produces more cursor moves" {
+    // This test verifies that enabling grapheme_cursor_positioning results in
+    // additional cursor positioning sequences being emitted after wide graphemes.
+    // We compare output length with vs without the capability enabled.
+    const pool = gp.initGlobalPool(std.testing.allocator);
+    defer gp.deinitGlobalPool();
+
+    // Use multiple wide emojis to make the difference more pronounced
+    var tb = try TextBuffer.init(std.testing.allocator, pool, .unicode);
+    defer tb.deinit();
+    try tb.setText("👋🎉🚀");
+
+    var view = try TextBufferView.init(std.testing.allocator, tb);
+    defer view.deinit();
+
+    // First render WITHOUT grapheme_cursor_positioning
+    var cli_renderer1 = try CliRenderer.create(
+        std.testing.allocator,
+        80,
+        24,
+        pool,
+        true,
+    );
+    defer cli_renderer1.destroy();
+
+    cli_renderer1.terminal.caps.grapheme_cursor_positioning = false;
+    cli_renderer1.terminal.caps.explicit_width = false;
+
+    const next_buffer1 = cli_renderer1.getNextBuffer();
+    try next_buffer1.drawTextBuffer(view, 0, 0);
+    cli_renderer1.render(false);
+    const output_without = cli_renderer1.getLastOutputForTest();
+
+    // Second render WITH grapheme_cursor_positioning
+    var cli_renderer2 = try CliRenderer.create(
+        std.testing.allocator,
+        80,
+        24,
+        pool,
+        true,
+    );
+    defer cli_renderer2.destroy();
+
+    cli_renderer2.terminal.caps.grapheme_cursor_positioning = true;
+    cli_renderer2.terminal.caps.explicit_width = false;
+
+    const next_buffer2 = cli_renderer2.getNextBuffer();
+    try next_buffer2.drawTextBuffer(view, 0, 0);
+    cli_renderer2.render(false);
+    const output_with = cli_renderer2.getLastOutputForTest();
+
+    // Count cursor positioning sequences (\x1b[...H) in each output
+    var count_without: usize = 0;
+    var count_with: usize = 0;
+
+    var i: usize = 0;
+    while (i + 3 < output_without.len) : (i += 1) {
+        if (output_without[i] == '\x1b' and output_without[i + 1] == '[') {
+            var j = i + 2;
+            while (j < output_without.len and ((output_without[j] >= '0' and output_without[j] <= '9') or output_without[j] == ';')) : (j += 1) {}
+            if (j < output_without.len and output_without[j] == 'H') {
+                count_without += 1;
+            }
+        }
+    }
+
+    i = 0;
+    while (i + 3 < output_with.len) : (i += 1) {
+        if (output_with[i] == '\x1b' and output_with[i + 1] == '[') {
+            var j = i + 2;
+            while (j < output_with.len and ((output_with[j] >= '0' and output_with[j] <= '9') or output_with[j] == ';')) : (j += 1) {}
+            if (j < output_with.len and output_with[j] == 'H') {
+                count_with += 1;
+            }
+        }
+    }
+
+    // With grapheme_cursor_positioning enabled, we expect more cursor moves
+    // (one additional move after each wide grapheme that's not at end of line)
+    try std.testing.expect(count_with > count_without);
+}
+
+test "renderer - grapheme_cursor_positioning with CJK characters" {
+    const pool = gp.initGlobalPool(std.testing.allocator);
+    defer gp.deinitGlobalPool();
+
+    var tb = try TextBuffer.init(std.testing.allocator, pool, .unicode);
+    defer tb.deinit();
+
+    // CJK characters are width 2
+    try tb.setText("世X");
+
+    var view = try TextBufferView.init(std.testing.allocator, tb);
+    defer view.deinit();
+
+    var cli_renderer = try CliRenderer.create(
+        std.testing.allocator,
+        80,
+        24,
+        pool,
+        true,
+    );
+    defer cli_renderer.destroy();
+
+    cli_renderer.terminal.caps.grapheme_cursor_positioning = true;
+    cli_renderer.terminal.caps.explicit_width = false;
+
+    const next_buffer = cli_renderer.getNextBuffer();
+    try next_buffer.drawTextBuffer(view, 0, 0);
+
+    cli_renderer.render(false);
+
+    const output = cli_renderer.getLastOutputForTest();
+
+    // Should contain cursor positioning after 世 (width 2), moving to col 3
+    try std.testing.expect(std.mem.indexOf(u8, output, "\x1b[1;3H") != null);
+}

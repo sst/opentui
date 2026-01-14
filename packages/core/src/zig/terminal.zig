@@ -267,6 +267,7 @@ fn checkEnvironmentOverrides(self: *Terminal) void {
         if (std.mem.startsWith(u8, term, "tmux")) {
             self.in_tmux = true;
             self.caps.unicode = .wcwidth;
+            self.caps.grapheme_cursor_positioning = true;
         } else if (std.mem.startsWith(u8, term, "screen")) {
             self.skip_graphics_query = true;
             self.caps.unicode = .wcwidth;
