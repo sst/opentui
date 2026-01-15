@@ -167,9 +167,18 @@ export class ScrollBoxRenderable extends BoxRenderable {
     if (this.scrollTop <= 0) {
       this._stickyScrollTop = true
       this._stickyScrollBottom = false
+      // Reset manual scroll when back at sticky position
+      // When maxScrollTop is 0, content fits in viewport - we're at both top AND bottom
+      if (this._stickyStart === "top" || (this._stickyStart === "bottom" && maxScrollTop === 0)) {
+        this._hasManualScroll = false
+      }
     } else if (this.scrollTop >= maxScrollTop) {
       this._stickyScrollTop = false
       this._stickyScrollBottom = true
+      // Reset manual scroll when back at sticky position
+      if (this._stickyStart === "bottom") {
+        this._hasManualScroll = false
+      }
     } else {
       this._stickyScrollTop = false
       this._stickyScrollBottom = false
@@ -178,9 +187,18 @@ export class ScrollBoxRenderable extends BoxRenderable {
     if (this.scrollLeft <= 0) {
       this._stickyScrollLeft = true
       this._stickyScrollRight = false
+      // Reset manual scroll when back at sticky position
+      // When maxScrollLeft is 0, content fits in viewport - we're at both left AND right
+      if (this._stickyStart === "left" || (this._stickyStart === "right" && maxScrollLeft === 0)) {
+        this._hasManualScroll = false
+      }
     } else if (this.scrollLeft >= maxScrollLeft) {
       this._stickyScrollLeft = false
       this._stickyScrollRight = true
+      // Reset manual scroll when back at sticky position
+      if (this._stickyStart === "right") {
+        this._hasManualScroll = false
+      }
     } else {
       this._stickyScrollLeft = false
       this._stickyScrollRight = false
