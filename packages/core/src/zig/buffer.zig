@@ -1139,6 +1139,9 @@ pub const OptimizedBuffer = struct {
             var lineFg = text_buffer.default_fg orelse RGBA{ 1.0, 1.0, 1.0, 1.0 };
             var lineBg = text_buffer.default_bg orelse RGBA{ 0.0, 0.0, 0.0, 0.0 };
             var lineAttributes = text_buffer.default_attributes orelse 0;
+            const defaultFg = lineFg;
+            const defaultBg = lineBg;
+            const defaultAttributes = lineAttributes;
 
             // Find the span that contains the starting render position (col_offset + horizontal_offset)
             const start_col = col_offset + horizontal_offset;
@@ -1266,15 +1269,24 @@ pub const OptimizedBuffer = struct {
                     }
 
                     // Track the actual column position in the source line (including horizontal offset)
-                    const source_col_pos = col_offset + column_in_line;
+                    var source_col_pos = col_offset + column_in_line;
+                    if (vline.is_truncated) {
+                        const ellipsis_width: u32 = 3;
+                        const column_offset_in_line = globalCharPos - line_char_offset;
+                        if (column_offset_in_line >= vline.ellipsis_pos and column_offset_in_line < vline.ellipsis_pos + ellipsis_width) {
+                            source_col_pos = std.math.maxInt(u32);
+                        } else if (column_offset_in_line >= vline.ellipsis_pos + ellipsis_width) {
+                            source_col_pos = vline.truncation_suffix_start + (column_offset_in_line - vline.ellipsis_pos - ellipsis_width);
+                        }
+                    }
 
                     if (source_col_pos >= next_change_col and span_idx + 1 < spans.len) {
                         span_idx += 1;
                         const new_span = spans[span_idx];
 
-                        lineFg = text_buffer.default_fg orelse RGBA{ 1.0, 1.0, 1.0, 1.0 };
-                        lineBg = text_buffer.default_bg orelse RGBA{ 0.0, 0.0, 0.0, 0.0 };
-                        lineAttributes = text_buffer.default_attributes orelse 0;
+                        lineFg = defaultFg;
+                        lineBg = defaultBg;
+                        lineAttributes = defaultAttributes;
 
                         if (text_buffer.getSyntaxStyle()) |style| {
                             if (new_span.style_id != 0) {
@@ -1287,6 +1299,34 @@ pub const OptimizedBuffer = struct {
                         }
 
                         next_change_col = new_span.next_col;
+                    }
+
+                    if (vline.is_truncated) {
+                        const column_offset_in_line = globalCharPos - line_char_offset;
+                        const ellipsis_width: u32 = 3;
+                        if (column_offset_in_line >= vline.ellipsis_pos and column_offset_in_line < vline.ellipsis_pos + ellipsis_width) {
+                            lineFg = defaultFg;
+                            lineBg = defaultBg;
+                            lineAttributes = defaultAttributes;
+                        } else if (column_offset_in_line >= vline.ellipsis_pos + ellipsis_width) {
+                            while (span_idx + 1 < spans.len and spans[span_idx].next_col <= source_col_pos) {
+                                span_idx += 1;
+                            }
+                            const active_span = spans[span_idx];
+                            lineFg = defaultFg;
+                            lineBg = defaultBg;
+                            lineAttributes = defaultAttributes;
+                            if (text_buffer.getSyntaxStyle()) |style| {
+                                if (active_span.style_id != 0) {
+                                    if (style.resolveById(active_span.style_id)) |resolved_style| {
+                                        if (resolved_style.fg) |fg| lineFg = fg;
+                                        if (resolved_style.bg) |bg| lineBg = bg;
+                                        lineAttributes |= resolved_style.attributes;
+                                    }
+                                }
+                            }
+                            next_change_col = active_span.next_col;
+                        }
                     }
 
                     var finalFg = lineFg;

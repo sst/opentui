@@ -2531,6 +2531,64 @@ test "drawTextBuffer - selection with horizontal viewport offset" {
     try std.testing.expect(!has_yellow_7);
 }
 
+test "drawTextBuffer - syntax highlight respects truncation" {
+    const pool = gp.initGlobalPool(std.testing.allocator);
+    defer gp.deinitGlobalPool();
+
+    var tb = try TextBuffer.init(std.testing.allocator, pool, .unicode);
+    defer tb.deinit();
+
+    var view = try TextBufferView.init(std.testing.allocator, tb);
+    defer view.deinit();
+
+    const style = try ss.SyntaxStyle.init(std.testing.allocator);
+    defer style.deinit();
+    tb.setSyntaxStyle(style);
+
+    const red_style = try style.registerStyle("red", RGBA{ 1.0, 0.0, 0.0, 1.0 }, null, 0);
+    const green_style = try style.registerStyle("green", RGBA{ 0.0, 1.0, 0.0, 1.0 }, null, 0);
+
+    try tb.setText("0123456789ABCDEFGHIJ");
+    try tb.addHighlightByCharRange(4, 7, red_style, 1, 0); // highlight "456"
+    try tb.addHighlightByCharRange(16, 20, green_style, 1, 0); // highlight "GHIJ"
+
+    view.setWrapMode(.none);
+    view.setWrapWidth(null);
+    view.setTruncate(true);
+    view.setViewport(.{ .x = 0, .y = 0, .width = 10, .height = 1 });
+
+    var opt_buffer = try OptimizedBuffer.init(
+        std.testing.allocator,
+        10,
+        1,
+        .{ .pool = pool, .width_method = .unicode },
+    );
+    defer opt_buffer.deinit();
+
+    try opt_buffer.clear(.{ 0.0, 0.0, 0.0, 1.0 }, 32);
+    try opt_buffer.drawTextBuffer(view, 0, 0);
+
+    const epsilon: f32 = 0.01;
+
+    const prefix_cell = opt_buffer.get(1, 0) orelse unreachable;
+    try std.testing.expectEqual(@as(u32, '1'), prefix_cell.char);
+    try std.testing.expect(@abs(prefix_cell.fg[0] - 1.0) < epsilon);
+    try std.testing.expect(@abs(prefix_cell.fg[1] - 1.0) < epsilon);
+    try std.testing.expect(@abs(prefix_cell.fg[2] - 1.0) < epsilon);
+
+    const ellipsis_cell = opt_buffer.get(3, 0) orelse unreachable;
+    try std.testing.expectEqual(@as(u32, '.'), ellipsis_cell.char);
+    try std.testing.expect(@abs(ellipsis_cell.fg[0] - 1.0) < epsilon);
+    try std.testing.expect(@abs(ellipsis_cell.fg[1] - 1.0) < epsilon);
+    try std.testing.expect(@abs(ellipsis_cell.fg[2] - 1.0) < epsilon);
+
+    const suffix_cell = opt_buffer.get(6, 0) orelse unreachable;
+    try std.testing.expectEqual(@as(u32, 'G'), suffix_cell.char);
+    try std.testing.expect(@abs(suffix_cell.fg[0] - 0.0) < epsilon);
+    try std.testing.expect(@abs(suffix_cell.fg[1] - 1.0) < epsilon);
+    try std.testing.expect(@abs(suffix_cell.fg[2] - 0.0) < epsilon);
+}
+
 test "drawTextBuffer - selection respects truncation" {
     const pool = gp.initGlobalPool(std.testing.allocator);
     defer gp.deinitGlobalPool();
