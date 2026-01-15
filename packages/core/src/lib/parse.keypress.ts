@@ -48,6 +48,8 @@ const keyName: Record<string, string> = {
   OE: "clear",
   OF: "end",
   OH: "home",
+  /* keypad enter (application mode) */
+  OM: "return",
   /* xterm/rxvt ESC [ number ~ */
   "[1~": "home",
   "[2~": "insert",

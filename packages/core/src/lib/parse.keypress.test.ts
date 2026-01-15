@@ -1783,3 +1783,22 @@ test("parseKeypress - meta+arrow keys with uppercase F and B (old style)", () =>
   expect(metaB.shift).toBe(false)
   expect(metaB.ctrl).toBe(false)
 })
+
+test("parseKeypress - keypad enter (application mode)", () => {
+  // When keypad is in application mode, keypad Enter sends ESC O M (\x1bOM)
+  expect(parseKeypress("\x1bOM")).toEqual({
+    eventType: "press",
+    name: "return",
+    ctrl: false,
+    meta: false,
+    shift: false,
+    option: false,
+    number: false,
+    sequence: "\x1bOM",
+    raw: "\x1bOM",
+    source: "raw",
+    code: "OM",
+    super: false,
+    hyper: false,
+  })
+})
