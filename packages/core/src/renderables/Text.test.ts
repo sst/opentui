@@ -1272,6 +1272,67 @@ describe("TextRenderable Selection", () => {
     })
   })
 
+  describe("Text Selection with Truncation", () => {
+    it("should not extend selection across ellipsis in single line", async () => {
+      const buffer = currentRenderer.currentRenderBuffer
+      const { text } = await createTextRenderable(currentRenderer, {
+        content: "0123456789ABCDEFGHIJ",
+        width: 10,
+        height: 1,
+        selectable: true,
+        selectionBg: RGBA.fromValues(1, 0, 0, 1),
+        truncate: true,
+      })
+
+      await currentMouse.drag(text.x + 6, text.y, text.x + 3, text.y)
+      await renderOnce()
+
+      expect(text.hasSelection()).toBe(true)
+
+      const { bg } = buffer.buffers
+      const bufferWidth = buffer.width
+
+      const ellipsisIdx = text.y * bufferWidth + text.x + 3
+      const ellipsisBgR = bg[ellipsisIdx * 4 + 0]
+      const ellipsisBgG = bg[ellipsisIdx * 4 + 1]
+      const ellipsisBgB = bg[ellipsisIdx * 4 + 2]
+
+      expect(Math.abs(ellipsisBgR - 1.0)).toBeLessThan(0.05)
+      expect(Math.abs(ellipsisBgG - 0.0)).toBeLessThan(0.05)
+      expect(Math.abs(ellipsisBgB - 0.0)).toBeLessThan(0.05)
+    })
+
+    it("should render selection end correctly across ellipsis in last line", async () => {
+      const buffer = currentRenderer.currentRenderBuffer
+      const { text } = await createTextRenderable(currentRenderer, {
+        content: "Line 1: This is a long line without wrapping\nLine 2: Another very long line that will be truncated",
+        width: 10,
+        height: 2,
+        selectable: true,
+        selectionBg: RGBA.fromValues(1, 0, 0, 1),
+        truncate: true,
+        wrapMode: "none",
+      })
+
+      await currentMouse.drag(text.x + 6, text.y, text.x + 7, text.y + 1)
+      await renderOnce()
+
+      expect(text.hasSelection()).toBe(true)
+
+      const { bg } = buffer.buffers
+      const bufferWidth = buffer.width
+
+      const ellipsisIdx = (text.y + 1) * bufferWidth + text.x + 3
+      const ellipsisBgR = bg[ellipsisIdx * 4 + 0]
+      const ellipsisBgG = bg[ellipsisIdx * 4 + 1]
+      const ellipsisBgB = bg[ellipsisIdx * 4 + 2]
+
+      expect(Math.abs(ellipsisBgR - 1.0)).toBeGreaterThan(0.05)
+      expect(Math.abs(ellipsisBgG - 0.0)).toBeLessThan(0.05)
+      expect(Math.abs(ellipsisBgB - 0.0)).toBeLessThan(0.05)
+    })
+  })
+
   describe("Text Content Snapshots", () => {
     it("should render basic text content correctly", async () => {
       await createTextRenderable(currentRenderer, {

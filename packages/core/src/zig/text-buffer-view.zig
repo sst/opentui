@@ -523,6 +523,9 @@ pub const UnifiedTextBufferView = struct {
 
     pub fn setLocalSelection(self: *Self, anchorX: i32, anchorY: i32, focusX: i32, focusY: i32, bgColor: ?RGBA, fgColor: ?RGBA) bool {
         self.updateVirtualLines();
+        if (self.truncate and self.viewport != null) {
+            self.applyTruncation();
+        }
 
         const anchor_above = anchorY < 0;
         const focus_above = focusY < 0;
@@ -537,10 +540,7 @@ pub const UnifiedTextBufferView = struct {
             return had_selection;
         }
 
-        // Get the actual end position (end of last line)
-        const last_line_idx = if (self.virtual_lines.items.len > 0) self.virtual_lines.items.len - 1 else 0;
-        const last_vline = if (self.virtual_lines.items.len > 0) &self.virtual_lines.items[last_line_idx] else null;
-        const text_end_offset = if (last_vline) |vline| vline.char_offset + vline.width else 0;
+        const text_end_offset = self.getTextEndOffset();
 
         const anchor_offset = if (anchor_above or anchorX < 0)
             0
@@ -600,14 +600,15 @@ pub const UnifiedTextBufferView = struct {
         const anchor_offset = self.selection_anchor_offset orelse return false;
 
         self.updateVirtualLines();
+        if (self.truncate and self.viewport != null) {
+            self.applyTruncation();
+        }
 
         const focus_above = focusY < 0;
         const max_y = @as(i32, @intCast(self.virtual_lines.items.len)) - 1;
         const focus_below = focusY > max_y;
 
-        const last_line_idx = if (self.virtual_lines.items.len > 0) self.virtual_lines.items.len - 1 else 0;
-        const last_vline = if (self.virtual_lines.items.len > 0) &self.virtual_lines.items[last_line_idx] else null;
-        const text_end_offset = if (last_vline) |vline| vline.char_offset + vline.width else 0;
+        const text_end_offset = self.getTextEndOffset();
 
         const focus_char_offset = if (focus_above or focusX < 0)
             0
@@ -637,6 +638,22 @@ pub const UnifiedTextBufferView = struct {
     pub fn resetLocalSelection(self: *Self) void {
         self.selection = null;
         self.selection_anchor_offset = null;
+    }
+
+    fn getTextEndOffset(self: *Self) u32 {
+        if (self.truncate and self.viewport != null) {
+            self.applyTruncation();
+        }
+
+        if (self.virtual_lines.items.len == 0) return 0;
+        const last_line_idx = self.virtual_lines.items.len - 1;
+        const last_vline = &self.virtual_lines.items[last_line_idx];
+
+        if (last_vline.is_truncated) {
+            return last_vline.char_offset + last_vline.truncation_suffix_start + (last_vline.width - last_vline.ellipsis_pos - 3);
+        }
+
+        return last_vline.char_offset + last_vline.width;
     }
 
     fn coordsToCharOffset(self: *Self, x: i32, y: i32) ?u32 {
