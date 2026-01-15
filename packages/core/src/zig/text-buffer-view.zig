@@ -79,6 +79,7 @@ pub const VirtualLine = struct {
     source_col_offset: u32,
     is_truncated: bool,
     ellipsis_pos: u32,
+    truncation_suffix_start: u32,
 
     pub fn init() VirtualLine {
         return .{
@@ -89,6 +90,7 @@ pub const VirtualLine = struct {
             .source_col_offset = 0,
             .is_truncated = false,
             .ellipsis_pos = 0,
+            .truncation_suffix_start = 0,
         };
     }
 
@@ -639,6 +641,9 @@ pub const UnifiedTextBufferView = struct {
 
     fn coordsToCharOffset(self: *Self, x: i32, y: i32) ?u32 {
         self.updateVirtualLines();
+        if (self.truncate and self.viewport != null) {
+            self.applyTruncation();
+        }
 
         const y_offset: i32 = if (self.viewport) |vp| @intCast(vp.y) else 0;
         const x_offset: i32 = if (self.viewport) |vp|
@@ -660,7 +665,20 @@ pub const UnifiedTextBufferView = struct {
         const lineStart = vline.char_offset;
         const lineWidth = vline.width;
 
-        const localX = @max(0, @min(abs_x, @as(i32, @intCast(lineWidth))));
+        var localX = @max(0, @min(abs_x, @as(i32, @intCast(lineWidth))));
+
+        if (vline.is_truncated) {
+            const ellipsis_width: u32 = 3;
+            const localX_u32: u32 = @intCast(localX);
+
+            if (localX_u32 >= vline.ellipsis_pos and localX_u32 < vline.ellipsis_pos + ellipsis_width) {
+                localX = @intCast(vline.ellipsis_pos);
+            } else if (localX_u32 >= vline.ellipsis_pos + ellipsis_width) {
+                const suffix_offset = localX_u32 - vline.ellipsis_pos - ellipsis_width;
+                localX = @intCast(vline.truncation_suffix_start + suffix_offset);
+            }
+        }
+
         const result = lineStart + @as(u32, @intCast(localX));
 
         return result;
@@ -748,6 +766,9 @@ pub const UnifiedTextBufferView = struct {
             if (vp.width <= ellipsis_width) {
                 vline.chunks.clearRetainingCapacity();
                 vline.width = 0;
+                vline.is_truncated = true;
+                vline.ellipsis_pos = 0;
+                vline.truncation_suffix_start = vline.width;
                 continue;
             }
 
@@ -809,6 +830,7 @@ pub const UnifiedTextBufferView = struct {
             vline.width = vp.width;
             vline.is_truncated = true;
             vline.ellipsis_pos = prefix_width;
+            vline.truncation_suffix_start = suffix_start_pos;
         }
     }
 

@@ -1125,6 +1125,7 @@ pub const OptimizedBuffer = struct {
 
             currentX = x;
             var column_in_line: u32 = 0;
+            globalCharPos = vline.char_offset;
 
             // When viewport is set, virtual_lines is a slice starting from viewport.y
             // But getVirtualLineSpans expects absolute indices, so we need to use the absolute index
@@ -1165,6 +1166,7 @@ pub const OptimizedBuffer = struct {
                 const chunk = vchunk.chunk;
                 const chunk_bytes = chunk.getBytes(&text_buffer.mem_registry);
                 const specials = chunk.getGraphemes(&text_buffer.mem_registry, text_buffer.allocator, text_buffer.tab_width, text_buffer.width_method) catch continue;
+                const line_char_offset = vline.char_offset;
 
                 if (currentX >= @as(i32, @intCast(self.width))) {
                     globalCharPos += vchunk.width;
@@ -1249,6 +1251,20 @@ pub const OptimizedBuffer = struct {
                         continue;
                     }
 
+                    var selection_offset = globalCharPos;
+                    if (vline.is_truncated and globalCharPos >= line_char_offset) {
+                        const ellipsis_width: u32 = 3;
+                        const column_offset_in_line = globalCharPos - line_char_offset;
+                        if (column_offset_in_line >= vline.ellipsis_pos and column_offset_in_line < vline.ellipsis_pos + ellipsis_width) {
+                            selection_offset = std.math.maxInt(u32);
+                        } else if (column_offset_in_line >= vline.ellipsis_pos + ellipsis_width) {
+                            selection_offset = line_char_offset + vline.truncation_suffix_start +
+                                (column_offset_in_line - vline.ellipsis_pos - ellipsis_width);
+                        } else {
+                            selection_offset = line_char_offset + column_offset_in_line;
+                        }
+                    }
+
                     // Track the actual column position in the source line (including horizontal offset)
                     const source_col_pos = col_offset + column_in_line;
 
@@ -1280,7 +1296,7 @@ pub const OptimizedBuffer = struct {
                     var cell_idx: u32 = 0;
                     while (cell_idx < g_width) : (cell_idx += 1) {
                         if (view.getSelection()) |sel| {
-                            const isSelected = globalCharPos + cell_idx >= sel.start and globalCharPos + cell_idx < sel.end;
+                            const isSelected = selection_offset + cell_idx >= sel.start and selection_offset + cell_idx < sel.end;
                             if (isSelected) {
                                 if (sel.bgColor) |selBg| {
                                     finalBg = selBg;

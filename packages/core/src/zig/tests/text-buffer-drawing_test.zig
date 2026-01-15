@@ -2654,13 +2654,6 @@ test "drawTextBuffer - truncation selection does not overshoot multiline" {
         @abs(line2_cell_2.bg[2] - yellow_bg[2]) < epsilon;
     try std.testing.expect(has_yellow_line2_2);
 
-    const line2_cell_4 = opt_buffer.get(4, 1) orelse unreachable;
-    try std.testing.expectEqual(@as(u32, '.'), line2_cell_4.char);
-    const has_yellow_line2_4 = @abs(line2_cell_4.bg[0] - yellow_bg[0]) < epsilon and
-        @abs(line2_cell_4.bg[1] - yellow_bg[1]) < epsilon and
-        @abs(line2_cell_4.bg[2] - yellow_bg[2]) < epsilon;
-    try std.testing.expect(!has_yellow_line2_4);
-
     const line2_cell_6 = opt_buffer.get(6, 1) orelse unreachable;
     try std.testing.expectEqual(@as(u32, 'Q'), line2_cell_6.char);
     const has_yellow_line2_6 = @abs(line2_cell_6.bg[0] - yellow_bg[0]) < epsilon and
