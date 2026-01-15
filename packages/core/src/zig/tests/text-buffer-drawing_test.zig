@@ -2666,8 +2666,8 @@ test "drawTextBuffer - selection respects truncation" {
     view.setTruncate(true);
     view.setViewport(.{ .x = 0, .y = 0, .width = 10, .height = 1 });
 
-    // Select the suffix range (GHI), which should remain visible after truncation
-    view.setSelection(16, 19, RGBA{ 1.0, 1.0, 0.0, 1.0 }, RGBA{ 0.0, 0.0, 0.0, 1.0 });
+    // Select across the ellipsis and suffix
+    view.setSelection(2, 19, RGBA{ 1.0, 1.0, 0.0, 1.0 }, RGBA{ 0.0, 0.0, 0.0, 1.0 });
 
     var opt_buffer = try OptimizedBuffer.init(
         std.testing.allocator,
@@ -2695,7 +2695,7 @@ test "drawTextBuffer - selection respects truncation" {
     const has_yellow_3 = @abs(cell_3.bg[0] - yellow_bg[0]) < epsilon and
         @abs(cell_3.bg[1] - yellow_bg[1]) < epsilon and
         @abs(cell_3.bg[2] - yellow_bg[2]) < epsilon;
-    try std.testing.expect(!has_yellow_3);
+    try std.testing.expect(has_yellow_3);
 
     const cell_6 = opt_buffer.get(6, 0) orelse unreachable;
     try std.testing.expectEqual(@as(u32, 'G'), cell_6.char);
