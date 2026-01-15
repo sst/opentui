@@ -1309,8 +1309,13 @@ pub const OptimizedBuffer = struct {
                             lineBg = defaultBg;
                             lineAttributes = defaultAttributes;
                         } else if (column_offset_in_line >= vline.ellipsis_pos + ellipsis_width) {
-                            while (span_idx + 1 < spans.len and spans[span_idx].next_col <= source_col_pos) {
-                                span_idx += 1;
+                            const suffix_col_pos = vline.truncation_suffix_start + (column_offset_in_line - vline.ellipsis_pos - ellipsis_width);
+                            var suffix_span_idx: usize = 0;
+                            while (suffix_span_idx < spans.len and spans[suffix_span_idx].next_col <= suffix_col_pos) {
+                                suffix_span_idx += 1;
+                            }
+                            if (suffix_span_idx < spans.len) {
+                                span_idx = suffix_span_idx;
                             }
                             const active_span = spans[span_idx];
                             lineFg = defaultFg;
