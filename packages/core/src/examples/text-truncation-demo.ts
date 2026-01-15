@@ -22,6 +22,11 @@ let leftColumn: BoxRenderable | null = null
 let rightColumn: BoxRenderable | null = null
 let footer: BoxRenderable | null = null
 let footerText: TextRenderable | null = null
+let selectionBox: BoxRenderable | null = null
+let selectionStatusText: TextRenderable | null = null
+let selectionStartText: TextRenderable | null = null
+let selectionMiddleText: TextRenderable | null = null
+let selectionEndText: TextRenderable | null = null
 
 // Text elements to demonstrate truncation
 let singleLineText1: TextRenderable | null = null
@@ -271,6 +276,82 @@ Line 4: Yet another extremely long line with lots of text to demonstrate middle 
   })
   footer.add(footerText)
 
+  selectionBox = new BoxRenderable(renderer, {
+    id: "selectionBox",
+    width: "auto",
+    height: 7,
+    backgroundColor: "#0d1117",
+    borderStyle: "single",
+    borderColor: "#30363d",
+    title: "Selection",
+    titleAlignment: "left",
+    flexDirection: "column",
+    gap: 1,
+    padding: 1,
+    border: true,
+  })
+  mainContainer.add(selectionBox)
+
+  selectionStatusText = new TextRenderable(renderer, {
+    id: "selectionStatusText",
+    content: "Select text to see details here",
+    fg: "#8b949e",
+  })
+  selectionBox.add(selectionStatusText)
+
+  selectionStartText = new TextRenderable(renderer, {
+    id: "selectionStartText",
+    content: "",
+    fg: "#7dd3fc",
+  })
+  selectionBox.add(selectionStartText)
+
+  selectionMiddleText = new TextRenderable(renderer, {
+    id: "selectionMiddleText",
+    content: "",
+    fg: "#94a3b8",
+  })
+  selectionBox.add(selectionMiddleText)
+
+  selectionEndText = new TextRenderable(renderer, {
+    id: "selectionEndText",
+    content: "",
+    fg: "#7dd3fc",
+  })
+  selectionBox.add(selectionEndText)
+
+  renderer.on("selection", (selection) => {
+    if (!selectionStatusText || !selectionStartText || !selectionMiddleText || !selectionEndText) return
+
+    const selectedText = selection?.getSelectedText()
+    if (selectedText) {
+      const lines = selectedText.split("\n")
+      const totalLength = selectedText.length
+
+      if (lines.length > 1) {
+        selectionStatusText.content = `Selected ${lines.length} lines (${totalLength} chars):`
+        selectionStartText.content = lines[0]
+        selectionMiddleText.content = "..."
+        selectionEndText.content = lines[lines.length - 1]
+      } else if (selectedText.length > 60) {
+        selectionStatusText.content = `Selected ${totalLength} chars:`
+        selectionStartText.content = selectedText.substring(0, 30)
+        selectionMiddleText.content = "..."
+        selectionEndText.content = selectedText.substring(selectedText.length - 30)
+      } else {
+        selectionStatusText.content = `Selected ${totalLength} chars:`
+        selectionStartText.content = `"${selectedText}"`
+        selectionMiddleText.content = ""
+        selectionEndText.content = ""
+      }
+    } else {
+      selectionStatusText.content = "Empty selection"
+      selectionStartText.content = ""
+      selectionMiddleText.content = ""
+      selectionEndText.content = ""
+    }
+  })
+
   updateFooterText()
 }
 
@@ -280,7 +361,7 @@ function updateFooterText(): void {
   const truncateStatus = truncateEnabled ? "ENABLED" : "DISABLED"
   const truncateColor = truncateEnabled ? green : yellow
   const wrapColor = wrapMode === "none" ? yellow : cyan
-  footerText.content = t`Truncate: ${truncateColor(bold(truncateStatus))} | Wrap: ${wrapColor(bold(wrapMode.toUpperCase()))} | ${cyan("T")}: toggle truncate | ${cyan("W")}: cycle wrap | ${cyan("R")}: resize | ${cyan("Ctrl+C")}: exit`
+  footerText.content = t`Truncate: ${truncateColor(bold(truncateStatus))} | Wrap: ${wrapColor(bold(wrapMode.toUpperCase()))} | ${cyan("T")}: toggle truncate | ${cyan("W")}: cycle wrap | ${cyan("R")}: resize | ${cyan("C")}: clear selection | ${cyan("Ctrl+C")}: exit`
 }
 
 function toggleTruncation(): void {
@@ -344,6 +425,15 @@ function handleKeyPress(event: any): void {
     case "r":
       toggleColumnSizes()
       break
+    case "c":
+      renderer?.clearSelection()
+      if (selectionStatusText && selectionStartText && selectionMiddleText && selectionEndText) {
+        selectionStatusText.content = "Selection cleared"
+        selectionStartText.content = ""
+        selectionMiddleText.content = ""
+        selectionEndText.content = ""
+      }
+      break
   }
 }
 
@@ -365,6 +455,11 @@ export function destroy(rendererInstance: CliRenderer): void {
   rightColumn = null
   footer = null
   footerText = null
+  selectionBox = null
+  selectionStatusText = null
+  selectionStartText = null
+  selectionMiddleText = null
+  selectionEndText = null
   singleLineText1 = null
   singleLineText2 = null
   singleLineText3 = null
@@ -372,6 +467,7 @@ export function destroy(rendererInstance: CliRenderer): void {
   multilineText2 = null
   styledText = null
   allTextElements.length = 0
+  rendererInstance.clearSelection()
 }
 
 if (import.meta.main) {
