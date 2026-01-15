@@ -1314,7 +1314,7 @@ describe("TextRenderable Selection", () => {
         wrapMode: "none",
       })
 
-      await currentMouse.drag(text.x + 6, text.y, text.x + 7, text.y + 1)
+      await currentMouse.drag(text.x + 6, text.y, text.x + 2, text.y + 1)
       await renderOnce()
 
       expect(text.hasSelection()).toBe(true)
