@@ -792,6 +792,10 @@ export fn textBufferViewSetTabIndicatorColor(view: *text_buffer_view.UnifiedText
     view.setTabIndicatorColor(utils.f32PtrToRGBA(color));
 }
 
+export fn textBufferViewSetTruncate(view: *text_buffer_view.UnifiedTextBufferView, truncate: bool) void {
+    view.setTruncate(truncate);
+}
+
 pub const ExternalMeasureResult = extern struct {
     line_count: u32,
     max_width: u32,

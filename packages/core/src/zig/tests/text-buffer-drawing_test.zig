@@ -273,6 +273,48 @@ test "drawTextBuffer - wrapping preserves wide characters" {
     try std.testing.expect(virtual_lines.len > 1);
 }
 
+test "drawTextBuffer - word wrap does not split multi-byte UTF-8 characters" {
+    const pool = gp.initGlobalPool(std.testing.allocator);
+    defer gp.deinitGlobalPool();
+
+    var tb = try TextBuffer.init(std.testing.allocator, pool, .unicode);
+    defer tb.deinit();
+
+    var view = try TextBufferView.init(std.testing.allocator, tb);
+    defer view.deinit();
+
+    try tb.setText("🌟 Unicode test: こんにちは世界 Hello World 你好世界");
+    view.setWrapMode(.word);
+    view.setWrapWidth(35);
+    view.updateVirtualLines();
+
+    const vlines = view.getVirtualLines();
+
+    for (vlines) |vline| {
+        var line_buffer: [200]u8 = undefined;
+        const line_start_offset = vline.char_offset;
+        const line_end_offset = line_start_offset + vline.width;
+        const extracted = tb.getTextRange(line_start_offset, line_end_offset, &line_buffer);
+
+        const is_valid_utf8 = std.unicode.utf8ValidateSlice(line_buffer[0..extracted]);
+        try std.testing.expect(is_valid_utf8);
+    }
+
+    try std.testing.expect(vlines.len == 2);
+
+    var full_buffer: [200]u8 = undefined;
+    const line0_len = tb.getTextRange(vlines[0].char_offset, vlines[0].char_offset + vlines[0].width, &full_buffer);
+    const line0_text = full_buffer[0..line0_len];
+
+    const line1_len = tb.getTextRange(vlines[1].char_offset, vlines[1].char_offset + vlines[1].width, &full_buffer);
+    const line1_text = full_buffer[0..line1_len];
+
+    const line0_ends_with_kai = std.mem.endsWith(u8, line0_text, "界");
+    const line1_starts_with_kai = std.mem.startsWith(u8, line1_text, "界");
+
+    try std.testing.expect(!(line0_ends_with_kai and line1_starts_with_kai));
+}
+
 test "drawTextBuffer - wrapped text with offset position" {
     const pool = gp.initGlobalPool(std.testing.allocator);
     defer gp.deinitGlobalPool();

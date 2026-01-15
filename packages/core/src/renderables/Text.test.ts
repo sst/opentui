@@ -1428,6 +1428,108 @@ describe("TextRenderable Selection", () => {
       const frame = captureFrame()
       expect(frame).toMatchSnapshot()
     })
+
+    it("should render word wrapped text with CJK and English correctly", async () => {
+      resize(60, 10)
+
+      const { text } = await createTextRenderable(currentRenderer, {
+        content: "🌟 Unicode test: こんにちは世界 Hello World 你好世界",
+        wrapMode: "word",
+        width: 35,
+        left: 0,
+        top: 0,
+      })
+
+      await renderOnce()
+
+      const frame = captureFrame()
+      const lines = frame.split("\n").filter((l) => l.trim().length > 0)
+
+      console.log("Frame:\n" + frame)
+      console.log("Line 0:", JSON.stringify(lines[0]))
+      console.log("Line 1:", JSON.stringify(lines[1]))
+
+      // Verify no character duplication - each character should appear only once
+      const line0 = lines[0] || ""
+      const line1 = lines[1] || ""
+
+      const line0_ends_with_kai = line0.trimEnd().endsWith("界")
+      const line1_starts_with_kai = line1.trimStart().startsWith("界")
+
+      // "界" should not appear on both lines (would indicate duplication bug)
+      expect(line0_ends_with_kai && line1_starts_with_kai).toBe(false)
+    })
+
+    it("should not split English word 'Hello' in middle when word wrapping with CJK characters", async () => {
+      // This test reproduces the exact issue from text-truncation-demo.ts where "Hello"
+      // is incorrectly split as "Hell" on first line and "o World" on second line
+      // when word wrapping is enabled with CJK/emoji characters before it.
+      resize(60, 10)
+
+      const { text } = await createTextRenderable(currentRenderer, {
+        content: "🌟 Unicode test: こんにちは世界 Hello World 你好世界 안녕하세요 🚀 More emoji: 🎨🎭🎪🎬🎮🎯",
+        wrapMode: "word",
+        width: 50, // Width that causes wrapping in the demo
+        left: 0,
+        top: 0,
+      })
+
+      await renderOnce()
+
+      const frame = captureFrame()
+
+      const lines = frame.split("\n").filter((l) => l.trim().length > 0)
+
+      // Log the actual output to see what's happening
+      console.log("Full Frame:\n" + frame)
+      lines.forEach((line, i) => {
+        console.log(`Line ${i}:`, JSON.stringify(line))
+      })
+
+      // The word "Hello" should NOT be split in the middle
+      // Check for the specific incorrect split: "Hell" on one line, "o" starting the next
+      let foundIncorrectSplit = false
+      for (let i = 0; i < lines.length - 1; i++) {
+        const currentLine = lines[i] || ""
+        const nextLine = lines[i + 1] || ""
+
+        // Check if current line ends with "Hell" (incorrect split)
+        if (currentLine.trimEnd().endsWith("Hell")) {
+          // And next line starts with "o" (the rest of "Hello")
+          if (nextLine.trimStart().startsWith("o")) {
+            foundIncorrectSplit = true
+            console.error(`Found incorrect word split!`)
+            console.error(`Line ${i} ends with: "${currentLine.trimEnd().slice(-10)}"`)
+            console.error(`Line ${i + 1} starts with: "${nextLine.trimStart().slice(0, 10)}"`)
+          }
+        }
+      }
+
+      // Verify "Hello" is not split as "Hell" + "o"
+      expect(foundIncorrectSplit).toBe(false)
+
+      // Verify the word "Hello" appears complete on a single line
+      const fullText = lines.join(" ")
+      expect(fullText).toContain("Hello")
+
+      // Verify "Hello" is not split in the middle
+      const helloLineIndex = lines.findIndex((line) => line.includes("Hello"))
+      expect(helloLineIndex).toBeGreaterThanOrEqual(0) // "Hello" should be found
+
+      const helloLine = lines[helloLineIndex] || ""
+      // Verify "Hello" appears as a complete word on this line
+      expect(helloLine).toMatch(/Hello/)
+
+      // Verify no previous line ends with "Hell" without "o"
+      if (helloLineIndex > 0) {
+        const prevLine = lines[helloLineIndex - 1] || ""
+        expect(prevLine.trimEnd().endsWith("Hell")).toBe(false)
+      }
+
+      // Additional verification: "Hello World" should ideally be together
+      // (this is a nice-to-have, showing improved wrapping behavior)
+      expect(helloLine).toContain("Hello World")
+    })
   })
 
   describe("Text Node Dimension Updates", () => {

@@ -62,6 +62,7 @@ import * as extmarksDemo from "./extmarks-demo"
 import * as opacityExample from "./opacity-example"
 import * as scrollboxOverlayHitTest from "./scrollbox-overlay-hit-test"
 import * as scrollboxMouseTest from "./scrollbox-mouse-test"
+import * as textTruncationDemo from "./text-truncation-demo"
 import { setupCommonDemoKeys } from "./lib/standalone-keys"
 
 interface Example {
@@ -89,6 +90,12 @@ const examples: Example[] = [
     description: "Text selection across multiple renderables with mouse drag",
     run: textSelectionExample.run,
     destroy: textSelectionExample.destroy,
+  },
+  {
+    name: "Text Truncation Demo",
+    description: "Middle truncation with ellipsis - toggle with 'T' key and resize to test responsive behavior",
+    run: textTruncationDemo.run,
+    destroy: textTruncationDemo.destroy,
   },
   {
     name: "ASCII Font Selection Demo",

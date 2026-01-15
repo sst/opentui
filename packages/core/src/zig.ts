@@ -621,6 +621,10 @@ function getOpenTUILib(libPath?: string) {
       args: ["ptr", "ptr"],
       returns: "void",
     },
+    textBufferViewSetTruncate: {
+      args: ["ptr", "bool"],
+      returns: "void",
+    },
     textBufferViewMeasureForDimensions: {
       args: ["ptr", "u32", "u32", "ptr"],
       returns: "bool",
@@ -1468,6 +1472,7 @@ export interface RenderLib {
   textBufferViewGetPlainTextBytes: (view: Pointer, maxLength: number) => Uint8Array | null
   textBufferViewSetTabIndicator: (view: Pointer, indicator: number) => void
   textBufferViewSetTabIndicatorColor: (view: Pointer, color: RGBA) => void
+  textBufferViewSetTruncate: (view: Pointer, truncate: boolean) => void
   textBufferViewMeasureForDimensions: (
     view: Pointer,
     width: number,
@@ -2637,6 +2642,10 @@ class FFIRenderLib implements RenderLib {
 
   public textBufferViewSetTabIndicatorColor(view: Pointer, color: RGBA): void {
     this.opentui.symbols.textBufferViewSetTabIndicatorColor(view, color.buffer)
+  }
+
+  public textBufferViewSetTruncate(view: Pointer, truncate: boolean): void {
+    this.opentui.symbols.textBufferViewSetTruncate(view, truncate)
   }
 
   public textBufferViewMeasureForDimensions(
