@@ -2531,6 +2531,144 @@ test "drawTextBuffer - selection with horizontal viewport offset" {
     try std.testing.expect(!has_yellow_7);
 }
 
+test "drawTextBuffer - selection respects truncation" {
+    const pool = gp.initGlobalPool(std.testing.allocator);
+    defer gp.deinitGlobalPool();
+
+    var tb = try TextBuffer.init(std.testing.allocator, pool, .unicode);
+    defer tb.deinit();
+
+    var view = try TextBufferView.init(std.testing.allocator, tb);
+    defer view.deinit();
+
+    // Text: "0123456789ABCDEFGHIJ" (len 20)
+    // With width 10, truncation should render: "012...GHIJ"
+    try tb.setText("0123456789ABCDEFGHIJ");
+
+    view.setWrapMode(.none);
+    view.setWrapWidth(null);
+    view.setTruncate(true);
+    view.setViewport(.{ .x = 0, .y = 0, .width = 10, .height = 1 });
+
+    // Select the suffix range (GHI), which should remain visible after truncation
+    view.setSelection(16, 19, RGBA{ 1.0, 1.0, 0.0, 1.0 }, RGBA{ 0.0, 0.0, 0.0, 1.0 });
+
+    var opt_buffer = try OptimizedBuffer.init(
+        std.testing.allocator,
+        10,
+        1,
+        .{ .pool = pool, .width_method = .unicode },
+    );
+    defer opt_buffer.deinit();
+
+    try opt_buffer.clear(.{ 0.0, 0.0, 0.0, 1.0 }, 32);
+    try opt_buffer.drawTextBuffer(view, 0, 0);
+
+    const epsilon: f32 = 0.01;
+    const yellow_bg = RGBA{ 1.0, 1.0, 0.0, 1.0 };
+
+    const cell_0 = opt_buffer.get(0, 0) orelse unreachable;
+    try std.testing.expectEqual(@as(u32, '0'), cell_0.char);
+    const has_yellow_0 = @abs(cell_0.bg[0] - yellow_bg[0]) < epsilon and
+        @abs(cell_0.bg[1] - yellow_bg[1]) < epsilon and
+        @abs(cell_0.bg[2] - yellow_bg[2]) < epsilon;
+    try std.testing.expect(!has_yellow_0);
+
+    const cell_3 = opt_buffer.get(3, 0) orelse unreachable;
+    try std.testing.expectEqual(@as(u32, '.'), cell_3.char);
+    const has_yellow_3 = @abs(cell_3.bg[0] - yellow_bg[0]) < epsilon and
+        @abs(cell_3.bg[1] - yellow_bg[1]) < epsilon and
+        @abs(cell_3.bg[2] - yellow_bg[2]) < epsilon;
+    try std.testing.expect(!has_yellow_3);
+
+    const cell_6 = opt_buffer.get(6, 0) orelse unreachable;
+    try std.testing.expectEqual(@as(u32, 'G'), cell_6.char);
+    const has_yellow_6 = @abs(cell_6.bg[0] - yellow_bg[0]) < epsilon and
+        @abs(cell_6.bg[1] - yellow_bg[1]) < epsilon and
+        @abs(cell_6.bg[2] - yellow_bg[2]) < epsilon;
+    try std.testing.expect(has_yellow_6);
+
+    const cell_8 = opt_buffer.get(8, 0) orelse unreachable;
+    try std.testing.expectEqual(@as(u32, 'I'), cell_8.char);
+    const has_yellow_8 = @abs(cell_8.bg[0] - yellow_bg[0]) < epsilon and
+        @abs(cell_8.bg[1] - yellow_bg[1]) < epsilon and
+        @abs(cell_8.bg[2] - yellow_bg[2]) < epsilon;
+    try std.testing.expect(has_yellow_8);
+
+    const cell_9 = opt_buffer.get(9, 0) orelse unreachable;
+    try std.testing.expectEqual(@as(u32, 'J'), cell_9.char);
+    const has_yellow_9 = @abs(cell_9.bg[0] - yellow_bg[0]) < epsilon and
+        @abs(cell_9.bg[1] - yellow_bg[1]) < epsilon and
+        @abs(cell_9.bg[2] - yellow_bg[2]) < epsilon;
+    try std.testing.expect(!has_yellow_9);
+}
+
+test "drawTextBuffer - truncation selection does not overshoot multiline" {
+    const pool = gp.initGlobalPool(std.testing.allocator);
+    defer gp.deinitGlobalPool();
+
+    var tb = try TextBuffer.init(std.testing.allocator, pool, .unicode);
+    defer tb.deinit();
+
+    var view = try TextBufferView.init(std.testing.allocator, tb);
+    defer view.deinit();
+
+    try tb.setText(
+        "abcdefghijABCDEFGHIJ\n" ++
+            "klmnopqrstKLMNOPQRST",
+    );
+
+    view.setWrapMode(.none);
+    view.setWrapWidth(null);
+    view.setTruncate(true);
+    view.setViewport(.{ .x = 0, .y = 0, .width = 10, .height = 2 });
+
+    // Select from line 1 col 2 through line 2 col 5 (exclusive)
+    view.setSelection(2, 26, RGBA{ 1.0, 1.0, 0.0, 1.0 }, RGBA{ 0.0, 0.0, 0.0, 1.0 });
+
+    var opt_buffer = try OptimizedBuffer.init(
+        std.testing.allocator,
+        10,
+        2,
+        .{ .pool = pool, .width_method = .unicode },
+    );
+    defer opt_buffer.deinit();
+
+    try opt_buffer.clear(.{ 0.0, 0.0, 0.0, 1.0 }, 32);
+    try opt_buffer.drawTextBuffer(view, 0, 0);
+
+    const epsilon: f32 = 0.01;
+    const yellow_bg = RGBA{ 1.0, 1.0, 0.0, 1.0 };
+
+    const line2_cell_0 = opt_buffer.get(0, 1) orelse unreachable;
+    try std.testing.expectEqual(@as(u32, 'k'), line2_cell_0.char);
+    const has_yellow_line2_0 = @abs(line2_cell_0.bg[0] - yellow_bg[0]) < epsilon and
+        @abs(line2_cell_0.bg[1] - yellow_bg[1]) < epsilon and
+        @abs(line2_cell_0.bg[2] - yellow_bg[2]) < epsilon;
+    try std.testing.expect(has_yellow_line2_0);
+
+    const line2_cell_2 = opt_buffer.get(2, 1) orelse unreachable;
+    try std.testing.expectEqual(@as(u32, 'm'), line2_cell_2.char);
+    const has_yellow_line2_2 = @abs(line2_cell_2.bg[0] - yellow_bg[0]) < epsilon and
+        @abs(line2_cell_2.bg[1] - yellow_bg[1]) < epsilon and
+        @abs(line2_cell_2.bg[2] - yellow_bg[2]) < epsilon;
+    try std.testing.expect(has_yellow_line2_2);
+
+    const line2_cell_4 = opt_buffer.get(4, 1) orelse unreachable;
+    try std.testing.expectEqual(@as(u32, '.'), line2_cell_4.char);
+    const has_yellow_line2_4 = @abs(line2_cell_4.bg[0] - yellow_bg[0]) < epsilon and
+        @abs(line2_cell_4.bg[1] - yellow_bg[1]) < epsilon and
+        @abs(line2_cell_4.bg[2] - yellow_bg[2]) < epsilon;
+    try std.testing.expect(!has_yellow_line2_4);
+
+    const line2_cell_6 = opt_buffer.get(6, 1) orelse unreachable;
+    try std.testing.expectEqual(@as(u32, 'Q'), line2_cell_6.char);
+    const has_yellow_line2_6 = @abs(line2_cell_6.bg[0] - yellow_bg[0]) < epsilon and
+        @abs(line2_cell_6.bg[1] - yellow_bg[1]) < epsilon and
+        @abs(line2_cell_6.bg[2] - yellow_bg[2]) < epsilon;
+    try std.testing.expect(!has_yellow_line2_6);
+}
+
 test "drawTextBuffer - Chinese text with wrapping no stray bytes" {
     const pool = gp.initGlobalPool(std.testing.allocator);
     defer gp.deinitGlobalPool();
@@ -2847,4 +2985,3 @@ test "drawTextBuffer - Thai ว่ grapheme in quotes occupies one cell" {
 
     try std.testing.expect(std.mem.indexOf(u8, result, "\"ว่\"") != null);
 }
-
