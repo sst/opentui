@@ -1102,17 +1102,18 @@ pub const UnifiedTextBufferView = struct {
                         const chunk_bytes = chunk.getBytes(&wctx.text_buffer.mem_registry);
                         const wrap_offsets = chunk.getWrapOffsets(&wctx.text_buffer.mem_registry, wctx.text_buffer.allocator, wctx.text_buffer.width_method) catch &[_]utf8.WrapBreak{};
                         const is_ascii_only = (chunk.flags & TextChunk.Flags.ASCII_ONLY) != 0;
+                        const graphemes: []const GraphemeInfo = if (is_ascii_only)
+                            &[_]GraphemeInfo{}
+                        else
+                            chunk.getGraphemes(&wctx.text_buffer.mem_registry, wctx.text_buffer.allocator, wctx.text_buffer.tab_width, wctx.text_buffer.width_method) catch &[_]GraphemeInfo{};
+                        var grapheme_idx: usize = 0;
+                        var col_delta: i64 = 0;
 
                         // char_offset tracks COLUMN position within the chunk (not grapheme count)
                         // chunk.width is also in columns. The loop processes the chunk column by column.
                         var char_offset: u32 = 0; // Column offset within chunk
                         var byte_offset: u32 = 0;
                         var wrap_idx: usize = 0;
-
-                        // For computing column positions from byte offsets incrementally
-                        // We track the last byte offset we computed width for, and the running column total
-                        var last_col_calc_byte: u32 = 0;
-                        var running_col_offset: u32 = 0;
 
                         while (char_offset < chunk.width) {
                             const remaining_in_chunk = chunk.width - char_offset;
@@ -1123,18 +1124,17 @@ pub const UnifiedTextBufferView = struct {
                             while (wrap_idx < wrap_offsets.len) : (wrap_idx += 1) {
                                 const wrap_break = wrap_offsets[wrap_idx];
 
-                                // Compute column position incrementally from byte_offset
-                                // Only compute the segment we haven't seen yet
-                                if (wrap_break.byte_offset > last_col_calc_byte) {
-                                    running_col_offset += utf8.calculateTextWidth(
-                                        chunk_bytes[last_col_calc_byte..wrap_break.byte_offset],
-                                        wctx.text_buffer.tab_width,
-                                        is_ascii_only,
-                                        wctx.text_buffer.width_method,
-                                    );
-                                    last_col_calc_byte = wrap_break.byte_offset;
+                                while (grapheme_idx < graphemes.len) {
+                                    const info = graphemes[grapheme_idx];
+                                    const info_char_offset = @as(i64, info.col_offset) - col_delta;
+                                    if (info_char_offset >= @as(i64, wrap_break.char_offset)) break;
+                                    col_delta += @as(i64, info.width) - 1;
+                                    grapheme_idx += 1;
                                 }
-                                const break_col = running_col_offset;
+
+                                var break_col_i64 = @as(i64, wrap_break.char_offset) + col_delta;
+                                if (break_col_i64 < 0) break_col_i64 = 0;
+                                const break_col = @as(u32, @intCast(break_col_i64));
 
                                 // Skip breaks that are before our current column position in the chunk
                                 if (break_col < char_offset) continue;
