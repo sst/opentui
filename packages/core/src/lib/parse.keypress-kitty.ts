@@ -379,20 +379,46 @@ export function parseKittyKeyboard(sequence: string): ParsedKey | null {
     }
   }
 
+  // Map keypad keys to their printable character equivalents
+  const keypadCharMap: Record<string, string> = {
+    kp0: "0",
+    kp1: "1",
+    kp2: "2",
+    kp3: "3",
+    kp4: "4",
+    kp5: "5",
+    kp6: "6",
+    kp7: "7",
+    kp8: "8",
+    kp9: "9",
+    kpdecimal: ".",
+    kpdivide: "/",
+    kpmultiply: "*",
+    kpminus: "-",
+    kpplus: "+",
+    kpequal: "=",
+  }
+
   // Handle text generation for printable characters
   if (text === "") {
-    // Check if this is a printable character (not a key name like "up", "f1", etc.)
-    const isPrintable = key.name.length > 0 && !kittyKeyMap[codepoint]
-    if (isPrintable) {
-      // Use shifted codepoint if shift is active and we have one
-      if (key.shift && shiftedCodepoint) {
-        text = String.fromCodePoint(shiftedCodepoint)
-      } else if (key.shift && key.name.length === 1) {
-        // When shift is pressed but terminal didn't provide shifted codepoint,
-        // convert the character to uppercase (works for Unicode including Cyrillic)
-        text = key.name.toLocaleUpperCase()
-      } else {
-        text = key.name
+    // Check if this is a keypad key that maps to a printable character
+    const keypadChar = keypadCharMap[key.name]
+    if (keypadChar) {
+      text = keypadChar
+    } else {
+      // Check if this is a printable character (not a key name like "up", "f1", etc.)
+      const isPrintable = key.name.length > 0 && !kittyKeyMap[codepoint]
+      if (isPrintable) {
+        // Use shifted codepoint if shift is active and we have one
+        if (key.shift && shiftedCodepoint) {
+          text = String.fromCodePoint(shiftedCodepoint)
+        } else if (key.shift && key.name.length === 1) {
+          // When shift is pressed but terminal didn't provide shifted codepoint,
+          // convert the character to uppercase (works for Unicode including Cyrillic)
+          text = key.name.toLocaleUpperCase()
+        } else {
+          text = key.name
+        }
       }
     }
   }

@@ -228,6 +228,53 @@ test("parseKeypress - Kitty keyboard keypad keys", () => {
   expect(kpEnter?.name).toBe("kpenter")
 })
 
+test("parseKeypress - Kitty keyboard keypad keys generate correct characters", () => {
+  const options: ParseKeypressOptions = { useKittyKeyboard: true }
+
+  // Keypad digits should produce their character in sequence
+  const kp0 = parseKeypress("\x1b[57400u", options)
+  expect(kp0?.name).toBe("kp0")
+  expect(kp0?.sequence).toBe("0")
+
+  const kp1 = parseKeypress("\x1b[57401u", options)
+  expect(kp1?.name).toBe("kp1")
+  expect(kp1?.sequence).toBe("1")
+
+  const kp9 = parseKeypress("\x1b[57409u", options)
+  expect(kp9?.name).toBe("kp9")
+  expect(kp9?.sequence).toBe("9")
+
+  // Keypad operators
+  const kpPlus = parseKeypress("\x1b[57414u", options)
+  expect(kpPlus?.name).toBe("kpplus")
+  expect(kpPlus?.sequence).toBe("+")
+
+  const kpMinus = parseKeypress("\x1b[57413u", options)
+  expect(kpMinus?.name).toBe("kpminus")
+  expect(kpMinus?.sequence).toBe("-")
+
+  const kpMultiply = parseKeypress("\x1b[57412u", options)
+  expect(kpMultiply?.name).toBe("kpmultiply")
+  expect(kpMultiply?.sequence).toBe("*")
+
+  const kpDivide = parseKeypress("\x1b[57411u", options)
+  expect(kpDivide?.name).toBe("kpdivide")
+  expect(kpDivide?.sequence).toBe("/")
+
+  const kpDecimal = parseKeypress("\x1b[57410u", options)
+  expect(kpDecimal?.name).toBe("kpdecimal")
+  expect(kpDecimal?.sequence).toBe(".")
+
+  const kpEqual = parseKeypress("\x1b[57416u", options)
+  expect(kpEqual?.name).toBe("kpequal")
+  expect(kpEqual?.sequence).toBe("=")
+
+  // kpenter should NOT produce text (it's like return key)
+  const kpEnter = parseKeypress("\x1b[57415u", options)
+  expect(kpEnter?.name).toBe("kpenter")
+  expect(kpEnter?.sequence).toBe("\x1b[57415u") // should be raw sequence, not a character
+})
+
 test("parseKeypress - Kitty keyboard media keys", () => {
   const options: ParseKeypressOptions = { useKittyKeyboard: true }
 
