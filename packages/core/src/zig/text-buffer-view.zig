@@ -149,6 +149,10 @@ pub const UnifiedTextBufferView = struct {
     cached_measure_epoch: u64,
     cached_measure_buffer: ?*UnifiedTextBuffer,
 
+    truncation_applied: bool,
+    truncation_epoch: u64,
+    truncation_viewport: ?Viewport,
+
     pub fn init(global_allocator: Allocator, text_buffer: *UnifiedTextBuffer) TextBufferViewError!*Self {
         const self = global_allocator.create(Self) catch return TextBufferViewError.OutOfMemory;
         errdefer global_allocator.destroy(self);
@@ -193,6 +197,9 @@ pub const UnifiedTextBufferView = struct {
             .cached_measure_result = null,
             .cached_measure_epoch = 0,
             .cached_measure_buffer = null,
+            .truncation_applied = false,
+            .truncation_epoch = 0,
+            .truncation_viewport = null,
         };
 
         return self;
@@ -217,7 +224,10 @@ pub const UnifiedTextBufferView = struct {
             if (self.wrap_width != viewport.width) {
                 self.wrap_width = viewport.width;
                 self.virtual_lines_dirty = true;
+                self.truncation_applied = false;
             }
+        } else {
+            self.truncation_applied = false;
         }
     }
 
@@ -248,6 +258,7 @@ pub const UnifiedTextBufferView = struct {
         if (self.wrap_width != width) {
             self.wrap_width = width;
             self.virtual_lines_dirty = true;
+            self.truncation_applied = false;
         }
     }
 
@@ -255,6 +266,7 @@ pub const UnifiedTextBufferView = struct {
         if (self.wrap_mode != mode) {
             self.wrap_mode = mode;
             self.virtual_lines_dirty = true;
+            self.truncation_applied = false;
         }
     }
 
@@ -313,6 +325,7 @@ pub const UnifiedTextBufferView = struct {
         self.cached_line_wrap_indices = .{};
         self.cached_line_first_vline = .{};
         self.cached_line_vline_counts = .{};
+        self.truncation_applied = false;
         const virtual_allocator = self.virtual_lines_arena.allocator();
 
         // Create output structure for the generic function
@@ -350,7 +363,7 @@ pub const UnifiedTextBufferView = struct {
         const all_vlines = self.virtual_lines.items;
 
         if (self.truncate and self.viewport != null) {
-            self.applyTruncation();
+            self.ensureTruncation();
         }
 
         if (self.viewport) |vp| {
@@ -524,7 +537,7 @@ pub const UnifiedTextBufferView = struct {
     pub fn setLocalSelection(self: *Self, anchorX: i32, anchorY: i32, focusX: i32, focusY: i32, bgColor: ?RGBA, fgColor: ?RGBA) bool {
         self.updateVirtualLines();
         if (self.truncate and self.viewport != null) {
-            self.applyTruncation();
+            self.ensureTruncation();
         }
 
         const anchor_above = anchorY < 0;
@@ -642,7 +655,7 @@ pub const UnifiedTextBufferView = struct {
 
     fn getTextEndOffset(self: *Self) u32 {
         if (self.truncate and self.viewport != null) {
-            self.applyTruncation();
+            self.ensureTruncation();
         }
 
         if (self.virtual_lines.items.len == 0) return 0;
@@ -659,7 +672,7 @@ pub const UnifiedTextBufferView = struct {
     fn coordsToCharOffset(self: *Self, x: i32, y: i32) ?u32 {
         self.updateVirtualLines();
         if (self.truncate and self.viewport != null) {
-            self.applyTruncation();
+            self.ensureTruncation();
         }
 
         const y_offset: i32 = if (self.viewport) |vp| @intCast(vp.y) else 0;
@@ -764,11 +777,32 @@ pub const UnifiedTextBufferView = struct {
         if (self.truncate != truncate) {
             self.truncate = truncate;
             self.virtual_lines_dirty = true;
+            self.truncation_applied = false;
         }
     }
 
     pub fn getTruncate(self: *const Self) bool {
         return self.truncate;
+    }
+
+    fn ensureTruncation(self: *Self) void {
+        if (!self.truncate or self.viewport == null) return;
+
+        const epoch = self.text_buffer.getContentEpoch();
+        if (self.truncation_applied and self.truncation_epoch == epoch and
+            self.truncation_viewport != null and self.viewport != null and
+            self.truncation_viewport.?.x == self.viewport.?.x and
+            self.truncation_viewport.?.y == self.viewport.?.y and
+            self.truncation_viewport.?.width == self.viewport.?.width and
+            self.truncation_viewport.?.height == self.viewport.?.height)
+        {
+            return;
+        }
+
+        self.applyTruncation();
+        self.truncation_applied = true;
+        self.truncation_epoch = epoch;
+        self.truncation_viewport = self.viewport;
     }
 
     fn applyTruncation(self: *Self) void {
