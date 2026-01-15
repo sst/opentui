@@ -472,6 +472,7 @@ pub const PosByWidthResult = struct {
 };
 
 pub inline fn eastAsianWidth(cp: u21) u32 {
+    if (cp > 0x10FFFF) return 0;
     const eaw = uucode.get(.east_asian_width, cp);
     const width = eawToWidth(cp, eaw);
     return if (width > 0) @intCast(width) else 0;
