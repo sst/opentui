@@ -1506,10 +1506,6 @@ describe("TextRenderable Selection", () => {
       const frame = captureFrame()
       const lines = frame.split("\n").filter((l) => l.trim().length > 0)
 
-      console.log("Frame:\n" + frame)
-      console.log("Line 0:", JSON.stringify(lines[0]))
-      console.log("Line 1:", JSON.stringify(lines[1]))
-
       // Verify no character duplication - each character should appear only once
       const line0 = lines[0] || ""
       const line1 = lines[1] || ""
@@ -1541,12 +1537,6 @@ describe("TextRenderable Selection", () => {
 
       const lines = frame.split("\n").filter((l) => l.trim().length > 0)
 
-      // Log the actual output to see what's happening
-      console.log("Full Frame:\n" + frame)
-      lines.forEach((line, i) => {
-        console.log(`Line ${i}:`, JSON.stringify(line))
-      })
-
       // The word "Hello" should NOT be split in the middle
       // Check for the specific incorrect split: "Hell" on one line, "o" starting the next
       let foundIncorrectSplit = false
@@ -1559,9 +1549,6 @@ describe("TextRenderable Selection", () => {
           // And next line starts with "o" (the rest of "Hello")
           if (nextLine.trimStart().startsWith("o")) {
             foundIncorrectSplit = true
-            console.error(`Found incorrect word split!`)
-            console.error(`Line ${i} ends with: "${currentLine.trimEnd().slice(-10)}"`)
-            console.error(`Line ${i + 1} starts with: "${nextLine.trimStart().slice(0, 10)}"`)
           }
         }
       }
