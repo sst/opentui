@@ -443,39 +443,6 @@ pub const EditorView = struct {
         };
     }
 
-    /// Scroll viewport to ensure current cursor is visible, even during selection
-    /// Used for keyboard selection where viewport should follow cursor but normal scrolling is disabled
-    pub fn scrollToCursor(self: *EditorView) void {
-        self.text_buffer_view.updateVirtualLines();
-        const cursor = self.edit_buffer.getPrimaryCursor();
-        const vcursor = self.logicalToVisualCursor(cursor.row, cursor.col);
-        self.ensureCursorVisible(vcursor.visual_row);
-    }
-
-    /// Returns viewport-relative visual coordinates for an arbitrary logical position
-    /// Used for keyboard selection where anchor position needs to be recalculated after viewport scroll
-    pub fn getVisualCursorAtLogical(self: *EditorView, logical_row: u32, logical_col: u32) VisualCursor {
-        self.text_buffer_view.updateVirtualLines();
-        const vcursor = self.logicalToVisualCursor(logical_row, logical_col);
-
-        // Convert absolute visual coordinates to viewport-relative for the API
-        const vp = self.text_buffer_view.getViewport() orelse return vcursor;
-
-        const viewport_relative_row = if (vcursor.visual_row >= vp.y) vcursor.visual_row - vp.y else 0;
-        const viewport_relative_col = if (self.text_buffer_view.wrap_mode == .none)
-            (if (vcursor.visual_col >= vp.x) vcursor.visual_col - vp.x else 0)
-        else
-            vcursor.visual_col;
-
-        return VisualCursor{
-            .visual_row = viewport_relative_row,
-            .visual_col = viewport_relative_col,
-            .logical_row = vcursor.logical_row,
-            .logical_col = vcursor.logical_col,
-            .offset = vcursor.offset,
-        };
-    }
-
     /// This accounts for line wrapping by finding which virtual line contains the logical position
     /// Returns absolute visual coordinates (document-absolute, not viewport-relative)
     pub fn logicalToVisualCursor(self: *EditorView, logical_row: u32, logical_col: u32) VisualCursor {

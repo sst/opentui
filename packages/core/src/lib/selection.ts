@@ -22,6 +22,8 @@ class SelectionAnchor {
     return this.renderable.y + this.relativeY
   }
 
+  // Updates the anchor's absolute position. Stores coordinates relative to the
+  // renderable so the anchor moves correctly when the renderable moves.
   updatePosition(absoluteX: number, absoluteY: number): void {
     this.relativeX = absoluteX - this.renderable.x
     this.relativeY = absoluteY - this.renderable.y
@@ -54,6 +56,9 @@ export class Selection {
     return { x: this._anchor.x, y: this._anchor.y }
   }
 
+  // Repositions the selection anchor. Use this when the viewport scrolls during
+  // keyboard selection to keep the anchor visually aligned with the original
+  // logical position.
   updateAnchor(absoluteX: number, absoluteY: number): void {
     this._anchor.updatePosition(absoluteX, absoluteY)
   }

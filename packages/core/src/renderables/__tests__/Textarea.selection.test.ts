@@ -218,7 +218,7 @@ describe("Textarea - Selection Tests", () => {
       buffer.destroy()
     })
 
-    // Maybe flaky
+    // It's flaky
     it("should handle viewport-aware selection correctly", async () => {
       const { textarea: editor } = await createTextareaRenderable(currentRenderer, renderOnce, {
         initialValue: Array.from({ length: 15 }, (_, i) => `Line ${i}`).join("\n"),
@@ -1351,6 +1351,9 @@ describe("Textarea - Selection Tests", () => {
       expect(selectedText).toContain("Line 00")
       expect(selectedText).toContain("Line 24")
       expect(selectedText.split("\n").length).toBeGreaterThanOrEqual(25)
+
+      const viewportAfter = editor.editorView.getViewport()
+      expect(viewportAfter.offsetY).toBe(0)
     })
 
     it("should select to buffer end with shift+super+down in scrollable textarea", async () => {
@@ -1368,6 +1371,9 @@ describe("Textarea - Selection Tests", () => {
       editor.gotoLine(20)
       await renderOnce()
 
+      const viewportBefore = editor.editorView.getViewport()
+      expect(viewportBefore.offsetY).toBeGreaterThan(0)
+
       // Select to buffer end (shift+super+down)
       currentMockInput.pressKey("ARROW_DOWN", { shift: true, super: true })
       await renderOnce()
@@ -1380,6 +1386,11 @@ describe("Textarea - Selection Tests", () => {
       expect(selectedText).toContain("Line 20")
       expect(selectedText).toContain("Line 49")
       expect(selectedText.split("\n").length).toBeGreaterThanOrEqual(29)
+
+      const viewportAfter = editor.editorView.getViewport()
+      const totalLines = editor.editorView.getTotalVirtualLineCount()
+      const maxOffsetY = Math.max(0, totalLines - viewportBefore.height)
+      expect(viewportAfter.offsetY).toBe(maxOffsetY)
     })
 
     it("should handle selection across viewport boundaries correctly", async () => {

@@ -180,16 +180,6 @@ export class EditorView {
     return this.lib.editorViewGetVisualCursor(this.viewPtr)
   }
 
-  public getVisualCursorAtLogical(logicalRow: number, logicalCol: number): VisualCursor {
-    this.guard()
-    return this.lib.editorViewGetVisualCursorAtLogical(this.viewPtr, logicalRow, logicalCol)
-  }
-
-  public scrollToCursor(): void {
-    this.guard()
-    this.lib.editorViewScrollToCursor(this.viewPtr)
-  }
-
   public moveUpVisual(): void {
     this.guard()
     this.lib.editorViewMoveUpVisual(this.viewPtr)

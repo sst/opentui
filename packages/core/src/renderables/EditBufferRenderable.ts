@@ -62,7 +62,21 @@ export abstract class EditBufferRenderable extends Renderable implements LineInf
   private _autoScrollAccumulator: number = 0
   private _scrollSpeed: number = 16
 
-  private _selectionAnchorLogical: { row: number; col: number } | null = null
+  // Tracks keyboard selection state across viewport scrolls.
+  //
+  // When shift-selecting, the viewport may scroll (e.g., shift+super+up jumps
+  // to buffer start), but the selection anchor must stay at the original cursor
+  // position.
+  //
+  // We track:
+  // - logicalAnchor: the buffer row/col where selection started (source of truth)
+  // - startViewport: viewport offset when selection started (to compute scroll delta)
+  // - startRelativeVisualAnchor: visual position relative to viewport (for UI updates)
+  private _selectionState: {
+    logicalAnchor: { row: number; col: number }
+    startViewport: { offsetX: number; offsetY: number }
+    startRelativeVisualAnchor: { col: number; row: number }
+  } | null = null
 
   public readonly editBuffer: EditBuffer
   public readonly editorView: EditorView
@@ -435,6 +449,9 @@ export abstract class EditBufferRenderable extends Renderable implements LineInf
     let changed: boolean
     if (!localSelection?.isActive) {
       this.editorView.resetLocalSelection()
+      this._selectionState = null
+      changed = true
+    } else if (this._selectionState) {
       changed = true
     } else if (selection?.isStart) {
       changed = this.editorView.setLocalSelection(
@@ -740,43 +757,71 @@ export abstract class EditBufferRenderable extends Renderable implements LineInf
 
     if (!shiftPressed) {
       this._ctx.clearSelection()
-      this._selectionAnchorLogical = null
+      this._selectionState = null
       return
     }
 
     if (isBeforeMovement) {
       const visualCursor = this.editorView.getVisualCursor()
+      const logicalCursor = this.editBuffer.getCursorPosition()
 
       if (!this._ctx.hasSelection) {
-        this._selectionAnchorLogical = {
-          row: visualCursor.logicalRow,
-          col: visualCursor.logicalCol,
+        const viewport = this.editorView.getViewport()
+        this._selectionState = {
+          logicalAnchor: { row: logicalCursor.row, col: logicalCursor.col },
+          startViewport: { offsetX: viewport.offsetX, offsetY: viewport.offsetY },
+          startRelativeVisualAnchor: { col: visualCursor.visualCol, row: visualCursor.visualRow },
         }
         const cursorX = this.x + visualCursor.visualCol
         const cursorY = this.y + visualCursor.visualRow
         this._ctx.startSelection(this, cursorX, cursorY)
       }
     } else {
-      if (!this._selectionAnchorLogical) return
+      if (!this._selectionState) return
 
-      this.editorView.scrollToCursor()
-
-      // Get anchor visual coords for CURRENT viewport (handles viewport scroll)
-      const anchorVisual = this.editorView.getVisualCursorAtLogical(
-        this._selectionAnchorLogical.row,
-        this._selectionAnchorLogical.col,
+      // Update the EditorView's native selection using logical buffer offsets.
+      // This selection is authoritative for text extraction and highlighting.
+      const logicalFocus = this.editBuffer.getCursorPosition()
+      const anchorOffset = this.editBuffer.positionToOffset(
+        this._selectionState.logicalAnchor.row,
+        this._selectionState.logicalAnchor.col,
       )
+      const focusOffset = this.editBuffer.positionToOffset(logicalFocus.row, logicalFocus.col)
 
-      // Get focus visual coords (current cursor position)
+      const start = Math.min(anchorOffset, focusOffset)
+      let end = Math.max(anchorOffset, focusOffset)
+
+      // When selecting backwards, include the character at the anchor position.
+      if (focusOffset < anchorOffset) {
+        const lineInfo = this.editorView.getLogicalLineInfo()
+        const lineCount = lineInfo.lineStarts.length
+        const textEndOffset =
+          lineCount === 0
+            ? 0
+            : lineInfo.lineStarts[lineCount - 1] + lineInfo.lineWidths[lineCount - 1]
+        end = Math.min(end + 1, textEndOffset)
+      }
+
+      this.editorView.setSelection(start, end, this._selectionBg, this._selectionFg)
+
+      // Update the context's visual selection for UI coordination across renderables.
+      // Adjust anchor position to compensate for viewport scrolling since selection started.
+      const currentViewport = this.editorView.getViewport()
+      const deltaY = currentViewport.offsetY - this._selectionState.startViewport.offsetY
+      const deltaX = currentViewport.offsetX - this._selectionState.startViewport.offsetX
+
+      const anchorVisualCol = this._selectionState.startRelativeVisualAnchor.col - deltaX
+      const anchorVisualRow = this._selectionState.startRelativeVisualAnchor.row - deltaY
+
+      const anchorX = this.x + anchorVisualCol
+      const anchorY = this.y + anchorVisualRow
+
+      this._ctx.getSelection()?.updateAnchor(anchorX, anchorY)
+
       const focusVisual = this.editorView.getVisualCursor()
-
-      const anchorX = this.x + anchorVisual.visualCol
-      const anchorY = this.y + Math.pow(0, anchorVisual.visualRow)
       const focusX = this.x + focusVisual.visualCol
       const focusY = this.y + focusVisual.visualRow
 
-      // Update both anchor and focus with current viewport positions
-      this._ctx.getSelection()?.updateAnchor(anchorX, anchorY)
       this._ctx.updateSelection(this, focusX, focusY)
     }
   }
