@@ -755,7 +755,7 @@ pub const UnifiedTextBufferView = struct {
             const prefix_width = available_width / 2;
             const suffix_width = available_width - prefix_width;
 
-            var new_chunks = std.ArrayList(VirtualChunk).init(self.virtual_lines_arena.allocator());
+            var new_chunks: std.ArrayListUnmanaged(VirtualChunk) = .{};
 
             var prefix_accumulated: u32 = 0;
             for (vline.chunks.items) |chunk| {
@@ -763,18 +763,18 @@ pub const UnifiedTextBufferView = struct {
 
                 const space_left = prefix_width - prefix_accumulated;
                 if (chunk.width <= space_left) {
-                    new_chunks.append(chunk) catch return;
+                    new_chunks.append(self.virtual_lines_arena.allocator(), chunk) catch return;
                     prefix_accumulated += chunk.width;
                 } else {
                     var partial = chunk;
                     partial.width = space_left;
-                    new_chunks.append(partial) catch return;
+                    new_chunks.append(self.virtual_lines_arena.allocator(), partial) catch return;
                     prefix_accumulated += space_left;
                     break;
                 }
             }
 
-            new_chunks.append(VirtualChunk{
+            new_chunks.append(self.virtual_lines_arena.allocator(), VirtualChunk{
                 .grapheme_start = 0,
                 .width = ellipsis_width,
                 .chunk = &self.ellipsis_chunk,
@@ -792,13 +792,13 @@ pub const UnifiedTextBufferView = struct {
                 }
 
                 if (pos_accumulated >= suffix_start_pos) {
-                    new_chunks.append(chunk) catch return;
+                    new_chunks.append(self.virtual_lines_arena.allocator(), chunk) catch return;
                 } else {
                     const offset_in_chunk = suffix_start_pos - pos_accumulated;
                     var partial = chunk;
                     partial.grapheme_start += offset_in_chunk;
                     partial.width = chunk.width - offset_in_chunk;
-                    new_chunks.append(partial) catch return;
+                    new_chunks.append(self.virtual_lines_arena.allocator(), partial) catch return;
                 }
 
                 pos_accumulated += chunk.width;
