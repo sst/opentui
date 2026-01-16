@@ -752,6 +752,20 @@ export abstract class EditBufferRenderable extends Renderable implements LineInf
     return this.editBuffer.getTextRangeByCoords(startRow, startCol, endRow, endCol)
   }
 
+  private getOffsetFromViewportCoords(col: number, row: number): number | null {
+    const lineInfo = this.editorView.getLineInfo()
+    if (lineInfo.lineStarts.length === 0) return null
+
+    const rowIndex = Math.max(0, Math.min(Math.floor(row), lineInfo.lineStarts.length - 1))
+    const lineStart = lineInfo.lineStarts[rowIndex] ?? 0
+    const lineWidth = lineInfo.lineWidths[rowIndex] ?? 0
+    const viewport = this.editorView.getViewport()
+    const colOffset = this._wrapMode === "none" ? viewport.offsetX : 0
+    const colIndex = Math.max(0, Math.min(Math.floor(col + colOffset), lineWidth))
+
+    return lineStart + colIndex
+  }
+
   protected updateSelectionForMovement(shiftPressed: boolean, isBeforeMovement: boolean): void {
     if (!this.selectable) return
 
@@ -762,19 +776,42 @@ export abstract class EditBufferRenderable extends Renderable implements LineInf
     }
 
     if (isBeforeMovement) {
-      const visualCursor = this.editorView.getVisualCursor()
-      const logicalCursor = this.editBuffer.getCursorPosition()
-
-      if (!this._ctx.hasSelection) {
-        const viewport = this.editorView.getViewport()
-        this._selectionState = {
-          logicalAnchor: { row: logicalCursor.row, col: logicalCursor.col },
-          startViewport: { offsetX: viewport.offsetX, offsetY: viewport.offsetY },
-          startRelativeVisualAnchor: { col: visualCursor.visualCol, row: visualCursor.visualRow },
+      if (!this._selectionState) {
+        const hasLocalSelection = this.editorView.hasSelection()
+        if (!this._ctx.hasSelection || !hasLocalSelection) {
+          const visualCursor = this.editorView.getVisualCursor()
+          const logicalCursor = this.editBuffer.getCursorPosition()
+          const viewport = this.editorView.getViewport()
+          this._selectionState = {
+            logicalAnchor: { row: logicalCursor.row, col: logicalCursor.col },
+            startViewport: { offsetX: viewport.offsetX, offsetY: viewport.offsetY },
+            startRelativeVisualAnchor: { col: visualCursor.visualCol, row: visualCursor.visualRow },
+          }
+          const cursorX = this.x + visualCursor.visualCol
+          const cursorY = this.y + visualCursor.visualRow
+          this._ctx.startSelection(this, cursorX, cursorY)
+        } else {
+          const selection = this._ctx.getSelection()
+          const localSelection = selection ? convertGlobalToLocalSelection(selection, this.x, this.y) : null
+          if (
+            localSelection &&
+            localSelection.anchorX >= 0 &&
+            localSelection.anchorX < this.width &&
+            localSelection.anchorY >= 0 &&
+            localSelection.anchorY < this.height
+          ) {
+            const anchorOffset = this.getOffsetFromViewportCoords(localSelection.anchorX, localSelection.anchorY)
+            const anchorPos = anchorOffset !== null ? this.editBuffer.offsetToPosition(anchorOffset) : null
+            if (anchorPos) {
+              const viewport = this.editorView.getViewport()
+              this._selectionState = {
+                logicalAnchor: { row: anchorPos.row, col: anchorPos.col },
+                startViewport: { offsetX: viewport.offsetX, offsetY: viewport.offsetY },
+                startRelativeVisualAnchor: { col: localSelection.anchorX, row: localSelection.anchorY },
+              }
+            }
+          }
         }
-        const cursorX = this.x + visualCursor.visualCol
-        const cursorY = this.y + visualCursor.visualRow
-        this._ctx.startSelection(this, cursorX, cursorY)
       }
     } else {
       if (!this._selectionState) return

@@ -520,6 +520,28 @@ describe("Textarea - Selection Tests", () => {
       expect(editor.getSelectedText()).toBe("Hello")
     })
 
+    it("should extend a mouse selection with shift+right", async () => {
+      const { textarea: editor } = await createTextareaRenderable(currentRenderer, renderOnce, {
+        initialValue: "Hello World",
+        width: 40,
+        height: 10,
+        selectable: true,
+      })
+
+      editor.focus()
+
+      await currentMouse.drag(editor.x, editor.y, editor.x + 5, editor.y)
+      await renderOnce()
+
+      expect(editor.hasSelection()).toBe(true)
+      expect(editor.getSelectedText()).toBe("Hello")
+
+      currentMockInput.pressArrow("right", { shift: true })
+      await renderOnce()
+
+      expect(editor.getSelectedText()).toBe("Hello ")
+    })
+
     it("should handle shift+left selection", async () => {
       const { textarea: editor } = await createTextareaRenderable(currentRenderer, renderOnce, {
         initialValue: "Hello World",
@@ -1351,6 +1373,34 @@ describe("Textarea - Selection Tests", () => {
       expect(editor.hasSelection()).toBe(false)
       const viewportAfterHome = editor.editorView.getViewport()
       expect(viewportAfterHome.offsetY).toBe(0)
+    })
+
+    it("should allow shift+end after shift+home from a mid-buffer cursor", async () => {
+      const lines = Array.from({ length: 30 }, (_, i) => `Line ${i.toString().padStart(2, "0")}`)
+      const { textarea: editor } = await createTextareaRenderable(currentRenderer, renderOnce, {
+        initialValue: lines.join("\n"),
+        width: 40,
+        height: 6,
+        selectable: true,
+      })
+
+      editor.focus()
+      editor.gotoLine(10)
+      await renderOnce()
+
+      currentMockInput.pressKey("END", { shift: true })
+      await renderOnce()
+
+      expect(editor.hasSelection()).toBe(true)
+
+      currentMockInput.pressKey("HOME", { shift: true })
+      await renderOnce()
+
+      currentMockInput.pressKey("END", { shift: true })
+      await renderOnce()
+
+      expect(editor.hasSelection()).toBe(true)
+      expect(editor.getSelectedText()).toContain("Line 29")
     })
 
     it("should select to buffer home with shift+super+up in scrollable textarea", async () => {
