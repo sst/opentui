@@ -281,9 +281,8 @@ describe("InputRenderable", () => {
       input.focus()
 
       mockInput.pasteBracketedText("pasted text")
-      // NOTE: The input itself does not automatically insert the pasted text for now,
-      // as the whole InputRenderable will get replaced by and EditBuffer that handles it
-      expect(input.value).toBe("")
+      // Input now automatically inserts pasted text (using Textarea's EditBuffer)
+      expect(input.value).toBe("pasted text")
       expect(pasteCalled).toBe(true)
       expect(pasteText).toBe("pasted text")
     })
@@ -468,11 +467,11 @@ describe("InputRenderable", () => {
       input.value = "programmatic"
       expect(input.value).toBe("programmatic")
 
-      // Cursor position should be clamped to current position (0) since value changed
-      expect(input.cursorPosition).toBe(0)
+      // Cursor position should move to end when value is set programmatically
+      expect(input.cursorPosition).toBe("programmatic".length)
     })
 
-    it("should handle value changes with cursor position preservation", () => {
+    it("should handle value changes with cursor moving to end", () => {
       const { input } = createInputRenderable({
         value: "hello",
       })
@@ -482,7 +481,7 @@ describe("InputRenderable", () => {
 
       input.value = "world"
       expect(input.value).toBe("world")
-      expect(input.cursorPosition).toBe(2) // Cursor should be clamped
+      expect(input.cursorPosition).toBe("world".length) // Cursor should move to end
     })
 
     it("should handle empty value setting", () => {
@@ -969,8 +968,8 @@ describe("InputRenderable", () => {
         height: 1,
         value: "hello",
         keyBindings: [
-          { name: "k", ctrl: true, action: "move-end" },
-          { name: "h", ctrl: true, action: "delete-backward" },
+          { name: "k", ctrl: true, action: "line-end" },
+          { name: "h", ctrl: true, action: "backspace" },
         ],
       })
 
@@ -1013,7 +1012,7 @@ describe("InputRenderable", () => {
         width: 20,
         height: 1,
         value: "hello",
-        keyBindings: [{ name: "x", ctrl: true, action: "move-home" }],
+        keyBindings: [{ name: "x", ctrl: true, action: "line-home" }],
       })
 
       input.focus()
@@ -1033,7 +1032,7 @@ describe("InputRenderable", () => {
         height: 1,
         value: "hello",
         keyBindings: [
-          { name: "left", action: "move-end" }, // Override left to move to end
+          { name: "left", action: "line-end" }, // Override left to move to end
         ],
       })
 
@@ -1095,7 +1094,7 @@ describe("InputRenderable", () => {
 
       // Update bindings
       input.keyBindings = [
-        { name: "right", action: "move-end" }, // Override right to move to end
+        { name: "right", action: "line-end" }, // Override right to move to end
       ]
 
       // Right should now move to end
@@ -1132,10 +1131,10 @@ describe("InputRenderable", () => {
         height: 1,
         value: "hello",
         keyBindings: [
-          { name: "left", shift: true, action: "move-home" },
-          { name: "right", shift: true, action: "move-end" },
-          { name: "up", ctrl: true, action: "move-home" },
-          { name: "down", ctrl: true, action: "move-end" },
+          { name: "left", shift: true, action: "line-home" },
+          { name: "right", shift: true, action: "line-end" },
+          { name: "up", ctrl: true, action: "line-home" },
+          { name: "down", ctrl: true, action: "line-end" },
         ],
       })
 
