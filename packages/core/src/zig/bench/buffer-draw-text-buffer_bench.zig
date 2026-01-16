@@ -130,6 +130,66 @@ fn benchRenderColdCache(
     return try results.toOwnedSlice(allocator);
 }
 
+fn benchWrapAndRender(
+    allocator: std.mem.Allocator,
+    pool: *gp.GraphemePool,
+    iterations: usize,
+    show_mem: bool,
+) ![]BenchResult {
+    var results: std.ArrayListUnmanaged(BenchResult) = .{};
+    errdefer results.deinit(allocator);
+
+    const text = try generateText(allocator, 500, 100);
+
+    {
+        var stats = BenchStats{};
+        var final_tb_mem: usize = 0;
+        var final_view_mem: usize = 0;
+        var final_buf_mem: usize = 0;
+
+        for (0..iterations) |i| {
+            const tb, const view = try setupTextBuffer(allocator, pool, text, 120);
+            defer tb.deinit();
+            defer view.deinit();
+
+            const buf = try OptimizedBuffer.init(allocator, 120, 40, .{ .pool = pool });
+            defer buf.deinit();
+
+            try buf.clear(.{ 0.0, 0.0, 0.0, 1.0 }, null);
+
+            var timer = try std.time.Timer.start();
+            try buf.drawTextBuffer(view, 0, 0);
+            stats.record(timer.read());
+
+            if (i == iterations - 1 and show_mem) {
+                final_tb_mem = tb.getArenaAllocatedBytes();
+                final_view_mem = view.getArenaAllocatedBytes();
+                final_buf_mem = @sizeOf(OptimizedBuffer) + (buf.width * buf.height * (@sizeOf(u32) + @sizeOf(@TypeOf(buf.buffer.fg[0])) * 2 + @sizeOf(u8)));
+            }
+        }
+
+        const mem_stats: ?[]const MemStat = if (show_mem) blk: {
+            const mem_stat_slice = try allocator.alloc(MemStat, 3);
+            mem_stat_slice[0] = .{ .name = "TB", .bytes = final_tb_mem };
+            mem_stat_slice[1] = .{ .name = "View", .bytes = final_view_mem };
+            mem_stat_slice[2] = .{ .name = "Buf", .bytes = final_buf_mem };
+            break :blk mem_stat_slice;
+        } else null;
+
+        try results.append(allocator, BenchResult{
+            .name = "WRAP+RENDER: 120x40 render (500 lines, wrap=120)",
+            .min_ns = stats.min_ns,
+            .avg_ns = stats.avg(),
+            .max_ns = stats.max_ns,
+            .total_ns = stats.total_ns,
+            .iterations = iterations,
+            .mem_stats = mem_stats,
+        });
+    }
+
+    return try results.toOwnedSlice(allocator);
+}
+
 fn benchRenderWarmCache(
     allocator: std.mem.Allocator,
     pool: *gp.GraphemePool,
@@ -739,6 +799,9 @@ pub fn run(
 
     const warm_cache_results = try benchRenderWarmCache(allocator, pool, iterations, show_mem);
     try all_results.appendSlice(allocator, warm_cache_results);
+
+    const wrap_render_results = try benchWrapAndRender(allocator, pool, iterations, show_mem);
+    try all_results.appendSlice(allocator, wrap_render_results);
 
     const small_res_results = try benchRenderSmallResolution(allocator, pool, iterations, show_mem);
     try all_results.appendSlice(allocator, small_res_results);

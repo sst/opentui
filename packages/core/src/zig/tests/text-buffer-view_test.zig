@@ -2101,6 +2101,221 @@ test "TextBufferView measureForDimensions - empty buffer" {
     try std.testing.expectEqual(@as(u32, 0), result.max_width);
 }
 
+test "TextBufferView truncation - basic truncate single line" {
+    const pool = gp.initGlobalPool(std.testing.allocator);
+    defer gp.deinitGlobalPool();
+
+    var tb = try TextBuffer.init(std.testing.allocator, pool, .wcwidth);
+    defer tb.deinit();
+
+    var view = try TextBufferView.init(std.testing.allocator, tb);
+    defer view.deinit();
+
+    try tb.setText("ABCDEFGHIJKLMNOPQRST");
+
+    view.setTruncate(true);
+    view.setWrapMode(.none);
+    view.setViewport(text_buffer_view.Viewport{ .x = 0, .y = 0, .width = 10, .height = 5 });
+
+    const vlines = view.getVirtualLines();
+
+    // With truncation, line should be truncated to viewport width
+    try std.testing.expectEqual(@as(usize, 1), vlines.len);
+    // Width should be reduced (prefix + suffix, ellipsis handled separately)
+    try std.testing.expect(vlines[0].width <= 10);
+}
+
+test "TextBufferView truncation - multiline with truncate" {
+    const pool = gp.initGlobalPool(std.testing.allocator);
+    defer gp.deinitGlobalPool();
+
+    var tb = try TextBuffer.init(std.testing.allocator, pool, .wcwidth);
+    defer tb.deinit();
+
+    var view = try TextBufferView.init(std.testing.allocator, tb);
+    defer view.deinit();
+
+    try tb.setText("ABCDEFGHIJKLMNOPQRST\nShortLine\nAnotherVeryLongLineHere");
+
+    view.setTruncate(true);
+    view.setWrapMode(.none);
+    view.setViewport(text_buffer_view.Viewport{ .x = 0, .y = 0, .width = 12, .height = 5 });
+
+    const vlines = view.getVirtualLines();
+
+    try std.testing.expectEqual(@as(usize, 3), vlines.len);
+
+    // First line should be truncated
+    try std.testing.expect(vlines[0].width <= 12);
+    // Second line is short, should not be truncated
+    try std.testing.expectEqual(@as(u32, 9), vlines[1].width);
+    // Third line should be truncated
+    try std.testing.expect(vlines[2].width <= 12);
+}
+
+test "TextBufferView truncation - with wrapping disabled" {
+    const pool = gp.initGlobalPool(std.testing.allocator);
+    defer gp.deinitGlobalPool();
+
+    var tb = try TextBuffer.init(std.testing.allocator, pool, .wcwidth);
+    defer tb.deinit();
+
+    var view = try TextBufferView.init(std.testing.allocator, tb);
+    defer view.deinit();
+
+    try tb.setText("0123456789ABCDEFGHIJ");
+
+    view.setTruncate(true);
+    view.setWrapMode(.none);
+    view.setViewport(text_buffer_view.Viewport{ .x = 0, .y = 0, .width = 15, .height = 1 });
+
+    const vlines = view.getVirtualLines();
+
+    try std.testing.expectEqual(@as(usize, 1), vlines.len);
+    // Should be truncated to fit viewport
+    try std.testing.expect(vlines[0].width <= 15);
+}
+
+test "TextBufferView truncation - toggle truncate on and off" {
+    const pool = gp.initGlobalPool(std.testing.allocator);
+    defer gp.deinitGlobalPool();
+
+    var tb = try TextBuffer.init(std.testing.allocator, pool, .wcwidth);
+    defer tb.deinit();
+
+    var view = try TextBufferView.init(std.testing.allocator, tb);
+    defer view.deinit();
+
+    try tb.setText("ABCDEFGHIJKLMNOPQRSTUVWXYZ");
+
+    view.setWrapMode(.none);
+    view.setViewport(text_buffer_view.Viewport{ .x = 0, .y = 0, .width = 10, .height = 1 });
+
+    // Without truncation
+    view.setTruncate(false);
+    var vlines = view.getVirtualLines();
+    const width_no_truncate = vlines[0].width;
+
+    // With truncation
+    view.setTruncate(true);
+    vlines = view.getVirtualLines();
+    const width_with_truncate = vlines[0].width;
+
+    try std.testing.expectEqual(@as(u32, 26), width_no_truncate);
+    try std.testing.expect(width_with_truncate <= 10);
+}
+
+test "TextBufferView truncation - very small viewport" {
+    const pool = gp.initGlobalPool(std.testing.allocator);
+    defer gp.deinitGlobalPool();
+
+    var tb = try TextBuffer.init(std.testing.allocator, pool, .wcwidth);
+    defer tb.deinit();
+
+    var view = try TextBufferView.init(std.testing.allocator, tb);
+    defer view.deinit();
+
+    try tb.setText("Hello World");
+
+    view.setTruncate(true);
+    view.setWrapMode(.none);
+    view.setViewport(text_buffer_view.Viewport{ .x = 0, .y = 0, .width = 3, .height = 1 });
+
+    const vlines = view.getVirtualLines();
+
+    // With width=3, only room for "..." - should clear the line
+    try std.testing.expectEqual(@as(u32, 0), vlines[0].width);
+}
+
+test "TextBufferView truncation - verify ellipsis chunk injection" {
+    const pool = gp.initGlobalPool(std.testing.allocator);
+    defer gp.deinitGlobalPool();
+
+    var tb = try TextBuffer.init(std.testing.allocator, pool, .wcwidth);
+    defer tb.deinit();
+
+    var view = try TextBufferView.init(std.testing.allocator, tb);
+    defer view.deinit();
+
+    try tb.setText("0123456789ABCDEFGHIJ");
+
+    view.setTruncate(true);
+    view.setWrapMode(.none);
+    view.setViewport(text_buffer_view.Viewport{ .x = 0, .y = 0, .width = 10, .height = 1 });
+
+    const vlines = view.getVirtualLines();
+
+    try std.testing.expectEqual(@as(usize, 1), vlines.len);
+    try std.testing.expectEqual(@as(u32, 10), vlines[0].width);
+
+    // Should have 3 chunks: prefix, ellipsis, suffix
+    try std.testing.expectEqual(@as(usize, 3), vlines[0].chunks.items.len);
+
+    // Verify the middle chunk is the ellipsis
+    const ellipsis_chunk = vlines[0].chunks.items[1];
+    try std.testing.expectEqual(@as(u32, 3), ellipsis_chunk.width);
+
+    // Get the ellipsis text to verify it's "..."
+    const ellipsis_text = ellipsis_chunk.chunk.getBytes(&tb.mem_registry);
+    try std.testing.expectEqualStrings("...", ellipsis_text);
+}
+
+test "TextBufferView truncation - works with wrapping" {
+    const pool = gp.initGlobalPool(std.testing.allocator);
+    defer gp.deinitGlobalPool();
+
+    var tb = try TextBuffer.init(std.testing.allocator, pool, .wcwidth);
+    defer tb.deinit();
+
+    var view = try TextBufferView.init(std.testing.allocator, tb);
+    defer view.deinit();
+
+    try tb.setText("ABCDEFGHIJKLMNOPQRSTUVWXYZ");
+
+    view.setTruncate(true);
+    view.setWrapMode(.char);
+    view.setWrapWidth(10);
+    view.setViewport(text_buffer_view.Viewport{ .x = 0, .y = 0, .width = 15, .height = 5 });
+
+    const vlines = view.getVirtualLines();
+
+    // With char wrap at 10, should wrap into multiple lines first
+    // Then truncation should apply to lines exceeding viewport width
+    try std.testing.expect(vlines.len >= 2);
+}
+
+test "TextBufferView truncation - verify prefix and suffix content" {
+    const pool = gp.initGlobalPool(std.testing.allocator);
+    defer gp.deinitGlobalPool();
+
+    var tb = try TextBuffer.init(std.testing.allocator, pool, .wcwidth);
+    defer tb.deinit();
+
+    var view = try TextBufferView.init(std.testing.allocator, tb);
+    defer view.deinit();
+
+    try tb.setText("0123456789ABCDEFGHIJ");
+
+    view.setTruncate(true);
+    view.setWrapMode(.none);
+    view.setViewport(text_buffer_view.Viewport{ .x = 0, .y = 0, .width = 10, .height = 1 });
+
+    const vlines = view.getVirtualLines();
+    const chunks = vlines[0].chunks.items;
+
+    // Should have 3 chunks: prefix, ellipsis, suffix
+    try std.testing.expectEqual(@as(usize, 3), chunks.len);
+
+    // Middle chunk (ellipsis)
+    const ellipsis_bytes = chunks[1].chunk.getBytes(&tb.mem_registry);
+
+    // Verify ellipsis is correct
+    try std.testing.expectEqualStrings("...", ellipsis_bytes);
+
+    // Verify total width matches viewport
+    try std.testing.expectEqual(@as(u32, 10), vlines[0].width);
+}
+
 test "TextBufferView measureForDimensions - multiple lines with different widths" {
     const pool = gp.initGlobalPool(std.testing.allocator);
     defer gp.deinitGlobalPool();

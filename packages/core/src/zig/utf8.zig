@@ -471,6 +471,13 @@ pub const PosByWidthResult = struct {
     columns_used: u32,
 };
 
+pub inline fn eastAsianWidth(cp: u21) u32 {
+    if (cp > 0x10FFFF) return 0;
+    const eaw = uucode.get(.east_asian_width, cp);
+    const width = eawToWidth(cp, eaw);
+    return if (width > 0) @intCast(width) else 0;
+}
+
 /// Calculate width from east asian width property and Unicode properties
 /// Returns -1 for control characters (they don't contribute to width)
 inline fn eawToWidth(cp: u21, eaw: uucode.types.EastAsianWidth) i16 {

@@ -218,6 +218,7 @@ describe("Textarea - Selection Tests", () => {
       buffer.destroy()
     })
 
+    // Maybe flaky
     it("should handle viewport-aware selection correctly", async () => {
       const { textarea: editor } = await createTextareaRenderable(currentRenderer, renderOnce, {
         initialValue: Array.from({ length: 15 }, (_, i) => `Line ${i}`).join("\n"),
@@ -941,64 +942,24 @@ describe("Textarea - Selection Tests", () => {
 
       await renderOnce()
 
-      console.log(`Layout after render:`)
-      console.log(`  bottomText: (${bottomText.x}, ${bottomText.y}, ${bottomText.width}, ${bottomText.height})`)
-      console.log(`  rightBox: (${rightBox.x}, ${rightBox.y}, ${rightBox.width}, ${rightBox.height})`)
-      console.log(`  codeText1: (${codeText1.x}, ${codeText1.y}, ${codeText1.width}, ${codeText1.height})`)
-      console.log(`  codeText2: (${codeText2.x}, ${codeText2.y}, ${codeText2.width}, ${codeText2.height})`)
-      console.log(`  codeText3: (${codeText3.x}, ${codeText3.y}, ${codeText3.width}, ${codeText3.height})`)
-      console.log(`  codeText4: (${codeText4.x}, ${codeText4.y}, ${codeText4.width}, ${codeText4.height})`)
-
       const startX = bottomText.x + 10
       const startY = bottomText.y
       const endX = codeText2.x + 15
       const endY = codeText2.y
 
-      console.log(`Selection drag: from (${startX}, ${startY}) to (${endX}, ${endY})`)
-
       await currentMouse.drag(startX, startY, endX, endY)
       await renderOnce()
 
-      console.log(`After selection:`)
-      console.log(`  bottomText has selection: ${bottomText.hasSelection()}`)
-      if (bottomText.hasSelection()) {
-        console.log(`    bottomText selected: "${bottomText.getSelectedText()}"`)
-      }
-      console.log(`  codeText1 has selection: ${codeText1.hasSelection()}`)
-      if (codeText1.hasSelection()) {
-        console.log(`    codeText1 selected: "${codeText1.getSelectedText()}"`)
-      }
-      console.log(`  codeText2 has selection: ${codeText2.hasSelection()}`)
-      if (codeText2.hasSelection()) {
-        console.log(`    codeText2 selected: "${codeText2.getSelectedText()}"`)
-        console.log(`    codeText2 selection range: ${JSON.stringify(codeText2.getSelection())}`)
-      }
-      console.log(`  codeText3 has selection: ${codeText3.hasSelection()}`)
-      console.log(`  codeText4 has selection: ${codeText4.hasSelection()}`)
-
       expect(bottomText.hasSelection()).toBe(true)
       const bottomSelected = bottomText.getSelectedText()
-      console.log(`  bottomText selected "${bottomSelected}"`)
       expect(bottomSelected).toBe("Click and ")
 
       expect(codeText1.hasSelection()).toBe(false)
 
       expect(codeText2.hasSelection()).toBe(true)
       const codeText2Selected = codeText2.getSelectedText()
-      console.log(`  codeText2 selected: "${codeText2Selected}"`)
-      const codeText2FullContent = codeText2.content.toString()
-      console.log(`  codeText2 full content: "${codeText2FullContent}"`)
-      console.log(`  codeText2 content length: ${codeText2FullContent.length}`)
-      console.log(`  codeText2 local anchor: (${15 - codeText2.x}, ${20 - codeText2.y})`)
-      console.log(`  codeText2 local focus: (${66 - codeText2.x}, ${8 - codeText2.y})`)
-      console.log(`  Expected selection: indices 0 to 15`)
-      console.log(`  Actual selection: indices ${codeText2.getSelection()?.start} to ${codeText2.getSelection()?.end}`)
-
       const codeText2Content = "  const selected = getText()"
       expect(codeText2Selected).toBe(codeText2Content.substring(0, 15))
-
-      console.log(`  codeText3 has selection: ${codeText3.hasSelection()}`)
-      console.log(`  codeText4 has selection: ${codeText4.hasSelection()}`)
 
       bottomText.destroy()
       rightBox.destroy()

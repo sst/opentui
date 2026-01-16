@@ -105,8 +105,8 @@ exports[`LineNumberRenderable maintains stable visual line count when scrolling 
  │  42   ✓ Grapheme-aware        │ 
  │     cursor movement           │ 
  │  43   ✓ Unicode (emoji 🌟     │ 
- │      and CJK 世界, 你好世界   │ 
- │     界, 中文, 한글)            │ 
+ │     and CJK 世界, 你好世界,   │ 
+ │     中文, 한글)               │ 
  │  44   ✓ Incremental editing   │ 
  │  45   ✓ Text wrapping and     │ 
  │     viewport management       │ 
@@ -139,8 +139,8 @@ exports[`LineNumberRenderable maintains stable visual line count when scrolling 
  │  42   ✓ Grapheme-aware        │ 
  │     cursor movement           │ 
  │  43   ✓ Unicode (emoji 🌟     │ 
- │      and CJK 世界, 你好世界   │ 
- │     界, 中文, 한글)            │ 
+ │     and CJK 世界, 你好世界,   │ 
+ │     中文, 한글)               │ 
  │  44   ✓ Incremental editing   │ 
  │  45   ✓ Text wrapping and     │ 
  │     viewport management       │ 

@@ -9,7 +9,7 @@ import {
 } from "./LineNumberRenderable"
 import { RGBA, parseColor } from "../lib/RGBA"
 import { SyntaxStyle } from "../syntax-style"
-import { parsePatch, diffWordsWithSpace, type StructuredPatch } from "diff"
+import { parsePatch, type StructuredPatch } from "diff"
 import { TextRenderable } from "./Text"
 import type { TreeSitterClient } from "../lib/tree-sitter"
 
@@ -20,49 +20,90 @@ interface InlineHighlight {
   type: "added-word" | "removed-word"
 }
 
-/** Computes similarity between two strings (0.0 to 1.0) using word-level diff */
-export function computeLineSimilarity(a: string, b: string): number {
-  if (a === b) return 1.0
-  if (a.length === 0 && b.length === 0) return 1.0
-  if (a.length === 0 || b.length === 0) return 0.0
-
-  const changes = diffWordsWithSpace(a, b)
-  let unchangedLength = 0
-  for (const change of changes) {
-    if (!change.added && !change.removed) {
-      unchangedLength += change.value.length
-    }
-  }
-  return unchangedLength / Math.max(a.length, b.length)
+/** Represents a range within a string */
+interface IRange {
+  location: number
+  length: number
 }
 
-/** Computes word-level inline highlights for two strings */
+/**
+ * The longest line for which we'd try to calculate a line diff.
+ * This matches GitHub.com's behavior.
+ */
+export const MaxIntraLineDiffStringLength = 1024
+
+/** Get the length of the common substring between two strings */
+function commonLength(stringA: string, rangeA: IRange, stringB: string, rangeB: IRange, reverse: boolean): number {
+  const max = Math.min(rangeA.length, rangeB.length)
+  const startA = reverse ? rangeA.location + rangeA.length - 1 : rangeA.location
+  const startB = reverse ? rangeB.location + rangeB.length - 1 : rangeB.location
+  const stride = reverse ? -1 : 1
+
+  let length = 0
+  while (Math.abs(length) < max) {
+    if (stringA[startA + length] !== stringB[startB + length]) {
+      break
+    }
+    length += stride
+  }
+
+  return Math.abs(length)
+}
+
+/**
+ * Get the changed ranges in the strings, relative to each other.
+ * Uses common prefix/suffix elimination algorithm (matching GitHub Desktop).
+ */
+export function relativeChanges(stringA: string, stringB: string): { stringARange: IRange; stringBRange: IRange } {
+  let bRange: IRange = { location: 0, length: stringB.length }
+  let aRange: IRange = { location: 0, length: stringA.length }
+
+  const prefixLength = commonLength(stringB, bRange, stringA, aRange, false)
+  bRange = {
+    location: bRange.location + prefixLength,
+    length: bRange.length - prefixLength,
+  }
+  aRange = {
+    location: aRange.location + prefixLength,
+    length: aRange.length - prefixLength,
+  }
+
+  const suffixLength = commonLength(stringB, bRange, stringA, aRange, true)
+  bRange = { location: bRange.location, length: bRange.length - suffixLength }
+  aRange = { location: aRange.location, length: aRange.length - suffixLength }
+
+  return { stringARange: aRange, stringBRange: bRange }
+}
+
+/**
+ * Computes inline highlights for two strings using prefix/suffix elimination.
+ * Returns a single changed region per line (matching GitHub Desktop behavior).
+ */
 export function computeInlineHighlights(
   oldContent: string,
   newContent: string,
-): { oldHighlights: InlineHighlight[]; newHighlights: InlineHighlight[] } {
-  const changes = diffWordsWithSpace(oldContent, newContent)
-
-  const oldHighlights: InlineHighlight[] = []
-  const newHighlights: InlineHighlight[] = []
-  let oldCol = 0
-  let newCol = 0
-
-  for (const change of changes) {
-    const displayWidth = Bun.stringWidth(change.value)
-    if (change.added) {
-      newHighlights.push({ startCol: newCol, endCol: newCol + displayWidth, type: "added-word" })
-      newCol += displayWidth
-    } else if (change.removed) {
-      oldHighlights.push({ startCol: oldCol, endCol: oldCol + displayWidth, type: "removed-word" })
-      oldCol += displayWidth
-    } else {
-      oldCol += displayWidth
-      newCol += displayWidth
-    }
+): { oldHighlight: InlineHighlight | null; newHighlight: InlineHighlight | null } {
+  if (oldContent === newContent) {
+    return { oldHighlight: null, newHighlight: null }
   }
 
-  return { oldHighlights, newHighlights }
+  const { stringARange, stringBRange } = relativeChanges(oldContent, newContent)
+
+  // Convert character positions to display column positions
+  const oldPrefix = oldContent.slice(0, stringARange.location)
+  const oldChanged = oldContent.slice(stringARange.location, stringARange.location + stringARange.length)
+  const newPrefix = newContent.slice(0, stringBRange.location)
+  const newChanged = newContent.slice(stringBRange.location, stringBRange.location + stringBRange.length)
+
+  const oldStartCol = Bun.stringWidth(oldPrefix)
+  const oldEndCol = oldStartCol + Bun.stringWidth(oldChanged)
+  const newStartCol = Bun.stringWidth(newPrefix)
+  const newEndCol = newStartCol + Bun.stringWidth(newChanged)
+
+  return {
+    oldHighlight: stringARange.length > 0 ? { startCol: oldStartCol, endCol: oldEndCol, type: "removed-word" } : null,
+    newHighlight: stringBRange.length > 0 ? { startCol: newStartCol, endCol: newEndCol, type: "added-word" } : null,
+  }
 }
 
 interface LogicalLine {
@@ -121,12 +162,6 @@ export interface DiffRenderableOptions extends RenderableOptions<DiffRenderable>
    * @default removedBg brightened 1.5x with +0.15 opacity
    */
   removedWordBg?: string | RGBA
-  /**
-   * Minimum similarity threshold (0.0 to 1.0) for pairing lines.
-   * Lines with similarity below this threshold are treated as separate add/remove.
-   * @default 0.4
-   */
-  lineSimilarityThreshold?: number
 }
 
 export class DiffRenderable extends Renderable {
@@ -164,7 +199,6 @@ export class DiffRenderable extends Renderable {
   private _disableWordHighlights: boolean
   private _addedWordBg: RGBA
   private _removedWordBg: RGBA
-  private _lineSimilarityThreshold: number
 
   private leftSide: LineNumberRenderable | null = null
   private rightSide: LineNumberRenderable | null = null
@@ -220,7 +254,6 @@ export class DiffRenderable extends Renderable {
     this._addedLineNumberBg = parseColor(options.addedLineNumberBg ?? "transparent")
     this._removedLineNumberBg = parseColor(options.removedLineNumberBg ?? "transparent")
     this._disableWordHighlights = options.disableWordHighlights ?? false
-    this._lineSimilarityThreshold = options.lineSimilarityThreshold ?? 0.5
     this._addedWordBg = options.addedWordBg
       ? parseColor(options.addedWordBg)
       : this.brightenAndIncreaseOpacity(this._addedBg, 1.5, 0.15)
@@ -247,9 +280,6 @@ export class DiffRenderable extends Renderable {
     return highlights.map((h) => ({ startCol: h.startCol, endCol: h.endCol, bg }))
   }
 
-  // Skip word highlights for blocks larger than this
-  private static readonly MAX_WORD_HIGHLIGHT_BLOCK_SIZE = 50
-
   private processChangeBlockWithHighlights(
     removes: { content: string; lineNum: number }[],
     adds: { content: string; lineNum: number }[],
@@ -258,25 +288,37 @@ export class DiffRenderable extends Renderable {
     const rightLines: LogicalLine[] = []
 
     const maxLength = Math.max(removes.length, adds.length)
-    const blockSize = removes.length + adds.length
-    const shouldComputeWordHighlights =
-      !this._disableWordHighlights && blockSize <= DiffRenderable.MAX_WORD_HIGHLIGHT_BLOCK_SIZE
+
+    // To match the behavior of github.com, we only highlight differences between
+    // lines on hunks that have the same number of added and deleted lines.
+    const shouldDisplayDiffInChunk = !this._disableWordHighlights && adds.length === removes.length
+
+    // Pre-compute diff tokens for paired lines (matching GitHub Desktop)
+    const diffTokensBefore: (InlineHighlight | null)[] = []
+    const diffTokensAfter: (InlineHighlight | null)[] = []
+
+    if (shouldDisplayDiffInChunk) {
+      for (let i = 0; i < removes.length; i++) {
+        const remove = removes[i]
+        const add = adds[i]
+
+        if (remove.content.length < MaxIntraLineDiffStringLength && add.content.length < MaxIntraLineDiffStringLength) {
+          const { oldHighlight, newHighlight } = computeInlineHighlights(remove.content, add.content)
+          diffTokensBefore[i] = oldHighlight
+          diffTokensAfter[i] = newHighlight
+        } else {
+          diffTokensBefore[i] = null
+          diffTokensAfter[i] = null
+        }
+      }
+    }
 
     for (let j = 0; j < maxLength; j++) {
       const remove = j < removes.length ? removes[j] : null
       const add = j < adds.length ? adds[j] : null
 
-      let leftHighlights: InlineHighlight[] = []
-      let rightHighlights: InlineHighlight[] = []
-
-      if (shouldComputeWordHighlights && remove && add) {
-        const similarity = computeLineSimilarity(remove.content, add.content)
-        if (similarity >= this._lineSimilarityThreshold) {
-          const highlights = computeInlineHighlights(remove.content, add.content)
-          leftHighlights = highlights.oldHighlights
-          rightHighlights = highlights.newHighlights
-        }
-      }
+      const leftHighlight = shouldDisplayDiffInChunk && j < diffTokensBefore.length ? diffTokensBefore[j] : null
+      const rightHighlight = shouldDisplayDiffInChunk && j < diffTokensAfter.length ? diffTokensAfter[j] : null
 
       if (remove) {
         leftLines.push({
@@ -288,7 +330,7 @@ export class DiffRenderable extends Renderable {
             afterColor: this._removedSignColor,
           },
           type: "remove",
-          inlineHighlights: leftHighlights,
+          inlineHighlights: leftHighlight ? [leftHighlight] : [],
         })
       } else {
         leftLines.push({
@@ -308,7 +350,7 @@ export class DiffRenderable extends Renderable {
             afterColor: this._addedSignColor,
           },
           type: "add",
-          inlineHighlights: rightHighlights,
+          inlineHighlights: rightHighlight ? [rightHighlight] : [],
         })
       } else {
         rightLines.push({
@@ -1371,17 +1413,6 @@ export class DiffRenderable extends Renderable {
     const parsed = parseColor(value)
     if (this._removedWordBg !== parsed) {
       this._removedWordBg = parsed
-      this.rebuildView()
-    }
-  }
-
-  public get lineSimilarityThreshold(): number {
-    return this._lineSimilarityThreshold
-  }
-
-  public set lineSimilarityThreshold(value: number) {
-    if (this._lineSimilarityThreshold !== value) {
-      this._lineSimilarityThreshold = Math.max(0, Math.min(1, value))
       this.rebuildView()
     }
   }

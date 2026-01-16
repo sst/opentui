@@ -273,6 +273,48 @@ test "drawTextBuffer - wrapping preserves wide characters" {
     try std.testing.expect(virtual_lines.len > 1);
 }
 
+test "drawTextBuffer - word wrap does not split multi-byte UTF-8 characters" {
+    const pool = gp.initGlobalPool(std.testing.allocator);
+    defer gp.deinitGlobalPool();
+
+    var tb = try TextBuffer.init(std.testing.allocator, pool, .unicode);
+    defer tb.deinit();
+
+    var view = try TextBufferView.init(std.testing.allocator, tb);
+    defer view.deinit();
+
+    try tb.setText("🌟 Unicode test: こんにちは世界 Hello World 你好世界");
+    view.setWrapMode(.word);
+    view.setWrapWidth(35);
+    view.updateVirtualLines();
+
+    const vlines = view.getVirtualLines();
+
+    for (vlines) |vline| {
+        var line_buffer: [200]u8 = undefined;
+        const line_start_offset = vline.char_offset;
+        const line_end_offset = line_start_offset + vline.width;
+        const extracted = tb.getTextRange(line_start_offset, line_end_offset, &line_buffer);
+
+        const is_valid_utf8 = std.unicode.utf8ValidateSlice(line_buffer[0..extracted]);
+        try std.testing.expect(is_valid_utf8);
+    }
+
+    try std.testing.expect(vlines.len == 2);
+
+    var full_buffer: [200]u8 = undefined;
+    const line0_len = tb.getTextRange(vlines[0].char_offset, vlines[0].char_offset + vlines[0].width, &full_buffer);
+    const line0_text = full_buffer[0..line0_len];
+
+    const line1_len = tb.getTextRange(vlines[1].char_offset, vlines[1].char_offset + vlines[1].width, &full_buffer);
+    const line1_text = full_buffer[0..line1_len];
+
+    const line0_ends_with_kai = std.mem.endsWith(u8, line0_text, "界");
+    const line1_starts_with_kai = std.mem.startsWith(u8, line1_text, "界");
+
+    try std.testing.expect(!(line0_ends_with_kai and line1_starts_with_kai));
+}
+
 test "drawTextBuffer - wrapped text with offset position" {
     const pool = gp.initGlobalPool(std.testing.allocator);
     defer gp.deinitGlobalPool();
@@ -2489,6 +2531,253 @@ test "drawTextBuffer - selection with horizontal viewport offset" {
     try std.testing.expect(!has_yellow_7);
 }
 
+test "drawTextBuffer - syntax highlight respects truncation" {
+    const pool = gp.initGlobalPool(std.testing.allocator);
+    defer gp.deinitGlobalPool();
+
+    var tb = try TextBuffer.init(std.testing.allocator, pool, .unicode);
+    defer tb.deinit();
+
+    var view = try TextBufferView.init(std.testing.allocator, tb);
+    defer view.deinit();
+
+    const style = try ss.SyntaxStyle.init(std.testing.allocator);
+    defer style.deinit();
+    tb.setSyntaxStyle(style);
+
+    const red_style = try style.registerStyle("red", RGBA{ 1.0, 0.0, 0.0, 1.0 }, null, 0);
+    const green_style = try style.registerStyle("green", RGBA{ 0.0, 1.0, 0.0, 1.0 }, null, 0);
+
+    try tb.setText("0123456789ABCDEFGHIJ");
+    try tb.addHighlightByCharRange(4, 7, red_style, 1, 0); // highlight "456"
+    try tb.addHighlightByCharRange(16, 20, green_style, 1, 0); // highlight "GHIJ"
+
+    view.setWrapMode(.none);
+    view.setWrapWidth(null);
+    view.setTruncate(true);
+    view.setViewport(.{ .x = 0, .y = 0, .width = 10, .height = 1 });
+
+    var opt_buffer = try OptimizedBuffer.init(
+        std.testing.allocator,
+        10,
+        1,
+        .{ .pool = pool, .width_method = .unicode },
+    );
+    defer opt_buffer.deinit();
+
+    try opt_buffer.clear(.{ 0.0, 0.0, 0.0, 1.0 }, 32);
+    try opt_buffer.drawTextBuffer(view, 0, 0);
+
+    const epsilon: f32 = 0.01;
+
+    const prefix_cell = opt_buffer.get(1, 0) orelse unreachable;
+    try std.testing.expectEqual(@as(u32, '1'), prefix_cell.char);
+    try std.testing.expect(@abs(prefix_cell.fg[0] - 1.0) < epsilon);
+    try std.testing.expect(@abs(prefix_cell.fg[1] - 1.0) < epsilon);
+    try std.testing.expect(@abs(prefix_cell.fg[2] - 1.0) < epsilon);
+
+    const ellipsis_cell = opt_buffer.get(3, 0) orelse unreachable;
+    try std.testing.expectEqual(@as(u32, '.'), ellipsis_cell.char);
+    try std.testing.expect(@abs(ellipsis_cell.fg[0] - 1.0) < epsilon);
+    try std.testing.expect(@abs(ellipsis_cell.fg[1] - 1.0) < epsilon);
+    try std.testing.expect(@abs(ellipsis_cell.fg[2] - 1.0) < epsilon);
+
+    const suffix_cell = opt_buffer.get(6, 0) orelse unreachable;
+    try std.testing.expectEqual(@as(u32, 'G'), suffix_cell.char);
+    try std.testing.expect(@abs(suffix_cell.fg[0] - 0.0) < epsilon);
+    try std.testing.expect(@abs(suffix_cell.fg[1] - 1.0) < epsilon);
+    try std.testing.expect(@abs(suffix_cell.fg[2] - 0.0) < epsilon);
+}
+
+test "drawTextBuffer - highlight spanning ellipsis continues on suffix" {
+    const pool = gp.initGlobalPool(std.testing.allocator);
+    defer gp.deinitGlobalPool();
+
+    var tb = try TextBuffer.init(std.testing.allocator, pool, .unicode);
+    defer tb.deinit();
+
+    var view = try TextBufferView.init(std.testing.allocator, tb);
+    defer view.deinit();
+
+    const style = try ss.SyntaxStyle.init(std.testing.allocator);
+    defer style.deinit();
+    tb.setSyntaxStyle(style);
+
+    const magenta_style = try style.registerStyle("magenta", RGBA{ 1.0, 0.0, 1.0, 1.0 }, null, 0);
+    const green_style = try style.registerStyle("green", RGBA{ 0.0, 1.0, 0.0, 1.0 }, null, 0);
+
+    try tb.setText("0123456789ABCDEFGHIJ");
+    try tb.addHighlightByCharRange(2, 18, magenta_style, 1, 0); // spans through ellipsis
+    try tb.addHighlightByCharRange(18, 20, green_style, 2, 0); // suffix highlight
+
+    view.setWrapMode(.none);
+    view.setWrapWidth(null);
+    view.setTruncate(true);
+    view.setViewport(.{ .x = 0, .y = 0, .width = 10, .height = 1 });
+
+    var opt_buffer = try OptimizedBuffer.init(
+        std.testing.allocator,
+        10,
+        1,
+        .{ .pool = pool, .width_method = .unicode },
+    );
+    defer opt_buffer.deinit();
+
+    try opt_buffer.clear(.{ 0.0, 0.0, 0.0, 1.0 }, 32);
+    try opt_buffer.drawTextBuffer(view, 0, 0);
+
+    const epsilon: f32 = 0.01;
+
+    const ellipsis_cell = opt_buffer.get(3, 0) orelse unreachable;
+    try std.testing.expectEqual(@as(u32, '.'), ellipsis_cell.char);
+    try std.testing.expect(@abs(ellipsis_cell.fg[0] - 1.0) < epsilon);
+    try std.testing.expect(@abs(ellipsis_cell.fg[1] - 1.0) < epsilon);
+    try std.testing.expect(@abs(ellipsis_cell.fg[2] - 1.0) < epsilon);
+
+    const suffix_magenta = opt_buffer.get(6, 0) orelse unreachable;
+    try std.testing.expectEqual(@as(u32, 'G'), suffix_magenta.char);
+    try std.testing.expect(@abs(suffix_magenta.fg[0] - 1.0) < epsilon);
+    try std.testing.expect(@abs(suffix_magenta.fg[1] - 0.0) < epsilon);
+    try std.testing.expect(@abs(suffix_magenta.fg[2] - 1.0) < epsilon);
+
+    const suffix_green = opt_buffer.get(8, 0) orelse unreachable;
+    try std.testing.expectEqual(@as(u32, 'I'), suffix_green.char);
+    try std.testing.expect(@abs(suffix_green.fg[0] - 0.0) < epsilon);
+    try std.testing.expect(@abs(suffix_green.fg[1] - 1.0) < epsilon);
+    try std.testing.expect(@abs(suffix_green.fg[2] - 0.0) < epsilon);
+}
+
+test "drawTextBuffer - selection respects truncation" {
+    const pool = gp.initGlobalPool(std.testing.allocator);
+    defer gp.deinitGlobalPool();
+
+    var tb = try TextBuffer.init(std.testing.allocator, pool, .unicode);
+    defer tb.deinit();
+
+    var view = try TextBufferView.init(std.testing.allocator, tb);
+    defer view.deinit();
+
+    // Text: "0123456789ABCDEFGHIJ" (len 20)
+    // With width 10, truncation should render: "012...GHIJ"
+    try tb.setText("0123456789ABCDEFGHIJ");
+
+    view.setWrapMode(.none);
+    view.setWrapWidth(null);
+    view.setTruncate(true);
+    view.setViewport(.{ .x = 0, .y = 0, .width = 10, .height = 1 });
+
+    // Select across the ellipsis and suffix
+    view.setSelection(2, 19, RGBA{ 1.0, 1.0, 0.0, 1.0 }, RGBA{ 0.0, 0.0, 0.0, 1.0 });
+
+    var opt_buffer = try OptimizedBuffer.init(
+        std.testing.allocator,
+        10,
+        1,
+        .{ .pool = pool, .width_method = .unicode },
+    );
+    defer opt_buffer.deinit();
+
+    try opt_buffer.clear(.{ 0.0, 0.0, 0.0, 1.0 }, 32);
+    try opt_buffer.drawTextBuffer(view, 0, 0);
+
+    const epsilon: f32 = 0.01;
+    const yellow_bg = RGBA{ 1.0, 1.0, 0.0, 1.0 };
+
+    const cell_0 = opt_buffer.get(0, 0) orelse unreachable;
+    try std.testing.expectEqual(@as(u32, '0'), cell_0.char);
+    const has_yellow_0 = @abs(cell_0.bg[0] - yellow_bg[0]) < epsilon and
+        @abs(cell_0.bg[1] - yellow_bg[1]) < epsilon and
+        @abs(cell_0.bg[2] - yellow_bg[2]) < epsilon;
+    try std.testing.expect(!has_yellow_0);
+
+    const cell_3 = opt_buffer.get(3, 0) orelse unreachable;
+    try std.testing.expectEqual(@as(u32, '.'), cell_3.char);
+    const has_yellow_3 = @abs(cell_3.bg[0] - yellow_bg[0]) < epsilon and
+        @abs(cell_3.bg[1] - yellow_bg[1]) < epsilon and
+        @abs(cell_3.bg[2] - yellow_bg[2]) < epsilon;
+    try std.testing.expect(has_yellow_3);
+
+    const cell_6 = opt_buffer.get(6, 0) orelse unreachable;
+    try std.testing.expectEqual(@as(u32, 'G'), cell_6.char);
+    const has_yellow_6 = @abs(cell_6.bg[0] - yellow_bg[0]) < epsilon and
+        @abs(cell_6.bg[1] - yellow_bg[1]) < epsilon and
+        @abs(cell_6.bg[2] - yellow_bg[2]) < epsilon;
+    try std.testing.expect(has_yellow_6);
+
+    const cell_8 = opt_buffer.get(8, 0) orelse unreachable;
+    try std.testing.expectEqual(@as(u32, 'I'), cell_8.char);
+    const has_yellow_8 = @abs(cell_8.bg[0] - yellow_bg[0]) < epsilon and
+        @abs(cell_8.bg[1] - yellow_bg[1]) < epsilon and
+        @abs(cell_8.bg[2] - yellow_bg[2]) < epsilon;
+    try std.testing.expect(has_yellow_8);
+
+    const cell_9 = opt_buffer.get(9, 0) orelse unreachable;
+    try std.testing.expectEqual(@as(u32, 'J'), cell_9.char);
+    const has_yellow_9 = @abs(cell_9.bg[0] - yellow_bg[0]) < epsilon and
+        @abs(cell_9.bg[1] - yellow_bg[1]) < epsilon and
+        @abs(cell_9.bg[2] - yellow_bg[2]) < epsilon;
+    try std.testing.expect(!has_yellow_9);
+}
+
+test "drawTextBuffer - truncation selection does not overshoot multiline" {
+    const pool = gp.initGlobalPool(std.testing.allocator);
+    defer gp.deinitGlobalPool();
+
+    var tb = try TextBuffer.init(std.testing.allocator, pool, .unicode);
+    defer tb.deinit();
+
+    var view = try TextBufferView.init(std.testing.allocator, tb);
+    defer view.deinit();
+
+    try tb.setText(
+        "abcdefghijABCDEFGHIJ\n" ++
+            "klmnopqrstKLMNOPQRST",
+    );
+
+    view.setWrapMode(.none);
+    view.setWrapWidth(null);
+    view.setTruncate(true);
+    view.setViewport(.{ .x = 0, .y = 0, .width = 10, .height = 2 });
+
+    // Select from line 1 col 2 through line 2 col 5 (exclusive)
+    view.setSelection(2, 26, RGBA{ 1.0, 1.0, 0.0, 1.0 }, RGBA{ 0.0, 0.0, 0.0, 1.0 });
+
+    var opt_buffer = try OptimizedBuffer.init(
+        std.testing.allocator,
+        10,
+        2,
+        .{ .pool = pool, .width_method = .unicode },
+    );
+    defer opt_buffer.deinit();
+
+    try opt_buffer.clear(.{ 0.0, 0.0, 0.0, 1.0 }, 32);
+    try opt_buffer.drawTextBuffer(view, 0, 0);
+
+    const epsilon: f32 = 0.01;
+    const yellow_bg = RGBA{ 1.0, 1.0, 0.0, 1.0 };
+
+    const line2_cell_0 = opt_buffer.get(0, 1) orelse unreachable;
+    try std.testing.expectEqual(@as(u32, 'k'), line2_cell_0.char);
+    const has_yellow_line2_0 = @abs(line2_cell_0.bg[0] - yellow_bg[0]) < epsilon and
+        @abs(line2_cell_0.bg[1] - yellow_bg[1]) < epsilon and
+        @abs(line2_cell_0.bg[2] - yellow_bg[2]) < epsilon;
+    try std.testing.expect(has_yellow_line2_0);
+
+    const line2_cell_2 = opt_buffer.get(2, 1) orelse unreachable;
+    try std.testing.expectEqual(@as(u32, 'm'), line2_cell_2.char);
+    const has_yellow_line2_2 = @abs(line2_cell_2.bg[0] - yellow_bg[0]) < epsilon and
+        @abs(line2_cell_2.bg[1] - yellow_bg[1]) < epsilon and
+        @abs(line2_cell_2.bg[2] - yellow_bg[2]) < epsilon;
+    try std.testing.expect(has_yellow_line2_2);
+
+    const line2_cell_6 = opt_buffer.get(6, 1) orelse unreachable;
+    try std.testing.expectEqual(@as(u32, 'Q'), line2_cell_6.char);
+    const has_yellow_line2_6 = @abs(line2_cell_6.bg[0] - yellow_bg[0]) < epsilon and
+        @abs(line2_cell_6.bg[1] - yellow_bg[1]) < epsilon and
+        @abs(line2_cell_6.bg[2] - yellow_bg[2]) < epsilon;
+    try std.testing.expect(!has_yellow_line2_6);
+}
+
 test "drawTextBuffer - Chinese text with wrapping no stray bytes" {
     const pool = gp.initGlobalPool(std.testing.allocator);
     defer gp.deinitGlobalPool();
@@ -2805,4 +3094,3 @@ test "drawTextBuffer - Thai ว่ grapheme in quotes occupies one cell" {
 
     try std.testing.expect(std.mem.indexOf(u8, result, "\"ว่\"") != null);
 }
-
