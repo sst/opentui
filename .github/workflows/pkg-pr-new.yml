@@ -53,7 +53,7 @@ jobs:
 
       - name: Publish preview packages
         run: |
-          npx pkg-pr-new publish --no-template \
+          npx pkg-pr-new publish --no-template --commentWithSha --bun \
             './packages/core/dist' \
             ${{ steps.native-packages.outputs.dirs }} \
             './packages/react/dist' \
