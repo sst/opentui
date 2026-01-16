@@ -766,6 +766,30 @@ export abstract class EditBufferRenderable extends Renderable implements LineInf
     return lineStart + colIndex
   }
 
+  /**
+   * Ensure the cursor is visible within the viewport during keyboard selection.
+   * Native code skips ensureCursorVisible when there's an active selection,
+   * but for keyboard-driven selection we want the viewport to follow the cursor.
+   */
+  protected ensureCursorVisibleForSelection(): void {
+    const viewport = this.editorView.getViewport()
+    const cursorRow = this.editBuffer.getCursorPosition().row
+    const totalLines = this.editorView.getTotalVirtualLineCount()
+    const marginLines = Math.max(1, Math.floor(viewport.height * this._scrollMargin))
+    const maxOffsetY = Math.max(0, totalLines - viewport.height)
+
+    let newOffsetY = viewport.offsetY
+    if (cursorRow < viewport.offsetY + marginLines) {
+      newOffsetY = Math.max(0, cursorRow - marginLines)
+    } else if (cursorRow >= viewport.offsetY + viewport.height - marginLines) {
+      newOffsetY = Math.min(maxOffsetY, cursorRow + marginLines - viewport.height + 1)
+    }
+
+    if (newOffsetY !== viewport.offsetY) {
+      this.editorView.setViewport(viewport.offsetX, newOffsetY, viewport.width, viewport.height, false)
+    }
+  }
+
   protected updateSelectionForMovement(shiftPressed: boolean, isBeforeMovement: boolean): void {
     if (!this.selectable) return
 
@@ -814,7 +838,13 @@ export abstract class EditBufferRenderable extends Renderable implements LineInf
         }
       }
     } else {
-      if (!this._selectionState) return
+      if (!this._selectionState) {
+        const visualCursor = this.editorView.getVisualCursor()
+        const cursorX = this.x + visualCursor.visualCol
+        const cursorY = this.y + visualCursor.visualRow
+        this._ctx.updateSelection(this, cursorX, cursorY)
+        return
+      }
 
       // Update the EditorView's native selection using logical buffer offsets.
       // This selection is authoritative for text extraction and highlighting.
@@ -833,9 +863,7 @@ export abstract class EditBufferRenderable extends Renderable implements LineInf
         const lineInfo = this.editorView.getLogicalLineInfo()
         const lineCount = lineInfo.lineStarts.length
         const textEndOffset =
-          lineCount === 0
-            ? 0
-            : lineInfo.lineStarts[lineCount - 1] + lineInfo.lineWidths[lineCount - 1]
+          lineCount === 0 ? 0 : lineInfo.lineStarts[lineCount - 1] + lineInfo.lineWidths[lineCount - 1]
         end = Math.min(end + 1, textEndOffset)
       }
 
@@ -846,6 +874,10 @@ export abstract class EditBufferRenderable extends Renderable implements LineInf
       }
 
       this.editorView.setSelection(start, end, this._selectionBg, this._selectionFg)
+
+      // For keyboard selection, ensure viewport scrolls to show the cursor.
+      // Native code skips ensureCursorVisible when selection is active, so we do it here.
+      this.ensureCursorVisibleForSelection()
 
       // Update the context's visual selection for UI coordination across renderables.
       // Adjust anchor position to compensate for viewport scrolling since selection started.

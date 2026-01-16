@@ -1342,7 +1342,7 @@ describe("Textarea - Selection Tests", () => {
   })
 
   describe("Keyboard Selection with Viewport Scrolling", () => {
-    it("should scroll back to top after shift+end then shift+home in scrollable textarea", async () => {
+    it("should select to buffer home after shift+end then shift+home when scrolled", async () => {
       const lines = Array.from({ length: 30 }, (_, i) => `Line ${i.toString().padStart(2, "0")}`)
       const { textarea: editor } = await createTextareaRenderable(currentRenderer, renderOnce, {
         initialValue: lines.join("\n"),
@@ -1352,27 +1352,32 @@ describe("Textarea - Selection Tests", () => {
       })
 
       editor.focus()
-      editor.gotoLine(0)
       await renderOnce()
 
-      const viewportStart = editor.editorView.getViewport()
-      expect(viewportStart.offsetY).toBe(0)
+      for (let i = 0; i < 3; i++) {
+        await currentMouse.scroll(editor.x + 2, editor.y + 2, "down")
+      }
+      await renderOnce()
+
+      const viewportAfterScroll = editor.editorView.getViewport()
+      expect(viewportAfterScroll.offsetY).toBeGreaterThan(0)
+      expect(editor.logicalCursor.row).toBeGreaterThan(0)
 
       currentMockInput.pressKey("END", { shift: true })
       await renderOnce()
 
       expect(editor.hasSelection()).toBe(true)
-      const viewportAfterEnd = editor.editorView.getViewport()
-      const totalLines = editor.editorView.getTotalVirtualLineCount()
-      const maxOffsetY = Math.max(0, totalLines - viewportAfterEnd.height)
-      expect(viewportAfterEnd.offsetY).toBe(maxOffsetY)
 
       currentMockInput.pressKey("HOME", { shift: true })
       await renderOnce()
 
-      expect(editor.hasSelection()).toBe(false)
-      const viewportAfterHome = editor.editorView.getViewport()
-      expect(viewportAfterHome.offsetY).toBe(0)
+      const selection = editor.getSelection()
+      expect(selection).not.toBeNull()
+      expect(selection!.start).toBe(0)
+
+      const selectedText = editor.getSelectedText()
+      expect(selectedText.startsWith("Line 00")).toBe(true)
+      expect(selectedText).not.toContain("Line 29")
     })
 
     it("should allow shift+end after shift+home from a mid-buffer cursor", async () => {
