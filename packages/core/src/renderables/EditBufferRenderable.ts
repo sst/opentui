@@ -69,13 +69,13 @@ export abstract class EditBufferRenderable extends Renderable implements LineInf
   // position.
   //
   // We track:
-  // - logicalAnchor: the buffer row/col where selection started (source of truth)
-  // - startViewport: viewport offset when selection started (to compute scroll delta)
-  // - startRelativeVisualAnchor: visual position relative to viewport (for UI updates)
-  private _selectionState: {
-    logicalAnchor: { row: number; col: number }
-    startViewport: { offsetX: number; offsetY: number }
-    startRelativeVisualAnchor: { col: number; row: number }
+  // - anchorPos: buffer row/col where selection started (source of truth)
+  // - anchorViewport: viewport offset when selection started (to compute scroll delta)
+  // - anchorVisual: visual position relative to viewport (for UI updates)
+  private _keyboardSelection: {
+    anchorPos: { row: number; col: number }
+    anchorViewport: { offsetX: number; offsetY: number }
+    anchorVisual: { col: number; row: number }
   } | null = null
 
   public readonly editBuffer: EditBuffer
@@ -449,9 +449,9 @@ export abstract class EditBufferRenderable extends Renderable implements LineInf
     let changed: boolean
     if (!localSelection?.isActive) {
       this.editorView.resetLocalSelection()
-      this._selectionState = null
+      this._keyboardSelection = null
       changed = true
-    } else if (this._selectionState) {
+    } else if (this._keyboardSelection) {
       changed = true
     } else if (selection?.isStart) {
       changed = this.editorView.setLocalSelection(
@@ -790,114 +790,112 @@ export abstract class EditBufferRenderable extends Renderable implements LineInf
     }
   }
 
+  private initKeyboardSelectionAnchor(): void {
+    if (this._keyboardSelection) return
+
+    const hasLocalSelection = this.editorView.hasSelection()
+    const visualCursor = this.editorView.getVisualCursor()
+
+    if (!this._ctx.hasSelection || !hasLocalSelection) {
+      const logicalCursor = this.editBuffer.getCursorPosition()
+      const viewport = this.editorView.getViewport()
+
+      this._keyboardSelection = {
+        anchorPos: { row: logicalCursor.row, col: logicalCursor.col },
+        anchorViewport: { offsetX: viewport.offsetX, offsetY: viewport.offsetY },
+        anchorVisual: { col: visualCursor.visualCol, row: visualCursor.visualRow },
+      }
+
+      this._ctx.startSelection(this, this.x + visualCursor.visualCol, this.y + visualCursor.visualRow)
+      return
+    }
+
+    const selection = this._ctx.getSelection()
+    const localSelection = selection ? convertGlobalToLocalSelection(selection, this.x, this.y) : null
+    if (!localSelection) return
+
+    const inBounds =
+      localSelection.anchorX >= 0 &&
+      localSelection.anchorX < this.width &&
+      localSelection.anchorY >= 0 &&
+      localSelection.anchorY < this.height
+    if (!inBounds) return
+
+    const anchorOffset = this.getOffsetFromViewportCoords(localSelection.anchorX, localSelection.anchorY)
+    const anchorPos = anchorOffset !== null ? this.editBuffer.offsetToPosition(anchorOffset) : null
+    if (!anchorPos) return
+
+    const viewport = this.editorView.getViewport()
+    this._keyboardSelection = {
+      anchorPos: { row: anchorPos.row, col: anchorPos.col },
+      anchorViewport: { offsetX: viewport.offsetX, offsetY: viewport.offsetY },
+      anchorVisual: { col: localSelection.anchorX, row: localSelection.anchorY },
+    }
+  }
+
+  private syncKeyboardSelection(): void {
+    if (!this._keyboardSelection) {
+      const visualCursor = this.editorView.getVisualCursor()
+      this._ctx.updateSelection(this, this.x + visualCursor.visualCol, this.y + visualCursor.visualRow)
+      return
+    }
+
+    const logicalFocus = this.editBuffer.getCursorPosition()
+    const anchorOffset = this.editBuffer.positionToOffset(
+      this._keyboardSelection.anchorPos.row,
+      this._keyboardSelection.anchorPos.col,
+    )
+    const focusOffset = this.editBuffer.positionToOffset(logicalFocus.row, logicalFocus.col)
+
+    const start = Math.min(anchorOffset, focusOffset)
+    let end = Math.max(anchorOffset, focusOffset)
+
+    if (focusOffset < anchorOffset) {
+      const lineInfo = this.editorView.getLogicalLineInfo()
+      const lineCount = lineInfo.lineStarts.length
+      const textEndOffset =
+        lineCount === 0 ? 0 : lineInfo.lineStarts[lineCount - 1] + lineInfo.lineWidths[lineCount - 1]
+      end = Math.min(end + 1, textEndOffset)
+    }
+
+    if (start === end) {
+      this._ctx.clearSelection()
+      this._keyboardSelection = null
+      return
+    }
+
+    this.editorView.setSelection(start, end, this._selectionBg, this._selectionFg)
+    this.ensureCursorVisibleForSelection()
+
+    const viewport = this.editorView.getViewport()
+    const deltaY = viewport.offsetY - this._keyboardSelection.anchorViewport.offsetY
+    const deltaX = viewport.offsetX - this._keyboardSelection.anchorViewport.offsetX
+
+    this._ctx
+      .getSelection()
+      ?.updateAnchor(
+        this.x + this._keyboardSelection.anchorVisual.col - deltaX,
+        this.y + this._keyboardSelection.anchorVisual.row - deltaY,
+      )
+
+    const focusVisual = this.editorView.getVisualCursor()
+    this._ctx.updateSelection(this, this.x + focusVisual.visualCol, this.y + focusVisual.visualRow)
+  }
+
   protected updateSelectionForMovement(shiftPressed: boolean, isBeforeMovement: boolean): void {
     if (!this.selectable) return
 
     if (!shiftPressed) {
       this._ctx.clearSelection()
-      this._selectionState = null
+      this._keyboardSelection = null
       return
     }
 
     if (isBeforeMovement) {
-      if (!this._selectionState) {
-        const hasLocalSelection = this.editorView.hasSelection()
-        if (!this._ctx.hasSelection || !hasLocalSelection) {
-          const visualCursor = this.editorView.getVisualCursor()
-          const logicalCursor = this.editBuffer.getCursorPosition()
-          const viewport = this.editorView.getViewport()
-          this._selectionState = {
-            logicalAnchor: { row: logicalCursor.row, col: logicalCursor.col },
-            startViewport: { offsetX: viewport.offsetX, offsetY: viewport.offsetY },
-            startRelativeVisualAnchor: { col: visualCursor.visualCol, row: visualCursor.visualRow },
-          }
-          const cursorX = this.x + visualCursor.visualCol
-          const cursorY = this.y + visualCursor.visualRow
-          this._ctx.startSelection(this, cursorX, cursorY)
-        } else {
-          const selection = this._ctx.getSelection()
-          const localSelection = selection ? convertGlobalToLocalSelection(selection, this.x, this.y) : null
-          if (
-            localSelection &&
-            localSelection.anchorX >= 0 &&
-            localSelection.anchorX < this.width &&
-            localSelection.anchorY >= 0 &&
-            localSelection.anchorY < this.height
-          ) {
-            const anchorOffset = this.getOffsetFromViewportCoords(localSelection.anchorX, localSelection.anchorY)
-            const anchorPos = anchorOffset !== null ? this.editBuffer.offsetToPosition(anchorOffset) : null
-            if (anchorPos) {
-              const viewport = this.editorView.getViewport()
-              this._selectionState = {
-                logicalAnchor: { row: anchorPos.row, col: anchorPos.col },
-                startViewport: { offsetX: viewport.offsetX, offsetY: viewport.offsetY },
-                startRelativeVisualAnchor: { col: localSelection.anchorX, row: localSelection.anchorY },
-              }
-            }
-          }
-        }
-      }
-    } else {
-      if (!this._selectionState) {
-        const visualCursor = this.editorView.getVisualCursor()
-        const cursorX = this.x + visualCursor.visualCol
-        const cursorY = this.y + visualCursor.visualRow
-        this._ctx.updateSelection(this, cursorX, cursorY)
-        return
-      }
-
-      // Update the EditorView's native selection using logical buffer offsets.
-      // This selection is authoritative for text extraction and highlighting.
-      const logicalFocus = this.editBuffer.getCursorPosition()
-      const anchorOffset = this.editBuffer.positionToOffset(
-        this._selectionState.logicalAnchor.row,
-        this._selectionState.logicalAnchor.col,
-      )
-      const focusOffset = this.editBuffer.positionToOffset(logicalFocus.row, logicalFocus.col)
-
-      const start = Math.min(anchorOffset, focusOffset)
-      let end = Math.max(anchorOffset, focusOffset)
-
-      // When selecting backwards, include the character at the anchor position.
-      if (focusOffset < anchorOffset) {
-        const lineInfo = this.editorView.getLogicalLineInfo()
-        const lineCount = lineInfo.lineStarts.length
-        const textEndOffset =
-          lineCount === 0 ? 0 : lineInfo.lineStarts[lineCount - 1] + lineInfo.lineWidths[lineCount - 1]
-        end = Math.min(end + 1, textEndOffset)
-      }
-
-      if (start === end) {
-        this._ctx.clearSelection()
-        this._selectionState = null
-        return
-      }
-
-      this.editorView.setSelection(start, end, this._selectionBg, this._selectionFg)
-
-      // For keyboard selection, ensure viewport scrolls to show the cursor.
-      // Native code skips ensureCursorVisible when selection is active, so we do it here.
-      this.ensureCursorVisibleForSelection()
-
-      // Update the context's visual selection for UI coordination across renderables.
-      // Adjust anchor position to compensate for viewport scrolling since selection started.
-      const currentViewport = this.editorView.getViewport()
-      const deltaY = currentViewport.offsetY - this._selectionState.startViewport.offsetY
-      const deltaX = currentViewport.offsetX - this._selectionState.startViewport.offsetX
-
-      const anchorVisualCol = this._selectionState.startRelativeVisualAnchor.col - deltaX
-      const anchorVisualRow = this._selectionState.startRelativeVisualAnchor.row - deltaY
-
-      const anchorX = this.x + anchorVisualCol
-      const anchorY = this.y + anchorVisualRow
-
-      this._ctx.getSelection()?.updateAnchor(anchorX, anchorY)
-
-      const focusVisual = this.editorView.getVisualCursor()
-      const focusX = this.x + focusVisual.visualCol
-      const focusY = this.y + focusVisual.visualRow
-
-      this._ctx.updateSelection(this, focusX, focusY)
+      this.initKeyboardSelectionAnchor()
+      return
     }
+
+    this.syncKeyboardSelection()
   }
 }
