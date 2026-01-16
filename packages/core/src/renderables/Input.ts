@@ -155,18 +155,6 @@ export class InputRenderable extends TextareaRenderable {
     return true
   }
 
-  /** @deprecated Use `cursorOffset` instead */
-  public get cursorPosition(): number {
-    return this.cursorOffset
-  }
-
-  /** @deprecated Use `cursorOffset` instead */
-  public set cursorPosition(position: number) {
-    const textLength = this.plainText.length
-    const newPosition = Math.max(0, Math.min(position, textLength))
-    this.cursorOffset = newPosition
-  }
-
   public override deleteCharBackward(): boolean {
     const result = super.deleteCharBackward()
     this.emit(InputRenderableEvents.INPUT, this.plainText)
