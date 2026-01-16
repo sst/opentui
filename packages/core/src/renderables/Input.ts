@@ -10,7 +10,7 @@ import {
 export type InputAction = TextareaAction
 export type InputKeyBinding = TextareaKeyBinding
 
-export interface InputRenderableOptions extends TextareaOptions {
+export interface InputRenderableOptions extends Omit<TextareaOptions, "height" | "minHeight" | "maxHeight"> {
   /** Input uses `value` instead of `initialValue` for the initial text */
   value?: string
   /** Maximum number of characters allowed */
@@ -58,7 +58,7 @@ export class InputRenderable extends TextareaRenderable {
       // Map 'value' to 'initialValue' for Textarea
       initialValue: options.value ?? defaults.value,
       // Single-line constraints
-      height: options.height ?? 1,
+      height: 1,
       wrapMode: "none",
       // Override return/linefeed to submit instead of newline
       keyBindings: [
@@ -121,7 +121,7 @@ export class InputRenderable extends TextareaRenderable {
     if (currentValue !== newValue) {
       this.setText(newValue)
       this.cursorOffset = newValue.length
-      this.emit(InputRenderableEvents.INPUT, this.plainText)
+      this.emit(InputRenderableEvents.INPUT, newValue)
     }
   }
 
