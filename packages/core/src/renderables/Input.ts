@@ -10,8 +10,9 @@ import {
 export type InputAction = TextareaAction
 export type InputKeyBinding = TextareaKeyBinding
 
-export interface InputRenderableOptions extends Omit<TextareaOptions, "height" | "minHeight" | "maxHeight"> {
-  /** Input uses `value` instead of `initialValue` for the initial text */
+export interface InputRenderableOptions
+  extends Omit<TextareaOptions, "height" | "minHeight" | "maxHeight" | "initialValue"> {
+  /** Initial text value (newlines are stripped) */
   value?: string
   /** Maximum number of characters allowed */
   maxLength?: number
@@ -52,11 +53,15 @@ export class InputRenderable extends TextareaRenderable {
 
   constructor(ctx: RenderContext, options: InputRenderableOptions) {
     const defaults = InputRenderable.defaultOptions
+    const maxLength = options.maxLength ?? defaults.maxLength
+    // Sanitize initial value: strip newlines and enforce maxLength
+    const rawValue = options.value ?? defaults.value
+    const initialValue = rawValue.replace(/[\n\r]/g, "").substring(0, maxLength)
+
     super(ctx, {
       ...options,
       placeholder: options.placeholder ?? defaults.placeholder,
-      // Map 'value' to 'initialValue' for Textarea
-      initialValue: options.value ?? defaults.value,
+      initialValue,
       // Single-line constraints
       height: 1,
       wrapMode: "none",
@@ -68,11 +73,10 @@ export class InputRenderable extends TextareaRenderable {
       ],
     })
 
-    this._maxLength = options.maxLength ?? defaults.maxLength
+    this._maxLength = maxLength
     this._lastCommittedValue = this.plainText
 
     // Set cursor to end of initial value
-    const initialValue = options.value ?? defaults.value
     if (initialValue) {
       this.cursorOffset = initialValue.length
     }
@@ -202,5 +206,9 @@ export class InputRenderable extends TextareaRenderable {
   public override get placeholder(): string {
     const p = super.placeholder
     return typeof p === "string" ? p : ""
+  }
+
+  public override set initialValue(value: string) {
+    void 0
   }
 }
