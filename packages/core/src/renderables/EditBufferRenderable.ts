@@ -802,6 +802,12 @@ export abstract class EditBufferRenderable extends Renderable implements LineInf
         end = Math.min(end + 1, textEndOffset)
       }
 
+      if (start === end) {
+        this._ctx.clearSelection()
+        this._selectionState = null
+        return
+      }
+
       this.editorView.setSelection(start, end, this._selectionBg, this._selectionFg)
 
       // Update the context's visual selection for UI coordination across renderables.

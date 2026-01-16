@@ -1320,6 +1320,39 @@ describe("Textarea - Selection Tests", () => {
   })
 
   describe("Keyboard Selection with Viewport Scrolling", () => {
+    it("should scroll back to top after shift+end then shift+home in scrollable textarea", async () => {
+      const lines = Array.from({ length: 30 }, (_, i) => `Line ${i.toString().padStart(2, "0")}`)
+      const { textarea: editor } = await createTextareaRenderable(currentRenderer, renderOnce, {
+        initialValue: lines.join("\n"),
+        width: 40,
+        height: 6,
+        selectable: true,
+      })
+
+      editor.focus()
+      editor.gotoLine(0)
+      await renderOnce()
+
+      const viewportStart = editor.editorView.getViewport()
+      expect(viewportStart.offsetY).toBe(0)
+
+      currentMockInput.pressKey("END", { shift: true })
+      await renderOnce()
+
+      expect(editor.hasSelection()).toBe(true)
+      const viewportAfterEnd = editor.editorView.getViewport()
+      const totalLines = editor.editorView.getTotalVirtualLineCount()
+      const maxOffsetY = Math.max(0, totalLines - viewportAfterEnd.height)
+      expect(viewportAfterEnd.offsetY).toBe(maxOffsetY)
+
+      currentMockInput.pressKey("HOME", { shift: true })
+      await renderOnce()
+
+      expect(editor.hasSelection()).toBe(false)
+      const viewportAfterHome = editor.editorView.getViewport()
+      expect(viewportAfterHome.offsetY).toBe(0)
+    })
+
     it("should select to buffer home with shift+super+up in scrollable textarea", async () => {
       // Create textarea with content taller than visible area
       const lines = Array.from({ length: 50 }, (_, i) => `Line ${i.toString().padStart(2, "0")}`)
