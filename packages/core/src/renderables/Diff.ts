@@ -256,10 +256,10 @@ export class DiffRenderable extends Renderable {
     this._disableWordHighlights = options.disableWordHighlights ?? false
     this._addedWordBg = options.addedWordBg
       ? parseColor(options.addedWordBg)
-      : this.brightenAndIncreaseOpacity(this._addedBg, 1.5, 0.15)
+      : this.brightenAndIncreaseOpacity(this._addedBg, 1.4, 0.1)
     this._removedWordBg = options.removedWordBg
       ? parseColor(options.removedWordBg)
-      : this.brightenAndIncreaseOpacity(this._removedBg, 1.5, 0.15)
+      : this.brightenAndIncreaseOpacity(this._removedBg, 1.4, 0.1)
 
     if (this._diff) {
       this.parseDiff()
