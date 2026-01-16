@@ -1,6 +1,6 @@
 # @opentui/react
 
-A React renderer for building terminal user interfaces using [OpenTUI core](https://github.com/sst/opentui). Create rich, interactive console applications with familiar React patterns and components.
+A React renderer for building terminal user interfaces using [OpenTUI core](https://github.com/anomalyco/opentui). Create rich, interactive console applications with familiar React patterns and components.
 
 ## Installation
 

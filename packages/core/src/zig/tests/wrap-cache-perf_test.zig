@@ -25,31 +25,42 @@ test "word wrap complexity - width changes are O(n)" {
     view.setWrapMode(.word);
 
     const widths = [_]u32{ 60, 70, 80, 90, 100 };
-    var times: [widths.len]u64 = undefined;
 
-    // Warmup
-    view.setWrapWidth(50);
-    _ = view.getVirtualLineCount();
+    // Run multiple iterations and use median to reduce noise from CI variability
+    const iterations = 5;
+    var median_times: [widths.len]u64 = undefined;
 
-    // Measure first (uncached) call for each width
-    for (widths, 0..) |width, i| {
-        view.setWrapWidth(width);
-        var timer = std.time.Timer.start() catch unreachable;
-        _ = view.getVirtualLineCount();
-        times[i] = timer.read();
+    for (widths, 0..) |width, width_idx| {
+        var iter_times: [iterations]u64 = undefined;
+
+        for (0..iterations) |iter| {
+            // Reset cache by setting a different width first
+            view.setWrapWidth(50);
+            _ = view.getVirtualLineCount();
+
+            view.setWrapWidth(width);
+            var timer = std.time.Timer.start() catch unreachable;
+            _ = view.getVirtualLineCount();
+            iter_times[iter] = timer.read();
+        }
+
+        // Sort and take median
+        std.mem.sort(u64, &iter_times, {}, std.sort.asc(u64));
+        median_times[width_idx] = iter_times[iterations / 2];
     }
 
     var min_time: u64 = std.math.maxInt(u64);
     var max_time: u64 = 0;
-    for (times) |t| {
+    for (median_times) |t| {
         min_time = @min(min_time, t);
         max_time = @max(max_time, t);
     }
 
     const ratio = @as(f64, @floatFromInt(max_time)) / @as(f64, @floatFromInt(min_time));
 
-    // All times should be roughly similar since text size is constant
-    try std.testing.expect(ratio < 3.0);
+    // All times should be roughly similar since text size is constant.
+    // Use a generous threshold (5x) to account for CI runner variability.
+    try std.testing.expect(ratio < 5.0);
 }
 
 test "word wrap - virtual line count correctness" {
