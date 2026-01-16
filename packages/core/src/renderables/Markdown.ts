@@ -410,7 +410,7 @@ export class MarkdownRenderable extends Renderable {
    */
   private updateTableRenderable(tableBox: Renderable, table: Tokens.Table, marginBottom: number): void {
     tableBox.marginBottom = marginBottom
-    const borderColor = this.getStyle("punctuation.special")?.fg ?? "#888888"
+    const borderColor = this.getStyle("conceal")?.fg ?? "#888888"
     const headingStyle = this.getStyle("markup.heading") || this.getStyle("default")
 
     const rowsToRender = this._streaming && table.rows.length > 0 ? table.rows.slice(0, -1) : table.rows
@@ -500,7 +500,7 @@ export class MarkdownRenderable extends Renderable {
       marginBottom,
     })
 
-    const borderColor = this.getStyle("punctuation.special")?.fg ?? "#888888"
+    const borderColor = this.getStyle("conceal")?.fg ?? "#888888"
 
     for (let col = 0; col < colCount; col++) {
       const isFirstCol = col === 0
