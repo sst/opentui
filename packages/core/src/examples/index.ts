@@ -9,6 +9,7 @@ import {
   SelectRenderable,
   SelectRenderableEvents,
   BoxRenderable,
+  TextareaRenderable,
   type SelectOption,
   type KeyEvent,
   ASCIIFontRenderable,
@@ -56,6 +57,12 @@ import * as sliderDemo from "./slider-demo"
 import * as terminalDemo from "./terminal"
 import * as diffDemo from "./diff-demo"
 import * as keypressDebugDemo from "./keypress-debug-demo"
+import * as linkDemo from "./link-demo"
+import * as extmarksDemo from "./extmarks-demo"
+import * as opacityExample from "./opacity-example"
+import * as scrollboxOverlayHitTest from "./scrollbox-overlay-hit-test"
+import * as scrollboxMouseTest from "./scrollbox-mouse-test"
+import * as textTruncationDemo from "./text-truncation-demo"
 import { setupCommonDemoKeys } from "./lib/standalone-keys"
 
 interface Example {
@@ -85,6 +92,12 @@ const examples: Example[] = [
     destroy: textSelectionExample.destroy,
   },
   {
+    name: "Text Truncation Demo",
+    description: "Middle truncation with ellipsis - toggle with 'T' key and resize to test responsive behavior",
+    run: textTruncationDemo.run,
+    destroy: textTruncationDemo.destroy,
+  },
+  {
     name: "ASCII Font Selection Demo",
     description: "Text selection with ASCII fonts - precise character-level selection across different font types",
     run: asciiFontSelectionExample.run,
@@ -107,6 +120,24 @@ const examples: Example[] = [
     description: "Template literals with styled text, colors, and formatting",
     run: styledTextExample.run,
     destroy: styledTextExample.destroy,
+  },
+  {
+    name: "Link Demo",
+    description: "Hyperlink support with OSC 8 - clickable links and link inheritance in styled text",
+    run: linkDemo.run,
+    destroy: linkDemo.destroy,
+  },
+  {
+    name: "Extmarks Demo",
+    description: "Virtual extmarks - text ranges that cursor jumps over, like inline tags and links",
+    run: extmarksDemo.run,
+    destroy: extmarksDemo.destroy,
+  },
+  {
+    name: "Opacity Demo",
+    description: "Box opacity and transparency effects with animated opacity transitions",
+    run: opacityExample.run,
+    destroy: opacityExample.destroy,
   },
   {
     name: "TextNode Demo",
@@ -224,6 +255,18 @@ const examples: Example[] = [
     destroy: stickyScrollExample.destroy,
   },
   {
+    name: "Scrollbox Mouse Test",
+    description: "Test scrollbox mouse hit detection with hover and click events",
+    run: scrollboxMouseTest.run,
+    destroy: scrollboxMouseTest.destroy,
+  },
+  {
+    name: "Scrollbox Overlay Hit Test",
+    description: "Test scrollbox hit detection with overlays and dialogs",
+    run: scrollboxOverlayHitTest.run,
+    destroy: scrollboxOverlayHitTest.destroy,
+  },
+  {
     name: "Shader Cube",
     description: "3D cube with custom shaders",
     run: shaderCubeExample.run,
@@ -326,16 +369,19 @@ class ExampleSelector {
   private currentExample: Example | null = null
   private inMenu = true
 
+  private menuContainer: BoxRenderable | null = null
   private title: FrameBufferRenderable | null = null
+  private filterBox: BoxRenderable | null = null
+  private filterInput: TextareaRenderable | null = null
   private instructions: TextRenderable | null = null
   private selectElement: SelectRenderable | null = null
   private selectBox: BoxRenderable | null = null
   private notImplementedText: TextRenderable | null = null
+  private allExamples: Example[] = examples
 
   constructor(renderer: CliRenderer) {
     this.renderer = renderer
-    this.createStaticElements()
-    this.createSelectElement()
+    this.createLayout()
     this.setupKeyboardHandling()
 
     this.renderer.on("resize", (width: number, height: number) => {
@@ -343,14 +389,26 @@ class ExampleSelector {
     })
   }
 
-  private createTitle(width: number, height: number): void {
+  private createLayout(): void {
+    const width = this.renderer.terminalWidth
+
+    // Menu container with column layout
+    this.menuContainer = new BoxRenderable(renderer, {
+      id: "example-menu-container",
+      flexDirection: "column",
+      width: "100%",
+      height: "100%",
+    })
+    this.renderer.root.add(this.menuContainer)
+
+    // Title
     const titleText = "OPENTUI EXAMPLES"
     const titleFont = "tiny"
     const { width: titleWidth } = measureText({ text: titleText, font: titleFont })
     const centerX = Math.floor(width / 2) - Math.floor(titleWidth / 2)
 
     this.title = new ASCIIFontRenderable(renderer, {
-      id: "title",
+      id: "example-index-title",
       left: centerX,
       margin: 1,
       text: titleText,
@@ -358,36 +416,47 @@ class ExampleSelector {
       color: RGBA.fromInts(240, 248, 255, 255),
       backgroundColor: RGBA.fromInts(15, 23, 42, 255),
     })
-    this.renderer.root.add(this.title)
-  }
+    this.menuContainer.add(this.title)
 
-  private createStaticElements(): void {
-    const width = this.renderer.terminalWidth
-    const height = this.renderer.terminalHeight
-
-    this.createTitle(width, height)
-
-    this.instructions = new TextRenderable(renderer, {
-      id: "instructions",
-      marginLeft: 2,
-      marginRight: 2,
-      content:
-        "Use ↑↓ or j/k to navigate, Shift+↑↓ or Shift+j/k for fast scroll, Enter to run, Escape to return, ` for console, ctrl+z to suspend/resume, ctrl+c to quit",
-      fg: "#94A3B8",
+    // Filter box with border (grows with content)
+    this.filterBox = new BoxRenderable(renderer, {
+      id: "example-index-filter-box",
+      marginLeft: 1,
+      marginRight: 1,
+      flexShrink: 0,
+      backgroundColor: "transparent",
+      border: true,
+      borderStyle: "single",
+      borderColor: "#475569",
     })
-    this.renderer.root.add(this.instructions)
-  }
+    this.menuContainer.add(this.filterBox)
 
-  private createSelectElement(): void {
-    const selectOptions: SelectOption[] = examples.map((example) => ({
-      name: example.name,
-      description: example.description,
-      value: example,
-    }))
+    // Filter input inside the box (transparent bg so box bg shows through)
+    this.filterInput = new TextareaRenderable(renderer, {
+      id: "example-index-filter-input",
+      width: "100%",
+      height: 1,
+      placeholder: "Filter examples by title...",
+      backgroundColor: "transparent",
+      focusedBackgroundColor: "transparent",
+      textColor: "#E2E8F0",
+      focusedTextColor: "#F8FAFC",
+      wrapMode: "none",
+      showCursor: true,
+      cursorColor: "#60A5FA",
+      onContentChange: () => {
+        this.filterExamples()
+      },
+    })
+    this.filterBox.add(this.filterInput)
+    this.filterInput.focus()
 
+    // Select box (grows to fill remaining space)
     this.selectBox = new BoxRenderable(renderer, {
       id: "example-selector-box",
-      margin: 1,
+      marginLeft: 1,
+      marginRight: 1,
+      marginBottom: 1,
       flexGrow: 1,
       borderStyle: "single",
       borderColor: "#475569",
@@ -398,6 +467,14 @@ class ExampleSelector {
       shouldFill: true,
       border: true,
     })
+    this.menuContainer.add(this.selectBox)
+
+    // Select element
+    const selectOptions: SelectOption[] = examples.map((example) => ({
+      name: example.name,
+      description: example.description,
+      value: example,
+    }))
 
     this.selectElement = new SelectRenderable(renderer, {
       id: "example-selector",
@@ -413,16 +490,49 @@ class ExampleSelector {
       showScrollIndicator: true,
       wrapSelection: true,
       showDescription: true,
-      fastScrollStep: 5, // Shift+K/J or Shift+Up/Down moves 5 items at once
+      fastScrollStep: 5,
     })
+    this.selectBox.add(this.selectElement)
 
     this.selectElement.on(SelectRenderableEvents.ITEM_SELECTED, (index: number, option: SelectOption) => {
       this.runSelected(option.value as Example)
     })
 
-    this.renderer.root.add(this.selectBox)
-    this.selectBox.add(this.selectElement)
-    this.selectElement.focus()
+    // Instructions at the bottom
+    this.instructions = new TextRenderable(renderer, {
+      id: "example-index-instructions",
+      height: 1,
+      flexShrink: 0,
+      alignSelf: "center",
+      content: "Type to filter | ↑↓/j/k navigate | Enter run | Esc clear/return | ctrl+c quit",
+      fg: "#94A3B8",
+    })
+    this.menuContainer.add(this.instructions)
+  }
+
+  private filterExamples(): void {
+    if (!this.filterInput || !this.selectElement) return
+
+    const filterText = this.filterInput.editBuffer.getText().toLowerCase().trim()
+
+    if (filterText === "") {
+      // Show all examples
+      const selectOptions: SelectOption[] = this.allExamples.map((example) => ({
+        name: example.name,
+        description: example.description,
+        value: example,
+      }))
+      this.selectElement.options = selectOptions
+    } else {
+      // Filter by title only
+      const filtered = this.allExamples.filter((example) => example.name.toLowerCase().includes(filterText))
+      const selectOptions: SelectOption[] = filtered.map((example) => ({
+        name: example.name,
+        description: example.description,
+        value: example,
+      }))
+      this.selectElement.options = selectOptions
+    }
   }
 
   private handleResize(width: number, height: number): void {
@@ -437,13 +547,62 @@ class ExampleSelector {
 
   private setupKeyboardHandling(): void {
     this.renderer.keyInput.on("keypress", (key: KeyEvent) => {
+      if (key.name === "c" && key.ctrl) {
+        this.cleanup()
+        return
+      }
+
       if (!this.inMenu) {
         switch (key.name) {
           case "escape":
             this.returnToMenu()
             break
         }
+        return
       }
+
+      // Forward navigation keys to select even when filter is focused
+      if (this.filterInput?.focused && this.selectElement) {
+        // Navigation keys: arrow up/down, j/k, shift variants
+        if (key.name === "up" || key.name === "k") {
+          key.preventDefault()
+          if (key.shift) {
+            this.selectElement.moveUp(5)
+          } else {
+            this.selectElement.moveUp(1)
+          }
+          return
+        }
+        if (key.name === "down" || key.name === "j") {
+          key.preventDefault()
+          if (key.shift) {
+            this.selectElement.moveDown(5)
+          } else {
+            this.selectElement.moveDown(1)
+          }
+          return
+        }
+        // Enter to select
+        if (key.name === "return" || key.name === "linefeed") {
+          key.preventDefault()
+          this.selectElement.selectCurrent()
+          return
+        }
+      }
+
+      // Handle Escape: clear filter if has content
+      if (key.name === "escape") {
+        if (this.filterInput) {
+          const filterText = this.filterInput.editBuffer.getText()
+          if (filterText.length > 0) {
+            key.preventDefault()
+            this.filterInput.editBuffer.setText("")
+            this.filterExamples()
+            return
+          }
+        }
+      }
+
       if (key.name === "c" && key.ctrl) {
         this.cleanup()
         return
@@ -492,10 +651,23 @@ class ExampleSelector {
   }
 
   private hideMenuElements(): void {
-    if (this.title) this.title.visible = false
-    if (this.instructions) this.instructions.visible = false
+    if (this.menuContainer) {
+      this.menuContainer.visible = false
+    }
+    if (this.title) {
+      this.title.visible = false
+    }
+    if (this.filterBox) {
+      this.filterBox.visible = false
+    }
     if (this.selectBox) {
       this.selectBox.visible = false
+    }
+    if (this.instructions) {
+      this.instructions.visible = false
+    }
+    if (this.filterInput) {
+      this.filterInput.blur()
     }
     if (this.selectElement) {
       this.selectElement.blur()
@@ -503,14 +675,28 @@ class ExampleSelector {
   }
 
   private showMenuElements(): void {
-    if (this.title) this.title.visible = true
-    if (this.instructions) this.instructions.visible = true
+    if (this.menuContainer) {
+      this.menuContainer.visible = true
+    }
+    if (this.title) {
+      this.title.visible = true
+    }
+    if (this.filterBox) {
+      this.filterBox.visible = true
+    }
     if (this.selectBox) {
       this.selectBox.visible = true
     }
-    if (this.selectElement) {
-      this.selectElement.focus()
+    if (this.instructions) {
+      this.instructions.visible = true
     }
+    if (this.filterInput) {
+      // Clear filter when returning to menu
+      this.filterInput.editBuffer.setText("")
+      this.filterInput.focus()
+    }
+    // Reset filter to show all examples
+    this.filterExamples()
   }
 
   private returnToMenu(): void {
@@ -540,8 +726,14 @@ class ExampleSelector {
     if (this.currentExample) {
       this.currentExample.destroy?.(this.renderer)
     }
+    if (this.filterInput) {
+      this.filterInput.blur()
+    }
     if (this.selectElement) {
       this.selectElement.blur()
+    }
+    if (this.menuContainer) {
+      this.menuContainer.destroy()
     }
     this.renderer.destroy()
   }

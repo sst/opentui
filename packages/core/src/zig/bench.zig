@@ -83,7 +83,6 @@ pub fn main() !void {
     _ = gp.initGlobalPool(allocator);
     defer gp.deinitGlobalPool();
 
-
     const benchmarks = [_]BenchModule{
         .{ .name = text_buffer_view_bench.benchName, .run = text_buffer_view_bench.run },
         .{ .name = edit_buffer_bench.benchName, .run = edit_buffer_bench.run },
@@ -112,7 +111,9 @@ pub fn main() !void {
                 filter = args[i];
             }
         } else if (std.mem.eql(u8, arg, "--help") or std.mem.eql(u8, arg, "-h")) {
-            const stdout = std.io.getStdOut().writer();
+            var stdout_buffer: [4096]u8 = undefined;
+            var stdout_writer = std.fs.File.stdout().writer(&stdout_buffer);
+            const stdout = &stdout_writer.interface;
             try stdout.print("Usage: bench [options]\n\n", .{});
             try stdout.print("Options:\n", .{});
             try stdout.print("  --mem              Show memory statistics\n", .{});
@@ -122,11 +123,14 @@ pub fn main() !void {
             for (benchmarks) |bench| {
                 try stdout.print("  - {s}\n", .{bench.name});
             }
+            try stdout.flush();
             return;
         }
     }
 
-    const stdout = std.io.getStdOut().writer();
+    var stdout_buffer: [4096]u8 = undefined;
+    var stdout_writer = std.fs.File.stdout().writer(&stdout_buffer);
+    const stdout = &stdout_writer.interface;
 
     if (filter) |f| {
         try stdout.print("Filtering benchmarks by: \"{s}\"\n", .{f});
@@ -137,13 +141,14 @@ pub fn main() !void {
     for (benchmarks) |bench| {
         if (matchesFilter(bench.name, filter)) {
             try stdout.print("\n=== {s} Benchmarks ===\n\n", .{bench.name});
+            try stdout.flush();
 
-            var arena = std.heap.ArenaAllocator.init(allocator);
-            defer arena.deinit();
-            const arena_allocator = arena.allocator();
+            // Use arena for results only - benchmark modules manage their own temp memory
+            var results_arena = std.heap.ArenaAllocator.init(allocator);
+            defer results_arena.deinit();
 
             const start_time = std.time.nanoTimestamp();
-            const results = try bench.run(arena_allocator, show_mem);
+            const results = try bench.run(results_arena.allocator(), show_mem);
             const end_time = std.time.nanoTimestamp();
             const elapsed_ns = end_time - start_time;
 
@@ -159,8 +164,10 @@ pub fn main() !void {
     if (!ran_any) {
         try stdout.print("\nNo benchmarks matched filter: \"{s}\"\n", .{filter.?});
         try stdout.print("Use --help to see available benchmarks.\n", .{});
+        try stdout.flush();
         return;
     }
 
     try stdout.print("\n✓ Benchmarks complete\n", .{});
+    try stdout.flush();
 }
