@@ -61,6 +61,7 @@ export abstract class EditBufferRenderable extends Renderable implements LineInf
   private _autoScrollVelocity: number = 0
   private _autoScrollAccumulator: number = 0
   private _scrollSpeed: number = 16
+  private _keyboardSelectionActive: boolean = false
 
   public readonly editBuffer: EditBuffer
   public readonly editorView: EditorView
@@ -429,10 +430,11 @@ export abstract class EditBufferRenderable extends Renderable implements LineInf
     this.lastLocalSelection = localSelection
 
     const updateCursor = true
-    const followCursor = selection?.isSelecting ?? false
+    const followCursor = this._keyboardSelectionActive
 
     let changed: boolean
     if (!localSelection?.isActive) {
+      this._keyboardSelectionActive = false
       this.editorView.resetLocalSelection()
       changed = true
     } else if (selection?.isStart) {
@@ -472,6 +474,7 @@ export abstract class EditBufferRenderable extends Renderable implements LineInf
         this._autoScrollVelocity = 0
       }
     } else {
+      this._keyboardSelectionActive = false
       this._autoScrollVelocity = 0
       this._autoScrollAccumulator = 0
     }
@@ -740,9 +743,12 @@ export abstract class EditBufferRenderable extends Renderable implements LineInf
     if (!this.selectable) return
 
     if (!shiftPressed) {
+      this._keyboardSelectionActive = false
       this._ctx.clearSelection()
       return
     }
+
+    this._keyboardSelectionActive = true
 
     const visualCursor = this.editorView.getVisualCursor()
     const cursorX = this.x + visualCursor.visualCol
