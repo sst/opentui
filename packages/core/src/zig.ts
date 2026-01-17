@@ -864,7 +864,7 @@ function getOpenTUILib(libPath?: string) {
       returns: "u64",
     },
     editorViewSetLocalSelection: {
-      args: ["ptr", "i32", "i32", "i32", "i32", "ptr", "ptr", "bool"],
+      args: ["ptr", "i32", "i32", "i32", "i32", "ptr", "ptr", "bool", "bool"],
       returns: "bool",
     },
     editorViewUpdateSelection: {
@@ -872,7 +872,7 @@ function getOpenTUILib(libPath?: string) {
       returns: "void",
     },
     editorViewUpdateLocalSelection: {
-      args: ["ptr", "i32", "i32", "i32", "i32", "ptr", "ptr", "bool"],
+      args: ["ptr", "i32", "i32", "i32", "i32", "ptr", "ptr", "bool", "bool"],
       returns: "bool",
     },
     editorViewResetLocalSelection: {
@@ -1575,7 +1575,9 @@ export interface RenderLib {
     bgColor: RGBA | null,
     fgColor: RGBA | null,
     updateCursor: boolean,
+    followCursor: boolean,
   ) => boolean
+
   editorViewUpdateSelection: (view: Pointer, end: number, bgColor: RGBA | null, fgColor: RGBA | null) => void
   editorViewUpdateLocalSelection: (
     view: Pointer,
@@ -1586,7 +1588,9 @@ export interface RenderLib {
     bgColor: RGBA | null,
     fgColor: RGBA | null,
     updateCursor: boolean,
+    followCursor: boolean,
   ) => boolean
+
   editorViewResetLocalSelection: (view: Pointer) => void
   editorViewGetSelectedTextBytes: (view: Pointer, maxLength: number) => Uint8Array | null
   editorViewGetCursor: (view: Pointer) => { row: number; col: number }
@@ -3088,6 +3092,7 @@ class FFIRenderLib implements RenderLib {
     bgColor: RGBA | null,
     fgColor: RGBA | null,
     updateCursor: boolean,
+    followCursor: boolean,
   ): boolean {
     const bg = bgColor ? bgColor.buffer : null
     const fg = fgColor ? fgColor.buffer : null
@@ -3100,6 +3105,7 @@ class FFIRenderLib implements RenderLib {
       bg,
       fg,
       updateCursor,
+      followCursor,
     )
   }
 
@@ -3118,6 +3124,7 @@ class FFIRenderLib implements RenderLib {
     bgColor: RGBA | null,
     fgColor: RGBA | null,
     updateCursor: boolean,
+    followCursor: boolean,
   ): boolean {
     const bg = bgColor ? bgColor.buffer : null
     const fg = fgColor ? fgColor.buffer : null
@@ -3130,6 +3137,7 @@ class FFIRenderLib implements RenderLib {
       bg,
       fg,
       updateCursor,
+      followCursor,
     )
   }
 
