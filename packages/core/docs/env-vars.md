@@ -37,6 +37,13 @@ Enable debug logging for the FFI bindings.
 **Type:** `boolean`  
 **Default:** `false`
 
+## OTUI_SHOW_STATS
+
+Show the debug overlay at startup.
+
+**Type:** `boolean`  
+**Default:** `false`
+
 ## OTUI_TRACE_FFI
 
 Enable tracing for the FFI bindings.
