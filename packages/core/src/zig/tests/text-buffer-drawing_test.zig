@@ -273,6 +273,48 @@ test "drawTextBuffer - wrapping preserves wide characters" {
     try std.testing.expect(virtual_lines.len > 1);
 }
 
+test "drawTextBuffer - word wrap does not split multi-byte UTF-8 characters" {
+    const pool = gp.initGlobalPool(std.testing.allocator);
+    defer gp.deinitGlobalPool();
+
+    var tb = try TextBuffer.init(std.testing.allocator, pool, .unicode);
+    defer tb.deinit();
+
+    var view = try TextBufferView.init(std.testing.allocator, tb);
+    defer view.deinit();
+
+    try tb.setText("🌟 Unicode test: こんにちは世界 Hello World 你好世界");
+    view.setWrapMode(.word);
+    view.setWrapWidth(35);
+    view.updateVirtualLines();
+
+    const vlines = view.getVirtualLines();
+
+    for (vlines) |vline| {
+        var line_buffer: [200]u8 = undefined;
+        const line_start_offset = vline.char_offset;
+        const line_end_offset = line_start_offset + vline.width;
+        const extracted = tb.getTextRange(line_start_offset, line_end_offset, &line_buffer);
+
+        const is_valid_utf8 = std.unicode.utf8ValidateSlice(line_buffer[0..extracted]);
+        try std.testing.expect(is_valid_utf8);
+    }
+
+    try std.testing.expect(vlines.len == 2);
+
+    var full_buffer: [200]u8 = undefined;
+    const line0_len = tb.getTextRange(vlines[0].char_offset, vlines[0].char_offset + vlines[0].width, &full_buffer);
+    const line0_text = full_buffer[0..line0_len];
+
+    const line1_len = tb.getTextRange(vlines[1].char_offset, vlines[1].char_offset + vlines[1].width, &full_buffer);
+    const line1_text = full_buffer[0..line1_len];
+
+    const line0_ends_with_kai = std.mem.endsWith(u8, line0_text, "界");
+    const line1_starts_with_kai = std.mem.startsWith(u8, line1_text, "界");
+
+    try std.testing.expect(!(line0_ends_with_kai and line1_starts_with_kai));
+}
+
 test "drawTextBuffer - wrapped text with offset position" {
     const pool = gp.initGlobalPool(std.testing.allocator);
     defer gp.deinitGlobalPool();
@@ -2310,7 +2352,6 @@ test "drawTextBuffer - setStyledText with multiple colors and horizontal scrolli
         try opt_buffer.clear(.{ 0.0, 0.0, 0.0, 1.0 }, 32);
         try opt_buffer.drawTextBuffer(view, 0, 0);
 
-
         // At x=5, showing chars 5-24: " x = function(y) { "
         // Position 0: ' ' (source 5) - should be white
         // Position 5: 'f' (source 10) - should be GREEN
@@ -2331,7 +2372,6 @@ test "drawTextBuffer - setStyledText with multiple colors and horizontal scrolli
 
         try opt_buffer.clear(.{ 0.0, 0.0, 0.0, 1.0 }, 32);
         try opt_buffer.drawTextBuffer(view, 0, 0);
-
 
         // At x=15, showing chars 15-34: "ion(y) { return y * "
         // "const x = function..."
@@ -2370,7 +2410,6 @@ test "drawTextBuffer - setStyledText with multiple colors and horizontal scrolli
 
         try opt_buffer.clear(.{ 0.0, 0.0, 0.0, 1.0 }, 32);
         try opt_buffer.drawTextBuffer(view, 0, 0);
-
 
         // At x=25, showing chars 25-44: "eturn y * 2; }"
         // Position 0: 'e' (source 25) - should be BLUE (part of "return" 24-30)
@@ -2490,6 +2529,253 @@ test "drawTextBuffer - selection with horizontal viewport offset" {
         @abs(cell_7.bg[1] - yellow_bg[1]) < epsilon and
         @abs(cell_7.bg[2] - yellow_bg[2]) < epsilon;
     try std.testing.expect(!has_yellow_7);
+}
+
+test "drawTextBuffer - syntax highlight respects truncation" {
+    const pool = gp.initGlobalPool(std.testing.allocator);
+    defer gp.deinitGlobalPool();
+
+    var tb = try TextBuffer.init(std.testing.allocator, pool, .unicode);
+    defer tb.deinit();
+
+    var view = try TextBufferView.init(std.testing.allocator, tb);
+    defer view.deinit();
+
+    const style = try ss.SyntaxStyle.init(std.testing.allocator);
+    defer style.deinit();
+    tb.setSyntaxStyle(style);
+
+    const red_style = try style.registerStyle("red", RGBA{ 1.0, 0.0, 0.0, 1.0 }, null, 0);
+    const green_style = try style.registerStyle("green", RGBA{ 0.0, 1.0, 0.0, 1.0 }, null, 0);
+
+    try tb.setText("0123456789ABCDEFGHIJ");
+    try tb.addHighlightByCharRange(4, 7, red_style, 1, 0); // highlight "456"
+    try tb.addHighlightByCharRange(16, 20, green_style, 1, 0); // highlight "GHIJ"
+
+    view.setWrapMode(.none);
+    view.setWrapWidth(null);
+    view.setTruncate(true);
+    view.setViewport(.{ .x = 0, .y = 0, .width = 10, .height = 1 });
+
+    var opt_buffer = try OptimizedBuffer.init(
+        std.testing.allocator,
+        10,
+        1,
+        .{ .pool = pool, .width_method = .unicode },
+    );
+    defer opt_buffer.deinit();
+
+    try opt_buffer.clear(.{ 0.0, 0.0, 0.0, 1.0 }, 32);
+    try opt_buffer.drawTextBuffer(view, 0, 0);
+
+    const epsilon: f32 = 0.01;
+
+    const prefix_cell = opt_buffer.get(1, 0) orelse unreachable;
+    try std.testing.expectEqual(@as(u32, '1'), prefix_cell.char);
+    try std.testing.expect(@abs(prefix_cell.fg[0] - 1.0) < epsilon);
+    try std.testing.expect(@abs(prefix_cell.fg[1] - 1.0) < epsilon);
+    try std.testing.expect(@abs(prefix_cell.fg[2] - 1.0) < epsilon);
+
+    const ellipsis_cell = opt_buffer.get(3, 0) orelse unreachable;
+    try std.testing.expectEqual(@as(u32, '.'), ellipsis_cell.char);
+    try std.testing.expect(@abs(ellipsis_cell.fg[0] - 1.0) < epsilon);
+    try std.testing.expect(@abs(ellipsis_cell.fg[1] - 1.0) < epsilon);
+    try std.testing.expect(@abs(ellipsis_cell.fg[2] - 1.0) < epsilon);
+
+    const suffix_cell = opt_buffer.get(6, 0) orelse unreachable;
+    try std.testing.expectEqual(@as(u32, 'G'), suffix_cell.char);
+    try std.testing.expect(@abs(suffix_cell.fg[0] - 0.0) < epsilon);
+    try std.testing.expect(@abs(suffix_cell.fg[1] - 1.0) < epsilon);
+    try std.testing.expect(@abs(suffix_cell.fg[2] - 0.0) < epsilon);
+}
+
+test "drawTextBuffer - highlight spanning ellipsis continues on suffix" {
+    const pool = gp.initGlobalPool(std.testing.allocator);
+    defer gp.deinitGlobalPool();
+
+    var tb = try TextBuffer.init(std.testing.allocator, pool, .unicode);
+    defer tb.deinit();
+
+    var view = try TextBufferView.init(std.testing.allocator, tb);
+    defer view.deinit();
+
+    const style = try ss.SyntaxStyle.init(std.testing.allocator);
+    defer style.deinit();
+    tb.setSyntaxStyle(style);
+
+    const magenta_style = try style.registerStyle("magenta", RGBA{ 1.0, 0.0, 1.0, 1.0 }, null, 0);
+    const green_style = try style.registerStyle("green", RGBA{ 0.0, 1.0, 0.0, 1.0 }, null, 0);
+
+    try tb.setText("0123456789ABCDEFGHIJ");
+    try tb.addHighlightByCharRange(2, 18, magenta_style, 1, 0); // spans through ellipsis
+    try tb.addHighlightByCharRange(18, 20, green_style, 2, 0); // suffix highlight
+
+    view.setWrapMode(.none);
+    view.setWrapWidth(null);
+    view.setTruncate(true);
+    view.setViewport(.{ .x = 0, .y = 0, .width = 10, .height = 1 });
+
+    var opt_buffer = try OptimizedBuffer.init(
+        std.testing.allocator,
+        10,
+        1,
+        .{ .pool = pool, .width_method = .unicode },
+    );
+    defer opt_buffer.deinit();
+
+    try opt_buffer.clear(.{ 0.0, 0.0, 0.0, 1.0 }, 32);
+    try opt_buffer.drawTextBuffer(view, 0, 0);
+
+    const epsilon: f32 = 0.01;
+
+    const ellipsis_cell = opt_buffer.get(3, 0) orelse unreachable;
+    try std.testing.expectEqual(@as(u32, '.'), ellipsis_cell.char);
+    try std.testing.expect(@abs(ellipsis_cell.fg[0] - 1.0) < epsilon);
+    try std.testing.expect(@abs(ellipsis_cell.fg[1] - 1.0) < epsilon);
+    try std.testing.expect(@abs(ellipsis_cell.fg[2] - 1.0) < epsilon);
+
+    const suffix_magenta = opt_buffer.get(6, 0) orelse unreachable;
+    try std.testing.expectEqual(@as(u32, 'G'), suffix_magenta.char);
+    try std.testing.expect(@abs(suffix_magenta.fg[0] - 1.0) < epsilon);
+    try std.testing.expect(@abs(suffix_magenta.fg[1] - 0.0) < epsilon);
+    try std.testing.expect(@abs(suffix_magenta.fg[2] - 1.0) < epsilon);
+
+    const suffix_green = opt_buffer.get(8, 0) orelse unreachable;
+    try std.testing.expectEqual(@as(u32, 'I'), suffix_green.char);
+    try std.testing.expect(@abs(suffix_green.fg[0] - 0.0) < epsilon);
+    try std.testing.expect(@abs(suffix_green.fg[1] - 1.0) < epsilon);
+    try std.testing.expect(@abs(suffix_green.fg[2] - 0.0) < epsilon);
+}
+
+test "drawTextBuffer - selection respects truncation" {
+    const pool = gp.initGlobalPool(std.testing.allocator);
+    defer gp.deinitGlobalPool();
+
+    var tb = try TextBuffer.init(std.testing.allocator, pool, .unicode);
+    defer tb.deinit();
+
+    var view = try TextBufferView.init(std.testing.allocator, tb);
+    defer view.deinit();
+
+    // Text: "0123456789ABCDEFGHIJ" (len 20)
+    // With width 10, truncation should render: "012...GHIJ"
+    try tb.setText("0123456789ABCDEFGHIJ");
+
+    view.setWrapMode(.none);
+    view.setWrapWidth(null);
+    view.setTruncate(true);
+    view.setViewport(.{ .x = 0, .y = 0, .width = 10, .height = 1 });
+
+    // Select across the ellipsis and suffix
+    view.setSelection(2, 19, RGBA{ 1.0, 1.0, 0.0, 1.0 }, RGBA{ 0.0, 0.0, 0.0, 1.0 });
+
+    var opt_buffer = try OptimizedBuffer.init(
+        std.testing.allocator,
+        10,
+        1,
+        .{ .pool = pool, .width_method = .unicode },
+    );
+    defer opt_buffer.deinit();
+
+    try opt_buffer.clear(.{ 0.0, 0.0, 0.0, 1.0 }, 32);
+    try opt_buffer.drawTextBuffer(view, 0, 0);
+
+    const epsilon: f32 = 0.01;
+    const yellow_bg = RGBA{ 1.0, 1.0, 0.0, 1.0 };
+
+    const cell_0 = opt_buffer.get(0, 0) orelse unreachable;
+    try std.testing.expectEqual(@as(u32, '0'), cell_0.char);
+    const has_yellow_0 = @abs(cell_0.bg[0] - yellow_bg[0]) < epsilon and
+        @abs(cell_0.bg[1] - yellow_bg[1]) < epsilon and
+        @abs(cell_0.bg[2] - yellow_bg[2]) < epsilon;
+    try std.testing.expect(!has_yellow_0);
+
+    const cell_3 = opt_buffer.get(3, 0) orelse unreachable;
+    try std.testing.expectEqual(@as(u32, '.'), cell_3.char);
+    const has_yellow_3 = @abs(cell_3.bg[0] - yellow_bg[0]) < epsilon and
+        @abs(cell_3.bg[1] - yellow_bg[1]) < epsilon and
+        @abs(cell_3.bg[2] - yellow_bg[2]) < epsilon;
+    try std.testing.expect(has_yellow_3);
+
+    const cell_6 = opt_buffer.get(6, 0) orelse unreachable;
+    try std.testing.expectEqual(@as(u32, 'G'), cell_6.char);
+    const has_yellow_6 = @abs(cell_6.bg[0] - yellow_bg[0]) < epsilon and
+        @abs(cell_6.bg[1] - yellow_bg[1]) < epsilon and
+        @abs(cell_6.bg[2] - yellow_bg[2]) < epsilon;
+    try std.testing.expect(has_yellow_6);
+
+    const cell_8 = opt_buffer.get(8, 0) orelse unreachable;
+    try std.testing.expectEqual(@as(u32, 'I'), cell_8.char);
+    const has_yellow_8 = @abs(cell_8.bg[0] - yellow_bg[0]) < epsilon and
+        @abs(cell_8.bg[1] - yellow_bg[1]) < epsilon and
+        @abs(cell_8.bg[2] - yellow_bg[2]) < epsilon;
+    try std.testing.expect(has_yellow_8);
+
+    const cell_9 = opt_buffer.get(9, 0) orelse unreachable;
+    try std.testing.expectEqual(@as(u32, 'J'), cell_9.char);
+    const has_yellow_9 = @abs(cell_9.bg[0] - yellow_bg[0]) < epsilon and
+        @abs(cell_9.bg[1] - yellow_bg[1]) < epsilon and
+        @abs(cell_9.bg[2] - yellow_bg[2]) < epsilon;
+    try std.testing.expect(!has_yellow_9);
+}
+
+test "drawTextBuffer - truncation selection does not overshoot multiline" {
+    const pool = gp.initGlobalPool(std.testing.allocator);
+    defer gp.deinitGlobalPool();
+
+    var tb = try TextBuffer.init(std.testing.allocator, pool, .unicode);
+    defer tb.deinit();
+
+    var view = try TextBufferView.init(std.testing.allocator, tb);
+    defer view.deinit();
+
+    try tb.setText(
+        "abcdefghijABCDEFGHIJ\n" ++
+            "klmnopqrstKLMNOPQRST",
+    );
+
+    view.setWrapMode(.none);
+    view.setWrapWidth(null);
+    view.setTruncate(true);
+    view.setViewport(.{ .x = 0, .y = 0, .width = 10, .height = 2 });
+
+    // Select from line 1 col 2 through line 2 col 5 (exclusive)
+    view.setSelection(2, 26, RGBA{ 1.0, 1.0, 0.0, 1.0 }, RGBA{ 0.0, 0.0, 0.0, 1.0 });
+
+    var opt_buffer = try OptimizedBuffer.init(
+        std.testing.allocator,
+        10,
+        2,
+        .{ .pool = pool, .width_method = .unicode },
+    );
+    defer opt_buffer.deinit();
+
+    try opt_buffer.clear(.{ 0.0, 0.0, 0.0, 1.0 }, 32);
+    try opt_buffer.drawTextBuffer(view, 0, 0);
+
+    const epsilon: f32 = 0.01;
+    const yellow_bg = RGBA{ 1.0, 1.0, 0.0, 1.0 };
+
+    const line2_cell_0 = opt_buffer.get(0, 1) orelse unreachable;
+    try std.testing.expectEqual(@as(u32, 'k'), line2_cell_0.char);
+    const has_yellow_line2_0 = @abs(line2_cell_0.bg[0] - yellow_bg[0]) < epsilon and
+        @abs(line2_cell_0.bg[1] - yellow_bg[1]) < epsilon and
+        @abs(line2_cell_0.bg[2] - yellow_bg[2]) < epsilon;
+    try std.testing.expect(has_yellow_line2_0);
+
+    const line2_cell_2 = opt_buffer.get(2, 1) orelse unreachable;
+    try std.testing.expectEqual(@as(u32, 'm'), line2_cell_2.char);
+    const has_yellow_line2_2 = @abs(line2_cell_2.bg[0] - yellow_bg[0]) < epsilon and
+        @abs(line2_cell_2.bg[1] - yellow_bg[1]) < epsilon and
+        @abs(line2_cell_2.bg[2] - yellow_bg[2]) < epsilon;
+    try std.testing.expect(has_yellow_line2_2);
+
+    const line2_cell_6 = opt_buffer.get(6, 1) orelse unreachable;
+    try std.testing.expectEqual(@as(u32, 'Q'), line2_cell_6.char);
+    const has_yellow_line2_6 = @abs(line2_cell_6.bg[0] - yellow_bg[0]) < epsilon and
+        @abs(line2_cell_6.bg[1] - yellow_bg[1]) < epsilon and
+        @abs(line2_cell_6.bg[2] - yellow_bg[2]) < epsilon;
+    try std.testing.expect(!has_yellow_line2_6);
 }
 
 test "drawTextBuffer - Chinese text with wrapping no stray bytes" {
@@ -2766,424 +3052,45 @@ test "drawTextBuffer - word wrap CJK text preserves UTF-8 boundaries" {
     }
 }
 
-test "drawTextBuffer - wcwidth mode does not render ZWJ or VS16 as characters" {
+test "drawTextBuffer - Thai ว่ grapheme in quotes occupies one cell" {
     const pool = gp.initGlobalPool(std.testing.allocator);
     defer gp.deinitGlobalPool();
 
-    var tb = try TextBuffer.init(std.testing.allocator, pool, .wcwidth);
+    var tb = try TextBuffer.init(std.testing.allocator, pool, .unicode);
     defer tb.deinit();
 
     var view = try TextBufferView.init(std.testing.allocator, tb);
     defer view.deinit();
 
-    // Test comprehensive emoji with ZWJ and variation selectors
-    const test_string = "👩🏽‍💻  👨‍👩‍👧‍👦  🏳️‍🌈  🇺🇸  🇩🇪  🇯🇵  🇮🇳";
-    try tb.setText(test_string);
+    try tb.setText("\"ว่\"");
 
     var opt_buffer = try OptimizedBuffer.init(
         std.testing.allocator,
-        50,
-        5,
-        .{ .pool = pool, .width_method = .wcwidth },
+        10,
+        1,
+        .{ .pool = pool, .width_method = .unicode },
     );
     defer opt_buffer.deinit();
 
     try opt_buffer.clear(.{ 0.0, 0.0, 0.0, 1.0 }, 32);
     try opt_buffer.drawTextBuffer(view, 0, 0);
 
-    // Verify the raw bytes contain ZWJ
-    var text_buf: [200]u8 = undefined;
-    const text_len = tb.getPlainTextIntoBuffer(&text_buf);
-    const text_bytes = text_buf[0..text_len];
-
-    // Check that ZWJ (0xE2 0x80 0x8D) is in the original text
-    var has_zwj = false;
-    var zwj_count: u32 = 0;
-    var i: usize = 0;
-    while (i + 2 < text_len) : (i += 1) {
-        if (text_bytes[i] == 0xE2 and text_bytes[i + 1] == 0x80 and text_bytes[i + 2] == 0x8D) {
-            has_zwj = true;
-            zwj_count += 1;
-        }
-    }
-    try std.testing.expect(has_zwj);
-    try std.testing.expect(zwj_count >= 5); // Should have multiple ZWJs
-
-    // Now check the rendered buffer - ZWJ should NOT appear as rendered characters
-    var render_buf: [500]u8 = undefined;
-    const render_len = try opt_buffer.writeResolvedChars(&render_buf, false);
-    _ = render_len;
-
-    // Check positions where we expect actual characters
-    // Woman technologist: 👩🏽‍💻
-    // Expected positions in wcwidth mode:
-    // Col 0-1: 👩 (woman, width 2)
-    // Col 2-3: 🏽 (skin tone, width 2)
-    // ZWJ should be SKIPPED in rendering (not take a cell)
-    // Col 4-5: 💻 (laptop, width 2)
-    // Col 6-7: spaces
-
     const cell_0 = opt_buffer.get(0, 0) orelse unreachable;
-    try std.testing.expect(gp.isGraphemeChar(cell_0.char));
-
-    // Get the actual bytes for this grapheme
-    const gid_0 = gp.graphemeIdFromChar(cell_0.char);
-    const grapheme_bytes_0 = pool.get(gid_0) catch unreachable;
-
-    // Woman emoji should be F0 9F 91 A9 (4 bytes)
-    try std.testing.expectEqual(@as(usize, 4), grapheme_bytes_0.len);
-    try std.testing.expectEqual(@as(u8, 0xF0), grapheme_bytes_0[0]);
-    try std.testing.expectEqual(@as(u8, 0x9F), grapheme_bytes_0[1]);
-    try std.testing.expectEqual(@as(u8, 0x91), grapheme_bytes_0[2]);
-    try std.testing.expectEqual(@as(u8, 0xA9), grapheme_bytes_0[3]);
+    try std.testing.expectEqual(@as(u32, '"'), cell_0.char);
 
     const cell_1 = opt_buffer.get(1, 0) orelse unreachable;
-    try std.testing.expect(gp.isContinuationChar(cell_1.char));
+    try std.testing.expect(cell_1.char != ' ');
+    try std.testing.expect(cell_1.char != '"');
 
     const cell_2 = opt_buffer.get(2, 0) orelse unreachable;
-    try std.testing.expect(gp.isGraphemeChar(cell_2.char));
-
-    const gid_2 = gp.graphemeIdFromChar(cell_2.char);
-    const grapheme_bytes_2 = pool.get(gid_2) catch unreachable;
-
-    // Skin tone should be F0 9F 8F BD (4 bytes) - NO ZWJ
-    try std.testing.expectEqual(@as(usize, 4), grapheme_bytes_2.len);
-    try std.testing.expectEqual(@as(u8, 0xF0), grapheme_bytes_2[0]);
-    try std.testing.expectEqual(@as(u8, 0x9F), grapheme_bytes_2[1]);
-    try std.testing.expectEqual(@as(u8, 0x8F), grapheme_bytes_2[2]);
-    try std.testing.expectEqual(@as(u8, 0xBD), grapheme_bytes_2[3]);
+    try std.testing.expectEqual(@as(u32, '"'), cell_2.char);
 
     const cell_3 = opt_buffer.get(3, 0) orelse unreachable;
-    try std.testing.expect(gp.isContinuationChar(cell_3.char));
+    try std.testing.expectEqual(@as(u32, ' '), cell_3.char);
 
-    // Col 4 should be laptop emoji (ZWJ was NOT rendered)
-    const cell_4 = opt_buffer.get(4, 0) orelse unreachable;
-    try std.testing.expect(gp.isGraphemeChar(cell_4.char));
+    var out_buffer: [100]u8 = undefined;
+    const written = try opt_buffer.writeResolvedChars(&out_buffer, false);
+    const result = out_buffer[0..written];
 
-    const gid_4 = gp.graphemeIdFromChar(cell_4.char);
-    const grapheme_bytes_4 = pool.get(gid_4) catch unreachable;
-
-    // Laptop should be F0 9F 92 BB (4 bytes) - NO ZWJ
-    try std.testing.expectEqual(@as(usize, 4), grapheme_bytes_4.len);
-    try std.testing.expectEqual(@as(u8, 0xF0), grapheme_bytes_4[0]);
-    try std.testing.expectEqual(@as(u8, 0x9F), grapheme_bytes_4[1]);
-    try std.testing.expectEqual(@as(u8, 0x92), grapheme_bytes_4[2]);
-    try std.testing.expectEqual(@as(u8, 0xBB), grapheme_bytes_4[3]);
-
-    // Verify none of the rendered graphemes contain ZWJ bytes
-    var cell_idx: u32 = 0;
-    while (cell_idx < 50) : (cell_idx += 1) {
-        if (opt_buffer.get(cell_idx, 0)) |cell| {
-            if (gp.isGraphemeChar(cell.char)) {
-                const gid = gp.graphemeIdFromChar(cell.char);
-                const grapheme_bytes = pool.get(gid) catch continue;
-
-                // Check this grapheme doesn't contain ZWJ
-                var j: usize = 0;
-                while (j + 2 < grapheme_bytes.len) : (j += 1) {
-                    if (grapheme_bytes[j] == 0xE2 and grapheme_bytes[j + 1] == 0x80 and grapheme_bytes[j + 2] == 0x8D) {
-                        return error.TestFailed;
-                    }
-                }
-
-                // Also check for VS16 (0xEF 0xB8 0x8F)
-                j = 0;
-                while (j + 2 < grapheme_bytes.len) : (j += 1) {
-                    if (grapheme_bytes[j] == 0xEF and grapheme_bytes[j + 1] == 0xB8 and grapheme_bytes[j + 2] == 0x8F) {
-                        return error.TestFailed;
-                    }
-                }
-            }
-        }
-    }
-}
-
-test "drawTextBuffer - wcwidth cursor movement matches rendered output" {
-    const pool = gp.initGlobalPool(std.testing.allocator);
-    defer gp.deinitGlobalPool();
-
-    const edit_buffer = @import("../edit-buffer.zig");
-    const EditBuffer = edit_buffer.EditBuffer;
-
-    var eb = try EditBuffer.init(std.testing.allocator, pool, .wcwidth);
-    defer eb.deinit();
-
-    // Use the exact text from user's request
-    const test_text = "👩🏽‍💻  👨‍👩‍👧‍👦";
-    try eb.setText(test_text);
-
-    // Create a text buffer view and render it
-    const tb = eb.getTextBuffer();
-    var view = try TextBufferView.init(std.testing.allocator, tb);
-    defer view.deinit();
-
-    var opt_buffer = try OptimizedBuffer.init(
-        std.testing.allocator,
-        30,
-        5,
-        .{ .pool = pool, .width_method = .wcwidth },
-    );
-    defer opt_buffer.deinit();
-
-    try opt_buffer.clear(.{ 0.0, 0.0, 0.0, 1.0 }, 32);
-    try opt_buffer.drawTextBuffer(view, 0, 0);
-
-    // Get what was actually rendered
-    var render_buf: [200]u8 = undefined;
-    const render_len = try opt_buffer.writeResolvedChars(&render_buf, false);
-    _ = render_len;
-
-    // Expected rendering in wcwidth mode:
-    // Col 0-1: 👩 (woman, width 2)
-    // Col 2-3: 🏽 (skin, width 2)
-    // Col 4-5: 💻 (laptop, width 2) - ZWJ filtered out
-    // Col 6: space (width 1)
-    // Col 7: space (width 1)
-    // Col 8-9: 👨 (man, width 2)
-    // Col 10-11: 👩 (woman, width 2) - ZWJ filtered out
-    // Col 12-13: 👧 (girl, width 2) - ZWJ filtered out
-    // Col 14-15: 👦 (boy, width 2) - ZWJ filtered out
-
-    // Verify rendered cells match expectations
-
-    // Col 0: Woman emoji start
-    const cell_0 = opt_buffer.get(0, 0) orelse unreachable;
-    try std.testing.expect(gp.isGraphemeChar(cell_0.char));
-    const gid_0 = gp.graphemeIdFromChar(cell_0.char);
-    const bytes_0 = pool.get(gid_0) catch unreachable;
-    try std.testing.expectEqualSlices(u8, &[_]u8{ 0xF0, 0x9F, 0x91, 0xA9 }, bytes_0);
-
-    // Col 1: Woman continuation
-    const cell_1 = opt_buffer.get(1, 0) orelse unreachable;
-    try std.testing.expect(gp.isContinuationChar(cell_1.char));
-
-    // Col 2: Skin tone emoji start
-    const cell_2 = opt_buffer.get(2, 0) orelse unreachable;
-    try std.testing.expect(gp.isGraphemeChar(cell_2.char));
-    const gid_2 = gp.graphemeIdFromChar(cell_2.char);
-    const bytes_2 = pool.get(gid_2) catch unreachable;
-    try std.testing.expectEqualSlices(u8, &[_]u8{ 0xF0, 0x9F, 0x8F, 0xBD }, bytes_2);
-
-    // Col 3: Skin continuation
-    const cell_3 = opt_buffer.get(3, 0) orelse unreachable;
-    try std.testing.expect(gp.isContinuationChar(cell_3.char));
-
-    // Col 4: Laptop emoji start (ZWJ was filtered)
-    const cell_4 = opt_buffer.get(4, 0) orelse unreachable;
-    try std.testing.expect(gp.isGraphemeChar(cell_4.char));
-    const gid_4 = gp.graphemeIdFromChar(cell_4.char);
-    const bytes_4 = pool.get(gid_4) catch unreachable;
-    try std.testing.expectEqualSlices(u8, &[_]u8{ 0xF0, 0x9F, 0x92, 0xBB }, bytes_4);
-
-    // Col 5: Laptop continuation
-    const cell_5 = opt_buffer.get(5, 0) orelse unreachable;
-    try std.testing.expect(gp.isContinuationChar(cell_5.char));
-
-    // Col 6-7: Spaces
-    const cell_6 = opt_buffer.get(6, 0) orelse unreachable;
-    try std.testing.expectEqual(@as(u32, ' '), cell_6.char);
-    const cell_7 = opt_buffer.get(7, 0) orelse unreachable;
-    try std.testing.expectEqual(@as(u32, ' '), cell_7.char);
-
-    // Col 8: Man emoji start
-    const cell_8 = opt_buffer.get(8, 0) orelse unreachable;
-    try std.testing.expect(gp.isGraphemeChar(cell_8.char));
-    const gid_8 = gp.graphemeIdFromChar(cell_8.char);
-    const bytes_8 = pool.get(gid_8) catch unreachable;
-    try std.testing.expectEqualSlices(u8, &[_]u8{ 0xF0, 0x9F, 0x91, 0xA8 }, bytes_8);
-
-    // Col 10: Woman emoji start (ZWJ filtered)
-    const cell_10 = opt_buffer.get(10, 0) orelse unreachable;
-    try std.testing.expect(gp.isGraphemeChar(cell_10.char));
-    const gid_10 = gp.graphemeIdFromChar(cell_10.char);
-    const bytes_10 = pool.get(gid_10) catch unreachable;
-    try std.testing.expectEqualSlices(u8, &[_]u8{ 0xF0, 0x9F, 0x91, 0xA9 }, bytes_10);
-
-    // Col 12: Girl emoji start (ZWJ filtered)
-    const cell_12 = opt_buffer.get(12, 0) orelse unreachable;
-    try std.testing.expect(gp.isGraphemeChar(cell_12.char));
-    const gid_12 = gp.graphemeIdFromChar(cell_12.char);
-    const bytes_12 = pool.get(gid_12) catch unreachable;
-    try std.testing.expectEqualSlices(u8, &[_]u8{ 0xF0, 0x9F, 0x91, 0xA7 }, bytes_12);
-
-    // Col 14: Boy emoji start (ZWJ filtered)
-    const cell_14 = opt_buffer.get(14, 0) orelse unreachable;
-    try std.testing.expect(gp.isGraphemeChar(cell_14.char));
-    const gid_14 = gp.graphemeIdFromChar(cell_14.char);
-    const bytes_14 = pool.get(gid_14) catch unreachable;
-    try std.testing.expectEqualSlices(u8, &[_]u8{ 0xF0, 0x9F, 0x91, 0xA6 }, bytes_14);
-
-    // Now test that cursor movement matches the rendered cells
-    try eb.setCursor(0, 0);
-    var cursor = eb.getPrimaryCursor();
-    try std.testing.expectEqual(@as(u32, 0), cursor.col);
-
-    // Move through woman technologist
-    eb.moveRight(); // Woman at col 0-1
-    cursor = eb.getPrimaryCursor();
-    try std.testing.expectEqual(@as(u32, 2), cursor.col);
-
-    eb.moveRight(); // Skin at col 2-3
-    cursor = eb.getPrimaryCursor();
-    try std.testing.expectEqual(@as(u32, 4), cursor.col);
-
-    eb.moveRight(); // Laptop at col 4-5 (ZWJ skipped)
-    cursor = eb.getPrimaryCursor();
-    try std.testing.expectEqual(@as(u32, 6), cursor.col);
-
-    eb.moveRight(); // First space at col 6
-    cursor = eb.getPrimaryCursor();
-    try std.testing.expectEqual(@as(u32, 7), cursor.col);
-
-    eb.moveRight(); // Second space at col 7
-    cursor = eb.getPrimaryCursor();
-    try std.testing.expectEqual(@as(u32, 8), cursor.col);
-
-    // Move through family emoji
-    eb.moveRight(); // Man at col 8-9
-    cursor = eb.getPrimaryCursor();
-    try std.testing.expectEqual(@as(u32, 10), cursor.col);
-
-    eb.moveRight(); // Woman at col 10-11 (ZWJ skipped)
-    cursor = eb.getPrimaryCursor();
-    try std.testing.expectEqual(@as(u32, 12), cursor.col);
-
-    eb.moveRight(); // Girl at col 12-13 (ZWJ skipped)
-    cursor = eb.getPrimaryCursor();
-    try std.testing.expectEqual(@as(u32, 14), cursor.col);
-
-    eb.moveRight(); // Boy at col 14-15 (ZWJ skipped)
-    cursor = eb.getPrimaryCursor();
-    try std.testing.expectEqual(@as(u32, 16), cursor.col);
-
-    // Move back through the same cells
-    eb.moveLeft(); // Back to col 14 (before boy)
-    cursor = eb.getPrimaryCursor();
-    try std.testing.expectEqual(@as(u32, 14), cursor.col);
-
-    eb.moveLeft(); // Back to col 12 (before girl, ZWJ skipped)
-    cursor = eb.getPrimaryCursor();
-    try std.testing.expectEqual(@as(u32, 12), cursor.col);
-
-    eb.moveLeft(); // Back to col 10 (before woman, ZWJ skipped)
-    cursor = eb.getPrimaryCursor();
-    try std.testing.expectEqual(@as(u32, 10), cursor.col);
-
-    eb.moveLeft(); // Back to col 8 (before man, ZWJ skipped)
-    cursor = eb.getPrimaryCursor();
-    try std.testing.expectEqual(@as(u32, 8), cursor.col);
-
-    eb.moveLeft(); // Back to col 7 (space 2)
-    cursor = eb.getPrimaryCursor();
-    try std.testing.expectEqual(@as(u32, 7), cursor.col);
-
-    eb.moveLeft(); // Back to col 6 (space 1)
-    cursor = eb.getPrimaryCursor();
-    try std.testing.expectEqual(@as(u32, 6), cursor.col);
-
-    eb.moveLeft(); // Back to col 4 (before laptop, ZWJ skipped)
-    cursor = eb.getPrimaryCursor();
-    try std.testing.expectEqual(@as(u32, 4), cursor.col);
-
-    eb.moveLeft(); // Back to col 2 (before skin)
-    cursor = eb.getPrimaryCursor();
-    try std.testing.expectEqual(@as(u32, 2), cursor.col);
-
-    eb.moveLeft(); // Back to col 0 (before woman)
-    cursor = eb.getPrimaryCursor();
-    try std.testing.expectEqual(@as(u32, 0), cursor.col);
-
-    // Move to end and backspace through everything
-    try eb.setCursor(0, 16); // At the end
-    cursor = eb.getPrimaryCursor();
-
-    // Get initial rendered state
-    try opt_buffer.clear(.{ 0.0, 0.0, 0.0, 1.0 }, 32);
-    try opt_buffer.drawTextBuffer(view, 0, 0);
-    var buf: [200]u8 = undefined;
-    var buf_len = try opt_buffer.writeResolvedChars(&buf, false);
-
-    // Backspace boy (col 14-15)
-    try eb.backspace();
-    cursor = eb.getPrimaryCursor();
-    try std.testing.expectEqual(@as(u32, 14), cursor.col);
-
-    try opt_buffer.clear(.{ 0.0, 0.0, 0.0, 1.0 }, 32);
-    try opt_buffer.drawTextBuffer(view, 0, 0);
-    buf_len = try opt_buffer.writeResolvedChars(&buf, false);
-
-    // Verify boy is gone but girl is still there
-    const cell_14_after = opt_buffer.get(14, 0) orelse unreachable;
-    try std.testing.expectEqual(@as(u32, ' '), cell_14_after.char);
-    const cell_12_still = opt_buffer.get(12, 0) orelse unreachable;
-    try std.testing.expect(gp.isGraphemeChar(cell_12_still.char));
-
-    // Backspace girl (col 12-13), ZWJ auto-deleted
-    try eb.backspace();
-    cursor = eb.getPrimaryCursor();
-    try std.testing.expectEqual(@as(u32, 12), cursor.col);
-
-    try opt_buffer.clear(.{ 0.0, 0.0, 0.0, 1.0 }, 32);
-    try opt_buffer.drawTextBuffer(view, 0, 0);
-    buf_len = try opt_buffer.writeResolvedChars(&buf, false);
-
-    // Backspace woman (col 10-11), ZWJ auto-deleted
-    try eb.backspace();
-    cursor = eb.getPrimaryCursor();
-    try std.testing.expectEqual(@as(u32, 10), cursor.col);
-
-    // Backspace man (col 8-9), ZWJ auto-deleted
-    try eb.backspace();
-    cursor = eb.getPrimaryCursor();
-    try std.testing.expectEqual(@as(u32, 8), cursor.col);
-
-    try opt_buffer.clear(.{ 0.0, 0.0, 0.0, 1.0 }, 32);
-    try opt_buffer.drawTextBuffer(view, 0, 0);
-    buf_len = try opt_buffer.writeResolvedChars(&buf, false);
-
-    // Should have just "👩🏽💻  " remaining (woman technologist + 2 spaces)
-    // Verify man is gone
-    const cell_8_after = opt_buffer.get(8, 0) orelse unreachable;
-    try std.testing.expectEqual(@as(u32, ' '), cell_8_after.char);
-
-    // Backspace space 2
-    try eb.backspace();
-    cursor = eb.getPrimaryCursor();
-    try std.testing.expectEqual(@as(u32, 7), cursor.col);
-
-    // Backspace space 1
-    try eb.backspace();
-    cursor = eb.getPrimaryCursor();
-    try std.testing.expectEqual(@as(u32, 6), cursor.col);
-
-    // Backspace laptop (col 4-5), ZWJ auto-deleted
-    try eb.backspace();
-    cursor = eb.getPrimaryCursor();
-    try std.testing.expectEqual(@as(u32, 4), cursor.col);
-
-    try opt_buffer.clear(.{ 0.0, 0.0, 0.0, 1.0 }, 32);
-    try opt_buffer.drawTextBuffer(view, 0, 0);
-    buf_len = try opt_buffer.writeResolvedChars(&buf, false);
-
-    // Backspace skin+ZWJ (col 2-3)
-    try eb.backspace();
-    cursor = eb.getPrimaryCursor();
-    try std.testing.expectEqual(@as(u32, 2), cursor.col);
-
-    try opt_buffer.clear(.{ 0.0, 0.0, 0.0, 1.0 }, 32);
-    try opt_buffer.drawTextBuffer(view, 0, 0);
-    buf_len = try opt_buffer.writeResolvedChars(&buf, false);
-
-    // Backspace woman (col 0-1)
-    try eb.backspace();
-    cursor = eb.getPrimaryCursor();
-    try std.testing.expectEqual(@as(u32, 0), cursor.col);
-
-    try opt_buffer.clear(.{ 0.0, 0.0, 0.0, 1.0 }, 32);
-    try opt_buffer.drawTextBuffer(view, 0, 0);
-    buf_len = try opt_buffer.writeResolvedChars(&buf, false);
-
-    // All cells should now be spaces
-    const cell_0_final = opt_buffer.get(0, 0) orelse unreachable;
-    try std.testing.expectEqual(@as(u32, ' '), cell_0_final.char);
+    try std.testing.expect(std.mem.indexOf(u8, result, "\"ว่\"") != null);
 }

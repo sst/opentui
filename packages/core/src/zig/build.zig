@@ -31,17 +31,19 @@ const ROOT_SOURCE_FILE = "lib.zig";
 
 /// Apply dependencies to a module
 fn applyDependencies(b: *std.Build, module: *std.Build.Module, optimize: std.builtin.OptimizeMode, target: std.Build.ResolvedTarget) void {
-    // Add uucode for grapheme break detection
+    // Add uucode for grapheme break detection and width calculation
     if (b.lazyDependency("uucode", .{
         .target = target,
         .optimize = optimize,
         .fields = @as([]const []const u8, &.{
             "grapheme_break",
+            "east_asian_width",
+            "general_category",
+            "is_emoji_presentation",
         }),
     })) |uucode_dep| {
         module.addImport("uucode", uucode_dep.module("uucode"));
     }
-
 }
 
 fn checkZigVersion() void {

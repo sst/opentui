@@ -77,6 +77,9 @@ pub const VirtualLine = struct {
     char_offset: u32,
     source_line: usize,
     source_col_offset: u32,
+    is_truncated: bool,
+    ellipsis_pos: u32,
+    truncation_suffix_start: u32,
 
     pub fn init() VirtualLine {
         return .{
@@ -85,6 +88,9 @@ pub const VirtualLine = struct {
             .char_offset = 0,
             .source_line = 0,
             .source_col_offset = 0,
+            .is_truncated = false,
+            .ellipsis_pos = 0,
+            .truncation_suffix_start = 0,
         };
     }
 
@@ -130,6 +136,9 @@ pub const UnifiedTextBufferView = struct {
     measure_arena: std.heap.ArenaAllocator,
     tab_indicator: ?u32,
     tab_indicator_color: ?RGBA,
+    truncate: bool,
+    ellipsis_chunk: TextChunk,
+    ellipsis_mem_id: u8,
 
     // Measurement cache for Yoga layout. Keyed by (buffer, epoch, width, wrap_mode).
     // Using epoch instead of dirty flag prevents stale returns when unrelated
@@ -140,6 +149,10 @@ pub const UnifiedTextBufferView = struct {
     cached_measure_epoch: u64,
     cached_measure_buffer: ?*UnifiedTextBuffer,
 
+    truncation_applied: bool,
+    truncation_epoch: u64,
+    truncation_viewport: ?Viewport,
+
     pub fn init(global_allocator: Allocator, text_buffer: *UnifiedTextBuffer) TextBufferViewError!*Self {
         const self = global_allocator.create(Self) catch return TextBufferViewError.OutOfMemory;
         errdefer global_allocator.destroy(self);
@@ -149,6 +162,10 @@ pub const UnifiedTextBufferView = struct {
         virtual_lines_internal_arena.* = std.heap.ArenaAllocator.init(global_allocator);
 
         const view_id = text_buffer.registerView() catch return TextBufferViewError.OutOfMemory;
+
+        const ellipsis_text = "...";
+        const ellipsis_mem_id = text_buffer.registerMemBuffer(ellipsis_text, false) catch return TextBufferViewError.OutOfMemory;
+        const ellipsis_chunk = text_buffer.createChunk(ellipsis_mem_id, 0, 3);
 
         self.* = .{
             .text_buffer = text_buffer,
@@ -172,11 +189,17 @@ pub const UnifiedTextBufferView = struct {
             .measure_arena = std.heap.ArenaAllocator.init(global_allocator),
             .tab_indicator = null,
             .tab_indicator_color = null,
+            .truncate = false,
+            .ellipsis_chunk = ellipsis_chunk,
+            .ellipsis_mem_id = ellipsis_mem_id,
             .cached_measure_width = null,
             .cached_measure_wrap_mode = .none,
             .cached_measure_result = null,
             .cached_measure_epoch = 0,
             .cached_measure_buffer = null,
+            .truncation_applied = false,
+            .truncation_epoch = 0,
+            .truncation_viewport = null,
         };
 
         return self;
@@ -201,7 +224,10 @@ pub const UnifiedTextBufferView = struct {
             if (self.wrap_width != viewport.width) {
                 self.wrap_width = viewport.width;
                 self.virtual_lines_dirty = true;
+                self.truncation_applied = false;
             }
+        } else {
+            self.truncation_applied = false;
         }
     }
 
@@ -232,6 +258,7 @@ pub const UnifiedTextBufferView = struct {
         if (self.wrap_width != width) {
             self.wrap_width = width;
             self.virtual_lines_dirty = true;
+            self.truncation_applied = false;
         }
     }
 
@@ -239,6 +266,7 @@ pub const UnifiedTextBufferView = struct {
         if (self.wrap_mode != mode) {
             self.wrap_mode = mode;
             self.virtual_lines_dirty = true;
+            self.truncation_applied = false;
         }
     }
 
@@ -297,6 +325,7 @@ pub const UnifiedTextBufferView = struct {
         self.cached_line_wrap_indices = .{};
         self.cached_line_first_vline = .{};
         self.cached_line_vline_counts = .{};
+        self.truncation_applied = false;
         const virtual_allocator = self.virtual_lines_arena.allocator();
 
         // Create output structure for the generic function
@@ -333,7 +362,10 @@ pub const UnifiedTextBufferView = struct {
 
         const all_vlines = self.virtual_lines.items;
 
-        // If viewport is set, return only the visible lines
+        if (self.truncate and self.viewport != null) {
+            self.ensureTruncation();
+        }
+
         if (self.viewport) |vp| {
             const start_idx = @min(vp.y, @as(u32, @intCast(all_vlines.len)));
             const end_idx = @min(start_idx + vp.height, @as(u32, @intCast(all_vlines.len)));
@@ -504,6 +536,9 @@ pub const UnifiedTextBufferView = struct {
 
     pub fn setLocalSelection(self: *Self, anchorX: i32, anchorY: i32, focusX: i32, focusY: i32, bgColor: ?RGBA, fgColor: ?RGBA) bool {
         self.updateVirtualLines();
+        if (self.truncate and self.viewport != null) {
+            self.ensureTruncation();
+        }
 
         const anchor_above = anchorY < 0;
         const focus_above = focusY < 0;
@@ -518,10 +553,7 @@ pub const UnifiedTextBufferView = struct {
             return had_selection;
         }
 
-        // Get the actual end position (end of last line)
-        const last_line_idx = if (self.virtual_lines.items.len > 0) self.virtual_lines.items.len - 1 else 0;
-        const last_vline = if (self.virtual_lines.items.len > 0) &self.virtual_lines.items[last_line_idx] else null;
-        const text_end_offset = if (last_vline) |vline| vline.char_offset + vline.width else 0;
+        const text_end_offset = self.getTextEndOffset();
 
         const anchor_offset = if (anchor_above or anchorX < 0)
             0
@@ -581,14 +613,15 @@ pub const UnifiedTextBufferView = struct {
         const anchor_offset = self.selection_anchor_offset orelse return false;
 
         self.updateVirtualLines();
+        if (self.truncate and self.viewport != null) {
+            self.applyTruncation();
+        }
 
         const focus_above = focusY < 0;
         const max_y = @as(i32, @intCast(self.virtual_lines.items.len)) - 1;
         const focus_below = focusY > max_y;
 
-        const last_line_idx = if (self.virtual_lines.items.len > 0) self.virtual_lines.items.len - 1 else 0;
-        const last_vline = if (self.virtual_lines.items.len > 0) &self.virtual_lines.items[last_line_idx] else null;
-        const text_end_offset = if (last_vline) |vline| vline.char_offset + vline.width else 0;
+        const text_end_offset = self.getTextEndOffset();
 
         const focus_char_offset = if (focus_above or focusX < 0)
             0
@@ -620,8 +653,27 @@ pub const UnifiedTextBufferView = struct {
         self.selection_anchor_offset = null;
     }
 
+    fn getTextEndOffset(self: *Self) u32 {
+        if (self.truncate and self.viewport != null) {
+            self.ensureTruncation();
+        }
+
+        if (self.virtual_lines.items.len == 0) return 0;
+        const last_line_idx = self.virtual_lines.items.len - 1;
+        const last_vline = &self.virtual_lines.items[last_line_idx];
+
+        if (last_vline.is_truncated) {
+            return last_vline.char_offset + last_vline.truncation_suffix_start + (last_vline.width - last_vline.ellipsis_pos - 3);
+        }
+
+        return last_vline.char_offset + last_vline.width;
+    }
+
     fn coordsToCharOffset(self: *Self, x: i32, y: i32) ?u32 {
         self.updateVirtualLines();
+        if (self.truncate and self.viewport != null) {
+            self.ensureTruncation();
+        }
 
         const y_offset: i32 = if (self.viewport) |vp| @intCast(vp.y) else 0;
         const x_offset: i32 = if (self.viewport) |vp|
@@ -643,7 +695,20 @@ pub const UnifiedTextBufferView = struct {
         const lineStart = vline.char_offset;
         const lineWidth = vline.width;
 
-        const localX = @max(0, @min(abs_x, @as(i32, @intCast(lineWidth))));
+        var localX = @max(0, @min(abs_x, @as(i32, @intCast(lineWidth))));
+
+        if (vline.is_truncated) {
+            const ellipsis_width: u32 = 3;
+            const localX_u32: u32 = @intCast(localX);
+
+            if (localX_u32 >= vline.ellipsis_pos and localX_u32 < vline.ellipsis_pos + ellipsis_width) {
+                localX = @intCast(vline.ellipsis_pos);
+            } else if (localX_u32 >= vline.ellipsis_pos + ellipsis_width) {
+                const suffix_offset = localX_u32 - vline.ellipsis_pos - ellipsis_width;
+                localX = @intCast(vline.truncation_suffix_start + suffix_offset);
+            }
+        }
+
         const result = lineStart + @as(u32, @intCast(localX));
 
         return result;
@@ -706,6 +771,118 @@ pub const UnifiedTextBufferView = struct {
 
     pub fn getTabIndicatorColor(self: *const Self) ?RGBA {
         return self.tab_indicator_color;
+    }
+
+    pub fn setTruncate(self: *Self, truncate: bool) void {
+        if (self.truncate != truncate) {
+            self.truncate = truncate;
+            self.virtual_lines_dirty = true;
+            self.truncation_applied = false;
+        }
+    }
+
+    pub fn getTruncate(self: *const Self) bool {
+        return self.truncate;
+    }
+
+    fn ensureTruncation(self: *Self) void {
+        if (!self.truncate or self.viewport == null) return;
+
+        const epoch = self.text_buffer.getContentEpoch();
+        if (self.truncation_applied and self.truncation_epoch == epoch and
+            self.truncation_viewport != null and self.viewport != null and
+            self.truncation_viewport.?.x == self.viewport.?.x and
+            self.truncation_viewport.?.y == self.viewport.?.y and
+            self.truncation_viewport.?.width == self.viewport.?.width and
+            self.truncation_viewport.?.height == self.viewport.?.height)
+        {
+            return;
+        }
+
+        self.applyTruncation();
+        self.truncation_applied = true;
+        self.truncation_epoch = epoch;
+        self.truncation_viewport = self.viewport;
+    }
+
+    fn applyTruncation(self: *Self) void {
+        const vp = self.viewport orelse return;
+        if (vp.width == 0) return;
+
+        const ellipsis_width: u32 = 3;
+
+        for (self.virtual_lines.items) |*vline| {
+            if (vline.width <= vp.width) continue;
+
+            if (vp.width <= ellipsis_width) {
+                vline.chunks.clearRetainingCapacity();
+                vline.width = 0;
+                vline.is_truncated = true;
+                vline.ellipsis_pos = 0;
+                vline.truncation_suffix_start = vline.width;
+                continue;
+            }
+
+            const available_width = vp.width - ellipsis_width;
+            const prefix_width = available_width / 2;
+            const suffix_width = available_width - prefix_width;
+
+            var new_chunks: std.ArrayListUnmanaged(VirtualChunk) = .{};
+
+            var prefix_accumulated: u32 = 0;
+            for (vline.chunks.items) |chunk| {
+                if (prefix_accumulated >= prefix_width) break;
+
+                const space_left = prefix_width - prefix_accumulated;
+                if (chunk.width <= space_left) {
+                    new_chunks.append(self.virtual_lines_arena.allocator(), chunk) catch return;
+                    prefix_accumulated += chunk.width;
+                } else {
+                    var partial = chunk;
+                    partial.width = space_left;
+                    new_chunks.append(self.virtual_lines_arena.allocator(), partial) catch return;
+                    prefix_accumulated += space_left;
+                    break;
+                }
+            }
+
+            new_chunks.append(self.virtual_lines_arena.allocator(), VirtualChunk{
+                .grapheme_start = 0,
+                .width = ellipsis_width,
+                .chunk = &self.ellipsis_chunk,
+            }) catch return;
+
+            const suffix_start_pos = vline.width - suffix_width;
+
+            var pos_accumulated: u32 = 0;
+            for (vline.chunks.items) |chunk| {
+                const chunk_end = pos_accumulated + chunk.width;
+
+                if (chunk_end <= suffix_start_pos) {
+                    pos_accumulated += chunk.width;
+                    continue;
+                }
+
+                if (pos_accumulated >= suffix_start_pos) {
+                    new_chunks.append(self.virtual_lines_arena.allocator(), chunk) catch return;
+                } else {
+                    const offset_in_chunk = suffix_start_pos - pos_accumulated;
+                    var partial = chunk;
+                    partial.grapheme_start += offset_in_chunk;
+                    partial.width = chunk.width - offset_in_chunk;
+                    new_chunks.append(self.virtual_lines_arena.allocator(), partial) catch return;
+                }
+
+                pos_accumulated += chunk.width;
+            }
+
+            vline.chunks.clearRetainingCapacity();
+            vline.chunks.appendSlice(self.virtual_lines_arena.allocator(), new_chunks.items) catch return;
+            vline.width = vp.width;
+            vline.is_truncated = true;
+            vline.ellipsis_pos = prefix_width;
+            vline.truncation_suffix_start = suffix_start_pos;
+        }
     }
 
     /// Measure dimensions for given width/height WITHOUT modifying virtual lines cache
@@ -925,10 +1102,19 @@ pub const UnifiedTextBufferView = struct {
                         const chunk_bytes = chunk.getBytes(&wctx.text_buffer.mem_registry);
                         const wrap_offsets = chunk.getWrapOffsets(&wctx.text_buffer.mem_registry, wctx.text_buffer.allocator, wctx.text_buffer.width_method) catch &[_]utf8.WrapBreak{};
                         const is_ascii_only = (chunk.flags & TextChunk.Flags.ASCII_ONLY) != 0;
+                        const graphemes: []const GraphemeInfo = if (is_ascii_only)
+                            &[_]GraphemeInfo{}
+                        else
+                            chunk.getGraphemes(&wctx.text_buffer.mem_registry, wctx.text_buffer.allocator, wctx.text_buffer.tab_width, wctx.text_buffer.width_method) catch &[_]GraphemeInfo{};
+                        var grapheme_idx: usize = 0;
+                        var col_delta: i64 = 0;
 
-                        var char_offset: u32 = 0;
+                        // char_offset tracks COLUMN position within the chunk (not grapheme count)
+                        // chunk.width is also in columns. The loop processes the chunk column by column.
+                        var char_offset: u32 = 0; // Column offset within chunk
                         var byte_offset: u32 = 0;
                         var wrap_idx: usize = 0;
+
                         while (char_offset < chunk.width) {
                             const remaining_in_chunk = chunk.width - char_offset;
                             const remaining_on_line = if (wctx.line_position < wctx.wrap_w) wctx.wrap_w - wctx.line_position else 0;
@@ -937,10 +1123,30 @@ pub const UnifiedTextBufferView = struct {
                             var saved_wrap_idx = wrap_idx;
                             while (wrap_idx < wrap_offsets.len) : (wrap_idx += 1) {
                                 const wrap_break = wrap_offsets[wrap_idx];
-                                const offset = @as(u32, wrap_break.char_offset);
-                                if (offset < char_offset) continue;
-                                const width_to_boundary = offset - char_offset + 1;
-                                if (width_to_boundary > remaining_on_line or width_to_boundary > remaining_in_chunk) break;
+
+                                while (grapheme_idx < graphemes.len) {
+                                    const info = graphemes[grapheme_idx];
+                                    const info_char_offset = @as(i64, info.col_offset) - col_delta;
+                                    if (info_char_offset >= @as(i64, wrap_break.char_offset)) break;
+                                    col_delta += @as(i64, info.width) - 1;
+                                    grapheme_idx += 1;
+                                }
+
+                                var break_col_i64 = @as(i64, wrap_break.char_offset) + col_delta;
+                                if (break_col_i64 < 0) break_col_i64 = 0;
+                                const break_col = @as(u32, @intCast(break_col_i64));
+
+                                // Skip breaks that are before our current column position in the chunk
+                                if (break_col < char_offset) continue;
+
+                                // width_to_boundary: columns needed to reach and include this break
+                                // break_col is the column where the break character starts (relative to chunk)
+                                // char_offset is our current column position (relative to chunk)
+                                // To include the break character (width 1), we need: break_col - char_offset + 1
+                                const width_to_boundary = break_col - char_offset + 1;
+                                if (width_to_boundary > remaining_on_line or width_to_boundary > remaining_in_chunk) {
+                                    break;
+                                }
                                 last_wrap_that_fits = width_to_boundary;
                                 saved_wrap_idx = wrap_idx + 1;
                             }
@@ -1025,13 +1231,16 @@ pub const UnifiedTextBufferView = struct {
                                         wctx.line_position += vchunk.width;
                                     }
                                 } else |_| {
-                                    logger.err("Failed to allocate space for saved chunks", .{});
                                     commitVirtualLine(wctx);
                                 }
 
                                 continue;
                             } else {
                                 commitVirtualLine(wctx);
+                                if (char_offset > 0) {
+                                    const pos_result = utf8.findPosByWidth(chunk_bytes, char_offset, wctx.text_buffer.tab_width, is_ascii_only, false, wctx.text_buffer.width_method);
+                                    byte_offset = pos_result.byte_offset;
+                                }
                                 const remaining_bytes = chunk_bytes[byte_offset..];
                                 const wrap_result = utf8.findWrapPosByWidth(remaining_bytes, wctx.wrap_w, wctx.text_buffer.tab_width, is_ascii_only, wctx.text_buffer.width_method);
                                 to_add = wrap_result.columns_used;

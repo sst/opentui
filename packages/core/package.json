@@ -3,13 +3,13 @@
   "description": "OpenTUI is a TypeScript library for building terminal user interfaces (TUIs)",
   "repository": {
     "type": "git",
-    "url": "https://github.com/sst/opentui",
+    "url": "https://github.com/anomalyco/opentui",
     "directory": "packages/core"
   },
   "types": "src/index.ts",
   "module": "src/index.ts",
   "main": "src/index.ts",
-  "version": "0.1.72",
+  "version": "0.1.74",
   "type": "module",
   "scripts": {
     "build": "bun run build:native && bun run build:lib",
@@ -47,12 +47,12 @@
     "bun-webgpu": "0.1.4",
     "planck": "^1.4.2",
     "three": "0.177.0",
-    "@opentui/core-darwin-x64": "0.1.72",
-    "@opentui/core-darwin-arm64": "0.1.72",
-    "@opentui/core-linux-x64": "0.1.72",
-    "@opentui/core-linux-arm64": "0.1.72",
-    "@opentui/core-win32-x64": "0.1.72",
-    "@opentui/core-win32-arm64": "0.1.72"
+    "@opentui/core-darwin-x64": "0.1.74",
+    "@opentui/core-darwin-arm64": "0.1.74",
+    "@opentui/core-linux-x64": "0.1.74",
+    "@opentui/core-linux-arm64": "0.1.74",
+    "@opentui/core-win32-x64": "0.1.74",
+    "@opentui/core-win32-arm64": "0.1.74"
   },
   "exports": {
     ".": {
