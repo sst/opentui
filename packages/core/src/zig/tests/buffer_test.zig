@@ -1587,30 +1587,23 @@ test "OptimizedBuffer - drawGrayscaleBuffer basic rendering" {
 
     // Create a 3x3 intensity buffer with varying values
     const intensities = [_]f32{
-        0.0, 0.5, 1.0, // Row 0: black, mid-gray, white
-        0.25, 0.75, 0.0, // Row 1: dark gray, light gray, transparent
-        1.0, 0.0, 0.5, // Row 2: white, transparent, mid-gray
+        0.0,  0.5,  1.0,
+        0.25, 0.75, 0.0,
+        1.0,  0.0,  0.5,
     };
 
-    // Draw at position (2, 1) with default fg (null = white)
     buf.drawGrayscaleBuffer(2, 1, &intensities, 3, 3, null, bg);
 
-    // Verify cell at (2, 1) - intensity 0.0, should be skipped (unchanged)
     const cell_0_0 = buf.get(2, 1).?;
-    try std.testing.expectEqual(@as(u32, 32), cell_0_0.char); // Space (unchanged)
+    try std.testing.expectEqual(@as(u32, 32), cell_0_0.char);
 
-    // Verify cell at (3, 1) - intensity 0.5, should have mid-gray character
-    // With intensity as alpha, fg is white blended at 50% over black bg
     const cell_1_0 = buf.get(3, 1).?;
-    try std.testing.expect(cell_1_0.char != 32); // Should not be space
-    // Fg is white (1,1,1) blended at 50% alpha over bg - result depends on blending
-    try std.testing.expect(cell_1_0.fg[0] > 0.3); // Has some white from blending
+    try std.testing.expect(cell_1_0.char != 32);
+    try std.testing.expect(cell_1_0.fg[0] > 0.3);
 
-    // Verify cell at (4, 1) - intensity 1.0, should have bright character
-    // With intensity 1.0, fg is white at full alpha
     const cell_2_0 = buf.get(4, 1).?;
-    try std.testing.expect(cell_2_0.char != 32); // Should not be space
-    try std.testing.expect(cell_2_0.fg[0] > 0.9); // Near white fg (full intensity)
+    try std.testing.expect(cell_2_0.char != 32);
+    try std.testing.expect(cell_2_0.fg[0] > 0.9);
 }
 
 test "OptimizedBuffer - drawGrayscaleBuffer negative position clipping" {
@@ -1630,20 +1623,17 @@ test "OptimizedBuffer - drawGrayscaleBuffer negative position clipping" {
 
     // Create a 4x4 intensity buffer
     const intensities = [_]f32{
-        0.5, 0.5, 0.5, 0.5, // Row 0: clipped (y=-1)
-        0.5, 0.5, 0.5, 0.5, // Row 1: visible at y=0
-        0.5, 0.5, 0.5, 0.5, // Row 2: visible at y=1
-        0.5, 0.5, 0.5, 0.5, // Row 3: visible at y=2
+        0.5, 0.5, 0.5, 0.5,
+        0.5, 0.5, 0.5, 0.5,
+        0.5, 0.5, 0.5, 0.5,
+        0.5, 0.5, 0.5, 0.5,
     };
 
-    // Draw at position (-1, -1) - should clip the first row and column
     buf.drawGrayscaleBuffer(-1, -1, &intensities, 4, 4, null, bg);
 
-    // Cell at (0, 0) should have content from intensity[1][1] (intensity 0.5)
     const cell_0_0 = buf.get(0, 0).?;
-    try std.testing.expect(cell_0_0.char != 32); // Should have been drawn
+    try std.testing.expect(cell_0_0.char != 32);
 
-    // Cell at (2, 0) should have content from intensity[1][3]
     const cell_2_0 = buf.get(2, 0).?;
     try std.testing.expect(cell_2_0.char != 32);
 }
@@ -1670,7 +1660,6 @@ test "OptimizedBuffer - drawGrayscaleBuffer negative position fully clipped" {
         1.0, 1.0, 1.0, 1.0,
     };
 
-    // Fully clipped: startX/startY exceed source dimensions
     buf.drawGrayscaleBuffer(-10, -10, &intensities, 4, 4, null, bg);
 
     const cell = buf.get(0, 0).?;
@@ -1692,26 +1681,22 @@ test "OptimizedBuffer - drawGrayscaleBuffer respects scissor rect" {
     const bg = RGBA{ 0.0, 0.0, 0.0, 1.0 };
     try buf.clear(bg, null);
 
-    // Push scissor rect that only allows drawing in top-left corner
     try buf.pushScissorRect(0, 0, 2, 2);
 
-    // Create intensity buffer
     const intensities = [_]f32{
-        1.0, 1.0, 1.0, 1.0, // Row 0
-        1.0, 1.0, 1.0, 1.0, // Row 1
-        1.0, 1.0, 1.0, 1.0, // Row 2
-        1.0, 1.0, 1.0, 1.0, // Row 3
+        1.0, 1.0, 1.0, 1.0,
+        1.0, 1.0, 1.0, 1.0,
+        1.0, 1.0, 1.0, 1.0,
+        1.0, 1.0, 1.0, 1.0,
     };
 
     buf.drawGrayscaleBuffer(0, 0, &intensities, 4, 4, null, bg);
 
-    // Cells inside scissor (0,0) and (1,1) should be drawn
     const cell_0_0 = buf.get(0, 0).?;
     const cell_1_1 = buf.get(1, 1).?;
     try std.testing.expect(cell_0_0.char != 32);
     try std.testing.expect(cell_1_1.char != 32);
 
-    // Cells outside scissor should be unchanged (space)
     const cell_3_3 = buf.get(3, 3).?;
     try std.testing.expectEqual(@as(u32, 32), cell_3_3.char);
 
@@ -1733,29 +1718,25 @@ test "OptimizedBuffer - drawGrayscaleBuffer intensity to character mapping" {
     const bg = RGBA{ 0.0, 0.0, 0.0, 1.0 };
     try buf.clear(bg, null);
 
-    // Test specific intensity values
     const intensities = [_]f32{
-        0.005, // Below threshold, should be skipped
-        0.02, // Just above threshold, should be drawn
-        0.5, // Mid-range
-        1.0, // Maximum
+        0.005,
+        0.02,
+        0.5,
+        1.0,
     };
 
     buf.drawGrayscaleBuffer(0, 0, &intensities, 4, 1, null, bg);
 
-    // intensity < 0.01 should be skipped
     const cell_0 = buf.get(0, 0).?;
     try std.testing.expectEqual(@as(u32, 32), cell_0.char);
 
-    // intensity >= 0.01 should be drawn
     const cell_1 = buf.get(1, 0).?;
     try std.testing.expect(cell_1.char != 32);
 
-    // Verify fg color at full intensity (1.0) - white fg blended at full alpha
     const cell_3 = buf.get(3, 0).?;
-    try std.testing.expect(cell_3.fg[0] > 0.9); // R channel near 1.0 (white at full intensity)
-    try std.testing.expect(cell_3.fg[1] > 0.9); // G channel near 1.0
-    try std.testing.expect(cell_3.fg[2] > 0.9); // B channel near 1.0
+    try std.testing.expect(cell_3.fg[0] > 0.9);
+    try std.testing.expect(cell_3.fg[1] > 0.9);
+    try std.testing.expect(cell_3.fg[2] > 0.9);
 }
 
 test "OptimizedBuffer - drawGrayscaleBuffer alpha blending preserves underlying bg" {
@@ -1770,18 +1751,15 @@ test "OptimizedBuffer - drawGrayscaleBuffer alpha blending preserves underlying 
     );
     defer buf.deinit();
 
-    // Fill buffer with red background
     const red_bg = RGBA{ 1.0, 0.0, 0.0, 1.0 };
     try buf.clear(red_bg, null);
 
-    // Verify initial state is red
     const initial_cell = buf.get(1, 1).?;
-    try std.testing.expectEqual(@as(f32, 1.0), initial_cell.bg[0]); // R
-    try std.testing.expectEqual(@as(f32, 0.0), initial_cell.bg[1]); // G
-    try std.testing.expectEqual(@as(f32, 0.0), initial_cell.bg[2]); // B
+    try std.testing.expectEqual(@as(f32, 1.0), initial_cell.bg[0]);
+    try std.testing.expectEqual(@as(f32, 0.0), initial_cell.bg[1]);
+    try std.testing.expectEqual(@as(f32, 0.0), initial_cell.bg[2]);
 
-    // Draw grayscale with semi-transparent background (alpha = 0.5)
-    const semi_transparent_bg = RGBA{ 0.0, 0.0, 1.0, 0.5 }; // Blue with 50% alpha
+    const semi_transparent_bg = RGBA{ 0.0, 0.0, 1.0, 0.5 };
     const intensities = [_]f32{
         1.0, 1.0, 1.0,
         1.0, 1.0, 1.0,
@@ -1790,14 +1768,10 @@ test "OptimizedBuffer - drawGrayscaleBuffer alpha blending preserves underlying 
 
     buf.drawGrayscaleBuffer(0, 0, &intensities, 3, 3, null, semi_transparent_bg);
 
-    // Verify cell at (1, 1) has blended background (not pure blue)
     const cell = buf.get(1, 1).?;
-    // With alpha blending, the blue (0,0,1) at 0.5 alpha over red (1,0,0) should blend
-    // The red channel should be reduced but not zero
-    try std.testing.expect(cell.bg[0] > 0.1); // Some red from original bg
-    try std.testing.expect(cell.bg[2] > 0.1); // Some blue from overlay
+    try std.testing.expect(cell.bg[0] > 0.1);
+    try std.testing.expect(cell.bg[2] > 0.1);
 
-    // The foreground (grayscale) should still be white-ish
     try std.testing.expect(cell.fg[0] > 0.9);
     try std.testing.expect(cell.fg[1] > 0.9);
     try std.testing.expect(cell.fg[2] > 0.9);
@@ -1815,12 +1789,10 @@ test "OptimizedBuffer - drawGrayscaleBuffer fully transparent bg preserves under
     );
     defer buf.deinit();
 
-    // Fill buffer with green background
     const green_bg = RGBA{ 0.0, 1.0, 0.0, 1.0 };
     try buf.clear(green_bg, null);
 
-    // Draw grayscale with fully transparent background
-    const transparent_bg = RGBA{ 0.0, 0.0, 1.0, 0.0 }; // Transparent
+    const transparent_bg = RGBA{ 0.0, 0.0, 1.0, 0.0 };
     const intensities = [_]f32{
         1.0, 1.0, 1.0,
         1.0, 1.0, 1.0,
@@ -1829,14 +1801,11 @@ test "OptimizedBuffer - drawGrayscaleBuffer fully transparent bg preserves under
 
     buf.drawGrayscaleBuffer(0, 0, &intensities, 3, 3, null, transparent_bg);
 
-    // Verify cell at (1, 1) preserves the original green background
     const cell = buf.get(1, 1).?;
-    // Background should still be green (original)
-    try std.testing.expectEqual(@as(f32, 0.0), cell.bg[0]); // R
-    try std.testing.expectEqual(@as(f32, 1.0), cell.bg[1]); // G
-    try std.testing.expectEqual(@as(f32, 0.0), cell.bg[2]); // B
+    try std.testing.expectEqual(@as(f32, 0.0), cell.bg[0]);
+    try std.testing.expectEqual(@as(f32, 1.0), cell.bg[1]);
+    try std.testing.expectEqual(@as(f32, 0.0), cell.bg[2]);
 
-    // The foreground should have grayscale values
     try std.testing.expect(cell.fg[0] > 0.9);
 }
 
@@ -1852,11 +1821,9 @@ test "OptimizedBuffer - drawGrayscaleBuffer opaque bg overwrites underlying" {
     );
     defer buf.deinit();
 
-    // Fill buffer with red background
     const red_bg = RGBA{ 1.0, 0.0, 0.0, 1.0 };
     try buf.clear(red_bg, null);
 
-    // Draw grayscale with opaque blue background
     const blue_bg = RGBA{ 0.0, 0.0, 1.0, 1.0 };
     const intensities = [_]f32{
         1.0, 1.0, 1.0,
@@ -1866,11 +1833,10 @@ test "OptimizedBuffer - drawGrayscaleBuffer opaque bg overwrites underlying" {
 
     buf.drawGrayscaleBuffer(0, 0, &intensities, 3, 3, null, blue_bg);
 
-    // Verify cell at (1, 1) has blended fg over bg (intensity as alpha)
     const cell = buf.get(1, 1).?;
-    try std.testing.expectEqual(@as(f32, 0.0), cell.bg[0]); // R = 0
-    try std.testing.expectEqual(@as(f32, 0.0), cell.bg[1]); // G = 0
-    try std.testing.expectEqual(@as(f32, 1.0), cell.bg[2]); // B = 1
+    try std.testing.expectEqual(@as(f32, 0.0), cell.bg[0]);
+    try std.testing.expectEqual(@as(f32, 0.0), cell.bg[1]);
+    try std.testing.expectEqual(@as(f32, 1.0), cell.bg[2]);
 }
 
 test "OptimizedBuffer - drawGrayscaleBuffer with opacity stack" {
@@ -1885,14 +1851,11 @@ test "OptimizedBuffer - drawGrayscaleBuffer with opacity stack" {
     );
     defer buf.deinit();
 
-    // Fill buffer with red background
     const red_bg = RGBA{ 1.0, 0.0, 0.0, 1.0 };
     try buf.clear(red_bg, null);
 
-    // Push 50% opacity
     try buf.pushOpacity(0.5);
 
-    // Draw grayscale with opaque blue background (but effective opacity is 50%)
     const blue_bg = RGBA{ 0.0, 0.0, 1.0, 1.0 };
     const intensities = [_]f32{
         1.0, 1.0, 1.0,
@@ -1904,11 +1867,9 @@ test "OptimizedBuffer - drawGrayscaleBuffer with opacity stack" {
 
     buf.popOpacity();
 
-    // Verify cell at (1, 1) has blended due to opacity stack
     const cell = buf.get(1, 1).?;
-    // With 50% opacity, blue over red should blend
-    try std.testing.expect(cell.bg[0] > 0.1); // Some red from original
-    try std.testing.expect(cell.bg[2] > 0.1); // Some blue from overlay
+    try std.testing.expect(cell.bg[0] > 0.1);
+    try std.testing.expect(cell.bg[2] > 0.1);
 }
 
 test "OptimizedBuffer - drawGrayscaleBufferSupersampled alpha blending" {
@@ -1923,11 +1884,9 @@ test "OptimizedBuffer - drawGrayscaleBufferSupersampled alpha blending" {
     );
     defer buf.deinit();
 
-    // Fill buffer with red background
     const red_bg = RGBA{ 1.0, 0.0, 0.0, 1.0 };
     try buf.clear(red_bg, null);
 
-    // Create 4x4 supersampled intensities (maps to 2x2 terminal cells)
     const intensities = [_]f32{
         1.0, 1.0, 1.0, 1.0,
         1.0, 1.0, 1.0, 1.0,
@@ -1935,15 +1894,12 @@ test "OptimizedBuffer - drawGrayscaleBufferSupersampled alpha blending" {
         1.0, 1.0, 1.0, 1.0,
     };
 
-    // Draw with semi-transparent background
     const semi_transparent_bg = RGBA{ 0.0, 0.0, 1.0, 0.5 };
     buf.drawGrayscaleBufferSupersampled(0, 0, &intensities, 4, 4, null, semi_transparent_bg);
 
-    // Verify cell at (0, 0) has blended background
     const cell = buf.get(0, 0).?;
-    // Background should be blended (not pure blue or pure red)
-    try std.testing.expect(cell.bg[0] > 0.1); // Some red from original
-    try std.testing.expect(cell.bg[2] > 0.1); // Some blue from overlay
+    try std.testing.expect(cell.bg[0] > 0.1);
+    try std.testing.expect(cell.bg[2] > 0.1);
 }
 
 test "OptimizedBuffer - drawGrayscaleBufferSupersampled fully transparent preserves bg" {
@@ -1958,11 +1914,9 @@ test "OptimizedBuffer - drawGrayscaleBufferSupersampled fully transparent preser
     );
     defer buf.deinit();
 
-    // Fill buffer with green background
     const green_bg = RGBA{ 0.0, 1.0, 0.0, 1.0 };
     try buf.clear(green_bg, null);
 
-    // Create 4x4 supersampled intensities (maps to 2x2 terminal cells)
     const intensities = [_]f32{
         1.0, 1.0, 1.0, 1.0,
         1.0, 1.0, 1.0, 1.0,
@@ -1970,15 +1924,13 @@ test "OptimizedBuffer - drawGrayscaleBufferSupersampled fully transparent preser
         1.0, 1.0, 1.0, 1.0,
     };
 
-    // Draw with fully transparent background
     const transparent_bg = RGBA{ 0.0, 0.0, 1.0, 0.0 };
     buf.drawGrayscaleBufferSupersampled(0, 0, &intensities, 4, 4, null, transparent_bg);
 
-    // Verify cell at (0, 0) preserves original green background
     const cell = buf.get(0, 0).?;
-    try std.testing.expectEqual(@as(f32, 0.0), cell.bg[0]); // R = 0
-    try std.testing.expectEqual(@as(f32, 1.0), cell.bg[1]); // G = 1
-    try std.testing.expectEqual(@as(f32, 0.0), cell.bg[2]); // B = 0
+    try std.testing.expectEqual(@as(f32, 0.0), cell.bg[0]);
+    try std.testing.expectEqual(@as(f32, 1.0), cell.bg[1]);
+    try std.testing.expectEqual(@as(f32, 0.0), cell.bg[2]);
 }
 
 test "OptimizedBuffer - drawGrayscaleBufferSupersampled respects scissor" {
@@ -2027,14 +1979,11 @@ test "OptimizedBuffer - drawGrayscaleBufferSupersampled with opacity stack" {
     );
     defer buf.deinit();
 
-    // Fill buffer with red background
     const red_bg = RGBA{ 1.0, 0.0, 0.0, 1.0 };
     try buf.clear(red_bg, null);
 
-    // Push 50% opacity
     try buf.pushOpacity(0.5);
 
-    // Create 4x4 supersampled intensities
     const intensities = [_]f32{
         1.0, 1.0, 1.0, 1.0,
         1.0, 1.0, 1.0, 1.0,
@@ -2042,16 +1991,14 @@ test "OptimizedBuffer - drawGrayscaleBufferSupersampled with opacity stack" {
         1.0, 1.0, 1.0, 1.0,
     };
 
-    // Draw with opaque blue background (but effective opacity is 50%)
     const blue_bg = RGBA{ 0.0, 0.0, 1.0, 1.0 };
     buf.drawGrayscaleBufferSupersampled(0, 0, &intensities, 4, 4, null, blue_bg);
 
     buf.popOpacity();
 
-    // Verify cell at (0, 0) has blended due to opacity stack
     const cell = buf.get(0, 0).?;
-    try std.testing.expect(cell.bg[0] > 0.1); // Some red from original
-    try std.testing.expect(cell.bg[2] > 0.1); // Some blue from overlay
+    try std.testing.expect(cell.bg[0] > 0.1);
+    try std.testing.expect(cell.bg[2] > 0.1);
 }
 
 test "OptimizedBuffer - blendColors with transparent destination" {
@@ -2091,26 +2038,22 @@ test "OptimizedBuffer - drawGrayscaleBuffer with custom fg color" {
     );
     defer buf.deinit();
 
-    // Fill buffer with black background
     const black_bg = RGBA{ 0.0, 0.0, 0.0, 1.0 };
     try buf.clear(black_bg, null);
 
-    // Create intensity buffer with full intensity
     const intensities = [_]f32{
         1.0, 1.0, 1.0,
         1.0, 1.0, 1.0,
         1.0, 1.0, 1.0,
     };
 
-    // Draw with red foreground color
     const red_fg = RGBA{ 1.0, 0.0, 0.0, 1.0 };
     buf.drawGrayscaleBuffer(0, 0, &intensities, 3, 3, red_fg, black_bg);
 
-    // Verify cell at (1, 1) has red fg (since intensity is 1.0, alpha is full)
     const cell = buf.get(1, 1).?;
-    try std.testing.expect(cell.fg[0] > 0.9); // R channel high (red)
-    try std.testing.expect(cell.fg[1] < 0.1); // G channel low
-    try std.testing.expect(cell.fg[2] < 0.1); // B channel low
+    try std.testing.expect(cell.fg[0] > 0.9);
+    try std.testing.expect(cell.fg[1] < 0.1);
+    try std.testing.expect(cell.fg[2] < 0.1);
 }
 
 test "OptimizedBuffer - drawGrayscaleBuffer custom fg with partial intensity" {
@@ -2125,27 +2068,22 @@ test "OptimizedBuffer - drawGrayscaleBuffer custom fg with partial intensity" {
     );
     defer buf.deinit();
 
-    // Fill buffer with blue background
     const blue_bg = RGBA{ 0.0, 0.0, 1.0, 1.0 };
     try buf.clear(blue_bg, null);
 
-    // Create intensity buffer with 50% intensity
     const intensities = [_]f32{
         0.5, 0.5, 0.5,
         0.5, 0.5, 0.5,
         0.5, 0.5, 0.5,
     };
 
-    // Draw with green foreground color at 50% intensity (alpha)
     const green_fg = RGBA{ 0.0, 1.0, 0.0, 1.0 };
-    const transparent_bg = RGBA{ 0.0, 0.0, 0.0, 0.0 }; // Transparent bg to preserve underlying
+    const transparent_bg = RGBA{ 0.0, 0.0, 0.0, 0.0 };
     buf.drawGrayscaleBuffer(0, 0, &intensities, 3, 3, green_fg, transparent_bg);
 
-    // Verify cell at (1, 1) has blended fg (green at 50% over blue bg)
     const cell = buf.get(1, 1).?;
-    // With 50% intensity alpha blending, green over blue should produce some of both
-    try std.testing.expect(cell.fg[1] > 0.2); // Some green
-    try std.testing.expect(cell.fg[2] > 0.2); // Some blue from bg
+    try std.testing.expect(cell.fg[1] > 0.2);
+    try std.testing.expect(cell.fg[2] > 0.2);
 }
 
 test "OptimizedBuffer - drawGrayscaleBufferSupersampled with custom fg color" {
@@ -2160,11 +2098,9 @@ test "OptimizedBuffer - drawGrayscaleBufferSupersampled with custom fg color" {
     );
     defer buf.deinit();
 
-    // Fill buffer with black background
     const black_bg = RGBA{ 0.0, 0.0, 0.0, 1.0 };
     try buf.clear(black_bg, null);
 
-    // Create 4x4 supersampled intensities (maps to 2x2 terminal cells)
     const intensities = [_]f32{
         1.0, 1.0, 1.0, 1.0,
         1.0, 1.0, 1.0, 1.0,
@@ -2172,13 +2108,11 @@ test "OptimizedBuffer - drawGrayscaleBufferSupersampled with custom fg color" {
         1.0, 1.0, 1.0, 1.0,
     };
 
-    // Draw with cyan foreground color
     const cyan_fg = RGBA{ 0.0, 1.0, 1.0, 1.0 };
     buf.drawGrayscaleBufferSupersampled(0, 0, &intensities, 4, 4, cyan_fg, black_bg);
 
-    // Verify cell at (0, 0) has cyan fg
     const cell = buf.get(0, 0).?;
-    try std.testing.expect(cell.fg[0] < 0.1); // R channel low
-    try std.testing.expect(cell.fg[1] > 0.9); // G channel high (cyan)
-    try std.testing.expect(cell.fg[2] > 0.9); // B channel high (cyan)
+    try std.testing.expect(cell.fg[0] < 0.1);
+    try std.testing.expect(cell.fg[1] > 0.9);
+    try std.testing.expect(cell.fg[2] > 0.9);
 }
