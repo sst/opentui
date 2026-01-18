@@ -57,8 +57,9 @@ import * as sliderDemo from "./slider-demo"
 import * as terminalDemo from "./terminal"
 import * as diffDemo from "./diff-demo"
 import * as keypressDebugDemo from "./keypress-debug-demo"
-import * as linkDemo from "./link-demo"
 import * as extmarksDemo from "./extmarks-demo"
+import * as markdownDemo from "./markdown-demo"
+import * as linkDemo from "./link-demo"
 import * as opacityExample from "./opacity-example"
 import * as scrollboxOverlayHitTest from "./scrollbox-overlay-hit-test"
 import * as scrollboxMouseTest from "./scrollbox-mouse-test"
@@ -165,6 +166,12 @@ const examples: Example[] = [
     destroy: diffDemo.destroy,
   },
   {
+    name: "Markdown Demo",
+    description: "Markdown rendering with table alignment, syntax highlighting, and theme switching",
+    run: markdownDemo.run,
+    destroy: markdownDemo.destroy,
+  },
+  {
     name: "Live State Management Demo",
     description: "Test automatic renderer lifecycle management with live renderables",
     run: liveStateExample.run,
@@ -211,6 +218,12 @@ const examples: Example[] = [
     description: "Alpha blending and transparency effects demonstration",
     run: transparencyDemo.run,
     destroy: transparencyDemo.destroy,
+  },
+  {
+    name: "Opacity Demo",
+    description: "Interactive opacity/alpha demonstration with animated boxes",
+    run: opacityExample.run,
+    destroy: opacityExample.destroy,
   },
   {
     name: "Static Sprite",
@@ -331,6 +344,12 @@ const examples: Example[] = [
     description: "Interactive text editor with TextareaRenderable - supports full editing capabilities",
     run: editorDemo.run,
     destroy: editorDemo.destroy,
+  },
+  {
+    name: "Extmarks Demo",
+    description: "Virtual extmarks - text ranges that the cursor jumps over, with deletion handling",
+    run: extmarksDemo.run,
+    destroy: extmarksDemo.destroy,
   },
   {
     name: "Slider Demo",
