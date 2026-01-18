@@ -145,9 +145,9 @@ const ExampleSelector = () => {
         break
     }
 
-    switch (key.raw) {
-      case "\u0003":
-        renderer.destroy()
+    if (key.ctrl && key.name === "c") {
+      key.preventDefault()
+      renderer.destroy()
     }
   })
 
