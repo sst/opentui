@@ -1,6 +1,7 @@
 import { describe, expect, it, beforeEach, afterEach } from "bun:test"
 import { testRender } from "../index"
 import { createSignal } from "solid-js"
+import type { TextareaRenderable } from "@opentui/core"
 
 let testSetup: Awaited<ReturnType<typeof testRender>>
 
@@ -315,6 +316,77 @@ describe("Textarea Cursor Behavior Tests", () => {
 
       cursorState = testSetup.renderer.getCursorState()
       expect(cursorState.visible).toBe(false)
+    })
+  })
+
+  describe("Multiline Paste Repro", () => {
+    it("should keep cursor stable when pasting multiline content into single-line textarea", async () => {
+      let textareaRef: TextareaRenderable | undefined
+
+      testSetup = await testRender(
+        () => (
+          <box paddingLeft={2} paddingRight={2} gap={1}>
+            <box paddingLeft={1} gap={1}>
+              <box>
+                <text fg="#E8EDF2">Custom answer</text>
+              </box>
+              <box>
+                <box flexDirection="row">
+                  <box paddingRight={1}>
+                    <text fg="#8B98A5">1.</text>
+                  </box>
+                  <box>
+                    <text fg="#E8EDF2">Type your own answer</text>
+                  </box>
+                </box>
+                <box paddingLeft={3}>
+                  <textarea
+                    height={1}
+                    ref={(val: TextareaRenderable) => {
+                      textareaRef = val
+                      queueMicrotask(() => {
+                        val.focus()
+                        val.gotoLineEnd()
+                      })
+                    }}
+                    initialValue=""
+                    placeholder="Type your own answer"
+                    textColor="#E8EDF2"
+                    focusedTextColor="#E8EDF2"
+                    cursorColor="#86B7FF"
+                    keyBindings={[
+                      { name: "return", action: "submit" },
+                      { name: "return", meta: true, action: "newline" },
+                    ]}
+                  />
+                </box>
+              </box>
+            </box>
+            <box paddingBottom={1} gap={1} flexDirection="row">
+              <text fg="#E8EDF2">
+                enter <span style={{ fg: "#8B98A5" }}>submit</span>
+              </text>
+            </box>
+          </box>
+        ),
+        { width: 50, height: 12 },
+      )
+
+      await testSetup.renderOnce()
+      await new Promise((resolve) => setTimeout(resolve, 0))
+
+      await testSetup.mockInput.pasteBracketedText("Line 1\nLine 2\nLine 3")
+
+      const states = [] as Array<{ x: number; y: number; visible: boolean }>
+      for (let i = 0; i < 3; i += 1) {
+        await testSetup.renderOnce()
+        const cursorState = testSetup.renderer.getCursorState()
+        states.push({ x: cursorState.x, y: cursorState.y, visible: cursorState.visible })
+      }
+
+      expect(textareaRef?.plainText).toBe("Line 1\nLine 2\nLine 3")
+      expect(states.every((state) => state.visible)).toBe(true)
+      expect(states.every((state) => state.x === states[0]!.x && state.y === states[0]!.y)).toBe(true)
     })
   })
 })
