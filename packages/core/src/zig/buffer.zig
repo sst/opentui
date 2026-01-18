@@ -1776,6 +1776,8 @@ pub const OptimizedBuffer = struct {
         const destStartX: u32 = if (posX < 0) 0 else @intCast(posX);
         const destStartY: u32 = if (posY < 0) 0 else @intCast(posY);
 
+        if (startX >= srcWidth or startY >= srcHeight) return;
+
         const visibleWidth = @min(srcWidth - startX, self.width - destStartX);
         const visibleHeight = @min(srcHeight - startY, self.height - destStartY);
 
@@ -1861,6 +1863,8 @@ pub const OptimizedBuffer = struct {
         const destStartX: u32 = if (posX < 0) 0 else @intCast(posX);
         const destStartY: u32 = if (posY < 0) 0 else @intCast(posY);
 
+        if (startX >= termWidth or startY >= termHeight) return;
+
         const visibleWidth = @min(termWidth - startX, self.width - destStartX);
         const visibleHeight = @min(termHeight - startY, self.height - destStartY);
 
@@ -1873,6 +1877,8 @@ pub const OptimizedBuffer = struct {
         const opacity = self.getCurrentOpacity();
         const graphemeAware = self.grapheme_tracker.hasAny();
         const linkAware = self.link_tracker.hasAny();
+
+        const maxIdx = srcHeight * srcWidth;
 
         // Process each terminal cell
         var cellY: u32 = startY;
@@ -1899,7 +1905,6 @@ pub const OptimizedBuffer = struct {
                 const brIdx = (qy + 1) * srcWidth + qx + 1;
 
                 // Bounds check for quadrant pixels
-                const maxIdx = srcHeight * srcWidth;
                 const tl: f32 = if (tlIdx < maxIdx) intensities[tlIdx] else 0.0;
                 const tr: f32 = if (trIdx < maxIdx and qx + 1 < srcWidth) intensities[trIdx] else 0.0;
                 const bl: f32 = if (blIdx < maxIdx and qy + 1 < srcHeight) intensities[blIdx] else 0.0;

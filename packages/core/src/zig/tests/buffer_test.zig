@@ -1648,6 +1648,35 @@ test "OptimizedBuffer - drawGrayscaleBuffer negative position clipping" {
     try std.testing.expect(cell_2_0.char != 32);
 }
 
+test "OptimizedBuffer - drawGrayscaleBuffer negative position fully clipped" {
+    const pool = gp.initGlobalPool(std.testing.allocator);
+    defer gp.deinitGlobalPool();
+
+    var buf = try OptimizedBuffer.init(
+        std.testing.allocator,
+        6,
+        3,
+        .{ .pool = pool, .id = "test-buffer" },
+    );
+    defer buf.deinit();
+
+    const bg = RGBA{ 0.0, 0.0, 0.0, 1.0 };
+    try buf.clear(bg, null);
+
+    const intensities = [_]f32{
+        1.0, 1.0, 1.0, 1.0,
+        1.0, 1.0, 1.0, 1.0,
+        1.0, 1.0, 1.0, 1.0,
+        1.0, 1.0, 1.0, 1.0,
+    };
+
+    // Fully clipped: startX/startY exceed source dimensions
+    buf.drawGrayscaleBuffer(-10, -10, &intensities, 4, 4, null, bg);
+
+    const cell = buf.get(0, 0).?;
+    try std.testing.expectEqual(@as(u32, 32), cell.char);
+}
+
 test "OptimizedBuffer - drawGrayscaleBuffer respects scissor rect" {
     const pool = gp.initGlobalPool(std.testing.allocator);
     defer gp.deinitGlobalPool();
@@ -1952,6 +1981,40 @@ test "OptimizedBuffer - drawGrayscaleBufferSupersampled fully transparent preser
     try std.testing.expectEqual(@as(f32, 0.0), cell.bg[2]); // B = 0
 }
 
+test "OptimizedBuffer - drawGrayscaleBufferSupersampled respects scissor" {
+    const pool = gp.initGlobalPool(std.testing.allocator);
+    defer gp.deinitGlobalPool();
+
+    var buf = try OptimizedBuffer.init(
+        std.testing.allocator,
+        6,
+        4,
+        .{ .pool = pool, .id = "test-buffer" },
+    );
+    defer buf.deinit();
+
+    const bg = RGBA{ 0.0, 0.0, 0.0, 1.0 };
+    try buf.clear(bg, null);
+
+    try buf.pushScissorRect(0, 0, 1, 1);
+
+    const intensities = [_]f32{
+        1.0, 1.0, 1.0, 1.0,
+        1.0, 1.0, 1.0, 1.0,
+        1.0, 1.0, 1.0, 1.0,
+        1.0, 1.0, 1.0, 1.0,
+    };
+
+    buf.drawGrayscaleBufferSupersampled(0, 0, &intensities, 4, 4, null, bg);
+
+    const inCell = buf.get(0, 0).?;
+    const outCell = buf.get(2, 2).?;
+    try std.testing.expect(inCell.char != 32);
+    try std.testing.expectEqual(@as(u32, 32), outCell.char);
+
+    buf.popScissorRect();
+}
+
 test "OptimizedBuffer - drawGrayscaleBufferSupersampled with opacity stack" {
     const pool = gp.initGlobalPool(std.testing.allocator);
     defer gp.deinitGlobalPool();
@@ -1989,6 +2052,31 @@ test "OptimizedBuffer - drawGrayscaleBufferSupersampled with opacity stack" {
     const cell = buf.get(0, 0).?;
     try std.testing.expect(cell.bg[0] > 0.1); // Some red from original
     try std.testing.expect(cell.bg[2] > 0.1); // Some blue from overlay
+}
+
+test "OptimizedBuffer - blendColors with transparent destination" {
+    const pool = gp.initGlobalPool(std.testing.allocator);
+    defer gp.deinitGlobalPool();
+
+    var buf = try OptimizedBuffer.init(
+        std.testing.allocator,
+        2,
+        2,
+        .{ .pool = pool, .id = "test-buffer" },
+    );
+    defer buf.deinit();
+
+    const transparent_bg = RGBA{ 0.0, 0.0, 0.0, 0.0 };
+    try buf.clear(transparent_bg, null);
+
+    const semi_white = RGBA{ 1.0, 1.0, 1.0, 0.5 };
+    const transparent_fg = RGBA{ 0.0, 0.0, 0.0, 0.0 };
+    try buf.setCellWithAlphaBlending(0, 0, 'X', semi_white, transparent_fg, 0);
+
+    const cell = buf.get(0, 0).?;
+    try std.testing.expect(cell.fg[0] > 0.45);
+    try std.testing.expect(cell.fg[0] < 0.55);
+    try std.testing.expectEqual(@as(f32, 0.5), cell.fg[3]);
 }
 
 test "OptimizedBuffer - drawGrayscaleBuffer with custom fg color" {

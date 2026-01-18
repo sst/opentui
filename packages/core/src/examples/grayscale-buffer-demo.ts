@@ -19,6 +19,8 @@ import { setupCommonDemoKeys } from "./lib/standalone-keys"
 let framebuffer: OptimizedBuffer | null = null
 let keyListener: ((key: KeyEvent) => void) | null = null
 let resizeListener: ((width: number, height: number) => void) | null = null
+let leftBuffer: Float32Array | null = null
+let rightBuffer: Float32Array | null = null
 
 // Pattern mode - smooth patterns + hard-edged patterns for AA comparison
 let patternMode = 0
@@ -149,7 +151,9 @@ export async function run(renderer: CliRenderer): Promise<void> {
     fb.fillRect(0, 0, totalWidth, totalHeight, bgColor)
 
     // === LEFT PANEL: Standard 1:1 grayscale buffer ===
-    const leftBuffer = new Float32Array(panelWidth * panelHeight)
+    if (!leftBuffer || leftBuffer.length !== panelWidth * panelHeight) {
+      leftBuffer = new Float32Array(panelWidth * panelHeight)
+    }
     for (let y = 0; y < panelHeight; y++) {
       for (let x = 0; x < panelWidth; x++) {
         leftBuffer[y * panelWidth + x] = getIntensity(x, y, panelWidth, panelHeight, time)
@@ -161,7 +165,9 @@ export async function run(renderer: CliRenderer): Promise<void> {
     const rightX = panelWidth + 3
     const ssWidth = panelWidth * 2
     const ssHeight = panelHeight * 2
-    const rightBuffer = new Float32Array(ssWidth * ssHeight)
+    if (!rightBuffer || rightBuffer.length !== ssWidth * ssHeight) {
+      rightBuffer = new Float32Array(ssWidth * ssHeight)
+    }
     for (let y = 0; y < ssHeight; y++) {
       for (let x = 0; x < ssWidth; x++) {
         // Sample at 2x resolution for smoother result
@@ -249,6 +255,8 @@ export function destroy(renderer: CliRenderer): void {
 
   renderer.root.remove("grayscale-demo")
   framebuffer = null
+  leftBuffer = null
+  rightBuffer = null
   patternMode = 0
 }
 

@@ -64,6 +64,7 @@ import * as opacityExample from "./opacity-example"
 import * as scrollboxOverlayHitTest from "./scrollbox-overlay-hit-test"
 import * as scrollboxMouseTest from "./scrollbox-mouse-test"
 import * as textTruncationDemo from "./text-truncation-demo"
+import * as grayscaleBufferDemo from "./grayscale-buffer-demo"
 import { setupCommonDemoKeys } from "./lib/standalone-keys"
 
 interface Example {
@@ -380,6 +381,12 @@ const examples: Example[] = [
     description: "Debug tool to inspect keypress events, raw input, and terminal capabilities",
     run: keypressDebugDemo.run,
     destroy: keypressDebugDemo.destroy,
+  },
+  {
+    name: "Grayscale Buffer",
+    description: "Grayscale buffer rendering with 1x vs 2x supersampled intensity",
+    run: grayscaleBufferDemo.run,
+    destroy: grayscaleBufferDemo.destroy,
   },
 ]
 
