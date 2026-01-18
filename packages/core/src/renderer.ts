@@ -977,7 +977,6 @@ export class CliRenderer extends EventEmitter implements RenderContext {
     this.lib.setupTerminal(this.rendererPtr, this._useAlternateScreen)
     this._capabilities = this.lib.getTerminalCapabilities(this.rendererPtr)
 
-    // Initialize debug overlay if enabled via environment variable
     if (this.debugOverlay.enabled) {
       this.lib.setDebugOverlay(this.rendererPtr, true, this.debugOverlay.corner)
       if (!this.memorySnapshotInterval) {

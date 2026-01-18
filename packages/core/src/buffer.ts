@@ -293,19 +293,6 @@ export class OptimizedBuffer {
     )
   }
 
-  /**
-   * Draw a grayscale intensity buffer to the terminal.
-   * Each cell in the intensity buffer (0.0-1.0) is converted to an appropriate ASCII/block character.
-   * The intensity controls the alpha of the foreground color, enabling proper blending with underlying content.
-   * The intensities Float32Array is row-major: [y * width + x]
-   * @param posX - X position to draw at
-   * @param posY - Y position to draw at
-   * @param intensities - Float32Array of intensity values (0.0-1.0), row-major order
-   * @param srcWidth - Width of the intensity buffer
-   * @param srcHeight - Height of the intensity buffer
-   * @param fg - Foreground color (defaults to white if null). Intensity modulates its alpha.
-   * @param bg - Background color for the cells (defaults to transparent black if null)
-   */
   public drawGrayscaleBuffer(
     posX: number,
     posY: number,
@@ -319,20 +306,6 @@ export class OptimizedBuffer {
     this.lib.bufferDrawGrayscaleBuffer(this.bufferPtr, posX, posY, ptr(intensities), srcWidth, srcHeight, fg, bg)
   }
 
-  /**
-   * Draw a 2x supersampled grayscale intensity buffer to the terminal.
-   * The intensities Float32Array is at 2x resolution (quadrant pixels).
-   * Each terminal cell averages 4 quadrant pixels (2x2) before character selection.
-   * The intensity controls the alpha of the foreground color, enabling proper blending.
-   * This matches the QuadrantBuffer rendering approach for smooth anti-aliased rays.
-   * @param posX - X position to draw at (in terminal cells)
-   * @param posY - Y position to draw at (in terminal cells)
-   * @param intensities - Float32Array at 2x resolution, row-major: [y * srcWidth + x]
-   * @param srcWidth - Width of the intensity buffer (2x terminal width)
-   * @param srcHeight - Height of the intensity buffer (2x terminal height)
-   * @param fg - Foreground color (defaults to white if null). Intensity modulates its alpha.
-   * @param bg - Background color for the cells (defaults to transparent black if null)
-   */
   public drawGrayscaleBufferSupersampled(
     posX: number,
     posY: number,

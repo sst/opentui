@@ -29,8 +29,6 @@ const MAX_UNICODE_CODEPOINT: u32 = 0x10FFFF;
 const BLOCK_CHAR: u32 = 0x2588; // Full block █
 const QUADRANT_CHARS_COUNT = 16;
 
-// Grayscale character ramp from darkest to brightest (69 characters)
-// Used for rendering intensity values as ASCII art
 const GRAYSCALE_CHARS = " .'^\",:;Il!i><~+_-?][}{1)(|\\/tfjrxnuvczXYUJCLQ0OZmwqpdbkhao*#MW&8%B@$";
 
 pub const BorderSides = packed struct {
@@ -107,16 +105,11 @@ fn blendColors(overlay: RGBA, text: RGBA) RGBA {
         return overlay;
     }
 
-    // If destination is fully transparent, blend overlay against black
-    // This produces correct grayscale when fg has alpha (e.g., white with 50% alpha -> 50% gray)
     if (text[3] == 0.0) {
         const alpha = overlay[3];
-        // Blend overlay RGB against black (0,0,0) using overlay alpha
-        // result = overlay * alpha + black * (1 - alpha) = overlay * alpha
         const r = overlay[0] * alpha;
         const g = overlay[1] * alpha;
         const b = overlay[2] * alpha;
-        // If result is effectively black, return fully transparent (nothing to draw)
         if (r < 0.01 and g < 0.01 and b < 0.01) {
             return .{ 0.0, 0.0, 0.0, 0.0 };
         }
@@ -141,7 +134,6 @@ fn blendColors(overlay: RGBA, text: RGBA) RGBA {
     const oneMinusAlpha = @as(Vec3f, @splat(1.0 - perceptualAlpha));
     const blended = overlayVec * alphaSplat + textVec * oneMinusAlpha;
 
-    // Compute result alpha using "over" compositing: src.a + dst.a * (1 - src.a)
     const resultAlpha = alpha + text[3] * (1.0 - alpha);
 
     return .{ blended[0], blended[1], blended[2], resultAlpha };
@@ -1740,7 +1732,6 @@ pub const OptimizedBuffer = struct {
         }
     }
 
-    /// Get the appropriate grayscale character for an intensity value (0.0-1.0)
     fn getGrayscaleChar(intensity: f32) u32 {
         if (intensity < 0.01) return ' ';
         const clamped = @min(@max(intensity, 0.0), 1.0);
@@ -1748,12 +1739,6 @@ pub const OptimizedBuffer = struct {
         return @as(u32, GRAYSCALE_CHARS[index]);
     }
 
-    /// Draw a grayscale intensity buffer to the terminal
-    /// Each cell in the intensity buffer (0.0-1.0) is converted to an appropriate ASCII/block character
-    /// The intensities array is row-major: [y * width + x]
-    /// The intensity controls the alpha of the foreground color, enabling proper blending.
-    /// @param fgColor Base foreground color (defaults to white if null). Intensity modulates its alpha.
-    /// @param bg Background color (defaults to transparent black if null). Supports alpha blending when alpha < 1.0.
     pub fn drawGrayscaleBuffer(
         self: *OptimizedBuffer,
         posX: i32,
@@ -1765,11 +1750,9 @@ pub const OptimizedBuffer = struct {
         bgColor: ?RGBA,
     ) void {
         const bg = bgColor orelse RGBA{ 0.0, 0.0, 0.0, 0.0 };
-        // Early bounds check
         if (srcWidth == 0 or srcHeight == 0) return;
         if (posX >= @as(i32, @intCast(self.width)) or posY >= @as(i32, @intCast(self.height))) return;
 
-        // Calculate visible region
         const startX: u32 = if (posX < 0) @intCast(-posX) else 0;
         const startY: u32 = if (posY < 0) @intCast(-posY) else 0;
 
@@ -1783,15 +1766,12 @@ pub const OptimizedBuffer = struct {
 
         if (visibleWidth == 0 or visibleHeight == 0) return;
 
-        // Base foreground color (default to white)
         const baseFg = fgColor orelse RGBA{ 1.0, 1.0, 1.0, 1.0 };
 
-        // Check if we need alpha blending path - always needed since intensity controls fg alpha
         const opacity = self.getCurrentOpacity();
         const graphemeAware = self.grapheme_tracker.hasAny();
         const linkAware = self.link_tracker.hasAny();
 
-        // Process each cell
         var srcY: u32 = startY;
         var destY: u32 = destStartY;
         while (srcY < startY + visibleHeight) : ({
@@ -1809,35 +1789,22 @@ pub const OptimizedBuffer = struct {
                 const srcIndex = srcY * srcWidth + srcX;
                 const intensity = intensities[srcIndex];
 
-                // Skip fully transparent cells (intensity ~= 0)
                 if (intensity < 0.01) continue;
 
-                // Get the grayscale character
                 const char = getGrayscaleChar(intensity);
 
-                // Calculate foreground color: base color with intensity as alpha
                 const gray = @min(@max(intensity, 0.0), 1.0);
                 const fg: RGBA = .{ baseFg[0], baseFg[1], baseFg[2], gray * baseFg[3] * opacity };
 
-                // Always use alpha blending since fg alpha is controlled by intensity
                 if (graphemeAware or linkAware) {
-                    // Use setCellWithAlphaBlending for grapheme/link awareness with alpha
                     self.setCellWithAlphaBlending(destX, destY, char, fg, bg, 0) catch {};
                 } else {
-                    // Use setCellWithAlphaBlendingRaw for alpha blending without grapheme overhead
                     self.setCellWithAlphaBlendingRaw(destX, destY, char, fg, bg, 0) catch {};
                 }
             }
         }
     }
 
-    /// Draw a 2x supersampled grayscale intensity buffer to the terminal
-    /// The intensities array is at 2x resolution (quadrant pixels): [y * srcWidth + x]
-    /// Each terminal cell averages 4 quadrant pixels (2x2) before character selection
-    /// This matches the QuadrantBuffer rendering approach for smooth anti-aliased rays
-    /// The intensity controls the alpha of the foreground color, enabling proper blending.
-    /// @param fgColor Base foreground color (defaults to white if null). Intensity modulates its alpha.
-    /// @param bg Background color (defaults to transparent black if null). Supports alpha blending when alpha < 1.0.
     pub fn drawGrayscaleBufferSupersampled(
         self: *OptimizedBuffer,
         posX: i32,
@@ -1849,14 +1816,12 @@ pub const OptimizedBuffer = struct {
         bgColor: ?RGBA,
     ) void {
         const bg = bgColor orelse RGBA{ 0.0, 0.0, 0.0, 0.0 };
-        // Source is 2x resolution, so terminal dimensions are half
         const termWidth = srcWidth / 2;
         const termHeight = srcHeight / 2;
 
         if (termWidth == 0 or termHeight == 0) return;
         if (posX >= @as(i32, @intCast(self.width)) or posY >= @as(i32, @intCast(self.height))) return;
 
-        // Calculate visible region in terminal cells
         const startX: u32 = if (posX < 0) @intCast(-posX) else 0;
         const startY: u32 = if (posY < 0) @intCast(-posY) else 0;
 
@@ -1870,17 +1835,13 @@ pub const OptimizedBuffer = struct {
 
         if (visibleWidth == 0 or visibleHeight == 0) return;
 
-        // Base foreground color (default to white)
         const baseFg = fgColor orelse RGBA{ 1.0, 1.0, 1.0, 1.0 };
 
-        // Check if we need alpha blending path - always needed since intensity controls fg alpha
         const opacity = self.getCurrentOpacity();
         const graphemeAware = self.grapheme_tracker.hasAny();
         const linkAware = self.link_tracker.hasAny();
 
         const maxIdx = srcHeight * srcWidth;
-
-        // Process each terminal cell
         var cellY: u32 = startY;
         var destY: u32 = destStartY;
         while (cellY < startY + visibleHeight) : ({
@@ -1895,7 +1856,6 @@ pub const OptimizedBuffer = struct {
             }) {
                 if (!self.isPointInScissor(@intCast(destX), @intCast(destY))) continue;
 
-                // Get 4 quadrant pixels for this cell (2x2 area)
                 const qx = cellX * 2;
                 const qy = cellY * 2;
 
@@ -1904,31 +1864,23 @@ pub const OptimizedBuffer = struct {
                 const blIdx = (qy + 1) * srcWidth + qx;
                 const brIdx = (qy + 1) * srcWidth + qx + 1;
 
-                // Bounds check for quadrant pixels
                 const tl: f32 = if (tlIdx < maxIdx) intensities[tlIdx] else 0.0;
                 const tr: f32 = if (trIdx < maxIdx and qx + 1 < srcWidth) intensities[trIdx] else 0.0;
                 const bl: f32 = if (blIdx < maxIdx and qy + 1 < srcHeight) intensities[blIdx] else 0.0;
                 const br: f32 = if (brIdx < maxIdx and qx + 1 < srcWidth and qy + 1 < srcHeight) intensities[brIdx] else 0.0;
 
-                // Average the 4 quadrant pixels (like QuadrantBuffer.renderToFramebuffer)
                 const avgIntensity = (tl + tr + bl + br) / 4.0;
 
-                // Skip fully transparent cells
                 if (avgIntensity < 0.01) continue;
 
-                // Get the grayscale character
                 const char = getGrayscaleChar(avgIntensity);
 
-                // Calculate foreground color: base color with intensity as alpha
                 const gray = @min(@max(avgIntensity, 0.0), 1.0);
                 const fg: RGBA = .{ baseFg[0], baseFg[1], baseFg[2], gray * baseFg[3] * opacity };
 
-                // Always use alpha blending since fg alpha is controlled by intensity
                 if (graphemeAware or linkAware) {
-                    // Use setCellWithAlphaBlending for grapheme/link awareness with alpha
                     self.setCellWithAlphaBlending(destX, destY, char, fg, bg, 0) catch {};
                 } else {
-                    // Use setCellWithAlphaBlendingRaw for alpha blending without grapheme overhead
                     self.setCellWithAlphaBlendingRaw(destX, destY, char, fg, bg, 0) catch {};
                 }
             }

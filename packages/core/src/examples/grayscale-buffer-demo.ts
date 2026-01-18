@@ -1,18 +1,5 @@
 #!/usr/bin/env bun
 
-/**
- * Grayscale Buffer Demo - comparing two native rendering methods:
- *
- * LEFT:  drawGrayscaleBuffer() - 1:1 mapping, each intensity value = one cell
- * RIGHT: drawGrayscaleBufferSupersampled() - 2x resolution, 4 pixels averaged per cell
- *
- * The supersampled version produces smoother gradients and anti-aliased edges
- * by averaging 4 sub-pixels per terminal cell, similar to quadrant rendering.
- *
- * Both convert intensity (0.0-1.0) to ASCII chars from the brightness ramp:
- * " .'^\",:;Il!i><~+_-?][}{1)(|\\/tfjrxnuvczXYUJCLQ0OZmwqpdbkhao*#MW&8%B@$"
- */
-
 import { CliRenderer, createCliRenderer, OptimizedBuffer, RGBA, FrameBufferRenderable, type KeyEvent } from "../index"
 import { setupCommonDemoKeys } from "./lib/standalone-keys"
 
@@ -22,11 +9,8 @@ let resizeListener: ((width: number, height: number) => void) | null = null
 let leftBuffer: Float32Array | null = null
 let rightBuffer: Float32Array | null = null
 
-// Pattern mode - smooth patterns + hard-edged patterns for AA comparison
 let patternMode = 0
 const PATTERN_NAMES = ["Plasma", "Ripples", "Waves", "Starburst", "Dots", "Checkers"]
-
-// === SMOOTH PATTERNS (gradients - similar on both sides) ===
 
 function generatePlasma(x: number, y: number, w: number, h: number, t: number): number {
   const nx = x / w
@@ -54,8 +38,6 @@ function generateWaves(x: number, y: number, w: number, h: number, t: number): n
   const cross = Math.sin(nx * 8 + t) * Math.sin(ny * 8 + t * 0.8)
   return (Math.sin(diagonal) * 0.5 + 0.5) * 0.6 + (cross * 0.5 + 0.5) * 0.4
 }
-
-// === HARD-EDGED PATTERNS (binary 0/1 - AA difference visible) ===
 
 function generateStarburst(x: number, y: number, w: number, h: number, t: number): number {
   const cx = w / 2
@@ -138,19 +120,16 @@ export async function run(renderer: CliRenderer): Promise<void> {
     const totalWidth = fb.width
     const totalHeight = fb.height
 
-    // Reserve space for header
     const headerHeight = 3
     const panelHeight = totalHeight - headerHeight
-    const panelWidth = Math.floor((totalWidth - 3) / 2) // -3 for divider
+    const panelWidth = Math.floor((totalWidth - 3) / 2)
 
     if (panelWidth < 10 || panelHeight < 5) return
 
     const bgColor = RGBA.fromInts(20, 20, 30, 255)
 
-    // Clear screen
     fb.fillRect(0, 0, totalWidth, totalHeight, bgColor)
 
-    // === LEFT PANEL: Standard 1:1 grayscale buffer ===
     if (!leftBuffer || leftBuffer.length !== panelWidth * panelHeight) {
       leftBuffer = new Float32Array(panelWidth * panelHeight)
     }
@@ -161,7 +140,6 @@ export async function run(renderer: CliRenderer): Promise<void> {
     }
     fb.drawGrayscaleBuffer(0, headerHeight, leftBuffer, panelWidth, panelHeight)
 
-    // === RIGHT PANEL: 2x Supersampled grayscale buffer ===
     const rightX = panelWidth + 3
     const ssWidth = panelWidth * 2
     const ssHeight = panelHeight * 2
@@ -170,40 +148,34 @@ export async function run(renderer: CliRenderer): Promise<void> {
     }
     for (let y = 0; y < ssHeight; y++) {
       for (let x = 0; x < ssWidth; x++) {
-        // Sample at 2x resolution for smoother result
         rightBuffer[y * ssWidth + x] = getIntensity(x, y, ssWidth, ssHeight, time)
       }
     }
     fb.drawGrayscaleBufferSupersampled(rightX, headerHeight, rightBuffer, ssWidth, ssHeight)
 
-    // === DIVIDER ===
     const dividerX = panelWidth + 1
     for (let y = headerHeight; y < totalHeight; y++) {
       fb.setCell(dividerX, y, "|", RGBA.fromInts(60, 60, 80, 255), bgColor)
     }
 
-    // === HEADER ===
     const headerBg = RGBA.fromInts(40, 40, 60, 255)
     const labelColor = RGBA.fromInts(200, 200, 220, 255)
     const highlightColor = RGBA.fromInts(100, 200, 255, 255)
 
     fb.fillRect(0, 0, totalWidth, headerHeight, headerBg)
 
-    // Left label
     const leftLabel = "1:1 Standard"
     const leftLabelX = Math.floor(panelWidth / 2 - leftLabel.length / 2)
     for (let i = 0; i < leftLabel.length; i++) {
       fb.setCell(leftLabelX + i, 1, leftLabel[i], labelColor, headerBg)
     }
 
-    // Right label
     const rightLabel = "2x Supersampled"
     const rightLabelX = rightX + Math.floor(panelWidth / 2 - rightLabel.length / 2)
     for (let i = 0; i < rightLabel.length; i++) {
       fb.setCell(rightLabelX + i, 1, rightLabel[i], highlightColor, headerBg)
     }
 
-    // Center info
     const info = `[${PATTERN_NAMES[patternMode]}] SPACE:pause P:pattern`
     const infoX = Math.floor(totalWidth / 2 - info.length / 2)
     for (let i = 0; i < info.length; i++) {
