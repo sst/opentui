@@ -410,7 +410,8 @@ export class TextareaRenderable extends EditBufferRenderable {
     // move cursor to the end of the selection
     if (!select && this.hasSelection()) {
       const selection = this.getSelection()!
-      this.editBuffer.setCursorByOffset(selection.end)
+      const targetOffset = this.cursorOffset === selection.start ? selection.end - 1 : selection.end
+      this.editBuffer.setCursorByOffset(targetOffset)
       this._ctx.clearSelection()
       this.requestRender()
       return true
