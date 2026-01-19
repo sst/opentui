@@ -165,8 +165,6 @@ class TerminalConsoleCache extends EventEmitter {
     if (this._originalConsole) {
       global.console = this._originalConsole
     }
-
-    this.setupConsoleCapture()
   }
 
   public addLogEntry(level: LogLevel, ...args: any[]) {
