@@ -124,7 +124,9 @@ describe("SolidJS Renderer - Control Flow Components", () => {
 
       testSetup = await testRender(
         () => (
-          <box id="container"><For each={items()}>{(item) => <box id={`item-${item}`} />}</For></box>
+          <box id="container">
+            <For each={items()}>{(item) => <box id={`item-${item}`} />}</For>
+          </box>
         ),
         { width: 30, height: 15 },
       )
@@ -142,7 +144,6 @@ describe("SolidJS Renderer - Control Flow Components", () => {
       children = container.getChildren()
       expect(children.length).toBe(4)
       expect(children.map((c) => c.id)).toEqual(["item-4", "item-3", "item-2", "item-1"])
-
 
       setItems([1, 2, 3, 4, 5])
       await testSetup.renderOnce()
