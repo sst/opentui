@@ -111,10 +111,23 @@ test("parseKeypress - special keys", () => {
     source: "raw",
   })
 
-  expect(parseKeypress("\b")).toEqual({
+  expect(parseKeypress("\x7f")).toEqual({
     eventType: "press",
     name: "backspace",
     ctrl: false,
+    meta: false,
+    shift: false,
+    option: false,
+    number: false,
+    sequence: "\x7f",
+    raw: "\x7f",
+    source: "raw",
+  })
+
+  expect(parseKeypress("\b")).toEqual({
+    eventType: "press",
+    name: "backspace",
+    ctrl: true,
     meta: false,
     shift: false,
     option: false,
@@ -750,6 +763,28 @@ test("parseKeypress - backspace key with modifiers (modifyOtherKeys format)", ()
   expect(metaBackspace.option).toBe(true)
   expect(metaBackspace.ctrl).toBe(false)
   expect(metaBackspace.shift).toBe(false)
+})
+
+test("parseKeypress - raw backspace sequences (Windows Terminal / WSL)", () => {
+  const ctrlBackspace = parseKeypress("\b")!
+  expect(ctrlBackspace.name).toBe("backspace")
+  expect(ctrlBackspace.ctrl).toBe(true)
+  expect(ctrlBackspace.meta).toBe(false)
+
+  const altCtrlBackspace = parseKeypress("\x1b\b")!
+  expect(altCtrlBackspace.name).toBe("backspace")
+  expect(altCtrlBackspace.ctrl).toBe(true)
+  expect(altCtrlBackspace.meta).toBe(true)
+
+  const regularBackspace = parseKeypress("\x7f")!
+  expect(regularBackspace.name).toBe("backspace")
+  expect(regularBackspace.ctrl).toBe(false)
+  expect(regularBackspace.meta).toBe(false)
+
+  const altBackspace = parseKeypress("\x1b\x7f")!
+  expect(altBackspace.name).toBe("backspace")
+  expect(altBackspace.ctrl).toBe(false)
+  expect(altBackspace.meta).toBe(true)
 })
 
 test("parseKeypress - backspace key with modifiers (Kitty keyboard protocol)", () => {
@@ -1420,6 +1455,7 @@ test("parseKeypress - does not filter valid key sequences that might look simila
   const backspace = parseKeypress("\b")
   expect(backspace).not.toBeNull()
   expect(backspace?.name).toBe("backspace")
+  expect(backspace?.ctrl).toBe(true)
 
   const backspace2 = parseKeypress("\x7f")
   expect(backspace2).not.toBeNull()

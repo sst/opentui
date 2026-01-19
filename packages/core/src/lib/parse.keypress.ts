@@ -267,11 +267,17 @@ export const parseKeypress = (s: Buffer | string = "", options: ParseKeypressOpt
   } else if (s === "\t") {
     // tab
     key.name = "tab"
-  } else if (s === "\b" || s === "\x1b\b" || s === "\x7f" || s === "\x1b\x7f") {
-    // backspace or ctrl+h
-    // On OSX, \x7f is also backspace
+  } else if (s === "\x7f" || s === "\x1b\x7f") {
+    // Regular backspace (\x7f = ASCII 127 DEL)
+    // On macOS and most terminals, regular Backspace sends \x7f
     key.name = "backspace"
-    key.meta = s.charAt(0) === "\x1b"
+    key.meta = s.length === 2 // \x1b\x7f = Alt+Backspace
+  } else if (s === "\b" || s === "\x1b\b") {
+    // Ctrl+Backspace sends \b (ASCII 8, same as Ctrl+H) on Windows Terminal and many terminals
+    // \x1b\b = Alt+Ctrl+Backspace
+    key.name = "backspace"
+    key.ctrl = true
+    key.meta = s.length === 2
   } else if (s === "\x1b" || s === "\x1b\x1b") {
     // escape key
     key.name = "escape"
