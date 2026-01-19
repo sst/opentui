@@ -287,6 +287,14 @@ function getOpenTUILib(libPath?: string) {
       args: ["ptr", "ptr", "usize", "u32", "u32", "u32", "u32"],
       returns: "void",
     },
+    bufferDrawGrayscaleBuffer: {
+      args: ["ptr", "i32", "i32", "ptr", "u32", "u32", "ptr", "ptr"],
+      returns: "void",
+    },
+    bufferDrawGrayscaleBufferSupersampled: {
+      args: ["ptr", "i32", "i32", "ptr", "u32", "u32", "ptr", "ptr"],
+      returns: "void",
+    },
     bufferDrawBox: {
       args: ["ptr", "i32", "i32", "u32", "u32", "ptr", "u32", "ptr", "ptr", "ptr", "u32"],
       returns: "void",
@@ -864,7 +872,7 @@ function getOpenTUILib(libPath?: string) {
       returns: "u64",
     },
     editorViewSetLocalSelection: {
-      args: ["ptr", "i32", "i32", "i32", "i32", "ptr", "ptr", "bool"],
+      args: ["ptr", "i32", "i32", "i32", "i32", "ptr", "ptr", "bool", "bool"],
       returns: "bool",
     },
     editorViewUpdateSelection: {
@@ -872,7 +880,7 @@ function getOpenTUILib(libPath?: string) {
       returns: "void",
     },
     editorViewUpdateLocalSelection: {
-      args: ["ptr", "i32", "i32", "i32", "i32", "ptr", "ptr", "bool"],
+      args: ["ptr", "i32", "i32", "i32", "i32", "ptr", "ptr", "bool", "bool"],
       returns: "bool",
     },
     editorViewResetLocalSelection: {
@@ -1337,6 +1345,26 @@ export interface RenderLib {
     terminalWidthCells: number,
     terminalHeightCells: number,
   ) => void
+  bufferDrawGrayscaleBuffer: (
+    buffer: Pointer,
+    posX: number,
+    posY: number,
+    intensitiesPtr: Pointer,
+    srcWidth: number,
+    srcHeight: number,
+    fg: RGBA | null,
+    bg: RGBA | null,
+  ) => void
+  bufferDrawGrayscaleBufferSupersampled: (
+    buffer: Pointer,
+    posX: number,
+    posY: number,
+    intensitiesPtr: Pointer,
+    srcWidth: number,
+    srcHeight: number,
+    fg: RGBA | null,
+    bg: RGBA | null,
+  ) => void
   bufferDrawBox: (
     buffer: Pointer,
     x: number,
@@ -1575,7 +1603,9 @@ export interface RenderLib {
     bgColor: RGBA | null,
     fgColor: RGBA | null,
     updateCursor: boolean,
+    followCursor: boolean,
   ) => boolean
+
   editorViewUpdateSelection: (view: Pointer, end: number, bgColor: RGBA | null, fgColor: RGBA | null) => void
   editorViewUpdateLocalSelection: (
     view: Pointer,
@@ -1586,7 +1616,9 @@ export interface RenderLib {
     bgColor: RGBA | null,
     fgColor: RGBA | null,
     updateCursor: boolean,
+    followCursor: boolean,
   ) => boolean
+
   editorViewResetLocalSelection: (view: Pointer) => void
   editorViewGetSelectedTextBytes: (view: Pointer, maxLength: number) => Uint8Array | null
   editorViewGetCursor: (view: Pointer) => { row: number; col: number }
@@ -1996,6 +2028,50 @@ class FFIRenderLib implements RenderLib {
       posY,
       terminalWidthCells,
       terminalHeightCells,
+    )
+  }
+
+  public bufferDrawGrayscaleBuffer(
+    buffer: Pointer,
+    posX: number,
+    posY: number,
+    intensitiesPtr: Pointer,
+    srcWidth: number,
+    srcHeight: number,
+    fg: RGBA | null,
+    bg: RGBA | null,
+  ): void {
+    this.opentui.symbols.bufferDrawGrayscaleBuffer(
+      buffer,
+      posX,
+      posY,
+      intensitiesPtr,
+      srcWidth,
+      srcHeight,
+      fg?.buffer ?? null,
+      bg?.buffer ?? null,
+    )
+  }
+
+  public bufferDrawGrayscaleBufferSupersampled(
+    buffer: Pointer,
+    posX: number,
+    posY: number,
+    intensitiesPtr: Pointer,
+    srcWidth: number,
+    srcHeight: number,
+    fg: RGBA | null,
+    bg: RGBA | null,
+  ): void {
+    this.opentui.symbols.bufferDrawGrayscaleBufferSupersampled(
+      buffer,
+      posX,
+      posY,
+      intensitiesPtr,
+      srcWidth,
+      srcHeight,
+      fg?.buffer ?? null,
+      bg?.buffer ?? null,
     )
   }
 
@@ -3088,6 +3164,7 @@ class FFIRenderLib implements RenderLib {
     bgColor: RGBA | null,
     fgColor: RGBA | null,
     updateCursor: boolean,
+    followCursor: boolean,
   ): boolean {
     const bg = bgColor ? bgColor.buffer : null
     const fg = fgColor ? fgColor.buffer : null
@@ -3100,6 +3177,7 @@ class FFIRenderLib implements RenderLib {
       bg,
       fg,
       updateCursor,
+      followCursor,
     )
   }
 
@@ -3118,6 +3196,7 @@ class FFIRenderLib implements RenderLib {
     bgColor: RGBA | null,
     fgColor: RGBA | null,
     updateCursor: boolean,
+    followCursor: boolean,
   ): boolean {
     const bg = bgColor ? bgColor.buffer : null
     const fg = fgColor ? fgColor.buffer : null
@@ -3130,6 +3209,7 @@ class FFIRenderLib implements RenderLib {
       bg,
       fg,
       updateCursor,
+      followCursor,
     )
   }
 

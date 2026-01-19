@@ -29,6 +29,8 @@ const MAX_UNICODE_CODEPOINT: u32 = 0x10FFFF;
 const BLOCK_CHAR: u32 = 0x2588; // Full block █
 const QUADRANT_CHARS_COUNT = 16;
 
+const GRAYSCALE_CHARS = " .'^\",:;Il!i><~+_-?][}{1)(|\\/tfjrxnuvczXYUJCLQ0OZmwqpdbkhao*#MW&8%B@$";
+
 pub const BorderSides = packed struct {
     top: bool = false,
     right: bool = false,
@@ -103,6 +105,17 @@ fn blendColors(overlay: RGBA, text: RGBA) RGBA {
         return overlay;
     }
 
+    if (text[3] == 0.0) {
+        const alpha = overlay[3];
+        const r = overlay[0] * alpha;
+        const g = overlay[1] * alpha;
+        const b = overlay[2] * alpha;
+        if (r < 0.01 and g < 0.01 and b < 0.01) {
+            return .{ 0.0, 0.0, 0.0, 0.0 };
+        }
+        return .{ r, g, b, alpha };
+    }
+
     const alpha = overlay[3];
     var perceptualAlpha: f32 = undefined;
 
@@ -121,7 +134,9 @@ fn blendColors(overlay: RGBA, text: RGBA) RGBA {
     const oneMinusAlpha = @as(Vec3f, @splat(1.0 - perceptualAlpha));
     const blended = overlayVec * alphaSplat + textVec * oneMinusAlpha;
 
-    return .{ blended[0], blended[1], blended[2], text[3] };
+    const resultAlpha = alpha + text[3] * (1.0 - alpha);
+
+    return .{ blended[0], blended[1], blended[2], resultAlpha };
 }
 
 /// Optimized buffer for terminal rendering
@@ -1714,6 +1729,161 @@ pub const OptimizedBuffer = struct {
             }
 
             self.setCellWithAlphaBlending(cellX, cellY, char, fg, bg, 0) catch {};
+        }
+    }
+
+    fn getGrayscaleChar(intensity: f32) u32 {
+        if (intensity < 0.01) return ' ';
+        const clamped = @min(@max(intensity, 0.0), 1.0);
+        const index: usize = @intFromFloat(clamped * @as(f32, @floatFromInt(GRAYSCALE_CHARS.len - 1)));
+        return @as(u32, GRAYSCALE_CHARS[index]);
+    }
+
+    pub fn drawGrayscaleBuffer(
+        self: *OptimizedBuffer,
+        posX: i32,
+        posY: i32,
+        intensities: [*]const f32,
+        srcWidth: u32,
+        srcHeight: u32,
+        fgColor: ?RGBA,
+        bgColor: ?RGBA,
+    ) void {
+        const bg = bgColor orelse RGBA{ 0.0, 0.0, 0.0, 0.0 };
+        if (srcWidth == 0 or srcHeight == 0) return;
+        if (posX >= @as(i32, @intCast(self.width)) or posY >= @as(i32, @intCast(self.height))) return;
+
+        const startX: u32 = if (posX < 0) @intCast(-posX) else 0;
+        const startY: u32 = if (posY < 0) @intCast(-posY) else 0;
+
+        const destStartX: u32 = if (posX < 0) 0 else @intCast(posX);
+        const destStartY: u32 = if (posY < 0) 0 else @intCast(posY);
+
+        if (startX >= srcWidth or startY >= srcHeight) return;
+
+        const visibleWidth = @min(srcWidth - startX, self.width - destStartX);
+        const visibleHeight = @min(srcHeight - startY, self.height - destStartY);
+
+        if (visibleWidth == 0 or visibleHeight == 0) return;
+
+        const baseFg = fgColor orelse RGBA{ 1.0, 1.0, 1.0, 1.0 };
+
+        const opacity = self.getCurrentOpacity();
+        const graphemeAware = self.grapheme_tracker.hasAny();
+        const linkAware = self.link_tracker.hasAny();
+
+        var srcY: u32 = startY;
+        var destY: u32 = destStartY;
+        while (srcY < startY + visibleHeight) : ({
+            srcY += 1;
+            destY += 1;
+        }) {
+            var srcX: u32 = startX;
+            var destX: u32 = destStartX;
+            while (srcX < startX + visibleWidth) : ({
+                srcX += 1;
+                destX += 1;
+            }) {
+                if (!self.isPointInScissor(@intCast(destX), @intCast(destY))) continue;
+
+                const srcIndex = srcY * srcWidth + srcX;
+                const intensity = intensities[srcIndex];
+
+                if (intensity < 0.01) continue;
+
+                const char = getGrayscaleChar(intensity);
+
+                const gray = @min(@max(intensity, 0.0), 1.0);
+                const fg: RGBA = .{ baseFg[0], baseFg[1], baseFg[2], gray * baseFg[3] * opacity };
+
+                if (graphemeAware or linkAware) {
+                    self.setCellWithAlphaBlending(destX, destY, char, fg, bg, 0) catch {};
+                } else {
+                    self.setCellWithAlphaBlendingRaw(destX, destY, char, fg, bg, 0) catch {};
+                }
+            }
+        }
+    }
+
+    pub fn drawGrayscaleBufferSupersampled(
+        self: *OptimizedBuffer,
+        posX: i32,
+        posY: i32,
+        intensities: [*]const f32,
+        srcWidth: u32,
+        srcHeight: u32,
+        fgColor: ?RGBA,
+        bgColor: ?RGBA,
+    ) void {
+        const bg = bgColor orelse RGBA{ 0.0, 0.0, 0.0, 0.0 };
+        const termWidth = srcWidth / 2;
+        const termHeight = srcHeight / 2;
+
+        if (termWidth == 0 or termHeight == 0) return;
+        if (posX >= @as(i32, @intCast(self.width)) or posY >= @as(i32, @intCast(self.height))) return;
+
+        const startX: u32 = if (posX < 0) @intCast(-posX) else 0;
+        const startY: u32 = if (posY < 0) @intCast(-posY) else 0;
+
+        const destStartX: u32 = if (posX < 0) 0 else @intCast(posX);
+        const destStartY: u32 = if (posY < 0) 0 else @intCast(posY);
+
+        if (startX >= termWidth or startY >= termHeight) return;
+
+        const visibleWidth = @min(termWidth - startX, self.width - destStartX);
+        const visibleHeight = @min(termHeight - startY, self.height - destStartY);
+
+        if (visibleWidth == 0 or visibleHeight == 0) return;
+
+        const baseFg = fgColor orelse RGBA{ 1.0, 1.0, 1.0, 1.0 };
+
+        const opacity = self.getCurrentOpacity();
+        const graphemeAware = self.grapheme_tracker.hasAny();
+        const linkAware = self.link_tracker.hasAny();
+
+        const maxIdx = srcHeight * srcWidth;
+        var cellY: u32 = startY;
+        var destY: u32 = destStartY;
+        while (cellY < startY + visibleHeight) : ({
+            cellY += 1;
+            destY += 1;
+        }) {
+            var cellX: u32 = startX;
+            var destX: u32 = destStartX;
+            while (cellX < startX + visibleWidth) : ({
+                cellX += 1;
+                destX += 1;
+            }) {
+                if (!self.isPointInScissor(@intCast(destX), @intCast(destY))) continue;
+
+                const qx = cellX * 2;
+                const qy = cellY * 2;
+
+                const tlIdx = qy * srcWidth + qx;
+                const trIdx = qy * srcWidth + qx + 1;
+                const blIdx = (qy + 1) * srcWidth + qx;
+                const brIdx = (qy + 1) * srcWidth + qx + 1;
+
+                const tl: f32 = if (tlIdx < maxIdx) intensities[tlIdx] else 0.0;
+                const tr: f32 = if (trIdx < maxIdx and qx + 1 < srcWidth) intensities[trIdx] else 0.0;
+                const bl: f32 = if (blIdx < maxIdx and qy + 1 < srcHeight) intensities[blIdx] else 0.0;
+                const br: f32 = if (brIdx < maxIdx and qx + 1 < srcWidth and qy + 1 < srcHeight) intensities[brIdx] else 0.0;
+
+                const avgIntensity = (tl + tr + bl + br) / 4.0;
+
+                if (avgIntensity < 0.01) continue;
+
+                const char = getGrayscaleChar(avgIntensity);
+
+                const gray = @min(@max(avgIntensity, 0.0), 1.0);
+                const fg: RGBA = .{ baseFg[0], baseFg[1], baseFg[2], gray * baseFg[3] * opacity };
+
+                if (graphemeAware or linkAware) {
+                    self.setCellWithAlphaBlending(destX, destY, char, fg, bg, 0) catch {};
+                } else {
+                    self.setCellWithAlphaBlendingRaw(destX, destY, char, fg, bg, 0) catch {};
+                }
+            }
         }
     }
 };
