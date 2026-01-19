@@ -119,7 +119,7 @@ describe("SolidJS Renderer - Control Flow Components", () => {
       expect(frame).toContain("2. ✓ Build TUI")
     })
 
-    it.only("should handle array reversal correctly", async () => {
+    it("should handle array reversal correctly", async () => {
       const [items, setItems] = createSignal([1, 2, 3, 4])
 
       testSetup = await testRender(
