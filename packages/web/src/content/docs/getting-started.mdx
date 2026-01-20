@@ -23,18 +23,18 @@ bun add @opentui/core
 Create `index.ts` with the following code:
 
 ```typescript
-import { createCliRenderer, Text } from "@opentui/core";
+import { createCliRenderer, Text } from "@opentui/core"
 
 const renderer = await createCliRenderer({
   exitOnCtrlC: true,
-});
+})
 
 renderer.root.add(
   Text({
     content: "Hello, OpenTUI!",
     fg: "#00FF00",
   }),
-);
+)
 ```
 
 Run it:
@@ -52,13 +52,13 @@ Press `Ctrl+C` to exit. You should see green text in your terminal.
 The `CliRenderer` is the heart of OpenTUI. It manages terminal output, handles input events, and orchestrates the rendering loop. Think of it as the canvas that draws your interface to the terminal.
 
 ```typescript
-import { createCliRenderer } from "@opentui/core";
+import { createCliRenderer } from "@opentui/core"
 
-const renderer = await createCliRenderer();
+const renderer = await createCliRenderer()
 
 // Start the render loop - runs at the specified target FPS
 // Without start(), it only re-renders when the renderable tree changes
-renderer.start();
+renderer.start()
 ```
 
 ### Renderables
@@ -66,7 +66,7 @@ renderer.start();
 Renderables are the building blocks of your UI - hierarchical objects that can be positioned, styled, and nested. Each Renderable uses the Yoga layout engine for flexible positioning and sizing.
 
 ```typescript
-import { TextRenderable } from "@opentui/core";
+import { TextRenderable } from "@opentui/core"
 
 const greeting = new TextRenderable(renderer, {
   id: "greeting",
@@ -75,9 +75,9 @@ const greeting = new TextRenderable(renderer, {
   position: "absolute",
   left: 10,
   top: 5,
-});
+})
 
-renderer.root.add(greeting);
+renderer.root.add(greeting)
 ```
 
 ### Constructs
@@ -85,7 +85,7 @@ renderer.root.add(greeting);
 Constructs provide a more declarative way to build your UI. They are factory functions that create virtual nodes representing your components. Children are passed as additional arguments, not as a property:
 
 ```typescript
-import { Text, Box } from "@opentui/core";
+import { Text, Box } from "@opentui/core"
 
 renderer.root.add(
   Box(
@@ -96,7 +96,7 @@ renderer.root.add(
     },
     Text({ content: "Inside a box!" }),
   ),
-);
+)
 ```
 
 ## What's Next

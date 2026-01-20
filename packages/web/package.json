@@ -8,14 +8,10 @@
     "build": "astro build",
     "preview": "astro preview",
     "astro": "astro",
-    "fmt": "oxfmt .",
     "scaffold": "bun scripts/test-doc-examples.ts"
   },
   "dependencies": {
     "@astrojs/mdx": "^4.3.1",
     "astro": "^5.10.2"
-  },
-  "devDependencies": {
-    "oxfmt": "^0.26.0"
   }
 }
