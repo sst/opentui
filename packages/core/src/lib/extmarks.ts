@@ -196,6 +196,7 @@ export class ExtmarksController {
         return
       }
 
+      const currentOffset = this.editorView.getVisualCursor().offset
       this.originalMoveDownVisual()
       const newOffset = this.editorView.getVisualCursor().offset
 
@@ -205,7 +206,12 @@ export class ExtmarksController {
         const distanceToEnd = virtualExtmark.end - newOffset
 
         if (distanceToStart < distanceToEnd) {
-          this.editorView.setCursorByOffset(virtualExtmark.start - 1)
+          const adjustedOffset = virtualExtmark.start - 1
+          if (adjustedOffset <= currentOffset) {
+            this.editorView.setCursorByOffset(virtualExtmark.end + 2)
+          } else {
+            this.editorView.setCursorByOffset(adjustedOffset)
+          }
         } else {
           this.editorView.setCursorByOffset(virtualExtmark.end)
         }
