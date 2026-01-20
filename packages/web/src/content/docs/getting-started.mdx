@@ -1,0 +1,95 @@
+---
+title: Getting Started
+description: Install OpenTUI and create your first terminal UI
+order: 1
+---
+
+# Getting Started with OpenTUI
+
+OpenTUI is a TypeScript library for building terminal user interfaces (TUIs). It provides a component-based architecture with flexible layout capabilities, allowing you to create complex console applications.
+
+## Installation
+
+```bash
+bun add @opentui/core
+```
+
+Or with npm:
+
+```bash
+npm install @opentui/core
+```
+
+## Hello World
+
+Create your first terminal UI in just a few lines:
+
+```typescript
+import { createCliRenderer, Text } from "@opentui/core"
+
+const renderer = await createCliRenderer()
+
+renderer.root.add(
+  Text({
+    content: "Hello, OpenTUI!",
+    fg: "#00FF00",
+  }),
+)
+```
+
+## Core Concepts
+
+### Renderer
+
+The `CliRenderer` is the heart of OpenTUI. It manages terminal output, handles input events, and orchestrates the rendering loop. Think of it as the canvas that draws your interface to the terminal.
+
+```typescript
+import { createCliRenderer } from "@opentui/core"
+
+const renderer = await createCliRenderer()
+
+// Start the render loop (optional - auto-renders on changes)
+renderer.start()
+```
+
+### Renderables
+
+Renderables are the building blocks of your UI - hierarchical objects that can be positioned, styled, and nested. Each Renderable uses the Yoga layout engine for flexible positioning and sizing.
+
+```typescript
+import { TextRenderable } from "@opentui/core"
+
+const greeting = new TextRenderable(renderer, {
+  id: "greeting",
+  content: "Hello!",
+  fg: "#FFFF00",
+  position: "absolute",
+  left: 10,
+  top: 5,
+})
+
+renderer.root.add(greeting)
+```
+
+### Constructs
+
+Constructs provide a more declarative way to build your UI. They look like React or Solid components but are constructors that create renderables:
+
+```typescript
+import { Text, Box } from "@opentui/core"
+
+renderer.root.add(
+  Box({
+    width: 40,
+    height: 10,
+    borderStyle: "rounded",
+    children: [Text({ content: "Inside a box!" })],
+  }),
+)
+```
+
+## What's Next
+
+- Learn about the [Layout System](/docs/core-concepts/layout) powered by Yoga/Flexbox
+- Explore [Components](/docs/components/text) like Text, Box, Input, and Select
+- Check out [React](/docs/bindings/react) or [Solid.js](/docs/bindings/solid) bindings

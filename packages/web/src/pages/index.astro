@@ -1,0 +1,44 @@
+---
+import Base from "../layouts/Base.astro"
+---
+
+<Base title="OpenTUI | The open terminal UI library">
+  <main class="main">
+    <section class="hero">
+      <h1>The open terminal UI library</h1>
+      <p class="hero-subtitle">
+        A TypeScript library for building terminal user interfaces.
+        Flexbox layouts, React and Solid.js bindings, syntax highlighting with tree-sitter.
+      </p>
+      <div class="install-cmd">
+        <code>bun add @opentui/core</code>
+      </div>
+      <div class="hero-actions">
+        <a href="/docs/getting-started" class="btn btn-primary">Get Started</a>
+        <a href="https://github.com/open-tui/opentui" class="btn btn-secondary">GitHub</a>
+      </div>
+    </section>
+
+    <section class="code-example">
+      <pre><code><span class="hl-kw">import</span> {"{"} createCliRenderer, Text {"}"} <span class="hl-kw">from</span> <span class="hl-str">"@opentui/core"</span>
+
+<span class="hl-kw">const</span> renderer = <span class="hl-kw">await</span> createCliRenderer()
+
+renderer.root.add(
+  Text({"{"} 
+    content: <span class="hl-str">"Hello, OpenTUI!"</span>,
+    fg: <span class="hl-str">"#00FF00"</span>,
+  {"}"})
+)</code></pre>
+    </section>
+  </main>
+</Base>
+
+<style>
+  .hl-kw {
+    color: #0066cc;
+  }
+  .hl-str {
+    color: #22863a;
+  }
+</style>
