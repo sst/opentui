@@ -13,17 +13,21 @@ OpenTUI is a TypeScript library for building terminal user interfaces (TUIs). It
 OpenTUI requires [Bun](https://bun.sh) as the runtime.
 
 ```bash
+mkdir my-tui && cd my-tui
+bun init -y
 bun add @opentui/core
 ```
 
 ## Hello World
 
-Create your first terminal UI in just a few lines:
+Create `index.ts` with the following code:
 
 ```typescript
 import { createCliRenderer, Text } from "@opentui/core"
 
-const renderer = await createCliRenderer()
+const renderer = await createCliRenderer({
+  exitOnCtrlC: true,
+})
 
 renderer.root.add(
   Text({
@@ -32,6 +36,14 @@ renderer.root.add(
   }),
 )
 ```
+
+Run it:
+
+```bash
+bun index.ts
+```
+
+Press `Ctrl+C` to exit. You should see green text in your terminal.
 
 ## Core Concepts
 
