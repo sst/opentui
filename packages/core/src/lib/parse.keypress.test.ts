@@ -2,6 +2,13 @@ import { test, expect } from "bun:test"
 import { parseKeypress, nonAlphanumericKeys, type ParsedKey, type KeyEventType } from "./parse.keypress"
 import { Buffer } from "node:buffer"
 
+const isWindowsTerminal = (): boolean => {
+  if (process.platform === "win32") return true
+  if (process.env.WSL_DISTRO_NAME) return true
+  if (process.env.WSL_INTEROP) return true
+  return false
+}
+
 test("parseKeypress - basic letters", () => {
   expect(parseKeypress("a")).toEqual({
     name: "a",
@@ -133,7 +140,7 @@ test("parseKeypress - special keys", () => {
   expect(backspaceB.sequence).toBe("\b")
   expect(backspaceB.raw).toBe("\b")
   expect(backspaceB.source).toBe("raw")
-  if (process.platform === "win32") {
+  if (isWindowsTerminal()) {
     expect(backspaceB.name).toBe("backspace")
   } else {
     expect(backspaceB.name).toBe("h")
@@ -769,7 +776,7 @@ test("parseKeypress - backspace key with modifiers (modifyOtherKeys format)", ()
 
 test("parseKeypress - raw backspace sequences (platform-aware)", () => {
   const ctrlHOrBackspace = parseKeypress("\b")!
-  if (process.platform === "win32") {
+  if (isWindowsTerminal()) {
     expect(ctrlHOrBackspace.name).toBe("backspace")
     expect(ctrlHOrBackspace.ctrl).toBe(true)
   } else {
@@ -779,7 +786,7 @@ test("parseKeypress - raw backspace sequences (platform-aware)", () => {
   expect(ctrlHOrBackspace.meta).toBe(false)
 
   const altCtrlHOrBackspace = parseKeypress("\x1b\b")!
-  if (process.platform === "win32") {
+  if (isWindowsTerminal()) {
     expect(altCtrlHOrBackspace.name).toBe("backspace")
     expect(altCtrlHOrBackspace.ctrl).toBe(true)
   } else {
@@ -1466,7 +1473,7 @@ test("parseKeypress - does not filter valid key sequences that might look simila
 
   const backspace = parseKeypress("\b")
   expect(backspace).not.toBeNull()
-  if (process.platform === "win32") {
+  if (isWindowsTerminal()) {
     expect(backspace?.name).toBe("backspace")
   } else {
     expect(backspace?.name).toBe("h")

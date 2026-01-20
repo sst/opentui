@@ -106,6 +106,20 @@ const isCtrlKey = (code: string) => {
   return ["Oa", "Ob", "Oc", "Od", "Oe", "[2^", "[3^", "[5^", "[6^", "[7^", "[8^"].includes(code)
 }
 
+/**
+ * Detect if running on Windows or in WSL (Windows Subsystem for Linux).
+ * In WSL, process.platform returns 'linux' but the terminal emulator (Windows Terminal)
+ * still sends Windows-style key sequences like \b for Ctrl+Backspace.
+ */
+const isWindowsTerminal = (): boolean => {
+  if (process.platform === "win32") return true
+  // Check for WSL via environment variable (more reliable than reading /proc/version)
+  if (process.env.WSL_DISTRO_NAME) return true
+  // Also check for WSL_INTEROP which is set in WSL2
+  if (process.env.WSL_INTEROP) return true
+  return false
+}
+
 export type KeyEventType = "press" | "repeat" | "release"
 
 export interface ParsedKey {
@@ -273,21 +287,15 @@ export const parseKeypress = (s: Buffer | string = "", options: ParseKeypressOpt
     key.name = "backspace"
     key.meta = s.length === 2 // \x1b\x7f = Alt+Backspace
   } else if (s === "\b" || s === "\x1b\b") {
-    // \b (ASCII 8) has different meanings depending on platform:
-    // - Windows Terminal: Ctrl+Backspace sends \b → should be "backspace" with ctrl=true
-    // - Unix/macOS: \b = Ctrl+H → should be "h" with ctrl=true (handled by generic ctrl+letter below)
-    // We use platform detection to maintain backwards compatibility
-    if (process.platform === "win32") {
+    // \b (ASCII 8): Windows Terminal sends this for Ctrl+Backspace, Unix terminals for Ctrl+H
+    if (isWindowsTerminal()) {
       key.name = "backspace"
       key.ctrl = true
-      key.meta = s.length === 2 // \x1b\b = Alt+Ctrl+Backspace
+      key.meta = s.length === 2
     } else {
-      // On non-Windows, treat \b as Ctrl+H (traditional Unix behavior)
-      // This falls through to the ctrl+letter handler below by NOT matching here
-      // But since we're in an else-if, we need to handle it explicitly
       key.name = "h"
       key.ctrl = true
-      key.meta = s.length === 2 // \x1b\b = Alt+Ctrl+H
+      key.meta = s.length === 2
     }
   } else if (s === "\x1b" || s === "\x1b\x1b") {
     // escape key
