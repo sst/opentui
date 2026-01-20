@@ -7,7 +7,8 @@
     "dev": "astro dev",
     "build": "astro build",
     "preview": "astro preview",
-    "astro": "astro"
+    "astro": "astro",
+    "scaffold": "bun scripts/test-doc-examples.ts"
   },
   "dependencies": {
     "astro": "^5.10.2",
