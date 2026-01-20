@@ -82,7 +82,7 @@ renderer.root.add(greeting)
 
 ### Constructs
 
-Constructs provide a more declarative way to build your UI. They look like React or Solid components but are constructors that create renderables. Children are passed as additional arguments, not as a property:
+Constructs provide a more declarative way to build your UI. They are factory functions that create virtual nodes representing your components. Children are passed as additional arguments, not as a property:
 
 ```typescript
 import { Text, Box } from "@opentui/core"

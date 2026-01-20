@@ -88,8 +88,7 @@ const features = [
             <div class="hero-copy">
               <h1>Terminal UIs in TypeScript</h1>
               <p class="hero-subtitle">
-                Build rich, interactive terminal interfaces with a React-like component model,
-                flexbox layouts, and first-class TypeScript support.
+                Build rich, interactive terminal interfaces with flexbox layouts and first-class TypeScript support.
               </p>
             </div>
 
@@ -187,7 +186,7 @@ renderer.root.<span class="function">add</span>(
             <!-- Input Example -->
             <div class="code-editor-body" data-panel="solid" data-active="false">
               <div class="code-editor-lines">
-                <span>1</span><span>2</span><span>3</span><span>4</span><span>5</span><span>6</span><span>7</span><span>8</span><span>9</span><span>10</span><span>11</span><span>12</span><span>13</span><span>14</span>
+                <span>1</span><span>2</span><span>3</span><span>4</span><span>5</span><span>6</span><span>7</span><span>8</span><span>9</span><span>10</span><span>11</span>
               </div>
               <pre><code><span class="keyword">import</span> {"{"} createCliRenderer, Input {"}"} <span class="keyword">from</span> <span class="string">"@opentui/core"</span>
 
@@ -196,9 +195,6 @@ renderer.root.<span class="function">add</span>(
 <span class="keyword">const</span> input <span class="operator">=</span> <span class="function">Input</span>({"{"}
   <span class="property">placeholder</span><span class="operator">:</span> <span class="string">"Type something..."</span>,
   <span class="property">width</span><span class="operator">:</span> <span class="number">30</span>,
-  <span class="property">onEnter</span><span class="operator">:</span> (value) <span class="operator">=></span> {"{"}
-    console.<span class="function">log</span>(<span class="string">"Submitted:"</span>, value)
-  {"}"},
 {"}"})
 
 renderer.root.<span class="function">add</span>(input)
@@ -218,10 +214,10 @@ renderer.root.<span class="function">add</span>(
   <span class="function">Box</span>(
     {"{"} <span class="property">width</span><span class="operator">:</span> <span class="string">"100%"</span>, <span class="property">height</span><span class="operator">:</span> <span class="string">"100%"</span>, <span class="property">flexDirection</span><span class="operator">:</span> <span class="string">"row"</span>, <span class="property">gap</span><span class="operator">:</span> <span class="number">2</span> {"}"},
     <span class="function">Box</span>(
-      {"{"} <span class="property">flex</span><span class="operator">:</span> <span class="number">1</span>, <span class="property">backgroundColor</span><span class="operator">:</span> <span class="string">"#1a1b26"</span> {"}"},
+      {"{"} <span class="property">flexGrow</span><span class="operator">:</span> <span class="number">1</span>, <span class="property">backgroundColor</span><span class="operator">:</span> <span class="string">"#1a1b26"</span> {"}"},
       <span class="function">Text</span>({"{"} <span class="property">content</span><span class="operator">:</span> <span class="string">"Sidebar"</span>, <span class="property">fg</span><span class="operator">:</span> <span class="string">"#bb9af7"</span> {"}"})
     ),
-    <span class="function">Box</span>({"{"} <span class="property">flex</span><span class="operator">:</span> <span class="number">3</span>, <span class="property">backgroundColor</span><span class="operator">:</span> <span class="string">"#24283b"</span> {"}"}, <span class="function">Text</span>({"{"} <span class="property">content</span><span class="operator">:</span> <span class="string">"Main"</span> {"}"}))
+    <span class="function">Box</span>({"{"} <span class="property">flexGrow</span><span class="operator">:</span> <span class="number">3</span>, <span class="property">backgroundColor</span><span class="operator">:</span> <span class="string">"#24283b"</span> {"}"}, <span class="function">Text</span>({"{"} <span class="property">content</span><span class="operator">:</span> <span class="string">"Main"</span> {"}"}))
   )
 )</code></pre>
             </div>
