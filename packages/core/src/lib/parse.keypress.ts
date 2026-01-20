@@ -273,11 +273,22 @@ export const parseKeypress = (s: Buffer | string = "", options: ParseKeypressOpt
     key.name = "backspace"
     key.meta = s.length === 2 // \x1b\x7f = Alt+Backspace
   } else if (s === "\b" || s === "\x1b\b") {
-    // Ctrl+Backspace sends \b (ASCII 8, same as Ctrl+H) on Windows Terminal and many terminals
-    // \x1b\b = Alt+Ctrl+Backspace
-    key.name = "backspace"
-    key.ctrl = true
-    key.meta = s.length === 2
+    // \b (ASCII 8) has different meanings depending on platform:
+    // - Windows Terminal: Ctrl+Backspace sends \b → should be "backspace" with ctrl=true
+    // - Unix/macOS: \b = Ctrl+H → should be "h" with ctrl=true (handled by generic ctrl+letter below)
+    // We use platform detection to maintain backwards compatibility
+    if (process.platform === "win32") {
+      key.name = "backspace"
+      key.ctrl = true
+      key.meta = s.length === 2 // \x1b\b = Alt+Ctrl+Backspace
+    } else {
+      // On non-Windows, treat \b as Ctrl+H (traditional Unix behavior)
+      // This falls through to the ctrl+letter handler below by NOT matching here
+      // But since we're in an else-if, we need to handle it explicitly
+      key.name = "h"
+      key.ctrl = true
+      key.meta = s.length === 2 // \x1b\b = Alt+Ctrl+H
+    }
   } else if (s === "\x1b" || s === "\x1b\x1b") {
     // escape key
     key.name = "escape"

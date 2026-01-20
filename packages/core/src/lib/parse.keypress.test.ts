@@ -124,18 +124,20 @@ test("parseKeypress - special keys", () => {
     source: "raw",
   })
 
-  expect(parseKeypress("\b")).toEqual({
-    eventType: "press",
-    name: "backspace",
-    ctrl: true,
-    meta: false,
-    shift: false,
-    option: false,
-    number: false,
-    sequence: "\b",
-    raw: "\b",
-    source: "raw",
-  })
+  const backspaceB = parseKeypress("\b")!
+  expect(backspaceB.ctrl).toBe(true)
+  expect(backspaceB.meta).toBe(false)
+  expect(backspaceB.shift).toBe(false)
+  expect(backspaceB.option).toBe(false)
+  expect(backspaceB.number).toBe(false)
+  expect(backspaceB.sequence).toBe("\b")
+  expect(backspaceB.raw).toBe("\b")
+  expect(backspaceB.source).toBe("raw")
+  if (process.platform === "win32") {
+    expect(backspaceB.name).toBe("backspace")
+  } else {
+    expect(backspaceB.name).toBe("h")
+  }
 
   expect(parseKeypress("\x1b")).toEqual({
     name: "escape",
@@ -765,16 +767,26 @@ test("parseKeypress - backspace key with modifiers (modifyOtherKeys format)", ()
   expect(metaBackspace.shift).toBe(false)
 })
 
-test("parseKeypress - raw backspace sequences (Windows Terminal / WSL)", () => {
-  const ctrlBackspace = parseKeypress("\b")!
-  expect(ctrlBackspace.name).toBe("backspace")
-  expect(ctrlBackspace.ctrl).toBe(true)
-  expect(ctrlBackspace.meta).toBe(false)
+test("parseKeypress - raw backspace sequences (platform-aware)", () => {
+  const ctrlHOrBackspace = parseKeypress("\b")!
+  if (process.platform === "win32") {
+    expect(ctrlHOrBackspace.name).toBe("backspace")
+    expect(ctrlHOrBackspace.ctrl).toBe(true)
+  } else {
+    expect(ctrlHOrBackspace.name).toBe("h")
+    expect(ctrlHOrBackspace.ctrl).toBe(true)
+  }
+  expect(ctrlHOrBackspace.meta).toBe(false)
 
-  const altCtrlBackspace = parseKeypress("\x1b\b")!
-  expect(altCtrlBackspace.name).toBe("backspace")
-  expect(altCtrlBackspace.ctrl).toBe(true)
-  expect(altCtrlBackspace.meta).toBe(true)
+  const altCtrlHOrBackspace = parseKeypress("\x1b\b")!
+  if (process.platform === "win32") {
+    expect(altCtrlHOrBackspace.name).toBe("backspace")
+    expect(altCtrlHOrBackspace.ctrl).toBe(true)
+  } else {
+    expect(altCtrlHOrBackspace.name).toBe("h")
+    expect(altCtrlHOrBackspace.ctrl).toBe(true)
+  }
+  expect(altCtrlHOrBackspace.meta).toBe(true)
 
   const regularBackspace = parseKeypress("\x7f")!
   expect(regularBackspace.name).toBe("backspace")
@@ -1454,7 +1466,11 @@ test("parseKeypress - does not filter valid key sequences that might look simila
 
   const backspace = parseKeypress("\b")
   expect(backspace).not.toBeNull()
-  expect(backspace?.name).toBe("backspace")
+  if (process.platform === "win32") {
+    expect(backspace?.name).toBe("backspace")
+  } else {
+    expect(backspace?.name).toBe("h")
+  }
   expect(backspace?.ctrl).toBe(true)
 
   const backspace2 = parseKeypress("\x7f")
