@@ -1,0 +1,303 @@
+<canvas id="hero-canvas"></canvas>
+
+<style>
+  canvas {
+    width: 100%;
+    height: 100%;
+    /* max-height: 400px; */
+    opacity: 0.9;
+  }
+</style>
+
+<script>
+  const canvas = document.getElementById('hero-canvas') as HTMLCanvasElement;
+  const ctx = canvas.getContext('2d')!;
+  
+  // High DPI setup
+  const dpr = window.devicePixelRatio || 1;
+  
+  function resize() {
+    const parent = canvas.parentElement;
+    if (parent) {
+      canvas.width = parent.clientWidth * dpr;
+      canvas.height = parent.clientHeight * dpr;
+      ctx.scale(dpr, dpr);
+    }
+  }
+  
+  window.addEventListener('resize', resize);
+  // Initial resize
+  setTimeout(resize, 0);
+
+  // Configuration
+  const CELL_W = 12;
+  const CELL_H = 20;
+  const FONT_SIZE = 14;
+  
+  // Colors
+  const COLOR_BORDER = 'hsl(0, 1%, 60%)'; // weak text
+  const COLOR_TEXT = 'hsl(0, 1%, 39%)'; // normal text
+  const COLOR_BG_ACTIVE = 'hsl(0, 8%, 94%)'; // weak hover
+  
+  interface Box {
+    x: number;
+    y: number;
+    w: number;
+    h: number;
+    id: number;
+    children?: [Box, Box];
+    splitDir?: 'v' | 'h';
+    splitPos?: number; 
+    progress: number; // 0 to 1
+  }
+
+  // Grid system for resolving junctions
+  class Grid {
+    cols: number;
+    rows: number;
+    cells: string[][];
+
+    constructor(cols: number, rows: number) {
+      this.cols = cols;
+      this.rows = rows;
+      this.cells = Array(rows).fill(null).map(() => Array(cols).fill(' '));
+    }
+
+    clear() {
+      for (let y = 0; y < this.rows; y++) {
+        for (let x = 0; x < this.cols; x++) {
+          this.cells[y][x] = ' ';
+        }
+      }
+    }
+
+    set(x: number, y: number, char: string) {
+      if (x < 0 || x >= this.cols || y < 0 || y >= this.rows) return;
+      const current = this.cells[y][x];
+      this.cells[y][x] = this.resolveJunction(current, char);
+    }
+
+    // Simple junction resolver
+    resolveJunction(current: string, newChar: string): string {
+      if (current === ' ' || current === newChar) return newChar;
+      
+      const v = '│';
+      const h = '─';
+      
+      // If we are adding vertical to horizontal or vice versa
+      if ((current === h && newChar === v) || (current === v && newChar === h)) return '┼';
+      
+      // Corners meeting lines
+      if (current === '┌' && newChar === h) return '┬';
+      if (current === '┐' && newChar === h) return '┬';
+      if (current === '└' && newChar === h) return '┴';
+      if (current === '┘' && newChar === h) return '┴';
+      
+      if (current === '┌' && newChar === v) return '├';
+      if (current === '└' && newChar === v) return '├';
+      if (current === '┐' && newChar === v) return '┤';
+      if (current === '┘' && newChar === v) return '┤';
+      
+      // T-junctions meeting
+      if (current === '┴' && newChar === v) return '┼';
+      if (current === '┬' && newChar === v) return '┼';
+      if (current === '├' && newChar === h) return '┼';
+      if (current === '┤' && newChar === h) return '┼';
+
+      return newChar;
+    }
+  }
+
+  let root: Box | null = null;
+  let grid: Grid | null = null;
+
+  function init() {
+    const cols = Math.floor((canvas.width / dpr) / CELL_W);
+    const rows = Math.floor((canvas.height / dpr) / CELL_H);
+    grid = new Grid(cols, rows);
+    root = {
+      x: 1,
+      y: 1,
+      w: cols - 2,
+      h: rows - 2,
+      id: 0,
+      progress: 1
+    };
+  }
+
+  function updateBox(box: Box, dt: number) {
+    if (box.progress < 1) {
+      box.progress += dt * 2; // Animation speed
+      if (box.progress > 1) box.progress = 1;
+    }
+
+    if (box.children && box.progress >= 1) {
+      updateBox(box.children[0], dt);
+      updateBox(box.children[1], dt);
+    }
+  }
+
+  function paintTree(box: Box) {
+    if (!grid) return;
+    
+    // Draw outer box of root always
+    if (box === root) {
+      const x = Math.floor(box.x);
+      const y = Math.floor(box.y);
+      const w = Math.floor(box.w);
+      const h = Math.floor(box.h);
+      
+      grid.set(x, y, '┌');
+      grid.set(x + w - 1, y, '┐');
+      grid.set(x, y + h - 1, '└');
+      grid.set(x + w - 1, y + h - 1, '┘');
+      for (let i = 1; i < w - 1; i++) { grid.set(x + i, y, '─'); grid.set(x + i, y + h - 1, '─'); }
+      for (let i = 1; i < h - 1; i++) { grid.set(x, y + i, '│'); grid.set(x + w - 1, y + i, '│'); }
+    }
+
+    if (box.children) {
+      const c1 = box.children[0];
+      const c2 = box.children[1]; // Not used directly but structure implies it
+      
+      // Draw the split line
+      // If split was vertical (children are left/right)
+      // The split line is at c1.x + c1.w
+      
+      if (box.splitDir === 'v') {
+        const lineX = Math.floor(c1.x + c1.w);
+        const startY = Math.floor(box.y);
+        const endY = Math.floor(box.y + box.h);
+        const currentH = Math.floor((endY - startY) * box.progress);
+        
+        // Draw split line
+        grid.set(lineX, startY, '┬');
+        grid.set(lineX, startY + box.h - 1, '┴');
+        
+        for (let i = 1; i < currentH - 1; i++) {
+           grid.set(lineX, startY + i, '│');
+        }
+      } else {
+        const lineY = Math.floor(c1.y + c1.h);
+        const startX = Math.floor(box.x);
+        const endX = Math.floor(box.x + box.w);
+        const currentW = Math.floor((endX - startX) * box.progress);
+        
+        grid.set(startX, lineY, '├');
+        grid.set(startX + box.w - 1, lineY, '┤');
+        
+        for (let i = 1; i < currentW - 1; i++) {
+          grid.set(startX + i, lineY, '─');
+        }
+      }
+
+      if (box.progress >= 1) {
+        paintTree(box.children[0]);
+        paintTree(box.children[1]);
+      }
+    }
+  }
+
+  // Split Logic
+  function splitRandomBox(box: Box): boolean {
+    if (box.children) {
+      // Try to split children
+      if (Math.random() > 0.5) {
+        return splitRandomBox(box.children[0]) || splitRandomBox(box.children[1]);
+      } else {
+        return splitRandomBox(box.children[1]) || splitRandomBox(box.children[0]);
+      }
+    }
+    
+    // Minimum size check
+    if (box.w < 12 || box.h < 8) return false;
+
+    // Favor splitting larger dimension
+    const dir = box.w / CELL_W > box.h / CELL_H * 1.5 ? 'v' : (box.h / CELL_H > box.w / CELL_W * 1.5 ? 'h' : (Math.random() > 0.5 ? 'v' : 'h'));
+    
+    if (dir === 'v') {
+      const split = Math.floor(box.w * (0.4 + Math.random() * 0.2)); // 40-60% split
+      box.children = [
+        { x: box.x, y: box.y, w: split, h: box.h, id: box.id * 2 + 1, progress: 0 },
+        { x: box.x + split, y: box.y, w: box.w - split, h: box.h, id: box.id * 2 + 2, progress: 0 }
+      ];
+      box.splitDir = 'v';
+    } else {
+      const split = Math.floor(box.h * (0.4 + Math.random() * 0.2));
+      box.children = [
+        { x: box.x, y: box.y, w: box.w, h: split, id: box.id * 2 + 1, progress: 0 },
+        { x: box.x, y: box.y + split, w: box.w, h: box.h - split, id: box.id * 2 + 2, progress: 0 }
+      ];
+      box.splitDir = 'h';
+    }
+    box.progress = 0;
+    return true;
+  }
+
+  let lastTime = 0;
+  function animate(time: number) {
+    if (!root) init();
+    if (!grid) return; // Should not happen
+
+    const dt = (time - lastTime) / 1000;
+    lastTime = time;
+
+    updateBox(root!, dt);
+    
+    // Clear grid
+    grid.clear();
+    // Paint grid
+    paintTree(root!);
+
+    // Render grid to canvas
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+    
+    ctx.font = `${FONT_SIZE}px "IBM Plex Mono", monospace`;
+    ctx.textBaseline = 'top';
+
+    for (let y = 0; y < grid.rows; y++) {
+      for (let x = 0; x < grid.cols; x++) {
+        const char = grid.cells[y][x];
+        if (char !== ' ') {
+          ctx.fillStyle = COLOR_BORDER;
+          ctx.fillText(char, x * CELL_W, y * CELL_H);
+        }
+      }
+    }
+    
+    // Draw some fake content in leaves
+    drawContent(root!);
+
+    requestAnimationFrame(animate);
+  }
+  
+  function drawContent(box: Box) {
+    if (box.children && box.progress >= 1) {
+      drawContent(box.children[0]);
+      drawContent(box.children[1]);
+      return;
+    }
+    
+    if (box.progress < 1) return; // Don't draw content in splitting boxes
+    
+    // Draw content if leaf
+    // Simple mock content
+    const centerX = box.x + box.w / 2;
+    const centerY = box.y + box.h / 2;
+    
+    // ctx.fillStyle = COLOR_TEXT;
+    // ctx.fillText("Panel", (centerX - 2) * CELL_W, centerY * CELL_H);
+  }
+
+  requestAnimationFrame(animate);
+  
+  // Periodically split
+  setInterval(() => {
+    if (root && !splitRandomBox(root)) {
+      // Occasionally reset
+      if (Math.random() > 0.7) {
+        init();
+      }
+    }
+  }, 800);
+
+</script>

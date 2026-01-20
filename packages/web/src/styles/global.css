@@ -177,6 +177,19 @@ pre {
   padding: var(--space-4xl) var(--section-padding-x);
   display: flex;
   flex-direction: column;
+  align-items: center;
+  text-align: center;
+  max-width: 900px;
+  margin: 0 auto;
+}
+
+.hero-content {
+  display: flex;
+  flex-direction: column;
+}
+
+.hero-visual-wrapper {
+  display: none;
 }
 
 .hero-copy {
@@ -385,6 +398,71 @@ pre {
   color: var(--color-text-strong);
 }
 
+/* Features Split Layout */
+.features-split {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: var(--space-3xl);
+  align-items: start;
+}
+
+.features-list {
+  display: flex;
+  flex-direction: column;
+}
+
+.features-visual {
+  position: sticky;
+  top: 120px;
+  background: transparent;
+}
+
+.feature-item {
+  cursor: pointer;
+  border-radius: 6px;
+  padding: 12px;
+  margin: 0 -12px;
+  transition: color 0.15s;
+}
+
+.feature-item:hover {
+  /* background: var(--color-bg-weak-hover); */
+}
+
+.feature-item.active {
+  /* background: var(--color-bg-weak); */
+}
+
+.feature-item.active strong {
+  color: var(--color-text-strong);
+}
+
+.feature-item.active .bullet {
+  color: var(--color-text-strong);
+  font-weight: bold;
+}
+
+.what-actions {
+  display: flex;
+  justify-content: flex-start; /* Left align in split view */
+  margin-top: var(--space-xl);
+  padding-left: 0;
+}
+
+@media (max-width: 900px) {
+  .features-split {
+    grid-template-columns: 1fr;
+    gap: var(--space-xl);
+  }
+
+  .features-visual {
+    position: static;
+    height: 240px; /* Shorter on mobile */
+    order: -1; /* Visual first? Or visual after active item (complex)? Let's put visual first */
+    margin-bottom: var(--space-lg);
+  }
+}
+
 /* Button - dark bg, light text (primary action) */
 .btn-dark {
   display: inline-flex;
@@ -416,17 +494,73 @@ pre {
 }
 
 .code-section {
-  --editor-bg: #1a1918;
-  --editor-bg-header: #141312;
-  --editor-bg-tab: #1a1918;
-  --editor-bg-tab-active: #1a1918;
-  --editor-bg-tab-hover: #242220;
-  --editor-border: #2e2b28;
-  --editor-gutter: #4a4540;
-  --editor-text: #e8e4e0;
-  --editor-text-muted: #6b635a;
+  /* "Precision" Light Theme */
+  --editor-bg: #ffffff;
+  --editor-bg-header: #fafafa;
+  --editor-bg-tab: #ffffff;
+  --editor-bg-tab-active: #ffffff;
+  --editor-bg-tab-hover: #f4f4f5;
+  --editor-border: rgba(0, 0, 0, 0.1);
+  --editor-gutter: #a1a1aa;
+  --editor-text: #27272a;
+  --editor-text-muted: #71717a;
 
   background: var(--editor-bg-header);
+  border-top: 1px solid var(--color-border);
+  border-bottom: 1px solid var(--color-border);
+}
+
+.code-editor-header {
+  border-bottom: 1px solid var(--editor-border);
+}
+
+.code-editor-tab[aria-selected="true"] {
+  color: var(--color-text-strong);
+  border-bottom: 2px solid var(--color-text-strong);
+}
+
+/* Syntax Highlighting Overrides for Light Theme */
+.code-editor-body pre {
+  color: var(--editor-text);
+  background: transparent;
+}
+
+.code-editor-body .keyword {
+  color: #7c3aed; /* Purple */
+  font-weight: 500;
+}
+
+.code-editor-body .function {
+  color: #0284c7; /* Blue */
+}
+
+.code-editor-body .string {
+  color: #059669; /* Green */
+}
+
+.code-editor-body .number {
+  color: #d97706; /* Amber */
+}
+
+.code-editor-body .comment {
+  color: #a1a1aa;
+  font-style: italic;
+}
+
+.code-editor-body .property {
+  color: #0891b2; /* Cyan */
+}
+
+.code-editor-body .type {
+  color: #db2777; /* Pink */
+}
+
+.code-editor-body .operator {
+  color: #52525b;
+}
+
+.code-editor-body .punctuation {
+  color: #71717a;
 }
 
 .code-editor {
@@ -561,48 +695,49 @@ pre {
 }
 
 .code-editor-body pre {
-  color: #fff;
+  color: var(--editor-text);
   font-size: 15px;
   line-height: 1.7;
   margin: 0;
+  background: transparent;
 }
 
 .code-editor-body .keyword {
-  color: #c8c0b8;
+  color: #7c3aed; /* Purple */
   font-weight: 500;
 }
 
 .code-editor-body .function {
-  color: #ffffff;
+  color: #0284c7; /* Blue */
 }
 
 .code-editor-body .string {
-  color: #a09890;
+  color: #059669; /* Green */
 }
 
 .code-editor-body .number {
-  color: #b8b0a8;
+  color: #d97706; /* Amber */
 }
 
 .code-editor-body .comment {
-  color: #5a5550;
+  color: #a1a1aa;
   font-style: italic;
 }
 
 .code-editor-body .property {
-  color: #d0c8c0;
+  color: #0891b2; /* Cyan */
 }
 
 .code-editor-body .type {
-  color: #b0a8a0;
+  color: #db2777; /* Pink */
 }
 
 .code-editor-body .operator {
-  color: #908880;
+  color: #52525b;
 }
 
 .code-editor-body .punctuation {
-  color: #807870;
+  color: #71717a;
 }
 
 /* Landing Footer - opencode.ai style */
@@ -827,11 +962,55 @@ pre {
 }
 
 .content pre {
+  position: relative;
   background: var(--color-bg-weak);
   padding: var(--space-md);
   border-radius: 6px;
   overflow-x: auto;
   margin: var(--space-md) 0;
+}
+
+.content pre .copy-btn {
+  position: absolute;
+  top: 8px;
+  right: 8px;
+  background: var(--color-bg);
+  border: 1px solid var(--color-border);
+  border-radius: 4px;
+  padding: 6px;
+  cursor: pointer;
+  opacity: 0;
+  transition: opacity 0.15s;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.content pre:hover .copy-btn {
+  opacity: 1;
+}
+
+.content pre .copy-btn:hover {
+  background: var(--color-bg-weak);
+}
+
+.content pre .copy-btn svg {
+  width: 16px;
+  height: 16px;
+  color: var(--color-icon);
+}
+
+.content pre .copy-btn .check-icon {
+  display: none;
+  color: #22c55e;
+}
+
+.content pre .copy-btn.copied .copy-icon {
+  display: none;
+}
+
+.content pre .copy-btn.copied .check-icon {
+  display: block;
 }
 
 .content code {
@@ -907,6 +1086,11 @@ pre {
 
   .hero {
     padding: var(--space-2xl) var(--section-padding-x);
+    grid-template-columns: 1fr;
+  }
+
+  .hero-visual-wrapper {
+    display: none;
   }
 
   .hero h1 {

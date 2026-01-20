@@ -1,5 +1,7 @@
 ---
 import Base from "../layouts/Base.astro"
+import HeroVisual from "../components/HeroVisual.astro"
+import TuiSurface from "../components/TuiSurface.astro"
 
 const installCommands = {
   create: { cmd: "bun create", pkg: "tui" },
@@ -8,26 +10,32 @@ const installCommands = {
 
 const features = [
   {
+    type: "layout",
     title: "Flexbox layout",
     description: "Yoga-powered layout engine with familiar CSS-like positioning and sizing"
   },
   {
+    type: "syntax",
     title: "Syntax highlighting",
     description: "Built-in tree-sitter integration for beautiful code rendering"
   },
   {
+    type: "components",
     title: "Rich components",
     description: "Text, Box, Input, Select, ScrollBox, Code, Diff, and more"
   },
   {
+    type: "keyboard",
     title: "Keyboard handling",
     description: "Focus management and input handling built in"
   },
-{
+  {
+    type: "react",
     title: "React and Solid.js",
     description: "First-class bindings for building UIs with your favorite framework"
   },
   {
+    type: "animations",
     title: "Animations",
     description: "Timeline API for smooth, performant terminal animations"
   },
@@ -57,66 +65,49 @@ const features = [
       <div class="landing-content">
         <!-- Hero -->
         <section class="hero">
-          <div class="hero-copy">
-            <h1>Terminal UIs in TypeScript</h1>
-            <p class="hero-subtitle">
-              Build rich, interactive terminal interfaces with a React-like component model,
-              flexbox layouts, and first-class TypeScript support.
-            </p>
-          </div>
+          <div class="hero-content">
+            <div class="hero-copy">
+              <h1>Terminal UIs in TypeScript</h1>
+              <p class="hero-subtitle">
+                Build rich, interactive terminal interfaces with a React-like component model,
+                flexbox layouts, and first-class TypeScript support.
+              </p>
+            </div>
 
-          <!-- Install Tabs -->
-          <div class="install-section" aria-label="Install options">
-            <div class="install-tabs" role="tablist">
-              {Object.keys(installCommands).map((key, i) => (
-                <button 
-                  role="tab" 
-                  class="install-tab" 
-                  data-tab={key}
-                  aria-selected={i === 0 ? "true" : "false"}
-                >
-                  {key}
+            <!-- Install Tabs -->
+            <div class="install-section" aria-label="Install options">
+              <div class="install-tabs" role="tablist">
+                {Object.keys(installCommands).map((key, i) => (
+                  <button 
+                    role="tab" 
+                    class="install-tab" 
+                    data-tab={key}
+                    aria-selected={i === 0 ? "true" : "false"}
+                  >
+                    {key}
+                  </button>
+                ))}
+              </div>
+              <div class="install-panels">
+                <button class="install-command" id="install-display" data-command="bun create tui">
+                  <code>
+                    <span class="cmd">bun create </span><span class="highlight">tui</span>
+                  </code>
+                  <span class="copy-btn">
+                    <svg class="copy-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+                      <path d="M8.75 8.75V2.75H21.25V15.25H15.25M15.25 8.75H2.75V21.25H15.25V8.75Z" stroke-linecap="square"/>
+                    </svg>
+                    <svg class="check-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                      <path d="M2.75 15.0938L9 20.25L21.25 3.75" stroke-linecap="square"/>
+                    </svg>
+                  </span>
                 </button>
-              ))}
-            </div>
-            <div class="install-panels">
-              <button class="install-command" id="install-display" data-command="bun create tui">
-                <code>
-                  <span class="cmd">bun create </span><span class="highlight">tui</span>
-                </code>
-                <span class="copy-btn">
-                  <svg class="copy-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
-                    <path d="M8.75 8.75V2.75H21.25V15.25H15.25M15.25 8.75H2.75V21.25H15.25V8.75Z" stroke-linecap="square"/>
-                  </svg>
-                  <svg class="check-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                    <path d="M2.75 15.0938L9 20.25L21.25 3.75" stroke-linecap="square"/>
-                  </svg>
-                </span>
-              </button>
+              </div>
             </div>
           </div>
-        </section>
-
-        <!-- What is OpenTUI -->
-        <section class="what-section">
-          <div class="what-section-title">
-            <h3>What is OpenTUI?</h3>
-            <p>OpenTUI is a TypeScript library for building rich, interactive terminal user interfaces.</p>
+          <div class="hero-visual-wrapper">
+             <!-- Removed HeroVisual -->
           </div>
-          <ul class="what-list">
-            {features.map((feature) => (
-              <li>
-                <span class="bullet">[*]</span>
-                <div><strong>{feature.title}</strong> {feature.description}</div>
-              </li>
-            ))}
-          </ul>
-          <a href="/docs/getting-started" class="btn-dark">
-            <span>Read docs</span>
-            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
-              <path d="M6.5 12L17 12M13 16.5L17.5 12L13 7.5" stroke="currentColor" stroke-width="1.5" stroke-linecap="square"/>
-            </svg>
-          </a>
         </section>
 
         <!-- Code Example -->
@@ -224,6 +215,40 @@ renderer.root.<span class="function">add</span>(
           </div>
         </section>
 
+        <!-- What is OpenTUI -->
+        <section class="what-section">
+          <div class="what-section-title">
+            <h3>What is OpenTUI?</h3>
+            <p>OpenTUI is a TypeScript library for building rich, interactive terminal user interfaces.</p>
+          </div>
+          
+          <div class="features-split">
+            <div class="features-list">
+              <ul class="what-list">
+                {features.map((feature, i) => (
+                  <li class={`feature-item ${i === 0 ? 'active' : ''}`} data-feature={feature.type} tabindex="0">
+                    <span class="bullet">[{i === 0 ? 'o' : '*'}]</span>
+                    <div><strong>{feature.title}</strong> {feature.description}</div>
+                  </li>
+                ))}
+              </ul>
+              
+              <div class="what-actions">
+                <a href="/docs/getting-started" class="btn-dark">
+                  <span>Read docs</span>
+                  <svg width="24" height="24" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                    <path d="M6.5 12L17 12M13 16.5L17.5 12L13 7.5" stroke="currentColor" stroke-width="1.5" stroke-linecap="square"/>
+                  </svg>
+                </a>
+              </div>
+            </div>
+            
+            <div class="features-visual">
+              <TuiSurface />
+            </div>
+          </div>
+        </section>
+
         <!-- Footer -->
         <footer class="landing-footer">
           <div class="landing-footer-cell"><a href="https://github.com/open-tui/opentui" target="_blank">GitHub</a></div>
@@ -300,6 +325,35 @@ renderer.root.<span class="function">add</span>(
       })
     })
   })
+
+  // Feature switching logic
+  const featureItems = document.querySelectorAll('.feature-item');
+  
+  featureItems.forEach(item => {
+    item.addEventListener('click', () => {
+      // Update UI
+      featureItems.forEach(i => {
+        i.classList.remove('active');
+        const bull = i.querySelector('.bullet');
+        if (bull) bull.textContent = '[*]';
+      });
+      item.classList.add('active');
+      const bull = item.querySelector('.bullet');
+      if (bull) bull.textContent = '[o]';
+      
+      // Dispatch event
+      const feature = item.getAttribute('data-feature');
+      window.dispatchEvent(new CustomEvent('feature-change', { detail: feature }));
+    });
+    
+    // Keyboard support
+    item.addEventListener('keydown', (e: any) => {
+      if (e.key === 'Enter' || e.key === ' ') {
+        e.preventDefault();
+        (item as HTMLElement).click();
+      }
+    });
+  });
 
   const codeCopyBtn = document.getElementById('code-copy-btn')
   
