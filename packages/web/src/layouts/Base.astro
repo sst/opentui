@@ -4,7 +4,10 @@ interface Props {
   description?: string
 }
 
-const { title, description = "TypeScript library for building terminal user interfaces" } = Astro.props
+const { 
+  title, 
+  description = "TypeScript library for building terminal user interfaces"
+} = Astro.props
 ---
 
 <!doctype html>
@@ -13,41 +16,14 @@ const { title, description = "TypeScript library for building terminal user inte
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <meta name="description" content={description} />
-    <title>{title} | OpenTUI</title>
+    <title>{title}</title>
     <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-    <link
-      href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=Inter:wght@400;500;600&display=swap"
-      rel="stylesheet"
-    />
+    <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=Inter:opsz,wght@14..32,100..900&display=swap" rel="stylesheet" />
   </head>
   <body>
-    <header class="header">
-      <div class="header-content">
-        <a href="/" class="logo">
-          <svg class="logo-icon" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
-            <rect x="2" y="3" width="20" height="18" rx="2" stroke="currentColor" stroke-width="2" />
-            <path d="M6 8L10 12L6 16" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" />
-            <path d="M12 16H18" stroke="currentColor" stroke-width="2" stroke-linecap="round" />
-          </svg>
-          OpenTUI
-        </a>
-        <nav class="nav">
-          <a href="/docs/getting-started">Docs</a>
-          <a href="https://github.com/open-tui/opentui">GitHub</a>
-        </nav>
-      </div>
-    </header>
-
     <slot />
-
-    <footer class="footer">
-      <div class="footer-content">
-        <span>OpenTUI - Terminal UIs in TypeScript</span>
-        <a href="https://github.com/open-tui/opentui">GitHub</a>
-      </div>
-    </footer>
   </body>
 </html>
 

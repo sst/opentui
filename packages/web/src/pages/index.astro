@@ -1,44 +1,297 @@
 ---
 import Base from "../layouts/Base.astro"
+
+const installCommands = {
+  create: { cmd: "bun create", pkg: "tui" },
+  manual: { cmd: "bun add", pkg: "@opentui/core" },
+}
+
+const features = [
+  {
+    title: "Flexbox layout",
+    description: "Yoga-powered layout engine with familiar CSS-like positioning and sizing"
+  },
+  {
+    title: "React & Solid.js",
+    description: "First-class bindings for building UIs with your favorite framework"
+  },
+  {
+    title: "Syntax highlighting",
+    description: "Built-in tree-sitter integration for beautiful code rendering"
+  },
+  {
+    title: "Rich components",
+    description: "Text, Box, Input, Select, ScrollBox, Code, Diff, and more"
+  },
+  {
+    title: "Keyboard handling",
+    description: "Focus management and input handling built in"
+  },
+  {
+    title: "Animations",
+    description: "Timeline API for smooth, performant terminal animations"
+  },
+]
 ---
 
-<Base title="OpenTUI | The open terminal UI library">
-  <main class="main">
-    <section class="hero">
-      <h1>The open terminal UI library</h1>
-      <p class="hero-subtitle">
-        A TypeScript library for building terminal user interfaces.
-        Flexbox layouts, React and Solid.js bindings, syntax highlighting with tree-sitter.
-      </p>
-      <div class="install-cmd">
-        <code>bun add @opentui/core</code>
-      </div>
-      <div class="hero-actions">
-        <a href="/docs/getting-started" class="btn btn-primary">Get Started</a>
-        <a href="https://github.com/open-tui/opentui" class="btn btn-secondary">GitHub</a>
-      </div>
-    </section>
+<Base title="OpenTUI - Terminal UIs in TypeScript">
+  <main class="landing">
+    <div class="landing-container">
+      <!-- Header -->
+      <header class="landing-header">
+        <a href="/" class="landing-logo">
+          <svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+            <rect x="2" y="3" width="20" height="18" rx="2" stroke="currentColor" stroke-width="2" />
+            <path d="M6 8L10 12L6 16" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" />
+            <path d="M12 16H18" stroke="currentColor" stroke-width="2" stroke-linecap="round" />
+          </svg>
+          OpenTUI
+        </a>
+        <nav class="landing-nav">
+          <a href="/docs/getting-started">Docs</a>
+          <a href="https://github.com/open-tui/opentui" target="_blank">GitHub</a>
+        </nav>
+      </header>
 
-    <section class="code-example">
-      <pre><code><span class="hl-kw">import</span> {"{"} createCliRenderer, Text {"}"} <span class="hl-kw">from</span> <span class="hl-str">"@opentui/core"</span>
+      <!-- Content -->
+      <div class="landing-content">
+        <!-- Hero -->
+        <section class="hero">
+          <div class="hero-copy">
+            <h1>Terminal UIs in TypeScript</h1>
+            <p class="hero-subtitle">
+              Build rich, interactive terminal interfaces with a React-like component model,
+              flexbox layouts, and first-class TypeScript support.
+            </p>
+          </div>
 
-<span class="hl-kw">const</span> renderer = <span class="hl-kw">await</span> createCliRenderer()
+          <!-- Install Tabs -->
+          <div class="install-section" aria-label="Install options">
+            <div class="install-tabs" role="tablist">
+              {Object.keys(installCommands).map((key, i) => (
+                <button 
+                  role="tab" 
+                  class="install-tab" 
+                  data-tab={key}
+                  aria-selected={i === 0 ? "true" : "false"}
+                >
+                  {key}
+                </button>
+              ))}
+            </div>
+            <div class="install-panels">
+              <button class="install-command" id="install-display" data-command="bun create tui">
+                <code>
+                  <span class="cmd">bun create </span><span class="highlight">tui</span>
+                </code>
+                <span class="copy-btn">
+                  <svg class="copy-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+                    <path d="M8.75 8.75V2.75H21.25V15.25H15.25M15.25 8.75H2.75V21.25H15.25V8.75Z" stroke-linecap="square"/>
+                  </svg>
+                  <svg class="check-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <path d="M2.75 15.0938L9 20.25L21.25 3.75" stroke-linecap="square"/>
+                  </svg>
+                </span>
+              </button>
+            </div>
+          </div>
+        </section>
 
-renderer.root.add(
-  Text({"{"} 
-    content: <span class="hl-str">"Hello, OpenTUI!"</span>,
-    fg: <span class="hl-str">"#00FF00"</span>,
+        <!-- What is OpenTUI -->
+        <section class="what-section">
+          <div class="what-section-title">
+            <h3>What is OpenTUI?</h3>
+            <p>OpenTUI is a TypeScript library for building rich, interactive terminal user interfaces.</p>
+          </div>
+          <ul class="what-list">
+            {features.map((feature) => (
+              <li>
+                <span class="bullet">[*]</span>
+                <div><strong>{feature.title}</strong> {feature.description}</div>
+              </li>
+            ))}
+          </ul>
+          <a href="/docs/getting-started" class="btn-dark">
+            <span>Read docs</span>
+            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+              <path d="M6.5 12L17 12M13 16.5L17.5 12L13 7.5" stroke="currentColor" stroke-width="1.5" stroke-linecap="square"/>
+            </svg>
+          </a>
+        </section>
+
+        <!-- Code Example -->
+        <section class="code-section">
+          <div class="code-editor">
+            <div class="code-editor-header">
+              <div class="code-editor-dots">
+                <span></span><span></span><span></span>
+              </div>
+              <div class="code-editor-tabs" role="tablist">
+                <button role="tab" class="code-editor-tab" data-tab="core" aria-selected="true">
+                  <svg class="code-editor-tab-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <path d="M13 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V9z"/>
+                    <polyline points="13 2 13 9 20 9"/>
+                  </svg>
+                  hello.ts
+                </button>
+                <button role="tab" class="code-editor-tab" data-tab="solid" aria-selected="false">
+                  <svg class="code-editor-tab-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <path d="M13 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V9z"/>
+                    <polyline points="13 2 13 9 20 9"/>
+                  </svg>
+                  counter.tsx
+                </button>
+                <button role="tab" class="code-editor-tab" data-tab="layout" aria-selected="false">
+                  <svg class="code-editor-tab-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <path d="M13 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V9z"/>
+                    <polyline points="13 2 13 9 20 9"/>
+                  </svg>
+                  layout.tsx
+                </button>
+              </div>
+            </div>
+            
+            <!-- Core API Example -->
+            <div class="code-editor-body" data-panel="core" data-active="true">
+              <div class="code-editor-lines">
+                <span>1</span><span>2</span><span>3</span><span>4</span><span>5</span><span>6</span><span>7</span><span>8</span><span>9</span><span>10</span>
+              </div>
+              <pre><code><span class="keyword">import</span> {"{"} createCliRenderer, Text {"}"} <span class="keyword">from</span> <span class="string">"@opentui/core"</span>
+
+<span class="keyword">const</span> renderer <span class="operator">=</span> <span class="keyword">await</span> <span class="function">createCliRenderer</span>()
+
+renderer.root.<span class="function">add</span>(
+  <span class="function">Text</span>({"{"}
+    <span class="property">content</span><span class="operator">:</span> <span class="string">"Hello, OpenTUI!"</span>,
+    <span class="property">fg</span><span class="operator">:</span> <span class="string">"#00FF00"</span>,
   {"}"})
 )</code></pre>
-    </section>
+            </div>
+            
+            <!-- Solid.js Example -->
+            <div class="code-editor-body" data-panel="solid" data-active="false">
+              <div class="code-editor-lines">
+                <span>1</span><span>2</span><span>3</span><span>4</span><span>5</span><span>6</span><span>7</span><span>8</span><span>9</span><span>10</span><span>11</span><span>12</span><span>13</span><span>14</span><span>15</span><span>16</span>
+              </div>
+              <pre><code><span class="keyword">import</span> {"{"} createSignal {"}"} <span class="keyword">from</span> <span class="string">"solid-js"</span>
+<span class="keyword">import</span> {"{"} render, Text, Box {"}"} <span class="keyword">from</span> <span class="string">"@opentui/solid"</span>
+
+<span class="keyword">function</span> <span class="function">Counter</span>() {"{"}
+  <span class="keyword">const</span> [count, setCount] <span class="operator">=</span> <span class="function">createSignal</span>(<span class="number">0</span>)
+
+  <span class="function">setInterval</span>(() <span class="operator">=></span> <span class="function">setCount</span>(c <span class="operator">=></span> c <span class="operator">+</span> <span class="number">1</span>), <span class="number">1000</span>)
+
+  <span class="keyword">return</span> (
+    <span class="punctuation">&lt;</span><span class="type">Box</span> <span class="property">padding</span><span class="operator">=</span>{"{"}10{"}"}<span class="punctuation">></span>
+      <span class="punctuation">&lt;</span><span class="type">Text</span> <span class="property">fg</span><span class="operator">=</span><span class="string">"#7aa2f7"</span><span class="punctuation">></span>Count: {"{"}count(){"}"}<span class="punctuation">&lt;/</span><span class="type">Text</span><span class="punctuation">></span>
+    <span class="punctuation">&lt;/</span><span class="type">Box</span><span class="punctuation">></span>
+  )
+{"}"}
+
+<span class="function">render</span>(<span class="punctuation">&lt;</span><span class="type">Counter</span> <span class="punctuation">/></span>)</code></pre>
+            </div>
+            
+            <!-- Layout Example -->
+            <div class="code-editor-body" data-panel="layout" data-active="false">
+              <div class="code-editor-lines">
+                <span>1</span><span>2</span><span>3</span><span>4</span><span>5</span><span>6</span><span>7</span><span>8</span><span>9</span><span>10</span><span>11</span><span>12</span><span>13</span><span>14</span><span>15</span><span>16</span>
+              </div>
+              <pre><code><span class="keyword">import</span> {"{"} render, Box, Text {"}"} <span class="keyword">from</span> <span class="string">"@opentui/solid"</span>
+
+<span class="keyword">function</span> <span class="function">Layout</span>() {"{"}
+  <span class="keyword">return</span> (
+    <span class="punctuation">&lt;</span><span class="type">Box</span> <span class="property">flexDirection</span><span class="operator">=</span><span class="string">"row"</span> <span class="property">gap</span><span class="operator">=</span>{"{"}2{"}"} <span class="property">padding</span><span class="operator">=</span>{"{"}1{"}"}<span class="punctuation">></span>
+      <span class="punctuation">&lt;</span><span class="type">Box</span> <span class="property">flex</span><span class="operator">=</span>{"{"}1{"}"} <span class="property">bg</span><span class="operator">=</span><span class="string">"#1a1b26"</span> <span class="property">padding</span><span class="operator">=</span>{"{"}2{"}"}<span class="punctuation">></span>
+        <span class="punctuation">&lt;</span><span class="type">Text</span> <span class="property">fg</span><span class="operator">=</span><span class="string">"#bb9af7"</span><span class="punctuation">></span>Sidebar<span class="punctuation">&lt;/</span><span class="type">Text</span><span class="punctuation">></span>
+      <span class="punctuation">&lt;/</span><span class="type">Box</span><span class="punctuation">></span>
+      <span class="punctuation">&lt;</span><span class="type">Box</span> <span class="property">flex</span><span class="operator">=</span>{"{"}3{"}"} <span class="property">bg</span><span class="operator">=</span><span class="string">"#24283b"</span> <span class="property">padding</span><span class="operator">=</span>{"{"}2{"}"}<span class="punctuation">></span>
+        <span class="punctuation">&lt;</span><span class="type">Text</span><span class="punctuation">></span>Main content area<span class="punctuation">&lt;/</span><span class="type">Text</span><span class="punctuation">></span>
+      <span class="punctuation">&lt;/</span><span class="type">Box</span><span class="punctuation">></span>
+    <span class="punctuation">&lt;/</span><span class="type">Box</span><span class="punctuation">></span>
+  )
+{"}"}
+
+<span class="function">render</span>(<span class="punctuation">&lt;</span><span class="type">Layout</span> <span class="punctuation">/></span>)</code></pre>
+            </div>
+          </div>
+        </section>
+
+        <!-- Footer -->
+        <footer class="landing-footer">
+          <div class="landing-footer-cell"><a href="https://github.com/open-tui/opentui" target="_blank">GitHub</a></div>
+          <div class="landing-footer-cell"><a href="/docs/getting-started">Docs</a></div>
+        </footer>
+      </div>
+    </div>
+
+    <!-- Legal - outside container, centered -->
+    <div class="landing-legal">
+      <span>&copy; 2025 <a href="https://anoma.ly">Anomaly</a></span>
+    </div>
   </main>
 </Base>
 
-<style>
-  .hl-kw {
-    color: #0066cc;
+<script>
+  const installCommands: Record<string, { cmd: string; pkg: string }> = {
+    create: { cmd: "bun create", pkg: "tui" },
+    manual: { cmd: "bun add", pkg: "@opentui/core" },
   }
-  .hl-str {
-    color: #22863a;
+
+  // Tab switching
+  const tabs = document.querySelectorAll('.install-tab')
+  const commandBtn = document.getElementById('install-display') as HTMLButtonElement
+  
+  tabs.forEach(tab => {
+    tab.addEventListener('click', () => {
+      const key = tab.getAttribute('data-tab') as keyof typeof installCommands
+      const { cmd, pkg } = installCommands[key]
+      
+      // Update active tab
+      tabs.forEach(t => t.setAttribute('aria-selected', 'false'))
+      tab.setAttribute('aria-selected', 'true')
+      
+      // Update command display
+      if (commandBtn) {
+        const codeEl = commandBtn.querySelector('code')
+        if (codeEl) {
+          codeEl.innerHTML = `<span class="cmd">${cmd} </span><span class="highlight">${pkg}</span>`
+        }
+        commandBtn.setAttribute('data-command', `${cmd} ${pkg}`)
+      }
+    })
+  })
+
+  // Copy functionality - clicking the whole command button copies
+  if (commandBtn) {
+    commandBtn.addEventListener('click', async () => {
+      const command = commandBtn.getAttribute('data-command')
+      if (command) {
+        await navigator.clipboard.writeText(command)
+        const copyBtn = commandBtn.querySelector('.copy-btn')
+        if (copyBtn) {
+          copyBtn.classList.add('copied')
+          setTimeout(() => copyBtn.classList.remove('copied'), 1500)
+        }
+      }
+    })
   }
-</style>
+
+  // Code editor tab switching
+  const editorTabs = document.querySelectorAll('.code-editor-tab')
+  const editorPanels = document.querySelectorAll('.code-editor-body')
+  
+  editorTabs.forEach(tab => {
+    tab.addEventListener('click', () => {
+      const tabId = tab.getAttribute('data-tab')
+      
+      // Update active tab
+      editorTabs.forEach(t => t.setAttribute('aria-selected', 'false'))
+      tab.setAttribute('aria-selected', 'true')
+      
+      // Update visible panel
+      editorPanels.forEach(panel => {
+        panel.setAttribute('data-active', panel.getAttribute('data-panel') === tabId ? 'true' : 'false')
+      })
+    })
+  })
+</script>
