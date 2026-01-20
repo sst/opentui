@@ -142,8 +142,8 @@ pre {
 .landing-logo {
   display: flex;
   align-items: center;
-  gap: var(--space-sm);
-  font-weight: 500;
+  gap: var(--space-xs);
+  font-weight: 700;
   font-size: 16px;
   color: var(--color-text-strong);
   text-decoration: none;
@@ -165,14 +165,51 @@ pre {
 }
 
 .landing-nav a {
-  color: var(--color-text-weak);
+  color: var(--color-text-strong);
   font-size: 14px;
-  transition: color 0.15s;
+  border-bottom: 1px solid transparent;
 }
 
 .landing-nav a:hover {
-  color: var(--color-text-strong);
   text-decoration: none;
+  border-bottom: 1px solid currentColor;
+}
+
+/* Mobile nav for landing page */
+.mobile-nav {
+  display: none;
+  position: fixed;
+  top: var(--header-height);
+  left: 0;
+  right: 0;
+  bottom: 0;
+  height: calc(100vh - var(--header-height));
+  height: calc(100dvh - var(--header-height));
+  background: var(--color-bg);
+  z-index: 99;
+  padding: var(--space-xl) var(--section-padding-x);
+  flex-direction: column;
+  gap: var(--space-md);
+  opacity: 0;
+  visibility: hidden;
+  transition:
+    opacity 0.2s ease,
+    visibility 0.2s ease;
+}
+
+.mobile-nav a {
+  color: var(--color-text-strong);
+  font-size: 16px;
+  padding: var(--space-sm) 0;
+}
+
+.mobile-nav a:hover {
+  text-decoration: none;
+}
+
+.mobile-nav-open .mobile-nav {
+  opacity: 1;
+  visibility: visible;
 }
 
 /* Hero Section */
@@ -720,6 +757,7 @@ pre {
 .landing-footer-cell a:hover {
   background-color: var(--color-bg-weak);
   text-decoration: underline;
+  text-underline-offset: 4px;
 }
 
 /* Legal section - outside container, centered */
@@ -739,7 +777,8 @@ pre {
 
 .landing-legal a:hover {
   color: var(--color-text);
-  text-decoration: underline;
+  text-decoration: none;
+  border-bottom: 1px solid currentColor;
 }
 
 /* ============================================
@@ -785,8 +824,8 @@ pre {
 .logo {
   display: flex;
   align-items: center;
-  gap: var(--space-sm);
-  font-weight: 500;
+  gap: var(--space-xs);
+  font-weight: 700;
   font-size: 16px;
   color: var(--color-text-strong);
   text-decoration: none;
@@ -808,14 +847,61 @@ pre {
 }
 
 .nav a {
-  color: var(--color-text-weak);
+  color: var(--color-text-strong);
   font-size: 14px;
-  transition: color 0.15s;
+  border-bottom: 1px solid transparent;
 }
 
 .nav a:hover {
-  color: var(--color-text-strong);
   text-decoration: none;
+  border-bottom: 1px solid currentColor;
+}
+
+/* Mobile menu button */
+.mobile-menu-btn {
+  display: none;
+  align-items: center;
+  justify-content: center;
+  width: 40px;
+  height: 40px;
+  padding: 0;
+  background: none;
+  border: none;
+  color: color-mix(in srgb, var(--color-text-strong) 70%, var(--color-text) 30%);
+  cursor: pointer;
+}
+
+.mobile-menu-btn:hover {
+  background: var(--color-bg-subtle);
+  border-color: var(--color-text-weak);
+}
+
+.mobile-menu-btn svg {
+  width: 20px;
+  height: 20px;
+}
+
+.mobile-menu-btn .close-icon {
+  display: none;
+}
+
+.mobile-nav-open .mobile-menu-btn .menu-icon {
+  display: none;
+}
+
+.mobile-nav-open .mobile-menu-btn .close-icon {
+  display: block;
+}
+
+/* Mobile nav overlay */
+.mobile-nav-overlay {
+  display: none;
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.5);
+  z-index: 90;
+  opacity: 0;
+  transition: opacity 0.2s ease;
 }
 
 /* Main layout */
@@ -998,6 +1084,8 @@ pre {
 
 .footer a:hover {
   color: var(--color-text-strong);
+  text-decoration: none;
+  border-bottom: 1px solid currentColor;
 }
 
 /* Responsive */
@@ -1016,12 +1104,47 @@ pre {
     grid-template-columns: 1fr;
   }
 
+  /* Hide desktop nav, show mobile menu button */
+  .nav,
+  .landing-nav {
+    display: none;
+  }
+
+  .mobile-menu-btn {
+    display: flex;
+    order: 1;
+    margin-left: auto;
+  }
+
+  .mobile-nav {
+    display: flex;
+  }
+
+  /* Mobile sidebar - fullscreen overlay */
   .sidebar {
-    position: static;
+    position: fixed;
+    top: var(--header-height);
+    left: 0;
+    right: 0;
+    bottom: 0;
+    height: calc(100vh - var(--header-height));
+    height: calc(100dvh - var(--header-height));
     max-height: none;
-    border-bottom: 1px solid var(--color-border);
-    padding-bottom: var(--space-lg);
-    margin-bottom: var(--space-lg);
+    background: var(--color-bg);
+    z-index: 99;
+    padding: var(--space-xl) var(--section-padding-x);
+    overflow-y: auto;
+    opacity: 0;
+    visibility: hidden;
+    transition:
+      opacity 0.2s ease,
+      visibility 0.2s ease;
+  }
+
+  /* Mobile nav open state */
+  .mobile-nav-open .sidebar {
+    opacity: 1;
+    visibility: visible;
   }
 
   .landing-container,

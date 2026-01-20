@@ -53,11 +53,32 @@ const features = [
           </svg>
           OpenTUI
         </a>
+        <button
+          class="mobile-menu-btn"
+          aria-label="Open navigation menu"
+          aria-expanded="false"
+          aria-controls="landing-mobile-nav"
+        >
+          <svg class="menu-icon" viewBox="0 0 24 24" fill="currentColor">
+            <rect x="5" y="8" width="14" height="2"></rect>
+            <rect x="5" y="14" width="14" height="2"></rect>
+          </svg>
+          <svg class="close-icon" viewBox="0 0 24 24" fill="currentColor">
+            <rect x="5" y="11" width="14" height="2" transform="rotate(45 12 12)"></rect>
+            <rect x="5" y="11" width="14" height="2" transform="rotate(-45 12 12)"></rect>
+          </svg>
+        </button>
         <nav class="landing-nav">
           <a href="/docs/getting-started">Docs</a>
           <a href="https://github.com/anomalyco/opentui" target="_blank" rel="noopener noreferrer">GitHub</a>
         </nav>
       </header>
+
+      <!-- Mobile nav overlay -->
+      <nav class="mobile-nav" id="landing-mobile-nav">
+        <a href="/docs/getting-started">Docs</a>
+        <a href="https://github.com/anomalyco/opentui" target="_blank" rel="noopener noreferrer">GitHub</a>
+      </nav>
 
       <!-- Content -->
       <div class="landing-content">
@@ -368,4 +389,39 @@ renderer.root.<span class="function">add</span>(
       }
     })
   }
+
+  // Mobile menu toggle
+  const menuBtn = document.querySelector('.mobile-menu-btn')
+  const mobileNav = document.querySelector('.mobile-nav')
+
+  function openMenu() {
+    document.body.classList.add('mobile-nav-open')
+    menuBtn?.setAttribute('aria-expanded', 'true')
+    menuBtn?.setAttribute('aria-label', 'Close navigation menu')
+  }
+
+  function closeMenu() {
+    document.body.classList.remove('mobile-nav-open')
+    menuBtn?.setAttribute('aria-expanded', 'false')
+    menuBtn?.setAttribute('aria-label', 'Open navigation menu')
+  }
+
+  menuBtn?.addEventListener('click', () => {
+    const isOpen = document.body.classList.contains('mobile-nav-open')
+    if (isOpen) {
+      closeMenu()
+    } else {
+      openMenu()
+    }
+  })
+
+  document.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape' && document.body.classList.contains('mobile-nav-open')) {
+      closeMenu()
+    }
+  })
+
+  mobileNav?.querySelectorAll('a').forEach((link) => {
+    link.addEventListener('click', closeMenu)
+  })
 </script>

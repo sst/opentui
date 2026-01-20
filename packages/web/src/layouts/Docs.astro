@@ -24,6 +24,21 @@ const currentPath = Astro.url.pathname
             </svg>
             OpenTUI
           </a>
+          <button
+            class="mobile-menu-btn"
+            aria-label="Open navigation menu"
+            aria-expanded="false"
+            aria-controls="mobile-nav"
+          >
+            <svg class="menu-icon" viewBox="0 0 24 24" fill="currentColor">
+              <rect x="5" y="8" width="14" height="2"></rect>
+              <rect x="5" y="14" width="14" height="2"></rect>
+            </svg>
+            <svg class="close-icon" viewBox="0 0 24 24" fill="currentColor">
+              <rect x="5" y="11" width="14" height="2" transform="rotate(45 12 12)"></rect>
+              <rect x="5" y="11" width="14" height="2" transform="rotate(-45 12 12)"></rect>
+            </svg>
+          </button>
           <nav class="nav">
             <a href="/docs/getting-started">Docs</a>
             <a href="https://github.com/anomalyco/opentui" target="_blank" rel="noopener noreferrer">GitHub</a>
@@ -32,8 +47,9 @@ const currentPath = Astro.url.pathname
       </header>
 
       <main class="main">
+        <div class="mobile-nav-overlay" aria-hidden="true"></div>
         <div class="docs-layout">
-          <aside class="sidebar">
+          <aside class="sidebar" id="mobile-nav">
             <div class="sidebar-section">
               <div class="sidebar-title">Getting Started</div>
               <ul class="sidebar-links">
@@ -95,6 +111,45 @@ const currentPath = Astro.url.pathname
   </div>
 
   <script>
+    // Mobile menu toggle
+    const menuBtn = document.querySelector('.mobile-menu-btn')
+    const sidebar = document.querySelector('.sidebar')
+    const overlay = document.querySelector('.mobile-nav-overlay')
+
+    function openMenu() {
+      document.body.classList.add('mobile-nav-open')
+      menuBtn?.setAttribute('aria-expanded', 'true')
+      menuBtn?.setAttribute('aria-label', 'Close navigation menu')
+    }
+
+    function closeMenu() {
+      document.body.classList.remove('mobile-nav-open')
+      menuBtn?.setAttribute('aria-expanded', 'false')
+      menuBtn?.setAttribute('aria-label', 'Open navigation menu')
+    }
+
+    menuBtn?.addEventListener('click', () => {
+      const isOpen = document.body.classList.contains('mobile-nav-open')
+      if (isOpen) {
+        closeMenu()
+      } else {
+        openMenu()
+      }
+    })
+
+    overlay?.addEventListener('click', closeMenu)
+
+    document.addEventListener('keydown', (e) => {
+      if (e.key === 'Escape' && document.body.classList.contains('mobile-nav-open')) {
+        closeMenu()
+      }
+    })
+
+    // Close menu when clicking a link (for navigation)
+    sidebar?.querySelectorAll('a').forEach((link) => {
+      link.addEventListener('click', closeMenu)
+    })
+
     document.querySelectorAll('pre[data-code]').forEach((pre) => {
       const btn = document.createElement('button')
       btn.className = 'copy-btn'
