@@ -40,6 +40,9 @@
   --space-2xl: 48px;
   --space-3xl: 64px;
   --space-4xl: 96px;
+
+  /* Header */
+  --header-height: 72px;
 }
 
 *,
@@ -186,10 +189,6 @@ pre {
 .hero-content {
   display: flex;
   flex-direction: column;
-}
-
-.hero-visual-wrapper {
-  display: none;
 }
 
 .hero-copy {
@@ -517,50 +516,6 @@ pre {
 .code-editor-tab[aria-selected="true"] {
   color: var(--color-text-strong);
   border-bottom: 2px solid var(--color-text-strong);
-}
-
-/* Syntax Highlighting Overrides for Light Theme */
-.code-editor-body pre {
-  color: var(--editor-text);
-  background: transparent;
-}
-
-.code-editor-body .keyword {
-  color: #3f3f46;
-  font-weight: 500;
-}
-
-.code-editor-body .function {
-  color: #52525b;
-}
-
-.code-editor-body .string {
-  color: #71717a;
-}
-
-.code-editor-body .number {
-  color: #71717a;
-}
-
-.code-editor-body .comment {
-  color: #a1a1aa;
-  font-style: italic;
-}
-
-.code-editor-body .property {
-  color: #52525b;
-}
-
-.code-editor-body .type {
-  color: #3f3f46;
-}
-
-.code-editor-body .operator {
-  color: #71717a;
-}
-
-.code-editor-body .punctuation {
-  color: #a1a1aa;
 }
 
 .code-editor {
@@ -1087,10 +1042,6 @@ pre {
   .hero {
     padding: var(--space-2xl) var(--section-padding-x);
     grid-template-columns: 1fr;
-  }
-
-  .hero-visual-wrapper {
-    display: none;
   }
 
   .hero h1 {

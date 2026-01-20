@@ -7,7 +7,6 @@
     width: 100%;
     height: 320px;
     position: relative;
-    /* No background - transparent */
   }
 
   canvas {
@@ -68,7 +67,7 @@
       
       this.canvas.width = rect.width * this.dpr;
       this.canvas.height = rect.height * this.dpr;
-      this.ctx.scale(this.dpr, this.dpr);
+      this.ctx.setTransform(this.dpr, 0, 0, this.dpr, 0, 0);
       
       this.cols = Math.floor(rect.width / CELL_W);
       this.rows = Math.floor(rect.height / CELL_H);
@@ -116,13 +115,17 @@
         this.drawChar(c.v, x + w - 1, y + i, fg);
       }
       
-      // Label
+      // Label with spacing: ┌─ Label ─┐
       if (label) {
-        // Clear space for label
-        // this.ctx.clearRect((x + 2) * CELL_W, y * CELL_H, label.length * CELL_W, CELL_H);
-        for (let i = 0; i < label.length; i++) {
-          if (x + 2 + i < x + w - 1) {
-            this.drawChar(label[i], x + 2 + i, fg);
+        const paddedLabel = ` ${label} `;
+        for (let i = 0; i < paddedLabel.length; i++) {
+          const lx = x + 1 + i;
+          if (lx < x + w - 1) {
+            // Clear the cell first to remove the border character
+            const px = lx * CELL_W;
+            const py = y * CELL_H;
+            this.ctx.clearRect(px, py, CELL_W, CELL_H);
+            this.drawChar(paddedLabel[i], lx, y, fg);
           }
         }
       }
@@ -168,7 +171,7 @@
           const startX = cx - (totalW + gap) / 2;
           const startY = cy - h / 2;
           
-          r.drawBox(Math.floor(startX), Math.floor(startY), wLeft, h, r.colors.fgStrong, 'single', 'Sidebar');
+          r.drawBox(Math.floor(startX), Math.floor(startY), wLeft, h, r.colors.fgStrong, 'single', 'Nav');
           r.drawBox(Math.floor(startX + wLeft + gap), Math.floor(startY), wRight, h, r.colors.fg, 'single', 'Content');
           
           // Show dimensions
@@ -299,7 +302,7 @@
            const pulse = Math.floor(t) % 2 === 0;
            
            r.drawBox(startX - 10, startY + 6, 8, 3, pulse ? r.colors.fgStrong : r.colors.fgWeak, 'single', 'List');
-           r.drawBox(startX + 2, startY + 6, 8, 3, !pulse ? r.colors.fgStrong : r.colors.fgWeak, 'single', 'Detail');
+           r.drawBox(startX + 2, startY + 6, 8, 3, !pulse ? r.colors.fgStrong : r.colors.fgWeak, 'single', 'Item');
            
            break;
         }
