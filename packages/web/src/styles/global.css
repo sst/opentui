@@ -448,17 +448,14 @@ pre {
   padding-left: 0;
 }
 
-@media (max-width: 900px) {
+@media (max-width: 980px) {
   .features-split {
     grid-template-columns: 1fr;
     gap: var(--space-xl);
   }
 
   .features-visual {
-    position: static;
-    height: 240px; /* Shorter on mobile */
-    order: -1; /* Visual first? Or visual after active item (complex)? Let's put visual first */
-    margin-bottom: var(--space-lg);
+    display: none;
   }
 }
 
