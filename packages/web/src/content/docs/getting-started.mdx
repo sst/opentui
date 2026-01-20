@@ -10,14 +10,10 @@ OpenTUI is a TypeScript library for building terminal user interfaces (TUIs). It
 
 ## Installation
 
+OpenTUI requires [Bun](https://bun.sh) as the runtime.
+
 ```bash
 bun add @opentui/core
-```
-
-Or with npm:
-
-```bash
-npm install @opentui/core
 ```
 
 ## Hello World
@@ -48,7 +44,8 @@ import { createCliRenderer } from "@opentui/core"
 
 const renderer = await createCliRenderer()
 
-// Start the render loop (optional - auto-renders on changes)
+// Start the render loop - runs at the specified target FPS
+// Without start(), it only re-renders when the renderable tree changes
 renderer.start()
 ```
 
@@ -73,18 +70,20 @@ renderer.root.add(greeting)
 
 ### Constructs
 
-Constructs provide a more declarative way to build your UI. They look like React or Solid components but are constructors that create renderables:
+Constructs provide a more declarative way to build your UI. They look like React or Solid components but are constructors that create renderables. Children are passed as additional arguments, not as a property:
 
 ```typescript
 import { Text, Box } from "@opentui/core"
 
 renderer.root.add(
-  Box({
-    width: 40,
-    height: 10,
-    borderStyle: "rounded",
-    children: [Text({ content: "Inside a box!" })],
-  }),
+  Box(
+    {
+      width: 40,
+      height: 10,
+      borderStyle: "rounded",
+    },
+    Text({ content: "Inside a box!" }),
+  ),
 )
 ```
 
