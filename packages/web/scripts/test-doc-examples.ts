@@ -9,56 +9,56 @@
  * copy-paste code examples from the docs to verify they work.
  */
 
-import { existsSync } from "node:fs"
-import { mkdir } from "node:fs/promises"
-import { join } from "node:path"
+import { existsSync } from "node:fs";
+import { mkdir } from "node:fs/promises";
+import { join } from "node:path";
 
-const DEFAULT_DIR = "/tmp/opentui-test"
+const DEFAULT_DIR = "/tmp/opentui-test";
 
 async function main() {
-  const targetDir = process.argv[2] || DEFAULT_DIR
+  const targetDir = process.argv[2] || DEFAULT_DIR;
 
-  console.log(`Setting up test environment in: ${targetDir}\n`)
+  console.log(`Setting up test environment in: ${targetDir}\n`);
 
   // Create directory
   if (!existsSync(targetDir)) {
-    await mkdir(targetDir, { recursive: true })
+    await mkdir(targetDir, { recursive: true });
   }
 
   // Initialize bun project
-  console.log("Initializing project...")
+  console.log("Initializing project...");
   const init = Bun.spawnSync(["bun", "init", "-y"], {
     cwd: targetDir,
     stdout: "pipe",
     stderr: "pipe",
-  })
+  });
   if (init.exitCode !== 0) {
-    console.error("Failed to init:", new TextDecoder().decode(init.stderr))
-    process.exit(1)
+    console.error("Failed to init:", new TextDecoder().decode(init.stderr));
+    process.exit(1);
   }
 
   // Install @opentui/core
-  console.log("Installing @opentui/core...")
+  console.log("Installing @opentui/core...");
   const install = Bun.spawnSync(["bun", "add", "@opentui/core"], {
     cwd: targetDir,
     stdout: "pipe",
     stderr: "pipe",
-  })
+  });
   if (install.exitCode !== 0) {
-    console.error("Failed to install:", new TextDecoder().decode(install.stderr))
-    process.exit(1)
+    console.error("Failed to install:", new TextDecoder().decode(install.stderr));
+    process.exit(1);
   }
 
   // install @opentui/solid
-  console.log("Installing @opentui/solid...")
+  console.log("Installing @opentui/solid...");
   const installSolid = Bun.spawnSync(["bun", "add", "@opentui/solid"], {
     cwd: targetDir,
     stdout: "pipe",
     stderr: "pipe",
-  })
+  });
   if (installSolid.exitCode !== 0) {
-    console.error("Failed to install:", new TextDecoder().decode(installSolid.stderr))
-    process.exit(1)
+    console.error("Failed to install:", new TextDecoder().decode(installSolid.stderr));
+    process.exit(1);
   }
 
   // Create a template file
@@ -75,9 +75,9 @@ renderer.root.add(
     fg: "#00FF00",
   }),
 )
-`
+`;
 
-  await Bun.write(join(targetDir, "test.ts"), template)
+  await Bun.write(join(targetDir, "test.ts"), template);
 
   console.log(`
 Done! Test environment ready.
@@ -90,10 +90,10 @@ To test an example:
 Or:
   cd ${targetDir}
   bun test.ts
-`)
+`);
 }
 
 main().catch((err) => {
-  console.error("Error:", err)
-  process.exit(1)
-})
+  console.error("Error:", err);
+  process.exit(1);
+});
