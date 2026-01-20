@@ -147,14 +147,14 @@ const features = [
                     <path d="M13 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V9z"/>
                     <polyline points="13 2 13 9 20 9"/>
                   </svg>
-                  counter.tsx
+                  input.ts
                 </button>
                 <button role="tab" class="code-editor-tab" data-tab="layout" aria-selected="false">
                   <svg class="code-editor-tab-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                     <path d="M13 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V9z"/>
                     <polyline points="13 2 13 9 20 9"/>
                   </svg>
-                  layout.tsx
+                  layout.ts
                 </button>
               </div>
               <button class="code-editor-copy" id="code-copy-btn" aria-label="Copy code">
@@ -184,50 +184,46 @@ renderer.root.<span class="function">add</span>(
 )</code></pre>
             </div>
             
-            <!-- Solid.js Example -->
+            <!-- Input Example -->
             <div class="code-editor-body" data-panel="solid" data-active="false">
               <div class="code-editor-lines">
-                <span>1</span><span>2</span><span>3</span><span>4</span><span>5</span><span>6</span><span>7</span><span>8</span><span>9</span><span>10</span><span>11</span><span>12</span><span>13</span><span>14</span><span>15</span><span>16</span>
+                <span>1</span><span>2</span><span>3</span><span>4</span><span>5</span><span>6</span><span>7</span><span>8</span><span>9</span><span>10</span><span>11</span><span>12</span><span>13</span><span>14</span>
               </div>
-              <pre><code><span class="keyword">import</span> {"{"} createSignal {"}"} <span class="keyword">from</span> <span class="string">"solid-js"</span>
-<span class="keyword">import</span> {"{"} render, Text, Box {"}"} <span class="keyword">from</span> <span class="string">"@opentui/solid"</span>
+              <pre><code><span class="keyword">import</span> {"{"} createCliRenderer, Input {"}"} <span class="keyword">from</span> <span class="string">"@opentui/core"</span>
 
-<span class="keyword">function</span> <span class="function">Counter</span>() {"{"}
-  <span class="keyword">const</span> [count, setCount] <span class="operator">=</span> <span class="function">createSignal</span>(<span class="number">0</span>)
+<span class="keyword">const</span> renderer <span class="operator">=</span> <span class="keyword">await</span> <span class="function">createCliRenderer</span>()
 
-  <span class="function">setInterval</span>(() <span class="operator">=></span> <span class="function">setCount</span>(c <span class="operator">=></span> c <span class="operator">+</span> <span class="number">1</span>), <span class="number">1000</span>)
+<span class="keyword">const</span> input <span class="operator">=</span> <span class="function">Input</span>({"{"}
+  <span class="property">placeholder</span><span class="operator">:</span> <span class="string">"Type something..."</span>,
+  <span class="property">width</span><span class="operator">:</span> <span class="number">30</span>,
+  <span class="property">onEnter</span><span class="operator">:</span> (value) <span class="operator">=></span> {"{"}
+    console.<span class="function">log</span>(<span class="string">"Submitted:"</span>, value)
+  {"}"},
+{"}"})
 
-  <span class="keyword">return</span> (
-    <span class="punctuation">&lt;</span><span class="type">Box</span> <span class="property">padding</span><span class="operator">=</span>{"{"}10{"}"}<span class="punctuation">></span>
-      <span class="punctuation">&lt;</span><span class="type">Text</span> <span class="property">fg</span><span class="operator">=</span><span class="string">"#7aa2f7"</span><span class="punctuation">></span>Count: {"{"}count(){"}"}<span class="punctuation">&lt;/</span><span class="type">Text</span><span class="punctuation">></span>
-    <span class="punctuation">&lt;/</span><span class="type">Box</span><span class="punctuation">></span>
-  )
-{"}"}
-
-<span class="function">render</span>(<span class="punctuation">&lt;</span><span class="type">Counter</span> <span class="punctuation">/></span>)</code></pre>
+renderer.root.<span class="function">add</span>(input)
+input.<span class="function">focus</span>()</code></pre>
             </div>
             
             <!-- Layout Example -->
             <div class="code-editor-body" data-panel="layout" data-active="false">
               <div class="code-editor-lines">
-                <span>1</span><span>2</span><span>3</span><span>4</span><span>5</span><span>6</span><span>7</span><span>8</span><span>9</span><span>10</span><span>11</span><span>12</span><span>13</span><span>14</span><span>15</span><span>16</span>
+                <span>1</span><span>2</span><span>3</span><span>4</span><span>5</span><span>6</span><span>7</span><span>8</span><span>9</span><span>10</span><span>11</span><span>12</span><span>13</span><span>14</span>
               </div>
-              <pre><code><span class="keyword">import</span> {"{"} render, Box, Text {"}"} <span class="keyword">from</span> <span class="string">"@opentui/solid"</span>
+              <pre><code><span class="keyword">import</span> {"{"} createCliRenderer, Box, Text {"}"} <span class="keyword">from</span> <span class="string">"@opentui/core"</span>
 
-<span class="keyword">function</span> <span class="function">Layout</span>() {"{"}
-  <span class="keyword">return</span> (
-    <span class="punctuation">&lt;</span><span class="type">Box</span> <span class="property">flexDirection</span><span class="operator">=</span><span class="string">"row"</span> <span class="property">gap</span><span class="operator">=</span>{"{"}2{"}"} <span class="property">padding</span><span class="operator">=</span>{"{"}1{"}"}<span class="punctuation">></span>
-      <span class="punctuation">&lt;</span><span class="type">Box</span> <span class="property">flex</span><span class="operator">=</span>{"{"}1{"}"} <span class="property">bg</span><span class="operator">=</span><span class="string">"#1a1b26"</span> <span class="property">padding</span><span class="operator">=</span>{"{"}2{"}"}<span class="punctuation">></span>
-        <span class="punctuation">&lt;</span><span class="type">Text</span> <span class="property">fg</span><span class="operator">=</span><span class="string">"#bb9af7"</span><span class="punctuation">></span>Sidebar<span class="punctuation">&lt;/</span><span class="type">Text</span><span class="punctuation">></span>
-      <span class="punctuation">&lt;/</span><span class="type">Box</span><span class="punctuation">></span>
-      <span class="punctuation">&lt;</span><span class="type">Box</span> <span class="property">flex</span><span class="operator">=</span>{"{"}3{"}"} <span class="property">bg</span><span class="operator">=</span><span class="string">"#24283b"</span> <span class="property">padding</span><span class="operator">=</span>{"{"}2{"}"}<span class="punctuation">></span>
-        <span class="punctuation">&lt;</span><span class="type">Text</span><span class="punctuation">></span>Main content area<span class="punctuation">&lt;/</span><span class="type">Text</span><span class="punctuation">></span>
-      <span class="punctuation">&lt;/</span><span class="type">Box</span><span class="punctuation">></span>
-    <span class="punctuation">&lt;/</span><span class="type">Box</span><span class="punctuation">></span>
+<span class="keyword">const</span> renderer <span class="operator">=</span> <span class="keyword">await</span> <span class="function">createCliRenderer</span>()
+
+renderer.root.<span class="function">add</span>(
+  <span class="function">Box</span>(
+    {"{"} <span class="property">width</span><span class="operator">:</span> <span class="string">"100%"</span>, <span class="property">height</span><span class="operator">:</span> <span class="string">"100%"</span>, <span class="property">flexDirection</span><span class="operator">:</span> <span class="string">"row"</span>, <span class="property">gap</span><span class="operator">:</span> <span class="number">2</span> {"}"},
+    <span class="function">Box</span>(
+      {"{"} <span class="property">flex</span><span class="operator">:</span> <span class="number">1</span>, <span class="property">backgroundColor</span><span class="operator">:</span> <span class="string">"#1a1b26"</span> {"}"},
+      <span class="function">Text</span>({"{"} <span class="property">content</span><span class="operator">:</span> <span class="string">"Sidebar"</span>, <span class="property">fg</span><span class="operator">:</span> <span class="string">"#bb9af7"</span> {"}"})
+    ),
+    <span class="function">Box</span>({"{"} <span class="property">flex</span><span class="operator">:</span> <span class="number">3</span>, <span class="property">backgroundColor</span><span class="operator">:</span> <span class="string">"#24283b"</span> {"}"}, <span class="function">Text</span>({"{"} <span class="property">content</span><span class="operator">:</span> <span class="string">"Main"</span> {"}"}))
   )
-{"}"}
-
-<span class="function">render</span>(<span class="punctuation">&lt;</span><span class="type">Layout</span> <span class="punctuation">/></span>)</code></pre>
+)</code></pre>
             </div>
           </div>
         </section>
