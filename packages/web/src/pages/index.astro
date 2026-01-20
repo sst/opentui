@@ -12,10 +12,6 @@ const features = [
     description: "Yoga-powered layout engine with familiar CSS-like positioning and sizing"
   },
   {
-    title: "React & Solid.js",
-    description: "First-class bindings for building UIs with your favorite framework"
-  },
-  {
     title: "Syntax highlighting",
     description: "Built-in tree-sitter integration for beautiful code rendering"
   },
@@ -26,6 +22,10 @@ const features = [
   {
     title: "Keyboard handling",
     description: "Focus management and input handling built in"
+  },
+{
+    title: "React and Solid.js",
+    description: "First-class bindings for building UIs with your favorite framework"
   },
   {
     title: "Animations",
@@ -149,6 +149,14 @@ const features = [
                   layout.tsx
                 </button>
               </div>
+              <button class="code-editor-copy" id="code-copy-btn" aria-label="Copy code">
+                <svg class="copy-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+                  <path d="M8.75 8.75V2.75H21.25V15.25H15.25M15.25 8.75H2.75V21.25H15.25V8.75Z" stroke-linecap="square"/>
+                </svg>
+                <svg class="check-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                  <path d="M2.75 15.0938L9 20.25L21.25 3.75" stroke-linecap="square"/>
+                </svg>
+              </button>
             </div>
             
             <!-- Core API Example -->
@@ -284,14 +292,30 @@ renderer.root.<span class="function">add</span>(
     tab.addEventListener('click', () => {
       const tabId = tab.getAttribute('data-tab')
       
-      // Update active tab
       editorTabs.forEach(t => t.setAttribute('aria-selected', 'false'))
       tab.setAttribute('aria-selected', 'true')
       
-      // Update visible panel
       editorPanels.forEach(panel => {
         panel.setAttribute('data-active', panel.getAttribute('data-panel') === tabId ? 'true' : 'false')
       })
     })
   })
+
+  const codeCopyBtn = document.getElementById('code-copy-btn')
+  
+  if (codeCopyBtn) {
+    codeCopyBtn.addEventListener('click', async () => {
+      const activePanel = document.querySelector('.code-editor-body[data-active="true"]')
+      if (activePanel) {
+        const codeEl = activePanel.querySelector('pre code')
+        if (codeEl) {
+          const code = codeEl.textContent || ''
+          await navigator.clipboard.writeText(code)
+          
+          codeCopyBtn.classList.add('copied')
+          setTimeout(() => codeCopyBtn.classList.remove('copied'), 1500)
+        }
+      }
+    })
+  }
 </script>
