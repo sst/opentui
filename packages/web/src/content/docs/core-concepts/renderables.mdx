@@ -6,11 +6,11 @@ order: 2
 
 # Renderables
 
-Renderables are the building blocks of your UI - hierarchical objects that can be positioned, styled, and nested within each other. Each Renderable represents a visual element and uses the Yoga layout engine for flexible positioning and sizing.
+Renderables are the building blocks of your UI. You can position, style, and nest them within each other. Each renderable represents a visual element and uses the Yoga layout engine for flexible positioning and sizing.
 
 ## Creating Renderables
 
-Renderables are created by instantiating a class with a render context (the renderer) and options:
+Create a renderable by instantiating a class with a render context (the renderer) and options:
 
 ```typescript
 import { createCliRenderer, TextRenderable, BoxRenderable } from "@opentui/core"
@@ -216,7 +216,7 @@ panel.visible = false
 panel.visible = true
 ```
 
-When `visible` is `false`, the renderable is removed from Yoga layout calculation (equivalent to CSS `display: none`).
+When `visible` is `false`, Yoga excludes the renderable from layout calculation (equivalent to CSS `display: none`).
 
 ## Opacity
 
@@ -272,7 +272,7 @@ This moves the renderable visually without affecting layout.
 
 ## Buffered Rendering
 
-Enable offscreen rendering for complex content, and use hooks to draw to the buffer:
+Enable offscreen rendering for complex content and use hooks to draw to the buffer:
 
 ```typescript
 import { RGBA } from "@opentui/core"

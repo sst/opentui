@@ -4,7 +4,7 @@ description: Build terminal UIs with React and OpenTUI
 order: 2
 ---
 
-# React Bindings
+# React bindings
 
 Build terminal user interfaces using React with familiar patterns and components.
 
@@ -22,7 +22,7 @@ Manual installation:
 bun install @opentui/react @opentui/core react
 ```
 
-## Quick Start
+## Quick start
 
 ```tsx
 import { createCliRenderer } from "@opentui/core"
@@ -36,7 +36,7 @@ const renderer = await createCliRenderer()
 createRoot(renderer).render(<App />)
 ```
 
-## TypeScript Configuration
+## TypeScript configuration
 
 Configure your `tsconfig.json`:
 
@@ -59,7 +59,7 @@ Configure your `tsconfig.json`:
 
 OpenTUI React provides JSX intrinsic elements that map to core renderables:
 
-### Layout & Display
+### Layout & display
 
 - `<text>` - Text display with styling
 - `<box>` - Container with borders and layout
@@ -73,14 +73,14 @@ OpenTUI React provides JSX intrinsic elements that map to core renderables:
 - `<select>` - Selection list
 - `<tab-select>` - Tab-based selection
 
-### Code & Diff
+### Code & diff
 
 - `<code>` - Syntax-highlighted code
 - `<line-number>` - Line numbers with diff/diagnostic support
 - `<diff>` - Unified or split diff viewer
 - `<markdown>` - Markdown rendering
 
-### Text Modifiers
+### Text modifiers
 
 Use inside `<text>` components:
 
@@ -91,7 +91,7 @@ Use inside `<text>` components:
 - `<br>` - Line break
 - `<a>` - Link text
 
-## API Reference
+## API reference
 
 ### `createRoot(renderer)`
 
@@ -145,7 +145,7 @@ function App() {
 }
 ```
 
-With release events:
+To handle release events:
 
 ```tsx
 useKeyboard(
@@ -252,7 +252,7 @@ Style components with props or the `style` prop:
 </box>
 ```
 
-## Example: Login Form
+## Example: Login form
 
 ```tsx
 import { createCliRenderer } from "@opentui/core"
@@ -310,7 +310,7 @@ const renderer = await createCliRenderer()
 createRoot(renderer).render(<App />)
 ```
 
-## Component Extension
+## Component extension
 
 Register custom renderables as JSX elements:
 

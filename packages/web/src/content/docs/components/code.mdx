@@ -6,9 +6,9 @@ order: 6
 
 # Code
 
-A syntax-highlighted code display component powered by Tree-sitter. Supports many programming languages with accurate, fast highlighting.
+Displays syntax-highlighted code using Tree-sitter. Supports many languages with accurate, fast highlighting.
 
-## Basic Usage
+## Basic usage
 
 ### Renderable API
 
@@ -44,7 +44,7 @@ renderer.root.add(code)
 
 ### Construct API
 
-> **Note:** Not yet available. Coming soon.
+> **Note:** Not available yet.
 
 ```typescript
 import { Code, Box, createCliRenderer, SyntaxStyle, RGBA } from "@opentui/core"
@@ -69,7 +69,7 @@ renderer.root.add(
 )
 ```
 
-## Creating Syntax Styles
+## Creating syntax styles
 
 Use `SyntaxStyle.fromStyles()` to define colors and attributes for syntax tokens:
 
@@ -111,7 +111,7 @@ const syntaxStyle = SyntaxStyle.fromStyles({
 })
 ```
 
-### Style Properties
+### Style properties
 
 Each style definition can include:
 
@@ -124,18 +124,18 @@ Each style definition can include:
 | `underline` | `boolean` | Underlined text         |
 | `dim`       | `boolean` | Dimmed text             |
 
-## Supported Languages
+## Supported languages
 
-The Code component uses Tree-sitter for parsing. Supported languages include:
+Code uses Tree-sitter for parsing. Tree-sitter supports these languages:
 
 - TypeScript / JavaScript
 - Markdown
 - Zig
 - And any language with a Tree-sitter grammar
 
-## Streaming Mode
+## Streaming mode
 
-Enable streaming mode for use cases like displaying LLM output where content arrives incrementally:
+Enable streaming mode when content arrives incrementally, like LLM output:
 
 ```typescript
 const code = new CodeRenderable(renderer, {
@@ -151,9 +151,9 @@ code.content += "const x = 1\n"
 code.content += "const y = 2\n"
 ```
 
-In streaming mode, the component optimizes highlighting for incremental updates.
+Streaming mode optimizes highlighting for incremental updates.
 
-## Text Selection
+## Text selection
 
 Enable text selection for copy operations:
 
@@ -183,7 +183,7 @@ const code = new CodeRenderable(renderer, {
 })
 ```
 
-## With Line Numbers
+## With line numbers
 
 Use `LineNumberRenderable` to add line numbers:
 
@@ -241,7 +241,7 @@ scrollbox.add(lineNumbers)
 | `wrapMode`     | `string`           | `"word"` | Text wrapping: `"none"`, `"char"`, `"word"` |
 | `tabIndicator` | `string \| number` | -        | Tab display character or width              |
 
-## Additional Properties
+## Additional properties
 
 | Property         | Type      | Description                                  |
 | ---------------- | --------- | -------------------------------------------- |
@@ -253,7 +253,7 @@ scrollbox.add(lineNumbers)
 | `isHighlighting` | `boolean` | Whether highlighting is in progress          |
 | `plainText`      | `string`  | Raw text content                             |
 
-## Markdown Styles
+## Markdown styles
 
 For markdown highlighting, use markup-prefixed style names:
 

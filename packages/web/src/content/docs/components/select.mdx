@@ -6,11 +6,11 @@ order: 4
 
 # Select
 
-A vertical list selection component for choosing from multiple options. The select must be focused to receive keyboard input.
+A vertical list for choosing from multiple options. Focus the select to enable keyboard input.
 
-## Basic Usage
+## Basic usage
 
-### Renderable API
+### Renderable api
 
 ```typescript
 import { SelectRenderable, SelectRenderableEvents, createCliRenderer } from "@opentui/core"
@@ -37,7 +37,7 @@ menu.focus()
 renderer.root.add(menu)
 ```
 
-### Construct API
+### Construct api
 
 ```typescript
 import { Select, createCliRenderer } from "@opentui/core"
@@ -58,7 +58,7 @@ menu.focus()
 renderer.root.add(menu)
 ```
 
-## Keyboard Navigation
+## Keyboard navigation
 
 When focused, the select responds to these keys:
 
@@ -71,9 +71,9 @@ When focused, the select responds to these keys:
 
 ## Events
 
-### Item Selected
+### Item selected
 
-Emitted when the user presses Enter on an option:
+Fires when the user presses Enter on an option:
 
 ```typescript
 import { SelectRenderableEvents } from "@opentui/core"
@@ -83,9 +83,9 @@ menu.on(SelectRenderableEvents.ITEM_SELECTED, (index: number, option: SelectOpti
 })
 ```
 
-### Selection Changed
+### Selection changed
 
-Emitted when the highlighted item changes:
+Fires when the highlighted item changes:
 
 ```typescript
 menu.on(SelectRenderableEvents.SELECTION_CHANGED, (index: number, option: SelectOption) => {
@@ -94,13 +94,13 @@ menu.on(SelectRenderableEvents.SELECTION_CHANGED, (index: number, option: Select
 })
 ```
 
-## Option Structure
+## Option structure
 
 ```typescript
 interface SelectOption {
   name: string // Display text
-  description: string // Description shown below (when showDescription is true)
-  value?: any // Optional value for the option
+  description: string // Displays below the name when showDescription is true
+  value?: any // Optional value
 }
 ```
 
@@ -142,7 +142,7 @@ const styledMenu = new SelectRenderable(renderer, {
 | `itemSpacing`              | `number`         | `0`           | Spacing between items             |
 | `fastScrollStep`           | `number`         | `5`           | Items to skip with Shift+Up/Down  |
 
-## Example: File Menu
+## Example: file menu
 
 ```typescript
 import { Box, Select, createCliRenderer } from "@opentui/core"
@@ -174,7 +174,7 @@ fileMenu.focus()
 renderer.root.add(menuPanel)
 ```
 
-## Programmatic Control
+## Programmatic control
 
 ```typescript
 // Get current selection index

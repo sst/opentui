@@ -6,11 +6,11 @@ order: 3
 
 # Input
 
-Text input field with cursor support, placeholder text, and focus states for user interaction. The input must be focused to receive keyboard input.
+Text input field with cursor, placeholder text, and focus states. Focus the input to receive keyboard input.
 
-## Basic Usage
+## Basic usage
 
-### Renderable API
+### Renderable api
 
 ```typescript
 import { InputRenderable, InputRenderableEvents, createCliRenderer } from "@opentui/core"
@@ -31,7 +31,7 @@ input.focus()
 renderer.root.add(input)
 ```
 
-### Construct API
+### Construct api
 
 ```typescript
 import { Input, createCliRenderer } from "@opentui/core"
@@ -47,9 +47,9 @@ input.focus()
 renderer.root.add(input)
 ```
 
-## Focus States
+## Focus states
 
-The input changes appearance based on focus:
+The input changes appearance when focused:
 
 ```typescript
 const input = new InputRenderable(renderer, {
@@ -65,9 +65,9 @@ const input = new InputRenderable(renderer, {
 
 ## Events
 
-### Input Event
+### Input event
 
-Emitted on every keystroke as the value changes:
+Fires on every keystroke as the value changes:
 
 ```typescript
 import { InputRenderableEvents } from "@opentui/core"
@@ -77,9 +77,9 @@ input.on(InputRenderableEvents.INPUT, (value: string) => {
 })
 ```
 
-### Change Event
+### Change event
 
-Emitted when the input loses focus (blur) or when Enter is pressed, but only if the value changed since focus:
+Fires when the input loses focus (blur) or when you press Enter, but only if the value changed since focus:
 
 ```typescript
 input.on(InputRenderableEvents.CHANGE, (value: string) => {
@@ -87,9 +87,9 @@ input.on(InputRenderableEvents.CHANGE, (value: string) => {
 })
 ```
 
-### Enter Event
+### Enter event
 
-Emitted when the user presses Enter/Return:
+Fires when the user presses Enter/Return:
 
 ```typescript
 input.on(InputRenderableEvents.ENTER, (value: string) => {
@@ -97,13 +97,13 @@ input.on(InputRenderableEvents.ENTER, (value: string) => {
 })
 ```
 
-### Getting the Current Value
+### Getting the current value
 
 ```typescript
 const currentValue = input.value
 ```
 
-### Setting the Value
+### Setting the value
 
 ```typescript
 input.value = "New value"
@@ -123,7 +123,7 @@ input.value = "New value"
 | `cursorColor`            | `string \| RGBA`                       | -            | Cursor color                 |
 | `position`               | `"static" \| "relative" \| "absolute"` | `"relative"` | Positioning mode             |
 
-## Example: Login Form
+## Example: Login form
 
 ```typescript
 import { Box, Text, Input, delegate, createCliRenderer } from "@opentui/core"
@@ -178,9 +178,9 @@ usernameInput.focus()
 renderer.root.add(form)
 ```
 
-## Tab Navigation
+## Tab navigation
 
-Implement tab navigation between inputs:
+Add tab navigation between inputs:
 
 ```typescript
 const inputs = [usernameInput, passwordInput]

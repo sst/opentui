@@ -6,7 +6,7 @@ order: 3
 
 # Constructs
 
-Constructs provide a declarative, React-like way to compose your UI. They are factory functions that create VNodes (virtual nodes) representing your components - lightweight descriptions that are instantiated into actual Renderables when added to the tree.
+Constructs let you compose your UI in a declarative, React-like way. They are factory functions that create VNodes (virtual nodes). A VNode is a lightweight description of a component. When you add a VNode to the tree, it becomes an actual Renderable.
 
 ## Basic Usage
 
@@ -26,11 +26,11 @@ renderer.root.add(
 )
 ```
 
-Children are passed as additional arguments after the props object, not as a property.
+Pass children as additional arguments after the props object, not as a property.
 
 ## Available Constructs
 
-Many core Renderable classes have corresponding construct functions:
+Most core Renderable classes have matching construct functions:
 
 ```typescript
 import { Box, Text, Input, Select, TabSelect } from "@opentui/core"
@@ -53,11 +53,11 @@ const myBox = Box({ width: 20, height: 10 })
 renderer.root.add(myBox) // Now it becomes a real BoxRenderable
 ```
 
-This deferred instantiation allows:
+This deferred creation lets you:
 
-- Composing UI without a render context
-- Queuing method calls before instantiation
-- Cleaner, more declarative code
+- Compose UI without a render context
+- Queue method calls before the component exists
+- Write cleaner, more declarative code
 
 ## Creating Custom Constructs
 
@@ -83,15 +83,15 @@ renderer.root.add(
 
 ## Method Chaining on VNodes
 
-VNodes support method calls that are queued and applied after instantiation:
+VNodes support method calls. The system queues these calls and applies them after creating the component:
 
 ```typescript
 const input = Input({ id: "my-input", placeholder: "Type here..." })
 
-// These calls are queued on the VNode
+// The VNode queues this call
 input.focus()
 
-// When added, the input is instantiated and focus() is called
+// When added, the system creates the input and calls focus()
 renderer.root.add(input)
 ```
 
@@ -105,7 +105,7 @@ renderer.root.add(box)
 
 ## The delegate() Function
 
-When creating composite components, you often want outer method calls to route to a specific inner component. The `delegate()` function maps method/property names to descendant IDs:
+Composite components often need outer method calls to reach a specific inner component. The `delegate()` function maps method and property names to descendant IDs:
 
 ```typescript
 import { delegate, Box, Text, Input } from "@opentui/core"
@@ -138,7 +138,7 @@ renderer.root.add(username)
 
 ### Delegate Mappings
 
-The mapping object keys are method/property names, values are descendant IDs:
+The mapping object's keys are method or property names, and the values are descendant IDs:
 
 ```typescript
 delegate(
@@ -170,7 +170,7 @@ renderer.root.add(Card({ title: "User Info" }, Text({ content: "Name: Alice" }),
 
 ## Mixing Renderables and Constructs
 
-You can freely mix both approaches:
+You can mix both approaches:
 
 ```typescript
 import { BoxRenderable, Text, Input } from "@opentui/core"

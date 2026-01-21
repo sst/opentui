@@ -6,9 +6,9 @@ order: 2
 
 # Box
 
-A container component with borders, background colors, and layout capabilities. Perfect for creating panels, frames, and organized sections.
+A container component with borders, background colors, and layout capabilities. Use it to create panels, frames, and organized sections.
 
-## Basic Usage
+## Basic usage
 
 ### Renderable API
 
@@ -49,7 +49,7 @@ renderer.root.add(
 )
 ```
 
-## Border Styles
+## Border styles
 
 ```typescript
 // No border
@@ -92,7 +92,7 @@ const panel = new BoxRenderable(renderer, {
 })
 ```
 
-### Title Alignment
+### Title alignment
 
 ```typescript
 {
@@ -106,9 +106,9 @@ const panel = new BoxRenderable(renderer, {
 } // ┌────────── Title ┐
 ```
 
-## Layout Container
+## Layout container
 
-Box can serve as a flex container for child elements:
+Box works as a flex container for child elements:
 
 ```typescript
 const container = Box(
@@ -127,7 +127,7 @@ const container = Box(
 )
 ```
 
-## Mouse Events
+## Mouse events
 
 Handle mouse interactions on the box:
 
@@ -168,7 +168,7 @@ const button = new BoxRenderable(renderer, {
 | `justifyContent`  | `string`           | `"flex-start"` | Main axis alignment               |
 | `alignItems`      | `string`           | `"stretch"`    | Cross axis alignment              |
 
-## Example: Card Component
+## Example: Card component
 
 ```typescript
 import { Box, Text, t, bold, fg } from "@opentui/core"

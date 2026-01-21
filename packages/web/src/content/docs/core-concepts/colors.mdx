@@ -6,11 +6,11 @@ order: 2
 
 # Colors
 
-OpenTUI uses the `RGBA` class for consistent color representation throughout the library. Colors are internally stored as normalized float values (0.0-1.0) for efficient processing, but the class provides convenient methods for working with different color formats.
+OpenTUI uses the `RGBA` class for color representation. The class stores colors as normalized float values (0.0-1.0) internally, but provides methods for working with different color formats.
 
-## Creating Colors
+## Creating colors
 
-### From Integers (0-255)
+### From integers (0-255)
 
 ```typescript
 import { RGBA } from "@opentui/core"
@@ -19,23 +19,23 @@ const red = RGBA.fromInts(255, 0, 0, 255)
 const semiTransparentBlue = RGBA.fromInts(0, 0, 255, 128)
 ```
 
-### From Float Values (0.0-1.0)
+### From float values (0.0-1.0)
 
 ```typescript
 const green = RGBA.fromValues(0.0, 1.0, 0.0, 1.0)
 const transparent = RGBA.fromValues(1.0, 1.0, 1.0, 0.5)
 ```
 
-### From Hex Strings
+### From hex strings
 
 ```typescript
 const purple = RGBA.fromHex("#800080")
 const withAlpha = RGBA.fromHex("#FF000080") // Semi-transparent red
 ```
 
-## String Colors
+## String colors
 
-Most component properties accept both `RGBA` objects and color strings for convenience:
+Most component properties accept both `RGBA` objects and color strings:
 
 ```typescript
 import { Text, Box } from "@opentui/core"
@@ -54,9 +54,9 @@ Text({ content: "Custom", fg: customColor })
 Box({ backgroundColor: "transparent" })
 ```
 
-## The parseColor Utility
+## The parseColor utility
 
-The `parseColor()` utility function converts various color formats to RGBA:
+The `parseColor()` function converts various color formats to RGBA:
 
 ```typescript
 import { parseColor } from "@opentui/core"
@@ -67,9 +67,9 @@ const color3 = parseColor("transparent") // Transparent
 const color4 = parseColor(RGBA.fromInts(255, 0, 0, 255)) // Pass-through
 ```
 
-## Alpha Blending
+## Alpha blending
 
-OpenTUI supports transparent cells and alpha blending for layered effects:
+You can use transparent cells and alpha blending for layered effects:
 
 ```typescript
 import { FrameBufferRenderable, RGBA } from "@opentui/core"
@@ -86,9 +86,9 @@ const transparent = RGBA.fromInts(0, 0, 0, 0)
 canvas.frameBuffer.setCellWithAlphaBlending(10, 5, " ", transparent, semiTransparent)
 ```
 
-## Text Attributes with Colors
+## Text attributes with colors
 
-Combine colors with text attributes for styled output:
+Combine colors with text attributes:
 
 ```typescript
 import { TextRenderable, TextAttributes, RGBA } from "@opentui/core"
@@ -102,9 +102,9 @@ const styledText = new TextRenderable(renderer, {
 })
 ```
 
-## Color Constants
+## Color constants
 
-Common colors for quick access:
+Common colors:
 
 ```typescript
 // Some examples of commonly used colors

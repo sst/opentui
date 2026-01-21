@@ -6,9 +6,9 @@ order: 1
 
 # Renderer
 
-The `CliRenderer` is the heart of OpenTUI. It manages terminal output, handles input events, orchestrates the rendering loop, and provides the context for creating renderables.
+The `CliRenderer` drives OpenTUI. It manages terminal output, handles input events, runs the rendering loop, and provides context for creating renderables.
 
-## Creating a Renderer
+## Creating a renderer
 
 Use the async factory function to create a renderer:
 
@@ -24,10 +24,10 @@ const renderer = await createCliRenderer({
 The factory function:
 
 1. Loads the native Zig rendering library
-2. Configures terminal settings (mouse, keyboard protocol, alternate screen)
-3. Returns a fully initialized `CliRenderer` instance
+2. Configures terminal settings (mouse, keyboard protocol, and alternate screen)
+3. Returns an initialized `CliRenderer` instance
 
-## Configuration Options
+## Configuration options
 
 | Option                | Type             | Default     | Description                                    |
 | --------------------- | ---------------- | ----------- | ---------------------------------------------- |
@@ -41,9 +41,9 @@ The factory function:
 | `consoleOptions`      | `ConsoleOptions` | -           | Options for the built-in console overlay       |
 | `openConsoleOnError`  | `boolean`        | `true`      | Auto-open console when errors occur (dev only) |
 
-## The Root Renderable
+## The root renderable
 
-Every renderer has a `root` property - a special `RootRenderable` that serves as the top of the component tree:
+Every renderer has a `root` property—a special `RootRenderable` at the top of the component tree:
 
 ```typescript
 import { Box, Text } from "@opentui/core"
@@ -52,22 +52,22 @@ import { Box, Text } from "@opentui/core"
 renderer.root.add(Box({ width: 40, height: 10, borderStyle: "rounded" }, Text({ content: "Hello, OpenTUI!" })))
 ```
 
-The root renderable fills the entire terminal and automatically adjusts when the terminal is resized.
+The root renderable fills the entire terminal and adjusts automatically when you resize the terminal.
 
-## Render Loop Control
+## Render loop control
 
-The renderer supports multiple control modes:
+The renderer supports several control modes:
 
-### Automatic Mode (Default)
+### Automatic mode (default)
 
-Without calling `start()`, the renderer only re-renders when the component tree changes:
+Without calling `start()`, the renderer re-renders only when the component tree changes:
 
 ```typescript
 const renderer = await createCliRenderer()
 renderer.root.add(Text({ content: "Static content" })) // Triggers render
 ```
 
-### Continuous Mode
+### Continuous mode
 
 Call `start()` to run the render loop continuously at the target FPS:
 
@@ -76,9 +76,9 @@ renderer.start() // Start continuous rendering
 renderer.stop() // Stop the render loop
 ```
 
-### Live Rendering
+### Live rendering
 
-For animations, use `requestLive()` to request continuous rendering:
+For animations, call `requestLive()` to enable continuous rendering:
 
 ```typescript
 // Request live mode (increments internal counter)
@@ -88,9 +88,9 @@ renderer.requestLive()
 renderer.dropLive()
 ```
 
-This is useful when multiple components need animations - the renderer stays live until all requests are dropped.
+Multiple components can request animations simultaneously—the renderer stays live until all requests drop.
 
-### Pause and Suspend
+### Pause and suspend
 
 ```typescript
 renderer.pause() // Pause rendering (can resume)
@@ -100,7 +100,7 @@ renderer.suspend() // Fully suspend (disables mouse, input, raw mode)
 renderer.resume() // Resume from suspended state
 ```
 
-## Key Properties
+## Key properties
 
 | Property                   | Type                 | Description                             |
 | -------------------------- | -------------------- | --------------------------------------- |
@@ -115,7 +115,7 @@ renderer.resume() // Resume from suspended state
 
 ## Events
 
-The renderer emits events you can listen to:
+The renderer emits events that you can listen to:
 
 ```typescript
 // Terminal resized
@@ -134,9 +134,9 @@ renderer.on("selection", (selection) => {
 })
 ```
 
-## Cursor Control
+## Cursor control
 
-Control the terminal cursor position and style:
+Control the cursor position and style:
 
 ```typescript
 // Position and visibility
@@ -151,7 +151,7 @@ renderer.setCursorStyle("line", true) // Blinking line
 renderer.setCursorColor(RGBA.fromHex("#FF0000"))
 ```
 
-## Input Handling
+## Input handling
 
 Add custom input handlers:
 
@@ -165,11 +165,11 @@ renderer.addInputHandler((sequence) => {
 })
 ```
 
-By default, `addInputHandler()` appends to the handler chain (runs after built-in handlers). Use `prependInputHandler()` to add a handler at the start of the chain, which runs before built-in handlers.
+By default, `addInputHandler()` appends handlers to the chain, running them after built-in handlers. Use `prependInputHandler()` to add a handler at the start of the chain, running it before built-in handlers.
 
-## Debug Overlay
+## Debug overlay
 
-Toggle a debug overlay showing FPS, memory usage, and other stats:
+Toggle the debug overlay to show FPS, memory usage, and other stats:
 
 ```typescript
 renderer.toggleDebugOverlay()
@@ -185,15 +185,15 @@ renderer.configureDebugOverlay({
 
 ## Cleanup
 
-Always destroy the renderer when done to restore terminal state:
+Always destroy the renderer when you finish to restore terminal state:
 
 ```typescript
 renderer.destroy()
 ```
 
-This restores the terminal to its original state, disables mouse tracking, and cleans up resources.
+Destroying the renderer restores the terminal to its original state, disables mouse tracking, and cleans up resources.
 
-## Environment Variables
+## Environment variables
 
 | Variable                    | Description                                  |
 | --------------------------- | -------------------------------------------- |

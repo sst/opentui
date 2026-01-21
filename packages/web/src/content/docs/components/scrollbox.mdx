@@ -6,11 +6,11 @@ order: 5
 
 # ScrollBox
 
-A scrollable container component that supports both horizontal and vertical scrolling, sticky scroll behavior, viewport culling for performance, and customizable scrollbars.
+A scrollable container that supports horizontal and vertical scrolling, sticky scroll behavior, viewport culling, and customizable scrollbars.
 
-## Basic Usage
+## Basic usage
 
-### Renderable API
+### Renderable api
 
 ```typescript
 import { ScrollBoxRenderable, TextRenderable, BoxRenderable, createCliRenderer } from "@opentui/core"
@@ -38,7 +38,7 @@ for (let i = 0; i < 100; i++) {
 renderer.root.add(scrollbox)
 ```
 
-### Construct API
+### Construct api
 
 > **Note:** Not yet available. Coming soon.
 
@@ -63,9 +63,9 @@ renderer.root.add(
 )
 ```
 
-## Sticky Scroll
+## Sticky scroll
 
-Enable sticky scroll to keep content pinned to an edge as new content is added. This is useful for log viewers or chat interfaces.
+Enable sticky scroll to keep content pinned to an edge as new content arrives. Useful for log viewers or chat interfaces.
 
 ```typescript
 const scrollbox = new ScrollBoxRenderable(renderer, {
@@ -77,16 +77,16 @@ const scrollbox = new ScrollBoxRenderable(renderer, {
 })
 ```
 
-### Sticky Positions
+### Sticky positions
 
 - `"bottom"` - Stay scrolled to bottom (default for chat/logs)
 - `"top"` - Stay scrolled to top
 - `"left"` - Stay scrolled to left
 - `"right"` - Stay scrolled to right
 
-When the user manually scrolls away from the sticky position, sticky behavior is temporarily disabled until they scroll back to the sticky edge.
+When you scroll away from the sticky position, sticky behavior pauses until you scroll back to the sticky edge.
 
-## Bidirectional Scrolling
+## Bidirectional scrolling
 
 Enable scrolling in both directions:
 
@@ -100,11 +100,11 @@ const scrollbox = new ScrollBoxRenderable(renderer, {
 })
 ```
 
-By default, `scrollY` is enabled and `scrollX` is disabled.
+By default, `scrollY` is `true` and `scrollX` is `false`.
 
-## Viewport Culling
+## Viewport culling
 
-Enable viewport culling for better performance with large amounts of content. When enabled, only visible children are rendered:
+Enable viewport culling for better performance with large content. When enabled, ScrollBox renders only visible children:
 
 ```typescript
 const scrollbox = new ScrollBoxRenderable(renderer, {
@@ -115,7 +115,7 @@ const scrollbox = new ScrollBoxRenderable(renderer, {
 })
 ```
 
-## Customizing Scrollbars
+## Customizing scrollbars
 
 Style the scrollbars using nested options:
 
@@ -141,9 +141,9 @@ const scrollbox = new ScrollBoxRenderable(renderer, {
 })
 ```
 
-## Customizing Sub-Components
+## Customizing sub-components
 
-ScrollBox is composed of several internal components that can be individually styled:
+ScrollBox contains several internal components that you can style individually:
 
 ```typescript
 const scrollbox = new ScrollBoxRenderable(renderer, {
@@ -165,7 +165,7 @@ const scrollbox = new ScrollBoxRenderable(renderer, {
 })
 ```
 
-## Scroll Methods
+## Scroll methods
 
 ### scrollBy
 
@@ -194,7 +194,7 @@ scrollbox.scrollTo(0)
 scrollbox.scrollTo({ x: 0, y: 100 })
 ```
 
-## Keyboard Navigation
+## Keyboard navigation
 
 When focused, ScrollBox responds to keyboard input:
 
@@ -220,7 +220,7 @@ When focused, ScrollBox responds to keyboard input:
 | `verticalScrollbarOptions`   | `ScrollBarOptions`                       | -       | Options for vertical scrollbar only    |
 | `horizontalScrollbarOptions` | `ScrollBarOptions`                       | -       | Options for horizontal scrollbar only  |
 
-## Additional Properties
+## Additional properties
 
 | Property       | Type     | Description                                  |
 | -------------- | -------- | -------------------------------------------- |
@@ -229,7 +229,7 @@ When focused, ScrollBox responds to keyboard input:
 | `scrollWidth`  | `number` | Total scrollable width (read-only)           |
 | `scrollHeight` | `number` | Total scrollable height (read-only)          |
 
-## Internal Components
+## Internal components
 
 ScrollBox exposes its internal components for advanced use:
 

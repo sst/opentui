@@ -41,7 +41,7 @@ renderer.root.add(
 )
 ```
 
-## Text Attributes
+## Text attributes
 
 Combine multiple text attributes using bitwise OR:
 
@@ -56,7 +56,7 @@ const styledText = new TextRenderable(renderer, {
 })
 ```
 
-### Available Attributes
+### Available attributes
 
 | Attribute                      | Description        |
 | ------------------------------ | ------------------ |
@@ -69,7 +69,7 @@ const styledText = new TextRenderable(renderer, {
 | `TextAttributes.HIDDEN`        | Hidden text        |
 | `TextAttributes.STRIKETHROUGH` | Strikethrough text |
 
-## Template Literals for Rich Text
+## Template literals for rich text
 
 Use the `t` template literal for inline styling within a single text element:
 
@@ -82,7 +82,7 @@ const richText = new TextRenderable(renderer, {
 })
 ```
 
-### Available Style Functions
+### Available style functions
 
 ```typescript
 import { t, bold, dim, italic, underline, blink, reverse, strikethrough, fg, bg } from "@opentui/core"
@@ -113,9 +113,9 @@ const text = new TextRenderable(renderer, {
 })
 ```
 
-## Text Selection
+## Text selection
 
-Text can be made selectable for copy operations:
+Enable text selection for copying:
 
 ```typescript
 const selectableText = new TextRenderable(renderer, {
@@ -143,7 +143,7 @@ const nonSelectable = new TextRenderable(renderer, {
 | `position`                       | `"relative" \| "absolute"`           | `"relative"` | Positioning mode             |
 | `left`, `top`, `right`, `bottom` | `number \| "auto" \| \`${number}%\`` | -            | Position offsets             |
 
-## Example: Status Bar
+## Example: status bar
 
 ```typescript
 import { Text, Box, t, bold, fg } from "@opentui/core"

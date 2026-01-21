@@ -4,7 +4,7 @@ description: Build terminal UIs with Solid.js and OpenTUI
 order: 1
 ---
 
-# Solid.js Bindings
+# Solid.js bindings
 
 Build terminal user interfaces with Solid.js's fine-grained reactivity and OpenTUI.
 
@@ -37,7 +37,7 @@ Add preload script to `bunfig.toml`:
 preload = ["@opentui/solid/preload"]
 ```
 
-### 3. Create Your App
+### 3. Create your app
 
 ```tsx
 import { render } from "@opentui/solid"
@@ -55,7 +55,7 @@ OpenTUI Solid provides JSX intrinsic elements that map to core renderables.
 
 **Note:** Solid uses snake_case for multi-word component names (e.g., `ascii_font`, `tab_select`).
 
-### Layout & Display
+### Layout & display
 
 - `<text>` - Styled text container
 - `<box>` - Layout container with borders
@@ -70,13 +70,13 @@ OpenTUI Solid provides JSX intrinsic elements that map to core renderables.
 - `<select>` - List selection
 - `<tab_select>` - Tab-based selection
 
-### Code & Diff
+### Code & diff
 
 - `<code>` - Syntax-highlighted code
 - `<line_number>` - Line numbers with diff/diagnostic support
 - `<diff>` - Unified or split diff viewer
 
-### Text Modifiers
+### Text modifiers
 
 Use inside `<text>` components:
 
@@ -87,7 +87,7 @@ Use inside `<text>` components:
 - `<br>` - Line break
 - `<a>` - Link text with href
 
-## API Reference
+## API reference
 
 ### `render(node, rendererOrConfig?)`
 
@@ -302,7 +302,7 @@ const App = () => {
 }
 ```
 
-## Special Components
+## Special components
 
 ### `Portal`
 
@@ -340,7 +340,7 @@ const App = () => {
 }
 ```
 
-## Building for Production
+## Building for production
 
 Use [Bun.build](https://bun.sh/docs/bundler) with the Solid plugin:
 
@@ -368,7 +368,7 @@ await Bun.build({
 })
 ```
 
-## Example: Counter
+## Example: counter
 
 ```tsx
 import { render, useKeyboard } from "@opentui/solid"
@@ -394,7 +394,7 @@ const App = () => {
 render(App)
 ```
 
-## Differences from React Bindings
+## Differences from React bindings
 
 | Aspect             | Solid                                | React                                  |
 | ------------------ | ------------------------------------ | -------------------------------------- |

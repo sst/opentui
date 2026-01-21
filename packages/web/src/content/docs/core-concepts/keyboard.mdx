@@ -1,14 +1,14 @@
 ---
-title: Keyboard Input
+title: Keyboard input
 description: Handling keyboard events in OpenTUI
 order: 3
 ---
 
-# Keyboard Input
+# Keyboard input
 
-OpenTUI provides a keyboard handler that parses terminal input and provides structured key events. Access it via `renderer.keyInput`, an EventEmitter that emits `keypress` and `paste` events with detailed key information.
+OpenTUI parses terminal input and provides structured key events. The `renderer.keyInput` EventEmitter emits `keypress` and `paste` events with detailed key information.
 
-## Basic Key Handling
+## Basic key handling
 
 ```typescript
 import { createCliRenderer, type KeyEvent } from "@opentui/core"
@@ -26,7 +26,7 @@ keyHandler.on("keypress", (key: KeyEvent) => {
 })
 ```
 
-## KeyEvent Properties
+## KeyEvent properties
 
 Each `KeyEvent` contains:
 
@@ -39,9 +39,9 @@ Each `KeyEvent` contains:
 | `meta`     | `boolean` | Whether Alt/Meta was held                |
 | `option`   | `boolean` | Whether Option was held (macOS)          |
 
-## Common Key Patterns
+## Common key patterns
 
-### Single Keys
+### Single keys
 
 ```typescript
 keyHandler.on("keypress", (key: KeyEvent) => {
@@ -59,7 +59,7 @@ keyHandler.on("keypress", (key: KeyEvent) => {
 })
 ```
 
-### Modifier Combinations
+### Modifier combinations
 
 ```typescript
 keyHandler.on("keypress", (key: KeyEvent) => {
@@ -85,7 +85,7 @@ keyHandler.on("keypress", (key: KeyEvent) => {
 })
 ```
 
-### Function Keys
+### Function keys
 
 ```typescript
 keyHandler.on("keypress", (key: KeyEvent) => {
@@ -100,7 +100,7 @@ keyHandler.on("keypress", (key: KeyEvent) => {
 })
 ```
 
-### Arrow Keys
+### Arrow keys
 
 ```typescript
 keyHandler.on("keypress", (key: KeyEvent) => {
@@ -121,7 +121,7 @@ keyHandler.on("keypress", (key: KeyEvent) => {
 })
 ```
 
-## Paste Events
+## Paste events
 
 Handle pasted text separately from individual keypresses:
 
@@ -136,7 +136,7 @@ keyHandler.on("paste", (event: PasteEvent) => {
 
 ## Exit on Ctrl+C
 
-The renderer can be configured to automatically exit on Ctrl+C:
+Configure the renderer to automatically exit on Ctrl+C:
 
 ```typescript
 const renderer = await createCliRenderer({
@@ -157,9 +157,9 @@ renderer.keyInput.on("keypress", (key: KeyEvent) => {
 })
 ```
 
-## Focus and Key Routing
+## Focus and key routing
 
-Components that need keyboard input must be focused. Events are routed to the focused component:
+Focus components to receive keyboard input. OpenTUI routes events to the focused component:
 
 ```typescript
 import { InputRenderable } from "@opentui/core"
