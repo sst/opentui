@@ -49,7 +49,7 @@ keyHandler.on("keypress", (key: KeyEvent) => {
     console.log("Escape pressed!")
   }
 
-  if (key.name === "return" || key.name === "enter") {
+  if (key.name === "return") {
     console.log("Enter pressed!")
   }
 
@@ -126,8 +126,10 @@ keyHandler.on("keypress", (key: KeyEvent) => {
 Handle pasted text separately from individual keypresses:
 
 ```typescript
-keyHandler.on("paste", (text: string) => {
-  console.log("Pasted text:", text)
+import { type PasteEvent } from "@opentui/core"
+
+keyHandler.on("paste", (event: PasteEvent) => {
+  console.log("Pasted text:", event.text)
   // Insert text at cursor position
 })
 ```

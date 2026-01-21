@@ -242,20 +242,20 @@ const overlay = new BoxRenderable(renderer, {
 
 ## Live Rendering
 
-For animations, enable continuous rendering on a renderable:
+For animations, extend the Renderable class and override `onUpdate`:
 
 ```typescript
-// Enable live mode
-renderable.live = true
-
-// In onUpdate, perform animation
-renderable.onUpdate = (deltaTime) => {
-  // Update animation state
-  renderable.translateX += 1
+class AnimatedBox extends BoxRenderable {
+  onUpdate(deltaTime) {
+    // Update animation state
+    this.translateX += 1
+  }
 }
 
-// When done animating
-renderable.live = false
+const box = new AnimatedBox(renderer, {
+  id: "anim-box",
+  live: true // Enable continuous rendering
+})
 ```
 
 ## Translation
@@ -272,16 +272,19 @@ This moves the renderable visually without affecting layout.
 
 ## Buffered Rendering
 
-Enable offscreen rendering for complex content:
+Enable offscreen rendering for complex content, and use hooks to draw to the buffer:
 
 ```typescript
+import { RGBA } from "@opentui/core"
+
 const complex = new BoxRenderable(renderer, {
   id: "complex",
   buffered: true, // Render to offscreen buffer first
+  renderAfter: (buffer) => {
+    // Draw directly to the buffer (or offscreen buffer if buffered=true)
+    buffer.fillRect(0, 0, 10, 5, RGBA.fromHex("#FF0000"))
+  }
 })
-
-// Access the buffer directly
-complex.frameBuffer.fillRect(0, 0, 10, 5, RGBA.fromHex("#FF0000"))
 ```
 
 ## Lifecycle Methods

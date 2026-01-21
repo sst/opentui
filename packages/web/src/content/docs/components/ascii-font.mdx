@@ -53,19 +53,34 @@ OpenTUI includes several ASCII art font styles:
   font: "tiny"
 }
 
-// Standard readable font
+// Block style font
 {
-  font: "standard"
+  font: "block"
 }
 
-// Large decorative font
+// Shaded style font
 {
-  font: "banner"
+  font: "shade"
 }
 
-// Slanted style
+// Slick style font
 {
-  font: "slant"
+  font: "slick"
+}
+
+// Large font
+{
+  font: "huge"
+}
+
+// Grid style font
+{
+  font: "grid"
+}
+
+// Pallet style font
+{
+  font: "pallet"
 }
 ```
 
@@ -77,23 +92,22 @@ Position the ASCII text anywhere on screen:
 const title = new ASCIIFontRenderable(renderer, {
   id: "title",
   text: "TITLE",
-  font: "standard",
+  font: "block",
   color: RGBA.fromHex("#FFFF00"),
-  position: "absolute",
-  left: 10,
-  top: 2,
+  x: 10,
+  y: 2,
 })
 ```
 
 ## Properties
 
-| Property                         | Type             | Default      | Description       |
-| -------------------------------- | ---------------- | ------------ | ----------------- |
-| `text`                           | `string`         | `""`         | Text to display   |
-| `font`                           | `string`         | `"standard"` | Font style to use |
-| `color`                          | `RGBA \| string` | -            | Text color        |
-| `position`                       | `string`         | `"relative"` | Positioning mode  |
-| `left`, `top`, `right`, `bottom` | `number`         | -            | Position offsets  |
+| Property | Type             | Default   | Description       |
+| -------- | ---------------- | --------- | ----------------- |
+| `text`   | `string`         | `""`      | Text to display   |
+| `font`   | `string`         | `"block"` | Font style to use |
+| `color`  | `RGBA \| string` | -         | Text color        |
+| `x`      | `number`         | -         | X position offset |
+| `y`      | `number`         | -         | Y position offset |
 
 ## Example: Welcome Screen
 
@@ -112,7 +126,7 @@ const welcomeScreen = Box(
   },
   ASCIIFont({
     text: "OPENTUI",
-    font: "banner",
+    font: "huge",
     color: "#00FFFF",
   }),
   Text({
@@ -136,14 +150,14 @@ Update the text content dynamically:
 const counter = new ASCIIFontRenderable(renderer, {
   id: "counter",
   text: "0",
-  font: "standard",
+  font: "block",
   color: RGBA.fromHex("#FF0000"),
 })
 
 let count = 0
 setInterval(() => {
   count++
-  counter.setText(count.toString())
+  counter.text = count.toString()
 }, 1000)
 ```
 
@@ -155,23 +169,19 @@ Create gradient-like effects by positioning multiple ASCII fonts:
 import { Box, ASCIIFont } from "@opentui/core"
 
 const gradientTitle = Box(
-  { position: "relative" },
+  {},
   ASCIIFont({
     text: "HELLO",
-    font: "standard",
+    font: "block",
     color: "#FF0000",
-    position: "absolute",
-    left: 0,
-    top: 0,
   }),
   // Overlay with offset for shadow effect
   ASCIIFont({
     text: "HELLO",
-    font: "standard",
+    font: "block",
     color: "#880000",
-    position: "absolute",
-    left: 1,
-    top: 1,
+    x: 1,
+    y: 1,
   }),
 )
 ```

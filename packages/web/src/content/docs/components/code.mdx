@@ -241,17 +241,17 @@ scrollbox.add(lineNumbers)
 | `wrapMode`     | `string`           | `"none"` | Text wrapping: `"none"`, `"char"`, `"word"` |
 | `tabIndicator` | `string \| number` | -        | Tab display character or width              |
 
-## Read-Only Properties
+## Additional Properties
 
-| Property         | Type      | Description                         |
-| ---------------- | --------- | ----------------------------------- |
-| `lineCount`      | `number`  | Number of lines in content          |
-| `scrollY`        | `number`  | Current vertical scroll position    |
-| `scrollX`        | `number`  | Current horizontal scroll position  |
-| `scrollWidth`    | `number`  | Total scrollable width              |
-| `scrollHeight`   | `number`  | Total scrollable height             |
-| `isHighlighting` | `boolean` | Whether highlighting is in progress |
-| `plainText`      | `string`  | Raw text content                    |
+| Property         | Type      | Description                                  |
+| ---------------- | --------- | -------------------------------------------- |
+| `lineCount`      | `number`  | Number of lines in content                   |
+| `scrollY`        | `number`  | Current vertical scroll position (get/set)   |
+| `scrollX`        | `number`  | Current horizontal scroll position (get/set) |
+| `scrollWidth`    | `number`  | Total scrollable width (read-only)           |
+| `scrollHeight`   | `number`  | Total scrollable height (read-only)          |
+| `isHighlighting` | `boolean` | Whether highlighting is in progress          |
+| `plainText`      | `string`  | Raw text content                             |
 
 ## Markdown Styles
 

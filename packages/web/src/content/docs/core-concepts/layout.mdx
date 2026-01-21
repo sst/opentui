@@ -13,11 +13,11 @@ OpenTUI uses the Yoga layout engine, providing CSS Flexbox-like capabilities for
 The layout system supports standard flexbox properties:
 
 ```typescript
-import { GroupRenderable, BoxRenderable, createCliRenderer } from "@opentui/core"
+import { BoxRenderable, createCliRenderer } from "@opentui/core"
 
 const renderer = await createCliRenderer()
 
-const container = new GroupRenderable(renderer, {
+const container = new BoxRenderable(renderer, {
   id: "container",
   flexDirection: "row",
   justifyContent: "space-between",
@@ -199,10 +199,10 @@ Elements are positioned relative to their parent:
 The same layout properties work with the declarative API:
 
 ```typescript
-import { Box, Group, Text } from "@opentui/core"
+import { Box, Text } from "@opentui/core"
 
 renderer.root.add(
-  Group(
+  Box(
     {
       flexDirection: "row",
       width: "100%",
@@ -238,9 +238,9 @@ const renderer = await createCliRenderer()
 renderer.on("resize", (width, height) => {
   // Update layout based on new dimensions
   if (width < 80) {
-    container.setFlexDirection("column")
+    container.flexDirection = "column"
   } else {
-    container.setFlexDirection("row")
+    container.flexDirection = "row"
   }
 })
 ```

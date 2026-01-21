@@ -73,11 +73,8 @@ renderer.root.add(
   borderStyle: "rounded"
 } // Rounded corners: ╭─╮│╰─╯
 {
-  borderStyle: "bold"
-} // Bold lines: ┏━┓┃┗━┛
-{
-  borderStyle: "ascii"
-} // ASCII: +-+||+-+
+  borderStyle: "heavy"
+} // Heavy lines: ┏━┓┃┗━┛
 ```
 
 ## Titles
@@ -144,11 +141,11 @@ const button = new BoxRenderable(renderer, {
   onMouseDown: () => {
     console.log("Button clicked!")
   },
-  onMouseEnter: () => {
-    button.setBackgroundColor("#666")
+  onMouseOver: () => {
+    button.backgroundColor = "#666"
   },
-  onMouseLeave: () => {
-    button.setBackgroundColor("#444")
+  onMouseOut: () => {
+    button.backgroundColor = "#444"
   },
 })
 ```

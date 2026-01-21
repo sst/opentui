@@ -82,7 +82,8 @@ const canvas = new FrameBufferRenderable(renderer, {
 
 // Draw with alpha blending
 const semiTransparent = RGBA.fromValues(1.0, 0.0, 0.0, 0.5)
-canvas.frameBuffer.setCellWithAlphaBlending(10, 5, " ", null, semiTransparent)
+const transparent = RGBA.fromInts(0, 0, 0, 0)
+canvas.frameBuffer.setCellWithAlphaBlending(10, 5, " ", transparent, semiTransparent)
 ```
 
 ## Text Attributes with Colors

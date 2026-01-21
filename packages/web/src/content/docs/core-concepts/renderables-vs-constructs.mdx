@@ -131,7 +131,6 @@ function Button(props: { id: string; label: string; onClick: () => void }) {
   return delegate(
     {
       focus: `${props.id}-box`, // Route focus() to the box
-      onClick: `${props.id}-box`, // Route click events
     },
     Box(
       {

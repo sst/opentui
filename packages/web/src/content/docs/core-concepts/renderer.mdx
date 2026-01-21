@@ -39,7 +39,7 @@ The factory function:
 | `useAlternateScreen`  | `boolean`        | `true`      | Use terminal alternate screen buffer         |
 | `backgroundColor`     | `ColorInput`     | transparent | Default background color                     |
 | `consoleOptions`      | `ConsoleOptions` | -           | Options for the built-in console overlay     |
-| `openConsoleOnError`  | `boolean`        | `true`      | Auto-open console when errors occur          |
+| `openConsoleOnError`  | `boolean`        | `true`      | Auto-open console when errors occur (dev only)|
 
 ## The Root Renderable
 
@@ -145,7 +145,7 @@ renderer.setCursorPosition(10, 5, true)
 // Cursor style
 renderer.setCursorStyle("block", true) // Blinking block
 renderer.setCursorStyle("underline", false) // Steady underline
-renderer.setCursorStyle("bar", true) // Blinking bar
+renderer.setCursorStyle("line", true) // Blinking line
 
 // Cursor color
 renderer.setCursorColor(RGBA.fromHex("#FF0000"))
@@ -199,3 +199,7 @@ This restores the terminal to its original state, disables mouse tracking, and c
 | `OTUI_SHOW_STATS`           | Show debug overlay at startup            |
 | `OTUI_DEBUG`                | Enable debug input capture               |
 | `OTUI_NO_NATIVE_RENDER`     | Disable native rendering (for debugging) |
+| `OTUI_DUMP_CAPTURES`        | Dump captured output when the renderer exits |
+| `OTUI_OVERRIDE_STDOUT`      | Override stdout stream (for debugging)       |
+| `OTUI_USE_CONSOLE`          | Enable/disable built-in console              |
+| `SHOW_CONSOLE`              | Show console at startup                      |
