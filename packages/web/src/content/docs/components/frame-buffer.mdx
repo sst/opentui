@@ -1,0 +1,237 @@
+---
+title: FrameBuffer
+description: Low-level rendering surface for custom graphics
+order: 7
+---
+
+# FrameBuffer
+
+A low-level rendering surface for custom graphics and complex visual effects. The FrameBuffer is a 2D array of cells that can be drawn to using various methods, optimized for performance and memory usage.
+
+## Basic Usage
+
+### Renderable API
+
+```typescript
+import { FrameBufferRenderable, RGBA, createCliRenderer } from "@opentui/core"
+
+const renderer = await createCliRenderer()
+
+const canvas = new FrameBufferRenderable(renderer, {
+  id: "canvas",
+  width: 50,
+  height: 20,
+})
+
+// Draw on the frame buffer
+canvas.frameBuffer.fillRect(5, 2, 20, 10, RGBA.fromHex("#FF0000"))
+canvas.frameBuffer.drawText("Hello!", 8, 6, RGBA.fromHex("#FFFFFF"))
+
+renderer.root.add(canvas)
+```
+
+### Construct API
+
+```typescript
+import { FrameBuffer, createCliRenderer } from "@opentui/core"
+
+const renderer = await createCliRenderer()
+
+renderer.root.add(
+  FrameBuffer({
+    width: 50,
+    height: 20,
+  }),
+)
+```
+
+## Drawing Methods
+
+### setCell
+
+Set a single cell's content and colors:
+
+```typescript
+canvas.frameBuffer.setCell(
+  x, // X position
+  y, // Y position
+  char, // Character to display
+  fg, // Foreground color (RGBA or null)
+  bg, // Background color (RGBA or null)
+)
+
+// Example
+canvas.frameBuffer.setCell(10, 5, "@", RGBA.fromHex("#FFFF00"), RGBA.fromHex("#000000"))
+```
+
+### setCellWithAlphaBlending
+
+Set a cell with alpha blending for transparency effects:
+
+```typescript
+const semiTransparent = RGBA.fromValues(1.0, 0.0, 0.0, 0.5)
+canvas.frameBuffer.setCellWithAlphaBlending(10, 5, " ", null, semiTransparent)
+```
+
+### drawText
+
+Draw a string of text at a position:
+
+```typescript
+canvas.frameBuffer.drawText(
+  text, // String to draw
+  x, // Starting X position
+  y, // Y position
+  fg, // Text color (RGBA)
+  bg, // Background color (RGBA, optional)
+)
+
+// Example
+canvas.frameBuffer.drawText("Score: 100", 2, 1, RGBA.fromHex("#00FF00"))
+```
+
+### fillRect
+
+Fill a rectangular area with a color:
+
+```typescript
+canvas.frameBuffer.fillRect(
+  x, // X position
+  y, // Y position
+  width, // Rectangle width
+  height, // Rectangle height
+  color, // Fill color (RGBA)
+)
+
+// Example: Draw a red rectangle
+canvas.frameBuffer.fillRect(10, 5, 20, 8, RGBA.fromHex("#FF0000"))
+```
+
+### drawFrameBuffer
+
+Copy another frame buffer onto this one:
+
+```typescript
+canvas.frameBuffer.drawFrameBuffer(
+  sourceBuffer, // Source FrameBuffer
+  x, // Destination X
+  y, // Destination Y
+)
+```
+
+## Properties
+
+| Property                         | Type     | Default      | Description                |
+| -------------------------------- | -------- | ------------ | -------------------------- |
+| `width`                          | `number` | -            | Buffer width in characters |
+| `height`                         | `number` | -            | Buffer height in rows      |
+| `position`                       | `string` | `"relative"` | Positioning mode           |
+| `left`, `top`, `right`, `bottom` | `number` | -            | Position offsets           |
+
+## Example: Simple Game Canvas
+
+```typescript
+import { FrameBufferRenderable, RGBA, createCliRenderer } from "@opentui/core"
+
+const renderer = await createCliRenderer()
+
+const gameCanvas = new FrameBufferRenderable(renderer, {
+  id: "game",
+  width: 40,
+  height: 20,
+  position: "absolute",
+  left: 5,
+  top: 2,
+})
+
+// Game state
+let playerX = 20
+let playerY = 10
+
+function render() {
+  const fb = gameCanvas.frameBuffer
+
+  // Clear the canvas
+  fb.fillRect(0, 0, 40, 20, RGBA.fromHex("#111111"))
+
+  // Draw border
+  for (let x = 0; x < 40; x++) {
+    fb.setCell(x, 0, "-", RGBA.fromHex("#444444"), null)
+    fb.setCell(x, 19, "-", RGBA.fromHex("#444444"), null)
+  }
+  for (let y = 0; y < 20; y++) {
+    fb.setCell(0, y, "|", RGBA.fromHex("#444444"), null)
+    fb.setCell(39, y, "|", RGBA.fromHex("#444444"), null)
+  }
+
+  // Draw player
+  fb.setCell(playerX, playerY, "@", RGBA.fromHex("#00FF00"), null)
+
+  // Draw score
+  fb.drawText("Score: 0", 2, 0, RGBA.fromHex("#FFFF00"))
+}
+
+// Handle input
+renderer.keyInput.on("keypress", (key) => {
+  switch (key.name) {
+    case "up":
+      playerY = Math.max(1, playerY - 1)
+      break
+    case "down":
+      playerY = Math.min(18, playerY + 1)
+      break
+    case "left":
+      playerX = Math.max(1, playerX - 1)
+      break
+    case "right":
+      playerX = Math.min(38, playerX + 1)
+      break
+  }
+  render()
+})
+
+render()
+renderer.root.add(gameCanvas)
+```
+
+## Example: Progress Bar
+
+```typescript
+function drawProgressBar(fb, x, y, width, progress, color) {
+  const filled = Math.floor(width * progress)
+
+  // Draw filled portion
+  for (let i = 0; i < filled; i++) {
+    fb.setCell(x + i, y, "█", color, null)
+  }
+
+  // Draw empty portion
+  for (let i = filled; i < width; i++) {
+    fb.setCell(x + i, y, "░", RGBA.fromHex("#333333"), null)
+  }
+}
+
+// Usage
+drawProgressBar(canvas.frameBuffer, 5, 10, 30, 0.75, RGBA.fromHex("#00FF00"))
+```
+
+## Performance Tips
+
+1. **Batch updates**: Make multiple changes to the frame buffer before the next render cycle
+2. **Minimize fillRect calls**: For complex shapes, use individual setCell calls
+3. **Reuse RGBA objects**: Create color constants instead of calling `fromHex` repeatedly
+
+```typescript
+// Good: Create once, reuse
+const RED = RGBA.fromHex("#FF0000")
+const GREEN = RGBA.fromHex("#00FF00")
+
+for (let i = 0; i < 100; i++) {
+  fb.setCell(i, 5, "*", RED, null)
+}
+
+// Avoid: Creating new RGBA objects in loops
+for (let i = 0; i < 100; i++) {
+  fb.setCell(i, 5, "*", RGBA.fromHex("#FF0000"), null) // Creates 100 objects
+}
+```

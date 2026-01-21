@@ -1,0 +1,184 @@
+---
+title: Renderables vs Constructs
+description: Two approaches to building UIs in OpenTUI
+order: 5
+---
+
+# Renderables vs Constructs
+
+OpenTUI offers two ways to compose your UI: the imperative Renderable API and the declarative Construct API. Both are valid approaches with different tradeoffs.
+
+## Imperative (Renderables)
+
+Creates concrete `Renderable` instances with a `RenderContext` and composes via `add()`. State and behavior are mutated directly on instances through setters and methods.
+
+```typescript
+import { BoxRenderable, TextRenderable, InputRenderable, createCliRenderer, type RenderContext } from "@opentui/core"
+
+const renderer = await createCliRenderer()
+
+const loginForm = new BoxRenderable(renderer, {
+  id: "login-form",
+  width: 40,
+  height: 10,
+  padding: 1,
+})
+
+// Compose renderables into a single renderable
+function createLabeledInput(renderer: RenderContext, props: { label: string; placeholder: string; id: string }) {
+  const container = new BoxRenderable(renderer, {
+    id: `${props.id}-container`,
+    flexDirection: "row",
+  })
+
+  container.add(
+    new TextRenderable(renderer, {
+      id: `${props.id}-label`,
+      content: props.label + " ",
+    }),
+  )
+
+  container.add(
+    new InputRenderable(renderer, {
+      id: `${props.id}-input`,
+      placeholder: props.placeholder,
+      width: 20,
+    }),
+  )
+
+  return container
+}
+
+const username = createLabeledInput(renderer, {
+  id: "username",
+  label: "Username:",
+  placeholder: "Enter username...",
+})
+loginForm.add(username)
+
+// Focus requires navigating to the nested component
+username.getRenderable("username-input")?.focus()
+
+renderer.root.add(loginForm)
+```
+
+### Characteristics
+
+- Requires `RenderContext` at creation time
+- Direct mutation of instances
+- Manual navigation for nested component access
+- Explicit control over component lifecycle
+
+## Declarative (Constructs)
+
+Builds a lightweight VNode graph using functional constructs. No instances exist until the node is added to the tree. Method calls on VNodes are queued and replayed when instantiated.
+
+```typescript
+import { Text, Input, Box, createCliRenderer, delegate } from "@opentui/core"
+
+const renderer = await createCliRenderer()
+
+function LabeledInput(props: { id: string; label: string; placeholder: string }) {
+  return delegate(
+    { focus: `${props.id}-input` },
+    Box(
+      { flexDirection: "row" },
+      Text({ content: props.label + " " }),
+      Input({
+        id: `${props.id}-input`,
+        placeholder: props.placeholder,
+        width: 20,
+      }),
+    ),
+  )
+}
+
+const usernameInput = LabeledInput({
+  id: "username",
+  label: "Username:",
+  placeholder: "Enter username...",
+})
+
+// Focus is delegated to the nested input automatically
+usernameInput.focus()
+
+const loginForm = Box(
+  { width: 40, height: 10, padding: 1 },
+  usernameInput,
+  LabeledInput({
+    id: "password",
+    label: "Password:",
+    placeholder: "Enter password...",
+  }),
+)
+
+renderer.root.add(loginForm)
+```
+
+### Characteristics
+
+- No `RenderContext` needed until instantiation
+- Method calls are queued on VNodes
+- `delegate()` routes APIs to nested components
+- More declarative, React-like syntax
+
+## The delegate() Function
+
+The `delegate()` function is key to making constructs ergonomic. It maps method calls on the parent to specific children:
+
+```typescript
+function Button(props: { id: string; label: string; onClick: () => void }) {
+  return delegate(
+    {
+      focus: `${props.id}-box`, // Route focus() to the box
+      onClick: `${props.id}-box`, // Route click events
+    },
+    Box(
+      {
+        id: `${props.id}-box`,
+        border: true,
+        onMouseDown: props.onClick,
+      },
+      Text({ content: props.label }),
+    ),
+  )
+}
+
+const button = Button({ id: "submit", label: "Submit", onClick: handleSubmit })
+button.focus() // Focuses the inner box
+```
+
+## When to Use Which
+
+### Use Renderables When
+
+- You need fine-grained control over component lifecycle
+- You're building low-level custom components
+- You need to access renderable methods immediately
+- Performance is critical and you want to avoid VNode overhead
+
+### Use Constructs When
+
+- You prefer declarative, compositional code
+- You're building higher-level UI components
+- You want cleaner, more readable component definitions
+- You're familiar with React/Solid patterns
+
+## Mixing Both
+
+You can mix both approaches in the same application:
+
+```typescript
+import { BoxRenderable, Text, Input } from "@opentui/core"
+
+// Create a renderable container
+const container = new BoxRenderable(renderer, {
+  id: "container",
+  flexDirection: "column",
+})
+
+// Add constructs to it
+container.add(Text({ content: "Title" }), Input({ placeholder: "Type here..." }))
+
+renderer.root.add(container)
+```

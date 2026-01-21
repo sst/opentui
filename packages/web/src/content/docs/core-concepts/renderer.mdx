@@ -1,0 +1,201 @@
+---
+title: Renderer
+description: The CliRenderer manages terminal output and the render loop
+order: 1
+---
+
+# Renderer
+
+The `CliRenderer` is the heart of OpenTUI. It manages terminal output, handles input events, orchestrates the rendering loop, and provides the context for creating renderables.
+
+## Creating a Renderer
+
+Use the async factory function to create a renderer:
+
+```typescript
+import { createCliRenderer } from "@opentui/core"
+
+const renderer = await createCliRenderer({
+  exitOnCtrlC: true,
+  targetFps: 30,
+})
+```
+
+The factory function:
+
+1. Loads the native Zig rendering library
+2. Configures terminal settings (mouse, keyboard protocol, alternate screen)
+3. Returns a fully initialized `CliRenderer` instance
+
+## Configuration Options
+
+| Option                | Type             | Default     | Description                                  |
+| --------------------- | ---------------- | ----------- | -------------------------------------------- |
+| `exitOnCtrlC`         | `boolean`        | `true`      | Exit the process when Ctrl+C is pressed      |
+| `targetFps`           | `number`         | `30`        | Target frames per second for the render loop |
+| `maxFps`              | `number`         | `60`        | Maximum FPS for immediate re-renders         |
+| `useMouse`            | `boolean`        | `true`      | Enable mouse input and tracking              |
+| `enableMouseMovement` | `boolean`        | `true`      | Track mouse movement (not just clicks)       |
+| `useAlternateScreen`  | `boolean`        | `true`      | Use terminal alternate screen buffer         |
+| `backgroundColor`     | `ColorInput`     | transparent | Default background color                     |
+| `consoleOptions`      | `ConsoleOptions` | -           | Options for the built-in console overlay     |
+| `openConsoleOnError`  | `boolean`        | `true`      | Auto-open console when errors occur          |
+
+## The Root Renderable
+
+Every renderer has a `root` property - a special `RootRenderable` that serves as the top of the component tree:
+
+```typescript
+import { Box, Text } from "@opentui/core"
+
+// Add components to the root
+renderer.root.add(Box({ width: 40, height: 10, borderStyle: "rounded" }, Text({ content: "Hello, OpenTUI!" })))
+```
+
+The root renderable fills the entire terminal and automatically adjusts when the terminal is resized.
+
+## Render Loop Control
+
+The renderer supports multiple control modes:
+
+### Automatic Mode (Default)
+
+Without calling `start()`, the renderer only re-renders when the component tree changes:
+
+```typescript
+const renderer = await createCliRenderer()
+renderer.root.add(Text({ content: "Static content" })) // Triggers render
+```
+
+### Continuous Mode
+
+Call `start()` to run the render loop continuously at the target FPS:
+
+```typescript
+renderer.start() // Start continuous rendering
+renderer.stop() // Stop the render loop
+```
+
+### Live Rendering
+
+For animations, use `requestLive()` to request continuous rendering:
+
+```typescript
+// Request live mode (increments internal counter)
+renderer.requestLive()
+
+// When animation completes, drop the request
+renderer.dropLive()
+```
+
+This is useful when multiple components need animations - the renderer stays live until all requests are dropped.
+
+### Pause and Suspend
+
+```typescript
+renderer.pause() // Pause rendering (can resume)
+renderer.resume() // Resume from paused state
+
+renderer.suspend() // Fully suspend (disables mouse, input, raw mode)
+renderer.resume() // Resume from suspended state
+```
+
+## Key Properties
+
+| Property                   | Type                 | Description                             |
+| -------------------------- | -------------------- | --------------------------------------- |
+| `root`                     | `RootRenderable`     | Root of the component tree              |
+| `width`                    | `number`             | Current render width in columns         |
+| `height`                   | `number`             | Current render height in rows           |
+| `console`                  | `TerminalConsole`    | Built-in console overlay                |
+| `keyInput`                 | `KeyHandler`         | Keyboard input handler                  |
+| `isRunning`                | `boolean`            | Whether the render loop is active       |
+| `isDestroyed`              | `boolean`            | Whether the renderer has been destroyed |
+| `currentFocusedRenderable` | `Renderable \| null` | Currently focused component             |
+
+## Events
+
+The renderer emits events you can listen to:
+
+```typescript
+// Terminal resized
+renderer.on("resize", (width, height) => {
+  console.log(`Terminal size: ${width}x${height}`)
+})
+
+// Renderer destroyed
+renderer.on("destroy", () => {
+  console.log("Renderer destroyed")
+})
+
+// Text selection completed
+renderer.on("selection", (selection) => {
+  console.log("Selected text:", selection.text)
+})
+```
+
+## Cursor Control
+
+Control the terminal cursor position and style:
+
+```typescript
+// Position and visibility
+renderer.setCursorPosition(10, 5, true)
+
+// Cursor style
+renderer.setCursorStyle("block", true) // Blinking block
+renderer.setCursorStyle("underline", false) // Steady underline
+renderer.setCursorStyle("bar", true) // Blinking bar
+
+// Cursor color
+renderer.setCursorColor(RGBA.fromHex("#FF0000"))
+```
+
+## Input Handling
+
+Add custom input handlers that run before the default handling:
+
+```typescript
+renderer.addInputHandler((sequence) => {
+  if (sequence === "\x1b[A") {
+    // Up arrow - handle and consume
+    return true
+  }
+  return false // Let other handlers process
+})
+```
+
+Use `prependInputHandler()` to add a handler at the start of the chain.
+
+## Debug Overlay
+
+Toggle a debug overlay showing FPS, memory usage, and other stats:
+
+```typescript
+renderer.toggleDebugOverlay()
+
+// Or configure it
+renderer.configureDebugOverlay({
+  enabled: true,
+  corner: "top-right",
+})
+```
+
+## Cleanup
+
+Always destroy the renderer when done to restore terminal state:
+
+```typescript
+renderer.destroy()
+```
+
+This restores the terminal to its original state, disables mouse tracking, and cleans up resources.
+
+## Environment Variables
+
+| Variable                    | Description                              |
+| --------------------------- | ---------------------------------------- |
+| `OTUI_USE_ALTERNATE_SCREEN` | Override alternate screen setting        |
+| `OTUI_SHOW_STATS`           | Show debug overlay at startup            |
+| `OTUI_DEBUG`                | Enable debug input capture               |
+| `OTUI_NO_NATIVE_RENDER`     | Disable native rendering (for debugging) |

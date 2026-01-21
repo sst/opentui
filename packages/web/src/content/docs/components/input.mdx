@@ -1,0 +1,173 @@
+---
+title: Input
+description: Text input field with cursor and focus states
+order: 3
+---
+
+# Input
+
+Text input field with cursor support, placeholder text, and focus states for user interaction. The input must be focused to receive keyboard input.
+
+## Basic Usage
+
+### Renderable API
+
+```typescript
+import { InputRenderable, InputRenderableEvents, createCliRenderer } from "@opentui/core"
+
+const renderer = await createCliRenderer()
+
+const input = new InputRenderable(renderer, {
+  id: "name-input",
+  width: 25,
+  placeholder: "Enter your name...",
+})
+
+input.on(InputRenderableEvents.CHANGE, (value) => {
+  console.log("Input value:", value)
+})
+
+input.focus()
+renderer.root.add(input)
+```
+
+### Construct API
+
+```typescript
+import { Input, createCliRenderer } from "@opentui/core"
+
+const renderer = await createCliRenderer()
+
+const input = Input({
+  placeholder: "Enter your name...",
+  width: 25,
+})
+
+input.focus()
+renderer.root.add(input)
+```
+
+## Focus States
+
+The input changes appearance based on focus:
+
+```typescript
+const input = new InputRenderable(renderer, {
+  id: "styled-input",
+  width: 30,
+  placeholder: "Type here...",
+  backgroundColor: "#1a1a1a",
+  focusedBackgroundColor: "#2a2a2a",
+  textColor: "#FFFFFF",
+  cursorColor: "#00FF00",
+})
+```
+
+## Events
+
+### Change Event
+
+Emitted when the user presses Enter/Return:
+
+```typescript
+import { InputRenderableEvents } from "@opentui/core"
+
+input.on(InputRenderableEvents.CHANGE, (value: string) => {
+  console.log("Submitted value:", value)
+})
+```
+
+### Getting the Current Value
+
+```typescript
+const currentValue = input.getValue()
+```
+
+### Setting the Value
+
+```typescript
+input.setValue("New value")
+```
+
+## Properties
+
+| Property                 | Type             | Default      | Description                 |
+| ------------------------ | ---------------- | ------------ | --------------------------- |
+| `width`                  | `number`         | -            | Input field width           |
+| `placeholder`            | `string`         | `""`         | Placeholder text when empty |
+| `backgroundColor`        | `string \| RGBA` | -            | Background when unfocused   |
+| `focusedBackgroundColor` | `string \| RGBA` | -            | Background when focused     |
+| `textColor`              | `string \| RGBA` | -            | Text color                  |
+| `cursorColor`            | `string \| RGBA` | -            | Cursor color                |
+| `position`               | `string`         | `"relative"` | Positioning mode            |
+
+## Example: Login Form
+
+```typescript
+import { Box, Text, Input, delegate, createCliRenderer } from "@opentui/core"
+
+const renderer = await createCliRenderer()
+
+function LabeledInput(props: { id: string; label: string; placeholder: string }) {
+  return delegate(
+    { focus: `${props.id}-input` },
+    Box(
+      { flexDirection: "row", marginBottom: 1 },
+      Text({ content: props.label.padEnd(12), fg: "#888888" }),
+      Input({
+        id: `${props.id}-input`,
+        placeholder: props.placeholder,
+        width: 20,
+        backgroundColor: "#222",
+        focusedBackgroundColor: "#333",
+        textColor: "#FFF",
+        cursorColor: "#0F0",
+      }),
+    ),
+  )
+}
+
+const usernameInput = LabeledInput({
+  id: "username",
+  label: "Username:",
+  placeholder: "Enter username",
+})
+
+const passwordInput = LabeledInput({
+  id: "password",
+  label: "Password:",
+  placeholder: "Enter password",
+})
+
+const form = Box(
+  {
+    width: 40,
+    borderStyle: "rounded",
+    title: "Login",
+    padding: 1,
+  },
+  usernameInput,
+  passwordInput,
+)
+
+// Focus the username input
+usernameInput.focus()
+
+renderer.root.add(form)
+```
+
+## Tab Navigation
+
+Implement tab navigation between inputs:
+
+```typescript
+const inputs = [usernameInput, passwordInput]
+let focusIndex = 0
+
+renderer.keyInput.on("keypress", (key) => {
+  if (key.name === "tab") {
+    focusIndex = (focusIndex + 1) % inputs.length
+    inputs[focusIndex].focus()
+  }
+})
+```
