@@ -6,9 +6,9 @@ order: 7
 
 # FrameBuffer
 
-A low-level rendering surface for custom graphics and complex visual effects. The FrameBuffer is a 2D array of cells that can be drawn to using various methods, optimized for performance and memory usage.
+A low-level rendering surface for custom graphics and complex visual effects. FrameBuffer provides a 2D array of cells with methods optimized for performance and memory.
 
-## Basic Usage
+## Basic usage
 
 ### Renderable API
 
@@ -45,7 +45,7 @@ renderer.root.add(
 )
 ```
 
-## Drawing Methods
+## Drawing methods
 
 ### setCell
 
@@ -136,7 +136,7 @@ canvas.frameBuffer.drawFrameBuffer(
 | `position`                       | `string`  | `"relative"` | Positioning mode                      |
 | `left`, `top`, `right`, `bottom` | `number`  | -            | Position offsets                      |
 
-## Example: Simple Game Canvas
+## Example: Simple game canvas
 
 ```typescript
 import { FrameBufferRenderable, RGBA, createCliRenderer } from "@opentui/core"
@@ -203,7 +203,7 @@ render()
 renderer.root.add(gameCanvas)
 ```
 
-## Example: Progress Bar
+## Example: Progress bar
 
 ```typescript
 const EMPTY_BG = RGBA.fromHex("#222222")
@@ -226,10 +226,10 @@ function drawProgressBar(fb, x, y, width, progress, color) {
 drawProgressBar(canvas.frameBuffer, 5, 10, 30, 0.75, RGBA.fromHex("#00FF00"))
 ```
 
-## Performance Tips
+## Performance tips
 
 1. **Batch updates**: Make multiple changes to the frame buffer before the next render cycle
-2. **Minimize fillRect calls**: For complex shapes, use individual setCell calls
+2. **Minimize fillRect calls**: Use individual setCell calls for complex shapes
 3. **Reuse RGBA objects**: Create color constants instead of calling `fromHex` repeatedly
 
 ```typescript
