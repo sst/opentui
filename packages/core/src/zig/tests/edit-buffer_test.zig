@@ -210,6 +210,26 @@ test "EditBuffer - getEOL empty line" {
     try std.testing.expectEqual(@as(u32, 0), eol_cursor.col);
 }
 
+test "EditBuffer - word boundary with tabs" {
+    const pool = gp.initGlobalPool(std.testing.allocator);
+    defer gp.deinitGlobalPool();
+
+    var eb = try EditBuffer.init(std.testing.allocator, pool, .wcwidth);
+    defer eb.deinit();
+
+    try eb.insertText("Hello\tWorld");
+
+    const line_width = iter_mod.lineWidthAt(&eb.getTextBuffer().rope, 0);
+    try eb.setCursor(0, line_width);
+
+    const prev_cursor = eb.getPrevWordBoundary();
+    try std.testing.expectEqual(@as(u32, 7), prev_cursor.col);
+
+    try eb.setCursor(0, 0);
+    const next_cursor = eb.getNextWordBoundary();
+    try std.testing.expectEqual(@as(u32, 7), next_cursor.col);
+}
+
 test "EditBuffer - moveRight past tab at start of line" {
     const pool = gp.initGlobalPool(std.testing.allocator);
     defer gp.deinitGlobalPool();
