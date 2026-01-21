@@ -1147,4 +1147,92 @@ console.log(processor.reduce((acc, val) => acc + val, 0))`
 
     renderer.destroy()
   })
+
+  // Regression test for issue #530: sticky scroll jumps to top after manual scroll
+  test("resets _hasManualScroll when user scrolls back to sticky position (issue #530)", async () => {
+    const scrollBox = new ScrollBoxRenderable(testRenderer, {
+      width: 40,
+      height: 10,
+      stickyScroll: true,
+      stickyStart: "bottom",
+    })
+
+    testRenderer.root.add(scrollBox)
+
+    // Add enough content to overflow the viewport
+    for (let i = 0; i < 20; i++) {
+      scrollBox.add(new TextRenderable(testRenderer, { content: `Line ${i}` }))
+    }
+    await renderOnce()
+
+    const maxScroll = Math.max(0, scrollBox.scrollHeight - scrollBox.viewport.height)
+    expect(scrollBox.scrollTop).toBe(maxScroll)
+    expect((scrollBox as any)._hasManualScroll).toBe(false)
+
+    // User scrolls up manually - this sets _hasManualScroll = true
+    scrollBox.scrollTo(5)
+    await renderOnce()
+
+    expect(scrollBox.scrollTop).toBe(5)
+    expect((scrollBox as any)._hasManualScroll).toBe(true)
+
+    // User scrolls back to bottom - this should reset _hasManualScroll = false
+    const newMaxScroll = Math.max(0, scrollBox.scrollHeight - scrollBox.viewport.height)
+    scrollBox.scrollTo(newMaxScroll)
+    await renderOnce()
+
+    expect(scrollBox.scrollTop).toBe(newMaxScroll)
+    // This is the fix: _hasManualScroll should be reset when back at sticky position
+    expect((scrollBox as any)._hasManualScroll).toBe(false)
+
+    // Add more content - should stay at bottom because sticky scroll is re-enabled
+    for (let i = 20; i < 30; i++) {
+      scrollBox.add(new TextRenderable(testRenderer, { content: `Line ${i}` }))
+      await renderOnce()
+
+      const expectedMaxScroll = Math.max(0, scrollBox.scrollHeight - scrollBox.viewport.height)
+      // Without the fix, this would fail: scroll would jump to top
+      expect(scrollBox.scrollTop).toBe(expectedMaxScroll)
+    }
+  })
+
+  // Regression test for issue #530: edge case when content fits in viewport
+  test("resets _hasManualScroll for stickyStart=bottom when content fits in viewport (issue #530)", async () => {
+    const scrollBox = new ScrollBoxRenderable(testRenderer, {
+      width: 40,
+      height: 10,
+      stickyScroll: true,
+      stickyStart: "bottom",
+    })
+
+    testRenderer.root.add(scrollBox)
+
+    // Add content that fits in viewport (no actual scrolling needed)
+    scrollBox.add(new TextRenderable(testRenderer, { content: "Line 0" }))
+    scrollBox.add(new TextRenderable(testRenderer, { content: "Line 1" }))
+    await renderOnce()
+
+    // maxScrollTop should be 0 since content fits
+    const maxScroll = Math.max(0, scrollBox.scrollHeight - scrollBox.viewport.height)
+    expect(maxScroll).toBe(0)
+
+    // Simulate accidental scroll attempts (common with trackpads)
+    scrollBox.scrollTo(0)
+    await renderOnce()
+
+    // Even though we're at scrollTop=0, for stickyStart="bottom" with maxScrollTop=0,
+    // we're effectively at both top AND bottom, so _hasManualScroll should be false
+    expect((scrollBox as any)._hasManualScroll).toBe(false)
+
+    // Add more content that causes overflow - should stay at bottom
+    for (let i = 2; i < 20; i++) {
+      scrollBox.add(new TextRenderable(testRenderer, { content: `Line ${i}` }))
+      await renderOnce()
+
+      const expectedMaxScroll = Math.max(0, scrollBox.scrollHeight - scrollBox.viewport.height)
+      if (expectedMaxScroll > 0) {
+        expect(scrollBox.scrollTop).toBe(expectedMaxScroll)
+      }
+    }
+  })
 })
