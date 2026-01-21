@@ -179,7 +179,7 @@ const button = new BoxRenderable(renderer, {
 Available mouse events:
 
 - `onMouseDown`, `onMouseUp`
-- `onMouseMove`, `onMouseDrag`, `onMouseDragEnd`
+- `onMouseMove`, `onMouseDrag`, `onMouseDragEnd`, `onMouseDrop`
 - `onMouseOver`, `onMouseOut`
 - `onMouseScroll`
 - `onMouse` (catch-all)
@@ -254,7 +254,7 @@ class AnimatedBox extends BoxRenderable {
 
 const box = new AnimatedBox(renderer, {
   id: "anim-box",
-  live: true // Enable continuous rendering
+  live: true, // Enable continuous rendering
 })
 ```
 
@@ -283,7 +283,7 @@ const complex = new BoxRenderable(renderer, {
   renderAfter: (buffer) => {
     // Draw directly to the buffer (or offscreen buffer if buffered=true)
     buffer.fillRect(0, 0, 10, 5, RGBA.fromHex("#FF0000"))
-  }
+  },
 })
 ```
 

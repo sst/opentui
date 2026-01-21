@@ -74,9 +74,9 @@ When focused, the tab select responds to these keys:
 Emitted when the user presses Enter on a tab:
 
 ```typescript
-import { TabSelectRenderableEvents } from "@opentui/core"
+import { TabSelectRenderableEvents, type TabSelectOption } from "@opentui/core"
 
-tabs.on(TabSelectRenderableEvents.ITEM_SELECTED, (index: number, option: TabOption) => {
+tabs.on(TabSelectRenderableEvents.ITEM_SELECTED, (index: number, option: TabSelectOption) => {
   console.log(`Selected tab ${index}: ${option.name}`)
   // Switch to the corresponding panel
 })
@@ -87,22 +87,33 @@ tabs.on(TabSelectRenderableEvents.ITEM_SELECTED, (index: number, option: TabOpti
 Emitted when the highlighted tab changes:
 
 ```typescript
-tabs.on(TabSelectRenderableEvents.SELECTION_CHANGED, (index: number, option: TabOption) => {
+import { TabSelectRenderableEvents, type TabSelectOption } from "@opentui/core"
+
+tabs.on(TabSelectRenderableEvents.SELECTION_CHANGED, (index: number, option: TabSelectOption) => {
   console.log(`Hovering: ${option.name}`)
 })
 ```
 
 ## Properties
 
-| Property                  | Type             | Default | Description             |
-| ------------------------- | ---------------- | ------- | ----------------------- |
-| `width`                   | `number`         | -       | Total component width   |
-| `options`                 | `TabOption[]`    | `[]`    | Available tabs          |
-| `tabWidth`                | `number`         | -       | Width of each tab       |
-| `backgroundColor`         | `string \| RGBA` | -       | Background color        |
-| `selectedBackgroundColor` | `string \| RGBA` | -       | Selected tab background |
-| `selectedTextColor`       | `string \| RGBA` | -       | Selected tab text       |
-| `textColor`               | `string \| RGBA` | -       | Normal tab text         |
+| Property                   | Type                    | Default       | Description                    |
+| -------------------------- | ----------------------- | ------------- | ------------------------------ |
+| `width`                    | `number`                | -             | Total component width          |
+| `options`                  | `TabSelectOption[]`     | `[]`          | Available tabs                 |
+| `tabWidth`                 | `number`                | `20`          | Width of each tab              |
+| `backgroundColor`          | `string \| RGBA`        | `transparent` | Background color               |
+| `textColor`                | `string \| RGBA`        | `#FFFFFF`     | Normal tab text                |
+| `focusedBackgroundColor`   | `string \| RGBA`        | `#1a1a1a`     | Background color when focused  |
+| `focusedTextColor`         | `string \| RGBA`        | `#FFFFFF`     | Text color when focused        |
+| `selectedBackgroundColor`  | `string \| RGBA`        | `#334455`     | Selected tab background        |
+| `selectedTextColor`        | `string \| RGBA`        | `#FFFF00`     | Selected tab text              |
+| `selectedDescriptionColor` | `string \| RGBA`        | `#CCCCCC`     | Description text color         |
+| `showScrollArrows`         | `boolean`               | `true`        | Show scroll indicators         |
+| `showDescription`          | `boolean`               | `true`        | Show tab descriptions          |
+| `showUnderline`            | `boolean`               | `true`        | Show underline on selected tab |
+| `wrapSelection`            | `boolean`               | `false`       | Wrap around when navigating    |
+| `keyBindings`              | `TabSelectKeyBinding[]` | -             | Custom key bindings            |
+| `keyAliasMap`              | `KeyAliasMap`           | -             | Key alias mappings             |
 
 ## Example: Tabbed Interface
 
@@ -144,19 +155,24 @@ const contentArea = Box({
 contentArea.add(currentPanel)
 
 // Handle tab changes
-tabs.on("item-selected", (index, option) => {
-  contentArea.clear()
+tabs.on("itemSelected", (index, option) => {
+  // Remove current panel
+  if (currentPanel) {
+    contentArea.remove(currentPanel.id)
+  }
+  // Add new panel based on selection
   switch (option.name) {
     case "Home":
-      contentArea.add(panels.home)
+      currentPanel = panels.home
       break
     case "Files":
-      contentArea.add(panels.files)
+      currentPanel = panels.files
       break
     case "Settings":
-      contentArea.add(panels.settings)
+      currentPanel = panels.settings
       break
   }
+  contentArea.add(currentPanel)
 })
 
 container.add(tabs)

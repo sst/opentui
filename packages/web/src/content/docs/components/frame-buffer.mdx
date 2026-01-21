@@ -56,8 +56,9 @@ canvas.frameBuffer.setCell(
   x, // X position
   y, // Y position
   char, // Character to display
-  fg, // Foreground color (RGBA or null)
-  bg, // Background color (RGBA or null)
+  fg, // Foreground color (RGBA)
+  bg, // Background color (RGBA)
+  attributes, // Text attributes (optional, default: 0)
 )
 
 // Example
@@ -70,7 +71,8 @@ Set a cell with alpha blending for transparency effects:
 
 ```typescript
 const semiTransparent = RGBA.fromValues(1.0, 0.0, 0.0, 0.5)
-canvas.frameBuffer.setCellWithAlphaBlending(10, 5, " ", null, semiTransparent)
+const transparent = RGBA.fromValues(0, 0, 0, 0)
+canvas.frameBuffer.setCellWithAlphaBlending(10, 5, " ", transparent, semiTransparent)
 ```
 
 ### drawText
@@ -84,6 +86,7 @@ canvas.frameBuffer.drawText(
   y, // Y position
   fg, // Text color (RGBA)
   bg, // Background color (RGBA, optional)
+  attributes, // Text attributes (optional, default: 0)
 )
 
 // Example
@@ -113,20 +116,25 @@ Copy another frame buffer onto this one:
 
 ```typescript
 canvas.frameBuffer.drawFrameBuffer(
-  sourceBuffer, // Source FrameBuffer
-  x, // Destination X
-  y, // Destination Y
+  destX, // Destination X
+  destY, // Destination Y
+  sourceBuffer, // Source FrameBuffer (OptimizedBuffer)
+  sourceX, // Source X offset (optional)
+  sourceY, // Source Y offset (optional)
+  sourceWidth, // Width to copy (optional)
+  sourceHeight, // Height to copy (optional)
 )
 ```
 
 ## Properties
 
-| Property                         | Type     | Default      | Description                |
-| -------------------------------- | -------- | ------------ | -------------------------- |
-| `width`                          | `number` | -            | Buffer width in characters |
-| `height`                         | `number` | -            | Buffer height in rows      |
-| `position`                       | `string` | `"relative"` | Positioning mode           |
-| `left`, `top`, `right`, `bottom` | `number` | -            | Position offsets           |
+| Property                         | Type      | Default      | Description                           |
+| -------------------------------- | --------- | ------------ | ------------------------------------- |
+| `width`                          | `number`  | -            | Buffer width in characters (required) |
+| `height`                         | `number`  | -            | Buffer height in rows (required)      |
+| `respectAlpha`                   | `boolean` | `false`      | Enable alpha blending when drawing    |
+| `position`                       | `string`  | `"relative"` | Positioning mode                      |
+| `left`, `top`, `right`, `bottom` | `number`  | -            | Position offsets                      |
 
 ## Example: Simple Game Canvas
 
@@ -150,22 +158,23 @@ let playerY = 10
 
 function render() {
   const fb = gameCanvas.frameBuffer
+  const BG = RGBA.fromHex("#111111")
 
   // Clear the canvas
-  fb.fillRect(0, 0, 40, 20, RGBA.fromHex("#111111"))
+  fb.fillRect(0, 0, 40, 20, BG)
 
   // Draw border
   for (let x = 0; x < 40; x++) {
-    fb.setCell(x, 0, "-", RGBA.fromHex("#444444"), null)
-    fb.setCell(x, 19, "-", RGBA.fromHex("#444444"), null)
+    fb.setCell(x, 0, "-", RGBA.fromHex("#444444"), BG)
+    fb.setCell(x, 19, "-", RGBA.fromHex("#444444"), BG)
   }
   for (let y = 0; y < 20; y++) {
-    fb.setCell(0, y, "|", RGBA.fromHex("#444444"), null)
-    fb.setCell(39, y, "|", RGBA.fromHex("#444444"), null)
+    fb.setCell(0, y, "|", RGBA.fromHex("#444444"), BG)
+    fb.setCell(39, y, "|", RGBA.fromHex("#444444"), BG)
   }
 
   // Draw player
-  fb.setCell(playerX, playerY, "@", RGBA.fromHex("#00FF00"), null)
+  fb.setCell(playerX, playerY, "@", RGBA.fromHex("#00FF00"), BG)
 
   // Draw score
   fb.drawText("Score: 0", 2, 0, RGBA.fromHex("#FFFF00"))
@@ -197,17 +206,19 @@ renderer.root.add(gameCanvas)
 ## Example: Progress Bar
 
 ```typescript
+const EMPTY_BG = RGBA.fromHex("#222222")
+
 function drawProgressBar(fb, x, y, width, progress, color) {
   const filled = Math.floor(width * progress)
 
   // Draw filled portion
   for (let i = 0; i < filled; i++) {
-    fb.setCell(x + i, y, "█", color, null)
+    fb.setCell(x + i, y, "█", color, EMPTY_BG)
   }
 
   // Draw empty portion
   for (let i = filled; i < width; i++) {
-    fb.setCell(x + i, y, "░", RGBA.fromHex("#333333"), null)
+    fb.setCell(x + i, y, "░", RGBA.fromHex("#333333"), EMPTY_BG)
   }
 }
 
@@ -225,13 +236,14 @@ drawProgressBar(canvas.frameBuffer, 5, 10, 30, 0.75, RGBA.fromHex("#00FF00"))
 // Good: Create once, reuse
 const RED = RGBA.fromHex("#FF0000")
 const GREEN = RGBA.fromHex("#00FF00")
+const BG = RGBA.fromHex("#000000")
 
 for (let i = 0; i < 100; i++) {
-  fb.setCell(i, 5, "*", RED, null)
+  fb.setCell(i, 5, "*", RED, BG)
 }
 
 // Avoid: Creating new RGBA objects in loops
 for (let i = 0; i < 100; i++) {
-  fb.setCell(i, 5, "*", RGBA.fromHex("#FF0000"), null) // Creates 100 objects
+  fb.setCell(i, 5, "*", RGBA.fromHex("#FF0000"), RGBA.fromHex("#000000")) // Creates 200 objects
 }
 ```

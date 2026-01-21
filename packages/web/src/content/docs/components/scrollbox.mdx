@@ -178,8 +178,8 @@ scrollbox.scrollBy(5)
 // Scroll with both x and y
 scrollbox.scrollBy({ x: 10, y: 5 })
 
-// Scroll by page
-scrollbox.scrollBy(1, "page")
+// Scroll by viewport (page)
+scrollbox.scrollBy(1, "viewport")
 ```
 
 ### scrollTo
@@ -210,7 +210,7 @@ When focused, ScrollBox responds to keyboard input:
 | `scrollY`                    | `boolean`                                | `true`  | Enable vertical scrolling              |
 | `stickyScroll`               | `boolean`                                | `false` | Keep scroll position pinned to an edge |
 | `stickyStart`                | `"top" \| "bottom" \| "left" \| "right"` | -       | Which edge to stick to                 |
-| `viewportCulling`            | `boolean`                                | `false` | Only render visible children           |
+| `viewportCulling`            | `boolean`                                | `true`  | Only render visible children           |
 | `scrollAcceleration`         | `ScrollAcceleration`                     | -       | Custom scroll acceleration algorithm   |
 | `rootOptions`                | `BoxOptions`                             | -       | Style options for root container       |
 | `wrapperOptions`             | `BoxOptions`                             | -       | Style options for wrapper              |

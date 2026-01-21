@@ -65,14 +65,34 @@ const input = new InputRenderable(renderer, {
 
 ## Events
 
-### Change Event
+### Input Event
 
-Emitted when the user presses Enter/Return:
+Emitted on every keystroke as the value changes:
 
 ```typescript
 import { InputRenderableEvents } from "@opentui/core"
 
+input.on(InputRenderableEvents.INPUT, (value: string) => {
+  console.log("Current value:", value)
+})
+```
+
+### Change Event
+
+Emitted when the input loses focus (blur) or when Enter is pressed, but only if the value changed since focus:
+
+```typescript
 input.on(InputRenderableEvents.CHANGE, (value: string) => {
+  console.log("Value committed:", value)
+})
+```
+
+### Enter Event
+
+Emitted when the user presses Enter/Return:
+
+```typescript
+input.on(InputRenderableEvents.ENTER, (value: string) => {
   console.log("Submitted value:", value)
 })
 ```
@@ -91,15 +111,17 @@ input.value = "New value"
 
 ## Properties
 
-| Property                 | Type             | Default      | Description                 |
-| ------------------------ | ---------------- | ------------ | --------------------------- |
-| `width`                  | `number`         | -            | Input field width           |
-| `placeholder`            | `string`         | `""`         | Placeholder text when empty |
-| `backgroundColor`        | `string \| RGBA` | -            | Background when unfocused   |
-| `focusedBackgroundColor` | `string \| RGBA` | -            | Background when focused     |
-| `textColor`              | `string \| RGBA` | -            | Text color                  |
-| `cursorColor`            | `string \| RGBA` | -            | Cursor color                |
-| `position`               | `string`         | `"relative"` | Positioning mode            |
+| Property                 | Type                                   | Default      | Description                  |
+| ------------------------ | -------------------------------------- | ------------ | ---------------------------- |
+| `width`                  | `number`                               | -            | Input field width            |
+| `value`                  | `string`                               | `""`         | Initial text value           |
+| `placeholder`            | `string`                               | `""`         | Placeholder text when empty  |
+| `maxLength`              | `number`                               | `1000`       | Maximum number of characters |
+| `backgroundColor`        | `string \| RGBA`                       | -            | Background when unfocused    |
+| `focusedBackgroundColor` | `string \| RGBA`                       | -            | Background when focused      |
+| `textColor`              | `string \| RGBA`                       | -            | Text color                   |
+| `cursorColor`            | `string \| RGBA`                       | -            | Cursor color                 |
+| `position`               | `"static" \| "relative" \| "absolute"` | `"relative"` | Positioning mode             |
 
 ## Example: Login Form
 

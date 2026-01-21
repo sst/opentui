@@ -33,7 +33,7 @@ const renderer = await createCliRenderer({
   consoleOptions: {
     position: ConsolePosition.BOTTOM, // Position on screen
     sizePercent: 30, // Size as percentage of terminal
-    colorInfo: "#00FFFF", // Color for console.log
+    colorInfo: "#00FFFF", // Color for console.info
     colorWarn: "#FFFF00", // Color for console.warn
     colorError: "#FF0000", // Color for console.error
     startInDebugMode: false, // Show file/line info in logs
@@ -68,11 +68,11 @@ renderer.console.toggle()
 
 When the console is focused:
 
-| Key                | Action                              |
-| ------------------ | ----------------------------------- |
-| Arrow keys         | Scroll through log history          |
-| `+`                | Increase console size               |
-| `-`                | Decrease console size               |
+| Key        | Action                     |
+| ---------- | -------------------------- |
+| Arrow keys | Scroll through log history |
+| `+`        | Increase console size      |
+| `-`        | Decrease console size      |
 
 ## Keybinding for Toggle
 

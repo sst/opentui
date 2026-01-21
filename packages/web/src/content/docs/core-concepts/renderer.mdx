@@ -29,17 +29,17 @@ The factory function:
 
 ## Configuration Options
 
-| Option                | Type             | Default     | Description                                  |
-| --------------------- | ---------------- | ----------- | -------------------------------------------- |
-| `exitOnCtrlC`         | `boolean`        | `true`      | Exit the process when Ctrl+C is pressed      |
-| `targetFps`           | `number`         | `30`        | Target frames per second for the render loop |
-| `maxFps`              | `number`         | `60`        | Maximum FPS for immediate re-renders         |
-| `useMouse`            | `boolean`        | `true`      | Enable mouse input and tracking              |
-| `enableMouseMovement` | `boolean`        | `true`      | Track mouse movement (not just clicks)       |
-| `useAlternateScreen`  | `boolean`        | `true`      | Use terminal alternate screen buffer         |
-| `backgroundColor`     | `ColorInput`     | transparent | Default background color                     |
-| `consoleOptions`      | `ConsoleOptions` | -           | Options for the built-in console overlay     |
-| `openConsoleOnError`  | `boolean`        | `true`      | Auto-open console when errors occur (dev only)|
+| Option                | Type             | Default     | Description                                    |
+| --------------------- | ---------------- | ----------- | ---------------------------------------------- |
+| `exitOnCtrlC`         | `boolean`        | `true`      | Exit the process when Ctrl+C is pressed        |
+| `targetFps`           | `number`         | `30`        | Target frames per second for the render loop   |
+| `maxFps`              | `number`         | `60`        | Maximum FPS for immediate re-renders           |
+| `useMouse`            | `boolean`        | `true`      | Enable mouse input and tracking                |
+| `enableMouseMovement` | `boolean`        | `true`      | Track mouse movement (not just clicks)         |
+| `useAlternateScreen`  | `boolean`        | `true`      | Use terminal alternate screen buffer           |
+| `backgroundColor`     | `ColorInput`     | transparent | Default background color                       |
+| `consoleOptions`      | `ConsoleOptions` | -           | Options for the built-in console overlay       |
+| `openConsoleOnError`  | `boolean`        | `true`      | Auto-open console when errors occur (dev only) |
 
 ## The Root Renderable
 
@@ -130,7 +130,7 @@ renderer.on("destroy", () => {
 
 // Text selection completed
 renderer.on("selection", (selection) => {
-  console.log("Selected text:", selection.text)
+  console.log("Selected text:", selection.getSelectedText())
 })
 ```
 
@@ -153,7 +153,7 @@ renderer.setCursorColor(RGBA.fromHex("#FF0000"))
 
 ## Input Handling
 
-Add custom input handlers that run before the default handling:
+Add custom input handlers:
 
 ```typescript
 renderer.addInputHandler((sequence) => {
@@ -165,7 +165,7 @@ renderer.addInputHandler((sequence) => {
 })
 ```
 
-Use `prependInputHandler()` to add a handler at the start of the chain.
+By default, `addInputHandler()` appends to the handler chain (runs after built-in handlers). Use `prependInputHandler()` to add a handler at the start of the chain, which runs before built-in handlers.
 
 ## Debug Overlay
 
@@ -175,9 +175,11 @@ Toggle a debug overlay showing FPS, memory usage, and other stats:
 renderer.toggleDebugOverlay()
 
 // Or configure it
+import { DebugOverlayCorner } from "@opentui/core"
+
 renderer.configureDebugOverlay({
   enabled: true,
-  corner: "top-right",
+  corner: DebugOverlayCorner.topRight,
 })
 ```
 
@@ -193,12 +195,12 @@ This restores the terminal to its original state, disables mouse tracking, and c
 
 ## Environment Variables
 
-| Variable                    | Description                              |
-| --------------------------- | ---------------------------------------- |
-| `OTUI_USE_ALTERNATE_SCREEN` | Override alternate screen setting        |
-| `OTUI_SHOW_STATS`           | Show debug overlay at startup            |
-| `OTUI_DEBUG`                | Enable debug input capture               |
-| `OTUI_NO_NATIVE_RENDER`     | Disable native rendering (for debugging) |
+| Variable                    | Description                                  |
+| --------------------------- | -------------------------------------------- |
+| `OTUI_USE_ALTERNATE_SCREEN` | Override alternate screen setting            |
+| `OTUI_SHOW_STATS`           | Show debug overlay at startup                |
+| `OTUI_DEBUG`                | Enable debug input capture                   |
+| `OTUI_NO_NATIVE_RENDER`     | Disable native rendering (for debugging)     |
 | `OTUI_DUMP_CAPTURES`        | Dump captured output when the renderer exits |
 | `OTUI_OVERRIDE_STDOUT`      | Override stdout stream (for debugging)       |
 | `OTUI_USE_CONSOLE`          | Enable/disable built-in console              |

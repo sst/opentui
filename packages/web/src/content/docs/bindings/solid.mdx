@@ -360,12 +360,10 @@ To compile to a standalone executable:
 ```ts
 await Bun.build({
   entrypoints: ["./index.tsx"],
-  target: "bun",
-  outdir: "./build",
   plugins: [solidPlugin],
   compile: {
     target: "bun-darwin-arm64",
-    outfile: "app-macos",
+    outfile: "./app-macos",
   },
 })
 ```

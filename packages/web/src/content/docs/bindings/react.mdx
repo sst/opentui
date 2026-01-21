@@ -318,12 +318,18 @@ Register custom renderables as JSX elements:
 import { BoxRenderable, createCliRenderer, type BoxOptions, type RenderContext } from "@opentui/core"
 import { createRoot, extend } from "@opentui/react"
 
-class ButtonRenderable extends BoxRenderable {
+class ConsoleButtonRenderable extends BoxRenderable {
   private _label: string = "Button"
 
   constructor(ctx: RenderContext, options: BoxOptions & { label?: string }) {
-    super(ctx, { border: true, minHeight: 3, ...options })
+    super(ctx, options)
     if (options.label) this._label = options.label
+    this.borderStyle = "single"
+    this.padding = 2
+  }
+
+  get label(): string {
+    return this._label
   }
 
   set label(value: string) {
@@ -335,21 +341,20 @@ class ButtonRenderable extends BoxRenderable {
 // Add TypeScript support
 declare module "@opentui/react" {
   interface OpenTUIComponents {
-    consoleButton: typeof ButtonRenderable
+    consoleButton: typeof ConsoleButtonRenderable
   }
 }
 
 // Register the component
-extend({ consoleButton: ButtonRenderable })
+extend({ consoleButton: ConsoleButtonRenderable })
 
 // Use in JSX
 function App() {
-  return (
-    <box>
-      <consoleButton label="Click me!" style={{ backgroundColor: "blue" }} />
-    </box>
-  )
+  return <consoleButton label="Click me!" style={{ border: true, backgroundColor: "green" }} />
 }
+
+const renderer = await createCliRenderer()
+createRoot(renderer).render(<App />)
 ```
 
 ## React DevTools

@@ -62,11 +62,12 @@ renderer.root.add(menu)
 
 When focused, the select responds to these keys:
 
-| Key          | Action              |
-| ------------ | ------------------- |
-| `Up` / `k`   | Move selection up   |
-| `Down` / `j` | Move selection down |
-| `Enter`      | Select current item |
+| Key                       | Action                |
+| ------------------------- | --------------------- |
+| `Up` / `k`                | Move selection up     |
+| `Down` / `j`              | Move selection down   |
+| `Shift+Up` / `Shift+Down` | Fast scroll (5 items) |
+| `Enter`                   | Select current item   |
 
 ## Events
 
@@ -98,7 +99,8 @@ menu.on(SelectRenderableEvents.SELECTION_CHANGED, (index: number, option: Select
 ```typescript
 interface SelectOption {
   name: string // Display text
-  description?: string // Optional description shown below
+  description: string // Description shown below (when showDescription is true)
+  value?: any // Optional value for the option
 }
 ```
 
@@ -120,21 +122,30 @@ const styledMenu = new SelectRenderable(renderer, {
 
 ## Properties
 
-| Property                  | Type             | Default | Description              |
-| ------------------------- | ---------------- | ------- | ------------------------ |
-| `width`                   | `number`         | -       | Component width          |
-| `height`                  | `number`         | -       | Component height         |
-| `options`                 | `SelectOption[]` | `[]`    | Available options        |
-| `backgroundColor`         | `string \| RGBA` | -       | Background color         |
-| `selectedBackgroundColor` | `string \| RGBA` | -       | Selected item background |
-| `selectedTextColor`       | `string \| RGBA` | -       | Selected item text color |
-| `textColor`               | `string \| RGBA` | -       | Normal text color        |
-| `descriptionColor`        | `string \| RGBA` | -       | Description text color   |
+| Property                   | Type             | Default       | Description                       |
+| -------------------------- | ---------------- | ------------- | --------------------------------- |
+| `width`                    | `number`         | -             | Component width                   |
+| `height`                   | `number`         | -             | Component height                  |
+| `options`                  | `SelectOption[]` | `[]`          | Available options                 |
+| `selectedIndex`            | `number`         | `0`           | Initially selected index          |
+| `backgroundColor`          | `string \| RGBA` | `transparent` | Background color                  |
+| `textColor`                | `string \| RGBA` | `#FFFFFF`     | Normal text color                 |
+| `focusedBackgroundColor`   | `string \| RGBA` | `#1a1a1a`     | Background when focused           |
+| `focusedTextColor`         | `string \| RGBA` | `#FFFFFF`     | Text color when focused           |
+| `selectedBackgroundColor`  | `string \| RGBA` | `#334455`     | Selected item background          |
+| `selectedTextColor`        | `string \| RGBA` | `#FFFF00`     | Selected item text color          |
+| `descriptionColor`         | `string \| RGBA` | `#888888`     | Description text color            |
+| `selectedDescriptionColor` | `string \| RGBA` | `#CCCCCC`     | Selected item description color   |
+| `showDescription`          | `boolean`        | `true`        | Show option descriptions          |
+| `showScrollIndicator`      | `boolean`        | `false`       | Show scroll position indicator    |
+| `wrapSelection`            | `boolean`        | `false`       | Wrap selection at list boundaries |
+| `itemSpacing`              | `number`         | `0`           | Spacing between items             |
+| `fastScrollStep`           | `number`         | `5`           | Items to skip with Shift+Up/Down  |
 
 ## Example: File Menu
 
 ```typescript
-import { Box, Text, Select, createCliRenderer } from "@opentui/core"
+import { Box, Select, createCliRenderer } from "@opentui/core"
 
 const renderer = await createCliRenderer()
 
@@ -146,7 +157,7 @@ const fileMenu = Select({
     { name: "Open...", description: "Open file (Ctrl+O)" },
     { name: "Save", description: "Save file (Ctrl+S)" },
     { name: "Save As...", description: "Save with new name" },
-    { name: "---" }, // Separator (visual only)
+    { name: "---", description: "" }, // Separator (visual only)
     { name: "Exit", description: "Quit application (Ctrl+Q)" },
   ],
 })
@@ -169,12 +180,26 @@ renderer.root.add(menuPanel)
 // Get current selection index
 const currentIndex = menu.getSelectedIndex()
 
+// Get currently selected option
+const option = menu.getSelectedOption()
+
 // Set selection programmatically
 menu.setSelectedIndex(2)
 
+// Navigate programmatically
+menu.moveUp() // Move up one item
+menu.moveDown() // Move down one item
+menu.moveUp(3) // Move up multiple items
+menu.selectCurrent() // Trigger selection of current item
+
 // Update options dynamically
 menu.options = [
-  { name: "New Option 1", description: "" },
-  { name: "New Option 2", description: "" },
+  { name: "New Option 1", description: "First" },
+  { name: "New Option 2", description: "Second" },
 ]
+
+// Toggle display options
+menu.showDescription = false
+menu.showScrollIndicator = true
+menu.wrapSelection = true
 ```

@@ -37,7 +37,7 @@ const renderer = await createCliRenderer()
 renderer.root.add(
   ASCIIFont({
     text: "HELLO",
-    font: "standard",
+    font: "block",
     color: "#00FF00",
   }),
 )
@@ -101,13 +101,17 @@ const title = new ASCIIFontRenderable(renderer, {
 
 ## Properties
 
-| Property | Type             | Default   | Description       |
-| -------- | ---------------- | --------- | ----------------- |
-| `text`   | `string`         | `""`      | Text to display   |
-| `font`   | `string`         | `"block"` | Font style to use |
-| `color`  | `RGBA \| string` | -         | Text color        |
-| `x`      | `number`         | -         | X position offset |
-| `y`      | `number`         | -         | Y position offset |
+| Property          | Type                         | Default         | Description                |
+| ----------------- | ---------------------------- | --------------- | -------------------------- |
+| `text`            | `string`                     | `""`            | Text to display            |
+| `font`            | `ASCIIFontName`              | `"tiny"`        | Font style to use          |
+| `color`           | `ColorInput \| ColorInput[]` | `"#FFFFFF"`     | Text color(s)              |
+| `backgroundColor` | `ColorInput`                 | `"transparent"` | Background color           |
+| `selectable`      | `boolean`                    | `true`          | Whether text is selectable |
+| `selectionBg`     | `ColorInput`                 | -               | Selection background color |
+| `selectionFg`     | `ColorInput`                 | -               | Selection foreground color |
+| `x`               | `number`                     | -               | X position offset          |
+| `y`               | `number`                     | -               | Y position offset          |
 
 ## Example: Welcome Screen
 
@@ -180,8 +184,8 @@ const gradientTitle = Box(
     text: "HELLO",
     font: "block",
     color: "#880000",
-    x: 1,
-    y: 1,
+    left: 1,
+    top: 1,
   }),
 )
 ```
