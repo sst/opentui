@@ -1,10 +1,10 @@
 ---
-title: Getting Started
+title: Getting started
 description: Install OpenTUI and create your first terminal UI
 order: 1
 ---
 
-# Getting Started
+# Getting started
 
 OpenTUI is a TypeScript library for building terminal user interfaces.
 
@@ -18,7 +18,7 @@ bun init -y
 bun add @opentui/core
 ```
 
-## Hello World
+## Hello world
 
 Create `index.ts`:
 
@@ -45,7 +45,7 @@ bun index.ts
 
 You should see green text. Press `Ctrl+C` to exit.
 
-## Composing Components
+## Composing components
 
 Components nest naturally. Here's a bordered panel with content:
 
@@ -65,22 +65,22 @@ renderer.root.add(
 )
 ```
 
-Components like `Box` and `Text` are factory functions that accept props as the first argument and children as additional arguments.
+`Box` and `Text` are factory functions. The first argument is props; additional arguments are children.
 
-## What's Next
+## What's next
 
-**Understand the architecture:**
+### Core concepts
 
-- [Renderer](/docs/core-concepts/renderer) - The rendering engine that drives your UI
-- [Layout](/docs/core-concepts/layout) - Flexbox-based positioning and sizing
-- [Constructs](/docs/core-concepts/constructs) - The declarative component API used above
+- [Renderer](/docs/core-concepts/renderer) - The rendering engine
+- [Layout](/docs/core-concepts/layout) - Flexbox positioning
+- [Constructs](/docs/core-concepts/constructs) - The declarative component API
 
-**Build with components:**
+### Components
 
 - [Text](/docs/components/text), [Box](/docs/components/box) - Display and layout
 - [Input](/docs/components/input), [Select](/docs/components/select) - User interaction
 
-**Use your preferred framework:**
+### Framework bindings
 
-- [React bindings](/docs/bindings/react)
-- [Solid.js bindings](/docs/bindings/solid)
+- [React](/docs/bindings/react)
+- [Solid.js](/docs/bindings/solid)
