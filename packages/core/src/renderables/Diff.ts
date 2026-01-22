@@ -256,10 +256,10 @@ export class DiffRenderable extends Renderable {
     this._disableWordHighlights = options.disableWordHighlights ?? false
     this._addedWordBg = options.addedWordBg
       ? parseColor(options.addedWordBg)
-      : this.brightenAndIncreaseOpacity(this._addedBg, 1.5, 0.15)
+      : this.brightenAndIncreaseOpacity(this._addedBg, 1.25, 1.1)
     this._removedWordBg = options.removedWordBg
       ? parseColor(options.removedWordBg)
-      : this.brightenAndIncreaseOpacity(this._removedBg, 1.5, 0.15)
+      : this.brightenAndIncreaseOpacity(this._removedBg, 1.25, 1.1)
 
     if (this._diff) {
       this.parseDiff()
@@ -267,12 +267,12 @@ export class DiffRenderable extends Renderable {
     }
   }
 
-  private brightenAndIncreaseOpacity(color: RGBA, brightenFactor: number, opacityIncrease: number): RGBA {
+  private brightenAndIncreaseOpacity(color: RGBA, brightenFactor: number, opacityFactor: number): RGBA {
     return RGBA.fromValues(
       Math.min(1, color.r * brightenFactor),
       Math.min(1, color.g * brightenFactor),
       Math.min(1, color.b * brightenFactor),
-      Math.min(1, color.a + opacityIncrease),
+      Math.min(1, color.a * opacityFactor),
     )
   }
 

@@ -131,6 +131,7 @@ export interface TextareaOptions extends EditBufferOptions {
   focusedBackgroundColor?: ColorInput
   focusedTextColor?: ColorInput
   placeholder?: StyledText | string | null
+  placeholderColor?: ColorInput
   keyBindings?: KeyBinding[]
   keyAliasMap?: KeyAliasMap
   onSubmit?: (event: SubmitEvent) => void
@@ -138,6 +139,7 @@ export interface TextareaOptions extends EditBufferOptions {
 
 export class TextareaRenderable extends EditBufferRenderable {
   private _placeholder: StyledText | string | null
+  private _placeholderColor: RGBA
   private _unfocusedBackgroundColor: RGBA
   private _unfocusedTextColor: RGBA
   private _focusedBackgroundColor: RGBA
@@ -155,6 +157,7 @@ export class TextareaRenderable extends EditBufferRenderable {
     focusedBackgroundColor: "transparent",
     focusedTextColor: "#FFFFFF",
     placeholder: null,
+    placeholderColor: "#666666",
   } satisfies Partial<TextareaOptions>
 
   constructor(ctx: RenderContext, options: TextareaOptions) {
@@ -176,6 +179,7 @@ export class TextareaRenderable extends EditBufferRenderable {
     )
     this._focusedTextColor = parseColor(options.focusedTextColor || options.textColor || defaults.focusedTextColor)
     this._placeholder = options.placeholder ?? defaults.placeholder
+    this._placeholderColor = parseColor(options.placeholderColor ?? defaults.placeholderColor)
 
     this._keyAliasMap = mergeKeyAliases(defaultKeyAliases, options.keyAliasMap || {})
     this._keyBindings = options.keyBindings || []
@@ -200,8 +204,8 @@ export class TextareaRenderable extends EditBufferRenderable {
     }
 
     if (typeof placeholder === "string") {
-      const defaultGray = fg("#666666")
-      const chunks = [defaultGray(placeholder)]
+      const colorStyle = fg(this._placeholderColor)
+      const chunks = [colorStyle(placeholder)]
       this.editorView.setPlaceholderStyledText(chunks)
     } else {
       this.editorView.setPlaceholderStyledText(placeholder.chunks)
@@ -597,6 +601,19 @@ export class TextareaRenderable extends EditBufferRenderable {
     if (this._placeholder !== value) {
       this._placeholder = value
       this.applyPlaceholder(value)
+      this.requestRender()
+    }
+  }
+
+  get placeholderColor(): RGBA {
+    return this._placeholderColor
+  }
+
+  set placeholderColor(value: ColorInput) {
+    const newColor = parseColor(value ?? TextareaRenderable.defaults.placeholderColor)
+    if (this._placeholderColor !== newColor) {
+      this._placeholderColor = newColor
+      this.applyPlaceholder(this._placeholder)
       this.requestRender()
     }
   }

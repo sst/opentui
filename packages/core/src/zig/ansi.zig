@@ -90,13 +90,14 @@ pub const ANSI = struct {
     pub const csiUQuery = "\x1b[?u";
     pub const kittyGraphicsQuery = "\x1b_Gi=31337,s=1,v=1,a=q,t=d,f=24;AAAA\x1b\\\x1b[c";
 
-    pub const capabilityQueries = decrqmSgrPixels ++
+    pub const capabilityQueriesBase = decrqmSgrPixels ++
         decrqmUnicode ++
         decrqmColorScheme ++
         decrqmFocus ++
         decrqmBracketedPaste ++
-        decrqmSync ++
-        csiUQuery;
+        decrqmSync;
+
+    pub const capabilityQueries = capabilityQueriesBase ++ csiUQuery;
 
     // tmux DCS passthrough wrapper (ESC chars doubled)
     pub const tmuxDcsStart = "\x1bPtmux;";
@@ -117,7 +118,7 @@ pub const ANSI = struct {
     }
 
     pub const kittyGraphicsQueryTmux = wrapForTmux(kittyGraphicsQuery);
-    pub const capabilityQueriesTmux = wrapForTmux(capabilityQueries);
+    pub const capabilityQueriesTmux = wrapForTmux(capabilityQueriesBase) ++ csiUQuery;
     pub const sixelGeometryQuery = "\x1b[?2;1;0S";
     pub const cursorPositionRequest = "\x1b[6n";
     pub const explicitWidthQuery = "\x1b]66;w=1; \x1b\\";

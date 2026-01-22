@@ -68,6 +68,13 @@ registerEnvVar({
   default: false,
 })
 
+registerEnvVar({
+  name: "OTUI_SHOW_STATS",
+  description: "Show the debug overlay at startup.",
+  type: "boolean",
+  default: false,
+})
+
 export interface CliRendererConfig {
   stdin?: NodeJS.ReadStream
   stdout?: NodeJS.WriteStream
@@ -357,7 +364,7 @@ export class CliRenderer extends EventEmitter implements RenderContext {
     frameCallbackTime: 0,
   }
   public debugOverlay = {
-    enabled: false,
+    enabled: env.OTUI_SHOW_STATS,
     corner: DebugOverlayCorner.bottomRight,
   }
 
@@ -969,6 +976,15 @@ export class CliRenderer extends EventEmitter implements RenderContext {
 
     this.lib.setupTerminal(this.rendererPtr, this._useAlternateScreen)
     this._capabilities = this.lib.getTerminalCapabilities(this.rendererPtr)
+
+    if (this.debugOverlay.enabled) {
+      this.lib.setDebugOverlay(this.rendererPtr, true, this.debugOverlay.corner)
+      if (!this.memorySnapshotInterval) {
+        this.memorySnapshotInterval = 3000
+        this.startMemorySnapshotTimer()
+        this.automaticMemorySnapshot = true
+      }
+    }
 
     this.capabilityTimeoutId = setTimeout(() => {
       this.capabilityTimeoutId = null

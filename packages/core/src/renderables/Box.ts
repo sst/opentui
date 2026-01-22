@@ -8,6 +8,7 @@ import {
   type BorderStyle,
   borderCharsToArray,
   getBorderSides,
+  parseBorderStyle,
 } from "../lib"
 import { type ColorInput, RGBA, parseColor } from "../lib/RGBA"
 import { isValidPercentage } from "../lib/renderable.validations"
@@ -72,7 +73,7 @@ export class BoxRenderable extends Renderable {
     ) {
       this._border = true
     }
-    this._borderStyle = options.borderStyle || this._defaultOptions.borderStyle
+    this._borderStyle = parseBorderStyle(options.borderStyle, this._defaultOptions.borderStyle)
     this._borderColor = parseColor(options.borderColor || this._defaultOptions.borderColor)
     this._focusedBorderColor = parseColor(options.focusedBorderColor || this._defaultOptions.focusedBorderColor)
     this._customBorderCharsObj = options.customBorderChars
@@ -143,7 +144,7 @@ export class BoxRenderable extends Renderable {
   }
 
   public set borderStyle(value: BorderStyle) {
-    let _value = value ?? this._defaultOptions.borderStyle
+    const _value = parseBorderStyle(value, this._defaultOptions.borderStyle)
     if (this._borderStyle !== _value || !this._border) {
       this._borderStyle = _value
       this._customBorderChars = undefined
