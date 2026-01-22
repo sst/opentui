@@ -154,12 +154,12 @@ export interface DiffRenderableOptions extends RenderableOptions<DiffRenderable>
   disableWordHighlights?: boolean
   /**
    * Background color for added words within modified lines.
-   * @default addedBg brightened 1.5x with +0.15 opacity
+   * @default addedBg.brighten(1.15)
    */
   addedWordBg?: string | RGBA
   /**
    * Background color for removed words within modified lines.
-   * @default removedBg brightened 1.5x with +0.15 opacity
+   * @default removedBg.brighten(1.15)
    */
   removedWordBg?: string | RGBA
 }
@@ -254,26 +254,14 @@ export class DiffRenderable extends Renderable {
     this._addedLineNumberBg = parseColor(options.addedLineNumberBg ?? "transparent")
     this._removedLineNumberBg = parseColor(options.removedLineNumberBg ?? "transparent")
     this._disableWordHighlights = options.disableWordHighlights ?? false
-    this._addedWordBg = options.addedWordBg
-      ? parseColor(options.addedWordBg)
-      : this.brightenAndIncreaseOpacity(this._addedBg, 1.25, 1.1)
-    this._removedWordBg = options.removedWordBg
-      ? parseColor(options.removedWordBg)
-      : this.brightenAndIncreaseOpacity(this._removedBg, 1.25, 1.1)
+    // Small brightness increase (~10-15%) similar to GitHub Desktop's light theme contrast
+    this._addedWordBg = options.addedWordBg ? parseColor(options.addedWordBg) : this._addedBg.brighten(1.15)
+    this._removedWordBg = options.removedWordBg ? parseColor(options.removedWordBg) : this._removedBg.brighten(1.15)
 
     if (this._diff) {
       this.parseDiff()
       this.buildView()
     }
-  }
-
-  private brightenAndIncreaseOpacity(color: RGBA, brightenFactor: number, opacityFactor: number): RGBA {
-    return RGBA.fromValues(
-      Math.min(1, color.r * brightenFactor),
-      Math.min(1, color.g * brightenFactor),
-      Math.min(1, color.b * brightenFactor),
-      Math.min(1, color.a * opacityFactor),
-    )
   }
 
   private toLineHighlights(highlights: InlineHighlight[], bg: RGBA): LineInlineHighlight[] {
