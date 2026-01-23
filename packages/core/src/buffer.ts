@@ -3,13 +3,7 @@ import { RGBA } from "./lib"
 import { resolveRenderLib, type RenderLib } from "./zig"
 import { type Pointer, toArrayBuffer, ptr } from "bun:ffi"
 import { type BorderStyle, type BorderSides, BorderCharArrays, parseBorderStyle } from "./lib"
-import {
-  type WidthMethod,
-  TextAttributes,
-  VTermStyleFlags,
-  type VTermSpan,
-  type VTermLine,
-} from "./types"
+import { type WidthMethod, TextAttributes, VTermStyleFlags, type VTermSpan, type VTermLine } from "./types"
 import type { TextBufferView } from "./text-buffer-view"
 import type { EditorView } from "./editor-view"
 
