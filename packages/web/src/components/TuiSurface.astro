@@ -37,6 +37,15 @@
       fgWeak: '#999',  // --color-text-weak
       border: '#e5e5e5', // --color-border
     };
+    
+    syntax = {
+      keyword: '#6366f1',
+      string: '#059669',
+      function: '#0891b2',
+      component: '#9333ea',
+      punctuation: '#71717a',
+      text: '#3f3f46',
+    };
 
     constructor(canvas: HTMLCanvasElement) {
       this.canvas = canvas;
@@ -196,29 +205,43 @@
           const startX = cx - 15;
           const startY = cy - 5;
           
-          // Subtle highlight scan
-          const scanRow = Math.floor(t * 2) % (code.length + 4);
+          const cycleLength = code.length + 4;
+          const scanRow = Math.floor(t * 2) % cycleLength;
+          
+          const keywords = ['import', 'from', 'function', 'return', 'const'];
+          const components = ['Text'];
           
           code.forEach((line, i) => {
-            const isScanned = i === scanRow;
-            const fg = isScanned ? r.colors.fgStrong : r.colors.fgWeak;
+            const isCurrentLine = i === scanRow;
+            const isHighlighted = i <= scanRow;
             
-            // Simple tokenizer
-            const tokens = line.split(/(\s+|[{}()<>'"/])/).filter(Boolean);
+            const tokens = line.split(/(\s+|[{}()<>='",;/]|'[^']*')/).filter(Boolean);
             let lx = startX;
             
             tokens.forEach(token => {
-               // Bold keywords if scanned
-               let color = fg;
-               if (isScanned && ['import', 'from', 'function', 'return', 'const'].includes(token)) {
-                  // Simulate bold by drawing twice or using strong color
-                  color = r.colors.fgStrong;
+               let color = r.colors.fgWeak;
+               
+               if (isHighlighted) {
+                  if (keywords.includes(token)) {
+                     color = r.syntax.keyword;
+                  } else if (components.includes(token)) {
+                     color = r.syntax.component;
+                  } else if (token.startsWith("'") && token.endsWith("'")) {
+                     color = r.syntax.string;
+                  } else if (/^[{}()<>=,;]$/.test(token)) {
+                     color = r.syntax.punctuation;
+                  } else if (token === 'App') {
+                     color = r.syntax.function;
+                  } else if (token.trim()) {
+                     color = r.syntax.text;
+                  }
                }
+               
                r.drawText(token, lx, startY + i, color);
                lx += token.length;
             });
             
-            if (isScanned) {
+            if (isCurrentLine && scanRow < code.length) {
                r.drawChar('│', startX - 2, startY + i, r.colors.fgStrong);
             }
           });
