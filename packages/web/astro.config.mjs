@@ -10,7 +10,8 @@ const copyButtonTransformer = {
 
 export default defineConfig({
   integrations: [mdx()],
-  site: "https://opentui.com",
+  site: "https://anomalyco.github.io",
+  base: "/opentui",
   markdown: {
     shikiConfig: {
       theme: "min-light",
