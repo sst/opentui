@@ -1147,6 +1147,19 @@ export class CliRenderer extends EventEmitter implements RenderContext {
       this.lastOverRenderableNum = maybeRenderableId
       const maybeRenderable = Renderable.renderablesByNumber.get(maybeRenderableId)
 
+      // Auto-focus on click (browser-like behavior)
+      // Bubble up to find closest focusable ancestor
+      if (mouseEvent.type === "down" && mouseEvent.button === MouseButton.LEFT) {
+        let current: Renderable | null = maybeRenderable ?? null
+        while (current) {
+          if (current.focusable) {
+            current.focus()
+            break
+          }
+          current = current.parent
+        }
+      }
+
       if (
         mouseEvent.type === "down" &&
         mouseEvent.button === MouseButton.LEFT &&
