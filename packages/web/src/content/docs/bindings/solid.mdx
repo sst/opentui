@@ -1,0 +1,408 @@
+---
+title: Solid.js
+description: Build terminal UIs with Solid.js and OpenTUI
+order: 1
+---
+
+# Solid.js bindings
+
+Build terminal user interfaces with Solid.js's fine-grained reactivity and OpenTUI.
+
+## Installation
+
+```bash
+bun install solid-js @opentui/solid
+```
+
+## Setup
+
+### 1. Configure TypeScript
+
+Add JSX config to `tsconfig.json`:
+
+```json
+{
+  "compilerOptions": {
+    "jsx": "preserve",
+    "jsxImportSource": "@opentui/solid"
+  }
+}
+```
+
+### 2. Configure Bun
+
+Add preload script to `bunfig.toml`:
+
+```toml
+preload = ["@opentui/solid/preload"]
+```
+
+### 3. Create your app
+
+```tsx
+import { render } from "@opentui/solid"
+
+const App = () => <text>Hello, World!</text>
+
+render(App)
+```
+
+Run with `bun index.tsx`.
+
+## Components
+
+OpenTUI Solid provides JSX intrinsic elements that map to core renderables.
+
+**Note:** Solid uses snake_case for multi-word component names (e.g., `ascii_font`, `tab_select`).
+
+### Layout & display
+
+- `<text>` - Styled text container
+- `<box>` - Layout container with borders
+- `<scrollbox>` - Scrollable container
+- `<ascii_font>` - ASCII art text
+- `<markdown>` - Render Markdown content
+
+### Input
+
+- `<input>` - Single-line text input
+- `<textarea>` - Multi-line text input
+- `<select>` - List selection
+- `<tab_select>` - Tab-based selection
+
+### Code & diff
+
+- `<code>` - Syntax-highlighted code
+- `<line_number>` - Line numbers with diff/diagnostic support
+- `<diff>` - Unified or split diff viewer
+
+### Text modifiers
+
+Use inside `<text>` components:
+
+- `<span>` - Inline styled text
+- `<strong>`, `<b>` - Bold text
+- `<em>`, `<i>` - Italic text
+- `<u>` - Underlined text
+- `<br>` - Line break
+- `<a>` - Link text with href
+
+## API reference
+
+### `render(node, rendererOrConfig?)`
+
+Render a Solid component tree into a CLI renderer.
+
+```tsx
+import { render } from "@opentui/solid"
+
+// Simple usage
+render(() => <App />)
+
+// With renderer config
+render(() => <App />, {
+  targetFps: 30,
+  exitOnCtrlC: false,
+})
+```
+
+**Parameters:**
+
+- `node` - Function returning a JSX element
+- `rendererOrConfig` - Optional `CliRenderer` instance or `CliRendererConfig`
+
+### `testRender(node, options?)`
+
+Create a test renderer for snapshots and interaction tests.
+
+```tsx
+import { testRender } from "@opentui/solid"
+
+const testSetup = await testRender(() => <App />, { width: 40, height: 10 })
+```
+
+### `extend(components)`
+
+Register custom renderables as JSX intrinsic elements.
+
+```tsx
+import { extend } from "@opentui/solid"
+
+extend({ custom_box: CustomBoxRenderable })
+```
+
+### `getComponentCatalogue()`
+
+Returns the current component catalogue that powers JSX tag lookup.
+
+## Hooks
+
+### `useRenderer()`
+
+Access the OpenTUI renderer instance.
+
+```tsx
+import { useRenderer } from "@opentui/solid"
+import { onMount } from "solid-js"
+
+const App = () => {
+  const renderer = useRenderer()
+
+  onMount(() => {
+    renderer.console.show()
+    console.log("Hello from console!")
+  })
+
+  return <box />
+}
+```
+
+### `useKeyboard(handler, options?)`
+
+Subscribe to keyboard events.
+
+```tsx
+import { useKeyboard } from "@opentui/solid"
+
+const App = () => {
+  useKeyboard((key) => {
+    if (key.name === "escape") {
+      process.exit(0)
+    }
+  })
+
+  return <text>Press ESC to exit</text>
+}
+```
+
+With release events:
+
+```tsx
+import { createSignal } from "solid-js"
+
+const App = () => {
+  const [pressedKeys, setPressedKeys] = createSignal(new Set<string>())
+
+  useKeyboard(
+    (event) => {
+      setPressedKeys((keys) => {
+        const newKeys = new Set(keys)
+        if (event.eventType === "release") {
+          newKeys.delete(event.name)
+        } else {
+          newKeys.add(event.name)
+        }
+        return newKeys
+      })
+    },
+    { release: true },
+  )
+
+  return <text>Pressed: {Array.from(pressedKeys()).join(", ") || "none"}</text>
+}
+```
+
+### `onResize(callback)`
+
+Handle terminal resize events.
+
+```tsx
+import { onResize } from "@opentui/solid"
+
+const App = () => {
+  onResize((width, height) => {
+    console.log(`Resized to ${width}x${height}`)
+  })
+
+  return <text>Resize-aware component</text>
+}
+```
+
+### `useTerminalDimensions()`
+
+Get reactive terminal dimensions (returns a Solid signal).
+
+```tsx
+import { useTerminalDimensions } from "@opentui/solid"
+
+const App = () => {
+  const dimensions = useTerminalDimensions()
+
+  return (
+    <text>
+      Terminal: {dimensions().width}x{dimensions().height}
+    </text>
+  )
+}
+```
+
+### `usePaste(handler)`
+
+Subscribe to paste events.
+
+```tsx
+import { usePaste } from "@opentui/solid"
+
+const App = () => {
+  usePaste((event) => {
+    console.log("Pasted:", event.text)
+  })
+
+  return <text>Paste something!</text>
+}
+```
+
+### `useSelectionHandler(callback)`
+
+Handle text selection events.
+
+```tsx
+import { useSelectionHandler } from "@opentui/solid"
+
+const App = () => {
+  useSelectionHandler((selection) => {
+    console.log("Selected:", selection)
+  })
+
+  return <text selectable>Select me!</text>
+}
+```
+
+### `useTimeline(options?)`
+
+Create and manage animations.
+
+```tsx
+import { useTimeline } from "@opentui/solid"
+import { createSignal, onMount } from "solid-js"
+
+const App = () => {
+  const [width, setWidth] = createSignal(0)
+
+  const timeline = useTimeline({
+    duration: 2000,
+    loop: false,
+  })
+
+  onMount(() => {
+    timeline.add(
+      { width: width() },
+      {
+        width: 50,
+        duration: 2000,
+        ease: "linear",
+        onUpdate: (animation) => {
+          setWidth(animation.targets[0].width)
+        },
+      },
+    )
+  })
+
+  return <box style={{ width: width(), backgroundColor: "#6a5acd" }} />
+}
+```
+
+## Special components
+
+### `Portal`
+
+Render children into a different mount point (useful for modals and overlays).
+
+```tsx
+import { Portal, useRenderer } from "@opentui/solid"
+
+const App = () => {
+  const renderer = useRenderer()
+
+  return (
+    <box>
+      <text>Main content</text>
+      <Portal mount={renderer.root}>
+        <box border>Overlay</box>
+      </Portal>
+    </box>
+  )
+}
+```
+
+### `Dynamic`
+
+Render arbitrary intrinsic elements or components dynamically.
+
+```tsx
+import { Dynamic } from "@opentui/solid"
+import { createSignal } from "solid-js"
+
+const App = () => {
+  const [isMultiline, setIsMultiline] = createSignal(false)
+
+  return <Dynamic component={isMultiline() ? "textarea" : "input"} />
+}
+```
+
+## Building for production
+
+Use [Bun.build](https://bun.sh/docs/bundler) with the Solid plugin:
+
+```ts
+import solidPlugin from "@opentui/solid/bun-plugin"
+
+await Bun.build({
+  entrypoints: ["./index.tsx"],
+  target: "bun",
+  outdir: "./build",
+  plugins: [solidPlugin],
+})
+```
+
+To compile to a standalone executable:
+
+```ts
+await Bun.build({
+  entrypoints: ["./index.tsx"],
+  plugins: [solidPlugin],
+  compile: {
+    target: "bun-darwin-arm64",
+    outfile: "./app-macos",
+  },
+})
+```
+
+## Example: counter
+
+```tsx
+import { render, useKeyboard } from "@opentui/solid"
+import { createSignal } from "solid-js"
+
+const App = () => {
+  const [count, setCount] = createSignal(0)
+
+  useKeyboard((key) => {
+    if (key.name === "up") setCount((c) => c + 1)
+    if (key.name === "down") setCount((c) => c - 1)
+    if (key.name === "escape") process.exit(0)
+  })
+
+  return (
+    <box border padding={2}>
+      <text>Count: {count()}</text>
+      <text fg="#888">Up/Down to change, ESC to exit</text>
+    </box>
+  )
+}
+
+render(App)
+```
+
+## Differences from React bindings
+
+| Aspect             | Solid                                | React                                  |
+| ------------------ | ------------------------------------ | -------------------------------------- |
+| Render function    | `render(() => <App />)`              | `createRoot(renderer).render(<App />)` |
+| Component naming   | snake_case (`ascii_font`)            | kebab-case (`ascii-font`)              |
+| State              | `createSignal`                       | `useState`                             |
+| Effects            | `onMount`, `onCleanup`               | `useEffect`                            |
+| Resize hook        | `onResize(callback)`                 | `useOnResize(callback)`                |
+| Dimensions         | Returns signal: `dimensions().width` | Returns object: `dimensions.width`     |
+| Extra hooks        | `usePaste`, `useSelectionHandler`    | -                                      |
+| Special components | `Portal`, `Dynamic`                  | -                                      |

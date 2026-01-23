@@ -1,0 +1,203 @@
+---
+title: TabSelect
+description: Horizontal tab-based selection component
+order: 5
+---
+
+# TabSelect
+
+Horizontal tab-based selection component with descriptions and scroll support. The component must be focused to receive keyboard input.
+
+## Basic Usage
+
+### Renderable API
+
+```typescript
+import { TabSelectRenderable, TabSelectRenderableEvents, createCliRenderer } from "@opentui/core"
+
+const renderer = await createCliRenderer()
+
+const tabs = new TabSelectRenderable(renderer, {
+  id: "tabs",
+  width: 60,
+  options: [
+    { name: "Home", description: "Dashboard and overview" },
+    { name: "Files", description: "File management" },
+    { name: "Settings", description: "Application settings" },
+  ],
+  tabWidth: 20,
+})
+
+tabs.on(TabSelectRenderableEvents.ITEM_SELECTED, (index, option) => {
+  console.log("Tab selected:", option.name)
+})
+
+tabs.focus()
+renderer.root.add(tabs)
+```
+
+### Construct API
+
+```typescript
+import { TabSelect, createCliRenderer } from "@opentui/core"
+
+const renderer = await createCliRenderer()
+
+const tabs = TabSelect({
+  width: 60,
+  tabWidth: 15,
+  options: [
+    { name: "Tab 1", description: "First tab" },
+    { name: "Tab 2", description: "Second tab" },
+    { name: "Tab 3", description: "Third tab" },
+  ],
+})
+
+tabs.focus()
+renderer.root.add(tabs)
+```
+
+## Keyboard Navigation
+
+When focused, the tab select responds to these keys:
+
+| Key           | Action               |
+| ------------- | -------------------- |
+| `Left` / `[`  | Move to previous tab |
+| `Right` / `]` | Move to next tab     |
+| `Enter`       | Select current tab   |
+
+## Events
+
+### Item Selected
+
+Emitted when the user presses Enter on a tab:
+
+```typescript
+import { TabSelectRenderableEvents, type TabSelectOption } from "@opentui/core"
+
+tabs.on(TabSelectRenderableEvents.ITEM_SELECTED, (index: number, option: TabSelectOption) => {
+  console.log(`Selected tab ${index}: ${option.name}`)
+  // Switch to the corresponding panel
+})
+```
+
+### Selection Changed
+
+Emitted when the highlighted tab changes:
+
+```typescript
+import { TabSelectRenderableEvents, type TabSelectOption } from "@opentui/core"
+
+tabs.on(TabSelectRenderableEvents.SELECTION_CHANGED, (index: number, option: TabSelectOption) => {
+  console.log(`Hovering: ${option.name}`)
+})
+```
+
+## Properties
+
+| Property                   | Type                    | Default       | Description                    |
+| -------------------------- | ----------------------- | ------------- | ------------------------------ |
+| `width`                    | `number`                | -             | Total component width          |
+| `options`                  | `TabSelectOption[]`     | `[]`          | Available tabs                 |
+| `tabWidth`                 | `number`                | `20`          | Width of each tab              |
+| `backgroundColor`          | `string \| RGBA`        | `transparent` | Background color               |
+| `textColor`                | `string \| RGBA`        | `#FFFFFF`     | Normal tab text                |
+| `focusedBackgroundColor`   | `string \| RGBA`        | `#1a1a1a`     | Background color when focused  |
+| `focusedTextColor`         | `string \| RGBA`        | `#FFFFFF`     | Text color when focused        |
+| `selectedBackgroundColor`  | `string \| RGBA`        | `#334455`     | Selected tab background        |
+| `selectedTextColor`        | `string \| RGBA`        | `#FFFF00`     | Selected tab text              |
+| `selectedDescriptionColor` | `string \| RGBA`        | `#CCCCCC`     | Description text color         |
+| `showScrollArrows`         | `boolean`               | `true`        | Show scroll indicators         |
+| `showDescription`          | `boolean`               | `true`        | Show tab descriptions          |
+| `showUnderline`            | `boolean`               | `true`        | Show underline on selected tab |
+| `wrapSelection`            | `boolean`               | `false`       | Wrap around when navigating    |
+| `keyBindings`              | `TabSelectKeyBinding[]` | -             | Custom key bindings            |
+| `keyAliasMap`              | `KeyAliasMap`           | -             | Key alias mappings             |
+
+## Example: Tabbed Interface
+
+```typescript
+import { Box, Text, TabSelect, createCliRenderer } from "@opentui/core"
+
+const renderer = await createCliRenderer()
+
+// Create content panels
+const panels = {
+  home: Box({ padding: 1 }, Text({ content: "Home content here" })),
+  files: Box({ padding: 1 }, Text({ content: "File browser here" })),
+  settings: Box({ padding: 1 }, Text({ content: "Settings form here" })),
+}
+
+// Create the tabbed container
+const container = Box({
+  width: 60,
+  height: 20,
+  borderStyle: "rounded",
+})
+
+const tabs = TabSelect({
+  width: 60,
+  tabWidth: 20,
+  options: [
+    { name: "Home", description: "Dashboard" },
+    { name: "Files", description: "Browse files" },
+    { name: "Settings", description: "Preferences" },
+  ],
+})
+
+// Content area
+let currentPanel = panels.home
+const contentArea = Box({
+  flexGrow: 1,
+  padding: 1,
+})
+contentArea.add(currentPanel)
+
+// Handle tab changes
+tabs.on("itemSelected", (index, option) => {
+  // Remove current panel
+  if (currentPanel) {
+    contentArea.remove(currentPanel.id)
+  }
+  // Add new panel based on selection
+  switch (option.name) {
+    case "Home":
+      currentPanel = panels.home
+      break
+    case "Files":
+      currentPanel = panels.files
+      break
+    case "Settings":
+      currentPanel = panels.settings
+      break
+  }
+  contentArea.add(currentPanel)
+})
+
+container.add(tabs)
+container.add(contentArea)
+
+tabs.focus()
+renderer.root.add(container)
+```
+
+## Programmatic Control
+
+```typescript
+// Get current tab index
+const currentIndex = tabs.getSelectedIndex()
+
+// Set tab programmatically
+tabs.setSelectedIndex(1)
+
+// Update tabs dynamically
+tabs.setOptions([
+  { name: "New Tab 1", description: "Updated" },
+  { name: "New Tab 2", description: "Also updated" },
+])
+```
+
+## Scroll Behavior
+
+When there are more tabs than fit in the width, the component automatically handles horizontal scrolling as you navigate with the keyboard.
