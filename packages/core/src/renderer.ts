@@ -68,6 +68,13 @@ registerEnvVar({
   default: false,
 })
 
+registerEnvVar({
+  name: "OTUI_SHOW_STATS",
+  description: "Show the debug overlay at startup.",
+  type: "boolean",
+  default: false,
+})
+
 export interface CliRendererConfig {
   stdin?: NodeJS.ReadStream
   stdout?: NodeJS.WriteStream
@@ -357,7 +364,7 @@ export class CliRenderer extends EventEmitter implements RenderContext {
     frameCallbackTime: 0,
   }
   public debugOverlay = {
-    enabled: false,
+    enabled: env.OTUI_SHOW_STATS,
     corner: DebugOverlayCorner.bottomRight,
   }
 
@@ -505,7 +512,17 @@ export class CliRenderer extends EventEmitter implements RenderContext {
 
     this.rendererPtr = rendererPtr
     this.exitOnCtrlC = config.exitOnCtrlC === undefined ? true : config.exitOnCtrlC
-    this.exitSignals = config.exitSignals || ["SIGINT", "SIGTERM", "SIGQUIT", "SIGABRT"]
+    this.exitSignals = config.exitSignals || [
+      "SIGINT", // Ctrl+C
+      "SIGTERM", // Termination signal
+      "SIGQUIT", // Ctrl+\
+      "SIGABRT", // Abort signal
+      "SIGHUP", // Hangup (terminal closed)
+      "SIGBREAK", // Ctrl+Break on Windows
+      "SIGPIPE", // Broken pipe
+      "SIGBUS", // Bus error
+      "SIGFPE", // Floating point exception
+    ]
     this.resizeDebounceDelay = config.debounceDelay || 100
     this.targetFps = config.targetFps || 30
     this.maxFps = config.maxFps || 60
@@ -969,6 +986,15 @@ export class CliRenderer extends EventEmitter implements RenderContext {
 
     this.lib.setupTerminal(this.rendererPtr, this._useAlternateScreen)
     this._capabilities = this.lib.getTerminalCapabilities(this.rendererPtr)
+
+    if (this.debugOverlay.enabled) {
+      this.lib.setDebugOverlay(this.rendererPtr, true, this.debugOverlay.corner)
+      if (!this.memorySnapshotInterval) {
+        this.memorySnapshotInterval = 3000
+        this.startMemorySnapshotTimer()
+        this.automaticMemorySnapshot = true
+      }
+    }
 
     this.capabilityTimeoutId = setTimeout(() => {
       this.capabilityTimeoutId = null

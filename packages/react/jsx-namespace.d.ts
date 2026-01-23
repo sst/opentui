@@ -9,6 +9,7 @@ import type {
   LineBreakProps,
   LineNumberProps,
   LinkProps,
+  MarkdownProps,
   OpenTUIComponents,
   ScrollBoxProps,
   SelectProps,
@@ -41,6 +42,7 @@ export namespace JSX {
     span: SpanProps
     code: CodeProps
     diff: DiffProps
+    markdown: MarkdownProps
     input: InputProps
     textarea: TextareaProps
     select: SelectProps

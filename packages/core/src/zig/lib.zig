@@ -358,6 +358,18 @@ export fn bufferDrawPackedBuffer(bufferPtr: *buffer.OptimizedBuffer, data: [*]co
     bufferPtr.drawPackedBuffer(data, dataLen, posX, posY, terminalWidthCells, terminalHeightCells);
 }
 
+export fn bufferDrawGrayscaleBuffer(bufferPtr: *buffer.OptimizedBuffer, posX: i32, posY: i32, intensities: [*]const f32, srcWidth: u32, srcHeight: u32, fg: ?[*]const f32, bg: ?[*]const f32) void {
+    const rgbaFg = if (fg) |fgPtr| utils.f32PtrToRGBA(fgPtr) else null;
+    const rgbaBg = if (bg) |bgPtr| utils.f32PtrToRGBA(bgPtr) else null;
+    bufferPtr.drawGrayscaleBuffer(posX, posY, intensities, srcWidth, srcHeight, rgbaFg, rgbaBg);
+}
+
+export fn bufferDrawGrayscaleBufferSupersampled(bufferPtr: *buffer.OptimizedBuffer, posX: i32, posY: i32, intensities: [*]const f32, srcWidth: u32, srcHeight: u32, fg: ?[*]const f32, bg: ?[*]const f32) void {
+    const rgbaFg = if (fg) |fgPtr| utils.f32PtrToRGBA(fgPtr) else null;
+    const rgbaBg = if (bg) |bgPtr| utils.f32PtrToRGBA(bgPtr) else null;
+    bufferPtr.drawGrayscaleBufferSupersampled(posX, posY, intensities, srcWidth, srcHeight, rgbaFg, rgbaBg);
+}
+
 export fn bufferPushScissorRect(bufferPtr: *buffer.OptimizedBuffer, x: i32, y: i32, width: u32, height: u32) void {
     bufferPtr.pushScissorRect(x, y, width, height) catch {};
 }
