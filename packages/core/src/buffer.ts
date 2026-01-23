@@ -9,7 +9,6 @@ import {
   VTermStyleFlags,
   type VTermSpan,
   type VTermLine,
-  type VTermData,
 } from "./types"
 import type { TextBufferView } from "./text-buffer-view"
 import type { EditorView } from "./editor-view"
