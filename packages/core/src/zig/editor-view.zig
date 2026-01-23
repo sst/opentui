@@ -57,6 +57,7 @@ pub const EditorView = struct {
         if (!has_selection or self.selection_follow_cursor) {
             const cursor = self.edit_buffer.getPrimaryCursor();
             const vcursor = self.logicalToVisualCursor(cursor.row, cursor.col);
+            logger.debug("[textarea-debug] cursorChanged cursor={any} vcursor={any}", .{ cursor, vcursor });
             self.ensureCursorVisible(vcursor.visual_row);
         }
     }
@@ -206,8 +207,13 @@ pub const EditorView = struct {
         const viewport_width = vp.width;
         if (viewport_height == 0 or viewport_width == 0) return;
 
-        const margin_lines = @max(1, @as(u32, @intFromFloat(@as(f32, @floatFromInt(viewport_height)) * self.scroll_margin)));
-        const margin_cols = @max(1, @as(u32, @intFromFloat(@as(f32, @floatFromInt(viewport_width)) * self.scroll_margin)));
+        const raw_margin_lines = @max(1, @as(u32, @intFromFloat(@as(f32, @floatFromInt(viewport_height)) * self.scroll_margin)));
+        const max_margin_lines = if (viewport_height > 1) (viewport_height - 1) / 2 else 0;
+        const margin_lines = @min(raw_margin_lines, max_margin_lines);
+
+        const raw_margin_cols = @max(1, @as(u32, @intFromFloat(@as(f32, @floatFromInt(viewport_width)) * self.scroll_margin)));
+        const max_margin_cols = if (viewport_width > 1) (viewport_width - 1) / 2 else 0;
+        const margin_cols = @min(raw_margin_cols, max_margin_cols);
 
         const total_lines = self.text_buffer_view.getVirtualLineCount();
         const max_offset_y = if (total_lines > viewport_height) total_lines - viewport_height else 0;
@@ -228,8 +234,8 @@ pub const EditorView = struct {
 
         if (new_offset_y != vp.y or new_offset_x != vp.x) {
             logger.debug(
-                "[textarea-debug] ensureCursorVisible cursor_line={d} vp={any} new_offset=({d},{d}) max_offset_y={d}",
-                .{ cursor_line, vp, new_offset_x, new_offset_y, max_offset_y },
+                "[textarea-debug] ensureCursorVisible cursor_line={d} vp={any} margin_lines={d} total_lines={d} max_offset_y={d} new_offset=({d},{d})",
+                .{ cursor_line, vp, margin_lines, total_lines, max_offset_y, new_offset_x, new_offset_y },
             );
         }
 

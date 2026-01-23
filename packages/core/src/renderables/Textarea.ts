@@ -253,7 +253,14 @@ export class TextareaRenderable extends EditBufferRenderable {
   }
 
   public handlePaste(event: PasteEvent): void {
-    this.insertText(event.text)
+    const text = event.text
+    const lineCount = text.split("\n").length
+    console.log("[textarea-debug] handlePaste", {
+      id: this.id,
+      length: text.length,
+      lines: lineCount,
+    })
+    this.insertText(text)
   }
 
   public handleKeyPress(key: KeyEvent): boolean {

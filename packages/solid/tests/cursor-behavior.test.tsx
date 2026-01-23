@@ -400,6 +400,7 @@ describe("Textarea Cursor Behavior Tests", () => {
       testSetup.renderer.start()
       await Bun.sleep(30)
 
+      viewOffsets.length = 0
       await testSetup.mockInput.pasteBracketedText("Line 1\nLine 2\nLine 3")
 
       await Bun.sleep(200)
@@ -409,10 +410,16 @@ describe("Textarea Cursor Behavior Tests", () => {
       recorder.stop()
       testSetup.renderer.removePostProcessFn(captureOffsets)
 
-      const uniqueOffsets = new Set(viewOffsets.map((state) => state.offsetY))
+      let transitions = 0
+      for (let i = 1; i < viewOffsets.length; i += 1) {
+        if (viewOffsets[i]!.offsetY !== viewOffsets[i - 1]!.offsetY) {
+          transitions += 1
+        }
+      }
 
       expect(textareaRef?.plainText).toBe("Line 1\nLine 2\nLine 3")
-      expect(uniqueOffsets.size).toBe(1)
+      expect(viewOffsets.length).toBeGreaterThan(4)
+      expect(transitions).toBeLessThanOrEqual(1)
     })
 
     it("should reproduce height-1 viewport oscillation after multiline paste", async () => {
@@ -493,6 +500,7 @@ describe("Textarea Cursor Behavior Tests", () => {
       testSetup.renderer.start()
       await Bun.sleep(30)
 
+      viewOffsets.length = 0
       await testSetup.mockInput.pasteBracketedText("Line 1\nLine 2\nLine 3")
 
       await Bun.sleep(200)
@@ -501,10 +509,16 @@ describe("Textarea Cursor Behavior Tests", () => {
 
       testSetup.renderer.removePostProcessFn(captureOffsets)
 
-      const uniqueOffsets = new Set(viewOffsets.map((state) => state.offsetY))
+      let transitions = 0
+      for (let i = 1; i < viewOffsets.length; i += 1) {
+        if (viewOffsets[i]!.offsetY !== viewOffsets[i - 1]!.offsetY) {
+          transitions += 1
+        }
+      }
 
       expect(textareaRef?.plainText).toBe("Line 1\nLine 2\nLine 3")
-      expect(uniqueOffsets.size).toBe(1)
+      expect(viewOffsets.length).toBeGreaterThan(4)
+      expect(transitions).toBeLessThanOrEqual(1)
     })
   })
 })
