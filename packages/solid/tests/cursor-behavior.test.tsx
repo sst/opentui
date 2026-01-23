@@ -1,7 +1,8 @@
 import { describe, expect, it, beforeEach, afterEach } from "bun:test"
 import { testRender } from "../index"
-import { createSignal } from "solid-js"
+import { createSignal, onMount, Show } from "solid-js"
 import type { TextareaRenderable } from "@opentui/core"
+import { TestRecorder } from "@opentui/core/testing"
 
 let testSetup: Awaited<ReturnType<typeof testRender>>
 
@@ -320,11 +321,21 @@ describe("Textarea Cursor Behavior Tests", () => {
   })
 
   describe("Multiline Paste Repro", () => {
-    it("should keep cursor stable when pasting multiline content into single-line textarea", async () => {
+    it("should reproduce cursor/viewport flicker when pasting multiline content", async () => {
       let textareaRef: TextareaRenderable | undefined
+      const [editing, setEditing] = createSignal(false)
 
-      testSetup = await testRender(
-        () => (
+      const TextareaKeybindings = () => [
+        { name: "return", action: "submit" },
+        { name: "return", meta: true, action: "newline" },
+      ]
+
+      const ReproComponent = () => {
+        onMount(() => {
+          setEditing(true)
+        })
+
+        return (
           <box paddingLeft={2} paddingRight={2} gap={1}>
             <box paddingLeft={1} gap={1}>
               <box>
@@ -339,27 +350,25 @@ describe("Textarea Cursor Behavior Tests", () => {
                     <text fg="#E8EDF2">Type your own answer</text>
                   </box>
                 </box>
-                <box paddingLeft={3}>
-                  <textarea
-                    height={1}
-                    ref={(val: TextareaRenderable) => {
-                      textareaRef = val
-                      queueMicrotask(() => {
-                        val.focus()
-                        val.gotoLineEnd()
-                      })
-                    }}
-                    initialValue=""
-                    placeholder="Type your own answer"
-                    textColor="#E8EDF2"
-                    focusedTextColor="#E8EDF2"
-                    cursorColor="#86B7FF"
-                    keyBindings={[
-                      { name: "return", action: "submit" },
-                      { name: "return", meta: true, action: "newline" },
-                    ]}
-                  />
-                </box>
+                <Show when={editing()}>
+                  <box paddingLeft={3}>
+                    <textarea
+                      ref={(val: TextareaRenderable) => {
+                        textareaRef = val
+                        queueMicrotask(() => {
+                          val.focus()
+                          val.gotoLineEnd()
+                        })
+                      }}
+                      initialValue=""
+                      placeholder="Type your own answer"
+                      textColor="#E8EDF2"
+                      focusedTextColor="#E8EDF2"
+                      cursorColor="#86B7FF"
+                      keyBindings={TextareaKeybindings()}
+                    />
+                  </box>
+                </Show>
               </box>
             </box>
             <box paddingBottom={1} gap={1} flexDirection="row">
@@ -368,25 +377,43 @@ describe("Textarea Cursor Behavior Tests", () => {
               </text>
             </box>
           </box>
-        ),
-        { width: 50, height: 12 },
-      )
+        )
+      }
+
+      testSetup = await testRender(() => <ReproComponent />, { width: 50, height: 12 })
 
       await testSetup.renderOnce()
       await new Promise((resolve) => setTimeout(resolve, 0))
 
-      await testSetup.mockInput.pasteBracketedText("Line 1\nLine 2\nLine 3")
-
-      const states = [] as Array<{ x: number; y: number; visible: boolean }>
-      for (let i = 0; i < 3; i += 1) {
-        await testSetup.renderOnce()
+      const cursorStates: Array<{ x: number; y: number; visible: boolean }> = []
+      const captureCursor = () => {
         const cursorState = testSetup.renderer.getCursorState()
-        states.push({ x: cursorState.x, y: cursorState.y, visible: cursorState.visible })
+        cursorStates.push({ x: cursorState.x, y: cursorState.y, visible: cursorState.visible })
       }
 
+      testSetup.renderer.addPostProcessFn(captureCursor)
+      const recorder = new TestRecorder(testSetup.renderer)
+      recorder.rec()
+
+      testSetup.renderer.start()
+      await Bun.sleep(30)
+
+      await testSetup.mockInput.pasteBracketedText("Line 1\nLine 2\nLine 3")
+
+      await Bun.sleep(200)
+      testSetup.renderer.pause()
+      await testSetup.renderer.idle()
+
+      recorder.stop()
+      testSetup.renderer.removePostProcessFn(captureCursor)
+
+      const frames = recorder.recordedFrames.map((frame) => frame.frame)
+      const uniqueCursorStates = new Set(cursorStates.map((state) => `${state.x}:${state.y}:${state.visible ? 1 : 0}`))
+
       expect(textareaRef?.plainText).toBe("Line 1\nLine 2\nLine 3")
-      expect(states.every((state) => state.visible)).toBe(true)
-      expect(states.every((state) => state.x === states[0]!.x && state.y === states[0]!.y)).toBe(true)
+      expect(frames.length).toBeGreaterThan(3)
+      expect(new Set(frames).size).toBe(1)
+      expect(uniqueCursorStates.size).toBe(1)
     })
   })
 })
