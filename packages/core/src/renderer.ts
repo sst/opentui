@@ -513,15 +513,15 @@ export class CliRenderer extends EventEmitter implements RenderContext {
     this.rendererPtr = rendererPtr
     this.exitOnCtrlC = config.exitOnCtrlC === undefined ? true : config.exitOnCtrlC
     this.exitSignals = config.exitSignals || [
-      "SIGINT",    // Ctrl+C
-      "SIGTERM",   // Termination signal
-      "SIGQUIT",   // Ctrl+\
-      "SIGABRT",   // Abort signal
-      "SIGHUP",    // Hangup (terminal closed)
-      "SIGBREAK",  // Ctrl+Break on Windows
-      "SIGPIPE",   // Broken pipe
-      "SIGBUS",    // Bus error
-      "SIGFPE",    // Floating point exception
+      "SIGINT", // Ctrl+C
+      "SIGTERM", // Termination signal
+      "SIGQUIT", // Ctrl+\
+      "SIGABRT", // Abort signal
+      "SIGHUP", // Hangup (terminal closed)
+      "SIGBREAK", // Ctrl+Break on Windows
+      "SIGPIPE", // Broken pipe
+      "SIGBUS", // Bus error
+      "SIGFPE", // Floating point exception
     ]
     this.resizeDebounceDelay = config.debounceDelay || 100
     this.targetFps = config.targetFps || 30
