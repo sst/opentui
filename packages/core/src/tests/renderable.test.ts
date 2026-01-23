@@ -216,6 +216,34 @@ describe("Renderable - Child Management", () => {
     expect(parent.getRenderable("newChild")).toBe(newChild)
   })
 
+  test("insertBefore with same node as anchor should not change order", () => {
+    const parent = new TestRenderable(testRenderer, { id: "parent" })
+    const child1 = new TestRenderable(testRenderer, { id: "child1" })
+    const child2 = new TestRenderable(testRenderer, { id: "child2" })
+    const child3 = new TestRenderable(testRenderer, { id: "child3" })
+
+    parent.add(child1)
+    parent.add(child2)
+    parent.add(child3)
+
+    const childrenBefore = parent.getChildren()
+    expect(childrenBefore[0].id).toBe("child1")
+    expect(childrenBefore[1].id).toBe("child2")
+    expect(childrenBefore[2].id).toBe("child3")
+
+    // Call insertBefore with child2 as both the node and anchor
+    // This should be a no-op
+    parent.insertBefore(child3, child3)
+    parent.insertBefore(child2, child2)
+    parent.insertBefore(child1, child1)
+
+    const childrenAfter = parent.getChildren()
+    expect(childrenAfter[0].id).toBe("child1")
+    expect(childrenAfter[1].id).toBe("child2")
+    expect(childrenAfter[2].id).toBe("child3")
+    expect(parent.getChildrenCount()).toBe(3)
+  })
+
   test("handles adding destroyed renderable", () => {
     const parent = new TestRenderable(testRenderer, { id: "parent" })
     const child = new TestRenderable(testRenderer, { id: "child" })
