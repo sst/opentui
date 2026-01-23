@@ -219,8 +219,7 @@ test "EditBuffer - word boundary with tabs" {
 
     try eb.insertText("Hello\tWorld");
 
-    const line_width = iter_mod.lineWidthAt(&eb.getTextBuffer().rope, 0);
-    try eb.setCursor(0, line_width);
+    try eb.setCursor(0, 12);
 
     const prev_cursor = eb.getPrevWordBoundary();
     try std.testing.expectEqual(@as(u32, 7), prev_cursor.col);
@@ -228,6 +227,44 @@ test "EditBuffer - word boundary with tabs" {
     try eb.setCursor(0, 0);
     const next_cursor = eb.getNextWordBoundary();
     try std.testing.expectEqual(@as(u32, 7), next_cursor.col);
+}
+
+test "EditBuffer - word boundary with CJK graphemes" {
+    const pool = gp.initGlobalPool(std.testing.allocator);
+    defer gp.deinitGlobalPool();
+
+    var eb = try EditBuffer.init(std.testing.allocator, pool, .wcwidth);
+    defer eb.deinit();
+
+    // "你" = 2 cols, " " = 1 col, "好" = 2 cols
+    try eb.insertText("你 好");
+    try eb.setCursor(0, 0);
+
+    const next_cursor = eb.getNextWordBoundary();
+    try std.testing.expectEqual(@as(u32, 3), next_cursor.col);
+
+    try eb.setCursor(0, 5);
+    const prev_cursor = eb.getPrevWordBoundary();
+    try std.testing.expectEqual(@as(u32, 3), prev_cursor.col);
+}
+
+test "EditBuffer - word boundary with emoji" {
+    const pool = gp.initGlobalPool(std.testing.allocator);
+    defer gp.deinitGlobalPool();
+
+    var eb = try EditBuffer.init(std.testing.allocator, pool, .wcwidth);
+    defer eb.deinit();
+
+    // "🌟" = 2 cols, " " = 1 col, "ok" = 2 cols
+    try eb.insertText("🌟 ok");
+    try eb.setCursor(0, 0);
+
+    const next_cursor = eb.getNextWordBoundary();
+    try std.testing.expectEqual(@as(u32, 3), next_cursor.col);
+
+    try eb.setCursor(0, 5);
+    const prev_cursor = eb.getPrevWordBoundary();
+    try std.testing.expectEqual(@as(u32, 3), prev_cursor.col);
 }
 
 test "EditBuffer - moveRight past tab at start of line" {

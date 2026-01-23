@@ -1133,8 +1133,8 @@ pub const UnifiedTextBufferView = struct {
                                 // width_to_boundary: columns needed to reach and include this break
                                 // break_col is the column where the break character starts (relative to chunk)
                                 // char_offset is our current column position (relative to chunk)
-                                // To include the break character (width 1), we need: break_col - char_offset + 1
-                                const width_to_boundary = break_col - char_offset + 1;
+                                // To include the break character, we need: break_col - char_offset + width
+                                const width_to_boundary = break_col - char_offset + break_info.width;
                                 if (width_to_boundary > remaining_on_line or width_to_boundary > remaining_in_chunk) {
                                     break;
                                 }
