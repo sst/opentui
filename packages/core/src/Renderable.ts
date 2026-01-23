@@ -596,6 +596,7 @@ export abstract class Renderable extends BaseRenderable {
     if (this._zIndex !== value) {
       this._zIndex = value
       this.parent?.requestZIndexSort()
+      this.requestRender()
     }
   }
 
@@ -983,13 +984,15 @@ export abstract class Renderable extends BaseRenderable {
 
     const oldX = this._x
     const oldY = this._y
+    const oldWidth = this._widthValue
+    const oldHeight = this._heightValue
 
     this._x = layout.left
     this._y = layout.top
 
     const newWidth = Math.max(layout.width, 1)
     const newHeight = Math.max(layout.height, 1)
-    const sizeChanged = this.width !== newWidth || this.height !== newHeight
+    const sizeChanged = oldWidth !== newWidth || oldHeight !== newHeight
 
     this._widthValue = newWidth
     this._heightValue = newHeight
@@ -998,7 +1001,8 @@ export abstract class Renderable extends BaseRenderable {
       this.onLayoutResize(newWidth, newHeight)
     }
 
-    if (oldX !== this._x || oldY !== this._y) {
+    const positionChanged = oldX !== this._x || oldY !== this._y
+    if (positionChanged) {
       if (this.parent) this.parent.childrenPrimarySortDirty = true
     }
   }
@@ -1147,9 +1151,18 @@ export abstract class Renderable extends BaseRenderable {
       return -1
     }
 
-    // Should we really throw for this? Maybe just log a warning in dev.
     if (!this.renderableMapById.has(anchor.id)) {
-      throw new Error("Anchor does not exist")
+      if (process.env.NODE_ENV !== "production") {
+        console.warn(`Anchor with id ${anchor.id} does not exist within the parent ${this.id}, skipping insertBefore`)
+      }
+      return -1
+    }
+
+    if (renderable === anchor || renderable.id === anchor.id) {
+      if (process.env.NODE_ENV !== "production") {
+        console.warn(`Anchor is the same as the node ${renderable.id} being inserted, skipping insertBefore`)
+      }
+      return -1
     }
 
     if (renderable.parent === this) {

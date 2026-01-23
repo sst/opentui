@@ -603,7 +603,7 @@ fn benchCalculateTextWidth(results_alloc: std.mem.Allocator, iterations: usize) 
         var stats = BenchStats{};
         for (0..iterations) |_| {
             var timer = try std.time.Timer.start();
-            _ = utf8.calculateTextWidth(text.items, 4, true, .unicode);
+            _ = utf8.calculateTextWidth(text.items, 4, false, .unicode);
             stats.record(timer.read());
         }
 

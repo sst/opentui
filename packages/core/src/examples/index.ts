@@ -57,9 +57,14 @@ import * as sliderDemo from "./slider-demo"
 import * as terminalDemo from "./terminal"
 import * as diffDemo from "./diff-demo"
 import * as keypressDebugDemo from "./keypress-debug-demo"
-import * as linkDemo from "./link-demo"
 import * as extmarksDemo from "./extmarks-demo"
+import * as markdownDemo from "./markdown-demo"
+import * as linkDemo from "./link-demo"
 import * as opacityExample from "./opacity-example"
+import * as scrollboxOverlayHitTest from "./scrollbox-overlay-hit-test"
+import * as scrollboxMouseTest from "./scrollbox-mouse-test"
+import * as textTruncationDemo from "./text-truncation-demo"
+import * as grayscaleBufferDemo from "./grayscale-buffer-demo"
 import { setupCommonDemoKeys } from "./lib/standalone-keys"
 
 interface Example {
@@ -87,6 +92,12 @@ const examples: Example[] = [
     description: "Text selection across multiple renderables with mouse drag",
     run: textSelectionExample.run,
     destroy: textSelectionExample.destroy,
+  },
+  {
+    name: "Text Truncation Demo",
+    description: "Middle truncation with ellipsis - toggle with 'T' key and resize to test responsive behavior",
+    run: textTruncationDemo.run,
+    destroy: textTruncationDemo.destroy,
   },
   {
     name: "ASCII Font Selection Demo",
@@ -156,6 +167,12 @@ const examples: Example[] = [
     destroy: diffDemo.destroy,
   },
   {
+    name: "Markdown Demo",
+    description: "Markdown rendering with table alignment, syntax highlighting, and theme switching",
+    run: markdownDemo.run,
+    destroy: markdownDemo.destroy,
+  },
+  {
     name: "Live State Management Demo",
     description: "Test automatic renderer lifecycle management with live renderables",
     run: liveStateExample.run,
@@ -204,6 +221,12 @@ const examples: Example[] = [
     destroy: transparencyDemo.destroy,
   },
   {
+    name: "Opacity Demo",
+    description: "Interactive opacity/alpha demonstration with animated boxes",
+    run: opacityExample.run,
+    destroy: opacityExample.destroy,
+  },
+  {
     name: "Static Sprite",
     description: "Static sprite rendering demo",
     run: staticSpriteExample.run,
@@ -244,6 +267,18 @@ const examples: Example[] = [
     description: "ScrollBox with sticky scroll behavior - maintains position at borders when content changes",
     run: stickyScrollExample.run,
     destroy: stickyScrollExample.destroy,
+  },
+  {
+    name: "Scrollbox Mouse Test",
+    description: "Test scrollbox mouse hit detection with hover and click events",
+    run: scrollboxMouseTest.run,
+    destroy: scrollboxMouseTest.destroy,
+  },
+  {
+    name: "Scrollbox Overlay Hit Test",
+    description: "Test scrollbox hit detection with overlays and dialogs",
+    run: scrollboxOverlayHitTest.run,
+    destroy: scrollboxOverlayHitTest.destroy,
   },
   {
     name: "Shader Cube",
@@ -312,6 +347,12 @@ const examples: Example[] = [
     destroy: editorDemo.destroy,
   },
   {
+    name: "Extmarks Demo",
+    description: "Virtual extmarks - text ranges that the cursor jumps over, with deletion handling",
+    run: extmarksDemo.run,
+    destroy: extmarksDemo.destroy,
+  },
+  {
     name: "Slider Demo",
     description: "Interactive slider components with various orientations and configurations",
     run: sliderDemo.run,
@@ -340,6 +381,12 @@ const examples: Example[] = [
     description: "Debug tool to inspect keypress events, raw input, and terminal capabilities",
     run: keypressDebugDemo.run,
     destroy: keypressDebugDemo.destroy,
+  },
+  {
+    name: "Grayscale Buffer",
+    description: "Grayscale buffer rendering with 1x vs 2x supersampled intensity",
+    run: grayscaleBufferDemo.run,
+    destroy: grayscaleBufferDemo.destroy,
   },
 ]
 

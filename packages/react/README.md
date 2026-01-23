@@ -985,7 +985,7 @@ bun add --dev react-devtools-core@7
 2. Start the standalone React DevTools:
 
 ```bash
-npx npx react-devtools@7
+npx react-devtools@7
 ```
 
 3. Run your app with the `DEV` environment variable:

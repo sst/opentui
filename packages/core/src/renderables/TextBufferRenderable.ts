@@ -19,6 +19,7 @@ export interface TextBufferOptions extends RenderableOptions<TextBufferRenderabl
   wrapMode?: "none" | "char" | "word"
   tabIndicator?: string | number
   tabIndicatorColor?: string | RGBA
+  truncate?: boolean
 }
 
 export abstract class TextBufferRenderable extends Renderable implements LineInfoProvider {
@@ -35,6 +36,7 @@ export abstract class TextBufferRenderable extends Renderable implements LineInf
   protected _tabIndicatorColor?: RGBA
   protected _scrollX: number = 0
   protected _scrollY: number = 0
+  protected _truncate: boolean = false
 
   protected textBuffer: TextBuffer
   protected textBufferView: TextBufferView
@@ -49,6 +51,7 @@ export abstract class TextBufferRenderable extends Renderable implements LineInf
     wrapMode: "word" as "none" | "char" | "word",
     tabIndicator: undefined,
     tabIndicatorColor: undefined,
+    truncate: false,
   } satisfies Partial<TextBufferOptions>
 
   constructor(ctx: RenderContext, options: TextBufferOptions) {
@@ -65,6 +68,7 @@ export abstract class TextBufferRenderable extends Renderable implements LineInf
     this._tabIndicatorColor = options.tabIndicatorColor
       ? parseColor(options.tabIndicatorColor)
       : this._defaultOptions.tabIndicatorColor
+    this._truncate = options.truncate ?? this._defaultOptions.truncate
 
     this.textBuffer = TextBuffer.create(this._ctx.widthMethod)
     this.textBufferView = TextBufferView.create(this.textBuffer)
@@ -93,6 +97,8 @@ export abstract class TextBufferRenderable extends Renderable implements LineInf
     if (this.width > 0 && this.height > 0) {
       this.textBufferView.setViewport(this._scrollX, this._scrollY, this.width, this.height)
     }
+
+    this.textBufferView.setTruncate(this._truncate)
 
     this.updateTextInfo()
   }
@@ -307,6 +313,18 @@ export abstract class TextBufferRenderable extends Renderable implements LineInf
       if (newColor !== undefined) {
         this.textBufferView.setTabIndicatorColor(newColor)
       }
+      this.requestRender()
+    }
+  }
+
+  get truncate(): boolean {
+    return this._truncate
+  }
+
+  set truncate(value: boolean) {
+    if (this._truncate !== value) {
+      this._truncate = value
+      this.textBufferView.setTruncate(value)
       this.requestRender()
     }
   }

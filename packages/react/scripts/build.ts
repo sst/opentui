@@ -67,45 +67,21 @@ if (!packageJson.module) {
   process.exit(1)
 }
 
-console.log("Building main entry point...")
-const mainBuildResult = await Bun.build({
-  entrypoints: [join(rootDir, packageJson.module)],
+console.log("Building all entry points...")
+const buildResult = await Bun.build({
+  entrypoints: [
+    join(rootDir, packageJson.module), // src/index.ts
+    join(rootDir, "src/test-utils.ts"), // test-utils
+  ],
   target: "bun",
+  format: "esm",
   outdir: join(rootDir, "dist"),
   external: externalDeps,
   splitting: true,
 })
 
-if (!mainBuildResult.success) {
-  console.error("Build failed for main entry point:", mainBuildResult.logs)
-  process.exit(1)
-}
-
-console.log("Building reconciler entry point...")
-const reconcilerBuildResult = await Bun.build({
-  entrypoints: [join(rootDir, "src/reconciler/renderer.ts")],
-  target: "bun",
-  outdir: join(rootDir, "dist/src/reconciler"),
-  external: externalDeps,
-  splitting: true,
-})
-
-if (!reconcilerBuildResult.success) {
-  console.error("Build failed for reconciler entry point:", reconcilerBuildResult.logs)
-  process.exit(1)
-}
-
-console.log("Building test-utils entry point...")
-const testingBuildResult = await Bun.build({
-  entrypoints: [join(rootDir, "src/test-utils.ts")],
-  target: "bun",
-  outdir: join(rootDir, "dist/src/test-utils"),
-  external: externalDeps,
-  splitting: true,
-})
-
-if (!testingBuildResult.success) {
-  console.error("Build failed for test-utils entry point:", testingBuildResult.logs)
+if (!buildResult.success) {
+  console.error("Build failed:", buildResult.logs)
   process.exit(1)
 }
 
@@ -157,13 +133,13 @@ const exports = {
   },
   "./renderer": {
     types: "./src/reconciler/renderer.d.ts",
-    import: "./src/reconciler/renderer.js",
-    require: "./src/reconciler/renderer.js",
+    import: "./index.js",
+    require: "./index.js",
   },
   "./test-utils": {
     types: "./src/test-utils.d.ts",
-    import: "./src/test-utils/test-utils.js",
-    require: "./src/test-utils/test-utils.js",
+    import: "./test-utils.js",
+    require: "./test-utils.js",
   },
   "./jsx-runtime": {
     types: "./jsx-runtime.d.ts",

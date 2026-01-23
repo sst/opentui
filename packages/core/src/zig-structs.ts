@@ -67,6 +67,7 @@ export const TerminalCapabilitiesStruct = defineStruct([
   ["sync", "bool_u8"],
   ["bracketed_paste", "bool_u8"],
   ["hyperlinks", "bool_u8"],
+  ["explicit_cursor_positioning", "bool_u8"],
   ["term_name", "char*"],
   ["term_name_len", "u64", { lengthOf: "term_name" }],
   ["term_version", "char*"],
