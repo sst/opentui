@@ -217,6 +217,7 @@ pub const UnifiedTextBufferView = struct {
     }
 
     pub fn setViewport(self: *Self, vp: ?Viewport) void {
+        logger.debug("[textarea-debug] tbv.setViewport {any}", .{vp});
         self.viewport = vp;
 
         // If viewport has width, set wrap width (wrapping behavior depends on wrap_mode)
@@ -316,6 +317,11 @@ pub const UnifiedTextBufferView = struct {
     pub fn updateVirtualLines(self: *Self) void {
         const buffer_dirty = self.text_buffer.isViewDirty(self.view_id);
         if (!self.virtual_lines_dirty and !buffer_dirty) return;
+
+        logger.debug(
+            "[textarea-debug] updateVirtualLines dirty={any} buffer_dirty={any} viewport={any} wrap_mode={any} wrap_width={any}",
+            .{ self.virtual_lines_dirty, buffer_dirty, self.viewport, self.wrap_mode, self.wrap_width },
+        );
 
         _ = self.virtual_lines_arena.reset(.free_all);
         self.virtual_lines = .{};
