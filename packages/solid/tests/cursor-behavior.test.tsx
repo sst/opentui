@@ -520,5 +520,99 @@ describe("Textarea Cursor Behavior Tests", () => {
       expect(viewOffsets.length).toBeGreaterThan(4)
       expect(transitions).toBeLessThanOrEqual(1)
     })
+
+    it("should expand height after multiline paste when maxHeight allows", async () => {
+      let textareaRef: TextareaRenderable | undefined
+      const [editing, setEditing] = createSignal(false)
+
+      const TextareaKeybindings = () => [
+        { name: "return", action: "submit" },
+        { name: "return", meta: true, action: "newline" },
+      ]
+
+      const ReproComponent = () => {
+        onMount(() => {
+          setEditing(true)
+        })
+
+        return (
+          <box paddingLeft={2} paddingRight={2} gap={1}>
+            <box paddingLeft={1} gap={1}>
+              <box>
+                <text fg="#E8EDF2">Custom answer</text>
+              </box>
+              <box>
+                <box flexDirection="row">
+                  <box paddingRight={1}>
+                    <text fg="#8B98A5">1.</text>
+                  </box>
+                  <box>
+                    <text fg="#E8EDF2">Type your own answer</text>
+                  </box>
+                </box>
+                <Show when={editing()}>
+                  <box paddingLeft={3}>
+                    <textarea
+                      ref={(val: TextareaRenderable) => {
+                        textareaRef = val
+                        queueMicrotask(() => {
+                          val.focus()
+                          val.gotoLineEnd()
+                        })
+                      }}
+                      height={1}
+                      maxHeight={6}
+                      initialValue=""
+                      placeholder="Type your own answer"
+                      textColor="#E8EDF2"
+                      focusedTextColor="#E8EDF2"
+                      cursorColor="#86B7FF"
+                      keyBindings={TextareaKeybindings()}
+                    />
+                  </box>
+                </Show>
+              </box>
+            </box>
+            <box paddingBottom={1} gap={1} flexDirection="row">
+              <text fg="#E8EDF2">
+                enter <span style={{ fg: "#8B98A5" }}>submit</span>
+              </text>
+            </box>
+          </box>
+        )
+      }
+
+      testSetup = await testRender(() => <ReproComponent />, { width: 50, height: 12 })
+
+      await testSetup.renderOnce()
+      await new Promise((resolve) => setTimeout(resolve, 0))
+
+      const heights: number[] = []
+      const captureHeight = () => {
+        if (textareaRef) {
+          heights.push(textareaRef.getLayoutNode().getComputedHeight())
+        }
+      }
+
+      testSetup.renderer.addPostProcessFn(captureHeight)
+
+      testSetup.renderer.start()
+      await Bun.sleep(30)
+
+      heights.length = 0
+      await testSetup.mockInput.pasteBracketedText("Line 1\nLine 2\nLine 3")
+
+      await Bun.sleep(200)
+      testSetup.renderer.pause()
+      await testSetup.renderer.idle()
+
+      testSetup.renderer.removePostProcessFn(captureHeight)
+
+      const uniqueHeights = new Set(heights)
+
+      expect(textareaRef?.plainText).toBe("Line 1\nLine 2\nLine 3")
+      expect(heights.length).toBeGreaterThan(4)
+      expect(Math.max(...uniqueHeights)).toBeGreaterThan(1)
+    })
   })
 })
