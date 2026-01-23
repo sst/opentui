@@ -1,8 +1,8 @@
 import type { TextBuffer } from "./text-buffer"
 import { RGBA } from "./lib"
 import { resolveRenderLib, type RenderLib } from "./zig"
-import { type Pointer, toArrayBuffer } from "bun:ffi"
-import { type BorderStyle, type BorderSides, BorderCharArrays } from "./lib"
+import { type Pointer, toArrayBuffer, ptr } from "bun:ffi"
+import { type BorderStyle, type BorderSides, BorderCharArrays, parseBorderStyle } from "./lib"
 import { type WidthMethod } from "./types"
 import type { TextBufferView } from "./text-buffer-view"
 import type { EditorView } from "./editor-view"
@@ -293,6 +293,41 @@ export class OptimizedBuffer {
     )
   }
 
+  public drawGrayscaleBuffer(
+    posX: number,
+    posY: number,
+    intensities: Float32Array,
+    srcWidth: number,
+    srcHeight: number,
+    fg: RGBA | null = null,
+    bg: RGBA | null = null,
+  ): void {
+    this.guard()
+    this.lib.bufferDrawGrayscaleBuffer(this.bufferPtr, posX, posY, ptr(intensities), srcWidth, srcHeight, fg, bg)
+  }
+
+  public drawGrayscaleBufferSupersampled(
+    posX: number,
+    posY: number,
+    intensities: Float32Array,
+    srcWidth: number,
+    srcHeight: number,
+    fg: RGBA | null = null,
+    bg: RGBA | null = null,
+  ): void {
+    this.guard()
+    this.lib.bufferDrawGrayscaleBufferSupersampled(
+      this.bufferPtr,
+      posX,
+      posY,
+      ptr(intensities),
+      srcWidth,
+      srcHeight,
+      fg,
+      bg,
+    )
+  }
+
   public resize(width: number, height: number): void {
     this.guard()
     if (this._width === width && this._height === height) return
@@ -319,7 +354,7 @@ export class OptimizedBuffer {
     titleAlignment?: "left" | "center" | "right"
   }): void {
     this.guard()
-    const style = options.borderStyle || "single"
+    const style = parseBorderStyle(options.borderStyle, "single")
     const borderChars: Uint32Array = options.customBorderChars ?? BorderCharArrays[style]
 
     const packedOptions = packDrawOptions(options.border, options.shouldFill ?? false, options.titleAlignment || "left")

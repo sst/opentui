@@ -17,6 +17,25 @@ export interface BorderCharacters {
 export type BorderStyle = "single" | "double" | "rounded" | "heavy"
 export type BorderSides = "top" | "right" | "bottom" | "left"
 
+const VALID_BORDER_STYLES: readonly BorderStyle[] = ["single", "double", "rounded", "heavy"] as const
+
+export function isValidBorderStyle(value: unknown): value is BorderStyle {
+  return typeof value === "string" && VALID_BORDER_STYLES.includes(value as BorderStyle)
+}
+
+export function parseBorderStyle(value: unknown, fallback: BorderStyle = "single"): BorderStyle {
+  if (isValidBorderStyle(value)) {
+    return value
+  }
+
+  if (value !== undefined && value !== null) {
+    console.warn(
+      `Invalid borderStyle "${value}", falling back to "${fallback}". Valid values are: ${VALID_BORDER_STYLES.join(", ")}`,
+    )
+  }
+  return fallback
+}
+
 export const BorderChars: Record<BorderStyle, BorderCharacters> = {
   single: {
     topLeft: "┌",
