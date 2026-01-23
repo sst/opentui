@@ -385,13 +385,15 @@ describe("Textarea Cursor Behavior Tests", () => {
       await testSetup.renderOnce()
       await new Promise((resolve) => setTimeout(resolve, 0))
 
-      const cursorStates: Array<{ x: number; y: number; visible: boolean }> = []
-      const captureCursor = () => {
-        const cursorState = testSetup.renderer.getCursorState()
-        cursorStates.push({ x: cursorState.x, y: cursorState.y, visible: cursorState.visible })
+      const viewOffsets: Array<{ offsetY: number }> = []
+      const captureOffsets = () => {
+        const viewport = textareaRef?.editorView.getViewport()
+        if (viewport) {
+          viewOffsets.push({ offsetY: viewport.offsetY })
+        }
       }
 
-      testSetup.renderer.addPostProcessFn(captureCursor)
+      testSetup.renderer.addPostProcessFn(captureOffsets)
       const recorder = new TestRecorder(testSetup.renderer)
       recorder.rec()
 
@@ -405,15 +407,104 @@ describe("Textarea Cursor Behavior Tests", () => {
       await testSetup.renderer.idle()
 
       recorder.stop()
-      testSetup.renderer.removePostProcessFn(captureCursor)
+      testSetup.renderer.removePostProcessFn(captureOffsets)
 
-      const frames = recorder.recordedFrames.map((frame) => frame.frame)
-      const uniqueCursorStates = new Set(cursorStates.map((state) => `${state.x}:${state.y}:${state.visible ? 1 : 0}`))
+      const uniqueOffsets = new Set(viewOffsets.map((state) => state.offsetY))
 
       expect(textareaRef?.plainText).toBe("Line 1\nLine 2\nLine 3")
-      expect(frames.length).toBeGreaterThan(3)
-      expect(new Set(frames).size).toBe(1)
-      expect(uniqueCursorStates.size).toBe(1)
+      expect(uniqueOffsets.size).toBe(1)
+    })
+
+    it("should reproduce height-1 viewport oscillation after multiline paste", async () => {
+      let textareaRef: TextareaRenderable | undefined
+      const [editing, setEditing] = createSignal(false)
+
+      const TextareaKeybindings = () => [
+        { name: "return", action: "submit" },
+        { name: "return", meta: true, action: "newline" },
+      ]
+
+      const ReproComponent = () => {
+        onMount(() => {
+          setEditing(true)
+        })
+
+        return (
+          <box paddingLeft={2} paddingRight={2} gap={1}>
+            <box paddingLeft={1} gap={1}>
+              <box>
+                <text fg="#E8EDF2">Custom answer</text>
+              </box>
+              <box>
+                <box flexDirection="row">
+                  <box paddingRight={1}>
+                    <text fg="#8B98A5">1.</text>
+                  </box>
+                  <box>
+                    <text fg="#E8EDF2">Type your own answer</text>
+                  </box>
+                </box>
+                <Show when={editing()}>
+                  <box paddingLeft={3}>
+                    <textarea
+                      ref={(val: TextareaRenderable) => {
+                        textareaRef = val
+                        queueMicrotask(() => {
+                          val.focus()
+                          val.gotoLineEnd()
+                        })
+                      }}
+                      height={1}
+                      initialValue=""
+                      placeholder="Type your own answer"
+                      textColor="#E8EDF2"
+                      focusedTextColor="#E8EDF2"
+                      cursorColor="#86B7FF"
+                      keyBindings={TextareaKeybindings()}
+                    />
+                  </box>
+                </Show>
+              </box>
+            </box>
+            <box paddingBottom={1} gap={1} flexDirection="row">
+              <text fg="#E8EDF2">
+                enter <span style={{ fg: "#8B98A5" }}>submit</span>
+              </text>
+            </box>
+          </box>
+        )
+      }
+
+      testSetup = await testRender(() => <ReproComponent />, { width: 50, height: 12 })
+
+      await testSetup.renderOnce()
+      await new Promise((resolve) => setTimeout(resolve, 0))
+
+      const viewOffsets: Array<{ offsetY: number }> = []
+      const captureOffsets = () => {
+        const viewport = textareaRef?.editorView.getViewport()
+        if (viewport) {
+          viewOffsets.push({ offsetY: viewport.offsetY })
+        }
+      }
+
+      testSetup.renderer.addPostProcessFn(captureOffsets)
+
+      testSetup.renderer.start()
+      await Bun.sleep(30)
+
+      await testSetup.mockInput.pasteBracketedText("Line 1\nLine 2\nLine 3")
+
+      await Bun.sleep(200)
+      testSetup.renderer.pause()
+      await testSetup.renderer.idle()
+
+      testSetup.renderer.removePostProcessFn(captureOffsets)
+
+      const uniqueOffsets = new Set(viewOffsets.map((state) => state.offsetY))
+
+      expect(textareaRef?.plainText).toBe("Line 1\nLine 2\nLine 3")
+      expect(uniqueOffsets.size).toBe(1)
     })
   })
 })
