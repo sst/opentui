@@ -140,14 +140,11 @@ export abstract class EditBufferRenderable extends Renderable implements LineInf
     this._contentChangeListener = options.onContentChange
 
     this.editBuffer.on("cursor-changed", () => {
-      const cursor = this.editBuffer.getCursorPosition()
       console.log("[textarea-debug] cursor-changed", {
         id: this.id,
-        logical: cursor,
-        visual: this.editorView.getVisualCursor(),
-        viewport: this.editorView.getViewport(),
       })
       if (this._cursorChangeListener) {
+        const cursor = this.editBuffer.getCursorPosition()
         this._cursorChangeListener({
           line: cursor.row,
           visualColumn: cursor.col,
@@ -158,10 +155,6 @@ export abstract class EditBufferRenderable extends Renderable implements LineInf
     this.editBuffer.on("content-changed", () => {
       console.log("[textarea-debug] content-changed", {
         id: this.id,
-        textLength: this.editBuffer.getText().length,
-        logical: this.editBuffer.getCursorPosition(),
-        visual: this.editorView.getVisualCursor(),
-        viewport: this.editorView.getViewport(),
       })
       this.yogaNode.markDirty()
       this.requestRender()
@@ -407,9 +400,6 @@ export abstract class EditBufferRenderable extends Renderable implements LineInf
       id: this.id,
       width,
       height,
-      logical: this.editBuffer.getCursorPosition(),
-      visual: this.editorView.getVisualCursor(),
-      viewport: this.editorView.getViewport(),
     })
     this.editorView.setViewportSize(width, height)
   }
@@ -749,10 +739,6 @@ export abstract class EditBufferRenderable extends Renderable implements LineInf
   public insertText(text: string): void {
     console.log("[textarea-debug] insertText", {
       id: this.id,
-      length: text.length,
-      preview: text.slice(0, 80),
-      cursor: this.editBuffer.getCursorPosition(),
-      viewport: this.editorView.getViewport(),
     })
     this.editBuffer.insertText(text)
     this.yogaNode.markDirty()
