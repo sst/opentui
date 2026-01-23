@@ -3,9 +3,27 @@ import { RGBA } from "./lib"
 import { resolveRenderLib, type RenderLib } from "./zig"
 import { type Pointer, toArrayBuffer, ptr } from "bun:ffi"
 import { type BorderStyle, type BorderSides, BorderCharArrays, parseBorderStyle } from "./lib"
-import { type WidthMethod } from "./types"
+import {
+  type WidthMethod,
+  TextAttributes,
+  VTermStyleFlags,
+  type VTermSpan,
+  type VTermLine,
+  type VTermData,
+} from "./types"
 import type { TextBufferView } from "./text-buffer-view"
 import type { EditorView } from "./editor-view"
+
+function textAttrsToVTermFlags(attr: number): number {
+  let flags = 0
+  if (attr & TextAttributes.BOLD) flags |= VTermStyleFlags.BOLD
+  if (attr & TextAttributes.DIM) flags |= VTermStyleFlags.FAINT
+  if (attr & TextAttributes.ITALIC) flags |= VTermStyleFlags.ITALIC
+  if (attr & TextAttributes.UNDERLINE) flags |= VTermStyleFlags.UNDERLINE
+  if (attr & TextAttributes.INVERSE) flags |= VTermStyleFlags.INVERSE
+  if (attr & TextAttributes.STRIKETHROUGH) flags |= VTermStyleFlags.STRIKETHROUGH
+  return flags
+}
 
 // Pack drawing options into a single u32
 // bits 0-3: borderSides, bit 4: shouldFill, bits 5-6: titleAlignment
@@ -151,6 +169,62 @@ export class OptimizedBuffer {
     const outputBuffer = new Uint8Array(realSize)
     const bytesWritten = this.lib.bufferWriteResolvedChars(this.bufferPtr, outputBuffer, addLineBreaks)
     return outputBuffer.slice(0, bytesWritten)
+  }
+
+  public getSpanLines(): VTermLine[] {
+    this.guard()
+    const { char, fg, bg, attributes } = this.buffers
+    const lines: VTermLine[] = []
+
+    const rgbaToHex = (r: number, g: number, b: number, a: number): string | null => {
+      if (a === 0) return null
+      const toHex = (v: number) =>
+        Math.round(v * 255)
+          .toString(16)
+          .padStart(2, "0")
+      return `#${toHex(r)}${toHex(g)}${toHex(b)}`
+    }
+
+    for (let y = 0; y < this._height; y++) {
+      const spans: VTermSpan[] = []
+      let currentSpan: VTermSpan | null = null
+
+      for (let x = 0; x < this._width; x++) {
+        const i = y * this._width + x
+        const cp = char[i]
+        const cellFg = rgbaToHex(fg[i * 4], fg[i * 4 + 1], fg[i * 4 + 2], fg[i * 4 + 3])
+        const cellBg = rgbaToHex(bg[i * 4], bg[i * 4 + 1], bg[i * 4 + 2], bg[i * 4 + 3])
+        const cellFlags = textAttrsToVTermFlags(attributes[i] & 0xff)
+        const cellChar = cp > 0 ? String.fromCodePoint(cp) : " "
+
+        // Check if this cell continues the current span
+        if (currentSpan && currentSpan.fg === cellFg && currentSpan.bg === cellBg && currentSpan.flags === cellFlags) {
+          currentSpan.text += cellChar
+          currentSpan.width += 1
+        } else {
+          // Start a new span
+          if (currentSpan) {
+            spans.push(currentSpan)
+          }
+          currentSpan = {
+            text: cellChar,
+            fg: cellFg,
+            bg: cellBg,
+            flags: cellFlags,
+            width: 1,
+          }
+        }
+      }
+
+      // Push the last span
+      if (currentSpan) {
+        spans.push(currentSpan)
+      }
+
+      lines.push({ spans })
+    }
+
+    return lines
   }
 
   public clear(bg: RGBA = RGBA.fromValues(0, 0, 0, 1)): void {
