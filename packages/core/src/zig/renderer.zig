@@ -828,6 +828,7 @@ pub const CliRenderer = struct {
 
     pub fn writeOut(self: *CliRenderer, data: []const u8) void {
         if (data.len == 0) return;
+        if (self.testing) return;
 
         if (self.useThread) {
             self.renderMutex.lock();
@@ -844,6 +845,8 @@ pub const CliRenderer = struct {
     }
 
     pub fn writeOutMultiple(self: *CliRenderer, data_slices: []const []const u8) void {
+        if (self.testing) return;
+
         if (self.useThread) {
             self.renderMutex.lock();
             while (self.renderInProgress) {
