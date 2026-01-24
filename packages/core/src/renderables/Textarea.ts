@@ -150,8 +150,6 @@ export class TextareaRenderable extends EditBufferRenderable {
   private _actionHandlers: Map<TextareaAction, () => boolean>
   private _initialValueSet: boolean = false
   private _submitListener: ((event: SubmitEvent) => void) | undefined = undefined
-  private _maxHeightValue: number | `${number}%` | null | undefined = undefined
-  private _minHeightValue: number | `${number}%` | null | undefined = undefined
 
   private static readonly defaults = {
     backgroundColor: "transparent",
@@ -165,8 +163,6 @@ export class TextareaRenderable extends EditBufferRenderable {
   constructor(ctx: RenderContext, options: TextareaOptions) {
     const defaults = TextareaRenderable.defaults
 
-    const hasExplicitHeight = typeof options.height === "number"
-
     // Pass base colors to parent constructor (these become the unfocused colors)
     const baseOptions = {
       ...options,
@@ -174,17 +170,6 @@ export class TextareaRenderable extends EditBufferRenderable {
       textColor: options.textColor || defaults.textColor,
     }
     super(ctx, baseOptions)
-
-    this._maxHeightValue = options.maxHeight
-    this._minHeightValue = options.minHeight
-
-    if (hasExplicitHeight && this._maxHeightValue !== undefined) {
-      if (this._minHeightValue === undefined) {
-        super.minHeight = options.height
-        this._minHeightValue = options.height
-      }
-      super.height = "auto"
-    }
 
     // Store unfocused colors separately (parent's properties get overwritten when focused)
     this._unfocusedBackgroundColor = parseColor(options.backgroundColor || defaults.backgroundColor)
@@ -643,32 +628,6 @@ export class TextareaRenderable extends EditBufferRenderable {
       this._unfocusedBackgroundColor = newColor
       this.updateColors()
     }
-  }
-
-  override set maxHeight(value: number | `${number}%` | null | undefined) {
-    this._maxHeightValue = value
-    super.maxHeight = value
-
-    if (value != null && typeof this._height === "number") {
-      if (this._minHeightValue === undefined) {
-        super.minHeight = this._height
-        this._minHeightValue = this._height
-      }
-      super.height = "auto"
-    }
-  }
-
-  override set height(value: number | "auto" | `${number}%`) {
-    if (this._maxHeightValue !== undefined && typeof value === "number") {
-      if (this._minHeightValue === undefined) {
-        super.minHeight = value
-        this._minHeightValue = value
-      }
-      super.height = "auto"
-      return
-    }
-
-    super.height = value
   }
 
   override get textColor(): RGBA {
