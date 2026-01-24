@@ -187,7 +187,7 @@ export class MouseEvent {
   }
   public readonly scroll?: ScrollInfo
   public readonly target: Renderable | null
-  public readonly isSelecting?: boolean
+  public readonly isDragging?: boolean
   private _propagationStopped: boolean = false
   private _defaultPrevented: boolean = false
 
@@ -199,7 +199,7 @@ export class MouseEvent {
     return this._defaultPrevented
   }
 
-  constructor(target: Renderable | null, attributes: RawMouseEvent & { source?: Renderable; isSelecting?: boolean }) {
+  constructor(target: Renderable | null, attributes: RawMouseEvent & { source?: Renderable; isDragging?: boolean }) {
     this.target = target
     this.type = attributes.type
     this.button = attributes.button
@@ -208,7 +208,7 @@ export class MouseEvent {
     this.modifiers = attributes.modifiers
     this.scroll = attributes.scroll
     this.source = attributes.source
-    this.isSelecting = attributes.isSelecting
+    this.isDragging = attributes.isDragging
   }
 
   public stopPropagation(): void {
@@ -1150,7 +1150,7 @@ export class CliRenderer extends EventEmitter implements RenderContext {
       if (
         mouseEvent.type === "down" &&
         mouseEvent.button === MouseButton.LEFT &&
-        !this.currentSelection?.isSelecting &&
+        !this.currentSelection?.isDragging &&
         !mouseEvent.modifiers.ctrl
       ) {
         if (
@@ -1166,20 +1166,20 @@ export class CliRenderer extends EventEmitter implements RenderContext {
         }
       }
 
-      if (mouseEvent.type === "drag" && this.currentSelection?.isSelecting) {
+      if (mouseEvent.type === "drag" && this.currentSelection?.isDragging) {
         this.updateSelection(maybeRenderable, mouseEvent.x, mouseEvent.y)
 
         if (maybeRenderable) {
-          const event = new MouseEvent(maybeRenderable, { ...mouseEvent, isSelecting: true })
+          const event = new MouseEvent(maybeRenderable, { ...mouseEvent, isDragging: true })
           maybeRenderable.processMouseEvent(event)
         }
 
         return true
       }
 
-      if (mouseEvent.type === "up" && this.currentSelection?.isSelecting) {
+      if (mouseEvent.type === "up" && this.currentSelection?.isDragging) {
         if (maybeRenderable) {
-          const event = new MouseEvent(maybeRenderable, { ...mouseEvent, isSelecting: true })
+          const event = new MouseEvent(maybeRenderable, { ...mouseEvent, isDragging: true })
           maybeRenderable.processMouseEvent(event)
         }
 
@@ -1189,7 +1189,7 @@ export class CliRenderer extends EventEmitter implements RenderContext {
 
       if (mouseEvent.type === "down" && mouseEvent.button === MouseButton.LEFT && this.currentSelection) {
         if (mouseEvent.modifiers.ctrl) {
-          this.currentSelection.isSelecting = true
+          this.currentSelection.isDragging = true
           this.updateSelection(maybeRenderable, mouseEvent.x, mouseEvent.y)
           return true
         }
@@ -2003,7 +2003,7 @@ export class CliRenderer extends EventEmitter implements RenderContext {
   }
 
   public requestSelectionUpdate(): void {
-    if (this.currentSelection?.isSelecting) {
+    if (this.currentSelection?.isDragging) {
       const pointer = this._latestPointer
 
       const maybeRenderableId = this.hitTest(pointer.x, pointer.y)
@@ -2024,7 +2024,7 @@ export class CliRenderer extends EventEmitter implements RenderContext {
 
   private finishSelection(): void {
     if (this.currentSelection) {
-      this.currentSelection.isSelecting = false
+      this.currentSelection.isDragging = false
       this.emit("selection", this.currentSelection)
       // Notify renderables that selection is finished (no longer dragging)
       this.notifySelectablesOfSelectionChange()
