@@ -976,7 +976,7 @@ pre {
   min-width: 0;
 }
 
-.content>*:first-child {
+.content > *:first-child {
   margin-top: 0;
 }
 
@@ -1190,6 +1190,68 @@ pre {
   .install-tab {
     padding: 6px 8px;
     font-size: 12px;
+  }
+
+  /* Code editor mobile fixes */
+  .code-editor {
+    overflow: hidden;
+  }
+
+  .code-editor-header {
+    flex-wrap: nowrap;
+  }
+
+  .code-editor-dots {
+    display: none;
+  }
+
+  .code-editor-tabs {
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+    scrollbar-width: none;
+  }
+
+  .code-editor-tabs::-webkit-scrollbar {
+    display: none;
+  }
+
+  .code-editor-tab {
+    padding: 10px 12px;
+    font-size: 12px;
+    white-space: nowrap;
+    flex-shrink: 0;
+  }
+
+  .code-editor-copy {
+    padding: 0 12px;
+    flex-shrink: 0;
+  }
+
+  .code-editor-body {
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+  }
+
+  .code-editor-body pre {
+    font-size: 13px;
+    white-space: pre;
+    overflow-x: visible;
+  }
+
+  .code-editor-lines {
+    font-size: 13px;
+    padding-right: var(--space-md);
+    margin-right: var(--space-md);
+  }
+
+  /* What is OpenTUI section mobile spacing */
+  .feature-item {
+    margin: 0;
+    padding: 10px 0;
+  }
+
+  .what-list div {
+    font-size: 15px;
   }
 }
 
