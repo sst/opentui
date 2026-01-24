@@ -14,7 +14,10 @@ export default defineConfig({
   base: "/opentui",
   markdown: {
     shikiConfig: {
-      theme: "min-light",
+      themes: {
+        light: "min-light",
+        dark: "github-dark",
+      },
       transformers: [copyButtonTransformer],
     },
   },
