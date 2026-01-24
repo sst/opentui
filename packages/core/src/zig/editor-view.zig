@@ -58,7 +58,6 @@ pub const EditorView = struct {
         if (!has_selection or self.selection_follow_cursor) {
             const cursor = self.edit_buffer.getPrimaryCursor();
             const vcursor = self.logicalToVisualCursor(cursor.row, cursor.col);
-            logger.debug("[textarea-debug] cursorChanged cursor={any} vcursor={any}", .{ cursor, vcursor });
             self.ensureCursorVisible(vcursor.visual_row);
         }
     }
@@ -120,10 +119,6 @@ pub const EditorView = struct {
     /// this will trigger a reflow by updating the TextBufferView's wrap width.
     /// moveCursor: if true, moves cursor to stay within viewport bounds (prevents viewport reset)
     pub fn setViewport(self: *EditorView, vp: ?tbv.Viewport, moveCursor: bool) void {
-        logger.debug(
-            "[textarea-debug] setViewport vp={any} moveCursor={any}",
-            .{ vp, moveCursor },
-        );
         self.text_buffer_view.setViewport(vp);
 
         if (moveCursor) {
@@ -151,11 +146,6 @@ pub const EditorView = struct {
         const cursor_too_close_to_top = vcursor.visual_row < vp.y + margin_lines;
         const cursor_too_close_to_bottom = vcursor.visual_row >= vp.y + vp.height - margin_lines;
 
-        logger.debug(
-            "[textarea-debug] makeCursorVisible cursor={any} vcursor={any} vp={any} margins={d}",
-            .{ cursor, vcursor, vp, margin_lines },
-        );
-
         if (cursor_above_viewport or cursor_below_viewport or cursor_too_close_to_top or cursor_too_close_to_bottom) {
             const target_visual_row = if (cursor_above_viewport or cursor_too_close_to_top)
                 vp.y + margin_lines
@@ -170,11 +160,6 @@ pub const EditorView = struct {
 
                 const line_width = iter_mod.lineWidthAt(&self.edit_buffer.tb.rope, target_logical_row);
                 const target_col = @min(cursor.col, line_width);
-
-                logger.debug(
-                    "[textarea-debug] moveCursorToVisible target_row={d} target_col={d} line_width={d}",
-                    .{ target_logical_row, target_col, line_width },
-                );
 
                 if (self.edit_buffer.cursors.items.len > 0) {
                     const offset = iter_mod.coordsToOffset(&self.edit_buffer.tb.rope, target_logical_row, target_col) orelse return;
@@ -231,13 +216,6 @@ pub const EditorView = struct {
         } else if (cursor_line >= vp.y + viewport_height - margin_lines) {
             const desired_offset = cursor_line + margin_lines - viewport_height + 1;
             new_offset_y = @min(desired_offset, max_offset_y);
-        }
-
-        if (new_offset_y != vp.y or new_offset_x != vp.x) {
-            logger.debug(
-                "[textarea-debug] ensureCursorVisible cursor_line={d} vp={any} margin_lines={d} total_lines={d} max_offset_y={d} new_offset=({d},{d})",
-                .{ cursor_line, vp, margin_lines, total_lines, max_offset_y, new_offset_x, new_offset_y },
-            );
         }
 
         if (self.text_buffer_view.wrap_mode == .none) {

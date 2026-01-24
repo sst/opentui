@@ -2,7 +2,6 @@ import { describe, expect, it, beforeEach, afterEach } from "bun:test"
 import { testRender } from "../index"
 import { createSignal, onMount, Show } from "solid-js"
 import type { TextareaRenderable } from "@opentui/core"
-import { TestRecorder } from "@opentui/core/testing"
 
 let testSetup: Awaited<ReturnType<typeof testRender>>
 
@@ -320,17 +319,17 @@ describe("Textarea Cursor Behavior Tests", () => {
     })
   })
 
-  describe("Multiline Paste Repro", () => {
-    it("should reproduce cursor/viewport flicker when pasting multiline content", async () => {
+  describe("Multiline Paste", () => {
+    it("keeps viewport offsets stable when pasting multiline content", async () => {
       let textareaRef: TextareaRenderable | undefined
       const [editing, setEditing] = createSignal(false)
 
-      const TextareaKeybindings = () => [
+      const textareaKeybindings = () => [
         { name: "return", action: "submit" },
         { name: "return", meta: true, action: "newline" },
       ]
 
-      const ReproComponent = () => {
+      const PasteTestComponent = () => {
         onMount(() => {
           setEditing(true)
         })
@@ -365,7 +364,7 @@ describe("Textarea Cursor Behavior Tests", () => {
                       textColor="#E8EDF2"
                       focusedTextColor="#E8EDF2"
                       cursorColor="#86B7FF"
-                      keyBindings={TextareaKeybindings()}
+                      keyBindings={textareaKeybindings()}
                     />
                   </box>
                 </Show>
@@ -380,7 +379,7 @@ describe("Textarea Cursor Behavior Tests", () => {
         )
       }
 
-      testSetup = await testRender(() => <ReproComponent />, { width: 50, height: 12 })
+      testSetup = await testRender(() => <PasteTestComponent />, { width: 50, height: 12 })
 
       await testSetup.renderOnce()
       await new Promise((resolve) => setTimeout(resolve, 0))
@@ -394,9 +393,6 @@ describe("Textarea Cursor Behavior Tests", () => {
       }
 
       testSetup.renderer.addPostProcessFn(captureOffsets)
-      const recorder = new TestRecorder(testSetup.renderer)
-      recorder.rec()
-
       testSetup.renderer.start()
       await Bun.sleep(30)
 
@@ -407,7 +403,6 @@ describe("Textarea Cursor Behavior Tests", () => {
       testSetup.renderer.pause()
       await testSetup.renderer.idle()
 
-      recorder.stop()
       testSetup.renderer.removePostProcessFn(captureOffsets)
 
       let transitions = 0
@@ -422,16 +417,16 @@ describe("Textarea Cursor Behavior Tests", () => {
       expect(transitions).toBeLessThanOrEqual(1)
     })
 
-    it("should reproduce height-1 viewport oscillation after multiline paste", async () => {
+    it("keeps viewport offsets steady after multiline paste", async () => {
       let textareaRef: TextareaRenderable | undefined
       const [editing, setEditing] = createSignal(false)
 
-      const TextareaKeybindings = () => [
+      const textareaKeybindings = () => [
         { name: "return", action: "submit" },
         { name: "return", meta: true, action: "newline" },
       ]
 
-      const ReproComponent = () => {
+      const PasteTestComponent = () => {
         onMount(() => {
           setEditing(true)
         })
@@ -467,7 +462,7 @@ describe("Textarea Cursor Behavior Tests", () => {
                       textColor="#E8EDF2"
                       focusedTextColor="#E8EDF2"
                       cursorColor="#86B7FF"
-                      keyBindings={TextareaKeybindings()}
+                      keyBindings={textareaKeybindings()}
                     />
                   </box>
                 </Show>
@@ -482,7 +477,7 @@ describe("Textarea Cursor Behavior Tests", () => {
         )
       }
 
-      testSetup = await testRender(() => <ReproComponent />, { width: 50, height: 12 })
+      testSetup = await testRender(() => <PasteTestComponent />, { width: 50, height: 12 })
 
       await testSetup.renderOnce()
       await new Promise((resolve) => setTimeout(resolve, 0))
@@ -521,16 +516,16 @@ describe("Textarea Cursor Behavior Tests", () => {
       expect(transitions).toBeLessThanOrEqual(1)
     })
 
-    it("should expand height after multiline paste when maxHeight allows", async () => {
+    it("expands height after multiline paste when maxHeight allows", async () => {
       let textareaRef: TextareaRenderable | undefined
       const [editing, setEditing] = createSignal(false)
 
-      const TextareaKeybindings = () => [
+      const textareaKeybindings = () => [
         { name: "return", action: "submit" },
         { name: "return", meta: true, action: "newline" },
       ]
 
-      const ReproComponent = () => {
+      const PasteTestComponent = () => {
         onMount(() => {
           setEditing(true)
         })
@@ -567,7 +562,7 @@ describe("Textarea Cursor Behavior Tests", () => {
                       textColor="#E8EDF2"
                       focusedTextColor="#E8EDF2"
                       cursorColor="#86B7FF"
-                      keyBindings={TextareaKeybindings()}
+                      keyBindings={textareaKeybindings()}
                     />
                   </box>
                 </Show>
@@ -582,7 +577,7 @@ describe("Textarea Cursor Behavior Tests", () => {
         )
       }
 
-      testSetup = await testRender(() => <ReproComponent />, { width: 50, height: 12 })
+      testSetup = await testRender(() => <PasteTestComponent />, { width: 50, height: 12 })
 
       await testSetup.renderOnce()
       await new Promise((resolve) => setTimeout(resolve, 0))

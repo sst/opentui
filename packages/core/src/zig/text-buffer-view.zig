@@ -217,7 +217,6 @@ pub const UnifiedTextBufferView = struct {
     }
 
     pub fn setViewport(self: *Self, vp: ?Viewport) void {
-        logger.debug("[textarea-debug] tbv.setViewport prev={any} next={any}", .{ self.viewport, vp });
         self.viewport = vp;
 
         // If viewport has width, set wrap width (wrapping behavior depends on wrap_mode)
