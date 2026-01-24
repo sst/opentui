@@ -598,6 +598,7 @@ fn benchMemoryUsage(allocator: std.mem.Allocator, iterations: usize) ![]BenchRes
 pub fn run(
     allocator: std.mem.Allocator,
     show_mem: bool,
+    bench_filter: ?[]const u8,
 ) ![]BenchResult {
     _ = show_mem;
 
@@ -608,27 +609,39 @@ pub fn run(
 
     // Rebuild index benchmarks
     const rebuild_results = try benchRebuildMarkerIndex(allocator, iterations);
-    try all_results.appendSlice(allocator, rebuild_results);
+    for (rebuild_results) |r| {
+        if (bench_utils.matchesBenchFilter(r.name, bench_filter)) try all_results.append(allocator, r);
+    }
 
     // Marker lookup benchmarks
     const lookup_results = try benchMarkerLookup(allocator, iterations);
-    try all_results.appendSlice(allocator, lookup_results);
+    for (lookup_results) |r| {
+        if (bench_utils.matchesBenchFilter(r.name, bench_filter)) try all_results.append(allocator, r);
+    }
 
     // Marker count benchmarks
     const count_results = try benchMarkerCount(allocator, iterations);
-    try all_results.appendSlice(allocator, count_results);
+    for (count_results) |r| {
+        if (bench_utils.matchesBenchFilter(r.name, bench_filter)) try all_results.append(allocator, r);
+    }
 
     // Tree depth impact
     const depth_results = try benchDepthVsPerformance(allocator, iterations);
-    try all_results.appendSlice(allocator, depth_results);
+    for (depth_results) |r| {
+        if (bench_utils.matchesBenchFilter(r.name, bench_filter)) try all_results.append(allocator, r);
+    }
 
     // Edit workflows
     const edit_results = try benchEditThenRebuild(allocator, iterations);
-    try all_results.appendSlice(allocator, edit_results);
+    for (edit_results) |r| {
+        if (bench_utils.matchesBenchFilter(r.name, bench_filter)) try all_results.append(allocator, r);
+    }
 
     // Memory usage comparison
     const memory_results = try benchMemoryUsage(allocator, iterations);
-    try all_results.appendSlice(allocator, memory_results);
+    for (memory_results) |r| {
+        if (bench_utils.matchesBenchFilter(r.name, bench_filter)) try all_results.append(allocator, r);
+    }
 
     return try all_results.toOwnedSlice(allocator);
 }

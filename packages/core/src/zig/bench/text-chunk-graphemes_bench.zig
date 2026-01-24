@@ -175,6 +175,7 @@ fn benchGetGraphemes(
 pub fn run(
     allocator: std.mem.Allocator,
     show_mem: bool,
+    bench_filter: ?[]const u8,
 ) ![]BenchResult {
     // Global pool and unicode data are initialized once in bench.zig
     _ = gp.initGlobalPool(allocator);
@@ -197,7 +198,9 @@ pub fn run(
                 iterations,
                 show_mem,
             );
-            try results.append(allocator, result);
+            if (bench_utils.matchesBenchFilter(result.name, bench_filter)) {
+                try results.append(allocator, result);
+            }
         }
     }
 

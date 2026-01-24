@@ -303,6 +303,7 @@ fn benchGetLineCount(allocator: std.mem.Allocator, iterations: usize) ![]BenchRe
 pub fn run(
     allocator: std.mem.Allocator,
     show_mem: bool,
+    bench_filter: ?[]const u8,
 ) ![]BenchResult {
     _ = show_mem;
 
@@ -313,13 +314,19 @@ pub fn run(
 
     // Current implementation benchmarks
     const coords_results = try benchCoordsToOffsetCurrent(allocator, iterations);
-    try all_results.appendSlice(allocator, coords_results);
+    for (coords_results) |r| {
+        if (bench_utils.matchesBenchFilter(r.name, bench_filter)) try all_results.append(allocator, r);
+    }
 
     const offset_results = try benchOffsetToCoordsCurrent(allocator, iterations);
-    try all_results.appendSlice(allocator, offset_results);
+    for (offset_results) |r| {
+        if (bench_utils.matchesBenchFilter(r.name, bench_filter)) try all_results.append(allocator, r);
+    }
 
     const count_results = try benchGetLineCount(allocator, iterations);
-    try all_results.appendSlice(allocator, count_results);
+    for (count_results) |r| {
+        if (bench_utils.matchesBenchFilter(r.name, bench_filter)) try all_results.append(allocator, r);
+    }
 
     return try all_results.toOwnedSlice(allocator);
 }

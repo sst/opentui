@@ -672,6 +672,7 @@ fn benchCalculateTextWidth(results_alloc: std.mem.Allocator, iterations: usize) 
 pub fn run(
     allocator: std.mem.Allocator,
     show_mem: bool,
+    bench_filter: ?[]const u8,
 ) ![]BenchResult {
     _ = show_mem;
 
@@ -682,27 +683,39 @@ pub fn run(
 
     // isAsciiOnly benchmarks
     const ascii_only_results = try benchIsAsciiOnly(allocator, iterations);
-    try all_results.appendSlice(allocator, ascii_only_results);
+    for (ascii_only_results) |r| {
+        if (bench_utils.matchesBenchFilter(r.name, bench_filter)) try all_results.append(allocator, r);
+    }
 
     // findLineBreaks benchmarks
     const line_breaks_results = try benchFindLineBreaks(allocator, iterations);
-    try all_results.appendSlice(allocator, line_breaks_results);
+    for (line_breaks_results) |r| {
+        if (bench_utils.matchesBenchFilter(r.name, bench_filter)) try all_results.append(allocator, r);
+    }
 
     // findWrapBreaks benchmarks
     const wrap_breaks_results = try benchFindWrapBreaks(allocator, iterations);
-    try all_results.appendSlice(allocator, wrap_breaks_results);
+    for (wrap_breaks_results) |r| {
+        if (bench_utils.matchesBenchFilter(r.name, bench_filter)) try all_results.append(allocator, r);
+    }
 
     // findWrapPosByWidth benchmarks
     const wrap_pos_results = try benchFindWrapPosByWidth(allocator, iterations);
-    try all_results.appendSlice(allocator, wrap_pos_results);
+    for (wrap_pos_results) |r| {
+        if (bench_utils.matchesBenchFilter(r.name, bench_filter)) try all_results.append(allocator, r);
+    }
 
     // findPosByWidth benchmarks
     const pos_width_results = try benchFindPosByWidth(allocator, iterations);
-    try all_results.appendSlice(allocator, pos_width_results);
+    for (pos_width_results) |r| {
+        if (bench_utils.matchesBenchFilter(r.name, bench_filter)) try all_results.append(allocator, r);
+    }
 
     // calculateTextWidth benchmarks
     const text_width_results = try benchCalculateTextWidth(allocator, iterations);
-    try all_results.appendSlice(allocator, text_width_results);
+    for (text_width_results) |r| {
+        if (bench_utils.matchesBenchFilter(r.name, bench_filter)) try all_results.append(allocator, r);
+    }
 
     return all_results.toOwnedSlice(allocator);
 }

@@ -416,6 +416,7 @@ fn benchWordBoundaryOperations(
 pub fn run(
     allocator: std.mem.Allocator,
     show_mem: bool,
+    bench_filter: ?[]const u8,
 ) ![]BenchResult {
     // Global pool and unicode data are initialized once in bench.zig
     const pool = gp.initGlobalPool(allocator);
@@ -425,18 +426,26 @@ pub fn run(
 
     const iterations: usize = 5;
 
-    // Run all benchmark categories
+    // Run all benchmark categories and filter results
     const insert_results = try benchInsertOperations(allocator, pool, iterations, show_mem);
-    try all_results.appendSlice(allocator, insert_results);
+    for (insert_results) |r| {
+        if (bench_utils.matchesBenchFilter(r.name, bench_filter)) try all_results.append(allocator, r);
+    }
 
     const delete_results = try benchDeleteOperations(allocator, pool, iterations, show_mem);
-    try all_results.appendSlice(allocator, delete_results);
+    for (delete_results) |r| {
+        if (bench_utils.matchesBenchFilter(r.name, bench_filter)) try all_results.append(allocator, r);
+    }
 
     const mixed_results = try benchMixedOperations(allocator, pool, iterations, show_mem);
-    try all_results.appendSlice(allocator, mixed_results);
+    for (mixed_results) |r| {
+        if (bench_utils.matchesBenchFilter(r.name, bench_filter)) try all_results.append(allocator, r);
+    }
 
     const word_boundary_results = try benchWordBoundaryOperations(allocator, pool, iterations, show_mem);
-    try all_results.appendSlice(allocator, word_boundary_results);
+    for (word_boundary_results) |r| {
+        if (bench_utils.matchesBenchFilter(r.name, bench_filter)) try all_results.append(allocator, r);
+    }
 
     return try all_results.toOwnedSlice(allocator);
 }

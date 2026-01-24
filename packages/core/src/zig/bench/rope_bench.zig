@@ -433,6 +433,7 @@ fn benchAccessPatterns(allocator: std.mem.Allocator, iterations: usize) ![]Bench
 pub fn run(
     allocator: std.mem.Allocator,
     show_mem: bool,
+    bench_filter: ?[]const u8,
 ) ![]BenchResult {
     _ = show_mem; // Rope benchmarks don't currently track memory
 
@@ -441,18 +442,26 @@ pub fn run(
 
     const iterations: usize = 10;
 
-    // Run all benchmark categories
+    // Run all benchmark categories and filter results
     const insert_results = try benchInsertOperations(allocator, iterations);
-    try all_results.appendSlice(allocator, insert_results);
+    for (insert_results) |r| {
+        if (bench_utils.matchesBenchFilter(r.name, bench_filter)) try all_results.append(allocator, r);
+    }
 
     const delete_results = try benchDeleteOperations(allocator, iterations);
-    try all_results.appendSlice(allocator, delete_results);
+    for (delete_results) |r| {
+        if (bench_utils.matchesBenchFilter(r.name, bench_filter)) try all_results.append(allocator, r);
+    }
 
     const bulk_results = try benchBulkOperations(allocator, iterations);
-    try all_results.appendSlice(allocator, bulk_results);
+    for (bulk_results) |r| {
+        if (bench_utils.matchesBenchFilter(r.name, bench_filter)) try all_results.append(allocator, r);
+    }
 
     const access_results = try benchAccessPatterns(allocator, iterations);
-    try all_results.appendSlice(allocator, access_results);
+    for (access_results) |r| {
+        if (bench_utils.matchesBenchFilter(r.name, bench_filter)) try all_results.append(allocator, r);
+    }
 
     return all_results.toOwnedSlice(allocator);
 }

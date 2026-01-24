@@ -308,6 +308,7 @@ fn benchMeasureForDimensionsLayout(
 pub fn run(
     allocator: std.mem.Allocator,
     show_mem: bool,
+    bench_filter: ?[]const u8,
 ) ![]BenchResult {
     // Global pool and unicode data are initialized once in bench.zig
     const pool = gp.initGlobalPool(allocator);
@@ -319,7 +320,9 @@ pub fn run(
 
     // Run setText benchmarks
     const setText_results = try benchSetText(allocator, pool, iterations, show_mem);
-    try all_results.appendSlice(allocator, setText_results);
+    for (setText_results) |r| {
+        if (bench_utils.matchesBenchFilter(r.name, bench_filter)) try all_results.append(allocator, r);
+    }
 
     // Generate test data for wrapping benchmarks
     const text_multiline = try generateLargeText(allocator, 5000, 1 * 1024 * 1024);
@@ -344,6 +347,11 @@ pub fn run(
             "TextBufferView measureForDimensions ({s}, {d:.2} MiB)",
             .{ scenario.label, @as(f64, @floatFromInt(text_multiline.len)) / (1024.0 * 1024.0) },
         );
+
+        if (!bench_utils.matchesBenchFilter(bench_name, bench_filter)) {
+            allocator.free(bench_name);
+            continue;
+        }
 
         var bench_result = try benchMeasureForDimensionsLayout(
             allocator,
@@ -390,6 +398,11 @@ pub fn run(
             scenario.width,
             line_type,
         });
+
+        if (!bench_utils.matchesBenchFilter(bench_name, bench_filter)) {
+            allocator.free(bench_name);
+            continue;
+        }
 
         var bench_result = try benchWrap(
             allocator,

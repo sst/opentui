@@ -785,6 +785,7 @@ fn benchRenderWithSelection(
 pub fn run(
     allocator: std.mem.Allocator,
     show_mem: bool,
+    bench_filter: ?[]const u8,
 ) ![]BenchResult {
     // Global pool and unicode data are initialized once in bench.zig
     const pool = gp.initGlobalPool(allocator);
@@ -795,37 +796,59 @@ pub fn run(
     const iterations: usize = 10;
 
     const cold_cache_results = try benchRenderColdCache(allocator, pool, iterations, show_mem);
-    try all_results.appendSlice(allocator, cold_cache_results);
+    for (cold_cache_results) |r| {
+        if (bench_utils.matchesBenchFilter(r.name, bench_filter)) try all_results.append(allocator, r);
+    }
 
     const warm_cache_results = try benchRenderWarmCache(allocator, pool, iterations, show_mem);
-    try all_results.appendSlice(allocator, warm_cache_results);
+    for (warm_cache_results) |r| {
+        if (bench_utils.matchesBenchFilter(r.name, bench_filter)) try all_results.append(allocator, r);
+    }
 
     const wrap_render_results = try benchWrapAndRender(allocator, pool, iterations, show_mem);
-    try all_results.appendSlice(allocator, wrap_render_results);
+    for (wrap_render_results) |r| {
+        if (bench_utils.matchesBenchFilter(r.name, bench_filter)) try all_results.append(allocator, r);
+    }
 
     const small_res_results = try benchRenderSmallResolution(allocator, pool, iterations, show_mem);
-    try all_results.appendSlice(allocator, small_res_results);
+    for (small_res_results) |r| {
+        if (bench_utils.matchesBenchFilter(r.name, bench_filter)) try all_results.append(allocator, r);
+    }
 
     const medium_res_results = try benchRenderMediumResolution(allocator, pool, iterations, show_mem);
-    try all_results.appendSlice(allocator, medium_res_results);
+    for (medium_res_results) |r| {
+        if (bench_utils.matchesBenchFilter(r.name, bench_filter)) try all_results.append(allocator, r);
+    }
 
     const massive_res_results = try benchRenderMassiveResolution(allocator, pool, iterations, show_mem);
-    try all_results.appendSlice(allocator, massive_res_results);
+    for (massive_res_results) |r| {
+        if (bench_utils.matchesBenchFilter(r.name, bench_filter)) try all_results.append(allocator, r);
+    }
 
     const massive_lines_results = try benchRenderMassiveLines(allocator, pool, iterations, show_mem);
-    try all_results.appendSlice(allocator, massive_lines_results);
+    for (massive_lines_results) |r| {
+        if (bench_utils.matchesBenchFilter(r.name, bench_filter)) try all_results.append(allocator, r);
+    }
 
     const one_massive_line_results = try benchRenderOneMassiveLine(allocator, pool, iterations, show_mem);
-    try all_results.appendSlice(allocator, one_massive_line_results);
+    for (one_massive_line_results) |r| {
+        if (bench_utils.matchesBenchFilter(r.name, bench_filter)) try all_results.append(allocator, r);
+    }
 
     const many_chunks_results = try benchRenderManySmallChunks(allocator, pool, iterations, show_mem);
-    try all_results.appendSlice(allocator, many_chunks_results);
+    for (many_chunks_results) |r| {
+        if (bench_utils.matchesBenchFilter(r.name, bench_filter)) try all_results.append(allocator, r);
+    }
 
     const viewport_results = try benchRenderWithViewport(allocator, pool, iterations, show_mem);
-    try all_results.appendSlice(allocator, viewport_results);
+    for (viewport_results) |r| {
+        if (bench_utils.matchesBenchFilter(r.name, bench_filter)) try all_results.append(allocator, r);
+    }
 
     const selection_results = try benchRenderWithSelection(allocator, pool, iterations, show_mem);
-    try all_results.appendSlice(allocator, selection_results);
+    for (selection_results) |r| {
+        if (bench_utils.matchesBenchFilter(r.name, bench_filter)) try all_results.append(allocator, r);
+    }
 
     return try all_results.toOwnedSlice(allocator);
 }

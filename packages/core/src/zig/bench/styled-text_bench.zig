@@ -416,6 +416,7 @@ fn benchHighlightOperations(allocator: std.mem.Allocator, iterations: usize) ![]
 pub fn run(
     allocator: std.mem.Allocator,
     show_mem: bool,
+    bench_filter: ?[]const u8,
 ) ![]BenchResult {
     _ = show_mem;
 
@@ -425,10 +426,14 @@ pub fn run(
     const iterations: usize = 100;
 
     const styled_text_results = try benchSetStyledTextOperations(allocator, iterations);
-    try all_results.appendSlice(allocator, styled_text_results);
+    for (styled_text_results) |r| {
+        if (bench_utils.matchesBenchFilter(r.name, bench_filter)) try all_results.append(allocator, r);
+    }
 
     const highlight_results = try benchHighlightOperations(allocator, iterations);
-    try all_results.appendSlice(allocator, highlight_results);
+    for (highlight_results) |r| {
+        if (bench_utils.matchesBenchFilter(r.name, bench_filter)) try all_results.append(allocator, r);
+    }
 
     return try all_results.toOwnedSlice(allocator);
 }
