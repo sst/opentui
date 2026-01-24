@@ -665,6 +665,8 @@ pre {
 .code-editor-body {
   display: none;
   padding: var(--space-2xl) var(--section-padding-x);
+  -webkit-text-size-adjust: 100%;
+  text-size-adjust: 100%;
 }
 
 .code-editor-body[data-active="true"] {
@@ -683,6 +685,8 @@ pre {
   text-align: right;
   user-select: none;
   min-width: 24px;
+  -webkit-text-size-adjust: 100%;
+  text-size-adjust: 100%;
 }
 
 .code-editor-body pre {
@@ -691,6 +695,8 @@ pre {
   line-height: 1.7;
   margin: 0;
   background: transparent;
+  -webkit-text-size-adjust: 100%;
+  text-size-adjust: 100%;
 }
 
 .code-editor-body .keyword {
