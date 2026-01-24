@@ -154,40 +154,56 @@ pub fn main() !void {
     if (!json_output and filter != null) {
         try stdout.print("Filtering benchmarks by: \"{s}\"\n", .{filter.?});
     }
+    if (!json_output and bench_filter != null) {
+        try stdout.print("Filtering individual benchmarks by: \"{s}\"\n", .{bench_filter.?});
+    }
 
     var ran_any = false;
 
     for (benchmarks) |bench| {
-        if (matchesFilter(bench.name, filter)) {
-            if (!json_output) {
-                try stdout.print("\n=== {s} Benchmarks ===\n\n", .{bench.name});
-                try stdout.flush();
-            }
+        if (!matchesFilter(bench.name, filter)) continue;
 
-            // Use arena for results only - benchmark modules manage their own temp memory
-            var results_arena = std.heap.ArenaAllocator.init(allocator);
-            defer results_arena.deinit();
+        // Use arena for results only - benchmark modules manage their own temp memory
+        var results_arena = std.heap.ArenaAllocator.init(allocator);
+        defer results_arena.deinit();
 
-            const start_time = std.time.nanoTimestamp();
-            const results = try bench.run(results_arena.allocator(), show_mem, bench_filter);
-            const end_time = std.time.nanoTimestamp();
-            const elapsed_ns = end_time - start_time;
+        const start_time = std.time.nanoTimestamp();
+        const results = try bench.run(results_arena.allocator(), show_mem, bench_filter);
+        const end_time = std.time.nanoTimestamp();
+        const elapsed_ns = end_time - start_time;
 
-            if (json_output) {
-                try bench_utils.printResultsJson(stdout, results, bench.name);
-            } else {
-                try bench_utils.printResults(stdout, results);
-                const elapsed_ms = @as(f64, @floatFromInt(elapsed_ns)) / 1_000_000.0;
-                try stdout.print("\n  Overall time: {d:.2}ms\n", .{elapsed_ms});
-            }
+        if (results.len == 0) continue;
 
-            ran_any = true;
+        if (!json_output) {
+            try stdout.print("\n=== {s} Benchmarks ===\n\n", .{bench.name});
+            try stdout.flush();
         }
+
+        if (json_output) {
+            try bench_utils.printResultsJson(stdout, results, bench.name);
+        } else {
+            try bench_utils.printResults(stdout, results);
+            const elapsed_ms = @as(f64, @floatFromInt(elapsed_ns)) / 1_000_000.0;
+            try stdout.print("\n  Overall time: {d:.2}ms\n", .{elapsed_ms});
+        }
+
+        ran_any = true;
     }
 
     if (!ran_any) {
         if (!json_output) {
-            try stdout.print("\nNo benchmarks matched filter: \"{s}\"\n", .{filter.?});
+            if (filter != null and bench_filter != null) {
+                try stdout.print(
+                    "\nNo benchmarks matched filters: category=\"{s}\", bench=\"{s}\"\n",
+                    .{ filter.?, bench_filter.? },
+                );
+            } else if (bench_filter != null) {
+                try stdout.print("\nNo benchmarks matched bench filter: \"{s}\"\n", .{bench_filter.?});
+            } else if (filter != null) {
+                try stdout.print("\nNo benchmarks matched filter: \"{s}\"\n", .{filter.?});
+            } else {
+                try stdout.print("\nNo benchmarks ran.\n", .{});
+            }
             try stdout.print("Use --help to see available benchmarks.\n", .{});
         }
         try stdout.flush();
