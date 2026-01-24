@@ -171,7 +171,12 @@ export class OptimizedBuffer {
         const cellChar = cp > 0 ? String.fromCodePoint(cp) : " "
 
         // Check if this cell continues the current span
-        if (currentSpan && currentSpan.fg.equals(cellFg) && currentSpan.bg.equals(cellBg) && currentSpan.attributes === cellAttrs) {
+        if (
+          currentSpan &&
+          currentSpan.fg.equals(cellFg) &&
+          currentSpan.bg.equals(cellBg) &&
+          currentSpan.attributes === cellAttrs
+        ) {
           currentSpan.text += cellChar
           currentSpan.width += 1
         } else {
