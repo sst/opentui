@@ -1,0 +1,182 @@
+---
+title: Keyboard input
+description: Handling keyboard events in OpenTUI
+order: 3
+---
+
+# Keyboard input
+
+OpenTUI parses terminal input and provides structured key events. The `renderer.keyInput` EventEmitter emits `keypress` and `paste` events with detailed key information.
+
+## Basic key handling
+
+```typescript
+import { createCliRenderer, type KeyEvent } from "@opentui/core"
+
+const renderer = await createCliRenderer()
+const keyHandler = renderer.keyInput
+
+keyHandler.on("keypress", (key: KeyEvent) => {
+  console.log("Key name:", key.name)
+  console.log("Sequence:", key.sequence)
+  console.log("Ctrl pressed:", key.ctrl)
+  console.log("Shift pressed:", key.shift)
+  console.log("Alt pressed:", key.meta)
+  console.log("Option pressed:", key.option)
+})
+```
+
+## KeyEvent properties
+
+Each `KeyEvent` contains:
+
+| Property   | Type      | Description                              |
+| ---------- | --------- | ---------------------------------------- |
+| `name`     | `string`  | The key name (e.g., "a", "escape", "f1") |
+| `sequence` | `string`  | The raw escape sequence                  |
+| `ctrl`     | `boolean` | Whether Ctrl was held                    |
+| `shift`    | `boolean` | Whether Shift was held                   |
+| `meta`     | `boolean` | Whether Alt/Meta was held                |
+| `option`   | `boolean` | Whether Option was held (macOS)          |
+
+## Common key patterns
+
+### Single keys
+
+```typescript
+keyHandler.on("keypress", (key: KeyEvent) => {
+  if (key.name === "escape") {
+    console.log("Escape pressed!")
+  }
+
+  if (key.name === "return") {
+    console.log("Enter pressed!")
+  }
+
+  if (key.name === "space") {
+    console.log("Space pressed!")
+  }
+})
+```
+
+### Modifier combinations
+
+```typescript
+keyHandler.on("keypress", (key: KeyEvent) => {
+  // Ctrl+C
+  if (key.ctrl && key.name === "c") {
+    console.log("Ctrl+C pressed!")
+  }
+
+  // Ctrl+S
+  if (key.ctrl && key.name === "s") {
+    console.log("Save shortcut!")
+  }
+
+  // Shift+F1
+  if (key.shift && key.name === "f1") {
+    console.log("Shift+F1 pressed!")
+  }
+
+  // Alt+Enter
+  if (key.meta && key.name === "return") {
+    console.log("Alt+Enter pressed!")
+  }
+})
+```
+
+### Function keys
+
+```typescript
+keyHandler.on("keypress", (key: KeyEvent) => {
+  // F1-F12
+  if (key.name === "f1") {
+    showHelp()
+  }
+
+  if (key.name === "f5") {
+    refresh()
+  }
+})
+```
+
+### Arrow keys
+
+```typescript
+keyHandler.on("keypress", (key: KeyEvent) => {
+  switch (key.name) {
+    case "up":
+      moveCursorUp()
+      break
+    case "down":
+      moveCursorDown()
+      break
+    case "left":
+      moveCursorLeft()
+      break
+    case "right":
+      moveCursorRight()
+      break
+  }
+})
+```
+
+## Paste events
+
+Handle pasted text separately from individual keypresses:
+
+```typescript
+import { type PasteEvent } from "@opentui/core"
+
+keyHandler.on("paste", (event: PasteEvent) => {
+  console.log("Pasted text:", event.text)
+  // Insert text at cursor position
+})
+```
+
+## Exit on Ctrl+C
+
+Configure the renderer to automatically exit on Ctrl+C:
+
+```typescript
+const renderer = await createCliRenderer({
+  exitOnCtrlC: true, // Default behavior
+})
+
+// Or handle it manually
+const renderer = await createCliRenderer({
+  exitOnCtrlC: false,
+})
+
+renderer.keyInput.on("keypress", (key: KeyEvent) => {
+  if (key.ctrl && key.name === "c") {
+    // Custom cleanup before exit
+    cleanup()
+    process.exit(0)
+  }
+})
+```
+
+## Focus and key routing
+
+Focus components to receive keyboard input. OpenTUI routes events to the focused component:
+
+```typescript
+import { InputRenderable } from "@opentui/core"
+
+const input = new InputRenderable(renderer, {
+  id: "my-input",
+  placeholder: "Type here...",
+})
+
+// Focus the input to receive key events
+input.focus()
+
+// Or with constructs
+import { Input } from "@opentui/core"
+
+const inputNode = Input({ placeholder: "Type here..." })
+inputNode.focus() // Queued for when instantiated
+
+renderer.root.add(inputNode)
+```

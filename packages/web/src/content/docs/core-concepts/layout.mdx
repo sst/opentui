@@ -1,0 +1,246 @@
+---
+title: Layout System
+description: Flexible positioning and sizing with Yoga/Flexbox
+order: 1
+---
+
+# Layout System
+
+OpenTUI uses the Yoga layout engine to provide CSS Flexbox-like capabilities for responsive terminal layouts. You can create complex, dynamic interfaces that adapt to terminal size changes.
+
+## Flexbox Basics
+
+The layout system supports standard flexbox properties:
+
+```typescript
+import { BoxRenderable, createCliRenderer } from "@opentui/core"
+
+const renderer = await createCliRenderer()
+
+const container = new BoxRenderable(renderer, {
+  id: "container",
+  flexDirection: "row",
+  justifyContent: "space-between",
+  alignItems: "center",
+  width: "100%",
+  height: 10,
+})
+
+const leftPanel = new BoxRenderable(renderer, {
+  id: "left",
+  flexGrow: 1,
+  height: 10,
+  backgroundColor: "#444",
+})
+
+const rightPanel = new BoxRenderable(renderer, {
+  id: "right",
+  width: 20,
+  height: 10,
+  backgroundColor: "#666",
+})
+
+container.add(leftPanel)
+container.add(rightPanel)
+renderer.root.add(container)
+```
+
+## Flex Direction
+
+Control the direction of child elements:
+
+```typescript
+// Vertical layout (default)
+{
+  flexDirection: "column"
+}
+
+// Horizontal layout
+{
+  flexDirection: "row"
+}
+
+// Reversed directions
+{
+  flexDirection: "row-reverse"
+}
+{
+  flexDirection: "column-reverse"
+}
+```
+
+## Justify Content
+
+Align children along the main axis:
+
+```typescript
+{
+  justifyContent: "flex-start"
+} // Pack at start
+{
+  justifyContent: "flex-end"
+} // Pack at end
+{
+  justifyContent: "center"
+} // Center children
+{
+  justifyContent: "space-between"
+} // Even spacing, no edge gaps
+{
+  justifyContent: "space-around"
+} // Even spacing with edge gaps
+{
+  justifyContent: "space-evenly"
+} // Truly even spacing
+```
+
+## Align Items
+
+Align children along the cross axis:
+
+```typescript
+{
+  alignItems: "flex-start"
+} // Align to start
+{
+  alignItems: "flex-end"
+} // Align to end
+{
+  alignItems: "center"
+} // Center on cross axis
+{
+  alignItems: "stretch"
+} // Stretch to fill (default)
+{
+  alignItems: "baseline"
+} // Align baselines
+```
+
+## Sizing
+
+### Fixed Sizes
+
+```typescript
+{
+  width: 30,   // Fixed width in characters
+  height: 10,  // Fixed height in rows
+}
+```
+
+### Percentage Sizes
+
+```typescript
+{
+  width: "100%",  // Full width of parent
+  height: "50%",  // Half height of parent
+}
+```
+
+### Flex Growing and Shrinking
+
+```typescript
+{
+  flexGrow: 1,    // Take up available space
+  flexShrink: 0,  // Don't shrink below content size
+  flexBasis: 100, // Initial size before flex adjustments
+}
+```
+
+## Positioning
+
+### Relative (Default)
+
+Elements flow normally in the layout:
+
+```typescript
+{
+  position: "relative",
+}
+```
+
+### Absolute
+
+Position elements relative to their parent:
+
+```typescript
+{
+  position: "absolute",
+  left: 10,
+  top: 5,
+  right: 10,
+  bottom: 5,
+}
+```
+
+## Padding and Margin
+
+```typescript
+{
+  // Uniform padding
+  padding: 2,
+
+  // Individual sides
+  paddingTop: 1,
+  paddingRight: 2,
+  paddingBottom: 1,
+  paddingLeft: 2,
+
+  // Margin works the same way
+  margin: 1,
+  marginTop: 1,
+  marginRight: 2,
+  marginBottom: 1,
+  marginLeft: 2,
+}
+```
+
+## Using Constructs
+
+The same layout properties work with the declarative API:
+
+```typescript
+import { Box, Text } from "@opentui/core"
+
+renderer.root.add(
+  Box(
+    {
+      flexDirection: "row",
+      width: "100%",
+      height: 10,
+    },
+    Box(
+      {
+        flexGrow: 1,
+        backgroundColor: "#333",
+        padding: 1,
+      },
+      Text({ content: "Left Panel" }),
+    ),
+    Box(
+      {
+        width: 20,
+        backgroundColor: "#555",
+        padding: 1,
+      },
+      Text({ content: "Right Panel" }),
+    ),
+  ),
+)
+```
+
+## Responsive Layouts
+
+Listen for terminal resize events to create responsive layouts:
+
+```typescript
+const renderer = await createCliRenderer()
+
+renderer.on("resize", (width, height) => {
+  // Update layout based on new dimensions
+  if (width < 80) {
+    container.flexDirection = "column"
+  } else {
+    container.flexDirection = "row"
+  }
+})
+```
