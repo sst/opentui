@@ -2,13 +2,13 @@ import { describe, test, expect, beforeEach, afterEach } from "bun:test"
 import { createTestRenderer, type TestRenderer } from "./test-renderer"
 import { TextRenderable } from "../renderables/Text"
 import { BoxRenderable } from "../renderables/Box"
-import { VTermStyleFlags, TextAttributes, type VTermData } from "../types"
+import { TextAttributes, type CapturedFrame } from "../types"
 import { RGBA } from "../lib"
 
 describe("captureSpans", () => {
   let renderer: TestRenderer
   let renderOnce: () => Promise<void>
-  let captureSpans: () => VTermData
+  let captureSpans: () => CapturedFrame
 
   beforeEach(async () => {
     const setup = await createTestRenderer({ width: 40, height: 10 })
@@ -68,7 +68,9 @@ describe("captureSpans", () => {
     const redSpan = firstLine.spans.find((s) => s.text.includes("Red"))
 
     expect(redSpan).toBeDefined()
-    expect(redSpan!.fg).toBe("#ff0000")
+    expect(redSpan!.fg.r).toBe(1)
+    expect(redSpan!.fg.g).toBe(0)
+    expect(redSpan!.fg.b).toBe(0)
   })
 
   test("captures background color", async () => {
@@ -82,17 +84,17 @@ describe("captureSpans", () => {
 
     const data = captureSpans()
     const secondLine = data.lines[1]
-    const greenSpan = secondLine.spans.find((s) => s.bg === "#00ff00")
+    const greenSpan = secondLine.spans.find((s) => s.bg.g === 1 && s.bg.r === 0 && s.bg.b === 0)
 
     expect(greenSpan).toBeDefined()
   })
 
-  test("returns null for transparent colors", async () => {
+  test("returns alpha 0 for transparent colors", async () => {
     await renderOnce()
 
     const data = captureSpans()
     const firstLine = data.lines[0]
-    const transparentSpan = firstLine.spans.find((s) => s.bg === null)
+    const transparentSpan = firstLine.spans.find((s) => s.bg.a === 0)
 
     expect(transparentSpan).toBeDefined()
   })
@@ -110,10 +112,10 @@ describe("captureSpans", () => {
     const styledSpan = firstLine.spans.find((s) => s.text.includes("Styled"))
 
     expect(styledSpan).toBeDefined()
-    expect(styledSpan!.flags & VTermStyleFlags.BOLD).toBeTruthy()
-    expect(styledSpan!.flags & VTermStyleFlags.ITALIC).toBeTruthy()
-    expect(styledSpan!.flags & VTermStyleFlags.UNDERLINE).toBeTruthy()
-    expect(styledSpan!.flags & VTermStyleFlags.FAINT).toBeTruthy()
+    expect(styledSpan!.attributes & TextAttributes.BOLD).toBeTruthy()
+    expect(styledSpan!.attributes & TextAttributes.ITALIC).toBeTruthy()
+    expect(styledSpan!.attributes & TextAttributes.UNDERLINE).toBeTruthy()
+    expect(styledSpan!.attributes & TextAttributes.DIM).toBeTruthy()
   })
 
   test("includes cursor position", async () => {
@@ -139,7 +141,7 @@ describe("captureSpans", () => {
     const data = captureSpans()
     const allSpans = data.lines.flatMap((l) => l.spans)
 
-    expect(allSpans.some((s) => s.fg === "#ff0000")).toBe(true)
-    expect(allSpans.some((s) => s.fg === "#00ff00")).toBe(true)
+    expect(allSpans.some((s) => s.fg.r === 1 && s.fg.g === 0)).toBe(true)
+    expect(allSpans.some((s) => s.fg.g === 1 && s.fg.r === 0)).toBe(true)
   })
 })
