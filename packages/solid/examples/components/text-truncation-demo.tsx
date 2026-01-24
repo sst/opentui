@@ -36,6 +36,12 @@ export function TextTruncationDemo() {
     return t`Truncate: ${truncateColor(bold(truncateStatus))} | Wrap: ${wrapColor(bold(wrapMode().toUpperCase()))} | ${cyan("T")}: toggle truncate | ${cyan("W")}: cycle wrap | ${cyan("R")}: resize | ${cyan("C")}: clear selection | ${cyan("Ctrl+C")}: exit`
   })
 
+  const styledContent = createMemo(
+    () =>
+      t`This paragraph mixes ${bold(cyan("styled"))} text with ${magenta("color")} accents, ${green("emphasis")}, and ${yellow("highlighted")}
+segments to exercise truncation on formatted content.`,
+  )
+
   const updateSelectionTexts = (selectedText: string) => {
     const lines = selectedText.split("\n")
     const totalLength = selectedText.length
@@ -96,7 +102,7 @@ export function TextTruncationDemo() {
         setRightGrow(1)
       }
     }
-    if (key.name === "c") {
+    if (key.name === "c" && !key.ctrl) {
       renderer.clearSelection()
       setStatusText("Selection cleared")
       setSelectionStartText("")

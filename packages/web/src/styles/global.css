@@ -65,6 +65,9 @@ body {
   line-height: 1.6;
   color: var(--color-text);
   background-color: var(--color-bg);
+  transition:
+    background-color 0.2s ease,
+    color 0.2s ease;
 }
 
 a {
@@ -104,11 +107,11 @@ pre {
   margin: 0;
 }
 
-/* ============================================
-   LANDING PAGE - Container Layout (opencode.ai style)
-   ============================================ */
+/* ============
+   LANDING PAGE 
+   ============
 
-/* Main wrapper - centers the bordered container */
+/* Main wrapper */
 .landing {
   display: flex;
   flex-direction: column;
@@ -137,6 +140,9 @@ pre {
   justify-content: space-between;
   padding: var(--space-lg) var(--section-padding-x);
   border-bottom: 1px solid var(--color-border);
+  transition:
+    background-color 0.2s ease,
+    border-color 0.2s ease;
 }
 
 .landing-logo {
@@ -248,7 +254,7 @@ pre {
   margin-bottom: var(--space-xl);
 }
 
-/* Install Region - matching opencode.ai exactly */
+/* Install Region */
 .install-section {
   width: 100%;
   max-width: 100%;
@@ -461,14 +467,6 @@ pre {
   transition: color 0.15s;
 }
 
-.feature-item:hover {
-  /* background: var(--color-bg-weak-hover); */
-}
-
-.feature-item.active {
-  /* background: var(--color-bg-weak); */
-}
-
 .feature-item.active strong {
   color: var(--color-text-strong);
 }
@@ -480,7 +478,8 @@ pre {
 
 .what-actions {
   display: flex;
-  justify-content: flex-start; /* Left align in split view */
+  justify-content: flex-start;
+  /* Left align in split view */
   margin-top: var(--space-xl);
   padding-left: 0;
 }
@@ -541,6 +540,9 @@ pre {
   background: var(--editor-bg-header);
   border-top: 1px solid var(--color-border);
   border-bottom: 1px solid var(--color-border);
+  transition:
+    background-color 0.2s ease,
+    border-color 0.2s ease;
 }
 
 .code-editor-header {
@@ -811,6 +813,9 @@ pre {
   border-bottom: 1px solid var(--color-border);
   display: flex;
   align-items: center;
+  transition:
+    background-color 0.2s ease,
+    border-color 0.2s ease;
 }
 
 .header-content {
@@ -1006,6 +1011,7 @@ pre {
   border-radius: 6px;
   overflow-x: auto;
   margin: var(--space-md) 0;
+  transition: background-color 0.2s ease;
 }
 
 .content pre .copy-btn {
@@ -1184,5 +1190,164 @@ pre {
   .install-tab {
     padding: 6px 8px;
     font-size: 12px;
+  }
+
+  /* Code editor mobile fixes */
+  .code-editor {
+    overflow: hidden;
+  }
+
+  .code-editor-header {
+    flex-wrap: nowrap;
+  }
+
+  .code-editor-dots {
+    display: none;
+  }
+
+  .code-editor-tabs {
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+    scrollbar-width: none;
+  }
+
+  .code-editor-tabs::-webkit-scrollbar {
+    display: none;
+  }
+
+  .code-editor-tab {
+    padding: 10px 12px;
+    font-size: 12px;
+    white-space: nowrap;
+    flex-shrink: 0;
+  }
+
+  .code-editor-copy {
+    padding: 0 12px;
+    flex-shrink: 0;
+  }
+
+  .code-editor-body {
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+  }
+
+  .code-editor-body pre {
+    font-size: 13px;
+    white-space: pre;
+    overflow-x: visible;
+  }
+
+  .code-editor-lines {
+    font-size: 13px;
+    padding-right: var(--space-md);
+    margin-right: var(--space-md);
+  }
+
+  /* What is OpenTUI section mobile spacing */
+  .feature-item {
+    margin: 0;
+    padding: 10px 0;
+  }
+
+  .what-list div {
+    font-size: 15px;
+  }
+}
+
+/* ============================================
+   DARK THEME
+============================================ */
+@media (prefers-color-scheme: dark) {
+  :root {
+    /* Backgrounds - warm-tinted dark, not pure black */
+    --color-bg: hsl(0, 5%, 9%);
+    --color-bg-weak: hsl(0, 4%, 12%);
+    --color-bg-weak-hover: hsl(0, 4%, 16%);
+    --color-bg-strong: hsl(0, 10%, 92%);
+    --color-bg-strong-hover: hsl(0, 10%, 98%);
+
+    /* Text - proper contrast hierarchy */
+    --color-text: hsl(0, 5%, 68%);
+    --color-text-weak: hsl(0, 3%, 50%);
+    --color-text-strong: hsl(0, 10%, 92%);
+    --color-text-inverted: hsl(0, 5%, 9%);
+
+    /* Borders - subtle, works on dark backgrounds */
+    --color-border: rgba(255, 255, 255, 0.12);
+    --color-border-weak: rgba(255, 255, 255, 0.08);
+
+    --color-icon: hsl(0, 3%, 55%);
+    --color-success: #22c55e;
+  }
+
+  /* Dark mode code editor theme */
+  .code-section {
+    --editor-bg: hsl(0, 5%, 9%);
+    --editor-bg-header: hsl(0, 4%, 11%);
+    --editor-bg-tab: hsl(0, 5%, 9%);
+    --editor-bg-tab-active: hsl(0, 5%, 9%);
+    --editor-bg-tab-hover: hsl(0, 4%, 14%);
+    --editor-border: rgba(255, 255, 255, 0.1);
+    --editor-gutter: hsl(0, 3%, 45%);
+    --editor-text: hsl(0, 5%, 85%);
+    --editor-text-muted: hsl(0, 3%, 55%);
+  }
+
+  /* Dark mode syntax highlighting - designed for dark backgrounds */
+  .code-editor-body .keyword {
+    color: #c9a0dc;
+  }
+
+  .code-editor-body .function {
+    color: #7dd3fc;
+  }
+
+  .code-editor-body .string {
+    color: #a5d6a7;
+  }
+
+  .code-editor-body .number {
+    color: #ffcc80;
+  }
+
+  .code-editor-body .comment {
+    color: hsl(0, 3%, 45%);
+    font-style: italic;
+  }
+
+  .code-editor-body .property {
+    color: #90caf9;
+  }
+
+  .code-editor-body .type {
+    color: #ce93d8;
+  }
+
+  .code-editor-body .operator {
+    color: #b0bec5;
+  }
+
+  .code-editor-body .punctuation {
+    color: hsl(0, 3%, 55%);
+  }
+
+  /* Dark mode Shiki/Astro code blocks */
+  .astro-code,
+  pre.astro-code {
+    background-color: var(--color-bg-weak) !important;
+  }
+
+  .astro-code span {
+    color: var(--shiki-dark, inherit) !important;
+    font-style: var(--shiki-dark-font-style, inherit) !important;
+    font-weight: var(--shiki-dark-font-weight, inherit) !important;
+    text-decoration: var(--shiki-dark-text-decoration, inherit) !important;
+  }
+
+  /* Dark mode logo adjustment inner rect */
+  .logo-icon rect:last-child,
+  .landing-logo svg rect:last-child {
+    fill: hsl(0, 5%, 9%);
   }
 }
