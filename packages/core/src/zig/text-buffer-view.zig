@@ -318,11 +318,6 @@ pub const UnifiedTextBufferView = struct {
         const buffer_dirty = self.text_buffer.isViewDirty(self.view_id);
         if (!self.virtual_lines_dirty and !buffer_dirty) return;
 
-        logger.debug(
-            "[textarea-debug] updateVirtualLines dirty={any} buffer_dirty={any} viewport={any} wrap_mode={any} wrap_width={any}",
-            .{ self.virtual_lines_dirty, buffer_dirty, self.viewport, self.wrap_mode, self.wrap_width },
-        );
-
         _ = self.virtual_lines_arena.reset(.free_all);
         self.virtual_lines = .{};
         self.cached_line_starts = .{};
@@ -896,7 +891,6 @@ pub const UnifiedTextBufferView = struct {
     /// Special case: width=0 or wrap_mode=.none means "measure intrinsic/max-content width" (no wrapping)
     pub fn measureForDimensions(self: *Self, width: u32, height: u32) TextBufferViewError!MeasureResult {
         _ = height; // Height is for future use, currently only width affects layout
-
         const epoch = self.text_buffer.getContentEpoch();
         if (self.cached_measure_result) |result| {
             if (self.cached_measure_epoch == epoch and self.cached_measure_buffer == self.text_buffer) {

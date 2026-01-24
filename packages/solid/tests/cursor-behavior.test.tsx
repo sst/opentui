@@ -560,7 +560,7 @@ describe("Textarea Cursor Behavior Tests", () => {
                           val.gotoLineEnd()
                         })
                       }}
-                      height={1}
+                      minHeight={1}
                       maxHeight={6}
                       initialValue=""
                       placeholder="Type your own answer"

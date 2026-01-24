@@ -140,9 +140,6 @@ export abstract class EditBufferRenderable extends Renderable implements LineInf
     this._contentChangeListener = options.onContentChange
 
     this.editBuffer.on("cursor-changed", () => {
-      console.log("[textarea-debug] cursor-changed", {
-        id: this.id,
-      })
       if (this._cursorChangeListener) {
         const cursor = this.editBuffer.getCursorPosition()
         this._cursorChangeListener({
@@ -153,11 +150,9 @@ export abstract class EditBufferRenderable extends Renderable implements LineInf
     })
 
     this.editBuffer.on("content-changed", () => {
-      console.log("[textarea-debug] content-changed", {
-        id: this.id,
-      })
       this.yogaNode.markDirty()
       this.requestRender()
+      this.yogaNode.markDirty()
       this.emit("line-info-change")
       if (this._contentChangeListener) {
         this._contentChangeListener({})
@@ -396,11 +391,6 @@ export abstract class EditBufferRenderable extends Renderable implements LineInf
   }
 
   protected onResize(width: number, height: number): void {
-    console.log("[textarea-debug] resize", {
-      id: this.id,
-      width,
-      height,
-    })
     this.editorView.setViewportSize(width, height)
   }
 
@@ -737,9 +727,6 @@ export abstract class EditBufferRenderable extends Renderable implements LineInf
   }
 
   public insertText(text: string): void {
-    console.log("[textarea-debug] insertText", {
-      id: this.id,
-    })
     this.editBuffer.insertText(text)
     this.yogaNode.markDirty()
     this.requestRender()

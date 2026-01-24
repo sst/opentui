@@ -52,6 +52,7 @@ pub const EditorView = struct {
     fn onCursorChanged(ctx: *anyopaque) void {
         const self: *EditorView = @ptrCast(@alignCast(ctx));
         self.desired_visual_col = null;
+        self.updatePlaceholderVisibility();
 
         const has_selection = self.text_buffer_view.selection != null;
         if (!has_selection or self.selection_follow_cursor) {
