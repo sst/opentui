@@ -1,5 +1,5 @@
 import type { TextBuffer } from "./text-buffer"
-import { RGBA } from "./lib"
+import { RGBA, rgbToHex } from "./lib"
 import { resolveRenderLib, type RenderLib } from "./zig"
 import { type Pointer, toArrayBuffer, ptr } from "bun:ffi"
 import { type BorderStyle, type BorderSides, BorderCharArrays, parseBorderStyle } from "./lib"
@@ -169,15 +169,6 @@ export class OptimizedBuffer {
     const { char, fg, bg, attributes } = this.buffers
     const lines: VTermLine[] = []
 
-    const rgbaToHex = (r: number, g: number, b: number, a: number): string | null => {
-      if (a === 0) return null
-      const toHex = (v: number) =>
-        Math.round(v * 255)
-          .toString(16)
-          .padStart(2, "0")
-      return `#${toHex(r)}${toHex(g)}${toHex(b)}`
-    }
-
     for (let y = 0; y < this._height; y++) {
       const spans: VTermSpan[] = []
       let currentSpan: VTermSpan | null = null
@@ -185,8 +176,10 @@ export class OptimizedBuffer {
       for (let x = 0; x < this._width; x++) {
         const i = y * this._width + x
         const cp = char[i]
-        const cellFg = rgbaToHex(fg[i * 4], fg[i * 4 + 1], fg[i * 4 + 2], fg[i * 4 + 3])
-        const cellBg = rgbaToHex(bg[i * 4], bg[i * 4 + 1], bg[i * 4 + 2], bg[i * 4 + 3])
+        const fgColor = RGBA.fromValues(fg[i * 4], fg[i * 4 + 1], fg[i * 4 + 2], fg[i * 4 + 3])
+        const bgColor = RGBA.fromValues(bg[i * 4], bg[i * 4 + 1], bg[i * 4 + 2], bg[i * 4 + 3])
+        const cellFg = fgColor.a === 0 ? null : rgbToHex(fgColor)
+        const cellBg = bgColor.a === 0 ? null : rgbToHex(bgColor)
         const cellFlags = textAttrsToVTermFlags(attributes[i] & 0xff)
         const cellChar = cp > 0 ? String.fromCodePoint(cp) : " "
 
