@@ -1,0 +1,328 @@
+---
+title: Renderables
+description: The building blocks of your terminal UI
+order: 2
+---
+
+# Renderables
+
+Renderables are the building blocks of your UI. You can position, style, and nest them within each other. Each renderable represents a visual element and uses the Yoga layout engine for flexible positioning and sizing.
+
+## Creating Renderables
+
+Create a renderable by instantiating a class with a render context (the renderer) and options:
+
+```typescript
+import { createCliRenderer, TextRenderable, BoxRenderable } from "@opentui/core"
+
+const renderer = await createCliRenderer()
+
+const greeting = new TextRenderable(renderer, {
+  id: "greeting",
+  content: "Hello, OpenTUI!",
+  fg: "#00FF00",
+})
+
+renderer.root.add(greeting)
+```
+
+## Available Renderables
+
+OpenTUI provides these built-in renderables:
+
+| Class                   | Description                                   |
+| ----------------------- | --------------------------------------------- |
+| `BoxRenderable`         | Container with border, background, and layout |
+| `TextRenderable`        | Read-only styled text display                 |
+| `InputRenderable`       | Single-line text input                        |
+| `TextareaRenderable`    | Multi-line editable text                      |
+| `SelectRenderable`      | Dropdown/list selection                       |
+| `TabSelectRenderable`   | Horizontal tab selection                      |
+| `ScrollBoxRenderable`   | Scrollable container                          |
+| `CodeRenderable`        | Syntax-highlighted code display               |
+| `ASCIIFontRenderable`   | ASCII art font display                        |
+| `FrameBufferRenderable` | Raw framebuffer for custom graphics           |
+| `MarkdownRenderable`    | Markdown renderer                             |
+| `SliderRenderable`      | Numeric slider control                        |
+
+## The Renderable Tree
+
+Renderables form a tree structure. Use `add()` and `remove()` to manage children:
+
+```typescript
+const container = new BoxRenderable(renderer, {
+  id: "container",
+  flexDirection: "column",
+  padding: 1,
+})
+
+const title = new TextRenderable(renderer, { id: "title", content: "My App" })
+const body = new TextRenderable(renderer, { id: "body", content: "Content here" })
+
+container.add(title)
+container.add(body)
+
+renderer.root.add(container)
+
+// Later, remove a child
+container.remove("body")
+```
+
+## Finding Renderables
+
+Navigate the tree to find specific renderables:
+
+```typescript
+// Get a direct child by ID
+const title = container.getRenderable("title")
+
+// Recursively search all descendants
+const deepChild = container.findDescendantById("nested-input")
+
+// Get all children
+const children = container.getChildren()
+```
+
+## Layout Properties
+
+All renderables support Yoga flexbox properties:
+
+```typescript
+const panel = new BoxRenderable(renderer, {
+  id: "panel",
+
+  // Sizing
+  width: 40,
+  height: "50%",
+  minWidth: 20,
+  maxHeight: 30,
+
+  // Flex behavior
+  flexGrow: 1,
+  flexShrink: 0,
+  flexDirection: "column",
+  justifyContent: "center",
+  alignItems: "flex-start",
+
+  // Positioning
+  position: "absolute",
+  left: 10,
+  top: 5,
+
+  // Spacing
+  padding: 2,
+  paddingTop: 1,
+  margin: 1,
+})
+```
+
+See the [Layout](/docs/core-concepts/layout) page for complete details.
+
+## Focus Management
+
+Interactive renderables can receive keyboard focus:
+
+```typescript
+const input = new InputRenderable(renderer, {
+  id: "username",
+  placeholder: "Enter username...",
+})
+
+renderer.root.add(input)
+
+// Give focus to the input
+input.focus()
+
+// Remove focus
+input.blur()
+
+// Check focus state
+console.log(input.focused) // true
+```
+
+Listen for focus changes:
+
+```typescript
+import { RenderableEvents } from "@opentui/core"
+
+input.on(RenderableEvents.FOCUSED, () => {
+  console.log("Input focused")
+})
+
+input.on(RenderableEvents.BLURRED, () => {
+  console.log("Input blurred")
+})
+```
+
+## Event Handling
+
+### Mouse Events
+
+Handle mouse interactions via options:
+
+```typescript
+const button = new BoxRenderable(renderer, {
+  id: "button",
+  border: true,
+  onMouseDown: (event) => {
+    console.log("Clicked at", event.x, event.y)
+  },
+  onMouseOver: (event) => {
+    button.borderColor = "#FFFF00"
+  },
+  onMouseOut: (event) => {
+    button.borderColor = "#FFFFFF"
+  },
+})
+```
+
+Available mouse events:
+
+- `onMouseDown`, `onMouseUp`
+- `onMouseMove`, `onMouseDrag`, `onMouseDragEnd`, `onMouseDrop`
+- `onMouseOver`, `onMouseOut`
+- `onMouseScroll`
+- `onMouse` (catch-all)
+
+Mouse events bubble up through the tree. Stop propagation with `event.stopPropagation()`.
+
+### Keyboard Events
+
+For focusable renderables:
+
+```typescript
+const input = new InputRenderable(renderer, {
+  id: "input",
+  onKeyDown: (key) => {
+    if (key.name === "escape") {
+      input.blur()
+    }
+  },
+  onPaste: (event) => {
+    console.log("Pasted:", event.text)
+  },
+})
+```
+
+## Visibility
+
+Control visibility with the `visible` property:
+
+```typescript
+// Hide (also removes from layout)
+panel.visible = false
+
+// Show
+panel.visible = true
+```
+
+When `visible` is `false`, Yoga excludes the renderable from layout calculation (equivalent to CSS `display: none`).
+
+## Opacity
+
+Set opacity for semi-transparent rendering:
+
+```typescript
+panel.opacity = 0.5 // 50% transparent
+```
+
+Opacity affects the renderable and all its children.
+
+## Z-Index
+
+Control layering order for overlapping elements:
+
+```typescript
+const overlay = new BoxRenderable(renderer, {
+  id: "overlay",
+  position: "absolute",
+  zIndex: 100, // Higher values render on top
+})
+```
+
+## Live Rendering
+
+For animations, extend the Renderable class and override `onUpdate`:
+
+```typescript
+class AnimatedBox extends BoxRenderable {
+  onUpdate(deltaTime) {
+    // Update animation state
+    this.translateX += 1
+  }
+}
+
+const box = new AnimatedBox(renderer, {
+  id: "anim-box",
+  live: true, // Enable continuous rendering
+})
+```
+
+## Translation
+
+Offset a renderable from its layout position (useful for scrolling/animation):
+
+```typescript
+// Offset by pixels
+renderable.translateX = 10
+renderable.translateY = -5
+```
+
+This moves the renderable visually without affecting layout.
+
+## Buffered Rendering
+
+Enable offscreen rendering for complex content and use hooks to draw to the buffer:
+
+```typescript
+import { RGBA } from "@opentui/core"
+
+const complex = new BoxRenderable(renderer, {
+  id: "complex",
+  buffered: true, // Render to offscreen buffer first
+  renderAfter: (buffer) => {
+    // Draw directly to the buffer (or offscreen buffer if buffered=true)
+    buffer.fillRect(0, 0, 10, 5, RGBA.fromHex("#FF0000"))
+  },
+})
+```
+
+## Lifecycle Methods
+
+Override these methods in custom renderables:
+
+```typescript
+class CustomRenderable extends Renderable {
+  // Called each frame before rendering
+  onUpdate(deltaTime: number) {
+    // Update state, animations, etc.
+  }
+
+  // Called when dimensions change
+  onResize(width: number, height: number) {
+    // Respond to size changes
+  }
+
+  // Called when removed from parent
+  onRemove() {
+    // Cleanup
+  }
+
+  // Override for custom rendering
+  renderSelf(buffer: OptimizedBuffer, deltaTime: number) {
+    // Draw to buffer
+  }
+}
+```
+
+## Destroying Renderables
+
+Clean up a renderable and remove it from the tree:
+
+```typescript
+// Remove from parent and free resources
+renderable.destroy()
+
+// Destroy self and all children
+container.destroyRecursively()
+```

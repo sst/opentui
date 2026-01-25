@@ -496,8 +496,8 @@ export class CliRenderer extends EventEmitter implements RenderContext {
     this.stdout = stdout
     this.realStdoutWrite = stdout.write
     this.lib = lib
-    this._terminalWidth = stdout.columns
-    this._terminalHeight = stdout.rows
+    this._terminalWidth = stdout.columns ?? width
+    this._terminalHeight = stdout.rows ?? height
     this.width = width
     this.height = height
     this._useThread = config.useThread === undefined ? false : config.useThread
@@ -512,7 +512,17 @@ export class CliRenderer extends EventEmitter implements RenderContext {
 
     this.rendererPtr = rendererPtr
     this.exitOnCtrlC = config.exitOnCtrlC === undefined ? true : config.exitOnCtrlC
-    this.exitSignals = config.exitSignals || ["SIGINT", "SIGTERM", "SIGQUIT", "SIGABRT"]
+    this.exitSignals = config.exitSignals || [
+      "SIGINT", // Ctrl+C
+      "SIGTERM", // Termination signal
+      "SIGQUIT", // Ctrl+\
+      "SIGABRT", // Abort signal
+      "SIGHUP", // Hangup (terminal closed)
+      "SIGBREAK", // Ctrl+Break on Windows
+      "SIGPIPE", // Broken pipe
+      "SIGBUS", // Bus error
+      "SIGFPE", // Floating point exception
+    ]
     this.resizeDebounceDelay = config.debounceDelay || 100
     this.targetFps = config.targetFps || 30
     this.maxFps = config.maxFps || 60

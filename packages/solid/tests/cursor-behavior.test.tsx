@@ -1,6 +1,7 @@
 import { describe, expect, it, beforeEach, afterEach } from "bun:test"
 import { testRender } from "../index"
-import { createSignal } from "solid-js"
+import { createSignal, onMount, Show } from "solid-js"
+import type { TextareaRenderable } from "@opentui/core"
 
 let testSetup: Awaited<ReturnType<typeof testRender>>
 
@@ -315,6 +316,298 @@ describe("Textarea Cursor Behavior Tests", () => {
 
       cursorState = testSetup.renderer.getCursorState()
       expect(cursorState.visible).toBe(false)
+    })
+  })
+
+  describe("Multiline Paste", () => {
+    it("keeps viewport offsets stable when pasting multiline content", async () => {
+      let textareaRef: TextareaRenderable | undefined
+      const [editing, setEditing] = createSignal(false)
+
+      const textareaKeybindings = () => [
+        { name: "return", action: "submit" },
+        { name: "return", meta: true, action: "newline" },
+      ]
+
+      const PasteTestComponent = () => {
+        onMount(() => {
+          setEditing(true)
+        })
+
+        return (
+          <box paddingLeft={2} paddingRight={2} gap={1}>
+            <box paddingLeft={1} gap={1}>
+              <box>
+                <text fg="#E8EDF2">Custom answer</text>
+              </box>
+              <box>
+                <box flexDirection="row">
+                  <box paddingRight={1}>
+                    <text fg="#8B98A5">1.</text>
+                  </box>
+                  <box>
+                    <text fg="#E8EDF2">Type your own answer</text>
+                  </box>
+                </box>
+                <Show when={editing()}>
+                  <box paddingLeft={3}>
+                    <textarea
+                      ref={(val: TextareaRenderable) => {
+                        textareaRef = val
+                        queueMicrotask(() => {
+                          val.focus()
+                          val.gotoLineEnd()
+                        })
+                      }}
+                      initialValue=""
+                      placeholder="Type your own answer"
+                      textColor="#E8EDF2"
+                      focusedTextColor="#E8EDF2"
+                      cursorColor="#86B7FF"
+                      keyBindings={textareaKeybindings()}
+                    />
+                  </box>
+                </Show>
+              </box>
+            </box>
+            <box paddingBottom={1} gap={1} flexDirection="row">
+              <text fg="#E8EDF2">
+                enter <span style={{ fg: "#8B98A5" }}>submit</span>
+              </text>
+            </box>
+          </box>
+        )
+      }
+
+      testSetup = await testRender(() => <PasteTestComponent />, { width: 50, height: 12 })
+
+      await testSetup.renderOnce()
+      await new Promise((resolve) => setTimeout(resolve, 0))
+
+      const viewOffsets: Array<{ offsetY: number }> = []
+      const captureOffsets = () => {
+        const viewport = textareaRef?.editorView.getViewport()
+        if (viewport) {
+          viewOffsets.push({ offsetY: viewport.offsetY })
+        }
+      }
+
+      testSetup.renderer.addPostProcessFn(captureOffsets)
+      testSetup.renderer.start()
+      await Bun.sleep(30)
+
+      viewOffsets.length = 0
+      await testSetup.mockInput.pasteBracketedText("Line 1\nLine 2\nLine 3")
+
+      await Bun.sleep(200)
+      testSetup.renderer.pause()
+      await testSetup.renderer.idle()
+
+      testSetup.renderer.removePostProcessFn(captureOffsets)
+
+      let transitions = 0
+      for (let i = 1; i < viewOffsets.length; i += 1) {
+        if (viewOffsets[i]!.offsetY !== viewOffsets[i - 1]!.offsetY) {
+          transitions += 1
+        }
+      }
+
+      expect(textareaRef?.plainText).toBe("Line 1\nLine 2\nLine 3")
+      expect(viewOffsets.length).toBeGreaterThan(4)
+      expect(transitions).toBeLessThanOrEqual(1)
+    })
+
+    it("keeps viewport offsets steady after multiline paste", async () => {
+      let textareaRef: TextareaRenderable | undefined
+      const [editing, setEditing] = createSignal(false)
+
+      const textareaKeybindings = () => [
+        { name: "return", action: "submit" },
+        { name: "return", meta: true, action: "newline" },
+      ]
+
+      const PasteTestComponent = () => {
+        onMount(() => {
+          setEditing(true)
+        })
+
+        return (
+          <box paddingLeft={2} paddingRight={2} gap={1}>
+            <box paddingLeft={1} gap={1}>
+              <box>
+                <text fg="#E8EDF2">Custom answer</text>
+              </box>
+              <box>
+                <box flexDirection="row">
+                  <box paddingRight={1}>
+                    <text fg="#8B98A5">1.</text>
+                  </box>
+                  <box>
+                    <text fg="#E8EDF2">Type your own answer</text>
+                  </box>
+                </box>
+                <Show when={editing()}>
+                  <box paddingLeft={3}>
+                    <textarea
+                      ref={(val: TextareaRenderable) => {
+                        textareaRef = val
+                        queueMicrotask(() => {
+                          val.focus()
+                          val.gotoLineEnd()
+                        })
+                      }}
+                      height={1}
+                      initialValue=""
+                      placeholder="Type your own answer"
+                      textColor="#E8EDF2"
+                      focusedTextColor="#E8EDF2"
+                      cursorColor="#86B7FF"
+                      keyBindings={textareaKeybindings()}
+                    />
+                  </box>
+                </Show>
+              </box>
+            </box>
+            <box paddingBottom={1} gap={1} flexDirection="row">
+              <text fg="#E8EDF2">
+                enter <span style={{ fg: "#8B98A5" }}>submit</span>
+              </text>
+            </box>
+          </box>
+        )
+      }
+
+      testSetup = await testRender(() => <PasteTestComponent />, { width: 50, height: 12 })
+
+      await testSetup.renderOnce()
+      await new Promise((resolve) => setTimeout(resolve, 0))
+
+      const viewOffsets: Array<{ offsetY: number }> = []
+      const captureOffsets = () => {
+        const viewport = textareaRef?.editorView.getViewport()
+        if (viewport) {
+          viewOffsets.push({ offsetY: viewport.offsetY })
+        }
+      }
+
+      testSetup.renderer.addPostProcessFn(captureOffsets)
+
+      testSetup.renderer.start()
+      await Bun.sleep(30)
+
+      viewOffsets.length = 0
+      await testSetup.mockInput.pasteBracketedText("Line 1\nLine 2\nLine 3")
+
+      await Bun.sleep(200)
+      testSetup.renderer.pause()
+      await testSetup.renderer.idle()
+
+      testSetup.renderer.removePostProcessFn(captureOffsets)
+
+      let transitions = 0
+      for (let i = 1; i < viewOffsets.length; i += 1) {
+        if (viewOffsets[i]!.offsetY !== viewOffsets[i - 1]!.offsetY) {
+          transitions += 1
+        }
+      }
+
+      expect(textareaRef?.plainText).toBe("Line 1\nLine 2\nLine 3")
+      expect(viewOffsets.length).toBeGreaterThan(4)
+      expect(transitions).toBeLessThanOrEqual(1)
+    })
+
+    it("expands height after multiline paste when maxHeight allows", async () => {
+      let textareaRef: TextareaRenderable | undefined
+      const [editing, setEditing] = createSignal(false)
+
+      const textareaKeybindings = () => [
+        { name: "return", action: "submit" },
+        { name: "return", meta: true, action: "newline" },
+      ]
+
+      const PasteTestComponent = () => {
+        onMount(() => {
+          setEditing(true)
+        })
+
+        return (
+          <box paddingLeft={2} paddingRight={2} gap={1}>
+            <box paddingLeft={1} gap={1}>
+              <box>
+                <text fg="#E8EDF2">Custom answer</text>
+              </box>
+              <box>
+                <box flexDirection="row">
+                  <box paddingRight={1}>
+                    <text fg="#8B98A5">1.</text>
+                  </box>
+                  <box>
+                    <text fg="#E8EDF2">Type your own answer</text>
+                  </box>
+                </box>
+                <Show when={editing()}>
+                  <box paddingLeft={3}>
+                    <textarea
+                      ref={(val: TextareaRenderable) => {
+                        textareaRef = val
+                        queueMicrotask(() => {
+                          val.focus()
+                          val.gotoLineEnd()
+                        })
+                      }}
+                      minHeight={1}
+                      maxHeight={6}
+                      initialValue=""
+                      placeholder="Type your own answer"
+                      textColor="#E8EDF2"
+                      focusedTextColor="#E8EDF2"
+                      cursorColor="#86B7FF"
+                      keyBindings={textareaKeybindings()}
+                    />
+                  </box>
+                </Show>
+              </box>
+            </box>
+            <box paddingBottom={1} gap={1} flexDirection="row">
+              <text fg="#E8EDF2">
+                enter <span style={{ fg: "#8B98A5" }}>submit</span>
+              </text>
+            </box>
+          </box>
+        )
+      }
+
+      testSetup = await testRender(() => <PasteTestComponent />, { width: 50, height: 12 })
+
+      await testSetup.renderOnce()
+      await new Promise((resolve) => setTimeout(resolve, 0))
+
+      const heights: number[] = []
+      const captureHeight = () => {
+        if (textareaRef) {
+          heights.push(textareaRef.getLayoutNode().getComputedHeight())
+        }
+      }
+
+      testSetup.renderer.addPostProcessFn(captureHeight)
+
+      testSetup.renderer.start()
+      await Bun.sleep(30)
+
+      heights.length = 0
+      await testSetup.mockInput.pasteBracketedText("Line 1\nLine 2\nLine 3")
+
+      await Bun.sleep(200)
+      testSetup.renderer.pause()
+      await testSetup.renderer.idle()
+
+      testSetup.renderer.removePostProcessFn(captureHeight)
+
+      const uniqueHeights = new Set(heights)
+
+      expect(textareaRef?.plainText).toBe("Line 1\nLine 2\nLine 3")
+      expect(heights.length).toBeGreaterThan(4)
+      expect(Math.max(...uniqueHeights)).toBeGreaterThan(1)
     })
   })
 })

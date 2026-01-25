@@ -1,0 +1,86 @@
+---
+title: Getting started
+description: Install OpenTUI and create your first terminal UI
+order: 1
+---
+
+# Getting started
+
+OpenTUI is a TypeScript library for building terminal user interfaces.
+
+## Installation
+
+OpenTUI requires [Bun](https://bun.sh) as the runtime.
+
+```bash
+mkdir my-tui && cd my-tui
+bun init -y
+bun add @opentui/core
+```
+
+## Hello world
+
+Create `index.ts`:
+
+```typescript
+import { createCliRenderer, Text } from "@opentui/core"
+
+const renderer = await createCliRenderer({
+  exitOnCtrlC: true,
+})
+
+renderer.root.add(
+  Text({
+    content: "Hello, OpenTUI!",
+    fg: "#00FF00",
+  }),
+)
+```
+
+Run it:
+
+```bash
+bun index.ts
+```
+
+You should see green text. Press `Ctrl+C` to exit.
+
+## Composing components
+
+Components nest naturally. Here's a bordered panel with content:
+
+```typescript
+import { createCliRenderer, Box, Text } from "@opentui/core"
+
+const renderer = await createCliRenderer({
+  exitOnCtrlC: true,
+})
+
+renderer.root.add(
+  Box(
+    { borderStyle: "rounded", padding: 1, flexDirection: "column", gap: 1 },
+    Text({ content: "Welcome", fg: "#FFFF00" }),
+    Text({ content: "Press Ctrl+C to exit" }),
+  ),
+)
+```
+
+`Box` and `Text` are factory functions. The first argument is props; additional arguments are children.
+
+## What's next
+
+### Core concepts
+
+- [Renderer](/docs/core-concepts/renderer) - The rendering engine
+- [Layout](/docs/core-concepts/layout) - Flexbox positioning
+- [Constructs](/docs/core-concepts/constructs) - The declarative component API
+
+### Components
+
+- [Text](/docs/components/text), [Box](/docs/components/box) - Display and layout
+- [Input](/docs/components/input), [Select](/docs/components/select) - User interaction
+
+### Framework bindings
+
+- [React](/docs/bindings/react)
+- [Solid.js](/docs/bindings/solid)
