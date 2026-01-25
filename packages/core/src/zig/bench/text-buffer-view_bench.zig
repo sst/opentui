@@ -13,26 +13,26 @@ const MemStat = bench_utils.MemStat;
 
 pub const benchName = "TextBuffer Wrapping";
 
+const large_text_patterns = [_][]const u8{
+    "The quick brown fox jumps over the lazy dog. ",
+    "Lorem ipsum dolor sit amet, consectetur adipiscing elit. ",
+    "Hello, 世界! Unicode テスト 🌍🎉 ",
+    "Mixed width: ASCII 中文字符 emoji 🚀🔥💻 and more text. ",
+    "Programming languages: Rust, Zig, Go, Python, JavaScript. ",
+    "Αυτό είναι ελληνικό κείμενο. Это русский текст. ",
+    "Numbers and symbols: 12345 !@#$%^&*() []{}|;:',.<>? ",
+    "Tab\tseparated\tvalues\there\tfor\ttesting\twrapping. ",
+};
+
 pub fn generateLargeText(allocator: std.mem.Allocator, lines: u32, target_bytes: usize) ![]u8 {
     var buffer: std.ArrayListUnmanaged(u8) = .{};
     errdefer buffer.deinit(allocator);
-
-    const patterns = [_][]const u8{
-        "The quick brown fox jumps over the lazy dog. ",
-        "Lorem ipsum dolor sit amet, consectetur adipiscing elit. ",
-        "Hello, 世界! Unicode テスト 🌍🎉 ",
-        "Mixed width: ASCII 中文字符 emoji 🚀🔥💻 and more text. ",
-        "Programming languages: Rust, Zig, Go, Python, JavaScript. ",
-        "Αυτό είναι ελληνικό κείμενο. Это русский текст. ",
-        "Numbers and symbols: 12345 !@#$%^&*() []{}|;:',.<>? ",
-        "Tab\tseparated\tvalues\there\tfor\ttesting\twrapping. ",
-    };
 
     var current_bytes: usize = 0;
     var line_idx: u32 = 0;
 
     while (current_bytes < target_bytes and line_idx < lines) : (line_idx += 1) {
-        const pattern = patterns[line_idx % patterns.len];
+        const pattern = large_text_patterns[line_idx % large_text_patterns.len];
         const repeat_count = 2 + (line_idx % 5);
 
         for (0..repeat_count) |_| {
@@ -51,22 +51,11 @@ pub fn generateLargeTextSingleLine(allocator: std.mem.Allocator, target_bytes: u
     var buffer: std.ArrayListUnmanaged(u8) = .{};
     errdefer buffer.deinit(allocator);
 
-    const patterns = [_][]const u8{
-        "The quick brown fox jumps over the lazy dog. ",
-        "Lorem ipsum dolor sit amet, consectetur adipiscing elit. ",
-        "Hello, 世界! Unicode テスト 🌍🎉 ",
-        "Mixed width: ASCII 中文字符 emoji 🚀🔥💻 and more text. ",
-        "Programming languages: Rust, Zig, Go, Python, JavaScript. ",
-        "Αυτό είναι ελληνικό κείμενο. Это русский текст. ",
-        "Numbers and symbols: 12345 !@#$%^&*() []{}|;:',.<>? ",
-        "Tab\tseparated\tvalues\there\tfor\ttesting\twrapping. ",
-    };
-
     var current_bytes: usize = 0;
     var pattern_idx: usize = 0;
 
     while (current_bytes < target_bytes) {
-        const pattern = patterns[pattern_idx % patterns.len];
+        const pattern = large_text_patterns[pattern_idx % large_text_patterns.len];
         try buffer.appendSlice(allocator, pattern);
         current_bytes += pattern.len;
         pattern_idx += 1;
@@ -75,99 +64,129 @@ pub fn generateLargeTextSingleLine(allocator: std.mem.Allocator, target_bytes: u
     return try buffer.toOwnedSlice(allocator);
 }
 
+fn computeLargeTextStats(lines: u32, target_bytes: usize) struct { bytes: usize, line_count: usize } {
+    var current_bytes: usize = 0;
+    var line_idx: u32 = 0;
+
+    while (current_bytes < target_bytes and line_idx < lines) : (line_idx += 1) {
+        const pattern = large_text_patterns[line_idx % large_text_patterns.len];
+        const repeat_count = 2 + (line_idx % 5);
+        current_bytes += pattern.len * repeat_count + 1;
+    }
+
+    return .{ .bytes = current_bytes, .line_count = line_idx };
+}
+
+fn computeSingleLineTextSize(target_bytes: usize) usize {
+    var current_bytes: usize = 0;
+    var pattern_idx: usize = 0;
+
+    while (current_bytes < target_bytes) {
+        const pattern = large_text_patterns[pattern_idx % large_text_patterns.len];
+        current_bytes += pattern.len;
+        pattern_idx += 1;
+    }
+
+    return current_bytes;
+}
+
 fn benchSetText(
     allocator: std.mem.Allocator,
     pool: *gp.GraphemePool,
     iterations: usize,
     show_mem: bool,
+    bench_filter: ?[]const u8,
 ) ![]BenchResult {
     var results: std.ArrayListUnmanaged(BenchResult) = .{};
     errdefer results.deinit(allocator);
 
     // Small text
     {
-        const text = "Hello, world!\nSecond line\nThird line";
-        var stats = BenchStats{};
-        var final_mem: usize = 0;
+        const name = "TextBuffer setText small (3 lines, 40 bytes)";
+        if (bench_utils.matchesBenchFilter(name, bench_filter)) {
+            const text = "Hello, world!\nSecond line\nThird line";
+            var stats = BenchStats{};
+            var final_mem: usize = 0;
 
-        for (0..iterations) |i| {
-            var tb = try UnifiedTextBuffer.init(allocator, pool, .unicode);
-            defer tb.deinit();
+            for (0..iterations) |i| {
+                var tb = try UnifiedTextBuffer.init(allocator, pool, .unicode);
+                defer tb.deinit();
 
-            var timer = try std.time.Timer.start();
-            try tb.setText(text);
-            stats.record(timer.read());
+                var timer = try std.time.Timer.start();
+                try tb.setText(text);
+                stats.record(timer.read());
 
-            if (i == iterations - 1 and show_mem) {
-                final_mem = tb.getArenaAllocatedBytes();
+                if (i == iterations - 1 and show_mem) {
+                    final_mem = tb.getArenaAllocatedBytes();
+                }
             }
+
+            const mem_stats: ?[]const MemStat = if (show_mem) blk: {
+                const mem = try allocator.alloc(MemStat, 1);
+                mem[0] = .{ .name = "TB", .bytes = final_mem };
+                break :blk mem;
+            } else null;
+
+            try results.append(allocator, BenchResult{
+                .name = name,
+                .min_ns = stats.min_ns,
+                .avg_ns = stats.avg(),
+                .max_ns = stats.max_ns,
+                .total_ns = stats.total_ns,
+                .iterations = iterations,
+                .mem_stats = mem_stats,
+            });
         }
-
-        const name = try std.fmt.allocPrint(allocator, "TextBuffer setText small (3 lines, 40 bytes)", .{});
-        const mem_stats: ?[]const MemStat = if (show_mem) blk: {
-            const mem = try allocator.alloc(MemStat, 1);
-            mem[0] = .{ .name = "TB", .bytes = final_mem };
-            break :blk mem;
-        } else null;
-
-        try results.append(allocator, BenchResult{
-            .name = name,
-            .min_ns = stats.min_ns,
-            .avg_ns = stats.avg(),
-            .max_ns = stats.max_ns,
-            .total_ns = stats.total_ns,
-            .iterations = iterations,
-            .mem_stats = mem_stats,
-        });
     }
 
     // Large multi-line text
     {
-        const text = try generateLargeText(allocator, 5000, 1 * 1024 * 1024);
-        defer allocator.free(text);
-
-        var stats = BenchStats{};
-        var final_mem: usize = 0;
-
-        for (0..iterations) |i| {
-            var tb = try UnifiedTextBuffer.init(allocator, pool, .unicode);
-            defer tb.deinit();
-
-            var timer = try std.time.Timer.start();
-            try tb.setText(text);
-            stats.record(timer.read());
-
-            if (i == iterations - 1 and show_mem) {
-                final_mem = tb.getArenaAllocatedBytes();
-            }
-        }
-
-        const text_mb = @as(f64, @floatFromInt(text.len)) / (1024.0 * 1024.0);
-        var line_count: usize = 1;
-        for (text) |byte| {
-            if (byte == '\n') line_count += 1;
-        }
-
+        const text_stats = computeLargeTextStats(5000, 1 * 1024 * 1024);
+        const text_mb = @as(f64, @floatFromInt(text_stats.bytes)) / (1024.0 * 1024.0);
         const name = try std.fmt.allocPrint(
             allocator,
             "TextBuffer setText large ({d} lines, {d:.2} MiB)",
-            .{ line_count, text_mb },
+            .{ text_stats.line_count, text_mb },
         );
-        const mem_stats: ?[]const MemStat = if (show_mem) blk: {
-            const mem = try allocator.alloc(MemStat, 1);
-            mem[0] = .{ .name = "TB", .bytes = final_mem };
-            break :blk mem;
-        } else null;
 
-        try results.append(allocator, BenchResult{
-            .name = name,
-            .min_ns = stats.min_ns,
-            .avg_ns = stats.avg(),
-            .max_ns = stats.max_ns,
-            .total_ns = stats.total_ns,
-            .iterations = iterations,
-            .mem_stats = mem_stats,
-        });
+        if (!bench_utils.matchesBenchFilter(name, bench_filter)) {
+            allocator.free(name);
+        } else {
+            const text = try generateLargeText(allocator, 5000, 1 * 1024 * 1024);
+            defer allocator.free(text);
+
+            var stats = BenchStats{};
+            var final_mem: usize = 0;
+
+            for (0..iterations) |i| {
+                var tb = try UnifiedTextBuffer.init(allocator, pool, .unicode);
+                defer tb.deinit();
+
+                var timer = try std.time.Timer.start();
+                try tb.setText(text);
+                stats.record(timer.read());
+
+                if (i == iterations - 1 and show_mem) {
+                    final_mem = tb.getArenaAllocatedBytes();
+                }
+            }
+
+            const mem_stats: ?[]const MemStat = if (show_mem) blk: {
+                const mem = try allocator.alloc(MemStat, 1);
+                mem[0] = .{ .name = "TB", .bytes = final_mem };
+                break :blk mem;
+            } else null;
+
+            try results.append(allocator, BenchResult{
+                .name = name,
+                .min_ns = stats.min_ns,
+                .avg_ns = stats.avg(),
+                .max_ns = stats.max_ns,
+                .total_ns = stats.total_ns,
+                .iterations = iterations,
+                .mem_stats = mem_stats,
+            });
+        }
     }
 
     return try results.toOwnedSlice(allocator);
@@ -308,6 +327,7 @@ fn benchMeasureForDimensionsLayout(
 pub fn run(
     allocator: std.mem.Allocator,
     show_mem: bool,
+    bench_filter: ?[]const u8,
 ) ![]BenchResult {
     // Global pool and unicode data are initialized once in bench.zig
     const pool = gp.initGlobalPool(allocator);
@@ -318,12 +338,15 @@ pub fn run(
     const iterations: usize = 10;
 
     // Run setText benchmarks
-    const setText_results = try benchSetText(allocator, pool, iterations, show_mem);
+    const setText_results = try benchSetText(allocator, pool, iterations, show_mem, bench_filter);
     try all_results.appendSlice(allocator, setText_results);
 
-    // Generate test data for wrapping benchmarks
-    const text_multiline = try generateLargeText(allocator, 5000, 1 * 1024 * 1024);
-    const text_singleline = try generateLargeTextSingleLine(allocator, 2 * 1024 * 1024);
+    var text_multiline: ?[]u8 = null;
+    defer if (text_multiline) |text| allocator.free(text);
+    var text_singleline: ?[]u8 = null;
+    defer if (text_singleline) |text| allocator.free(text);
+    const multiline_stats = computeLargeTextStats(5000, 1 * 1024 * 1024);
+    const multiline_mb = @as(f64, @floatFromInt(multiline_stats.bytes)) / (1024.0 * 1024.0);
 
     // Run measureForDimensions benchmarks
     const layout_passes: usize = 3;
@@ -342,13 +365,22 @@ pub fn run(
         const bench_name = try std.fmt.allocPrint(
             allocator,
             "TextBufferView measureForDimensions ({s}, {d:.2} MiB)",
-            .{ scenario.label, @as(f64, @floatFromInt(text_multiline.len)) / (1024.0 * 1024.0) },
+            .{ scenario.label, multiline_mb },
         );
+
+        if (!bench_utils.matchesBenchFilter(bench_name, bench_filter)) {
+            allocator.free(bench_name);
+            continue;
+        }
+
+        if (text_multiline == null) {
+            text_multiline = try generateLargeText(allocator, 5000, 1 * 1024 * 1024);
+        }
 
         var bench_result = try benchMeasureForDimensionsLayout(
             allocator,
             pool,
-            text_multiline,
+            text_multiline.?,
             scenario.streaming,
             scenario.width,
             layout_passes,
@@ -382,7 +414,16 @@ pub fn run(
     };
 
     for (scenarios) |scenario| {
-        const text = if (scenario.single_line) text_singleline else text_multiline;
+        if (scenario.single_line) {
+            if (text_singleline == null) {
+                text_singleline = try generateLargeTextSingleLine(allocator, 2 * 1024 * 1024);
+            }
+        } else {
+            if (text_multiline == null) {
+                text_multiline = try generateLargeText(allocator, 5000, 1 * 1024 * 1024);
+            }
+        }
+        const text = if (scenario.single_line) text_singleline.? else text_multiline.?;
         const line_type = if (scenario.single_line) "single" else "multi";
 
         const bench_name = try std.fmt.allocPrint(allocator, "TextBufferView wrap ({s}, width={d}, {s}-line)", .{
@@ -390,6 +431,11 @@ pub fn run(
             scenario.width,
             line_type,
         });
+
+        if (!bench_utils.matchesBenchFilter(bench_name, bench_filter)) {
+            allocator.free(bench_name);
+            continue;
+        }
 
         var bench_result = try benchWrap(
             allocator,
