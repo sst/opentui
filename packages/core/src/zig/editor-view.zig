@@ -52,6 +52,7 @@ pub const EditorView = struct {
     fn onCursorChanged(ctx: *anyopaque) void {
         const self: *EditorView = @ptrCast(@alignCast(ctx));
         self.desired_visual_col = null;
+        self.updatePlaceholderVisibility();
 
         const has_selection = self.text_buffer_view.selection != null;
         if (!has_selection or self.selection_follow_cursor) {
@@ -192,8 +193,13 @@ pub const EditorView = struct {
         const viewport_width = vp.width;
         if (viewport_height == 0 or viewport_width == 0) return;
 
-        const margin_lines = @max(1, @as(u32, @intFromFloat(@as(f32, @floatFromInt(viewport_height)) * self.scroll_margin)));
-        const margin_cols = @max(1, @as(u32, @intFromFloat(@as(f32, @floatFromInt(viewport_width)) * self.scroll_margin)));
+        const raw_margin_lines = @max(1, @as(u32, @intFromFloat(@as(f32, @floatFromInt(viewport_height)) * self.scroll_margin)));
+        const max_margin_lines = if (viewport_height > 1) (viewport_height - 1) / 2 else 0;
+        const margin_lines = @min(raw_margin_lines, max_margin_lines);
+
+        const raw_margin_cols = @max(1, @as(u32, @intFromFloat(@as(f32, @floatFromInt(viewport_width)) * self.scroll_margin)));
+        const max_margin_cols = if (viewport_width > 1) (viewport_width - 1) / 2 else 0;
+        const margin_cols = @min(raw_margin_cols, max_margin_cols);
 
         const total_lines = self.text_buffer_view.getVirtualLineCount();
         const max_offset_y = if (total_lines > viewport_height) total_lines - viewport_height else 0;

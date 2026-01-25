@@ -496,8 +496,8 @@ export class CliRenderer extends EventEmitter implements RenderContext {
     this.stdout = stdout
     this.realStdoutWrite = stdout.write
     this.lib = lib
-    this._terminalWidth = stdout.columns
-    this._terminalHeight = stdout.rows
+    this._terminalWidth = stdout.columns ?? width
+    this._terminalHeight = stdout.rows ?? height
     this.width = width
     this.height = height
     this._useThread = config.useThread === undefined ? false : config.useThread
