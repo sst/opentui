@@ -8,7 +8,7 @@ let testRenderer: TestRenderer
 let mockMouse: MockMouse
 
 beforeEach(async () => {
-  ; ({ renderer: testRenderer, mockMouse } = await createTestRenderer({
+  ;({ renderer: testRenderer, mockMouse } = await createTestRenderer({
     width: 50,
     height: 30,
   }))
