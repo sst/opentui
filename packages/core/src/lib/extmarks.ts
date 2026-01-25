@@ -207,11 +207,8 @@ export class ExtmarksController {
 
         if (distanceToStart < distanceToEnd) {
           const adjustedOffset = virtualExtmark.start - 1
-          if (adjustedOffset <= currentOffset) {
-            this.editorView.setCursorByOffset(virtualExtmark.end + 2)
-          } else {
-            this.editorView.setCursorByOffset(adjustedOffset)
-          }
+          const targetOffset = adjustedOffset <= currentOffset ? virtualExtmark.end : adjustedOffset
+          this.editorView.setCursorByOffset(targetOffset)
         } else {
           this.editorView.setCursorByOffset(virtualExtmark.end)
         }

@@ -1989,9 +1989,12 @@ Press ESC to return to main menu.`
       textarea.focus()
       textarea.cursorOffset = 2
 
+      const virtualStart = 3
+      const virtualEnd = 8
+
       extmarks.create({
-        start: 3,
-        end: 8,
+        start: virtualStart,
+        end: virtualEnd,
         virtual: true,
       })
 
@@ -2001,36 +2004,83 @@ Press ESC to return to main menu.`
       currentMockInput.pressArrow("down")
       const cursorAfterDown = textarea.cursorOffset
 
-      // Cursor should move forward (not backward to previous line)
-      expect(cursorAfterDown).toBeGreaterThan(initialOffset)
+      expect(cursorAfterDown).toBe(virtualEnd)
+    })
 
-      const isInsideExtmark = cursorAfterDown >= 3 && cursorAfterDown < 8
-      expect(isInsideExtmark).toBe(false)
+    it("should land at trailing text when moving down into line-start virtual extmark", async () => {
+      await setup("a\n\n[EXT]tail\nb")
+
+      textarea.focus()
+      textarea.cursorOffset = 2
+
+      const virtualStart = 3
+      const virtualEnd = 8
+
+      extmarks.create({
+        start: virtualStart,
+        end: virtualEnd,
+        virtual: true,
+      })
+
+      currentMockInput.pressArrow("down")
+
+      const cursorAfterDown = textarea.cursorOffset
+
+      expect(cursorAfterDown).toBe(virtualEnd)
+      expect(textarea.plainText.slice(cursorAfterDown, cursorAfterDown + 4)).toBe("tail")
+    })
+
+    it("should not jump past buffer end when moving down into line-start virtual extmark at EOF", async () => {
+      await setup("a\n\n[EXT]")
+
+      textarea.focus()
+      textarea.cursorOffset = 2
+
+      const virtualStart = 3
+      const virtualEnd = 8
+
+      extmarks.create({
+        start: virtualStart,
+        end: virtualEnd,
+        virtual: true,
+      })
+
+      currentMockInput.pressArrow("down")
+
+      const cursorAfterDown = textarea.cursorOffset
+
+      expect(cursorAfterDown).toBe(virtualEnd)
+      expect(cursorAfterDown).toBe(textarea.plainText.length)
     })
 
     it("should navigate past virtual extmark at line start with repeated down presses", async () => {
       await setup("abc\n\n[EXTMARK]\n\nxyz")
 
       textarea.focus()
-      textarea.cursorOffset = 1
+      textarea.cursorOffset = 0
+
+      const virtualStart = 5
+      const virtualEnd = 14
 
       extmarks.create({
-        start: 5,
-        end: 14,
+        start: virtualStart,
+        end: virtualEnd,
         virtual: true,
       })
 
       currentMockInput.pressArrow("down")
       currentMockInput.pressArrow("down")
-      currentMockInput.pressArrow("down")
+      const afterExtmark = textarea.cursorOffset
 
+      expect(afterExtmark).toBe(virtualEnd)
+
+      currentMockInput.pressArrow("down")
+      currentMockInput.pressArrow("down")
       const finalOffset = textarea.cursorOffset
 
-      // Should have navigated past the extmark to "xyz" line or beyond
-      expect(finalOffset).toBeGreaterThanOrEqual(15)
-
-      const isInsideExtmark = finalOffset >= 5 && finalOffset < 14
-      expect(isInsideExtmark).toBe(false)
+      const xyzStart = textarea.plainText.indexOf("xyz")
+      expect(finalOffset).toBeGreaterThanOrEqual(xyzStart)
+      expect(finalOffset).toBeLessThanOrEqual(textarea.plainText.length)
     })
   })
 
