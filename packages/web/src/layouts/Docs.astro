@@ -1,0 +1,177 @@
+---
+import Base from "./Base.astro"
+
+interface Props {
+  title: string
+  description?: string
+}
+
+const { title, description } = Astro.props
+
+const currentPath = Astro.url.pathname
+---
+
+<Base title={title} description={description}>
+  <div class="docs-page">
+    <div class="docs-container">
+      <!-- Header -->
+      <header class="header">
+        <div class="header-content">
+          <a href="/" class="logo">
+            <svg class="logo-icon" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+              <rect x="2" y="3" width="20" height="18" fill="currentColor" />
+              <rect x="6" y="8" width="3" height="8" fill="hsl(0, 20%, 99%)" />
+            </svg>
+            OpenTUI
+          </a>
+          <button
+            class="mobile-menu-btn"
+            aria-label="Open navigation menu"
+            aria-expanded="false"
+            aria-controls="mobile-nav"
+          >
+            <svg class="menu-icon" viewBox="0 0 24 24" fill="currentColor">
+              <rect x="5" y="8" width="14" height="2"></rect>
+              <rect x="5" y="14" width="14" height="2"></rect>
+            </svg>
+            <svg class="close-icon" viewBox="0 0 24 24" fill="currentColor">
+              <rect x="5" y="11" width="14" height="2" transform="rotate(45 12 12)"></rect>
+              <rect x="5" y="11" width="14" height="2" transform="rotate(-45 12 12)"></rect>
+            </svg>
+          </button>
+          <nav class="nav">
+            <a href="/docs/getting-started">Docs</a>
+            <a href="https://github.com/anomalyco/opentui" target="_blank" rel="noopener noreferrer">GitHub</a>
+          </nav>
+        </div>
+      </header>
+
+      <main class="main">
+        <div class="mobile-nav-overlay" aria-hidden="true"></div>
+        <div class="docs-layout">
+          <aside class="sidebar" id="mobile-nav">
+            <div class="sidebar-section">
+              <div class="sidebar-title">Getting Started</div>
+              <ul class="sidebar-links">
+                <li>
+                  <a href="/docs/getting-started" class:list={{ active: currentPath === "/docs/getting-started" || currentPath === "/docs/getting-started/" }}>
+                    Introduction
+                  </a>
+                </li>
+              </ul>
+            </div>
+
+            <div class="sidebar-section">
+              <div class="sidebar-title">Core Concepts</div>
+              <ul class="sidebar-links">
+                <li><a href="/docs/core-concepts/renderer">Renderer</a></li>
+                <li><a href="/docs/core-concepts/renderables">Renderables</a></li>
+                <li><a href="/docs/core-concepts/constructs">Constructs</a></li>
+                <li><a href="/docs/core-concepts/renderables-vs-constructs">Renderables vs Constructs</a></li>
+                <li><a href="/docs/core-concepts/layout">Layout</a></li>
+                <li><a href="/docs/core-concepts/keyboard">Keyboard</a></li>
+                <li><a href="/docs/core-concepts/console">Console</a></li>
+                <li><a href="/docs/core-concepts/colors">Colors</a></li>
+              </ul>
+            </div>
+
+            <div class="sidebar-section">
+              <div class="sidebar-title">Components</div>
+              <ul class="sidebar-links">
+                <li><a href="/docs/components/text">Text</a></li>
+                <li><a href="/docs/components/box">Box</a></li>
+                <li><a href="/docs/components/input">Input</a></li>
+                <li><a href="/docs/components/select">Select</a></li>
+                <li><a href="/docs/components/scrollbox">ScrollBox</a></li>
+                <li><a href="/docs/components/code">Code</a></li>
+              </ul>
+            </div>
+
+            <div class="sidebar-section">
+              <div class="sidebar-title">Bindings</div>
+              <ul class="sidebar-links">
+                <li><a href="/docs/bindings/solid">Solid.js</a></li>
+                <li><a href="/docs/bindings/react">React</a></li>
+              </ul>
+            </div>
+          </aside>
+
+          <article class="content">
+            <slot />
+          </article>
+        </div>
+      </main>
+
+      <footer class="footer">
+        <div class="footer-content">
+          <span>OpenTUI - Terminal UIs in TypeScript</span>
+          <a href="https://github.com/anomalyco/opentui" target="_blank" rel="noopener noreferrer">GitHub</a>
+        </div>
+      </footer>
+    </div>
+  </div>
+
+  <script>
+    // Mobile menu toggle
+    const menuBtn = document.querySelector('.mobile-menu-btn')
+    const sidebar = document.querySelector('.sidebar')
+    const overlay = document.querySelector('.mobile-nav-overlay')
+
+    function openMenu() {
+      document.body.classList.add('mobile-nav-open')
+      menuBtn?.setAttribute('aria-expanded', 'true')
+      menuBtn?.setAttribute('aria-label', 'Close navigation menu')
+    }
+
+    function closeMenu() {
+      document.body.classList.remove('mobile-nav-open')
+      menuBtn?.setAttribute('aria-expanded', 'false')
+      menuBtn?.setAttribute('aria-label', 'Open navigation menu')
+    }
+
+    menuBtn?.addEventListener('click', () => {
+      const isOpen = document.body.classList.contains('mobile-nav-open')
+      if (isOpen) {
+        closeMenu()
+      } else {
+        openMenu()
+      }
+    })
+
+    overlay?.addEventListener('click', closeMenu)
+
+    document.addEventListener('keydown', (e) => {
+      if (e.key === 'Escape' && document.body.classList.contains('mobile-nav-open')) {
+        closeMenu()
+      }
+    })
+
+    // Close menu when clicking a link (for navigation)
+    sidebar?.querySelectorAll('a').forEach((link) => {
+      link.addEventListener('click', closeMenu)
+    })
+
+    document.querySelectorAll('pre[data-code]').forEach((pre) => {
+      const btn = document.createElement('button')
+      btn.className = 'copy-btn'
+      btn.setAttribute('aria-label', 'Copy code')
+      btn.innerHTML = `
+        <svg class="copy-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect>
+          <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path>
+        </svg>
+        <svg class="check-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <polyline points="20 6 9 17 4 12"></polyline>
+        </svg>
+      `
+      pre.appendChild(btn)
+
+      btn.addEventListener('click', async () => {
+        const code = pre.dataset.code || ''
+        await navigator.clipboard.writeText(code)
+        btn.classList.add('copied')
+        setTimeout(() => btn.classList.remove('copied'), 1500)
+      })
+    })
+  </script>
+</Base>
