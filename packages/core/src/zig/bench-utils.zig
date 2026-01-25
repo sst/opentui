@@ -1,5 +1,27 @@
 const std = @import("std");
 
+pub fn matchesBenchFilter(bench_name: []const u8, filter: ?[]const u8) bool {
+    if (filter == null) return true;
+    const filter_str = filter.?;
+    if (filter_str.len == 0) return true;
+
+    var i: usize = 0;
+    while (i + filter_str.len <= bench_name.len) : (i += 1) {
+        var matches = true;
+        for (filter_str, 0..) |filter_char, j| {
+            const bench_char = bench_name[i + j];
+            const filter_lower = if (filter_char >= 'A' and filter_char <= 'Z') filter_char + 32 else filter_char;
+            const bench_lower = if (bench_char >= 'A' and bench_char <= 'Z') bench_char + 32 else bench_char;
+            if (filter_lower != bench_lower) {
+                matches = false;
+                break;
+            }
+        }
+        if (matches) return true;
+    }
+    return false;
+}
+
 pub const MemStat = struct {
     name: []const u8,
     bytes: usize,
@@ -392,4 +414,18 @@ pub fn printResults(writer: anytype, results: []const BenchResult) !void {
     try writer.splatByteAll('-', total_width);
     try writer.writeAll("\x1b[0m\n");
     try writer.flush();
+}
+
+const BenchResultsJson = struct {
+    benchmark: []const u8,
+    results: []const BenchResult,
+};
+
+pub fn printResultsJson(writer: anytype, results: []const BenchResult, bench_name: []const u8) !void {
+    const output = BenchResultsJson{
+        .benchmark = bench_name,
+        .results = results,
+    };
+    try std.json.Stringify.value(output, .{ .emit_null_optional_fields = false }, writer);
+    try writer.writeByte('\n');
 }

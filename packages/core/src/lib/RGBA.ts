@@ -64,6 +64,11 @@ export class RGBA {
   toString() {
     return `rgba(${this.r.toFixed(2)}, ${this.g.toFixed(2)}, ${this.b.toFixed(2)}, ${this.a.toFixed(2)})`
   }
+
+  equals(other?: RGBA): boolean {
+    if (!other) return false
+    return this.r === other.r && this.g === other.g && this.b === other.b && this.a === other.a
+  }
 }
 
 export type ColorInput = string | RGBA
