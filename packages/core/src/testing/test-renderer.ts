@@ -3,6 +3,7 @@ import { CliRenderer, type CliRendererConfig } from "../renderer"
 import { resolveRenderLib } from "../zig"
 import { createMockKeys } from "./mock-keys"
 import { createMockMouse } from "./mock-mouse"
+import type { CapturedFrame } from "../types"
 
 export interface TestRendererOptions extends CliRendererConfig {
   width?: number
@@ -22,6 +23,7 @@ export async function createTestRenderer(options: TestRendererOptions): Promise<
   mockMouse: MockMouse
   renderOnce: () => Promise<void>
   captureCharFrame: () => string
+  captureSpans: () => CapturedFrame
   resize: (width: number, height: number) => void
 }> {
   process.env.OTUI_USE_CONSOLE = "false"
@@ -58,6 +60,17 @@ export async function createTestRenderer(options: TestRendererOptions): Promise<
       const currentBuffer = renderer.currentRenderBuffer
       const frameBytes = currentBuffer.getRealCharBytes(true)
       return decoder.decode(frameBytes)
+    },
+    captureSpans: () => {
+      const currentBuffer = renderer.currentRenderBuffer
+      const lines = currentBuffer.getSpanLines()
+      const cursorState = renderer.getCursorState()
+      return {
+        cols: currentBuffer.width,
+        rows: currentBuffer.height,
+        cursor: [cursorState.x, cursorState.y] as [number, number],
+        lines,
+      }
     },
     resize: (width: number, height: number) => {
       //@ts-expect-error - this is a test renderer

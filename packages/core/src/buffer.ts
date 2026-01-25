@@ -3,7 +3,7 @@ import { RGBA } from "./lib"
 import { resolveRenderLib, type RenderLib } from "./zig"
 import { type Pointer, toArrayBuffer, ptr } from "bun:ffi"
 import { type BorderStyle, type BorderSides, BorderCharArrays, parseBorderStyle } from "./lib"
-import { type WidthMethod } from "./types"
+import { type WidthMethod, type CapturedSpan, type CapturedLine } from "./types"
 import type { TextBufferView } from "./text-buffer-view"
 import type { EditorView } from "./editor-view"
 
@@ -151,6 +151,58 @@ export class OptimizedBuffer {
     const outputBuffer = new Uint8Array(realSize)
     const bytesWritten = this.lib.bufferWriteResolvedChars(this.bufferPtr, outputBuffer, addLineBreaks)
     return outputBuffer.slice(0, bytesWritten)
+  }
+
+  public getSpanLines(): CapturedLine[] {
+    this.guard()
+    const { char, fg, bg, attributes } = this.buffers
+    const lines: CapturedLine[] = []
+
+    for (let y = 0; y < this._height; y++) {
+      const spans: CapturedSpan[] = []
+      let currentSpan: CapturedSpan | null = null
+
+      for (let x = 0; x < this._width; x++) {
+        const i = y * this._width + x
+        const cp = char[i]
+        const cellFg = RGBA.fromValues(fg[i * 4], fg[i * 4 + 1], fg[i * 4 + 2], fg[i * 4 + 3])
+        const cellBg = RGBA.fromValues(bg[i * 4], bg[i * 4 + 1], bg[i * 4 + 2], bg[i * 4 + 3])
+        const cellAttrs = attributes[i] & 0xff
+        const cellChar = cp > 0 ? String.fromCodePoint(cp) : " "
+
+        // Check if this cell continues the current span
+        if (
+          currentSpan &&
+          currentSpan.fg.equals(cellFg) &&
+          currentSpan.bg.equals(cellBg) &&
+          currentSpan.attributes === cellAttrs
+        ) {
+          currentSpan.text += cellChar
+          currentSpan.width += 1
+        } else {
+          // Start a new span
+          if (currentSpan) {
+            spans.push(currentSpan)
+          }
+          currentSpan = {
+            text: cellChar,
+            fg: cellFg,
+            bg: cellBg,
+            attributes: cellAttrs,
+            width: 1,
+          }
+        }
+      }
+
+      // Push the last span
+      if (currentSpan) {
+        spans.push(currentSpan)
+      }
+
+      lines.push({ spans })
+    }
+
+    return lines
   }
 
   public clear(bg: RGBA = RGBA.fromValues(0, 0, 0, 1)): void {

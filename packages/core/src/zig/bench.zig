@@ -7,9 +7,11 @@
 //   zig build bench -- --help    - Show help message with available options
 //
 // Options:
-//   --mem              Show memory statistics after each benchmark
-//   --filter, -f NAME  Run only benchmarks matching NAME (case-insensitive substring match)
-//   --help, -h         Display help message and list available benchmarks
+//   --mem                   Show memory statistics after each benchmark
+//   --filter, -f NAME       Run only benchmark categories matching NAME (case-insensitive substring)
+//   --bench, -b NAME        Run only specific benchmarks matching NAME
+//   --json                  Output results in JSON format (machine-readable)
+//   --help, -h              Display help message and list available benchmarks
 //
 // Examples:
 //   zig build bench -- --mem
@@ -24,10 +26,16 @@
 //   zig build bench -- --filter "edit"
 //     Run EditBuffer Operations benchmarks
 //
+//   zig build bench -- --bench "ASCII"
+//     Run only benchmarks with "ASCII" in their name
+//
+//   zig build bench -- --json
+//     Output results in JSON format for CI integration
+//
 // Adding New Benchmarks:
 //   1. Create a new file in bench/ directory (e.g., bench/my_bench.zig)
 //   2. Export `pub const benchName = "My Benchmark";`
-//   3. Export `pub fn run(allocator: std.mem.Allocator, show_mem: bool) ![]BenchResult`
+//   3. Export `pub fn run(allocator: std.mem.Allocator, show_mem: bool, bench_filter: ?[]const u8) ![]BenchResult`
 //   4. Import the module at the top of this file
 //   5. Add an entry to the `benchmarks` array in main() with your module
 
@@ -48,7 +56,7 @@ const text_chunk_graphemes_bench = @import("bench/text-chunk-graphemes_bench.zig
 
 const BenchModule = struct {
     name: []const u8,
-    run: *const fn (std.mem.Allocator, bool) anyerror![]bench_utils.BenchResult,
+    run: *const fn (std.mem.Allocator, bool, ?[]const u8) anyerror![]bench_utils.BenchResult,
 };
 
 fn matchesFilter(bench_name: []const u8, filter: ?[]const u8) bool {
@@ -99,16 +107,25 @@ pub fn main() !void {
     defer std.process.argsFree(allocator, args);
 
     var show_mem = false;
+    var json_output = false;
     var filter: ?[]const u8 = null;
+    var bench_filter: ?[]const u8 = null;
     var i: usize = 1;
     while (i < args.len) : (i += 1) {
         const arg = args[i];
         if (std.mem.eql(u8, arg, "--mem")) {
             show_mem = true;
+        } else if (std.mem.eql(u8, arg, "--json")) {
+            json_output = true;
         } else if (std.mem.eql(u8, arg, "--filter") or std.mem.eql(u8, arg, "-f")) {
             if (i + 1 < args.len) {
                 i += 1;
                 filter = args[i];
+            }
+        } else if (std.mem.eql(u8, arg, "--bench") or std.mem.eql(u8, arg, "-b")) {
+            if (i + 1 < args.len) {
+                i += 1;
+                bench_filter = args[i];
             }
         } else if (std.mem.eql(u8, arg, "--help") or std.mem.eql(u8, arg, "-h")) {
             var stdout_buffer: [4096]u8 = undefined;
@@ -116,9 +133,11 @@ pub fn main() !void {
             const stdout = &stdout_writer.interface;
             try stdout.print("Usage: bench [options]\n\n", .{});
             try stdout.print("Options:\n", .{});
-            try stdout.print("  --mem              Show memory statistics\n", .{});
-            try stdout.print("  --filter, -f NAME  Run only benchmarks matching NAME (case-insensitive substring)\n", .{});
-            try stdout.print("  --help, -h         Show this help message\n\n", .{});
+            try stdout.print("  --mem                   Show memory statistics\n", .{});
+            try stdout.print("  --json                  Output in JSON format (machine-readable)\n", .{});
+            try stdout.print("  --filter, -f NAME       Run only benchmark categories matching NAME\n", .{});
+            try stdout.print("  --bench, -b NAME        Run only specific benchmarks matching NAME\n", .{});
+            try stdout.print("  --help, -h              Show this help message\n\n", .{});
             try stdout.print("Available benchmarks:\n", .{});
             for (benchmarks) |bench| {
                 try stdout.print("  - {s}\n", .{bench.name});
@@ -132,42 +151,67 @@ pub fn main() !void {
     var stdout_writer = std.fs.File.stdout().writer(&stdout_buffer);
     const stdout = &stdout_writer.interface;
 
-    if (filter) |f| {
-        try stdout.print("Filtering benchmarks by: \"{s}\"\n", .{f});
+    if (!json_output and filter != null) {
+        try stdout.print("Filtering benchmarks by: \"{s}\"\n", .{filter.?});
+    }
+    if (!json_output and bench_filter != null) {
+        try stdout.print("Filtering individual benchmarks by: \"{s}\"\n", .{bench_filter.?});
     }
 
     var ran_any = false;
 
     for (benchmarks) |bench| {
-        if (matchesFilter(bench.name, filter)) {
+        if (!matchesFilter(bench.name, filter)) continue;
+
+        // Use arena for results only - benchmark modules manage their own temp memory
+        var results_arena = std.heap.ArenaAllocator.init(allocator);
+        defer results_arena.deinit();
+
+        const start_time = std.time.nanoTimestamp();
+        const results = try bench.run(results_arena.allocator(), show_mem, bench_filter);
+        const end_time = std.time.nanoTimestamp();
+        const elapsed_ns = end_time - start_time;
+
+        if (results.len == 0) continue;
+
+        if (!json_output) {
             try stdout.print("\n=== {s} Benchmarks ===\n\n", .{bench.name});
             try stdout.flush();
+        }
 
-            // Use arena for results only - benchmark modules manage their own temp memory
-            var results_arena = std.heap.ArenaAllocator.init(allocator);
-            defer results_arena.deinit();
-
-            const start_time = std.time.nanoTimestamp();
-            const results = try bench.run(results_arena.allocator(), show_mem);
-            const end_time = std.time.nanoTimestamp();
-            const elapsed_ns = end_time - start_time;
-
+        if (json_output) {
+            try bench_utils.printResultsJson(stdout, results, bench.name);
+        } else {
             try bench_utils.printResults(stdout, results);
-
             const elapsed_ms = @as(f64, @floatFromInt(elapsed_ns)) / 1_000_000.0;
             try stdout.print("\n  Overall time: {d:.2}ms\n", .{elapsed_ms});
-
-            ran_any = true;
         }
+
+        ran_any = true;
     }
 
     if (!ran_any) {
-        try stdout.print("\nNo benchmarks matched filter: \"{s}\"\n", .{filter.?});
-        try stdout.print("Use --help to see available benchmarks.\n", .{});
+        if (!json_output) {
+            if (filter != null and bench_filter != null) {
+                try stdout.print(
+                    "\nNo benchmarks matched filters: category=\"{s}\", bench=\"{s}\"\n",
+                    .{ filter.?, bench_filter.? },
+                );
+            } else if (bench_filter != null) {
+                try stdout.print("\nNo benchmarks matched bench filter: \"{s}\"\n", .{bench_filter.?});
+            } else if (filter != null) {
+                try stdout.print("\nNo benchmarks matched filter: \"{s}\"\n", .{filter.?});
+            } else {
+                try stdout.print("\nNo benchmarks ran.\n", .{});
+            }
+            try stdout.print("Use --help to see available benchmarks.\n", .{});
+        }
         try stdout.flush();
         return;
     }
 
-    try stdout.print("\n✓ Benchmarks complete\n", .{});
+    if (!json_output) {
+        try stdout.print("\n✓ Benchmarks complete\n", .{});
+    }
     try stdout.flush();
 }

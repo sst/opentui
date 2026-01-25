@@ -113,3 +113,22 @@ export interface LineInfoProvider {
   get virtualLineCount(): number
   get scrollY(): number
 }
+
+export interface CapturedSpan {
+  text: string
+  fg: RGBA
+  bg: RGBA
+  attributes: number
+  width: number
+}
+
+export interface CapturedLine {
+  spans: CapturedSpan[]
+}
+
+export interface CapturedFrame {
+  cols: number
+  rows: number
+  cursor: [number, number]
+  lines: CapturedLine[]
+}
