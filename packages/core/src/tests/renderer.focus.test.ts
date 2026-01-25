@@ -71,3 +71,40 @@ test("click on non-focusable with no focusable parent does nothing", async () =>
 
   expect(box.focused).toBe(false)
 })
+
+test("preventDefault on mousedown prevents auto-focus", async () => {
+  const scrollbox = new ScrollBoxRenderable(testRenderer, {
+    id: "focusable-box",
+    width: 20,
+    height: 10,
+    onMouseDown: (event) => {
+      event.preventDefault()
+    },
+  })
+  testRenderer.root.add(scrollbox)
+  await testRenderer.idle()
+
+  expect(scrollbox.focused).toBe(false)
+
+  await mockMouse.click(scrollbox.x + 1, scrollbox.y + 1)
+
+  expect(scrollbox.focused).toBe(false)
+})
+
+test("mousedown handler is only called once per click", async () => {
+  let mouseDownCount = 0
+  const box = new BoxRenderable(testRenderer, {
+    id: "click-box",
+    width: 20,
+    height: 10,
+    onMouseDown: () => {
+      mouseDownCount++
+    },
+  })
+  testRenderer.root.add(box)
+  await testRenderer.idle()
+
+  await mockMouse.click(box.x + 1, box.y + 1)
+
+  expect(mouseDownCount).toBe(1)
+})

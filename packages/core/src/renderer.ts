@@ -1147,16 +1147,23 @@ export class CliRenderer extends EventEmitter implements RenderContext {
       this.lastOverRenderableNum = maybeRenderableId
       const maybeRenderable = Renderable.renderablesByNumber.get(maybeRenderableId)
 
-      // Auto-focus on click (browser-like behavior)
-      // Bubble up to find closest focusable ancestor
-      if (mouseEvent.type === "down" && mouseEvent.button === MouseButton.LEFT) {
-        let current: Renderable | null = maybeRenderable ?? null
-        while (current) {
-          if (current.focusable) {
-            current.focus()
-            break
+      // Fire mousedown event early so handlers can call preventDefault() to cancel default behaviors
+      let mouseDownEvent: MouseEvent | undefined
+      if (maybeRenderable && mouseEvent.type === "down" && mouseEvent.button === MouseButton.LEFT) {
+        mouseDownEvent = new MouseEvent(maybeRenderable, mouseEvent)
+        maybeRenderable.processMouseEvent(mouseDownEvent)
+
+        // Auto-focus on click (browser-like behavior)
+        // Bubble up to find closest focusable ancestor
+        if (!mouseDownEvent.defaultPrevented) {
+          let current: Renderable | null = maybeRenderable
+          while (current) {
+            if (current.focusable) {
+              current.focus()
+              break
+            }
+            current = current.parent
           }
-          current = current.parent
         }
       }
 
@@ -1173,8 +1180,7 @@ export class CliRenderer extends EventEmitter implements RenderContext {
           maybeRenderable.shouldStartSelection(mouseEvent.x, mouseEvent.y)
         ) {
           this.startSelection(maybeRenderable, mouseEvent.x, mouseEvent.y)
-          const event = new MouseEvent(maybeRenderable, mouseEvent)
-          maybeRenderable.processMouseEvent(event)
+          // Event already fired above (mouseDownEvent), don't fire again
           return true
         }
       }
@@ -1250,15 +1256,18 @@ export class CliRenderer extends EventEmitter implements RenderContext {
         this.requestRender()
       }
 
-      let event: MouseEvent | undefined = undefined
+      let event: MouseEvent | undefined = mouseDownEvent
       if (maybeRenderable) {
         if (mouseEvent.type === "drag" && mouseEvent.button === MouseButton.LEFT) {
           this.setCapturedRenderable(maybeRenderable)
         } else {
           this.setCapturedRenderable(undefined)
         }
-        event = new MouseEvent(maybeRenderable, mouseEvent)
-        maybeRenderable.processMouseEvent(event)
+        // Only create and fire event if we didn't already fire mouseDownEvent
+        if (!mouseDownEvent) {
+          event = new MouseEvent(maybeRenderable, mouseEvent)
+          maybeRenderable.processMouseEvent(event)
+        }
       } else {
         this.setCapturedRenderable(undefined)
         this.lastOverRenderable = undefined
