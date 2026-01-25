@@ -42,7 +42,6 @@ describe("BoxRenderable - focusable option", () => {
     box.focus()
     expect(box.focused).toBe(true)
   })
-
 })
 
 describe("BoxRenderable - borderStyle validation", () => {
