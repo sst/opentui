@@ -50,25 +50,31 @@ fn generateUnicodeHeavyText(allocator: std.mem.Allocator, length: usize) ![]cons
 }
 
 // Benchmark isAsciiOnly
-fn benchIsAsciiOnly(results_alloc: std.mem.Allocator, iterations: usize) ![]BenchResult {
+fn benchIsAsciiOnly(
+    results_alloc: std.mem.Allocator,
+    iterations: usize,
+    bench_filter: ?[]const u8,
+) ![]BenchResult {
     var results: std.ArrayListUnmanaged(BenchResult) = .{};
     errdefer results.deinit(results_alloc);
 
     // Small ASCII text (1KB)
     {
-        var temp = std.heap.ArenaAllocator.init(std.heap.page_allocator);
-        defer temp.deinit();
-        const text = try generateAsciiText(temp.allocator(), 1024);
+        const name = "isAsciiOnly: ASCII text (1KB)";
+        if (bench_utils.matchesBenchFilter(name, bench_filter)) {
+            var temp = std.heap.ArenaAllocator.init(std.heap.page_allocator);
+            defer temp.deinit();
+            const text = try generateAsciiText(temp.allocator(), 1024);
 
-        var stats = BenchStats{};
-        for (0..iterations) |_| {
-            var timer = try std.time.Timer.start();
-            _ = utf8.isAsciiOnly(text);
-            stats.record(timer.read());
-        }
+            var stats = BenchStats{};
+            for (0..iterations) |_| {
+                var timer = try std.time.Timer.start();
+                _ = utf8.isAsciiOnly(text);
+                stats.record(timer.read());
+            }
 
         try results.append(results_alloc, BenchResult{
-            .name = "isAsciiOnly: ASCII text (1KB)",
+            .name = name,
             .min_ns = stats.min_ns,
             .avg_ns = stats.avg(),
             .max_ns = stats.max_ns,
@@ -76,23 +82,26 @@ fn benchIsAsciiOnly(results_alloc: std.mem.Allocator, iterations: usize) ![]Benc
             .iterations = iterations,
             .mem_stats = null,
         });
+        }
     }
 
     // Large ASCII text (100KB)
     {
-        var temp = std.heap.ArenaAllocator.init(std.heap.page_allocator);
-        defer temp.deinit();
-        const text = try generateAsciiText(temp.allocator(), 100 * 1024);
+        const name = "isAsciiOnly: ASCII text (100KB)";
+        if (bench_utils.matchesBenchFilter(name, bench_filter)) {
+            var temp = std.heap.ArenaAllocator.init(std.heap.page_allocator);
+            defer temp.deinit();
+            const text = try generateAsciiText(temp.allocator(), 100 * 1024);
 
-        var stats = BenchStats{};
-        for (0..iterations) |_| {
-            var timer = try std.time.Timer.start();
-            _ = utf8.isAsciiOnly(text);
-            stats.record(timer.read());
-        }
+            var stats = BenchStats{};
+            for (0..iterations) |_| {
+                var timer = try std.time.Timer.start();
+                _ = utf8.isAsciiOnly(text);
+                stats.record(timer.read());
+            }
 
         try results.append(results_alloc, BenchResult{
-            .name = "isAsciiOnly: ASCII text (100KB)",
+            .name = name,
             .min_ns = stats.min_ns,
             .avg_ns = stats.avg(),
             .max_ns = stats.max_ns,
@@ -100,23 +109,26 @@ fn benchIsAsciiOnly(results_alloc: std.mem.Allocator, iterations: usize) ![]Benc
             .iterations = iterations,
             .mem_stats = null,
         });
+        }
     }
 
     // Very large ASCII text (1MB)
     {
-        var temp = std.heap.ArenaAllocator.init(std.heap.page_allocator);
-        defer temp.deinit();
-        const text = try generateAsciiText(temp.allocator(), 1024 * 1024);
+        const name = "isAsciiOnly: ASCII text (1MB)";
+        if (bench_utils.matchesBenchFilter(name, bench_filter)) {
+            var temp = std.heap.ArenaAllocator.init(std.heap.page_allocator);
+            defer temp.deinit();
+            const text = try generateAsciiText(temp.allocator(), 1024 * 1024);
 
-        var stats = BenchStats{};
-        for (0..iterations) |_| {
-            var timer = try std.time.Timer.start();
-            _ = utf8.isAsciiOnly(text);
-            stats.record(timer.read());
-        }
+            var stats = BenchStats{};
+            for (0..iterations) |_| {
+                var timer = try std.time.Timer.start();
+                _ = utf8.isAsciiOnly(text);
+                stats.record(timer.read());
+            }
 
         try results.append(results_alloc, BenchResult{
-            .name = "isAsciiOnly: ASCII text (1MB)",
+            .name = name,
             .min_ns = stats.min_ns,
             .avg_ns = stats.avg(),
             .max_ns = stats.max_ns,
@@ -124,23 +136,26 @@ fn benchIsAsciiOnly(results_alloc: std.mem.Allocator, iterations: usize) ![]Benc
             .iterations = iterations,
             .mem_stats = null,
         });
+        }
     }
 
     // Mixed text (10KB)
     {
-        var temp = std.heap.ArenaAllocator.init(std.heap.page_allocator);
-        defer temp.deinit();
-        const text = try generateMixedText(temp.allocator(), 10 * 1024);
+        const name = "isAsciiOnly: Mixed text (10KB)";
+        if (bench_utils.matchesBenchFilter(name, bench_filter)) {
+            var temp = std.heap.ArenaAllocator.init(std.heap.page_allocator);
+            defer temp.deinit();
+            const text = try generateMixedText(temp.allocator(), 10 * 1024);
 
-        var stats = BenchStats{};
-        for (0..iterations) |_| {
-            var timer = try std.time.Timer.start();
-            _ = utf8.isAsciiOnly(text);
-            stats.record(timer.read());
-        }
+            var stats = BenchStats{};
+            for (0..iterations) |_| {
+                var timer = try std.time.Timer.start();
+                _ = utf8.isAsciiOnly(text);
+                stats.record(timer.read());
+            }
 
         try results.append(results_alloc, BenchResult{
-            .name = "isAsciiOnly: Mixed text (10KB)",
+            .name = name,
             .min_ns = stats.min_ns,
             .avg_ns = stats.avg(),
             .max_ns = stats.max_ns,
@@ -148,40 +163,47 @@ fn benchIsAsciiOnly(results_alloc: std.mem.Allocator, iterations: usize) ![]Benc
             .iterations = iterations,
             .mem_stats = null,
         });
+        }
     }
 
     return results.toOwnedSlice(results_alloc);
 }
 
 // Benchmark findLineBreaks
-fn benchFindLineBreaks(results_alloc: std.mem.Allocator, iterations: usize) ![]BenchResult {
+fn benchFindLineBreaks(
+    results_alloc: std.mem.Allocator,
+    iterations: usize,
+    bench_filter: ?[]const u8,
+) ![]BenchResult {
     var results: std.ArrayListUnmanaged(BenchResult) = .{};
     errdefer results.deinit(results_alloc);
 
     // Text with LF breaks
     {
-        var temp = std.heap.ArenaAllocator.init(std.heap.page_allocator);
-        defer temp.deinit();
-        const alloc = temp.allocator();
+        const name = "findLineBreaks: 100 LF lines";
+        if (bench_utils.matchesBenchFilter(name, bench_filter)) {
+            var temp = std.heap.ArenaAllocator.init(std.heap.page_allocator);
+            defer temp.deinit();
+            const alloc = temp.allocator();
 
-        var text: std.ArrayListUnmanaged(u8) = .{};
-        for (0..100) |_| {
-            try text.appendSlice(alloc, "This is a line of text that ends with a newline character.\n");
-        }
-        const test_text = text.items;
+            var text: std.ArrayListUnmanaged(u8) = .{};
+            for (0..100) |_| {
+                try text.appendSlice(alloc, "This is a line of text that ends with a newline character.\n");
+            }
+            const test_text = text.items;
 
-        var line_result = utf8.LineBreakResult.init(alloc);
-        defer line_result.deinit();
+            var line_result = utf8.LineBreakResult.init(alloc);
+            defer line_result.deinit();
 
-        var stats = BenchStats{};
-        for (0..iterations) |_| {
-            var timer = try std.time.Timer.start();
-            try utf8.findLineBreaks(test_text, &line_result);
-            stats.record(timer.read());
-        }
+            var stats = BenchStats{};
+            for (0..iterations) |_| {
+                var timer = try std.time.Timer.start();
+                try utf8.findLineBreaks(test_text, &line_result);
+                stats.record(timer.read());
+            }
 
         try results.append(results_alloc, BenchResult{
-            .name = "findLineBreaks: 100 LF lines",
+            .name = name,
             .min_ns = stats.min_ns,
             .avg_ns = stats.avg(),
             .max_ns = stats.max_ns,
@@ -189,32 +211,35 @@ fn benchFindLineBreaks(results_alloc: std.mem.Allocator, iterations: usize) ![]B
             .iterations = iterations,
             .mem_stats = null,
         });
+        }
     }
 
     // Text with CRLF breaks
     {
-        var temp = std.heap.ArenaAllocator.init(std.heap.page_allocator);
-        defer temp.deinit();
-        const alloc = temp.allocator();
+        const name = "findLineBreaks: 100 CRLF lines";
+        if (bench_utils.matchesBenchFilter(name, bench_filter)) {
+            var temp = std.heap.ArenaAllocator.init(std.heap.page_allocator);
+            defer temp.deinit();
+            const alloc = temp.allocator();
 
-        var text: std.ArrayListUnmanaged(u8) = .{};
-        for (0..100) |_| {
-            try text.appendSlice(alloc, "This is a line of text that ends with CRLF.\r\n");
-        }
-        const test_text = text.items;
+            var text: std.ArrayListUnmanaged(u8) = .{};
+            for (0..100) |_| {
+                try text.appendSlice(alloc, "This is a line of text that ends with CRLF.\r\n");
+            }
+            const test_text = text.items;
 
-        var line_result = utf8.LineBreakResult.init(alloc);
-        defer line_result.deinit();
+            var line_result = utf8.LineBreakResult.init(alloc);
+            defer line_result.deinit();
 
-        var stats = BenchStats{};
-        for (0..iterations) |_| {
-            var timer = try std.time.Timer.start();
-            try utf8.findLineBreaks(test_text, &line_result);
-            stats.record(timer.read());
-        }
+            var stats = BenchStats{};
+            for (0..iterations) |_| {
+                var timer = try std.time.Timer.start();
+                try utf8.findLineBreaks(test_text, &line_result);
+                stats.record(timer.read());
+            }
 
         try results.append(results_alloc, BenchResult{
-            .name = "findLineBreaks: 100 CRLF lines",
+            .name = name,
             .min_ns = stats.min_ns,
             .avg_ns = stats.avg(),
             .max_ns = stats.max_ns,
@@ -222,32 +247,35 @@ fn benchFindLineBreaks(results_alloc: std.mem.Allocator, iterations: usize) ![]B
             .iterations = iterations,
             .mem_stats = null,
         });
+        }
     }
 
     // Large text with many lines
     {
-        var temp = std.heap.ArenaAllocator.init(std.heap.page_allocator);
-        defer temp.deinit();
-        const alloc = temp.allocator();
+        const name = "findLineBreaks: 1000 short lines";
+        if (bench_utils.matchesBenchFilter(name, bench_filter)) {
+            var temp = std.heap.ArenaAllocator.init(std.heap.page_allocator);
+            defer temp.deinit();
+            const alloc = temp.allocator();
 
-        var text: std.ArrayListUnmanaged(u8) = .{};
-        for (0..1000) |_| {
-            try text.appendSlice(alloc, "Short line\n");
-        }
-        const test_text = text.items;
+            var text: std.ArrayListUnmanaged(u8) = .{};
+            for (0..1000) |_| {
+                try text.appendSlice(alloc, "Short line\n");
+            }
+            const test_text = text.items;
 
-        var line_result = utf8.LineBreakResult.init(alloc);
-        defer line_result.deinit();
+            var line_result = utf8.LineBreakResult.init(alloc);
+            defer line_result.deinit();
 
-        var stats = BenchStats{};
-        for (0..iterations) |_| {
-            var timer = try std.time.Timer.start();
-            try utf8.findLineBreaks(test_text, &line_result);
-            stats.record(timer.read());
-        }
+            var stats = BenchStats{};
+            for (0..iterations) |_| {
+                var timer = try std.time.Timer.start();
+                try utf8.findLineBreaks(test_text, &line_result);
+                stats.record(timer.read());
+            }
 
         try results.append(results_alloc, BenchResult{
-            .name = "findLineBreaks: 1000 short lines",
+            .name = name,
             .min_ns = stats.min_ns,
             .avg_ns = stats.avg(),
             .max_ns = stats.max_ns,
@@ -255,35 +283,42 @@ fn benchFindLineBreaks(results_alloc: std.mem.Allocator, iterations: usize) ![]B
             .iterations = iterations,
             .mem_stats = null,
         });
+        }
     }
 
     return results.toOwnedSlice(results_alloc);
 }
 
 // Benchmark findWrapBreaks
-fn benchFindWrapBreaks(results_alloc: std.mem.Allocator, iterations: usize) ![]BenchResult {
+fn benchFindWrapBreaks(
+    results_alloc: std.mem.Allocator,
+    iterations: usize,
+    bench_filter: ?[]const u8,
+) ![]BenchResult {
     var results: std.ArrayListUnmanaged(BenchResult) = .{};
     errdefer results.deinit(results_alloc);
 
     // ASCII text
     {
-        var temp = std.heap.ArenaAllocator.init(std.heap.page_allocator);
-        defer temp.deinit();
-        const alloc = temp.allocator();
-        const text = try generateAsciiText(alloc, 10 * 1024);
+        const name = "findWrapBreaks: ASCII (10KB)";
+        if (bench_utils.matchesBenchFilter(name, bench_filter)) {
+            var temp = std.heap.ArenaAllocator.init(std.heap.page_allocator);
+            defer temp.deinit();
+            const alloc = temp.allocator();
+            const text = try generateAsciiText(alloc, 10 * 1024);
 
-        var wrap_result = utf8.WrapBreakResult.init(alloc);
-        defer wrap_result.deinit();
+            var wrap_result = utf8.WrapBreakResult.init(alloc);
+            defer wrap_result.deinit();
 
-        var stats = BenchStats{};
-        for (0..iterations) |_| {
-            var timer = try std.time.Timer.start();
-            try utf8.findWrapBreaks(text, &wrap_result, .unicode);
-            stats.record(timer.read());
-        }
+            var stats = BenchStats{};
+            for (0..iterations) |_| {
+                var timer = try std.time.Timer.start();
+                try utf8.findWrapBreaks(text, &wrap_result, .unicode);
+                stats.record(timer.read());
+            }
 
         try results.append(results_alloc, BenchResult{
-            .name = "findWrapBreaks: ASCII (10KB)",
+            .name = name,
             .min_ns = stats.min_ns,
             .avg_ns = stats.avg(),
             .max_ns = stats.max_ns,
@@ -291,27 +326,30 @@ fn benchFindWrapBreaks(results_alloc: std.mem.Allocator, iterations: usize) ![]B
             .iterations = iterations,
             .mem_stats = null,
         });
+        }
     }
 
     // Mixed text
     {
-        var temp = std.heap.ArenaAllocator.init(std.heap.page_allocator);
-        defer temp.deinit();
-        const alloc = temp.allocator();
-        const text = try generateMixedText(alloc, 10 * 1024);
+        const name = "findWrapBreaks: Mixed (10KB)";
+        if (bench_utils.matchesBenchFilter(name, bench_filter)) {
+            var temp = std.heap.ArenaAllocator.init(std.heap.page_allocator);
+            defer temp.deinit();
+            const alloc = temp.allocator();
+            const text = try generateMixedText(alloc, 10 * 1024);
 
-        var wrap_result = utf8.WrapBreakResult.init(alloc);
-        defer wrap_result.deinit();
+            var wrap_result = utf8.WrapBreakResult.init(alloc);
+            defer wrap_result.deinit();
 
-        var stats = BenchStats{};
-        for (0..iterations) |_| {
-            var timer = try std.time.Timer.start();
-            try utf8.findWrapBreaks(text, &wrap_result, .unicode);
-            stats.record(timer.read());
-        }
+            var stats = BenchStats{};
+            for (0..iterations) |_| {
+                var timer = try std.time.Timer.start();
+                try utf8.findWrapBreaks(text, &wrap_result, .unicode);
+                stats.record(timer.read());
+            }
 
         try results.append(results_alloc, BenchResult{
-            .name = "findWrapBreaks: Mixed (10KB)",
+            .name = name,
             .min_ns = stats.min_ns,
             .avg_ns = stats.avg(),
             .max_ns = stats.max_ns,
@@ -319,31 +357,38 @@ fn benchFindWrapBreaks(results_alloc: std.mem.Allocator, iterations: usize) ![]B
             .iterations = iterations,
             .mem_stats = null,
         });
+        }
     }
 
     return results.toOwnedSlice(results_alloc);
 }
 
 // Benchmark findWrapPosByWidth
-fn benchFindWrapPosByWidth(results_alloc: std.mem.Allocator, iterations: usize) ![]BenchResult {
+fn benchFindWrapPosByWidth(
+    results_alloc: std.mem.Allocator,
+    iterations: usize,
+    bench_filter: ?[]const u8,
+) ![]BenchResult {
     var results: std.ArrayListUnmanaged(BenchResult) = .{};
     errdefer results.deinit(results_alloc);
 
     // ASCII text, narrow width
     {
-        var temp = std.heap.ArenaAllocator.init(std.heap.page_allocator);
-        defer temp.deinit();
-        const text = try generateAsciiText(temp.allocator(), 1024);
+        const name = "findWrapPosByWidth: ASCII 1KB, width=40";
+        if (bench_utils.matchesBenchFilter(name, bench_filter)) {
+            var temp = std.heap.ArenaAllocator.init(std.heap.page_allocator);
+            defer temp.deinit();
+            const text = try generateAsciiText(temp.allocator(), 1024);
 
-        var stats = BenchStats{};
-        for (0..iterations) |_| {
-            var timer = try std.time.Timer.start();
-            _ = utf8.findWrapPosByWidth(text, 40, 4, true, .unicode);
-            stats.record(timer.read());
-        }
+            var stats = BenchStats{};
+            for (0..iterations) |_| {
+                var timer = try std.time.Timer.start();
+                _ = utf8.findWrapPosByWidth(text, 40, 4, true, .unicode);
+                stats.record(timer.read());
+            }
 
         try results.append(results_alloc, BenchResult{
-            .name = "findWrapPosByWidth: ASCII 1KB, width=40",
+            .name = name,
             .min_ns = stats.min_ns,
             .avg_ns = stats.avg(),
             .max_ns = stats.max_ns,
@@ -351,23 +396,26 @@ fn benchFindWrapPosByWidth(results_alloc: std.mem.Allocator, iterations: usize) 
             .iterations = iterations,
             .mem_stats = null,
         });
+        }
     }
 
     // ASCII text, wide width
     {
-        var temp = std.heap.ArenaAllocator.init(std.heap.page_allocator);
-        defer temp.deinit();
-        const text = try generateAsciiText(temp.allocator(), 1024);
+        const name = "findWrapPosByWidth: ASCII 1KB, width=120";
+        if (bench_utils.matchesBenchFilter(name, bench_filter)) {
+            var temp = std.heap.ArenaAllocator.init(std.heap.page_allocator);
+            defer temp.deinit();
+            const text = try generateAsciiText(temp.allocator(), 1024);
 
-        var stats = BenchStats{};
-        for (0..iterations) |_| {
-            var timer = try std.time.Timer.start();
-            _ = utf8.findWrapPosByWidth(text, 120, 4, true, .unicode);
-            stats.record(timer.read());
-        }
+            var stats = BenchStats{};
+            for (0..iterations) |_| {
+                var timer = try std.time.Timer.start();
+                _ = utf8.findWrapPosByWidth(text, 120, 4, true, .unicode);
+                stats.record(timer.read());
+            }
 
         try results.append(results_alloc, BenchResult{
-            .name = "findWrapPosByWidth: ASCII 1KB, width=120",
+            .name = name,
             .min_ns = stats.min_ns,
             .avg_ns = stats.avg(),
             .max_ns = stats.max_ns,
@@ -375,23 +423,26 @@ fn benchFindWrapPosByWidth(results_alloc: std.mem.Allocator, iterations: usize) 
             .iterations = iterations,
             .mem_stats = null,
         });
+        }
     }
 
     // Mixed text
     {
-        var temp = std.heap.ArenaAllocator.init(std.heap.page_allocator);
-        defer temp.deinit();
-        const text = try generateMixedText(temp.allocator(), 1024);
+        const name = "findWrapPosByWidth: Mixed 1KB, width=80";
+        if (bench_utils.matchesBenchFilter(name, bench_filter)) {
+            var temp = std.heap.ArenaAllocator.init(std.heap.page_allocator);
+            defer temp.deinit();
+            const text = try generateMixedText(temp.allocator(), 1024);
 
-        var stats = BenchStats{};
-        for (0..iterations) |_| {
-            var timer = try std.time.Timer.start();
-            _ = utf8.findWrapPosByWidth(text, 80, 4, false, .unicode);
-            stats.record(timer.read());
-        }
+            var stats = BenchStats{};
+            for (0..iterations) |_| {
+                var timer = try std.time.Timer.start();
+                _ = utf8.findWrapPosByWidth(text, 80, 4, false, .unicode);
+                stats.record(timer.read());
+            }
 
         try results.append(results_alloc, BenchResult{
-            .name = "findWrapPosByWidth: Mixed 1KB, width=80",
+            .name = name,
             .min_ns = stats.min_ns,
             .avg_ns = stats.avg(),
             .max_ns = stats.max_ns,
@@ -399,23 +450,26 @@ fn benchFindWrapPosByWidth(results_alloc: std.mem.Allocator, iterations: usize) 
             .iterations = iterations,
             .mem_stats = null,
         });
+        }
     }
 
     // Unicode heavy text
     {
-        var temp = std.heap.ArenaAllocator.init(std.heap.page_allocator);
-        defer temp.deinit();
-        const text = try generateUnicodeHeavyText(temp.allocator(), 1024);
+        const name = "findWrapPosByWidth: Unicode 1KB, width=80";
+        if (bench_utils.matchesBenchFilter(name, bench_filter)) {
+            var temp = std.heap.ArenaAllocator.init(std.heap.page_allocator);
+            defer temp.deinit();
+            const text = try generateUnicodeHeavyText(temp.allocator(), 1024);
 
-        var stats = BenchStats{};
-        for (0..iterations) |_| {
-            var timer = try std.time.Timer.start();
-            _ = utf8.findWrapPosByWidth(text, 80, 4, false, .unicode);
-            stats.record(timer.read());
-        }
+            var stats = BenchStats{};
+            for (0..iterations) |_| {
+                var timer = try std.time.Timer.start();
+                _ = utf8.findWrapPosByWidth(text, 80, 4, false, .unicode);
+                stats.record(timer.read());
+            }
 
         try results.append(results_alloc, BenchResult{
-            .name = "findWrapPosByWidth: Unicode 1KB, width=80",
+            .name = name,
             .min_ns = stats.min_ns,
             .avg_ns = stats.avg(),
             .max_ns = stats.max_ns,
@@ -423,31 +477,38 @@ fn benchFindWrapPosByWidth(results_alloc: std.mem.Allocator, iterations: usize) 
             .iterations = iterations,
             .mem_stats = null,
         });
+        }
     }
 
     return results.toOwnedSlice(results_alloc);
 }
 
 // Benchmark findPosByWidth
-fn benchFindPosByWidth(results_alloc: std.mem.Allocator, iterations: usize) ![]BenchResult {
+fn benchFindPosByWidth(
+    results_alloc: std.mem.Allocator,
+    iterations: usize,
+    bench_filter: ?[]const u8,
+) ![]BenchResult {
     var results: std.ArrayListUnmanaged(BenchResult) = .{};
     errdefer results.deinit(results_alloc);
 
     // ASCII text, find middle
     {
-        var temp = std.heap.ArenaAllocator.init(std.heap.page_allocator);
-        defer temp.deinit();
-        const text = try generateAsciiText(temp.allocator(), 1024);
+        const name = "findPosByWidth: ASCII 1KB, target=500";
+        if (bench_utils.matchesBenchFilter(name, bench_filter)) {
+            var temp = std.heap.ArenaAllocator.init(std.heap.page_allocator);
+            defer temp.deinit();
+            const text = try generateAsciiText(temp.allocator(), 1024);
 
-        var stats = BenchStats{};
-        for (0..iterations) |_| {
-            var timer = try std.time.Timer.start();
-            _ = utf8.findPosByWidth(text, 500, 4, true, true, .unicode);
-            stats.record(timer.read());
-        }
+            var stats = BenchStats{};
+            for (0..iterations) |_| {
+                var timer = try std.time.Timer.start();
+                _ = utf8.findPosByWidth(text, 500, 4, true, true, .unicode);
+                stats.record(timer.read());
+            }
 
         try results.append(results_alloc, BenchResult{
-            .name = "findPosByWidth: ASCII 1KB, target=500",
+            .name = name,
             .min_ns = stats.min_ns,
             .avg_ns = stats.avg(),
             .max_ns = stats.max_ns,
@@ -455,23 +516,26 @@ fn benchFindPosByWidth(results_alloc: std.mem.Allocator, iterations: usize) ![]B
             .iterations = iterations,
             .mem_stats = null,
         });
+        }
     }
 
     // Large ASCII text, find near end
     {
-        var temp = std.heap.ArenaAllocator.init(std.heap.page_allocator);
-        defer temp.deinit();
-        const text = try generateAsciiText(temp.allocator(), 100 * 1024);
+        const name = "findPosByWidth: ASCII 100KB, target=90000";
+        if (bench_utils.matchesBenchFilter(name, bench_filter)) {
+            var temp = std.heap.ArenaAllocator.init(std.heap.page_allocator);
+            defer temp.deinit();
+            const text = try generateAsciiText(temp.allocator(), 100 * 1024);
 
-        var stats = BenchStats{};
-        for (0..iterations) |_| {
-            var timer = try std.time.Timer.start();
-            _ = utf8.findPosByWidth(text, 90000, 4, true, true, .unicode);
-            stats.record(timer.read());
-        }
+            var stats = BenchStats{};
+            for (0..iterations) |_| {
+                var timer = try std.time.Timer.start();
+                _ = utf8.findPosByWidth(text, 90000, 4, true, true, .unicode);
+                stats.record(timer.read());
+            }
 
         try results.append(results_alloc, BenchResult{
-            .name = "findPosByWidth: ASCII 100KB, target=90000",
+            .name = name,
             .min_ns = stats.min_ns,
             .avg_ns = stats.avg(),
             .max_ns = stats.max_ns,
@@ -479,23 +543,26 @@ fn benchFindPosByWidth(results_alloc: std.mem.Allocator, iterations: usize) ![]B
             .iterations = iterations,
             .mem_stats = null,
         });
+        }
     }
 
     // Mixed text
     {
-        var temp = std.heap.ArenaAllocator.init(std.heap.page_allocator);
-        defer temp.deinit();
-        const text = try generateMixedText(temp.allocator(), 10 * 1024);
+        const name = "findPosByWidth: Mixed 10KB, target=5000";
+        if (bench_utils.matchesBenchFilter(name, bench_filter)) {
+            var temp = std.heap.ArenaAllocator.init(std.heap.page_allocator);
+            defer temp.deinit();
+            const text = try generateMixedText(temp.allocator(), 10 * 1024);
 
-        var stats = BenchStats{};
-        for (0..iterations) |_| {
-            var timer = try std.time.Timer.start();
-            _ = utf8.findPosByWidth(text, 5000, 4, false, true, .unicode);
-            stats.record(timer.read());
-        }
+            var stats = BenchStats{};
+            for (0..iterations) |_| {
+                var timer = try std.time.Timer.start();
+                _ = utf8.findPosByWidth(text, 5000, 4, false, true, .unicode);
+                stats.record(timer.read());
+            }
 
         try results.append(results_alloc, BenchResult{
-            .name = "findPosByWidth: Mixed 10KB, target=5000",
+            .name = name,
             .min_ns = stats.min_ns,
             .avg_ns = stats.avg(),
             .max_ns = stats.max_ns,
@@ -503,31 +570,38 @@ fn benchFindPosByWidth(results_alloc: std.mem.Allocator, iterations: usize) ![]B
             .iterations = iterations,
             .mem_stats = null,
         });
+        }
     }
 
     return results.toOwnedSlice(results_alloc);
 }
 
 // Benchmark calculateTextWidth
-fn benchCalculateTextWidth(results_alloc: std.mem.Allocator, iterations: usize) ![]BenchResult {
+fn benchCalculateTextWidth(
+    results_alloc: std.mem.Allocator,
+    iterations: usize,
+    bench_filter: ?[]const u8,
+) ![]BenchResult {
     var results: std.ArrayListUnmanaged(BenchResult) = .{};
     errdefer results.deinit(results_alloc);
 
     // Small ASCII text (1KB)
     {
-        var temp = std.heap.ArenaAllocator.init(std.heap.page_allocator);
-        defer temp.deinit();
-        const text = try generateAsciiText(temp.allocator(), 1024);
+        const name = "calculateTextWidth: ASCII (1KB)";
+        if (bench_utils.matchesBenchFilter(name, bench_filter)) {
+            var temp = std.heap.ArenaAllocator.init(std.heap.page_allocator);
+            defer temp.deinit();
+            const text = try generateAsciiText(temp.allocator(), 1024);
 
-        var stats = BenchStats{};
-        for (0..iterations) |_| {
-            var timer = try std.time.Timer.start();
-            _ = utf8.calculateTextWidth(text, 4, true, .unicode);
-            stats.record(timer.read());
-        }
+            var stats = BenchStats{};
+            for (0..iterations) |_| {
+                var timer = try std.time.Timer.start();
+                _ = utf8.calculateTextWidth(text, 4, true, .unicode);
+                stats.record(timer.read());
+            }
 
         try results.append(results_alloc, BenchResult{
-            .name = "calculateTextWidth: ASCII (1KB)",
+            .name = name,
             .min_ns = stats.min_ns,
             .avg_ns = stats.avg(),
             .max_ns = stats.max_ns,
@@ -535,23 +609,26 @@ fn benchCalculateTextWidth(results_alloc: std.mem.Allocator, iterations: usize) 
             .iterations = iterations,
             .mem_stats = null,
         });
+        }
     }
 
     // Large ASCII text (100KB)
     {
-        var temp = std.heap.ArenaAllocator.init(std.heap.page_allocator);
-        defer temp.deinit();
-        const text = try generateAsciiText(temp.allocator(), 100 * 1024);
+        const name = "calculateTextWidth: ASCII (100KB)";
+        if (bench_utils.matchesBenchFilter(name, bench_filter)) {
+            var temp = std.heap.ArenaAllocator.init(std.heap.page_allocator);
+            defer temp.deinit();
+            const text = try generateAsciiText(temp.allocator(), 100 * 1024);
 
-        var stats = BenchStats{};
-        for (0..iterations) |_| {
-            var timer = try std.time.Timer.start();
-            _ = utf8.calculateTextWidth(text, 4, true, .unicode);
-            stats.record(timer.read());
-        }
+            var stats = BenchStats{};
+            for (0..iterations) |_| {
+                var timer = try std.time.Timer.start();
+                _ = utf8.calculateTextWidth(text, 4, true, .unicode);
+                stats.record(timer.read());
+            }
 
         try results.append(results_alloc, BenchResult{
-            .name = "calculateTextWidth: ASCII (100KB)",
+            .name = name,
             .min_ns = stats.min_ns,
             .avg_ns = stats.avg(),
             .max_ns = stats.max_ns,
@@ -559,23 +636,26 @@ fn benchCalculateTextWidth(results_alloc: std.mem.Allocator, iterations: usize) 
             .iterations = iterations,
             .mem_stats = null,
         });
+        }
     }
 
     // Very large ASCII text (1MB)
     {
-        var temp = std.heap.ArenaAllocator.init(std.heap.page_allocator);
-        defer temp.deinit();
-        const text = try generateAsciiText(temp.allocator(), 1024 * 1024);
+        const name = "calculateTextWidth: ASCII (1MB)";
+        if (bench_utils.matchesBenchFilter(name, bench_filter)) {
+            var temp = std.heap.ArenaAllocator.init(std.heap.page_allocator);
+            defer temp.deinit();
+            const text = try generateAsciiText(temp.allocator(), 1024 * 1024);
 
-        var stats = BenchStats{};
-        for (0..iterations) |_| {
-            var timer = try std.time.Timer.start();
-            _ = utf8.calculateTextWidth(text, 4, true, .unicode);
-            stats.record(timer.read());
-        }
+            var stats = BenchStats{};
+            for (0..iterations) |_| {
+                var timer = try std.time.Timer.start();
+                _ = utf8.calculateTextWidth(text, 4, true, .unicode);
+                stats.record(timer.read());
+            }
 
         try results.append(results_alloc, BenchResult{
-            .name = "calculateTextWidth: ASCII (1MB)",
+            .name = name,
             .min_ns = stats.min_ns,
             .avg_ns = stats.avg(),
             .max_ns = stats.max_ns,
@@ -583,32 +663,35 @@ fn benchCalculateTextWidth(results_alloc: std.mem.Allocator, iterations: usize) 
             .iterations = iterations,
             .mem_stats = null,
         });
+        }
     }
 
     // ASCII with tabs
     {
-        var temp = std.heap.ArenaAllocator.init(std.heap.page_allocator);
-        defer temp.deinit();
-        const alloc = temp.allocator();
+        const name = "calculateTextWidth: ASCII with tabs (10KB)";
+        if (bench_utils.matchesBenchFilter(name, bench_filter)) {
+            var temp = std.heap.ArenaAllocator.init(std.heap.page_allocator);
+            defer temp.deinit();
+            const alloc = temp.allocator();
 
-        var text: std.ArrayListUnmanaged(u8) = .{};
-        for (0..10 * 1024) |i| {
-            if (i % 20 == 0) {
-                try text.append(alloc, '\t');
-            } else {
-                try text.append(alloc, @as(u8, @intCast(32 + (i % 95))));
+            var text: std.ArrayListUnmanaged(u8) = .{};
+            for (0..10 * 1024) |i| {
+                if (i % 20 == 0) {
+                    try text.append(alloc, '\t');
+                } else {
+                    try text.append(alloc, @as(u8, @intCast(32 + (i % 95))));
+                }
             }
-        }
 
-        var stats = BenchStats{};
-        for (0..iterations) |_| {
-            var timer = try std.time.Timer.start();
-            _ = utf8.calculateTextWidth(text.items, 4, false, .unicode);
-            stats.record(timer.read());
-        }
+            var stats = BenchStats{};
+            for (0..iterations) |_| {
+                var timer = try std.time.Timer.start();
+                _ = utf8.calculateTextWidth(text.items, 4, false, .unicode);
+                stats.record(timer.read());
+            }
 
         try results.append(results_alloc, BenchResult{
-            .name = "calculateTextWidth: ASCII with tabs (10KB)",
+            .name = name,
             .min_ns = stats.min_ns,
             .avg_ns = stats.avg(),
             .max_ns = stats.max_ns,
@@ -616,23 +699,26 @@ fn benchCalculateTextWidth(results_alloc: std.mem.Allocator, iterations: usize) 
             .iterations = iterations,
             .mem_stats = null,
         });
+        }
     }
 
     // Mixed text
     {
-        var temp = std.heap.ArenaAllocator.init(std.heap.page_allocator);
-        defer temp.deinit();
-        const text = try generateMixedText(temp.allocator(), 10 * 1024);
+        const name = "calculateTextWidth: Mixed (10KB)";
+        if (bench_utils.matchesBenchFilter(name, bench_filter)) {
+            var temp = std.heap.ArenaAllocator.init(std.heap.page_allocator);
+            defer temp.deinit();
+            const text = try generateMixedText(temp.allocator(), 10 * 1024);
 
-        var stats = BenchStats{};
-        for (0..iterations) |_| {
-            var timer = try std.time.Timer.start();
-            _ = utf8.calculateTextWidth(text, 4, false, .unicode);
-            stats.record(timer.read());
-        }
+            var stats = BenchStats{};
+            for (0..iterations) |_| {
+                var timer = try std.time.Timer.start();
+                _ = utf8.calculateTextWidth(text, 4, false, .unicode);
+                stats.record(timer.read());
+            }
 
         try results.append(results_alloc, BenchResult{
-            .name = "calculateTextWidth: Mixed (10KB)",
+            .name = name,
             .min_ns = stats.min_ns,
             .avg_ns = stats.avg(),
             .max_ns = stats.max_ns,
@@ -640,23 +726,26 @@ fn benchCalculateTextWidth(results_alloc: std.mem.Allocator, iterations: usize) 
             .iterations = iterations,
             .mem_stats = null,
         });
+        }
     }
 
     // Unicode heavy text
     {
-        var temp = std.heap.ArenaAllocator.init(std.heap.page_allocator);
-        defer temp.deinit();
-        const text = try generateUnicodeHeavyText(temp.allocator(), 10 * 1024);
+        const name = "calculateTextWidth: Unicode heavy (10KB)";
+        if (bench_utils.matchesBenchFilter(name, bench_filter)) {
+            var temp = std.heap.ArenaAllocator.init(std.heap.page_allocator);
+            defer temp.deinit();
+            const text = try generateUnicodeHeavyText(temp.allocator(), 10 * 1024);
 
-        var stats = BenchStats{};
-        for (0..iterations) |_| {
-            var timer = try std.time.Timer.start();
-            _ = utf8.calculateTextWidth(text, 4, false, .unicode);
-            stats.record(timer.read());
-        }
+            var stats = BenchStats{};
+            for (0..iterations) |_| {
+                var timer = try std.time.Timer.start();
+                _ = utf8.calculateTextWidth(text, 4, false, .unicode);
+                stats.record(timer.read());
+            }
 
         try results.append(results_alloc, BenchResult{
-            .name = "calculateTextWidth: Unicode heavy (10KB)",
+            .name = name,
             .min_ns = stats.min_ns,
             .avg_ns = stats.avg(),
             .max_ns = stats.max_ns,
@@ -664,6 +753,7 @@ fn benchCalculateTextWidth(results_alloc: std.mem.Allocator, iterations: usize) 
             .iterations = iterations,
             .mem_stats = null,
         });
+        }
     }
 
     return results.toOwnedSlice(results_alloc);
@@ -672,6 +762,7 @@ fn benchCalculateTextWidth(results_alloc: std.mem.Allocator, iterations: usize) 
 pub fn run(
     allocator: std.mem.Allocator,
     show_mem: bool,
+    bench_filter: ?[]const u8,
 ) ![]BenchResult {
     _ = show_mem;
 
@@ -681,27 +772,27 @@ pub fn run(
     const iterations: usize = 1000;
 
     // isAsciiOnly benchmarks
-    const ascii_only_results = try benchIsAsciiOnly(allocator, iterations);
+    const ascii_only_results = try benchIsAsciiOnly(allocator, iterations, bench_filter);
     try all_results.appendSlice(allocator, ascii_only_results);
 
     // findLineBreaks benchmarks
-    const line_breaks_results = try benchFindLineBreaks(allocator, iterations);
+    const line_breaks_results = try benchFindLineBreaks(allocator, iterations, bench_filter);
     try all_results.appendSlice(allocator, line_breaks_results);
 
     // findWrapBreaks benchmarks
-    const wrap_breaks_results = try benchFindWrapBreaks(allocator, iterations);
+    const wrap_breaks_results = try benchFindWrapBreaks(allocator, iterations, bench_filter);
     try all_results.appendSlice(allocator, wrap_breaks_results);
 
     // findWrapPosByWidth benchmarks
-    const wrap_pos_results = try benchFindWrapPosByWidth(allocator, iterations);
+    const wrap_pos_results = try benchFindWrapPosByWidth(allocator, iterations, bench_filter);
     try all_results.appendSlice(allocator, wrap_pos_results);
 
     // findPosByWidth benchmarks
-    const pos_width_results = try benchFindPosByWidth(allocator, iterations);
+    const pos_width_results = try benchFindPosByWidth(allocator, iterations, bench_filter);
     try all_results.appendSlice(allocator, pos_width_results);
 
     // calculateTextWidth benchmarks
-    const text_width_results = try benchCalculateTextWidth(allocator, iterations);
+    const text_width_results = try benchCalculateTextWidth(allocator, iterations, bench_filter);
     try all_results.appendSlice(allocator, text_width_results);
 
     return all_results.toOwnedSlice(allocator);

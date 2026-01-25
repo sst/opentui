@@ -7,6 +7,7 @@ const utf8 = @import("utf8.zig");
 const Segment = seg_mod.Segment;
 const UnifiedRope = seg_mod.UnifiedRope;
 const TextChunk = seg_mod.TextChunk;
+const GraphemeInfo = seg_mod.GraphemeInfo;
 const MemRegistry = mem_registry_mod.MemRegistry;
 
 pub const LineInfo = struct {
@@ -340,6 +341,43 @@ pub fn getPrevGraphemeWidth(rope: *UnifiedRope, mem_registry: *const MemRegistry
         }
     }
     return 0;
+}
+
+pub const CharOffsetColumnInfo = struct {
+    col: u32,
+    width: u32,
+};
+
+/// char_offset is grapheme-count based (not raw codepoint)
+/// grapheme_idx and col_delta carry incremental state across calls
+pub fn charOffsetToColumn(
+    char_offset: u32,
+    graphemes: []const GraphemeInfo,
+    grapheme_idx: *usize,
+    col_delta: *i64,
+) CharOffsetColumnInfo {
+    while (grapheme_idx.* < graphemes.len) {
+        const info = graphemes[grapheme_idx.*];
+        const info_char_offset = @as(i64, info.col_offset) - col_delta.*;
+        if (info_char_offset >= @as(i64, char_offset)) break;
+        col_delta.* += @as(i64, info.width) - 1;
+        grapheme_idx.* += 1;
+    }
+
+    var break_col_i64 = @as(i64, char_offset) + col_delta.*;
+    if (break_col_i64 < 0) break_col_i64 = 0;
+    const break_col = @as(u32, @intCast(break_col_i64));
+
+    var width: u32 = 1;
+    if (grapheme_idx.* < graphemes.len) {
+        const info = graphemes[grapheme_idx.*];
+        const info_char_offset = @as(i64, info.col_offset) - col_delta.*;
+        if (info_char_offset == @as(i64, char_offset)) {
+            width = @as(u32, info.width);
+        }
+    }
+
+    return .{ .col = break_col, .width = width };
 }
 
 /// Extract text between display-width offsets into a buffer

@@ -1,0 +1,242 @@
+---
+title: ScrollBox
+description: A scrollable container component with customizable scrollbars
+order: 5
+---
+
+# ScrollBox
+
+A scrollable container that supports horizontal and vertical scrolling, sticky scroll behavior, viewport culling, and customizable scrollbars.
+
+## Basic usage
+
+### Renderable api
+
+```typescript
+import { ScrollBoxRenderable, TextRenderable, BoxRenderable, createCliRenderer } from "@opentui/core"
+
+const renderer = await createCliRenderer()
+
+const scrollbox = new ScrollBoxRenderable(renderer, {
+  id: "scrollbox",
+  width: 40,
+  height: 20,
+})
+
+// Add content to the scrollbox
+for (let i = 0; i < 100; i++) {
+  scrollbox.add(
+    new BoxRenderable(renderer, {
+      id: `item-${i}`,
+      width: "100%",
+      height: 2,
+      backgroundColor: i % 2 === 0 ? "#292e42" : "#2f3449",
+    }),
+  )
+}
+
+renderer.root.add(scrollbox)
+```
+
+### Construct api
+
+> **Note:** Not yet available. Coming soon.
+
+```typescript
+import { ScrollBox, Box, Text, createCliRenderer } from "@opentui/core"
+
+const renderer = await createCliRenderer()
+
+renderer.root.add(
+  ScrollBox(
+    {
+      width: 40,
+      height: 20,
+    },
+    ...Array.from({ length: 100 }, (_, i) =>
+      Box(
+        { width: "100%", padding: 1, backgroundColor: i % 2 === 0 ? "#292e42" : "#2f3449" },
+        Text({ content: `Item ${i}` }),
+      ),
+    ),
+  ),
+)
+```
+
+## Sticky scroll
+
+Enable sticky scroll to keep content pinned to an edge as new content arrives. Useful for log viewers or chat interfaces.
+
+```typescript
+const scrollbox = new ScrollBoxRenderable(renderer, {
+  id: "logs",
+  width: 60,
+  height: 20,
+  stickyScroll: true,
+  stickyStart: "bottom", // New content will keep the view scrolled to bottom
+})
+```
+
+### Sticky positions
+
+- `"bottom"` - Stay scrolled to bottom (default for chat/logs)
+- `"top"` - Stay scrolled to top
+- `"left"` - Stay scrolled to left
+- `"right"` - Stay scrolled to right
+
+When you scroll away from the sticky position, sticky behavior pauses until you scroll back to the sticky edge.
+
+## Bidirectional scrolling
+
+Enable scrolling in both directions:
+
+```typescript
+const scrollbox = new ScrollBoxRenderable(renderer, {
+  id: "canvas",
+  width: 60,
+  height: 30,
+  scrollX: true,
+  scrollY: true,
+})
+```
+
+By default, `scrollY` is `true` and `scrollX` is `false`.
+
+## Viewport culling
+
+Enable viewport culling for better performance with large content. When enabled, ScrollBox renders only visible children:
+
+```typescript
+const scrollbox = new ScrollBoxRenderable(renderer, {
+  id: "large-list",
+  width: 40,
+  height: 20,
+  viewportCulling: true, // Only render visible items
+})
+```
+
+## Customizing scrollbars
+
+Style the scrollbars using nested options:
+
+```typescript
+const scrollbox = new ScrollBoxRenderable(renderer, {
+  id: "styled-scroll",
+  width: 40,
+  height: 20,
+  scrollbarOptions: {
+    showArrows: true,
+    trackOptions: {
+      foregroundColor: "#7aa2f7",
+      backgroundColor: "#414868",
+    },
+  },
+  // Or customize vertical and horizontal separately
+  verticalScrollbarOptions: {
+    trackOptions: { backgroundColor: "#333" },
+  },
+  horizontalScrollbarOptions: {
+    trackOptions: { backgroundColor: "#333" },
+  },
+})
+```
+
+## Customizing sub-components
+
+ScrollBox contains several internal components that you can style individually:
+
+```typescript
+const scrollbox = new ScrollBoxRenderable(renderer, {
+  id: "custom-scroll",
+  width: 40,
+  height: 20,
+  rootOptions: {
+    backgroundColor: "#24283b",
+  },
+  wrapperOptions: {
+    backgroundColor: "#1f2335",
+  },
+  viewportOptions: {
+    backgroundColor: "#1a1b26",
+  },
+  contentOptions: {
+    backgroundColor: "#16161e",
+  },
+})
+```
+
+## Scroll methods
+
+### scrollBy
+
+Scroll by a relative amount:
+
+```typescript
+// Scroll down 5 lines
+scrollbox.scrollBy(5)
+
+// Scroll with both x and y
+scrollbox.scrollBy({ x: 10, y: 5 })
+
+// Scroll by viewport (page)
+scrollbox.scrollBy(1, "viewport")
+```
+
+### scrollTo
+
+Scroll to an absolute position:
+
+```typescript
+// Scroll to top
+scrollbox.scrollTo(0)
+
+// Scroll to specific position
+scrollbox.scrollTo({ x: 0, y: 100 })
+```
+
+## Keyboard navigation
+
+When focused, ScrollBox responds to keyboard input:
+
+- **Arrow keys** - Scroll by line
+- **Page Up/Down** - Scroll by page
+- **Home/End** - Scroll to start/end
+
+## Properties
+
+| Property                     | Type                                     | Default | Description                            |
+| ---------------------------- | ---------------------------------------- | ------- | -------------------------------------- |
+| `scrollX`                    | `boolean`                                | `false` | Enable horizontal scrolling            |
+| `scrollY`                    | `boolean`                                | `true`  | Enable vertical scrolling              |
+| `stickyScroll`               | `boolean`                                | `false` | Keep scroll position pinned to an edge |
+| `stickyStart`                | `"top" \| "bottom" \| "left" \| "right"` | -       | Which edge to stick to                 |
+| `viewportCulling`            | `boolean`                                | `true`  | Only render visible children           |
+| `scrollAcceleration`         | `ScrollAcceleration`                     | -       | Custom scroll acceleration algorithm   |
+| `rootOptions`                | `BoxOptions`                             | -       | Style options for root container       |
+| `wrapperOptions`             | `BoxOptions`                             | -       | Style options for wrapper              |
+| `viewportOptions`            | `BoxOptions`                             | -       | Style options for viewport             |
+| `contentOptions`             | `BoxOptions`                             | -       | Style options for content container    |
+| `scrollbarOptions`           | `ScrollBarOptions`                       | -       | Options for both scrollbars            |
+| `verticalScrollbarOptions`   | `ScrollBarOptions`                       | -       | Options for vertical scrollbar only    |
+| `horizontalScrollbarOptions` | `ScrollBarOptions`                       | -       | Options for horizontal scrollbar only  |
+
+## Additional properties
+
+| Property       | Type     | Description                                  |
+| -------------- | -------- | -------------------------------------------- |
+| `scrollTop`    | `number` | Current vertical scroll position (get/set)   |
+| `scrollLeft`   | `number` | Current horizontal scroll position (get/set) |
+| `scrollWidth`  | `number` | Total scrollable width (read-only)           |
+| `scrollHeight` | `number` | Total scrollable height (read-only)          |
+
+## Internal components
+
+ScrollBox exposes its internal components for advanced use:
+
+```typescript
+scrollbox.wrapper // BoxRenderable - outer wrapper
+scrollbox.viewport // BoxRenderable - visible area
+scrollbox.content // ContentRenderable - holds children
+scrollbox.horizontalScrollBar // ScrollBarRenderable
+scrollbox.verticalScrollBar // ScrollBarRenderable
+```

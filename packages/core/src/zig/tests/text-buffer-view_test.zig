@@ -581,6 +581,72 @@ test "TextBufferView word wrapping - punctuation boundaries" {
     try std.testing.expect(wrapped_count >= 2);
 }
 
+test "TextBufferView word wrapping - tab boundary width" {
+    const pool = gp.initGlobalPool(std.testing.allocator);
+    defer gp.deinitGlobalPool();
+
+    var tb = try TextBuffer.init(std.testing.allocator, pool, .wcwidth);
+    defer tb.deinit();
+
+    var view = try TextBufferView.init(std.testing.allocator, tb);
+    defer view.deinit();
+
+    // "AB" = 2 cols, tab = 2 cols, "CD" = 2 cols
+    try tb.setText("AB\tCD");
+
+    view.setWrapMode(.word);
+    view.setWrapWidth(4);
+    const vlines = view.getVirtualLines();
+
+    try std.testing.expectEqual(@as(usize, 2), vlines.len);
+    try std.testing.expectEqual(@as(u32, 4), vlines[0].width);
+    try std.testing.expectEqual(@as(u32, 2), vlines[1].width);
+}
+
+test "TextBufferView word wrapping - emoji boundary width" {
+    const pool = gp.initGlobalPool(std.testing.allocator);
+    defer gp.deinitGlobalPool();
+
+    var tb = try TextBuffer.init(std.testing.allocator, pool, .wcwidth);
+    defer tb.deinit();
+
+    var view = try TextBufferView.init(std.testing.allocator, tb);
+    defer view.deinit();
+
+    // "AB" = 2 cols, "🌟" = 2 cols, space = 1 col, "CD" = 2 cols
+    try tb.setText("AB🌟 CD");
+
+    view.setWrapMode(.word);
+    view.setWrapWidth(5);
+    const vlines = view.getVirtualLines();
+
+    try std.testing.expectEqual(@as(usize, 2), vlines.len);
+    try std.testing.expectEqual(@as(u32, 5), vlines[0].width);
+    try std.testing.expectEqual(@as(u32, 2), vlines[1].width);
+}
+
+test "TextBufferView word wrapping - CJK boundary width" {
+    const pool = gp.initGlobalPool(std.testing.allocator);
+    defer gp.deinitGlobalPool();
+
+    var tb = try TextBuffer.init(std.testing.allocator, pool, .wcwidth);
+    defer tb.deinit();
+
+    var view = try TextBufferView.init(std.testing.allocator, tb);
+    defer view.deinit();
+
+    // "AB" = 2 cols, "好" = 2 cols, space = 1 col, "CD" = 2 cols
+    try tb.setText("AB好 CD");
+
+    view.setWrapMode(.word);
+    view.setWrapWidth(5);
+    const vlines = view.getVirtualLines();
+
+    try std.testing.expectEqual(@as(usize, 2), vlines.len);
+    try std.testing.expectEqual(@as(u32, 5), vlines[0].width);
+    try std.testing.expectEqual(@as(u32, 2), vlines[1].width);
+}
+
 test "TextBufferView word wrapping - compare char vs word mode" {
     const pool = gp.initGlobalPool(std.testing.allocator);
     defer gp.deinitGlobalPool();
