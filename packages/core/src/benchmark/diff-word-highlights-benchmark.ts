@@ -12,10 +12,14 @@
  */
 
 import { Command } from "commander"
+import { EventEmitter } from "events"
 import { DiffRenderable } from "../renderables/Diff"
 import { SyntaxStyle } from "../syntax-style"
 import { RGBA } from "../lib/RGBA"
 import { createTestRenderer } from "../testing"
+
+// Suppress MaxListenersExceededWarning - we intentionally create many renderers
+EventEmitter.defaultMaxListeners = 100
 
 const program = new Command()
 program
