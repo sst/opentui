@@ -17,6 +17,33 @@ afterEach(() => {
   warnSpy.mockRestore()
 })
 
+describe("BoxRenderable - focusable option", () => {
+  test("is not focusable by default", async () => {
+    const box = new BoxRenderable(testRenderer, {
+      id: "test-box",
+      width: 10,
+      height: 5,
+    })
+
+    expect(box.focusable).toBe(false)
+    box.focus()
+    expect(box.focused).toBe(false)
+  })
+
+  test("can be made focusable via option", async () => {
+    const box = new BoxRenderable(testRenderer, {
+      id: "test-box",
+      focusable: true,
+      width: 10,
+      height: 5,
+    })
+
+    expect(box.focusable).toBe(true)
+    box.focus()
+    expect(box.focused).toBe(true)
+  })
+})
+
 describe("BoxRenderable - borderStyle validation", () => {
   describe("regression: invalid borderStyle via constructor does not crash", () => {
     test("handles invalid string borderStyle in constructor", async () => {
