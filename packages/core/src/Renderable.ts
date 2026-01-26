@@ -306,6 +306,10 @@ export abstract class Renderable extends BaseRenderable {
     return this._focusable
   }
 
+  public set focusable(value: boolean) {
+    this._focusable = value
+  }
+
   public get ctx(): RenderContext {
     return this._ctx
   }
@@ -1151,9 +1155,18 @@ export abstract class Renderable extends BaseRenderable {
       return -1
     }
 
-    // Should we really throw for this? Maybe just log a warning in dev.
     if (!this.renderableMapById.has(anchor.id)) {
-      throw new Error("Anchor does not exist")
+      if (process.env.NODE_ENV !== "production") {
+        console.warn(`Anchor with id ${anchor.id} does not exist within the parent ${this.id}, skipping insertBefore`)
+      }
+      return -1
+    }
+
+    if (renderable === anchor || renderable.id === anchor.id) {
+      if (process.env.NODE_ENV !== "production") {
+        console.warn(`Anchor is the same as the node ${renderable.id} being inserted, skipping insertBefore`)
+      }
+      return -1
     }
 
     if (renderable.parent === this) {

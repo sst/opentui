@@ -118,6 +118,47 @@ describe("SolidJS Renderer - Control Flow Components", () => {
       expect(frame).toContain("1. ○ Learn SolidJS")
       expect(frame).toContain("2. ✓ Build TUI")
     })
+
+    it("should handle array reversal correctly", async () => {
+      const [items, setItems] = createSignal([1, 2, 3, 4])
+
+      testSetup = await testRender(
+        () => (
+          <box id="container">
+            <For each={items()}>{(item) => <box id={`item-${item}`} />}</For>
+          </box>
+        ),
+        { width: 30, height: 15 },
+      )
+
+      await testSetup.renderOnce()
+      const container = testSetup.renderer.root.getChildren()[0]!
+      let children = container.getChildren()
+
+      expect(children.length).toBe(4)
+      expect(children.map((c) => c.id)).toEqual(["item-1", "item-2", "item-3", "item-4"])
+
+      setItems([4, 3, 2, 1])
+      await testSetup.renderOnce()
+
+      children = container.getChildren()
+      expect(children.length).toBe(4)
+      expect(children.map((c) => c.id)).toEqual(["item-4", "item-3", "item-2", "item-1"])
+
+      setItems([1, 2, 3, 4, 5])
+      await testSetup.renderOnce()
+
+      children = container.getChildren()
+      expect(children.length).toBe(5)
+      expect(children.map((c) => c.id)).toEqual(["item-1", "item-2", "item-3", "item-4", "item-5"])
+
+      setItems([5, 4, 3, 2, 1])
+      await testSetup.renderOnce()
+
+      children = container.getChildren()
+      expect(children.length).toBe(5)
+      expect(children.map((c) => c.id)).toEqual(["item-5", "item-4", "item-3", "item-2", "item-1"])
+    })
   })
 
   describe("<Show> Component", () => {

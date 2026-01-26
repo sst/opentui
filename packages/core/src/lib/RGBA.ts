@@ -65,7 +65,6 @@ export class RGBA {
     return `rgba(${this.r.toFixed(2)}, ${this.g.toFixed(2)}, ${this.b.toFixed(2)}, ${this.a.toFixed(2)})`
   }
 
-  /** Returns a new RGBA with RGB multiplied by factor (clamped to 1.0), preserving alpha */
   brighten(factor: number): RGBA {
     return RGBA.fromValues(
       Math.min(1, this.r * factor),
@@ -75,9 +74,13 @@ export class RGBA {
     )
   }
 
-  /** Returns a new RGBA with the specified alpha, preserving RGB */
   withAlpha(alpha: number): RGBA {
     return RGBA.fromValues(this.r, this.g, this.b, alpha)
+  }
+
+  equals(other?: RGBA): boolean {
+    if (!other) return false
+    return this.r === other.r && this.g === other.g && this.b === other.b && this.a === other.a
   }
 }
 

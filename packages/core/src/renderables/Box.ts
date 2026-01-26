@@ -24,6 +24,7 @@ export interface BoxOptions<TRenderable extends Renderable = BoxRenderable> exte
   title?: string
   titleAlignment?: "left" | "center" | "right"
   focusedBorderColor?: ColorInput
+  focusable?: boolean
   gap?: number | `${number}%`
   rowGap?: number | `${number}%`
   columnGap?: number | `${number}%`
@@ -64,6 +65,10 @@ export class BoxRenderable extends Renderable {
 
   constructor(ctx: RenderContext, options: BoxOptions) {
     super(ctx, options)
+
+    if (options.focusable === true) {
+      this._focusable = true
+    }
 
     this._backgroundColor = parseColor(options.backgroundColor || this._defaultOptions.backgroundColor)
     this._border = options.border ?? this._defaultOptions.border

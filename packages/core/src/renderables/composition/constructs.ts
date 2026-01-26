@@ -1,19 +1,23 @@
 import {
   ASCIIFontRenderable,
   BoxRenderable,
+  CodeRenderable,
   InputRenderable,
+  ScrollBoxRenderable,
   SelectRenderable,
   TabSelectRenderable,
   TextRenderable,
   VRenderable,
+  FrameBufferRenderable,
   type ASCIIFontOptions,
   type BoxOptions,
+  type CodeOptions,
   type TextOptions,
   type VRenderableOptions,
   type InputRenderableOptions,
+  type ScrollBoxOptions,
   type SelectRenderableOptions,
   type TabSelectRenderableOptions,
-  FrameBufferRenderable,
   type FrameBufferOptions,
 } from "../"
 import { TextNodeRenderable, type TextNodeOptions } from "../TextNode"
@@ -51,6 +55,14 @@ export function TabSelect(props?: TabSelectRenderableOptions, ...children: VChil
 
 export function FrameBuffer(props: FrameBufferOptions, ...children: VChild[]) {
   return h(FrameBufferRenderable, props, ...children)
+}
+
+export function Code(props: CodeOptions, ...children: VChild[]) {
+  return h(CodeRenderable, props, ...children)
+}
+
+export function ScrollBox(props?: ScrollBoxOptions, ...children: VChild[]) {
+  return h(ScrollBoxRenderable, props || {}, ...children)
 }
 
 interface StyledTextProps extends Omit<TextNodeOptions, "attributes"> {
