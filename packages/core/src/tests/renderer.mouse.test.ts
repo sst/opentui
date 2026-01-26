@@ -844,4 +844,137 @@ describe("renderer handleMouseData", () => {
       renderer.destroy()
     }
   })
+
+  test("shouldStartSelection false does not start selection", async () => {
+    const { renderer, mockMouse, renderOnce } = await setupRenderer()
+    try {
+      class NoSelectionStartRenderable extends TestRenderable {
+        public shouldStartSelection(): boolean {
+          return false
+        }
+      }
+
+      const target = new NoSelectionStartRenderable(renderer, {
+        id: "no-selection-start",
+        position: "absolute",
+        left: 2,
+        top: 2,
+        width: 6,
+        height: 4,
+      })
+      target.selectable = true
+      renderer.root.add(target)
+      await renderOnce()
+
+      let downCount = 0
+      target.onMouseDown = () => {
+        downCount++
+      }
+
+      await mockMouse.click(target.x + 1, target.y + 1)
+
+      expect(downCount).toBe(1)
+      expect(renderer.hasSelection).toBe(false)
+    } finally {
+      renderer.destroy()
+    }
+  })
+
+  test("ctrl+click without selection does not start selection", async () => {
+    const { renderer, mockMouse, renderOnce } = await setupRenderer()
+    try {
+      const target = new TestRenderable(renderer, {
+        id: "ctrl-no-selection",
+        position: "absolute",
+        left: 2,
+        top: 2,
+        width: 6,
+        height: 4,
+      })
+      target.selectable = true
+      renderer.root.add(target)
+      await renderOnce()
+
+      let downCount = 0
+      target.onMouseDown = () => {
+        downCount++
+      }
+
+      await mockMouse.click(target.x + 1, target.y + 1, MouseButtons.LEFT, { modifiers: { ctrl: true } })
+
+      expect(downCount).toBe(1)
+      expect(renderer.hasSelection).toBe(false)
+    } finally {
+      renderer.destroy()
+    }
+  })
+
+  test("captured drag release on empty space skips drop", async () => {
+    const { renderer, mockMouse, renderOnce } = await setupRenderer()
+    try {
+      const source = new TestRenderable(renderer, {
+        id: "source-empty-drop",
+        position: "absolute",
+        left: 1,
+        top: 1,
+        width: 6,
+        height: 4,
+      })
+      const target = new TestRenderable(renderer, {
+        id: "target-empty-drop",
+        position: "absolute",
+        left: 15,
+        top: 1,
+        width: 6,
+        height: 4,
+      })
+      renderer.root.add(source)
+      renderer.root.add(target)
+      await renderOnce()
+
+      let dragEndCount = 0
+      let upCount = 0
+      let dropCount = 0
+      source.onMouseDragEnd = () => {
+        dragEndCount++
+      }
+      source.onMouseUp = () => {
+        upCount++
+      }
+      target.onMouseDrop = () => {
+        dropCount++
+      }
+
+      const startX = source.x + 1
+      const startY = source.y + 1
+      const endX = renderer.width - 1
+      const endY = renderer.height - 1
+
+      await mockMouse.pressDown(startX, startY)
+      await mockMouse.moveTo(source.x + 2, startY)
+      await mockMouse.moveTo(endX, endY)
+      await mockMouse.release(endX, endY)
+
+      expect(dragEndCount).toBe(1)
+      expect(upCount).toBe(1)
+      expect(dropCount).toBe(0)
+    } finally {
+      renderer.destroy()
+    }
+  })
+
+  test("split height returns false for input above render area", async () => {
+    const { renderer } = await createTestRenderer({ width: 40, height: 20, experimental_splitHeight: 6 })
+    try {
+      const renderOffset = 20 - 6
+      const x = 1
+      const y = renderOffset - 1
+      const sequence = `\x1b[<0;${x + 1};${y + 1}M`
+      const handled = (renderer as any).handleMouseData(Buffer.from(sequence))
+
+      expect(handled).toBe(false)
+    } finally {
+      renderer.destroy()
+    }
+  })
 })
