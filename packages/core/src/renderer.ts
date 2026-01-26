@@ -1973,10 +1973,19 @@ export class CliRenderer extends EventEmitter implements RenderContext {
     this.notifySelectablesOfSelectionChange()
   }
 
-  public updateSelection(currentRenderable: Renderable | undefined, x: number, y: number): void {
+  public updateSelection(
+    currentRenderable: Renderable | undefined,
+    x: number,
+    y: number,
+    options?: { finishDragging?: boolean },
+  ): void {
     if (this.currentSelection) {
       this.currentSelection.isStart = false
       this.currentSelection.focus = { x, y }
+
+      if (options?.finishDragging) {
+        this.currentSelection.isDragging = false
+      }
 
       if (this.selectionContainers.length > 0) {
         const currentContainer = this.selectionContainers[this.selectionContainers.length - 1]

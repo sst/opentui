@@ -761,12 +761,6 @@ export abstract class EditBufferRenderable extends Renderable implements LineInf
       return
     }
 
-    this._ctx.updateSelection(this, cursorX, cursorY)
-
-    const selection = this._ctx.getSelection()
-    if (selection) {
-      selection.isDragging = false
-      this.onSelectionChanged(selection)
-    }
+    this._ctx.updateSelection(this, cursorX, cursorY, { finishDragging: true })
   }
 }
