@@ -135,6 +135,33 @@ describe("renderer handleMouseData", () => {
     }
   })
 
+  test("moving off a renderable emits out without a new target", async () => {
+    const { renderer, mockMouse, renderOnce } = await setupRenderer()
+    try {
+      const target = new TestRenderable(renderer, {
+        id: "hover-target",
+        position: "absolute",
+        left: 1,
+        top: 1,
+        width: 6,
+        height: 4,
+      })
+      renderer.root.add(target)
+      await renderOnce()
+
+      const hoverEvents: string[] = []
+      target.onMouseOver = () => hoverEvents.push("over")
+      target.onMouseOut = () => hoverEvents.push("out")
+
+      await mockMouse.moveTo(target.x + 1, target.y + 1)
+      await mockMouse.moveTo(renderer.width - 1, renderer.height - 1)
+
+      expect(hoverEvents).toEqual(["over", "out"])
+    } finally {
+      renderer.destroy()
+    }
+  })
+
   test("scroll events are delivered to the hit-tested renderable", async () => {
     const { renderer, mockMouse, renderOnce } = await setupRenderer()
     try {
@@ -490,6 +517,41 @@ describe("renderer handleMouseData", () => {
     }
   })
 
+  test("clicking another renderable clears selection when not prevented", async () => {
+    const { renderer, mockMouse, renderOnce } = await setupRenderer()
+    try {
+      const selectable = new TestRenderable(renderer, {
+        id: "selectable-clear",
+        position: "absolute",
+        left: 2,
+        top: 2,
+        width: 10,
+        height: 5,
+      })
+      selectable.selectable = true
+      renderer.root.add(selectable)
+
+      const other = new TestRenderable(renderer, {
+        id: "other",
+        position: "absolute",
+        left: 20,
+        top: 2,
+        width: 6,
+        height: 4,
+      })
+      renderer.root.add(other)
+      await renderOnce()
+
+      await mockMouse.drag(selectable.x + 1, selectable.y + 1, selectable.x + 4, selectable.y + 1)
+      expect(renderer.hasSelection).toBe(true)
+
+      await mockMouse.click(other.x + 1, other.y + 1)
+      expect(renderer.hasSelection).toBe(false)
+    } finally {
+      renderer.destroy()
+    }
+  })
+
   test("drag capture delivers drag-end and drop with source", async () => {
     const { renderer, mockMouse, renderOnce } = await setupRenderer()
     try {
@@ -551,6 +613,51 @@ describe("renderer handleMouseData", () => {
     }
   })
 
+  test("captured drag keeps routing drag events to source", async () => {
+    const { renderer, mockMouse, renderOnce } = await setupRenderer()
+    try {
+      const source = new TestRenderable(renderer, {
+        id: "source-capture",
+        position: "absolute",
+        left: 1,
+        top: 1,
+        width: 6,
+        height: 4,
+      })
+      const target = new TestRenderable(renderer, {
+        id: "target-capture",
+        position: "absolute",
+        left: 12,
+        top: 1,
+        width: 6,
+        height: 4,
+      })
+      renderer.root.add(source)
+      renderer.root.add(target)
+      await renderOnce()
+
+      let sourceDragCount = 0
+      let targetDragCount = 0
+      source.onMouseDrag = () => {
+        sourceDragCount++
+      }
+      target.onMouseDrag = () => {
+        targetDragCount++
+      }
+
+      await mockMouse.pressDown(source.x + 1, source.y + 1)
+      await mockMouse.moveTo(source.x + 2, source.y + 1)
+      await mockMouse.moveTo(target.x + 1, target.y + 1)
+      await mockMouse.moveTo(target.x + 2, target.y + 1)
+      await mockMouse.release(target.x + 2, target.y + 1)
+
+      expect(sourceDragCount).toBeGreaterThan(1)
+      expect(targetDragCount).toBe(0)
+    } finally {
+      renderer.destroy()
+    }
+  })
+
   test("captured drag does not emit out on the captured renderable", async () => {
     const { renderer, mockMouse, renderOnce } = await setupRenderer()
     try {
@@ -582,6 +689,47 @@ describe("renderer handleMouseData", () => {
       await mockMouse.drag(source.x + 1, source.y + 1, target.x + 1, target.y + 1)
 
       expect(outCount).toBe(0)
+    } finally {
+      renderer.destroy()
+    }
+  })
+
+  test("non-left drag does not capture and routes by hit test", async () => {
+    const { renderer, mockMouse, renderOnce } = await setupRenderer()
+    try {
+      const source = new TestRenderable(renderer, {
+        id: "source-right-drag",
+        position: "absolute",
+        left: 1,
+        top: 1,
+        width: 6,
+        height: 4,
+      })
+      const target = new TestRenderable(renderer, {
+        id: "target-right-drag",
+        position: "absolute",
+        left: 12,
+        top: 1,
+        width: 6,
+        height: 4,
+      })
+      renderer.root.add(source)
+      renderer.root.add(target)
+      await renderOnce()
+
+      let sourceDragCount = 0
+      let targetDragCount = 0
+      source.onMouseDrag = () => {
+        sourceDragCount++
+      }
+      target.onMouseDrag = () => {
+        targetDragCount++
+      }
+
+      await mockMouse.drag(source.x + 1, source.y + 1, target.x + 1, target.y + 1, MouseButtons.RIGHT)
+
+      expect(sourceDragCount).toBeGreaterThan(0)
+      expect(targetDragCount).toBeGreaterThan(0)
     } finally {
       renderer.destroy()
     }
