@@ -27,6 +27,41 @@ async function setupRenderer(options: Record<string, unknown> = {}) {
 }
 
 describe("renderer handleMouseData", () => {
+  test("non-mouse input falls through to input handlers", async () => {
+    const { renderer, renderOnce } = await setupRenderer()
+    try {
+      const target = new TestRenderable(renderer, {
+        id: "input-target",
+        position: "absolute",
+        left: 1,
+        top: 1,
+        width: 6,
+        height: 4,
+      })
+      renderer.root.add(target)
+      await renderOnce()
+
+      const sequences: string[] = []
+      renderer.prependInputHandler((sequence) => {
+        sequences.push(sequence)
+        return true
+      })
+
+      let mouseDown = false
+      target.onMouseDown = () => {
+        mouseDown = true
+      }
+
+      renderer.stdin.emit("data", Buffer.from("x"))
+      await Bun.sleep(10)
+
+      expect(sequences).toContain("x")
+      expect(mouseDown).toBe(false)
+    } finally {
+      renderer.destroy()
+    }
+  })
+
   test("dispatches mouse down/up to hit-tested renderable", async () => {
     const { renderer, mockMouse, renderOnce } = await setupRenderer()
     try {
@@ -129,6 +164,32 @@ describe("renderer handleMouseData", () => {
     }
   })
 
+  test("scroll outside renderables does not dispatch events", async () => {
+    const { renderer, mockMouse, renderOnce } = await setupRenderer()
+    try {
+      const target = new TestRenderable(renderer, {
+        id: "scroll-target",
+        position: "absolute",
+        left: 1,
+        top: 1,
+        width: 5,
+        height: 4,
+      })
+      renderer.root.add(target)
+      await renderOnce()
+
+      let scrollCount = 0
+      target.onMouseScroll = () => {
+        scrollCount++
+      }
+
+      await mockMouse.scroll(renderer.width - 1, renderer.height - 1, "down")
+      expect(scrollCount).toBe(0)
+    } finally {
+      renderer.destroy()
+    }
+  })
+
   test("split height offsets mouse coordinates and ignores events above render area", async () => {
     const baseHeight = 20
     const splitHeight = 6
@@ -202,6 +263,52 @@ describe("renderer handleMouseData", () => {
     }
   })
 
+  test("console mouse handling falls through when not handled", async () => {
+    const { renderer, mockMouse, renderOnce } = await setupRenderer()
+    try {
+      renderer.useConsole = true
+      renderer.console.show()
+
+      const target = new TestRenderable(renderer, {
+        id: "background",
+        position: "absolute",
+        left: 0,
+        top: 0,
+        width: renderer.width,
+        height: renderer.height,
+      })
+      renderer.root.add(target)
+      await renderOnce()
+
+      const originalHandle = renderer.console.handleMouse.bind(renderer.console)
+      let consoleCalls = 0
+      renderer.console.handleMouse = () => {
+        consoleCalls++
+        return false
+      }
+
+      let clicks = 0
+      target.onMouseDown = () => {
+        clicks++
+      }
+
+      const bounds = renderer.console.bounds
+      const insideX = Math.min(bounds.x + 1, renderer.width - 1)
+      const insideY = Math.min(bounds.y + 1, renderer.height - 1)
+      await mockMouse.pressDown(insideX, insideY)
+
+      const outsideY = bounds.y > 0 ? bounds.y - 1 : Math.min(bounds.y + bounds.height, renderer.height - 1)
+      await mockMouse.release(insideX, outsideY)
+
+      expect(consoleCalls).toBe(1)
+      expect(clicks).toBe(1)
+
+      renderer.console.handleMouse = originalHandle
+    } finally {
+      renderer.destroy()
+    }
+  })
+
   test("selection drag marks events as dragging and ends on mouse up", async () => {
     const { renderer, mockMouse, renderOnce } = await setupRenderer()
     try {
@@ -244,6 +351,49 @@ describe("renderer handleMouseData", () => {
     }
   })
 
+  test("selection drag updates focus even when pointer leaves renderables", async () => {
+    const { renderer, mockMouse, renderOnce } = await setupRenderer()
+    try {
+      const target = new TestRenderable(renderer, {
+        id: "selectable",
+        position: "absolute",
+        left: 1,
+        top: 1,
+        width: 6,
+        height: 4,
+      })
+      target.selectable = true
+      renderer.root.add(target)
+      await renderOnce()
+
+      let dragCount = 0
+      let upCount = 0
+      target.onMouseDrag = () => {
+        dragCount++
+      }
+      target.onMouseUp = () => {
+        upCount++
+      }
+
+      const startX = target.x + 1
+      const startY = target.y + 1
+      const endX = renderer.width - 1
+      const endY = renderer.height - 1
+
+      await mockMouse.pressDown(startX, startY)
+      await mockMouse.moveTo(endX, endY)
+      await mockMouse.release(endX, endY)
+
+      const selection = renderer.getSelection()
+      expect(selection).not.toBeNull()
+      expect(selection?.focus).toEqual({ x: endX, y: endY })
+      expect(dragCount).toBe(0)
+      expect(upCount).toBe(0)
+    } finally {
+      renderer.destroy()
+    }
+  })
+
   test("ctrl+click extends selection instead of clearing", async () => {
     const { renderer, mockMouse, renderOnce } = await setupRenderer()
     try {
@@ -272,6 +422,28 @@ describe("renderer handleMouseData", () => {
       expect(selectionAfter).not.toBeNull()
       expect(selectionAfter?.focus).toEqual({ x: nextX, y: nextY })
       expect(renderer.hasSelection).toBe(true)
+    } finally {
+      renderer.destroy()
+    }
+  })
+
+  test("right click does not start selection", async () => {
+    const { renderer, mockMouse, renderOnce } = await setupRenderer()
+    try {
+      const target = new TestRenderable(renderer, {
+        id: "right-click",
+        position: "absolute",
+        left: 2,
+        top: 2,
+        width: 8,
+        height: 4,
+      })
+      target.selectable = true
+      renderer.root.add(target)
+      await renderOnce()
+
+      await mockMouse.click(target.x + 1, target.y + 1, MouseButtons.RIGHT)
+      expect(renderer.hasSelection).toBe(false)
     } finally {
       renderer.destroy()
     }
@@ -374,6 +546,112 @@ describe("renderer handleMouseData", () => {
       expect(dropSource).toBe(source)
       expect(overSource).toBe(source)
       expect(targetDragged).toBe(false)
+    } finally {
+      renderer.destroy()
+    }
+  })
+
+  test("captured drag does not emit out on the captured renderable", async () => {
+    const { renderer, mockMouse, renderOnce } = await setupRenderer()
+    try {
+      const source = new TestRenderable(renderer, {
+        id: "source",
+        position: "absolute",
+        left: 1,
+        top: 1,
+        width: 6,
+        height: 4,
+      })
+      const target = new TestRenderable(renderer, {
+        id: "target",
+        position: "absolute",
+        left: 12,
+        top: 1,
+        width: 6,
+        height: 4,
+      })
+      renderer.root.add(source)
+      renderer.root.add(target)
+      await renderOnce()
+
+      let outCount = 0
+      source.onMouseOut = () => {
+        outCount++
+      }
+
+      await mockMouse.drag(source.x + 1, source.y + 1, target.x + 1, target.y + 1)
+
+      expect(outCount).toBe(0)
+    } finally {
+      renderer.destroy()
+    }
+  })
+
+  test("move events include modifier flags", async () => {
+    const { renderer, mockMouse, renderOnce } = await setupRenderer()
+    try {
+      const target = new TestRenderable(renderer, {
+        id: "modifiers",
+        position: "absolute",
+        left: 2,
+        top: 2,
+        width: 6,
+        height: 4,
+      })
+      renderer.root.add(target)
+      await renderOnce()
+
+      let modifiers: MouseEvent["modifiers"] | null = null
+      target.onMouseMove = (event) => {
+        modifiers = event.modifiers
+      }
+
+      await mockMouse.moveTo(target.x + 1, target.y + 1, {
+        modifiers: { shift: true, alt: true },
+      })
+
+      expect(modifiers).toEqual({ shift: true, alt: true, ctrl: false })
+    } finally {
+      renderer.destroy()
+    }
+  })
+
+  test("basic mouse mode sequences are parsed and dispatched", async () => {
+    const { renderer, renderOnce } = await setupRenderer()
+    try {
+      const target = new TestRenderable(renderer, {
+        id: "basic-mode",
+        position: "absolute",
+        left: 2,
+        top: 2,
+        width: 6,
+        height: 4,
+      })
+      renderer.root.add(target)
+      await renderOnce()
+
+      let downCount = 0
+      let upCount = 0
+      target.onMouseDown = () => {
+        downCount++
+      }
+      target.onMouseUp = () => {
+        upCount++
+      }
+
+      const clickX = target.x + 1
+      const clickY = target.y + 1
+      const encodeBasic = (buttonByte: number, x: number, y: number) => {
+        return (
+          "\x1b[M" + String.fromCharCode(buttonByte + 32) + String.fromCharCode(x + 33) + String.fromCharCode(y + 33)
+        )
+      }
+
+      renderer.stdin.emit("data", Buffer.from(encodeBasic(0, clickX, clickY)))
+      renderer.stdin.emit("data", Buffer.from(encodeBasic(3, clickX, clickY)))
+
+      expect(downCount).toBe(1)
+      expect(upCount).toBe(1)
     } finally {
       renderer.destroy()
     }
