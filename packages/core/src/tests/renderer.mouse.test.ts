@@ -62,12 +62,19 @@ describe("renderer handleMouseData", () => {
     }
   })
 
-  test("handleMouseData returns false for non-mouse buffers", async () => {
+  test("non-mouse buffers are routed to input handlers", async () => {
     const { renderer } = await setupRenderer()
     try {
-      const handled = (renderer as any).handleMouseData(Buffer.from("x"))
+      const sequences: string[] = []
+      renderer.prependInputHandler((sequence) => {
+        sequences.push(sequence)
+        return true
+      })
 
-      expect(handled).toBe(false)
+      renderer.stdin.emit("data", Buffer.from("x"))
+      await Bun.sleep(10)
+
+      expect(sequences).toContain("x")
     } finally {
       renderer.destroy()
     }
@@ -260,6 +267,34 @@ describe("renderer handleMouseData", () => {
       const screenY = renderOffset + target.y + 1
       await mockMouse.click(target.x + 1, screenY)
       expect(downEvent?.y).toBe(target.y + 1)
+    } finally {
+      renderer.destroy()
+    }
+  })
+
+  test("split height returns false for input above render area", async () => {
+    const baseHeight = 20
+    const splitHeight = 6
+    const { renderer, mockMouse, renderOnce } = await createTestRenderer({
+      width: 40,
+      height: baseHeight,
+      experimental_splitHeight: splitHeight,
+    })
+    try {
+      const sequences: string[] = []
+      renderer.addInputHandler((sequence) => {
+        sequences.push(sequence)
+        return true
+      })
+
+      await renderOnce()
+
+      const renderOffset = baseHeight - splitHeight
+      const beforeSequences = sequences.length
+      await mockMouse.click(1, Math.max(0, renderOffset - 1))
+      await Bun.sleep(10)
+
+      expect(sequences.length).toBeGreaterThan(beforeSequences)
     } finally {
       renderer.destroy()
     }
@@ -1021,16 +1056,18 @@ describe("renderer handleMouseData", () => {
       target.selectable = true
       renderer.root.add(target)
       await renderOnce()
-      ;(target as any)._isDestroyed = true
 
       let downCount = 0
       target.onMouseDown = () => {
         downCount++
       }
 
+      target.destroy()
+      await renderOnce()
+
       await mockMouse.click(target.x + 1, target.y + 1)
 
-      expect(downCount).toBe(1)
+      expect(downCount).toBe(0)
       expect(renderer.hasSelection).toBe(false)
     } finally {
       renderer.destroy()
@@ -1115,21 +1152,6 @@ describe("renderer handleMouseData", () => {
       expect(dragEndCount).toBe(1)
       expect(upCount).toBe(1)
       expect(dropCount).toBe(0)
-    } finally {
-      renderer.destroy()
-    }
-  })
-
-  test("split height returns false for input above render area", async () => {
-    const { renderer } = await createTestRenderer({ width: 40, height: 20, experimental_splitHeight: 6 })
-    try {
-      const renderOffset = 20 - 6
-      const x = 1
-      const y = renderOffset - 1
-      const sequence = `\x1b[<0;${x + 1};${y + 1}M`
-      const handled = (renderer as any).handleMouseData(Buffer.from(sequence))
-
-      expect(handled).toBe(false)
     } finally {
       renderer.destroy()
     }
