@@ -62,6 +62,17 @@ describe("renderer handleMouseData", () => {
     }
   })
 
+  test("handleMouseData returns false for non-mouse buffers", async () => {
+    const { renderer } = await setupRenderer()
+    try {
+      const handled = (renderer as any).handleMouseData(Buffer.from("x"))
+
+      expect(handled).toBe(false)
+    } finally {
+      renderer.destroy()
+    }
+  })
+
   test("dispatches mouse down/up to hit-tested renderable", async () => {
     const { renderer, mockMouse, renderOnce } = await setupRenderer()
     try {
@@ -454,6 +465,42 @@ describe("renderer handleMouseData", () => {
     }
   })
 
+  test("ctrl+click with selection updates focus without mouse down", async () => {
+    const { renderer, mockMouse, renderOnce } = await setupRenderer()
+    try {
+      const target = new TestRenderable(renderer, {
+        id: "selectable-ctrl-branch",
+        position: "absolute",
+        left: 2,
+        top: 2,
+        width: 12,
+        height: 6,
+      })
+      target.selectable = true
+      renderer.root.add(target)
+      await renderOnce()
+
+      await mockMouse.drag(target.x + 1, target.y + 1, target.x + 4, target.y + 1)
+      expect(renderer.getSelection()).not.toBeNull()
+
+      let downCount = 0
+      target.onMouseDown = () => {
+        downCount++
+      }
+
+      const nextX = target.x + 2
+      const nextY = target.y + 4
+      await mockMouse.pressDown(nextX, nextY, MouseButtons.LEFT, { modifiers: { ctrl: true } })
+
+      expect(renderer.getSelection()?.isDragging).toBe(true)
+      expect(downCount).toBe(0)
+
+      await mockMouse.release(nextX, nextY, MouseButtons.LEFT, { modifiers: { ctrl: true } })
+    } finally {
+      renderer.destroy()
+    }
+  })
+
   test("right click does not start selection", async () => {
     const { renderer, mockMouse, renderOnce } = await setupRenderer()
     try {
@@ -613,6 +660,45 @@ describe("renderer handleMouseData", () => {
     }
   })
 
+  test("captured drag release fires drop then mouse up on target", async () => {
+    const { renderer, mockMouse, renderOnce } = await setupRenderer()
+    try {
+      const source = new TestRenderable(renderer, {
+        id: "source-drop-order",
+        position: "absolute",
+        left: 1,
+        top: 1,
+        width: 6,
+        height: 4,
+      })
+      const target = new TestRenderable(renderer, {
+        id: "target-drop-order",
+        position: "absolute",
+        left: 12,
+        top: 1,
+        width: 6,
+        height: 4,
+      })
+      renderer.root.add(source)
+      renderer.root.add(target)
+      await renderOnce()
+
+      const events: string[] = []
+      target.onMouseDrop = () => {
+        events.push("drop")
+      }
+      target.onMouseUp = () => {
+        events.push("up")
+      }
+
+      await mockMouse.drag(source.x + 1, source.y + 1, target.x + 1, target.y + 1)
+
+      expect(events).toEqual(["drop", "up"])
+    } finally {
+      renderer.destroy()
+    }
+  })
+
   test("captured drag keeps routing drag events to source", async () => {
     const { renderer, mockMouse, renderOnce } = await setupRenderer()
     try {
@@ -730,6 +816,47 @@ describe("renderer handleMouseData", () => {
 
       expect(sourceDragCount).toBeGreaterThan(0)
       expect(targetDragCount).toBeGreaterThan(0)
+    } finally {
+      renderer.destroy()
+    }
+  })
+
+  test("non-captured drag emits over/out transitions", async () => {
+    const { renderer, mockMouse, renderOnce } = await setupRenderer()
+    try {
+      const source = new TestRenderable(renderer, {
+        id: "source-drag-hover",
+        position: "absolute",
+        left: 1,
+        top: 1,
+        width: 6,
+        height: 4,
+      })
+      const target = new TestRenderable(renderer, {
+        id: "target-drag-hover",
+        position: "absolute",
+        left: 12,
+        top: 1,
+        width: 6,
+        height: 4,
+      })
+      renderer.root.add(source)
+      renderer.root.add(target)
+      await renderOnce()
+
+      const events: string[] = []
+      source.onMouseOver = () => events.push("over:source")
+      source.onMouseOut = () => events.push("out:source")
+      target.onMouseOver = () => events.push("over:target")
+
+      await mockMouse.moveTo(source.x + 1, source.y + 1)
+      await mockMouse.drag(source.x + 1, source.y + 1, target.x + 1, target.y + 1, MouseButtons.RIGHT)
+
+      expect(events).toContain("over:source")
+      expect(events).toContain("out:source")
+      expect(events).toContain("over:target")
+      expect(events.indexOf("out:source")).toBeGreaterThan(events.indexOf("over:source"))
+      expect(events.indexOf("over:target")).toBeGreaterThan(events.indexOf("out:source"))
     } finally {
       renderer.destroy()
     }
@@ -865,6 +992,36 @@ describe("renderer handleMouseData", () => {
       target.selectable = true
       renderer.root.add(target)
       await renderOnce()
+
+      let downCount = 0
+      target.onMouseDown = () => {
+        downCount++
+      }
+
+      await mockMouse.click(target.x + 1, target.y + 1)
+
+      expect(downCount).toBe(1)
+      expect(renderer.hasSelection).toBe(false)
+    } finally {
+      renderer.destroy()
+    }
+  })
+
+  test("destroyed renderable does not start selection", async () => {
+    const { renderer, mockMouse, renderOnce } = await setupRenderer()
+    try {
+      const target = new TestRenderable(renderer, {
+        id: "destroyed-selectable",
+        position: "absolute",
+        left: 2,
+        top: 2,
+        width: 6,
+        height: 4,
+      })
+      target.selectable = true
+      renderer.root.add(target)
+      await renderOnce()
+      ;(target as any)._isDestroyed = true
 
       let downCount = 0
       target.onMouseDown = () => {
