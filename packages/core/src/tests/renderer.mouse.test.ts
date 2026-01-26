@@ -130,7 +130,13 @@ describe("renderer handleMouseData", () => {
   })
 
   test("split height offsets mouse coordinates and ignores events above render area", async () => {
-    const { renderer, mockMouse, renderOnce } = await setupRenderer({ experimental_splitHeight: 6 })
+    const baseHeight = 20
+    const splitHeight = 6
+    const { renderer, mockMouse, renderOnce } = await createTestRenderer({
+      width: 40,
+      height: baseHeight,
+      experimental_splitHeight: splitHeight,
+    })
     try {
       const target = new TestRenderable(renderer, {
         id: "split-target",
@@ -148,7 +154,7 @@ describe("renderer handleMouseData", () => {
         downEvent = event
       }
 
-      const renderOffset = renderer.terminalHeight - renderer.experimental_splitHeight
+      const renderOffset = baseHeight - splitHeight
       await mockMouse.click(target.x + 1, Math.max(0, renderOffset - 1))
       expect(downEvent).toBeNull()
 
