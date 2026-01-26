@@ -1,5 +1,5 @@
-import { describe, expect, test } from "bun:test"
-import { createTestRenderer, MouseButtons } from "../testing"
+import { beforeEach, describe, expect, test } from "bun:test"
+import { createTestRenderer, MouseButtons, type MockMouse, type TestRenderer } from "../testing"
 import { Renderable, type RenderableOptions } from "../Renderable"
 import type { RenderContext } from "../types"
 import type { Selection } from "../lib/selection"
@@ -22,13 +22,15 @@ class TestRenderable extends Renderable {
   }
 }
 
-async function setupRenderer(options: Record<string, unknown> = {}) {
-  return createTestRenderer({ width: 40, height: 20, ...options })
-}
-
 describe("renderer handleMouseData", () => {
+  let renderer: TestRenderer
+  let mockMouse: MockMouse
+  let renderOnce: () => Promise<void>
+
+  beforeEach(async () => {
+    ;({ renderer, mockMouse, renderOnce } = await createTestRenderer({ width: 40, height: 20 }))
+  })
   test("non-mouse input falls through to input handlers", async () => {
-    const { renderer, renderOnce } = await setupRenderer()
     try {
       const target = new TestRenderable(renderer, {
         id: "input-target",
@@ -63,7 +65,6 @@ describe("renderer handleMouseData", () => {
   })
 
   test("non-mouse buffers are routed to input handlers", async () => {
-    const { renderer } = await setupRenderer()
     try {
       const sequences: string[] = []
       renderer.prependInputHandler((sequence) => {
@@ -81,7 +82,6 @@ describe("renderer handleMouseData", () => {
   })
 
   test("dispatches mouse down/up to hit-tested renderable", async () => {
-    const { renderer, mockMouse, renderOnce } = await setupRenderer()
     try {
       const target = new TestRenderable(renderer, {
         id: "target",
@@ -115,7 +115,6 @@ describe("renderer handleMouseData", () => {
   })
 
   test("emits over/out only when hover target changes", async () => {
-    const { renderer, mockMouse, renderOnce } = await setupRenderer()
     try {
       const left = new TestRenderable(renderer, {
         id: "left",
@@ -154,7 +153,6 @@ describe("renderer handleMouseData", () => {
   })
 
   test("moving off a renderable emits out without a new target", async () => {
-    const { renderer, mockMouse, renderOnce } = await setupRenderer()
     try {
       const target = new TestRenderable(renderer, {
         id: "hover-target",
@@ -181,7 +179,6 @@ describe("renderer handleMouseData", () => {
   })
 
   test("scroll events are delivered to the hit-tested renderable", async () => {
-    const { renderer, mockMouse, renderOnce } = await setupRenderer()
     try {
       const target = new TestRenderable(renderer, {
         id: "scroll-target",
@@ -210,7 +207,6 @@ describe("renderer handleMouseData", () => {
   })
 
   test("scroll outside renderables does not dispatch events", async () => {
-    const { renderer, mockMouse, renderOnce } = await setupRenderer()
     try {
       const target = new TestRenderable(renderer, {
         id: "scroll-target",
@@ -235,73 +231,7 @@ describe("renderer handleMouseData", () => {
     }
   })
 
-  test("split height offsets mouse coordinates and ignores events above render area", async () => {
-    const baseHeight = 20
-    const splitHeight = 6
-    const { renderer, mockMouse, renderOnce } = await createTestRenderer({
-      width: 40,
-      height: baseHeight,
-      experimental_splitHeight: splitHeight,
-    })
-    try {
-      const target = new TestRenderable(renderer, {
-        id: "split-target",
-        position: "absolute",
-        left: 2,
-        top: 1,
-        width: 6,
-        height: 3,
-      })
-      renderer.root.add(target)
-      await renderOnce()
-
-      let downEvent: MouseEvent | null = null
-      target.onMouseDown = (event) => {
-        downEvent = event
-      }
-
-      const renderOffset = baseHeight - splitHeight
-      await mockMouse.click(target.x + 1, Math.max(0, renderOffset - 1))
-      expect(downEvent).toBeNull()
-
-      const screenY = renderOffset + target.y + 1
-      await mockMouse.click(target.x + 1, screenY)
-      expect(downEvent?.y).toBe(target.y + 1)
-    } finally {
-      renderer.destroy()
-    }
-  })
-
-  test("split height returns false for input above render area", async () => {
-    const baseHeight = 20
-    const splitHeight = 6
-    const { renderer, mockMouse, renderOnce } = await createTestRenderer({
-      width: 40,
-      height: baseHeight,
-      experimental_splitHeight: splitHeight,
-    })
-    try {
-      const sequences: string[] = []
-      renderer.addInputHandler((sequence) => {
-        sequences.push(sequence)
-        return true
-      })
-
-      await renderOnce()
-
-      const renderOffset = baseHeight - splitHeight
-      const beforeSequences = sequences.length
-      await mockMouse.click(1, Math.max(0, renderOffset - 1))
-      await Bun.sleep(10)
-
-      expect(sequences.length).toBeGreaterThan(beforeSequences)
-    } finally {
-      renderer.destroy()
-    }
-  })
-
   test("console mouse handling consumes events inside console bounds", async () => {
-    const { renderer, mockMouse, renderOnce } = await setupRenderer()
     try {
       renderer.useConsole = true
       renderer.console.show()
@@ -337,7 +267,6 @@ describe("renderer handleMouseData", () => {
   })
 
   test("console mouse handling falls through when not handled", async () => {
-    const { renderer, mockMouse, renderOnce } = await setupRenderer()
     try {
       renderer.useConsole = true
       renderer.console.show()
@@ -383,7 +312,6 @@ describe("renderer handleMouseData", () => {
   })
 
   test("selection drag marks events as dragging and ends on mouse up", async () => {
-    const { renderer, mockMouse, renderOnce } = await setupRenderer()
     try {
       const target = new TestRenderable(renderer, {
         id: "selectable",
@@ -425,7 +353,6 @@ describe("renderer handleMouseData", () => {
   })
 
   test("selection drag updates focus even when pointer leaves renderables", async () => {
-    const { renderer, mockMouse, renderOnce } = await setupRenderer()
     try {
       const target = new TestRenderable(renderer, {
         id: "selectable",
@@ -468,7 +395,6 @@ describe("renderer handleMouseData", () => {
   })
 
   test("ctrl+click extends selection instead of clearing", async () => {
-    const { renderer, mockMouse, renderOnce } = await setupRenderer()
     try {
       const target = new TestRenderable(renderer, {
         id: "selectable-ctrl",
@@ -501,7 +427,6 @@ describe("renderer handleMouseData", () => {
   })
 
   test("ctrl+click with selection updates focus without mouse down", async () => {
-    const { renderer, mockMouse, renderOnce } = await setupRenderer()
     try {
       const target = new TestRenderable(renderer, {
         id: "selectable-ctrl-branch",
@@ -537,7 +462,6 @@ describe("renderer handleMouseData", () => {
   })
 
   test("right click does not start selection", async () => {
-    const { renderer, mockMouse, renderOnce } = await setupRenderer()
     try {
       const target = new TestRenderable(renderer, {
         id: "right-click",
@@ -559,7 +483,6 @@ describe("renderer handleMouseData", () => {
   })
 
   test("preventDefault keeps selection while empty click clears it", async () => {
-    const { renderer, mockMouse, renderOnce } = await setupRenderer()
     try {
       const selectable = new TestRenderable(renderer, {
         id: "selectable-main",
@@ -600,7 +523,6 @@ describe("renderer handleMouseData", () => {
   })
 
   test("clicking another renderable clears selection when not prevented", async () => {
-    const { renderer, mockMouse, renderOnce } = await setupRenderer()
     try {
       const selectable = new TestRenderable(renderer, {
         id: "selectable-clear",
@@ -635,7 +557,6 @@ describe("renderer handleMouseData", () => {
   })
 
   test("drag capture delivers drag-end and drop with source", async () => {
-    const { renderer, mockMouse, renderOnce } = await setupRenderer()
     try {
       const source = new TestRenderable(renderer, {
         id: "source",
@@ -696,7 +617,6 @@ describe("renderer handleMouseData", () => {
   })
 
   test("captured drag release fires drop then mouse up on target", async () => {
-    const { renderer, mockMouse, renderOnce } = await setupRenderer()
     try {
       const source = new TestRenderable(renderer, {
         id: "source-drop-order",
@@ -735,7 +655,6 @@ describe("renderer handleMouseData", () => {
   })
 
   test("captured drag keeps routing drag events to source", async () => {
-    const { renderer, mockMouse, renderOnce } = await setupRenderer()
     try {
       const source = new TestRenderable(renderer, {
         id: "source-capture",
@@ -780,7 +699,6 @@ describe("renderer handleMouseData", () => {
   })
 
   test("captured drag does not emit out on the captured renderable", async () => {
-    const { renderer, mockMouse, renderOnce } = await setupRenderer()
     try {
       const source = new TestRenderable(renderer, {
         id: "source",
@@ -816,7 +734,6 @@ describe("renderer handleMouseData", () => {
   })
 
   test("non-left drag does not capture and routes by hit test", async () => {
-    const { renderer, mockMouse, renderOnce } = await setupRenderer()
     try {
       const source = new TestRenderable(renderer, {
         id: "source-right-drag",
@@ -857,7 +774,6 @@ describe("renderer handleMouseData", () => {
   })
 
   test("non-captured drag emits over/out transitions", async () => {
-    const { renderer, mockMouse, renderOnce } = await setupRenderer()
     try {
       const source = new TestRenderable(renderer, {
         id: "source-drag-hover",
@@ -898,7 +814,6 @@ describe("renderer handleMouseData", () => {
   })
 
   test("move events include modifier flags", async () => {
-    const { renderer, mockMouse, renderOnce } = await setupRenderer()
     try {
       const target = new TestRenderable(renderer, {
         id: "modifiers",
@@ -927,7 +842,6 @@ describe("renderer handleMouseData", () => {
   })
 
   test("basic mouse mode sequences are parsed and dispatched", async () => {
-    const { renderer, renderOnce } = await setupRenderer()
     try {
       const target = new TestRenderable(renderer, {
         id: "basic-mode",
@@ -968,7 +882,6 @@ describe("renderer handleMouseData", () => {
   })
 
   test("overflow hidden clips hit grid for mouse events", async () => {
-    const { renderer, mockMouse, renderOnce } = await setupRenderer()
     try {
       const container = new TestRenderable(renderer, {
         id: "container",
@@ -1008,7 +921,6 @@ describe("renderer handleMouseData", () => {
   })
 
   test("shouldStartSelection false does not start selection", async () => {
-    const { renderer, mockMouse, renderOnce } = await setupRenderer()
     try {
       class NoSelectionStartRenderable extends TestRenderable {
         public shouldStartSelection(): boolean {
@@ -1043,7 +955,6 @@ describe("renderer handleMouseData", () => {
   })
 
   test("destroyed renderable does not start selection", async () => {
-    const { renderer, mockMouse, renderOnce } = await setupRenderer()
     try {
       const target = new TestRenderable(renderer, {
         id: "destroyed-selectable",
@@ -1075,7 +986,6 @@ describe("renderer handleMouseData", () => {
   })
 
   test("ctrl+click without selection does not start selection", async () => {
-    const { renderer, mockMouse, renderOnce } = await setupRenderer()
     try {
       const target = new TestRenderable(renderer, {
         id: "ctrl-no-selection",
@@ -1104,7 +1014,6 @@ describe("renderer handleMouseData", () => {
   })
 
   test("captured drag release on empty space skips drop", async () => {
-    const { renderer, mockMouse, renderOnce } = await setupRenderer()
     try {
       const source = new TestRenderable(renderer, {
         id: "source-empty-drop",
@@ -1152,6 +1061,74 @@ describe("renderer handleMouseData", () => {
       expect(dragEndCount).toBe(1)
       expect(upCount).toBe(1)
       expect(dropCount).toBe(0)
+    } finally {
+      renderer.destroy()
+    }
+  })
+})
+
+describe("renderer handleMouseData split height", () => {
+  const baseHeight = 20
+  const splitHeight = 6
+
+  let renderer: TestRenderer
+  let mockMouse: MockMouse
+  let renderOnce: () => Promise<void>
+
+  beforeEach(async () => {
+    ;({ renderer, mockMouse, renderOnce } = await createTestRenderer({
+      width: 40,
+      height: baseHeight,
+      experimental_splitHeight: splitHeight,
+    }))
+  })
+
+  test("split height offsets mouse coordinates and ignores events above render area", async () => {
+    try {
+      const target = new TestRenderable(renderer, {
+        id: "split-target",
+        position: "absolute",
+        left: 2,
+        top: 1,
+        width: 6,
+        height: 3,
+      })
+      renderer.root.add(target)
+      await renderOnce()
+
+      let downEvent: MouseEvent | null = null
+      target.onMouseDown = (event) => {
+        downEvent = event
+      }
+
+      const renderOffset = baseHeight - splitHeight
+      await mockMouse.click(target.x + 1, Math.max(0, renderOffset - 1))
+      expect(downEvent).toBeNull()
+
+      const screenY = renderOffset + target.y + 1
+      await mockMouse.click(target.x + 1, screenY)
+      expect(downEvent?.y).toBe(target.y + 1)
+    } finally {
+      renderer.destroy()
+    }
+  })
+
+  test("split height returns false for input above render area", async () => {
+    try {
+      const sequences: string[] = []
+      renderer.addInputHandler((sequence) => {
+        sequences.push(sequence)
+        return true
+      })
+
+      await renderOnce()
+
+      const renderOffset = baseHeight - splitHeight
+      const beforeSequences = sequences.length
+      await mockMouse.click(1, Math.max(0, renderOffset - 1))
+      await Bun.sleep(10)
+
+      expect(sequences.length).toBeGreaterThan(beforeSequences)
     } finally {
       renderer.destroy()
     }
