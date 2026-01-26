@@ -26,59 +26,46 @@ interface IRange {
   length: number
 }
 
-/**
- * The longest line for which we'd try to calculate a line diff.
- * This matches GitHub.com's behavior.
- */
+// Max line length for intra-line diff (matches GitHub.com)
 export const MaxIntraLineDiffStringLength = 1024
 
-/** Get the length of the common substring between two strings */
-function commonLength(stringA: string, rangeA: IRange, stringB: string, rangeB: IRange, reverse: boolean): number {
-  const max = Math.min(rangeA.length, rangeB.length)
-  const startA = reverse ? rangeA.location + rangeA.length - 1 : rangeA.location
-  const startB = reverse ? rangeB.location + rangeB.length - 1 : rangeB.location
-  const stride = reverse ? -1 : 1
-
-  let length = 0
-  while (Math.abs(length) < max) {
-    if (stringA[startA + length] !== stringB[startB + length]) {
-      break
-    }
-    length += stride
-  }
-
-  return Math.abs(length)
-}
-
-/**
- * Get the changed ranges in the strings, relative to each other.
- * Uses common prefix/suffix elimination algorithm (matching GitHub Desktop).
- */
+// Find changed region by removing common prefix/suffix (GitHub Desktop algorithm)
 export function relativeChanges(stringA: string, stringB: string): { stringARange: IRange; stringBRange: IRange } {
-  let bRange: IRange = { location: 0, length: stringB.length }
-  let aRange: IRange = { location: 0, length: stringA.length }
+  const lenA = stringA.length
+  const lenB = stringB.length
 
-  const prefixLength = commonLength(stringB, bRange, stringA, aRange, false)
-  bRange = {
-    location: bRange.location + prefixLength,
-    length: bRange.length - prefixLength,
-  }
-  aRange = {
-    location: aRange.location + prefixLength,
-    length: aRange.length - prefixLength,
+  let prefixLen = 0
+  const maxPrefix = Math.min(lenA, lenB)
+  while (prefixLen < maxPrefix && stringA[prefixLen] === stringB[prefixLen]) {
+    prefixLen++
   }
 
-  const suffixLength = commonLength(stringB, bRange, stringA, aRange, true)
-  bRange = { location: bRange.location, length: bRange.length - suffixLength }
-  aRange = { location: aRange.location, length: aRange.length - suffixLength }
+  let suffixLen = 0
+  const maxSuffix = Math.min(lenA - prefixLen, lenB - prefixLen)
+  while (suffixLen < maxSuffix && stringA[lenA - 1 - suffixLen] === stringB[lenB - 1 - suffixLen]) {
+    suffixLen++
+  }
 
-  return { stringARange: aRange, stringBRange: bRange }
+  return {
+    stringARange: { location: prefixLen, length: lenA - prefixLen - suffixLen },
+    stringBRange: { location: prefixLen, length: lenB - prefixLen - suffixLen },
+  }
 }
 
-/**
- * Computes inline highlights for two strings using prefix/suffix elimination.
- * Returns a single changed region per line (matching GitHub Desktop behavior).
- */
+// Convert char range to display columns (ASCII fast path, Unicode uses stringWidth)
+function toDisplayColumns(content: string, start: number, length: number): { startCol: number; endCol: number } {
+  for (let i = 0; i < content.length; i++) {
+    if (content.charCodeAt(i) > 127) {
+      // Has Unicode - need stringWidth for correct column positions
+      const prefixWidth = Bun.stringWidth(content.slice(0, start))
+      const changedWidth = Bun.stringWidth(content.slice(start, start + length))
+      return { startCol: prefixWidth, endCol: prefixWidth + changedWidth }
+    }
+  }
+  return { startCol: start, endCol: start + length }
+}
+
+// Compute word-level highlights for a pair of changed lines
 export function computeInlineHighlights(
   oldContent: string,
   newContent: string,
@@ -89,21 +76,17 @@ export function computeInlineHighlights(
 
   const { stringARange, stringBRange } = relativeChanges(oldContent, newContent)
 
-  // Convert character positions to display column positions
-  const oldPrefix = oldContent.slice(0, stringARange.location)
-  const oldChanged = oldContent.slice(stringARange.location, stringARange.location + stringARange.length)
-  const newPrefix = newContent.slice(0, stringBRange.location)
-  const newChanged = newContent.slice(stringBRange.location, stringBRange.location + stringBRange.length)
+  const oldHighlight: InlineHighlight | null =
+    stringARange.length > 0
+      ? { ...toDisplayColumns(oldContent, stringARange.location, stringARange.length), type: "removed-word" }
+      : null
 
-  const oldStartCol = Bun.stringWidth(oldPrefix)
-  const oldEndCol = oldStartCol + Bun.stringWidth(oldChanged)
-  const newStartCol = Bun.stringWidth(newPrefix)
-  const newEndCol = newStartCol + Bun.stringWidth(newChanged)
+  const newHighlight: InlineHighlight | null =
+    stringBRange.length > 0
+      ? { ...toDisplayColumns(newContent, stringBRange.location, stringBRange.length), type: "added-word" }
+      : null
 
-  return {
-    oldHighlight: stringARange.length > 0 ? { startCol: oldStartCol, endCol: oldEndCol, type: "removed-word" } : null,
-    newHighlight: stringBRange.length > 0 ? { startCol: newStartCol, endCol: newEndCol, type: "added-word" } : null,
-  }
+  return { oldHighlight, newHighlight }
 }
 
 interface LogicalLine {
