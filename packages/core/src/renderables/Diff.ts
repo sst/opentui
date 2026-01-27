@@ -56,7 +56,6 @@ export interface DiffRenderableOptions extends RenderableOptions<DiffRenderable>
   addedLineNumberBg?: string | RGBA
   removedLineNumberBg?: string | RGBA
 
-  // Hunk header styling
   hunkHeaderBg?: string | RGBA
   hunkHeaderFg?: string | RGBA
 }
@@ -178,7 +177,6 @@ export class DiffRenderable extends Renderable {
 
       const patch = patches[0]
 
-      // Extract context text from @@ headers in the raw diff string
       const contexts: string[] = []
       for (const line of this._diff.split("\n")) {
         const match = DiffRenderable.HUNK_HEADER_RE.exec(line)
@@ -491,7 +489,6 @@ export class DiffRenderable extends Renderable {
     let lineIndex = 0
 
     for (const hunk of this._parsedDiff.hunks) {
-      // Insert hunk header row only if there's context text after @@
       if (hunk.context) {
         contentLines.push(hunk.context)
         const config: LineColorConfig = {
@@ -604,7 +601,6 @@ export class DiffRenderable extends Renderable {
     const rightLogicalLines: LogicalLine[] = []
 
     for (const hunk of this._parsedDiff.hunks) {
-      // Insert hunk header row only if there's context text after @@
       if (hunk.context) {
         leftLogicalLines.push({
           content: hunk.context,

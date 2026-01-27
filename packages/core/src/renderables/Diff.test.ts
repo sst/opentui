@@ -2885,8 +2885,6 @@ test("DiffRenderable - split view with word wrapping: changing diff content shou
   expect(buggyFrame).toBe(correctFrame)
 })
 
-// --- Hunk header context tests ---
-
 const diffWithContext = `--- a/app.js
 +++ b/app.js
 @@ -10,4 +10,5 @@ function setup() {
