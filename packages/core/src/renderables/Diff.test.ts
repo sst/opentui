@@ -2936,7 +2936,7 @@ test("DiffRenderable - unified view renders hunk header with @@ context", async 
 
   const frame = captureFrame()
   expect(frame).not.toContain("Error parsing diff")
-  expect("\n" + frame).toMatchInlineSnapshot(`
+  expect("\n" + frame.trimEnd()).toMatchInlineSnapshot(`
     "
         @ function setup() {                                                        
      10   const a = 1;                                                              
@@ -2944,21 +2944,7 @@ test("DiffRenderable - unified view renders hunk header with @@ context", async 
      12 - const c = 3;                                                              
      12 + const c = 30;                                                             
      13 + const d = 40;                                                             
-     14   const e = 5;                                                              
-                                                                                    
-                                                                                    
-                                                                                    
-                                                                                    
-                                                                                    
-                                                                                    
-                                                                                    
-                                                                                    
-                                                                                    
-                                                                                    
-                                                                                    
-                                                                                    
-                                                                                    
-    "
+     14   const e = 5;"
   `)
 })
 
@@ -2982,29 +2968,12 @@ test("DiffRenderable - unified view does not render hunk header when no context 
   const frame = captureFrame()
   expect(frame).not.toContain("Error parsing diff")
   expect(frame).not.toContain("@@")
-  expect("\n" + frame).toMatchInlineSnapshot(`
+  expect("\n" + frame.trimEnd()).toMatchInlineSnapshot(`
     "
      1   const a = 1;                                                               
      2 - const b = 2;                                                               
      2 + const b = 20;                                                              
-     3   const c = 3;                                                               
-                                                                                    
-                                                                                    
-                                                                                    
-                                                                                    
-                                                                                    
-                                                                                    
-                                                                                    
-                                                                                    
-                                                                                    
-                                                                                    
-                                                                                    
-                                                                                    
-                                                                                    
-                                                                                    
-                                                                                    
-                                                                                    
-    "
+     3   const c = 3;"
   `)
 })
 
@@ -3027,7 +2996,7 @@ test("DiffRenderable - unified view renders multiple hunk headers with context",
 
   const frame = captureFrame()
   expect(frame).not.toContain("Error parsing diff")
-  expect("\n" + frame).toMatchInlineSnapshot(`
+  expect("\n" + frame.trimEnd()).toMatchInlineSnapshot(`
     "
         @ function init() {                                                         
       5   const x = 1;                                                              
@@ -3039,17 +3008,7 @@ test("DiffRenderable - unified view renders multiple hunk headers with context",
      21 - doB();                                                                    
      21 + doB(true);                                                                
      22 + doC();                                                                    
-     23   doD();                                                                    
-                                                                                    
-                                                                                    
-                                                                                    
-                                                                                    
-                                                                                    
-                                                                                    
-                                                                                    
-                                                                                    
-                                                                                    
-    "
+     23   doD();"
   `)
 })
 
@@ -3072,29 +3031,14 @@ test("DiffRenderable - split view renders hunk header with @@ context", async ()
 
   const frame = captureFrame()
   expect(frame).not.toContain("Error parsing diff")
-  expect("\n" + frame).toMatchInlineSnapshot(`
+  expect("\n" + frame.trimEnd()).toMatchInlineSnapshot(`
     "
         @ function setup() {                    @ function setup() {                
      10   const a = 1;                       10   const a = 1;                      
      11   const b = 2;                       11   const b = 2;                      
      12 - const c = 3;                       12 + const c = 30;                     
                                              13 + const d = 40;                     
-     13   const e = 5;                       14   const e = 5;                      
-                                                                                    
-                                                                                    
-                                                                                    
-                                                                                    
-                                                                                    
-                                                                                    
-                                                                                    
-                                                                                    
-                                                                                    
-                                                                                    
-                                                                                    
-                                                                                    
-                                                                                    
-                                                                                    
-    "
+     13   const e = 5;                       14   const e = 5;"
   `)
 })
 
@@ -3117,7 +3061,7 @@ test("DiffRenderable - split view renders multiple hunk headers with context", a
 
   const frame = captureFrame()
   expect(frame).not.toContain("Error parsing diff")
-  expect("\n" + frame).toMatchInlineSnapshot(`
+  expect("\n" + frame.trimEnd()).toMatchInlineSnapshot(`
     "
         @ function init() {                     @ function init() {                 
       5   const x = 1;                        5   const x = 1;                      
@@ -3127,18 +3071,6 @@ test("DiffRenderable - split view renders multiple hunk headers with context", a
      20   doA();                             20   doA();                            
      21 - doB();                             21 + doB(true);                        
                                              22 + doC();                            
-     22   doD();                             23   doD();                            
-                                                                                    
-                                                                                    
-                                                                                    
-                                                                                    
-                                                                                    
-                                                                                    
-                                                                                    
-                                                                                    
-                                                                                    
-                                                                                    
-                                                                                    
-    "
+     22   doD();                             23   doD();"
   `)
 })
