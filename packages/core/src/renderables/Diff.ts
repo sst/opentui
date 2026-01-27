@@ -495,7 +495,7 @@ export class DiffRenderable extends Renderable {
       if (hunk.context) {
         contentLines.push(hunk.context)
         lineColors.set(lineIndex, { gutter: this._hunkHeaderBg, content: this._hunkHeaderBg })
-        lineSigns.set(lineIndex, { after: "@@", afterColor: this._hunkHeaderFg })
+        lineSigns.set(lineIndex, { after: " @", afterColor: this._hunkHeaderFg })
         hideLineNumbers.add(lineIndex)
         lineIndex++
       }
@@ -602,14 +602,14 @@ export class DiffRenderable extends Renderable {
           content: hunk.context,
           hideLineNumber: true,
           color: this._hunkHeaderBg,
-          sign: { after: "@@", afterColor: this._hunkHeaderFg },
+          sign: { after: " @", afterColor: this._hunkHeaderFg },
           type: "hunk-header",
         })
         rightLogicalLines.push({
           content: hunk.context,
           hideLineNumber: true,
           color: this._hunkHeaderBg,
-          sign: { after: "@@", afterColor: this._hunkHeaderFg },
+          sign: { after: " @", afterColor: this._hunkHeaderFg },
           type: "hunk-header",
         })
       }
