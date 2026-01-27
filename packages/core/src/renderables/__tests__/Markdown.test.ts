@@ -939,7 +939,11 @@ Paragraph close to the table and hr with a link to [docs](https://example.com/do
 
 Final paragraph with an image ![alt](https://example.com/img.png).`
 
-  const { renderer: localRenderer, renderOnce: localRenderOnce, captureCharFrame } = await createTestRenderer({
+  const {
+    renderer: localRenderer,
+    renderOnce: localRenderOnce,
+    captureCharFrame,
+  } = await createTestRenderer({
     width: 90,
     height: 120,
   })
@@ -1400,8 +1404,6 @@ test("streaming task list keeps checkbox and text on same line", async () => {
     .map((line) => line.trimEnd())
     .join("\n")
     .trimEnd()
-
-
 
   expect("\n" + frame).toMatchInlineSnapshot(`
     "
@@ -1957,7 +1959,13 @@ The table alignment uses:
   const frame2 = captureFrame()
   expect(frame2).toContain("OpenTUI")
 
-  const frame2Preview = "\n" + frame2.split("\n").map((line) => line.trimEnd()).join("\n").trimEnd()
+  const frame2Preview =
+    "\n" +
+    frame2
+      .split("\n")
+      .map((line) => line.trimEnd())
+      .join("\n")
+      .trimEnd()
   const previewLines = frame2Preview.split("\n").slice(0, 30).join("\n")
   expect(previewLines).toMatchInlineSnapshot(`
     "

@@ -682,11 +682,7 @@ export class MarkdownRenderable extends Renderable {
     return box
   }
 
-  private createDefaultRenderable(
-    token: MarkedToken,
-    index: number,
-    hasNextToken: boolean = false,
-  ): Renderable | null {
+  private createDefaultRenderable(token: MarkedToken, index: number, hasNextToken: boolean = false): Renderable | null {
     const id = `${this.id}-block-${index}`
     const marginBottom = this.getBlockMarginBottom(hasNextToken)
 
@@ -714,12 +710,7 @@ export class MarkdownRenderable extends Renderable {
     return this.createTextRenderable(chunks, id, marginBottom)
   }
 
-  private updateBlockRenderable(
-    state: BlockState,
-    token: MarkedToken,
-    index: number,
-    hasNextToken: boolean,
-  ): void {
+  private updateBlockRenderable(state: BlockState, token: MarkedToken, index: number, hasNextToken: boolean): void {
     const marginBottom = this.getBlockMarginBottom(hasNextToken)
 
     if (token.type === "code") {
