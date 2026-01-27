@@ -2937,8 +2937,10 @@ test("DiffRenderable - unified view renders hunk header with @@ context", async 
   await renderOnce()
 
   const frame = captureFrame()
-  expect(frame).toMatchInlineSnapshot(`
-    "      @@ function setup() {                                                     
+  expect(frame).not.toContain("Error parsing diff")
+  expect("\n" + frame).toMatchInlineSnapshot(`
+    "
+       @@ function setup() {                                                        
      10   const a = 1;                                                              
      11   const b = 2;                                                              
      12 - const c = 3;                                                              
@@ -2980,8 +2982,11 @@ test("DiffRenderable - unified view does not render hunk header when no context 
   await renderOnce()
 
   const frame = captureFrame()
-  expect(frame).toMatchInlineSnapshot(`
-    " 1   const a = 1;                                                               
+  expect(frame).not.toContain("Error parsing diff")
+  expect(frame).not.toContain("@@")
+  expect("\n" + frame).toMatchInlineSnapshot(`
+    "
+     1   const a = 1;                                                               
      2 - const b = 2;                                                               
      2 + const b = 20;                                                              
      3   const c = 3;                                                               
@@ -3023,13 +3028,15 @@ test("DiffRenderable - unified view renders multiple hunk headers with context",
   await renderOnce()
 
   const frame = captureFrame()
-  expect(frame).toMatchInlineSnapshot(`
-    "      @@ function init() {                                                      
+  expect(frame).not.toContain("Error parsing diff")
+  expect("\n" + frame).toMatchInlineSnapshot(`
+    "
+       @@ function init() {                                                         
       5   const x = 1;                                                              
       6 - const y = 2;                                                              
       6 + const y = 20;                                                             
       7   const z = 3;                                                              
-          @@ function cleanup() {                                                   
+       @@ function cleanup() {                                                      
      20   doA();                                                                    
      21 - doB();                                                                    
      21 + doB(true);                                                                
@@ -3066,8 +3073,10 @@ test("DiffRenderable - split view renders hunk header with @@ context", async ()
   await renderOnce()
 
   const frame = captureFrame()
-  expect(frame).toMatchInlineSnapshot(`
-    "      @@ function setup() {                   @@ function setup() {             
+  expect(frame).not.toContain("Error parsing diff")
+  expect("\n" + frame).toMatchInlineSnapshot(`
+    "
+       @@ function setup() {                   @@ function setup() {                
      10   const a = 1;                       10   const a = 1;                      
      11   const b = 2;                       11   const b = 2;                      
      12 - const c = 3;                       12 + const c = 30;                     
@@ -3109,12 +3118,14 @@ test("DiffRenderable - split view renders multiple hunk headers with context", a
   await renderOnce()
 
   const frame = captureFrame()
-  expect(frame).toMatchInlineSnapshot(`
-    "      @@ function init() {                    @@ function init() {              
+  expect(frame).not.toContain("Error parsing diff")
+  expect("\n" + frame).toMatchInlineSnapshot(`
+    "
+       @@ function init() {                    @@ function init() {                 
       5   const x = 1;                        5   const x = 1;                      
       6 - const y = 2;                        6 + const y = 20;                     
       7   const z = 3;                        7   const z = 3;                      
-          @@ function cleanup() {                 @@ function cleanup() {           
+       @@ function cleanup() {                 @@ function cleanup() {              
      20   doA();                             20   doA();                            
      21 - doB();                             21 + doB(true);                        
                                              22 + doC();                            
