@@ -669,6 +669,21 @@ test("list with inline formatting", async () => {
   `)
 })
 
+test("nested unordered list", async () => {
+  const markdown = `- Item 1
+  - Nested A
+  - Nested B
+- Item 2`
+
+  expect(await renderMarkdown(markdown)).toMatchInlineSnapshot(`
+    "
+    - Item 1
+      - Nested A
+      - Nested B
+    - Item 2"
+  `)
+})
+
 // Blockquote tests
 
 test("simple blockquote", async () => {
@@ -678,7 +693,7 @@ test("simple blockquote", async () => {
   expect(await renderMarkdown(markdown)).toMatchInlineSnapshot(`
     "
     > This is a quote
-    spanning multiple lines"
+    > spanning multiple lines"
   `)
 })
 
@@ -810,7 +825,6 @@ Visit [GitHub](https://github.com) for more.
     - inline code support
     - Italic and bold text
 
-
     Code Example
 
     const md = new MarkdownRenderable(ctx, {
@@ -824,6 +838,104 @@ Visit [GitHub](https://github.com) for more.
     ---
 
     Press ? for help"
+  `)
+})
+
+test("llm-style response with quotes, nested lists, hr, and paragraphs", async () => {
+  const markdown = `Here is the plan:
+
+> We will ship in two phases.
+> Phase one focuses on stability.
+
+- Top item
+  - Nested one
+  - Nested two
+- Second item
+
+---
+
+Final paragraph with closing remarks.`
+
+  expect(await renderMarkdown(markdown)).toMatchInlineSnapshot(`
+    "
+    Here is the plan:
+
+    > We will ship in two phases.
+    > Phase one focuses on stability.
+
+    - Top item
+      - Nested one
+      - Nested two
+    - Second item
+
+    ---
+
+    Final paragraph with closing remarks."
+  `)
+})
+
+test("complex markdown with mixed nodes and nesting", async () => {
+  const markdown = `# Summary
+
+Intro paragraph with **bold**, *italic*, and \`code\`.
+
+> Blockquote line one
+> Blockquote line two with [link](https://example.com)
+
+1. Ordered item one
+2. Ordered item two
+   - Nested bullet A
+   - Nested bullet B
+3. Ordered item three
+
+- [ ] Task item one
+- [x] Task item two
+
+---
+
+Paragraph after hr.
+
+\`\`\`ts
+const x = 1
+\`\`\`
+
+| Col A | Col B |
+|---|---|
+| 1 | 2 |
+
+Final paragraph with an image ![alt](https://example.com/img.png).`
+
+  expect(await renderMarkdown(markdown)).toMatchInlineSnapshot(`
+    "
+    Summary
+
+    Intro paragraph with bold, italic, and code.
+
+    > Blockquote line one
+    > Blockquote line two with link (https://example.com)
+
+    1. Ordered item one
+    2. Ordered item two
+      - Nested bullet A
+      - Nested bullet B
+    3. Ordered item three
+
+    - [ ] Task item one
+    - [x] Task item two
+
+    ---
+
+    Paragraph after hr.
+
+    const x = 1
+
+    ┌───────┬───────┐
+    │Col A  │Col B  │
+    │───────│───────│
+    │1      │2      │
+    └───────┴───────┘
+
+    Final paragraph with an image alt."
   `)
 })
 
@@ -1172,6 +1284,61 @@ test("streaming mode keeps trailing tokens unstable", async () => {
     .join("\n")
     .trimEnd()
   expect(frame2).toContain("Hello World")
+})
+
+test("streaming task list keeps checkbox and text on same line", async () => {
+  const md = new MarkdownRenderable(renderer, {
+    id: "markdown",
+    content: "- [ ]",
+    syntaxStyle,
+    streaming: true,
+  })
+
+  renderer.root.add(md)
+  await renderOnce()
+
+  md.content = "- [ ] todo"
+  await renderOnce()
+
+  const frame = captureFrame()
+    .split("\n")
+    .map((line) => line.trimEnd())
+    .join("\n")
+    .trimEnd()
+
+
+
+  expect("\n" + frame).toMatchInlineSnapshot(`
+    "
+    - [ ] todo"
+  `)
+})
+
+test("streaming blockquote keeps single prefix per line", async () => {
+  const md = new MarkdownRenderable(renderer, {
+    id: "markdown",
+    content: "> first line",
+    syntaxStyle,
+    streaming: true,
+  })
+
+  renderer.root.add(md)
+  await renderOnce()
+
+  md.content = "> first line\n> second line"
+  await renderOnce()
+
+  const frame = captureFrame()
+    .split("\n")
+    .map((line) => line.trimEnd())
+    .join("\n")
+    .trimEnd()
+
+  expect("\n" + frame).toMatchInlineSnapshot(`
+    "
+    > first line
+    > second line"
+  `)
 })
 
 test("non-streaming mode parses all tokens as stable", async () => {

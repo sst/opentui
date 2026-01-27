@@ -314,22 +314,29 @@ export class MarkdownRenderable extends Renderable {
     return chunks
   }
 
-  private renderBlockquoteChunks(token: Tokens.Blockquote): TextChunk[] {
+  private renderBlockquoteContentChunks(token: Tokens.Blockquote): TextChunk[] {
     const chunks: TextChunk[] = []
-    for (const child of token.tokens) {
-      chunks.push(this.createChunk("> ", "punctuation.special"))
-      const childChunks = this.renderTokenToChunks(child as MarkedToken)
+    for (let i = 0; i < token.tokens.length; i++) {
+      if (i > 0) {
+        chunks.push(this.createDefaultChunk("\n"))
+      }
+      const childChunks = this.renderTokenToChunks(token.tokens[i] as MarkedToken)
       chunks.push(...childChunks)
-      chunks.push(this.createDefaultChunk("\n"))
     }
     return chunks
   }
 
-  private renderListChunks(token: Tokens.List): TextChunk[] {
+  private renderListChunks(token: Tokens.List, indent: number = 0): TextChunk[] {
     const chunks: TextChunk[] = []
     let index = typeof token.start === "number" ? token.start : 1
+    const indentText = indent > 0 ? " ".repeat(indent) : ""
 
-    for (const item of token.items) {
+    for (let itemIndex = 0; itemIndex < token.items.length; itemIndex++) {
+      const item = token.items[itemIndex]
+      if (indentText) {
+        chunks.push(this.createDefaultChunk(indentText))
+      }
+
       if (token.ordered) {
         chunks.push(this.createChunk(`${index}. `, "markup.list"))
         index++
@@ -337,19 +344,51 @@ export class MarkdownRenderable extends Renderable {
         chunks.push(this.createChunk("- ", "markup.list"))
       }
 
+      if (item.task) {
+        const checked = "checked" in item ? Boolean(item.checked) : false
+        chunks.push(this.createChunk(`${checked ? "[x]" : "[ ]"} `, "markup.list"))
+      }
+
+      let hasInlineContent = false
+
       for (let i = 0; i < item.tokens.length; i++) {
         const child = item.tokens[i]
-        if (child.type === "text" && i === 0 && "tokens" in child && child.tokens) {
+        if (child.type === "checkbox") {
+          continue
+        }
+
+        if (child.type === "text" && !hasInlineContent && "tokens" in child && child.tokens) {
           this.renderInlineContent(child.tokens, chunks)
-          chunks.push(this.createDefaultChunk("\n"))
-        } else if (child.type === "paragraph" && i === 0) {
+          hasInlineContent = true
+          continue
+        }
+
+        if (child.type === "paragraph" && !hasInlineContent) {
           this.renderInlineContent((child as Tokens.Paragraph).tokens, chunks)
+          hasInlineContent = true
+          continue
+        }
+
+        if (child.type === "list") {
           chunks.push(this.createDefaultChunk("\n"))
-        } else {
-          const childChunks = this.renderTokenToChunks(child as MarkedToken)
+          const childChunks = this.renderListChunks(child as Tokens.List, indent + 2)
           chunks.push(...childChunks)
+          hasInlineContent = true
+          continue
+        }
+
+        if (hasInlineContent) {
           chunks.push(this.createDefaultChunk("\n"))
         }
+        const childChunks = this.renderTokenToChunks(child as MarkedToken, indent + 2)
+        chunks.push(...childChunks)
+        hasInlineContent = true
+      }
+
+      const lastChunk = chunks[chunks.length - 1]
+      const needsNewline = !lastChunk || !lastChunk.text.endsWith("\n")
+      if (needsNewline && itemIndex < token.items.length - 1) {
+        chunks.push(this.createDefaultChunk("\n"))
       }
     }
 
@@ -360,16 +399,16 @@ export class MarkdownRenderable extends Renderable {
     return [this.createChunk("---", "punctuation.special")]
   }
 
-  private renderTokenToChunks(token: MarkedToken): TextChunk[] {
+  private renderTokenToChunks(token: MarkedToken, indent: number = 0): TextChunk[] {
     switch (token.type) {
       case "heading":
         return this.renderHeadingChunks(token)
       case "paragraph":
         return this.renderParagraphChunks(token)
       case "blockquote":
-        return this.renderBlockquoteChunks(token)
+        return this.renderBlockquoteContentChunks(token)
       case "list":
-        return this.renderListChunks(token)
+        return this.renderListChunks(token, indent)
       case "hr":
         return this.renderThematicBreakChunks()
       case "space":
@@ -600,9 +639,55 @@ export class MarkdownRenderable extends Renderable {
     return tableBox
   }
 
-  private createDefaultRenderable(token: MarkedToken, index: number, hasNextToken: boolean = false): Renderable | null {
+  private getBlockMarginBottom(hasNextToken: boolean): number {
+    return hasNextToken ? 1 : 0
+  }
+
+  private createBlockquoteRenderable(token: Tokens.Blockquote, id: string, marginBottom: number): Renderable {
+    const borderChars = {
+      topLeft: "",
+      topRight: "",
+      bottomLeft: "",
+      bottomRight: "",
+      horizontal: "",
+      vertical: ">",
+      topT: "",
+      bottomT: "",
+      leftT: "",
+      rightT: "",
+      cross: "",
+    }
+    const borderColor = this.getStyle("punctuation.special")?.fg
+
+    const box = new BoxRenderable(this.ctx, {
+      id,
+      width: "100%",
+      marginBottom,
+      border: ["left"],
+      customBorderChars: borderChars,
+      borderColor: borderColor ?? "#FFFFFF",
+      paddingLeft: 1,
+    })
+
+    const chunks = this.renderBlockquoteContentChunks(token)
+    box.add(
+      new TextRenderable(this.ctx, {
+        id: `${id}-content`,
+        content: new StyledText(chunks),
+        width: "100%",
+      }),
+    )
+
+    return box
+  }
+
+  private createDefaultRenderable(
+    token: MarkedToken,
+    index: number,
+    hasNextToken: boolean = false,
+  ): Renderable | null {
     const id = `${this.id}-block-${index}`
-    const marginBottom = hasNextToken ? 1 : 0
+    const marginBottom = this.getBlockMarginBottom(hasNextToken)
 
     if (token.type === "code") {
       return this.createCodeRenderable(token, id, marginBottom)
@@ -610,6 +695,10 @@ export class MarkdownRenderable extends Renderable {
 
     if (token.type === "table") {
       return this.createTableRenderable(token, id, marginBottom)
+    }
+
+    if (token.type === "blockquote") {
+      return this.createBlockquoteRenderable(token as Tokens.Blockquote, id, marginBottom)
     }
 
     if (token.type === "space") {
@@ -624,8 +713,13 @@ export class MarkdownRenderable extends Renderable {
     return this.createTextRenderable(chunks, id, marginBottom)
   }
 
-  private updateBlockRenderable(state: BlockState, token: MarkedToken, index: number, hasNextToken: boolean): void {
-    const marginBottom = hasNextToken ? 1 : 0
+  private updateBlockRenderable(
+    state: BlockState,
+    token: MarkedToken,
+    index: number,
+    hasNextToken: boolean,
+  ): void {
+    const marginBottom = this.getBlockMarginBottom(hasNextToken)
 
     if (token.type === "code") {
       const codeRenderable = state.renderable as CodeRenderable
@@ -669,7 +763,21 @@ export class MarkdownRenderable extends Renderable {
       return
     }
 
-    // Text-based renderables (paragraph, heading, list, blockquote, hr)
+    if (token.type === "blockquote") {
+      const box = state.renderable as BoxRenderable
+      box.marginBottom = marginBottom
+      const borderColor = this.getStyle("punctuation.special")?.fg
+      if (borderColor) {
+        box.borderColor = borderColor
+      }
+      const children = (box as any)._childrenInLayoutOrder as Renderable[]
+      const content = children[0] as TextRenderable
+      const chunks = this.renderBlockquoteContentChunks(token as Tokens.Blockquote)
+      content.content = new StyledText(chunks)
+      return
+    }
+
+    // Text-based renderables (paragraph, heading, list, hr)
     const textRenderable = state.renderable as TextRenderable
     const chunks = this.renderTokenToChunks(token)
     textRenderable.content = new StyledText(chunks)
@@ -722,9 +830,11 @@ export class MarkdownRenderable extends Renderable {
       const { token } = blockTokens[i]
       const hasNextToken = i < lastBlockIndex
       const existing = this._blockStates[blockIndex]
+      const marginBottom = this.getBlockMarginBottom(hasNextToken)
 
       // Same token object reference means unchanged
       if (existing && existing.token === token) {
+        existing.renderable.marginBottom = marginBottom
         blockIndex++
         continue
       }
@@ -732,6 +842,7 @@ export class MarkdownRenderable extends Renderable {
       // Same content, update reference
       if (existing && existing.tokenRaw === token.raw && existing.token.type === token.type) {
         existing.token = token
+        existing.renderable.marginBottom = marginBottom
         blockIndex++
         continue
       }
@@ -813,10 +924,24 @@ export class MarkdownRenderable extends Renderable {
         this.updateTableRenderable(state.renderable, state.token as Tokens.Table, marginBottom)
       } else {
         // TextRenderable blocks - regenerate chunks with new style/conceal
-        const textRenderable = state.renderable as TextRenderable
-        const chunks = this.renderTokenToChunks(state.token)
-        if (chunks.length > 0) {
-          textRenderable.content = new StyledText(chunks)
+        if (state.token.type === "blockquote") {
+          const box = state.renderable as BoxRenderable
+          const borderColor = this.getStyle("punctuation.special")?.fg
+          if (borderColor) {
+            box.borderColor = borderColor
+          }
+          const children = (box as any)._childrenInLayoutOrder as Renderable[]
+          const content = children[0] as TextRenderable
+          const chunks = this.renderBlockquoteContentChunks(state.token as Tokens.Blockquote)
+          if (chunks.length > 0) {
+            content.content = new StyledText(chunks)
+          }
+        } else {
+          const textRenderable = state.renderable as TextRenderable
+          const chunks = this.renderTokenToChunks(state.token)
+          if (chunks.length > 0) {
+            textRenderable.content = new StyledText(chunks)
+          }
         }
       }
     }
