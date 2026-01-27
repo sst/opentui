@@ -875,78 +875,163 @@ Final paragraph with closing remarks.`
 })
 
 test("complex markdown with mixed nodes and nesting", async () => {
-  const markdown = `# Summary
+  const markdown = `# Weekly Update
 
-Intro paragraph with **bold**, *italic*, and \`code\`.
+Quick summary for the team with **bold**, *italic*, \`code\`, and ~~strikethrough~~.
 
-> Blockquote line one
-> Blockquote line two with [link](https://example.com)
-> - Quoted list item
->   - Quoted nested item
->     - Quoted deeper item
+## People
 
-1. Ordered item one
-2. Ordered item two
-   - Nested bullet A
-   - Nested bullet B
-     - Nested bullet deeper
-       - Nested bullet deepest
-3. Ordered item three
+- Alice
+  - Role: Tech Lead
+  - Profile: https://example.com/alice
+  - Notes: [handoff doc](https://example.com/alice/handoff)
+- Bob
+  - Role: Infra
+  - Profile: https://example.com/bob
+  - Notes: [runbook](https://example.com/runbook)
 
-- [ ] Task item one
-- [x] Task item two
+> Status call highlights:
+> - On-call load is high
+>   - Add more automation
+>   - Improve alert routing
+> - Task list:
+>   - [ ] Triage paging rules
+>   - [x] Reduce noisy alerts
+>
+> 1. Investigate spikes
+>    1. Check dashboard
+>    2. Review traces
+> 2. Apply fixes
+>
+> Final note with **bold** and \`code\`.
+
+## Metrics
+
+Table below:
+| Metric | Value |
+|---|---|
+| Coverage | 92% |
+| Latency | 120ms |
+
+Links right after table:
+- Dashboard: https://example.com/metrics
+- Incident history: https://example.com/incidents
+
+\`\`\`ts
+export const flag = true
+\`\`\`
 
 ---
 
-Paragraph after hr.
+### Risks
 
-\`\`\`ts
-const x = 1
-\`\`\`
+Paragraph close to the table and hr with a link to [docs](https://example.com/docs).
 
-| Col A | Col B |
-|---|---|
-| 1 | 2 |
+> Second quote block
+> with multiple lines
+> and a list:
+> - Q item 1
+> - Q item 2
+>   - Q nested 1
+>   - Q nested 2
+>
+> Final quoted line.
 
 Final paragraph with an image ![alt](https://example.com/img.png).`
 
-  expect(await renderMarkdown(markdown)).toMatchInlineSnapshot(`
-    "
-    Summary
+  const { renderer: localRenderer, renderOnce: localRenderOnce, captureCharFrame } = await createTestRenderer({
+    width: 90,
+    height: 120,
+  })
 
-    Intro paragraph with bold, italic, and code.
+  try {
+    const md = new MarkdownRenderable(localRenderer, {
+      id: "markdown",
+      content: markdown,
+      syntaxStyle,
+    })
 
-    > Blockquote line one
-    > Blockquote line two with link (https://example.com)
-    > - Quoted list item
-    >   - Quoted nested item
-    >     - Quoted deeper item
+    localRenderer.root.add(md)
+    await localRenderOnce()
 
-    1. Ordered item one
-    2. Ordered item two
-      - Nested bullet A
-      - Nested bullet B
-        - Nested bullet deeper
-          - Nested bullet deepest
-    3. Ordered item three
+    const lines = captureCharFrame()
+      .split("\n")
+      .map((line) => line.trimEnd())
+      .join("\n")
+      .trimEnd()
 
-    - [ ] Task item one
-    - [x] Task item two
+    expect("\n" + lines).toMatchInlineSnapshot(`
+      "
+      Weekly Update
 
-    ---
+      Quick summary for the team with bold, italic, code, and strikethrough.
 
-    Paragraph after hr.
+      People
 
-    const x = 1
+      - Alice
+        - Role: Tech Lead
+        - Profile: https://example.com/alice (https://example.com/alice)
+        - Notes: handoff doc (https://example.com/alice/handoff)
+      - Bob
+        - Role: Infra
+        - Profile: https://example.com/bob (https://example.com/bob)
+        - Notes: runbook (https://example.com/runbook)
 
-    ┌───────┬───────┐
-    │Col A  │Col B  │
-    │───────│───────│
-    │1      │2      │
-    └───────┴───────┘
+      > Status call highlights:
+      > - On-call load is high
+      >   - Add more automation
+      >   - Improve alert routing
+      > - Task list:
+      >   - [ ] Triage paging rules
+      >   - [x] Reduce noisy alerts
+      >
+      > 1. Investigate spikes
+      >   1. Check dashboard
+      >   2. Review traces
+      > 2. Apply fixes
+      >
+      > Final note with bold and code.
 
-    Final paragraph with an image alt."
-  `)
+      Metrics
+
+      Table below:
+
+      ┌──────────┬───────┐
+      │Metric    │Value  │
+      │──────────│───────│
+      │Coverage  │92%    │
+      │──────────│───────│
+      │Latency   │120ms  │
+      └──────────┴───────┘
+
+      Links right after table:
+
+      - Dashboard: https://example.com/metrics (https://example.com/metrics)
+      - Incident history: https://example.com/incidents (https://example.com/incidents)
+
+      export const flag = true
+
+      ---
+
+      Risks
+
+      Paragraph close to the table and hr with a link to docs (https://example.com/docs).
+
+      > Second quote block
+      > with multiple lines
+      > and a list:
+      > - Q item 1
+      > - Q item 2
+      >   - Q nested 1
+      >   - Q nested 2
+      >
+      > Final quoted line.
+
+      Final paragraph with an image alt."
+    `)
+  } finally {
+    localRenderer.destroy()
+  }
 })
 
 // Custom renderNode tests
@@ -1871,6 +1956,41 @@ The table alignment uses:
 
   const frame2 = captureFrame()
   expect(frame2).toContain("OpenTUI")
+
+  const frame2Preview = "\n" + frame2.split("\n").map((line) => line.trimEnd()).join("\n").trimEnd()
+  const previewLines = frame2Preview.split("\n").slice(0, 30).join("\n")
+  expect(previewLines).toMatchInlineSnapshot(`
+    "
+    OpenTUI Markdown Demo
+
+    Welcome to the MarkdownRenderable showcase! This
+    demonstrates automatic table alignment and syntax
+    highlighting.
+
+    Features
+
+    - Automatic table column alignment based on content width
+    - Proper handling of inline code, bold, and italic in tables
+    - Multiple syntax themes to choose from
+    - Conceal mode hides formatting markers
+
+    Comparison Table
+
+    ┌────────────────┬─────────┬──────────┬────────────────────┐
+    │Feature         │Status   │Priority  │Notes               │
+    │────────────────│─────────│──────────│────────────────────│
+    │Table alignment │Done     │High      │Uses marked parser  │
+    │────────────────│─────────│──────────│────────────────────│
+    │Conceal mode    │Working  │Medium    │Hides **, \`\`\`, etc. │
+    │────────────────│─────────│──────────│────────────────────│
+    │Theme switching │Done     │Low       │3 themes available  │
+    │────────────────│─────────│──────────│────────────────────│
+    │Unicode support │日本語   │High      │CJK characters      │
+    └────────────────┴─────────┴──────────┴────────────────────┘
+
+    Code Examples
+    "
+  `)
 
   // Theme switch should be fast (< 10ms for this content after optimization)
   // This is a performance regression test
