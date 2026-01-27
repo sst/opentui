@@ -1,6 +1,7 @@
 import { OrthographicCamera, PerspectiveCamera, Scene } from "three"
 
 import { OptimizedBuffer } from "../buffer"
+import { RGBA } from "../lib/RGBA"
 import { Renderable, type RenderableOptions } from "../Renderable"
 import type { CliRenderer } from "../renderer"
 import type { RenderContext } from "../types"
@@ -23,6 +24,7 @@ export class ThreeRenderable extends Renderable {
   private frameCallback: ((deltaTime: number) => Promise<void>) | null = null
   private frameCallbackRegistered: boolean = false
   private cliRenderer: CliRenderer
+  private clearColor: RGBA
 
   constructor(ctx: RenderContext, options: ThreeRenderableOptions) {
     const { scene = null, camera, renderer, autoAspect = true, ...renderableOptions } = options
@@ -36,6 +38,7 @@ export class ThreeRenderable extends Renderable {
     this.cliRenderer = cliRenderer
     this.scene = scene
     this.autoAspect = autoAspect
+    this.clearColor = renderer?.backgroundColor ?? RGBA.fromValues(0, 0, 0, 1)
 
     const { width, height } = this.getRenderSize()
     this.engine = new ThreeCliRenderer(cliRenderer, {
@@ -134,6 +137,10 @@ export class ThreeRenderable extends Renderable {
     try {
       const initialized = await this.ensureInitialized()
       if (!initialized || !this.scene) return
+
+      if (buffer === this.frameBuffer) {
+        buffer.clear(this.clearColor)
+      }
 
       await this.engine.drawScene(this.scene, buffer, deltaTime)
     } finally {
