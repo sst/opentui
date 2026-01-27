@@ -226,43 +226,40 @@ interface ContentExample {
 const contextualDiff: ContentExample = {
   name: "TypeScript (Contextual Headers)",
   filetype: "typescript",
-  diff: `--- a/server.ts
-+++ b/server.ts
-@@ -12,7 +12,7 @@ import { createLogger } from "./logger"
- const app = express()
- const logger = createLogger("server")
-
--const PORT = 3000
-+const PORT = process.env.PORT || 8080
- const HOST = "0.0.0.0"
-
- app.use(express.json())
-@@ -45,9 +45,14 @@ function setupRoutes(app: Express) {
-   app.get("/health", (req, res) => {
-     res.json({ status: "ok" })
-   })
-+
-+  app.get("/ready", (req, res) => {
-+    const dbReady = checkDatabase()
-+    res.json({ ready: dbReady })
-+  })
- }
-
--function startServer() {
-+async function startServer() {
-   setupRoutes(app)
--  app.listen(PORT, HOST, () => {
-+  await app.listen(PORT, HOST, () => {
-     logger.info(\`Server running on \${HOST}:\${PORT}\`)
-@@ -62,4 +67,7 @@ function startServer() {
-   })
- }
-
--startServer()
-+startServer().catch((err) => {
-+  logger.error("Failed to start server", err)
-+  process.exit(1)
-+})`,
+  diff: `--- a/user-service.ts
++++ b/user-service.ts
+@@ -18,6 +18,6 @@ class UserService {
+   constructor(private db: Database) {
+     this.cache = new Map()
+-    this.ttl = 3600
++    this.ttl = 7200
+   }
+ 
+   async getUser(id: string): Promise<User> {
+@@ -34,7 +34,11 @@ async getUser(id: string): Promise<User> {
+     const cached = this.cache.get(id)
+     if (cached) return cached
+ 
+-    const user = await this.db.query("SELECT * FROM users WHERE id = ?", [id])
++    const user = await this.db.query(
++      "SELECT id, name, email, role FROM users WHERE id = ? AND active = true",
++      [id],
++    )
+     this.cache.set(id, user)
++    this.setExpiry(id)
+     return user
+   }
+@@ -52,6 +56,8 @@ async deleteUser(id: string): Promise<void> {
+     await this.db.query("DELETE FROM users WHERE id = ?", [id])
+     this.cache.delete(id)
++    this.logger.info(\`Deleted user \${id}\`)
+   }
+ 
+-  clearCache(): void {
++  async clearCache(): Promise<void> {
+     this.cache.clear()
++    await this.db.query("DELETE FROM user_cache")
+   }`,
 }
 
 const contentExamples: ContentExample[] = [
