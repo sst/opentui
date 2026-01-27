@@ -249,7 +249,7 @@ const contextualDiff: ContentExample = {
 +    this.setExpiry(id)
      return user
    }
-@@ -52,6 +56,8 @@ async deleteUser(id: string): Promise<void> {
+@@ -52,7 +56,9 @@ async deleteUser(id: string): Promise<void> {
      await this.db.query("DELETE FROM users WHERE id = ?", [id])
      this.cache.delete(id)
 +    this.logger.info(\`Deleted user \${id}\`)
