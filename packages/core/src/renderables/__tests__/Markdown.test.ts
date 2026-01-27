@@ -881,11 +881,16 @@ Intro paragraph with **bold**, *italic*, and \`code\`.
 
 > Blockquote line one
 > Blockquote line two with [link](https://example.com)
+> - Quoted list item
+>   - Quoted nested item
+>     - Quoted deeper item
 
 1. Ordered item one
 2. Ordered item two
    - Nested bullet A
    - Nested bullet B
+     - Nested bullet deeper
+       - Nested bullet deepest
 3. Ordered item three
 
 - [ ] Task item one
@@ -913,11 +918,16 @@ Final paragraph with an image ![alt](https://example.com/img.png).`
 
     > Blockquote line one
     > Blockquote line two with link (https://example.com)
+    > - Quoted list item
+    >   - Quoted nested item
+    >     - Quoted deeper item
 
     1. Ordered item one
     2. Ordered item two
       - Nested bullet A
       - Nested bullet B
+        - Nested bullet deeper
+          - Nested bullet deepest
     3. Ordered item three
 
     - [ ] Task item one
