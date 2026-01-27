@@ -494,7 +494,15 @@ export class DiffRenderable extends Renderable {
       // Insert hunk header row only if there's context text after @@
       if (hunk.context) {
         contentLines.push(hunk.context)
-        lineColors.set(lineIndex, { gutter: this._hunkHeaderBg, content: this._hunkHeaderBg })
+        const config: LineColorConfig = {
+          gutter: this._lineNumberBg,
+        }
+        if (this._contextContentBg) {
+          config.content = this._contextContentBg
+        } else {
+          config.content = this._contextBg
+        }
+        lineColors.set(lineIndex, config)
         lineSigns.set(lineIndex, { after: " @", afterColor: this._hunkHeaderFg })
         hideLineNumbers.add(lineIndex)
         lineIndex++
@@ -601,14 +609,12 @@ export class DiffRenderable extends Renderable {
         leftLogicalLines.push({
           content: hunk.context,
           hideLineNumber: true,
-          color: this._hunkHeaderBg,
           sign: { after: " @", afterColor: this._hunkHeaderFg },
           type: "hunk-header",
         })
         rightLogicalLines.push({
           content: hunk.context,
           hideLineNumber: true,
-          color: this._hunkHeaderBg,
           sign: { after: " @", afterColor: this._hunkHeaderFg },
           type: "hunk-header",
         })
@@ -849,7 +855,15 @@ export class DiffRenderable extends Renderable {
         }
         leftLineColors.set(index, config)
       } else if (line.type === "hunk-header") {
-        leftLineColors.set(index, { gutter: this._hunkHeaderBg, content: this._hunkHeaderBg })
+        const config: LineColorConfig = {
+          gutter: this._lineNumberBg,
+        }
+        if (this._contextContentBg) {
+          config.content = this._contextContentBg
+        } else {
+          config.content = this._contextBg
+        }
+        leftLineColors.set(index, config)
       }
       if (line.sign) {
         leftLineSigns.set(index, line.sign)
@@ -884,7 +898,15 @@ export class DiffRenderable extends Renderable {
         }
         rightLineColors.set(index, config)
       } else if (line.type === "hunk-header") {
-        rightLineColors.set(index, { gutter: this._hunkHeaderBg, content: this._hunkHeaderBg })
+        const config: LineColorConfig = {
+          gutter: this._lineNumberBg,
+        }
+        if (this._contextContentBg) {
+          config.content = this._contextContentBg
+        } else {
+          config.content = this._contextBg
+        }
+        rightLineColors.set(index, config)
       }
       if (line.sign) {
         rightLineSigns.set(index, line.sign)
