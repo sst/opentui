@@ -453,7 +453,7 @@ export class MarkdownRenderable extends Renderable {
     const borderColor = this.getStyle("conceal")?.fg ?? "#888888"
     const headingStyle = this.getStyle("markup.heading") || this.getStyle("default")
 
-    const rowsToRender = this._streaming && table.rows.length > 0 ? table.rows.slice(0, -1) : table.rows
+    const rowsToRender = this.getTableRowsToRender(table)
     const colCount = table.header.length
 
     // Traverse existing table structure: tableBox -> columnBoxes -> cells
@@ -527,8 +527,7 @@ export class MarkdownRenderable extends Renderable {
   private createTableRenderable(table: Tokens.Table, id: string, marginBottom: number = 0): Renderable {
     const colCount = table.header.length
 
-    // During streaming, skip the last row (might be incomplete)
-    const rowsToRender = this._streaming && table.rows.length > 0 ? table.rows.slice(0, -1) : table.rows
+    const rowsToRender = this.getTableRowsToRender(table)
 
     if (colCount === 0 || rowsToRender.length === 0) {
       return this.createTextRenderable([this.createDefaultChunk(table.raw)], id, marginBottom)
@@ -644,6 +643,23 @@ export class MarkdownRenderable extends Renderable {
     return hasNextToken ? 1 : 0
   }
 
+  private getTableRowsToRender(table: Tokens.Table): Tokens.Table["rows"] {
+    if (!this._streaming) {
+      return table.rows
+    }
+    if (table.rows.length === 0) {
+      return table.rows
+    }
+    if (table.raw.endsWith("\n")) {
+      return table.rows
+    }
+    return table.rows.slice(0, -1)
+  }
+
+  private getTableRenderableRowCount(table: Tokens.Table): number {
+    return this.getTableRowsToRender(table).length
+  }
+
   private createBlockquoteRenderable(token: Tokens.Blockquote, id: string, marginBottom: number): Renderable {
     const borderChars = {
       topLeft: "",
@@ -730,8 +746,8 @@ export class MarkdownRenderable extends Renderable {
 
       // During streaming, only rebuild when complete row count changes (skip incomplete last row)
       if (this._streaming) {
-        const prevCompleteRows = Math.max(0, prevTable.rows.length - 1)
-        const newCompleteRows = Math.max(0, newTable.rows.length - 1)
+        const prevCompleteRows = this.getTableRenderableRowCount(prevTable)
+        const newCompleteRows = this.getTableRenderableRowCount(newTable)
 
         // Check if both previous and new are in raw fallback mode (no complete rows to render)
         const prevIsRawFallback = prevTable.header.length === 0 || prevCompleteRows === 0
