@@ -339,11 +339,7 @@ export class MarkdownRenderable extends Renderable {
     }
   }
 
-  private createBlockRenderable(
-    token: MarkedToken,
-    id: string,
-    marginBottom: number,
-  ): Renderable | null {
+  private createBlockRenderable(token: MarkedToken, id: string, marginBottom: number): Renderable | null {
     if (token.type === "code") {
       return this.createCodeRenderable(token as Tokens.Code, id, marginBottom)
     }
@@ -733,7 +729,12 @@ export class MarkdownRenderable extends Renderable {
     }
   }
 
-  private updateBlockquoteRenderable(box: BoxRenderable, token: Tokens.Blockquote, id: string, marginBottom: number): void {
+  private updateBlockquoteRenderable(
+    box: BoxRenderable,
+    token: Tokens.Blockquote,
+    id: string,
+    marginBottom: number,
+  ): void {
     box.marginBottom = marginBottom
     const borderColor = this.getStyle("punctuation.special")?.fg
     if (borderColor) {
@@ -747,7 +748,6 @@ export class MarkdownRenderable extends Renderable {
 
     this.addBlockquoteChildren(box, token, id)
   }
-
 
   private createDefaultRenderable(token: MarkedToken, index: number, hasNextToken: boolean = false): Renderable | null {
     const id = `${this.id}-block-${index}`
