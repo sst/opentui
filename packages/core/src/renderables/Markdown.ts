@@ -643,6 +643,15 @@ export class MarkdownRenderable extends Renderable {
     return hasNextToken ? 1 : 0
   }
 
+  private getBlockquoteContentRenderable(box: BoxRenderable): TextRenderable | null {
+    const children = (box as any)._childrenInLayoutOrder as Renderable[] | undefined
+    if (!Array.isArray(children) || children.length === 0) {
+      return null
+    }
+    const content = children[0]
+    return content instanceof TextRenderable ? content : null
+  }
+
   private getTableRowsToRender(table: Tokens.Table): Tokens.Table["rows"] {
     if (!this._streaming) {
       return table.rows
@@ -778,8 +787,10 @@ export class MarkdownRenderable extends Renderable {
       if (borderColor) {
         box.borderColor = borderColor
       }
-      const children = (box as any)._childrenInLayoutOrder as Renderable[]
-      const content = children[0] as TextRenderable
+      const content = this.getBlockquoteContentRenderable(box)
+      if (!content) {
+        return
+      }
       const chunks = this.renderBlockquoteContentChunks(token as Tokens.Blockquote)
       content.content = new StyledText(chunks)
       return
@@ -938,8 +949,10 @@ export class MarkdownRenderable extends Renderable {
           if (borderColor) {
             box.borderColor = borderColor
           }
-          const children = (box as any)._childrenInLayoutOrder as Renderable[]
-          const content = children[0] as TextRenderable
+          const content = this.getBlockquoteContentRenderable(box)
+          if (!content) {
+            continue
+          }
           const chunks = this.renderBlockquoteContentChunks(state.token as Tokens.Blockquote)
           if (chunks.length > 0) {
             content.content = new StyledText(chunks)
