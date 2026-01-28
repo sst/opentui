@@ -127,6 +127,7 @@ pre {
   border-left: 1px solid var(--color-border);
   border-right: 1px solid var(--color-border);
   border-bottom: 1px solid var(--color-border);
+  overflow-x: clip;
 }
 
 /* Header */
@@ -808,6 +809,7 @@ pre {
   border-left: 1px solid var(--color-border);
   border-right: 1px solid var(--color-border);
   border-bottom: 1px solid var(--color-border);
+  overflow-x: clip;
 }
 
 /* Header */
@@ -961,7 +963,7 @@ pre {
 .sidebar-links a {
   display: block;
   padding: 4px 0;
-  color: var(--color-text-weak);
+  color: var(--color-text);
   font-size: 13px;
   transition: color 0.15s;
 }
@@ -980,6 +982,7 @@ pre {
 .content {
   max-width: var(--content-width);
   min-width: 0;
+  overflow-wrap: break-word;
 }
 
 .content > *:first-child {
@@ -1006,13 +1009,22 @@ pre {
   margin-bottom: var(--space-xs);
 }
 
+.content a {
+  text-decoration: underline;
+  text-underline-offset: 0.25rem;
+}
+
+.content a:hover {
+  text-decoration: underline;
+}
+
 .content p {
   margin-bottom: var(--space-md);
 }
 
 .content pre {
   position: relative;
-  background: var(--color-bg-weak);
+  background: var(--color-bg-weak) !important;
   padding: var(--space-md);
   border-radius: 6px;
   overflow-x: auto;
@@ -1073,6 +1085,33 @@ pre {
 .content pre code {
   background: none;
   padding: 0;
+}
+
+/* Tables */
+.table-wrapper {
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+  margin: var(--space-md) 0;
+}
+
+.content table {
+  border-collapse: collapse;
+  font-size: 13px;
+  width: max-content;
+  min-width: 100%;
+}
+
+.content th,
+.content td {
+  padding: var(--space-sm) var(--space-md);
+  text-align: left;
+  border-bottom: 1px solid var(--color-border);
+  white-space: nowrap;
+}
+
+.content th {
+  font-weight: 500;
+  color: var(--color-text-strong);
 }
 
 /* Footer */
@@ -1151,6 +1190,15 @@ pre {
     transition:
       opacity 0.2s ease,
       visibility 0.2s ease;
+  }
+
+  .sidebar-title {
+    font-size: 14px;
+  }
+
+  .sidebar-links a {
+    font-size: 15px;
+    padding: 8px 0;
   }
 
   /* Mobile nav open state */
