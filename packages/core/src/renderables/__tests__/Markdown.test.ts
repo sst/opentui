@@ -684,6 +684,24 @@ test("nested unordered list", async () => {
   `)
 })
 
+test("list item with fenced code block", async () => {
+  const markdown = `- Item with code:
+
+  \`\`\`ts
+  const value = 1
+  console.log(value)
+  \`\`\`
+- Next item`
+
+  expect(await renderMarkdown(markdown)).toMatchInlineSnapshot(`
+    "
+    - Item with code:
+      const value = 1
+      console.log(value)
+    - Next item"
+  `)
+})
+
 // Blockquote tests
 
 test("simple blockquote", async () => {
