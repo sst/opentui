@@ -158,9 +158,18 @@ export class OptimizedBuffer {
     const { char, fg, bg, attributes } = this.buffers
     const lines: CapturedLine[] = []
 
+    const CHAR_FLAG_CONTINUATION = 0xc0000000 | 0
+    const CHAR_FLAG_MASK = 0xc0000000 | 0
+
+    const realTextBytes = this.getRealCharBytes(true)
+    const realTextLines = new TextDecoder().decode(realTextBytes).split("\n")
+
     for (let y = 0; y < this._height; y++) {
       const spans: CapturedSpan[] = []
       let currentSpan: CapturedSpan | null = null
+
+      const lineChars = [...(realTextLines[y] || "")]
+      let charIdx = 0
 
       for (let x = 0; x < this._width; x++) {
         const i = y * this._width + x
@@ -168,7 +177,10 @@ export class OptimizedBuffer {
         const cellFg = RGBA.fromValues(fg[i * 4], fg[i * 4 + 1], fg[i * 4 + 2], fg[i * 4 + 3])
         const cellBg = RGBA.fromValues(bg[i * 4], bg[i * 4 + 1], bg[i * 4 + 2], bg[i * 4 + 3])
         const cellAttrs = attributes[i] & 0xff
-        const cellChar = cp > 0 ? String.fromCodePoint(cp) : " "
+
+        // Continuation cells are placeholders for wide characters (emojis, CJK)
+        const isContinuation = (cp & CHAR_FLAG_MASK) === CHAR_FLAG_CONTINUATION
+        const cellChar = isContinuation ? "" : (lineChars[charIdx++] ?? " ")
 
         // Check if this cell continues the current span
         if (

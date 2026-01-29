@@ -306,6 +306,10 @@ export abstract class Renderable extends BaseRenderable {
     return this._focusable
   }
 
+  public set focusable(value: boolean) {
+    this._focusable = value
+  }
+
   public get ctx(): RenderContext {
     return this._ctx
   }

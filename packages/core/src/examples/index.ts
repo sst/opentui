@@ -26,6 +26,7 @@ import * as opentuiDemo from "./opentui-demo"
 import * as nestedZIndexDemo from "./nested-zindex-demo"
 import * as relativePositioningDemo from "./relative-positioning-demo"
 import * as transparencyDemo from "./transparency-demo"
+import * as draggableThreeDemo from "./draggable-three-demo"
 import * as scrollExample from "./scroll-example"
 import * as stickyScrollExample from "./sticky-scroll-example"
 import * as shaderCubeExample from "./shader-cube-demo"
@@ -221,10 +222,10 @@ const examples: Example[] = [
     destroy: transparencyDemo.destroy,
   },
   {
-    name: "Opacity Demo",
-    description: "Interactive opacity/alpha demonstration with animated boxes",
-    run: opacityExample.run,
-    destroy: opacityExample.destroy,
+    name: "Draggable ThreeRenderable",
+    description: "Draggable WebGPU cube with live animation",
+    run: draggableThreeDemo.run,
+    destroy: draggableThreeDemo.destroy,
   },
   {
     name: "Static Sprite",

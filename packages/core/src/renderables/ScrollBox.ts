@@ -347,7 +347,7 @@ export class ScrollBoxRenderable extends BoxRenderable {
 
     this.selectionListener = () => {
       const selection = this._ctx.getSelection()
-      if (!selection || !selection.isSelecting) {
+      if (!selection || !selection.isDragging) {
         this.stopAutoScroll()
       }
     }
@@ -467,7 +467,7 @@ export class ScrollBoxRenderable extends BoxRenderable {
       }
     }
 
-    if (event.type === "drag" && event.isSelecting) {
+    if (event.type === "drag" && event.isDragging) {
       this.updateAutoScroll(event.x, event.y)
     } else if (event.type === "up") {
       this.stopAutoScroll()

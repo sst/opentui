@@ -144,4 +144,51 @@ describe("captureSpans", () => {
     expect(allSpans.some((s) => s.fg.r === 1 && s.fg.g === 0)).toBe(true)
     expect(allSpans.some((s) => s.fg.g === 1 && s.fg.r === 0)).toBe(true)
   })
+
+  test("handles box-drawing characters without crashing", async () => {
+    const text = new TextRenderable(renderer, {
+      content: "├── folder",
+    })
+    renderer.root.add(text)
+    await renderOnce()
+
+    const data = captureSpans()
+    const firstLine = data.lines[0]
+    const textContent = firstLine.spans.map((s) => s.text).join("")
+
+    expect(textContent).toContain("├── folder")
+  })
+
+  test("handles box borders without crashing", async () => {
+    const box = new BoxRenderable(renderer, {
+      width: 10,
+      height: 4,
+      border: true,
+      borderStyle: "single",
+      borderColor: RGBA.fromHex("#ffffff"),
+    })
+    renderer.root.add(box)
+    await renderOnce()
+
+    const data = captureSpans()
+    expect(data.lines.length).toBe(10)
+
+    const firstLine = data.lines[0]
+    const textContent = firstLine.spans.map((s) => s.text).join("")
+    expect(textContent.includes("┌") || textContent.includes("─")).toBe(true)
+  })
+
+  test("handles multi-width characters correctly", async () => {
+    const text = new TextRenderable(renderer, {
+      content: "A🌟B",
+    })
+    renderer.root.add(text)
+    await renderOnce()
+
+    const data = captureSpans()
+    const firstLine = data.lines[0]
+    const textContent = firstLine.spans.map((s) => s.text).join("")
+
+    expect(textContent).toContain("A🌟B")
+  })
 })

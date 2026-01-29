@@ -1343,6 +1343,51 @@ describe("Textarea - Selection Tests", () => {
     })
   })
 
+  describe("Selection Preserved on Viewport Scroll", () => {
+    it("should preserve selection when scrolling viewport", async () => {
+      const { textarea: editor } = await createTextareaRenderable(currentRenderer, renderOnce, {
+        initialValue: Array.from({ length: 50 }, (_, i) => `Line ${i}`).join("\n"),
+        width: 40,
+        height: 10,
+        selectable: true,
+      })
+
+      editor.focus()
+      await renderOnce()
+
+      // Select all text using keyboard (Cmd+Shift+Down)
+      currentMockInput.pressKey("ARROW_DOWN", { shift: true, super: true })
+      await renderOnce()
+
+      const selectionBefore = editor.getSelection()
+      const selectedTextBefore = editor.getSelectedText()
+
+      expect(selectionBefore).not.toBeNull()
+      expect(selectedTextBefore).toContain("Line 0")
+      expect(selectedTextBefore).toContain("Line 49")
+
+      // Start renderer to simulate real app with continuous render loop
+      currentRenderer.start()
+
+      // Scroll up with mouse wheel
+      await currentMouse.scroll(editor.x, editor.y + 1, "up")
+      await Bun.sleep(100)
+
+      const selectionAfter = editor.getSelection()
+      const selectedTextAfter = editor.getSelectedText()
+
+      currentRenderer.pause()
+
+      // Selection should not change when scrolling viewport
+      expect(selectionAfter).not.toBeNull()
+      expect(selectionAfter!.start).toBe(selectionBefore!.start)
+      expect(selectionAfter!.end).toBe(selectionBefore!.end)
+      expect(selectedTextAfter).toBe(selectedTextBefore)
+
+      editor.destroy()
+    })
+  })
+
   describe("Keyboard Selection with Viewport Scrolling", () => {
     it("should select to buffer home after shift+end then shift+home when scrolled", async () => {
       const lines = Array.from({ length: 30 }, (_, i) => `Line ${i.toString().padStart(2, "0")}`)
