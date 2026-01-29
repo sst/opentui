@@ -4,6 +4,7 @@ import { createTestRenderer } from "../testing/test-renderer"
 import type { KeyEvent } from "../lib/KeyHandler"
 
 const { renderer, mockInput } = await createTestRenderer({})
+const isDarwin = process.platform === "darwin"
 
 function createInputRenderable(options: InputRenderableOptions): { input: InputRenderable; root: any } {
   if (!renderer) {
@@ -1044,7 +1045,7 @@ describe("InputRenderable", () => {
       expect(input.cursorOffset).toBe(5)
     })
 
-    it("should support Emacs-style bindings by default", () => {
+    it("should support default control bindings", () => {
       const { input } = createInputRenderable({
         width: 20,
         height: 1,
@@ -1053,9 +1054,17 @@ describe("InputRenderable", () => {
 
       input.focus()
 
-      // Ctrl+A should move to home
+      // Ctrl+A should move to home on macOS, select all elsewhere
       mockInput.pressKey("a", { ctrl: true })
-      expect(input.cursorOffset).toBe(0)
+      if (isDarwin) {
+        expect(input.cursorOffset).toBe(0)
+      } else {
+        expect(input.hasSelection()).toBe(true)
+        expect(input.getSelectedText()).toBe("hello")
+      }
+
+      renderer.clearSelection()
+      input.cursorOffset = 0
 
       // Ctrl+E should move to end
       mockInput.pressKey("e", { ctrl: true })
