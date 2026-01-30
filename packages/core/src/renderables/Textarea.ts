@@ -67,6 +67,7 @@ const defaultTextareaKeybindings: KeyBinding[] = [
   { name: "end", action: "buffer-end" },
   { name: "home", shift: true, action: "select-buffer-home" },
   { name: "end", shift: true, action: "select-buffer-end" },
+  { name: "a", ctrl: true, action: "line-home" },
   { name: "e", ctrl: true, action: "line-end" },
   { name: "a", ctrl: true, shift: true, action: "select-line-home" },
   { name: "e", ctrl: true, shift: true, action: "select-line-end" },
@@ -120,15 +121,7 @@ const defaultTextareaKeybindings: KeyBinding[] = [
   { name: "right", super: true, shift: true, action: "select-visual-line-end" },
   { name: "up", super: true, shift: true, action: "select-buffer-home" },
   { name: "down", super: true, shift: true, action: "select-buffer-end" },
-  ...(process.platform === "darwin"
-    ? [
-        { name: "a", ctrl: true, action: "line-home" as const },
-        { name: "a", super: true, action: "select-all" as const },
-      ]
-    : [
-        { name: "a", ctrl: true, action: "select-all" as const },
-        { name: "a", super: true, action: "select-all" as const },
-      ]),
+  { name: "a", super: true, action: "select-all" },
 ]
 
 export interface SubmitEvent {}

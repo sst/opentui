@@ -3,8 +3,6 @@ import { createTestRenderer, type TestRenderer, type MockInput } from "../../tes
 import { createTextareaRenderable } from "./renderable-test-utils"
 import { TextareaRenderable } from "../Textarea"
 
-const isDarwin = process.platform === "darwin"
-
 let currentRenderer: TestRenderer
 let renderOnce: () => Promise<void>
 let currentMockInput: MockInput
@@ -1215,7 +1213,7 @@ describe("Textarea - Editing Tests", () => {
   })
 
   describe("Keyboard Input - Control Commands", () => {
-    it("should handle Ctrl+A per platform defaults", async () => {
+    it("should move to line start with Ctrl+A", async () => {
       const { textarea: editor } = await createTextareaRenderable(currentRenderer, renderOnce, {
         initialValue: "Line 1\nLine 2\nLine 3",
         width: 40,
@@ -1232,15 +1230,8 @@ describe("Textarea - Editing Tests", () => {
 
       currentMockInput.pressKey("a", { ctrl: true })
       const cursor = editor.logicalCursor
-      if (isDarwin) {
-        expect(cursor.row).toBe(1) // Should stay on same line
-        expect(cursor.col).toBe(0) // Should move to start of line
-      } else {
-        expect(editor.hasSelection()).toBe(true)
-        expect(editor.getSelectedText()).toBe("Line 1\nLine 2\nLine 3")
-        expect(cursor.row).toBe(2)
-        expect(cursor.col).toBe(6)
-      }
+      expect(cursor.row).toBe(1) // Should stay on same line
+      expect(cursor.col).toBe(0) // Should move to start of line
     })
 
     it("should move to line end with Ctrl+E", async () => {

@@ -3,8 +3,6 @@ import { createTestRenderer, type TestRenderer, type MockMouse, type MockInput }
 import { createTextareaRenderable } from "./renderable-test-utils"
 import { KeyEvent } from "../../lib/KeyHandler"
 
-const isDarwin = process.platform === "darwin"
-
 // Helper function to create a KeyEvent from a string
 function createKeyEvent(
   input: string | { name: string; shift?: boolean; ctrl?: boolean; meta?: boolean; super?: boolean },
@@ -2710,7 +2708,7 @@ describe("Textarea - Keybinding Tests", () => {
       expect(cursor.col).toBeGreaterThan(0)
     })
 
-    it("should handle ctrl+a (without shift) per platform defaults", async () => {
+    it("should not interfere with ctrl+a (without shift)", async () => {
       const { textarea: editor } = await createTextareaRenderable(currentRenderer, renderOnce, {
         initialValue: "Hello World",
         width: 40,
@@ -2720,17 +2718,11 @@ describe("Textarea - Keybinding Tests", () => {
       editor.focus()
       editor.editBuffer.setCursor(0, 11)
 
-      // ctrl+a (without shift) moves on macOS, selects all elsewhere
+      // ctrl+a (without shift) should just move, not select
       currentMockInput.pressKey("a", { ctrl: true })
 
-      if (isDarwin) {
-        expect(editor.hasSelection()).toBe(false)
-        expect(editor.logicalCursor.col).toBe(0)
-      } else {
-        expect(editor.hasSelection()).toBe(true)
-        expect(editor.getSelectedText()).toBe("Hello World")
-        expect(editor.logicalCursor.col).toBe(11)
-      }
+      expect(editor.hasSelection()).toBe(false)
+      expect(editor.logicalCursor.col).toBe(0)
     })
 
     it("should not interfere with ctrl+e (without shift)", async () => {
@@ -2818,7 +2810,7 @@ describe("Textarea - Keybinding Tests", () => {
       expect(cursor.col).toBe(19)
     })
 
-    it("should handle ctrl+a vs meta+a when wrapping is enabled", async () => {
+    it("should differ from ctrl+a/e when wrapping is enabled", async () => {
       const { textarea: editor } = await createTextareaRenderable(currentRenderer, renderOnce, {
         initialValue: "ABCDEFGHIJKLMNOPQRSTUVWXYZ",
         width: 20,
@@ -2837,16 +2829,12 @@ describe("Textarea - Keybinding Tests", () => {
       // Reset cursor
       editor.editBuffer.setCursor(0, 22)
 
-      // ctrl+a goes to logical line start (col 0) on macOS, select-all elsewhere
+      // ctrl+a goes to logical line start (col 0)
       currentMockInput.pressKey("a", { ctrl: true })
-      if (isDarwin) {
-        const logicalHomeCol = editor.logicalCursor.col
-        expect(logicalHomeCol).toBe(0)
-        expect(visualHomeCol).not.toBe(logicalHomeCol)
-      } else {
-        expect(editor.hasSelection()).toBe(true)
-        expect(editor.getSelectedText()).toBe("ABCDEFGHIJKLMNOPQRSTUVWXYZ")
-      }
+      const logicalHomeCol = editor.logicalCursor.col
+      expect(logicalHomeCol).toBe(0)
+
+      expect(visualHomeCol).not.toBe(logicalHomeCol)
     })
   })
 
