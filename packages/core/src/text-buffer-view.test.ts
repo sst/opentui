@@ -108,6 +108,26 @@ describe("TextBufferView", () => {
       expect(lineInfo.lineWidths).toEqual([10, 10, 6])
     })
 
+    it("should return byte offsets (not column) for CJK text in lineStarts", () => {
+      view.setWrapMode("char")
+      buffer.setStyledText(stringToStyledText("흐름도"))
+      view.setWrapWidth(4) // "흐름"(width 4) then "도"(width 2)
+
+      const lineInfo = view.lineInfo
+      expect(lineInfo.lineStarts).toEqual([0, 6]) // 6 bytes, not 4 columns
+      expect(lineInfo.lineWidths).toEqual([4, 2])
+    })
+
+    it("should not split multi-byte characters at wrap boundary", () => {
+      view.setWrapMode("char")
+      buffer.setStyledText(stringToStyledText(" 안녕a"))
+      view.setWrapWidth(5) // " 안녕"(width 5) then "a"(width 1)
+
+      const lineInfo = view.lineInfo
+      expect(lineInfo.lineStarts).toEqual([0, 7]) // " 안녕" = 7 bytes
+      expect(lineInfo.lineWidths).toEqual([5, 1])
+    })
+
     it("should update lineInfo when wrap width changes", () => {
       const text = "The quick brown fox jumps over the lazy dog"
       const styledText = stringToStyledText(text)
