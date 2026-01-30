@@ -1101,6 +1101,27 @@ export class CliRenderer extends EventEmitter implements RenderContext {
     })
   }
 
+  private dispatchMouseEvent(
+    target: Renderable,
+    attributes: RawMouseEvent & { source?: Renderable; isDragging?: boolean },
+  ): MouseEvent {
+    const event = new MouseEvent(target, attributes)
+    target.processMouseEvent(event)
+
+    if (event.type === "down" && event.button === MouseButton.LEFT && !event.defaultPrevented) {
+      let current: Renderable | null = target
+      while (current) {
+        if (current.focusable) {
+          current.focus()
+          break
+        }
+        current = current.parent
+      }
+    }
+
+    return event
+  }
+
   private handleMouseData(data: Buffer): boolean {
     const mouseEvent = this.mouseParser.parseMouseEvent(data)
 
@@ -1147,26 +1168,6 @@ export class CliRenderer extends EventEmitter implements RenderContext {
       this.lastOverRenderableNum = maybeRenderableId
       const maybeRenderable = Renderable.renderablesByNumber.get(maybeRenderableId)
 
-      // Fire mousedown event early so handlers can call preventDefault() to cancel default behaviors
-      let mouseDownEvent: MouseEvent | undefined
-      if (maybeRenderable && mouseEvent.type === "down" && mouseEvent.button === MouseButton.LEFT) {
-        mouseDownEvent = new MouseEvent(maybeRenderable, mouseEvent)
-        maybeRenderable.processMouseEvent(mouseDownEvent)
-
-        // Auto-focus on click (browser-like behavior)
-        // Bubble up to find closest focusable ancestor
-        if (!mouseDownEvent.defaultPrevented) {
-          let current: Renderable | null = maybeRenderable
-          while (current) {
-            if (current.focusable) {
-              current.focus()
-              break
-            }
-            current = current.parent
-          }
-        }
-      }
-
       if (
         mouseEvent.type === "down" &&
         mouseEvent.button === MouseButton.LEFT &&
@@ -1180,7 +1181,7 @@ export class CliRenderer extends EventEmitter implements RenderContext {
           maybeRenderable.shouldStartSelection(mouseEvent.x, mouseEvent.y)
         ) {
           this.startSelection(maybeRenderable, mouseEvent.x, mouseEvent.y)
-          // Event already fired above (mouseDownEvent), don't fire again
+          this.dispatchMouseEvent(maybeRenderable, mouseEvent)
           return true
         }
       }
@@ -1256,18 +1257,14 @@ export class CliRenderer extends EventEmitter implements RenderContext {
         this.requestRender()
       }
 
-      let event: MouseEvent | undefined = mouseDownEvent
+      let event: MouseEvent | undefined
       if (maybeRenderable) {
         if (mouseEvent.type === "drag" && mouseEvent.button === MouseButton.LEFT) {
           this.setCapturedRenderable(maybeRenderable)
         } else {
           this.setCapturedRenderable(undefined)
         }
-        // Only create and fire event if we didn't already fire mouseDownEvent
-        if (!mouseDownEvent) {
-          event = new MouseEvent(maybeRenderable, mouseEvent)
-          maybeRenderable.processMouseEvent(event)
-        }
+        event = this.dispatchMouseEvent(maybeRenderable, mouseEvent)
       } else {
         this.setCapturedRenderable(undefined)
         this.lastOverRenderable = undefined
