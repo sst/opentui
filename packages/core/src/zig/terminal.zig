@@ -86,6 +86,7 @@ opts: Options = .{},
 
 in_tmux: bool = false,
 skip_graphics_query: bool = false,
+skip_explicit_width_query: bool = false,
 graphics_query_pending: bool = false,
 capability_queries_pending: bool = false,
 
@@ -196,12 +197,14 @@ pub fn queryTerminalSend(self: *Terminal, tty: anytype) !void {
         self.capability_queries_pending = true;
     }
 
-    try tty.writeAll(ansi.ANSI.home ++
-        ansi.ANSI.explicitWidthQuery ++
-        ansi.ANSI.cursorPositionRequest ++
-        ansi.ANSI.home ++
-        ansi.ANSI.scaledTextQuery ++
-        ansi.ANSI.cursorPositionRequest);
+    if (!self.skip_explicit_width_query) {
+        try tty.writeAll(ansi.ANSI.home ++
+            ansi.ANSI.explicitWidthQuery ++
+            ansi.ANSI.cursorPositionRequest ++
+            ansi.ANSI.home ++
+            ansi.ANSI.scaledTextQuery ++
+            ansi.ANSI.cursorPositionRequest);
+    }
 
     try tty.writeAll(ansi.ANSI.restoreCursorState);
 }
@@ -270,6 +273,7 @@ pub fn enableDetectedFeatures(self: *Terminal, tty: anytype, use_kitty_keyboard:
 fn checkEnvironmentOverrides(self: *Terminal) void {
     self.in_tmux = false;
     self.skip_graphics_query = false;
+    self.skip_explicit_width_query = false;
 
     // Always just try to enable bracketed paste, even if it was reported as not supported
     self.caps.bracketed_paste = true;
@@ -380,6 +384,7 @@ fn checkEnvironmentOverrides(self: *Terminal) void {
             self.caps.explicit_width = true;
         } else if (std.mem.eql(u8, val, "false") or std.mem.eql(u8, val, "0")) {
             self.caps.explicit_width = false;
+            self.skip_explicit_width_query = true;
         }
     }
 

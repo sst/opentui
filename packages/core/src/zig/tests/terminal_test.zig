@@ -599,3 +599,84 @@ fn countSubstring(haystack: []const u8, needle: []const u8) usize {
     }
     return count;
 }
+
+test "queryTerminalSend - skips OSC 66 queries when OPENTUI_FORCE_EXPLICIT_WIDTH=false" {
+    if (builtin.os.tag == .windows) return error.SkipZigTest;
+
+    const env_name: [:0]const u8 = "OPENTUI_FORCE_EXPLICIT_WIDTH";
+    const env_value: [:0]const u8 = "false";
+    const prev_val = try setEnvVarTemp(testing.allocator, env_name, env_value);
+    defer restoreEnvVar(testing.allocator, env_name, prev_val);
+
+    var term = Terminal.init(.{});
+
+    var writer = TestWriter.init(testing.allocator);
+    defer writer.deinit();
+
+    try term.queryTerminalSend(&writer);
+
+    const output = writer.getWritten();
+
+    // Should not contain OSC 66 queries
+    try testing.expect(std.mem.indexOf(u8, output, "\x1b]66;") == null);
+
+    // Should still contain other queries
+    try testing.expect(std.mem.indexOf(u8, output, "\x1b[>0q") != null); // xtversion
+
+    // Verify the flag was set correctly
+    try testing.expect(term.skip_explicit_width_query);
+    try testing.expect(!term.caps.explicit_width);
+}
+
+test "queryTerminalSend - sends OSC 66 queries by default" {
+    if (builtin.os.tag == .windows) return error.SkipZigTest;
+
+    // Clear the env var to test default behavior
+    const env_name: [:0]const u8 = "OPENTUI_FORCE_EXPLICIT_WIDTH";
+    const prev_val = try setEnvVarTemp(testing.allocator, env_name, null);
+    defer restoreEnvVar(testing.allocator, env_name, prev_val);
+
+    var term = Terminal.init(.{});
+
+    var writer = TestWriter.init(testing.allocator);
+    defer writer.deinit();
+
+    try term.queryTerminalSend(&writer);
+
+    const output = writer.getWritten();
+
+    // Should contain OSC 66 explicit width query
+    try testing.expect(std.mem.indexOf(u8, output, "\x1b]66;w=1; \x1b\\") != null);
+
+    // Should contain OSC 66 scaled text query
+    try testing.expect(std.mem.indexOf(u8, output, "\x1b]66;s=2; \x1b\\") != null);
+
+    // Verify the flag was not set
+    try testing.expect(!term.skip_explicit_width_query);
+}
+
+test "queryTerminalSend - sends OSC 66 queries when OPENTUI_FORCE_EXPLICIT_WIDTH=true" {
+    if (builtin.os.tag == .windows) return error.SkipZigTest;
+
+    const env_name: [:0]const u8 = "OPENTUI_FORCE_EXPLICIT_WIDTH";
+    const env_value: [:0]const u8 = "true";
+    const prev_val = try setEnvVarTemp(testing.allocator, env_name, env_value);
+    defer restoreEnvVar(testing.allocator, env_name, prev_val);
+
+    var term = Terminal.init(.{});
+
+    var writer = TestWriter.init(testing.allocator);
+    defer writer.deinit();
+
+    try term.queryTerminalSend(&writer);
+
+    const output = writer.getWritten();
+
+    // Should contain OSC 66 queries
+    try testing.expect(std.mem.indexOf(u8, output, "\x1b]66;w=1; \x1b\\") != null);
+    try testing.expect(std.mem.indexOf(u8, output, "\x1b]66;s=2; \x1b\\") != null);
+
+    // Verify the capability was forced on
+    try testing.expect(term.caps.explicit_width);
+    try testing.expect(!term.skip_explicit_width_query);
+}
