@@ -47,7 +47,6 @@ export class DownloadUtils {
       try {
         const cachedContent = await Bun.file(cacheFile).arrayBuffer()
         if (cachedContent.byteLength > 0) {
-          console.log(`Loaded from cache: ${cacheFile} (${source})`)
           return { content: cachedContent, filePath: cacheFile }
         }
       } catch (error) {
@@ -55,7 +54,6 @@ export class DownloadUtils {
       }
 
       try {
-        console.log(`Downloading from URL: ${source}`)
         const response = await fetch(source)
         if (!response.ok) {
           return { error: `Failed to fetch from ${source}: ${response.statusText}` }
@@ -64,7 +62,6 @@ export class DownloadUtils {
 
         try {
           await writeFile(cacheFile, Buffer.from(content))
-          console.log(`Cached: ${source}`)
         } catch (cacheError) {
           console.warn(`Failed to cache: ${cacheError}`)
         }
@@ -75,7 +72,6 @@ export class DownloadUtils {
       }
     } else {
       try {
-        console.log(`Loading from local path: ${source}`)
         const content = await Bun.file(source).arrayBuffer()
         return { content, filePath: source }
       } catch (error) {
@@ -94,7 +90,6 @@ export class DownloadUtils {
 
     if (isUrl) {
       try {
-        console.log(`Downloading from URL: ${source}`)
         const response = await fetch(source)
         if (!response.ok) {
           return { error: `Failed to fetch from ${source}: ${response.statusText}` }
@@ -102,7 +97,6 @@ export class DownloadUtils {
         const content = await response.arrayBuffer()
 
         await writeFile(targetPath, Buffer.from(content))
-        console.log(`Downloaded: ${source} -> ${targetPath}`)
 
         return { content, filePath: targetPath }
       } catch (error) {
@@ -110,7 +104,6 @@ export class DownloadUtils {
       }
     } else {
       try {
-        console.log(`Copying from local path: ${source}`)
         const content = await Bun.file(source).arrayBuffer()
         await writeFile(targetPath, Buffer.from(content))
         return { content, filePath: targetPath }
