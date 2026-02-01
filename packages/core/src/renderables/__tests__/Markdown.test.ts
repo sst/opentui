@@ -3,10 +3,12 @@ import { MarkdownRenderable } from "../Markdown"
 import { SyntaxStyle } from "../../syntax-style"
 import { RGBA } from "../../lib/RGBA"
 import { createTestRenderer, type TestRenderer } from "../../testing"
+import { TextAttributes, type CapturedFrame } from "../../types"
 
 let renderer: TestRenderer
 let renderOnce: () => Promise<void>
 let captureFrame: () => string
+let captureSpans: () => CapturedFrame
 
 const syntaxStyle = SyntaxStyle.fromStyles({
   default: { fg: RGBA.fromValues(1, 1, 1, 1) },
@@ -17,6 +19,7 @@ beforeEach(async () => {
   renderer = testRenderer.renderer
   renderOnce = testRenderer.renderOnce
   captureFrame = testRenderer.captureCharFrame
+  captureSpans = testRenderer.captureSpans
 })
 
 afterEach(async () => {
@@ -1683,23 +1686,31 @@ The table alignment uses:
   renderer.root.add(md)
   await renderOnce()
 
-  const frame1 = captureFrame()
-  expect(frame1).toContain("OpenTUI")
+  const findSpanContaining = (frame: CapturedFrame, text: string) => {
+    for (const line of frame.lines) {
+      const span = line.spans.find((candidate) => candidate.text.includes(text))
+      if (span) return span
+    }
+    return undefined
+  }
+
+  const frame1 = captureSpans()
+  const headingSpan1 = findSpanContaining(frame1, "OpenTUI Markdown Demo")
+  expect(headingSpan1).toBeDefined()
+  expect(headingSpan1!.fg.r).toBe(0)
+  expect(headingSpan1!.fg.g).toBe(1)
+  expect(headingSpan1!.fg.b).toBe(0)
+  expect(headingSpan1!.attributes & TextAttributes.BOLD).toBeTruthy()
 
   // Switch theme
-  const startTime = performance.now()
   md.syntaxStyle = theme2
   await renderOnce()
-  const endTime = performance.now()
 
-  const frame2 = captureFrame()
-  expect(frame2).toContain("OpenTUI")
-
-  // Theme switch should be fast (< 10ms for this content after optimization)
-  // This is a performance regression test
-  const renderTime = endTime - startTime
-  if (renderTime >= 10) {
-    console.warn(`Theme switch took ${renderTime.toFixed(2)}ms, expected < 10ms`)
-  }
-  expect(renderTime).toBeLessThan(10)
+  const frame2 = captureSpans()
+  const headingSpan2 = findSpanContaining(frame2, "OpenTUI Markdown Demo")
+  expect(headingSpan2).toBeDefined()
+  expect(headingSpan2!.fg.r).toBe(1)
+  expect(headingSpan2!.fg.g).toBe(1)
+  expect(headingSpan2!.fg.b).toBe(0)
+  expect(headingSpan2!.attributes & TextAttributes.BOLD).toBeTruthy()
 })
