@@ -96,6 +96,7 @@ OpenTUI captures `console.log` output. Toggle the built-in console with backtick
 **Problem:** If you see weird artifacts containing "66" in your terminal when running OpenTUI applications, your terminal emulator doesn't support OSC 66 escape sequences (used for explicit character width detection).
 
 **Affected Terminals:**
+
 - GNOME Terminal
 - Konsole (older versions)
 - xterm (older versions)
@@ -131,6 +132,7 @@ OPENTUI_FORCE_EXPLICIT_WIDTH=false
 ```
 
 **What This Does:**
+
 - Prevents OSC 66 detection queries from being sent
 - Disables the explicit width feature
 - Falls back to standard width calculation
