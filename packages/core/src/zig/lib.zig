@@ -294,6 +294,17 @@ export fn copyToClipboardOSC52(rendererPtr: *renderer.CliRenderer, target: u8, p
     return rendererPtr.copyToClipboardOSC52(targetEnum, payload);
 }
 
+export fn clearClipboardOSC52(rendererPtr: *renderer.CliRenderer, target: u8) bool {
+    const targetEnum: terminal.ClipboardTarget = switch (target) {
+        0 => .clipboard,
+        1 => .primary,
+        2 => .secondary,
+        3 => .query,
+        else => .clipboard,
+    };
+    return rendererPtr.clearClipboardOSC52(targetEnum);
+}
+
 // Buffer functions
 export fn bufferClear(bufferPtr: *buffer.OptimizedBuffer, bg: [*]const f32) void {
     bufferPtr.clear(utils.f32PtrToRGBA(bg), null) catch {};

@@ -37,8 +37,7 @@ export class Clipboard {
     if (!this.isOsc52Supported()) {
       return false
     }
-    const payload = this.lib.encoder.encode("")
-    return this.lib.copyToClipboardOSC52(this.rendererPtr, target, payload)
+    return this.lib.clearClipboardOSC52(this.rendererPtr, target)
   }
 
   public isOsc52Supported(): boolean {

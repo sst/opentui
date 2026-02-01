@@ -1241,6 +1241,13 @@ pub const CliRenderer = struct {
         return true;
     }
 
+    pub fn clearClipboardOSC52(self: *CliRenderer, target: Terminal.ClipboardTarget) bool {
+        var stream = std.io.fixedBufferStream(&self.writeOutBuf);
+        self.terminal.writeClipboard(stream.writer(), target, "") catch return false;
+        self.writeOut(stream.getWritten());
+        return true;
+    }
+
     fn renderDebugOverlay(self: *CliRenderer) void {
         if (!self.debugOverlay.enabled) return;
 

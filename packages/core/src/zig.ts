@@ -282,6 +282,10 @@ function getOpenTUILib(libPath?: string) {
       args: ["ptr", "u8", "ptr", "usize"],
       returns: "bool",
     },
+    clearClipboardOSC52: {
+      args: ["ptr", "u8"],
+      returns: "bool",
+    },
 
     bufferDrawSuperSampleBuffer: {
       args: ["ptr", "u32", "u32", "ptr", "usize", "u8", "u32"],
@@ -1391,6 +1395,7 @@ export interface RenderLib {
   clearTerminal: (renderer: Pointer) => void
   setTerminalTitle: (renderer: Pointer, title: string) => void
   copyToClipboardOSC52: (renderer: Pointer, target: number, payload: Uint8Array) => boolean
+  clearClipboardOSC52: (renderer: Pointer, target: number) => boolean
   addToHitGrid: (renderer: Pointer, x: number, y: number, width: number, height: number, id: number) => void
   clearCurrentHitGrid: (renderer: Pointer) => void
   hitGridPushScissorRect: (renderer: Pointer, x: number, y: number, width: number, height: number) => void
@@ -2244,6 +2249,10 @@ class FFIRenderLib implements RenderLib {
 
   public copyToClipboardOSC52(renderer: Pointer, target: number, payload: Uint8Array): boolean {
     return this.opentui.symbols.copyToClipboardOSC52(renderer, target, payload, payload.length)
+  }
+
+  public clearClipboardOSC52(renderer: Pointer, target: number): boolean {
+    return this.opentui.symbols.clearClipboardOSC52(renderer, target)
   }
 
   public addToHitGrid(renderer: Pointer, x: number, y: number, width: number, height: number, id: number) {
