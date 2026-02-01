@@ -129,6 +129,10 @@ export class MarkdownRenderable extends Renderable {
   }
 
   private getStyle(group: string): StyleDefinition | undefined {
+    // The solid reconciler applies props via setters in JSX declaration order.
+    // If `content` is set before `syntaxStyle`, updateBlocks() runs before
+    // _syntaxStyle is initialized.
+    if (!this._syntaxStyle) return undefined
     let style = this._syntaxStyle.getStyle(group)
     if (!style && group.includes(".")) {
       const baseName = group.split(".")[0]
