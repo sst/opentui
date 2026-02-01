@@ -996,6 +996,7 @@ pub const UnifiedTextBufferView = struct {
                 allocator: Allocator,
                 output: VirtualLineOutput,
                 current_vline: ?VirtualLine = null,
+                line_start_byte_offset: u32 = 0,
                 global_byte_offset: u32 = 0,
 
                 fn segment_callback(ctx_ptr: *anyopaque, line_idx: u32, chunk: *const TextChunk, _: u32) void {
@@ -1025,14 +1026,7 @@ pub const UnifiedTextBufferView = struct {
                     var vline = if (ctx.current_vline) |v| v else VirtualLine.init();
                     vline.width = line_info.width;
                     vline.char_offset = line_info.char_offset;
-                    vline.byte_offset = ctx.global_byte_offset - @as(u32, @intCast(if (vline.chunks.items.len > 0) blk: {
-                        var line_bytes: usize = 0;
-                        for (vline.chunks.items) |vc| {
-                            const bytes = vc.chunk.getBytes(&ctx.text_buffer.mem_registry);
-                            line_bytes += bytes.len;
-                        }
-                        break :blk line_bytes;
-                    } else 0));
+                    vline.byte_offset = ctx.line_start_byte_offset;
                     vline.source_line = line_info.line_idx;
                     vline.source_col_offset = 0;
 
@@ -1044,6 +1038,7 @@ pub const UnifiedTextBufferView = struct {
 
                     ctx.current_vline = VirtualLine.init();
                     ctx.global_byte_offset += 1; // newline byte
+                    ctx.line_start_byte_offset = ctx.global_byte_offset;
                 }
             };
 
