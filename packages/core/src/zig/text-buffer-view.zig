@@ -844,6 +844,21 @@ pub const UnifiedTextBufferView = struct {
                 } else {
                     var partial = chunk;
                     partial.width = space_left;
+                    const is_ascii_only = (chunk.chunk.flags & TextChunk.Flags.ASCII_ONLY) != 0;
+                    if (is_ascii_only) {
+                        partial.byte_len = space_left;
+                    } else {
+                        const chunk_bytes = chunk.chunk.getBytes(&self.text_buffer.mem_registry);
+                        const remaining = chunk_bytes[chunk.byte_start .. chunk.byte_start + chunk.byte_len];
+                        const byte_result = utf8.findWrapPosByWidth(
+                            remaining,
+                            space_left,
+                            self.text_buffer.tab_width,
+                            false,
+                            self.text_buffer.width_method,
+                        );
+                        partial.byte_len = byte_result.byte_offset;
+                    }
                     new_chunks.append(self.virtual_lines_arena.allocator(), partial) catch return;
                     prefix_accumulated += space_left;
                     break;
@@ -874,8 +889,25 @@ pub const UnifiedTextBufferView = struct {
                 } else {
                     const offset_in_chunk = suffix_start_pos - pos_accumulated;
                     var partial = chunk;
+                    const is_ascii_only = (chunk.chunk.flags & TextChunk.Flags.ASCII_ONLY) != 0;
+                    const chunk_bytes = chunk.chunk.getBytes(&self.text_buffer.mem_registry);
+                    const remaining = chunk_bytes[chunk.byte_start .. chunk.byte_start + chunk.byte_len];
+                    const byte_offset: u32 = if (is_ascii_only)
+                        offset_in_chunk
+                    else blk: {
+                        const byte_result = utf8.findWrapPosByWidth(
+                            remaining,
+                            offset_in_chunk,
+                            self.text_buffer.tab_width,
+                            false,
+                            self.text_buffer.width_method,
+                        );
+                        break :blk byte_result.byte_offset;
+                    };
                     partial.grapheme_start += offset_in_chunk;
+                    partial.byte_start += byte_offset;
                     partial.width = chunk.width - offset_in_chunk;
+                    partial.byte_len = chunk.byte_len - byte_offset;
                     new_chunks.append(self.virtual_lines_arena.allocator(), partial) catch return;
                 }
 
