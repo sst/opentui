@@ -283,25 +283,13 @@ export fn setTerminalTitle(rendererPtr: *renderer.CliRenderer, titlePtr: [*]cons
 }
 
 export fn copyToClipboardOSC52(rendererPtr: *renderer.CliRenderer, target: u8, payloadPtr: [*]const u8, payloadLen: usize) bool {
-    const targetEnum: terminal.ClipboardTarget = switch (target) {
-        0 => .clipboard,
-        1 => .primary,
-        2 => .secondary,
-        3 => .query,
-        else => .clipboard,
-    };
+    const targetEnum = std.meta.intToEnum(terminal.ClipboardTarget, target) catch .clipboard;
     const payload = payloadPtr[0..payloadLen];
     return rendererPtr.copyToClipboardOSC52(targetEnum, payload);
 }
 
 export fn clearClipboardOSC52(rendererPtr: *renderer.CliRenderer, target: u8) bool {
-    const targetEnum: terminal.ClipboardTarget = switch (target) {
-        0 => .clipboard,
-        1 => .primary,
-        2 => .secondary,
-        3 => .query,
-        else => .clipboard,
-    };
+    const targetEnum = std.meta.intToEnum(terminal.ClipboardTarget, target) catch .clipboard;
     return rendererPtr.clearClipboardOSC52(targetEnum);
 }
 
