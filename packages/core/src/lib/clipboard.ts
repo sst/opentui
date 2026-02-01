@@ -1,6 +1,9 @@
 // OSC 52 clipboard support for terminal applications.
 // Delegates to native Zig implementation for ANSI sequence generation.
 
+import type { Pointer } from "bun:ffi"
+import type { RenderLib } from "../zig"
+
 export enum ClipboardTarget {
   Clipboard = 0,
   Primary = 1,
@@ -8,36 +11,38 @@ export enum ClipboardTarget {
   Query = 3,
 }
 
-export interface ClipboardAdapter {
-  copyToClipboard: (target: number, payload: Uint8Array) => boolean
-  isOsc52Supported: () => boolean
+export function encodeOsc52Payload(text: string, encoder: TextEncoder = new TextEncoder()): Uint8Array {
+  const base64 = Buffer.from(text).toString("base64")
+  return encoder.encode(base64)
 }
 
 export class Clipboard {
-  private adapter: ClipboardAdapter
+  private lib: RenderLib
+  private rendererPtr: Pointer
 
-  constructor(adapter: ClipboardAdapter) {
-    this.adapter = adapter
+  constructor(lib: RenderLib, rendererPtr: Pointer) {
+    this.lib = lib
+    this.rendererPtr = rendererPtr
   }
 
   public copyToClipboardOSC52(text: string, target: ClipboardTarget = ClipboardTarget.Clipboard): boolean {
-    if (!this.adapter.isOsc52Supported()) {
+    if (!this.isOsc52Supported()) {
       return false
     }
-    const base64 = Buffer.from(text).toString("base64")
-    const payload = new TextEncoder().encode(base64)
-    return this.adapter.copyToClipboard(target, payload)
+    const payload = encodeOsc52Payload(text, this.lib.encoder)
+    return this.lib.copyToClipboardOSC52(this.rendererPtr, target, payload)
   }
 
   public clearClipboardOSC52(target: ClipboardTarget = ClipboardTarget.Clipboard): boolean {
-    if (!this.adapter.isOsc52Supported()) {
+    if (!this.isOsc52Supported()) {
       return false
     }
-    const payload = new TextEncoder().encode("")
-    return this.adapter.copyToClipboard(target, payload)
+    const payload = this.lib.encoder.encode("")
+    return this.lib.copyToClipboardOSC52(this.rendererPtr, target, payload)
   }
 
   public isOsc52Supported(): boolean {
-    return this.adapter.isOsc52Supported()
+    const caps = this.lib.getTerminalCapabilities(this.rendererPtr)
+    return Boolean(caps?.osc52)
   }
 }

@@ -527,14 +527,7 @@ export class CliRenderer extends EventEmitter implements RenderContext {
       "SIGFPE", // Floating point exception
     ]
 
-    this.clipboard = new Clipboard({
-      copyToClipboard: (target: number, payload: Uint8Array) => {
-        return this.lib.copyToClipboardOSC52(this.rendererPtr, target, payload)
-      },
-      isOsc52Supported: () => {
-        return this._capabilities?.osc52 ?? false
-      },
-    })
+    this.clipboard = new Clipboard(this.lib, this.rendererPtr)
     this.resizeDebounceDelay = config.debounceDelay || 100
     this.targetFps = config.targetFps || 30
     this.maxFps = config.maxFps || 60
@@ -1496,7 +1489,7 @@ export class CliRenderer extends EventEmitter implements RenderContext {
   }
 
   public isOsc52Supported(): boolean {
-    return this._capabilities?.osc52 ?? false
+    return this._capabilities?.osc52 ?? this.clipboard.isOsc52Supported()
   }
 
   public dumpHitGrid(): void {
