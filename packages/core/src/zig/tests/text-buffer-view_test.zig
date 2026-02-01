@@ -2382,6 +2382,37 @@ test "TextBufferView truncation - verify prefix and suffix content" {
     try std.testing.expectEqual(@as(u32, 10), vlines[0].width);
 }
 
+test "TextBufferView truncation - keeps byte ranges aligned for partial chunks" {
+    const pool = gp.initGlobalPool(std.testing.allocator);
+    defer gp.deinitGlobalPool();
+
+    var tb = try TextBuffer.init(std.testing.allocator, pool, .wcwidth);
+    defer tb.deinit();
+
+    var view = try TextBufferView.init(std.testing.allocator, tb);
+    defer view.deinit();
+
+    try tb.setText("안녕하세요세");
+
+    view.setTruncate(true);
+    view.setWrapMode(.none);
+    view.setViewport(text_buffer_view.Viewport{ .x = 0, .y = 0, .width = 11, .height = 1 });
+
+    const vlines = view.getVirtualLines();
+    const chunks = vlines[0].chunks.items;
+
+    try std.testing.expectEqual(@as(usize, 3), chunks.len);
+
+    const prefix = chunks[0];
+    const suffix = chunks[2];
+
+    const prefix_bytes = prefix.chunk.getBytes(&tb.mem_registry)[prefix.byte_start .. prefix.byte_start + prefix.byte_len];
+    const suffix_bytes = suffix.chunk.getBytes(&tb.mem_registry)[suffix.byte_start .. suffix.byte_start + suffix.byte_len];
+
+    try std.testing.expectEqualStrings("안녕", prefix_bytes);
+    try std.testing.expectEqualStrings("요세", suffix_bytes);
+}
+
 test "TextBufferView measureForDimensions - multiple lines with different widths" {
     const pool = gp.initGlobalPool(std.testing.allocator);
     defer gp.deinitGlobalPool();
