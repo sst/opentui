@@ -108,7 +108,15 @@ describe("TextBufferView", () => {
       expect(lineInfo.lineWidths).toEqual([10, 10, 6])
     })
 
-    it("should return byte offsets (not column) for CJK text in lineStarts", () => {
+    it("should return byte offsets (not column) for CJK text in lineStarts (no-wrap)", () => {
+      view.setWrapMode("none")
+      buffer.setStyledText(stringToStyledText("흐름\n도움")) // 6 bytes + newline + 6 bytes
+
+      const lineInfo = view.lineInfo
+      expect(lineInfo.lineStarts).toEqual([0, 7]) // 0, then 6 bytes + 1 newline = 7
+    })
+
+    it("should return byte offsets (not column) for CJK text in lineStarts (wrap)", () => {
       view.setWrapMode("char")
       buffer.setStyledText(stringToStyledText("흐름도"))
       view.setWrapWidth(4) // "흐름"(width 4) then "도"(width 2)
