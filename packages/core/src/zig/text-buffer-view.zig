@@ -996,6 +996,7 @@ pub const UnifiedTextBufferView = struct {
                 allocator: Allocator,
                 output: VirtualLineOutput,
                 current_vline: ?VirtualLine = null,
+                global_byte_offset: u32 = 0,
 
                 fn segment_callback(ctx_ptr: *anyopaque, line_idx: u32, chunk: *const TextChunk, _: u32) void {
                     _ = line_idx;
@@ -1008,6 +1009,10 @@ pub const UnifiedTextBufferView = struct {
                             .chunk = chunk,
                         }) catch {};
                     }
+
+                    // Track byte offset
+                    const chunk_bytes = chunk.getBytes(&ctx.text_buffer.mem_registry);
+                    ctx.global_byte_offset += @intCast(chunk_bytes.len);
                 }
 
                 fn line_end_callback(ctx_ptr: *anyopaque, line_info: iter_mod.LineInfo) void {
@@ -1020,16 +1025,25 @@ pub const UnifiedTextBufferView = struct {
                     var vline = if (ctx.current_vline) |v| v else VirtualLine.init();
                     vline.width = line_info.width;
                     vline.char_offset = line_info.char_offset;
+                    vline.byte_offset = ctx.global_byte_offset - @as(u32, @intCast(if (vline.chunks.items.len > 0) blk: {
+                        var line_bytes: usize = 0;
+                        for (vline.chunks.items) |vc| {
+                            const bytes = vc.chunk.getBytes(&ctx.text_buffer.mem_registry);
+                            line_bytes += bytes.len;
+                        }
+                        break :blk line_bytes;
+                    } else 0));
                     vline.source_line = line_info.line_idx;
                     vline.source_col_offset = 0;
 
                     ctx.output.virtual_lines.append(ctx.allocator, vline) catch {};
-                    ctx.output.cached_line_starts.append(ctx.allocator, vline.char_offset) catch {};
+                    ctx.output.cached_line_starts.append(ctx.allocator, vline.byte_offset) catch {};
                     ctx.output.cached_line_widths.append(ctx.allocator, vline.width) catch {};
                     ctx.output.cached_line_sources.append(ctx.allocator, @intCast(line_info.line_idx)) catch {};
                     ctx.output.cached_line_wrap_indices.append(ctx.allocator, 0) catch {};
 
                     ctx.current_vline = VirtualLine.init();
+                    ctx.global_byte_offset += 1; // newline byte
                 }
             };
 
@@ -1038,6 +1052,7 @@ pub const UnifiedTextBufferView = struct {
                 .allocator = allocator,
                 .output = output,
                 .current_vline = VirtualLine.init(),
+                .global_byte_offset = 0,
             };
 
             iter_mod.walkLinesAndSegments(&text_buffer.rope, &ctx, Context.segment_callback, Context.line_end_callback);
