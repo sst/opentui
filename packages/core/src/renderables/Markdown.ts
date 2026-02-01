@@ -137,7 +137,7 @@ export class MarkdownRenderable extends Renderable {
     return style
   }
 
-  private createChunk(text: string, group: string): TextChunk {
+  private createChunk(text: string, group: string, link?: { url: string }): TextChunk {
     const style = this.getStyle(group) || this.getStyle("default")
     return {
       __isChunk: true,
@@ -152,6 +152,7 @@ export class MarkdownRenderable extends Renderable {
             dim: style.dim,
           })
         : 0,
+      link,
     }
   }
 
@@ -221,36 +222,40 @@ export class MarkdownRenderable extends Renderable {
         }
         break
 
-      case "link":
+      case "link": {
+        const linkHref = { url: token.href }
         if (this._conceal) {
           for (const child of token.tokens) {
-            this.renderInlineTokenWithStyle(child as MarkedToken, chunks, "markup.link.label")
+            this.renderInlineTokenWithStyle(child as MarkedToken, chunks, "markup.link.label", linkHref)
           }
-          chunks.push(this.createChunk(" (", "markup.link"))
-          chunks.push(this.createChunk(token.href, "markup.link.url"))
-          chunks.push(this.createChunk(")", "markup.link"))
+          chunks.push(this.createChunk(" (", "markup.link", linkHref))
+          chunks.push(this.createChunk(token.href, "markup.link.url", linkHref))
+          chunks.push(this.createChunk(")", "markup.link", linkHref))
         } else {
-          chunks.push(this.createChunk("[", "markup.link"))
+          chunks.push(this.createChunk("[", "markup.link", linkHref))
           for (const child of token.tokens) {
-            this.renderInlineTokenWithStyle(child as MarkedToken, chunks, "markup.link.label")
+            this.renderInlineTokenWithStyle(child as MarkedToken, chunks, "markup.link.label", linkHref)
           }
-          chunks.push(this.createChunk("](", "markup.link"))
-          chunks.push(this.createChunk(token.href, "markup.link.url"))
-          chunks.push(this.createChunk(")", "markup.link"))
+          chunks.push(this.createChunk("](", "markup.link", linkHref))
+          chunks.push(this.createChunk(token.href, "markup.link.url", linkHref))
+          chunks.push(this.createChunk(")", "markup.link", linkHref))
         }
         break
+      }
 
-      case "image":
+      case "image": {
+        const imageHref = { url: token.href }
         if (this._conceal) {
-          chunks.push(this.createChunk(token.text || "image", "markup.link.label"))
+          chunks.push(this.createChunk(token.text || "image", "markup.link.label", imageHref))
         } else {
-          chunks.push(this.createChunk("![", "markup.link"))
-          chunks.push(this.createChunk(token.text || "", "markup.link.label"))
-          chunks.push(this.createChunk("](", "markup.link"))
-          chunks.push(this.createChunk(token.href, "markup.link.url"))
-          chunks.push(this.createChunk(")", "markup.link"))
+          chunks.push(this.createChunk("![", "markup.link", imageHref))
+          chunks.push(this.createChunk(token.text || "", "markup.link.label", imageHref))
+          chunks.push(this.createChunk("](", "markup.link", imageHref))
+          chunks.push(this.createChunk(token.href, "markup.link.url", imageHref))
+          chunks.push(this.createChunk(")", "markup.link", imageHref))
         }
         break
+      }
 
       case "br":
         chunks.push(this.createDefaultChunk("\n"))
@@ -266,23 +271,28 @@ export class MarkdownRenderable extends Renderable {
     }
   }
 
-  private renderInlineTokenWithStyle(token: MarkedToken, chunks: TextChunk[], styleGroup: string): void {
+  private renderInlineTokenWithStyle(
+    token: MarkedToken,
+    chunks: TextChunk[],
+    styleGroup: string,
+    link?: { url: string },
+  ): void {
     switch (token.type) {
       case "text":
-        chunks.push(this.createChunk(token.text, styleGroup))
+        chunks.push(this.createChunk(token.text, styleGroup, link))
         break
 
       case "escape":
-        chunks.push(this.createChunk(token.text, styleGroup))
+        chunks.push(this.createChunk(token.text, styleGroup, link))
         break
 
       case "codespan":
         if (this._conceal) {
-          chunks.push(this.createChunk(token.text, "markup.raw"))
+          chunks.push(this.createChunk(token.text, "markup.raw", link))
         } else {
-          chunks.push(this.createChunk("`", "markup.raw"))
-          chunks.push(this.createChunk(token.text, "markup.raw"))
-          chunks.push(this.createChunk("`", "markup.raw"))
+          chunks.push(this.createChunk("`", "markup.raw", link))
+          chunks.push(this.createChunk(token.text, "markup.raw", link))
+          chunks.push(this.createChunk("`", "markup.raw", link))
         }
         break
 
