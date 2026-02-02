@@ -9,6 +9,7 @@ interface Props {
 const { title, description } = Astro.props
 
 const currentPath = Astro.url.pathname
+const isActive = (path: string) => currentPath === path || currentPath === `${path}/`
 ---
 
 <Base title={title} description={description}>
@@ -40,8 +41,8 @@ const currentPath = Astro.url.pathname
             </svg>
           </button>
           <nav class="nav">
-            <a href="/docs/getting-started">Docs</a>
             <a href="https://github.com/anomalyco/opentui" target="_blank" rel="noopener noreferrer">GitHub</a>
+            <a href="/docs/getting-started">Docs</a>
           </nav>
         </div>
       </header>
@@ -53,45 +54,41 @@ const currentPath = Astro.url.pathname
             <div class="sidebar-section">
               <div class="sidebar-title">Getting Started</div>
               <ul class="sidebar-links">
-                <li>
-                  <a href="/docs/getting-started" class:list={{ active: currentPath === "/docs/getting-started" || currentPath === "/docs/getting-started/" }}>
-                    Introduction
-                  </a>
-                </li>
+                <li><a href="/docs/getting-started" class:list={{ active: isActive("/docs/getting-started") }}>Introduction</a></li>
               </ul>
             </div>
 
             <div class="sidebar-section">
               <div class="sidebar-title">Core Concepts</div>
               <ul class="sidebar-links">
-                <li><a href="/docs/core-concepts/renderer">Renderer</a></li>
-                <li><a href="/docs/core-concepts/renderables">Renderables</a></li>
-                <li><a href="/docs/core-concepts/constructs">Constructs</a></li>
-                <li><a href="/docs/core-concepts/renderables-vs-constructs">Renderables vs Constructs</a></li>
-                <li><a href="/docs/core-concepts/layout">Layout</a></li>
-                <li><a href="/docs/core-concepts/keyboard">Keyboard</a></li>
-                <li><a href="/docs/core-concepts/console">Console</a></li>
-                <li><a href="/docs/core-concepts/colors">Colors</a></li>
+                <li><a href="/docs/core-concepts/renderer" class:list={{ active: isActive("/docs/core-concepts/renderer") }}>Renderer</a></li>
+                <li><a href="/docs/core-concepts/renderables" class:list={{ active: isActive("/docs/core-concepts/renderables") }}>Renderables</a></li>
+                <li><a href="/docs/core-concepts/constructs" class:list={{ active: isActive("/docs/core-concepts/constructs") }}>Constructs</a></li>
+                <li><a href="/docs/core-concepts/renderables-vs-constructs" class:list={{ active: isActive("/docs/core-concepts/renderables-vs-constructs") }}>Renderables vs Constructs</a></li>
+                <li><a href="/docs/core-concepts/layout" class:list={{ active: isActive("/docs/core-concepts/layout") }}>Layout</a></li>
+                <li><a href="/docs/core-concepts/keyboard" class:list={{ active: isActive("/docs/core-concepts/keyboard") }}>Keyboard</a></li>
+                <li><a href="/docs/core-concepts/console" class:list={{ active: isActive("/docs/core-concepts/console") }}>Console</a></li>
+                <li><a href="/docs/core-concepts/colors" class:list={{ active: isActive("/docs/core-concepts/colors") }}>Colors</a></li>
               </ul>
             </div>
 
             <div class="sidebar-section">
               <div class="sidebar-title">Components</div>
               <ul class="sidebar-links">
-                <li><a href="/docs/components/text">Text</a></li>
-                <li><a href="/docs/components/box">Box</a></li>
-                <li><a href="/docs/components/input">Input</a></li>
-                <li><a href="/docs/components/select">Select</a></li>
-                <li><a href="/docs/components/scrollbox">ScrollBox</a></li>
-                <li><a href="/docs/components/code">Code</a></li>
+                <li><a href="/docs/components/text" class:list={{ active: isActive("/docs/components/text") }}>Text</a></li>
+                <li><a href="/docs/components/box" class:list={{ active: isActive("/docs/components/box") }}>Box</a></li>
+                <li><a href="/docs/components/input" class:list={{ active: isActive("/docs/components/input") }}>Input</a></li>
+                <li><a href="/docs/components/select" class:list={{ active: isActive("/docs/components/select") }}>Select</a></li>
+                <li><a href="/docs/components/scrollbox" class:list={{ active: isActive("/docs/components/scrollbox") }}>ScrollBox</a></li>
+                <li><a href="/docs/components/code" class:list={{ active: isActive("/docs/components/code") }}>Code</a></li>
               </ul>
             </div>
 
             <div class="sidebar-section">
               <div class="sidebar-title">Bindings</div>
               <ul class="sidebar-links">
-                <li><a href="/docs/bindings/solid">Solid.js</a></li>
-                <li><a href="/docs/bindings/react">React</a></li>
+                <li><a href="/docs/bindings/solid" class:list={{ active: isActive("/docs/bindings/solid") }}>Solid.js</a></li>
+                <li><a href="/docs/bindings/react" class:list={{ active: isActive("/docs/bindings/react") }}>React</a></li>
               </ul>
             </div>
           </aside>
@@ -149,6 +146,14 @@ const currentPath = Astro.url.pathname
     // Close menu when clicking a link (for navigation)
     sidebar?.querySelectorAll('a').forEach((link) => {
       link.addEventListener('click', closeMenu)
+    })
+
+    // Wrap tables in scrollable containers
+    document.querySelectorAll('.content table').forEach((table) => {
+      const wrapper = document.createElement('div')
+      wrapper.className = 'table-wrapper'
+      table.parentNode?.insertBefore(wrapper, table)
+      wrapper.appendChild(table)
     })
 
     document.querySelectorAll('pre[data-code]').forEach((pre) => {

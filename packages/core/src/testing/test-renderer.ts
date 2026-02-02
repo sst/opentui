@@ -89,7 +89,10 @@ async function setupTestRenderer(config: TestRendererOptions) {
     config.experimental_splitHeight && config.experimental_splitHeight > 0 ? config.experimental_splitHeight : height
 
   const ziglib = resolveRenderLib()
-  const rendererPtr = ziglib.createRenderer(width, renderHeight, { testing: true })
+  const rendererPtr = ziglib.createRenderer(width, renderHeight, {
+    testing: true,
+    remote: config.remote ?? false,
+  })
   if (!rendererPtr) {
     throw new Error("Failed to create test renderer")
   }

@@ -2,11 +2,19 @@ name: Publish Preview Packages
 
 on:
   pull_request:
+    paths:
+      - "packages/core/**"
+      - "packages/react/**"
+      - "packages/solid/**"
   push:
     branches:
       - "**"
     tags:
       - "!**"
+    paths:
+      - "packages/core/**"
+      - "packages/react/**"
+      - "packages/solid/**"
 
 permissions: {}
 

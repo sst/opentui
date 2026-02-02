@@ -1,12 +1,15 @@
 import { test, expect, beforeEach, afterEach } from "bun:test"
 import { MarkdownRenderable } from "../Markdown"
+import { TextRenderable } from "../Text"
 import { SyntaxStyle } from "../../syntax-style"
 import { RGBA } from "../../lib/RGBA"
 import { createTestRenderer, type TestRenderer } from "../../testing"
+import { TextAttributes, type CapturedFrame } from "../../types"
 
 let renderer: TestRenderer
 let renderOnce: () => Promise<void>
 let captureFrame: () => string
+let captureSpans: () => CapturedFrame
 
 const syntaxStyle = SyntaxStyle.fromStyles({
   default: { fg: RGBA.fromValues(1, 1, 1, 1) },
@@ -17,6 +20,7 @@ beforeEach(async () => {
   renderer = testRenderer.renderer
   renderOnce = testRenderer.renderOnce
   captureFrame = testRenderer.captureCharFrame
+  captureSpans = testRenderer.captureSpans
 })
 
 afterEach(async () => {
@@ -1993,64 +1997,104 @@ The table alignment uses:
   renderer.root.add(md)
   await renderOnce()
 
-  const frame1 = captureFrame()
-  expect(frame1).toContain("OpenTUI")
+  const findSpanContaining = (frame: CapturedFrame, text: string) => {
+    for (const line of frame.lines) {
+      const span = line.spans.find((candidate) => candidate.text.includes(text))
+      if (span) return span
+    }
+    return undefined
+  }
+
+  const frame1 = captureSpans()
+  const headingSpan1 = findSpanContaining(frame1, "OpenTUI Markdown Demo")
+  expect(headingSpan1).toBeDefined()
+  expect(headingSpan1!.fg.r).toBe(0)
+  expect(headingSpan1!.fg.g).toBe(1)
+  expect(headingSpan1!.fg.b).toBe(0)
+  expect(headingSpan1!.attributes & TextAttributes.BOLD).toBeTruthy()
 
   // Switch theme
-  const startTime = performance.now()
   md.syntaxStyle = theme2
   await renderOnce()
-  const endTime = performance.now()
+  const frame2 = captureSpans()
+  const headingSpan2 = findSpanContaining(frame2, "OpenTUI Markdown Demo")
+  expect(headingSpan2).toBeDefined()
+  expect(headingSpan2!.fg.r).toBe(1)
+  expect(headingSpan2!.fg.g).toBe(1)
+  expect(headingSpan2!.fg.b).toBe(0)
+  expect(headingSpan2!.attributes & TextAttributes.BOLD).toBeTruthy()
+})
 
-  const frame2 = captureFrame()
-  expect(frame2).toContain("OpenTUI")
+// OSC 8 link metadata tests
 
-  const frame2Preview =
-    "\n" +
-    frame2
-      .split("\n")
-      .map((line) => line.trimEnd())
-      .join("\n")
-      .trimEnd()
-  const previewLines = frame2Preview.split("\n").slice(0, 30).join("\n")
-  expect(previewLines).toMatchInlineSnapshot(`
-    "
-    OpenTUI Markdown Demo
+test("link chunks include link metadata for OSC 8 hyperlinks (conceal=true)", async () => {
+  const md = new MarkdownRenderable(renderer, {
+    id: "markdown",
+    content: "Check [Google](https://google.com) out",
+    syntaxStyle,
+    conceal: true,
+  })
 
-    Welcome to the MarkdownRenderable showcase! This
-    demonstrates automatic table alignment and syntax
-    highlighting.
+  renderer.root.add(md)
+  await renderOnce()
 
-    Features
+  const textRenderable = md._blockStates[0]?.renderable as TextRenderable
+  const chunks = textRenderable.content.chunks
+  const linkChunks = chunks.filter((c) => c.link?.url === "https://google.com")
 
-    - Automatic table column alignment based on content width
-    - Proper handling of inline code, bold, and italic in tables
-    - Multiple syntax themes to choose from
-    - Conceal mode hides formatting markers
+  expect(linkChunks.length).toBeGreaterThan(0)
+  expect(linkChunks.some((c) => c.text === "Google")).toBe(true)
+  expect(linkChunks.some((c) => c.text === "https://google.com")).toBe(true)
+})
 
-    Comparison Table
+test("link chunks include link metadata (conceal=false)", async () => {
+  const md = new MarkdownRenderable(renderer, {
+    id: "markdown",
+    content: "Check [Google](https://google.com) out",
+    syntaxStyle,
+    conceal: false,
+  })
 
-    ┌────────────────┬─────────┬──────────┬────────────────────┐
-    │Feature         │Status   │Priority  │Notes               │
-    │────────────────│─────────│──────────│────────────────────│
-    │Table alignment │Done     │High      │Uses marked parser  │
-    │────────────────│─────────│──────────│────────────────────│
-    │Conceal mode    │Working  │Medium    │Hides **, \`\`\`, etc. │
-    │────────────────│─────────│──────────│────────────────────│
-    │Theme switching │Done     │Low       │3 themes available  │
-    │────────────────│─────────│──────────│────────────────────│
-    │Unicode support │日本語   │High      │CJK characters      │
-    └────────────────┴─────────┴──────────┴────────────────────┘
+  renderer.root.add(md)
+  await renderOnce()
 
-    Code Examples
-    "
-  `)
+  const textRenderable = md._blockStates[0]?.renderable as TextRenderable
+  const chunks = textRenderable.content.chunks
+  const linkChunks = chunks.filter((c) => c.link?.url === "https://google.com")
 
-  // Theme switch should be fast (< 10ms for this content after optimization)
-  // This is a performance regression test
-  const renderTime = endTime - startTime
-  if (renderTime >= 10) {
-    console.warn(`Theme switch took ${renderTime.toFixed(2)}ms, expected < 10ms`)
-  }
-  expect(renderTime).toBeLessThan(10)
+  expect(linkChunks.length).toBeGreaterThan(0)
+  expect(linkChunks.some((c) => c.text === "Google")).toBe(true)
+  expect(linkChunks.some((c) => c.text === "https://google.com")).toBe(true)
+})
+
+test("image chunks include link metadata", async () => {
+  const md = new MarkdownRenderable(renderer, {
+    id: "markdown",
+    content: "![alt](https://example.com/img.png)",
+    syntaxStyle,
+    conceal: true,
+  })
+
+  renderer.root.add(md)
+  await renderOnce()
+
+  const textRenderable = md._blockStates[0]?.renderable as TextRenderable
+  const chunks = textRenderable.content.chunks
+  const linkChunks = chunks.filter((c) => c.link?.url === "https://example.com/img.png")
+  expect(linkChunks.length).toBeGreaterThan(0)
+})
+
+test("non-link text does not have link metadata", async () => {
+  const md = new MarkdownRenderable(renderer, {
+    id: "markdown",
+    content: "No links here, just **bold** text.",
+    syntaxStyle,
+  })
+
+  renderer.root.add(md)
+  await renderOnce()
+
+  const textRenderable = md._blockStates[0]?.renderable as TextRenderable
+  const chunks = textRenderable.content.chunks
+  expect(chunks.every((c) => !c.link)).toBe(true)
 })

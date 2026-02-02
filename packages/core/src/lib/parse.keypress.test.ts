@@ -1501,6 +1501,20 @@ test("parseKeypress - fallback to raw parsing when Kitty option is enabled but s
   expect(normalCtrl?.ctrl).toBe(true)
 })
 
+test("parseKeypress - modifyOtherKeys digits", () => {
+  const shiftOne = parseKeypress("\x1b[27;2;49~")!
+  expect(shiftOne.name).toBe("1")
+  expect(shiftOne.shift).toBe(true)
+  expect(shiftOne.ctrl).toBe(false)
+  expect(shiftOne.meta).toBe(false)
+  expect(shiftOne.option).toBe(false)
+  expect(shiftOne.number).toBe(true)
+  expect(shiftOne.sequence).toBe("1")
+  expect(shiftOne.raw).toBe("\x1b[27;2;49~")
+  expect(shiftOne.eventType).toBe("press")
+  expect(shiftOne.source).toBe("raw")
+})
+
 test("parseKeypress - modifyOtherKeys modified enter keys", () => {
   // Terminals with modifyOtherKeys mode enabled send special escape sequences for modified keys
   // Format: CSI 27 ; modifier ; code ~ where code 13 is enter/return

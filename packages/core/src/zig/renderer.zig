@@ -159,6 +159,17 @@ pub const CliRenderer = struct {
     };
 
     pub fn create(allocator: Allocator, width: u32, height: u32, pool: *gp.GraphemePool, testing: bool) !*CliRenderer {
+        return createWithOptions(allocator, width, height, pool, testing, false);
+    }
+
+    pub fn createWithOptions(
+        allocator: Allocator,
+        width: u32,
+        height: u32,
+        pool: *gp.GraphemePool,
+        testing: bool,
+        remote: bool,
+    ) !*CliRenderer {
         const self = try allocator.create(CliRenderer);
 
         const currentBuffer = try OptimizedBuffer.init(allocator, width, height, .{ .pool = pool, .width_method = .unicode, .id = "current buffer" });
@@ -196,7 +207,7 @@ pub const CliRenderer = struct {
             .pool = pool,
             .backgroundColor = .{ 0.0, 0.0, 0.0, 0.0 },
             .renderOffset = 0,
-            .terminal = Terminal.init(.{}),
+            .terminal = Terminal.init(.{ .remote = remote }),
             .testing = testing,
             .lastCursorStyleTag = null,
             .lastCursorBlinking = null,
@@ -1221,6 +1232,20 @@ pub const CliRenderer = struct {
         var stream = std.io.fixedBufferStream(&self.writeOutBuf);
         self.terminal.setTerminalTitle(stream.writer(), title);
         self.writeOut(stream.getWritten());
+    }
+
+    pub fn copyToClipboardOSC52(self: *CliRenderer, target: Terminal.ClipboardTarget, payload: []const u8) bool {
+        var stream = std.io.fixedBufferStream(&self.writeOutBuf);
+        self.terminal.writeClipboard(stream.writer(), target, payload) catch return false;
+        self.writeOut(stream.getWritten());
+        return true;
+    }
+
+    pub fn clearClipboardOSC52(self: *CliRenderer, target: Terminal.ClipboardTarget) bool {
+        var stream = std.io.fixedBufferStream(&self.writeOutBuf);
+        self.terminal.writeClipboard(stream.writer(), target, "") catch return false;
+        self.writeOut(stream.getWritten());
+        return true;
     }
 
     fn renderDebugOverlay(self: *CliRenderer) void {

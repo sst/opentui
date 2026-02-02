@@ -461,6 +461,37 @@ describe("renderer handleMouseData", () => {
     }
   })
 
+  test("ctrl+click with selection does not auto-focus", async () => {
+    try {
+      const target = new TestRenderable(renderer, {
+        id: "selectable-ctrl-focus",
+        position: "absolute",
+        left: 2,
+        top: 2,
+        width: 12,
+        height: 6,
+      })
+      target.selectable = true
+      renderer.root.add(target)
+      await renderOnce()
+
+      await mockMouse.drag(target.x + 1, target.y + 1, target.x + 4, target.y + 1)
+      expect(renderer.getSelection()).not.toBeNull()
+
+      target.focusable = true
+      expect(target.focused).toBe(false)
+
+      const nextX = target.x + 2
+      const nextY = target.y + 4
+      await mockMouse.pressDown(nextX, nextY, MouseButtons.LEFT, { modifiers: { ctrl: true } })
+      await mockMouse.release(nextX, nextY, MouseButtons.LEFT, { modifiers: { ctrl: true } })
+
+      expect(target.focused).toBe(false)
+    } finally {
+      renderer.destroy()
+    }
+  })
+
   test("right click does not start selection", async () => {
     try {
       const target = new TestRenderable(renderer, {
