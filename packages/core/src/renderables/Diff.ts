@@ -1135,4 +1135,38 @@ export class DiffRenderable extends Renderable {
       }
     }
   }
+
+  public setLineColor(line: number, color: string | RGBA | LineColorConfig): void {
+    this.leftSide?.setLineColor(line, color)
+    this.rightSide?.setLineColor(line, color)
+  }
+
+  public clearLineColor(line: number): void {
+    this.leftSide?.clearLineColor(line)
+    this.rightSide?.clearLineColor(line)
+  }
+
+  public setLineColors(lineColors: Map<number, string | RGBA | LineColorConfig>): void {
+    this.leftSide?.setLineColors(lineColors)
+    this.rightSide?.setLineColors(lineColors)
+  }
+
+  public clearAllLineColors(): void {
+    this.leftSide?.clearAllLineColors()
+    this.rightSide?.clearAllLineColors()
+  }
+
+  public highlightLines(startLine: number, endLine: number, color: string | RGBA | LineColorConfig): void {
+    for (let i = startLine; i <= endLine; i++) {
+      this.leftSide?.setLineColor(i, color)
+      this.rightSide?.setLineColor(i, color)
+    }
+  }
+
+  public clearHighlightLines(startLine: number, endLine: number): void {
+    for (let i = startLine; i <= endLine; i++) {
+      this.leftSide?.clearLineColor(i)
+      this.rightSide?.clearLineColor(i)
+    }
+  }
 }
