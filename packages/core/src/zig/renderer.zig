@@ -1,6 +1,7 @@
 const std = @import("std");
 const Allocator = std.mem.Allocator;
 const ansi = @import("ansi.zig");
+const kitty = @import("kitty.zig");
 const buf = @import("buffer.zig");
 const gp = @import("grapheme.zig");
 const link = @import("link.zig");
@@ -9,6 +10,7 @@ const logger = @import("logger.zig");
 
 pub const RGBA = ansi.RGBA;
 pub const OptimizedBuffer = buf.OptimizedBuffer;
+pub const PixelBuffer = buf.PixelBuffer;
 pub const TextAttributes = ansi.TextAttributes;
 pub const CursorStyle = Terminal.CursorStyle;
 
@@ -17,7 +19,7 @@ const MAX_STAT_SAMPLES = 30;
 const STAT_SAMPLE_CAPACITY = 30;
 
 const COLOR_EPSILON_DEFAULT: f32 = 0.00001;
-const OUTPUT_BUFFER_SIZE = 1024 * 1024 * 2; // 2MB
+const OUTPUT_BUFFER_SIZE = 1024 * 1024 * 8; // 8MB
 
 pub const RendererError = error{
     OutOfMemory,
@@ -45,6 +47,8 @@ pub const CliRenderer = struct {
     height: u32,
     currentRenderBuffer: *OptimizedBuffer,
     nextRenderBuffer: *OptimizedBuffer,
+    currentPixelBuffer: *PixelBuffer,
+    nextPixelBuffer: *PixelBuffer,
     pool: *gp.GraphemePool,
     backgroundColor: RGBA,
     renderOffset: u32,
@@ -175,6 +179,9 @@ pub const CliRenderer = struct {
         const currentBuffer = try OptimizedBuffer.init(allocator, width, height, .{ .pool = pool, .width_method = .unicode, .id = "current buffer" });
         const nextBuffer = try OptimizedBuffer.init(allocator, width, height, .{ .pool = pool, .width_method = .unicode, .id = "next buffer" });
 
+        const currentPixelBuffer = try PixelBuffer.init(allocator);
+        const nextPixelBuffer = try PixelBuffer.init(allocator);
+
         // stat sample arrays
         var lastFrameTime: std.ArrayListUnmanaged(f64) = .{};
         var renderTime: std.ArrayListUnmanaged(f64) = .{};
@@ -204,6 +211,8 @@ pub const CliRenderer = struct {
             .height = height,
             .currentRenderBuffer = currentBuffer,
             .nextRenderBuffer = nextBuffer,
+            .currentPixelBuffer = currentPixelBuffer,
+            .nextPixelBuffer = nextPixelBuffer,
             .pool = pool,
             .backgroundColor = .{ 0.0, 0.0, 0.0, 0.0 },
             .renderOffset = 0,
@@ -272,6 +281,9 @@ pub const CliRenderer = struct {
 
         self.currentRenderBuffer.deinit();
         self.nextRenderBuffer.deinit();
+
+        self.currentPixelBuffer.deinit();
+        self.nextPixelBuffer.deinit();
 
         // Free stat sample arrays
         self.statSamples.lastFrameTime.deinit(self.allocator);
@@ -582,6 +594,14 @@ pub const CliRenderer = struct {
         return self.currentRenderBuffer;
     }
 
+    pub fn getNextPixelBuffer(self: *CliRenderer) *PixelBuffer {
+        return self.nextPixelBuffer;
+    }
+
+    pub fn getCurrentPixelBuffer(self: *CliRenderer) *PixelBuffer {
+        return self.currentPixelBuffer;
+    }
+
     fn prepareRenderFrame(self: *CliRenderer, force: bool) void {
         const renderStartTime = std.time.microTimestamp();
         var cellsUpdated: u32 = 0;
@@ -748,6 +768,8 @@ pub const CliRenderer = struct {
             writer.writeAll("\x1b]8;;\x1b\\") catch {};
         }
 
+        self.renderPixels(writer);
+
         writer.writeAll(ansi.ANSI.reset) catch {};
 
         const cursorPos = self.terminal.getCursorPosition();
@@ -814,6 +836,8 @@ pub const CliRenderer = struct {
         self.renderStats.renderTime = renderTime;
 
         self.nextRenderBuffer.clear(.{ self.backgroundColor[0], self.backgroundColor[1], self.backgroundColor[2], self.backgroundColor[3] }, null) catch {};
+
+        self.nextPixelBuffer.clear();
 
         // Compare hit grids before swap to detect changes. This allows TypeScript to
         // know if hover state needs rechecking without manually tracking dirty state.
@@ -1363,5 +1387,27 @@ pub const CliRenderer = struct {
         const isThreadedLen = std.fmt.bufPrint(&isThreadedText, "Threaded: {s}", .{if (self.useThread) "Yes" else "No"}) catch return;
         self.nextRenderBuffer.drawText(isThreadedLen, x + 1, y + row, fg, bg, 0) catch {};
         row += 1;
+    }
+
+    pub fn renderPixels(self: *CliRenderer, writer: anytype) void {
+        // check for removed patches - iterate backwards to avoid skipping elements
+        const currentPatches = self.currentPixelBuffer.patches.items;
+        var i: usize = currentPatches.len;
+        while (i > 0) {
+            i -= 1;
+            const patch = currentPatches[i];
+            if (!self.nextPixelBuffer.hasPatch(patch)) {
+                kitty.IMAGE.delete(writer, patch.id);
+                _ = self.currentPixelBuffer.patches.orderedRemove(i);
+            }
+        }
+
+        // check for new patches in the next pixel buffer
+        for (self.nextPixelBuffer.patches.items) |patch| {
+            if (!self.currentPixelBuffer.hasPatch(patch)) {
+                kitty.IMAGE.create(writer, patch.id, patch.x, patch.y + self.renderOffset, patch.width, patch.height, patch.data, self.allocator);
+                self.currentPixelBuffer.addPatch(patch);
+            }
+        }
     }
 };

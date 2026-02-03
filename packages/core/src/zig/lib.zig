@@ -85,6 +85,14 @@ export fn getCurrentBuffer(rendererPtr: *renderer.CliRenderer) *buffer.Optimized
     return rendererPtr.getCurrentBuffer();
 }
 
+export fn getNextPixelBuffer(rendererPtr: *renderer.CliRenderer) *buffer.PixelBuffer {
+    return rendererPtr.getNextPixelBuffer();
+}
+
+export fn getCurrentPixelBuffer(rendererPtr: *renderer.CliRenderer) *buffer.PixelBuffer {
+    return rendererPtr.getCurrentPixelBuffer();
+}
+
 const OutputSlice = extern struct {
     ptr: [*]const u8,
     len: usize,
@@ -141,6 +149,10 @@ export fn createOptimizedBuffer(width: u32, height: u32, respectAlpha: bool, wid
 
 export fn destroyOptimizedBuffer(bufferPtr: *buffer.OptimizedBuffer) void {
     bufferPtr.deinit();
+}
+
+export fn pixelsDrawImage(pixelBufferPtr: *buffer.PixelBuffer, x: u32, y: u32, width: u32, height: u32, data_ptr: [*]const u8, data_len: usize) void {
+    pixelBufferPtr.drawImage(x, y, width, height, data_ptr[0..data_len]);
 }
 
 export fn destroyFrameBuffer(frameBufferPtr: *buffer.OptimizedBuffer) void {

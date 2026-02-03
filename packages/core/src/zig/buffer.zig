@@ -2040,3 +2040,94 @@ fn renderQuadrantBlock(pixels: [4]RGBA) QuadrantResult {
         };
     }
 }
+
+// hashed pixel buffer for rendering
+
+pub const PixelError = error{
+    OutOfMemory,
+};
+
+pub const PixelPatch = struct {
+    id: u32,
+    x: u32,
+    y: u32,
+    width: u32,
+    height: u32,
+    data: []const u8,
+    hash: u64,
+
+    pub fn init(id: u32, x: u32, y: u32, width: u32, height: u32, data: []const u8) PixelPatch {
+        const hash = std.hash.Wyhash.hash(0, data);
+        return PixelPatch{
+            .id = id,
+            .x = x,
+            .y = y,
+            .width = width,
+            .height = height,
+            .data = data,
+            .hash = hash,
+        };
+    }
+
+    pub fn isEqual(self: *const PixelPatch, other: *const PixelPatch) bool {
+        return self.x == other.x and self.y == other.y
+           and self.width == other.width and self.height == other.height
+           and self.hash == other.hash;
+    }
+};
+
+pub const PixelBuffer = struct {
+    nextImageId: u32,
+    patches: std.ArrayList(PixelPatch),
+    allocator: Allocator,
+
+    pub fn init(allocator: Allocator) PixelError!*PixelBuffer {
+        const self = allocator.create(PixelBuffer) catch return PixelError.OutOfMemory;
+        errdefer allocator.destroy(self);
+
+        self.* = .{
+            .nextImageId = 1,
+            .patches = .{},
+            .allocator = allocator,
+        };
+
+        return self;
+    }
+
+    pub fn deinit(self: *PixelBuffer) void {
+        self.patches.deinit(self.allocator);
+        self.allocator.destroy(self);
+    }
+
+    pub fn hasPatch(self: *PixelBuffer, patch: PixelPatch) bool {
+        for (self.patches.items) |p| {
+            if (p.isEqual(&patch)) return true;
+        }
+        return false;
+    }
+
+    pub fn addPatch(self: *PixelBuffer, patch: PixelPatch) void {
+        self.patches.append(self.allocator, patch) catch return;
+    }
+
+    pub fn removePatch(self: *PixelBuffer, patch: PixelPatch) void {
+        for (self.patches.items, 0..) |p, i| {
+            if (p.isEqual(&patch)) {
+                _ = self.patches.orderedRemove(i);
+                return;
+            }
+        }
+    }
+
+    pub fn clear(self: *PixelBuffer) void {
+        self.patches.clearRetainingCapacity();
+    }
+
+    pub fn drawImage(self: *PixelBuffer, x: u32, y: u32, width: u32, height: u32, data: []const u8) void {
+        const id = self.nextImageId;
+        const patch = PixelPatch.init(id, x, y, width, height, data);
+        if (self.hasPatch(patch)) return;
+        self.addPatch(patch);
+        self.nextImageId = (id % std.math.maxInt(u32)) + 1;
+    }
+};

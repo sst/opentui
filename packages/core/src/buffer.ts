@@ -487,3 +487,17 @@ export class OptimizedBuffer {
     this.lib.bufferDrawChar(this.bufferPtr, char, x, y, fg, bg, attributes)
   }
 }
+
+export class PixelBuffer {
+  public lib: RenderLib
+  public pixelsPtr: Pointer
+
+  constructor(lib: RenderLib, ptr: Pointer) {
+    this.lib = lib
+    this.pixelsPtr = ptr
+  }
+
+  public drawImage(x: number, y: number, width: number, height: number, data: Uint8Array): void {
+    this.lib.pixelsDrawImage(this.pixelsPtr, x, y, width, height, data)
+  }
+}

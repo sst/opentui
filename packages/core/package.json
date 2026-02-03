@@ -34,10 +34,12 @@
     "web-tree-sitter": "0.25.10"
   },
   "dependencies": {
+    "@types/pngjs": "^6.0.5",
     "bun-ffi-structs": "0.1.2",
     "diff": "8.0.2",
     "jimp": "1.6.0",
     "marked": "17.0.1",
+    "pngjs": "^7.0.0",
     "yoga-layout": "3.2.1"
   },
   "peerDependencies": {

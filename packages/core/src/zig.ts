@@ -5,7 +5,7 @@ import { type CursorStyle, type DebugOverlayCorner, type WidthMethod, type Highl
 export type { LineInfo }
 
 import { RGBA } from "./lib/RGBA"
-import { OptimizedBuffer } from "./buffer"
+import { OptimizedBuffer, PixelBuffer } from "./buffer"
 import { TextBuffer } from "./text-buffer"
 import { env, registerEnvVar } from "./lib/env"
 import {
@@ -133,6 +133,14 @@ function getOpenTUILib(libPath?: string) {
       args: ["ptr"],
       returns: "ptr",
     },
+    getNextPixelBuffer: {
+      args: ["ptr"],
+      returns: "ptr",
+    },
+    getCurrentPixelBuffer: {
+      args: ["ptr"],
+      returns: "ptr",
+    },
 
     queryPixelResolution: {
       args: ["ptr"],
@@ -145,6 +153,11 @@ function getOpenTUILib(libPath?: string) {
     },
     destroyOptimizedBuffer: {
       args: ["ptr"],
+      returns: "void",
+    },
+
+    pixelsDrawImage: {
+      args: ["ptr", "u32", "u32", "u32", "u32", "ptr", "usize"],
       returns: "void",
     },
 
@@ -1277,6 +1290,8 @@ export interface RenderLib {
   render: (renderer: Pointer, force: boolean) => void
   getNextBuffer: (renderer: Pointer) => OptimizedBuffer
   getCurrentBuffer: (renderer: Pointer) => OptimizedBuffer
+  getNextPixelBuffer: (renderer: Pointer) => PixelBuffer
+  getCurrentPixelBuffer: (renderer: Pointer) => PixelBuffer
   createOptimizedBuffer: (
     width: number,
     height: number,
@@ -1285,6 +1300,7 @@ export interface RenderLib {
     id?: string,
   ) => OptimizedBuffer
   destroyOptimizedBuffer: (bufferPtr: Pointer) => void
+  pixelsDrawImage: (bufferPtr: Pointer, x: number, y: number, width: number, height: number, data: Uint8Array) => void
   drawFrameBuffer: (
     targetBufferPtr: Pointer,
     destX: number,
@@ -1874,6 +1890,22 @@ class FFIRenderLib implements RenderLib {
     return new OptimizedBuffer(this, bufferPtr, width, height, { id: "current buffer", widthMethod: "unicode" })
   }
 
+  public getNextPixelBuffer(renderer: Pointer): PixelBuffer {
+    const bufferPtr = this.opentui.symbols.getNextPixelBuffer(renderer)
+    if (!bufferPtr) {
+      throw new Error("Failed to get next pixel buffer")
+    }
+    return new PixelBuffer(this, bufferPtr)
+  }
+
+  public getCurrentPixelBuffer(renderer: Pointer): PixelBuffer {
+    const bufferPtr = this.opentui.symbols.getCurrentPixelBuffer(renderer)
+    if (!bufferPtr) {
+      throw new Error("Failed to get current pixel buffer")
+    }
+    return new PixelBuffer(this, bufferPtr)
+  }
+
   public bufferGetCharPtr(buffer: Pointer): Pointer {
     const ptr = this.opentui.symbols.bufferGetCharPtr(buffer)
     if (!ptr) {
@@ -2215,6 +2247,10 @@ class FFIRenderLib implements RenderLib {
 
   public destroyOptimizedBuffer(bufferPtr: Pointer) {
     this.opentui.symbols.destroyOptimizedBuffer(bufferPtr)
+  }
+
+  public pixelsDrawImage(pixelBufferPtr: Pointer, x: number, y: number, width: number, height: number, data: Uint8Array) {
+    this.opentui.symbols.pixelsDrawImage(pixelBufferPtr, x, y, width, height, data, data.length)
   }
 
   public drawFrameBuffer(

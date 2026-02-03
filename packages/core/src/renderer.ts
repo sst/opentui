@@ -9,7 +9,7 @@ import {
 } from "./types"
 import { RGBA, parseColor, type ColorInput } from "./lib/RGBA"
 import type { Pointer } from "bun:ffi"
-import { OptimizedBuffer } from "./buffer"
+import { OptimizedBuffer, PixelBuffer } from "./buffer"
 import { resolveRenderLib, type RenderLib } from "./zig"
 import { TerminalConsole, type ConsoleOptions, capture } from "./console"
 import { MouseParser, type MouseEventType, type RawMouseEvent, type ScrollInfo } from "./lib/parse.mouse"
@@ -317,6 +317,8 @@ export class CliRenderer extends EventEmitter implements RenderContext {
   private _destroyFinalized: boolean = false
   public nextRenderBuffer: OptimizedBuffer
   public currentRenderBuffer: OptimizedBuffer
+  public nextPixelBuffer: PixelBuffer
+  public currentPixelBuffer: PixelBuffer
   private _isRunning: boolean = false
   private targetFps: number = 30
   private maxFps: number = 60
@@ -544,6 +546,8 @@ export class CliRenderer extends EventEmitter implements RenderContext {
     this._useAlternateScreen = config.useAlternateScreen ?? env.OTUI_USE_ALTERNATE_SCREEN
     this.nextRenderBuffer = this.lib.getNextBuffer(this.rendererPtr)
     this.currentRenderBuffer = this.lib.getCurrentBuffer(this.rendererPtr)
+    this.nextPixelBuffer = this.lib.getNextPixelBuffer(this.rendererPtr)
+    this.currentPixelBuffer = this.lib.getCurrentPixelBuffer(this.rendererPtr)
     this.postProcessFns = config.postProcessFns || []
     this.prependedInputHandlers = config.prependInputHandlers || []
 
@@ -1855,6 +1859,7 @@ export class CliRenderer extends EventEmitter implements RenderContext {
       this.renderStats.frameCallbackTime = end - start
 
       this.root.render(this.nextRenderBuffer, deltaTime)
+      this.root.renderPixels(this.nextPixelBuffer)
 
       for (const postProcessFn of this.postProcessFns) {
         postProcessFn(this.nextRenderBuffer, deltaTime)

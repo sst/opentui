@@ -1,6 +1,6 @@
 import { EventEmitter } from "events"
 import Yoga, { Direction, Display, Edge, FlexDirection, type Config, type Node as YogaNode } from "yoga-layout"
-import { OptimizedBuffer } from "./buffer"
+import { OptimizedBuffer, PixelBuffer } from "./buffer"
 import type { KeyEvent, PasteEvent } from "./lib/KeyHandler"
 import type { MouseEventType } from "./lib/parse.mouse"
 import type { Selection } from "./lib/selection"
@@ -1381,6 +1381,11 @@ export abstract class Renderable extends BaseRenderable {
     }
   }
 
+  public renderPixels(pixels: PixelBuffer): void {
+    // Default implementation: do nothing
+    // Override this method to provide custom pixel rendering
+  }
+
   protected _getVisibleChildren(): number[] {
     return this._childrenInZIndexOrder.map((child) => child.num)
   }
@@ -1668,6 +1673,19 @@ export class RootRenderable extends Renderable {
           break
         case "popOpacity":
           buffer.popOpacity()
+          break
+      }
+    }
+  }
+
+  public renderPixels(pixels: PixelBuffer): void {
+    for (let i = 1; i < this.renderList.length; i++) {
+      const command = this.renderList[i]
+      switch (command.action) {
+        case "render":
+          if (!command.renderable.isDestroyed) {
+            command.renderable.renderPixels(pixels)
+          }
           break
       }
     }
