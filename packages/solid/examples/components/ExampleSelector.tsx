@@ -18,12 +18,18 @@ import TextStyleScene from "./text-style-demo.tsx"
 import { TextareaDemo } from "./textarea-demo.tsx"
 import { TextareaMinimalDemo } from "./textarea-minimal-demo.tsx"
 import { TextTruncationDemo } from "./text-truncation-demo.tsx"
+import InteractiveDiffDemo from "./interactive-diff-demo.tsx"
 
 const EXAMPLES = [
   {
     name: "Diff Viewer Demo",
     description: "Unified and split diff view with syntax highlighting",
     scene: "diff-demo",
+  },
+  {
+    name: "Interactive Diff",
+    description: "Diff with interactive comments",
+    scene: "interactive-diff-demo",
   },
   {
     name: "Line Numbers Demo",
@@ -163,6 +169,9 @@ const ExampleSelector = () => {
     <Switch>
       <Match when={selectedScene() === "diff-demo"}>
         <DiffDemo />
+      </Match>
+      <Match when={selectedScene() === "interactive-diff-demo"}>
+        <InteractiveDiffDemo />
       </Match>
       <Match when={selectedScene() === "line-number-demo"}>
         <LineNumberDemo />
