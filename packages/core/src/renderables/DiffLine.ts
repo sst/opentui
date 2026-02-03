@@ -152,7 +152,14 @@ export class DiffLineRenderable extends Renderable {
       }
 
       this._contentCode = new CodeRenderable(this.ctx, codeOptions)
-      this.add(this._contentCode)
+      this._contentBox = new BoxRenderable(this.ctx, {
+        id: `${this.id}-content-box`,
+        flexGrow: 1,
+        height: 1,
+        backgroundColor: this._lineBg,
+      })
+      this._contentBox.add(this._contentCode)
+      this.add(this._contentBox)
     } else {
       // Plain text fallback
       this._contentBox = new BoxRenderable(this.ctx, {
