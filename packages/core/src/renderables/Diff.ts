@@ -50,37 +50,37 @@ export interface DiffRenderableOptions extends RenderableOptions<DiffRenderable>
 }
 
 export class DiffRenderable extends Renderable {
-  private _diff: string
-  private _view: "unified" | "split"
-  private _parsedDiff: StructuredPatch | null = null
-  private _parseError: Error | null = null
+  protected _diff: string
+  protected _view: "unified" | "split"
+  protected _parsedDiff: StructuredPatch | null = null
+  protected _parseError: Error | null = null
 
   // CodeRenderable options
-  private _fg?: RGBA
-  private _filetype?: string
-  private _syntaxStyle?: SyntaxStyle
-  private _wrapMode?: "word" | "char" | "none"
-  private _conceal: boolean
-  private _selectionBg?: RGBA
-  private _selectionFg?: RGBA
-  private _treeSitterClient?: TreeSitterClient
+  protected _fg?: RGBA
+  protected _filetype?: string
+  protected _syntaxStyle?: SyntaxStyle
+  protected _wrapMode?: "word" | "char" | "none"
+  protected _conceal: boolean
+  protected _selectionBg?: RGBA
+  protected _selectionFg?: RGBA
+  protected _treeSitterClient?: TreeSitterClient
 
   // LineNumberRenderable options
-  private _showLineNumbers: boolean
-  private _lineNumberFg: RGBA
-  private _lineNumberBg: RGBA
+  protected _showLineNumbers: boolean
+  protected _lineNumberFg: RGBA
+  protected _lineNumberBg: RGBA
 
   // Diff styling
-  private _addedBg: RGBA
-  private _removedBg: RGBA
-  private _contextBg: RGBA
-  private _addedContentBg: RGBA | null
-  private _removedContentBg: RGBA | null
-  private _contextContentBg: RGBA | null
-  private _addedSignColor: RGBA
-  private _removedSignColor: RGBA
-  private _addedLineNumberBg: RGBA
-  private _removedLineNumberBg: RGBA
+  protected _addedBg: RGBA
+  protected _removedBg: RGBA
+  protected _contextBg: RGBA
+  protected _addedContentBg: RGBA | null
+  protected _removedContentBg: RGBA | null
+  protected _contextContentBg: RGBA | null
+  protected _addedSignColor: RGBA
+  protected _removedSignColor: RGBA
+  protected _addedLineNumberBg: RGBA
+  protected _removedLineNumberBg: RGBA
 
   private leftSide: LineNumberRenderable | null = null
   private rightSide: LineNumberRenderable | null = null
@@ -92,7 +92,7 @@ export class DiffRenderable extends Renderable {
   private rightCodeRenderable: CodeRenderable | null = null
 
   private pendingRebuild: boolean = false
-  private _lastWidth: number = 0
+  protected _lastWidth: number = 0
 
   private errorTextRenderable: TextRenderable | null = null
   private errorCodeRenderable: CodeRenderable | null = null
@@ -142,7 +142,7 @@ export class DiffRenderable extends Renderable {
     }
   }
 
-  private parseDiff(): void {
+  protected parseDiff(): void {
     if (!this._diff) {
       this._parsedDiff = null
       this._parseError = null
@@ -166,7 +166,7 @@ export class DiffRenderable extends Renderable {
     }
   }
 
-  private buildView(): void {
+  protected buildView(): void {
     if (this._parseError) {
       this.buildErrorView()
       return
@@ -430,7 +430,7 @@ export class DiffRenderable extends Renderable {
     }
   }
 
-  private buildUnifiedView(): void {
+  protected buildUnifiedView(): void {
     if (!this._parsedDiff) return
 
     this.flexDirection = "column"
@@ -530,7 +530,7 @@ export class DiffRenderable extends Renderable {
     }
   }
 
-  private buildSplitView(): void {
+  protected buildSplitView(): void {
     if (!this._parsedDiff) return
 
     this.flexDirection = "row"
