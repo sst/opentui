@@ -1157,16 +1157,12 @@ export class DiffRenderable extends Renderable {
   }
 
   public highlightLines(startLine: number, endLine: number, color: string | RGBA | LineColorConfig): void {
-    for (let i = startLine; i <= endLine; i++) {
-      this.leftSide?.setLineColor(i, color)
-      this.rightSide?.setLineColor(i, color)
-    }
+    this.leftSide?.highlightLines(startLine, endLine, color)
+    this.rightSide?.highlightLines(startLine, endLine, color)
   }
 
   public clearHighlightLines(startLine: number, endLine: number): void {
-    for (let i = startLine; i <= endLine; i++) {
-      this.leftSide?.clearLineColor(i)
-      this.rightSide?.clearLineColor(i)
-    }
+    this.leftSide?.clearHighlightLines(startLine, endLine)
+    this.rightSide?.clearHighlightLines(startLine, endLine)
   }
 }
