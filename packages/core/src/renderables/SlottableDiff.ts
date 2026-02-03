@@ -47,6 +47,7 @@ export class SlottableDiffRenderable extends DiffRenderable {
 
   // Internal state for slots
   private _lines: DiffLineRenderable[] = []
+  private _visualRows: Renderable[] = []
   private _rowContainers: BoxRenderable[] = []
   private _slots: Map<number, Renderable> = new Map()
   private _parsedLines: ParsedDiffLine[] = []
@@ -58,7 +59,6 @@ export class SlottableDiffRenderable extends DiffRenderable {
       flexDirection: "column",
     })
 
-    // Now safe to set these - buildView() already called by parent
     this._gutterWidth = options.gutterWidth ?? 5
     this._onLineClick = options.onLineClick
 
@@ -80,7 +80,7 @@ export class SlottableDiffRenderable extends DiffRenderable {
     // Always column layout for slottable
     this.flexDirection = "column"
     this.buildParsedLines()
-    this.buildLines()
+    this.initializeContent()
   }
 
   private buildParsedLines(): void {
@@ -220,25 +220,19 @@ export class SlottableDiffRenderable extends DiffRenderable {
     }
   }
 
-  private buildLines(): void {
+  private initializeContent(): void {
     this.clearLines()
 
     if (!this._parsedDiff) return
 
     if (this._view === "unified") {
-      // Unified view: each line is full width with slot potential
+      // Unified view: each line is full width
       let visualIndex = 0
       for (const line of this._parsedLines) {
         const lineRenderable = this.createLineRenderable(line, visualIndex)
         this._lines.push(lineRenderable)
+        this._visualRows.push(lineRenderable)
         this.add(lineRenderable)
-
-        // Check if there's a slot after this line
-        const slot = this._slots.get(visualIndex)
-        if (slot) {
-          this.add(slot)
-        }
-
         visualIndex++
       }
     } else {
@@ -255,6 +249,7 @@ export class SlottableDiffRenderable extends DiffRenderable {
           width: "100%",
         })
         this._rowContainers.push(rowContainer)
+        this._visualRows.push(rowContainer)
 
         if (leftLine) {
           const leftRenderable = this.createLineRenderable(leftLine, visualIndex)
@@ -269,14 +264,14 @@ export class SlottableDiffRenderable extends DiffRenderable {
         }
 
         this.add(rowContainer)
-
-        // Check if there's a slot after this row
-        const slot = this._slots.get(visualIndex)
-        if (slot) {
-          this.add(slot)
-        }
-
         visualIndex++
+      }
+    }
+
+    // Restore slots if any exist (e.g. from props before init)
+    if (this._slots.size > 0) {
+      for (const [lineIndex, slot] of this._slots) {
+        this.insertSlot(lineIndex, slot, true)
       }
     }
   }
@@ -362,18 +357,13 @@ export class SlottableDiffRenderable extends DiffRenderable {
   }
 
   private clearLines(): void {
-    // Remove all line renderables
-    for (const line of this._lines) {
-      this.remove(line.id)
-      line.destroy()
-    }
-    this._lines = []
-
-    // Remove row containers (for split view)
-    for (const row of this._rowContainers) {
+    // Remove known rows from view
+    for (const row of this._visualRows) {
       this.remove(row.id)
       row.destroy()
     }
+    this._visualRows = []
+    this._lines = []
     this._rowContainers = []
 
     // Remove error renderable if present
@@ -384,11 +374,40 @@ export class SlottableDiffRenderable extends DiffRenderable {
     }
   }
 
-  public insertSlot(afterLineIndex: number, slot: Renderable): void {
-    this.removeSlot(afterLineIndex)
+  public insertSlot(afterLineIndex: number, slot: Renderable, forceReinsert: boolean = false): void {
+    const existingSlot = this._slots.get(afterLineIndex)
+    if (existingSlot && existingSlot === slot && !forceReinsert) {
+      // Already there
+      return
+    }
+
+    if (existingSlot && existingSlot !== slot) {
+      this.removeSlot(afterLineIndex)
+    }
+
     this._slots.set(afterLineIndex, slot)
 
-    this.buildLines()
+    // Surgical insertion
+    const anchorRow = this._visualRows[afterLineIndex]
+    if (!anchorRow) {
+      return
+    }
+
+    // Helper: get renderable children to find index
+    const children = this.getChildren()
+    const anchorIndex = children.indexOf(anchorRow)
+
+    if (anchorIndex === -1) {
+      this.add(slot)
+      return
+    }
+
+    if (anchorIndex + 1 < children.length) {
+      this.insertBefore(slot, children[anchorIndex + 1])
+    } else {
+      this.add(slot)
+    }
+
     this.requestRender()
   }
 
@@ -398,7 +417,6 @@ export class SlottableDiffRenderable extends DiffRenderable {
       this.remove(slot.id)
       slot.destroy()
       this._slots.delete(afterLineIndex)
-      this.buildLines()
       this.requestRender()
     }
   }
@@ -417,7 +435,6 @@ export class SlottableDiffRenderable extends DiffRenderable {
       slot.destroy()
     }
     this._slots.clear()
-    this.buildLines()
     this.requestRender()
   }
 
@@ -432,7 +449,7 @@ export class SlottableDiffRenderable extends DiffRenderable {
   set gutterWidth(value: number) {
     if (this._gutterWidth !== value) {
       this._gutterWidth = value
-      this.buildLines()
+      this.initializeContent()
       this.requestRender()
     }
   }
