@@ -272,11 +272,6 @@ export async function createCliRenderer(config: CliRendererConfig = {}): Promise
     config.useThread = true
   }
 
-  // Disable threading on linux because there currently is currently an issue
-  // might be just a missing dependency for the build or something, but threads crash on linux
-  if (process.platform === "linux") {
-    config.useThread = false
-  }
   ziglib.setUseThread(rendererPtr, config.useThread)
 
   const kittyConfig = config.useKittyKeyboard ?? {}
