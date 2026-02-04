@@ -207,18 +207,18 @@ describe("TestRecorder", () => {
   })
 
   test("should capture timestamps in increasing order", async () => {
+    let time = 0
+    recorder = new TestRecorder(renderer, { now: () => time })
     recorder.rec()
 
-    const text = new TextRenderable(renderer, { content: "Timestamp Test" })
-    renderer.root.add(text)
-    await Bun.sleep(1)
-
-    await Bun.sleep(10)
+    await renderOnce()
+    time += 10
     await renderOnce()
 
     const frames = recorder.recordedFrames
     expect(frames.length).toBe(2)
     expect(frames[1].timestamp).toBeGreaterThan(frames[0].timestamp)
+    expect(frames[1].timestamp - frames[0].timestamp).toBe(10)
 
     recorder.stop()
   })
