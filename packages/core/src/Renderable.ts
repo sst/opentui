@@ -729,19 +729,14 @@ export abstract class Renderable extends BaseRenderable {
     const node = this.yogaNode
 
     if (isMarginType(options.margin)) {
-      node.setMargin(Edge.Top, options.margin)
-      node.setMargin(Edge.Right, options.margin)
-      node.setMargin(Edge.Bottom, options.margin)
-      node.setMargin(Edge.Left, options.margin)
+      node.setMargin(Edge.All, options.margin)
     }
 
     if (isMarginType(options.marginX)) {
-      node.setMargin(Edge.Left, options.marginX)
-      node.setMargin(Edge.Right, options.marginX)
+      node.setMargin(Edge.Horizontal, options.marginX)
     }
     if (isMarginType(options.marginY)) {
-      node.setMargin(Edge.Top, options.marginY)
-      node.setMargin(Edge.Bottom, options.marginY)
+      node.setMargin(Edge.Vertical, options.marginY)
     }
     if (isMarginType(options.marginTop)) {
       node.setMargin(Edge.Top, options.marginTop)
@@ -757,19 +752,14 @@ export abstract class Renderable extends BaseRenderable {
     }
 
     if (isPaddingType(options.padding)) {
-      node.setPadding(Edge.Top, options.padding)
-      node.setPadding(Edge.Right, options.padding)
-      node.setPadding(Edge.Bottom, options.padding)
-      node.setPadding(Edge.Left, options.padding)
+      node.setPadding(Edge.All, options.padding)
     }
 
     if (isPaddingType(options.paddingX)) {
-      node.setPadding(Edge.Left, options.paddingX)
-      node.setPadding(Edge.Right, options.paddingX)
+      node.setPadding(Edge.Horizontal, options.paddingX)
     }
     if (isPaddingType(options.paddingY)) {
-      node.setPadding(Edge.Top, options.paddingY)
-      node.setPadding(Edge.Bottom, options.paddingY)
+      node.setPadding(Edge.Vertical, options.paddingY)
     }
     if (isPaddingType(options.paddingTop)) {
       node.setPadding(Edge.Top, options.paddingTop)
@@ -923,27 +913,21 @@ export abstract class Renderable extends BaseRenderable {
 
   public set margin(margin: number | "auto" | `${number}%` | null | undefined) {
     if (isMarginType(margin)) {
-      const node = this.yogaNode
-      node.setMargin(Edge.Top, margin)
-      node.setMargin(Edge.Right, margin)
-      node.setMargin(Edge.Bottom, margin)
-      node.setMargin(Edge.Left, margin)
+      this.yogaNode.setMargin(Edge.All, margin)
       this.requestRender()
     }
   }
 
   public set marginX(marginX: number | "auto" | `${number}%` | null | undefined) {
     if (isMarginType(marginX)) {
-      this.yogaNode.setMargin(Edge.Left, marginX)
-      this.yogaNode.setMargin(Edge.Right, marginX)
+      this.yogaNode.setMargin(Edge.Horizontal, marginX)
       this.requestRender()
     }
   }
 
   public set marginY(marginY: number | "auto" | `${number}%` | null | undefined) {
     if (isMarginType(marginY)) {
-      this.yogaNode.setMargin(Edge.Top, marginY)
-      this.yogaNode.setMargin(Edge.Bottom, marginY)
+      this.yogaNode.setMargin(Edge.Vertical, marginY)
       this.requestRender()
     }
   }
@@ -978,27 +962,21 @@ export abstract class Renderable extends BaseRenderable {
 
   public set padding(padding: number | `${number}%` | null | undefined) {
     if (isPaddingType(padding)) {
-      const node = this.yogaNode
-      node.setPadding(Edge.Top, padding)
-      node.setPadding(Edge.Right, padding)
-      node.setPadding(Edge.Bottom, padding)
-      node.setPadding(Edge.Left, padding)
+      this.yogaNode.setPadding(Edge.All, padding)
       this.requestRender()
     }
   }
 
   public set paddingX(paddingX: number | `${number}%` | null | undefined) {
     if (isPaddingType(paddingX)) {
-      this.yogaNode.setPadding(Edge.Left, paddingX)
-      this.yogaNode.setPadding(Edge.Right, paddingX)
+      this.yogaNode.setPadding(Edge.Horizontal, paddingX)
       this.requestRender()
     }
   }
 
   public set paddingY(paddingY: number | `${number}%` | null | undefined) {
     if (isPaddingType(paddingY)) {
-      this.yogaNode.setPadding(Edge.Top, paddingY)
-      this.yogaNode.setPadding(Edge.Bottom, paddingY)
+      this.yogaNode.setPadding(Edge.Vertical, paddingY)
       this.requestRender()
     }
   }
