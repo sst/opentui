@@ -53,6 +53,9 @@ export class SlottableDiffRenderable extends DiffRenderable {
   private _bottomSpacer: BoxRenderable | null = null
   private _rowsContainer: BoxRenderable | null = null
   private _slotHeights: Map<number, number> = new Map()
+  private _rowHeights: Map<number, number> = new Map()
+  private _offsets: number[] = []
+  private _offsetsDirty: boolean = true
   private _visibleStart: number = 0
   private _visibleEnd: number = -1
   private _scrollTop: number = 0
@@ -279,6 +282,7 @@ export class SlottableDiffRenderable extends DiffRenderable {
         const lineRenderable = this.createLineRenderable(line, visualIndex)
         this._lines.push(lineRenderable)
         this._visualRows.push(lineRenderable)
+        this.trackRowHeight(visualIndex, lineRenderable)
         this.add(lineRenderable)
         visualIndex++
       }
@@ -310,6 +314,7 @@ export class SlottableDiffRenderable extends DiffRenderable {
           rowContainer.add(rightRenderable)
         }
 
+        this.trackRowHeight(visualIndex, rowContainer)
         this.add(rowContainer)
         visualIndex++
       }
@@ -438,6 +443,7 @@ export class SlottableDiffRenderable extends DiffRenderable {
     if (this._view === "unified") {
       const line = this._parsedLines[index]
       const lineRenderable = this.createLineRenderable(line, index)
+      this.trackRowHeight(index, lineRenderable)
       return lineRenderable
     }
 
@@ -459,6 +465,8 @@ export class SlottableDiffRenderable extends DiffRenderable {
       const rightRenderable = this.createLineRenderable(rightLine, index)
       rowContainer.add(rightRenderable)
     }
+
+    this.trackRowHeight(index, rowContainer)
 
     return rowContainer
   }
@@ -573,7 +581,7 @@ export class SlottableDiffRenderable extends DiffRenderable {
     const total = this.lineCount()
     const top = this.getOffsetForIndex(start)
     const endOffset = this.getOffsetForIndex(end + 1)
-    const totalHeight = total + this.getSlotHeightsSum(total)
+    const totalHeight = this.getOffsetForIndex(total)
     const visible = Math.max(0, endOffset - top)
     const bottom = Math.max(0, totalHeight - top - visible)
 
@@ -581,18 +589,38 @@ export class SlottableDiffRenderable extends DiffRenderable {
     this._bottomSpacer.height = bottom
   }
 
-  private getOffsetForIndex(index: number): number {
-    return index + this.getSlotHeightsSum(index)
+  private getRowHeight(index: number): number {
+    const height = this._rowHeights.get(index)
+    if (height && height > 0) return height
+    return 1
   }
 
-  private getSlotHeightsSum(limit: number): number {
-    let sum = 0
-    for (const [index, height] of this._slotHeights) {
-      if (index < limit) {
-        sum += height
-      }
+  private ensureOffsets(): void {
+    if (!this._offsetsDirty) return
+
+    const total = this.lineCount()
+    const offsets = new Array(total + 1)
+    let offset = 0
+
+    for (let i = 0; i < total; i++) {
+      offsets[i] = offset
+      offset += this.getRowHeight(i)
+      offset += this._slotHeights.get(i) ?? 0
     }
-    return sum
+
+    offsets[total] = offset
+    this._offsets = offsets
+    this._offsetsDirty = false
+  }
+
+  private getOffsetForIndex(index: number): number {
+    this.ensureOffsets()
+
+    const total = this.lineCount()
+    if (total === 0) return 0
+
+    const clamped = Math.max(0, Math.min(total, index))
+    return this._offsets[clamped] ?? 0
   }
 
   private indexFromOffset(offset: number): number {
@@ -600,34 +628,25 @@ export class SlottableDiffRenderable extends DiffRenderable {
     if (total === 0) return 0
     if (offset <= 0) return 0
 
-    let line = 0
-    let remaining = offset
-    const entries = [...this._slotHeights.entries()].sort((a, b) => a[0] - b[0])
+    this.ensureOffsets()
 
-    for (const [index, height] of entries) {
-      if (index < line) {
+    const totalHeight = this._offsets[total] ?? 0
+    if (offset >= totalHeight) return total - 1
+
+    let low = 0
+    let high = total
+
+    while (low < high) {
+      const mid = Math.floor((low + high) / 2)
+      const next = this._offsets[mid + 1] ?? totalHeight
+      if (offset >= next) {
+        low = mid + 1
         continue
       }
-
-      const lineCount = index - line + 1
-      if (remaining < lineCount) {
-        return Math.min(total - 1, line + Math.floor(remaining))
-      }
-
-      remaining -= lineCount
-
-      if (remaining < height) {
-        return Math.min(total - 1, index)
-      }
-
-      remaining -= height
-      line = index + 1
-      if (line >= total) {
-        return total - 1
-      }
+      high = mid
     }
 
-    return Math.min(total - 1, line + Math.floor(remaining))
+    return Math.min(total - 1, low)
   }
 
   private getScrollTop(): number {
@@ -642,6 +661,7 @@ export class SlottableDiffRenderable extends DiffRenderable {
   }
 
   private createLineRenderable(line: ParsedDiffLine, visualIndex: number): DiffLineRenderable {
+    const wrap = this._wrapMode ?? "none"
     const lineOptions: DiffLineRenderableOptions = {
       id: `${this.id}-line-${visualIndex}-${line.side}`,
       content: line.content,
@@ -661,6 +681,8 @@ export class SlottableDiffRenderable extends DiffRenderable {
       width: this._view === "split" ? "50%" : "100%",
       filetype: this._filetype,
       syntaxStyle: this._syntaxStyle,
+      wrapMode: wrap,
+      truncate: wrap === "none",
     }
 
     return new DiffLineRenderable(this.ctx, lineOptions)
@@ -730,6 +752,9 @@ export class SlottableDiffRenderable extends DiffRenderable {
     this._visualRows = []
     this._lines = []
     this._rowContainers = []
+    this._rowHeights.clear()
+    this._offsets = []
+    this._offsetsDirty = true
     this._visibleStart = 0
     this._visibleEnd = -1
     this._scrollTop = 0
@@ -779,6 +804,7 @@ export class SlottableDiffRenderable extends DiffRenderable {
 
     this._slots.set(afterLineIndex, slot)
     this.trackSlotHeight(afterLineIndex, slot)
+    this._offsetsDirty = true
 
     if (this._virtualize) {
       this.updateVirtualRange(true)
@@ -818,6 +844,7 @@ export class SlottableDiffRenderable extends DiffRenderable {
       slot.destroy()
       this._slots.delete(afterLineIndex)
       this._slotHeights.delete(afterLineIndex)
+      this._offsetsDirty = true
       if (this._virtualize) {
         this.updateVirtualRange(true)
       }
@@ -840,6 +867,7 @@ export class SlottableDiffRenderable extends DiffRenderable {
     }
     this._slots.clear()
     this._slotHeights.clear()
+    this._offsetsDirty = true
     if (this._virtualize) {
       this.updateVirtualRange(true)
     }
@@ -848,6 +876,18 @@ export class SlottableDiffRenderable extends DiffRenderable {
 
   public lineCount(): number {
     return this._view === "unified" ? this._parsedLines.length : Math.ceil(this._parsedLines.length / 2)
+  }
+
+  public override get wrapMode(): "word" | "char" | "none" | undefined {
+    return this._wrapMode
+  }
+
+  public override set wrapMode(value: "word" | "char" | "none" | undefined) {
+    if (this._wrapMode !== value) {
+      this._wrapMode = value
+      this.buildView()
+      this.requestRender()
+    }
   }
 
   get gutterWidth(): number {
@@ -879,6 +919,28 @@ export class SlottableDiffRenderable extends DiffRenderable {
     this.updateVirtualRange()
   }
 
+  private trackRowHeight(index: number, row: Renderable): void {
+    const prev = row.onSizeChange
+    row.onSizeChange = () => {
+      if (prev) {
+        prev.call(row)
+      }
+      const height = Math.max(1, row.height)
+      if (this._rowHeights.get(index) === height) return
+      this._rowHeights.set(index, height)
+      this._offsetsDirty = true
+      if (this._virtualize) {
+        this.updateVirtualRange(true)
+      }
+    }
+
+    const initial = row.height > 0 ? row.height : 1
+    if (this._rowHeights.get(index) !== initial) {
+      this._rowHeights.set(index, initial)
+      this._offsetsDirty = true
+    }
+  }
+
   private trackSlotHeight(afterLineIndex: number, slot: Renderable): void {
     const prev = slot.onSizeChange
     slot.onSizeChange = () => {
@@ -888,6 +950,7 @@ export class SlottableDiffRenderable extends DiffRenderable {
       const height = slot.height
       if (this._slotHeights.get(afterLineIndex) === height) return
       this._slotHeights.set(afterLineIndex, height)
+      this._offsetsDirty = true
       if (this._virtualize) {
         this.updateVirtualRange(true)
       }

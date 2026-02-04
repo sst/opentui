@@ -32,6 +32,8 @@ export interface DiffLineRenderableOptions extends RenderableOptions<DiffLineRen
   onClick?: (info: DiffLineClickInfo) => void
   filetype?: string
   syntaxStyle?: SyntaxStyle
+  wrapMode?: "none" | "char" | "word"
+  truncate?: boolean
 }
 
 export class DiffLineRenderable extends Renderable {
@@ -51,6 +53,8 @@ export class DiffLineRenderable extends Renderable {
   private _onClick?: (info: DiffLineClickInfo) => void
   private _filetype?: string
   private _syntaxStyle?: SyntaxStyle
+  private _wrapMode: "none" | "char" | "word"
+  private _truncate: boolean
 
   // Child components
   private _gutterBox?: BoxRenderable
@@ -64,7 +68,8 @@ export class DiffLineRenderable extends Renderable {
     super(ctx, {
       ...options,
       flexDirection: "row",
-      height: 1,
+      alignItems: "stretch",
+      minHeight: options.minHeight ?? 1,
       width: options.width ?? "100%",
     })
 
@@ -84,6 +89,8 @@ export class DiffLineRenderable extends Renderable {
     this._onClick = options.onClick
     this._filetype = options.filetype
     this._syntaxStyle = options.syntaxStyle
+    this._wrapMode = options.wrapMode ?? "none"
+    this._truncate = options.truncate ?? this._wrapMode === "none"
     this.onMouseUp = this.handleMouseUp.bind(this)
 
     // Build child components
@@ -98,9 +105,10 @@ export class DiffLineRenderable extends Renderable {
       this._gutterBox = new BoxRenderable(this.ctx, {
         id: `${this.id}-gutter`,
         width: this._gutterWidth,
-        height: 1,
+        minHeight: 1,
         backgroundColor: this._gutterBg,
-        justifyContent: "flex-end",
+        justifyContent: "flex-start",
+        alignItems: "flex-start",
         paddingRight: 1,
       })
 
@@ -121,8 +129,10 @@ export class DiffLineRenderable extends Renderable {
       this._signBox = new BoxRenderable(this.ctx, {
         id: `${this.id}-sign`,
         width: 1,
-        height: 1,
+        minHeight: 1,
         backgroundColor: this._lineBg,
+        justifyContent: "flex-start",
+        alignItems: "flex-start",
       })
 
       this._signTextRenderable = new TextRenderable(this.ctx, {
@@ -145,9 +155,9 @@ export class DiffLineRenderable extends Renderable {
         bg: this._lineBg,
         fg: this._lineFg,
         flexGrow: 1,
-        height: 1,
-        wrapMode: "none",
-        truncate: true,
+        width: "100%",
+        wrapMode: this._wrapMode,
+        truncate: this._truncate,
         drawUnstyledText: true,
       }
 
@@ -155,7 +165,7 @@ export class DiffLineRenderable extends Renderable {
       this._contentBox = new BoxRenderable(this.ctx, {
         id: `${this.id}-content-box`,
         flexGrow: 1,
-        height: 1,
+        minHeight: 1,
         backgroundColor: this._lineBg,
       })
       this._contentBox.add(this._contentCode)
@@ -165,7 +175,7 @@ export class DiffLineRenderable extends Renderable {
       this._contentBox = new BoxRenderable(this.ctx, {
         id: `${this.id}-content`,
         flexGrow: 1,
-        height: 1,
+        minHeight: 1,
         backgroundColor: this._lineBg,
       })
 
@@ -173,6 +183,8 @@ export class DiffLineRenderable extends Renderable {
         id: `${this.id}-content-text`,
         content: this._content,
         fg: this._lineFg,
+        wrapMode: this._wrapMode,
+        truncate: this._truncate,
       })
 
       this._contentBox.add(contentText)
@@ -418,6 +430,30 @@ export class DiffLineRenderable extends Renderable {
       if (this._contentCode && value) {
         this._contentCode.syntaxStyle = value
       }
+      this.requestRender()
+    }
+  }
+
+  get wrapMode(): "none" | "char" | "word" {
+    return this._wrapMode
+  }
+
+  set wrapMode(value: "none" | "char" | "word") {
+    if (this._wrapMode !== value) {
+      this._wrapMode = value
+      this.buildChildren()
+      this.requestRender()
+    }
+  }
+
+  get truncate(): boolean {
+    return this._truncate
+  }
+
+  set truncate(value: boolean) {
+    if (this._truncate !== value) {
+      this._truncate = value
+      this.buildChildren()
       this.requestRender()
     }
   }
