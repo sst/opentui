@@ -38,3 +38,17 @@ jobs:
         run: |
           cd packages/core
           bun run test
+
+  build-complete:
+    name: Core - Build and Test
+    needs: build
+    runs-on: ubuntu-latest
+    if: always()
+    steps:
+      - name: Check build status
+        run: |
+          if [ "${{ needs.build.result }}" != "success" ]; then
+            echo "Build failed on one or more platforms"
+            exit 1
+          fi
+          echo "All platform builds succeeded"
