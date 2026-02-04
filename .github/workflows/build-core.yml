@@ -7,8 +7,11 @@ on:
 
 jobs:
   build:
-    name: Core - Build and Test
-    runs-on: macos-latest
+    name: Core - Build and Test (${{ matrix.os }})
+    strategy:
+      matrix:
+        os: [macos-latest, ubuntu-latest]
+    runs-on: ${{ matrix.os }}
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
