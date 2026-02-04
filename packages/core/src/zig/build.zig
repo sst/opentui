@@ -107,7 +107,6 @@ pub fn build(b: *std.Build) void {
         .root_source_file = b.path("test.zig"),
         .target = native_target,
         .optimize = .Debug,
-        .link_libc = true,
     });
     applyDependencies(b, test_mod, .Debug, native_target);
     const run_test = b.addRunArtifact(b.addTest(.{
