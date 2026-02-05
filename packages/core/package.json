@@ -34,11 +34,11 @@
     "web-tree-sitter": "0.25.10"
   },
   "dependencies": {
+    "@simonklee/yoga": "0.2.30",
     "bun-ffi-structs": "0.1.2",
     "diff": "8.0.2",
     "jimp": "1.6.0",
-    "marked": "17.0.1",
-    "yoga-layout": "3.2.1"
+    "marked": "17.0.1"
   },
   "peerDependencies": {
     "web-tree-sitter": "0.25.10"
