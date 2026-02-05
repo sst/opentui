@@ -69,6 +69,35 @@ export fn setRenderOffset(rendererPtr: *renderer.CliRenderer, offset: u32) void 
     rendererPtr.setRenderOffset(offset);
 }
 
+export fn setWriteTarget(rendererPtr: *renderer.CliRenderer, target: u32) void {
+    const mode: renderer.WriteTarget = switch (target) {
+        0 => .tty,
+        1 => .buffer,
+        else => .tty,
+    };
+    rendererPtr.setWriteTarget(mode);
+}
+
+export fn renderIntoWriteBuffer(rendererPtr: *renderer.CliRenderer, force: bool) usize {
+    return rendererPtr.renderIntoWriteBuffer(force);
+}
+
+export fn getWriteBufferLength(rendererPtr: *renderer.CliRenderer) usize {
+    return rendererPtr.getWriteBufferLength();
+}
+
+export fn copyWriteBuffer(rendererPtr: *renderer.CliRenderer, destPtr: [*]u8, maxLen: usize) usize {
+    return rendererPtr.copyWriteBuffer(destPtr, maxLen);
+}
+
+export fn setupTerminalToBuffer(rendererPtr: *renderer.CliRenderer, useAlternateScreen: bool) usize {
+    return rendererPtr.setupTerminalToBuffer(useAlternateScreen);
+}
+
+export fn teardownTerminalToBuffer(rendererPtr: *renderer.CliRenderer) usize {
+    return rendererPtr.teardownTerminalToBuffer();
+}
+
 export fn updateStats(rendererPtr: *renderer.CliRenderer, time: f64, fps: u32, frameCallbackTime: f64) void {
     rendererPtr.updateStats(time, fps, frameCallbackTime);
 }

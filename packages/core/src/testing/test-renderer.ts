@@ -10,6 +10,7 @@ export interface TestRendererOptions extends CliRendererConfig {
   height?: number
   kittyKeyboard?: boolean
   otherModifiersMode?: boolean
+  interceptStdout?: boolean
 }
 export interface TestRenderer extends CliRenderer {}
 export type MockInput = ReturnType<typeof createMockKeys>
@@ -38,7 +39,9 @@ export async function createTestRenderer(options: TestRendererOptions): Promise<
     useConsole: false,
   })
 
-  renderer.disableStdoutInterception()
+  if (!(options.interceptStdout ?? false)) {
+    renderer.disableStdoutInterception()
+  }
 
   const mockInput = createMockKeys(renderer, {
     kittyKeyboard: options.kittyKeyboard,
@@ -100,7 +103,7 @@ async function setupTestRenderer(config: TestRendererOptions) {
     config.useThread = true
   }
 
-  if (process.platform === "linux") {
+  if (config.outputMode === "javascript" || process.platform === "linux") {
     config.useThread = false
   }
   ziglib.setUseThread(rendererPtr, config.useThread)
