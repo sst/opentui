@@ -519,6 +519,12 @@ describe("Yoga Prop Setters - marginX", () => {
       renderable.marginX = "auto"
     }).not.toThrow()
   })
+  test("accepts percentage", () => {
+    const renderable = new TestRenderable(testRenderer, { id: "test-margin-x-percent" })
+    expect(() => {
+      renderable.marginX = "10%"
+    }).not.toThrow()
+  })
   test("accepts null", () => {
     const renderable = new TestRenderable(testRenderer, { id: "test-margin-x-null" })
     expect(() => {
@@ -544,6 +550,12 @@ describe("Yoga Prop Setters - marginY", () => {
     const renderable = new TestRenderable(testRenderer, { id: "test-margin-y-auto" })
     expect(() => {
       renderable.marginY = "auto"
+    }).not.toThrow()
+  })
+  test("accepts percentage", () => {
+    const renderable = new TestRenderable(testRenderer, { id: "test-margin-y-percent" })
+    expect(() => {
+      renderable.marginY = "10%"
     }).not.toThrow()
   })
   test("accepts null", () => {
