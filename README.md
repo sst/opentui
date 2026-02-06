@@ -10,6 +10,8 @@ OpenTUI is a TypeScript library for building terminal user interfaces (TUIs). It
 development and is not ready for production use. It will be the foundational TUI framework for both
 [OpenCode](https://opencode.ai) and [terminaldotshop](https://terminal.shop).
 
+Docs: https://opentui.com/docs/getting-started
+
 Quick start with [bun](https://bun.sh) and [create-tui](https://github.com/msmps/create-tui):
 
 ```bash
@@ -78,6 +80,7 @@ See the [Development Guide](packages/core/docs/development.md) for building, tes
 
 ### Documentation
 
+- [Website docs](https://opentui.com/docs/getting-started) - Guides and API references
 - [Development Guide](packages/core/docs/development.md) - Building, testing, and local dev linking
 - [Getting Started](packages/core/docs/getting-started.md) - API and usage guide
 - [Environment Variables](packages/core/docs/env-vars.md) - Configuration options

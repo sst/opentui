@@ -93,6 +93,7 @@ export interface CliRendererConfig {
   postProcessFns?: ((buffer: OptimizedBuffer, deltaTime: number) => void)[]
   enableMouseMovement?: boolean
   useMouse?: boolean
+  autoFocus?: boolean
   useAlternateScreen?: boolean
   useConsole?: boolean
   experimental_splitHeight?: number
@@ -271,11 +272,6 @@ export async function createCliRenderer(config: CliRendererConfig = {}): Promise
     config.useThread = true
   }
 
-  // Disable threading on linux because there currently is currently an issue
-  // might be just a missing dependency for the build or something, but threads crash on linux
-  if (process.platform === "linux") {
-    config.useThread = false
-  }
   ziglib.setUseThread(rendererPtr, config.useThread)
 
   const kittyConfig = config.useKittyKeyboard ?? {}
@@ -383,6 +379,7 @@ export class CliRenderer extends EventEmitter implements RenderContext {
 
   private enableMouseMovement: boolean = false
   private _useMouse: boolean = true
+  private autoFocus: boolean = true
   private _useAlternateScreen: boolean = env.OTUI_USE_ALTERNATE_SCREEN
   private _suspendedMouseEnabled: boolean = false
   private _previousControlState: RendererControlState = RendererControlState.IDLE
@@ -538,6 +535,7 @@ export class CliRenderer extends EventEmitter implements RenderContext {
     this.maxStatSamples = config.maxStatSamples || 300
     this.enableMouseMovement = config.enableMouseMovement ?? true
     this._useMouse = config.useMouse ?? true
+    this.autoFocus = config.autoFocus ?? true
     this._useAlternateScreen = config.useAlternateScreen ?? env.OTUI_USE_ALTERNATE_SCREEN
     this.nextRenderBuffer = this.lib.getNextBuffer(this.rendererPtr)
     this.currentRenderBuffer = this.lib.getCurrentBuffer(this.rendererPtr)
@@ -1113,7 +1111,7 @@ export class CliRenderer extends EventEmitter implements RenderContext {
     const event = new MouseEvent(target, attributes)
     target.processMouseEvent(event)
 
-    if (event.type === "down" && event.button === MouseButton.LEFT && !event.defaultPrevented) {
+    if (this.autoFocus && event.type === "down" && event.button === MouseButton.LEFT && !event.defaultPrevented) {
       let current: Renderable | null = target
       while (current) {
         if (current.focusable) {

@@ -2597,6 +2597,78 @@ test "EditorView - placeholder renders to buffer when empty" {
     try std.testing.expect(!std.mem.startsWith(u8, result2, "Type something..."));
 }
 
+test "EditorView - placeholder shrink clears tail and preserves background" {
+    const pool = gp.initGlobalPool(std.testing.allocator);
+    defer gp.deinitGlobalPool();
+
+    var eb = try EditBuffer.init(std.testing.allocator, pool, .wcwidth);
+    defer eb.deinit();
+
+    var ev = try EditorView.init(std.testing.allocator, eb, 80, 10);
+    defer ev.deinit();
+
+    const long_text = "Ask anything... \"Fix a TODO in the codebase\"";
+    const short_text = "Run a command... \"pwd\"";
+    const fg = text_buffer.RGBA{ 0.6, 0.6, 0.6, 1.0 };
+    const panel_bg = text_buffer.RGBA{ 0.14, 0.14, 0.16, 1.0 };
+
+    const long_chunks = [_]text_buffer.StyledChunk{.{
+        .text_ptr = long_text.ptr,
+        .text_len = long_text.len,
+        .fg_ptr = @ptrCast(&fg),
+        .bg_ptr = null,
+        .attributes = 0,
+    }};
+    const short_chunks = [_]text_buffer.StyledChunk{.{
+        .text_ptr = short_text.ptr,
+        .text_len = short_text.len,
+        .fg_ptr = @ptrCast(&fg),
+        .bg_ptr = null,
+        .attributes = 0,
+    }};
+
+    var opt_buffer = try opt_buffer_mod.OptimizedBuffer.init(
+        std.testing.allocator,
+        120,
+        10,
+        .{ .pool = pool, .width_method = .wcwidth },
+    );
+    defer opt_buffer.deinit();
+
+    try opt_buffer.clear(.{ 0.0, 0.0, 0.0, 1.0 }, 32);
+
+    var x: u32 = 0;
+    while (x < 80) : (x += 1) {
+        opt_buffer.set(x, 0, .{ .char = 32, .fg = fg, .bg = panel_bg, .attributes = 0 });
+    }
+
+    try ev.setPlaceholderStyledText(&long_chunks);
+    try opt_buffer.drawEditorView(ev, 0, 0);
+
+    x = 0;
+    while (x < 80) : (x += 1) {
+        opt_buffer.set(x, 0, .{ .char = 32, .fg = fg, .bg = panel_bg, .attributes = 0 });
+    }
+
+    try ev.setPlaceholderStyledText(&short_chunks);
+    try opt_buffer.drawEditorView(ev, 0, 0);
+
+    var out_buffer: [1600]u8 = undefined;
+    const written = try opt_buffer.writeResolvedChars(&out_buffer, false);
+    const line = out_buffer[0..written];
+
+    try std.testing.expect(std.mem.indexOf(u8, line, short_text) != null);
+    try std.testing.expect(std.mem.indexOf(u8, line, "roken tests") == null);
+    try std.testing.expect(std.mem.indexOf(u8, line, "TODO in the codebase") == null);
+
+    const tail = opt_buffer.get(35, 0) orelse return error.TestUnexpectedResult;
+    try std.testing.expectEqual(@as(u32, 32), tail.char);
+    try std.testing.expectEqual(@as(f32, panel_bg[0]), tail.bg[0]);
+    try std.testing.expectEqual(@as(f32, panel_bg[1]), tail.bg[1]);
+    try std.testing.expectEqual(@as(f32, panel_bg[2]), tail.bg[2]);
+    try std.testing.expectEqual(@as(f32, panel_bg[3]), tail.bg[3]);
+}
+
 test "EditorView - tab indicator set and get" {
     const pool = gp.initGlobalPool(std.testing.allocator);
     defer gp.deinitGlobalPool();
@@ -2963,10 +3035,6 @@ test "EditorView - backspace emoji with skin tone modifier unicode" {
     try std.testing.expectEqual(@as(usize, 0), len_after);
     try std.testing.expectEqualStrings("", buffer_after[0..len_after]);
 }
-
-
-
-
 
 test "EditorView - mouse selection doesn't scroll when focus is within viewport" {
     const pool = gp.initGlobalPool(std.testing.allocator);

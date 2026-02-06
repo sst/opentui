@@ -1,5 +1,6 @@
 import { test, expect, beforeEach, afterEach } from "bun:test"
 import { MarkdownRenderable } from "../Markdown"
+import { TextRenderable } from "../Text"
 import { SyntaxStyle } from "../../syntax-style"
 import { RGBA } from "../../lib/RGBA"
 import { createTestRenderer, type TestRenderer } from "../../testing"
@@ -1713,4 +1714,78 @@ The table alignment uses:
   expect(headingSpan2!.fg.g).toBe(1)
   expect(headingSpan2!.fg.b).toBe(0)
   expect(headingSpan2!.attributes & TextAttributes.BOLD).toBeTruthy()
+})
+
+// OSC 8 link metadata tests
+
+test("link chunks include link metadata for OSC 8 hyperlinks (conceal=true)", async () => {
+  const md = new MarkdownRenderable(renderer, {
+    id: "markdown",
+    content: "Check [Google](https://google.com) out",
+    syntaxStyle,
+    conceal: true,
+  })
+
+  renderer.root.add(md)
+  await renderOnce()
+
+  const textRenderable = md._blockStates[0]?.renderable as TextRenderable
+  const chunks = textRenderable.content.chunks
+  const linkChunks = chunks.filter((c) => c.link?.url === "https://google.com")
+
+  expect(linkChunks.length).toBeGreaterThan(0)
+  expect(linkChunks.some((c) => c.text === "Google")).toBe(true)
+  expect(linkChunks.some((c) => c.text === "https://google.com")).toBe(true)
+})
+
+test("link chunks include link metadata (conceal=false)", async () => {
+  const md = new MarkdownRenderable(renderer, {
+    id: "markdown",
+    content: "Check [Google](https://google.com) out",
+    syntaxStyle,
+    conceal: false,
+  })
+
+  renderer.root.add(md)
+  await renderOnce()
+
+  const textRenderable = md._blockStates[0]?.renderable as TextRenderable
+  const chunks = textRenderable.content.chunks
+  const linkChunks = chunks.filter((c) => c.link?.url === "https://google.com")
+
+  expect(linkChunks.length).toBeGreaterThan(0)
+  expect(linkChunks.some((c) => c.text === "Google")).toBe(true)
+  expect(linkChunks.some((c) => c.text === "https://google.com")).toBe(true)
+})
+
+test("image chunks include link metadata", async () => {
+  const md = new MarkdownRenderable(renderer, {
+    id: "markdown",
+    content: "![alt](https://example.com/img.png)",
+    syntaxStyle,
+    conceal: true,
+  })
+
+  renderer.root.add(md)
+  await renderOnce()
+
+  const textRenderable = md._blockStates[0]?.renderable as TextRenderable
+  const chunks = textRenderable.content.chunks
+  const linkChunks = chunks.filter((c) => c.link?.url === "https://example.com/img.png")
+  expect(linkChunks.length).toBeGreaterThan(0)
+})
+
+test("non-link text does not have link metadata", async () => {
+  const md = new MarkdownRenderable(renderer, {
+    id: "markdown",
+    content: "No links here, just **bold** text.",
+    syntaxStyle,
+  })
+
+  renderer.root.add(md)
+  await renderOnce()
+
+  const textRenderable = md._blockStates[0]?.renderable as TextRenderable
+  const chunks = textRenderable.content.chunks
+  expect(chunks.every((c) => !c.link)).toBe(true)
 })
