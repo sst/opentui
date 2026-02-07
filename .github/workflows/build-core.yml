@@ -119,7 +119,9 @@ jobs:
         run: bun install
 
       - name: Smoke test core import on Windows
-        run: bun -e "await import('@opentui/core')"
+        run: |
+          cd packages/core
+          bun -e "await import('./src/index.ts')"
 
   # Gate job for branch protection
   build-complete:

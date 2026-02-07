@@ -24,7 +24,9 @@ describe("solid bun plugin server runtime filters", () => {
     expect(SOLID_STORE_SERVER_RUNTIME_FILTER.test(unixPath)).toBe(true)
     expect(SOLID_STORE_SERVER_RUNTIME_FILTER.test(windowsPath)).toBe(true)
     expect(rewriteSolidStoreServerRuntimePath(unixPath)).toBe("/tmp/node_modules/solid-js/store/dist/store.js")
-    expect(rewriteSolidStoreServerRuntimePath(windowsPath)).toBe("C:\\tmp\\node_modules\\solid-js\\store\\dist\\store.js")
+    expect(rewriteSolidStoreServerRuntimePath(windowsPath)).toBe(
+      "C:\\tmp\\node_modules\\solid-js\\store\\dist\\store.js",
+    )
   })
 
   it("does not match non-server runtime paths", () => {
