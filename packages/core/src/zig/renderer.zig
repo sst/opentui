@@ -458,6 +458,7 @@ pub const CliRenderer = struct {
         const currentHitGridSize = self.hitGridWidth * self.hitGridHeight;
         if (newHitGridSize > currentHitGridSize) {
             const newCurrentHitGrid = try self.allocator.alloc(u32, newHitGridSize);
+            errdefer self.allocator.free(newCurrentHitGrid);
             const newNextHitGrid = try self.allocator.alloc(u32, newHitGridSize);
             @memset(newCurrentHitGrid, 0);
             @memset(newNextHitGrid, 0);
