@@ -429,6 +429,21 @@ export abstract class Renderable extends BaseRenderable {
     this.emit(RenderableEvents.BLURRED)
   }
 
+  /**
+   * Scroll the nearest ScrollBox ancestor so that this renderable is fully visible.
+   * No-op if no ScrollBox ancestor exists.
+   */
+  public scrollIntoView(): void {
+    let current: Renderable | null = this.parent
+    while (current) {
+      if ("scrollChildIntoView" in current) {
+        ;(current as Renderable & { scrollChildIntoView: (child: Renderable) => void }).scrollChildIntoView(this)
+        return
+      }
+      current = current.parent
+    }
+  }
+
   public get focused(): boolean {
     return this._focused
   }

@@ -380,6 +380,24 @@ export class ScrollBoxRenderable extends BoxRenderable {
     // the scrollTop/scrollLeft setters handle it
   }
 
+  /**
+   * Scroll the minimum amount needed to make `child` fully visible in the viewport.
+   * If the child is already visible, does nothing. If the child is taller than the
+   * viewport, aligns to the top edge.
+   */
+  private scrollChildIntoView(child: Renderable): void {
+    const childTop = child.y - this.content.y
+    const childBottom = childTop + child.height
+    const viewTop = this.scrollTop
+    const viewBottom = viewTop + this.viewport.height
+
+    if (childTop < viewTop) {
+      this.scrollTop = childTop
+    } else if (childBottom > viewBottom) {
+      this.scrollTop = childBottom - this.viewport.height
+    }
+  }
+
   private isAtStickyPosition(): boolean {
     if (!this._stickyScroll || !this._stickyStart) {
       return false
