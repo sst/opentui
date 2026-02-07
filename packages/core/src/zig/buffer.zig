@@ -190,13 +190,24 @@ pub const OptimizedBuffer = struct {
         errdefer opacity_stack.deinit(allocator);
 
         const lp = options.link_pool orelse link.initGlobalLinkPool(allocator);
+        const char_buffer = allocator.alloc(u32, size) catch return BufferError.OutOfMemory;
+        errdefer allocator.free(char_buffer);
+
+        const fg_buffer = allocator.alloc(RGBA, size) catch return BufferError.OutOfMemory;
+        errdefer allocator.free(fg_buffer);
+
+        const bg_buffer = allocator.alloc(RGBA, size) catch return BufferError.OutOfMemory;
+        errdefer allocator.free(bg_buffer);
+
+        const attributes_buffer = allocator.alloc(u32, size) catch return BufferError.OutOfMemory;
+        errdefer allocator.free(attributes_buffer);
 
         self.* = .{
             .buffer = .{
-                .char = allocator.alloc(u32, size) catch return BufferError.OutOfMemory,
-                .fg = allocator.alloc(RGBA, size) catch return BufferError.OutOfMemory,
-                .bg = allocator.alloc(RGBA, size) catch return BufferError.OutOfMemory,
-                .attributes = allocator.alloc(u32, size) catch return BufferError.OutOfMemory,
+                .char = char_buffer,
+                .fg = fg_buffer,
+                .bg = bg_buffer,
+                .attributes = attributes_buffer,
             },
             .width = width,
             .height = height,
