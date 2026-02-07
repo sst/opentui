@@ -22,7 +22,23 @@ import {
 import { isBunfsPath } from "./lib/bunfs"
 import { attributesWithLink } from "./utils"
 
-const module = await import(`@opentui/core-${process.platform}-${process.arch}/index.ts`)
+const nativePackageName = `@opentui/core-${process.platform}-${process.arch}`
+let module: { default: string }
+try {
+  module = (await import(`${nativePackageName}/index.ts`)) as { default: string }
+} catch (error) {
+  throw new Error(
+    [
+      `Failed to load native OpenTUI package: ${nativePackageName}`,
+      "Install dependencies for this OS/arch environment and try again.",
+      "If you switched between Windows and WSL/macOS/Linux, reinstall dependencies in the current environment.",
+      "Recommended recovery:",
+      "  bun install",
+      `  bun add --no-save ${nativePackageName}`,
+    ].join("\n"),
+    { cause: error },
+  )
+}
 let targetLibPath = module.default
 
 if (isBunfsPath(targetLibPath)) {
