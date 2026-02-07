@@ -171,18 +171,28 @@ pub const CliRenderer = struct {
         remote: bool,
     ) !*CliRenderer {
         const self = try allocator.create(CliRenderer);
+        errdefer allocator.destroy(self);
 
         const currentBuffer = try OptimizedBuffer.init(allocator, width, height, .{ .pool = pool, .width_method = .unicode, .id = "current buffer" });
+        errdefer currentBuffer.deinit();
         const nextBuffer = try OptimizedBuffer.init(allocator, width, height, .{ .pool = pool, .width_method = .unicode, .id = "next buffer" });
+        errdefer nextBuffer.deinit();
 
         // stat sample arrays
         var lastFrameTime: std.ArrayListUnmanaged(f64) = .{};
+        errdefer lastFrameTime.deinit(allocator);
         var renderTime: std.ArrayListUnmanaged(f64) = .{};
+        errdefer renderTime.deinit(allocator);
         var overallFrameTime: std.ArrayListUnmanaged(f64) = .{};
+        errdefer overallFrameTime.deinit(allocator);
         var bufferResetTime: std.ArrayListUnmanaged(f64) = .{};
+        errdefer bufferResetTime.deinit(allocator);
         var stdoutWriteTime: std.ArrayListUnmanaged(f64) = .{};
+        errdefer stdoutWriteTime.deinit(allocator);
         var cellsUpdated: std.ArrayListUnmanaged(u32) = .{};
+        errdefer cellsUpdated.deinit(allocator);
         var frameCallbackTimes: std.ArrayListUnmanaged(f64) = .{};
+        errdefer frameCallbackTimes.deinit(allocator);
 
         try lastFrameTime.ensureTotalCapacity(allocator, STAT_SAMPLE_CAPACITY);
         try renderTime.ensureTotalCapacity(allocator, STAT_SAMPLE_CAPACITY);
@@ -194,7 +204,9 @@ pub const CliRenderer = struct {
 
         const hitGridSize = width * height;
         const currentHitGrid = try allocator.alloc(u32, hitGridSize);
+        errdefer allocator.free(currentHitGrid);
         const nextHitGrid = try allocator.alloc(u32, hitGridSize);
+        errdefer allocator.free(nextHitGrid);
         @memset(currentHitGrid, 0); // Initialize with 0 (no renderable)
         @memset(nextHitGrid, 0);
         const hitScissorStack: std.ArrayListUnmanaged(buf.ClipRect) = .{};
