@@ -533,6 +533,10 @@ export abstract class Renderable extends BaseRenderable {
       }
     }
 
+    if (this._trapFocus) {
+      event.stopPropagation()
+    }
+
     if (this.parent && !event.propagationStopped) {
       this.parent.processPasteEvent(event)
     }
@@ -1582,7 +1586,7 @@ export abstract class Renderable extends BaseRenderable {
   protected override onParentAdded(): void {
     this._didAutoFocus = false
     this.activateScope()
-    if (this._autoFocus && !this._didAutoFocus) {
+    if (this._autoFocus) {
       this._didAutoFocus = true
       this.performAutoFocus()
     }
