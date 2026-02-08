@@ -564,6 +564,7 @@ export class CliRenderer extends EventEmitter implements RenderContext {
     const kittyConfig = config.useKittyKeyboard ?? {}
     const useKittyForParsing = kittyConfig !== null
     this._keyHandler = new InternalKeyHandler(useKittyForParsing)
+    this._keyHandler.setFocusedRenderableProvider(() => this._currentFocusedRenderable)
     this._keyHandler.on("keypress", (event) => {
       if (this.exitOnCtrlC && event.name === "c" && event.ctrl) {
         process.nextTick(() => {
@@ -650,14 +651,15 @@ export class CliRenderer extends EventEmitter implements RenderContext {
     return this._currentFocusedRenderable
   }
 
-  public focusRenderable(renderable: Renderable) {
+  public focusRenderable(renderable: Renderable | null) {
     if (this._currentFocusedRenderable === renderable) return
 
-    if (this._currentFocusedRenderable) {
-      this._currentFocusedRenderable.blur()
-    }
-
+    const previousFocused = this._currentFocusedRenderable
     this._currentFocusedRenderable = renderable
+
+    if (previousFocused && previousFocused !== renderable && previousFocused.focused) {
+      previousFocused.blur()
+    }
   }
 
   private setCapturedRenderable(renderable: Renderable | undefined): void {
@@ -792,10 +794,6 @@ export class CliRenderer extends EventEmitter implements RenderContext {
   }
 
   public get keyInput(): KeyHandler {
-    return this._keyHandler
-  }
-
-  public get _internalKeyInput(): InternalKeyHandler {
     return this._keyHandler
   }
 

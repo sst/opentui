@@ -1,6 +1,7 @@
 import { EventEmitter } from "events"
 import { parseKeypress, type KeyEventType, type ParsedKey } from "./parse.keypress"
 import { ANSI } from "../ansi"
+import type { Renderable } from "../Renderable"
 
 export class KeyEvent implements ParsedKey {
   name: string
@@ -144,42 +145,67 @@ export class KeyHandler extends EventEmitter<KeyHandlerEventMap> {
  */
 export class InternalKeyHandler extends KeyHandler {
   private renderableHandlers: Map<keyof KeyHandlerEventMap, Set<Function>> = new Map()
+  private focusedRenderableProvider: (() => Renderable | null) | null = null
 
   constructor(useKittyKeyboard: boolean = false) {
     super(useKittyKeyboard)
   }
 
-  public emit<K extends keyof KeyHandlerEventMap>(event: K, ...args: KeyHandlerEventMap[K]): boolean {
+  public override emit<K extends keyof KeyHandlerEventMap>(event: K, ...args: KeyHandlerEventMap[K]): boolean {
     return this.emitWithPriority(event, ...args)
   }
 
   private emitWithPriority<K extends keyof KeyHandlerEventMap>(event: K, ...args: KeyHandlerEventMap[K]): boolean {
-    let hasGlobalListeners = false
-
-    // Check if we should emit to global handlers
-    // Global handlers are emitted using the parent EventEmitter which calls all listeners
-    // We need to manually iterate to check for stopPropagation between handlers
-    const globalListeners = this.listeners(event as any)
-    if (globalListeners.length > 0) {
-      hasGlobalListeners = true
-
-      for (const listener of globalListeners) {
-        try {
-          listener(...args)
-        } catch (error) {
-          console.error(`[KeyHandler] Error in global ${event} handler:`, error)
+    if (event === "keypress" || event === "keyrelease" || event === "paste") {
+      const focusedRenderable = this.focusedRenderableProvider?.()
+      if (focusedRenderable && !focusedRenderable.isDestroyed) {
+        const keyEvent = args[0]
+        switch (event) {
+          case "keypress":
+            focusedRenderable.processKeyEvent(keyEvent as KeyEvent)
+            break
+          case "keyrelease":
+            focusedRenderable.processKeyReleaseEvent(keyEvent as KeyEvent)
+            break
+          case "paste":
+            focusedRenderable.processPasteEvent(keyEvent as PasteEvent)
+            break
         }
-
-        // Check if propagation was stopped after this handler
-        if (event === "keypress" || event === "keyrelease" || event === "paste") {
-          const keyEvent = args[0]
-          if (keyEvent.propagationStopped) {
-            return hasGlobalListeners
-          }
+        if (keyEvent.propagationStopped) {
+          return true
         }
       }
     }
 
+    const hasGlobalListeners = this.emitGlobalListeners(event, ...args)
+    if (this.eventPropagationStopped(event, ...args)) {
+      return hasGlobalListeners
+    }
+
+    const hasRenderableListeners = this.emitInternalListeners(event, ...args)
+    return hasGlobalListeners || hasRenderableListeners
+  }
+
+  private emitGlobalListeners<K extends keyof KeyHandlerEventMap>(event: K, ...args: KeyHandlerEventMap[K]): boolean {
+    let hasGlobalListeners = false
+    const globalListeners = this.listeners(event as any)
+    if (globalListeners.length === 0) return false
+
+    hasGlobalListeners = true
+    for (const listener of globalListeners) {
+      try {
+        listener(...args)
+      } catch (error) {
+        console.error(`[KeyHandler] Error in global ${event} handler:`, error)
+      }
+      if (this.eventPropagationStopped(event, ...args)) {
+        return hasGlobalListeners
+      }
+    }
+    return hasGlobalListeners
+  }
+
+  private emitInternalListeners<K extends keyof KeyHandlerEventMap>(event: K, ...args: KeyHandlerEventMap[K]): boolean {
     const renderableSet = this.renderableHandlers.get(event)
     // Snapshot the handler list so listeners added during dispatch (e.g., via focus changes)
     // do not receive the in-flight key event.
@@ -189,10 +215,8 @@ export class InternalKeyHandler extends KeyHandler {
     if (renderableSet && renderableSet.size > 0) {
       hasRenderableListeners = true
 
-      if (event === "keypress" || event === "keyrelease" || event === "paste") {
-        const keyEvent = args[0]
-        if (keyEvent.defaultPrevented) return hasGlobalListeners || hasRenderableListeners
-        if (keyEvent.propagationStopped) return hasGlobalListeners || hasRenderableListeners
+      if (this.eventPreventedOrStopped(event, ...args)) {
+        return hasRenderableListeners
       }
 
       for (const handler of renderableHandlers) {
@@ -202,17 +226,33 @@ export class InternalKeyHandler extends KeyHandler {
           console.error(`[KeyHandler] Error in renderable ${event} handler:`, error)
         }
 
-        // Check if propagation was stopped after this handler
-        if (event === "keypress" || event === "keyrelease" || event === "paste") {
-          const keyEvent = args[0]
-          if (keyEvent.propagationStopped) {
-            return hasGlobalListeners || hasRenderableListeners
-          }
+        if (this.eventPropagationStopped(event, ...args)) {
+          return hasRenderableListeners
         }
       }
     }
 
-    return hasGlobalListeners || hasRenderableListeners
+    return hasRenderableListeners
+  }
+
+  private eventPreventedOrStopped<K extends keyof KeyHandlerEventMap>(event: K, ...args: KeyHandlerEventMap[K]): boolean {
+    if (event === "keypress" || event === "keyrelease" || event === "paste") {
+      const keyEvent = args[0]
+      return keyEvent.defaultPrevented || keyEvent.propagationStopped
+    }
+    return false
+  }
+
+  private eventPropagationStopped<K extends keyof KeyHandlerEventMap>(event: K, ...args: KeyHandlerEventMap[K]): boolean {
+    if (event === "keypress" || event === "keyrelease" || event === "paste") {
+      const keyEvent = args[0]
+      return keyEvent.propagationStopped
+    }
+    return false
+  }
+
+  public setFocusedRenderableProvider(provider: () => Renderable | null): void {
+    this.focusedRenderableProvider = provider
   }
 
   public onInternal<K extends keyof KeyHandlerEventMap>(

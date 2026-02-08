@@ -33,6 +33,12 @@ import {
   isPositionTypeType,
   isOverflowType,
 } from "./lib/renderable.validations"
+import {
+  focusNext,
+  focusPrev,
+  getNextFocusTargetAfterRemoval,
+  isDescendantOf,
+} from "./lib/focus-traversal"
 
 const BrandedRenderable: unique symbol = Symbol.for("@opentui/core/Renderable")
 
@@ -103,6 +109,8 @@ export interface RenderableOptions<T extends BaseRenderable = BaseRenderable> ex
   buffered?: boolean
   live?: boolean
   opacity?: number
+  trapFocus?: boolean
+  autoFocus?: boolean
 
   // hooks for custom render logic
   renderBefore?: (this: T, buffer: OptimizedBuffer, deltaTime: number) => void
@@ -187,6 +195,11 @@ export abstract class BaseRenderable extends EventEmitter {
     // Override this method to provide custom destruction logic
   }
 
+  protected onParentAdded(): void {
+    // Default implementation: do nothing
+    // Override this method to provide custom mount logic
+  }
+
   public get visible(): boolean {
     return this._visible
   }
@@ -220,8 +233,11 @@ export abstract class Renderable extends BaseRenderable {
 
   protected _focusable: boolean = false
   protected _focused: boolean = false
-  protected keypressHandler: ((key: KeyEvent) => void) | null = null
-  protected pasteHandler: ((event: PasteEvent) => void) | null = null
+  protected _trapFocus: boolean = false
+  protected _autoFocus: boolean = false
+  protected _didAutoFocus: boolean = false
+  private _savedFocus: Renderable | null = null
+  private _scopeActive: boolean = false
 
   private _live: boolean = false
   protected _liveCount: number = 0
@@ -281,6 +297,11 @@ export abstract class Renderable extends BaseRenderable {
     this._live = options.live ?? false
     this._liveCount = this._live && this._visible ? 1 : 0
     this._opacity = options.opacity !== undefined ? Math.max(0, Math.min(1, options.opacity)) : 1.0
+    this._trapFocus = options.trapFocus ?? false
+    this._autoFocus = options.autoFocus ?? false
+    if (this._trapFocus) {
+      this._focusable = true
+    }
 
     // TODO: use a global yoga config
     this.yogaNode = Yoga.Node.create(yogaConfig)
@@ -312,6 +333,41 @@ export abstract class Renderable extends BaseRenderable {
 
   public set focusable(value: boolean) {
     this._focusable = value
+  }
+
+  public get trapFocus(): boolean {
+    return this._trapFocus
+  }
+
+  public set trapFocus(value: boolean | undefined) {
+    this._trapFocus = value ?? false
+    if (this._trapFocus) {
+      this._focusable = true
+    }
+    if (!this.parent) {
+      return
+    }
+    if (this._trapFocus) {
+      this.activateScope()
+      return
+    }
+    this.deactivateScope()
+  }
+
+  public get autoFocus(): boolean {
+    return this._autoFocus
+  }
+
+  public set autoFocus(value: boolean | undefined) {
+    this._autoFocus = value ?? false
+    if (!this._autoFocus) {
+      this._didAutoFocus = false
+      return
+    }
+    if (this.parent && !this._didAutoFocus) {
+      this._didAutoFocus = true
+      this.performAutoFocus()
+    }
   }
 
   public get ctx(): RenderContext {
@@ -384,29 +440,6 @@ export abstract class Renderable extends BaseRenderable {
     this._ctx.focusRenderable(this)
     this._focused = true
     this.requestRender()
-
-    this.keypressHandler = (key: KeyEvent) => {
-      if (this._isDestroyed) return
-      this._keyListeners["down"]?.(key)
-      // Check again after user listener - it might have destroyed the renderable
-      if (this._isDestroyed) return
-      if (!key.defaultPrevented && this.handleKeyPress) {
-        this.handleKeyPress(key)
-      }
-    }
-
-    this.pasteHandler = (event: PasteEvent) => {
-      if (this._isDestroyed) return
-      this._pasteListener?.call(this, event)
-      // Check again after user listener - it might have destroyed the renderable
-      if (this._isDestroyed) return
-      if (!event.defaultPrevented && this.handlePaste) {
-        this.handlePaste(event)
-      }
-    }
-
-    this.ctx._internalKeyInput.onInternal("keypress", this.keypressHandler)
-    this.ctx._internalKeyInput.onInternal("paste", this.pasteHandler)
     this.emit(RenderableEvents.FOCUSED)
   }
 
@@ -415,15 +448,8 @@ export abstract class Renderable extends BaseRenderable {
 
     this._focused = false
     this.requestRender()
-
-    if (this.keypressHandler) {
-      this.ctx._internalKeyInput.offInternal("keypress", this.keypressHandler)
-      this.keypressHandler = null
-    }
-
-    if (this.pasteHandler) {
-      this.ctx._internalKeyInput.offInternal("paste", this.pasteHandler)
-      this.pasteHandler = null
+    if (this._ctx.currentFocusedRenderable === this) {
+      this._ctx.focusRenderable(null)
     }
 
     this.emit(RenderableEvents.BLURRED)
@@ -459,6 +485,63 @@ export abstract class Renderable extends BaseRenderable {
 
   public handleKeyPress?(key: KeyEvent): boolean
   public handlePaste?(event: PasteEvent): void
+
+  public processKeyEvent(event: KeyEvent): void {
+    this.emit("keypress", event)
+
+    if (this._focused) {
+      this._keyListeners["down"]?.(event)
+      // Check again after user listener - it might have destroyed the renderable
+      if (this._isDestroyed) return
+      if (!event.defaultPrevented && this.handleKeyPress) {
+        this.handleKeyPress(event)
+      }
+    }
+
+    if (this._trapFocus && event.name === "tab") {
+      event.stopPropagation()
+      const currentlyFocused = this._ctx.currentFocusedRenderable
+      const current = currentlyFocused && isDescendantOf(currentlyFocused, this) ? currentlyFocused : null
+      const next = event.shift ? focusPrev(this, current) : focusNext(this, current)
+      next?.focus()
+      return
+    }
+
+    if (this._trapFocus && !(event.ctrl && event.name === "c")) {
+      event.stopPropagation()
+    }
+
+    if (this.parent && !event.propagationStopped) {
+      this.parent.processKeyEvent(event)
+    }
+  }
+
+  public processKeyReleaseEvent(event: KeyEvent): void {
+    this.emit("keyrelease", event)
+    if (this._trapFocus) {
+      event.stopPropagation()
+    }
+    if (this.parent && !event.propagationStopped) {
+      this.parent.processKeyReleaseEvent(event)
+    }
+  }
+
+  public processPasteEvent(event: PasteEvent): void {
+    this.emit("paste", event)
+
+    if (this._focused) {
+      this._pasteListener?.call(this, event)
+      // Check again after user listener - it might have destroyed the renderable
+      if (this._isDestroyed) return
+      if (!event.defaultPrevented && this.handlePaste) {
+        this.handlePaste(event)
+      }
+    }
+
+    if (this.parent && !event.propagationStopped) {
+      this.parent.processPasteEvent(event)
+    }
+  }
 
   public findDescendantById(id: string): Renderable | undefined {
     for (const child of this._childrenInLayoutOrder) {
@@ -1138,6 +1221,8 @@ export abstract class Renderable extends BaseRenderable {
       if (renderable._liveCount > 0) {
         this.propagateLiveCount(renderable._liveCount)
       }
+
+      renderable.onParentAdded()
     }
 
     const childLayoutNode = renderable.getLayoutNode()
@@ -1215,6 +1300,8 @@ export abstract class Renderable extends BaseRenderable {
       if (renderable._liveCount > 0) {
         this.propagateLiveCount(renderable._liveCount)
       }
+
+      renderable.onParentAdded()
     }
 
     this.childrenPrimarySortDirty = true
@@ -1245,6 +1332,19 @@ export abstract class Renderable extends BaseRenderable {
     if (this.renderableMapById.has(id)) {
       const obj = this.renderableMapById.get(id)
       if (obj) {
+        const currentlyFocused = this._ctx.currentFocusedRenderable
+        const focusedInsideRemoved =
+          currentlyFocused && (currentlyFocused === obj || isDescendantOf(currentlyFocused, obj))
+
+        let nextFocusTarget: Renderable | null = null
+        if (focusedInsideRemoved && this._trapFocus) {
+          nextFocusTarget = getNextFocusTargetAfterRemoval(this, currentlyFocused!, obj)
+        }
+
+        if (focusedInsideRemoved) {
+          currentlyFocused!.blur()
+        }
+
         if (obj._liveCount > 0) {
           this.propagateLiveCount(-obj._liveCount)
         }
@@ -1269,13 +1369,20 @@ export abstract class Renderable extends BaseRenderable {
         }
 
         this.childrenPrimarySortDirty = true
+
+        if (focusedInsideRemoved) {
+          if (nextFocusTarget && !nextFocusTarget.isDestroyed) {
+            nextFocusTarget.focus()
+          } else if (!this._ctx.currentFocusedRenderable || this._ctx.currentFocusedRenderable === currentlyFocused) {
+            this._ctx.focusRenderable(null)
+          }
+        }
       }
     }
   }
 
   protected onRemove(): void {
-    // Default implementation: do nothing
-    // Override this method to provide custom removal logic
+    this.deactivateScope()
   }
 
   public getChildren(): Renderable[] {
@@ -1386,8 +1493,10 @@ export abstract class Renderable extends BaseRenderable {
   }
 
   protected onUpdate(deltaTime: number): void {
-    // Default implementation: do nothing
-    // Override this method to provide custom rendering
+    if (this._autoFocus && !this._didAutoFocus) {
+      this._didAutoFocus = true
+      this.performAutoFocus()
+    }
   }
 
   protected getScissorRect(): { x: number; y: number; width: number; height: number } {
@@ -1432,6 +1541,7 @@ export abstract class Renderable extends BaseRenderable {
     this.renderableMapById.clear()
     Renderable.renderablesByNumber.delete(this.num)
 
+    this.deactivateScope()
     this.blur()
     this.removeAllListeners()
 
@@ -1457,6 +1567,54 @@ export abstract class Renderable extends BaseRenderable {
   protected destroySelf(): void {
     // Default implementation: do nothing else
     // Override this method to provide custom cleanup
+  }
+
+  private performAutoFocus(): void {
+    const currentlyFocused = this._ctx.currentFocusedRenderable
+    if (currentlyFocused && isDescendantOf(currentlyFocused, this)) return
+
+    const first = focusNext(this, null)
+    if (first) {
+      first.focus()
+      return
+    }
+
+    if (this.focusable) {
+      this.focus()
+    }
+  }
+
+  protected override onParentAdded(): void {
+    this._didAutoFocus = false
+    this.activateScope()
+    if (this._autoFocus && !this._didAutoFocus) {
+      this._didAutoFocus = true
+      this.performAutoFocus()
+    }
+  }
+
+  private activateScope(): void {
+    if (!this._trapFocus || this._scopeActive) return
+    this._scopeActive = true
+    this._savedFocus = this._ctx.currentFocusedRenderable
+  }
+
+  private deactivateScope(): void {
+    if (!this._scopeActive) return
+    this._scopeActive = false
+
+    const savedFocus = this._savedFocus
+    this._savedFocus = null
+
+    const canRestore = !!savedFocus && !savedFocus.isDestroyed && savedFocus.focusable && !!savedFocus.parent
+    if (canRestore) {
+      savedFocus.focus()
+      return
+    }
+
+    if (this._ctx.currentFocusedRenderable?.isDestroyed) {
+      this._ctx.focusRenderable(null)
+    }
   }
 
   public processMouseEvent(event: MouseEvent): void {
