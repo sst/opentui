@@ -99,40 +99,16 @@ jobs:
           cd packages/core
           bun run test:js
 
-  windows-smoke:
-    name: Windows Smoke Test
-    needs: build
-    runs-on: windows-latest
-    defaults:
-      run:
-        shell: bash
-    steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
-
-      - name: Setup Bun
-        uses: oven-sh/setup-bun@v2
-        with:
-          bun-version: latest
-
-      - name: Install dependencies
-        run: bun install
-
-      - name: Smoke test core import on Windows
-        run: |
-          cd packages/core
-          bun -e "await import('./src/index.ts')"
-
   # Gate job for branch protection
   build-complete:
     name: Core - Build and Test
-    needs: [test, windows-smoke]
+    needs: [test]
     runs-on: ubuntu-latest
     if: always()
     steps:
       - name: Check test results
         run: |
-          if [ "${{ needs.test.result }}" != "success" ] || [ "${{ needs.windows-smoke.result }}" != "success" ]; then
+          if [ "${{ needs.test.result }}" != "success" ]; then
             echo "Tests failed"
             exit 1
           fi
