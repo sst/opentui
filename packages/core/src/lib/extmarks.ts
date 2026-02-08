@@ -521,6 +521,8 @@ export class ExtmarksController {
       this.extmarks.delete(id)
       this.extmarksByTypeId.get(extmark.typeId)?.delete(id)
       this.metadata.delete(id)
+      this.onEncounterCallbacks.delete(id)
+      this.onDeletionCallbacks.delete(id)
     }
   }
 
@@ -682,6 +684,14 @@ export class ExtmarksController {
       this.metadata.set(id, options.metadata)
     }
 
+    if (options.onEncounter) {
+      this.onEncounterCallbacks.set(id, options.onEncounter)
+    }
+
+    if (options.onDeletion) {
+      this.onDeletionCallbacks.set(id, options.onDeletion)
+    }
+
     this.updateHighlights()
 
     return id
@@ -736,6 +746,8 @@ export class ExtmarksController {
     this.extmarks.clear()
     this.extmarksByTypeId.clear()
     this.metadata.clear()
+    this.onEncounterCallbacks.clear()
+    this.onDeletionCallbacks.clear()
     this.updateHighlights()
   }
 
@@ -849,6 +861,8 @@ export class ExtmarksController {
     this.extmarks.clear()
     this.extmarksByTypeId.clear()
     this.metadata.clear()
+    this.onEncounterCallbacks.clear()
+    this.onDeletionCallbacks.clear()
     this.typeNameToId.clear()
     this.typeIdToName.clear()
     this.history.clear()
