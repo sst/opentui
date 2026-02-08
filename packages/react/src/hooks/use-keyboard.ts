@@ -1,4 +1,5 @@
-import type { KeyEvent } from "@opentui/core"
+import { findClosestKeyboardScope, type KeyEvent, type Renderable } from "@opentui/core"
+import type { RefObject } from "react"
 import { useEffect } from "react"
 import { useAppContext } from "../components/app"
 import { useEffectEvent } from "./use-event"
@@ -6,6 +7,8 @@ import { useEffectEvent } from "./use-event"
 export interface UseKeyboardOptions {
   /** Include release events - callback receives events with eventType: "release" */
   release?: boolean
+  /** Ref used to discover the nearest keyboard scope. Falls back to global when none exists. */
+  ref?: RefObject<Renderable | null>
 }
 
 /**
@@ -29,15 +32,19 @@ export const useKeyboard = (handler: (key: KeyEvent) => void, options: UseKeyboa
   const stableHandler = useEffectEvent(handler)
 
   useEffect(() => {
-    keyHandler?.on("keypress", stableHandler)
+    const refTarget = options.ref?.current
+    const scopedTarget = refTarget ? findClosestKeyboardScope(refTarget) : null
+    const target = scopedTarget ?? keyHandler
+
+    target?.on("keypress", stableHandler)
     if (options?.release) {
-      keyHandler?.on("keyrelease", stableHandler)
+      target?.on("keyrelease", stableHandler)
     }
     return () => {
-      keyHandler?.off("keypress", stableHandler)
+      target?.off("keypress", stableHandler)
       if (options?.release) {
-        keyHandler?.off("keyrelease", stableHandler)
+        target?.off("keyrelease", stableHandler)
       }
     }
-  }, [keyHandler, options.release])
+  }, [keyHandler, options.ref, options.release])
 }

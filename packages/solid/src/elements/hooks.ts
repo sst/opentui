@@ -1,6 +1,8 @@
 import {
   engine,
+  findClosestKeyboardScope,
   PasteEvent,
+  Renderable,
   Selection,
   Timeline,
   type CliRenderer,
@@ -49,42 +51,40 @@ export const useTerminalDimensions = () => {
   return terminalDimensions
 }
 
+// ── Keyboard hooks ───────────────────────────────────────────────────
+
 export interface UseKeyboardOptions {
   /** Include release events - callback receives events with eventType: "release" */
   release?: boolean
+  /** Ref used to discover the nearest keyboard scope. Falls back to global when none exists. */
+  ref?: () => Renderable
 }
 
-/**
- * Subscribe to keyboard events.
- *
- * By default, only receives press events (including key repeats with `repeated: true`).
- * Use `options.release` to also receive release events.
- *
- * @example
- * // Basic press handling (includes repeats)
- * useKeyboard((e) => console.log(e.name, e.repeated ? "(repeat)" : ""))
- *
- * // With release events
- * useKeyboard((e) => {
- *   if (e.eventType === "release") keys.delete(e.name)
- *   else keys.add(e.name)
- * }, { release: true })
- */
 export const useKeyboard = (callback: (key: KeyEvent) => void, options?: UseKeyboardOptions) => {
   const renderer = useRenderer()
-  const keyHandler = renderer.keyInput
-  onMount(() => {
-    keyHandler.on("keypress", callback)
-    if (options?.release) {
-      keyHandler.on("keyrelease", callback)
-    }
-  })
 
-  onCleanup(() => {
-    keyHandler.off("keypress", callback)
-    if (options?.release) {
-      keyHandler.off("keyrelease", callback)
+  onMount(() => {
+    let target: Renderable | ReturnType<typeof useRenderer>["keyInput"] | null = null
+    let attempts = 0
+    const attach = () => {
+      if (target) return
+      const refTarget = options?.ref?.()
+      if (options?.ref && !refTarget && attempts < 5) {
+        attempts += 1
+        queueMicrotask(attach)
+        return
+      }
+      target = (refTarget ? findClosestKeyboardScope(refTarget) : null) ?? renderer.keyInput
+      target.on("keypress", callback)
+      if (options?.release) target.on("keyrelease", callback)
     }
+    attach()
+
+    onCleanup(() => {
+      if (!target) return
+      target.off("keypress", callback)
+      if (options?.release) target.off("keyrelease", callback)
+    })
   })
 }
 
