@@ -33,7 +33,7 @@ import {
   isPositionTypeType,
   isOverflowType,
 } from "./lib/renderable.validations"
-import { focusNext, focusPrev, getNextFocusTargetAfterRemoval, isDescendantOf } from "./lib/focus-traversal"
+import { nextFocusable, getNextFocusTargetAfterRemoval, isDescendantOf } from "./lib/focus-traversal"
 
 const BrandedRenderable: unique symbol = Symbol.for("@opentui/core/Renderable")
 
@@ -491,15 +491,6 @@ export abstract class Renderable extends BaseRenderable {
       if (!event.defaultPrevented && this.handleKeyPress) {
         this.handleKeyPress(event)
       }
-    }
-
-    if (this._trapFocus && event.name === "tab") {
-      event.stopPropagation()
-      const currentlyFocused = this._ctx.currentFocusedRenderable
-      const current = currentlyFocused && isDescendantOf(currentlyFocused, this) ? currentlyFocused : null
-      const next = event.shift ? focusPrev(this, current) : focusNext(this, current)
-      next?.focus()
-      return
     }
 
     if (this._trapFocus && !(event.ctrl && event.name === "c")) {
@@ -1572,7 +1563,7 @@ export abstract class Renderable extends BaseRenderable {
     const currentlyFocused = this._ctx.currentFocusedRenderable
     if (currentlyFocused && isDescendantOf(currentlyFocused, this)) return
 
-    const first = focusNext(this, null)
+    const first = nextFocusable(this, null)
     if (first) {
       first.focus()
       return

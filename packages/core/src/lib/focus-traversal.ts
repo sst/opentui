@@ -16,7 +16,7 @@ function walkFocusable(node: Renderable, result: Renderable[]): void {
   }
 }
 
-export function focusNext(root: Renderable, current: Renderable | null): Renderable | null {
+export function nextFocusable(root: Renderable, current: Renderable | null): Renderable | null {
   const focusables = collectFocusableDescendants(root)
   if (focusables.length === 0) return null
 
@@ -28,7 +28,7 @@ export function focusNext(root: Renderable, current: Renderable | null): Rendera
   return focusables[(idx + 1) % focusables.length]!
 }
 
-export function focusPrev(root: Renderable, current: Renderable | null): Renderable | null {
+export function prevFocusable(root: Renderable, current: Renderable | null): Renderable | null {
   const focusables = collectFocusableDescendants(root)
   if (focusables.length === 0) return null
 

@@ -388,59 +388,6 @@ describe("focus restoration", () => {
 })
 
 // ═══════════════════════════════════════════════════════════════════════════════
-// Tab cycling
-// ═══════════════════════════════════════════════════════════════════════════════
-
-describe("tab cycling", () => {
-  it("tab cycles through focusable children", async () => {
-    testSetup = await testRender(
-      () => (
-        <box {...scopeDefaults}>
-          <box id="a" focusable />
-          <box id="b" focusable />
-          <box id="c" focusable />
-        </box>
-      ),
-      { width: 40, height: 10, kittyKeyboard: true },
-    )
-
-    await testSetup.renderOnce()
-    expect(testSetup.renderer.currentFocusedRenderable?.id).toBe("a")
-
-    testSetup.mockInput.pressTab()
-    expect(testSetup.renderer.currentFocusedRenderable?.id).toBe("b")
-
-    testSetup.mockInput.pressTab()
-    expect(testSetup.renderer.currentFocusedRenderable?.id).toBe("c")
-
-    testSetup.mockInput.pressTab()
-    expect(testSetup.renderer.currentFocusedRenderable?.id).toBe("a")
-  })
-
-  it("shift+tab cycles backward", async () => {
-    testSetup = await testRender(
-      () => (
-        <box {...scopeDefaults}>
-          <box id="a" focusable />
-          <box id="b" focusable />
-          <box id="c" focusable />
-        </box>
-      ),
-      { width: 40, height: 10, kittyKeyboard: true },
-    )
-
-    await testSetup.renderOnce()
-    expect(testSetup.renderer.currentFocusedRenderable?.id).toBe("a")
-
-    testSetup.mockInput.pressTab({ shift: true })
-    expect(testSetup.renderer.currentFocusedRenderable?.id).toBe("c")
-
-    testSetup.mockInput.pressTab({ shift: true })
-    expect(testSetup.renderer.currentFocusedRenderable?.id).toBe("b")
-  })
-})
-
-// ═══════════════════════════════════════════════════════════════════════════════
 // autoFocus / trapFocus props
 // ═══════════════════════════════════════════════════════════════════════════════
 

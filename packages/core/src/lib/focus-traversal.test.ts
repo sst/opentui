@@ -1,7 +1,7 @@
 import { test, expect, beforeEach, afterEach } from "bun:test"
 import { createTestRenderer, type TestRenderer, type MockInput } from "../testing"
 import { BoxRenderable } from "../renderables/Box"
-import { collectFocusableDescendants, focusNext, focusPrev } from "./focus-traversal"
+import { collectFocusableDescendants, nextFocusable, prevFocusable } from "./focus-traversal"
 
 let renderer: TestRenderer
 
@@ -81,7 +81,7 @@ test("collectFocusableDescendants - invisible children skipped", () => {
   expect(result).toEqual([a, c])
 })
 
-test("focusNext - wraps at end", () => {
+test("nextFocusable - wraps at end", () => {
   const parent = new BoxRenderable(renderer, { id: "parent", width: 40, height: 10 })
   const a = new BoxRenderable(renderer, { id: "a", width: 10, height: 3, focusable: true })
   const b = new BoxRenderable(renderer, { id: "b", width: 10, height: 3, focusable: true })
@@ -89,10 +89,10 @@ test("focusNext - wraps at end", () => {
   parent.add(b)
   renderer.root.add(parent)
 
-  expect(focusNext(parent, b)).toBe(a)
+  expect(nextFocusable(parent, b)).toBe(a)
 })
 
-test("focusNext - null current returns first", () => {
+test("nextFocusable - null current returns first", () => {
   const parent = new BoxRenderable(renderer, { id: "parent", width: 40, height: 10 })
   const a = new BoxRenderable(renderer, { id: "a", width: 10, height: 3, focusable: true })
   const b = new BoxRenderable(renderer, { id: "b", width: 10, height: 3, focusable: true })
@@ -100,10 +100,10 @@ test("focusNext - null current returns first", () => {
   parent.add(b)
   renderer.root.add(parent)
 
-  expect(focusNext(parent, null)).toBe(a)
+  expect(nextFocusable(parent, null)).toBe(a)
 })
 
-test("focusNext - current not in tree returns first", () => {
+test("nextFocusable - current not in tree returns first", () => {
   const parent = new BoxRenderable(renderer, { id: "parent", width: 40, height: 10 })
   const a = new BoxRenderable(renderer, { id: "a", width: 10, height: 3, focusable: true })
   const outsider = new BoxRenderable(renderer, { id: "outsider", width: 10, height: 3, focusable: true })
@@ -111,10 +111,10 @@ test("focusNext - current not in tree returns first", () => {
   renderer.root.add(parent)
   renderer.root.add(outsider)
 
-  expect(focusNext(parent, outsider)).toBe(a)
+  expect(nextFocusable(parent, outsider)).toBe(a)
 })
 
-test("focusPrev - wraps at start", () => {
+test("prevFocusable - wraps at start", () => {
   const parent = new BoxRenderable(renderer, { id: "parent", width: 40, height: 10 })
   const a = new BoxRenderable(renderer, { id: "a", width: 10, height: 3, focusable: true })
   const b = new BoxRenderable(renderer, { id: "b", width: 10, height: 3, focusable: true })
@@ -122,10 +122,10 @@ test("focusPrev - wraps at start", () => {
   parent.add(b)
   renderer.root.add(parent)
 
-  expect(focusPrev(parent, a)).toBe(b)
+  expect(prevFocusable(parent, a)).toBe(b)
 })
 
-test("focusPrev - null current returns last", () => {
+test("prevFocusable - null current returns last", () => {
   const parent = new BoxRenderable(renderer, { id: "parent", width: 40, height: 10 })
   const a = new BoxRenderable(renderer, { id: "a", width: 10, height: 3, focusable: true })
   const b = new BoxRenderable(renderer, { id: "b", width: 10, height: 3, focusable: true })
@@ -133,17 +133,17 @@ test("focusPrev - null current returns last", () => {
   parent.add(b)
   renderer.root.add(parent)
 
-  expect(focusPrev(parent, null)).toBe(b)
+  expect(prevFocusable(parent, null)).toBe(b)
 })
 
-test("single focusable - focusNext and focusPrev return same element", () => {
+test("single focusable - nextFocusable and prevFocusable return same element", () => {
   const parent = new BoxRenderable(renderer, { id: "parent", width: 40, height: 10 })
   const only = new BoxRenderable(renderer, { id: "only", width: 10, height: 3, focusable: true })
   parent.add(only)
   renderer.root.add(parent)
 
-  expect(focusNext(parent, only)).toBe(only)
-  expect(focusPrev(parent, only)).toBe(only)
+  expect(nextFocusable(parent, only)).toBe(only)
+  expect(prevFocusable(parent, only)).toBe(only)
 })
 
 test("no focusable descendants - returns null", () => {
@@ -152,6 +152,6 @@ test("no focusable descendants - returns null", () => {
   parent.add(a)
   renderer.root.add(parent)
 
-  expect(focusNext(parent, null)).toBe(null)
-  expect(focusPrev(parent, null)).toBe(null)
+  expect(nextFocusable(parent, null)).toBe(null)
+  expect(prevFocusable(parent, null)).toBe(null)
 })
