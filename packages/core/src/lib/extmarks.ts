@@ -308,6 +308,8 @@ export class ExtmarksController {
       const virtualExtmark = this.findVirtualExtmarkContaining(targetOffset)
 
       if (virtualExtmark && currentOffset === virtualExtmark.end) {
+        if (!this.invokeDeletionHook(virtualExtmark, "backward")) return
+
         const startCursor = this.offsetToPosition(virtualExtmark.start)
         const endCursor = this.offsetToPosition(virtualExtmark.end)
         const deleteOffset = virtualExtmark.start
@@ -353,6 +355,8 @@ export class ExtmarksController {
       const virtualExtmark = this.findVirtualExtmarkContaining(targetOffset)
 
       if (virtualExtmark && currentOffset === virtualExtmark.start) {
+        if (!this.invokeDeletionHook(virtualExtmark, "forward")) return
+
         const startCursor = this.offsetToPosition(virtualExtmark.start)
         const endCursor = this.offsetToPosition(virtualExtmark.end)
         const deleteOffset = virtualExtmark.start
@@ -572,6 +576,37 @@ export class ExtmarksController {
       this.originalSetCursorByOffset(defaultSkipOffset)
     }
     return true
+  }
+
+  private invokeDeletionHook(
+    extmark: Extmark,
+    direction: ExtmarkDeletionEncounter["direction"],
+  ): boolean {
+    const onDeletion = this.onDeletionCallbacks.get(extmark.id)
+    if (!onDeletion) return true
+
+    let handled = false
+    let shouldDelete = true
+    try {
+      onDeletion({
+        extmark,
+        direction,
+        deleteExtmark: () => {
+          if (!handled) {
+            handled = true
+            shouldDelete = true
+          }
+        },
+        prevent: () => {
+          if (!handled) {
+            handled = true
+            shouldDelete = false
+          }
+        },
+      })
+    } catch {}
+
+    return shouldDelete
   }
 
   private findVirtualExtmarkContaining(offset: number): Extmark | null {
