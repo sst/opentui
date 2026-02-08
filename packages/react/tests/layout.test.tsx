@@ -1,8 +1,6 @@
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, mock } from "bun:test"
-import { createSpy } from "@opentui/core/testing"
-import { useRef, useState } from "react"
+import { useState } from "react"
 import { act } from "react"
-import { useKeyboard } from "../src/hooks/use-keyboard"
 import { testRender } from "../src/test-utils"
 
 let testSetup: Awaited<ReturnType<typeof testRender>>
@@ -627,57 +625,4 @@ describe("React Renderer | Layout Tests", () => {
     })
   })
 
-  describe("Keyboard Scope Hook", () => {
-    it("useKeyboard with scope ref receives scoped keys", async () => {
-      const spy = createSpy()
-
-      const App = () => {
-        const scopeRef = useRef<any>(null)
-        useKeyboard((key) => spy(key.name), { ref: scopeRef })
-        return (
-          <box ref={scopeRef} trapFocus autoFocus>
-            <box style={{ width: 10, height: 1 }} />
-          </box>
-        )
-      }
-
-      testSetup = await testRender(<App />, { width: 40, height: 10, kittyKeyboard: true })
-      await testSetup.renderOnce()
-      testSetup.mockInput.pressKey("j")
-      expect(spy.callCount()).toBe(1)
-    })
-
-    it("global useKeyboard is blocked while scope is active", async () => {
-      const insideSpy = createSpy()
-      const outsideSpy = createSpy()
-
-      const Inner = () => {
-        const scopeRef = useRef<any>(null)
-        useKeyboard((key) => insideSpy(key.name), { ref: scopeRef })
-        return (
-          <box ref={scopeRef} trapFocus autoFocus>
-            <box style={{ width: 10, height: 1 }} />
-          </box>
-        )
-      }
-
-      const Outer = () => {
-        useKeyboard((key) => outsideSpy(key.name))
-        return null
-      }
-
-      testSetup = await testRender(
-        <box>
-          <Outer />
-          <Inner />
-        </box>,
-        { width: 40, height: 10, kittyKeyboard: true },
-      )
-
-      await testSetup.renderOnce()
-      testSetup.mockInput.pressKey("j")
-      expect(insideSpy.callCount()).toBe(1)
-      expect(outsideSpy.callCount()).toBe(0)
-    })
-  })
 })

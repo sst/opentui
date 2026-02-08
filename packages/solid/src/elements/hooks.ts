@@ -64,24 +64,13 @@ export const useKeyboard = (callback: (key: KeyEvent) => void, options?: UseKeyb
   const renderer = useRenderer()
 
   onMount(() => {
-    let target: Renderable | ReturnType<typeof useRenderer>["keyInput"] | null = null
-    let attempts = 0
-    const attach = () => {
-      if (target) return
-      const refTarget = options?.ref?.()
-      if (options?.ref && !refTarget && attempts < 5) {
-        attempts += 1
-        queueMicrotask(attach)
-        return
-      }
-      target = (refTarget ? findClosestKeyboardScope(refTarget) : null) ?? renderer.keyInput
-      target.on("keypress", callback)
-      if (options?.release) target.on("keyrelease", callback)
-    }
-    attach()
+    const refTarget = options?.ref?.()
+    const target: Renderable | ReturnType<typeof useRenderer>["keyInput"] =
+      (refTarget ? findClosestKeyboardScope(refTarget) : null) ?? renderer.keyInput
+    target.on("keypress", callback)
+    if (options?.release) target.on("keyrelease", callback)
 
     onCleanup(() => {
-      if (!target) return
       target.off("keypress", callback)
       if (options?.release) target.off("keyrelease", callback)
     })
