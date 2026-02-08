@@ -71,8 +71,7 @@ export function getNextFocusTargetAfterRemoval(
   if (!nextTarget) return null
 
   if (nextTarget === currentlyFocused || nextTarget === removed || isDescendantOf(nextTarget, removed)) {
-    nextTarget =
-      focusables.find((f) => f !== currentlyFocused && f !== removed && !isDescendantOf(f, removed)) ?? null
+    nextTarget = focusables.find((f) => f !== currentlyFocused && f !== removed && !isDescendantOf(f, removed)) ?? null
   }
 
   return nextTarget

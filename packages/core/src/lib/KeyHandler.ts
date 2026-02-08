@@ -2,6 +2,7 @@ import { EventEmitter } from "events"
 import { parseKeypress, type KeyEventType, type ParsedKey } from "./parse.keypress"
 import { ANSI } from "../ansi"
 import type { Renderable } from "../Renderable"
+import { findClosestKeyboardScope } from "./focus-traversal"
 
 export class KeyEvent implements ParsedKey {
   name: string
@@ -140,8 +141,9 @@ export class KeyHandler extends EventEmitter<KeyHandlerEventMap> {
 }
 
 /**
- * This class is used internally by the renderer to ensure global handlers
- * can preventDefault before renderable handlers process events.
+ * Internal key handler used by the renderer with priority-based dispatch.
+ * Focused renderables inside a trap-focus scope receive events first (scope isolation).
+ * Otherwise, global handlers run first so they can preventDefault before renderables.
  */
 export class InternalKeyHandler extends KeyHandler {
   private renderableHandlers: Map<keyof KeyHandlerEventMap, Set<Function>> = new Map()
@@ -159,21 +161,13 @@ export class InternalKeyHandler extends KeyHandler {
     if (event === "keypress" || event === "keyrelease" || event === "paste") {
       const focusedRenderable = this.focusedRenderableProvider?.()
       if (focusedRenderable && !focusedRenderable.isDestroyed) {
-        const keyEvent = args[0]
-        switch (event) {
-          case "keypress":
-            focusedRenderable.processKeyEvent(keyEvent as KeyEvent)
-            break
-          case "keyrelease":
-            focusedRenderable.processKeyReleaseEvent(keyEvent as KeyEvent)
-            break
-          case "paste":
-            focusedRenderable.processPasteEvent(keyEvent as PasteEvent)
-            break
+        // When the focused renderable is inside a trap-focus scope, dispatch
+        // to it first so the scope can stopPropagation before global handlers.
+        // Otherwise, run global handlers first so they can preventDefault.
+        if (this.isInsideTrapFocusScope(focusedRenderable)) {
+          return this.emitScopeFirst(event, args, focusedRenderable)
         }
-        if (keyEvent.propagationStopped) {
-          return true
-        }
+        return this.emitGlobalFirst(event, args, focusedRenderable)
       }
     }
 
@@ -184,6 +178,66 @@ export class InternalKeyHandler extends KeyHandler {
 
     const hasRenderableListeners = this.emitInternalListeners(event, ...args)
     return hasGlobalListeners || hasRenderableListeners
+  }
+
+  private emitScopeFirst<K extends keyof KeyHandlerEventMap>(
+    event: K,
+    args: KeyHandlerEventMap[K],
+    focusedRenderable: Renderable,
+  ): boolean {
+    const keyEvent = args[0]
+    this.dispatchToRenderable(event, keyEvent, focusedRenderable)
+    if (keyEvent.propagationStopped) {
+      return true
+    }
+
+    const hasGlobalListeners = this.emitGlobalListeners(event, ...args)
+    if (this.eventPropagationStopped(event, ...args)) {
+      return hasGlobalListeners
+    }
+
+    const hasRenderableListeners = this.emitInternalListeners(event, ...args)
+    return hasGlobalListeners || hasRenderableListeners
+  }
+
+  private emitGlobalFirst<K extends keyof KeyHandlerEventMap>(
+    event: K,
+    args: KeyHandlerEventMap[K],
+    focusedRenderable: Renderable,
+  ): boolean {
+    const hasGlobalListeners = this.emitGlobalListeners(event, ...args)
+    if (this.eventPropagationStopped(event, ...args)) {
+      return hasGlobalListeners
+    }
+
+    const keyEvent = args[0]
+    if (!keyEvent.defaultPrevented) {
+      this.dispatchToRenderable(event, keyEvent, focusedRenderable)
+    }
+    if (keyEvent.propagationStopped) {
+      return true
+    }
+
+    const hasRenderableListeners = this.emitInternalListeners(event, ...args)
+    return hasGlobalListeners || hasRenderableListeners
+  }
+
+  private dispatchToRenderable(event: string, keyEvent: KeyEvent | PasteEvent, renderable: Renderable): void {
+    switch (event) {
+      case "keypress":
+        renderable.processKeyEvent(keyEvent as KeyEvent)
+        break
+      case "keyrelease":
+        renderable.processKeyReleaseEvent(keyEvent as KeyEvent)
+        break
+      case "paste":
+        renderable.processPasteEvent(keyEvent as PasteEvent)
+        break
+    }
+  }
+
+  private isInsideTrapFocusScope(renderable: Renderable): boolean {
+    return findClosestKeyboardScope(renderable) !== null
   }
 
   private emitGlobalListeners<K extends keyof KeyHandlerEventMap>(event: K, ...args: KeyHandlerEventMap[K]): boolean {
@@ -235,7 +289,10 @@ export class InternalKeyHandler extends KeyHandler {
     return hasRenderableListeners
   }
 
-  private eventPreventedOrStopped<K extends keyof KeyHandlerEventMap>(event: K, ...args: KeyHandlerEventMap[K]): boolean {
+  private eventPreventedOrStopped<K extends keyof KeyHandlerEventMap>(
+    event: K,
+    ...args: KeyHandlerEventMap[K]
+  ): boolean {
     if (event === "keypress" || event === "keyrelease" || event === "paste") {
       const keyEvent = args[0]
       return keyEvent.defaultPrevented || keyEvent.propagationStopped
@@ -243,7 +300,10 @@ export class InternalKeyHandler extends KeyHandler {
     return false
   }
 
-  private eventPropagationStopped<K extends keyof KeyHandlerEventMap>(event: K, ...args: KeyHandlerEventMap[K]): boolean {
+  private eventPropagationStopped<K extends keyof KeyHandlerEventMap>(
+    event: K,
+    ...args: KeyHandlerEventMap[K]
+  ): boolean {
     if (event === "keypress" || event === "keyrelease" || event === "paste") {
       const keyEvent = args[0]
       return keyEvent.propagationStopped

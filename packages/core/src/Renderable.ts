@@ -33,12 +33,7 @@ import {
   isPositionTypeType,
   isOverflowType,
 } from "./lib/renderable.validations"
-import {
-  focusNext,
-  focusPrev,
-  getNextFocusTargetAfterRemoval,
-  isDescendantOf,
-} from "./lib/focus-traversal"
+import { focusNext, focusPrev, getNextFocusTargetAfterRemoval, isDescendantOf } from "./lib/focus-traversal"
 
 const BrandedRenderable: unique symbol = Symbol.for("@opentui/core/Renderable")
 

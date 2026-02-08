@@ -185,10 +185,7 @@ describe("scope-aware useKeyboard", () => {
       )
     }
 
-    testSetup = await testRender(
-      () => <OuterScope />,
-      { width: 40, height: 10, kittyKeyboard: true },
-    )
+    testSetup = await testRender(() => <OuterScope />, { width: 40, height: 10, kittyKeyboard: true })
 
     await testSetup.renderOnce()
     testSetup.mockInput.pressKey("a")

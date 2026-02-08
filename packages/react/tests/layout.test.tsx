@@ -624,5 +624,4 @@ describe("React Renderer | Layout Tests", () => {
       expect(defaultTextLine!.indexOf("Test")).toBe(0)
     })
   })
-
 })
