@@ -59,6 +59,22 @@ test "renderer - create and destroy" {
     try std.testing.expect(cli_renderer.testing == true);
 }
 
+test "renderer - enable threaded mode and destroy" {
+    const pool = gp.initGlobalPool(std.testing.allocator);
+    defer gp.deinitGlobalPool();
+
+    var cli_renderer = try CliRenderer.create(
+        std.testing.allocator,
+        80,
+        24,
+        pool,
+        true,
+    );
+
+    cli_renderer.setUseThread(true);
+    cli_renderer.destroy();
+}
+
 test "renderer - simple text rendering to currentRenderBuffer" {
     const pool = gp.initGlobalPool(std.testing.allocator);
     defer gp.deinitGlobalPool();
