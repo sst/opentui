@@ -13,6 +13,20 @@ export interface Extmark {
   typeId: number
 }
 
+export interface ExtmarkEncounter {
+  extmark: Readonly<Extmark>
+  direction: "left" | "right" | "up" | "down" | "set"
+  skip(): void
+  setCursor(offset: number): void
+}
+
+export interface ExtmarkDeletionEncounter {
+  extmark: Readonly<Extmark>
+  direction: "backward" | "forward"
+  deleteExtmark(): void
+  prevent(): void
+}
+
 export interface ExtmarkOptions {
   start: number // Display-width offset (including newlines), NOT JS string index
   end: number // Display-width offset (including newlines), NOT JS string index
@@ -22,6 +36,8 @@ export interface ExtmarkOptions {
   data?: any
   typeId?: number
   metadata?: any
+  onEncounter?: (encounter: ExtmarkEncounter) => void
+  onDeletion?: (encounter: ExtmarkDeletionEncounter) => void
 }
 
 /**
@@ -35,6 +51,8 @@ export class ExtmarksController {
   private extmarks = new Map<number, Extmark>()
   private extmarksByTypeId = new Map<number, Set<number>>()
   private metadata = new Map<number, any>()
+  private onEncounterCallbacks = new Map<number, (encounter: ExtmarkEncounter) => void>()
+  private onDeletionCallbacks = new Map<number, (encounter: ExtmarkDeletionEncounter) => void>()
   private nextId = 1
   private destroyed = false
   private history = new ExtmarksHistory()
