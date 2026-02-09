@@ -28,6 +28,8 @@ export function getBaseAttributes(attr: number): number {
   return attr & ATTRIBUTE_BASE_MASK
 }
 
+export type ThemeMode = "dark" | "light"
+
 export type CursorStyle = "block" | "line" | "underline"
 
 export interface CursorStyleOptions {
@@ -50,6 +52,7 @@ export interface RendererEvents {
   "memory:snapshot": (snapshot: { heapUsed: number; heapTotal: number; arrayBuffers: number }) => void
   selection: (selection: Selection) => void
   "debugOverlay:toggle": (enabled: boolean) => void
+  theme_mode: (mode: ThemeMode) => void
 }
 
 export interface RenderContext extends EventEmitter {
