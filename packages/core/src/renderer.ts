@@ -429,6 +429,7 @@ export class CliRenderer extends EventEmitter implements RenderContext {
   private _cachedPalette: TerminalColors | null = null
   private _paletteDetectionPromise: Promise<TerminalColors> | null = null
   private _onDestroy?: () => void
+  private _themeMode: "dark" | "light" | null = null
 
   private inputHandlers: ((sequence: string) => boolean)[] = []
   private prependedInputHandlers: ((sequence: string) => boolean)[] = []
@@ -848,6 +849,10 @@ export class CliRenderer extends EventEmitter implements RenderContext {
     return this._capabilities
   }
 
+  public get themeMode(): "dark" | "light" | null {
+    return this._themeMode
+  }
+
   public getDebugInputs(): Array<{ timestamp: string; sequence: string }> {
     return [...this._debugInputs]
   }
@@ -1014,6 +1019,9 @@ export class CliRenderer extends EventEmitter implements RenderContext {
     }
 
     this.queryPixelResolution()
+
+    this.writeOut("\x1b[?2031h")
+    this.writeOut("\x1b[?996n")
   }
 
   private stdinListener: (data: Buffer) => void = ((data: Buffer) => {
@@ -1060,6 +1068,24 @@ export class CliRenderer extends EventEmitter implements RenderContext {
     return false
   }).bind(this)
 
+  private themeModeHandler: (sequence: string) => boolean = ((sequence: string) => {
+    if (sequence === "\x1b[?997;1n") {
+      if (this._themeMode !== "dark") {
+        this._themeMode = "dark"
+        this.emit("theme_mode", "dark")
+      }
+      return true
+    }
+    if (sequence === "\x1b[?997;2n") {
+      if (this._themeMode !== "light") {
+        this._themeMode = "light"
+        this.emit("theme_mode", "light")
+      }
+      return true
+    }
+    return false
+  }).bind(this)
+
   private setupInput(): void {
     for (const handler of this.prependedInputHandlers) {
       this.addInputHandler(handler)
@@ -1078,6 +1104,7 @@ export class CliRenderer extends EventEmitter implements RenderContext {
     })
     this.addInputHandler(this.capabilityHandler)
     this.addInputHandler(this.focusHandler)
+    this.addInputHandler(this.themeModeHandler)
     this.addInputHandler((sequence: string) => {
       return this._keyHandler.processInput(sequence)
     })
@@ -1719,6 +1746,8 @@ export class CliRenderer extends EventEmitter implements RenderContext {
     if (this._destroyFinalized) return
     this._destroyFinalized = true
     this._destroyPending = false
+
+    this.writeOut("\x1b[?2031l")
 
     process.removeListener("SIGWINCH", this.sigwinchHandler)
     process.removeListener("uncaughtException", this.handleError)

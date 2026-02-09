@@ -44,12 +44,15 @@ export enum DebugOverlayCorner {
 
 export type WidthMethod = "wcwidth" | "unicode"
 
+export type ThemeMode = "dark" | "light"
+
 export interface RendererEvents {
   resize: (width: number, height: number) => void
   key: (data: Buffer) => void
   "memory:snapshot": (snapshot: { heapUsed: number; heapTotal: number; arrayBuffers: number }) => void
   selection: (selection: Selection) => void
   "debugOverlay:toggle": (enabled: boolean) => void
+  theme_mode: (mode: ThemeMode) => void
 }
 
 export interface RenderContext extends EventEmitter {
