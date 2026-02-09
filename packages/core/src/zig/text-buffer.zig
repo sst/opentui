@@ -1127,6 +1127,60 @@ pub const UnifiedTextBuffer = struct {
         const clamped_width = @max(2, width);
         const new_width = if (clamped_width % 2 == 0) clamped_width else clamped_width + 1;
         if (self.tab_width == new_width) return;
+
+        var rebuilt_segments: std.ArrayListUnmanaged(Segment) = .{};
+        defer rebuilt_segments.deinit(self.global_allocator);
+
+        rebuilt_segments.ensureTotalCapacity(self.global_allocator, self.rope.count()) catch return;
+
+        const Context = struct {
+            buffer: *const Self,
+            tab_width: u8,
+            segments: *std.ArrayListUnmanaged(Segment),
+
+            fn walker(ctx_ptr: *anyopaque, seg: *const Segment, idx: u32) UnifiedRope.Node.WalkerResult {
+                _ = idx;
+                const ctx = @as(*@This(), @ptrCast(@alignCast(ctx_ptr)));
+
+                const updated: Segment = switch (seg.*) {
+                    .text => |chunk| blk: {
+                        const chunk_bytes = chunk.getBytes(&ctx.buffer.mem_registry);
+                        const is_ascii = (chunk.flags & TextChunk.Flags.ASCII_ONLY) != 0;
+                        const chunk_width: u16 = @intCast(@min(
+                            65535,
+                            utf8.calculateTextWidth(chunk_bytes, ctx.tab_width, is_ascii, ctx.buffer.width_method),
+                        ));
+
+                        break :blk Segment{ .text = TextChunk{
+                            .mem_id = chunk.mem_id,
+                            .byte_start = chunk.byte_start,
+                            .byte_end = chunk.byte_end,
+                            .width = chunk_width,
+                            .flags = chunk.flags,
+                            .graphemes = null,
+                            .wrap_offsets = null,
+                        } };
+                    },
+                    .brk => Segment{ .brk = {} },
+                    .linestart => Segment{ .linestart = {} },
+                };
+
+                ctx.segments.append(ctx.buffer.global_allocator, updated) catch |err| {
+                    return .{ .keep_walking = false, .err = err };
+                };
+                return .{};
+            }
+        };
+
+        var ctx = Context{
+            .buffer = self,
+            .tab_width = new_width,
+            .segments = &rebuilt_segments,
+        };
+
+        self.rope.walk(&ctx, Context.walker) catch return;
+        self.rope.setSegments(rebuilt_segments.items) catch return;
+
         self.tab_width = new_width;
         self.markAllViewsDirty();
     }
