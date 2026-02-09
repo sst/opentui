@@ -994,10 +994,10 @@ test("Kitty keyboard emoji via keyInput events", async () => {
 })
 
 test("Kitty keyboard keypad keys via keyInput events", async () => {
-  const kp0 = await triggerKittyInput("\x1b[57400u")
+  const kp0 = await triggerKittyInput("\x1b[57399u")
   expect(kp0?.name).toBe("kp0")
 
-  const kpEnter = await triggerKittyInput("\x1b[57415u")
+  const kpEnter = await triggerKittyInput("\x1b[57414u")
   expect(kpEnter?.name).toBe("kpenter")
 })
 

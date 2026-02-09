@@ -757,6 +757,10 @@ pub const EditorView = struct {
 
         try placeholder.setStyledText(chunks);
 
+        if (self.placeholder_active) {
+            self.text_buffer_view.virtual_lines_dirty = true;
+        }
+
         self.updatePlaceholderVisibility();
     }
 

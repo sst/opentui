@@ -11,6 +11,26 @@ const TextBuffer = text_buffer.UnifiedTextBuffer;
 const TextBufferView = text_buffer_view.UnifiedTextBufferView;
 const RGBA = buffer_mod.RGBA;
 
+fn initBufferForOomRegression(allocator: std.mem.Allocator) !void {
+    var local_pool = gp.GraphemePool.initWithOptions(allocator, .{});
+    defer local_pool.deinit();
+
+    var local_link_pool = link.LinkPool.init(allocator);
+    defer local_link_pool.deinit();
+
+    var buf = try OptimizedBuffer.init(
+        allocator,
+        1,
+        1,
+        .{ .pool = &local_pool, .id = "oom-regression", .link_pool = &local_link_pool },
+    );
+    defer buf.deinit();
+}
+
+test "OptimizedBuffer - init frees allocations on OOM" {
+    try std.testing.checkAllAllocationFailures(std.testing.allocator, initBufferForOomRegression, .{});
+}
+
 test "OptimizedBuffer - init and deinit" {
     const pool = gp.initGlobalPool(std.testing.allocator);
     defer gp.deinitGlobalPool();
