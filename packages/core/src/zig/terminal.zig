@@ -71,6 +71,8 @@ pub const Options = struct {
     // Use 0b00111 (7) to also enable event types for key release detection
     kitty_keyboard_flags: u8 = 0b00101,
     remote: bool = false,
+    // Optional override for environment lookups. Caller owns the map.
+    env_map: ?*const std.process.EnvMap = null,
 };
 
 pub const TerminalInfo = struct {
@@ -286,8 +288,12 @@ fn checkEnvironmentOverrides(self: *Terminal) void {
         return;
     }
 
-    var env_map = std.process.getEnvMap(std.heap.page_allocator) catch return;
-    defer env_map.deinit();
+    var env_map_storage: ?std.process.EnvMap = null;
+    const env_map: *const std.process.EnvMap = self.opts.env_map orelse blk: {
+        env_map_storage = std.process.getEnvMap(std.heap.page_allocator) catch return;
+        break :blk &env_map_storage.?;
+    };
+    defer if (env_map_storage) |*map| map.deinit();
 
     if (!self.term_info.from_xtversion) {
         if (env_map.get("TMUX")) |_| {
@@ -736,8 +742,12 @@ pub fn writeClipboard(self: *Terminal, tty: anytype, target: ClipboardTarget, pa
     } else if (self.opts.remote) {
         try tty.writeAll(osc52);
     } else {
-        var env_map = std.process.getEnvMap(std.heap.page_allocator) catch return;
-        defer env_map.deinit();
+        var env_map_storage: ?std.process.EnvMap = null;
+        const env_map: *const std.process.EnvMap = self.opts.env_map orelse blk: {
+            env_map_storage = std.process.getEnvMap(std.heap.page_allocator) catch return;
+            break :blk &env_map_storage.?;
+        };
+        defer if (env_map_storage) |*map| map.deinit();
 
         if (env_map.get("STY")) |_| {
             var wrapped_buf: [2048]u8 = undefined;

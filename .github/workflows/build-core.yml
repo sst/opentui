@@ -5,9 +5,12 @@ on:
   pull_request:
     branches: [main]
 
+env:
+  ZIG_VERSION: 0.15.2
+
 jobs:
   build:
-    name: Core - Build and Test
+    name: Build Native Libraries
     runs-on: macos-latest
     steps:
       - name: Checkout code
@@ -21,17 +24,89 @@ jobs:
       - name: Setup Zig
         uses: goto-bus-stop/setup-zig@v2
         with:
-          version: 0.15.2
+          version: ${{ env.ZIG_VERSION }}
 
       - name: Install dependencies
         run: bun install
 
-      - name: Build
+      - name: Build native libraries (cross-compile all platforms)
         run: |
           cd packages/core
-          bun run build
+          bun run build:native --all
 
-      - name: Run tests
+      - name: Upload native artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: native-libraries
+          path: packages/core/node_modules/@opentui/
+          retention-days: 1
+
+  test:
+    name: Test (${{ matrix.os }})
+    needs: build
+    strategy:
+      matrix:
+        include:
+          - os: macos-latest
+            platform: darwin-arm64
+          - os: ubuntu-latest
+            platform: linux-x64
+    runs-on: ${{ matrix.os }}
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+
+      - name: Setup Zig
+        uses: goto-bus-stop/setup-zig@v2
+        with:
+          version: ${{ env.ZIG_VERSION }}
+
+      - name: Install dependencies
+        run: bun install
+
+      - name: Download native artifacts
+        uses: actions/download-artifact@v4
+        with:
+          name: native-libraries
+          path: packages/core/node_modules/@opentui/
+
+      - name: Verify native library
+        run: |
+          echo "Checking for ${{ matrix.platform }} native library..."
+          ls -la packages/core/node_modules/@opentui/
+          ls -la packages/core/node_modules/@opentui/core-${{ matrix.platform }}/
+
+      - name: Run native tests
+        run: |
+          cd packages/core/src/zig
+          zig build test --summary all
+
+      - name: Build TypeScript library
         run: |
           cd packages/core
-          bun run test
+          bun run build:lib
+
+      - name: Run TypeScript tests
+        run: |
+          cd packages/core
+          bun run test:js
+
+  # Gate job for branch protection
+  build-complete:
+    name: Core - Build and Test
+    needs: [test]
+    runs-on: ubuntu-latest
+    if: always()
+    steps:
+      - name: Check test results
+        run: |
+          if [ "${{ needs.test.result }}" != "success" ]; then
+            echo "Tests failed"
+            exit 1
+          fi
+          echo "All tests passed"
