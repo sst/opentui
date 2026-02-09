@@ -165,8 +165,7 @@ pub fn resetState(self: *Terminal, tty: anytype) !void {
     }
 
     if (self.state.color_scheme_updates) {
-        try tty.writeAll(ansi.ANSI.colorSchemeReset);
-        self.state.color_scheme_updates = false;
+        try self.setColorSchemeUpdates(tty, false);
     }
 
     self.setTerminalTitle(tty, "");
@@ -269,6 +268,11 @@ pub fn enableDetectedFeatures(self: *Terminal, tty: anytype, use_kitty_keyboard:
 
     if (self.caps.focus_tracking) {
         try self.setFocusTracking(tty, true);
+    }
+
+    if (self.caps.color_scheme_updates) {
+        try self.setColorSchemeUpdates(tty, true);
+        try tty.writeAll(ansi.ANSI.colorSchemeRequest);
     }
 }
 
@@ -486,6 +490,12 @@ pub fn setModifyOtherKeys(self: *Terminal, tty: anytype, enable: bool) !void {
     const seq = if (enable) ansi.ANSI.modifyOtherKeysSet else ansi.ANSI.modifyOtherKeysReset;
     try tty.writeAll(seq);
     self.state.modify_other_keys = enable;
+}
+
+pub fn setColorSchemeUpdates(self: *Terminal, tty: anytype, enable: bool) !void {
+    const seq = if (enable) ansi.ANSI.colorSchemeSet else ansi.ANSI.colorSchemeReset;
+    try tty.writeAll(seq);
+    self.state.color_scheme_updates = enable;
 }
 
 /// The responses look like these:

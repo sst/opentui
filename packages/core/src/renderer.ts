@@ -1019,9 +1019,6 @@ export class CliRenderer extends EventEmitter implements RenderContext {
     }
 
     this.queryPixelResolution()
-
-    this.writeOut("\x1b[?2031h")
-    this.writeOut("\x1b[?996n")
   }
 
   private stdinListener: (data: Buffer) => void = ((data: Buffer) => {
@@ -1746,8 +1743,6 @@ export class CliRenderer extends EventEmitter implements RenderContext {
     if (this._destroyFinalized) return
     this._destroyFinalized = true
     this._destroyPending = false
-
-    this.writeOut("\x1b[?2031l")
 
     process.removeListener("SIGWINCH", this.sigwinchHandler)
     process.removeListener("uncaughtException", this.handleError)
