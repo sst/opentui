@@ -1193,9 +1193,12 @@ export class CliRenderer extends EventEmitter implements RenderContext {
       if (mouseEvent.type === "scroll") {
         const maybeRenderableId = this.hitTest(mouseEvent.x, mouseEvent.y)
         const maybeRenderable = Renderable.renderablesByNumber.get(maybeRenderableId)
-        const fallbackTarget = this._currentFocusedRenderable && !this._currentFocusedRenderable.isDestroyed
-          ? this._currentFocusedRenderable
-          : null
+        const fallbackTarget =
+          this._currentFocusedRenderable &&
+          !this._currentFocusedRenderable.isDestroyed &&
+          this._currentFocusedRenderable.focused
+            ? this._currentFocusedRenderable
+            : null
         const scrollTarget = maybeRenderable ?? fallbackTarget
 
         if (scrollTarget) {

@@ -206,7 +206,7 @@ describe("renderer handleMouseData", () => {
     }
   })
 
-  test("scroll outside renderables does not dispatch events", async () => {
+  test("scroll outside renderables does not dispatch events when nothing is focused", async () => {
     try {
       const target = new TestRenderable(renderer, {
         id: "scroll-target",
