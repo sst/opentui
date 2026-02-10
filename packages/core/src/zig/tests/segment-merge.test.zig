@@ -6,7 +6,6 @@ test "EditBuffer - sequential character insertion merges segments" {
     const pool = gp.initGlobalPool(std.testing.allocator);
     defer gp.deinitGlobalPool();
 
-
     var eb = try EditBuffer.init(std.testing.allocator, pool, .wcwidth);
     defer eb.deinit();
 

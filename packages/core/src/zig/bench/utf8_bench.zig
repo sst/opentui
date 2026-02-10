@@ -73,15 +73,15 @@ fn benchIsAsciiOnly(
                 stats.record(timer.read());
             }
 
-        try results.append(results_alloc, BenchResult{
-            .name = name,
-            .min_ns = stats.min_ns,
-            .avg_ns = stats.avg(),
-            .max_ns = stats.max_ns,
-            .total_ns = stats.total_ns,
-            .iterations = iterations,
-            .mem_stats = null,
-        });
+            try results.append(results_alloc, BenchResult{
+                .name = name,
+                .min_ns = stats.min_ns,
+                .avg_ns = stats.avg(),
+                .max_ns = stats.max_ns,
+                .total_ns = stats.total_ns,
+                .iterations = iterations,
+                .mem_stats = null,
+            });
         }
     }
 
@@ -100,15 +100,15 @@ fn benchIsAsciiOnly(
                 stats.record(timer.read());
             }
 
-        try results.append(results_alloc, BenchResult{
-            .name = name,
-            .min_ns = stats.min_ns,
-            .avg_ns = stats.avg(),
-            .max_ns = stats.max_ns,
-            .total_ns = stats.total_ns,
-            .iterations = iterations,
-            .mem_stats = null,
-        });
+            try results.append(results_alloc, BenchResult{
+                .name = name,
+                .min_ns = stats.min_ns,
+                .avg_ns = stats.avg(),
+                .max_ns = stats.max_ns,
+                .total_ns = stats.total_ns,
+                .iterations = iterations,
+                .mem_stats = null,
+            });
         }
     }
 
@@ -127,15 +127,15 @@ fn benchIsAsciiOnly(
                 stats.record(timer.read());
             }
 
-        try results.append(results_alloc, BenchResult{
-            .name = name,
-            .min_ns = stats.min_ns,
-            .avg_ns = stats.avg(),
-            .max_ns = stats.max_ns,
-            .total_ns = stats.total_ns,
-            .iterations = iterations,
-            .mem_stats = null,
-        });
+            try results.append(results_alloc, BenchResult{
+                .name = name,
+                .min_ns = stats.min_ns,
+                .avg_ns = stats.avg(),
+                .max_ns = stats.max_ns,
+                .total_ns = stats.total_ns,
+                .iterations = iterations,
+                .mem_stats = null,
+            });
         }
     }
 
@@ -154,15 +154,15 @@ fn benchIsAsciiOnly(
                 stats.record(timer.read());
             }
 
-        try results.append(results_alloc, BenchResult{
-            .name = name,
-            .min_ns = stats.min_ns,
-            .avg_ns = stats.avg(),
-            .max_ns = stats.max_ns,
-            .total_ns = stats.total_ns,
-            .iterations = iterations,
-            .mem_stats = null,
-        });
+            try results.append(results_alloc, BenchResult{
+                .name = name,
+                .min_ns = stats.min_ns,
+                .avg_ns = stats.avg(),
+                .max_ns = stats.max_ns,
+                .total_ns = stats.total_ns,
+                .iterations = iterations,
+                .mem_stats = null,
+            });
         }
     }
 
@@ -202,15 +202,15 @@ fn benchFindLineBreaks(
                 stats.record(timer.read());
             }
 
-        try results.append(results_alloc, BenchResult{
-            .name = name,
-            .min_ns = stats.min_ns,
-            .avg_ns = stats.avg(),
-            .max_ns = stats.max_ns,
-            .total_ns = stats.total_ns,
-            .iterations = iterations,
-            .mem_stats = null,
-        });
+            try results.append(results_alloc, BenchResult{
+                .name = name,
+                .min_ns = stats.min_ns,
+                .avg_ns = stats.avg(),
+                .max_ns = stats.max_ns,
+                .total_ns = stats.total_ns,
+                .iterations = iterations,
+                .mem_stats = null,
+            });
         }
     }
 
@@ -238,15 +238,15 @@ fn benchFindLineBreaks(
                 stats.record(timer.read());
             }
 
-        try results.append(results_alloc, BenchResult{
-            .name = name,
-            .min_ns = stats.min_ns,
-            .avg_ns = stats.avg(),
-            .max_ns = stats.max_ns,
-            .total_ns = stats.total_ns,
-            .iterations = iterations,
-            .mem_stats = null,
-        });
+            try results.append(results_alloc, BenchResult{
+                .name = name,
+                .min_ns = stats.min_ns,
+                .avg_ns = stats.avg(),
+                .max_ns = stats.max_ns,
+                .total_ns = stats.total_ns,
+                .iterations = iterations,
+                .mem_stats = null,
+            });
         }
     }
 
@@ -274,15 +274,15 @@ fn benchFindLineBreaks(
                 stats.record(timer.read());
             }
 
-        try results.append(results_alloc, BenchResult{
-            .name = name,
-            .min_ns = stats.min_ns,
-            .avg_ns = stats.avg(),
-            .max_ns = stats.max_ns,
-            .total_ns = stats.total_ns,
-            .iterations = iterations,
-            .mem_stats = null,
-        });
+            try results.append(results_alloc, BenchResult{
+                .name = name,
+                .min_ns = stats.min_ns,
+                .avg_ns = stats.avg(),
+                .max_ns = stats.max_ns,
+                .total_ns = stats.total_ns,
+                .iterations = iterations,
+                .mem_stats = null,
+            });
         }
     }
 
@@ -317,15 +317,15 @@ fn benchFindWrapBreaks(
                 stats.record(timer.read());
             }
 
-        try results.append(results_alloc, BenchResult{
-            .name = name,
-            .min_ns = stats.min_ns,
-            .avg_ns = stats.avg(),
-            .max_ns = stats.max_ns,
-            .total_ns = stats.total_ns,
-            .iterations = iterations,
-            .mem_stats = null,
-        });
+            try results.append(results_alloc, BenchResult{
+                .name = name,
+                .min_ns = stats.min_ns,
+                .avg_ns = stats.avg(),
+                .max_ns = stats.max_ns,
+                .total_ns = stats.total_ns,
+                .iterations = iterations,
+                .mem_stats = null,
+            });
         }
     }
 
@@ -348,15 +348,15 @@ fn benchFindWrapBreaks(
                 stats.record(timer.read());
             }
 
-        try results.append(results_alloc, BenchResult{
-            .name = name,
-            .min_ns = stats.min_ns,
-            .avg_ns = stats.avg(),
-            .max_ns = stats.max_ns,
-            .total_ns = stats.total_ns,
-            .iterations = iterations,
-            .mem_stats = null,
-        });
+            try results.append(results_alloc, BenchResult{
+                .name = name,
+                .min_ns = stats.min_ns,
+                .avg_ns = stats.avg(),
+                .max_ns = stats.max_ns,
+                .total_ns = stats.total_ns,
+                .iterations = iterations,
+                .mem_stats = null,
+            });
         }
     }
 
@@ -387,15 +387,15 @@ fn benchFindWrapPosByWidth(
                 stats.record(timer.read());
             }
 
-        try results.append(results_alloc, BenchResult{
-            .name = name,
-            .min_ns = stats.min_ns,
-            .avg_ns = stats.avg(),
-            .max_ns = stats.max_ns,
-            .total_ns = stats.total_ns,
-            .iterations = iterations,
-            .mem_stats = null,
-        });
+            try results.append(results_alloc, BenchResult{
+                .name = name,
+                .min_ns = stats.min_ns,
+                .avg_ns = stats.avg(),
+                .max_ns = stats.max_ns,
+                .total_ns = stats.total_ns,
+                .iterations = iterations,
+                .mem_stats = null,
+            });
         }
     }
 
@@ -414,15 +414,15 @@ fn benchFindWrapPosByWidth(
                 stats.record(timer.read());
             }
 
-        try results.append(results_alloc, BenchResult{
-            .name = name,
-            .min_ns = stats.min_ns,
-            .avg_ns = stats.avg(),
-            .max_ns = stats.max_ns,
-            .total_ns = stats.total_ns,
-            .iterations = iterations,
-            .mem_stats = null,
-        });
+            try results.append(results_alloc, BenchResult{
+                .name = name,
+                .min_ns = stats.min_ns,
+                .avg_ns = stats.avg(),
+                .max_ns = stats.max_ns,
+                .total_ns = stats.total_ns,
+                .iterations = iterations,
+                .mem_stats = null,
+            });
         }
     }
 
@@ -441,15 +441,15 @@ fn benchFindWrapPosByWidth(
                 stats.record(timer.read());
             }
 
-        try results.append(results_alloc, BenchResult{
-            .name = name,
-            .min_ns = stats.min_ns,
-            .avg_ns = stats.avg(),
-            .max_ns = stats.max_ns,
-            .total_ns = stats.total_ns,
-            .iterations = iterations,
-            .mem_stats = null,
-        });
+            try results.append(results_alloc, BenchResult{
+                .name = name,
+                .min_ns = stats.min_ns,
+                .avg_ns = stats.avg(),
+                .max_ns = stats.max_ns,
+                .total_ns = stats.total_ns,
+                .iterations = iterations,
+                .mem_stats = null,
+            });
         }
     }
 
@@ -468,15 +468,15 @@ fn benchFindWrapPosByWidth(
                 stats.record(timer.read());
             }
 
-        try results.append(results_alloc, BenchResult{
-            .name = name,
-            .min_ns = stats.min_ns,
-            .avg_ns = stats.avg(),
-            .max_ns = stats.max_ns,
-            .total_ns = stats.total_ns,
-            .iterations = iterations,
-            .mem_stats = null,
-        });
+            try results.append(results_alloc, BenchResult{
+                .name = name,
+                .min_ns = stats.min_ns,
+                .avg_ns = stats.avg(),
+                .max_ns = stats.max_ns,
+                .total_ns = stats.total_ns,
+                .iterations = iterations,
+                .mem_stats = null,
+            });
         }
     }
 
@@ -507,15 +507,15 @@ fn benchFindPosByWidth(
                 stats.record(timer.read());
             }
 
-        try results.append(results_alloc, BenchResult{
-            .name = name,
-            .min_ns = stats.min_ns,
-            .avg_ns = stats.avg(),
-            .max_ns = stats.max_ns,
-            .total_ns = stats.total_ns,
-            .iterations = iterations,
-            .mem_stats = null,
-        });
+            try results.append(results_alloc, BenchResult{
+                .name = name,
+                .min_ns = stats.min_ns,
+                .avg_ns = stats.avg(),
+                .max_ns = stats.max_ns,
+                .total_ns = stats.total_ns,
+                .iterations = iterations,
+                .mem_stats = null,
+            });
         }
     }
 
@@ -534,15 +534,15 @@ fn benchFindPosByWidth(
                 stats.record(timer.read());
             }
 
-        try results.append(results_alloc, BenchResult{
-            .name = name,
-            .min_ns = stats.min_ns,
-            .avg_ns = stats.avg(),
-            .max_ns = stats.max_ns,
-            .total_ns = stats.total_ns,
-            .iterations = iterations,
-            .mem_stats = null,
-        });
+            try results.append(results_alloc, BenchResult{
+                .name = name,
+                .min_ns = stats.min_ns,
+                .avg_ns = stats.avg(),
+                .max_ns = stats.max_ns,
+                .total_ns = stats.total_ns,
+                .iterations = iterations,
+                .mem_stats = null,
+            });
         }
     }
 
@@ -561,15 +561,15 @@ fn benchFindPosByWidth(
                 stats.record(timer.read());
             }
 
-        try results.append(results_alloc, BenchResult{
-            .name = name,
-            .min_ns = stats.min_ns,
-            .avg_ns = stats.avg(),
-            .max_ns = stats.max_ns,
-            .total_ns = stats.total_ns,
-            .iterations = iterations,
-            .mem_stats = null,
-        });
+            try results.append(results_alloc, BenchResult{
+                .name = name,
+                .min_ns = stats.min_ns,
+                .avg_ns = stats.avg(),
+                .max_ns = stats.max_ns,
+                .total_ns = stats.total_ns,
+                .iterations = iterations,
+                .mem_stats = null,
+            });
         }
     }
 
@@ -600,15 +600,15 @@ fn benchCalculateTextWidth(
                 stats.record(timer.read());
             }
 
-        try results.append(results_alloc, BenchResult{
-            .name = name,
-            .min_ns = stats.min_ns,
-            .avg_ns = stats.avg(),
-            .max_ns = stats.max_ns,
-            .total_ns = stats.total_ns,
-            .iterations = iterations,
-            .mem_stats = null,
-        });
+            try results.append(results_alloc, BenchResult{
+                .name = name,
+                .min_ns = stats.min_ns,
+                .avg_ns = stats.avg(),
+                .max_ns = stats.max_ns,
+                .total_ns = stats.total_ns,
+                .iterations = iterations,
+                .mem_stats = null,
+            });
         }
     }
 
@@ -627,15 +627,15 @@ fn benchCalculateTextWidth(
                 stats.record(timer.read());
             }
 
-        try results.append(results_alloc, BenchResult{
-            .name = name,
-            .min_ns = stats.min_ns,
-            .avg_ns = stats.avg(),
-            .max_ns = stats.max_ns,
-            .total_ns = stats.total_ns,
-            .iterations = iterations,
-            .mem_stats = null,
-        });
+            try results.append(results_alloc, BenchResult{
+                .name = name,
+                .min_ns = stats.min_ns,
+                .avg_ns = stats.avg(),
+                .max_ns = stats.max_ns,
+                .total_ns = stats.total_ns,
+                .iterations = iterations,
+                .mem_stats = null,
+            });
         }
     }
 
@@ -654,15 +654,15 @@ fn benchCalculateTextWidth(
                 stats.record(timer.read());
             }
 
-        try results.append(results_alloc, BenchResult{
-            .name = name,
-            .min_ns = stats.min_ns,
-            .avg_ns = stats.avg(),
-            .max_ns = stats.max_ns,
-            .total_ns = stats.total_ns,
-            .iterations = iterations,
-            .mem_stats = null,
-        });
+            try results.append(results_alloc, BenchResult{
+                .name = name,
+                .min_ns = stats.min_ns,
+                .avg_ns = stats.avg(),
+                .max_ns = stats.max_ns,
+                .total_ns = stats.total_ns,
+                .iterations = iterations,
+                .mem_stats = null,
+            });
         }
     }
 
@@ -690,15 +690,15 @@ fn benchCalculateTextWidth(
                 stats.record(timer.read());
             }
 
-        try results.append(results_alloc, BenchResult{
-            .name = name,
-            .min_ns = stats.min_ns,
-            .avg_ns = stats.avg(),
-            .max_ns = stats.max_ns,
-            .total_ns = stats.total_ns,
-            .iterations = iterations,
-            .mem_stats = null,
-        });
+            try results.append(results_alloc, BenchResult{
+                .name = name,
+                .min_ns = stats.min_ns,
+                .avg_ns = stats.avg(),
+                .max_ns = stats.max_ns,
+                .total_ns = stats.total_ns,
+                .iterations = iterations,
+                .mem_stats = null,
+            });
         }
     }
 
@@ -717,15 +717,15 @@ fn benchCalculateTextWidth(
                 stats.record(timer.read());
             }
 
-        try results.append(results_alloc, BenchResult{
-            .name = name,
-            .min_ns = stats.min_ns,
-            .avg_ns = stats.avg(),
-            .max_ns = stats.max_ns,
-            .total_ns = stats.total_ns,
-            .iterations = iterations,
-            .mem_stats = null,
-        });
+            try results.append(results_alloc, BenchResult{
+                .name = name,
+                .min_ns = stats.min_ns,
+                .avg_ns = stats.avg(),
+                .max_ns = stats.max_ns,
+                .total_ns = stats.total_ns,
+                .iterations = iterations,
+                .mem_stats = null,
+            });
         }
     }
 
@@ -744,15 +744,15 @@ fn benchCalculateTextWidth(
                 stats.record(timer.read());
             }
 
-        try results.append(results_alloc, BenchResult{
-            .name = name,
-            .min_ns = stats.min_ns,
-            .avg_ns = stats.avg(),
-            .max_ns = stats.max_ns,
-            .total_ns = stats.total_ns,
-            .iterations = iterations,
-            .mem_stats = null,
-        });
+            try results.append(results_alloc, BenchResult{
+                .name = name,
+                .min_ns = stats.min_ns,
+                .avg_ns = stats.avg(),
+                .max_ns = stats.max_ns,
+                .total_ns = stats.total_ns,
+                .iterations = iterations,
+                .mem_stats = null,
+            });
         }
     }
 

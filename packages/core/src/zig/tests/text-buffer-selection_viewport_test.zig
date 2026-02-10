@@ -13,7 +13,6 @@ test "Selection - vertical viewport selection without wrapping" {
     const pool = gp.initGlobalPool(std.testing.allocator);
     defer gp.deinitGlobalPool();
 
-
     var tb = try TextBuffer.init(std.testing.allocator, pool, .unicode);
     defer tb.deinit();
 
@@ -40,7 +39,6 @@ test "Selection - horizontal viewport selection without wrapping" {
     const pool = gp.initGlobalPool(std.testing.allocator);
     defer gp.deinitGlobalPool();
 
-
     var tb = try TextBuffer.init(std.testing.allocator, pool, .unicode);
     defer tb.deinit();
 
@@ -63,7 +61,6 @@ test "Selection - horizontal viewport selection without wrapping" {
 test "Selection - wrapping mode ignores horizontal viewport offset" {
     const pool = gp.initGlobalPool(std.testing.allocator);
     defer gp.deinitGlobalPool();
-
 
     var tb = try TextBuffer.init(std.testing.allocator, pool, .unicode);
     defer tb.deinit();
@@ -90,7 +87,6 @@ test "Selection - wrapping mode ignores horizontal viewport offset" {
 test "Selection - vertical viewport with wrapping" {
     const pool = gp.initGlobalPool(std.testing.allocator);
     defer gp.deinitGlobalPool();
-
 
     var tb = try TextBuffer.init(std.testing.allocator, pool, .unicode);
     defer tb.deinit();
@@ -121,7 +117,6 @@ test "Selection - across empty line with viewport offset" {
     const pool = gp.initGlobalPool(std.testing.allocator);
     defer gp.deinitGlobalPool();
 
-
     var tb = try TextBuffer.init(std.testing.allocator, pool, .unicode);
     defer tb.deinit();
 
@@ -144,7 +139,6 @@ test "Selection - across empty line with viewport offset" {
 test "Selection - viewport offset with multi-line selection" {
     const pool = gp.initGlobalPool(std.testing.allocator);
     defer gp.deinitGlobalPool();
-
 
     var tb = try TextBuffer.init(std.testing.allocator, pool, .unicode);
     defer tb.deinit();
@@ -169,7 +163,6 @@ test "Selection - combined horizontal and vertical viewport offsets" {
     const pool = gp.initGlobalPool(std.testing.allocator);
     defer gp.deinitGlobalPool();
 
-
     var tb = try TextBuffer.init(std.testing.allocator, pool, .unicode);
     defer tb.deinit();
 
@@ -192,7 +185,6 @@ test "Selection - combined horizontal and vertical viewport offsets" {
 test "Selection - viewport without offsets behaves as before" {
     const pool = gp.initGlobalPool(std.testing.allocator);
     defer gp.deinitGlobalPool();
-
 
     var tb = try TextBuffer.init(std.testing.allocator, pool, .unicode);
     defer tb.deinit();
@@ -217,7 +209,6 @@ test "Selection - no viewport behaves as before" {
     const pool = gp.initGlobalPool(std.testing.allocator);
     defer gp.deinitGlobalPool();
 
-
     var tb = try TextBuffer.init(std.testing.allocator, pool, .unicode);
     defer tb.deinit();
 
@@ -238,7 +229,6 @@ test "Selection - no viewport behaves as before" {
 test "Selection - VALIDATION: verify selection range matches extracted text with viewport" {
     const pool = gp.initGlobalPool(std.testing.allocator);
     defer gp.deinitGlobalPool();
-
 
     var tb = try TextBuffer.init(std.testing.allocator, pool, .unicode);
     defer tb.deinit();
@@ -271,7 +261,6 @@ test "Selection - VALIDATION: verify selection range matches extracted text with
 test "Selection - VALIDATION: multi-line selection range with viewport" {
     const pool = gp.initGlobalPool(std.testing.allocator);
     defer gp.deinitGlobalPool();
-
 
     var tb = try TextBuffer.init(std.testing.allocator, pool, .unicode);
     defer tb.deinit();
@@ -307,7 +296,6 @@ test "Selection - RENDER TEST: selection highlights correct cells with viewport 
 
     const pool = gp.initGlobalPool(std.testing.allocator);
     defer gp.deinitGlobalPool();
-
 
     var tb = try TextBuffer.init(std.testing.allocator, pool, .unicode);
     defer tb.deinit();
