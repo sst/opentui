@@ -144,6 +144,7 @@ export type InputProps = ComponentProps<InputRenderableOptions, InputRenderable>
 
 export type TextareaProps = ComponentProps<TextareaOptions, TextareaRenderable> & {
   focused?: boolean
+  onInput?: (value: string) => void
 }
 
 export type CodeProps = ComponentProps<CodeOptions, CodeRenderable>
