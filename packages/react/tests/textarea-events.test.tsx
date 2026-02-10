@@ -39,20 +39,14 @@ describe("React Renderer | Textarea Events", () => {
     expect(latestValue).toBe("abc")
   })
 
-  it("supports onInput and onContentChange together", async () => {
-    let inputCalls = 0
-    let contentChangeCalls = 0
+  it("emits textarea onInput after newline edits", async () => {
     let latestValue = ""
 
     testSetup = await testRender(
       <textarea
         focused
         onInput={(value) => {
-          inputCalls++
           latestValue = value
-        }}
-        onContentChange={() => {
-          contentChangeCalls++
         }}
       />,
       {
@@ -63,13 +57,13 @@ describe("React Renderer | Textarea Events", () => {
 
     await act(async () => {
       await testSetup.renderOnce()
-      testSetup.mockInput.typeText("xy")
+      testSetup.mockInput.typeText("line")
+      testSetup.mockInput.pressEnter()
+      testSetup.mockInput.typeText("two")
       await new Promise((resolve) => setTimeout(resolve, 10))
       await testSetup.renderOnce()
     })
 
-    expect(inputCalls).toBeGreaterThan(0)
-    expect(contentChangeCalls).toBeGreaterThan(0)
-    expect(latestValue).toBe("xy")
+    expect(latestValue).toBe("line\ntwo")
   })
 })

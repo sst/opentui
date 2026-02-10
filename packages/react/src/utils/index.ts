@@ -10,30 +10,25 @@ import {
 } from "@opentui/core"
 import type { Instance, Props, Type } from "../types/host"
 
-interface TextareaListenerState {
-  onInput?: (value: string) => void
-  onContentChange?: (event: unknown) => void
-}
+const textareaInputListeners = new WeakMap<TextareaRenderable, () => void>()
 
-const textareaListenerStates = new WeakMap<TextareaRenderable, TextareaListenerState>()
-
-function setTextareaListener(instance: TextareaRenderable, kind: keyof TextareaListenerState, listener: any) {
-  const nextState: TextareaListenerState = {
-    ...(textareaListenerStates.get(instance) ?? {}),
-    [kind]: listener ?? undefined,
+function setTextareaInputListener(instance: TextareaRenderable, listener: ((value: string) => void) | null) {
+  const prevListener = textareaInputListeners.get(instance)
+  if (prevListener) {
+    instance.editBuffer.off("content-changed", prevListener)
+    textareaInputListeners.delete(instance)
   }
 
-  if (!nextState.onInput && !nextState.onContentChange) {
-    textareaListenerStates.delete(instance)
-    instance.onContentChange = undefined
+  if (!listener) {
     return
   }
 
-  textareaListenerStates.set(instance, nextState)
-  instance.onContentChange = (event) => {
-    nextState.onContentChange?.(event)
-    nextState.onInput?.(instance.plainText)
+  const inputListener = () => {
+    listener(instance.plainText)
   }
+
+  textareaInputListeners.set(instance, inputListener)
+  instance.editBuffer.on("content-changed", inputListener)
 }
 
 function initEventListeners(instance: Instance, eventName: string, listener: any, previousListener?: any) {
@@ -87,16 +82,8 @@ function setProperty(instance: Instance, type: Type, propKey: string, propValue:
       if (instance instanceof InputRenderable) {
         initEventListeners(instance, InputRenderableEvents.INPUT, propValue, oldPropValue)
       } else if (instance instanceof TextareaRenderable) {
-        setTextareaListener(instance, "onInput", propValue)
+        setTextareaInputListener(instance, propValue)
       }
-      break
-    case "onContentChange":
-      if (instance instanceof TextareaRenderable) {
-        setTextareaListener(instance, "onContentChange", propValue)
-        break
-      }
-      // @ts-expect-error props are not strongly typed in the reconciler, so we need to allow dynamic property access
-      instance[propKey] = propValue
       break
     case "onSubmit":
       if (instance instanceof InputRenderable) {
