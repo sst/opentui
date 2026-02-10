@@ -209,6 +209,23 @@ describe("InputRenderable", () => {
       expect(inputValues).toEqual(["foo bar "])
     })
 
+    it("should emit INPUT event on deleteLine()", () => {
+      const { input } = createInputRenderable({
+        value: "hello world",
+      })
+
+      input.focus()
+
+      const inputValues: string[] = []
+      input.on(InputRenderableEvents.INPUT, (value: string) => {
+        inputValues.push(value)
+      })
+
+      input.deleteLine()
+      expect(input.value).toBe("")
+      expect(inputValues).toEqual([""])
+    })
+
     it("should handle delete correctly", () => {
       const { input } = createInputRenderable({
         value: "hello",

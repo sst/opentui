@@ -167,6 +167,12 @@ export class InputRenderable extends TextareaRenderable {
     return result
   }
 
+  public override deleteLine(): boolean {
+    const result = super.deleteLine()
+    this.emit(InputRenderableEvents.INPUT, this.plainText)
+    return result
+  }
+
   public override deleteWordBackward(): boolean {
     const result = super.deleteWordBackward()
     this.emit(InputRenderableEvents.INPUT, this.plainText)
