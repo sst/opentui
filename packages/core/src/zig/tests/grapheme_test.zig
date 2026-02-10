@@ -1037,6 +1037,27 @@ test "GraphemePool - allocUnowned large text" {
     try pool.decref(id);
 }
 
+test "GraphemePool - alloc does not reuse unowned IDs" {
+    var pool = GraphemePool.init(std.testing.allocator);
+    defer pool.deinit();
+
+    const external_text = "shared";
+
+    const unowned_id = try pool.allocUnowned(external_text);
+    try pool.incref(unowned_id);
+    defer pool.decref(unowned_id) catch {};
+
+    const owned_id = try pool.alloc(external_text);
+    try pool.incref(owned_id);
+    defer pool.decref(owned_id) catch {};
+
+    try std.testing.expect(owned_id != unowned_id);
+
+    const owned_bytes = try pool.get(owned_id);
+    try std.testing.expectEqualSlices(u8, external_text, owned_bytes);
+    try std.testing.expect(@intFromPtr(owned_bytes.ptr) != @intFromPtr(external_text.ptr));
+}
+
 test "GraphemeTracker - with unowned allocations" {
     var pool = GraphemePool.init(std.testing.allocator);
     defer pool.deinit();
@@ -1139,6 +1160,35 @@ test "GraphemePool - initWithOptions with small slots_per_page" {
 
     try pool.decref(id1);
     try pool.decref(id2);
+}
+
+test "GraphemePool - alloc reuses live ID for same bytes" {
+    const tiny_slots = [_]u32{ 1, 1, 1, 1, 1 };
+    var pool = gp.GraphemePool.initWithOptions(std.testing.allocator, .{
+        .slots_per_page = tiny_slots,
+    });
+    defer pool.deinit();
+
+    const grapheme = "👋";
+
+    const id1 = try pool.alloc(grapheme);
+    try pool.incref(id1);
+
+    const id2 = try pool.alloc(grapheme);
+    try std.testing.expectEqual(id1, id2);
+    try std.testing.expectEqual(@as(u32, 1), try pool.getRefcount(id1));
+
+    try pool.decref(id1);
+
+    const id3 = try pool.alloc(grapheme);
+    try pool.incref(id3);
+    defer pool.decref(id3) catch @panic("Failed to decref id3");
+
+    try std.testing.expect(id3 != id1);
+    try std.testing.expectEqualSlices(u8, grapheme, try pool.get(id3));
+
+    const id4 = try pool.alloc(grapheme);
+    try std.testing.expectEqual(id3, id4);
 }
 
 test "GraphemePool - small pool exhaustion and growth" {

@@ -49,6 +49,7 @@ pub const GraphemePool = struct {
 
     allocator: std.mem.Allocator,
     classes: [MAX_CLASSES]ClassPool,
+    interned_live_ids: std.StringHashMapUnmanaged(IdPayload),
 
     const SlotHeader = extern struct {
         len: u16,
@@ -68,13 +69,78 @@ pub const GraphemePool = struct {
         while (i < MAX_CLASSES) : (i += 1) {
             classes[i] = ClassPool.init(allocator, CLASS_SIZES[i], slots_per_page[i]);
         }
-        return .{ .allocator = allocator, .classes = classes };
+        return .{ .allocator = allocator, .classes = classes, .interned_live_ids = .{} };
     }
 
     pub fn deinit(self: *GraphemePool) void {
+        var key_it = self.interned_live_ids.keyIterator();
+        while (key_it.next()) |key_ptr| {
+            self.allocator.free(@constCast(key_ptr.*));
+        }
+        self.interned_live_ids.deinit(self.allocator);
+
         var i: usize = 0;
         while (i < MAX_CLASSES) : (i += 1) {
             self.classes[i].deinit();
+        }
+    }
+
+    /// removeInternedLiveId removes an interned ID from the live set if it
+    /// matches the expected ID.
+    fn removeInternedLiveId(self: *GraphemePool, bytes: []const u8, expected_id: IdPayload) void {
+        const live_id = self.interned_live_ids.get(bytes) orelse return;
+        if (live_id != expected_id) return;
+        if (self.interned_live_ids.fetchRemove(bytes)) |removed| {
+            self.allocator.free(@constCast(removed.key));
+        }
+    }
+
+    /// lookupOrInvalidate checks if the given bytes are already interned and live, returning the existing ID if so.
+    fn lookupOrInvalidate(self: *GraphemePool, bytes: []const u8) ?IdPayload {
+        const live_id = self.interned_live_ids.get(bytes) orelse return null;
+
+        // Verify that the live ID is still valid and matches the bytes. If get
+        // fails, the ID is no longer valid, so remove it from the interned map.
+        const live_bytes = self.get(live_id) catch {
+            self.removeInternedLiveId(bytes, live_id);
+            return null;
+        };
+
+        // If the bytes don't match, this means the ID was recycled and now points
+        // to different data. Invalidate the interned ID.
+        if (!std.mem.eql(u8, live_bytes, bytes)) {
+            self.removeInternedLiveId(bytes, live_id);
+            return null;
+        }
+
+        // check refcount > 0 to ensure the ID is still live. If refcount is 0,
+        // the slot is free but hasn't been reused yet, so we can treat it as
+        // not found.
+        const live_refcount = self.getRefcount(live_id) catch {
+            self.removeInternedLiveId(bytes, live_id);
+            return null;
+        };
+        if (live_refcount == 0) {
+            self.removeInternedLiveId(bytes, live_id);
+            return null;
+        }
+
+        return live_id;
+    }
+
+    /// internLiveId interns the grapheme bytes.
+    fn internLiveId(self: *GraphemePool, id: IdPayload, bytes: []const u8) GraphemePoolError!void {
+        if (self.lookupOrInvalidate(bytes) != null) {
+            // Keep existing interned ID if it's still valid.
+            return;
+        }
+
+        const owned_key = self.allocator.dupe(u8, bytes) catch return GraphemePoolError.OutOfMemory;
+        errdefer self.allocator.free(owned_key);
+
+        if (self.interned_live_ids.fetchPut(self.allocator, owned_key, id) catch return GraphemePoolError.OutOfMemory) |replaced| {
+            // A previous key allocation was replaced.
+            self.allocator.free(@constCast(replaced.key));
         }
     }
 
@@ -94,6 +160,10 @@ pub const GraphemePool = struct {
     }
 
     pub fn alloc(self: *GraphemePool, bytes: []const u8) GraphemePoolError!IdPayload {
+        if (self.lookupOrInvalidate(bytes)) |live_id| {
+            return live_id;
+        }
+
         const class_id: u32 = classForSize(bytes.len);
         const slot_index = try self.classes[class_id].allocInternal(bytes, true);
         const generation = self.classes[class_id].getGeneration(slot_index);
@@ -116,7 +186,17 @@ pub const GraphemePool = struct {
         if (class_id >= MAX_CLASSES) return GraphemePoolError.InvalidId;
         const slot_index: u32 = id & SLOT_MASK;
         const generation: u32 = (id >> SLOT_BITS) & GENERATION_MASK;
+        const old_refcount = try self.classes[class_id].getRefcount(slot_index, generation);
         try self.classes[class_id].incref(slot_index, generation);
+
+        if (old_refcount == 0) {
+            const is_owned = try self.classes[class_id].isOwned(slot_index, generation);
+            if (is_owned) {
+                // This is a transition from 0 to 1 for owned bytes, so intern it.
+                const bytes = try self.classes[class_id].get(slot_index, generation);
+                try self.internLiveId(id, bytes);
+            }
+        }
     }
 
     pub fn decref(self: *GraphemePool, id: IdPayload) GraphemePoolError!void {
@@ -124,6 +204,17 @@ pub const GraphemePool = struct {
         if (class_id >= MAX_CLASSES) return GraphemePoolError.InvalidId;
         const slot_index: u32 = id & SLOT_MASK;
         const generation: u32 = (id >> SLOT_BITS) & GENERATION_MASK;
+
+        const old_refcount = try self.classes[class_id].getRefcount(slot_index, generation);
+        if (old_refcount == 1) {
+            const is_owned = try self.classes[class_id].isOwned(slot_index, generation);
+            if (is_owned) {
+                // This is a transition from 1 to 0 for owned bytes, remove map entry.
+                const bytes = try self.classes[class_id].get(slot_index, generation);
+                self.removeInternedLiveId(bytes, id);
+            }
+        }
+
         try self.classes[class_id].decref(slot_index, generation);
     }
 
@@ -135,6 +226,13 @@ pub const GraphemePool = struct {
         if (class_id >= MAX_CLASSES) return GraphemePoolError.InvalidId;
         const slot_index: u32 = id & SLOT_MASK;
         const generation: u32 = (id >> SLOT_BITS) & GENERATION_MASK;
+
+        const is_owned = try self.classes[class_id].isOwned(slot_index, generation);
+        if (is_owned) {
+            const bytes = try self.classes[class_id].get(slot_index, generation);
+            self.removeInternedLiveId(bytes, id);
+        }
+
         try self.classes[class_id].freeUnreferenced(slot_index, generation);
     }
 
@@ -312,6 +410,14 @@ pub const GraphemePool = struct {
             const header_ptr = @as(*SlotHeader, @ptrCast(@alignCast(p)));
             if (header_ptr.generation != expected_generation) return GraphemePoolError.WrongGeneration;
             return header_ptr.refcount;
+        }
+
+        pub fn isOwned(self: *ClassPool, slot_index: u32, expected_generation: u32) GraphemePoolError!bool {
+            if (slot_index >= self.num_slots) return GraphemePoolError.InvalidId;
+            const p = self.slotPtr(slot_index);
+            const header_ptr = @as(*SlotHeader, @ptrCast(@alignCast(p)));
+            if (header_ptr.generation != expected_generation) return GraphemePoolError.WrongGeneration;
+            return header_ptr.is_owned == 1;
         }
     };
 };
