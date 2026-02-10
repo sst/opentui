@@ -184,15 +184,14 @@ export function run(renderer: CliRenderer): void {
 
   renderer.console.keyBindings = [{ name: "y", ctrl: true, action: "copy-selection" }]
   renderer.console.onCopySelection = (text) => {
-    // NOTE: pbcopy is macOS-only. For cross-platform, use:
-    // - Windows: clip.exe
-    // - Linux: xclip -selection clipboard or xsel --clipboard
-    const proc = Bun.spawn(["pbcopy"], {
-      stdin: "pipe",
-    })
-    proc.stdin.write(text)
-    proc.stdin.end()
-    console.info(`Copied to clipboard: "${text.substring(0, 50)}${text.length > 50 ? "..." : ""}"`)
+    // Use OSC 52 escape sequence for clipboard - works over SSH and on all platforms
+    // The terminal emulator handles the clipboard operation locally
+    const success = renderer.copyToClipboardOSC52(text)
+    if (success) {
+      console.info(`Copied to clipboard: "${text.substring(0, 50)}${text.length > 50 ? "..." : ""}"`)
+    } else {
+      console.warn("Clipboard copy failed - OSC 52 not supported or stdout is not a TTY")
+    }
   }
 
   renderer.console.show()

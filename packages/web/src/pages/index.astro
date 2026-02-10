@@ -5,6 +5,7 @@ import TuiSurface from "../components/TuiSurface.astro"
 const installCommands = {
   create: { cmd: "bun create", pkg: "tui" },
   manual: { cmd: "bun add", pkg: "@opentui/core" },
+  skill: { cmd: "npx skills add", pkg: "msmps/opentui-skill" },
 }
 
 const features = [
@@ -69,15 +70,15 @@ const features = [
           </svg>
         </button>
         <nav class="landing-nav">
-          <a href="/docs/getting-started">Docs</a>
           <a href="https://github.com/anomalyco/opentui" target="_blank" rel="noopener noreferrer">GitHub</a>
+          <a href="/docs/getting-started">Docs</a>
         </nav>
       </header>
 
       <!-- Mobile nav overlay -->
       <nav class="mobile-nav" id="landing-mobile-nav">
-        <a href="/docs/getting-started">Docs</a>
         <a href="https://github.com/anomalyco/opentui" target="_blank" rel="noopener noreferrer">GitHub</a>
+        <a href="/docs/getting-started">Docs</a>
       </nav>
 
       <!-- Content -->
@@ -277,6 +278,7 @@ renderer.root.<span class="function">add</span>(
   const installCommands: Record<string, { cmd: string; pkg: string }> = {
     create: { cmd: "bun create", pkg: "tui" },
     manual: { cmd: "bun add", pkg: "@opentui/core" },
+    skill: { cmd: "npx skills add", pkg: "msmps/opentui-skill" },
   }
 
   // Tab switching

@@ -79,7 +79,12 @@ export interface RenderContext extends EventEmitter {
   _internalKeyInput: InternalKeyHandler
   clearSelection: () => void
   startSelection: (renderable: Renderable, x: number, y: number) => void
-  updateSelection: (currentRenderable: Renderable | undefined, x: number, y: number) => void
+  updateSelection: (
+    currentRenderable: Renderable | undefined,
+    x: number,
+    y: number,
+    options?: { finishDragging?: boolean },
+  ) => void
 }
 
 export type Timeout = ReturnType<typeof setTimeout> | undefined

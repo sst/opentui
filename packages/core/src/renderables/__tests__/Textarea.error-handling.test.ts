@@ -29,7 +29,7 @@ describe("Textarea - Error Handling Tests", () => {
 
       expect(() => editor.plainText).toThrow("EditBuffer is destroyed")
       expect(() => editor.insertText("x")).toThrow("EditorView is destroyed")
-      expect(() => editor.moveCursorLeft()).toThrow("EditBuffer is destroyed")
+      expect(() => editor.moveCursorLeft()).toThrow("EditorView is destroyed")
     })
   })
 })

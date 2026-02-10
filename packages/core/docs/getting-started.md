@@ -8,6 +8,8 @@ OpenTUI is a TypeScript library for building terminal user interfaces (TUIs). It
 
 The `CliRenderer` is the heart of OpenTUI. It manages the terminal output, handles input events, and orchestrates the rendering loop. Think of it as the canvas that draws your interface to the terminal. It can run in a "live" mode, when calling `renderer.start()`, which runs a loop capped at the specified target FPS. It also just works without calling `renderer.start()`, which will only re-render when the renderable tree or layout changes.
 
+By default, left-clicking auto-focuses the closest focusable renderable. Disable this with `createCliRenderer({ autoFocus: false })` if you need manual focus control.
+
 ### FrameBuffer (OptimizedBuffer)
 
 The `FrameBuffer` is a low-level rendering surface for custom graphics and complex visual effects. It is a 2D array of cells that can be drawn to using the `setCell`, `setCellWithAlphaBlending`, `drawText`, `fillRect`, and `drawFrameBuffer` methods. It is optimized for performance and memory usage. It allows for transparent cells and alpha blending, down to the viewport framebuffer.
