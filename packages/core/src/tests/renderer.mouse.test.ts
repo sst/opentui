@@ -231,6 +231,37 @@ describe("renderer handleMouseData", () => {
     }
   })
 
+  test("scroll outside hit target falls back to focused renderable", async () => {
+    try {
+      const target = new TestRenderable(renderer, {
+        id: "focused-scroll-target",
+        position: "absolute",
+        left: 1,
+        top: 1,
+        width: 5,
+        height: 4,
+      })
+      renderer.root.add(target)
+      await renderOnce()
+
+      let scrollCount = 0
+      let lastDirection: string | undefined
+      target.onMouseScroll = (event) => {
+        scrollCount++
+        lastDirection = event.scroll?.direction
+      }
+
+      target.focusable = true
+      target.focus()
+      await mockMouse.scroll(renderer.width - 1, renderer.height - 1, "down")
+
+      expect(scrollCount).toBe(1)
+      expect(lastDirection).toBe("down")
+    } finally {
+      renderer.destroy()
+    }
+  })
+
   test("console mouse handling consumes events inside console bounds", async () => {
     try {
       renderer.useConsole = true
