@@ -578,10 +578,7 @@ export class ExtmarksController {
     return true
   }
 
-  private invokeDeletionHook(
-    extmark: Extmark,
-    direction: ExtmarkDeletionEncounter["direction"],
-  ): boolean {
+  private invokeDeletionHook(extmark: Extmark, direction: ExtmarkDeletionEncounter["direction"]): boolean {
     const onDeletion = this.onDeletionCallbacks.get(extmark.id)
     if (!onDeletion) return true
 

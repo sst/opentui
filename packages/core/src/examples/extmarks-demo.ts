@@ -53,7 +53,12 @@ function clearSelection(): void {
 }
 
 function createOnEncounter(label: string) {
-  return (encounter: { extmark: { id: number; start: number; end: number }; direction: string; skip: () => void; setCursor: (offset: number) => void }) => {
+  return (encounter: {
+    extmark: { id: number; start: number; end: number }
+    direction: string
+    skip: () => void
+    setCursor: (offset: number) => void
+  }) => {
     if (selectionState.id === encounter.extmark.id) {
       clearSelection()
       hookState.message = `Skipped past ${label}`
