@@ -14,6 +14,33 @@ const TextBufferView = text_buffer_view.TextBufferView;
 const OptimizedBuffer = buffer.OptimizedBuffer;
 const RGBA = text_buffer.RGBA;
 
+fn createWithOptionsOnce(allocator: std.mem.Allocator, width: u32, height: u32) !void {
+    const pool = gp.initGlobalPool(allocator);
+    defer gp.deinitGlobalPool();
+    defer link.deinitGlobalLinkPool();
+
+    var cli_renderer = try CliRenderer.createWithOptions(allocator, width, height, pool, true, false);
+    cli_renderer.destroy();
+}
+
+test "renderer - createWithOptions late allocation failure cleans up" {
+    const allocation_count = blk: {
+        var counting_allocator = std.testing.FailingAllocator.init(std.testing.allocator, .{});
+        try createWithOptionsOnce(counting_allocator.allocator(), 80, 24);
+        break :blk counting_allocator.alloc_index;
+    };
+
+    try std.testing.expect(allocation_count > 0);
+
+    var failing_allocator = std.testing.FailingAllocator.init(std.testing.allocator, .{
+        .fail_index = allocation_count - 1,
+    });
+
+    try std.testing.expectError(error.OutOfMemory, createWithOptionsOnce(failing_allocator.allocator(), 80, 24));
+    try std.testing.expect(failing_allocator.has_induced_failure);
+    try std.testing.expectEqual(failing_allocator.allocated_bytes, failing_allocator.freed_bytes);
+}
+
 test "renderer - create and destroy" {
     const pool = gp.initGlobalPool(std.testing.allocator);
     defer gp.deinitGlobalPool();

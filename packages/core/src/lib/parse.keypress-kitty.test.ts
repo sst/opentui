@@ -221,10 +221,10 @@ test("parseKeypress - Kitty keyboard invalid codepoint", () => {
 test("parseKeypress - Kitty keyboard keypad keys", () => {
   const options: ParseKeypressOptions = { useKittyKeyboard: true }
 
-  const kp0 = parseKeypress("\x1b[57400u", options)
+  const kp0 = parseKeypress("\x1b[57399u", options)
   expect(kp0?.name).toBe("kp0")
 
-  const kpEnter = parseKeypress("\x1b[57415u", options)
+  const kpEnter = parseKeypress("\x1b[57414u", options)
   expect(kpEnter?.name).toBe("kpenter")
 })
 
@@ -485,16 +485,16 @@ test("parseKeypress - Kitty sequences are NOT filtered by terminal response filt
 
   // All keypad keys
   const keypadKeys = [
-    [57400, "kp0"],
-    [57401, "kp1"],
-    [57409, "kp9"],
-    [57410, "kpdecimal"],
-    [57411, "kpdivide"],
-    [57412, "kpmultiply"],
-    [57413, "kpminus"],
-    [57414, "kpplus"],
-    [57415, "kpenter"],
-    [57416, "kpequal"],
+    [57399, "kp0"],
+    [57400, "kp1"],
+    [57408, "kp9"],
+    [57409, "kpdecimal"],
+    [57410, "kpdivide"],
+    [57411, "kpmultiply"],
+    [57412, "kpminus"],
+    [57413, "kpplus"],
+    [57414, "kpenter"],
+    [57415, "kpequal"],
   ] as const
   for (const [code, expectedName] of keypadKeys) {
     const result = parseKeypress(`\x1b[${code}u`, options)

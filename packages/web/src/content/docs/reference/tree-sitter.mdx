@@ -1,0 +1,138 @@
+---
+title: Tree-sitter
+description: Add parsers and syntax highlighting with Tree-sitter
+order: 2
+---
+
+# Tree-sitter
+
+OpenTUI integrates Tree-sitter for fast, accurate syntax highlighting. You can register parsers globally or per client.
+
+## Add parsers globally
+
+Use `addDefaultParsers()` before creating clients:
+
+```typescript
+import { addDefaultParsers, getTreeSitterClient } from "@opentui/core"
+
+addDefaultParsers([
+  {
+    filetype: "python",
+    wasm: "https://github.com/tree-sitter/tree-sitter-python/releases/download/v0.23.6/tree-sitter-python.wasm",
+    queries: {
+      highlights: ["https://raw.githubusercontent.com/tree-sitter/tree-sitter-python/master/queries/highlights.scm"],
+    },
+  },
+])
+
+const client = getTreeSitterClient()
+await client.initialize()
+```
+
+## Add parsers per client
+
+```typescript
+import { TreeSitterClient } from "@opentui/core"
+
+const client = new TreeSitterClient({ dataPath: "./cache" })
+await client.initialize()
+
+client.addFiletypeParser({
+  filetype: "rust",
+  wasm: "https://github.com/tree-sitter/tree-sitter-rust/releases/download/v0.23.2/tree-sitter-rust.wasm",
+  queries: {
+    highlights: ["https://raw.githubusercontent.com/tree-sitter/tree-sitter-rust/master/queries/highlights.scm"],
+  },
+})
+```
+
+## Parser configuration
+
+```typescript
+interface FiletypeParserOptions {
+  filetype: string
+  wasm: string
+  queries: {
+    highlights: string[]
+  }
+}
+```
+
+## Use local files
+
+```typescript
+import pythonWasm from "./parsers/tree-sitter-python.wasm" with { type: "file" }
+import pythonHighlights from "./queries/python/highlights.scm" with { type: "file" }
+
+addDefaultParsers([
+  {
+    filetype: "python",
+    wasm: pythonWasm,
+    queries: {
+      highlights: [pythonHighlights],
+    },
+  },
+])
+```
+
+## Automated asset management
+
+Use the `updateAssets` utility to download parsers and generate imports.
+
+### CLI usage
+
+```json
+{
+  "scripts": {
+    "prebuild": "bun node_modules/@opentui/core/lib/tree-sitter/assets/update.ts --config ./parsers-config.json --assets ./src/parsers --output ./src/parsers.ts"
+  }
+}
+```
+
+### Programmatic usage
+
+```typescript
+import { updateAssets } from "@opentui/core"
+
+await updateAssets({
+  configPath: "./parsers-config.json",
+  assetsDir: "./src/parsers",
+  outputPath: "./src/parsers.ts",
+})
+```
+
+## Using with CodeRenderable
+
+```typescript
+import { CodeRenderable, getTreeSitterClient } from "@opentui/core"
+
+const client = getTreeSitterClient()
+await client.initialize()
+
+const code = new CodeRenderable(renderer, {
+  id: "code",
+  content: "const x = 1",
+  filetype: "typescript",
+  syntaxStyle,
+  treeSitterClient: client,
+})
+```
+
+## Caching
+
+Parser and query files are cached in the client `dataPath`. Set a custom cache directory:
+
+```typescript
+const client = new TreeSitterClient({
+  dataPath: "./my-cache",
+})
+```
+
+## File type resolution
+
+```typescript
+import { pathToFiletype, extToFiletype } from "@opentui/core"
+
+const ft1 = pathToFiletype("src/main.rs")
+const ft2 = extToFiletype("ts")
+```
