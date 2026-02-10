@@ -332,7 +332,7 @@ export async function run(renderer: CliRenderer): Promise<void> {
 
   const filterStatusText = new TextRenderable(renderer, {
     id: "shader-filter-status",
-    content: `Filter: ${filterFunctions[currentFilterIndex].name} (,/. to cycle)`,
+    content: `Filter: ${filterFunctions[currentFilterIndex].name} (J/K to cycle)`,
     position: "absolute",
     left: 0,
     top: uiLine++,
@@ -368,7 +368,7 @@ export async function run(renderer: CliRenderer): Promise<void> {
   const controlsText = new TextRenderable(renderer, {
     id: "shader-controls",
     content:
-      "WASD: Move | QE: Rotate | ZX: Zoom | V: Light Viz | C: Light Color | L: Lights | M/N: Material | P/B/I: Maps | R: Reset | Space: Rotation | ,/. Filter | [/]{/} Param Adjust",
+      "WASD: Move | QE: Rotate | ZX: Zoom | V: Light Viz | C: Light Color | L: Lights | M/N: Material | P/B/I: Maps | R: Reset | Space: Rotation | J/K Filter | [/]{/} Param Adjust",
     position: "absolute",
     left: 0,
     top: HEIGHT - 2,
@@ -528,10 +528,10 @@ export async function run(renderer: CliRenderer): Promise<void> {
     }
 
     let filterChanged = false
-    if (key.name === ",") {
+    if (key.name === "j") {
       currentFilterIndex = (currentFilterIndex - 1 + filterFunctions.length) % filterFunctions.length
       filterChanged = true
-    } else if (key.name === ".") {
+    } else if (key.name === "k") {
       currentFilterIndex = (currentFilterIndex + 1) % filterFunctions.length
       filterChanged = true
     }
@@ -542,7 +542,7 @@ export async function run(renderer: CliRenderer): Promise<void> {
       if (selectedFilter.func) {
         renderer.addPostProcessFn(selectedFilter.func)
       }
-      filterStatusText.content = `Filter: ${selectedFilter.name} (,/. to cycle)`
+      filterStatusText.content = `Filter: ${selectedFilter.name} (J/K to cycle)`
       updateParameterUI()
     }
 
@@ -693,7 +693,8 @@ export async function run(renderer: CliRenderer): Promise<void> {
       }
     }
 
-    engine.drawScene(sceneRoot, framebuffer, deltaTime)
+    framebuffer.clear(RGBA.fromValues(0, 0, 0, 0))
+    await engine.drawScene(sceneRoot, framebuffer, deltaTime)
   })
 
   // Store state for cleanup

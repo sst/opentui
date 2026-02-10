@@ -210,6 +210,63 @@ test "EditBuffer - getEOL empty line" {
     try std.testing.expectEqual(@as(u32, 0), eol_cursor.col);
 }
 
+test "EditBuffer - word boundary with tabs" {
+    const pool = gp.initGlobalPool(std.testing.allocator);
+    defer gp.deinitGlobalPool();
+
+    var eb = try EditBuffer.init(std.testing.allocator, pool, .wcwidth);
+    defer eb.deinit();
+
+    try eb.insertText("Hello\tWorld");
+
+    try eb.setCursor(0, 12);
+
+    const prev_cursor = eb.getPrevWordBoundary();
+    try std.testing.expectEqual(@as(u32, 7), prev_cursor.col);
+
+    try eb.setCursor(0, 0);
+    const next_cursor = eb.getNextWordBoundary();
+    try std.testing.expectEqual(@as(u32, 7), next_cursor.col);
+}
+
+test "EditBuffer - word boundary with CJK graphemes" {
+    const pool = gp.initGlobalPool(std.testing.allocator);
+    defer gp.deinitGlobalPool();
+
+    var eb = try EditBuffer.init(std.testing.allocator, pool, .wcwidth);
+    defer eb.deinit();
+
+    // "你" = 2 cols, " " = 1 col, "好" = 2 cols
+    try eb.insertText("你 好");
+    try eb.setCursor(0, 0);
+
+    const next_cursor = eb.getNextWordBoundary();
+    try std.testing.expectEqual(@as(u32, 3), next_cursor.col);
+
+    try eb.setCursor(0, 5);
+    const prev_cursor = eb.getPrevWordBoundary();
+    try std.testing.expectEqual(@as(u32, 3), prev_cursor.col);
+}
+
+test "EditBuffer - word boundary with emoji" {
+    const pool = gp.initGlobalPool(std.testing.allocator);
+    defer gp.deinitGlobalPool();
+
+    var eb = try EditBuffer.init(std.testing.allocator, pool, .wcwidth);
+    defer eb.deinit();
+
+    // "🌟" = 2 cols, " " = 1 col, "ok" = 2 cols
+    try eb.insertText("🌟 ok");
+    try eb.setCursor(0, 0);
+
+    const next_cursor = eb.getNextWordBoundary();
+    try std.testing.expectEqual(@as(u32, 3), next_cursor.col);
+
+    try eb.setCursor(0, 5);
+    const prev_cursor = eb.getPrevWordBoundary();
+    try std.testing.expectEqual(@as(u32, 3), prev_cursor.col);
+}
+
 test "EditBuffer - moveRight past tab at start of line" {
     const pool = gp.initGlobalPool(std.testing.allocator);
     defer gp.deinitGlobalPool();

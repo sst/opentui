@@ -1,0 +1,117 @@
+---
+title: Colors
+description: Working with RGBA colors in OpenTUI
+order: 2
+---
+
+# Colors
+
+OpenTUI uses the `RGBA` class for color representation. The class stores colors as normalized float values (0.0-1.0) internally, but provides methods for working with different color formats.
+
+## Creating colors
+
+### From integers (0-255)
+
+```typescript
+import { RGBA } from "@opentui/core"
+
+const red = RGBA.fromInts(255, 0, 0, 255)
+const semiTransparentBlue = RGBA.fromInts(0, 0, 255, 128)
+```
+
+### From float values (0.0-1.0)
+
+```typescript
+const green = RGBA.fromValues(0.0, 1.0, 0.0, 1.0)
+const transparent = RGBA.fromValues(1.0, 1.0, 1.0, 0.5)
+```
+
+### From hex strings
+
+```typescript
+const purple = RGBA.fromHex("#800080")
+const withAlpha = RGBA.fromHex("#FF000080") // Semi-transparent red
+```
+
+## String colors
+
+Most component properties accept both `RGBA` objects and color strings:
+
+```typescript
+import { Text, Box } from "@opentui/core"
+
+// Using hex strings
+Text({ content: "Hello", fg: "#00FF00" })
+
+// Using CSS color names
+Box({ backgroundColor: "red", borderColor: "white" })
+
+// Using RGBA objects
+const customColor = RGBA.fromInts(100, 150, 200, 255)
+Text({ content: "Custom", fg: customColor })
+
+// Transparent
+Box({ backgroundColor: "transparent" })
+```
+
+## The parseColor utility
+
+The `parseColor()` function converts various color formats to RGBA:
+
+```typescript
+import { parseColor } from "@opentui/core"
+
+const color1 = parseColor("#FF0000") // Hex
+const color2 = parseColor("blue") // CSS color name
+const color3 = parseColor("transparent") // Transparent
+const color4 = parseColor(RGBA.fromInts(255, 0, 0, 255)) // Pass-through
+```
+
+## Alpha blending
+
+You can use transparent cells and alpha blending for layered effects:
+
+```typescript
+import { FrameBufferRenderable, RGBA } from "@opentui/core"
+
+const canvas = new FrameBufferRenderable(renderer, {
+  id: "canvas",
+  width: 50,
+  height: 20,
+})
+
+// Draw with alpha blending
+const semiTransparent = RGBA.fromValues(1.0, 0.0, 0.0, 0.5)
+const transparent = RGBA.fromInts(0, 0, 0, 0)
+canvas.frameBuffer.setCellWithAlphaBlending(10, 5, " ", transparent, semiTransparent)
+```
+
+## Text attributes with colors
+
+Combine colors with text attributes:
+
+```typescript
+import { TextRenderable, TextAttributes, RGBA } from "@opentui/core"
+
+const styledText = new TextRenderable(renderer, {
+  id: "styled",
+  content: "Important",
+  fg: RGBA.fromHex("#FFFF00"),
+  bg: RGBA.fromHex("#333333"),
+  attributes: TextAttributes.BOLD | TextAttributes.UNDERLINE,
+})
+```
+
+## Color constants
+
+Common colors:
+
+```typescript
+// Some examples of commonly used colors
+const white = RGBA.fromInts(255, 255, 255, 255)
+const black = RGBA.fromInts(0, 0, 0, 255)
+const red = RGBA.fromInts(255, 0, 0, 255)
+const green = RGBA.fromInts(0, 255, 0, 255)
+const blue = RGBA.fromInts(0, 0, 255, 255)
+const transparent = RGBA.fromInts(0, 0, 0, 0)
+```

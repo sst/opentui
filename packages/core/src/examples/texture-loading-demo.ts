@@ -1,15 +1,6 @@
 #!/usr/bin/env bun
 
-import {
-  CliRenderer,
-  createCliRenderer,
-  OptimizedBuffer,
-  RGBA,
-  BoxRenderable,
-  TextRenderable,
-  FrameBufferRenderable,
-  type KeyEvent,
-} from "../index"
+import { CliRenderer, createCliRenderer, RGBA, BoxRenderable, TextRenderable, type KeyEvent } from "../index"
 import { setupCommonDemoKeys } from "./lib/standalone-keys"
 import { TextureUtils } from "../3d/TextureUtils"
 import {
@@ -24,15 +15,14 @@ import {
 } from "three"
 import { MeshPhongNodeMaterial } from "three/webgpu"
 import { lights } from "three/tsl"
-import { ThreeCliRenderer, SuperSampleAlgorithm } from "../3d"
+import { ThreeRenderable, SuperSampleAlgorithm } from "../3d"
 
 // @ts-ignore
 import cratePath from "./assets/crate.png" with { type: "image/png" }
 // @ts-ignore
 import crateEmissivePath from "./assets/crate_emissive.png" with { type: "image/png" }
 
-let engine: ThreeCliRenderer | null = null
-let framebuffer: OptimizedBuffer | null = null
+let threeRenderable: ThreeRenderable | null = null
 let keyListener: ((key: KeyEvent) => void) | null = null
 let resizeListener: ((width: number, height: number) => void) | null = null
 let parentContainer: BoxRenderable | null = null
@@ -47,23 +37,6 @@ export async function run(renderer: CliRenderer): Promise<void> {
     zIndex: 15,
   })
   renderer.root.add(parentContainer)
-
-  const framebufferRenderable = new FrameBufferRenderable(renderer, {
-    id: "main",
-    width: WIDTH,
-    height: HEIGHT,
-    zIndex: 10,
-  })
-  renderer.root.add(framebufferRenderable)
-  const { frameBuffer: framebuffer } = framebufferRenderable
-
-  engine = new ThreeCliRenderer(renderer, {
-    width: WIDTH,
-    height: HEIGHT,
-    focalLength: 8,
-    backgroundColor: RGBA.fromValues(0.0, 0.0, 0.0, 1.0),
-  })
-  await engine.init()
 
   const sceneRoot = new ThreeScene()
 
@@ -91,11 +64,36 @@ export async function run(renderer: CliRenderer): Promise<void> {
 
   sceneRoot.add(cubeMeshNode)
 
-  const cameraNode = new PerspectiveCamera(45, engine.aspectRatio, 1.0, 100.0)
+  const cameraNode = new PerspectiveCamera(45, 1, 1.0, 100.0)
   cameraNode.position.set(0, 0, 2)
   cameraNode.name = "main_camera"
 
-  engine.setActiveCamera(cameraNode)
+  const rotationSpeed = new Vector3(0.4, 0.8, 0.2)
+  let rotationEnabled = true
+
+  renderer.setFrameCallback(async (deltaMs) => {
+    const deltaTime = deltaMs / 1000
+
+    if (rotationEnabled && cubeMeshNode) {
+      cubeMeshNode.rotation.x += rotationSpeed.x * deltaTime
+      cubeMeshNode.rotation.y += rotationSpeed.y * deltaTime
+      cubeMeshNode.rotation.z += rotationSpeed.z * deltaTime
+    }
+  })
+
+  threeRenderable = new ThreeRenderable(renderer, {
+    id: "main",
+    width: WIDTH,
+    height: HEIGHT,
+    zIndex: 10,
+    scene: sceneRoot,
+    camera: cameraNode,
+    renderer: {
+      focalLength: 8,
+      backgroundColor: RGBA.fromValues(0.0, 0.0, 0.0, 1.0),
+    },
+  })
+  renderer.root.add(threeRenderable)
 
   const titleText = new TextRenderable(renderer, {
     id: "demo-title",
@@ -128,13 +126,9 @@ export async function run(renderer: CliRenderer): Promise<void> {
   parentContainer.add(controlsText)
 
   resizeListener = (width: number, height: number) => {
-    if (framebuffer) {
-      framebuffer.resize(width, height)
-    }
-
-    if (cameraNode && engine) {
-      cameraNode.aspect = engine.aspectRatio
-      cameraNode.updateProjectionMatrix()
+    if (threeRenderable) {
+      threeRenderable.width = width
+      threeRenderable.height = height
     }
 
     controlsText.y = height - 2
@@ -142,10 +136,9 @@ export async function run(renderer: CliRenderer): Promise<void> {
 
   renderer.on("resize", resizeListener)
 
-  let rotationEnabled = true
-  let showDebugOverlay = false
-
   keyListener = (key: KeyEvent) => {
+    const engine = threeRenderable?.renderer
+
     if (key.name === "p" && engine) {
       engine.saveToFile(`screenshot-${Date.now()}.png`)
     }
@@ -206,8 +199,6 @@ export async function run(renderer: CliRenderer): Promise<void> {
 
   renderer.keyInput.on("keypress", keyListener)
 
-  const rotationSpeed = new Vector3(0.4, 0.8, 0.2)
-
   const imagePath = cratePath
   const textureMap = await TextureUtils.fromFile(imagePath)
   const textureEmissive = await TextureUtils.fromFile(crateEmissivePath)
@@ -230,25 +221,6 @@ export async function run(renderer: CliRenderer): Promise<void> {
   cubeMeshNode.material = material
 
   statusText.content = "Using PhongNodeMaterial setup"
-
-  // Start the animation loop
-  renderer.setFrameCallback(async (deltaMs) => {
-    const deltaTime = deltaMs / 1000
-
-    if (rotationEnabled && cubeMeshNode) {
-      cubeMeshNode.rotation.x += rotationSpeed.x * deltaTime
-      cubeMeshNode.rotation.y += rotationSpeed.y * deltaTime
-      cubeMeshNode.rotation.z += rotationSpeed.z * deltaTime
-    }
-
-    if (engine && framebuffer) {
-      await engine.drawScene(sceneRoot, framebuffer, deltaTime)
-
-      if (showDebugOverlay) {
-        engine.renderStats(framebuffer)
-      }
-    }
-  })
 }
 
 export function destroy(renderer: CliRenderer): void {
@@ -264,19 +236,15 @@ export function destroy(renderer: CliRenderer): void {
     keyListener = null
   }
 
-  renderer.root.remove("main")
+  if (threeRenderable) {
+    threeRenderable.destroy()
+    threeRenderable = null
+  }
 
   if (parentContainer) {
     renderer.root.remove("texture-loading-container")
     parentContainer = null
   }
-
-  if (engine) {
-    engine.destroy()
-    engine = null
-  }
-
-  framebuffer = null
 }
 
 if (import.meta.main) {

@@ -1975,6 +1975,113 @@ Press ESC to return to main menu.`
       const isInsideExtmark = cursorAfterDown >= 6 && cursorAfterDown < 25
       expect(isInsideExtmark).toBe(false)
     })
+
+    it("should not get stuck when moving down into virtual extmark at start of line", async () => {
+      // Regression test for cursor getting stuck when moving down over
+      // virtual extmarks at the beginning of lines.
+      // Setup:
+      //   Line 0: "a"
+      //   Line 1: "" (empty)
+      //   Line 2: "[EXT]" (virtual extmark starting at column 0)
+      //   Line 3: "b"
+      await setup("a\n\n[EXT]\nb")
+
+      textarea.focus()
+      textarea.cursorOffset = 2
+
+      const virtualStart = 3
+      const virtualEnd = 8
+
+      extmarks.create({
+        start: virtualStart,
+        end: virtualEnd,
+        virtual: true,
+      })
+
+      const initialOffset = textarea.cursorOffset
+      expect(initialOffset).toBe(2)
+
+      currentMockInput.pressArrow("down")
+      const cursorAfterDown = textarea.cursorOffset
+
+      expect(cursorAfterDown).toBe(virtualEnd)
+    })
+
+    it("should land at trailing text when moving down into line-start virtual extmark", async () => {
+      await setup("a\n\n[EXT]tail\nb")
+
+      textarea.focus()
+      textarea.cursorOffset = 2
+
+      const virtualStart = 3
+      const virtualEnd = 8
+
+      extmarks.create({
+        start: virtualStart,
+        end: virtualEnd,
+        virtual: true,
+      })
+
+      currentMockInput.pressArrow("down")
+
+      const cursorAfterDown = textarea.cursorOffset
+
+      expect(cursorAfterDown).toBe(virtualEnd)
+      expect(textarea.plainText.slice(cursorAfterDown, cursorAfterDown + 4)).toBe("tail")
+    })
+
+    it("should not jump past buffer end when moving down into line-start virtual extmark at EOF", async () => {
+      await setup("a\n\n[EXT]")
+
+      textarea.focus()
+      textarea.cursorOffset = 2
+
+      const virtualStart = 3
+      const virtualEnd = 8
+
+      extmarks.create({
+        start: virtualStart,
+        end: virtualEnd,
+        virtual: true,
+      })
+
+      currentMockInput.pressArrow("down")
+
+      const cursorAfterDown = textarea.cursorOffset
+
+      expect(cursorAfterDown).toBe(virtualEnd)
+      expect(cursorAfterDown).toBe(textarea.plainText.length)
+    })
+
+    it("should navigate past virtual extmark at line start with repeated down presses", async () => {
+      await setup("abc\n\n[EXTMARK]\n\nxyz")
+
+      textarea.focus()
+      textarea.cursorOffset = 0
+
+      const virtualStart = 5
+      const virtualEnd = 14
+
+      extmarks.create({
+        start: virtualStart,
+        end: virtualEnd,
+        virtual: true,
+      })
+
+      currentMockInput.pressArrow("down")
+      currentMockInput.pressArrow("down")
+      const afterExtmark = textarea.cursorOffset
+
+      expect(afterExtmark).toBe(virtualEnd)
+
+      currentMockInput.pressArrow("down")
+      currentMockInput.pressArrow("down")
+      const finalOffset = textarea.cursorOffset
+
+      const xyzStart = textarea.plainText.indexOf("xyz")
+      expect(finalOffset).toBeGreaterThanOrEqual(xyzStart)
+      expect(finalOffset).toBeLessThanOrEqual(textarea.plainText.length)
+    })
   })
 
   describe("TypeId Operations", () => {

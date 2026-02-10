@@ -26,6 +26,7 @@ import * as opentuiDemo from "./opentui-demo"
 import * as nestedZIndexDemo from "./nested-zindex-demo"
 import * as relativePositioningDemo from "./relative-positioning-demo"
 import * as transparencyDemo from "./transparency-demo"
+import * as draggableThreeDemo from "./draggable-three-demo"
 import * as scrollExample from "./scroll-example"
 import * as stickyScrollExample from "./sticky-scroll-example"
 import * as shaderCubeExample from "./shader-cube-demo"
@@ -65,6 +66,7 @@ import * as scrollboxOverlayHitTest from "./scrollbox-overlay-hit-test"
 import * as scrollboxMouseTest from "./scrollbox-mouse-test"
 import * as textTruncationDemo from "./text-truncation-demo"
 import * as grayscaleBufferDemo from "./grayscale-buffer-demo"
+import * as focusRestoreDemo from "./focus-restore-demo"
 import { setupCommonDemoKeys } from "./lib/standalone-keys"
 
 interface Example {
@@ -221,10 +223,10 @@ const examples: Example[] = [
     destroy: transparencyDemo.destroy,
   },
   {
-    name: "Opacity Demo",
-    description: "Interactive opacity/alpha demonstration with animated boxes",
-    run: opacityExample.run,
-    destroy: opacityExample.destroy,
+    name: "Draggable ThreeRenderable",
+    description: "Draggable WebGPU cube with live animation",
+    run: draggableThreeDemo.run,
+    destroy: draggableThreeDemo.destroy,
   },
   {
     name: "Static Sprite",
@@ -387,6 +389,12 @@ const examples: Example[] = [
     description: "Grayscale buffer rendering with 1x vs 2x supersampled intensity",
     run: grayscaleBufferDemo.run,
     destroy: grayscaleBufferDemo.destroy,
+  },
+  {
+    name: "Focus Restore Demo",
+    description: "Test focus restore - alt-tab away and back to verify mouse tracking resumes",
+    run: focusRestoreDemo.run,
+    destroy: focusRestoreDemo.destroy,
   },
 ]
 

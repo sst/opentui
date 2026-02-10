@@ -49,6 +49,7 @@ export type TextareaAction =
   | "select-word-backward"
   | "delete-word-forward"
   | "delete-word-backward"
+  | "select-all"
   | "submit"
 
 export type KeyBinding = BaseKeyBinding<TextareaAction>
@@ -120,6 +121,7 @@ const defaultTextareaKeybindings: KeyBinding[] = [
   { name: "right", super: true, shift: true, action: "select-visual-line-end" },
   { name: "up", super: true, shift: true, action: "select-buffer-home" },
   { name: "down", super: true, shift: true, action: "select-buffer-end" },
+  { name: "a", super: true, action: "select-all" },
 ]
 
 export interface SubmitEvent {}
@@ -248,6 +250,7 @@ export class TextareaRenderable extends EditBufferRenderable {
       ["select-word-backward", () => this.moveWordBackward({ select: true })],
       ["delete-word-forward", () => this.deleteWordForward()],
       ["delete-word-backward", () => this.deleteWordBackward()],
+      ["select-all", () => this.selectAll()],
       ["submit", () => this.submit()],
     ])
   }
@@ -373,6 +376,17 @@ export class TextareaRenderable extends EditBufferRenderable {
 
   public moveCursorLeft(options?: { select?: boolean }): boolean {
     const select = options?.select ?? false
+
+    // if there's a selection and shift is not pressed,
+    // move cursor to the start of the selection
+    if (!select && this.hasSelection()) {
+      const selection = this.getSelection()!
+      this.editBuffer.setCursorByOffset(selection.start)
+      this._ctx.clearSelection()
+      this.requestRender()
+      return true
+    }
+
     this.updateSelectionForMovement(select, true)
     this.editBuffer.moveCursorLeft()
     this.updateSelectionForMovement(select, false)
@@ -382,6 +396,18 @@ export class TextareaRenderable extends EditBufferRenderable {
 
   public moveCursorRight(options?: { select?: boolean }): boolean {
     const select = options?.select ?? false
+
+    // if there's a selection and shift is not pressed,
+    // move cursor to the end of the selection
+    if (!select && this.hasSelection()) {
+      const selection = this.getSelection()!
+      const targetOffset = this.cursorOffset === selection.start ? selection.end - 1 : selection.end
+      this.editBuffer.setCursorByOffset(targetOffset)
+      this._ctx.clearSelection()
+      this.requestRender()
+      return true
+    }
+
     this.updateSelectionForMovement(select, true)
     this.editBuffer.moveCursorRight()
     this.updateSelectionForMovement(select, false)
@@ -486,6 +512,12 @@ export class TextareaRenderable extends EditBufferRenderable {
     this.updateSelectionForMovement(select, false)
     this.requestRender()
     return true
+  }
+
+  public selectAll(): boolean {
+    this.updateSelectionForMovement(false, true)
+    this.editBuffer.setCursor(0, 0)
+    return this.gotoBufferEnd({ select: true })
   }
 
   public deleteToLineEnd(): boolean {

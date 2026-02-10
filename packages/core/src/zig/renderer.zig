@@ -159,19 +159,40 @@ pub const CliRenderer = struct {
     };
 
     pub fn create(allocator: Allocator, width: u32, height: u32, pool: *gp.GraphemePool, testing: bool) !*CliRenderer {
+        return createWithOptions(allocator, width, height, pool, testing, false);
+    }
+
+    pub fn createWithOptions(
+        allocator: Allocator,
+        width: u32,
+        height: u32,
+        pool: *gp.GraphemePool,
+        testing: bool,
+        remote: bool,
+    ) !*CliRenderer {
         const self = try allocator.create(CliRenderer);
+        errdefer allocator.destroy(self);
 
         const currentBuffer = try OptimizedBuffer.init(allocator, width, height, .{ .pool = pool, .width_method = .unicode, .id = "current buffer" });
+        errdefer currentBuffer.deinit();
         const nextBuffer = try OptimizedBuffer.init(allocator, width, height, .{ .pool = pool, .width_method = .unicode, .id = "next buffer" });
+        errdefer nextBuffer.deinit();
 
         // stat sample arrays
         var lastFrameTime: std.ArrayListUnmanaged(f64) = .{};
+        errdefer lastFrameTime.deinit(allocator);
         var renderTime: std.ArrayListUnmanaged(f64) = .{};
+        errdefer renderTime.deinit(allocator);
         var overallFrameTime: std.ArrayListUnmanaged(f64) = .{};
+        errdefer overallFrameTime.deinit(allocator);
         var bufferResetTime: std.ArrayListUnmanaged(f64) = .{};
+        errdefer bufferResetTime.deinit(allocator);
         var stdoutWriteTime: std.ArrayListUnmanaged(f64) = .{};
+        errdefer stdoutWriteTime.deinit(allocator);
         var cellsUpdated: std.ArrayListUnmanaged(u32) = .{};
+        errdefer cellsUpdated.deinit(allocator);
         var frameCallbackTimes: std.ArrayListUnmanaged(f64) = .{};
+        errdefer frameCallbackTimes.deinit(allocator);
 
         try lastFrameTime.ensureTotalCapacity(allocator, STAT_SAMPLE_CAPACITY);
         try renderTime.ensureTotalCapacity(allocator, STAT_SAMPLE_CAPACITY);
@@ -183,7 +204,9 @@ pub const CliRenderer = struct {
 
         const hitGridSize = width * height;
         const currentHitGrid = try allocator.alloc(u32, hitGridSize);
+        errdefer allocator.free(currentHitGrid);
         const nextHitGrid = try allocator.alloc(u32, hitGridSize);
+        errdefer allocator.free(nextHitGrid);
         @memset(currentHitGrid, 0); // Initialize with 0 (no renderable)
         @memset(nextHitGrid, 0);
         const hitScissorStack: std.ArrayListUnmanaged(buf.ClipRect) = .{};
@@ -196,7 +219,7 @@ pub const CliRenderer = struct {
             .pool = pool,
             .backgroundColor = .{ 0.0, 0.0, 0.0, 0.0 },
             .renderOffset = 0,
-            .terminal = Terminal.init(.{}),
+            .terminal = Terminal.init(.{ .remote = remote }),
             .testing = testing,
             .lastCursorStyleTag = null,
             .lastCursorBlinking = null,
@@ -447,6 +470,7 @@ pub const CliRenderer = struct {
         const currentHitGridSize = self.hitGridWidth * self.hitGridHeight;
         if (newHitGridSize > currentHitGridSize) {
             const newCurrentHitGrid = try self.allocator.alloc(u32, newHitGridSize);
+            errdefer self.allocator.free(newCurrentHitGrid);
             const newNextHitGrid = try self.allocator.alloc(u32, newHitGridSize);
             @memset(newCurrentHitGrid, 0);
             @memset(newNextHitGrid, 0);
@@ -1152,6 +1176,12 @@ pub const CliRenderer = struct {
         self.dumpStdoutBuffer(timestamp);
     }
 
+    pub fn restoreTerminalModes(self: *CliRenderer) void {
+        var stream = std.io.fixedBufferStream(&self.writeOutBuf);
+        self.terminal.restoreTerminalModes(stream.writer()) catch {};
+        self.writeOut(stream.getWritten());
+    }
+
     pub fn enableMouse(self: *CliRenderer, enableMovement: bool) void {
         _ = enableMovement;
         var stream = std.io.fixedBufferStream(&self.writeOutBuf);
@@ -1221,6 +1251,20 @@ pub const CliRenderer = struct {
         var stream = std.io.fixedBufferStream(&self.writeOutBuf);
         self.terminal.setTerminalTitle(stream.writer(), title);
         self.writeOut(stream.getWritten());
+    }
+
+    pub fn copyToClipboardOSC52(self: *CliRenderer, target: Terminal.ClipboardTarget, payload: []const u8) bool {
+        var stream = std.io.fixedBufferStream(&self.writeOutBuf);
+        self.terminal.writeClipboard(stream.writer(), target, payload) catch return false;
+        self.writeOut(stream.getWritten());
+        return true;
+    }
+
+    pub fn clearClipboardOSC52(self: *CliRenderer, target: Terminal.ClipboardTarget) bool {
+        var stream = std.io.fixedBufferStream(&self.writeOutBuf);
+        self.terminal.writeClipboard(stream.writer(), target, "") catch return false;
+        self.writeOut(stream.getWritten());
+        return true;
     }
 
     fn renderDebugOverlay(self: *CliRenderer) void {

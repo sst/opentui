@@ -461,7 +461,7 @@ export abstract class EditBufferRenderable extends Renderable implements LineInf
       )
     }
 
-    if (changed && localSelection?.isActive && selection?.isSelecting) {
+    if (changed && localSelection?.isActive && selection?.isDragging) {
       const viewport = this.editorView.getViewport()
       const focusY = localSelection.focusY
       const scrollMargin = Math.max(1, Math.floor(viewport.height * this._scrollMargin))
@@ -761,6 +761,6 @@ export abstract class EditBufferRenderable extends Renderable implements LineInf
       return
     }
 
-    this._ctx.updateSelection(this, cursorX, cursorY)
+    this._ctx.updateSelection(this, cursorX, cursorY, { finishDragging: true })
   }
 }

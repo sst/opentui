@@ -131,7 +131,9 @@ export type LinkProps = SpanProps & {
 
 export type LineBreakProps = Pick<SpanProps, "id">
 
-export type BoxProps = ComponentProps<ContainerProps<BoxOptions>, BoxRenderable>
+export type BoxProps = ComponentProps<ContainerProps<BoxOptions>, BoxRenderable> & {
+  focused?: boolean
+}
 
 export type InputProps = ComponentProps<InputRenderableOptions, InputRenderable> & {
   focused?: boolean
