@@ -288,6 +288,55 @@ describe("StdinBuffer", () => {
 
       expect(emittedSequences).toEqual(["h", "\x1b[<35;10;5m", "e", "l"])
     })
+
+    // Regression: https://github.com/anomalyco/opentui/issues/644
+    // Option+Arrow on macOS sends double-escape sequences like \x1b\x1b[D.
+    // The stdin buffer was incorrectly splitting these into \x1b\x1b (meta+escape)
+    // and literal "[D" characters, instead of keeping the whole sequence together.
+    describe("Double-escape sequences (Option+Arrow on macOS)", () => {
+      it("should keep Option+Left (\\x1b\\x1b[D) as a single sequence", () => {
+        processInput("\x1b\x1b[D")
+        expect(emittedSequences).toEqual(["\x1b\x1b[D"])
+      })
+
+      it("should keep Option+Right (\\x1b\\x1b[C) as a single sequence", () => {
+        processInput("\x1b\x1b[C")
+        expect(emittedSequences).toEqual(["\x1b\x1b[C"])
+      })
+
+      it("should keep Option+Up (\\x1b\\x1b[A) as a single sequence", () => {
+        processInput("\x1b\x1b[A")
+        expect(emittedSequences).toEqual(["\x1b\x1b[A"])
+      })
+
+      it("should keep Option+Down (\\x1b\\x1b[B) as a single sequence", () => {
+        processInput("\x1b\x1b[B")
+        expect(emittedSequences).toEqual(["\x1b\x1b[B"])
+      })
+
+      it("should handle Option+Arrow arriving in chunks", () => {
+        processInput("\x1b")
+        processInput("\x1b[D")
+        expect(emittedSequences).toEqual(["\x1b\x1b[D"])
+      })
+
+      it("should handle Option+Arrow with modifier parameters", () => {
+        // e.g. Option+Shift+Right: ESC ESC [1;2C
+        processInput("\x1b\x1b[1;2C")
+        expect(emittedSequences).toEqual(["\x1b\x1b[1;2C"])
+      })
+
+      it("should handle double-escape with SS3 sequence", () => {
+        // ESC ESC O A (meta + SS3 Up)
+        processInput("\x1b\x1bOA")
+        expect(emittedSequences).toEqual(["\x1b\x1bOA"])
+      })
+
+      it("should handle Option+Arrow mixed with regular input", () => {
+        processInput("a\x1b\x1b[Db")
+        expect(emittedSequences).toEqual(["a", "\x1b\x1b[D", "b"])
+      })
+    })
   })
 
   describe("Bracketed Paste", () => {

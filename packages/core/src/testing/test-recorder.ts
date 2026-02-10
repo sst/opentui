@@ -21,6 +21,7 @@ export interface RecordedFrame {
 
 export interface TestRecorderOptions {
   recordBuffers?: RecordBuffersOptions
+  now?: () => number
 }
 
 /**
@@ -36,10 +37,12 @@ export class TestRecorder {
   private originalRenderNative?: () => void
   private decoder = new TextDecoder()
   private recordBuffers: RecordBuffersOptions
+  private now: () => number
 
   constructor(renderer: TestRenderer, options?: TestRecorderOptions) {
     this.renderer = renderer
     this.recordBuffers = options?.recordBuffers || {}
+    this.now = options?.now ?? (() => performance.now())
   }
 
   /**
@@ -53,7 +56,7 @@ export class TestRecorder {
     this.recording = true
     this.frames = []
     this.frameNumber = 0
-    this.startTime = Date.now()
+    this.startTime = this.now()
 
     // Store the original renderNative method
     this.originalRenderNative = this.renderer["renderNative"].bind(this.renderer)
@@ -117,7 +120,7 @@ export class TestRecorder {
 
     const recordedFrame: RecordedFrame = {
       frame,
-      timestamp: Date.now() - this.startTime,
+      timestamp: this.now() - this.startTime,
       frameNumber: this.frameNumber++,
     }
 

@@ -94,7 +94,7 @@ function getOpenTUILib(libPath?: string) {
     },
     // Renderer management
     createRenderer: {
-      args: ["u32", "u32", "bool"],
+      args: ["u32", "u32", "bool", "bool"],
       returns: "ptr",
     },
     destroyRenderer: {
@@ -278,6 +278,14 @@ function getOpenTUILib(libPath?: string) {
       args: ["ptr", "ptr", "usize"],
       returns: "void",
     },
+    copyToClipboardOSC52: {
+      args: ["ptr", "u8", "ptr", "usize"],
+      returns: "bool",
+    },
+    clearClipboardOSC52: {
+      args: ["ptr", "u8"],
+      returns: "bool",
+    },
 
     bufferDrawSuperSampleBuffer: {
       args: ["ptr", "u32", "u32", "ptr", "usize", "u8", "u32"],
@@ -370,6 +378,10 @@ function getOpenTUILib(libPath?: string) {
     },
     dumpStdoutBuffer: {
       args: ["ptr", "i64"],
+      returns: "void",
+    },
+    restoreTerminalModes: {
+      args: ["ptr"],
       returns: "void",
     },
     enableMouse: {
@@ -1259,7 +1271,7 @@ export interface CursorState {
 }
 
 export interface RenderLib {
-  createRenderer: (width: number, height: number, options?: { testing: boolean }) => Pointer | null
+  createRenderer: (width: number, height: number, options?: { testing?: boolean; remote?: boolean }) => Pointer | null
   destroyRenderer: (renderer: Pointer) => void
   setUseThread: (renderer: Pointer, useThread: boolean) => void
   setBackgroundColor: (renderer: Pointer, color: RGBA) => void
@@ -1386,6 +1398,8 @@ export interface RenderLib {
   setDebugOverlay: (renderer: Pointer, enabled: boolean, corner: DebugOverlayCorner) => void
   clearTerminal: (renderer: Pointer) => void
   setTerminalTitle: (renderer: Pointer, title: string) => void
+  copyToClipboardOSC52: (renderer: Pointer, target: number, payload: Uint8Array) => boolean
+  clearClipboardOSC52: (renderer: Pointer, target: number) => boolean
   addToHitGrid: (renderer: Pointer, x: number, y: number, width: number, height: number, id: number) => void
   clearCurrentHitGrid: (renderer: Pointer) => void
   hitGridPushScissorRect: (renderer: Pointer, x: number, y: number, width: number, height: number) => void
@@ -1404,6 +1418,7 @@ export interface RenderLib {
   dumpHitGrid: (renderer: Pointer) => void
   dumpBuffers: (renderer: Pointer, timestamp?: number) => void
   dumpStdoutBuffer: (renderer: Pointer, timestamp?: number) => void
+  restoreTerminalModes: (renderer: Pointer) => void
   enableMouse: (renderer: Pointer, enableMovement: boolean) => void
   disableMouse: (renderer: Pointer) => void
   enableKittyKeyboard: (renderer: Pointer, flags: number) => void
@@ -1810,8 +1825,10 @@ class FFIRenderLib implements RenderLib {
     this.opentui.symbols.setEventCallback(callbackPtr)
   }
 
-  public createRenderer(width: number, height: number, options: { testing: boolean } = { testing: false }) {
-    return this.opentui.symbols.createRenderer(width, height, options.testing)
+  public createRenderer(width: number, height: number, options: { testing?: boolean; remote?: boolean } = {}) {
+    const testing = options.testing ?? false
+    const remote = options.remote ?? false
+    return this.opentui.symbols.createRenderer(width, height, testing, remote)
   }
 
   public destroyRenderer(renderer: Pointer): void {
@@ -2235,6 +2252,14 @@ class FFIRenderLib implements RenderLib {
     this.opentui.symbols.setTerminalTitle(renderer, titleBytes, titleBytes.length)
   }
 
+  public copyToClipboardOSC52(renderer: Pointer, target: number, payload: Uint8Array): boolean {
+    return this.opentui.symbols.copyToClipboardOSC52(renderer, target, payload, payload.length)
+  }
+
+  public clearClipboardOSC52(renderer: Pointer, target: number): boolean {
+    return this.opentui.symbols.clearClipboardOSC52(renderer, target)
+  }
+
   public addToHitGrid(renderer: Pointer, x: number, y: number, width: number, height: number, id: number) {
     this.opentui.symbols.addToHitGrid(renderer, x, y, width, height, id)
   }
@@ -2286,6 +2311,10 @@ class FFIRenderLib implements RenderLib {
   public dumpStdoutBuffer(renderer: Pointer, timestamp?: number): void {
     const ts = timestamp ?? Date.now()
     this.opentui.symbols.dumpStdoutBuffer(renderer, ts)
+  }
+
+  public restoreTerminalModes(renderer: Pointer): void {
+    this.opentui.symbols.restoreTerminalModes(renderer)
   }
 
   public enableMouse(renderer: Pointer, enableMovement: boolean): void {
@@ -3340,6 +3369,7 @@ class FFIRenderLib implements RenderLib {
       sync: caps.sync,
       bracketed_paste: caps.bracketed_paste,
       hyperlinks: caps.hyperlinks,
+      osc52: caps.osc52,
       explicit_cursor_positioning: caps.explicit_cursor_positioning,
       terminal: {
         name: caps.term_name ?? "",

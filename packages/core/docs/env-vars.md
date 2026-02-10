@@ -81,9 +81,9 @@ Use no_zwj width method (Unicode without ZWJ joining)
 
 ## OPENTUI_FORCE_EXPLICIT_WIDTH
 
-Force explicit width capability in terminal to true or false. Set to "true" or "1" to enable, "false" or "0" to disable.
+Force explicit width capability in terminal to true or false. Set to "true" or "1" to enable, "false" or "0" to disable. When set to "false" or "0", also skips sending OSC 66 detection queries to prevent artifacts on older terminals (e.g., GNOME Terminal).
 
-**Type:** `string`  
+**Type:** `string`
 **Values:** `"true"`, `"1"`, `"false"`, `"0"`
 
 ## OTUI_USE_CONSOLE

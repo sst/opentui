@@ -39,7 +39,7 @@ export fn getArenaAllocatedBytes() usize {
     return arena.queryCapacity();
 }
 
-export fn createRenderer(width: u32, height: u32, testing: bool) ?*renderer.CliRenderer {
+export fn createRenderer(width: u32, height: u32, testing: bool, remote: bool) ?*renderer.CliRenderer {
     if (width == 0 or height == 0) {
         logger.warn("Invalid renderer dimensions: {}x{}", .{ width, height });
         return null;
@@ -47,7 +47,7 @@ export fn createRenderer(width: u32, height: u32, testing: bool) ?*renderer.CliR
 
     const pool = gp.initGlobalPool(globalArena);
     _ = link.initGlobalLinkPool(globalArena);
-    return renderer.CliRenderer.create(globalAllocator, width, height, pool, testing) catch |err| {
+    return renderer.CliRenderer.createWithOptions(globalAllocator, width, height, pool, testing, remote) catch |err| {
         logger.err("Failed to create renderer: {}", .{err});
         return null;
     };
@@ -174,6 +174,7 @@ pub const ExternalCapabilities = extern struct {
     sync: bool,
     bracketed_paste: bool,
     hyperlinks: bool,
+    osc52: bool,
     explicit_cursor_positioning: bool,
     term_name_ptr: [*]const u8,
     term_name_len: usize,
@@ -200,6 +201,7 @@ export fn getTerminalCapabilities(rendererPtr: *renderer.CliRenderer, capsPtr: *
         .sync = caps.sync,
         .bracketed_paste = caps.bracketed_paste,
         .hyperlinks = caps.hyperlinks,
+        .osc52 = caps.osc52,
         .explicit_cursor_positioning = caps.explicit_cursor_positioning,
         .term_name_ptr = &term.term_info.name,
         .term_name_len = term.term_info.name_len,
@@ -278,6 +280,17 @@ export fn clearTerminal(rendererPtr: *renderer.CliRenderer) void {
 export fn setTerminalTitle(rendererPtr: *renderer.CliRenderer, titlePtr: [*]const u8, titleLen: usize) void {
     const title = titlePtr[0..titleLen];
     rendererPtr.setTerminalTitle(title);
+}
+
+export fn copyToClipboardOSC52(rendererPtr: *renderer.CliRenderer, target: u8, payloadPtr: [*]const u8, payloadLen: usize) bool {
+    const targetEnum = std.meta.intToEnum(terminal.ClipboardTarget, target) catch .clipboard;
+    const payload = payloadPtr[0..payloadLen];
+    return rendererPtr.copyToClipboardOSC52(targetEnum, payload);
+}
+
+export fn clearClipboardOSC52(rendererPtr: *renderer.CliRenderer, target: u8) bool {
+    const targetEnum = std.meta.intToEnum(terminal.ClipboardTarget, target) catch .clipboard;
+    return rendererPtr.clearClipboardOSC52(targetEnum);
 }
 
 // Buffer functions
@@ -515,6 +528,10 @@ export fn dumpBuffers(rendererPtr: *renderer.CliRenderer, timestamp: i64) void {
 
 export fn dumpStdoutBuffer(rendererPtr: *renderer.CliRenderer, timestamp: i64) void {
     rendererPtr.dumpStdoutBuffer(timestamp);
+}
+
+export fn restoreTerminalModes(rendererPtr: *renderer.CliRenderer) void {
+    rendererPtr.restoreTerminalModes();
 }
 
 export fn enableMouse(rendererPtr: *renderer.CliRenderer, enableMovement: bool) void {

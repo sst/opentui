@@ -25,6 +25,7 @@ pub const Capabilities = struct {
     sync: bool = false,
     bracketed_paste: bool = false,
     hyperlinks: bool = false,
+    osc52: bool = false,
     explicit_cursor_positioning: bool = false,
 };
 
@@ -42,6 +43,22 @@ pub const CursorStyle = enum {
     underline,
 };
 
+pub const ClipboardTarget = enum {
+    clipboard, // "c"
+    primary, // "p"
+    secondary, // "s"
+    query, // "q"
+
+    pub fn toChar(self: ClipboardTarget) u8 {
+        return switch (self) {
+            .clipboard => 'c',
+            .primary => 'p',
+            .secondary => 's',
+            .query => 'q',
+        };
+    }
+};
+
 pub const Options = struct {
     // Kitty keyboard protocol flags (progressive enhancement):
     // See: https://sw.kovidgoyal.net/kitty/keyboard-protocol/#progressive-enhancement
@@ -53,6 +70,9 @@ pub const Options = struct {
     // Default 0b00101 (5) = disambiguate + alternate keys
     // Use 0b00111 (7) to also enable event types for key release detection
     kitty_keyboard_flags: u8 = 0b00101,
+    remote: bool = false,
+    // Optional override for environment lookups. Caller owns the map.
+    env_map: ?*const std.process.EnvMap = null,
 };
 
 pub const TerminalInfo = struct {
@@ -68,12 +88,14 @@ opts: Options = .{},
 
 in_tmux: bool = false,
 skip_graphics_query: bool = false,
+skip_explicit_width_query: bool = false,
 graphics_query_pending: bool = false,
 capability_queries_pending: bool = false,
 
 state: struct {
     alt_screen: bool = false,
     kitty_keyboard: bool = false,
+    kitty_keyboard_flags: u8 = 0,
     bracketed_paste: bool = false,
     mouse: bool = false,
     pixel_mouse: bool = false,
@@ -178,12 +200,14 @@ pub fn queryTerminalSend(self: *Terminal, tty: anytype) !void {
         self.capability_queries_pending = true;
     }
 
-    try tty.writeAll(ansi.ANSI.home ++
-        ansi.ANSI.explicitWidthQuery ++
-        ansi.ANSI.cursorPositionRequest ++
-        ansi.ANSI.home ++
-        ansi.ANSI.scaledTextQuery ++
-        ansi.ANSI.cursorPositionRequest);
+    if (!self.skip_explicit_width_query) {
+        try tty.writeAll(ansi.ANSI.home ++
+            ansi.ANSI.explicitWidthQuery ++
+            ansi.ANSI.cursorPositionRequest ++
+            ansi.ANSI.home ++
+            ansi.ANSI.scaledTextQuery ++
+            ansi.ANSI.cursorPositionRequest);
+    }
 
     try tty.writeAll(ansi.ANSI.restoreCursorState);
 }
@@ -252,29 +276,44 @@ pub fn enableDetectedFeatures(self: *Terminal, tty: anytype, use_kitty_keyboard:
 fn checkEnvironmentOverrides(self: *Terminal) void {
     self.in_tmux = false;
     self.skip_graphics_query = false;
-
-    var env_map = std.process.getEnvMap(std.heap.page_allocator) catch return;
-    defer env_map.deinit();
+    self.skip_explicit_width_query = false;
 
     // Always just try to enable bracketed paste, even if it was reported as not supported
     self.caps.bracketed_paste = true;
 
-    if (env_map.get("TMUX")) |_| {
-        self.in_tmux = true;
-        self.caps.unicode = .wcwidth;
-        self.caps.explicit_cursor_positioning = true;
-    } else if (env_map.get("TERM")) |term| {
-        if (std.mem.startsWith(u8, term, "tmux")) {
+    if (self.caps.rgb) {
+        self.caps.hyperlinks = true;
+    }
+
+    if (self.opts.remote) {
+        return;
+    }
+
+    var env_map_storage: ?std.process.EnvMap = null;
+    const env_map: *const std.process.EnvMap = self.opts.env_map orelse blk: {
+        env_map_storage = std.process.getEnvMap(std.heap.page_allocator) catch return;
+        break :blk &env_map_storage.?;
+    };
+    defer if (env_map_storage) |*map| map.deinit();
+
+    if (!self.term_info.from_xtversion) {
+        if (env_map.get("TMUX")) |_| {
             self.in_tmux = true;
             self.caps.unicode = .wcwidth;
             self.caps.explicit_cursor_positioning = true;
-        } else if (std.mem.startsWith(u8, term, "screen")) {
-            self.skip_graphics_query = true;
-            self.caps.unicode = .wcwidth;
-            self.caps.explicit_cursor_positioning = true;
-        }
-        if (std.mem.indexOf(u8, term, "alacritty") != null) {
-            self.caps.explicit_cursor_positioning = true;
+        } else if (env_map.get("TERM")) |term| {
+            if (std.mem.startsWith(u8, term, "tmux")) {
+                self.in_tmux = true;
+                self.caps.unicode = .wcwidth;
+                self.caps.explicit_cursor_positioning = true;
+            } else if (std.mem.startsWith(u8, term, "screen")) {
+                self.skip_graphics_query = true;
+                self.caps.unicode = .wcwidth;
+                self.caps.explicit_cursor_positioning = true;
+            }
+            if (std.mem.indexOf(u8, term, "alacritty") != null) {
+                self.caps.explicit_cursor_positioning = true;
+            }
         }
     }
 
@@ -294,26 +333,26 @@ fn checkEnvironmentOverrides(self: *Terminal) void {
                 self.term_info.version_len = ver_len;
             }
         }
-    }
 
-    if (env_map.get("TERM_PROGRAM")) |prog| {
-        if (std.mem.eql(u8, prog, "vscode")) {
-            self.caps.kitty_keyboard = false;
-            self.caps.kitty_graphics = false;
-            self.caps.unicode = .unicode;
-        } else if (std.mem.eql(u8, prog, "Apple_Terminal")) {
-            self.caps.unicode = .wcwidth;
-        } else if (std.mem.eql(u8, prog, "Alacritty")) {
-            self.caps.explicit_cursor_positioning = true;
+        if (env_map.get("TERM_PROGRAM")) |prog| {
+            if (std.mem.eql(u8, prog, "vscode")) {
+                self.caps.kitty_keyboard = false;
+                self.caps.kitty_graphics = false;
+                self.caps.unicode = .unicode;
+            } else if (std.mem.eql(u8, prog, "Apple_Terminal")) {
+                self.caps.unicode = .wcwidth;
+            } else if (std.mem.eql(u8, prog, "Alacritty")) {
+                self.caps.explicit_cursor_positioning = true;
+            }
         }
-    }
 
-    if (env_map.get("ALACRITTY_SOCKET") != null or env_map.get("ALACRITTY_LOG") != null) {
-        self.caps.explicit_cursor_positioning = true;
-        if (!self.term_info.from_xtversion and self.term_info.name_len == 0) {
-            const name = "Alacritty";
-            @memcpy(self.term_info.name[0..name.len], name);
-            self.term_info.name_len = name.len;
+        if (env_map.get("ALACRITTY_SOCKET") != null or env_map.get("ALACRITTY_LOG") != null) {
+            self.caps.explicit_cursor_positioning = true;
+            if (self.term_info.name_len == 0) {
+                const name = "Alacritty";
+                @memcpy(self.term_info.name[0..name.len], name);
+                self.term_info.name_len = name.len;
+            }
         }
     }
 
@@ -325,14 +364,16 @@ fn checkEnvironmentOverrides(self: *Terminal) void {
         }
     }
 
-    if (env_map.get("TERMUX_VERSION")) |_| {
-        self.caps.unicode = .wcwidth;
-    }
+    if (!self.term_info.from_xtversion) {
+        if (env_map.get("TERMUX_VERSION")) |_| {
+            self.caps.unicode = .wcwidth;
+        }
 
-    if (env_map.get("VHS_RECORD")) |_| {
-        self.caps.unicode = .wcwidth;
-        self.caps.kitty_keyboard = false;
-        self.caps.kitty_graphics = false;
+        if (env_map.get("VHS_RECORD")) |_| {
+            self.caps.unicode = .wcwidth;
+            self.caps.kitty_keyboard = false;
+            self.caps.kitty_graphics = false;
+        }
     }
 
     if (env_map.get("OPENTUI_FORCE_WCWIDTH")) |_| {
@@ -350,21 +391,47 @@ fn checkEnvironmentOverrides(self: *Terminal) void {
             self.caps.explicit_width = true;
         } else if (std.mem.eql(u8, val, "false") or std.mem.eql(u8, val, "0")) {
             self.caps.explicit_width = false;
+            self.skip_explicit_width_query = true;
         }
     }
 
-    if (self.caps.rgb) {
-        self.caps.hyperlinks = true;
+    if (!self.caps.hyperlinks and self.term_info.from_xtversion) {
+        if (isHyperlinkTerm(self.getTerminalName())) {
+            self.caps.hyperlinks = true;
+        }
     }
 
-    if (env_map.get("TERM")) |term| {
-        if (std.mem.indexOf(u8, term, "ghostty") != null or
-            std.mem.indexOf(u8, term, "kitty") != null or
-            std.mem.indexOf(u8, term, "wezterm") != null or
-            std.mem.indexOf(u8, term, "alacritty") != null or
-            std.mem.indexOf(u8, term, "iterm") != null)
-        {
-            self.caps.hyperlinks = true;
+    if (!self.caps.hyperlinks and !self.term_info.from_xtversion) {
+        if (env_map.get("TERM")) |term| {
+            if (isHyperlinkTerm(term)) {
+                self.caps.hyperlinks = true;
+            }
+        }
+    }
+
+    if (!self.caps.osc52 and !self.term_info.from_xtversion) {
+        if (env_map.get("WT_SESSION") != null) {
+            self.caps.osc52 = true;
+        }
+
+        if (!self.caps.osc52 and (self.in_tmux or env_map.get("STY") != null)) {
+            self.caps.osc52 = true;
+        }
+
+        if (!self.caps.osc52) {
+            if (env_map.get("TERM_PROGRAM")) |prog| {
+                if (isOsc52Term(prog)) {
+                    self.caps.osc52 = true;
+                }
+            }
+        }
+
+        if (!self.caps.osc52) {
+            if (env_map.get("TERM")) |term| {
+                if (isOsc52Term(term) or std.mem.indexOf(u8, term, "256color") != null or std.mem.indexOf(u8, term, "xterm") != null) {
+                    self.caps.osc52 = true;
+                }
+            }
         }
     }
 }
@@ -407,11 +474,13 @@ pub fn setKittyKeyboard(self: *Terminal, tty: anytype, enable: bool, flags: u8) 
         if (!self.state.kitty_keyboard) {
             try tty.print(ansi.ANSI.csiUPush, .{flags});
             self.state.kitty_keyboard = true;
+            self.state.kitty_keyboard_flags = flags;
         }
     } else {
         if (self.state.kitty_keyboard) {
             try tty.writeAll(ansi.ANSI.csiUPop);
             self.state.kitty_keyboard = false;
+            self.state.kitty_keyboard_flags = 0;
         }
     }
 }
@@ -420,6 +489,61 @@ pub fn setModifyOtherKeys(self: *Terminal, tty: anytype, enable: bool) !void {
     const seq = if (enable) ansi.ANSI.modifyOtherKeysSet else ansi.ANSI.modifyOtherKeysReset;
     try tty.writeAll(seq);
     self.state.modify_other_keys = enable;
+}
+
+/// Re-send all currently-active terminal mode escape sequences unconditionally.
+///
+/// When the terminal loses and regains focus (e.g. alt-tab, tab switch, minimize),
+/// some terminal emulators (notably Windows Terminal / ConPTY) strip or reset
+/// DEC private modes like mouse tracking (?1000/?1002/?1003/?1006), focus
+/// tracking (?1004), and bracketed paste (?2004). This function re-emits the
+/// enable sequences for every mode that our state tracking says is currently on,
+/// without checking whether the mode "should" already be enabled — because the
+/// terminal may have silently disabled it.
+///
+/// This should be called in response to the focus-in event (\x1b[I).
+///
+/// Per the xterm ctlseqs spec (Patch #401, 2025/06/22) and the Microsoft
+/// Console Virtual Terminal Sequences documentation, the relevant DECSET
+/// private modes are:
+///   ?1000h  - Normal mouse tracking (sends button press/release)
+///   ?1002h  - Button-event tracking (adds drag reporting)
+///   ?1003h  - Any-event tracking (adds all motion reporting)
+///   ?1006h  - SGR extended mouse mode (extended coordinate encoding)
+///   ?1004h  - Focus event tracking (sends \x1b[I / \x1b[O)
+///   ?2004h  - Bracketed paste mode (wraps pasted text in markers)
+///   Kitty keyboard protocol (CSI > flags u) - progressive enhancement
+///   modifyOtherKeys (CSI > 4 ; 1 m) - xterm key modification
+pub fn restoreTerminalModes(self: *Terminal, tty: anytype) !void {
+    // Re-enable mouse tracking modes if active
+    if (self.state.mouse) {
+        try tty.writeAll(ansi.ANSI.enableMouseTracking);
+        try tty.writeAll(ansi.ANSI.enableButtonEventTracking);
+        try tty.writeAll(ansi.ANSI.enableAnyEventTracking);
+        try tty.writeAll(ansi.ANSI.enableSGRMouseMode);
+    }
+
+    // Re-enable focus tracking if active
+    if (self.state.focus_tracking) {
+        try tty.writeAll(ansi.ANSI.focusSet);
+    }
+
+    // Re-enable bracketed paste if active
+    if (self.state.bracketed_paste) {
+        try tty.writeAll(ansi.ANSI.bracketedPasteSet);
+    }
+
+    // Pop stale entry then re-push kitty keyboard protocol to avoid stack growth.
+    // Both sequences are in the same write buffer so the terminal processes them atomically.
+    if (self.state.kitty_keyboard) {
+        try tty.writeAll(ansi.ANSI.csiUPop);
+        try tty.print(ansi.ANSI.csiUPush, .{self.state.kitty_keyboard_flags});
+    }
+
+    // Re-enable modifyOtherKeys if active
+    if (self.state.modify_other_keys) {
+        try tty.writeAll(ansi.ANSI.modifyOtherKeysSet);
+    }
 }
 
 /// The responses look like these:
@@ -548,6 +672,35 @@ pub fn processCapabilityResponse(self: *Terminal, response: []const u8) void {
             self.caps.kitty_graphics = true;
         }
     }
+
+    if (!self.caps.osc52 and isOsc52Term(response)) {
+        self.caps.osc52 = true;
+    }
+
+    if (!self.caps.hyperlinks and isHyperlinkTerm(response)) {
+        self.caps.hyperlinks = true;
+    }
+}
+
+fn isOsc52Term(value: []const u8) bool {
+    return std.ascii.indexOfIgnoreCase(value, "iterm") != null or
+        std.ascii.indexOfIgnoreCase(value, "kitty") != null or
+        std.ascii.indexOfIgnoreCase(value, "alacritty") != null or
+        std.ascii.indexOfIgnoreCase(value, "wezterm") != null or
+        std.ascii.indexOfIgnoreCase(value, "contour") != null or
+        std.ascii.indexOfIgnoreCase(value, "foot") != null or
+        std.ascii.indexOfIgnoreCase(value, "rio") != null or
+        std.ascii.indexOfIgnoreCase(value, "ghostty") != null or
+        std.ascii.indexOfIgnoreCase(value, "tmux") != null or
+        std.ascii.indexOfIgnoreCase(value, "screen") != null;
+}
+
+fn isHyperlinkTerm(value: []const u8) bool {
+    return std.ascii.indexOfIgnoreCase(value, "ghostty") != null or
+        std.ascii.indexOfIgnoreCase(value, "kitty") != null or
+        std.ascii.indexOfIgnoreCase(value, "wezterm") != null or
+        std.ascii.indexOfIgnoreCase(value, "alacritty") != null or
+        std.ascii.indexOfIgnoreCase(value, "iterm") != null;
 }
 
 pub fn getCapabilities(self: *Terminal) Capabilities {
@@ -600,6 +753,87 @@ pub fn setTerminalTitle(_: *Terminal, tty: anytype, title: []const u8) void {
     // For Windows, we might need to use different approach, but ANSI sequences work in Windows Terminal, ConPTY, etc.
     // For other platforms, ANSI OSC sequences work reliably
     ansi.ANSI.setTerminalTitleOutput(tty, title) catch {};
+}
+
+/// Write OSC 52 clipboard sequence to the terminal
+/// Supports tmux/screen passthrough, including nested tmux sessions
+pub fn writeClipboard(self: *Terminal, tty: anytype, target: ClipboardTarget, payload: []const u8) !void {
+    if (!self.canWriteClipboard()) {
+        return error.NotSupported;
+    }
+
+    var buf: [1024]u8 = undefined;
+    var stream = std.io.fixedBufferStream(&buf);
+    const writer = stream.writer();
+
+    // Build OSC 52 sequence: ESC]52;<target>;<payload>ESC\
+    try writer.writeAll("\x1b]52;");
+    try writer.writeByte(target.toChar());
+    try writer.writeByte(';');
+    try writer.writeAll(payload);
+    try writer.writeAll("\x1b\\");
+
+    const osc52 = stream.getWritten();
+
+    // Use self.in_tmux which is set by checkEnvironmentOverrides() considering
+    // env vars, xtversion response, and remote option
+    const is_tmux = self.in_tmux or self.isXtversionTmux();
+
+    if (is_tmux) {
+        // For nested tmux, we use a fixed level of 1 as we don't have access
+        // to env vars here (by design - detection already happened in checkEnvironmentOverrides)
+        // In practice, single-level wrapping works for most cases
+        var wrapped_buf: [4096]u8 = undefined;
+        var wrapped_stream = std.io.fixedBufferStream(&wrapped_buf);
+        const wrap_writer = wrapped_stream.writer();
+        for (osc52) |c| {
+            if (c == '\x1b') {
+                try wrap_writer.writeByte('\x1b');
+            }
+            try wrap_writer.writeByte(c);
+        }
+        const doubled = wrapped_stream.getWritten();
+
+        try tty.writeAll(ansi.ANSI.tmuxDcsStart);
+        try tty.writeAll(doubled);
+        try tty.writeAll(ansi.ANSI.tmuxDcsEnd);
+    } else if (self.opts.remote) {
+        try tty.writeAll(osc52);
+    } else {
+        var env_map_storage: ?std.process.EnvMap = null;
+        const env_map: *const std.process.EnvMap = self.opts.env_map orelse blk: {
+            env_map_storage = std.process.getEnvMap(std.heap.page_allocator) catch return;
+            break :blk &env_map_storage.?;
+        };
+        defer if (env_map_storage) |*map| map.deinit();
+
+        if (env_map.get("STY")) |_| {
+            var wrapped_buf: [2048]u8 = undefined;
+            var wrapped_stream = std.io.fixedBufferStream(&wrapped_buf);
+            const wrapped_writer = wrapped_stream.writer();
+
+            for (osc52) |c| {
+                if (c == '\x1b') {
+                    try wrapped_writer.writeByte('\x1b');
+                }
+                try wrapped_writer.writeByte(c);
+            }
+            const doubled = wrapped_stream.getWritten();
+
+            try tty.writeAll(ansi.ANSI.screenDcsStart);
+            try tty.writeAll(doubled);
+            try tty.writeAll(ansi.ANSI.screenDcsEnd);
+        } else {
+            try tty.writeAll(osc52);
+        }
+    }
+}
+
+/// Check if we can write to the clipboard (TTY and OSC 52 supported)
+fn canWriteClipboard(self: *Terminal) bool {
+    // In a real TTY environment, we'd check isTTY here
+    // For now, we just check if OSC 52 is supported
+    return self.caps.osc52;
 }
 
 /// Parse xtversion response string and extract terminal name and version
