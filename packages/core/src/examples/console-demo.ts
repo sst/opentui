@@ -181,6 +181,19 @@ class ConsoleButton extends BoxRenderable {
 
 export function run(renderer: CliRenderer): void {
   renderer.start()
+
+  renderer.console.keyBindings = [{ name: "y", ctrl: true, action: "copy-selection" }]
+  renderer.console.onCopySelection = (text) => {
+    // Use OSC 52 escape sequence for clipboard - works over SSH and on all platforms
+    // The terminal emulator handles the clipboard operation locally
+    const success = renderer.copyToClipboardOSC52(text)
+    if (success) {
+      console.info(`Copied to clipboard: "${text.substring(0, 50)}${text.length > 50 ? "..." : ""}"`)
+    } else {
+      console.warn("Clipboard copy failed - OSC 52 not supported or stdout is not a TTY")
+    }
+  }
+
   renderer.console.show()
 
   const backgroundColor = RGBA.fromInts(18, 22, 35, 255)
@@ -201,7 +214,7 @@ export function run(renderer: CliRenderer): void {
   instructionsText = new TextRenderable(renderer, {
     id: "console_demo_instructions",
     content:
-      "Click buttons to trigger different console log levels • Press ` to toggle console • Escape: return to menu",
+      "Click buttons to trigger different console log levels • Press ` to toggle console • Ctrl+Y to copy selection • Escape: return to menu",
     position: "absolute",
     left: 2,
     top: 2,

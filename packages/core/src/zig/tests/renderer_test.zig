@@ -5,6 +5,8 @@ const text_buffer_view = @import("../text-buffer-view.zig");
 const buffer = @import("../buffer.zig");
 const gp = @import("../grapheme.zig");
 const ss = @import("../syntax-style.zig");
+const link = @import("../link.zig");
+const ansi = @import("../ansi.zig");
 
 const CliRenderer = renderer.CliRenderer;
 const TextBuffer = text_buffer.TextBuffer;
@@ -12,10 +14,36 @@ const TextBufferView = text_buffer_view.TextBufferView;
 const OptimizedBuffer = buffer.OptimizedBuffer;
 const RGBA = text_buffer.RGBA;
 
+fn createWithOptionsOnce(allocator: std.mem.Allocator, width: u32, height: u32) !void {
+    const pool = gp.initGlobalPool(allocator);
+    defer gp.deinitGlobalPool();
+    defer link.deinitGlobalLinkPool();
+
+    var cli_renderer = try CliRenderer.createWithOptions(allocator, width, height, pool, true, false);
+    cli_renderer.destroy();
+}
+
+test "renderer - createWithOptions late allocation failure cleans up" {
+    const allocation_count = blk: {
+        var counting_allocator = std.testing.FailingAllocator.init(std.testing.allocator, .{});
+        try createWithOptionsOnce(counting_allocator.allocator(), 80, 24);
+        break :blk counting_allocator.alloc_index;
+    };
+
+    try std.testing.expect(allocation_count > 0);
+
+    var failing_allocator = std.testing.FailingAllocator.init(std.testing.allocator, .{
+        .fail_index = allocation_count - 1,
+    });
+
+    try std.testing.expectError(error.OutOfMemory, createWithOptionsOnce(failing_allocator.allocator(), 80, 24));
+    try std.testing.expect(failing_allocator.has_induced_failure);
+    try std.testing.expectEqual(failing_allocator.allocated_bytes, failing_allocator.freed_bytes);
+}
+
 test "renderer - create and destroy" {
     const pool = gp.initGlobalPool(std.testing.allocator);
     defer gp.deinitGlobalPool();
-
 
     var cli_renderer = try CliRenderer.create(
         std.testing.allocator,
@@ -34,7 +62,6 @@ test "renderer - create and destroy" {
 test "renderer - simple text rendering to currentRenderBuffer" {
     const pool = gp.initGlobalPool(std.testing.allocator);
     defer gp.deinitGlobalPool();
-
 
     var tb = try TextBuffer.init(std.testing.allocator, pool, .unicode);
     defer tb.deinit();
@@ -77,7 +104,6 @@ test "renderer - multi-line text rendering" {
     const pool = gp.initGlobalPool(std.testing.allocator);
     defer gp.deinitGlobalPool();
 
-
     var tb = try TextBuffer.init(std.testing.allocator, pool, .unicode);
     defer tb.deinit();
 
@@ -117,7 +143,6 @@ test "renderer - multi-line text rendering" {
 test "renderer - emoji (wide grapheme) rendering" {
     const pool = gp.initGlobalPool(std.testing.allocator);
     defer gp.deinitGlobalPool();
-
 
     var tb = try TextBuffer.init(std.testing.allocator, pool, .unicode);
     defer tb.deinit();
@@ -175,7 +200,6 @@ test "renderer - CJK characters rendering" {
     const pool = gp.initGlobalPool(std.testing.allocator);
     defer gp.deinitGlobalPool();
 
-
     var tb = try TextBuffer.init(std.testing.allocator, pool, .unicode);
     defer tb.deinit();
 
@@ -227,7 +251,6 @@ test "renderer - CJK characters rendering" {
 test "renderer - mixed ASCII, emoji, and CJK" {
     const pool = gp.initGlobalPool(std.testing.allocator);
     defer gp.deinitGlobalPool();
-
 
     var tb = try TextBuffer.init(std.testing.allocator, pool, .unicode);
     defer tb.deinit();
@@ -285,7 +308,6 @@ test "renderer - resize updates dimensions" {
     const pool = gp.initGlobalPool(std.testing.allocator);
     defer gp.deinitGlobalPool();
 
-
     var cli_renderer = try CliRenderer.create(
         std.testing.allocator,
         80,
@@ -308,7 +330,6 @@ test "renderer - background color setting" {
     const pool = gp.initGlobalPool(std.testing.allocator);
     defer gp.deinitGlobalPool();
 
-
     var cli_renderer = try CliRenderer.create(
         std.testing.allocator,
         80,
@@ -327,7 +348,6 @@ test "renderer - background color setting" {
 test "renderer - empty text buffer renders correctly" {
     const pool = gp.initGlobalPool(std.testing.allocator);
     defer gp.deinitGlobalPool();
-
 
     var tb = try TextBuffer.init(std.testing.allocator, pool, .unicode);
     defer tb.deinit();
@@ -354,7 +374,6 @@ test "renderer - empty text buffer renders correctly" {
 test "renderer - multiple renders update currentRenderBuffer" {
     const pool = gp.initGlobalPool(std.testing.allocator);
     defer gp.deinitGlobalPool();
-
 
     var tb = try TextBuffer.init(std.testing.allocator, pool, .unicode);
     defer tb.deinit();
@@ -395,7 +414,6 @@ test "renderer - multiple renders update currentRenderBuffer" {
 test "renderer - 1000 frame render loop with setStyledText" {
     const pool = gp.initGlobalPool(std.testing.allocator);
     defer gp.deinitGlobalPool();
-
 
     var tb = try TextBuffer.init(std.testing.allocator, pool, .unicode);
     defer tb.deinit();
@@ -481,7 +499,6 @@ test "renderer - grapheme pool refcounting with frame buffer fast path" {
     });
     defer gp.deinitGlobalPool();
 
-
     var tb = try TextBuffer.init(std.testing.allocator, limited_pool, .unicode);
     defer tb.deinit();
 
@@ -552,4 +569,290 @@ test "renderer - grapheme pool refcounting with frame buffer fast path" {
     const current_buffer = cli_renderer.getCurrentBuffer();
     const rendered_cell = current_buffer.get(0, 0);
     try std.testing.expect(rendered_cell != null);
+}
+
+test "renderer - hyperlinks enabled with OSC 8 output" {
+    const pool = gp.initGlobalPool(std.testing.allocator);
+    defer gp.deinitGlobalPool();
+
+    const link_pool = link.initGlobalLinkPool(std.testing.allocator);
+    defer link.deinitGlobalLinkPool();
+
+    var cli_renderer = try CliRenderer.create(
+        std.testing.allocator,
+        80,
+        24,
+        pool,
+        true,
+    );
+    defer cli_renderer.destroy();
+
+    // Enable hyperlinks capability
+    cli_renderer.terminal.caps.hyperlinks = true;
+
+    // Allocate a link
+    const link_id = try link_pool.alloc("https://example.com");
+    const attributes = ansi.TextAttributes.setLinkId(ansi.TextAttributes.BOLD, link_id);
+
+    const next_buffer = cli_renderer.getNextBuffer();
+
+    const fg = RGBA{ 1.0, 1.0, 1.0, 1.0 };
+    const bg = RGBA{ 0.0, 0.0, 0.0, 1.0 };
+    try next_buffer.drawText("Click here", 0, 0, fg, bg, attributes);
+
+    cli_renderer.render(false);
+
+    const output = cli_renderer.getLastOutputForTest();
+
+    // Verify output contains OSC 8 start sequence with URL
+    try std.testing.expect(std.mem.indexOf(u8, output, "\x1b]8;;https://example.com\x1b\\") != null);
+
+    // Verify output contains OSC 8 end sequence
+    const end_seq = "\x1b]8;;\x1b\\";
+    var count: usize = 0;
+    var pos: usize = 0;
+    while (std.mem.indexOf(u8, output[pos..], end_seq)) |found| {
+        count += 1;
+        pos += found + end_seq.len;
+    }
+    try std.testing.expect(count >= 1);
+}
+
+test "renderer - hyperlinks disabled no OSC 8 output" {
+    const pool = gp.initGlobalPool(std.testing.allocator);
+    defer gp.deinitGlobalPool();
+
+    const link_pool = link.initGlobalLinkPool(std.testing.allocator);
+    defer link.deinitGlobalLinkPool();
+
+    var cli_renderer = try CliRenderer.create(
+        std.testing.allocator,
+        80,
+        24,
+        pool,
+        true,
+    );
+    defer cli_renderer.destroy();
+
+    // Hyperlinks disabled by default
+    cli_renderer.terminal.caps.hyperlinks = false;
+
+    // Allocate a link
+    const link_id = try link_pool.alloc("https://example.com");
+    const attributes = ansi.TextAttributes.setLinkId(0, link_id);
+
+    const next_buffer = cli_renderer.getNextBuffer();
+
+    const fg = RGBA{ 1.0, 1.0, 1.0, 1.0 };
+    const bg = RGBA{ 0.0, 0.0, 0.0, 1.0 };
+    try next_buffer.drawText("Click here", 0, 0, fg, bg, attributes);
+
+    cli_renderer.render(false);
+
+    const output = cli_renderer.getLastOutputForTest();
+
+    // Verify output does NOT contain OSC 8 sequences
+    try std.testing.expect(std.mem.indexOf(u8, output, "]8;;") == null);
+}
+
+test "renderer - link transition mid-line" {
+    const pool = gp.initGlobalPool(std.testing.allocator);
+    defer gp.deinitGlobalPool();
+
+    const link_pool = link.initGlobalLinkPool(std.testing.allocator);
+    defer link.deinitGlobalLinkPool();
+
+    var cli_renderer = try CliRenderer.create(
+        std.testing.allocator,
+        80,
+        24,
+        pool,
+        true,
+    );
+    defer cli_renderer.destroy();
+
+    // Enable hyperlinks
+    cli_renderer.terminal.caps.hyperlinks = true;
+
+    const next_buffer = cli_renderer.getNextBuffer();
+
+    // Allocate two different links
+    const link_id1 = try link_pool.alloc("https://first.com");
+    const link_id2 = try link_pool.alloc("https://second.com");
+
+    const attr1 = ansi.TextAttributes.setLinkId(0, link_id1);
+    const attr2 = ansi.TextAttributes.setLinkId(0, link_id2);
+
+    const fg = RGBA{ 1.0, 1.0, 1.0, 1.0 };
+    const bg = RGBA{ 0.0, 0.0, 0.0, 1.0 };
+
+    // Draw first link
+    try next_buffer.drawText("First", 0, 0, fg, bg, attr1);
+    // Draw second link
+    try next_buffer.drawText("Second", 6, 0, fg, bg, attr2);
+    // Draw no link
+    try next_buffer.drawText("Normal", 13, 0, fg, bg, 0);
+
+    cli_renderer.render(false);
+
+    const output = cli_renderer.getLastOutputForTest();
+
+    // Should contain both URLs
+    try std.testing.expect(std.mem.indexOf(u8, output, "https://first.com") != null);
+    try std.testing.expect(std.mem.indexOf(u8, output, "https://second.com") != null);
+
+    // Should have multiple OSC 8 end sequences (at least 2 transitions)
+    const end_seq = "\x1b]8;;\x1b\\";
+    var count: usize = 0;
+    var pos: usize = 0;
+    while (std.mem.indexOf(u8, output[pos..], end_seq)) |found| {
+        count += 1;
+        pos += found + end_seq.len;
+    }
+    try std.testing.expect(count >= 2);
+}
+
+// ============================================================================
+// GRAPHEME CURSOR POSITIONING TESTS
+// ============================================================================
+
+test "renderer - explicit_cursor_positioning emits cursor move after wide graphemes" {
+    const pool = gp.initGlobalPool(std.testing.allocator);
+    defer gp.deinitGlobalPool();
+
+    var tb = try TextBuffer.init(std.testing.allocator, pool, .unicode);
+    defer tb.deinit();
+
+    try tb.setText("👋X");
+
+    var view = try TextBufferView.init(std.testing.allocator, tb);
+    defer view.deinit();
+
+    var cli_renderer = try CliRenderer.create(
+        std.testing.allocator,
+        80,
+        24,
+        pool,
+        true,
+    );
+    defer cli_renderer.destroy();
+
+    cli_renderer.terminal.caps.explicit_cursor_positioning = true;
+    cli_renderer.terminal.caps.explicit_width = false;
+
+    const next_buffer = cli_renderer.getNextBuffer();
+    try next_buffer.drawTextBuffer(view, 0, 0);
+
+    cli_renderer.render(false);
+
+    const output = cli_renderer.getLastOutputForTest();
+
+    try std.testing.expect(std.mem.indexOf(u8, output, "\x1b[1;3H") != null);
+}
+
+test "renderer - explicit_cursor_positioning produces more cursor moves" {
+    const pool = gp.initGlobalPool(std.testing.allocator);
+    defer gp.deinitGlobalPool();
+
+    var tb = try TextBuffer.init(std.testing.allocator, pool, .unicode);
+    defer tb.deinit();
+    try tb.setText("👋🎉🚀");
+
+    var view = try TextBufferView.init(std.testing.allocator, tb);
+    defer view.deinit();
+
+    var cli_renderer1 = try CliRenderer.create(
+        std.testing.allocator,
+        80,
+        24,
+        pool,
+        true,
+    );
+    defer cli_renderer1.destroy();
+
+    cli_renderer1.terminal.caps.explicit_cursor_positioning = false;
+    cli_renderer1.terminal.caps.explicit_width = false;
+
+    const next_buffer1 = cli_renderer1.getNextBuffer();
+    try next_buffer1.drawTextBuffer(view, 0, 0);
+    cli_renderer1.render(false);
+    const output_without = cli_renderer1.getLastOutputForTest();
+
+    var cli_renderer2 = try CliRenderer.create(
+        std.testing.allocator,
+        80,
+        24,
+        pool,
+        true,
+    );
+    defer cli_renderer2.destroy();
+
+    cli_renderer2.terminal.caps.explicit_cursor_positioning = true;
+    cli_renderer2.terminal.caps.explicit_width = false;
+
+    const next_buffer2 = cli_renderer2.getNextBuffer();
+    try next_buffer2.drawTextBuffer(view, 0, 0);
+    cli_renderer2.render(false);
+    const output_with = cli_renderer2.getLastOutputForTest();
+
+    var count_without: usize = 0;
+    var count_with: usize = 0;
+
+    var i: usize = 0;
+    while (i + 3 < output_without.len) : (i += 1) {
+        if (output_without[i] == '\x1b' and output_without[i + 1] == '[') {
+            var j = i + 2;
+            while (j < output_without.len and ((output_without[j] >= '0' and output_without[j] <= '9') or output_without[j] == ';')) : (j += 1) {}
+            if (j < output_without.len and output_without[j] == 'H') {
+                count_without += 1;
+            }
+        }
+    }
+
+    i = 0;
+    while (i + 3 < output_with.len) : (i += 1) {
+        if (output_with[i] == '\x1b' and output_with[i + 1] == '[') {
+            var j = i + 2;
+            while (j < output_with.len and ((output_with[j] >= '0' and output_with[j] <= '9') or output_with[j] == ';')) : (j += 1) {}
+            if (j < output_with.len and output_with[j] == 'H') {
+                count_with += 1;
+            }
+        }
+    }
+
+    try std.testing.expect(count_with > count_without);
+}
+
+test "renderer - explicit_cursor_positioning with CJK characters" {
+    const pool = gp.initGlobalPool(std.testing.allocator);
+    defer gp.deinitGlobalPool();
+
+    var tb = try TextBuffer.init(std.testing.allocator, pool, .unicode);
+    defer tb.deinit();
+
+    try tb.setText("世X");
+
+    var view = try TextBufferView.init(std.testing.allocator, tb);
+    defer view.deinit();
+
+    var cli_renderer = try CliRenderer.create(
+        std.testing.allocator,
+        80,
+        24,
+        pool,
+        true,
+    );
+    defer cli_renderer.destroy();
+
+    cli_renderer.terminal.caps.explicit_cursor_positioning = true;
+    cli_renderer.terminal.caps.explicit_width = false;
+
+    const next_buffer = cli_renderer.getNextBuffer();
+    try next_buffer.drawTextBuffer(view, 0, 0);
+
+    cli_renderer.render(false);
+
+    const output = cli_renderer.getLastOutputForTest();
+
+    try std.testing.expect(std.mem.indexOf(u8, output, "\x1b[1;3H") != null);
 }

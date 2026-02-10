@@ -16,6 +16,18 @@ export const TextAttributes = {
   STRIKETHROUGH: 1 << 7, // 128
 }
 
+// Constants for attribute bit packing
+export const ATTRIBUTE_BASE_BITS = 8
+export const ATTRIBUTE_BASE_MASK = 0xff
+
+/**
+ * Extract the base 8 bits of attributes from a u32 attribute value.
+ * Currently we only use the first 8 bits for standard text attributes.
+ */
+export function getBaseAttributes(attr: number): number {
+  return attr & ATTRIBUTE_BASE_MASK
+}
+
 export type CursorStyle = "block" | "line" | "underline"
 
 export interface CursorStyleOptions {
@@ -42,6 +54,9 @@ export interface RendererEvents {
 
 export interface RenderContext extends EventEmitter {
   addToHitGrid: (x: number, y: number, width: number, height: number, id: number) => void
+  pushHitGridScissorRect: (x: number, y: number, width: number, height: number) => void
+  popHitGridScissorRect: () => void
+  clearHitGridScissorRects: () => void
   width: number
   height: number
   requestRender: () => void
@@ -64,7 +79,12 @@ export interface RenderContext extends EventEmitter {
   _internalKeyInput: InternalKeyHandler
   clearSelection: () => void
   startSelection: (renderable: Renderable, x: number, y: number) => void
-  updateSelection: (currentRenderable: Renderable | undefined, x: number, y: number) => void
+  updateSelection: (
+    currentRenderable: Renderable | undefined,
+    x: number,
+    y: number,
+    options?: { finishDragging?: boolean },
+  ) => void
 }
 
 export type Timeout = ReturnType<typeof setTimeout> | undefined
@@ -97,4 +117,23 @@ export interface LineInfoProvider {
   get lineCount(): number
   get virtualLineCount(): number
   get scrollY(): number
+}
+
+export interface CapturedSpan {
+  text: string
+  fg: RGBA
+  bg: RGBA
+  attributes: number
+  width: number
+}
+
+export interface CapturedLine {
+  spans: CapturedSpan[]
+}
+
+export interface CapturedFrame {
+  cols: number
+  rows: number
+  cursor: [number, number]
+  lines: CapturedLine[]
 }

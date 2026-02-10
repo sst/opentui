@@ -1,20 +1,39 @@
-import { createCliRenderer, engine, type CliRendererConfig } from "@opentui/core"
+import { CliRenderer, createCliRenderer, engine, type CliRendererConfig } from "@opentui/core"
 import { createTestRenderer, type TestRendererOptions } from "@opentui/core/testing"
 import type { JSX } from "./jsx-runtime"
 import { RendererContext } from "./src/elements"
 import { _render as renderInternal, createComponent } from "./src/reconciler"
 
-export const render = async (node: () => JSX.Element, renderConfig: CliRendererConfig = {}) => {
-  const renderer = await createCliRenderer({
-    ...renderConfig,
-    onDestroy: () => {
-      dispose()
-      renderConfig.onDestroy?.()
-    },
-  })
+export const render = async (node: () => JSX.Element, rendererOrConfig: CliRenderer | CliRendererConfig = {}) => {
+  let isDisposed = false
+  let dispose: () => void
+
+  const renderer =
+    rendererOrConfig instanceof CliRenderer
+      ? rendererOrConfig
+      : await createCliRenderer({
+          ...rendererOrConfig,
+          onDestroy: () => {
+            if (!isDisposed) {
+              isDisposed = true
+              dispose()
+            }
+            rendererOrConfig.onDestroy?.()
+          },
+        })
+
+  if (rendererOrConfig instanceof CliRenderer) {
+    renderer.on("destroy", () => {
+      if (!isDisposed) {
+        isDisposed = true
+        dispose()
+      }
+    })
+  }
+
   engine.attach(renderer)
 
-  const dispose = renderInternal(
+  dispose = renderInternal(
     () =>
       createComponent(RendererContext.Provider, {
         get value() {
@@ -29,10 +48,14 @@ export const render = async (node: () => JSX.Element, renderConfig: CliRendererC
 }
 
 export const testRender = async (node: () => JSX.Element, renderConfig: TestRendererOptions = {}) => {
+  let isDisposed = false
   const testSetup = await createTestRenderer({
     ...renderConfig,
     onDestroy: () => {
-      dispose()
+      if (!isDisposed) {
+        isDisposed = true
+        dispose()
+      }
       renderConfig.onDestroy?.()
     },
   })

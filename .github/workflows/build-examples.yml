@@ -34,7 +34,7 @@ jobs:
 
           echo ""
           echo "✅ Base dependencies installed"
-          echo "Note: bun-webgpu will be installed by build script for all platforms"
+          echo "Note: bun-webgpu will be installed by the build script (src/examples/build.ts) for all platforms"
 
       - name: Download npm packages artifact
         uses: actions/download-artifact@v4
@@ -77,11 +77,6 @@ jobs:
             echo "✅ Solid dist copied"
           fi
 
-          if [ -d "npm-packages/vue-dist" ]; then
-            cp -r npm-packages/vue-dist packages/vue/dist
-            echo "✅ Vue dist copied"
-          fi
-
           echo ""
           echo "Package extraction complete:"
           ls -lah packages/core/dist/
@@ -90,16 +85,46 @@ jobs:
       - name: Verify bun-webgpu is available for build
         run: |
           echo "Checking bun-webgpu installation..."
-          test -d node_modules/bun-webgpu || (echo "❌ bun-webgpu not found!" && exit 1)
-          test -d node_modules/bun-webgpu-darwin-arm64 || echo "⚠️  bun-webgpu-darwin-arm64 not found"
-          test -d node_modules/bun-webgpu-darwin-x64 || echo "⚠️  bun-webgpu-darwin-x64 not found"
-          test -d node_modules/bun-webgpu-linux-x64 || echo "⚠️  bun-webgpu-linux-x64 not found"
-          test -d node_modules/bun-webgpu-win32-x64 || echo "⚠️  bun-webgpu-win32-x64 not found"
 
-          # Show what's installed
+          # Check root node_modules first
+          if [ -d node_modules/bun-webgpu ]; then
+            echo "✅ bun-webgpu found in root node_modules"
+          # Check packages/core/node_modules
+          elif [ -d packages/core/node_modules/bun-webgpu ]; then
+            echo "✅ bun-webgpu found in packages/core/node_modules"
+          else
+            echo "❌ bun-webgpu not found in root or packages/core/node_modules!"
+            echo "Note: The build script will install it, but it should already be present"
+            exit 1
+          fi
+
+          # Check for platform-specific packages in .bun cache (where bun install --os="*" --cpu="*" puts them)
           echo ""
-          echo "bun-webgpu packages found:"
-          ls -lah node_modules/ | grep bun-webgpu
+          echo "Checking for platform-specific bun-webgpu packages in cache..."
+          if [ -d node_modules/.bun/bun-webgpu-darwin-arm64@0.1.4 ]; then
+            echo "✅ bun-webgpu-darwin-arm64 found in cache"
+          else
+            echo "⚠️  bun-webgpu-darwin-arm64 not found (will be installed during build)"
+          fi
+
+          if [ -d node_modules/.bun/bun-webgpu-darwin-x64@0.1.4 ]; then
+            echo "✅ bun-webgpu-darwin-x64 found in cache"
+          else
+            echo "⚠️  bun-webgpu-darwin-x64 not found (will be installed during build)"
+          fi
+
+          if [ -d node_modules/.bun/bun-webgpu-linux-x64@0.1.4 ]; then
+            echo "✅ bun-webgpu-linux-x64 found in cache"
+          else
+            echo "⚠️  bun-webgpu-linux-x64 not found (will be installed during build)"
+          fi
+
+          if [ -d node_modules/.bun/bun-webgpu-win32-x64@0.1.4 ]; then
+            echo "✅ bun-webgpu-win32-x64 found in cache"
+          else
+            echo "⚠️  bun-webgpu-win32-x64 not found (will be installed during build)"
+          fi
+
           echo ""
           echo "✅ bun-webgpu ready for bundling"
 

@@ -813,7 +813,7 @@ test("Kitty keyboard event types via keyInput events", async () => {
     shift: true,
     option: false,
     number: false,
-    sequence: "a",
+    sequence: "A",
     raw: "\x1b[97;2:3u",
     super: false,
     hyper: false,
@@ -851,7 +851,7 @@ test("Kitty keyboard ctrl+shift+a via keyInput events", async () => {
     shift: true,
     option: false,
     number: false,
-    sequence: "a",
+    sequence: "A",
     raw: "\x1b[97;6u",
     super: false,
     hyper: false,
@@ -870,7 +870,7 @@ test("Kitty keyboard alt+shift+a via keyInput events", async () => {
     shift: true,
     option: true,
     number: false,
-    sequence: "a",
+    sequence: "A",
     raw: "\x1b[97;4u",
     super: false,
     hyper: false,
@@ -994,10 +994,10 @@ test("Kitty keyboard emoji via keyInput events", async () => {
 })
 
 test("Kitty keyboard keypad keys via keyInput events", async () => {
-  const kp0 = await triggerKittyInput("\x1b[57400u")
+  const kp0 = await triggerKittyInput("\x1b[57399u")
   expect(kp0?.name).toBe("kp0")
 
-  const kpEnter = await triggerKittyInput("\x1b[57415u")
+  const kpEnter = await triggerKittyInput("\x1b[57414u")
   expect(kpEnter?.name).toBe("kpenter")
 })
 

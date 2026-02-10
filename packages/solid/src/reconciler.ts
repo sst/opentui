@@ -209,12 +209,18 @@ export const {
     }
 
     if (isTextNodeRenderable(node)) {
-      if (name !== "style") {
+      if (name === "href") {
+        node.link = { url: value }
         return
       }
-      node.attributes |= createTextAttributes(value)
-      node.fg = value.fg ? parseColor(value.fg) : node.fg
-      node.bg = value.bg ? parseColor(value.bg) : node.bg
+
+      if (name === "style") {
+        node.attributes |= createTextAttributes(value)
+        node.fg = value.fg ? parseColor(value.fg) : node.fg
+        node.bg = value.bg ? parseColor(value.bg) : node.bg
+        return
+      }
+
       return
     }
 

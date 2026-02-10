@@ -167,9 +167,15 @@ export class ScrollBoxRenderable extends BoxRenderable {
     if (this.scrollTop <= 0) {
       this._stickyScrollTop = true
       this._stickyScrollBottom = false
+      if (this._stickyStart === "top" || (this._stickyStart === "bottom" && maxScrollTop === 0)) {
+        this._hasManualScroll = false
+      }
     } else if (this.scrollTop >= maxScrollTop) {
       this._stickyScrollTop = false
       this._stickyScrollBottom = true
+      if (this._stickyStart === "bottom") {
+        this._hasManualScroll = false
+      }
     } else {
       this._stickyScrollTop = false
       this._stickyScrollBottom = false
@@ -178,9 +184,15 @@ export class ScrollBoxRenderable extends BoxRenderable {
     if (this.scrollLeft <= 0) {
       this._stickyScrollLeft = true
       this._stickyScrollRight = false
+      if (this._stickyStart === "left" || (this._stickyStart === "right" && maxScrollLeft === 0)) {
+        this._hasManualScroll = false
+      }
     } else if (this.scrollLeft >= maxScrollLeft) {
       this._stickyScrollLeft = false
       this._stickyScrollRight = true
+      if (this._stickyStart === "right") {
+        this._hasManualScroll = false
+      }
     } else {
       this._stickyScrollLeft = false
       this._stickyScrollRight = false
@@ -335,7 +347,7 @@ export class ScrollBoxRenderable extends BoxRenderable {
 
     this.selectionListener = () => {
       const selection = this._ctx.getSelection()
-      if (!selection || !selection.isSelecting) {
+      if (!selection || !selection.isDragging) {
         this.stopAutoScroll()
       }
     }
@@ -455,7 +467,7 @@ export class ScrollBoxRenderable extends BoxRenderable {
       }
     }
 
-    if (event.type === "drag" && event.isSelecting) {
+    if (event.type === "drag" && event.isDragging) {
       this.updateAutoScroll(event.x, event.y)
     } else if (event.type === "up") {
       this.stopAutoScroll()

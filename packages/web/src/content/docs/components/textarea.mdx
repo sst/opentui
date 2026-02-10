@@ -1,0 +1,96 @@
+---
+title: Textarea
+description: Multi-line text input with selection and keybindings
+order: 4
+---
+
+# Textarea
+
+Multi-line text input with cursor, selection, and rich keybindings.
+
+## Basic usage
+
+### Renderable API
+
+```typescript
+import { TextareaRenderable, createCliRenderer } from "@opentui/core"
+
+const renderer = await createCliRenderer()
+
+const textarea = new TextareaRenderable(renderer, {
+  id: "notes",
+  width: 50,
+  height: 6,
+  placeholder: "Type notes here...",
+  backgroundColor: "#1a1a1a",
+  focusedBackgroundColor: "#222222",
+  textColor: "#FFFFFF",
+  cursorColor: "#00FF88",
+})
+
+renderer.root.add(textarea)
+textarea.focus()
+```
+
+## Submit handling
+
+Bind a submit action and listen for `onSubmit`:
+
+```typescript
+import { TextareaRenderable } from "@opentui/core"
+
+const textarea = new TextareaRenderable(renderer, {
+  width: 50,
+  height: 6,
+  onSubmit: () => {
+    console.log("Submitted:", textarea.plainText)
+  },
+  keyBindings: [{ name: "return", ctrl: true, action: "submit" }],
+})
+```
+
+## Placeholder styling
+
+```typescript
+const textarea = new TextareaRenderable(renderer, {
+  width: 40,
+  height: 4,
+  placeholder: "Type here",
+  placeholderColor: "#666666",
+})
+```
+
+## Construct API
+
+> Not available yet. Use `TextareaRenderable` for now.
+
+## Properties
+
+| Property                 | Type                                  | Default     | Description                       |
+| ------------------------ | ------------------------------------- | ----------- | --------------------------------- |
+| `width`                  | `number` or `string`                  | -           | Width in characters or percentage |
+| `height`                 | `number` or `string`                  | -           | Height in rows or percentage      |
+| `initialValue`           | `string`                              | `""`        | Initial text content              |
+| `placeholder`            | `string`, `StyledText`, or `null`     | `null`      | Placeholder content               |
+| `placeholderColor`       | `string` or `RGBA`                    | `#666666`   | Placeholder color                 |
+| `backgroundColor`        | `string` or `RGBA`                    | transparent | Background when unfocused         |
+| `textColor`              | `string` or `RGBA`                    | `#FFFFFF`   | Text color when unfocused         |
+| `focusedBackgroundColor` | `string` or `RGBA`                    | transparent | Background when focused           |
+| `focusedTextColor`       | `string` or `RGBA`                    | `#FFFFFF`   | Text color when focused           |
+| `wrapMode`               | `"none"`, `"char"`, or `"word"`       | `"word"`    | Line wrapping mode                |
+| `selectionBg`            | `string` or `RGBA`                    | -           | Selection background              |
+| `selectionFg`            | `string` or `RGBA`                    | -           | Selection foreground              |
+| `cursorColor`            | `string` or `RGBA`                    | `#FFFFFF`   | Cursor color                      |
+| `cursorStyle`            | `CursorStyleOptions`                  | -           | Cursor style and blinking         |
+| `keyBindings`            | `KeyBinding[]`                        | -           | Custom keybindings                |
+| `keyAliasMap`            | `KeyAliasMap`                         | -           | Key alias mapping                 |
+| `onSubmit`               | `(event: SubmitEvent) => void`        | -           | Submit handler                    |
+| `onContentChange`        | `(event: ContentChangeEvent) => void` | -           | Fired on content changes          |
+| `onCursorChange`         | `(event: CursorChangeEvent) => void`  | -           | Fired on cursor movement          |
+
+## Useful properties
+
+| Property       | Type     | Description                 |
+| -------------- | -------- | --------------------------- |
+| `plainText`    | `string` | Current text content        |
+| `cursorOffset` | `number` | Cursor offset in the buffer |

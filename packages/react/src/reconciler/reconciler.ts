@@ -6,6 +6,31 @@ import { hostConfig } from "./host-config"
 
 export const reconciler = ReactReconciler(hostConfig)
 
+if (process.env["DEV"] === "true") {
+  try {
+    await import("./devtools")
+  } catch (error: any) {
+    if (error.code === "ERR_MODULE_NOT_FOUND") {
+      console.warn(
+        `
+The environment variable DEV is set to true, so opentui tried to import \`react-devtools-core\`,
+but this failed as it was not installed. Debugging with React DevTools requires it.
+
+To install use this command:
+
+$ bun add react-devtools-core@7 -d
+        `.trim() + "\n",
+      )
+    } else {
+      throw error
+    }
+  }
+}
+
+// Inject into DevTools - this is safe to call even if devtools isn't connected
+// @ts-expect-error the types for `react-reconciler` are not up to date with the library.
+reconciler.injectIntoDevTools()
+
 export function _render(element: React.ReactNode, root: RootRenderable) {
   const container = reconciler.createContainer(
     root,
@@ -16,8 +41,6 @@ export function _render(element: React.ReactNode, root: RootRenderable) {
     "",
     console.error,
     console.error,
-    // @ts-expect-error the types for `react-reconciler` are not up to date with the library.
-    // See https://github.com/facebook/react/blob/7a36dfedc70ffb49be2e4e23b40e01d34cef267e/packages/react-reconciler/src/ReactFiberReconciler.js#L236-L259
     console.error,
     console.error,
     null,

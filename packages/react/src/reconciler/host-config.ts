@@ -1,4 +1,5 @@
 import { TextNodeRenderable, TextRenderable, type Renderable } from "@opentui/core"
+import pkgJson from "../../package.json"
 import { createContext } from "react"
 import type { HostConfig, ReactContext } from "react-reconciler"
 import { DefaultEventPriority, NoEventPriority } from "react-reconciler/constants"
@@ -270,4 +271,8 @@ export const hostConfig: HostConfig<
   getInstanceFromScope() {
     return null
   },
+
+  // @ts-expect-error DefinitelyTyped is not up to date
+  rendererPackageName: "@opentui/react",
+  rendererVersion: pkgJson.version,
 }

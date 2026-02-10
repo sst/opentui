@@ -60,16 +60,18 @@ pub const LineBreak = struct {
 };
 
 pub const LineBreakResult = struct {
-    breaks: std.ArrayList(LineBreak),
+    breaks: std.ArrayListUnmanaged(LineBreak),
+    allocator: std.mem.Allocator,
 
     pub fn init(allocator: std.mem.Allocator) LineBreakResult {
         return .{
-            .breaks = std.ArrayList(LineBreak).init(allocator),
+            .breaks = .{},
+            .allocator = allocator,
         };
     }
 
     pub fn deinit(self: *LineBreakResult) void {
-        self.breaks.deinit();
+        self.breaks.deinit(self.allocator);
     }
 
     pub fn reset(self: *LineBreakResult) void {
@@ -78,16 +80,18 @@ pub const LineBreakResult = struct {
 };
 
 pub const TabStopResult = struct {
-    positions: std.ArrayList(usize),
+    positions: std.ArrayListUnmanaged(usize),
+    allocator: std.mem.Allocator,
 
     pub fn init(allocator: std.mem.Allocator) TabStopResult {
         return .{
-            .positions = std.ArrayList(usize).init(allocator),
+            .positions = .{},
+            .allocator = allocator,
         };
     }
 
     pub fn deinit(self: *TabStopResult) void {
-        self.positions.deinit();
+        self.positions.deinit(self.allocator);
     }
 
     pub fn reset(self: *TabStopResult) void {
@@ -96,21 +100,23 @@ pub const TabStopResult = struct {
 };
 
 pub const WrapBreak = struct {
-    byte_offset: u16,
-    char_offset: u16,
+    byte_offset: u32,
+    char_offset: u32,
 };
 
 pub const WrapBreakResult = struct {
-    breaks: std.ArrayList(WrapBreak),
+    breaks: std.ArrayListUnmanaged(WrapBreak),
+    allocator: std.mem.Allocator,
 
     pub fn init(allocator: std.mem.Allocator) WrapBreakResult {
         return .{
-            .breaks = std.ArrayList(WrapBreak).init(allocator),
+            .breaks = .{},
+            .allocator = allocator,
         };
     }
 
     pub fn deinit(self: *WrapBreakResult) void {
-        self.breaks.deinit();
+        self.breaks.deinit(self.allocator);
     }
 
     pub fn reset(self: *WrapBreakResult) void {
@@ -183,7 +189,7 @@ pub fn findWrapBreaks(text: []const u8, result: *WrapBreakResult, width_method: 
     const vector_len = 16;
 
     var pos: usize = 0;
-    var char_offset: u16 = 0;
+    var char_offset: u32 = 0;
     var prev_cp: ?u21 = null; // Track previous codepoint for grapheme detection
     var break_state: uucode.grapheme.BreakState = .default;
 
@@ -198,29 +204,29 @@ pub fn findWrapBreaks(text: []const u8, result: *WrapBreakResult, width_method: 
             var match_mask: @Vector(vector_len, bool) = @splat(false);
 
             // Check whitespace
-            match_mask = @select(bool, chunk == @as(@Vector(vector_len, u8), @splat(' ')), @as(@Vector(vector_len, bool), @splat(true)), match_mask);
-            match_mask = @select(bool, chunk == @as(@Vector(vector_len, u8), @splat('\t')), @as(@Vector(vector_len, bool), @splat(true)), match_mask);
+            match_mask = match_mask | (chunk == @as(@Vector(vector_len, u8), @splat(' ')));
+            match_mask = match_mask | (chunk == @as(@Vector(vector_len, u8), @splat('\t')));
 
             // Check dashes and slashes
-            match_mask = @select(bool, chunk == @as(@Vector(vector_len, u8), @splat('-')), @as(@Vector(vector_len, bool), @splat(true)), match_mask);
-            match_mask = @select(bool, chunk == @as(@Vector(vector_len, u8), @splat('/')), @as(@Vector(vector_len, bool), @splat(true)), match_mask);
-            match_mask = @select(bool, chunk == @as(@Vector(vector_len, u8), @splat('\\')), @as(@Vector(vector_len, bool), @splat(true)), match_mask);
+            match_mask = match_mask | (chunk == @as(@Vector(vector_len, u8), @splat('-')));
+            match_mask = match_mask | (chunk == @as(@Vector(vector_len, u8), @splat('/')));
+            match_mask = match_mask | (chunk == @as(@Vector(vector_len, u8), @splat('\\')));
 
             // Check punctuation
-            match_mask = @select(bool, chunk == @as(@Vector(vector_len, u8), @splat('.')), @as(@Vector(vector_len, bool), @splat(true)), match_mask);
-            match_mask = @select(bool, chunk == @as(@Vector(vector_len, u8), @splat(',')), @as(@Vector(vector_len, bool), @splat(true)), match_mask);
-            match_mask = @select(bool, chunk == @as(@Vector(vector_len, u8), @splat(';')), @as(@Vector(vector_len, bool), @splat(true)), match_mask);
-            match_mask = @select(bool, chunk == @as(@Vector(vector_len, u8), @splat(':')), @as(@Vector(vector_len, bool), @splat(true)), match_mask);
-            match_mask = @select(bool, chunk == @as(@Vector(vector_len, u8), @splat('!')), @as(@Vector(vector_len, bool), @splat(true)), match_mask);
-            match_mask = @select(bool, chunk == @as(@Vector(vector_len, u8), @splat('?')), @as(@Vector(vector_len, bool), @splat(true)), match_mask);
+            match_mask = match_mask | (chunk == @as(@Vector(vector_len, u8), @splat('.')));
+            match_mask = match_mask | (chunk == @as(@Vector(vector_len, u8), @splat(',')));
+            match_mask = match_mask | (chunk == @as(@Vector(vector_len, u8), @splat(';')));
+            match_mask = match_mask | (chunk == @as(@Vector(vector_len, u8), @splat(':')));
+            match_mask = match_mask | (chunk == @as(@Vector(vector_len, u8), @splat('!')));
+            match_mask = match_mask | (chunk == @as(@Vector(vector_len, u8), @splat('?')));
 
             // Check brackets
-            match_mask = @select(bool, chunk == @as(@Vector(vector_len, u8), @splat('(')), @as(@Vector(vector_len, bool), @splat(true)), match_mask);
-            match_mask = @select(bool, chunk == @as(@Vector(vector_len, u8), @splat(')')), @as(@Vector(vector_len, bool), @splat(true)), match_mask);
-            match_mask = @select(bool, chunk == @as(@Vector(vector_len, u8), @splat('[')), @as(@Vector(vector_len, bool), @splat(true)), match_mask);
-            match_mask = @select(bool, chunk == @as(@Vector(vector_len, u8), @splat(']')), @as(@Vector(vector_len, bool), @splat(true)), match_mask);
-            match_mask = @select(bool, chunk == @as(@Vector(vector_len, u8), @splat('{')), @as(@Vector(vector_len, bool), @splat(true)), match_mask);
-            match_mask = @select(bool, chunk == @as(@Vector(vector_len, u8), @splat('}')), @as(@Vector(vector_len, bool), @splat(true)), match_mask);
+            match_mask = match_mask | (chunk == @as(@Vector(vector_len, u8), @splat('(')));
+            match_mask = match_mask | (chunk == @as(@Vector(vector_len, u8), @splat(')')));
+            match_mask = match_mask | (chunk == @as(@Vector(vector_len, u8), @splat('[')));
+            match_mask = match_mask | (chunk == @as(@Vector(vector_len, u8), @splat(']')));
+            match_mask = match_mask | (chunk == @as(@Vector(vector_len, u8), @splat('{')));
+            match_mask = match_mask | (chunk == @as(@Vector(vector_len, u8), @splat('}')));
 
             // Convert boolean mask to integer bitmask for faster iteration
             var bitmask: u16 = 0;
@@ -233,9 +239,9 @@ pub fn findWrapBreaks(text: []const u8, result: *WrapBreakResult, width_method: 
             // Use bit manipulation to extract positions
             while (bitmask != 0) {
                 const bit_pos = @ctz(bitmask);
-                try result.breaks.append(.{
+                try result.breaks.append(result.allocator, .{
                     .byte_offset = @intCast(pos + bit_pos),
-                    .char_offset = char_offset + @as(u16, @intCast(bit_pos)),
+                    .char_offset = char_offset + @as(u32, @intCast(bit_pos)),
                 });
                 bitmask &= bitmask - 1;
             }
@@ -261,7 +267,7 @@ pub fn findWrapBreaks(text: []const u8, result: *WrapBreakResult, width_method: 
                 } else true;
 
                 if (isAsciiWrapBreak(b0)) {
-                    try result.breaks.append(.{
+                    try result.breaks.append(result.allocator, .{
                         .byte_offset = @intCast(pos + i),
                         .char_offset = char_offset,
                     });
@@ -283,7 +289,7 @@ pub fn findWrapBreaks(text: []const u8, result: *WrapBreakResult, width_method: 
                 } else true;
 
                 if (isUnicodeWrapBreak(dec.cp)) {
-                    try result.breaks.append(.{
+                    try result.breaks.append(result.allocator, .{
                         .byte_offset = @intCast(pos + i),
                         .char_offset = char_offset,
                     });
@@ -310,7 +316,7 @@ pub fn findWrapBreaks(text: []const u8, result: *WrapBreakResult, width_method: 
             } else true;
 
             if (isAsciiWrapBreak(b0)) {
-                try result.breaks.append(.{
+                try result.breaks.append(result.allocator, .{
                     .byte_offset = @intCast(i),
                     .char_offset = char_offset,
                 });
@@ -330,7 +336,7 @@ pub fn findWrapBreaks(text: []const u8, result: *WrapBreakResult, width_method: 
             } else true;
 
             if (isUnicodeWrapBreak(dec.cp)) {
-                try result.breaks.append(.{
+                try result.breaks.append(result.allocator, .{
                     .byte_offset = @intCast(i),
                     .char_offset = char_offset,
                 });
@@ -361,7 +367,7 @@ pub fn findTabStops(text: []const u8, result: *TabStopResult) !void {
             var i: usize = 0;
             while (i < vector_len) : (i += 1) {
                 if (text[pos + i] == '\t') {
-                    try result.positions.append(pos + i);
+                    try result.positions.append(result.allocator, pos + i);
                 }
             }
         }
@@ -370,7 +376,7 @@ pub fn findTabStops(text: []const u8, result: *TabStopResult) !void {
 
     while (pos < text.len) : (pos += 1) {
         if (text[pos] == '\t') {
-            try result.positions.append(pos);
+            try result.positions.append(result.allocator, pos);
         }
     }
 }
@@ -408,14 +414,14 @@ pub fn findLineBreaks(text: []const u8, result: *LineBreakResult) !void {
                     }
                     // Check if this is part of CRLF
                     const kind: LineBreakKind = if (absolute_index > 0 and text[absolute_index - 1] == '\r') .CRLF else .LF;
-                    try result.breaks.append(.{ .pos = absolute_index, .kind = kind });
+                    try result.breaks.append(result.allocator, .{ .pos = absolute_index, .kind = kind });
                 } else if (b == '\r') {
                     // Check for CRLF
                     if (absolute_index + 1 < text.len and text[absolute_index + 1] == '\n') {
-                        try result.breaks.append(.{ .pos = absolute_index + 1, .kind = .CRLF });
+                        try result.breaks.append(result.allocator, .{ .pos = absolute_index + 1, .kind = .CRLF });
                         i += 1; // Skip the \n in next iteration
                     } else {
-                        try result.breaks.append(.{ .pos = absolute_index, .kind = .CR });
+                        try result.breaks.append(result.allocator, .{ .pos = absolute_index, .kind = .CR });
                     }
                 }
             }
@@ -440,13 +446,13 @@ pub fn findLineBreaks(text: []const u8, result: *LineBreakResult) !void {
                 }
             }
             const kind: LineBreakKind = if (pos > 0 and text[pos - 1] == '\r') .CRLF else .LF;
-            try result.breaks.append(.{ .pos = pos, .kind = kind });
+            try result.breaks.append(result.allocator, .{ .pos = pos, .kind = kind });
         } else if (b == '\r') {
             if (pos + 1 < text.len and text[pos + 1] == '\n') {
-                try result.breaks.append(.{ .pos = pos + 1, .kind = .CRLF });
+                try result.breaks.append(result.allocator, .{ .pos = pos + 1, .kind = .CRLF });
                 pos += 1;
             } else {
-                try result.breaks.append(.{ .pos = pos, .kind = .CR });
+                try result.breaks.append(result.allocator, .{ .pos = pos, .kind = .CR });
             }
         }
         prev_was_cr = false;
@@ -465,224 +471,117 @@ pub const PosByWidthResult = struct {
     columns_used: u32,
 };
 
-// East Asian Width detection based on Unicode 15.1.0
-// Returns the display width in columns (0, 1, or 2)
-inline fn eastAsianWidth(cp: u21) u32 {
-    // C1 control characters (0x80-0x9F) - zero width
-    if (cp >= 0x0080 and cp <= 0x009F) {
-        return 0;
+pub inline fn eastAsianWidth(cp: u21) u32 {
+    if (cp > 0x10FFFF) return 0;
+    const eaw = uucode.get(.east_asian_width, cp);
+    const width = eawToWidth(cp, eaw);
+    return if (width > 0) @intCast(width) else 0;
+}
+
+/// Calculate width from east asian width property and Unicode properties
+/// Returns -1 for control characters (they don't contribute to width)
+inline fn eawToWidth(cp: u21, eaw: uucode.types.EastAsianWidth) i16 {
+    if (cp == 0) return 0;
+    if (cp < 32 or (cp >= 0x7F and cp < 0xA0)) return -1;
+
+    const gc = uucode.get(.general_category, cp);
+    switch (gc) {
+        .mark_nonspacing, .mark_spacing_combining, .mark_enclosing => return 0,
+        else => {},
     }
 
-    // Zero-width characters: combining marks and format characters
-    if ((cp >= 0x0300 and cp <= 0x036F) or // Combining Diacritical Marks
-        (cp >= 0x1AB0 and cp <= 0x1AFF) or // Combining Diacritical Marks Extended
-        (cp >= 0x1DC0 and cp <= 0x1DFF) or // Combining Diacritical Marks Supplement
-        (cp >= 0x20D0 and cp <= 0x20FF) or // Combining Diacritical Marks for Symbols
-        (cp >= 0xFE00 and cp <= 0xFE0F) or // Variation Selectors
-        (cp >= 0xFE20 and cp <= 0xFE2F) or // Combining Half Marks
-        // Indic script combining marks (both Mn and Mc - all treated as zero-width for terminal display)
-        (cp >= 0x0900 and cp <= 0x0903) or // Devanagari combining
-        (cp >= 0x093A and cp <= 0x094F) or // Devanagari combining (includes both Mn and Mc vowel signs)
-        (cp >= 0x0951 and cp <= 0x0957) or // Devanagari combining
-        (cp >= 0x0962 and cp <= 0x0963) or // Devanagari combining
-        (cp >= 0x0981 and cp <= 0x0983) or // Bengali combining
-        (cp >= 0x09BC and cp <= 0x09C4) or // Bengali combining
-        (cp >= 0x09C7 and cp <= 0x09C8) or // Bengali combining
-        (cp >= 0x09CB and cp <= 0x09CD) or // Bengali combining
-        cp == 0x09D7 or cp == 0x09E2 or cp == 0x09E3 or cp == 0x09FE or // Bengali combining
-        (cp >= 0x0A01 and cp <= 0x0A03) or // Gurmukhi combining
-        (cp >= 0x0A3C and cp <= 0x0A42) or // Gurmukhi combining
-        (cp >= 0x0A47 and cp <= 0x0A48) or // Gurmukhi combining
-        (cp >= 0x0A4B and cp <= 0x0A4D) or // Gurmukhi combining
-        cp == 0x0A51 or (cp >= 0x0A70 and cp <= 0x0A71) or cp == 0x0A75 or // Gurmukhi combining
-        (cp >= 0x0A81 and cp <= 0x0A83) or // Gujarati combining
-        (cp >= 0x0ABC and cp <= 0x0AC5) or // Gujarati combining
-        (cp >= 0x0AC7 and cp <= 0x0AC9) or // Gujarati combining
-        (cp >= 0x0ACB and cp <= 0x0ACD) or // Gujarati combining
-        (cp >= 0x0AE2 and cp <= 0x0AE3) or // Gujarati combining
-        (cp >= 0x0AFA and cp <= 0x0AFF) or // Gujarati combining
-        (cp >= 0x0B01 and cp <= 0x0B03) or // Oriya combining
-        (cp >= 0x0B3C and cp <= 0x0B44) or // Oriya combining
-        (cp >= 0x0B47 and cp <= 0x0B48) or // Oriya combining
-        (cp >= 0x0B4B and cp <= 0x0B4D) or // Oriya combining
-        (cp >= 0x0B55 and cp <= 0x0B57) or // Oriya combining
-        (cp >= 0x0B62 and cp <= 0x0B63) or // Oriya combining
-        cp == 0x0B82 or // Tamil combining
-        (cp >= 0x0BBE and cp <= 0x0BC2) or // Tamil combining
-        (cp >= 0x0BC6 and cp <= 0x0BC8) or // Tamil combining
-        (cp >= 0x0BCA and cp <= 0x0BCD) or // Tamil combining
-        cp == 0x0BD7 or // Tamil combining
-        (cp >= 0x0C00 and cp <= 0x0C04) or // Telugu combining
-        (cp >= 0x0C3C and cp <= 0x0C44) or // Telugu combining
-        (cp >= 0x0C46 and cp <= 0x0C48) or // Telugu combining
-        (cp >= 0x0C4A and cp <= 0x0C4D) or // Telugu combining
-        (cp >= 0x0C55 and cp <= 0x0C56) or // Telugu combining
-        (cp >= 0x0C62 and cp <= 0x0C63) or // Telugu combining
-        (cp >= 0x0C81 and cp <= 0x0C83) or // Kannada combining
-        (cp >= 0x0CBC and cp <= 0x0CC4) or // Kannada combining
-        (cp >= 0x0CC6 and cp <= 0x0CC8) or // Kannada combining
-        (cp >= 0x0CCA and cp <= 0x0CCD) or // Kannada combining
-        (cp >= 0x0CD5 and cp <= 0x0CD6) or // Kannada combining
-        (cp >= 0x0CE2 and cp <= 0x0CE3) or cp == 0x0CF3 or // Kannada combining
-        (cp >= 0x0D00 and cp <= 0x0D03) or // Malayalam combining
-        (cp >= 0x0D3B and cp <= 0x0D3C) or // Malayalam combining
-        (cp >= 0x0D3E and cp <= 0x0D44) or // Malayalam combining
-        (cp >= 0x0D46 and cp <= 0x0D48) or // Malayalam combining
-        (cp >= 0x0D4A and cp <= 0x0D4D) or // Malayalam combining
-        cp == 0x0D57 or (cp >= 0x0D62 and cp <= 0x0D63) or // Malayalam combining
-        (cp >= 0x0D81 and cp <= 0x0D83) or // Sinhala combining
-        cp == 0x0DCA or (cp >= 0x0DCF and cp <= 0x0DD4) or cp == 0x0DD6 or // Sinhala combining
-        (cp >= 0x0DD8 and cp <= 0x0DDF) or (cp >= 0x0DF2 and cp <= 0x0DF3) or // Sinhala combining
-        cp == 0x0E31 or (cp >= 0x0E34 and cp <= 0x0E3A) or (cp >= 0x0E47 and cp <= 0x0E4E) or // Thai combining
-        cp == 0x0EB1 or (cp >= 0x0EB4 and cp <= 0x0EBC) or (cp >= 0x0EC8 and cp <= 0x0ECE) or // Lao combining
-        (cp >= 0x0F18 and cp <= 0x0F19) or cp == 0x0F35 or cp == 0x0F37 or cp == 0x0F39 or // Tibetan combining
-        (cp >= 0x0F3E and cp <= 0x0F3F) or (cp >= 0x0F71 and cp <= 0x0F84) or // Tibetan combining
-        (cp >= 0x0F86 and cp <= 0x0F87) or (cp >= 0x0F8D and cp <= 0x0F97) or // Tibetan combining
-        (cp >= 0x0F99 and cp <= 0x0FBC) or cp == 0x0FC6 or // Tibetan combining
-        // Format characters (Cf category) - zero width
-        // NOTE: U+00AD (Soft Hyphen) is NOT zero-width, it's width 1
-        (cp >= 0x0600 and cp <= 0x0605) or // Arabic format characters
-        cp == 0x061C or // Arabic Letter Mark
-        cp == 0x06DD or // Arabic End of Ayah
-        cp == 0x070F or // Syriac Abbreviation Mark
-        cp == 0x180E or // Mongolian Vowel Separator
-        (cp >= 0x200B and cp <= 0x200F) or // ZWSP, ZWNJ, ZWJ, LRM, RLM
-        (cp >= 0x2028 and cp <= 0x202E) or // Line/Para separators, directional formatting
-        (cp >= 0x2060 and cp <= 0x2064) or // Word Joiner, invisible operators
-        (cp >= 0x2066 and cp <= 0x206F) or // Directional formatting
-        cp == 0xFEFF or // Zero Width No-Break Space (BOM)
-        (cp >= 0xFFF9 and cp <= 0xFFFB) or // Interlinear Annotation
-        cp == 0x110BD or // Kaithi Number Sign
-        (cp >= 0x1BCA0 and cp <= 0x1BCA3) or // Shorthand Format
-        (cp >= 0x1D173 and cp <= 0x1D17A) or // Musical formatting
-        cp == 0xE0001 or // Language Tag
-        (cp >= 0xE0020 and cp <= 0xE007F)) // Tag characters
-    {
-        return 0;
-    }
+    if (cp == 0x200B) return 0;
+    if (cp == 0x200C) return 0;
+    if (cp == 0x200D) return 0;
+    if (cp == 0x2060) return 0;
+    if (cp == 0x034F) return 0;
+    if (cp == 0xFEFF) return 0;
+    if (cp >= 0x180B and cp <= 0x180D) return 0;
+    if (cp >= 0xFE00 and cp <= 0xFE0F) return 0;
+    if (cp >= 0xE0100 and cp <= 0xE01EF) return 0;
 
-    // Wide and Fullwidth characters (width 2)
-    if ((cp >= 0x1100 and cp <= 0x115F) or // Hangul Jamo
-        (cp >= 0x231A and cp <= 0x231B) or // Watch, Hourglass
-        (cp >= 0x2329 and cp <= 0x232A) or // Left/Right-Pointing Angle Bracket
-        (cp >= 0x23E9 and cp <= 0x23EC) or // Fast Forward, etc
-        (cp >= 0x23F0 and cp <= 0x23F0) or // Alarm Clock
-        (cp >= 0x23F3 and cp <= 0x23F3) or // Hourglass
-        (cp >= 0x25FD and cp <= 0x25FE) or // White/Black Medium Small Square
-        // Miscellaneous Symbols (U+2600-26FF) - only specific emoji are width 2
-        (cp >= 0x2614 and cp <= 0x2615) or // Umbrella symbols
-        (cp >= 0x2630 and cp <= 0x2637) or // Trigrams
-        (cp >= 0x2648 and cp <= 0x2653) or // Zodiac signs
-        cp == 0x267F or // Wheelchair symbol
-        (cp >= 0x268A and cp <= 0x268F) or // Monogram symbols
-        cp == 0x2693 or // Anchor
-        cp == 0x26A1 or // High voltage
-        (cp >= 0x26AA and cp <= 0x26AB) or // White/Black circles
-        (cp >= 0x26BD and cp <= 0x26BE) or // Soccer/Baseball
-        (cp >= 0x26C4 and cp <= 0x26C5) or // Snowman
-        cp == 0x26CE or // Ophiuchus
-        cp == 0x26D4 or // No Entry
-        cp == 0x26EA or // Church
-        cp == 0x26F2 or cp == 0x26F3 or // Fountain, Golf flag
-        cp == 0x26F5 or // Sailboat
-        cp == 0x26FA or // Tent
-        cp == 0x26FD or // Fuel pump
-        // Dingbats (U+2700-27BF) - only specific ones are width 2
-        cp == 0x2705 or // White Heavy Check Mark
-        (cp >= 0x270A and cp <= 0x270B) or // Raised fist/hand
-        cp == 0x2728 or // Sparkles
-        cp == 0x274C or // Cross Mark
-        cp == 0x274E or // Negative Squared Cross Mark
-        (cp >= 0x2753 and cp <= 0x2755) or // Question marks
-        cp == 0x2757 or // Exclamation Mark Symbol
-        (cp >= 0x2760 and cp <= 0x2767) or // Heart and ornament emoji
-        (cp >= 0x2795 and cp <= 0x2797) or // Plus/Minus/Division signs
-        cp == 0x27B0 or // Curly Loop
-        cp == 0x27BF or // Double Curly Loop
-        (cp >= 0x2B1B and cp <= 0x2B1C) or // Black/White Large Square
-        (cp >= 0x2B50 and cp <= 0x2B50) or // White Medium Star
-        (cp >= 0x2B55 and cp <= 0x2B55) or // Heavy Large Circle
-        (cp >= 0x2E80 and cp <= 0x2EFF) or // CJK Radicals Supplement
-        (cp >= 0x2F00 and cp <= 0x2FDF) or // Kangxi Radicals
-        (cp >= 0x2FF0 and cp <= 0x2FFF) or // Ideographic Description Characters
-        (cp >= 0x3000 and cp <= 0x303E) or // CJK Symbols and Punctuation
-        (cp >= 0x3041 and cp <= 0x3096) or // Hiragana main (U+3040, U+3097-3098 are width 1)
-        (cp >= 0x309B and cp <= 0x309F) or // Hiragana combining marks and iteration marks
-        (cp >= 0x30A0 and cp <= 0x30FF) or // Katakana
-        (cp >= 0x3105 and cp <= 0x312F) or // Bopomofo (U+3100-3104 are width 1)
-        (cp >= 0x3131 and cp <= 0x318E) or // Hangul Compatibility Jamo
-        (cp >= 0x3190 and cp <= 0x31BA) or // Kanbun, Bopomofo Extended
-        (cp >= 0x31C0 and cp <= 0x31E3) or // CJK Strokes
-        (cp >= 0x31F0 and cp <= 0x31FF) or // Katakana Phonetic Extensions
-        (cp >= 0x3200 and cp <= 0x32FF) or // Enclosed CJK Letters and Months
-        (cp >= 0x3300 and cp <= 0x33FF) or // CJK Compatibility
-        (cp >= 0x3400 and cp <= 0x4DBF) or // CJK Unified Ideographs Extension A
-        (cp >= 0x4DC0 and cp <= 0x4DFF) or // Yijing Hexagram Symbols
-        (cp >= 0x4E00 and cp <= 0x9FFF) or // CJK Unified Ideographs
-        (cp >= 0xA000 and cp <= 0xA48F) or // Yi Syllables
-        (cp >= 0xA490 and cp <= 0xA4CF) or // Yi Radicals
-        (cp >= 0xAC00 and cp <= 0xD7A3) or // Hangul Syllables
-        (cp >= 0xF900 and cp <= 0xFAFF) or // CJK Compatibility Ideographs
-        (cp >= 0xFE10 and cp <= 0xFE19) or // Vertical Forms
-        (cp >= 0xFE30 and cp <= 0xFE6F) or // CJK Compatibility Forms
-        (cp >= 0xFF01 and cp <= 0xFF60) or // Fullwidth Forms
-        (cp >= 0xFFE0 and cp <= 0xFFE6) or // Fullwidth symbols
-        (cp >= 0x1F000 and cp <= 0x1F02B) or // Mahjong Tiles, Domino Tiles
-        (cp >= 0x1F030 and cp <= 0x1F093) or // Domino Tiles
-        (cp >= 0x1F0A0 and cp <= 0x1F0AE) or // Playing Cards
-        (cp >= 0x1F0B1 and cp <= 0x1F0BF) or // Playing Cards
-        (cp >= 0x1F0C1 and cp <= 0x1F0CF) or // Playing Cards
-        (cp >= 0x1F0D1 and cp <= 0x1F0F5) or // Playing Cards
-        (cp >= 0x1F100 and cp <= 0x1F10C) or // Enclosed Alphanumeric Supplement
-        (cp >= 0x1F110 and cp <= 0x1F16C) or // Enclosed Alphanumeric Supplement
-        (cp >= 0x1F170 and cp <= 0x1F1AC) or // Enclosed Alphanumeric Supplement
-        // NOTE: Regional Indicators (0x1F1E6-0x1F1FF) are handled specially - width 1 each, but pairs = width 2
-        (cp >= 0x1F200 and cp <= 0x1F202) or // Enclosed Ideographic Supplement
-        (cp >= 0x1F210 and cp <= 0x1F23B) or // Enclosed Ideographic Supplement
-        (cp >= 0x1F240 and cp <= 0x1F248) or // Enclosed Ideographic Supplement
-        (cp >= 0x1F250 and cp <= 0x1F251) or // Enclosed Ideographic Supplement
-        (cp >= 0x1F260 and cp <= 0x1F265) or // Enclosed Ideographic Supplement
-        // Miscellaneous Symbols and Pictographs, Transport and Map Symbols (U+1F300-1F6FF)
-        // Many characters in this range are width 1, so we need to be selective
-        (cp >= 0x1F300 and cp <= 0x1F320) or (cp >= 0x1F32D and cp <= 0x1F335) or
-        (cp >= 0x1F337 and cp <= 0x1F37C) or (cp >= 0x1F37E and cp <= 0x1F393) or
-        (cp >= 0x1F3A0 and cp <= 0x1F3CA) or (cp >= 0x1F3CF and cp <= 0x1F3D3) or
-        (cp >= 0x1F3E0 and cp <= 0x1F3F0) or cp == 0x1F3F4 or // Exclude U+1F3F5-1F3F7
-        (cp >= 0x1F3F8 and cp <= 0x1F3FF) or
-        (cp >= 0x1F400 and cp <= 0x1F43E) or cp == 0x1F440 or // Exclude U+1F43F, U+1F441
-        (cp >= 0x1F442 and cp <= 0x1F4FC) or (cp >= 0x1F4FF and cp <= 0x1F6C5) or cp == 0x1F6CC or // Exclude U+1F4FD-1F4FE
-        (cp >= 0x1F6D0 and cp <= 0x1F6D2) or (cp >= 0x1F6D5 and cp <= 0x1F6D7) or
-        (cp >= 0x1F6DC and cp <= 0x1F6DF) or (cp >= 0x1F6EB and cp <= 0x1F6EC) or
-        (cp >= 0x1F6F4 and cp <= 0x1F6FC) or
-        (cp >= 0x1F700 and cp <= 0x1F773) or // Alchemical Symbols
-        (cp >= 0x1F780 and cp <= 0x1F7D8) or // Geometric Shapes Extended
-        (cp >= 0x1F7E0 and cp <= 0x1F7EB) or // Geometric Shapes Extended
-        (cp >= 0x1F800 and cp <= 0x1F80B) or // Supplemental Arrows-C
-        (cp >= 0x1F810 and cp <= 0x1F847) or // Supplemental Arrows-C
-        (cp >= 0x1F850 and cp <= 0x1F859) or // Supplemental Arrows-C
-        (cp >= 0x1F860 and cp <= 0x1F887) or // Supplemental Arrows-C
-        (cp >= 0x1F890 and cp <= 0x1F8AD) or // Supplemental Arrows-C
-        (cp >= 0x1F8B0 and cp <= 0x1F8B1) or // Supplemental Arrows-C
-        // Supplemental Symbols and Pictographs (U+1F900-1FAFF) - exclude width-1 ranges
-        (cp >= 0x1F90C and cp <= 0x1F93A) or (cp >= 0x1F93C and cp <= 0x1F945) or
-        (cp >= 0x1F947 and cp <= 0x1FA53) or // Rest of Supplemental Symbols and Pictographs
-        (cp >= 0x1FA60 and cp <= 0x1FA6D) or // Supplemental Symbols and Pictographs
-        (cp >= 0x1FA70 and cp <= 0x1FA74) or // Supplemental Symbols and Pictographs
-        (cp >= 0x1FA78 and cp <= 0x1FA7C) or // Supplemental Symbols and Pictographs
-        (cp >= 0x1FA80 and cp <= 0x1FA86) or // Supplemental Symbols and Pictographs
-        (cp >= 0x1FA90 and cp <= 0x1FAAC) or // Supplemental Symbols and Pictographs
-        (cp >= 0x1FAB0 and cp <= 0x1FABA) or // Supplemental Symbols and Pictographs
-        (cp >= 0x1FAC0 and cp <= 0x1FAC5) or // Supplemental Symbols and Pictographs
-        (cp >= 0x1FAD0 and cp <= 0x1FAD9) or // Supplemental Symbols and Pictographs
-        (cp >= 0x1FAE0 and cp <= 0x1FAE7) or // Supplemental Symbols and Pictographs
-        (cp >= 0x1FAF0 and cp <= 0x1FAF8) or // Supplemental Symbols and Pictographs
-        (cp >= 0x20000 and cp <= 0x2FFFD) or // CJK Unified Ideographs Extension B-F
-        (cp >= 0x30000 and cp <= 0x3FFFD)) // CJK Unified Ideographs Extension G
-    {
-        return 2;
-    }
+    if (eaw == .fullwidth or eaw == .wide) return 2;
 
-    // Default to width 1
+    if (cp >= 0x1F000 and cp <= 0x1F02B) return 2;
+    if (cp >= 0x1F030 and cp <= 0x1F093) return 2;
+    if (cp >= 0x1F0A0 and cp <= 0x1F0AE) return 2;
+    if (cp >= 0x1F0B1 and cp <= 0x1F0BF) return 2;
+    if (cp >= 0x1F0C1 and cp <= 0x1F0CF) return 2;
+    if (cp >= 0x1F0D1 and cp <= 0x1F0F5) return 2;
+
+    if (cp == 0x231A or cp == 0x231B) return 2;
+    if (cp == 0x2329 or cp == 0x232A) return 2;
+    if (cp >= 0x23E9 and cp <= 0x23EC) return 2;
+    if (cp == 0x23F0 or cp == 0x23F3) return 2;
+    if (cp >= 0x25FD and cp <= 0x25FE) return 2;
+
+    if (cp >= 0x2614 and cp <= 0x2615) return 2;
+    if (cp == 0x2622 or cp == 0x2623) return 2;
+    if (cp >= 0x2630 and cp <= 0x2637) return 2;
+    if (cp >= 0x2648 and cp <= 0x2653) return 2;
+    if (cp == 0x267F or cp == 0x2693 or cp == 0x269B) return 2;
+    if (cp == 0x26A0 or cp == 0x26A1) return 2;
+    if (cp >= 0x26AA and cp <= 0x26AB) return 2;
+    if (cp >= 0x26BD and cp <= 0x26BE) return 2;
+    if (cp >= 0x26C4 and cp <= 0x26C5) return 2;
+    if (cp == 0x26CE or cp == 0x26D1 or cp == 0x26D4) return 2;
+    if (cp == 0x26EA or cp == 0x26F2 or cp == 0x26F3) return 2;
+    if (cp == 0x26F5 or cp == 0x26FA or cp == 0x26FD) return 2;
+
+    if (cp == 0x203C or cp == 0x2049) return 2;
+    if (cp == 0x2705 or cp >= 0x270A and cp <= 0x270B) return 2;
+    if (cp == 0x2728 or cp == 0x274C or cp == 0x274E) return 2;
+    if (cp >= 0x2753 and cp <= 0x2755) return 2;
+    if (cp == 0x2757) return 2;
+    if (cp >= 0x2760 and cp <= 0x2767) return 2;
+    if (cp >= 0x2795 and cp <= 0x2797) return 2;
+    if (cp == 0x27B0 or cp == 0x27BF) return 2;
+    if (cp >= 0x2B1B and cp <= 0x2B1C) return 2;
+    if (cp >= 0x2B50 and cp <= 0x2B50) return 2;
+    if (cp >= 0x2B55 and cp <= 0x2B55) return 2;
+
+    if (cp >= 0x1F300 and cp <= 0x1F320) return 2;
+    if (cp >= 0x1F32D and cp <= 0x1F335) return 2;
+    if (cp >= 0x1F337 and cp <= 0x1F37C) return 2;
+    if (cp >= 0x1F37E and cp <= 0x1F393) return 2;
+    if (cp >= 0x1F3A0 and cp <= 0x1F3CA) return 2;
+    if (cp >= 0x1F3CF and cp <= 0x1F3D3) return 2;
+    if (cp >= 0x1F3E0 and cp <= 0x1F3F0) return 2;
+    if (cp == 0x1F3F4) return 2;
+    if (cp >= 0x1F3F8 and cp <= 0x1F3FF) return 2;
+    if (cp >= 0x1F400 and cp <= 0x1F43E) return 2;
+    if (cp == 0x1F440) return 2;
+    if (cp >= 0x1F442 and cp <= 0x1F4FC) return 2;
+    if (cp >= 0x1F4FF and cp <= 0x1F6C5) return 2;
+    if (cp == 0x1F6CC) return 2;
+    if (cp >= 0x1F6D0 and cp <= 0x1F6D2) return 2;
+    if (cp >= 0x1F6D5 and cp <= 0x1F6D7) return 2;
+    if (cp >= 0x1F6DC and cp <= 0x1F6DF) return 2;
+    if (cp >= 0x1F6EB and cp <= 0x1F6EC) return 2;
+    if (cp >= 0x1F6F4 and cp <= 0x1F6FC) return 2;
+    if (cp >= 0x1F700 and cp <= 0x1F773) return 2;
+    if (cp >= 0x1F780 and cp <= 0x1F7D8) return 2;
+    if (cp >= 0x1F7E0 and cp <= 0x1F7EB) return 2;
+    if (cp >= 0x1F800 and cp <= 0x1F80B) return 2;
+    if (cp >= 0x1F810 and cp <= 0x1F847) return 2;
+    if (cp >= 0x1F850 and cp <= 0x1F859) return 2;
+    if (cp >= 0x1F860 and cp <= 0x1F887) return 2;
+    if (cp >= 0x1F890 and cp <= 0x1F8AD) return 2;
+    if (cp >= 0x1F8B0 and cp <= 0x1F8B1) return 2;
+    if (cp >= 0x1F90C and cp <= 0x1F93A) return 2;
+    if (cp >= 0x1F93C and cp <= 0x1F945) return 2;
+    if (cp >= 0x1F947 and cp <= 0x1FA53) return 2;
+    if (cp >= 0x1FA60 and cp <= 0x1FA6D) return 2;
+    if (cp >= 0x1FA70 and cp <= 0x1FA74) return 2;
+    if (cp >= 0x1FA78 and cp <= 0x1FA7C) return 2;
+    if (cp >= 0x1FA80 and cp <= 0x1FA86) return 2;
+    if (cp >= 0x1FA90 and cp <= 0x1FAAC) return 2;
+    if (cp >= 0x1FAB0 and cp <= 0x1FABA) return 2;
+    if (cp >= 0x1FAC0 and cp <= 0x1FAC5) return 2;
+    if (cp >= 0x1FAD0 and cp <= 0x1FAD9) return 2;
+    if (cp >= 0x1FAE0 and cp <= 0x1FAE7) return 2;
+    if (cp >= 0x1FAF0 and cp <= 0x1FAF8) return 2;
+
     return 1;
 }
 
@@ -704,7 +603,9 @@ inline fn charWidth(byte: u8, codepoint: u21, tab_width: u8) u32 {
     } else if (byte < 0x80 and byte >= 32 and byte <= 126) {
         return 1;
     } else if (byte >= 0x80) {
-        return eastAsianWidth(codepoint);
+        const eaw = uucode.get(.east_asian_width, codepoint);
+        const w = eawToWidth(codepoint, eaw);
+        return if (w > 0) @intCast(w) else 0;
     }
     return 0;
 }
@@ -715,12 +616,21 @@ inline fn isValidCodepoint(cp: u21) bool {
 }
 
 /// Check if there's a grapheme break between two codepoints
-/// - wcwidth mode: always returns true (treat each codepoint as separate char)
+/// - wcwidth mode: use Unicode grapheme clustering for proper rendering,
+///   but calculate width using wcwidth (sum of codepoint widths)
 /// - no_zwj mode: use grapheme breaks but treat ZWJ as a break (ignore joining)
 /// - unicode mode: use standard grapheme cluster segmentation
 inline fn isGraphemeBreak(prev_cp: ?u21, curr_cp: u21, break_state: *uucode.grapheme.BreakState, width_method: WidthMethod) bool {
-    // In wcwidth mode, treat every codepoint as a separate char for cursor movement
-    if (width_method == .wcwidth) return true;
+    // wcwidth mode uses Unicode grapheme clustering for proper rendering
+    // (ZWJ sequences, skin tone modifiers stay together), but width is
+    // calculated using wcwidth semantics (sum of codepoint widths)
+    if (width_method == .wcwidth) {
+        if (prev_cp == null) return true;
+
+        if (!isValidCodepoint(curr_cp)) return true;
+        if (!isValidCodepoint(prev_cp.?)) return true;
+        return uucode.grapheme.isBreak(prev_cp.?, curr_cp, break_state);
+    }
 
     if (!isValidCodepoint(curr_cp)) return true;
 
@@ -772,70 +682,53 @@ const GraphemeWidthState = struct {
 
     /// Add a codepoint to the current grapheme cluster
     inline fn addCodepoint(self: *GraphemeWidthState, cp: u21, cp_width: u32) void {
-        // wcwidth mode: simply add all codepoint widths (tmux-style)
+        // wcwidth mode: sum all codepoint widths (tmux-style)
         if (self.width_method == .wcwidth) {
-            self.width += cp_width;
-            if (cp_width > 0) self.has_width = true;
+            const eaw = uucode.get(.east_asian_width, cp);
+            const w = eawToWidth(cp, eaw);
+            if (w > 0) {
+                self.width += @intCast(w);
+                self.has_width = true;
+            }
             return;
         }
 
-        // unicode and no_zwj modes: use grapheme-aware width (modifiers are 0-width)
-        // The difference is in grapheme break detection (ZWJ handling), not in width calculation
+        // unicode and no_zwj modes: use grapheme-aware width
         const is_ri = (cp >= 0x1F1E6 and cp <= 0x1F1FF);
         const is_vs16 = (cp == 0xFE0F); // Variation Selector-16 (emoji presentation)
 
-        // Check for Indic virama (halant) marks
-        const is_virama = (cp == 0x094D) or // Devanagari virama
-            (cp >= 0x09CD and cp <= 0x09CD) or // Bengali virama
-            (cp >= 0x0A4D and cp <= 0x0A4D) or // Gurmukhi virama
-            (cp >= 0x0ACD and cp <= 0x0ACD) or // Gujarati virama
-            (cp >= 0x0B4D and cp <= 0x0B4D) or // Oriya virama
-            (cp >= 0x0BCD and cp <= 0x0BCD) or // Tamil virama
-            (cp >= 0x0C4D and cp <= 0x0C4D) or // Telugu virama
-            (cp >= 0x0CCD and cp <= 0x0CCD) or // Kannada virama
-            (cp >= 0x0D4D and cp <= 0x0D4D); // Malayalam virama
+        const gc = uucode.get(.general_category, cp);
+        const is_virama = gc == .mark_nonspacing;
 
-        // Check if this is RA (Devanagari) - which forms repha/subscript and doesn't add width
         const is_devanagari_ra = (cp == 0x0930);
 
-        // Check if this is a Devanagari base consonant (for regular conjuncts)
         const is_devanagari_base = (cp >= 0x0915 and cp <= 0x0939) or (cp >= 0x0958 and cp <= 0x095F);
 
-        // Special case: VS16 changes presentation to emoji (width 2)
         if (is_vs16) {
             self.has_vs16 = true;
-            // If we have a narrow character (width 1), VS16 makes it emoji presentation (width 2)
             if (self.has_width and self.width == 1) {
                 self.width = 2;
             }
             return;
         }
 
-        // Track virama
         if (is_virama) {
             self.has_indic_virama = true;
-            return; // Virama itself has width 0
+            return;
         }
 
-        // Special case: Regional Indicator pairs (flag emojis)
-        // Both RIs contribute to width (typically 1+1=2)
         if (self.is_regional_indicator_pair and is_ri) {
             self.width += cp_width;
             self.has_width = true;
         } else if (!self.has_width and cp_width > 0) {
-            // Normal case: use first non-zero width codepoint
             self.width = cp_width;
             self.has_width = true;
         } else if (self.has_width and self.has_indic_virama and is_devanagari_base and cp_width > 0) {
-            // Devanagari conjunct: consonant + virama + consonant
-            // Special case: if the second consonant is RA, it forms repha (doesn't add width)
-            // Otherwise, both consonants contribute to width
             if (!is_devanagari_ra) {
                 self.width += cp_width;
             }
-            self.has_indic_virama = false; // Reset virama flag after processing
+            self.has_indic_virama = false;
         }
-        // Otherwise, ignore width of nonspacing modifiers, ZWJ, etc.
     }
 };
 
@@ -959,37 +852,11 @@ fn findWrapPosByWidthUnicode(
 
     // ASCII-only fast path
     if (isASCIIOnly) {
-        const vector_len = 16;
-        var pos: usize = 0;
-        var columns_used: u32 = 0;
-
-        while (pos + vector_len <= text.len) {
-            var i: usize = 0;
-            while (i < vector_len) : (i += 1) {
-                const b = text[pos + i];
-                const width = asciiCharWidth(b, tab_width);
-                columns_used += width;
-
-                if (columns_used > max_columns) {
-                    return .{ .byte_offset = @intCast(pos + i), .grapheme_count = @intCast(pos + i), .columns_used = columns_used - width };
-                }
-            }
-            pos += vector_len;
+        if (max_columns >= text.len) {
+            return .{ .byte_offset = @intCast(text.len), .grapheme_count = @intCast(text.len), .columns_used = @intCast(text.len) };
+        } else {
+            return .{ .byte_offset = max_columns, .grapheme_count = max_columns, .columns_used = max_columns };
         }
-
-        // Tail
-        while (pos < text.len) {
-            const b = text[pos];
-            const width = asciiCharWidth(b, tab_width);
-            columns_used += width;
-
-            if (columns_used > max_columns) {
-                return .{ .byte_offset = @intCast(pos), .grapheme_count = @intCast(pos), .columns_used = columns_used - width };
-            }
-            pos += 1;
-        }
-
-        return .{ .byte_offset = @intCast(text.len), .grapheme_count = @intCast(text.len), .columns_used = columns_used };
     }
 
     const vector_len = 16;
@@ -1108,22 +975,11 @@ fn findWrapPosByWidthWCWidth(
 
     // ASCII-only fast path
     if (isASCIIOnly) {
-        var pos: usize = 0;
-        var columns_used: u32 = 0;
-
-        while (pos < text.len) {
-            const b = text[pos];
-            const width = asciiCharWidth(b, tab_width);
-
-            if (columns_used + width > max_columns) {
-                return .{ .byte_offset = @intCast(pos), .grapheme_count = @intCast(pos), .columns_used = columns_used };
-            }
-
-            columns_used += width;
-            pos += 1;
+        if (max_columns >= text.len) {
+            return .{ .byte_offset = @intCast(text.len), .grapheme_count = @intCast(text.len), .columns_used = @intCast(text.len) };
+        } else {
+            return .{ .byte_offset = max_columns, .grapheme_count = max_columns, .columns_used = max_columns };
         }
-
-        return .{ .byte_offset = @intCast(text.len), .grapheme_count = @intCast(text.len), .columns_used = columns_used };
     }
 
     // Unicode path - process each codepoint independently
@@ -1197,40 +1053,11 @@ fn findPosByWidthUnicode(
 
     // ASCII-only fast path
     if (isASCIIOnly) {
-        const vector_len = 16;
-        var pos: usize = 0;
-        var columns_used: u32 = 0;
-
-        while (pos + vector_len <= text.len) {
-            var i: usize = 0;
-            while (i < vector_len) : (i += 1) {
-                const b = text[pos + i];
-                const prev_columns = columns_used;
-
-                columns_used += asciiCharWidth(b, tab_width);
-
-                // Check if this character starts at or after max_columns
-                if (prev_columns >= max_columns) {
-                    return .{ .byte_offset = @intCast(pos + i), .grapheme_count = @intCast(pos + i), .columns_used = prev_columns };
-                }
-            }
-            pos += vector_len;
+        if (max_columns >= text.len) {
+            return .{ .byte_offset = @intCast(text.len), .grapheme_count = @intCast(text.len), .columns_used = @intCast(text.len) };
+        } else {
+            return .{ .byte_offset = max_columns, .grapheme_count = max_columns, .columns_used = max_columns };
         }
-
-        // Tail
-        while (pos < text.len) {
-            const b = text[pos];
-            const prev_columns = columns_used;
-
-            columns_used += asciiCharWidth(b, tab_width);
-
-            if (prev_columns >= max_columns) {
-                return .{ .byte_offset = @intCast(pos), .grapheme_count = @intCast(pos), .columns_used = prev_columns };
-            }
-            pos += 1;
-        }
-
-        return .{ .byte_offset = @intCast(text.len), .grapheme_count = @intCast(text.len), .columns_used = columns_used };
     }
 
     const vector_len = 16;
@@ -1352,25 +1179,11 @@ fn findPosByWidthWCWidth(
 
     // ASCII-only fast path
     if (isASCIIOnly) {
-        var pos: usize = 0;
-        var columns_used: u32 = 0;
-
-        while (pos < text.len) {
-            const b = text[pos];
-            const prev_columns = columns_used;
-            const width = asciiCharWidth(b, tab_width);
-
-            columns_used += width;
-
-            // Check if this character starts at or after max_columns
-            if (prev_columns >= max_columns) {
-                return .{ .byte_offset = @intCast(pos), .grapheme_count = @intCast(pos), .columns_used = prev_columns };
-            }
-
-            pos += 1;
+        if (max_columns >= text.len) {
+            return .{ .byte_offset = @intCast(text.len), .grapheme_count = @intCast(text.len), .columns_used = @intCast(text.len) };
+        } else {
+            return .{ .byte_offset = max_columns, .grapheme_count = max_columns, .columns_used = max_columns };
         }
-
-        return .{ .byte_offset = @intCast(text.len), .grapheme_count = @intCast(text.len), .columns_used = columns_used };
     }
 
     // Unicode path - process each codepoint independently
@@ -1590,11 +1403,7 @@ fn calculateTextWidthUnicode(text: []const u8, tab_width: u8, isASCIIOnly: bool,
 
     // ASCII-only fast path
     if (isASCIIOnly) {
-        var width: u32 = 0;
-        for (text) |b| {
-            width += asciiCharWidth(b, tab_width);
-        }
-        return width;
+        return @intCast(text.len);
     }
 
     // General case with Unicode support and grapheme cluster handling
@@ -1643,11 +1452,7 @@ fn calculateTextWidthWCWidth(text: []const u8, tab_width: u8, isASCIIOnly: bool)
 
     // ASCII-only fast path
     if (isASCIIOnly) {
-        var width: u32 = 0;
-        for (text) |b| {
-            width += asciiCharWidth(b, tab_width);
-        }
-        return width;
+        return @intCast(text.len);
     }
 
     // Unicode path - sum width of all codepoints
@@ -1705,11 +1510,12 @@ pub fn findGraphemeInfo(
     tab_width: u8,
     isASCIIOnly: bool,
     width_method: WidthMethod,
-    result: *std.ArrayList(GraphemeInfo),
+    allocator: std.mem.Allocator,
+    result: *std.ArrayListUnmanaged(GraphemeInfo),
 ) !void {
     switch (width_method) {
-        .unicode, .no_zwj => try findGraphemeInfoUnicode(text, tab_width, isASCIIOnly, width_method, result),
-        .wcwidth => try findGraphemeInfoWCWidth(text, tab_width, isASCIIOnly, result),
+        .unicode, .no_zwj => try findGraphemeInfoUnicode(text, tab_width, isASCIIOnly, width_method, allocator, result),
+        .wcwidth => try findGraphemeInfoWCWidth(text, tab_width, isASCIIOnly, allocator, result),
     }
 }
 
@@ -1720,9 +1526,11 @@ fn findGraphemeInfoUnicode(
     tab_width: u8,
     isASCIIOnly: bool,
     width_method: WidthMethod,
-    result: *std.ArrayList(GraphemeInfo),
+    allocator: std.mem.Allocator,
+    result: *std.ArrayListUnmanaged(GraphemeInfo),
 ) !void {
-    if (isASCIIOnly) {
+    // In wcwidth mode, always process to capture combining marks on ASCII
+    if (isASCIIOnly and width_method != .wcwidth) {
         return;
     }
 
@@ -1757,30 +1565,25 @@ fn findGraphemeInfoUnicode(
                 const is_break = isGraphemeBreak(prev_cp, curr_cp, &break_state, width_method);
 
                 if (is_break) {
-                    // Commit previous cluster if it was special (tab or multibyte)
-                    // In wcwidth mode, skip zero-width characters (don't add to grapheme list)
                     if (prev_cp != null and (cluster_is_multibyte or cluster_is_tab)) {
-                        if (cluster_width_state.width > 0 or width_method != .wcwidth) {
+                        if (cluster_width_state.width > 0 or width_method == .wcwidth) {
                             const cluster_byte_len = (pos + i) - cluster_start;
-                            try result.append(GraphemeInfo{
+                            try result.append(allocator, GraphemeInfo{
                                 .byte_offset = @intCast(cluster_start),
                                 .byte_len = @intCast(cluster_byte_len),
                                 .width = @intCast(cluster_width_state.width),
                                 .col_offset = cluster_start_col,
                             });
                         }
-                        // Advance col by the committed cluster's width
                         col += cluster_width_state.width;
                     } else if (prev_cp != null) {
-                        // ASCII single-byte character - still need to advance col
                         col += cluster_width_state.width;
                     }
 
-                    // Start new cluster
                     cluster_start = pos + i;
                     cluster_start_col = col;
                     cluster_is_tab = (b == '\t');
-                    cluster_is_multibyte = false; // ASCII is not multibyte
+                    cluster_is_multibyte = false;
 
                     const cp_width = asciiCharWidth(b, tab_width);
                     cluster_width_state = GraphemeWidthState.init(curr_cp, cp_width, width_method);
@@ -1808,26 +1611,21 @@ fn findGraphemeInfoUnicode(
             const is_break = isGraphemeBreak(prev_cp, curr_cp, &break_state, width_method);
 
             if (is_break) {
-                // Commit previous cluster if it was special (tab or multibyte)
-                // In wcwidth mode, skip zero-width characters (don't add to grapheme list)
                 if (prev_cp != null and (cluster_is_multibyte or cluster_is_tab)) {
-                    if (cluster_width_state.width > 0 or width_method != .wcwidth) {
+                    if (cluster_width_state.width > 0 or width_method == .wcwidth) {
                         const cluster_byte_len = (pos + i) - cluster_start;
-                        try result.append(GraphemeInfo{
+                        try result.append(allocator, GraphemeInfo{
                             .byte_offset = @intCast(cluster_start),
                             .byte_len = @intCast(cluster_byte_len),
                             .width = @intCast(cluster_width_state.width),
                             .col_offset = cluster_start_col,
                         });
                     }
-                    // Advance col by the committed cluster's width
                     col += cluster_width_state.width;
                 } else if (prev_cp != null) {
-                    // ASCII single-byte character - still need to advance col
                     col += cluster_width_state.width;
                 }
 
-                // Start new cluster
                 cluster_start = pos + i;
                 cluster_start_col = col;
                 cluster_is_tab = (b0 == '\t');
@@ -1836,7 +1634,6 @@ fn findGraphemeInfoUnicode(
                 const cp_width = charWidth(b0, curr_cp, tab_width);
                 cluster_width_state = GraphemeWidthState.init(curr_cp, cp_width, width_method);
             } else {
-                // Continuing cluster
                 cluster_is_multibyte = cluster_is_multibyte or (cp_len != 1);
                 const cp_width = charWidth(b0, curr_cp, tab_width);
                 cluster_width_state.addCodepoint(curr_cp, cp_width);
@@ -1859,26 +1656,21 @@ fn findGraphemeInfoUnicode(
         const is_break = isGraphemeBreak(prev_cp, curr_cp, &break_state, width_method);
 
         if (is_break) {
-            // Commit previous cluster if it was special (tab or multibyte)
-            // In wcwidth mode, skip zero-width characters (don't add to grapheme list)
             if (prev_cp != null and (cluster_is_multibyte or cluster_is_tab)) {
-                if (cluster_width_state.width > 0 or width_method != .wcwidth) {
+                if (cluster_width_state.width > 0 or width_method == .wcwidth) {
                     const cluster_byte_len = pos - cluster_start;
-                    try result.append(GraphemeInfo{
+                    try result.append(allocator, GraphemeInfo{
                         .byte_offset = @intCast(cluster_start),
                         .byte_len = @intCast(cluster_byte_len),
                         .width = @intCast(cluster_width_state.width),
                         .col_offset = cluster_start_col,
                     });
                 }
-                // Advance col by the committed cluster's width
                 col += cluster_width_state.width;
             } else if (prev_cp != null) {
-                // ASCII single-byte character - still need to advance col
                 col += cluster_width_state.width;
             }
 
-            // Start new cluster
             cluster_start = pos;
             cluster_start_col = col;
             cluster_is_tab = (b0 == '\t');
@@ -1887,7 +1679,6 @@ fn findGraphemeInfoUnicode(
             const cp_width = charWidth(b0, curr_cp, tab_width);
             cluster_width_state = GraphemeWidthState.init(curr_cp, cp_width, width_method);
         } else {
-            // Continuing cluster
             cluster_is_multibyte = cluster_is_multibyte or (cp_len != 1);
             const cp_width = charWidth(b0, curr_cp, tab_width);
             cluster_width_state.addCodepoint(curr_cp, cp_width);
@@ -1897,12 +1688,10 @@ fn findGraphemeInfoUnicode(
         pos += cp_len;
     }
 
-    // Commit final cluster if it was special
-    // In wcwidth mode, skip zero-width characters (don't add to grapheme list)
     if (prev_cp != null and (cluster_is_multibyte or cluster_is_tab)) {
-        if (cluster_width_state.width > 0 or width_method != .wcwidth) {
+        if (cluster_width_state.width > 0 or width_method == .wcwidth) {
             const cluster_byte_len = text.len - cluster_start;
-            try result.append(GraphemeInfo{
+            try result.append(allocator, GraphemeInfo{
                 .byte_offset = @intCast(cluster_start),
                 .byte_len = @intCast(cluster_byte_len),
                 .width = @intCast(cluster_width_state.width),
@@ -1918,8 +1707,13 @@ fn findGraphemeInfoWCWidth(
     text: []const u8,
     tab_width: u8,
     isASCIIOnly: bool,
-    result: *std.ArrayList(GraphemeInfo),
+    allocator: std.mem.Allocator,
+    result: *std.ArrayListUnmanaged(GraphemeInfo),
 ) !void {
+    // wcwidth mode should still produce the same grapheme cluster boundaries as Unicode
+    // (so ZWJ sequences and combining marks stay together), but the width of each cluster
+    // is calculated using wcwidth (sum of codepoint widths). This keeps rendering coherent
+    // while preserving tmux-style widths.
     if (isASCIIOnly) {
         return;
     }
@@ -1930,6 +1724,16 @@ fn findGraphemeInfoWCWidth(
 
     var pos: usize = 0;
     var col: u32 = 0;
+    var prev_cp: ?u21 = null;
+    var break_state: uucode.grapheme.BreakState = .default;
+
+    // Track current cluster
+    var cluster_start: usize = 0;
+    var cluster_start_col: u32 = 0;
+    var cluster_width_state: GraphemeWidthState = undefined;
+    var cluster_is_multibyte: bool = false;
+    var cluster_is_tab: bool = false;
+    var cluster_started = false;
 
     while (pos < text.len) {
         const b0 = text[pos];
@@ -1942,22 +1746,54 @@ fn findGraphemeInfoWCWidth(
 
         if (pos + cp_len > text.len) break;
 
-        const cp_width = charWidth(b0, curr_cp, tab_width);
+        // Use wcwidth break detection (each codepoint is separate, tmux-style)
+        const is_break = isGraphemeBreak(prev_cp, curr_cp, &break_state, .wcwidth);
 
-        // In wcwidth mode, only track multi-byte codepoints and tabs that have non-zero width
-        const is_tab = (b0 == '\t');
-        const is_multibyte = (cp_len != 1);
+        if (is_break) {
+            if (cluster_started and (cluster_is_multibyte or cluster_is_tab)) {
+                try result.append(allocator, GraphemeInfo{
+                    .byte_offset = @intCast(cluster_start),
+                    .byte_len = @intCast(pos - cluster_start),
+                    .width = @intCast(cluster_width_state.width),
+                    .col_offset = cluster_start_col,
+                });
+                col += cluster_width_state.width;
+            } else if (cluster_started) {
+                // Still need to advance col by cluster width even if not emitted
+                col += cluster_width_state.width;
+            }
 
-        if ((is_multibyte or is_tab) and cp_width > 0) {
-            try result.append(GraphemeInfo{
-                .byte_offset = @intCast(pos),
-                .byte_len = @intCast(cp_len),
-                .width = @intCast(cp_width),
-                .col_offset = col,
-            });
+            // Start a new cluster
+            cluster_start = pos;
+            cluster_start_col = col;
+            cluster_is_tab = (b0 == '\t');
+            cluster_is_multibyte = (cp_len != 1);
+            const cp_width = charWidth(b0, curr_cp, tab_width);
+            cluster_width_state = GraphemeWidthState.init(curr_cp, cp_width, .wcwidth);
+            cluster_started = true;
+        } else {
+            // Continuing cluster
+            cluster_is_multibyte = cluster_is_multibyte or (cp_len != 1);
+            const cp_width = charWidth(b0, curr_cp, tab_width);
+            cluster_width_state.addCodepoint(curr_cp, cp_width);
         }
 
-        col += cp_width;
+        prev_cp = curr_cp;
         pos += cp_len;
+    }
+
+    // Commit final cluster
+    if (cluster_started) {
+        if (cluster_is_multibyte or cluster_is_tab) {
+            try result.append(allocator, GraphemeInfo{
+                .byte_offset = @intCast(cluster_start),
+                .byte_len = @intCast(text.len - cluster_start),
+                .width = @intCast(cluster_width_state.width),
+                .col_offset = cluster_start_col,
+            });
+            col += cluster_width_state.width;
+        } else {
+            col += cluster_width_state.width;
+        }
     }
 }

@@ -741,6 +741,9 @@ world
 
   test("stays scrolled to bottom with growing code renderables in sticky scroll mode", async () => {
     const syntaxStyle = SyntaxStyle.fromTheme([])
+    // Use auto-resolving mock client to avoid timing issues with stale highlight detection
+    const autoResolvingClient = new MockTreeSitterClient({ autoResolveTimeout: 1 })
+    autoResolvingClient.setMockResult({ highlights: [] })
 
     const parent = new BoxRenderable(testRenderer, {
       flexDirection: "column",
@@ -764,8 +767,6 @@ world
     parent.add(footer)
     testRenderer.root.add(parent)
 
-    await renderOnce()
-
     const scrollPositions: number[] = []
     const maxScrollPositions: number[] = []
     const wrapper1 = new BoxRenderable(testRenderer, {
@@ -777,18 +778,18 @@ world
       filetype: "javascript",
       syntaxStyle,
       drawUnstyledText: false,
-      treeSitterClient: mockTreeSitterClient,
+      treeSitterClient: autoResolvingClient,
     })
     wrapper1.add(code1)
     scrollBox.add(wrapper1)
 
-    mockTreeSitterClient.resolveAllHighlightOnce()
-    await new Promise((resolve) => setTimeout(resolve, 1))
-    await renderOnce()
+    await Bun.sleep(10)
+    await testRenderer.idle()
 
     scrollPositions.push(scrollBox.scrollTop)
     maxScrollPositions.push(Math.max(0, scrollBox.scrollHeight - scrollBox.viewport.height))
     expect(scrollBox.scrollTop).toBe(maxScrollPositions[0])
+
     code1.content = `console.log('hello')
 const foo = 'bar'
 const baz = 'qux'
@@ -797,13 +798,13 @@ function test() {
 }
 console.log(test())`
 
-    mockTreeSitterClient.resolveAllHighlightOnce()
-    await new Promise((resolve) => setTimeout(resolve, 1))
-    await renderOnce()
+    await Bun.sleep(10)
+    await testRenderer.idle()
 
     scrollPositions.push(scrollBox.scrollTop)
     maxScrollPositions.push(Math.max(0, scrollBox.scrollHeight - scrollBox.viewport.height))
     expect(scrollBox.scrollTop).toBe(maxScrollPositions[1])
+
     const wrapper2 = new BoxRenderable(testRenderer, {
       marginTop: 1,
       marginBottom: 1,
@@ -813,18 +814,18 @@ console.log(test())`
       filetype: "javascript",
       syntaxStyle,
       drawUnstyledText: false,
-      treeSitterClient: mockTreeSitterClient,
+      treeSitterClient: autoResolvingClient,
     })
     wrapper2.add(code2)
     scrollBox.add(wrapper2)
 
-    mockTreeSitterClient.resolveAllHighlightOnce()
-    await new Promise((resolve) => setTimeout(resolve, 1))
-    await renderOnce()
+    await Bun.sleep(10)
+    await testRenderer.idle()
 
     scrollPositions.push(scrollBox.scrollTop)
     maxScrollPositions.push(Math.max(0, scrollBox.scrollHeight - scrollBox.viewport.height))
     expect(scrollBox.scrollTop).toBe(maxScrollPositions[2])
+
     code2.content = `const x = 10
 const y = 20
 const z = x + y
@@ -835,13 +836,13 @@ function multiply(a, b) {
 const result = multiply(x, y)
 console.log('Result:', result)`
 
-    mockTreeSitterClient.resolveAllHighlightOnce()
-    await new Promise((resolve) => setTimeout(resolve, 1))
-    await renderOnce()
+    await Bun.sleep(10)
+    await testRenderer.idle()
 
     scrollPositions.push(scrollBox.scrollTop)
     maxScrollPositions.push(Math.max(0, scrollBox.scrollHeight - scrollBox.viewport.height))
     expect(scrollBox.scrollTop).toBe(maxScrollPositions[3])
+
     const wrapper3 = new BoxRenderable(testRenderer, {
       marginTop: 1,
       marginBottom: 1,
@@ -851,18 +852,18 @@ console.log('Result:', result)`
       filetype: "javascript",
       syntaxStyle,
       drawUnstyledText: false,
-      treeSitterClient: mockTreeSitterClient,
+      treeSitterClient: autoResolvingClient,
     })
     wrapper3.add(code3)
     scrollBox.add(wrapper3)
 
-    mockTreeSitterClient.resolveAllHighlightOnce()
-    await new Promise((resolve) => setTimeout(resolve, 1))
-    await renderOnce()
+    await Bun.sleep(10)
+    await testRenderer.idle()
 
     scrollPositions.push(scrollBox.scrollTop)
     maxScrollPositions.push(Math.max(0, scrollBox.scrollHeight - scrollBox.viewport.height))
     expect(scrollBox.scrollTop).toBe(maxScrollPositions[4])
+
     code3.content = `// Final code block
 const final = 'done'
 
@@ -889,9 +890,8 @@ console.log(processor.process())
 console.log(processor.filter(x => x > 2))
 console.log(processor.reduce((acc, val) => acc + val, 0))`
 
-    mockTreeSitterClient.resolveAllHighlightOnce()
-    await new Promise((resolve) => setTimeout(resolve, 1))
-    await renderOnce()
+    await Bun.sleep(10)
+    await testRenderer.idle()
 
     scrollPositions.push(scrollBox.scrollTop)
     maxScrollPositions.push(Math.max(0, scrollBox.scrollHeight - scrollBox.viewport.height))
@@ -1146,5 +1146,93 @@ console.log(processor.reduce((acc, val) => acc + val, 0))`
     expect(firstToolIndex).toBeGreaterThan(headerIndex)
 
     renderer.destroy()
+  })
+
+  // Regression test for issue #530: sticky scroll jumps to top after manual scroll
+  test("resets _hasManualScroll when user scrolls back to sticky position (issue #530)", async () => {
+    const scrollBox = new ScrollBoxRenderable(testRenderer, {
+      width: 40,
+      height: 10,
+      stickyScroll: true,
+      stickyStart: "bottom",
+    })
+
+    testRenderer.root.add(scrollBox)
+
+    // Add enough content to overflow the viewport
+    for (let i = 0; i < 20; i++) {
+      scrollBox.add(new TextRenderable(testRenderer, { content: `Line ${i}` }))
+    }
+    await renderOnce()
+
+    const maxScroll = Math.max(0, scrollBox.scrollHeight - scrollBox.viewport.height)
+    expect(scrollBox.scrollTop).toBe(maxScroll)
+    expect((scrollBox as any)._hasManualScroll).toBe(false)
+
+    // User scrolls up manually - this sets _hasManualScroll = true
+    scrollBox.scrollTo(5)
+    await renderOnce()
+
+    expect(scrollBox.scrollTop).toBe(5)
+    expect((scrollBox as any)._hasManualScroll).toBe(true)
+
+    // User scrolls back to bottom - this should reset _hasManualScroll = false
+    const newMaxScroll = Math.max(0, scrollBox.scrollHeight - scrollBox.viewport.height)
+    scrollBox.scrollTo(newMaxScroll)
+    await renderOnce()
+
+    expect(scrollBox.scrollTop).toBe(newMaxScroll)
+    // This is the fix: _hasManualScroll should be reset when back at sticky position
+    expect((scrollBox as any)._hasManualScroll).toBe(false)
+
+    // Add more content - should stay at bottom because sticky scroll is re-enabled
+    for (let i = 20; i < 30; i++) {
+      scrollBox.add(new TextRenderable(testRenderer, { content: `Line ${i}` }))
+      await renderOnce()
+
+      const expectedMaxScroll = Math.max(0, scrollBox.scrollHeight - scrollBox.viewport.height)
+      // Without the fix, this would fail: scroll would jump to top
+      expect(scrollBox.scrollTop).toBe(expectedMaxScroll)
+    }
+  })
+
+  // Regression test for issue #530: edge case when content fits in viewport
+  test("resets _hasManualScroll for stickyStart=bottom when content fits in viewport (issue #530)", async () => {
+    const scrollBox = new ScrollBoxRenderable(testRenderer, {
+      width: 40,
+      height: 10,
+      stickyScroll: true,
+      stickyStart: "bottom",
+    })
+
+    testRenderer.root.add(scrollBox)
+
+    // Add content that fits in viewport (no actual scrolling needed)
+    scrollBox.add(new TextRenderable(testRenderer, { content: "Line 0" }))
+    scrollBox.add(new TextRenderable(testRenderer, { content: "Line 1" }))
+    await renderOnce()
+
+    // maxScrollTop should be 0 since content fits
+    const maxScroll = Math.max(0, scrollBox.scrollHeight - scrollBox.viewport.height)
+    expect(maxScroll).toBe(0)
+
+    // Simulate accidental scroll attempts (common with trackpads)
+    scrollBox.scrollTo(0)
+    await renderOnce()
+
+    // Even though we're at scrollTop=0, for stickyStart="bottom" with maxScrollTop=0,
+    // we're effectively at both top AND bottom, so _hasManualScroll should be false
+    expect((scrollBox as any)._hasManualScroll).toBe(false)
+
+    // Add more content that causes overflow - should stay at bottom
+    for (let i = 2; i < 20; i++) {
+      scrollBox.add(new TextRenderable(testRenderer, { content: `Line ${i}` }))
+      await renderOnce()
+
+      const expectedMaxScroll = Math.max(0, scrollBox.scrollHeight - scrollBox.viewport.height)
+      if (expectedMaxScroll > 0) {
+        expect(scrollBox.scrollTop).toBe(expectedMaxScroll)
+      }
+    }
   })
 })

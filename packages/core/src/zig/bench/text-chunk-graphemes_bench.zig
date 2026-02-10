@@ -8,6 +8,7 @@ const utf8 = @import("../utf8.zig");
 const TextChunk = seg_mod.TextChunk;
 const MemRegistry = mem_registry_mod.MemRegistry;
 const BenchResult = bench_utils.BenchResult;
+const BenchStats = bench_utils.BenchStats;
 const MemStat = bench_utils.MemStat;
 
 pub const benchName = "TextChunk getGraphemes";
@@ -15,8 +16,8 @@ pub const benchName = "TextChunk getGraphemes";
 const TextType = enum { ascii, mixed, heavy_unicode };
 
 fn generateTestText(allocator: std.mem.Allocator, size: usize, text_type: TextType) ![]u8 {
-    var buffer = std.ArrayList(u8).init(allocator);
-    errdefer buffer.deinit();
+    var buffer: std.ArrayListUnmanaged(u8) = .{};
+    errdefer buffer.deinit(allocator);
 
     switch (text_type) {
         .ascii => {
@@ -31,7 +32,7 @@ fn generateTestText(allocator: std.mem.Allocator, size: usize, text_type: TextTy
             while (pos < size) {
                 const pattern = patterns[pos % patterns.len];
                 const to_add = @min(pattern.len, size - pos);
-                try buffer.appendSlice(pattern[0..to_add]);
+                try buffer.appendSlice(allocator, pattern[0..to_add]);
                 pos += to_add;
             }
         },
@@ -49,7 +50,7 @@ fn generateTestText(allocator: std.mem.Allocator, size: usize, text_type: TextTy
             while (pos < size) {
                 const pattern = patterns[pos % patterns.len];
                 const to_add = @min(pattern.len, size - pos);
-                try buffer.appendSlice(pattern[0..to_add]);
+                try buffer.appendSlice(allocator, pattern[0..to_add]);
                 pos += to_add;
             }
         },
@@ -67,13 +68,13 @@ fn generateTestText(allocator: std.mem.Allocator, size: usize, text_type: TextTy
             while (pos < size) {
                 const pattern = patterns[pos % patterns.len];
                 const to_add = @min(pattern.len, size - pos);
-                try buffer.appendSlice(pattern[0..to_add]);
+                try buffer.appendSlice(allocator, pattern[0..to_add]);
                 pos += to_add;
             }
         },
     }
 
-    return try buffer.toOwnedSlice();
+    return try buffer.toOwnedSlice(allocator);
 }
 
 fn benchGetGraphemes(
@@ -110,14 +111,11 @@ fn benchGetGraphemes(
         .flags = if (is_ascii) TextChunk.Flags.ASCII_ONLY else 0,
     };
 
-    var min_ns: u64 = std.math.maxInt(u64);
-    var max_ns: u64 = 0;
-    var total_ns: u64 = 0;
+    var stats = BenchStats{};
     var grapheme_count: usize = 0;
     var final_mem: usize = 0;
 
-    var i: usize = 0;
-    while (i < iterations) : (i += 1) {
+    for (0..iterations) |i| {
         // Create a fresh arena for each iteration
         var arena = std.heap.ArenaAllocator.init(allocator);
         defer arena.deinit();
@@ -133,11 +131,7 @@ fn benchGetGraphemes(
             4, // tab width
             .unicode,
         );
-        const elapsed = timer.read();
-
-        min_ns = @min(min_ns, elapsed);
-        max_ns = @max(max_ns, elapsed);
-        total_ns += elapsed;
+        stats.record(timer.read());
 
         if (i == 0) {
             grapheme_count = graphemes.len;
@@ -162,37 +156,76 @@ fn benchGetGraphemes(
     );
 
     const mem_stats: ?[]const MemStat = if (show_mem) blk: {
-        const stats = try allocator.alloc(MemStat, 1);
-        stats[0] = .{ .name = "Graphemes", .bytes = final_mem };
-        break :blk stats;
+        const mem_stat_slice = try allocator.alloc(MemStat, 1);
+        mem_stat_slice[0] = .{ .name = "Graphemes", .bytes = final_mem };
+        break :blk mem_stat_slice;
     } else null;
 
     return BenchResult{
         .name = name,
-        .min_ns = min_ns,
-        .avg_ns = total_ns / iterations,
-        .max_ns = max_ns,
-        .total_ns = total_ns,
+        .min_ns = stats.min_ns,
+        .avg_ns = stats.avg(),
+        .max_ns = stats.max_ns,
+        .total_ns = stats.total_ns,
         .iterations = iterations,
         .mem_stats = mem_stats,
     };
 }
 
+fn computeBenchName(allocator: std.mem.Allocator, size: usize, text_type: TextType) ![]const u8 {
+    var temp_arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
+    defer temp_arena.deinit();
+    const temp_alloc = temp_arena.allocator();
+
+    const text = try generateTestText(temp_alloc, size, text_type);
+
+    var registry = MemRegistry.init(temp_alloc);
+    defer registry.deinit();
+
+    const mem_id = try registry.register(text, false);
+    const is_ascii = switch (text_type) {
+        .ascii => true,
+        else => false,
+    };
+    const approx_width: u16 = @intCast(@min(text.len, std.math.maxInt(u16)));
+    var chunk = TextChunk{
+        .mem_id = mem_id,
+        .byte_start = 0,
+        .byte_end = @intCast(text.len),
+        .width = approx_width,
+        .flags = if (is_ascii) TextChunk.Flags.ASCII_ONLY else 0,
+    };
+
+    const graphemes = try chunk.getGraphemes(
+        &registry,
+        temp_alloc,
+        4, // tab width
+        .unicode,
+    );
+
+    const type_str = switch (text_type) {
+        .ascii => "ASCII",
+        .mixed => "Mixed",
+        .heavy_unicode => "Heavy Unicode",
+    };
+
+    return try std.fmt.allocPrint(
+        allocator,
+        "getGraphemes {s} ({d} bytes, {d} graphemes)",
+        .{ type_str, size, graphemes.len },
+    );
+}
+
 pub fn run(
     allocator: std.mem.Allocator,
     show_mem: bool,
+    bench_filter: ?[]const u8,
 ) ![]BenchResult {
-    const stdout = std.io.getStdOut().writer();
-
     // Global pool and unicode data are initialized once in bench.zig
-    const pool = gp.initGlobalPool(allocator);
+    _ = gp.initGlobalPool(allocator);
 
-    if (show_mem) {
-        try stdout.print("Memory stats enabled\n", .{});
-    }
-    try stdout.print("\n", .{});
-
-    var results = std.ArrayList(BenchResult).init(allocator);
+    var results: std.ArrayListUnmanaged(BenchResult) = .{};
+    errdefer results.deinit(allocator);
 
     const iterations: usize = 100;
 
@@ -200,27 +233,41 @@ pub fn run(
     const sizes = [_]usize{ 100, 1024, 4 * 1024, 16 * 1024, 64 * 1024 };
     const text_types = [_]TextType{ .ascii, .mixed, .heavy_unicode };
 
-    _ = pool; // unused
+    if (bench_filter == null) {
+        for (text_types) |text_type| {
+            for (sizes) |size| {
+                const result = try benchGetGraphemes(
+                    allocator,
+                    size,
+                    text_type,
+                    iterations,
+                    show_mem,
+                );
+                try results.append(allocator, result);
+            }
+        }
+    } else {
+        for (text_types) |text_type| {
+            for (sizes) |size| {
+                const name = try computeBenchName(allocator, size, text_type);
+                if (!bench_utils.matchesBenchFilter(name, bench_filter)) {
+                    allocator.free(name);
+                    continue;
+                }
 
-    try stdout.print("Testing chunk sizes: ", .{});
-    for (sizes) |size| {
-        const kb = @as(f64, @floatFromInt(size)) / 1024.0;
-        try stdout.print("{d:.1}KB ", .{kb});
-    }
-    try stdout.print("\n\n", .{});
-
-    for (text_types) |text_type| {
-        for (sizes) |size| {
-            const result = try benchGetGraphemes(
-                allocator,
-                size,
-                text_type,
-                iterations,
-                show_mem,
-            );
-            try results.append(result);
+                var result = try benchGetGraphemes(
+                    allocator,
+                    size,
+                    text_type,
+                    iterations,
+                    show_mem,
+                );
+                allocator.free(result.name);
+                result.name = name;
+                try results.append(allocator, result);
+            }
         }
     }
 
-    return try results.toOwnedSlice();
+    return try results.toOwnedSlice(allocator);
 }

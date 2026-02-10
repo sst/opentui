@@ -5,6 +5,7 @@ import {
   buildKeyBindingsMap,
   mergeKeyAliases,
   defaultKeyAliases,
+  keyBindingToString,
   type KeyAliasMap,
 } from "./keymapping"
 
@@ -231,6 +232,49 @@ describe("keymapping", () => {
       expect(returnNoMod).toBe("custom-submit")
       expect(enterNoMod).toBe("custom-submit")
       expect(returnWithMeta).toBe("submit")
+    })
+  })
+
+  describe("keyBindingToString", () => {
+    it("should convert simple key binding without modifiers", () => {
+      const binding = { name: "escape", action: "cancel" as const }
+      expect(keyBindingToString(binding)).toBe("escape")
+    })
+
+    it("should convert key binding with ctrl modifier", () => {
+      const binding = { name: "c", ctrl: true, action: "copy" as const }
+      expect(keyBindingToString(binding)).toBe("ctrl+c")
+    })
+
+    it("should convert key binding with shift modifier", () => {
+      const binding = { name: "up", shift: true, action: "scroll-fast" as const }
+      expect(keyBindingToString(binding)).toBe("shift+up")
+    })
+
+    it("should convert key binding with multiple modifiers", () => {
+      const binding = { name: "y", ctrl: true, shift: true, action: "copy" as const }
+      expect(keyBindingToString(binding)).toBe("ctrl+shift+y")
+    })
+
+    it("should convert key binding with all modifiers", () => {
+      const binding = { name: "a", ctrl: true, shift: true, meta: true, super: true, action: "all" as const }
+      expect(keyBindingToString(binding)).toBe("ctrl+shift+meta+super+a")
+    })
+
+    it("should convert key binding with meta modifier", () => {
+      const binding = { name: "s", meta: true, action: "save" as const }
+      expect(keyBindingToString(binding)).toBe("meta+s")
+    })
+
+    it("should convert key binding with super modifier", () => {
+      const binding = { name: "z", super: true, action: "undo" as const }
+      expect(keyBindingToString(binding)).toBe("super+z")
+    })
+
+    it("should handle special keys correctly", () => {
+      expect(keyBindingToString({ name: "return", action: "submit" as const })).toBe("return")
+      expect(keyBindingToString({ name: "space", action: "select" as const })).toBe("space")
+      expect(keyBindingToString({ name: "tab", action: "next" as const })).toBe("tab")
     })
   })
 })

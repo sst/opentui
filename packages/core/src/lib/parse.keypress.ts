@@ -250,7 +250,12 @@ export const parseKeypress = (s: Buffer | string = "", options: ParseKeypressOpt
       key.name = "backspace"
     } else {
       // For other character codes, use the character itself
-      key.name = String.fromCharCode(charCode)
+      const char = String.fromCharCode(charCode)
+      key.name = char
+      key.sequence = char
+      if (charCode >= 48 && charCode <= 57) {
+        key.number = true
+      }
     }
 
     return key

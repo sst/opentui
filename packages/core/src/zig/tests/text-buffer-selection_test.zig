@@ -12,7 +12,6 @@ test "Selection - basic selection without wrap" {
     const pool = gp.initGlobalPool(std.testing.allocator);
     defer gp.deinitGlobalPool();
 
-
     var tb = try TextBuffer.init(std.testing.allocator, pool, .unicode);
     defer tb.deinit();
 
@@ -35,7 +34,6 @@ test "Selection - basic selection without wrap" {
 test "Selection - with wrapped lines" {
     const pool = gp.initGlobalPool(std.testing.allocator);
     defer gp.deinitGlobalPool();
-
 
     var tb = try TextBuffer.init(std.testing.allocator, pool, .unicode);
     defer tb.deinit();
@@ -65,7 +63,6 @@ test "Selection - no selection returns all bits set" {
     const pool = gp.initGlobalPool(std.testing.allocator);
     defer gp.deinitGlobalPool();
 
-
     var tb = try TextBuffer.init(std.testing.allocator, pool, .unicode);
     defer tb.deinit();
 
@@ -81,7 +78,6 @@ test "Selection - no selection returns all bits set" {
 test "Selection - with newline characters" {
     const pool = gp.initGlobalPool(std.testing.allocator);
     defer gp.deinitGlobalPool();
-
 
     var tb = try TextBuffer.init(std.testing.allocator, pool, .unicode);
     defer tb.deinit();
@@ -108,7 +104,6 @@ test "Selection - across empty lines" {
     const pool = gp.initGlobalPool(std.testing.allocator);
     defer gp.deinitGlobalPool();
 
-
     var tb = try TextBuffer.init(std.testing.allocator, pool, .unicode);
     defer tb.deinit();
 
@@ -134,7 +129,6 @@ test "Selection - ending in empty line" {
     const pool = gp.initGlobalPool(std.testing.allocator);
     defer gp.deinitGlobalPool();
 
-
     var tb = try TextBuffer.init(std.testing.allocator, pool, .unicode);
     defer tb.deinit();
 
@@ -156,7 +150,6 @@ test "Selection - spanning multiple lines completely" {
     const pool = gp.initGlobalPool(std.testing.allocator);
     defer gp.deinitGlobalPool();
 
-
     var tb = try TextBuffer.init(std.testing.allocator, pool, .unicode);
     defer tb.deinit();
 
@@ -177,7 +170,6 @@ test "Selection - spanning multiple lines completely" {
 test "Selection - including multiple line breaks" {
     const pool = gp.initGlobalPool(std.testing.allocator);
     defer gp.deinitGlobalPool();
-
 
     var tb = try TextBuffer.init(std.testing.allocator, pool, .unicode);
     defer tb.deinit();
@@ -202,7 +194,6 @@ test "Selection - at line boundaries" {
     const pool = gp.initGlobalPool(std.testing.allocator);
     defer gp.deinitGlobalPool();
 
-
     var tb = try TextBuffer.init(std.testing.allocator, pool, .unicode);
     defer tb.deinit();
 
@@ -226,7 +217,6 @@ test "Selection - empty text" {
     const pool = gp.initGlobalPool(std.testing.allocator);
     defer gp.deinitGlobalPool();
 
-
     var tb = try TextBuffer.init(std.testing.allocator, pool, .unicode);
     defer tb.deinit();
 
@@ -244,7 +234,6 @@ test "Selection - empty text" {
 test "Selection - single character" {
     const pool = gp.initGlobalPool(std.testing.allocator);
     defer gp.deinitGlobalPool();
-
 
     var tb = try TextBuffer.init(std.testing.allocator, pool, .unicode);
     defer tb.deinit();
@@ -274,7 +263,6 @@ test "Selection - zero-width selection" {
     const pool = gp.initGlobalPool(std.testing.allocator);
     defer gp.deinitGlobalPool();
 
-
     var tb = try TextBuffer.init(std.testing.allocator, pool, .unicode);
     defer tb.deinit();
 
@@ -292,7 +280,6 @@ test "Selection - zero-width selection" {
 test "Selection - beyond text bounds" {
     const pool = gp.initGlobalPool(std.testing.allocator);
     defer gp.deinitGlobalPool();
-
 
     var tb = try TextBuffer.init(std.testing.allocator, pool, .unicode);
     defer tb.deinit();
@@ -317,7 +304,6 @@ test "Selection - clear selection" {
     const pool = gp.initGlobalPool(std.testing.allocator);
     defer gp.deinitGlobalPool();
 
-
     var tb = try TextBuffer.init(std.testing.allocator, pool, .unicode);
     defer tb.deinit();
 
@@ -338,7 +324,6 @@ test "Selection - clear selection" {
 test "Selection - at wrap boundary" {
     const pool = gp.initGlobalPool(std.testing.allocator);
     defer gp.deinitGlobalPool();
-
 
     var tb = try TextBuffer.init(std.testing.allocator, pool, .unicode);
     defer tb.deinit();
@@ -366,7 +351,6 @@ test "Selection - spanning multiple wrapped lines" {
     const pool = gp.initGlobalPool(std.testing.allocator);
     defer gp.deinitGlobalPool();
 
-
     var tb = try TextBuffer.init(std.testing.allocator, pool, .unicode);
     defer tb.deinit();
 
@@ -393,7 +377,6 @@ test "Selection - spanning multiple wrapped lines" {
 test "Selection - changes when wrap width changes" {
     const pool = gp.initGlobalPool(std.testing.allocator);
     defer gp.deinitGlobalPool();
-
 
     var tb = try TextBuffer.init(std.testing.allocator, pool, .unicode);
     defer tb.deinit();
@@ -427,7 +410,6 @@ test "Selection - with newlines and wrapping" {
     const pool = gp.initGlobalPool(std.testing.allocator);
     defer gp.deinitGlobalPool();
 
-
     var tb = try TextBuffer.init(std.testing.allocator, pool, .unicode);
     defer tb.deinit();
 
@@ -452,7 +434,6 @@ test "Selection - getSelectedText simple" {
     const pool = gp.initGlobalPool(std.testing.allocator);
     defer gp.deinitGlobalPool();
 
-
     var tb = try TextBuffer.init(std.testing.allocator, pool, .unicode);
     defer tb.deinit();
 
@@ -472,7 +453,6 @@ test "Selection - getSelectedText simple" {
 test "Selection - getSelectedText with newlines" {
     const pool = gp.initGlobalPool(std.testing.allocator);
     defer gp.deinitGlobalPool();
-
 
     var tb = try TextBuffer.init(std.testing.allocator, pool, .unicode);
     defer tb.deinit();
@@ -496,7 +476,6 @@ test "Selection - spanning multiple lines with getSelectedText" {
     const pool = gp.initGlobalPool(std.testing.allocator);
     defer gp.deinitGlobalPool();
 
-
     var tb = try TextBuffer.init(std.testing.allocator, pool, .unicode);
     defer tb.deinit();
 
@@ -519,7 +498,6 @@ test "Selection - with graphemes" {
     const pool = gp.initGlobalPool(std.testing.allocator);
     defer gp.deinitGlobalPool();
 
-
     var tb = try TextBuffer.init(std.testing.allocator, pool, .unicode);
     defer tb.deinit();
 
@@ -541,7 +519,6 @@ test "Selection - with graphemes" {
 test "Selection - wide emoji at boundary" {
     const pool = gp.initGlobalPool(std.testing.allocator);
     defer gp.deinitGlobalPool();
-
 
     var tb = try TextBuffer.init(std.testing.allocator, pool, .unicode);
     defer tb.deinit();
@@ -566,7 +543,6 @@ test "Selection - wide emoji at boundary" {
 test "Selection - wide emoji BEFORE selection start should be excluded" {
     const pool = gp.initGlobalPool(std.testing.allocator);
     defer gp.deinitGlobalPool();
-
 
     var tb = try TextBuffer.init(std.testing.allocator, pool, .unicode);
     defer tb.deinit();
@@ -594,7 +570,6 @@ test "Selection - start at second cell of width=2 grapheme should snap backward 
     const pool = gp.initGlobalPool(std.testing.allocator);
     defer gp.deinitGlobalPool();
 
-
     var tb = try TextBuffer.init(std.testing.allocator, pool, .unicode);
     defer tb.deinit();
 
@@ -615,7 +590,6 @@ test "Selection - start at second cell of width=2 grapheme should snap backward 
 test "Selection - end at first cell of width=2 grapheme should snap forward to include it" {
     const pool = gp.initGlobalPool(std.testing.allocator);
     defer gp.deinitGlobalPool();
-
 
     var tb = try TextBuffer.init(std.testing.allocator, pool, .unicode);
     defer tb.deinit();
@@ -638,7 +612,6 @@ test "Selection - both boundaries at cells of width=2 graphemes" {
     const pool = gp.initGlobalPool(std.testing.allocator);
     defer gp.deinitGlobalPool();
 
-
     var tb = try TextBuffer.init(std.testing.allocator, pool, .unicode);
     defer tb.deinit();
 
@@ -654,4 +627,332 @@ test "Selection - both boundaries at cells of width=2 graphemes" {
     const text = out_buffer[0..len];
 
     try std.testing.expectEqualStrings("🌍B🌎", text);
+}
+
+test "Selection - updateSelection extends existing selection" {
+    const pool = gp.initGlobalPool(std.testing.allocator);
+    defer gp.deinitGlobalPool();
+
+    var tb = try TextBuffer.init(std.testing.allocator, pool, .unicode);
+    defer tb.deinit();
+
+    var view = try TextBufferView.init(std.testing.allocator, tb);
+    defer view.deinit();
+
+    try tb.setText("Hello World");
+
+    // Set initial selection from 0 to 5
+    view.setSelection(0, 5, null, null);
+
+    var packed_info = view.packSelectionInfo();
+    var start = @as(u32, @intCast(packed_info >> 32));
+    var end = @as(u32, @intCast(packed_info & 0xFFFFFFFF));
+    try std.testing.expectEqual(@as(u32, 0), start);
+    try std.testing.expectEqual(@as(u32, 5), end);
+
+    // Update to extend end to 11
+    view.updateSelection(11, null, null);
+
+    packed_info = view.packSelectionInfo();
+    start = @as(u32, @intCast(packed_info >> 32));
+    end = @as(u32, @intCast(packed_info & 0xFFFFFFFF));
+    try std.testing.expectEqual(@as(u32, 0), start);
+    try std.testing.expectEqual(@as(u32, 11), end);
+
+    var out_buffer: [100]u8 = undefined;
+    const len = view.getSelectedTextIntoBuffer(&out_buffer);
+    const text = out_buffer[0..len];
+    try std.testing.expectEqualStrings("Hello World", text);
+}
+
+test "Selection - updateSelection with no existing selection does nothing" {
+    const pool = gp.initGlobalPool(std.testing.allocator);
+    defer gp.deinitGlobalPool();
+
+    var tb = try TextBuffer.init(std.testing.allocator, pool, .unicode);
+    defer tb.deinit();
+
+    var view = try TextBufferView.init(std.testing.allocator, tb);
+    defer view.deinit();
+
+    try tb.setText("Hello World");
+
+    // No selection set
+    const packed_info_before = view.packSelectionInfo();
+    try std.testing.expectEqual(@as(u64, 0xFFFFFFFF_FFFFFFFF), packed_info_before);
+
+    // Try to update - should do nothing
+    view.updateSelection(5, null, null);
+
+    const packed_info_after = view.packSelectionInfo();
+    try std.testing.expectEqual(@as(u64, 0xFFFFFFFF_FFFFFFFF), packed_info_after);
+}
+
+test "Selection - updateSelection can shrink selection" {
+    const pool = gp.initGlobalPool(std.testing.allocator);
+    defer gp.deinitGlobalPool();
+
+    var tb = try TextBuffer.init(std.testing.allocator, pool, .unicode);
+    defer tb.deinit();
+
+    var view = try TextBufferView.init(std.testing.allocator, tb);
+    defer view.deinit();
+
+    try tb.setText("Hello World");
+
+    view.setSelection(0, 11, null, null);
+
+    // Shrink to 5
+    view.updateSelection(5, null, null);
+
+    const packed_info = view.packSelectionInfo();
+    const start = @as(u32, @intCast(packed_info >> 32));
+    const end = @as(u32, @intCast(packed_info & 0xFFFFFFFF));
+    try std.testing.expectEqual(@as(u32, 0), start);
+    try std.testing.expectEqual(@as(u32, 5), end);
+
+    var out_buffer: [100]u8 = undefined;
+    const len = view.getSelectedTextIntoBuffer(&out_buffer);
+    const text = out_buffer[0..len];
+    try std.testing.expectEqualStrings("Hello", text);
+}
+
+test "Selection - updateLocalSelection extends focus position" {
+    const pool = gp.initGlobalPool(std.testing.allocator);
+    defer gp.deinitGlobalPool();
+
+    var tb = try TextBuffer.init(std.testing.allocator, pool, .unicode);
+    defer tb.deinit();
+
+    var view = try TextBufferView.init(std.testing.allocator, tb);
+    defer view.deinit();
+
+    try tb.setText("Hello World");
+
+    // Set initial local selection from (0,0) to (5,0)
+    _ = view.setLocalSelection(0, 0, 5, 0, null, null);
+
+    var packed_info = view.packSelectionInfo();
+    var start = @as(u32, @intCast(packed_info >> 32));
+    var end = @as(u32, @intCast(packed_info & 0xFFFFFFFF));
+    try std.testing.expectEqual(@as(u32, 0), start);
+    try std.testing.expectEqual(@as(u32, 5), end);
+
+    // Update focus to (11,0) - should keep anchor at (0,0)
+    const changed = view.updateLocalSelection(0, 0, 11, 0, null, null);
+    try std.testing.expect(changed);
+
+    packed_info = view.packSelectionInfo();
+    start = @as(u32, @intCast(packed_info >> 32));
+    end = @as(u32, @intCast(packed_info & 0xFFFFFFFF));
+    try std.testing.expectEqual(@as(u32, 0), start);
+    try std.testing.expectEqual(@as(u32, 11), end);
+
+    var out_buffer: [100]u8 = undefined;
+    const len = view.getSelectedTextIntoBuffer(&out_buffer);
+    const text = out_buffer[0..len];
+    try std.testing.expectEqualStrings("Hello World", text);
+}
+
+test "Selection - updateLocalSelection with no existing selection falls back to setLocalSelection" {
+    const pool = gp.initGlobalPool(std.testing.allocator);
+    defer gp.deinitGlobalPool();
+
+    var tb = try TextBuffer.init(std.testing.allocator, pool, .unicode);
+    defer tb.deinit();
+
+    var view = try TextBufferView.init(std.testing.allocator, tb);
+    defer view.deinit();
+
+    try tb.setText("Hello World");
+
+    // No selection set - updateLocalSelection now falls back to setLocalSelection
+    const changed = view.updateLocalSelection(0, 0, 5, 0, null, null);
+    try std.testing.expect(changed);
+
+    const packed_info = view.packSelectionInfo();
+    const start = @as(u32, @intCast(packed_info >> 32));
+    const end = @as(u32, @intCast(packed_info & 0xFFFFFFFF));
+    try std.testing.expectEqual(@as(u32, 0), start);
+    try std.testing.expectEqual(@as(u32, 5), end);
+}
+
+test "Selection - updateLocalSelection can shrink selection" {
+    const pool = gp.initGlobalPool(std.testing.allocator);
+    defer gp.deinitGlobalPool();
+
+    var tb = try TextBuffer.init(std.testing.allocator, pool, .unicode);
+    defer tb.deinit();
+
+    var view = try TextBufferView.init(std.testing.allocator, tb);
+    defer view.deinit();
+
+    try tb.setText("Hello World");
+
+    _ = view.setLocalSelection(0, 0, 11, 0, null, null);
+
+    // Shrink focus to 5
+    const changed = view.updateLocalSelection(0, 0, 5, 0, null, null);
+    try std.testing.expect(changed);
+
+    const packed_info = view.packSelectionInfo();
+    const start = @as(u32, @intCast(packed_info >> 32));
+    const end = @as(u32, @intCast(packed_info & 0xFFFFFFFF));
+    try std.testing.expectEqual(@as(u32, 0), start);
+    try std.testing.expectEqual(@as(u32, 5), end);
+
+    var out_buffer: [100]u8 = undefined;
+    const len = view.getSelectedTextIntoBuffer(&out_buffer);
+    const text = out_buffer[0..len];
+    try std.testing.expectEqualStrings("Hello", text);
+}
+
+test "Selection - updateLocalSelection across multiple lines" {
+    const pool = gp.initGlobalPool(std.testing.allocator);
+    defer gp.deinitGlobalPool();
+
+    var tb = try TextBuffer.init(std.testing.allocator, pool, .unicode);
+    defer tb.deinit();
+
+    var view = try TextBufferView.init(std.testing.allocator, tb);
+    defer view.deinit();
+
+    try tb.setText("Line 1\nLine 2\nLine 3");
+
+    // Start selection at (2, 0)
+    _ = view.setLocalSelection(2, 0, 2, 0, null, null);
+
+    // Extend to (4, 1) - should select from "ne 1\nLine"
+    const changed = view.updateLocalSelection(2, 0, 4, 1, null, null);
+    try std.testing.expect(changed);
+
+    var out_buffer: [100]u8 = undefined;
+    const len = view.getSelectedTextIntoBuffer(&out_buffer);
+    const text = out_buffer[0..len];
+
+    try std.testing.expect(std.mem.indexOf(u8, text, "ne 1") != null);
+    try std.testing.expect(std.mem.indexOf(u8, text, "\n") != null);
+    try std.testing.expect(std.mem.indexOf(u8, text, "Line") != null);
+}
+
+test "Selection - updateLocalSelection backward selection" {
+    const pool = gp.initGlobalPool(std.testing.allocator);
+    defer gp.deinitGlobalPool();
+
+    var tb = try TextBuffer.init(std.testing.allocator, pool, .unicode);
+    defer tb.deinit();
+
+    var view = try TextBufferView.init(std.testing.allocator, tb);
+    defer view.deinit();
+
+    try tb.setText("Hello World!");
+
+    // Set anchor at (11, 0) - after "World"
+    _ = view.setLocalSelection(11, 0, 11, 0, null, null);
+
+    // Move focus backward to (6, 0) - start of "World"
+    // Backward selection adds +1 to make it inclusive, so [6, 12) = "World!"
+    const changed = view.updateLocalSelection(11, 0, 6, 0, null, null);
+    try std.testing.expect(changed);
+
+    const packed_info = view.packSelectionInfo();
+    const start = @as(u32, @intCast(packed_info >> 32));
+    const end = @as(u32, @intCast(packed_info & 0xFFFFFFFF));
+    try std.testing.expectEqual(@as(u32, 6), start);
+    try std.testing.expectEqual(@as(u32, 12), end);
+
+    var out_buffer: [100]u8 = undefined;
+    const len = view.getSelectedTextIntoBuffer(&out_buffer);
+    const text = out_buffer[0..len];
+    try std.testing.expectEqualStrings("World!", text);
+}
+
+test "Selection - updateLocalSelection with wrapped lines" {
+    const pool = gp.initGlobalPool(std.testing.allocator);
+    defer gp.deinitGlobalPool();
+
+    var tb = try TextBuffer.init(std.testing.allocator, pool, .unicode);
+    defer tb.deinit();
+
+    var view = try TextBufferView.init(std.testing.allocator, tb);
+    defer view.deinit();
+
+    try tb.setText("ABCDEFGHIJKLMNOPQRST");
+
+    view.setWrapMode(.char);
+    view.setWrapWidth(10);
+
+    try std.testing.expectEqual(@as(u32, 2), view.getVirtualLineCount());
+
+    // Start at (0, 0)
+    _ = view.setLocalSelection(0, 0, 0, 0, null, null);
+
+    // Extend to second wrapped line (5, 1)
+    const changed = view.updateLocalSelection(0, 0, 5, 1, null, null);
+    try std.testing.expect(changed);
+
+    const packed_info = view.packSelectionInfo();
+    const start = @as(u32, @intCast(packed_info >> 32));
+    const end = @as(u32, @intCast(packed_info & 0xFFFFFFFF));
+    try std.testing.expectEqual(@as(u32, 0), start);
+    try std.testing.expectEqual(@as(u32, 15), end);
+
+    var out_buffer: [100]u8 = undefined;
+    const len = view.getSelectedTextIntoBuffer(&out_buffer);
+    const text = out_buffer[0..len];
+    try std.testing.expectEqualStrings("ABCDEFGHIJKLMNO", text);
+}
+
+test "Selection - updateLocalSelection with same focus position maintains selection" {
+    const pool = gp.initGlobalPool(std.testing.allocator);
+    defer gp.deinitGlobalPool();
+
+    var tb = try TextBuffer.init(std.testing.allocator, pool, .unicode);
+    defer tb.deinit();
+
+    var view = try TextBufferView.init(std.testing.allocator, tb);
+    defer view.deinit();
+
+    try tb.setText("Hello World");
+
+    _ = view.setLocalSelection(0, 0, 5, 0, null, null);
+
+    // Update to same focus position - selection should remain the same
+    _ = view.updateLocalSelection(0, 0, 5, 0, null, null);
+
+    const packed_info = view.packSelectionInfo();
+    const start = @as(u32, @intCast(packed_info >> 32));
+    const end = @as(u32, @intCast(packed_info & 0xFFFFFFFF));
+    try std.testing.expectEqual(@as(u32, 0), start);
+    try std.testing.expectEqual(@as(u32, 5), end);
+}
+
+test "Selection - updateLocalSelection preserves anchor correctly" {
+    const pool = gp.initGlobalPool(std.testing.allocator);
+    defer gp.deinitGlobalPool();
+
+    var tb = try TextBuffer.init(std.testing.allocator, pool, .unicode);
+    defer tb.deinit();
+
+    var view = try TextBufferView.init(std.testing.allocator, tb);
+    defer view.deinit();
+
+    try tb.setText("Line 1\nLine 2\nLine 3");
+
+    // Set anchor at (3, 1) - middle of "Line 2" (at 'e' in "Line")
+    _ = view.setLocalSelection(3, 1, 3, 1, null, null);
+
+    // Update focus multiple times - last one to (6, 2) which is end of "Line 3"
+    _ = view.updateLocalSelection(3, 1, 6, 1, null, null);
+    _ = view.updateLocalSelection(3, 1, 2, 2, null, null);
+    _ = view.updateLocalSelection(3, 1, 6, 2, null, null);
+
+    // Final selection should still have anchor at (3, 1)
+    var out_buffer: [100]u8 = undefined;
+    const len = view.getSelectedTextIntoBuffer(&out_buffer);
+    const text = out_buffer[0..len];
+
+    // Should include "e 2\nLine 3" since anchor is at col 3 of line 1 and focus at end of line 2
+    try std.testing.expect(std.mem.indexOf(u8, text, "e 2") != null);
+    try std.testing.expect(std.mem.indexOf(u8, text, "\nLine 3") != null);
 }

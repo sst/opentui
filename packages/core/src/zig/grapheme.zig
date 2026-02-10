@@ -113,6 +113,7 @@ pub const GraphemePool = struct {
 
     pub fn incref(self: *GraphemePool, id: IdPayload) GraphemePoolError!void {
         const class_id: u32 = (id >> (GENERATION_BITS + SLOT_BITS)) & CLASS_MASK;
+        if (class_id >= MAX_CLASSES) return GraphemePoolError.InvalidId;
         const slot_index: u32 = id & SLOT_MASK;
         const generation: u32 = (id >> SLOT_BITS) & GENERATION_MASK;
         try self.classes[class_id].incref(slot_index, generation);
@@ -120,13 +121,26 @@ pub const GraphemePool = struct {
 
     pub fn decref(self: *GraphemePool, id: IdPayload) GraphemePoolError!void {
         const class_id: u32 = (id >> (GENERATION_BITS + SLOT_BITS)) & CLASS_MASK;
+        if (class_id >= MAX_CLASSES) return GraphemePoolError.InvalidId;
         const slot_index: u32 = id & SLOT_MASK;
         const generation: u32 = (id >> SLOT_BITS) & GENERATION_MASK;
         try self.classes[class_id].decref(slot_index, generation);
     }
 
+    /// Free a freshly allocated slot that was never incref'd (refcount=0).
+    /// Use this for cleanup when allocation succeeded but the slot was never used.
+    /// This prevents slot leaks when an error occurs between alloc and incref.
+    pub fn freeUnreferenced(self: *GraphemePool, id: IdPayload) GraphemePoolError!void {
+        const class_id: u32 = (id >> (GENERATION_BITS + SLOT_BITS)) & CLASS_MASK;
+        if (class_id >= MAX_CLASSES) return GraphemePoolError.InvalidId;
+        const slot_index: u32 = id & SLOT_MASK;
+        const generation: u32 = (id >> SLOT_BITS) & GENERATION_MASK;
+        try self.classes[class_id].freeUnreferenced(slot_index, generation);
+    }
+
     pub fn get(self: *GraphemePool, id: IdPayload) GraphemePoolError![]const u8 {
         const class_id: u32 = (id >> (GENERATION_BITS + SLOT_BITS)) & CLASS_MASK;
+        if (class_id >= MAX_CLASSES) return GraphemePoolError.InvalidId;
         const slot_index: u32 = id & SLOT_MASK;
         const generation: u32 = (id >> SLOT_BITS) & GENERATION_MASK;
         return self.classes[class_id].get(slot_index, generation);
@@ -134,6 +148,7 @@ pub const GraphemePool = struct {
 
     pub fn getRefcount(self: *GraphemePool, id: IdPayload) GraphemePoolError!u32 {
         const class_id: u32 = (id >> (GENERATION_BITS + SLOT_BITS)) & CLASS_MASK;
+        if (class_id >= MAX_CLASSES) return GraphemePoolError.InvalidId;
         const slot_index: u32 = id & SLOT_MASK;
         const generation: u32 = (id >> SLOT_BITS) & GENERATION_MASK;
         return self.classes[class_id].getRefcount(slot_index, generation);
@@ -149,7 +164,9 @@ pub const GraphemePool = struct {
         num_slots: u32,
 
         pub fn init(allocator: std.mem.Allocator, slot_capacity: u32, slots_per_page: u32) ClassPool {
-            const slot_size_bytes = @sizeOf(SlotHeader) + slot_capacity;
+            // Align slot size to SlotHeader alignment to prevent UB from misaligned access
+            const raw_slot_size = @sizeOf(SlotHeader) + slot_capacity;
+            const slot_size_bytes = std.mem.alignForward(usize, raw_slot_size, @alignOf(SlotHeader));
             return .{
                 .allocator = allocator,
                 .slot_capacity = slot_capacity,
@@ -252,6 +269,20 @@ pub const GraphemePool = struct {
             if (header_ptr.refcount == 0) {
                 try self.free_list.append(self.allocator, slot_index);
             }
+        }
+
+        /// Free a slot that has refcount=0 (freshly allocated, never incref'd).
+        /// This is used for cleanup when allocation succeeded but the caller
+        /// needs to abort before taking ownership via incref.
+        pub fn freeUnreferenced(self: *ClassPool, slot_index: u32, expected_generation: u32) GraphemePoolError!void {
+            if (slot_index >= self.num_slots) return GraphemePoolError.InvalidId;
+            const p = self.slotPtr(slot_index);
+            const header_ptr = @as(*SlotHeader, @ptrCast(@alignCast(p)));
+
+            if (header_ptr.generation != expected_generation) return GraphemePoolError.WrongGeneration;
+            if (header_ptr.refcount != 0) return GraphemePoolError.InvalidId; // Not unreferenced
+
+            try self.free_list.append(self.allocator, slot_index);
         }
 
         pub fn get(self: *ClassPool, slot_index: u32, expected_generation: u32) GraphemePoolError![]const u8 {

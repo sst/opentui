@@ -19,6 +19,7 @@ export interface TextBufferOptions extends RenderableOptions<TextBufferRenderabl
   wrapMode?: "none" | "char" | "word"
   tabIndicator?: string | number
   tabIndicatorColor?: string | RGBA
+  truncate?: boolean
 }
 
 export abstract class TextBufferRenderable extends Renderable implements LineInfoProvider {
@@ -35,6 +36,7 @@ export abstract class TextBufferRenderable extends Renderable implements LineInf
   protected _tabIndicatorColor?: RGBA
   protected _scrollX: number = 0
   protected _scrollY: number = 0
+  protected _truncate: boolean = false
 
   protected textBuffer: TextBuffer
   protected textBufferView: TextBufferView
@@ -49,6 +51,7 @@ export abstract class TextBufferRenderable extends Renderable implements LineInf
     wrapMode: "word" as "none" | "char" | "word",
     tabIndicator: undefined,
     tabIndicatorColor: undefined,
+    truncate: false,
   } satisfies Partial<TextBufferOptions>
 
   constructor(ctx: RenderContext, options: TextBufferOptions) {
@@ -65,6 +68,7 @@ export abstract class TextBufferRenderable extends Renderable implements LineInf
     this._tabIndicatorColor = options.tabIndicatorColor
       ? parseColor(options.tabIndicatorColor)
       : this._defaultOptions.tabIndicatorColor
+    this._truncate = options.truncate ?? this._defaultOptions.truncate
 
     this.textBuffer = TextBuffer.create(this._ctx.widthMethod)
     this.textBufferView = TextBufferView.create(this.textBuffer)
@@ -90,10 +94,11 @@ export abstract class TextBufferRenderable extends Renderable implements LineInf
       this.textBufferView.setWrapWidth(this.width)
     }
 
-    // Initialize viewport if dimensions are available
     if (this.width > 0 && this.height > 0) {
       this.textBufferView.setViewport(this._scrollX, this._scrollY, this.width, this.height)
     }
+
+    this.textBufferView.setTruncate(this._truncate)
 
     this.updateTextInfo()
   }
@@ -109,14 +114,12 @@ export abstract class TextBufferRenderable extends Renderable implements LineInf
 
     const { direction, delta } = event.scroll
 
-    // Handle vertical scrolling
     if (direction === "up") {
       this.scrollY -= delta
     } else if (direction === "down") {
       this.scrollY += delta
     }
 
-    // Handle horizontal scrolling (only when wrap mode is "none")
     if (this._wrapMode === "none") {
       if (direction === "left") {
         this.scrollX -= delta
@@ -314,20 +317,23 @@ export abstract class TextBufferRenderable extends Renderable implements LineInf
     }
   }
 
-  protected onResize(width: number, height: number): void {
-    // Update viewport with current scroll position and new size
-    this.textBufferView.setViewport(this._scrollX, this._scrollY, width, height)
+  get truncate(): boolean {
+    return this._truncate
+  }
 
-    // Notify listeners (like LineNumberRenderable) that line info may have changed
-    // due to wrapping changes from the resize
-    this.updateTextInfo()
-
-    if (this.lastLocalSelection) {
-      const changed = this.updateLocalSelection(this.lastLocalSelection)
-      if (changed) {
-        this.requestRender()
-      }
+  set truncate(value: boolean) {
+    if (this._truncate !== value) {
+      this._truncate = value
+      this.textBufferView.setTruncate(value)
+      this.requestRender()
     }
+  }
+
+  protected onResize(width: number, height: number): void {
+    this.textBufferView.setViewport(this._scrollX, this._scrollY, width, height)
+    this.yogaNode.markDirty()
+    this.requestRender()
+    this.emit("line-info-change")
   }
 
   protected refreshLocalSelection(): boolean {
@@ -425,7 +431,29 @@ export abstract class TextBufferRenderable extends Renderable implements LineInf
     const localSelection = convertGlobalToLocalSelection(selection, this.x, this.y)
     this.lastLocalSelection = localSelection
 
-    const changed = this.updateLocalSelection(localSelection)
+    let changed: boolean
+    if (!localSelection?.isActive) {
+      this.textBufferView.resetLocalSelection()
+      changed = true
+    } else if (selection?.isStart) {
+      changed = this.textBufferView.setLocalSelection(
+        localSelection.anchorX,
+        localSelection.anchorY,
+        localSelection.focusX,
+        localSelection.focusY,
+        this._selectionBg,
+        this._selectionFg,
+      )
+    } else {
+      changed = this.textBufferView.updateLocalSelection(
+        localSelection.anchorX,
+        localSelection.anchorY,
+        localSelection.focusX,
+        localSelection.focusY,
+        this._selectionBg,
+        this._selectionFg,
+      )
+    }
 
     if (changed) {
       this.requestRender()

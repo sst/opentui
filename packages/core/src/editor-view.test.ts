@@ -176,10 +176,10 @@ describe("EditorView", () => {
       buffer.setText("Hello World")
 
       view.setSelection(0, 5)
-      expect(true).toBe(true)
+      expect(view.hasSelection()).toBe(true)
 
       view.resetSelection()
-      expect(true).toBe(true)
+      expect(view.hasSelection()).toBe(false)
     })
 
     it("should set selection with colors", () => {
@@ -189,7 +189,103 @@ describe("EditorView", () => {
       const fgColor = RGBA.fromValues(1, 1, 1, 1)
 
       view.setSelection(0, 5, bgColor, fgColor)
-      expect(true).toBe(true)
+      expect(view.hasSelection()).toBe(true)
+
+      const selection = view.getSelection()
+      expect(selection).toEqual({ start: 0, end: 5 })
+    })
+
+    it("should update selection end position", () => {
+      buffer.setText("Hello World")
+
+      view.setSelection(0, 5)
+      expect(view.getSelectedText()).toBe("Hello")
+
+      view.updateSelection(11)
+      expect(view.getSelectedText()).toBe("Hello World")
+
+      const selection = view.getSelection()
+      expect(selection).toEqual({ start: 0, end: 11 })
+    })
+
+    it("should shrink selection with updateSelection", () => {
+      buffer.setText("Hello World")
+
+      view.setSelection(0, 11)
+      expect(view.getSelectedText()).toBe("Hello World")
+
+      view.updateSelection(5)
+      expect(view.getSelectedText()).toBe("Hello")
+    })
+
+    it("should update local selection focus position", () => {
+      buffer.setText("Hello World")
+
+      const changed1 = view.setLocalSelection(0, 0, 5, 0)
+      expect(changed1).toBe(true)
+      expect(view.getSelectedText()).toBe("Hello")
+
+      const changed2 = view.updateLocalSelection(0, 0, 11, 0)
+      expect(changed2).toBe(true)
+      expect(view.getSelectedText()).toBe("Hello World")
+    })
+
+    it("should update local selection across lines", () => {
+      buffer.setText("Line 1\nLine 2\nLine 3")
+
+      view.setLocalSelection(2, 0, 2, 0)
+
+      const changed = view.updateLocalSelection(2, 0, 4, 1)
+      expect(changed).toBe(true)
+
+      const selectedText = view.getSelectedText()
+      expect(selectedText).toContain("ne 1")
+      expect(selectedText).toContain("Line")
+    })
+
+    it("should fallback to setLocalSelection when updateLocalSelection called with no existing anchor", () => {
+      buffer.setText("Hello World")
+
+      const changed = view.updateLocalSelection(0, 0, 5, 0)
+      expect(changed).toBe(true)
+      expect(view.hasSelection()).toBe(true)
+      expect(view.getSelectedText()).toBe("Hello")
+    })
+
+    it("should preserve anchor when updating local selection", () => {
+      buffer.setText("Hello World")
+
+      view.setLocalSelection(0, 0, 5, 0)
+      expect(view.getSelectedText()).toBe("Hello")
+
+      view.updateLocalSelection(0, 0, 11, 0)
+      expect(view.getSelectedText()).toBe("Hello World")
+
+      view.updateLocalSelection(0, 0, 3, 0)
+      expect(view.getSelectedText()).toBe("Hel")
+    })
+
+    it("should handle backward selection with updateLocalSelection", () => {
+      buffer.setText("Hello World")
+
+      view.setLocalSelection(11, 0, 11, 0)
+
+      const changed = view.updateLocalSelection(11, 0, 6, 0)
+      expect(changed).toBe(true)
+      expect(view.getSelectedText()).toBe("World")
+    })
+
+    it("should handle wrapped lines with updateLocalSelection", () => {
+      buffer.setText("ABCDEFGHIJKLMNOPQRST")
+
+      view.setWrapMode("char")
+      view.setViewportSize(10, 10)
+
+      view.setLocalSelection(0, 0, 0, 0)
+
+      const changed = view.updateLocalSelection(0, 0, 5, 1)
+      expect(changed).toBe(true)
+      expect(view.getSelectedText()).toBe("ABCDEFGHIJKLMNO")
     })
   })
 

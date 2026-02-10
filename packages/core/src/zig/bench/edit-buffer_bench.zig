@@ -5,6 +5,7 @@ const gp = @import("../grapheme.zig");
 
 const EditBuffer = edit_buffer.EditBuffer;
 const BenchResult = bench_utils.BenchResult;
+const BenchStats = bench_utils.BenchStats;
 const MemStat = bench_utils.MemStat;
 
 pub const benchName = "EditBuffer Operations";
@@ -12,522 +13,459 @@ pub const benchName = "EditBuffer Operations";
 fn benchInsertOperations(
     allocator: std.mem.Allocator,
     pool: *gp.GraphemePool,
-    
-    
     iterations: usize,
     show_mem: bool,
+    bench_filter: ?[]const u8,
 ) ![]BenchResult {
-    var results = std.ArrayList(BenchResult).init(allocator);
+    var results: std.ArrayListUnmanaged(BenchResult) = .{};
+    errdefer results.deinit(allocator);
 
     // Single-line insert at start
     {
-        var min_ns: u64 = std.math.maxInt(u64);
-        var max_ns: u64 = 0;
-        var total_ns: u64 = 0;
-        var final_mem: usize = 0;
+        const name = "EditBuffer insert 1k times at start";
+        if (bench_utils.matchesBenchFilter(name, bench_filter)) {
+            var stats = BenchStats{};
+            var final_mem: usize = 0;
 
-        var iter: usize = 0;
-        while (iter < iterations) : (iter += 1) {
-            var eb = try EditBuffer.init(allocator, pool, .unicode);
-            defer eb.deinit();
+            for (0..iterations) |iter| {
+                var eb = try EditBuffer.init(allocator, pool, .unicode);
+                defer eb.deinit();
 
-            const text = "Hello, world! ";
-            var timer = try std.time.Timer.start();
-            var i: u32 = 0;
-            while (i < 1000) : (i += 1) {
-                try eb.insertText(text);
-                try eb.setCursor(0, 0);
+                const text = "Hello, world! ";
+                var timer = try std.time.Timer.start();
+                for (0..1000) |_| {
+                    try eb.insertText(text);
+                    try eb.setCursor(0, 0);
+                }
+                stats.record(timer.read());
+
+                if (iter == iterations - 1 and show_mem) {
+                    final_mem = eb.getTextBuffer().getArenaAllocatedBytes();
+                }
             }
-            const elapsed = timer.read();
 
-            min_ns = @min(min_ns, elapsed);
-            max_ns = @max(max_ns, elapsed);
-            total_ns += elapsed;
+            const mem_stats: ?[]const MemStat = if (show_mem) blk: {
+                const s = try allocator.alloc(MemStat, 1);
+                s[0] = .{ .name = "TB", .bytes = final_mem };
+                break :blk s;
+            } else null;
 
-            if (iter == iterations - 1 and show_mem) {
-                final_mem = eb.getTextBuffer().getArenaAllocatedBytes();
-            }
+            try results.append(allocator, BenchResult{
+                .name = name,
+                .min_ns = stats.min_ns,
+                .avg_ns = stats.avg(),
+                .max_ns = stats.max_ns,
+                .total_ns = stats.total_ns,
+                .iterations = iterations,
+                .mem_stats = mem_stats,
+            });
         }
-
-        const name = try std.fmt.allocPrint(allocator, "EditBuffer insert 1k times at start", .{});
-        const mem_stats: ?[]const MemStat = if (show_mem) blk: {
-            const stats = try allocator.alloc(MemStat, 1);
-            stats[0] = .{ .name = "TB", .bytes = final_mem };
-            break :blk stats;
-        } else null;
-
-        try results.append(BenchResult{
-            .name = name,
-            .min_ns = min_ns,
-            .avg_ns = total_ns / iterations,
-            .max_ns = max_ns,
-            .total_ns = total_ns,
-            .iterations = iterations,
-            .mem_stats = mem_stats,
-        });
     }
 
     // Multi-line insert
     {
-        var min_ns: u64 = std.math.maxInt(u64);
-        var max_ns: u64 = 0;
-        var total_ns: u64 = 0;
-        var final_mem: usize = 0;
+        const name = "EditBuffer insert 500 multi-line blocks";
+        if (bench_utils.matchesBenchFilter(name, bench_filter)) {
+            var stats = BenchStats{};
+            var final_mem: usize = 0;
 
-        var iter: usize = 0;
-        while (iter < iterations) : (iter += 1) {
-            var eb = try EditBuffer.init(allocator, pool, .unicode);
-            defer eb.deinit();
+            for (0..iterations) |iter| {
+                var eb = try EditBuffer.init(allocator, pool, .unicode);
+                defer eb.deinit();
 
-            const text = "Line 1\nLine 2\nLine 3\n";
-            var timer = try std.time.Timer.start();
-            var i: u32 = 0;
-            while (i < 500) : (i += 1) {
-                try eb.insertText(text);
+                const text = "Line 1\nLine 2\nLine 3\n";
+                var timer = try std.time.Timer.start();
+                for (0..500) |_| {
+                    try eb.insertText(text);
+                }
+                stats.record(timer.read());
+
+                if (iter == iterations - 1 and show_mem) {
+                    final_mem = eb.getTextBuffer().getArenaAllocatedBytes();
+                }
             }
-            const elapsed = timer.read();
 
-            min_ns = @min(min_ns, elapsed);
-            max_ns = @max(max_ns, elapsed);
-            total_ns += elapsed;
+            const mem_stats: ?[]const MemStat = if (show_mem) blk: {
+                const s = try allocator.alloc(MemStat, 1);
+                s[0] = .{ .name = "TB", .bytes = final_mem };
+                break :blk s;
+            } else null;
 
-            if (iter == iterations - 1 and show_mem) {
-                final_mem = eb.getTextBuffer().getArenaAllocatedBytes();
-            }
+            try results.append(allocator, BenchResult{
+                .name = name,
+                .min_ns = stats.min_ns,
+                .avg_ns = stats.avg(),
+                .max_ns = stats.max_ns,
+                .total_ns = stats.total_ns,
+                .iterations = iterations,
+                .mem_stats = mem_stats,
+            });
         }
-
-        const name = try std.fmt.allocPrint(allocator, "EditBuffer insert 500 multi-line blocks", .{});
-        const mem_stats: ?[]const MemStat = if (show_mem) blk: {
-            const stats = try allocator.alloc(MemStat, 1);
-            stats[0] = .{ .name = "TB", .bytes = final_mem };
-            break :blk stats;
-        } else null;
-
-        try results.append(BenchResult{
-            .name = name,
-            .min_ns = min_ns,
-            .avg_ns = total_ns / iterations,
-            .max_ns = max_ns,
-            .total_ns = total_ns,
-            .iterations = iterations,
-            .mem_stats = mem_stats,
-        });
     }
 
-    return try results.toOwnedSlice();
+    return try results.toOwnedSlice(allocator);
 }
 
 fn benchDeleteOperations(
     allocator: std.mem.Allocator,
     pool: *gp.GraphemePool,
-    
-    
     iterations: usize,
     show_mem: bool,
+    bench_filter: ?[]const u8,
 ) ![]BenchResult {
-    var results = std.ArrayList(BenchResult).init(allocator);
+    var results: std.ArrayListUnmanaged(BenchResult) = .{};
+    errdefer results.deinit(allocator);
 
     // Single-line delete with backspace
     {
-        var min_ns: u64 = std.math.maxInt(u64);
-        var max_ns: u64 = 0;
-        var total_ns: u64 = 0;
-        var final_mem: usize = 0;
+        const name = "EditBuffer backspace 500 chars";
+        if (bench_utils.matchesBenchFilter(name, bench_filter)) {
+            var stats = BenchStats{};
+            var final_mem: usize = 0;
 
-        var iter: usize = 0;
-        while (iter < iterations) : (iter += 1) {
-            var eb = try EditBuffer.init(allocator, pool, .unicode);
-            defer eb.deinit();
+            for (0..iterations) |iter| {
+                var eb = try EditBuffer.init(allocator, pool, .unicode);
+                defer eb.deinit();
 
-            // Build up text
-            const text = "Hello, world! ";
-            var i: u32 = 0;
-            while (i < 1000) : (i += 1) {
-                try eb.insertText(text);
+                // Build up text
+                const text = "Hello, world! ";
+                for (0..1000) |_| {
+                    try eb.insertText(text);
+                }
+
+                var timer = try std.time.Timer.start();
+                for (0..500) |_| {
+                    try eb.backspace();
+                }
+                stats.record(timer.read());
+
+                if (iter == iterations - 1 and show_mem) {
+                    final_mem = eb.getTextBuffer().getArenaAllocatedBytes();
+                }
             }
 
-            var timer = try std.time.Timer.start();
-            i = 0;
-            while (i < 500) : (i += 1) {
-                try eb.backspace();
-            }
-            const elapsed = timer.read();
+            const mem_stats: ?[]const MemStat = if (show_mem) blk: {
+                const s = try allocator.alloc(MemStat, 1);
+                s[0] = .{ .name = "TB", .bytes = final_mem };
+                break :blk s;
+            } else null;
 
-            min_ns = @min(min_ns, elapsed);
-            max_ns = @max(max_ns, elapsed);
-            total_ns += elapsed;
-
-            if (iter == iterations - 1 and show_mem) {
-                final_mem = eb.getTextBuffer().getArenaAllocatedBytes();
-            }
+            try results.append(allocator, BenchResult{
+                .name = name,
+                .min_ns = stats.min_ns,
+                .avg_ns = stats.avg(),
+                .max_ns = stats.max_ns,
+                .total_ns = stats.total_ns,
+                .iterations = iterations,
+                .mem_stats = mem_stats,
+            });
         }
-
-        const name = try std.fmt.allocPrint(allocator, "EditBuffer backspace 500 chars", .{});
-        const mem_stats: ?[]const MemStat = if (show_mem) blk: {
-            const stats = try allocator.alloc(MemStat, 1);
-            stats[0] = .{ .name = "TB", .bytes = final_mem };
-            break :blk stats;
-        } else null;
-
-        try results.append(BenchResult{
-            .name = name,
-            .min_ns = min_ns,
-            .avg_ns = total_ns / iterations,
-            .max_ns = max_ns,
-            .total_ns = total_ns,
-            .iterations = iterations,
-            .mem_stats = mem_stats,
-        });
     }
 
     // Multi-line delete range
     {
-        var min_ns: u64 = std.math.maxInt(u64);
-        var max_ns: u64 = 0;
-        var total_ns: u64 = 0;
-        var final_mem: usize = 0;
+        const name = "EditBuffer delete 50-line range";
+        if (bench_utils.matchesBenchFilter(name, bench_filter)) {
+            var stats = BenchStats{};
+            var final_mem: usize = 0;
 
-        var iter: usize = 0;
-        while (iter < iterations) : (iter += 1) {
-            var eb = try EditBuffer.init(allocator, pool, .unicode);
-            defer eb.deinit();
+            for (0..iterations) |iter| {
+                var eb = try EditBuffer.init(allocator, pool, .unicode);
+                defer eb.deinit();
 
-            // Build up text with many lines
-            const text = "Line 1\nLine 2\nLine 3\n";
-            var i: u32 = 0;
-            while (i < 100) : (i += 1) {
-                try eb.insertText(text);
+                // Build up text with many lines
+                const text = "Line 1\nLine 2\nLine 3\n";
+                for (0..100) |_| {
+                    try eb.insertText(text);
+                }
+
+                var timer = try std.time.Timer.start();
+                // Delete across 50 lines
+                try eb.deleteRange(.{ .row = 10, .col = 0 }, .{ .row = 60, .col = 0 });
+                stats.record(timer.read());
+
+                if (iter == iterations - 1 and show_mem) {
+                    final_mem = eb.getTextBuffer().getArenaAllocatedBytes();
+                }
             }
 
-            var timer = try std.time.Timer.start();
-            // Delete across 50 lines
-            try eb.deleteRange(.{ .row = 10, .col = 0 }, .{ .row = 60, .col = 0 });
-            const elapsed = timer.read();
+            const mem_stats: ?[]const MemStat = if (show_mem) blk: {
+                const s = try allocator.alloc(MemStat, 1);
+                s[0] = .{ .name = "TB", .bytes = final_mem };
+                break :blk s;
+            } else null;
 
-            min_ns = @min(min_ns, elapsed);
-            max_ns = @max(max_ns, elapsed);
-            total_ns += elapsed;
-
-            if (iter == iterations - 1 and show_mem) {
-                final_mem = eb.getTextBuffer().getArenaAllocatedBytes();
-            }
+            try results.append(allocator, BenchResult{
+                .name = name,
+                .min_ns = stats.min_ns,
+                .avg_ns = stats.avg(),
+                .max_ns = stats.max_ns,
+                .total_ns = stats.total_ns,
+                .iterations = iterations,
+                .mem_stats = mem_stats,
+            });
         }
-
-        const name = try std.fmt.allocPrint(allocator, "EditBuffer delete 50-line range", .{});
-        const mem_stats: ?[]const MemStat = if (show_mem) blk: {
-            const stats = try allocator.alloc(MemStat, 1);
-            stats[0] = .{ .name = "TB", .bytes = final_mem };
-            break :blk stats;
-        } else null;
-
-        try results.append(BenchResult{
-            .name = name,
-            .min_ns = min_ns,
-            .avg_ns = total_ns / iterations,
-            .max_ns = max_ns,
-            .total_ns = total_ns,
-            .iterations = iterations,
-            .mem_stats = mem_stats,
-        });
     }
 
-    return try results.toOwnedSlice();
+    return try results.toOwnedSlice(allocator);
 }
 
 fn benchMixedOperations(
     allocator: std.mem.Allocator,
     pool: *gp.GraphemePool,
-    
-    
     iterations: usize,
     show_mem: bool,
+    bench_filter: ?[]const u8,
 ) ![]BenchResult {
-    var results = std.ArrayList(BenchResult).init(allocator);
+    var results: std.ArrayListUnmanaged(BenchResult) = .{};
+    errdefer results.deinit(allocator);
 
     // Simulated typing session
     {
-        var min_ns: u64 = std.math.maxInt(u64);
-        var max_ns: u64 = 0;
-        var total_ns: u64 = 0;
-        var final_mem: usize = 0;
+        const name = "EditBuffer mixed operations (300 lines)";
+        if (bench_utils.matchesBenchFilter(name, bench_filter)) {
+            var stats = BenchStats{};
+            var final_mem: usize = 0;
 
-        var iter: usize = 0;
-        while (iter < iterations) : (iter += 1) {
-            var eb = try EditBuffer.init(allocator, pool, .unicode);
-            defer eb.deinit();
+            for (0..iterations) |iter| {
+                var eb = try EditBuffer.init(allocator, pool, .unicode);
+                defer eb.deinit();
 
-            var timer = try std.time.Timer.start();
+                var timer = try std.time.Timer.start();
 
-            // Type some text
-            var i: u32 = 0;
-            while (i < 100) : (i += 1) {
-                try eb.insertText("function test() {\n");
-                try eb.insertText("    return 42;\n");
-                try eb.insertText("}\n");
+                // Type some text
+                for (0..100) |_| {
+                    try eb.insertText("function test() {\n");
+                    try eb.insertText("    return 42;\n");
+                    try eb.insertText("}\n");
+                }
+
+                // Navigate and edit
+                try eb.setCursor(50, 0);
+                try eb.insertText("// Comment\n");
+
+                // Delete a range
+                try eb.deleteRange(.{ .row = 100, .col = 0 }, .{ .row = 120, .col = 0 });
+
+                stats.record(timer.read());
+
+                if (iter == iterations - 1 and show_mem) {
+                    final_mem = eb.getTextBuffer().getArenaAllocatedBytes();
+                }
             }
 
-            // Navigate and edit
-            try eb.setCursor(50, 0);
-            try eb.insertText("// Comment\n");
+            const mem_stats: ?[]const MemStat = if (show_mem) blk: {
+                const s = try allocator.alloc(MemStat, 1);
+                s[0] = .{ .name = "TB", .bytes = final_mem };
+                break :blk s;
+            } else null;
 
-            // Delete a range
-            try eb.deleteRange(.{ .row = 100, .col = 0 }, .{ .row = 120, .col = 0 });
-
-            const elapsed = timer.read();
-
-            min_ns = @min(min_ns, elapsed);
-            max_ns = @max(max_ns, elapsed);
-            total_ns += elapsed;
-
-            if (iter == iterations - 1 and show_mem) {
-                final_mem = eb.getTextBuffer().getArenaAllocatedBytes();
-            }
+            try results.append(allocator, BenchResult{
+                .name = name,
+                .min_ns = stats.min_ns,
+                .avg_ns = stats.avg(),
+                .max_ns = stats.max_ns,
+                .total_ns = stats.total_ns,
+                .iterations = iterations,
+                .mem_stats = mem_stats,
+            });
         }
-
-        const name = try std.fmt.allocPrint(allocator, "EditBuffer mixed operations (300 lines)", .{});
-        const mem_stats: ?[]const MemStat = if (show_mem) blk: {
-            const stats = try allocator.alloc(MemStat, 1);
-            stats[0] = .{ .name = "TB", .bytes = final_mem };
-            break :blk stats;
-        } else null;
-
-        try results.append(BenchResult{
-            .name = name,
-            .min_ns = min_ns,
-            .avg_ns = total_ns / iterations,
-            .max_ns = max_ns,
-            .total_ns = total_ns,
-            .iterations = iterations,
-            .mem_stats = mem_stats,
-        });
     }
 
-    return try results.toOwnedSlice();
+    return try results.toOwnedSlice(allocator);
 }
 
 fn benchWordBoundaryOperations(
     allocator: std.mem.Allocator,
     pool: *gp.GraphemePool,
-    
-    
     iterations: usize,
     show_mem: bool,
+    bench_filter: ?[]const u8,
 ) ![]BenchResult {
-    var results = std.ArrayList(BenchResult).init(allocator);
+    var results: std.ArrayListUnmanaged(BenchResult) = .{};
+    errdefer results.deinit(allocator);
 
     // Next word boundary navigation
     {
-        var min_ns: u64 = std.math.maxInt(u64);
-        var max_ns: u64 = 0;
-        var total_ns: u64 = 0;
-        var final_mem: usize = 0;
+        const name = "EditBuffer getNextWordBoundary 1k times";
+        if (bench_utils.matchesBenchFilter(name, bench_filter)) {
+            var stats = BenchStats{};
+            var final_mem: usize = 0;
 
-        var iter: usize = 0;
-        while (iter < iterations) : (iter += 1) {
-            var eb = try EditBuffer.init(allocator, pool, .unicode);
-            defer eb.deinit();
+            for (0..iterations) |iter| {
+                var eb = try EditBuffer.init(allocator, pool, .unicode);
+                defer eb.deinit();
 
-            // Build text with many words
-            const text = "The quick brown fox jumps over the lazy dog. ";
-            var i: u32 = 0;
-            while (i < 100) : (i += 1) {
-                try eb.insertText(text);
+                // Build text with many words
+                const text = "The quick brown fox jumps over the lazy dog. ";
+                for (0..100) |_| {
+                    try eb.insertText(text);
+                }
+
+                try eb.setCursor(0, 0);
+
+                var timer = try std.time.Timer.start();
+                // Navigate through 1000 word boundaries
+                for (0..1000) |_| {
+                    const cursor = eb.getNextWordBoundary();
+                    try eb.setCursor(cursor.row, cursor.col);
+                }
+                stats.record(timer.read());
+
+                if (iter == iterations - 1 and show_mem) {
+                    final_mem = eb.getTextBuffer().getArenaAllocatedBytes();
+                }
             }
 
-            try eb.setCursor(0, 0);
+            const mem_stats: ?[]const MemStat = if (show_mem) blk: {
+                const s = try allocator.alloc(MemStat, 1);
+                s[0] = .{ .name = "TB", .bytes = final_mem };
+                break :blk s;
+            } else null;
 
-            var timer = try std.time.Timer.start();
-            // Navigate through 1000 word boundaries
-            i = 0;
-            while (i < 1000) : (i += 1) {
-                const cursor = eb.getNextWordBoundary();
-                try eb.setCursor(cursor.row, cursor.col);
-            }
-            const elapsed = timer.read();
-
-            min_ns = @min(min_ns, elapsed);
-            max_ns = @max(max_ns, elapsed);
-            total_ns += elapsed;
-
-            if (iter == iterations - 1 and show_mem) {
-                final_mem = eb.getTextBuffer().getArenaAllocatedBytes();
-            }
+            try results.append(allocator, BenchResult{
+                .name = name,
+                .min_ns = stats.min_ns,
+                .avg_ns = stats.avg(),
+                .max_ns = stats.max_ns,
+                .total_ns = stats.total_ns,
+                .iterations = iterations,
+                .mem_stats = mem_stats,
+            });
         }
-
-        const name = try std.fmt.allocPrint(allocator, "EditBuffer getNextWordBoundary 1k times", .{});
-        const mem_stats: ?[]const MemStat = if (show_mem) blk: {
-            const stats = try allocator.alloc(MemStat, 1);
-            stats[0] = .{ .name = "TB", .bytes = final_mem };
-            break :blk stats;
-        } else null;
-
-        try results.append(BenchResult{
-            .name = name,
-            .min_ns = min_ns,
-            .avg_ns = total_ns / iterations,
-            .max_ns = max_ns,
-            .total_ns = total_ns,
-            .iterations = iterations,
-            .mem_stats = mem_stats,
-        });
     }
 
     // Previous word boundary navigation
     {
-        var min_ns: u64 = std.math.maxInt(u64);
-        var max_ns: u64 = 0;
-        var total_ns: u64 = 0;
-        var final_mem: usize = 0;
+        const name = "EditBuffer getPrevWordBoundary 1k times";
+        if (bench_utils.matchesBenchFilter(name, bench_filter)) {
+            var stats = BenchStats{};
+            var final_mem: usize = 0;
 
-        var iter: usize = 0;
-        while (iter < iterations) : (iter += 1) {
-            var eb = try EditBuffer.init(allocator, pool, .unicode);
-            defer eb.deinit();
+            for (0..iterations) |iter| {
+                var eb = try EditBuffer.init(allocator, pool, .unicode);
+                defer eb.deinit();
 
-            // Build text with many words
-            const text = "The quick brown fox jumps over the lazy dog. ";
-            var i: u32 = 0;
-            while (i < 100) : (i += 1) {
-                try eb.insertText(text);
+                // Build text with many words
+                const text = "The quick brown fox jumps over the lazy dog. ";
+                for (0..100) |_| {
+                    try eb.insertText(text);
+                }
+
+                // Start at end
+                const line_count = eb.getTextBuffer().lineCount();
+                const last_line = if (line_count > 0) line_count - 1 else 0;
+                try eb.setCursor(last_line, 4500);
+
+                var timer = try std.time.Timer.start();
+                // Navigate backward through 1000 word boundaries
+                for (0..1000) |_| {
+                    const cursor = eb.getPrevWordBoundary();
+                    try eb.setCursor(cursor.row, cursor.col);
+                }
+                stats.record(timer.read());
+
+                if (iter == iterations - 1 and show_mem) {
+                    final_mem = eb.getTextBuffer().getArenaAllocatedBytes();
+                }
             }
 
-            // Start at end
-            const line_count = eb.getTextBuffer().lineCount();
-            const last_line = if (line_count > 0) line_count - 1 else 0;
-            try eb.setCursor(last_line, 4500);
+            const mem_stats: ?[]const MemStat = if (show_mem) blk: {
+                const s = try allocator.alloc(MemStat, 1);
+                s[0] = .{ .name = "TB", .bytes = final_mem };
+                break :blk s;
+            } else null;
 
-            var timer = try std.time.Timer.start();
-            // Navigate backward through 1000 word boundaries
-            i = 0;
-            while (i < 1000) : (i += 1) {
-                const cursor = eb.getPrevWordBoundary();
-                try eb.setCursor(cursor.row, cursor.col);
-            }
-            const elapsed = timer.read();
-
-            min_ns = @min(min_ns, elapsed);
-            max_ns = @max(max_ns, elapsed);
-            total_ns += elapsed;
-
-            if (iter == iterations - 1 and show_mem) {
-                final_mem = eb.getTextBuffer().getArenaAllocatedBytes();
-            }
+            try results.append(allocator, BenchResult{
+                .name = name,
+                .min_ns = stats.min_ns,
+                .avg_ns = stats.avg(),
+                .max_ns = stats.max_ns,
+                .total_ns = stats.total_ns,
+                .iterations = iterations,
+                .mem_stats = mem_stats,
+            });
         }
-
-        const name = try std.fmt.allocPrint(allocator, "EditBuffer getPrevWordBoundary 1k times", .{});
-        const mem_stats: ?[]const MemStat = if (show_mem) blk: {
-            const stats = try allocator.alloc(MemStat, 1);
-            stats[0] = .{ .name = "TB", .bytes = final_mem };
-            break :blk stats;
-        } else null;
-
-        try results.append(BenchResult{
-            .name = name,
-            .min_ns = min_ns,
-            .avg_ns = total_ns / iterations,
-            .max_ns = max_ns,
-            .total_ns = total_ns,
-            .iterations = iterations,
-            .mem_stats = mem_stats,
-        });
     }
 
     // Word boundary with multi-line text
     {
-        var min_ns: u64 = std.math.maxInt(u64);
-        var max_ns: u64 = 0;
-        var total_ns: u64 = 0;
-        var final_mem: usize = 0;
+        const name = "EditBuffer word boundary multi-line 500 times";
+        if (bench_utils.matchesBenchFilter(name, bench_filter)) {
+            var stats = BenchStats{};
+            var final_mem: usize = 0;
 
-        var iter: usize = 0;
-        while (iter < iterations) : (iter += 1) {
-            var eb = try EditBuffer.init(allocator, pool, .unicode);
-            defer eb.deinit();
+            for (0..iterations) |iter| {
+                var eb = try EditBuffer.init(allocator, pool, .unicode);
+                defer eb.deinit();
 
-            // Build multi-line text with words
-            const text = "Hello world test\nAnother line here\nThird line content\n";
-            var i: u32 = 0;
-            while (i < 100) : (i += 1) {
-                try eb.insertText(text);
+                // Build multi-line text with words
+                const text = "Hello world test\nAnother line here\nThird line content\n";
+                for (0..100) |_| {
+                    try eb.insertText(text);
+                }
+
+                try eb.setCursor(0, 0);
+
+                var timer = try std.time.Timer.start();
+                // Navigate through 500 word boundaries across lines
+                for (0..500) |_| {
+                    const cursor = eb.getNextWordBoundary();
+                    try eb.setCursor(cursor.row, cursor.col);
+                }
+                stats.record(timer.read());
+
+                if (iter == iterations - 1 and show_mem) {
+                    final_mem = eb.getTextBuffer().getArenaAllocatedBytes();
+                }
             }
 
-            try eb.setCursor(0, 0);
+            const mem_stats: ?[]const MemStat = if (show_mem) blk: {
+                const s = try allocator.alloc(MemStat, 1);
+                s[0] = .{ .name = "TB", .bytes = final_mem };
+                break :blk s;
+            } else null;
 
-            var timer = try std.time.Timer.start();
-            // Navigate through 500 word boundaries across lines
-            i = 0;
-            while (i < 500) : (i += 1) {
-                const cursor = eb.getNextWordBoundary();
-                try eb.setCursor(cursor.row, cursor.col);
-            }
-            const elapsed = timer.read();
-
-            min_ns = @min(min_ns, elapsed);
-            max_ns = @max(max_ns, elapsed);
-            total_ns += elapsed;
-
-            if (iter == iterations - 1 and show_mem) {
-                final_mem = eb.getTextBuffer().getArenaAllocatedBytes();
-            }
+            try results.append(allocator, BenchResult{
+                .name = name,
+                .min_ns = stats.min_ns,
+                .avg_ns = stats.avg(),
+                .max_ns = stats.max_ns,
+                .total_ns = stats.total_ns,
+                .iterations = iterations,
+                .mem_stats = mem_stats,
+            });
         }
-
-        const name = try std.fmt.allocPrint(allocator, "EditBuffer word boundary multi-line 500 times", .{});
-        const mem_stats: ?[]const MemStat = if (show_mem) blk: {
-            const stats = try allocator.alloc(MemStat, 1);
-            stats[0] = .{ .name = "TB", .bytes = final_mem };
-            break :blk stats;
-        } else null;
-
-        try results.append(BenchResult{
-            .name = name,
-            .min_ns = min_ns,
-            .avg_ns = total_ns / iterations,
-            .max_ns = max_ns,
-            .total_ns = total_ns,
-            .iterations = iterations,
-            .mem_stats = mem_stats,
-        });
     }
 
-    return try results.toOwnedSlice();
+    return try results.toOwnedSlice(allocator);
 }
 
 pub fn run(
     allocator: std.mem.Allocator,
     show_mem: bool,
+    bench_filter: ?[]const u8,
 ) ![]BenchResult {
-    const stdout = std.io.getStdOut().writer();
-
     // Global pool and unicode data are initialized once in bench.zig
     const pool = gp.initGlobalPool(allocator);
-    
-    
 
-    if (show_mem) {
-        try stdout.print("Memory stats enabled\n", .{});
-    }
-    try stdout.print("\n", .{});
-
-    var all_results = std.ArrayList(BenchResult).init(allocator);
+    var all_results: std.ArrayListUnmanaged(BenchResult) = .{};
+    errdefer all_results.deinit(allocator);
 
     const iterations: usize = 5;
 
-    // Run all benchmark categories
-    const insert_results = try benchInsertOperations(allocator, pool, iterations, show_mem);
-    defer allocator.free(insert_results);
-    try all_results.appendSlice(insert_results);
+    // Run all benchmark categories and filter results
+    const insert_results = try benchInsertOperations(allocator, pool, iterations, show_mem, bench_filter);
+    try all_results.appendSlice(allocator, insert_results);
 
-    const delete_results = try benchDeleteOperations(allocator, pool, iterations, show_mem);
-    defer allocator.free(delete_results);
-    try all_results.appendSlice(delete_results);
+    const delete_results = try benchDeleteOperations(allocator, pool, iterations, show_mem, bench_filter);
+    try all_results.appendSlice(allocator, delete_results);
 
-    const mixed_results = try benchMixedOperations(allocator, pool, iterations, show_mem);
-    defer allocator.free(mixed_results);
-    try all_results.appendSlice(mixed_results);
+    const mixed_results = try benchMixedOperations(allocator, pool, iterations, show_mem, bench_filter);
+    try all_results.appendSlice(allocator, mixed_results);
 
-    const word_boundary_results = try benchWordBoundaryOperations(allocator, pool, iterations, show_mem);
-    defer allocator.free(word_boundary_results);
-    try all_results.appendSlice(word_boundary_results);
+    const word_boundary_results = try benchWordBoundaryOperations(allocator, pool, iterations, show_mem, bench_filter);
+    try all_results.appendSlice(allocator, word_boundary_results);
 
-    return try all_results.toOwnedSlice();
+    return try all_results.toOwnedSlice(allocator);
 }

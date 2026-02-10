@@ -459,6 +459,49 @@ describe("getObjectsInViewport", () => {
       const result = getObjectsInViewport(viewport, objects, "column", 0, 16)
       expect(result.map((o) => o.id)).not.toContain("far-away")
     })
+
+    test("performs overlap checks when minTriggerSize is 0", () => {
+      const viewport: ViewportBounds = { x: 0, y: 10, width: 40, height: 1 }
+      const objects = [createObject("above-viewport", 0, 0, 40, 5), createObject("in-viewport", 0, 10, 40, 1)]
+
+      const result = getObjectsInViewport(viewport, objects, "column", 0, 0)
+      expect(result.length).toBe(1)
+      expect(result[0].id).toBe("in-viewport")
+    })
+
+    test("filters out objects outside viewport when minTriggerSize is 0", () => {
+      const viewport: ViewportBounds = { x: 0, y: 10, width: 40, height: 5 }
+      const objects = [
+        createObject("above-1", 0, 0, 40, 3),
+        createObject("above-2", 0, 5, 40, 4),
+        createObject("in-viewport", 0, 12, 40, 2),
+        createObject("below", 0, 20, 40, 5),
+      ]
+
+      const result = getObjectsInViewport(viewport, objects, "column", 0, 0)
+      expect(result.length).toBe(1)
+      expect(result[0].id).toBe("in-viewport")
+    })
+
+    test("respects exact boundary conditions with minTriggerSize 0", () => {
+      const viewport: ViewportBounds = { x: 0, y: 100, width: 100, height: 100 }
+      const objects = [
+        createObject("ends-at-start", 0, 50, 100, 50),
+        createObject("overlaps-start", 0, 50, 100, 51),
+        createObject("inside", 0, 150, 100, 20),
+        createObject("overlaps-end", 0, 199, 100, 10),
+        createObject("starts-at-end", 0, 200, 100, 50),
+      ]
+
+      const result = getObjectsInViewport(viewport, objects, "column", 0, 0)
+      const visibleIds = result.map((o) => o.id)
+
+      expect(visibleIds).not.toContain("ends-at-start")
+      expect(visibleIds).toContain("overlaps-start")
+      expect(visibleIds).toContain("inside")
+      expect(visibleIds).toContain("overlaps-end")
+      expect(visibleIds).not.toContain("starts-at-end")
+    })
   })
 
   describe("overlapping objects", () => {
@@ -495,12 +538,28 @@ describe("getObjectsInViewport", () => {
   })
 
   describe("extreme values", () => {
-    test("handles zero-sized viewport", () => {
+    test("zero-sized viewport returns empty array (zero width)", () => {
+      const viewport: ViewportBounds = { x: 100, y: 100, width: 0, height: 100 }
+      const objects = Array.from({ length: 20 }, (_, i) => createObject(`obj-${i}`, 0, i * 20, 100, 20))
+
+      const result = getObjectsInViewport(viewport, objects, "column", 0, 16)
+      expect(result.length).toBe(0)
+    })
+
+    test("zero-sized viewport returns empty array (zero height)", () => {
+      const viewport: ViewportBounds = { x: 100, y: 100, width: 100, height: 0 }
+      const objects = Array.from({ length: 20 }, (_, i) => createObject(`obj-${i}`, 0, i * 20, 100, 20))
+
+      const result = getObjectsInViewport(viewport, objects, "column", 0, 16)
+      expect(result.length).toBe(0)
+    })
+
+    test("zero-sized viewport returns empty array (both zero)", () => {
       const viewport: ViewportBounds = { x: 100, y: 100, width: 0, height: 0 }
       const objects = Array.from({ length: 20 }, (_, i) => createObject(`obj-${i}`, 0, i * 20, 100, 20))
 
       const result = getObjectsInViewport(viewport, objects, "column", 0, 16)
-      expect(result.length).toBeGreaterThanOrEqual(0)
+      expect(result.length).toBe(0)
     })
 
     test("handles zero-sized objects", () => {

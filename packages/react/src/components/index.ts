@@ -5,6 +5,7 @@ import {
   DiffRenderable,
   InputRenderable,
   LineNumberRenderable,
+  MarkdownRenderable,
   ScrollBoxRenderable,
   SelectRenderable,
   TabSelectRenderable,
@@ -16,6 +17,7 @@ import {
   BoldSpanRenderable,
   ItalicSpanRenderable,
   LineBreakRenderable,
+  LinkRenderable,
   SpanRenderable,
   UnderlineSpanRenderable,
 } from "./text"
@@ -25,6 +27,7 @@ export const baseComponents = {
   text: TextRenderable,
   code: CodeRenderable,
   diff: DiffRenderable,
+  markdown: MarkdownRenderable,
   input: InputRenderable,
   select: SelectRenderable,
   textarea: TextareaRenderable,
@@ -41,6 +44,7 @@ export const baseComponents = {
   i: ItalicSpanRenderable,
   em: ItalicSpanRenderable,
   u: UnderlineSpanRenderable,
+  a: LinkRenderable,
 }
 
 type ComponentCatalogue = Record<string, RenderableConstructor>

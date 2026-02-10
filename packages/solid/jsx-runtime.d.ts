@@ -5,6 +5,8 @@ import type {
   CodeProps,
   ExtendedIntrinsicElements,
   InputProps,
+  LinkProps,
+  MarkdownProps,
   OpenTUIComponents,
   ScrollBoxProps,
   SelectProps,
@@ -32,6 +34,7 @@ declare namespace JSX {
     scrollbox: ScrollBoxProps
     code: CodeProps
     textarea: TextareaProps
+    markdown: MarkdownProps
 
     b: SpanProps
     strong: SpanProps
@@ -39,6 +42,7 @@ declare namespace JSX {
     em: SpanProps
     u: SpanProps
     br: {}
+    a: LinkProps
   }
 
   interface ElementChildrenAttribute {

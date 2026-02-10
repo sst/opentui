@@ -29,7 +29,17 @@ export function getObjectsInViewport<T extends ViewportObject>(
   padding: number = 10,
   minTriggerSize: number = 16,
 ): T[] {
-  if (objects.length < minTriggerSize) return objects
+  if (viewport.width <= 0 || viewport.height <= 0) {
+    return []
+  }
+
+  if (objects.length === 0) {
+    return []
+  }
+
+  if (objects.length < minTriggerSize) {
+    return objects
+  }
 
   const viewportTop = viewport.y - padding
   const viewportBottom = viewport.y + viewport.height + padding

@@ -508,6 +508,8 @@ export class TreeSitterClient extends EventEmitter<TreeSitterClientEvents> {
   public async destroy(): Promise<void> {
     if (this.initializeResolvers) {
       clearTimeout(this.initializeResolvers.timeoutId)
+      // Reject pending initialization promise to prevent hanging awaits
+      this.initializeResolvers.reject(new Error("Client destroyed during initialization"))
       this.initializeResolvers = undefined
     }
 

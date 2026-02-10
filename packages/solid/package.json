@@ -1,10 +1,10 @@
 {
   "name": "@opentui/solid",
-  "version": "0.1.60",
+  "version": "0.1.77",
   "description": "SolidJS renderer for OpenTUI",
   "repository": {
     "type": "git",
-    "url": "https://github.com/sst/opentui",
+    "url": "https://github.com/anomalyco/opentui",
     "directory": "packages/solid"
   },
   "module": "index.ts",

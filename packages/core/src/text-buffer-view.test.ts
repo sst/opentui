@@ -247,6 +247,110 @@ describe("TextBufferView", () => {
       view.resetSelection()
       expect(view.hasSelection()).toBe(false)
     })
+
+    it("should update selection end position", () => {
+      const styledText = stringToStyledText("Hello World")
+      buffer.setStyledText(styledText)
+
+      view.setSelection(0, 5)
+      expect(view.getSelectedText()).toBe("Hello")
+
+      view.updateSelection(11)
+      expect(view.getSelectedText()).toBe("Hello World")
+
+      const selection = view.getSelection()
+      expect(selection).toEqual({ start: 0, end: 11 })
+    })
+
+    it("should shrink selection with updateSelection", () => {
+      const styledText = stringToStyledText("Hello World")
+      buffer.setStyledText(styledText)
+
+      view.setSelection(0, 11)
+      expect(view.getSelectedText()).toBe("Hello World")
+
+      view.updateSelection(5)
+      expect(view.getSelectedText()).toBe("Hello")
+
+      const selection = view.getSelection()
+      expect(selection).toEqual({ start: 0, end: 5 })
+    })
+
+    it("should do nothing when updateSelection called with no selection", () => {
+      const styledText = stringToStyledText("Hello World")
+      buffer.setStyledText(styledText)
+
+      expect(view.hasSelection()).toBe(false)
+
+      view.updateSelection(5)
+      expect(view.hasSelection()).toBe(false)
+      expect(view.getSelectedText()).toBe("")
+    })
+
+    it("should update local selection focus position", () => {
+      const styledText = stringToStyledText("Hello World")
+      buffer.setStyledText(styledText)
+
+      const changed1 = view.setLocalSelection(0, 0, 5, 0)
+      expect(changed1).toBe(true)
+      expect(view.getSelectedText()).toBe("Hello")
+
+      const changed2 = view.updateLocalSelection(0, 0, 11, 0)
+      expect(changed2).toBe(true)
+      expect(view.getSelectedText()).toBe("Hello World")
+    })
+
+    it("should update local selection across lines", () => {
+      const styledText = stringToStyledText("Line 1\nLine 2\nLine 3")
+      buffer.setStyledText(styledText)
+
+      view.setLocalSelection(2, 0, 2, 0)
+
+      const changed = view.updateLocalSelection(2, 0, 4, 1)
+      expect(changed).toBe(true)
+
+      const selectedText = view.getSelectedText()
+      expect(selectedText).toContain("ne 1")
+      expect(selectedText).toContain("Line")
+    })
+
+    it("should fallback to setLocalSelection when updateLocalSelection called with no existing anchor", () => {
+      const styledText = stringToStyledText("Hello World")
+      buffer.setStyledText(styledText)
+
+      const changed = view.updateLocalSelection(0, 0, 5, 0)
+      expect(changed).toBe(true)
+      expect(view.hasSelection()).toBe(true)
+      expect(view.getSelectedText()).toBe("Hello")
+    })
+
+    it("should preserve anchor when updating local selection", () => {
+      const styledText = stringToStyledText("Hello World")
+      buffer.setStyledText(styledText)
+
+      view.setLocalSelection(0, 0, 5, 0)
+      expect(view.getSelectedText()).toBe("Hello")
+
+      view.updateLocalSelection(0, 0, 6, 0)
+      expect(view.getSelectedText()).toBe("Hello ")
+
+      view.updateLocalSelection(0, 0, 11, 0)
+      expect(view.getSelectedText()).toBe("Hello World")
+
+      view.updateLocalSelection(0, 0, 3, 0)
+      expect(view.getSelectedText()).toBe("Hel")
+    })
+
+    it("should handle backward selection with updateLocalSelection", () => {
+      const styledText = stringToStyledText("Hello World")
+      buffer.setStyledText(styledText)
+
+      view.setLocalSelection(11, 0, 11, 0)
+
+      const changed = view.updateLocalSelection(11, 0, 6, 0)
+      expect(changed).toBe(true)
+      expect(view.getSelectedText()).toBe("World")
+    })
   })
 
   describe("getPlainText", () => {
@@ -532,6 +636,70 @@ describe("TextBufferView", () => {
       // "Short" (1), "AVeryLongLineHere" (2), "Medium" (1) = 4 lines
       expect(result!.lineCount).toBe(4)
       expect(result!.maxWidth).toBe(10)
+    })
+
+    it("should cache measure results for same width", () => {
+      const styledText = stringToStyledText("ABCDEFGHIJKLMNOPQRST")
+      buffer.setStyledText(styledText)
+
+      view.setWrapMode("char")
+
+      // First call - cache miss
+      const result1 = view.measureForDimensions(10, 10)
+      expect(result1).not.toBeNull()
+      expect(result1!.lineCount).toBe(2)
+
+      // Second call with same width - should return cached result
+      const result2 = view.measureForDimensions(10, 10)
+      expect(result2).not.toBeNull()
+      expect(result2!.lineCount).toBe(2)
+      expect(result2!.maxWidth).toBe(result1!.maxWidth)
+    })
+
+    it("should invalidate cache when content changes", () => {
+      const styledText1 = stringToStyledText("ABCDEFGHIJ")
+      buffer.setStyledText(styledText1)
+
+      view.setWrapMode("char")
+
+      // Measure with width 5 - should be 2 lines
+      const result1 = view.measureForDimensions(5, 10)
+      expect(result1!.lineCount).toBe(2)
+
+      // Change content to be longer
+      const styledText2 = stringToStyledText("ABCDEFGHIJKLMNOPQRST")
+      buffer.setStyledText(styledText2)
+
+      // Same width should now return different result
+      const result2 = view.measureForDimensions(5, 10)
+      expect(result2!.lineCount).toBe(4)
+    })
+
+    it("should invalidate cache when wrap mode changes", () => {
+      const styledText = stringToStyledText("Hello world test string here")
+      buffer.setStyledText(styledText)
+
+      view.setWrapMode("word")
+      const resultWord = view.measureForDimensions(10, 10)
+
+      view.setWrapMode("char")
+      const resultChar = view.measureForDimensions(10, 10)
+
+      // Word and char wrap should produce different results
+      expect(resultWord!.lineCount).not.toBe(resultChar!.lineCount)
+    })
+
+    it("should handle width 0 for intrinsic measurement", () => {
+      const styledText = stringToStyledText("Hello World")
+      buffer.setStyledText(styledText)
+
+      view.setWrapMode("word")
+
+      // Width 0 means get intrinsic width (no wrapping)
+      const result = view.measureForDimensions(0, 10)
+      expect(result).not.toBeNull()
+      expect(result!.lineCount).toBe(1)
+      expect(result!.maxWidth).toBe(11) // "Hello World" = 11 chars
     })
   })
 })

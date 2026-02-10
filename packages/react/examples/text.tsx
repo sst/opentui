@@ -31,6 +31,13 @@ function App() {
         Cyan on Black
       </span>
       {"\n"}
+      Hyperlinks:{"\n"}
+      <u>
+        <a href="https://opentui.com" fg="blue">
+          opentui.com
+        </a>
+      </u>{" "}
+      - Click if your terminal supports OSC 8{"\n"}
       Bright colors:{"\n"}
       <span fg="brightRed">Bright Red</span> <span fg="brightGreen">Bright Green</span>{" "}
       <span fg="brightBlue">Bright Blue</span>

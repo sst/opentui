@@ -1,0 +1,129 @@
+---
+title: Lifecycle and cleanup
+description: Managing renderer lifecycle and terminal cleanup
+order: 6
+---
+
+# Lifecycle and cleanup
+
+OpenTUI gives you control over terminal cleanup. Call `renderer.destroy()` when you shut down. It restores the terminal to its original state, and it frees resources.
+
+## Why you must handle cleanup
+
+OpenTUI does not automatically clean up on `process.exit` or unhandled errors. This design gives you more control over shutdown behavior:
+
+- You may want to handle errors and keep running
+- You may use effect systems, like Effect.ts, with their own shutdown handling
+- You may need custom cleanup order or additional shutdown logic
+
+## Use `renderer.destroy()`
+
+Call `destroy()` when your app exits:
+
+```typescript
+import { createCliRenderer } from "@opentui/core"
+
+const renderer = await createCliRenderer()
+
+// ... your application code ...
+
+// Clean shutdown
+renderer.destroy()
+```
+
+For reliable cleanup, handle errors and signals in your app:
+
+```typescript
+const renderer = await createCliRenderer()
+
+process.on("uncaughtException", (error) => {
+  console.error("Uncaught exception:", error)
+  renderer.destroy()
+  process.exit(1)
+})
+
+process.on("unhandledRejection", (reason) => {
+  console.error("Unhandled rejection:", reason)
+  renderer.destroy()
+  process.exit(1)
+})
+```
+
+## Signal handling
+
+OpenTUI listens for common exit signals and calls `destroy()` when it receives them. By default, it handles these signals:
+
+| Signal     | Description              |
+| ---------- | ------------------------ |
+| `SIGINT`   | Ctrl+C                   |
+| `SIGTERM`  | Termination signal       |
+| `SIGQUIT`  | Ctrl+\                   |
+| `SIGABRT`  | Abort signal             |
+| `SIGHUP`   | Hangup (terminal closed) |
+| `SIGBREAK` | Ctrl+Break on Windows    |
+| `SIGPIPE`  | Broken pipe              |
+| `SIGBUS`   | Bus error                |
+| `SIGFPE`   | Floating point exception |
+
+You can customize which signals trigger cleanup:
+
+```typescript
+// Only handle SIGINT and SIGTERM
+const renderer = await createCliRenderer({
+  exitSignals: ["SIGINT", "SIGTERM"],
+})
+
+// Disable all signal-based cleanup (handle it yourself)
+const renderer = await createCliRenderer({
+  exitSignals: [],
+})
+```
+
+## Ctrl+C behavior
+
+By default, Ctrl+C calls `destroy()`. If you want to handle Ctrl+C yourself, disable the internal handler and remove `SIGINT` from `exitSignals`:
+
+```typescript
+const renderer = await createCliRenderer({
+  exitOnCtrlC: false,
+  exitSignals: ["SIGTERM", "SIGQUIT", "SIGABRT", "SIGHUP", "SIGBREAK", "SIGPIPE", "SIGBUS", "SIGFPE"],
+})
+
+renderer.keyInput.on("keypress", (key) => {
+  if (key.ctrl && key.name === "c") {
+    // Custom Ctrl+C handling
+    console.log("Ctrl+C pressed, but not exiting")
+  }
+})
+```
+
+## Destroy callback
+
+Run custom logic when the renderer is destroyed:
+
+```typescript
+const renderer = await createCliRenderer({
+  onDestroy: () => {
+    console.log("Renderer destroyed, performing additional cleanup...")
+  },
+})
+```
+
+## What `destroy()` cleans up
+
+The `destroy()` method cleans up these resources:
+
+- Removes the signal and process listeners that OpenTUI adds
+- Clears timers and render loops
+- Destroys all renderables in the tree
+- Restores stdin raw mode
+- Resets terminal state (cursor, alternate screen, etc.)
+- Frees native resources
+
+## Troubleshooting
+
+If your terminal stays in a broken state after a crash:
+
+1. Run `reset` in your terminal to restore it
+2. Add `uncaughtException` and `unhandledRejection` handlers to your app
+3. Make sure you call `renderer.destroy()` in all exit paths
