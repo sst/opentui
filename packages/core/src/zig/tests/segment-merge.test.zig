@@ -16,7 +16,7 @@ test "EditBuffer - sequential character insertion merges segments" {
     try eb.insertText("l");
     try eb.insertText("o");
 
-    const count = eb.tb.rope.count();
+    const count = eb.tb.rope().count();
 
     var buffer: [1024]u8 = undefined;
     const len = eb.getText(&buffer);

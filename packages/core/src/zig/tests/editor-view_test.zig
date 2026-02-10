@@ -822,7 +822,7 @@ test "EditorView - inserting newlines maintains rope integrity" {
 
     try eb.insertText("Line 0\nLine 1\nLine 2");
 
-    const rope_init = &eb.getTextBuffer().rope;
+    const rope_init = eb.getTextBuffer().rope();
     const line_count_init = eb.getTextBuffer().lineCount();
     try std.testing.expectEqual(@as(u32, 3), line_count_init);
 
@@ -1819,7 +1819,7 @@ test "EditorView - cursor should be able to land after closing paren on line wit
         if (prev_row == 0 and cursor.row == 1) {
             // We jumped to the next line - check that we were at the end
             const iter_mod = @import("../text-buffer-iterators.zig");
-            const line_width = iter_mod.lineWidthAt(&eb.getTextBuffer().rope, 0);
+            const line_width = iter_mod.lineWidthAt(eb.getTextBuffer().rope(), 0);
             try std.testing.expectEqual(line_width, prev_col);
             break;
         }
