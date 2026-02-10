@@ -135,6 +135,20 @@ renderer.on("selection", (selection) => {
 })
 ```
 
+## Theme mode
+
+OpenTUI can detect the terminal's preferred color scheme (dark or light) when the terminal supports DEC mode 2031 color scheme updates. Read the current mode via `renderer.themeMode` and subscribe to `theme_mode` to react to changes. Possible values are `"dark"`, `"light"`, or `null` when unsupported, and no events fire in the unsupported case.
+
+```typescript
+import { type ThemeMode } from "@opentui/core"
+
+const mode = renderer.themeMode
+
+renderer.on("theme_mode", (nextMode: ThemeMode) => {
+  console.log("Theme mode changed:", nextMode)
+})
+```
+
 ## Cursor control
 
 Use these methods to control the cursor position and style:
