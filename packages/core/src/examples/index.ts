@@ -79,7 +79,6 @@ interface Example {
 
 interface ExampleTheme {
   titleColor: RGBA
-  titleBackground: RGBA
   borderColor: string
   focusedBorderColor: string
   inputTextColor: string
@@ -100,7 +99,6 @@ const DEFAULT_THEME_MODE: ThemeMode = "dark"
 const MENU_THEMES: Record<ThemeMode, ExampleTheme> = {
   dark: {
     titleColor: RGBA.fromInts(240, 248, 255, 255),
-    titleBackground: RGBA.fromInts(15, 23, 42, 255),
     borderColor: "#475569",
     focusedBorderColor: "#60A5FA",
     inputTextColor: "#E2E8F0",
@@ -117,7 +115,6 @@ const MENU_THEMES: Record<ThemeMode, ExampleTheme> = {
   },
   light: {
     titleColor: RGBA.fromInts(15, 23, 42, 255),
-    titleBackground: RGBA.fromInts(226, 232, 240, 255),
     borderColor: "#CBD5E1",
     focusedBorderColor: "#2563EB",
     inputTextColor: "#0F172A",
@@ -516,7 +513,7 @@ class ExampleSelector {
       text: titleText,
       font: titleFont,
       color: theme.titleColor,
-      backgroundColor: theme.titleBackground,
+      backgroundColor: "transparent",
     })
     this.menuContainer.add(this.title)
 
@@ -619,7 +616,6 @@ class ExampleSelector {
 
     if (this.title) {
       this.title.color = theme.titleColor
-      this.title.backgroundColor = theme.titleBackground
     }
 
     if (this.filterBox) {
