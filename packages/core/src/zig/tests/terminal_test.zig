@@ -3,9 +3,6 @@ const builtin = @import("builtin");
 const testing = std.testing;
 const Terminal = @import("../terminal.zig");
 const utf8 = @import("../utf8.zig");
-const test_utils = @import("test_utils.zig");
-const setEnvVarTemp = test_utils.setEnvVarTemp;
-const restoreEnvVar = test_utils.restoreEnvVar;
 
 test "parseXtversion - kitty format" {
     var term = Terminal.init(.{});
@@ -99,22 +96,13 @@ test "environment variables - should be overridden by xtversion" {
 test "remote ignores env overrides but accepts capability responses" {
     if (builtin.os.tag == .windows) return error.SkipZigTest;
 
-    const tmux_name: [:0]const u8 = "TMUX";
-    const tmux_value: [:0]const u8 = "/tmp/tmux-1000/default,12345,0";
-    const prev_tmux = try setEnvVarTemp(testing.allocator, tmux_name, tmux_value);
-    defer restoreEnvVar(testing.allocator, tmux_name, prev_tmux);
+    var env = std.process.EnvMap.init(testing.allocator);
+    defer env.deinit();
+    try env.put("TMUX", "/tmp/tmux-1000/default,12345,0");
+    try env.put("TERM_PROGRAM", "iTerm.app");
+    try env.put("WT_SESSION", "test-session");
 
-    const term_program_name: [:0]const u8 = "TERM_PROGRAM";
-    const term_program_value: [:0]const u8 = "iTerm.app";
-    const prev_term_program = try setEnvVarTemp(testing.allocator, term_program_name, term_program_value);
-    defer restoreEnvVar(testing.allocator, term_program_name, prev_term_program);
-
-    const wt_session_name: [:0]const u8 = "WT_SESSION";
-    const wt_session_value: [:0]const u8 = "test-session";
-    const prev_wt_session = try setEnvVarTemp(testing.allocator, wt_session_name, wt_session_value);
-    defer restoreEnvVar(testing.allocator, wt_session_name, prev_wt_session);
-
-    var term = Terminal.init(.{ .remote = true });
+    var term = Terminal.init(.{ .remote = true, .env_map = &env });
 
     try testing.expect(!term.in_tmux);
     try testing.expect(!term.caps.osc52);
@@ -423,16 +411,10 @@ test "processCapabilityResponse - ghostty does not set explicit_cursor_positioni
 test "writeClipboard - generates basic OSC52 sequence" {
     if (builtin.os.tag == .windows) return error.SkipZigTest;
 
-    // Clear TMUX/STY to ensure we're not in a multiplexer
-    const tmux_name: [:0]const u8 = "TMUX";
-    const prev_tmux = try setEnvVarTemp(testing.allocator, tmux_name, null);
-    defer restoreEnvVar(testing.allocator, tmux_name, prev_tmux);
+    var env = std.process.EnvMap.init(testing.allocator);
+    defer env.deinit();
 
-    const sty_name: [:0]const u8 = "STY";
-    const prev_sty = try setEnvVarTemp(testing.allocator, sty_name, null);
-    defer restoreEnvVar(testing.allocator, sty_name, prev_sty);
-
-    var term = Terminal.init(.{});
+    var term = Terminal.init(.{ .env_map = &env });
     term.caps.osc52 = true;
 
     var writer = TestWriter.init(testing.allocator);
@@ -448,16 +430,10 @@ test "writeClipboard - generates basic OSC52 sequence" {
 test "writeClipboard - supports different targets" {
     if (builtin.os.tag == .windows) return error.SkipZigTest;
 
-    // Clear TMUX/STY to ensure we're not in a multiplexer
-    const tmux_name: [:0]const u8 = "TMUX";
-    const prev_tmux = try setEnvVarTemp(testing.allocator, tmux_name, null);
-    defer restoreEnvVar(testing.allocator, tmux_name, prev_tmux);
+    var env = std.process.EnvMap.init(testing.allocator);
+    defer env.deinit();
 
-    const sty_name: [:0]const u8 = "STY";
-    const prev_sty = try setEnvVarTemp(testing.allocator, sty_name, null);
-    defer restoreEnvVar(testing.allocator, sty_name, prev_sty);
-
-    var term = Terminal.init(.{});
+    var term = Terminal.init(.{ .env_map = &env });
     term.caps.osc52 = true;
 
     var writer = TestWriter.init(testing.allocator);
@@ -491,17 +467,11 @@ test "writeClipboard - returns error when OSC52 not supported" {
 test "writeClipboard - wraps in DCS passthrough for tmux" {
     if (builtin.os.tag == .windows) return error.SkipZigTest;
 
-    // Clear STY to ensure TMUX takes precedence
-    const sty_name: [:0]const u8 = "STY";
-    const prev_sty = try setEnvVarTemp(testing.allocator, sty_name, null);
-    defer restoreEnvVar(testing.allocator, sty_name, prev_sty);
+    var env = std.process.EnvMap.init(testing.allocator);
+    defer env.deinit();
+    try env.put("TMUX", "/tmp/tmux-1000/default,12345,0");
 
-    const tmux_name: [:0]const u8 = "TMUX";
-    const tmux_value: [:0]const u8 = "/tmp/tmux-1000/default,12345,0";
-    const prev_tmux = try setEnvVarTemp(testing.allocator, tmux_name, tmux_value);
-    defer restoreEnvVar(testing.allocator, tmux_name, prev_tmux);
-
-    var term = Terminal.init(.{});
+    var term = Terminal.init(.{ .env_map = &env });
     term.caps.osc52 = true;
 
     var writer = TestWriter.init(testing.allocator);
@@ -521,17 +491,11 @@ test "writeClipboard - wraps in DCS passthrough for tmux" {
 test "writeClipboard - wraps in DCS passthrough for GNU Screen" {
     if (builtin.os.tag == .windows) return error.SkipZigTest;
 
-    // Must clear TMUX first, as TMUX takes precedence over STY
-    const tmux_name: [:0]const u8 = "TMUX";
-    const prev_tmux = try setEnvVarTemp(testing.allocator, tmux_name, null);
-    defer restoreEnvVar(testing.allocator, tmux_name, prev_tmux);
+    var env = std.process.EnvMap.init(testing.allocator);
+    defer env.deinit();
+    try env.put("STY", "12345.pts-0.hostname");
 
-    const sty_name: [:0]const u8 = "STY";
-    const sty_value: [:0]const u8 = "12345.pts-0.hostname";
-    const prev_sty = try setEnvVarTemp(testing.allocator, sty_name, sty_value);
-    defer restoreEnvVar(testing.allocator, sty_name, prev_sty);
-
-    var term = Terminal.init(.{});
+    var term = Terminal.init(.{ .env_map = &env });
     term.caps.osc52 = true;
 
     var writer = TestWriter.init(testing.allocator);
@@ -552,14 +516,11 @@ test "writeClipboard - wraps in DCS passthrough for GNU Screen" {
 test "writeClipboard - handles tmux sessions" {
     if (builtin.os.tag == .windows) return error.SkipZigTest;
 
-    // Set TMUX env var to trigger tmux detection in checkEnvironmentOverrides
-    const tmux_name: [:0]const u8 = "TMUX";
-    const tmux_value: [:0]const u8 = "/tmp/tmux-1000/default,12345,0";
-    const prev_tmux = try setEnvVarTemp(testing.allocator, tmux_name, tmux_value);
-    defer restoreEnvVar(testing.allocator, tmux_name, prev_tmux);
+    var env = std.process.EnvMap.init(testing.allocator);
+    defer env.deinit();
+    try env.put("TMUX", "/tmp/tmux-1000/default,12345,0");
 
-    // Re-initialize terminal to pick up TMUX env var
-    var term = Terminal.init(.{});
+    var term = Terminal.init(.{ .env_map = &env });
     term.caps.osc52 = true;
 
     var writer = TestWriter.init(testing.allocator);
@@ -598,4 +559,81 @@ fn countSubstring(haystack: []const u8, needle: []const u8) usize {
         }
     }
     return count;
+}
+
+test "queryTerminalSend - skips OSC 66 queries when OPENTUI_FORCE_EXPLICIT_WIDTH=false" {
+    if (builtin.os.tag == .windows) return error.SkipZigTest;
+
+    var env = std.process.EnvMap.init(testing.allocator);
+    defer env.deinit();
+    try env.put("OPENTUI_FORCE_EXPLICIT_WIDTH", "false");
+
+    var term = Terminal.init(.{ .env_map = &env });
+
+    var writer = TestWriter.init(testing.allocator);
+    defer writer.deinit();
+
+    try term.queryTerminalSend(&writer);
+
+    const output = writer.getWritten();
+
+    // Should not contain OSC 66 queries
+    try testing.expect(std.mem.indexOf(u8, output, "\x1b]66;") == null);
+
+    // Should still contain other queries
+    try testing.expect(std.mem.indexOf(u8, output, "\x1b[>0q") != null); // xtversion
+
+    // Verify the flag was set correctly
+    try testing.expect(term.skip_explicit_width_query);
+    try testing.expect(!term.caps.explicit_width);
+}
+
+test "queryTerminalSend - sends OSC 66 queries by default" {
+    if (builtin.os.tag == .windows) return error.SkipZigTest;
+
+    var env = std.process.EnvMap.init(testing.allocator);
+    defer env.deinit();
+
+    var term = Terminal.init(.{ .env_map = &env });
+
+    var writer = TestWriter.init(testing.allocator);
+    defer writer.deinit();
+
+    try term.queryTerminalSend(&writer);
+
+    const output = writer.getWritten();
+
+    // Should contain OSC 66 explicit width query
+    try testing.expect(std.mem.indexOf(u8, output, "\x1b]66;w=1; \x1b\\") != null);
+
+    // Should contain OSC 66 scaled text query
+    try testing.expect(std.mem.indexOf(u8, output, "\x1b]66;s=2; \x1b\\") != null);
+
+    // Verify the flag was not set
+    try testing.expect(!term.skip_explicit_width_query);
+}
+
+test "queryTerminalSend - sends OSC 66 queries when OPENTUI_FORCE_EXPLICIT_WIDTH=true" {
+    if (builtin.os.tag == .windows) return error.SkipZigTest;
+
+    var env = std.process.EnvMap.init(testing.allocator);
+    defer env.deinit();
+    try env.put("OPENTUI_FORCE_EXPLICIT_WIDTH", "true");
+
+    var term = Terminal.init(.{ .env_map = &env });
+
+    var writer = TestWriter.init(testing.allocator);
+    defer writer.deinit();
+
+    try term.queryTerminalSend(&writer);
+
+    const output = writer.getWritten();
+
+    // Should contain OSC 66 queries
+    try testing.expect(std.mem.indexOf(u8, output, "\x1b]66;w=1; \x1b\\") != null);
+    try testing.expect(std.mem.indexOf(u8, output, "\x1b]66;s=2; \x1b\\") != null);
+
+    // Verify the capability was forced on
+    try testing.expect(term.caps.explicit_width);
+    try testing.expect(!term.skip_explicit_width_query);
 }

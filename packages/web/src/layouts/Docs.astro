@@ -78,9 +78,18 @@ const isActive = (path: string) => currentPath === path || currentPath === `${pa
                 <li><a href="/docs/components/text" class:list={{ active: isActive("/docs/components/text") }}>Text</a></li>
                 <li><a href="/docs/components/box" class:list={{ active: isActive("/docs/components/box") }}>Box</a></li>
                 <li><a href="/docs/components/input" class:list={{ active: isActive("/docs/components/input") }}>Input</a></li>
+                <li><a href="/docs/components/textarea" class:list={{ active: isActive("/docs/components/textarea") }}>Textarea</a></li>
                 <li><a href="/docs/components/select" class:list={{ active: isActive("/docs/components/select") }}>Select</a></li>
+                <li><a href="/docs/components/tab-select" class:list={{ active: isActive("/docs/components/tab-select") }}>TabSelect</a></li>
                 <li><a href="/docs/components/scrollbox" class:list={{ active: isActive("/docs/components/scrollbox") }}>ScrollBox</a></li>
+                <li><a href="/docs/components/scrollbar" class:list={{ active: isActive("/docs/components/scrollbar") }}>ScrollBar</a></li>
+                <li><a href="/docs/components/slider" class:list={{ active: isActive("/docs/components/slider") }}>Slider</a></li>
                 <li><a href="/docs/components/code" class:list={{ active: isActive("/docs/components/code") }}>Code</a></li>
+                <li><a href="/docs/components/markdown" class:list={{ active: isActive("/docs/components/markdown") }}>Markdown</a></li>
+                <li><a href="/docs/components/line-number" class:list={{ active: isActive("/docs/components/line-number") }}>Line numbers</a></li>
+                <li><a href="/docs/components/frame-buffer" class:list={{ active: isActive("/docs/components/frame-buffer") }}>FrameBuffer</a></li>
+                <li><a href="/docs/components/ascii-font" class:list={{ active: isActive("/docs/components/ascii-font") }}>ASCIIFont</a></li>
+                <li><a href="/docs/components/diff" class:list={{ active: isActive("/docs/components/diff") }}>Diff</a></li>
               </ul>
             </div>
 
@@ -89,6 +98,14 @@ const isActive = (path: string) => currentPath === path || currentPath === `${pa
               <ul class="sidebar-links">
                 <li><a href="/docs/bindings/solid" class:list={{ active: isActive("/docs/bindings/solid") }}>Solid.js</a></li>
                 <li><a href="/docs/bindings/react" class:list={{ active: isActive("/docs/bindings/react") }}>React</a></li>
+              </ul>
+            </div>
+
+            <div class="sidebar-section">
+              <div class="sidebar-title">Reference</div>
+              <ul class="sidebar-links">
+                <li><a href="/docs/reference/env-vars" class:list={{ active: isActive("/docs/reference/env-vars") }}>Environment variables</a></li>
+                <li><a href="/docs/reference/tree-sitter" class:list={{ active: isActive("/docs/reference/tree-sitter") }}>Tree-sitter</a></li>
               </ul>
             </div>
           </aside>

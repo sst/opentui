@@ -380,6 +380,10 @@ function getOpenTUILib(libPath?: string) {
       args: ["ptr", "i64"],
       returns: "void",
     },
+    restoreTerminalModes: {
+      args: ["ptr"],
+      returns: "void",
+    },
     enableMouse: {
       args: ["ptr", "bool"],
       returns: "void",
@@ -1414,6 +1418,7 @@ export interface RenderLib {
   dumpHitGrid: (renderer: Pointer) => void
   dumpBuffers: (renderer: Pointer, timestamp?: number) => void
   dumpStdoutBuffer: (renderer: Pointer, timestamp?: number) => void
+  restoreTerminalModes: (renderer: Pointer) => void
   enableMouse: (renderer: Pointer, enableMovement: boolean) => void
   disableMouse: (renderer: Pointer) => void
   enableKittyKeyboard: (renderer: Pointer, flags: number) => void
@@ -2306,6 +2311,10 @@ class FFIRenderLib implements RenderLib {
   public dumpStdoutBuffer(renderer: Pointer, timestamp?: number): void {
     const ts = timestamp ?? Date.now()
     this.opentui.symbols.dumpStdoutBuffer(renderer, ts)
+  }
+
+  public restoreTerminalModes(renderer: Pointer): void {
+    this.opentui.symbols.restoreTerminalModes(renderer)
   }
 
   public enableMouse(renderer: Pointer, enableMovement: boolean): void {

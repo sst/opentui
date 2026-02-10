@@ -207,3 +207,45 @@ test("clicking empty space does not auto-focus", async () => {
 
   expect(box.focused).toBe(false)
 })
+
+test("autoFocus=false prevents click focus changes", async () => {
+  const { renderer, mockMouse } = await createTestRenderer({
+    width: 50,
+    height: 30,
+    autoFocus: false,
+  })
+
+  try {
+    const first = new BoxRenderable(renderer, {
+      id: "focus-first",
+      position: "absolute",
+      left: 1,
+      top: 1,
+      width: 8,
+      height: 4,
+      focusable: true,
+    })
+    const second = new BoxRenderable(renderer, {
+      id: "focus-second",
+      position: "absolute",
+      left: 12,
+      top: 1,
+      width: 8,
+      height: 4,
+      focusable: true,
+    })
+    renderer.root.add(first)
+    renderer.root.add(second)
+    await renderer.idle()
+
+    first.focus()
+    expect(first.focused).toBe(true)
+
+    await mockMouse.click(second.x + 1, second.y + 1)
+
+    expect(first.focused).toBe(true)
+    expect(second.focused).toBe(false)
+  } finally {
+    renderer.destroy()
+  }
+})
