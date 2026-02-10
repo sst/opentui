@@ -37,6 +37,13 @@ Enable debug logging for the FFI bindings.
 **Type:** `boolean`  
 **Default:** `false`
 
+## OTUI_SHOW_STATS
+
+Show the debug overlay at startup.
+
+**Type:** `boolean`  
+**Default:** `false`
+
 ## OTUI_TRACE_FFI
 
 Enable tracing for the FFI bindings.
@@ -64,6 +71,20 @@ Disable Kitty graphics protocol detection
 
 **Type:** `boolean`  
 **Default:** `false`
+
+## OPENTUI_FORCE_NOZWJ
+
+Use no_zwj width method (Unicode without ZWJ joining)
+
+**Type:** `boolean`  
+**Default:** `false`
+
+## OPENTUI_FORCE_EXPLICIT_WIDTH
+
+Force explicit width capability in terminal to true or false. Set to "true" or "1" to enable, "false" or "0" to disable. When set to "false" or "0", also skips sending OSC 66 detection queries to prevent artifacts on older terminals (e.g., GNOME Terminal).
+
+**Type:** `string`
+**Values:** `"true"`, `"1"`, `"false"`, `"0"`
 
 ## OTUI_USE_CONSOLE
 

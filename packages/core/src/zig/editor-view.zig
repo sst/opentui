@@ -39,6 +39,7 @@ pub const EditorView = struct {
     edit_buffer: *EditBuffer, // Reference to the EditBuffer (not owned)
     scroll_margin: f32, // Fraction of viewport height (0.0-0.5) to keep cursor away from edges
     desired_visual_col: ?u32, // Preserved visual column for visual up/down navigation
+    selection_follow_cursor: bool, // Keep viewport synced during selection
     cursor_changed_listener: event_emitter.EventEmitter(eb.EditBufferEvent).Listener,
 
     placeholder_buffer: ?*UnifiedTextBuffer,
@@ -51,9 +52,10 @@ pub const EditorView = struct {
     fn onCursorChanged(ctx: *anyopaque) void {
         const self: *EditorView = @ptrCast(@alignCast(ctx));
         self.desired_visual_col = null;
+        self.updatePlaceholderVisibility();
 
         const has_selection = self.text_buffer_view.selection != null;
-        if (!has_selection) {
+        if (!has_selection or self.selection_follow_cursor) {
             const cursor = self.edit_buffer.getPrimaryCursor();
             const vcursor = self.logicalToVisualCursor(cursor.row, cursor.col);
             self.ensureCursorVisible(vcursor.visual_row);
@@ -73,6 +75,7 @@ pub const EditorView = struct {
             .edit_buffer = edit_buffer,
             .scroll_margin = 0.15, // Default 15% margin
             .desired_visual_col = null,
+            .selection_follow_cursor = false,
             .cursor_changed_listener = .{
                 .ctx = undefined, // Will be set below
                 .handle = onCursorChanged,
@@ -177,6 +180,10 @@ pub const EditorView = struct {
         self.scroll_margin = @max(0.0, @min(0.5, margin));
     }
 
+    pub fn setSelectionFollowCursor(self: *EditorView, enabled: bool) void {
+        self.selection_follow_cursor = enabled;
+    }
+
     /// Ensure the cursor is visible within the viewport, adjusting viewport.y and viewport.x if needed
     /// cursor_line: The virtual line index where the cursor is located
     pub fn ensureCursorVisible(self: *EditorView, cursor_line: u32) void {
@@ -186,8 +193,13 @@ pub const EditorView = struct {
         const viewport_width = vp.width;
         if (viewport_height == 0 or viewport_width == 0) return;
 
-        const margin_lines = @max(1, @as(u32, @intFromFloat(@as(f32, @floatFromInt(viewport_height)) * self.scroll_margin)));
-        const margin_cols = @max(1, @as(u32, @intFromFloat(@as(f32, @floatFromInt(viewport_width)) * self.scroll_margin)));
+        const raw_margin_lines = @max(1, @as(u32, @intFromFloat(@as(f32, @floatFromInt(viewport_height)) * self.scroll_margin)));
+        const max_margin_lines = if (viewport_height > 1) (viewport_height - 1) / 2 else 0;
+        const margin_lines = @min(raw_margin_lines, max_margin_lines);
+
+        const raw_margin_cols = @max(1, @as(u32, @intFromFloat(@as(f32, @floatFromInt(viewport_width)) * self.scroll_margin)));
+        const max_margin_cols = if (viewport_width > 1) (viewport_width - 1) / 2 else 0;
+        const margin_cols = @min(raw_margin_cols, max_margin_cols);
 
         const total_lines = self.text_buffer_view.getVirtualLineCount();
         const max_offset_y = if (total_lines > viewport_height) total_lines - viewport_height else 0;
@@ -238,7 +250,7 @@ pub const EditorView = struct {
 
         const has_selection = self.text_buffer_view.selection != null;
 
-        if (!has_selection) {
+        if (!has_selection or self.selection_follow_cursor) {
             const cursor = self.edit_buffer.getPrimaryCursor();
             const vcursor = self.logicalToVisualCursor(cursor.row, cursor.col);
             self.ensureCursorVisible(vcursor.visual_row);
@@ -744,6 +756,10 @@ pub const EditorView = struct {
         const placeholder = self.placeholder_buffer.?;
 
         try placeholder.setStyledText(chunks);
+
+        if (self.placeholder_active) {
+            self.text_buffer_view.virtual_lines_dirty = true;
+        }
 
         self.updatePlaceholderVisibility();
     }

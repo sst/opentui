@@ -71,6 +71,12 @@ registerEnvVar({
   type: "boolean",
   default: false,
 })
+registerEnvVar({
+  name: "OPENTUI_FORCE_NOZWJ",
+  description: "Use no_zwj width method (Unicode without ZWJ joining)",
+  type: "boolean",
+  default: false,
+})
 
 // Global singleton state for FFI tracing to prevent duplicate exit handlers
 let globalTraceSymbols: Record<string, number[]> | null = null
@@ -93,7 +99,7 @@ function getOpenTUILib(libPath?: string) {
     },
     // Renderer management
     createRenderer: {
-      args: ["u32", "u32", "bool"],
+      args: ["u32", "u32", "bool", "bool"],
       returns: "ptr",
     },
     destroyRenderer: {
@@ -277,6 +283,14 @@ function getOpenTUILib(libPath?: string) {
       args: ["ptr", "ptr", "usize"],
       returns: "void",
     },
+    copyToClipboardOSC52: {
+      args: ["ptr", "u8", "ptr", "usize"],
+      returns: "bool",
+    },
+    clearClipboardOSC52: {
+      args: ["ptr", "u8"],
+      returns: "bool",
+    },
 
     bufferDrawSuperSampleBuffer: {
       args: ["ptr", "u32", "u32", "ptr", "usize", "u8", "u32"],
@@ -284,6 +298,14 @@ function getOpenTUILib(libPath?: string) {
     },
     bufferDrawPackedBuffer: {
       args: ["ptr", "ptr", "usize", "u32", "u32", "u32", "u32"],
+      returns: "void",
+    },
+    bufferDrawGrayscaleBuffer: {
+      args: ["ptr", "i32", "i32", "ptr", "u32", "u32", "ptr", "ptr"],
+      returns: "void",
+    },
+    bufferDrawGrayscaleBufferSupersampled: {
+      args: ["ptr", "i32", "i32", "ptr", "u32", "u32", "ptr", "ptr"],
       returns: "void",
     },
     bufferDrawBox: {
@@ -361,6 +383,10 @@ function getOpenTUILib(libPath?: string) {
     },
     dumpStdoutBuffer: {
       args: ["ptr", "i64"],
+      returns: "void",
+    },
+    restoreTerminalModes: {
+      args: ["ptr"],
       returns: "void",
     },
     enableMouse: {
@@ -620,6 +646,10 @@ function getOpenTUILib(libPath?: string) {
       args: ["ptr", "ptr"],
       returns: "void",
     },
+    textBufferViewSetTruncate: {
+      args: ["ptr", "bool"],
+      returns: "void",
+    },
     textBufferViewMeasureForDimensions: {
       args: ["ptr", "u32", "u32", "ptr"],
       returns: "bool",
@@ -859,7 +889,7 @@ function getOpenTUILib(libPath?: string) {
       returns: "u64",
     },
     editorViewSetLocalSelection: {
-      args: ["ptr", "i32", "i32", "i32", "i32", "ptr", "ptr", "bool"],
+      args: ["ptr", "i32", "i32", "i32", "i32", "ptr", "ptr", "bool", "bool"],
       returns: "bool",
     },
     editorViewUpdateSelection: {
@@ -867,7 +897,7 @@ function getOpenTUILib(libPath?: string) {
       returns: "void",
     },
     editorViewUpdateLocalSelection: {
-      args: ["ptr", "i32", "i32", "i32", "i32", "ptr", "ptr", "bool"],
+      args: ["ptr", "i32", "i32", "i32", "i32", "ptr", "ptr", "bool", "bool"],
       returns: "bool",
     },
     editorViewResetLocalSelection: {
@@ -1265,7 +1295,7 @@ export interface CursorState {
 }
 
 export interface RenderLib {
-  createRenderer: (width: number, height: number, options?: { testing: boolean }) => Pointer | null
+  createRenderer: (width: number, height: number, options?: { testing?: boolean; remote?: boolean }) => Pointer | null
   destroyRenderer: (renderer: Pointer) => void
   setUseThread: (renderer: Pointer, useThread: boolean) => void
   setBackgroundColor: (renderer: Pointer, color: RGBA) => void
@@ -1351,6 +1381,26 @@ export interface RenderLib {
     terminalWidthCells: number,
     terminalHeightCells: number,
   ) => void
+  bufferDrawGrayscaleBuffer: (
+    buffer: Pointer,
+    posX: number,
+    posY: number,
+    intensitiesPtr: Pointer,
+    srcWidth: number,
+    srcHeight: number,
+    fg: RGBA | null,
+    bg: RGBA | null,
+  ) => void
+  bufferDrawGrayscaleBufferSupersampled: (
+    buffer: Pointer,
+    posX: number,
+    posY: number,
+    intensitiesPtr: Pointer,
+    srcWidth: number,
+    srcHeight: number,
+    fg: RGBA | null,
+    bg: RGBA | null,
+  ) => void
   bufferDrawBox: (
     buffer: Pointer,
     x: number,
@@ -1372,6 +1422,8 @@ export interface RenderLib {
   setDebugOverlay: (renderer: Pointer, enabled: boolean, corner: DebugOverlayCorner) => void
   clearTerminal: (renderer: Pointer) => void
   setTerminalTitle: (renderer: Pointer, title: string) => void
+  copyToClipboardOSC52: (renderer: Pointer, target: number, payload: Uint8Array) => boolean
+  clearClipboardOSC52: (renderer: Pointer, target: number) => boolean
   addToHitGrid: (renderer: Pointer, x: number, y: number, width: number, height: number, id: number) => void
   clearCurrentHitGrid: (renderer: Pointer) => void
   hitGridPushScissorRect: (renderer: Pointer, x: number, y: number, width: number, height: number) => void
@@ -1390,6 +1442,7 @@ export interface RenderLib {
   dumpHitGrid: (renderer: Pointer) => void
   dumpBuffers: (renderer: Pointer, timestamp?: number) => void
   dumpStdoutBuffer: (renderer: Pointer, timestamp?: number) => void
+  restoreTerminalModes: (renderer: Pointer) => void
   enableMouse: (renderer: Pointer, enableMovement: boolean) => void
   disableMouse: (renderer: Pointer) => void
   enableKittyKeyboard: (renderer: Pointer, flags: number) => void
@@ -1486,6 +1539,7 @@ export interface RenderLib {
   textBufferViewGetPlainTextBytes: (view: Pointer, maxLength: number) => Uint8Array | null
   textBufferViewSetTabIndicator: (view: Pointer, indicator: number) => void
   textBufferViewSetTabIndicatorColor: (view: Pointer, color: RGBA) => void
+  textBufferViewSetTruncate: (view: Pointer, truncate: boolean) => void
   textBufferViewMeasureForDimensions: (
     view: Pointer,
     width: number,
@@ -1588,7 +1642,9 @@ export interface RenderLib {
     bgColor: RGBA | null,
     fgColor: RGBA | null,
     updateCursor: boolean,
+    followCursor: boolean,
   ) => boolean
+
   editorViewUpdateSelection: (view: Pointer, end: number, bgColor: RGBA | null, fgColor: RGBA | null) => void
   editorViewUpdateLocalSelection: (
     view: Pointer,
@@ -1599,7 +1655,9 @@ export interface RenderLib {
     bgColor: RGBA | null,
     fgColor: RGBA | null,
     updateCursor: boolean,
+    followCursor: boolean,
   ) => boolean
+
   editorViewResetLocalSelection: (view: Pointer) => void
   editorViewGetSelectedTextBytes: (view: Pointer, maxLength: number) => Uint8Array | null
   editorViewGetCursor: (view: Pointer) => { row: number; col: number }
@@ -1798,8 +1856,10 @@ class FFIRenderLib implements RenderLib {
     this.opentui.symbols.setEventCallback(callbackPtr)
   }
 
-  public createRenderer(width: number, height: number, options: { testing: boolean } = { testing: false }) {
-    return this.opentui.symbols.createRenderer(width, height, options.testing)
+  public createRenderer(width: number, height: number, options: { testing?: boolean; remote?: boolean } = {}) {
+    const testing = options.testing ?? false
+    const remote = options.remote ?? false
+    return this.opentui.symbols.createRenderer(width, height, testing, remote)
   }
 
   public destroyRenderer(renderer: Pointer): void {
@@ -2019,6 +2079,50 @@ class FFIRenderLib implements RenderLib {
     )
   }
 
+  public bufferDrawGrayscaleBuffer(
+    buffer: Pointer,
+    posX: number,
+    posY: number,
+    intensitiesPtr: Pointer,
+    srcWidth: number,
+    srcHeight: number,
+    fg: RGBA | null,
+    bg: RGBA | null,
+  ): void {
+    this.opentui.symbols.bufferDrawGrayscaleBuffer(
+      buffer,
+      posX,
+      posY,
+      intensitiesPtr,
+      srcWidth,
+      srcHeight,
+      fg?.buffer ?? null,
+      bg?.buffer ?? null,
+    )
+  }
+
+  public bufferDrawGrayscaleBufferSupersampled(
+    buffer: Pointer,
+    posX: number,
+    posY: number,
+    intensitiesPtr: Pointer,
+    srcWidth: number,
+    srcHeight: number,
+    fg: RGBA | null,
+    bg: RGBA | null,
+  ): void {
+    this.opentui.symbols.bufferDrawGrayscaleBufferSupersampled(
+      buffer,
+      posX,
+      posY,
+      intensitiesPtr,
+      srcWidth,
+      srcHeight,
+      fg?.buffer ?? null,
+      bg?.buffer ?? null,
+    )
+  }
+
   public bufferDrawBox(
     buffer: Pointer,
     x: number,
@@ -2179,6 +2283,14 @@ class FFIRenderLib implements RenderLib {
     this.opentui.symbols.setTerminalTitle(renderer, titleBytes, titleBytes.length)
   }
 
+  public copyToClipboardOSC52(renderer: Pointer, target: number, payload: Uint8Array): boolean {
+    return this.opentui.symbols.copyToClipboardOSC52(renderer, target, payload, payload.length)
+  }
+
+  public clearClipboardOSC52(renderer: Pointer, target: number): boolean {
+    return this.opentui.symbols.clearClipboardOSC52(renderer, target)
+  }
+
   public addToHitGrid(renderer: Pointer, x: number, y: number, width: number, height: number, id: number) {
     this.opentui.symbols.addToHitGrid(renderer, x, y, width, height, id)
   }
@@ -2230,6 +2342,10 @@ class FFIRenderLib implements RenderLib {
   public dumpStdoutBuffer(renderer: Pointer, timestamp?: number): void {
     const ts = timestamp ?? Date.now()
     this.opentui.symbols.dumpStdoutBuffer(renderer, ts)
+  }
+
+  public restoreTerminalModes(renderer: Pointer): void {
+    this.opentui.symbols.restoreTerminalModes(renderer)
   }
 
   public enableMouse(renderer: Pointer, enableMovement: boolean): void {
@@ -2662,6 +2778,10 @@ class FFIRenderLib implements RenderLib {
 
   public textBufferViewSetTabIndicatorColor(view: Pointer, color: RGBA): void {
     this.opentui.symbols.textBufferViewSetTabIndicatorColor(view, color.buffer)
+  }
+
+  public textBufferViewSetTruncate(view: Pointer, truncate: boolean): void {
+    this.opentui.symbols.textBufferViewSetTruncate(view, truncate)
   }
 
   public textBufferViewMeasureForDimensions(
@@ -3104,6 +3224,7 @@ class FFIRenderLib implements RenderLib {
     bgColor: RGBA | null,
     fgColor: RGBA | null,
     updateCursor: boolean,
+    followCursor: boolean,
   ): boolean {
     const bg = bgColor ? bgColor.buffer : null
     const fg = fgColor ? fgColor.buffer : null
@@ -3116,6 +3237,7 @@ class FFIRenderLib implements RenderLib {
       bg,
       fg,
       updateCursor,
+      followCursor,
     )
   }
 
@@ -3134,6 +3256,7 @@ class FFIRenderLib implements RenderLib {
     bgColor: RGBA | null,
     fgColor: RGBA | null,
     updateCursor: boolean,
+    followCursor: boolean,
   ): boolean {
     const bg = bgColor ? bgColor.buffer : null
     const fg = fgColor ? fgColor.buffer : null
@@ -3146,6 +3269,7 @@ class FFIRenderLib implements RenderLib {
       bg,
       fg,
       updateCursor,
+      followCursor,
     )
   }
 
@@ -3276,6 +3400,8 @@ class FFIRenderLib implements RenderLib {
       sync: caps.sync,
       bracketed_paste: caps.bracketed_paste,
       hyperlinks: caps.hyperlinks,
+      osc52: caps.osc52,
+      explicit_cursor_positioning: caps.explicit_cursor_positioning,
       terminal: {
         name: caps.term_name ?? "",
         version: caps.term_version ?? "",

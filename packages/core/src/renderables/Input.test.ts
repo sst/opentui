@@ -181,7 +181,7 @@ describe("InputRenderable", () => {
       })
 
       input.focus()
-      input.cursorPosition = 1 // Move cursor after 'e'
+      input.cursorOffset = 1 // Move cursor after 'e'
 
       mockInput.pressKey("DELETE")
       expect(input.value).toBe("hllo")
@@ -193,22 +193,22 @@ describe("InputRenderable", () => {
       })
 
       input.focus()
-      expect(input.cursorPosition).toBe(5) // Should be at end
+      expect(input.cursorOffset).toBe(5) // Should be at end
 
       mockInput.pressArrow("left")
-      expect(input.cursorPosition).toBe(4)
+      expect(input.cursorOffset).toBe(4)
 
       mockInput.pressArrow("left")
-      expect(input.cursorPosition).toBe(3)
+      expect(input.cursorOffset).toBe(3)
 
       mockInput.pressArrow("right")
-      expect(input.cursorPosition).toBe(4)
+      expect(input.cursorOffset).toBe(4)
 
       mockInput.pressKey("HOME")
-      expect(input.cursorPosition).toBe(0)
+      expect(input.cursorOffset).toBe(0)
 
       mockInput.pressKey("END")
-      expect(input.cursorPosition).toBe(5)
+      expect(input.cursorOffset).toBe(5)
     })
 
     it("should handle enter key", () => {
@@ -258,11 +258,11 @@ describe("InputRenderable", () => {
       })
 
       input.focus()
-      input.cursorPosition = 2 // Position after 'l'
+      input.cursorOffset = 2 // Position after 'l'
 
       mockInput.pressKey("x")
       expect(input.value).toBe("hexllo")
-      expect(input.cursorPosition).toBe(3)
+      expect(input.cursorOffset).toBe(3)
     })
 
     it("should handle onPaste option", () => {
@@ -281,9 +281,8 @@ describe("InputRenderable", () => {
       input.focus()
 
       mockInput.pasteBracketedText("pasted text")
-      // NOTE: The input itself does not automatically insert the pasted text for now,
-      // as the whole InputRenderable will get replaced by and EditBuffer that handles it
-      expect(input.value).toBe("")
+      // Input now automatically inserts pasted text (using Textarea's EditBuffer)
+      expect(input.value).toBe("pasted text")
       expect(pasteCalled).toBe(true)
       expect(pasteText).toBe("pasted text")
     })
@@ -468,21 +467,21 @@ describe("InputRenderable", () => {
       input.value = "programmatic"
       expect(input.value).toBe("programmatic")
 
-      // Cursor position should be clamped to current position (0) since value changed
-      expect(input.cursorPosition).toBe(0)
+      // Cursor position should move to end when value is set programmatically
+      expect(input.cursorOffset).toBe("programmatic".length)
     })
 
-    it("should handle value changes with cursor position preservation", () => {
+    it("should handle value changes with cursor moving to end", () => {
       const { input } = createInputRenderable({
         value: "hello",
       })
 
       input.focus()
-      input.cursorPosition = 2
+      input.cursorOffset = 2
 
       input.value = "world"
       expect(input.value).toBe("world")
-      expect(input.cursorPosition).toBe(2) // Cursor should be clamped
+      expect(input.cursorOffset).toBe("world".length) // Cursor should move to end
     })
 
     it("should handle empty value setting", () => {
@@ -492,7 +491,7 @@ describe("InputRenderable", () => {
 
       input.value = ""
       expect(input.value).toBe("")
-      expect(input.cursorPosition).toBe(0)
+      expect(input.cursorOffset).toBe(0)
     })
 
     it("should emit input events when value changes programmatically", () => {
@@ -840,7 +839,7 @@ describe("InputRenderable", () => {
       // Press shift+space - should insert a space
       modMockInput.pressKey(" ", { shift: true })
       expect(input.value).toBe("hello ")
-      expect(input.cursorPosition).toBe(6)
+      expect(input.cursorOffset).toBe(6)
 
       // Type "world"
       modMockInput.pressKey("w")
@@ -861,19 +860,19 @@ describe("InputRenderable", () => {
       modMockInput.pressKey(" ", { shift: true })
 
       expect(input.value).toBe("test   ")
-      expect(input.cursorPosition).toBe(7)
+      expect(input.cursorOffset).toBe(7)
     })
 
     it("should insert space at middle of text with shift+space", () => {
       const { input } = createInputRenderableForMod({ value: "helloworld" })
 
       input.focus()
-      input.cursorPosition = 5
+      input.cursorOffset = 5
 
       modMockInput.pressKey(" ", { shift: true })
 
       expect(input.value).toBe("hello world")
-      expect(input.cursorPosition).toBe(6)
+      expect(input.cursorOffset).toBe(6)
     })
   })
 
@@ -900,14 +899,14 @@ describe("InputRenderable", () => {
       input.focus()
 
       // Move cursor to start
-      input.cursorPosition = 0
+      input.cursorOffset = 0
       mockInput.pressArrow("left")
-      expect(input.cursorPosition).toBe(0) // Should not go below 0
+      expect(input.cursorOffset).toBe(0) // Should not go below 0
 
       // Move cursor to end
-      input.cursorPosition = 2
+      input.cursorOffset = 2
       mockInput.pressArrow("right")
-      expect(input.cursorPosition).toBe(2) // Should not go beyond length
+      expect(input.cursorOffset).toBe(2) // Should not go beyond length
     })
 
     it("should handle backspace at start of input", () => {
@@ -916,12 +915,12 @@ describe("InputRenderable", () => {
       })
 
       input.focus()
-      input.cursorPosition = 0
+      input.cursorOffset = 0
 
       // Backspace at start should do nothing
       mockInput.pressBackspace()
       expect(input.value).toBe("hi")
-      expect(input.cursorPosition).toBe(0)
+      expect(input.cursorOffset).toBe(0)
     })
 
     it("should handle delete at end of input", () => {
@@ -930,12 +929,12 @@ describe("InputRenderable", () => {
       })
 
       input.focus()
-      input.cursorPosition = 2
+      input.cursorOffset = 2
 
       // Delete at end should do nothing
       mockInput.pressKey("DELETE")
       expect(input.value).toBe("hi")
-      expect(input.cursorPosition).toBe(2)
+      expect(input.cursorOffset).toBe(2)
     })
 
     it("should handle empty input operations", () => {
@@ -948,17 +947,17 @@ describe("InputRenderable", () => {
       // Operations on empty input should be safe
       mockInput.pressBackspace()
       expect(input.value).toBe("")
-      expect(input.cursorPosition).toBe(0)
+      expect(input.cursorOffset).toBe(0)
 
       mockInput.pressKey("DELETE")
       expect(input.value).toBe("")
-      expect(input.cursorPosition).toBe(0)
+      expect(input.cursorOffset).toBe(0)
 
       mockInput.pressArrow("left")
-      expect(input.cursorPosition).toBe(0)
+      expect(input.cursorOffset).toBe(0)
 
       mockInput.pressArrow("right")
-      expect(input.cursorPosition).toBe(0)
+      expect(input.cursorOffset).toBe(0)
     })
   })
 
@@ -969,17 +968,17 @@ describe("InputRenderable", () => {
         height: 1,
         value: "hello",
         keyBindings: [
-          { name: "k", ctrl: true, action: "move-end" },
-          { name: "h", ctrl: true, action: "delete-backward" },
+          { name: "k", ctrl: true, action: "line-end" },
+          { name: "h", ctrl: true, action: "backspace" },
         ],
       })
 
       input.focus()
-      input.cursorPosition = 3
+      input.cursorOffset = 3
 
       // Ctrl+K should move to end (custom binding)
       mockInput.pressKey("k", { ctrl: true })
-      expect(input.cursorPosition).toBe(5)
+      expect(input.cursorOffset).toBe(5)
 
       // Ctrl+H should delete backward (custom binding)
       mockInput.pressKey("h", { ctrl: true })
@@ -1013,18 +1012,18 @@ describe("InputRenderable", () => {
         width: 20,
         height: 1,
         value: "hello",
-        keyBindings: [{ name: "x", ctrl: true, action: "move-home" }],
+        keyBindings: [{ name: "x", ctrl: true, action: "line-home" }],
       })
 
       input.focus()
 
       // Default binding should still work
       mockInput.pressArrow("left")
-      expect(input.cursorPosition).toBe(4)
+      expect(input.cursorOffset).toBe(4)
 
       // Custom binding should also work
       mockInput.pressKey("x", { ctrl: true })
-      expect(input.cursorPosition).toBe(0)
+      expect(input.cursorOffset).toBe(0)
     })
 
     it("should override default bindings with custom ones", () => {
@@ -1033,16 +1032,16 @@ describe("InputRenderable", () => {
         height: 1,
         value: "hello",
         keyBindings: [
-          { name: "left", action: "move-end" }, // Override left to move to end
+          { name: "left", action: "line-end" }, // Override left to move to end
         ],
       })
 
       input.focus()
-      input.cursorPosition = 2
+      input.cursorOffset = 2
 
       // Left should now move to end instead of left
       mockInput.pressArrow("left")
-      expect(input.cursorPosition).toBe(5)
+      expect(input.cursorOffset).toBe(5)
     })
 
     it("should support Emacs-style bindings by default", () => {
@@ -1056,23 +1055,23 @@ describe("InputRenderable", () => {
 
       // Ctrl+A should move to home
       mockInput.pressKey("a", { ctrl: true })
-      expect(input.cursorPosition).toBe(0)
+      expect(input.cursorOffset).toBe(0)
 
       // Ctrl+E should move to end
       mockInput.pressKey("e", { ctrl: true })
-      expect(input.cursorPosition).toBe(5)
+      expect(input.cursorOffset).toBe(5)
 
       // Ctrl+F should move right
       mockInput.pressKey("f", { ctrl: true })
-      expect(input.cursorPosition).toBe(5) // Can't go beyond end
+      expect(input.cursorOffset).toBe(5) // Can't go beyond end
 
-      input.cursorPosition = 2
+      input.cursorOffset = 2
       mockInput.pressKey("f", { ctrl: true })
-      expect(input.cursorPosition).toBe(3)
+      expect(input.cursorOffset).toBe(3)
 
       // Ctrl+B should move left
       mockInput.pressKey("b", { ctrl: true })
-      expect(input.cursorPosition).toBe(2)
+      expect(input.cursorOffset).toBe(2)
 
       // Ctrl+D should delete forward
       mockInput.pressKey("d", { ctrl: true })
@@ -1087,20 +1086,20 @@ describe("InputRenderable", () => {
       })
 
       input.focus()
-      input.cursorPosition = 0
+      input.cursorOffset = 0
 
       // Default behavior: left arrow moves left
       mockInput.pressArrow("right")
-      expect(input.cursorPosition).toBe(1)
+      expect(input.cursorOffset).toBe(1)
 
       // Update bindings
       input.keyBindings = [
-        { name: "right", action: "move-end" }, // Override right to move to end
+        { name: "right", action: "line-end" }, // Override right to move to end
       ]
 
       // Right should now move to end
       mockInput.pressArrow("right")
-      expect(input.cursorPosition).toBe(5)
+      expect(input.cursorOffset).toBe(5)
     })
 
     it("should allow updating key aliases dynamically", () => {
@@ -1132,32 +1131,32 @@ describe("InputRenderable", () => {
         height: 1,
         value: "hello",
         keyBindings: [
-          { name: "left", shift: true, action: "move-home" },
-          { name: "right", shift: true, action: "move-end" },
-          { name: "up", ctrl: true, action: "move-home" },
-          { name: "down", ctrl: true, action: "move-end" },
+          { name: "left", shift: true, action: "line-home" },
+          { name: "right", shift: true, action: "line-end" },
+          { name: "up", ctrl: true, action: "line-home" },
+          { name: "down", ctrl: true, action: "line-end" },
         ],
       })
 
       input.focus()
-      input.cursorPosition = 2
+      input.cursorOffset = 2
 
       // Shift+Left should move to home
       mockInput.pressArrow("left", { shift: true })
-      expect(input.cursorPosition).toBe(0)
+      expect(input.cursorOffset).toBe(0)
 
       // Shift+Right should move to end
       mockInput.pressArrow("right", { shift: true })
-      expect(input.cursorPosition).toBe(5)
+      expect(input.cursorOffset).toBe(5)
 
       // Ctrl+Up should move to home
-      input.cursorPosition = 3
+      input.cursorOffset = 3
       mockInput.pressArrow("up", { ctrl: true })
-      expect(input.cursorPosition).toBe(0)
+      expect(input.cursorOffset).toBe(0)
 
       // Ctrl+Down should move to end
       mockInput.pressArrow("down", { ctrl: true })
-      expect(input.cursorPosition).toBe(5)
+      expect(input.cursorOffset).toBe(5)
     })
   })
 })

@@ -14,6 +14,7 @@ import { resolveRenderLib, type RenderLib } from "./zig"
 import { TerminalConsole, type ConsoleOptions, capture } from "./console"
 import { MouseParser, type MouseEventType, type RawMouseEvent, type ScrollInfo } from "./lib/parse.mouse"
 import { Selection } from "./lib/selection"
+import { Clipboard, type ClipboardTarget } from "./lib/clipboard"
 import { EventEmitter } from "events"
 import { destroySingleton, hasSingleton, singleton } from "./lib/singleton"
 import { getObjectsInViewport } from "./lib/objects-in-viewport"
@@ -68,9 +69,17 @@ registerEnvVar({
   default: false,
 })
 
+registerEnvVar({
+  name: "OTUI_SHOW_STATS",
+  description: "Show the debug overlay at startup.",
+  type: "boolean",
+  default: false,
+})
+
 export interface CliRendererConfig {
   stdin?: NodeJS.ReadStream
   stdout?: NodeJS.WriteStream
+  remote?: boolean
   exitOnCtrlC?: boolean
   exitSignals?: NodeJS.Signals[]
   debounceDelay?: number
@@ -84,6 +93,7 @@ export interface CliRendererConfig {
   postProcessFns?: ((buffer: OptimizedBuffer, deltaTime: number) => void)[]
   enableMouseMovement?: boolean
   useMouse?: boolean
+  autoFocus?: boolean
   useAlternateScreen?: boolean
   useConsole?: boolean
   experimental_splitHeight?: number
@@ -180,7 +190,7 @@ export class MouseEvent {
   }
   public readonly scroll?: ScrollInfo
   public readonly target: Renderable | null
-  public readonly isSelecting?: boolean
+  public readonly isDragging?: boolean
   private _propagationStopped: boolean = false
   private _defaultPrevented: boolean = false
 
@@ -192,7 +202,7 @@ export class MouseEvent {
     return this._defaultPrevented
   }
 
-  constructor(target: Renderable | null, attributes: RawMouseEvent & { source?: Renderable; isSelecting?: boolean }) {
+  constructor(target: Renderable | null, attributes: RawMouseEvent & { source?: Renderable; isDragging?: boolean }) {
     this.target = target
     this.type = attributes.type
     this.button = attributes.button
@@ -201,7 +211,7 @@ export class MouseEvent {
     this.modifiers = attributes.modifiers
     this.scroll = attributes.scroll
     this.source = attributes.source
-    this.isSelecting = attributes.isSelecting
+    this.isDragging = attributes.isDragging
   }
 
   public stopPropagation(): void {
@@ -254,7 +264,7 @@ export async function createCliRenderer(config: CliRendererConfig = {}): Promise
     config.experimental_splitHeight && config.experimental_splitHeight > 0 ? config.experimental_splitHeight : height
 
   const ziglib = resolveRenderLib()
-  const rendererPtr = ziglib.createRenderer(width, renderHeight)
+  const rendererPtr = ziglib.createRenderer(width, renderHeight, { remote: config.remote ?? false })
   if (!rendererPtr) {
     throw new Error("Failed to create renderer")
   }
@@ -357,7 +367,7 @@ export class CliRenderer extends EventEmitter implements RenderContext {
     frameCallbackTime: 0,
   }
   public debugOverlay = {
-    enabled: false,
+    enabled: env.OTUI_SHOW_STATS,
     corner: DebugOverlayCorner.bottomRight,
   }
 
@@ -374,6 +384,7 @@ export class CliRenderer extends EventEmitter implements RenderContext {
 
   private enableMouseMovement: boolean = false
   private _useMouse: boolean = true
+  private autoFocus: boolean = true
   private _useAlternateScreen: boolean = env.OTUI_USE_ALTERNATE_SCREEN
   private _suspendedMouseEnabled: boolean = false
   private _previousControlState: RendererControlState = RendererControlState.IDLE
@@ -383,6 +394,7 @@ export class CliRenderer extends EventEmitter implements RenderContext {
 
   private currentSelection: Selection | null = null
   private selectionContainers: Renderable[] = []
+  private clipboard: Clipboard
 
   private _splitHeight: number = 0
   private renderOffset: number = 0
@@ -489,8 +501,8 @@ export class CliRenderer extends EventEmitter implements RenderContext {
     this.stdout = stdout
     this.realStdoutWrite = stdout.write
     this.lib = lib
-    this._terminalWidth = stdout.columns
-    this._terminalHeight = stdout.rows
+    this._terminalWidth = stdout.columns ?? width
+    this._terminalHeight = stdout.rows ?? height
     this.width = width
     this.height = height
     this._useThread = config.useThread === undefined ? false : config.useThread
@@ -505,7 +517,19 @@ export class CliRenderer extends EventEmitter implements RenderContext {
 
     this.rendererPtr = rendererPtr
     this.exitOnCtrlC = config.exitOnCtrlC === undefined ? true : config.exitOnCtrlC
-    this.exitSignals = config.exitSignals || ["SIGINT", "SIGTERM", "SIGQUIT", "SIGABRT"]
+    this.exitSignals = config.exitSignals || [
+      "SIGINT", // Ctrl+C
+      "SIGTERM", // Termination signal
+      "SIGQUIT", // Ctrl+\
+      "SIGABRT", // Abort signal
+      "SIGHUP", // Hangup (terminal closed)
+      "SIGBREAK", // Ctrl+Break on Windows
+      "SIGPIPE", // Broken pipe
+      "SIGBUS", // Bus error
+      "SIGFPE", // Floating point exception
+    ]
+
+    this.clipboard = new Clipboard(this.lib, this.rendererPtr)
     this.resizeDebounceDelay = config.debounceDelay || 100
     this.targetFps = config.targetFps || 30
     this.maxFps = config.maxFps || 60
@@ -516,6 +540,7 @@ export class CliRenderer extends EventEmitter implements RenderContext {
     this.maxStatSamples = config.maxStatSamples || 300
     this.enableMouseMovement = config.enableMouseMovement ?? true
     this._useMouse = config.useMouse ?? true
+    this.autoFocus = config.autoFocus ?? true
     this._useAlternateScreen = config.useAlternateScreen ?? env.OTUI_USE_ALTERNATE_SCREEN
     this.nextRenderBuffer = this.lib.getNextBuffer(this.rendererPtr)
     this.currentRenderBuffer = this.lib.getCurrentBuffer(this.rendererPtr)
@@ -970,6 +995,15 @@ export class CliRenderer extends EventEmitter implements RenderContext {
     this.lib.setupTerminal(this.rendererPtr, this._useAlternateScreen)
     this._capabilities = this.lib.getTerminalCapabilities(this.rendererPtr)
 
+    if (this.debugOverlay.enabled) {
+      this.lib.setDebugOverlay(this.rendererPtr, true, this.debugOverlay.corner)
+      if (!this.memorySnapshotInterval) {
+        this.memorySnapshotInterval = 3000
+        this.startMemorySnapshotTimer()
+        this.automaticMemorySnapshot = true
+      }
+    }
+
     this.capabilityTimeoutId = setTimeout(() => {
       this.capabilityTimeoutId = null
       this.removeInputHandler(this.capabilityHandler)
@@ -1016,6 +1050,11 @@ export class CliRenderer extends EventEmitter implements RenderContext {
 
   private focusHandler: (sequence: string) => boolean = ((sequence: string) => {
     if (sequence === "\x1b[I") {
+      // When the terminal regains focus, some terminal emulators (notably
+      // Windows Terminal / ConPTY) may have stripped DEC private modes like
+      // mouse tracking, bracketed paste, and focus tracking itself while the
+      // window was unfocused. Re-send all active mode sequences unconditionally.
+      this.lib.restoreTerminalModes(this.rendererPtr)
       this.emit("focus")
       return true
     }
@@ -1075,6 +1114,27 @@ export class CliRenderer extends EventEmitter implements RenderContext {
     })
   }
 
+  private dispatchMouseEvent(
+    target: Renderable,
+    attributes: RawMouseEvent & { source?: Renderable; isDragging?: boolean },
+  ): MouseEvent {
+    const event = new MouseEvent(target, attributes)
+    target.processMouseEvent(event)
+
+    if (this.autoFocus && event.type === "down" && event.button === MouseButton.LEFT && !event.defaultPrevented) {
+      let current: Renderable | null = target
+      while (current) {
+        if (current.focusable) {
+          current.focus()
+          break
+        }
+        current = current.parent
+      }
+    }
+
+    return event
+  }
+
   private handleMouseData(data: Buffer): boolean {
     const mouseEvent = this.mouseParser.parseMouseEvent(data)
 
@@ -1124,7 +1184,7 @@ export class CliRenderer extends EventEmitter implements RenderContext {
       if (
         mouseEvent.type === "down" &&
         mouseEvent.button === MouseButton.LEFT &&
-        !this.currentSelection?.isSelecting &&
+        !this.currentSelection?.isDragging &&
         !mouseEvent.modifiers.ctrl
       ) {
         if (
@@ -1134,26 +1194,25 @@ export class CliRenderer extends EventEmitter implements RenderContext {
           maybeRenderable.shouldStartSelection(mouseEvent.x, mouseEvent.y)
         ) {
           this.startSelection(maybeRenderable, mouseEvent.x, mouseEvent.y)
-          const event = new MouseEvent(maybeRenderable, mouseEvent)
-          maybeRenderable.processMouseEvent(event)
+          this.dispatchMouseEvent(maybeRenderable, mouseEvent)
           return true
         }
       }
 
-      if (mouseEvent.type === "drag" && this.currentSelection?.isSelecting) {
+      if (mouseEvent.type === "drag" && this.currentSelection?.isDragging) {
         this.updateSelection(maybeRenderable, mouseEvent.x, mouseEvent.y)
 
         if (maybeRenderable) {
-          const event = new MouseEvent(maybeRenderable, { ...mouseEvent, isSelecting: true })
+          const event = new MouseEvent(maybeRenderable, { ...mouseEvent, isDragging: true })
           maybeRenderable.processMouseEvent(event)
         }
 
         return true
       }
 
-      if (mouseEvent.type === "up" && this.currentSelection?.isSelecting) {
+      if (mouseEvent.type === "up" && this.currentSelection?.isDragging) {
         if (maybeRenderable) {
-          const event = new MouseEvent(maybeRenderable, { ...mouseEvent, isSelecting: true })
+          const event = new MouseEvent(maybeRenderable, { ...mouseEvent, isDragging: true })
           maybeRenderable.processMouseEvent(event)
         }
 
@@ -1163,7 +1222,7 @@ export class CliRenderer extends EventEmitter implements RenderContext {
 
       if (mouseEvent.type === "down" && mouseEvent.button === MouseButton.LEFT && this.currentSelection) {
         if (mouseEvent.modifiers.ctrl) {
-          this.currentSelection.isSelecting = true
+          this.currentSelection.isDragging = true
           this.updateSelection(maybeRenderable, mouseEvent.x, mouseEvent.y)
           return true
         }
@@ -1211,15 +1270,14 @@ export class CliRenderer extends EventEmitter implements RenderContext {
         this.requestRender()
       }
 
-      let event: MouseEvent | undefined = undefined
+      let event: MouseEvent | undefined
       if (maybeRenderable) {
         if (mouseEvent.type === "drag" && mouseEvent.button === MouseButton.LEFT) {
           this.setCapturedRenderable(maybeRenderable)
         } else {
           this.setCapturedRenderable(undefined)
         }
-        event = new MouseEvent(maybeRenderable, mouseEvent)
-        maybeRenderable.processMouseEvent(event)
+        event = this.dispatchMouseEvent(maybeRenderable, mouseEvent)
       } else {
         this.setCapturedRenderable(undefined)
         this.lastOverRenderable = undefined
@@ -1428,6 +1486,18 @@ export class CliRenderer extends EventEmitter implements RenderContext {
 
   public setTerminalTitle(title: string): void {
     this.lib.setTerminalTitle(this.rendererPtr, title)
+  }
+
+  public copyToClipboardOSC52(text: string, target?: ClipboardTarget): boolean {
+    return this.clipboard.copyToClipboardOSC52(text, target)
+  }
+
+  public clearClipboardOSC52(target?: ClipboardTarget): boolean {
+    return this.clipboard.clearClipboardOSC52(target)
+  }
+
+  public isOsc52Supported(): boolean {
+    return this._capabilities?.osc52 ?? this.clipboard.isOsc52Supported()
   }
 
   public dumpHitGrid(): void {
@@ -1947,10 +2017,19 @@ export class CliRenderer extends EventEmitter implements RenderContext {
     this.notifySelectablesOfSelectionChange()
   }
 
-  public updateSelection(currentRenderable: Renderable | undefined, x: number, y: number): void {
+  public updateSelection(
+    currentRenderable: Renderable | undefined,
+    x: number,
+    y: number,
+    options?: { finishDragging?: boolean },
+  ): void {
     if (this.currentSelection) {
       this.currentSelection.isStart = false
       this.currentSelection.focus = { x, y }
+
+      if (options?.finishDragging) {
+        this.currentSelection.isDragging = false
+      }
 
       if (this.selectionContainers.length > 0) {
         const currentContainer = this.selectionContainers[this.selectionContainers.length - 1]
@@ -1977,7 +2056,7 @@ export class CliRenderer extends EventEmitter implements RenderContext {
   }
 
   public requestSelectionUpdate(): void {
-    if (this.currentSelection?.isSelecting) {
+    if (this.currentSelection?.isDragging) {
       const pointer = this._latestPointer
 
       const maybeRenderableId = this.hitTest(pointer.x, pointer.y)
@@ -1998,7 +2077,7 @@ export class CliRenderer extends EventEmitter implements RenderContext {
 
   private finishSelection(): void {
     if (this.currentSelection) {
-      this.currentSelection.isSelecting = false
+      this.currentSelection.isDragging = false
       this.emit("selection", this.currentSelection)
       // Notify renderables that selection is finished (no longer dragging)
       this.notifySelectablesOfSelectionChange()

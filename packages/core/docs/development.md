@@ -88,3 +88,54 @@ The script automatically links:
 ## Debugging
 
 OpenTUI captures `console.log` output. Toggle the built-in console with backtick or use [Environment Variables](./env-vars.md) for debugging.
+
+## Terminal Compatibility
+
+### OSC 66 Artifacts on Older Terminals
+
+**Problem:** If you see weird artifacts containing "66" in your terminal when running OpenTUI applications, your terminal emulator doesn't support OSC 66 escape sequences (used for explicit character width detection).
+
+**Affected Terminals:**
+
+- GNOME Terminal
+- Konsole (older versions)
+- xterm (older versions)
+- Many VT100/VT220 emulators
+
+**Solution:** Disable OSC 66 queries by setting an environment variable:
+
+```bash
+export OPENTUI_FORCE_EXPLICIT_WIDTH=false
+```
+
+Or run your application with:
+
+```bash
+OPENTUI_FORCE_EXPLICIT_WIDTH=false your-app
+```
+
+**For Application Developers:**
+
+Set it in your code before creating the renderer:
+
+```typescript
+process.env.OPENTUI_FORCE_EXPLICIT_WIDTH = "false"
+
+const renderer = new CliRenderer()
+// ... rest of your app
+```
+
+Or add to your `.env` file:
+
+```bash
+OPENTUI_FORCE_EXPLICIT_WIDTH=false
+```
+
+**What This Does:**
+
+- Prevents OSC 66 detection queries from being sent
+- Disables the explicit width feature
+- Falls back to standard width calculation
+- No visual artifacts on unsupported terminals
+
+**Modern Terminals:** If your terminal supports OSC 66 (Kitty, Ghostty, WezTerm, Alacritty, iTerm2), you don't need this setting - they work correctly by default.

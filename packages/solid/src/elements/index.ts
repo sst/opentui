@@ -5,6 +5,7 @@ import {
   DiffRenderable,
   InputRenderable,
   LineNumberRenderable,
+  MarkdownRenderable,
   ScrollBoxRenderable,
   SelectRenderable,
   StatelessTerminalRenderable,
@@ -104,6 +105,7 @@ export const baseComponents = {
   diff: DiffRenderable,
   line_number: LineNumberRenderable,
   stateless_terminal: StatelessTerminalRenderable,
+  markdown: MarkdownRenderable,
 
   span: SpanRenderable,
   strong: BoldSpanRenderable,

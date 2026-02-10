@@ -1,6 +1,8 @@
 const std = @import("std");
+const builtin = @import("builtin");
 const testing = std.testing;
 const Terminal = @import("../terminal.zig");
+const utf8 = @import("../utf8.zig");
 
 test "parseXtversion - kitty format" {
     var term = Terminal.init(.{});
@@ -10,6 +12,7 @@ test "parseXtversion - kitty format" {
     try testing.expectEqualStrings("kitty", term.getTerminalName());
     try testing.expectEqualStrings("0.40.1", term.getTerminalVersion());
     try testing.expect(term.term_info.from_xtversion);
+    try testing.expect(term.caps.osc52);
 }
 
 test "parseXtversion - ghostty format" {
@@ -20,6 +23,7 @@ test "parseXtversion - ghostty format" {
     try testing.expectEqualStrings("ghostty", term.getTerminalName());
     try testing.expectEqualStrings("1.1.3", term.getTerminalVersion());
     try testing.expect(term.term_info.from_xtversion);
+    try testing.expect(term.caps.osc52);
 }
 
 test "parseXtversion - tmux format" {
@@ -30,6 +34,7 @@ test "parseXtversion - tmux format" {
     try testing.expectEqualStrings("tmux", term.getTerminalName());
     try testing.expectEqualStrings("3.5a", term.getTerminalVersion());
     try testing.expect(term.term_info.from_xtversion);
+    try testing.expect(term.caps.osc52);
 }
 
 test "parseXtversion - with prefix data" {
@@ -52,6 +57,7 @@ test "parseXtversion - full kitty response" {
     try testing.expect(term.term_info.from_xtversion);
     try testing.expect(term.caps.kitty_keyboard);
     try testing.expect(term.caps.kitty_graphics);
+    try testing.expect(term.caps.osc52);
 }
 
 test "parseXtversion - full ghostty response" {
@@ -87,6 +93,25 @@ test "environment variables - should be overridden by xtversion" {
     try testing.expect(term.term_info.from_xtversion);
 }
 
+test "remote ignores env overrides but accepts capability responses" {
+    if (builtin.os.tag == .windows) return error.SkipZigTest;
+
+    var env = std.process.EnvMap.init(testing.allocator);
+    defer env.deinit();
+    try env.put("TMUX", "/tmp/tmux-1000/default,12345,0");
+    try env.put("TERM_PROGRAM", "iTerm.app");
+    try env.put("WT_SESSION", "test-session");
+
+    var term = Terminal.init(.{ .remote = true, .env_map = &env });
+
+    try testing.expect(!term.in_tmux);
+    try testing.expect(!term.caps.osc52);
+    try testing.expect(!term.caps.explicit_cursor_positioning);
+
+    term.processCapabilityResponse("\x1bP>|kitty(0.40.1)\x1b\\");
+    try testing.expect(term.caps.osc52);
+}
+
 test "parseXtversion - terminal name only" {
     var term = Terminal.init(.{});
     const response = "\x1bP>|wezterm\x1b\\";
@@ -95,6 +120,7 @@ test "parseXtversion - terminal name only" {
     try testing.expectEqualStrings("wezterm", term.getTerminalName());
     try testing.expectEqualStrings("", term.getTerminalVersion());
     try testing.expect(term.term_info.from_xtversion);
+    try testing.expect(term.caps.osc52);
 }
 
 test "parseXtversion - empty response" {
@@ -326,4 +352,288 @@ test "isXtversionTmux - detects tmux from xtversion" {
     term.term_info.name_len = 4;
     @memcpy(term.term_info.name[0..4], "tmux");
     try testing.expect(term.isXtversionTmux());
+}
+
+// ============================================================================
+// GRAPHEME CURSOR POSITIONING CAPABILITY TESTS
+// ============================================================================
+
+test "processCapabilityResponse - tmux sets explicit_cursor_positioning" {
+    var term: Terminal = .{};
+
+    term.caps.explicit_cursor_positioning = false;
+    term.caps.unicode = .unicode;
+
+    const response = "\x1bP>|tmux 3.5a\x1b\\";
+    term.processCapabilityResponse(response);
+
+    try testing.expect(term.caps.explicit_cursor_positioning);
+    try testing.expectEqual(utf8.WidthMethod.wcwidth, term.caps.unicode);
+}
+
+test "processCapabilityResponse - alacritty sets explicit_cursor_positioning" {
+    var term: Terminal = .{};
+
+    term.caps.explicit_cursor_positioning = false;
+
+    const response = "\x1bP>|alacritty 0.13.0\x1b\\";
+    term.processCapabilityResponse(response);
+
+    try testing.expect(term.caps.explicit_cursor_positioning);
+}
+
+test "processCapabilityResponse - kitty does not set explicit_cursor_positioning" {
+    var term: Terminal = .{};
+
+    term.caps.explicit_cursor_positioning = false;
+
+    const response = "\x1bP>|kitty(0.40.1)\x1b\\";
+    term.processCapabilityResponse(response);
+
+    try testing.expect(!term.caps.explicit_cursor_positioning);
+}
+
+test "processCapabilityResponse - ghostty does not set explicit_cursor_positioning" {
+    var term: Terminal = .{};
+
+    term.caps.explicit_cursor_positioning = false;
+
+    const response = "\x1bP>|ghostty 1.1.3\x1b\\";
+    term.processCapabilityResponse(response);
+
+    try testing.expect(!term.caps.explicit_cursor_positioning);
+}
+
+// ============================================================================
+// CLIPBOARD (OSC 52) TESTS
+// ============================================================================
+
+test "writeClipboard - generates basic OSC52 sequence" {
+    if (builtin.os.tag == .windows) return error.SkipZigTest;
+
+    var env = std.process.EnvMap.init(testing.allocator);
+    defer env.deinit();
+
+    var term = Terminal.init(.{ .env_map = &env });
+    term.caps.osc52 = true;
+
+    var writer = TestWriter.init(testing.allocator);
+    defer writer.deinit();
+
+    try term.writeClipboard(&writer, .clipboard, "aGVsbG8=");
+
+    const output = writer.getWritten();
+    // Should be: ESC]52;c;aGVsbG8=ESC\
+    try testing.expectEqualStrings("\x1b]52;c;aGVsbG8=\x1b\\", output);
+}
+
+test "writeClipboard - supports different targets" {
+    if (builtin.os.tag == .windows) return error.SkipZigTest;
+
+    var env = std.process.EnvMap.init(testing.allocator);
+    defer env.deinit();
+
+    var term = Terminal.init(.{ .env_map = &env });
+    term.caps.osc52 = true;
+
+    var writer = TestWriter.init(testing.allocator);
+    defer writer.deinit();
+
+    try term.writeClipboard(&writer, .primary, "test");
+    try testing.expect(std.mem.indexOf(u8, writer.getWritten(), "\x1b]52;p;") != null);
+
+    writer.reset();
+    try term.writeClipboard(&writer, .secondary, "test");
+    try testing.expect(std.mem.indexOf(u8, writer.getWritten(), "\x1b]52;s;") != null);
+
+    writer.reset();
+    try term.writeClipboard(&writer, .query, "test");
+    try testing.expect(std.mem.indexOf(u8, writer.getWritten(), "\x1b]52;q;") != null);
+}
+
+test "writeClipboard - returns error when OSC52 not supported" {
+    if (builtin.os.tag == .windows) return error.SkipZigTest;
+
+    var term = Terminal.init(.{});
+    term.caps.osc52 = false;
+
+    var writer = TestWriter.init(testing.allocator);
+    defer writer.deinit();
+
+    const result = term.writeClipboard(&writer, .clipboard, "test");
+    try testing.expectError(error.NotSupported, result);
+}
+
+test "writeClipboard - wraps in DCS passthrough for tmux" {
+    if (builtin.os.tag == .windows) return error.SkipZigTest;
+
+    var env = std.process.EnvMap.init(testing.allocator);
+    defer env.deinit();
+    try env.put("TMUX", "/tmp/tmux-1000/default,12345,0");
+
+    var term = Terminal.init(.{ .env_map = &env });
+    term.caps.osc52 = true;
+
+    var writer = TestWriter.init(testing.allocator);
+    defer writer.deinit();
+
+    try term.writeClipboard(&writer, .clipboard, "test");
+
+    const output = writer.getWritten();
+    // Should start with tmux DCS wrapper
+    try testing.expect(std.mem.startsWith(u8, output, "\x1bPtmux;"));
+    // Should end with DCS terminator
+    try testing.expect(std.mem.endsWith(u8, output, "\x1b\\"));
+    // Should have doubled ESC characters inside
+    try testing.expect(std.mem.indexOf(u8, output, "\x1b\x1b") != null);
+}
+
+test "writeClipboard - wraps in DCS passthrough for GNU Screen" {
+    if (builtin.os.tag == .windows) return error.SkipZigTest;
+
+    var env = std.process.EnvMap.init(testing.allocator);
+    defer env.deinit();
+    try env.put("STY", "12345.pts-0.hostname");
+
+    var term = Terminal.init(.{ .env_map = &env });
+    term.caps.osc52 = true;
+
+    var writer = TestWriter.init(testing.allocator);
+    defer writer.deinit();
+
+    try term.writeClipboard(&writer, .clipboard, "test");
+
+    const output = writer.getWritten();
+    // Should start with DCS (but not tmux prefix)
+    try testing.expect(std.mem.startsWith(u8, output, "\x1bP"));
+    try testing.expect(!std.mem.startsWith(u8, output, "\x1bPtmux;"));
+    // Should end with DCS terminator
+    try testing.expect(std.mem.endsWith(u8, output, "\x1b\\"));
+    // Should have doubled ESC characters
+    try testing.expect(std.mem.indexOf(u8, output, "\x1b\x1b") != null);
+}
+
+test "writeClipboard - handles tmux sessions" {
+    if (builtin.os.tag == .windows) return error.SkipZigTest;
+
+    var env = std.process.EnvMap.init(testing.allocator);
+    defer env.deinit();
+    try env.put("TMUX", "/tmp/tmux-1000/default,12345,0");
+
+    var term = Terminal.init(.{ .env_map = &env });
+    term.caps.osc52 = true;
+
+    var writer = TestWriter.init(testing.allocator);
+    defer writer.deinit();
+
+    try term.writeClipboard(&writer, .clipboard, "test");
+
+    const output = writer.getWritten();
+    // Should have tmux DCS wrapper
+    try testing.expect(std.mem.startsWith(u8, output, "\x1bPtmux;"));
+    // Should end with DCS terminator
+    try testing.expect(std.mem.endsWith(u8, output, "\x1b\\"));
+    // Should have doubled ESC characters
+    try testing.expect(std.mem.indexOf(u8, output, "\x1b\x1b") != null);
+}
+
+test "caps.osc52 - clipboard capability flag" {
+    var term = Terminal.init(.{});
+
+    term.caps.osc52 = false;
+    try testing.expect(!term.caps.osc52);
+
+    term.caps.osc52 = true;
+    try testing.expect(term.caps.osc52);
+}
+
+fn countSubstring(haystack: []const u8, needle: []const u8) usize {
+    var count: usize = 0;
+    var i: usize = 0;
+    while (i < haystack.len) {
+        if (std.mem.startsWith(u8, haystack[i..], needle)) {
+            count += 1;
+            i += needle.len;
+        } else {
+            i += 1;
+        }
+    }
+    return count;
+}
+
+test "queryTerminalSend - skips OSC 66 queries when OPENTUI_FORCE_EXPLICIT_WIDTH=false" {
+    if (builtin.os.tag == .windows) return error.SkipZigTest;
+
+    var env = std.process.EnvMap.init(testing.allocator);
+    defer env.deinit();
+    try env.put("OPENTUI_FORCE_EXPLICIT_WIDTH", "false");
+
+    var term = Terminal.init(.{ .env_map = &env });
+
+    var writer = TestWriter.init(testing.allocator);
+    defer writer.deinit();
+
+    try term.queryTerminalSend(&writer);
+
+    const output = writer.getWritten();
+
+    // Should not contain OSC 66 queries
+    try testing.expect(std.mem.indexOf(u8, output, "\x1b]66;") == null);
+
+    // Should still contain other queries
+    try testing.expect(std.mem.indexOf(u8, output, "\x1b[>0q") != null); // xtversion
+
+    // Verify the flag was set correctly
+    try testing.expect(term.skip_explicit_width_query);
+    try testing.expect(!term.caps.explicit_width);
+}
+
+test "queryTerminalSend - sends OSC 66 queries by default" {
+    if (builtin.os.tag == .windows) return error.SkipZigTest;
+
+    var env = std.process.EnvMap.init(testing.allocator);
+    defer env.deinit();
+
+    var term = Terminal.init(.{ .env_map = &env });
+
+    var writer = TestWriter.init(testing.allocator);
+    defer writer.deinit();
+
+    try term.queryTerminalSend(&writer);
+
+    const output = writer.getWritten();
+
+    // Should contain OSC 66 explicit width query
+    try testing.expect(std.mem.indexOf(u8, output, "\x1b]66;w=1; \x1b\\") != null);
+
+    // Should contain OSC 66 scaled text query
+    try testing.expect(std.mem.indexOf(u8, output, "\x1b]66;s=2; \x1b\\") != null);
+
+    // Verify the flag was not set
+    try testing.expect(!term.skip_explicit_width_query);
+}
+
+test "queryTerminalSend - sends OSC 66 queries when OPENTUI_FORCE_EXPLICIT_WIDTH=true" {
+    if (builtin.os.tag == .windows) return error.SkipZigTest;
+
+    var env = std.process.EnvMap.init(testing.allocator);
+    defer env.deinit();
+    try env.put("OPENTUI_FORCE_EXPLICIT_WIDTH", "true");
+
+    var term = Terminal.init(.{ .env_map = &env });
+
+    var writer = TestWriter.init(testing.allocator);
+    defer writer.deinit();
+
+    try term.queryTerminalSend(&writer);
+
+    const output = writer.getWritten();
+
+    // Should contain OSC 66 queries
+    try testing.expect(std.mem.indexOf(u8, output, "\x1b]66;w=1; \x1b\\") != null);
+    try testing.expect(std.mem.indexOf(u8, output, "\x1b]66;s=2; \x1b\\") != null);
+
+    // Verify the capability was forced on
+    try testing.expect(term.caps.explicit_width);
+    try testing.expect(!term.skip_explicit_width_query);
 }

@@ -8,6 +8,7 @@ import {
   type BorderStyle,
   borderCharsToArray,
   getBorderSides,
+  parseBorderStyle,
 } from "../lib"
 import { type ColorInput, RGBA, parseColor } from "../lib/RGBA"
 import { isValidPercentage } from "../lib/renderable.validations"
@@ -23,6 +24,7 @@ export interface BoxOptions<TRenderable extends Renderable = BoxRenderable> exte
   title?: string
   titleAlignment?: "left" | "center" | "right"
   focusedBorderColor?: ColorInput
+  focusable?: boolean
   gap?: number | `${number}%`
   rowGap?: number | `${number}%`
   columnGap?: number | `${number}%`
@@ -64,6 +66,10 @@ export class BoxRenderable extends Renderable {
   constructor(ctx: RenderContext, options: BoxOptions) {
     super(ctx, options)
 
+    if (options.focusable === true) {
+      this._focusable = true
+    }
+
     this._backgroundColor = parseColor(options.backgroundColor || this._defaultOptions.backgroundColor)
     this._border = options.border ?? this._defaultOptions.border
     if (
@@ -72,7 +78,7 @@ export class BoxRenderable extends Renderable {
     ) {
       this._border = true
     }
-    this._borderStyle = options.borderStyle || this._defaultOptions.borderStyle
+    this._borderStyle = parseBorderStyle(options.borderStyle, this._defaultOptions.borderStyle)
     this._borderColor = parseColor(options.borderColor || this._defaultOptions.borderColor)
     this._focusedBorderColor = parseColor(options.focusedBorderColor || this._defaultOptions.focusedBorderColor)
     this._customBorderCharsObj = options.customBorderChars
@@ -143,7 +149,7 @@ export class BoxRenderable extends Renderable {
   }
 
   public set borderStyle(value: BorderStyle) {
-    let _value = value ?? this._defaultOptions.borderStyle
+    const _value = parseBorderStyle(value, this._defaultOptions.borderStyle)
     if (this._borderStyle !== _value || !this._border) {
       this._borderStyle = _value
       this._customBorderChars = undefined

@@ -5,9 +5,12 @@ on:
   pull_request:
     branches: [main]
 
+env:
+  ZIG_VERSION: 0.15.2
+
 jobs:
-  build-native:
-    name: Build Native (All Platforms)
+  build:
+    name: Build Native Libraries
     runs-on: macos-latest
     steps:
       - name: Checkout code
@@ -21,12 +24,12 @@ jobs:
       - name: Setup Zig
         uses: goto-bus-stop/setup-zig@v2
         with:
-          version: 0.15.2
+          version: ${{ env.ZIG_VERSION }}
 
       - name: Install dependencies
         run: bun install
 
-      - name: Build native for all platforms
+      - name: Build native libraries (cross-compile all platforms)
         run: |
           cd packages/core
           bun run build:native --all
@@ -34,40 +37,34 @@ jobs:
       - name: Upload native artifacts
         uses: actions/upload-artifact@v4
         with:
-          name: native-all
+          name: native-libraries
           path: packages/core/node_modules/@opentui/
           retention-days: 1
 
-  test-ts:
-    name: Test (${{ matrix.name }})
-    needs: build-native
+  test:
+    name: Test (${{ matrix.os }})
+    needs: build
     strategy:
-      fail-fast: false
       matrix:
         include:
+          - os: macos-latest
+            platform: darwin-arm64
           - os: ubuntu-latest
-            name: linux-x64
-          # TODO: fix platform-specific test failures before re-enabling
-          # - os: ubuntu-latest
-          #   name: linux-musl-x64
-          #   container: oven/bun:alpine
-          # - os: macos-latest
-          #   name: darwin-arm64
-          # - os: macos-13
-          #   name: darwin-x64
-          # - os: windows-latest
-          #   name: win32-x64
+            platform: linux-x64
     runs-on: ${{ matrix.os }}
-    container: ${{ matrix.container || '' }}
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
 
       - name: Setup Bun
-        if: ${{ !matrix.container }}
         uses: oven-sh/setup-bun@v2
         with:
           bun-version: latest
+
+      - name: Setup Zig
+        uses: goto-bus-stop/setup-zig@v2
+        with:
+          version: ${{ env.ZIG_VERSION }}
 
       - name: Install dependencies
         run: bun install
@@ -75,10 +72,41 @@ jobs:
       - name: Download native artifacts
         uses: actions/download-artifact@v4
         with:
-          name: native-all
+          name: native-libraries
           path: packages/core/node_modules/@opentui/
 
-      - name: Run tests
+      - name: Verify native library
+        run: |
+          echo "Checking for ${{ matrix.platform }} native library..."
+          ls -la packages/core/node_modules/@opentui/
+          ls -la packages/core/node_modules/@opentui/core-${{ matrix.platform }}/
+
+      - name: Run native tests
+        run: |
+          cd packages/core/src/zig
+          zig build test --summary all
+
+      - name: Build TypeScript library
+        run: |
+          cd packages/core
+          bun run build:lib
+
+      - name: Run TypeScript tests
         run: |
           cd packages/core
           bun run test:js
+
+  # Gate job for branch protection
+  build-complete:
+    name: Core - Build and Test
+    needs: [test]
+    runs-on: ubuntu-latest
+    if: always()
+    steps:
+      - name: Check test results
+        run: |
+          if [ "${{ needs.test.result }}" != "success" ]; then
+            echo "Tests failed"
+            exit 1
+          fi
+          echo "All tests passed"

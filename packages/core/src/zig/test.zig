@@ -18,6 +18,7 @@ const rope_nested_tests = @import("tests/rope-nested_test.zig");
 const rope_fuzz_tests = @import("tests/rope_fuzz_test.zig");
 const utf8_tests = @import("tests/utf8_test.zig");
 const utf8_wcwidth_tests = @import("tests/utf8_wcwidth_test.zig");
+const utf8_wcwidth_cursor_tests = @import("tests/utf8_wcwidth_cursor_test.zig");
 const utf8_no_zwj_tests = @import("tests/utf8_no_zwj_test.zig");
 const event_emitter_tests = @import("tests/event-emitter_test.zig");
 const buffer_tests = @import("tests/buffer_test.zig");
@@ -50,6 +51,7 @@ comptime {
     _ = rope_fuzz_tests;
     _ = utf8_tests;
     _ = utf8_wcwidth_tests;
+    _ = utf8_wcwidth_cursor_tests;
     _ = utf8_no_zwj_tests;
     _ = event_emitter_tests;
     _ = buffer_tests;

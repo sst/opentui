@@ -1152,12 +1152,67 @@ test "wrap breaks: mixed graphemes and ASCII" {
     try testing.expectEqual(@as(u16, 15), result.breaks.items[3].char_offset); // 13 + 1(space) + 1(RI) + 1(RI) = 15 (per uucode)
 }
 
+test "wrap breaks: CJK characters keep break offsets" {
+    // Ensure multibyte graphemes don't shift wrap break offsets.
+    const input = "Hello 世界 test";
+
+    var result = utf8.WrapBreakResult.init(testing.allocator);
+    defer result.deinit();
+    try utf8.findWrapBreaks(input, &result, .unicode);
+
+    // Should find 2 wrap breaks (2 spaces)
+    try testing.expectEqual(@as(usize, 2), result.breaks.items.len);
+
+    // First break: space after "Hello"
+    try testing.expectEqual(@as(u16, 5), result.breaks.items[0].byte_offset);
+    try testing.expectEqual(@as(u16, 5), result.breaks.items[0].char_offset);
+
+    // Second break: space after "世界"
+    // Byte: "Hello " = 6 bytes, "世" = 3 bytes, "界" = 3 bytes, total = 12
+    try testing.expectEqual(@as(u16, 12), result.breaks.items[1].byte_offset);
+    try testing.expectEqual(@as(u16, 8), result.breaks.items[1].char_offset); // 6 graphemes(Hello space) + 2 graphemes(世界) = 8
+}
+
+test "wrap breaks: emoji and CJK mixed offsets" {
+    const input = "🌟 Unicode test: こんにちは世界 Hello World";
+
+    var result = utf8.WrapBreakResult.init(testing.allocator);
+    defer result.deinit();
+    try utf8.findWrapBreaks(input, &result, .unicode);
+
+    // Find the space before "Hello"
+    var space_before_hello: ?utf8.WrapBreak = null;
+    for (result.breaks.items) |brk| {
+        if (brk.byte_offset == 40) {
+            space_before_hello = brk;
+            break;
+        }
+    }
+
+    try testing.expect(space_before_hello != null);
+    try testing.expectEqual(@as(u16, 40), space_before_hello.?.byte_offset);
+    try testing.expectEqual(@as(u16, 23), space_before_hello.?.char_offset); // Graphemes before this space
+
+    // Find the space after "Hello"
+    var space_after_hello: ?utf8.WrapBreak = null;
+    for (result.breaks.items) |brk| {
+        if (brk.byte_offset == 46) {
+            space_after_hello = brk;
+            break;
+        }
+    }
+
+    try testing.expect(space_after_hello != null);
+    try testing.expectEqual(@as(u16, 46), space_after_hello.?.byte_offset);
+    try testing.expectEqual(@as(u16, 29), space_after_hello.?.char_offset);
+}
+
 // ============================================================================
 // WRAP BY WIDTH TESTS
 // ============================================================================
 
 test "wrap by width: empty string" {
-    const result = utf8.findWrapPosByWidth("", 10, 4, true, .unicode);
+    const result = utf8.findWrapPosByWidth("", 10, 4, false, .unicode);
     try testing.expectEqual(@as(u32, 0), result.byte_offset);
     try testing.expectEqual(@as(u32, 0), result.grapheme_count);
     try testing.expectEqual(@as(u32, 0), result.columns_used);
@@ -1199,7 +1254,7 @@ test "wrap by width: combining mark" {
 }
 
 test "wrap by width: tab handling" {
-    const result = utf8.findWrapPosByWidth("a\tb", 5, 4, true, .unicode);
+    const result = utf8.findWrapPosByWidth("a\tb", 5, 4, false, .unicode);
     try testing.expectEqual(@as(u32, 2), result.byte_offset); // After "a\t"
     try testing.expectEqual(@as(u32, 2), result.grapheme_count); // 'a' + tab
     try testing.expectEqual(@as(u32, 5), result.columns_used); // 'a' (1) + tab (4) = 5
@@ -1235,7 +1290,7 @@ test "wrap by width: consistency - Unicode text" {
 
 test "wrap by width: consistency - edge cases" {
     const edge_cases = [_]struct { text: []const u8, ascii: bool }{
-        .{ .text = "", .ascii = true },
+        .{ .text = "", .ascii = false },
         .{ .text = " ", .ascii = true },
         .{ .text = "a", .ascii = true },
         .{ .text = "abc", .ascii = true },
@@ -1244,7 +1299,7 @@ test "wrap by width: consistency - edge cases" {
         .{ .text = "no-spaces-here", .ascii = true },
         .{ .text = "/usr/local/bin", .ascii = true },
         .{ .text = "世界", .ascii = false },
-        .{ .text = "\t\t\t", .ascii = true },
+        .{ .text = "\t\t\t", .ascii = false },
     };
 
     for (edge_cases) |input| {
@@ -1402,7 +1457,7 @@ test "find pos by width: selection boundaries with multiple wide chars" {
 }
 
 test "find pos by width: empty string" {
-    const result = utf8.findPosByWidth("", 10, 4, true, true, .unicode);
+    const result = utf8.findPosByWidth("", 10, 4, false, true, .unicode);
     try testing.expectEqual(@as(u32, 0), result.byte_offset);
     try testing.expectEqual(@as(u32, 0), result.grapheme_count);
     try testing.expectEqual(@as(u32, 0), result.columns_used);
@@ -1462,6 +1517,132 @@ test "find pos by width: CJK wide characters" {
     try testing.expectEqual(@as(u32, 9), result8.columns_used);
 }
 
+test "eastAsianWidth: verify all characters in test string have correct width" {
+    // Test each CJK character individually to ensure width calculation is correct
+
+    // Test hiragana characters from "こんにちは"
+    try testing.expectEqual(@as(u32, 2), utf8.eastAsianWidth(0x3053)); // こ
+    try testing.expectEqual(@as(u32, 2), utf8.eastAsianWidth(0x3093)); // ん
+    try testing.expectEqual(@as(u32, 2), utf8.eastAsianWidth(0x306B)); // に
+    try testing.expectEqual(@as(u32, 2), utf8.eastAsianWidth(0x3061)); // ち
+    try testing.expectEqual(@as(u32, 2), utf8.eastAsianWidth(0x306F)); // は
+
+    // Test kanji characters from "世界"
+    try testing.expectEqual(@as(u32, 2), utf8.eastAsianWidth(0x4E16)); // 世
+    try testing.expectEqual(@as(u32, 2), utf8.eastAsianWidth(0x754C)); // 界
+
+    // Test emoji
+    try testing.expectEqual(@as(u32, 2), utf8.eastAsianWidth(0x1F31F)); // 🌟
+    try testing.expectEqual(@as(u32, 2), utf8.eastAsianWidth(0x1F680)); // 🚀
+
+    // Test Chinese characters from "你好"
+    try testing.expectEqual(@as(u32, 2), utf8.eastAsianWidth(0x4F60)); // 你
+    try testing.expectEqual(@as(u32, 2), utf8.eastAsianWidth(0x597D)); // 好
+
+    // Test Korean characters from "안녕하세요"
+    try testing.expectEqual(@as(u32, 2), utf8.eastAsianWidth(0xC548)); // 안
+    try testing.expectEqual(@as(u32, 2), utf8.eastAsianWidth(0xB155)); // 녕
+    try testing.expectEqual(@as(u32, 2), utf8.eastAsianWidth(0xD558)); // 하
+    try testing.expectEqual(@as(u32, 2), utf8.eastAsianWidth(0xC138)); // 세
+    try testing.expectEqual(@as(u32, 2), utf8.eastAsianWidth(0xC694)); // 요
+
+    // Test ASCII characters
+    try testing.expectEqual(@as(u32, 1), utf8.eastAsianWidth('H'));
+    try testing.expectEqual(@as(u32, 1), utf8.eastAsianWidth('e'));
+    try testing.expectEqual(@as(u32, 1), utf8.eastAsianWidth(' '));
+    try testing.expectEqual(@as(u32, 1), utf8.eastAsianWidth(':'));
+}
+
+test "calculateTextWidth: verify CJK string widths character by character" {
+    // Verify width of individual CJK characters
+    try testing.expectEqual(@as(u32, 2), utf8.calculateTextWidth("こ", 8, false, .unicode));
+    try testing.expectEqual(@as(u32, 2), utf8.calculateTextWidth("ん", 8, false, .unicode));
+    try testing.expectEqual(@as(u32, 2), utf8.calculateTextWidth("に", 8, false, .unicode));
+    try testing.expectEqual(@as(u32, 2), utf8.calculateTextWidth("ち", 8, false, .unicode));
+    try testing.expectEqual(@as(u32, 2), utf8.calculateTextWidth("は", 8, false, .unicode));
+    try testing.expectEqual(@as(u32, 2), utf8.calculateTextWidth("世", 8, false, .unicode));
+    try testing.expectEqual(@as(u32, 2), utf8.calculateTextWidth("界", 8, false, .unicode));
+
+    // Verify cumulative widths
+    try testing.expectEqual(@as(u32, 4), utf8.calculateTextWidth("こん", 8, false, .unicode));
+    try testing.expectEqual(@as(u32, 6), utf8.calculateTextWidth("こんに", 8, false, .unicode));
+    try testing.expectEqual(@as(u32, 14), utf8.calculateTextWidth("こんにちは世界", 8, false, .unicode));
+
+    // Verify mixed ASCII and CJK
+    try testing.expectEqual(@as(u32, 5), utf8.calculateTextWidth("Hello", 8, true, .unicode));
+    try testing.expectEqual(@as(u32, 6), utf8.calculateTextWidth("Hello ", 8, true, .unicode));
+    try testing.expectEqual(@as(u32, 8), utf8.calculateTextWidth("Hello 世", 8, false, .unicode));
+    try testing.expectEqual(@as(u32, 10), utf8.calculateTextWidth("Hello 世界", 8, false, .unicode));
+}
+
+test "calculateTextWidth: step by step for emoji CJK test string" {
+    // Manually verify each section
+    try testing.expectEqual(@as(u32, 2), utf8.calculateTextWidth("🌟", 8, false, .unicode));
+    try testing.expectEqual(@as(u32, 3), utf8.calculateTextWidth("🌟 ", 8, false, .unicode));
+    try testing.expectEqual(@as(u32, 10), utf8.calculateTextWidth("🌟 Unicode", 8, false, .unicode));
+    try testing.expectEqual(@as(u32, 11), utf8.calculateTextWidth("🌟 Unicode ", 8, false, .unicode));
+    try testing.expectEqual(@as(u32, 15), utf8.calculateTextWidth("🌟 Unicode test", 8, false, .unicode));
+    try testing.expectEqual(@as(u32, 16), utf8.calculateTextWidth("🌟 Unicode test:", 8, false, .unicode));
+    try testing.expectEqual(@as(u32, 17), utf8.calculateTextWidth("🌟 Unicode test: ", 8, false, .unicode));
+
+    // CJK section - verify each character adds 2 columns
+    try testing.expectEqual(@as(u32, 19), utf8.calculateTextWidth("🌟 Unicode test: こ", 8, false, .unicode));
+    try testing.expectEqual(@as(u32, 21), utf8.calculateTextWidth("🌟 Unicode test: こん", 8, false, .unicode));
+    try testing.expectEqual(@as(u32, 23), utf8.calculateTextWidth("🌟 Unicode test: こんに", 8, false, .unicode));
+    try testing.expectEqual(@as(u32, 25), utf8.calculateTextWidth("🌟 Unicode test: こんにち", 8, false, .unicode));
+    try testing.expectEqual(@as(u32, 27), utf8.calculateTextWidth("🌟 Unicode test: こんにちは", 8, false, .unicode));
+    try testing.expectEqual(@as(u32, 29), utf8.calculateTextWidth("🌟 Unicode test: こんにちは世", 8, false, .unicode));
+    try testing.expectEqual(@as(u32, 31), utf8.calculateTextWidth("🌟 Unicode test: こんにちは世界", 8, false, .unicode));
+    try testing.expectEqual(@as(u32, 32), utf8.calculateTextWidth("🌟 Unicode test: こんにちは世界 ", 8, false, .unicode));
+
+    // English section
+    try testing.expectEqual(@as(u32, 33), utf8.calculateTextWidth("🌟 Unicode test: こんにちは世界 H", 8, false, .unicode));
+    try testing.expectEqual(@as(u32, 37), utf8.calculateTextWidth("🌟 Unicode test: こんにちは世界 Hello", 8, false, .unicode));
+    try testing.expectEqual(@as(u32, 38), utf8.calculateTextWidth("🌟 Unicode test: こんにちは世界 Hello ", 8, false, .unicode));
+    try testing.expectEqual(@as(u32, 43), utf8.calculateTextWidth("🌟 Unicode test: こんにちは世界 Hello World", 8, false, .unicode));
+}
+
+test "find pos by width: CJK characters with English - verify column calculation" {
+    // This test verifies that findPosByWidth correctly handles mixed CJK and ASCII
+    const input = "🌟 Unicode test: こんにちは世界 Hello World 你好世界";
+
+    // Verify width calculations at key positions
+    const width_before_hello = utf8.calculateTextWidth(input[0..40], 8, false, .unicode);
+    try testing.expectEqual(@as(u32, 31), width_before_hello);
+
+    const width_including_space_before_hello = utf8.calculateTextWidth(input[0..41], 8, false, .unicode);
+    try testing.expectEqual(@as(u32, 32), width_including_space_before_hello);
+
+    const width_up_to_hello = utf8.calculateTextWidth(input[0..46], 8, false, .unicode);
+    try testing.expectEqual(@as(u32, 37), width_up_to_hello);
+
+    const width_including_hello_space = utf8.calculateTextWidth(input[0..47], 8, false, .unicode);
+    try testing.expectEqual(@as(u32, 38), width_including_hello_space);
+
+    const width_up_to_world = utf8.calculateTextWidth(input[0..52], 8, false, .unicode);
+    try testing.expectEqual(@as(u32, 43), width_up_to_world);
+
+    const width_including_world_space = utf8.calculateTextWidth(input[0..53], 8, false, .unicode);
+    try testing.expectEqual(@as(u32, 44), width_including_world_space);
+
+    // Verify findPosByWidth returns correct positions
+    const result35 = utf8.findPosByWidth(input, 35, 8, false, false, .unicode);
+    try testing.expectEqual(@as(u32, 44), result35.byte_offset);
+    try testing.expectEqual(@as(u32, 35), result35.columns_used);
+
+    const result36 = utf8.findPosByWidth(input, 36, 8, false, false, .unicode);
+    try testing.expectEqual(@as(u32, 45), result36.byte_offset);
+    try testing.expectEqual(@as(u32, 36), result36.columns_used);
+
+    const result37 = utf8.findPosByWidth(input, 37, 8, false, false, .unicode);
+    try testing.expectEqual(@as(u32, 46), result37.byte_offset);
+    try testing.expectEqual(@as(u32, 37), result37.columns_used);
+
+    const result42 = utf8.findPosByWidth(input, 42, 8, false, false, .unicode);
+    try testing.expectEqual(@as(u32, 51), result42.byte_offset);
+    try testing.expectEqual(@as(u32, 42), result42.columns_used);
+}
+
 test "find pos by width: combining mark" {
     const result = utf8.findPosByWidth("e\u{0301}test", 3, 4, false, true, .unicode);
     try testing.expectEqual(@as(u32, 5), result.byte_offset); // After "é" (3 bytes) + "te" (2 bytes)
@@ -1470,7 +1651,7 @@ test "find pos by width: combining mark" {
 }
 
 test "find pos by width: tab handling" {
-    const result = utf8.findPosByWidth("a\tb", 5, 4, true, true, .unicode);
+    const result = utf8.findPosByWidth("a\tb", 5, 4, false, true, .unicode);
     try testing.expectEqual(@as(u32, 2), result.byte_offset); // After "a\t"
     try testing.expectEqual(@as(u32, 2), result.grapheme_count); // 'a' + tab
     try testing.expectEqual(@as(u32, 5), result.columns_used); // 'a' (1) + tab (4) = 5
@@ -1577,9 +1758,9 @@ test "split at weight: tab character" {
     const input = "a\tbc"; // a(1) tab(4 fixed) b(1) c(1) = 7 columns total
 
     // Split at column 4 - should stop before tab since it would exceed limit
-    const result4 = utf8.findPosByWidth(input, 4, 4, true, false, .unicode);
-    try testing.expectEqual(@as(u32, 2), result4.byte_offset); // After "a\t"
-    try testing.expectEqual(@as(u32, 5), result4.columns_used); // a(1) + tab(4) = 5
+    const result4 = utf8.findPosByWidth(input, 4, 4, false, false, .unicode);
+    try testing.expectEqual(@as(u32, 1), result4.byte_offset); // After "a"
+    try testing.expectEqual(@as(u32, 1), result4.columns_used); // a(1)
 }
 
 test "split at weight: complex mixed content" {
@@ -1959,7 +2140,7 @@ test "getPrevGraphemeStart: consecutive wide chars" {
 // ============================================================================
 
 test "calculateTextWidth: empty string" {
-    const result = utf8.calculateTextWidth("", 4, true, .unicode);
+    const result = utf8.calculateTextWidth("", 4, false, .unicode);
     try testing.expectEqual(@as(u32, 0), result);
 }
 
@@ -1969,38 +2150,38 @@ test "calculateTextWidth: simple ASCII" {
 }
 
 test "calculateTextWidth: single tab" {
-    const result = utf8.calculateTextWidth("\t", 4, true, .unicode);
+    const result = utf8.calculateTextWidth("\t", 4, false, .unicode);
     try testing.expectEqual(@as(u32, 4), result);
 }
 
 test "calculateTextWidth: tab with different widths" {
-    try testing.expectEqual(@as(u32, 2), utf8.calculateTextWidth("\t", 2, true, .unicode));
-    try testing.expectEqual(@as(u32, 4), utf8.calculateTextWidth("\t", 4, true, .unicode));
-    try testing.expectEqual(@as(u32, 8), utf8.calculateTextWidth("\t", 8, true, .unicode));
+    try testing.expectEqual(@as(u32, 2), utf8.calculateTextWidth("\t", 2, false, .unicode));
+    try testing.expectEqual(@as(u32, 4), utf8.calculateTextWidth("\t", 4, false, .unicode));
+    try testing.expectEqual(@as(u32, 8), utf8.calculateTextWidth("\t", 8, false, .unicode));
 }
 
 test "calculateTextWidth: multiple tabs" {
-    const result = utf8.calculateTextWidth("\t\t\t", 4, true, .unicode);
+    const result = utf8.calculateTextWidth("\t\t\t", 4, false, .unicode);
     try testing.expectEqual(@as(u32, 12), result); // 3 tabs * 4 = 12
 }
 
 test "calculateTextWidth: text with tabs" {
-    const result = utf8.calculateTextWidth("a\tb", 4, true, .unicode);
+    const result = utf8.calculateTextWidth("a\tb", 4, false, .unicode);
     try testing.expectEqual(@as(u32, 6), result); // a(1) + tab(4) + b(1) = 6
 }
 
 test "calculateTextWidth: multiple tabs between text" {
-    const result = utf8.calculateTextWidth("a\t\tb", 2, true, .unicode);
+    const result = utf8.calculateTextWidth("a\t\tb", 2, false, .unicode);
     try testing.expectEqual(@as(u32, 6), result); // a(1) + tab(2) + tab(2) + b(1) = 6
 }
 
 test "calculateTextWidth: tab at start" {
-    const result = utf8.calculateTextWidth("\tabc", 4, true, .unicode);
+    const result = utf8.calculateTextWidth("\tabc", 4, false, .unicode);
     try testing.expectEqual(@as(u32, 7), result); // tab(4) + a(1) + b(1) + c(1) = 7
 }
 
 test "calculateTextWidth: tab at end" {
-    const result = utf8.calculateTextWidth("abc\t", 4, true, .unicode);
+    const result = utf8.calculateTextWidth("abc\t", 4, false, .unicode);
     try testing.expectEqual(@as(u32, 7), result); // a(1) + b(1) + c(1) + tab(4) = 7
 }
 
@@ -2021,7 +2202,7 @@ test "calculateTextWidth: mixed ASCII and Unicode with tabs" {
 
 test "calculateTextWidth: realistic code with tabs" {
     const text = "\tif (x > 5) {\n\t\treturn true;\n\t}";
-    const result = utf8.calculateTextWidth(text, 2, true, .unicode);
+    const result = utf8.calculateTextWidth(text, 2, false, .unicode);
     // tab(2) + "if (x > 5) {" (12) + newline(0) + tab(2) + tab(2) + "return true;" (12) + newline(0) + tab(2) + "}" (1)
     // = 2 + 12 + 2 + 2 + 12 + 2 + 1 = 33
     try testing.expectEqual(@as(u32, 33), result);
@@ -2033,12 +2214,12 @@ test "calculateTextWidth: only spaces" {
 }
 
 test "calculateTextWidth: tabs and spaces mixed" {
-    const result = utf8.calculateTextWidth("  \t  \t  ", 4, true, .unicode);
+    const result = utf8.calculateTextWidth("  \t  \t  ", 4, false, .unicode);
     try testing.expectEqual(@as(u32, 14), result); // 2 + 4 + 2 + 4 + 2 = 14
 }
 
 test "calculateTextWidth: control characters" {
-    const result = utf8.calculateTextWidth("a\x00b\x1Fc", 4, true, .unicode);
+    const result = utf8.calculateTextWidth("a\x00b\x1Fc", 4, false, .unicode);
     try testing.expectEqual(@as(u32, 3), result); // Only printable chars: a, b, c
 }
 
@@ -2103,7 +2284,7 @@ test "findGraphemeInfo: empty string" {
     var result: std.ArrayListUnmanaged(utf8.GraphemeInfo) = .{};
     defer result.deinit(testing.allocator);
 
-    try utf8.findGraphemeInfo("", 4, true, .unicode, testing.allocator, &result);
+    try utf8.findGraphemeInfo("", 4, false, .unicode, testing.allocator, &result);
     try testing.expectEqual(@as(usize, 0), result.items.len);
 }
 
@@ -2390,7 +2571,7 @@ test "calculateTextWidth: fullwidth forms with tab" {
 }
 
 test "calculateTextWidth: ASCII fast path consistency" {
-    const text_ascii = "hello\tworld";
+    const text_ascii = "hello world";
     const result_fast = utf8.calculateTextWidth(text_ascii, 4, true, .unicode);
     const result_slow = utf8.calculateTextWidth(text_ascii, 4, false, .unicode);
     try testing.expectEqual(result_fast, result_slow);
@@ -2412,7 +2593,7 @@ test "calculateTextWidth: large text with many tabs" {
         }
     }
 
-    const result = utf8.calculateTextWidth(buf, 4, true, .unicode);
+    const result = utf8.calculateTextWidth(buf, 4, false, .unicode);
     try testing.expectEqual(expected, result);
 }
 
@@ -3632,4 +3813,182 @@ test "findGraphemeInfo: comprehensive multilingual text" {
 
     const final_computed_width = utf8.calculateTextWidth(text, 4, false, .unicode);
     try testing.expectEqual(expected_width, final_computed_width);
+}
+
+// ============================================================================
+// THAI DIACRITICS AND COMBINING MARKS TESTS
+// ============================================================================
+
+test "Thai: base consonants have width 1" {
+    const consonants = "กขคงจฉชซญฎฏฐดตถทธนบปผฝพฟภมยรลวศษสหอฮ";
+    const width = utf8.calculateTextWidth(consonants, 4, false, .unicode);
+    try testing.expectEqual(@as(u32, 36), width);
+}
+
+test "Thai: spacing vowels have width 1" {
+    const spacing_vowels = "าะแโใไ";
+    const width = utf8.calculateTextWidth(spacing_vowels, 4, false, .unicode);
+    try testing.expectEqual(@as(u32, 6), width);
+}
+
+test "Thai: combining vowels above have width 0" {
+    const base = "ก";
+    const with_sara_i = "กิ";
+    const with_sara_ii = "กี";
+    const with_sara_ue = "กึ";
+    const with_sara_uee = "กื";
+    const with_mai_han_akat = "กั";
+
+    try testing.expectEqual(@as(u32, 1), utf8.calculateTextWidth(base, 4, false, .unicode));
+    try testing.expectEqual(@as(u32, 1), utf8.calculateTextWidth(with_sara_i, 4, false, .unicode));
+    try testing.expectEqual(@as(u32, 1), utf8.calculateTextWidth(with_sara_ii, 4, false, .unicode));
+    try testing.expectEqual(@as(u32, 1), utf8.calculateTextWidth(with_sara_ue, 4, false, .unicode));
+    try testing.expectEqual(@as(u32, 1), utf8.calculateTextWidth(with_sara_uee, 4, false, .unicode));
+    try testing.expectEqual(@as(u32, 1), utf8.calculateTextWidth(with_mai_han_akat, 4, false, .unicode));
+}
+
+test "Thai: combining vowels below have width 0" {
+    const with_sara_u = "กุ";
+    const with_sara_uu = "กู";
+
+    try testing.expectEqual(@as(u32, 1), utf8.calculateTextWidth(with_sara_u, 4, false, .unicode));
+    try testing.expectEqual(@as(u32, 1), utf8.calculateTextWidth(with_sara_uu, 4, false, .unicode));
+}
+
+test "Thai: tone marks have width 0" {
+    const with_mai_ek = "ก่";
+    const with_mai_tho = "ก้";
+    const with_mai_tri = "ก๊";
+    const with_mai_chattawa = "ก๋";
+
+    try testing.expectEqual(@as(u32, 1), utf8.calculateTextWidth(with_mai_ek, 4, false, .unicode));
+    try testing.expectEqual(@as(u32, 1), utf8.calculateTextWidth(with_mai_tho, 4, false, .unicode));
+    try testing.expectEqual(@as(u32, 1), utf8.calculateTextWidth(with_mai_tri, 4, false, .unicode));
+    try testing.expectEqual(@as(u32, 1), utf8.calculateTextWidth(with_mai_chattawa, 4, false, .unicode));
+}
+
+test "Thai: other diacritics have width 0" {
+    const with_maitaikhu = "ก็";
+    const with_thanthakhat = "ก์";
+    const with_nikhahit = "กํ";
+
+    try testing.expectEqual(@as(u32, 1), utf8.calculateTextWidth(with_maitaikhu, 4, false, .unicode));
+    try testing.expectEqual(@as(u32, 1), utf8.calculateTextWidth(with_thanthakhat, 4, false, .unicode));
+    try testing.expectEqual(@as(u32, 1), utf8.calculateTextWidth(with_nikhahit, 4, false, .unicode));
+}
+
+test "Thai: combined vowel and tone mark" {
+    const text = "กี่";
+    try testing.expectEqual(@as(u32, 1), utf8.calculateTextWidth(text, 4, false, .unicode));
+
+    const text2 = "คือ";
+    try testing.expectEqual(@as(u32, 2), utf8.calculateTextWidth(text2, 4, false, .unicode));
+}
+
+test "Thai: word 'ภาษาไทย' (Thai language)" {
+    const text = "ภาษาไทย";
+    try testing.expectEqual(@as(u32, 7), utf8.calculateTextWidth(text, 4, false, .unicode));
+}
+
+test "Thai: word 'อย่าง' with tone mark" {
+    const text = "อย่าง";
+    try testing.expectEqual(@as(u32, 4), utf8.calculateTextWidth(text, 4, false, .unicode));
+}
+
+test "Thai: word 'อธิบาย' with vowel above" {
+    const text = "อธิบาย";
+    try testing.expectEqual(@as(u32, 5), utf8.calculateTextWidth(text, 4, false, .unicode));
+}
+
+test "Thai: full sentence with spaces" {
+    const text = "ภาษาไทย คืออะไร อธิบายมาอย่างละเอียด";
+    try testing.expectEqual(@as(u32, 32), utf8.calculateTextWidth(text, 4, false, .unicode));
+}
+
+test "Thai: wrap by width respects combining marks" {
+    const text = "คือ";
+
+    const result1 = utf8.findWrapPosByWidth(text, 1, 4, false, .unicode);
+    try testing.expectEqual(@as(u32, 6), result1.byte_offset);
+    try testing.expectEqual(@as(u32, 1), result1.columns_used);
+
+    const result2 = utf8.findWrapPosByWidth(text, 2, 4, false, .unicode);
+    try testing.expectEqual(@as(u32, 9), result2.byte_offset);
+    try testing.expectEqual(@as(u32, 2), result2.columns_used);
+}
+
+test "Thai: wrap by width with tone marks" {
+    const text = "ก่อน";
+
+    const result2 = utf8.findWrapPosByWidth(text, 2, 4, false, .unicode);
+    try testing.expectEqual(@as(u32, 2), result2.columns_used);
+
+    const result3 = utf8.findWrapPosByWidth(text, 3, 4, false, .unicode);
+    try testing.expectEqual(@as(u32, 3), result3.columns_used);
+}
+
+test "Thai: grapheme info for combining marks" {
+    const text = "กี่";
+
+    var result: std.ArrayListUnmanaged(utf8.GraphemeInfo) = .{};
+    defer result.deinit(testing.allocator);
+
+    try utf8.findGraphemeInfo(text, 4, false, .unicode, testing.allocator, &result);
+
+    try testing.expectEqual(@as(usize, 1), result.items.len);
+    try testing.expectEqual(@as(u8, 1), result.items[0].width);
+}
+
+test "Thai: grapheme info for word with combining marks" {
+    const text = "คือ";
+
+    var result: std.ArrayListUnmanaged(utf8.GraphemeInfo) = .{};
+    defer result.deinit(testing.allocator);
+
+    try utf8.findGraphemeInfo(text, 4, false, .unicode, testing.allocator, &result);
+
+    try testing.expectEqual(@as(usize, 2), result.items.len);
+    try testing.expectEqual(@as(u8, 1), result.items[0].width);
+    try testing.expectEqual(@as(u8, 1), result.items[1].width);
+}
+
+test "Thai: mixed Thai and ASCII" {
+    const text = "Hello ภาษาไทย World";
+    try testing.expectEqual(@as(u32, 19), utf8.calculateTextWidth(text, 4, false, .unicode));
+}
+
+test "Thai: mixed Thai and emoji" {
+    const text = "ภาษา 🇹🇭 ไทย";
+    try testing.expectEqual(@as(u32, 11), utf8.calculateTextWidth(text, 4, false, .unicode));
+}
+
+test "Thai: คำว่า width should be 3" {
+    const text = "คำว่า";
+    try testing.expectEqual(@as(u32, 3), utf8.calculateTextWidth(text, 4, false, .unicode));
+}
+
+test "Thai: ว่ width should be 1" {
+    const text = "ว่";
+    try testing.expectEqual(@as(u32, 1), utf8.calculateTextWidth(text, 4, false, .unicode));
+}
+
+test "Thai: ว่ wcwidth vs unicode mode comparison" {
+    const text = "ว่";
+    const wcwidth_result = utf8.calculateTextWidth(text, 4, false, .wcwidth);
+    const unicode_result = utf8.calculateTextWidth(text, 4, false, .unicode);
+
+    try testing.expectEqual(@as(u32, 1), wcwidth_result);
+    try testing.expectEqual(@as(u32, 1), unicode_result);
+}
+
+test "Thai: ว่ is a single grapheme cluster" {
+    const text = "ว่";
+
+    var result: std.ArrayListUnmanaged(utf8.GraphemeInfo) = .{};
+    defer result.deinit(testing.allocator);
+
+    try utf8.findGraphemeInfo(text, 4, false, .unicode, testing.allocator, &result);
+
+    try testing.expectEqual(@as(usize, 1), result.items.len);
+    try testing.expectEqual(@as(u8, 1), result.items[0].width);
 }

@@ -12,6 +12,8 @@ import type {
   InputRenderableOptions,
   LineNumberOptions,
   LineNumberRenderable,
+  MarkdownOptions,
+  MarkdownRenderable,
   RenderableOptions,
   RenderContext,
   ScrollBoxOptions,
@@ -94,7 +96,9 @@ export type GetNonStyledProperties<TConstructor> =
                   | "treeSitterClient"
                   | "conceal"
                   | "drawUnstyledText"
-              : NonStyledProps
+              : TConstructor extends RenderableConstructor<MarkdownRenderable>
+                ? NonStyledProps | "content" | "syntaxStyle" | "treeSitterClient" | "conceal" | "renderNode"
+                : NonStyledProps
 
 // ============================================================================
 // Component Props System
@@ -129,7 +133,9 @@ export type LinkProps = SpanProps & {
 
 export type LineBreakProps = Pick<SpanProps, "id">
 
-export type BoxProps = ComponentProps<ContainerProps<BoxOptions>, BoxRenderable>
+export type BoxProps = ComponentProps<ContainerProps<BoxOptions>, BoxRenderable> & {
+  focused?: boolean
+}
 
 export type InputProps = ComponentProps<InputRenderableOptions, InputRenderable> & {
   focused?: boolean
@@ -143,6 +149,8 @@ export type TextareaProps = ComponentProps<TextareaOptions, TextareaRenderable> 
 }
 
 export type CodeProps = ComponentProps<CodeOptions, CodeRenderable>
+
+export type MarkdownProps = ComponentProps<MarkdownOptions, MarkdownRenderable>
 
 export type DiffProps = ComponentProps<DiffRenderableOptions, DiffRenderable>
 

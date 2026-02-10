@@ -146,7 +146,7 @@ describe("TerminalConsole", () => {
       terminalConsole.handleMouse(mouseEvent)
 
       expect(terminalConsole["_selectionStart"]).not.toBeNull()
-      expect(terminalConsole["_isSelecting"]).toBe(true)
+      expect(terminalConsole["_isDragging"]).toBe(true)
     })
 
     test("should extend selection on drag", () => {
@@ -184,7 +184,7 @@ describe("TerminalConsole", () => {
       terminalConsole.handleMouse(createMouseEvent(bounds.x + 5, bounds.y + 1, "drag", 0))
       terminalConsole.handleMouse(createMouseEvent(bounds.x + 5, bounds.y + 1, "up", 0))
 
-      expect(terminalConsole["_isSelecting"]).toBe(false)
+      expect(terminalConsole["_isDragging"]).toBe(false)
       expect(terminalConsole["hasSelection"]()).toBe(true)
     })
 
@@ -244,13 +244,13 @@ describe("TerminalConsole", () => {
 
       terminalConsole["_selectionStart"] = { line: 0, col: 0 }
       terminalConsole["_selectionEnd"] = { line: 0, col: 5 }
-      terminalConsole["_isSelecting"] = true
+      terminalConsole["_isDragging"] = true
 
       terminalConsole["clearSelection"]()
 
       expect(terminalConsole["_selectionStart"]).toBeNull()
       expect(terminalConsole["_selectionEnd"]).toBeNull()
-      expect(terminalConsole["_isSelecting"]).toBe(false)
+      expect(terminalConsole["_isDragging"]).toBe(false)
     })
   })
 
@@ -404,7 +404,7 @@ describe("TerminalConsole", () => {
       const rightClickEvent = createMouseEvent(bounds.x + 1, bounds.y + 1, "down", 2)
       terminalConsole.handleMouse(rightClickEvent)
 
-      expect(terminalConsole["_isSelecting"]).toBe(false)
+      expect(terminalConsole["_isDragging"]).toBe(false)
       expect(terminalConsole["_selectionStart"]).toBeNull()
     })
   })

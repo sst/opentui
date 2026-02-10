@@ -6,6 +6,7 @@ const tbv = @import("text-buffer-view.zig");
 const edv = @import("editor-view.zig");
 const ss = @import("syntax-style.zig");
 const math = std.math;
+const assert = std.debug.assert;
 
 const gp = @import("grapheme.zig");
 const link = @import("link.zig");
@@ -27,6 +28,8 @@ pub const DEFAULT_SPACE_CHAR: u32 = 32;
 const MAX_UNICODE_CODEPOINT: u32 = 0x10FFFF;
 const BLOCK_CHAR: u32 = 0x2588; // Full block █
 const QUADRANT_CHARS_COUNT = 16;
+
+const GRAYSCALE_CHARS = " .'^\",:;Il!i><~+_-?][}{1)(|\\/tfjrxnuvczXYUJCLQ0OZmwqpdbkhao*#MW&8%B@$";
 
 pub const BorderSides = packed struct {
     top: bool = false,
@@ -93,9 +96,24 @@ fn isRGBAWithAlpha(color: RGBA) bool {
     return color[3] < 1.0;
 }
 
+inline fn isFullyOpaque(opacity: f32, fg: RGBA, bg: RGBA) bool {
+    return opacity == 1.0 and !isRGBAWithAlpha(fg) and !isRGBAWithAlpha(bg);
+}
+
 fn blendColors(overlay: RGBA, text: RGBA) RGBA {
     if (overlay[3] == 1.0) {
         return overlay;
+    }
+
+    if (text[3] == 0.0) {
+        const alpha = overlay[3];
+        const r = overlay[0] * alpha;
+        const g = overlay[1] * alpha;
+        const b = overlay[2] * alpha;
+        if (r < 0.01 and g < 0.01 and b < 0.01) {
+            return .{ 0.0, 0.0, 0.0, 0.0 };
+        }
+        return .{ r, g, b, alpha };
     }
 
     const alpha = overlay[3];
@@ -116,7 +134,9 @@ fn blendColors(overlay: RGBA, text: RGBA) RGBA {
     const oneMinusAlpha = @as(Vec3f, @splat(1.0 - perceptualAlpha));
     const blended = overlayVec * alphaSplat + textVec * oneMinusAlpha;
 
-    return .{ blended[0], blended[1], blended[2], text[3] };
+    const resultAlpha = alpha + text[3] * (1.0 - alpha);
+
+    return .{ blended[0], blended[1], blended[2], resultAlpha };
 }
 
 /// Optimized buffer for terminal rendering
@@ -170,13 +190,24 @@ pub const OptimizedBuffer = struct {
         errdefer opacity_stack.deinit(allocator);
 
         const lp = options.link_pool orelse link.initGlobalLinkPool(allocator);
+        const char_buffer = allocator.alloc(u32, size) catch return BufferError.OutOfMemory;
+        errdefer allocator.free(char_buffer);
+
+        const fg_buffer = allocator.alloc(RGBA, size) catch return BufferError.OutOfMemory;
+        errdefer allocator.free(fg_buffer);
+
+        const bg_buffer = allocator.alloc(RGBA, size) catch return BufferError.OutOfMemory;
+        errdefer allocator.free(bg_buffer);
+
+        const attributes_buffer = allocator.alloc(u32, size) catch return BufferError.OutOfMemory;
+        errdefer allocator.free(attributes_buffer);
 
         self.* = .{
             .buffer = .{
-                .char = allocator.alloc(u32, size) catch return BufferError.OutOfMemory,
-                .fg = allocator.alloc(RGBA, size) catch return BufferError.OutOfMemory,
-                .bg = allocator.alloc(RGBA, size) catch return BufferError.OutOfMemory,
-                .attributes = allocator.alloc(u32, size) catch return BufferError.OutOfMemory,
+                .char = char_buffer,
+                .fg = fg_buffer,
+                .bg = bg_buffer,
+                .attributes = attributes_buffer,
             },
             .width = width,
             .height = height,
@@ -693,6 +724,11 @@ pub const OptimizedBuffer = struct {
 
         // Apply current opacity from the stack
         const opacity = self.getCurrentOpacity();
+        if (isFullyOpaque(opacity, fg, bg)) {
+            self.set(x, y, Cell{ .char = char, .fg = fg, .bg = bg, .attributes = attributes });
+            return;
+        }
+
         const effectiveFg = RGBA{ fg[0], fg[1], fg[2], fg[3] * opacity };
         const effectiveBg = RGBA{ bg[0], bg[1], bg[2], bg[3] * opacity };
 
@@ -719,6 +755,14 @@ pub const OptimizedBuffer = struct {
 
         // Apply current opacity from the stack
         const opacity = self.getCurrentOpacity();
+        if (isFullyOpaque(opacity, fg, bg)) {
+            const overlayCell = Cell{ .char = char, .fg = fg, .bg = bg, .attributes = attributes };
+            assert(!gp.isGraphemeChar(char));
+            assert(!gp.isContinuationChar(char));
+            self.setRaw(x, y, overlayCell);
+            return;
+        }
+
         const effectiveFg = RGBA{ fg[0], fg[1], fg[2], fg[3] * opacity };
         const effectiveBg = RGBA{ bg[0], bg[1], bg[2], bg[3] * opacity };
 
@@ -726,12 +770,12 @@ pub const OptimizedBuffer = struct {
 
         if (self.get(x, y)) |destCell| {
             const blendedCell = blendCells(overlayCell, destCell);
-            // After blending, check if result contains a grapheme
-            if (gp.isGraphemeChar(blendedCell.char)) {
-                return self.set(x, y, blendedCell);
-            }
+            assert(!gp.isGraphemeChar(blendedCell.char));
+            assert(!gp.isContinuationChar(blendedCell.char));
             self.setRaw(x, y, blendedCell);
         } else {
+            assert(!gp.isGraphemeChar(overlayCell.char));
+            assert(!gp.isContinuationChar(overlayCell.char));
             self.setRaw(x, y, overlayCell);
         }
     }
@@ -1107,6 +1151,7 @@ pub const OptimizedBuffer = struct {
 
             currentX = x;
             var column_in_line: u32 = 0;
+            globalCharPos = vline.char_offset;
 
             // When viewport is set, virtual_lines is a slice starting from viewport.y
             // But getVirtualLineSpans expects absolute indices, so we need to use the absolute index
@@ -1120,6 +1165,9 @@ pub const OptimizedBuffer = struct {
             var lineFg = text_buffer.default_fg orelse RGBA{ 1.0, 1.0, 1.0, 1.0 };
             var lineBg = text_buffer.default_bg orelse RGBA{ 0.0, 0.0, 0.0, 0.0 };
             var lineAttributes = text_buffer.default_attributes orelse 0;
+            const defaultFg = lineFg;
+            const defaultBg = lineBg;
+            const defaultAttributes = lineAttributes;
 
             // Find the span that contains the starting render position (col_offset + horizontal_offset)
             const start_col = col_offset + horizontal_offset;
@@ -1147,6 +1195,7 @@ pub const OptimizedBuffer = struct {
                 const chunk = vchunk.chunk;
                 const chunk_bytes = chunk.getBytes(&text_buffer.mem_registry);
                 const specials = chunk.getGraphemes(&text_buffer.mem_registry, text_buffer.allocator, text_buffer.tab_width, text_buffer.width_method) catch continue;
+                const line_char_offset = vline.char_offset;
 
                 if (currentX >= @as(i32, @intCast(self.width))) {
                     globalCharPos += vchunk.width;
@@ -1191,11 +1240,10 @@ pub const OptimizedBuffer = struct {
                         special_idx += 1;
                     } else {
                         if (byte_offset >= chunk_bytes.len) break;
-                        // Read the next UTF-8 grapheme properly
                         const cp_len = std.unicode.utf8ByteSequenceLength(chunk_bytes[byte_offset]) catch 1;
                         const next_byte_offset = @min(byte_offset + cp_len, chunk_bytes.len);
                         grapheme_bytes = chunk_bytes[byte_offset..next_byte_offset];
-                        g_width = 1; // Assuming width 1 for non-special characters (ASCII mostly)
+                        g_width = 1;
                         byte_offset = next_byte_offset;
                     }
 
@@ -1232,16 +1280,39 @@ pub const OptimizedBuffer = struct {
                         continue;
                     }
 
+                    var selection_offset = globalCharPos;
+                    if (vline.is_truncated and globalCharPos >= line_char_offset) {
+                        const ellipsis_width: u32 = 3;
+                        const column_offset_in_line = globalCharPos - line_char_offset;
+                        if (column_offset_in_line >= vline.ellipsis_pos and column_offset_in_line < vline.ellipsis_pos + ellipsis_width) {
+                            selection_offset = line_char_offset + vline.ellipsis_pos;
+                        } else if (column_offset_in_line >= vline.ellipsis_pos + ellipsis_width) {
+                            selection_offset = line_char_offset + vline.truncation_suffix_start +
+                                (column_offset_in_line - vline.ellipsis_pos - ellipsis_width);
+                        } else {
+                            selection_offset = line_char_offset + column_offset_in_line;
+                        }
+                    }
+
                     // Track the actual column position in the source line (including horizontal offset)
-                    const source_col_pos = col_offset + column_in_line;
+                    var source_col_pos = col_offset + column_in_line;
+                    if (vline.is_truncated) {
+                        const ellipsis_width: u32 = 3;
+                        const column_offset_in_line = globalCharPos - line_char_offset;
+                        if (column_offset_in_line >= vline.ellipsis_pos and column_offset_in_line < vline.ellipsis_pos + ellipsis_width) {
+                            source_col_pos = std.math.maxInt(u32);
+                        } else if (column_offset_in_line >= vline.ellipsis_pos + ellipsis_width) {
+                            source_col_pos = vline.truncation_suffix_start + (column_offset_in_line - vline.ellipsis_pos - ellipsis_width);
+                        }
+                    }
 
                     if (source_col_pos >= next_change_col and span_idx + 1 < spans.len) {
                         span_idx += 1;
                         const new_span = spans[span_idx];
 
-                        lineFg = text_buffer.default_fg orelse RGBA{ 1.0, 1.0, 1.0, 1.0 };
-                        lineBg = text_buffer.default_bg orelse RGBA{ 0.0, 0.0, 0.0, 0.0 };
-                        lineAttributes = text_buffer.default_attributes orelse 0;
+                        lineFg = defaultFg;
+                        lineBg = defaultBg;
+                        lineAttributes = defaultAttributes;
 
                         if (text_buffer.getSyntaxStyle()) |style| {
                             if (new_span.style_id != 0) {
@@ -1256,6 +1327,46 @@ pub const OptimizedBuffer = struct {
                         next_change_col = new_span.next_col;
                     }
 
+                    if (vline.is_truncated) {
+                        const column_offset_in_line = globalCharPos - line_char_offset;
+                        const ellipsis_width: u32 = 3;
+                        if (column_offset_in_line >= vline.ellipsis_pos and column_offset_in_line < vline.ellipsis_pos + ellipsis_width) {
+                            lineFg = defaultFg;
+                            lineBg = defaultBg;
+                            lineAttributes = defaultAttributes;
+                        } else if (column_offset_in_line >= vline.ellipsis_pos + ellipsis_width) {
+                            const suffix_col_pos = vline.truncation_suffix_start + (column_offset_in_line - vline.ellipsis_pos - ellipsis_width);
+                            if (spans.len == 0) {
+                                lineFg = defaultFg;
+                                lineBg = defaultBg;
+                                lineAttributes = defaultAttributes;
+                                next_change_col = std.math.maxInt(u32);
+                            } else {
+                                var suffix_span_idx: usize = 0;
+                                while (suffix_span_idx < spans.len and spans[suffix_span_idx].next_col <= suffix_col_pos) {
+                                    suffix_span_idx += 1;
+                                }
+                                if (suffix_span_idx < spans.len) {
+                                    span_idx = suffix_span_idx;
+                                }
+                                const active_span = spans[span_idx];
+                                lineFg = defaultFg;
+                                lineBg = defaultBg;
+                                lineAttributes = defaultAttributes;
+                                if (text_buffer.getSyntaxStyle()) |style| {
+                                    if (active_span.style_id != 0) {
+                                        if (style.resolveById(active_span.style_id)) |resolved_style| {
+                                            if (resolved_style.fg) |fg| lineFg = fg;
+                                            if (resolved_style.bg) |bg| lineBg = bg;
+                                            lineAttributes |= resolved_style.attributes;
+                                        }
+                                    }
+                                }
+                                next_change_col = active_span.next_col;
+                            }
+                        }
+                    }
+
                     var finalFg = lineFg;
                     var finalBg = lineBg;
                     const finalAttributes = lineAttributes;
@@ -1263,7 +1374,7 @@ pub const OptimizedBuffer = struct {
                     var cell_idx: u32 = 0;
                     while (cell_idx < g_width) : (cell_idx += 1) {
                         if (view.getSelection()) |sel| {
-                            const isSelected = globalCharPos + cell_idx >= sel.start and globalCharPos + cell_idx < sel.end;
+                            const isSelected = selection_offset + cell_idx >= sel.start and selection_offset + cell_idx < sel.end;
                             if (isSelected) {
                                 if (sel.bgColor) |selBg| {
                                     finalBg = selBg;
@@ -1629,6 +1740,161 @@ pub const OptimizedBuffer = struct {
             }
 
             self.setCellWithAlphaBlending(cellX, cellY, char, fg, bg, 0) catch {};
+        }
+    }
+
+    fn getGrayscaleChar(intensity: f32) u32 {
+        if (intensity < 0.01) return ' ';
+        const clamped = @min(@max(intensity, 0.0), 1.0);
+        const index: usize = @intFromFloat(clamped * @as(f32, @floatFromInt(GRAYSCALE_CHARS.len - 1)));
+        return @as(u32, GRAYSCALE_CHARS[index]);
+    }
+
+    pub fn drawGrayscaleBuffer(
+        self: *OptimizedBuffer,
+        posX: i32,
+        posY: i32,
+        intensities: [*]const f32,
+        srcWidth: u32,
+        srcHeight: u32,
+        fgColor: ?RGBA,
+        bgColor: ?RGBA,
+    ) void {
+        const bg = bgColor orelse RGBA{ 0.0, 0.0, 0.0, 0.0 };
+        if (srcWidth == 0 or srcHeight == 0) return;
+        if (posX >= @as(i32, @intCast(self.width)) or posY >= @as(i32, @intCast(self.height))) return;
+
+        const startX: u32 = if (posX < 0) @intCast(-posX) else 0;
+        const startY: u32 = if (posY < 0) @intCast(-posY) else 0;
+
+        const destStartX: u32 = if (posX < 0) 0 else @intCast(posX);
+        const destStartY: u32 = if (posY < 0) 0 else @intCast(posY);
+
+        if (startX >= srcWidth or startY >= srcHeight) return;
+
+        const visibleWidth = @min(srcWidth - startX, self.width - destStartX);
+        const visibleHeight = @min(srcHeight - startY, self.height - destStartY);
+
+        if (visibleWidth == 0 or visibleHeight == 0) return;
+
+        const baseFg = fgColor orelse RGBA{ 1.0, 1.0, 1.0, 1.0 };
+
+        const opacity = self.getCurrentOpacity();
+        const graphemeAware = self.grapheme_tracker.hasAny();
+        const linkAware = self.link_tracker.hasAny();
+
+        var srcY: u32 = startY;
+        var destY: u32 = destStartY;
+        while (srcY < startY + visibleHeight) : ({
+            srcY += 1;
+            destY += 1;
+        }) {
+            var srcX: u32 = startX;
+            var destX: u32 = destStartX;
+            while (srcX < startX + visibleWidth) : ({
+                srcX += 1;
+                destX += 1;
+            }) {
+                if (!self.isPointInScissor(@intCast(destX), @intCast(destY))) continue;
+
+                const srcIndex = srcY * srcWidth + srcX;
+                const intensity = intensities[srcIndex];
+
+                if (intensity < 0.01) continue;
+
+                const char = getGrayscaleChar(intensity);
+
+                const gray = @min(@max(intensity, 0.0), 1.0);
+                const fg: RGBA = .{ baseFg[0], baseFg[1], baseFg[2], gray * baseFg[3] * opacity };
+
+                if (graphemeAware or linkAware) {
+                    self.setCellWithAlphaBlending(destX, destY, char, fg, bg, 0) catch {};
+                } else {
+                    self.setCellWithAlphaBlendingRaw(destX, destY, char, fg, bg, 0) catch {};
+                }
+            }
+        }
+    }
+
+    pub fn drawGrayscaleBufferSupersampled(
+        self: *OptimizedBuffer,
+        posX: i32,
+        posY: i32,
+        intensities: [*]const f32,
+        srcWidth: u32,
+        srcHeight: u32,
+        fgColor: ?RGBA,
+        bgColor: ?RGBA,
+    ) void {
+        const bg = bgColor orelse RGBA{ 0.0, 0.0, 0.0, 0.0 };
+        const termWidth = srcWidth / 2;
+        const termHeight = srcHeight / 2;
+
+        if (termWidth == 0 or termHeight == 0) return;
+        if (posX >= @as(i32, @intCast(self.width)) or posY >= @as(i32, @intCast(self.height))) return;
+
+        const startX: u32 = if (posX < 0) @intCast(-posX) else 0;
+        const startY: u32 = if (posY < 0) @intCast(-posY) else 0;
+
+        const destStartX: u32 = if (posX < 0) 0 else @intCast(posX);
+        const destStartY: u32 = if (posY < 0) 0 else @intCast(posY);
+
+        if (startX >= termWidth or startY >= termHeight) return;
+
+        const visibleWidth = @min(termWidth - startX, self.width - destStartX);
+        const visibleHeight = @min(termHeight - startY, self.height - destStartY);
+
+        if (visibleWidth == 0 or visibleHeight == 0) return;
+
+        const baseFg = fgColor orelse RGBA{ 1.0, 1.0, 1.0, 1.0 };
+
+        const opacity = self.getCurrentOpacity();
+        const graphemeAware = self.grapheme_tracker.hasAny();
+        const linkAware = self.link_tracker.hasAny();
+
+        const maxIdx = srcHeight * srcWidth;
+        var cellY: u32 = startY;
+        var destY: u32 = destStartY;
+        while (cellY < startY + visibleHeight) : ({
+            cellY += 1;
+            destY += 1;
+        }) {
+            var cellX: u32 = startX;
+            var destX: u32 = destStartX;
+            while (cellX < startX + visibleWidth) : ({
+                cellX += 1;
+                destX += 1;
+            }) {
+                if (!self.isPointInScissor(@intCast(destX), @intCast(destY))) continue;
+
+                const qx = cellX * 2;
+                const qy = cellY * 2;
+
+                const tlIdx = qy * srcWidth + qx;
+                const trIdx = qy * srcWidth + qx + 1;
+                const blIdx = (qy + 1) * srcWidth + qx;
+                const brIdx = (qy + 1) * srcWidth + qx + 1;
+
+                const tl: f32 = if (tlIdx < maxIdx) intensities[tlIdx] else 0.0;
+                const tr: f32 = if (trIdx < maxIdx and qx + 1 < srcWidth) intensities[trIdx] else 0.0;
+                const bl: f32 = if (blIdx < maxIdx and qy + 1 < srcHeight) intensities[blIdx] else 0.0;
+                const br: f32 = if (brIdx < maxIdx and qx + 1 < srcWidth and qy + 1 < srcHeight) intensities[brIdx] else 0.0;
+
+                const avgIntensity = (tl + tr + bl + br) / 4.0;
+
+                if (avgIntensity < 0.01) continue;
+
+                const char = getGrayscaleChar(avgIntensity);
+
+                const gray = @min(@max(avgIntensity, 0.0), 1.0);
+                const fg: RGBA = .{ baseFg[0], baseFg[1], baseFg[2], gray * baseFg[3] * opacity };
+
+                if (graphemeAware or linkAware) {
+                    self.setCellWithAlphaBlending(destX, destY, char, fg, bg, 0) catch {};
+                } else {
+                    self.setCellWithAlphaBlendingRaw(destX, destY, char, fg, bg, 0) catch {};
+                }
+            }
         }
     }
 };
