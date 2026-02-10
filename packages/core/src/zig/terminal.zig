@@ -95,6 +95,7 @@ capability_queries_pending: bool = false,
 state: struct {
     alt_screen: bool = false,
     kitty_keyboard: bool = false,
+    kitty_keyboard_flags: u8 = 0,
     bracketed_paste: bool = false,
     mouse: bool = false,
     pixel_mouse: bool = false,
@@ -473,11 +474,13 @@ pub fn setKittyKeyboard(self: *Terminal, tty: anytype, enable: bool, flags: u8) 
         if (!self.state.kitty_keyboard) {
             try tty.print(ansi.ANSI.csiUPush, .{flags});
             self.state.kitty_keyboard = true;
+            self.state.kitty_keyboard_flags = flags;
         }
     } else {
         if (self.state.kitty_keyboard) {
             try tty.writeAll(ansi.ANSI.csiUPop);
             self.state.kitty_keyboard = false;
+            self.state.kitty_keyboard_flags = 0;
         }
     }
 }
@@ -486,6 +489,61 @@ pub fn setModifyOtherKeys(self: *Terminal, tty: anytype, enable: bool) !void {
     const seq = if (enable) ansi.ANSI.modifyOtherKeysSet else ansi.ANSI.modifyOtherKeysReset;
     try tty.writeAll(seq);
     self.state.modify_other_keys = enable;
+}
+
+/// Re-send all currently-active terminal mode escape sequences unconditionally.
+///
+/// When the terminal loses and regains focus (e.g. alt-tab, tab switch, minimize),
+/// some terminal emulators (notably Windows Terminal / ConPTY) strip or reset
+/// DEC private modes like mouse tracking (?1000/?1002/?1003/?1006), focus
+/// tracking (?1004), and bracketed paste (?2004). This function re-emits the
+/// enable sequences for every mode that our state tracking says is currently on,
+/// without checking whether the mode "should" already be enabled — because the
+/// terminal may have silently disabled it.
+///
+/// This should be called in response to the focus-in event (\x1b[I).
+///
+/// Per the xterm ctlseqs spec (Patch #401, 2025/06/22) and the Microsoft
+/// Console Virtual Terminal Sequences documentation, the relevant DECSET
+/// private modes are:
+///   ?1000h  - Normal mouse tracking (sends button press/release)
+///   ?1002h  - Button-event tracking (adds drag reporting)
+///   ?1003h  - Any-event tracking (adds all motion reporting)
+///   ?1006h  - SGR extended mouse mode (extended coordinate encoding)
+///   ?1004h  - Focus event tracking (sends \x1b[I / \x1b[O)
+///   ?2004h  - Bracketed paste mode (wraps pasted text in markers)
+///   Kitty keyboard protocol (CSI > flags u) - progressive enhancement
+///   modifyOtherKeys (CSI > 4 ; 1 m) - xterm key modification
+pub fn restoreTerminalModes(self: *Terminal, tty: anytype) !void {
+    // Re-enable mouse tracking modes if active
+    if (self.state.mouse) {
+        try tty.writeAll(ansi.ANSI.enableMouseTracking);
+        try tty.writeAll(ansi.ANSI.enableButtonEventTracking);
+        try tty.writeAll(ansi.ANSI.enableAnyEventTracking);
+        try tty.writeAll(ansi.ANSI.enableSGRMouseMode);
+    }
+
+    // Re-enable focus tracking if active
+    if (self.state.focus_tracking) {
+        try tty.writeAll(ansi.ANSI.focusSet);
+    }
+
+    // Re-enable bracketed paste if active
+    if (self.state.bracketed_paste) {
+        try tty.writeAll(ansi.ANSI.bracketedPasteSet);
+    }
+
+    // Pop stale entry then re-push kitty keyboard protocol to avoid stack growth.
+    // Both sequences are in the same write buffer so the terminal processes them atomically.
+    if (self.state.kitty_keyboard) {
+        try tty.writeAll(ansi.ANSI.csiUPop);
+        try tty.print(ansi.ANSI.csiUPush, .{self.state.kitty_keyboard_flags});
+    }
+
+    // Re-enable modifyOtherKeys if active
+    if (self.state.modify_other_keys) {
+        try tty.writeAll(ansi.ANSI.modifyOtherKeysSet);
+    }
 }
 
 /// The responses look like these:

@@ -66,6 +66,7 @@ import * as scrollboxOverlayHitTest from "./scrollbox-overlay-hit-test"
 import * as scrollboxMouseTest from "./scrollbox-mouse-test"
 import * as textTruncationDemo from "./text-truncation-demo"
 import * as grayscaleBufferDemo from "./grayscale-buffer-demo"
+import * as focusRestoreDemo from "./focus-restore-demo"
 import { setupCommonDemoKeys } from "./lib/standalone-keys"
 
 interface Example {
@@ -388,6 +389,12 @@ const examples: Example[] = [
     description: "Grayscale buffer rendering with 1x vs 2x supersampled intensity",
     run: grayscaleBufferDemo.run,
     destroy: grayscaleBufferDemo.destroy,
+  },
+  {
+    name: "Focus Restore Demo",
+    description: "Test focus restore - alt-tab away and back to verify mouse tracking resumes",
+    run: focusRestoreDemo.run,
+    destroy: focusRestoreDemo.destroy,
   },
 ]
 

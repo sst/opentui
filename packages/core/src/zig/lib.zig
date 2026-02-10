@@ -530,6 +530,10 @@ export fn dumpStdoutBuffer(rendererPtr: *renderer.CliRenderer, timestamp: i64) v
     rendererPtr.dumpStdoutBuffer(timestamp);
 }
 
+export fn restoreTerminalModes(rendererPtr: *renderer.CliRenderer) void {
+    rendererPtr.restoreTerminalModes();
+}
+
 export fn enableMouse(rendererPtr: *renderer.CliRenderer, enableMovement: bool) void {
     rendererPtr.enableMouse(enableMovement);
 }

@@ -1176,6 +1176,12 @@ pub const CliRenderer = struct {
         self.dumpStdoutBuffer(timestamp);
     }
 
+    pub fn restoreTerminalModes(self: *CliRenderer) void {
+        var stream = std.io.fixedBufferStream(&self.writeOutBuf);
+        self.terminal.restoreTerminalModes(stream.writer()) catch {};
+        self.writeOut(stream.getWritten());
+    }
+
     pub fn enableMouse(self: *CliRenderer, enableMovement: bool) void {
         _ = enableMovement;
         var stream = std.io.fixedBufferStream(&self.writeOutBuf);
