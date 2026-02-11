@@ -1,7 +1,7 @@
 {
-  "runId": "2026-02-08T16:29:57.309Z",
+  "runId": "2026-02-11T11:38:22.108Z",
   "suite": "async",
-  "args": ["--json=latest-async-bench-run.json"],
+  "args": ["--json=src/benchmark/current-async-bench-run.json"],
   "results": [
     {
       "name": "async/small_64k_fast",
@@ -9,13 +9,13 @@
       "bytesPerIter": "65536",
       "iters": 50,
       "bytesTotal": "3276800",
-      "elapsedMs": 83.61687300000014,
-      "throughputMBps": 37.37283980949628,
-      "avgIterMs": 1.6723374600000027,
-      "medianIterMs": 1.335084000000009,
-      "p95IterMs": 2.2965829999999983,
-      "minIterMs": 1.025459000000012,
-      "maxIterMs": 2.406708000000009,
+      "elapsedMs": 84.59128799999993,
+      "throughputMBps": 36.94233855382368,
+      "avgIterMs": 1.6918257599999986,
+      "medianIterMs": 1.2599580000000117,
+      "p95IterMs": 2.430082999999996,
+      "minIterMs": 1.1207080000000076,
+      "maxIterMs": 2.8269580000000047,
       "asyncDelay": {
         "minMs": 1,
         "maxMs": 3
@@ -24,25 +24,25 @@
       "peakChunks": 0,
       "memory": {
         "start": {
-          "rss": 34881536,
-          "heapTotal": 1260544,
-          "heapUsed": 238570,
-          "external": 40282,
-          "arrayBuffers": 0
+          "rss": 83623936,
+          "heapTotal": 3667968,
+          "heapUsed": 36385664,
+          "external": 34698957,
+          "arrayBuffers": 16777328
         },
         "end": {
-          "rss": 43171840,
-          "heapTotal": 1481728,
-          "heapUsed": 6951222,
-          "external": 7161576,
-          "arrayBuffers": 6890100
+          "rss": 104185856,
+          "heapTotal": 3904512,
+          "heapUsed": 43497585,
+          "external": 41697631,
+          "arrayBuffers": 23667428
         },
         "peak": {
-          "rss": 43171840,
-          "heapTotal": 1487872,
-          "heapUsed": 6951222,
-          "external": 7161576,
-          "arrayBuffers": 6890100
+          "rss": 104185856,
+          "heapTotal": 3904512,
+          "heapUsed": 43497585,
+          "external": 41697631,
+          "arrayBuffers": 23667428
         }
       },
       "options": {
@@ -56,13 +56,13 @@
       "bytesPerIter": "65536",
       "iters": 50,
       "bytesTotal": "3276800",
-      "elapsedMs": 371.49754099999996,
-      "throughputMBps": 8.411899555480504,
-      "avgIterMs": 7.429950819999999,
-      "medianIterMs": 6.795042000000024,
-      "p95IterMs": 10.055124999999975,
-      "minIterMs": 5.267750000000035,
-      "maxIterMs": 10.277333999999996,
+      "elapsedMs": 391.1212899999998,
+      "throughputMBps": 7.989848877825089,
+      "avgIterMs": 7.822425799999996,
+      "medianIterMs": 7.8619580000000155,
+      "p95IterMs": 10.134083000000032,
+      "minIterMs": 5.348290999999989,
+      "maxIterMs": 11.013000000000034,
       "asyncDelay": {
         "minMs": 5,
         "maxMs": 10
@@ -71,25 +71,25 @@
       "peakChunks": 0,
       "memory": {
         "start": {
-          "rss": 43188224,
-          "heapTotal": 1481728,
-          "heapUsed": 6951222,
-          "external": 7161576,
-          "arrayBuffers": 6890100
+          "rss": 104235008,
+          "heapTotal": 3920896,
+          "heapUsed": 43497585,
+          "external": 41697631,
+          "arrayBuffers": 23667428
         },
         "end": {
-          "rss": 44662784,
-          "heapTotal": 1499136,
-          "heapUsed": 14500240,
-          "external": 14076890,
-          "arrayBuffers": 13780200
+          "rss": 105480192,
+          "heapTotal": 3938304,
+          "heapUsed": 50901345,
+          "external": 48603041,
+          "arrayBuffers": 30557528
         },
         "peak": {
-          "rss": 44662784,
-          "heapTotal": 1499136,
-          "heapUsed": 14500240,
-          "external": 14076890,
-          "arrayBuffers": 13780200
+          "rss": 105480192,
+          "heapTotal": 3921920,
+          "heapUsed": 50901345,
+          "external": 48603041,
+          "arrayBuffers": 30557528
         }
       },
       "options": {
@@ -103,13 +103,13 @@
       "bytesPerIter": "262144",
       "iters": 50,
       "bytesTotal": "13107200",
-      "elapsedMs": 390.65499799999986,
-      "throughputMBps": 31.997542752544035,
-      "avgIterMs": 7.813099959999997,
-      "medianIterMs": 8.441833000000088,
-      "p95IterMs": 9.450333,
-      "minIterMs": 3.1569999999999254,
-      "maxIterMs": 9.991624999999999,
+      "elapsedMs": 409.1684989999999,
+      "throughputMBps": 30.549761358828366,
+      "avgIterMs": 8.183369979999998,
+      "medianIterMs": 8.560292000000004,
+      "p95IterMs": 10.351166999999919,
+      "minIterMs": 3.0564580000000205,
+      "maxIterMs": 10.552332999999976,
       "asyncDelay": {
         "minMs": 1,
         "maxMs": 10
@@ -118,25 +118,25 @@
       "peakChunks": 0,
       "memory": {
         "start": {
-          "rss": 44679168,
-          "heapTotal": 1515520,
-          "heapUsed": 14500240,
-          "external": 14076890,
-          "arrayBuffers": 13780200
+          "rss": 105496576,
+          "heapTotal": 3954688,
+          "heapUsed": 50901345,
+          "external": 48603041,
+          "arrayBuffers": 30557528
         },
         "end": {
-          "rss": 49086464,
-          "heapTotal": 1586176,
-          "heapUsed": 28005433,
-          "external": 27601047,
-          "arrayBuffers": 27240900
+          "rss": 106938368,
+          "heapTotal": 4008960,
+          "heapUsed": 64513669,
+          "external": 62111077,
+          "arrayBuffers": 44018228
         },
         "peak": {
-          "rss": 49086464,
-          "heapTotal": 1586176,
-          "heapUsed": 28005433,
-          "external": 27601047,
-          "arrayBuffers": 27240900
+          "rss": 106938368,
+          "heapTotal": 4008960,
+          "heapUsed": 64513669,
+          "external": 62111077,
+          "arrayBuffers": 44018228
         }
       },
       "options": {
@@ -150,13 +150,13 @@
       "bytesPerIter": "1048576",
       "iters": 10,
       "bytesTotal": "10485760",
-      "elapsedMs": 22.240793000000167,
-      "throughputMBps": 449.62425575382696,
-      "avgIterMs": 2.2240793000000165,
-      "medianIterMs": 2.134541000000013,
-      "p95IterMs": 3.0335420000000113,
-      "minIterMs": 2.051584000000048,
-      "maxIterMs": 3.0335420000000113,
+      "elapsedMs": 22.063917999999717,
+      "throughputMBps": 453.22866047635455,
+      "avgIterMs": 2.2063917999999716,
+      "medianIterMs": 2.1835419999999885,
+      "p95IterMs": 2.428457999999978,
+      "minIterMs": 2.049209000000019,
+      "maxIterMs": 2.428457999999978,
       "asyncDelay": {
         "minMs": 1,
         "maxMs": 3
@@ -165,25 +165,25 @@
       "peakChunks": 0,
       "memory": {
         "start": {
-          "rss": 49086464,
-          "heapTotal": 1602560,
-          "heapUsed": 28005433,
-          "external": 27601047,
-          "arrayBuffers": 27240900
+          "rss": 106938368,
+          "heapTotal": 4025344,
+          "heapUsed": 64513669,
+          "external": 62111077,
+          "arrayBuffers": 44018228
         },
         "end": {
-          "rss": 51363840,
-          "heapTotal": 1886208,
-          "heapUsed": 38905611,
-          "external": 38201163,
-          "arrayBuffers": 37813280
+          "rss": 110313472,
+          "heapTotal": 4077568,
+          "heapUsed": 71952967,
+          "external": 72696153,
+          "arrayBuffers": 54590608
         },
         "peak": {
-          "rss": 51363840,
-          "heapTotal": 1886208,
-          "heapUsed": 38905611,
-          "external": 38201163,
-          "arrayBuffers": 37813280
+          "rss": 110313472,
+          "heapTotal": 4077568,
+          "heapUsed": 71952967,
+          "external": 72696153,
+          "arrayBuffers": 54590608
         }
       },
       "options": {
@@ -197,13 +197,13 @@
       "bytesPerIter": "1048576",
       "iters": 10,
       "bytesTotal": "10485760",
-      "elapsedMs": 90.33599900000013,
-      "throughputMBps": 110.69784040358026,
-      "avgIterMs": 9.033599900000013,
-      "medianIterMs": 9.10612500000002,
-      "p95IterMs": 9.307833000000073,
-      "minIterMs": 8.13854200000003,
-      "maxIterMs": 9.307833000000073,
+      "elapsedMs": 91.4578749999996,
+      "throughputMBps": 109.33995568998343,
+      "avgIterMs": 9.14578749999996,
+      "medianIterMs": 9.278082999999924,
+      "p95IterMs": 9.577792000000045,
+      "minIterMs": 8.089832999999999,
+      "maxIterMs": 9.577792000000045,
       "asyncDelay": {
         "minMs": 5,
         "maxMs": 10
@@ -212,25 +212,25 @@
       "peakChunks": 0,
       "memory": {
         "start": {
-          "rss": 51363840,
-          "heapTotal": 1886208,
-          "heapUsed": 38905611,
-          "external": 38201163,
-          "arrayBuffers": 37813280
+          "rss": 110313472,
+          "heapTotal": 4077568,
+          "heapUsed": 71952967,
+          "external": 72696153,
+          "arrayBuffers": 54590608
         },
         "end": {
-          "rss": 54804480,
-          "heapTotal": 1881088,
-          "heapUsed": 48509330,
-          "external": 2745614,
-          "arrayBuffers": 2113990
+          "rss": 112164864,
+          "heapTotal": 4126720,
+          "heapUsed": 85769670,
+          "external": 83277542,
+          "arrayBuffers": 65162988
         },
         "peak": {
-          "rss": 54804480,
-          "heapTotal": 1886208,
-          "heapUsed": 48509330,
-          "external": 46675740,
-          "arrayBuffers": 46271184
+          "rss": 112164864,
+          "heapTotal": 4126720,
+          "heapUsed": 85769670,
+          "external": 83277542,
+          "arrayBuffers": 65162988
         }
       },
       "options": {
@@ -244,13 +244,13 @@
       "bytesPerIter": "262144",
       "iters": 50,
       "bytesTotal": "13107200",
-      "elapsedMs": 397.15417100000013,
-      "throughputMBps": 31.47392351067615,
-      "avgIterMs": 7.9430834200000024,
-      "medianIterMs": 8.628207999999859,
-      "p95IterMs": 9.469833000000108,
-      "minIterMs": 4.086791999999832,
-      "maxIterMs": 9.627459000000044,
+      "elapsedMs": 408.42962499999885,
+      "throughputMBps": 30.605027732745967,
+      "avgIterMs": 8.168592499999978,
+      "medianIterMs": 8.39995799999997,
+      "p95IterMs": 9.810457999999926,
+      "minIterMs": 4.182999999999993,
+      "maxIterMs": 10.079124999999976,
       "asyncDelay": {
         "minMs": 1,
         "maxMs": 10
@@ -259,25 +259,25 @@
       "peakChunks": 0,
       "memory": {
         "start": {
-          "rss": 54804480,
-          "heapTotal": 1881088,
-          "heapUsed": 48509330,
-          "external": 2745614,
-          "arrayBuffers": 2113990
+          "rss": 112164864,
+          "heapTotal": 4126720,
+          "heapUsed": 85769670,
+          "external": 83277542,
+          "arrayBuffers": 65162988
         },
         "end": {
-          "rss": 54853632,
-          "heapTotal": 1881088,
-          "heapUsed": 5715313,
-          "external": 5741917,
-          "arrayBuffers": 5114816
+          "rss": 112508928,
+          "heapTotal": 4180992,
+          "heapUsed": 98785430,
+          "external": 96739266,
+          "arrayBuffers": 78623688
         },
         "peak": {
-          "rss": 54853632,
-          "heapTotal": 1881088,
-          "heapUsed": 48509330,
-          "external": 11092274,
-          "arrayBuffers": 10459624
+          "rss": 112508928,
+          "heapTotal": 4180992,
+          "heapUsed": 98785430,
+          "external": 96739266,
+          "arrayBuffers": 78623688
         }
       },
       "options": {
@@ -291,13 +291,13 @@
       "bytesPerIter": "65536",
       "iters": 50,
       "bytesTotal": "3276800",
-      "elapsedMs": 453.04770600000006,
-      "throughputMBps": 6.897728337686362,
-      "avgIterMs": 9.060954120000002,
-      "medianIterMs": 9.114666999999827,
-      "p95IterMs": 9.22420800000009,
-      "minIterMs": 8.079042000000072,
-      "maxIterMs": 9.371458000000075,
+      "elapsedMs": 454.9195010000003,
+      "throughputMBps": 6.8693471990773105,
+      "avgIterMs": 9.098390020000005,
+      "medianIterMs": 9.106625000000122,
+      "p95IterMs": 9.350667000000158,
+      "minIterMs": 8.160333000000037,
+      "maxIterMs": 9.56191600000011,
       "asyncDelay": {
         "minMs": 5,
         "maxMs": 10
@@ -306,25 +306,25 @@
       "peakChunks": 0,
       "memory": {
         "start": {
-          "rss": 54853632,
-          "heapTotal": 1881088,
-          "heapUsed": 5715313,
-          "external": 5741917,
-          "arrayBuffers": 5114816
+          "rss": 112508928,
+          "heapTotal": 4197376,
+          "heapUsed": 98785430,
+          "external": 96739266,
+          "arrayBuffers": 78623688
         },
         "end": {
-          "rss": 57589760,
-          "heapTotal": 1913856,
-          "heapUsed": 2072974,
-          "external": 1597733,
-          "arrayBuffers": 965444
+          "rss": 115310592,
+          "heapTotal": 4490240,
+          "heapUsed": 103327956,
+          "external": 100462212,
+          "arrayBuffers": 82339238
         },
         "peak": {
-          "rss": 57589760,
-          "heapTotal": 1913856,
-          "heapUsed": 9274618,
-          "external": 8498906,
-          "arrayBuffers": 7864323
+          "rss": 115310592,
+          "heapTotal": 4490240,
+          "heapUsed": 103327956,
+          "external": 100462212,
+          "arrayBuffers": 82339238
         }
       },
       "options": {
