@@ -723,36 +723,10 @@ export class LineNumberRenderable extends Renderable {
   }
 
   /**
-   * Gets the current inline highlights.
-   */
-  public getInlineHighlights(): Map<number, LineInlineHighlight[]> {
-    return this._inlineHighlights
-  }
-
-  /**
    * Clears all inline highlights.
    */
   public clearInlineHighlights(): void {
     this._inlineHighlights.clear()
-    this.requestRender()
-  }
-
-  /**
-   * Sets inline highlights for a specific line.
-   *
-   * @param line - Logical line index
-   * @param highlights - Array of highlights for this line
-   */
-  public setLineInlineHighlights(line: number, highlights: LineInlineHighlight[]): void {
-    this._inlineHighlights.set(line, highlights)
-    this.requestRender()
-  }
-
-  /**
-   * Clears inline highlights for a specific line.
-   */
-  public clearLineInlineHighlights(line: number): void {
-    this._inlineHighlights.delete(line)
     this.requestRender()
   }
 }

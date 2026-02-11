@@ -74,10 +74,6 @@ export class RGBA {
     )
   }
 
-  withAlpha(alpha: number): RGBA {
-    return RGBA.fromValues(this.r, this.g, this.b, alpha)
-  }
-
   equals(other?: RGBA): boolean {
     if (!other) return false
     return this.r === other.r && this.g === other.g && this.b === other.b && this.a === other.a

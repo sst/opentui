@@ -2732,9 +2732,11 @@ describe("computeInlineHighlights", () => {
   test("highlights changed region", () => {
     const result = computeInlineHighlights("hello world", "hello there")
     expect(result.oldHighlight).not.toBeNull()
-    expect(result.oldHighlight!.type).toBe("removed-word")
+    expect(result.oldHighlight!.startCol).toBe(6)
+    expect(result.oldHighlight!.endCol).toBe(11)
     expect(result.newHighlight).not.toBeNull()
-    expect(result.newHighlight!.type).toBe("added-word")
+    expect(result.newHighlight!.startCol).toBe(6)
+    expect(result.newHighlight!.endCol).toBe(11)
   })
 
   test("computes correct column positions", () => {
