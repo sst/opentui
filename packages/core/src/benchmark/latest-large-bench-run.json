@@ -1,0 +1,707 @@
+{
+  "runId": "2026-02-06T22:58:37.154Z",
+  "suite": "large",
+  "args": ["--suite=large", "--json=latest-large-bench-run.json"],
+  "results": [
+    {
+      "name": "ansi_64k",
+      "producerAPI": "reserve",
+      "bytesPerIter": "65536",
+      "iters": 20000,
+      "bytesTotal": "1310720000",
+      "avgMs": 0.002214,
+      "medianMs": 0.002083,
+      "p95Ms": 0.002791,
+      "minMs": 0.00175,
+      "maxMs": 0.25025,
+      "throughputMBps": 28233.549457,
+      "elapsedMs": 44.273569,
+      "options": {
+        "chunkSize": 65536,
+        "initialChunks": 2,
+        "autoCommitOnFull": true,
+        "commitEvery": 0,
+        "reuseStream": false,
+        "pattern": {
+          "type": "ansi",
+          "size": 64
+        }
+      }
+    },
+    {
+      "name": "write/ansi_64k",
+      "producerAPI": "write",
+      "bytesPerIter": "65536",
+      "iters": 20000,
+      "bytesTotal": "1310720000",
+      "avgMs": 0.004991,
+      "medianMs": 0.004792,
+      "p95Ms": 0.006583,
+      "minMs": 0.004,
+      "maxMs": 0.0555,
+      "throughputMBps": 12523.118428,
+      "elapsedMs": 99.815394,
+      "options": {
+        "chunkSize": 65536,
+        "initialChunks": 2,
+        "autoCommitOnFull": true,
+        "commitEvery": 0,
+        "reuseStream": false,
+        "pattern": {
+          "type": "ansi",
+          "size": 64
+        }
+      }
+    },
+    {
+      "name": "ascii_64k",
+      "producerAPI": "reserve",
+      "bytesPerIter": "65536",
+      "iters": 20000,
+      "bytesTotal": "1310720000",
+      "avgMs": 0.002056,
+      "medianMs": 0.002041,
+      "p95Ms": 0.002583,
+      "minMs": 0.001708,
+      "maxMs": 0.01,
+      "throughputMBps": 30403.666069,
+      "elapsedMs": 41.113463,
+      "options": {
+        "chunkSize": 65536,
+        "initialChunks": 2,
+        "autoCommitOnFull": true,
+        "commitEvery": 0,
+        "reuseStream": false,
+        "pattern": {
+          "type": "ascii",
+          "size": 64
+        }
+      }
+    },
+    {
+      "name": "write/ascii_64k",
+      "producerAPI": "write",
+      "bytesPerIter": "65536",
+      "iters": 20000,
+      "bytesTotal": "1310720000",
+      "avgMs": 0.004831,
+      "medianMs": 0.004667,
+      "p95Ms": 0.006375,
+      "minMs": 0.004,
+      "maxMs": 0.040166,
+      "throughputMBps": 12937.453199,
+      "elapsedMs": 96.618707,
+      "options": {
+        "chunkSize": 65536,
+        "initialChunks": 2,
+        "autoCommitOnFull": true,
+        "commitEvery": 0,
+        "reuseStream": false,
+        "pattern": {
+          "type": "ascii",
+          "size": 64
+        }
+      }
+    },
+    {
+      "name": "binary_64k",
+      "producerAPI": "reserve",
+      "bytesPerIter": "65536",
+      "iters": 20000,
+      "bytesTotal": "1310720000",
+      "avgMs": 0.002078,
+      "medianMs": 0.002041,
+      "p95Ms": 0.002667,
+      "minMs": 0.001708,
+      "maxMs": 0.022167,
+      "throughputMBps": 30081.310987,
+      "elapsedMs": 41.55404,
+      "options": {
+        "chunkSize": 65536,
+        "initialChunks": 2,
+        "autoCommitOnFull": true,
+        "commitEvery": 0,
+        "reuseStream": false,
+        "pattern": {
+          "type": "binary",
+          "size": 64
+        }
+      }
+    },
+    {
+      "name": "write/binary_64k",
+      "producerAPI": "write",
+      "bytesPerIter": "65536",
+      "iters": 20000,
+      "bytesTotal": "1310720000",
+      "avgMs": 0.004837,
+      "medianMs": 0.004667,
+      "p95Ms": 0.006584,
+      "minMs": 0.004,
+      "maxMs": 0.027333,
+      "throughputMBps": 12921.265694,
+      "elapsedMs": 96.739749,
+      "options": {
+        "chunkSize": 65536,
+        "initialChunks": 2,
+        "autoCommitOnFull": true,
+        "commitEvery": 0,
+        "reuseStream": false,
+        "pattern": {
+          "type": "binary",
+          "size": 64
+        }
+      }
+    },
+    {
+      "name": "random_64k",
+      "producerAPI": "reserve",
+      "bytesPerIter": "65536",
+      "iters": 20000,
+      "bytesTotal": "1310720000",
+      "avgMs": 0.00214,
+      "medianMs": 0.002,
+      "p95Ms": 0.002583,
+      "minMs": 0.001708,
+      "maxMs": 0.363708,
+      "throughputMBps": 29199.197298,
+      "elapsedMs": 42.809396,
+      "options": {
+        "chunkSize": 65536,
+        "initialChunks": 2,
+        "autoCommitOnFull": true,
+        "commitEvery": 0,
+        "reuseStream": false,
+        "pattern": {
+          "type": "random",
+          "size": 64
+        }
+      }
+    },
+    {
+      "name": "write/random_64k",
+      "producerAPI": "write",
+      "bytesPerIter": "65536",
+      "iters": 20000,
+      "bytesTotal": "1310720000",
+      "avgMs": 0.005131,
+      "medianMs": 0.004708,
+      "p95Ms": 0.006667,
+      "minMs": 0.004,
+      "maxMs": 0.35875,
+      "throughputMBps": 12179.942534,
+      "elapsedMs": 102.627742,
+      "options": {
+        "chunkSize": 65536,
+        "initialChunks": 2,
+        "autoCommitOnFull": true,
+        "commitEvery": 0,
+        "reuseStream": false,
+        "pattern": {
+          "type": "random",
+          "size": 64
+        }
+      }
+    },
+    {
+      "name": "medium_1mb",
+      "producerAPI": "reserve",
+      "bytesPerIter": "1048576",
+      "iters": 500,
+      "bytesTotal": "524288000",
+      "avgMs": 0.017033,
+      "medianMs": 0.015666,
+      "p95Ms": 0.020959,
+      "minMs": 0.013375,
+      "maxMs": 0.442709,
+      "throughputMBps": 58711.052849,
+      "elapsedMs": 8.516284,
+      "options": {
+        "chunkSize": 65536,
+        "initialChunks": 2,
+        "autoCommitOnFull": true,
+        "commitEvery": 0,
+        "reuseStream": false,
+        "pattern": {
+          "type": "ascii",
+          "size": 1024
+        }
+      }
+    },
+    {
+      "name": "write/medium_1mb",
+      "producerAPI": "write",
+      "bytesPerIter": "1048576",
+      "iters": 500,
+      "bytesTotal": "524288000",
+      "avgMs": 0.019875,
+      "medianMs": 0.019958,
+      "p95Ms": 0.023042,
+      "minMs": 0.017292,
+      "maxMs": 0.042125,
+      "throughputMBps": 50315.533744,
+      "elapsedMs": 9.937289,
+      "options": {
+        "chunkSize": 65536,
+        "initialChunks": 2,
+        "autoCommitOnFull": true,
+        "commitEvery": 0,
+        "reuseStream": false,
+        "pattern": {
+          "type": "ascii",
+          "size": 1024
+        }
+      }
+    },
+    {
+      "name": "binary_1mb",
+      "producerAPI": "reserve",
+      "bytesPerIter": "1048576",
+      "iters": 500,
+      "bytesTotal": "524288000",
+      "avgMs": 0.016348,
+      "medianMs": 0.016041,
+      "p95Ms": 0.019792,
+      "minMs": 0.013125,
+      "maxMs": 0.067084,
+      "throughputMBps": 61168.551779,
+      "elapsedMs": 8.174135,
+      "options": {
+        "chunkSize": 65536,
+        "initialChunks": 2,
+        "autoCommitOnFull": true,
+        "commitEvery": 0,
+        "reuseStream": false,
+        "pattern": {
+          "type": "binary",
+          "size": 1024
+        }
+      }
+    },
+    {
+      "name": "write/binary_1mb",
+      "producerAPI": "write",
+      "bytesPerIter": "1048576",
+      "iters": 500,
+      "bytesTotal": "524288000",
+      "avgMs": 0.019933,
+      "medianMs": 0.020084,
+      "p95Ms": 0.0225,
+      "minMs": 0.016833,
+      "maxMs": 0.034166,
+      "throughputMBps": 50168.556316,
+      "elapsedMs": 9.966402,
+      "options": {
+        "chunkSize": 65536,
+        "initialChunks": 2,
+        "autoCommitOnFull": true,
+        "commitEvery": 0,
+        "reuseStream": false,
+        "pattern": {
+          "type": "binary",
+          "size": 1024
+        }
+      }
+    },
+    {
+      "name": "random_1mb",
+      "producerAPI": "reserve",
+      "bytesPerIter": "1048576",
+      "iters": 500,
+      "bytesTotal": "524288000",
+      "avgMs": 0.015584,
+      "medianMs": 0.015416,
+      "p95Ms": 0.01775,
+      "minMs": 0.013375,
+      "maxMs": 0.03025,
+      "throughputMBps": 64169.003702,
+      "elapsedMs": 7.791924,
+      "options": {
+        "chunkSize": 65536,
+        "initialChunks": 2,
+        "autoCommitOnFull": true,
+        "commitEvery": 0,
+        "reuseStream": false,
+        "pattern": {
+          "type": "random",
+          "size": 1024
+        }
+      }
+    },
+    {
+      "name": "write/random_1mb",
+      "producerAPI": "write",
+      "bytesPerIter": "1048576",
+      "iters": 500,
+      "bytesTotal": "524288000",
+      "avgMs": 0.020705,
+      "medianMs": 0.020375,
+      "p95Ms": 0.023459,
+      "minMs": 0.017041,
+      "maxMs": 0.059083,
+      "throughputMBps": 48297.727283,
+      "elapsedMs": 10.352454,
+      "options": {
+        "chunkSize": 65536,
+        "initialChunks": 2,
+        "autoCommitOnFull": true,
+        "commitEvery": 0,
+        "reuseStream": false,
+        "pattern": {
+          "type": "random",
+          "size": 1024
+        }
+      }
+    },
+    {
+      "name": "commit_4k",
+      "producerAPI": "reserve",
+      "bytesPerIter": "262144",
+      "iters": 1000,
+      "bytesTotal": "262144000",
+      "avgMs": 0.004324,
+      "medianMs": 0.004125,
+      "p95Ms": 0.004625,
+      "minMs": 0.00325,
+      "maxMs": 0.252208,
+      "throughputMBps": 57812.878674,
+      "elapsedMs": 4.324296,
+      "options": {
+        "chunkSize": 65536,
+        "initialChunks": 2,
+        "autoCommitOnFull": false,
+        "commitEvery": 4096,
+        "reuseStream": false,
+        "pattern": {
+          "type": "ascii",
+          "size": 1024
+        }
+      }
+    },
+    {
+      "name": "write/commit_4k",
+      "producerAPI": "write",
+      "bytesPerIter": "262144",
+      "iters": 1000,
+      "bytesTotal": "262144000",
+      "avgMs": 0.022781,
+      "medianMs": 0.020541,
+      "p95Ms": 0.024583,
+      "minMs": 0.016875,
+      "maxMs": 0.575292,
+      "throughputMBps": 10974.134886,
+      "elapsedMs": 22.780839,
+      "options": {
+        "chunkSize": 65536,
+        "initialChunks": 2,
+        "autoCommitOnFull": false,
+        "commitEvery": 4096,
+        "reuseStream": false,
+        "pattern": {
+          "type": "ascii",
+          "size": 1024
+        }
+      }
+    },
+    {
+      "name": "large_32mb",
+      "producerAPI": "reserve",
+      "bytesPerIter": "33554432",
+      "iters": 100,
+      "bytesTotal": "3355443200",
+      "avgMs": 0.358078,
+      "medianMs": 0.345791,
+      "p95Ms": 0.421167,
+      "minMs": 0.288833,
+      "maxMs": 0.817041,
+      "throughputMBps": 89366.026516,
+      "elapsedMs": 35.807791,
+      "options": {
+        "chunkSize": 1048576,
+        "initialChunks": 2,
+        "autoCommitOnFull": true,
+        "commitEvery": 0,
+        "reuseStream": false,
+        "pattern": {
+          "type": "ascii",
+          "size": 32768
+        }
+      }
+    },
+    {
+      "name": "write/large_32mb",
+      "producerAPI": "write",
+      "bytesPerIter": "33554432",
+      "iters": 100,
+      "bytesTotal": "3355443200",
+      "avgMs": 0.386798,
+      "medianMs": 0.3745,
+      "p95Ms": 0.458583,
+      "minMs": 0.321625,
+      "maxMs": 0.812583,
+      "throughputMBps": 82730.529396,
+      "elapsedMs": 38.679796,
+      "options": {
+        "chunkSize": 1048576,
+        "initialChunks": 2,
+        "autoCommitOnFull": true,
+        "commitEvery": 0,
+        "reuseStream": false,
+        "pattern": {
+          "type": "ascii",
+          "size": 32768
+        }
+      }
+    },
+    {
+      "name": "binary_32mb",
+      "producerAPI": "reserve",
+      "bytesPerIter": "33554432",
+      "iters": 100,
+      "bytesTotal": "3355443200",
+      "avgMs": 0.336292,
+      "medianMs": 0.325583,
+      "p95Ms": 0.3895,
+      "minMs": 0.280458,
+      "maxMs": 0.840833,
+      "throughputMBps": 95155.474232,
+      "elapsedMs": 33.629174,
+      "options": {
+        "chunkSize": 1048576,
+        "initialChunks": 2,
+        "autoCommitOnFull": true,
+        "commitEvery": 0,
+        "reuseStream": false,
+        "pattern": {
+          "type": "binary",
+          "size": 32768
+        }
+      }
+    },
+    {
+      "name": "write/binary_32mb",
+      "producerAPI": "write",
+      "bytesPerIter": "33554432",
+      "iters": 100,
+      "bytesTotal": "3355443200",
+      "avgMs": 0.389783,
+      "medianMs": 0.368417,
+      "p95Ms": 0.508458,
+      "minMs": 0.303458,
+      "maxMs": 0.7875,
+      "throughputMBps": 82096.989024,
+      "elapsedMs": 38.978287,
+      "options": {
+        "chunkSize": 1048576,
+        "initialChunks": 2,
+        "autoCommitOnFull": true,
+        "commitEvery": 0,
+        "reuseStream": false,
+        "pattern": {
+          "type": "binary",
+          "size": 32768
+        }
+      }
+    },
+    {
+      "name": "random_32mb",
+      "producerAPI": "reserve",
+      "bytesPerIter": "33554432",
+      "iters": 100,
+      "bytesTotal": "3355443200",
+      "avgMs": 0.330854,
+      "medianMs": 0.308833,
+      "p95Ms": 0.371458,
+      "minMs": 0.282292,
+      "maxMs": 0.838417,
+      "throughputMBps": 96719.495359,
+      "elapsedMs": 33.085367,
+      "options": {
+        "chunkSize": 1048576,
+        "initialChunks": 2,
+        "autoCommitOnFull": true,
+        "commitEvery": 0,
+        "reuseStream": false,
+        "pattern": {
+          "type": "random",
+          "size": 32768
+        }
+      }
+    },
+    {
+      "name": "write/random_32mb",
+      "producerAPI": "write",
+      "bytesPerIter": "33554432",
+      "iters": 100,
+      "bytesTotal": "3355443200",
+      "avgMs": 0.357798,
+      "medianMs": 0.341083,
+      "p95Ms": 0.434042,
+      "minMs": 0.303375,
+      "maxMs": 0.730333,
+      "throughputMBps": 89436.061196,
+      "elapsedMs": 35.779751,
+      "options": {
+        "chunkSize": 1048576,
+        "initialChunks": 2,
+        "autoCommitOnFull": true,
+        "commitEvery": 0,
+        "reuseStream": false,
+        "pattern": {
+          "type": "random",
+          "size": 32768
+        }
+      }
+    },
+    {
+      "name": "single_chunk_32mb",
+      "producerAPI": "reserve",
+      "bytesPerIter": "33554432",
+      "iters": 100,
+      "bytesTotal": "3355443200",
+      "avgMs": 0.280458,
+      "medianMs": 0.255667,
+      "p95Ms": 0.306375,
+      "minMs": 0.246416,
+      "maxMs": 1.777875,
+      "throughputMBps": 114098.975013,
+      "elapsedMs": 28.045826,
+      "options": {
+        "chunkSize": 33554432,
+        "initialChunks": 1,
+        "autoCommitOnFull": true,
+        "commitEvery": 0,
+        "reuseStream": false,
+        "pattern": {
+          "type": "ascii",
+          "size": 32768
+        }
+      }
+    },
+    {
+      "name": "write/single_chunk_32mb",
+      "producerAPI": "write",
+      "bytesPerIter": "33554432",
+      "iters": 100,
+      "bytesTotal": "3355443200",
+      "avgMs": 1.371463,
+      "medianMs": 1.313333,
+      "p95Ms": 1.908583,
+      "minMs": 0.284584,
+      "maxMs": 2.066292,
+      "throughputMBps": 23332.75524,
+      "elapsedMs": 137.146255,
+      "options": {
+        "chunkSize": 33554432,
+        "initialChunks": 1,
+        "autoCommitOnFull": true,
+        "commitEvery": 0,
+        "reuseStream": false,
+        "pattern": {
+          "type": "ascii",
+          "size": 32768
+        }
+      }
+    },
+    {
+      "name": "huge_chunk_8mb",
+      "producerAPI": "reserve",
+      "bytesPerIter": "67108864",
+      "iters": 100,
+      "bytesTotal": "6710886400",
+      "avgMs": 0.843805,
+      "medianMs": 0.822792,
+      "p95Ms": 1.059458,
+      "minMs": 0.677625,
+      "maxMs": 1.247042,
+      "throughputMBps": 75846.905061,
+      "elapsedMs": 84.380503,
+      "options": {
+        "chunkSize": 8388608,
+        "initialChunks": 1,
+        "autoCommitOnFull": true,
+        "commitEvery": 0,
+        "reuseStream": false,
+        "pattern": {
+          "type": "ascii",
+          "size": 32768
+        }
+      }
+    },
+    {
+      "name": "write/huge_chunk_8mb",
+      "producerAPI": "write",
+      "bytesPerIter": "67108864",
+      "iters": 100,
+      "bytesTotal": "6710886400",
+      "avgMs": 1.231216,
+      "medianMs": 1.192125,
+      "p95Ms": 1.806583,
+      "minMs": 0.880041,
+      "maxMs": 2.016708,
+      "throughputMBps": 51981.139293,
+      "elapsedMs": 123.12158,
+      "options": {
+        "chunkSize": 8388608,
+        "initialChunks": 1,
+        "autoCommitOnFull": true,
+        "commitEvery": 0,
+        "reuseStream": false,
+        "pattern": {
+          "type": "ascii",
+          "size": 32768
+        }
+      }
+    },
+    {
+      "name": "very_large_128mb",
+      "producerAPI": "reserve",
+      "bytesPerIter": "134217728",
+      "iters": 100,
+      "bytesTotal": "13421772800",
+      "avgMs": 1.366875,
+      "medianMs": 1.328042,
+      "p95Ms": 1.707208,
+      "minMs": 1.179791,
+      "maxMs": 2.001542,
+      "throughputMBps": 93644.237567,
+      "elapsedMs": 136.687535,
+      "options": {
+        "chunkSize": 8388608,
+        "initialChunks": 1,
+        "autoCommitOnFull": true,
+        "commitEvery": 0,
+        "reuseStream": false,
+        "pattern": {
+          "type": "ascii",
+          "size": 32768
+        }
+      }
+    },
+    {
+      "name": "write/very_large_128mb",
+      "producerAPI": "write",
+      "bytesPerIter": "134217728",
+      "iters": 100,
+      "bytesTotal": "13421772800",
+      "avgMs": 1.85001,
+      "medianMs": 1.81525,
+      "p95Ms": 2.388,
+      "minMs": 1.381625,
+      "maxMs": 2.771584,
+      "throughputMBps": 69188.80061,
+      "elapsedMs": 185.001039,
+      "options": {
+        "chunkSize": 8388608,
+        "initialChunks": 1,
+        "autoCommitOnFull": true,
+        "commitEvery": 0,
+        "reuseStream": false,
+        "pattern": {
+          "type": "ascii",
+          "size": 32768
+        }
+      }
+    }
+  ]
+}

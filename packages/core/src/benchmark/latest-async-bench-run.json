@@ -1,0 +1,336 @@
+{
+  "runId": "2026-02-08T16:29:57.309Z",
+  "suite": "async",
+  "args": ["--json=latest-async-bench-run.json"],
+  "results": [
+    {
+      "name": "async/small_64k_fast",
+      "producerAPI": "reserve",
+      "bytesPerIter": "65536",
+      "iters": 50,
+      "bytesTotal": "3276800",
+      "elapsedMs": 83.61687300000014,
+      "throughputMBps": 37.37283980949628,
+      "avgIterMs": 1.6723374600000027,
+      "medianIterMs": 1.335084000000009,
+      "p95IterMs": 2.2965829999999983,
+      "minIterMs": 1.025459000000012,
+      "maxIterMs": 2.406708000000009,
+      "asyncDelay": {
+        "minMs": 1,
+        "maxMs": 3
+      },
+      "peakInFlightSpans": 1,
+      "peakChunks": 0,
+      "memory": {
+        "start": {
+          "rss": 34881536,
+          "heapTotal": 1260544,
+          "heapUsed": 238570,
+          "external": 40282,
+          "arrayBuffers": 0
+        },
+        "end": {
+          "rss": 43171840,
+          "heapTotal": 1481728,
+          "heapUsed": 6951222,
+          "external": 7161576,
+          "arrayBuffers": 6890100
+        },
+        "peak": {
+          "rss": 43171840,
+          "heapTotal": 1487872,
+          "heapUsed": 6951222,
+          "external": 7161576,
+          "arrayBuffers": 6890100
+        }
+      },
+      "options": {
+        "chunkSize": 65536,
+        "initialChunks": 2
+      }
+    },
+    {
+      "name": "async/small_64k_slow",
+      "producerAPI": "reserve",
+      "bytesPerIter": "65536",
+      "iters": 50,
+      "bytesTotal": "3276800",
+      "elapsedMs": 371.49754099999996,
+      "throughputMBps": 8.411899555480504,
+      "avgIterMs": 7.429950819999999,
+      "medianIterMs": 6.795042000000024,
+      "p95IterMs": 10.055124999999975,
+      "minIterMs": 5.267750000000035,
+      "maxIterMs": 10.277333999999996,
+      "asyncDelay": {
+        "minMs": 5,
+        "maxMs": 10
+      },
+      "peakInFlightSpans": 1,
+      "peakChunks": 0,
+      "memory": {
+        "start": {
+          "rss": 43188224,
+          "heapTotal": 1481728,
+          "heapUsed": 6951222,
+          "external": 7161576,
+          "arrayBuffers": 6890100
+        },
+        "end": {
+          "rss": 44662784,
+          "heapTotal": 1499136,
+          "heapUsed": 14500240,
+          "external": 14076890,
+          "arrayBuffers": 13780200
+        },
+        "peak": {
+          "rss": 44662784,
+          "heapTotal": 1499136,
+          "heapUsed": 14500240,
+          "external": 14076890,
+          "arrayBuffers": 13780200
+        }
+      },
+      "options": {
+        "chunkSize": 65536,
+        "initialChunks": 2
+      }
+    },
+    {
+      "name": "async/medium_256k_mixed",
+      "producerAPI": "reserve",
+      "bytesPerIter": "262144",
+      "iters": 50,
+      "bytesTotal": "13107200",
+      "elapsedMs": 390.65499799999986,
+      "throughputMBps": 31.997542752544035,
+      "avgIterMs": 7.813099959999997,
+      "medianIterMs": 8.441833000000088,
+      "p95IterMs": 9.450333,
+      "minIterMs": 3.1569999999999254,
+      "maxIterMs": 9.991624999999999,
+      "asyncDelay": {
+        "minMs": 1,
+        "maxMs": 10
+      },
+      "peakInFlightSpans": 4,
+      "peakChunks": 0,
+      "memory": {
+        "start": {
+          "rss": 44679168,
+          "heapTotal": 1515520,
+          "heapUsed": 14500240,
+          "external": 14076890,
+          "arrayBuffers": 13780200
+        },
+        "end": {
+          "rss": 49086464,
+          "heapTotal": 1586176,
+          "heapUsed": 28005433,
+          "external": 27601047,
+          "arrayBuffers": 27240900
+        },
+        "peak": {
+          "rss": 49086464,
+          "heapTotal": 1586176,
+          "heapUsed": 28005433,
+          "external": 27601047,
+          "arrayBuffers": 27240900
+        }
+      },
+      "options": {
+        "chunkSize": 65536,
+        "initialChunks": 2
+      }
+    },
+    {
+      "name": "async/large_1mb_fast",
+      "producerAPI": "reserve",
+      "bytesPerIter": "1048576",
+      "iters": 10,
+      "bytesTotal": "10485760",
+      "elapsedMs": 22.240793000000167,
+      "throughputMBps": 449.62425575382696,
+      "avgIterMs": 2.2240793000000165,
+      "medianIterMs": 2.134541000000013,
+      "p95IterMs": 3.0335420000000113,
+      "minIterMs": 2.051584000000048,
+      "maxIterMs": 3.0335420000000113,
+      "asyncDelay": {
+        "minMs": 1,
+        "maxMs": 3
+      },
+      "peakInFlightSpans": 16,
+      "peakChunks": 0,
+      "memory": {
+        "start": {
+          "rss": 49086464,
+          "heapTotal": 1602560,
+          "heapUsed": 28005433,
+          "external": 27601047,
+          "arrayBuffers": 27240900
+        },
+        "end": {
+          "rss": 51363840,
+          "heapTotal": 1886208,
+          "heapUsed": 38905611,
+          "external": 38201163,
+          "arrayBuffers": 37813280
+        },
+        "peak": {
+          "rss": 51363840,
+          "heapTotal": 1886208,
+          "heapUsed": 38905611,
+          "external": 38201163,
+          "arrayBuffers": 37813280
+        }
+      },
+      "options": {
+        "chunkSize": 65536,
+        "initialChunks": 2
+      }
+    },
+    {
+      "name": "async/large_1mb_slow",
+      "producerAPI": "reserve",
+      "bytesPerIter": "1048576",
+      "iters": 10,
+      "bytesTotal": "10485760",
+      "elapsedMs": 90.33599900000013,
+      "throughputMBps": 110.69784040358026,
+      "avgIterMs": 9.033599900000013,
+      "medianIterMs": 9.10612500000002,
+      "p95IterMs": 9.307833000000073,
+      "minIterMs": 8.13854200000003,
+      "maxIterMs": 9.307833000000073,
+      "asyncDelay": {
+        "minMs": 5,
+        "maxMs": 10
+      },
+      "peakInFlightSpans": 16,
+      "peakChunks": 0,
+      "memory": {
+        "start": {
+          "rss": 51363840,
+          "heapTotal": 1886208,
+          "heapUsed": 38905611,
+          "external": 38201163,
+          "arrayBuffers": 37813280
+        },
+        "end": {
+          "rss": 54804480,
+          "heapTotal": 1881088,
+          "heapUsed": 48509330,
+          "external": 2745614,
+          "arrayBuffers": 2113990
+        },
+        "peak": {
+          "rss": 54804480,
+          "heapTotal": 1886208,
+          "heapUsed": 48509330,
+          "external": 46675740,
+          "arrayBuffers": 46271184
+        }
+      },
+      "options": {
+        "chunkSize": 65536,
+        "initialChunks": 2
+      }
+    },
+    {
+      "name": "async/write_256k_mixed",
+      "producerAPI": "write",
+      "bytesPerIter": "262144",
+      "iters": 50,
+      "bytesTotal": "13107200",
+      "elapsedMs": 397.15417100000013,
+      "throughputMBps": 31.47392351067615,
+      "avgIterMs": 7.9430834200000024,
+      "medianIterMs": 8.628207999999859,
+      "p95IterMs": 9.469833000000108,
+      "minIterMs": 4.086791999999832,
+      "maxIterMs": 9.627459000000044,
+      "asyncDelay": {
+        "minMs": 1,
+        "maxMs": 10
+      },
+      "peakInFlightSpans": 4,
+      "peakChunks": 0,
+      "memory": {
+        "start": {
+          "rss": 54804480,
+          "heapTotal": 1881088,
+          "heapUsed": 48509330,
+          "external": 2745614,
+          "arrayBuffers": 2113990
+        },
+        "end": {
+          "rss": 54853632,
+          "heapTotal": 1881088,
+          "heapUsed": 5715313,
+          "external": 5741917,
+          "arrayBuffers": 5114816
+        },
+        "peak": {
+          "rss": 54853632,
+          "heapTotal": 1881088,
+          "heapUsed": 48509330,
+          "external": 11092274,
+          "arrayBuffers": 10459624
+        }
+      },
+      "options": {
+        "chunkSize": 65536,
+        "initialChunks": 2
+      }
+    },
+    {
+      "name": "async/tiny_chunks_slow",
+      "producerAPI": "reserve",
+      "bytesPerIter": "65536",
+      "iters": 50,
+      "bytesTotal": "3276800",
+      "elapsedMs": 453.04770600000006,
+      "throughputMBps": 6.897728337686362,
+      "avgIterMs": 9.060954120000002,
+      "medianIterMs": 9.114666999999827,
+      "p95IterMs": 9.22420800000009,
+      "minIterMs": 8.079042000000072,
+      "maxIterMs": 9.371458000000075,
+      "asyncDelay": {
+        "minMs": 5,
+        "maxMs": 10
+      },
+      "peakInFlightSpans": 16,
+      "peakChunks": 0,
+      "memory": {
+        "start": {
+          "rss": 54853632,
+          "heapTotal": 1881088,
+          "heapUsed": 5715313,
+          "external": 5741917,
+          "arrayBuffers": 5114816
+        },
+        "end": {
+          "rss": 57589760,
+          "heapTotal": 1913856,
+          "heapUsed": 2072974,
+          "external": 1597733,
+          "arrayBuffers": 965444
+        },
+        "peak": {
+          "rss": 57589760,
+          "heapTotal": 1913856,
+          "heapUsed": 9274618,
+          "external": 8498906,
+          "arrayBuffers": 7864323
+        }
+      },
+      "options": {
+        "chunkSize": 4096,
+        "initialChunks": 1
+      }
+    }
+  ]
+}
