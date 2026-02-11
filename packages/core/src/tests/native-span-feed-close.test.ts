@@ -1,6 +1,6 @@
 import { test, expect } from "bun:test"
 import { JSCallback } from "bun:ffi"
-import { resolveRenderLib } from "./zig"
+import { resolveRenderLib } from "../zig"
 
 const lib = resolveRenderLib()
 
