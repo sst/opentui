@@ -20,6 +20,15 @@ You can also run `zig build bench` to build the bench runner and install the FFI
 ### Run
 
 ```bash
+cd packages/core
+zig build bench-ffi
+```
+
+```bash
+bun bench:ts
+```
+
+```bash
 bun src/benchmark/native-span-feed-benchmark.ts --bytes=100000 --iters=1000 --chunk=65536 --initial=2
 ```
 
@@ -29,7 +38,7 @@ Defaults are optimized (batch drain + reserve path + chunk release flags) with n
 additional flags required.
 
 - `--bytes=<n>` total bytes produced by Zig per iteration (default: 100000)
-- `--iters=<n>` number of iterations (default: 1000)
+- `--iters=<n>` base iteration count (suite scenarios scale from this; defaults are optimized)
 - `--suite=<quick|default|large|all>` run a scenario suite
 - `--chunk=<n>` chunk size in bytes
 - `--initial=<n>` initial chunk count
@@ -42,9 +51,6 @@ additional flags required.
 - `--reuse` reuse a single stream across iterations (may grow memory)
 - `--mem` enable memory tracking
 - `--mem-sample=<n>` sample memory every N iterations (default: 1)
-- `--release-by-flag` enable chunk release flags (default when batch is enabled)
 - `--mem` enable memory tracking
 - `--mem-sample=<n>` sample memory every N iterations (default: 1)
 - `--json[=<path>]` write results to JSON (default: `latest-<suite>-bench-run.json` when `--suite` is set, otherwise `latest-bench-run.json`)
-
-
