@@ -192,10 +192,10 @@ pub const Stream = struct {
         self.attached = true;
         if (self.callback == null) return;
 
-        emitStateBuffer(self);
+        self.emitStateBuffer();
 
         for (self.chunks.items) |chunk| {
-            emitChunkAdded(self, chunk);
+            self.emitChunkAdded(chunk);
         }
 
         queued = self.span_ring.count();
@@ -208,13 +208,13 @@ pub const Stream = struct {
         self.callback = cb;
         if (cb == null or !self.attached) return;
 
-        emitStateBuffer(self);
+        self.emitStateBuffer();
         for (self.chunks.items) |chunk| {
-            emitChunkAdded(self, chunk);
+            self.emitChunkAdded(chunk);
         }
         const queued = self.span_ring.count();
         if (queued > 0) {
-            emitDataAvailable(self, queued);
+            self.emitDataAvailable(queued);
         }
     }
 
@@ -319,7 +319,7 @@ pub const Stream = struct {
         self.closed = true;
         self.attached = false;
         self.finish(notify, 0);
-        emitClosed(self);
+        self.emitClosed();
     }
 
     pub fn destroy(self: *Stream) void {
@@ -370,7 +370,7 @@ pub const Stream = struct {
                 queued_override
             else
                 self.span_ring.count();
-            if (queued > 0) emitDataAvailable(self, queued);
+            if (queued > 0) self.emitDataAvailable(queued);
         }
     }
 
@@ -387,7 +387,7 @@ pub const Stream = struct {
         self.state_buffer = new_buffer;
         self.state_capacity = new_capacity;
         if (self.attached and self.callback != null) {
-            emitStateBuffer(self);
+            self.emitStateBuffer();
         }
     }
 
@@ -475,7 +475,7 @@ pub const Stream = struct {
         self.chunks.append(self.allocator, chunk) catch return StreamError.OutOfMemory;
         self.stats.chunks = @intCast(self.chunks.items.len);
         if (self.attached and self.callback != null) {
-            emitChunkAdded(self, chunk);
+            self.emitChunkAdded(chunk);
         }
     }
 
@@ -509,6 +509,30 @@ pub const Stream = struct {
         self.pending_chunk_index = self.current_chunk_index;
         self.pending_offset = 0;
         self.pending_len = 0;
+    }
+
+    fn emitChunkAdded(self: *Stream, chunk: Chunk) void {
+        if (self.callback) |cb| {
+            cb(@intFromPtr(self), Event.ChunkAdded, @intFromPtr(chunk.ptr), chunk.len);
+        }
+    }
+
+    fn emitDataAvailable(self: *Stream, count: u32) void {
+        if (self.callback) |cb| {
+            cb(@intFromPtr(self), Event.DataAvailable, count, 0);
+        }
+    }
+
+    fn emitStateBuffer(self: *Stream) void {
+        if (self.callback) |cb| {
+            cb(@intFromPtr(self), Event.StateBuffer, @intFromPtr(self.state_buffer.ptr), self.state_capacity);
+        }
+    }
+
+    fn emitClosed(self: *Stream) void {
+        if (self.callback) |cb| {
+            cb(@intFromPtr(self), Event.Closed, 0, 0);
+        }
     }
 };
 
@@ -576,30 +600,6 @@ fn errorToStatus(err: StreamError) i32 {
         StreamError.OutOfMemory => Status.err_alloc,
         StreamError.Busy => Status.err_busy,
     };
-}
-
-fn emitChunkAdded(stream: *Stream, chunk: Chunk) void {
-    if (stream.callback) |cb| {
-        cb(@intFromPtr(stream), Event.ChunkAdded, @intFromPtr(chunk.ptr), chunk.len);
-    }
-}
-
-fn emitDataAvailable(stream: *Stream, count: u32) void {
-    if (stream.callback) |cb| {
-        cb(@intFromPtr(stream), Event.DataAvailable, count, 0);
-    }
-}
-
-fn emitStateBuffer(stream: *Stream) void {
-    if (stream.callback) |cb| {
-        cb(@intFromPtr(stream), Event.StateBuffer, @intFromPtr(stream.state_buffer.ptr), stream.state_capacity);
-    }
-}
-
-fn emitClosed(stream: *Stream) void {
-    if (stream.callback) |cb| {
-        cb(@intFromPtr(stream), Event.Closed, 0, 0);
-    }
 }
 
 pub fn createNativeSpanFeedWithAllocator(allocator: std.mem.Allocator, options_ptr: ?*const Options) ?*Stream {
