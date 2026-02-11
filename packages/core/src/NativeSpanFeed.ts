@@ -81,6 +81,10 @@ export class NativeSpanFeed {
   private destroyed = false
   private draining = false
   private pendingDataAvailable = false
+  private pendingClose = false
+  private closing = false
+  private inCallback = false
+  private closeQueued = false
 
   private constructor(streamPtr: Pointer) {
     this.streamPtr = streamPtr
@@ -112,13 +116,38 @@ export class NativeSpanFeed {
 
   close(): void {
     if (this.destroyed) return
+    if (this.inCallback || this.draining) {
+      this.pendingClose = true
+      if (!this.closeQueued) {
+        this.closeQueued = true
+        queueMicrotask(() => {
+          this.closeQueued = false
+          if (this.pendingClose && !this.destroyed) {
+            this.pendingClose = false
+            this.performClose()
+          }
+        })
+      }
+      return
+    }
+    this.performClose()
+  }
+
+  private performClose(): void {
+    if (this.closing) return
+    this.closing = true
     if (!this.closed) {
       this.lib.streamClose(this.streamPtr)
       this.closed = true
     }
+    this.finalizeDestroy()
+  }
+
+  private finalizeDestroy(): void {
+    if (this.destroyed) return
+    this.lib.unregisterNativeSpanFeedStream(this.streamPtr)
     this.lib.destroyNativeSpanFeed(this.streamPtr)
     this.destroyed = true
-    this.lib.unregisterNativeSpanFeedStream(this.streamPtr)
     this.chunkMap.clear()
     this.chunkSizes.clear()
     this.stateBuffer = null
@@ -129,46 +158,52 @@ export class NativeSpanFeed {
   }
 
   private handleEvent(eventId: number, arg0: Pointer, arg1: number | bigint): void {
-    switch (eventId) {
-      case EventId.StateBuffer: {
-        const len = toNumber(arg1)
-        if (len > 0 && arg0) {
-          // toArrayBuffer must alias Zig memory so refcount writes are visible.
-          const buffer = toArrayBuffer(arg0, 0, len)
-          this.stateBuffer = new Uint8Array(buffer)
-        }
-        break
-      }
-      case EventId.DataAvailable: {
-        if (this.dataHandlers.size === 0) {
-          this.pendingDataAvailable = true
+    this.inCallback = true
+    try {
+      switch (eventId) {
+        case EventId.StateBuffer: {
+          const len = toNumber(arg1)
+          if (len > 0 && arg0) {
+            // toArrayBuffer must alias Zig memory so refcount writes are visible.
+            const buffer = toArrayBuffer(arg0, 0, len)
+            this.stateBuffer = new Uint8Array(buffer)
+          }
           break
         }
-        this.drainAll()
-        break
-      }
-      case EventId.ChunkAdded: {
-        const chunkLen = toNumber(arg1)
-        if (chunkLen > 0 && arg0) {
-          if (!this.chunkMap.has(arg0)) {
-            const buffer = toArrayBuffer(arg0, 0, chunkLen)
-            this.chunkMap.set(arg0, buffer)
+        case EventId.DataAvailable: {
+          if (this.closing) break
+          if (this.dataHandlers.size === 0) {
+            this.pendingDataAvailable = true
+            break
           }
-          this.chunkSizes.set(arg0, chunkLen)
+          this.drainAll()
+          break
         }
-        break
+        case EventId.ChunkAdded: {
+          const chunkLen = toNumber(arg1)
+          if (chunkLen > 0 && arg0) {
+            if (!this.chunkMap.has(arg0)) {
+              const buffer = toArrayBuffer(arg0, 0, chunkLen)
+              this.chunkMap.set(arg0, buffer)
+            }
+            this.chunkSizes.set(arg0, chunkLen)
+          }
+          break
+        }
+        case EventId.Error: {
+          const code = arg0
+          for (const handler of this.errorHandlers) handler(code)
+          break
+        }
+        case EventId.Closed: {
+          this.closed = true
+          break
+        }
+        default:
+          break
       }
-      case EventId.Error: {
-        const code = arg0
-        for (const handler of this.errorHandlers) handler(code)
-        break
-      }
-      case EventId.Closed: {
-        this.closed = true
-        break
-      }
-      default:
-        break
+    } finally {
+      this.inCallback = false
     }
   }
 
@@ -193,6 +228,7 @@ export class NativeSpanFeed {
 
     try {
       for (const span of spans) {
+        if (this.pendingClose) break
         if (span.len === 0) continue
 
         let buffer = this.chunkMap.get(span.chunkPtr)
@@ -220,6 +256,8 @@ export class NativeSpanFeed {
             firstError ??= e
           }
         }
+
+        if (this.pendingClose) break
 
         if (asyncResults) {
           // Use allSettled so rejections still release refcounts.

@@ -1037,10 +1037,6 @@ function getOpenTUILib(libPath?: string) {
     },
 
     // NativeSpanFeed
-    initGlobalCallback: {
-      args: ["ptr"],
-      returns: "void",
-    },
     createNativeSpanFeed: {
       args: ["ptr"],
       returns: "ptr",
@@ -1084,6 +1080,10 @@ function getOpenTUILib(libPath?: string) {
     streamGetStats: {
       args: ["ptr", "ptr"],
       returns: "i32",
+    },
+    streamSetCallback: {
+      args: ["ptr", "ptr"],
+      returns: "void",
     },
   })
 
@@ -1761,7 +1761,6 @@ export interface RenderLib {
   freeUnicode: (encoded: { ptr: Pointer; data: Array<{ width: number; char: number }> }) => void
   bufferDrawChar: (buffer: Pointer, char: number, x: number, y: number, fg: RGBA, bg: RGBA, attributes?: number) => void
 
-  initNativeSpanFeedCallback: (callbackPtr: Pointer | null) => void
   registerNativeSpanFeedStream: (stream: Pointer, handler: NativeSpanFeedEventHandler) => void
   unregisterNativeSpanFeedStream: (stream: Pointer) => void
   createNativeSpanFeed: (options?: NativeSpanFeedOptions | null) => Pointer
@@ -1908,10 +1907,9 @@ class FFIRenderLib implements RenderLib {
     this.setEventCallback(eventCallback.ptr)
   }
 
-  private ensureNativeSpanFeedCallback() {
+  private ensureNativeSpanFeedCallback(): JSCallback {
     if (this.nativeSpanFeedCallbackWrapper) {
-      this.opentui.symbols.initGlobalCallback(this.nativeSpanFeedCallbackWrapper.ptr)
-      return
+      return this.nativeSpanFeedCallbackWrapper
     }
 
     const callback = new JSCallback(
@@ -1933,15 +1931,11 @@ class FFIRenderLib implements RenderLib {
       throw new Error("Failed to create native span feed callback")
     }
 
-    this.opentui.symbols.initGlobalCallback(callback.ptr)
+    return callback
   }
 
   private setEventCallback(callbackPtr: Pointer) {
     this.opentui.symbols.setEventCallback(callbackPtr)
-  }
-
-  public initNativeSpanFeedCallback(callbackPtr: Pointer | null): void {
-    this.opentui.symbols.initGlobalCallback(callbackPtr)
   }
 
   public createRenderer(width: number, height: number, options: { testing?: boolean; remote?: boolean } = {}) {
@@ -3560,11 +3554,13 @@ class FFIRenderLib implements RenderLib {
   }
 
   public registerNativeSpanFeedStream(stream: Pointer, handler: NativeSpanFeedEventHandler): void {
-    this.ensureNativeSpanFeedCallback()
+    const callback = this.ensureNativeSpanFeedCallback()
     this.nativeSpanFeedHandlers.set(toPointer(stream), handler)
+    this.opentui.symbols.streamSetCallback(stream, callback.ptr)
   }
 
   public unregisterNativeSpanFeedStream(stream: Pointer): void {
+    this.opentui.symbols.streamSetCallback(stream, null)
     this.nativeSpanFeedHandlers.delete(toPointer(stream))
   }
 
@@ -3583,6 +3579,7 @@ class FFIRenderLib implements RenderLib {
 
   public destroyNativeSpanFeed(stream: Pointer): void {
     this.opentui.symbols.destroyNativeSpanFeed(stream)
+    this.nativeSpanFeedHandlers.delete(toPointer(stream))
   }
 
   public streamWrite(stream: Pointer, data: Uint8Array | string): number {

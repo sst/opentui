@@ -924,12 +924,10 @@ fn countingCallback(_: usize, event_id: u32, _: usize, _: u64) callconv(.c) void
 test "Stream - write returning NoSpace emits DataAvailable exactly once" {
     // Regression: NoSpace path must not double-emit DataAvailable.
     data_available_count = 0;
-    raw.initGlobalCallback(&countingCallback);
-    defer raw.initGlobalCallback(null);
-
     const stream = try raw.Stream.create(testing.allocator, testOptions(64, 2, false));
     defer stream.destroy();
 
+    stream.setCallback(&countingCallback);
     try stream.attach();
     data_available_count = 0;
     const first = [_]u8{'A'} ** 64;
@@ -977,13 +975,11 @@ test "Stream - synchronous drain during write does not corrupt state" {
     drain_during_write_stream = null;
     drain_during_write_total = 0;
 
-    raw.initGlobalCallback(&drainingCallback);
-    defer raw.initGlobalCallback(null);
-
     const chunk_size: u32 = 64;
     const stream = try raw.Stream.create(testing.allocator, testOptions(chunk_size, 2, true));
     defer stream.destroy();
 
+    stream.setCallback(&drainingCallback);
     try stream.attach();
     drain_during_write_stream = stream;
     drain_during_write_total = 0;

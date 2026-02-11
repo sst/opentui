@@ -70,7 +70,7 @@ const SpanRing = struct {
         const new_count = queued + 1;
 
         stream.stats.pending_spans = new_count;
-        if (stream.attached and global_cb != null) {
+        if (stream.attached and stream.callback != null) {
             if (queued < notify_threshold_default and new_count >= notify_threshold_default) {
                 notify.* = true;
             }
@@ -118,6 +118,7 @@ pub const Stream = struct {
     reserved_offset: usize,
     reserved_len: usize,
     attached: bool,
+    callback: ?*const CallbackFn,
     closed: bool,
     span_ring: SpanRing,
     state_buffer: []u8,
@@ -141,6 +142,7 @@ pub const Stream = struct {
             .reserved_offset = 0,
             .reserved_len = 0,
             .attached = false,
+            .callback = null,
             .closed = false,
             .span_ring = .{
                 .buffer = &[_]SpanInfo{},
@@ -188,7 +190,7 @@ pub const Stream = struct {
         defer self.finish(notify, queued);
 
         self.attached = true;
-        if (global_cb == null) return;
+        if (self.callback == null) return;
 
         emitStateBuffer(self);
 
@@ -199,6 +201,20 @@ pub const Stream = struct {
         queued = self.span_ring.count();
         if (queued > 0) {
             notify = true;
+        }
+    }
+
+    pub fn setCallback(self: *Stream, cb: ?*const CallbackFn) void {
+        self.callback = cb;
+        if (cb == null or !self.attached) return;
+
+        emitStateBuffer(self);
+        for (self.chunks.items) |chunk| {
+            emitChunkAdded(self, chunk);
+        }
+        const queued = self.span_ring.count();
+        if (queued > 0) {
+            emitDataAvailable(self, queued);
         }
     }
 
@@ -349,7 +365,7 @@ pub const Stream = struct {
     }
 
     pub fn finish(self: *Stream, notify: bool, queued_override: u32) void {
-        if (notify) {
+        if (notify and self.callback != null) {
             const queued = if (queued_override != 0)
                 queued_override
             else
@@ -370,7 +386,7 @@ pub const Stream = struct {
         }
         self.state_buffer = new_buffer;
         self.state_capacity = new_capacity;
-        if (self.attached and global_cb != null) {
+        if (self.attached and self.callback != null) {
             emitStateBuffer(self);
         }
     }
@@ -458,7 +474,7 @@ pub const Stream = struct {
         const chunk = Chunk{ .ptr = mem.ptr, .len = chunk_size };
         self.chunks.append(self.allocator, chunk) catch return StreamError.OutOfMemory;
         self.stats.chunks = @intCast(self.chunks.items.len);
-        if (self.attached and global_cb != null) {
+        if (self.attached and self.callback != null) {
             emitChunkAdded(self, chunk);
         }
     }
@@ -533,8 +549,6 @@ pub const StreamError = error{
     Busy,
 };
 
-var global_cb: ?*const CallbackFn = null;
-
 pub fn defaultOptions() Options {
     return .{
         .chunk_size = 64 * 1024,
@@ -565,36 +579,37 @@ fn errorToStatus(err: StreamError) i32 {
 }
 
 fn emitChunkAdded(stream: *Stream, chunk: Chunk) void {
-    if (global_cb) |cb| {
+    if (stream.callback) |cb| {
         cb(@intFromPtr(stream), Event.ChunkAdded, @intFromPtr(chunk.ptr), chunk.len);
     }
 }
 
 fn emitDataAvailable(stream: *Stream, count: u32) void {
-    if (global_cb) |cb| {
+    if (stream.callback) |cb| {
         cb(@intFromPtr(stream), Event.DataAvailable, count, 0);
     }
 }
 
 fn emitStateBuffer(stream: *Stream) void {
-    if (global_cb) |cb| {
+    if (stream.callback) |cb| {
         cb(@intFromPtr(stream), Event.StateBuffer, @intFromPtr(stream.state_buffer.ptr), stream.state_capacity);
     }
 }
 
 fn emitClosed(stream: *Stream) void {
-    if (global_cb) |cb| {
+    if (stream.callback) |cb| {
         cb(@intFromPtr(stream), Event.Closed, 0, 0);
     }
-}
-
-pub export fn initGlobalCallback(cb: ?*const CallbackFn) void {
-    global_cb = cb;
 }
 
 pub fn createNativeSpanFeedWithAllocator(allocator: std.mem.Allocator, options_ptr: ?*const Options) ?*Stream {
     const opts = normalizeOptions(if (options_ptr) |p| p.* else defaultOptions());
     return Stream.create(allocator, opts) catch null;
+}
+
+pub export fn streamSetCallback(stream: ?*Stream, callback: ?*const CallbackFn) void {
+    if (stream == null) return;
+    stream.?.setCallback(callback);
 }
 
 pub export fn attachNativeSpanFeed(stream: ?*Stream) i32 {
