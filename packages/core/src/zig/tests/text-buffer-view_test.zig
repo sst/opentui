@@ -757,7 +757,7 @@ test "TextBufferView word wrapping - fragmented rope with word boundary" {
     defer view.deinit();
 
     const text = "hello my good friend";
-    const mem_id = try tb.mem_registry.register(text, false);
+    const mem_id = try tb.registerMemBuffer(text, false);
 
     const seg_mod = @import("../text-buffer-segment.zig");
     const Segment = seg_mod.Segment;
@@ -774,7 +774,7 @@ test "TextBufferView word wrapping - fragmented rope with word boundary" {
     try segments.append(std.testing.allocator, Segment{ .text = chunk2 });
     try segments.append(std.testing.allocator, Segment{ .text = chunk3 });
 
-    try tb.rope.setSegments(segments.items);
+    try tb.rope().setSegments(segments.items);
 
     view.virtual_lines_dirty = true;
 
@@ -2026,7 +2026,7 @@ test "TextBufferView measureForDimensions - width 0 uses intrinsic line widths" 
 
     const result = try view.measureForDimensions(0, 24);
     try std.testing.expectEqual(tb.getLineCount(), result.line_count);
-    try std.testing.expectEqual(iter_mod.getMaxLineWidth(&tb.rope), result.max_width);
+    try std.testing.expectEqual(iter_mod.getMaxLineWidth(tb.rope()), result.max_width);
 }
 
 test "TextBufferView measureForDimensions - no wrap matches multi-segment line widths" {
@@ -2322,7 +2322,7 @@ test "TextBufferView truncation - verify ellipsis chunk injection" {
     try std.testing.expectEqual(@as(u32, 3), ellipsis_chunk.width);
 
     // Get the ellipsis text to verify it's "..."
-    const ellipsis_text = ellipsis_chunk.chunk.getBytes(&tb.mem_registry);
+    const ellipsis_text = ellipsis_chunk.chunk.getBytes(tb.memRegistry());
     try std.testing.expectEqualStrings("...", ellipsis_text);
 }
 
@@ -2373,7 +2373,7 @@ test "TextBufferView truncation - verify prefix and suffix content" {
     try std.testing.expectEqual(@as(usize, 3), chunks.len);
 
     // Middle chunk (ellipsis)
-    const ellipsis_bytes = chunks[1].chunk.getBytes(&tb.mem_registry);
+    const ellipsis_bytes = chunks[1].chunk.getBytes(tb.memRegistry());
 
     // Verify ellipsis is correct
     try std.testing.expectEqualStrings("...", ellipsis_bytes);
@@ -3275,7 +3275,7 @@ test "TextBufferView word wrapping - chunk at exact wrap boundary" {
     defer view.deinit();
 
     const text = "hello world ddddddddd";
-    const mem_id = try tb.mem_registry.register(text, false);
+    const mem_id = try tb.registerMemBuffer(text, false);
 
     const seg_mod = @import("../text-buffer-segment.zig");
     const Segment = seg_mod.Segment;
@@ -3291,7 +3291,7 @@ test "TextBufferView word wrapping - chunk at exact wrap boundary" {
     const chunk2 = tb.createChunk(mem_id, 17, 21);
     try segments.append(std.testing.allocator, Segment{ .text = chunk2 });
 
-    try tb.rope.setSegments(segments.items);
+    try tb.rope().setSegments(segments.items);
     view.virtual_lines_dirty = true;
 
     view.setWrapMode(.word);

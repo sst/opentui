@@ -166,8 +166,7 @@ pub fn resetState(self: *Terminal, tty: anytype) !void {
     }
 
     if (self.state.color_scheme_updates) {
-        try tty.writeAll(ansi.ANSI.colorSchemeReset);
-        self.state.color_scheme_updates = false;
+        try self.setColorSchemeUpdates(tty, false);
     }
 
     self.setTerminalTitle(tty, "");
@@ -270,6 +269,11 @@ pub fn enableDetectedFeatures(self: *Terminal, tty: anytype, use_kitty_keyboard:
 
     if (self.caps.focus_tracking) {
         try self.setFocusTracking(tty, true);
+    }
+
+    if (!self.state.color_scheme_updates) {
+        try self.setColorSchemeUpdates(tty, true);
+        try tty.writeAll(ansi.ANSI.colorSchemeRequest);
     }
 }
 
@@ -491,6 +495,12 @@ pub fn setModifyOtherKeys(self: *Terminal, tty: anytype, enable: bool) !void {
     self.state.modify_other_keys = enable;
 }
 
+pub fn setColorSchemeUpdates(self: *Terminal, tty: anytype, enable: bool) !void {
+    const seq = if (enable) ansi.ANSI.colorSchemeSet else ansi.ANSI.colorSchemeReset;
+    try tty.writeAll(seq);
+    self.state.color_scheme_updates = enable;
+}
+
 /// Re-send all currently-active terminal mode escape sequences unconditionally.
 ///
 /// When the terminal loses and regains focus (e.g. alt-tab, tab switch, minimize),
@@ -562,7 +572,7 @@ pub fn processCapabilityResponse(self: *Terminal, response: []const u8) void {
     if (std.mem.indexOf(u8, response, "2027;2$y")) |_| {
         self.caps.unicode = .unicode;
     }
-    if (std.mem.indexOf(u8, response, "2031;2$y")) |_| {
+    if (std.mem.indexOf(u8, response, "2031;1$y") != null or std.mem.indexOf(u8, response, "2031;2$y") != null) {
         self.caps.color_scheme_updates = true;
     }
     if (std.mem.indexOf(u8, response, "1004;1$y") != null or std.mem.indexOf(u8, response, "1004;2$y") != null) {

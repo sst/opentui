@@ -1138,7 +1138,7 @@ pub const OptimizedBuffer = struct {
         var currentX = x;
         var currentY = y + @as(i32, @intCast(firstVisibleLine));
         const text_buffer = view.getTextBuffer();
-        const total_line_count = text_buffer.getLineCount();
+        const total_line_count = text_buffer.lineCount();
 
         const line_info = view.getCachedLineInfo();
         var globalCharPos: u32 = if (firstVisibleLine < line_info.starts.len)
@@ -1162,9 +1162,10 @@ pub const OptimizedBuffer = struct {
             const spans = vline_span_info.spans;
             const col_offset = vline_span_info.col_offset;
             var span_idx: usize = 0;
-            var lineFg = text_buffer.default_fg orelse RGBA{ 1.0, 1.0, 1.0, 1.0 };
-            var lineBg = text_buffer.default_bg orelse RGBA{ 0.0, 0.0, 0.0, 0.0 };
-            var lineAttributes = text_buffer.default_attributes orelse 0;
+            const defaults = text_buffer.defaults();
+            var lineFg = defaults.fg orelse RGBA{ 1.0, 1.0, 1.0, 1.0 };
+            var lineBg = defaults.bg orelse RGBA{ 0.0, 0.0, 0.0, 0.0 };
+            var lineAttributes = defaults.attributes orelse 0;
             const defaultFg = lineFg;
             const defaultBg = lineBg;
             const defaultAttributes = lineAttributes;
@@ -1193,8 +1194,8 @@ pub const OptimizedBuffer = struct {
 
             for (vline.chunks.items) |vchunk| {
                 const chunk = vchunk.chunk;
-                const chunk_bytes = chunk.getBytes(&text_buffer.mem_registry);
-                const specials = chunk.getGraphemes(&text_buffer.mem_registry, text_buffer.allocator, text_buffer.tab_width, text_buffer.width_method) catch continue;
+                const chunk_bytes = chunk.getBytes(text_buffer.memRegistry());
+                const specials = chunk.getGraphemes(text_buffer.memRegistry(), text_buffer.getAllocator(), text_buffer.tabWidth(), text_buffer.widthMethod()) catch continue;
                 const line_char_offset = vline.char_offset;
 
                 if (currentX >= @as(i32, @intCast(self.width))) {
@@ -1210,7 +1211,7 @@ pub const OptimizedBuffer = struct {
                 if (vchunk.grapheme_start > 0) {
                     // Use UTF-8 aware position finding to skip to the grapheme_start
                     const is_ascii_only = (vchunk.chunk.flags & tb.TextChunk.Flags.ASCII_ONLY) != 0;
-                    const pos_result = utf8.findPosByWidth(chunk_bytes, vchunk.grapheme_start, text_buffer.tab_width, is_ascii_only, false, text_buffer.width_method);
+                    const pos_result = utf8.findPosByWidth(chunk_bytes, vchunk.grapheme_start, text_buffer.tabWidth(), is_ascii_only, false, text_buffer.widthMethod());
                     byte_offset = pos_result.byte_offset;
 
                     // Advance special_idx to match the skipped columns
