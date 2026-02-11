@@ -592,8 +592,7 @@ pub export fn initGlobalCallback(cb: ?*const CallbackFn) void {
     global_cb = cb;
 }
 
-pub export fn createNativeSpanFeed(options_ptr: ?*const Options) ?*Stream {
-    const allocator = std.heap.c_allocator;
+pub fn createNativeSpanFeedWithAllocator(allocator: std.mem.Allocator, options_ptr: ?*const Options) ?*Stream {
     const opts = normalizeOptions(if (options_ptr) |p| p.* else defaultOptions());
     return Stream.create(allocator, opts) catch null;
 }
