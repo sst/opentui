@@ -1,9 +1,7 @@
 {
   "runId": "2026-02-11T12:21:35.239Z",
   "suite": "async",
-  "args": [
-    "--json=src/benchmark/latest-async-bench-run.json"
-  ],
+  "args": ["--json=src/benchmark/latest-async-bench-run.json"],
   "results": [
     {
       "name": "async/small_64k_fast",

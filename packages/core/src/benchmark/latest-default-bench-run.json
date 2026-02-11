@@ -1,10 +1,7 @@
 {
   "runId": "2026-02-11T12:21:27.641Z",
   "suite": "default",
-  "args": [
-    "--suite=default",
-    "--json=src/benchmark/latest-default-bench-run.json"
-  ],
+  "args": ["--suite=default", "--json=src/benchmark/latest-default-bench-run.json"],
   "results": [
     {
       "name": "ansi_64k",
