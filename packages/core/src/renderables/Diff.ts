@@ -232,8 +232,8 @@ export class DiffRenderable extends Renderable {
     this._removedLineNumberBg = parseColor(options.removedLineNumberBg ?? "transparent")
     this._disableWordHighlights = options.disableWordHighlights ?? false
     // ~10% brightness increase for word-level highlight contrast
-    this._addedWordBg = options.addedWordBg ? parseColor(options.addedWordBg) : this._addedBg.brighten(1.10)
-    this._removedWordBg = options.removedWordBg ? parseColor(options.removedWordBg) : this._removedBg.brighten(1.10)
+    this._addedWordBg = options.addedWordBg ? parseColor(options.addedWordBg) : this._addedBg.brighten(1.1)
+    this._removedWordBg = options.removedWordBg ? parseColor(options.removedWordBg) : this._removedBg.brighten(1.1)
 
     if (this._diff) {
       this.parseDiff()
