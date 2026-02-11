@@ -18,7 +18,11 @@ import {
   LineInfoStruct,
   MeasureResultStruct,
   CursorStateStruct,
+  NativeSpanFeedOptionsStruct,
+  NativeSpanFeedStatsStruct,
+  ReserveInfoStruct,
 } from "./zig-structs"
+import type { NativeSpanFeedOptions, NativeSpanFeedStats, ReserveInfo } from "./zig-structs"
 import { isBunfsPath } from "./lib/bunfs"
 import { attributesWithLink } from "./utils"
 
@@ -77,6 +81,20 @@ registerEnvVar({
 let globalTraceSymbols: Record<string, number[]> | null = null
 let globalFFILogWriter: ReturnType<ReturnType<typeof Bun.file>["writer"]> | null = null
 let exitHandlerRegistered = false
+
+function toPointer(value: number | bigint): Pointer {
+  if (typeof value === "bigint") {
+    if (value > BigInt(Number.MAX_SAFE_INTEGER)) {
+      throw new Error("Pointer exceeds safe integer range")
+    }
+    return Number(value) as Pointer
+  }
+  return value as Pointer
+}
+
+function toNumber(value: number | bigint): number {
+  return typeof value === "bigint" ? Number(value) : value
+}
 
 function getOpenTUILib(libPath?: string) {
   const resolvedLibPath = libPath || targetLibPath
@@ -1017,6 +1035,56 @@ function getOpenTUILib(libPath?: string) {
       args: ["ptr", "u32", "u32", "u32", "ptr", "ptr", "u32"],
       returns: "void",
     },
+
+    // NativeSpanFeed
+    initGlobalCallback: {
+      args: ["ptr"],
+      returns: "void",
+    },
+    createNativeSpanFeed: {
+      args: ["ptr"],
+      returns: "ptr",
+    },
+    attachNativeSpanFeed: {
+      args: ["ptr"],
+      returns: "i32",
+    },
+    destroyNativeSpanFeed: {
+      args: ["ptr"],
+      returns: "void",
+    },
+    streamWrite: {
+      args: ["ptr", "ptr", "u64"],
+      returns: "i32",
+    },
+    streamCommit: {
+      args: ["ptr"],
+      returns: "i32",
+    },
+    streamDrainSpans: {
+      args: ["ptr", "ptr", "u32"],
+      returns: "u32",
+    },
+    streamClose: {
+      args: ["ptr"],
+      returns: "i32",
+    },
+    streamReserve: {
+      args: ["ptr", "u32", "ptr"],
+      returns: "i32",
+    },
+    streamCommitReserved: {
+      args: ["ptr", "u32"],
+      returns: "i32",
+    },
+    streamSetOptions: {
+      args: ["ptr", "ptr"],
+      returns: "i32",
+    },
+    streamGetStats: {
+      args: ["ptr", "ptr"],
+      returns: "i32",
+    },
   })
 
   if (env.OTUI_DEBUG_FFI || env.OTUI_TRACE_FFI) {
@@ -1269,6 +1337,8 @@ export interface CursorState {
   blinking: boolean
   color: RGBA
 }
+
+export type NativeSpanFeedEventHandler = (eventId: number, arg0: Pointer, arg1: number | bigint) => void
 
 export interface RenderLib {
   createRenderer: (width: number, height: number, options?: { testing?: boolean; remote?: boolean }) => Pointer | null
@@ -1691,6 +1761,21 @@ export interface RenderLib {
   freeUnicode: (encoded: { ptr: Pointer; data: Array<{ width: number; char: number }> }) => void
   bufferDrawChar: (buffer: Pointer, char: number, x: number, y: number, fg: RGBA, bg: RGBA, attributes?: number) => void
 
+  initNativeSpanFeedCallback: (callbackPtr: Pointer | null) => void
+  registerNativeSpanFeedStream: (stream: Pointer, handler: NativeSpanFeedEventHandler) => void
+  unregisterNativeSpanFeedStream: (stream: Pointer) => void
+  createNativeSpanFeed: (options?: NativeSpanFeedOptions | null) => Pointer
+  attachNativeSpanFeed: (stream: Pointer) => number
+  destroyNativeSpanFeed: (stream: Pointer) => void
+  streamWrite: (stream: Pointer, data: Uint8Array | string) => number
+  streamCommit: (stream: Pointer) => number
+  streamDrainSpans: (stream: Pointer, outBuffer: Uint8Array, maxSpans: number) => number
+  streamClose: (stream: Pointer) => number
+  streamSetOptions: (stream: Pointer, options: NativeSpanFeedOptions) => number
+  streamGetStats: (stream: Pointer) => NativeSpanFeedStats | null
+  streamReserve: (stream: Pointer, minLen: number) => { status: number; info: ReserveInfo | null }
+  streamCommitReserved: (stream: Pointer, length: number) => number
+
   onNativeEvent: (name: string, handler: (data: ArrayBuffer) => void) => void
   onceNativeEvent: (name: string, handler: (data: ArrayBuffer) => void) => void
   offNativeEvent: (name: string, handler: (data: ArrayBuffer) => void) => void
@@ -1705,6 +1790,8 @@ class FFIRenderLib implements RenderLib {
   private eventCallbackWrapper: any // Store the FFI event callback wrapper
   private _nativeEvents: EventEmitter = new EventEmitter()
   private _anyEventHandlers: Array<(name: string, data: ArrayBuffer) => void> = []
+  private nativeSpanFeedCallbackWrapper: JSCallback | null = null
+  private nativeSpanFeedHandlers = new Map<Pointer, NativeSpanFeedEventHandler>()
 
   constructor(libPath?: string) {
     this.opentui = getOpenTUILib(libPath)
@@ -1821,8 +1908,40 @@ class FFIRenderLib implements RenderLib {
     this.setEventCallback(eventCallback.ptr)
   }
 
+  private ensureNativeSpanFeedCallback() {
+    if (this.nativeSpanFeedCallbackWrapper) {
+      this.opentui.symbols.initGlobalCallback(this.nativeSpanFeedCallbackWrapper.ptr)
+      return
+    }
+
+    const callback = new JSCallback(
+      (streamPtr: Pointer, eventId: number, arg0: Pointer, arg1: number | bigint) => {
+        const handler = this.nativeSpanFeedHandlers.get(toPointer(streamPtr))
+        if (handler) {
+          handler(eventId, arg0, arg1)
+        }
+      },
+      {
+        args: ["ptr", "u32", "ptr", "u64"],
+        returns: "void",
+      },
+    )
+
+    this.nativeSpanFeedCallbackWrapper = callback
+
+    if (!callback.ptr) {
+      throw new Error("Failed to create native span feed callback")
+    }
+
+    this.opentui.symbols.initGlobalCallback(callback.ptr)
+  }
+
   private setEventCallback(callbackPtr: Pointer) {
     this.opentui.symbols.setEventCallback(callbackPtr)
+  }
+
+  public initNativeSpanFeedCallback(callbackPtr: Pointer | null): void {
+    this.opentui.symbols.initGlobalCallback(callbackPtr)
   }
 
   public createRenderer(width: number, height: number, options: { testing?: boolean; remote?: boolean } = {}) {
@@ -3438,6 +3557,83 @@ class FFIRenderLib implements RenderLib {
     attributes: number = 0,
   ): void {
     this.opentui.symbols.bufferDrawChar(buffer, char, x, y, fg.buffer, bg.buffer, attributes)
+  }
+
+  public registerNativeSpanFeedStream(stream: Pointer, handler: NativeSpanFeedEventHandler): void {
+    this.ensureNativeSpanFeedCallback()
+    this.nativeSpanFeedHandlers.set(toPointer(stream), handler)
+  }
+
+  public unregisterNativeSpanFeedStream(stream: Pointer): void {
+    this.nativeSpanFeedHandlers.delete(toPointer(stream))
+  }
+
+  public createNativeSpanFeed(options?: NativeSpanFeedOptions | null): Pointer {
+    const optionsBuffer = options == null ? null : NativeSpanFeedOptionsStruct.pack(options)
+    const streamPtr = this.opentui.symbols.createNativeSpanFeed(optionsBuffer ? ptr(optionsBuffer) : null)
+    if (!streamPtr) {
+      throw new Error("Failed to create stream")
+    }
+    return toPointer(streamPtr)
+  }
+
+  public attachNativeSpanFeed(stream: Pointer): number {
+    return this.opentui.symbols.attachNativeSpanFeed(stream)
+  }
+
+  public destroyNativeSpanFeed(stream: Pointer): void {
+    this.opentui.symbols.destroyNativeSpanFeed(stream)
+  }
+
+  public streamWrite(stream: Pointer, data: Uint8Array | string): number {
+    const bytes = typeof data === "string" ? this.encoder.encode(data) : data
+    return this.opentui.symbols.streamWrite(stream, ptr(bytes), bytes.length)
+  }
+
+  public streamCommit(stream: Pointer): number {
+    return this.opentui.symbols.streamCommit(stream)
+  }
+
+  public streamDrainSpans(stream: Pointer, outBuffer: Uint8Array, maxSpans: number): number {
+    const count = this.opentui.symbols.streamDrainSpans(stream, ptr(outBuffer), maxSpans)
+    return toNumber(count)
+  }
+
+  public streamClose(stream: Pointer): number {
+    return this.opentui.symbols.streamClose(stream)
+  }
+
+  public streamSetOptions(stream: Pointer, options: NativeSpanFeedOptions): number {
+    const optionsBuffer = NativeSpanFeedOptionsStruct.pack(options)
+    return this.opentui.symbols.streamSetOptions(stream, ptr(optionsBuffer))
+  }
+
+  public streamGetStats(stream: Pointer): NativeSpanFeedStats | null {
+    const statsBuffer = new ArrayBuffer(NativeSpanFeedStatsStruct.size)
+    const status = this.opentui.symbols.streamGetStats(stream, ptr(statsBuffer))
+    if (status !== 0) {
+      return null
+    }
+    const stats = NativeSpanFeedStatsStruct.unpack(statsBuffer)
+    return {
+      bytesWritten: typeof stats.bytesWritten === "bigint" ? stats.bytesWritten : BigInt(stats.bytesWritten),
+      spansCommitted: typeof stats.spansCommitted === "bigint" ? stats.spansCommitted : BigInt(stats.spansCommitted),
+      chunks: stats.chunks,
+      pendingSpans: stats.pendingSpans,
+    }
+  }
+
+  public streamReserve(stream: Pointer, minLen: number): { status: number; info: ReserveInfo | null } {
+    const reserveBuffer = new ArrayBuffer(ReserveInfoStruct.size)
+    const status = this.opentui.symbols.streamReserve(stream, minLen, ptr(reserveBuffer))
+    if (status !== 0) {
+      return { status, info: null }
+    }
+    return { status, info: ReserveInfoStruct.unpack(reserveBuffer) }
+  }
+
+  public streamCommitReserved(stream: Pointer, length: number): number {
+    return this.opentui.symbols.streamCommitReserved(stream, length)
   }
 
   public createSyntaxStyle(): Pointer {
