@@ -22,20 +22,25 @@ import {
 import { isBunfsPath } from "./lib/bunfs"
 import { attributesWithLink } from "./utils"
 
-// Detect musl vs glibc on Linux by checking for musl dynamic linker
-const isMusl =
-  process.platform === "linux" && (existsSync("/lib/ld-musl-x86_64.so.1") || existsSync("/lib/ld-musl-aarch64.so.1"))
-const platformName = isMusl ? "linux-musl" : process.platform
-
-const module = await import(`@opentui/core-${platformName}-${process.arch}/index.ts`)
-let targetLibPath = module.default
+let targetLibPath: string
+try {
+  const module = await import(`@opentui/core-${process.platform}-${process.arch}/index.ts`)
+  targetLibPath = module.default
+} catch {
+  if (process.platform === "linux") {
+    const module = await import(`@opentui/core-linux-musl-${process.arch}/index.ts`)
+    targetLibPath = module.default
+  } else {
+    throw new Error(`opentui is not supported on the current platform: ${process.platform}-${process.arch}`)
+  }
+}
 
 if (isBunfsPath(targetLibPath)) {
   targetLibPath = targetLibPath.replace("../", "")
 }
 
 if (!existsSync(targetLibPath)) {
-  throw new Error(`opentui is not supported on the current platform: ${platformName}-${process.arch}`)
+  throw new Error(`opentui is not supported on the current platform: ${process.platform}-${process.arch}`)
 }
 
 registerEnvVar({
