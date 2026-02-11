@@ -95,6 +95,7 @@ export class MouseParser {
 
       const button = buttonByte & 3
       const isScroll = (buttonByte & 64) !== 0
+      const isMotion = (buttonByte & 32) !== 0
       const scrollDirection = !isScroll ? undefined : MouseParser.SCROLL_DIRECTIONS[button]
 
       const modifiers = {
@@ -114,6 +115,9 @@ export class MouseParser {
           direction: scrollDirection!,
           delta: 1,
         }
+      } else if (isMotion) {
+        type = "move"
+        actualButton = button === 3 ? -1 : button
       } else {
         type = button === 3 ? "up" : "down"
         actualButton = button === 3 ? 0 : button

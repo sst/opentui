@@ -10,6 +10,20 @@ The `CliRenderer` is the heart of OpenTUI. It manages the terminal output, handl
 
 By default, left-clicking auto-focuses the closest focusable renderable. Disable this with `createCliRenderer({ autoFocus: false })` if you need manual focus control.
 
+### Theme Mode
+
+OpenTUI can detect the terminal's preferred color scheme (dark or light) when the terminal supports DEC mode 2031 color scheme updates. Read the current mode via `renderer.themeMode` and subscribe to `theme_mode` to react to changes. Possible values are `"dark"`, `"light"`, or `null` when unsupported, and no events fire in the unsupported case.
+
+```typescript
+import { type ThemeMode } from "@opentui/core"
+
+const mode = renderer.themeMode
+
+renderer.on("theme_mode", (nextMode: ThemeMode) => {
+  console.log("Theme mode changed:", nextMode)
+})
+```
+
 ### FrameBuffer (OptimizedBuffer)
 
 The `FrameBuffer` is a low-level rendering surface for custom graphics and complex visual effects. It is a 2D array of cells that can be drawn to using the `setCell`, `setCellWithAlphaBlending`, `drawText`, `fillRect`, and `drawFrameBuffer` methods. It is optimized for performance and memory usage. It allows for transparent cells and alpha blending, down to the viewport framebuffer.

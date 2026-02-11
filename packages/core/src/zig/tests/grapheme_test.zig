@@ -873,7 +873,6 @@ test "GraphemePool - global pool reinitialization returns same instance" {
 
 test "GraphemePool - global unicode data init" {
 
-
     // Pointers should not be null (just verify they're returned)
     // We can't easily test their validity without using them
 }
