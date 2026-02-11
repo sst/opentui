@@ -324,3 +324,29 @@ test("reentrant drainAll from handler is safely ignored", () => {
 
   stream.close()
 })
+
+test("committing during drain does not drop pending spans", () => {
+  const stream = NativeSpanFeed.create({ chunkSize: 64, initialChunks: 1 })
+
+  const received: string[] = []
+  let injected = false
+
+  stream.onData((data) => {
+    received.push(new TextDecoder().decode(data))
+    if (!injected) {
+      injected = true
+      const next = new TextEncoder().encode("inner")
+      lib.streamWrite(stream.streamPtr, next)
+      lib.streamCommit(stream.streamPtr)
+    }
+  })
+
+  const first = new TextEncoder().encode("outer")
+  lib.streamWrite(stream.streamPtr, first)
+  lib.streamCommit(stream.streamPtr)
+  stream.drainAll()
+
+  expect(received).toEqual(["outer", "inner"])
+
+  stream.close()
+})
