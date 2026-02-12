@@ -295,7 +295,10 @@ fn checkEnvironmentOverrides(self: *Terminal) void {
 
     var env_map_storage: ?std.process.EnvMap = null;
     const env_map: *const std.process.EnvMap = self.opts.env_map orelse blk: {
-        env_map_storage = std.process.getEnvMap(std.heap.page_allocator) catch return;
+        env_map_storage = std.process.getEnvMap(std.heap.page_allocator) catch |err| {
+            logger.err("Failed to get environment map: {}", .{err});
+            return;
+        };
         break :blk &env_map_storage.?;
     };
     defer if (env_map_storage) |*map| map.deinit();
@@ -812,7 +815,10 @@ pub fn writeClipboard(self: *Terminal, tty: anytype, target: ClipboardTarget, pa
     } else {
         var env_map_storage: ?std.process.EnvMap = null;
         const env_map: *const std.process.EnvMap = self.opts.env_map orelse blk: {
-            env_map_storage = std.process.getEnvMap(std.heap.page_allocator) catch return;
+            env_map_storage = std.process.getEnvMap(std.heap.page_allocator) catch |err| {
+                logger.err("Failed to get environment map: {}", .{err});
+                return;
+            };
             break :blk &env_map_storage.?;
         };
         defer if (env_map_storage) |*map| map.deinit();
