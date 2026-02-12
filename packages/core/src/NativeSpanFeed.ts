@@ -224,7 +224,7 @@ export class NativeSpanFeed {
   }
 
   private drainOnce(): number {
-    if (!this.drainBuffer || this.draining) return 0
+    if (!this.drainBuffer || this.draining || this.pendingClose) return 0
     const capacity = Math.floor(this.drainBuffer.byteLength / SpanInfoStruct.size)
     if (capacity === 0) return 0
 
@@ -237,7 +237,6 @@ export class NativeSpanFeed {
 
     try {
       for (const span of spans) {
-        if (this.pendingClose) break
         if (span.len === 0) continue
 
         let buffer = this.chunkMap.get(span.chunkPtr)
@@ -266,7 +265,7 @@ export class NativeSpanFeed {
           }
         }
 
-        if (this.pendingClose) break
+        const shouldStopAfterThisSpan = this.pendingClose
 
         if (asyncResults) {
           // Use allSettled so rejections still release refcounts.
@@ -280,6 +279,8 @@ export class NativeSpanFeed {
         } else {
           this.decrementRefcount(span.chunkIndex)
         }
+
+        if (shouldStopAfterThisSpan) break
       }
     } finally {
       this.draining = false
