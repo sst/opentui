@@ -139,9 +139,45 @@ if (buildNative) {
       continue
     }
 
-    const indexTsContent = `const module = await import("./${libraryFileName}", { with: { type: "file" } })
+    // On Linux, ship both glibc and musl builds inside the *linux* native package.
+    // This keeps the TS loader (zig.ts) simple and allows the package's index.ts
+    // to pick the right .so at runtime.
+    let muslLibraryFileName: string | null = null
+    if (platform === "linux" && libraryFileName) {
+      const ext = path.extname(libraryFileName)
+      const base = libraryFileName.slice(0, -ext.length)
+      const muslDestFileName = `${base}.musl${ext}`
+
+      const muslLibDir = join(rootDir, "src", "zig", "lib", getZigTarget("linux-musl", arch))
+      const muslSrc = join(muslLibDir, libraryFileName)
+      if (existsSync(muslSrc)) {
+        copyFileSync(muslSrc, join(nativeDir, muslDestFileName))
+        muslLibraryFileName = muslDestFileName
+      }
+    }
+
+    const indexTsContent =
+      platform === "linux" && libraryFileName && muslLibraryFileName
+        ? `import { existsSync } from "fs"
+
+const glibcModule = await import("./${libraryFileName}", { with: { type: "file" } })
+let path = glibcModule.default
+
+const isMusl = existsSync("/lib/ld-musl-x86_64.so.1") || existsSync("/lib/ld-musl-aarch64.so.1")
+if (isMusl) {
+  try {
+    const muslModule = await import("./${muslLibraryFileName}", { with: { type: "file" } })
+    path = muslModule.default
+  } catch {
+    // ignore
+  }
+}
+
+export default path
+`
+        : `const module = await import("./${libraryFileName}", { with: { type: "file" } })
 const path = module.default
-export default path;
+export default path
 `
     writeFileSync(join(nativeDir, "index.ts"), indexTsContent)
 
