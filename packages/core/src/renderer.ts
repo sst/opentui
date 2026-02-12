@@ -4,6 +4,7 @@ import {
   type CursorStyle,
   DebugOverlayCorner,
   type RenderContext,
+  type ThemeMode,
   type ViewportBounds,
   type WidthMethod,
 } from "./types"
@@ -14,6 +15,7 @@ import { resolveRenderLib, type RenderLib } from "./zig"
 import { TerminalConsole, type ConsoleOptions, capture } from "./console"
 import { MouseParser, type MouseEventType, type RawMouseEvent, type ScrollInfo } from "./lib/parse.mouse"
 import { Selection } from "./lib/selection"
+import { Clipboard, type ClipboardTarget } from "./lib/clipboard"
 import { EventEmitter } from "events"
 import { destroySingleton, hasSingleton, singleton } from "./lib/singleton"
 import { getObjectsInViewport } from "./lib/objects-in-viewport"
@@ -78,6 +80,7 @@ registerEnvVar({
 export interface CliRendererConfig {
   stdin?: NodeJS.ReadStream
   stdout?: NodeJS.WriteStream
+  remote?: boolean
   exitOnCtrlC?: boolean
   exitSignals?: NodeJS.Signals[]
   debounceDelay?: number
@@ -91,6 +94,7 @@ export interface CliRendererConfig {
   postProcessFns?: ((buffer: OptimizedBuffer, deltaTime: number) => void)[]
   enableMouseMovement?: boolean
   useMouse?: boolean
+  autoFocus?: boolean
   useAlternateScreen?: boolean
   useConsole?: boolean
   experimental_splitHeight?: number
@@ -187,7 +191,7 @@ export class MouseEvent {
   }
   public readonly scroll?: ScrollInfo
   public readonly target: Renderable | null
-  public readonly isSelecting?: boolean
+  public readonly isDragging?: boolean
   private _propagationStopped: boolean = false
   private _defaultPrevented: boolean = false
 
@@ -199,7 +203,7 @@ export class MouseEvent {
     return this._defaultPrevented
   }
 
-  constructor(target: Renderable | null, attributes: RawMouseEvent & { source?: Renderable; isSelecting?: boolean }) {
+  constructor(target: Renderable | null, attributes: RawMouseEvent & { source?: Renderable; isDragging?: boolean }) {
     this.target = target
     this.type = attributes.type
     this.button = attributes.button
@@ -208,7 +212,7 @@ export class MouseEvent {
     this.modifiers = attributes.modifiers
     this.scroll = attributes.scroll
     this.source = attributes.source
-    this.isSelecting = attributes.isSelecting
+    this.isDragging = attributes.isDragging
   }
 
   public stopPropagation(): void {
@@ -261,7 +265,7 @@ export async function createCliRenderer(config: CliRendererConfig = {}): Promise
     config.experimental_splitHeight && config.experimental_splitHeight > 0 ? config.experimental_splitHeight : height
 
   const ziglib = resolveRenderLib()
-  const rendererPtr = ziglib.createRenderer(width, renderHeight)
+  const rendererPtr = ziglib.createRenderer(width, renderHeight, { remote: config.remote ?? false })
   if (!rendererPtr) {
     throw new Error("Failed to create renderer")
   }
@@ -381,6 +385,7 @@ export class CliRenderer extends EventEmitter implements RenderContext {
 
   private enableMouseMovement: boolean = false
   private _useMouse: boolean = true
+  private autoFocus: boolean = true
   private _useAlternateScreen: boolean = env.OTUI_USE_ALTERNATE_SCREEN
   private _suspendedMouseEnabled: boolean = false
   private _previousControlState: RendererControlState = RendererControlState.IDLE
@@ -390,6 +395,7 @@ export class CliRenderer extends EventEmitter implements RenderContext {
 
   private currentSelection: Selection | null = null
   private selectionContainers: Renderable[] = []
+  private clipboard: Clipboard
 
   private _splitHeight: number = 0
   private renderOffset: number = 0
@@ -424,6 +430,7 @@ export class CliRenderer extends EventEmitter implements RenderContext {
   private _cachedPalette: TerminalColors | null = null
   private _paletteDetectionPromise: Promise<TerminalColors> | null = null
   private _onDestroy?: () => void
+  private _themeMode: ThemeMode | null = null
 
   private inputHandlers: ((sequence: string) => boolean)[] = []
   private prependedInputHandlers: ((sequence: string) => boolean)[] = []
@@ -523,6 +530,8 @@ export class CliRenderer extends EventEmitter implements RenderContext {
       "SIGBUS", // Bus error
       "SIGFPE", // Floating point exception
     ]
+
+    this.clipboard = new Clipboard(this.lib, this.rendererPtr)
     this.resizeDebounceDelay = config.debounceDelay || 100
     this.targetFps = config.targetFps || 30
     this.maxFps = config.maxFps || 60
@@ -533,6 +542,7 @@ export class CliRenderer extends EventEmitter implements RenderContext {
     this.maxStatSamples = config.maxStatSamples || 300
     this.enableMouseMovement = config.enableMouseMovement ?? true
     this._useMouse = config.useMouse ?? true
+    this.autoFocus = config.autoFocus ?? true
     this._useAlternateScreen = config.useAlternateScreen ?? env.OTUI_USE_ALTERNATE_SCREEN
     this.nextRenderBuffer = this.lib.getNextBuffer(this.rendererPtr)
     this.currentRenderBuffer = this.lib.getCurrentBuffer(this.rendererPtr)
@@ -840,6 +850,10 @@ export class CliRenderer extends EventEmitter implements RenderContext {
     return this._capabilities
   }
 
+  public get themeMode(): ThemeMode | null {
+    return this._themeMode
+  }
+
   public getDebugInputs(): Array<{ timestamp: string; sequence: string }> {
     return [...this._debugInputs]
   }
@@ -1042,11 +1056,34 @@ export class CliRenderer extends EventEmitter implements RenderContext {
 
   private focusHandler: (sequence: string) => boolean = ((sequence: string) => {
     if (sequence === "\x1b[I") {
+      // When the terminal regains focus, some terminal emulators (notably
+      // Windows Terminal / ConPTY) may have stripped DEC private modes like
+      // mouse tracking, bracketed paste, and focus tracking itself while the
+      // window was unfocused. Re-send all active mode sequences unconditionally.
+      this.lib.restoreTerminalModes(this.rendererPtr)
       this.emit("focus")
       return true
     }
     if (sequence === "\x1b[O") {
       this.emit("blur")
+      return true
+    }
+    return false
+  }).bind(this)
+
+  private themeModeHandler: (sequence: string) => boolean = ((sequence: string) => {
+    if (sequence === "\x1b[?997;1n") {
+      if (this._themeMode !== "dark") {
+        this._themeMode = "dark"
+        this.emit("theme_mode", "dark")
+      }
+      return true
+    }
+    if (sequence === "\x1b[?997;2n") {
+      if (this._themeMode !== "light") {
+        this._themeMode = "light"
+        this.emit("theme_mode", "light")
+      }
       return true
     }
     return false
@@ -1070,6 +1107,7 @@ export class CliRenderer extends EventEmitter implements RenderContext {
     })
     this.addInputHandler(this.capabilityHandler)
     this.addInputHandler(this.focusHandler)
+    this.addInputHandler(this.themeModeHandler)
     this.addInputHandler((sequence: string) => {
       return this._keyHandler.processInput(sequence)
     })
@@ -1099,6 +1137,27 @@ export class CliRenderer extends EventEmitter implements RenderContext {
     this._stdinBuffer.on("paste", (data: string) => {
       this._keyHandler.processPaste(data)
     })
+  }
+
+  private dispatchMouseEvent(
+    target: Renderable,
+    attributes: RawMouseEvent & { source?: Renderable; isDragging?: boolean },
+  ): MouseEvent {
+    const event = new MouseEvent(target, attributes)
+    target.processMouseEvent(event)
+
+    if (this.autoFocus && event.type === "down" && event.button === MouseButton.LEFT && !event.defaultPrevented) {
+      let current: Renderable | null = target
+      while (current) {
+        if (current.focusable) {
+          current.focus()
+          break
+        }
+        current = current.parent
+      }
+    }
+
+    return event
   }
 
   private handleMouseData(data: Buffer): boolean {
@@ -1134,10 +1193,17 @@ export class CliRenderer extends EventEmitter implements RenderContext {
       if (mouseEvent.type === "scroll") {
         const maybeRenderableId = this.hitTest(mouseEvent.x, mouseEvent.y)
         const maybeRenderable = Renderable.renderablesByNumber.get(maybeRenderableId)
+        const fallbackTarget =
+          this._currentFocusedRenderable &&
+          !this._currentFocusedRenderable.isDestroyed &&
+          this._currentFocusedRenderable.focused
+            ? this._currentFocusedRenderable
+            : null
+        const scrollTarget = maybeRenderable ?? fallbackTarget
 
-        if (maybeRenderable) {
-          const event = new MouseEvent(maybeRenderable, mouseEvent)
-          maybeRenderable.processMouseEvent(event)
+        if (scrollTarget) {
+          const event = new MouseEvent(scrollTarget, mouseEvent)
+          scrollTarget.processMouseEvent(event)
         }
         return true
       }
@@ -1150,7 +1216,7 @@ export class CliRenderer extends EventEmitter implements RenderContext {
       if (
         mouseEvent.type === "down" &&
         mouseEvent.button === MouseButton.LEFT &&
-        !this.currentSelection?.isSelecting &&
+        !this.currentSelection?.isDragging &&
         !mouseEvent.modifiers.ctrl
       ) {
         if (
@@ -1160,26 +1226,25 @@ export class CliRenderer extends EventEmitter implements RenderContext {
           maybeRenderable.shouldStartSelection(mouseEvent.x, mouseEvent.y)
         ) {
           this.startSelection(maybeRenderable, mouseEvent.x, mouseEvent.y)
-          const event = new MouseEvent(maybeRenderable, mouseEvent)
-          maybeRenderable.processMouseEvent(event)
+          this.dispatchMouseEvent(maybeRenderable, mouseEvent)
           return true
         }
       }
 
-      if (mouseEvent.type === "drag" && this.currentSelection?.isSelecting) {
+      if (mouseEvent.type === "drag" && this.currentSelection?.isDragging) {
         this.updateSelection(maybeRenderable, mouseEvent.x, mouseEvent.y)
 
         if (maybeRenderable) {
-          const event = new MouseEvent(maybeRenderable, { ...mouseEvent, isSelecting: true })
+          const event = new MouseEvent(maybeRenderable, { ...mouseEvent, isDragging: true })
           maybeRenderable.processMouseEvent(event)
         }
 
         return true
       }
 
-      if (mouseEvent.type === "up" && this.currentSelection?.isSelecting) {
+      if (mouseEvent.type === "up" && this.currentSelection?.isDragging) {
         if (maybeRenderable) {
-          const event = new MouseEvent(maybeRenderable, { ...mouseEvent, isSelecting: true })
+          const event = new MouseEvent(maybeRenderable, { ...mouseEvent, isDragging: true })
           maybeRenderable.processMouseEvent(event)
         }
 
@@ -1189,7 +1254,7 @@ export class CliRenderer extends EventEmitter implements RenderContext {
 
       if (mouseEvent.type === "down" && mouseEvent.button === MouseButton.LEFT && this.currentSelection) {
         if (mouseEvent.modifiers.ctrl) {
-          this.currentSelection.isSelecting = true
+          this.currentSelection.isDragging = true
           this.updateSelection(maybeRenderable, mouseEvent.x, mouseEvent.y)
           return true
         }
@@ -1237,15 +1302,14 @@ export class CliRenderer extends EventEmitter implements RenderContext {
         this.requestRender()
       }
 
-      let event: MouseEvent | undefined = undefined
+      let event: MouseEvent | undefined
       if (maybeRenderable) {
         if (mouseEvent.type === "drag" && mouseEvent.button === MouseButton.LEFT) {
           this.setCapturedRenderable(maybeRenderable)
         } else {
           this.setCapturedRenderable(undefined)
         }
-        event = new MouseEvent(maybeRenderable, mouseEvent)
-        maybeRenderable.processMouseEvent(event)
+        event = this.dispatchMouseEvent(maybeRenderable, mouseEvent)
       } else {
         this.setCapturedRenderable(undefined)
         this.lastOverRenderable = undefined
@@ -1454,6 +1518,18 @@ export class CliRenderer extends EventEmitter implements RenderContext {
 
   public setTerminalTitle(title: string): void {
     this.lib.setTerminalTitle(this.rendererPtr, title)
+  }
+
+  public copyToClipboardOSC52(text: string, target?: ClipboardTarget): boolean {
+    return this.clipboard.copyToClipboardOSC52(text, target)
+  }
+
+  public clearClipboardOSC52(target?: ClipboardTarget): boolean {
+    return this.clipboard.clearClipboardOSC52(target)
+  }
+
+  public isOsc52Supported(): boolean {
+    return this._capabilities?.osc52 ?? this.clipboard.isOsc52Supported()
   }
 
   public dumpHitGrid(): void {
@@ -1973,10 +2049,19 @@ export class CliRenderer extends EventEmitter implements RenderContext {
     this.notifySelectablesOfSelectionChange()
   }
 
-  public updateSelection(currentRenderable: Renderable | undefined, x: number, y: number): void {
+  public updateSelection(
+    currentRenderable: Renderable | undefined,
+    x: number,
+    y: number,
+    options?: { finishDragging?: boolean },
+  ): void {
     if (this.currentSelection) {
       this.currentSelection.isStart = false
       this.currentSelection.focus = { x, y }
+
+      if (options?.finishDragging) {
+        this.currentSelection.isDragging = false
+      }
 
       if (this.selectionContainers.length > 0) {
         const currentContainer = this.selectionContainers[this.selectionContainers.length - 1]
@@ -2003,7 +2088,7 @@ export class CliRenderer extends EventEmitter implements RenderContext {
   }
 
   public requestSelectionUpdate(): void {
-    if (this.currentSelection?.isSelecting) {
+    if (this.currentSelection?.isDragging) {
       const pointer = this._latestPointer
 
       const maybeRenderableId = this.hitTest(pointer.x, pointer.y)
@@ -2024,7 +2109,7 @@ export class CliRenderer extends EventEmitter implements RenderContext {
 
   private finishSelection(): void {
     if (this.currentSelection) {
-      this.currentSelection.isSelecting = false
+      this.currentSelection.isDragging = false
       this.emit("selection", this.currentSelection)
       // Notify renderables that selection is finished (no longer dragging)
       this.notifySelectablesOfSelectionChange()

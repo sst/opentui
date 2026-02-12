@@ -333,7 +333,7 @@ export class TerminalConsole extends EventEmitter {
 
   private _selectionStart: { line: number; col: number } | null = null
   private _selectionEnd: { line: number; col: number } | null = null
-  private _isSelecting: boolean = false
+  private _isDragging: boolean = false
   private _copyButtonBounds: { x: number; y: number; width: number; height: number } = {
     x: 0,
     y: 0,
@@ -1037,7 +1037,7 @@ export class TerminalConsole extends EventEmitter {
   private clearSelection(): void {
     this._selectionStart = null
     this._selectionEnd = null
-    this._isSelecting = false
+    this._isDragging = false
     this.stopAutoScroll()
   }
 
@@ -1167,12 +1167,12 @@ export class TerminalConsole extends EventEmitter {
       this.clearSelection()
       this._selectionStart = { line: lineIndex, col: colIndex }
       this._selectionEnd = { line: lineIndex, col: colIndex }
-      this._isSelecting = true
+      this._isDragging = true
       this.markNeedsRerender()
       return true
     }
 
-    if (event.type === "drag" && this._isSelecting) {
+    if (event.type === "drag" && this._isDragging) {
       this._selectionEnd = { line: lineIndex, col: colIndex }
 
       // Check if drag is at the edge and trigger auto-scroll
@@ -1195,9 +1195,9 @@ export class TerminalConsole extends EventEmitter {
     }
 
     if (event.type === "up") {
-      if (this._isSelecting) {
+      if (this._isDragging) {
         this._selectionEnd = { line: lineIndex, col: colIndex }
-        this._isSelecting = false
+        this._isDragging = false
         this.stopAutoScroll()
         this.markNeedsRerender()
       }

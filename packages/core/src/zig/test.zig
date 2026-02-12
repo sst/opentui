@@ -29,6 +29,7 @@ const terminal_tests = @import("tests/terminal_test.zig");
 const mem_registry_tests = @import("tests/mem-registry_test.zig");
 const memory_leak_regression_tests = @import("tests/memory_leak_regression_test.zig");
 const wrap_cache_perf_tests = @import("tests/wrap-cache-perf_test.zig");
+const native_span_feed_tests = @import("tests/native-span-feed_test.zig");
 // const example_tests = @import("example_test.zig");
 
 // Re-export test declarations from individual test files
@@ -62,5 +63,6 @@ comptime {
     _ = mem_registry_tests;
     _ = memory_leak_regression_tests;
     _ = wrap_cache_perf_tests;
+    _ = native_span_feed_tests;
     // _ = example_tests;
 }

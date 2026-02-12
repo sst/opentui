@@ -2,6 +2,7 @@ import { CliRenderer, BoxRenderable, TextRenderable, createCliRenderer, type Key
 import { setupCommonDemoKeys } from "./lib/standalone-keys"
 
 let renderer: CliRenderer | null = null
+let header: BoxRenderable | null = null
 let container: BoxRenderable | null = null
 let infoText: TextRenderable | null = null
 let boxes: BoxRenderable[] = []
@@ -13,8 +14,8 @@ function createOpacityDemo(rendererInstance: CliRenderer): void {
   renderer.setBackgroundColor("#1a1a2e")
 
   // Info header
-  const header = new BoxRenderable(renderer, {
-    id: "header",
+  header = new BoxRenderable(renderer, {
+    id: "opacity-demo-header",
     width: "auto",
     height: 3,
     backgroundColor: "#16213e",
@@ -34,7 +35,7 @@ function createOpacityDemo(rendererInstance: CliRenderer): void {
 
   // Main container
   container = new BoxRenderable(renderer, {
-    id: "container",
+    id: "opacity-demo-container",
     width: "auto",
     height: "auto",
     flexGrow: 1,
@@ -211,8 +212,15 @@ export function destroy(rendererInstance: CliRenderer): void {
     animationInterval = null
   }
   rendererInstance.keyInput.off("keypress", handleKeyPress)
+  if (header) {
+    rendererInstance.root.remove("opacity-demo-header")
+    header = null
+  }
+  if (container) {
+    rendererInstance.root.remove("opacity-demo-container")
+    container = null
+  }
   boxes = []
-  container = null
   infoText = null
   renderer = null
 }

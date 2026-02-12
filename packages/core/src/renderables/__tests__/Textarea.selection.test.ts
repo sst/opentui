@@ -225,6 +225,7 @@ describe("Textarea - Selection Tests", () => {
         height: 5,
         selectable: true,
         scrollMargin: 0,
+        scrollSpeed: 0,
       })
 
       editor.gotoLine(10)
@@ -428,6 +429,7 @@ describe("Textarea - Selection Tests", () => {
         width: 40,
         height: 5,
         selectable: true,
+        scrollSpeed: 0,
       })
 
       editor.gotoLine(20)
@@ -1337,6 +1339,51 @@ describe("Textarea - Selection Tests", () => {
       expect(cursorAfterResize.visualCol).toBeLessThan(editor.width)
 
       textBelow.destroy()
+      editor.destroy()
+    })
+  })
+
+  describe("Selection Preserved on Viewport Scroll", () => {
+    it("should preserve selection when scrolling viewport", async () => {
+      const { textarea: editor } = await createTextareaRenderable(currentRenderer, renderOnce, {
+        initialValue: Array.from({ length: 50 }, (_, i) => `Line ${i}`).join("\n"),
+        width: 40,
+        height: 10,
+        selectable: true,
+      })
+
+      editor.focus()
+      await renderOnce()
+
+      // Select all text using keyboard (Cmd+Shift+Down)
+      currentMockInput.pressKey("ARROW_DOWN", { shift: true, super: true })
+      await renderOnce()
+
+      const selectionBefore = editor.getSelection()
+      const selectedTextBefore = editor.getSelectedText()
+
+      expect(selectionBefore).not.toBeNull()
+      expect(selectedTextBefore).toContain("Line 0")
+      expect(selectedTextBefore).toContain("Line 49")
+
+      // Start renderer to simulate real app with continuous render loop
+      currentRenderer.start()
+
+      // Scroll up with mouse wheel
+      await currentMouse.scroll(editor.x, editor.y + 1, "up")
+      await Bun.sleep(100)
+
+      const selectionAfter = editor.getSelection()
+      const selectedTextAfter = editor.getSelectedText()
+
+      currentRenderer.pause()
+
+      // Selection should not change when scrolling viewport
+      expect(selectionAfter).not.toBeNull()
+      expect(selectionAfter!.start).toBe(selectionBefore!.start)
+      expect(selectionAfter!.end).toBe(selectionBefore!.end)
+      expect(selectedTextAfter).toBe(selectedTextBefore)
+
       editor.destroy()
     })
   })

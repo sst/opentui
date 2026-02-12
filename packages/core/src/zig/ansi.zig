@@ -103,6 +103,10 @@ pub const ANSI = struct {
     pub const tmuxDcsStart = "\x1bPtmux;";
     pub const tmuxDcsEnd = "\x1b\\";
 
+    // GNU Screen DCS passthrough wrapper (no tmux prefix)
+    pub const screenDcsStart = "\x1bP";
+    pub const screenDcsEnd = "\x1b\\";
+
     pub fn wrapForTmux(comptime seq: []const u8) []const u8 {
         comptime {
             var result: []const u8 = tmuxDcsStart;
