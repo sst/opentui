@@ -5,6 +5,8 @@ import { resolveRenderLib } from "../zig"
 const lib = resolveRenderLib()
 
 function nextTick(): Promise<void> {
+  // Use a timer turn instead of process.nextTick so Promise/microtask work
+  // from async handlers and close deferral can settle before assertions.
   return new Promise((resolve) => setTimeout(resolve, 0))
 }
 
