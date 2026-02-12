@@ -83,6 +83,7 @@ export class NativeSpanFeed {
   private pendingDataAvailable = false
   private pendingClose = false
   private closing = false
+  private pendingAsyncHandlers = 0
   private inCallback = false
   private closeQueued = false
 
@@ -116,16 +117,13 @@ export class NativeSpanFeed {
 
   close(): void {
     if (this.destroyed) return
-    if (this.inCallback || this.draining) {
+    if (this.inCallback || this.draining || this.pendingAsyncHandlers > 0) {
       this.pendingClose = true
       if (!this.closeQueued) {
         this.closeQueued = true
         queueMicrotask(() => {
           this.closeQueued = false
-          if (this.pendingClose && !this.destroyed) {
-            this.pendingClose = false
-            this.performClose()
-          }
+          this.processPendingClose()
         })
       }
       return
@@ -133,11 +131,22 @@ export class NativeSpanFeed {
     this.performClose()
   }
 
+  private processPendingClose(): void {
+    if (!this.pendingClose || this.destroyed) return
+    if (this.inCallback || this.draining || this.pendingAsyncHandlers > 0) return
+    this.pendingClose = false
+    this.performClose()
+  }
+
   private performClose(): void {
     if (this.closing) return
     this.closing = true
     if (!this.closed) {
-      this.lib.streamClose(this.streamPtr)
+      const status = this.lib.streamClose(this.streamPtr)
+      if (status !== 0) {
+        this.closing = false
+        return
+      }
       this.closed = true
     }
     this.finalizeDestroy()
@@ -262,8 +271,11 @@ export class NativeSpanFeed {
         if (asyncResults) {
           // Use allSettled so rejections still release refcounts.
           const chunkIndex = span.chunkIndex
+          this.pendingAsyncHandlers += 1
           Promise.allSettled(asyncResults).then(() => {
             this.decrementRefcount(chunkIndex)
+            this.pendingAsyncHandlers -= 1
+            this.processPendingClose()
           })
         } else {
           this.decrementRefcount(span.chunkIndex)
