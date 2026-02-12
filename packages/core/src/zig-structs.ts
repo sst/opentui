@@ -109,3 +109,83 @@ export const CursorStateStruct = defineStruct([
   ["b", "f32"],
   ["a", "f32"],
 ])
+
+export type GrowthPolicy = "grow" | "block"
+
+export type NativeSpanFeedOptions = {
+  chunkSize?: number
+  initialChunks?: number
+  maxBytes?: bigint
+  growthPolicy?: GrowthPolicy
+  autoCommitOnFull?: boolean
+  spanQueueCapacity?: number
+}
+
+export type NativeSpanFeedStats = {
+  bytesWritten: bigint
+  spansCommitted: bigint
+  chunks: number
+  pendingSpans: number
+}
+
+export type SpanInfo = {
+  chunkPtr: Pointer
+  offset: number
+  len: number
+  chunkIndex: number
+}
+
+export type ReserveInfo = {
+  ptr: Pointer
+  len: number
+}
+
+const GrowthPolicyEnum = defineEnum({ grow: 0, block: 1 }, "u8")
+
+export const NativeSpanFeedOptionsStruct = defineStruct([
+  ["chunkSize", "u32", { default: 64 * 1024 }],
+  ["initialChunks", "u32", { default: 2 }],
+  ["maxBytes", "u64", { default: 0n }],
+  ["growthPolicy", GrowthPolicyEnum, { default: "grow" }],
+  ["autoCommitOnFull", "bool_u8", { default: true }],
+  ["spanQueueCapacity", "u32", { default: 0 }],
+])
+
+export const NativeSpanFeedStatsStruct = defineStruct([
+  ["bytesWritten", "u64"],
+  ["spansCommitted", "u64"],
+  ["chunks", "u32"],
+  ["pendingSpans", "u32"],
+])
+
+export const SpanInfoStruct = defineStruct(
+  [
+    ["chunkPtr", "pointer"],
+    ["offset", "u32"],
+    ["len", "u32"],
+    ["chunkIndex", "u32"],
+    ["reserved", "u32", { default: 0 }],
+  ],
+  {
+    reduceValue: (value: { chunkPtr: Pointer; offset: number; len: number; chunkIndex: number }) => ({
+      chunkPtr: value.chunkPtr as Pointer,
+      offset: value.offset,
+      len: value.len,
+      chunkIndex: value.chunkIndex,
+    }),
+  },
+)
+
+export const ReserveInfoStruct = defineStruct(
+  [
+    ["ptr", "pointer"],
+    ["len", "u32"],
+    ["reserved", "u32", { default: 0 }],
+  ],
+  {
+    reduceValue: (value: { ptr: Pointer; len: number }) => ({
+      ptr: value.ptr as Pointer,
+      len: value.len,
+    }),
+  },
+)

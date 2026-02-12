@@ -46,11 +46,16 @@ const event_bus = @import("event-bus.zig");
 const utils = @import("utils.zig");
 const ghostty = @import("ghostty-vt");
 const vterm = @import("vterm.zig");
+const native_span_feed = @import("native-span-feed.zig");
 
 pub const OptimizedBuffer = buffer.OptimizedBuffer;
 pub const CliRenderer = renderer.CliRenderer;
 pub const Terminal = terminal.Terminal;
 pub const RGBA = buffer.RGBA;
+
+comptime {
+    _ = native_span_feed;
+}
 
 export fn setLogCallback(callback: ?*const fn (level: u8, msgPtr: [*]const u8, msgLen: usize) callconv(.c) void) void {
     logger.setLogCallback(callback);
@@ -64,6 +69,10 @@ var gpa = std.heap.GeneralPurposeAllocator(.{}){};
 const globalAllocator = gpa.allocator();
 var arena = std.heap.ArenaAllocator.init(globalAllocator);
 const globalArena = arena.allocator();
+
+export fn createNativeSpanFeed(options_ptr: ?*const native_span_feed.Options) ?*native_span_feed.Stream {
+    return native_span_feed.createNativeSpanFeedWithAllocator(globalAllocator, options_ptr);
+}
 
 export fn getArenaAllocatedBytes() usize {
     return arena.queryCapacity();
