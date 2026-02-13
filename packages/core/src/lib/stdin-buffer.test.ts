@@ -40,6 +40,16 @@ describe("StdinBuffer", () => {
       processInput("hello 世界")
       expect(emittedSequences).toEqual(["h", "e", "l", "l", "o", " ", "世", "界"])
     })
+
+    it("should handle emoji (surrogate pairs)", () => {
+      processInput("👍")
+      expect(emittedSequences).toEqual(["👍"])
+    })
+
+    it("should handle emoji mixed with ascii", () => {
+      processInput("hi👍bye")
+      expect(emittedSequences).toEqual(["h", "i", "👍", "b", "y", "e"])
+    })
   })
 
   describe("Complete Escape Sequences", () => {
