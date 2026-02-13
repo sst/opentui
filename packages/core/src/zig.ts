@@ -31,7 +31,15 @@ try {
   const module = await import(`@opentui/core-${process.platform}-${process.arch}/index.ts`)
   targetLibPath = module.default
 } catch {
-  throw new Error(`opentui is not supported on the current platform: ${process.platform}-${process.arch}`)
+  if (process.platform === "linux") {
+    try {
+      targetLibPath = (await import(`@opentui/core-${process.platform}-${process.arch}-musl/index.ts`)).default
+    } catch {
+      throw new Error(`opentui is not supported on the current platform: ${process.platform}-${process.arch}`)
+    }
+  } else {
+    throw new Error(`opentui is not supported on the current platform: ${process.platform}-${process.arch}`)
+  }
 }
 
 if (isBunfsPath(targetLibPath)) {
