@@ -4,6 +4,7 @@ import {
   type CursorStyle,
   DebugOverlayCorner,
   type RenderContext,
+  type ThemeMode,
   type ViewportBounds,
   type WidthMethod,
 } from "./types"
@@ -429,6 +430,7 @@ export class CliRenderer extends EventEmitter implements RenderContext {
   private _cachedPalette: TerminalColors | null = null
   private _paletteDetectionPromise: Promise<TerminalColors> | null = null
   private _onDestroy?: () => void
+  private _themeMode: ThemeMode | null = null
 
   private inputHandlers: ((sequence: string) => boolean)[] = []
   private prependedInputHandlers: ((sequence: string) => boolean)[] = []
@@ -848,6 +850,10 @@ export class CliRenderer extends EventEmitter implements RenderContext {
     return this._capabilities
   }
 
+  public get themeMode(): ThemeMode | null {
+    return this._themeMode
+  }
+
   public getDebugInputs(): Array<{ timestamp: string; sequence: string }> {
     return [...this._debugInputs]
   }
@@ -1050,11 +1056,34 @@ export class CliRenderer extends EventEmitter implements RenderContext {
 
   private focusHandler: (sequence: string) => boolean = ((sequence: string) => {
     if (sequence === "\x1b[I") {
+      // When the terminal regains focus, some terminal emulators (notably
+      // Windows Terminal / ConPTY) may have stripped DEC private modes like
+      // mouse tracking, bracketed paste, and focus tracking itself while the
+      // window was unfocused. Re-send all active mode sequences unconditionally.
+      this.lib.restoreTerminalModes(this.rendererPtr)
       this.emit("focus")
       return true
     }
     if (sequence === "\x1b[O") {
       this.emit("blur")
+      return true
+    }
+    return false
+  }).bind(this)
+
+  private themeModeHandler: (sequence: string) => boolean = ((sequence: string) => {
+    if (sequence === "\x1b[?997;1n") {
+      if (this._themeMode !== "dark") {
+        this._themeMode = "dark"
+        this.emit("theme_mode", "dark")
+      }
+      return true
+    }
+    if (sequence === "\x1b[?997;2n") {
+      if (this._themeMode !== "light") {
+        this._themeMode = "light"
+        this.emit("theme_mode", "light")
+      }
       return true
     }
     return false
@@ -1078,6 +1107,7 @@ export class CliRenderer extends EventEmitter implements RenderContext {
     })
     this.addInputHandler(this.capabilityHandler)
     this.addInputHandler(this.focusHandler)
+    this.addInputHandler(this.themeModeHandler)
     this.addInputHandler((sequence: string) => {
       return this._keyHandler.processInput(sequence)
     })
@@ -1163,10 +1193,17 @@ export class CliRenderer extends EventEmitter implements RenderContext {
       if (mouseEvent.type === "scroll") {
         const maybeRenderableId = this.hitTest(mouseEvent.x, mouseEvent.y)
         const maybeRenderable = Renderable.renderablesByNumber.get(maybeRenderableId)
+        const fallbackTarget =
+          this._currentFocusedRenderable &&
+          !this._currentFocusedRenderable.isDestroyed &&
+          this._currentFocusedRenderable.focused
+            ? this._currentFocusedRenderable
+            : null
+        const scrollTarget = maybeRenderable ?? fallbackTarget
 
-        if (maybeRenderable) {
-          const event = new MouseEvent(maybeRenderable, mouseEvent)
-          maybeRenderable.processMouseEvent(event)
+        if (scrollTarget) {
+          const event = new MouseEvent(scrollTarget, mouseEvent)
+          scrollTarget.processMouseEvent(event)
         }
         return true
       }

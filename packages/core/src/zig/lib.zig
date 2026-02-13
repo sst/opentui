@@ -16,11 +16,16 @@ const utf8 = @import("utf8.zig");
 const logger = @import("logger.zig");
 const event_bus = @import("event-bus.zig");
 const utils = @import("utils.zig");
+const native_span_feed = @import("native-span-feed.zig");
 
 pub const OptimizedBuffer = buffer.OptimizedBuffer;
 pub const CliRenderer = renderer.CliRenderer;
 pub const Terminal = terminal.Terminal;
 pub const RGBA = buffer.RGBA;
+
+comptime {
+    _ = native_span_feed;
+}
 
 export fn setLogCallback(callback: ?*const fn (level: u8, msgPtr: [*]const u8, msgLen: usize) callconv(.c) void) void {
     logger.setLogCallback(callback);
@@ -34,6 +39,10 @@ var gpa = std.heap.GeneralPurposeAllocator(.{}){};
 const globalAllocator = gpa.allocator();
 var arena = std.heap.ArenaAllocator.init(globalAllocator);
 const globalArena = arena.allocator();
+
+export fn createNativeSpanFeed(options_ptr: ?*const native_span_feed.Options) ?*native_span_feed.Stream {
+    return native_span_feed.createNativeSpanFeedWithAllocator(globalAllocator, options_ptr);
+}
 
 export fn getArenaAllocatedBytes() usize {
     return arena.queryCapacity();
@@ -530,6 +539,10 @@ export fn dumpStdoutBuffer(rendererPtr: *renderer.CliRenderer, timestamp: i64) v
     rendererPtr.dumpStdoutBuffer(timestamp);
 }
 
+export fn restoreTerminalModes(rendererPtr: *renderer.CliRenderer) void {
+    rendererPtr.restoreTerminalModes();
+}
+
 export fn enableMouse(rendererPtr: *renderer.CliRenderer, enableMovement: bool) void {
     rendererPtr.enableMouse(enableMovement);
 }
@@ -627,7 +640,7 @@ export fn textBufferResetDefaults(tb: *text_buffer.UnifiedTextBuffer) void {
 }
 
 export fn textBufferGetTabWidth(tb: *text_buffer.UnifiedTextBuffer) u8 {
-    return tb.getTabWidth();
+    return tb.tabWidth();
 }
 
 export fn textBufferSetTabWidth(tb: *text_buffer.UnifiedTextBuffer, width: u8) void {
@@ -636,18 +649,18 @@ export fn textBufferSetTabWidth(tb: *text_buffer.UnifiedTextBuffer, width: u8) v
 
 export fn textBufferRegisterMemBuffer(tb: *text_buffer.UnifiedTextBuffer, dataPtr: [*]const u8, dataLen: usize, owned: bool) u16 {
     const data = dataPtr[0..dataLen];
-    const mem_id = tb.mem_registry.register(data, owned) catch return 0xFFFF;
+    const mem_id = tb.registerMemBuffer(data, owned) catch return 0xFFFF;
     return @intCast(mem_id);
 }
 
 export fn textBufferReplaceMemBuffer(tb: *text_buffer.UnifiedTextBuffer, id: u8, dataPtr: [*]const u8, dataLen: usize, owned: bool) bool {
     const data = dataPtr[0..dataLen];
-    tb.mem_registry.replace(id, data, owned) catch return false;
+    tb.replaceMemBuffer(id, data, owned) catch return false;
     return true;
 }
 
 export fn textBufferClearMemRegistry(tb: *text_buffer.UnifiedTextBuffer) void {
-    tb.mem_registry.clear();
+    tb.clearMemRegistry();
 }
 
 export fn textBufferSetTextFromMem(tb: *text_buffer.UnifiedTextBuffer, id: u8) void {
@@ -938,7 +951,7 @@ export fn editBufferGetEOL(edit_buffer: *edit_buffer_mod.EditBuffer, outPtr: *Ex
 
 export fn editBufferOffsetToPosition(edit_buffer: *edit_buffer_mod.EditBuffer, offset: u32, outPtr: *ExternalLogicalCursor) bool {
     const iter_mod = @import("text-buffer-iterators.zig");
-    const coords = iter_mod.offsetToCoords(&edit_buffer.tb.rope, offset) orelse return false;
+    const coords = iter_mod.offsetToCoords(edit_buffer.tb.rope(), offset) orelse return false;
     outPtr.* = .{
         .row = coords.row,
         .col = coords.col,
@@ -949,12 +962,12 @@ export fn editBufferOffsetToPosition(edit_buffer: *edit_buffer_mod.EditBuffer, o
 
 export fn editBufferPositionToOffset(edit_buffer: *edit_buffer_mod.EditBuffer, row: u32, col: u32) u32 {
     const iter_mod = @import("text-buffer-iterators.zig");
-    return iter_mod.coordsToOffset(&edit_buffer.tb.rope, row, col) orelse 0;
+    return iter_mod.coordsToOffset(edit_buffer.tb.rope(), row, col) orelse 0;
 }
 
 export fn editBufferGetLineStartOffset(edit_buffer: *edit_buffer_mod.EditBuffer, row: u32) u32 {
     const iter_mod = @import("text-buffer-iterators.zig");
-    return iter_mod.coordsToOffset(&edit_buffer.tb.rope, row, 0) orelse 0;
+    return iter_mod.coordsToOffset(edit_buffer.tb.rope(), row, 0) orelse 0;
 }
 
 export fn editBufferGetTextRange(edit_buffer: *edit_buffer_mod.EditBuffer, start_offset: u32, end_offset: u32, outPtr: [*]u8, maxLen: usize) usize {
@@ -1398,7 +1411,7 @@ export fn textBufferGetLineHighlightsPtr(
     line_idx: u32,
     out_count: *usize,
 ) ?[*]const ExternalHighlight {
-    const highs = tb.getLineHighlightsSlice(line_idx);
+    const highs = tb.getLineHighlightsSlice(@intCast(line_idx));
 
     if (highs.len == 0) {
         out_count.* = 0;

@@ -739,19 +739,9 @@ pub const CliRenderer = struct {
                 }
                 runLength += 1;
 
-                // Update the current buffer with the new cell
-                self.currentRenderBuffer.setRaw(x, y, nextCell.?);
-
-                // If this is a grapheme start, also update all continuation cells
-                if (gp.isGraphemeChar(nextCell.?.char)) {
-                    const rightExtent = gp.charRightExtent(nextCell.?.char);
-                    var k: u32 = 1;
-                    while (k <= rightExtent and x + k < self.width) : (k += 1) {
-                        if (self.nextRenderBuffer.get(x + k, y)) |contCell| {
-                            self.currentRenderBuffer.setRaw(x + k, y, contCell);
-                        }
-                    }
-                }
+                // Update grapheme/link trackers (and continuation cells), so current buffer
+                // retains grapheme ownership after next buffer clear and IDs remain stable.
+                self.currentRenderBuffer.set(x, y, nextCell.?);
 
                 cellsUpdated += 1;
             }
@@ -1174,6 +1164,12 @@ pub const CliRenderer = struct {
         self.dumpSingleBuffer(self.currentRenderBuffer, "current", timestamp);
         self.dumpSingleBuffer(self.nextRenderBuffer, "next", timestamp);
         self.dumpStdoutBuffer(timestamp);
+    }
+
+    pub fn restoreTerminalModes(self: *CliRenderer) void {
+        var stream = std.io.fixedBufferStream(&self.writeOutBuf);
+        self.terminal.restoreTerminalModes(stream.writer()) catch {};
+        self.writeOut(stream.getWritten());
     }
 
     pub fn enableMouse(self: *CliRenderer, enableMovement: bool) void {

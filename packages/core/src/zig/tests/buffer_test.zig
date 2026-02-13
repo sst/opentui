@@ -1016,6 +1016,50 @@ test "OptimizedBuffer - renderer two-buffer swap pattern should not leak" {
     }
 }
 
+test "OptimizedBuffer - set should not clear newly written adjacent grapheme continuation" {
+    var local_pool = gp.GraphemePool.initWithOptions(std.testing.allocator, .{});
+    defer local_pool.deinit();
+
+    var buf = try OptimizedBuffer.init(
+        std.testing.allocator,
+        8,
+        1,
+        .{ .pool = &local_pool, .id = "set-adjacent-grapheme" },
+    );
+    defer buf.deinit();
+
+    const bg = RGBA{ 0.0, 0.0, 0.0, 1.0 };
+    const fg = RGBA{ 1.0, 1.0, 1.0, 1.0 };
+    try buf.clear(bg, null);
+
+    const old_gid = try local_pool.alloc("🌟");
+    const old_start = gp.packGraphemeStart(old_gid & gp.GRAPHEME_ID_MASK, 2);
+    buf.set(3, 0, .{ .char = old_start, .fg = fg, .bg = bg, .attributes = 0 });
+
+    const new_gid = try local_pool.alloc("🔥");
+    const new_start = gp.packGraphemeStart(new_gid & gp.GRAPHEME_ID_MASK, 2);
+
+    // Simulate renderer's left-to-right in-place update:
+    // - x=2 writes a new grapheme (which writes continuation at x=3)
+    // - x=3 would be skipped by char-equality
+    // - x=4 overwrites an old continuation from the previous frame
+    // The overwrite at x=4 must not clear the new continuation at x=3.
+    buf.set(2, 0, .{ .char = new_start, .fg = fg, .bg = bg, .attributes = 0 });
+    buf.set(4, 0, .{ .char = ' ', .fg = fg, .bg = bg, .attributes = 0 });
+
+    const c2 = buf.get(2, 0).?;
+    const c3 = buf.get(3, 0).?;
+    const c4 = buf.get(4, 0).?;
+
+    try std.testing.expect(gp.isGraphemeChar(c2.char));
+    try std.testing.expect(gp.graphemeIdFromChar(c2.char) == (new_gid & gp.GRAPHEME_ID_MASK));
+
+    try std.testing.expect(gp.isContinuationChar(c3.char));
+    try std.testing.expect(gp.graphemeIdFromChar(c3.char) == (new_gid & gp.GRAPHEME_ID_MASK));
+
+    try std.testing.expect(c4.char == ' ');
+}
+
 test "OptimizedBuffer - sustained rendering should not leak" {
     const tiny_slots = [_]u32{ 2, 2, 2, 2, 2 };
     var local_pool = gp.GraphemePool.initWithOptions(std.testing.allocator, .{
