@@ -236,7 +236,11 @@ function extractCompleteSequences(buffer: string): { sequences: string[]; remain
     } else {
       // Not an escape sequence - take a single character, keeping surrogate pairs together
       const code = remaining.charCodeAt(0)
-      if (code >= 0xd800 && code <= 0xdbff && remaining.length > 1) {
+      if (code >= 0xd800 && code <= 0xdbff) {
+        if (remaining.length === 1) {
+          return { sequences, remainder: remaining }
+        }
+
         const next = remaining.charCodeAt(1)
         if (next >= 0xdc00 && next <= 0xdfff) {
           sequences.push(remaining.slice(0, 2))
