@@ -414,8 +414,10 @@ export class CliRenderer extends EventEmitter implements RenderContext {
   private _useConsole: boolean = true
   private mouseParser: MouseParser = new MouseParser()
   private sigwinchHandler: () => void = (() => {
-    const width = typeof this.stdout.columns === "number" && this.stdout.columns > 0 ? this.stdout.columns : this._terminalWidth
-    const height = typeof this.stdout.rows === "number" && this.stdout.rows > 0 ? this.stdout.rows : this._terminalHeight
+    const cols = this.stdout.columns
+    const rows = this.stdout.rows
+    const width = typeof cols === "number" && cols > 0 ? cols : this._terminalWidth
+    const height = typeof rows === "number" && rows > 0 ? rows : this._terminalHeight
     this.handleResize(width, height)
   }).bind(this)
   private _capabilities: any | null = null
@@ -503,10 +505,12 @@ export class CliRenderer extends EventEmitter implements RenderContext {
     this.stdout = stdout
     this.realStdoutWrite = stdout.write
     this.lib = lib
-    // In Bun compiled binaries, tty streams may report columns/rows as 0 even when isTTY is true.
+    // TTY streams may report columns/rows as 0 (e.g. Bun compiled binaries).
     // Treat non-positive values as invalid and fall back to the renderer's initial dimensions.
-    this._terminalWidth = typeof stdout.columns === "number" && stdout.columns > 0 ? stdout.columns : width
-    this._terminalHeight = typeof stdout.rows === "number" && stdout.rows > 0 ? stdout.rows : height
+    const cols = stdout.columns
+    const rows = stdout.rows
+    this._terminalWidth = typeof cols === "number" && cols > 0 ? cols : width
+    this._terminalHeight = typeof rows === "number" && rows > 0 ? rows : height
     this.width = width
     this.height = height
     this._useThread = config.useThread === undefined ? false : config.useThread
