@@ -449,7 +449,15 @@ pub const OptimizedBuffer = struct {
             const right = gp.charRightExtent(prev_char);
             const id = gp.graphemeIdFromChar(prev_char);
 
-            self.grapheme_tracker.remove(id);
+            // Skip tracker remove when the new cell reuses the same grapheme ID
+            // (different extent bits but same pool slot). Removing would decref
+            // to 0, freeing the slot; a concurrent alloc could then reuse it and
+            // bump the generation, making the later tracker.add() hit WrongGeneration.
+            const new_is_grapheme = gp.isGraphemeChar(cell.char);
+            const new_id = if (new_is_grapheme) gp.graphemeIdFromChar(cell.char) else 0;
+            if (!(new_is_grapheme and new_id == id)) {
+                self.grapheme_tracker.remove(id);
+            }
 
             const span_start = index - @min(left, index - row_start);
             const span_end = index + @min(right, row_end - index);
