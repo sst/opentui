@@ -509,8 +509,8 @@ export class CliRenderer extends EventEmitter implements RenderContext {
     // Treat non-positive values as invalid and fall back to the renderer's initial dimensions.
     const cols = stdout.columns
     const rows = stdout.rows
-    this._terminalWidth = typeof cols === "number" && cols > 0 ? cols : width
-    this._terminalHeight = typeof rows === "number" && rows > 0 ? rows : height
+    this._terminalWidth = typeof cols === "number" && cols > 0 ? cols : width || 80
+    this._terminalHeight = typeof rows === "number" && rows > 0 ? rows : height || 24
     this.width = width
     this.height = height
     this._useThread = config.useThread === undefined ? false : config.useThread
