@@ -503,8 +503,10 @@ export class CliRenderer extends EventEmitter implements RenderContext {
     this.stdout = stdout
     this.realStdoutWrite = stdout.write
     this.lib = lib
-    this._terminalWidth = stdout.columns ?? width
-    this._terminalHeight = stdout.rows ?? height
+    // In Bun compiled binaries, tty streams may report columns/rows as 0 even when isTTY is true.
+    // Treat non-positive values as invalid and fall back to the renderer's initial dimensions.
+    this._terminalWidth = typeof stdout.columns === "number" && stdout.columns > 0 ? stdout.columns : width
+    this._terminalHeight = typeof stdout.rows === "number" && stdout.rows > 0 ? stdout.rows : height
     this.width = width
     this.height = height
     this._useThread = config.useThread === undefined ? false : config.useThread
