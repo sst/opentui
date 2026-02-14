@@ -414,8 +414,8 @@ export class CliRenderer extends EventEmitter implements RenderContext {
   private _useConsole: boolean = true
   private mouseParser: MouseParser = new MouseParser()
   private sigwinchHandler: () => void = (() => {
-    const width = this.stdout.columns || 80
-    const height = this.stdout.rows || 24
+    const width = typeof this.stdout.columns === "number" && this.stdout.columns > 0 ? this.stdout.columns : this._terminalWidth
+    const height = typeof this.stdout.rows === "number" && this.stdout.rows > 0 ? this.stdout.rows : this._terminalHeight
     this.handleResize(width, height)
   }).bind(this)
   private _capabilities: any | null = null
