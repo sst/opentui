@@ -647,6 +647,12 @@ test "GraphemeTracker - add same grapheme twice increfs once" {
         tracker.add(id); // Should not incref again
 
         try std.testing.expectEqual(@as(u32, 1), tracker.getGraphemeCount());
+        try std.testing.expectEqual(@as(u32, 2), tracker.getGraphemeCellCount());
+        try std.testing.expectEqual(@as(u32, 2), tracker.getTotalGraphemeBytes());
+
+        tracker.remove(id);
+        try std.testing.expect(tracker.contains(id));
+        try std.testing.expectEqual(@as(u32, 1), tracker.getGraphemeCellCount());
 
         // After deinit (via defer), tracker decrefs once, bringing refcount to 0
     }
