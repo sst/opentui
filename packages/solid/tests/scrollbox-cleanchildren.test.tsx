@@ -53,12 +53,8 @@ describe("scrollbox cleanChildren: multi-sibling cleanup", () => {
       testSetup = await testRender(
         () => (
           <scrollbox id="scroll" flexGrow={1}>
-            <For each={headers()}>
-              {(h) => <box id={`h-${h}`} />}
-            </For>
-            <For each={items()}>
-              {(item) => <box id={`i-${item}`} />}
-            </For>
+            <For each={headers()}>{(h) => <box id={`h-${h}`} />}</For>
+            <For each={items()}>{(item) => <box id={`i-${item}`} />}</For>
           </scrollbox>
         ),
         { width: 40, height: 20 },
@@ -82,12 +78,8 @@ describe("scrollbox cleanChildren: multi-sibling cleanup", () => {
       testSetup = await testRender(
         () => (
           <scrollbox id="scroll" flexGrow={1}>
-            <For each={headers()}>
-              {(h) => <box id={`h-${h}`} />}
-            </For>
-            <For each={items()}>
-              {(item) => <box id={`i-${item}`} />}
-            </For>
+            <For each={headers()}>{(h) => <box id={`h-${h}`} />}</For>
+            <For each={items()}>{(item) => <box id={`i-${item}`} />}</For>
           </scrollbox>
         ),
         { width: 40, height: 20 },
@@ -111,12 +103,8 @@ describe("scrollbox cleanChildren: multi-sibling cleanup", () => {
       testSetup = await testRender(
         () => (
           <scrollbox id="scroll" flexGrow={1}>
-            <For each={headers()}>
-              {(h) => <box id={`h-${h}`} />}
-            </For>
-            <For each={items()}>
-              {(item) => <box id={`i-${item}`} />}
-            </For>
+            <For each={headers()}>{(h) => <box id={`h-${h}`} />}</For>
+            <For each={items()}>{(item) => <box id={`i-${item}`} />}</For>
           </scrollbox>
         ),
         { width: 40, height: 20 },
@@ -139,12 +127,8 @@ describe("scrollbox cleanChildren: multi-sibling cleanup", () => {
       testSetup = await testRender(
         () => (
           <scrollbox id="scroll" flexGrow={1}>
-            <For each={headers()}>
-              {(h) => <box id={`h-${h}`} />}
-            </For>
-            <For each={items()}>
-              {(item) => <box id={`i-${item}`} />}
-            </For>
+            <For each={headers()}>{(h) => <box id={`h-${h}`} />}</For>
+            <For each={items()}>{(item) => <box id={`i-${item}`} />}</For>
           </scrollbox>
         ),
         { width: 40, height: 20 },
@@ -179,15 +163,9 @@ describe("scrollbox cleanChildren: multi-sibling cleanup", () => {
       testSetup = await testRender(
         () => (
           <scrollbox id="scroll" flexGrow={1}>
-            <For each={aList()}>
-              {(a) => <box id={`a-${a}`} />}
-            </For>
-            <For each={bList()}>
-              {(b) => <box id={`b-${b}`} />}
-            </For>
-            <For each={cList()}>
-              {(c) => <box id={`c-${c}`} />}
-            </For>
+            <For each={aList()}>{(a) => <box id={`a-${a}`} />}</For>
+            <For each={bList()}>{(b) => <box id={`b-${b}`} />}</For>
+            <For each={cList()}>{(c) => <box id={`c-${c}`} />}</For>
           </scrollbox>
         ),
         { width: 40, height: 20 },
@@ -202,7 +180,6 @@ describe("scrollbox cleanChildren: multi-sibling cleanup", () => {
       expect(countById(scrollbox, "b-")).toBe(0)
       expect(countById(scrollbox, "c-")).toBe(1)
     })
-
   })
 
   // ─── Store + reconcile ───
@@ -220,12 +197,8 @@ describe("scrollbox cleanChildren: multi-sibling cleanup", () => {
       testSetup = await testRender(
         () => (
           <scrollbox id="scroll" flexGrow={1}>
-            <For each={state.headers}>
-              {(h) => <box id={`h-${h.id}`} />}
-            </For>
-            <For each={state.items}>
-              {(item) => <box id={`i-${item.id}`} />}
-            </For>
+            <For each={state.headers}>{(h) => <box id={`h-${h.id}`} />}</For>
+            <For each={state.items}>{(item) => <box id={`i-${item.id}`} />}</For>
           </scrollbox>
         ),
         { width: 40, height: 20 },
@@ -255,12 +228,8 @@ describe("scrollbox cleanChildren: multi-sibling cleanup", () => {
       testSetup = await testRender(
         () => (
           <scrollbox id="scroll" flexGrow={1}>
-            <For each={state.headers}>
-              {(h) => <box id={`h-${h.id}`} />}
-            </For>
-            <For each={state.items}>
-              {(item) => <box id={`i-${item.id}`} />}
-            </For>
+            <For each={state.headers}>{(h) => <box id={`h-${h.id}`} />}</For>
+            <For each={state.items}>{(item) => <box id={`i-${item.id}`} />}</For>
           </scrollbox>
         ),
         { width: 40, height: 20 },
@@ -289,12 +258,8 @@ describe("scrollbox cleanChildren: multi-sibling cleanup", () => {
       testSetup = await testRender(
         () => (
           <scrollbox id="scroll" flexGrow={1}>
-            <For each={headers()}>
-              {(h) => <box id={`h-${h}`} />}
-            </For>
-            <For each={items()}>
-              {(item) => <box id={`i-${item}`} />}
-            </For>
+            <For each={headers()}>{(h) => <box id={`h-${h}`} />}</For>
+            <For each={items()}>{(item) => <box id={`i-${item}`} />}</For>
           </scrollbox>
         ),
         { width: 40, height: 20 },
@@ -329,12 +294,8 @@ describe("scrollbox cleanChildren: multi-sibling cleanup", () => {
       testSetup = await testRender(
         () => (
           <scrollbox id="scroll" flexGrow={1}>
-            <For each={state.tags}>
-              {(tag) => <box id={`tag-${tag.id}`} />}
-            </For>
-            <For each={state.rows}>
-              {(row) => <box id={`row-${row.id}`} />}
-            </For>
+            <For each={state.tags}>{(tag) => <box id={`tag-${tag.id}`} />}</For>
+            <For each={state.rows}>{(row) => <box id={`row-${row.id}`} />}</For>
           </scrollbox>
         ),
         { width: 40, height: 20 },
@@ -345,9 +306,11 @@ describe("scrollbox cleanChildren: multi-sibling cleanup", () => {
       const scrollbox = testSetup.renderer.root.findDescendantById("scroll")!
 
       for (let i = 1; i <= 4; i++) {
-        setState(produce((s) => {
-          s.rows.push({ id: `r${i}` })
-        }))
+        setState(
+          produce((s) => {
+            s.rows.push({ id: `r${i}` })
+          }),
+        )
         await new Promise((r) => setTimeout(r, 15))
       }
 
@@ -376,12 +339,8 @@ describe("scrollbox cleanChildren: multi-sibling cleanup", () => {
       testSetup = await testRender(
         () => (
           <scrollbox id="scroll" flexGrow={1}>
-            <For each={state.sys}>
-              {(s) => <box id={`sys-${s.id}`} />}
-            </For>
-            <For each={state.data}>
-              {(d) => <box id={`data-${d.id}`} />}
-            </For>
+            <For each={state.sys}>{(s) => <box id={`sys-${s.id}`} />}</For>
+            <For each={state.data}>{(d) => <box id={`data-${d.id}`} />}</For>
           </scrollbox>
         ),
         { width: 40, height: 20 },
@@ -394,9 +353,11 @@ describe("scrollbox cleanChildren: multi-sibling cleanup", () => {
       for (let cycle = 1; cycle <= 3; cycle++) {
         // Populate via produce
         for (let i = 1; i <= 3; i++) {
-          setState(produce((s) => {
-            s.data.push({ id: `d${cycle}-${i}` })
-          }))
+          setState(
+            produce((s) => {
+              s.data.push({ id: `d${cycle}-${i}` })
+            }),
+          )
           await new Promise((r) => setTimeout(r, 10))
         }
         await new Promise((r) => setTimeout(r, 30))
@@ -411,7 +372,6 @@ describe("scrollbox cleanChildren: multi-sibling cleanup", () => {
 
       testSetup.renderer.stop()
     })
-
   })
 
   // ─── <Show> creates markers too — test cleanup with <For> sibling ───
@@ -425,13 +385,9 @@ describe("scrollbox cleanChildren: multi-sibling cleanup", () => {
       testSetup = await testRender(
         () => (
           <scrollbox id="scroll" flexGrow={1}>
-            <For each={headers()}>
-              {(h) => <box id={`h-${h}`} />}
-            </For>
+            <For each={headers()}>{(h) => <box id={`h-${h}`} />}</For>
             <Show when={showItems()}>
-              <For each={items()}>
-                {(item) => <box id={`i-${item}`} />}
-              </For>
+              <For each={items()}>{(item) => <box id={`i-${item}`} />}</For>
             </Show>
           </scrollbox>
         ),
@@ -463,14 +419,10 @@ describe("scrollbox cleanChildren: multi-sibling cleanup", () => {
         () => (
           <scrollbox id="scroll" flexGrow={1}>
             <Show when={mode() === "a"}>
-              <For each={listA}>
-                {(item) => <box id={`a-${item}`} />}
-              </For>
+              <For each={listA}>{(item) => <box id={`a-${item}`} />}</For>
             </Show>
             <Show when={mode() === "b"}>
-              <For each={listB}>
-                {(item) => <box id={`b-${item}`} />}
-              </For>
+              <For each={listB}>{(item) => <box id={`b-${item}`} />}</For>
             </Show>
           </scrollbox>
         ),
@@ -503,10 +455,10 @@ describe("scrollbox cleanChildren: multi-sibling cleanup", () => {
       testSetup = await testRender(
         () => (
           <scrollbox id="scroll" flexGrow={1}>
-            <box id="static-header"><text>Header</text></box>
-            <For each={items()}>
-              {(item) => <box id={`item-${item}`} />}
-            </For>
+            <box id="static-header">
+              <text>Header</text>
+            </box>
+            <For each={items()}>{(item) => <box id={`item-${item}`} />}</For>
           </scrollbox>
         ),
         { width: 40, height: 20 },
@@ -535,13 +487,11 @@ describe("scrollbox cleanChildren: multi-sibling cleanup", () => {
       testSetup = await testRender(
         () => (
           <scrollbox id="scroll" flexGrow={1}>
-            <For each={topItems()}>
-              {(item) => <box id={`top-${item}`} />}
-            </For>
-            <box id="divider"><text>---</text></box>
-            <For each={bottomItems()}>
-              {(item) => <box id={`bot-${item}`} />}
-            </For>
+            <For each={topItems()}>{(item) => <box id={`top-${item}`} />}</For>
+            <box id="divider">
+              <text>---</text>
+            </box>
+            <For each={bottomItems()}>{(item) => <box id={`bot-${item}`} />}</For>
           </scrollbox>
         ),
         { width: 40, height: 20 },
@@ -568,10 +518,10 @@ describe("scrollbox cleanChildren: multi-sibling cleanup", () => {
       testSetup = await testRender(
         () => (
           <scrollbox id="scroll" flexGrow={1}>
-            <For each={items()}>
-              {(item) => <box id={`item-${item}`} />}
-            </For>
-            <box id="static-footer"><text>Footer</text></box>
+            <For each={items()}>{(item) => <box id={`item-${item}`} />}</For>
+            <box id="static-footer">
+              <text>Footer</text>
+            </box>
           </scrollbox>
         ),
         { width: 40, height: 20 },
@@ -597,12 +547,8 @@ describe("scrollbox cleanChildren: multi-sibling cleanup", () => {
       testSetup = await testRender(
         () => (
           <scrollbox id="scroll" flexGrow={1}>
-            <Index each={indexItems()}>
-              {(item, idx) => <box id={`idx-${idx}`} />}
-            </Index>
-            <For each={forItems()}>
-              {(item) => <box id={`for-${item}`} />}
-            </For>
+            <Index each={indexItems()}>{(item, idx) => <box id={`idx-${idx}`} />}</Index>
+            <For each={forItems()}>{(item) => <box id={`for-${item}`} />}</For>
           </scrollbox>
         ),
         { width: 40, height: 20 },
