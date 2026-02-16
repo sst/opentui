@@ -418,6 +418,27 @@ export class MarkdownRenderable extends Renderable {
     })
   }
 
+  private createBlockRenderable(token: MarkedToken, id: string, marginBottom: number): Renderable | null {
+    if (token.type === "code") {
+      return this.createCodeRenderable(token as Tokens.Code, id, marginBottom)
+    }
+
+    if (token.type === "table") {
+      return this.createTableRenderable(token as Tokens.Table, id, marginBottom)
+    }
+
+    if (token.type === "space") {
+      return null
+    }
+
+    const chunks = this.renderTokenToChunks(token)
+    if (chunks.length === 0) {
+      return null
+    }
+
+    return this.createTextRenderable(chunks, id, marginBottom)
+  }
+
   /**
    * Update an existing table renderable in-place for style/conceal changes.
    * Much faster than rebuilding the entire table structure.
@@ -614,32 +635,24 @@ export class MarkdownRenderable extends Renderable {
     return tableBox
   }
 
+  private getBlockMarginBottom(hasNextToken: boolean): number {
+    return hasNextToken ? 1 : 0
+  }
+
   private createDefaultRenderable(token: MarkedToken, index: number, hasNextToken: boolean = false): Renderable | null {
     const id = `${this.id}-block-${index}`
-    const marginBottom = hasNextToken ? 1 : 0
+    const marginBottom = this.getBlockMarginBottom(hasNextToken)
 
-    if (token.type === "code") {
-      return this.createCodeRenderable(token, id, marginBottom)
-    }
-
-    if (token.type === "table") {
-      return this.createTableRenderable(token, id, marginBottom)
-    }
-
-    if (token.type === "space") {
+    const renderable = this.createBlockRenderable(token, id, marginBottom)
+    if (!renderable || token.type === "space") {
       return null
     }
 
-    const chunks = this.renderTokenToChunks(token)
-    if (chunks.length === 0) {
-      return null
-    }
-
-    return this.createTextRenderable(chunks, id, marginBottom)
+    return renderable
   }
 
   private updateBlockRenderable(state: BlockState, token: MarkedToken, index: number, hasNextToken: boolean): void {
-    const marginBottom = hasNextToken ? 1 : 0
+    const marginBottom = this.getBlockMarginBottom(hasNextToken)
 
     if (token.type === "code") {
       const codeRenderable = state.renderable as CodeRenderable
@@ -736,9 +749,11 @@ export class MarkdownRenderable extends Renderable {
       const { token } = blockTokens[i]
       const hasNextToken = i < lastBlockIndex
       const existing = this._blockStates[blockIndex]
+      const marginBottom = this.getBlockMarginBottom(hasNextToken)
 
       // Same token object reference means unchanged
       if (existing && existing.token === token) {
+        existing.renderable.marginBottom = marginBottom
         blockIndex++
         continue
       }
@@ -746,6 +761,7 @@ export class MarkdownRenderable extends Renderable {
       // Same content, update reference
       if (existing && existing.tokenRaw === token.raw && existing.token.type === token.type) {
         existing.token = token
+        existing.renderable.marginBottom = marginBottom
         blockIndex++
         continue
       }
