@@ -428,7 +428,7 @@ export class MarkdownRenderable extends Renderable {
     }
 
     if (token.type === "space") {
-      return null
+      return this.createTextRenderable([this.createDefaultChunk(" ")], id, marginBottom)
     }
 
     const chunks = this.renderTokenToChunks(token)
