@@ -1522,6 +1522,34 @@ test("streaming table transitions cleanly from raw fallback to proper table", as
   expect(frame).not.toContain("| D")
 })
 
+test("streaming table renders with conceal=false when row is complete", async () => {
+  const md = new MarkdownRenderable(renderer, {
+    id: "markdown",
+    content: "| A | B |\n|---|---|\n| 1 | 2 |\n",
+    syntaxStyle,
+    conceal: false,
+    streaming: true,
+  })
+
+  renderer.root.add(md)
+  await renderOnce()
+
+  const frame = captureFrame()
+    .split("\n")
+    .map((line) => line.trimEnd())
+    .join("\n")
+    .trimEnd()
+
+  expect("\n" + frame).toMatchInlineSnapshot(`
+    "
+    ┌───┬───┐
+    │A  │B  │
+    │───│───│
+    │1  │2  │
+    └───┴───┘"
+  `)
+})
+
 test("streaming table can transition back to raw fallback when rows are removed", async () => {
   const md = new MarkdownRenderable(renderer, {
     id: "markdown",
