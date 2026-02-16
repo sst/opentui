@@ -673,6 +673,39 @@ test("list with inline formatting", async () => {
   `)
 })
 
+test("nested unordered list", async () => {
+  const markdown = `- Item 1
+  - Nested A
+  - Nested B
+- Item 2`
+
+  expect(await renderMarkdown(markdown)).toMatchInlineSnapshot(`
+    "
+    - Item 1
+      - Nested A
+      - Nested B
+    - Item 2"
+  `)
+})
+
+test("list item with fenced code block", async () => {
+  const markdown = `- Item with code:
+
+  \`\`\`ts
+  const value = 1
+  console.log(value)
+  \`\`\`
+- Next item`
+
+  expect(await renderMarkdown(markdown)).toMatchInlineSnapshot(`
+    "
+    - Item with code:
+      const value = 1
+      console.log(value)
+    - Next item"
+  `)
+})
+
 // Blockquote tests
 
 test("simple blockquote", async () => {
@@ -1176,6 +1209,32 @@ test("streaming mode keeps trailing tokens unstable", async () => {
     .join("\n")
     .trimEnd()
   expect(frame2).toContain("Hello World")
+})
+
+test("streaming task list keeps checkbox and text on same line", async () => {
+  const md = new MarkdownRenderable(renderer, {
+    id: "markdown",
+    content: "- [ ]",
+    syntaxStyle,
+    streaming: true,
+  })
+
+  renderer.root.add(md)
+  await renderOnce()
+
+  md.content = "- [ ] todo"
+  await renderOnce()
+
+  const frame = captureFrame()
+    .split("\n")
+    .map((line) => line.trimEnd())
+    .join("\n")
+    .trimEnd()
+
+  expect("\n" + frame).toMatchInlineSnapshot(`
+    "
+    - [ ] todo"
+  `)
 })
 
 test("non-streaming mode parses all tokens as stable", async () => {
