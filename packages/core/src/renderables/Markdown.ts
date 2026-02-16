@@ -759,7 +759,7 @@ export class MarkdownRenderable extends Renderable {
       return
     }
 
-    // Text-based renderables (paragraph, heading, blockquote, hr)
+    // Text-based renderables (paragraph, heading, list, hr)
     const textRenderable = state.renderable as TextRenderable
     const chunks = this.renderTokenToChunks(token)
     textRenderable.content = new StyledText(chunks)
