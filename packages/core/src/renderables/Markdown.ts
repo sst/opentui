@@ -67,6 +67,7 @@ export class MarkdownRenderable extends Renderable {
     super(ctx, {
       ...options,
       flexDirection: "column",
+      flexShrink: options.flexShrink ?? 0,
     })
 
     this._syntaxStyle = options.syntaxStyle
