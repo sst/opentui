@@ -682,7 +682,7 @@ test("simple blockquote", async () => {
   expect(await renderMarkdown(markdown)).toMatchInlineSnapshot(`
     "
     > This is a quote
-    spanning multiple lines"
+    > spanning multiple lines"
   `)
 })
 
@@ -1176,6 +1176,33 @@ test("streaming mode keeps trailing tokens unstable", async () => {
     .join("\n")
     .trimEnd()
   expect(frame2).toContain("Hello World")
+})
+
+test("streaming blockquote keeps single prefix per line", async () => {
+  const md = new MarkdownRenderable(renderer, {
+    id: "markdown",
+    content: "> first line",
+    syntaxStyle,
+    streaming: true,
+  })
+
+  renderer.root.add(md)
+  await renderOnce()
+
+  md.content = "> first line\n> second line"
+  await renderOnce()
+
+  const frame = captureFrame()
+    .split("\n")
+    .map((line) => line.trimEnd())
+    .join("\n")
+    .trimEnd()
+
+  expect("\n" + frame).toMatchInlineSnapshot(`
+    "
+    > first line
+    > second line"
+  `)
 })
 
 test("non-streaming mode parses all tokens as stable", async () => {
