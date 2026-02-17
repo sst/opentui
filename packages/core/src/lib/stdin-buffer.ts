@@ -234,9 +234,25 @@ function extractCompleteSequences(buffer: string): { sequences: string[]; remain
         return { sequences, remainder: remaining }
       }
     } else {
-      // Not an escape sequence - take a single character
-      sequences.push(remaining[0])
-      pos++
+      // Not an escape sequence - take a single character, keeping surrogate pairs together
+      const code = remaining.charCodeAt(0)
+      if (code >= 0xd800 && code <= 0xdbff) {
+        if (remaining.length === 1) {
+          return { sequences, remainder: remaining }
+        }
+
+        const next = remaining.charCodeAt(1)
+        if (next >= 0xdc00 && next <= 0xdfff) {
+          sequences.push(remaining.slice(0, 2))
+          pos += 2
+        } else {
+          sequences.push(remaining[0])
+          pos++
+        }
+      } else {
+        sequences.push(remaining[0])
+        pos++
+      }
     }
   }
 

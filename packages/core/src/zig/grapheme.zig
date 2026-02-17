@@ -499,18 +499,20 @@ pub fn deinitGlobalPool() void {
 
 pub const GraphemeTracker = struct {
     pool: *GraphemePool,
-    used_ids: std.AutoHashMap(u32, void),
+    used_ids: std.AutoHashMap(u32, u32), // id -> number of cells in this buffer
 
     pub fn init(allocator: std.mem.Allocator, pool: *GraphemePool) GraphemeTracker {
         return .{
             .pool = pool,
-            .used_ids = std.AutoHashMap(u32, void).init(allocator),
+            .used_ids = std.AutoHashMap(u32, u32).init(allocator),
         };
     }
 
     fn decRefAll(self: *GraphemeTracker) void {
         var it = self.used_ids.keyIterator();
         while (it.next()) |idp| {
+            // Pool refs are tracked per ID (first/last cell transition), so clear
+            // decrefs once per tracked ID, not once per per-buffer cell count.
             self.pool.decref(idp.*) catch {};
         }
     }
@@ -530,16 +532,32 @@ pub const GraphemeTracker = struct {
             std.debug.panic("GraphemeTracker.add failed: {}\n", .{err});
         };
         if (!res.found_existing) {
+            res.value_ptr.* = 1;
             self.pool.incref(id) catch |err| {
                 std.debug.panic("GraphemeTracker.add incref failed: {}\n", .{err});
             };
+        } else {
+            res.value_ptr.* += 1;
         }
     }
 
     pub fn remove(self: *GraphemeTracker, id: u32) void {
+        const count_ptr = self.used_ids.getPtr(id) orelse return;
+        if (count_ptr.* > 1) {
+            count_ptr.* -= 1;
+            return;
+        }
+
         if (self.used_ids.remove(id)) {
             self.pool.decref(id) catch {};
         }
+    }
+
+    pub fn replace(self: *GraphemeTracker, old_id: ?u32, new_id: ?u32) void {
+        if (old_id != null and new_id != null and old_id.? == new_id.?) return;
+
+        if (new_id) |id| self.add(id);
+        if (old_id) |id| self.remove(id);
     }
 
     pub fn contains(self: *const GraphemeTracker, id: u32) bool {
@@ -554,13 +572,23 @@ pub const GraphemeTracker = struct {
         return @intCast(self.used_ids.count());
     }
 
+    pub fn getGraphemeCellCount(self: *const GraphemeTracker) u32 {
+        var total: u32 = 0;
+        var it = self.used_ids.valueIterator();
+        while (it.next()) |count_ptr| {
+            total += count_ptr.*;
+        }
+        return total;
+    }
+
     pub fn getTotalGraphemeBytes(self: *const GraphemeTracker) u32 {
         var total_bytes: u32 = 0;
-        var it = self.used_ids.keyIterator();
-        while (it.next()) |idp| {
-            const id = idp.*;
+        var it = self.used_ids.iterator();
+        while (it.next()) |entry| {
+            const id = entry.key_ptr.*;
+            const count = entry.value_ptr.*;
             if (self.pool.get(id)) |bytes| {
-                total_bytes += @intCast(bytes.len);
+                total_bytes += @as(u32, @intCast(bytes.len)) * count;
             } else |_| {
                 // If we can't get the bytes, this shouldn't happen but handle gracefully
                 continue;

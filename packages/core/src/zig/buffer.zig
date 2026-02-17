@@ -440,6 +440,7 @@ pub const OptimizedBuffer = struct {
         const prev_char = self.buffer.char[index];
         const prev_attr = self.buffer.attributes[index];
         const prev_link_id = ansi.TextAttributes.getLinkId(prev_attr);
+        var tracker_replaced = false;
 
         // If overwriting a grapheme span (start or continuation) with a different char, clear that span first
         if ((gp.isGraphemeChar(prev_char) or gp.isContinuationChar(prev_char)) and prev_char != cell.char) {
@@ -449,7 +450,14 @@ pub const OptimizedBuffer = struct {
             const right = gp.charRightExtent(prev_char);
             const id = gp.graphemeIdFromChar(prev_char);
 
-            self.grapheme_tracker.remove(id);
+            const new_grapheme_id: ?u32 = blk: {
+                if (!gp.isGraphemeChar(cell.char)) break :blk null;
+                const new_width = gp.charRightExtent(cell.char) + 1;
+                if (x + new_width > self.width) break :blk null;
+                break :blk gp.graphemeIdFromChar(cell.char);
+            };
+            self.grapheme_tracker.replace(id, new_grapheme_id);
+            tracker_replaced = true;
 
             const span_start = index - @min(left, index - row_start);
             const span_end = index + @min(right, row_end - index);
@@ -504,7 +512,10 @@ pub const OptimizedBuffer = struct {
             self.buffer.attributes[index] = cell.attributes;
 
             const id: u32 = gp.graphemeIdFromChar(cell.char);
-            self.grapheme_tracker.add(id);
+            const is_same_grapheme_start = gp.isGraphemeChar(prev_char) and prev_char == cell.char;
+            if (!tracker_replaced and !is_same_grapheme_start) {
+                self.grapheme_tracker.add(id);
+            }
 
             const new_link_id = ansi.TextAttributes.getLinkId(cell.attributes);
             if (prev_link_id != 0 and prev_link_id != new_link_id) {
@@ -590,7 +601,7 @@ pub const OptimizedBuffer = struct {
     /// Calculate the real byte size of the character buffer including grapheme pool data
     pub fn getRealCharSize(self: *const OptimizedBuffer) u32 {
         const total_chars = self.width * self.height;
-        const grapheme_count = self.grapheme_tracker.getGraphemeCount();
+        const grapheme_count = self.grapheme_tracker.getGraphemeCellCount();
         const total_grapheme_bytes = self.grapheme_tracker.getTotalGraphemeBytes();
 
         const regular_char_bytes = (total_chars - grapheme_count) * @sizeOf(u32);

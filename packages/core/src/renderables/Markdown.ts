@@ -67,6 +67,7 @@ export class MarkdownRenderable extends Renderable {
     super(ctx, {
       ...options,
       flexDirection: "column",
+      flexShrink: options.flexShrink ?? 0,
     })
 
     this._syntaxStyle = options.syntaxStyle
@@ -122,9 +123,9 @@ export class MarkdownRenderable extends Renderable {
   set streaming(value: boolean) {
     if (this._streaming !== value) {
       this._streaming = value
-      // Don't clear parseState - incremental parser handles streaming correctly
-      this.updateBlocks()
-      this.requestRender()
+      // Force a full rebuild on mode transitions to keep table rendering
+      // correct.
+      this.clearCache()
     }
   }
 

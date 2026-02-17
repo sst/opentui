@@ -110,6 +110,21 @@ export const CursorStateStruct = defineStruct([
   ["a", "f32"],
 ])
 
+export const CursorStyleOptionsStruct = defineStruct([
+  ["style", "u8", { default: 255 }],
+  ["blinking", "u8", { default: 255 }],
+  [
+    "color",
+    "pointer",
+    {
+      optional: true,
+      packTransform: rgbaPackTransform,
+      unpackTransform: rgbaUnpackTransform,
+    },
+  ],
+  ["cursor", "u8", { default: 255 }],
+])
+
 export type GrowthPolicy = "grow" | "block"
 
 export type NativeSpanFeedOptions = {
