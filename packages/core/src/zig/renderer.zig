@@ -127,6 +127,7 @@ pub const CliRenderer = struct {
     lastCursorStyleTag: ?u8 = null,
     lastCursorBlinking: ?bool = null,
     lastCursorColorRGB: ?[3]u8 = null,
+    lastMousePointerStyle: Terminal.MousePointerStyle = .default,
 
     // Preallocated output buffer
     var outputBuffer: [OUTPUT_BUFFER_SIZE]u8 = undefined;
@@ -171,18 +172,28 @@ pub const CliRenderer = struct {
         remote: bool,
     ) !*CliRenderer {
         const self = try allocator.create(CliRenderer);
+        errdefer allocator.destroy(self);
 
         const currentBuffer = try OptimizedBuffer.init(allocator, width, height, .{ .pool = pool, .width_method = .unicode, .id = "current buffer" });
+        errdefer currentBuffer.deinit();
         const nextBuffer = try OptimizedBuffer.init(allocator, width, height, .{ .pool = pool, .width_method = .unicode, .id = "next buffer" });
+        errdefer nextBuffer.deinit();
 
         // stat sample arrays
         var lastFrameTime: std.ArrayListUnmanaged(f64) = .{};
+        errdefer lastFrameTime.deinit(allocator);
         var renderTime: std.ArrayListUnmanaged(f64) = .{};
+        errdefer renderTime.deinit(allocator);
         var overallFrameTime: std.ArrayListUnmanaged(f64) = .{};
+        errdefer overallFrameTime.deinit(allocator);
         var bufferResetTime: std.ArrayListUnmanaged(f64) = .{};
+        errdefer bufferResetTime.deinit(allocator);
         var stdoutWriteTime: std.ArrayListUnmanaged(f64) = .{};
+        errdefer stdoutWriteTime.deinit(allocator);
         var cellsUpdated: std.ArrayListUnmanaged(u32) = .{};
+        errdefer cellsUpdated.deinit(allocator);
         var frameCallbackTimes: std.ArrayListUnmanaged(f64) = .{};
+        errdefer frameCallbackTimes.deinit(allocator);
 
         try lastFrameTime.ensureTotalCapacity(allocator, STAT_SAMPLE_CAPACITY);
         try renderTime.ensureTotalCapacity(allocator, STAT_SAMPLE_CAPACITY);
@@ -194,7 +205,9 @@ pub const CliRenderer = struct {
 
         const hitGridSize = width * height;
         const currentHitGrid = try allocator.alloc(u32, hitGridSize);
+        errdefer allocator.free(currentHitGrid);
         const nextHitGrid = try allocator.alloc(u32, hitGridSize);
+        errdefer allocator.free(nextHitGrid);
         @memset(currentHitGrid, 0); // Initialize with 0 (no renderable)
         @memset(nextHitGrid, 0);
         const hitScissorStack: std.ArrayListUnmanaged(buf.ClipRect) = .{};
@@ -458,6 +471,7 @@ pub const CliRenderer = struct {
         const currentHitGridSize = self.hitGridWidth * self.hitGridHeight;
         if (newHitGridSize > currentHitGridSize) {
             const newCurrentHitGrid = try self.allocator.alloc(u32, newHitGridSize);
+            errdefer self.allocator.free(newCurrentHitGrid);
             const newNextHitGrid = try self.allocator.alloc(u32, newHitGridSize);
             @memset(newCurrentHitGrid, 0);
             @memset(newNextHitGrid, 0);
@@ -726,19 +740,9 @@ pub const CliRenderer = struct {
                 }
                 runLength += 1;
 
-                // Update the current buffer with the new cell
-                self.currentRenderBuffer.setRaw(x, y, nextCell.?);
-
-                // If this is a grapheme start, also update all continuation cells
-                if (gp.isGraphemeChar(nextCell.?.char)) {
-                    const rightExtent = gp.charRightExtent(nextCell.?.char);
-                    var k: u32 = 1;
-                    while (k <= rightExtent and x + k < self.width) : (k += 1) {
-                        if (self.nextRenderBuffer.get(x + k, y)) |contCell| {
-                            self.currentRenderBuffer.setRaw(x + k, y, contCell);
-                        }
-                    }
-                }
+                // Update grapheme/link trackers (and continuation cells), so current buffer
+                // retains grapheme ownership after next buffer clear and IDs remain stable.
+                self.currentRenderBuffer.set(x, y, nextCell.?);
 
                 cellsUpdated += 1;
             }
@@ -805,6 +809,12 @@ pub const CliRenderer = struct {
             self.lastCursorColorRGB = null;
         }
 
+        const mousePointer = self.terminal.getMousePointer();
+        if (mousePointer != self.lastMousePointerStyle) {
+            ansi.ANSI.setMousePointerOutput(writer, mousePointer.toName()) catch {};
+            self.lastMousePointerStyle = mousePointer;
+        }
+        
         writer.writeAll(ansi.ANSI.syncReset) catch {};
 
         const renderEndTime = std.time.microTimestamp();
@@ -1163,6 +1173,12 @@ pub const CliRenderer = struct {
         self.dumpStdoutBuffer(timestamp);
     }
 
+    pub fn restoreTerminalModes(self: *CliRenderer) void {
+        var stream = std.io.fixedBufferStream(&self.writeOutBuf);
+        self.terminal.restoreTerminalModes(stream.writer()) catch {};
+        self.writeOut(stream.getWritten());
+    }
+
     pub fn enableMouse(self: *CliRenderer, enableMovement: bool) void {
         _ = enableMovement;
         var stream = std.io.fixedBufferStream(&self.writeOutBuf);
@@ -1206,18 +1222,6 @@ pub const CliRenderer = struct {
         const useKitty = self.terminal.opts.kitty_keyboard_flags > 0;
         self.terminal.enableDetectedFeatures(stream.writer(), useKitty) catch {};
         self.writeOut(stream.getWritten());
-    }
-
-    pub fn setCursorPosition(self: *CliRenderer, x: u32, y: u32, visible: bool) void {
-        self.terminal.setCursorPosition(x, y, visible);
-    }
-
-    pub fn setCursorStyle(self: *CliRenderer, style: Terminal.CursorStyle, blinking: bool) void {
-        self.terminal.setCursorStyle(style, blinking);
-    }
-
-    pub fn setCursorColor(self: *CliRenderer, color: [4]f32) void {
-        self.terminal.setCursorColor(color);
     }
 
     pub fn setKittyKeyboardFlags(self: *CliRenderer, flags: u8) void {

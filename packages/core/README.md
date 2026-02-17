@@ -42,6 +42,10 @@ bun run bench:native
 
 See [src/zig/bench.zig](src/zig/bench.zig) for available options like `--filter` and `--mem`.
 
+NativeSpanFeed TypeScript benchmarks:
+
+- [src/benchmark/native-span-feed-benchmark.md](src/benchmark/native-span-feed-benchmark.md)
+
 ## CLI Renderer
 
 ### Renderables

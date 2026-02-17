@@ -190,13 +190,24 @@ pub const OptimizedBuffer = struct {
         errdefer opacity_stack.deinit(allocator);
 
         const lp = options.link_pool orelse link.initGlobalLinkPool(allocator);
+        const char_buffer = allocator.alloc(u32, size) catch return BufferError.OutOfMemory;
+        errdefer allocator.free(char_buffer);
+
+        const fg_buffer = allocator.alloc(RGBA, size) catch return BufferError.OutOfMemory;
+        errdefer allocator.free(fg_buffer);
+
+        const bg_buffer = allocator.alloc(RGBA, size) catch return BufferError.OutOfMemory;
+        errdefer allocator.free(bg_buffer);
+
+        const attributes_buffer = allocator.alloc(u32, size) catch return BufferError.OutOfMemory;
+        errdefer allocator.free(attributes_buffer);
 
         self.* = .{
             .buffer = .{
-                .char = allocator.alloc(u32, size) catch return BufferError.OutOfMemory,
-                .fg = allocator.alloc(RGBA, size) catch return BufferError.OutOfMemory,
-                .bg = allocator.alloc(RGBA, size) catch return BufferError.OutOfMemory,
-                .attributes = allocator.alloc(u32, size) catch return BufferError.OutOfMemory,
+                .char = char_buffer,
+                .fg = fg_buffer,
+                .bg = bg_buffer,
+                .attributes = attributes_buffer,
             },
             .width = width,
             .height = height,
@@ -429,6 +440,7 @@ pub const OptimizedBuffer = struct {
         const prev_char = self.buffer.char[index];
         const prev_attr = self.buffer.attributes[index];
         const prev_link_id = ansi.TextAttributes.getLinkId(prev_attr);
+        var tracker_replaced = false;
 
         // If overwriting a grapheme span (start or continuation) with a different char, clear that span first
         if ((gp.isGraphemeChar(prev_char) or gp.isContinuationChar(prev_char)) and prev_char != cell.char) {
@@ -438,22 +450,32 @@ pub const OptimizedBuffer = struct {
             const right = gp.charRightExtent(prev_char);
             const id = gp.graphemeIdFromChar(prev_char);
 
-            self.grapheme_tracker.remove(id);
+            const new_grapheme_id: ?u32 = blk: {
+                if (!gp.isGraphemeChar(cell.char)) break :blk null;
+                const new_width = gp.charRightExtent(cell.char) + 1;
+                if (x + new_width > self.width) break :blk null;
+                break :blk gp.graphemeIdFromChar(cell.char);
+            };
+            self.grapheme_tracker.replace(id, new_grapheme_id);
+            tracker_replaced = true;
 
             const span_start = index - @min(left, index - row_start);
             const span_end = index + @min(right, row_end - index);
-            const span_len = span_end - span_start + 1;
 
             var span_i: u32 = span_start;
-            while (span_i < span_start + span_len) : (span_i += 1) {
+            while (span_i <= span_end) : (span_i += 1) {
+                const span_char = self.buffer.char[span_i];
+                if (!(gp.isGraphemeChar(span_char) or gp.isContinuationChar(span_char))) continue;
+                if (gp.graphemeIdFromChar(span_char) != id) continue;
+
                 const span_link_id = ansi.TextAttributes.getLinkId(self.buffer.attributes[span_i]);
                 if (span_link_id != 0) {
                     self.link_tracker.removeCellRef(span_link_id);
                 }
-            }
 
-            @memset(self.buffer.char[span_start .. span_start + span_len], @intCast(DEFAULT_SPACE_CHAR));
-            @memset(self.buffer.attributes[span_start .. span_start + span_len], 0);
+                self.buffer.char[span_i] = @intCast(DEFAULT_SPACE_CHAR);
+                self.buffer.attributes[span_i] = 0;
+            }
         }
 
         if (gp.isGraphemeChar(cell.char)) {
@@ -490,7 +512,10 @@ pub const OptimizedBuffer = struct {
             self.buffer.attributes[index] = cell.attributes;
 
             const id: u32 = gp.graphemeIdFromChar(cell.char);
-            self.grapheme_tracker.add(id);
+            const is_same_grapheme_start = gp.isGraphemeChar(prev_char) and prev_char == cell.char;
+            if (!tracker_replaced and !is_same_grapheme_start) {
+                self.grapheme_tracker.add(id);
+            }
 
             const new_link_id = ansi.TextAttributes.getLinkId(cell.attributes);
             if (prev_link_id != 0 and prev_link_id != new_link_id) {
@@ -576,7 +601,7 @@ pub const OptimizedBuffer = struct {
     /// Calculate the real byte size of the character buffer including grapheme pool data
     pub fn getRealCharSize(self: *const OptimizedBuffer) u32 {
         const total_chars = self.width * self.height;
-        const grapheme_count = self.grapheme_tracker.getGraphemeCount();
+        const grapheme_count = self.grapheme_tracker.getGraphemeCellCount();
         const total_grapheme_bytes = self.grapheme_tracker.getTotalGraphemeBytes();
 
         const regular_char_bytes = (total_chars - grapheme_count) * @sizeOf(u32);
@@ -1127,7 +1152,7 @@ pub const OptimizedBuffer = struct {
         var currentX = x;
         var currentY = y + @as(i32, @intCast(firstVisibleLine));
         const text_buffer = view.getTextBuffer();
-        const total_line_count = text_buffer.getLineCount();
+        const total_line_count = text_buffer.lineCount();
 
         const line_info = view.getCachedLineInfo();
         var globalCharPos: u32 = if (firstVisibleLine < line_info.starts.len)
@@ -1151,9 +1176,10 @@ pub const OptimizedBuffer = struct {
             const spans = vline_span_info.spans;
             const col_offset = vline_span_info.col_offset;
             var span_idx: usize = 0;
-            var lineFg = text_buffer.default_fg orelse RGBA{ 1.0, 1.0, 1.0, 1.0 };
-            var lineBg = text_buffer.default_bg orelse RGBA{ 0.0, 0.0, 0.0, 0.0 };
-            var lineAttributes = text_buffer.default_attributes orelse 0;
+            const defaults = text_buffer.defaults();
+            var lineFg = defaults.fg orelse RGBA{ 1.0, 1.0, 1.0, 1.0 };
+            var lineBg = defaults.bg orelse RGBA{ 0.0, 0.0, 0.0, 0.0 };
+            var lineAttributes = defaults.attributes orelse 0;
             const defaultFg = lineFg;
             const defaultBg = lineBg;
             const defaultAttributes = lineAttributes;
@@ -1182,8 +1208,8 @@ pub const OptimizedBuffer = struct {
 
             for (vline.chunks.items) |vchunk| {
                 const chunk = vchunk.chunk;
-                const chunk_bytes = chunk.getBytes(&text_buffer.mem_registry);
-                const specials = chunk.getGraphemes(&text_buffer.mem_registry, text_buffer.allocator, text_buffer.tab_width, text_buffer.width_method) catch continue;
+                const chunk_bytes = chunk.getBytes(text_buffer.memRegistry());
+                const specials = chunk.getGraphemes(text_buffer.memRegistry(), text_buffer.getAllocator(), text_buffer.tabWidth(), text_buffer.widthMethod()) catch continue;
                 const line_char_offset = vline.char_offset;
 
                 if (currentX >= @as(i32, @intCast(self.width))) {
@@ -1199,7 +1225,7 @@ pub const OptimizedBuffer = struct {
                 if (vchunk.grapheme_start > 0) {
                     // Use UTF-8 aware position finding to skip to the grapheme_start
                     const is_ascii_only = (vchunk.chunk.flags & tb.TextChunk.Flags.ASCII_ONLY) != 0;
-                    const pos_result = utf8.findPosByWidth(chunk_bytes, vchunk.grapheme_start, text_buffer.tab_width, is_ascii_only, false, text_buffer.width_method);
+                    const pos_result = utf8.findPosByWidth(chunk_bytes, vchunk.grapheme_start, text_buffer.tabWidth(), is_ascii_only, false, text_buffer.widthMethod());
                     byte_offset = pos_result.byte_offset;
 
                     // Advance special_idx to match the skipped columns

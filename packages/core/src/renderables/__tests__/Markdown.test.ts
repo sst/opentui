@@ -1282,6 +1282,74 @@ test("clearCache forces full rebuild", async () => {
   expect(parseStateAfter).not.toBe(parseStateBefore)
 })
 
+test("streaming->non-streaming transition rebuilds table to show final row", async () => {
+  const md = new MarkdownRenderable(renderer, {
+    id: "markdown",
+    content: "| Value |\n|---|\n| first |\n| second |",
+    syntaxStyle,
+    streaming: true,
+  })
+
+  renderer.root.add(md)
+  await renderOnce()
+
+  const tableWhileStreaming = md._blockStates[0]?.renderable
+
+  let frame = captureFrame()
+    .split("\n")
+    .map((line) => line.trimEnd())
+    .join("\n")
+
+  expect(frame).toContain("first")
+  expect(frame).not.toContain("second")
+
+  md.streaming = false
+  await renderOnce()
+
+  frame = captureFrame()
+    .split("\n")
+    .map((line) => line.trimEnd())
+    .join("\n")
+
+  expect(frame).toContain("first")
+  expect(frame).toContain("second")
+  expect(md._blockStates[0]?.renderable).not.toBe(tableWhileStreaming)
+})
+
+test("non-streaming->streaming transition rebuilds table to hide trailing row", async () => {
+  const md = new MarkdownRenderable(renderer, {
+    id: "markdown",
+    content: "| Value |\n|---|\n| first |\n| second |",
+    syntaxStyle,
+    streaming: false,
+  })
+
+  renderer.root.add(md)
+  await renderOnce()
+
+  const tableWhileStable = md._blockStates[0]?.renderable
+
+  let frame = captureFrame()
+    .split("\n")
+    .map((line) => line.trimEnd())
+    .join("\n")
+
+  expect(frame).toContain("first")
+  expect(frame).toContain("second")
+
+  md.streaming = true
+  await renderOnce()
+
+  frame = captureFrame()
+    .split("\n")
+    .map((line) => line.trimEnd())
+    .join("\n")
+
+  expect(frame).toContain("first")
+  expect(frame).not.toContain("second")
+  expect(md._blockStates[0]?.renderable).not.toBe(tableWhileStable)
+})
+
 test("table only rebuilds when complete row count changes during streaming", async () => {
   const md = new MarkdownRenderable(renderer, {
     id: "markdown",

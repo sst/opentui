@@ -83,6 +83,7 @@ pub fn build(b: *std.Build) void {
     checkZigVersion();
 
     const optimize = b.standardOptimizeOption(.{});
+    const bench_optimize = b.option(std.builtin.OptimizeMode, "bench-optimize", "Optimize mode for benchmarks") orelse .ReleaseFast;
     const target_option = b.option([]const u8, "target", "Build for specific target (e.g., 'x86_64-linux-gnu').");
     const build_all = b.option(bool, "all", "Build for all supported targets") orelse false;
 
@@ -120,9 +121,9 @@ pub fn build(b: *std.Build) void {
     const bench_mod = b.createModule(.{
         .root_source_file = b.path("bench.zig"),
         .target = native_target,
-        .optimize = optimize,
+        .optimize = bench_optimize,
     });
-    applyDependencies(b, bench_mod, optimize, native_target);
+    applyDependencies(b, bench_mod, bench_optimize, native_target);
     const bench_exe = b.addExecutable(.{
         .name = "opentui-bench",
         .root_module = bench_mod,
@@ -132,6 +133,22 @@ pub fn build(b: *std.Build) void {
         run_bench.addArgs(args);
     }
     bench_step.dependOn(&run_bench.step);
+
+    const bench_ffi_step = b.step("bench-ffi", "Build NativeSpanFeed benchmark library");
+    const bench_ffi_mod = b.createModule(.{
+        .root_source_file = b.path("native-span-feed-bench-lib.zig"),
+        .target = native_target,
+        .optimize = bench_optimize,
+    });
+    applyDependencies(b, bench_ffi_mod, bench_optimize, native_target);
+    const bench_ffi_lib = b.addLibrary(.{
+        .name = "native_span_feed_bench",
+        .root_module = bench_ffi_mod,
+        .linkage = .dynamic,
+    });
+    const install_bench_ffi = b.addInstallArtifact(bench_ffi_lib, .{});
+    bench_ffi_step.dependOn(&install_bench_ffi.step);
+    bench_step.dependOn(bench_ffi_step);
 
     // Debug step (native only)
     const debug_step = b.step("debug", "Run debug executable");
