@@ -1148,6 +1148,33 @@ test("incremental update reuses unchanged blocks when appending", async () => {
   expect(firstBlockAfter).toBe(firstBlockBefore)
 })
 
+test("incremental update refreshes spacing when appending", async () => {
+  const md = new MarkdownRenderable(renderer, {
+    id: "markdown",
+    content: "First",
+    syntaxStyle,
+    streaming: true,
+  })
+
+  renderer.root.add(md)
+  await renderOnce()
+
+  const firstBlockBefore = md._blockStates[0]?.renderable
+
+  md.content = "First\n\nSecond"
+  await renderOnce()
+
+  const firstBlockAfter = md._blockStates[0]?.renderable
+  expect(firstBlockAfter).toBe(firstBlockBefore)
+
+  const lines = captureFrame()
+    .split("\n")
+    .map((line) => line.trimEnd())
+
+  const excerpt = lines.slice(0, 3).join("\n")
+  expect(excerpt).toBe("First\n\nSecond")
+})
+
 test("streaming mode keeps trailing tokens unstable", async () => {
   const md = new MarkdownRenderable(renderer, {
     id: "markdown",
