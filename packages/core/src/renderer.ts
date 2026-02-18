@@ -1163,168 +1163,177 @@ export class CliRenderer extends EventEmitter implements RenderContext {
   }
 
   private handleMouseData(data: Buffer): boolean {
-    const mouseEvent = this.mouseParser.parseMouseEvent(data)
+    const mouseEvents = this.mouseParser.parseAllMouseEvents(data)
 
-    if (mouseEvent) {
-      if (this._splitHeight > 0) {
-        if (mouseEvent.y < this.renderOffset) {
-          return false
-        }
-        mouseEvent.y -= this.renderOffset
+    if (mouseEvents.length === 0) return false
+
+    let anyHandled = false
+    for (const mouseEvent of mouseEvents) {
+      if (this.processSingleMouseEvent(mouseEvent)) {
+        anyHandled = true
       }
+    }
 
-      this._latestPointer.x = mouseEvent.x
-      this._latestPointer.y = mouseEvent.y
-      this._hasPointer = true
-      this._lastPointerModifiers = mouseEvent.modifiers
+    return anyHandled
+  }
 
-      if (this._console.visible) {
-        const consoleBounds = this._console.bounds
-        if (
-          mouseEvent.x >= consoleBounds.x &&
-          mouseEvent.x < consoleBounds.x + consoleBounds.width &&
-          mouseEvent.y >= consoleBounds.y &&
-          mouseEvent.y < consoleBounds.y + consoleBounds.height
-        ) {
-          const event = new MouseEvent(null, mouseEvent)
-          const handled = this._console.handleMouse(event)
-          if (handled) return true
-        }
+  private processSingleMouseEvent(mouseEvent: RawMouseEvent): boolean {
+    if (this._splitHeight > 0) {
+      if (mouseEvent.y < this.renderOffset) {
+        return false
       }
+      mouseEvent.y -= this.renderOffset
+    }
 
-      if (mouseEvent.type === "scroll") {
-        const maybeRenderableId = this.hitTest(mouseEvent.x, mouseEvent.y)
-        const maybeRenderable = Renderable.renderablesByNumber.get(maybeRenderableId)
-        const fallbackTarget =
-          this._currentFocusedRenderable &&
-          !this._currentFocusedRenderable.isDestroyed &&
-          this._currentFocusedRenderable.focused
-            ? this._currentFocusedRenderable
-            : null
-        const scrollTarget = maybeRenderable ?? fallbackTarget
+    this._latestPointer.x = mouseEvent.x
+    this._latestPointer.y = mouseEvent.y
+    this._hasPointer = true
+    this._lastPointerModifiers = mouseEvent.modifiers
 
-        if (scrollTarget) {
-          const event = new MouseEvent(scrollTarget, mouseEvent)
-          scrollTarget.processMouseEvent(event)
-        }
-        return true
-      }
-
-      const maybeRenderableId = this.hitTest(mouseEvent.x, mouseEvent.y)
-      const sameElement = maybeRenderableId === this.lastOverRenderableNum
-      this.lastOverRenderableNum = maybeRenderableId
-      const maybeRenderable = Renderable.renderablesByNumber.get(maybeRenderableId)
-
+    if (this._console.visible) {
+      const consoleBounds = this._console.bounds
       if (
-        mouseEvent.type === "down" &&
-        mouseEvent.button === MouseButton.LEFT &&
-        !this.currentSelection?.isDragging &&
-        !mouseEvent.modifiers.ctrl
+        mouseEvent.x >= consoleBounds.x &&
+        mouseEvent.x < consoleBounds.x + consoleBounds.width &&
+        mouseEvent.y >= consoleBounds.y &&
+        mouseEvent.y < consoleBounds.y + consoleBounds.height
       ) {
-        if (
-          maybeRenderable &&
-          maybeRenderable.selectable &&
-          !maybeRenderable.isDestroyed &&
-          maybeRenderable.shouldStartSelection(mouseEvent.x, mouseEvent.y)
-        ) {
-          this.startSelection(maybeRenderable, mouseEvent.x, mouseEvent.y)
-          this.dispatchMouseEvent(maybeRenderable, mouseEvent)
-          return true
-        }
+        const event = new MouseEvent(null, mouseEvent)
+        const handled = this._console.handleMouse(event)
+        if (handled) return true
       }
+    }
 
-      if (mouseEvent.type === "drag" && this.currentSelection?.isDragging) {
-        this.updateSelection(maybeRenderable, mouseEvent.x, mouseEvent.y)
+    if (mouseEvent.type === "scroll") {
+      const maybeRenderableId = this.hitTest(mouseEvent.x, mouseEvent.y)
+      const maybeRenderable = Renderable.renderablesByNumber.get(maybeRenderableId)
+      const fallbackTarget =
+        this._currentFocusedRenderable &&
+        !this._currentFocusedRenderable.isDestroyed &&
+        this._currentFocusedRenderable.focused
+          ? this._currentFocusedRenderable
+          : null
+      const scrollTarget = maybeRenderable ?? fallbackTarget
 
-        if (maybeRenderable) {
-          const event = new MouseEvent(maybeRenderable, { ...mouseEvent, isDragging: true })
-          maybeRenderable.processMouseEvent(event)
-        }
+      if (scrollTarget) {
+        const event = new MouseEvent(scrollTarget, mouseEvent)
+        scrollTarget.processMouseEvent(event)
+      }
+      return true
+    }
 
+    const maybeRenderableId = this.hitTest(mouseEvent.x, mouseEvent.y)
+    const sameElement = maybeRenderableId === this.lastOverRenderableNum
+    this.lastOverRenderableNum = maybeRenderableId
+    const maybeRenderable = Renderable.renderablesByNumber.get(maybeRenderableId)
+
+    if (
+      mouseEvent.type === "down" &&
+      mouseEvent.button === MouseButton.LEFT &&
+      !this.currentSelection?.isDragging &&
+      !mouseEvent.modifiers.ctrl
+    ) {
+      if (
+        maybeRenderable &&
+        maybeRenderable.selectable &&
+        !maybeRenderable.isDestroyed &&
+        maybeRenderable.shouldStartSelection(mouseEvent.x, mouseEvent.y)
+      ) {
+        this.startSelection(maybeRenderable, mouseEvent.x, mouseEvent.y)
+        this.dispatchMouseEvent(maybeRenderable, mouseEvent)
         return true
       }
+    }
 
-      if (mouseEvent.type === "up" && this.currentSelection?.isDragging) {
-        if (maybeRenderable) {
-          const event = new MouseEvent(maybeRenderable, { ...mouseEvent, isDragging: true })
-          maybeRenderable.processMouseEvent(event)
-        }
+    if (mouseEvent.type === "drag" && this.currentSelection?.isDragging) {
+      this.updateSelection(maybeRenderable, mouseEvent.x, mouseEvent.y)
 
-        this.finishSelection()
-        return true
-      }
-
-      if (mouseEvent.type === "down" && mouseEvent.button === MouseButton.LEFT && this.currentSelection) {
-        if (mouseEvent.modifiers.ctrl) {
-          this.currentSelection.isDragging = true
-          this.updateSelection(maybeRenderable, mouseEvent.x, mouseEvent.y)
-          return true
-        }
-      }
-
-      if (!sameElement && (mouseEvent.type === "drag" || mouseEvent.type === "move")) {
-        if (this.lastOverRenderable && this.lastOverRenderable !== this.capturedRenderable) {
-          const event = new MouseEvent(this.lastOverRenderable, { ...mouseEvent, type: "out" })
-          this.lastOverRenderable.processMouseEvent(event)
-        }
-        this.lastOverRenderable = maybeRenderable
-        if (maybeRenderable) {
-          const event = new MouseEvent(maybeRenderable, {
-            ...mouseEvent,
-            type: "over",
-            source: this.capturedRenderable,
-          })
-          maybeRenderable.processMouseEvent(event)
-        }
-      }
-
-      if (this.capturedRenderable && mouseEvent.type !== "up") {
-        const event = new MouseEvent(this.capturedRenderable, mouseEvent)
-        this.capturedRenderable.processMouseEvent(event)
-        return true
-      }
-
-      if (this.capturedRenderable && mouseEvent.type === "up") {
-        const event = new MouseEvent(this.capturedRenderable, { ...mouseEvent, type: "drag-end" })
-        this.capturedRenderable.processMouseEvent(event)
-        this.capturedRenderable.processMouseEvent(new MouseEvent(this.capturedRenderable, mouseEvent))
-        if (maybeRenderable) {
-          const event = new MouseEvent(maybeRenderable, {
-            ...mouseEvent,
-            type: "drop",
-            source: this.capturedRenderable,
-          })
-          maybeRenderable.processMouseEvent(event)
-        }
-        this.lastOverRenderable = this.capturedRenderable
-        this.lastOverRenderableNum = this.capturedRenderable.num
-        this.setCapturedRenderable(undefined)
-        // Dropping the renderable needs to push another frame when the renderer is not live
-        // to update the hit grid, otherwise capturedRenderable won't be in the hit grid and will not receive mouse events
-        this.requestRender()
-      }
-
-      let event: MouseEvent | undefined
       if (maybeRenderable) {
-        if (mouseEvent.type === "drag" && mouseEvent.button === MouseButton.LEFT) {
-          this.setCapturedRenderable(maybeRenderable)
-        } else {
-          this.setCapturedRenderable(undefined)
-        }
-        event = this.dispatchMouseEvent(maybeRenderable, mouseEvent)
-      } else {
-        this.setCapturedRenderable(undefined)
-        this.lastOverRenderable = undefined
-      }
-
-      if (!event?.defaultPrevented && mouseEvent.type === "down" && this.currentSelection) {
-        this.clearSelection()
+        const event = new MouseEvent(maybeRenderable, { ...mouseEvent, isDragging: true })
+        maybeRenderable.processMouseEvent(event)
       }
 
       return true
     }
 
-    return false
+    if (mouseEvent.type === "up" && this.currentSelection?.isDragging) {
+      if (maybeRenderable) {
+        const event = new MouseEvent(maybeRenderable, { ...mouseEvent, isDragging: true })
+        maybeRenderable.processMouseEvent(event)
+      }
+
+      this.finishSelection()
+      return true
+    }
+
+    if (mouseEvent.type === "down" && mouseEvent.button === MouseButton.LEFT && this.currentSelection) {
+      if (mouseEvent.modifiers.ctrl) {
+        this.currentSelection.isDragging = true
+        this.updateSelection(maybeRenderable, mouseEvent.x, mouseEvent.y)
+        return true
+      }
+    }
+
+    if (!sameElement && (mouseEvent.type === "drag" || mouseEvent.type === "move")) {
+      if (this.lastOverRenderable && this.lastOverRenderable !== this.capturedRenderable) {
+        const event = new MouseEvent(this.lastOverRenderable, { ...mouseEvent, type: "out" })
+        this.lastOverRenderable.processMouseEvent(event)
+      }
+      this.lastOverRenderable = maybeRenderable
+      if (maybeRenderable) {
+        const event = new MouseEvent(maybeRenderable, {
+          ...mouseEvent,
+          type: "over",
+          source: this.capturedRenderable,
+        })
+        maybeRenderable.processMouseEvent(event)
+      }
+    }
+
+    if (this.capturedRenderable && mouseEvent.type !== "up") {
+      const event = new MouseEvent(this.capturedRenderable, mouseEvent)
+      this.capturedRenderable.processMouseEvent(event)
+      return true
+    }
+
+    if (this.capturedRenderable && mouseEvent.type === "up") {
+      const event = new MouseEvent(this.capturedRenderable, { ...mouseEvent, type: "drag-end" })
+      this.capturedRenderable.processMouseEvent(event)
+      this.capturedRenderable.processMouseEvent(new MouseEvent(this.capturedRenderable, mouseEvent))
+      if (maybeRenderable) {
+        const event = new MouseEvent(maybeRenderable, {
+          ...mouseEvent,
+          type: "drop",
+          source: this.capturedRenderable,
+        })
+        maybeRenderable.processMouseEvent(event)
+      }
+      this.lastOverRenderable = this.capturedRenderable
+      this.lastOverRenderableNum = this.capturedRenderable.num
+      this.setCapturedRenderable(undefined)
+      // Dropping the renderable needs to push another frame when the renderer is not live
+      // to update the hit grid, otherwise capturedRenderable won't be in the hit grid and will not receive mouse events
+      this.requestRender()
+    }
+
+    let event: MouseEvent | undefined
+    if (maybeRenderable) {
+      if (mouseEvent.type === "drag" && mouseEvent.button === MouseButton.LEFT) {
+        this.setCapturedRenderable(maybeRenderable)
+      } else {
+        this.setCapturedRenderable(undefined)
+      }
+      event = this.dispatchMouseEvent(maybeRenderable, mouseEvent)
+    } else {
+      this.setCapturedRenderable(undefined)
+      this.lastOverRenderable = undefined
+    }
+
+    if (!event?.defaultPrevented && mouseEvent.type === "down" && this.currentSelection) {
+      this.clearSelection()
+    }
+
+    return true
   }
 
   /**

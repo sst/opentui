@@ -2884,3 +2884,76 @@ test("DiffRenderable - split view with word wrapping: changing diff content shou
   // the lineInfo from CodeRenderable is STALE after changing diff content
   expect(buggyFrame).toBe(correctFrame)
 })
+
+test("DiffRenderable - setLineColor applies color to line", async () => {
+  const syntaxStyle = SyntaxStyle.fromStyles({
+    default: { fg: RGBA.fromValues(1, 1, 1, 1) },
+  })
+
+  const diffRenderable = new DiffRenderable(currentRenderer, {
+    id: "test-diff",
+    diff: simpleDiff,
+    view: "unified",
+    syntaxStyle,
+  })
+
+  diffRenderable.setLineColor(0, "#ff0000")
+  diffRenderable.setLineColor(1, { gutter: "#00ff00", content: "#0000ff" })
+  diffRenderable.clearLineColor(0)
+  diffRenderable.clearLineColor(1)
+})
+
+test("DiffRenderable - highlightLines applies color to range", async () => {
+  const syntaxStyle = SyntaxStyle.fromStyles({
+    default: { fg: RGBA.fromValues(1, 1, 1, 1) },
+  })
+
+  const diffRenderable = new DiffRenderable(currentRenderer, {
+    id: "test-diff",
+    diff: multiLineDiff,
+    view: "unified",
+    syntaxStyle,
+  })
+
+  diffRenderable.highlightLines(0, 3, "#ff0000")
+  diffRenderable.clearHighlightLines(0, 3)
+})
+
+test("DiffRenderable - setLineColors and clearAllLineColors", async () => {
+  const syntaxStyle = SyntaxStyle.fromStyles({
+    default: { fg: RGBA.fromValues(1, 1, 1, 1) },
+  })
+
+  const diffRenderable = new DiffRenderable(currentRenderer, {
+    id: "test-diff",
+    diff: simpleDiff,
+    view: "unified",
+    syntaxStyle,
+  })
+
+  const lineColors = new Map<number, string>()
+  lineColors.set(0, "#ff0000")
+  lineColors.set(1, "#00ff00")
+  lineColors.set(2, "#0000ff")
+
+  diffRenderable.setLineColors(lineColors)
+  diffRenderable.clearAllLineColors()
+})
+
+test("DiffRenderable - line highlighting works in split view", async () => {
+  const syntaxStyle = SyntaxStyle.fromStyles({
+    default: { fg: RGBA.fromValues(1, 1, 1, 1) },
+  })
+
+  const diffRenderable = new DiffRenderable(currentRenderer, {
+    id: "test-diff",
+    diff: simpleDiff,
+    view: "split",
+    syntaxStyle,
+  })
+
+  diffRenderable.setLineColor(0, "#ff0000")
+  diffRenderable.highlightLines(0, 2, "#00ff00")
+  diffRenderable.clearHighlightLines(0, 2)
+  diffRenderable.clearAllLineColors()
+})
