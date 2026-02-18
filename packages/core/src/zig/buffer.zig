@@ -10,6 +10,7 @@ const assert = std.debug.assert;
 
 const gp = @import("grapheme.zig");
 const link = @import("link.zig");
+const rtl = @import("rtl.zig");
 
 const logger = @import("logger.zig");
 const utf8 = @import("utf8.zig");
@@ -137,6 +138,231 @@ fn blendColors(overlay: RGBA, text: RGBA) RGBA {
     const resultAlpha = alpha + text[3] * (1.0 - alpha);
 
     return .{ blended[0], blended[1], blended[2], resultAlpha };
+}
+
+const RenderGraphemeUnit = struct {
+    bytes: []const u8,
+    width: u8,
+    logical_col: u32,
+    logical_global_pos: u32,
+    logical_column_in_line: u32,
+    direction: rtl.Direction,
+};
+
+const LineStyleAtColumn = struct {
+    fg: RGBA,
+    bg: RGBA,
+    attributes: u32,
+};
+
+fn reorderGraphemeUnitsForDisplay(allocator: Allocator, units: []RenderGraphemeUnit) void {
+    if (units.len < 2) return;
+
+    var has_rtl = false;
+    for (units) |unit| {
+        if (unit.direction == .rtl) {
+            has_rtl = true;
+            break;
+        }
+    }
+    if (!has_rtl) return;
+
+    var directions = std.ArrayListUnmanaged(rtl.Direction){};
+    defer directions.deinit(allocator);
+
+    directions.ensureTotalCapacity(allocator, units.len) catch return;
+    directions.items.len = units.len;
+
+    for (units, 0..) |unit, i| {
+        directions.items[i] = unit.direction;
+    }
+
+    rtl.resolveNeutralDirections(directions.items);
+    preferRtlBoundaryPunctuation(units, directions.items);
+    rtl.reorderRtlRuns(RenderGraphemeUnit, units, directions.items);
+}
+
+fn decodeFirstCodepoint(bytes: []const u8) ?u21 {
+    if (bytes.len == 0) return null;
+
+    const seq_len = std.unicode.utf8ByteSequenceLength(bytes[0]) catch return null;
+    if (seq_len > bytes.len) return null;
+
+    return std.unicode.utf8Decode(bytes[0..seq_len]) catch null;
+}
+
+fn isRtlTrailingPunctuation(bytes: []const u8) bool {
+    const cp = decodeFirstCodepoint(bytes) orelse return false;
+    return switch (cp) {
+        '?', '!', '.', ',', ':', ';', 0x061F => true,
+        else => false,
+    };
+}
+
+fn nearestOriginalStrongDirectionLeft(units: []const RenderGraphemeUnit, start: usize) ?rtl.Direction {
+    var i = start;
+    while (i > 0) {
+        i -= 1;
+        const dir = units[i].direction;
+        if (dir != .neutral) return dir;
+    }
+    return null;
+}
+
+fn nearestOriginalStrongDirectionRight(units: []const RenderGraphemeUnit, start: usize) ?rtl.Direction {
+    var i = start;
+    while (i < units.len) : (i += 1) {
+        const dir = units[i].direction;
+        if (dir != .neutral) return dir;
+    }
+    return null;
+}
+
+fn preferRtlBoundaryPunctuation(units: []const RenderGraphemeUnit, directions: []rtl.Direction) void {
+    if (units.len == 0 or directions.len != units.len) return;
+
+    for (units, 0..) |unit, i| {
+        if (unit.direction != .neutral) continue;
+        if (directions[i] != .ltr) continue;
+        if (!isRtlTrailingPunctuation(unit.bytes)) continue;
+        if (i == 0 or units[i - 1].direction != .rtl) continue;
+
+        const left = nearestOriginalStrongDirectionLeft(units, i);
+        const right = nearestOriginalStrongDirectionRight(units, i + 1);
+        if (left == .rtl and right == .ltr) {
+            directions[i] = .rtl;
+        }
+    }
+}
+
+fn firstStrongDirectionInBytes(bytes: []const u8) ?rtl.Direction {
+    var byte_offset: usize = 0;
+    while (byte_offset < bytes.len) {
+        const seq_len = std.unicode.utf8ByteSequenceLength(bytes[byte_offset]) catch {
+            byte_offset += 1;
+            continue;
+        };
+
+        const cp_byte_len = @min(bytes.len - byte_offset, @as(usize, seq_len));
+        const dir = rtl.classifyGraphemeBytes(bytes[byte_offset .. byte_offset + cp_byte_len]);
+        if (dir != .neutral) return dir;
+
+        byte_offset += cp_byte_len;
+    }
+
+    return null;
+}
+
+fn resolveVirtualLineBaseDirection(text_buffer: *TextBuffer, vline: *const tbv.VirtualLine) rtl.Direction {
+    for (vline.chunks.items) |vchunk| {
+        if (vchunk.width == 0) continue;
+
+        const chunk = vchunk.chunk;
+        const chunk_bytes = chunk.getBytes(text_buffer.memRegistry());
+        if (chunk_bytes.len == 0) continue;
+
+        const is_ascii_only = (chunk.flags & tb.TextChunk.Flags.ASCII_ONLY) != 0;
+        const tab_width = text_buffer.tabWidth();
+        const width_method = text_buffer.widthMethod();
+
+        const start_pos = utf8.findPosByWidth(
+            chunk_bytes,
+            vchunk.grapheme_start,
+            tab_width,
+            is_ascii_only,
+            false,
+            width_method,
+        );
+
+        const end_pos = utf8.findPosByWidth(
+            chunk_bytes,
+            vchunk.grapheme_start + vchunk.width,
+            tab_width,
+            is_ascii_only,
+            false,
+            width_method,
+        );
+
+        const start_byte = @min(start_pos.byte_offset, chunk_bytes.len);
+        const end_byte = @min(end_pos.byte_offset, chunk_bytes.len);
+        if (start_byte >= end_byte) continue;
+
+        if (firstStrongDirectionInBytes(chunk_bytes[start_byte..end_byte])) |dir| {
+            return dir;
+        }
+    }
+
+    return .ltr;
+}
+
+fn effectiveViewportWidthAtX(self: *const OptimizedBuffer, x: i32, y: i32, viewport_width: u32) u32 {
+    if (viewport_width == 0) return 0;
+
+    const x_i64 = @as(i64, x);
+    var right_bound = x_i64 + @as(i64, viewport_width);
+    right_bound = @min(right_bound, @as(i64, @intCast(self.width)));
+
+    if (self.getCurrentScissorRect()) |scissor| {
+        if (y < scissor.y or y >= scissor.y + @as(i32, @intCast(scissor.height))) {
+            return 0;
+        }
+
+        const left_padding_in_scissor: i64 = if (x > scissor.x)
+            @as(i64, x - scissor.x)
+        else
+            0;
+
+        const scissor_right = @as(i64, scissor.x) + @as(i64, @intCast(scissor.width));
+        right_bound = @min(right_bound, scissor_right - left_padding_in_scissor);
+    }
+
+    if (right_bound <= x_i64) return 0;
+
+    const width_i64 = right_bound - x_i64;
+    if (width_i64 <= 0) return 0;
+    return @intCast(@min(width_i64, @as(i64, std.math.maxInt(u32))));
+}
+
+fn resolveLineStyleAtColumn(
+    text_buffer: *TextBuffer,
+    spans: []const tb.StyleSpan,
+    source_col_pos: u32,
+    default_fg: RGBA,
+    default_bg: RGBA,
+    default_attributes: u32,
+) LineStyleAtColumn {
+    var fg = default_fg;
+    var bg = default_bg;
+    var attributes = default_attributes;
+
+    if (source_col_pos == std.math.maxInt(u32) or spans.len == 0) {
+        return .{ .fg = fg, .bg = bg, .attributes = attributes };
+    }
+
+    var active_span: ?tb.StyleSpan = null;
+    for (spans) |span| {
+        if (span.col <= source_col_pos and source_col_pos < span.next_col) {
+            active_span = span;
+            break;
+        }
+        if (span.col <= source_col_pos) {
+            active_span = span;
+        }
+    }
+
+    if (active_span) |span| {
+        if (span.style_id != 0) {
+            if (text_buffer.getSyntaxStyle()) |style| {
+                if (style.resolveById(span.style_id)) |resolved_style| {
+                    if (resolved_style.fg) |resolved_fg| fg = resolved_fg;
+                    if (resolved_style.bg) |resolved_bg| bg = resolved_bg;
+                    attributes |= resolved_style.attributes;
+                }
+            }
+        }
+    }
+
+    return .{ .fg = fg, .bg = bg, .attributes = attributes };
 }
 
 /// Optimized buffer for terminal rendering
@@ -900,25 +1126,26 @@ pub const OptimizedBuffer = struct {
         try utf8.findGraphemeInfo(text, tab_width, is_ascii_only, self.width_method, self.allocator, &grapheme_list);
         const specials = grapheme_list.items;
 
-        var advance_cells: u32 = 0;
+        var units: std.ArrayListUnmanaged(RenderGraphemeUnit) = .{};
+        defer units.deinit(self.allocator);
+
         var byte_offset: u32 = 0;
         var col: u32 = 0;
         var special_idx: usize = 0;
 
         while (byte_offset < text.len) {
-            const charX = x + advance_cells;
-            if (charX >= self.width) break;
-
             const at_special = special_idx < specials.len and specials[special_idx].col_offset == col;
 
             var grapheme_bytes: []const u8 = undefined;
             var g_width: u8 = undefined;
+            var logical_col = col;
 
             if (at_special) {
                 const g = specials[special_idx];
                 grapheme_bytes = text[g.byte_offset .. g.byte_offset + g.byte_len];
                 g_width = g.width;
                 byte_offset = g.byte_offset + g.byte_len;
+                logical_col = g.col_offset;
                 special_idx += 1;
             } else {
                 if (byte_offset >= text.len) break;
@@ -927,9 +1154,34 @@ pub const OptimizedBuffer = struct {
                 byte_offset += 1;
             }
 
+            try units.append(self.allocator, .{
+                .bytes = grapheme_bytes,
+                .width = g_width,
+                .logical_col = logical_col,
+                .logical_global_pos = logical_col,
+                .logical_column_in_line = logical_col,
+                .direction = rtl.classifyGraphemeBytes(grapheme_bytes),
+            });
+
+            col += g_width;
+        }
+
+        reorderGraphemeUnitsForDisplay(self.allocator, units.items);
+
+        var advance_cells: u32 = 0;
+        for (units.items) |unit| {
+            const charX = x + advance_cells;
+            if (charX >= self.width) break;
+
+            const grapheme_bytes = unit.bytes;
+            const cell_width = unit.width;
+
+            if (cell_width == 0) {
+                continue;
+            }
+
             if (!self.isPointInScissor(@intCast(charX), @intCast(y))) {
-                advance_cells += g_width;
-                col += g_width;
+                advance_cells += cell_width;
                 continue;
             }
 
@@ -942,15 +1194,9 @@ pub const OptimizedBuffer = struct {
                 bgColor = .{ 0.0, 0.0, 0.0, 1.0 };
             }
 
-            const cell_width = utf8.getWidthAt(text, if (at_special) specials[special_idx - 1].byte_offset else byte_offset - 1, tab_width, self.width_method);
-            if (cell_width == 0) {
-                col += g_width;
-                continue;
-            }
-
             if (grapheme_bytes.len == 1 and grapheme_bytes[0] == '\t') {
                 var tab_col: u32 = 0;
-                while (tab_col < g_width) : (tab_col += 1) {
+                while (tab_col < cell_width) : (tab_col += 1) {
                     const tab_x = charX + tab_col;
                     if (tab_x >= self.width) break;
 
@@ -972,8 +1218,7 @@ pub const OptimizedBuffer = struct {
                         });
                     }
                 }
-                advance_cells += g_width;
-                col += g_width;
+                advance_cells += cell_width;
                 continue;
             }
 
@@ -997,7 +1242,6 @@ pub const OptimizedBuffer = struct {
             }
 
             advance_cells += cell_width;
-            col += g_width;
         }
     }
 
@@ -1175,33 +1419,19 @@ pub const OptimizedBuffer = struct {
             const vline_span_info = view.getVirtualLineSpans(vline_idx);
             const spans = vline_span_info.spans;
             const col_offset = vline_span_info.col_offset;
-            var span_idx: usize = 0;
             const defaults = text_buffer.defaults();
-            var lineFg = defaults.fg orelse RGBA{ 1.0, 1.0, 1.0, 1.0 };
-            var lineBg = defaults.bg orelse RGBA{ 0.0, 0.0, 0.0, 0.0 };
-            var lineAttributes = defaults.attributes orelse 0;
-            const defaultFg = lineFg;
-            const defaultBg = lineBg;
-            const defaultAttributes = lineAttributes;
+            const defaultFg = defaults.fg orelse RGBA{ 1.0, 1.0, 1.0, 1.0 };
+            const defaultBg = defaults.bg orelse RGBA{ 0.0, 0.0, 0.0, 0.0 };
+            const defaultAttributes = defaults.attributes orelse 0;
 
-            // Find the span that contains the starting render position (col_offset + horizontal_offset)
-            const start_col = col_offset + horizontal_offset;
-            while (span_idx < spans.len and spans[span_idx].next_col <= start_col) {
-                span_idx += 1;
-            }
-
-            var next_change_col: u32 = if (span_idx < spans.len)
-                spans[span_idx].next_col
-            else
-                std.math.maxInt(u32);
-
-            // Apply the style at the starting position
-            if (span_idx < spans.len and spans[span_idx].col <= start_col and spans[span_idx].style_id != 0) {
-                if (text_buffer.getSyntaxStyle()) |style| {
-                    if (style.resolveById(spans[span_idx].style_id)) |resolved_style| {
-                        if (resolved_style.fg) |fg| lineFg = fg;
-                        if (resolved_style.bg) |bg| lineBg = bg;
-                        lineAttributes |= resolved_style.attributes;
+            if (viewport != null and horizontal_offset == 0) {
+                const align_width = effectiveViewportWidthAtX(self, currentX, currentY, viewport_width);
+                if (resolveVirtualLineBaseDirection(text_buffer, &vline) == .rtl) {
+                    if (align_width > vline.width) {
+                        const padding = align_width - vline.width;
+                        if (padding <= @as(u32, @intCast(math.maxInt(i32)))) {
+                            currentX += @as(i32, @intCast(padding));
+                        }
                     }
                 }
             }
@@ -1241,16 +1471,24 @@ pub const OptimizedBuffer = struct {
                     }
                 }
 
+                const chunk_start_x = currentX;
+                const chunk_start_column_in_line = column_in_line;
+
+                var chunk_units: std.ArrayListUnmanaged(RenderGraphemeUnit) = .{};
+                defer chunk_units.deinit(self.allocator);
+
                 while (col < col_end) {
                     const at_special = special_idx < specials.len and specials[special_idx].col_offset == col;
 
                     var grapheme_bytes: []const u8 = undefined;
                     var g_width: u8 = undefined;
+                    var logical_col = col;
 
                     if (at_special) {
                         const g = specials[special_idx];
                         grapheme_bytes = chunk_bytes[g.byte_offset .. g.byte_offset + g.byte_len];
                         g_width = g.width;
+                        logical_col = g.col_offset;
                         byte_offset = g.byte_offset + g.byte_len;
                         special_idx += 1;
                     } else {
@@ -1262,43 +1500,55 @@ pub const OptimizedBuffer = struct {
                         byte_offset = next_byte_offset;
                     }
 
-                    if (column_in_line < horizontal_offset) {
-                        globalCharPos += g_width;
-                        column_in_line += g_width;
-                        col += g_width;
+                    try chunk_units.append(self.allocator, .{
+                        .bytes = grapheme_bytes,
+                        .width = g_width,
+                        .logical_col = logical_col,
+                        .logical_global_pos = globalCharPos,
+                        .logical_column_in_line = column_in_line,
+                        .direction = rtl.classifyGraphemeBytes(grapheme_bytes),
+                    });
+
+                    globalCharPos += g_width;
+                    column_in_line += g_width;
+                    col += g_width;
+                }
+
+                reorderGraphemeUnitsForDisplay(self.allocator, chunk_units.items);
+
+                var draw_x = chunk_start_x;
+                var visual_column_in_line = chunk_start_column_in_line;
+
+                for (chunk_units.items) |unit| {
+                    if (visual_column_in_line < horizontal_offset) {
+                        visual_column_in_line += unit.width;
                         continue;
                     }
 
-                    if (column_in_line >= horizontal_offset + viewport_width) {
-                        globalCharPos += (col_end - col);
+                    if (visual_column_in_line >= horizontal_offset + viewport_width) {
                         break;
                     }
 
-                    if (currentX < -@as(i32, @intCast(g_width))) {
-                        globalCharPos += g_width;
-                        currentX += @as(i32, @intCast(g_width));
-                        column_in_line += g_width;
-                        col += g_width;
+                    if (draw_x < -@as(i32, @intCast(unit.width))) {
+                        draw_x += @as(i32, @intCast(unit.width));
+                        visual_column_in_line += unit.width;
                         continue;
                     }
 
-                    if (currentX >= @as(i32, @intCast(self.width))) {
-                        globalCharPos += (col_end - col);
+                    if (draw_x >= @as(i32, @intCast(self.width))) {
                         break;
                     }
 
-                    if (!self.isPointInScissor(currentX, currentY)) {
-                        globalCharPos += g_width;
-                        currentX += @as(i32, @intCast(g_width));
-                        column_in_line += g_width;
-                        col += g_width;
+                    if (!self.isPointInScissor(draw_x, currentY)) {
+                        draw_x += @as(i32, @intCast(unit.width));
+                        visual_column_in_line += unit.width;
                         continue;
                     }
 
-                    var selection_offset = globalCharPos;
-                    if (vline.is_truncated and globalCharPos >= line_char_offset) {
+                    var selection_offset = unit.logical_global_pos;
+                    if (vline.is_truncated and unit.logical_global_pos >= line_char_offset) {
                         const ellipsis_width: u32 = 3;
-                        const column_offset_in_line = globalCharPos - line_char_offset;
+                        const column_offset_in_line = unit.logical_global_pos - line_char_offset;
                         if (column_offset_in_line >= vline.ellipsis_pos and column_offset_in_line < vline.ellipsis_pos + ellipsis_width) {
                             selection_offset = line_char_offset + vline.ellipsis_pos;
                         } else if (column_offset_in_line >= vline.ellipsis_pos + ellipsis_width) {
@@ -1309,11 +1559,10 @@ pub const OptimizedBuffer = struct {
                         }
                     }
 
-                    // Track the actual column position in the source line (including horizontal offset)
-                    var source_col_pos = col_offset + column_in_line;
+                    var source_col_pos = col_offset + unit.logical_column_in_line;
                     if (vline.is_truncated) {
                         const ellipsis_width: u32 = 3;
-                        const column_offset_in_line = globalCharPos - line_char_offset;
+                        const column_offset_in_line = unit.logical_global_pos - line_char_offset;
                         if (column_offset_in_line >= vline.ellipsis_pos and column_offset_in_line < vline.ellipsis_pos + ellipsis_width) {
                             source_col_pos = std.math.maxInt(u32);
                         } else if (column_offset_in_line >= vline.ellipsis_pos + ellipsis_width) {
@@ -1321,73 +1570,43 @@ pub const OptimizedBuffer = struct {
                         }
                     }
 
-                    if (source_col_pos >= next_change_col and span_idx + 1 < spans.len) {
-                        span_idx += 1;
-                        const new_span = spans[span_idx];
-
-                        lineFg = defaultFg;
-                        lineBg = defaultBg;
-                        lineAttributes = defaultAttributes;
-
-                        if (text_buffer.getSyntaxStyle()) |style| {
-                            if (new_span.style_id != 0) {
-                                if (style.resolveById(new_span.style_id)) |resolved_style| {
-                                    if (resolved_style.fg) |fg| lineFg = fg;
-                                    if (resolved_style.bg) |bg| lineBg = bg;
-                                    lineAttributes |= resolved_style.attributes;
-                                }
-                            }
-                        }
-
-                        next_change_col = new_span.next_col;
-                    }
+                    var style_at_col = resolveLineStyleAtColumn(
+                        text_buffer,
+                        spans,
+                        source_col_pos,
+                        defaultFg,
+                        defaultBg,
+                        defaultAttributes,
+                    );
 
                     if (vline.is_truncated) {
-                        const column_offset_in_line = globalCharPos - line_char_offset;
+                        const column_offset_in_line = unit.logical_global_pos - line_char_offset;
                         const ellipsis_width: u32 = 3;
                         if (column_offset_in_line >= vline.ellipsis_pos and column_offset_in_line < vline.ellipsis_pos + ellipsis_width) {
-                            lineFg = defaultFg;
-                            lineBg = defaultBg;
-                            lineAttributes = defaultAttributes;
+                            style_at_col = .{
+                                .fg = defaultFg,
+                                .bg = defaultBg,
+                                .attributes = defaultAttributes,
+                            };
                         } else if (column_offset_in_line >= vline.ellipsis_pos + ellipsis_width) {
                             const suffix_col_pos = vline.truncation_suffix_start + (column_offset_in_line - vline.ellipsis_pos - ellipsis_width);
-                            if (spans.len == 0) {
-                                lineFg = defaultFg;
-                                lineBg = defaultBg;
-                                lineAttributes = defaultAttributes;
-                                next_change_col = std.math.maxInt(u32);
-                            } else {
-                                var suffix_span_idx: usize = 0;
-                                while (suffix_span_idx < spans.len and spans[suffix_span_idx].next_col <= suffix_col_pos) {
-                                    suffix_span_idx += 1;
-                                }
-                                if (suffix_span_idx < spans.len) {
-                                    span_idx = suffix_span_idx;
-                                }
-                                const active_span = spans[span_idx];
-                                lineFg = defaultFg;
-                                lineBg = defaultBg;
-                                lineAttributes = defaultAttributes;
-                                if (text_buffer.getSyntaxStyle()) |style| {
-                                    if (active_span.style_id != 0) {
-                                        if (style.resolveById(active_span.style_id)) |resolved_style| {
-                                            if (resolved_style.fg) |fg| lineFg = fg;
-                                            if (resolved_style.bg) |bg| lineBg = bg;
-                                            lineAttributes |= resolved_style.attributes;
-                                        }
-                                    }
-                                }
-                                next_change_col = active_span.next_col;
-                            }
+                            style_at_col = resolveLineStyleAtColumn(
+                                text_buffer,
+                                spans,
+                                suffix_col_pos,
+                                defaultFg,
+                                defaultBg,
+                                defaultAttributes,
+                            );
                         }
                     }
 
-                    var finalFg = lineFg;
-                    var finalBg = lineBg;
-                    const finalAttributes = lineAttributes;
+                    var finalFg = style_at_col.fg;
+                    var finalBg = style_at_col.bg;
+                    const finalAttributes = style_at_col.attributes;
 
                     var cell_idx: u32 = 0;
-                    while (cell_idx < g_width) : (cell_idx += 1) {
+                    while (cell_idx < unit.width) : (cell_idx += 1) {
                         if (view.getSelection()) |sel| {
                             const isSelected = selection_offset + cell_idx >= sel.start and selection_offset + cell_idx < sel.end;
                             if (isSelected) {
@@ -1397,8 +1616,8 @@ pub const OptimizedBuffer = struct {
                                         finalFg = selFg;
                                     }
                                 } else {
-                                    const temp = lineFg;
-                                    finalFg = if (lineBg[3] > 0) lineBg else RGBA{ 0.0, 0.0, 0.0, 1.0 };
+                                    const temp = style_at_col.fg;
+                                    finalFg = if (style_at_col.bg[3] > 0) style_at_col.bg else RGBA{ 0.0, 0.0, 0.0, 1.0 };
                                     finalBg = temp;
                                 }
                                 break;
@@ -1406,9 +1625,7 @@ pub const OptimizedBuffer = struct {
                         }
                     }
 
-                    // Skip zero-width characters (ZWJ, VS16, etc.) - don't render them
-                    // Don't increment col since they take no space
-                    if (g_width == 0) {
+                    if (unit.width == 0) {
                         continue;
                     }
 
@@ -1422,19 +1639,19 @@ pub const OptimizedBuffer = struct {
                         drawBg = temp;
                     }
 
-                    if (grapheme_bytes.len == 1 and grapheme_bytes[0] == '\t') {
+                    if (unit.bytes.len == 1 and unit.bytes[0] == '\t') {
                         const tab_indicator = view.getTabIndicator();
                         const tab_indicator_color = view.getTabIndicatorColor();
 
                         var tab_col: u32 = 0;
-                        while (tab_col < g_width) : (tab_col += 1) {
-                            if (currentX + @as(i32, @intCast(tab_col)) >= @as(i32, @intCast(self.width))) break;
+                        while (tab_col < unit.width) : (tab_col += 1) {
+                            if (draw_x + @as(i32, @intCast(tab_col)) >= @as(i32, @intCast(self.width))) break;
 
                             const char = if (tab_col == 0 and tab_indicator != null) tab_indicator.? else DEFAULT_SPACE_CHAR;
                             const fg = if (tab_col == 0 and tab_indicator_color != null) tab_indicator_color.? else drawFg;
 
                             try self.setCellWithAlphaBlending(
-                                @intCast(currentX + @as(i32, @intCast(tab_col))),
+                                @intCast(draw_x + @as(i32, @intCast(tab_col))),
                                 @intCast(currentY),
                                 char,
                                 fg,
@@ -1444,21 +1661,20 @@ pub const OptimizedBuffer = struct {
                         }
                     } else {
                         var encoded_char: u32 = 0;
-                        if (grapheme_bytes.len == 1 and g_width == 1 and grapheme_bytes[0] >= 32) {
-                            encoded_char = @as(u32, grapheme_bytes[0]);
+                        if (unit.bytes.len == 1 and unit.width == 1 and unit.bytes[0] >= 32) {
+                            encoded_char = @as(u32, unit.bytes[0]);
                         } else {
-                            const gid = self.pool.alloc(grapheme_bytes) catch |err| {
-                                logger.warn("GraphemePool.alloc FAILED for grapheme (len={d}, bytes={any}): {}", .{ grapheme_bytes.len, grapheme_bytes, err });
-                                globalCharPos += g_width;
-                                currentX += @as(i32, @intCast(g_width));
-                                col += g_width;
+                            const gid = self.pool.alloc(unit.bytes) catch |err| {
+                                logger.warn("GraphemePool.alloc FAILED for grapheme (len={d}, bytes={any}): {}", .{ unit.bytes.len, unit.bytes, err });
+                                draw_x += @as(i32, @intCast(unit.width));
+                                visual_column_in_line += unit.width;
                                 continue;
                             };
-                            encoded_char = gp.packGraphemeStart(gid & gp.GRAPHEME_ID_MASK, g_width);
+                            encoded_char = gp.packGraphemeStart(gid & gp.GRAPHEME_ID_MASK, unit.width);
                         }
 
                         try self.setCellWithAlphaBlending(
-                            @intCast(currentX),
+                            @intCast(draw_x),
                             @intCast(currentY),
                             encoded_char,
                             drawFg,
@@ -1467,11 +1683,11 @@ pub const OptimizedBuffer = struct {
                         );
                     }
 
-                    globalCharPos += g_width;
-                    currentX += @as(i32, @intCast(g_width));
-                    column_in_line += g_width;
-                    col += g_width;
+                    draw_x += @as(i32, @intCast(unit.width));
+                    visual_column_in_line += unit.width;
                 }
+
+                currentX = draw_x;
             }
 
             const is_last_vline_of_logical_line = (slice_idx + 1 >= virtual_lines[firstVisibleLine..lastPossibleLine].len) or

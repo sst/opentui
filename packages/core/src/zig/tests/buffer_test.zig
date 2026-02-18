@@ -11,6 +11,25 @@ const TextBuffer = text_buffer.UnifiedTextBuffer;
 const TextBufferView = text_buffer_view.UnifiedTextBufferView;
 const RGBA = buffer_mod.RGBA;
 
+fn expectCellText(buf: *const OptimizedBuffer, pool: *gp.GraphemePool, x: u32, y: u32, expected: []const u8) !void {
+    const cell = buf.get(x, y) orelse return error.TestExpectedEqual;
+
+    if (gp.isGraphemeChar(cell.char)) {
+        const gid = gp.graphemeIdFromChar(cell.char);
+        const bytes = try pool.get(gid);
+        try std.testing.expectEqualSlices(u8, expected, bytes);
+        return;
+    }
+
+    if (gp.isContinuationChar(cell.char)) {
+        return error.TestExpectedEqual;
+    }
+
+    var utf8_buf: [4]u8 = undefined;
+    const len = std.unicode.utf8Encode(@intCast(cell.char), &utf8_buf) catch return error.TestExpectedEqual;
+    try std.testing.expectEqualSlices(u8, expected, utf8_buf[0..len]);
+}
+
 fn initBufferForOomRegression(allocator: std.mem.Allocator) !void {
     var local_pool = gp.GraphemePool.initWithOptions(allocator, .{});
     defer local_pool.deinit();
@@ -95,6 +114,123 @@ test "OptimizedBuffer - drawText with ASCII" {
 
     const cell_e = buf.get(1, 0).?;
     try std.testing.expectEqual(@as(u32, 'e'), cell_e.char);
+}
+
+test "OptimizedBuffer - drawText renders Hebrew in visual RTL order" {
+    const pool = gp.initGlobalPool(std.testing.allocator);
+    defer gp.deinitGlobalPool();
+
+    var buf = try OptimizedBuffer.init(
+        std.testing.allocator,
+        20,
+        5,
+        .{ .pool = pool, .id = "test-buffer" },
+    );
+    defer buf.deinit();
+
+    const bg = RGBA{ 0.0, 0.0, 0.0, 1.0 };
+    const fg = RGBA{ 1.0, 1.0, 1.0, 1.0 };
+    try buf.clear(bg, null);
+
+    try buf.drawText("שלום", 0, 0, fg, bg, 0);
+
+    try expectCellText(buf, pool, 0, 0, "ם");
+    try expectCellText(buf, pool, 1, 0, "ו");
+    try expectCellText(buf, pool, 2, 0, "ל");
+    try expectCellText(buf, pool, 3, 0, "ש");
+}
+
+test "OptimizedBuffer - drawText renders mixed LTR and Hebrew correctly" {
+    const pool = gp.initGlobalPool(std.testing.allocator);
+    defer gp.deinitGlobalPool();
+
+    var buf = try OptimizedBuffer.init(
+        std.testing.allocator,
+        30,
+        5,
+        .{ .pool = pool, .id = "test-buffer" },
+    );
+    defer buf.deinit();
+
+    const bg = RGBA{ 0.0, 0.0, 0.0, 1.0 };
+    const fg = RGBA{ 1.0, 1.0, 1.0, 1.0 };
+    try buf.clear(bg, null);
+
+    try buf.drawText("abc שלום", 0, 0, fg, bg, 0);
+
+    try expectCellText(buf, pool, 0, 0, "a");
+    try expectCellText(buf, pool, 1, 0, "b");
+    try expectCellText(buf, pool, 2, 0, "c");
+    try expectCellText(buf, pool, 3, 0, " ");
+    try expectCellText(buf, pool, 4, 0, "ם");
+    try expectCellText(buf, pool, 5, 0, "ו");
+    try expectCellText(buf, pool, 6, 0, "ל");
+    try expectCellText(buf, pool, 7, 0, "ש");
+}
+
+test "OptimizedBuffer - drawText preserves spacing around RTL segment in mixed line" {
+    const pool = gp.initGlobalPool(std.testing.allocator);
+    defer gp.deinitGlobalPool();
+
+    var buf = try OptimizedBuffer.init(
+        std.testing.allocator,
+        40,
+        5,
+        .{ .pool = pool, .id = "test-buffer" },
+    );
+    defer buf.deinit();
+
+    const bg = RGBA{ 0.0, 0.0, 0.0, 1.0 };
+    const fg = RGBA{ 1.0, 1.0, 1.0, 1.0 };
+    try buf.clear(bg, null);
+
+    try buf.drawText("abc שלום def", 0, 0, fg, bg, 0);
+
+    try expectCellText(buf, pool, 0, 0, "a");
+    try expectCellText(buf, pool, 1, 0, "b");
+    try expectCellText(buf, pool, 2, 0, "c");
+    try expectCellText(buf, pool, 3, 0, " ");
+    try expectCellText(buf, pool, 4, 0, "ם");
+    try expectCellText(buf, pool, 5, 0, "ו");
+    try expectCellText(buf, pool, 6, 0, "ל");
+    try expectCellText(buf, pool, 7, 0, "ש");
+    try expectCellText(buf, pool, 8, 0, " ");
+    try expectCellText(buf, pool, 9, 0, "d");
+    try expectCellText(buf, pool, 10, 0, "e");
+    try expectCellText(buf, pool, 11, 0, "f");
+}
+
+test "OptimizedBuffer - drawText places question mark on RTL edge in mixed line" {
+    const pool = gp.initGlobalPool(std.testing.allocator);
+    defer gp.deinitGlobalPool();
+
+    var buf = try OptimizedBuffer.init(
+        std.testing.allocator,
+        40,
+        5,
+        .{ .pool = pool, .id = "test-buffer" },
+    );
+    defer buf.deinit();
+
+    const bg = RGBA{ 0.0, 0.0, 0.0, 1.0 };
+    const fg = RGBA{ 1.0, 1.0, 1.0, 1.0 };
+    try buf.clear(bg, null);
+
+    try buf.drawText("abc שלום? def", 0, 0, fg, bg, 0);
+
+    try expectCellText(buf, pool, 0, 0, "a");
+    try expectCellText(buf, pool, 1, 0, "b");
+    try expectCellText(buf, pool, 2, 0, "c");
+    try expectCellText(buf, pool, 3, 0, " ");
+    try expectCellText(buf, pool, 4, 0, "?");
+    try expectCellText(buf, pool, 5, 0, "ם");
+    try expectCellText(buf, pool, 6, 0, "ו");
+    try expectCellText(buf, pool, 7, 0, "ל");
+    try expectCellText(buf, pool, 8, 0, "ש");
+    try expectCellText(buf, pool, 9, 0, " ");
+    try expectCellText(buf, pool, 10, 0, "d");
+    try expectCellText(buf, pool, 11, 0, "e");
+    try expectCellText(buf, pool, 12, 0, "f");
 }
 
 test "OptimizedBuffer - repeated emoji rendering should not exhaust pool" {

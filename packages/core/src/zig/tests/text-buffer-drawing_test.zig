@@ -12,6 +12,25 @@ const RGBA = text_buffer.RGBA;
 const WrapMode = text_buffer.WrapMode;
 const StyledChunk = text_buffer.StyledChunk;
 
+fn expectCellText(buf: *const OptimizedBuffer, pool: *gp.GraphemePool, x: u32, y: u32, expected: []const u8) !void {
+    const cell = buf.get(x, y) orelse return error.TestExpectedEqual;
+
+    if (gp.isGraphemeChar(cell.char)) {
+        const gid = gp.graphemeIdFromChar(cell.char);
+        const bytes = try pool.get(gid);
+        try std.testing.expectEqualSlices(u8, expected, bytes);
+        return;
+    }
+
+    if (gp.isContinuationChar(cell.char)) {
+        return error.TestExpectedEqual;
+    }
+
+    var utf8_buf: [4]u8 = undefined;
+    const len = std.unicode.utf8Encode(@intCast(cell.char), &utf8_buf) catch return error.TestExpectedEqual;
+    try std.testing.expectEqualSlices(u8, expected, utf8_buf[0..len]);
+}
+
 test "drawTextBuffer - simple single line text" {
     const pool = gp.initGlobalPool(std.testing.allocator);
     defer gp.deinitGlobalPool();
@@ -1388,6 +1407,90 @@ test "drawTextBuffer - horizontal viewport with small buffer renders only viewpo
     const cell_6 = opt_buffer.get(6, 0);
     try std.testing.expect(cell_6 != null);
     try std.testing.expectEqual(@as(u32, 32), cell_6.?.char);
+}
+
+test "drawTextBuffer - Hebrew line is right-aligned inside viewport" {
+    const pool = gp.initGlobalPool(std.testing.allocator);
+    defer gp.deinitGlobalPool();
+
+    var tb = try TextBuffer.init(std.testing.allocator, pool, .unicode);
+    defer tb.deinit();
+
+    var view = try TextBufferView.init(std.testing.allocator, tb);
+    defer view.deinit();
+
+    try tb.setText("שלום");
+
+    view.setWrapMode(.none);
+    view.setWrapWidth(null);
+    view.setViewport(.{ .x = 0, .y = 0, .width = 10, .height = 1 });
+
+    var opt_buffer = try OptimizedBuffer.init(
+        std.testing.allocator,
+        10,
+        1,
+        .{ .pool = pool, .width_method = .unicode },
+    );
+    defer opt_buffer.deinit();
+
+    try opt_buffer.clear(.{ 0.0, 0.0, 0.0, 1.0 }, 32);
+    try opt_buffer.drawTextBuffer(view, 0, 0);
+
+    var x: u32 = 0;
+    while (x < 6) : (x += 1) {
+        const cell = opt_buffer.get(x, 0) orelse return error.TestExpectedEqual;
+        try std.testing.expectEqual(@as(u32, 32), cell.char);
+    }
+
+    try expectCellText(opt_buffer, pool, 6, 0, "ם");
+    try expectCellText(opt_buffer, pool, 7, 0, "ו");
+    try expectCellText(opt_buffer, pool, 8, 0, "ל");
+    try expectCellText(opt_buffer, pool, 9, 0, "ש");
+}
+
+test "drawTextBuffer - Hebrew right alignment respects active scissor" {
+    const pool = gp.initGlobalPool(std.testing.allocator);
+    defer gp.deinitGlobalPool();
+
+    var tb = try TextBuffer.init(std.testing.allocator, pool, .unicode);
+    defer tb.deinit();
+
+    var view = try TextBufferView.init(std.testing.allocator, tb);
+    defer view.deinit();
+
+    try tb.setText("שלום");
+
+    view.setWrapMode(.none);
+    view.setWrapWidth(null);
+    view.setViewport(.{ .x = 0, .y = 0, .width = 10, .height = 1 });
+
+    var opt_buffer = try OptimizedBuffer.init(
+        std.testing.allocator,
+        20,
+        1,
+        .{ .pool = pool, .width_method = .unicode },
+    );
+    defer opt_buffer.deinit();
+
+    try opt_buffer.clear(.{ 0.0, 0.0, 0.0, 1.0 }, 32);
+    try opt_buffer.pushScissorRect(0, 0, 10, 1);
+    defer opt_buffer.popScissorRect();
+
+    try opt_buffer.drawTextBuffer(view, 1, 0);
+
+    var x: u32 = 0;
+    while (x < 5) : (x += 1) {
+        const cell = opt_buffer.get(x, 0) orelse return error.TestExpectedEqual;
+        try std.testing.expectEqual(@as(u32, 32), cell.char);
+    }
+
+    try expectCellText(opt_buffer, pool, 5, 0, "ם");
+    try expectCellText(opt_buffer, pool, 6, 0, "ו");
+    try expectCellText(opt_buffer, pool, 7, 0, "ל");
+    try expectCellText(opt_buffer, pool, 8, 0, "ש");
+
+    const right_pad = opt_buffer.get(9, 0) orelse return error.TestExpectedEqual;
+    try std.testing.expectEqual(@as(u32, 32), right_pad.char);
 }
 
 test "drawTextBuffer - horizontal viewport width limits rendering (efficiency test)" {

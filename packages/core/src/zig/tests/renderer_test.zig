@@ -14,6 +14,25 @@ const TextBufferView = text_buffer_view.TextBufferView;
 const OptimizedBuffer = buffer.OptimizedBuffer;
 const RGBA = text_buffer.RGBA;
 
+fn expectCellText(buf_ptr: *const OptimizedBuffer, pool: *gp.GraphemePool, x: u32, y: u32, expected: []const u8) !void {
+    const cell = buf_ptr.get(x, y) orelse return error.TestExpectedEqual;
+
+    if (gp.isGraphemeChar(cell.char)) {
+        const gid = gp.graphemeIdFromChar(cell.char);
+        const bytes = try pool.get(gid);
+        try std.testing.expectEqualSlices(u8, expected, bytes);
+        return;
+    }
+
+    if (gp.isContinuationChar(cell.char)) {
+        return error.TestExpectedEqual;
+    }
+
+    var utf8_buf: [4]u8 = undefined;
+    const len = std.unicode.utf8Encode(@intCast(cell.char), &utf8_buf) catch return error.TestExpectedEqual;
+    try std.testing.expectEqualSlices(u8, expected, utf8_buf[0..len]);
+}
+
 fn createWithOptionsOnce(allocator: std.mem.Allocator, width: u32, height: u32) !void {
     const pool = gp.initGlobalPool(allocator);
     defer gp.deinitGlobalPool();
@@ -246,6 +265,159 @@ test "renderer - CJK characters rendering" {
     const cell_cjk2_continuation = current_buffer.get(9, 0);
     try std.testing.expect(cell_cjk2_continuation != null);
     try std.testing.expect(gp.isContinuationChar(cell_cjk2_continuation.?.char));
+}
+
+test "renderer - Hebrew text emits visual RTL order" {
+    const pool = gp.initGlobalPool(std.testing.allocator);
+    defer gp.deinitGlobalPool();
+
+    var tb = try TextBuffer.init(std.testing.allocator, pool, .unicode);
+    defer tb.deinit();
+
+    try tb.setText("שלום");
+
+    var view = try TextBufferView.init(std.testing.allocator, tb);
+    defer view.deinit();
+
+    var cli_renderer = try CliRenderer.create(
+        std.testing.allocator,
+        80,
+        24,
+        pool,
+        true,
+    );
+    defer cli_renderer.destroy();
+
+    const next_buffer = cli_renderer.getNextBuffer();
+    try next_buffer.drawTextBuffer(view, 0, 0);
+
+    cli_renderer.render(false);
+
+    const current_buffer = cli_renderer.getCurrentBuffer();
+    try expectCellText(current_buffer, pool, 0, 0, "ם");
+    try expectCellText(current_buffer, pool, 1, 0, "ו");
+    try expectCellText(current_buffer, pool, 2, 0, "ל");
+    try expectCellText(current_buffer, pool, 3, 0, "ש");
+}
+
+test "renderer - mixed LTR and Hebrew emits expected display order" {
+    const pool = gp.initGlobalPool(std.testing.allocator);
+    defer gp.deinitGlobalPool();
+
+    var tb = try TextBuffer.init(std.testing.allocator, pool, .unicode);
+    defer tb.deinit();
+
+    try tb.setText("abc שלום");
+
+    var view = try TextBufferView.init(std.testing.allocator, tb);
+    defer view.deinit();
+
+    var cli_renderer = try CliRenderer.create(
+        std.testing.allocator,
+        80,
+        24,
+        pool,
+        true,
+    );
+    defer cli_renderer.destroy();
+
+    const next_buffer = cli_renderer.getNextBuffer();
+    try next_buffer.drawTextBuffer(view, 0, 0);
+
+    cli_renderer.render(false);
+
+    const current_buffer = cli_renderer.getCurrentBuffer();
+    try expectCellText(current_buffer, pool, 0, 0, "a");
+    try expectCellText(current_buffer, pool, 1, 0, "b");
+    try expectCellText(current_buffer, pool, 2, 0, "c");
+    try expectCellText(current_buffer, pool, 3, 0, " ");
+    try expectCellText(current_buffer, pool, 4, 0, "ם");
+    try expectCellText(current_buffer, pool, 5, 0, "ו");
+    try expectCellText(current_buffer, pool, 6, 0, "ל");
+    try expectCellText(current_buffer, pool, 7, 0, "ש");
+}
+
+test "renderer - mixed LTR and Hebrew preserves spacing after RTL segment" {
+    const pool = gp.initGlobalPool(std.testing.allocator);
+    defer gp.deinitGlobalPool();
+
+    var tb = try TextBuffer.init(std.testing.allocator, pool, .unicode);
+    defer tb.deinit();
+
+    try tb.setText("abc שלום def");
+
+    var view = try TextBufferView.init(std.testing.allocator, tb);
+    defer view.deinit();
+
+    var cli_renderer = try CliRenderer.create(
+        std.testing.allocator,
+        80,
+        24,
+        pool,
+        true,
+    );
+    defer cli_renderer.destroy();
+
+    const next_buffer = cli_renderer.getNextBuffer();
+    try next_buffer.drawTextBuffer(view, 0, 0);
+
+    cli_renderer.render(false);
+
+    const current_buffer = cli_renderer.getCurrentBuffer();
+    try expectCellText(current_buffer, pool, 0, 0, "a");
+    try expectCellText(current_buffer, pool, 1, 0, "b");
+    try expectCellText(current_buffer, pool, 2, 0, "c");
+    try expectCellText(current_buffer, pool, 3, 0, " ");
+    try expectCellText(current_buffer, pool, 4, 0, "ם");
+    try expectCellText(current_buffer, pool, 5, 0, "ו");
+    try expectCellText(current_buffer, pool, 6, 0, "ל");
+    try expectCellText(current_buffer, pool, 7, 0, "ש");
+    try expectCellText(current_buffer, pool, 8, 0, " ");
+    try expectCellText(current_buffer, pool, 9, 0, "d");
+    try expectCellText(current_buffer, pool, 10, 0, "e");
+    try expectCellText(current_buffer, pool, 11, 0, "f");
+}
+
+test "renderer - mixed LTR and Hebrew places question mark on RTL edge" {
+    const pool = gp.initGlobalPool(std.testing.allocator);
+    defer gp.deinitGlobalPool();
+
+    var tb = try TextBuffer.init(std.testing.allocator, pool, .unicode);
+    defer tb.deinit();
+
+    try tb.setText("abc שלום? def");
+
+    var view = try TextBufferView.init(std.testing.allocator, tb);
+    defer view.deinit();
+
+    var cli_renderer = try CliRenderer.create(
+        std.testing.allocator,
+        80,
+        24,
+        pool,
+        true,
+    );
+    defer cli_renderer.destroy();
+
+    const next_buffer = cli_renderer.getNextBuffer();
+    try next_buffer.drawTextBuffer(view, 0, 0);
+
+    cli_renderer.render(false);
+
+    const current_buffer = cli_renderer.getCurrentBuffer();
+    try expectCellText(current_buffer, pool, 0, 0, "a");
+    try expectCellText(current_buffer, pool, 1, 0, "b");
+    try expectCellText(current_buffer, pool, 2, 0, "c");
+    try expectCellText(current_buffer, pool, 3, 0, " ");
+    try expectCellText(current_buffer, pool, 4, 0, "?");
+    try expectCellText(current_buffer, pool, 5, 0, "ם");
+    try expectCellText(current_buffer, pool, 6, 0, "ו");
+    try expectCellText(current_buffer, pool, 7, 0, "ל");
+    try expectCellText(current_buffer, pool, 8, 0, "ש");
+    try expectCellText(current_buffer, pool, 9, 0, " ");
+    try expectCellText(current_buffer, pool, 10, 0, "d");
+    try expectCellText(current_buffer, pool, 11, 0, "e");
+    try expectCellText(current_buffer, pool, 12, 0, "f");
 }
 
 test "renderer - mixed ASCII, emoji, and CJK" {
