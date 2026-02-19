@@ -82,6 +82,7 @@ export interface CliRendererConfig {
   stdin?: NodeJS.ReadStream
   stdout?: NodeJS.WriteStream
   remote?: boolean
+  testing?: boolean
   exitOnCtrlC?: boolean
   exitSignals?: NodeJS.Signals[]
   forwardEnvKeys?: string[]
@@ -286,7 +287,10 @@ export async function createCliRenderer(config: CliRendererConfig = {}): Promise
     config.experimental_splitHeight && config.experimental_splitHeight > 0 ? config.experimental_splitHeight : height
 
   const ziglib = resolveRenderLib()
-  const rendererPtr = ziglib.createRenderer(width, renderHeight, { remote: config.remote ?? false })
+  const rendererPtr = ziglib.createRenderer(width, renderHeight, {
+    remote: config.remote ?? false,
+    testing: config.testing ?? false,
+  })
   if (!rendererPtr) {
     throw new Error("Failed to create renderer")
   }
@@ -307,7 +311,9 @@ export async function createCliRenderer(config: CliRendererConfig = {}): Promise
   ziglib.setKittyKeyboardFlags(rendererPtr, kittyFlags)
 
   const renderer = new CliRenderer(ziglib, rendererPtr, stdin, stdout, width, height, config)
-  await renderer.setupTerminal()
+  if (!config.testing) {
+    await renderer.setupTerminal()
+  }
   return renderer
 }
 

@@ -677,7 +677,7 @@ export class MarkdownRenderable extends Renderable {
         }
       }
 
-      this.remove(state.renderable.id)
+      state.renderable.destroyRecursively()
       const newRenderable = this.createTableRenderable(newTable, `${this.id}-block-${index}`, marginBottom)
       this.add(newRenderable)
       state.renderable = newRenderable
@@ -693,10 +693,7 @@ export class MarkdownRenderable extends Renderable {
 
   private updateBlocks(): void {
     if (!this._content) {
-      for (const state of this._blockStates) {
-        this.remove(state.renderable.id)
-      }
-      this._blockStates = []
+      this.clearBlockStates()
       this._parseState = null
       return
     }
@@ -708,9 +705,7 @@ export class MarkdownRenderable extends Renderable {
 
     // Parse failure fallback
     if (tokens.length === 0 && this._content.length > 0) {
-      for (const state of this._blockStates) {
-        this.remove(state.renderable.id)
-      }
+      this.clearBlockStates()
       const text = this.createTextRenderable([this.createDefaultChunk(this._content)], `${this.id}-fallback`)
       this.add(text)
       this._blockStates = [
@@ -762,7 +757,7 @@ export class MarkdownRenderable extends Renderable {
 
       // Different type or new block
       if (existing) {
-        this.remove(existing.renderable.id)
+        existing.renderable.destroyRecursively()
       }
 
       let renderable: Renderable | undefined
@@ -797,13 +792,13 @@ export class MarkdownRenderable extends Renderable {
 
     while (this._blockStates.length > blockIndex) {
       const removed = this._blockStates.pop()!
-      this.remove(removed.renderable.id)
+      removed.renderable.destroyRecursively()
     }
   }
 
   private clearBlockStates(): void {
     for (const state of this._blockStates) {
-      this.remove(state.renderable.id)
+      state.renderable.destroyRecursively()
     }
     this._blockStates = []
   }
@@ -841,6 +836,12 @@ export class MarkdownRenderable extends Renderable {
     this._parseState = null
     this.clearBlockStates()
     this.updateBlocks()
+    this.requestRender()
+  }
+
+  public refreshStyles(): void {
+    this._styleDirty = false
+    this.rerenderBlocks()
     this.requestRender()
   }
 
