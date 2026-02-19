@@ -1,6 +1,6 @@
-type Hex = string | null
-
 import { fillMissingWithGenerated256 } from "./palette-256"
+
+type Hex = string | null
 
 const OSC4_RESPONSE =
   /\x1b]4;(\d+);(?:(?:rgb:)([0-9a-fA-F]+)\/([0-9a-fA-F]+)\/([0-9a-fA-F]+)|#([0-9a-fA-F]{6}))(?:\x07|\x1b\\)/g
@@ -325,8 +325,8 @@ export class TerminalPalette implements TerminalPaletteDetector {
     ])
 
     const palette = [...Array(size).keys()].map((i) => paletteResults.get(i) ?? null)
-    const defaultForeground = specialColors[10]
-    const defaultBackground = specialColors[11]
+    const defaultForeground = specialColors[10] ?? palette[7]
+    const defaultBackground = specialColors[11] ?? palette[0]
 
     const withGeneratedPalette =
       generateFromBase16 &&

@@ -157,11 +157,11 @@ export function fillMissingWithGenerated256(
   if (palette.length < 16) return [...palette]
 
   const base16 = palette.slice(0, 16)
-  if (base16.some((entry) => !entry)) {
+  if (!base16.every((entry): entry is string => entry != null)) {
     return [...palette]
   }
 
-  const generated = generate256PaletteFromBase16(base16 as readonly string[], background, foreground)
+  const generated = generate256PaletteFromBase16(base16, background, foreground)
   const size = Math.max(palette.length, generated.length)
   const out = Array.from({ length: size }, (_, idx) => palette[idx] ?? null)
 
