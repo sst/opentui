@@ -1,6 +1,6 @@
 #!/usr/bin/env bun
 
-import { SimpleTableRenderable, type SimpleTableContent } from "../index"
+import { SimpleTableRenderable, type SimpleTableContent, type CliRenderer } from "../index"
 import { createTestRenderer } from "../testing"
 import { Command } from "commander"
 import { existsSync } from "node:fs"
@@ -79,8 +79,8 @@ type TimingStats = {
 type ScenarioResult = {
   name: string
   description: string
-  category: "replace" | "incremental"
-  timingMode: "content-set-and-render"
+  category: "replace" | "incremental" | "selection"
+  timingMode: "content-set-and-render" | "selection-update-and-render"
   iterations: number
   warmupIterations: number
   elapsedMs: number
@@ -121,9 +121,22 @@ type IncrementalScenarioPlan = {
   maxRows: number
 }
 
-type ScenarioPlan = ReplaceScenarioPlan | IncrementalScenarioPlan
+type SelectionScenarioPlan = {
+  kind: "selection"
+  name: string
+  description: string
+  iterations: number
+  warmupIterations: number
+  rows: number
+  cols: number
+  content: SimpleTableContent
+  dragSteps: number
+}
+
+type ScenarioPlan = ReplaceScenarioPlan | IncrementalScenarioPlan | SelectionScenarioPlan
 
 type RunContext = {
+  renderer: CliRenderer
   table: SimpleTableRenderable
   renderOnce: () => Promise<void>
   memSampleEvery: number
@@ -248,6 +261,7 @@ renderer.root.add(table)
 await renderOnce()
 
 const ctx: RunContext = {
+  renderer,
   table,
   renderOnce,
   memSampleEvery,
@@ -369,14 +383,32 @@ function createScenarios(suite: string, config: SuiteConfig, runSeed: number): S
     maxRows: Math.max(shape.incrementalMaxRows, shape.incrementalBaseRows + 1),
   }
 
-  return [replaceScenario, incrementalScenario]
+  const selectionRng = createRng((runSeed ^ 0xa2f9c6d1) >>> 0)
+  const selectionContent = buildTableContent(selectionRng, shape.replaceRows, shape.replaceCols)
+
+  const selectionScenario: SelectionScenarioPlan = {
+    kind: "selection",
+    name: "selection_update",
+    description: "Update selection focus across rows and render",
+    iterations: runIterations,
+    warmupIterations: config.warmupIterations,
+    rows: shape.replaceRows,
+    cols: shape.replaceCols,
+    content: selectionContent,
+    dragSteps: 5,
+  }
+
+  return [replaceScenario, incrementalScenario, selectionScenario]
 }
 
 async function runScenario(plan: ScenarioPlan, ctx: RunContext): Promise<ScenarioResult> {
   if (plan.kind === "replace") {
     return runReplaceScenario(plan, ctx)
   }
-  return runIncrementalScenario(plan, ctx)
+  if (plan.kind === "incremental") {
+    return runIncrementalScenario(plan, ctx)
+  }
+  return runSelectionScenario(plan, ctx)
 }
 
 async function runReplaceScenario(plan: ReplaceScenarioPlan, ctx: RunContext): Promise<ScenarioResult> {
@@ -494,6 +526,88 @@ async function runIncrementalScenario(plan: IncrementalScenarioPlan, ctx: RunCon
       rowPool: plan.rowPool.length,
       maxRows: plan.maxRows,
       mode: "incremental",
+    },
+  }
+}
+
+async function runSelectionScenario(plan: SelectionScenarioPlan, ctx: RunContext): Promise<ScenarioResult> {
+  ctx.table.content = plan.content
+  await ctx.renderOnce()
+
+  const tableX = ctx.table.x
+  const tableY = ctx.table.y
+  const tableH = ctx.table.height
+
+  const anchorX = tableX + 2
+  const anchorY = tableY + 2
+
+  const maxFocusY = tableY + tableH - 2
+  const focusRange = Math.max(1, maxFocusY - anchorY)
+
+  for (let i = 0; i < plan.warmupIterations; i += 1) {
+    const focusY = anchorY + (i % focusRange)
+    ctx.renderer.startSelection(ctx.table, anchorX, anchorY)
+    for (let step = 1; step <= plan.dragSteps; step += 1) {
+      const stepY = anchorY + Math.round(((focusY - anchorY) * step) / plan.dragSteps)
+      ctx.renderer.updateSelection(ctx.table, anchorX + 4, stepY)
+    }
+    await ctx.renderOnce()
+    ctx.renderer.clearSelection()
+    await ctx.renderOnce()
+  }
+
+  const durations: number[] = []
+  const measurementStart = Date.now()
+  const memStart = shouldSampleMemory(ctx.memSampleEvery) ? readMemorySample() : null
+  const memSamples: MemorySample[] = []
+
+  for (let i = 0; i < plan.iterations; i += 1) {
+    const focusY = anchorY + (i % focusRange)
+
+    const start = performance.now()
+
+    ctx.renderer.startSelection(ctx.table, anchorX, anchorY)
+    for (let step = 1; step <= plan.dragSteps; step += 1) {
+      const stepY = anchorY + Math.round(((focusY - anchorY) * step) / plan.dragSteps)
+      ctx.renderer.updateSelection(ctx.table, anchorX + 4, stepY)
+    }
+    await ctx.renderOnce()
+    ctx.renderer.clearSelection()
+    await ctx.renderOnce()
+
+    durations.push(performance.now() - start)
+
+    if (ctx.memSampleEvery > 0 && (i + 1) % ctx.memSampleEvery === 0) {
+      memSamples.push(readMemorySample())
+    }
+  }
+
+  const elapsedMs = Date.now() - measurementStart
+  const memEnd = shouldSampleMemory(ctx.memSampleEvery) ? readMemorySample() : null
+
+  return {
+    name: plan.name,
+    description: plan.description,
+    category: "selection",
+    timingMode: "selection-update-and-render",
+    iterations: plan.iterations,
+    warmupIterations: plan.warmupIterations,
+    elapsedMs,
+    updateStats: computeTimingStats(durations),
+    memoryStats: memStart && memEnd ? computeMemoryStats(memSamples, memStart, memEnd) : undefined,
+    tableStats: {
+      initialRows: plan.rows,
+      finalRows: plan.rows,
+      maxRows: plan.rows,
+      columns: plan.cols,
+      updates: plan.iterations * (plan.dragSteps + 1),
+      datasetVariants: 1,
+    },
+    settings: {
+      rows: plan.rows,
+      cols: plan.cols,
+      dragSteps: plan.dragSteps,
+      mode: "selection",
     },
   }
 }

@@ -72,6 +72,8 @@ export class SimpleTableRenderable extends Renderable {
   private _layout: SimpleTableLayout = this.createEmptyLayout()
   private _layoutDirty: boolean = true
   private _rasterDirty: boolean = true
+  private _selectionDirtyRowFirst: number = -1
+  private _selectionDirtyRowLast: number = -1
 
   private _cachedMeasureLayout: SimpleTableLayout | null = null
   private _cachedMeasureWidth: number | undefined = undefined
@@ -175,15 +177,17 @@ export class SimpleTableRenderable extends Renderable {
     const localSelection = convertGlobalToLocalSelection(selection, this.x, this.y)
     this._lastLocalSelection = localSelection
 
-    let changed = false
+    this._selectionDirtyRowFirst = -1
+    this._selectionDirtyRowLast = -1
+
     if (!localSelection?.isActive) {
-      changed = this.resetCellSelections()
+      this.resetCellSelections()
     } else {
-      changed = this.applySelectionToCells(localSelection, selection?.isStart ?? false)
+      this.applySelectionToCells(localSelection, selection?.isStart ?? false)
     }
 
-    if (changed) {
-      this.invalidateRasterOnly()
+    if (this._selectionDirtyRowFirst >= 0) {
+      this.redrawDirtyCells()
     }
 
     return this.hasSelection()
@@ -475,6 +479,8 @@ export class SimpleTableRenderable extends Renderable {
     this._layoutDirty = false
 
     if (this._lastLocalSelection?.isActive) {
+      this._selectionDirtyRowFirst = -1
+      this._selectionDirtyRowLast = -1
       this.applySelectionToCells(this._lastLocalSelection, true)
     }
   }
@@ -698,7 +704,11 @@ export class SimpleTableRenderable extends Renderable {
   }
 
   private drawCells(buffer: OptimizedBuffer): void {
-    for (let rowIdx = 0; rowIdx < this._rowCount; rowIdx++) {
+    this.drawCellRange(buffer, 0, this._rowCount - 1)
+  }
+
+  private drawCellRange(buffer: OptimizedBuffer, firstRow: number, lastRow: number): void {
+    for (let rowIdx = firstRow; rowIdx <= lastRow; rowIdx++) {
       const cellY = (this._layout.rowOffsets[rowIdx] ?? 0) + 1
 
       for (let colIdx = 0; colIdx < this._columnCount; colIdx++) {
@@ -709,6 +719,16 @@ export class SimpleTableRenderable extends Renderable {
         buffer.drawTextBuffer(cell.textBufferView, cellX, cellY)
       }
     }
+  }
+
+  private redrawDirtyCells(): void {
+    if (this._selectionDirtyRowFirst < 0) return
+
+    const buffer = this.frameBuffer
+    if (!buffer) return
+
+    this.drawCellRange(buffer, this._selectionDirtyRowFirst, this._selectionDirtyRowLast)
+    this.requestRender()
   }
 
   private ensureLayoutReady(): void {
@@ -749,10 +769,19 @@ export class SimpleTableRenderable extends Renderable {
     return { rowIdx, colIdx }
   }
 
-  private applySelectionToCells(localSelection: LocalSelectionBounds, isStart: boolean): boolean {
-    let changed = false
+  private applySelectionToCells(localSelection: LocalSelectionBounds, isStart: boolean): void {
+    const minSelY = Math.min(localSelection.anchorY, localSelection.focusY)
+    const maxSelY = Math.max(localSelection.anchorY, localSelection.focusY)
+
+    const firstRow = this.findRowForLocalY(minSelY)
+    const lastRow = this.findRowForLocalY(maxSelY)
 
     for (let rowIdx = 0; rowIdx < this._rowCount; rowIdx++) {
+      if (rowIdx < firstRow || rowIdx > lastRow) {
+        this.resetRowSelection(rowIdx)
+        continue
+      }
+
       const cellTop = (this._layout.rowOffsets[rowIdx] ?? 0) + 1
 
       for (let colIdx = 0; colIdx < this._columnCount; colIdx++) {
@@ -784,25 +813,49 @@ export class SimpleTableRenderable extends Renderable {
               this._selectionFg,
             )
 
-        changed = changed || cellChanged
+        if (cellChanged) {
+          this.markSelectionDirtyRow(rowIdx)
+        }
       }
     }
-
-    return changed
   }
 
-  private resetCellSelections(): boolean {
-    let changed = false
+  private findRowForLocalY(localY: number): number {
+    if (this._rowCount === 0) return 0
+    if (localY < 0) return 0
 
-    for (const row of this._cells) {
-      for (const cell of row) {
-        if (!cell.textBufferView.hasSelection()) continue
-        cell.textBufferView.resetLocalSelection()
-        changed = true
-      }
+    for (let rowIdx = 0; rowIdx < this._rowCount; rowIdx++) {
+      const rowEnd = this._layout.rowOffsets[rowIdx + 1] ?? 0
+      if (localY < rowEnd) return rowIdx
     }
 
-    return changed
+    return this._rowCount - 1
+  }
+
+  private resetRowSelection(rowIdx: number): void {
+    const row = this._cells[rowIdx]
+    if (!row) return
+
+    for (const cell of row) {
+      if (!cell.textBufferView.hasSelection()) continue
+      cell.textBufferView.resetLocalSelection()
+      this.markSelectionDirtyRow(rowIdx)
+    }
+  }
+
+  private resetCellSelections(): void {
+    for (let rowIdx = 0; rowIdx < this._rowCount; rowIdx++) {
+      this.resetRowSelection(rowIdx)
+    }
+  }
+
+  private markSelectionDirtyRow(rowIdx: number): void {
+    if (this._selectionDirtyRowFirst < 0 || rowIdx < this._selectionDirtyRowFirst) {
+      this._selectionDirtyRowFirst = rowIdx
+    }
+    if (rowIdx > this._selectionDirtyRowLast) {
+      this._selectionDirtyRowLast = rowIdx
+    }
   }
 
   private createEmptyLayout(): SimpleTableLayout {
