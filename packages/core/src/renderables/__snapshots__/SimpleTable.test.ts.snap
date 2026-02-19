@@ -59,3 +59,43 @@ exports[`SimpleTableRenderable rebuilds table when content setter is used: conte
                                                             
 "
 `;
+
+exports[`SimpleTableRenderable keeps borders aligned with CJK and emoji content: unicode border alignment 1`] = `
+"┌──────┬──────────────┐                                     
+│Locale│Sample        │                                     
+├──────┼──────────────┤                                     
+│ja-JP │東京で寿司 🍣 │                                     
+├──────┼──────────────┤                                     
+│zh-CN │你好世界 🚀   │                                     
+├──────┼──────────────┤                                     
+│ko-KR │한글 테스트 😄│                                     
+                                                            
+                                                            
+                                                            
+                                                            
+                                                            
+                                                            
+                                                            
+                                                            
+"
+`;
+
+exports[`SimpleTableRenderable wraps CJK and emoji without grapheme duplication: unicode wrapping 1`] = `
+"┌───┬────────────────────────┐                              
+│Ite│Details                 │                              
+│m  │                        │                              
+├───┼────────────────────────┤                              
+│mix│東京界 🌍 emoji         │                              
+│ed │wrapping continues      │                              
+│   │across lines for width  │                              
+│   │checks                  │                              
+├───┼────────────────────────┤                              
+│emo│Faces 😀😃😄 should     │                              
+│ji │ remain stable          │                              
+                                                            
+                                                            
+                                                            
+                                                            
+                                                            
+"
+`;
