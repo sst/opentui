@@ -13,6 +13,7 @@ import {
   type KeyEvent,
   yellow,
 } from "../index"
+import type { Selection } from "../lib/selection"
 import type { SimpleTableContent } from "../renderables/SimpleTable"
 import { setupCommonDemoKeys } from "./lib/standalone-keys"
 
@@ -20,7 +21,10 @@ let container: BoxRenderable | null = null
 let primaryTable: SimpleTableRenderable | null = null
 let unicodeTable: SimpleTableRenderable | null = null
 let controlsText: TextRenderable | null = null
+let selectionStatusText: TextRenderable | null = null
+let selectionMetaText: TextRenderable | null = null
 let keyboardHandler: ((key: KeyEvent) => void) | null = null
+let selectionHandler: ((selection: Selection) => void) | null = null
 
 let contentIndex = 0
 let wrapIndex = 1
@@ -81,8 +85,14 @@ function currentBorderStyle(): BorderStyle {
 function updateControlsText(): void {
   if (!controlsText) return
 
-  controlsText.content = t`${bold("SimpleTable Demo")}  ${fg("#94a3b8")("1/2/3 dataset • W wrap • B border")}
+  controlsText.content = t`${bold("SimpleTable Demo")}  ${fg("#94a3b8")("1/2/3 dataset • W wrap • B border • drag to select • C clear")}
 Current: dataset ${fg("#7dd3fc")(String(contentIndex + 1))} | wrap ${fg("#a5b4fc")(currentWrapMode())} | border ${fg("#f9a8d4")(currentBorderStyle())}`
+}
+
+function clearSelectionStatus(message: string): void {
+  if (!selectionMetaText || !selectionStatusText) return
+  selectionMetaText.content = message
+  selectionStatusText.content = ""
 }
 
 function applyTableState(): void {
@@ -156,11 +166,59 @@ export function run(renderer: CliRenderer): void {
     content: unicodeContentSets[contentIndex] ?? unicodeContentSets[0],
   })
 
+  const selectionBox = new BoxRenderable(renderer, {
+    id: "simple-table-demo-selection-box",
+    width: "100%",
+    minHeight: 6,
+    flexGrow: 1,
+    border: true,
+    borderStyle: "single",
+    borderColor: "#64748b",
+    title: "Selected Text",
+    titleAlignment: "left",
+    padding: 1,
+    backgroundColor: "#111827",
+  })
+
+  selectionMetaText = new TextRenderable(renderer, {
+    id: "simple-table-demo-selection-meta",
+    content: "No selection yet",
+    fg: "#93c5fd",
+  })
+
+  selectionStatusText = new TextRenderable(renderer, {
+    id: "simple-table-demo-selection-text",
+    content: "",
+    fg: "#e2e8f0",
+    wrapMode: "word",
+  })
+
+  selectionBox.add(selectionMetaText)
+  selectionBox.add(selectionStatusText)
+
   container.add(controlsText)
   container.add(primaryLabel)
   container.add(primaryTable)
   container.add(unicodeLabel)
   container.add(unicodeTable)
+  container.add(selectionBox)
+
+  selectionHandler = (selection: Selection) => {
+    if (!selectionMetaText || !selectionStatusText) return
+
+    const selectedText = selection.getSelectedText()
+    if (!selectedText) {
+      clearSelectionStatus("Empty selection")
+      return
+    }
+
+    const lines = selectedText.split("\n").length
+    const chars = selectedText.length
+    selectionMetaText.content = `Selected ${lines} line${lines === 1 ? "" : "s"} (${chars} chars)`
+    selectionStatusText.content = selectedText
+  }
+
+  renderer.on("selection", selectionHandler)
 
   keyboardHandler = (key: KeyEvent) => {
     if (key.ctrl || key.meta) return
@@ -180,6 +238,12 @@ export function run(renderer: CliRenderer): void {
     if (key.name === "b") {
       borderIndex = (borderIndex + 1) % BORDER_STYLES.length
       applyTableState()
+      return
+    }
+
+    if (key.name === "c") {
+      renderer.clearSelection()
+      clearSelectionStatus("Selection cleared")
     }
   }
 
@@ -193,11 +257,18 @@ export function destroy(renderer: CliRenderer): void {
     keyboardHandler = null
   }
 
+  if (selectionHandler) {
+    renderer.off("selection", selectionHandler)
+    selectionHandler = null
+  }
+
   container?.destroyRecursively()
   container = null
   primaryTable = null
   unicodeTable = null
   controlsText = null
+  selectionStatusText = null
+  selectionMetaText = null
 
   contentIndex = 0
   wrapIndex = 1
@@ -208,6 +279,7 @@ if (import.meta.main) {
   const renderer = await createCliRenderer({
     exitOnCtrlC: true,
     targetFps: 60,
+    enableMouseMovement: true,
   })
 
   run(renderer)
