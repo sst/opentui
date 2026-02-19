@@ -22,6 +22,7 @@ let container: BoxRenderable | null = null
 let primaryTable: SimpleTableRenderable | null = null
 let unicodeTable: SimpleTableRenderable | null = null
 let controlsText: TextRenderable | null = null
+let tableAreaScrollBox: ScrollBoxRenderable | null = null
 let selectionStatusText: TextRenderable | null = null
 let selectionMetaText: TextRenderable | null = null
 let selectionScrollBox: ScrollBoxRenderable | null = null
@@ -134,8 +135,23 @@ export function run(renderer: CliRenderer): void {
     id: "simple-table-demo-controls",
     content: "",
     fg: "#e2e8f0",
-    wrapMode: "none",
+    wrapMode: "word",
     selectable: false,
+  })
+
+  tableAreaScrollBox = new ScrollBoxRenderable(renderer, {
+    id: "simple-table-demo-table-area-scroll",
+    width: "100%",
+    flexGrow: 1,
+    flexShrink: 1,
+    scrollY: true,
+    scrollX: false,
+    border: false,
+    backgroundColor: "transparent",
+    contentOptions: {
+      flexDirection: "column",
+      gap: 1,
+    },
   })
 
   const primaryLabel = new TextRenderable(renderer, {
@@ -220,11 +236,13 @@ export function run(renderer: CliRenderer): void {
   selectionBox.add(selectionScrollBox)
   selectionScrollBox.add(selectionStatusText)
 
-  container.add(controlsText)
-  container.add(primaryLabel)
-  container.add(primaryTable)
-  container.add(unicodeLabel)
-  container.add(unicodeTable)
+  tableAreaScrollBox.add(controlsText)
+  tableAreaScrollBox.add(primaryLabel)
+  tableAreaScrollBox.add(primaryTable)
+  tableAreaScrollBox.add(unicodeLabel)
+  tableAreaScrollBox.add(unicodeTable)
+
+  container.add(tableAreaScrollBox)
   container.add(selectionBox)
 
   selectionHandler = (selection: Selection) => {
@@ -294,6 +312,7 @@ export function destroy(renderer: CliRenderer): void {
   primaryTable = null
   unicodeTable = null
   controlsText = null
+  tableAreaScrollBox = null
   selectionStatusText = null
   selectionMetaText = null
   selectionScrollBox = null
