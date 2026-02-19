@@ -1,5 +1,7 @@
 type Hex = string | null
 
+import { fillMissingWithGenerated256 } from "./palette-256"
+
 const OSC4_RESPONSE =
   /\x1b]4;(\d+);(?:(?:rgb:)([0-9a-fA-F]+)\/([0-9a-fA-F]+)\/([0-9a-fA-F]+)|#([0-9a-fA-F]{6}))(?:\x07|\x1b\\)/g
 
@@ -24,6 +26,7 @@ export interface TerminalColors {
 export interface GetPaletteOptions {
   timeout?: number
   size?: number
+  generateFromBase16?: boolean
 }
 
 export interface TerminalPaletteDetector {
@@ -297,7 +300,7 @@ export class TerminalPalette implements TerminalPaletteDetector {
   }
 
   async detect(options?: GetPaletteOptions): Promise<TerminalColors> {
-    const { timeout = 5000, size = 16 } = options || {}
+    const { timeout = 5000, size = 16, generateFromBase16 = true } = options || {}
     const supported = await this.detectOSCSupport()
 
     if (!supported) {
@@ -321,10 +324,23 @@ export class TerminalPalette implements TerminalPaletteDetector {
       this.querySpecialColors(timeout),
     ])
 
+    const palette = [...Array(size).keys()].map((i) => paletteResults.get(i) ?? null)
+    const defaultForeground = specialColors[10]
+    const defaultBackground = specialColors[11]
+
+    const withGeneratedPalette =
+      generateFromBase16 &&
+      size >= 256 &&
+      defaultBackground != null &&
+      defaultForeground != null &&
+      palette.slice(0, 16).every((color) => color != null)
+        ? fillMissingWithGenerated256(palette, defaultBackground, defaultForeground)
+        : palette
+
     return {
-      palette: [...Array(size).keys()].map((i) => paletteResults.get(i) ?? null),
-      defaultForeground: specialColors[10],
-      defaultBackground: specialColors[11],
+      palette: withGeneratedPalette,
+      defaultForeground,
+      defaultBackground,
       cursorColor: specialColors[12],
       mouseForeground: specialColors[13],
       mouseBackground: specialColors[14],
