@@ -167,13 +167,18 @@ export class ScrollBoxRenderable extends BoxRenderable {
     if (this.scrollTop <= 0) {
       this._stickyScrollTop = true
       this._stickyScrollBottom = false
-      if (this._stickyStart === "top" || (this._stickyStart === "bottom" && maxScrollTop === 0)) {
+      // Only reset manual scroll for user-initiated scrolls, not programmatic
+      // recalculations (e.g. content size changes during streaming)
+      if (
+        !this._isApplyingStickyScroll &&
+        (this._stickyStart === "top" || (this._stickyStart === "bottom" && maxScrollTop === 0))
+      ) {
         this._hasManualScroll = false
       }
     } else if (this.scrollTop >= maxScrollTop) {
       this._stickyScrollTop = false
       this._stickyScrollBottom = true
-      if (this._stickyStart === "bottom") {
+      if (!this._isApplyingStickyScroll && this._stickyStart === "bottom") {
         this._hasManualScroll = false
       }
     } else {
@@ -184,13 +189,16 @@ export class ScrollBoxRenderable extends BoxRenderable {
     if (this.scrollLeft <= 0) {
       this._stickyScrollLeft = true
       this._stickyScrollRight = false
-      if (this._stickyStart === "left" || (this._stickyStart === "right" && maxScrollLeft === 0)) {
+      if (
+        !this._isApplyingStickyScroll &&
+        (this._stickyStart === "left" || (this._stickyStart === "right" && maxScrollLeft === 0))
+      ) {
         this._hasManualScroll = false
       }
     } else if (this.scrollLeft >= maxScrollLeft) {
       this._stickyScrollLeft = false
       this._stickyScrollRight = true
-      if (this._stickyStart === "right") {
+      if (!this._isApplyingStickyScroll && this._stickyStart === "right") {
         this._hasManualScroll = false
       }
     } else {
