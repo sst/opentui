@@ -1608,6 +1608,83 @@ describe("LineNumberRenderable", () => {
     expect(contentColor!.b).toBeCloseTo(0x1f / 255, 2)
   })
 
+  test("highlightLines applies color to a range of lines", async () => {
+    const { renderer, renderOnce } = await createTestRenderer({
+      width: 20,
+      height: 10,
+    })
+
+    const text = "Line 1\nLine 2\nLine 3\nLine 4\nLine 5"
+    const textRenderable = new TextBufferRenderable(renderer, {
+      content: text,
+      width: "100%",
+      height: "100%",
+    })
+
+    const lineNumberRenderable = new LineNumberRenderable(renderer, {
+      target: textRenderable,
+      minWidth: 3,
+      paddingRight: 1,
+      fg: "#ffffff",
+      bg: "#000000",
+      width: "100%",
+      height: "100%",
+    })
+
+    renderer.root.add(lineNumberRenderable)
+    await renderOnce()
+
+    lineNumberRenderable.highlightLines(1, 3, "#2d4a2e")
+    await renderOnce()
+
+    const colors = lineNumberRenderable.getLineColors()
+    expect(colors.gutter.has(0)).toBe(false)
+    expect(colors.gutter.has(1)).toBe(true)
+    expect(colors.gutter.has(2)).toBe(true)
+    expect(colors.gutter.has(3)).toBe(true)
+    expect(colors.gutter.has(4)).toBe(false)
+  })
+
+  test("clearHighlightLines removes color from a range of lines", async () => {
+    const { renderer, renderOnce } = await createTestRenderer({
+      width: 20,
+      height: 10,
+    })
+
+    const text = "Line 1\nLine 2\nLine 3\nLine 4\nLine 5"
+    const textRenderable = new TextBufferRenderable(renderer, {
+      content: text,
+      width: "100%",
+      height: "100%",
+    })
+
+    const lineNumberRenderable = new LineNumberRenderable(renderer, {
+      target: textRenderable,
+      minWidth: 3,
+      paddingRight: 1,
+      fg: "#ffffff",
+      bg: "#000000",
+      width: "100%",
+      height: "100%",
+    })
+
+    renderer.root.add(lineNumberRenderable)
+    await renderOnce()
+
+    lineNumberRenderable.highlightLines(0, 4, "#2d4a2e")
+    await renderOnce()
+
+    lineNumberRenderable.clearHighlightLines(1, 3)
+    await renderOnce()
+
+    const colors = lineNumberRenderable.getLineColors()
+    expect(colors.gutter.has(0)).toBe(true)
+    expect(colors.gutter.has(1)).toBe(false)
+    expect(colors.gutter.has(2)).toBe(false)
+    expect(colors.gutter.has(3)).toBe(false)
+    expect(colors.gutter.has(4)).toBe(true)
+  })
+
   test("maintains stable visual line count when scrolling and typing with word wrap", async () => {
     const { renderer, renderOnce, captureCharFrame } = await createTestRenderer({
       width: 35,
