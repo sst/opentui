@@ -1,0 +1,540 @@
+import { MeasureMode } from "yoga-layout"
+import { type RenderableOptions, Renderable } from "../Renderable"
+import type { OptimizedBuffer } from "../buffer"
+import { type BorderStyle, BorderCharArrays, parseBorderStyle } from "../lib/border"
+import { StyledText, isStyledText, stringToStyledText } from "../lib/styled-text"
+import { RGBA, parseColor, type ColorInput } from "../lib/RGBA"
+import { SyntaxStyle } from "../syntax-style"
+import { type TextChunk, TextBuffer } from "../text-buffer"
+import { TextBufferView } from "../text-buffer-view"
+import type { RenderContext } from "../types"
+
+const MEASURE_HEIGHT = 10_000
+
+export type SimpleTableCellContent = StyledText | TextChunk[] | string | number | boolean | null | undefined
+export type SimpleTableContent = SimpleTableCellContent[][]
+
+interface SimpleTableCellState {
+  textBuffer: TextBuffer
+  textBufferView: TextBufferView
+  syntaxStyle: SyntaxStyle
+}
+
+interface SimpleTableLayout {
+  columnWidths: number[]
+  rowHeights: number[]
+  columnOffsets: number[]
+  rowOffsets: number[]
+  tableWidth: number
+  tableHeight: number
+}
+
+export interface SimpleTableOptions extends RenderableOptions<SimpleTableRenderable> {
+  content?: SimpleTableContent
+  wrapMode?: "none" | "char" | "word"
+  borderStyle?: BorderStyle
+  borderColor?: ColorInput
+  borderBackgroundColor?: ColorInput
+  backgroundColor?: ColorInput
+  fg?: ColorInput
+  bg?: ColorInput
+  attributes?: number
+}
+
+export class SimpleTableRenderable extends Renderable {
+  private _content: SimpleTableContent
+  private _wrapMode: "none" | "char" | "word"
+  private _borderStyle: BorderStyle
+  private _borderColor: RGBA
+  private _borderBackgroundColor: RGBA
+  private _backgroundColor: RGBA
+  private _defaultFg: RGBA
+  private _defaultBg: RGBA
+  private _defaultAttributes: number
+
+  private _cells: SimpleTableCellState[][] = []
+  private _rowCount: number = 0
+  private _columnCount: number = 0
+
+  private _layout: SimpleTableLayout = this.createEmptyLayout()
+  private _layoutDirty: boolean = true
+  private _rasterDirty: boolean = true
+
+  private readonly _defaultOptions = {
+    content: [] as SimpleTableContent,
+    wrapMode: "none" as "none" | "char" | "word",
+    borderStyle: "single" as BorderStyle,
+    borderColor: "#FFFFFF",
+    borderBackgroundColor: "transparent",
+    backgroundColor: "transparent",
+    fg: "#FFFFFF",
+    bg: "transparent",
+    attributes: 0,
+  } satisfies Partial<SimpleTableOptions>
+
+  constructor(ctx: RenderContext, options: SimpleTableOptions = {}) {
+    super(ctx, { ...options, buffered: true })
+
+    this._content = options.content ?? this._defaultOptions.content
+    this._wrapMode = options.wrapMode ?? this._defaultOptions.wrapMode
+    this._borderStyle = parseBorderStyle(options.borderStyle, this._defaultOptions.borderStyle)
+    this._borderColor = parseColor(options.borderColor ?? this._defaultOptions.borderColor)
+    this._borderBackgroundColor = parseColor(
+      options.borderBackgroundColor ?? this._defaultOptions.borderBackgroundColor,
+    )
+    this._backgroundColor = parseColor(options.backgroundColor ?? this._defaultOptions.backgroundColor)
+    this._defaultFg = parseColor(options.fg ?? this._defaultOptions.fg)
+    this._defaultBg = parseColor(options.bg ?? this._defaultOptions.bg)
+    this._defaultAttributes = options.attributes ?? this._defaultOptions.attributes
+
+    this.setupMeasureFunc()
+    this.rebuildCells()
+  }
+
+  public get content(): SimpleTableContent {
+    return this._content
+  }
+
+  public set content(value: SimpleTableContent) {
+    this._content = value ?? []
+    this.rebuildCells()
+  }
+
+  public get wrapMode(): "none" | "char" | "word" {
+    return this._wrapMode
+  }
+
+  public set wrapMode(value: "none" | "char" | "word") {
+    if (this._wrapMode === value) return
+    this._wrapMode = value
+    for (const row of this._cells) {
+      for (const cell of row) {
+        cell.textBufferView.setWrapMode(value)
+      }
+    }
+    this.invalidateLayoutAndRaster()
+  }
+
+  public get borderStyle(): BorderStyle {
+    return this._borderStyle
+  }
+
+  public set borderStyle(value: BorderStyle) {
+    const next = parseBorderStyle(value, this._defaultOptions.borderStyle)
+    if (this._borderStyle === next) return
+    this._borderStyle = next
+    this.invalidateRasterOnly()
+  }
+
+  public get borderColor(): RGBA {
+    return this._borderColor
+  }
+
+  public set borderColor(value: ColorInput) {
+    const next = parseColor(value)
+    if (this._borderColor === next) return
+    this._borderColor = next
+    this.invalidateRasterOnly()
+  }
+
+  protected onResize(width: number, height: number): void {
+    this.invalidateLayoutAndRaster(false)
+    super.onResize(width, height)
+  }
+
+  protected renderSelf(buffer: OptimizedBuffer): void {
+    if (!this.visible || this.isDestroyed) return
+
+    if (this._layoutDirty) {
+      this.rebuildLayoutForCurrentWidth()
+    }
+
+    if (!this._rasterDirty) return
+
+    buffer.clear(this._backgroundColor)
+
+    if (this._rowCount === 0 || this._columnCount === 0) {
+      this._rasterDirty = false
+      return
+    }
+
+    this.drawBorders(buffer)
+    this.drawCells(buffer)
+
+    this._rasterDirty = false
+  }
+
+  protected destroySelf(): void {
+    this.destroyCells()
+    super.destroySelf()
+  }
+
+  private setupMeasureFunc(): void {
+    const measureFunc = (
+      width: number,
+      widthMode: MeasureMode,
+      height: number,
+      heightMode: MeasureMode,
+    ): { width: number; height: number } => {
+      const hasWidthConstraint = widthMode !== MeasureMode.Undefined && Number.isFinite(width)
+      const widthConstraint = hasWidthConstraint ? Math.max(1, Math.floor(width)) : undefined
+      const measuredLayout = this.computeLayout(widthConstraint)
+
+      let measuredWidth = measuredLayout.tableWidth > 0 ? measuredLayout.tableWidth : 1
+      let measuredHeight = measuredLayout.tableHeight > 0 ? measuredLayout.tableHeight : 1
+
+      if (widthMode === MeasureMode.AtMost && widthConstraint !== undefined && this._positionType !== "absolute") {
+        measuredWidth = Math.min(widthConstraint, measuredWidth)
+      }
+
+      if (heightMode === MeasureMode.AtMost && Number.isFinite(height) && this._positionType !== "absolute") {
+        measuredHeight = Math.min(Math.max(1, Math.floor(height)), measuredHeight)
+      }
+
+      return {
+        width: measuredWidth,
+        height: measuredHeight,
+      }
+    }
+
+    this.yogaNode.setMeasureFunc(measureFunc)
+  }
+
+  private rebuildCells(): void {
+    this.destroyCells()
+
+    this._rowCount = this._content.length
+    this._columnCount = this._content.reduce((max, row) => Math.max(max, row.length), 0)
+
+    this._cells = []
+
+    for (let rowIdx = 0; rowIdx < this._rowCount; rowIdx++) {
+      const row = this._content[rowIdx] ?? []
+      const rowCells: SimpleTableCellState[] = []
+
+      for (let colIdx = 0; colIdx < this._columnCount; colIdx++) {
+        const styledText = this.toStyledText(row[colIdx])
+        rowCells.push(this.createCell(styledText))
+      }
+
+      this._cells.push(rowCells)
+    }
+
+    this.invalidateLayoutAndRaster()
+  }
+
+  private createCell(styledText: StyledText): SimpleTableCellState {
+    const textBuffer = TextBuffer.create(this._ctx.widthMethod)
+    const syntaxStyle = SyntaxStyle.create()
+
+    textBuffer.setDefaultFg(this._defaultFg)
+    textBuffer.setDefaultBg(this._defaultBg)
+    textBuffer.setDefaultAttributes(this._defaultAttributes)
+    textBuffer.setSyntaxStyle(syntaxStyle)
+    textBuffer.setStyledText(styledText)
+
+    const textBufferView = TextBufferView.create(textBuffer)
+    textBufferView.setWrapMode(this._wrapMode)
+
+    return { textBuffer, textBufferView, syntaxStyle }
+  }
+
+  private toStyledText(content: SimpleTableCellContent): StyledText {
+    if (isStyledText(content)) {
+      return content
+    }
+
+    if (Array.isArray(content)) {
+      return new StyledText(content)
+    }
+
+    if (content === null || content === undefined) {
+      return stringToStyledText("")
+    }
+
+    return stringToStyledText(String(content))
+  }
+
+  private destroyCells(): void {
+    for (const row of this._cells) {
+      for (const cell of row) {
+        cell.textBufferView.destroy()
+        cell.textBuffer.destroy()
+        cell.syntaxStyle.destroy()
+      }
+    }
+
+    this._cells = []
+    this._rowCount = 0
+    this._columnCount = 0
+    this._layout = this.createEmptyLayout()
+  }
+
+  private rebuildLayoutForCurrentWidth(): void {
+    const maxTableWidth = this._wrapMode === "none" ? undefined : this.width
+    const layout = this.computeLayout(maxTableWidth)
+
+    this._layout = layout
+    this.applyLayoutToViews(layout)
+    this._layoutDirty = false
+  }
+
+  private computeLayout(maxTableWidth?: number): SimpleTableLayout {
+    if (this._rowCount === 0 || this._columnCount === 0) {
+      return this.createEmptyLayout()
+    }
+
+    const columnWidths = this.computeColumnWidths(maxTableWidth)
+    const rowHeights = this.computeRowHeights(columnWidths)
+    const columnOffsets = this.computeOffsets(columnWidths)
+    const rowOffsets = this.computeOffsets(rowHeights)
+
+    return {
+      columnWidths,
+      rowHeights,
+      columnOffsets,
+      rowOffsets,
+      tableWidth: columnOffsets[columnOffsets.length - 1] ?? 0,
+      tableHeight: rowOffsets[rowOffsets.length - 1] ?? 0,
+    }
+  }
+
+  private computeColumnWidths(maxTableWidth?: number): number[] {
+    const intrinsicWidths = new Array(this._columnCount).fill(1)
+
+    for (let rowIdx = 0; rowIdx < this._rowCount; rowIdx++) {
+      for (let colIdx = 0; colIdx < this._columnCount; colIdx++) {
+        const cell = this._cells[rowIdx]?.[colIdx]
+        if (!cell) continue
+
+        const measure = cell.textBufferView.measureForDimensions(0, MEASURE_HEIGHT)
+        const measuredWidth = Math.max(1, measure?.maxWidth ?? 0)
+        intrinsicWidths[colIdx] = Math.max(intrinsicWidths[colIdx], measuredWidth)
+      }
+    }
+
+    if (
+      this._wrapMode === "none" ||
+      maxTableWidth === undefined ||
+      !Number.isFinite(maxTableWidth) ||
+      maxTableWidth <= 0
+    ) {
+      return intrinsicWidths
+    }
+
+    const maxContentWidth = Math.max(1, Math.floor(maxTableWidth) - (this._columnCount + 1))
+    const currentWidth = intrinsicWidths.reduce((sum, width) => sum + width, 0)
+
+    if (currentWidth <= maxContentWidth) {
+      return intrinsicWidths
+    }
+
+    return this.fitColumnWidths(intrinsicWidths, maxContentWidth)
+  }
+
+  private fitColumnWidths(widths: number[], targetContentWidth: number): number[] {
+    const hardMinWidths = new Array(widths.length).fill(1)
+    const baseWidths = widths.map((width) => Math.max(1, Math.floor(width)))
+
+    const preferredMinWidths = baseWidths.map((width) => Math.min(width, 2))
+    const preferredMinTotal = preferredMinWidths.reduce((sum, width) => sum + width, 0)
+
+    const floorWidths = preferredMinTotal <= targetContentWidth ? preferredMinWidths : hardMinWidths
+    const floorTotal = floorWidths.reduce((sum, width) => sum + width, 0)
+    const clampedTarget = Math.max(floorTotal, targetContentWidth)
+
+    const totalBaseWidth = baseWidths.reduce((sum, width) => sum + width, 0)
+
+    if (totalBaseWidth <= clampedTarget) {
+      return baseWidths
+    }
+
+    const shrinkable = baseWidths.map((width, idx) => width - floorWidths[idx])
+    const totalShrinkable = shrinkable.reduce((sum, value) => sum + value, 0)
+    if (totalShrinkable <= 0) {
+      return [...floorWidths]
+    }
+
+    const targetShrink = totalBaseWidth - clampedTarget
+    const integerShrink = new Array(baseWidths.length).fill(0)
+    const fractions = new Array(baseWidths.length).fill(0)
+    let usedShrink = 0
+
+    for (let idx = 0; idx < baseWidths.length; idx++) {
+      if (shrinkable[idx] <= 0) continue
+
+      const exact = (shrinkable[idx] / totalShrinkable) * targetShrink
+      const whole = Math.min(shrinkable[idx], Math.floor(exact))
+      integerShrink[idx] = whole
+      fractions[idx] = exact - whole
+      usedShrink += whole
+    }
+
+    let remainingShrink = targetShrink - usedShrink
+
+    while (remainingShrink > 0) {
+      let bestIdx = -1
+      let bestFraction = -1
+
+      for (let idx = 0; idx < baseWidths.length; idx++) {
+        if (shrinkable[idx] - integerShrink[idx] <= 0) continue
+        if (fractions[idx] > bestFraction) {
+          bestFraction = fractions[idx]
+          bestIdx = idx
+        }
+      }
+
+      if (bestIdx === -1) break
+
+      integerShrink[bestIdx] += 1
+      fractions[bestIdx] = 0
+      remainingShrink -= 1
+    }
+
+    return baseWidths.map((width, idx) => Math.max(floorWidths[idx], width - integerShrink[idx]))
+  }
+
+  private computeRowHeights(columnWidths: number[]): number[] {
+    const rowHeights = new Array(this._rowCount).fill(1)
+
+    for (let rowIdx = 0; rowIdx < this._rowCount; rowIdx++) {
+      for (let colIdx = 0; colIdx < this._columnCount; colIdx++) {
+        const cell = this._cells[rowIdx]?.[colIdx]
+        if (!cell) continue
+
+        const width = columnWidths[colIdx] ?? 1
+        const measure = cell.textBufferView.measureForDimensions(width, MEASURE_HEIGHT)
+        const lineCount = Math.max(1, measure?.lineCount ?? 1)
+        rowHeights[rowIdx] = Math.max(rowHeights[rowIdx], lineCount)
+      }
+    }
+
+    return rowHeights
+  }
+
+  private computeOffsets(parts: number[]): number[] {
+    const offsets: number[] = [0]
+    let cursor = 0
+
+    for (const size of parts) {
+      cursor += size + 1
+      offsets.push(cursor)
+    }
+
+    return offsets
+  }
+
+  private applyLayoutToViews(layout: SimpleTableLayout): void {
+    for (let rowIdx = 0; rowIdx < this._rowCount; rowIdx++) {
+      for (let colIdx = 0; colIdx < this._columnCount; colIdx++) {
+        const cell = this._cells[rowIdx]?.[colIdx]
+        if (!cell) continue
+
+        const colWidth = layout.columnWidths[colIdx] ?? 1
+        const rowHeight = layout.rowHeights[rowIdx] ?? 1
+
+        if (this._wrapMode === "none") {
+          cell.textBufferView.setWrapWidth(null)
+        } else {
+          cell.textBufferView.setWrapWidth(colWidth)
+        }
+
+        cell.textBufferView.setViewport(0, 0, colWidth, rowHeight)
+      }
+    }
+  }
+
+  private drawBorders(buffer: OptimizedBuffer): void {
+    const borderChars = BorderCharArrays[this._borderStyle]
+
+    for (let rowBorderIdx = 0; rowBorderIdx <= this._rowCount; rowBorderIdx++) {
+      const y = this._layout.rowOffsets[rowBorderIdx] ?? 0
+
+      for (let colBorderIdx = 0; colBorderIdx <= this._columnCount; colBorderIdx++) {
+        const x = this._layout.columnOffsets[colBorderIdx] ?? 0
+        const intersection = this.getIntersectionChar(borderChars, rowBorderIdx, colBorderIdx)
+        buffer.drawChar(intersection, x, y, this._borderColor, this._borderBackgroundColor)
+      }
+
+      for (let colIdx = 0; colIdx < this._columnCount; colIdx++) {
+        const startX = this._layout.columnOffsets[colIdx] ?? 0
+        const endX = this._layout.columnOffsets[colIdx + 1] ?? startX
+
+        for (let x = startX + 1; x < endX; x++) {
+          buffer.drawChar(borderChars[4] ?? 0, x, y, this._borderColor, this._borderBackgroundColor)
+        }
+      }
+    }
+
+    for (let colBorderIdx = 0; colBorderIdx <= this._columnCount; colBorderIdx++) {
+      const x = this._layout.columnOffsets[colBorderIdx] ?? 0
+
+      for (let rowIdx = 0; rowIdx < this._rowCount; rowIdx++) {
+        const startY = this._layout.rowOffsets[rowIdx] ?? 0
+        const endY = this._layout.rowOffsets[rowIdx + 1] ?? startY
+
+        for (let y = startY + 1; y < endY; y++) {
+          buffer.drawChar(borderChars[5] ?? 0, x, y, this._borderColor, this._borderBackgroundColor)
+        }
+      }
+    }
+  }
+
+  private getIntersectionChar(borderChars: Uint32Array, rowBorderIdx: number, colBorderIdx: number): number {
+    const top = rowBorderIdx === 0
+    const bottom = rowBorderIdx === this._rowCount
+    const left = colBorderIdx === 0
+    const right = colBorderIdx === this._columnCount
+
+    if (top && left) return borderChars[0] ?? 0
+    if (top && right) return borderChars[1] ?? 0
+    if (bottom && left) return borderChars[2] ?? 0
+    if (bottom && right) return borderChars[3] ?? 0
+    if (top) return borderChars[6] ?? 0
+    if (bottom) return borderChars[7] ?? 0
+    if (left) return borderChars[8] ?? 0
+    if (right) return borderChars[9] ?? 0
+    return borderChars[10] ?? 0
+  }
+
+  private drawCells(buffer: OptimizedBuffer): void {
+    for (let rowIdx = 0; rowIdx < this._rowCount; rowIdx++) {
+      const cellY = (this._layout.rowOffsets[rowIdx] ?? 0) + 1
+
+      for (let colIdx = 0; colIdx < this._columnCount; colIdx++) {
+        const cell = this._cells[rowIdx]?.[colIdx]
+        if (!cell) continue
+
+        const cellX = (this._layout.columnOffsets[colIdx] ?? 0) + 1
+        buffer.drawTextBuffer(cell.textBufferView, cellX, cellY)
+      }
+    }
+  }
+
+  private createEmptyLayout(): SimpleTableLayout {
+    return {
+      columnWidths: [],
+      rowHeights: [],
+      columnOffsets: [0],
+      rowOffsets: [0],
+      tableWidth: 0,
+      tableHeight: 0,
+    }
+  }
+
+  private invalidateLayoutAndRaster(markYogaDirty: boolean = true): void {
+    this._layoutDirty = true
+    this._rasterDirty = true
+
+    if (markYogaDirty) {
+      this.yogaNode.markDirty()
+    }
+
+    this.requestRender()
+  }
+
+  private invalidateRasterOnly(): void {
+    this._rasterDirty = true
+    this.requestRender()
+  }
+}

@@ -1,0 +1,61 @@
+// Bun Snapshot v1, https://bun.sh/docs/test/snapshots
+
+exports[`SimpleTableRenderable renders a basic table with styled cell chunks: basic table 1`] = `
+"                                                            
+ ┌─────┬──────┬───────────────────┐                         
+ │Name │Status│Notes              │                         
+ ├─────┼──────┼───────────────────┤                         
+ │Alpha│OK    │All systems nominal│                         
+ ├─────┼──────┼───────────────────┤                         
+ │Bravo│WARN  │Pending checks     │                         
+                                                            
+                                                            
+                                                            
+                                                            
+                                                            
+                                                            
+                                                            
+                                                            
+                                                            
+"
+`;
+
+exports[`SimpleTableRenderable wraps content and fits columns when width is constrained: wrapped constrained width 1`] = `
+"┌──┬─────────────────────────────┐                          
+│ID│Description                  │                          
+├──┼─────────────────────────────┤                          
+│1 │This is a long sentence that │                          
+│  │should wrap across multiple  │                          
+│  │visual lines                 │                          
+├──┼─────────────────────────────┤                          
+│2 │Short                        │                          
+                                                            
+                                                            
+                                                            
+                                                            
+                                                            
+                                                            
+                                                            
+                                                            
+"
+`;
+
+exports[`SimpleTableRenderable rebuilds table when content setter is used: content setter update 1`] = `
+"┌─────┬───────┐                                             
+│Col 1│Col 2  │                                             
+├─────┼───────┤                                             
+│row-1│updated│                                             
+├─────┼───────┤                                             
+│row-2│active │                                             
+                                                            
+                                                            
+                                                            
+                                                            
+                                                            
+                                                            
+                                                            
+                                                            
+                                                            
+                                                            
+"
+`;
