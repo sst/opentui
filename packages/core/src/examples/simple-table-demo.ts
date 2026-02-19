@@ -1,6 +1,7 @@
 import {
   BoxRenderable,
   CliRenderer,
+  ScrollBoxRenderable,
   SimpleTableRenderable,
   TextRenderable,
   bold,
@@ -23,6 +24,7 @@ let unicodeTable: SimpleTableRenderable | null = null
 let controlsText: TextRenderable | null = null
 let selectionStatusText: TextRenderable | null = null
 let selectionMetaText: TextRenderable | null = null
+let selectionScrollBox: ScrollBoxRenderable | null = null
 let keyboardHandler: ((key: KeyEvent) => void) | null = null
 let selectionHandler: ((selection: Selection) => void) | null = null
 
@@ -93,6 +95,9 @@ function clearSelectionStatus(message: string): void {
   if (!selectionMetaText || !selectionStatusText) return
   selectionMetaText.content = message
   selectionStatusText.content = ""
+  if (selectionScrollBox) {
+    selectionScrollBox.scrollTop = 0
+  }
 }
 
 function applyTableState(): void {
@@ -130,12 +135,14 @@ export function run(renderer: CliRenderer): void {
     content: "",
     fg: "#e2e8f0",
     wrapMode: "none",
+    selectable: false,
   })
 
   const primaryLabel = new TextRenderable(renderer, {
     id: "simple-table-demo-primary-label",
     content: t`${bold("Operational Table")}`,
     fg: "#cbd5e1",
+    selectable: false,
   })
 
   primaryTable = new SimpleTableRenderable(renderer, {
@@ -153,6 +160,7 @@ export function run(renderer: CliRenderer): void {
     id: "simple-table-demo-unicode-label",
     content: t`${bold("Unicode/CJK/Emoji Table")}`,
     fg: "#cbd5e1",
+    selectable: false,
   })
 
   unicodeTable = new SimpleTableRenderable(renderer, {
@@ -169,8 +177,9 @@ export function run(renderer: CliRenderer): void {
   const selectionBox = new BoxRenderable(renderer, {
     id: "simple-table-demo-selection-box",
     width: "100%",
-    minHeight: 6,
-    flexGrow: 1,
+    height: 10,
+    flexGrow: 0,
+    flexShrink: 0,
     border: true,
     borderStyle: "single",
     borderColor: "#64748b",
@@ -184,6 +193,18 @@ export function run(renderer: CliRenderer): void {
     id: "simple-table-demo-selection-meta",
     content: "No selection yet",
     fg: "#93c5fd",
+    selectable: false,
+  })
+
+  selectionScrollBox = new ScrollBoxRenderable(renderer, {
+    id: "simple-table-demo-selection-scroll",
+    width: "100%",
+    flexGrow: 1,
+    flexShrink: 1,
+    scrollY: true,
+    scrollX: false,
+    border: false,
+    backgroundColor: "transparent",
   })
 
   selectionStatusText = new TextRenderable(renderer, {
@@ -191,10 +212,13 @@ export function run(renderer: CliRenderer): void {
     content: "",
     fg: "#e2e8f0",
     wrapMode: "word",
+    width: "100%",
+    selectable: false,
   })
 
   selectionBox.add(selectionMetaText)
-  selectionBox.add(selectionStatusText)
+  selectionBox.add(selectionScrollBox)
+  selectionScrollBox.add(selectionStatusText)
 
   container.add(controlsText)
   container.add(primaryLabel)
@@ -216,6 +240,9 @@ export function run(renderer: CliRenderer): void {
     const chars = selectedText.length
     selectionMetaText.content = `Selected ${lines} line${lines === 1 ? "" : "s"} (${chars} chars)`
     selectionStatusText.content = selectedText
+    if (selectionScrollBox) {
+      selectionScrollBox.scrollTop = 0
+    }
   }
 
   renderer.on("selection", selectionHandler)
@@ -269,6 +296,7 @@ export function destroy(renderer: CliRenderer): void {
   controlsText = null
   selectionStatusText = null
   selectionMetaText = null
+  selectionScrollBox = null
 
   contentIndex = 0
   wrapIndex = 1
