@@ -223,6 +223,9 @@ export function run(renderer: CliRenderer): void {
     backgroundColor: "transparent",
   })
 
+  tableAreaScrollBox.verticalScrollbarOptions = { visible: false }
+  selectionScrollBox.verticalScrollbarOptions = { visible: false }
+
   selectionStatusText = new TextRenderable(renderer, {
     id: "simple-table-demo-selection-text",
     content: "",
