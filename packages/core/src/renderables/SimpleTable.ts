@@ -294,8 +294,8 @@ export class SimpleTableRenderable extends Renderable {
       rowHeights,
       columnOffsets,
       rowOffsets,
-      tableWidth: columnOffsets[columnOffsets.length - 1] ?? 0,
-      tableHeight: rowOffsets[rowOffsets.length - 1] ?? 0,
+      tableWidth: (columnOffsets[columnOffsets.length - 1] ?? 0) + 1,
+      tableHeight: (rowOffsets[rowOffsets.length - 1] ?? 0) + 1,
     }
   }
 

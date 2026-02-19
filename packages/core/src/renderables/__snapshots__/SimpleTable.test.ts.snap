@@ -8,7 +8,7 @@ exports[`SimpleTableRenderable renders a basic table with styled cell chunks: ba
  │Alpha│OK    │All systems nominal│                         
  ├─────┼──────┼───────────────────┤                         
  │Bravo│WARN  │Pending checks     │                         
-                                                            
+ └─────┴──────┴───────────────────┘                         
                                                             
                                                             
                                                             
@@ -29,7 +29,7 @@ exports[`SimpleTableRenderable wraps content and fits columns when width is cons
 │  │visual lines                 │                          
 ├──┼─────────────────────────────┤                          
 │2 │Short                        │                          
-                                                            
+└──┴─────────────────────────────┘                          
                                                             
                                                             
                                                             
@@ -47,7 +47,7 @@ exports[`SimpleTableRenderable rebuilds table when content setter is used: conte
 │row-1│updated│                                             
 ├─────┼───────┤                                             
 │row-2│active │                                             
-                                                            
+└─────┴───────┘                                             
                                                             
                                                             
                                                             
@@ -69,7 +69,7 @@ exports[`SimpleTableRenderable keeps borders aligned with CJK and emoji content:
 │zh-CN │你好世界 🚀   │                                     
 ├──────┼──────────────┤                                     
 │ko-KR │한글 테스트 😄│                                     
-                                                            
+└──────┴──────────────┘                                     
                                                             
                                                             
                                                             
@@ -92,7 +92,7 @@ exports[`SimpleTableRenderable wraps CJK and emoji without grapheme duplication:
 ├───┼────────────────────────┤                              
 │emo│Faces 😀😃😄 should     │                              
 │ji │ remain stable          │                              
-                                                            
+└───┴────────────────────────┘                              
                                                             
                                                             
                                                             

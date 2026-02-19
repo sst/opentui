@@ -121,6 +121,32 @@ describe("SimpleTableRenderable", () => {
     expect(after).toMatchSnapshot("content setter update")
   })
 
+  test("renders a final bottom border", async () => {
+    const table = new SimpleTableRenderable(renderer, {
+      left: 0,
+      top: 0,
+      content: [
+        [[bold("A")], [bold("B")]],
+        ["1", "2"],
+      ],
+    })
+
+    renderer.root.add(table)
+    await renderOnce()
+
+    const frame = captureFrame()
+    const lines = frame
+      .split("\n")
+      .map((line) => line.trimEnd())
+      .filter((line) => line.length > 0)
+
+    const lastLine = lines[lines.length - 1] ?? ""
+
+    expect(lastLine).toContain("└")
+    expect(lastLine).toContain("┴")
+    expect(lastLine).toContain("┘")
+  })
+
   test("keeps borders aligned with CJK and emoji content", async () => {
     const content: SimpleTableContent = [
       [[bold("Locale")], [bold("Sample")]],
