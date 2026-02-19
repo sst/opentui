@@ -2,6 +2,7 @@ import { MeasureMode } from "yoga-layout"
 import { type RenderableOptions, Renderable } from "../Renderable"
 import type { OptimizedBuffer } from "../buffer"
 import { type BorderStyle, BorderCharArrays, parseBorderStyle } from "../lib/border"
+import { convertGlobalToLocalSelection, type Selection, type LocalSelectionBounds } from "../lib/selection"
 import { StyledText, isStyledText, stringToStyledText } from "../lib/styled-text"
 import { RGBA, parseColor, type ColorInput } from "../lib/RGBA"
 import { SyntaxStyle } from "../syntax-style"
@@ -29,9 +30,17 @@ interface SimpleTableLayout {
   tableHeight: number
 }
 
+interface CellPosition {
+  rowIdx: number
+  colIdx: number
+}
+
 export interface SimpleTableOptions extends RenderableOptions<SimpleTableRenderable> {
   content?: SimpleTableContent
   wrapMode?: "none" | "char" | "word"
+  selectable?: boolean
+  selectionBg?: ColorInput
+  selectionFg?: ColorInput
   borderStyle?: BorderStyle
   borderColor?: ColorInput
   borderBackgroundColor?: ColorInput
@@ -51,6 +60,9 @@ export class SimpleTableRenderable extends Renderable {
   private _defaultFg: RGBA
   private _defaultBg: RGBA
   private _defaultAttributes: number
+  private _selectionBg: RGBA | undefined
+  private _selectionFg: RGBA | undefined
+  private _lastLocalSelection: LocalSelectionBounds | null = null
 
   private _cells: SimpleTableCellState[][] = []
   private _rowCount: number = 0
@@ -63,6 +75,9 @@ export class SimpleTableRenderable extends Renderable {
   private readonly _defaultOptions = {
     content: [] as SimpleTableContent,
     wrapMode: "none" as "none" | "char" | "word",
+    selectable: true,
+    selectionBg: undefined as ColorInput | undefined,
+    selectionFg: undefined as ColorInput | undefined,
     borderStyle: "single" as BorderStyle,
     borderColor: "#FFFFFF",
     borderBackgroundColor: "transparent",
@@ -77,6 +92,9 @@ export class SimpleTableRenderable extends Renderable {
 
     this._content = options.content ?? this._defaultOptions.content
     this._wrapMode = options.wrapMode ?? this._defaultOptions.wrapMode
+    this.selectable = options.selectable ?? this._defaultOptions.selectable
+    this._selectionBg = options.selectionBg ? parseColor(options.selectionBg) : undefined
+    this._selectionFg = options.selectionFg ? parseColor(options.selectionFg) : undefined
     this._borderStyle = parseBorderStyle(options.borderStyle, this._defaultOptions.borderStyle)
     this._borderColor = parseColor(options.borderColor ?? this._defaultOptions.borderColor)
     this._borderBackgroundColor = parseColor(
@@ -135,6 +153,85 @@ export class SimpleTableRenderable extends Renderable {
     if (this._borderColor === next) return
     this._borderColor = next
     this.invalidateRasterOnly()
+  }
+
+  public shouldStartSelection(x: number, y: number): boolean {
+    if (!this.selectable) return false
+
+    this.ensureLayoutReady()
+
+    const localX = x - this.x
+    const localY = y - this.y
+    return this.getCellAtLocalPosition(localX, localY) !== null
+  }
+
+  public onSelectionChanged(selection: Selection | null): boolean {
+    this.ensureLayoutReady()
+
+    const localSelection = convertGlobalToLocalSelection(selection, this.x, this.y)
+    this._lastLocalSelection = localSelection
+
+    let changed = false
+    if (!localSelection?.isActive) {
+      changed = this.resetCellSelections()
+    } else {
+      changed = this.applySelectionToCells(localSelection, selection?.isStart ?? false)
+    }
+
+    if (changed) {
+      this.invalidateRasterOnly()
+    }
+
+    return this.hasSelection()
+  }
+
+  public hasSelection(): boolean {
+    for (const row of this._cells) {
+      for (const cell of row) {
+        if (cell.textBufferView.hasSelection()) {
+          return true
+        }
+      }
+    }
+
+    return false
+  }
+
+  public getSelection(): { start: number; end: number } | null {
+    for (const row of this._cells) {
+      for (const cell of row) {
+        const selection = cell.textBufferView.getSelection()
+        if (selection) {
+          return selection
+        }
+      }
+    }
+
+    return null
+  }
+
+  public getSelectedText(): string {
+    const selectedRows: string[] = []
+
+    for (let rowIdx = 0; rowIdx < this._rowCount; rowIdx++) {
+      const rowSelections: string[] = []
+
+      for (let colIdx = 0; colIdx < this._columnCount; colIdx++) {
+        const cell = this._cells[rowIdx]?.[colIdx]
+        if (!cell || !cell.textBufferView.hasSelection()) continue
+
+        const selectedText = cell.textBufferView.getSelectedText()
+        if (selectedText.length > 0) {
+          rowSelections.push(selectedText)
+        }
+      }
+
+      if (rowSelections.length > 0) {
+        selectedRows.push(rowSelections.join("\t"))
+      }
+    }
+
+    return selectedRows.join("\n")
   }
 
   protected onResize(width: number, height: number): void {
@@ -277,6 +374,10 @@ export class SimpleTableRenderable extends Renderable {
     this._layout = layout
     this.applyLayoutToViews(layout)
     this._layoutDirty = false
+
+    if (this._lastLocalSelection?.isActive) {
+      this.applySelectionToCells(this._lastLocalSelection, true)
+    }
   }
 
   private computeLayout(maxTableWidth?: number): SimpleTableLayout {
@@ -509,6 +610,100 @@ export class SimpleTableRenderable extends Renderable {
         buffer.drawTextBuffer(cell.textBufferView, cellX, cellY)
       }
     }
+  }
+
+  private ensureLayoutReady(): void {
+    if (!this._layoutDirty) return
+    this.rebuildLayoutForCurrentWidth()
+  }
+
+  private getCellAtLocalPosition(localX: number, localY: number): CellPosition | null {
+    if (this._rowCount === 0 || this._columnCount === 0) return null
+    if (localX < 0 || localY < 0 || localX >= this._layout.tableWidth || localY >= this._layout.tableHeight) {
+      return null
+    }
+
+    let rowIdx = -1
+    for (let idx = 0; idx < this._rowCount; idx++) {
+      const top = (this._layout.rowOffsets[idx] ?? 0) + 1
+      const bottom = (this._layout.rowOffsets[idx + 1] ?? 0) - 1
+      if (localY >= top && localY <= bottom) {
+        rowIdx = idx
+        break
+      }
+    }
+
+    if (rowIdx < 0) return null
+
+    let colIdx = -1
+    for (let idx = 0; idx < this._columnCount; idx++) {
+      const left = (this._layout.columnOffsets[idx] ?? 0) + 1
+      const right = (this._layout.columnOffsets[idx + 1] ?? 0) - 1
+      if (localX >= left && localX <= right) {
+        colIdx = idx
+        break
+      }
+    }
+
+    if (colIdx < 0) return null
+
+    return { rowIdx, colIdx }
+  }
+
+  private applySelectionToCells(localSelection: LocalSelectionBounds, isStart: boolean): boolean {
+    let changed = false
+
+    for (let rowIdx = 0; rowIdx < this._rowCount; rowIdx++) {
+      const cellTop = (this._layout.rowOffsets[rowIdx] ?? 0) + 1
+
+      for (let colIdx = 0; colIdx < this._columnCount; colIdx++) {
+        const cell = this._cells[rowIdx]?.[colIdx]
+        if (!cell) continue
+
+        const cellLeft = (this._layout.columnOffsets[colIdx] ?? 0) + 1
+
+        const anchorX = localSelection.anchorX - cellLeft
+        const anchorY = localSelection.anchorY - cellTop
+        const focusX = localSelection.focusX - cellLeft
+        const focusY = localSelection.focusY - cellTop
+
+        const cellChanged = isStart
+          ? cell.textBufferView.setLocalSelection(
+              anchorX,
+              anchorY,
+              focusX,
+              focusY,
+              this._selectionBg,
+              this._selectionFg,
+            )
+          : cell.textBufferView.updateLocalSelection(
+              anchorX,
+              anchorY,
+              focusX,
+              focusY,
+              this._selectionBg,
+              this._selectionFg,
+            )
+
+        changed = changed || cellChanged
+      }
+    }
+
+    return changed
+  }
+
+  private resetCellSelections(): boolean {
+    let changed = false
+
+    for (const row of this._cells) {
+      for (const cell of row) {
+        if (!cell.textBufferView.hasSelection()) continue
+        cell.textBufferView.resetLocalSelection()
+        changed = true
+      }
+    }
+
+    return changed
   }
 
   private createEmptyLayout(): SimpleTableLayout {

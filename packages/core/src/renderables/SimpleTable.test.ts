@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test"
 import { RGBA } from "../lib/RGBA"
 import { bold, green, red } from "../lib/styled-text"
-import { createTestRenderer, type TestRenderer } from "../testing/test-renderer"
+import { createTestRenderer, type MockMouse, type TestRenderer } from "../testing/test-renderer"
 import type { CapturedFrame } from "../types"
 import { SimpleTableRenderable, type SimpleTableContent } from "./SimpleTable"
 
@@ -11,6 +11,7 @@ let renderer: TestRenderer
 let renderOnce: () => Promise<void>
 let captureFrame: () => string
 let captureSpans: () => CapturedFrame
+let mockMouse: MockMouse
 
 function getCharAt(buffer: TestRenderer["currentRenderBuffer"], x: number, y: number): number {
   return buffer.buffers.char[y * buffer.width + x] ?? 0
@@ -38,6 +39,7 @@ beforeEach(async () => {
   renderOnce = testRenderer.renderOnce
   captureFrame = testRenderer.captureCharFrame
   captureSpans = testRenderer.captureSpans
+  mockMouse = testRenderer.mockMouse
 })
 
 afterEach(() => {
@@ -244,5 +246,75 @@ describe("SimpleTableRenderable", () => {
         expect(getCharAt(buffer, x, y)).toBe(VERTICAL_BORDER_CP)
       }
     }
+  })
+
+  test("starts selection only on table cell content", async () => {
+    const table = new SimpleTableRenderable(renderer, {
+      left: 0,
+      top: 0,
+      content: [
+        [[bold("A")], [bold("B")]],
+        ["1", "2"],
+      ],
+    })
+
+    renderer.root.add(table)
+    await renderOnce()
+
+    expect(table.shouldStartSelection(table.x, table.y)).toBe(false)
+    expect(table.shouldStartSelection(table.x + 1, table.y)).toBe(false)
+    expect(table.shouldStartSelection(table.x, table.y + 1)).toBe(false)
+    expect(table.shouldStartSelection(table.x + 1, table.y + 1)).toBe(true)
+  })
+
+  test("selection text excludes border glyphs", async () => {
+    const table = new SimpleTableRenderable(renderer, {
+      left: 0,
+      top: 0,
+      content: [
+        [[bold("c1")], [bold("c2")]],
+        ["aa", "bb"],
+        ["cc", "dd"],
+      ],
+    })
+
+    renderer.root.add(table)
+    await renderOnce()
+
+    await mockMouse.drag(table.x + 1, table.y + 1, table.x + 5, table.y + 3)
+    await renderOnce()
+
+    expect(table.hasSelection()).toBe(true)
+
+    const selected = table.getSelectedText()
+    expect(selected).toContain("c1\tc2")
+    expect(selected).toContain("aa\tb")
+    expect(selected).not.toContain("│")
+    expect(selected).not.toContain("┌")
+    expect(selected).not.toContain("┼")
+
+    const rendererSelection = renderer.getSelection()
+    expect(rendererSelection).not.toBeNull()
+    expect(rendererSelection?.getSelectedText()).not.toContain("│")
+  })
+
+  test("does not start selection when drag begins on border", async () => {
+    const table = new SimpleTableRenderable(renderer, {
+      left: 0,
+      top: 0,
+      content: [
+        [[bold("A")], [bold("B")]],
+        ["1", "2"],
+      ],
+    })
+
+    renderer.root.add(table)
+    await renderOnce()
+
+    await mockMouse.drag(table.x, table.y, table.x + 4, table.y + 1)
+    await renderOnce()
+
+    expect(table.hasSelection()).toBe(false)
+    expect(table.getSelectedText()).toBe("")
   })
 })
