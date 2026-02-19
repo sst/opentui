@@ -117,7 +117,6 @@ function applyTableState(): void {
 }
 
 export function run(renderer: CliRenderer): void {
-  renderer.start()
   renderer.setBackgroundColor("#0b1020")
 
   container = new BoxRenderable(renderer, {
