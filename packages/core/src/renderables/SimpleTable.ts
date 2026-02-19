@@ -65,12 +65,16 @@ export class SimpleTableRenderable extends Renderable {
   private _lastLocalSelection: LocalSelectionBounds | null = null
 
   private _cells: SimpleTableCellState[][] = []
+  private _prevCellContent: SimpleTableCellContent[][] = []
   private _rowCount: number = 0
   private _columnCount: number = 0
 
   private _layout: SimpleTableLayout = this.createEmptyLayout()
   private _layoutDirty: boolean = true
   private _rasterDirty: boolean = true
+
+  private _cachedMeasureLayout: SimpleTableLayout | null = null
+  private _cachedMeasureWidth: number | undefined = undefined
 
   private readonly _defaultOptions = {
     content: [] as SimpleTableContent,
@@ -276,6 +280,8 @@ export class SimpleTableRenderable extends Renderable {
       const hasWidthConstraint = widthMode !== MeasureMode.Undefined && Number.isFinite(width)
       const widthConstraint = hasWidthConstraint ? Math.max(1, Math.floor(width)) : undefined
       const measuredLayout = this.computeLayout(widthConstraint)
+      this._cachedMeasureLayout = measuredLayout
+      this._cachedMeasureWidth = widthConstraint
 
       let measuredWidth = measuredLayout.tableWidth > 0 ? measuredLayout.tableWidth : 1
       let measuredHeight = measuredLayout.tableHeight > 0 ? measuredLayout.tableHeight : 1
@@ -298,26 +304,110 @@ export class SimpleTableRenderable extends Renderable {
   }
 
   private rebuildCells(): void {
-    this.destroyCells()
+    const newRowCount = this._content.length
+    const newColumnCount = this._content.reduce((max, row) => Math.max(max, row.length), 0)
 
-    this._rowCount = this._content.length
-    this._columnCount = this._content.reduce((max, row) => Math.max(max, row.length), 0)
+    if (this._cells.length === 0) {
+      this._rowCount = newRowCount
+      this._columnCount = newColumnCount
+      this._cells = []
+      this._prevCellContent = []
 
-    this._cells = []
+      for (let rowIdx = 0; rowIdx < newRowCount; rowIdx++) {
+        const row = this._content[rowIdx] ?? []
+        const rowCells: SimpleTableCellState[] = []
+        const rowRefs: SimpleTableCellContent[] = []
 
-    for (let rowIdx = 0; rowIdx < this._rowCount; rowIdx++) {
-      const row = this._content[rowIdx] ?? []
-      const rowCells: SimpleTableCellState[] = []
+        for (let colIdx = 0; colIdx < newColumnCount; colIdx++) {
+          const cellContent = row[colIdx]
+          rowCells.push(this.createCell(this.toStyledText(cellContent)))
+          rowRefs.push(cellContent)
+        }
 
-      for (let colIdx = 0; colIdx < this._columnCount; colIdx++) {
-        const styledText = this.toStyledText(row[colIdx])
-        rowCells.push(this.createCell(styledText))
+        this._cells.push(rowCells)
+        this._prevCellContent.push(rowRefs)
       }
 
-      this._cells.push(rowCells)
+      this.invalidateLayoutAndRaster()
+      return
     }
 
+    this.updateCellsDiff(newRowCount, newColumnCount)
     this.invalidateLayoutAndRaster()
+  }
+
+  private updateCellsDiff(newRowCount: number, newColumnCount: number): void {
+    const oldRowCount = this._rowCount
+    const oldColumnCount = this._columnCount
+    const keepRows = Math.min(oldRowCount, newRowCount)
+    const keepCols = Math.min(oldColumnCount, newColumnCount)
+
+    for (let rowIdx = 0; rowIdx < keepRows; rowIdx++) {
+      const newRow = this._content[rowIdx] ?? []
+      const cellRow = this._cells[rowIdx]
+      const refRow = this._prevCellContent[rowIdx]
+
+      for (let colIdx = 0; colIdx < keepCols; colIdx++) {
+        const cellContent = newRow[colIdx]
+        if (cellContent === refRow[colIdx]) continue
+
+        const oldCell = cellRow[colIdx]
+        oldCell.textBufferView.destroy()
+        oldCell.textBuffer.destroy()
+        oldCell.syntaxStyle.destroy()
+
+        cellRow[colIdx] = this.createCell(this.toStyledText(cellContent))
+        refRow[colIdx] = cellContent
+      }
+
+      if (newColumnCount > oldColumnCount) {
+        for (let colIdx = oldColumnCount; colIdx < newColumnCount; colIdx++) {
+          const cellContent = newRow[colIdx]
+          cellRow.push(this.createCell(this.toStyledText(cellContent)))
+          refRow.push(cellContent)
+        }
+      } else if (newColumnCount < oldColumnCount) {
+        for (let colIdx = newColumnCount; colIdx < oldColumnCount; colIdx++) {
+          const cell = cellRow[colIdx]
+          cell.textBufferView.destroy()
+          cell.textBuffer.destroy()
+          cell.syntaxStyle.destroy()
+        }
+        cellRow.length = newColumnCount
+        refRow.length = newColumnCount
+      }
+    }
+
+    if (newRowCount > oldRowCount) {
+      for (let rowIdx = oldRowCount; rowIdx < newRowCount; rowIdx++) {
+        const newRow = this._content[rowIdx] ?? []
+        const rowCells: SimpleTableCellState[] = []
+        const rowRefs: SimpleTableCellContent[] = []
+
+        for (let colIdx = 0; colIdx < newColumnCount; colIdx++) {
+          const cellContent = newRow[colIdx]
+          rowCells.push(this.createCell(this.toStyledText(cellContent)))
+          rowRefs.push(cellContent)
+        }
+
+        this._cells.push(rowCells)
+        this._prevCellContent.push(rowRefs)
+      }
+    } else if (newRowCount < oldRowCount) {
+      for (let rowIdx = newRowCount; rowIdx < oldRowCount; rowIdx++) {
+        const row = this._cells[rowIdx]
+        for (const cell of row) {
+          cell.textBufferView.destroy()
+          cell.textBuffer.destroy()
+          cell.syntaxStyle.destroy()
+        }
+      }
+      this._cells.length = newRowCount
+      this._prevCellContent.length = newRowCount
+    }
+
+    this._rowCount = newRowCount
+    this._columnCount = newColumnCount
   }
 
   private createCell(styledText: StyledText): SimpleTableCellState {
@@ -362,6 +452,7 @@ export class SimpleTableRenderable extends Renderable {
     }
 
     this._cells = []
+    this._prevCellContent = []
     this._rowCount = 0
     this._columnCount = 0
     this._layout = this.createEmptyLayout()
@@ -369,7 +460,15 @@ export class SimpleTableRenderable extends Renderable {
 
   private rebuildLayoutForCurrentWidth(): void {
     const maxTableWidth = this._wrapMode === "none" ? undefined : this.width
-    const layout = this.computeLayout(maxTableWidth)
+
+    let layout: SimpleTableLayout
+    if (this._cachedMeasureLayout !== null && this._cachedMeasureWidth === maxTableWidth) {
+      layout = this._cachedMeasureLayout
+    } else {
+      layout = this.computeLayout(maxTableWidth)
+    }
+    this._cachedMeasureLayout = null
+    this._cachedMeasureWidth = undefined
 
     this._layout = layout
     this.applyLayoutToViews(layout)
@@ -720,6 +819,8 @@ export class SimpleTableRenderable extends Renderable {
   private invalidateLayoutAndRaster(markYogaDirty: boolean = true): void {
     this._layoutDirty = true
     this._rasterDirty = true
+    this._cachedMeasureLayout = null
+    this._cachedMeasureWidth = undefined
 
     if (markYogaDirty) {
       this.yogaNode.markDirty()

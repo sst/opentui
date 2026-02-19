@@ -28,7 +28,7 @@ exports[`simple-table-demo narrow layout renders tables without right scrollbar 
  │bil│ERRO│retryin│ 
  │lin│R   │g payme│ 
  │g  │    │nt prov│ 
-                    
+ │   │    │ider   │ 
                     
  ┌─Selected Text──┐ 
  │                │ 
