@@ -84,6 +84,7 @@ pub fn build(b: *std.Build) void {
 
     const optimize = b.standardOptimizeOption(.{});
     const bench_optimize = b.option(std.builtin.OptimizeMode, "bench-optimize", "Optimize mode for benchmarks") orelse .ReleaseFast;
+    const debug_use_llvm = b.option(bool, "debug-llvm", "Use LLVM backend for debug/test artifacts");
     const target_option = b.option([]const u8, "target", "Build for specific target (e.g., 'x86_64-linux-gnu').");
     const build_all = b.option(bool, "all", "Build for all supported targets") orelse false;
 
@@ -113,6 +114,7 @@ pub fn build(b: *std.Build) void {
     const run_test = b.addRunArtifact(b.addTest(.{
         .root_module = test_mod,
         .filters = if (b.option([]const u8, "test-filter", "Skip tests that do not match filter")) |f| &.{f} else &.{},
+        .use_llvm = debug_use_llvm,
     }));
     test_step.dependOn(&run_test.step);
 
@@ -161,6 +163,7 @@ pub fn build(b: *std.Build) void {
     const debug_exe = b.addExecutable(.{
         .name = "opentui-debug",
         .root_module = debug_mod,
+        .use_llvm = debug_use_llvm,
     });
     const run_debug = b.addRunArtifact(debug_exe);
     debug_step.dependOn(&run_debug.step);
