@@ -337,6 +337,10 @@ function getOpenTUILib(libPath?: string) {
       args: ["ptr", "i32", "i32", "ptr", "u32", "u32", "ptr", "ptr"],
       returns: "void",
     },
+    bufferDrawTableBorders: {
+      args: ["ptr", "ptr", "ptr", "ptr", "ptr", "u32", "ptr", "u32"],
+      returns: "void",
+    },
     bufferDrawBox: {
       args: ["ptr", "i32", "i32", "u32", "u32", "ptr", "u32", "ptr", "ptr", "ptr", "u32"],
       returns: "void",
@@ -1463,6 +1467,16 @@ export interface RenderLib {
     fg: RGBA | null,
     bg: RGBA | null,
   ) => void
+  bufferDrawTableBorders: (
+    buffer: Pointer,
+    borderChars: Uint32Array,
+    borderFg: RGBA,
+    borderBg: RGBA,
+    columnOffsets: Uint32Array,
+    columnCount: number,
+    rowOffsets: Uint32Array,
+    rowCount: number,
+  ) => void
   bufferDrawBox: (
     buffer: Pointer,
     x: number,
@@ -2218,6 +2232,28 @@ class FFIRenderLib implements RenderLib {
       srcHeight,
       fg?.buffer ?? null,
       bg?.buffer ?? null,
+    )
+  }
+
+  public bufferDrawTableBorders(
+    buffer: Pointer,
+    borderChars: Uint32Array,
+    borderFg: RGBA,
+    borderBg: RGBA,
+    columnOffsets: Uint32Array,
+    columnCount: number,
+    rowOffsets: Uint32Array,
+    rowCount: number,
+  ): void {
+    this.opentui.symbols.bufferDrawTableBorders(
+      buffer,
+      borderChars,
+      borderFg.buffer,
+      borderBg.buffer,
+      columnOffsets,
+      columnCount,
+      rowOffsets,
+      rowCount,
     )
   }
 

@@ -482,6 +482,28 @@ export class OptimizedBuffer {
     this.lib.freeUnicode(encoded)
   }
 
+  public drawTableBorders(
+    borderChars: Uint32Array,
+    borderFg: RGBA,
+    borderBg: RGBA,
+    columnOffsets: Uint32Array,
+    columnCount: number,
+    rowOffsets: Uint32Array,
+    rowCount: number,
+  ): void {
+    this.guard()
+    this.lib.bufferDrawTableBorders(
+      this.bufferPtr,
+      borderChars,
+      borderFg,
+      borderBg,
+      columnOffsets,
+      columnCount,
+      rowOffsets,
+      rowCount,
+    )
+  }
+
   public drawChar(char: number, x: number, y: number, fg: RGBA, bg: RGBA, attributes: number = 0): void {
     this.guard()
     this.lib.bufferDrawChar(this.bufferPtr, char, x, y, fg, bg, attributes)

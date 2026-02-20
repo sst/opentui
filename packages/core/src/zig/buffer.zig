@@ -1500,6 +1500,95 @@ pub const OptimizedBuffer = struct {
         try self.drawTextBufferInternal(EditorView, editor_view, x, y);
     }
 
+    /// Draw a complete table border grid in a single call.
+    /// columnOffsets and rowOffsets include an extra trailing entry so that
+    /// the range for column `i` is `[columnOffsets[i]+1 .. columnOffsets[i+1]-1]`.
+    pub fn drawTableBorders(
+        self: *OptimizedBuffer,
+        borderChars: [*]const u32,
+        borderFg: RGBA,
+        borderBg: RGBA,
+        columnOffsets: [*]const u32,
+        columnCount: u32,
+        rowOffsets: [*]const u32,
+        rowCount: u32,
+    ) void {
+        if (rowCount == 0 or columnCount == 0) return;
+
+        const hChar = borderChars[@intFromEnum(BorderCharIndex.horizontal)];
+        const vChar = borderChars[@intFromEnum(BorderCharIndex.vertical)];
+        const bufWidth = self.width;
+        const bufHeight = self.height;
+
+        // Draw row-by-row: horizontal border line, then vertical borders for the row's content area
+        var rowIdx: u32 = 0;
+        while (rowIdx <= rowCount) : (rowIdx += 1) {
+            const borderY = rowOffsets[rowIdx];
+            if (borderY >= bufHeight) break;
+
+            // --- horizontal border line: intersections + fills ---
+            var colBorderIdx: u32 = 0;
+            while (colBorderIdx <= columnCount) : (colBorderIdx += 1) {
+                const bx = columnOffsets[colBorderIdx];
+                if (bx >= bufWidth) break;
+                const intersection = self.tableBorderIntersection(borderChars, rowIdx, colBorderIdx, rowCount, columnCount);
+                self.setRaw(bx, borderY, Cell{ .char = intersection, .fg = borderFg, .bg = borderBg, .attributes = 0 });
+            }
+
+            var colIdx: u32 = 0;
+            while (colIdx < columnCount) : (colIdx += 1) {
+                const startX = columnOffsets[colIdx] + 1;
+                const endX = columnOffsets[colIdx + 1];
+                if (startX >= bufWidth) break;
+                const clampedEnd = @min(endX, bufWidth);
+                if (startX < clampedEnd) {
+                    @memset(self.buffer.char[borderY * bufWidth + startX .. borderY * bufWidth + clampedEnd], hChar);
+                    @memset(self.buffer.fg[borderY * bufWidth + startX .. borderY * bufWidth + clampedEnd], borderFg);
+                    @memset(self.buffer.bg[borderY * bufWidth + startX .. borderY * bufWidth + clampedEnd], borderBg);
+                    @memset(self.buffer.attributes[borderY * bufWidth + startX .. borderY * bufWidth + clampedEnd], 0);
+                }
+            }
+
+            if (rowIdx >= rowCount) break;
+
+            // --- vertical borders for each content line in this row ---
+            const contentStartY = borderY + 1;
+            const contentEndY = rowOffsets[rowIdx + 1];
+            var cy = contentStartY;
+            while (cy < contentEndY and cy < bufHeight) : (cy += 1) {
+                const rowBase = cy * bufWidth;
+                colBorderIdx = 0;
+                while (colBorderIdx <= columnCount) : (colBorderIdx += 1) {
+                    const bx = columnOffsets[colBorderIdx];
+                    if (bx >= bufWidth) break;
+                    const idx = rowBase + bx;
+                    self.buffer.char[idx] = vChar;
+                    self.buffer.fg[idx] = borderFg;
+                    self.buffer.bg[idx] = borderBg;
+                    self.buffer.attributes[idx] = 0;
+                }
+            }
+        }
+    }
+
+    fn tableBorderIntersection(self: *const OptimizedBuffer, borderChars: [*]const u32, rowBorderIdx: u32, colBorderIdx: u32, rowCount: u32, columnCount: u32) u32 {
+        _ = self;
+        const top = rowBorderIdx == 0;
+        const bottom = rowBorderIdx == rowCount;
+        const left = colBorderIdx == 0;
+        const right = colBorderIdx == columnCount;
+
+        if (top and left) return borderChars[@intFromEnum(BorderCharIndex.topLeft)];
+        if (top and right) return borderChars[@intFromEnum(BorderCharIndex.topRight)];
+        if (bottom and left) return borderChars[@intFromEnum(BorderCharIndex.bottomLeft)];
+        if (bottom and right) return borderChars[@intFromEnum(BorderCharIndex.bottomRight)];
+        if (top) return borderChars[@intFromEnum(BorderCharIndex.topT)];
+        if (bottom) return borderChars[@intFromEnum(BorderCharIndex.bottomT)];
+        if (left) return borderChars[@intFromEnum(BorderCharIndex.leftT)];
+        if (right) return borderChars[@intFromEnum(BorderCharIndex.rightT)];
+        return borderChars[@intFromEnum(BorderCharIndex.cross)];
+    }
+
     /// Draw a box with borders and optional fill
     pub fn drawBox(
         self: *OptimizedBuffer,

@@ -26,6 +26,8 @@ interface SimpleTableLayout {
   rowHeights: number[]
   columnOffsets: number[]
   rowOffsets: number[]
+  columnOffsetsU32: Uint32Array
+  rowOffsetsU32: Uint32Array
   tableWidth: number
   tableHeight: number
 }
@@ -500,6 +502,8 @@ export class SimpleTableRenderable extends Renderable {
       rowHeights,
       columnOffsets,
       rowOffsets,
+      columnOffsetsU32: new Uint32Array(columnOffsets),
+      rowOffsetsU32: new Uint32Array(rowOffsets),
       tableWidth: (columnOffsets[columnOffsets.length - 1] ?? 0) + 1,
       tableHeight: (rowOffsets[rowOffsets.length - 1] ?? 0) + 1,
     }
@@ -651,56 +655,15 @@ export class SimpleTableRenderable extends Renderable {
   }
 
   private drawBorders(buffer: OptimizedBuffer): void {
-    const borderChars = BorderCharArrays[this._borderStyle]
-
-    for (let rowBorderIdx = 0; rowBorderIdx <= this._rowCount; rowBorderIdx++) {
-      const y = this._layout.rowOffsets[rowBorderIdx] ?? 0
-
-      for (let colBorderIdx = 0; colBorderIdx <= this._columnCount; colBorderIdx++) {
-        const x = this._layout.columnOffsets[colBorderIdx] ?? 0
-        const intersection = this.getIntersectionChar(borderChars, rowBorderIdx, colBorderIdx)
-        buffer.drawChar(intersection, x, y, this._borderColor, this._borderBackgroundColor)
-      }
-
-      for (let colIdx = 0; colIdx < this._columnCount; colIdx++) {
-        const startX = this._layout.columnOffsets[colIdx] ?? 0
-        const endX = this._layout.columnOffsets[colIdx + 1] ?? startX
-
-        for (let x = startX + 1; x < endX; x++) {
-          buffer.drawChar(borderChars[4] ?? 0, x, y, this._borderColor, this._borderBackgroundColor)
-        }
-      }
-    }
-
-    for (let colBorderIdx = 0; colBorderIdx <= this._columnCount; colBorderIdx++) {
-      const x = this._layout.columnOffsets[colBorderIdx] ?? 0
-
-      for (let rowIdx = 0; rowIdx < this._rowCount; rowIdx++) {
-        const startY = this._layout.rowOffsets[rowIdx] ?? 0
-        const endY = this._layout.rowOffsets[rowIdx + 1] ?? startY
-
-        for (let y = startY + 1; y < endY; y++) {
-          buffer.drawChar(borderChars[5] ?? 0, x, y, this._borderColor, this._borderBackgroundColor)
-        }
-      }
-    }
-  }
-
-  private getIntersectionChar(borderChars: Uint32Array, rowBorderIdx: number, colBorderIdx: number): number {
-    const top = rowBorderIdx === 0
-    const bottom = rowBorderIdx === this._rowCount
-    const left = colBorderIdx === 0
-    const right = colBorderIdx === this._columnCount
-
-    if (top && left) return borderChars[0] ?? 0
-    if (top && right) return borderChars[1] ?? 0
-    if (bottom && left) return borderChars[2] ?? 0
-    if (bottom && right) return borderChars[3] ?? 0
-    if (top) return borderChars[6] ?? 0
-    if (bottom) return borderChars[7] ?? 0
-    if (left) return borderChars[8] ?? 0
-    if (right) return borderChars[9] ?? 0
-    return borderChars[10] ?? 0
+    buffer.drawTableBorders(
+      BorderCharArrays[this._borderStyle],
+      this._borderColor,
+      this._borderBackgroundColor,
+      this._layout.columnOffsetsU32,
+      this._columnCount,
+      this._layout.rowOffsetsU32,
+      this._rowCount,
+    )
   }
 
   private drawCells(buffer: OptimizedBuffer): void {
@@ -708,15 +671,16 @@ export class SimpleTableRenderable extends Renderable {
   }
 
   private drawCellRange(buffer: OptimizedBuffer, firstRow: number, lastRow: number): void {
+    const colOffsets = this._layout.columnOffsets
+    const rowOffsets = this._layout.rowOffsets
+
     for (let rowIdx = firstRow; rowIdx <= lastRow; rowIdx++) {
-      const cellY = (this._layout.rowOffsets[rowIdx] ?? 0) + 1
+      const cellY = (rowOffsets[rowIdx] ?? 0) + 1
 
       for (let colIdx = 0; colIdx < this._columnCount; colIdx++) {
         const cell = this._cells[rowIdx]?.[colIdx]
         if (!cell) continue
-
-        const cellX = (this._layout.columnOffsets[colIdx] ?? 0) + 1
-        buffer.drawTextBuffer(cell.textBufferView, cellX, cellY)
+        buffer.drawTextBuffer(cell.textBufferView, (colOffsets[colIdx] ?? 0) + 1, cellY)
       }
     }
   }
@@ -864,6 +828,8 @@ export class SimpleTableRenderable extends Renderable {
       rowHeights: [],
       columnOffsets: [0],
       rowOffsets: [0],
+      columnOffsetsU32: new Uint32Array([0]),
+      rowOffsetsU32: new Uint32Array([0]),
       tableWidth: 0,
       tableHeight: 0,
     }
