@@ -600,6 +600,96 @@ const x = 1;
   `)
 })
 
+test("code block uses markup.raw.block fallback style", async () => {
+  const markdown = `\`\`\`
+const x = 1;
+\`\`\``
+
+  const codeTheme = SyntaxStyle.fromStyles({
+    default: {
+      fg: RGBA.fromValues(1, 0, 0, 1),
+      bg: RGBA.fromValues(0.2, 0.2, 0.2, 1),
+    },
+    "markup.raw.block": {
+      fg: RGBA.fromValues(0, 1, 0, 1),
+      bg: RGBA.fromValues(0, 0, 1, 1),
+    },
+  })
+
+  const md = new MarkdownRenderable(renderer, {
+    id: "markdown",
+    content: markdown,
+    syntaxStyle: codeTheme,
+  })
+
+  renderer.root.add(md)
+  await renderOnce()
+
+  const frame = captureSpans()
+  const codeSpan = frame.lines.flatMap((line) => line.spans).find((span) => span.text.includes("const x = 1;"))
+
+  expect(codeSpan).toBeDefined()
+  expect(codeSpan!.fg.r).toBe(0)
+  expect(codeSpan!.fg.g).toBe(1)
+  expect(codeSpan!.fg.b).toBe(0)
+  expect(codeSpan!.bg.r).toBe(0)
+  expect(codeSpan!.bg.g).toBe(0)
+  expect(codeSpan!.bg.b).toBe(1)
+})
+
+test("code block fallback style updates when syntaxStyle changes", async () => {
+  const markdown = `\`\`\`
+const x = 1;
+\`\`\``
+
+  const theme1 = SyntaxStyle.fromStyles({
+    default: { fg: RGBA.fromValues(1, 1, 1, 1) },
+    "markup.raw.block": {
+      fg: RGBA.fromValues(1, 0, 0, 1),
+      bg: RGBA.fromValues(0.1, 0.1, 0.1, 1),
+    },
+  })
+
+  const theme2 = SyntaxStyle.fromStyles({
+    default: { fg: RGBA.fromValues(1, 1, 1, 1) },
+    "markup.raw.block": {
+      fg: RGBA.fromValues(0, 0, 1, 1),
+      bg: RGBA.fromValues(0.2, 0.2, 0.2, 1),
+    },
+  })
+
+  const md = new MarkdownRenderable(renderer, {
+    id: "markdown",
+    content: markdown,
+    syntaxStyle: theme1,
+  })
+
+  renderer.root.add(md)
+  await renderOnce()
+
+  const findCodeSpan = (frame: CapturedFrame) =>
+    frame.lines.flatMap((line) => line.spans).find((span) => span.text.includes("const x = 1;"))
+
+  const frame1 = captureSpans()
+  const codeSpan1 = findCodeSpan(frame1)
+  expect(codeSpan1).toBeDefined()
+  expect(codeSpan1!.fg.r).toBe(1)
+  expect(codeSpan1!.fg.g).toBe(0)
+  expect(codeSpan1!.fg.b).toBe(0)
+  expect(codeSpan1!.bg.r).toBe(0.1)
+
+  md.syntaxStyle = theme2
+  await renderOnce()
+
+  const frame2 = captureSpans()
+  const codeSpan2 = findCodeSpan(frame2)
+  expect(codeSpan2).toBeDefined()
+  expect(codeSpan2!.fg.r).toBe(0)
+  expect(codeSpan2!.fg.g).toBe(0)
+  expect(codeSpan2!.fg.b).toBe(1)
+  expect(codeSpan2!.bg.r).toBe(0.2)
+})
+
 // Heading tests
 
 test("headings h1 through h3", async () => {

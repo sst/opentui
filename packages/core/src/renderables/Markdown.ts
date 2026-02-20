@@ -406,13 +406,22 @@ export class MarkdownRenderable extends Renderable {
     })
   }
 
+  private getCodeFallbackStyle(): StyleDefinition | undefined {
+    return this.getStyle("markup.raw.block") || this.getStyle("markup.raw") || this.getStyle("default")
+  }
+
   private createCodeRenderable(token: Tokens.Code, id: string, marginBottom: number = 0): Renderable {
+    const codeFallbackStyle = this.getCodeFallbackStyle()
+
     return new CodeRenderable(this.ctx, {
       id,
       content: token.text,
       filetype: token.lang || undefined,
       syntaxStyle: this._syntaxStyle,
       conceal: this._conceal,
+      drawUnstyledText: true,
+      ...(codeFallbackStyle?.fg !== undefined && { fg: codeFallbackStyle.fg }),
+      ...(codeFallbackStyle?.bg !== undefined && { bg: codeFallbackStyle.bg }),
       treeSitterClient: this._treeSitterClient,
       width: "100%",
       marginBottom,
@@ -822,6 +831,9 @@ export class MarkdownRenderable extends Renderable {
         const codeRenderable = state.renderable as CodeRenderable
         codeRenderable.syntaxStyle = this._syntaxStyle
         codeRenderable.conceal = this._conceal
+        const codeFallbackStyle = this.getCodeFallbackStyle()
+        codeRenderable.fg = codeFallbackStyle?.fg
+        codeRenderable.bg = codeFallbackStyle?.bg
       } else if (state.token.type === "table") {
         // Tables - update in place for better performance
         const marginBottom = hasNextToken ? 1 : 0
