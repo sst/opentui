@@ -689,6 +689,8 @@ pub const EditBuffer = struct {
                         // If we've passed the cursor chunk, any break is valid
                         // If we're in the cursor chunk, break must be after cursor position
                         if (passed_cursor or break_col > local_cursor_col) {
+                            // break_col points at the break grapheme start.
+                            // Adding width moves the cursor to the boundary after it.
                             const target_col = cols_before + break_col + break_info.width;
                             if (target_col <= line_width) {
                                 const offset = iter_mod.coordsToOffset(self.tb.rope(), cursor.row, target_col) orelse cursor.offset;
@@ -744,6 +746,8 @@ pub const EditBuffer = struct {
 
                 for (wrap_offsets) |wrap_break| {
                     const break_info = iter_mod.charOffsetToColumn(wrap_break.char_offset, graphemes, &grapheme_idx, &col_delta);
+                    // break_info follows the same convention as getNextWordBoundary:
+                    // use break start + grapheme width to land after the break grapheme.
                     const boundary_col = cols_before + break_info.col + break_info.width;
                     if (boundary_col < cursor.col) {
                         last_boundary = boundary_col;

@@ -1173,6 +1173,30 @@ test "wrap breaks: CJK characters keep break offsets" {
     try testing.expectEqual(@as(u16, 8), result.breaks.items[1].char_offset); // 6 graphemes(Hello space) + 2 graphemes(世界) = 8
 }
 
+test "wrap breaks: CJK to ASCII script transition" {
+    const input = "日本語abc";
+
+    var result = utf8.WrapBreakResult.init(testing.allocator);
+    defer result.deinit();
+    try utf8.findWrapBreaks(input, &result, .unicode);
+
+    try testing.expectEqual(@as(usize, 1), result.breaks.items.len);
+    try testing.expectEqual(@as(u16, 6), result.breaks.items[0].byte_offset);
+    try testing.expectEqual(@as(u16, 2), result.breaks.items[0].char_offset);
+}
+
+test "wrap breaks: ASCII to CJK script transition" {
+    const input = "abc日本語";
+
+    var result = utf8.WrapBreakResult.init(testing.allocator);
+    defer result.deinit();
+    try utf8.findWrapBreaks(input, &result, .unicode);
+
+    try testing.expectEqual(@as(usize, 1), result.breaks.items.len);
+    try testing.expectEqual(@as(u16, 2), result.breaks.items[0].byte_offset);
+    try testing.expectEqual(@as(u16, 2), result.breaks.items[0].char_offset);
+}
+
 test "wrap breaks: emoji and CJK mixed offsets" {
     const input = "🌟 Unicode test: こんにちは世界 Hello World";
 

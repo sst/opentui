@@ -100,7 +100,13 @@ pub const TabStopResult = struct {
 };
 
 pub const WrapBreak = struct {
+    // byte_offset points at the grapheme that creates this break opportunity.
+    // For whitespace and punctuation, this is the delimiter grapheme.
+    // For CJK<->ASCII transitions, this is the last grapheme in the previous run.
     byte_offset: u32,
+
+    // char_offset is grapheme-count based, not a display column.
+    // Callers convert it to columns with charOffsetToColumn().
     char_offset: u32,
 };
 
@@ -181,7 +187,64 @@ inline fn isUnicodeWrapBreak(cp: u21) bool {
     };
 }
 
+// WordClass keeps word-boundary behavior predictable in mixed-script text.
+// We split between ASCII word runs and CJK word runs, and we keep each
+// CJK run grouped as one unit.
+const WordClass = enum {
+    ascii_word,
+    cjk_word,
+    other,
+};
+
+inline fn isAsciiWordByte(b: u8) bool {
+    return (b >= 'a' and b <= 'z') or
+        (b >= 'A' and b <= 'Z') or
+        (b >= '0' and b <= '9') or
+        b == '_';
+}
+
+inline fn isCjkWordCodepoint(cp: u21) bool {
+    return
+    // Han ideographs
+    (cp >= 0x3400 and cp <= 0x4DBF) or
+        (cp >= 0x4E00 and cp <= 0x9FFF) or
+        (cp >= 0xF900 and cp <= 0xFAFF) or
+        (cp >= 0x20000 and cp <= 0x2A6DF) or
+        (cp >= 0x2A700 and cp <= 0x2B73F) or
+        (cp >= 0x2B740 and cp <= 0x2B81F) or
+        (cp >= 0x2B820 and cp <= 0x2CEAF) or
+        (cp >= 0x2CEB0 and cp <= 0x2EBEF) or
+        // Hiragana + Katakana
+        (cp >= 0x3040 and cp <= 0x309F) or
+        (cp >= 0x30A0 and cp <= 0x30FF) or
+        (cp >= 0x31F0 and cp <= 0x31FF) or
+        (cp >= 0xFF66 and cp <= 0xFF9D) or
+        // Hangul
+        (cp >= 0x1100 and cp <= 0x11FF) or
+        (cp >= 0x3130 and cp <= 0x318F) or
+        (cp >= 0xA960 and cp <= 0xA97F) or
+        (cp >= 0xAC00 and cp <= 0xD7AF) or
+        (cp >= 0xD7B0 and cp <= 0xD7FF);
+}
+
+inline fn classifyWordClass(cp: u21) WordClass {
+    if (cp <= 0x7F) {
+        return if (isAsciiWordByte(@intCast(cp))) .ascii_word else .other;
+    }
+    if (isCjkWordCodepoint(cp)) return .cjk_word;
+    return .other;
+}
+
+inline fn isCjkAsciiTransition(prev_class: WordClass, curr_class: WordClass) bool {
+    return (prev_class == .cjk_word and curr_class == .ascii_word) or
+        (prev_class == .ascii_word and curr_class == .cjk_word);
+}
+
+// Nothing needed here - using uucode.grapheme.isBreak directly
+
 pub fn findWrapBreaks(text: []const u8, result: *WrapBreakResult, width_method: WidthMethod) !void {
+    // This function clears previous results and writes fresh break points.
+    // Callers should treat `result.breaks` as replaced after the call.
     _ = width_method; // Currently unused, but kept for API consistency
     result.reset();
     const vector_len = 16;
@@ -190,6 +253,13 @@ pub fn findWrapBreaks(text: []const u8, result: *WrapBreakResult, width_method: 
     var char_offset: u32 = 0;
     var prev_cp: ?u21 = null; // Track previous codepoint for grapheme detection
     var break_state: uucode.grapheme.BreakState = .default;
+    // We keep track of the current grapheme so we can add a break at
+    // CJK<->ASCII transitions. The break is emitted at the previous grapheme,
+    // so callers that add grapheme width land exactly at the run boundary.
+    var have_current_grapheme = false;
+    var current_grapheme_byte_offset: u32 = 0;
+    var current_grapheme_char_offset: u32 = 0;
+    var current_grapheme_class: WordClass = .other;
 
     while (pos + vector_len <= text.len) {
         const chunk: @Vector(vector_len, u8) = text[pos..][0..vector_len].*;
@@ -198,6 +268,14 @@ pub fn findWrapBreaks(text: []const u8, result: *WrapBreakResult, width_method: 
 
         // Fast path: all ASCII
         if (!@reduce(.Or, is_non_ascii)) {
+            const first_class = classifyWordClass(text[pos]);
+            if (have_current_grapheme and isCjkAsciiTransition(current_grapheme_class, first_class)) {
+                try result.breaks.append(result.allocator, .{
+                    .byte_offset = current_grapheme_byte_offset,
+                    .char_offset = current_grapheme_char_offset,
+                });
+            }
+
             // Use SIMD to find break characters
             var match_mask: @Vector(vector_len, bool) = @splat(false);
 
@@ -245,9 +323,14 @@ pub fn findWrapBreaks(text: []const u8, result: *WrapBreakResult, width_method: 
             }
 
             pos += vector_len;
+            const block_start_char_offset = char_offset;
             char_offset += vector_len;
             prev_cp = text[pos - 1]; // Last ASCII char
             break_state = .default;
+            have_current_grapheme = true;
+            current_grapheme_byte_offset = @intCast(pos - 1);
+            current_grapheme_char_offset = block_start_char_offset + (vector_len - 1);
+            current_grapheme_class = classifyWordClass(text[pos - 1]);
             continue;
         }
 
@@ -264,6 +347,20 @@ pub fn findWrapBreaks(text: []const u8, result: *WrapBreakResult, width_method: 
                     if (p == 0xFFFD or p > 0x10FFFF) break :blk true;
                     break :blk uucode.grapheme.isBreak(p, curr_cp, &break_state);
                 } else true;
+
+                if (is_break) {
+                    const curr_class = classifyWordClass(curr_cp);
+                    if (have_current_grapheme and isCjkAsciiTransition(current_grapheme_class, curr_class)) {
+                        try result.breaks.append(result.allocator, .{
+                            .byte_offset = current_grapheme_byte_offset,
+                            .char_offset = current_grapheme_char_offset,
+                        });
+                    }
+                    have_current_grapheme = true;
+                    current_grapheme_byte_offset = @intCast(pos + i);
+                    current_grapheme_char_offset = char_offset;
+                    current_grapheme_class = curr_class;
+                }
 
                 if (isAsciiWrapBreak(b0)) {
                     try result.breaks.append(result.allocator, .{
@@ -287,6 +384,20 @@ pub fn findWrapBreaks(text: []const u8, result: *WrapBreakResult, width_method: 
                     if (p == 0xFFFD or p > 0x10FFFF) break :blk true;
                     break :blk uucode.grapheme.isBreak(p, dec.cp, &break_state);
                 } else true;
+
+                if (is_break) {
+                    const curr_class = classifyWordClass(dec.cp);
+                    if (have_current_grapheme and isCjkAsciiTransition(current_grapheme_class, curr_class)) {
+                        try result.breaks.append(result.allocator, .{
+                            .byte_offset = current_grapheme_byte_offset,
+                            .char_offset = current_grapheme_char_offset,
+                        });
+                    }
+                    have_current_grapheme = true;
+                    current_grapheme_byte_offset = @intCast(pos + i);
+                    current_grapheme_char_offset = char_offset;
+                    current_grapheme_class = curr_class;
+                }
 
                 if (isUnicodeWrapBreak(dec.cp)) {
                     try result.breaks.append(result.allocator, .{
@@ -315,6 +426,20 @@ pub fn findWrapBreaks(text: []const u8, result: *WrapBreakResult, width_method: 
                 break :blk uucode.grapheme.isBreak(p, curr_cp, &break_state);
             } else true;
 
+            if (is_break) {
+                const curr_class = classifyWordClass(curr_cp);
+                if (have_current_grapheme and isCjkAsciiTransition(current_grapheme_class, curr_class)) {
+                    try result.breaks.append(result.allocator, .{
+                        .byte_offset = current_grapheme_byte_offset,
+                        .char_offset = current_grapheme_char_offset,
+                    });
+                }
+                have_current_grapheme = true;
+                current_grapheme_byte_offset = @intCast(i);
+                current_grapheme_char_offset = char_offset;
+                current_grapheme_class = curr_class;
+            }
+
             if (isAsciiWrapBreak(b0)) {
                 try result.breaks.append(result.allocator, .{
                     .byte_offset = @intCast(i),
@@ -334,6 +459,20 @@ pub fn findWrapBreaks(text: []const u8, result: *WrapBreakResult, width_method: 
                 if (p == 0xFFFD or p > 0x10FFFF) break :blk true;
                 break :blk uucode.grapheme.isBreak(p, dec.cp, &break_state);
             } else true;
+
+            if (is_break) {
+                const curr_class = classifyWordClass(dec.cp);
+                if (have_current_grapheme and isCjkAsciiTransition(current_grapheme_class, curr_class)) {
+                    try result.breaks.append(result.allocator, .{
+                        .byte_offset = current_grapheme_byte_offset,
+                        .char_offset = current_grapheme_char_offset,
+                    });
+                }
+                have_current_grapheme = true;
+                current_grapheme_byte_offset = @intCast(i);
+                current_grapheme_char_offset = char_offset;
+                current_grapheme_class = curr_class;
+            }
 
             if (isUnicodeWrapBreak(dec.cp)) {
                 try result.breaks.append(result.allocator, .{

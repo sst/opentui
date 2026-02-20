@@ -1764,6 +1764,40 @@ describe("Textarea - Keybinding Tests", () => {
       expect(editor.logicalCursor.col).toBe(6)
     })
 
+    it("should stop at CJK-ASCII boundary with ctrl+w", async () => {
+      const { textarea: editor } = await createTextareaRenderable(currentRenderer, renderOnce, {
+        initialValue: "日本語abc",
+        width: 40,
+        height: 10,
+      })
+
+      editor.focus()
+      editor.gotoLineEnd()
+
+      currentMockInput.pressKey("w", { ctrl: true })
+      expect(editor.plainText).toBe("日本語")
+
+      currentMockInput.pressKey("w", { ctrl: true })
+      expect(editor.plainText).toBe("")
+    })
+
+    it("should keep Hangul run grouped with ctrl+w", async () => {
+      const { textarea: editor } = await createTextareaRenderable(currentRenderer, renderOnce, {
+        initialValue: "테스트test",
+        width: 40,
+        height: 10,
+      })
+
+      editor.focus()
+      editor.gotoLineEnd()
+
+      currentMockInput.pressKey("w", { ctrl: true })
+      expect(editor.plainText).toBe("테스트")
+
+      currentMockInput.pressKey("w", { ctrl: true })
+      expect(editor.plainText).toBe("")
+    })
+
     it("should delete word forward with meta+d", async () => {
       const { textarea: editor } = await createTextareaRenderable(currentRenderer, renderOnce, {
         initialValue: "hello world test",
