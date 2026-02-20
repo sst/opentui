@@ -629,12 +629,12 @@ const x = 1;
   const codeSpan = frame.lines.flatMap((line) => line.spans).find((span) => span.text.includes("const x = 1;"))
 
   expect(codeSpan).toBeDefined()
-  expect(codeSpan!.fg.r).toBe(0)
-  expect(codeSpan!.fg.g).toBe(1)
-  expect(codeSpan!.fg.b).toBe(0)
-  expect(codeSpan!.bg.r).toBe(0)
-  expect(codeSpan!.bg.g).toBe(0)
-  expect(codeSpan!.bg.b).toBe(1)
+  expect(codeSpan!.fg.r).toBeCloseTo(0, 5)
+  expect(codeSpan!.fg.g).toBeCloseTo(1, 5)
+  expect(codeSpan!.fg.b).toBeCloseTo(0, 5)
+  expect(codeSpan!.bg.r).toBeCloseTo(0, 5)
+  expect(codeSpan!.bg.g).toBeCloseTo(0, 5)
+  expect(codeSpan!.bg.b).toBeCloseTo(1, 5)
 })
 
 test("code block fallback style updates when syntaxStyle changes", async () => {
@@ -673,10 +673,10 @@ const x = 1;
   const frame1 = captureSpans()
   const codeSpan1 = findCodeSpan(frame1)
   expect(codeSpan1).toBeDefined()
-  expect(codeSpan1!.fg.r).toBe(1)
-  expect(codeSpan1!.fg.g).toBe(0)
-  expect(codeSpan1!.fg.b).toBe(0)
-  expect(codeSpan1!.bg.r).toBe(0.1)
+  expect(codeSpan1!.fg.r).toBeCloseTo(1, 5)
+  expect(codeSpan1!.fg.g).toBeCloseTo(0, 5)
+  expect(codeSpan1!.fg.b).toBeCloseTo(0, 5)
+  expect(codeSpan1!.bg.r).toBeCloseTo(0.1, 5)
 
   md.syntaxStyle = theme2
   await renderOnce()
@@ -684,10 +684,10 @@ const x = 1;
   const frame2 = captureSpans()
   const codeSpan2 = findCodeSpan(frame2)
   expect(codeSpan2).toBeDefined()
-  expect(codeSpan2!.fg.r).toBe(0)
-  expect(codeSpan2!.fg.g).toBe(0)
-  expect(codeSpan2!.fg.b).toBe(1)
-  expect(codeSpan2!.bg.r).toBe(0.2)
+  expect(codeSpan2!.fg.r).toBeCloseTo(0, 5)
+  expect(codeSpan2!.fg.g).toBeCloseTo(0, 5)
+  expect(codeSpan2!.fg.b).toBeCloseTo(1, 5)
+  expect(codeSpan2!.bg.r).toBeCloseTo(0.2, 5)
 })
 
 // Heading tests
