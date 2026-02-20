@@ -884,7 +884,7 @@ test "wrap breaks: multibyte adjacent to dash" {
     }, testing.allocator);
 }
 
-test "wrap breaks: multibyte at SIMD boundary without breaks" {
+test "wrap breaks: multibyte at SIMD boundary with script transitions" {
     var buf: [32]u8 = undefined;
     @memset(&buf, 0);
 
@@ -892,7 +892,10 @@ test "wrap breaks: multibyte at SIMD boundary without breaks" {
     const text = "Test世界Test";
     @memcpy(buf[0..text.len], text);
 
-    const expected = [_]usize{}; // No breaks
+    //// Breaks at ASCII<->CJK transitions:
+    // - after 't' in "Test" (byte 3)
+    // - after '界' before "Test" (byte 7)
+    const expected = [_]usize{ 3, 7 };
 
     try testWrapBreaks(.{
         .name = "unicode@boundary",
