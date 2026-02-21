@@ -23,17 +23,6 @@ This is an interactive text editor powered by EditBuffer and EditorView.
 Emojis:
 👩🏽‍💻  👨‍👩‍👧‍👦  🏳️‍🌈  🇺🇸  🇩🇪  🇯🇵  🇮🇳
 
-CJK BOUNDARY CHECKS (try Ctrl+W at end of each line):
-  日本語abc
-  日本語。abc
-  테스트test
-  abc日本語
-  丽abc
-  한글테스트
-
-CJK WRAP/PUNCTUATION CHECK:
-  你好、世界！OpenTUI？これはテストです。
-
 NAVIGATION:
   • Arrow keys to move cursor
   • Ctrl+A/Ctrl+E for line start/end
