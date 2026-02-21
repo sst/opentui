@@ -1,0 +1,85 @@
+---
+title: Line numbers
+description: Line number gutter for code and text renderables
+order: 12
+---
+
+# Line numbers
+
+Add a line number gutter to renderables that provide line info, such as `CodeRenderable` and text editor components.
+
+## Basic usage
+
+### Renderable API
+
+```typescript
+import { CodeRenderable, LineNumberRenderable, ScrollBoxRenderable, SyntaxStyle, RGBA } from "@opentui/core"
+
+const syntaxStyle = SyntaxStyle.fromStyles({
+  default: { fg: RGBA.fromHex("#E6EDF3") },
+})
+
+const code = new CodeRenderable(renderer, {
+  id: "code",
+  content: "const x = 1\nconst y = 2\n",
+  filetype: "typescript",
+  syntaxStyle,
+  width: "100%",
+})
+
+const lineNumbers = new LineNumberRenderable(renderer, {
+  id: "code-lines",
+  target: code,
+  minWidth: 3,
+  paddingRight: 1,
+  fg: "#6b7280",
+  bg: "#161b22",
+})
+
+const scrollbox = new ScrollBoxRenderable(renderer, {
+  id: "scrollbox",
+  width: 70,
+  height: 18,
+})
+
+scrollbox.add(lineNumbers)
+renderer.root.add(scrollbox)
+```
+
+## Line signs and colors
+
+```typescript
+lineNumbers.setLineColor(3, "#2b6cb0")
+lineNumbers.setLineSign(3, { before: ">", beforeColor: "#2b6cb0" })
+```
+
+## Construct API
+
+> Not available yet. Use `LineNumberRenderable` for now.
+
+## Properties
+
+| Property           | Type                                             | Default     | Description                    |
+| ------------------ | ------------------------------------------------ | ----------- | ------------------------------ |
+| `target`           | `Renderable & LineInfoProvider`                  | -           | Target renderable to number    |
+| `fg`               | `string` or `RGBA`                               | `#888888`   | Gutter text color              |
+| `bg`               | `string` or `RGBA`                               | transparent | Gutter background color        |
+| `minWidth`         | `number`                                         | `3`         | Minimum gutter width           |
+| `paddingRight`     | `number`                                         | `1`         | Right padding for gutter       |
+| `lineColors`       | `Map<number, string or RGBA or LineColorConfig>` | -           | Per-line background colors     |
+| `lineSigns`        | `Map<number, LineSign>`                          | -           | Per-line signs (before/after)  |
+| `lineNumberOffset` | `number`                                         | `0`         | Offset for line numbering      |
+| `hideLineNumbers`  | `Set<number>`                                    | -           | Lines to hide numbers for      |
+| `lineNumbers`      | `Map<number, number>`                            | -           | Override line numbers per line |
+| `showLineNumbers`  | `boolean`                                        | `true`      | Toggle gutter visibility       |
+
+## Methods
+
+| Method                 | Description                           |
+| ---------------------- | ------------------------------------- |
+| `setLineColor()`       | Set a background color for a line     |
+| `clearLineColor()`     | Clear a line background color         |
+| `setLineSign()`        | Set a sign before/after a line number |
+| `clearLineSign()`      | Clear a line sign                     |
+| `setLineNumbers()`     | Override multiple line numbers        |
+| `setHideLineNumbers()` | Hide line numbers for specific lines  |

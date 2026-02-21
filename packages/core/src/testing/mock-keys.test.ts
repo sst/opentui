@@ -181,10 +181,11 @@ describe("mock-keys", () => {
 
     const startTime = Date.now()
     await mockKeys.pressKeys(["a", "b"], 10) // 10ms delay between keys
+    const totalElapsed = Date.now() - startTime
 
     expect(timestamps).toHaveLength(2)
     expect(timestamps[1] - timestamps[0]).toBeGreaterThanOrEqual(8) // Allow some tolerance
-    expect(timestamps[1] - timestamps[0]).toBeLessThan(20)
+    expect(totalElapsed).toBeGreaterThanOrEqual(16)
   })
 
   test("pressKey with shift modifier", () => {

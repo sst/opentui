@@ -14,6 +14,33 @@ const TextBufferView = text_buffer_view.TextBufferView;
 const OptimizedBuffer = buffer.OptimizedBuffer;
 const RGBA = text_buffer.RGBA;
 
+fn createWithOptionsOnce(allocator: std.mem.Allocator, width: u32, height: u32) !void {
+    const pool = gp.initGlobalPool(allocator);
+    defer gp.deinitGlobalPool();
+    defer link.deinitGlobalLinkPool();
+
+    var cli_renderer = try CliRenderer.createWithOptions(allocator, width, height, pool, true, false);
+    cli_renderer.destroy();
+}
+
+test "renderer - createWithOptions late allocation failure cleans up" {
+    const allocation_count = blk: {
+        var counting_allocator = std.testing.FailingAllocator.init(std.testing.allocator, .{});
+        try createWithOptionsOnce(counting_allocator.allocator(), 80, 24);
+        break :blk counting_allocator.alloc_index;
+    };
+
+    try std.testing.expect(allocation_count > 0);
+
+    var failing_allocator = std.testing.FailingAllocator.init(std.testing.allocator, .{
+        .fail_index = allocation_count - 1,
+    });
+
+    try std.testing.expectError(error.OutOfMemory, createWithOptionsOnce(failing_allocator.allocator(), 80, 24));
+    try std.testing.expect(failing_allocator.has_induced_failure);
+    try std.testing.expectEqual(failing_allocator.allocated_bytes, failing_allocator.freed_bytes);
+}
+
 test "renderer - create and destroy" {
     const pool = gp.initGlobalPool(std.testing.allocator);
     defer gp.deinitGlobalPool();
@@ -542,6 +569,53 @@ test "renderer - grapheme pool refcounting with frame buffer fast path" {
     const current_buffer = cli_renderer.getCurrentBuffer();
     const rendered_cell = current_buffer.get(0, 0);
     try std.testing.expect(rendered_cell != null);
+}
+
+test "renderer - unchanged grapheme should not churn IDs across frames" {
+    const pool = gp.initGlobalPool(std.testing.allocator);
+    defer gp.deinitGlobalPool();
+
+    var cli_renderer = try CliRenderer.create(
+        std.testing.allocator,
+        4,
+        1,
+        pool,
+        true,
+    );
+    defer cli_renderer.destroy();
+
+    const fg = RGBA{ 1.0, 1.0, 1.0, 1.0 };
+    const bg = RGBA{ 0.0, 0.0, 0.0, 1.0 };
+
+    const first_next_buffer = cli_renderer.getNextBuffer();
+    try first_next_buffer.drawText("👋", 0, 0, fg, bg, 0);
+    cli_renderer.render(false);
+
+    const first_output = cli_renderer.getLastOutputForTest();
+    try std.testing.expect(std.mem.indexOf(u8, first_output, "👋") != null);
+
+    const current_buffer = cli_renderer.getCurrentBuffer();
+    const first_cell = current_buffer.get(0, 0);
+    try std.testing.expect(first_cell != null);
+    try std.testing.expect(gp.isGraphemeChar(first_cell.?.char));
+    const first_gid = gp.graphemeIdFromChar(first_cell.?.char);
+
+    const second_next_buffer = cli_renderer.getNextBuffer();
+    try second_next_buffer.drawText("👋", 0, 0, fg, bg, 0);
+
+    const second_cell = second_next_buffer.get(0, 0);
+    try std.testing.expect(second_cell != null);
+    try std.testing.expect(gp.isGraphemeChar(second_cell.?.char));
+    const second_gid = gp.graphemeIdFromChar(second_cell.?.char);
+
+    // Same grapheme content in consecutive frames should keep a stable ID,
+    // otherwise diff/write treats unchanged cells as modified every frame.
+    try std.testing.expectEqual(first_gid, second_gid);
+
+    cli_renderer.render(false);
+
+    const second_output = cli_renderer.getLastOutputForTest();
+    try std.testing.expect(std.mem.indexOf(u8, second_output, "👋") == null);
 }
 
 test "renderer - hyperlinks enabled with OSC 8 output" {

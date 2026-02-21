@@ -1,12 +1,28 @@
 # Getting Started with OpenTUI
 
-OpenTUI is a TypeScript library for building terminal user interfaces (TUIs). It provides a component-based architecture with flexible layout capabilities, allowing you to create complex console applications.
+OpenTUI is a native terminal UI core written in Zig with TypeScript bindings. The native core exposes a C ABI and can be used from any language. OpenTUI powers OpenCode in production today and will also power terminal.shop. It is an extensible core with a focus on correctness, stability, and high performance. It provides a component-based architecture with flexible layout capabilities, allowing you to create complex terminal applications.
 
 ## Core Concepts
 
 ### Renderer
 
 The `CliRenderer` is the heart of OpenTUI. It manages the terminal output, handles input events, and orchestrates the rendering loop. Think of it as the canvas that draws your interface to the terminal. It can run in a "live" mode, when calling `renderer.start()`, which runs a loop capped at the specified target FPS. It also just works without calling `renderer.start()`, which will only re-render when the renderable tree or layout changes.
+
+By default, left-clicking auto-focuses the closest focusable renderable. Disable this with `createCliRenderer({ autoFocus: false })` if you need manual focus control.
+
+### Theme Mode
+
+OpenTUI can detect the terminal's preferred color scheme (dark or light) when the terminal supports DEC mode 2031 color scheme updates. Read the current mode via `renderer.themeMode` and subscribe to `theme_mode` to react to changes. Possible values are `"dark"`, `"light"`, or `null` when unsupported, and no events fire in the unsupported case.
+
+```typescript
+import { type ThemeMode } from "@opentui/core"
+
+const mode = renderer.themeMode
+
+renderer.on("theme_mode", (nextMode: ThemeMode) => {
+  console.log("Theme mode changed:", nextMode)
+})
+```
 
 ### FrameBuffer (OptimizedBuffer)
 

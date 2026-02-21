@@ -173,6 +173,28 @@ describe("Textarea - Paste Tests", () => {
       expect(editor.plainText).toBe("Test")
     })
 
+    it("should resize viewport when pasting multiline text", async () => {
+      const { textarea: editor } = await createTextareaRenderable(currentRenderer, renderOnce, {
+        initialValue: "",
+        width: 40,
+        maxHeight: 4,
+        wrapMode: "none",
+      })
+
+      editor.focus()
+
+      await renderOnce()
+      expect(editor.height).toBe(1)
+
+      await currentMockInput.pasteBracketedText("Line 1\nLine 2\nLine 3")
+      await renderOnce()
+      await renderOnce()
+
+      const viewport = editor.editorView.getViewport()
+      expect(editor.plainText).toBe("Line 1\nLine 2\nLine 3")
+      expect(viewport.height).toBeGreaterThan(1)
+    })
+
     it("should paste Unicode characters (emoji, CJK)", async () => {
       const { textarea: editor } = await createTextareaRenderable(currentRenderer, renderOnce, {
         initialValue: "Hello",

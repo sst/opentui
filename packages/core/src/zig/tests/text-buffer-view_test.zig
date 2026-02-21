@@ -581,6 +581,72 @@ test "TextBufferView word wrapping - punctuation boundaries" {
     try std.testing.expect(wrapped_count >= 2);
 }
 
+test "TextBufferView word wrapping - tab boundary width" {
+    const pool = gp.initGlobalPool(std.testing.allocator);
+    defer gp.deinitGlobalPool();
+
+    var tb = try TextBuffer.init(std.testing.allocator, pool, .wcwidth);
+    defer tb.deinit();
+
+    var view = try TextBufferView.init(std.testing.allocator, tb);
+    defer view.deinit();
+
+    // "AB" = 2 cols, tab = 2 cols, "CD" = 2 cols
+    try tb.setText("AB\tCD");
+
+    view.setWrapMode(.word);
+    view.setWrapWidth(4);
+    const vlines = view.getVirtualLines();
+
+    try std.testing.expectEqual(@as(usize, 2), vlines.len);
+    try std.testing.expectEqual(@as(u32, 4), vlines[0].width);
+    try std.testing.expectEqual(@as(u32, 2), vlines[1].width);
+}
+
+test "TextBufferView word wrapping - emoji boundary width" {
+    const pool = gp.initGlobalPool(std.testing.allocator);
+    defer gp.deinitGlobalPool();
+
+    var tb = try TextBuffer.init(std.testing.allocator, pool, .wcwidth);
+    defer tb.deinit();
+
+    var view = try TextBufferView.init(std.testing.allocator, tb);
+    defer view.deinit();
+
+    // "AB" = 2 cols, "🌟" = 2 cols, space = 1 col, "CD" = 2 cols
+    try tb.setText("AB🌟 CD");
+
+    view.setWrapMode(.word);
+    view.setWrapWidth(5);
+    const vlines = view.getVirtualLines();
+
+    try std.testing.expectEqual(@as(usize, 2), vlines.len);
+    try std.testing.expectEqual(@as(u32, 5), vlines[0].width);
+    try std.testing.expectEqual(@as(u32, 2), vlines[1].width);
+}
+
+test "TextBufferView word wrapping - CJK boundary width" {
+    const pool = gp.initGlobalPool(std.testing.allocator);
+    defer gp.deinitGlobalPool();
+
+    var tb = try TextBuffer.init(std.testing.allocator, pool, .wcwidth);
+    defer tb.deinit();
+
+    var view = try TextBufferView.init(std.testing.allocator, tb);
+    defer view.deinit();
+
+    // "AB" = 2 cols, "好" = 2 cols, space = 1 col, "CD" = 2 cols
+    try tb.setText("AB好 CD");
+
+    view.setWrapMode(.word);
+    view.setWrapWidth(5);
+    const vlines = view.getVirtualLines();
+
+    try std.testing.expectEqual(@as(usize, 2), vlines.len);
+    try std.testing.expectEqual(@as(u32, 5), vlines[0].width);
+    try std.testing.expectEqual(@as(u32, 2), vlines[1].width);
+}
+
 test "TextBufferView word wrapping - compare char vs word mode" {
     const pool = gp.initGlobalPool(std.testing.allocator);
     defer gp.deinitGlobalPool();
@@ -691,7 +757,7 @@ test "TextBufferView word wrapping - fragmented rope with word boundary" {
     defer view.deinit();
 
     const text = "hello my good friend";
-    const mem_id = try tb.mem_registry.register(text, false);
+    const mem_id = try tb.registerMemBuffer(text, false);
 
     const seg_mod = @import("../text-buffer-segment.zig");
     const Segment = seg_mod.Segment;
@@ -708,7 +774,7 @@ test "TextBufferView word wrapping - fragmented rope with word boundary" {
     try segments.append(std.testing.allocator, Segment{ .text = chunk2 });
     try segments.append(std.testing.allocator, Segment{ .text = chunk3 });
 
-    try tb.rope.setSegments(segments.items);
+    try tb.rope().setSegments(segments.items);
 
     view.virtual_lines_dirty = true;
 
@@ -1960,7 +2026,7 @@ test "TextBufferView measureForDimensions - width 0 uses intrinsic line widths" 
 
     const result = try view.measureForDimensions(0, 24);
     try std.testing.expectEqual(tb.getLineCount(), result.line_count);
-    try std.testing.expectEqual(iter_mod.getMaxLineWidth(&tb.rope), result.max_width);
+    try std.testing.expectEqual(iter_mod.getMaxLineWidth(tb.rope()), result.max_width);
 }
 
 test "TextBufferView measureForDimensions - no wrap matches multi-segment line widths" {
@@ -2256,7 +2322,7 @@ test "TextBufferView truncation - verify ellipsis chunk injection" {
     try std.testing.expectEqual(@as(u32, 3), ellipsis_chunk.width);
 
     // Get the ellipsis text to verify it's "..."
-    const ellipsis_text = ellipsis_chunk.chunk.getBytes(&tb.mem_registry);
+    const ellipsis_text = ellipsis_chunk.chunk.getBytes(tb.memRegistry());
     try std.testing.expectEqualStrings("...", ellipsis_text);
 }
 
@@ -2307,7 +2373,7 @@ test "TextBufferView truncation - verify prefix and suffix content" {
     try std.testing.expectEqual(@as(usize, 3), chunks.len);
 
     // Middle chunk (ellipsis)
-    const ellipsis_bytes = chunks[1].chunk.getBytes(&tb.mem_registry);
+    const ellipsis_bytes = chunks[1].chunk.getBytes(tb.memRegistry());
 
     // Verify ellipsis is correct
     try std.testing.expectEqualStrings("...", ellipsis_bytes);
@@ -3209,7 +3275,7 @@ test "TextBufferView word wrapping - chunk at exact wrap boundary" {
     defer view.deinit();
 
     const text = "hello world ddddddddd";
-    const mem_id = try tb.mem_registry.register(text, false);
+    const mem_id = try tb.registerMemBuffer(text, false);
 
     const seg_mod = @import("../text-buffer-segment.zig");
     const Segment = seg_mod.Segment;
@@ -3225,7 +3291,7 @@ test "TextBufferView word wrapping - chunk at exact wrap boundary" {
     const chunk2 = tb.createChunk(mem_id, 17, 21);
     try segments.append(std.testing.allocator, Segment{ .text = chunk2 });
 
-    try tb.rope.setSegments(segments.items);
+    try tb.rope().setSegments(segments.items);
     view.virtual_lines_dirty = true;
 
     view.setWrapMode(.word);
@@ -3236,4 +3302,62 @@ test "TextBufferView word wrapping - chunk at exact wrap boundary" {
     try std.testing.expectEqual(@as(usize, 2), vlines.len);
     try std.testing.expectEqual(@as(u32, 12), vlines[0].width);
     try std.testing.expectEqual(@as(u32, 9), vlines[1].width);
+}
+
+test "TextBufferView word wrapping - does not split 'uses' across lines" {
+    const pool = gp.initGlobalPool(std.testing.allocator);
+    defer gp.deinitGlobalPool();
+
+    var tb = try TextBuffer.init(std.testing.allocator, pool, .wcwidth);
+    defer tb.deinit();
+
+    var view = try TextBufferView.init(std.testing.allocator, tb);
+    defer view.deinit();
+
+    const text =
+        "So: the per‑repo config is the baseline; the -c flags are a “don’t depend on baseline” guard for commands where output consistency matters. " ++
+        "Revert uses checkout, which is less about output formatting and already respects the repo config, so it didn’t get the extra guard. " ++
+        "If you want stricter consistency, we can add -c core.autocrlf=false there too.";
+
+    try tb.setText(text);
+    view.setWrapMode(.word);
+
+    var split_found = false;
+
+    var width: u32 = 100;
+    while (width >= 80) : (width -= 1) {
+        view.setWrapWidth(width);
+
+        const vlines = view.getVirtualLines();
+        var i: usize = 0;
+        while (i + 1 < vlines.len) : (i += 1) {
+            var line_buf: [1024]u8 = undefined;
+            var next_line_buf: [1024]u8 = undefined;
+
+            const line_len = tb.getTextRange(vlines[i].char_offset, vlines[i].char_offset + vlines[i].width, &line_buf);
+            const next_line_len = tb.getTextRange(
+                vlines[i + 1].char_offset,
+                vlines[i + 1].char_offset + vlines[i + 1].width,
+                &next_line_buf,
+            );
+
+            const line = std.mem.trim(u8, line_buf[0..line_len], " \t");
+            const next_line = std.mem.trim(u8, next_line_buf[0..next_line_len], " \t");
+
+            const split_u = std.mem.endsWith(u8, line, "Revert u") and std.mem.startsWith(u8, next_line, "ses checkout");
+            const split_us = std.mem.endsWith(u8, line, "Revert us") and std.mem.startsWith(u8, next_line, "es checkout");
+            const split_use = std.mem.endsWith(u8, line, "Revert use") and std.mem.startsWith(u8, next_line, "s checkout");
+
+            if (split_u or split_us or split_use) {
+                split_found = true;
+                break;
+            }
+        }
+
+        if (split_found or width == 80) {
+            break;
+        }
+    }
+
+    try std.testing.expect(!split_found);
 }

@@ -28,11 +28,17 @@ export function getBaseAttributes(attr: number): number {
   return attr & ATTRIBUTE_BASE_MASK
 }
 
+export type ThemeMode = "dark" | "light"
+
 export type CursorStyle = "block" | "line" | "underline"
 
+export type MousePointerStyle = "default" | "pointer" | "text" | "crosshair" | "move" | "not-allowed"
+
 export interface CursorStyleOptions {
-  style: CursorStyle
-  blinking: boolean
+  style?: CursorStyle
+  blinking?: boolean
+  color?: RGBA
+  cursor?: MousePointerStyle
 }
 
 export enum DebugOverlayCorner {
@@ -50,6 +56,7 @@ export interface RendererEvents {
   "memory:snapshot": (snapshot: { heapUsed: number; heapTotal: number; arrayBuffers: number }) => void
   selection: (selection: Selection) => void
   "debugOverlay:toggle": (enabled: boolean) => void
+  theme_mode: (mode: ThemeMode) => void
 }
 
 export interface RenderContext extends EventEmitter {
@@ -61,8 +68,9 @@ export interface RenderContext extends EventEmitter {
   height: number
   requestRender: () => void
   setCursorPosition: (x: number, y: number, visible: boolean) => void
-  setCursorStyle: (style: CursorStyle, blinking: boolean) => void
+  setCursorStyle: (options: CursorStyleOptions) => void
   setCursorColor: (color: RGBA) => void
+  setMousePointer: (shape: MousePointerStyle) => void
   widthMethod: WidthMethod
   capabilities: any | null
   requestLive: () => void
@@ -79,7 +87,12 @@ export interface RenderContext extends EventEmitter {
   _internalKeyInput: InternalKeyHandler
   clearSelection: () => void
   startSelection: (renderable: Renderable, x: number, y: number) => void
-  updateSelection: (currentRenderable: Renderable | undefined, x: number, y: number) => void
+  updateSelection: (
+    currentRenderable: Renderable | undefined,
+    x: number,
+    y: number,
+    options?: { finishDragging?: boolean },
+  ) => void
 }
 
 export type Timeout = ReturnType<typeof setTimeout> | undefined
@@ -112,4 +125,23 @@ export interface LineInfoProvider {
   get lineCount(): number
   get virtualLineCount(): number
   get scrollY(): number
+}
+
+export interface CapturedSpan {
+  text: string
+  fg: RGBA
+  bg: RGBA
+  attributes: number
+  width: number
+}
+
+export interface CapturedLine {
+  spans: CapturedSpan[]
+}
+
+export interface CapturedFrame {
+  cols: number
+  rows: number
+  cursor: [number, number]
+  lines: CapturedLine[]
 }

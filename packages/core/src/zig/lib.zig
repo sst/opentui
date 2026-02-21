@@ -16,11 +16,16 @@ const utf8 = @import("utf8.zig");
 const logger = @import("logger.zig");
 const event_bus = @import("event-bus.zig");
 const utils = @import("utils.zig");
+const native_span_feed = @import("native-span-feed.zig");
 
 pub const OptimizedBuffer = buffer.OptimizedBuffer;
 pub const CliRenderer = renderer.CliRenderer;
 pub const Terminal = terminal.Terminal;
 pub const RGBA = buffer.RGBA;
+
+comptime {
+    _ = native_span_feed;
+}
 
 export fn setLogCallback(callback: ?*const fn (level: u8, msgPtr: [*]const u8, msgLen: usize) callconv(.c) void) void {
     logger.setLogCallback(callback);
@@ -35,11 +40,15 @@ const globalAllocator = gpa.allocator();
 var arena = std.heap.ArenaAllocator.init(globalAllocator);
 const globalArena = arena.allocator();
 
+export fn createNativeSpanFeed(options_ptr: ?*const native_span_feed.Options) ?*native_span_feed.Stream {
+    return native_span_feed.createNativeSpanFeedWithAllocator(globalAllocator, options_ptr);
+}
+
 export fn getArenaAllocatedBytes() usize {
     return arena.queryCapacity();
 }
 
-export fn createRenderer(width: u32, height: u32, testing: bool) ?*renderer.CliRenderer {
+export fn createRenderer(width: u32, height: u32, testing: bool, remote: bool) ?*renderer.CliRenderer {
     if (width == 0 or height == 0) {
         logger.warn("Invalid renderer dimensions: {}x{}", .{ width, height });
         return null;
@@ -47,7 +56,7 @@ export fn createRenderer(width: u32, height: u32, testing: bool) ?*renderer.CliR
 
     const pool = gp.initGlobalPool(globalArena);
     _ = link.initGlobalLinkPool(globalArena);
-    return renderer.CliRenderer.create(globalAllocator, width, height, pool, testing) catch |err| {
+    return renderer.CliRenderer.createWithOptions(globalAllocator, width, height, pool, testing, remote) catch |err| {
         logger.err("Failed to create renderer: {}", .{err});
         return null;
     };
@@ -174,6 +183,7 @@ pub const ExternalCapabilities = extern struct {
     sync: bool,
     bracketed_paste: bool,
     hyperlinks: bool,
+    osc52: bool,
     explicit_cursor_positioning: bool,
     term_name_ptr: [*]const u8,
     term_name_len: usize,
@@ -200,6 +210,7 @@ export fn getTerminalCapabilities(rendererPtr: *renderer.CliRenderer, capsPtr: *
         .sync = caps.sync,
         .bracketed_paste = caps.bracketed_paste,
         .hyperlinks = caps.hyperlinks,
+        .osc52 = caps.osc52,
         .explicit_cursor_positioning = caps.explicit_cursor_positioning,
         .term_name_ptr = &term.term_info.name,
         .term_name_len = term.term_info.name_len,
@@ -214,14 +225,33 @@ export fn processCapabilityResponse(rendererPtr: *renderer.CliRenderer, response
     rendererPtr.processCapabilityResponse(response);
 }
 
-export fn setCursorStyle(rendererPtr: *renderer.CliRenderer, stylePtr: [*]const u8, styleLen: usize, blinking: bool) void {
-    const style = stylePtr[0..styleLen];
-    const cursorStyle = std.meta.stringToEnum(terminal.CursorStyle, style) orelse .block;
-    rendererPtr.terminal.setCursorStyle(cursorStyle, blinking);
-}
-
 export fn setCursorColor(rendererPtr: *renderer.CliRenderer, color: [*]const f32) void {
     rendererPtr.terminal.setCursorColor(utils.f32PtrToRGBA(color));
+}
+
+
+pub const CursorStyleOptions = extern struct {
+    style: u8,
+    blinking: u8,
+    color: ?[*]const f32,
+    cursor: u8,
+};
+
+export fn setCursorStyleOptions(rendererPtr: *renderer.CliRenderer, options: *const CursorStyleOptions) void {
+    const current = rendererPtr.terminal.getCursorStyle();
+
+    const style = if (options.style <= 2) @as(terminal.CursorStyle, @enumFromInt(options.style)) else current.style;
+    const blinking = if (options.blinking <= 1) options.blinking == 1 else current.blinking;
+
+    if (options.style <= 2 or options.blinking <= 1) {
+        rendererPtr.terminal.setCursorStyle(style, blinking);
+    }
+    if (options.color) |rgba| {
+        rendererPtr.terminal.setCursorColor(utils.f32PtrToRGBA(rgba));
+    }
+    if (options.cursor <= 5) {
+        rendererPtr.terminal.setMousePointerStyle(@enumFromInt(options.cursor));
+    }
 }
 
 pub const ExternalCursorState = extern struct {
@@ -278,6 +308,17 @@ export fn clearTerminal(rendererPtr: *renderer.CliRenderer) void {
 export fn setTerminalTitle(rendererPtr: *renderer.CliRenderer, titlePtr: [*]const u8, titleLen: usize) void {
     const title = titlePtr[0..titleLen];
     rendererPtr.setTerminalTitle(title);
+}
+
+export fn copyToClipboardOSC52(rendererPtr: *renderer.CliRenderer, target: u8, payloadPtr: [*]const u8, payloadLen: usize) bool {
+    const targetEnum = std.meta.intToEnum(terminal.ClipboardTarget, target) catch .clipboard;
+    const payload = payloadPtr[0..payloadLen];
+    return rendererPtr.copyToClipboardOSC52(targetEnum, payload);
+}
+
+export fn clearClipboardOSC52(rendererPtr: *renderer.CliRenderer, target: u8) bool {
+    const targetEnum = std.meta.intToEnum(terminal.ClipboardTarget, target) catch .clipboard;
+    return rendererPtr.clearClipboardOSC52(targetEnum);
 }
 
 // Buffer functions
@@ -517,6 +558,10 @@ export fn dumpStdoutBuffer(rendererPtr: *renderer.CliRenderer, timestamp: i64) v
     rendererPtr.dumpStdoutBuffer(timestamp);
 }
 
+export fn restoreTerminalModes(rendererPtr: *renderer.CliRenderer) void {
+    rendererPtr.restoreTerminalModes();
+}
+
 export fn enableMouse(rendererPtr: *renderer.CliRenderer, enableMovement: bool) void {
     rendererPtr.enableMouse(enableMovement);
 }
@@ -614,7 +659,7 @@ export fn textBufferResetDefaults(tb: *text_buffer.UnifiedTextBuffer) void {
 }
 
 export fn textBufferGetTabWidth(tb: *text_buffer.UnifiedTextBuffer) u8 {
-    return tb.getTabWidth();
+    return tb.tabWidth();
 }
 
 export fn textBufferSetTabWidth(tb: *text_buffer.UnifiedTextBuffer, width: u8) void {
@@ -623,18 +668,18 @@ export fn textBufferSetTabWidth(tb: *text_buffer.UnifiedTextBuffer, width: u8) v
 
 export fn textBufferRegisterMemBuffer(tb: *text_buffer.UnifiedTextBuffer, dataPtr: [*]const u8, dataLen: usize, owned: bool) u16 {
     const data = dataPtr[0..dataLen];
-    const mem_id = tb.mem_registry.register(data, owned) catch return 0xFFFF;
+    const mem_id = tb.registerMemBuffer(data, owned) catch return 0xFFFF;
     return @intCast(mem_id);
 }
 
 export fn textBufferReplaceMemBuffer(tb: *text_buffer.UnifiedTextBuffer, id: u8, dataPtr: [*]const u8, dataLen: usize, owned: bool) bool {
     const data = dataPtr[0..dataLen];
-    tb.mem_registry.replace(id, data, owned) catch return false;
+    tb.replaceMemBuffer(id, data, owned) catch return false;
     return true;
 }
 
 export fn textBufferClearMemRegistry(tb: *text_buffer.UnifiedTextBuffer) void {
-    tb.mem_registry.clear();
+    tb.clearMemRegistry();
 }
 
 export fn textBufferSetTextFromMem(tb: *text_buffer.UnifiedTextBuffer, id: u8) void {
@@ -925,7 +970,7 @@ export fn editBufferGetEOL(edit_buffer: *edit_buffer_mod.EditBuffer, outPtr: *Ex
 
 export fn editBufferOffsetToPosition(edit_buffer: *edit_buffer_mod.EditBuffer, offset: u32, outPtr: *ExternalLogicalCursor) bool {
     const iter_mod = @import("text-buffer-iterators.zig");
-    const coords = iter_mod.offsetToCoords(&edit_buffer.tb.rope, offset) orelse return false;
+    const coords = iter_mod.offsetToCoords(edit_buffer.tb.rope(), offset) orelse return false;
     outPtr.* = .{
         .row = coords.row,
         .col = coords.col,
@@ -936,12 +981,12 @@ export fn editBufferOffsetToPosition(edit_buffer: *edit_buffer_mod.EditBuffer, o
 
 export fn editBufferPositionToOffset(edit_buffer: *edit_buffer_mod.EditBuffer, row: u32, col: u32) u32 {
     const iter_mod = @import("text-buffer-iterators.zig");
-    return iter_mod.coordsToOffset(&edit_buffer.tb.rope, row, col) orelse 0;
+    return iter_mod.coordsToOffset(edit_buffer.tb.rope(), row, col) orelse 0;
 }
 
 export fn editBufferGetLineStartOffset(edit_buffer: *edit_buffer_mod.EditBuffer, row: u32) u32 {
     const iter_mod = @import("text-buffer-iterators.zig");
-    return iter_mod.coordsToOffset(&edit_buffer.tb.rope, row, 0) orelse 0;
+    return iter_mod.coordsToOffset(edit_buffer.tb.rope(), row, 0) orelse 0;
 }
 
 export fn editBufferGetTextRange(edit_buffer: *edit_buffer_mod.EditBuffer, start_offset: u32, end_offset: u32, outPtr: [*]u8, maxLen: usize) usize {
@@ -1385,7 +1430,7 @@ export fn textBufferGetLineHighlightsPtr(
     line_idx: u32,
     out_count: *usize,
 ) ?[*]const ExternalHighlight {
-    const highs = tb.getLineHighlightsSlice(line_idx);
+    const highs = tb.getLineHighlightsSlice(@intCast(line_idx));
 
     if (highs.len == 0) {
         out_count.* = 0;

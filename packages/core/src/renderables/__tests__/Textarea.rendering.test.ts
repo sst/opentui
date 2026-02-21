@@ -1196,6 +1196,24 @@ describe("Textarea - Rendering Tests", () => {
       expect(editor.placeholder).toBe(null)
       expect(editor.plainText).toBe("")
     })
+
+    it("should reset placeholder when set to undefined", async () => {
+      const { textarea: editor } = await createTextareaRenderable(currentRenderer, renderOnce, {
+        initialValue: "",
+        width: 40,
+        height: 10,
+        placeholder: "Initial placeholder",
+      })
+
+      expect(editor.placeholder).toBe("Initial placeholder")
+
+      expect(() => {
+        editor.placeholder = undefined
+      }).not.toThrow()
+
+      expect(editor.placeholder).toBe(null)
+      expect(editor.plainText).toBe("")
+    })
   })
 
   describe("Textarea Content Snapshots", () => {

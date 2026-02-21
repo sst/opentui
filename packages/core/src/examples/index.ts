@@ -12,6 +12,7 @@ import {
   TextareaRenderable,
   type SelectOption,
   type KeyEvent,
+  type ThemeMode,
   ASCIIFontRenderable,
 } from "../index"
 import { measureText } from "../lib/ascii.font"
@@ -26,6 +27,7 @@ import * as opentuiDemo from "./opentui-demo"
 import * as nestedZIndexDemo from "./nested-zindex-demo"
 import * as relativePositioningDemo from "./relative-positioning-demo"
 import * as transparencyDemo from "./transparency-demo"
+import * as draggableThreeDemo from "./draggable-three-demo"
 import * as scrollExample from "./scroll-example"
 import * as stickyScrollExample from "./sticky-scroll-example"
 import * as shaderCubeExample from "./shader-cube-demo"
@@ -66,6 +68,7 @@ import * as scrollboxMouseTest from "./scrollbox-mouse-test"
 import * as pasteDemo from "./paste-demo"
 import * as textTruncationDemo from "./text-truncation-demo"
 import * as grayscaleBufferDemo from "./grayscale-buffer-demo"
+import * as focusRestoreDemo from "./focus-restore-demo"
 import { setupCommonDemoKeys } from "./lib/standalone-keys"
 
 interface Example {
@@ -73,6 +76,60 @@ interface Example {
   description: string
   run?: (renderer: CliRenderer) => void
   destroy?: (renderer: CliRenderer) => void
+}
+
+interface ExampleTheme {
+  titleColor: RGBA
+  borderColor: string
+  focusedBorderColor: string
+  inputTextColor: string
+  inputFocusedTextColor: string
+  inputPlaceholderColor: string
+  inputCursorColor: string
+  selectSelectedBackgroundColor: string
+  selectTextColor: string
+  selectSelectedTextColor: string
+  selectDescriptionColor: string
+  selectSelectedDescriptionColor: string
+  instructionsColor: string
+  notImplementedColor: string
+}
+
+const DEFAULT_THEME_MODE: ThemeMode = "dark"
+
+const MENU_THEMES: Record<ThemeMode, ExampleTheme> = {
+  dark: {
+    titleColor: RGBA.fromInts(240, 248, 255, 255),
+    borderColor: "#475569",
+    focusedBorderColor: "#60A5FA",
+    inputTextColor: "#E2E8F0",
+    inputFocusedTextColor: "#F8FAFC",
+    inputPlaceholderColor: "#94A3B8",
+    inputCursorColor: "#60A5FA",
+    selectSelectedBackgroundColor: "#1E3A5F",
+    selectTextColor: "#E2E8F0",
+    selectSelectedTextColor: "#38BDF8",
+    selectDescriptionColor: "#64748B",
+    selectSelectedDescriptionColor: "#94A3B8",
+    instructionsColor: "#94A3B8",
+    notImplementedColor: "#FACC15",
+  },
+  light: {
+    titleColor: RGBA.fromInts(15, 23, 42, 255),
+    borderColor: "#CBD5E1",
+    focusedBorderColor: "#2563EB",
+    inputTextColor: "#0F172A",
+    inputFocusedTextColor: "#0B1221",
+    inputPlaceholderColor: "#64748B",
+    inputCursorColor: "#2563EB",
+    selectSelectedBackgroundColor: "#DBEAFE",
+    selectTextColor: "#0F172A",
+    selectSelectedTextColor: "#1D4ED8",
+    selectDescriptionColor: "#475569",
+    selectSelectedDescriptionColor: "#1E40AF",
+    instructionsColor: "#475569",
+    notImplementedColor: "#B45309",
+  },
 }
 
 const examples: Example[] = [
@@ -222,10 +279,10 @@ const examples: Example[] = [
     destroy: transparencyDemo.destroy,
   },
   {
-    name: "Opacity Demo",
-    description: "Interactive opacity/alpha demonstration with animated boxes",
-    run: opacityExample.run,
-    destroy: opacityExample.destroy,
+    name: "Draggable ThreeRenderable",
+    description: "Draggable WebGPU cube with live animation",
+    run: draggableThreeDemo.run,
+    destroy: draggableThreeDemo.destroy,
   },
   {
     name: "Static Sprite",
@@ -395,12 +452,19 @@ const examples: Example[] = [
     run: grayscaleBufferDemo.run,
     destroy: grayscaleBufferDemo.destroy,
   },
+  {
+    name: "Focus Restore Demo",
+    description: "Test focus restore - alt-tab away and back to verify mouse tracking resumes",
+    run: focusRestoreDemo.run,
+    destroy: focusRestoreDemo.destroy,
+  },
 ]
 
 class ExampleSelector {
   private renderer: CliRenderer
   private currentExample: Example | null = null
   private inMenu = true
+  private themeMode: ThemeMode = DEFAULT_THEME_MODE
 
   private menuContainer: BoxRenderable | null = null
   private title: FrameBufferRenderable | null = null
@@ -414,8 +478,16 @@ class ExampleSelector {
 
   constructor(renderer: CliRenderer) {
     this.renderer = renderer
+    this.themeMode = this.renderer.themeMode ?? DEFAULT_THEME_MODE
     this.createLayout()
     this.setupKeyboardHandling()
+
+    this.renderer.on("theme_mode", (mode: ThemeMode) => {
+      this.applyTheme(mode)
+      console.log(`Theme mode changed to ${mode}, applied new theme to menu`)
+    })
+
+    this.applyTheme(this.renderer.themeMode)
 
     this.renderer.on("resize", (width: number, height: number) => {
       this.handleResize(width, height)
@@ -424,6 +496,7 @@ class ExampleSelector {
 
   private createLayout(): void {
     const width = this.renderer.terminalWidth
+    const theme = MENU_THEMES[this.themeMode]
 
     // Menu container with column layout
     this.menuContainer = new BoxRenderable(renderer, {
@@ -446,8 +519,8 @@ class ExampleSelector {
       margin: 1,
       text: titleText,
       font: titleFont,
-      color: RGBA.fromInts(240, 248, 255, 255),
-      backgroundColor: RGBA.fromInts(15, 23, 42, 255),
+      color: theme.titleColor,
+      backgroundColor: "transparent",
     })
     this.menuContainer.add(this.title)
 
@@ -460,7 +533,7 @@ class ExampleSelector {
       backgroundColor: "transparent",
       border: true,
       borderStyle: "single",
-      borderColor: "#475569",
+      borderColor: theme.borderColor,
     })
     this.menuContainer.add(this.filterBox)
 
@@ -470,13 +543,14 @@ class ExampleSelector {
       width: "100%",
       height: 1,
       placeholder: "Filter examples by title...",
+      placeholderColor: theme.inputPlaceholderColor,
       backgroundColor: "transparent",
       focusedBackgroundColor: "transparent",
-      textColor: "#E2E8F0",
-      focusedTextColor: "#F8FAFC",
+      textColor: theme.inputTextColor,
+      focusedTextColor: theme.inputFocusedTextColor,
       wrapMode: "none",
       showCursor: true,
-      cursorColor: "#60A5FA",
+      cursorColor: theme.inputCursorColor,
       onContentChange: () => {
         this.filterExamples()
       },
@@ -492,8 +566,8 @@ class ExampleSelector {
       marginBottom: 1,
       flexGrow: 1,
       borderStyle: "single",
-      borderColor: "#475569",
-      focusedBorderColor: "#60A5FA",
+      borderColor: theme.borderColor,
+      focusedBorderColor: theme.focusedBorderColor,
       title: "Examples",
       titleAlignment: "center",
       backgroundColor: "transparent",
@@ -515,11 +589,11 @@ class ExampleSelector {
       options: selectOptions,
       backgroundColor: "transparent",
       focusedBackgroundColor: "transparent",
-      selectedBackgroundColor: "#1E3A5F",
-      textColor: "#E2E8F0",
-      selectedTextColor: "#38BDF8",
-      descriptionColor: "#64748B",
-      selectedDescriptionColor: "#94A3B8",
+      selectedBackgroundColor: theme.selectSelectedBackgroundColor,
+      textColor: theme.selectTextColor,
+      selectedTextColor: theme.selectSelectedTextColor,
+      descriptionColor: theme.selectDescriptionColor,
+      selectedDescriptionColor: theme.selectSelectedDescriptionColor,
       showScrollIndicator: true,
       wrapSelection: true,
       showDescription: true,
@@ -538,9 +612,52 @@ class ExampleSelector {
       flexShrink: 0,
       alignSelf: "center",
       content: "Type to filter | ↑↓/j/k navigate | Enter run | Esc clear/return | ctrl+c quit",
-      fg: "#94A3B8",
+      fg: theme.instructionsColor,
     })
     this.menuContainer.add(this.instructions)
+  }
+
+  private applyTheme(mode: ThemeMode | null): void {
+    this.themeMode = mode ?? DEFAULT_THEME_MODE
+    const theme = MENU_THEMES[this.themeMode]
+
+    if (this.title) {
+      this.title.color = theme.titleColor
+    }
+
+    if (this.filterBox) {
+      this.filterBox.borderColor = theme.borderColor
+    }
+
+    if (this.filterInput) {
+      this.filterInput.textColor = theme.inputTextColor
+      this.filterInput.focusedTextColor = theme.inputFocusedTextColor
+      this.filterInput.placeholderColor = theme.inputPlaceholderColor
+      this.filterInput.cursorColor = theme.inputCursorColor
+    }
+
+    if (this.selectBox) {
+      this.selectBox.borderColor = theme.borderColor
+      this.selectBox.focusedBorderColor = theme.focusedBorderColor
+    }
+
+    if (this.selectElement) {
+      this.selectElement.selectedBackgroundColor = theme.selectSelectedBackgroundColor
+      this.selectElement.textColor = theme.selectTextColor
+      this.selectElement.selectedTextColor = theme.selectSelectedTextColor
+      this.selectElement.descriptionColor = theme.selectDescriptionColor
+      this.selectElement.selectedDescriptionColor = theme.selectSelectedDescriptionColor
+    }
+
+    if (this.instructions) {
+      this.instructions.fg = theme.instructionsColor
+    }
+
+    if (this.notImplementedText) {
+      this.notImplementedText.fg = theme.notImplementedColor
+    }
+
+    this.renderer.requestRender()
   }
 
   private filterExamples(): void {
@@ -668,13 +785,14 @@ class ExampleSelector {
       selected.run(this.renderer)
     } else {
       if (!this.notImplementedText) {
+        const theme = MENU_THEMES[this.themeMode]
         this.notImplementedText = new TextRenderable(renderer, {
           id: "not-implemented",
           position: "absolute",
           left: 10,
           top: 10,
           content: `${selected.name} not yet implemented. Press Escape to return.`,
-          fg: "#FFFF00",
+          fg: theme.notImplementedColor,
           zIndex: 10,
         })
         this.renderer.root.add(this.notImplementedText)

@@ -1,0 +1,203 @@
+---
+title: Box
+description: Container component with borders and layout capabilities
+order: 2
+---
+
+# Box
+
+A container component with borders, background colors, and layout capabilities. Use it to create panels, frames, and organized sections.
+
+## Basic usage
+
+### Renderable API
+
+```typescript
+import { BoxRenderable, createCliRenderer } from "@opentui/core"
+
+const renderer = await createCliRenderer()
+
+const panel = new BoxRenderable(renderer, {
+  id: "panel",
+  width: 30,
+  height: 10,
+  backgroundColor: "#333366",
+  borderStyle: "double",
+  borderColor: "#FFFFFF",
+})
+
+renderer.root.add(panel)
+```
+
+### Construct API
+
+```typescript
+import { Box, Text, createCliRenderer } from "@opentui/core"
+
+const renderer = await createCliRenderer()
+
+renderer.root.add(
+  Box(
+    {
+      width: 30,
+      height: 10,
+      backgroundColor: "#333366",
+      borderStyle: "rounded",
+    },
+    Text({ content: "Inside the box!" }),
+  ),
+)
+```
+
+## Border styles
+
+```typescript
+// No border
+{
+  border: false
+}
+
+// Simple border (default style)
+{
+  border: true
+}
+
+// Specific border styles
+{
+  borderStyle: "single"
+} // Single line: ┌─┐│└─┘
+{
+  borderStyle: "double"
+} // Double line: ╔═╗║╚═╝
+{
+  borderStyle: "rounded"
+} // Rounded corners: ╭─╮│╰─╯
+{
+  borderStyle: "heavy"
+} // Heavy lines: ┏━┓┃┗━┛
+```
+
+## Titles
+
+Add a title to the box border:
+
+```typescript
+const panel = new BoxRenderable(renderer, {
+  id: "settings",
+  width: 40,
+  height: 15,
+  borderStyle: "rounded",
+  title: "Settings",
+  titleAlignment: "center",
+})
+```
+
+### Title alignment
+
+```typescript
+{
+  titleAlignment: "left"
+} // ┌─ Title ────────┐
+{
+  titleAlignment: "center"
+} // ┌──── Title ─────┐
+{
+  titleAlignment: "right"
+} // ┌────────── Title ┐
+```
+
+## Layout container
+
+Box works as a flex container for child elements:
+
+```typescript
+const container = Box(
+  {
+    flexDirection: "column",
+    justifyContent: "space-between",
+    alignItems: "stretch",
+    width: 50,
+    height: 20,
+    padding: 1,
+    gap: 1,
+  },
+  Text({ content: "Header" }),
+  Box({ flexGrow: 1, backgroundColor: "#222" }, Text({ content: "Content area" })),
+  Text({ content: "Footer" }),
+)
+```
+
+## Mouse events
+
+Handle mouse interactions on the box:
+
+```typescript
+const button = new BoxRenderable(renderer, {
+  id: "button",
+  width: 12,
+  height: 3,
+  border: true,
+  backgroundColor: "#444",
+  onMouseDown: () => {
+    console.log("Button clicked!")
+  },
+  onMouseOver: () => {
+    button.backgroundColor = "#666"
+  },
+  onMouseOut: () => {
+    button.backgroundColor = "#444"
+  },
+})
+```
+
+## Properties
+
+| Property          | Type               | Default        | Description                       |
+| ----------------- | ------------------ | -------------- | --------------------------------- |
+| `width`           | `number \| string` | -              | Width in characters or percentage |
+| `height`          | `number \| string` | -              | Height in rows or percentage      |
+| `backgroundColor` | `string \| RGBA`   | -              | Background fill color             |
+| `border`          | `boolean`          | `false`        | Show border                       |
+| `borderStyle`     | `string`           | `"single"`     | Border style                      |
+| `borderColor`     | `string \| RGBA`   | -              | Border color                      |
+| `title`           | `string`           | -              | Title text in border              |
+| `titleAlignment`  | `string`           | `"left"`       | Title position                    |
+| `padding`         | `number`           | `0`            | Internal padding                  |
+| `gap`             | `number \| string` | -              | Gap between children              |
+| `flexDirection`   | `string`           | `"column"`     | Child layout direction            |
+| `justifyContent`  | `string`           | `"flex-start"` | Main axis alignment               |
+| `alignItems`      | `string`           | `"stretch"`    | Cross axis alignment              |
+
+## Example: Card component
+
+```typescript
+import { Box, Text, t, bold, fg } from "@opentui/core"
+
+function Card(props: { title: string; description: string }) {
+  return Box(
+    {
+      width: 40,
+      borderStyle: "rounded",
+      borderColor: "#666",
+      padding: 1,
+      margin: 1,
+    },
+    Text({
+      content: t`${bold(fg("#00FFFF")(props.title))}`,
+    }),
+    Text({
+      content: props.description,
+      fg: "#AAAAAA",
+    }),
+  )
+}
+
+renderer.root.add(
+  Box(
+    { flexDirection: "row", flexWrap: "wrap" },
+    Card({ title: "Feature 1", description: "Description of feature 1" }),
+    Card({ title: "Feature 2", description: "Description of feature 2" }),
+    Card({ title: "Feature 3", description: "Description of feature 3" }),
+  ),
+)
+```
