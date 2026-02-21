@@ -1200,6 +1200,42 @@ test "wrap breaks: ASCII to CJK script transition" {
     try testing.expectEqual(@as(u16, 2), result.breaks.items[0].char_offset);
 }
 
+test "wrap breaks: CJK punctuation before ASCII" {
+    const input = "日本語。abc";
+
+    var result = utf8.WrapBreakResult.init(testing.allocator);
+    defer result.deinit();
+    try utf8.findWrapBreaks(input, &result, .unicode);
+
+    try testing.expectEqual(@as(usize, 1), result.breaks.items.len);
+    try testing.expectEqual(@as(u16, 9), result.breaks.items[0].byte_offset);
+    try testing.expectEqual(@as(u16, 3), result.breaks.items[0].char_offset);
+}
+
+test "wrap breaks: compat ideograph to ASCII script transition" {
+    const input = "丽abc";
+
+    var result = utf8.WrapBreakResult.init(testing.allocator);
+    defer result.deinit();
+    try utf8.findWrapBreaks(input, &result, .unicode);
+
+    try testing.expectEqual(@as(usize, 1), result.breaks.items.len);
+    try testing.expectEqual(@as(u16, 0), result.breaks.items[0].byte_offset);
+    try testing.expectEqual(@as(u16, 0), result.breaks.items[0].char_offset);
+}
+
+test "wrap breaks: extension I ideograph to ASCII script transition" {
+    const input = "𮯰abc";
+
+    var result = utf8.WrapBreakResult.init(testing.allocator);
+    defer result.deinit();
+    try utf8.findWrapBreaks(input, &result, .unicode);
+
+    try testing.expectEqual(@as(usize, 1), result.breaks.items.len);
+    try testing.expectEqual(@as(u16, 0), result.breaks.items[0].byte_offset);
+    try testing.expectEqual(@as(u16, 0), result.breaks.items[0].char_offset);
+}
+
 test "wrap breaks: emoji and CJK mixed offsets" {
     const input = "🌟 Unicode test: こんにちは世界 Hello World";
 

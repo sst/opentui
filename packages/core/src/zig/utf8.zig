@@ -182,6 +182,10 @@ inline fn isUnicodeWrapBreak(cp: u21) bool {
         0x200B, // ZERO WIDTH SPACE
         0x00AD, // SOFT HYPHEN
         0x2010, // HYPHEN
+        0x3001, // IDEOGRAPHIC COMMA
+        0x3002, // IDEOGRAPHIC FULL STOP
+        0xFF01, // FULLWIDTH EXCLAMATION MARK
+        0xFF1F, // FULLWIDTH QUESTION MARK
         => true,
         else => false,
     };
@@ -214,6 +218,8 @@ inline fn isCjkWordCodepoint(cp: u21) bool {
         (cp >= 0x2B740 and cp <= 0x2B81F) or
         (cp >= 0x2B820 and cp <= 0x2CEAF) or
         (cp >= 0x2CEB0 and cp <= 0x2EBEF) or
+        (cp >= 0x2EBF0 and cp <= 0x2EE5D) or
+        (cp >= 0x2F800 and cp <= 0x2FA1F) or
         // Hiragana + Katakana
         (cp >= 0x3040 and cp <= 0x309F) or
         (cp >= 0x30A0 and cp <= 0x30FF) or
@@ -233,6 +239,10 @@ inline fn classifyWordClass(cp: u21) WordClass {
     }
     if (isCjkWordCodepoint(cp)) return .cjk_word;
     return .other;
+}
+
+pub inline fn isWordCodepoint(cp: u21) bool {
+    return classifyWordClass(cp) != .other;
 }
 
 inline fn isCjkAsciiTransition(prev_class: WordClass, curr_class: WordClass) bool {
