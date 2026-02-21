@@ -304,4 +304,129 @@ world
     const nonWhitespaceChars = frame.replace(/\s/g, "").length
     expect(nonWhitespaceChars).toBeGreaterThan(10)
   })
+
+  it("does not split 'uses' in last message between widths 80-100", async () => {
+    const syntaxStyle = SyntaxStyle.fromTheme([])
+    const [items, setItems] = createSignal<string[]>([])
+    let scrollRef: ScrollBoxRenderable | undefined
+
+    const opencodeMessage =
+      "We use `-c core.autocrlf=false` in multiple spots as a defensive override, even though the snapshot repo is configured once.\n\n" +
+      "Why duplicate it:\n" +
+      "- Repo config only exists after `Snapshot.track()` successfully initializes the snapshot git dir. Commands like `diff`/`show` can run later, but the override guarantees consistent behavior even if init was skipped, failed, or the git dir was pruned/rewritten.\n" +
+      "- It protects against a user\u2019s global/system Git config that might otherwise override or interfere.\n" +
+      "- It\u2019s especially important on commands that output content (`diff`, `show`, `numstat`) because newline conversion changes the text we return.\n\n" +
+      "So: the per\u2011repo config is the baseline; the `-c` flags are a \u201Cdon\u2019t depend on baseline\u201D guard for commands where output consistency matters. Revert uses checkout, which is less about output formatting and already respects the repo config, so it didn\u2019t get the extra guard. If you want stricter consistency, we can add `-c core.autocrlf=false` there too."
+
+    testSetup = await testRender(
+      () => (
+        <box flexDirection="row">
+          <box flexGrow={1} paddingBottom={1} paddingTop={1} paddingLeft={2} paddingRight={2} gap={1}>
+            <box flexShrink={0}>
+              <text>Header</text>
+            </box>
+            <scrollbox
+              ref={(r) => (scrollRef = r)}
+              stickyScroll={true}
+              stickyStart="bottom"
+              flexGrow={1}
+              viewportOptions={{ paddingRight: 1 }}
+              verticalScrollbarOptions={{ paddingLeft: 1, visible: true }}
+            >
+              <For each={items()}>
+                {(item) => (
+                  <box marginTop={1} flexShrink={0} paddingLeft={3}>
+                    <code
+                      filetype="markdown"
+                      drawUnstyledText={false}
+                      streaming={true}
+                      syntaxStyle={syntaxStyle}
+                      content={item.trim()}
+                    />
+                  </box>
+                )}
+              </For>
+            </scrollbox>
+            <box flexShrink={0}>
+              <text>Prompt</text>
+            </box>
+          </box>
+        </box>
+      ),
+      {
+        width: 100,
+        height: 24,
+      },
+    )
+
+    await testSetup.renderOnce()
+
+    const filler = Array.from({ length: 12 }, (_, i) => `Message ${i + 1}`)
+    setItems([...filler, opencodeMessage])
+    await testSetup.renderOnce()
+    await Bun.sleep(20)
+    await testSetup.renderOnce()
+
+    if (scrollRef) {
+      scrollRef.scrollTo(scrollRef.scrollHeight)
+      await testSetup.renderOnce()
+    }
+
+    const splitMatches: Array<{ width: number; line: string; nextLine: string; scrollTop: number }> = []
+    const normalize = (line: string) => line.replace(/^\s+/, "").replace(/\s+$/, "")
+
+    const scanForSplit = (width: number, scrollTop: number) => {
+      const lines = testSetup.captureCharFrame().split("\n")
+      let hasRevert = false
+      for (let i = 0; i < lines.length - 1; i++) {
+        const current = normalize(lines[i])
+        const next = normalize(lines[i + 1])
+        if (current.includes("Revert uses")) {
+          hasRevert = true
+        } else if (current.endsWith("Revert") && next.startsWith("uses ")) {
+          hasRevert = true
+        }
+        const splitU = current.endsWith("Revert u") && next.startsWith("ses checkout")
+        const splitUs = current.endsWith("Revert us") && next.startsWith("es checkout")
+        const splitUse = current.endsWith("Revert use") && next.startsWith("s checkout")
+        if (splitU || splitUs || splitUse) {
+          splitMatches.push({ width, line: current, nextLine: next, scrollTop })
+          return { foundSplit: true, hasRevert }
+        }
+      }
+      return { foundSplit: false, hasRevert }
+    }
+
+    for (let width = 100; width >= 80; width -= 1) {
+      testSetup.resize(width, 24)
+      await testSetup.renderOnce()
+      await Bun.sleep(20)
+      await testSetup.renderOnce()
+      if (scrollRef) {
+        scrollRef.scrollTo(scrollRef.scrollHeight)
+        await testSetup.renderOnce()
+      }
+
+      let foundRevert = false
+      if (scrollRef) {
+        const maxScroll = Math.max(0, scrollRef.scrollHeight - scrollRef.viewport.height)
+        const step = Math.max(1, Math.floor(scrollRef.viewport.height / 3))
+
+        for (let scrollTop = maxScroll; scrollTop >= 0; scrollTop -= step) {
+          scrollRef.scrollTo(scrollTop)
+          await testSetup.renderOnce()
+          const { foundSplit, hasRevert } = scanForSplit(width, scrollTop)
+          if (hasRevert) {
+            foundRevert = true
+          }
+          if (foundSplit) {
+            foundRevert = true
+            break
+          }
+        }
+      }
+    }
+
+    expect(splitMatches).toEqual([])
+  })
 })

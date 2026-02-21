@@ -181,8 +181,6 @@ inline fn isUnicodeWrapBreak(cp: u21) bool {
     };
 }
 
-// Nothing needed here - using uucode.grapheme.isBreak directly
-
 pub fn findWrapBreaks(text: []const u8, result: *WrapBreakResult, width_method: WidthMethod) !void {
     _ = width_method; // Currently unused, but kept for API consistency
     result.reset();
@@ -249,6 +247,7 @@ pub fn findWrapBreaks(text: []const u8, result: *WrapBreakResult, width_method: 
             pos += vector_len;
             char_offset += vector_len;
             prev_cp = text[pos - 1]; // Last ASCII char
+            break_state = .default;
             continue;
         }
 
@@ -280,6 +279,7 @@ pub fn findWrapBreaks(text: []const u8, result: *WrapBreakResult, width_method: 
             } else {
                 const dec = decodeUtf8Unchecked(text, pos + i);
                 if (pos + i + dec.len > text.len) break;
+                if (pos + i + dec.len > pos + vector_len) break;
 
                 // Check if this starts a new grapheme cluster
                 // Skip invalid/replacement codepoints or codepoints that might be outside the grapheme table range
@@ -301,7 +301,7 @@ pub fn findWrapBreaks(text: []const u8, result: *WrapBreakResult, width_method: 
                 prev_cp = dec.cp;
             }
         }
-        pos += vector_len;
+        pos += i;
     }
 
     // Tail

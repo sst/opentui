@@ -1212,6 +1212,7 @@ pub const UnifiedTextBufferView = struct {
                                         wctx.global_char_offset += vchunk.width;
                                         wctx.line_position += vchunk.width;
                                     }
+
                                 } else |_| {
                                     commitVirtualLine(wctx);
                                 }

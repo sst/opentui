@@ -3303,3 +3303,61 @@ test "TextBufferView word wrapping - chunk at exact wrap boundary" {
     try std.testing.expectEqual(@as(u32, 12), vlines[0].width);
     try std.testing.expectEqual(@as(u32, 9), vlines[1].width);
 }
+
+test "TextBufferView word wrapping - does not split 'uses' across lines" {
+    const pool = gp.initGlobalPool(std.testing.allocator);
+    defer gp.deinitGlobalPool();
+
+    var tb = try TextBuffer.init(std.testing.allocator, pool, .wcwidth);
+    defer tb.deinit();
+
+    var view = try TextBufferView.init(std.testing.allocator, tb);
+    defer view.deinit();
+
+    const text =
+        "So: the per‑repo config is the baseline; the -c flags are a “don’t depend on baseline” guard for commands where output consistency matters. " ++
+        "Revert uses checkout, which is less about output formatting and already respects the repo config, so it didn’t get the extra guard. " ++
+        "If you want stricter consistency, we can add -c core.autocrlf=false there too.";
+
+    try tb.setText(text);
+    view.setWrapMode(.word);
+
+    var split_found = false;
+
+    var width: u32 = 100;
+    while (width >= 80) : (width -= 1) {
+        view.setWrapWidth(width);
+
+        const vlines = view.getVirtualLines();
+        var i: usize = 0;
+        while (i + 1 < vlines.len) : (i += 1) {
+            var line_buf: [1024]u8 = undefined;
+            var next_line_buf: [1024]u8 = undefined;
+
+            const line_len = tb.getTextRange(vlines[i].char_offset, vlines[i].char_offset + vlines[i].width, &line_buf);
+            const next_line_len = tb.getTextRange(
+                vlines[i + 1].char_offset,
+                vlines[i + 1].char_offset + vlines[i + 1].width,
+                &next_line_buf,
+            );
+
+            const line = std.mem.trim(u8, line_buf[0..line_len], " \t");
+            const next_line = std.mem.trim(u8, next_line_buf[0..next_line_len], " \t");
+
+            const split_u = std.mem.endsWith(u8, line, "Revert u") and std.mem.startsWith(u8, next_line, "ses checkout");
+            const split_us = std.mem.endsWith(u8, line, "Revert us") and std.mem.startsWith(u8, next_line, "es checkout");
+            const split_use = std.mem.endsWith(u8, line, "Revert use") and std.mem.startsWith(u8, next_line, "s checkout");
+
+            if (split_u or split_us or split_use) {
+                split_found = true;
+                break;
+            }
+        }
+
+        if (split_found or width == 80) {
+            break;
+        }
+    }
+
+    try std.testing.expect(!split_found);
+}
