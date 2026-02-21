@@ -1,6 +1,6 @@
 {
   "name": "@opentui/core",
-  "description": "OpenTUI is a TypeScript library for building terminal user interfaces (TUIs)",
+  "description": "OpenTUI is a TypeScript library on a native Zig core for building terminal user interfaces (TUIs)",
   "repository": {
     "type": "git",
     "url": "https://github.com/anomalyco/opentui",
