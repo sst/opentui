@@ -93,7 +93,7 @@ export class InputRenderable extends TextareaRenderable {
    * Handle paste - strip newlines and enforce maxLength
    */
   public override handlePaste(event: PasteEvent): void {
-    const sanitized = event.text.replace(/[\n\r]/g, "")
+    const sanitized = (event.text ?? "").replace(/[\n\r]/g, "")
     if (sanitized) {
       this.insertText(sanitized)
     }
