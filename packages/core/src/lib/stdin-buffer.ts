@@ -379,11 +379,11 @@ export class StdinBuffer extends EventEmitter<StdinBufferEventMap> {
 
     if (this.buffer.length > 0) {
       this.timeout = setTimeout(() => {
-        // If the buffer is a lone ESC, extend the timeout once so that a
-        // split focus sequence (e.g. ESC arriving separately from [I) can
-        // be reassembled through the normal CSI completion logic when the
+        // If the buffer holds an incomplete escape sequence, extend the
+        // timeout once so that split sequences (e.g. ESC then [I) can be
+        // reassembled through the normal CSI completion logic when the
         // next chunk calls process().
-        if (this.buffer === ESC) {
+        if (isCompleteSequence(this.buffer) === "incomplete") {
           this.timeout = setTimeout(() => {
             const flushed = this.flush()
             for (const sequence of flushed) {

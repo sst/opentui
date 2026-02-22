@@ -156,8 +156,8 @@ describe("StdinBuffer", () => {
       processInput("\x1b[<35")
       expect(emittedSequences).toEqual([])
 
-      // Wait for timeout
-      await wait(15)
+      // Wait for initial timeout (10ms) + extended timeout for incomplete sequence (50ms)
+      await wait(70)
 
       expect(emittedSequences).toEqual(["\x1b[<35"])
     })
@@ -292,8 +292,8 @@ describe("StdinBuffer", () => {
       processInput("\x1b[<35")
       expect(emittedSequences).toEqual([])
 
-      // Wait for timeout to flush
-      await wait(15)
+      // Wait for initial timeout (10ms) + extended timeout for incomplete sequence (50ms)
+      await wait(70)
 
       expect(emittedSequences).toEqual(["\x1b[<35"])
     })
@@ -962,6 +962,46 @@ describe("StdinBuffer", () => {
 
       processInput("[O")
       expect(emittedSequences).toEqual(["\x1b[O"])
+    })
+
+    it("should reassemble ESC[ flushed by timeout followed by I as \\x1b[I", async () => {
+      // ESC[ arrives as one chunk; after buffer timeout it stays in buffer
+      processInput("\x1b[")
+      expect(emittedSequences).toEqual([])
+
+      await wait(15)
+      expect(emittedSequences).toEqual([])
+
+      // I arrives in next chunk, reassembles with buffered ESC[
+      processInput("I")
+      expect(emittedSequences).toEqual(["\x1b[I"])
+    })
+
+    it("should reassemble ESC[ flushed by timeout followed by O as \\x1b[O", async () => {
+      processInput("\x1b[")
+      await wait(15)
+      expect(emittedSequences).toEqual([])
+
+      processInput("O")
+      expect(emittedSequences).toEqual(["\x1b[O"])
+    })
+
+    it("should reassemble ESC then [ then I across three chunks", async () => {
+      processInput("\x1b")
+      await wait(15)
+      expect(emittedSequences).toEqual([])
+
+      // [ arrives, buffer now has \x1b[
+      processInput("[")
+      expect(emittedSequences).toEqual([])
+
+      // Wait for timeout again — \x1b[ still held
+      await wait(15)
+      expect(emittedSequences).toEqual([])
+
+      // I arrives
+      processInput("I")
+      expect(emittedSequences).toEqual(["\x1b[I"])
     })
 
     it("should still handle complete \\x1b[I in a single chunk", () => {
