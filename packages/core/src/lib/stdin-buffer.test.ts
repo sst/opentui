@@ -6,6 +6,13 @@ describe("StdinBuffer", () => {
   let emittedSequences: string[]
 
   beforeEach(() => {
+    // Destroy previous buffer to cancel any lingering timers (e.g. pendingEscTimeout)
+    // whose listeners close over the module-scoped emittedSequences variable.
+    if (buffer) {
+      buffer.destroy()
+      buffer.removeAllListeners()
+    }
+
     buffer = new StdinBuffer({ timeout: 10 })
 
     // Collect emitted sequences
@@ -239,8 +246,12 @@ describe("StdinBuffer", () => {
       processInput("\x1b")
       expect(emittedSequences).toEqual([])
 
-      // After timeout, should emit
+      // After buffer timeout (10ms), ESC is held as pendingEsc for reassembly.
+      // It is only emitted after the additional pendingEsc timeout (50ms).
       await wait(15)
+      expect(emittedSequences).toEqual([])
+
+      await wait(55)
       expect(emittedSequences).toEqual(["\x1b"])
     })
 
@@ -372,6 +383,11 @@ describe("StdinBuffer", () => {
     let emittedPaste: string[] = []
 
     beforeEach(() => {
+      if (buffer) {
+        buffer.destroy()
+        buffer.removeAllListeners()
+      }
+
       buffer = new StdinBuffer({ timeout: 10 })
 
       // Collect emitted sequences
@@ -921,6 +937,107 @@ describe("StdinBuffer", () => {
       processInput("\\")
 
       expect(emittedSequences).toEqual(["\x1bP>|kitty(0.40.1)\x1b\\"])
+    })
+  })
+
+  describe("Split Focus Sequences", () => {
+    it("should reassemble ESC flushed by timeout followed by [I as \\x1b[I", async () => {
+      // ESC arrives alone; after buffer timeout it stays in buffer with extended wait
+      processInput("\x1b")
+      expect(emittedSequences).toEqual([])
+
+      // Wait for initial buffer timeout (10ms) — ESC still held
+      await wait(15)
+      expect(emittedSequences).toEqual([])
+
+      // [I arrives in next chunk, reassembles with buffered ESC
+      processInput("[I")
+      expect(emittedSequences).toEqual(["\x1b[I"])
+    })
+
+    it("should reassemble ESC flushed by timeout followed by [O as \\x1b[O", async () => {
+      processInput("\x1b")
+      await wait(15)
+      expect(emittedSequences).toEqual([])
+
+      processInput("[O")
+      expect(emittedSequences).toEqual(["\x1b[O"])
+    })
+
+    it("should still handle complete \\x1b[I in a single chunk", () => {
+      processInput("\x1b[I")
+      expect(emittedSequences).toEqual(["\x1b[I"])
+    })
+
+    it("should still handle complete \\x1b[O in a single chunk", () => {
+      processInput("\x1b[O")
+      expect(emittedSequences).toEqual(["\x1b[O"])
+    })
+
+    it("should not swallow ESC followed by non-focus CSI like [A", async () => {
+      processInput("\x1b")
+      await wait(15)
+      expect(emittedSequences).toEqual([])
+
+      processInput("[A")
+      expect(emittedSequences).toEqual(["\x1b[A"])
+    })
+
+    it("should not swallow ESC followed by regular character", async () => {
+      processInput("\x1b")
+      await wait(15)
+      expect(emittedSequences).toEqual([])
+
+      processInput("a")
+      expect(emittedSequences).toEqual(["\x1ba"])
+    })
+
+    it("should emit lone ESC if nothing follows within extended timeout", async () => {
+      processInput("\x1b")
+
+      // Wait for initial timeout (10ms) + extended timeout (50ms)
+      await wait(70)
+      expect(emittedSequences).toEqual(["\x1b"])
+    })
+
+    it("should handle ESC split from [I with data after", async () => {
+      processInput("\x1b")
+      await wait(15)
+
+      processInput("[Iabc")
+      expect(emittedSequences).toEqual(["\x1b[I", "a", "b", "c"])
+    })
+
+    it("should handle flush during extended ESC wait", async () => {
+      processInput("\x1b")
+      await wait(15) // initial timeout fired, extended timeout running
+
+      const flushed = buffer.flush()
+      expect(flushed).toEqual(["\x1b"])
+
+      // No additional emit after flush
+      await wait(60)
+      expect(emittedSequences).toEqual([])
+    })
+
+    it("should handle destroy during extended ESC wait", async () => {
+      processInput("\x1b")
+      await wait(15)
+
+      buffer.destroy()
+
+      await wait(60)
+      expect(emittedSequences).toEqual([])
+    })
+
+    it("should handle clear during extended ESC wait", async () => {
+      processInput("\x1b")
+      await wait(15)
+
+      buffer.clear()
+
+      await wait(60)
+      expect(emittedSequences).toEqual([])
     })
   })
 })

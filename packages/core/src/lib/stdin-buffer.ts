@@ -379,8 +379,21 @@ export class StdinBuffer extends EventEmitter<StdinBufferEventMap> {
 
     if (this.buffer.length > 0) {
       this.timeout = setTimeout(() => {
-        const flushed = this.flush()
+        // If the buffer is a lone ESC, extend the timeout once so that a
+        // split focus sequence (e.g. ESC arriving separately from [I) can
+        // be reassembled through the normal CSI completion logic when the
+        // next chunk calls process().
+        if (this.buffer === ESC) {
+          this.timeout = setTimeout(() => {
+            const flushed = this.flush()
+            for (const sequence of flushed) {
+              this.emit("data", sequence)
+            }
+          }, 50)
+          return
+        }
 
+        const flushed = this.flush()
         for (const sequence of flushed) {
           this.emit("data", sequence)
         }
