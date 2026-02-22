@@ -62,6 +62,12 @@ export fn createRenderer(width: u32, height: u32, testing: bool, remote: bool) ?
     };
 }
 
+export fn setTerminalEnvVar(rendererPtr: *renderer.CliRenderer, keyPtr: [*]const u8, keyLen: usize, valuePtr: [*]const u8, valueLen: usize) bool {
+    const key = keyPtr[0..keyLen];
+    const value = valuePtr[0..valueLen];
+    return rendererPtr.setTerminalEnvVar(key, value);
+}
+
 export fn setUseThread(rendererPtr: *renderer.CliRenderer, useThread: bool) void {
     rendererPtr.setUseThread(useThread);
 }
