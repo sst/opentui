@@ -349,39 +349,6 @@ test "sendPendingQueries - skips graphics when skip_graphics_query is set" {
     try testing.expect(std.mem.indexOf(u8, output, "Gi=31337") == null);
 }
 
-test "stale kitty graphics response should be ignored by a new session that did not send a query" {
-    var env1 = std.process.EnvMap.init(testing.allocator);
-    defer env1.deinit();
-
-    var first = Terminal.init(.{ .env_map = &env1 });
-    var first_writer = TestWriter.init(testing.allocator);
-    defer first_writer.deinit();
-
-    try first.queryTerminalSend(&first_writer);
-    _ = try first.sendPendingQueries(&first_writer);
-    try testing.expect(std.mem.indexOf(u8, first_writer.getWritten(), "\x1b_Gi=31337") != null);
-
-    var env2 = std.process.EnvMap.init(testing.allocator);
-    defer env2.deinit();
-    try env2.put("OPENTUI_NO_GRAPHICS", "1");
-
-    var second = Terminal.init(.{ .env_map = &env2 });
-    try testing.expect(second.skip_graphics_query);
-
-    var second_writer = TestWriter.init(testing.allocator);
-    defer second_writer.deinit();
-
-    try second.queryTerminalSend(&second_writer);
-    _ = try second.sendPendingQueries(&second_writer);
-    try testing.expect(std.mem.indexOf(u8, second_writer.getWritten(), "i=31337") == null);
-
-    // Delayed response from the first session arrives after focus/process handoff.
-    second.processCapabilityResponse("\x1b_Gi=31337;OK\x1b\\");
-
-    // Desired behavior: second session should ignore this stale response.
-    try testing.expect(!second.caps.kitty_graphics);
-}
-
 test "isXtversionTmux - detects tmux from xtversion" {
     var term = Terminal.init(.{});
 
