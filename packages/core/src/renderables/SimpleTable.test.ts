@@ -208,6 +208,28 @@ describe("SimpleTableRenderable", () => {
     expect(borderXs).toEqual([0, 11, 23])
   })
 
+  test("preserves bordered layout when border glyphs are hidden", async () => {
+    const table = new SimpleTableRenderable(renderer, {
+      left: 0,
+      top: 0,
+      border: true,
+      outerBorder: true,
+      showBorders: false,
+      content: [[cell("A"), cell("B")]],
+    })
+
+    renderer.root.add(table)
+    await renderOnce()
+
+    const frame = captureFrame()
+    expect(BORDER_CHAR_PATTERN.test(frame)).toBe(false)
+
+    const row = frame.split("\n").find((line) => line.includes("A") && line.includes("B"))
+    expect(row).toBeDefined()
+    expect(row?.indexOf("A")).toBe(1)
+    expect(row?.indexOf("B")).toBe(3)
+  })
+
   test("applies cell padding when provided", async () => {
     const table = new SimpleTableRenderable(renderer, {
       left: 0,

@@ -37,6 +37,7 @@ let columnWidthModeIndex = 0
 let cellPaddingIndex = 0
 let borderEnabled = true
 let outerBorderEnabled = true
+let showBordersEnabled = true
 
 const WRAP_MODES: Array<"none" | "word" | "char"> = ["none", "word", "char"]
 const BORDER_STYLES: BorderStyle[] = ["single", "rounded", "double", "heavy"]
@@ -112,8 +113,8 @@ function currentCellPadding(): number {
 function updateControlsText(): void {
   if (!controlsText) return
 
-  controlsText.content = t`${bold("SimpleTable Demo")}  ${fg("#94a3b8")("1/2/3 dataset • W wrap • B style • M width • P padding • N inner • O outer • drag to select • C clear")}
-Current: dataset ${fg("#7dd3fc")(String(contentIndex + 1))} | wrap ${fg("#a5b4fc")(currentWrapMode())} | style ${fg("#f9a8d4")(currentBorderStyle())} | width ${fg("#fcd34d")(currentColumnWidthMode())} | padding ${fg("#fda4af")(String(currentCellPadding()))} | inner ${fg("#93c5fd")(borderEnabled ? "on" : "off")} | outer ${fg("#86efac")(outerBorderEnabled ? "on" : "off")}`
+  controlsText.content = t`${bold("SimpleTable Demo")}  ${fg("#94a3b8")("1/2/3 dataset • W wrap • B style • M width • P padding • N inner • O outer • H draw • drag to select • C clear")}
+Current: dataset ${fg("#7dd3fc")(String(contentIndex + 1))} | wrap ${fg("#a5b4fc")(currentWrapMode())} | style ${fg("#f9a8d4")(currentBorderStyle())} | width ${fg("#fcd34d")(currentColumnWidthMode())} | padding ${fg("#fda4af")(String(currentCellPadding()))} | inner ${fg("#93c5fd")(borderEnabled ? "on" : "off")} | outer ${fg("#86efac")(outerBorderEnabled ? "on" : "off")} | draw ${fg("#67e8f9")(showBordersEnabled ? "on" : "off")}`
 }
 
 function clearSelectionStatus(message: string): void {
@@ -148,6 +149,9 @@ function applyTableState(): void {
 
   primaryTable.outerBorder = outerBorderEnabled
   unicodeTable.outerBorder = outerBorderEnabled
+
+  primaryTable.showBorders = showBordersEnabled
+  unicodeTable.showBorders = showBordersEnabled
 
   updateControlsText()
 }
@@ -348,6 +352,12 @@ export function run(renderer: CliRenderer): void {
       return
     }
 
+    if (key.name === "h") {
+      showBordersEnabled = !showBordersEnabled
+      applyTableState()
+      return
+    }
+
     if (key.name === "c") {
       renderer.clearSelection()
       clearSelectionStatus("Selection cleared")
@@ -386,6 +396,7 @@ export function destroy(renderer: CliRenderer): void {
   cellPaddingIndex = 0
   borderEnabled = true
   outerBorderEnabled = true
+  showBordersEnabled = true
 }
 
 if (import.meta.main) {

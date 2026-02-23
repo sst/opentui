@@ -60,6 +60,7 @@ export interface SimpleTableOptions extends RenderableOptions<SimpleTableRendera
   wrapMode?: "none" | "char" | "word"
   columnWidthMode?: SimpleTableColumnWidthMode
   cellPadding?: number
+  showBorders?: boolean
   border?: boolean
   outerBorder?: boolean
   selectable?: boolean
@@ -79,6 +80,7 @@ export class SimpleTableRenderable extends Renderable {
   private _wrapMode: "none" | "char" | "word"
   private _columnWidthMode: SimpleTableColumnWidthMode
   private _cellPadding: number
+  private _showBorders: boolean
   private _border: boolean
   private _outerBorder: boolean
   private _hasExplicitOuterBorder: boolean
@@ -110,6 +112,7 @@ export class SimpleTableRenderable extends Renderable {
     wrapMode: "none" as "none" | "char" | "word",
     columnWidthMode: "content" as SimpleTableColumnWidthMode,
     cellPadding: 0,
+    showBorders: true,
     border: true,
     outerBorder: true,
     selectable: true,
@@ -131,6 +134,7 @@ export class SimpleTableRenderable extends Renderable {
     this._wrapMode = options.wrapMode ?? this._defaultOptions.wrapMode
     this._columnWidthMode = options.columnWidthMode ?? this._defaultOptions.columnWidthMode
     this._cellPadding = this.resolveCellPadding(options.cellPadding)
+    this._showBorders = options.showBorders ?? this._defaultOptions.showBorders
     this._border = options.border ?? this._defaultOptions.border
     this._hasExplicitOuterBorder = options.outerBorder !== undefined
     this._outerBorder = options.outerBorder ?? this._border
@@ -194,6 +198,16 @@ export class SimpleTableRenderable extends Renderable {
     if (this._cellPadding === next) return
     this._cellPadding = next
     this.invalidateLayoutAndRaster()
+  }
+
+  public get showBorders(): boolean {
+    return this._showBorders
+  }
+
+  public set showBorders(value: boolean) {
+    if (this._showBorders === value) return
+    this._showBorders = value
+    this.invalidateRasterOnly()
   }
 
   public get outerBorder(): boolean {
@@ -817,6 +831,10 @@ export class SimpleTableRenderable extends Renderable {
   }
 
   private drawBorders(buffer: OptimizedBuffer): void {
+    if (!this._showBorders) {
+      return
+    }
+
     const borderLayout = this.resolveBorderLayout()
 
     if (this.getVerticalBorderCount(borderLayout) === 0 && this.getHorizontalBorderCount(borderLayout) === 0) {
