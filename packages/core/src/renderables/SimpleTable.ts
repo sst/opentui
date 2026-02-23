@@ -40,6 +40,11 @@ interface CellPosition {
   colIdx: number
 }
 
+interface RowRange {
+  firstRow: number
+  lastRow: number
+}
+
 export interface SimpleTableOptions extends RenderableOptions<SimpleTableRenderable> {
   content?: SimpleTableContent
   wrapMode?: "none" | "char" | "word"
@@ -77,8 +82,6 @@ export class SimpleTableRenderable extends Renderable {
   private _layout: SimpleTableLayout = this.createEmptyLayout()
   private _layoutDirty: boolean = true
   private _rasterDirty: boolean = true
-  private _selectionDirtyRowFirst: number = -1
-  private _selectionDirtyRowLast: number = -1
 
   private _cachedMeasureLayout: SimpleTableLayout | null = null
   private _cachedMeasureWidth: number | undefined = undefined
@@ -182,12 +185,7 @@ export class SimpleTableRenderable extends Renderable {
     const previousLocalSelection = this._lastLocalSelection
     const localSelection = convertGlobalToLocalSelection(selection, this.x, this.y)
     this._lastLocalSelection = localSelection
-
-    this._selectionDirtyRowFirst = -1
-    this._selectionDirtyRowLast = -1
-
-    this.markRowsForSelection(previousLocalSelection)
-    this.markRowsForSelection(localSelection)
+    const dirtyRows = this.getDirtySelectionRowRange(previousLocalSelection, localSelection)
 
     if (!localSelection?.isActive) {
       this.resetCellSelections()
@@ -195,8 +193,8 @@ export class SimpleTableRenderable extends Renderable {
       this.applySelectionToCells(localSelection, selection?.isStart ?? false)
     }
 
-    if (this._selectionDirtyRowFirst >= 0) {
-      this.redrawDirtyCells()
+    if (dirtyRows !== null) {
+      this.redrawSelectionRows(dirtyRows.firstRow, dirtyRows.lastRow)
     }
 
     return this.hasSelection()
@@ -485,8 +483,6 @@ export class SimpleTableRenderable extends Renderable {
     this._layoutDirty = false
 
     if (this._lastLocalSelection?.isActive) {
-      this._selectionDirtyRowFirst = -1
-      this._selectionDirtyRowLast = -1
       this.applySelectionToCells(this._lastLocalSelection, true)
     }
   }
@@ -689,8 +685,8 @@ export class SimpleTableRenderable extends Renderable {
     }
   }
 
-  private redrawDirtyCells(): void {
-    if (this._selectionDirtyRowFirst < 0) return
+  private redrawSelectionRows(firstRow: number, lastRow: number): void {
+    if (firstRow > lastRow) return
 
     if (this._backgroundColor.a < 1) {
       this.invalidateRasterOnly()
@@ -700,8 +696,8 @@ export class SimpleTableRenderable extends Renderable {
     const buffer = this.frameBuffer
     if (!buffer) return
 
-    this.clearCellRange(buffer, this._selectionDirtyRowFirst, this._selectionDirtyRowLast)
-    this.drawCellRange(buffer, this._selectionDirtyRowFirst, this._selectionDirtyRowLast)
+    this.clearCellRange(buffer, firstRow, lastRow)
+    this.drawCellRange(buffer, firstRow, lastRow)
     this.requestRender()
   }
 
@@ -787,26 +783,17 @@ export class SimpleTableRenderable extends Renderable {
         const focusX = localSelection.focusX - cellLeft
         const focusY = localSelection.focusY - cellTop
 
-        const cellChanged = isStart
-          ? cell.textBufferView.setLocalSelection(
-              anchorX,
-              anchorY,
-              focusX,
-              focusY,
-              this._selectionBg,
-              this._selectionFg,
-            )
-          : cell.textBufferView.updateLocalSelection(
-              anchorX,
-              anchorY,
-              focusX,
-              focusY,
-              this._selectionBg,
-              this._selectionFg,
-            )
-
-        if (cellChanged) {
-          this.markSelectionDirtyRow(rowIdx)
+        if (isStart) {
+          cell.textBufferView.setLocalSelection(anchorX, anchorY, focusX, focusY, this._selectionBg, this._selectionFg)
+        } else {
+          cell.textBufferView.updateLocalSelection(
+            anchorX,
+            anchorY,
+            focusX,
+            focusY,
+            this._selectionBg,
+            this._selectionFg,
+          )
         }
       }
     }
@@ -824,15 +811,32 @@ export class SimpleTableRenderable extends Renderable {
     return this._rowCount - 1
   }
 
-  private markRowsForSelection(selection: LocalSelectionBounds | null): void {
-    if (!selection?.isActive || this._rowCount === 0) return
+  private getSelectionRowRange(selection: LocalSelectionBounds | null): RowRange | null {
+    if (!selection?.isActive || this._rowCount === 0) return null
 
     const minSelY = Math.min(selection.anchorY, selection.focusY)
     const maxSelY = Math.max(selection.anchorY, selection.focusY)
-    const firstRow = this.findRowForLocalY(minSelY)
-    const lastRow = this.findRowForLocalY(maxSelY)
 
-    this.markSelectionDirtyRows(firstRow, lastRow)
+    return {
+      firstRow: this.findRowForLocalY(minSelY),
+      lastRow: this.findRowForLocalY(maxSelY),
+    }
+  }
+
+  private getDirtySelectionRowRange(
+    previousSelection: LocalSelectionBounds | null,
+    currentSelection: LocalSelectionBounds | null,
+  ): RowRange | null {
+    const previousRange = this.getSelectionRowRange(previousSelection)
+    const currentRange = this.getSelectionRowRange(currentSelection)
+
+    if (previousRange === null) return currentRange
+    if (currentRange === null) return previousRange
+
+    return {
+      firstRow: Math.min(previousRange.firstRow, currentRange.firstRow),
+      lastRow: Math.max(previousRange.lastRow, currentRange.lastRow),
+    }
   }
 
   private resetRowSelection(rowIdx: number): void {
@@ -842,38 +846,12 @@ export class SimpleTableRenderable extends Renderable {
     for (const cell of row) {
       if (!cell.textBufferView.hasSelection()) continue
       cell.textBufferView.resetLocalSelection()
-      this.markSelectionDirtyRow(rowIdx)
     }
   }
 
   private resetCellSelections(): void {
     for (let rowIdx = 0; rowIdx < this._rowCount; rowIdx++) {
       this.resetRowSelection(rowIdx)
-    }
-  }
-
-  private markSelectionDirtyRow(rowIdx: number): void {
-    if (this._selectionDirtyRowFirst < 0 || rowIdx < this._selectionDirtyRowFirst) {
-      this._selectionDirtyRowFirst = rowIdx
-    }
-    if (rowIdx > this._selectionDirtyRowLast) {
-      this._selectionDirtyRowLast = rowIdx
-    }
-  }
-
-  private markSelectionDirtyRows(firstRow: number, lastRow: number): void {
-    if (this._rowCount === 0) return
-
-    const clampedFirst = Math.max(0, Math.min(firstRow, this._rowCount - 1))
-    const clampedLast = Math.max(0, Math.min(lastRow, this._rowCount - 1))
-    const start = Math.min(clampedFirst, clampedLast)
-    const end = Math.max(clampedFirst, clampedLast)
-
-    if (this._selectionDirtyRowFirst < 0 || start < this._selectionDirtyRowFirst) {
-      this._selectionDirtyRowFirst = start
-    }
-    if (end > this._selectionDirtyRowLast) {
-      this._selectionDirtyRowLast = end
     }
   }
 
