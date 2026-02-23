@@ -206,6 +206,39 @@ describe("SimpleTableRenderable", () => {
     expect(borderXs).toEqual([0, 11, 23])
   })
 
+  test("reflows when columnWidthMode is changed after initial render", async () => {
+    const table = new SimpleTableRenderable(renderer, {
+      left: 0,
+      top: 0,
+      width: 34,
+      wrapMode: "word",
+      content: [
+        [cell("A"), cell("B")],
+        [cell("1"), cell("2")],
+      ],
+    })
+
+    renderer.root.add(table)
+    await renderOnce()
+
+    let lines = captureFrame().split("\n")
+    let headerY = lines.findIndex((line) => line.includes("A") && line.includes("B"))
+    expect(headerY).toBeGreaterThanOrEqual(0)
+
+    let borderXs = findVerticalBorderXs(renderer.currentRenderBuffer, headerY)
+    expect(borderXs[borderXs.length - 1]).toBeLessThan(33)
+
+    table.columnWidthMode = "fill"
+    await renderOnce()
+
+    lines = captureFrame().split("\n")
+    headerY = lines.findIndex((line) => line.includes("A") && line.includes("B"))
+    expect(headerY).toBeGreaterThanOrEqual(0)
+
+    borderXs = findVerticalBorderXs(renderer.currentRenderBuffer, headerY)
+    expect(borderXs).toEqual([0, 17, 33])
+  })
+
   test("rebuilds table when content setter is used", async () => {
     const table = new SimpleTableRenderable(renderer, {
       left: 0,
