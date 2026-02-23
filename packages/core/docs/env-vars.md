@@ -65,12 +65,12 @@ Force Mode 2026 Unicode support in terminal capabilities
 **Type:** `boolean`  
 **Default:** `false`
 
-## OPENTUI_NO_GRAPHICS
+## OPENTUI_GRAPHICS
 
-Disable Kitty graphics protocol detection
+Enable Kitty graphics protocol detection
 
 **Type:** `boolean`  
-**Default:** `false`
+**Default:** `true`
 
 ## OPENTUI_FORCE_NOZWJ
 

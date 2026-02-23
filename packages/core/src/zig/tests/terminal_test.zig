@@ -124,7 +124,7 @@ test "setHostEnvVar applies env overrides in shared library mode" {
     try term.setHostEnvVar(testing.allocator, "OPENTUI_FORCE_UNICODE", "1");
     try testing.expect(term.caps.unicode == .unicode);
 
-    try term.setHostEnvVar(testing.allocator, "OPENTUI_NO_GRAPHICS", "1");
+    try term.setHostEnvVar(testing.allocator, "OPENTUI_GRAPHICS", "0");
     try testing.expect(term.skip_graphics_query);
 }
 

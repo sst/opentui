@@ -74,10 +74,10 @@ registerEnvVar({
   default: false,
 })
 registerEnvVar({
-  name: "OPENTUI_NO_GRAPHICS",
-  description: "Disable Kitty graphics protocol detection",
+  name: "OPENTUI_GRAPHICS",
+  description: "Enable Kitty graphics protocol detection",
   type: "boolean",
-  default: false,
+  default: true,
 })
 registerEnvVar({
   name: "OPENTUI_FORCE_NOZWJ",
