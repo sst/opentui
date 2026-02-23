@@ -1508,14 +1508,12 @@ pub const OptimizedBuffer = struct {
         borderChars: [*]const u32,
         borderFg: RGBA,
         borderBg: RGBA,
-        columnOffsets: [*]const u32,
+        columnOffsets: [*]const i32,
         columnCount: u32,
-        rowOffsets: [*]const u32,
+        rowOffsets: [*]const i32,
         rowCount: u32,
         drawInner: bool,
         drawOuter: bool,
-        columnOffsetShift: i32,
-        rowOffsetShift: i32,
     ) void {
         if (rowCount == 0 or columnCount == 0) return;
         if (!drawInner and !drawOuter) return;
@@ -1532,7 +1530,7 @@ pub const OptimizedBuffer = struct {
         while (rowIdx <= rowCount) : (rowIdx += 1) {
             const is_outer_row = rowIdx == 0 or rowIdx == rowCount;
             const should_draw_horizontal = if (is_outer_row) drawOuter else drawInner;
-            const borderY = @as(i32, @intCast(rowOffsets[rowIdx])) + rowOffsetShift;
+            const borderY = rowOffsets[rowIdx];
             if (borderY >= bufHeightI32) break;
 
             // --- horizontal border line: intersections + fills ---
@@ -1543,7 +1541,7 @@ pub const OptimizedBuffer = struct {
                     const should_draw_vertical = if (is_outer_col) drawOuter else drawInner;
                     if (!should_draw_vertical) continue;
 
-                    const bx = @as(i32, @intCast(columnOffsets[colBorderIdx])) + columnOffsetShift;
+                    const bx = columnOffsets[colBorderIdx];
                     if (bx >= bufWidthI32) break;
                     if (bx < 0) continue;
 
@@ -1560,8 +1558,8 @@ pub const OptimizedBuffer = struct {
                 while (colIdx < columnCount) : (colIdx += 1) {
                     const has_boundary_after = if (colIdx < columnCount - 1) drawInner else drawOuter;
                     const boundary_padding: i32 = if (has_boundary_after) 0 else 1;
-                    const startX = @as(i32, @intCast(columnOffsets[colIdx])) + 1 + columnOffsetShift;
-                    const endX = @as(i32, @intCast(columnOffsets[colIdx + 1])) + columnOffsetShift + boundary_padding;
+                    const startX = columnOffsets[colIdx] + 1;
+                    const endX = columnOffsets[colIdx + 1] + boundary_padding;
 
                     if (startX >= bufWidthI32) break;
                     if (endX <= 0) continue;
@@ -1585,7 +1583,7 @@ pub const OptimizedBuffer = struct {
             const has_row_boundary_after = if (rowIdx < rowCount - 1) drawInner else drawOuter;
             const row_boundary_padding: i32 = if (has_row_boundary_after) 0 else 1;
             const contentStartY = borderY + 1;
-            const contentEndY = @as(i32, @intCast(rowOffsets[rowIdx + 1])) + rowOffsetShift + row_boundary_padding;
+            const contentEndY = rowOffsets[rowIdx + 1] + row_boundary_padding;
             var cy = contentStartY;
             while (cy < contentEndY and cy < bufHeightI32) : (cy += 1) {
                 if (cy < 0) continue;
@@ -1597,7 +1595,7 @@ pub const OptimizedBuffer = struct {
                     const should_draw_vertical = if (is_outer_col) drawOuter else drawInner;
                     if (!should_draw_vertical) continue;
 
-                    const bx = @as(i32, @intCast(columnOffsets[colBorderIdx])) + columnOffsetShift;
+                    const bx = columnOffsets[colBorderIdx];
                     if (bx >= bufWidthI32) break;
                     if (bx < 0) continue;
 

@@ -128,8 +128,6 @@ export const CursorStyleOptionsStruct = defineStruct([
 export const TableBorderDrawOptionsStruct = defineStruct([
   ["drawInner", "bool_u8", { default: true }],
   ["drawOuter", "bool_u8", { default: true }],
-  ["columnOffsetShift", "i32", { default: 0 }],
-  ["rowOffsetShift", "i32", { default: 0 }],
 ])
 
 export type GrowthPolicy = "grow" | "block"

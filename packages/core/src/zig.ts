@@ -1473,11 +1473,11 @@ export interface RenderLib {
     borderChars: Uint32Array,
     borderFg: RGBA,
     borderBg: RGBA,
-    columnOffsets: Uint32Array,
+    columnOffsets: Int32Array,
     columnCount: number,
-    rowOffsets: Uint32Array,
+    rowOffsets: Int32Array,
     rowCount: number,
-    options: { drawInner: boolean; drawOuter: boolean; columnOffsetShift: number; rowOffsetShift: number },
+    options: { drawInner: boolean; drawOuter: boolean },
   ) => void
   bufferDrawBox: (
     buffer: Pointer,
@@ -2242,17 +2242,15 @@ class FFIRenderLib implements RenderLib {
     borderChars: Uint32Array,
     borderFg: RGBA,
     borderBg: RGBA,
-    columnOffsets: Uint32Array,
+    columnOffsets: Int32Array,
     columnCount: number,
-    rowOffsets: Uint32Array,
+    rowOffsets: Int32Array,
     rowCount: number,
-    options: { drawInner: boolean; drawOuter: boolean; columnOffsetShift: number; rowOffsetShift: number },
+    options: { drawInner: boolean; drawOuter: boolean },
   ): void {
     const optionsBuffer = TableBorderDrawOptionsStruct.pack({
       drawInner: options.drawInner,
       drawOuter: options.drawOuter,
-      columnOffsetShift: Math.floor(options.columnOffsetShift),
-      rowOffsetShift: Math.floor(options.rowOffsetShift),
     })
 
     this.opentui.symbols.bufferDrawTableBorders(

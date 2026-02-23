@@ -468,8 +468,6 @@ export fn attributesGetLinkId(attributes: u32) u32 {
 pub const ExternalTableBorderDrawOptions = extern struct {
     draw_inner: bool,
     draw_outer: bool,
-    column_offset_shift: i32,
-    row_offset_shift: i32,
 };
 
 export fn bufferDrawTableBorders(
@@ -477,9 +475,9 @@ export fn bufferDrawTableBorders(
     borderChars: [*]const u32,
     borderFg: [*]const f32,
     borderBg: [*]const f32,
-    columnOffsets: [*]const u32,
+    columnOffsets: [*]const i32,
     columnCount: u32,
-    rowOffsets: [*]const u32,
+    rowOffsets: [*]const i32,
     rowCount: u32,
     options: *const ExternalTableBorderDrawOptions,
 ) void {
@@ -493,8 +491,6 @@ export fn bufferDrawTableBorders(
         rowCount,
         options.draw_inner,
         options.draw_outer,
-        options.column_offset_shift,
-        options.row_offset_shift,
     );
 }
 

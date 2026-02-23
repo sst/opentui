@@ -39,10 +39,8 @@ interface SimpleTableLayout {
   rowHeights: number[]
   columnOffsets: number[]
   rowOffsets: number[]
-  columnOffsetsU32: Uint32Array
-  rowOffsetsU32: Uint32Array
-  columnOffsetShift: number
-  rowOffsetShift: number
+  columnOffsetsI32: Int32Array
+  rowOffsetsI32: Int32Array
   tableWidth: number
   tableHeight: number
 }
@@ -572,18 +570,13 @@ export class SimpleTableRenderable extends Renderable {
       borderLayout.bottom,
       borderLayout.innerHorizontal,
     )
-    const nativeColumnOffsets = this.toNativeOffsets(columnOffsets)
-    const nativeRowOffsets = this.toNativeOffsets(rowOffsets)
-
     return {
       columnWidths,
       rowHeights,
       columnOffsets,
       rowOffsets,
-      columnOffsetsU32: nativeColumnOffsets.offsets,
-      rowOffsetsU32: nativeRowOffsets.offsets,
-      columnOffsetShift: nativeColumnOffsets.shift,
-      rowOffsetShift: nativeRowOffsets.shift,
+      columnOffsetsI32: new Int32Array(columnOffsets),
+      rowOffsetsI32: new Int32Array(rowOffsets),
       tableWidth: (columnOffsets[columnOffsets.length - 1] ?? 0) + 1,
       tableHeight: (rowOffsets[rowOffsets.length - 1] ?? 0) + 1,
     }
@@ -772,23 +765,6 @@ export class SimpleTableRenderable extends Renderable {
     }
   }
 
-  private toNativeOffsets(offsets: number[]): { offsets: Uint32Array; shift: number } {
-    const needsShift = (offsets[0] ?? 0) < 0
-    const shift = needsShift ? -1 : 0
-
-    if (!needsShift) {
-      return {
-        offsets: new Uint32Array(offsets),
-        shift,
-      }
-    }
-
-    return {
-      offsets: new Uint32Array(offsets.map((value) => value + 1)),
-      shift,
-    }
-  }
-
   private resolveBorderLayout(): ResolvedTableBorderLayout {
     return {
       left: this._outerBorder,
@@ -827,14 +803,12 @@ export class SimpleTableRenderable extends Renderable {
       BorderCharArrays[this._borderStyle],
       this._borderColor,
       this._borderBackgroundColor,
-      this._layout.columnOffsetsU32,
+      this._layout.columnOffsetsI32,
       this._columnCount,
-      this._layout.rowOffsetsU32,
+      this._layout.rowOffsetsI32,
       this._rowCount,
       this._border,
       this._outerBorder,
-      this._layout.columnOffsetShift,
-      this._layout.rowOffsetShift,
     )
   }
 
@@ -1034,10 +1008,8 @@ export class SimpleTableRenderable extends Renderable {
       rowHeights: [],
       columnOffsets: [0],
       rowOffsets: [0],
-      columnOffsetsU32: new Uint32Array([0]),
-      rowOffsetsU32: new Uint32Array([0]),
-      columnOffsetShift: 0,
-      rowOffsetShift: 0,
+      columnOffsetsI32: new Int32Array([0]),
+      rowOffsetsI32: new Int32Array([0]),
       tableWidth: 0,
       tableHeight: 0,
     }
