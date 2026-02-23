@@ -17,6 +17,26 @@ function getCharAt(buffer: TestRenderer["currentRenderBuffer"], x: number, y: nu
   return buffer.buffers.char[y * buffer.width + x] ?? 0
 }
 
+function getFgAt(buffer: TestRenderer["currentRenderBuffer"], x: number, y: number): RGBA {
+  const index = (y * buffer.width + x) * 4
+  return RGBA.fromValues(
+    buffer.buffers.fg[index] ?? 0,
+    buffer.buffers.fg[index + 1] ?? 0,
+    buffer.buffers.fg[index + 2] ?? 0,
+    buffer.buffers.fg[index + 3] ?? 0,
+  )
+}
+
+function getBgAt(buffer: TestRenderer["currentRenderBuffer"], x: number, y: number): RGBA {
+  const index = (y * buffer.width + x) * 4
+  return RGBA.fromValues(
+    buffer.buffers.bg[index] ?? 0,
+    buffer.buffers.bg[index + 1] ?? 0,
+    buffer.buffers.bg[index + 2] ?? 0,
+    buffer.buffers.bg[index + 3] ?? 0,
+  )
+}
+
 function findVerticalBorderXs(buffer: TestRenderer["currentRenderBuffer"], y: number): number[] {
   const xs: number[] = []
 
@@ -305,6 +325,88 @@ describe("SimpleTableRenderable", () => {
     const rendererSelection = renderer.getSelection()
     expect(rendererSelection).not.toBeNull()
     expect(rendererSelection?.getSelectedText()).not.toContain("│")
+  })
+
+  test("selection colors reset when drag retracts back to the anchor", async () => {
+    const defaultFg = RGBA.fromHex("#111111")
+    const defaultBg = RGBA.fromValues(0, 0, 0, 0)
+    const selectionFg = RGBA.fromHex("#fefefe")
+    const selectionBg = RGBA.fromHex("#cc5500")
+
+    const table = new SimpleTableRenderable(renderer, {
+      left: 0,
+      top: 0,
+      fg: defaultFg,
+      bg: "transparent",
+      selectionFg,
+      selectionBg,
+      content: [
+        ["A", "B"],
+        ["C", "D"],
+      ],
+    })
+
+    renderer.root.add(table)
+    await renderOnce()
+
+    const anchorX = table.x + 1
+    const anchorY = table.y + 1
+    const farX = table.x + 3
+    const farY = table.y + 3
+
+    await mockMouse.pressDown(anchorX, anchorY)
+    await mockMouse.moveTo(farX, farY)
+    await renderOnce()
+
+    expect(table.hasSelection()).toBe(true)
+
+    let buffer = renderer.currentRenderBuffer
+    const selectedCells: Array<{ x: number; y: number }> = []
+
+    for (let y = table.y; y < table.y + table.height; y++) {
+      for (let x = table.x; x < table.x + table.width; x++) {
+        if (getBgAt(buffer, x, y).equals(selectionBg)) {
+          selectedCells.push({ x, y })
+        }
+      }
+    }
+
+    expect(selectedCells.length).toBeGreaterThan(1)
+
+    await mockMouse.moveTo(anchorX, anchorY)
+    await renderOnce()
+
+    const assertDeselectedCellsRestored = (frameBuffer: TestRenderer["currentRenderBuffer"]): void => {
+      const mismatches: string[] = []
+
+      for (const { x, y } of selectedCells) {
+        if (x === anchorX && y === anchorY) continue
+
+        const cp = getCharAt(frameBuffer, x, y)
+        if (cp === 0 || cp === VERTICAL_BORDER_CP) continue
+
+        if (!getFgAt(frameBuffer, x, y).equals(defaultFg)) {
+          mismatches.push(`fg@${x},${y}`)
+        }
+
+        if (!getBgAt(frameBuffer, x, y).equals(defaultBg)) {
+          mismatches.push(`bg@${x},${y}`)
+        }
+      }
+
+      expect(mismatches).toEqual([])
+    }
+
+    buffer = renderer.currentRenderBuffer
+    expect(table.getSelectedText()).toBe("")
+    assertDeselectedCellsRestored(buffer)
+
+    await mockMouse.release(anchorX, anchorY)
+    await renderOnce()
+
+    buffer = renderer.currentRenderBuffer
+    assertDeselectedCellsRestored(buffer)
+    expect(getCharAt(buffer, farX, farY)).toBe("D".codePointAt(0))
   })
 
   test("does not start selection when drag begins on border", async () => {

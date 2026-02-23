@@ -179,11 +179,15 @@ export class SimpleTableRenderable extends Renderable {
   public onSelectionChanged(selection: Selection | null): boolean {
     this.ensureLayoutReady()
 
+    const previousLocalSelection = this._lastLocalSelection
     const localSelection = convertGlobalToLocalSelection(selection, this.x, this.y)
     this._lastLocalSelection = localSelection
 
     this._selectionDirtyRowFirst = -1
     this._selectionDirtyRowLast = -1
+
+    this.markRowsForSelection(previousLocalSelection)
+    this.markRowsForSelection(localSelection)
 
     if (!localSelection?.isActive) {
       this.resetCellSelections()
@@ -688,11 +692,35 @@ export class SimpleTableRenderable extends Renderable {
   private redrawDirtyCells(): void {
     if (this._selectionDirtyRowFirst < 0) return
 
+    if (this._backgroundColor.a < 1) {
+      this.invalidateRasterOnly()
+      return
+    }
+
     const buffer = this.frameBuffer
     if (!buffer) return
 
+    this.clearCellRange(buffer, this._selectionDirtyRowFirst, this._selectionDirtyRowLast)
     this.drawCellRange(buffer, this._selectionDirtyRowFirst, this._selectionDirtyRowLast)
     this.requestRender()
+  }
+
+  private clearCellRange(buffer: OptimizedBuffer, firstRow: number, lastRow: number): void {
+    const colWidths = this._layout.columnWidths
+    const rowHeights = this._layout.rowHeights
+    const colOffsets = this._layout.columnOffsets
+    const rowOffsets = this._layout.rowOffsets
+
+    for (let rowIdx = firstRow; rowIdx <= lastRow; rowIdx++) {
+      const cellY = (rowOffsets[rowIdx] ?? 0) + 1
+      const rowHeight = rowHeights[rowIdx] ?? 1
+
+      for (let colIdx = 0; colIdx < this._columnCount; colIdx++) {
+        const cellX = (colOffsets[colIdx] ?? 0) + 1
+        const colWidth = colWidths[colIdx] ?? 1
+        buffer.fillRect(cellX, cellY, colWidth, rowHeight, this._backgroundColor)
+      }
+    }
   }
 
   private ensureLayoutReady(): void {
@@ -796,6 +824,17 @@ export class SimpleTableRenderable extends Renderable {
     return this._rowCount - 1
   }
 
+  private markRowsForSelection(selection: LocalSelectionBounds | null): void {
+    if (!selection?.isActive || this._rowCount === 0) return
+
+    const minSelY = Math.min(selection.anchorY, selection.focusY)
+    const maxSelY = Math.max(selection.anchorY, selection.focusY)
+    const firstRow = this.findRowForLocalY(minSelY)
+    const lastRow = this.findRowForLocalY(maxSelY)
+
+    this.markSelectionDirtyRows(firstRow, lastRow)
+  }
+
   private resetRowSelection(rowIdx: number): void {
     const row = this._cells[rowIdx]
     if (!row) return
@@ -819,6 +858,22 @@ export class SimpleTableRenderable extends Renderable {
     }
     if (rowIdx > this._selectionDirtyRowLast) {
       this._selectionDirtyRowLast = rowIdx
+    }
+  }
+
+  private markSelectionDirtyRows(firstRow: number, lastRow: number): void {
+    if (this._rowCount === 0) return
+
+    const clampedFirst = Math.max(0, Math.min(firstRow, this._rowCount - 1))
+    const clampedLast = Math.max(0, Math.min(lastRow, this._rowCount - 1))
+    const start = Math.min(clampedFirst, clampedLast)
+    const end = Math.max(clampedFirst, clampedLast)
+
+    if (this._selectionDirtyRowFirst < 0 || start < this._selectionDirtyRowFirst) {
+      this._selectionDirtyRowFirst = start
+    }
+    if (end > this._selectionDirtyRowLast) {
+      this._selectionDirtyRowLast = end
     }
   }
 
