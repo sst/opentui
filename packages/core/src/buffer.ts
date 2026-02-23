@@ -482,30 +482,32 @@ export class OptimizedBuffer {
     this.lib.freeUnicode(encoded)
   }
 
-  public drawTableBorders(
-    borderChars: Uint32Array,
-    borderFg: RGBA,
-    borderBg: RGBA,
-    columnOffsets: Int32Array,
-    columnCount: number,
-    rowOffsets: Int32Array,
-    rowCount: number,
-    drawInner: boolean,
-    drawOuter: boolean,
-  ): void {
+  public drawTableBorders(options: {
+    borderChars: Uint32Array
+    borderFg: RGBA
+    borderBg: RGBA
+    columnOffsets: Int32Array
+    rowOffsets: Int32Array
+    drawInner: boolean
+    drawOuter: boolean
+  }): void {
     this.guard()
+
+    const columnCount = Math.max(0, options.columnOffsets.length - 1)
+    const rowCount = Math.max(0, options.rowOffsets.length - 1)
+
     this.lib.bufferDrawTableBorders(
       this.bufferPtr,
-      borderChars,
-      borderFg,
-      borderBg,
-      columnOffsets,
+      options.borderChars,
+      options.borderFg,
+      options.borderBg,
+      options.columnOffsets,
       columnCount,
-      rowOffsets,
+      options.rowOffsets,
       rowCount,
       {
-        drawInner,
-        drawOuter,
+        drawInner: options.drawInner,
+        drawOuter: options.drawOuter,
       },
     )
   }

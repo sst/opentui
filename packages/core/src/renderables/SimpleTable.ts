@@ -841,17 +841,15 @@ export class SimpleTableRenderable extends Renderable {
       return
     }
 
-    buffer.drawTableBorders(
-      BorderCharArrays[this._borderStyle],
-      this._borderColor,
-      this._borderBackgroundColor,
-      this._layout.columnOffsetsI32,
-      this._columnCount,
-      this._layout.rowOffsetsI32,
-      this._rowCount,
-      this._border,
-      this._outerBorder,
-    )
+    buffer.drawTableBorders({
+      borderChars: BorderCharArrays[this._borderStyle],
+      borderFg: this._borderColor,
+      borderBg: this._borderBackgroundColor,
+      columnOffsets: this._layout.columnOffsetsI32,
+      rowOffsets: this._layout.rowOffsetsI32,
+      drawInner: this._border,
+      drawOuter: this._outerBorder,
+    })
   }
 
   private drawCells(buffer: OptimizedBuffer): void {
