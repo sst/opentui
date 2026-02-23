@@ -27,7 +27,7 @@ import {
   MeasureResultStruct,
   CursorStateStruct,
   CursorStyleOptionsStruct,
-  TableBorderDrawOptionsStruct,
+  GridDrawOptionsStruct,
   NativeSpanFeedOptionsStruct,
   NativeSpanFeedStatsStruct,
   ReserveInfoStruct,
@@ -338,7 +338,7 @@ function getOpenTUILib(libPath?: string) {
       args: ["ptr", "i32", "i32", "ptr", "u32", "u32", "ptr", "ptr"],
       returns: "void",
     },
-    bufferDrawTableBorders: {
+    bufferDrawGrid: {
       args: ["ptr", "ptr", "ptr", "ptr", "ptr", "u32", "ptr", "u32", "ptr"],
       returns: "void",
     },
@@ -1468,7 +1468,7 @@ export interface RenderLib {
     fg: RGBA | null,
     bg: RGBA | null,
   ) => void
-  bufferDrawTableBorders: (
+  bufferDrawGrid: (
     buffer: Pointer,
     borderChars: Uint32Array,
     borderFg: RGBA,
@@ -2237,7 +2237,7 @@ class FFIRenderLib implements RenderLib {
     )
   }
 
-  public bufferDrawTableBorders(
+  public bufferDrawGrid(
     buffer: Pointer,
     borderChars: Uint32Array,
     borderFg: RGBA,
@@ -2248,12 +2248,12 @@ class FFIRenderLib implements RenderLib {
     rowCount: number,
     options: { drawInner: boolean; drawOuter: boolean },
   ): void {
-    const optionsBuffer = TableBorderDrawOptionsStruct.pack({
+    const optionsBuffer = GridDrawOptionsStruct.pack({
       drawInner: options.drawInner,
       drawOuter: options.drawOuter,
     })
 
-    this.opentui.symbols.bufferDrawTableBorders(
+    this.opentui.symbols.bufferDrawGrid(
       buffer,
       borderChars,
       borderFg.buffer,

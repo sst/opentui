@@ -482,7 +482,7 @@ export class OptimizedBuffer {
     this.lib.freeUnicode(encoded)
   }
 
-  public drawTableBorders(options: {
+  public drawGrid(options: {
     borderChars: Uint32Array
     borderFg: RGBA
     borderBg: RGBA
@@ -496,7 +496,7 @@ export class OptimizedBuffer {
     const columnCount = Math.max(0, options.columnOffsets.length - 1)
     const rowCount = Math.max(0, options.rowOffsets.length - 1)
 
-    this.lib.bufferDrawTableBorders(
+    this.lib.bufferDrawGrid(
       this.bufferPtr,
       options.borderChars,
       options.borderFg,

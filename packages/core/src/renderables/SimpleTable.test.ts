@@ -290,12 +290,12 @@ describe("SimpleTableRenderable", () => {
   })
 
   test("uses native border draw for inner-only mode", async () => {
-    const originalDrawTableBorders = OptimizedBuffer.prototype.drawTableBorders
+    const originalDrawGrid = OptimizedBuffer.prototype.drawGrid
     let nativeCalls = 0
 
-    OptimizedBuffer.prototype.drawTableBorders = function (...args: Parameters<OptimizedBuffer["drawTableBorders"]>) {
+    OptimizedBuffer.prototype.drawGrid = function (...args: Parameters<OptimizedBuffer["drawGrid"]>) {
       nativeCalls += 1
-      return originalDrawTableBorders.apply(this, args)
+      return originalDrawGrid.apply(this, args)
     }
 
     try {
@@ -328,17 +328,17 @@ describe("SimpleTableRenderable", () => {
       const borderXs = findVerticalBorderXs(renderer.currentRenderBuffer, rowY)
       expect(borderXs).toEqual([1])
     } finally {
-      OptimizedBuffer.prototype.drawTableBorders = originalDrawTableBorders
+      OptimizedBuffer.prototype.drawGrid = originalDrawGrid
     }
   })
 
   test("defaults outerBorder to false when border is false", async () => {
-    const originalDrawTableBorders = OptimizedBuffer.prototype.drawTableBorders
+    const originalDrawGrid = OptimizedBuffer.prototype.drawGrid
     let nativeCalls = 0
 
-    OptimizedBuffer.prototype.drawTableBorders = function (...args: Parameters<OptimizedBuffer["drawTableBorders"]>) {
+    OptimizedBuffer.prototype.drawGrid = function (...args: Parameters<OptimizedBuffer["drawGrid"]>) {
       nativeCalls += 1
-      return originalDrawTableBorders.apply(this, args)
+      return originalDrawGrid.apply(this, args)
     }
 
     try {
@@ -361,17 +361,17 @@ describe("SimpleTableRenderable", () => {
       expect(frame).toContain("AB")
       expect(nativeCalls).toBe(0)
     } finally {
-      OptimizedBuffer.prototype.drawTableBorders = originalDrawTableBorders
+      OptimizedBuffer.prototype.drawGrid = originalDrawGrid
     }
   })
 
   test("allows outer border even when inner border is off", async () => {
-    const originalDrawTableBorders = OptimizedBuffer.prototype.drawTableBorders
+    const originalDrawGrid = OptimizedBuffer.prototype.drawGrid
     let nativeCalls = 0
 
-    OptimizedBuffer.prototype.drawTableBorders = function (...args: Parameters<OptimizedBuffer["drawTableBorders"]>) {
+    OptimizedBuffer.prototype.drawGrid = function (...args: Parameters<OptimizedBuffer["drawGrid"]>) {
       nativeCalls += 1
-      return originalDrawTableBorders.apply(this, args)
+      return originalDrawGrid.apply(this, args)
     }
 
     try {
@@ -397,7 +397,7 @@ describe("SimpleTableRenderable", () => {
       expect(frame).not.toContain("┼")
       expect(nativeCalls).toBe(1)
     } finally {
-      OptimizedBuffer.prototype.drawTableBorders = originalDrawTableBorders
+      OptimizedBuffer.prototype.drawGrid = originalDrawGrid
     }
   })
 

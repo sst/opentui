@@ -125,7 +125,7 @@ export const CursorStyleOptionsStruct = defineStruct([
   ["cursor", "u8", { default: 255 }],
 ])
 
-export const TableBorderDrawOptionsStruct = defineStruct([
+export const GridDrawOptionsStruct = defineStruct([
   ["drawInner", "bool_u8", { default: true }],
   ["drawOuter", "bool_u8", { default: true }],
 ])

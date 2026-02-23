@@ -1500,10 +1500,10 @@ pub const OptimizedBuffer = struct {
         try self.drawTextBufferInternal(EditorView, editor_view, x, y);
     }
 
-    /// Draw a complete table border grid in a single call.
+    /// Draw a complete border grid in a single call.
     /// columnOffsets and rowOffsets include an extra trailing entry so that
     /// the range for column `i` is `[columnOffsets[i]+1 .. columnOffsets[i+1]-1]`.
-    pub fn drawTableBorders(
+    pub fn drawGrid(
         self: *OptimizedBuffer,
         borderChars: [*]const u32,
         borderFg: RGBA,

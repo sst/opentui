@@ -841,7 +841,7 @@ export class SimpleTableRenderable extends Renderable {
       return
     }
 
-    buffer.drawTableBorders({
+    buffer.drawGrid({
       borderChars: BorderCharArrays[this._borderStyle],
       borderFg: this._borderColor,
       borderBg: this._borderBackgroundColor,

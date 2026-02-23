@@ -465,12 +465,12 @@ export fn attributesGetLinkId(attributes: u32) u32 {
     return ansi.TextAttributes.getLinkId(attributes);
 }
 
-pub const ExternalTableBorderDrawOptions = extern struct {
+pub const ExternalGridDrawOptions = extern struct {
     draw_inner: bool,
     draw_outer: bool,
 };
 
-export fn bufferDrawTableBorders(
+export fn bufferDrawGrid(
     bufferPtr: *buffer.OptimizedBuffer,
     borderChars: [*]const u32,
     borderFg: [*]const f32,
@@ -479,9 +479,9 @@ export fn bufferDrawTableBorders(
     columnCount: u32,
     rowOffsets: [*]const i32,
     rowCount: u32,
-    options: *const ExternalTableBorderDrawOptions,
+    options: *const ExternalGridDrawOptions,
 ) void {
-    bufferPtr.drawTableBorders(
+    bufferPtr.drawGrid(
         borderChars,
         utils.f32PtrToRGBA(borderFg),
         utils.f32PtrToRGBA(borderBg),
