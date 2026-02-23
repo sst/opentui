@@ -90,24 +90,6 @@ registerEnvVar({
 const CURSOR_STYLE_TO_ID = { block: 0, line: 1, underline: 2 } as const
 const CURSOR_ID_TO_STYLE = ["block", "line", "underline"] as const
 const MOUSE_STYLE_TO_ID = { default: 0, pointer: 1, text: 2, crosshair: 3, move: 4, "not-allowed": 5 } as const
-const FORWARDED_ENV_KEYS = [
-  "TMUX",
-  "TERM",
-  "OPENTUI_NO_GRAPHICS",
-  "TERM_PROGRAM",
-  "TERM_PROGRAM_VERSION",
-  "ALACRITTY_SOCKET",
-  "ALACRITTY_LOG",
-  "COLORTERM",
-  "TERMUX_VERSION",
-  "VHS_RECORD",
-  "OPENTUI_FORCE_WCWIDTH",
-  "OPENTUI_FORCE_UNICODE",
-  "OPENTUI_FORCE_NOZWJ",
-  "OPENTUI_FORCE_EXPLICIT_WIDTH",
-  "WT_SESSION",
-  "STY",
-] as const
 
 // Global singleton state for FFI tracing to prevent duplicate exit handlers
 let globalTraceSymbols: Record<string, number[]> | null = null
@@ -1379,11 +1361,7 @@ export interface CursorState {
 export type NativeSpanFeedEventHandler = (eventId: number, arg0: Pointer, arg1: number | bigint) => void
 
 export interface RenderLib {
-  createRenderer: (
-    width: number,
-    height: number,
-    options?: { testing?: boolean; remote?: boolean; env?: Record<string, string | undefined> },
-  ) => Pointer | null
+  createRenderer: (width: number, height: number, options?: { testing?: boolean; remote?: boolean }) => Pointer | null
   setTerminalEnvVar: (renderer: Pointer, key: string, value: string) => boolean
   destroyRenderer: (renderer: Pointer) => void
   setUseThread: (renderer: Pointer, useThread: boolean) => void
@@ -1981,26 +1959,10 @@ class FFIRenderLib implements RenderLib {
     this.opentui.symbols.setEventCallback(callbackPtr)
   }
 
-  private forwardHostEnv(renderer: Pointer, env: Record<string, string | undefined>): void {
-    for (const key of FORWARDED_ENV_KEYS) {
-      const value = env[key]
-      if (value === undefined) continue
-      this.setTerminalEnvVar(renderer, key, value)
-    }
-  }
-
-  public createRenderer(
-    width: number,
-    height: number,
-    options: { testing?: boolean; remote?: boolean; env?: Record<string, string | undefined> } = {},
-  ) {
+  public createRenderer(width: number, height: number, options: { testing?: boolean; remote?: boolean } = {}) {
     const testing = options.testing ?? false
     const remote = options.remote ?? false
-    const renderer = this.opentui.symbols.createRenderer(width, height, testing, remote)
-    if (renderer) {
-      this.forwardHostEnv(renderer, options.env ?? process.env)
-    }
-    return renderer
+    return this.opentui.symbols.createRenderer(width, height, testing, remote)
   }
 
   public setTerminalEnvVar(renderer: Pointer, key: string, value: string): boolean {

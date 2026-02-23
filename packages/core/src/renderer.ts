@@ -84,6 +84,7 @@ export interface CliRendererConfig {
   remote?: boolean
   exitOnCtrlC?: boolean
   exitSignals?: NodeJS.Signals[]
+  forwardEnvKeys?: string[]
   debounceDelay?: number
   targetFps?: number
   maxFps?: number
@@ -110,6 +111,25 @@ export type PixelResolution = {
   width: number
   height: number
 }
+
+const DEFAULT_FORWARDED_ENV_KEYS = [
+  "TMUX",
+  "TERM",
+  "OPENTUI_NO_GRAPHICS",
+  "TERM_PROGRAM",
+  "TERM_PROGRAM_VERSION",
+  "ALACRITTY_SOCKET",
+  "ALACRITTY_LOG",
+  "COLORTERM",
+  "TERMUX_VERSION",
+  "VHS_RECORD",
+  "OPENTUI_FORCE_WCWIDTH",
+  "OPENTUI_FORCE_UNICODE",
+  "OPENTUI_FORCE_NOZWJ",
+  "OPENTUI_FORCE_EXPLICIT_WIDTH",
+  "WT_SESSION",
+  "STY",
+] as const
 
 // Kitty keyboard protocol flags
 // See: https://sw.kovidgoyal.net/kitty/keyboard-protocol/
@@ -520,6 +540,14 @@ export class CliRenderer extends EventEmitter implements RenderContext {
     }
 
     this.rendererPtr = rendererPtr
+
+    const forwardEnvKeys = config.forwardEnvKeys ?? [...DEFAULT_FORWARDED_ENV_KEYS]
+    for (const key of forwardEnvKeys) {
+      const value = process.env[key]
+      if (value === undefined) continue
+      this.lib.setTerminalEnvVar(this.rendererPtr, key, value)
+    }
+
     this.exitOnCtrlC = config.exitOnCtrlC === undefined ? true : config.exitOnCtrlC
     this.exitSignals = config.exitSignals || [
       "SIGINT", // Ctrl+C
