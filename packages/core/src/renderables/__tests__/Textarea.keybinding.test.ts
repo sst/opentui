@@ -1764,6 +1764,74 @@ describe("Textarea - Keybinding Tests", () => {
       expect(editor.logicalCursor.col).toBe(6)
     })
 
+    it("should stop at CJK-ASCII boundary with ctrl+w", async () => {
+      const { textarea: editor } = await createTextareaRenderable(currentRenderer, renderOnce, {
+        initialValue: "日本語abc",
+        width: 40,
+        height: 10,
+      })
+
+      editor.focus()
+      editor.gotoLineEnd()
+
+      currentMockInput.pressKey("w", { ctrl: true })
+      expect(editor.plainText).toBe("日本語")
+
+      currentMockInput.pressKey("w", { ctrl: true })
+      expect(editor.plainText).toBe("")
+    })
+
+    it("should keep Hangul run grouped with ctrl+w", async () => {
+      const { textarea: editor } = await createTextareaRenderable(currentRenderer, renderOnce, {
+        initialValue: "테스트test",
+        width: 40,
+        height: 10,
+      })
+
+      editor.focus()
+      editor.gotoLineEnd()
+
+      currentMockInput.pressKey("w", { ctrl: true })
+      expect(editor.plainText).toBe("테스트")
+
+      currentMockInput.pressKey("w", { ctrl: true })
+      expect(editor.plainText).toBe("")
+    })
+
+    it("should stop at CJK punctuation before ASCII with ctrl+w", async () => {
+      const { textarea: editor } = await createTextareaRenderable(currentRenderer, renderOnce, {
+        initialValue: "日本語。abc",
+        width: 40,
+        height: 10,
+      })
+
+      editor.focus()
+      editor.gotoLineEnd()
+
+      currentMockInput.pressKey("w", { ctrl: true })
+      expect(editor.plainText).toBe("日本語。")
+
+      currentMockInput.pressKey("w", { ctrl: true })
+      expect(editor.plainText).toBe("")
+    })
+
+    it("should stop at compat ideograph boundary with ctrl+w", async () => {
+      const { textarea: editor } = await createTextareaRenderable(currentRenderer, renderOnce, {
+        initialValue: "丽abc",
+        width: 40,
+        height: 10,
+      })
+
+      editor.focus()
+      editor.gotoLineEnd()
+
+      currentMockInput.pressKey("w", { ctrl: true })
+      expect(editor.plainText).toBe("丽")
+
+      currentMockInput.pressKey("w", { ctrl: true })
+      expect(editor.plainText).toBe("")
+    })
+
     it("should delete word forward with meta+d", async () => {
       const { textarea: editor } = await createTextareaRenderable(currentRenderer, renderOnce, {
         initialValue: "hello world test",
@@ -2227,6 +2295,129 @@ describe("Textarea - Keybinding Tests", () => {
 
       currentMockInput.pressArrow("left", { ctrl: true })
       expect(editor.logicalCursor.col).toBe(0)
+    })
+
+    it("should move across CJK-ASCII boundary with ctrl+right and ctrl+left", async () => {
+      const { textarea: editor } = await createTextareaRenderable(currentRenderer, renderOnce, {
+        initialValue: "日本語abc",
+        width: 40,
+        height: 10,
+      })
+
+      editor.focus()
+      expect(editor.logicalCursor.col).toBe(0)
+
+      currentMockInput.pressArrow("right", { ctrl: true })
+      expect(editor.logicalCursor.col).toBe(6)
+
+      currentMockInput.pressArrow("right", { ctrl: true })
+      expect(editor.logicalCursor.col).toBe(9)
+
+      currentMockInput.pressArrow("left", { ctrl: true })
+      expect(editor.logicalCursor.col).toBe(6)
+
+      currentMockInput.pressArrow("left", { ctrl: true })
+      expect(editor.logicalCursor.col).toBe(0)
+    })
+
+    it("should move across CJK punctuation boundary with ctrl+right and ctrl+left", async () => {
+      const { textarea: editor } = await createTextareaRenderable(currentRenderer, renderOnce, {
+        initialValue: "日本語。abc",
+        width: 40,
+        height: 10,
+      })
+
+      editor.focus()
+      expect(editor.logicalCursor.col).toBe(0)
+
+      currentMockInput.pressArrow("right", { ctrl: true })
+      expect(editor.logicalCursor.col).toBe(8)
+
+      currentMockInput.pressArrow("right", { ctrl: true })
+      expect(editor.logicalCursor.col).toBe(11)
+
+      currentMockInput.pressArrow("left", { ctrl: true })
+      expect(editor.logicalCursor.col).toBe(8)
+
+      currentMockInput.pressArrow("left", { ctrl: true })
+      expect(editor.logicalCursor.col).toBe(0)
+    })
+
+    it("should move across compat ideograph boundary with ctrl+right and ctrl+left", async () => {
+      const { textarea: editor } = await createTextareaRenderable(currentRenderer, renderOnce, {
+        initialValue: "丽abc",
+        width: 40,
+        height: 10,
+      })
+
+      editor.focus()
+      expect(editor.logicalCursor.col).toBe(0)
+
+      currentMockInput.pressArrow("right", { ctrl: true })
+      expect(editor.logicalCursor.col).toBe(2)
+
+      currentMockInput.pressArrow("right", { ctrl: true })
+      expect(editor.logicalCursor.col).toBe(5)
+
+      currentMockInput.pressArrow("left", { ctrl: true })
+      expect(editor.logicalCursor.col).toBe(2)
+
+      currentMockInput.pressArrow("left", { ctrl: true })
+      expect(editor.logicalCursor.col).toBe(0)
+    })
+
+    it("should select words across CJK-ASCII boundary with meta+shift+arrows", async () => {
+      const { textarea: editor } = await createTextareaRenderable(currentRenderer, renderOnce, {
+        initialValue: "日本語abc",
+        width: 40,
+        height: 10,
+        selectable: true,
+      })
+
+      editor.focus()
+
+      currentMockInput.pressArrow("right", { meta: true, shift: true })
+      expect(editor.logicalCursor.col).toBe(6)
+      expect(editor.getSelectedText()).toBe("日本語")
+
+      currentMockInput.pressArrow("right", { meta: true, shift: true })
+      expect(editor.logicalCursor.col).toBe(9)
+      expect(editor.getSelectedText()).toBe("日本語abc")
+
+      currentMockInput.pressArrow("left", { meta: true, shift: true })
+      expect(editor.logicalCursor.col).toBe(6)
+      expect(editor.getSelectedText()).toBe("日本語")
+
+      currentMockInput.pressArrow("left", { meta: true, shift: true })
+      expect(editor.logicalCursor.col).toBe(0)
+      expect(editor.getSelectedText()).toBe("")
+    })
+
+    it("should select words across compat ideograph boundary with meta+shift+arrows", async () => {
+      const { textarea: editor } = await createTextareaRenderable(currentRenderer, renderOnce, {
+        initialValue: "丽abc",
+        width: 40,
+        height: 10,
+        selectable: true,
+      })
+
+      editor.focus()
+
+      currentMockInput.pressArrow("right", { meta: true, shift: true })
+      expect(editor.logicalCursor.col).toBe(2)
+      expect(editor.getSelectedText()).toBe("丽")
+
+      currentMockInput.pressArrow("right", { meta: true, shift: true })
+      expect(editor.logicalCursor.col).toBe(5)
+      expect(editor.getSelectedText()).toBe("丽abc")
+
+      currentMockInput.pressArrow("left", { meta: true, shift: true })
+      expect(editor.logicalCursor.col).toBe(2)
+      expect(editor.getSelectedText()).toBe("丽")
+
+      currentMockInput.pressArrow("left", { meta: true, shift: true })
+      expect(editor.logicalCursor.col).toBe(0)
+      expect(editor.getSelectedText()).toBe("")
     })
 
     it("should combine ctrl+left and ctrl+right for word navigation", async () => {

@@ -595,14 +595,12 @@ export abstract class EditBufferRenderable extends Renderable implements LineInf
     const cursorY = this.y + visualCursor.visualRow + 1 // +1 for 1-based terminal coords
 
     this._ctx.setCursorPosition(cursorX, cursorY, true)
-    this._ctx.setCursorColor(this._cursorColor)
-    this._ctx.setCursorStyle(this._cursorStyle.style, this._cursorStyle.blinking)
+    this._ctx.setCursorStyle({ ...this._cursorStyle, color: this._cursorColor })
   }
 
   public focus(): void {
     super.focus()
-    this._ctx.setCursorStyle(this._cursorStyle.style, this._cursorStyle.blinking)
-    this._ctx.setCursorColor(this._cursorColor)
+    this._ctx.setCursorStyle({ ...this._cursorStyle, color: this._cursorColor })
     this.requestRender()
   }
 

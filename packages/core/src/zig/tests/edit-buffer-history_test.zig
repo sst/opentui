@@ -8,7 +8,6 @@ test "EditBuffer - basic undo/redo with insertText" {
     const pool = gp.initGlobalPool(std.testing.allocator);
     defer gp.deinitGlobalPool();
 
-
     var eb = try EditBuffer.init(std.testing.allocator, pool, .wcwidth);
     defer eb.deinit();
 
@@ -33,7 +32,6 @@ test "EditBuffer - basic undo/redo with insertText" {
 test "EditBuffer - canUndo/canRedo" {
     const pool = gp.initGlobalPool(std.testing.allocator);
     defer gp.deinitGlobalPool();
-
 
     var eb = try EditBuffer.init(std.testing.allocator, pool, .wcwidth);
     defer eb.deinit();
@@ -61,7 +59,6 @@ test "EditBuffer - undo/redo with deleteRange" {
     const pool = gp.initGlobalPool(std.testing.allocator);
     defer gp.deinitGlobalPool();
 
-
     var eb = try EditBuffer.init(std.testing.allocator, pool, .wcwidth);
     defer eb.deinit();
 
@@ -85,7 +82,6 @@ test "EditBuffer - undo/redo with backspace" {
     const pool = gp.initGlobalPool(std.testing.allocator);
     defer gp.deinitGlobalPool();
 
-
     var eb = try EditBuffer.init(std.testing.allocator, pool, .wcwidth);
     defer eb.deinit();
 
@@ -104,7 +100,6 @@ test "EditBuffer - undo/redo with backspace" {
 test "EditBuffer - undo/redo with deleteForward" {
     const pool = gp.initGlobalPool(std.testing.allocator);
     defer gp.deinitGlobalPool();
-
 
     var eb = try EditBuffer.init(std.testing.allocator, pool, .wcwidth);
     defer eb.deinit();
@@ -125,7 +120,6 @@ test "EditBuffer - undo/redo with deleteForward" {
 test "EditBuffer - cursor position after undo" {
     const pool = gp.initGlobalPool(std.testing.allocator);
     defer gp.deinitGlobalPool();
-
 
     var eb = try EditBuffer.init(std.testing.allocator, pool, .wcwidth);
     defer eb.deinit();
@@ -151,7 +145,6 @@ test "EditBuffer - lineCount after undo/redo" {
     const pool = gp.initGlobalPool(std.testing.allocator);
     defer gp.deinitGlobalPool();
 
-
     var eb = try EditBuffer.init(std.testing.allocator, pool, .wcwidth);
     defer eb.deinit();
 
@@ -172,7 +165,6 @@ test "EditBuffer - clearHistory" {
     const pool = gp.initGlobalPool(std.testing.allocator);
     defer gp.deinitGlobalPool();
 
-
     var eb = try EditBuffer.init(std.testing.allocator, pool, .wcwidth);
     defer eb.deinit();
 
@@ -190,7 +182,6 @@ test "EditBuffer - clearHistory" {
 test "EditBuffer - undo history branching" {
     const pool = gp.initGlobalPool(std.testing.allocator);
     defer gp.deinitGlobalPool();
-
 
     var eb = try EditBuffer.init(std.testing.allocator, pool, .wcwidth);
     defer eb.deinit();
@@ -226,7 +217,6 @@ test "EditBuffer - undo history branching" {
 test "EditBuffer - multiple undo/redo operations" {
     const pool = gp.initGlobalPool(std.testing.allocator);
     defer gp.deinitGlobalPool();
-
 
     var eb = try EditBuffer.init(std.testing.allocator, pool, .wcwidth);
     defer eb.deinit();

@@ -571,6 +571,53 @@ test "renderer - grapheme pool refcounting with frame buffer fast path" {
     try std.testing.expect(rendered_cell != null);
 }
 
+test "renderer - unchanged grapheme should not churn IDs across frames" {
+    const pool = gp.initGlobalPool(std.testing.allocator);
+    defer gp.deinitGlobalPool();
+
+    var cli_renderer = try CliRenderer.create(
+        std.testing.allocator,
+        4,
+        1,
+        pool,
+        true,
+    );
+    defer cli_renderer.destroy();
+
+    const fg = RGBA{ 1.0, 1.0, 1.0, 1.0 };
+    const bg = RGBA{ 0.0, 0.0, 0.0, 1.0 };
+
+    const first_next_buffer = cli_renderer.getNextBuffer();
+    try first_next_buffer.drawText("👋", 0, 0, fg, bg, 0);
+    cli_renderer.render(false);
+
+    const first_output = cli_renderer.getLastOutputForTest();
+    try std.testing.expect(std.mem.indexOf(u8, first_output, "👋") != null);
+
+    const current_buffer = cli_renderer.getCurrentBuffer();
+    const first_cell = current_buffer.get(0, 0);
+    try std.testing.expect(first_cell != null);
+    try std.testing.expect(gp.isGraphemeChar(first_cell.?.char));
+    const first_gid = gp.graphemeIdFromChar(first_cell.?.char);
+
+    const second_next_buffer = cli_renderer.getNextBuffer();
+    try second_next_buffer.drawText("👋", 0, 0, fg, bg, 0);
+
+    const second_cell = second_next_buffer.get(0, 0);
+    try std.testing.expect(second_cell != null);
+    try std.testing.expect(gp.isGraphemeChar(second_cell.?.char));
+    const second_gid = gp.graphemeIdFromChar(second_cell.?.char);
+
+    // Same grapheme content in consecutive frames should keep a stable ID,
+    // otherwise diff/write treats unchanged cells as modified every frame.
+    try std.testing.expectEqual(first_gid, second_gid);
+
+    cli_renderer.render(false);
+
+    const second_output = cli_renderer.getLastOutputForTest();
+    try std.testing.expect(std.mem.indexOf(u8, second_output, "👋") == null);
+}
+
 test "renderer - hyperlinks enabled with OSC 8 output" {
     const pool = gp.initGlobalPool(std.testing.allocator);
     defer gp.deinitGlobalPool();

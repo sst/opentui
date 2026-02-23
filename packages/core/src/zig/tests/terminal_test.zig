@@ -112,6 +112,22 @@ test "remote ignores env overrides but accepts capability responses" {
     try testing.expect(term.caps.osc52);
 }
 
+test "setHostEnvVar applies env overrides in shared library mode" {
+    var term = Terminal.init(.{});
+    defer term.deinit();
+
+    try term.setHostEnvVar(testing.allocator, "TERM", "screen");
+    try testing.expect(term.skip_graphics_query);
+    try testing.expect(term.caps.unicode == .wcwidth);
+    try testing.expect(term.caps.explicit_cursor_positioning);
+
+    try term.setHostEnvVar(testing.allocator, "OPENTUI_FORCE_UNICODE", "1");
+    try testing.expect(term.caps.unicode == .unicode);
+
+    try term.setHostEnvVar(testing.allocator, "OPENTUI_GRAPHICS", "0");
+    try testing.expect(term.skip_graphics_query);
+}
+
 test "parseXtversion - terminal name only" {
     var term = Terminal.init(.{});
     const response = "\x1bP>|wezterm\x1b\\";

@@ -629,10 +629,11 @@ export class TextareaRenderable extends EditBufferRenderable {
     return this._placeholder
   }
 
-  set placeholder(value: StyledText | string | null) {
-    if (this._placeholder !== value) {
-      this._placeholder = value
-      this.applyPlaceholder(value)
+  set placeholder(value: StyledText | string | null | undefined) {
+    const normalizedValue = value ?? null
+    if (this._placeholder !== normalizedValue) {
+      this._placeholder = normalizedValue
+      this.applyPlaceholder(normalizedValue)
       this.requestRender()
     }
   }

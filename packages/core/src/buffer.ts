@@ -482,6 +482,36 @@ export class OptimizedBuffer {
     this.lib.freeUnicode(encoded)
   }
 
+  public drawGrid(options: {
+    borderChars: Uint32Array
+    borderFg: RGBA
+    borderBg: RGBA
+    columnOffsets: Int32Array
+    rowOffsets: Int32Array
+    drawInner: boolean
+    drawOuter: boolean
+  }): void {
+    this.guard()
+
+    const columnCount = Math.max(0, options.columnOffsets.length - 1)
+    const rowCount = Math.max(0, options.rowOffsets.length - 1)
+
+    this.lib.bufferDrawGrid(
+      this.bufferPtr,
+      options.borderChars,
+      options.borderFg,
+      options.borderBg,
+      options.columnOffsets,
+      columnCount,
+      options.rowOffsets,
+      rowCount,
+      {
+        drawInner: options.drawInner,
+        drawOuter: options.drawOuter,
+      },
+    )
+  }
+
   public drawChar(char: number, x: number, y: number, fg: RGBA, bg: RGBA, attributes: number = 0): void {
     this.guard()
     this.lib.bufferDrawChar(this.bufferPtr, char, x, y, fg, bg, attributes)

@@ -341,7 +341,7 @@ export function run(renderer: CliRenderer): void {
           break
       }
 
-      renderer.setCursorStyle(cursorStyle, cursorBlinking)
+      renderer.setCursorStyle({ style: cursorStyle, blinking: cursorBlinking })
       renderer.setCursorPosition(cursorX, cursorY)
 
       // Display cursor position and style info
