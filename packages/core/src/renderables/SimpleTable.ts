@@ -10,6 +10,9 @@ import { type TextChunk, TextBuffer } from "../text-buffer"
 import { TextBufferView } from "../text-buffer-view"
 import type { RenderContext } from "../types"
 
+// Large sentinel height for text measurement. The Zig measure path currently
+// ignores height, but we pass an effectively unbounded value so if height-aware
+// measuring is introduced later, table sizing remains stable.
 const MEASURE_HEIGHT = 10_000
 
 export type SimpleTableCellContent = TextChunk[] | null | undefined
