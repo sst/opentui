@@ -434,9 +434,6 @@ export class MarkdownRenderable extends Renderable {
     if (!cell) {
       return `${prefix}__empty__`
     }
-    if (typeof cell.raw === "string") {
-      return `${prefix}${cell.raw}`
-    }
     if (typeof cell.text === "string") {
       return `${prefix}${cell.text}`
     }
