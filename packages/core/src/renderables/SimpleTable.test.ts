@@ -208,6 +208,32 @@ describe("SimpleTableRenderable", () => {
     expect(borderXs).toEqual([0, 11, 23])
   })
 
+  test("applies cell padding when provided", async () => {
+    const table = new SimpleTableRenderable(renderer, {
+      left: 0,
+      top: 0,
+      cellPadding: 1,
+      content: [
+        [cell("A"), cell("B")],
+        [cell("1"), cell("2")],
+      ],
+    })
+
+    renderer.root.add(table)
+    await renderOnce()
+
+    const frame = captureFrame()
+    expect(frame).toContain("│   │   │")
+    expect(frame).toContain("│ A │ B │")
+
+    const lines = frame.split("\n")
+    const headerY = lines.findIndex((line) => line.includes(" A ") && line.includes(" B "))
+    expect(headerY).toBeGreaterThanOrEqual(0)
+
+    const borderXs = findVerticalBorderXs(renderer.currentRenderBuffer, headerY)
+    expect(borderXs).toEqual([0, 4, 8])
+  })
+
   test("reflows when columnWidthMode is changed after initial render", async () => {
     const table = new SimpleTableRenderable(renderer, {
       left: 0,

@@ -59,6 +59,7 @@ export interface SimpleTableOptions extends RenderableOptions<SimpleTableRendera
   content?: SimpleTableContent
   wrapMode?: "none" | "char" | "word"
   columnWidthMode?: SimpleTableColumnWidthMode
+  cellPadding?: number
   border?: boolean
   outerBorder?: boolean
   selectable?: boolean
@@ -77,6 +78,7 @@ export class SimpleTableRenderable extends Renderable {
   private _content: SimpleTableContent
   private _wrapMode: "none" | "char" | "word"
   private _columnWidthMode: SimpleTableColumnWidthMode
+  private _cellPadding: number
   private _border: boolean
   private _outerBorder: boolean
   private _hasExplicitOuterBorder: boolean
@@ -107,6 +109,7 @@ export class SimpleTableRenderable extends Renderable {
     content: [] as SimpleTableContent,
     wrapMode: "none" as "none" | "char" | "word",
     columnWidthMode: "content" as SimpleTableColumnWidthMode,
+    cellPadding: 0,
     border: true,
     outerBorder: true,
     selectable: true,
@@ -127,6 +130,7 @@ export class SimpleTableRenderable extends Renderable {
     this._content = options.content ?? this._defaultOptions.content
     this._wrapMode = options.wrapMode ?? this._defaultOptions.wrapMode
     this._columnWidthMode = options.columnWidthMode ?? this._defaultOptions.columnWidthMode
+    this._cellPadding = this.resolveCellPadding(options.cellPadding)
     this._border = options.border ?? this._defaultOptions.border
     this._hasExplicitOuterBorder = options.outerBorder !== undefined
     this._outerBorder = options.outerBorder ?? this._border
@@ -178,6 +182,17 @@ export class SimpleTableRenderable extends Renderable {
   public set columnWidthMode(value: SimpleTableColumnWidthMode) {
     if (this._columnWidthMode === value) return
     this._columnWidthMode = value
+    this.invalidateLayoutAndRaster()
+  }
+
+  public get cellPadding(): number {
+    return this._cellPadding
+  }
+
+  public set cellPadding(value: number) {
+    const next = this.resolveCellPadding(value)
+    if (this._cellPadding === next) return
+    this._cellPadding = next
     this.invalidateLayoutAndRaster()
   }
 
@@ -583,7 +598,8 @@ export class SimpleTableRenderable extends Renderable {
   }
 
   private computeColumnWidths(maxTableWidth: number | undefined, borderLayout: ResolvedTableBorderLayout): number[] {
-    const intrinsicWidths = new Array(this._columnCount).fill(1)
+    const horizontalPadding = this.getHorizontalCellPadding()
+    const intrinsicWidths = new Array(this._columnCount).fill(1 + horizontalPadding)
 
     for (let rowIdx = 0; rowIdx < this._rowCount; rowIdx++) {
       for (let colIdx = 0; colIdx < this._columnCount; colIdx++) {
@@ -591,7 +607,7 @@ export class SimpleTableRenderable extends Renderable {
         if (!cell) continue
 
         const measure = cell.textBufferView.measureForDimensions(0, MEASURE_HEIGHT)
-        const measuredWidth = Math.max(1, measure?.maxWidth ?? 0)
+        const measuredWidth = Math.max(1, measure?.maxWidth ?? 0) + horizontalPadding
         intrinsicWidths[colIdx] = Math.max(intrinsicWidths[colIdx], measuredWidth)
       }
     }
@@ -647,10 +663,11 @@ export class SimpleTableRenderable extends Renderable {
   }
 
   private fitColumnWidths(widths: number[], targetContentWidth: number): number[] {
-    const hardMinWidths = new Array(widths.length).fill(1)
+    const minWidth = 1 + this.getHorizontalCellPadding()
+    const hardMinWidths = new Array(widths.length).fill(minWidth)
     const baseWidths = widths.map((width) => Math.max(1, Math.floor(width)))
 
-    const preferredMinWidths = baseWidths.map((width) => Math.min(width, 2))
+    const preferredMinWidths = baseWidths.map((width) => Math.min(width, minWidth + 1))
     const preferredMinTotal = preferredMinWidths.reduce((sum, width) => sum + width, 0)
 
     const floorWidths = preferredMinTotal <= targetContentWidth ? preferredMinWidths : hardMinWidths
@@ -709,17 +726,19 @@ export class SimpleTableRenderable extends Renderable {
   }
 
   private computeRowHeights(columnWidths: number[]): number[] {
-    const rowHeights = new Array(this._rowCount).fill(1)
+    const horizontalPadding = this.getHorizontalCellPadding()
+    const verticalPadding = this.getVerticalCellPadding()
+    const rowHeights = new Array(this._rowCount).fill(1 + verticalPadding)
 
     for (let rowIdx = 0; rowIdx < this._rowCount; rowIdx++) {
       for (let colIdx = 0; colIdx < this._columnCount; colIdx++) {
         const cell = this._cells[rowIdx]?.[colIdx]
         if (!cell) continue
 
-        const width = columnWidths[colIdx] ?? 1
+        const width = Math.max(1, (columnWidths[colIdx] ?? 1) - horizontalPadding)
         const measure = cell.textBufferView.measureForDimensions(width, MEASURE_HEIGHT)
         const lineCount = Math.max(1, measure?.lineCount ?? 1)
-        rowHeights[rowIdx] = Math.max(rowHeights[rowIdx], lineCount)
+        rowHeights[rowIdx] = Math.max(rowHeights[rowIdx], lineCount + verticalPadding)
       }
     }
 
@@ -746,6 +765,9 @@ export class SimpleTableRenderable extends Renderable {
   }
 
   private applyLayoutToViews(layout: SimpleTableLayout): void {
+    const horizontalPadding = this.getHorizontalCellPadding()
+    const verticalPadding = this.getVerticalCellPadding()
+
     for (let rowIdx = 0; rowIdx < this._rowCount; rowIdx++) {
       for (let colIdx = 0; colIdx < this._columnCount; colIdx++) {
         const cell = this._cells[rowIdx]?.[colIdx]
@@ -753,14 +775,16 @@ export class SimpleTableRenderable extends Renderable {
 
         const colWidth = layout.columnWidths[colIdx] ?? 1
         const rowHeight = layout.rowHeights[rowIdx] ?? 1
+        const contentWidth = Math.max(1, colWidth - horizontalPadding)
+        const contentHeight = Math.max(1, rowHeight - verticalPadding)
 
         if (this._wrapMode === "none") {
           cell.textBufferView.setWrapWidth(null)
         } else {
-          cell.textBufferView.setWrapWidth(colWidth)
+          cell.textBufferView.setWrapWidth(contentWidth)
         }
 
-        cell.textBufferView.setViewport(0, 0, colWidth, rowHeight)
+        cell.textBufferView.setViewport(0, 0, contentWidth, contentHeight)
       }
     }
   }
@@ -819,14 +843,15 @@ export class SimpleTableRenderable extends Renderable {
   private drawCellRange(buffer: OptimizedBuffer, firstRow: number, lastRow: number): void {
     const colOffsets = this._layout.columnOffsets
     const rowOffsets = this._layout.rowOffsets
+    const cellPadding = this._cellPadding
 
     for (let rowIdx = firstRow; rowIdx <= lastRow; rowIdx++) {
-      const cellY = (rowOffsets[rowIdx] ?? 0) + 1
+      const cellY = (rowOffsets[rowIdx] ?? 0) + 1 + cellPadding
 
       for (let colIdx = 0; colIdx < this._columnCount; colIdx++) {
         const cell = this._cells[rowIdx]?.[colIdx]
         if (!cell) continue
-        buffer.drawTextBuffer(cell.textBufferView, (colOffsets[colIdx] ?? 0) + 1, cellY)
+        buffer.drawTextBuffer(cell.textBufferView, (colOffsets[colIdx] ?? 0) + 1 + cellPadding, cellY)
       }
     }
   }
@@ -916,13 +941,13 @@ export class SimpleTableRenderable extends Renderable {
         continue
       }
 
-      const cellTop = (this._layout.rowOffsets[rowIdx] ?? 0) + 1
+      const cellTop = (this._layout.rowOffsets[rowIdx] ?? 0) + 1 + this._cellPadding
 
       for (let colIdx = 0; colIdx < this._columnCount; colIdx++) {
         const cell = this._cells[rowIdx]?.[colIdx]
         if (!cell) continue
 
-        const cellLeft = (this._layout.columnOffsets[colIdx] ?? 0) + 1
+        const cellLeft = (this._layout.columnOffsets[colIdx] ?? 0) + 1 + this._cellPadding
 
         const anchorX = localSelection.anchorX - cellLeft
         const anchorY = localSelection.anchorY - cellTop
@@ -1025,6 +1050,22 @@ export class SimpleTableRenderable extends Renderable {
     }
 
     return undefined
+  }
+
+  private getHorizontalCellPadding(): number {
+    return this._cellPadding * 2
+  }
+
+  private getVerticalCellPadding(): number {
+    return this._cellPadding * 2
+  }
+
+  private resolveCellPadding(value: number | undefined): number {
+    if (value === undefined || !Number.isFinite(value)) {
+      return this._defaultOptions.cellPadding
+    }
+
+    return Math.max(0, Math.floor(value))
   }
 
   private invalidateLayoutAndRaster(markYogaDirty: boolean = true): void {

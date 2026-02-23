@@ -34,12 +34,14 @@ let contentIndex = 0
 let wrapIndex = 1
 let borderIndex = 0
 let columnWidthModeIndex = 0
+let cellPaddingIndex = 0
 let borderEnabled = true
 let outerBorderEnabled = true
 
 const WRAP_MODES: Array<"none" | "word" | "char"> = ["none", "word", "char"]
 const BORDER_STYLES: BorderStyle[] = ["single", "rounded", "double", "heavy"]
 const COLUMN_WIDTH_MODES: SimpleTableColumnWidthMode[] = ["content", "fill"]
+const CELL_PADDING_VALUES: number[] = [0, 1, 2]
 
 function cell(text: string): TextChunk[] {
   return [
@@ -103,11 +105,15 @@ function currentColumnWidthMode(): SimpleTableColumnWidthMode {
   return COLUMN_WIDTH_MODES[columnWidthModeIndex] ?? "content"
 }
 
+function currentCellPadding(): number {
+  return CELL_PADDING_VALUES[cellPaddingIndex] ?? 0
+}
+
 function updateControlsText(): void {
   if (!controlsText) return
 
-  controlsText.content = t`${bold("SimpleTable Demo")}  ${fg("#94a3b8")("1/2/3 dataset • W wrap • B style • M width • N inner • O outer • drag to select • C clear")}
-Current: dataset ${fg("#7dd3fc")(String(contentIndex + 1))} | wrap ${fg("#a5b4fc")(currentWrapMode())} | style ${fg("#f9a8d4")(currentBorderStyle())} | width ${fg("#fcd34d")(currentColumnWidthMode())} | inner ${fg("#93c5fd")(borderEnabled ? "on" : "off")} | outer ${fg("#86efac")(outerBorderEnabled ? "on" : "off")}`
+  controlsText.content = t`${bold("SimpleTable Demo")}  ${fg("#94a3b8")("1/2/3 dataset • W wrap • B style • M width • P padding • N inner • O outer • drag to select • C clear")}
+Current: dataset ${fg("#7dd3fc")(String(contentIndex + 1))} | wrap ${fg("#a5b4fc")(currentWrapMode())} | style ${fg("#f9a8d4")(currentBorderStyle())} | width ${fg("#fcd34d")(currentColumnWidthMode())} | padding ${fg("#fda4af")(String(currentCellPadding()))} | inner ${fg("#93c5fd")(borderEnabled ? "on" : "off")} | outer ${fg("#86efac")(outerBorderEnabled ? "on" : "off")}`
 }
 
 function clearSelectionStatus(message: string): void {
@@ -133,6 +139,9 @@ function applyTableState(): void {
 
   primaryTable.columnWidthMode = currentColumnWidthMode()
   unicodeTable.columnWidthMode = currentColumnWidthMode()
+
+  primaryTable.cellPadding = currentCellPadding()
+  unicodeTable.cellPadding = currentCellPadding()
 
   primaryTable.border = borderEnabled
   unicodeTable.border = borderEnabled
@@ -321,6 +330,12 @@ export function run(renderer: CliRenderer): void {
       return
     }
 
+    if (key.name === "p") {
+      cellPaddingIndex = (cellPaddingIndex + 1) % CELL_PADDING_VALUES.length
+      applyTableState()
+      return
+    }
+
     if (key.name === "n") {
       borderEnabled = !borderEnabled
       applyTableState()
@@ -368,6 +383,7 @@ export function destroy(renderer: CliRenderer): void {
   wrapIndex = 1
   borderIndex = 0
   columnWidthModeIndex = 0
+  cellPaddingIndex = 0
   borderEnabled = true
   outerBorderEnabled = true
 }
