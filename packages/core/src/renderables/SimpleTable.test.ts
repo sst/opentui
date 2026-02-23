@@ -3,7 +3,7 @@ import { RGBA } from "../lib/RGBA"
 import { bold, green, red } from "../lib/styled-text"
 import { createTestRenderer, type MockMouse, type TestRenderer } from "../testing/test-renderer"
 import type { CapturedFrame } from "../types"
-import { SimpleTableRenderable, type SimpleTableContent } from "./SimpleTable"
+import { SimpleTableRenderable, type SimpleTableCellContent, type SimpleTableContent } from "./SimpleTable"
 
 const VERTICAL_BORDER_CP = "│".codePointAt(0)!
 
@@ -33,6 +33,15 @@ function countChar(text: string, target: string): number {
   return [...text].filter((char) => char === target).length
 }
 
+function cell(text: string): SimpleTableCellContent {
+  return [
+    {
+      __isChunk: true,
+      text,
+    },
+  ]
+}
+
 beforeEach(async () => {
   const testRenderer = await createTestRenderer({ width: 60, height: 16 })
   renderer = testRenderer.renderer
@@ -50,8 +59,8 @@ describe("SimpleTableRenderable", () => {
   test("renders a basic table with styled cell chunks", async () => {
     const content: SimpleTableContent = [
       [[bold("Name")], [bold("Status")], [bold("Notes")]],
-      ["Alpha", [green("OK")], "All systems nominal"],
-      ["Bravo", [red("WARN")], "Pending checks"],
+      [cell("Alpha"), [green("OK")], cell("All systems nominal")],
+      [cell("Bravo"), [red("WARN")], cell("Pending checks")],
     ]
 
     const table = new SimpleTableRenderable(renderer, {
@@ -78,8 +87,8 @@ describe("SimpleTableRenderable", () => {
   test("wraps content and fits columns when width is constrained", async () => {
     const content: SimpleTableContent = [
       [[bold("ID")], [bold("Description")]],
-      ["1", "This is a long sentence that should wrap across multiple visual lines"],
-      ["2", "Short"],
+      [cell("1"), cell("This is a long sentence that should wrap across multiple visual lines")],
+      [cell("2"), cell("Short")],
     ]
 
     const table = new SimpleTableRenderable(renderer, {
@@ -102,7 +111,7 @@ describe("SimpleTableRenderable", () => {
     const table = new SimpleTableRenderable(renderer, {
       left: 0,
       top: 0,
-      content: [["A", "B"]],
+      content: [[cell("A"), cell("B")]],
     })
 
     renderer.root.add(table)
@@ -112,8 +121,8 @@ describe("SimpleTableRenderable", () => {
 
     table.content = [
       [[bold("Col 1")], [bold("Col 2")]],
-      ["row-1", "updated"],
-      ["row-2", [green("active")]],
+      [cell("row-1"), cell("updated")],
+      [cell("row-2"), [green("active")]],
     ]
 
     await renderOnce()
@@ -129,7 +138,7 @@ describe("SimpleTableRenderable", () => {
       top: 0,
       content: [
         [[bold("A")], [bold("B")]],
-        ["1", "2"],
+        [cell("1"), cell("2")],
       ],
     })
 
@@ -152,9 +161,9 @@ describe("SimpleTableRenderable", () => {
   test("keeps borders aligned with CJK and emoji content", async () => {
     const content: SimpleTableContent = [
       [[bold("Locale")], [bold("Sample")]],
-      ["ja-JP", "東京で寿司 🍣"],
-      ["zh-CN", "你好世界 🚀"],
-      ["ko-KR", "한글 테스트 😄"],
+      [cell("ja-JP"), cell("東京で寿司 🍣")],
+      [cell("zh-CN"), cell("你好世界 🚀")],
+      [cell("ko-KR"), cell("한글 테스트 😄")],
     ]
 
     const table = new SimpleTableRenderable(renderer, {
@@ -199,8 +208,8 @@ describe("SimpleTableRenderable", () => {
   test("wraps CJK and emoji without grapheme duplication", async () => {
     const content: SimpleTableContent = [
       [[bold("Item")], [bold("Details")]],
-      ["mixed", "東京界 🌍 emoji wrapping continues across lines for width checks"],
-      ["emoji", "Faces 😀😃😄 should remain stable"],
+      [cell("mixed"), cell("東京界 🌍 emoji wrapping continues across lines for width checks")],
+      [cell("emoji"), cell("Faces 😀😃😄 should remain stable")],
     ]
 
     const table = new SimpleTableRenderable(renderer, {
@@ -254,7 +263,7 @@ describe("SimpleTableRenderable", () => {
       top: 0,
       content: [
         [[bold("A")], [bold("B")]],
-        ["1", "2"],
+        [cell("1"), cell("2")],
       ],
     })
 
@@ -273,8 +282,8 @@ describe("SimpleTableRenderable", () => {
       top: 0,
       content: [
         [[bold("c1")], [bold("c2")]],
-        ["aa", "bb"],
-        ["cc", "dd"],
+        [cell("aa"), cell("bb")],
+        [cell("cc"), cell("dd")],
       ],
     })
 
@@ -304,7 +313,7 @@ describe("SimpleTableRenderable", () => {
       top: 0,
       content: [
         [[bold("A")], [bold("B")]],
-        ["1", "2"],
+        [cell("1"), cell("2")],
       ],
     })
 

@@ -1,6 +1,6 @@
 #!/usr/bin/env bun
 
-import { SimpleTableRenderable, type SimpleTableContent, type CliRenderer } from "../index"
+import { SimpleTableRenderable, type SimpleTableCellContent, type SimpleTableContent, type CliRenderer } from "../index"
 import { createTestRenderer } from "../testing"
 import { Command } from "commander"
 import { existsSync } from "node:fs"
@@ -115,9 +115,9 @@ type IncrementalScenarioPlan = {
   iterations: number
   warmupIterations: number
   cols: number
-  header: string[]
-  baseRows: string[][]
-  rowPool: string[][]
+  header: SimpleTableCellContent[]
+  baseRows: SimpleTableCellContent[][]
+  rowPool: SimpleTableCellContent[][]
   maxRows: number
 }
 
@@ -162,7 +162,7 @@ type OutputMeta = {
 }
 
 type IncrementalState = {
-  rows: string[][]
+  rows: SimpleTableCellContent[][]
   cursor: number
   maxRowsSeen: number
 }
@@ -631,10 +631,10 @@ function nextIncrementalContent(plan: IncrementalScenarioPlan, state: Incrementa
   return [plan.header, ...state.rows]
 }
 
-function makeHeader(cols: number): string[] {
-  const header: string[] = []
+function makeHeader(cols: number): SimpleTableCellContent[] {
+  const header: SimpleTableCellContent[] = []
   for (let c = 0; c < cols; c += 1) {
-    header.push(`Column ${c + 1}`)
+    header.push(chunkCell(`Column ${c + 1}`))
   }
   return header
 }
@@ -643,20 +643,29 @@ function buildTableContent(rng: () => number, rows: number, cols: number): Simpl
   return [makeHeader(cols), ...buildRows(rng, rows, cols, 0)]
 }
 
-function buildRows(rng: () => number, rows: number, cols: number, rowOffset: number): string[][] {
-  const out: string[][] = []
+function buildRows(rng: () => number, rows: number, cols: number, rowOffset: number): SimpleTableCellContent[][] {
+  const out: SimpleTableCellContent[][] = []
   for (let r = 0; r < rows; r += 1) {
     out.push(makeDataRow(rng, rowOffset + r, cols))
   }
   return out
 }
 
-function makeDataRow(rng: () => number, rowIndex: number, cols: number): string[] {
-  const row: string[] = []
+function makeDataRow(rng: () => number, rowIndex: number, cols: number): SimpleTableCellContent[] {
+  const row: SimpleTableCellContent[] = []
   for (let c = 0; c < cols; c += 1) {
-    row.push(makeCellText(rng, rowIndex, c))
+    row.push(chunkCell(makeCellText(rng, rowIndex, c)))
   }
   return row
+}
+
+function chunkCell(text: string): SimpleTableCellContent {
+  return [
+    {
+      __isChunk: true,
+      text,
+    },
+  ]
 }
 
 function makeCellText(rng: () => number, row: number, col: number): string {

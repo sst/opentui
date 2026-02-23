@@ -3,7 +3,7 @@ import { type RenderableOptions, Renderable } from "../Renderable"
 import type { OptimizedBuffer } from "../buffer"
 import { type BorderStyle, BorderCharArrays, parseBorderStyle } from "../lib/border"
 import { convertGlobalToLocalSelection, type Selection, type LocalSelectionBounds } from "../lib/selection"
-import { StyledText, isStyledText, stringToStyledText } from "../lib/styled-text"
+import { StyledText, stringToStyledText } from "../lib/styled-text"
 import { RGBA, parseColor, type ColorInput } from "../lib/RGBA"
 import { SyntaxStyle } from "../syntax-style"
 import { type TextChunk, TextBuffer } from "../text-buffer"
@@ -12,7 +12,7 @@ import type { RenderContext } from "../types"
 
 const MEASURE_HEIGHT = 10_000
 
-export type SimpleTableCellContent = StyledText | TextChunk[] | string | number | boolean | null | undefined
+export type SimpleTableCellContent = TextChunk[] | null | undefined
 export type SimpleTableContent = SimpleTableCellContent[][]
 
 interface SimpleTableCellState {
@@ -326,7 +326,7 @@ export class SimpleTableRenderable extends Renderable {
 
         for (let colIdx = 0; colIdx < newColumnCount; colIdx++) {
           const cellContent = row[colIdx]
-          rowCells.push(this.createCell(this.toStyledText(cellContent)))
+          rowCells.push(this.createCell(cellContent))
           rowRefs.push(cellContent)
         }
 
@@ -362,14 +362,14 @@ export class SimpleTableRenderable extends Renderable {
         oldCell.textBuffer.destroy()
         oldCell.syntaxStyle.destroy()
 
-        cellRow[colIdx] = this.createCell(this.toStyledText(cellContent))
+        cellRow[colIdx] = this.createCell(cellContent)
         refRow[colIdx] = cellContent
       }
 
       if (newColumnCount > oldColumnCount) {
         for (let colIdx = oldColumnCount; colIdx < newColumnCount; colIdx++) {
           const cellContent = newRow[colIdx]
-          cellRow.push(this.createCell(this.toStyledText(cellContent)))
+          cellRow.push(this.createCell(cellContent))
           refRow.push(cellContent)
         }
       } else if (newColumnCount < oldColumnCount) {
@@ -392,7 +392,7 @@ export class SimpleTableRenderable extends Renderable {
 
         for (let colIdx = 0; colIdx < newColumnCount; colIdx++) {
           const cellContent = newRow[colIdx]
-          rowCells.push(this.createCell(this.toStyledText(cellContent)))
+          rowCells.push(this.createCell(cellContent))
           rowRefs.push(cellContent)
         }
 
@@ -416,7 +416,8 @@ export class SimpleTableRenderable extends Renderable {
     this._columnCount = newColumnCount
   }
 
-  private createCell(styledText: StyledText): SimpleTableCellState {
+  private createCell(content: SimpleTableCellContent): SimpleTableCellState {
+    const styledText = this.toStyledText(content)
     const textBuffer = TextBuffer.create(this._ctx.widthMethod)
     const syntaxStyle = SyntaxStyle.create()
 
@@ -433,10 +434,6 @@ export class SimpleTableRenderable extends Renderable {
   }
 
   private toStyledText(content: SimpleTableCellContent): StyledText {
-    if (isStyledText(content)) {
-      return content
-    }
-
     if (Array.isArray(content)) {
       return new StyledText(content)
     }

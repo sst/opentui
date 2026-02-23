@@ -16,6 +16,7 @@ import {
 } from "../index"
 import type { Selection } from "../lib/selection"
 import type { SimpleTableContent } from "../renderables/SimpleTable"
+import type { TextChunk } from "../text-buffer"
 import { setupCommonDemoKeys } from "./lib/standalone-keys"
 
 let container: BoxRenderable | null = null
@@ -36,44 +37,53 @@ let borderIndex = 0
 const WRAP_MODES: Array<"none" | "word" | "char"> = ["none", "word", "char"]
 const BORDER_STYLES: BorderStyle[] = ["single", "rounded", "double", "heavy"]
 
+function cell(text: string): TextChunk[] {
+  return [
+    {
+      __isChunk: true,
+      text,
+    },
+  ]
+}
+
 const primaryContentSets: SimpleTableContent[] = [
   [
     [[bold("Service")], [bold("Status")], [bold("Notes")]],
-    ["api", [green("OK")], t`${fg("#94a3b8")("latency")} 28ms`],
-    ["worker", [yellow("DEGRADED")], "queue depth: 124"],
-    ["billing", [red("ERROR")], "retrying payment provider"],
+    [cell("api"), [green("OK")], [fg("#94a3b8")("latency"), ...cell(" 28ms")]],
+    [cell("worker"), [yellow("DEGRADED")], cell("queue depth: 124")],
+    [cell("billing"), [red("ERROR")], cell("retrying payment provider")],
   ],
   [
     [[bold("Region")], [bold("Requests")], [bold("Trend")]],
-    ["us-east-1", "1.2M", [green("+12.4%")]],
-    ["eu-west-1", "890K", [green("+5.1%")]],
-    ["ap-south-1", "540K", [red("-2.0%")]],
+    [cell("us-east-1"), cell("1.2M"), [green("+12.4%")]],
+    [cell("eu-west-1"), cell("890K"), [green("+5.1%")]],
+    [cell("ap-south-1"), cell("540K"), [red("-2.0%")]],
   ],
   [
     [[bold("Task")], [bold("Owner")], [bold("ETA")]],
-    ["Wrap regression", "core", [green("done")]],
-    ["Unicode layout", "render", "in review"],
-    ["Snapshot pass", "qa", "today"],
+    [cell("Wrap regression"), cell("core"), [green("done")]],
+    [cell("Unicode layout"), cell("render"), cell("in review")],
+    [cell("Snapshot pass"), cell("qa"), cell("today")],
   ],
 ]
 
 const unicodeContentSets: SimpleTableContent[] = [
   [
     [[bold("Locale")], [bold("Sample")]],
-    ["ja-JP", "東京の夜景と絵文字 🌃✨"],
-    ["zh-CN", "你好世界，布局检查中 🚀"],
-    ["ko-KR", "한글과 이모지 조합 테스트 😄"],
+    [cell("ja-JP"), cell("東京の夜景と絵文字 🌃✨")],
+    [cell("zh-CN"), cell("你好世界，布局检查中 🚀")],
+    [cell("ko-KR"), cell("한글과 이모지 조합 테스트 😄")],
   ],
   [
     [[bold("Expression")], [bold("Meaning")]],
-    ["山川异域", "Different lands, shared sky 🌏"],
-    ["꽃길만 걷자", "Walk only flower paths 🌸"],
-    ["加油", "Keep pushing forward 💪"],
+    [cell("山川异域"), cell("Different lands, shared sky 🌏")],
+    [cell("꽃길만 걷자"), cell("Walk only flower paths 🌸")],
+    [cell("加油"), cell("Keep pushing forward 💪")],
   ],
   [
     [[bold("Column")], [bold("Wrapped Text")]],
-    ["mixed", "CJK and emoji wrapping: こんにちは世界 🌍 followed by long english text for width checks"],
-    ["emoji", "Faces 😀😃😄😁😆 and symbols 🧪📦🛰️ across constrained columns"],
+    [cell("mixed"), cell("CJK and emoji wrapping: こんにちは世界 🌍 followed by long english text for width checks")],
+    [cell("emoji"), cell("Faces 😀😃😄😁😆 and symbols 🧪📦🛰️ across constrained columns")],
   ],
 ]
 
