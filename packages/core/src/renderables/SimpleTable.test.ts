@@ -1,4 +1,5 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test"
+import { OptimizedBuffer } from "../buffer"
 import { RGBA } from "../lib/RGBA"
 import { bold, green, red } from "../lib/styled-text"
 import { createTestRenderer, type MockMouse, type TestRenderer } from "../testing/test-renderer"
@@ -6,6 +7,7 @@ import type { CapturedFrame } from "../types"
 import { SimpleTableRenderable, type SimpleTableCellContent, type SimpleTableContent } from "./SimpleTable"
 
 const VERTICAL_BORDER_CP = "│".codePointAt(0)!
+const BORDER_CHAR_PATTERN = /[┌┐└┘├┤┬┴┼│─]/
 
 let renderer: TestRenderer
 let renderOnce: () => Promise<void>
@@ -237,6 +239,118 @@ describe("SimpleTableRenderable", () => {
 
     borderXs = findVerticalBorderXs(renderer.currentRenderBuffer, headerY)
     expect(borderXs).toEqual([0, 17, 33])
+  })
+
+  test("uses native border draw for inner-only mode", async () => {
+    const originalDrawTableBorders = OptimizedBuffer.prototype.drawTableBorders
+    let nativeCalls = 0
+
+    OptimizedBuffer.prototype.drawTableBorders = function (...args: Parameters<OptimizedBuffer["drawTableBorders"]>) {
+      nativeCalls += 1
+      return originalDrawTableBorders.apply(this, args)
+    }
+
+    try {
+      const table = new SimpleTableRenderable(renderer, {
+        left: 0,
+        top: 0,
+        border: true,
+        outerBorder: false,
+        content: [
+          [cell("A"), cell("B")],
+          [cell("1"), cell("2")],
+        ],
+      })
+
+      renderer.root.add(table)
+      await renderOnce()
+
+      const frame = captureFrame()
+      expect(frame).not.toContain("┌")
+      expect(frame).not.toContain("┐")
+      expect(frame).not.toContain("└")
+      expect(frame).not.toContain("┘")
+      expect(frame).toContain("┼")
+      expect(nativeCalls).toBe(1)
+
+      const lines = frame.split("\n")
+      const rowY = lines.findIndex((line) => line.includes("A") && line.includes("B"))
+      expect(rowY).toBeGreaterThanOrEqual(0)
+
+      const borderXs = findVerticalBorderXs(renderer.currentRenderBuffer, rowY)
+      expect(borderXs).toEqual([1])
+    } finally {
+      OptimizedBuffer.prototype.drawTableBorders = originalDrawTableBorders
+    }
+  })
+
+  test("defaults outerBorder to false when border is false", async () => {
+    const originalDrawTableBorders = OptimizedBuffer.prototype.drawTableBorders
+    let nativeCalls = 0
+
+    OptimizedBuffer.prototype.drawTableBorders = function (...args: Parameters<OptimizedBuffer["drawTableBorders"]>) {
+      nativeCalls += 1
+      return originalDrawTableBorders.apply(this, args)
+    }
+
+    try {
+      const table = new SimpleTableRenderable(renderer, {
+        left: 0,
+        top: 0,
+        border: false,
+        content: [
+          [cell("A"), cell("B")],
+          [cell("1"), cell("2")],
+        ],
+      })
+
+      renderer.root.add(table)
+      await renderOnce()
+
+      const frame = captureFrame()
+      expect(table.outerBorder).toBe(false)
+      expect(BORDER_CHAR_PATTERN.test(frame)).toBe(false)
+      expect(frame).toContain("AB")
+      expect(nativeCalls).toBe(0)
+    } finally {
+      OptimizedBuffer.prototype.drawTableBorders = originalDrawTableBorders
+    }
+  })
+
+  test("allows outer border even when inner border is off", async () => {
+    const originalDrawTableBorders = OptimizedBuffer.prototype.drawTableBorders
+    let nativeCalls = 0
+
+    OptimizedBuffer.prototype.drawTableBorders = function (...args: Parameters<OptimizedBuffer["drawTableBorders"]>) {
+      nativeCalls += 1
+      return originalDrawTableBorders.apply(this, args)
+    }
+
+    try {
+      const table = new SimpleTableRenderable(renderer, {
+        left: 0,
+        top: 0,
+        border: false,
+        outerBorder: true,
+        content: [
+          [cell("A"), cell("B")],
+          [cell("1"), cell("2")],
+        ],
+      })
+
+      renderer.root.add(table)
+      await renderOnce()
+
+      const frame = captureFrame()
+      expect(frame).toContain("┌")
+      expect(frame).toContain("┐")
+      expect(frame).toContain("└")
+      expect(frame).toContain("┘")
+      expect(frame).not.toContain("┼")
+      expect(nativeCalls).toBe(1)
+    } finally {
+      OptimizedBuffer.prototype.drawTableBorders = originalDrawTableBorders
+    }
   })
 
   test("rebuilds table when content setter is used", async () => {

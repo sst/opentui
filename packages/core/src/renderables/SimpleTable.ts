@@ -19,6 +19,15 @@ export type SimpleTableCellContent = TextChunk[] | null | undefined
 export type SimpleTableContent = SimpleTableCellContent[][]
 export type SimpleTableColumnWidthMode = "content" | "fill"
 
+interface ResolvedTableBorderLayout {
+  left: boolean
+  right: boolean
+  top: boolean
+  bottom: boolean
+  innerVertical: boolean
+  innerHorizontal: boolean
+}
+
 interface SimpleTableCellState {
   textBuffer: TextBuffer
   textBufferView: TextBufferView
@@ -32,6 +41,8 @@ interface SimpleTableLayout {
   rowOffsets: number[]
   columnOffsetsU32: Uint32Array
   rowOffsetsU32: Uint32Array
+  columnOffsetShift: number
+  rowOffsetShift: number
   tableWidth: number
   tableHeight: number
 }
@@ -50,6 +61,8 @@ export interface SimpleTableOptions extends RenderableOptions<SimpleTableRendera
   content?: SimpleTableContent
   wrapMode?: "none" | "char" | "word"
   columnWidthMode?: SimpleTableColumnWidthMode
+  border?: boolean
+  outerBorder?: boolean
   selectable?: boolean
   selectionBg?: ColorInput
   selectionFg?: ColorInput
@@ -66,6 +79,9 @@ export class SimpleTableRenderable extends Renderable {
   private _content: SimpleTableContent
   private _wrapMode: "none" | "char" | "word"
   private _columnWidthMode: SimpleTableColumnWidthMode
+  private _border: boolean
+  private _outerBorder: boolean
+  private _hasExplicitOuterBorder: boolean
   private _borderStyle: BorderStyle
   private _borderColor: RGBA
   private _borderBackgroundColor: RGBA
@@ -93,6 +109,8 @@ export class SimpleTableRenderable extends Renderable {
     content: [] as SimpleTableContent,
     wrapMode: "none" as "none" | "char" | "word",
     columnWidthMode: "content" as SimpleTableColumnWidthMode,
+    border: true,
+    outerBorder: true,
     selectable: true,
     selectionBg: undefined as ColorInput | undefined,
     selectionFg: undefined as ColorInput | undefined,
@@ -111,6 +129,9 @@ export class SimpleTableRenderable extends Renderable {
     this._content = options.content ?? this._defaultOptions.content
     this._wrapMode = options.wrapMode ?? this._defaultOptions.wrapMode
     this._columnWidthMode = options.columnWidthMode ?? this._defaultOptions.columnWidthMode
+    this._border = options.border ?? this._defaultOptions.border
+    this._hasExplicitOuterBorder = options.outerBorder !== undefined
+    this._outerBorder = options.outerBorder ?? this._border
     this.selectable = options.selectable ?? this._defaultOptions.selectable
     this._selectionBg = options.selectionBg ? parseColor(options.selectionBg) : undefined
     this._selectionFg = options.selectionFg ? parseColor(options.selectionFg) : undefined
@@ -159,6 +180,34 @@ export class SimpleTableRenderable extends Renderable {
   public set columnWidthMode(value: SimpleTableColumnWidthMode) {
     if (this._columnWidthMode === value) return
     this._columnWidthMode = value
+    this.invalidateLayoutAndRaster()
+  }
+
+  public get outerBorder(): boolean {
+    return this._outerBorder
+  }
+
+  public set outerBorder(value: boolean) {
+    if (this._outerBorder === value) return
+
+    this._hasExplicitOuterBorder = true
+    this._outerBorder = value
+    this.invalidateLayoutAndRaster()
+  }
+
+  public get border(): boolean {
+    return this._border
+  }
+
+  public set border(value: boolean) {
+    if (this._border === value) return
+
+    this._border = value
+
+    if (!this._hasExplicitOuterBorder) {
+      this._outerBorder = value
+    }
+
     this.invalidateLayoutAndRaster()
   }
 
@@ -508,24 +557,39 @@ export class SimpleTableRenderable extends Renderable {
       return this.createEmptyLayout()
     }
 
-    const columnWidths = this.computeColumnWidths(maxTableWidth)
+    const borderLayout = this.resolveBorderLayout()
+    const columnWidths = this.computeColumnWidths(maxTableWidth, borderLayout)
     const rowHeights = this.computeRowHeights(columnWidths)
-    const columnOffsets = this.computeOffsets(columnWidths)
-    const rowOffsets = this.computeOffsets(rowHeights)
+    const columnOffsets = this.computeOffsets(
+      columnWidths,
+      borderLayout.left,
+      borderLayout.right,
+      borderLayout.innerVertical,
+    )
+    const rowOffsets = this.computeOffsets(
+      rowHeights,
+      borderLayout.top,
+      borderLayout.bottom,
+      borderLayout.innerHorizontal,
+    )
+    const nativeColumnOffsets = this.toNativeOffsets(columnOffsets)
+    const nativeRowOffsets = this.toNativeOffsets(rowOffsets)
 
     return {
       columnWidths,
       rowHeights,
       columnOffsets,
       rowOffsets,
-      columnOffsetsU32: new Uint32Array(columnOffsets),
-      rowOffsetsU32: new Uint32Array(rowOffsets),
+      columnOffsetsU32: nativeColumnOffsets.offsets,
+      rowOffsetsU32: nativeRowOffsets.offsets,
+      columnOffsetShift: nativeColumnOffsets.shift,
+      rowOffsetShift: nativeRowOffsets.shift,
       tableWidth: (columnOffsets[columnOffsets.length - 1] ?? 0) + 1,
       tableHeight: (rowOffsets[rowOffsets.length - 1] ?? 0) + 1,
     }
   }
 
-  private computeColumnWidths(maxTableWidth?: number): number[] {
+  private computeColumnWidths(maxTableWidth: number | undefined, borderLayout: ResolvedTableBorderLayout): number[] {
     const intrinsicWidths = new Array(this._columnCount).fill(1)
 
     for (let rowIdx = 0; rowIdx < this._rowCount; rowIdx++) {
@@ -543,7 +607,7 @@ export class SimpleTableRenderable extends Renderable {
       return intrinsicWidths
     }
 
-    const maxContentWidth = Math.max(1, Math.floor(maxTableWidth) - (this._columnCount + 1))
+    const maxContentWidth = Math.max(1, Math.floor(maxTableWidth) - this.getVerticalBorderCount(borderLayout))
     const currentWidth = intrinsicWidths.reduce((sum, width) => sum + width, 0)
 
     if (currentWidth === maxContentWidth) {
@@ -669,12 +733,19 @@ export class SimpleTableRenderable extends Renderable {
     return rowHeights
   }
 
-  private computeOffsets(parts: number[]): number[] {
-    const offsets: number[] = [0]
-    let cursor = 0
+  private computeOffsets(
+    parts: number[],
+    startBoundary: boolean,
+    endBoundary: boolean,
+    includeInnerBoundaries: boolean,
+  ): number[] {
+    const offsets: number[] = [startBoundary ? 0 : -1]
+    let cursor = offsets[0] ?? 0
 
-    for (const size of parts) {
-      cursor += size + 1
+    for (let idx = 0; idx < parts.length; idx++) {
+      const size = parts[idx] ?? 1
+      const hasBoundaryAfter = idx < parts.length - 1 ? includeInnerBoundaries : endBoundary
+      cursor += size + (hasBoundaryAfter ? 1 : 0)
       offsets.push(cursor)
     }
 
@@ -701,7 +772,57 @@ export class SimpleTableRenderable extends Renderable {
     }
   }
 
+  private toNativeOffsets(offsets: number[]): { offsets: Uint32Array; shift: number } {
+    const needsShift = (offsets[0] ?? 0) < 0
+    const shift = needsShift ? -1 : 0
+
+    if (!needsShift) {
+      return {
+        offsets: new Uint32Array(offsets),
+        shift,
+      }
+    }
+
+    return {
+      offsets: new Uint32Array(offsets.map((value) => value + 1)),
+      shift,
+    }
+  }
+
+  private resolveBorderLayout(): ResolvedTableBorderLayout {
+    return {
+      left: this._outerBorder,
+      right: this._outerBorder,
+      top: this._outerBorder,
+      bottom: this._outerBorder,
+      innerVertical: this._border && this._columnCount > 1,
+      innerHorizontal: this._border && this._rowCount > 1,
+    }
+  }
+
+  private getVerticalBorderCount(borderLayout: ResolvedTableBorderLayout): number {
+    return (
+      (borderLayout.left ? 1 : 0) +
+      (borderLayout.right ? 1 : 0) +
+      (borderLayout.innerVertical ? Math.max(0, this._columnCount - 1) : 0)
+    )
+  }
+
+  private getHorizontalBorderCount(borderLayout: ResolvedTableBorderLayout): number {
+    return (
+      (borderLayout.top ? 1 : 0) +
+      (borderLayout.bottom ? 1 : 0) +
+      (borderLayout.innerHorizontal ? Math.max(0, this._rowCount - 1) : 0)
+    )
+  }
+
   private drawBorders(buffer: OptimizedBuffer): void {
+    const borderLayout = this.resolveBorderLayout()
+
+    if (this.getVerticalBorderCount(borderLayout) === 0 && this.getHorizontalBorderCount(borderLayout) === 0) {
+      return
+    }
+
     buffer.drawTableBorders(
       BorderCharArrays[this._borderStyle],
       this._borderColor,
@@ -710,6 +831,10 @@ export class SimpleTableRenderable extends Renderable {
       this._columnCount,
       this._layout.rowOffsetsU32,
       this._rowCount,
+      this._border,
+      this._outerBorder,
+      this._layout.columnOffsetShift,
+      this._layout.rowOffsetShift,
     )
   }
 
@@ -780,7 +905,7 @@ export class SimpleTableRenderable extends Renderable {
     let rowIdx = -1
     for (let idx = 0; idx < this._rowCount; idx++) {
       const top = (this._layout.rowOffsets[idx] ?? 0) + 1
-      const bottom = (this._layout.rowOffsets[idx + 1] ?? 0) - 1
+      const bottom = top + (this._layout.rowHeights[idx] ?? 1) - 1
       if (localY >= top && localY <= bottom) {
         rowIdx = idx
         break
@@ -792,7 +917,7 @@ export class SimpleTableRenderable extends Renderable {
     let colIdx = -1
     for (let idx = 0; idx < this._columnCount; idx++) {
       const left = (this._layout.columnOffsets[idx] ?? 0) + 1
-      const right = (this._layout.columnOffsets[idx + 1] ?? 0) - 1
+      const right = left + (this._layout.columnWidths[idx] ?? 1) - 1
       if (localX >= left && localX <= right) {
         colIdx = idx
         break
@@ -851,8 +976,9 @@ export class SimpleTableRenderable extends Renderable {
     if (localY < 0) return 0
 
     for (let rowIdx = 0; rowIdx < this._rowCount; rowIdx++) {
-      const rowEnd = this._layout.rowOffsets[rowIdx + 1] ?? 0
-      if (localY < rowEnd) return rowIdx
+      const rowStart = (this._layout.rowOffsets[rowIdx] ?? 0) + 1
+      const rowEnd = rowStart + (this._layout.rowHeights[rowIdx] ?? 1) - 1
+      if (localY <= rowEnd) return rowIdx
     }
 
     return this._rowCount - 1
@@ -910,6 +1036,8 @@ export class SimpleTableRenderable extends Renderable {
       rowOffsets: [0],
       columnOffsetsU32: new Uint32Array([0]),
       rowOffsetsU32: new Uint32Array([0]),
+      columnOffsetShift: 0,
+      rowOffsetShift: 0,
       tableWidth: 0,
       tableHeight: 0,
     }

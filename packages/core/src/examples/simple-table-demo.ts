@@ -34,6 +34,8 @@ let contentIndex = 0
 let wrapIndex = 1
 let borderIndex = 0
 let columnWidthModeIndex = 0
+let borderEnabled = true
+let outerBorderEnabled = true
 
 const WRAP_MODES: Array<"none" | "word" | "char"> = ["none", "word", "char"]
 const BORDER_STYLES: BorderStyle[] = ["single", "rounded", "double", "heavy"]
@@ -104,8 +106,8 @@ function currentColumnWidthMode(): SimpleTableColumnWidthMode {
 function updateControlsText(): void {
   if (!controlsText) return
 
-  controlsText.content = t`${bold("SimpleTable Demo")}  ${fg("#94a3b8")("1/2/3 dataset • W wrap • B border • M width • drag to select • C clear")}
-Current: dataset ${fg("#7dd3fc")(String(contentIndex + 1))} | wrap ${fg("#a5b4fc")(currentWrapMode())} | border ${fg("#f9a8d4")(currentBorderStyle())} | width ${fg("#fcd34d")(currentColumnWidthMode())}`
+  controlsText.content = t`${bold("SimpleTable Demo")}  ${fg("#94a3b8")("1/2/3 dataset • W wrap • B style • M width • N inner • O outer • drag to select • C clear")}
+Current: dataset ${fg("#7dd3fc")(String(contentIndex + 1))} | wrap ${fg("#a5b4fc")(currentWrapMode())} | style ${fg("#f9a8d4")(currentBorderStyle())} | width ${fg("#fcd34d")(currentColumnWidthMode())} | inner ${fg("#93c5fd")(borderEnabled ? "on" : "off")} | outer ${fg("#86efac")(outerBorderEnabled ? "on" : "off")}`
 }
 
 function clearSelectionStatus(message: string): void {
@@ -131,6 +133,12 @@ function applyTableState(): void {
 
   primaryTable.columnWidthMode = currentColumnWidthMode()
   unicodeTable.columnWidthMode = currentColumnWidthMode()
+
+  primaryTable.border = borderEnabled
+  unicodeTable.border = borderEnabled
+
+  primaryTable.outerBorder = outerBorderEnabled
+  unicodeTable.outerBorder = outerBorderEnabled
 
   updateControlsText()
 }
@@ -313,6 +321,18 @@ export function run(renderer: CliRenderer): void {
       return
     }
 
+    if (key.name === "n") {
+      borderEnabled = !borderEnabled
+      applyTableState()
+      return
+    }
+
+    if (key.name === "o") {
+      outerBorderEnabled = !outerBorderEnabled
+      applyTableState()
+      return
+    }
+
     if (key.name === "c") {
       renderer.clearSelection()
       clearSelectionStatus("Selection cleared")
@@ -348,6 +368,8 @@ export function destroy(renderer: CliRenderer): void {
   wrapIndex = 1
   borderIndex = 0
   columnWidthModeIndex = 0
+  borderEnabled = true
+  outerBorderEnabled = true
 }
 
 if (import.meta.main) {

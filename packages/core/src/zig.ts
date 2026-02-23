@@ -27,6 +27,7 @@ import {
   MeasureResultStruct,
   CursorStateStruct,
   CursorStyleOptionsStruct,
+  TableBorderDrawOptionsStruct,
   NativeSpanFeedOptionsStruct,
   NativeSpanFeedStatsStruct,
   ReserveInfoStruct,
@@ -338,7 +339,7 @@ function getOpenTUILib(libPath?: string) {
       returns: "void",
     },
     bufferDrawTableBorders: {
-      args: ["ptr", "ptr", "ptr", "ptr", "ptr", "u32", "ptr", "u32"],
+      args: ["ptr", "ptr", "ptr", "ptr", "ptr", "u32", "ptr", "u32", "ptr"],
       returns: "void",
     },
     bufferDrawBox: {
@@ -1476,6 +1477,7 @@ export interface RenderLib {
     columnCount: number,
     rowOffsets: Uint32Array,
     rowCount: number,
+    options: { drawInner: boolean; drawOuter: boolean; columnOffsetShift: number; rowOffsetShift: number },
   ) => void
   bufferDrawBox: (
     buffer: Pointer,
@@ -2244,7 +2246,15 @@ class FFIRenderLib implements RenderLib {
     columnCount: number,
     rowOffsets: Uint32Array,
     rowCount: number,
+    options: { drawInner: boolean; drawOuter: boolean; columnOffsetShift: number; rowOffsetShift: number },
   ): void {
+    const optionsBuffer = TableBorderDrawOptionsStruct.pack({
+      drawInner: options.drawInner,
+      drawOuter: options.drawOuter,
+      columnOffsetShift: Math.floor(options.columnOffsetShift),
+      rowOffsetShift: Math.floor(options.rowOffsetShift),
+    })
+
     this.opentui.symbols.bufferDrawTableBorders(
       buffer,
       borderChars,
@@ -2254,6 +2264,7 @@ class FFIRenderLib implements RenderLib {
       columnCount,
       rowOffsets,
       rowCount,
+      ptr(optionsBuffer),
     )
   }
 

@@ -1512,56 +1512,96 @@ pub const OptimizedBuffer = struct {
         columnCount: u32,
         rowOffsets: [*]const u32,
         rowCount: u32,
+        drawInner: bool,
+        drawOuter: bool,
+        columnOffsetShift: i32,
+        rowOffsetShift: i32,
     ) void {
         if (rowCount == 0 or columnCount == 0) return;
+        if (!drawInner and !drawOuter) return;
 
         const hChar = borderChars[@intFromEnum(BorderCharIndex.horizontal)];
         const vChar = borderChars[@intFromEnum(BorderCharIndex.vertical)];
         const bufWidth = self.width;
         const bufHeight = self.height;
+        const bufWidthI32 = @as(i32, @intCast(bufWidth));
+        const bufHeightI32 = @as(i32, @intCast(bufHeight));
 
         // Draw row-by-row: horizontal border line, then vertical borders for the row's content area
         var rowIdx: u32 = 0;
         while (rowIdx <= rowCount) : (rowIdx += 1) {
-            const borderY = rowOffsets[rowIdx];
-            if (borderY >= bufHeight) break;
+            const is_outer_row = rowIdx == 0 or rowIdx == rowCount;
+            const should_draw_horizontal = if (is_outer_row) drawOuter else drawInner;
+            const borderY = @as(i32, @intCast(rowOffsets[rowIdx])) + rowOffsetShift;
+            if (borderY >= bufHeightI32) break;
 
             // --- horizontal border line: intersections + fills ---
-            var colBorderIdx: u32 = 0;
-            while (colBorderIdx <= columnCount) : (colBorderIdx += 1) {
-                const bx = columnOffsets[colBorderIdx];
-                if (bx >= bufWidth) break;
-                const intersection = self.tableBorderIntersection(borderChars, rowIdx, colBorderIdx, rowCount, columnCount);
-                self.setRaw(bx, borderY, Cell{ .char = intersection, .fg = borderFg, .bg = borderBg, .attributes = 0 });
-            }
+            if (should_draw_horizontal and borderY >= 0) {
+                var colBorderIdx: u32 = 0;
+                while (colBorderIdx <= columnCount) : (colBorderIdx += 1) {
+                    const is_outer_col = colBorderIdx == 0 or colBorderIdx == columnCount;
+                    const should_draw_vertical = if (is_outer_col) drawOuter else drawInner;
+                    if (!should_draw_vertical) continue;
 
-            var colIdx: u32 = 0;
-            while (colIdx < columnCount) : (colIdx += 1) {
-                const startX = columnOffsets[colIdx] + 1;
-                const endX = columnOffsets[colIdx + 1];
-                if (startX >= bufWidth) break;
-                const clampedEnd = @min(endX, bufWidth);
-                if (startX < clampedEnd) {
-                    @memset(self.buffer.char[borderY * bufWidth + startX .. borderY * bufWidth + clampedEnd], hChar);
-                    @memset(self.buffer.fg[borderY * bufWidth + startX .. borderY * bufWidth + clampedEnd], borderFg);
-                    @memset(self.buffer.bg[borderY * bufWidth + startX .. borderY * bufWidth + clampedEnd], borderBg);
-                    @memset(self.buffer.attributes[borderY * bufWidth + startX .. borderY * bufWidth + clampedEnd], 0);
+                    const bx = @as(i32, @intCast(columnOffsets[colBorderIdx])) + columnOffsetShift;
+                    if (bx >= bufWidthI32) break;
+                    if (bx < 0) continue;
+
+                    const has_up = rowIdx > 0 and should_draw_vertical;
+                    const has_down = rowIdx < rowCount and should_draw_vertical;
+                    const has_left = colBorderIdx > 0;
+                    const has_right = colBorderIdx < columnCount;
+                    const intersection = tableBorderIntersectionByConnections(borderChars, has_up, has_down, has_left, has_right);
+
+                    self.setRaw(@as(u32, @intCast(bx)), @as(u32, @intCast(borderY)), Cell{ .char = intersection, .fg = borderFg, .bg = borderBg, .attributes = 0 });
+                }
+
+                var colIdx: u32 = 0;
+                while (colIdx < columnCount) : (colIdx += 1) {
+                    const has_boundary_after = if (colIdx < columnCount - 1) drawInner else drawOuter;
+                    const boundary_padding: i32 = if (has_boundary_after) 0 else 1;
+                    const startX = @as(i32, @intCast(columnOffsets[colIdx])) + 1 + columnOffsetShift;
+                    const endX = @as(i32, @intCast(columnOffsets[colIdx + 1])) + columnOffsetShift + boundary_padding;
+
+                    if (startX >= bufWidthI32) break;
+                    if (endX <= 0) continue;
+
+                    const clampedStart = @as(u32, @intCast(@max(@as(i32, 0), startX)));
+                    const clampedEnd = @as(u32, @intCast(@min(bufWidthI32, endX)));
+
+                    if (clampedStart < clampedEnd) {
+                        const borderYU32 = @as(u32, @intCast(borderY));
+                        @memset(self.buffer.char[borderYU32 * bufWidth + clampedStart .. borderYU32 * bufWidth + clampedEnd], hChar);
+                        @memset(self.buffer.fg[borderYU32 * bufWidth + clampedStart .. borderYU32 * bufWidth + clampedEnd], borderFg);
+                        @memset(self.buffer.bg[borderYU32 * bufWidth + clampedStart .. borderYU32 * bufWidth + clampedEnd], borderBg);
+                        @memset(self.buffer.attributes[borderYU32 * bufWidth + clampedStart .. borderYU32 * bufWidth + clampedEnd], 0);
+                    }
                 }
             }
 
             if (rowIdx >= rowCount) break;
 
             // --- vertical borders for each content line in this row ---
+            const has_row_boundary_after = if (rowIdx < rowCount - 1) drawInner else drawOuter;
+            const row_boundary_padding: i32 = if (has_row_boundary_after) 0 else 1;
             const contentStartY = borderY + 1;
-            const contentEndY = rowOffsets[rowIdx + 1];
+            const contentEndY = @as(i32, @intCast(rowOffsets[rowIdx + 1])) + rowOffsetShift + row_boundary_padding;
             var cy = contentStartY;
-            while (cy < contentEndY and cy < bufHeight) : (cy += 1) {
-                const rowBase = cy * bufWidth;
-                colBorderIdx = 0;
+            while (cy < contentEndY and cy < bufHeightI32) : (cy += 1) {
+                if (cy < 0) continue;
+
+                const rowBase = @as(u32, @intCast(cy)) * bufWidth;
+                var colBorderIdx: u32 = 0;
                 while (colBorderIdx <= columnCount) : (colBorderIdx += 1) {
-                    const bx = columnOffsets[colBorderIdx];
-                    if (bx >= bufWidth) break;
-                    const idx = rowBase + bx;
+                    const is_outer_col = colBorderIdx == 0 or colBorderIdx == columnCount;
+                    const should_draw_vertical = if (is_outer_col) drawOuter else drawInner;
+                    if (!should_draw_vertical) continue;
+
+                    const bx = @as(i32, @intCast(columnOffsets[colBorderIdx])) + columnOffsetShift;
+                    if (bx >= bufWidthI32) break;
+                    if (bx < 0) continue;
+
+                    const idx = rowBase + @as(u32, @intCast(bx));
                     self.buffer.char[idx] = vChar;
                     self.buffer.fg[idx] = borderFg;
                     self.buffer.bg[idx] = borderBg;
@@ -1571,21 +1611,22 @@ pub const OptimizedBuffer = struct {
         }
     }
 
-    fn tableBorderIntersection(self: *const OptimizedBuffer, borderChars: [*]const u32, rowBorderIdx: u32, colBorderIdx: u32, rowCount: u32, columnCount: u32) u32 {
-        _ = self;
-        const top = rowBorderIdx == 0;
-        const bottom = rowBorderIdx == rowCount;
-        const left = colBorderIdx == 0;
-        const right = colBorderIdx == columnCount;
+    fn tableBorderIntersectionByConnections(borderChars: [*]const u32, hasUp: bool, hasDown: bool, hasLeft: bool, hasRight: bool) u32 {
+        if (hasUp and hasDown and hasLeft and hasRight) return borderChars[@intFromEnum(BorderCharIndex.cross)];
 
-        if (top and left) return borderChars[@intFromEnum(BorderCharIndex.topLeft)];
-        if (top and right) return borderChars[@intFromEnum(BorderCharIndex.topRight)];
-        if (bottom and left) return borderChars[@intFromEnum(BorderCharIndex.bottomLeft)];
-        if (bottom and right) return borderChars[@intFromEnum(BorderCharIndex.bottomRight)];
-        if (top) return borderChars[@intFromEnum(BorderCharIndex.topT)];
-        if (bottom) return borderChars[@intFromEnum(BorderCharIndex.bottomT)];
-        if (left) return borderChars[@intFromEnum(BorderCharIndex.leftT)];
-        if (right) return borderChars[@intFromEnum(BorderCharIndex.rightT)];
+        if (!hasUp and hasDown and !hasLeft and hasRight) return borderChars[@intFromEnum(BorderCharIndex.topLeft)];
+        if (!hasUp and hasDown and hasLeft and !hasRight) return borderChars[@intFromEnum(BorderCharIndex.topRight)];
+        if (hasUp and !hasDown and !hasLeft and hasRight) return borderChars[@intFromEnum(BorderCharIndex.bottomLeft)];
+        if (hasUp and !hasDown and hasLeft and !hasRight) return borderChars[@intFromEnum(BorderCharIndex.bottomRight)];
+
+        if (hasUp and hasDown and !hasLeft and hasRight) return borderChars[@intFromEnum(BorderCharIndex.leftT)];
+        if (hasUp and hasDown and hasLeft and !hasRight) return borderChars[@intFromEnum(BorderCharIndex.rightT)];
+        if (!hasUp and hasDown and hasLeft and hasRight) return borderChars[@intFromEnum(BorderCharIndex.topT)];
+        if (hasUp and !hasDown and hasLeft and hasRight) return borderChars[@intFromEnum(BorderCharIndex.bottomT)];
+
+        if ((hasLeft or hasRight) and !hasUp and !hasDown) return borderChars[@intFromEnum(BorderCharIndex.horizontal)];
+        if ((hasUp or hasDown) and !hasLeft and !hasRight) return borderChars[@intFromEnum(BorderCharIndex.vertical)];
+
         return borderChars[@intFromEnum(BorderCharIndex.cross)];
     }
 

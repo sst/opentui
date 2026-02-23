@@ -490,6 +490,10 @@ export class OptimizedBuffer {
     columnCount: number,
     rowOffsets: Uint32Array,
     rowCount: number,
+    drawInner: boolean,
+    drawOuter: boolean,
+    columnOffsetShift: number,
+    rowOffsetShift: number,
   ): void {
     this.guard()
     this.lib.bufferDrawTableBorders(
@@ -501,6 +505,12 @@ export class OptimizedBuffer {
       columnCount,
       rowOffsets,
       rowCount,
+      {
+        drawInner,
+        drawOuter,
+        columnOffsetShift,
+        rowOffsetShift,
+      },
     )
   }
 
