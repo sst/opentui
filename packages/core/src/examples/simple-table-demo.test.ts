@@ -1,8 +1,10 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test"
 import { run, destroy } from "./simple-table-demo"
-import { createTestRenderer, type MockMouse, type TestRenderer } from "../testing/test-renderer"
+import { createTestRenderer, type MockInput, type MockMouse, type TestRenderer } from "../testing/test-renderer"
+import { SimpleTableRenderable } from "../renderables/SimpleTable"
 
 let renderer: TestRenderer
+let mockInput: MockInput
 let mockMouse: MockMouse
 let renderOnce: () => Promise<void>
 let captureFrame: () => string
@@ -10,6 +12,7 @@ let captureFrame: () => string
 beforeEach(async () => {
   const testRenderer = await createTestRenderer({ width: 20, height: 40 })
   renderer = testRenderer.renderer
+  mockInput = testRenderer.mockInput
   mockMouse = testRenderer.mockMouse
   renderOnce = testRenderer.renderOnce
   captureFrame = testRenderer.captureCharFrame
@@ -49,5 +52,21 @@ describe("simple-table-demo narrow layout", () => {
     expect(frame).toContain("┌───┬────┬───────┐")
     expect(frame).toContain("└────────────────┘")
     expect(frame).not.toContain("█")
+  })
+
+  test("toggles column width mode with keyboard", async () => {
+    run(renderer)
+    await renderOnce()
+
+    mockInput.pressKey("m")
+    await renderOnce()
+
+    const primaryTable = renderer.root.findDescendantById("simple-table-demo-primary")
+    expect(primaryTable).toBeInstanceOf(SimpleTableRenderable)
+    expect((primaryTable as SimpleTableRenderable).columnWidthMode).toBe("fill")
+
+    const frame = captureFrame()
+    expect(frame).toMatchSnapshot("narrow width fill mode")
+    expect(frame).toContain("width fill")
   })
 })

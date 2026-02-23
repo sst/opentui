@@ -127,6 +127,85 @@ describe("SimpleTableRenderable", () => {
     expect(frame).toContain("Description")
   })
 
+  test("keeps intrinsic width by default when extra space is available", async () => {
+    const table = new SimpleTableRenderable(renderer, {
+      left: 0,
+      top: 0,
+      width: 34,
+      wrapMode: "word",
+      content: [
+        [cell("A"), cell("B")],
+        [cell("1"), cell("2")],
+      ],
+    })
+
+    renderer.root.add(table)
+    await renderOnce()
+
+    const lines = captureFrame().split("\n")
+    const headerY = lines.findIndex((line) => line.includes("A") && line.includes("B"))
+    expect(headerY).toBeGreaterThanOrEqual(0)
+
+    const buffer = renderer.currentRenderBuffer
+    const borderXs = findVerticalBorderXs(buffer, headerY)
+
+    expect(borderXs.length).toBe(3)
+    expect(borderXs[0]).toBe(0)
+    expect(borderXs[borderXs.length - 1]).toBeLessThan(33)
+  })
+
+  test("fills available width when columnWidthMode is fill", async () => {
+    const table = new SimpleTableRenderable(renderer, {
+      left: 0,
+      top: 0,
+      width: 34,
+      wrapMode: "word",
+      columnWidthMode: "fill",
+      content: [
+        [cell("A"), cell("B")],
+        [cell("1"), cell("2")],
+      ],
+    })
+
+    renderer.root.add(table)
+    await renderOnce()
+
+    const lines = captureFrame().split("\n")
+    const headerY = lines.findIndex((line) => line.includes("A") && line.includes("B"))
+    expect(headerY).toBeGreaterThanOrEqual(0)
+
+    const buffer = renderer.currentRenderBuffer
+    const borderXs = findVerticalBorderXs(buffer, headerY)
+
+    expect(borderXs).toEqual([0, 17, 33])
+  })
+
+  test("fills available width in no-wrap mode when columnWidthMode is fill", async () => {
+    const table = new SimpleTableRenderable(renderer, {
+      left: 0,
+      top: 0,
+      width: 24,
+      wrapMode: "none",
+      columnWidthMode: "fill",
+      content: [
+        [cell("Key"), cell("Value")],
+        [cell("A"), cell("B")],
+      ],
+    })
+
+    renderer.root.add(table)
+    await renderOnce()
+
+    const lines = captureFrame().split("\n")
+    const headerY = lines.findIndex((line) => line.includes("Key") && line.includes("Value"))
+    expect(headerY).toBeGreaterThanOrEqual(0)
+
+    const buffer = renderer.currentRenderBuffer
+    const borderXs = findVerticalBorderXs(buffer, headerY)
+
+    expect(borderXs).toEqual([0, 11, 23])
+  })
+
   test("rebuilds table when content setter is used", async () => {
     const table = new SimpleTableRenderable(renderer, {
       left: 0,

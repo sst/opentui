@@ -5,11 +5,12 @@ exports[`simple-table-demo narrow layout renders tables without right scrollbar 
  SimpleTable Demo   
  1/2/3 dataset • W  
  wrap • B border •  
- drag to select •   
- C clear            
+ M width • drag to  
+ select • C clear   
  Current: dataset   
  1 | wrap word |    
- border single      
+ border single |    
+ width content      
                     
  Operational Table  
                     
@@ -28,7 +29,6 @@ exports[`simple-table-demo narrow layout renders tables without right scrollbar 
  │bil│ERRO│retryin│ 
  │lin│R   │g payme│ 
  │g  │    │nt prov│ 
- │   │    │ider   │ 
                     
  ┌─Selected Text──┐ 
  │                │ 
@@ -49,11 +49,12 @@ exports[`simple-table-demo narrow layout selection status updates without collap
  SimpleTable Demo   
  1/2/3 dataset • W  
  wrap • B border •  
- drag to select •   
- C clear            
+ M width • drag to  
+ select • C clear   
  Current: dataset   
  1 | wrap word |    
- border single      
+ border single |    
+ width content      
                     
  Operational Table  
                     
@@ -72,7 +73,6 @@ exports[`simple-table-demo narrow layout selection status updates without collap
  │bil│ERRO│retryin│ 
  │lin│R   │g payme│ 
  │g  │    │nt prov│ 
- │   │    │ider   │ 
                     
  ┌─Selected Text──┐ 
  │                │ 
@@ -81,6 +81,50 @@ exports[`simple-table-demo narrow layout selection status updates without collap
  │ Service        │ 
  │ Status         │ 
  │ api  OK        │ 
+ │                │ 
+ │                │ 
+ └────────────────┘ 
+                    
+"
+`;
+
+exports[`simple-table-demo narrow layout toggles column width mode with keyboard: narrow width fill mode 1`] = `
+"                    
+ SimpleTable Demo   
+ 1/2/3 dataset • W  
+ wrap • B border •  
+ M width • drag to  
+ select • C clear   
+ Current: dataset   
+ 1 | wrap word |    
+ border single |    
+ width fill         
+                    
+ Operational Table  
+                    
+ ┌───┬────┬───────┐ 
+ │Ser│Stat│Notes  │ 
+ │vic│us  │       │ 
+ │e  │    │       │ 
+ ├───┼────┼───────┤ 
+ │api│OK  │latency│ 
+ │   │    │ 28ms  │ 
+ ├───┼────┼───────┤ 
+ │wor│DEGR│queue  │ 
+ │ker│ADED│depth: │ 
+ │   │    │124    │ 
+ ├───┼────┼───────┤ 
+ │bil│ERRO│retryin│ 
+ │lin│R   │g payme│ 
+ │g  │    │nt prov│ 
+                    
+ ┌─Selected Text──┐ 
+ │                │ 
+ │ No selection   │ 
+ │ yet            │ 
+ │                │ 
+ │                │ 
+ │                │ 
  │                │ 
  │                │ 
  └────────────────┘ 

@@ -17,6 +17,7 @@ const MEASURE_HEIGHT = 10_000
 
 export type SimpleTableCellContent = TextChunk[] | null | undefined
 export type SimpleTableContent = SimpleTableCellContent[][]
+export type SimpleTableColumnWidthMode = "content" | "fill"
 
 interface SimpleTableCellState {
   textBuffer: TextBuffer
@@ -48,6 +49,7 @@ interface RowRange {
 export interface SimpleTableOptions extends RenderableOptions<SimpleTableRenderable> {
   content?: SimpleTableContent
   wrapMode?: "none" | "char" | "word"
+  columnWidthMode?: SimpleTableColumnWidthMode
   selectable?: boolean
   selectionBg?: ColorInput
   selectionFg?: ColorInput
@@ -63,6 +65,7 @@ export interface SimpleTableOptions extends RenderableOptions<SimpleTableRendera
 export class SimpleTableRenderable extends Renderable {
   private _content: SimpleTableContent
   private _wrapMode: "none" | "char" | "word"
+  private _columnWidthMode: SimpleTableColumnWidthMode
   private _borderStyle: BorderStyle
   private _borderColor: RGBA
   private _borderBackgroundColor: RGBA
@@ -89,6 +92,7 @@ export class SimpleTableRenderable extends Renderable {
   private readonly _defaultOptions = {
     content: [] as SimpleTableContent,
     wrapMode: "none" as "none" | "char" | "word",
+    columnWidthMode: "content" as SimpleTableColumnWidthMode,
     selectable: true,
     selectionBg: undefined as ColorInput | undefined,
     selectionFg: undefined as ColorInput | undefined,
@@ -106,6 +110,7 @@ export class SimpleTableRenderable extends Renderable {
 
     this._content = options.content ?? this._defaultOptions.content
     this._wrapMode = options.wrapMode ?? this._defaultOptions.wrapMode
+    this._columnWidthMode = options.columnWidthMode ?? this._defaultOptions.columnWidthMode
     this.selectable = options.selectable ?? this._defaultOptions.selectable
     this._selectionBg = options.selectionBg ? parseColor(options.selectionBg) : undefined
     this._selectionFg = options.selectionFg ? parseColor(options.selectionFg) : undefined
@@ -144,6 +149,16 @@ export class SimpleTableRenderable extends Renderable {
         cell.textBufferView.setWrapMode(value)
       }
     }
+    this.invalidateLayoutAndRaster()
+  }
+
+  public get columnWidthMode(): SimpleTableColumnWidthMode {
+    return this._columnWidthMode
+  }
+
+  public set columnWidthMode(value: SimpleTableColumnWidthMode) {
+    if (this._columnWidthMode === value) return
+    this._columnWidthMode = value
     this.invalidateLayoutAndRaster()
   }
 
@@ -289,7 +304,8 @@ export class SimpleTableRenderable extends Renderable {
       heightMode: MeasureMode,
     ): { width: number; height: number } => {
       const hasWidthConstraint = widthMode !== MeasureMode.Undefined && Number.isFinite(width)
-      const widthConstraint = hasWidthConstraint ? Math.max(1, Math.floor(width)) : undefined
+      const rawWidthConstraint = hasWidthConstraint ? Math.max(1, Math.floor(width)) : undefined
+      const widthConstraint = this.resolveLayoutWidthConstraint(rawWidthConstraint)
       const measuredLayout = this.computeLayout(widthConstraint)
       this._cachedMeasureLayout = measuredLayout
       this._cachedMeasureWidth = widthConstraint
@@ -297,8 +313,8 @@ export class SimpleTableRenderable extends Renderable {
       let measuredWidth = measuredLayout.tableWidth > 0 ? measuredLayout.tableWidth : 1
       let measuredHeight = measuredLayout.tableHeight > 0 ? measuredLayout.tableHeight : 1
 
-      if (widthMode === MeasureMode.AtMost && widthConstraint !== undefined && this._positionType !== "absolute") {
-        measuredWidth = Math.min(widthConstraint, measuredWidth)
+      if (widthMode === MeasureMode.AtMost && rawWidthConstraint !== undefined && this._positionType !== "absolute") {
+        measuredWidth = Math.min(rawWidthConstraint, measuredWidth)
       }
 
       if (heightMode === MeasureMode.AtMost && Number.isFinite(height) && this._positionType !== "absolute") {
@@ -467,7 +483,7 @@ export class SimpleTableRenderable extends Renderable {
   }
 
   private rebuildLayoutForCurrentWidth(): void {
-    const maxTableWidth = this._wrapMode === "none" ? undefined : this.width
+    const maxTableWidth = this.resolveLayoutWidthConstraint(this.width)
 
     let layout: SimpleTableLayout
     if (this._cachedMeasureLayout !== null && this._cachedMeasureWidth === maxTableWidth) {
@@ -523,23 +539,54 @@ export class SimpleTableRenderable extends Renderable {
       }
     }
 
-    if (
-      this._wrapMode === "none" ||
-      maxTableWidth === undefined ||
-      !Number.isFinite(maxTableWidth) ||
-      maxTableWidth <= 0
-    ) {
+    if (maxTableWidth === undefined || !Number.isFinite(maxTableWidth) || maxTableWidth <= 0) {
       return intrinsicWidths
     }
 
     const maxContentWidth = Math.max(1, Math.floor(maxTableWidth) - (this._columnCount + 1))
     const currentWidth = intrinsicWidths.reduce((sum, width) => sum + width, 0)
 
-    if (currentWidth <= maxContentWidth) {
+    if (currentWidth === maxContentWidth) {
+      return intrinsicWidths
+    }
+
+    if (currentWidth < maxContentWidth) {
+      if (this._columnWidthMode === "fill") {
+        return this.expandColumnWidths(intrinsicWidths, maxContentWidth)
+      }
+
+      return intrinsicWidths
+    }
+
+    if (this._wrapMode === "none") {
       return intrinsicWidths
     }
 
     return this.fitColumnWidths(intrinsicWidths, maxContentWidth)
+  }
+
+  private expandColumnWidths(widths: number[], targetContentWidth: number): number[] {
+    const baseWidths = widths.map((width) => Math.max(1, Math.floor(width)))
+    const totalBaseWidth = baseWidths.reduce((sum, width) => sum + width, 0)
+
+    if (totalBaseWidth >= targetContentWidth) {
+      return baseWidths
+    }
+
+    const expanded = [...baseWidths]
+    const columns = expanded.length
+    const extraWidth = targetContentWidth - totalBaseWidth
+    const sharedWidth = Math.floor(extraWidth / columns)
+    const remainder = extraWidth % columns
+
+    for (let idx = 0; idx < columns; idx++) {
+      expanded[idx] += sharedWidth
+      if (idx < remainder) {
+        expanded[idx] += 1
+      }
+    }
+
+    return expanded
   }
 
   private fitColumnWidths(widths: number[], targetContentWidth: number): number[] {
@@ -866,6 +913,18 @@ export class SimpleTableRenderable extends Renderable {
       tableWidth: 0,
       tableHeight: 0,
     }
+  }
+
+  private resolveLayoutWidthConstraint(width: number | undefined): number | undefined {
+    if (width === undefined || !Number.isFinite(width) || width <= 0) {
+      return undefined
+    }
+
+    if (this._wrapMode !== "none" || this._columnWidthMode === "fill") {
+      return Math.max(1, Math.floor(width))
+    }
+
+    return undefined
   }
 
   private invalidateLayoutAndRaster(markYogaDirty: boolean = true): void {

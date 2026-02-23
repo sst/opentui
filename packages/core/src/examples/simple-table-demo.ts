@@ -15,7 +15,7 @@ import {
   yellow,
 } from "../index"
 import type { Selection } from "../lib/selection"
-import type { SimpleTableContent } from "../renderables/SimpleTable"
+import type { SimpleTableColumnWidthMode, SimpleTableContent } from "../renderables/SimpleTable"
 import type { TextChunk } from "../text-buffer"
 import { setupCommonDemoKeys } from "./lib/standalone-keys"
 
@@ -33,9 +33,11 @@ let selectionHandler: ((selection: Selection) => void) | null = null
 let contentIndex = 0
 let wrapIndex = 1
 let borderIndex = 0
+let columnWidthModeIndex = 0
 
 const WRAP_MODES: Array<"none" | "word" | "char"> = ["none", "word", "char"]
 const BORDER_STYLES: BorderStyle[] = ["single", "rounded", "double", "heavy"]
+const COLUMN_WIDTH_MODES: SimpleTableColumnWidthMode[] = ["content", "fill"]
 
 function cell(text: string): TextChunk[] {
   return [
@@ -95,11 +97,15 @@ function currentBorderStyle(): BorderStyle {
   return BORDER_STYLES[borderIndex] ?? "single"
 }
 
+function currentColumnWidthMode(): SimpleTableColumnWidthMode {
+  return COLUMN_WIDTH_MODES[columnWidthModeIndex] ?? "content"
+}
+
 function updateControlsText(): void {
   if (!controlsText) return
 
-  controlsText.content = t`${bold("SimpleTable Demo")}  ${fg("#94a3b8")("1/2/3 dataset • W wrap • B border • drag to select • C clear")}
-Current: dataset ${fg("#7dd3fc")(String(contentIndex + 1))} | wrap ${fg("#a5b4fc")(currentWrapMode())} | border ${fg("#f9a8d4")(currentBorderStyle())}`
+  controlsText.content = t`${bold("SimpleTable Demo")}  ${fg("#94a3b8")("1/2/3 dataset • W wrap • B border • M width • drag to select • C clear")}
+Current: dataset ${fg("#7dd3fc")(String(contentIndex + 1))} | wrap ${fg("#a5b4fc")(currentWrapMode())} | border ${fg("#f9a8d4")(currentBorderStyle())} | width ${fg("#fcd34d")(currentColumnWidthMode())}`
 }
 
 function clearSelectionStatus(message: string): void {
@@ -122,6 +128,9 @@ function applyTableState(): void {
 
   primaryTable.borderStyle = currentBorderStyle()
   unicodeTable.borderStyle = currentBorderStyle()
+
+  primaryTable.columnWidthMode = currentColumnWidthMode()
+  unicodeTable.columnWidthMode = currentColumnWidthMode()
 
   updateControlsText()
 }
@@ -298,6 +307,12 @@ export function run(renderer: CliRenderer): void {
       return
     }
 
+    if (key.name === "m") {
+      columnWidthModeIndex = (columnWidthModeIndex + 1) % COLUMN_WIDTH_MODES.length
+      applyTableState()
+      return
+    }
+
     if (key.name === "c") {
       renderer.clearSelection()
       clearSelectionStatus("Selection cleared")
@@ -332,6 +347,7 @@ export function destroy(renderer: CliRenderer): void {
   contentIndex = 0
   wrapIndex = 1
   borderIndex = 0
+  columnWidthModeIndex = 0
 }
 
 if (import.meta.main) {

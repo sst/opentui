@@ -91,7 +91,7 @@ exports[`SimpleTableRenderable wraps CJK and emoji without grapheme duplication:
 │   │checks                  │                              
 ├───┼────────────────────────┤                              
 │emo│Faces 😀😃😄 should     │                              
-│ji │ remain stable          │                              
+│ji │remain stable           │                              
 └───┴────────────────────────┘                              
                                                             
                                                             
