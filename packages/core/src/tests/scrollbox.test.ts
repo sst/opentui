@@ -1196,6 +1196,55 @@ console.log(processor.reduce((acc, val) => acc + val, 0))`
     }
   })
 
+  // Regression test for issue #709: content size recalculation should not clear manual scroll state
+  test("does not reset _hasManualScroll during content size recalculation (issue #709)", async () => {
+    const scrollBox = new ScrollBoxRenderable(testRenderer, {
+      width: 40,
+      height: 10,
+      stickyScroll: true,
+      stickyStart: "bottom",
+    })
+
+    testRenderer.root.add(scrollBox)
+
+    for (let i = 0; i < 30; i++) {
+      scrollBox.add(new TextRenderable(testRenderer, { id: `line-${i}`, content: `Line ${i}` }))
+    }
+    await renderOnce()
+
+    const initialMaxScroll = Math.max(0, scrollBox.scrollHeight - scrollBox.viewport.height)
+    expect(scrollBox.scrollTop).toBe(initialMaxScroll)
+    expect((scrollBox as any)._hasManualScroll).toBe(false)
+
+    scrollBox.scrollTo(5)
+    await renderOnce()
+
+    expect(scrollBox.scrollTop).toBe(5)
+    expect((scrollBox as any)._hasManualScroll).toBe(true)
+
+    // Force a size recalculation that programmatically clamps scrollTop to 0.
+    // This must not be treated as a user returning to sticky position.
+    for (let i = 0; i < 28; i++) {
+      scrollBox.remove(`line-${i}`)
+    }
+    await renderOnce()
+
+    expect(Math.max(0, scrollBox.scrollHeight - scrollBox.viewport.height)).toBe(0)
+    expect(scrollBox.scrollTop).toBe(0)
+    expect((scrollBox as any)._hasManualScroll).toBe(true)
+
+    // When content grows again, we should keep manual-scroll mode and stay away from sticky bottom.
+    for (let i = 30; i < 50; i++) {
+      scrollBox.add(new TextRenderable(testRenderer, { id: `line-${i}`, content: `Line ${i}` }))
+    }
+    await renderOnce()
+
+    const newMaxScroll = Math.max(0, scrollBox.scrollHeight - scrollBox.viewport.height)
+    expect(newMaxScroll).toBeGreaterThan(0)
+    expect((scrollBox as any)._hasManualScroll).toBe(true)
+    expect(scrollBox.scrollTop).toBe(0)
+  })
+
   // Regression test for issue #530: edge case when content fits in viewport
   test("resets _hasManualScroll for stickyStart=bottom when content fits in viewport (issue #530)", async () => {
     const scrollBox = new ScrollBoxRenderable(testRenderer, {

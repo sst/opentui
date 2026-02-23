@@ -1720,6 +1720,15 @@ export class CliRenderer extends EventEmitter implements RenderContext {
 
   private internalPause(): void {
     this._isRunning = false
+
+    if (this.renderTimeout) {
+      clearTimeout(this.renderTimeout)
+      this.renderTimeout = null
+    }
+
+    if (!this.rendering) {
+      this.resolveIdleIfNeeded()
+    }
   }
 
   public stop(): void {
