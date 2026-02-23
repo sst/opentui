@@ -15,9 +15,9 @@ import type { RenderContext } from "../types"
 // measuring is introduced later, table sizing remains stable.
 const MEASURE_HEIGHT = 10_000
 
-export type SimpleTableCellContent = TextChunk[] | null | undefined
-export type SimpleTableContent = SimpleTableCellContent[][]
-export type SimpleTableColumnWidthMode = "content" | "fill"
+export type TextTableCellContent = TextChunk[] | null | undefined
+export type TextTableContent = TextTableCellContent[][]
+export type TextTableColumnWidthMode = "content" | "fill"
 
 interface ResolvedTableBorderLayout {
   left: boolean
@@ -28,13 +28,13 @@ interface ResolvedTableBorderLayout {
   innerHorizontal: boolean
 }
 
-interface SimpleTableCellState {
+interface TextTableCellState {
   textBuffer: TextBuffer
   textBufferView: TextBufferView
   syntaxStyle: SyntaxStyle
 }
 
-interface SimpleTableLayout {
+interface TextTableLayout {
   columnWidths: number[]
   rowHeights: number[]
   columnOffsets: number[]
@@ -55,10 +55,10 @@ interface RowRange {
   lastRow: number
 }
 
-export interface SimpleTableOptions extends RenderableOptions<SimpleTableRenderable> {
-  content?: SimpleTableContent
+export interface TextTableOptions extends RenderableOptions<TextTableRenderable> {
+  content?: TextTableContent
   wrapMode?: "none" | "char" | "word"
-  columnWidthMode?: SimpleTableColumnWidthMode
+  columnWidthMode?: TextTableColumnWidthMode
   cellPadding?: number
   showBorders?: boolean
   border?: boolean
@@ -75,10 +75,10 @@ export interface SimpleTableOptions extends RenderableOptions<SimpleTableRendera
   attributes?: number
 }
 
-export class SimpleTableRenderable extends Renderable {
-  private _content: SimpleTableContent
+export class TextTableRenderable extends Renderable {
+  private _content: TextTableContent
   private _wrapMode: "none" | "char" | "word"
-  private _columnWidthMode: SimpleTableColumnWidthMode
+  private _columnWidthMode: TextTableColumnWidthMode
   private _cellPadding: number
   private _showBorders: boolean
   private _border: boolean
@@ -95,22 +95,22 @@ export class SimpleTableRenderable extends Renderable {
   private _selectionFg: RGBA | undefined
   private _lastLocalSelection: LocalSelectionBounds | null = null
 
-  private _cells: SimpleTableCellState[][] = []
-  private _prevCellContent: SimpleTableCellContent[][] = []
+  private _cells: TextTableCellState[][] = []
+  private _prevCellContent: TextTableCellContent[][] = []
   private _rowCount: number = 0
   private _columnCount: number = 0
 
-  private _layout: SimpleTableLayout = this.createEmptyLayout()
+  private _layout: TextTableLayout = this.createEmptyLayout()
   private _layoutDirty: boolean = true
   private _rasterDirty: boolean = true
 
-  private _cachedMeasureLayout: SimpleTableLayout | null = null
+  private _cachedMeasureLayout: TextTableLayout | null = null
   private _cachedMeasureWidth: number | undefined = undefined
 
   private readonly _defaultOptions = {
-    content: [] as SimpleTableContent,
+    content: [] as TextTableContent,
     wrapMode: "none" as "none" | "char" | "word",
-    columnWidthMode: "content" as SimpleTableColumnWidthMode,
+    columnWidthMode: "content" as TextTableColumnWidthMode,
     cellPadding: 0,
     showBorders: true,
     border: true,
@@ -125,9 +125,9 @@ export class SimpleTableRenderable extends Renderable {
     fg: "#FFFFFF",
     bg: "transparent",
     attributes: 0,
-  } satisfies Partial<SimpleTableOptions>
+  } satisfies Partial<TextTableOptions>
 
-  constructor(ctx: RenderContext, options: SimpleTableOptions = {}) {
+  constructor(ctx: RenderContext, options: TextTableOptions = {}) {
     super(ctx, { ...options, buffered: true })
 
     this._content = options.content ?? this._defaultOptions.content
@@ -155,11 +155,11 @@ export class SimpleTableRenderable extends Renderable {
     this.rebuildCells()
   }
 
-  public get content(): SimpleTableContent {
+  public get content(): TextTableContent {
     return this._content
   }
 
-  public set content(value: SimpleTableContent) {
+  public set content(value: TextTableContent) {
     this._content = value ?? []
     this.rebuildCells()
   }
@@ -179,11 +179,11 @@ export class SimpleTableRenderable extends Renderable {
     this.invalidateLayoutAndRaster()
   }
 
-  public get columnWidthMode(): SimpleTableColumnWidthMode {
+  public get columnWidthMode(): TextTableColumnWidthMode {
     return this._columnWidthMode
   }
 
-  public set columnWidthMode(value: SimpleTableColumnWidthMode) {
+  public set columnWidthMode(value: TextTableColumnWidthMode) {
     if (this._columnWidthMode === value) return
     this._columnWidthMode = value
     this.invalidateLayoutAndRaster()
@@ -418,8 +418,8 @@ export class SimpleTableRenderable extends Renderable {
 
       for (let rowIdx = 0; rowIdx < newRowCount; rowIdx++) {
         const row = this._content[rowIdx] ?? []
-        const rowCells: SimpleTableCellState[] = []
-        const rowRefs: SimpleTableCellContent[] = []
+        const rowCells: TextTableCellState[] = []
+        const rowRefs: TextTableCellContent[] = []
 
         for (let colIdx = 0; colIdx < newColumnCount; colIdx++) {
           const cellContent = row[colIdx]
@@ -484,8 +484,8 @@ export class SimpleTableRenderable extends Renderable {
     if (newRowCount > oldRowCount) {
       for (let rowIdx = oldRowCount; rowIdx < newRowCount; rowIdx++) {
         const newRow = this._content[rowIdx] ?? []
-        const rowCells: SimpleTableCellState[] = []
-        const rowRefs: SimpleTableCellContent[] = []
+        const rowCells: TextTableCellState[] = []
+        const rowRefs: TextTableCellContent[] = []
 
         for (let colIdx = 0; colIdx < newColumnCount; colIdx++) {
           const cellContent = newRow[colIdx]
@@ -513,7 +513,7 @@ export class SimpleTableRenderable extends Renderable {
     this._columnCount = newColumnCount
   }
 
-  private createCell(content: SimpleTableCellContent): SimpleTableCellState {
+  private createCell(content: TextTableCellContent): TextTableCellState {
     const styledText = this.toStyledText(content)
     const textBuffer = TextBuffer.create(this._ctx.widthMethod)
     const syntaxStyle = SyntaxStyle.create()
@@ -530,7 +530,7 @@ export class SimpleTableRenderable extends Renderable {
     return { textBuffer, textBufferView, syntaxStyle }
   }
 
-  private toStyledText(content: SimpleTableCellContent): StyledText {
+  private toStyledText(content: TextTableCellContent): StyledText {
     if (Array.isArray(content)) {
       return new StyledText(content)
     }
@@ -561,7 +561,7 @@ export class SimpleTableRenderable extends Renderable {
   private rebuildLayoutForCurrentWidth(): void {
     const maxTableWidth = this.resolveLayoutWidthConstraint(this.width)
 
-    let layout: SimpleTableLayout
+    let layout: TextTableLayout
     if (this._cachedMeasureLayout !== null && this._cachedMeasureWidth === maxTableWidth) {
       layout = this._cachedMeasureLayout
     } else {
@@ -579,7 +579,7 @@ export class SimpleTableRenderable extends Renderable {
     }
   }
 
-  private computeLayout(maxTableWidth?: number): SimpleTableLayout {
+  private computeLayout(maxTableWidth?: number): TextTableLayout {
     if (this._rowCount === 0 || this._columnCount === 0) {
       return this.createEmptyLayout()
     }
@@ -778,7 +778,7 @@ export class SimpleTableRenderable extends Renderable {
     return offsets
   }
 
-  private applyLayoutToViews(layout: SimpleTableLayout): void {
+  private applyLayoutToViews(layout: TextTableLayout): void {
     const horizontalPadding = this.getHorizontalCellPadding()
     const verticalPadding = this.getVerticalCellPadding()
 
@@ -1043,7 +1043,7 @@ export class SimpleTableRenderable extends Renderable {
     }
   }
 
-  private createEmptyLayout(): SimpleTableLayout {
+  private createEmptyLayout(): TextTableLayout {
     return {
       columnWidths: [],
       rowHeights: [],

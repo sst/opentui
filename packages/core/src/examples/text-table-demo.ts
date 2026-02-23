@@ -2,7 +2,7 @@ import {
   BoxRenderable,
   CliRenderer,
   ScrollBoxRenderable,
-  SimpleTableRenderable,
+  TextTableRenderable,
   TextRenderable,
   bold,
   createCliRenderer,
@@ -15,13 +15,13 @@ import {
   yellow,
 } from "../index"
 import type { Selection } from "../lib/selection"
-import type { SimpleTableColumnWidthMode, SimpleTableContent } from "../renderables/SimpleTable"
+import type { TextTableColumnWidthMode, TextTableContent } from "../renderables/TextTable"
 import type { TextChunk } from "../text-buffer"
 import { setupCommonDemoKeys } from "./lib/standalone-keys"
 
 let container: BoxRenderable | null = null
-let primaryTable: SimpleTableRenderable | null = null
-let unicodeTable: SimpleTableRenderable | null = null
+let primaryTable: TextTableRenderable | null = null
+let unicodeTable: TextTableRenderable | null = null
 let controlsText: TextRenderable | null = null
 let tableAreaScrollBox: ScrollBoxRenderable | null = null
 let selectionStatusText: TextRenderable | null = null
@@ -41,7 +41,7 @@ let showBordersEnabled = true
 
 const WRAP_MODES: Array<"none" | "word" | "char"> = ["none", "word", "char"]
 const BORDER_STYLES: BorderStyle[] = ["single", "rounded", "double", "heavy"]
-const COLUMN_WIDTH_MODES: SimpleTableColumnWidthMode[] = ["content", "fill"]
+const COLUMN_WIDTH_MODES: TextTableColumnWidthMode[] = ["content", "fill"]
 const CELL_PADDING_VALUES: number[] = [0, 1, 2]
 
 function cell(text: string): TextChunk[] {
@@ -53,7 +53,7 @@ function cell(text: string): TextChunk[] {
   ]
 }
 
-const primaryContentSets: SimpleTableContent[] = [
+const primaryContentSets: TextTableContent[] = [
   [
     [[bold("Service")], [bold("Status")], [bold("Notes")]],
     [cell("api"), [green("OK")], [fg("#94a3b8")("latency"), ...cell(" 28ms")]],
@@ -74,7 +74,7 @@ const primaryContentSets: SimpleTableContent[] = [
   ],
 ]
 
-const unicodeContentSets: SimpleTableContent[] = [
+const unicodeContentSets: TextTableContent[] = [
   [
     [[bold("Locale")], [bold("Sample")]],
     [cell("ja-JP"), cell("東京の夜景と絵文字 🌃✨")],
@@ -102,7 +102,7 @@ function currentBorderStyle(): BorderStyle {
   return BORDER_STYLES[borderIndex] ?? "single"
 }
 
-function currentColumnWidthMode(): SimpleTableColumnWidthMode {
+function currentColumnWidthMode(): TextTableColumnWidthMode {
   return COLUMN_WIDTH_MODES[columnWidthModeIndex] ?? "content"
 }
 
@@ -113,7 +113,7 @@ function currentCellPadding(): number {
 function updateControlsText(): void {
   if (!controlsText) return
 
-  controlsText.content = t`${bold("SimpleTable Demo")}  ${fg("#94a3b8")("1/2/3 dataset • W wrap • B style • M width • P padding • N inner • O outer • H draw • drag to select • C clear")}
+  controlsText.content = t`${bold("TextTable Demo")}  ${fg("#94a3b8")("1/2/3 dataset • W wrap • B style • M width • P padding • N inner • O outer • H draw • drag to select • C clear")}
 Current: dataset ${fg("#7dd3fc")(String(contentIndex + 1))} | wrap ${fg("#a5b4fc")(currentWrapMode())} | style ${fg("#f9a8d4")(currentBorderStyle())} | width ${fg("#fcd34d")(currentColumnWidthMode())} | padding ${fg("#fda4af")(String(currentCellPadding()))} | inner ${fg("#93c5fd")(borderEnabled ? "on" : "off")} | outer ${fg("#86efac")(outerBorderEnabled ? "on" : "off")} | draw ${fg("#67e8f9")(showBordersEnabled ? "on" : "off")}`
 }
 
@@ -160,7 +160,7 @@ export function run(renderer: CliRenderer): void {
   renderer.setBackgroundColor("#0b1020")
 
   container = new BoxRenderable(renderer, {
-    id: "simple-table-demo-container",
+    id: "text-table-demo-container",
     width: "100%",
     height: "100%",
     flexDirection: "column",
@@ -171,7 +171,7 @@ export function run(renderer: CliRenderer): void {
   renderer.root.add(container)
 
   controlsText = new TextRenderable(renderer, {
-    id: "simple-table-demo-controls",
+    id: "text-table-demo-controls",
     content: "",
     fg: "#e2e8f0",
     wrapMode: "word",
@@ -179,7 +179,7 @@ export function run(renderer: CliRenderer): void {
   })
 
   tableAreaScrollBox = new ScrollBoxRenderable(renderer, {
-    id: "simple-table-demo-table-area-scroll",
+    id: "text-table-demo-table-area-scroll",
     width: "100%",
     flexGrow: 1,
     flexShrink: 1,
@@ -194,14 +194,14 @@ export function run(renderer: CliRenderer): void {
   })
 
   const primaryLabel = new TextRenderable(renderer, {
-    id: "simple-table-demo-primary-label",
+    id: "text-table-demo-primary-label",
     content: t`${bold("Operational Table")}`,
     fg: "#cbd5e1",
     selectable: false,
   })
 
-  primaryTable = new SimpleTableRenderable(renderer, {
-    id: "simple-table-demo-primary",
+  primaryTable = new TextTableRenderable(renderer, {
+    id: "text-table-demo-primary",
     width: "100%",
     wrapMode: currentWrapMode(),
     borderStyle: currentBorderStyle(),
@@ -212,14 +212,14 @@ export function run(renderer: CliRenderer): void {
   })
 
   const unicodeLabel = new TextRenderable(renderer, {
-    id: "simple-table-demo-unicode-label",
+    id: "text-table-demo-unicode-label",
     content: t`${bold("Unicode/CJK/Emoji Table")}`,
     fg: "#cbd5e1",
     selectable: false,
   })
 
-  unicodeTable = new SimpleTableRenderable(renderer, {
-    id: "simple-table-demo-unicode",
+  unicodeTable = new TextTableRenderable(renderer, {
+    id: "text-table-demo-unicode",
     width: "100%",
     wrapMode: currentWrapMode(),
     borderStyle: currentBorderStyle(),
@@ -230,7 +230,7 @@ export function run(renderer: CliRenderer): void {
   })
 
   const selectionBox = new BoxRenderable(renderer, {
-    id: "simple-table-demo-selection-box",
+    id: "text-table-demo-selection-box",
     width: "100%",
     height: 10,
     flexGrow: 0,
@@ -245,14 +245,14 @@ export function run(renderer: CliRenderer): void {
   })
 
   selectionMetaText = new TextRenderable(renderer, {
-    id: "simple-table-demo-selection-meta",
+    id: "text-table-demo-selection-meta",
     content: "No selection yet",
     fg: "#93c5fd",
     selectable: false,
   })
 
   selectionScrollBox = new ScrollBoxRenderable(renderer, {
-    id: "simple-table-demo-selection-scroll",
+    id: "text-table-demo-selection-scroll",
     width: "100%",
     flexGrow: 1,
     flexShrink: 1,
@@ -266,7 +266,7 @@ export function run(renderer: CliRenderer): void {
   selectionScrollBox.verticalScrollbarOptions = { visible: false }
 
   selectionStatusText = new TextRenderable(renderer, {
-    id: "simple-table-demo-selection-text",
+    id: "text-table-demo-selection-text",
     content: "",
     fg: "#e2e8f0",
     wrapMode: "word",

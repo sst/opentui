@@ -1,6 +1,6 @@
 #!/usr/bin/env bun
 
-import { SimpleTableRenderable, type SimpleTableCellContent, type SimpleTableContent, type CliRenderer } from "../index"
+import { TextTableRenderable, type TextTableCellContent, type TextTableContent, type CliRenderer } from "../index"
 import { createTestRenderer } from "../testing"
 import { Command } from "commander"
 import { existsSync } from "node:fs"
@@ -105,7 +105,7 @@ type ReplaceScenarioPlan = {
   warmupIterations: number
   rows: number
   cols: number
-  variants: SimpleTableContent[]
+  variants: TextTableContent[]
 }
 
 type IncrementalScenarioPlan = {
@@ -115,9 +115,9 @@ type IncrementalScenarioPlan = {
   iterations: number
   warmupIterations: number
   cols: number
-  header: SimpleTableCellContent[]
-  baseRows: SimpleTableCellContent[][]
-  rowPool: SimpleTableCellContent[][]
+  header: TextTableCellContent[]
+  baseRows: TextTableCellContent[][]
+  rowPool: TextTableCellContent[][]
   maxRows: number
 }
 
@@ -129,7 +129,7 @@ type SelectionScenarioPlan = {
   warmupIterations: number
   rows: number
   cols: number
-  content: SimpleTableContent
+  content: TextTableContent
   dragSteps: number
 }
 
@@ -137,7 +137,7 @@ type ScenarioPlan = ReplaceScenarioPlan | IncrementalScenarioPlan | SelectionSce
 
 type RunContext = {
   renderer: CliRenderer
-  table: SimpleTableRenderable
+  table: TextTableRenderable
   renderOnce: () => Promise<void>
   memSampleEvery: number
 }
@@ -162,15 +162,15 @@ type OutputMeta = {
 }
 
 type IncrementalState = {
-  rows: SimpleTableCellContent[][]
+  rows: TextTableCellContent[][]
   cursor: number
   maxRowsSeen: number
 }
 
 const program = new Command()
 program
-  .name("simple-table-benchmark")
-  .description("SimpleTableRenderable benchmark scenarios")
+  .name("text-table-benchmark")
+  .description("TextTableRenderable benchmark scenarios")
   .option("-s, --suite <name>", "benchmark suite: quick, default, long", "default")
   .option("-i, --iterations <count>", "iterations per scenario", "800")
   .option("--warmup-iterations <count>", "warmup iterations per scenario", "80")
@@ -204,7 +204,7 @@ const jsonPath =
   typeof jsonArg === "string"
     ? path.resolve(process.cwd(), jsonArg)
     : jsonArg
-      ? path.resolve(process.cwd(), "latest-simple-table-bench-run.json")
+      ? path.resolve(process.cwd(), "latest-text-table-bench-run.json")
       : null
 
 if (jsonPath) {
@@ -250,8 +250,8 @@ const { renderer, renderOnce } = await createTestRenderer({
 
 renderer.requestRender = () => {}
 
-const table = new SimpleTableRenderable(renderer, {
-  id: "simple-table-bench",
+const table = new TextTableRenderable(renderer, {
+  id: "text-table-bench",
   width: "100%",
   wrapMode: "word",
   content: [],
@@ -344,7 +344,7 @@ function createScenarios(suite: string, config: SuiteConfig, runSeed: number): S
   }
 
   const replaceRng = createRng((runSeed ^ 0x9e3779b9) >>> 0)
-  const variants: SimpleTableContent[] = []
+  const variants: TextTableContent[] = []
   for (let i = 0; i < shape.replaceVariants; i += 1) {
     variants.push(buildTableContent(replaceRng, shape.replaceRows, shape.replaceCols))
   }
@@ -612,7 +612,7 @@ async function runSelectionScenario(plan: SelectionScenarioPlan, ctx: RunContext
   }
 }
 
-function nextIncrementalContent(plan: IncrementalScenarioPlan, state: IncrementalState): SimpleTableContent {
+function nextIncrementalContent(plan: IncrementalScenarioPlan, state: IncrementalState): TextTableContent {
   if (state.rows.length >= plan.maxRows) {
     state.rows = [...plan.baseRows]
   }
@@ -631,35 +631,35 @@ function nextIncrementalContent(plan: IncrementalScenarioPlan, state: Incrementa
   return [plan.header, ...state.rows]
 }
 
-function makeHeader(cols: number): SimpleTableCellContent[] {
-  const header: SimpleTableCellContent[] = []
+function makeHeader(cols: number): TextTableCellContent[] {
+  const header: TextTableCellContent[] = []
   for (let c = 0; c < cols; c += 1) {
     header.push(chunkCell(`Column ${c + 1}`))
   }
   return header
 }
 
-function buildTableContent(rng: () => number, rows: number, cols: number): SimpleTableContent {
+function buildTableContent(rng: () => number, rows: number, cols: number): TextTableContent {
   return [makeHeader(cols), ...buildRows(rng, rows, cols, 0)]
 }
 
-function buildRows(rng: () => number, rows: number, cols: number, rowOffset: number): SimpleTableCellContent[][] {
-  const out: SimpleTableCellContent[][] = []
+function buildRows(rng: () => number, rows: number, cols: number, rowOffset: number): TextTableCellContent[][] {
+  const out: TextTableCellContent[][] = []
   for (let r = 0; r < rows; r += 1) {
     out.push(makeDataRow(rng, rowOffset + r, cols))
   }
   return out
 }
 
-function makeDataRow(rng: () => number, rowIndex: number, cols: number): SimpleTableCellContent[] {
-  const row: SimpleTableCellContent[] = []
+function makeDataRow(rng: () => number, rowIndex: number, cols: number): TextTableCellContent[] {
+  const row: TextTableCellContent[] = []
   for (let c = 0; c < cols; c += 1) {
     row.push(chunkCell(makeCellText(rng, rowIndex, c)))
   }
   return row
 }
 
-function chunkCell(text: string): SimpleTableCellContent {
+function chunkCell(text: string): TextTableCellContent {
   return [
     {
       __isChunk: true,
@@ -807,7 +807,7 @@ async function outputResults(
 
   if (outputEnabled) {
     writeLine(
-      `simple-table-benchmark suite=${meta.suiteName} mode=content-set-and-render iters=${meta.iterations} warmup=${meta.warmupIterations}`,
+      `text-table-benchmark suite=${meta.suiteName} mode=content-set-and-render iters=${meta.iterations} warmup=${meta.warmupIterations}`,
     )
     for (const line of scenarioLines) {
       writeLine(line)

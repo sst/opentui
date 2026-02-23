@@ -1,6 +1,6 @@
 // Bun Snapshot v1, https://bun.sh/docs/test/snapshots
 
-exports[`SimpleTableRenderable renders a basic table with styled cell chunks: basic table 1`] = `
+exports[`TextTableRenderable renders a basic table with styled cell chunks: basic table 1`] = `
 "                                                            
  ┌─────┬──────┬───────────────────┐                         
  │Name │Status│Notes              │                         
@@ -20,7 +20,7 @@ exports[`SimpleTableRenderable renders a basic table with styled cell chunks: ba
 "
 `;
 
-exports[`SimpleTableRenderable wraps content and fits columns when width is constrained: wrapped constrained width 1`] = `
+exports[`TextTableRenderable wraps content and fits columns when width is constrained: wrapped constrained width 1`] = `
 "┌──┬─────────────────────────────┐                          
 │ID│Description                  │                          
 ├──┼─────────────────────────────┤                          
@@ -40,7 +40,7 @@ exports[`SimpleTableRenderable wraps content and fits columns when width is cons
 "
 `;
 
-exports[`SimpleTableRenderable rebuilds table when content setter is used: content setter update 1`] = `
+exports[`TextTableRenderable rebuilds table when content setter is used: content setter update 1`] = `
 "┌─────┬───────┐                                             
 │Col 1│Col 2  │                                             
 ├─────┼───────┤                                             
@@ -60,7 +60,7 @@ exports[`SimpleTableRenderable rebuilds table when content setter is used: conte
 "
 `;
 
-exports[`SimpleTableRenderable keeps borders aligned with CJK and emoji content: unicode border alignment 1`] = `
+exports[`TextTableRenderable keeps borders aligned with CJK and emoji content: unicode border alignment 1`] = `
 "┌──────┬──────────────┐                                     
 │Locale│Sample        │                                     
 ├──────┼──────────────┤                                     
@@ -80,7 +80,7 @@ exports[`SimpleTableRenderable keeps borders aligned with CJK and emoji content:
 "
 `;
 
-exports[`SimpleTableRenderable wraps CJK and emoji without grapheme duplication: unicode wrapping 1`] = `
+exports[`TextTableRenderable wraps CJK and emoji without grapheme duplication: unicode wrapping 1`] = `
 "┌───┬────────────────────────┐                              
 │Ite│Details                 │                              
 │m  │                        │                              

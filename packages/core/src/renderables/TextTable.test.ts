@@ -4,7 +4,7 @@ import { RGBA } from "../lib/RGBA"
 import { bold, green, red } from "../lib/styled-text"
 import { createTestRenderer, type MockMouse, type TestRenderer } from "../testing/test-renderer"
 import type { CapturedFrame } from "../types"
-import { SimpleTableRenderable, type SimpleTableCellContent, type SimpleTableContent } from "./SimpleTable"
+import { TextTableRenderable, type TextTableCellContent, type TextTableContent } from "./TextTable"
 
 const VERTICAL_BORDER_CP = "│".codePointAt(0)!
 const BORDER_CHAR_PATTERN = /[┌┐└┘├┤┬┴┼│─]/
@@ -55,7 +55,7 @@ function countChar(text: string, target: string): number {
   return [...text].filter((char) => char === target).length
 }
 
-function cell(text: string): SimpleTableCellContent {
+function cell(text: string): TextTableCellContent {
   return [
     {
       __isChunk: true,
@@ -77,15 +77,15 @@ afterEach(() => {
   renderer.destroy()
 })
 
-describe("SimpleTableRenderable", () => {
+describe("TextTableRenderable", () => {
   test("renders a basic table with styled cell chunks", async () => {
-    const content: SimpleTableContent = [
+    const content: TextTableContent = [
       [[bold("Name")], [bold("Status")], [bold("Notes")]],
       [cell("Alpha"), [green("OK")], cell("All systems nominal")],
       [cell("Bravo"), [red("WARN")], cell("Pending checks")],
     ]
 
-    const table = new SimpleTableRenderable(renderer, {
+    const table = new TextTableRenderable(renderer, {
       left: 1,
       top: 1,
       content,
@@ -107,13 +107,13 @@ describe("SimpleTableRenderable", () => {
   })
 
   test("wraps content and fits columns when width is constrained", async () => {
-    const content: SimpleTableContent = [
+    const content: TextTableContent = [
       [[bold("ID")], [bold("Description")]],
       [cell("1"), cell("This is a long sentence that should wrap across multiple visual lines")],
       [cell("2"), cell("Short")],
     ]
 
-    const table = new SimpleTableRenderable(renderer, {
+    const table = new TextTableRenderable(renderer, {
       left: 0,
       top: 0,
       width: 34,
@@ -130,7 +130,7 @@ describe("SimpleTableRenderable", () => {
   })
 
   test("keeps intrinsic width by default when extra space is available", async () => {
-    const table = new SimpleTableRenderable(renderer, {
+    const table = new TextTableRenderable(renderer, {
       left: 0,
       top: 0,
       width: 34,
@@ -157,7 +157,7 @@ describe("SimpleTableRenderable", () => {
   })
 
   test("fills available width when columnWidthMode is fill", async () => {
-    const table = new SimpleTableRenderable(renderer, {
+    const table = new TextTableRenderable(renderer, {
       left: 0,
       top: 0,
       width: 34,
@@ -183,7 +183,7 @@ describe("SimpleTableRenderable", () => {
   })
 
   test("fills available width in no-wrap mode when columnWidthMode is fill", async () => {
-    const table = new SimpleTableRenderable(renderer, {
+    const table = new TextTableRenderable(renderer, {
       left: 0,
       top: 0,
       width: 24,
@@ -209,7 +209,7 @@ describe("SimpleTableRenderable", () => {
   })
 
   test("preserves bordered layout when border glyphs are hidden", async () => {
-    const table = new SimpleTableRenderable(renderer, {
+    const table = new TextTableRenderable(renderer, {
       left: 0,
       top: 0,
       border: true,
@@ -231,7 +231,7 @@ describe("SimpleTableRenderable", () => {
   })
 
   test("applies cell padding when provided", async () => {
-    const table = new SimpleTableRenderable(renderer, {
+    const table = new TextTableRenderable(renderer, {
       left: 0,
       top: 0,
       cellPadding: 1,
@@ -257,7 +257,7 @@ describe("SimpleTableRenderable", () => {
   })
 
   test("reflows when columnWidthMode is changed after initial render", async () => {
-    const table = new SimpleTableRenderable(renderer, {
+    const table = new TextTableRenderable(renderer, {
       left: 0,
       top: 0,
       width: 34,
@@ -299,7 +299,7 @@ describe("SimpleTableRenderable", () => {
     }
 
     try {
-      const table = new SimpleTableRenderable(renderer, {
+      const table = new TextTableRenderable(renderer, {
         left: 0,
         top: 0,
         border: true,
@@ -342,7 +342,7 @@ describe("SimpleTableRenderable", () => {
     }
 
     try {
-      const table = new SimpleTableRenderable(renderer, {
+      const table = new TextTableRenderable(renderer, {
         left: 0,
         top: 0,
         border: false,
@@ -375,7 +375,7 @@ describe("SimpleTableRenderable", () => {
     }
 
     try {
-      const table = new SimpleTableRenderable(renderer, {
+      const table = new TextTableRenderable(renderer, {
         left: 0,
         top: 0,
         border: false,
@@ -402,7 +402,7 @@ describe("SimpleTableRenderable", () => {
   })
 
   test("rebuilds table when content setter is used", async () => {
-    const table = new SimpleTableRenderable(renderer, {
+    const table = new TextTableRenderable(renderer, {
       left: 0,
       top: 0,
       content: [[cell("A"), cell("B")]],
@@ -427,7 +427,7 @@ describe("SimpleTableRenderable", () => {
   })
 
   test("renders a final bottom border", async () => {
-    const table = new SimpleTableRenderable(renderer, {
+    const table = new TextTableRenderable(renderer, {
       left: 0,
       top: 0,
       content: [
@@ -453,14 +453,14 @@ describe("SimpleTableRenderable", () => {
   })
 
   test("keeps borders aligned with CJK and emoji content", async () => {
-    const content: SimpleTableContent = [
+    const content: TextTableContent = [
       [[bold("Locale")], [bold("Sample")]],
       [cell("ja-JP"), cell("東京で寿司 🍣")],
       [cell("zh-CN"), cell("你好世界 🚀")],
       [cell("ko-KR"), cell("한글 테스트 😄")],
     ]
 
-    const table = new SimpleTableRenderable(renderer, {
+    const table = new TextTableRenderable(renderer, {
       left: 0,
       top: 0,
       width: 36,
@@ -500,13 +500,13 @@ describe("SimpleTableRenderable", () => {
   })
 
   test("wraps CJK and emoji without grapheme duplication", async () => {
-    const content: SimpleTableContent = [
+    const content: TextTableContent = [
       [[bold("Item")], [bold("Details")]],
       [cell("mixed"), cell("東京界 🌍 emoji wrapping continues across lines for width checks")],
       [cell("emoji"), cell("Faces 😀😃😄 should remain stable")],
     ]
 
-    const table = new SimpleTableRenderable(renderer, {
+    const table = new TextTableRenderable(renderer, {
       left: 0,
       top: 0,
       width: 30,
@@ -552,7 +552,7 @@ describe("SimpleTableRenderable", () => {
   })
 
   test("starts selection only on table cell content", async () => {
-    const table = new SimpleTableRenderable(renderer, {
+    const table = new TextTableRenderable(renderer, {
       left: 0,
       top: 0,
       content: [
@@ -571,7 +571,7 @@ describe("SimpleTableRenderable", () => {
   })
 
   test("selection text excludes border glyphs", async () => {
-    const table = new SimpleTableRenderable(renderer, {
+    const table = new TextTableRenderable(renderer, {
       left: 0,
       top: 0,
       content: [
@@ -607,7 +607,7 @@ describe("SimpleTableRenderable", () => {
     const selectionFg = RGBA.fromHex("#fefefe")
     const selectionBg = RGBA.fromHex("#cc5500")
 
-    const table = new SimpleTableRenderable(renderer, {
+    const table = new TextTableRenderable(renderer, {
       left: 0,
       top: 0,
       fg: defaultFg,
@@ -684,7 +684,7 @@ describe("SimpleTableRenderable", () => {
   })
 
   test("does not start selection when drag begins on border", async () => {
-    const table = new SimpleTableRenderable(renderer, {
+    const table = new TextTableRenderable(renderer, {
       left: 0,
       top: 0,
       content: [
