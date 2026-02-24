@@ -4,6 +4,7 @@ const tb = @import("text-buffer.zig");
 const iter_mod = @import("text-buffer-iterators.zig");
 const seg_mod = @import("text-buffer-segment.zig");
 const gp = @import("grapheme.zig");
+const link = @import("link.zig");
 
 const utf8 = @import("utf8.zig");
 const event_emitter = @import("event-emitter.zig");
@@ -93,12 +94,13 @@ pub const EditBuffer = struct {
     pub fn init(
         allocator: Allocator,
         pool: *gp.GraphemePool,
+        link_pool: *link.LinkPool,
         width_method: utf8.WidthMethod,
     ) !*EditBuffer {
         const self = try allocator.create(EditBuffer);
         errdefer allocator.destroy(self);
 
-        const text_buffer = try UnifiedTextBuffer.init(allocator, pool, width_method);
+        const text_buffer = try UnifiedTextBuffer.init(allocator, pool, link_pool, width_method);
         errdefer text_buffer.deinit();
 
         const add_buffer = try AddBuffer.init(allocator, text_buffer, 65536);

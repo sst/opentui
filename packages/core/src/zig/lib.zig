@@ -783,12 +783,9 @@ export fn createTextBuffer(widthMethod: u8) ?*text_buffer.UnifiedTextBuffer {
     const link_pool = link.initGlobalLinkPool(globalArena);
     const wMethod: utf8.WidthMethod = if (widthMethod == 0) .wcwidth else .unicode;
 
-    const tb = text_buffer.UnifiedTextBuffer.init(globalAllocator, pool, wMethod) catch {
+    return text_buffer.UnifiedTextBuffer.init(globalAllocator, pool, link_pool, wMethod) catch {
         return null;
     };
-
-    tb.setLinkPool(link_pool);
-    return tb;
 }
 
 export fn destroyTextBuffer(tb: *text_buffer.UnifiedTextBuffer) void {
@@ -1045,14 +1042,12 @@ export fn createEditBuffer(widthMethod: u8) ?*edit_buffer_mod.EditBuffer {
     const link_pool = link.initGlobalLinkPool(globalArena);
     const wMethod: utf8.WidthMethod = if (widthMethod == 0) .wcwidth else .unicode;
 
-    const edit_buffer = edit_buffer_mod.EditBuffer.init(
+    return edit_buffer_mod.EditBuffer.init(
         globalAllocator,
         pool,
+        link_pool,
         wMethod,
-    ) catch return null;
-
-    edit_buffer.getTextBuffer().setLinkPool(link_pool);
-    return edit_buffer;
+    ) catch null;
 }
 
 export fn destroyEditBuffer(edit_buffer: *edit_buffer_mod.EditBuffer) void {

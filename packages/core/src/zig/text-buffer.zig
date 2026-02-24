@@ -59,6 +59,7 @@ pub const UnifiedTextBuffer = struct {
     syntax_style: ?*const SyntaxStyle,
 
     pool: *gp.GraphemePool,
+    link_pool: *link.LinkPool,
     link_tracker: ?link.LinkTracker,
 
     width_method: utf8.WidthMethod,
@@ -163,6 +164,7 @@ pub const UnifiedTextBuffer = struct {
     pub fn init(
         global_allocator: Allocator,
         pool: *gp.GraphemePool,
+        link_pool: *link.LinkPool,
         width_method: utf8.WidthMethod,
     ) TextBufferError!*Self {
         const self = global_allocator.create(Self) catch return TextBufferError.OutOfMemory;
@@ -199,6 +201,7 @@ pub const UnifiedTextBuffer = struct {
             ._rope = init_rope,
             .syntax_style = null,
             .pool = pool,
+            .link_pool = link_pool,
             .link_tracker = null,
             .width_method = width_method,
             .view_dirty_flags = view_dirty_flags,
@@ -412,12 +415,12 @@ pub const UnifiedTextBuffer = struct {
         return self.syntax_style;
     }
 
-    pub fn setLinkPool(self: *Self, link_pool: *link.LinkPool) void {
-        if (self.link_tracker) |*tracker| {
-            tracker.deinit();
+    fn getLinkTracker(self: *Self) *link.LinkTracker {
+        if (self.link_tracker == null) {
+            self.link_tracker = link.LinkTracker.init(self.global_allocator, self.link_pool);
         }
 
-        self.link_tracker = link.LinkTracker.init(self.global_allocator, link_pool);
+        return &self.link_tracker.?;
     }
 
     fn clearLinkRefs(self: *Self) void {
@@ -1061,19 +1064,18 @@ pub const UnifiedTextBuffer = struct {
                     const bg = if (chunk.bg_ptr) |bgPtr| utils.f32PtrToRGBA(bgPtr) else null;
 
                     var attributes = chunk.attributes;
-                    if (self.link_tracker) |*tracker| {
-                        if (chunk.link_ptr) |link_ptr| {
-                            if (chunk.link_len > 0) {
-                                const url = link_ptr[0..chunk.link_len];
-                                const link_id = tracker.pool.alloc(url) catch 0;
-                                if (link_id != 0) {
-                                    const maybe_seen = seen_link_ids.getOrPut(self.global_allocator, link_id) catch null;
-                                    const should_track = if (maybe_seen) |seen| !seen.found_existing else true;
-                                    if (should_track) {
-                                        tracker.addCellRef(link_id);
-                                    }
-                                    attributes = ansi.TextAttributes.setLinkId(attributes, link_id);
+                    if (chunk.link_ptr) |link_ptr| {
+                        if (chunk.link_len > 0) {
+                            const tracker = self.getLinkTracker();
+                            const url = link_ptr[0..chunk.link_len];
+                            const link_id = tracker.pool.alloc(url) catch 0;
+                            if (link_id != 0) {
+                                const maybe_seen = seen_link_ids.getOrPut(self.global_allocator, link_id) catch null;
+                                const should_track = if (maybe_seen) |seen| !seen.found_existing else true;
+                                if (should_track) {
+                                    tracker.addCellRef(link_id);
                                 }
+                                attributes = ansi.TextAttributes.setLinkId(attributes, link_id);
                             }
                         }
                     }
