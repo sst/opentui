@@ -130,11 +130,22 @@ export const GridDrawOptionsStruct = defineStruct([
   ["drawOuter", "bool_u8", { default: true }],
 ])
 
+export type BuildOptions = {
+  gpaSafeStats: boolean
+  gpaMemoryLimitTracking: boolean
+}
+
+export const BuildOptionsStruct = defineStruct([
+  ["gpaSafeStats", "bool_u8"],
+  ["gpaMemoryLimitTracking", "bool_u8"],
+])
+
 export type AllocatorStats = {
   totalRequestedBytes: number
   activeAllocations: number
   smallAllocations: number
   largeAllocations: number
+  requestedBytesValid: boolean
 }
 
 export const AllocatorStatsStruct = defineStruct([
@@ -142,6 +153,7 @@ export const AllocatorStatsStruct = defineStruct([
   ["activeAllocations", "u64"],
   ["smallAllocations", "u64"],
   ["largeAllocations", "u64"],
+  ["requestedBytesValid", "bool_u8"],
 ])
 
 export type GrowthPolicy = "grow" | "block"

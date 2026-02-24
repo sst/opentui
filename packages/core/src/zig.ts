@@ -10,7 +10,7 @@ import {
   type LineInfo,
   type MousePointerStyle,
 } from "./types"
-export type { LineInfo, AllocatorStats }
+export type { LineInfo, AllocatorStats, BuildOptions }
 
 import { RGBA } from "./lib/RGBA"
 import { OptimizedBuffer } from "./buffer"
@@ -31,9 +31,16 @@ import {
   NativeSpanFeedOptionsStruct,
   NativeSpanFeedStatsStruct,
   ReserveInfoStruct,
+  BuildOptionsStruct,
   AllocatorStatsStruct,
 } from "./zig-structs"
-import type { NativeSpanFeedOptions, NativeSpanFeedStats, ReserveInfo, AllocatorStats } from "./zig-structs"
+import type {
+  NativeSpanFeedOptions,
+  NativeSpanFeedStats,
+  ReserveInfo,
+  BuildOptions,
+  AllocatorStats,
+} from "./zig-structs"
 import { isBunfsPath } from "./lib/bunfs"
 import { attributesWithLink } from "./utils"
 
@@ -1015,6 +1022,10 @@ function getOpenTUILib(libPath?: string) {
       args: [],
       returns: "usize",
     },
+    getBuildOptions: {
+      args: ["ptr"],
+      returns: "void",
+    },
     getAllocatorStats: {
       args: ["ptr"],
       returns: "void",
@@ -1786,6 +1797,7 @@ export interface RenderLib {
   textBufferGetHighlightCount: (buffer: Pointer) => number
 
   getArenaAllocatedBytes: () => number
+  getBuildOptions: () => BuildOptions
   getAllocatorStats: () => AllocatorStats
 
   createSyntaxStyle: () => Pointer
@@ -3008,6 +3020,17 @@ class FFIRenderLib implements RenderLib {
     return typeof result === "bigint" ? Number(result) : result
   }
 
+  public getBuildOptions(): BuildOptions {
+    const optionsBuffer = new ArrayBuffer(BuildOptionsStruct.size)
+    this.opentui.symbols.getBuildOptions(ptr(optionsBuffer))
+    const options = BuildOptionsStruct.unpack(optionsBuffer)
+
+    return {
+      gpaSafeStats: !!options.gpaSafeStats,
+      gpaMemoryLimitTracking: !!options.gpaMemoryLimitTracking,
+    }
+  }
+
   public getAllocatorStats(): AllocatorStats {
     const statsBuffer = new ArrayBuffer(AllocatorStatsStruct.size)
     this.opentui.symbols.getAllocatorStats(ptr(statsBuffer))
@@ -3018,6 +3041,7 @@ class FFIRenderLib implements RenderLib {
       activeAllocations: toNumber(stats.activeAllocations),
       smallAllocations: toNumber(stats.smallAllocations),
       largeAllocations: toNumber(stats.largeAllocations),
+      requestedBytesValid: !!stats.requestedBytesValid,
     }
   }
 

@@ -1,4 +1,5 @@
 const std = @import("std");
+const build_options = @import("build_options");
 const Allocator = std.mem.Allocator;
 
 const ansi = @import("ansi.zig");
@@ -35,16 +36,25 @@ export fn setEventCallback(callback: ?*const fn (namePtr: [*]const u8, nameLen: 
     event_bus.setEventCallback(callback);
 }
 
-var gpa = std.heap.GeneralPurposeAllocator(.{ .enable_memory_limit = true }){};
+var gpa = std.heap.GeneralPurposeAllocator(.{
+    .enable_memory_limit = build_options.gpa_safe_stats,
+    .safety = build_options.gpa_safe_stats,
+}){};
 const globalAllocator = gpa.allocator();
 var arena = std.heap.ArenaAllocator.init(globalAllocator);
 const globalArena = arena.allocator();
+
+pub const ExternalBuildOptions = extern struct {
+    gpa_safe_stats: bool,
+    gpa_memory_limit_tracking: bool,
+};
 
 pub const ExternalAllocatorStats = extern struct {
     total_requested_bytes: u64,
     active_allocations: u64,
     small_allocations: u64,
     large_allocations: u64,
+    requested_bytes_valid: bool,
 };
 
 fn toNonNegativeU64(value: anytype) u64 {
@@ -64,13 +74,18 @@ fn toNonNegativeU64(value: anytype) u64 {
     };
 }
 
-fn sanitizeRequestedBytes(value: u64) u64 {
+const RequestedBytesInfo = struct {
+    bytes: u64,
+    valid: bool,
+};
+
+fn sanitizeRequestedBytes(value: u64) RequestedBytesInfo {
     const signed_value: i64 = @bitCast(value);
     if (signed_value < 0) {
-        return 0;
+        return .{ .bytes = 0, .valid = false };
     }
 
-    return @intCast(signed_value);
+    return .{ .bytes = @intCast(signed_value), .valid = true };
 }
 
 fn queryStatsField(comptime field_names: []const []const u8) ?u64 {
@@ -90,20 +105,24 @@ fn queryStatsField(comptime field_names: []const []const u8) ?u64 {
     return null;
 }
 
-fn getTotalRequestedBytes() u64 {
+fn getTotalRequestedBytesInfo() RequestedBytesInfo {
+    if (!build_options.gpa_safe_stats) {
+        return .{ .bytes = 0, .valid = false };
+    }
+
     if (queryStatsField(&.{"total_requested_bytes"})) |value| {
         return sanitizeRequestedBytes(value);
     }
 
     if (@hasField(@TypeOf(gpa), "total_requested_bytes")) {
         if (@TypeOf(gpa.total_requested_bytes) == void) {
-            return 0;
+            return .{ .bytes = 0, .valid = false };
         }
 
         return sanitizeRequestedBytes(toNonNegativeU64(gpa.total_requested_bytes));
     }
 
-    return 0;
+    return .{ .bytes = 0, .valid = false };
 }
 
 fn getSmallAllocationCount() u64 {
@@ -143,16 +162,25 @@ export fn getArenaAllocatedBytes() usize {
     return arena.queryCapacity();
 }
 
+export fn getBuildOptions(out_ptr: *ExternalBuildOptions) void {
+    out_ptr.* = .{
+        .gpa_safe_stats = build_options.gpa_safe_stats,
+        .gpa_memory_limit_tracking = build_options.gpa_safe_stats,
+    };
+}
+
 export fn getAllocatorStats(out_ptr: *ExternalAllocatorStats) void {
     const small_allocations = getSmallAllocationCount();
     const large_allocations = getLargeAllocationCount();
     const active_allocations = small_allocations + large_allocations;
+    const requested_bytes = getTotalRequestedBytesInfo();
 
     out_ptr.* = .{
-        .total_requested_bytes = getTotalRequestedBytes(),
+        .total_requested_bytes = requested_bytes.bytes,
         .active_allocations = active_allocations,
         .small_allocations = small_allocations,
         .large_allocations = large_allocations,
+        .requested_bytes_valid = requested_bytes.valid,
     };
 }
 

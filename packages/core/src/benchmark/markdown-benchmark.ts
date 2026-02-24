@@ -11,6 +11,7 @@ import { tmpdir } from "node:os"
 
 const realStdoutWrite = process.stdout.write.bind(process.stdout)
 const nativeLib = resolveRenderLib()
+const nativeBuildOptions = nativeLib.getBuildOptions()
 
 const WORDS = [
   "alpha",
@@ -104,6 +105,7 @@ type NativeMemorySample = {
   activeAllocations: number
   smallAllocations: number
   largeAllocations: number
+  requestedBytesValid: boolean
 }
 
 type NativeMemoryStats = {
@@ -112,6 +114,7 @@ type NativeMemoryStats = {
   end: NativeMemorySample
   delta: NativeMemorySample
   peak: NativeMemorySample
+  requestedBytesReliable: boolean
   fields: {
     totalRequestedBytes: MemoryFieldStats
     activeAllocations: MemoryFieldStats
@@ -253,6 +256,8 @@ type OutputMeta = {
   seed: number
   memInterval: number
   memSampleEvery: number
+  gpaSafeStats: boolean
+  gpaMemoryLimitTracking: boolean
 }
 
 const program = new Command()
@@ -451,6 +456,8 @@ await outputResults(
     seed,
     memInterval,
     memSampleEvery,
+    gpaSafeStats: nativeBuildOptions.gpaSafeStats,
+    gpaMemoryLimitTracking: nativeBuildOptions.gpaMemoryLimitTracking,
   },
   results,
   scenarioLines,
@@ -1451,6 +1458,7 @@ function readNativeMemorySample(): NativeMemorySample {
     activeAllocations: stats.activeAllocations,
     smallAllocations: stats.smallAllocations,
     largeAllocations: stats.largeAllocations,
+    requestedBytesValid: stats.requestedBytesValid,
   }
 }
 
@@ -1525,6 +1533,7 @@ function computeNativeMemoryStats(
   end: NativeMemorySample,
 ): NativeMemoryStats {
   const all = [start, ...samples, end]
+  const requestedBytesReliable = all.every((sample) => sample.requestedBytesValid)
   const peak = { ...start }
   for (const sample of all) {
     updateNativePeak(sample, peak)
@@ -1536,6 +1545,7 @@ function computeNativeMemoryStats(
     end,
     delta: diffNativeMemory(start, end),
     peak,
+    requestedBytesReliable,
     fields: {
       totalRequestedBytes: computeFieldStats(all.map((s) => s.totalRequestedBytes)),
       activeAllocations: computeFieldStats(all.map((s) => s.activeAllocations)),
@@ -1558,6 +1568,7 @@ function updateNativePeak(sample: NativeMemorySample, peak: NativeMemorySample):
   peak.activeAllocations = Math.max(peak.activeAllocations, sample.activeAllocations)
   peak.smallAllocations = Math.max(peak.smallAllocations, sample.smallAllocations)
   peak.largeAllocations = Math.max(peak.largeAllocations, sample.largeAllocations)
+  peak.requestedBytesValid = peak.requestedBytesValid && sample.requestedBytesValid
 }
 
 function diffMemory(start: MemorySample, end: MemorySample): MemorySample {
@@ -1576,6 +1587,7 @@ function diffNativeMemory(start: NativeMemorySample, end: NativeMemorySample): N
     activeAllocations: end.activeAllocations - start.activeAllocations,
     smallAllocations: end.smallAllocations - start.smallAllocations,
     largeAllocations: end.largeAllocations - start.largeAllocations,
+    requestedBytesValid: start.requestedBytesValid && end.requestedBytesValid,
   }
 }
 
@@ -1636,6 +1648,8 @@ async function outputResults(
       seed: meta.seed,
       memInterval: meta.memInterval,
       memSampleEvery: meta.memSampleEvery,
+      gpaSafeStats: meta.gpaSafeStats,
+      gpaMemoryLimitTracking: meta.gpaMemoryLimitTracking,
     },
     results: resultsList,
   }
@@ -1644,6 +1658,7 @@ async function outputResults(
     writeLine(
       `markdown-benchmark suite=${meta.suiteName} timing=frame-independent iters=${meta.iterations} warmup=${meta.warmupIterations}`,
     )
+    writeLine(`native-build gpaSafeStats=${meta.gpaSafeStats} gpaMemoryLimitTracking=${meta.gpaMemoryLimitTracking}`)
     for (const line of scenarioLines) {
       writeLine(line)
     }
@@ -1697,14 +1712,15 @@ function formatScenarioResult(result: ScenarioResult): string {
     : ""
 
   const nativeMemSummary = nativeMem
-    ? ` nativeMemDeltaReq=${formatBytes(nativeMem.delta.totalRequestedBytes)}` +
-      ` nativeMemDeltaReqBytes=${Math.trunc(nativeMem.delta.totalRequestedBytes)}B` +
+    ? ` nativeMemDeltaReq=${nativeMem.requestedBytesReliable ? formatBytes(nativeMem.delta.totalRequestedBytes) : "invalid"}` +
+      ` nativeMemDeltaReqBytes=${nativeMem.requestedBytesReliable ? `${Math.trunc(nativeMem.delta.totalRequestedBytes)}B` : "invalid"}` +
       ` nativeMemDeltaActive=${formatAllocs(nativeMem.delta.activeAllocations)}` +
       ` nativeMemDeltaSmall=${formatAllocs(nativeMem.delta.smallAllocations)}` +
       ` nativeMemDeltaLarge=${formatAllocs(nativeMem.delta.largeAllocations)}` +
-      ` nativeMemPeakReq=${formatBytes(nativeMem.peak.totalRequestedBytes)}` +
-      ` nativeMemPeakReqBytes=${Math.trunc(nativeMem.peak.totalRequestedBytes)}B` +
-      ` nativeMemPeakActive=${formatAllocs(nativeMem.peak.activeAllocations)}`
+      ` nativeMemPeakReq=${nativeMem.requestedBytesReliable ? formatBytes(nativeMem.peak.totalRequestedBytes) : "invalid"}` +
+      ` nativeMemPeakReqBytes=${nativeMem.requestedBytesReliable ? `${Math.trunc(nativeMem.peak.totalRequestedBytes)}B` : "invalid"}` +
+      ` nativeMemPeakActive=${formatAllocs(nativeMem.peak.activeAllocations)}` +
+      ` nativeMemReqReliable=${nativeMem.requestedBytesReliable}`
     : ""
 
   return `scenario=${result.name} category=${result.category} mode=${result.timingMode} iters=${result.updateStats.count} elapsedMs=${result.elapsedMs} avgMs=${result.updateStats.averageMs.toFixed(3)} medianMs=${result.updateStats.medianMs.toFixed(3)} p95Ms=${result.updateStats.p95Ms.toFixed(3)} minMs=${result.updateStats.minMs.toFixed(3)} maxMs=${result.updateStats.maxMs.toFixed(3)} chars=${result.contentStats.finalChars}${jsMemSummary}${nativeMemSummary}`
@@ -1762,6 +1778,8 @@ async function runSpawnedScenarios(plans: ScenarioPlan[]): Promise<void> {
       seed,
       memInterval,
       memSampleEvery,
+      gpaSafeStats: nativeBuildOptions.gpaSafeStats,
+      gpaMemoryLimitTracking: nativeBuildOptions.gpaMemoryLimitTracking,
     },
     results,
     scenarioLines,
