@@ -48,6 +48,25 @@ export function treeSitterToTextChunks(
   const injectionContainerRanges: Array<{ start: number; end: number }> = []
   const boundaries: Boundary[] = []
 
+  // Build a map of highlight index -> URL for link detection
+  const urlMap = new Map<number, string>()
+  for (let i = 0; i < highlights.length; i++) {
+    const [start, end, group] = highlights[i]
+    if (group === "markup.link.url" || group === "string.special.url") {
+      const url = content.slice(start, end)
+      urlMap.set(i, url)
+      // Look backwards for a markup.link.label that belongs to the same link
+      for (let j = i - 1; j >= 0; j--) {
+        const [, , prev] = highlights[j]
+        if (prev === "markup.link.label") {
+          urlMap.set(j, url)
+          break
+        }
+        if (!prev.startsWith("markup.link")) break
+      }
+    }
+  }
+
   for (let i = 0; i < highlights.length; i++) {
     const [start, end, , meta] = highlights[i]
     if (start === end) continue // Skip zero-length ranges
@@ -182,6 +201,16 @@ export function treeSitterToTextChunks(
         // Use merged style, falling back to default if nothing was merged
         const finalStyle = Object.keys(mergedStyle).length > 0 ? mergedStyle : defaultStyle
 
+        // Detect URL from active highlights
+        let url: string | undefined
+        for (const { index } of sortedGroups) {
+          const mapped = urlMap.get(index)
+          if (mapped) {
+            url = mapped
+            break
+          }
+        }
+
         chunks.push({
           __isChunk: true,
           text: segmentText,
@@ -195,6 +224,7 @@ export function treeSitterToTextChunks(
                 dim: finalStyle.dim,
               })
             : 0,
+          ...(url ? { link: { url } } : {}),
         })
       }
     } else if (currentOffset < boundary.offset) {

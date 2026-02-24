@@ -1250,4 +1250,124 @@ Normal paragraph with [link](https://example.com).`
       expect(chunk.attributes).toBe(expectedAttributes)
     })
   })
+
+  describe("Link detection", () => {
+    test("should set link property on markup.link.url chunks", () => {
+      const content = "[Click here](https://example.com)"
+      const mockHighlights: SimpleHighlight[] = [
+        [0, 1, "markup.link"], // [
+        [1, 11, "markup.link.label"], // Click here
+        [11, 13, "markup.link"], // ](
+        [13, 32, "markup.link.url"], // https://example.com
+        [32, 33, "markup.link"], // )
+      ]
+
+      const style = SyntaxStyle.fromStyles({
+        default: { fg: RGBA.fromInts(255, 255, 255, 255) },
+        "markup.link": { fg: RGBA.fromInts(100, 100, 255, 255) },
+        "markup.link.label": { fg: RGBA.fromInts(165, 214, 255, 255) },
+        "markup.link.url": { fg: RGBA.fromInts(88, 166, 255, 255) },
+      })
+
+      const chunks = treeSitterToTextChunks(content, mockHighlights, style)
+      style.destroy()
+
+      const urlChunk = chunks.find((c) => c.text === "https://example.com")
+      expect(urlChunk).toBeDefined()
+      expect(urlChunk!.link).toEqual({ url: "https://example.com" })
+    })
+
+    test("should set link property on markup.link.label chunks with associated URL", () => {
+      const content = "[Click here](https://example.com)"
+      const mockHighlights: SimpleHighlight[] = [
+        [0, 1, "markup.link"], // [
+        [1, 11, "markup.link.label"], // Click here
+        [11, 13, "markup.link"], // ](
+        [13, 32, "markup.link.url"], // https://example.com
+        [32, 33, "markup.link"], // )
+      ]
+
+      const style = SyntaxStyle.fromStyles({
+        default: { fg: RGBA.fromInts(255, 255, 255, 255) },
+        "markup.link": { fg: RGBA.fromInts(100, 100, 255, 255) },
+        "markup.link.label": { fg: RGBA.fromInts(165, 214, 255, 255) },
+        "markup.link.url": { fg: RGBA.fromInts(88, 166, 255, 255) },
+      })
+
+      const chunks = treeSitterToTextChunks(content, mockHighlights, style)
+      style.destroy()
+
+      const labelChunk = chunks.find((c) => c.text === "Click here")
+      expect(labelChunk).toBeDefined()
+      expect(labelChunk!.link).toEqual({ url: "https://example.com" })
+    })
+
+    test("should set link property on string.special.url chunks", () => {
+      const content = "// see https://example.com for details"
+      const mockHighlights: SimpleHighlight[] = [
+        [0, 38, "comment"],
+        [7, 26, "string.special.url"], // https://example.com
+      ]
+
+      const style = SyntaxStyle.fromStyles({
+        default: { fg: RGBA.fromInts(255, 255, 255, 255) },
+        comment: { fg: RGBA.fromInts(128, 128, 128, 255), italic: true },
+        string: { fg: RGBA.fromInts(100, 255, 100, 255) },
+      })
+
+      const chunks = treeSitterToTextChunks(content, mockHighlights, style)
+      style.destroy()
+
+      const urlChunk = chunks.find((c) => c.text === "https://example.com")
+      expect(urlChunk).toBeDefined()
+      expect(urlChunk!.link).toEqual({ url: "https://example.com" })
+    })
+
+    test("should not set link property on non-URL chunks", () => {
+      const content = "const x = 42"
+      const mockHighlights: SimpleHighlight[] = [
+        [0, 5, "keyword"],
+        [6, 7, "variable"],
+        [10, 12, "number"],
+      ]
+
+      const style = SyntaxStyle.fromStyles({
+        default: { fg: RGBA.fromInts(255, 255, 255, 255) },
+        keyword: { fg: RGBA.fromInts(255, 100, 100, 255), bold: true },
+        variable: { fg: RGBA.fromInts(200, 200, 255, 255) },
+        number: { fg: RGBA.fromInts(100, 100, 255, 255) },
+      })
+
+      const chunks = treeSitterToTextChunks(content, mockHighlights, style)
+      style.destroy()
+
+      for (const chunk of chunks) {
+        expect(chunk.link).toBeUndefined()
+      }
+    })
+
+    test("should detect links in real markdown", async () => {
+      const content = "[Example](https://example.com)"
+
+      const linkStyle = SyntaxStyle.fromStyles({
+        default: { fg: RGBA.fromInts(255, 255, 255, 255) },
+        "markup.link": { fg: RGBA.fromInts(100, 100, 255, 255), underline: true },
+        "markup.link.label": { fg: RGBA.fromInts(165, 214, 255, 255), underline: true },
+        "markup.link.url": { fg: RGBA.fromInts(88, 166, 255, 255), underline: true },
+      })
+
+      const styledText = await treeSitterToStyledText(content, "markdown", linkStyle, client, {
+        conceal: { enabled: false },
+      })
+
+      linkStyle.destroy()
+
+      const chunks = styledText.chunks
+      const hasLink = chunks.some((c) => c.link?.url === "https://example.com")
+      expect(hasLink).toBe(true)
+
+      const reconstructed = chunks.map((c) => c.text).join("")
+      expect(reconstructed).toBe(content)
+    })
+  })
 })
