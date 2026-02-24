@@ -10,7 +10,7 @@ import {
   type LineInfo,
   type MousePointerStyle,
 } from "./types"
-export type { LineInfo }
+export type { LineInfo, AllocatorStats }
 
 import { RGBA } from "./lib/RGBA"
 import { OptimizedBuffer } from "./buffer"
@@ -31,8 +31,9 @@ import {
   NativeSpanFeedOptionsStruct,
   NativeSpanFeedStatsStruct,
   ReserveInfoStruct,
+  AllocatorStatsStruct,
 } from "./zig-structs"
-import type { NativeSpanFeedOptions, NativeSpanFeedStats, ReserveInfo } from "./zig-structs"
+import type { NativeSpanFeedOptions, NativeSpanFeedStats, ReserveInfo, AllocatorStats } from "./zig-structs"
 import { isBunfsPath } from "./lib/bunfs"
 import { attributesWithLink } from "./utils"
 
@@ -1014,6 +1015,10 @@ function getOpenTUILib(libPath?: string) {
       args: [],
       returns: "usize",
     },
+    getAllocatorStats: {
+      args: ["ptr"],
+      returns: "void",
+    },
 
     // SyntaxStyle functions
     createSyntaxStyle: {
@@ -1781,6 +1786,7 @@ export interface RenderLib {
   textBufferGetHighlightCount: (buffer: Pointer) => number
 
   getArenaAllocatedBytes: () => number
+  getAllocatorStats: () => AllocatorStats
 
   createSyntaxStyle: () => Pointer
   destroySyntaxStyle: (style: Pointer) => void
@@ -3000,6 +3006,19 @@ class FFIRenderLib implements RenderLib {
   public getArenaAllocatedBytes(): number {
     const result = this.opentui.symbols.getArenaAllocatedBytes()
     return typeof result === "bigint" ? Number(result) : result
+  }
+
+  public getAllocatorStats(): AllocatorStats {
+    const statsBuffer = new ArrayBuffer(AllocatorStatsStruct.size)
+    this.opentui.symbols.getAllocatorStats(ptr(statsBuffer))
+    const stats = AllocatorStatsStruct.unpack(statsBuffer)
+
+    return {
+      totalRequestedBytes: toNumber(stats.totalRequestedBytes),
+      activeAllocations: toNumber(stats.activeAllocations),
+      smallAllocations: toNumber(stats.smallAllocations),
+      largeAllocations: toNumber(stats.largeAllocations),
+    }
   }
 
   public bufferDrawTextBufferView(buffer: Pointer, view: Pointer, x: number, y: number): void {

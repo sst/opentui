@@ -40,12 +40,90 @@ const globalAllocator = gpa.allocator();
 var arena = std.heap.ArenaAllocator.init(globalAllocator);
 const globalArena = arena.allocator();
 
+pub const ExternalAllocatorStats = extern struct {
+    total_requested_bytes: u64,
+    active_allocations: u64,
+    small_allocations: u64,
+    large_allocations: u64,
+};
+
+fn queryStatsField(comptime field_names: []const []const u8) ?u64 {
+    if (@hasDecl(@TypeOf(gpa), "queryStats")) {
+        const stats = gpa.queryStats();
+        const StatsType = @TypeOf(stats);
+
+        inline for (field_names) |field_name| {
+            if (@hasField(StatsType, field_name)) {
+                return @intCast(@field(stats, field_name));
+            }
+        }
+    }
+
+    return null;
+}
+
+fn getTotalRequestedBytes() u64 {
+    if (queryStatsField(&.{ "total_requested_bytes", "requested_bytes", "allocated_bytes" })) |value| {
+        return value;
+    }
+
+    if (@hasField(@TypeOf(gpa), "total_requested_bytes")) {
+        if (@TypeOf(gpa.total_requested_bytes) == void) {
+            return 0;
+        }
+
+        return @intCast(gpa.total_requested_bytes);
+    }
+
+    return 0;
+}
+
+fn getSmallAllocationCount() u64 {
+    if (queryStatsField(&.{ "small_allocations", "small_allocation_count" })) |value| {
+        return value;
+    }
+
+    var total: u64 = 0;
+    for (gpa.buckets) |bucket_head| {
+        var current = bucket_head;
+        while (current) |bucket| {
+            const allocated: u64 = @intCast(bucket.allocated_count);
+            const freed: u64 = @intCast(bucket.freed_count);
+            total += allocated - freed;
+            current = bucket.next;
+        }
+    }
+
+    return total;
+}
+
+fn getLargeAllocationCount() u64 {
+    if (queryStatsField(&.{ "large_allocations", "large_allocation_count" })) |value| {
+        return value;
+    }
+
+    return @intCast(gpa.large_allocations.count());
+}
+
 export fn createNativeSpanFeed(options_ptr: ?*const native_span_feed.Options) ?*native_span_feed.Stream {
     return native_span_feed.createNativeSpanFeedWithAllocator(globalAllocator, options_ptr);
 }
 
 export fn getArenaAllocatedBytes() usize {
     return arena.queryCapacity();
+}
+
+export fn getAllocatorStats(out_ptr: *ExternalAllocatorStats) void {
+    const small_allocations = getSmallAllocationCount();
+    const large_allocations = getLargeAllocationCount();
+    const active_allocations = small_allocations + large_allocations;
+
+    out_ptr.* = .{
+        .total_requested_bytes = getTotalRequestedBytes(),
+        .active_allocations = active_allocations,
+        .small_allocations = small_allocations,
+        .large_allocations = large_allocations,
+    };
 }
 
 export fn createRenderer(width: u32, height: u32, testing: bool, remote: bool) ?*renderer.CliRenderer {

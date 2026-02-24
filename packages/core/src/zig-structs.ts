@@ -130,6 +130,20 @@ export const GridDrawOptionsStruct = defineStruct([
   ["drawOuter", "bool_u8", { default: true }],
 ])
 
+export type AllocatorStats = {
+  totalRequestedBytes: number
+  activeAllocations: number
+  smallAllocations: number
+  largeAllocations: number
+}
+
+export const AllocatorStatsStruct = defineStruct([
+  ["totalRequestedBytes", "u64"],
+  ["activeAllocations", "u64"],
+  ["smallAllocations", "u64"],
+  ["largeAllocations", "u64"],
+])
+
 export type GrowthPolicy = "grow" | "block"
 
 export type NativeSpanFeedOptions = {
