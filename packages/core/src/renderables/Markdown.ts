@@ -437,7 +437,23 @@ export class MarkdownRenderable extends Renderable {
     if (typeof cell.text === "string") {
       return `${prefix}${cell.text}`
     }
-    return `${prefix}${JSON.stringify(cell.tokens ?? [])}`
+
+    if (Array.isArray(cell.tokens) && cell.tokens.length > 0) {
+      const rawText = cell.tokens
+        .map((token) => {
+          if ("raw" in token && typeof token.raw === "string") {
+            return token.raw
+          }
+          if ("text" in token && typeof token.text === "string") {
+            return token.text
+          }
+          return ""
+        })
+        .join("")
+      return `${prefix}${rawText}`
+    }
+
+    return `${prefix}__unknown__`
   }
 
   private createTableDataCellChunks(cell: Tokens.TableCell | undefined): TextChunk[] {
