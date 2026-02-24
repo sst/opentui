@@ -2668,20 +2668,13 @@ class FFIRenderLib implements RenderLib {
     buffer: Pointer,
     chunks: Array<{ text: string; fg?: RGBA | null; bg?: RGBA | null; attributes?: number; link?: { url: string } }>,
   ): void {
-    const nonEmptyChunks = chunks.filter((c) => c.text.length > 0)
-    if (nonEmptyChunks.length === 0) {
+    if (chunks.length === 0) {
       this.textBufferClear(buffer)
       return
     }
 
-    const processedChunks = nonEmptyChunks.map((chunk) => ({
-      ...chunk,
-      attributes: chunk.attributes ?? 0,
-      link: chunk.link?.url ?? "",
-    }))
-
-    const chunksBuffer = StyledChunkStruct.packList(processedChunks)
-    this.opentui.symbols.textBufferSetStyledText(buffer, ptr(chunksBuffer), processedChunks.length)
+    const chunksBuffer = StyledChunkStruct.packList(chunks)
+    this.opentui.symbols.textBufferSetStyledText(buffer, ptr(chunksBuffer), chunks.length)
   }
 
   public textBufferGetLineCount(buffer: Pointer): number {
