@@ -440,6 +440,7 @@ pub const OptimizedBuffer = struct {
         const prev_char = self.buffer.char[index];
         const prev_attr = self.buffer.attributes[index];
         const prev_link_id = ansi.TextAttributes.getLinkId(prev_attr);
+        var tracker_replaced = false;
 
         // If overwriting a grapheme span (start or continuation) with a different char, clear that span first
         if ((gp.isGraphemeChar(prev_char) or gp.isContinuationChar(prev_char)) and prev_char != cell.char) {
@@ -449,22 +450,32 @@ pub const OptimizedBuffer = struct {
             const right = gp.charRightExtent(prev_char);
             const id = gp.graphemeIdFromChar(prev_char);
 
-            self.grapheme_tracker.remove(id);
+            const new_grapheme_id: ?u32 = blk: {
+                if (!gp.isGraphemeChar(cell.char)) break :blk null;
+                const new_width = gp.charRightExtent(cell.char) + 1;
+                if (x + new_width > self.width) break :blk null;
+                break :blk gp.graphemeIdFromChar(cell.char);
+            };
+            self.grapheme_tracker.replace(id, new_grapheme_id);
+            tracker_replaced = true;
 
             const span_start = index - @min(left, index - row_start);
             const span_end = index + @min(right, row_end - index);
-            const span_len = span_end - span_start + 1;
 
             var span_i: u32 = span_start;
-            while (span_i < span_start + span_len) : (span_i += 1) {
+            while (span_i <= span_end) : (span_i += 1) {
+                const span_char = self.buffer.char[span_i];
+                if (!(gp.isGraphemeChar(span_char) or gp.isContinuationChar(span_char))) continue;
+                if (gp.graphemeIdFromChar(span_char) != id) continue;
+
                 const span_link_id = ansi.TextAttributes.getLinkId(self.buffer.attributes[span_i]);
                 if (span_link_id != 0) {
                     self.link_tracker.removeCellRef(span_link_id);
                 }
-            }
 
-            @memset(self.buffer.char[span_start .. span_start + span_len], @intCast(DEFAULT_SPACE_CHAR));
-            @memset(self.buffer.attributes[span_start .. span_start + span_len], 0);
+                self.buffer.char[span_i] = @intCast(DEFAULT_SPACE_CHAR);
+                self.buffer.attributes[span_i] = 0;
+            }
         }
 
         if (gp.isGraphemeChar(cell.char)) {
@@ -501,7 +512,10 @@ pub const OptimizedBuffer = struct {
             self.buffer.attributes[index] = cell.attributes;
 
             const id: u32 = gp.graphemeIdFromChar(cell.char);
-            self.grapheme_tracker.add(id);
+            const is_same_grapheme_start = gp.isGraphemeChar(prev_char) and prev_char == cell.char;
+            if (!tracker_replaced and !is_same_grapheme_start) {
+                self.grapheme_tracker.add(id);
+            }
 
             const new_link_id = ansi.TextAttributes.getLinkId(cell.attributes);
             if (prev_link_id != 0 and prev_link_id != new_link_id) {
@@ -587,7 +601,7 @@ pub const OptimizedBuffer = struct {
     /// Calculate the real byte size of the character buffer including grapheme pool data
     pub fn getRealCharSize(self: *const OptimizedBuffer) u32 {
         const total_chars = self.width * self.height;
-        const grapheme_count = self.grapheme_tracker.getGraphemeCount();
+        const grapheme_count = self.grapheme_tracker.getGraphemeCellCount();
         const total_grapheme_bytes = self.grapheme_tracker.getTotalGraphemeBytes();
 
         const regular_char_bytes = (total_chars - grapheme_count) * @sizeOf(u32);
@@ -1138,7 +1152,7 @@ pub const OptimizedBuffer = struct {
         var currentX = x;
         var currentY = y + @as(i32, @intCast(firstVisibleLine));
         const text_buffer = view.getTextBuffer();
-        const total_line_count = text_buffer.getLineCount();
+        const total_line_count = text_buffer.lineCount();
 
         const line_info = view.getCachedLineInfo();
         var globalCharPos: u32 = if (firstVisibleLine < line_info.starts.len)
@@ -1162,9 +1176,10 @@ pub const OptimizedBuffer = struct {
             const spans = vline_span_info.spans;
             const col_offset = vline_span_info.col_offset;
             var span_idx: usize = 0;
-            var lineFg = text_buffer.default_fg orelse RGBA{ 1.0, 1.0, 1.0, 1.0 };
-            var lineBg = text_buffer.default_bg orelse RGBA{ 0.0, 0.0, 0.0, 0.0 };
-            var lineAttributes = text_buffer.default_attributes orelse 0;
+            const defaults = text_buffer.defaults();
+            var lineFg = defaults.fg orelse RGBA{ 1.0, 1.0, 1.0, 1.0 };
+            var lineBg = defaults.bg orelse RGBA{ 0.0, 0.0, 0.0, 0.0 };
+            var lineAttributes = defaults.attributes orelse 0;
             const defaultFg = lineFg;
             const defaultBg = lineBg;
             const defaultAttributes = lineAttributes;
@@ -1193,8 +1208,8 @@ pub const OptimizedBuffer = struct {
 
             for (vline.chunks.items) |vchunk| {
                 const chunk = vchunk.chunk;
-                const chunk_bytes = chunk.getBytes(&text_buffer.mem_registry);
-                const specials = chunk.getGraphemes(&text_buffer.mem_registry, text_buffer.allocator, text_buffer.tab_width, text_buffer.width_method) catch continue;
+                const chunk_bytes = chunk.getBytes(text_buffer.memRegistry());
+                const specials = chunk.getGraphemes(text_buffer.memRegistry(), text_buffer.getAllocator(), text_buffer.tabWidth(), text_buffer.widthMethod()) catch continue;
                 const line_char_offset = vline.char_offset;
 
                 if (currentX >= @as(i32, @intCast(self.width))) {
@@ -1210,7 +1225,7 @@ pub const OptimizedBuffer = struct {
                 if (vchunk.grapheme_start > 0) {
                     // Use UTF-8 aware position finding to skip to the grapheme_start
                     const is_ascii_only = (vchunk.chunk.flags & tb.TextChunk.Flags.ASCII_ONLY) != 0;
-                    const pos_result = utf8.findPosByWidth(chunk_bytes, vchunk.grapheme_start, text_buffer.tab_width, is_ascii_only, false, text_buffer.width_method);
+                    const pos_result = utf8.findPosByWidth(chunk_bytes, vchunk.grapheme_start, text_buffer.tabWidth(), is_ascii_only, false, text_buffer.widthMethod());
                     byte_offset = pos_result.byte_offset;
 
                     // Advance special_idx to match the skipped columns
@@ -1483,6 +1498,134 @@ pub const OptimizedBuffer = struct {
         y: i32,
     ) !void {
         try self.drawTextBufferInternal(EditorView, editor_view, x, y);
+    }
+
+    /// Draw a complete border grid in a single call.
+    /// columnOffsets and rowOffsets include an extra trailing entry so that
+    /// the range for column `i` is `[columnOffsets[i]+1 .. columnOffsets[i+1]-1]`.
+    pub fn drawGrid(
+        self: *OptimizedBuffer,
+        borderChars: [*]const u32,
+        borderFg: RGBA,
+        borderBg: RGBA,
+        columnOffsets: [*]const i32,
+        columnCount: u32,
+        rowOffsets: [*]const i32,
+        rowCount: u32,
+        drawInner: bool,
+        drawOuter: bool,
+    ) void {
+        if (rowCount == 0 or columnCount == 0) return;
+        if (!drawInner and !drawOuter) return;
+
+        const hChar = borderChars[@intFromEnum(BorderCharIndex.horizontal)];
+        const vChar = borderChars[@intFromEnum(BorderCharIndex.vertical)];
+        const bufWidth = self.width;
+        const bufHeight = self.height;
+        const bufWidthI32 = @as(i32, @intCast(bufWidth));
+        const bufHeightI32 = @as(i32, @intCast(bufHeight));
+
+        // Draw row-by-row: horizontal border line, then vertical borders for the row's content area
+        var rowIdx: u32 = 0;
+        while (rowIdx <= rowCount) : (rowIdx += 1) {
+            const is_outer_row = rowIdx == 0 or rowIdx == rowCount;
+            const should_draw_horizontal = if (is_outer_row) drawOuter else drawInner;
+            const borderY = rowOffsets[rowIdx];
+            if (borderY >= bufHeightI32) break;
+
+            // --- horizontal border line: intersections + fills ---
+            if (should_draw_horizontal and borderY >= 0) {
+                var colBorderIdx: u32 = 0;
+                while (colBorderIdx <= columnCount) : (colBorderIdx += 1) {
+                    const is_outer_col = colBorderIdx == 0 or colBorderIdx == columnCount;
+                    const should_draw_vertical = if (is_outer_col) drawOuter else drawInner;
+                    if (!should_draw_vertical) continue;
+
+                    const bx = columnOffsets[colBorderIdx];
+                    if (bx >= bufWidthI32) break;
+                    if (bx < 0) continue;
+
+                    const has_up = rowIdx > 0 and should_draw_vertical;
+                    const has_down = rowIdx < rowCount and should_draw_vertical;
+                    const has_left = colBorderIdx > 0;
+                    const has_right = colBorderIdx < columnCount;
+                    const intersection = tableBorderIntersectionByConnections(borderChars, has_up, has_down, has_left, has_right);
+
+                    self.setRaw(@as(u32, @intCast(bx)), @as(u32, @intCast(borderY)), Cell{ .char = intersection, .fg = borderFg, .bg = borderBg, .attributes = 0 });
+                }
+
+                var colIdx: u32 = 0;
+                while (colIdx < columnCount) : (colIdx += 1) {
+                    const has_boundary_after = if (colIdx < columnCount - 1) drawInner else drawOuter;
+                    const boundary_padding: i32 = if (has_boundary_after) 0 else 1;
+                    const startX = columnOffsets[colIdx] + 1;
+                    const endX = columnOffsets[colIdx + 1] + boundary_padding;
+
+                    if (startX >= bufWidthI32) break;
+                    if (endX <= 0) continue;
+
+                    const clampedStart = @as(u32, @intCast(@max(@as(i32, 0), startX)));
+                    const clampedEnd = @as(u32, @intCast(@min(bufWidthI32, endX)));
+
+                    if (clampedStart < clampedEnd) {
+                        const borderYU32 = @as(u32, @intCast(borderY));
+                        @memset(self.buffer.char[borderYU32 * bufWidth + clampedStart .. borderYU32 * bufWidth + clampedEnd], hChar);
+                        @memset(self.buffer.fg[borderYU32 * bufWidth + clampedStart .. borderYU32 * bufWidth + clampedEnd], borderFg);
+                        @memset(self.buffer.bg[borderYU32 * bufWidth + clampedStart .. borderYU32 * bufWidth + clampedEnd], borderBg);
+                        @memset(self.buffer.attributes[borderYU32 * bufWidth + clampedStart .. borderYU32 * bufWidth + clampedEnd], 0);
+                    }
+                }
+            }
+
+            if (rowIdx >= rowCount) break;
+
+            // --- vertical borders for each content line in this row ---
+            const has_row_boundary_after = if (rowIdx < rowCount - 1) drawInner else drawOuter;
+            const row_boundary_padding: i32 = if (has_row_boundary_after) 0 else 1;
+            const contentStartY = borderY + 1;
+            const contentEndY = rowOffsets[rowIdx + 1] + row_boundary_padding;
+            var cy = contentStartY;
+            while (cy < contentEndY and cy < bufHeightI32) : (cy += 1) {
+                if (cy < 0) continue;
+
+                const rowBase = @as(u32, @intCast(cy)) * bufWidth;
+                var colBorderIdx: u32 = 0;
+                while (colBorderIdx <= columnCount) : (colBorderIdx += 1) {
+                    const is_outer_col = colBorderIdx == 0 or colBorderIdx == columnCount;
+                    const should_draw_vertical = if (is_outer_col) drawOuter else drawInner;
+                    if (!should_draw_vertical) continue;
+
+                    const bx = columnOffsets[colBorderIdx];
+                    if (bx >= bufWidthI32) break;
+                    if (bx < 0) continue;
+
+                    const idx = rowBase + @as(u32, @intCast(bx));
+                    self.buffer.char[idx] = vChar;
+                    self.buffer.fg[idx] = borderFg;
+                    self.buffer.bg[idx] = borderBg;
+                    self.buffer.attributes[idx] = 0;
+                }
+            }
+        }
+    }
+
+    fn tableBorderIntersectionByConnections(borderChars: [*]const u32, hasUp: bool, hasDown: bool, hasLeft: bool, hasRight: bool) u32 {
+        if (hasUp and hasDown and hasLeft and hasRight) return borderChars[@intFromEnum(BorderCharIndex.cross)];
+
+        if (!hasUp and hasDown and !hasLeft and hasRight) return borderChars[@intFromEnum(BorderCharIndex.topLeft)];
+        if (!hasUp and hasDown and hasLeft and !hasRight) return borderChars[@intFromEnum(BorderCharIndex.topRight)];
+        if (hasUp and !hasDown and !hasLeft and hasRight) return borderChars[@intFromEnum(BorderCharIndex.bottomLeft)];
+        if (hasUp and !hasDown and hasLeft and !hasRight) return borderChars[@intFromEnum(BorderCharIndex.bottomRight)];
+
+        if (hasUp and hasDown and !hasLeft and hasRight) return borderChars[@intFromEnum(BorderCharIndex.leftT)];
+        if (hasUp and hasDown and hasLeft and !hasRight) return borderChars[@intFromEnum(BorderCharIndex.rightT)];
+        if (!hasUp and hasDown and hasLeft and hasRight) return borderChars[@intFromEnum(BorderCharIndex.topT)];
+        if (hasUp and !hasDown and hasLeft and hasRight) return borderChars[@intFromEnum(BorderCharIndex.bottomT)];
+
+        if ((hasLeft or hasRight) and !hasUp and !hasDown) return borderChars[@intFromEnum(BorderCharIndex.horizontal)];
+        if ((hasUp or hasDown) and !hasLeft and !hasRight) return borderChars[@intFromEnum(BorderCharIndex.vertical)];
+
+        return borderChars[@intFromEnum(BorderCharIndex.cross)];
     }
 
     /// Draw a box with borders and optional fill

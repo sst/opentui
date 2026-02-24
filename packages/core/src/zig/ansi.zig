@@ -60,8 +60,13 @@ pub const ANSI = struct {
 
     pub const resetCursorColor = "\x1b]112\x07";
     pub const resetCursorColorFallback = "\x1b]12;default\x07";
+    pub const resetMousePointer = "\x1b]22;\x07";
     pub const saveCursorState = "\x1b[s";
     pub const restoreCursorState = "\x1b[u";
+
+    pub fn setMousePointerOutput(writer: anytype, shape: []const u8) AnsiError!void {
+        writer.print("\x1b]22;{s}\x07", .{ shape }) catch return AnsiError.WriteFailed;
+    }
 
     pub const switchToAlternateScreen = "\x1b[?1049h";
     pub const switchToMainScreen = "\x1b[?1049l";

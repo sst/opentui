@@ -173,6 +173,59 @@ describe("InputRenderable", () => {
       expect(input.value).toBe("hel")
     })
 
+    it("should emit INPUT event on Ctrl+W (delete-word-backward)", () => {
+      const { input } = createInputRenderable({
+        value: "hello world",
+      })
+
+      input.focus()
+
+      const inputValues: string[] = []
+      input.on(InputRenderableEvents.INPUT, (value: string) => {
+        inputValues.push(value)
+      })
+
+      // Ctrl+W should delete "world" and emit INPUT with updated value
+      mockInput.pressKey("w", { ctrl: true })
+      expect(input.value).toBe("hello ")
+      expect(inputValues).toEqual(["hello "])
+    })
+
+    it("should emit INPUT event on Alt+Backspace (delete-word-backward)", () => {
+      const { input } = createInputRenderable({
+        value: "foo bar baz",
+      })
+
+      input.focus()
+
+      const inputValues: string[] = []
+      input.on(InputRenderableEvents.INPUT, (value: string) => {
+        inputValues.push(value)
+      })
+
+      // Alt+Backspace is also bound to delete-word-backward
+      mockInput.pressBackspace({ meta: true })
+      expect(input.value).toBe("foo bar ")
+      expect(inputValues).toEqual(["foo bar "])
+    })
+
+    it("should emit INPUT event on deleteLine()", () => {
+      const { input } = createInputRenderable({
+        value: "hello world",
+      })
+
+      input.focus()
+
+      const inputValues: string[] = []
+      input.on(InputRenderableEvents.INPUT, (value: string) => {
+        inputValues.push(value)
+      })
+
+      input.deleteLine()
+      expect(input.value).toBe("")
+      expect(inputValues).toEqual([""])
+    })
+
     it("should handle delete correctly", () => {
       const { input } = createInputRenderable({
         value: "hello",

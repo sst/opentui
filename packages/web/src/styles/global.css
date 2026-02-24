@@ -51,6 +51,11 @@
   box-sizing: border-box;
 }
 
+* {
+  scrollbar-width: thin;
+  scrollbar-color: var(--color-text-weak) transparent;
+}
+
 html {
   font-size: 14px;
   -webkit-font-smoothing: antialiased;

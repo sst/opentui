@@ -1016,6 +1016,50 @@ test "OptimizedBuffer - renderer two-buffer swap pattern should not leak" {
     }
 }
 
+test "OptimizedBuffer - set should not clear newly written adjacent grapheme continuation" {
+    var local_pool = gp.GraphemePool.initWithOptions(std.testing.allocator, .{});
+    defer local_pool.deinit();
+
+    var buf = try OptimizedBuffer.init(
+        std.testing.allocator,
+        8,
+        1,
+        .{ .pool = &local_pool, .id = "set-adjacent-grapheme" },
+    );
+    defer buf.deinit();
+
+    const bg = RGBA{ 0.0, 0.0, 0.0, 1.0 };
+    const fg = RGBA{ 1.0, 1.0, 1.0, 1.0 };
+    try buf.clear(bg, null);
+
+    const old_gid = try local_pool.alloc("🌟");
+    const old_start = gp.packGraphemeStart(old_gid & gp.GRAPHEME_ID_MASK, 2);
+    buf.set(3, 0, .{ .char = old_start, .fg = fg, .bg = bg, .attributes = 0 });
+
+    const new_gid = try local_pool.alloc("🔥");
+    const new_start = gp.packGraphemeStart(new_gid & gp.GRAPHEME_ID_MASK, 2);
+
+    // Simulate renderer's left-to-right in-place update:
+    // - x=2 writes a new grapheme (which writes continuation at x=3)
+    // - x=3 would be skipped by char-equality
+    // - x=4 overwrites an old continuation from the previous frame
+    // The overwrite at x=4 must not clear the new continuation at x=3.
+    buf.set(2, 0, .{ .char = new_start, .fg = fg, .bg = bg, .attributes = 0 });
+    buf.set(4, 0, .{ .char = ' ', .fg = fg, .bg = bg, .attributes = 0 });
+
+    const c2 = buf.get(2, 0).?;
+    const c3 = buf.get(3, 0).?;
+    const c4 = buf.get(4, 0).?;
+
+    try std.testing.expect(gp.isGraphemeChar(c2.char));
+    try std.testing.expect(gp.graphemeIdFromChar(c2.char) == (new_gid & gp.GRAPHEME_ID_MASK));
+
+    try std.testing.expect(gp.isContinuationChar(c3.char));
+    try std.testing.expect(gp.graphemeIdFromChar(c3.char) == (new_gid & gp.GRAPHEME_ID_MASK));
+
+    try std.testing.expect(c4.char == ' ');
+}
+
 test "OptimizedBuffer - sustained rendering should not leak" {
     const tiny_slots = [_]u32{ 2, 2, 2, 2, 2 };
     var local_pool = gp.GraphemePool.initWithOptions(std.testing.allocator, .{
@@ -2135,4 +2179,114 @@ test "OptimizedBuffer - drawGrayscaleBufferSupersampled with custom fg color" {
     try std.testing.expect(cell.fg[0] < 0.1);
     try std.testing.expect(cell.fg[1] > 0.9);
     try std.testing.expect(cell.fg[2] > 0.9);
+}
+
+// Overwriting a grapheme cell with the same ID but different extent bits must
+// not free the pool slot (which would allow reuse and generation bump).
+test "buffer - set same grapheme ID with different extents keeps slot alive" {
+    var local_pool = gp.GraphemePool.initWithOptions(std.testing.allocator, .{
+        .slots_per_page = .{ 1, 1, 1, 1, 1 },
+    });
+    defer local_pool.deinit();
+
+    var local_link_pool = link.LinkPool.init(std.testing.allocator);
+    defer local_link_pool.deinit();
+
+    var buf = try OptimizedBuffer.init(std.testing.allocator, 10, 2, .{
+        .pool = &local_pool,
+        .link_pool = &local_link_pool,
+        .width_method = .unicode,
+    });
+    defer buf.deinit();
+
+    const fg = RGBA{ 1.0, 1.0, 1.0, 1.0 };
+    const bg = RGBA{ 0.0, 0.0, 0.0, 1.0 };
+
+    const emoji = "👋";
+
+    const gid = local_pool.alloc(emoji) catch @panic("alloc failed");
+    const packed_w2 = gp.packGraphemeStart(gid & gp.GRAPHEME_ID_MASK, 2);
+    buf.set(0, 0, buffer_mod.Cell{ .char = packed_w2, .fg = fg, .bg = bg, .attributes = 0 });
+
+    const id_from_char = gp.graphemeIdFromChar(packed_w2);
+    try std.testing.expect(buf.grapheme_tracker.contains(id_from_char));
+
+    // Same grapheme ID, different width → different packed char
+    const packed_w1 = gp.packGraphemeStart(gid & gp.GRAPHEME_ID_MASK, 1);
+    buf.set(0, 0, buffer_mod.Cell{ .char = packed_w1, .fg = fg, .bg = bg, .attributes = 0 });
+
+    try std.testing.expect(buf.grapheme_tracker.contains(id_from_char));
+
+    const bytes = local_pool.get(gid) catch @panic("get failed - slot was freed");
+    try std.testing.expectEqualSlices(u8, emoji, bytes);
+}
+
+// Exercises grapheme pool slot reuse across multiple render frames with
+// alternating dialog/form content to stress the alloc→set→render cycle.
+test "renderer - grapheme WrongGeneration repro with pool slot reuse" {
+    const pool = gp.initGlobalPool(std.testing.allocator);
+    defer gp.deinitGlobalPool();
+
+    const renderer_mod = @import("../renderer.zig");
+    var cli_renderer = try renderer_mod.CliRenderer.create(
+        std.testing.allocator,
+        40,
+        5,
+        pool,
+        true,
+    );
+    defer cli_renderer.destroy();
+
+    const fg = RGBA{ 1.0, 1.0, 1.0, 1.0 };
+    const bg = RGBA{ 0.0, 0.0, 0.0, 1.0 };
+
+    {
+        const next = cli_renderer.getNextBuffer();
+        try next.drawText("╭────────────────────────────────────╮", 0, 0, fg, bg, 0);
+        try next.drawText("│ ◇ Select Files                    │", 0, 1, fg, bg, 0);
+        try next.drawText("│ ▫ src/    ▪ file.ts                │", 0, 2, fg, bg, 0);
+        try next.drawText("│ ↑↓ navigate  ⏎ select  esc close   │", 0, 3, fg, bg, 0);
+        try next.drawText("╰────────────────────────────────────╯", 0, 4, fg, bg, 0);
+        cli_renderer.render(false);
+    }
+
+    {
+        const next = cli_renderer.getNextBuffer();
+        try next.drawText("  Your Name                              ", 0, 0, fg, bg, 0);
+        try next.drawText("  John Doe                               ", 0, 1, fg, bg, 0);
+        try next.drawText("                                         ", 0, 2, fg, bg, 0);
+        try next.drawText("  Select Files                           ", 0, 3, fg, bg, 0);
+        try next.drawText("  Enter file path...                     ", 0, 4, fg, bg, 0);
+        cli_renderer.render(false);
+    }
+
+    {
+        const next = cli_renderer.getNextBuffer();
+        try next.drawText("╭────────────────────────────────────╮", 0, 0, fg, bg, 0);
+        try next.drawText("│ ◇ Select Files                    │", 0, 1, fg, bg, 0);
+        try next.drawText("│ ▫ src/    ▪ file.ts                │", 0, 2, fg, bg, 0);
+        try next.drawText("│ ↑↓ navigate  ⏎ select  esc close   │", 0, 3, fg, bg, 0);
+        try next.drawText("╰────────────────────────────────────╯", 0, 4, fg, bg, 0);
+        cli_renderer.render(false);
+    }
+
+    {
+        const next = cli_renderer.getNextBuffer();
+        try next.drawText("  Your Name                              ", 0, 0, fg, bg, 0);
+        try next.drawText("  John Doe                               ", 0, 1, fg, bg, 0);
+        try next.drawText("                                         ", 0, 2, fg, bg, 0);
+        try next.drawText("  Select Files                           ", 0, 3, fg, bg, 0);
+        try next.drawText("  Enter file path...                     ", 0, 4, fg, bg, 0);
+        cli_renderer.render(false);
+    }
+
+    {
+        const next = cli_renderer.getNextBuffer();
+        try next.drawText("╭────────────────────────────────────╮", 0, 0, fg, bg, 0);
+        try next.drawText("│ Filter: s                          │", 0, 1, fg, bg, 0);
+        try next.drawText("│ ▫ src/                             │", 0, 2, fg, bg, 0);
+        try next.drawText("│ ↑↓ navigate  ⏎/tab select          │", 0, 3, fg, bg, 0);
+        try next.drawText("╰────────────────────────────────────╯", 0, 4, fg, bg, 0);
+        cli_renderer.render(false);
+    }
 }

@@ -135,6 +135,20 @@ renderer.on("selection", (selection) => {
 })
 ```
 
+## Theme mode
+
+OpenTUI can detect the terminal's preferred color scheme (dark or light) when the terminal supports DEC mode 2031 color scheme updates. Read the current mode via `renderer.themeMode` and subscribe to `theme_mode` to react to changes. Possible values are `"dark"`, `"light"`, or `null` when unsupported, and no events fire in the unsupported case.
+
+```typescript
+import { type ThemeMode } from "@opentui/core"
+
+const mode = renderer.themeMode
+
+renderer.on("theme_mode", (nextMode: ThemeMode) => {
+  console.log("Theme mode changed:", nextMode)
+})
+```
+
 ## Cursor control
 
 Use these methods to control the cursor position and style:
@@ -144,12 +158,26 @@ Use these methods to control the cursor position and style:
 renderer.setCursorPosition(10, 5, true)
 
 // Cursor style
-renderer.setCursorStyle("block", true) // Blinking block
-renderer.setCursorStyle("underline", false) // Steady underline
-renderer.setCursorStyle("line", true) // Blinking line
+renderer.setCursorStyle({ style: "block", blinking: true }) // Blinking block
+renderer.setCursorStyle({ style: "underline", blinking: false }) // Steady underline
+renderer.setCursorStyle({ style: "line", blinking: true }) // Blinking line
 
-// Cursor color
-renderer.setCursorColor(RGBA.fromHex("#FF0000"))
+// Cursor style with color
+renderer.setCursorStyle({
+  style: "block",
+  blinking: true,
+  color: RGBA.fromHex("#FF0000"),
+})
+
+// Cursor style with mouse pointer
+//
+// Types of mouse pointers available: "default", "pointer", "text", "crosshair", "move",
+// "not-allowed"
+renderer.setCursorStyle({
+  style: "block",
+  blinking: false,
+  cursor: "pointer",
+})
 ```
 
 ## Input handling
@@ -194,7 +222,7 @@ renderer.destroy()
 
 Destroying the renderer restores the terminal to its original state, disables mouse tracking, and cleans up resources.
 
-**Important:** OpenTUI does not automatically clean up on `process.exit` or unhandled errors. This design gives you control. See [Lifecycle and cleanup](/core-concepts/lifecycle) for signal handling options and best practices.
+**Important:** OpenTUI does not automatically clean up on `process.exit` or unhandled errors. This design gives you control. See [Lifecycle](/docs/core-concepts/lifecycle/) for signal handling options and best practices.
 
 ## Environment variables
 

@@ -884,7 +884,7 @@ test "wrap breaks: multibyte adjacent to dash" {
     }, testing.allocator);
 }
 
-test "wrap breaks: multibyte at SIMD boundary without breaks" {
+test "wrap breaks: multibyte at SIMD boundary with script transitions" {
     var buf: [32]u8 = undefined;
     @memset(&buf, 0);
 
@@ -892,7 +892,10 @@ test "wrap breaks: multibyte at SIMD boundary without breaks" {
     const text = "Test世界Test";
     @memcpy(buf[0..text.len], text);
 
-    const expected = [_]usize{}; // No breaks
+    //// Breaks at ASCII<->CJK transitions:
+    // - after 't' in "Test" (byte 3)
+    // - after '界' before "Test" (byte 7)
+    const expected = [_]usize{ 3, 7 };
 
     try testWrapBreaks(.{
         .name = "unicode@boundary",
@@ -1171,6 +1174,66 @@ test "wrap breaks: CJK characters keep break offsets" {
     // Byte: "Hello " = 6 bytes, "世" = 3 bytes, "界" = 3 bytes, total = 12
     try testing.expectEqual(@as(u16, 12), result.breaks.items[1].byte_offset);
     try testing.expectEqual(@as(u16, 8), result.breaks.items[1].char_offset); // 6 graphemes(Hello space) + 2 graphemes(世界) = 8
+}
+
+test "wrap breaks: CJK to ASCII script transition" {
+    const input = "日本語abc";
+
+    var result = utf8.WrapBreakResult.init(testing.allocator);
+    defer result.deinit();
+    try utf8.findWrapBreaks(input, &result, .unicode);
+
+    try testing.expectEqual(@as(usize, 1), result.breaks.items.len);
+    try testing.expectEqual(@as(u16, 6), result.breaks.items[0].byte_offset);
+    try testing.expectEqual(@as(u16, 2), result.breaks.items[0].char_offset);
+}
+
+test "wrap breaks: ASCII to CJK script transition" {
+    const input = "abc日本語";
+
+    var result = utf8.WrapBreakResult.init(testing.allocator);
+    defer result.deinit();
+    try utf8.findWrapBreaks(input, &result, .unicode);
+
+    try testing.expectEqual(@as(usize, 1), result.breaks.items.len);
+    try testing.expectEqual(@as(u16, 2), result.breaks.items[0].byte_offset);
+    try testing.expectEqual(@as(u16, 2), result.breaks.items[0].char_offset);
+}
+
+test "wrap breaks: CJK punctuation before ASCII" {
+    const input = "日本語。abc";
+
+    var result = utf8.WrapBreakResult.init(testing.allocator);
+    defer result.deinit();
+    try utf8.findWrapBreaks(input, &result, .unicode);
+
+    try testing.expectEqual(@as(usize, 1), result.breaks.items.len);
+    try testing.expectEqual(@as(u16, 9), result.breaks.items[0].byte_offset);
+    try testing.expectEqual(@as(u16, 3), result.breaks.items[0].char_offset);
+}
+
+test "wrap breaks: compat ideograph to ASCII script transition" {
+    const input = "丽abc";
+
+    var result = utf8.WrapBreakResult.init(testing.allocator);
+    defer result.deinit();
+    try utf8.findWrapBreaks(input, &result, .unicode);
+
+    try testing.expectEqual(@as(usize, 1), result.breaks.items.len);
+    try testing.expectEqual(@as(u16, 0), result.breaks.items[0].byte_offset);
+    try testing.expectEqual(@as(u16, 0), result.breaks.items[0].char_offset);
+}
+
+test "wrap breaks: extension I ideograph to ASCII script transition" {
+    const input = "𮯰abc";
+
+    var result = utf8.WrapBreakResult.init(testing.allocator);
+    defer result.deinit();
+    try utf8.findWrapBreaks(input, &result, .unicode);
+
+    try testing.expectEqual(@as(usize, 1), result.breaks.items.len);
+    try testing.expectEqual(@as(u16, 0), result.breaks.items[0].byte_offset);
+    try testing.expectEqual(@as(u16, 0), result.breaks.items[0].char_offset);
 }
 
 test "wrap breaks: emoji and CJK mixed offsets" {

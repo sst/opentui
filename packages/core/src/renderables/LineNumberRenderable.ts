@@ -653,4 +653,23 @@ export class LineNumberRenderable extends Renderable {
   public getLineNumbers(): Map<number, number> {
     return this._lineNumbers
   }
+
+  public highlightLines(startLine: number, endLine: number, color: string | RGBA | LineColorConfig): void {
+    for (let i = startLine; i <= endLine; i++) {
+      this.parseLineColor(i, color)
+    }
+    if (this.gutter) {
+      this.gutter.setLineColors(this._lineColorsGutter, this._lineColorsContent)
+    }
+  }
+
+  public clearHighlightLines(startLine: number, endLine: number): void {
+    for (let i = startLine; i <= endLine; i++) {
+      this._lineColorsGutter.delete(i)
+      this._lineColorsContent.delete(i)
+    }
+    if (this.gutter) {
+      this.gutter.setLineColors(this._lineColorsGutter, this._lineColorsContent)
+    }
+  }
 }

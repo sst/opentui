@@ -51,7 +51,7 @@ pub const UnifiedTextBuffer = struct {
     global_allocator: Allocator,
     arena: *std.heap.ArenaAllocator,
 
-    rope: UnifiedRope,
+    _rope: UnifiedRope,
     syntax_style: ?*const SyntaxStyle,
 
     pool: *gp.GraphemePool,
@@ -79,6 +79,82 @@ pub const UnifiedTextBuffer = struct {
 
     tab_width: u8,
 
+    pub const Defaults = struct {
+        fg: ?RGBA,
+        bg: ?RGBA,
+        attributes: ?u32,
+    };
+
+    /// Accessor: return default fg/bg/attributes as a struct.
+    pub fn defaults(self: *const Self) Defaults {
+        return .{
+            .fg = self.default_fg,
+            .bg = self.default_bg,
+            .attributes = self.default_attributes,
+        };
+    }
+
+    /// Accessor: return a const pointer to the mem registry.
+    pub fn memRegistry(self: *const Self) *const MemRegistry {
+        return &self.mem_registry;
+    }
+
+    /// Accessor: return the width method.
+    pub fn widthMethod(self: *const Self) utf8.WidthMethod {
+        return self.width_method;
+    }
+
+    /// Accessor: return tab width.
+    pub fn tabWidth(self: *const Self) u8 {
+        return self.tab_width;
+    }
+
+    /// Accessor: return the internal allocator.
+    pub fn getAllocator(self: *const Self) Allocator {
+        return self.allocator;
+    }
+
+    /// Accessor: return pointer to the rope (for edit-path callers).
+    /// Const-preserving: returns *UnifiedRope or *const UnifiedRope depending on receiver.
+    pub fn rope(self: anytype) blk: {
+        const T = @TypeOf(self);
+        break :blk if (T == *Self) *UnifiedRope else if (T == *const Self) *const UnifiedRope else @compileError("expected *Self or *const Self");
+    } {
+        return &self._rope;
+    }
+
+    /// Accessor: get line width at a given row.
+    pub fn lineWidthAt(self: *const Self, row: u32) u32 {
+        return iter_mod.lineWidthAt(@constCast(&self._rope), row);
+    }
+
+    /// Accessor: get maximum line width across all lines.
+    pub fn maxLineWidth(self: *const Self) u32 {
+        return iter_mod.getMaxLineWidth(&self._rope);
+    }
+
+    pub fn getGraphemeWidthAt(self: *const Self, row: u32, col: u32) u32 {
+        return iter_mod.getGraphemeWidthAt(@constCast(&self._rope), &self.mem_registry, row, col, self.tab_width, self.width_method);
+    }
+
+    pub fn getPrevGraphemeWidth(self: *const Self, row: u32, col: u32) u32 {
+        return iter_mod.getPrevGraphemeWidth(@constCast(&self._rope), &self.mem_registry, row, col, self.tab_width, self.width_method);
+    }
+
+    pub fn getWrapOffsetsFor(self: *const Self, chunk: *const TextChunk) TextBufferError![]const utf8.WrapBreak {
+        return chunk.getWrapOffsets(&self.mem_registry, self.allocator, self.width_method);
+    }
+
+    /// Accessor: walk all lines and segments via callbacks.
+    pub fn walkLinesAndSegments(
+        self: *const Self,
+        ctx: *anyopaque,
+        segment_callback: *const fn (ctx: *anyopaque, line_idx: u32, chunk: *const TextChunk, chunk_idx_in_line: u32) void,
+        line_end_callback: *const fn (ctx: *anyopaque, line_info: LineInfo) void,
+    ) void {
+        iter_mod.walkLinesAndSegments(&self._rope, ctx, segment_callback, line_end_callback);
+    }
+
     pub fn init(
         global_allocator: Allocator,
         pool: *gp.GraphemePool,
@@ -93,7 +169,7 @@ pub const UnifiedTextBuffer = struct {
 
         const internal_allocator = internal_arena.allocator();
 
-        const rope = UnifiedRope.init(internal_allocator) catch return TextBufferError.OutOfMemory;
+        const init_rope = UnifiedRope.init(internal_allocator) catch return TextBufferError.OutOfMemory;
 
         var view_dirty_flags: std.ArrayListUnmanaged(bool) = .{};
         errdefer view_dirty_flags.deinit(global_allocator);
@@ -115,7 +191,7 @@ pub const UnifiedTextBuffer = struct {
             .allocator = internal_allocator,
             .global_allocator = global_allocator,
             .arena = internal_arena,
-            .rope = rope,
+            ._rope = init_rope,
             .syntax_style = null,
             .pool = pool,
             .width_method = width_method,
@@ -224,16 +300,16 @@ pub const UnifiedTextBuffer = struct {
 
     // Basic queries using unified rope
     pub fn getLength(self: *const Self) u32 {
-        const metrics = self.rope.root.metrics();
+        const metrics = self._rope.root.metrics();
         return metrics.custom.total_width;
     }
 
     pub fn getByteSize(self: *const Self) u32 {
-        const metrics = self.rope.root.metrics();
+        const metrics = self._rope.root.metrics();
         const total_bytes = metrics.custom.total_bytes;
 
         // Add newlines between lines (line_count - 1)
-        const line_count = iter_mod.getLineCount(&self.rope);
+        const line_count = iter_mod.getLineCount(&self._rope);
         if (line_count > 0) {
             return total_bytes + (line_count - 1); // newlines
         }
@@ -251,7 +327,7 @@ pub const UnifiedTextBuffer = struct {
     /// Preserves highlights, memory buffers, and arena allocations.
     /// Use this for frequent text updates where undo/redo history should be preserved.
     pub fn clear(self: *Self) void {
-        self.rope.clear();
+        self._rope.clear();
         self.markAllViewsDirty();
     }
 
@@ -280,7 +356,7 @@ pub const UnifiedTextBuffer = struct {
 
         self.mem_registry.clear();
 
-        self.rope = UnifiedRope.init(self.allocator) catch return;
+        self._rope = UnifiedRope.init(self.allocator) catch return;
 
         self.markAllViewsDirty();
     }
@@ -363,8 +439,8 @@ pub const UnifiedTextBuffer = struct {
         var result = try self.textToSegments(self.global_allocator, text, mem_id, 0, false);
         defer result.segments.deinit(result.allocator);
 
-        const insert_pos = self.rope.count();
-        try self.rope.insert_slice(insert_pos, result.segments.items);
+        const insert_pos = self._rope.count();
+        try self._rope.insert_slice(insert_pos, result.segments.items);
 
         self.markAllViewsDirty();
     }
@@ -379,7 +455,7 @@ pub const UnifiedTextBuffer = struct {
         var result = try self.textToSegments(self.global_allocator, text, mem_id, 0, true);
         defer result.segments.deinit(result.allocator);
 
-        try self.rope.setSegments(result.segments.items);
+        try self._rope.setSegments(result.segments.items);
 
         self.markAllViewsDirty();
     }
@@ -464,9 +540,9 @@ pub const UnifiedTextBuffer = struct {
     }
 
     pub fn getLineCount(self: *const Self) u32 {
-        const count = self.rope.count();
+        const count = self._rope.count();
         if (count == 0) return 0; // Truly empty (after reset)
-        return iter_mod.getLineCount(&self.rope);
+        return iter_mod.getLineCount(&self._rope);
     }
 
     pub fn lineCount(self: *const Self) u32 {
@@ -476,6 +552,14 @@ pub const UnifiedTextBuffer = struct {
     /// Register a memory buffer
     pub fn registerMemBuffer(self: *Self, data: []const u8, owned: bool) TextBufferError!u8 {
         return try self.mem_registry.register(data, owned);
+    }
+
+    pub fn replaceMemBuffer(self: *Self, mem_id: u8, data: []const u8, owned: bool) TextBufferError!void {
+        try self.mem_registry.replace(mem_id, data, owned);
+    }
+
+    pub fn clearMemRegistry(self: *Self) void {
+        self.mem_registry.clear();
     }
 
     pub fn getMemBuffer(self: *const Self, mem_id: u8) ?[]const u8 {
@@ -495,14 +579,14 @@ pub const UnifiedTextBuffer = struct {
 
         const chunk = self.createChunk(mem_id, byte_start, byte_end);
 
-        const had_content = self.rope.count() > 1;
+        const had_content = self._rope.count() > 1;
 
         if (had_content) {
-            try self.rope.append(Segment{ .brk = {} });
-            try self.rope.append(Segment{ .linestart = {} });
+            try self._rope.append(Segment{ .brk = {} });
+            try self._rope.append(Segment{ .linestart = {} });
         }
 
-        try self.rope.append(Segment{ .text = chunk });
+        try self._rope.append(Segment{ .text = chunk });
 
         self.markAllViewsDirty();
     }
@@ -551,7 +635,7 @@ pub const UnifiedTextBuffer = struct {
             .out_index = &out_index,
             .line_count = line_count,
         };
-        iter_mod.walkLinesAndSegments(&self.rope, &ctx, Context.segmentCallback, Context.lineEndCallback);
+        self.walkLinesAndSegments(&ctx, Context.segmentCallback, Context.lineEndCallback);
 
         return out_index;
     }
@@ -718,7 +802,7 @@ pub const UnifiedTextBuffer = struct {
         // Emit final span after last event if there were any highlights
         // This ensures the line returns to default styling after the last highlight ends
         if (events.items.len > 0 and active.count() == 0) {
-            const line_width = iter_mod.lineWidthAt(&self.rope, @intCast(line_idx));
+            const line_width = self.lineWidthAt(@intCast(line_idx));
             if (current_col < line_width) {
                 try self.line_spans.items[line_idx].append(self.global_allocator, StyleSpan{
                     .col = current_col,
@@ -740,8 +824,8 @@ pub const UnifiedTextBuffer = struct {
         priority: u8,
         hl_ref: u16,
     ) TextBufferError!void {
-        const char_start = iter_mod.coordsToOffset(&self.rope, start_row, start_col) orelse return TextBufferError.InvalidIndex;
-        const char_end = iter_mod.coordsToOffset(&self.rope, end_row, end_col) orelse return TextBufferError.InvalidIndex;
+        const char_start = iter_mod.coordsToOffset(&self._rope, start_row, start_col) orelse return TextBufferError.InvalidIndex;
+        const char_end = iter_mod.coordsToOffset(&self._rope, end_row, end_col) orelse return TextBufferError.InvalidIndex;
         return self.addHighlightByCharRange(char_start, char_end, style_id, priority, hl_ref);
     }
 
@@ -809,7 +893,7 @@ pub const UnifiedTextBuffer = struct {
             .priority = priority,
             .hl_ref = hl_ref,
         };
-        iter_mod.walkLines(&self.rope, &ctx, Context.callback, false);
+        iter_mod.walkLines(&self._rope, &ctx, Context.callback, false);
     }
 
     /// Remove all highlights with a specific reference ID
@@ -902,7 +986,7 @@ pub const UnifiedTextBuffer = struct {
 
         _ = self.arena.reset(.retain_capacity);
 
-        self.rope = UnifiedRope.init(self.allocator) catch return TextBufferError.OutOfMemory;
+        self._rope = UnifiedRope.init(self.allocator) catch return TextBufferError.OutOfMemory;
 
         if (total_len > self.styled_capacity) {
             if (self.styled_buffer) |old_buf| {
@@ -983,7 +1067,7 @@ pub const UnifiedTextBuffer = struct {
     }
 
     pub fn getTabWidth(self: *const Self) u8 {
-        return self.tab_width;
+        return self.tabWidth();
     }
 
     /// Set tab width, rounding up to nearest multiple of 2 (minimum 2).
@@ -1004,7 +1088,7 @@ pub const UnifiedTextBuffer = struct {
         logger.debug("Char count: {}", .{self.getLength()});
         logger.debug("Byte size: {}", .{self.getByteSize()});
 
-        const rope_text = self.rope.toText(self.allocator) catch {
+        const rope_text = self._rope.toText(self.allocator) catch {
             logger.debug("Failed to generate rope text representation", .{});
             return;
         };
@@ -1019,13 +1103,13 @@ pub const UnifiedTextBuffer = struct {
         if (start_offset >= end_offset) return 0;
         if (out_buffer.len == 0) return 0;
 
-        const total_weight = self.rope.totalWeight();
+        const total_weight = self._rope.totalWeight();
         if (start_offset >= total_weight) return 0;
 
         const clamped_end = @min(end_offset, total_weight);
 
         return iter_mod.extractTextBetweenOffsets(
-            &self.rope,
+            &self._rope,
             &self.mem_registry,
             self.tab_width,
             start_offset,
@@ -1039,8 +1123,8 @@ pub const UnifiedTextBuffer = struct {
     /// Automatically snaps to grapheme boundaries:
     /// Returns number of bytes written to out_buffer
     pub fn getTextRangeByCoords(self: *Self, start_row: u32, start_col: u32, end_row: u32, end_col: u32, out_buffer: []u8) usize {
-        const start_offset = iter_mod.coordsToOffset(&self.rope, start_row, start_col) orelse return 0;
-        const end_offset = iter_mod.coordsToOffset(&self.rope, end_row, end_col) orelse return 0;
+        const start_offset = iter_mod.coordsToOffset(&self._rope, start_row, start_col) orelse return 0;
+        const end_offset = iter_mod.coordsToOffset(&self._rope, end_row, end_col) orelse return 0;
         return self.getTextRange(start_offset, end_offset, out_buffer);
     }
 };

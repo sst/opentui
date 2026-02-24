@@ -8,6 +8,7 @@ import {
   parseColor,
   Renderable,
   RootTextNodeRenderable,
+  ScrollBoxRenderable,
   SelectRenderable,
   SelectRenderableEvents,
   TabSelectRenderable,
@@ -148,6 +149,14 @@ function _getParentNode(childNode: DomNode): DomNode | undefined {
   let parent = childNode.parent ?? undefined
   if (parent instanceof RootTextNodeRenderable) {
     parent = parent.textParent ?? undefined
+  }
+  // ScrollBox delegates add/remove to its internal `content` wrapper
+  // (scrollbox → wrapper → viewport → content), so children report
+  // `content` as their parent. Return the ScrollBox so the identity
+  // check in cleanChildren (getParentNode(el) === parent) succeeds.
+  const scrollBoxCandidate = parent?.parent?.parent?.parent
+  if (scrollBoxCandidate instanceof ScrollBoxRenderable && scrollBoxCandidate.content === parent) {
+    parent = scrollBoxCandidate
   }
   return parent
 }

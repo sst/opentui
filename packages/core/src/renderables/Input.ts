@@ -167,6 +167,48 @@ export class InputRenderable extends TextareaRenderable {
     return result
   }
 
+  public override deleteLine(): boolean {
+    const result = super.deleteLine()
+    this.emit(InputRenderableEvents.INPUT, this.plainText)
+    return result
+  }
+
+  public override deleteWordBackward(): boolean {
+    const result = super.deleteWordBackward()
+    this.emit(InputRenderableEvents.INPUT, this.plainText)
+    return result
+  }
+
+  public override deleteWordForward(): boolean {
+    const result = super.deleteWordForward()
+    this.emit(InputRenderableEvents.INPUT, this.plainText)
+    return result
+  }
+
+  public override deleteToLineStart(): boolean {
+    const result = super.deleteToLineStart()
+    this.emit(InputRenderableEvents.INPUT, this.plainText)
+    return result
+  }
+
+  public override deleteToLineEnd(): boolean {
+    const result = super.deleteToLineEnd()
+    this.emit(InputRenderableEvents.INPUT, this.plainText)
+    return result
+  }
+
+  public override undo(): boolean {
+    const result = super.undo()
+    this.emit(InputRenderableEvents.INPUT, this.plainText)
+    return result
+  }
+
+  public override redo(): boolean {
+    const result = super.redo()
+    this.emit(InputRenderableEvents.INPUT, this.plainText)
+    return result
+  }
+
   public deleteCharacter(direction: "backward" | "forward"): void {
     if (direction === "backward") {
       this.deleteCharBackward()
