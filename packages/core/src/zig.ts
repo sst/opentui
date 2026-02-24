@@ -272,6 +272,14 @@ function getOpenTUILib(libPath?: string) {
       args: ["ptr", "u32"],
       returns: "u32",
     },
+    linkIncref: {
+      args: ["u32"],
+      returns: "bool",
+    },
+    linkDecref: {
+      args: ["u32"],
+      returns: "bool",
+    },
     linkGetUrl: {
       args: ["u32", "ptr", "u32"],
       returns: "u32",
@@ -1846,6 +1854,7 @@ class FFIRenderLib implements RenderLib {
   private _anyEventHandlers: Array<(name: string, data: ArrayBuffer) => void> = []
   private nativeSpanFeedCallbackWrapper: JSCallback | null = null
   private nativeSpanFeedHandlers = new Map<Pointer, NativeSpanFeedEventHandler>()
+  private textBufferOwnedLinkIds = new Map<Pointer, Set<number>>()
 
   constructor(libPath?: string) {
     this.opentui = getOpenTUILib(libPath)
@@ -2336,6 +2345,25 @@ class FFIRenderLib implements RenderLib {
     return this.opentui.symbols.linkAlloc(urlBytes, urlBytes.length)
   }
 
+  public linkIncref(linkId: number): boolean {
+    return this.opentui.symbols.linkIncref(linkId)
+  }
+
+  public linkDecref(linkId: number): boolean {
+    return this.opentui.symbols.linkDecref(linkId)
+  }
+
+  private releaseTextBufferOwnedLinks(buffer: Pointer): void {
+    const current = this.textBufferOwnedLinkIds.get(buffer)
+    if (!current) return
+
+    for (const linkId of current) {
+      this.linkDecref(linkId)
+    }
+
+    this.textBufferOwnedLinkIds.delete(buffer)
+  }
+
   public linkGetUrl(linkId: number, maxLen: number = 512): string {
     const outBuffer = new Uint8Array(maxLen)
     const actualLen = this.opentui.symbols.linkGetUrl(linkId, outBuffer, maxLen)
@@ -2581,6 +2609,7 @@ class FFIRenderLib implements RenderLib {
   }
 
   public destroyTextBuffer(buffer: Pointer): void {
+    this.releaseTextBufferOwnedLinks(buffer)
     this.opentui.symbols.destroyTextBuffer(buffer)
   }
 
@@ -2593,10 +2622,12 @@ class FFIRenderLib implements RenderLib {
   }
 
   public textBufferReset(buffer: Pointer): void {
+    this.releaseTextBufferOwnedLinks(buffer)
     this.opentui.symbols.textBufferReset(buffer)
   }
 
   public textBufferClear(buffer: Pointer): void {
+    this.releaseTextBufferOwnedLinks(buffer)
     this.opentui.symbols.textBufferClear(buffer)
   }
 
@@ -2676,17 +2707,52 @@ class FFIRenderLib implements RenderLib {
       return
     }
 
-    // Allocate link IDs and pack them into attributes
-    const processedChunks = nonEmptyChunks.map((chunk) => {
-      if (chunk.link) {
-        const linkId = this.linkAlloc(chunk.link.url)
+    const nextOwnedLinks = new Set<number>()
+    const urlToLinkId = new Map<string, number>()
+
+    let processedChunks: Array<{
+      text: string
+      fg?: RGBA | null
+      bg?: RGBA | null
+      attributes?: number
+      link?: { url: string }
+    }> = nonEmptyChunks
+
+    try {
+      processedChunks = nonEmptyChunks.map((chunk) => {
+        if (!chunk.link) return chunk
+
+        let linkId = urlToLinkId.get(chunk.link.url)
+        if (linkId === undefined) {
+          linkId = this.linkAlloc(chunk.link.url)
+          if (linkId === 0) {
+            throw new Error(`Failed to allocate link ID for URL: ${chunk.link.url}`)
+          }
+
+          if (!this.linkIncref(linkId)) {
+            throw new Error(`Failed to incref link ID ${linkId} for URL: ${chunk.link.url}`)
+          }
+
+          urlToLinkId.set(chunk.link.url, linkId)
+          nextOwnedLinks.add(linkId)
+        }
+
         return {
           ...chunk,
           attributes: attributesWithLink(chunk.attributes ?? 0, linkId),
         }
+      })
+    } catch (error) {
+      for (const linkId of nextOwnedLinks) {
+        this.linkDecref(linkId)
       }
-      return chunk
-    })
+      throw error
+    }
+
+    this.releaseTextBufferOwnedLinks(buffer)
+    if (nextOwnedLinks.size > 0) {
+      this.textBufferOwnedLinkIds.set(buffer, nextOwnedLinks)
+    }
 
     const chunksBuffer = StyledChunkStruct.packList(processedChunks)
 

@@ -591,6 +591,18 @@ export fn linkAlloc(urlPtr: [*]const u8, urlLen: usize) u32 {
     return link_pool.alloc(url) catch 0;
 }
 
+export fn linkIncref(id: u32) bool {
+    const link_pool = link.initGlobalLinkPool(globalArena);
+    link_pool.incref(id) catch return false;
+    return true;
+}
+
+export fn linkDecref(id: u32) bool {
+    const link_pool = link.initGlobalLinkPool(globalArena);
+    link_pool.decref(id) catch return false;
+    return true;
+}
+
 export fn linkGetUrl(id: u32, outPtr: [*]u8, maxLen: usize) usize {
     const link_pool = link.initGlobalLinkPool(globalArena);
     const url_bytes = link_pool.get(id) catch return 0;
@@ -781,12 +793,9 @@ export fn writeOut(rendererPtr: *renderer.CliRenderer, dataPtr: [*]const u8, dat
 export fn createTextBuffer(widthMethod: u8) ?*text_buffer.UnifiedTextBuffer {
     const pool = gp.initGlobalPool(globalArena);
     const wMethod: utf8.WidthMethod = if (widthMethod == 0) .wcwidth else .unicode;
-
-    const tb = text_buffer.UnifiedTextBuffer.init(globalAllocator, pool, wMethod) catch {
+    return text_buffer.UnifiedTextBuffer.init(globalAllocator, pool, wMethod) catch {
         return null;
     };
-
-    return tb;
 }
 
 export fn destroyTextBuffer(tb: *text_buffer.UnifiedTextBuffer) void {
@@ -892,10 +901,9 @@ export fn textBufferGetPlainText(tb: *text_buffer.UnifiedTextBuffer, outPtr: [*]
 
 // TextBufferView functions (Array-based for backward compatibility)
 export fn createTextBufferView(tb: *text_buffer.UnifiedTextBuffer) ?*text_buffer_view.UnifiedTextBufferView {
-    const view = text_buffer_view.UnifiedTextBufferView.init(globalAllocator, tb) catch {
+    return text_buffer_view.UnifiedTextBufferView.init(globalAllocator, tb) catch {
         return null;
     };
-    return view;
 }
 
 export fn destroyTextBufferView(view: *text_buffer_view.UnifiedTextBufferView) void {
