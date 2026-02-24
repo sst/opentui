@@ -1,6 +1,7 @@
 #!/usr/bin/env bun
 
 import { MarkdownRenderable, SyntaxStyle, createCliRenderer, parseColor } from "../index"
+import { resolveRenderLib } from "../zig"
 import { Command } from "commander"
 import path from "node:path"
 import { existsSync } from "node:fs"
@@ -9,6 +10,7 @@ import { mkdtemp, unlink } from "node:fs/promises"
 import { tmpdir } from "node:os"
 
 const realStdoutWrite = process.stdout.write.bind(process.stdout)
+const nativeLib = resolveRenderLib()
 
 const WORDS = [
   "alpha",
@@ -97,6 +99,27 @@ type MemoryStats = {
   }
 }
 
+type NativeMemorySample = {
+  totalRequestedBytes: number
+  activeAllocations: number
+  smallAllocations: number
+  largeAllocations: number
+}
+
+type NativeMemoryStats = {
+  samples: number
+  start: NativeMemorySample
+  end: NativeMemorySample
+  delta: NativeMemorySample
+  peak: NativeMemorySample
+  fields: {
+    totalRequestedBytes: MemoryFieldStats
+    activeAllocations: MemoryFieldStats
+    smallAllocations: MemoryFieldStats
+    largeAllocations: MemoryFieldStats
+  }
+}
+
 type TimingStats = {
   count: number
   averageMs: number
@@ -117,6 +140,7 @@ type ScenarioResult = {
   timingMode: "content-set" | "style-refresh"
   updateStats: TimingStats
   memoryStats?: MemoryStats
+  nativeMemoryStats?: NativeMemoryStats
   contentStats: {
     initialChars: number
     finalChars: number
@@ -191,7 +215,8 @@ type SuiteConfig = {
 }
 
 type MemorySampler = {
-  samples: MemorySample[]
+  jsSamples: MemorySample[]
+  nativeSamples: NativeMemorySample[]
   recordIteration: (iteration: number) => void
   stop: () => void
 }
@@ -821,6 +846,7 @@ async function runStaticScenario(plan: StaticScenarioPlan, ctx: RunContext): Pro
   const durations: number[] = []
   const measurementStart = Date.now()
   const memStart = shouldSampleMemory(ctx) ? readMemorySample() : null
+  const nativeMemStart = shouldSampleMemory(ctx) ? readNativeMemorySample() : null
   const sampler = createMemorySampler(ctx)
 
   for (let i = 0; i < plan.iterations; i += 1) {
@@ -835,6 +861,7 @@ async function runStaticScenario(plan: StaticScenarioPlan, ctx: RunContext): Pro
 
   const elapsedMs = Date.now() - measurementStart
   const memEnd = shouldSampleMemory(ctx) ? readMemorySample() : null
+  const nativeMemEnd = shouldSampleMemory(ctx) ? readNativeMemorySample() : null
   sampler.stop()
 
   return {
@@ -846,7 +873,11 @@ async function runStaticScenario(plan: StaticScenarioPlan, ctx: RunContext): Pro
     category: "parse",
     timingMode: "content-set",
     updateStats: computeTimingStats(durations),
-    memoryStats: memStart && memEnd ? computeMemoryStats(sampler.samples, memStart, memEnd) : undefined,
+    memoryStats: memStart && memEnd ? computeMemoryStats(sampler.jsSamples, memStart, memEnd) : undefined,
+    nativeMemoryStats:
+      nativeMemStart && nativeMemEnd
+        ? computeNativeMemoryStats(sampler.nativeSamples, nativeMemStart, nativeMemEnd)
+        : undefined,
     contentStats: {
       initialChars: plan.content.length,
       finalChars: plan.content.length,
@@ -878,6 +909,7 @@ async function runStreamingScenario(plan: StreamingScenarioPlan, ctx: RunContext
 
   const measurementStart = Date.now()
   const memStart = shouldSampleMemory(ctx) ? readMemorySample() : null
+  const nativeMemStart = shouldSampleMemory(ctx) ? readNativeMemorySample() : null
   const sampler = createMemorySampler(ctx)
 
   const measured = await runStreamingIterations(state, ctx, plan.iterations, true, sampler)
@@ -889,6 +921,7 @@ async function runStreamingScenario(plan: StreamingScenarioPlan, ctx: RunContext
 
   const elapsedMs = Date.now() - measurementStart
   const memEnd = shouldSampleMemory(ctx) ? readMemorySample() : null
+  const nativeMemEnd = shouldSampleMemory(ctx) ? readNativeMemorySample() : null
   sampler.stop()
 
   return {
@@ -900,7 +933,11 @@ async function runStreamingScenario(plan: StreamingScenarioPlan, ctx: RunContext
     category: "incremental",
     timingMode: "content-set",
     updateStats: computeTimingStats(measured.durations),
-    memoryStats: memStart && memEnd ? computeMemoryStats(sampler.samples, memStart, memEnd) : undefined,
+    memoryStats: memStart && memEnd ? computeMemoryStats(sampler.jsSamples, memStart, memEnd) : undefined,
+    nativeMemoryStats:
+      nativeMemStart && nativeMemEnd
+        ? computeNativeMemoryStats(sampler.nativeSamples, nativeMemStart, nativeMemEnd)
+        : undefined,
     contentStats: {
       initialChars: plan.baseContent.length,
       finalChars: state.content.length,
@@ -933,6 +970,7 @@ async function runStyleScenario(plan: StyleScenarioPlan, ctx: RunContext): Promi
   const durations: number[] = []
   const measurementStart = Date.now()
   const memStart = shouldSampleMemory(ctx) ? readMemorySample() : null
+  const nativeMemStart = shouldSampleMemory(ctx) ? readNativeMemorySample() : null
   const sampler = createMemorySampler(ctx)
 
   for (let i = 0; i < plan.iterations; i += 1) {
@@ -947,6 +985,7 @@ async function runStyleScenario(plan: StyleScenarioPlan, ctx: RunContext): Promi
 
   const elapsedMs = Date.now() - measurementStart
   const memEnd = shouldSampleMemory(ctx) ? readMemorySample() : null
+  const nativeMemEnd = shouldSampleMemory(ctx) ? readNativeMemorySample() : null
   sampler.stop()
 
   return {
@@ -958,7 +997,11 @@ async function runStyleScenario(plan: StyleScenarioPlan, ctx: RunContext): Promi
     category: "style",
     timingMode: "style-refresh",
     updateStats: computeTimingStats(durations),
-    memoryStats: memStart && memEnd ? computeMemoryStats(sampler.samples, memStart, memEnd) : undefined,
+    memoryStats: memStart && memEnd ? computeMemoryStats(sampler.jsSamples, memStart, memEnd) : undefined,
+    nativeMemoryStats:
+      nativeMemStart && nativeMemEnd
+        ? computeNativeMemoryStats(sampler.nativeSamples, nativeMemStart, nativeMemEnd)
+        : undefined,
     contentStats: {
       initialChars: plan.content.length,
       finalChars: plan.content.length,
@@ -1401,14 +1444,32 @@ function readMemorySample(): MemorySample {
   }
 }
 
+function readNativeMemorySample(): NativeMemorySample {
+  const stats = nativeLib.getAllocatorStats()
+  return {
+    totalRequestedBytes: stats.totalRequestedBytes,
+    activeAllocations: stats.activeAllocations,
+    smallAllocations: stats.smallAllocations,
+    largeAllocations: stats.largeAllocations,
+  }
+}
+
 function createMemorySampler(ctx: RunContext): MemorySampler {
-  const samples: MemorySample[] = []
+  const jsSamples: MemorySample[] = []
+  const nativeSamples: NativeMemorySample[] = []
+
+  const pushSample = (): void => {
+    jsSamples.push(readMemorySample())
+    nativeSamples.push(readNativeMemorySample())
+  }
+
   if (ctx.memInterval > 0) {
     const timer = setInterval(() => {
-      samples.push(readMemorySample())
+      pushSample()
     }, ctx.memInterval)
     return {
-      samples,
+      jsSamples,
+      nativeSamples,
       recordIteration: () => {},
       stop: () => clearInterval(timer),
     }
@@ -1416,10 +1477,11 @@ function createMemorySampler(ctx: RunContext): MemorySampler {
 
   if (ctx.memSampleEvery > 0) {
     return {
-      samples,
+      jsSamples,
+      nativeSamples,
       recordIteration: (iteration: number) => {
         if (iteration % ctx.memSampleEvery === 0) {
-          samples.push(readMemorySample())
+          pushSample()
         }
       },
       stop: () => {},
@@ -1427,7 +1489,8 @@ function createMemorySampler(ctx: RunContext): MemorySampler {
   }
 
   return {
-    samples,
+    jsSamples,
+    nativeSamples,
     recordIteration: () => {},
     stop: () => {},
   }
@@ -1456,12 +1519,45 @@ function computeMemoryStats(samples: MemorySample[], start: MemorySample, end: M
   }
 }
 
+function computeNativeMemoryStats(
+  samples: NativeMemorySample[],
+  start: NativeMemorySample,
+  end: NativeMemorySample,
+): NativeMemoryStats {
+  const all = [start, ...samples, end]
+  const peak = { ...start }
+  for (const sample of all) {
+    updateNativePeak(sample, peak)
+  }
+
+  return {
+    samples: all.length,
+    start,
+    end,
+    delta: diffNativeMemory(start, end),
+    peak,
+    fields: {
+      totalRequestedBytes: computeFieldStats(all.map((s) => s.totalRequestedBytes)),
+      activeAllocations: computeFieldStats(all.map((s) => s.activeAllocations)),
+      smallAllocations: computeFieldStats(all.map((s) => s.smallAllocations)),
+      largeAllocations: computeFieldStats(all.map((s) => s.largeAllocations)),
+    },
+  }
+}
+
 function updatePeak(sample: MemorySample, peak: MemorySample): void {
   peak.rss = Math.max(peak.rss, sample.rss)
   peak.heapTotal = Math.max(peak.heapTotal, sample.heapTotal)
   peak.heapUsed = Math.max(peak.heapUsed, sample.heapUsed)
   peak.external = Math.max(peak.external, sample.external)
   peak.arrayBuffers = Math.max(peak.arrayBuffers, sample.arrayBuffers)
+}
+
+function updateNativePeak(sample: NativeMemorySample, peak: NativeMemorySample): void {
+  peak.totalRequestedBytes = Math.max(peak.totalRequestedBytes, sample.totalRequestedBytes)
+  peak.activeAllocations = Math.max(peak.activeAllocations, sample.activeAllocations)
+  peak.smallAllocations = Math.max(peak.smallAllocations, sample.smallAllocations)
+  peak.largeAllocations = Math.max(peak.largeAllocations, sample.largeAllocations)
 }
 
 function diffMemory(start: MemorySample, end: MemorySample): MemorySample {
@@ -1471,6 +1567,15 @@ function diffMemory(start: MemorySample, end: MemorySample): MemorySample {
     heapUsed: end.heapUsed - start.heapUsed,
     external: end.external - start.external,
     arrayBuffers: end.arrayBuffers - start.arrayBuffers,
+  }
+}
+
+function diffNativeMemory(start: NativeMemorySample, end: NativeMemorySample): NativeMemorySample {
+  return {
+    totalRequestedBytes: end.totalRequestedBytes - start.totalRequestedBytes,
+    activeAllocations: end.activeAllocations - start.activeAllocations,
+    smallAllocations: end.smallAllocations - start.smallAllocations,
+    largeAllocations: end.largeAllocations - start.largeAllocations,
   }
 }
 
@@ -1558,16 +1663,36 @@ function formatBytes(value: number): string {
   return `${(value / (1024 * 1024)).toFixed(2)}MB`
 }
 
+function formatAllocs(value: number): string {
+  const intValue = Math.trunc(value)
+  const sign = intValue > 0 ? "+" : ""
+  return `${sign}${intValue.toLocaleString("en-US")} allocs`
+}
+
 function formatScenarioResult(result: ScenarioResult): string {
-  const mem = result.memoryStats
-  const memSummary = mem
-    ? ` memDeltaRss=${formatBytes(mem.delta.rss)}` +
-      ` memDeltaHeap=${formatBytes(mem.delta.heapUsed)}` +
-      ` memDeltaExt=${formatBytes(mem.delta.external)}` +
-      ` memDeltaAB=${formatBytes(mem.delta.arrayBuffers)}` +
-      ` memPeakRss=${formatBytes(mem.peak.rss)}`
+  const jsMem = result.memoryStats
+  const nativeMem = result.nativeMemoryStats
+
+  const jsMemSummary = jsMem
+    ? ` jsMemDeltaRss=${formatBytes(jsMem.delta.rss)}` +
+      ` jsMemDeltaHeap=${formatBytes(jsMem.delta.heapUsed)}` +
+      ` jsMemDeltaExt=${formatBytes(jsMem.delta.external)}` +
+      ` jsMemDeltaAB=${formatBytes(jsMem.delta.arrayBuffers)}` +
+      ` jsMemPeakRss=${formatBytes(jsMem.peak.rss)}`
     : ""
-  return `scenario=${result.name} category=${result.category} mode=${result.timingMode} iters=${result.updateStats.count} elapsedMs=${result.elapsedMs} avgMs=${result.updateStats.averageMs.toFixed(3)} medianMs=${result.updateStats.medianMs.toFixed(3)} p95Ms=${result.updateStats.p95Ms.toFixed(3)} minMs=${result.updateStats.minMs.toFixed(3)} maxMs=${result.updateStats.maxMs.toFixed(3)} chars=${result.contentStats.finalChars}${memSummary}`
+
+  const nativeMemSummary = nativeMem
+    ? ` nativeMemDeltaReqMB=${formatBytes(nativeMem.delta.totalRequestedBytes)}` +
+      ` nativeMemDeltaReqBytes=${Math.trunc(nativeMem.delta.totalRequestedBytes)}B` +
+      ` nativeMemDeltaActive=${formatAllocs(nativeMem.delta.activeAllocations)}` +
+      ` nativeMemDeltaSmall=${formatAllocs(nativeMem.delta.smallAllocations)}` +
+      ` nativeMemDeltaLarge=${formatAllocs(nativeMem.delta.largeAllocations)}` +
+      ` nativeMemPeakReqMB=${formatBytes(nativeMem.peak.totalRequestedBytes)}` +
+      ` nativeMemPeakReqBytes=${Math.trunc(nativeMem.peak.totalRequestedBytes)}B` +
+      ` nativeMemPeakActive=${formatAllocs(nativeMem.peak.activeAllocations)}`
+    : ""
+
+  return `scenario=${result.name} category=${result.category} mode=${result.timingMode} iters=${result.updateStats.count} elapsedMs=${result.elapsedMs} avgMs=${result.updateStats.averageMs.toFixed(3)} medianMs=${result.updateStats.medianMs.toFixed(3)} p95Ms=${result.updateStats.p95Ms.toFixed(3)} minMs=${result.updateStats.minMs.toFixed(3)} maxMs=${result.updateStats.maxMs.toFixed(3)} chars=${result.contentStats.finalChars}${jsMemSummary}${nativeMemSummary}`
 }
 
 function writeLine(line: string): void {
