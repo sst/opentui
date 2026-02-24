@@ -1660,7 +1660,22 @@ async function outputResults(
 }
 
 function formatBytes(value: number): string {
-  return `${(value / (1024 * 1024)).toFixed(2)}MB`
+  const units = ["B", "KB", "MB", "GB", "TB", "PB"]
+  const abs = Math.abs(value)
+
+  if (abs < 1024) {
+    return `${Math.trunc(value)}B`
+  }
+
+  let unitIndex = 0
+  let scaled = abs
+  while (scaled >= 1024 && unitIndex < units.length - 1) {
+    scaled /= 1024
+    unitIndex += 1
+  }
+
+  const sign = value < 0 ? "-" : ""
+  return `${sign}${scaled.toFixed(2)}${units[unitIndex]}`
 }
 
 function formatAllocs(value: number): string {
@@ -1682,12 +1697,12 @@ function formatScenarioResult(result: ScenarioResult): string {
     : ""
 
   const nativeMemSummary = nativeMem
-    ? ` nativeMemDeltaReqMB=${formatBytes(nativeMem.delta.totalRequestedBytes)}` +
+    ? ` nativeMemDeltaReq=${formatBytes(nativeMem.delta.totalRequestedBytes)}` +
       ` nativeMemDeltaReqBytes=${Math.trunc(nativeMem.delta.totalRequestedBytes)}B` +
       ` nativeMemDeltaActive=${formatAllocs(nativeMem.delta.activeAllocations)}` +
       ` nativeMemDeltaSmall=${formatAllocs(nativeMem.delta.smallAllocations)}` +
       ` nativeMemDeltaLarge=${formatAllocs(nativeMem.delta.largeAllocations)}` +
-      ` nativeMemPeakReqMB=${formatBytes(nativeMem.peak.totalRequestedBytes)}` +
+      ` nativeMemPeakReq=${formatBytes(nativeMem.peak.totalRequestedBytes)}` +
       ` nativeMemPeakReqBytes=${Math.trunc(nativeMem.peak.totalRequestedBytes)}B` +
       ` nativeMemPeakActive=${formatAllocs(nativeMem.peak.activeAllocations)}`
     : ""

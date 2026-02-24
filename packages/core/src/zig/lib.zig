@@ -47,15 +47,43 @@ pub const ExternalAllocatorStats = extern struct {
     large_allocations: u64,
 };
 
-fn queryStatsField(comptime field_names: []const []const u8) ?u64 {
-    if (@hasDecl(@TypeOf(gpa), "queryStats")) {
-        const stats = gpa.queryStats();
-        const StatsType = @TypeOf(stats);
+fn toNonNegativeU64(value: anytype) u64 {
+    const ValueType = @TypeOf(value);
 
-        inline for (field_names) |field_name| {
-            if (@hasField(StatsType, field_name)) {
-                return @intCast(@field(stats, field_name));
-            }
+    return switch (@typeInfo(ValueType)) {
+        .int => |int_info| if (int_info.signedness == .signed) blk: {
+            const signed_value: i64 = @intCast(value);
+            if (signed_value <= 0) break :blk 0;
+            break :blk @intCast(signed_value);
+        } else @intCast(value),
+        .comptime_int => blk: {
+            if (value <= 0) break :blk 0;
+            break :blk @intCast(value);
+        },
+        else => 0,
+    };
+}
+
+fn sanitizeRequestedBytes(value: u64) u64 {
+    const signed_value: i64 = @bitCast(value);
+    if (signed_value < 0) {
+        return 0;
+    }
+
+    return @intCast(signed_value);
+}
+
+fn queryStatsField(comptime field_names: []const []const u8) ?u64 {
+    if (!@hasDecl(@TypeOf(gpa), "queryStats")) {
+        return null;
+    }
+
+    const stats = gpa.queryStats();
+    const StatsType = @TypeOf(stats);
+
+    inline for (field_names) |field_name| {
+        if (@hasField(StatsType, field_name)) {
+            return toNonNegativeU64(@field(stats, field_name));
         }
     }
 
@@ -63,8 +91,8 @@ fn queryStatsField(comptime field_names: []const []const u8) ?u64 {
 }
 
 fn getTotalRequestedBytes() u64 {
-    if (queryStatsField(&.{ "total_requested_bytes", "requested_bytes", "allocated_bytes" })) |value| {
-        return value;
+    if (queryStatsField(&.{"total_requested_bytes"})) |value| {
+        return sanitizeRequestedBytes(value);
     }
 
     if (@hasField(@TypeOf(gpa), "total_requested_bytes")) {
@@ -72,7 +100,7 @@ fn getTotalRequestedBytes() u64 {
             return 0;
         }
 
-        return @intCast(gpa.total_requested_bytes);
+        return sanitizeRequestedBytes(toNonNegativeU64(gpa.total_requested_bytes));
     }
 
     return 0;
@@ -89,7 +117,9 @@ fn getSmallAllocationCount() u64 {
         while (current) |bucket| {
             const allocated: u64 = @intCast(bucket.allocated_count);
             const freed: u64 = @intCast(bucket.freed_count);
-            total += allocated - freed;
+            if (allocated >= freed) {
+                total += allocated - freed;
+            }
             current = bucket.next;
         }
     }
