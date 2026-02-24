@@ -27,6 +27,8 @@ export const StyledChunkStruct = defineStruct([
     },
   ],
   ["attributes", "u32", { optional: true }],
+  ["link", "char*"],
+  ["link_len", "u64", { lengthOf: "link" }],
 ])
 
 export const HighlightStruct = defineStruct([
