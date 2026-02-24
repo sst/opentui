@@ -40,13 +40,16 @@ export const StyledChunkStruct = defineStruct(
     ["link_len", "u64", { lengthOf: "link" }],
   ],
   {
-    mapValue: (chunk: StyledChunkInput) => ({
-      text: chunk.text,
-      fg: chunk.fg,
-      bg: chunk.bg,
-      attributes: chunk.attributes,
-      link: typeof chunk.link === "string" ? chunk.link : chunk.link?.url,
-    }),
+    mapValue: (chunk: StyledChunkInput): StyledChunkInput => {
+      if (!chunk.link || typeof chunk.link === "string") {
+        return chunk
+      }
+
+      return {
+        ...chunk,
+        link: chunk.link.url,
+      }
+    },
   },
 )
 
