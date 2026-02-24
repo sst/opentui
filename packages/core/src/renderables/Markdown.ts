@@ -39,7 +39,7 @@ export interface RenderNodeContext {
 
 interface TableContentCache {
   content: TextTableContent
-  cellKeys: string[][]
+  cellKeys: Uint32Array[]
 }
 
 export interface BlockState {
@@ -429,31 +429,54 @@ export class MarkdownRenderable extends Renderable {
     return this._streaming && table.rows.length > 0 ? table.rows.slice(0, -1) : table.rows
   }
 
-  private getTableCellKey(cell: Tokens.TableCell | undefined, isHeader: boolean): string {
-    const prefix = isHeader ? "h:" : "d:"
-    if (!cell) {
-      return `${prefix}__empty__`
+  private hashString(value: string, seed: number): number {
+    let hash = seed >>> 0
+    for (let i = 0; i < value.length; i += 1) {
+      hash ^= value.charCodeAt(i)
+      hash = Math.imul(hash, 16777619)
     }
+    return hash >>> 0
+  }
+
+  private hashTableToken(token: MarkedToken, seed: number, depth: number = 0): number {
+    let hash = this.hashString(token.type, seed)
+
+    if ("raw" in token && typeof token.raw === "string") {
+      return this.hashString(token.raw, hash)
+    }
+
+    if ("text" in token && typeof token.text === "string") {
+      hash = this.hashString(token.text, hash)
+    }
+
+    if (depth < 2 && "tokens" in token && Array.isArray(token.tokens)) {
+      for (const child of token.tokens) {
+        hash = this.hashTableToken(child as MarkedToken, hash, depth + 1)
+      }
+    }
+
+    return hash >>> 0
+  }
+
+  private getTableCellKey(cell: Tokens.TableCell | undefined, isHeader: boolean): number {
+    const seed = isHeader ? 2902232141 : 1371922141
+    if (!cell) {
+      return seed
+    }
+
     if (typeof cell.text === "string") {
-      return `${prefix}${cell.text}`
+      return this.hashString(cell.text, seed)
     }
 
     if (Array.isArray(cell.tokens) && cell.tokens.length > 0) {
-      const rawText = cell.tokens
-        .map((token) => {
-          if ("raw" in token && typeof token.raw === "string") {
-            return token.raw
-          }
-          if ("text" in token && typeof token.text === "string") {
-            return token.text
-          }
-          return ""
-        })
-        .join("")
-      return `${prefix}${rawText}`
+      let hash = seed ^ cell.tokens.length
+      for (const token of cell.tokens) {
+        hash = this.hashTableToken(token as MarkedToken, hash)
+      }
+      return hash >>> 0
     }
 
-    return `${prefix}__unknown__`
+    return (seed ^ 2654435769) >>> 0
   }
 
   private createTableDataCellChunks(cell: Tokens.TableCell | undefined): TextChunk[] {
@@ -501,20 +524,20 @@ export class MarkdownRenderable extends Renderable {
     }
 
     const content: TextTableContent = []
-    const cellKeys: string[][] = []
+    const cellKeys: Uint32Array[] = []
     const totalRows = rowsToRender.length + 1
 
     let changed = forceRegenerate || !previous
 
     for (let rowIndex = 0; rowIndex < totalRows; rowIndex += 1) {
       const rowContent: TextTableCellContent[] = []
-      const rowKeys: string[] = []
+      const rowKeys = new Uint32Array(colCount)
 
       for (let colIndex = 0; colIndex < colCount; colIndex += 1) {
         const isHeader = rowIndex === 0
         const cell = isHeader ? table.header[colIndex] : rowsToRender[rowIndex - 1]?.[colIndex]
         const cellKey = this.getTableCellKey(cell, isHeader)
-        rowKeys.push(cellKey)
+        rowKeys[colIndex] = cellKey
 
         const previousCellKey = previous?.cellKeys[rowIndex]?.[colIndex]
         const previousCellContent = previous?.content[rowIndex]?.[colIndex]
