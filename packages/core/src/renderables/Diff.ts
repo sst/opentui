@@ -493,11 +493,7 @@ export class DiffRenderable extends Renderable {
         contentLines.push(hunk.context)
         const config: LineColorConfig = {
           gutter: this._lineNumberBg,
-        }
-        if (this._contextContentBg) {
-          config.content = this._contextContentBg
-        } else {
-          config.content = this._contextBg
+          content: this._hunkHeaderBg,
         }
         lineColors.set(lineIndex, config)
         lineSigns.set(lineIndex, { after: " @", afterColor: this._hunkHeaderFg })
@@ -853,11 +849,7 @@ export class DiffRenderable extends Renderable {
       } else if (line.type === "hunk-header") {
         const config: LineColorConfig = {
           gutter: this._lineNumberBg,
-        }
-        if (this._contextContentBg) {
-          config.content = this._contextContentBg
-        } else {
-          config.content = this._contextBg
+          content: this._hunkHeaderBg,
         }
         leftLineColors.set(index, config)
       }
@@ -896,11 +888,7 @@ export class DiffRenderable extends Renderable {
       } else if (line.type === "hunk-header") {
         const config: LineColorConfig = {
           gutter: this._lineNumberBg,
-        }
-        if (this._contextContentBg) {
-          config.content = this._contextContentBg
-        } else {
-          config.content = this._contextBg
+          content: this._hunkHeaderBg,
         }
         rightLineColors.set(index, config)
       }
