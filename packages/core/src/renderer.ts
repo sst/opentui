@@ -1400,7 +1400,7 @@ export class CliRenderer extends EventEmitter implements RenderContext {
     }
 
     // Fire out on old element
-    if (lastOver) {
+    if (lastOver && !lastOver.isDestroyed) {
       const event = new MouseEvent(lastOver, { ...baseEvent, type: "out" })
       lastOver.processMouseEvent(event)
     }
