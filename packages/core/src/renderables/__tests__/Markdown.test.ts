@@ -67,6 +67,59 @@ test("basic table alignment", async () => {
   `)
 })
 
+test("tableOptions.widthMode configures markdown table layout", async () => {
+  const md = new MarkdownRenderable(renderer, {
+    id: "markdown-table-width-mode",
+    content: "| Name | Age |\n|---|---|\n| Alice | 30 |",
+    syntaxStyle,
+    tableOptions: {
+      widthMode: "fill",
+    },
+  })
+
+  renderer.root.add(md)
+  await renderOnce()
+
+  const table = md._blockStates[0]?.renderable as TextTableRenderable
+  expect(table).toBeInstanceOf(TextTableRenderable)
+  expect(table.columnWidthMode).toBe("fill")
+})
+
+test("tableOptions updates existing markdown table renderable", async () => {
+  const md = new MarkdownRenderable(renderer, {
+    id: "markdown-table-updates",
+    content: "| Name | Age |\n|---|---|\n| Alice | 30 |",
+    syntaxStyle,
+  })
+
+  renderer.root.add(md)
+  await renderOnce()
+
+  const table = md._blockStates[0]?.renderable as TextTableRenderable
+  expect(table).toBeInstanceOf(TextTableRenderable)
+  expect(table.columnWidthMode).toBe("content")
+
+  md.tableOptions = {
+    widthMode: "fill",
+    wrapMode: "word",
+    cellPadding: 1,
+    borders: false,
+    selectable: false,
+  }
+
+  await renderOnce()
+
+  const updatedTable = md._blockStates[0]?.renderable as TextTableRenderable
+  expect(updatedTable).toBe(table)
+  expect(updatedTable.columnWidthMode).toBe("fill")
+  expect(updatedTable.wrapMode).toBe("word")
+  expect(updatedTable.cellPadding).toBe(1)
+  expect(updatedTable.border).toBe(false)
+  expect(updatedTable.outerBorder).toBe(false)
+  expect(updatedTable.showBorders).toBe(false)
+  expect(updatedTable.selectable).toBe(false)
+})
+
 test("table with inline code (backticks)", async () => {
   const markdown = `| Command | Description |
 |---|---|
