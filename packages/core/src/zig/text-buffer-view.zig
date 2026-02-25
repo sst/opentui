@@ -633,7 +633,7 @@ pub const UnifiedTextBufferView = struct {
         const new_start = @min(anchor_offset, focus_char_offset);
         var new_end = @max(anchor_offset, focus_char_offset);
 
-        if (focus_char_offset < anchor_offset and !(focus_above or focus_below)) {
+        if (focus_char_offset < anchor_offset) {
             new_end = @min(new_end + 1, text_end_offset);
         }
 
