@@ -15,7 +15,7 @@ const SyntaxStyle = syntax_style_mod.SyntaxStyle;
 pub const benchName = "Styled Text Operations";
 
 // Helper to convert RGBA to pointer for benchmark
-fn rgbaToPtr(rgba: *const [4]f32) [*]const f32 {
+fn rgbaToPtr(rgba: *const [5]f32) [*]const f32 {
     return @ptrCast(rgba);
 }
 
@@ -42,7 +42,7 @@ fn benchSetStyledTextOperations(
             var stats = BenchStats{};
 
             const text = "Hello, World! This is a test of styled text rendering.";
-            const fg_color = [4]f32{ 1.0, 1.0, 1.0, 1.0 };
+            const fg_color = [5]f32{ 1.0, 1.0, 1.0, 1.0, 0.0 };
 
             for (0..iterations) |_| {
                 const tb = try TextBuffer.init(allocator, pool, link_pool, .wcwidth);
@@ -83,12 +83,12 @@ fn benchSetStyledTextOperations(
         if (bench_utils.matchesBenchFilter(name, bench_filter)) {
             var stats = BenchStats{};
 
-            const red = [4]f32{ 1.0, 0.0, 0.0, 1.0 };
-            const green = [4]f32{ 0.0, 1.0, 0.0, 1.0 };
-            const blue = [4]f32{ 0.0, 0.0, 1.0, 1.0 };
-            const yellow = [4]f32{ 1.0, 1.0, 0.0, 1.0 };
-            const cyan = [4]f32{ 0.0, 1.0, 1.0, 1.0 };
-            const magenta = [4]f32{ 1.0, 0.0, 1.0, 1.0 };
+            const red = [5]f32{ 1.0, 0.0, 0.0, 1.0, 0.0 };
+            const green = [5]f32{ 0.0, 1.0, 0.0, 1.0, 0.0 };
+            const blue = [5]f32{ 0.0, 0.0, 1.0, 1.0, 0.0 };
+            const yellow = [5]f32{ 1.0, 1.0, 0.0, 1.0, 0.0 };
+            const cyan = [5]f32{ 0.0, 1.0, 1.0, 1.0, 0.0 };
+            const magenta = [5]f32{ 1.0, 0.0, 1.0, 1.0, 0.0 };
 
             for (0..iterations) |_| {
                 const tb = try TextBuffer.init(allocator, pool, link_pool, .wcwidth);
@@ -137,10 +137,10 @@ fn benchSetStyledTextOperations(
         if (bench_utils.matchesBenchFilter(name, bench_filter)) {
             var stats = BenchStats{};
 
-            const keyword_color = [4]f32{ 0.8, 0.4, 1.0, 1.0 };
-            const identifier_color = [4]f32{ 0.7, 0.9, 1.0, 1.0 };
-            const operator_color = [4]f32{ 1.0, 1.0, 1.0, 1.0 };
-            const number_color = [4]f32{ 0.7, 1.0, 0.7, 1.0 };
+            const keyword_color = [5]f32{ 0.8, 0.4, 1.0, 1.0, 0.0 };
+            const identifier_color = [5]f32{ 0.7, 0.9, 1.0, 1.0, 0.0 };
+            const operator_color = [5]f32{ 1.0, 1.0, 1.0, 1.0, 0.0 };
+            const number_color = [5]f32{ 0.7, 1.0, 0.7, 1.0, 0.0 };
 
             for (0..iterations) |_| {
                 const tb = try TextBuffer.init(allocator, pool, link_pool, .wcwidth);
@@ -205,7 +205,7 @@ fn benchSetStyledTextOperations(
                 tb.setSyntaxStyle(style);
 
                 // Just repeat the same chunk 10 times
-                const color = [4]f32{ 1.0, 0.5, 0.5, 1.0 };
+                const color = [5]f32{ 1.0, 0.5, 0.5, 1.0, 0.0 };
                 const chunks = [_]StyledChunk{
                     .{ .text_ptr = text.ptr, .text_len = text.len, .fg_ptr = rgbaToPtr(&color), .bg_ptr = null, .attributes = 0 },
                     .{ .text_ptr = text.ptr, .text_len = text.len, .fg_ptr = rgbaToPtr(&color), .bg_ptr = null, .attributes = 0 },
@@ -400,11 +400,11 @@ fn benchHighlightOperations(
             var chunk_list: std.ArrayListUnmanaged(StyledChunk) = .{};
             defer chunk_list.deinit(allocator);
 
-            const keyword_color = [4]f32{ 0.8, 0.4, 1.0, 1.0 };
-            const identifier_color = [4]f32{ 0.7, 0.9, 1.0, 1.0 };
-            const operator_color = [4]f32{ 1.0, 1.0, 1.0, 1.0 };
-            const number_color = [4]f32{ 0.7, 1.0, 0.7, 1.0 };
-            const string_color = [4]f32{ 0.9, 0.8, 0.5, 1.0 };
+            const keyword_color = [5]f32{ 0.8, 0.4, 1.0, 1.0, 0.0 };
+            const identifier_color = [5]f32{ 0.7, 0.9, 1.0, 1.0, 0.0 };
+            const operator_color = [5]f32{ 1.0, 1.0, 1.0, 1.0, 0.0 };
+            const number_color = [5]f32{ 0.7, 1.0, 0.7, 1.0, 0.0 };
+            const string_color = [5]f32{ 0.9, 0.8, 0.5, 1.0, 0.0 };
 
             // Repeat a pattern to create 100 chunks
             for (0..10) |_| {

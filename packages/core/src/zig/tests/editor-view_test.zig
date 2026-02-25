@@ -2010,8 +2010,8 @@ test "EditorView - placeholder with styled text renders with correct highlights"
     const text_part2 = "something";
     const text_part3 = " here";
 
-    const fg_gray = [4]f32{ 0.5, 0.5, 0.5, 1.0 };
-    const fg_blue = [4]f32{ 0.3, 0.5, 0.9, 1.0 };
+    const fg_gray = [5]f32{ 0.5, 0.5, 0.5, 1.0, 0.0 };
+    const fg_blue = [5]f32{ 0.3, 0.5, 0.9, 1.0, 0.0 };
 
     const chunks = [_]text_buffer.StyledChunk{
         .{
@@ -2055,7 +2055,7 @@ test "EditorView - placeholder with styled text renders with correct highlights"
     );
     defer opt_buffer.deinit();
 
-    try opt_buffer.clear(.{ 0.0, 0.0, 0.0, 1.0 }, 32);
+    try opt_buffer.clear(.{ 0.0, 0.0, 0.0, 1.0, 0.0 }, 32);
     try opt_buffer.drawTextBuffer(tbv_ptr, 0, 0);
 
     const epsilon: f32 = 0.01;
@@ -2621,7 +2621,7 @@ test "EditorView - placeholder shows when empty" {
     defer ev.deinit();
 
     const text = "Enter text here...";
-    const gray_color = text_buffer.RGBA{ 0.4, 0.4, 0.4, 1.0 };
+    const gray_color = text_buffer.RGBA{ 0.4, 0.4, 0.4, 1.0, 0.0 };
     const chunks = [_]text_buffer.StyledChunk{.{
         .text_ptr = text.ptr,
         .text_len = text.len,
@@ -2653,7 +2653,7 @@ test "EditorView - placeholder cleared when set to empty" {
     defer ev.deinit();
 
     const text = "Placeholder";
-    const gray_color = text_buffer.RGBA{ 0.4, 0.4, 0.4, 1.0 };
+    const gray_color = text_buffer.RGBA{ 0.4, 0.4, 0.4, 1.0, 0.0 };
     const chunks = [_]text_buffer.StyledChunk{.{
         .text_ptr = text.ptr,
         .text_len = text.len,
@@ -2685,8 +2685,8 @@ test "EditorView - placeholder with styled text" {
 
     const text1 = "Hello ";
     const text2 = "World";
-    const red_color = text_buffer.RGBA{ 1.0, 0.0, 0.0, 1.0 };
-    const blue_color = text_buffer.RGBA{ 0.0, 0.0, 1.0, 1.0 };
+    const red_color = text_buffer.RGBA{ 1.0, 0.0, 0.0, 1.0, 0.0 };
+    const blue_color = text_buffer.RGBA{ 0.0, 0.0, 1.0, 1.0, 0.0 };
 
     const chunks = [_]text_buffer.StyledChunk{
         .{
@@ -2725,7 +2725,7 @@ test "EditorView - placeholder renders to buffer when empty" {
     defer ev.deinit();
 
     const placeholder_text = "Type something...";
-    const gray_color = text_buffer.RGBA{ 0.5, 0.5, 0.5, 1.0 };
+    const gray_color = text_buffer.RGBA{ 0.5, 0.5, 0.5, 1.0, 0.0 };
     const placeholder_chunks = [_]text_buffer.StyledChunk{.{
         .text_ptr = placeholder_text.ptr,
         .text_len = placeholder_text.len,
@@ -2746,7 +2746,7 @@ test "EditorView - placeholder renders to buffer when empty" {
     );
     defer opt_buffer.deinit();
 
-    try opt_buffer.clear(.{ 0.0, 0.0, 0.0, 1.0 }, 32);
+    try opt_buffer.clear(.{ 0.0, 0.0, 0.0, 1.0, 0.0 }, 32);
     try opt_buffer.drawEditorView(ev, 0, 0);
 
     var out_buffer: [1000]u8 = undefined;
@@ -2757,7 +2757,7 @@ test "EditorView - placeholder renders to buffer when empty" {
 
     try eb.insertText("Hello");
 
-    try opt_buffer.clear(.{ 0.0, 0.0, 0.0, 1.0 }, 32);
+    try opt_buffer.clear(.{ 0.0, 0.0, 0.0, 1.0, 0.0 }, 32);
     try opt_buffer.drawEditorView(ev, 0, 0);
     try std.testing.expect(!ev.placeholder_active);
 
@@ -2782,8 +2782,8 @@ test "EditorView - placeholder shrink clears tail and preserves background" {
 
     const long_text = "Ask anything... \"Fix a TODO in the codebase\"";
     const short_text = "Run a command... \"pwd\"";
-    const fg = text_buffer.RGBA{ 0.6, 0.6, 0.6, 1.0 };
-    const panel_bg = text_buffer.RGBA{ 0.14, 0.14, 0.16, 1.0 };
+    const fg = text_buffer.RGBA{ 0.6, 0.6, 0.6, 1.0, 0.0 };
+    const panel_bg = text_buffer.RGBA{ 0.14, 0.14, 0.16, 1.0, 0.0 };
 
     const long_chunks = [_]text_buffer.StyledChunk{.{
         .text_ptr = long_text.ptr,
@@ -2808,7 +2808,7 @@ test "EditorView - placeholder shrink clears tail and preserves background" {
     );
     defer opt_buffer.deinit();
 
-    try opt_buffer.clear(.{ 0.0, 0.0, 0.0, 1.0 }, 32);
+    try opt_buffer.clear(.{ 0.0, 0.0, 0.0, 1.0, 0.0 }, 32);
 
     var x: u32 = 0;
     while (x < 80) : (x += 1) {
@@ -2858,7 +2858,7 @@ test "EditorView - tab indicator set and get" {
     try std.testing.expect(ev.getTabIndicatorColor() == null);
 
     ev.setTabIndicator('·');
-    ev.setTabIndicatorColor(.{ 0.5, 0.5, 0.5, 1.0 });
+    ev.setTabIndicatorColor(.{ 0.5, 0.5, 0.5, 1.0, 0.0 });
 
     try std.testing.expectEqual(@as(u32, '·'), ev.getTabIndicator().?);
     try std.testing.expectEqual(@as(f32, 0.5), ev.getTabIndicatorColor().?[0]);
@@ -2880,7 +2880,7 @@ test "EditorView - tab indicator renders in buffer" {
     try eb.insertText("A\tB");
 
     ev.setTabIndicator('→');
-    ev.setTabIndicatorColor(.{ 0.3, 0.3, 0.3, 1.0 });
+    ev.setTabIndicatorColor(.{ 0.3, 0.3, 0.3, 1.0, 0.0 });
 
     var opt_buffer = try opt_buffer_mod.OptimizedBuffer.init(
         std.testing.allocator,
@@ -2890,7 +2890,7 @@ test "EditorView - tab indicator renders in buffer" {
     );
     defer opt_buffer.deinit();
 
-    try opt_buffer.clear(.{ 0.0, 0.0, 0.0, 1.0 }, 32);
+    try opt_buffer.clear(.{ 0.0, 0.0, 0.0, 1.0, 0.0 }, 32);
     try opt_buffer.drawEditorView(ev, 0, 0);
 
     const cell_0 = opt_buffer.get(0, 0);

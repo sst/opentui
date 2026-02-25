@@ -63,7 +63,7 @@ test "OptimizedBuffer - clear fills with default char" {
     );
     defer buf.deinit();
 
-    const bg = RGBA{ 0.0, 0.0, 0.0, 1.0 };
+    const bg = RGBA{ 0.0, 0.0, 0.0, 1.0, 0.0 };
     try buf.clear(bg, null);
 
     var y: u32 = 0;
@@ -90,10 +90,10 @@ test "OptimizedBuffer - drawText with ASCII" {
     );
     defer buf.deinit();
 
-    const bg = RGBA{ 0.0, 0.0, 0.0, 1.0 };
+    const bg = RGBA{ 0.0, 0.0, 0.0, 1.0, 0.0 };
     try buf.clear(bg, null);
 
-    const fg = RGBA{ 1.0, 1.0, 1.0, 1.0 };
+    const fg = RGBA{ 1.0, 1.0, 1.0, 1.0, 0.0 };
     try buf.drawText("Hello", 0, 0, fg, bg, 0);
 
     const cell_h = buf.get(0, 0).?;
@@ -117,8 +117,8 @@ test "OptimizedBuffer - repeated emoji rendering should not exhaust pool" {
     );
     defer buf.deinit();
 
-    const bg = RGBA{ 0.0, 0.0, 0.0, 1.0 };
-    const fg = RGBA{ 1.0, 1.0, 1.0, 1.0 };
+    const bg = RGBA{ 0.0, 0.0, 0.0, 1.0, 0.0 };
+    const fg = RGBA{ 1.0, 1.0, 1.0, 1.0, 0.0 };
 
     var i: u32 = 0;
     while (i < 1000) : (i += 1) {
@@ -144,8 +144,8 @@ test "OptimizedBuffer - repeated CJK rendering should not exhaust pool" {
     );
     defer buf.deinit();
 
-    const bg = RGBA{ 0.0, 0.0, 0.0, 1.0 };
-    const fg = RGBA{ 1.0, 1.0, 1.0, 1.0 };
+    const bg = RGBA{ 0.0, 0.0, 0.0, 1.0, 0.0 };
+    const fg = RGBA{ 1.0, 1.0, 1.0, 1.0, 0.0 };
 
     var i: u32 = 0;
     while (i < 1000) : (i += 1) {
@@ -179,7 +179,7 @@ test "OptimizedBuffer - drawTextBuffer repeatedly should not exhaust pool" {
     );
     defer buf.deinit();
 
-    const bg = RGBA{ 0.0, 0.0, 0.0, 1.0 };
+    const bg = RGBA{ 0.0, 0.0, 0.0, 1.0, 0.0 };
 
     var i: u32 = 0;
     while (i < 1000) : (i += 1) {
@@ -202,8 +202,8 @@ test "OptimizedBuffer - mixed ASCII and emoji repeated rendering" {
     );
     defer buf.deinit();
 
-    const bg = RGBA{ 0.0, 0.0, 0.0, 1.0 };
-    const fg = RGBA{ 1.0, 1.0, 1.0, 1.0 };
+    const bg = RGBA{ 0.0, 0.0, 0.0, 1.0, 0.0 };
+    const fg = RGBA{ 1.0, 1.0, 1.0, 1.0, 0.0 };
 
     var i: u32 = 0;
     while (i < 500) : (i += 1) {
@@ -231,8 +231,8 @@ test "OptimizedBuffer - overwriting graphemes repeatedly" {
     );
     defer buf.deinit();
 
-    const bg = RGBA{ 0.0, 0.0, 0.0, 1.0 };
-    const fg = RGBA{ 1.0, 1.0, 1.0, 1.0 };
+    const bg = RGBA{ 0.0, 0.0, 0.0, 1.0, 0.0 };
+    const fg = RGBA{ 1.0, 1.0, 1.0, 1.0, 0.0 };
 
     var i: u32 = 0;
     while (i < 1000) : (i += 1) {
@@ -259,8 +259,8 @@ test "OptimizedBuffer - rendering to different positions" {
     );
     defer buf.deinit();
 
-    const bg = RGBA{ 0.0, 0.0, 0.0, 1.0 };
-    const fg = RGBA{ 1.0, 1.0, 1.0, 1.0 };
+    const bg = RGBA{ 0.0, 0.0, 0.0, 1.0, 0.0 };
+    const fg = RGBA{ 1.0, 1.0, 1.0, 1.0, 0.0 };
 
     var i: u32 = 0;
     while (i < 100) : (i += 1) {
@@ -314,7 +314,7 @@ test "OptimizedBuffer - large text buffer with wrapping repeated render" {
     );
     defer buf.deinit();
 
-    const bg = RGBA{ 0.0, 0.0, 0.0, 1.0 };
+    const bg = RGBA{ 0.0, 0.0, 0.0, 1.0, 0.0 };
 
     var i: u32 = 0;
     while (i < 200) : (i += 1) {
@@ -337,8 +337,8 @@ test "OptimizedBuffer - grapheme tracker counts" {
     );
     defer buf.deinit();
 
-    const bg = RGBA{ 0.0, 0.0, 0.0, 1.0 };
-    const fg = RGBA{ 1.0, 1.0, 1.0, 1.0 };
+    const bg = RGBA{ 0.0, 0.0, 0.0, 1.0, 0.0 };
+    const fg = RGBA{ 1.0, 1.0, 1.0, 1.0, 0.0 };
 
     try buf.drawText("🌟🎨🚀", 0, 0, fg, bg, 0);
 
@@ -370,8 +370,8 @@ test "OptimizedBuffer - alternating emojis should not leak" {
     );
     defer buf.deinit();
 
-    const bg = RGBA{ 0.0, 0.0, 0.0, 1.0 };
-    const fg = RGBA{ 1.0, 1.0, 1.0, 1.0 };
+    const bg = RGBA{ 0.0, 0.0, 0.0, 1.0, 0.0 };
+    const fg = RGBA{ 1.0, 1.0, 1.0, 1.0, 0.0 };
 
     var i: u32 = 0;
     while (i < 500) : (i += 1) {
@@ -408,7 +408,7 @@ test "OptimizedBuffer - drawTextBuffer without clear should not exhaust pool" {
     );
     defer buf.deinit();
 
-    const bg = RGBA{ 0.0, 0.0, 0.0, 1.0 };
+    const bg = RGBA{ 0.0, 0.0, 0.0, 1.0, 0.0 };
     try buf.clear(bg, null);
 
     var i: u32 = 0;
@@ -442,7 +442,7 @@ test "OptimizedBuffer - many small graphemes without clear" {
     );
     defer buf.deinit();
 
-    const bg = RGBA{ 0.0, 0.0, 0.0, 1.0 };
+    const bg = RGBA{ 0.0, 0.0, 0.0, 1.0, 0.0 };
     try buf.clear(bg, null);
 
     var i: u32 = 0;
@@ -484,7 +484,7 @@ test "OptimizedBuffer - stress test with many graphemes" {
     );
     defer buf.deinit();
 
-    const bg = RGBA{ 0.0, 0.0, 0.0, 1.0 };
+    const bg = RGBA{ 0.0, 0.0, 0.0, 1.0, 0.0 };
     try buf.clear(bg, null);
 
     var i: u32 = 0;
@@ -522,7 +522,7 @@ test "OptimizedBuffer - pool slot exhaustion test" {
     );
     defer buf.deinit();
 
-    const bg = RGBA{ 0.0, 0.0, 0.0, 1.0 };
+    const bg = RGBA{ 0.0, 0.0, 0.0, 1.0, 0.0 };
 
     var i: u32 = 0;
     while (i < 10000) : (i += 1) {
@@ -561,7 +561,7 @@ test "OptimizedBuffer - many unique graphemes with small pool" {
     );
     defer buf.deinit();
 
-    const bg = RGBA{ 0.0, 0.0, 0.0, 1.0 };
+    const bg = RGBA{ 0.0, 0.0, 0.0, 1.0, 0.0 };
 
     var render_count: u32 = 0;
     var failure_count: u32 = 0;
@@ -696,7 +696,7 @@ test "OptimizedBuffer - continuous render without clear with small pool" {
     );
     defer buf.deinit();
 
-    const bg = RGBA{ 0.0, 0.0, 0.0, 1.0 };
+    const bg = RGBA{ 0.0, 0.0, 0.0, 1.0, 0.0 };
     try buf.clear(bg, null);
 
     var i: u32 = 0;
@@ -728,7 +728,7 @@ test "OptimizedBuffer - graphemes with scissor clipping and small pool" {
     );
     defer buf.deinit();
 
-    const bg = RGBA{ 0.0, 0.0, 0.0, 1.0 };
+    const bg = RGBA{ 0.0, 0.0, 0.0, 1.0, 0.0 };
     try buf.clear(bg, null);
 
     try buf.pushScissorRect(0, 0, 5, 5);
@@ -754,9 +754,9 @@ test "OptimizedBuffer - drawText with alpha blending and scissor" {
     );
     defer buf.deinit();
 
-    const bg = RGBA{ 0.0, 0.0, 0.0, 1.0 };
-    const fg = RGBA{ 1.0, 1.0, 1.0, 1.0 };
-    const bg_alpha = RGBA{ 0.0, 0.0, 0.0, 0.5 };
+    const bg = RGBA{ 0.0, 0.0, 0.0, 1.0, 0.0 };
+    const fg = RGBA{ 1.0, 1.0, 1.0, 1.0, 0.0 };
+    const bg_alpha = RGBA{ 0.0, 0.0, 0.0, 0.5, 0.0 };
 
     try buf.clear(bg, null);
 
@@ -783,9 +783,9 @@ test "OptimizedBuffer - many unique graphemes with alpha and small pool" {
     );
     defer buf.deinit();
 
-    const bg = RGBA{ 0.0, 0.0, 0.0, 1.0 };
-    const fg = RGBA{ 1.0, 1.0, 1.0, 1.0 };
-    const bg_alpha = RGBA{ 0.0, 0.0, 0.0, 0.5 };
+    const bg = RGBA{ 0.0, 0.0, 0.0, 1.0, 0.0 };
+    const fg = RGBA{ 1.0, 1.0, 1.0, 1.0, 0.0 };
+    const bg_alpha = RGBA{ 0.0, 0.0, 0.0, 0.5, 0.0 };
 
     try buf.clear(bg, null);
 
@@ -821,8 +821,8 @@ test "OptimizedBuffer - fill buffer with many unique graphemes" {
     );
     defer buf.deinit();
 
-    const bg = RGBA{ 0.0, 0.0, 0.0, 1.0 };
-    const fg = RGBA{ 1.0, 1.0, 1.0, 1.0 };
+    const bg = RGBA{ 0.0, 0.0, 0.0, 1.0, 0.0 };
+    const fg = RGBA{ 1.0, 1.0, 1.0, 1.0, 0.0 };
 
     try buf.clear(bg, null);
 
@@ -860,8 +860,8 @@ test "OptimizedBuffer - verify pool growth works correctly" {
     );
     defer buf.deinit();
 
-    const bg = RGBA{ 0.0, 0.0, 0.0, 1.0 };
-    const fg = RGBA{ 1.0, 1.0, 1.0, 1.0 };
+    const bg = RGBA{ 0.0, 0.0, 0.0, 1.0, 0.0 };
+    const fg = RGBA{ 1.0, 1.0, 1.0, 1.0, 0.0 };
 
     try buf.clear(bg, null);
 
@@ -896,8 +896,8 @@ test "OptimizedBuffer - repeated overwriting of same grapheme" {
     );
     defer buf.deinit();
 
-    const bg = RGBA{ 0.0, 0.0, 0.0, 1.0 };
-    const fg = RGBA{ 1.0, 1.0, 1.0, 1.0 };
+    const bg = RGBA{ 0.0, 0.0, 0.0, 1.0, 0.0 };
+    const fg = RGBA{ 1.0, 1.0, 1.0, 1.0, 0.0 };
 
     try buf.drawText("•", 0, 0, fg, bg, 0);
 
@@ -932,8 +932,8 @@ test "OptimizedBuffer - two-buffer pattern should not leak" {
     );
     defer currentBuffer.deinit();
 
-    const bg = RGBA{ 0.0, 0.0, 0.0, 1.0 };
-    const fg = RGBA{ 1.0, 1.0, 1.0, 1.0 };
+    const bg = RGBA{ 0.0, 0.0, 0.0, 1.0, 0.0 };
+    const fg = RGBA{ 1.0, 1.0, 1.0, 1.0, 0.0 };
 
     var frame: u32 = 0;
     while (frame < 100) : (frame += 1) {
@@ -961,8 +961,8 @@ test "OptimizedBuffer - set and clear cycle should not leak" {
     );
     defer buf.deinit();
 
-    const bg = RGBA{ 0.0, 0.0, 0.0, 1.0 };
-    const fg = RGBA{ 1.0, 1.0, 1.0, 1.0 };
+    const bg = RGBA{ 0.0, 0.0, 0.0, 1.0, 0.0 };
+    const fg = RGBA{ 1.0, 1.0, 1.0, 1.0, 0.0 };
 
     var frame: u32 = 0;
     while (frame < 200) : (frame += 1) {
@@ -994,7 +994,7 @@ test "OptimizedBuffer - repeated drawTextBuffer without clear should not leak" {
     );
     defer buf.deinit();
 
-    const bg = RGBA{ 0.0, 0.0, 0.0, 1.0 };
+    const bg = RGBA{ 0.0, 0.0, 0.0, 1.0, 0.0 };
     try buf.clear(bg, null);
 
     var frame: u32 = 0;
@@ -1034,7 +1034,7 @@ test "OptimizedBuffer - renderer two-buffer swap pattern should not leak" {
     );
     defer next.deinit();
 
-    const bg = RGBA{ 0.0, 0.0, 0.0, 1.0 };
+    const bg = RGBA{ 0.0, 0.0, 0.0, 1.0, 0.0 };
     try current.clear(bg, null);
 
     var frame: u32 = 0;
@@ -1064,8 +1064,8 @@ test "OptimizedBuffer - set should not clear newly written adjacent grapheme con
     );
     defer buf.deinit();
 
-    const bg = RGBA{ 0.0, 0.0, 0.0, 1.0 };
-    const fg = RGBA{ 1.0, 1.0, 1.0, 1.0 };
+    const bg = RGBA{ 0.0, 0.0, 0.0, 1.0, 0.0 };
+    const fg = RGBA{ 1.0, 1.0, 1.0, 1.0, 0.0 };
     try buf.clear(bg, null);
 
     const old_gid = try local_pool.alloc("🌟");
@@ -1119,7 +1119,7 @@ test "OptimizedBuffer - sustained rendering should not leak" {
     );
     defer buf.deinit();
 
-    const bg = RGBA{ 0.0, 0.0, 0.0, 1.0 };
+    const bg = RGBA{ 0.0, 0.0, 0.0, 1.0, 0.0 };
     try buf.clear(bg, null);
 
     var frame: u32 = 0;
@@ -1149,7 +1149,7 @@ test "OptimizedBuffer - rendering with changing content should not leak" {
     );
     defer buf.deinit();
 
-    const bg = RGBA{ 0.0, 0.0, 0.0, 1.0 };
+    const bg = RGBA{ 0.0, 0.0, 0.0, 1.0, 0.0 };
     try buf.clear(bg, null);
 
     var frame: u32 = 0;
@@ -1209,7 +1209,7 @@ test "OptimizedBuffer - multiple TextBuffers rendering simultaneously should not
     );
     defer buf.deinit();
 
-    const bg = RGBA{ 0.0, 0.0, 0.0, 1.0 };
+    const bg = RGBA{ 0.0, 0.0, 0.0, 1.0, 0.0 };
     try buf.clear(bg, null);
 
     var frame: u32 = 0;
@@ -1235,8 +1235,8 @@ test "OptimizedBuffer - grapheme refcount management" {
     );
     defer buf.deinit();
 
-    const bg = RGBA{ 0.0, 0.0, 0.0, 1.0 };
-    const fg = RGBA{ 1.0, 1.0, 1.0, 1.0 };
+    const bg = RGBA{ 0.0, 0.0, 0.0, 1.0, 0.0 };
+    const fg = RGBA{ 1.0, 1.0, 1.0, 1.0, 0.0 };
 
     try buf.drawText("•", 0, 0, fg, bg, 0);
     const initial_cell = buf.get(0, 0).?;
@@ -1282,7 +1282,7 @@ test "OptimizedBuffer - drawTextBuffer with graphemes then clear removes all poo
     );
     defer buf.deinit();
 
-    const bg = RGBA{ 0.0, 0.0, 0.0, 1.0 };
+    const bg = RGBA{ 0.0, 0.0, 0.0, 1.0, 0.0 };
 
     try buf.drawTextBuffer(view, 0, 0);
 
@@ -1370,7 +1370,7 @@ test "OptimizedBuffer - drawTextBuffer with negative y coordinate should not pan
     );
     defer buf.deinit();
 
-    const bg = RGBA{ 0.0, 0.0, 0.0, 1.0 };
+    const bg = RGBA{ 0.0, 0.0, 0.0, 1.0, 0.0 };
     try buf.clear(bg, null);
 
     // Draw text buffer at negative y coordinate (-2)
@@ -1439,8 +1439,8 @@ test "OptimizedBuffer - link encoding round-trip" {
     );
     defer buf.deinit();
 
-    const bg = RGBA{ 0.0, 0.0, 0.0, 1.0 };
-    const fg = RGBA{ 1.0, 1.0, 1.0, 1.0 };
+    const bg = RGBA{ 0.0, 0.0, 0.0, 1.0, 0.0 };
+    const fg = RGBA{ 1.0, 1.0, 1.0, 1.0, 0.0 };
     try buf.clear(bg, null);
 
     // Allocate a link
@@ -1475,8 +1475,8 @@ test "OptimizedBuffer - link tracker per-cell counting" {
     );
     defer buf.deinit();
 
-    const bg = RGBA{ 0.0, 0.0, 0.0, 1.0 };
-    const fg = RGBA{ 1.0, 1.0, 1.0, 1.0 };
+    const bg = RGBA{ 0.0, 0.0, 0.0, 1.0, 0.0 };
+    const fg = RGBA{ 1.0, 1.0, 1.0, 1.0, 0.0 };
     try buf.clear(bg, null);
 
     // Allocate a link
@@ -1524,8 +1524,8 @@ test "OptimizedBuffer - fillRect removes links" {
     );
     defer buf.deinit();
 
-    const bg = RGBA{ 0.0, 0.0, 0.0, 1.0 };
-    const fg = RGBA{ 1.0, 1.0, 1.0, 1.0 };
+    const bg = RGBA{ 0.0, 0.0, 0.0, 1.0, 0.0 };
+    const fg = RGBA{ 1.0, 1.0, 1.0, 1.0, 0.0 };
     try buf.clear(bg, null);
 
     // Allocate a link
@@ -1565,8 +1565,8 @@ test "OptimizedBuffer - link reuse after free" {
     );
     defer buf.deinit();
 
-    const bg = RGBA{ 0.0, 0.0, 0.0, 1.0 };
-    const fg = RGBA{ 1.0, 1.0, 1.0, 1.0 };
+    const bg = RGBA{ 0.0, 0.0, 0.0, 1.0, 0.0 };
+    const fg = RGBA{ 1.0, 1.0, 1.0, 1.0, 0.0 };
 
     // Allocate first link
     const link_id1 = try local_link_pool.alloc("https://first.com");
@@ -1601,9 +1601,9 @@ test "OptimizedBuffer - alpha blending preserves overlay link not dest link" {
     );
     defer buf.deinit();
 
-    const bg_opaque = RGBA{ 0.0, 0.0, 0.0, 1.0 };
-    const bg_alpha = RGBA{ 0.5, 0.5, 0.5, 0.5 };
-    const fg = RGBA{ 1.0, 1.0, 1.0, 1.0 };
+    const bg_opaque = RGBA{ 0.0, 0.0, 0.0, 1.0, 0.0 };
+    const bg_alpha = RGBA{ 0.5, 0.5, 0.5, 0.5, 0.0 };
+    const fg = RGBA{ 1.0, 1.0, 1.0, 1.0, 0.0 };
     try buf.clear(bg_opaque, null);
 
     // Draw underlying text with link A
@@ -1642,9 +1642,9 @@ test "OptimizedBuffer - alpha blending with no link clears underlying link" {
     );
     defer buf.deinit();
 
-    const bg_opaque = RGBA{ 0.0, 0.0, 0.0, 1.0 };
-    const bg_alpha = RGBA{ 0.5, 0.5, 0.5, 0.5 };
-    const fg = RGBA{ 1.0, 1.0, 1.0, 1.0 };
+    const bg_opaque = RGBA{ 0.0, 0.0, 0.0, 1.0, 0.0 };
+    const bg_alpha = RGBA{ 0.5, 0.5, 0.5, 0.5, 0.0 };
+    const fg = RGBA{ 1.0, 1.0, 1.0, 1.0, 0.0 };
     try buf.clear(bg_opaque, null);
 
     // Draw underlying text with link
@@ -1682,7 +1682,7 @@ test "OptimizedBuffer - drawGrayscaleBuffer basic rendering" {
     );
     defer buf.deinit();
 
-    const bg = RGBA{ 0.0, 0.0, 0.0, 1.0 };
+    const bg = RGBA{ 0.0, 0.0, 0.0, 1.0, 0.0 };
     try buf.clear(bg, null);
 
     // Create a 3x3 intensity buffer with varying values
@@ -1720,7 +1720,7 @@ test "OptimizedBuffer - drawGrayscaleBuffer negative position clipping" {
     );
     defer buf.deinit();
 
-    const bg = RGBA{ 0.0, 0.0, 0.0, 1.0 };
+    const bg = RGBA{ 0.0, 0.0, 0.0, 1.0, 0.0 };
     try buf.clear(bg, null);
 
     // Create a 4x4 intensity buffer
@@ -1754,7 +1754,7 @@ test "OptimizedBuffer - drawGrayscaleBuffer negative position fully clipped" {
     );
     defer buf.deinit();
 
-    const bg = RGBA{ 0.0, 0.0, 0.0, 1.0 };
+    const bg = RGBA{ 0.0, 0.0, 0.0, 1.0, 0.0 };
     try buf.clear(bg, null);
 
     const intensities = [_]f32{
@@ -1784,7 +1784,7 @@ test "OptimizedBuffer - drawGrayscaleBuffer respects scissor rect" {
     );
     defer buf.deinit();
 
-    const bg = RGBA{ 0.0, 0.0, 0.0, 1.0 };
+    const bg = RGBA{ 0.0, 0.0, 0.0, 1.0, 0.0 };
     try buf.clear(bg, null);
 
     try buf.pushScissorRect(0, 0, 2, 2);
@@ -1823,7 +1823,7 @@ test "OptimizedBuffer - drawGrayscaleBuffer intensity to character mapping" {
     );
     defer buf.deinit();
 
-    const bg = RGBA{ 0.0, 0.0, 0.0, 1.0 };
+    const bg = RGBA{ 0.0, 0.0, 0.0, 1.0, 0.0 };
     try buf.clear(bg, null);
 
     const intensities = [_]f32{
@@ -1861,7 +1861,7 @@ test "OptimizedBuffer - drawGrayscaleBuffer alpha blending preserves underlying 
     );
     defer buf.deinit();
 
-    const red_bg = RGBA{ 1.0, 0.0, 0.0, 1.0 };
+    const red_bg = RGBA{ 1.0, 0.0, 0.0, 1.0, 0.0 };
     try buf.clear(red_bg, null);
 
     const initial_cell = buf.get(1, 1).?;
@@ -1869,7 +1869,7 @@ test "OptimizedBuffer - drawGrayscaleBuffer alpha blending preserves underlying 
     try std.testing.expectEqual(@as(f32, 0.0), initial_cell.bg[1]);
     try std.testing.expectEqual(@as(f32, 0.0), initial_cell.bg[2]);
 
-    const semi_transparent_bg = RGBA{ 0.0, 0.0, 1.0, 0.5 };
+    const semi_transparent_bg = RGBA{ 0.0, 0.0, 1.0, 0.5, 0.0 };
     const intensities = [_]f32{
         1.0, 1.0, 1.0,
         1.0, 1.0, 1.0,
@@ -1901,10 +1901,10 @@ test "OptimizedBuffer - drawGrayscaleBuffer fully transparent bg preserves under
     );
     defer buf.deinit();
 
-    const green_bg = RGBA{ 0.0, 1.0, 0.0, 1.0 };
+    const green_bg = RGBA{ 0.0, 1.0, 0.0, 1.0, 0.0 };
     try buf.clear(green_bg, null);
 
-    const transparent_bg = RGBA{ 0.0, 0.0, 1.0, 0.0 };
+    const transparent_bg = RGBA{ 0.0, 0.0, 1.0, 0.0, 0.0 };
     const intensities = [_]f32{
         1.0, 1.0, 1.0,
         1.0, 1.0, 1.0,
@@ -1935,10 +1935,10 @@ test "OptimizedBuffer - drawGrayscaleBuffer opaque bg overwrites underlying" {
     );
     defer buf.deinit();
 
-    const red_bg = RGBA{ 1.0, 0.0, 0.0, 1.0 };
+    const red_bg = RGBA{ 1.0, 0.0, 0.0, 1.0, 0.0 };
     try buf.clear(red_bg, null);
 
-    const blue_bg = RGBA{ 0.0, 0.0, 1.0, 1.0 };
+    const blue_bg = RGBA{ 0.0, 0.0, 1.0, 1.0, 0.0 };
     const intensities = [_]f32{
         1.0, 1.0, 1.0,
         1.0, 1.0, 1.0,
@@ -1967,12 +1967,12 @@ test "OptimizedBuffer - drawGrayscaleBuffer with opacity stack" {
     );
     defer buf.deinit();
 
-    const red_bg = RGBA{ 1.0, 0.0, 0.0, 1.0 };
+    const red_bg = RGBA{ 1.0, 0.0, 0.0, 1.0, 0.0 };
     try buf.clear(red_bg, null);
 
     try buf.pushOpacity(0.5);
 
-    const blue_bg = RGBA{ 0.0, 0.0, 1.0, 1.0 };
+    const blue_bg = RGBA{ 0.0, 0.0, 1.0, 1.0, 0.0 };
     const intensities = [_]f32{
         1.0, 1.0, 1.0,
         1.0, 1.0, 1.0,
@@ -2002,7 +2002,7 @@ test "OptimizedBuffer - drawGrayscaleBufferSupersampled alpha blending" {
     );
     defer buf.deinit();
 
-    const red_bg = RGBA{ 1.0, 0.0, 0.0, 1.0 };
+    const red_bg = RGBA{ 1.0, 0.0, 0.0, 1.0, 0.0 };
     try buf.clear(red_bg, null);
 
     const intensities = [_]f32{
@@ -2012,7 +2012,7 @@ test "OptimizedBuffer - drawGrayscaleBufferSupersampled alpha blending" {
         1.0, 1.0, 1.0, 1.0,
     };
 
-    const semi_transparent_bg = RGBA{ 0.0, 0.0, 1.0, 0.5 };
+    const semi_transparent_bg = RGBA{ 0.0, 0.0, 1.0, 0.5, 0.0 };
     buf.drawGrayscaleBufferSupersampled(0, 0, &intensities, 4, 4, null, semi_transparent_bg);
 
     const cell = buf.get(0, 0).?;
@@ -2034,7 +2034,7 @@ test "OptimizedBuffer - drawGrayscaleBufferSupersampled fully transparent preser
     );
     defer buf.deinit();
 
-    const green_bg = RGBA{ 0.0, 1.0, 0.0, 1.0 };
+    const green_bg = RGBA{ 0.0, 1.0, 0.0, 1.0, 0.0 };
     try buf.clear(green_bg, null);
 
     const intensities = [_]f32{
@@ -2044,7 +2044,7 @@ test "OptimizedBuffer - drawGrayscaleBufferSupersampled fully transparent preser
         1.0, 1.0, 1.0, 1.0,
     };
 
-    const transparent_bg = RGBA{ 0.0, 0.0, 1.0, 0.0 };
+    const transparent_bg = RGBA{ 0.0, 0.0, 1.0, 0.0, 0.0 };
     buf.drawGrayscaleBufferSupersampled(0, 0, &intensities, 4, 4, null, transparent_bg);
 
     const cell = buf.get(0, 0).?;
@@ -2067,7 +2067,7 @@ test "OptimizedBuffer - drawGrayscaleBufferSupersampled respects scissor" {
     );
     defer buf.deinit();
 
-    const bg = RGBA{ 0.0, 0.0, 0.0, 1.0 };
+    const bg = RGBA{ 0.0, 0.0, 0.0, 1.0, 0.0 };
     try buf.clear(bg, null);
 
     try buf.pushScissorRect(0, 0, 1, 1);
@@ -2103,7 +2103,7 @@ test "OptimizedBuffer - drawGrayscaleBufferSupersampled with opacity stack" {
     );
     defer buf.deinit();
 
-    const red_bg = RGBA{ 1.0, 0.0, 0.0, 1.0 };
+    const red_bg = RGBA{ 1.0, 0.0, 0.0, 1.0, 0.0 };
     try buf.clear(red_bg, null);
 
     try buf.pushOpacity(0.5);
@@ -2115,7 +2115,7 @@ test "OptimizedBuffer - drawGrayscaleBufferSupersampled with opacity stack" {
         1.0, 1.0, 1.0, 1.0,
     };
 
-    const blue_bg = RGBA{ 0.0, 0.0, 1.0, 1.0 };
+    const blue_bg = RGBA{ 0.0, 0.0, 1.0, 1.0, 0.0 };
     buf.drawGrayscaleBufferSupersampled(0, 0, &intensities, 4, 4, null, blue_bg);
 
     buf.popOpacity();
@@ -2139,11 +2139,11 @@ test "OptimizedBuffer - blendColors with transparent destination" {
     );
     defer buf.deinit();
 
-    const transparent_bg = RGBA{ 0.0, 0.0, 0.0, 0.0 };
+    const transparent_bg = RGBA{ 0.0, 0.0, 0.0, 0.0, 0.0 };
     try buf.clear(transparent_bg, null);
 
-    const semi_white = RGBA{ 1.0, 1.0, 1.0, 0.5 };
-    const transparent_fg = RGBA{ 0.0, 0.0, 0.0, 0.0 };
+    const semi_white = RGBA{ 1.0, 1.0, 1.0, 0.5, 0.0 };
+    const transparent_fg = RGBA{ 0.0, 0.0, 0.0, 0.0, 0.0 };
     try buf.setCellWithAlphaBlending(0, 0, 'X', semi_white, transparent_fg, 0);
 
     const cell = buf.get(0, 0).?;
@@ -2166,7 +2166,7 @@ test "OptimizedBuffer - drawGrayscaleBuffer with custom fg color" {
     );
     defer buf.deinit();
 
-    const black_bg = RGBA{ 0.0, 0.0, 0.0, 1.0 };
+    const black_bg = RGBA{ 0.0, 0.0, 0.0, 1.0, 0.0 };
     try buf.clear(black_bg, null);
 
     const intensities = [_]f32{
@@ -2175,7 +2175,7 @@ test "OptimizedBuffer - drawGrayscaleBuffer with custom fg color" {
         1.0, 1.0, 1.0,
     };
 
-    const red_fg = RGBA{ 1.0, 0.0, 0.0, 1.0 };
+    const red_fg = RGBA{ 1.0, 0.0, 0.0, 1.0, 0.0 };
     buf.drawGrayscaleBuffer(0, 0, &intensities, 3, 3, red_fg, black_bg);
 
     const cell = buf.get(1, 1).?;
@@ -2198,7 +2198,7 @@ test "OptimizedBuffer - drawGrayscaleBuffer custom fg with partial intensity" {
     );
     defer buf.deinit();
 
-    const blue_bg = RGBA{ 0.0, 0.0, 1.0, 1.0 };
+    const blue_bg = RGBA{ 0.0, 0.0, 1.0, 1.0, 0.0 };
     try buf.clear(blue_bg, null);
 
     const intensities = [_]f32{
@@ -2207,8 +2207,8 @@ test "OptimizedBuffer - drawGrayscaleBuffer custom fg with partial intensity" {
         0.5, 0.5, 0.5,
     };
 
-    const green_fg = RGBA{ 0.0, 1.0, 0.0, 1.0 };
-    const transparent_bg = RGBA{ 0.0, 0.0, 0.0, 0.0 };
+    const green_fg = RGBA{ 0.0, 1.0, 0.0, 1.0, 0.0 };
+    const transparent_bg = RGBA{ 0.0, 0.0, 0.0, 0.0, 0.0 };
     buf.drawGrayscaleBuffer(0, 0, &intensities, 3, 3, green_fg, transparent_bg);
 
     const cell = buf.get(1, 1).?;
@@ -2230,7 +2230,7 @@ test "OptimizedBuffer - drawGrayscaleBufferSupersampled with custom fg color" {
     );
     defer buf.deinit();
 
-    const black_bg = RGBA{ 0.0, 0.0, 0.0, 1.0 };
+    const black_bg = RGBA{ 0.0, 0.0, 0.0, 1.0, 0.0 };
     try buf.clear(black_bg, null);
 
     const intensities = [_]f32{
@@ -2240,7 +2240,7 @@ test "OptimizedBuffer - drawGrayscaleBufferSupersampled with custom fg color" {
         1.0, 1.0, 1.0, 1.0,
     };
 
-    const cyan_fg = RGBA{ 0.0, 1.0, 1.0, 1.0 };
+    const cyan_fg = RGBA{ 0.0, 1.0, 1.0, 1.0, 0.0 };
     buf.drawGrayscaleBufferSupersampled(0, 0, &intensities, 4, 4, cyan_fg, black_bg);
 
     const cell = buf.get(0, 0).?;
@@ -2267,8 +2267,8 @@ test "buffer - set same grapheme ID with different extents keeps slot alive" {
     });
     defer buf.deinit();
 
-    const fg = RGBA{ 1.0, 1.0, 1.0, 1.0 };
-    const bg = RGBA{ 0.0, 0.0, 0.0, 1.0 };
+    const fg = RGBA{ 1.0, 1.0, 1.0, 1.0, 0.0 };
+    const bg = RGBA{ 0.0, 0.0, 0.0, 1.0, 0.0 };
 
     const emoji = "👋";
 
@@ -2307,8 +2307,8 @@ test "renderer - grapheme WrongGeneration repro with pool slot reuse" {
     );
     defer cli_renderer.destroy();
 
-    const fg = RGBA{ 1.0, 1.0, 1.0, 1.0 };
-    const bg = RGBA{ 0.0, 0.0, 0.0, 1.0 };
+    const fg = RGBA{ 1.0, 1.0, 1.0, 1.0, 0.0 };
+    const bg = RGBA{ 0.0, 0.0, 0.0, 1.0, 0.0 };
 
     {
         const next = cli_renderer.getNextBuffer();

@@ -3499,7 +3499,7 @@ test "TextBufferView - tab indicator set and get" {
     try std.testing.expect(view.getTabIndicatorColor() == null);
 
     view.setTabIndicator(@as(u32, '·'));
-    view.setTabIndicatorColor(RGBA{ 0.4, 0.4, 0.4, 1.0 });
+    view.setTabIndicatorColor(RGBA{ 0.4, 0.4, 0.4, 1.0, 0.0 });
 
     try std.testing.expectEqual(@as(u32, '·'), view.getTabIndicator().?);
     try std.testing.expectEqual(@as(f32, 0.4), view.getTabIndicatorColor().?[0]);

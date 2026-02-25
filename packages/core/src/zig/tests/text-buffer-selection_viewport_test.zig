@@ -332,7 +332,7 @@ test "Selection - RENDER TEST: selection highlights correct cells with viewport 
 
     view.setViewport(Viewport{ .x = 0, .y = 3, .width = 10, .height = 5 });
 
-    const red_bg = RGBA{ 1.0, 0.0, 0.0, 1.0 };
+    const red_bg = RGBA{ 1.0, 0.0, 0.0, 1.0, 0.0 };
     _ = view.setLocalSelection(0, 0, 3, 0, red_bg, null);
 
     var render_buffer = try buffer_mod.OptimizedBuffer.init(std.testing.allocator, pool, 20, 10, .unicode);

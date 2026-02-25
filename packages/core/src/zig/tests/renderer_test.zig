@@ -355,7 +355,7 @@ test "renderer - background color setting" {
     );
     defer cli_renderer.destroy();
 
-    const bg_color = RGBA{ 0.1, 0.2, 0.3, 1.0 };
+    const bg_color = RGBA{ 0.1, 0.2, 0.3, 1.0, 0.0 };
     cli_renderer.setBackgroundColor(bg_color);
 
     try std.testing.expectEqual(bg_color, cli_renderer.backgroundColor);
@@ -471,8 +471,8 @@ test "renderer - 1000 frame render loop with setStyledText" {
         "Mixed 😀 世",
     };
 
-    const fg_color = [4]f32{ 1.0, 0.8, 0.6, 1.0 };
-    const bg_color = [4]f32{ 0.1, 0.1, 0.2, 1.0 };
+    const fg_color = [5]f32{ 1.0, 0.8, 0.6, 1.0, 0.0 };
+    const bg_color = [5]f32{ 0.1, 0.1, 0.2, 1.0, 0.0 };
 
     var frame: u32 = 0;
     while (frame < 1000) : (frame += 1) {
@@ -488,11 +488,11 @@ test "renderer - 1000 frame render loop with setStyledText" {
         }};
 
         try tb.setStyledText(&chunks);
-        try opt_buffer.clear(.{ 0.0, 0.0, 0.0, 1.0 }, 32);
+        try opt_buffer.clear(.{ 0.0, 0.0, 0.0, 1.0, 0.0 }, 32);
         try opt_buffer.drawTextBuffer(view, 0, 0);
 
         const next_buffer = cli_renderer.getNextBuffer();
-        try next_buffer.clear(.{ 0.0, 0.0, 0.0, 1.0 }, 32);
+        try next_buffer.clear(.{ 0.0, 0.0, 0.0, 1.0, 0.0 }, 32);
         next_buffer.drawFrameBuffer(0, 0, opt_buffer, null, null, null, null);
 
         cli_renderer.render(false);
@@ -548,8 +548,8 @@ test "renderer - grapheme pool refcounting with frame buffer fast path" {
     );
     defer frame_buffer.deinit();
 
-    const fg_color = [4]f32{ 1.0, 1.0, 1.0, 1.0 };
-    const bg_color = [4]f32{ 0.0, 0.0, 0.0, 0.0 };
+    const fg_color = [5]f32{ 1.0, 1.0, 1.0, 1.0, 0.0 };
+    const bg_color = [5]f32{ 0.0, 0.0, 0.0, 0.0, 0.0 };
 
     const text_with_emoji = "👋";
     const chunks = [_]text_buffer.StyledChunk{.{
@@ -560,16 +560,16 @@ test "renderer - grapheme pool refcounting with frame buffer fast path" {
         .attributes = 0,
     }};
     try tb.setStyledText(&chunks);
-    try frame_buffer.clear(.{ 0.0, 0.0, 0.0, 1.0 }, 32);
+    try frame_buffer.clear(.{ 0.0, 0.0, 0.0, 1.0, 0.0 }, 32);
     try frame_buffer.drawTextBuffer(view, 0, 0);
 
     const next_buffer = cli_renderer.getNextBuffer();
     next_buffer.setRespectAlpha(false);
-    try next_buffer.clear(.{ 0.0, 0.0, 0.0, 1.0 }, 32);
+    try next_buffer.clear(.{ 0.0, 0.0, 0.0, 1.0, 0.0 }, 32);
 
     next_buffer.drawFrameBuffer(0, 0, frame_buffer, null, null, null, null);
 
-    try frame_buffer.clear(.{ 0.0, 0.0, 0.0, 1.0 }, 32);
+    try frame_buffer.clear(.{ 0.0, 0.0, 0.0, 1.0, 0.0 }, 32);
 
     var i: usize = 0;
     while (i < 10) : (i += 1) {
@@ -583,7 +583,7 @@ test "renderer - grapheme pool refcounting with frame buffer fast path" {
         }};
         try tb.setStyledText(&new_chunks);
         try frame_buffer.drawTextBuffer(view, 0, 0);
-        try frame_buffer.clear(.{ 0.0, 0.0, 0.0, 1.0 }, 32);
+        try frame_buffer.clear(.{ 0.0, 0.0, 0.0, 1.0, 0.0 }, 32);
     }
 
     cli_renderer.render(false);
@@ -608,8 +608,8 @@ test "renderer - unchanged grapheme should not churn IDs across frames" {
     );
     defer cli_renderer.destroy();
 
-    const fg = RGBA{ 1.0, 1.0, 1.0, 1.0 };
-    const bg = RGBA{ 0.0, 0.0, 0.0, 1.0 };
+    const fg = RGBA{ 1.0, 1.0, 1.0, 1.0, 0.0 };
+    const bg = RGBA{ 0.0, 0.0, 0.0, 1.0, 0.0 };
 
     const first_next_buffer = cli_renderer.getNextBuffer();
     try first_next_buffer.drawText("👋", 0, 0, fg, bg, 0);
@@ -666,8 +666,8 @@ test "renderer - hyperlinks enabled with OSC 8 output" {
 
     const next_buffer = cli_renderer.getNextBuffer();
 
-    const fg = RGBA{ 1.0, 1.0, 1.0, 1.0 };
-    const bg = RGBA{ 0.0, 0.0, 0.0, 1.0 };
+    const fg = RGBA{ 1.0, 1.0, 1.0, 1.0, 0.0 };
+    const bg = RGBA{ 0.0, 0.0, 0.0, 1.0, 0.0 };
     try next_buffer.drawText("Click here", 0, 0, fg, bg, attributes);
 
     cli_renderer.render(false);
@@ -712,8 +712,8 @@ test "renderer - hyperlinks disabled no OSC 8 output" {
 
     const next_buffer = cli_renderer.getNextBuffer();
 
-    const fg = RGBA{ 1.0, 1.0, 1.0, 1.0 };
-    const bg = RGBA{ 0.0, 0.0, 0.0, 1.0 };
+    const fg = RGBA{ 1.0, 1.0, 1.0, 1.0, 0.0 };
+    const bg = RGBA{ 0.0, 0.0, 0.0, 1.0, 0.0 };
     try next_buffer.drawText("Click here", 0, 0, fg, bg, attributes);
 
     cli_renderer.render(false);
@@ -751,8 +751,8 @@ test "renderer - link transition mid-line" {
     const attr1 = ansi.TextAttributes.setLinkId(0, link_id1);
     const attr2 = ansi.TextAttributes.setLinkId(0, link_id2);
 
-    const fg = RGBA{ 1.0, 1.0, 1.0, 1.0 };
-    const bg = RGBA{ 0.0, 0.0, 0.0, 1.0 };
+    const fg = RGBA{ 1.0, 1.0, 1.0, 1.0, 0.0 };
+    const bg = RGBA{ 0.0, 0.0, 0.0, 1.0, 0.0 };
 
     // Draw first link
     try next_buffer.drawText("First", 0, 0, fg, bg, attr1);

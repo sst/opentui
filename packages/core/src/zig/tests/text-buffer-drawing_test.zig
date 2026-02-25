@@ -35,7 +35,7 @@ test "drawTextBuffer - simple single line text" {
     );
     defer opt_buffer.deinit();
 
-    try opt_buffer.clear(.{ 0.0, 0.0, 0.0, 1.0 }, 32);
+    try opt_buffer.clear(.{ 0.0, 0.0, 0.0, 1.0, 0.0 }, 32);
     try opt_buffer.drawTextBuffer(view, 0, 0);
 
     var out_buffer: [100]u8 = undefined;
@@ -67,7 +67,7 @@ test "drawTextBuffer - empty text buffer" {
     );
     defer opt_buffer.deinit();
 
-    try opt_buffer.clear(.{ 0.0, 0.0, 0.0, 1.0 }, 32);
+    try opt_buffer.clear(.{ 0.0, 0.0, 0.0, 1.0, 0.0 }, 32);
     try opt_buffer.drawTextBuffer(view, 0, 0);
 }
 
@@ -93,7 +93,7 @@ test "drawTextBuffer - multiple lines without wrapping" {
     );
     defer opt_buffer.deinit();
 
-    try opt_buffer.clear(.{ 0.0, 0.0, 0.0, 1.0 }, 32);
+    try opt_buffer.clear(.{ 0.0, 0.0, 0.0, 1.0, 0.0 }, 32);
     try opt_buffer.drawTextBuffer(view, 0, 0);
 
     const virtual_lines = view.getVirtualLines();
@@ -125,7 +125,7 @@ test "drawTextBuffer - text wrapping at word boundaries" {
     );
     defer opt_buffer.deinit();
 
-    try opt_buffer.clear(.{ 0.0, 0.0, 0.0, 1.0 }, 32);
+    try opt_buffer.clear(.{ 0.0, 0.0, 0.0, 1.0, 0.0 }, 32);
     try opt_buffer.drawTextBuffer(view, 0, 0);
 
     const virtual_lines = view.getVirtualLines();
@@ -157,7 +157,7 @@ test "drawTextBuffer - text wrapping at character boundaries" {
     );
     defer opt_buffer.deinit();
 
-    try opt_buffer.clear(.{ 0.0, 0.0, 0.0, 1.0 }, 32);
+    try opt_buffer.clear(.{ 0.0, 0.0, 0.0, 1.0, 0.0 }, 32);
     try opt_buffer.drawTextBuffer(view, 0, 0);
 
     const virtual_lines = view.getVirtualLines();
@@ -189,7 +189,7 @@ test "drawTextBuffer - no wrapping with none mode" {
     );
     defer opt_buffer.deinit();
 
-    try opt_buffer.clear(.{ 0.0, 0.0, 0.0, 1.0 }, 32);
+    try opt_buffer.clear(.{ 0.0, 0.0, 0.0, 1.0, 0.0 }, 32);
     try opt_buffer.drawTextBuffer(view, 0, 0);
 
     const virtual_lines = view.getVirtualLines();
@@ -221,7 +221,7 @@ test "drawTextBuffer - wrapped text with multiple lines" {
     );
     defer opt_buffer.deinit();
 
-    try opt_buffer.clear(.{ 0.0, 0.0, 0.0, 1.0 }, 32);
+    try opt_buffer.clear(.{ 0.0, 0.0, 0.0, 1.0, 0.0 }, 32);
     try opt_buffer.drawTextBuffer(view, 0, 0);
 
     const virtual_lines = view.getVirtualLines();
@@ -253,7 +253,7 @@ test "drawTextBuffer - unicode characters with wrapping" {
     );
     defer opt_buffer.deinit();
 
-    try opt_buffer.clear(.{ 0.0, 0.0, 0.0, 1.0 }, 32);
+    try opt_buffer.clear(.{ 0.0, 0.0, 0.0, 1.0, 0.0 }, 32);
     try opt_buffer.drawTextBuffer(view, 0, 0);
 
     const virtual_lines = view.getVirtualLines();
@@ -285,7 +285,7 @@ test "drawTextBuffer - wrapping preserves wide characters" {
     );
     defer opt_buffer.deinit();
 
-    try opt_buffer.clear(.{ 0.0, 0.0, 0.0, 1.0 }, 32);
+    try opt_buffer.clear(.{ 0.0, 0.0, 0.0, 1.0, 0.0 }, 32);
     try opt_buffer.drawTextBuffer(view, 0, 0);
 
     const virtual_lines = view.getVirtualLines();
@@ -361,7 +361,7 @@ test "drawTextBuffer - wrapped text with offset position" {
     );
     defer opt_buffer.deinit();
 
-    try opt_buffer.clear(.{ 0.0, 0.0, 0.0, 1.0 }, 32);
+    try opt_buffer.clear(.{ 0.0, 0.0, 0.0, 1.0, 0.0 }, 32);
     try opt_buffer.drawTextBuffer(view, 5, 5);
 
     const cell = opt_buffer.get(5, 5);
@@ -391,7 +391,7 @@ test "drawTextBuffer - clipping with scrolled view" {
     );
     defer opt_buffer.deinit();
 
-    try opt_buffer.clear(.{ 0.0, 0.0, 0.0, 1.0 }, 32);
+    try opt_buffer.clear(.{ 0.0, 0.0, 0.0, 1.0, 0.0 }, 32);
     try opt_buffer.drawTextBuffer(view, 0, 0);
 
     const virtual_lines = view.getVirtualLines();
@@ -423,7 +423,7 @@ test "drawTextBuffer - wrapping with very narrow width" {
     );
     defer opt_buffer.deinit();
 
-    try opt_buffer.clear(.{ 0.0, 0.0, 0.0, 1.0 }, 32);
+    try opt_buffer.clear(.{ 0.0, 0.0, 0.0, 1.0, 0.0 }, 32);
     try opt_buffer.drawTextBuffer(view, 0, 0);
 
     const virtual_lines = view.getVirtualLines();
@@ -455,7 +455,7 @@ test "drawTextBuffer - word wrap doesn't break mid-word" {
     );
     defer opt_buffer.deinit();
 
-    try opt_buffer.clear(.{ 0.0, 0.0, 0.0, 1.0 }, 32);
+    try opt_buffer.clear(.{ 0.0, 0.0, 0.0, 1.0, 0.0 }, 32);
     try opt_buffer.drawTextBuffer(view, 0, 0);
 
     const virtual_lines = view.getVirtualLines();
@@ -484,7 +484,7 @@ test "drawTextBuffer - empty lines render correctly" {
     );
     defer opt_buffer.deinit();
 
-    try opt_buffer.clear(.{ 0.0, 0.0, 0.0, 1.0 }, 32);
+    try opt_buffer.clear(.{ 0.0, 0.0, 0.0, 1.0, 0.0 }, 32);
     try opt_buffer.drawTextBuffer(view, 0, 0);
 
     const virtual_lines = view.getVirtualLines();
@@ -516,7 +516,7 @@ test "drawTextBuffer - wrapping with tabs" {
     );
     defer opt_buffer.deinit();
 
-    try opt_buffer.clear(.{ 0.0, 0.0, 0.0, 1.0 }, 32);
+    try opt_buffer.clear(.{ 0.0, 0.0, 0.0, 1.0, 0.0 }, 32);
     try opt_buffer.drawTextBuffer(view, 0, 0);
 }
 
@@ -548,7 +548,7 @@ test "drawTextBuffer - very long unwrapped line clipping" {
     );
     defer opt_buffer.deinit();
 
-    try opt_buffer.clear(.{ 0.0, 0.0, 0.0, 1.0 }, 32);
+    try opt_buffer.clear(.{ 0.0, 0.0, 0.0, 1.0, 0.0 }, 32);
     try opt_buffer.drawTextBuffer(view, 0, 0);
 
     const virtual_lines = view.getVirtualLines();
@@ -645,7 +645,7 @@ test "drawTextBuffer - wrapping with mixed ASCII and Unicode" {
     );
     defer opt_buffer.deinit();
 
-    try opt_buffer.clear(.{ 0.0, 0.0, 0.0, 1.0 }, 32);
+    try opt_buffer.clear(.{ 0.0, 0.0, 0.0, 1.0, 0.0 }, 32);
     try opt_buffer.drawTextBuffer(view, 0, 0);
 
     const virtual_lines = view.getVirtualLines();
@@ -666,7 +666,7 @@ test "setStyledText - basic rendering with single chunk" {
     tb.setSyntaxStyle(style);
 
     const text = "Hello World";
-    const fg_color = [4]f32{ 1.0, 1.0, 1.0, 1.0 };
+    const fg_color = [5]f32{ 1.0, 1.0, 1.0, 1.0, 0.0 };
 
     const chunks = [_]StyledChunk{.{
         .text_ptr = text.ptr,
@@ -700,7 +700,7 @@ test "setStyledText - multiple chunks render correctly" {
 
     const text0 = "Hello ";
     const text1 = "World";
-    const fg_color = [4]f32{ 1.0, 1.0, 1.0, 1.0 };
+    const fg_color = [5]f32{ 1.0, 1.0, 1.0, 1.0, 0.0 };
 
     const chunks = [_]StyledChunk{
         .{ .text_ptr = text0.ptr, .text_len = text0.len, .fg_ptr = @ptrCast(&fg_color), .bg_ptr = null, .attributes = 0 },
@@ -1276,7 +1276,7 @@ test "loadFile - loads and renders file correctly" {
     );
     defer opt_buffer.deinit();
 
-    try opt_buffer.clear(.{ 0.0, 0.0, 0.0, 1.0 }, 32);
+    try opt_buffer.clear(.{ 0.0, 0.0, 0.0, 1.0, 0.0 }, 32);
     try opt_buffer.drawTextBuffer(view, 0, 0);
 
     var render_buffer: [200]u8 = undefined;
@@ -1312,7 +1312,7 @@ test "drawTextBuffer - horizontal viewport offset renders correctly without wrap
     );
     defer opt_buffer.deinit();
 
-    try opt_buffer.clear(.{ 0.0, 0.0, 0.0, 1.0 }, 32);
+    try opt_buffer.clear(.{ 0.0, 0.0, 0.0, 1.0, 0.0 }, 32);
     try opt_buffer.drawTextBuffer(view, 0, 0);
 
     var out_buffer: [100]u8 = undefined;
@@ -1348,7 +1348,7 @@ test "drawTextBuffer - horizontal viewport offset with multiple lines" {
     );
     defer opt_buffer.deinit();
 
-    try opt_buffer.clear(.{ 0.0, 0.0, 0.0, 1.0 }, 32);
+    try opt_buffer.clear(.{ 0.0, 0.0, 0.0, 1.0, 0.0 }, 32);
     try opt_buffer.drawTextBuffer(view, 0, 0);
 
     var out_buffer: [100]u8 = undefined;
@@ -1386,7 +1386,7 @@ test "drawTextBuffer - combined horizontal and vertical viewport offsets" {
     );
     defer opt_buffer.deinit();
 
-    try opt_buffer.clear(.{ 0.0, 0.0, 0.0, 1.0 }, 32);
+    try opt_buffer.clear(.{ 0.0, 0.0, 0.0, 1.0, 0.0 }, 32);
     try opt_buffer.drawTextBuffer(view, 0, 0);
 
     var out_buffer: [100]u8 = undefined;
@@ -1423,7 +1423,7 @@ test "drawTextBuffer - horizontal viewport stops rendering at viewport width" {
     );
     defer opt_buffer.deinit();
 
-    try opt_buffer.clear(.{ 0.0, 0.0, 0.0, 1.0 }, 32);
+    try opt_buffer.clear(.{ 0.0, 0.0, 0.0, 1.0, 0.0 }, 32);
     try opt_buffer.drawTextBuffer(view, 0, 0);
 
     var out_buffer: [100]u8 = undefined;
@@ -1463,7 +1463,7 @@ test "drawTextBuffer - horizontal viewport with small buffer renders only viewpo
     );
     defer opt_buffer.deinit();
 
-    try opt_buffer.clear(.{ 0.0, 0.0, 0.0, 1.0 }, 32);
+    try opt_buffer.clear(.{ 0.0, 0.0, 0.0, 1.0, 0.0 }, 32);
     try opt_buffer.drawTextBuffer(view, 0, 0);
 
     const cell_0 = opt_buffer.get(0, 0);
@@ -1513,7 +1513,7 @@ test "drawTextBuffer - horizontal viewport width limits rendering (efficiency te
     );
     defer opt_buffer.deinit();
 
-    try opt_buffer.clear(.{ 0.0, 0.0, 0.0, 1.0 }, 32);
+    try opt_buffer.clear(.{ 0.0, 0.0, 0.0, 1.0, 0.0 }, 32);
     try opt_buffer.drawTextBuffer(view, 0, 0);
 
     var non_space_count: u32 = 0;
@@ -1550,7 +1550,7 @@ test "drawTextBuffer - overwriting wide grapheme with ASCII leaves no ghost char
     defer opt_buffer.deinit();
 
     try tb.setText("世界");
-    try opt_buffer.clear(.{ 0.0, 0.0, 0.0, 1.0 }, 32);
+    try opt_buffer.clear(.{ 0.0, 0.0, 0.0, 1.0, 0.0 }, 32);
     try opt_buffer.drawTextBuffer(view, 0, 0);
 
     const first_cell = opt_buffer.get(0, 0) orelse unreachable;
@@ -1561,7 +1561,7 @@ test "drawTextBuffer - overwriting wide grapheme with ASCII leaves no ghost char
     try std.testing.expect(gp.isContinuationChar(second_cell.char));
 
     try tb.setText("ABC");
-    try opt_buffer.clear(.{ 0.0, 0.0, 0.0, 1.0 }, 32);
+    try opt_buffer.clear(.{ 0.0, 0.0, 0.0, 1.0, 0.0 }, 32);
     try opt_buffer.drawTextBuffer(view, 0, 0);
 
     const cell_a = opt_buffer.get(0, 0) orelse unreachable;
@@ -1600,7 +1600,7 @@ test "drawTextBuffer - syntax style destroy does not crash" {
     var style = try ss.SyntaxStyle.init(std.testing.allocator);
     tb.setSyntaxStyle(style);
 
-    const style_id = try style.registerStyle("test", .{ 1.0, 0.0, 0.0, 1.0 }, null, 0);
+    const style_id = try style.registerStyle("test", .{ 1.0, 0.0, 0.0, 1.0, 0.0 }, null, 0);
     try tb.setText("Hello World");
     try tb.addHighlightByCharRange(0, 5, style_id, 1, 0);
 
@@ -1612,7 +1612,7 @@ test "drawTextBuffer - syntax style destroy does not crash" {
     );
     defer opt_buffer.deinit();
 
-    try opt_buffer.clear(.{ 0.0, 0.0, 0.0, 1.0 }, 32);
+    try opt_buffer.clear(.{ 0.0, 0.0, 0.0, 1.0, 0.0 }, 32);
     try opt_buffer.drawTextBuffer(view, 0, 0);
 
     var out_buffer: [100]u8 = undefined;
@@ -1624,7 +1624,7 @@ test "drawTextBuffer - syntax style destroy does not crash" {
 
     try std.testing.expect(tb.getSyntaxStyle() == null);
 
-    try opt_buffer.clear(.{ 0.0, 0.0, 0.0, 1.0 }, 32);
+    try opt_buffer.clear(.{ 0.0, 0.0, 0.0, 1.0, 0.0 }, 32);
     try opt_buffer.drawTextBuffer(view, 0, 0);
 
     const written2 = try opt_buffer.writeResolvedChars(&out_buffer, false);
@@ -1656,7 +1656,7 @@ test "drawTextBuffer - tabs are rendered as spaces (empty cells)" {
     );
     defer opt_buffer.deinit();
 
-    try opt_buffer.clear(.{ 0.0, 0.0, 0.0, 1.0 }, 32);
+    try opt_buffer.clear(.{ 0.0, 0.0, 0.0, 1.0, 0.0 }, 32);
     try opt_buffer.drawTextBuffer(view, 0, 0);
 
     const cell_0 = opt_buffer.get(0, 0) orelse unreachable;
@@ -1695,7 +1695,7 @@ test "drawTextBuffer - tab indicator renders with correct color" {
     try tb.setText("A\tB");
 
     view.setTabIndicator(@as(u32, '→'));
-    view.setTabIndicatorColor(RGBA{ 0.25, 0.25, 0.25, 1.0 });
+    view.setTabIndicatorColor(RGBA{ 0.25, 0.25, 0.25, 1.0, 0.0 });
 
     var opt_buffer = try OptimizedBuffer.init(
         std.testing.allocator,
@@ -1705,7 +1705,7 @@ test "drawTextBuffer - tab indicator renders with correct color" {
     );
     defer opt_buffer.deinit();
 
-    try opt_buffer.clear(.{ 0.0, 0.0, 0.0, 1.0 }, 32);
+    try opt_buffer.clear(.{ 0.0, 0.0, 0.0, 1.0, 0.0 }, 32);
     try opt_buffer.drawTextBuffer(view, 0, 0);
 
     const cell_0 = opt_buffer.get(0, 0) orelse unreachable;
@@ -1754,7 +1754,7 @@ test "drawTextBuffer - tab without indicator renders as spaces" {
     );
     defer opt_buffer.deinit();
 
-    try opt_buffer.clear(.{ 0.0, 0.0, 0.0, 1.0 }, 32);
+    try opt_buffer.clear(.{ 0.0, 0.0, 0.0, 1.0, 0.0 }, 32);
     try opt_buffer.drawTextBuffer(view, 0, 0);
 
     const cell_0 = opt_buffer.get(0, 0) orelse unreachable;
@@ -1799,7 +1799,7 @@ test "drawTextBuffer - mixed ASCII and Unicode with emoji renders completely" {
     );
     defer opt_buffer.deinit();
 
-    try opt_buffer.clear(.{ 0.0, 0.0, 0.0, 1.0 }, 32);
+    try opt_buffer.clear(.{ 0.0, 0.0, 0.0, 1.0, 0.0 }, 32);
     try opt_buffer.drawTextBuffer(view, 0, 0);
 
     const cell_0 = opt_buffer.get(0, 0) orelse unreachable;
@@ -1933,7 +1933,7 @@ test "viewport width = 31 exactly - last character rendering" {
     );
     defer opt_buffer.deinit();
 
-    try opt_buffer.clear(.{ 0.0, 0.0, 0.0, 1.0 }, 32);
+    try opt_buffer.clear(.{ 0.0, 0.0, 0.0, 1.0, 0.0 }, 32);
     try opt_buffer.drawTextBuffer(view, 0, 0);
 
     // BUG CHECK: The last 's' at cell 30 should be present
@@ -1995,7 +1995,7 @@ test "drawTextBuffer - complex multilingual text with diverse scripts and emojis
     );
     defer opt_buffer.deinit();
 
-    try opt_buffer.clear(.{ 0.0, 0.0, 0.0, 1.0 }, 32);
+    try opt_buffer.clear(.{ 0.0, 0.0, 0.0, 1.0, 0.0 }, 32);
     try opt_buffer.drawTextBuffer(view, 0, 0);
 
     // Verify the text buffer can handle complex multilingual content
@@ -2047,7 +2047,7 @@ test "drawTextBuffer - complex multilingual text with diverse scripts and emojis
     try std.testing.expect(viewport_lines.len <= 20);
 
     // Verify rendering doesn't crash with complex emoji sequences
-    try opt_buffer.clear(.{ 0.0, 0.0, 0.0, 1.0 }, 32);
+    try opt_buffer.clear(.{ 0.0, 0.0, 0.0, 1.0, 0.0 }, 32);
     try opt_buffer.drawTextBuffer(view, 0, 0);
 
     // Test that line count is reasonable
@@ -2080,8 +2080,8 @@ test "setStyledText - highlight positioning with Unicode text" {
     const text_part4 = "please";
     const text_part5 = ".";
 
-    const fg_normal = [4]f32{ 1.0, 1.0, 1.0, 1.0 };
-    const bg_highlight = [4]f32{ 0.0, 1.0, 0.0, 1.0 }; // Green background
+    const fg_normal = [5]f32{ 1.0, 1.0, 1.0, 1.0, 0.0 };
+    const bg_highlight = [5]f32{ 0.0, 1.0, 0.0, 1.0, 0.0 }; // Green background
 
     const chunks = [_]StyledChunk{
         .{ .text_ptr = text_part1.ptr, .text_len = text_part1.len, .fg_ptr = @ptrCast(&fg_normal), .bg_ptr = null, .attributes = 0 },
@@ -2114,7 +2114,7 @@ test "setStyledText - highlight positioning with Unicode text" {
     );
     defer opt_buffer.deinit();
 
-    try opt_buffer.clear(.{ 0.0, 0.0, 0.0, 1.0 }, 32);
+    try opt_buffer.clear(.{ 0.0, 0.0, 0.0, 1.0, 0.0 }, 32);
     try opt_buffer.drawTextBuffer(view, 0, 0);
 
     // Check that "please" (6 characters) all have the green background
@@ -2162,10 +2162,10 @@ test "drawTextBuffer - multiple syntax highlights with various horizontal viewpo
     tb.setSyntaxStyle(style);
 
     // Register different color styles
-    const red_style = try style.registerStyle("red", RGBA{ 1.0, 0.0, 0.0, 1.0 }, null, 0);
-    const green_style = try style.registerStyle("green", RGBA{ 0.0, 1.0, 0.0, 1.0 }, null, 0);
-    const blue_style = try style.registerStyle("blue", RGBA{ 0.0, 0.0, 1.0, 1.0 }, null, 0);
-    const yellow_style = try style.registerStyle("yellow", RGBA{ 1.0, 1.0, 0.0, 1.0 }, null, 0);
+    const red_style = try style.registerStyle("red", RGBA{ 1.0, 0.0, 0.0, 1.0, 0.0 }, null, 0);
+    const green_style = try style.registerStyle("green", RGBA{ 0.0, 1.0, 0.0, 1.0, 0.0 }, null, 0);
+    const blue_style = try style.registerStyle("blue", RGBA{ 0.0, 0.0, 1.0, 1.0, 0.0 }, null, 0);
+    const yellow_style = try style.registerStyle("yellow", RGBA{ 1.0, 1.0, 0.0, 1.0, 0.0 }, null, 0);
 
     // Text: "const x = function(y) { return y * 2; }"
     const test_text = "const x = function(y) { return y * 2; }";
@@ -2193,7 +2193,7 @@ test "drawTextBuffer - multiple syntax highlights with various horizontal viewpo
         var opt_buffer = try OptimizedBuffer.init(std.testing.allocator, 40, 1, .{ .pool = pool, .width_method = .unicode });
         defer opt_buffer.deinit();
 
-        try opt_buffer.clear(.{ 0.0, 0.0, 0.0, 1.0 }, 32);
+        try opt_buffer.clear(.{ 0.0, 0.0, 0.0, 1.0, 0.0 }, 32);
         try opt_buffer.drawTextBuffer(view, 0, 0);
 
         // Check "const" is red
@@ -2221,7 +2221,7 @@ test "drawTextBuffer - multiple syntax highlights with various horizontal viewpo
         var opt_buffer = try OptimizedBuffer.init(std.testing.allocator, 20, 1, .{ .pool = pool, .width_method = .unicode });
         defer opt_buffer.deinit();
 
-        try opt_buffer.clear(.{ 0.0, 0.0, 0.0, 1.0 }, 32);
+        try opt_buffer.clear(.{ 0.0, 0.0, 0.0, 1.0, 0.0 }, 32);
         try opt_buffer.drawTextBuffer(view, 0, 0);
 
         // Buffer shows characters 3-22 from source: "st x = function(y) {"
@@ -2268,7 +2268,7 @@ test "drawTextBuffer - multiple syntax highlights with various horizontal viewpo
         var opt_buffer = try OptimizedBuffer.init(std.testing.allocator, 20, 1, .{ .pool = pool, .width_method = .unicode });
         defer opt_buffer.deinit();
 
-        try opt_buffer.clear(.{ 0.0, 0.0, 0.0, 1.0 }, 32);
+        try opt_buffer.clear(.{ 0.0, 0.0, 0.0, 1.0, 0.0 }, 32);
         try opt_buffer.drawTextBuffer(view, 0, 0);
 
         // Actual rendering shows: " y * 2; }"
@@ -2301,7 +2301,7 @@ test "drawTextBuffer - syntax highlighting with horizontal viewport offset" {
     tb.setSyntaxStyle(style);
 
     // Register a red style
-    const red_style_id = try style.registerStyle("keyword", RGBA{ 1.0, 0.0, 0.0, 1.0 }, null, 0);
+    const red_style_id = try style.registerStyle("keyword", RGBA{ 1.0, 0.0, 0.0, 1.0, 0.0 }, null, 0);
 
     // Text: "const x = 1"
     // Highlight "const" (characters 0-5) in red
@@ -2321,11 +2321,11 @@ test "drawTextBuffer - syntax highlighting with horizontal viewport offset" {
     );
     defer opt_buffer.deinit();
 
-    try opt_buffer.clear(.{ 0.0, 0.0, 0.0, 1.0 }, 32);
+    try opt_buffer.clear(.{ 0.0, 0.0, 0.0, 1.0, 0.0 }, 32);
     try opt_buffer.drawTextBuffer(view, 0, 0);
 
     const epsilon: f32 = 0.01;
-    const red_fg = RGBA{ 1.0, 0.0, 0.0, 1.0 };
+    const red_fg = RGBA{ 1.0, 0.0, 0.0, 1.0, 0.0 };
 
     // Check that 's' at buffer position 0 is RED
     const cell_0 = opt_buffer.get(0, 0) orelse unreachable;
@@ -2389,11 +2389,11 @@ test "drawTextBuffer - setStyledText with multiple colors and horizontal scrolli
     const chunk7_text = "2";
     const chunk8_text = "; }";
 
-    const red_color = [4]f32{ 1.0, 0.0, 0.0, 1.0 };
-    const white_color = [4]f32{ 1.0, 1.0, 1.0, 1.0 };
-    const green_color = [4]f32{ 0.0, 1.0, 0.0, 1.0 };
-    const blue_color = [4]f32{ 0.0, 0.0, 1.0, 1.0 };
-    const yellow_color = [4]f32{ 1.0, 1.0, 0.0, 1.0 };
+    const red_color = [5]f32{ 1.0, 0.0, 0.0, 1.0, 0.0 };
+    const white_color = [5]f32{ 1.0, 1.0, 1.0, 1.0, 0.0 };
+    const green_color = [5]f32{ 0.0, 1.0, 0.0, 1.0, 0.0 };
+    const blue_color = [5]f32{ 0.0, 0.0, 1.0, 1.0, 0.0 };
+    const yellow_color = [5]f32{ 1.0, 1.0, 0.0, 1.0, 0.0 };
 
     const chunks = [_]StyledChunk{
         .{ .text_ptr = chunk1_text.ptr, .text_len = chunk1_text.len, .fg_ptr = @ptrCast(&red_color), .bg_ptr = null, .attributes = 0 },
@@ -2450,7 +2450,7 @@ test "drawTextBuffer - setStyledText with multiple colors and horizontal scrolli
         var opt_buffer = try OptimizedBuffer.init(std.testing.allocator, 40, 1, .{ .pool = pool, .width_method = .unicode });
         defer opt_buffer.deinit();
 
-        try opt_buffer.clear(.{ 0.0, 0.0, 0.0, 1.0 }, 32);
+        try opt_buffer.clear(.{ 0.0, 0.0, 0.0, 1.0, 0.0 }, 32);
         try opt_buffer.drawTextBuffer(view, 0, 0);
 
         const cell_0 = opt_buffer.get(0, 0) orelse unreachable; // 'c' from "const"
@@ -2468,7 +2468,7 @@ test "drawTextBuffer - setStyledText with multiple colors and horizontal scrolli
         var opt_buffer = try OptimizedBuffer.init(std.testing.allocator, 20, 1, .{ .pool = pool, .width_method = .unicode });
         defer opt_buffer.deinit();
 
-        try opt_buffer.clear(.{ 0.0, 0.0, 0.0, 1.0 }, 32);
+        try opt_buffer.clear(.{ 0.0, 0.0, 0.0, 1.0, 0.0 }, 32);
         try opt_buffer.drawTextBuffer(view, 0, 0);
 
         // At x=5, showing chars 5-24: " x = function(y) { "
@@ -2489,7 +2489,7 @@ test "drawTextBuffer - setStyledText with multiple colors and horizontal scrolli
         var opt_buffer = try OptimizedBuffer.init(std.testing.allocator, 20, 1, .{ .pool = pool, .width_method = .unicode });
         defer opt_buffer.deinit();
 
-        try opt_buffer.clear(.{ 0.0, 0.0, 0.0, 1.0 }, 32);
+        try opt_buffer.clear(.{ 0.0, 0.0, 0.0, 1.0, 0.0 }, 32);
         try opt_buffer.drawTextBuffer(view, 0, 0);
 
         // At x=15, showing chars 15-34: "ion(y) { return y * "
@@ -2527,7 +2527,7 @@ test "drawTextBuffer - setStyledText with multiple colors and horizontal scrolli
         var opt_buffer = try OptimizedBuffer.init(std.testing.allocator, 20, 1, .{ .pool = pool, .width_method = .unicode });
         defer opt_buffer.deinit();
 
-        try opt_buffer.clear(.{ 0.0, 0.0, 0.0, 1.0 }, 32);
+        try opt_buffer.clear(.{ 0.0, 0.0, 0.0, 1.0, 0.0 }, 32);
         try opt_buffer.drawTextBuffer(view, 0, 0);
 
         // At x=25, showing chars 25-44: "eturn y * 2; }"
@@ -2576,7 +2576,7 @@ test "drawTextBuffer - selection with horizontal viewport offset" {
     view.setViewport(.{ .x = 5, .y = 0, .width = 10, .height = 1 });
 
     // Select characters at positions 7-12 in the original text ("789AB")
-    view.setSelection(7, 12, RGBA{ 1.0, 1.0, 0.0, 1.0 }, RGBA{ 0.0, 0.0, 0.0, 1.0 });
+    view.setSelection(7, 12, RGBA{ 1.0, 1.0, 0.0, 1.0, 0.0 }, RGBA{ 0.0, 0.0, 0.0, 1.0, 0.0 });
 
     var opt_buffer = try OptimizedBuffer.init(
         std.testing.allocator,
@@ -2586,7 +2586,7 @@ test "drawTextBuffer - selection with horizontal viewport offset" {
     );
     defer opt_buffer.deinit();
 
-    try opt_buffer.clear(.{ 0.0, 0.0, 0.0, 1.0 }, 32);
+    try opt_buffer.clear(.{ 0.0, 0.0, 0.0, 1.0, 0.0 }, 32);
     try opt_buffer.drawTextBuffer(view, 0, 0);
 
     // The viewport shows positions 5-14 of the text
@@ -2604,7 +2604,7 @@ test "drawTextBuffer - selection with horizontal viewport offset" {
     // Position 9: 'E' - not highlighted
 
     const epsilon: f32 = 0.01;
-    const yellow_bg = RGBA{ 1.0, 1.0, 0.0, 1.0 };
+    const yellow_bg = RGBA{ 1.0, 1.0, 0.0, 1.0, 0.0 };
 
     // Check non-highlighted cells
     const cell_0 = opt_buffer.get(0, 0) orelse unreachable;
@@ -2668,8 +2668,8 @@ test "drawTextBuffer - syntax highlight respects truncation" {
     defer style.deinit();
     tb.setSyntaxStyle(style);
 
-    const red_style = try style.registerStyle("red", RGBA{ 1.0, 0.0, 0.0, 1.0 }, null, 0);
-    const green_style = try style.registerStyle("green", RGBA{ 0.0, 1.0, 0.0, 1.0 }, null, 0);
+    const red_style = try style.registerStyle("red", RGBA{ 1.0, 0.0, 0.0, 1.0, 0.0 }, null, 0);
+    const green_style = try style.registerStyle("green", RGBA{ 0.0, 1.0, 0.0, 1.0, 0.0 }, null, 0);
 
     try tb.setText("0123456789ABCDEFGHIJ");
     try tb.addHighlightByCharRange(4, 7, red_style, 1, 0); // highlight "456"
@@ -2688,7 +2688,7 @@ test "drawTextBuffer - syntax highlight respects truncation" {
     );
     defer opt_buffer.deinit();
 
-    try opt_buffer.clear(.{ 0.0, 0.0, 0.0, 1.0 }, 32);
+    try opt_buffer.clear(.{ 0.0, 0.0, 0.0, 1.0, 0.0 }, 32);
     try opt_buffer.drawTextBuffer(view, 0, 0);
 
     const epsilon: f32 = 0.01;
@@ -2728,8 +2728,8 @@ test "drawTextBuffer - highlight spanning ellipsis continues on suffix" {
     defer style.deinit();
     tb.setSyntaxStyle(style);
 
-    const magenta_style = try style.registerStyle("magenta", RGBA{ 1.0, 0.0, 1.0, 1.0 }, null, 0);
-    const green_style = try style.registerStyle("green", RGBA{ 0.0, 1.0, 0.0, 1.0 }, null, 0);
+    const magenta_style = try style.registerStyle("magenta", RGBA{ 1.0, 0.0, 1.0, 1.0, 0.0 }, null, 0);
+    const green_style = try style.registerStyle("green", RGBA{ 0.0, 1.0, 0.0, 1.0, 0.0 }, null, 0);
 
     try tb.setText("0123456789ABCDEFGHIJ");
     try tb.addHighlightByCharRange(2, 18, magenta_style, 1, 0); // spans through ellipsis
@@ -2748,7 +2748,7 @@ test "drawTextBuffer - highlight spanning ellipsis continues on suffix" {
     );
     defer opt_buffer.deinit();
 
-    try opt_buffer.clear(.{ 0.0, 0.0, 0.0, 1.0 }, 32);
+    try opt_buffer.clear(.{ 0.0, 0.0, 0.0, 1.0, 0.0 }, 32);
     try opt_buffer.drawTextBuffer(view, 0, 0);
 
     const epsilon: f32 = 0.01;
@@ -2794,7 +2794,7 @@ test "drawTextBuffer - selection respects truncation" {
     view.setViewport(.{ .x = 0, .y = 0, .width = 10, .height = 1 });
 
     // Select across the ellipsis and suffix
-    view.setSelection(2, 19, RGBA{ 1.0, 1.0, 0.0, 1.0 }, RGBA{ 0.0, 0.0, 0.0, 1.0 });
+    view.setSelection(2, 19, RGBA{ 1.0, 1.0, 0.0, 1.0, 0.0 }, RGBA{ 0.0, 0.0, 0.0, 1.0, 0.0 });
 
     var opt_buffer = try OptimizedBuffer.init(
         std.testing.allocator,
@@ -2804,11 +2804,11 @@ test "drawTextBuffer - selection respects truncation" {
     );
     defer opt_buffer.deinit();
 
-    try opt_buffer.clear(.{ 0.0, 0.0, 0.0, 1.0 }, 32);
+    try opt_buffer.clear(.{ 0.0, 0.0, 0.0, 1.0, 0.0 }, 32);
     try opt_buffer.drawTextBuffer(view, 0, 0);
 
     const epsilon: f32 = 0.01;
-    const yellow_bg = RGBA{ 1.0, 1.0, 0.0, 1.0 };
+    const yellow_bg = RGBA{ 1.0, 1.0, 0.0, 1.0, 0.0 };
 
     const cell_0 = opt_buffer.get(0, 0) orelse unreachable;
     try std.testing.expectEqual(@as(u32, '0'), cell_0.char);
@@ -2869,7 +2869,7 @@ test "drawTextBuffer - truncation selection does not overshoot multiline" {
     view.setViewport(.{ .x = 0, .y = 0, .width = 10, .height = 2 });
 
     // Select from line 1 col 2 through line 2 col 5 (exclusive)
-    view.setSelection(2, 26, RGBA{ 1.0, 1.0, 0.0, 1.0 }, RGBA{ 0.0, 0.0, 0.0, 1.0 });
+    view.setSelection(2, 26, RGBA{ 1.0, 1.0, 0.0, 1.0, 0.0 }, RGBA{ 0.0, 0.0, 0.0, 1.0, 0.0 });
 
     var opt_buffer = try OptimizedBuffer.init(
         std.testing.allocator,
@@ -2879,11 +2879,11 @@ test "drawTextBuffer - truncation selection does not overshoot multiline" {
     );
     defer opt_buffer.deinit();
 
-    try opt_buffer.clear(.{ 0.0, 0.0, 0.0, 1.0 }, 32);
+    try opt_buffer.clear(.{ 0.0, 0.0, 0.0, 1.0, 0.0 }, 32);
     try opt_buffer.drawTextBuffer(view, 0, 0);
 
     const epsilon: f32 = 0.01;
-    const yellow_bg = RGBA{ 1.0, 1.0, 0.0, 1.0 };
+    const yellow_bg = RGBA{ 1.0, 1.0, 0.0, 1.0, 0.0 };
 
     const line2_cell_0 = opt_buffer.get(0, 1) orelse unreachable;
     try std.testing.expectEqual(@as(u32, 'k'), line2_cell_0.char);
@@ -2943,7 +2943,7 @@ test "drawTextBuffer - Chinese text with wrapping no stray bytes" {
     );
     defer opt_buffer.deinit();
 
-    try opt_buffer.clear(.{ 0.0, 0.0, 0.0, 1.0 }, 32);
+    try opt_buffer.clear(.{ 0.0, 0.0, 0.0, 1.0, 0.0 }, 32);
     try opt_buffer.drawTextBuffer(view, 0, 0);
 
     // Write the rendered buffer to check for stray bytes
@@ -3012,7 +3012,7 @@ test "drawTextBuffer - Chinese text WITHOUT wrapping no duplicate chunks" {
     );
     defer opt_buffer.deinit();
 
-    try opt_buffer.clear(.{ 0.0, 0.0, 0.0, 1.0 }, 32);
+    try opt_buffer.clear(.{ 0.0, 0.0, 0.0, 1.0, 0.0 }, 32);
     try opt_buffer.drawTextBuffer(view, 0, 0);
 
     // Write the rendered buffer
@@ -3066,7 +3066,7 @@ test "drawTextBuffer - Chinese text with CHAR wrapping no stray bytes" {
     );
     defer opt_buffer.deinit();
 
-    try opt_buffer.clear(.{ 0.0, 0.0, 0.0, 1.0 }, 32);
+    try opt_buffer.clear(.{ 0.0, 0.0, 0.0, 1.0, 0.0 }, 32);
     try opt_buffer.drawTextBuffer(view, 0, 0);
 
     // Write the rendered buffer to check for stray bytes
@@ -3111,7 +3111,7 @@ test "drawTextBuffer - word wrap CJK mixed text without break points" {
     );
     defer opt_buffer.deinit();
 
-    try opt_buffer.clear(.{ 0.0, 0.0, 0.0, 1.0 }, 32);
+    try opt_buffer.clear(.{ 0.0, 0.0, 0.0, 1.0, 0.0 }, 32);
     try opt_buffer.drawTextBuffer(view, 0, 0);
 
     var out_buffer: [1000]u8 = undefined;
@@ -3158,7 +3158,7 @@ test "drawTextBuffer - word wrap CJK text preserves UTF-8 boundaries" {
     );
     defer opt_buffer.deinit();
 
-    try opt_buffer.clear(.{ 0.0, 0.0, 0.0, 1.0 }, 32);
+    try opt_buffer.clear(.{ 0.0, 0.0, 0.0, 1.0, 0.0 }, 32);
     try opt_buffer.drawTextBuffer(view, 0, 0);
 
     var out_buffer: [1000]u8 = undefined;
@@ -3213,7 +3213,7 @@ test "drawTextBuffer - Thai ว่ grapheme in quotes occupies one cell" {
     );
     defer opt_buffer.deinit();
 
-    try opt_buffer.clear(.{ 0.0, 0.0, 0.0, 1.0 }, 32);
+    try opt_buffer.clear(.{ 0.0, 0.0, 0.0, 1.0, 0.0 }, 32);
     try opt_buffer.drawTextBuffer(view, 0, 0);
 
     const cell_0 = opt_buffer.get(0, 0) orelse unreachable;
