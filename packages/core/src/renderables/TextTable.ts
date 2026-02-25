@@ -15,6 +15,38 @@ import type { RenderContext } from "../types"
 // measuring is introduced later, table sizing remains stable.
 const MEASURE_HEIGHT = 10_000
 
+const OTUI_SELECTION_DEBUG_ENABLED = (() => {
+  const raw = process.env.OTUI_DEBUG_SELECTION
+  if (!raw) return false
+  const normalized = raw.toLowerCase()
+  return normalized === "1" || normalized === "true" || normalized === "yes" || normalized === "on"
+})()
+
+function textTableSelectionDebug(message: string, details?: Record<string, unknown>): void {
+  if (!OTUI_SELECTION_DEBUG_ENABLED) return
+  if (details) {
+    console.error(`[selection-debug][TextTable] ${message}`, details)
+    return
+  }
+  console.error(`[selection-debug][TextTable] ${message}`)
+}
+
+function formatSelectionBounds(selection: LocalSelectionBounds | null): Record<string, unknown> | null {
+  if (!selection) return null
+  return {
+    anchorX: selection.anchorX,
+    anchorY: selection.anchorY,
+    focusX: selection.focusX,
+    focusY: selection.focusY,
+    isActive: selection.isActive,
+  }
+}
+
+function clipDebugText(value: string, maxLength: number = 60): string {
+  if (value.length <= maxLength) return value
+  return `${value.slice(0, maxLength)}...`
+}
+
 export type TextTableCellContent = TextChunk[] | null | undefined
 export type TextTableContent = TextTableCellContent[][]
 export type TextTableColumnWidthMode = "content" | "fill"
@@ -261,13 +293,39 @@ export class TextTableRenderable extends Renderable {
   }
 
   public shouldStartSelection(x: number, y: number): boolean {
-    if (!this.selectable) return false
+    if (!this.selectable) {
+      textTableSelectionDebug("shouldStartSelection blocked: renderable not selectable", {
+        globalX: x,
+        globalY: y,
+      })
+      return false
+    }
 
     this.ensureLayoutReady()
 
     const localX = x - this.x
     const localY = y - this.y
-    return this.getCellAtLocalPosition(localX, localY) !== null
+    const hitCell = this.getCellAtLocalPosition(localX, localY)
+    const hitCellText =
+      hitCell !== null ? (this._cells[hitCell.rowIdx]?.[hitCell.colIdx]?.textBufferView.getPlainText() ?? "") : ""
+
+    textTableSelectionDebug("shouldStartSelection", {
+      globalX: x,
+      globalY: y,
+      localX,
+      localY,
+      tableX: this.x,
+      tableY: this.y,
+      tableWidth: this._layout.tableWidth,
+      tableHeight: this._layout.tableHeight,
+      rowCount: this._rowCount,
+      columnCount: this._columnCount,
+      hitCell,
+      hitCellTextLength: hitCellText.length,
+      hitCellTextPreview: clipDebugText(hitCellText),
+    })
+
+    return hitCell !== null
   }
 
   public onSelectionChanged(selection: Selection | null): boolean {
@@ -277,6 +335,23 @@ export class TextTableRenderable extends Renderable {
     const localSelection = convertGlobalToLocalSelection(selection, this.x, this.y)
     this._lastLocalSelection = localSelection
     const dirtyRows = this.getDirtySelectionRowRange(previousLocalSelection, localSelection)
+
+    textTableSelectionDebug("onSelectionChanged begin", {
+      tableX: this.x,
+      tableY: this.y,
+      globalSelection: selection
+        ? {
+            anchor: selection.anchor,
+            focus: selection.focus,
+            isStart: selection.isStart,
+            isDragging: selection.isDragging,
+            isActive: selection.isActive,
+          }
+        : null,
+      previousLocalSelection: formatSelectionBounds(previousLocalSelection),
+      localSelection: formatSelectionBounds(localSelection),
+      dirtyRows,
+    })
 
     if (!localSelection?.isActive) {
       this.resetCellSelections()
@@ -288,7 +363,20 @@ export class TextTableRenderable extends Renderable {
       this.redrawSelectionRows(dirtyRows.firstRow, dirtyRows.lastRow)
     }
 
-    return this.hasSelection()
+    const hasSelection = this.hasSelection()
+    const selectedCellsByRow = this._cells.map((row, rowIdx) => ({
+      rowIdx,
+      selectedCellCount: row.reduce((count, cell) => (cell.textBufferView.hasSelection() ? count + 1 : count), 0),
+    }))
+
+    textTableSelectionDebug("onSelectionChanged end", {
+      hasSelection,
+      dirtyRows,
+      selectedCellsByRow,
+      selectedTextPreview: clipDebugText(this.getSelectedText(), 200),
+    })
+
+    return hasSelection
   }
 
   public hasSelection(): boolean {
@@ -908,12 +996,41 @@ export class TextTableRenderable extends Renderable {
 
   private ensureLayoutReady(): void {
     if (!this._layoutDirty) return
+
+    textTableSelectionDebug("ensureLayoutReady rebuilding layout", {
+      width: this.width,
+      height: this.height,
+      rowCount: this._rowCount,
+      columnCount: this._columnCount,
+    })
+
     this.rebuildLayoutForCurrentWidth()
+
+    textTableSelectionDebug("ensureLayoutReady rebuilt layout", {
+      tableWidth: this._layout.tableWidth,
+      tableHeight: this._layout.tableHeight,
+      columnWidths: this._layout.columnWidths,
+      rowHeights: this._layout.rowHeights,
+      columnOffsets: this._layout.columnOffsets,
+      rowOffsets: this._layout.rowOffsets,
+    })
   }
 
   private getCellAtLocalPosition(localX: number, localY: number): CellPosition | null {
-    if (this._rowCount === 0 || this._columnCount === 0) return null
+    if (this._rowCount === 0 || this._columnCount === 0) {
+      textTableSelectionDebug("getCellAtLocalPosition miss: empty table", {
+        localX,
+        localY,
+      })
+      return null
+    }
     if (localX < 0 || localY < 0 || localX >= this._layout.tableWidth || localY >= this._layout.tableHeight) {
+      textTableSelectionDebug("getCellAtLocalPosition miss: outside table bounds", {
+        localX,
+        localY,
+        tableWidth: this._layout.tableWidth,
+        tableHeight: this._layout.tableHeight,
+      })
       return null
     }
 
@@ -927,7 +1044,18 @@ export class TextTableRenderable extends Renderable {
       }
     }
 
-    if (rowIdx < 0) return null
+    if (rowIdx < 0) {
+      textTableSelectionDebug("getCellAtLocalPosition miss: no row", {
+        localX,
+        localY,
+        rowBands: this._layout.rowHeights.map((height, idx) => {
+          const top = (this._layout.rowOffsets[idx] ?? 0) + 1
+          const bottom = top + height - 1
+          return { idx, top, bottom }
+        }),
+      })
+      return null
+    }
 
     let colIdx = -1
     for (let idx = 0; idx < this._columnCount; idx++) {
@@ -939,17 +1067,50 @@ export class TextTableRenderable extends Renderable {
       }
     }
 
-    if (colIdx < 0) return null
+    if (colIdx < 0) {
+      textTableSelectionDebug("getCellAtLocalPosition miss: no column", {
+        localX,
+        localY,
+        rowIdx,
+        columnBands: this._layout.columnWidths.map((width, idx) => {
+          const left = (this._layout.columnOffsets[idx] ?? 0) + 1
+          const right = left + width - 1
+          return { idx, left, right }
+        }),
+      })
+      return null
+    }
 
-    return { rowIdx, colIdx }
+    const result = { rowIdx, colIdx }
+    textTableSelectionDebug("getCellAtLocalPosition hit", {
+      localX,
+      localY,
+      rowIdx,
+      colIdx,
+    })
+
+    return result
   }
 
   private applySelectionToCells(localSelection: LocalSelectionBounds, isStart: boolean): void {
+    const minSelX = Math.min(localSelection.anchorX, localSelection.focusX)
+    const maxSelX = Math.max(localSelection.anchorX, localSelection.focusX)
     const minSelY = Math.min(localSelection.anchorY, localSelection.focusY)
     const maxSelY = Math.max(localSelection.anchorY, localSelection.focusY)
 
     const firstRow = this.findRowForLocalY(minSelY)
     const lastRow = this.findRowForLocalY(maxSelY)
+
+    textTableSelectionDebug("applySelectionToCells", {
+      localSelection: formatSelectionBounds(localSelection),
+      selectionRect: { left: minSelX, right: maxSelX, top: minSelY, bottom: maxSelY },
+      isStart,
+      firstRow,
+      lastRow,
+      rowCount: this._rowCount,
+      columnCount: this._columnCount,
+      cellPadding: this._cellPadding,
+    })
 
     for (let rowIdx = 0; rowIdx < this._rowCount; rowIdx++) {
       if (rowIdx < firstRow || rowIdx > lastRow) {
@@ -957,23 +1118,43 @@ export class TextTableRenderable extends Renderable {
         continue
       }
 
+      const rowHeight = this._layout.rowHeights[rowIdx] ?? 1
       const cellTop = (this._layout.rowOffsets[rowIdx] ?? 0) + 1 + this._cellPadding
 
       for (let colIdx = 0; colIdx < this._columnCount; colIdx++) {
         const cell = this._cells[rowIdx]?.[colIdx]
         if (!cell) continue
 
+        const colWidth = this._layout.columnWidths[colIdx] ?? 1
         const cellLeft = (this._layout.columnOffsets[colIdx] ?? 0) + 1 + this._cellPadding
+        const contentWidth = Math.max(1, colWidth - this.getHorizontalCellPadding())
+        const contentHeight = Math.max(1, rowHeight - this.getVerticalCellPadding())
+        const cellRight = cellLeft + contentWidth - 1
+        const cellBottom = cellTop + contentHeight - 1
+        const intersectsCellRect = !(
+          maxSelX < cellLeft ||
+          minSelX > cellRight ||
+          maxSelY < cellTop ||
+          minSelY > cellBottom
+        )
 
         const anchorX = localSelection.anchorX - cellLeft
         const anchorY = localSelection.anchorY - cellTop
         const focusX = localSelection.focusX - cellLeft
         const focusY = localSelection.focusY - cellTop
 
+        let operationResult = false
         if (isStart) {
-          cell.textBufferView.setLocalSelection(anchorX, anchorY, focusX, focusY, this._selectionBg, this._selectionFg)
+          operationResult = cell.textBufferView.setLocalSelection(
+            anchorX,
+            anchorY,
+            focusX,
+            focusY,
+            this._selectionBg,
+            this._selectionFg,
+          )
         } else {
-          cell.textBufferView.updateLocalSelection(
+          operationResult = cell.textBufferView.updateLocalSelection(
             anchorX,
             anchorY,
             focusX,
@@ -982,21 +1163,81 @@ export class TextTableRenderable extends Renderable {
             this._selectionFg,
           )
         }
+
+        const hasSelection = cell.textBufferView.hasSelection()
+        const cellSelection = cell.textBufferView.getSelection()
+        const plainText = cell.textBufferView.getPlainText()
+        const measure = cell.textBufferView.measureForDimensions(contentWidth, MEASURE_HEIGHT)
+
+        textTableSelectionDebug("cell selection updated", {
+          rowIdx,
+          colIdx,
+          operation: isStart ? "setLocalSelection" : "updateLocalSelection",
+          operationResult,
+          cellLeft,
+          cellTop,
+          cellRight,
+          cellBottom,
+          contentWidth,
+          contentHeight,
+          anchorX,
+          anchorY,
+          focusX,
+          focusY,
+          intersectsCellRect,
+          hasSelection,
+          localSelection: cellSelection,
+          plainTextLength: plainText.length,
+          plainTextPreview: clipDebugText(plainText),
+          measure,
+        })
+
+        if (intersectsCellRect && !hasSelection) {
+          textTableSelectionDebug("cell intersected but no selection", {
+            rowIdx,
+            colIdx,
+            operationResult,
+            localSelection: cellSelection,
+            plainTextLength: plainText.length,
+            plainTextPreview: clipDebugText(plainText),
+            selectionRect: { left: minSelX, right: maxSelX, top: minSelY, bottom: maxSelY },
+            cellRect: { left: cellLeft, right: cellRight, top: cellTop, bottom: cellBottom },
+          })
+        }
       }
     }
   }
 
   private findRowForLocalY(localY: number): number {
-    if (this._rowCount === 0) return 0
-    if (localY < 0) return 0
+    if (this._rowCount === 0) {
+      textTableSelectionDebug("findRowForLocalY empty table", { localY })
+      return 0
+    }
+    if (localY < 0) {
+      textTableSelectionDebug("findRowForLocalY clamped to first row", { localY })
+      return 0
+    }
 
     for (let rowIdx = 0; rowIdx < this._rowCount; rowIdx++) {
       const rowStart = (this._layout.rowOffsets[rowIdx] ?? 0) + 1
       const rowEnd = rowStart + (this._layout.rowHeights[rowIdx] ?? 1) - 1
-      if (localY <= rowEnd) return rowIdx
+      if (localY <= rowEnd) {
+        textTableSelectionDebug("findRowForLocalY matched row", {
+          localY,
+          rowIdx,
+          rowStart,
+          rowEnd,
+        })
+        return rowIdx
+      }
     }
 
-    return this._rowCount - 1
+    const lastRow = this._rowCount - 1
+    textTableSelectionDebug("findRowForLocalY clamped to last row", {
+      localY,
+      lastRow,
+    })
+    return lastRow
   }
 
   private getSelectionRowRange(selection: LocalSelectionBounds | null): RowRange | null {
@@ -1032,9 +1273,13 @@ export class TextTableRenderable extends Renderable {
     if (!row) return
 
     for (const cell of row) {
-      if (!cell.textBufferView.hasSelection()) continue
       cell.textBufferView.resetLocalSelection()
     }
+
+    textTableSelectionDebug("resetRowSelection", {
+      rowIdx,
+      resetCount: row.length,
+    })
   }
 
   private resetCellSelections(): void {
