@@ -1001,6 +1001,13 @@ describe("TextTableRenderable", () => {
           "planned for this sprint once final reproducible examples are captured and linked to regression tracking tickets",
         ),
       ],
+      [
+        cell(
+          "Performance sweep of wrapping algorithm under large datasets to confirm stable frame times during rapid key toggling",
+        ),
+        cell("runtime performance task force"),
+        cell("scheduled after review, with benchmark runs on laptop and desktop terminals at 200-plus column widths"),
+      ],
     ]
 
     const unicodeContent: TextTableContent = [
@@ -1015,6 +1022,18 @@ describe("TextTableRenderable", () => {
         cell("emoji-and-symbols"),
         cell(
           "Faces 😀😃😄😁😆 plus symbols 🧪📦🛰️🔧📊 mixed with version tags like release-candidate-build-2026-02-very-long-token-without-breaks to ensure char wrapping remains stable and no glyph alignment issues appear at column boundaries",
+        ),
+      ],
+      [
+        cell("long-cjk-phrase"),
+        cell(
+          "長文の日本語テキストと中文段落和한국어문장을連続して配置し、その後に additional English context describing renderer behavior, border intersection handling, and selection extraction so that this single cell remains a reliable wrapping torture test.",
+        ),
+      ],
+      [
+        cell("mixed-punctuation"),
+        cell(
+          "Wrap behavior with punctuation-heavy content: [alpha]{beta}(gamma)<delta>|epsilon| then repeated fragments, commas, semicolons, and slashes to verify token boundaries do not break border drawing logic or spacing consistency in neighboring columns.",
         ),
       ],
     ]
@@ -1093,6 +1112,7 @@ describe("TextTableRenderable", () => {
 
     resizeRenderer(72, 38)
     await renderOnce()
+    await renderOnce()
 
     const primaryFrameAfterResize = captureRenderableFrame(primaryTable)
     const unicodeFrameAfterResize = captureRenderableFrame(unicodeTable)
@@ -1105,5 +1125,13 @@ describe("TextTableRenderable", () => {
 
     expect(primaryFrameAfterResize).toBe(expectedPrimaryFrame)
     expect(unicodeFrameAfterResize).toBe(expectedUnicodeFrame)
+    const maxScrollTop = Math.max(0, tableAreaScrollBox.scrollHeight - tableAreaScrollBox.viewport.height)
+    expect(maxScrollTop).toBeGreaterThan(0)
+
+    tableAreaScrollBox.scrollTop = maxScrollTop
+    await renderOnce()
+
+    const scrolledToBottomFrame = captureFrame()
+    expect(scrolledToBottomFrame).toContain("epsilon")
   })
 })
