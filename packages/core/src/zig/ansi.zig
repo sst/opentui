@@ -1,7 +1,32 @@
 const std = @import("std");
 const Allocator = std.mem.Allocator;
 
-pub const RGBA = [4]f32;
+pub const RGBA = [5]f32;
+
+pub const ColorType = enum(u8) {
+    rgb = 0,
+    indexed = 1,
+    default = 2,
+};
+
+/// Encode a ColorType and palette index into a single f32 metadata value.
+/// Stored as RGBA[4] (the 5th float).
+pub fn encodeColorMeta(color_type: ColorType, index: u8) f32 {
+    return @as(f32, @floatFromInt(@as(u32, @intFromEnum(color_type)) * 256 + @as(u32, index)));
+}
+
+/// Decode ColorType from the metadata float (RGBA[4]).
+pub fn decodeColorType(meta: f32) ColorType {
+    return @enumFromInt(@as(u2, @intFromFloat(@floor(meta / 256.0))));
+}
+
+/// Decode palette index from the metadata float (RGBA[4]).
+pub fn decodeColorIndex(meta: f32) u8 {
+    return @intFromFloat(meta - @floor(meta / 256.0) * 256.0);
+}
+
+/// Metadata constant for RGB colors (no palette index).
+pub const RGB_META: f32 = 0.0;
 
 pub const AnsiError = error{
     InvalidFormat,
@@ -30,6 +55,22 @@ pub const ANSI = struct {
 
     pub fn bgColorOutput(writer: anytype, r: u8, g: u8, b: u8) AnsiError!void {
         writer.print("\x1b[48;2;{d};{d};{d}m", .{ r, g, b }) catch return AnsiError.WriteFailed;
+    }
+
+    pub fn fgIndexedColorOutput(writer: anytype, index: u8) AnsiError!void {
+        writer.print("\x1b[38;5;{d}m", .{index}) catch return AnsiError.WriteFailed;
+    }
+
+    pub fn bgIndexedColorOutput(writer: anytype, index: u8) AnsiError!void {
+        writer.print("\x1b[48;5;{d}m", .{index}) catch return AnsiError.WriteFailed;
+    }
+
+    pub fn fgDefaultOutput(writer: anytype) AnsiError!void {
+        writer.writeAll("\x1b[39m") catch return AnsiError.WriteFailed;
+    }
+
+    pub fn bgDefaultOutput(writer: anytype) AnsiError!void {
+        writer.writeAll("\x1b[49m") catch return AnsiError.WriteFailed;
     }
 
     // Text attribute constants
@@ -264,5 +305,58 @@ pub fn hsvToRgb(h: f32, s: f32, v: f32) RGBA {
         else => unreachable,
     };
 
-    return .{ rgb[0], rgb[1], rgb[2], 1.0 };
+    return .{ rgb[0], rgb[1], rgb[2], 1.0, RGB_META };
+}
+
+/// Convert a 256-color palette index to an approximate RGBA value.
+/// The returned RGBA has ColorType.indexed encoded in [4].
+pub fn indexToApproximateRgba(index: u8) RGBA {
+    const meta = encodeColorMeta(.indexed, index);
+
+    // Standard colors 0-7
+    if (index < 8) {
+        const standard = [8]RGBA{
+            .{ 0.0, 0.0, 0.0, 1.0, meta }, // 0: black
+            .{ 0.5, 0.0, 0.0, 1.0, meta }, // 1: red
+            .{ 0.0, 0.5, 0.0, 1.0, meta }, // 2: green
+            .{ 0.5, 0.5, 0.0, 1.0, meta }, // 3: yellow
+            .{ 0.0, 0.0, 0.5, 1.0, meta }, // 4: blue
+            .{ 0.5, 0.0, 0.5, 1.0, meta }, // 5: magenta
+            .{ 0.0, 0.5, 0.5, 1.0, meta }, // 6: cyan
+            .{ 0.75, 0.75, 0.75, 1.0, meta }, // 7: white
+        };
+        return standard[index];
+    }
+
+    // High-intensity colors 8-15
+    if (index < 16) {
+        const bright = [8]RGBA{
+            .{ 0.5, 0.5, 0.5, 1.0, meta }, // 8: bright black
+            .{ 1.0, 0.0, 0.0, 1.0, meta }, // 9: bright red
+            .{ 0.0, 1.0, 0.0, 1.0, meta }, // 10: bright green
+            .{ 1.0, 1.0, 0.0, 1.0, meta }, // 11: bright yellow
+            .{ 0.0, 0.0, 1.0, 1.0, meta }, // 12: bright blue
+            .{ 1.0, 0.0, 1.0, 1.0, meta }, // 13: bright magenta
+            .{ 0.0, 1.0, 1.0, 1.0, meta }, // 14: bright cyan
+            .{ 1.0, 1.0, 1.0, 1.0, meta }, // 15: bright white
+        };
+        return bright[index - 8];
+    }
+
+    // 216-color cube (indices 16-231): 6x6x6 RGB
+    if (index < 232) {
+        const ci = index - 16;
+        const ri = ci / 36;
+        const gi = (ci % 36) / 6;
+        const bi = ci % 6;
+        const r: f32 = if (ri == 0) 0.0 else (@as(f32, @floatFromInt(ri)) * 40.0 + 55.0) / 255.0;
+        const g: f32 = if (gi == 0) 0.0 else (@as(f32, @floatFromInt(gi)) * 40.0 + 55.0) / 255.0;
+        const b: f32 = if (bi == 0) 0.0 else (@as(f32, @floatFromInt(bi)) * 40.0 + 55.0) / 255.0;
+        return .{ r, g, b, 1.0, meta };
+    }
+
+    // Grayscale ramp (indices 232-255): 24 shades
+    // level = 8 + (index - 232) * 10, giving values 8, 18, 28, ..., 238
+    const gray = (@as(f32, @floatFromInt(index - 232)) * 10.0 + 8.0) / 255.0;
+    return .{ gray, gray, gray, 1.0, meta };
 }
