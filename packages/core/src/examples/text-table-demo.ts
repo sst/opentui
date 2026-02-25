@@ -37,18 +37,18 @@ let outerBorderEnabled = true
 let showBordersEnabled = true
 
 const PALETTE = {
-  bg: "#19040a",
-  panel: "#32101a",
-  tablePrimaryBg: "#240b12",
-  tableUnicodeBg: "#1f0c19",
-  text: "#fff5ee",
-  muted: "#ffc8b2",
-  soft: "#ffe2d2",
-  rose: "#ff7f9b",
-  ember: "#ff8a47",
-  flame: "#ff4a2a",
-  eye: "#8ef2db",
-  border: "#ff6f52",
+  bg: "#000000",
+  panel: "#0d0d0d",
+  tablePrimaryBg: "transparent",
+  tableUnicodeBg: "transparent",
+  text: "#f0f0f0",
+  muted: "#666666",
+  soft: "#bbbbbb",
+  rose: "#e8c97a",
+  ember: "#b8a0ff",
+  flame: "#ffffff",
+  eye: "#00d4aa",
+  border: "#2a2a2a",
 } as const
 
 const WRAP_MODES: Array<"none" | "word" | "char"> = ["none", "word", "char"]
@@ -231,7 +231,7 @@ function applyTableState(): void {
 }
 
 export function run(renderer: CliRenderer): void {
-  renderer.setBackgroundColor(PALETTE.bg)
+  renderer.setBackgroundColor("transparent")
 
   container = new BoxRenderable(renderer, {
     id: "text-table-demo-container",
@@ -240,7 +240,7 @@ export function run(renderer: CliRenderer): void {
     flexDirection: "column",
     padding: 1,
     gap: 1,
-    backgroundColor: PALETTE.bg,
+    backgroundColor: "transparent",
   })
   renderer.root.add(container)
 
