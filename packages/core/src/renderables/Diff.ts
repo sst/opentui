@@ -199,7 +199,7 @@ export class DiffRenderable extends Renderable {
   }
 
   private isInsideSide(target: Renderable | null, side: "left" | "right"): boolean {
-    const container = side === "left" ? this.leftSide : this.rightSide
+    const container = side === "left" ? this.leftCodeRenderable : this.rightCodeRenderable
     let current = target
     while (current) {
       if (current === container) return true
