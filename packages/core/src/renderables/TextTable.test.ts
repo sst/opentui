@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test"
 import { OptimizedBuffer } from "../buffer"
 import { RGBA } from "../lib/RGBA"
-import { bold, green, red } from "../lib/styled-text"
+import { bold, green, red, yellow } from "../lib/styled-text"
 import { createTestRenderer, type MockMouse, type TestRenderer } from "../testing/test-renderer"
 import type { CapturedFrame } from "../types"
 import { TextTableRenderable, type TextTableCellContent, type TextTableContent } from "./TextTable"
@@ -726,6 +726,48 @@ describe("TextTableRenderable", () => {
 
     expect(table.hasSelection()).toBe(false)
     expect(table.getSelectedText()).toBe("")
+  })
+
+  test("clears stale per-cell local selection state between drags", async () => {
+    const table = new TextTableRenderable(renderer, {
+      left: 1,
+      top: 8,
+      width: 44,
+      content: [
+        [[bold("Service")], [bold("Status")], [bold("Notes")]],
+        [cell("api"), [green("OK")], cell("latency 28ms")],
+        [cell("worker"), [yellow("DEGRADED")], cell("queue depth: 124")],
+        [cell("billing"), [red("ERROR")], cell("retrying payment provider")],
+      ],
+    })
+
+    renderer.root.add(table)
+    await renderOnce()
+
+    await mockMouse.drag(14, 9, 40, 18)
+    await renderOnce()
+
+    await mockMouse.click(27, 13)
+    await renderOnce()
+
+    await mockMouse.pressDown(13, 9)
+    await renderOnce()
+
+    await mockMouse.moveTo(13, 10)
+    await renderOnce()
+    await mockMouse.moveTo(13, 11)
+    await renderOnce()
+    await mockMouse.moveTo(13, 13)
+    await renderOnce()
+    await mockMouse.moveTo(13, 16)
+    await renderOnce()
+    await mockMouse.moveTo(13, 20)
+    await renderOnce()
+
+    await mockMouse.release(13, 20)
+    await renderOnce()
+
+    expect(table.getSelectedText()).toBe("tus\napi\tOK\nworker\tDEGRADED\nbilling\tERROR")
   })
 
   test("reverse drag across full table keeps left cells selected", async () => {
