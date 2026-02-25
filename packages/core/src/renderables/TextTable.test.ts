@@ -4,15 +4,20 @@ import { RGBA } from "../lib/RGBA"
 import { bold, green, red, yellow } from "../lib/styled-text"
 import { createTestRenderer, type MockMouse, type TestRenderer } from "../testing/test-renderer"
 import type { CapturedFrame } from "../types"
+import { BoxRenderable } from "./Box"
+import { ScrollBoxRenderable } from "./ScrollBox"
+import { TextRenderable } from "./Text"
 import { TextTableRenderable, type TextTableCellContent, type TextTableContent } from "./TextTable"
 
 const VERTICAL_BORDER_CP = "│".codePointAt(0)!
 const BORDER_CHAR_PATTERN = /[┌┐└┘├┤┬┴┼│─]/
+const decoder = new TextDecoder()
 
 let renderer: TestRenderer
 let renderOnce: () => Promise<void>
 let captureFrame: () => string
 let captureSpans: () => CapturedFrame
+let resizeRenderer: (width: number, height: number) => void
 let mockMouse: MockMouse
 
 function getCharAt(buffer: TestRenderer["currentRenderBuffer"], x: number, y: number): number {
@@ -53,6 +58,35 @@ function findVerticalBorderXs(buffer: TestRenderer["currentRenderBuffer"], y: nu
 
 function countChar(text: string, target: string): number {
   return [...text].filter((char) => char === target).length
+}
+
+function captureRenderableFrame(renderable: TextTableRenderable): string {
+  const frameBuffer = (renderable as any).frameBuffer as OptimizedBuffer | null
+  if (!frameBuffer) {
+    throw new Error(`Expected frame buffer to exist for ${renderable.id}`)
+  }
+
+  return decoder.decode(frameBuffer.getRealCharBytes(true))
+}
+
+async function renderStandaloneTableFrame(width: number, content: TextTableContent): Promise<string> {
+  const testRenderer = await createTestRenderer({ width, height: 120 })
+
+  try {
+    const table = new TextTableRenderable(testRenderer.renderer, {
+      left: 0,
+      top: 0,
+      width,
+      wrapMode: "word",
+      content,
+    })
+
+    testRenderer.renderer.root.add(table)
+    await testRenderer.renderOnce()
+    return captureRenderableFrame(table)
+  } finally {
+    testRenderer.renderer.destroy()
+  }
 }
 
 function findSelectablePoint(
@@ -108,6 +142,7 @@ beforeEach(async () => {
   renderOnce = testRenderer.renderOnce
   captureFrame = testRenderer.captureCharFrame
   captureSpans = testRenderer.captureSpans
+  resizeRenderer = testRenderer.resize
   mockMouse = testRenderer.mockMouse
 })
 
@@ -922,5 +957,153 @@ describe("TextTableRenderable", () => {
     expect(selected).toContain("Name")
     expect(selected).toContain("Alice")
     expect(selected).toContain("Bob")
+  })
+
+  test("keeps full wrapped table layouts after a wide-to-narrow demo-style resize", async () => {
+    resizeRenderer(108, 38)
+    await renderOnce()
+
+    const primaryContent: TextTableContent = [
+      [[bold("Task")], [bold("Owner")], [bold("ETA")]],
+      [
+        cell(
+          "Wrap regression in operational status dashboard with dynamic row heights and constrained layout validation",
+        ),
+        cell("core platform and runtime reliability squad"),
+        cell(
+          "done after validating none, word, and char wrap modes across narrow, medium, wide, and ultra-wide terminal widths",
+        ),
+      ],
+      [
+        cell(
+          "Unicode layout stabilization for mixed Latin, punctuation, symbols, and long identifiers in adjacent columns",
+        ),
+        cell("render pipeline maintainers with fallback shaping support"),
+        cell(
+          "in review with follow-up checks for border style transitions, cell padding variants, and selection range consistency",
+        ),
+      ],
+      [
+        cell(
+          "Snapshot pass for table rendering in content mode and fill mode with heavy and double border combinations",
+        ),
+        cell("qa automation and visual diff triage group"),
+        cell(
+          "today pending final baseline updates for oversized fixtures that intentionally stress wrapping behavior on high-resolution terminals",
+        ),
+      ],
+      [
+        cell(
+          "Document edge cases where long tokens without spaces force char wrapping and reveal per-cell clipping regressions",
+        ),
+        cell("developer experience and docs tooling"),
+        cell(
+          "planned for this sprint once final reproducible examples are captured and linked to regression tracking tickets",
+        ),
+      ],
+    ]
+
+    const unicodeContent: TextTableContent = [
+      [[bold("Column")], [bold("Wrapped Text")]],
+      [
+        cell("mixed-languages"),
+        cell(
+          "CJK and emoji wrapping stress case: こんにちは世界 and 안녕하세요 세계 and 你好，世界 followed by long English prose that keeps flowing to test whether each cell wraps naturally even when the terminal is extremely wide and the row still needs multiple visual lines for readability 🌍🚀",
+        ),
+      ],
+      [
+        cell("emoji-and-symbols"),
+        cell(
+          "Faces 😀😃😄😁😆 plus symbols 🧪📦🛰️🔧📊 mixed with version tags like release-candidate-build-2026-02-very-long-token-without-breaks to ensure char wrapping remains stable and no glyph alignment issues appear at column boundaries",
+        ),
+      ],
+    ]
+
+    const container = new BoxRenderable(renderer, {
+      width: "100%",
+      height: "100%",
+      flexDirection: "column",
+      padding: 1,
+      gap: 1,
+    })
+
+    const tableAreaScrollBox = new ScrollBoxRenderable(renderer, {
+      width: "100%",
+      flexGrow: 1,
+      flexShrink: 1,
+      scrollY: true,
+      scrollX: false,
+      border: false,
+      contentOptions: {
+        flexDirection: "column",
+        gap: 1,
+      },
+    })
+
+    const controlsText = new TextRenderable(renderer, {
+      content: "TextTable Demo",
+      wrapMode: "word",
+      selectable: false,
+    })
+
+    const primaryLabel = new TextRenderable(renderer, {
+      content: "Operational Table",
+      selectable: false,
+    })
+
+    const primaryTable = new TextTableRenderable(renderer, {
+      width: "100%",
+      wrapMode: "word",
+      content: primaryContent,
+    })
+
+    const unicodeLabel = new TextRenderable(renderer, {
+      content: "Unicode/CJK/Emoji Table",
+      selectable: false,
+    })
+
+    const unicodeTable = new TextTableRenderable(renderer, {
+      width: "100%",
+      wrapMode: "word",
+      content: unicodeContent,
+    })
+
+    const selectionBox = new BoxRenderable(renderer, {
+      width: "100%",
+      height: 10,
+      flexGrow: 0,
+      flexShrink: 0,
+      border: true,
+      title: "Selected Text",
+      titleAlignment: "left",
+      padding: 1,
+    })
+
+    tableAreaScrollBox.add(controlsText)
+    tableAreaScrollBox.add(primaryLabel)
+    tableAreaScrollBox.add(primaryTable)
+    tableAreaScrollBox.add(unicodeLabel)
+    tableAreaScrollBox.add(unicodeTable)
+
+    container.add(tableAreaScrollBox)
+    container.add(selectionBox)
+    renderer.root.add(container)
+
+    await renderOnce()
+
+    resizeRenderer(72, 38)
+    await renderOnce()
+
+    const primaryFrameAfterResize = captureRenderableFrame(primaryTable)
+    const unicodeFrameAfterResize = captureRenderableFrame(unicodeTable)
+
+    const expectedPrimaryFrame = await renderStandaloneTableFrame(primaryTable.width, primaryContent)
+    const expectedUnicodeFrame = await renderStandaloneTableFrame(unicodeTable.width, unicodeContent)
+
+    expect(expectedPrimaryFrame).toMatchSnapshot("demo resize expected primary table")
+    expect(expectedUnicodeFrame).toMatchSnapshot("demo resize expected unicode table")
+
+    expect(primaryFrameAfterResize).toBe(expectedPrimaryFrame)
+    expect(unicodeFrameAfterResize).toBe(expectedUnicodeFrame)
   })
 })

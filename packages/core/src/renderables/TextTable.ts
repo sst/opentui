@@ -144,7 +144,7 @@ export class TextTableRenderable extends Renderable {
   } satisfies Partial<TextTableOptions>
 
   constructor(ctx: RenderContext, options: TextTableOptions = {}) {
-    super(ctx, { ...options, buffered: true })
+    super(ctx, { ...options, flexShrink: options.flexShrink ?? 0, buffered: true })
 
     this._content = options.content ?? this._defaultOptions.content
     this._wrapMode = options.wrapMode ?? this._defaultOptions.wrapMode
