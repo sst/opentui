@@ -111,9 +111,9 @@ fn blendColors(overlay: RGBA, text: RGBA) RGBA {
         const g = overlay[1] * alpha;
         const b = overlay[2] * alpha;
         if (r < 0.01 and g < 0.01 and b < 0.01) {
-            return .{ 0.0, 0.0, 0.0, 0.0 };
+            return .{ 0.0, 0.0, 0.0, 0.0, ansi.RGB_META };
         }
-        return .{ r, g, b, alpha };
+        return .{ r, g, b, alpha, ansi.RGB_META };
     }
 
     const alpha = overlay[3];
@@ -136,7 +136,7 @@ fn blendColors(overlay: RGBA, text: RGBA) RGBA {
 
     const resultAlpha = alpha + text[3] * (1.0 - alpha);
 
-    return .{ blended[0], blended[1], blended[2], resultAlpha };
+    return .{ blended[0], blended[1], blended[2], resultAlpha, ansi.RGB_META };
 }
 
 /// Optimized buffer for terminal rendering
@@ -224,8 +224,8 @@ pub const OptimizedBuffer = struct {
         };
 
         @memset(self.buffer.char, 0);
-        @memset(self.buffer.fg, .{ 0.0, 0.0, 0.0, 0.0 });
-        @memset(self.buffer.bg, .{ 0.0, 0.0, 0.0, 0.0 });
+        @memset(self.buffer.fg, .{ 0.0, 0.0, 0.0, 0.0, ansi.RGB_META });
+        @memset(self.buffer.bg, .{ 0.0, 0.0, 0.0, 0.0, ansi.RGB_META });
         @memset(self.buffer.attributes, 0);
 
         return self;
@@ -386,7 +386,7 @@ pub const OptimizedBuffer = struct {
 
         // Always clear after resize to initialize cells (realloc doesn't zero memory)
         // This handles both growing (new cells are garbage) and shrinking (grapheme cleanup)
-        try self.clear(.{ 0.0, 0.0, 0.0, 1.0 }, null);
+        try self.clear(.{ 0.0, 0.0, 0.0, 1.0, ansi.RGB_META }, null);
     }
 
     fn coordsToIndex(self: *const OptimizedBuffer, x: u32, y: u32) u32 {
@@ -406,7 +406,7 @@ pub const OptimizedBuffer = struct {
         self.grapheme_tracker.clear();
         @memset(self.buffer.char, @intCast(cellChar));
         @memset(self.buffer.attributes, 0);
-        @memset(self.buffer.fg, .{ 1.0, 1.0, 1.0, 1.0 });
+        @memset(self.buffer.fg, .{ 1.0, 1.0, 1.0, 1.0, ansi.RGB_META });
         @memset(self.buffer.bg, bg);
     }
 
@@ -717,7 +717,7 @@ pub const OptimizedBuffer = struct {
             return Cell{
                 .char = finalChar,
                 .fg = finalFg,
-                .bg = .{ blendedBgRgb[0], blendedBgRgb[1], blendedBgRgb[2], finalBgAlpha },
+                .bg = .{ blendedBgRgb[0], blendedBgRgb[1], blendedBgRgb[2], finalBgAlpha, ansi.RGB_META },
                 .attributes = finalAttributes,
             };
         }
@@ -743,8 +743,8 @@ pub const OptimizedBuffer = struct {
             return;
         }
 
-        const effectiveFg = RGBA{ fg[0], fg[1], fg[2], fg[3] * opacity };
-        const effectiveBg = RGBA{ bg[0], bg[1], bg[2], bg[3] * opacity };
+        const effectiveFg = RGBA{ fg[0], fg[1], fg[2], fg[3] * opacity, fg[4] };
+        const effectiveBg = RGBA{ bg[0], bg[1], bg[2], bg[3] * opacity, bg[4] };
 
         const overlayCell = Cell{ .char = char, .fg = effectiveFg, .bg = effectiveBg, .attributes = attributes };
 
@@ -777,8 +777,8 @@ pub const OptimizedBuffer = struct {
             return;
         }
 
-        const effectiveFg = RGBA{ fg[0], fg[1], fg[2], fg[3] * opacity };
-        const effectiveBg = RGBA{ bg[0], bg[1], bg[2], bg[3] * opacity };
+        const effectiveFg = RGBA{ fg[0], fg[1], fg[2], fg[3] * opacity, fg[4] };
+        const effectiveBg = RGBA{ bg[0], bg[1], bg[2], bg[3] * opacity, bg[4] };
 
         const overlayCell = Cell{ .char = char, .fg = effectiveFg, .bg = effectiveBg, .attributes = attributes };
 
@@ -856,7 +856,7 @@ pub const OptimizedBuffer = struct {
             while (fillY <= clippedEndY) : (fillY += 1) {
                 var fillX = clippedStartX;
                 while (fillX <= clippedEndX) : (fillX += 1) {
-                    try self.setCellWithAlphaBlending(fillX, fillY, DEFAULT_SPACE_CHAR, .{ 1.0, 1.0, 1.0, 1.0 }, bg, 0);
+                    try self.setCellWithAlphaBlending(fillX, fillY, DEFAULT_SPACE_CHAR, .{ 1.0, 1.0, 1.0, 1.0, ansi.RGB_META }, bg, 0);
                 }
             }
         } else {
@@ -872,7 +872,7 @@ pub const OptimizedBuffer = struct {
                 const rowSliceAttrs = self.buffer.attributes[rowStartIndex .. rowStartIndex + rowWidth];
 
                 @memset(rowSliceChar, @intCast(DEFAULT_SPACE_CHAR));
-                @memset(rowSliceFg, .{ 1.0, 1.0, 1.0, 1.0 });
+                @memset(rowSliceFg, .{ 1.0, 1.0, 1.0, 1.0, ansi.RGB_META });
                 @memset(rowSliceBg, bg);
                 @memset(rowSliceAttrs, 0);
             }
@@ -939,7 +939,7 @@ pub const OptimizedBuffer = struct {
             } else if (self.get(charX, y)) |existingCell| {
                 bgColor = existingCell.bg;
             } else {
-                bgColor = .{ 0.0, 0.0, 0.0, 1.0 };
+                bgColor = .{ 0.0, 0.0, 0.0, 1.0, ansi.RGB_META };
             }
 
             const cell_width = utf8.getWidthAt(text, if (at_special) specials[special_idx - 1].byte_offset else byte_offset - 1, tab_width, self.width_method);
@@ -1177,8 +1177,8 @@ pub const OptimizedBuffer = struct {
             const col_offset = vline_span_info.col_offset;
             var span_idx: usize = 0;
             const defaults = text_buffer.defaults();
-            var lineFg = defaults.fg orelse RGBA{ 1.0, 1.0, 1.0, 1.0 };
-            var lineBg = defaults.bg orelse RGBA{ 0.0, 0.0, 0.0, 0.0 };
+            var lineFg = defaults.fg orelse RGBA{ 1.0, 1.0, 1.0, 1.0, ansi.RGB_META };
+            var lineBg = defaults.bg orelse RGBA{ 0.0, 0.0, 0.0, 0.0, ansi.RGB_META };
             var lineAttributes = defaults.attributes orelse 0;
             const defaultFg = lineFg;
             const defaultBg = lineBg;
@@ -1398,7 +1398,7 @@ pub const OptimizedBuffer = struct {
                                     }
                                 } else {
                                     const temp = lineFg;
-                                    finalFg = if (lineBg[3] > 0) lineBg else RGBA{ 0.0, 0.0, 0.0, 1.0 };
+                                    finalFg = if (lineBg[3] > 0) lineBg else RGBA{ 0.0, 0.0, 0.0, 1.0, ansi.RGB_META };
                                     finalBg = temp;
                                 }
                                 break;
@@ -1903,7 +1903,7 @@ pub const OptimizedBuffer = struct {
         fgColor: ?RGBA,
         bgColor: ?RGBA,
     ) void {
-        const bg = bgColor orelse RGBA{ 0.0, 0.0, 0.0, 0.0 };
+        const bg = bgColor orelse RGBA{ 0.0, 0.0, 0.0, 0.0, ansi.RGB_META };
         if (srcWidth == 0 or srcHeight == 0) return;
         if (posX >= @as(i32, @intCast(self.width)) or posY >= @as(i32, @intCast(self.height))) return;
 
@@ -1920,7 +1920,7 @@ pub const OptimizedBuffer = struct {
 
         if (visibleWidth == 0 or visibleHeight == 0) return;
 
-        const baseFg = fgColor orelse RGBA{ 1.0, 1.0, 1.0, 1.0 };
+        const baseFg = fgColor orelse RGBA{ 1.0, 1.0, 1.0, 1.0, ansi.RGB_META };
 
         const opacity = self.getCurrentOpacity();
         const graphemeAware = self.grapheme_tracker.hasAny();
@@ -1969,7 +1969,7 @@ pub const OptimizedBuffer = struct {
         fgColor: ?RGBA,
         bgColor: ?RGBA,
     ) void {
-        const bg = bgColor orelse RGBA{ 0.0, 0.0, 0.0, 0.0 };
+        const bg = bgColor orelse RGBA{ 0.0, 0.0, 0.0, 0.0, ansi.RGB_META };
         const termWidth = srcWidth / 2;
         const termHeight = srcHeight / 2;
 
@@ -1989,7 +1989,7 @@ pub const OptimizedBuffer = struct {
 
         if (visibleWidth == 0 or visibleHeight == 0) return;
 
-        const baseFg = fgColor orelse RGBA{ 1.0, 1.0, 1.0, 1.0 };
+        const baseFg = fgColor orelse RGBA{ 1.0, 1.0, 1.0, 1.0, ansi.RGB_META };
 
         const opacity = self.getCurrentOpacity();
         const graphemeAware = self.grapheme_tracker.hasAny();
@@ -2044,7 +2044,7 @@ pub const OptimizedBuffer = struct {
 
 fn getPixelColor(idx: usize, data: [*]const u8, dataLen: usize, bgra: bool) RGBA {
     if (idx + 3 >= dataLen) {
-        return .{ 1.0, 0.0, 1.0, 0.0 }; // Return Transparent Magenta for out-of-bounds
+        return .{ 1.0, 0.0, 1.0, 0.0, ansi.RGB_META }; // Return Transparent Magenta for out-of-bounds
     }
     var rByte: u8 = undefined;
     var gByte: u8 = undefined;
@@ -2068,6 +2068,7 @@ fn getPixelColor(idx: usize, data: [*]const u8, dataLen: usize, bgra: bool) RGBA
         @as(f32, @floatFromInt(gByte)) * INV_255,
         @as(f32, @floatFromInt(bByte)) * INV_255,
         @as(f32, @floatFromInt(aByte)) * INV_255,
+        ansi.RGB_META,
     };
 }
 
@@ -2102,7 +2103,7 @@ fn closestColorIndex(pixel: RGBA, candidates: [2]RGBA) u1 {
 }
 
 fn averageColorRgba(pixels: []const RGBA) RGBA {
-    if (pixels.len == 0) return .{ 0.0, 0.0, 0.0, 0.0 };
+    if (pixels.len == 0) return .{ 0.0, 0.0, 0.0, 0.0, ansi.RGB_META };
 
     var sumR: f32 = 0.0;
     var sumG: f32 = 0.0;
@@ -2117,7 +2118,7 @@ fn averageColorRgba(pixels: []const RGBA) RGBA {
     }
 
     const len = @as(f32, @floatFromInt(pixels.len));
-    return .{ sumR / len, sumG / len, sumB / len, sumA / len };
+    return .{ sumR / len, sumG / len, sumB / len, sumA / len, ansi.RGB_META };
 }
 
 fn luminance(color: RGBA) f32 {
