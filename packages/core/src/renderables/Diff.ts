@@ -7,6 +7,7 @@ import { SyntaxStyle } from "../syntax-style"
 import { parsePatch, type StructuredPatch } from "diff"
 import { TextRenderable } from "./Text"
 import type { TreeSitterClient } from "../lib/tree-sitter"
+import type { MouseEvent } from "../renderer"
 
 interface LogicalLine {
   content: string
@@ -181,6 +182,30 @@ export class DiffRenderable extends Renderable {
     } else {
       this.buildSplitView()
     }
+  }
+
+  protected override onMouseEvent(event: MouseEvent): void {
+    if (event.type !== "scroll" || this._view !== "split") return
+    if (!this.leftCodeRenderable || !this.rightCodeRenderable) return
+    if (!event.target) return
+
+    if (this.isInsideSide(event.target, "left")) {
+      this.rightCodeRenderable.scrollY = this.leftCodeRenderable.scrollY
+      this.rightCodeRenderable.scrollX = this.leftCodeRenderable.scrollX
+    } else if (this.isInsideSide(event.target, "right")) {
+      this.leftCodeRenderable.scrollY = this.rightCodeRenderable.scrollY
+      this.leftCodeRenderable.scrollX = this.rightCodeRenderable.scrollX
+    }
+  }
+
+  private isInsideSide(target: Renderable | null, side: "left" | "right"): boolean {
+    const container = side === "left" ? this.leftSide : this.rightSide
+    let current = target
+    while (current) {
+      if (current === container) return true
+      current = current.parent
+    }
+    return false
   }
 
   protected override onResize(width: number, height: number): void {
