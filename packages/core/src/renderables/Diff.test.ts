@@ -2330,7 +2330,6 @@ test("DiffRenderable - split view wheel scroll keeps panes synchronized", async 
 
   expect(rightCodeRenderable.scrollY).toBeGreaterThan(0)
   expect(leftCodeRenderable.scrollY).toBe(rightCodeRenderable.scrollY)
-
 })
 
 test("DiffRenderable - gutter remains in correct position after updates", async () => {
