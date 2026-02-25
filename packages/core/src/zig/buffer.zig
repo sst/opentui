@@ -1866,10 +1866,10 @@ pub const OptimizedBuffer = struct {
             if (!self.isPointInScissor(@intCast(cellX), @intCast(cellY))) continue;
 
             const bgPtr = @as([*]const f32, @ptrCast(@alignCast(data + cellDataOffset)));
-            const bg: RGBA = .{ bgPtr[0], bgPtr[1], bgPtr[2], bgPtr[3] };
+            const bg: RGBA = .{ bgPtr[0], bgPtr[1], bgPtr[2], bgPtr[3], ansi.RGB_META };
 
             const fgPtr = @as([*]const f32, @ptrCast(@alignCast(data + cellDataOffset + 16)));
-            const fg: RGBA = .{ fgPtr[0], fgPtr[1], fgPtr[2], fgPtr[3] };
+            const fg: RGBA = .{ fgPtr[0], fgPtr[1], fgPtr[2], fgPtr[3], ansi.RGB_META };
 
             const charPtr = @as([*]const u32, @ptrCast(@alignCast(data + cellDataOffset + 32)));
             var char = charPtr[0];
@@ -1948,7 +1948,7 @@ pub const OptimizedBuffer = struct {
                 const char = getGrayscaleChar(intensity);
 
                 const gray = @min(@max(intensity, 0.0), 1.0);
-                const fg: RGBA = .{ baseFg[0], baseFg[1], baseFg[2], gray * baseFg[3] * opacity };
+                const fg: RGBA = .{ baseFg[0], baseFg[1], baseFg[2], gray * baseFg[3] * opacity, baseFg[4] };
 
                 if (graphemeAware or linkAware) {
                     self.setCellWithAlphaBlending(destX, destY, char, fg, bg, 0) catch {};
@@ -2030,7 +2030,7 @@ pub const OptimizedBuffer = struct {
                 const char = getGrayscaleChar(avgIntensity);
 
                 const gray = @min(@max(avgIntensity, 0.0), 1.0);
-                const fg: RGBA = .{ baseFg[0], baseFg[1], baseFg[2], gray * baseFg[3] * opacity };
+                const fg: RGBA = .{ baseFg[0], baseFg[1], baseFg[2], gray * baseFg[3] * opacity, baseFg[4] };
 
                 if (graphemeAware or linkAware) {
                     self.setCellWithAlphaBlending(destX, destY, char, fg, bg, 0) catch {};

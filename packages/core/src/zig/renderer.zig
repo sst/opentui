@@ -218,7 +218,7 @@ pub const CliRenderer = struct {
             .currentRenderBuffer = currentBuffer,
             .nextRenderBuffer = nextBuffer,
             .pool = pool,
-            .backgroundColor = .{ 0.0, 0.0, 0.0, 0.0 },
+            .backgroundColor = .{ 0.0, 0.0, 0.0, 0.0, ansi.RGB_META },
             .renderOffset = 0,
             .terminal = Terminal.init(.{ .remote = remote }),
             .testing = testing,
@@ -260,8 +260,8 @@ pub const CliRenderer = struct {
             .hitScissorStack = hitScissorStack,
         };
 
-        try currentBuffer.clear(.{ self.backgroundColor[0], self.backgroundColor[1], self.backgroundColor[2], self.backgroundColor[3] }, CLEAR_CHAR);
-        try nextBuffer.clear(.{ self.backgroundColor[0], self.backgroundColor[1], self.backgroundColor[2], self.backgroundColor[3] }, null);
+        try currentBuffer.clear(self.backgroundColor, CLEAR_CHAR);
+        try nextBuffer.clear(self.backgroundColor, null);
 
         return self;
     }
@@ -465,8 +465,8 @@ pub const CliRenderer = struct {
         try self.currentRenderBuffer.resize(width, height);
         try self.nextRenderBuffer.resize(width, height);
 
-        try self.currentRenderBuffer.clear(.{ 0.0, 0.0, 0.0, 1.0 }, CLEAR_CHAR);
-        try self.nextRenderBuffer.clear(.{ self.backgroundColor[0], self.backgroundColor[1], self.backgroundColor[2], self.backgroundColor[3] }, null);
+        try self.currentRenderBuffer.clear(.{ 0.0, 0.0, 0.0, 1.0, ansi.RGB_META }, CLEAR_CHAR);
+        try self.nextRenderBuffer.clear(self.backgroundColor, null);
 
         const newHitGridSize = width * height;
         const currentHitGridSize = self.hitGridWidth * self.hitGridHeight;
@@ -689,22 +689,23 @@ pub const CliRenderer = struct {
 
                     ansi.ANSI.moveToOutput(writer, x + 1, y + 1 + self.renderOffset) catch {};
 
-                    const fgR = rgbaComponentToU8(cell.fg[0]);
-                    const fgG = rgbaComponentToU8(cell.fg[1]);
-                    const fgB = rgbaComponentToU8(cell.fg[2]);
+                    // Output foreground color based on color type
+                    switch (ansi.decodeColorType(cell.fg[4])) {
+                        .indexed => ansi.ANSI.fgIndexedColorOutput(writer, ansi.decodeColorIndex(cell.fg[4])) catch {},
+                        .default => ansi.ANSI.fgDefaultOutput(writer) catch {},
+                        .rgb => ansi.ANSI.fgColorOutput(writer, rgbaComponentToU8(cell.fg[0]), rgbaComponentToU8(cell.fg[1]), rgbaComponentToU8(cell.fg[2])) catch {},
+                    }
 
-                    const bgR = rgbaComponentToU8(cell.bg[0]);
-                    const bgG = rgbaComponentToU8(cell.bg[1]);
-                    const bgB = rgbaComponentToU8(cell.bg[2]);
-                    const bgA = cell.bg[3];
-
-                    ansi.ANSI.fgColorOutput(writer, fgR, fgG, fgB) catch {};
-
+                    // Output background color based on color type
                     // If alpha is 0 (transparent), use terminal default background instead of black
-                    if (bgA < 0.001) {
-                        writer.writeAll("\x1b[49m") catch {};
+                    if (cell.bg[3] < 0.001) {
+                        ansi.ANSI.bgDefaultOutput(writer) catch {};
                     } else {
-                        ansi.ANSI.bgColorOutput(writer, bgR, bgG, bgB) catch {};
+                        switch (ansi.decodeColorType(cell.bg[4])) {
+                            .indexed => ansi.ANSI.bgIndexedColorOutput(writer, ansi.decodeColorIndex(cell.bg[4])) catch {},
+                            .default => ansi.ANSI.bgDefaultOutput(writer) catch {},
+                            .rgb => ansi.ANSI.bgColorOutput(writer, rgbaComponentToU8(cell.bg[0]), rgbaComponentToU8(cell.bg[1]), rgbaComponentToU8(cell.bg[2])) catch {},
+                        }
                     }
 
                     ansi.TextAttributes.applyAttributesOutputWriter(writer, cell.attributes) catch {};
@@ -824,7 +825,7 @@ pub const CliRenderer = struct {
         self.renderStats.cellsUpdated = cellsUpdated;
         self.renderStats.renderTime = renderTime;
 
-        self.nextRenderBuffer.clear(.{ self.backgroundColor[0], self.backgroundColor[1], self.backgroundColor[2], self.backgroundColor[3] }, null) catch {};
+        self.nextRenderBuffer.clear(self.backgroundColor, null) catch {};
 
         // Compare hit grids before swap to detect changes. This allows TypeScript to
         // know if hover state needs rechecking without manually tracking dirty state.
@@ -1287,12 +1288,12 @@ pub const CliRenderer = struct {
             },
         }
 
-        self.nextRenderBuffer.fillRect(x, y, width, height, .{ 20.0 / 255.0, 20.0 / 255.0, 40.0 / 255.0, 1.0 }) catch {};
-        self.nextRenderBuffer.drawText("Debug Information", x + 1, y + 1, .{ 1.0, 1.0, 100.0 / 255.0, 1.0 }, .{ 0.0, 0.0, 0.0, 0.0 }, ansi.TextAttributes.BOLD) catch {};
+        self.nextRenderBuffer.fillRect(x, y, width, height, .{ 20.0 / 255.0, 20.0 / 255.0, 40.0 / 255.0, 1.0, ansi.RGB_META }) catch {};
+        self.nextRenderBuffer.drawText("Debug Information", x + 1, y + 1, .{ 1.0, 1.0, 100.0 / 255.0, 1.0, ansi.RGB_META }, .{ 0.0, 0.0, 0.0, 0.0, ansi.RGB_META }, ansi.TextAttributes.BOLD) catch {};
 
         var row: u32 = 2;
-        const bg: RGBA = .{ 0.0, 0.0, 0.0, 0.0 };
-        const fg: RGBA = .{ 200.0 / 255.0, 200.0 / 255.0, 200.0 / 255.0, 1.0 };
+        const bg: RGBA = .{ 0.0, 0.0, 0.0, 0.0, ansi.RGB_META };
+        const fg: RGBA = .{ 200.0 / 255.0, 200.0 / 255.0, 200.0 / 255.0, 1.0, ansi.RGB_META };
 
         // Calculate averages
         const lastFrameTimeAvg = getStatAverage(f64, &self.statSamples.lastFrameTime);

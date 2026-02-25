@@ -125,7 +125,7 @@ state: struct {
         visible: bool = true,
         style: CursorStyle = .block,
         blinking: bool = false,
-        color: [4]f32 = .{ 1.0, 1.0, 1.0, 1.0 }, // RGBA
+        color: [5]f32 = .{ 1.0, 1.0, 1.0, 1.0, 0.0 }, // RGBA + color meta
     } = .{},
 } = .{},
 
@@ -783,7 +783,7 @@ pub fn setCursorStyle(self: *Terminal, style: CursorStyle, blinking: bool) void 
     self.state.cursor.blinking = blinking;
 }
 
-pub fn setCursorColor(self: *Terminal, color: [4]f32) void {
+pub fn setCursorColor(self: *Terminal, color: [5]f32) void {
     self.state.cursor.color = color;
 }
 
@@ -802,7 +802,7 @@ pub fn getCursorStyle(self: *Terminal) struct { style: CursorStyle, blinking: bo
     };
 }
 
-pub fn getCursorColor(self: *Terminal) [4]f32 {
+pub fn getCursorColor(self: *Terminal) [5]f32 {
     return self.state.cursor.color;
 }
 
