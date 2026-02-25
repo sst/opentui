@@ -594,7 +594,7 @@ export class MarkdownRenderable extends Renderable {
       showBorders: true,
       borderStyle: "single",
       borderColor: this.getStyle("conceal")?.fg ?? "#888888",
-      selectable: false,
+      selectable: true,
     })
   }
 

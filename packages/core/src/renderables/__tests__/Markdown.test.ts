@@ -4,10 +4,11 @@ import { TextRenderable } from "../Text"
 import { TextTableRenderable } from "../TextTable"
 import { SyntaxStyle } from "../../syntax-style"
 import { RGBA } from "../../lib/RGBA"
-import { createTestRenderer, type TestRenderer } from "../../testing"
+import { createTestRenderer, type MockMouse, type TestRenderer } from "../../testing"
 import { TextAttributes, type CapturedFrame } from "../../types"
 
 let renderer: TestRenderer
+let mockMouse: MockMouse
 let renderOnce: () => Promise<void>
 let captureFrame: () => string
 let captureSpans: () => CapturedFrame
@@ -19,6 +20,7 @@ const syntaxStyle = SyntaxStyle.fromStyles({
 beforeEach(async () => {
   const testRenderer = await createTestRenderer({ width: 60, height: 40 })
   renderer = testRenderer.renderer
+  mockMouse = testRenderer.mockMouse
   renderOnce = testRenderer.renderOnce
   captureFrame = testRenderer.captureCharFrame
   captureSpans = testRenderer.captureSpans
@@ -512,6 +514,49 @@ This is a paragraph after the table.`
 
     This is a paragraph after the table."
   `)
+})
+
+test("selection across markdown table includes table data", async () => {
+  const markdown = `Intro line above table.
+
+| Component | Status | Notes |
+|---|---|---|
+| Authentication | **Done** | OAuth2 + SSO |
+| Payments API | *In Progress* | Retry + idempotency |
+| Search Indexer | \`Done\` | Ranking + typo fix |
+
+Outro line below table.`
+
+  const md = new MarkdownRenderable(renderer, {
+    id: "markdown",
+    content: markdown,
+    syntaxStyle,
+  })
+
+  renderer.root.add(md)
+  await renderOnce()
+
+  const topBlock = md._blockStates[0]?.renderable as TextRenderable | undefined
+  const tableBlock = md._blockStates[1]?.renderable as TextTableRenderable | undefined
+  const bottomBlock = md._blockStates[2]?.renderable as TextRenderable | undefined
+
+  expect(topBlock).toBeInstanceOf(TextRenderable)
+  expect(tableBlock).toBeInstanceOf(TextTableRenderable)
+  expect(bottomBlock).toBeInstanceOf(TextRenderable)
+
+  const startX = topBlock!.x + 1
+  const startY = topBlock!.y
+  const endX = Math.max(bottomBlock!.x + bottomBlock!.width - 2, startX + 1)
+  const endY = bottomBlock!.y
+
+  await mockMouse.drag(startX, startY, endX, endY)
+  await renderOnce()
+
+  const selectedText = renderer.getSelection()?.getSelectedText() ?? ""
+
+  expect(selectedText).toContain("Authentication")
+  expect(selectedText).toContain("Payments API")
+  expect(selectedText).toContain("Retry + idempotency")
 })
 
 // Code block tests
