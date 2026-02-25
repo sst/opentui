@@ -5,6 +5,8 @@ const iter_mod = @import("text-buffer-iterators.zig");
 const mem_registry_mod = @import("mem-registry.zig");
 const ss = @import("syntax-style.zig");
 const gp = @import("grapheme.zig");
+const ansi = @import("ansi.zig");
+const link = @import("link.zig");
 
 const utf8 = @import("utf8.zig");
 const utils = @import("utils.zig");
@@ -37,6 +39,8 @@ pub const StyledChunk = extern struct {
     fg_ptr: ?[*]const f32,
     bg_ptr: ?[*]const f32,
     attributes: u32,
+    link_ptr: ?[*]const u8 = null,
+    link_len: usize = 0,
 };
 
 pub const UnifiedTextBuffer = struct {
@@ -55,6 +59,8 @@ pub const UnifiedTextBuffer = struct {
     syntax_style: ?*const SyntaxStyle,
 
     pool: *gp.GraphemePool,
+    link_pool: *link.LinkPool,
+    link_tracker: ?link.LinkTracker,
 
     width_method: utf8.WidthMethod,
 
@@ -158,6 +164,7 @@ pub const UnifiedTextBuffer = struct {
     pub fn init(
         global_allocator: Allocator,
         pool: *gp.GraphemePool,
+        link_pool: *link.LinkPool,
         width_method: utf8.WidthMethod,
     ) TextBufferError!*Self {
         const self = global_allocator.create(Self) catch return TextBufferError.OutOfMemory;
@@ -194,6 +201,8 @@ pub const UnifiedTextBuffer = struct {
             ._rope = init_rope,
             .syntax_style = null,
             .pool = pool,
+            .link_pool = link_pool,
+            .link_tracker = null,
             .width_method = width_method,
             .view_dirty_flags = view_dirty_flags,
             .next_view_id = 0,
@@ -237,6 +246,10 @@ pub const UnifiedTextBuffer = struct {
         // Free persistent styled text buffer
         if (self.styled_buffer) |buf| {
             self.global_allocator.free(buf);
+        }
+
+        if (self.link_tracker) |*tracker| {
+            tracker.deinit();
         }
 
         self.mem_registry.deinit();
@@ -327,11 +340,14 @@ pub const UnifiedTextBuffer = struct {
     /// Preserves highlights, memory buffers, and arena allocations.
     /// Use this for frequent text updates where undo/redo history should be preserved.
     pub fn clear(self: *Self) void {
+        self.clearLinkRefs();
         self._rope.clear();
         self.markAllViewsDirty();
     }
 
     pub fn reset(self: *Self) void {
+        self.clearLinkRefs();
+
         // Free highlight/span arrays (they use global_allocator, not arena)
         for (self.line_highlights.items) |*hl_list| {
             hl_list.deinit(self.global_allocator);
@@ -397,6 +413,20 @@ pub const UnifiedTextBuffer = struct {
 
     pub fn getSyntaxStyle(self: *const Self) ?*const SyntaxStyle {
         return self.syntax_style;
+    }
+
+    fn getLinkTracker(self: *Self) *link.LinkTracker {
+        if (self.link_tracker == null) {
+            self.link_tracker = link.LinkTracker.init(self.global_allocator, self.link_pool);
+        }
+
+        return &self.link_tracker.?;
+    }
+
+    fn clearLinkRefs(self: *Self) void {
+        if (self.link_tracker) |*tracker| {
+            tracker.clear();
+        }
     }
 
     /// Set the text content using SIMD-optimized line break detection
@@ -1018,6 +1048,9 @@ pub const UnifiedTextBuffer = struct {
         try self.setTextInternal(self.styled_text_mem_id.?, full_text);
 
         if (self.syntax_style) |style| {
+            var seen_link_ids: std.AutoHashMapUnmanaged(u32, void) = .{};
+            defer seen_link_ids.deinit(self.global_allocator);
+
             self.startHighlightsTransaction();
             defer self.endHighlightsTransaction();
 
@@ -1030,9 +1063,26 @@ pub const UnifiedTextBuffer = struct {
                     const fg = if (chunk.fg_ptr) |fgPtr| utils.f32PtrToRGBA(fgPtr) else null;
                     const bg = if (chunk.bg_ptr) |bgPtr| utils.f32PtrToRGBA(bgPtr) else null;
 
+                    var attributes = chunk.attributes;
+                    if (chunk.link_ptr) |link_ptr| {
+                        if (chunk.link_len > 0) {
+                            const tracker = self.getLinkTracker();
+                            const url = link_ptr[0..chunk.link_len];
+                            const link_id = tracker.pool.alloc(url) catch 0;
+                            if (link_id != 0) {
+                                const maybe_seen = seen_link_ids.getOrPut(self.global_allocator, link_id) catch null;
+                                const should_track = if (maybe_seen) |seen| !seen.found_existing else true;
+                                if (should_track) {
+                                    tracker.addCellRef(link_id);
+                                }
+                                attributes = ansi.TextAttributes.setLinkId(attributes, link_id);
+                            }
+                        }
+                    }
+
                     var style_name_buf: [64]u8 = undefined;
                     const style_name = std.fmt.bufPrint(&style_name_buf, "chunk{d}", .{i}) catch continue;
-                    const style_id = (@constCast(style)).registerStyle(style_name, fg, bg, chunk.attributes) catch continue;
+                    const style_id = (@constCast(style)).registerStyle(style_name, fg, bg, attributes) catch continue;
 
                     self.addHighlightByCharRange(char_pos, char_pos + chunk_len, style_id, 1, 0) catch {};
                 }

@@ -82,8 +82,10 @@ export interface CliRendererConfig {
   stdin?: NodeJS.ReadStream
   stdout?: NodeJS.WriteStream
   remote?: boolean
+  testing?: boolean
   exitOnCtrlC?: boolean
   exitSignals?: NodeJS.Signals[]
+  forwardEnvKeys?: string[]
   debounceDelay?: number
   targetFps?: number
   maxFps?: number
@@ -110,6 +112,25 @@ export type PixelResolution = {
   width: number
   height: number
 }
+
+const DEFAULT_FORWARDED_ENV_KEYS = [
+  "TMUX",
+  "TERM",
+  "OPENTUI_GRAPHICS",
+  "TERM_PROGRAM",
+  "TERM_PROGRAM_VERSION",
+  "ALACRITTY_SOCKET",
+  "ALACRITTY_LOG",
+  "COLORTERM",
+  "TERMUX_VERSION",
+  "VHS_RECORD",
+  "OPENTUI_FORCE_WCWIDTH",
+  "OPENTUI_FORCE_UNICODE",
+  "OPENTUI_FORCE_NOZWJ",
+  "OPENTUI_FORCE_EXPLICIT_WIDTH",
+  "WT_SESSION",
+  "STY",
+] as const
 
 // Kitty keyboard protocol flags
 // See: https://sw.kovidgoyal.net/kitty/keyboard-protocol/
@@ -266,7 +287,10 @@ export async function createCliRenderer(config: CliRendererConfig = {}): Promise
     config.experimental_splitHeight && config.experimental_splitHeight > 0 ? config.experimental_splitHeight : height
 
   const ziglib = resolveRenderLib()
-  const rendererPtr = ziglib.createRenderer(width, renderHeight, { remote: config.remote ?? false })
+  const rendererPtr = ziglib.createRenderer(width, renderHeight, {
+    remote: config.remote ?? false,
+    testing: config.testing ?? false,
+  })
   if (!rendererPtr) {
     throw new Error("Failed to create renderer")
   }
@@ -287,7 +311,9 @@ export async function createCliRenderer(config: CliRendererConfig = {}): Promise
   ziglib.setKittyKeyboardFlags(rendererPtr, kittyFlags)
 
   const renderer = new CliRenderer(ziglib, rendererPtr, stdin, stdout, width, height, config)
-  await renderer.setupTerminal()
+  if (!config.testing) {
+    await renderer.setupTerminal()
+  }
   return renderer
 }
 
@@ -520,6 +546,14 @@ export class CliRenderer extends EventEmitter implements RenderContext {
     }
 
     this.rendererPtr = rendererPtr
+
+    const forwardEnvKeys = config.forwardEnvKeys ?? [...DEFAULT_FORWARDED_ENV_KEYS]
+    for (const key of forwardEnvKeys) {
+      const value = process.env[key]
+      if (value === undefined) continue
+      this.lib.setTerminalEnvVar(this.rendererPtr, key, value)
+    }
+
     this.exitOnCtrlC = config.exitOnCtrlC === undefined ? true : config.exitOnCtrlC
     this.exitSignals = config.exitSignals || [
       "SIGINT", // Ctrl+C

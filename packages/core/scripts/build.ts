@@ -41,6 +41,7 @@ const buildLib = args.find((arg) => arg === "--lib")
 const buildNative = args.find((arg) => arg === "--native")
 const isDev = args.includes("--dev")
 const buildAll = args.includes("--all") // Build for all platforms
+const gpaSafeStats = args.includes("--gpa-safe-stats")
 
 const variants: Variant[] = [
   { platform: "darwin", arch: "x64" },
@@ -84,6 +85,9 @@ if (buildNative) {
   const zigArgs = ["build", `-Doptimize=${isDev ? "Debug" : "ReleaseFast"}`]
   if (buildAll) {
     zigArgs.push("-Dall")
+  }
+  if (gpaSafeStats) {
+    zigArgs.push("-Dgpa-safe-stats=true")
   }
 
   const zigBuild: SpawnSyncReturns<Buffer> = spawnSync("zig", zigArgs, {

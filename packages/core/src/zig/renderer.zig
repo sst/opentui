@@ -282,6 +282,7 @@ pub const CliRenderer = struct {
         }
 
         self.performShutdownSequence();
+        self.terminal.deinit();
 
         self.currentRenderBuffer.deinit();
         self.nextRenderBuffer.deinit();
@@ -1210,6 +1211,11 @@ pub const CliRenderer = struct {
 
     pub fn getTerminalCapabilities(self: *CliRenderer) Terminal.Capabilities {
         return self.terminal.getCapabilities();
+    }
+
+    pub fn setTerminalEnvVar(self: *CliRenderer, key: []const u8, value: []const u8) bool {
+        self.terminal.setHostEnvVar(self.allocator, key, value) catch return false;
+        return true;
     }
 
     pub fn processCapabilityResponse(self: *CliRenderer, response: []const u8) void {

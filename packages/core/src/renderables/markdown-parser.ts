@@ -28,10 +28,10 @@ export function parseMarkdownIncremental(
   let reuseCount = 0
 
   for (const token of prevState.tokens) {
-    const tokenEnd = offset + token.raw.length
-    if (tokenEnd <= newContent.length && newContent.slice(offset, tokenEnd) === token.raw) {
+    const tokenLength = token.raw.length
+    if (offset + tokenLength <= newContent.length && newContent.startsWith(token.raw, offset)) {
       reuseCount++
-      offset = tokenEnd
+      offset += tokenLength
     } else {
       break
     }

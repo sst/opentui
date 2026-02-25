@@ -1,4 +1,5 @@
 const std = @import("std");
+const build_options = @import("build_options");
 const Allocator = std.mem.Allocator;
 
 const ansi = @import("ansi.zig");
@@ -35,10 +36,123 @@ export fn setEventCallback(callback: ?*const fn (namePtr: [*]const u8, nameLen: 
     event_bus.setEventCallback(callback);
 }
 
-var gpa = std.heap.GeneralPurposeAllocator(.{}){};
+var gpa = std.heap.GeneralPurposeAllocator(.{
+    .enable_memory_limit = build_options.gpa_safe_stats,
+    .safety = build_options.gpa_safe_stats,
+}){};
 const globalAllocator = gpa.allocator();
 var arena = std.heap.ArenaAllocator.init(globalAllocator);
 const globalArena = arena.allocator();
+
+pub const ExternalBuildOptions = extern struct {
+    gpa_safe_stats: bool,
+    gpa_memory_limit_tracking: bool,
+};
+
+pub const ExternalAllocatorStats = extern struct {
+    total_requested_bytes: u64,
+    active_allocations: u64,
+    small_allocations: u64,
+    large_allocations: u64,
+    requested_bytes_valid: bool,
+};
+
+fn toNonNegativeU64(value: anytype) u64 {
+    const ValueType = @TypeOf(value);
+
+    return switch (@typeInfo(ValueType)) {
+        .int => |int_info| if (int_info.signedness == .signed) blk: {
+            const signed_value: i64 = @intCast(value);
+            if (signed_value <= 0) break :blk 0;
+            break :blk @intCast(signed_value);
+        } else @intCast(value),
+        .comptime_int => blk: {
+            if (value <= 0) break :blk 0;
+            break :blk @intCast(value);
+        },
+        else => 0,
+    };
+}
+
+const RequestedBytesInfo = struct {
+    bytes: u64,
+    valid: bool,
+};
+
+fn sanitizeRequestedBytes(value: u64) RequestedBytesInfo {
+    const signed_value: i64 = @bitCast(value);
+    if (signed_value < 0) {
+        return .{ .bytes = 0, .valid = false };
+    }
+
+    return .{ .bytes = @intCast(signed_value), .valid = true };
+}
+
+fn queryStatsField(comptime field_names: []const []const u8) ?u64 {
+    if (!@hasDecl(@TypeOf(gpa), "queryStats")) {
+        return null;
+    }
+
+    const stats = gpa.queryStats();
+    const StatsType = @TypeOf(stats);
+
+    inline for (field_names) |field_name| {
+        if (@hasField(StatsType, field_name)) {
+            return toNonNegativeU64(@field(stats, field_name));
+        }
+    }
+
+    return null;
+}
+
+fn getTotalRequestedBytesInfo() RequestedBytesInfo {
+    if (!build_options.gpa_safe_stats) {
+        return .{ .bytes = 0, .valid = false };
+    }
+
+    if (queryStatsField(&.{"total_requested_bytes"})) |value| {
+        return sanitizeRequestedBytes(value);
+    }
+
+    if (@hasField(@TypeOf(gpa), "total_requested_bytes")) {
+        if (@TypeOf(gpa.total_requested_bytes) == void) {
+            return .{ .bytes = 0, .valid = false };
+        }
+
+        return sanitizeRequestedBytes(toNonNegativeU64(gpa.total_requested_bytes));
+    }
+
+    return .{ .bytes = 0, .valid = false };
+}
+
+fn getSmallAllocationCount() u64 {
+    if (queryStatsField(&.{ "small_allocations", "small_allocation_count" })) |value| {
+        return value;
+    }
+
+    var total: u64 = 0;
+    for (gpa.buckets) |bucket_head| {
+        var current = bucket_head;
+        while (current) |bucket| {
+            const allocated: u64 = @intCast(bucket.allocated_count);
+            const freed: u64 = @intCast(bucket.freed_count);
+            if (allocated >= freed) {
+                total += allocated - freed;
+            }
+            current = bucket.next;
+        }
+    }
+
+    return total;
+}
+
+fn getLargeAllocationCount() u64 {
+    if (queryStatsField(&.{ "large_allocations", "large_allocation_count" })) |value| {
+        return value;
+    }
+
+    return @intCast(gpa.large_allocations.count());
+}
 
 export fn createNativeSpanFeed(options_ptr: ?*const native_span_feed.Options) ?*native_span_feed.Stream {
     return native_span_feed.createNativeSpanFeedWithAllocator(globalAllocator, options_ptr);
@@ -46,6 +160,28 @@ export fn createNativeSpanFeed(options_ptr: ?*const native_span_feed.Options) ?*
 
 export fn getArenaAllocatedBytes() usize {
     return arena.queryCapacity();
+}
+
+export fn getBuildOptions(out_ptr: *ExternalBuildOptions) void {
+    out_ptr.* = .{
+        .gpa_safe_stats = build_options.gpa_safe_stats,
+        .gpa_memory_limit_tracking = build_options.gpa_safe_stats,
+    };
+}
+
+export fn getAllocatorStats(out_ptr: *ExternalAllocatorStats) void {
+    const small_allocations = getSmallAllocationCount();
+    const large_allocations = getLargeAllocationCount();
+    const active_allocations = small_allocations + large_allocations;
+    const requested_bytes = getTotalRequestedBytesInfo();
+
+    out_ptr.* = .{
+        .total_requested_bytes = requested_bytes.bytes,
+        .active_allocations = active_allocations,
+        .small_allocations = small_allocations,
+        .large_allocations = large_allocations,
+        .requested_bytes_valid = requested_bytes.valid,
+    };
 }
 
 export fn createRenderer(width: u32, height: u32, testing: bool, remote: bool) ?*renderer.CliRenderer {
@@ -60,6 +196,12 @@ export fn createRenderer(width: u32, height: u32, testing: bool, remote: bool) ?
         logger.err("Failed to create renderer: {}", .{err});
         return null;
     };
+}
+
+export fn setTerminalEnvVar(rendererPtr: *renderer.CliRenderer, keyPtr: [*]const u8, keyLen: usize, valuePtr: [*]const u8, valueLen: usize) bool {
+    const key = keyPtr[0..keyLen];
+    const value = valuePtr[0..valueLen];
+    return rendererPtr.setTerminalEnvVar(key, value);
 }
 
 export fn setUseThread(rendererPtr: *renderer.CliRenderer, useThread: bool) void {
@@ -228,7 +370,6 @@ export fn processCapabilityResponse(rendererPtr: *renderer.CliRenderer, response
 export fn setCursorColor(rendererPtr: *renderer.CliRenderer, color: [*]const f32) void {
     rendererPtr.terminal.setCursorColor(utils.f32PtrToRGBA(color));
 }
-
 
 pub const CursorStyleOptions = extern struct {
     style: u8,
@@ -466,6 +607,35 @@ export fn attributesGetLinkId(attributes: u32) u32 {
     return ansi.TextAttributes.getLinkId(attributes);
 }
 
+pub const ExternalGridDrawOptions = extern struct {
+    draw_inner: bool,
+    draw_outer: bool,
+};
+
+export fn bufferDrawGrid(
+    bufferPtr: *buffer.OptimizedBuffer,
+    borderChars: [*]const u32,
+    borderFg: [*]const f32,
+    borderBg: [*]const f32,
+    columnOffsets: [*]const i32,
+    columnCount: u32,
+    rowOffsets: [*]const i32,
+    rowCount: u32,
+    options: *const ExternalGridDrawOptions,
+) void {
+    bufferPtr.drawGrid(
+        borderChars,
+        utils.f32PtrToRGBA(borderFg),
+        utils.f32PtrToRGBA(borderBg),
+        columnOffsets,
+        columnCount,
+        rowOffsets,
+        rowCount,
+        options.draw_inner,
+        options.draw_outer,
+    );
+}
+
 export fn bufferDrawBox(
     bufferPtr: *buffer.OptimizedBuffer,
     x: i32,
@@ -610,13 +780,12 @@ export fn writeOut(rendererPtr: *renderer.CliRenderer, dataPtr: [*]const u8, dat
 
 export fn createTextBuffer(widthMethod: u8) ?*text_buffer.UnifiedTextBuffer {
     const pool = gp.initGlobalPool(globalArena);
+    const link_pool = link.initGlobalLinkPool(globalArena);
     const wMethod: utf8.WidthMethod = if (widthMethod == 0) .wcwidth else .unicode;
 
-    const tb = text_buffer.UnifiedTextBuffer.init(globalAllocator, pool, wMethod) catch {
+    return text_buffer.UnifiedTextBuffer.init(globalAllocator, pool, link_pool, wMethod) catch {
         return null;
     };
-
-    return tb;
 }
 
 export fn destroyTextBuffer(tb: *text_buffer.UnifiedTextBuffer) void {
@@ -722,10 +891,9 @@ export fn textBufferGetPlainText(tb: *text_buffer.UnifiedTextBuffer, outPtr: [*]
 
 // TextBufferView functions (Array-based for backward compatibility)
 export fn createTextBufferView(tb: *text_buffer.UnifiedTextBuffer) ?*text_buffer_view.UnifiedTextBufferView {
-    const view = text_buffer_view.UnifiedTextBufferView.init(globalAllocator, tb) catch {
+    return text_buffer_view.UnifiedTextBufferView.init(globalAllocator, tb) catch {
         return null;
     };
-    return view;
 }
 
 export fn destroyTextBufferView(view: *text_buffer_view.UnifiedTextBufferView) void {
@@ -871,11 +1039,13 @@ export fn textBufferViewMeasureForDimensions(view: *text_buffer_view.UnifiedText
 
 export fn createEditBuffer(widthMethod: u8) ?*edit_buffer_mod.EditBuffer {
     const pool = gp.initGlobalPool(globalArena);
+    const link_pool = link.initGlobalLinkPool(globalArena);
     const wMethod: utf8.WidthMethod = if (widthMethod == 0) .wcwidth else .unicode;
 
     return edit_buffer_mod.EditBuffer.init(
         globalAllocator,
         pool,
+        link_pool,
         wMethod,
     ) catch null;
 }

@@ -31,6 +31,7 @@ pub const LinkPool = struct {
     slots: std.ArrayListUnmanaged(u8),
     free_list: std.ArrayListUnmanaged(u32),
     num_slots: u32,
+    interned_live_ids: std.StringHashMapUnmanaged(IdPayload),
 
     pub fn init(allocator: std.mem.Allocator) LinkPool {
         const slot_capacity = MAX_URL_LENGTH;
@@ -44,10 +45,17 @@ pub const LinkPool = struct {
             .slots = .{},
             .free_list = .{},
             .num_slots = 0,
+            .interned_live_ids = .{},
         };
     }
 
     pub fn deinit(self: *LinkPool) void {
+        var key_it = self.interned_live_ids.keyIterator();
+        while (key_it.next()) |key_ptr| {
+            self.allocator.free(@constCast(key_ptr.*));
+        }
+        self.interned_live_ids.deinit(self.allocator);
+
         self.slots.deinit(self.allocator);
         self.free_list.deinit(self.allocator);
     }
@@ -82,9 +90,60 @@ pub const LinkPool = struct {
         };
     }
 
+    fn removeInternedLiveId(self: *LinkPool, url: []const u8, expected_id: IdPayload) void {
+        const live_id = self.interned_live_ids.get(url) orelse return;
+        if (live_id != expected_id) return;
+        if (self.interned_live_ids.fetchRemove(url)) |removed| {
+            self.allocator.free(@constCast(removed.key));
+        }
+    }
+
+    fn lookupOrInvalidate(self: *LinkPool, url: []const u8) ?IdPayload {
+        const live_id = self.interned_live_ids.get(url) orelse return null;
+
+        const live_url = self.get(live_id) catch {
+            self.removeInternedLiveId(url, live_id);
+            return null;
+        };
+
+        if (!std.mem.eql(u8, live_url, url)) {
+            self.removeInternedLiveId(url, live_id);
+            return null;
+        }
+
+        const live_refcount = self.getRefcount(live_id) catch {
+            self.removeInternedLiveId(url, live_id);
+            return null;
+        };
+
+        if (live_refcount == 0) {
+            self.removeInternedLiveId(url, live_id);
+            return null;
+        }
+
+        return live_id;
+    }
+
+    fn internLiveId(self: *LinkPool, id: IdPayload, url: []const u8) LinkPoolError!void {
+        if (self.lookupOrInvalidate(url) != null) {
+            return;
+        }
+
+        const owned_key = self.allocator.dupe(u8, url) catch return LinkPoolError.OutOfMemory;
+        errdefer self.allocator.free(owned_key);
+
+        if (self.interned_live_ids.fetchPut(self.allocator, owned_key, id) catch return LinkPoolError.OutOfMemory) |replaced| {
+            self.allocator.free(@constCast(replaced.key));
+        }
+    }
+
     pub fn alloc(self: *LinkPool, url: []const u8) LinkPoolError!IdPayload {
         if (url.len > self.slot_capacity) {
             return LinkPoolError.UrlTooLong;
+        }
+
+        if (self.lookupOrInvalidate(url)) |live_id| {
+            return live_id;
         }
 
         if (self.free_list.items.len == 0) try self.grow();
@@ -93,8 +152,9 @@ pub const LinkPool = struct {
         const p = self.slotPtr(slot_index);
         const header_ptr = @as(*SlotHeader, @ptrCast(@alignCast(p)));
 
-        // Increment generation when reusing a slot
-        const new_generation = (header_ptr.generation + 1) & GEN_MASK;
+        // Increment generation when reusing a slot; reserve generation 0 so ID 0 remains an error sentinel in FFI.
+        var new_generation = (header_ptr.generation + 1) & GEN_MASK;
+        if (new_generation == 0) new_generation = 1;
 
         header_ptr.* = .{
             .len = @intCast(url.len),
@@ -119,7 +179,13 @@ pub const LinkPool = struct {
             return LinkPoolError.WrongGeneration;
         }
 
+        const old_refcount = header_ptr.refcount;
         header_ptr.refcount +%= 1;
+
+        if (old_refcount == 0) {
+            const live_url = try self.get(id);
+            try self.internLiveId(id, live_url);
+        }
     }
 
     pub fn decref(self: *LinkPool, id: IdPayload) LinkPoolError!void {
@@ -131,6 +197,11 @@ pub const LinkPool = struct {
 
         if (header_ptr.refcount == 0) return LinkPoolError.InvalidId;
         if (header_ptr.generation != unpacked.generation) return LinkPoolError.WrongGeneration;
+
+        if (header_ptr.refcount == 1) {
+            const live_url = try self.get(id);
+            self.removeInternedLiveId(live_url, id);
+        }
 
         header_ptr.refcount -%= 1;
 
@@ -162,6 +233,18 @@ pub const LinkPool = struct {
         if (header_ptr.generation != unpacked.generation) return LinkPoolError.WrongGeneration;
 
         return header_ptr.refcount;
+    }
+
+    pub fn getTotalSlots(self: *const LinkPool) u64 {
+        return self.num_slots;
+    }
+
+    pub fn getFreeSlotCount(self: *const LinkPool) u64 {
+        return self.free_list.items.len;
+    }
+
+    pub fn getLiveSlotCount(self: *const LinkPool) u64 {
+        return self.num_slots - @as(u32, @intCast(self.free_list.items.len));
     }
 };
 

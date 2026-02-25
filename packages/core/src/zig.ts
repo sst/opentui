@@ -10,7 +10,7 @@ import {
   type LineInfo,
   type MousePointerStyle,
 } from "./types"
-export type { LineInfo }
+export type { LineInfo, AllocatorStats, BuildOptions }
 
 import { RGBA } from "./lib/RGBA"
 import { OptimizedBuffer } from "./buffer"
@@ -27,13 +27,21 @@ import {
   MeasureResultStruct,
   CursorStateStruct,
   CursorStyleOptionsStruct,
+  GridDrawOptionsStruct,
   NativeSpanFeedOptionsStruct,
   NativeSpanFeedStatsStruct,
   ReserveInfoStruct,
+  BuildOptionsStruct,
+  AllocatorStatsStruct,
 } from "./zig-structs"
-import type { NativeSpanFeedOptions, NativeSpanFeedStats, ReserveInfo } from "./zig-structs"
+import type {
+  NativeSpanFeedOptions,
+  NativeSpanFeedStats,
+  ReserveInfo,
+  BuildOptions,
+  AllocatorStats,
+} from "./zig-structs"
 import { isBunfsPath } from "./lib/bunfs"
-import { attributesWithLink } from "./utils"
 
 const module = await import(`@opentui/core-${process.platform}-${process.arch}/index.ts`)
 let targetLibPath = module.default
@@ -74,10 +82,10 @@ registerEnvVar({
   default: false,
 })
 registerEnvVar({
-  name: "OPENTUI_NO_GRAPHICS",
-  description: "Disable Kitty graphics protocol detection",
+  name: "OPENTUI_GRAPHICS",
+  description: "Enable Kitty graphics protocol detection",
   type: "boolean",
-  default: false,
+  default: true,
 })
 registerEnvVar({
   name: "OPENTUI_FORCE_NOZWJ",
@@ -128,6 +136,10 @@ function getOpenTUILib(libPath?: string) {
     createRenderer: {
       args: ["u32", "u32", "bool", "bool"],
       returns: "ptr",
+    },
+    setTerminalEnvVar: {
+      args: ["ptr", "ptr", "usize", "ptr", "usize"],
+      returns: "bool",
     },
     destroyRenderer: {
       args: ["ptr"],
@@ -335,6 +347,10 @@ function getOpenTUILib(libPath?: string) {
     },
     bufferDrawGrayscaleBufferSupersampled: {
       args: ["ptr", "i32", "i32", "ptr", "u32", "u32", "ptr", "ptr"],
+      returns: "void",
+    },
+    bufferDrawGrid: {
+      args: ["ptr", "ptr", "ptr", "ptr", "ptr", "u32", "ptr", "u32", "ptr"],
       returns: "void",
     },
     bufferDrawBox: {
@@ -1005,6 +1021,14 @@ function getOpenTUILib(libPath?: string) {
       args: [],
       returns: "usize",
     },
+    getBuildOptions: {
+      args: ["ptr"],
+      returns: "void",
+    },
+    getAllocatorStats: {
+      args: ["ptr"],
+      returns: "void",
+    },
 
     // SyntaxStyle functions
     createSyntaxStyle: {
@@ -1358,6 +1382,7 @@ export type NativeSpanFeedEventHandler = (eventId: number, arg0: Pointer, arg1: 
 
 export interface RenderLib {
   createRenderer: (width: number, height: number, options?: { testing?: boolean; remote?: boolean }) => Pointer | null
+  setTerminalEnvVar: (renderer: Pointer, key: string, value: string) => boolean
   destroyRenderer: (renderer: Pointer) => void
   setUseThread: (renderer: Pointer, useThread: boolean) => void
   setBackgroundColor: (renderer: Pointer, color: RGBA) => void
@@ -1462,6 +1487,17 @@ export interface RenderLib {
     srcHeight: number,
     fg: RGBA | null,
     bg: RGBA | null,
+  ) => void
+  bufferDrawGrid: (
+    buffer: Pointer,
+    borderChars: Uint32Array,
+    borderFg: RGBA,
+    borderBg: RGBA,
+    columnOffsets: Int32Array,
+    columnCount: number,
+    rowOffsets: Int32Array,
+    rowCount: number,
+    options: { drawInner: boolean; drawOuter: boolean },
   ) => void
   bufferDrawBox: (
     buffer: Pointer,
@@ -1760,6 +1796,8 @@ export interface RenderLib {
   textBufferGetHighlightCount: (buffer: Pointer) => number
 
   getArenaAllocatedBytes: () => number
+  getBuildOptions: () => BuildOptions
+  getAllocatorStats: () => AllocatorStats
 
   createSyntaxStyle: () => Pointer
   destroySyntaxStyle: (style: Pointer) => void
@@ -1958,6 +1996,12 @@ class FFIRenderLib implements RenderLib {
     const testing = options.testing ?? false
     const remote = options.remote ?? false
     return this.opentui.symbols.createRenderer(width, height, testing, remote)
+  }
+
+  public setTerminalEnvVar(renderer: Pointer, key: string, value: string): boolean {
+    const keyBytes = this.encoder.encode(key)
+    const valueBytes = this.encoder.encode(value)
+    return this.opentui.symbols.setTerminalEnvVar(renderer, keyBytes, keyBytes.length, valueBytes, valueBytes.length)
   }
 
   public destroyRenderer(renderer: Pointer): void {
@@ -2218,6 +2262,35 @@ class FFIRenderLib implements RenderLib {
       srcHeight,
       fg?.buffer ?? null,
       bg?.buffer ?? null,
+    )
+  }
+
+  public bufferDrawGrid(
+    buffer: Pointer,
+    borderChars: Uint32Array,
+    borderFg: RGBA,
+    borderBg: RGBA,
+    columnOffsets: Int32Array,
+    columnCount: number,
+    rowOffsets: Int32Array,
+    rowCount: number,
+    options: { drawInner: boolean; drawOuter: boolean },
+  ): void {
+    const optionsBuffer = GridDrawOptionsStruct.pack({
+      drawInner: options.drawInner,
+      drawOuter: options.drawOuter,
+    })
+
+    this.opentui.symbols.bufferDrawGrid(
+      buffer,
+      borderChars,
+      borderFg.buffer,
+      borderBg.buffer,
+      columnOffsets,
+      columnCount,
+      rowOffsets,
+      rowCount,
+      ptr(optionsBuffer),
     )
   }
 
@@ -2595,28 +2668,13 @@ class FFIRenderLib implements RenderLib {
     buffer: Pointer,
     chunks: Array<{ text: string; fg?: RGBA | null; bg?: RGBA | null; attributes?: number; link?: { url: string } }>,
   ): void {
-    // TODO: This should be a filter on the struct packing to not iterate twice
-    const nonEmptyChunks = chunks.filter((c) => c.text.length > 0)
-    if (nonEmptyChunks.length === 0) {
+    if (chunks.length === 0) {
       this.textBufferClear(buffer)
       return
     }
 
-    // Allocate link IDs and pack them into attributes
-    const processedChunks = nonEmptyChunks.map((chunk) => {
-      if (chunk.link) {
-        const linkId = this.linkAlloc(chunk.link.url)
-        return {
-          ...chunk,
-          attributes: attributesWithLink(chunk.attributes ?? 0, linkId),
-        }
-      }
-      return chunk
-    })
-
-    const chunksBuffer = StyledChunkStruct.packList(processedChunks)
-
-    this.opentui.symbols.textBufferSetStyledText(buffer, ptr(chunksBuffer), processedChunks.length)
+    const chunksBuffer = StyledChunkStruct.packList(chunks)
+    this.opentui.symbols.textBufferSetStyledText(buffer, ptr(chunksBuffer), chunks.length)
   }
 
   public textBufferGetLineCount(buffer: Pointer): number {
@@ -2944,6 +3002,31 @@ class FFIRenderLib implements RenderLib {
   public getArenaAllocatedBytes(): number {
     const result = this.opentui.symbols.getArenaAllocatedBytes()
     return typeof result === "bigint" ? Number(result) : result
+  }
+
+  public getBuildOptions(): BuildOptions {
+    const optionsBuffer = new ArrayBuffer(BuildOptionsStruct.size)
+    this.opentui.symbols.getBuildOptions(ptr(optionsBuffer))
+    const options = BuildOptionsStruct.unpack(optionsBuffer)
+
+    return {
+      gpaSafeStats: !!options.gpaSafeStats,
+      gpaMemoryLimitTracking: !!options.gpaMemoryLimitTracking,
+    }
+  }
+
+  public getAllocatorStats(): AllocatorStats {
+    const statsBuffer = new ArrayBuffer(AllocatorStatsStruct.size)
+    this.opentui.symbols.getAllocatorStats(ptr(statsBuffer))
+    const stats = AllocatorStatsStruct.unpack(statsBuffer)
+
+    return {
+      totalRequestedBytes: toNumber(stats.totalRequestedBytes),
+      activeAllocations: toNumber(stats.activeAllocations),
+      smallAllocations: toNumber(stats.smallAllocations),
+      largeAllocations: toNumber(stats.largeAllocations),
+      requestedBytesValid: !!stats.requestedBytesValid,
+    }
   }
 
   public bufferDrawTextBufferView(buffer: Pointer, view: Pointer, x: number, y: number): void {

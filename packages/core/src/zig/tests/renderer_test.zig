@@ -44,6 +44,8 @@ test "renderer - createWithOptions late allocation failure cleans up" {
 test "renderer - create and destroy" {
     const pool = gp.initGlobalPool(std.testing.allocator);
     defer gp.deinitGlobalPool();
+    var local_link_pool = link.LinkPool.init(std.testing.allocator);
+    defer local_link_pool.deinit();
 
     var cli_renderer = try CliRenderer.create(
         std.testing.allocator,
@@ -62,8 +64,10 @@ test "renderer - create and destroy" {
 test "renderer - simple text rendering to currentRenderBuffer" {
     const pool = gp.initGlobalPool(std.testing.allocator);
     defer gp.deinitGlobalPool();
+    var local_link_pool = link.LinkPool.init(std.testing.allocator);
+    defer local_link_pool.deinit();
 
-    var tb = try TextBuffer.init(std.testing.allocator, pool, .unicode);
+    var tb = try TextBuffer.init(std.testing.allocator, pool, &local_link_pool, .unicode);
     defer tb.deinit();
 
     try tb.setText("Hello World");
@@ -103,8 +107,10 @@ test "renderer - simple text rendering to currentRenderBuffer" {
 test "renderer - multi-line text rendering" {
     const pool = gp.initGlobalPool(std.testing.allocator);
     defer gp.deinitGlobalPool();
+    var local_link_pool = link.LinkPool.init(std.testing.allocator);
+    defer local_link_pool.deinit();
 
-    var tb = try TextBuffer.init(std.testing.allocator, pool, .unicode);
+    var tb = try TextBuffer.init(std.testing.allocator, pool, &local_link_pool, .unicode);
     defer tb.deinit();
 
     try tb.setText("Line 1\nLine 2\nLine 3");
@@ -143,8 +149,10 @@ test "renderer - multi-line text rendering" {
 test "renderer - emoji (wide grapheme) rendering" {
     const pool = gp.initGlobalPool(std.testing.allocator);
     defer gp.deinitGlobalPool();
+    var local_link_pool = link.LinkPool.init(std.testing.allocator);
+    defer local_link_pool.deinit();
 
-    var tb = try TextBuffer.init(std.testing.allocator, pool, .unicode);
+    var tb = try TextBuffer.init(std.testing.allocator, pool, &local_link_pool, .unicode);
     defer tb.deinit();
 
     try tb.setText("Hi 👋 there");
@@ -199,8 +207,10 @@ test "renderer - emoji (wide grapheme) rendering" {
 test "renderer - CJK characters rendering" {
     const pool = gp.initGlobalPool(std.testing.allocator);
     defer gp.deinitGlobalPool();
+    var local_link_pool = link.LinkPool.init(std.testing.allocator);
+    defer local_link_pool.deinit();
 
-    var tb = try TextBuffer.init(std.testing.allocator, pool, .unicode);
+    var tb = try TextBuffer.init(std.testing.allocator, pool, &local_link_pool, .unicode);
     defer tb.deinit();
 
     try tb.setText("Hello 世界");
@@ -251,8 +261,10 @@ test "renderer - CJK characters rendering" {
 test "renderer - mixed ASCII, emoji, and CJK" {
     const pool = gp.initGlobalPool(std.testing.allocator);
     defer gp.deinitGlobalPool();
+    var local_link_pool = link.LinkPool.init(std.testing.allocator);
+    defer local_link_pool.deinit();
 
-    var tb = try TextBuffer.init(std.testing.allocator, pool, .unicode);
+    var tb = try TextBuffer.init(std.testing.allocator, pool, &local_link_pool, .unicode);
     defer tb.deinit();
 
     try tb.setText("A 😀 世");
@@ -307,6 +319,8 @@ test "renderer - mixed ASCII, emoji, and CJK" {
 test "renderer - resize updates dimensions" {
     const pool = gp.initGlobalPool(std.testing.allocator);
     defer gp.deinitGlobalPool();
+    var local_link_pool = link.LinkPool.init(std.testing.allocator);
+    defer local_link_pool.deinit();
 
     var cli_renderer = try CliRenderer.create(
         std.testing.allocator,
@@ -329,6 +343,8 @@ test "renderer - resize updates dimensions" {
 test "renderer - background color setting" {
     const pool = gp.initGlobalPool(std.testing.allocator);
     defer gp.deinitGlobalPool();
+    var local_link_pool = link.LinkPool.init(std.testing.allocator);
+    defer local_link_pool.deinit();
 
     var cli_renderer = try CliRenderer.create(
         std.testing.allocator,
@@ -348,8 +364,10 @@ test "renderer - background color setting" {
 test "renderer - empty text buffer renders correctly" {
     const pool = gp.initGlobalPool(std.testing.allocator);
     defer gp.deinitGlobalPool();
+    var local_link_pool = link.LinkPool.init(std.testing.allocator);
+    defer local_link_pool.deinit();
 
-    var tb = try TextBuffer.init(std.testing.allocator, pool, .unicode);
+    var tb = try TextBuffer.init(std.testing.allocator, pool, &local_link_pool, .unicode);
     defer tb.deinit();
 
     try tb.setText("");
@@ -374,8 +392,10 @@ test "renderer - empty text buffer renders correctly" {
 test "renderer - multiple renders update currentRenderBuffer" {
     const pool = gp.initGlobalPool(std.testing.allocator);
     defer gp.deinitGlobalPool();
+    var local_link_pool = link.LinkPool.init(std.testing.allocator);
+    defer local_link_pool.deinit();
 
-    var tb = try TextBuffer.init(std.testing.allocator, pool, .unicode);
+    var tb = try TextBuffer.init(std.testing.allocator, pool, &local_link_pool, .unicode);
     defer tb.deinit();
 
     var view = try TextBufferView.init(std.testing.allocator, tb);
@@ -414,8 +434,10 @@ test "renderer - multiple renders update currentRenderBuffer" {
 test "renderer - 1000 frame render loop with setStyledText" {
     const pool = gp.initGlobalPool(std.testing.allocator);
     defer gp.deinitGlobalPool();
+    var local_link_pool = link.LinkPool.init(std.testing.allocator);
+    defer local_link_pool.deinit();
 
-    var tb = try TextBuffer.init(std.testing.allocator, pool, .unicode);
+    var tb = try TextBuffer.init(std.testing.allocator, pool, &local_link_pool, .unicode);
     defer tb.deinit();
 
     const style = try ss.SyntaxStyle.init(std.testing.allocator);
@@ -499,7 +521,7 @@ test "renderer - grapheme pool refcounting with frame buffer fast path" {
     });
     defer gp.deinitGlobalPool();
 
-    var tb = try TextBuffer.init(std.testing.allocator, limited_pool, .unicode);
+    var tb = try TextBuffer.init(std.testing.allocator, limited_pool, link.initGlobalLinkPool(std.testing.allocator), .unicode);
     defer tb.deinit();
 
     const style = try ss.SyntaxStyle.init(std.testing.allocator);
@@ -574,6 +596,8 @@ test "renderer - grapheme pool refcounting with frame buffer fast path" {
 test "renderer - unchanged grapheme should not churn IDs across frames" {
     const pool = gp.initGlobalPool(std.testing.allocator);
     defer gp.deinitGlobalPool();
+    var local_link_pool = link.LinkPool.init(std.testing.allocator);
+    defer local_link_pool.deinit();
 
     var cli_renderer = try CliRenderer.create(
         std.testing.allocator,
@@ -621,8 +645,7 @@ test "renderer - unchanged grapheme should not churn IDs across frames" {
 test "renderer - hyperlinks enabled with OSC 8 output" {
     const pool = gp.initGlobalPool(std.testing.allocator);
     defer gp.deinitGlobalPool();
-
-    const link_pool = link.initGlobalLinkPool(std.testing.allocator);
+    const local_link_pool = link.initGlobalLinkPool(std.testing.allocator);
     defer link.deinitGlobalLinkPool();
 
     var cli_renderer = try CliRenderer.create(
@@ -638,7 +661,7 @@ test "renderer - hyperlinks enabled with OSC 8 output" {
     cli_renderer.terminal.caps.hyperlinks = true;
 
     // Allocate a link
-    const link_id = try link_pool.alloc("https://example.com");
+    const link_id = try local_link_pool.alloc("https://example.com");
     const attributes = ansi.TextAttributes.setLinkId(ansi.TextAttributes.BOLD, link_id);
 
     const next_buffer = cli_renderer.getNextBuffer();
@@ -668,8 +691,7 @@ test "renderer - hyperlinks enabled with OSC 8 output" {
 test "renderer - hyperlinks disabled no OSC 8 output" {
     const pool = gp.initGlobalPool(std.testing.allocator);
     defer gp.deinitGlobalPool();
-
-    const link_pool = link.initGlobalLinkPool(std.testing.allocator);
+    const local_link_pool = link.initGlobalLinkPool(std.testing.allocator);
     defer link.deinitGlobalLinkPool();
 
     var cli_renderer = try CliRenderer.create(
@@ -685,7 +707,7 @@ test "renderer - hyperlinks disabled no OSC 8 output" {
     cli_renderer.terminal.caps.hyperlinks = false;
 
     // Allocate a link
-    const link_id = try link_pool.alloc("https://example.com");
+    const link_id = try local_link_pool.alloc("https://example.com");
     const attributes = ansi.TextAttributes.setLinkId(0, link_id);
 
     const next_buffer = cli_renderer.getNextBuffer();
@@ -705,8 +727,7 @@ test "renderer - hyperlinks disabled no OSC 8 output" {
 test "renderer - link transition mid-line" {
     const pool = gp.initGlobalPool(std.testing.allocator);
     defer gp.deinitGlobalPool();
-
-    const link_pool = link.initGlobalLinkPool(std.testing.allocator);
+    const local_link_pool = link.initGlobalLinkPool(std.testing.allocator);
     defer link.deinitGlobalLinkPool();
 
     var cli_renderer = try CliRenderer.create(
@@ -724,8 +745,8 @@ test "renderer - link transition mid-line" {
     const next_buffer = cli_renderer.getNextBuffer();
 
     // Allocate two different links
-    const link_id1 = try link_pool.alloc("https://first.com");
-    const link_id2 = try link_pool.alloc("https://second.com");
+    const link_id1 = try local_link_pool.alloc("https://first.com");
+    const link_id2 = try local_link_pool.alloc("https://second.com");
 
     const attr1 = ansi.TextAttributes.setLinkId(0, link_id1);
     const attr2 = ansi.TextAttributes.setLinkId(0, link_id2);
@@ -766,8 +787,10 @@ test "renderer - link transition mid-line" {
 test "renderer - explicit_cursor_positioning emits cursor move after wide graphemes" {
     const pool = gp.initGlobalPool(std.testing.allocator);
     defer gp.deinitGlobalPool();
+    var local_link_pool = link.LinkPool.init(std.testing.allocator);
+    defer local_link_pool.deinit();
 
-    var tb = try TextBuffer.init(std.testing.allocator, pool, .unicode);
+    var tb = try TextBuffer.init(std.testing.allocator, pool, &local_link_pool, .unicode);
     defer tb.deinit();
 
     try tb.setText("👋X");
@@ -800,8 +823,10 @@ test "renderer - explicit_cursor_positioning emits cursor move after wide graphe
 test "renderer - explicit_cursor_positioning produces more cursor moves" {
     const pool = gp.initGlobalPool(std.testing.allocator);
     defer gp.deinitGlobalPool();
+    var local_link_pool = link.LinkPool.init(std.testing.allocator);
+    defer local_link_pool.deinit();
 
-    var tb = try TextBuffer.init(std.testing.allocator, pool, .unicode);
+    var tb = try TextBuffer.init(std.testing.allocator, pool, &local_link_pool, .unicode);
     defer tb.deinit();
     try tb.setText("👋🎉🚀");
 
@@ -873,8 +898,10 @@ test "renderer - explicit_cursor_positioning produces more cursor moves" {
 test "renderer - explicit_cursor_positioning with CJK characters" {
     const pool = gp.initGlobalPool(std.testing.allocator);
     defer gp.deinitGlobalPool();
+    var local_link_pool = link.LinkPool.init(std.testing.allocator);
+    defer local_link_pool.deinit();
 
-    var tb = try TextBuffer.init(std.testing.allocator, pool, .unicode);
+    var tb = try TextBuffer.init(std.testing.allocator, pool, &local_link_pool, .unicode);
     defer tb.deinit();
 
     try tb.setText("世X");

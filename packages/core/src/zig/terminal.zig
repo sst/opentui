@@ -98,6 +98,7 @@ pub const TerminalInfo = struct {
 
 caps: Capabilities = .{},
 opts: Options = .{},
+host_env_map: ?std.process.EnvMap = null,
 
 in_tmux: bool = false,
 skip_graphics_query: bool = false,
@@ -137,6 +138,25 @@ pub fn init(opts: Options) Terminal {
 
     term.checkEnvironmentOverrides();
     return term;
+}
+
+pub fn deinit(self: *Terminal) void {
+    if (self.host_env_map) |*env_map| {
+        env_map.deinit();
+        self.host_env_map = null;
+    }
+    self.opts.env_map = null;
+}
+
+pub fn setHostEnvVar(self: *Terminal, allocator: std.mem.Allocator, key: []const u8, value: []const u8) !void {
+    if (self.host_env_map == null) {
+        self.host_env_map = std.process.EnvMap.init(allocator);
+    }
+
+    const env_map = &self.host_env_map.?;
+    try env_map.put(key, value);
+    self.opts.env_map = env_map;
+    self.checkEnvironmentOverrides();
 }
 
 pub fn resetState(self: *Terminal, tty: anytype) !void {
@@ -340,8 +360,12 @@ fn checkEnvironmentOverrides(self: *Terminal) void {
         }
     }
 
-    if (env_map.get("OPENTUI_NO_GRAPHICS")) |_| {
-        self.skip_graphics_query = true;
+    if (env_map.get("OPENTUI_GRAPHICS")) |val| {
+        if (std.mem.eql(u8, val, "false") or std.mem.eql(u8, val, "0")) {
+            self.skip_graphics_query = true;
+        } else if (std.mem.eql(u8, val, "true") or std.mem.eql(u8, val, "1")) {
+            self.skip_graphics_query = false;
+        }
     }
 
     if (!self.term_info.from_xtversion) {
