@@ -1267,12 +1267,14 @@ export class CliRenderer extends EventEmitter implements RenderContext {
       !this.currentSelection?.isDragging &&
       !mouseEvent.modifiers.ctrl
     ) {
-      if (
+      const canStartSelection = Boolean(
         maybeRenderable &&
-        maybeRenderable.selectable &&
-        !maybeRenderable.isDestroyed &&
-        maybeRenderable.shouldStartSelection(mouseEvent.x, mouseEvent.y)
-      ) {
+          maybeRenderable.selectable &&
+          !maybeRenderable.isDestroyed &&
+          maybeRenderable.shouldStartSelection(mouseEvent.x, mouseEvent.y),
+      )
+
+      if (canStartSelection && maybeRenderable) {
         this.startSelection(maybeRenderable, mouseEvent.x, mouseEvent.y)
         this.dispatchMouseEvent(maybeRenderable, mouseEvent)
         return true
@@ -2099,6 +2101,7 @@ export class CliRenderer extends EventEmitter implements RenderContext {
     this.selectionContainers.push(renderable.parent || this.root)
     this.currentSelection = new Selection(renderable, { x, y }, { x, y })
     this.currentSelection.isStart = true
+
     this.notifySelectablesOfSelectionChange()
   }
 
@@ -2164,7 +2167,6 @@ export class CliRenderer extends EventEmitter implements RenderContext {
     if (this.currentSelection) {
       this.currentSelection.isDragging = false
       this.emit("selection", this.currentSelection)
-      // Notify renderables that selection is finished (no longer dragging)
       this.notifySelectablesOfSelectionChange()
     }
   }
