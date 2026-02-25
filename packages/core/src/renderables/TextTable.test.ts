@@ -55,6 +55,31 @@ function countChar(text: string, target: string): number {
   return [...text].filter((char) => char === target).length
 }
 
+function findSelectablePoint(
+  table: TextTableRenderable,
+  direction: "top-left" | "bottom-right",
+): { x: number; y: number } {
+  const points: Array<{ x: number; y: number }> = []
+
+  for (let y = table.y; y < table.y + table.height; y++) {
+    for (let x = table.x; x < table.x + table.width; x++) {
+      if (table.shouldStartSelection(x, y)) {
+        points.push({ x, y })
+      }
+    }
+  }
+
+  expect(points.length).toBeGreaterThan(0)
+
+  if (direction === "top-left") {
+    points.sort((a, b) => (a.y !== b.y ? a.y - b.y : a.x - b.x))
+    return points[0]!
+  }
+
+  points.sort((a, b) => (a.y !== b.y ? b.y - a.y : b.x - a.x))
+  return points[0]!
+}
+
 function cell(text: string): TextTableCellContent {
   return [
     {
@@ -701,5 +726,59 @@ describe("TextTableRenderable", () => {
 
     expect(table.hasSelection()).toBe(false)
     expect(table.getSelectedText()).toBe("")
+  })
+
+  test("reverse drag across full table keeps left cells selected", async () => {
+    const table = new TextTableRenderable(renderer, {
+      left: 0,
+      top: 0,
+      content: [
+        [[bold("H1")], [bold("H2")], [bold("H3")]],
+        [cell("R1C1"), cell("R1C2"), cell("R1C3")],
+        [cell("R2C1"), cell("R2C2"), cell("R2C3")],
+        [cell("R3C1"), cell("R3C2"), cell("R3C3")],
+      ],
+    })
+
+    renderer.root.add(table)
+    await renderOnce()
+
+    const start = findSelectablePoint(table, "bottom-right")
+    const end = findSelectablePoint(table, "top-left")
+
+    await mockMouse.drag(start.x, start.y, end.x, end.y)
+    await renderOnce()
+
+    const selected = table.getSelectedText()
+
+    expect(selected).toBe("H1\tH2\tH3\nR1C1\tR1C2\tR1C3\nR2C1\tR2C2\tR2C3\nR3C1\tR3C2\tR3C3")
+  })
+
+  test("reverse drag ending on left border still includes first column", async () => {
+    const table = new TextTableRenderable(renderer, {
+      left: 0,
+      top: 0,
+      content: [
+        [[bold("Name")], [bold("Status")]],
+        [cell("Alice"), cell("Done")],
+        [cell("Bob"), cell("In Progress")],
+      ],
+    })
+
+    renderer.root.add(table)
+    await renderOnce()
+
+    const start = findSelectablePoint(table, "bottom-right")
+    const endX = table.x
+    const endY = findSelectablePoint(table, "top-left").y
+
+    await mockMouse.drag(start.x, start.y, endX, endY)
+    await renderOnce()
+
+    const selected = table.getSelectedText()
+
+    expect(selected).toContain("Name")
+    expect(selected).toContain("Alice")
+    expect(selected).toContain("Bob")
   })
 })

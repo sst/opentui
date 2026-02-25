@@ -633,8 +633,7 @@ pub const UnifiedTextBufferView = struct {
         const new_start = @min(anchor_offset, focus_char_offset);
         var new_end = @max(anchor_offset, focus_char_offset);
 
-        const focus_clamped = focus_above or focus_below or focusX < 0;
-        if (focus_char_offset < anchor_offset and !focus_clamped) {
+        if (focus_char_offset < anchor_offset and !(focus_above or focus_below)) {
             new_end = @min(new_end + 1, text_end_offset);
         }
 
@@ -1212,7 +1211,6 @@ pub const UnifiedTextBufferView = struct {
                                         wctx.global_char_offset += vchunk.width;
                                         wctx.line_position += vchunk.width;
                                     }
-
                                 } else |_| {
                                     commitVirtualLine(wctx);
                                 }
