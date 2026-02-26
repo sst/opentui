@@ -405,6 +405,7 @@ pub const ExternalCursorState = extern struct {
     g: f32,
     b: f32,
     a: f32,
+    meta: f32,
 };
 
 export fn getCursorState(rendererPtr: *renderer.CliRenderer, outPtr: *ExternalCursorState) void {
@@ -428,6 +429,7 @@ export fn getCursorState(rendererPtr: *renderer.CliRenderer, outPtr: *ExternalCu
         .g = color[1],
         .b = color[2],
         .a = color[3],
+        .meta = color[4],
     };
 }
 
