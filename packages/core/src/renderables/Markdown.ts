@@ -23,7 +23,8 @@ export interface MarkdownTableOptions {
   /**
    * Strategy for sizing table columns.
    * - "content": columns fit to intrinsic content width.
-   * - "fill": columns expand to fill available width.
+   * - "full": columns expand to fill available width.
+   * - "fill": alias for "full".
    */
   widthMode?: TextTableColumnWidthMode
   /**
@@ -654,7 +655,7 @@ export class MarkdownRenderable extends Renderable {
     const borders = this._tableOptions?.borders ?? true
 
     return {
-      columnWidthMode: this._tableOptions?.widthMode ?? "content",
+      columnWidthMode: this._tableOptions?.widthMode ?? "full",
       wrapMode: this._tableOptions?.wrapMode ?? "word",
       cellPadding: this._tableOptions?.cellPadding ?? 0,
       border: borders,

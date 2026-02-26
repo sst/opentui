@@ -17,7 +17,7 @@ const MEASURE_HEIGHT = 10_000
 
 export type TextTableCellContent = TextChunk[] | null | undefined
 export type TextTableContent = TextTableCellContent[][]
-export type TextTableColumnWidthMode = "content" | "fill"
+export type TextTableColumnWidthMode = "content" | "full" | "fill"
 
 interface ResolvedTableBorderLayout {
   left: boolean
@@ -126,7 +126,7 @@ export class TextTableRenderable extends Renderable {
   private readonly _defaultOptions = {
     content: [] as TextTableContent,
     wrapMode: "word" as "none" | "char" | "word",
-    columnWidthMode: "content" as TextTableColumnWidthMode,
+    columnWidthMode: "full" as TextTableColumnWidthMode,
     cellPadding: 0,
     showBorders: true,
     border: true,
@@ -626,6 +626,10 @@ export class TextTableRenderable extends Renderable {
     }
   }
 
+  private isFullWidthMode(): boolean {
+    return this._columnWidthMode === "full" || this._columnWidthMode === "fill"
+  }
+
   private computeColumnWidths(maxTableWidth: number | undefined, borderLayout: ResolvedTableBorderLayout): number[] {
     const horizontalPadding = this.getHorizontalCellPadding()
     const intrinsicWidths = new Array(this._columnCount).fill(1 + horizontalPadding)
@@ -653,7 +657,7 @@ export class TextTableRenderable extends Renderable {
     }
 
     if (currentWidth < maxContentWidth) {
-      if (this._columnWidthMode === "fill") {
+      if (this.isFullWidthMode()) {
         return this.expandColumnWidths(intrinsicWidths, maxContentWidth)
       }
 
@@ -1167,7 +1171,7 @@ export class TextTableRenderable extends Renderable {
       return undefined
     }
 
-    if (this._wrapMode !== "none" || this._columnWidthMode === "fill") {
+    if (this._wrapMode !== "none" || this.isFullWidthMode()) {
       return Math.max(1, Math.floor(width))
     }
 

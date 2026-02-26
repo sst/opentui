@@ -173,6 +173,7 @@ describe("TextTableRenderable", () => {
     const table = new TextTableRenderable(renderer, {
       left: 1,
       top: 1,
+      columnWidthMode: "content",
       content,
     })
 
@@ -214,12 +215,13 @@ describe("TextTableRenderable", () => {
     expect(frame).toContain("Description")
   })
 
-  test("keeps intrinsic width by default when extra space is available", async () => {
+  test("keeps intrinsic width in content mode when extra space is available", async () => {
     const table = new TextTableRenderable(renderer, {
       left: 0,
       top: 0,
       width: 34,
       wrapMode: "word",
+      columnWidthMode: "content",
       content: [
         [cell("A"), cell("B")],
         [cell("1"), cell("2")],
@@ -241,13 +243,12 @@ describe("TextTableRenderable", () => {
     expect(borderXs[borderXs.length - 1]).toBeLessThan(33)
   })
 
-  test("fills available width when columnWidthMode is fill", async () => {
+  test("fills available width by default in full mode", async () => {
     const table = new TextTableRenderable(renderer, {
       left: 0,
       top: 0,
       width: 34,
       wrapMode: "word",
-      columnWidthMode: "fill",
       content: [
         [cell("A"), cell("B")],
         [cell("1"), cell("2")],
@@ -300,6 +301,7 @@ describe("TextTableRenderable", () => {
       border: true,
       outerBorder: true,
       showBorders: false,
+      columnWidthMode: "content",
       content: [[cell("A"), cell("B")]],
     })
 
@@ -320,6 +322,7 @@ describe("TextTableRenderable", () => {
       left: 0,
       top: 0,
       cellPadding: 1,
+      columnWidthMode: "content",
       content: [
         [cell("A"), cell("B")],
         [cell("1"), cell("2")],
@@ -347,6 +350,7 @@ describe("TextTableRenderable", () => {
       top: 0,
       width: 34,
       wrapMode: "word",
+      columnWidthMode: "content",
       content: [
         [cell("A"), cell("B")],
         [cell("1"), cell("2")],
@@ -389,6 +393,7 @@ describe("TextTableRenderable", () => {
         top: 0,
         border: true,
         outerBorder: false,
+        columnWidthMode: "content",
         content: [
           [cell("A"), cell("B")],
           [cell("1"), cell("2")],
@@ -431,6 +436,7 @@ describe("TextTableRenderable", () => {
         left: 0,
         top: 0,
         border: false,
+        columnWidthMode: "content",
         content: [
           [cell("A"), cell("B")],
           [cell("1"), cell("2")],
@@ -490,6 +496,7 @@ describe("TextTableRenderable", () => {
     const table = new TextTableRenderable(renderer, {
       left: 0,
       top: 0,
+      columnWidthMode: "content",
       content: [[cell("A"), cell("B")]],
     })
 
@@ -550,6 +557,7 @@ describe("TextTableRenderable", () => {
       top: 0,
       width: 36,
       wrapMode: "none",
+      columnWidthMode: "content",
       content,
     })
 
@@ -659,6 +667,7 @@ describe("TextTableRenderable", () => {
     const table = new TextTableRenderable(renderer, {
       left: 0,
       top: 0,
+      columnWidthMode: "content",
       content: [
         [[bold("c1")], [bold("c2")]],
         [cell("aa"), cell("bb")],
@@ -786,6 +795,7 @@ describe("TextTableRenderable", () => {
       bg: "transparent",
       selectionFg,
       selectionBg,
+      columnWidthMode: "content",
       content: [
         ["A", "B"],
         ["C", "D"],

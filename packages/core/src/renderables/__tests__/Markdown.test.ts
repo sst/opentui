@@ -38,6 +38,7 @@ async function renderMarkdown(markdown: string, conceal: boolean = true): Promis
     content: markdown,
     syntaxStyle,
     conceal,
+    tableOptions: { widthMode: "content" },
   })
 
   renderer.root.add(md)
@@ -97,7 +98,7 @@ test("tableOptions updates existing markdown table renderable", async () => {
 
   const table = md._blockStates[0]?.renderable as TextTableRenderable
   expect(table).toBeInstanceOf(TextTableRenderable)
-  expect(table.columnWidthMode).toBe("content")
+  expect(table.columnWidthMode).toBe("full")
 
   md.tableOptions = {
     widthMode: "fill",
