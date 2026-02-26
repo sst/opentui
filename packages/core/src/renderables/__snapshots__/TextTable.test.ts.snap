@@ -61,22 +61,22 @@ exports[`TextTableRenderable balanced fitter keeps constrained columns visually 
 `;
 
 exports[`TextTableRenderable balanced fitter keeps constrained columns visually closer: fitter balanced constrained 1`] = `
-"┌────────┬─────────┬─────────┬─────────┬────────┬────────┐  
-│Provider│Compute  │Storage  │Pricing  │Regions │Use     │  
-│        │Services │Solutions│Model    │        │Cases   │  
-├────────┼─────────┼─────────┼─────────┼────────┼────────┤  
-│Amazon  │EC2      │S3 tiers,│Pay as   │Global  │Enterpri│  
-│Web     │instances│ EBS,    │you go,  │regions │se migra│  
-│Services│ with ext│EFS, and │reserved │and     │tion, an│  
-│        │ensive op│archive  │terms,   │many    │alytics,│  
-│        │tions for│classes  │and      │edge    │ ML, and│  
-│        │ general,│for long │discounte│location│ backend│  
-│        │ memory, │retention│d spot ca│s       │ service│  
-│        │and accel│         │pacity   │        │s       │  
-│        │erated wo│         │         │        │        │  
-│        │rkloads  │         │         │        │        │  
-└────────┴─────────┴─────────┴─────────┴────────┴────────┘  
-                                                            
+"┌────────┬────────┬─────────┬─────────┬────────┬─────────┐  
+│Provider│Compute │Storage  │Pricing  │Regions │Use Cases│  
+│        │Services│Solutions│Model    │        │         │  
+├────────┼────────┼─────────┼─────────┼────────┼─────────┤  
+│Amazon  │EC2     │S3 tiers,│Pay as   │Global  │Enterpris│  
+│Web     │instance│ EBS,    │you go,  │regions │e migrati│  
+│Services│s with e│EFS, and │reserved │and     │on, analy│  
+│        │xtensive│archive  │terms,   │many    │tics, ML,│  
+│        │ options│classes  │and      │edge    │ and back│  
+│        │ for gen│for long │discounte│location│end servi│  
+│        │eral, me│retention│d spot ca│s       │ces      │  
+│        │mory, an│         │pacity   │        │         │  
+│        │d accele│         │         │        │         │  
+│        │rated wo│         │         │        │         │  
+│        │rkloads │         │         │        │         │  
+└────────┴────────┴─────────┴─────────┴────────┴─────────┘  
 "
 `;
 

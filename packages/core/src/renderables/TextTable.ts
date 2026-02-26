@@ -794,8 +794,7 @@ export class TextTableRenderable extends Renderable {
     }
 
     const evenShare = Math.max(minWidth, Math.floor(targetContentWidth / columns))
-    const softMinWidth = Math.max(minWidth, Math.floor(evenShare / 2))
-    const preferredMinWidths = baseWidths.map((width) => Math.min(width, softMinWidth))
+    const preferredMinWidths = baseWidths.map((width) => Math.min(width, evenShare))
     const preferredMinTotal = preferredMinWidths.reduce((sum, width) => sum + width, 0)
     const floorWidths = preferredMinTotal <= targetContentWidth ? preferredMinWidths : hardMinWidths
     const floorTotal = floorWidths.reduce((sum, width) => sum + width, 0)
@@ -805,43 +804,16 @@ export class TextTableRenderable extends Renderable {
       return baseWidths
     }
 
-    const fittedWidths = [...baseWidths]
-    let remainingShrink = totalBaseWidth - clampedTarget
-
-    const phaseOneFloorWidths = floorWidths.map((floorWidth) => Math.max(floorWidth, evenShare))
-    const phaseOneShrinkable = fittedWidths.map((width, idx) => Math.max(0, width - phaseOneFloorWidths[idx]))
-    const phaseOneCapacity = phaseOneShrinkable.reduce((sum, value) => sum + value, 0)
-
-    if (phaseOneCapacity > 0 && remainingShrink > 0) {
-      const phaseOneTarget = Math.min(remainingShrink, phaseOneCapacity)
-      const phaseOneShrink = this.allocateShrinkByWeight(phaseOneShrinkable, phaseOneTarget, "linear")
-
-      for (let idx = 0; idx < fittedWidths.length; idx++) {
-        fittedWidths[idx] -= phaseOneShrink[idx] ?? 0
-      }
-
-      remainingShrink -= phaseOneTarget
+    const shrinkable = baseWidths.map((width, idx) => width - floorWidths[idx])
+    const totalShrinkable = shrinkable.reduce((sum, value) => sum + value, 0)
+    if (totalShrinkable <= 0) {
+      return [...floorWidths]
     }
 
-    if (remainingShrink <= 0) {
-      return fittedWidths
-    }
+    const targetShrink = totalBaseWidth - clampedTarget
+    const shrink = this.allocateShrinkByWeight(shrinkable, targetShrink, "sqrt")
 
-    const phaseTwoShrinkable = fittedWidths.map((width, idx) => Math.max(0, width - floorWidths[idx]))
-    const phaseTwoCapacity = phaseTwoShrinkable.reduce((sum, value) => sum + value, 0)
-
-    if (phaseTwoCapacity <= 0) {
-      return fittedWidths
-    }
-
-    const phaseTwoTarget = Math.min(remainingShrink, phaseTwoCapacity)
-    const phaseTwoShrink = this.allocateShrinkByWeight(phaseTwoShrinkable, phaseTwoTarget, "sqrt")
-
-    for (let idx = 0; idx < fittedWidths.length; idx++) {
-      fittedWidths[idx] -= phaseTwoShrink[idx] ?? 0
-    }
-
-    return fittedWidths
+    return baseWidths.map((width, idx) => Math.max(floorWidths[idx], width - shrink[idx]))
   }
 
   private allocateShrinkByWeight(shrinkable: number[], targetShrink: number, mode: "linear" | "sqrt"): number[] {
