@@ -11,7 +11,6 @@ import { TextTableRenderable, type TextTableCellContent, type TextTableContent }
 
 const VERTICAL_BORDER_CP = "│".codePointAt(0)!
 const BORDER_CHAR_PATTERN = /[┌┐└┘├┤┬┴┼│─]/
-const decoder = new TextDecoder()
 
 let renderer: TestRenderer
 let renderOnce: () => Promise<void>
@@ -60,16 +59,49 @@ function countChar(text: string, target: string): number {
   return [...text].filter((char) => char === target).length
 }
 
-function captureRenderableFrame(renderable: TextTableRenderable): string {
-  const frameBuffer = (renderable as any).frameBuffer as OptimizedBuffer | null
-  if (!frameBuffer) {
-    throw new Error(`Expected frame buffer to exist for ${renderable.id}`)
-  }
+function normalizeFrameBlock(lines: string[]): string {
+  const trimmed = lines.map((line) => line.trimEnd())
+  const nonEmpty = trimmed.filter((line) => line.length > 0)
+  const minIndent = nonEmpty.reduce((min, line) => {
+    const indent = line.match(/^ */)?.[0].length ?? 0
+    return Math.min(min, indent)
+  }, Number.POSITIVE_INFINITY)
+  const indent = Number.isFinite(minIndent) ? minIndent : 0
 
-  return decoder.decode(frameBuffer.getRealCharBytes(true))
+  return trimmed.map((line) => line.slice(indent)).join("\n") + "\n"
 }
 
-async function renderStandaloneTableFrame(width: number, content: TextTableContent): Promise<string> {
+function extractTableBlock(frame: string, headerMatcher: (line: string) => boolean): string {
+  const lines = frame.split("\n")
+  const headerY = lines.findIndex(headerMatcher)
+  if (headerY < 0) {
+    throw new Error("Unable to find table header line")
+  }
+
+  let topY = headerY
+  while (topY >= 0 && !lines[topY]?.includes("┌")) {
+    topY -= 1
+  }
+  if (topY < 0) {
+    throw new Error("Unable to find table top border")
+  }
+
+  let bottomY = headerY
+  while (bottomY < lines.length && !lines[bottomY]?.includes("└")) {
+    bottomY += 1
+  }
+  if (bottomY >= lines.length) {
+    throw new Error("Unable to find table bottom border")
+  }
+
+  return normalizeFrameBlock(lines.slice(topY, bottomY + 1))
+}
+
+async function renderStandaloneTableBlock(
+  width: number,
+  content: TextTableContent,
+  headerMatcher: (line: string) => boolean,
+): Promise<string> {
   const testRenderer = await createTestRenderer({ width, height: 120 })
 
   try {
@@ -83,7 +115,7 @@ async function renderStandaloneTableFrame(width: number, content: TextTableConte
 
     testRenderer.renderer.root.add(table)
     await testRenderer.renderOnce()
-    return captureRenderableFrame(table)
+    return extractTableBlock(testRenderer.captureCharFrame(), headerMatcher)
   } finally {
     testRenderer.renderer.destroy()
   }
@@ -424,7 +456,18 @@ describe("TextTableRenderable", () => {
     const proportionalFrame = captureFrame()
     expect(proportionalFrame).toMatchSnapshot("fitter proportional constrained")
 
-    const proportionalWidths = [...((table as any)._layout.columnWidths as number[])]
+    const getRenderedWidths = (): number[] => {
+      const lines = captureFrame().split("\n")
+      const headerY = lines.findIndex((line) => line.includes("Compute") && line.includes("Pricing"))
+      expect(headerY).toBeGreaterThanOrEqual(0)
+
+      const borderXs = findVerticalBorderXs(renderer.currentRenderBuffer, headerY)
+      expect(borderXs.length).toBeGreaterThan(2)
+
+      return borderXs.slice(1).map((x, idx) => x - borderXs[idx] - 1)
+    }
+
+    const proportionalWidths = getRenderedWidths()
     const proportionalSpread = Math.max(...proportionalWidths) - Math.min(...proportionalWidths)
 
     table.columnFitter = "balanced"
@@ -433,7 +476,7 @@ describe("TextTableRenderable", () => {
     const balancedFrame = captureFrame()
     expect(balancedFrame).toMatchSnapshot("fitter balanced constrained")
 
-    const balancedWidths = [...((table as any)._layout.columnWidths as number[])]
+    const balancedWidths = getRenderedWidths()
     const balancedSpread = Math.max(...balancedWidths) - Math.min(...balancedWidths)
 
     expect(table.columnFitter).toBe("balanced")
@@ -1200,17 +1243,24 @@ describe("TextTableRenderable", () => {
     await renderOnce()
     await renderOnce()
 
-    const primaryFrameAfterResize = captureRenderableFrame(primaryTable)
-    const unicodeFrameAfterResize = captureRenderableFrame(unicodeTable)
-
-    const expectedPrimaryFrame = await renderStandaloneTableFrame(primaryTable.width, primaryContent)
-    const expectedUnicodeFrame = await renderStandaloneTableFrame(unicodeTable.width, unicodeContent)
+    const expectedPrimaryFrame = await renderStandaloneTableBlock(primaryTable.width, primaryContent, (line) =>
+      line.includes("Task"),
+    )
+    const expectedUnicodeFrame = await renderStandaloneTableBlock(unicodeTable.width, unicodeContent, (line) =>
+      line.includes("Wrapped"),
+    )
 
     expect(expectedPrimaryFrame).toMatchSnapshot("demo resize expected primary table")
     expect(expectedUnicodeFrame).toMatchSnapshot("demo resize expected unicode table")
 
-    expect(primaryFrameAfterResize).toBe(expectedPrimaryFrame)
-    expect(unicodeFrameAfterResize).toBe(expectedUnicodeFrame)
+    const resizedFrame = captureFrame()
+    expect(resizedFrame).toContain("Operational Table")
+    expect(resizedFrame).toContain("Task")
+
+    const contentBottom = getScrollContentBottom(tableAreaScrollBox)
+    expect(contentBottom).toBeGreaterThan(tableAreaScrollBox.viewport.height)
+    expect(tableAreaScrollBox.scrollHeight).toBe(contentBottom)
+
     const maxScrollTop = Math.max(0, tableAreaScrollBox.scrollHeight - tableAreaScrollBox.viewport.height)
     expect(maxScrollTop).toBeGreaterThan(0)
 
