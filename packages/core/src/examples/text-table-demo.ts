@@ -68,9 +68,49 @@ const primaryContentSets: TextTableContent[] = [
   ],
   [
     [[bold("Task")], [bold("Owner")], [bold("ETA")]],
-    [cell("Wrap regression"), cell("core"), [green("done")]],
-    [cell("Unicode layout"), cell("render"), cell("in review")],
-    [cell("Snapshot pass"), cell("qa"), cell("today")],
+    [
+      cell(
+        "Wrap regression in operational status dashboard with dynamic row heights and constrained layout validation",
+      ),
+      cell("core platform and runtime reliability squad"),
+      [
+        green(
+          "done after validating none, word, and char wrap modes across narrow, medium, wide, and ultra-wide terminal widths",
+        ),
+      ],
+    ],
+    [
+      cell(
+        "Unicode layout stabilization for mixed Latin, punctuation, symbols, and long identifiers in adjacent columns",
+      ),
+      cell("render pipeline maintainers with fallback shaping support"),
+      cell(
+        "in review with follow-up checks for border style transitions, cell padding variants, and selection range consistency",
+      ),
+    ],
+    [
+      cell("Snapshot pass for table rendering in content mode and fill mode with heavy and double border combinations"),
+      cell("qa automation and visual diff triage group"),
+      cell(
+        "today pending final baseline updates for oversized fixtures that intentionally stress wrapping behavior on high-resolution terminals",
+      ),
+    ],
+    [
+      cell(
+        "Document edge cases where long tokens without spaces force char wrapping and reveal per-cell clipping regressions",
+      ),
+      cell("developer experience and docs tooling"),
+      cell(
+        "planned for this sprint once final reproducible examples are captured and linked to regression tracking tickets",
+      ),
+    ],
+    [
+      cell(
+        "Performance sweep of wrapping algorithm under large datasets to confirm stable frame times during rapid key toggling",
+      ),
+      cell("runtime performance task force"),
+      cell("scheduled after review, with benchmark runs on laptop and desktop terminals at 200-plus column widths"),
+    ],
   ],
 ]
 
@@ -89,8 +129,30 @@ const unicodeContentSets: TextTableContent[] = [
   ],
   [
     [[bold("Column")], [bold("Wrapped Text")]],
-    [cell("mixed"), cell("CJK and emoji wrapping: こんにちは世界 🌍 followed by long english text for width checks")],
-    [cell("emoji"), cell("Faces 😀😃😄😁😆 and symbols 🧪📦🛰️ across constrained columns")],
+    [
+      cell("mixed-languages"),
+      cell(
+        "CJK and emoji wrapping stress case: こんにちは世界 and 안녕하세요 세계 and 你好，世界 followed by long English prose that keeps flowing to test whether each cell wraps naturally even when the terminal is extremely wide and the row still needs multiple visual lines for readability 🌍🚀",
+      ),
+    ],
+    [
+      cell("emoji-and-symbols"),
+      cell(
+        "Faces 😀😃😄😁😆 plus symbols 🧪📦🛰️🔧📊 mixed with version tags like release-candidate-build-2026-02-very-long-token-without-breaks to ensure char wrapping remains stable and no glyph alignment issues appear at column boundaries",
+      ),
+    ],
+    [
+      cell("long-cjk-phrase"),
+      cell(
+        "長文の日本語テキストと中文段落和한국어문장을連続して配置し、その後に additional English context describing renderer behavior, border intersection handling, and selection extraction so that this single cell remains a reliable wrapping torture test.",
+      ),
+    ],
+    [
+      cell("mixed-punctuation"),
+      cell(
+        "Wrap behavior with punctuation-heavy content: [alpha]{beta}(gamma)<delta>|epsilon| then repeated fragments, commas, semicolons, and slashes to verify token boundaries do not break border drawing logic or spacing consistency in neighboring columns.",
+      ),
+    ],
   ],
 ]
 

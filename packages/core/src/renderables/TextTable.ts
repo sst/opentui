@@ -55,6 +55,21 @@ interface RowRange {
   lastRow: number
 }
 
+type TableSelectionMode = "single-cell" | "column-locked" | "grid"
+
+interface SelectionResolution {
+  mode: TableSelectionMode
+  anchorCell: CellPosition | null
+  anchorColumn: number | null
+}
+
+interface CellSelectionCoords {
+  anchorX: number
+  anchorY: number
+  focusX: number
+  focusY: number
+}
+
 export interface TextTableOptions extends RenderableOptions<TextTableRenderable> {
   content?: TextTableContent
   wrapMode?: "none" | "char" | "word"
@@ -94,6 +109,7 @@ export class TextTableRenderable extends Renderable {
   private _selectionBg: RGBA | undefined
   private _selectionFg: RGBA | undefined
   private _lastLocalSelection: LocalSelectionBounds | null = null
+  private _lastSelectionMode: TableSelectionMode | null = null
 
   private _cells: TextTableCellState[][] = []
   private _prevCellContent: TextTableCellContent[][] = []
@@ -280,6 +296,7 @@ export class TextTableRenderable extends Renderable {
 
     if (!localSelection?.isActive) {
       this.resetCellSelections()
+      this._lastSelectionMode = null
     } else {
       this.applySelectionToCells(localSelection, selection?.isStart ?? false)
     }
@@ -950,6 +967,10 @@ export class TextTableRenderable extends Renderable {
 
     const firstRow = this.findRowForLocalY(minSelY)
     const lastRow = this.findRowForLocalY(maxSelY)
+    const selection = this.resolveSelectionResolution(localSelection)
+    const modeChanged = this._lastSelectionMode !== selection.mode
+    this._lastSelectionMode = selection.mode
+    const lockToAnchorColumn = selection.mode === "column-locked" && selection.anchorColumn !== null
 
     for (let rowIdx = 0; rowIdx < this._rowCount; rowIdx++) {
       if (rowIdx < firstRow || rowIdx > lastRow) {
@@ -963,26 +984,114 @@ export class TextTableRenderable extends Renderable {
         const cell = this._cells[rowIdx]?.[colIdx]
         if (!cell) continue
 
+        if (lockToAnchorColumn && colIdx !== selection.anchorColumn) {
+          cell.textBufferView.resetLocalSelection()
+          continue
+        }
+
         const cellLeft = (this._layout.columnOffsets[colIdx] ?? 0) + 1 + this._cellPadding
+        let coords: CellSelectionCoords = {
+          anchorX: localSelection.anchorX - cellLeft,
+          anchorY: localSelection.anchorY - cellTop,
+          focusX: localSelection.focusX - cellLeft,
+          focusY: localSelection.focusY - cellTop,
+        }
 
-        const anchorX = localSelection.anchorX - cellLeft
-        const anchorY = localSelection.anchorY - cellTop
-        const focusX = localSelection.focusX - cellLeft
-        const focusY = localSelection.focusY - cellTop
+        const isAnchorCell =
+          selection.anchorCell !== null &&
+          selection.anchorCell.rowIdx === rowIdx &&
+          selection.anchorCell.colIdx === colIdx
+        const forceSet = isAnchorCell && selection.mode !== "single-cell"
 
-        if (isStart) {
-          cell.textBufferView.setLocalSelection(anchorX, anchorY, focusX, focusY, this._selectionBg, this._selectionFg)
+        if (forceSet) {
+          coords = this.getFullCellSelectionCoords(rowIdx, colIdx)
+        }
+
+        const shouldUseSet = isStart || modeChanged || forceSet
+
+        if (shouldUseSet) {
+          cell.textBufferView.setLocalSelection(
+            coords.anchorX,
+            coords.anchorY,
+            coords.focusX,
+            coords.focusY,
+            this._selectionBg,
+            this._selectionFg,
+          )
         } else {
           cell.textBufferView.updateLocalSelection(
-            anchorX,
-            anchorY,
-            focusX,
-            focusY,
+            coords.anchorX,
+            coords.anchorY,
+            coords.focusX,
+            coords.focusY,
             this._selectionBg,
             this._selectionFg,
           )
         }
       }
+    }
+  }
+
+  private resolveSelectionResolution(localSelection: LocalSelectionBounds): SelectionResolution {
+    const anchorCell = this.getCellAtLocalPosition(localSelection.anchorX, localSelection.anchorY)
+    const focusCell = this.getCellAtLocalPosition(localSelection.focusX, localSelection.focusY)
+    const anchorColumn = anchorCell?.colIdx ?? this.getColumnAtLocalX(localSelection.anchorX)
+
+    if (
+      anchorCell !== null &&
+      focusCell !== null &&
+      anchorCell.rowIdx === focusCell.rowIdx &&
+      anchorCell.colIdx === focusCell.colIdx
+    ) {
+      return {
+        mode: "single-cell",
+        anchorCell,
+        anchorColumn,
+      }
+    }
+
+    const focusColumn = this.getColumnAtLocalX(localSelection.focusX)
+    if (anchorColumn !== null && focusColumn === anchorColumn) {
+      return {
+        mode: "column-locked",
+        anchorCell,
+        anchorColumn,
+      }
+    }
+
+    return {
+      mode: "grid",
+      anchorCell,
+      anchorColumn,
+    }
+  }
+
+  private getColumnAtLocalX(localX: number): number | null {
+    if (this._columnCount === 0) return null
+    if (localX < 0 || localX >= this._layout.tableWidth) return null
+
+    for (let colIdx = 0; colIdx < this._columnCount; colIdx++) {
+      const colStart = (this._layout.columnOffsets[colIdx] ?? 0) + 1
+      const colEnd = colStart + (this._layout.columnWidths[colIdx] ?? 1) - 1
+      if (localX >= colStart && localX <= colEnd) {
+        return colIdx
+      }
+    }
+
+    return null
+  }
+
+  private getFullCellSelectionCoords(rowIdx: number, colIdx: number): CellSelectionCoords {
+    const colWidth = this._layout.columnWidths[colIdx] ?? 1
+    const rowHeight = this._layout.rowHeights[rowIdx] ?? 1
+    const contentWidth = Math.max(1, colWidth - this.getHorizontalCellPadding())
+    const contentHeight = Math.max(1, rowHeight - this.getVerticalCellPadding())
+
+    return {
+      anchorX: -1,
+      anchorY: 0,
+      focusX: contentWidth,
+      focusY: contentHeight,
     }
   }
 
