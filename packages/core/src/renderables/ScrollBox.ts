@@ -84,7 +84,7 @@ function pickScrollBoxPadding(options: Partial<ScrollBoxOptions> | undefined): P
   return picked
 }
 
-function stripScrollBoxPadding<T extends Record<string, unknown>>(options: T): Omit<T, ScrollBoxPaddingKey> {
+function stripScrollBoxPadding<T extends object>(options: T): Omit<T, ScrollBoxPaddingKey> {
   const sanitized = { ...options }
   for (const key of SCROLLBOX_PADDING_KEYS) {
     delete (sanitized as Partial<Record<ScrollBoxPaddingKey, unknown>>)[key]
