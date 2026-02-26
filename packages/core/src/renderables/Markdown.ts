@@ -655,7 +655,7 @@ export class MarkdownRenderable extends Renderable {
 
     return {
       columnWidthMode: this._tableOptions?.widthMode ?? "content",
-      wrapMode: this._tableOptions?.wrapMode ?? "none",
+      wrapMode: this._tableOptions?.wrapMode ?? "word",
       cellPadding: this._tableOptions?.cellPadding ?? 0,
       border: borders,
       outerBorder: this._tableOptions?.outerBorder ?? borders,

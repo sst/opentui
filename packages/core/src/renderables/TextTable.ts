@@ -125,7 +125,7 @@ export class TextTableRenderable extends Renderable {
 
   private readonly _defaultOptions = {
     content: [] as TextTableContent,
-    wrapMode: "none" as "none" | "char" | "word",
+    wrapMode: "word" as "none" | "char" | "word",
     columnWidthMode: "content" as TextTableColumnWidthMode,
     cellPadding: 0,
     showBorders: true,
