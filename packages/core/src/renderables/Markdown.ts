@@ -12,6 +12,7 @@ import { CodeRenderable } from "./Code"
 import {
   TextTableRenderable,
   type TextTableCellContent,
+  type TextTableColumnFitter,
   type TextTableColumnWidthMode,
   type TextTableContent,
 } from "./TextTable"
@@ -26,6 +27,10 @@ export interface MarkdownTableOptions {
    * - "full": columns expand to fill available width.
    */
   widthMode?: TextTableColumnWidthMode
+  /**
+   * Column fitting method when shrinking constrained tables.
+   */
+  columnFitter?: TextTableColumnFitter
   /**
    * Wrapping strategy for table cell content.
    */
@@ -92,6 +97,7 @@ interface TableContentCache {
 
 interface ResolvedTableRenderableOptions {
   columnWidthMode: TextTableColumnWidthMode
+  columnFitter: TextTableColumnFitter
   wrapMode: "none" | "char" | "word"
   cellPadding: number
   border: boolean
@@ -655,6 +661,7 @@ export class MarkdownRenderable extends Renderable {
 
     return {
       columnWidthMode: this._tableOptions?.widthMode ?? "full",
+      columnFitter: this._tableOptions?.columnFitter ?? "proportional",
       wrapMode: this._tableOptions?.wrapMode ?? "word",
       cellPadding: this._tableOptions?.cellPadding ?? 0,
       border: borders,
@@ -671,6 +678,7 @@ export class MarkdownRenderable extends Renderable {
     options: ResolvedTableRenderableOptions,
   ): void {
     tableRenderable.columnWidthMode = options.columnWidthMode
+    tableRenderable.columnFitter = options.columnFitter
     tableRenderable.wrapMode = options.wrapMode
     tableRenderable.cellPadding = options.cellPadding
     tableRenderable.border = options.border
@@ -709,6 +717,7 @@ export class MarkdownRenderable extends Renderable {
       width: "100%",
       marginBottom,
       columnWidthMode: options.columnWidthMode,
+      columnFitter: options.columnFitter,
       wrapMode: options.wrapMode,
       cellPadding: options.cellPadding,
       border: options.border,

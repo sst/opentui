@@ -75,6 +75,7 @@ test("tableOptions.widthMode configures markdown table layout", async () => {
     syntaxStyle,
     tableOptions: {
       widthMode: "full",
+      columnFitter: "balanced",
     },
   })
 
@@ -84,6 +85,7 @@ test("tableOptions.widthMode configures markdown table layout", async () => {
   const table = md._blockStates[0]?.renderable as TextTableRenderable
   expect(table).toBeInstanceOf(TextTableRenderable)
   expect(table.columnWidthMode).toBe("full")
+  expect(table.columnFitter).toBe("balanced")
 })
 
 test("tableOptions updates existing markdown table renderable", async () => {
@@ -102,6 +104,7 @@ test("tableOptions updates existing markdown table renderable", async () => {
 
   md.tableOptions = {
     widthMode: "full",
+    columnFitter: "balanced",
     wrapMode: "word",
     cellPadding: 1,
     borders: false,
@@ -113,6 +116,7 @@ test("tableOptions updates existing markdown table renderable", async () => {
   const updatedTable = md._blockStates[0]?.renderable as TextTableRenderable
   expect(updatedTable).toBe(table)
   expect(updatedTable.columnWidthMode).toBe("full")
+  expect(updatedTable.columnFitter).toBe("balanced")
   expect(updatedTable.wrapMode).toBe("word")
   expect(updatedTable.cellPadding).toBe(1)
   expect(updatedTable.border).toBe(false)

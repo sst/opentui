@@ -12,7 +12,7 @@ import {
   type KeyEvent,
 } from "../index"
 import type { Selection } from "../lib/selection"
-import type { TextTableColumnWidthMode, TextTableContent } from "../renderables/TextTable"
+import type { TextTableColumnFitter, TextTableColumnWidthMode, TextTableContent } from "../renderables/TextTable"
 import type { TextChunk } from "../text-buffer"
 import { setupCommonDemoKeys } from "./lib/standalone-keys"
 
@@ -31,6 +31,7 @@ let contentIndex = 0
 let wrapIndex = 1
 let borderIndex = 0
 let columnWidthModeIndex = 0
+let columnFitterIndex = 0
 let cellPaddingIndex = 0
 let borderEnabled = true
 let outerBorderEnabled = true
@@ -54,6 +55,7 @@ const PALETTE = {
 const WRAP_MODES: Array<"none" | "word" | "char"> = ["none", "word", "char"]
 const BORDER_STYLES: BorderStyle[] = ["single", "rounded", "double", "heavy"]
 const COLUMN_WIDTH_MODES: TextTableColumnWidthMode[] = ["content", "full"]
+const COLUMN_FITTERS: TextTableColumnFitter[] = ["proportional", "balanced"]
 const CELL_PADDING_VALUES: number[] = [0, 1, 2]
 
 function cell(text: string): TextChunk[] {
@@ -180,6 +182,10 @@ function currentColumnWidthMode(): TextTableColumnWidthMode {
   return COLUMN_WIDTH_MODES[columnWidthModeIndex] ?? "content"
 }
 
+function currentColumnFitter(): TextTableColumnFitter {
+  return COLUMN_FITTERS[columnFitterIndex] ?? "proportional"
+}
+
 function currentCellPadding(): number {
   return CELL_PADDING_VALUES[cellPaddingIndex] ?? 0
 }
@@ -187,8 +193,8 @@ function currentCellPadding(): number {
 function updateControlsText(): void {
   if (!controlsText) return
 
-  controlsText.content = t`${bold("TextTable Demo")}  ${fg(PALETTE.muted)("1/2/3 dataset • W wrap • B style • M width • P padding • N inner • O outer • H draw • drag to select • C clear")}
-Current: dataset ${fg(PALETTE.soft)(String(contentIndex + 1))} | wrap ${fg(PALETTE.rose)(currentWrapMode())} | style ${fg(PALETTE.ember)(currentBorderStyle())} | width ${fg(PALETTE.eye)(currentColumnWidthMode())} | padding ${fg(PALETTE.soft)(String(currentCellPadding()))} | inner ${fg(PALETTE.rose)(borderEnabled ? "on" : "off")} | outer ${fg(PALETTE.ember)(outerBorderEnabled ? "on" : "off")} | draw ${fg(PALETTE.eye)(showBordersEnabled ? "on" : "off")}`
+  controlsText.content = t`${bold("TextTable Demo")}  ${fg(PALETTE.muted)("1/2/3 dataset • W wrap • B style • M width • F fitter • P padding • N inner • O outer • H draw • drag to select • C clear")}
+Current: dataset ${fg(PALETTE.soft)(String(contentIndex + 1))} | wrap ${fg(PALETTE.rose)(currentWrapMode())} | style ${fg(PALETTE.ember)(currentBorderStyle())} | width ${fg(PALETTE.eye)(currentColumnWidthMode())} | fitter ${fg(PALETTE.rose)(currentColumnFitter())} | padding ${fg(PALETTE.soft)(String(currentCellPadding()))} | inner ${fg(PALETTE.rose)(borderEnabled ? "on" : "off")} | outer ${fg(PALETTE.ember)(outerBorderEnabled ? "on" : "off")} | draw ${fg(PALETTE.eye)(showBordersEnabled ? "on" : "off")}`
 }
 
 function clearSelectionStatus(message: string): void {
@@ -214,6 +220,9 @@ function applyTableState(): void {
 
   primaryTable.columnWidthMode = currentColumnWidthMode()
   unicodeTable.columnWidthMode = currentColumnWidthMode()
+
+  primaryTable.columnFitter = currentColumnFitter()
+  unicodeTable.columnFitter = currentColumnFitter()
 
   primaryTable.cellPadding = currentCellPadding()
   unicodeTable.cellPadding = currentCellPadding()
@@ -278,6 +287,7 @@ export function run(renderer: CliRenderer): void {
     id: "text-table-demo-primary",
     width: "100%",
     wrapMode: currentWrapMode(),
+    columnFitter: currentColumnFitter(),
     borderStyle: currentBorderStyle(),
     borderColor: PALETTE.ember,
     fg: PALETTE.text,
@@ -296,6 +306,7 @@ export function run(renderer: CliRenderer): void {
     id: "text-table-demo-unicode",
     width: "100%",
     wrapMode: currentWrapMode(),
+    columnFitter: currentColumnFitter(),
     borderStyle: currentBorderStyle(),
     borderColor: PALETTE.rose,
     fg: PALETTE.text,
@@ -408,6 +419,12 @@ export function run(renderer: CliRenderer): void {
       return
     }
 
+    if (key.name === "f") {
+      columnFitterIndex = (columnFitterIndex + 1) % COLUMN_FITTERS.length
+      applyTableState()
+      return
+    }
+
     if (key.name === "p") {
       cellPaddingIndex = (cellPaddingIndex + 1) % CELL_PADDING_VALUES.length
       applyTableState()
@@ -467,6 +484,7 @@ export function destroy(renderer: CliRenderer): void {
   wrapIndex = 1
   borderIndex = 0
   columnWidthModeIndex = 0
+  columnFitterIndex = 0
   cellPaddingIndex = 0
   borderEnabled = true
   outerBorderEnabled = true

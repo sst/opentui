@@ -378,6 +378,62 @@ describe("TextTableRenderable", () => {
     expect(borderXs).toEqual([0, 17, 33])
   })
 
+  test("accepts columnFitter in options and setter", () => {
+    const table = new TextTableRenderable(renderer, {
+      columnFitter: "balanced",
+      content: [[cell("A")]],
+    })
+
+    expect(table.columnFitter).toBe("balanced")
+
+    table.columnFitter = "proportional"
+    expect(table.columnFitter).toBe("proportional")
+  })
+
+  test("balanced fitter keeps constrained columns visually closer", async () => {
+    const table = new TextTableRenderable(renderer, {
+      left: 0,
+      top: 0,
+      width: 84,
+      wrapMode: "word",
+      columnWidthMode: "full",
+      content: [
+        [
+          cell("Provider"),
+          cell("Compute Services"),
+          cell("Storage Solutions"),
+          cell("Pricing Model"),
+          cell("Regions"),
+          cell("Use Cases"),
+        ],
+        [
+          cell("Amazon Web Services"),
+          cell("EC2 instances with extensive options for general, memory, and accelerated workloads"),
+          cell("S3 tiers, EBS, EFS, and archive classes for long retention"),
+          cell("Pay as you go, reserved terms, and discounted spot capacity"),
+          cell("Global regions and many edge locations"),
+          cell("Enterprise migration, analytics, ML, and backend services"),
+        ],
+      ],
+    })
+
+    renderer.root.add(table)
+    await renderOnce()
+
+    const proportionalWidths = [...((table as any)._layout.columnWidths as number[])]
+    const proportionalSpread = Math.max(...proportionalWidths) - Math.min(...proportionalWidths)
+
+    table.columnFitter = "balanced"
+    await renderOnce()
+
+    const balancedWidths = [...((table as any)._layout.columnWidths as number[])]
+    const balancedSpread = Math.max(...balancedWidths) - Math.min(...balancedWidths)
+
+    expect(table.columnFitter).toBe("balanced")
+    expect(balancedWidths[0]).toBeGreaterThan(proportionalWidths[0] ?? 0)
+    expect(balancedSpread).toBeLessThan(proportionalSpread)
+  })
+
   test("uses native border draw for inner-only mode", async () => {
     const originalDrawGrid = OptimizedBuffer.prototype.drawGrid
     let nativeCalls = 0
