@@ -416,15 +416,7 @@ Other:
     scrollX: false,
     flexGrow: 1,
     flexShrink: 1,
-    viewportOptions: {
-      paddingTop: 2,
-      paddingBottom: 2,
-      paddingLeft: 2,
-      paddingRight: 1,
-    },
-    verticalScrollbarOptions: {
-      width: 1,
-    },
+    padding: 2,
   })
   markdownScrollBox.focus()
   parentContainer.add(markdownScrollBox)
