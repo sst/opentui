@@ -410,10 +410,6 @@ export class TextTableRenderable extends Renderable {
         measuredWidth = Math.min(rawWidthConstraint, measuredWidth)
       }
 
-      if (heightMode === MeasureMode.AtMost && Number.isFinite(height) && this._positionType !== "absolute") {
-        measuredHeight = Math.min(Math.max(1, Math.floor(height)), measuredHeight)
-      }
-
       return {
         width: measuredWidth,
         height: measuredHeight,
