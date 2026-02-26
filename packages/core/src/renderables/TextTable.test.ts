@@ -394,9 +394,10 @@ describe("TextTableRenderable", () => {
     const table = new TextTableRenderable(renderer, {
       left: 0,
       top: 0,
-      width: 84,
+      width: 58,
       wrapMode: "word",
       columnWidthMode: "full",
+      columnFitter: "proportional",
       content: [
         [
           cell("Provider"),
@@ -420,16 +421,23 @@ describe("TextTableRenderable", () => {
     renderer.root.add(table)
     await renderOnce()
 
+    const proportionalFrame = captureFrame()
+    expect(proportionalFrame).toMatchSnapshot("fitter proportional constrained")
+
     const proportionalWidths = [...((table as any)._layout.columnWidths as number[])]
     const proportionalSpread = Math.max(...proportionalWidths) - Math.min(...proportionalWidths)
 
     table.columnFitter = "balanced"
     await renderOnce()
 
+    const balancedFrame = captureFrame()
+    expect(balancedFrame).toMatchSnapshot("fitter balanced constrained")
+
     const balancedWidths = [...((table as any)._layout.columnWidths as number[])]
     const balancedSpread = Math.max(...balancedWidths) - Math.min(...balancedWidths)
 
     expect(table.columnFitter).toBe("balanced")
+    expect(balancedFrame).not.toBe(proportionalFrame)
     expect(balancedWidths[0]).toBeGreaterThan(proportionalWidths[0] ?? 0)
     expect(balancedSpread).toBeLessThan(proportionalSpread)
   })

@@ -1,6 +1,13 @@
 #!/usr/bin/env bun
 
-import { TextTableRenderable, type TextTableCellContent, type TextTableContent, type CliRenderer } from "../index"
+import {
+  TextTableRenderable,
+  type TextTableCellContent,
+  type TextTableColumnFitter,
+  type TextTableColumnWidthMode,
+  type TextTableContent,
+  type CliRenderer,
+} from "../index"
 import { createTestRenderer } from "../testing"
 import { Command } from "commander"
 import { existsSync } from "node:fs"
@@ -106,6 +113,7 @@ type ReplaceScenarioPlan = {
   rows: number
   cols: number
   variants: TextTableContent[]
+  tableConfig: BenchmarkTableConfig
 }
 
 type IncrementalScenarioPlan = {
@@ -119,6 +127,7 @@ type IncrementalScenarioPlan = {
   baseRows: TextTableCellContent[][]
   rowPool: TextTableCellContent[][]
   maxRows: number
+  tableConfig: BenchmarkTableConfig
 }
 
 type SelectionScenarioPlan = {
@@ -131,9 +140,16 @@ type SelectionScenarioPlan = {
   cols: number
   content: TextTableContent
   dragSteps: number
+  tableConfig: BenchmarkTableConfig
 }
 
 type ScenarioPlan = ReplaceScenarioPlan | IncrementalScenarioPlan | SelectionScenarioPlan
+
+type BenchmarkTableConfig = {
+  wrapMode: "none" | "char" | "word"
+  columnWidthMode: TextTableColumnWidthMode
+  columnFitter: TextTableColumnFitter
+}
 
 type RunContext = {
   renderer: CliRenderer
@@ -199,6 +215,18 @@ const memSampleEvery = Math.max(0, Math.floor(toNumber(options.memSampleEvery, 1
 const scenarioFilter = options.scenario ? String(options.scenario) : null
 const outputEnabled = options.output !== false
 
+const PROPORTIONAL_TABLE_CONFIG: BenchmarkTableConfig = {
+  wrapMode: "word",
+  columnWidthMode: "full",
+  columnFitter: "proportional",
+}
+
+const BALANCED_TABLE_CONFIG: BenchmarkTableConfig = {
+  wrapMode: "word",
+  columnWidthMode: "full",
+  columnFitter: "balanced",
+}
+
 const jsonArg = options.json
 const jsonPath =
   typeof jsonArg === "string"
@@ -253,7 +281,9 @@ renderer.requestRender = () => {}
 const table = new TextTableRenderable(renderer, {
   id: "text-table-bench",
   width: "100%",
-  wrapMode: "word",
+  wrapMode: PROPORTIONAL_TABLE_CONFIG.wrapMode,
+  columnWidthMode: PROPORTIONAL_TABLE_CONFIG.columnWidthMode,
+  columnFitter: PROPORTIONAL_TABLE_CONFIG.columnFitter,
   content: [],
 })
 
@@ -368,6 +398,19 @@ function createScenarios(suite: string, config: SuiteConfig, runSeed: number): S
     rows: shape.replaceRows,
     cols: shape.replaceCols,
     variants,
+    tableConfig: PROPORTIONAL_TABLE_CONFIG,
+  }
+
+  const balancedFitterReplaceScenario: ReplaceScenarioPlan = {
+    kind: "replace",
+    name: "replace_tables_balanced_fitter",
+    description: "Replace full table content with prebuilt variants (balanced fitter)",
+    iterations: runIterations,
+    warmupIterations: config.warmupIterations,
+    rows: shape.replaceRows,
+    cols: shape.replaceCols,
+    variants,
+    tableConfig: BALANCED_TABLE_CONFIG,
   }
 
   const incrementalScenario: IncrementalScenarioPlan = {
@@ -381,6 +424,21 @@ function createScenarios(suite: string, config: SuiteConfig, runSeed: number): S
     baseRows,
     rowPool,
     maxRows: Math.max(shape.incrementalMaxRows, shape.incrementalBaseRows + 1),
+    tableConfig: PROPORTIONAL_TABLE_CONFIG,
+  }
+
+  const balancedFitterIncrementalScenario: IncrementalScenarioPlan = {
+    kind: "incremental",
+    name: "incremental_table_rows_balanced_fitter",
+    description: "Append table rows and periodically reset to base size (balanced fitter)",
+    iterations: runIterations,
+    warmupIterations: config.warmupIterations,
+    cols: shape.incrementalCols,
+    header,
+    baseRows,
+    rowPool,
+    maxRows: Math.max(shape.incrementalMaxRows, shape.incrementalBaseRows + 1),
+    tableConfig: BALANCED_TABLE_CONFIG,
   }
 
   const selectionRng = createRng((runSeed ^ 0xa2f9c6d1) >>> 0)
@@ -396,9 +454,30 @@ function createScenarios(suite: string, config: SuiteConfig, runSeed: number): S
     cols: shape.replaceCols,
     content: selectionContent,
     dragSteps: 5,
+    tableConfig: PROPORTIONAL_TABLE_CONFIG,
   }
 
-  return [replaceScenario, incrementalScenario, selectionScenario]
+  const balancedFitterSelectionScenario: SelectionScenarioPlan = {
+    kind: "selection",
+    name: "selection_update_balanced_fitter",
+    description: "Update selection focus across rows and render (balanced fitter)",
+    iterations: runIterations,
+    warmupIterations: config.warmupIterations,
+    rows: shape.replaceRows,
+    cols: shape.replaceCols,
+    content: selectionContent,
+    dragSteps: 5,
+    tableConfig: BALANCED_TABLE_CONFIG,
+  }
+
+  return [
+    replaceScenario,
+    balancedFitterReplaceScenario,
+    incrementalScenario,
+    balancedFitterIncrementalScenario,
+    selectionScenario,
+    balancedFitterSelectionScenario,
+  ]
 }
 
 async function runScenario(plan: ScenarioPlan, ctx: RunContext): Promise<ScenarioResult> {
@@ -411,7 +490,15 @@ async function runScenario(plan: ScenarioPlan, ctx: RunContext): Promise<Scenari
   return runSelectionScenario(plan, ctx)
 }
 
+function applyTableConfig(table: TextTableRenderable, config: BenchmarkTableConfig): void {
+  table.wrapMode = config.wrapMode
+  table.columnWidthMode = config.columnWidthMode
+  table.columnFitter = config.columnFitter
+}
+
 async function runReplaceScenario(plan: ReplaceScenarioPlan, ctx: RunContext): Promise<ScenarioResult> {
+  applyTableConfig(ctx.table, plan.tableConfig)
+
   for (let i = 0; i < plan.warmupIterations; i += 1) {
     const variant = plan.variants[i % plan.variants.length]
     ctx.table.content = variant
@@ -461,11 +548,16 @@ async function runReplaceScenario(plan: ReplaceScenarioPlan, ctx: RunContext): P
       cols: plan.cols,
       variants: plan.variants.length,
       mode: "replace",
+      wrapMode: plan.tableConfig.wrapMode,
+      columnWidthMode: plan.tableConfig.columnWidthMode,
+      columnFitter: plan.tableConfig.columnFitter,
     },
   }
 }
 
 async function runIncrementalScenario(plan: IncrementalScenarioPlan, ctx: RunContext): Promise<ScenarioResult> {
+  applyTableConfig(ctx.table, plan.tableConfig)
+
   const state: IncrementalState = {
     rows: [...plan.baseRows],
     cursor: 0,
@@ -526,11 +618,15 @@ async function runIncrementalScenario(plan: IncrementalScenarioPlan, ctx: RunCon
       rowPool: plan.rowPool.length,
       maxRows: plan.maxRows,
       mode: "incremental",
+      wrapMode: plan.tableConfig.wrapMode,
+      columnWidthMode: plan.tableConfig.columnWidthMode,
+      columnFitter: plan.tableConfig.columnFitter,
     },
   }
 }
 
 async function runSelectionScenario(plan: SelectionScenarioPlan, ctx: RunContext): Promise<ScenarioResult> {
+  applyTableConfig(ctx.table, plan.tableConfig)
   ctx.table.content = plan.content
   await ctx.renderOnce()
 
@@ -608,6 +704,9 @@ async function runSelectionScenario(plan: SelectionScenarioPlan, ctx: RunContext
       cols: plan.cols,
       dragSteps: plan.dragSteps,
       mode: "selection",
+      wrapMode: plan.tableConfig.wrapMode,
+      columnWidthMode: plan.tableConfig.columnWidthMode,
+      columnFitter: plan.tableConfig.columnFitter,
     },
   }
 }
@@ -838,7 +937,9 @@ function formatScenarioResult(result: ScenarioResult): string {
       ` memPeakRss=${formatBytes(mem.peak.rss)}`
     : ""
 
-  return `scenario=${result.name} category=${result.category} mode=${result.timingMode} iters=${result.updateStats.count} elapsedMs=${result.elapsedMs} avgMs=${result.updateStats.averageMs.toFixed(3)} medianMs=${result.updateStats.medianMs.toFixed(3)} p95Ms=${result.updateStats.p95Ms.toFixed(3)} minMs=${result.updateStats.minMs.toFixed(3)} maxMs=${result.updateStats.maxMs.toFixed(3)} rows=${result.tableStats.finalRows} maxRows=${result.tableStats.maxRows} cols=${result.tableStats.columns}${memSummary}`
+  const fitter = typeof result.settings.columnFitter === "string" ? result.settings.columnFitter : "unknown"
+
+  return `scenario=${result.name} category=${result.category} mode=${result.timingMode} fitter=${fitter} iters=${result.updateStats.count} elapsedMs=${result.elapsedMs} avgMs=${result.updateStats.averageMs.toFixed(3)} medianMs=${result.updateStats.medianMs.toFixed(3)} p95Ms=${result.updateStats.p95Ms.toFixed(3)} minMs=${result.updateStats.minMs.toFixed(3)} maxMs=${result.updateStats.maxMs.toFixed(3)} rows=${result.tableStats.finalRows} maxRows=${result.tableStats.maxRows} cols=${result.tableStats.columns}${memSummary}`
 }
 
 function writeLine(line: string): void {

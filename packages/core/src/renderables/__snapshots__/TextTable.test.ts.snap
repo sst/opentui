@@ -40,6 +40,46 @@ exports[`TextTableRenderable wraps content and fits columns when width is constr
 "
 `;
 
+exports[`TextTableRenderable balanced fitter keeps constrained columns visually closer: fitter proportional constrained 1`] = `
+"┌────┬─────────────┬─────────┬─────────┬───────┬─────────┐  
+│Prov│Compute      │Storage  │Pricing  │Regions│Use Cases│  
+│ider│Services     │Solutions│Model    │       │         │  
+├────┼─────────────┼─────────┼─────────┼───────┼─────────┤  
+│Amaz│EC2          │S3 tiers,│Pay as   │Global │Enterpris│  
+│on W│instances    │ EBS,    │you go,  │regions│e migrati│  
+│eb S│with         │EFS, and │reserved │ and ma│on, analy│  
+│ervi│extensive    │archive  │terms,   │ny edge│tics, ML,│  
+│ces │options for  │classes  │and      │ locati│ and back│  
+│    │general,     │for long │discounte│ons    │end servi│  
+│    │memory, and  │retention│d spot ca│       │ces      │  
+│    │accelerated  │         │pacity   │       │         │  
+│    │workloads    │         │         │       │         │  
+└────┴─────────────┴─────────┴─────────┴───────┴─────────┘  
+                                                            
+                                                            
+"
+`;
+
+exports[`TextTableRenderable balanced fitter keeps constrained columns visually closer: fitter balanced constrained 1`] = `
+"┌────────┬─────────┬─────────┬─────────┬────────┬────────┐  
+│Provider│Compute  │Storage  │Pricing  │Regions │Use     │  
+│        │Services │Solutions│Model    │        │Cases   │  
+├────────┼─────────┼─────────┼─────────┼────────┼────────┤  
+│Amazon  │EC2      │S3 tiers,│Pay as   │Global  │Enterpri│  
+│Web     │instances│ EBS,    │you go,  │regions │se migra│  
+│Services│ with ext│EFS, and │reserved │and     │tion, an│  
+│        │ensive op│archive  │terms,   │many    │alytics,│  
+│        │tions for│classes  │and      │edge    │ ML, and│  
+│        │ general,│for long │discounte│location│ backend│  
+│        │ memory, │retention│d spot ca│s       │ service│  
+│        │and accel│         │pacity   │        │s       │  
+│        │erated wo│         │         │        │        │  
+│        │rkloads  │         │         │        │        │  
+└────────┴─────────┴─────────┴─────────┴────────┴────────┘  
+                                                            
+"
+`;
+
 exports[`TextTableRenderable rebuilds table when content setter is used: content setter update 1`] = `
 "┌─────┬───────┐                                             
 │Col 1│Col 2  │                                             
