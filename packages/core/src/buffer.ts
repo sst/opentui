@@ -84,8 +84,8 @@ export class OptimizedBuffer {
 
       this._rawBuffers = {
         char: new Uint32Array(toArrayBuffer(charPtr, 0, size * 4)),
-        fg: new Float32Array(toArrayBuffer(fgPtr, 0, size * 4 * 4)),
-        bg: new Float32Array(toArrayBuffer(bgPtr, 0, size * 4 * 4)),
+        fg: new Float32Array(toArrayBuffer(fgPtr, 0, size * 5 * 4)),
+        bg: new Float32Array(toArrayBuffer(bgPtr, 0, size * 5 * 4)),
         attributes: new Uint32Array(toArrayBuffer(attributesPtr, 0, size * 4)),
       }
     }
@@ -174,8 +174,8 @@ export class OptimizedBuffer {
       for (let x = 0; x < this._width; x++) {
         const i = y * this._width + x
         const cp = char[i]
-        const cellFg = RGBA.fromValues(fg[i * 4], fg[i * 4 + 1], fg[i * 4 + 2], fg[i * 4 + 3])
-        const cellBg = RGBA.fromValues(bg[i * 4], bg[i * 4 + 1], bg[i * 4 + 2], bg[i * 4 + 3])
+        const cellFg = RGBA.fromValues(fg[i * 5], fg[i * 5 + 1], fg[i * 5 + 2], fg[i * 5 + 3], fg[i * 5 + 4])
+        const cellBg = RGBA.fromValues(bg[i * 5], bg[i * 5 + 1], bg[i * 5 + 2], bg[i * 5 + 3], bg[i * 5 + 4])
         const cellAttrs = attributes[i] & 0xff
 
         // Continuation cells are placeholders for wide characters (emojis, CJK)

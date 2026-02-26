@@ -27,10 +27,17 @@ describe("RGBA class", () => {
       expect(rgba.a).toBeCloseTo(0.4, 5)
     })
 
-    test("uses same buffer reference", () => {
-      const array = new Float32Array([0.1, 0.2, 0.3, 0.4])
+    test("uses same buffer reference for 5-element array", () => {
+      const array = new Float32Array([0.1, 0.2, 0.3, 0.4, 0.0])
       const rgba = RGBA.fromArray(array)
       expect(rgba.buffer).toBe(array)
+    })
+
+    test("creates new buffer for legacy 4-element array", () => {
+      const array = new Float32Array([0.1, 0.2, 0.3, 0.4])
+      const rgba = RGBA.fromArray(array)
+      expect(rgba.buffer.length).toBe(5)
+      expect(rgba.buffer[4]).toBe(0)
     })
   })
 

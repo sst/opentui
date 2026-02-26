@@ -6,15 +6,57 @@ export class RGBA {
   }
 
   static fromArray(array: Float32Array) {
+    if (array.length === 4) {
+      // Legacy 4-element array — add meta = 0 (RGB)
+      const buf = new Float32Array(5)
+      buf.set(array)
+      return new RGBA(buf)
+    }
     return new RGBA(array)
   }
 
-  static fromValues(r: number, g: number, b: number, a: number = 1.0) {
-    return new RGBA(new Float32Array([r, g, b, a]))
+  static fromValues(r: number, g: number, b: number, a: number = 1.0, meta: number = 0) {
+    return new RGBA(new Float32Array([r, g, b, a, meta]))
   }
 
   static fromInts(r: number, g: number, b: number, a: number = 255) {
-    return new RGBA(new Float32Array([r / 255, g / 255, b / 255, a / 255]))
+    return new RGBA(new Float32Array([r / 255, g / 255, b / 255, a / 255, 0]))
+  }
+
+  static fromIndex(index: number): RGBA {
+    // Approximate RGB from 256-color palette, with indexed meta
+    const meta = 256 + index // colorType=1 (indexed) * 256 + index
+    if (index < 16) {
+      // Standard + bright colors - use predefined values
+      const STANDARD: [number, number, number][] = [
+        [0, 0, 0], [0.5, 0, 0], [0, 0.5, 0], [0.5, 0.5, 0],
+        [0, 0, 0.5], [0.5, 0, 0.5], [0, 0.5, 0.5], [0.75, 0.75, 0.75],
+        [0.5, 0.5, 0.5], [1, 0, 0], [0, 1, 0], [1, 1, 0],
+        [0, 0, 1], [1, 0, 1], [0, 1, 1], [1, 1, 1],
+      ]
+      const [r, g, b] = STANDARD[index]
+      return new RGBA(new Float32Array([r, g, b, 1.0, meta]))
+    } else if (index < 232) {
+      // 6x6x6 color cube (indices 16-231)
+      const ci = index - 16
+      const ri = Math.floor(ci / 36)
+      const gi = Math.floor((ci % 36) / 6)
+      const bi = ci % 6
+      return new RGBA(new Float32Array([
+        ri === 0 ? 0 : (55 + ri * 40) / 255,
+        gi === 0 ? 0 : (55 + gi * 40) / 255,
+        bi === 0 ? 0 : (55 + bi * 40) / 255,
+        1.0, meta,
+      ]))
+    } else {
+      // Grayscale (indices 232-255)
+      const gray = (8 + (index - 232) * 10) / 255
+      return new RGBA(new Float32Array([gray, gray, gray, 1.0, meta]))
+    }
+  }
+
+  static defaultColor(): RGBA {
+    return new RGBA(new Float32Array([1.0, 1.0, 1.0, 1.0, 512])) // colorType=2 (default) * 256
   }
 
   static fromHex(hex: string): RGBA {
@@ -57,6 +99,34 @@ export class RGBA {
     this.buffer[3] = value
   }
 
+  get meta(): number {
+    return this.buffer[4]
+  }
+
+  set meta(value: number) {
+    this.buffer[4] = value
+  }
+
+  get colorType(): number {
+    return Math.floor(this.buffer[4] / 256)
+  }
+
+  get colorIndex(): number {
+    return this.buffer[4] % 256
+  }
+
+  isRgb(): boolean {
+    return this.colorType === 0
+  }
+
+  isIndexed(): boolean {
+    return this.colorType === 1
+  }
+
+  isDefault(): boolean {
+    return this.colorType === 2
+  }
+
   map<R>(fn: (value: number) => R) {
     return [fn(this.r), fn(this.g), fn(this.b), fn(this.a)]
   }
@@ -67,7 +137,7 @@ export class RGBA {
 
   equals(other?: RGBA): boolean {
     if (!other) return false
-    return this.r === other.r && this.g === other.g && this.b === other.b && this.a === other.a
+    return this.r === other.r && this.g === other.g && this.b === other.b && this.a === other.a && this.meta === other.meta
   }
 }
 

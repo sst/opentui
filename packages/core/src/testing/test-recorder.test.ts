@@ -406,8 +406,8 @@ describe("TestRecorder", () => {
     expect(frames.length).toBe(1)
 
     const expectedSize = renderer.width * renderer.height
-    expect(frames[0].buffers?.fg?.length).toBe(expectedSize * 4)
-    expect(frames[0].buffers?.bg?.length).toBe(expectedSize * 4)
+    expect(frames[0].buffers?.fg?.length).toBe(expectedSize * 5)
+    expect(frames[0].buffers?.bg?.length).toBe(expectedSize * 5)
     expect(frames[0].buffers?.attributes?.length).toBe(expectedSize)
 
     recorderWithAll.stop()

@@ -169,7 +169,7 @@ describe("LineNumberRenderable", () => {
 
     // Helper to get RGBA values from buffer at position
     const getBgColor = (x: number, y: number) => {
-      const offset = (y * buffer.width + x) * 4
+      const offset = (y * buffer.width + x) * 5
       return {
         r: bgBuffer[offset],
         g: bgBuffer[offset + 1],
@@ -242,7 +242,7 @@ describe("LineNumberRenderable", () => {
 
     // Helper to get RGBA values from buffer at position
     const getBgColor = (x: number, y: number) => {
-      const offset = (y * buffer.width + x) * 4
+      const offset = (y * buffer.width + x) * 5
       return {
         r: bgBuffer[offset],
         g: bgBuffer[offset + 1],
@@ -358,7 +358,7 @@ describe("LineNumberRenderable", () => {
 
     // Helper to get RGBA values from buffer at position
     const getBgColor = (x: number, y: number) => {
-      const offset = (y * buffer.width + x) * 4
+      const offset = (y * buffer.width + x) * 5
       return {
         r: bgBuffer[offset],
         g: bgBuffer[offset + 1],
@@ -441,7 +441,7 @@ describe("LineNumberRenderable", () => {
 
     // Helper to get RGBA values from buffer at position
     const getBgColor = (x: number, y: number) => {
-      const offset = (y * buffer.width + x) * 4
+      const offset = (y * buffer.width + x) * 5
       return {
         r: bgBuffer[offset],
         g: bgBuffer[offset + 1],
@@ -540,7 +540,7 @@ describe("LineNumberRenderable", () => {
 
     // Helper to get RGBA values from buffer at position
     const getBgColor = (x: number, y: number) => {
-      const offset = (y * buffer.width + x) * 4
+      const offset = (y * buffer.width + x) * 5
       return {
         r: bgBuffer[offset],
         g: bgBuffer[offset + 1],
@@ -656,7 +656,7 @@ describe("LineNumberRenderable", () => {
 
     // Helper to get RGBA values from buffer at position
     const getFgColor = (x: number, y: number) => {
-      const offset = (y * buffer.width + x) * 4
+      const offset = (y * buffer.width + x) * 5
       return {
         r: fgBuffer[offset],
         g: fgBuffer[offset + 1],
@@ -1352,7 +1352,7 @@ describe("LineNumberRenderable", () => {
     const bgBuffer = buffer.buffers.bg
 
     const getBgColor = (x: number, y: number) => {
-      const offset = (y * buffer.width + x) * 4
+      const offset = (y * buffer.width + x) * 5
       return {
         r: bgBuffer[offset],
         g: bgBuffer[offset + 1],
@@ -1409,7 +1409,7 @@ describe("LineNumberRenderable", () => {
     const bgBuffer = buffer.buffers.bg
 
     const getBgColor = (x: number, y: number) => {
-      const offset = (y * buffer.width + x) * 4
+      const offset = (y * buffer.width + x) * 5
       return {
         r: bgBuffer[offset],
         g: bgBuffer[offset + 1],
@@ -1469,7 +1469,7 @@ describe("LineNumberRenderable", () => {
     const bgBuffer = buffer.buffers.bg
 
     const getBgColor = (x: number, y: number) => {
-      const offset = (y * buffer.width + x) * 4
+      const offset = (y * buffer.width + x) * 5
       return {
         r: bgBuffer[offset],
         g: bgBuffer[offset + 1],
@@ -1525,7 +1525,7 @@ describe("LineNumberRenderable", () => {
     const bgBuffer = buffer.buffers.bg
 
     const getBgColor = (x: number, y: number) => {
-      const offset = (y * buffer.width + x) * 4
+      const offset = (y * buffer.width + x) * 5
       return {
         r: bgBuffer[offset],
         g: bgBuffer[offset + 1],

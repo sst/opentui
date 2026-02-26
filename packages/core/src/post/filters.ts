@@ -10,7 +10,7 @@ export function applyScanlines(buffer: OptimizedBuffer, strength: number = 0.8, 
 
   for (let y = 0; y < height; y += step) {
     for (let x = 0; x < width; x++) {
-      const colorIndex = (y * width + x) * 4
+      const colorIndex = (y * width + x) * 5
       bg[colorIndex] *= strength // R
       bg[colorIndex + 1] *= strength // G
       bg[colorIndex + 2] *= strength // B
@@ -28,7 +28,7 @@ export function applyGrayscale(buffer: OptimizedBuffer): void {
   const bg = buffer.buffers.bg
 
   for (let i = 0; i < size; i++) {
-    const colorIndex = i * 4
+    const colorIndex = i * 5
 
     // Grayscale foreground
     const fgR = fg[colorIndex]
@@ -59,7 +59,7 @@ export function applySepia(buffer: OptimizedBuffer): void {
   const bg = buffer.buffers.bg
 
   for (let i = 0; i < size; i++) {
-    const colorIndex = i * 4
+    const colorIndex = i * 5
 
     // Sepia foreground
     let fgR = fg[colorIndex]
@@ -94,7 +94,7 @@ export function applyInvert(buffer: OptimizedBuffer): void {
   const bg = buffer.buffers.bg
 
   for (let i = 0; i < size; i++) {
-    const colorIndex = i * 4
+    const colorIndex = i * 5
     fg[colorIndex] = 1.0 - fg[colorIndex]
     fg[colorIndex + 1] = 1.0 - fg[colorIndex + 1]
     fg[colorIndex + 2] = 1.0 - fg[colorIndex + 2]
@@ -114,7 +114,7 @@ export function applyNoise(buffer: OptimizedBuffer, strength: number = 0.1): voi
   const bg = buffer.buffers.bg
 
   for (let i = 0; i < size; i++) {
-    const colorIndex = i * 4
+    const colorIndex = i * 5
     const noise = (Math.random() - 0.5) * strength
 
     fg[colorIndex] = Math.max(0, Math.min(1, fg[colorIndex] + noise))
@@ -147,10 +147,10 @@ export function applyChromaticAberration(buffer: OptimizedBuffer, strength: numb
       const rX = Math.max(0, Math.min(width - 1, x - offset))
       const bX = Math.max(0, Math.min(width - 1, x + offset))
 
-      const rIndex = (y * width + rX) * 4
-      const gIndex = (y * width + x) * 4 // Green from original position
-      const bIndex = (y * width + bX) * 4
-      const destIndex = (y * width + x) * 4
+      const rIndex = (y * width + rX) * 5
+      const gIndex = (y * width + x) * 5 // Green from original position
+      const bIndex = (y * width + bX) * 5
+      const destIndex = (y * width + x) * 5
 
       destFg[destIndex] = srcFg[rIndex] // Red from left offset
       destFg[destIndex + 1] = srcFg[gIndex + 1] // Green from center
@@ -173,7 +173,7 @@ export function applyAsciiArt(buffer: OptimizedBuffer, ramp: string = " .:-=+*#%
   for (let y = 0; y < height; y++) {
     for (let x = 0; x < width; x++) {
       const index = y * width + x
-      const colorIndex = index * 4
+      const colorIndex = index * 5
       const bgR = bg[colorIndex]
       const bgG = bg[colorIndex + 1]
       const bgB = bg[colorIndex + 2]
@@ -279,16 +279,16 @@ export class DistortionEffect {
           // Lazily create temp buffers only when needed for shift/flip
           if (!tempChar) {
             tempChar = new Uint32Array(width)
-            tempFg = new Float32Array(width * 4)
-            tempBg = new Float32Array(width * 4)
+            tempFg = new Float32Array(width * 5)
+            tempBg = new Float32Array(width * 5)
             tempAttr = new Uint8Array(width)
           }
 
           // 1. Copy original row data to temp buffers
           try {
             tempChar.set(buf.char.subarray(baseIndex, baseIndex + width))
-            tempFg!.set(buf.fg.subarray(baseIndex * 4, (baseIndex + width) * 4))
-            tempBg!.set(buf.bg.subarray(baseIndex * 4, (baseIndex + width) * 4))
+            tempFg!.set(buf.fg.subarray(baseIndex * 5, (baseIndex + width) * 5))
+            tempBg!.set(buf.bg.subarray(baseIndex * 5, (baseIndex + width) * 5))
             tempAttr!.set(buf.attributes.subarray(baseIndex, baseIndex + width))
           } catch (e) {
             // Handle potential range errors if buffer size changes unexpectedly
@@ -306,11 +306,11 @@ export class DistortionEffect {
               buf.char[destIndex] = tempChar[srcTempIndex]
               buf.attributes[destIndex] = tempAttr![srcTempIndex]
 
-              const destColorIndex = destIndex * 4
-              const srcTempColorIndex = srcTempIndex * 4
+              const destColorIndex = destIndex * 5
+              const srcTempColorIndex = srcTempIndex * 5
 
-              buf.fg.set(tempFg!.subarray(srcTempColorIndex, srcTempColorIndex + 4), destColorIndex)
-              buf.bg.set(tempBg!.subarray(srcTempColorIndex, srcTempColorIndex + 4), destColorIndex)
+              buf.fg.set(tempFg!.subarray(srcTempColorIndex, srcTempColorIndex + 5), destColorIndex)
+              buf.bg.set(tempBg!.subarray(srcTempColorIndex, srcTempColorIndex + 5), destColorIndex)
             }
           } else {
             // type === 'flip'
@@ -322,11 +322,11 @@ export class DistortionEffect {
               buf.char[destIndex] = tempChar[srcTempIndex]
               buf.attributes[destIndex] = tempAttr![srcTempIndex]
 
-              const destColorIndex = destIndex * 4
-              const srcTempColorIndex = srcTempIndex * 4
+              const destColorIndex = destIndex * 5
+              const srcTempColorIndex = srcTempIndex * 5
 
-              buf.fg.set(tempFg!.subarray(srcTempColorIndex, srcTempColorIndex + 4), destColorIndex)
-              buf.bg.set(tempBg!.subarray(srcTempColorIndex, srcTempColorIndex + 4), destColorIndex)
+              buf.fg.set(tempFg!.subarray(srcTempColorIndex, srcTempColorIndex + 5), destColorIndex)
+              buf.bg.set(tempBg!.subarray(srcTempColorIndex, srcTempColorIndex + 5), destColorIndex)
             }
           }
         } else if (glitch.type === "color") {
@@ -345,7 +345,7 @@ export class DistortionEffect {
             if (x >= width) break // Boundary check
 
             const destIndex = baseIndex + x
-            const destColorIndex = destIndex * 4
+            const destColorIndex = destIndex * 5
 
             let rFg, gFg, bFg, rBg, gBg, bBg
 
@@ -495,7 +495,7 @@ export class VignetteEffect {
     for (let i = 0; i < size; i++) {
       // Calculate the final factor dynamically
       const factor = Math.max(0, 1 - this.precomputedBaseAttenuation![i] * this._strength)
-      const colorIndex = i * 4
+      const colorIndex = i * 5
 
       buf.fg[colorIndex] *= factor
       buf.fg[colorIndex + 1] *= factor
@@ -541,7 +541,7 @@ export class BrightnessEffect {
     }
 
     for (let i = 0; i < size; i++) {
-      const colorIndex = i * 4
+      const colorIndex = i * 5
 
       // Adjust foreground
       fg[colorIndex] = Math.min(1.0, fg[colorIndex] * factor)
@@ -592,7 +592,7 @@ export class BlurEffect {
     const destBg = buf.bg
     const chars = buf.char // Get reference to character buffer
     const size = width * height
-    const numChannels = 4 // RGBA
+    const numChannels = 5 // RGBA + meta
 
     // Temporary buffer for the horizontal pass result
     const tempBufferFg = new Float32Array(size * numChannels)
@@ -833,7 +833,7 @@ export class BloomEffect {
     // 1. Find bright pixels based on original data
     for (let y = 0; y < height; y++) {
       for (let x = 0; x < width; x++) {
-        const index = (y * width + x) * 4
+        const index = (y * width + x) * 5
         // Consider max component brightness, or luminance? Using luminance.
         const fgLum = 0.299 * srcFg[index] + 0.587 * srcFg[index + 1] + 0.114 * srcFg[index + 2]
         const bgLum = 0.299 * srcBg[index] + 0.587 * srcBg[index + 1] + 0.114 * srcBg[index + 2]
@@ -869,7 +869,7 @@ export class BloomEffect {
               // Simple linear falloff based on squared distance
               const falloff = 1 - distSq / radiusSq
               const bloomAmount = bright.intensity * strength * falloff
-              const destIndex = (sampleY * width + sampleX) * 4
+              const destIndex = (sampleY * width + sampleX) * 5
 
               // Add bloom to both fg and bg, clamping at 1.0
               destFg[destIndex] = Math.min(1.0, destFg[destIndex] + bloomAmount)

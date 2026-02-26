@@ -20,7 +20,7 @@ function getCharAt(buffer: TestRenderer["currentRenderBuffer"], x: number, y: nu
 }
 
 function getFgAt(buffer: TestRenderer["currentRenderBuffer"], x: number, y: number): RGBA {
-  const index = (y * buffer.width + x) * 4
+  const index = (y * buffer.width + x) * 5
   return RGBA.fromValues(
     buffer.buffers.fg[index] ?? 0,
     buffer.buffers.fg[index + 1] ?? 0,
@@ -30,7 +30,7 @@ function getFgAt(buffer: TestRenderer["currentRenderBuffer"], x: number, y: numb
 }
 
 function getBgAt(buffer: TestRenderer["currentRenderBuffer"], x: number, y: number): RGBA {
-  const index = (y * buffer.width + x) * 4
+  const index = (y * buffer.width + x) * 5
   return RGBA.fromValues(
     buffer.buffers.bg[index] ?? 0,
     buffer.buffers.bg[index + 1] ?? 0,

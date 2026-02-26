@@ -2372,7 +2372,7 @@ class FFIRenderLib implements RenderLib {
       visible: struct.visible,
       style: CURSOR_ID_TO_STYLE[struct.style] ?? "block",
       blinking: struct.blinking,
-      color: RGBA.fromValues(struct.r, struct.g, struct.b, struct.a),
+      color: RGBA.fromValues(struct.r, struct.g, struct.b, struct.a, struct.meta),
     }
   }
 

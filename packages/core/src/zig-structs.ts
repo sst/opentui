@@ -3,7 +3,7 @@ import { ptr, toArrayBuffer, type Pointer } from "bun:ffi"
 import { RGBA } from "./lib/RGBA"
 
 const rgbaPackTransform = (rgba?: RGBA) => (rgba ? ptr(rgba.buffer) : null)
-const rgbaUnpackTransform = (ptr?: Pointer) => (ptr ? RGBA.fromArray(new Float32Array(toArrayBuffer(ptr))) : undefined)
+const rgbaUnpackTransform = (ptr?: Pointer) => (ptr ? RGBA.fromArray(new Float32Array(toArrayBuffer(ptr, 0, 5 * 4))) : undefined)
 
 type StyledChunkInput = {
   text: string
@@ -132,6 +132,7 @@ export const CursorStateStruct = defineStruct([
   ["g", "f32"],
   ["b", "f32"],
   ["a", "f32"],
+  ["meta", "f32"],
 ])
 
 export const CursorStyleOptionsStruct = defineStruct([

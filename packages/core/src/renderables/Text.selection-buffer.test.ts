@@ -86,10 +86,10 @@ describe("TextRenderable Selection - Buffer Validation", () => {
     const getBgAt = (x: number, y: number) => {
       const index = y * width + x
       return RGBA.fromValues(
-        buffers.bg[index * 4],
-        buffers.bg[index * 4 + 1],
-        buffers.bg[index * 4 + 2],
-        buffers.bg[index * 4 + 3],
+        buffers.bg[index * 5],
+        buffers.bg[index * 5 + 1],
+        buffers.bg[index * 5 + 2],
+        buffers.bg[index * 5 + 3],
       )
     }
 
