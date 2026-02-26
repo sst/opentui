@@ -393,8 +393,8 @@ export class TextTableRenderable extends Renderable {
     const measureFunc = (
       width: number,
       widthMode: MeasureMode,
-      height: number,
-      heightMode: MeasureMode,
+      _height: number,
+      _heightMode: MeasureMode,
     ): { width: number; height: number } => {
       const hasWidthConstraint = widthMode !== MeasureMode.Undefined && Number.isFinite(width)
       const rawWidthConstraint = hasWidthConstraint ? Math.max(1, Math.floor(width)) : undefined
@@ -410,6 +410,8 @@ export class TextTableRenderable extends Renderable {
         measuredWidth = Math.min(rawWidthConstraint, measuredWidth)
       }
 
+      // Keep intrinsic height even under AtMost constraints. Clamping here can under-report
+      // content height during Yoga measure passes and leave parent scroll extents stale.
       return {
         width: measuredWidth,
         height: measuredHeight,

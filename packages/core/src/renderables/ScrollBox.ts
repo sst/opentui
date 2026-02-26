@@ -366,7 +366,6 @@ export class ScrollBoxRenderable extends BoxRenderable {
 
   protected onUpdate(deltaTime: number): void {
     this.handleAutoScroll(deltaTime)
-    this.syncBarProps()
   }
 
   public scrollBy(delta: number | { x: number; y: number }, unit: ScrollUnit = "absolute"): void {
@@ -641,48 +640,15 @@ export class ScrollBoxRenderable extends BoxRenderable {
     }
   }
 
-  private getEstimatedScrollHeight(): number {
-    const children = this.content.getChildren()
-    const lastChild = children[children.length - 1]
-
-    if (!lastChild) {
-      return Math.max(0, this.content.height)
-    }
-
-    const relativeBottom = lastChild.y - this.content.y + lastChild.height
-    return Math.max(0, Math.ceil(Math.max(this.content.height, relativeBottom)))
-  }
-
-  private syncBarProps(): void {
-    const estimatedHeight = this.getEstimatedScrollHeight()
-    const estimatedWidth = Math.max(0, this.content.width)
-
-    const verticalNeedsUpdate =
-      estimatedHeight !== this.verticalScrollBar.scrollSize ||
-      this.viewport.height !== this.verticalScrollBar.viewportSize
-    const horizontalNeedsUpdate =
-      estimatedWidth !== this.horizontalScrollBar.scrollSize ||
-      this.viewport.width !== this.horizontalScrollBar.viewportSize
-
-    if (!verticalNeedsUpdate && !horizontalNeedsUpdate) {
-      return
-    }
-
-    this.recalculateBarProps(estimatedWidth, estimatedHeight)
-  }
-
-  private recalculateBarProps(
-    contentWidth: number = this.content.width,
-    contentHeight: number = this.content.height,
-  ): void {
+  private recalculateBarProps(): void {
     // Wrap entire method to prevent scroll changes from being treated as manual
     const wasApplyingStickyScroll = this._isApplyingStickyScroll
     this._isApplyingStickyScroll = true
 
     try {
-      this.verticalScrollBar.scrollSize = contentHeight
+      this.verticalScrollBar.scrollSize = this.content.height
       this.verticalScrollBar.viewportSize = this.viewport.height
-      this.horizontalScrollBar.scrollSize = contentWidth
+      this.horizontalScrollBar.scrollSize = this.content.width
       this.horizontalScrollBar.viewportSize = this.viewport.width
 
       if (this._stickyScroll) {

@@ -136,6 +136,18 @@ function cell(text: string): TextTableCellContent {
   ]
 }
 
+function getScrollContentBottom(scrollBox: ScrollBoxRenderable): number {
+  const children = scrollBox.content.getChildren()
+  const lastChild = children[children.length - 1]
+
+  if (!lastChild) {
+    return Math.max(0, Math.ceil(scrollBox.content.height))
+  }
+
+  const relativeBottom = lastChild.y - scrollBox.content.y + lastChild.height
+  return Math.max(0, Math.ceil(relativeBottom))
+}
+
 beforeEach(async () => {
   const testRenderer = await createTestRenderer({ width: 60, height: 16 })
   renderer = testRenderer.renderer
@@ -1133,5 +1145,153 @@ describe("TextTableRenderable", () => {
 
     const scrolledToBottomFrame = captureFrame()
     expect(scrolledToBottomFrame).toContain("epsilon")
+  })
+
+  test("keeps scroll height aligned with content bottom after word-wrap resize", async () => {
+    resizeRenderer(104, 34)
+    await renderOnce()
+
+    const tableContent: TextTableContent = [
+      [[bold("Key")], [bold("Value")]],
+      [
+        cell("alpha"),
+        cell(
+          "word wrapping should preserve intrinsic table height even when parent measure passes provide a smaller at-most height",
+        ),
+      ],
+      [
+        cell("beta"),
+        cell(
+          "this row is intentionally verbose and pushes the wrapped table height so that scrolling must include all visual lines",
+        ),
+      ],
+      [cell("marker"), cell("ENDWORD")],
+    ]
+
+    const root = new BoxRenderable(renderer, {
+      width: "100%",
+      height: "100%",
+      flexDirection: "column",
+      padding: 1,
+      gap: 1,
+    })
+
+    const scrollBox = new ScrollBoxRenderable(renderer, {
+      width: "100%",
+      flexGrow: 1,
+      flexShrink: 1,
+      scrollY: true,
+      scrollX: false,
+      border: false,
+      contentOptions: {
+        flexDirection: "column",
+        gap: 1,
+      },
+    })
+
+    const table = new TextTableRenderable(renderer, {
+      width: "100%",
+      wrapMode: "word",
+      content: tableContent,
+    })
+
+    root.add(scrollBox)
+    root.add(
+      new BoxRenderable(renderer, {
+        width: "100%",
+        height: 16,
+        flexGrow: 0,
+        flexShrink: 0,
+      }),
+    )
+
+    scrollBox.add(new TextRenderable(renderer, { content: "Word Wrap Table", selectable: false }))
+    scrollBox.add(table)
+    renderer.root.add(root)
+
+    await renderOnce()
+
+    resizeRenderer(66, 34)
+    await renderOnce()
+    await renderOnce()
+
+    const contentBottom = getScrollContentBottom(scrollBox)
+    expect(contentBottom).toBeGreaterThan(scrollBox.viewport.height)
+    expect(scrollBox.scrollHeight).toBe(contentBottom)
+
+    scrollBox.scrollTop = Math.max(0, scrollBox.scrollHeight - scrollBox.viewport.height)
+    await renderOnce()
+
+    expect(captureFrame()).toContain("ENDWORD")
+  })
+
+  test("keeps scroll height aligned with content bottom in char-wrap fill mode", async () => {
+    resizeRenderer(104, 34)
+    await renderOnce()
+
+    const tableContent: TextTableContent = [
+      [[bold("Name")], [bold("Payload")]],
+      [cell("row-1"), cell("AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA")],
+      [cell("row-2"), cell("BBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBB")],
+      [cell("row-3"), cell("CCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCC")],
+      [cell("marker"), cell("ENDCHAR")],
+    ]
+
+    const root = new BoxRenderable(renderer, {
+      width: "100%",
+      height: "100%",
+      flexDirection: "column",
+      padding: 1,
+      gap: 1,
+    })
+
+    const scrollBox = new ScrollBoxRenderable(renderer, {
+      width: "100%",
+      flexGrow: 1,
+      flexShrink: 1,
+      scrollY: true,
+      scrollX: false,
+      border: false,
+      contentOptions: {
+        flexDirection: "column",
+        gap: 1,
+      },
+    })
+
+    const table = new TextTableRenderable(renderer, {
+      width: "100%",
+      wrapMode: "char",
+      columnWidthMode: "fill",
+      content: tableContent,
+    })
+
+    root.add(scrollBox)
+    root.add(
+      new BoxRenderable(renderer, {
+        width: "100%",
+        height: 16,
+        flexGrow: 0,
+        flexShrink: 0,
+      }),
+    )
+
+    scrollBox.add(new TextRenderable(renderer, { content: "Char Wrap Fill Table", selectable: false }))
+    scrollBox.add(table)
+    renderer.root.add(root)
+
+    await renderOnce()
+
+    resizeRenderer(58, 34)
+    await renderOnce()
+    await renderOnce()
+
+    const contentBottom = getScrollContentBottom(scrollBox)
+    expect(contentBottom).toBeGreaterThan(scrollBox.viewport.height)
+    expect(scrollBox.scrollHeight).toBe(contentBottom)
+
+    scrollBox.scrollTop = Math.max(0, scrollBox.scrollHeight - scrollBox.viewport.height)
+    await renderOnce()
+
+    expect(captureFrame()).toContain("ENDCHAR")
   })
 })
