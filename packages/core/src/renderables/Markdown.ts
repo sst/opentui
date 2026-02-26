@@ -24,7 +24,6 @@ export interface MarkdownTableOptions {
    * Strategy for sizing table columns.
    * - "content": columns fit to intrinsic content width.
    * - "full": columns expand to fill available width.
-   * - "fill": alias for "full".
    */
   widthMode?: TextTableColumnWidthMode
   /**

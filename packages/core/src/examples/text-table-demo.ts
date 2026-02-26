@@ -53,7 +53,7 @@ const PALETTE = {
 
 const WRAP_MODES: Array<"none" | "word" | "char"> = ["none", "word", "char"]
 const BORDER_STYLES: BorderStyle[] = ["single", "rounded", "double", "heavy"]
-const COLUMN_WIDTH_MODES: TextTableColumnWidthMode[] = ["content", "fill"]
+const COLUMN_WIDTH_MODES: TextTableColumnWidthMode[] = ["content", "full"]
 const CELL_PADDING_VALUES: number[] = [0, 1, 2]
 
 function cell(text: string): TextChunk[] {
@@ -101,7 +101,7 @@ const primaryContentSets: TextTableContent[] = [
       ),
     ],
     [
-      cell("Snapshot pass for table rendering in content mode and fill mode with heavy and double border combinations"),
+      cell("Snapshot pass for table rendering in content mode and full mode with heavy and double border combinations"),
       cell("qa automation and visual diff triage group"),
       cell(
         "today pending final baseline updates for oversized fixtures that intentionally stress wrapping behavior on high-resolution terminals",

@@ -268,13 +268,13 @@ describe("TextTableRenderable", () => {
     expect(borderXs).toEqual([0, 17, 33])
   })
 
-  test("fills available width in no-wrap mode when columnWidthMode is fill", async () => {
+  test("fills available width in no-wrap mode when columnWidthMode is full", async () => {
     const table = new TextTableRenderable(renderer, {
       left: 0,
       top: 0,
       width: 24,
       wrapMode: "none",
-      columnWidthMode: "fill",
+      columnWidthMode: "full",
       content: [
         [cell("Key"), cell("Value")],
         [cell("A"), cell("B")],
@@ -367,7 +367,7 @@ describe("TextTableRenderable", () => {
     let borderXs = findVerticalBorderXs(renderer.currentRenderBuffer, headerY)
     expect(borderXs[borderXs.length - 1]).toBeLessThan(33)
 
-    table.columnWidthMode = "fill"
+    table.columnWidthMode = "full"
     await renderOnce()
 
     lines = captureFrame().split("\n")
@@ -1007,7 +1007,7 @@ describe("TextTableRenderable", () => {
       ],
       [
         cell(
-          "Snapshot pass for table rendering in content mode and fill mode with heavy and double border combinations",
+          "Snapshot pass for table rendering in content mode and full mode with heavy and double border combinations",
         ),
         cell("qa automation and visual diff triage group"),
         cell(
@@ -1235,7 +1235,7 @@ describe("TextTableRenderable", () => {
     expect(captureFrame()).toContain("ENDWORD")
   })
 
-  test("keeps scroll height aligned with content bottom in char-wrap fill mode", async () => {
+  test("keeps scroll height aligned with content bottom in char-wrap full mode", async () => {
     resizeRenderer(104, 34)
     await renderOnce()
 
@@ -1271,7 +1271,7 @@ describe("TextTableRenderable", () => {
     const table = new TextTableRenderable(renderer, {
       width: "100%",
       wrapMode: "char",
-      columnWidthMode: "fill",
+      columnWidthMode: "full",
       content: tableContent,
     })
 

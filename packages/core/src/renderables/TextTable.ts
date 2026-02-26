@@ -17,7 +17,7 @@ const MEASURE_HEIGHT = 10_000
 
 export type TextTableCellContent = TextChunk[] | null | undefined
 export type TextTableContent = TextTableCellContent[][]
-export type TextTableColumnWidthMode = "content" | "full" | "fill"
+export type TextTableColumnWidthMode = "content" | "full"
 
 interface ResolvedTableBorderLayout {
   left: boolean
@@ -627,7 +627,7 @@ export class TextTableRenderable extends Renderable {
   }
 
   private isFullWidthMode(): boolean {
-    return this._columnWidthMode === "full" || this._columnWidthMode === "fill"
+    return this._columnWidthMode === "full"
   }
 
   private computeColumnWidths(maxTableWidth: number | undefined, borderLayout: ResolvedTableBorderLayout): number[] {
