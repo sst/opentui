@@ -1399,7 +1399,7 @@ test("streaming->non-streaming transition updates table to show final row", asyn
   })
 
   renderer.root.add(md)
-  await renderOnce()
+  await renderer.idle()
 
   const tableWhileStreaming = md._blockStates[0]?.renderable
 
@@ -1412,7 +1412,7 @@ test("streaming->non-streaming transition updates table to show final row", asyn
   expect(frame).not.toContain("second")
 
   md.streaming = false
-  await renderOnce()
+  await renderer.idle()
 
   frame = captureFrame()
     .split("\n")
@@ -1424,6 +1424,57 @@ test("streaming->non-streaming transition updates table to show final row", asyn
   expect(md._blockStates[0]?.renderable).toBe(tableWhileStreaming)
 })
 
+test("stream end mid-table finalizes full table snapshot", async () => {
+  const md = new MarkdownRenderable(renderer, {
+    id: "markdown",
+    content: "",
+    syntaxStyle,
+    streaming: true,
+  })
+
+  renderer.root.add(md)
+
+  md.content = "| Name | Score |\n|---|---|\n"
+  await renderer.idle()
+
+  md.content = "| Name | Score |\n|---|---|\n| Alpha | 10 |\n"
+  await renderer.idle()
+
+  md.content = "| Name | Score |\n|---|---|\n| Alpha | 10 |\n| Bravo | 20 |\n"
+  await renderer.idle()
+
+  md.content = "| Name | Score |\n|---|---|\n| Alpha | 10 |\n| Bravo | 20 |\n| Charlie | 30 |"
+  await renderer.idle()
+
+  let frame = captureFrame()
+    .split("\n")
+    .map((line) => line.trimEnd())
+    .join("\n")
+
+  expect(frame).not.toContain("Charlie")
+
+  md.streaming = false
+  await renderer.idle()
+
+  frame = captureFrame()
+    .split("\n")
+    .map((line) => line.trimEnd())
+    .join("\n")
+    .trimEnd()
+
+  expect(frame).toMatchInlineSnapshot(`
+"┌──────────────────────────────┬───────────────────────────┐
+│Name                          │Score                      │
+├──────────────────────────────┼───────────────────────────┤
+│Alpha                         │10                         │
+├──────────────────────────────┼───────────────────────────┤
+│Bravo                         │20                         │
+├──────────────────────────────┼───────────────────────────┤
+│Charlie                       │30                         │
+└──────────────────────────────┴───────────────────────────┘"
+`)
+})
+
 test("non-streaming->streaming transition updates table to hide trailing row", async () => {
   const md = new MarkdownRenderable(renderer, {
     id: "markdown",
@@ -1433,7 +1484,7 @@ test("non-streaming->streaming transition updates table to hide trailing row", a
   })
 
   renderer.root.add(md)
-  await renderOnce()
+  await renderer.idle()
 
   const tableWhileStable = md._blockStates[0]?.renderable
 
@@ -1446,7 +1497,7 @@ test("non-streaming->streaming transition updates table to hide trailing row", a
   expect(frame).toContain("second")
 
   md.streaming = true
-  await renderOnce()
+  await renderer.idle()
 
   frame = captureFrame()
     .split("\n")

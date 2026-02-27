@@ -198,7 +198,6 @@ export class MarkdownRenderable extends Renderable {
     if (this._streaming !== value) {
       this._streaming = value
       this.updateBlocks(true)
-      this.requestRender()
     }
   }
 
