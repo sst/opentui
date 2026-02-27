@@ -1,5 +1,6 @@
 import {
   CliRenderer,
+  CliRenderEvents,
   createCliRenderer,
   BoxRenderable,
   TextRenderable,
@@ -243,6 +244,7 @@ let streamingMode = false
 let streamingTimer: Timer | null = null
 let streamPosition = 0
 let endlessMode = false
+let rendererDestroyHandler: (() => void) | null = null
 
 // Streaming speed presets: [minDelay, maxDelay] in milliseconds
 const streamSpeeds = [
@@ -319,7 +321,7 @@ function startStreaming() {
   }
 
   function streamNextChunk() {
-    if (!streamingMode || !markdownDisplay) return
+    if (!streamingMode || !markdownDisplay || markdownDisplay.isDestroyed) return
 
     // Random chunk size between 1 and 50 characters
     const chunkSize = Math.floor(Math.random() * 50) + 1
@@ -363,6 +365,17 @@ function startStreaming() {
 
 export async function run(rendererInstance: CliRenderer): Promise<void> {
   renderer = rendererInstance
+
+  rendererDestroyHandler = () => {
+    stopStreaming()
+    markdownDisplay = null
+    markdownScrollBox = null
+    statusText = null
+    parentContainer = null
+    helpModal = null
+  }
+  rendererInstance.on(CliRenderEvents.DESTROY, rendererDestroyHandler)
+
   renderer.start()
   registerJsonParserForDemo()
 
@@ -574,6 +587,11 @@ Other:
 
 export function destroy(rendererInstance: CliRenderer): void {
   stopStreaming()
+
+  if (rendererDestroyHandler) {
+    rendererInstance.off(CliRenderEvents.DESTROY, rendererDestroyHandler)
+    rendererDestroyHandler = null
+  }
 
   if (keyboardHandler) {
     rendererInstance.keyInput.off("keypress", keyboardHandler)
