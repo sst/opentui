@@ -19,9 +19,8 @@ class MockRenderer {
   }
 }
 
-// Helper function to parse all events from buffer
 function parseAllEvents(emittedData: Buffer, parser: MouseParser) {
-  return parser.parseAllMouseEvents(emittedData)
+  return parser.parseAllMouseEvents(emittedData).events
 }
 
 describe("mock-mouse + parser integration", () => {

@@ -14,7 +14,13 @@ import type { Pointer } from "bun:ffi"
 import { OptimizedBuffer } from "./buffer"
 import { resolveRenderLib, type RenderLib } from "./zig"
 import { TerminalConsole, type ConsoleOptions, capture } from "./console"
-import { MouseParser, type MouseEventType, type RawMouseEvent, type ScrollInfo } from "./lib/parse.mouse"
+import {
+  MouseParser,
+  type MouseEventType,
+  type MouseParseResult,
+  type RawMouseEvent,
+  type ScrollInfo,
+} from "./lib/parse.mouse"
 import { Selection } from "./lib/selection"
 import { Clipboard, type ClipboardTarget } from "./lib/clipboard"
 import { EventEmitter } from "events"
@@ -198,6 +204,40 @@ export function buildKittyKeyboardFlags(config: KittyKeyboardOptions | null | un
   }
 
   return flags
+}
+
+function coalesceScrollEvents(events: RawMouseEvent[]): RawMouseEvent[] {
+  if (events.length <= 1) return events
+
+  const out: RawMouseEvent[] = []
+  let pending: RawMouseEvent | null = null
+
+  for (const evt of events) {
+    if (evt.type !== "scroll") {
+      if (pending) {
+        out.push(pending)
+        pending = null
+      }
+      out.push(evt)
+      continue
+    }
+
+    if (
+      pending &&
+      pending.scroll &&
+      evt.scroll &&
+      pending.scroll.direction === evt.scroll.direction &&
+      pending.x === evt.x &&
+      pending.y === evt.y
+    ) {
+      pending.scroll = { direction: pending.scroll.direction, delta: pending.scroll.delta + evt.scroll.delta }
+    } else {
+      if (pending) out.push(pending)
+      pending = evt
+    }
+  }
+  if (pending) out.push(pending)
+  return out
 }
 
 export class MouseEvent {
@@ -1059,9 +1099,16 @@ export class CliRenderer extends EventEmitter implements RenderContext {
   }
 
   private stdinListener: (data: Buffer) => void = ((data: Buffer) => {
-    // Mouse first (consume and stop if handled)
-    if (this._useMouse && this.handleMouseData(data)) {
-      return
+    if (this._useMouse) {
+      const consumed = this.handleMouseData(data)
+      if (consumed > 0) {
+        // Forward any remaining non-mouse data (keyboard input, focus sequences, etc.)
+        // to the sequence buffer so it isn't silently dropped.
+        if (consumed < data.length) {
+          this._stdinBuffer.process(data.subarray(consumed))
+        }
+        return
+      }
     }
 
     // Everything else goes through the sequence buffer
@@ -1196,19 +1243,17 @@ export class CliRenderer extends EventEmitter implements RenderContext {
     return event
   }
 
-  private handleMouseData(data: Buffer): boolean {
-    const mouseEvents = this.mouseParser.parseAllMouseEvents(data)
+  private handleMouseData(data: Buffer): number {
+    const result = this.mouseParser.parseAllMouseEvents(data)
 
-    if (mouseEvents.length === 0) return false
+    if (result.events.length === 0) return 0
 
-    let anyHandled = false
-    for (const mouseEvent of mouseEvents) {
-      if (this.processSingleMouseEvent(mouseEvent)) {
-        anyHandled = true
-      }
+    const coalesced = coalesceScrollEvents(result.events)
+    for (const mouseEvent of coalesced) {
+      this.processSingleMouseEvent(mouseEvent)
     }
 
-    return anyHandled
+    return result.consumed
   }
 
   private processSingleMouseEvent(mouseEvent: RawMouseEvent): boolean {

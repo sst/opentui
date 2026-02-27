@@ -14,6 +14,11 @@ export type RawMouseEvent = {
   scroll?: ScrollInfo
 }
 
+export type MouseParseResult = {
+  events: RawMouseEvent[]
+  consumed: number
+}
+
 type ParsedMouseSequence = {
   event: RawMouseEvent
   consumed: number
@@ -47,7 +52,7 @@ export class MouseParser {
     return parsed?.event ?? null
   }
 
-  public parseAllMouseEvents(data: Buffer): RawMouseEvent[] {
+  public parseAllMouseEvents(data: Buffer): MouseParseResult {
     const str = this.decodeInput(data)
     const events: RawMouseEvent[] = []
     let offset = 0
@@ -64,7 +69,7 @@ export class MouseParser {
       offset += parsed.consumed
     }
 
-    return events
+    return { events, consumed: offset }
   }
 
   private parseMouseSequenceAt(str: string, offset: number): ParsedMouseSequence | null {
