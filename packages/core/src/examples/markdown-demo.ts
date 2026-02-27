@@ -6,10 +6,11 @@ import {
   type ParsedKey,
   ScrollBoxRenderable,
 } from "../index"
-import { MarkdownRenderable } from "../renderables/Markdown"
-import { setupCommonDemoKeys } from "./lib/standalone-keys"
 import { parseColor } from "../lib/RGBA"
+import { getTreeSitterClient } from "../lib/tree-sitter"
+import { MarkdownRenderable } from "../renderables/Markdown"
 import { SyntaxStyle } from "../syntax-style"
+import { setupCommonDemoKeys } from "./lib/standalone-keys"
 
 // Rich markdown example showcasing various features
 const markdownContent = `# OpenTUI Markdown Demo
@@ -255,6 +256,27 @@ const streamSpeeds = [
 ]
 let currentSpeedIndex = 0
 
+const JSON_PARSER_WASM_URL =
+  "https://github.com/tree-sitter/tree-sitter-json/releases/download/v0.24.8/tree-sitter-json.wasm"
+const JSON_HIGHLIGHTS_QUERY_URL =
+  "https://raw.githubusercontent.com/nvim-treesitter/nvim-treesitter/refs/heads/master/queries/json/highlights.scm"
+
+let jsonParserRegistered = false
+
+function registerJsonParserForDemo(): void {
+  if (jsonParserRegistered) return
+
+  getTreeSitterClient().addFiletypeParser({
+    filetype: "json",
+    wasm: JSON_PARSER_WASM_URL,
+    queries: {
+      highlights: [JSON_HIGHLIGHTS_QUERY_URL],
+    },
+  })
+
+  jsonParserRegistered = true
+}
+
 function getCurrentTheme() {
   return themes[themeKeys[currentThemeIndex]]
 }
@@ -342,6 +364,7 @@ function startStreaming() {
 export async function run(rendererInstance: CliRenderer): Promise<void> {
   renderer = rendererInstance
   renderer.start()
+  registerJsonParserForDemo()
 
   const theme = getCurrentTheme()
   renderer.setBackgroundColor(theme.bg)
