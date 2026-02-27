@@ -276,7 +276,7 @@ export fn createOptimizedBuffer(width: u32, height: u32, respectAlpha: bool, wid
 
     const pool = gp.initGlobalPool(globalArena);
     const link_pool = link.initGlobalLinkPool(globalArena);
-    const wMethod: utf8.WidthMethod = if (widthMethod == 0) .wcwidth else .unicode;
+    const wMethod: utf8.WidthMethod = if (widthMethod == 0) .wcwidth else if (widthMethod == 2) .no_zwj else .unicode;
     const id = idPtr[0..idLen];
 
     return buffer.OptimizedBuffer.init(globalAllocator, width, height, .{
@@ -343,7 +343,7 @@ export fn getTerminalCapabilities(rendererPtr: *renderer.CliRenderer, capsPtr: *
         .kitty_keyboard = caps.kitty_keyboard,
         .kitty_graphics = caps.kitty_graphics,
         .rgb = caps.rgb,
-        .unicode = if (caps.unicode == .wcwidth) 0 else 1,
+        .unicode = if (caps.unicode == .wcwidth) 0 else if (caps.unicode == .no_zwj) 2 else 1,
         .sgr_pixels = caps.sgr_pixels,
         .color_scheme_updates = caps.color_scheme_updates,
         .explicit_width = caps.explicit_width,
@@ -798,7 +798,7 @@ export fn writeOut(rendererPtr: *renderer.CliRenderer, dataPtr: [*]const u8, dat
 export fn createTextBuffer(widthMethod: u8) ?*text_buffer.UnifiedTextBuffer {
     const pool = gp.initGlobalPool(globalArena);
     const link_pool = link.initGlobalLinkPool(globalArena);
-    const wMethod: utf8.WidthMethod = if (widthMethod == 0) .wcwidth else .unicode;
+    const wMethod: utf8.WidthMethod = if (widthMethod == 0) .wcwidth else if (widthMethod == 2) .no_zwj else .unicode;
 
     return text_buffer.UnifiedTextBuffer.init(globalAllocator, pool, link_pool, wMethod) catch {
         return null;
@@ -1057,7 +1057,7 @@ export fn textBufferViewMeasureForDimensions(view: *text_buffer_view.UnifiedText
 export fn createEditBuffer(widthMethod: u8) ?*edit_buffer_mod.EditBuffer {
     const pool = gp.initGlobalPool(globalArena);
     const link_pool = link.initGlobalLinkPool(globalArena);
-    const wMethod: utf8.WidthMethod = if (widthMethod == 0) .wcwidth else .unicode;
+    const wMethod: utf8.WidthMethod = if (widthMethod == 0) .wcwidth else if (widthMethod == 2) .no_zwj else .unicode;
 
     return edit_buffer_mod.EditBuffer.init(
         globalAllocator,
@@ -1702,7 +1702,7 @@ export fn encodeUnicode(
 ) bool {
     const text = textPtr[0..textLen];
     const pool = gp.initGlobalPool(globalArena);
-    const wMethod: utf8.WidthMethod = if (widthMethod == 0) .wcwidth else .unicode;
+    const wMethod: utf8.WidthMethod = if (widthMethod == 0) .wcwidth else if (widthMethod == 2) .no_zwj else .unicode;
 
     // Check if ASCII only for optimization
     const is_ascii_only = utf8.isAsciiOnly(text);

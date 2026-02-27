@@ -784,7 +784,7 @@ export class CliRenderer extends EventEmitter implements RenderContext {
 
   public get widthMethod(): WidthMethod {
     const caps = this.capabilities
-    return caps?.unicode === "wcwidth" ? "wcwidth" : "unicode"
+    return caps?.unicode === 0 ? "wcwidth" : caps?.unicode === 2 ? "no_zwj" : "unicode"
   }
 
   private writeOut(chunk: any, encoding?: any, callback?: any): boolean {
