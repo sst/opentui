@@ -1475,6 +1475,30 @@ test("stream end mid-table finalizes full table snapshot", async () => {
 `)
 })
 
+test("ignores content updates after markdown renderable is destroyed during streaming", async () => {
+  const md = new MarkdownRenderable(renderer, {
+    id: "markdown",
+    content: "",
+    syntaxStyle,
+    streaming: true,
+  })
+
+  renderer.root.add(md)
+
+  md.content = "| Name | Score |\n|---|---|\n| Alpha | 10 |\n"
+  await renderer.idle()
+
+  md.destroyRecursively()
+  expect(md.isDestroyed).toBe(true)
+
+  expect(() => {
+    md.content = "| Name | Score |\n|---|---|\n| Alpha | 10 |\n| Bravo | 20 |\n"
+    md.streaming = false
+  }).not.toThrow()
+
+  await renderer.idle()
+})
+
 test("non-streaming->streaming transition updates table to hide trailing row", async () => {
   const md = new MarkdownRenderable(renderer, {
     id: "markdown",

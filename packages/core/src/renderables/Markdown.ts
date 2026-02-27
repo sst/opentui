@@ -159,6 +159,7 @@ export class MarkdownRenderable extends Renderable {
   }
 
   set content(value: string) {
+    if (this.isDestroyed) return
     if (this._content !== value) {
       this._content = value
       this.updateBlocks()
@@ -195,6 +196,7 @@ export class MarkdownRenderable extends Renderable {
   }
 
   set streaming(value: boolean) {
+    if (this.isDestroyed) return
     if (this._streaming !== value) {
       this._streaming = value
       this.updateBlocks(true)
@@ -835,6 +837,7 @@ export class MarkdownRenderable extends Renderable {
   }
 
   private updateBlocks(forceTableRefresh: boolean = false): void {
+    if (this.isDestroyed) return
     if (!this._content) {
       this.clearBlockStates()
       this._parseState = null
