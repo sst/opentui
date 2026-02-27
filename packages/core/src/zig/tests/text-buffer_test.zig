@@ -1594,19 +1594,21 @@ test "TextBuffer setText - validate rope structure is correct" {
 test "TextBuffer setTabWidth - recalculates cached segment widths" {
     const pool = gp.initGlobalPool(std.testing.allocator);
     defer gp.deinitGlobalPool();
+    const link_pool = link.initGlobalLinkPool(std.testing.allocator);
+    defer link.deinitGlobalLinkPool();
 
-    var tb = try text_buffer.UnifiedTextBuffer.init(std.testing.allocator, pool, .unicode);
+    var tb = try text_buffer.UnifiedTextBuffer.init(std.testing.allocator, pool, link_pool, .unicode);
     defer tb.deinit();
 
     try tb.setText("a\tb\tc");
 
     try std.testing.expectEqual(@as(u32, 7), tb.getLength());
-    try std.testing.expectEqual(@as(u32, 7), iter_mod.lineWidthAt(&tb.rope, 0));
+    try std.testing.expectEqual(@as(u32, 7), iter_mod.lineWidthAt(tb.rope(), 0));
 
     tb.setTabWidth(8);
 
     try std.testing.expectEqual(@as(u32, 19), tb.getLength());
-    try std.testing.expectEqual(@as(u32, 19), iter_mod.lineWidthAt(&tb.rope, 0));
+    try std.testing.expectEqual(@as(u32, 19), iter_mod.lineWidthAt(tb.rope(), 0));
 }
 
 test "TextBuffer setText - then deleteRange via EditBuffer - validate markers" {

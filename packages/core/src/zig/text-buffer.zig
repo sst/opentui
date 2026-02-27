@@ -1131,7 +1131,7 @@ pub const UnifiedTextBuffer = struct {
         var rebuilt_segments: std.ArrayListUnmanaged(Segment) = .{};
         defer rebuilt_segments.deinit(self.global_allocator);
 
-        rebuilt_segments.ensureTotalCapacity(self.global_allocator, self.rope.count()) catch return;
+        rebuilt_segments.ensureTotalCapacity(self.global_allocator, self._rope.count()) catch return;
 
         const Context = struct {
             buffer: *const Self,
@@ -1178,8 +1178,8 @@ pub const UnifiedTextBuffer = struct {
             .segments = &rebuilt_segments,
         };
 
-        self.rope.walk(&ctx, Context.walker) catch return;
-        self.rope.setSegments(rebuilt_segments.items) catch return;
+        self._rope.walk(&ctx, Context.walker) catch return;
+        self._rope.setSegments(rebuilt_segments.items) catch return;
 
         self.tab_width = new_width;
         self.markAllViewsDirty();
