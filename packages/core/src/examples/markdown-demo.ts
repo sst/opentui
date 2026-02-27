@@ -46,6 +46,20 @@ const md = new MarkdownRenderable(renderer, {
 })
 \`\`\`
 
+And a JSON configuration example:
+
+\`\`\`json
+{
+  "name": "opentui-markdown-demo",
+  "theme": "github",
+  "features": ["table-alignment", "syntax-highlighting", "conceal-mode"],
+  "streaming": {
+    "enabled": true,
+    "speed": "slowest"
+  }
+}
+\`\`\`
+
 ### API Reference
 
 | Method | Parameters | Returns | Description |
