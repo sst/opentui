@@ -65,6 +65,34 @@ pub const ANSI = struct {
         writer.print("\x1b[48;5;{d}m", .{index}) catch return AnsiError.WriteFailed;
     }
 
+    pub fn fgAnsiPaletteOutput(writer: anytype, index: u8) AnsiError!void {
+        if (index < 8) {
+            writer.print("\x1b[{d}m", .{30 + index}) catch return AnsiError.WriteFailed;
+            return;
+        }
+
+        if (index < 16) {
+            writer.print("\x1b[{d}m", .{90 + (index - 8)}) catch return AnsiError.WriteFailed;
+            return;
+        }
+
+        return AnsiError.InvalidFormat;
+    }
+
+    pub fn bgAnsiPaletteOutput(writer: anytype, index: u8) AnsiError!void {
+        if (index < 8) {
+            writer.print("\x1b[{d}m", .{40 + index}) catch return AnsiError.WriteFailed;
+            return;
+        }
+
+        if (index < 16) {
+            writer.print("\x1b[{d}m", .{100 + (index - 8)}) catch return AnsiError.WriteFailed;
+            return;
+        }
+
+        return AnsiError.InvalidFormat;
+    }
+
     pub fn fgDefaultOutput(writer: anytype) AnsiError!void {
         writer.writeAll("\x1b[39m") catch return AnsiError.WriteFailed;
     }

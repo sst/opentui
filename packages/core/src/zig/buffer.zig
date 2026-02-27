@@ -82,7 +82,7 @@ pub fn rgbaEqual(a: RGBA, b: RGBA, epsilon: f32) bool {
     const vb = rgbaToVec4f(b);
     const diff = @abs(va - vb);
     const eps = @as(Vec4f, @splat(epsilon));
-    return @reduce(.And, diff < eps);
+    return @reduce(.And, diff < eps) and a[4] == b[4];
 }
 
 pub const Cell = struct {
@@ -103,6 +103,11 @@ inline fn isFullyOpaque(opacity: f32, fg: RGBA, bg: RGBA) bool {
 fn blendColors(overlay: RGBA, text: RGBA) RGBA {
     if (overlay[3] == 1.0) {
         return overlay;
+    }
+
+    // Fully transparent overlay — preserve destination entirely (including meta)
+    if (overlay[3] < 0.001) {
+        return text;
     }
 
     if (text[3] == 0.0) {
@@ -711,13 +716,14 @@ pub const OptimizedBuffer = struct {
             const overlayLinkId = ansi.TextAttributes.getLinkId(overlayCell.attributes);
             const finalAttributes = ansi.TextAttributes.setLinkId(@as(u32, baseAttrs), overlayLinkId);
 
-            // When overlay background is fully transparent, preserve destination background alpha
-            const finalBgAlpha = if (overlayCell.bg[3] == 0.0) destCell.bg[3] else overlayCell.bg[3];
+            // When overlay background is fully transparent, preserve destination background alpha and meta
+            const finalBgAlpha = if (overlayCell.bg[3] < 0.001) destCell.bg[3] else overlayCell.bg[3];
+            const finalBgMeta = blendedBgRgb[4];
 
             return Cell{
                 .char = finalChar,
                 .fg = finalFg,
-                .bg = .{ blendedBgRgb[0], blendedBgRgb[1], blendedBgRgb[2], finalBgAlpha, ansi.RGB_META },
+                .bg = .{ blendedBgRgb[0], blendedBgRgb[1], blendedBgRgb[2], finalBgAlpha, finalBgMeta },
                 .attributes = finalAttributes,
             };
         }

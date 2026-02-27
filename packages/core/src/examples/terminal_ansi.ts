@@ -34,7 +34,7 @@ export function run(renderer: CliRenderer): void {
     id: "ansi-scroll-box",
     stickyScroll: false,
     border: true,
-    borderColor: "#8B5CF6",
+    borderColor: RGBA.fromIndex(1),
     title: "256 ANSI Indexed Colors (Ctrl+C to exit)",
     titleAlignment: "center",
     contentOptions: {

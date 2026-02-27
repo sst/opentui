@@ -691,7 +691,14 @@ pub const CliRenderer = struct {
 
                     // Output foreground color based on color type
                     switch (ansi.decodeColorType(cell.fg[4])) {
-                        .indexed => ansi.ANSI.fgIndexedColorOutput(writer, ansi.decodeColorIndex(cell.fg[4])) catch {},
+                        .indexed => {
+                            const fgIndex = ansi.decodeColorIndex(cell.fg[4]);
+                            if (fgIndex < 16) {
+                                ansi.ANSI.fgAnsiPaletteOutput(writer, fgIndex) catch {};
+                            } else {
+                                ansi.ANSI.fgIndexedColorOutput(writer, fgIndex) catch {};
+                            }
+                        },
                         .default => ansi.ANSI.fgDefaultOutput(writer) catch {},
                         .rgb => ansi.ANSI.fgColorOutput(writer, rgbaComponentToU8(cell.fg[0]), rgbaComponentToU8(cell.fg[1]), rgbaComponentToU8(cell.fg[2])) catch {},
                     }
@@ -702,7 +709,14 @@ pub const CliRenderer = struct {
                         ansi.ANSI.bgDefaultOutput(writer) catch {};
                     } else {
                         switch (ansi.decodeColorType(cell.bg[4])) {
-                            .indexed => ansi.ANSI.bgIndexedColorOutput(writer, ansi.decodeColorIndex(cell.bg[4])) catch {},
+                            .indexed => {
+                                const bgIndex = ansi.decodeColorIndex(cell.bg[4]);
+                                if (bgIndex < 16) {
+                                    ansi.ANSI.bgAnsiPaletteOutput(writer, bgIndex) catch {};
+                                } else {
+                                    ansi.ANSI.bgIndexedColorOutput(writer, bgIndex) catch {};
+                                }
+                            },
                             .default => ansi.ANSI.bgDefaultOutput(writer) catch {},
                             .rgb => ansi.ANSI.bgColorOutput(writer, rgbaComponentToU8(cell.bg[0]), rgbaComponentToU8(cell.bg[1]), rgbaComponentToU8(cell.bg[2])) catch {},
                         }
