@@ -17,7 +17,8 @@ const MEASURE_HEIGHT = 10_000
 
 export type TextTableCellContent = TextChunk[] | null | undefined
 export type TextTableContent = TextTableCellContent[][]
-export type TextTableColumnWidthMode = "content" | "fill"
+export type TextTableColumnWidthMode = "content" | "full"
+export type TextTableColumnFitter = "proportional" | "balanced"
 
 interface ResolvedTableBorderLayout {
   left: boolean
@@ -74,6 +75,7 @@ export interface TextTableOptions extends RenderableOptions<TextTableRenderable>
   content?: TextTableContent
   wrapMode?: "none" | "char" | "word"
   columnWidthMode?: TextTableColumnWidthMode
+  columnFitter?: TextTableColumnFitter
   cellPadding?: number
   showBorders?: boolean
   border?: boolean
@@ -94,6 +96,7 @@ export class TextTableRenderable extends Renderable {
   private _content: TextTableContent
   private _wrapMode: "none" | "char" | "word"
   private _columnWidthMode: TextTableColumnWidthMode
+  private _columnFitter: TextTableColumnFitter
   private _cellPadding: number
   private _showBorders: boolean
   private _border: boolean
@@ -125,8 +128,9 @@ export class TextTableRenderable extends Renderable {
 
   private readonly _defaultOptions = {
     content: [] as TextTableContent,
-    wrapMode: "none" as "none" | "char" | "word",
-    columnWidthMode: "content" as TextTableColumnWidthMode,
+    wrapMode: "word" as "none" | "char" | "word",
+    columnWidthMode: "full" as TextTableColumnWidthMode,
+    columnFitter: "proportional" as TextTableColumnFitter,
     cellPadding: 0,
     showBorders: true,
     border: true,
@@ -144,11 +148,12 @@ export class TextTableRenderable extends Renderable {
   } satisfies Partial<TextTableOptions>
 
   constructor(ctx: RenderContext, options: TextTableOptions = {}) {
-    super(ctx, { ...options, buffered: true })
+    super(ctx, { ...options, flexShrink: options.flexShrink ?? 0, buffered: true })
 
     this._content = options.content ?? this._defaultOptions.content
     this._wrapMode = options.wrapMode ?? this._defaultOptions.wrapMode
     this._columnWidthMode = options.columnWidthMode ?? this._defaultOptions.columnWidthMode
+    this._columnFitter = this.resolveColumnFitter(options.columnFitter)
     this._cellPadding = this.resolveCellPadding(options.cellPadding)
     this._showBorders = options.showBorders ?? this._defaultOptions.showBorders
     this._border = options.border ?? this._defaultOptions.border
@@ -202,6 +207,17 @@ export class TextTableRenderable extends Renderable {
   public set columnWidthMode(value: TextTableColumnWidthMode) {
     if (this._columnWidthMode === value) return
     this._columnWidthMode = value
+    this.invalidateLayoutAndRaster()
+  }
+
+  public get columnFitter(): TextTableColumnFitter {
+    return this._columnFitter
+  }
+
+  public set columnFitter(value: TextTableColumnFitter) {
+    const next = this.resolveColumnFitter(value)
+    if (this._columnFitter === next) return
+    this._columnFitter = next
     this.invalidateLayoutAndRaster()
   }
 
@@ -393,8 +409,8 @@ export class TextTableRenderable extends Renderable {
     const measureFunc = (
       width: number,
       widthMode: MeasureMode,
-      height: number,
-      heightMode: MeasureMode,
+      _height: number,
+      _heightMode: MeasureMode,
     ): { width: number; height: number } => {
       const hasWidthConstraint = widthMode !== MeasureMode.Undefined && Number.isFinite(width)
       const rawWidthConstraint = hasWidthConstraint ? Math.max(1, Math.floor(width)) : undefined
@@ -410,10 +426,8 @@ export class TextTableRenderable extends Renderable {
         measuredWidth = Math.min(rawWidthConstraint, measuredWidth)
       }
 
-      if (heightMode === MeasureMode.AtMost && Number.isFinite(height) && this._positionType !== "absolute") {
-        measuredHeight = Math.min(Math.max(1, Math.floor(height)), measuredHeight)
-      }
-
+      // Keep intrinsic height even under AtMost constraints. Clamping here can under-report
+      // content height during Yoga measure passes and leave parent scroll extents stale.
       return {
         width: measuredWidth,
         height: measuredHeight,
@@ -628,6 +642,10 @@ export class TextTableRenderable extends Renderable {
     }
   }
 
+  private isFullWidthMode(): boolean {
+    return this._columnWidthMode === "full"
+  }
+
   private computeColumnWidths(maxTableWidth: number | undefined, borderLayout: ResolvedTableBorderLayout): number[] {
     const horizontalPadding = this.getHorizontalCellPadding()
     const intrinsicWidths = new Array(this._columnCount).fill(1 + horizontalPadding)
@@ -655,7 +673,7 @@ export class TextTableRenderable extends Renderable {
     }
 
     if (currentWidth < maxContentWidth) {
-      if (this._columnWidthMode === "fill") {
+      if (this.isFullWidthMode()) {
         return this.expandColumnWidths(intrinsicWidths, maxContentWidth)
       }
 
@@ -694,6 +712,14 @@ export class TextTableRenderable extends Renderable {
   }
 
   private fitColumnWidths(widths: number[], targetContentWidth: number): number[] {
+    if (this._columnFitter === "balanced") {
+      return this.fitColumnWidthsBalanced(widths, targetContentWidth)
+    }
+
+    return this.fitColumnWidthsProportional(widths, targetContentWidth)
+  }
+
+  private fitColumnWidthsProportional(widths: number[], targetContentWidth: number): number[] {
     const minWidth = 1 + this.getHorizontalCellPadding()
     const hardMinWidths = new Array(widths.length).fill(minWidth)
     const baseWidths = widths.map((width) => Math.max(1, Math.floor(width)))
@@ -754,6 +780,104 @@ export class TextTableRenderable extends Renderable {
     }
 
     return baseWidths.map((width, idx) => Math.max(floorWidths[idx], width - integerShrink[idx]))
+  }
+
+  private fitColumnWidthsBalanced(widths: number[], targetContentWidth: number): number[] {
+    const minWidth = 1 + this.getHorizontalCellPadding()
+    const hardMinWidths = new Array(widths.length).fill(minWidth)
+    const baseWidths = widths.map((width) => Math.max(1, Math.floor(width)))
+    const totalBaseWidth = baseWidths.reduce((sum, width) => sum + width, 0)
+    const columns = baseWidths.length
+
+    if (columns === 0 || totalBaseWidth <= targetContentWidth) {
+      return baseWidths
+    }
+
+    const evenShare = Math.max(minWidth, Math.floor(targetContentWidth / columns))
+    const preferredMinWidths = baseWidths.map((width) => Math.min(width, evenShare))
+    const preferredMinTotal = preferredMinWidths.reduce((sum, width) => sum + width, 0)
+    const floorWidths = preferredMinTotal <= targetContentWidth ? preferredMinWidths : hardMinWidths
+    const floorTotal = floorWidths.reduce((sum, width) => sum + width, 0)
+    const clampedTarget = Math.max(floorTotal, targetContentWidth)
+
+    if (totalBaseWidth <= clampedTarget) {
+      return baseWidths
+    }
+
+    const shrinkable = baseWidths.map((width, idx) => width - floorWidths[idx])
+    const totalShrinkable = shrinkable.reduce((sum, value) => sum + value, 0)
+    if (totalShrinkable <= 0) {
+      return [...floorWidths]
+    }
+
+    const targetShrink = totalBaseWidth - clampedTarget
+    const shrink = this.allocateShrinkByWeight(shrinkable, targetShrink, "sqrt")
+
+    return baseWidths.map((width, idx) => Math.max(floorWidths[idx], width - shrink[idx]))
+  }
+
+  private allocateShrinkByWeight(shrinkable: number[], targetShrink: number, mode: "linear" | "sqrt"): number[] {
+    const shrink = new Array(shrinkable.length).fill(0)
+
+    if (targetShrink <= 0) {
+      return shrink
+    }
+
+    const weights = shrinkable.map((value) => {
+      if (value <= 0) {
+        return 0
+      }
+
+      return mode === "sqrt" ? Math.sqrt(value) : value
+    })
+    const totalWeight = weights.reduce((sum, value) => sum + value, 0)
+
+    if (totalWeight <= 0) {
+      return shrink
+    }
+
+    const fractions = new Array(shrinkable.length).fill(0)
+    let usedShrink = 0
+
+    for (let idx = 0; idx < shrinkable.length; idx++) {
+      if (shrinkable[idx] <= 0 || weights[idx] <= 0) continue
+
+      const exact = (weights[idx] / totalWeight) * targetShrink
+      const whole = Math.min(shrinkable[idx], Math.floor(exact))
+      shrink[idx] = whole
+      fractions[idx] = exact - whole
+      usedShrink += whole
+    }
+
+    let remainingShrink = targetShrink - usedShrink
+
+    while (remainingShrink > 0) {
+      let bestIdx = -1
+      let bestFraction = -1
+
+      for (let idx = 0; idx < shrinkable.length; idx++) {
+        if (shrinkable[idx] - shrink[idx] <= 0) continue
+
+        if (
+          bestIdx === -1 ||
+          fractions[idx] > bestFraction ||
+          (fractions[idx] === bestFraction && shrinkable[idx] > shrinkable[bestIdx])
+        ) {
+          bestIdx = idx
+          bestFraction = fractions[idx]
+        }
+      }
+
+      if (bestIdx === -1) {
+        break
+      }
+
+      shrink[bestIdx] += 1
+      fractions[bestIdx] = 0
+      remainingShrink -= 1
+    }
+
+    return shrink
   }
 
   private computeRowHeights(columnWidths: number[]): number[] {
@@ -1169,7 +1293,7 @@ export class TextTableRenderable extends Renderable {
       return undefined
     }
 
-    if (this._wrapMode !== "none" || this._columnWidthMode === "fill") {
+    if (this._wrapMode !== "none" || this.isFullWidthMode()) {
       return Math.max(1, Math.floor(width))
     }
 
@@ -1182,6 +1306,14 @@ export class TextTableRenderable extends Renderable {
 
   private getVerticalCellPadding(): number {
     return this._cellPadding * 2
+  }
+
+  private resolveColumnFitter(value: TextTableColumnFitter | undefined): TextTableColumnFitter {
+    if (value === undefined) {
+      return this._defaultOptions.columnFitter
+    }
+
+    return value === "balanced" ? "balanced" : "proportional"
   }
 
   private resolveCellPadding(value: number | undefined): number {

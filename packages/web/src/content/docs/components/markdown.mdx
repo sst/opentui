@@ -61,6 +61,42 @@ markdown.content += "# Live log\n"
 markdown.content += "- line 1\n"
 ```
 
+## Markdown tables
+
+Markdown tables support `tableOptions` for sizing, wrapping, borders, and selection.
+
+```typescript
+const markdown = new MarkdownRenderable(renderer, {
+  content: "| Service | Status |\n| --- | --- |\n| api | ok |",
+  syntaxStyle,
+  tableOptions: {
+    widthMode: "full",
+    columnFitter: "balanced",
+    wrapMode: "word",
+    cellPadding: 1,
+    borders: true,
+    outerBorder: true,
+    borderStyle: "rounded",
+    borderColor: "#6b7280",
+    selectable: true,
+  },
+})
+```
+
+### `tableOptions`
+
+| Option         | Type                           | Default          | Description                                      |
+| -------------- | ------------------------------ | ---------------- | ------------------------------------------------ |
+| `widthMode`    | `"content" \| "full"`          | `"full"`         | `"full"` expands columns to fill available width |
+| `columnFitter` | `"proportional" \| "balanced"` | `"proportional"` | How columns shrink when space is constrained     |
+| `wrapMode`     | `"none" \| "char" \| "word"`   | `"word"`         | Wrapping mode inside each table cell             |
+| `cellPadding`  | `number`                       | `0`              | Padding on all sides of each cell                |
+| `borders`      | `boolean`                      | `true`           | Enable inner and outer borders                   |
+| `outerBorder`  | `boolean`                      | `borders`        | Override outer border visibility                 |
+| `borderStyle`  | `BorderStyle`                  | `"single"`       | Table border character set                       |
+| `borderColor`  | `ColorInput`                   | conceal fg       | Border color for markdown tables                 |
+| `selectable`   | `boolean`                      | `true`           | Enable table cell text selection                 |
+
 ## Custom node rendering
 
 Override rendering for a token and fall back to default rendering:
@@ -84,11 +120,12 @@ const markdown = new MarkdownRenderable(renderer, {
 
 ## Properties
 
-| Property           | Type                                                       | Default  | Description                               |
-| ------------------ | ---------------------------------------------------------- | -------- | ----------------------------------------- |
-| `content`          | `string`                                                   | `""`     | Markdown source                           |
-| `syntaxStyle`      | `SyntaxStyle`                                              | required | Style definitions for tokens              |
-| `conceal`          | `boolean`                                                  | `true`   | Hide markdown markers                     |
-| `streaming`        | `boolean`                                                  | `false`  | Optimize for incremental updates          |
-| `treeSitterClient` | `TreeSitterClient`                                         | -        | Custom Tree-sitter client for code blocks |
-| `renderNode`       | `(token: Token, context: RenderNodeContext) => Renderable` | -        | Custom render hook per markdown block     |
+| Property           | Type                                                                            | Default  | Description                               |
+| ------------------ | ------------------------------------------------------------------------------- | -------- | ----------------------------------------- |
+| `content`          | `string`                                                                        | `""`     | Markdown source                           |
+| `syntaxStyle`      | `SyntaxStyle`                                                                   | required | Style definitions for tokens              |
+| `conceal`          | `boolean`                                                                       | `true`   | Hide markdown markers                     |
+| `streaming`        | `boolean`                                                                       | `false`  | Optimize for incremental updates          |
+| `tableOptions`     | `MarkdownTableOptions`                                                          | -        | Options for markdown table rendering      |
+| `treeSitterClient` | `TreeSitterClient`                                                              | -        | Custom Tree-sitter client for code blocks |
+| `renderNode`       | `(token: Token, context: RenderNodeContext) => Renderable \| null \| undefined` | -        | Custom render hook per markdown block     |
