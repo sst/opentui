@@ -173,11 +173,12 @@ export class SliderRenderable extends Renderable {
     }
 
     this.onMouseUp = (event) => {
-      if (!this._allowUserInput) return
       if (isDragging) {
-        this.updateValueFromMouseWithOffset(event, dragOffsetVirtual)
+        if (this._allowUserInput) {
+          this.updateValueFromMouseWithOffset(event, dragOffsetVirtual)
+        }
+        isDragging = false
       }
-      isDragging = false
     }
   }
 
