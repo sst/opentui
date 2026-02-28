@@ -698,7 +698,6 @@ pub const CliRenderer = struct {
                     const bgB = rgbaComponentToU8(cell.bg[2]);
                     const bgA = cell.bg[3];
 
-                    // Check if terminal supports truecolor (24-bit RGB)
                     const caps = self.terminal.getCapabilities();
                     if (caps.rgb) {
                         // Use truecolor (24-bit) output
@@ -829,7 +828,7 @@ pub const CliRenderer = struct {
             ansi.ANSI.setMousePointerOutput(writer, mousePointer.toName()) catch {};
             self.lastMousePointerStyle = mousePointer;
         }
-        
+
         writer.writeAll(ansi.ANSI.syncReset) catch {};
 
         const renderEndTime = std.time.microTimestamp();
