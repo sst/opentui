@@ -31,6 +31,7 @@ export class SliderRenderable extends Renderable {
   private _backgroundColor: RGBA
   private _foregroundColor: RGBA
   private _onChange?: (value: number) => void
+  private _allowUserInput: boolean = true
 
   constructor(ctx: RenderContext, options: SliderOptions) {
     super(ctx, { flexShrink: 0, ...options })
@@ -100,6 +101,14 @@ export class SliderRenderable extends Renderable {
     return this._viewPortSize
   }
 
+  get allowUserInput(): boolean {
+    return this._allowUserInput
+  }
+
+  set allowUserInput(value: boolean) {
+    this._allowUserInput = value
+  }
+
   get backgroundColor(): RGBA {
     return this._backgroundColor
   }
@@ -136,6 +145,7 @@ export class SliderRenderable extends Renderable {
     let dragOffsetVirtual = 0
 
     this.onMouseDown = (event) => {
+      if (!this._allowUserInput) return
       event.stopPropagation()
       event.preventDefault()
 
@@ -156,12 +166,14 @@ export class SliderRenderable extends Renderable {
     }
 
     this.onMouseDrag = (event) => {
+      if (!this._allowUserInput) return
       if (!isDragging) return
       event.stopPropagation()
       this.updateValueFromMouseWithOffset(event, dragOffsetVirtual)
     }
 
     this.onMouseUp = (event) => {
+      if (!this._allowUserInput) return
       if (isDragging) {
         this.updateValueFromMouseWithOffset(event, dragOffsetVirtual)
       }
