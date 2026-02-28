@@ -6,6 +6,7 @@ import { TextRenderable } from "../renderables/Text"
 import { CodeRenderable } from "../renderables/Code"
 import { LinearScrollAccel, MacOSScrollAccel, type ScrollAcceleration } from "../lib/scroll-acceleration"
 import { SyntaxStyle } from "../syntax-style"
+import { KeyEvent } from "../lib/KeyHandler"
 
 // Test accelerator that returns a constant multiplier
 class ConstantScrollAccel implements ScrollAcceleration {
@@ -1364,5 +1365,145 @@ console.log(processor.reduce((acc, val) => acc + val, 0))`
         expect(scrollBox.scrollTop).toBe(expectedMaxScroll)
       }
     }
+  })
+})
+
+describe("ScrollBoxRenderable - allowUserScroll", () => {
+  test("blocks mouse wheel scroll when allowUserScroll = false", async () => {
+    const scrollBox = new ScrollBoxRenderable(testRenderer, {
+      width: 50,
+      height: 20,
+      allowUserScroll: false,
+    })
+    for (let i = 0; i < 50; i++) scrollBox.add(new TextRenderable(testRenderer, { content: `Line ${i}` }))
+    testRenderer.root.add(scrollBox)
+    await renderOnce()
+
+    const initialScrollTop = scrollBox.scrollTop
+    await mockMouse.scroll(25, 10, "down")
+    await renderOnce()
+
+    expect(scrollBox.scrollTop).toBe(initialScrollTop)
+  })
+
+  test("blocks scrollbar thumb drag when allowUserScroll = false", async () => {
+    const scrollBox = new ScrollBoxRenderable(testRenderer, {
+      width: 50,
+      height: 20,
+      allowUserScroll: false,
+    })
+    for (let i = 0; i < 50; i++) scrollBox.add(new TextRenderable(testRenderer, { content: `Line ${i}` }))
+    testRenderer.root.add(scrollBox)
+    await renderOnce()
+
+    const slider = scrollBox.verticalScrollBar.slider
+    const initialScrollTop = scrollBox.scrollTop
+
+    // Simulate mouse down and drag on slider thumb
+    const thumbRect = { x: slider.x, y: slider.y + 5, width: slider.width, height: 3 }
+    await mockMouse.moveTo(thumbRect.x, thumbRect.y)
+    await mockMouse.pressDown(thumbRect.x, thumbRect.y)
+    await mockMouse.moveTo(thumbRect.x, thumbRect.y + 10)
+    await mockMouse.release(thumbRect.x, thumbRect.y + 10)
+    await renderOnce()
+
+    expect(scrollBox.scrollTop).toBe(initialScrollTop)
+  })
+
+  test("blocks scrollbar arrow clicks when allowUserScroll = false", async () => {
+    const scrollBox = new ScrollBoxRenderable(testRenderer, {
+      width: 50,
+      height: 20,
+      allowUserScroll: false,
+      scrollbarOptions: { showArrows: true },
+    })
+    for (let i = 0; i < 50; i++) scrollBox.add(new TextRenderable(testRenderer, { content: `Line ${i}` }))
+    testRenderer.root.add(scrollBox)
+    await renderOnce()
+
+    const initialScrollTop = scrollBox.scrollTop
+    const arrow = scrollBox.verticalScrollBar.endArrow
+
+    await mockMouse.click(arrow.x, arrow.y)
+    await renderOnce()
+
+    expect(scrollBox.scrollTop).toBe(initialScrollTop)
+  })
+
+  test("blocks keyboard scroll when allowUserScroll = false", async () => {
+    const scrollBox = new ScrollBoxRenderable(testRenderer, {
+      width: 50,
+      height: 20,
+      allowUserScroll: false,
+    })
+    for (let i = 0; i < 50; i++) scrollBox.add(new TextRenderable(testRenderer, { content: `Line ${i}` }))
+    testRenderer.root.add(scrollBox)
+    await renderOnce()
+
+    const initialScrollTop = scrollBox.scrollTop
+
+    // Simulate down arrow key using proper KeyEvent
+    const keyEvent = new KeyEvent({
+      name: "down",
+      sequence: "",
+      ctrl: false,
+      meta: false,
+      shift: false,
+      option: false,
+      number: false,
+      raw: "",
+      eventType: "press",
+      source: "raw",
+    })
+    const result = scrollBox.handleKeyPress(keyEvent)
+
+    expect(result).toBe(false)
+    expect(scrollBox.scrollTop).toBe(initialScrollTop)
+  })
+
+  test("allows all input methods when allowUserScroll = true (default)", async () => {
+    const scrollBox = new ScrollBoxRenderable(testRenderer, {
+      width: 50,
+      height: 20,
+      allowUserScroll: true,
+    })
+    for (let i = 0; i < 50; i++) scrollBox.add(new TextRenderable(testRenderer, { content: `Line ${i}` }))
+    testRenderer.root.add(scrollBox)
+    await renderOnce()
+
+    await mockMouse.scroll(25, 10, "down")
+    await renderOnce()
+
+    expect(scrollBox.scrollTop).toBeGreaterThan(0)
+  })
+
+  test("toggling allowUserScroll at runtime updates scrollbar behavior", async () => {
+    const scrollBox = new ScrollBoxRenderable(testRenderer, {
+      width: 50,
+      height: 20,
+      allowUserScroll: true,
+    })
+    for (let i = 0; i < 50; i++) scrollBox.add(new TextRenderable(testRenderer, { content: `Line ${i}` }))
+    testRenderer.root.add(scrollBox)
+    await renderOnce()
+
+    // First, verify scrolling works
+    await mockMouse.scroll(25, 10, "down")
+    await renderOnce()
+    expect(scrollBox.scrollTop).toBeGreaterThan(0)
+
+    // Now disable and verify it blocks
+    scrollBox.allowUserScroll = false
+    const scrollAfterDisable = scrollBox.scrollTop
+
+    await mockMouse.scroll(25, 10, "down")
+    await renderOnce()
+    expect(scrollBox.scrollTop).toBe(scrollAfterDisable)
+
+    // Re-enable and verify it works again
+    scrollBox.allowUserScroll = true
+    await mockMouse.scroll(25, 10, "down")
+    await renderOnce()
+    expect(scrollBox.scrollTop).toBeGreaterThan(scrollAfterDisable)
   })
 })
