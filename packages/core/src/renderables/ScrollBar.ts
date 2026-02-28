@@ -41,6 +41,7 @@ export class ScrollBarRenderable extends Renderable {
 
   set allowUserInput(value: boolean) {
     this._allowUserInput = value
+    this.slider.allowUserInput = value
   }
 
   /**
