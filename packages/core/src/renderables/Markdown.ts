@@ -4,13 +4,57 @@ import { SyntaxStyle, type StyleDefinition } from "../syntax-style"
 import { StyledText } from "../lib/styled-text"
 import type { TextChunk } from "../text-buffer"
 import { createTextAttributes } from "../utils"
+import type { BorderStyle } from "../lib/border"
+import type { ColorInput } from "../lib/RGBA"
 import { Lexer, type MarkedToken, type Token, type Tokens } from "marked"
 import { TextRenderable } from "./Text"
 import { CodeRenderable } from "./Code"
-import { TextTableRenderable, type TextTableCellContent, type TextTableContent } from "./TextTable"
+import {
+  TextTableRenderable,
+  type TextTableCellContent,
+  type TextTableColumnWidthMode,
+  type TextTableContent,
+} from "./TextTable"
 import type { TreeSitterClient } from "../lib/tree-sitter"
 import { parseMarkdownIncremental, type ParseState } from "./markdown-parser"
 import type { OptimizedBuffer } from "../buffer"
+
+export interface MarkdownTableOptions {
+  /**
+   * Strategy for sizing table columns.
+   * - "content": columns fit to intrinsic content width.
+   * - "fill": columns expand to fill available width.
+   */
+  widthMode?: TextTableColumnWidthMode
+  /**
+   * Wrapping strategy for table cell content.
+   */
+  wrapMode?: "none" | "char" | "word"
+  /**
+   * Padding applied on all sides of each table cell.
+   */
+  cellPadding?: number
+  /**
+   * Enables/disables table border rendering.
+   */
+  borders?: boolean
+  /**
+   * Overrides outer border visibility. Defaults to `borders`.
+   */
+  outerBorder?: boolean
+  /**
+   * Border style for markdown tables.
+   */
+  borderStyle?: BorderStyle
+  /**
+   * Border color for markdown tables. Defaults to conceal style color.
+   */
+  borderColor?: ColorInput
+  /**
+   * Enables/disables selection support on markdown tables.
+   */
+  selectable?: boolean
+}
 
 export interface MarkdownOptions extends RenderableOptions<MarkdownRenderable> {
   content?: string
@@ -22,6 +66,10 @@ export interface MarkdownOptions extends RenderableOptions<MarkdownRenderable> {
    * When true, trailing tokens are kept unstable to handle incomplete content.
    */
   streaming?: boolean
+  /**
+   * Options for internally rendered markdown tables.
+   */
+  tableOptions?: MarkdownTableOptions
   /**
    * Custom node renderer. Return a Renderable to override default rendering,
    * or undefined/null to use default rendering.
@@ -42,6 +90,18 @@ interface TableContentCache {
   cellKeys: Uint32Array[]
 }
 
+interface ResolvedTableRenderableOptions {
+  columnWidthMode: TextTableColumnWidthMode
+  wrapMode: "none" | "char" | "word"
+  cellPadding: number
+  border: boolean
+  outerBorder: boolean
+  showBorders: boolean
+  borderStyle: BorderStyle
+  borderColor: ColorInput
+  selectable: boolean
+}
+
 export interface BlockState {
   token: MarkedToken
   tokenRaw: string // Cache raw for comparison
@@ -56,6 +116,7 @@ export class MarkdownRenderable extends Renderable {
   private _syntaxStyle: SyntaxStyle
   private _conceal: boolean
   private _treeSitterClient?: TreeSitterClient
+  private _tableOptions?: MarkdownTableOptions
   private _renderNode?: MarkdownOptions["renderNode"]
 
   _parseState: ParseState | null = null
@@ -80,6 +141,7 @@ export class MarkdownRenderable extends Renderable {
     this._conceal = options.conceal ?? this._contentDefaultOptions.conceal
     this._content = options.content ?? this._contentDefaultOptions.content
     this._treeSitterClient = options.treeSitterClient
+    this._tableOptions = options.tableOptions
     this._renderNode = options.renderNode
     this._streaming = options.streaming ?? this._contentDefaultOptions.streaming
 
@@ -133,6 +195,15 @@ export class MarkdownRenderable extends Renderable {
       // correct.
       this.clearCache()
     }
+  }
+
+  get tableOptions(): MarkdownTableOptions | undefined {
+    return this._tableOptions
+  }
+
+  set tableOptions(value: MarkdownTableOptions | undefined) {
+    this._tableOptions = value
+    this.applyTableOptionsToBlocks()
   }
 
   private getStyle(group: string): StyleDefinition | undefined {
@@ -579,22 +650,73 @@ export class MarkdownRenderable extends Renderable {
     }
   }
 
+  private resolveTableRenderableOptions(): ResolvedTableRenderableOptions {
+    const borders = this._tableOptions?.borders ?? true
+
+    return {
+      columnWidthMode: this._tableOptions?.widthMode ?? "content",
+      wrapMode: this._tableOptions?.wrapMode ?? "none",
+      cellPadding: this._tableOptions?.cellPadding ?? 0,
+      border: borders,
+      outerBorder: this._tableOptions?.outerBorder ?? borders,
+      showBorders: borders,
+      borderStyle: this._tableOptions?.borderStyle ?? "single",
+      borderColor: this._tableOptions?.borderColor ?? this.getStyle("conceal")?.fg ?? "#888888",
+      selectable: this._tableOptions?.selectable ?? true,
+    }
+  }
+
+  private applyTableRenderableOptions(
+    tableRenderable: TextTableRenderable,
+    options: ResolvedTableRenderableOptions,
+  ): void {
+    tableRenderable.columnWidthMode = options.columnWidthMode
+    tableRenderable.wrapMode = options.wrapMode
+    tableRenderable.cellPadding = options.cellPadding
+    tableRenderable.border = options.border
+    tableRenderable.outerBorder = options.outerBorder
+    tableRenderable.showBorders = options.showBorders
+    tableRenderable.borderStyle = options.borderStyle
+    tableRenderable.borderColor = options.borderColor
+    tableRenderable.selectable = options.selectable
+  }
+
+  private applyTableOptionsToBlocks(): void {
+    const options = this.resolveTableRenderableOptions()
+    let updated = false
+
+    for (const state of this._blockStates) {
+      if (state.renderable instanceof TextTableRenderable) {
+        this.applyTableRenderableOptions(state.renderable, options)
+        updated = true
+      }
+    }
+
+    if (updated) {
+      this.requestRender()
+    }
+  }
+
   private createTextTableRenderable(
     content: TextTableContent,
     id: string,
     marginBottom: number = 0,
   ): TextTableRenderable {
+    const options = this.resolveTableRenderableOptions()
     return new TextTableRenderable(this.ctx, {
       id,
       content,
       width: "100%",
       marginBottom,
-      border: true,
-      outerBorder: true,
-      showBorders: true,
-      borderStyle: "single",
-      borderColor: this.getStyle("conceal")?.fg ?? "#888888",
-      selectable: true,
+      columnWidthMode: options.columnWidthMode,
+      wrapMode: options.wrapMode,
+      cellPadding: options.cellPadding,
+      border: options.border,
+      outerBorder: options.outerBorder,
+      showBorders: options.showBorders,
+      borderStyle: options.borderStyle,
+      borderColor: options.borderColor,
+      selectable: options.selectable,
     })
   }
 
@@ -684,7 +806,7 @@ export class MarkdownRenderable extends Renderable {
         if (changed) {
           state.renderable.content = cache.content
         }
-        state.renderable.borderColor = this.getStyle("conceal")?.fg ?? "#888888"
+        this.applyTableRenderableOptions(state.renderable, this.resolveTableRenderableOptions())
         state.renderable.marginBottom = marginBottom
         state.tableContentCache = cache
         return
@@ -866,7 +988,7 @@ export class MarkdownRenderable extends Renderable {
           state.tableContentCache = undefined
         } else if (state.renderable instanceof TextTableRenderable) {
           state.renderable.content = cache.content
-          state.renderable.borderColor = this.getStyle("conceal")?.fg ?? "#888888"
+          this.applyTableRenderableOptions(state.renderable, this.resolveTableRenderableOptions())
           state.renderable.marginBottom = marginBottom
           state.tableContentCache = cache
         } else {

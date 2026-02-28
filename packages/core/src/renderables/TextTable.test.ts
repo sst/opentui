@@ -80,6 +80,19 @@ function findSelectablePoint(
   return points[0]!
 }
 
+function findTextPoint(frame: string, text: string): { x: number; y: number } {
+  const lines = frame.split("\n")
+
+  for (let y = 0; y < lines.length; y++) {
+    const x = lines[y]?.indexOf(text) ?? -1
+    if (x >= 0) {
+      return { x, y }
+    }
+  }
+
+  throw new Error(`Unable to find '${text}' in frame`)
+}
+
 function cell(text: string): TextTableCellContent {
   return [
     {
@@ -626,6 +639,93 @@ describe("TextTableRenderable", () => {
     expect(rendererSelection?.getSelectedText()).not.toContain("│")
   })
 
+  test("keeps partial selection when focus stays in the anchor cell", async () => {
+    const table = new TextTableRenderable(renderer, {
+      left: 0,
+      top: 0,
+      content: [[cell("alphabet"), cell("status")]],
+    })
+
+    renderer.root.add(table)
+    await renderOnce()
+
+    const anchor = findTextPoint(captureFrame(), "alphabet")
+
+    await mockMouse.drag(anchor.x + 3, anchor.y, anchor.x + 5, anchor.y)
+    await renderOnce()
+
+    expect(table.getSelectedText()).toBe("ha")
+  })
+
+  test("selects the full anchor cell once focus leaves that cell", async () => {
+    const table = new TextTableRenderable(renderer, {
+      left: 0,
+      top: 0,
+      content: [[cell("alphabet"), cell("status")]],
+    })
+
+    renderer.root.add(table)
+    await renderOnce()
+
+    const frame = captureFrame()
+    const anchor = findTextPoint(frame, "alphabet")
+    const focus = findTextPoint(frame, "status")
+
+    await mockMouse.drag(anchor.x + 3, anchor.y, focus.x + 2, focus.y)
+    await renderOnce()
+
+    const [firstCell] = table.getSelectedText().split("\t")
+    expect(firstCell).toBe("alphabet")
+  })
+
+  test("locks vertical drag to the anchor column while focus stays in that column", async () => {
+    const table = new TextTableRenderable(renderer, {
+      left: 0,
+      top: 0,
+      content: [
+        [cell("colA"), cell("colB"), cell("colC")],
+        [cell("a1"), cell("b1"), cell("c1")],
+        [cell("a2"), cell("b2"), cell("c2")],
+        [cell("a3"), cell("b3"), cell("c3")],
+      ],
+    })
+
+    renderer.root.add(table)
+    await renderOnce()
+
+    const anchor = findTextPoint(captureFrame(), "colB")
+
+    await mockMouse.drag(anchor.x, anchor.y, anchor.x, table.y + table.height + 2)
+    await renderOnce()
+
+    expect(table.getSelectedText()).toBe("colB\nb1\nb2\nb3")
+  })
+
+  test("returns to normal grid selection after focus leaves the anchor column", async () => {
+    const table = new TextTableRenderable(renderer, {
+      left: 0,
+      top: 0,
+      content: [
+        [cell("colA"), cell("colB"), cell("colC")],
+        [cell("a1"), cell("b1"), cell("c1")],
+        [cell("a2"), cell("b2"), cell("c2")],
+        [cell("a3"), cell("b3"), cell("c3")],
+      ],
+    })
+
+    renderer.root.add(table)
+    await renderOnce()
+
+    const frame = captureFrame()
+    const anchor = findTextPoint(frame, "colB")
+    const focus = findTextPoint(frame, "colC")
+
+    await mockMouse.drag(anchor.x, anchor.y, focus.x, table.y + table.height + 2)
+    await renderOnce()
+
+    expect(table.getSelectedText()).toBe("colB\tcolC\na1\tb1\tc1\na2\tb2\tc2\na3\tb3\tc3")
+  })
+
   test("selection colors reset when drag retracts back to the anchor", async () => {
     const defaultFg = RGBA.fromHex("#111111")
     const defaultBg = RGBA.fromValues(0, 0, 0, 0)
@@ -767,7 +867,7 @@ describe("TextTableRenderable", () => {
     await mockMouse.release(13, 20)
     await renderOnce()
 
-    expect(table.getSelectedText()).toBe("tus\napi\tOK\nworker\tDEGRADED\nbilling\tERROR")
+    expect(table.getSelectedText()).toBe("Status\nOK\nDEGRADED\nERROR")
   })
 
   test("reverse drag across full table keeps left cells selected", async () => {
