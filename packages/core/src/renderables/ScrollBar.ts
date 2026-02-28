@@ -29,10 +29,19 @@ export class ScrollBarRenderable extends Renderable {
   private _viewportSize = 0
   private _showArrows = false
   private _manualVisibility = false
+  private _allowUserInput = true
 
   private _onChange: ((position: number) => void) | undefined
 
   scrollStep: number | undefined | null = null
+
+  get allowUserInput(): boolean {
+    return this._allowUserInput
+  }
+
+  set allowUserInput(value: boolean) {
+    this._allowUserInput = value
+  }
 
   get visible(): boolean {
     return super.visible
@@ -185,6 +194,8 @@ export class ScrollBarRenderable extends Renderable {
       event.stopPropagation()
       event.preventDefault()
 
+      if (!this._allowUserInput) return
+
       this.scrollBy(-0.5, "viewport")
 
       startArrowMouseTimeout = setTimeout(() => {
@@ -204,6 +215,8 @@ export class ScrollBarRenderable extends Renderable {
     this.endArrow.onMouseDown = (event) => {
       event.stopPropagation()
       event.preventDefault()
+
+      if (!this._allowUserInput) return
 
       this.scrollBy(0.5, "viewport")
 
@@ -264,6 +277,8 @@ export class ScrollBarRenderable extends Renderable {
   }
 
   public handleKeyPress(key: KeyEvent): boolean {
+    if (!this._allowUserInput) return false
+
     switch (key.name) {
       case "left":
       case "h":

@@ -55,6 +55,7 @@ export interface ScrollBoxOptions extends BoxOptions<ScrollBoxRenderable> {
   scrollY?: boolean
   scrollAcceleration?: ScrollAcceleration
   viewportCulling?: boolean
+  allowUserScroll?: boolean
 }
 
 const SCROLLBOX_PADDING_KEYS = [
@@ -127,6 +128,7 @@ export class ScrollBoxRenderable extends BoxRenderable {
   private _stickyStart?: "bottom" | "top" | "left" | "right"
   private _hasManualScroll: boolean = false
   private _isApplyingStickyScroll: boolean = false
+  private _allowUserScroll: boolean = true
   private scrollAccel: ScrollAcceleration
 
   get stickyScroll(): boolean {
@@ -136,6 +138,15 @@ export class ScrollBoxRenderable extends BoxRenderable {
   set stickyScroll(value: boolean) {
     this._stickyScroll = value
     this.updateStickyState()
+  }
+
+  get allowUserScroll(): boolean {
+    return this._allowUserScroll
+  }
+
+  set allowUserScroll(value: boolean) {
+    this._allowUserScroll = value
+    this.updateScrollBarUserScroll()
   }
 
   get stickyStart(): "bottom" | "top" | "left" | "right" | undefined {
@@ -286,6 +297,7 @@ export class ScrollBoxRenderable extends BoxRenderable {
       scrollY = true,
       scrollAcceleration,
       viewportCulling = true,
+      allowUserScroll = true,
       ...rootBoxOptions
     } = options
 
@@ -312,6 +324,7 @@ export class ScrollBoxRenderable extends BoxRenderable {
     this.internalId = ScrollBoxRenderable.idCounter++
     this._stickyScroll = stickyScroll
     this._stickyStart = stickyStart
+    this._allowUserScroll = allowUserScroll
     this.scrollAccel = scrollAcceleration ?? new LinearScrollAccel()
 
     this.wrapper = new BoxRenderable(ctx, {
@@ -395,6 +408,8 @@ export class ScrollBoxRenderable extends BoxRenderable {
     })
     this.wrapper.add(this.horizontalScrollBar)
 
+    this.updateScrollBarUserScroll()
+
     this.recalculateBarProps()
 
     if (stickyStart && stickyScroll) {
@@ -476,6 +491,8 @@ export class ScrollBoxRenderable extends BoxRenderable {
 
   protected onMouseEvent(event: MouseEvent): void {
     if (event.type === "scroll") {
+      if (!this._allowUserScroll) return
+
       let dir = event.scroll?.direction
       if (event.modifiers.shift)
         dir = dir === "up" ? "left" : dir === "down" ? "right" : dir === "right" ? "down" : "up"
@@ -524,13 +541,17 @@ export class ScrollBoxRenderable extends BoxRenderable {
     }
 
     if (event.type === "drag" && event.isDragging) {
-      this.updateAutoScroll(event.x, event.y)
+      if (this._allowUserScroll) {
+        this.updateAutoScroll(event.x, event.y)
+      }
     } else if (event.type === "up") {
       this.stopAutoScroll()
     }
   }
 
   public handleKeyPress(key: KeyEvent): boolean {
+    if (!this._allowUserScroll) return false
+
     // Let scrollbars handle their own acceleration
     if (this.verticalScrollBar.handleKeyPress(key)) {
       this._hasManualScroll = true
@@ -545,6 +566,11 @@ export class ScrollBoxRenderable extends BoxRenderable {
       return true
     }
     return false
+  }
+
+  private updateScrollBarUserScroll(): void {
+    this.verticalScrollBar.allowUserInput = this._allowUserScroll
+    this.horizontalScrollBar.allowUserInput = this._allowUserScroll
   }
 
   private resetScrollAccumulators(): void {

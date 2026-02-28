@@ -69,6 +69,7 @@ import * as scrollboxMouseTest from "./scrollbox-mouse-test"
 import * as textTruncationDemo from "./text-truncation-demo"
 import * as grayscaleBufferDemo from "./grayscale-buffer-demo"
 import * as focusRestoreDemo from "./focus-restore-demo"
+import * as allowUserScrollDemo from "./allow-user-scroll-demo"
 import { setupCommonDemoKeys } from "./lib/standalone-keys"
 
 interface Example {
@@ -457,6 +458,12 @@ const examples: Example[] = [
     description: "Test focus restore - alt-tab away and back to verify mouse tracking resumes",
     run: focusRestoreDemo.run,
     destroy: focusRestoreDemo.destroy,
+  },
+  {
+    name: "Allow User Scroll Demo",
+    description: "Side-by-side demo: left allows user scrolling, right only auto-scrolls (user scrolling disabled)",
+    run: allowUserScrollDemo.run,
+    destroy: allowUserScrollDemo.destroy,
   },
 ]
 
