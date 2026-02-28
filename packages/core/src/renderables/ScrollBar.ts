@@ -43,6 +43,16 @@ export class ScrollBarRenderable extends Renderable {
     this._allowUserInput = value
   }
 
+  /**
+   * The scrollbar is focusable only if it is marked focusable and user input is allowed.
+   */
+  get focusable(): boolean {
+    return this._focusable && this._allowUserInput
+  }
+
+  set focusable(value: boolean) {
+    this._focusable = value
+  }
   get visible(): boolean {
     return super.visible
   }
