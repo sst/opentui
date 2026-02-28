@@ -1,13 +1,4 @@
-import {
-  BoxRenderable,
-  type CliRenderer,
-  createCliRenderer,
-  TextRenderable,
-  t,
-  fg,
-  bold,
-  bg,
-} from "../index"
+import { BoxRenderable, type CliRenderer, createCliRenderer, TextRenderable, t, fg, bold, bg } from "../index"
 import { ScrollBoxRenderable } from "../renderables/ScrollBox"
 import { setupCommonDemoKeys } from "./lib/standalone-keys"
 import { createMockMouse, MouseButtons } from "../testing/mock-mouse"
@@ -122,6 +113,72 @@ async function simulateBlockedScrollUp(): Promise<void> {
   await simulateScrollUp("right")
 }
 
+/**
+ * Calculate the slider thumb position for a ScrollBoxRenderable's vertical scrollbar.
+ * Returns the center X and Y coordinates of the thumb.
+ */
+function getSliderThumbPosition(scrollBox: ScrollBoxRenderable): { x: number; y: number; height: number } | null {
+  if (!scrollBox.verticalScrollBar?.slider) return null
+
+  const slider = scrollBox.verticalScrollBar.slider
+  if (slider.orientation !== "vertical") return null
+
+  // Calculate thumb position using the same logic as SliderRenderable.getVirtualThumbStart()
+  const range = slider.max - slider.min
+  if (range === 0) {
+    return { x: slider.x + Math.floor(slider.width / 2), y: slider.y, height: slider.height }
+  }
+
+  const valueRatio = (slider.value - slider.min) / range
+  const virtualTrackSize = slider.height * 2
+
+  // Calculate virtual thumb size (viewportSize / contentSize * virtualTrackSize)
+  const viewportSize = Math.max(1, slider.viewPortSize)
+  const contentSize = range + viewportSize
+  const thumbRatio = viewportSize / contentSize
+  const virtualThumbSize = Math.max(1, Math.min(Math.floor(virtualTrackSize * thumbRatio), virtualTrackSize))
+
+  // Calculate virtual thumb start position
+  const virtualThumbStart = Math.round(valueRatio * (virtualTrackSize - virtualThumbSize))
+
+  // Convert to real coordinates
+  const realThumbStart = Math.floor(virtualThumbStart / 2)
+  const realThumbEnd = Math.ceil((virtualThumbStart + virtualThumbSize) / 2)
+  const realThumbSize = Math.max(1, realThumbEnd - realThumbStart)
+
+  return {
+    x: slider.x + Math.floor(slider.width / 2),
+    y: slider.y + realThumbStart + Math.floor(realThumbSize / 2),
+    height: realThumbSize,
+  }
+}
+
+async function simulateSliderThumbDrag(
+  scrollBox: ScrollBoxRenderable,
+  side: "left" | "right",
+  shouldWork: boolean,
+): Promise<void> {
+  if (!mockMouse) return
+
+  const thumbPos = getSliderThumbPosition(scrollBox)
+  if (!thumbPos) return
+
+  const startX = thumbPos.x
+  const startY = thumbPos.y
+
+  // Drag downward to scroll up in content (moving thumb down reveals earlier content)
+  const dragDistance = Math.min(5, Math.floor(scrollBox.verticalScrollBar.slider.height / 4))
+  const endY = startY + dragDistance
+
+  if (shouldWork) {
+    showNotification("Dragging slider thumb DOWN (should work)", side)
+  } else {
+    showNotification("Attempting slider thumb drag (should be BLOCKED)", side)
+  }
+
+  await mockMouse.drag(startX, startY, startX, endY, MouseButtons.LEFT)
+}
+
 function addContentToBoth(): void {
   itemCount++
   showNotification(`Auto-scroll: Adding line ${itemCount}`, "both")
@@ -186,13 +243,33 @@ async function runDemoSequence(): Promise<void> {
 
   await sleep(1000)
 
+  // Phase 6: Slider thumb drag on LEFT (should work - moves content)
+  showNotification("Slider thumb drag demo on LEFT...", "left")
+  await sleep(500)
+  await simulateSliderThumbDrag(leftScrollBox, "left", true)
+  await sleep(800)
+
+  // Verify left scrollbox moved
+  showNotification("LEFT content scrolled via slider!", "left")
+  await sleep(500)
+
+  // Phase 7: Slider thumb drag on RIGHT (should be BLOCKED)
+  showNotification("Attempting slider thumb drag on RIGHT...", "right")
+  await sleep(500)
+  await simulateSliderThumbDrag(rightScrollBox, "right", false)
+  await sleep(800)
+
+  // Confirm right scrollbox did NOT move
+  showNotification("RIGHT slider drag BLOCKED - content unchanged", "right")
+  await sleep(500)
+
   showNotification("Demo complete! Left scrolled, Right stayed.", "both")
 }
 
 export function run(rendererInstance: CliRenderer): void {
   renderer = rendererInstance
   renderer.setBackgroundColor("#0a0a14")
-  
+
   // Initialize mock mouse for simulating real mouse events
   mockMouse = createMockMouse(rendererInstance)
 
@@ -348,7 +425,7 @@ export function run(rendererInstance: CliRenderer): void {
     } else if (key.name === "d" && key.shift) {
       simulateUserScrollDown()
     } else if (key.name === "q") {
-      renderer.stop()
+      renderer?.stop()
     }
   })
 }
