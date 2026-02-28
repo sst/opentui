@@ -20,6 +20,7 @@ interface LogicalLine {
 
 export interface DiffRenderableOptions extends RenderableOptions<DiffRenderable> {
   diff?: string
+  syncScroll?: boolean
   view?: "unified" | "split"
 
   // CodeRenderable options
@@ -52,6 +53,7 @@ export interface DiffRenderableOptions extends RenderableOptions<DiffRenderable>
 
 export class DiffRenderable extends Renderable {
   private _diff: string
+  private _syncScroll: boolean = false
   private _view: "unified" | "split"
   private _parsedDiff: StructuredPatch | null = null
   private _parseError: Error | null = null
@@ -108,6 +110,7 @@ export class DiffRenderable extends Renderable {
     })
 
     this._diff = options.diff ?? ""
+    this._syncScroll = options.syncScroll ?? false
     this._view = options.view ?? "unified"
 
     // CodeRenderable options
@@ -185,7 +188,7 @@ export class DiffRenderable extends Renderable {
   }
 
   protected override onMouseEvent(event: MouseEvent): void {
-    if (event.type !== "scroll" || this._view !== "split") return
+    if (event.type !== "scroll" || this._view !== "split" || !this._syncScroll) return
     if (!this.leftCodeRenderable || !this.rightCodeRenderable) return
     if (!event.target) return
 
@@ -886,6 +889,19 @@ export class DiffRenderable extends Renderable {
       this._waitingForHighlight = false
       this.parseDiff()
       this.rebuildView()
+    }
+  }
+
+  public get syncScroll(): boolean {
+    return this._syncScroll
+  }
+
+  public set syncScroll(value: boolean) {
+    if (this._syncScroll !== value) {
+      this._syncScroll = value
+      if (!value) {
+        this.detachLineInfoListeners()
+      }
     }
   }
 

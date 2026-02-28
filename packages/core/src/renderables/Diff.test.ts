@@ -2292,6 +2292,46 @@ test("DiffRenderable - target remains functional after multiple updates", async 
   rightCodeRenderable.off("line-info-change", rightListener)
 })
 
+test("DiffRenderable - split view scroll is not synchronized by default", async () => {
+  const mockMouse = createMockMouse(currentRenderer)
+  const syntaxStyle = SyntaxStyle.fromStyles({
+    default: { fg: RGBA.fromValues(1, 1, 1, 1) },
+  })
+
+  const diffRenderable = new DiffRenderable(currentRenderer, {
+    id: "test-diff",
+    diff: multiLineDiff,
+    view: "split",
+    syntaxStyle,
+    showLineNumbers: true,
+    width: "100%",
+    height: 4,
+  })
+
+  currentRenderer.root.add(diffRenderable)
+  await renderOnce()
+
+  const leftCodeRenderable = (diffRenderable as any).leftCodeRenderable
+  const rightCodeRenderable = (diffRenderable as any).rightCodeRenderable
+
+  expect(leftCodeRenderable).toBeTruthy()
+  expect(rightCodeRenderable).toBeTruthy()
+
+  // Scroll over left pane
+  mockMouse.scroll(leftCodeRenderable.x, leftCodeRenderable.y + 1, "down")
+  await renderOnce()
+
+  expect(leftCodeRenderable.scrollY).toBe(1)
+  expect(rightCodeRenderable.scrollY).toBe(0)
+
+  // Scroll over right pane
+  mockMouse.scroll(rightCodeRenderable.x + 1, rightCodeRenderable.y + 1, "down")
+  await renderOnce()
+
+  expect(rightCodeRenderable.scrollY).toBe(1)
+  expect(leftCodeRenderable.scrollY).toBe(1)
+})
+
 test("DiffRenderable - split view wheel scroll keeps panes synchronized", async () => {
   const mockMouse = createMockMouse(currentRenderer)
   const syntaxStyle = SyntaxStyle.fromStyles({
@@ -2301,6 +2341,7 @@ test("DiffRenderable - split view wheel scroll keeps panes synchronized", async 
   const diffRenderable = new DiffRenderable(currentRenderer, {
     id: "test-diff",
     diff: multiLineDiff,
+    syncScroll: true,
     view: "split",
     syntaxStyle,
     showLineNumbers: true,
