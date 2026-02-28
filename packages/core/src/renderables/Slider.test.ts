@@ -454,3 +454,32 @@ test("SliderRenderable > Mouse interaction - precision dragging with small viewp
   expect(slider.value).toBeGreaterThan(0)
   expect(slider.value).toBeCloseTo(100, 10) // Approximately 5/50 * 1000 = 100
 })
+
+test("SliderRenderable > Mouse interaction - isDragging resets when allowUserInput disabled during drag", async () => {
+  const { slider } = await createSliderRenderable(currentRenderer, {
+    orientation: "horizontal",
+    min: 0,
+    max: 100,
+    value: 50,
+    width: 20,
+    height: 1,
+  })
+
+  // Start a drag operation
+  await currentMockMouse.pressDown(10, 0)
+
+  // Set allowUserInput to false mid-drag
+  slider.allowUserInput = false
+
+  // Release mouse while allowUserInput is false
+  await currentMockMouse.release(10, 0)
+
+  // Set allowUserInput back to true
+  slider.allowUserInput = true
+
+  // Verify that a new drag operation works correctly (proving isDragging was reset)
+  currentMockMouse.drag(5, 0, 15, 0)
+
+  // If isDragging wasn't properly reset, this drag would not work
+  expect(slider.value).toBeCloseTo(25, 5)
+})
