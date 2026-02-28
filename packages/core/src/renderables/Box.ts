@@ -66,8 +66,8 @@ export class BoxRenderable extends Renderable {
   constructor(ctx: RenderContext, options: BoxOptions) {
     super(ctx, options)
 
-    if (options.focusable === true) {
-      this._focusable = true
+    if (options.focusable !== undefined) {
+      this.focusable = options.focusable
     }
 
     this._backgroundColor = parseColor(options.backgroundColor || this._defaultOptions.backgroundColor)
