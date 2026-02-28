@@ -2295,9 +2295,11 @@ test "calculateTextWidth: scroll book and writing emojis width 2" {
     try testing.expectEqual(@as(u32, 2), utf8.calculateTextWidth("📜", 4, false, .unicode));
 }
 
-test "calculateTextWidth: Devanagari नमस्ते width 4" {
+test "calculateTextWidth: Devanagari नमस्ते width 3" {
+    // Grapheme clusters: [न] [म] [स्ते] = 3
+    // स्ते is one conjunct cluster (GB9c groups स + virama + त, then GB9/GB9a keeps vowel sign)
     const result = utf8.calculateTextWidth("नमस्ते", 4, false, .unicode);
-    try testing.expectEqual(@as(u32, 4), result);
+    try testing.expectEqual(@as(u32, 3), result);
 }
 
 // ============================================================================
@@ -2699,8 +2701,9 @@ test "calculateTextWidth: checkmark grapheme ✅" {
 }
 
 test "calculateTextWidth: Sanskrit text with combining marks" {
+    // संस्कृति: Clusters [सं](1) + [स्कृ](1 conjunct via GB9c) + [ति](1) = 3
     const result = utf8.calculateTextWidth("संस्कृति", 4, false, .unicode);
-    try testing.expectEqual(@as(u32, 4), result);
+    try testing.expectEqual(@as(u32, 3), result);
 }
 
 test "calculateTextWidth: checkmark in text" {
@@ -2894,9 +2897,8 @@ test "calculateTextWidth: Devanagari basic characters" {
     // Devanagari script (Hindi, Sanskrit, etc.)
     const namaste = "नमस्ते"; // na-ma-s-te with virama
     const width = utf8.calculateTextWidth(namaste, 4, false, .unicode);
-    // Devanagari characters are typically width 1 each
-    // This is 5 graphemes: न म स् ते (the virama combines with स)
-    try testing.expect(width > 0); // Exact width depends on grapheme clustering
+    // Grapheme clusters: [न] [म] [स्ते] = 3 (GB9c groups conjunct)
+    try testing.expectEqual(@as(u32, 3), width);
 }
 
 test "calculateTextWidth: Devanagari with combining marks" {
@@ -2917,10 +2919,10 @@ test "calculateTextWidth: Devanagari conjuncts" {
     const jna = "ज्ञ"; // ज + virama + ञ (jna)
     const ksha = "क्‍ष"; // क + virama + ZWJ + ष (kṣa with explicit ZWJ)
 
-    // These form single grapheme clusters but width = number of base consonants
-    try testing.expectEqual(@as(u32, 2), utf8.calculateTextWidth(kta, 4, false, .unicode));
-    try testing.expectEqual(@as(u32, 2), utf8.calculateTextWidth(jna, 4, false, .unicode));
-    try testing.expectEqual(@as(u32, 2), utf8.calculateTextWidth(ksha, 4, false, .unicode));
+    // Unicode mode treats each conjunct cluster as width 1.
+    try testing.expectEqual(@as(u32, 1), utf8.calculateTextWidth(kta, 4, false, .unicode));
+    try testing.expectEqual(@as(u32, 1), utf8.calculateTextWidth(jna, 4, false, .unicode));
+    try testing.expectEqual(@as(u32, 1), utf8.calculateTextWidth(ksha, 4, false, .unicode));
 }
 
 test "calculateTextWidth: Bengali script" {
@@ -3563,17 +3565,17 @@ test "calculateTextWidth: emoji collection - entertainment" {
 
 test "calculateTextWidth: Devanagari - Sanskrit word" {
     // संस्कृति (culture/civilization)
+    // Clusters: [सं](1) + [स्कृ](1 conjunct via GB9c) + [ति](1) = 3
     const sanskrit = "संस्कृति";
     const width = utf8.calculateTextWidth(sanskrit, 4, false, .unicode);
-    // 4 base consonants (SA, SA, KA, TA) with combining marks = width 4
-    try testing.expectEqual(@as(u32, 4), width);
+    try testing.expectEqual(@as(u32, 3), width);
 }
 
 test "calculateTextWidth: Devanagari - namaste" {
     const namaste = "नमस्ते";
     const width = utf8.calculateTextWidth(namaste, 4, false, .unicode);
-    // 4 base consonants: NA, MA, SA, TA = width 4
-    try testing.expectEqual(@as(u32, 4), width);
+    // Grapheme clusters: [न](1) + [म](1) + [स्ते](1 conjunct via GB9c) = 3
+    try testing.expectEqual(@as(u32, 3), width);
 }
 
 test "calculateTextWidth: Devanagari - Om symbol" {
@@ -3585,8 +3587,8 @@ test "calculateTextWidth: Devanagari - Om symbol" {
 test "calculateTextWidth: Devanagari - mixed with ASCII" {
     const mixed = "Hello नमस्ते World";
     const width = utf8.calculateTextWidth(mixed, 4, false, .unicode);
-    // "Hello "(6) + नमस्ते(4 base consonants) + " World"(6) = 16
-    try testing.expectEqual(@as(u32, 16), width);
+    // "Hello "(6) + नमस्ते(3 clusters via GB9c) + " World"(6) = 15
+    try testing.expectEqual(@as(u32, 15), width);
 }
 
 // ============================================================================
@@ -3678,7 +3680,8 @@ test "calculateTextWidth: Bengali script word" {
 test "calculateTextWidth: Kannada script" {
     const kannada = "ಕನ್ನಡ";
     const width = utf8.calculateTextWidth(kannada, 4, false, .unicode);
-    // ಕ(1) + ನ(1) + ್(0) + ನ(1) + ಡ(1) = 4
+    // Kannada virama (U+0CCD) has InCB=Extend, so GB9c does not join a conjunct cluster.
+    // Clusters: [ಕ](1) + [ನ್](1) + [ನ](1) + [ಡ](1) = 4
     try testing.expectEqual(@as(u32, 4), width);
 }
 
@@ -3756,8 +3759,8 @@ test "calculateTextWidth: Hangul Jamo" {
 test "calculateTextWidth: realistic multilingual sentence" {
     const multilingual = "Hello 世界! नमस्ते 🙏";
     const width = utf8.calculateTextWidth(multilingual, 4, false, .unicode);
-    // "Hello "(6) + 世界(4) + "! "(2) + नमस्ते(4) + " "(1) + 🙏(2) = 19
-    try testing.expectEqual(@as(u32, 19), width);
+    // "Hello "(6) + 世界(4) + "! "(2) + नमस्ते(3 via GB9c) + " "(1) + 🙏(2) = 18
+    try testing.expectEqual(@as(u32, 18), width);
 }
 
 test "calculateTextWidth: all ending words from text" {
@@ -4054,4 +4057,84 @@ test "Thai: ว่ is a single grapheme cluster" {
 
     try testing.expectEqual(@as(usize, 1), result.items.len);
     try testing.expectEqual(@as(u8, 1), result.items[0].width);
+}
+
+test "Devanagari conjunct क्त should be width 1" {
+    // क + ् + त forms one GB9c conjunct cluster.
+    const kta = "क्त";
+    try testing.expectEqual(@as(u32, 1), utf8.calculateTextWidth(kta, 4, false, .unicode));
+}
+
+test "Devanagari conjunct ज्ञ should be width 1" {
+    // ज + ् + ञ forms one GB9c conjunct cluster.
+    const jna = "ज्ञ";
+    try testing.expectEqual(@as(u32, 1), utf8.calculateTextWidth(jna, 4, false, .unicode));
+}
+
+test "Devanagari conjunct क्ष should be width 1" {
+    // क + ् + ष forms one GB9c conjunct cluster.
+    const ksha = "क्ष";
+    try testing.expectEqual(@as(u32, 1), utf8.calculateTextWidth(ksha, 4, false, .unicode));
+}
+
+test "Devanagari conjunct with ZWJ should be width 1" {
+    // क + ् + ZWJ + ष still stays in one conjunct cluster.
+    const ksha_zwj = "क्‍ष";
+    try testing.expectEqual(@as(u32, 1), utf8.calculateTextWidth(ksha_zwj, 4, false, .unicode));
+}
+
+test "Kannada conjunct ಕ್ಕ width 2" {
+    // Kannada virama (U+0CCD) has InCB=Extend, so GB9c does not join this sequence.
+    // Clusters: [ಕ್](1) + [ಕ](1) = 2. The virama stays with the first cluster.
+    const kka = "ಕ್ಕ";
+    try testing.expectEqual(@as(u32, 2), utf8.calculateTextWidth(kka, 4, false, .unicode));
+}
+
+test "Kannada conjunct ನ್ನ width 2" {
+    // Kannada virama still has InCB=Extend in this sequence.
+    // Clusters: [ನ್](1) + [ನ](1) = 2
+    const nna = "ನ್ನ";
+    try testing.expectEqual(@as(u32, 2), utf8.calculateTextWidth(nna, 4, false, .unicode));
+}
+
+test "Tamil conjunct க்ஷ width 2" {
+    // Tamil virama (U+0BCD) has InCB=Extend, so GB9c does not join this sequence.
+    // Clusters: [க்](1) + [ஷ](1) = 2
+    const ksha = "க்ஷ";
+    try testing.expectEqual(@as(u32, 2), utf8.calculateTextWidth(ksha, 4, false, .unicode));
+}
+
+test "Telugu conjunct క్ష should be width 1" {
+    // Telugu virama (U+0C4D) has InCB=Linker, so GB9c joins this sequence.
+    // Clusters: [క్ష](1) = 1
+    const ksha = "క్ష";
+    try testing.expectEqual(@as(u32, 1), utf8.calculateTextWidth(ksha, 4, false, .unicode));
+}
+
+test "Devanagari नमस्ते width should be 3" {
+    // Grapheme clusters: [न](1) + [म](1) + [स्ते](1 conjunct via GB9c) = 3
+    const namaste = "नमस्ते";
+    try testing.expectEqual(@as(u32, 3), utf8.calculateTextWidth(namaste, 4, false, .unicode));
+}
+
+test "Devanagari conjuncts consistent across all modes" {
+    const kta = "क्त";
+    const unicode = utf8.calculateTextWidth(kta, 4, false, .unicode);
+    const no_zwj = utf8.calculateTextWidth(kta, 4, false, .no_zwj);
+    // Both should agree: conjunct = width 1
+    try testing.expectEqual(@as(u32, 1), unicode);
+    try testing.expectEqual(@as(u32, 1), no_zwj);
+}
+
+test "Kannada word ಕನ್ನಡ width 4" {
+    // Kannada virama has InCB=Extend, so GB9c does not join a conjunct cluster.
+    // Clusters: [ಕ](1) + [ನ್](1) + [ನ](1) + [ಡ](1) = 4
+    const kannada = "ಕನ್ನಡ";
+    try testing.expectEqual(@as(u32, 4), utf8.calculateTextWidth(kannada, 4, false, .unicode));
+}
+
+test "wcwidth mode still sums codepoint widths for Devanagari" {
+    // wcwidth mode: base(1) + virama(0) + base(1) = 2 (sum, not max)
+    const kta = "क्त";
+    try testing.expectEqual(@as(u32, 2), utf8.calculateTextWidth(kta, 4, false, .wcwidth));
 }

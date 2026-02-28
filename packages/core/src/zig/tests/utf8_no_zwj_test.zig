@@ -249,12 +249,12 @@ test "no_zwj: Devanagari conjuncts still work" {
     const width_no_zwj = utf8.calculateTextWidth(text, 4, false, .no_zwj);
     const width_wcwidth = utf8.calculateTextWidth(text, 4, false, .wcwidth);
 
-    // unicode: Devanagari renders as width 2 in terminals (Ka=1 + Sha=1)
-    try testing.expectEqual(@as(u32, 2), width_unicode);
+    // unicode: this sequence is one GB9c conjunct cluster, so width is 1.
+    try testing.expectEqual(@as(u32, 1), width_unicode);
 
-    // no_zwj: should behave same as unicode for non-ZWJ sequences
-    try testing.expectEqual(@as(u32, 2), width_no_zwj);
+    // no_zwj: same result here because the sequence has no ZWJ.
+    try testing.expectEqual(@as(u32, 1), width_no_zwj);
 
-    // wcwidth: counts each codepoint separately (same result)
+    // wcwidth: sum codepoint widths directly.
     try testing.expectEqual(@as(u32, 2), width_wcwidth); // Ka(1) + virama(0) + Sha(1)
 }

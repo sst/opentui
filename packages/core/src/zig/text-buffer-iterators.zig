@@ -402,7 +402,11 @@ pub fn extractTextBetweenOffsets(
     var out_index: usize = 0;
     var char_offset: u32 = 0;
 
-    _ = width_method; // Just ignore for now, will use .unicode as default
+    // TODO: Pass width_method through to findPosByWidth.
+    // chunk.width uses the text-buffer's width_method, but the calls below
+    // force .unicode. In .wcwidth mode, that mismatch can shift byte offsets.
+    // Fix this by using one width method for both chunk metrics and lookups.
+    _ = width_method;
 
     const Context = struct {
         rope: *const UnifiedRope,

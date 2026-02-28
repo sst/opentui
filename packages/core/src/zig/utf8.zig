@@ -814,7 +814,6 @@ const GraphemeWidthState = struct {
     has_width: bool = false,
     is_regional_indicator_pair: bool = false,
     has_vs16: bool = false,
-    has_indic_virama: bool = false,
     width_method: WidthMethod,
 
     /// Initialize state with the first codepoint of a grapheme cluster
@@ -824,12 +823,15 @@ const GraphemeWidthState = struct {
             .has_width = (first_width > 0),
             .is_regional_indicator_pair = (first_cp >= 0x1F1E6 and first_cp <= 0x1F1FF),
             .has_vs16 = false,
-            .has_indic_virama = false,
             .width_method = width_method,
         };
     }
 
-    /// Add a codepoint to the current grapheme cluster
+    /// Adds one codepoint to the current grapheme width state.
+    /// In `.unicode` and `.no_zwj`, the first non-zero width in a grapheme
+    /// cluster sets the cluster width. Later codepoints in that same cluster do
+    /// not add width. This prevents double-counting viramas and conjunct bases.
+    /// In `.wcwidth`, we keep legacy behavior and sum each codepoint width.
     inline fn addCodepoint(self: *GraphemeWidthState, cp: u21, cp_width: u32) void {
         // wcwidth mode: sum all codepoint widths (tmux-style)
         if (self.width_method == .wcwidth) {
@@ -846,23 +848,11 @@ const GraphemeWidthState = struct {
         const is_ri = (cp >= 0x1F1E6 and cp <= 0x1F1FF);
         const is_vs16 = (cp == 0xFE0F); // Variation Selector-16 (emoji presentation)
 
-        const gc = uucode.get(.general_category, cp);
-        const is_virama = gc == .mark_nonspacing;
-
-        const is_devanagari_ra = (cp == 0x0930);
-
-        const is_devanagari_base = (cp >= 0x0915 and cp <= 0x0939) or (cp >= 0x0958 and cp <= 0x095F);
-
         if (is_vs16) {
             self.has_vs16 = true;
             if (self.has_width and self.width == 1) {
                 self.width = 2;
             }
-            return;
-        }
-
-        if (is_virama) {
-            self.has_indic_virama = true;
             return;
         }
 
@@ -872,12 +862,10 @@ const GraphemeWidthState = struct {
         } else if (!self.has_width and cp_width > 0) {
             self.width = cp_width;
             self.has_width = true;
-        } else if (self.has_width and self.has_indic_virama and is_devanagari_base and cp_width > 0) {
-            if (!is_devanagari_ra) {
-                self.width += cp_width;
-            }
-            self.has_indic_virama = false;
         }
+        // Keep the cluster width fixed after the first base width. Grapheme
+        // segmentation (UAX #29, including GB9c) already grouped these
+        // codepoints into this cluster.
     }
 };
 
