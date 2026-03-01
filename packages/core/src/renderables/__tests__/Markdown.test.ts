@@ -16,7 +16,6 @@ import { TextAttributes, type CapturedFrame } from "../../types"
 
 let renderer: TestRenderer
 let mockMouse: MockMouse
-let renderOnce: () => Promise<void>
 let captureFrame: () => string
 let captureSpans: () => CapturedFrame
 
@@ -28,7 +27,6 @@ beforeEach(async () => {
   const testRenderer = await createTestRenderer({ width: 60, height: 40 })
   renderer = testRenderer.renderer
   mockMouse = testRenderer.mockMouse
-  renderOnce = testRenderer.renderOnce
   captureFrame = testRenderer.captureCharFrame
   captureSpans = testRenderer.captureSpans
 })
@@ -47,14 +45,14 @@ async function renderMarkdownRenderable(md: MarkdownRenderable): Promise<void> {
 
   const nextTick = (): Promise<void> => new Promise((resolve) => setImmediate(resolve))
 
-  await renderOnce()
+  await renderer.idle()
 
   while (hasPendingMarkdownParagraphHighlights()) {
     await nextTick()
-    await renderOnce()
+    await renderer.idle()
   }
 
-  await renderOnce()
+  await renderer.idle()
 }
 
 async function renderMarkdown(markdown: string, conceal: boolean = true): Promise<string> {
@@ -105,7 +103,7 @@ test("tableOptions.widthMode configures markdown table layout", async () => {
   })
 
   renderer.root.add(md)
-  await renderOnce()
+  await renderer.idle()
 
   const table = md._blockStates[0]?.renderable as TextTableRenderable
   expect(table).toBeInstanceOf(TextTableRenderable)
@@ -121,7 +119,7 @@ test("tableOptions updates existing markdown table renderable", async () => {
   })
 
   renderer.root.add(md)
-  await renderOnce()
+  await renderer.idle()
 
   const table = md._blockStates[0]?.renderable as TextTableRenderable
   expect(table).toBeInstanceOf(TextTableRenderable)
@@ -136,7 +134,7 @@ test("tableOptions updates existing markdown table renderable", async () => {
     selectable: false,
   }
 
-  await renderOnce()
+  await renderer.idle()
 
   const updatedTable = md._blockStates[0]?.renderable as TextTableRenderable
   expect(updatedTable).toBe(table)
@@ -633,7 +631,7 @@ Outro line below table.`
   const endY = bottomBlock!.y
 
   await mockMouse.drag(startX, startY, endX, endY)
-  await renderOnce()
+  await renderer.idle()
 
   const selectedText = renderer.getSelection()?.getSelectedText() ?? ""
 
@@ -744,12 +742,12 @@ test("code block concealment is disabled by default", async () => {
   })
 
   renderer.root.add(md)
-  await renderOnce()
+  await renderer.idle()
   expect(mockTreeSitterClient.isHighlighting()).toBe(true)
 
   mockTreeSitterClient.resolveAllHighlightOnce()
   await Bun.sleep(10)
-  await renderOnce()
+  await renderer.idle()
 
   const frame = captureFrame()
   expect(frame).toContain("# Hidden heading")
@@ -771,12 +769,12 @@ test("code block concealment can be enabled with concealCode", async () => {
   })
 
   renderer.root.add(md)
-  await renderOnce()
+  await renderer.idle()
   expect(mockTreeSitterClient.isHighlighting()).toBe(true)
 
   mockTreeSitterClient.resolveAllHighlightOnce()
   await Bun.sleep(10)
-  await renderOnce()
+  await renderer.idle()
 
   const frame = captureFrame()
   expect(frame).not.toContain("# Hidden heading")
@@ -799,23 +797,24 @@ test("toggling concealCode updates existing code block renderables", async () =>
   })
 
   renderer.root.add(md)
-  await renderOnce()
+  await renderer.idle()
   expect(mockTreeSitterClient.isHighlighting()).toBe(true)
 
   mockTreeSitterClient.resolveAllHighlightOnce()
   await Bun.sleep(10)
-  await renderOnce()
+  await renderer.idle()
 
   const frameBefore = captureFrame()
   expect(frameBefore).toContain("# Hidden heading")
 
   md.concealCode = true
-  await renderOnce()
+  renderer.requestRender()
+  await renderer.idle()
   expect(mockTreeSitterClient.isHighlighting()).toBe(true)
 
   mockTreeSitterClient.resolveAllHighlightOnce()
   await Bun.sleep(10)
-  await renderOnce()
+  await renderer.idle()
 
   const frameAfter = captureFrame()
   expect(frameAfter).not.toContain("# Hidden heading")
@@ -1355,14 +1354,14 @@ test("incremental update reuses unchanged blocks when appending", async () => {
   })
 
   renderer.root.add(md)
-  await renderOnce()
+  await renderer.idle()
 
   // Get reference to first block
   const firstBlockBefore = md._blockStates[0]?.renderable
 
   // Append content
   md.content = "# Hello\n\nParagraph 1\n\nParagraph 2"
-  await renderOnce()
+  await renderer.idle()
 
   // First block should be reused (same object reference)
   const firstBlockAfter = md._blockStates[0]?.renderable
@@ -1378,7 +1377,7 @@ test("streaming mode keeps trailing tokens unstable", async () => {
   })
 
   renderer.root.add(md)
-  await renderOnce()
+  await renderer.idle()
 
   const frame1 = captureFrame()
     .split("\n")
@@ -1389,7 +1388,7 @@ test("streaming mode keeps trailing tokens unstable", async () => {
 
   // Extend the heading
   md.content = "# Hello World"
-  await renderOnce()
+  await renderer.idle()
 
   const frame2 = captureFrame()
     .split("\n")
@@ -1419,13 +1418,13 @@ test("streaming code blocks with concealCode=true do not flash unconcealed markd
   })
 
   renderer.root.add(md)
-  await renderOnce()
+  await renderer.idle()
 
   expect(mockTreeSitterClient.isHighlighting()).toBe(true)
 
   mockTreeSitterClient.resolveAllHighlightOnce()
   await Bun.sleep(10)
-  await renderOnce()
+  await renderer.idle()
 
   recorder.stop()
 
@@ -1443,7 +1442,7 @@ test("non-streaming mode parses all tokens as stable", async () => {
   })
 
   renderer.root.add(md)
-  await renderOnce()
+  await renderer.idle()
 
   // Get parse state
   const parseState = md._parseState
@@ -1459,13 +1458,13 @@ test("content update with same text does not rebuild", async () => {
   })
 
   renderer.root.add(md)
-  await renderOnce()
+  await renderer.idle()
 
   const blockBefore = md._blockStates[0]?.renderable
 
   // Set same content
   md.content = "# Hello"
-  await renderOnce()
+  await renderer.idle()
 
   const blockAfter = md._blockStates[0]?.renderable
   expect(blockAfter).toBe(blockBefore)
@@ -1479,13 +1478,13 @@ test("block type change creates new renderable", async () => {
   })
 
   renderer.root.add(md)
-  await renderOnce()
+  await renderer.idle()
 
   const blockBefore = md._blockStates[0]?.renderable
 
   // Change from heading to paragraph
   md.content = "Hello"
-  await renderOnce()
+  await renderer.idle()
 
   const blockAfter = md._blockStates[0]?.renderable
   // Should be different renderable since type changed
@@ -1501,7 +1500,7 @@ test("streaming property can be toggled", async () => {
   })
 
   renderer.root.add(md)
-  await renderOnce()
+  await renderer.idle()
 
   expect(md.streaming).toBe(false)
   const blockBefore = md._blockStates[0]?.renderable
@@ -1509,7 +1508,7 @@ test("streaming property can be toggled", async () => {
   md.streaming = true
   expect(md.streaming).toBe(true)
 
-  await renderOnce()
+  await renderer.idle()
 
   const blockAfter = md._blockStates[0]?.renderable
   expect(blockAfter).toBe(blockBefore)
@@ -1530,12 +1529,12 @@ test("clearCache forces full rebuild", async () => {
   })
 
   renderer.root.add(md)
-  await renderOnce()
+  await renderer.idle()
 
   const parseStateBefore = md._parseState
 
   md.clearCache()
-  await renderOnce()
+  await renderer.idle()
 
   const parseStateAfter = md._parseState
   // Parse state should be different (was cleared and rebuilt)
@@ -1694,21 +1693,21 @@ test("table only rebuilds when complete row count changes during streaming", asy
   })
 
   renderer.root.add(md)
-  await renderOnce()
+  await renderer.idle()
 
   // During streaming with 1 row, we show 0 complete rows (last row is incomplete)
   const tableBefore = md._blockStates[0]?.renderable
 
   // Change cell content but same row count - should NOT rebuild
   md.content = "| B |\n|---|\n| 2 |"
-  await renderOnce()
+  await renderer.idle()
 
   const tableAfterSameRows = md._blockStates[0]?.renderable
   expect(tableAfterSameRows).toBe(tableBefore)
 
   // Add second row - now we have 1 complete row, should rebuild
   md.content = "| B |\n|---|\n| 2 |\n| 3 |"
-  await renderOnce()
+  await renderer.idle()
 
   const tableAfterNewRow = md._blockStates[0]?.renderable
   expect(tableAfterNewRow).not.toBe(tableBefore)
@@ -1723,7 +1722,7 @@ test("table shows all rows when streaming is false", async () => {
   })
 
   renderer.root.add(md)
-  await renderOnce()
+  await renderer.idle()
 
   // Non-streaming should show all rows including the last
   const frame = captureFrame()
@@ -1742,14 +1741,14 @@ test("table updates content when not streaming", async () => {
   })
 
   renderer.root.add(md)
-  await renderOnce()
+  await renderer.idle()
 
   const frame1 = captureFrame()
   expect(frame1).toContain("1")
 
   // Change cell content - should update immediately when not streaming
   md.content = "| A |\n|---|\n| 2 |"
-  await renderOnce()
+  await renderer.idle()
 
   const frame2 = captureFrame()
   expect(frame2).toContain("2")
@@ -1765,7 +1764,7 @@ test("table keeps unchanged cell chunks stable across updates", async () => {
   })
 
   renderer.root.add(md)
-  await renderOnce()
+  await renderer.idle()
 
   const table = md._blockStates[0]?.renderable as TextTableRenderable
   expect(table).toBeInstanceOf(TextTableRenderable)
@@ -1776,7 +1775,7 @@ test("table keeps unchanged cell chunks stable across updates", async () => {
   const changedCellBefore = table.content[2]?.[0]
 
   md.content = "| A | B |\n|---|---|\n| 1 | 2 |\n| 33 | 4 |"
-  await renderOnce()
+  await renderer.idle()
 
   const tableAfter = md._blockStates[0]?.renderable as TextTableRenderable
   expect(tableAfter).toBe(table)
@@ -1795,13 +1794,13 @@ test("streaming table ignores unstable trailing row updates", async () => {
   })
 
   renderer.root.add(md)
-  await renderOnce()
+  await renderer.idle()
 
   const table = md._blockStates[0]?.renderable as TextTableRenderable
   const contentBefore = table.content
 
   md.content = "| A |\n|---|\n| 1 |\n| 200 |"
-  await renderOnce()
+  await renderer.idle()
 
   const tableAfter = md._blockStates[0]?.renderable as TextTableRenderable
   expect(tableAfter).toBe(table)
@@ -1817,7 +1816,7 @@ test("streaming table with incomplete first row falls back to raw text and updat
   })
 
   renderer.root.add(md)
-  await renderOnce()
+  await renderer.idle()
 
   // With streaming=true and 1 data row, rowsToRender drops last row -> length 0
   // Should show raw fallback text
@@ -1834,7 +1833,7 @@ test("streaming table with incomplete first row falls back to raw text and updat
 
   // Now append more characters to the incomplete row
   md.content = "| A |\n|---|\n| 1"
-  await renderOnce()
+  await renderer.idle()
 
   const frame2 = captureFrame()
     .split("\n")
@@ -1848,7 +1847,7 @@ test("streaming table with incomplete first row falls back to raw text and updat
 
   // Complete the row by adding closing pipe - still only 1 row, so still 0 complete rows
   md.content = "| A |\n|---|\n| 1 |"
-  await renderOnce()
+  await renderer.idle()
 
   const frame3 = captureFrame()
     .split("\n")
@@ -1862,7 +1861,7 @@ test("streaming table with incomplete first row falls back to raw text and updat
 
   // Add second row - now we have 1 complete row (first row), should render as table
   md.content = "| A |\n|---|\n| 1 |\n| 2 |"
-  await renderOnce()
+  await renderer.idle()
 
   const frame4 = captureFrame()
     .split("\n")
@@ -1877,7 +1876,7 @@ test("streaming table with incomplete first row falls back to raw text and updat
 
   // Complete the second row - now we have 2 rows, so 1 complete row still (drops last)
   md.content = "| A |\n|---|\n| 1 |\n| 2 |"
-  await renderOnce()
+  await renderer.idle()
 
   const frame5 = captureFrame()
     .split("\n")
@@ -1891,7 +1890,7 @@ test("streaming table with incomplete first row falls back to raw text and updat
 
   // Add third row - now we have 2 complete rows to show
   md.content = "| A |\n|---|\n| 1 |\n| 2 |\n| 3 |"
-  await renderOnce()
+  await renderer.idle()
 
   const frame6 = captureFrame()
     .split("\n")
@@ -1986,7 +1985,7 @@ test("streaming table can transition back to raw fallback when rows are removed"
   })
 
   renderer.root.add(md)
-  await renderOnce()
+  await renderer.idle()
 
   // With 2 rows, we have 1 complete row - should render as table
   let frame = captureFrame()
@@ -1998,7 +1997,7 @@ test("streaming table can transition back to raw fallback when rows are removed"
 
   // Remove second row - back to 1 row, so 0 complete rows
   md.content = "| A |\n|---|\n| 1 |"
-  await renderOnce()
+  await renderer.idle()
 
   frame = captureFrame()
     .split("\n")
@@ -2020,14 +2019,15 @@ test("conceal change updates rendered content", async () => {
   })
 
   renderer.root.add(md)
-  await renderOnce()
+  await renderer.idle()
 
   const frame1 = captureFrame()
   expect(frame1).not.toContain("**")
   expect(frame1).not.toContain("#")
 
   md.conceal = false
-  await renderOnce()
+  renderer.requestRender()
+  await renderer.idle()
 
   const frame2 = captureFrame()
   expect(frame2).toContain("**")
@@ -2140,7 +2140,7 @@ The table alignment uses:
   })
 
   renderer.root.add(md)
-  await renderOnce()
+  await renderer.idle()
 
   const findSpanContaining = (frame: CapturedFrame, text: string) => {
     for (const line of frame.lines) {
@@ -2160,7 +2160,8 @@ The table alignment uses:
 
   // Switch theme
   md.syntaxStyle = theme2
-  await renderOnce()
+  renderer.requestRender()
+  await renderer.idle()
 
   const frame2 = captureSpans()
   const headingSpan2 = findSpanContaining(frame2, "OpenTUI Markdown Demo")
