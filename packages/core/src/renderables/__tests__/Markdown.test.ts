@@ -39,10 +39,19 @@ afterEach(async () => {
   }
 })
 
-async function renderMarkdownRenderable(_md: MarkdownRenderable): Promise<void> {
-  for (let i = 0; i < 30; i++) {
+async function renderMarkdownRenderable(md: MarkdownRenderable): Promise<void> {
+  const hasPendingMarkdownParagraphHighlights = (): boolean =>
+    md
+      .getChildren()
+      .some((child) => child instanceof CodeRenderable && child.filetype === "markdown" && child.isHighlighting)
+
+  const nextTick = (): Promise<void> => new Promise((resolve) => setImmediate(resolve))
+
+  await renderOnce()
+
+  while (hasPendingMarkdownParagraphHighlights()) {
+    await nextTick()
     await renderOnce()
-    await Bun.sleep(10)
   }
 
   await renderOnce()
@@ -2175,6 +2184,11 @@ test("paragraph links are rendered with markdown conceal behavior", async () => 
   renderer.root.add(md)
   await renderMarkdownRenderable(md)
 
+  const paragraphChildren = md.getChildren()
+  expect(paragraphChildren.length).toBe(1)
+  expect(paragraphChildren[0]).toBeInstanceOf(CodeRenderable)
+  expect(paragraphChildren[0]).not.toBeInstanceOf(TextRenderable)
+
   const frame = captureFrame()
   expect(frame).toContain("Google")
   expect(frame).toContain("https://google.com")
@@ -2196,6 +2210,11 @@ test("paragraph initial render does not flash raw markdown markers", async () =>
   await renderMarkdownRenderable(md)
   recorder.stop()
 
+  const paragraphChildren = md.getChildren()
+  expect(paragraphChildren.length).toBe(1)
+  expect(paragraphChildren[0]).toBeInstanceOf(CodeRenderable)
+  expect(paragraphChildren[0]).not.toBeInstanceOf(TextRenderable)
+
   const rawMarkdownFrames = recorder.recordedFrames.filter((recorded) => recorded.frame.includes("**bold**"))
   expect(rawMarkdownFrames.length).toBe(0)
 
@@ -2214,12 +2233,22 @@ test("paragraph updates do not flash raw markdown markers", async () => {
   renderer.root.add(md)
   await renderMarkdownRenderable(md)
 
+  const paragraphChildrenBefore = md.getChildren()
+  expect(paragraphChildrenBefore.length).toBe(1)
+  expect(paragraphChildrenBefore[0]).toBeInstanceOf(CodeRenderable)
+  expect(paragraphChildrenBefore[0]).not.toBeInstanceOf(TextRenderable)
+
   const recorder = new TestRecorder(renderer)
   recorder.rec()
 
   md.content = "**Second** value"
   await renderMarkdownRenderable(md)
   recorder.stop()
+
+  const paragraphChildrenAfter = md.getChildren()
+  expect(paragraphChildrenAfter.length).toBe(1)
+  expect(paragraphChildrenAfter[0]).toBeInstanceOf(CodeRenderable)
+  expect(paragraphChildrenAfter[0]).not.toBeInstanceOf(TextRenderable)
 
   const rawMarkdownFrames = recorder.recordedFrames.filter((recorded) => recorded.frame.includes("**Second**"))
   expect(rawMarkdownFrames.length).toBe(0)
