@@ -39,22 +39,9 @@ afterEach(async () => {
   }
 })
 
-async function renderMarkdownRenderable(md: MarkdownRenderable): Promise<void> {
+async function renderMarkdownRenderable(_md: MarkdownRenderable): Promise<void> {
   for (let i = 0; i < 30; i++) {
     await renderOnce()
-
-    const hasPendingParagraphHighlight = md._blockStates.some((state) => {
-      if (state.token.type !== "paragraph") {
-        return false
-      }
-
-      return state.renderable instanceof CodeRenderable && state.renderable.isHighlighting
-    })
-
-    if (!hasPendingParagraphHighlight) {
-      return
-    }
-
     await Bun.sleep(10)
   }
 
@@ -2177,7 +2164,7 @@ The table alignment uses:
 
 // Paragraph rendering tests
 
-test("paragraph with link uses markdown CodeRenderable (conceal=true)", async () => {
+test("paragraph links are rendered with markdown conceal behavior", async () => {
   const md = new MarkdownRenderable(renderer, {
     id: "markdown",
     content: "Check [Google](https://google.com) out",
@@ -2188,39 +2175,38 @@ test("paragraph with link uses markdown CodeRenderable (conceal=true)", async ()
   renderer.root.add(md)
   await renderMarkdownRenderable(md)
 
-  const paragraphRenderable = md._blockStates[0]?.renderable as CodeRenderable
-  expect(paragraphRenderable).toBeInstanceOf(CodeRenderable)
-  expect(paragraphRenderable.filetype).toBe("markdown")
-  expect(paragraphRenderable.drawUnstyledText).toBe(false)
-  expect(paragraphRenderable.streaming).toBe(true)
-  expect(paragraphRenderable.conceal).toBe(true)
-  expect(paragraphRenderable.content).toBe("Check [Google](https://google.com) out")
+  const frame = captureFrame()
+  expect(frame).toContain("Google")
+  expect(frame).toContain("https://google.com")
+  expect(frame).not.toContain("[Google](https://google.com)")
 })
 
-test("paragraph with link uses markdown CodeRenderable (conceal=false)", async () => {
+test("paragraph initial render does not flash raw markdown markers", async () => {
+  const recorder = new TestRecorder(renderer)
+  recorder.rec()
+
   const md = new MarkdownRenderable(renderer, {
     id: "markdown",
-    content: "Check [Google](https://google.com) out",
+    content: "This has **bold** text.",
     syntaxStyle,
-    conceal: false,
+    conceal: true,
   })
 
   renderer.root.add(md)
   await renderMarkdownRenderable(md)
+  recorder.stop()
 
-  const paragraphRenderable = md._blockStates[0]?.renderable as CodeRenderable
-  expect(paragraphRenderable).toBeInstanceOf(CodeRenderable)
-  expect(paragraphRenderable.filetype).toBe("markdown")
-  expect(paragraphRenderable.drawUnstyledText).toBe(false)
-  expect(paragraphRenderable.streaming).toBe(true)
-  expect(paragraphRenderable.conceal).toBe(false)
-  expect(paragraphRenderable.content).toBe("Check [Google](https://google.com) out")
+  const rawMarkdownFrames = recorder.recordedFrames.filter((recorded) => recorded.frame.includes("**bold**"))
+  expect(rawMarkdownFrames.length).toBe(0)
+
+  const finalFrame = captureFrame()
+  expect(finalFrame).toContain("This has bold text.")
 })
 
-test("paragraph with image uses markdown CodeRenderable", async () => {
+test("paragraph updates do not flash raw markdown markers", async () => {
   const md = new MarkdownRenderable(renderer, {
     id: "markdown",
-    content: "![alt](https://example.com/img.png)",
+    content: "**First** value",
     syntaxStyle,
     conceal: true,
   })
@@ -2228,25 +2214,17 @@ test("paragraph with image uses markdown CodeRenderable", async () => {
   renderer.root.add(md)
   await renderMarkdownRenderable(md)
 
-  const paragraphRenderable = md._blockStates[0]?.renderable as CodeRenderable
-  expect(paragraphRenderable).toBeInstanceOf(CodeRenderable)
-  expect(paragraphRenderable.filetype).toBe("markdown")
-  expect(paragraphRenderable.drawUnstyledText).toBe(false)
-  expect(paragraphRenderable.streaming).toBe(true)
-  expect(paragraphRenderable.content).toBe("![alt](https://example.com/img.png)")
-})
+  const recorder = new TestRecorder(renderer)
+  recorder.rec()
 
-test("plain paragraph does not use TextRenderable", async () => {
-  const md = new MarkdownRenderable(renderer, {
-    id: "markdown",
-    content: "No links here, just **bold** text.",
-    syntaxStyle,
-  })
-
-  renderer.root.add(md)
+  md.content = "**Second** value"
   await renderMarkdownRenderable(md)
+  recorder.stop()
 
-  const paragraphRenderable = md._blockStates[0]?.renderable
-  expect(paragraphRenderable).toBeInstanceOf(CodeRenderable)
-  expect(paragraphRenderable).not.toBeInstanceOf(TextRenderable)
+  const rawMarkdownFrames = recorder.recordedFrames.filter((recorded) => recorded.frame.includes("**Second**"))
+  expect(rawMarkdownFrames.length).toBe(0)
+
+  const finalFrame = captureFrame()
+  expect(finalFrame).toContain("Second value")
+  expect(finalFrame).not.toContain("**Second**")
 })
