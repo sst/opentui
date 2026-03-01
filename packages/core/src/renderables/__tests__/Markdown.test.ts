@@ -4,7 +4,13 @@ import { TextRenderable } from "../Text"
 import { TextTableRenderable } from "../TextTable"
 import { SyntaxStyle } from "../../syntax-style"
 import { RGBA } from "../../lib/RGBA"
-import { createTestRenderer, type MockMouse, type TestRenderer } from "../../testing"
+import {
+  createTestRenderer,
+  type MockMouse,
+  type TestRenderer,
+  MockTreeSitterClient,
+  TestRecorder,
+} from "../../testing"
 import { TextAttributes, type CapturedFrame } from "../../types"
 
 let renderer: TestRenderer
@@ -1280,6 +1286,45 @@ test("streaming mode keeps trailing tokens unstable", async () => {
     .join("\n")
     .trimEnd()
   expect(frame2).toContain("Hello World")
+})
+
+test("streaming code blocks with conceal=true do not flash unconcealed markdown", async () => {
+  const mockTreeSitterClient = new MockTreeSitterClient()
+  mockTreeSitterClient.setMockResult({
+    highlights: [[0, 1, "conceal", { conceal: "" }]],
+  })
+
+  const recorder = new TestRecorder(renderer)
+  recorder.rec()
+
+  const md = new MarkdownRenderable(renderer, {
+    id: "markdown-streaming-conceal-flicker",
+    content: "# Stream\n\n```markdown\n# Hidden heading\n```",
+    syntaxStyle,
+    conceal: true,
+    streaming: true,
+    treeSitterClient: mockTreeSitterClient,
+  })
+
+  renderer.root.add(md)
+  await renderOnce()
+
+  expect(mockTreeSitterClient.isHighlighting()).toBe(true)
+
+  mockTreeSitterClient.resolveAllHighlightOnce()
+  await Bun.sleep(10)
+  await renderOnce()
+
+  recorder.stop()
+
+  const frames = recorder.recordedFrames.map((frame) => frame.frame)
+  console.log(
+    "streaming conceal frame dump:\n" +
+      frames.map((frame, index) => `frame ${index}:\n${frame}`).join("\n----------------\n"),
+  )
+
+  const unconcealedFrames = frames.filter((frame) => frame.includes("# Hidden heading"))
+  expect(unconcealedFrames.length).toBe(0)
 })
 
 test("non-streaming mode parses all tokens as stable", async () => {
