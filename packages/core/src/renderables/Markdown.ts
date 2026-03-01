@@ -12,6 +12,7 @@ import { CodeRenderable } from "./Code"
 import {
   TextTableRenderable,
   type TextTableCellContent,
+  type TextTableColumnFitter,
   type TextTableColumnWidthMode,
   type TextTableContent,
 } from "./TextTable"
@@ -23,9 +24,13 @@ export interface MarkdownTableOptions {
   /**
    * Strategy for sizing table columns.
    * - "content": columns fit to intrinsic content width.
-   * - "fill": columns expand to fill available width.
+   * - "full": columns expand to fill available width.
    */
   widthMode?: TextTableColumnWidthMode
+  /**
+   * Column fitting method when shrinking constrained tables.
+   */
+  columnFitter?: TextTableColumnFitter
   /**
    * Wrapping strategy for table cell content.
    */
@@ -59,7 +64,10 @@ export interface MarkdownTableOptions {
 export interface MarkdownOptions extends RenderableOptions<MarkdownRenderable> {
   content?: string
   syntaxStyle: SyntaxStyle
+  /** Controls concealment for markdown syntax markers in markdown text blocks. */
   conceal?: boolean
+  /** Controls concealment inside fenced code blocks rendered by CodeRenderable. */
+  concealCode?: boolean
   treeSitterClient?: TreeSitterClient
   /**
    * Enable streaming mode for incremental content updates.
@@ -80,6 +88,7 @@ export interface MarkdownOptions extends RenderableOptions<MarkdownRenderable> {
 export interface RenderNodeContext {
   syntaxStyle: SyntaxStyle
   conceal: boolean
+  concealCode: boolean
   treeSitterClient?: TreeSitterClient
   /** Creates default renderable for this token */
   defaultRender: () => Renderable | null
@@ -92,6 +101,7 @@ interface TableContentCache {
 
 interface ResolvedTableRenderableOptions {
   columnWidthMode: TextTableColumnWidthMode
+  columnFitter: TextTableColumnFitter
   wrapMode: "none" | "char" | "word"
   cellPadding: number
   border: boolean
@@ -115,6 +125,7 @@ export class MarkdownRenderable extends Renderable {
   private _content: string = ""
   private _syntaxStyle: SyntaxStyle
   private _conceal: boolean
+  private _concealCode: boolean
   private _treeSitterClient?: TreeSitterClient
   private _tableOptions?: MarkdownTableOptions
   private _renderNode?: MarkdownOptions["renderNode"]
@@ -127,6 +138,7 @@ export class MarkdownRenderable extends Renderable {
   protected _contentDefaultOptions = {
     content: "",
     conceal: true,
+    concealCode: false,
     streaming: false,
   } satisfies Partial<MarkdownOptions>
 
@@ -139,6 +151,7 @@ export class MarkdownRenderable extends Renderable {
 
     this._syntaxStyle = options.syntaxStyle
     this._conceal = options.conceal ?? this._contentDefaultOptions.conceal
+    this._concealCode = options.concealCode ?? this._contentDefaultOptions.concealCode
     this._content = options.content ?? this._contentDefaultOptions.content
     this._treeSitterClient = options.treeSitterClient
     this._tableOptions = options.tableOptions
@@ -153,6 +166,7 @@ export class MarkdownRenderable extends Renderable {
   }
 
   set content(value: string) {
+    if (this.isDestroyed) return
     if (this._content !== value) {
       this._content = value
       this.updateBlocks()
@@ -184,16 +198,27 @@ export class MarkdownRenderable extends Renderable {
     }
   }
 
+  get concealCode(): boolean {
+    return this._concealCode
+  }
+
+  set concealCode(value: boolean) {
+    if (this._concealCode !== value) {
+      this._concealCode = value
+      // Mark dirty - actual re-render happens in renderSelf
+      this._styleDirty = true
+    }
+  }
+
   get streaming(): boolean {
     return this._streaming
   }
 
   set streaming(value: boolean) {
+    if (this.isDestroyed) return
     if (this._streaming !== value) {
       this._streaming = value
-      // Force a full rebuild on mode transitions to keep table rendering
-      // correct.
-      this.clearCache()
+      this.updateBlocks(true)
     }
   }
 
@@ -489,7 +514,9 @@ export class MarkdownRenderable extends Renderable {
       content: token.text,
       filetype: token.lang || undefined,
       syntaxStyle: this._syntaxStyle,
-      conceal: this._conceal,
+      conceal: this._concealCode,
+      drawUnstyledText: !(this._streaming && this._concealCode),
+      streaming: this._streaming,
       treeSitterClient: this._treeSitterClient,
       width: "100%",
       marginBottom,
@@ -654,8 +681,9 @@ export class MarkdownRenderable extends Renderable {
     const borders = this._tableOptions?.borders ?? true
 
     return {
-      columnWidthMode: this._tableOptions?.widthMode ?? "content",
-      wrapMode: this._tableOptions?.wrapMode ?? "none",
+      columnWidthMode: this._tableOptions?.widthMode ?? "full",
+      columnFitter: this._tableOptions?.columnFitter ?? "proportional",
+      wrapMode: this._tableOptions?.wrapMode ?? "word",
       cellPadding: this._tableOptions?.cellPadding ?? 0,
       border: borders,
       outerBorder: this._tableOptions?.outerBorder ?? borders,
@@ -671,6 +699,7 @@ export class MarkdownRenderable extends Renderable {
     options: ResolvedTableRenderableOptions,
   ): void {
     tableRenderable.columnWidthMode = options.columnWidthMode
+    tableRenderable.columnFitter = options.columnFitter
     tableRenderable.wrapMode = options.wrapMode
     tableRenderable.cellPadding = options.cellPadding
     tableRenderable.border = options.border
@@ -709,6 +738,7 @@ export class MarkdownRenderable extends Renderable {
       width: "100%",
       marginBottom,
       columnWidthMode: options.columnWidthMode,
+      columnFitter: options.columnFitter,
       wrapMode: options.wrapMode,
       cellPadding: options.cellPadding,
       border: options.border,
@@ -775,6 +805,9 @@ export class MarkdownRenderable extends Renderable {
       if (codeToken.lang) {
         codeRenderable.filetype = codeToken.lang
       }
+      codeRenderable.conceal = this._concealCode
+      codeRenderable.drawUnstyledText = !(this._streaming && this._concealCode)
+      codeRenderable.streaming = this._streaming
       codeRenderable.marginBottom = marginBottom
       return
     }
@@ -827,7 +860,8 @@ export class MarkdownRenderable extends Renderable {
     textRenderable.marginBottom = marginBottom
   }
 
-  private updateBlocks(): void {
+  private updateBlocks(forceTableRefresh: boolean = false): void {
+    if (this.isDestroyed) return
     if (!this._content) {
       this.clearBlockStates()
       this._parseState = null
@@ -869,8 +903,14 @@ export class MarkdownRenderable extends Renderable {
       const hasNextToken = i < lastBlockIndex
       const existing = this._blockStates[blockIndex]
 
+      const shouldForceTableRefresh = forceTableRefresh && token.type === "table"
+
       // Same token object reference means unchanged
       if (existing && existing.token === token) {
+        if (shouldForceTableRefresh) {
+          this.updateBlockRenderable(existing, token, blockIndex, hasNextToken)
+          existing.tokenRaw = token.raw
+        }
         blockIndex++
         continue
       }
@@ -878,6 +918,10 @@ export class MarkdownRenderable extends Renderable {
       // Same content, update reference
       if (existing && existing.tokenRaw === token.raw && existing.token.type === token.type) {
         existing.token = token
+        if (shouldForceTableRefresh) {
+          this.updateBlockRenderable(existing, token, blockIndex, hasNextToken)
+          existing.tokenRaw = token.raw
+        }
         blockIndex++
         continue
       }
@@ -903,6 +947,7 @@ export class MarkdownRenderable extends Renderable {
         const context: RenderNodeContext = {
           syntaxStyle: this._syntaxStyle,
           conceal: this._conceal,
+          concealCode: this._concealCode,
           treeSitterClient: this._treeSitterClient,
           defaultRender: () => this.createDefaultRenderable(token, blockIndex, hasNextToken),
         }
@@ -965,7 +1010,9 @@ export class MarkdownRenderable extends Renderable {
         // CodeRenderable handles style/conceal changes efficiently
         const codeRenderable = state.renderable as CodeRenderable
         codeRenderable.syntaxStyle = this._syntaxStyle
-        codeRenderable.conceal = this._conceal
+        codeRenderable.conceal = this._concealCode
+        codeRenderable.drawUnstyledText = !(this._streaming && this._concealCode)
+        codeRenderable.streaming = this._streaming
       } else if (state.token.type === "table") {
         const tableToken = state.token as Tokens.Table
         const marginBottom = hasNextToken ? 1 : 0

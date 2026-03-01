@@ -4,7 +4,13 @@ import { TextRenderable } from "../Text"
 import { TextTableRenderable } from "../TextTable"
 import { SyntaxStyle } from "../../syntax-style"
 import { RGBA } from "../../lib/RGBA"
-import { createTestRenderer, type MockMouse, type TestRenderer } from "../../testing"
+import {
+  createTestRenderer,
+  type MockMouse,
+  type TestRenderer,
+  MockTreeSitterClient,
+  TestRecorder,
+} from "../../testing"
 import { TextAttributes, type CapturedFrame } from "../../types"
 
 let renderer: TestRenderer
@@ -38,6 +44,7 @@ async function renderMarkdown(markdown: string, conceal: boolean = true): Promis
     content: markdown,
     syntaxStyle,
     conceal,
+    tableOptions: { widthMode: "content" },
   })
 
   renderer.root.add(md)
@@ -73,7 +80,8 @@ test("tableOptions.widthMode configures markdown table layout", async () => {
     content: "| Name | Age |\n|---|---|\n| Alice | 30 |",
     syntaxStyle,
     tableOptions: {
-      widthMode: "fill",
+      widthMode: "full",
+      columnFitter: "balanced",
     },
   })
 
@@ -82,7 +90,8 @@ test("tableOptions.widthMode configures markdown table layout", async () => {
 
   const table = md._blockStates[0]?.renderable as TextTableRenderable
   expect(table).toBeInstanceOf(TextTableRenderable)
-  expect(table.columnWidthMode).toBe("fill")
+  expect(table.columnWidthMode).toBe("full")
+  expect(table.columnFitter).toBe("balanced")
 })
 
 test("tableOptions updates existing markdown table renderable", async () => {
@@ -97,10 +106,11 @@ test("tableOptions updates existing markdown table renderable", async () => {
 
   const table = md._blockStates[0]?.renderable as TextTableRenderable
   expect(table).toBeInstanceOf(TextTableRenderable)
-  expect(table.columnWidthMode).toBe("content")
+  expect(table.columnWidthMode).toBe("full")
 
   md.tableOptions = {
-    widthMode: "fill",
+    widthMode: "full",
+    columnFitter: "balanced",
     wrapMode: "word",
     cellPadding: 1,
     borders: false,
@@ -111,7 +121,8 @@ test("tableOptions updates existing markdown table renderable", async () => {
 
   const updatedTable = md._blockStates[0]?.renderable as TextTableRenderable
   expect(updatedTable).toBe(table)
-  expect(updatedTable.columnWidthMode).toBe("fill")
+  expect(updatedTable.columnWidthMode).toBe("full")
+  expect(updatedTable.columnFitter).toBe("balanced")
   expect(updatedTable.wrapMode).toBe("word")
   expect(updatedTable.cellPadding).toBe(1)
   expect(updatedTable.border).toBe(false)
@@ -699,6 +710,99 @@ const x = 1;
   `)
 })
 
+test("code block concealment is disabled by default", async () => {
+  const mockTreeSitterClient = new MockTreeSitterClient()
+  mockTreeSitterClient.setMockResult({
+    highlights: [[0, 1, "conceal", { conceal: "" }]],
+  })
+
+  const md = new MarkdownRenderable(renderer, {
+    id: "markdown-code-default-conceal",
+    content: "```markdown\n# Hidden heading\n```",
+    syntaxStyle,
+    conceal: true,
+    treeSitterClient: mockTreeSitterClient,
+  })
+
+  renderer.root.add(md)
+  await renderOnce()
+  expect(mockTreeSitterClient.isHighlighting()).toBe(true)
+
+  mockTreeSitterClient.resolveAllHighlightOnce()
+  await Bun.sleep(10)
+  await renderOnce()
+
+  const frame = captureFrame()
+  expect(frame).toContain("# Hidden heading")
+})
+
+test("code block concealment can be enabled with concealCode", async () => {
+  const mockTreeSitterClient = new MockTreeSitterClient()
+  mockTreeSitterClient.setMockResult({
+    highlights: [[0, 1, "conceal", { conceal: "" }]],
+  })
+
+  const md = new MarkdownRenderable(renderer, {
+    id: "markdown-code-conceal-enabled",
+    content: "```markdown\n# Hidden heading\n```",
+    syntaxStyle,
+    conceal: true,
+    concealCode: true,
+    treeSitterClient: mockTreeSitterClient,
+  })
+
+  renderer.root.add(md)
+  await renderOnce()
+  expect(mockTreeSitterClient.isHighlighting()).toBe(true)
+
+  mockTreeSitterClient.resolveAllHighlightOnce()
+  await Bun.sleep(10)
+  await renderOnce()
+
+  const frame = captureFrame()
+  expect(frame).not.toContain("# Hidden heading")
+  expect(frame).toContain("Hidden heading")
+})
+
+test("toggling concealCode updates existing code block renderables", async () => {
+  const mockTreeSitterClient = new MockTreeSitterClient()
+  mockTreeSitterClient.setMockResult({
+    highlights: [[0, 1, "conceal", { conceal: "" }]],
+  })
+
+  const md = new MarkdownRenderable(renderer, {
+    id: "markdown-code-conceal-toggle",
+    content: "```markdown\n# Hidden heading\n```",
+    syntaxStyle,
+    conceal: true,
+    concealCode: false,
+    treeSitterClient: mockTreeSitterClient,
+  })
+
+  renderer.root.add(md)
+  await renderOnce()
+  expect(mockTreeSitterClient.isHighlighting()).toBe(true)
+
+  mockTreeSitterClient.resolveAllHighlightOnce()
+  await Bun.sleep(10)
+  await renderOnce()
+
+  const frameBefore = captureFrame()
+  expect(frameBefore).toContain("# Hidden heading")
+
+  md.concealCode = true
+  await renderOnce()
+  expect(mockTreeSitterClient.isHighlighting()).toBe(true)
+
+  mockTreeSitterClient.resolveAllHighlightOnce()
+  await Bun.sleep(10)
+  await renderOnce()
+
+  const frameAfter = captureFrame()
+  expect(frameAfter).not.toContain("# Hidden heading")
+  expect(frameAfter).toContain("Hidden heading")
+})
+
 // Heading tests
 
 test("headings h1 through h3", async () => {
@@ -1277,6 +1381,41 @@ test("streaming mode keeps trailing tokens unstable", async () => {
   expect(frame2).toContain("Hello World")
 })
 
+test("streaming code blocks with concealCode=true do not flash unconcealed markdown", async () => {
+  const mockTreeSitterClient = new MockTreeSitterClient()
+  mockTreeSitterClient.setMockResult({
+    highlights: [[0, 1, "conceal", { conceal: "" }]],
+  })
+
+  const recorder = new TestRecorder(renderer)
+  recorder.rec()
+
+  const md = new MarkdownRenderable(renderer, {
+    id: "markdown-streaming-conceal-flicker",
+    content: "# Stream\n\n```markdown\n# Hidden heading\n```",
+    syntaxStyle,
+    conceal: true,
+    concealCode: true,
+    streaming: true,
+    treeSitterClient: mockTreeSitterClient,
+  })
+
+  renderer.root.add(md)
+  await renderOnce()
+
+  expect(mockTreeSitterClient.isHighlighting()).toBe(true)
+
+  mockTreeSitterClient.resolveAllHighlightOnce()
+  await Bun.sleep(10)
+  await renderOnce()
+
+  recorder.stop()
+
+  const frames = recorder.recordedFrames.map((frame) => frame.frame)
+  const unconcealedFrames = frames.filter((frame) => frame.includes("# Hidden heading"))
+  expect(unconcealedFrames.length).toBe(0)
+})
+
 test("non-streaming mode parses all tokens as stable", async () => {
   const md = new MarkdownRenderable(renderer, {
     id: "markdown",
@@ -1347,11 +1486,15 @@ test("streaming property can be toggled", async () => {
   await renderOnce()
 
   expect(md.streaming).toBe(false)
+  const blockBefore = md._blockStates[0]?.renderable
 
   md.streaming = true
   expect(md.streaming).toBe(true)
 
   await renderOnce()
+
+  const blockAfter = md._blockStates[0]?.renderable
+  expect(blockAfter).toBe(blockBefore)
 
   const frame = captureFrame()
     .split("\n")
@@ -1381,7 +1524,7 @@ test("clearCache forces full rebuild", async () => {
   expect(parseStateAfter).not.toBe(parseStateBefore)
 })
 
-test("streaming->non-streaming transition rebuilds table to show final row", async () => {
+test("streaming->non-streaming transition updates table to show final row", async () => {
   const md = new MarkdownRenderable(renderer, {
     id: "markdown",
     content: "| Value |\n|---|\n| first |\n| second |",
@@ -1390,7 +1533,7 @@ test("streaming->non-streaming transition rebuilds table to show final row", asy
   })
 
   renderer.root.add(md)
-  await renderOnce()
+  await renderer.idle()
 
   const tableWhileStreaming = md._blockStates[0]?.renderable
 
@@ -1403,7 +1546,7 @@ test("streaming->non-streaming transition rebuilds table to show final row", asy
   expect(frame).not.toContain("second")
 
   md.streaming = false
-  await renderOnce()
+  await renderer.idle()
 
   frame = captureFrame()
     .split("\n")
@@ -1412,10 +1555,85 @@ test("streaming->non-streaming transition rebuilds table to show final row", asy
 
   expect(frame).toContain("first")
   expect(frame).toContain("second")
-  expect(md._blockStates[0]?.renderable).not.toBe(tableWhileStreaming)
+  expect(md._blockStates[0]?.renderable).toBe(tableWhileStreaming)
 })
 
-test("non-streaming->streaming transition rebuilds table to hide trailing row", async () => {
+test("stream end mid-table finalizes full table snapshot", async () => {
+  const md = new MarkdownRenderable(renderer, {
+    id: "markdown",
+    content: "",
+    syntaxStyle,
+    streaming: true,
+  })
+
+  renderer.root.add(md)
+
+  md.content = "| Name | Score |\n|---|---|\n"
+  await renderer.idle()
+
+  md.content = "| Name | Score |\n|---|---|\n| Alpha | 10 |\n"
+  await renderer.idle()
+
+  md.content = "| Name | Score |\n|---|---|\n| Alpha | 10 |\n| Bravo | 20 |\n"
+  await renderer.idle()
+
+  md.content = "| Name | Score |\n|---|---|\n| Alpha | 10 |\n| Bravo | 20 |\n| Charlie | 30 |"
+  await renderer.idle()
+
+  let frame = captureFrame()
+    .split("\n")
+    .map((line) => line.trimEnd())
+    .join("\n")
+
+  expect(frame).not.toContain("Charlie")
+
+  md.streaming = false
+  await renderer.idle()
+
+  frame = captureFrame()
+    .split("\n")
+    .map((line) => line.trimEnd())
+    .join("\n")
+    .trimEnd()
+
+  expect(frame).toMatchInlineSnapshot(`
+"┌──────────────────────────────┬───────────────────────────┐
+│Name                          │Score                      │
+├──────────────────────────────┼───────────────────────────┤
+│Alpha                         │10                         │
+├──────────────────────────────┼───────────────────────────┤
+│Bravo                         │20                         │
+├──────────────────────────────┼───────────────────────────┤
+│Charlie                       │30                         │
+└──────────────────────────────┴───────────────────────────┘"
+`)
+})
+
+test("ignores content updates after markdown renderable is destroyed during streaming", async () => {
+  const md = new MarkdownRenderable(renderer, {
+    id: "markdown",
+    content: "",
+    syntaxStyle,
+    streaming: true,
+  })
+
+  renderer.root.add(md)
+
+  md.content = "| Name | Score |\n|---|---|\n| Alpha | 10 |\n"
+  await renderer.idle()
+
+  md.destroyRecursively()
+  expect(md.isDestroyed).toBe(true)
+
+  expect(() => {
+    md.content = "| Name | Score |\n|---|---|\n| Alpha | 10 |\n| Bravo | 20 |\n"
+    md.streaming = false
+  }).not.toThrow()
+
+  await renderer.idle()
+})
+
+test("non-streaming->streaming transition updates table to hide trailing row", async () => {
   const md = new MarkdownRenderable(renderer, {
     id: "markdown",
     content: "| Value |\n|---|\n| first |\n| second |",
@@ -1424,7 +1642,7 @@ test("non-streaming->streaming transition rebuilds table to hide trailing row", 
   })
 
   renderer.root.add(md)
-  await renderOnce()
+  await renderer.idle()
 
   const tableWhileStable = md._blockStates[0]?.renderable
 
@@ -1437,7 +1655,7 @@ test("non-streaming->streaming transition rebuilds table to hide trailing row", 
   expect(frame).toContain("second")
 
   md.streaming = true
-  await renderOnce()
+  await renderer.idle()
 
   frame = captureFrame()
     .split("\n")
@@ -1446,7 +1664,7 @@ test("non-streaming->streaming transition rebuilds table to hide trailing row", 
 
   expect(frame).toContain("first")
   expect(frame).not.toContain("second")
-  expect(md._blockStates[0]?.renderable).not.toBe(tableWhileStable)
+  expect(md._blockStates[0]?.renderable).toBe(tableWhileStable)
 })
 
 test("table only rebuilds when complete row count changes during streaming", async () => {

@@ -4,6 +4,9 @@ import { RGBA } from "../lib/RGBA"
 import { bold, green, red, yellow } from "../lib/styled-text"
 import { createTestRenderer, type MockMouse, type TestRenderer } from "../testing/test-renderer"
 import type { CapturedFrame } from "../types"
+import { BoxRenderable } from "./Box"
+import { ScrollBoxRenderable } from "./ScrollBox"
+import { TextRenderable } from "./Text"
 import { TextTableRenderable, type TextTableCellContent, type TextTableContent } from "./TextTable"
 
 const VERTICAL_BORDER_CP = "│".codePointAt(0)!
@@ -13,6 +16,7 @@ let renderer: TestRenderer
 let renderOnce: () => Promise<void>
 let captureFrame: () => string
 let captureSpans: () => CapturedFrame
+let resizeRenderer: (width: number, height: number) => void
 let mockMouse: MockMouse
 
 function getCharAt(buffer: TestRenderer["currentRenderBuffer"], x: number, y: number): number {
@@ -53,6 +57,68 @@ function findVerticalBorderXs(buffer: TestRenderer["currentRenderBuffer"], y: nu
 
 function countChar(text: string, target: string): number {
   return [...text].filter((char) => char === target).length
+}
+
+function normalizeFrameBlock(lines: string[]): string {
+  const trimmed = lines.map((line) => line.trimEnd())
+  const nonEmpty = trimmed.filter((line) => line.length > 0)
+  const minIndent = nonEmpty.reduce((min, line) => {
+    const indent = line.match(/^ */)?.[0].length ?? 0
+    return Math.min(min, indent)
+  }, Number.POSITIVE_INFINITY)
+  const indent = Number.isFinite(minIndent) ? minIndent : 0
+
+  return trimmed.map((line) => line.slice(indent)).join("\n") + "\n"
+}
+
+function extractTableBlock(frame: string, headerMatcher: (line: string) => boolean): string {
+  const lines = frame.split("\n")
+  const headerY = lines.findIndex(headerMatcher)
+  if (headerY < 0) {
+    throw new Error("Unable to find table header line")
+  }
+
+  let topY = headerY
+  while (topY >= 0 && !lines[topY]?.includes("┌")) {
+    topY -= 1
+  }
+  if (topY < 0) {
+    throw new Error("Unable to find table top border")
+  }
+
+  let bottomY = headerY
+  while (bottomY < lines.length && !lines[bottomY]?.includes("└")) {
+    bottomY += 1
+  }
+  if (bottomY >= lines.length) {
+    throw new Error("Unable to find table bottom border")
+  }
+
+  return normalizeFrameBlock(lines.slice(topY, bottomY + 1))
+}
+
+async function renderStandaloneTableBlock(
+  width: number,
+  content: TextTableContent,
+  headerMatcher: (line: string) => boolean,
+): Promise<string> {
+  const testRenderer = await createTestRenderer({ width, height: 120 })
+
+  try {
+    const table = new TextTableRenderable(testRenderer.renderer, {
+      left: 0,
+      top: 0,
+      width,
+      wrapMode: "word",
+      content,
+    })
+
+    testRenderer.renderer.root.add(table)
+    await testRenderer.renderOnce()
+    return extractTableBlock(testRenderer.captureCharFrame(), headerMatcher)
+  } finally {
+    testRenderer.renderer.destroy()
+  }
 }
 
 function findSelectablePoint(
@@ -102,12 +168,25 @@ function cell(text: string): TextTableCellContent {
   ]
 }
 
+function getScrollContentBottom(scrollBox: ScrollBoxRenderable): number {
+  const children = scrollBox.content.getChildren()
+  const lastChild = children[children.length - 1]
+
+  if (!lastChild) {
+    return Math.max(0, Math.ceil(scrollBox.content.height))
+  }
+
+  const relativeBottom = lastChild.y - scrollBox.content.y + lastChild.height
+  return Math.max(0, Math.ceil(relativeBottom))
+}
+
 beforeEach(async () => {
   const testRenderer = await createTestRenderer({ width: 60, height: 16 })
   renderer = testRenderer.renderer
   renderOnce = testRenderer.renderOnce
   captureFrame = testRenderer.captureCharFrame
   captureSpans = testRenderer.captureSpans
+  resizeRenderer = testRenderer.resize
   mockMouse = testRenderer.mockMouse
 })
 
@@ -126,6 +205,7 @@ describe("TextTableRenderable", () => {
     const table = new TextTableRenderable(renderer, {
       left: 1,
       top: 1,
+      columnWidthMode: "content",
       content,
     })
 
@@ -167,12 +247,13 @@ describe("TextTableRenderable", () => {
     expect(frame).toContain("Description")
   })
 
-  test("keeps intrinsic width by default when extra space is available", async () => {
+  test("keeps intrinsic width in content mode when extra space is available", async () => {
     const table = new TextTableRenderable(renderer, {
       left: 0,
       top: 0,
       width: 34,
       wrapMode: "word",
+      columnWidthMode: "content",
       content: [
         [cell("A"), cell("B")],
         [cell("1"), cell("2")],
@@ -194,13 +275,12 @@ describe("TextTableRenderable", () => {
     expect(borderXs[borderXs.length - 1]).toBeLessThan(33)
   })
 
-  test("fills available width when columnWidthMode is fill", async () => {
+  test("fills available width by default in full mode", async () => {
     const table = new TextTableRenderable(renderer, {
       left: 0,
       top: 0,
       width: 34,
       wrapMode: "word",
-      columnWidthMode: "fill",
       content: [
         [cell("A"), cell("B")],
         [cell("1"), cell("2")],
@@ -220,13 +300,13 @@ describe("TextTableRenderable", () => {
     expect(borderXs).toEqual([0, 17, 33])
   })
 
-  test("fills available width in no-wrap mode when columnWidthMode is fill", async () => {
+  test("fills available width in no-wrap mode when columnWidthMode is full", async () => {
     const table = new TextTableRenderable(renderer, {
       left: 0,
       top: 0,
       width: 24,
       wrapMode: "none",
-      columnWidthMode: "fill",
+      columnWidthMode: "full",
       content: [
         [cell("Key"), cell("Value")],
         [cell("A"), cell("B")],
@@ -253,6 +333,7 @@ describe("TextTableRenderable", () => {
       border: true,
       outerBorder: true,
       showBorders: false,
+      columnWidthMode: "content",
       content: [[cell("A"), cell("B")]],
     })
 
@@ -273,6 +354,7 @@ describe("TextTableRenderable", () => {
       left: 0,
       top: 0,
       cellPadding: 1,
+      columnWidthMode: "content",
       content: [
         [cell("A"), cell("B")],
         [cell("1"), cell("2")],
@@ -300,6 +382,7 @@ describe("TextTableRenderable", () => {
       top: 0,
       width: 34,
       wrapMode: "word",
+      columnWidthMode: "content",
       content: [
         [cell("A"), cell("B")],
         [cell("1"), cell("2")],
@@ -316,7 +399,7 @@ describe("TextTableRenderable", () => {
     let borderXs = findVerticalBorderXs(renderer.currentRenderBuffer, headerY)
     expect(borderXs[borderXs.length - 1]).toBeLessThan(33)
 
-    table.columnWidthMode = "fill"
+    table.columnWidthMode = "full"
     await renderOnce()
 
     lines = captureFrame().split("\n")
@@ -325,6 +408,81 @@ describe("TextTableRenderable", () => {
 
     borderXs = findVerticalBorderXs(renderer.currentRenderBuffer, headerY)
     expect(borderXs).toEqual([0, 17, 33])
+  })
+
+  test("accepts columnFitter in options and setter", () => {
+    const table = new TextTableRenderable(renderer, {
+      columnFitter: "balanced",
+      content: [[cell("A")]],
+    })
+
+    expect(table.columnFitter).toBe("balanced")
+
+    table.columnFitter = "proportional"
+    expect(table.columnFitter).toBe("proportional")
+  })
+
+  test("balanced fitter keeps constrained columns visually closer", async () => {
+    const table = new TextTableRenderable(renderer, {
+      left: 0,
+      top: 0,
+      width: 58,
+      wrapMode: "word",
+      columnWidthMode: "full",
+      columnFitter: "proportional",
+      content: [
+        [
+          cell("Provider"),
+          cell("Compute Services"),
+          cell("Storage Solutions"),
+          cell("Pricing Model"),
+          cell("Regions"),
+          cell("Use Cases"),
+        ],
+        [
+          cell("Amazon Web Services"),
+          cell("EC2 instances with extensive options for general, memory, and accelerated workloads"),
+          cell("S3 tiers, EBS, EFS, and archive classes for long retention"),
+          cell("Pay as you go, reserved terms, and discounted spot capacity"),
+          cell("Global regions and many edge locations"),
+          cell("Enterprise migration, analytics, ML, and backend services"),
+        ],
+      ],
+    })
+
+    renderer.root.add(table)
+    await renderOnce()
+
+    const proportionalFrame = captureFrame()
+    expect(proportionalFrame).toMatchSnapshot("fitter proportional constrained")
+
+    const getRenderedWidths = (): number[] => {
+      const lines = captureFrame().split("\n")
+      const headerY = lines.findIndex((line) => line.includes("Compute") && line.includes("Pricing"))
+      expect(headerY).toBeGreaterThanOrEqual(0)
+
+      const borderXs = findVerticalBorderXs(renderer.currentRenderBuffer, headerY)
+      expect(borderXs.length).toBeGreaterThan(2)
+
+      return borderXs.slice(1).map((x, idx) => x - borderXs[idx] - 1)
+    }
+
+    const proportionalWidths = getRenderedWidths()
+    const proportionalSpread = Math.max(...proportionalWidths) - Math.min(...proportionalWidths)
+
+    table.columnFitter = "balanced"
+    await renderOnce()
+
+    const balancedFrame = captureFrame()
+    expect(balancedFrame).toMatchSnapshot("fitter balanced constrained")
+
+    const balancedWidths = getRenderedWidths()
+    const balancedSpread = Math.max(...balancedWidths) - Math.min(...balancedWidths)
+
+    expect(table.columnFitter).toBe("balanced")
+    expect(balancedFrame).not.toBe(proportionalFrame)
+    expect(balancedWidths[0]).toBeGreaterThan(proportionalWidths[0] ?? 0)
+    expect(balancedSpread).toBeLessThan(proportionalSpread)
   })
 
   test("uses native border draw for inner-only mode", async () => {
@@ -342,6 +500,7 @@ describe("TextTableRenderable", () => {
         top: 0,
         border: true,
         outerBorder: false,
+        columnWidthMode: "content",
         content: [
           [cell("A"), cell("B")],
           [cell("1"), cell("2")],
@@ -384,6 +543,7 @@ describe("TextTableRenderable", () => {
         left: 0,
         top: 0,
         border: false,
+        columnWidthMode: "content",
         content: [
           [cell("A"), cell("B")],
           [cell("1"), cell("2")],
@@ -443,6 +603,7 @@ describe("TextTableRenderable", () => {
     const table = new TextTableRenderable(renderer, {
       left: 0,
       top: 0,
+      columnWidthMode: "content",
       content: [[cell("A"), cell("B")]],
     })
 
@@ -503,6 +664,7 @@ describe("TextTableRenderable", () => {
       top: 0,
       width: 36,
       wrapMode: "none",
+      columnWidthMode: "content",
       content,
     })
 
@@ -612,6 +774,7 @@ describe("TextTableRenderable", () => {
     const table = new TextTableRenderable(renderer, {
       left: 0,
       top: 0,
+      columnWidthMode: "content",
       content: [
         [[bold("c1")], [bold("c2")]],
         [cell("aa"), cell("bb")],
@@ -739,6 +902,7 @@ describe("TextTableRenderable", () => {
       bg: "transparent",
       selectionFg,
       selectionBg,
+      columnWidthMode: "content",
       content: [
         ["A", "B"],
         ["C", "D"],
@@ -922,5 +1086,336 @@ describe("TextTableRenderable", () => {
     expect(selected).toContain("Name")
     expect(selected).toContain("Alice")
     expect(selected).toContain("Bob")
+  })
+
+  test("keeps full wrapped table layouts after a wide-to-narrow demo-style resize", async () => {
+    resizeRenderer(108, 38)
+    await renderOnce()
+
+    const primaryContent: TextTableContent = [
+      [[bold("Task")], [bold("Owner")], [bold("ETA")]],
+      [
+        cell(
+          "Wrap regression in operational status dashboard with dynamic row heights and constrained layout validation",
+        ),
+        cell("core platform and runtime reliability squad"),
+        cell(
+          "done after validating none, word, and char wrap modes across narrow, medium, wide, and ultra-wide terminal widths",
+        ),
+      ],
+      [
+        cell(
+          "Unicode layout stabilization for mixed Latin, punctuation, symbols, and long identifiers in adjacent columns",
+        ),
+        cell("render pipeline maintainers with fallback shaping support"),
+        cell(
+          "in review with follow-up checks for border style transitions, cell padding variants, and selection range consistency",
+        ),
+      ],
+      [
+        cell(
+          "Snapshot pass for table rendering in content mode and full mode with heavy and double border combinations",
+        ),
+        cell("qa automation and visual diff triage group"),
+        cell(
+          "today pending final baseline updates for oversized fixtures that intentionally stress wrapping behavior on high-resolution terminals",
+        ),
+      ],
+      [
+        cell(
+          "Document edge cases where long tokens without spaces force char wrapping and reveal per-cell clipping regressions",
+        ),
+        cell("developer experience and docs tooling"),
+        cell(
+          "planned for this sprint once final reproducible examples are captured and linked to regression tracking tickets",
+        ),
+      ],
+      [
+        cell(
+          "Performance sweep of wrapping algorithm under large datasets to confirm stable frame times during rapid key toggling",
+        ),
+        cell("runtime performance task force"),
+        cell("scheduled after review, with benchmark runs on laptop and desktop terminals at 200-plus column widths"),
+      ],
+    ]
+
+    const unicodeContent: TextTableContent = [
+      [[bold("Column")], [bold("Wrapped Text")]],
+      [
+        cell("mixed-languages"),
+        cell(
+          "CJK and emoji wrapping stress case: こんにちは世界 and 안녕하세요 세계 and 你好，世界 followed by long English prose that keeps flowing to test whether each cell wraps naturally even when the terminal is extremely wide and the row still needs multiple visual lines for readability 🌍🚀",
+        ),
+      ],
+      [
+        cell("emoji-and-symbols"),
+        cell(
+          "Faces 😀😃😄😁😆 plus symbols 🧪📦🛰️🔧📊 mixed with version tags like release-candidate-build-2026-02-very-long-token-without-breaks to ensure char wrapping remains stable and no glyph alignment issues appear at column boundaries",
+        ),
+      ],
+      [
+        cell("long-cjk-phrase"),
+        cell(
+          "長文の日本語テキストと中文段落和한국어문장을連続して配置し、その後に additional English context describing renderer behavior, border intersection handling, and selection extraction so that this single cell remains a reliable wrapping torture test.",
+        ),
+      ],
+      [
+        cell("mixed-punctuation"),
+        cell(
+          "Wrap behavior with punctuation-heavy content: [alpha]{beta}(gamma)<delta>|epsilon| then repeated fragments, commas, semicolons, and slashes to verify token boundaries do not break border drawing logic or spacing consistency in neighboring columns.",
+        ),
+      ],
+    ]
+
+    const container = new BoxRenderable(renderer, {
+      width: "100%",
+      height: "100%",
+      flexDirection: "column",
+      padding: 1,
+      gap: 1,
+    })
+
+    const tableAreaScrollBox = new ScrollBoxRenderable(renderer, {
+      width: "100%",
+      flexGrow: 1,
+      flexShrink: 1,
+      scrollY: true,
+      scrollX: false,
+      border: false,
+      contentOptions: {
+        flexDirection: "column",
+        gap: 1,
+      },
+    })
+
+    const controlsText = new TextRenderable(renderer, {
+      content: "TextTable Demo",
+      wrapMode: "word",
+      selectable: false,
+    })
+
+    const primaryLabel = new TextRenderable(renderer, {
+      content: "Operational Table",
+      selectable: false,
+    })
+
+    const primaryTable = new TextTableRenderable(renderer, {
+      width: "100%",
+      wrapMode: "word",
+      content: primaryContent,
+    })
+
+    const unicodeLabel = new TextRenderable(renderer, {
+      content: "Unicode/CJK/Emoji Table",
+      selectable: false,
+    })
+
+    const unicodeTable = new TextTableRenderable(renderer, {
+      width: "100%",
+      wrapMode: "word",
+      content: unicodeContent,
+    })
+
+    const selectionBox = new BoxRenderable(renderer, {
+      width: "100%",
+      height: 10,
+      flexGrow: 0,
+      flexShrink: 0,
+      border: true,
+      title: "Selected Text",
+      titleAlignment: "left",
+      padding: 1,
+    })
+
+    tableAreaScrollBox.add(controlsText)
+    tableAreaScrollBox.add(primaryLabel)
+    tableAreaScrollBox.add(primaryTable)
+    tableAreaScrollBox.add(unicodeLabel)
+    tableAreaScrollBox.add(unicodeTable)
+
+    container.add(tableAreaScrollBox)
+    container.add(selectionBox)
+    renderer.root.add(container)
+
+    await renderOnce()
+
+    resizeRenderer(72, 38)
+    await renderOnce()
+    await renderOnce()
+
+    const expectedPrimaryFrame = await renderStandaloneTableBlock(primaryTable.width, primaryContent, (line) =>
+      line.includes("Task"),
+    )
+    const expectedUnicodeFrame = await renderStandaloneTableBlock(unicodeTable.width, unicodeContent, (line) =>
+      line.includes("Wrapped"),
+    )
+
+    expect(expectedPrimaryFrame).toMatchSnapshot("demo resize expected primary table")
+    expect(expectedUnicodeFrame).toMatchSnapshot("demo resize expected unicode table")
+
+    const resizedFrame = captureFrame()
+    expect(resizedFrame).toContain("Operational Table")
+    expect(resizedFrame).toContain("Task")
+
+    const contentBottom = getScrollContentBottom(tableAreaScrollBox)
+    expect(contentBottom).toBeGreaterThan(tableAreaScrollBox.viewport.height)
+    expect(tableAreaScrollBox.scrollHeight).toBe(contentBottom)
+
+    const maxScrollTop = Math.max(0, tableAreaScrollBox.scrollHeight - tableAreaScrollBox.viewport.height)
+    expect(maxScrollTop).toBeGreaterThan(0)
+
+    tableAreaScrollBox.scrollTop = maxScrollTop
+    await renderOnce()
+
+    const scrolledToBottomFrame = captureFrame()
+    expect(scrolledToBottomFrame).toContain("epsilon")
+  })
+
+  test("keeps scroll height aligned with content bottom after word-wrap resize", async () => {
+    resizeRenderer(104, 34)
+    await renderOnce()
+
+    const tableContent: TextTableContent = [
+      [[bold("Key")], [bold("Value")]],
+      [
+        cell("alpha"),
+        cell(
+          "word wrapping should preserve intrinsic table height even when parent measure passes provide a smaller at-most height",
+        ),
+      ],
+      [
+        cell("beta"),
+        cell(
+          "this row is intentionally verbose and pushes the wrapped table height so that scrolling must include all visual lines",
+        ),
+      ],
+      [cell("marker"), cell("ENDWORD")],
+    ]
+
+    const root = new BoxRenderable(renderer, {
+      width: "100%",
+      height: "100%",
+      flexDirection: "column",
+      padding: 1,
+      gap: 1,
+    })
+
+    const scrollBox = new ScrollBoxRenderable(renderer, {
+      width: "100%",
+      flexGrow: 1,
+      flexShrink: 1,
+      scrollY: true,
+      scrollX: false,
+      border: false,
+      contentOptions: {
+        flexDirection: "column",
+        gap: 1,
+      },
+    })
+
+    const table = new TextTableRenderable(renderer, {
+      width: "100%",
+      wrapMode: "word",
+      content: tableContent,
+    })
+
+    root.add(scrollBox)
+    root.add(
+      new BoxRenderable(renderer, {
+        width: "100%",
+        height: 16,
+        flexGrow: 0,
+        flexShrink: 0,
+      }),
+    )
+
+    scrollBox.add(new TextRenderable(renderer, { content: "Word Wrap Table", selectable: false }))
+    scrollBox.add(table)
+    renderer.root.add(root)
+
+    await renderOnce()
+
+    resizeRenderer(66, 34)
+    await renderOnce()
+    await renderOnce()
+
+    const contentBottom = getScrollContentBottom(scrollBox)
+    expect(contentBottom).toBeGreaterThan(scrollBox.viewport.height)
+    expect(scrollBox.scrollHeight).toBe(contentBottom)
+
+    scrollBox.scrollTop = Math.max(0, scrollBox.scrollHeight - scrollBox.viewport.height)
+    await renderOnce()
+
+    expect(captureFrame()).toContain("ENDWORD")
+  })
+
+  test("keeps scroll height aligned with content bottom in char-wrap full mode", async () => {
+    resizeRenderer(104, 34)
+    await renderOnce()
+
+    const tableContent: TextTableContent = [
+      [[bold("Name")], [bold("Payload")]],
+      [cell("row-1"), cell("AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA")],
+      [cell("row-2"), cell("BBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBB")],
+      [cell("row-3"), cell("CCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCC")],
+      [cell("marker"), cell("ENDCHAR")],
+    ]
+
+    const root = new BoxRenderable(renderer, {
+      width: "100%",
+      height: "100%",
+      flexDirection: "column",
+      padding: 1,
+      gap: 1,
+    })
+
+    const scrollBox = new ScrollBoxRenderable(renderer, {
+      width: "100%",
+      flexGrow: 1,
+      flexShrink: 1,
+      scrollY: true,
+      scrollX: false,
+      border: false,
+      contentOptions: {
+        flexDirection: "column",
+        gap: 1,
+      },
+    })
+
+    const table = new TextTableRenderable(renderer, {
+      width: "100%",
+      wrapMode: "char",
+      columnWidthMode: "full",
+      content: tableContent,
+    })
+
+    root.add(scrollBox)
+    root.add(
+      new BoxRenderable(renderer, {
+        width: "100%",
+        height: 16,
+        flexGrow: 0,
+        flexShrink: 0,
+      }),
+    )
+
+    scrollBox.add(new TextRenderable(renderer, { content: "Char Wrap Fill Table", selectable: false }))
+    scrollBox.add(table)
+    renderer.root.add(root)
+
+    await renderOnce()
+
+    resizeRenderer(58, 34)
+    await renderOnce()
+    await renderOnce()
+
+    const contentBottom = getScrollContentBottom(scrollBox)
+    expect(contentBottom).toBeGreaterThan(scrollBox.viewport.height)
+    expect(scrollBox.scrollHeight).toBe(contentBottom)
+
+    scrollBox.scrollTop = Math.max(0, scrollBox.scrollHeight - scrollBox.viewport.height)
+    await renderOnce()
+
+    expect(captureFrame()).toContain("ENDCHAR")
   })
 })
