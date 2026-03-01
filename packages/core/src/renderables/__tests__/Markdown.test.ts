@@ -1,5 +1,6 @@
 import { test, expect, beforeEach, afterEach } from "bun:test"
 import { MarkdownRenderable } from "../Markdown"
+import { CodeRenderable } from "../Code"
 import { TextRenderable } from "../Text"
 import { TextTableRenderable } from "../TextTable"
 import { SyntaxStyle } from "../../syntax-style"
@@ -38,6 +39,28 @@ afterEach(async () => {
   }
 })
 
+async function renderMarkdownRenderable(md: MarkdownRenderable): Promise<void> {
+  for (let i = 0; i < 30; i++) {
+    await renderOnce()
+
+    const hasPendingParagraphHighlight = md._blockStates.some((state) => {
+      if (state.token.type !== "paragraph") {
+        return false
+      }
+
+      return state.renderable instanceof CodeRenderable && state.renderable.isHighlighting
+    })
+
+    if (!hasPendingParagraphHighlight) {
+      return
+    }
+
+    await Bun.sleep(10)
+  }
+
+  await renderOnce()
+}
+
 async function renderMarkdown(markdown: string, conceal: boolean = true): Promise<string> {
   const md = new MarkdownRenderable(renderer, {
     id: "markdown",
@@ -48,7 +71,7 @@ async function renderMarkdown(markdown: string, conceal: boolean = true): Promis
   })
 
   renderer.root.add(md)
-  await renderOnce()
+  await renderMarkdownRenderable(md)
 
   const lines = captureFrame()
     .split("\n")
@@ -598,15 +621,15 @@ Outro line below table.`
   })
 
   renderer.root.add(md)
-  await renderOnce()
+  await renderMarkdownRenderable(md)
 
-  const topBlock = md._blockStates[0]?.renderable as TextRenderable | undefined
+  const topBlock = md._blockStates[0]?.renderable as CodeRenderable | undefined
   const tableBlock = md._blockStates[1]?.renderable as TextTableRenderable | undefined
-  const bottomBlock = md._blockStates[2]?.renderable as TextRenderable | undefined
+  const bottomBlock = md._blockStates[2]?.renderable as CodeRenderable | undefined
 
-  expect(topBlock).toBeInstanceOf(TextRenderable)
+  expect(topBlock).toBeInstanceOf(CodeRenderable)
   expect(tableBlock).toBeInstanceOf(TextTableRenderable)
-  expect(bottomBlock).toBeInstanceOf(TextRenderable)
+  expect(bottomBlock).toBeInstanceOf(CodeRenderable)
 
   const startX = topBlock!.x + 1
   const startY = topBlock!.y
@@ -1067,7 +1090,7 @@ Regular paragraph.`,
   })
 
   renderer.root.add(md)
-  await renderOnce()
+  await renderMarkdownRenderable(md)
 
   const lines = captureFrame()
     .split("\n")
@@ -1109,7 +1132,7 @@ const x = 1;
   })
 
   renderer.root.add(md)
-  await renderOnce()
+  await renderMarkdownRenderable(md)
 
   const lines = captureFrame()
     .split("\n")
@@ -1133,7 +1156,7 @@ Paragraph text.`,
   })
 
   renderer.root.add(md)
-  await renderOnce()
+  await renderMarkdownRenderable(md)
 
   const lines = captureFrame()
     .split("\n")
@@ -1187,8 +1210,7 @@ test("incomplete link (no closing paren)", async () => {
 
   expect(await renderMarkdown(markdown)).toMatchInlineSnapshot(`
     "
-    Check out [this link](https://example.com (https://example.
-    com)"
+    Check out this link(https://example.com"
   `)
 })
 
@@ -1896,7 +1918,7 @@ test("streaming table transitions cleanly from raw fallback to proper table", as
   })
 
   renderer.root.add(md)
-  await renderOnce()
+  await renderMarkdownRenderable(md)
 
   // Just header, no delimiter yet - raw fallback
   let frame = captureFrame()
@@ -1908,7 +1930,7 @@ test("streaming table transitions cleanly from raw fallback to proper table", as
 
   // Add delimiter
   md.content = "| Header |\n|---|"
-  await renderOnce()
+  await renderMarkdownRenderable(md)
 
   frame = captureFrame()
     .split("\n")
@@ -1920,7 +1942,7 @@ test("streaming table transitions cleanly from raw fallback to proper table", as
 
   // Start first data row
   md.content = "| Header |\n|---|\n| D"
-  await renderOnce()
+  await renderMarkdownRenderable(md)
 
   frame = captureFrame()
     .split("\n")
@@ -1932,7 +1954,7 @@ test("streaming table transitions cleanly from raw fallback to proper table", as
 
   // Complete first row - still only 1 row total, so 0 complete (drops last)
   md.content = "| Header |\n|---|\n| Data1 |"
-  await renderOnce()
+  await renderMarkdownRenderable(md)
 
   frame = captureFrame()
     .split("\n")
@@ -1944,7 +1966,7 @@ test("streaming table transitions cleanly from raw fallback to proper table", as
 
   // Add start of second row
   md.content = "| Header |\n|---|\n| Data1 |\n| D"
-  await renderOnce()
+  await renderMarkdownRenderable(md)
 
   frame = captureFrame()
     .split("\n")
@@ -2153,9 +2175,9 @@ The table alignment uses:
   expect(headingSpan2!.attributes & TextAttributes.BOLD).toBeTruthy()
 })
 
-// OSC 8 link metadata tests
+// Paragraph rendering tests
 
-test("link chunks include link metadata for OSC 8 hyperlinks (conceal=true)", async () => {
+test("paragraph with link uses markdown CodeRenderable (conceal=true)", async () => {
   const md = new MarkdownRenderable(renderer, {
     id: "markdown",
     content: "Check [Google](https://google.com) out",
@@ -2164,18 +2186,18 @@ test("link chunks include link metadata for OSC 8 hyperlinks (conceal=true)", as
   })
 
   renderer.root.add(md)
-  await renderOnce()
+  await renderMarkdownRenderable(md)
 
-  const textRenderable = md._blockStates[0]?.renderable as TextRenderable
-  const chunks = textRenderable.content.chunks
-  const linkChunks = chunks.filter((c) => c.link?.url === "https://google.com")
-
-  expect(linkChunks.length).toBeGreaterThan(0)
-  expect(linkChunks.some((c) => c.text === "Google")).toBe(true)
-  expect(linkChunks.some((c) => c.text === "https://google.com")).toBe(true)
+  const paragraphRenderable = md._blockStates[0]?.renderable as CodeRenderable
+  expect(paragraphRenderable).toBeInstanceOf(CodeRenderable)
+  expect(paragraphRenderable.filetype).toBe("markdown")
+  expect(paragraphRenderable.drawUnstyledText).toBe(false)
+  expect(paragraphRenderable.streaming).toBe(true)
+  expect(paragraphRenderable.conceal).toBe(true)
+  expect(paragraphRenderable.content).toBe("Check [Google](https://google.com) out")
 })
 
-test("link chunks include link metadata (conceal=false)", async () => {
+test("paragraph with link uses markdown CodeRenderable (conceal=false)", async () => {
   const md = new MarkdownRenderable(renderer, {
     id: "markdown",
     content: "Check [Google](https://google.com) out",
@@ -2184,18 +2206,18 @@ test("link chunks include link metadata (conceal=false)", async () => {
   })
 
   renderer.root.add(md)
-  await renderOnce()
+  await renderMarkdownRenderable(md)
 
-  const textRenderable = md._blockStates[0]?.renderable as TextRenderable
-  const chunks = textRenderable.content.chunks
-  const linkChunks = chunks.filter((c) => c.link?.url === "https://google.com")
-
-  expect(linkChunks.length).toBeGreaterThan(0)
-  expect(linkChunks.some((c) => c.text === "Google")).toBe(true)
-  expect(linkChunks.some((c) => c.text === "https://google.com")).toBe(true)
+  const paragraphRenderable = md._blockStates[0]?.renderable as CodeRenderable
+  expect(paragraphRenderable).toBeInstanceOf(CodeRenderable)
+  expect(paragraphRenderable.filetype).toBe("markdown")
+  expect(paragraphRenderable.drawUnstyledText).toBe(false)
+  expect(paragraphRenderable.streaming).toBe(true)
+  expect(paragraphRenderable.conceal).toBe(false)
+  expect(paragraphRenderable.content).toBe("Check [Google](https://google.com) out")
 })
 
-test("image chunks include link metadata", async () => {
+test("paragraph with image uses markdown CodeRenderable", async () => {
   const md = new MarkdownRenderable(renderer, {
     id: "markdown",
     content: "![alt](https://example.com/img.png)",
@@ -2204,15 +2226,17 @@ test("image chunks include link metadata", async () => {
   })
 
   renderer.root.add(md)
-  await renderOnce()
+  await renderMarkdownRenderable(md)
 
-  const textRenderable = md._blockStates[0]?.renderable as TextRenderable
-  const chunks = textRenderable.content.chunks
-  const linkChunks = chunks.filter((c) => c.link?.url === "https://example.com/img.png")
-  expect(linkChunks.length).toBeGreaterThan(0)
+  const paragraphRenderable = md._blockStates[0]?.renderable as CodeRenderable
+  expect(paragraphRenderable).toBeInstanceOf(CodeRenderable)
+  expect(paragraphRenderable.filetype).toBe("markdown")
+  expect(paragraphRenderable.drawUnstyledText).toBe(false)
+  expect(paragraphRenderable.streaming).toBe(true)
+  expect(paragraphRenderable.content).toBe("![alt](https://example.com/img.png)")
 })
 
-test("non-link text does not have link metadata", async () => {
+test("plain paragraph does not use TextRenderable", async () => {
   const md = new MarkdownRenderable(renderer, {
     id: "markdown",
     content: "No links here, just **bold** text.",
@@ -2220,9 +2244,9 @@ test("non-link text does not have link metadata", async () => {
   })
 
   renderer.root.add(md)
-  await renderOnce()
+  await renderMarkdownRenderable(md)
 
-  const textRenderable = md._blockStates[0]?.renderable as TextRenderable
-  const chunks = textRenderable.content.chunks
-  expect(chunks.every((c) => !c.link)).toBe(true)
+  const paragraphRenderable = md._blockStates[0]?.renderable
+  expect(paragraphRenderable).toBeInstanceOf(CodeRenderable)
+  expect(paragraphRenderable).not.toBeInstanceOf(TextRenderable)
 })

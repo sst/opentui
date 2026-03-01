@@ -508,6 +508,21 @@ export class MarkdownRenderable extends Renderable {
     })
   }
 
+  private createParagraphCodeRenderable(token: Tokens.Paragraph, id: string, marginBottom: number = 0): CodeRenderable {
+    return new CodeRenderable(this.ctx, {
+      id,
+      content: token.raw,
+      filetype: "markdown",
+      syntaxStyle: this._syntaxStyle,
+      conceal: this._conceal,
+      drawUnstyledText: false,
+      streaming: true,
+      treeSitterClient: this._treeSitterClient,
+      width: "100%",
+      marginBottom,
+    })
+  }
+
   private createCodeRenderable(token: Tokens.Code, id: string, marginBottom: number = 0): Renderable {
     return new CodeRenderable(this.ctx, {
       id,
@@ -779,6 +794,10 @@ export class MarkdownRenderable extends Renderable {
       return this.createCodeRenderable(token, id, marginBottom)
     }
 
+    if (token.type === "paragraph") {
+      return this.createParagraphCodeRenderable(token, id, marginBottom)
+    }
+
     if (token.type === "table") {
       return this.createTableBlock(token, id, marginBottom).renderable
     }
@@ -809,6 +828,31 @@ export class MarkdownRenderable extends Renderable {
       codeRenderable.drawUnstyledText = !(this._streaming && this._concealCode)
       codeRenderable.streaming = this._streaming
       codeRenderable.marginBottom = marginBottom
+      return
+    }
+
+    if (token.type === "paragraph") {
+      const paragraphToken = token as Tokens.Paragraph
+
+      if (state.renderable instanceof CodeRenderable) {
+        state.renderable.content = paragraphToken.raw
+        state.renderable.filetype = "markdown"
+        state.renderable.syntaxStyle = this._syntaxStyle
+        state.renderable.conceal = this._conceal
+        state.renderable.drawUnstyledText = false
+        state.renderable.streaming = true
+        state.renderable.marginBottom = marginBottom
+        return
+      }
+
+      state.renderable.destroyRecursively()
+      const paragraphRenderable = this.createParagraphCodeRenderable(
+        paragraphToken,
+        `${this.id}-block-${index}`,
+        marginBottom,
+      )
+      this.add(paragraphRenderable)
+      state.renderable = paragraphRenderable
       return
     }
 
@@ -853,7 +897,7 @@ export class MarkdownRenderable extends Renderable {
       return
     }
 
-    // Text-based renderables (paragraph, heading, list, blockquote, hr)
+    // Text-based renderables (heading, list, blockquote, hr)
     const textRenderable = state.renderable as TextRenderable
     const chunks = this.renderTokenToChunks(token)
     textRenderable.content = new StyledText(chunks)
@@ -1005,6 +1049,7 @@ export class MarkdownRenderable extends Renderable {
     for (let i = 0; i < this._blockStates.length; i++) {
       const state = this._blockStates[i]
       const hasNextToken = i < this._blockStates.length - 1
+      const marginBottom = hasNextToken ? 1 : 0
 
       if (state.token.type === "code") {
         // CodeRenderable handles style/conceal changes efficiently
@@ -1013,9 +1058,30 @@ export class MarkdownRenderable extends Renderable {
         codeRenderable.conceal = this._concealCode
         codeRenderable.drawUnstyledText = !(this._streaming && this._concealCode)
         codeRenderable.streaming = this._streaming
+        codeRenderable.marginBottom = marginBottom
+      } else if (state.token.type === "paragraph") {
+        const paragraphToken = state.token as Tokens.Paragraph
+
+        if (state.renderable instanceof CodeRenderable) {
+          state.renderable.content = paragraphToken.raw
+          state.renderable.filetype = "markdown"
+          state.renderable.syntaxStyle = this._syntaxStyle
+          state.renderable.conceal = this._conceal
+          state.renderable.drawUnstyledText = false
+          state.renderable.streaming = true
+          state.renderable.marginBottom = marginBottom
+        } else {
+          state.renderable.destroyRecursively()
+          const paragraphRenderable = this.createParagraphCodeRenderable(
+            paragraphToken,
+            `${this.id}-block-${i}`,
+            marginBottom,
+          )
+          this.add(paragraphRenderable)
+          state.renderable = paragraphRenderable
+        }
       } else if (state.token.type === "table") {
         const tableToken = state.token as Tokens.Table
-        const marginBottom = hasNextToken ? 1 : 0
         const { cache } = this.buildTableContentCache(tableToken, state.tableContentCache, true)
 
         if (!cache) {
@@ -1052,6 +1118,7 @@ export class MarkdownRenderable extends Renderable {
         if (chunks.length > 0) {
           textRenderable.content = new StyledText(chunks)
         }
+        textRenderable.marginBottom = marginBottom
       }
     }
   }
