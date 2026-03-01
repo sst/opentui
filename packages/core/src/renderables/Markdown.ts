@@ -8,7 +8,7 @@ import type { BorderStyle } from "../lib/border"
 import type { ColorInput } from "../lib/RGBA"
 import { Lexer, type MarkedToken, type Token, type Tokens } from "marked"
 import { TextRenderable } from "./Text"
-import { CodeRenderable } from "./Code"
+import { CodeRenderable, type OnChunksCallback } from "./Code"
 import {
   TextTableRenderable,
   type TextTableCellContent,
@@ -19,6 +19,7 @@ import {
 import type { TreeSitterClient } from "../lib/tree-sitter"
 import { parseMarkdownIncremental, type ParseState } from "./markdown-parser"
 import type { OptimizedBuffer } from "../buffer"
+import { detectLinks } from "../lib/detect-links"
 
 export interface MarkdownTableOptions {
   /**
@@ -134,6 +135,11 @@ export class MarkdownRenderable extends Renderable {
   private _streaming: boolean = false
   _blockStates: BlockState[] = []
   private _styleDirty: boolean = false
+  private _linkifyMarkdownChunks: OnChunksCallback = (chunks, context) =>
+    detectLinks(chunks, {
+      content: context.content,
+      highlights: context.highlights,
+    })
 
   protected _contentDefaultOptions = {
     content: "",
@@ -517,6 +523,7 @@ export class MarkdownRenderable extends Renderable {
       conceal: this._conceal,
       drawUnstyledText: false,
       streaming: true,
+      onChunks: this._linkifyMarkdownChunks,
       treeSitterClient: this._treeSitterClient,
       width: "100%",
       marginBottom,
