@@ -1311,7 +1311,11 @@ export class CliRenderer extends EventEmitter implements RenderContext {
     }
 
     if (!sameElement && (mouseEvent.type === "drag" || mouseEvent.type === "move")) {
-      if (this.lastOverRenderable && this.lastOverRenderable !== this.capturedRenderable) {
+      if (
+        this.lastOverRenderable &&
+        this.lastOverRenderable !== this.capturedRenderable &&
+        !this.lastOverRenderable.isDestroyed
+      ) {
         const event = new MouseEvent(this.lastOverRenderable, { ...mouseEvent, type: "out" })
         this.lastOverRenderable.processMouseEvent(event)
       }
