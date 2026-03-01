@@ -1741,14 +1741,14 @@ describe("LineNumberRenderable", () => {
     await renderOnce()
 
     const lineInfoInitial = editor.editorView.getLogicalLineInfo()
-    const visualLinesInitial = lineInfoInitial.lineStarts.length
+    const visualLinesInitial = lineInfoInitial.lineStartBytes.length
 
     // Move cursor to bottom to trigger scrolling
     editor.gotoBufferEnd()
     await renderOnce()
 
     const lineInfoAfterScroll = editor.editorView.getLogicalLineInfo()
-    const visualLinesAfterScroll = lineInfoAfterScroll.lineStarts.length
+    const visualLinesAfterScroll = lineInfoAfterScroll.lineStartBytes.length
 
     const frame1 = captureCharFrame()
     expect(frame1).toMatchSnapshot()
@@ -1762,7 +1762,7 @@ describe("LineNumberRenderable", () => {
     await renderOnce()
 
     const lineInfoAfterTyping = editor.editorView.getLogicalLineInfo()
-    const visualLinesAfterTyping = lineInfoAfterTyping.lineStarts.length
+    const visualLinesAfterTyping = lineInfoAfterTyping.lineStartBytes.length
 
     const frame2 = captureCharFrame()
     expect(frame2).toMatchSnapshot()

@@ -33,8 +33,8 @@ test "Word wrap - editing around wrap boundary creates correct wrap" {
     const vlines2 = view.getVirtualLines();
     try std.testing.expectEqual(@as(usize, 2), vlines2.len);
 
-    try std.testing.expectEqual(@as(u32, 14), vlines2[0].width);
-    try std.testing.expectEqual(@as(u32, 6), vlines2[1].width);
+    try std.testing.expectEqual(@as(u32, 14), vlines2[0].width_cols);
+    try std.testing.expectEqual(@as(u32, 6), vlines2[1].width_cols);
 }
 
 test "Word wrap - backspace and retype near boundary" {
@@ -71,8 +71,8 @@ test "Word wrap - backspace and retype near boundary" {
     vlines = view.getVirtualLines();
     try std.testing.expectEqual(@as(usize, 2), vlines.len);
 
-    try std.testing.expectEqual(@as(u32, 14), vlines[0].width);
-    try std.testing.expectEqual(@as(u32, 6), vlines[1].width);
+    try std.testing.expectEqual(@as(u32, 14), vlines[0].width_cols);
+    try std.testing.expectEqual(@as(u32, 6), vlines[1].width_cols);
 }
 
 test "Word wrap - type character by character near boundary" {
@@ -125,8 +125,8 @@ test "Word wrap - type character by character near boundary" {
     vlines = view.getVirtualLines();
 
     try std.testing.expectEqual(@as(usize, 2), vlines.len);
-    try std.testing.expectEqual(@as(u32, 14), vlines[0].width);
-    try std.testing.expectEqual(@as(u32, 7), vlines[1].width);
+    try std.testing.expectEqual(@as(u32, 14), vlines[0].width_cols);
+    try std.testing.expectEqual(@as(u32, 7), vlines[1].width_cols);
 }
 
 test "Word wrap - insert word in middle causes rewrap" {
@@ -218,8 +218,8 @@ test "Word wrap - rapid edits maintain correct wrapping" {
     const vlines = view.getVirtualLines();
     try std.testing.expectEqual(@as(usize, 2), vlines.len);
 
-    try std.testing.expectEqual(@as(u32, 14), vlines[0].width);
-    try std.testing.expectEqual(@as(u32, 6), vlines[1].width);
+    try std.testing.expectEqual(@as(u32, 14), vlines[0].width_cols);
+    try std.testing.expectEqual(@as(u32, 6), vlines[1].width_cols);
 }
 
 test "Word wrap - fragmented at exact word boundary" {
@@ -245,8 +245,8 @@ test "Word wrap - fragmented at exact word boundary" {
 
     const vlines = view.getVirtualLines();
     try std.testing.expectEqual(@as(usize, 2), vlines.len);
-    try std.testing.expectEqual(@as(u32, 14), vlines[0].width);
-    try std.testing.expectEqual(@as(u32, 6), vlines[1].width);
+    try std.testing.expectEqual(@as(u32, 14), vlines[0].width_cols);
+    try std.testing.expectEqual(@as(u32, 6), vlines[1].width_cols);
 }
 
 test "Word wrap - chunk boundary at start of word" {
@@ -275,8 +275,8 @@ test "Word wrap - chunk boundary at start of word" {
     const vlines = view.getVirtualLines();
 
     try std.testing.expectEqual(@as(usize, 2), vlines.len);
-    try std.testing.expectEqual(@as(u32, 14), vlines[0].width);
-    try std.testing.expectEqual(@as(u32, 6), vlines[1].width);
+    try std.testing.expectEqual(@as(u32, 14), vlines[0].width_cols);
+    try std.testing.expectEqual(@as(u32, 6), vlines[1].width_cols);
 }
 
 test "Word wrap - multiple edits create complex fragmentation" {
@@ -351,7 +351,7 @@ test "Word wrap - insert at wrap boundary with existing wrap" {
     try std.testing.expect(vlines.len >= 2);
 
     for (vlines) |vline| {
-        try std.testing.expect(vline.width <= 15);
+        try std.testing.expect(vline.width_cols <= 15);
     }
 }
 
@@ -380,8 +380,8 @@ test "Word wrap - word at exact wrap width" {
 
     vlines = view.getVirtualLines();
     try std.testing.expectEqual(@as(usize, 2), vlines.len);
-    try std.testing.expectEqual(@as(u32, 20), vlines[0].width);
-    try std.testing.expectEqual(@as(u32, 5), vlines[1].width);
+    try std.testing.expectEqual(@as(u32, 20), vlines[0].width_cols);
+    try std.testing.expectEqual(@as(u32, 5), vlines[1].width_cols);
 }
 
 test "Word wrap - debug virtual line contents" {
@@ -455,6 +455,6 @@ test "Word wrap - incremental character edits near boundary" {
     vlines = view.getVirtualLines();
     try std.testing.expectEqual(@as(usize, 2), vlines.len);
 
-    try std.testing.expectEqual(@as(u32, 14), vlines[0].width);
-    try std.testing.expectEqual(@as(u32, 6), vlines[1].width);
+    try std.testing.expectEqual(@as(u32, 14), vlines[0].width_cols);
+    try std.testing.expectEqual(@as(u32, 6), vlines[1].width_cols);
 }
