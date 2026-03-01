@@ -1318,11 +1318,6 @@ test("streaming code blocks with conceal=true do not flash unconcealed markdown"
   recorder.stop()
 
   const frames = recorder.recordedFrames.map((frame) => frame.frame)
-  console.log(
-    "streaming conceal frame dump:\n" +
-      frames.map((frame, index) => `frame ${index}:\n${frame}`).join("\n----------------\n"),
-  )
-
   const unconcealedFrames = frames.filter((frame) => frame.includes("# Hidden heading"))
   expect(unconcealedFrames.length).toBe(0)
 })

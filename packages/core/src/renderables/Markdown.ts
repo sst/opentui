@@ -496,6 +496,8 @@ export class MarkdownRenderable extends Renderable {
       filetype: token.lang || undefined,
       syntaxStyle: this._syntaxStyle,
       conceal: this._conceal,
+      drawUnstyledText: !(this._streaming && this._conceal),
+      streaming: this._streaming,
       treeSitterClient: this._treeSitterClient,
       width: "100%",
       marginBottom,
