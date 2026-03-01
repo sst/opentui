@@ -43,6 +43,9 @@ bun run test:native -Dtest-filter="test name"
 
 # Benchmarks
 bun run bench:native
+
+# Stdin parser benchmark (legacy vs zig)
+bun run bench:stdin-parser -- --mode=both
 ```
 
 ## Local Development Linking
@@ -88,6 +91,42 @@ The script automatically links:
 ## Debugging
 
 OpenTUI captures `console.log` output. Toggle the built-in console with backtick or use [Environment Variables](./env-vars.md) for debugging.
+
+## Experimental Stdin Parser Flags
+
+OpenTUI keeps the legacy stdin parser path as the default. The Zig tokenizer/router path is opt-in.
+
+### Environment flags
+
+- `OTUI_STDIN_PARSER_ZIG` (`boolean`, default `false`): enables Zig stdin tokenizer/classifier path.
+- `OTUI_STDIN_PARSER_SHADOW` (`boolean`, default `false`): runs Zig parser in compare mode while routing legacy path.
+
+### Renderer config flags
+
+```ts
+type StdinParserMode = "legacy" | "zig"
+
+type CliRendererConfig = {
+  experimental_stdinParserMode?: StdinParserMode
+  experimental_stdinShadowCompare?: boolean
+}
+```
+
+### Resolution rules
+
+```ts
+const parserMode: StdinParserMode =
+  config.experimental_stdinParserMode ??
+  (env.OTUI_STDIN_PARSER_ZIG ? "zig" : "legacy")
+
+const shadowCompare =
+  config.experimental_stdinShadowCompare ??
+  env.OTUI_STDIN_PARSER_SHADOW
+```
+
+- Config values override environment values.
+- `shadowCompare` is only active while routing legacy mode.
+- Parser mode is resolved when a renderer is created and does not change for that renderer instance.
 
 ## Terminal Compatibility
 

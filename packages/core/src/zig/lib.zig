@@ -18,6 +18,7 @@ const logger = @import("logger.zig");
 const event_bus = @import("event-bus.zig");
 const utils = @import("utils.zig");
 const native_span_feed = @import("native-span-feed.zig");
+const stdin_parser = @import("stdin-parser.zig");
 
 pub const OptimizedBuffer = buffer.OptimizedBuffer;
 pub const CliRenderer = renderer.CliRenderer;
@@ -26,6 +27,7 @@ pub const RGBA = buffer.RGBA;
 
 comptime {
     _ = native_span_feed;
+    _ = stdin_parser;
 }
 
 export fn setLogCallback(callback: ?*const fn (level: u8, msgPtr: [*]const u8, msgLen: usize) callconv(.c) void) void {
@@ -156,6 +158,103 @@ fn getLargeAllocationCount() u64 {
 
 export fn createNativeSpanFeed(options_ptr: ?*const native_span_feed.Options) ?*native_span_feed.Stream {
     return native_span_feed.createNativeSpanFeedWithAllocator(globalAllocator, options_ptr);
+}
+
+fn parserStatusFromError(err: anyerror) i32 {
+    return switch (err) {
+        error.BufferLimitReached => -2,
+        error.OutOfMemory => -3,
+        else => -1,
+    };
+}
+
+export fn createStdinParser(options_ptr: ?*const stdin_parser.StdinParserOptions) ?*stdin_parser.StdinParser {
+    const options = stdin_parser.resolveOptions(options_ptr);
+    return stdin_parser.StdinParser.init(globalAllocator, options) catch null;
+}
+
+export fn destroyStdinParser(parser: ?*stdin_parser.StdinParser) void {
+    if (parser) |p| {
+        p.deinit();
+    }
+}
+
+export fn stdinParserPush(parser: ?*stdin_parser.StdinParser, data_ptr: ?*const u8, data_len: usize) i32 {
+    if (parser == null) {
+        return -1;
+    }
+    if (data_len > 0 and data_ptr == null) {
+        return -1;
+    }
+
+    const data: []const u8 = if (data_len == 0)
+        &[_]u8{}
+    else blk: {
+        const many_ptr: [*]const u8 = @ptrCast(data_ptr.?);
+        break :blk many_ptr[0..data_len];
+    };
+    parser.?.push(data) catch |err| {
+        return parserStatusFromError(err);
+    };
+
+    return 0;
+}
+
+export fn stdinParserDrain(
+    parser: ?*stdin_parser.StdinParser,
+    token_out_ptr: ?*stdin_parser.StdinToken,
+    token_cap: u32,
+    payload_out_ptr: ?*u8,
+    payload_cap: u32,
+    stats_out_ptr: ?*stdin_parser.StdinDrainStats,
+) i32 {
+    if (parser == null or stats_out_ptr == null) {
+        return -1;
+    }
+    if (token_cap > 0 and token_out_ptr == null) {
+        return -1;
+    }
+    if (payload_cap > 0 and payload_out_ptr == null) {
+        return -1;
+    }
+
+    const token_out: []stdin_parser.StdinToken = if (token_cap == 0)
+        &[_]stdin_parser.StdinToken{}
+    else blk: {
+        const many_ptr: [*]stdin_parser.StdinToken = @ptrCast(token_out_ptr.?);
+        break :blk many_ptr[0..@as(usize, token_cap)];
+    };
+
+    const payload_out: []u8 = if (payload_cap == 0)
+        &[_]u8{}
+    else blk: {
+        const many_ptr: [*]u8 = @ptrCast(payload_out_ptr.?);
+        break :blk many_ptr[0..@as(usize, payload_cap)];
+    };
+
+    const stats = parser.?.drain(token_out, payload_out);
+    stats_out_ptr.?.* = stats;
+    return 0;
+}
+
+export fn stdinParserFlushTimeout(parser: ?*stdin_parser.StdinParser, now_ms: u64) i32 {
+    if (parser == null) {
+        return -1;
+    }
+
+    parser.?.flushTimeout(now_ms) catch |err| {
+        return parserStatusFromError(err);
+    };
+    return 0;
+}
+
+export fn stdinParserReset(parser: ?*stdin_parser.StdinParser) i32 {
+    if (parser == null) {
+        return -1;
+    }
+
+    parser.?.reset();
+    return 0;
 }
 
 export fn getArenaAllocatedBytes() usize {

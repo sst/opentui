@@ -180,6 +180,84 @@ export const AllocatorStatsStruct = defineStruct([
   ["requestedBytesValid", "bool_u8"],
 ])
 
+export type StdinTokenKind =
+  | "text"
+  | "csi"
+  | "osc"
+  | "dcs"
+  | "apc"
+  | "ss3"
+  | "mouse_sgr"
+  | "mouse_x10"
+  | "paste"
+  | "esc"
+  | "unknown"
+
+export type StdinToken = {
+  kind: StdinTokenKind
+  flags: number
+  reserved0: number
+  payloadOffset: number
+  payloadLen: number
+  aux0: number
+  aux1: number
+}
+
+export type StdinDrainStats = {
+  tokenCount: number
+  payloadBytes: number
+  hasPending: number
+  overflowed: number
+  reserved0: number
+}
+
+export type StdinParserOptions = {
+  timeoutMs?: number
+  maxBufferBytes?: number
+  reserved0?: number
+}
+
+export const StdinTokenKindEnum = defineEnum(
+  {
+    text: 0,
+    csi: 1,
+    osc: 2,
+    dcs: 3,
+    apc: 4,
+    ss3: 5,
+    mouse_sgr: 6,
+    mouse_x10: 7,
+    paste: 8,
+    esc: 9,
+    unknown: 255,
+  },
+  "u8",
+)
+
+export const StdinTokenStruct = defineStruct([
+  ["kind", StdinTokenKindEnum],
+  ["flags", "u8"],
+  ["reserved0", "u16"],
+  ["payloadOffset", "u32"],
+  ["payloadLen", "u32"],
+  ["aux0", "i32"],
+  ["aux1", "i32"],
+])
+
+export const StdinDrainStatsStruct = defineStruct([
+  ["tokenCount", "u32"],
+  ["payloadBytes", "u32"],
+  ["hasPending", "u8"],
+  ["overflowed", "u8"],
+  ["reserved0", "u16"],
+])
+
+export const StdinParserOptionsStruct = defineStruct([
+  ["timeoutMs", "u32", { default: 10 }],
+  ["maxBufferBytes", "u32", { default: 64 * 1024 }],
+  ["reserved0", "u32", { default: 0 }],
+])
+
 export type GrowthPolicy = "grow" | "block"
 
 export type NativeSpanFeedOptions = {

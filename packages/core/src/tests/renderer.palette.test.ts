@@ -501,6 +501,7 @@ describe("Palette detector cleanup", () => {
     const { renderer } = await createTestRenderer({
       stdin: mockStdin,
       stdout: mockStdout,
+      experimental_stdinParserMode: "legacy",
     })
 
     const initialListenerCount = mockStdin.listenerCount("data")
@@ -519,6 +520,29 @@ describe("Palette detector cleanup", () => {
 
     const afterDestroyCount = mockStdin.listenerCount("data")
     expect(afterDestroyCount).toBe(0)
+  })
+
+  test("zig mode palette detection uses router OSC source without extra stdin listeners", async () => {
+    const { mockStdin, mockStdout } = createMockStreams()
+
+    const { renderer } = await createTestRenderer({
+      stdin: mockStdin,
+      stdout: mockStdout,
+      experimental_stdinParserMode: "zig",
+    })
+
+    const baselineListenerCount = mockStdin.listenerCount("data")
+    const palettePromise = renderer.getPalette({ timeout: 300 })
+
+    const duringDetectionCount = mockStdin.listenerCount("data")
+    expect(duringDetectionCount).toBe(baselineListenerCount)
+
+    await palettePromise
+
+    const afterDetectionCount = mockStdin.listenerCount("data")
+    expect(afterDetectionCount).toBe(baselineListenerCount)
+
+    renderer.destroy()
   })
 })
 

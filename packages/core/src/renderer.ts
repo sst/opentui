@@ -26,6 +26,7 @@ import { env, registerEnvVar } from "./lib/env"
 import { getTreeSitterClient } from "./lib/tree-sitter"
 import {
   createTerminalPalette,
+  type OscSubscriptionSource,
   type TerminalPaletteDetector,
   type TerminalColors,
   type GetPaletteOptions,
@@ -35,6 +36,9 @@ import {
   isPixelResolutionResponse,
   parsePixelResolution,
 } from "./lib/terminal-capability-detection"
+import { NativeStdinParser } from "./lib/stdin-parser-native"
+import { StdinRouter } from "./lib/stdin-router"
+import type { StdinToken } from "./zig-structs"
 
 registerEnvVar({
   name: "OTUI_DUMP_CAPTURES",
@@ -78,6 +82,22 @@ registerEnvVar({
   default: false,
 })
 
+registerEnvVar({
+  name: "OTUI_STDIN_PARSER_ZIG",
+  description: "Enable Zig stdin tokenizer/classifier path",
+  type: "boolean",
+  default: false,
+})
+
+registerEnvVar({
+  name: "OTUI_STDIN_PARSER_SHADOW",
+  description: "Run Zig parser in compare mode while routing legacy path",
+  type: "boolean",
+  default: false,
+})
+
+export type StdinParserMode = "legacy" | "zig"
+
 export interface CliRendererConfig {
   stdin?: NodeJS.ReadStream
   stdout?: NodeJS.WriteStream
@@ -105,12 +125,20 @@ export interface CliRendererConfig {
   backgroundColor?: ColorInput
   openConsoleOnError?: boolean
   prependInputHandlers?: ((sequence: string) => boolean)[]
+  experimental_stdinParserMode?: StdinParserMode
+  experimental_stdinShadowCompare?: boolean
   onDestroy?: () => void
 }
 
 export type PixelResolution = {
   width: number
   height: number
+}
+
+type CompareRecord = {
+  source: "legacy" | "zig"
+  kind: "sequence" | "paste" | "mouse"
+  value: string
 }
 
 const DEFAULT_FORWARDED_ENV_KEYS = [
@@ -403,6 +431,15 @@ export class CliRenderer extends EventEmitter implements RenderContext {
   private _resolution: PixelResolution | null = null
   private _keyHandler: InternalKeyHandler
   private _stdinBuffer: StdinBuffer
+  private readonly stdinParserMode: StdinParserMode
+  private readonly stdinShadowCompare: boolean
+  private nativeStdinParser: NativeStdinParser | null = null
+  private shadowStdinParser: NativeStdinParser | null = null
+  private stdinRouter: StdinRouter | null = null
+  private readonly stdinTextDecoder: TextDecoder = new TextDecoder()
+  private readonly shadowMouseParser: MouseParser = new MouseParser()
+  private shadowMismatchId = 0
+  private activeLegacyShadowChunkRecords: CompareRecord[] | null = null
 
   private animationRequest: Map<number, FrameRequestCallback> = new Map()
 
@@ -586,6 +623,12 @@ export class CliRenderer extends EventEmitter implements RenderContext {
     this.postProcessFns = config.postProcessFns || []
     this.prependedInputHandlers = config.prependInputHandlers || []
 
+    const parserMode: StdinParserMode =
+      config.experimental_stdinParserMode ?? (env.OTUI_STDIN_PARSER_ZIG ? "zig" : "legacy")
+    const shadowCompare = config.experimental_stdinShadowCompare ?? env.OTUI_STDIN_PARSER_SHADOW
+    this.stdinParserMode = parserMode
+    this.stdinShadowCompare = parserMode === "legacy" ? shadowCompare : false
+
     this.root = new RootRenderable(this)
 
     if (this.memorySnapshotInterval > 0) {
@@ -620,6 +663,24 @@ export class CliRenderer extends EventEmitter implements RenderContext {
     this.addExitListeners()
 
     this._stdinBuffer = new StdinBuffer({ timeout: 5 })
+
+    if (this.stdinParserMode === "zig") {
+      const parserPtr = this.lib.createStdinParser({ timeoutMs: 10, maxBufferBytes: 64 * 1024, reserved0: 0 })
+      this.nativeStdinParser = new NativeStdinParser(this.lib, parserPtr, {
+        timeoutMs: 10,
+        armTimeouts: true,
+        onTimeoutFlush: () => {
+          this.drainStdinParser()
+        },
+      })
+      this.stdinRouter = new StdinRouter()
+    } else if (this.stdinShadowCompare) {
+      const parserPtr = this.lib.createStdinParser({ timeoutMs: 10, maxBufferBytes: 64 * 1024, reserved0: 0 })
+      this.shadowStdinParser = new NativeStdinParser(this.lib, parserPtr, {
+        timeoutMs: 10,
+        armTimeouts: false,
+      })
+    }
 
     this._console = new TerminalConsole(this, config.consoleOptions)
     this.useConsole = config.useConsole ?? true
@@ -1059,15 +1120,65 @@ export class CliRenderer extends EventEmitter implements RenderContext {
     this.queryPixelResolution()
   }
 
-  private stdinListener: (data: Buffer) => void = ((data: Buffer) => {
-    // Mouse first (consume and stop if handled)
-    if (this._useMouse && this.handleMouseData(data)) {
+  private stdinListenerLegacy: (chunk: Buffer | string) => void = ((chunk: Buffer | string) => {
+    const data = Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk)
+    const legacyRecords = this.stdinShadowCompare ? ([] as CompareRecord[]) : null
+
+    if (legacyRecords) {
+      this.activeLegacyShadowChunkRecords = legacyRecords
+    }
+
+    try {
+      // Mouse first (consume and stop if handled)
+      if (this._useMouse && this.handleMouseData(data, legacyRecords ?? undefined)) {
+        return
+      }
+
+      // Everything else goes through the sequence buffer
+      this._stdinBuffer.process(data)
+    } finally {
+      if (legacyRecords) {
+        this.activeLegacyShadowChunkRecords = null
+        this.runShadowCompareForChunk(data, legacyRecords)
+      }
+    }
+  }).bind(this)
+
+  private stdinListenerZig: (chunk: Buffer | string) => void = ((chunk: Buffer | string) => {
+    const data = Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk)
+    if (data.length === 0) {
+      this.dispatchSequenceToInputHandlers("")
       return
     }
 
-    // Everything else goes through the sequence buffer
-    this._stdinBuffer.process(data)
+    if (!this.nativeStdinParser) return
+    this.nativeStdinParser.push(data)
+    this.drainStdinParser()
   }).bind(this)
+
+  private handleLegacyBufferedSequence = (sequence: string): void => {
+    if (this.activeLegacyShadowChunkRecords) {
+      this.activeLegacyShadowChunkRecords.push({
+        source: "legacy",
+        kind: "sequence",
+        value: sequence,
+      })
+    }
+
+    this.dispatchSequenceToInputHandlers(sequence)
+  }
+
+  private handleLegacyBufferedPaste = (data: string): void => {
+    if (this.activeLegacyShadowChunkRecords) {
+      this.activeLegacyShadowChunkRecords.push({
+        source: "legacy",
+        kind: "paste",
+        value: data,
+      })
+    }
+
+    this._keyHandler.processPaste(data)
+  }
 
   public addInputHandler(handler: (sequence: string) => boolean): void {
     this.inputHandlers.push(handler)
@@ -1130,6 +1241,152 @@ export class CliRenderer extends EventEmitter implements RenderContext {
     return false
   }).bind(this)
 
+  private dispatchSequenceToInputHandlers(sequence: string): void {
+    if (this._debugModeEnabled) {
+      this._debugInputs.push({
+        timestamp: new Date().toISOString(),
+        sequence,
+      })
+    }
+
+    for (const handler of this.inputHandlers) {
+      if (handler(sequence)) {
+        return
+      }
+    }
+  }
+
+  private decodeTokenPayload(payload: Uint8Array): string {
+    // Preserve StdinBuffer single-byte high-bit compatibility behavior
+    if (payload.length === 1 && payload[0]! > 127) {
+      return "\x1b" + String.fromCharCode(payload[0]! - 128)
+    }
+    return this.stdinTextDecoder.decode(payload)
+  }
+
+  private drainStdinParser(): void {
+    if (!this.nativeStdinParser) return
+
+    this.nativeStdinParser.drain((token, payload) => {
+      this.routeStdinToken(token, payload)
+    })
+  }
+
+  private routeStdinToken(token: StdinToken, payload: Uint8Array): void {
+    switch (token.kind) {
+      case "mouse_sgr":
+      case "mouse_x10": {
+        const sequence = this.decodeTokenPayload(payload)
+
+        if (this._useMouse) {
+          const parsed = this.mouseParser.parseMouseEvent(Buffer.from(payload))
+          if (!parsed) {
+            return
+          }
+
+          const handled = this.processSingleMouseEvent(parsed)
+          if (!handled) {
+            this.dispatchSequenceToInputHandlers(sequence)
+          }
+          return
+        }
+
+        this.dispatchSequenceToInputHandlers(sequence)
+        return
+      }
+      case "paste":
+        this._keyHandler.processPaste(this.decodeTokenPayload(payload))
+        return
+      case "osc": {
+        const sequence = this.decodeTokenPayload(payload)
+        this.stdinRouter?.notifyOsc(sequence)
+        this.dispatchSequenceToInputHandlers(sequence)
+        return
+      }
+      default:
+        this.dispatchSequenceToInputHandlers(this.decodeTokenPayload(payload))
+    }
+  }
+
+  private normalizeMouseRecord(event: RawMouseEvent): string {
+    return [
+      `mouse:${event.type}`,
+      `btn=${event.button}`,
+      `x=${event.x}`,
+      `y=${event.y}`,
+      `shift=${event.modifiers.shift ? 1 : 0}`,
+      `alt=${event.modifiers.alt ? 1 : 0}`,
+      `ctrl=${event.modifiers.ctrl ? 1 : 0}`,
+      `scroll=${event.scroll?.direction ?? "none"}`,
+    ].join(":")
+  }
+
+  private collectShadowZigRecord(token: StdinToken, payload: Uint8Array, records: CompareRecord[]): void {
+    switch (token.kind) {
+      case "paste": {
+        records.push({
+          source: "zig",
+          kind: "paste",
+          value: this.decodeTokenPayload(payload),
+        })
+        return
+      }
+      case "mouse_sgr":
+      case "mouse_x10": {
+        const parsed = this.shadowMouseParser.parseMouseEvent(Buffer.from(payload))
+        if (!parsed) {
+          return
+        }
+
+        records.push({
+          source: "zig",
+          kind: "mouse",
+          value: this.normalizeMouseRecord(parsed),
+        })
+        return
+      }
+      default: {
+        records.push({
+          source: "zig",
+          kind: "sequence",
+          value: this.decodeTokenPayload(payload),
+        })
+      }
+    }
+  }
+
+  private runShadowCompareForChunk(data: Buffer, legacyRecords: CompareRecord[]): void {
+    if (!this.shadowStdinParser) {
+      return
+    }
+
+    const zigRecords: CompareRecord[] = []
+    this.shadowStdinParser.push(data)
+    this.shadowStdinParser.drain((token, payload) => {
+      this.collectShadowZigRecord(token, payload, zigRecords)
+    })
+
+    this.compareShadowRecords(legacyRecords, zigRecords)
+  }
+
+  private compareShadowRecords(legacyRecords: CompareRecord[], zigRecords: CompareRecord[]): void {
+    const legacy = legacyRecords.map((record) => `${record.kind}:${record.value}`)
+    const zig = zigRecords.map((record) => `${record.kind}:${record.value}`)
+
+    if (legacy.length === zig.length && legacy.every((entry, index) => entry === zig[index])) {
+      return
+    }
+
+    const id = ++this.shadowMismatchId
+    const line = `[stdin-shadow-mismatch] id=${id} legacy=${JSON.stringify(legacy)} zig=${JSON.stringify(zig)}`
+
+    if (process.env.NODE_ENV === "test") {
+      throw new Error(line)
+    }
+
+    console.warn(line)
+  }
+
   private setupInput(): void {
     for (const handler of this.prependedInputHandlers) {
       this.addInputHandler(handler)
@@ -1158,26 +1415,17 @@ export class CliRenderer extends EventEmitter implements RenderContext {
     }
 
     this.stdin.resume()
-    this.stdin.setEncoding("utf8")
-    this.stdin.on("data", this.stdinListener)
-    this._stdinBuffer.on("data", (sequence: string) => {
-      // Capture all input in debug mode
-      if (this._debugModeEnabled) {
-        this._debugInputs.push({
-          timestamp: new Date().toISOString(),
-          sequence,
-        })
-      }
 
-      for (const handler of this.inputHandlers) {
-        if (handler(sequence)) {
-          return
-        }
-      }
-    })
-    this._stdinBuffer.on("paste", (data: string) => {
-      this._keyHandler.processPaste(data)
-    })
+    if (this.stdinParserMode === "legacy") {
+      this.stdin.setEncoding("utf8")
+      this.stdin.on("data", this.stdinListenerLegacy)
+      this._stdinBuffer.on("data", this.handleLegacyBufferedSequence)
+      this._stdinBuffer.on("paste", this.handleLegacyBufferedPaste)
+      return
+    }
+
+    // IMPORTANT: keep raw bytes in zig mode
+    this.stdin.on("data", this.stdinListenerZig)
   }
 
   private dispatchMouseEvent(
@@ -1201,13 +1449,21 @@ export class CliRenderer extends EventEmitter implements RenderContext {
     return event
   }
 
-  private handleMouseData(data: Buffer): boolean {
+  private handleMouseData(data: Buffer, compareRecords?: CompareRecord[]): boolean {
     const mouseEvents = this.mouseParser.parseAllMouseEvents(data)
 
     if (mouseEvents.length === 0) return false
 
     let anyHandled = false
     for (const mouseEvent of mouseEvents) {
+      if (compareRecords) {
+        compareRecords.push({
+          source: "legacy",
+          kind: "mouse",
+          value: this.normalizeMouseRecord(mouseEvent),
+        })
+      }
+
       if (this.processSingleMouseEvent(mouseEvent)) {
         anyHandled = true
       }
@@ -1720,7 +1976,11 @@ export class CliRenderer extends EventEmitter implements RenderContext {
     this.disableMouse()
     this.removeExitListeners()
     this._stdinBuffer.clear()
-    this.stdin.removeListener("data", this.stdinListener)
+    this.nativeStdinParser?.reset()
+    this.shadowStdinParser?.reset()
+    this.shadowMouseParser.reset()
+    this.stdin.removeListener("data", this.stdinListenerLegacy)
+    this.stdin.removeListener("data", this.stdinListenerZig)
     this.lib.suspendRenderer(this.rendererPtr)
 
     if (this.stdin.setRawMode) {
@@ -1741,7 +2001,11 @@ export class CliRenderer extends EventEmitter implements RenderContext {
     setImmediate(() => {
       // Consume any existing stdin data to avoid processing stale input
       while (this.stdin.read() !== null) {}
-      this.stdin.on("data", this.stdinListener)
+      if (this.stdinParserMode === "legacy") {
+        this.stdin.on("data", this.stdinListenerLegacy)
+      } else {
+        this.stdin.on("data", this.stdinListenerZig)
+      }
     })
 
     this.lib.resumeRenderer(this.rendererPtr)
@@ -1869,6 +2133,12 @@ export class CliRenderer extends EventEmitter implements RenderContext {
     }
 
     this._stdinBuffer.destroy()
+    this.nativeStdinParser?.destroy()
+    this.nativeStdinParser = null
+    this.shadowStdinParser?.destroy()
+    this.shadowStdinParser = null
+    this.stdinRouter?.destroy()
+    this.stdinRouter = null
     this._console.destroy()
     this.disableStdoutInterception()
 
@@ -1879,7 +2149,8 @@ export class CliRenderer extends EventEmitter implements RenderContext {
     if (this.stdin.setRawMode) {
       this.stdin.setRawMode(false)
     }
-    this.stdin.removeListener("data", this.stdinListener)
+    this.stdin.removeListener("data", this.stdinListenerLegacy)
+    this.stdin.removeListener("data", this.stdinListenerZig)
 
     this.lib.destroyRenderer(this.rendererPtr)
     rendererTracker.removeRenderer(this)
@@ -2272,7 +2543,14 @@ export class CliRenderer extends EventEmitter implements RenderContext {
       const isLegacyTmux =
         this.capabilities?.terminal?.name?.toLowerCase()?.includes("tmux") &&
         this.capabilities?.terminal?.version?.localeCompare("3.6") < 0
-      this._paletteDetector = createTerminalPalette(this.stdin, this.stdout, this.writeOut.bind(this), isLegacyTmux)
+      const oscSource: OscSubscriptionSource | undefined = this.stdinParserMode === "zig" ? this.stdinRouter ?? undefined : undefined
+      this._paletteDetector = createTerminalPalette(
+        this.stdin,
+        this.stdout,
+        this.writeOut.bind(this),
+        isLegacyTmux,
+        oscSource,
+      )
     }
 
     this._paletteDetectionPromise = this._paletteDetector.detect(options).then((result) => {

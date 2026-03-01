@@ -37,13 +37,6 @@ Enable debug logging for the FFI bindings.
 **Type:** `boolean`  
 **Default:** `false`
 
-## OTUI_SHOW_STATS
-
-Show the debug overlay at startup.
-
-**Type:** `boolean`  
-**Default:** `false`
-
 ## OTUI_TRACE_FFI
 
 Enable tracing for the FFI bindings.
@@ -131,6 +124,27 @@ Override the stdout stream. This is useful for debugging.
 ## OTUI_DEBUG
 
 Enable debug mode to capture all raw input for debugging purposes.
+
+**Type:** `boolean`  
+**Default:** `false`
+
+## OTUI_SHOW_STATS
+
+Show the debug overlay at startup.
+
+**Type:** `boolean`  
+**Default:** `false`
+
+## OTUI_STDIN_PARSER_ZIG
+
+Enable Zig stdin tokenizer/classifier path
+
+**Type:** `boolean`  
+**Default:** `false`
+
+## OTUI_STDIN_PARSER_SHADOW
+
+Run Zig parser in compare mode while routing legacy path
 
 **Type:** `boolean`  
 **Default:** `false`

@@ -32,6 +32,10 @@ export interface TerminalPaletteDetector {
   cleanup(): void
 }
 
+export type OscSubscriptionSource = {
+  subscribeOsc(handler: (sequence: string) => void): () => void
+}
+
 function scaleComponent(comp: string): string {
   const val = parseInt(comp, 16)
   const maxIn = (1 << (4 * comp.length)) - 1
@@ -61,15 +65,23 @@ export class TerminalPalette implements TerminalPaletteDetector {
   private stdin: NodeJS.ReadStream
   private stdout: NodeJS.WriteStream
   private writeFn: WriteFunction
-  private activeListeners: Array<{ event: string; handler: (...args: any[]) => void }> = []
+  private activeSubscriptions: Array<() => void> = []
   private activeTimers: Array<NodeJS.Timeout> = []
   private inLegacyTmux: boolean
+  private oscSource?: OscSubscriptionSource
 
-  constructor(stdin: NodeJS.ReadStream, stdout: NodeJS.WriteStream, writeFn?: WriteFunction, isLegacyTmux?: boolean) {
+  constructor(
+    stdin: NodeJS.ReadStream,
+    stdout: NodeJS.WriteStream,
+    writeFn?: WriteFunction,
+    isLegacyTmux?: boolean,
+    oscSource?: OscSubscriptionSource,
+  ) {
     this.stdin = stdin
     this.stdout = stdout
     this.writeFn = writeFn || ((data: string | Buffer) => stdout.write(data))
     this.inLegacyTmux = isLegacyTmux ?? false
+    this.oscSource = oscSource
   }
 
   /**
@@ -81,10 +93,10 @@ export class TerminalPalette implements TerminalPaletteDetector {
   }
 
   cleanup(): void {
-    for (const { event, handler } of this.activeListeners) {
-      this.stdin.removeListener(event, handler)
+    for (const unsubscribe of [...this.activeSubscriptions]) {
+      unsubscribe()
     }
-    this.activeListeners = []
+    this.activeSubscriptions = []
 
     for (const timer of this.activeTimers) {
       clearTimeout(timer)
@@ -92,14 +104,43 @@ export class TerminalPalette implements TerminalPaletteDetector {
     this.activeTimers = []
   }
 
+  private subscribeInput(handler: (chunk: string | Buffer) => void): () => void {
+    if (this.oscSource) {
+      const unsubscribe = this.oscSource.subscribeOsc((sequence) => {
+        handler(sequence)
+      })
+      return this.trackSubscription(unsubscribe)
+    }
+
+    this.stdin.on("data", handler)
+    return this.trackSubscription(() => {
+      this.stdin.removeListener("data", handler)
+    })
+  }
+
+  private trackSubscription(unsubscribe: () => void): () => void {
+    let active = true
+
+    const wrapped = () => {
+      if (!active) return
+      active = false
+      unsubscribe()
+      const idx = this.activeSubscriptions.indexOf(wrapped)
+      if (idx !== -1) this.activeSubscriptions.splice(idx, 1)
+    }
+
+    this.activeSubscriptions.push(wrapped)
+    return wrapped
+  }
+
   async detectOSCSupport(timeoutMs = 300): Promise<boolean> {
     const out = this.stdout
-    const inp = this.stdin
 
-    if (!out.isTTY || !inp.isTTY) return false
+    if (!out.isTTY || !this.stdin.isTTY) return false
 
     return new Promise<boolean>((resolve) => {
       let buffer = ""
+      let removeDataListener: (() => void) | null = null
 
       const onData = (chunk: string | Buffer) => {
         buffer += chunk.toString()
@@ -118,40 +159,35 @@ export class TerminalPalette implements TerminalPaletteDetector {
 
       const cleanup = () => {
         clearTimeout(timer)
-        inp.removeListener("data", onData)
-        // Remove from active tracking
-        const listenerIdx = this.activeListeners.findIndex((l) => l.handler === onData)
-        if (listenerIdx !== -1) this.activeListeners.splice(listenerIdx, 1)
+        removeDataListener?.()
+        removeDataListener = null
         const timerIdx = this.activeTimers.indexOf(timer)
         if (timerIdx !== -1) this.activeTimers.splice(timerIdx, 1)
       }
 
       const timer = setTimeout(onTimeout, timeoutMs)
       this.activeTimers.push(timer)
-      inp.on("data", onData)
-      this.activeListeners.push({ event: "data", handler: onData })
+      removeDataListener = this.subscribeInput(onData)
       this.writeOsc("\x1b]4;0;?\x07")
     })
   }
 
   private async queryPalette(indices: number[], timeoutMs = 1200): Promise<Map<number, Hex>> {
     const out = this.stdout
-    const inp = this.stdin
     const results = new Map<number, Hex>()
     indices.forEach((i) => results.set(i, null))
 
-    if (!out.isTTY || !inp.isTTY) {
+    if (!out.isTTY || !this.stdin.isTTY) {
       return results
     }
 
     return new Promise<Map<number, Hex>>((resolve) => {
       let buffer = ""
-      let lastResponseTime = Date.now()
       let idleTimer: NodeJS.Timeout | null = null
+      let removeDataListener: (() => void) | null = null
 
       const onData = (chunk: string | Buffer) => {
         buffer += chunk.toString()
-        lastResponseTime = Date.now()
 
         let m: RegExpExecArray | null
         OSC4_RESPONSE.lastIndex = 0
@@ -185,10 +221,8 @@ export class TerminalPalette implements TerminalPaletteDetector {
       const cleanup = () => {
         clearTimeout(timer)
         if (idleTimer) clearTimeout(idleTimer)
-        inp.removeListener("data", onData)
-        // Remove from active tracking
-        const listenerIdx = this.activeListeners.findIndex((l) => l.handler === onData)
-        if (listenerIdx !== -1) this.activeListeners.splice(listenerIdx, 1)
+        removeDataListener?.()
+        removeDataListener = null
         const timerIdx = this.activeTimers.indexOf(timer)
         if (timerIdx !== -1) this.activeTimers.splice(timerIdx, 1)
         if (idleTimer) {
@@ -199,15 +233,13 @@ export class TerminalPalette implements TerminalPaletteDetector {
 
       const timer = setTimeout(onTimeout, timeoutMs)
       this.activeTimers.push(timer)
-      inp.on("data", onData)
-      this.activeListeners.push({ event: "data", handler: onData })
+      removeDataListener = this.subscribeInput(onData)
       this.writeOsc(indices.map((i) => `\x1b]4;${i};?\x07`).join(""))
     })
   }
 
   private async querySpecialColors(timeoutMs = 1200): Promise<Record<number, Hex>> {
     const out = this.stdout
-    const inp = this.stdin
     const results: Record<number, Hex> = {
       10: null,
       11: null,
@@ -220,13 +252,14 @@ export class TerminalPalette implements TerminalPaletteDetector {
       19: null,
     }
 
-    if (!out.isTTY || !inp.isTTY) {
+    if (!out.isTTY || !this.stdin.isTTY) {
       return results
     }
 
     return new Promise<Record<number, Hex>>((resolve) => {
       let buffer = ""
       let idleTimer: NodeJS.Timeout | null = null
+      let removeDataListener: (() => void) | null = null
 
       const onData = (chunk: string | Buffer) => {
         buffer += chunk.toString()
@@ -269,9 +302,8 @@ export class TerminalPalette implements TerminalPaletteDetector {
       const cleanup = () => {
         clearTimeout(timer)
         if (idleTimer) clearTimeout(idleTimer)
-        inp.removeListener("data", onData)
-        const listenerIdx = this.activeListeners.findIndex((l) => l.handler === onData)
-        if (listenerIdx !== -1) this.activeListeners.splice(listenerIdx, 1)
+        removeDataListener?.()
+        removeDataListener = null
         const timerIdx = this.activeTimers.indexOf(timer)
         if (timerIdx !== -1) this.activeTimers.splice(timerIdx, 1)
         if (idleTimer) {
@@ -282,8 +314,7 @@ export class TerminalPalette implements TerminalPaletteDetector {
 
       const timer = setTimeout(onTimeout, timeoutMs)
       this.activeTimers.push(timer)
-      inp.on("data", onData)
-      this.activeListeners.push({ event: "data", handler: onData })
+      removeDataListener = this.subscribeInput(onData)
       this.writeOsc(
         [
           "\x1b]10;?\x07",
@@ -345,6 +376,7 @@ export function createTerminalPalette(
   stdout: NodeJS.WriteStream,
   writeFn?: WriteFunction,
   isLegacyTmux?: boolean,
+  oscSource?: OscSubscriptionSource,
 ): TerminalPaletteDetector {
-  return new TerminalPalette(stdin, stdout, writeFn, isLegacyTmux)
+  return new TerminalPalette(stdin, stdout, writeFn, isLegacyTmux, oscSource)
 }
