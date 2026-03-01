@@ -428,15 +428,18 @@ describe("MouseParser parseAllMouseEvents (multi-event chunks)", () => {
     parser = new MouseParser()
   })
 
+  // Helper: extract just the events array (most existing tests only care about events)
+  const parseAll = (data: Buffer) => parser.parseAllMouseEvents(data).events
+
   test("single event returns array of one", () => {
-    const events = parser.parseAllMouseEvents(encodeSGR(0, 10, 5, true))
+    const events = parseAll(encodeSGR(0, 10, 5, true))
     expect(events).toHaveLength(1)
     expect(events[0]).toMatchObject({ type: "down", button: 0, x: 10, y: 5 })
   })
 
   test("two SGR events concatenated are both parsed", () => {
     const buf = Buffer.concat([encodeSGR(32, 69, 49, true), encodeSGR(32, 68, 49, true)])
-    const events = parser.parseAllMouseEvents(buf)
+    const events = parseAll(buf)
     expect(events).toHaveLength(2)
     expect(events[0]).toMatchObject({ type: "move", x: 69, y: 49 })
     expect(events[1]).toMatchObject({ type: "move", x: 68, y: 49 })
@@ -449,7 +452,7 @@ describe("MouseParser parseAllMouseEvents (multi-event chunks)", () => {
       encodeSGR(32, 68, 48, true),
       encodeSGR(32, 67, 48, true),
     ])
-    const events = parser.parseAllMouseEvents(buf)
+    const events = parseAll(buf)
     expect(events).toHaveLength(4)
     expect(events[0]).toMatchObject({ x: 69, y: 49 })
     expect(events[1]).toMatchObject({ x: 68, y: 49 })
@@ -463,7 +466,7 @@ describe("MouseParser parseAllMouseEvents (multi-event chunks)", () => {
       encodeSGR(32, 12, 10, true), // motion (drag, since button is pressed)
       encodeSGR(0, 12, 10, false), // left up
     ])
-    const events = parser.parseAllMouseEvents(buf)
+    const events = parseAll(buf)
     expect(events).toHaveLength(3)
     expect(events[0]).toMatchObject({ type: "down", button: 0 })
     expect(events[1]).toMatchObject({ type: "drag" })
@@ -472,7 +475,7 @@ describe("MouseParser parseAllMouseEvents (multi-event chunks)", () => {
 
   test("scroll events in a chunk", () => {
     const buf = Buffer.concat([encodeSGR(64, 82, 67, true), encodeSGR(64, 82, 67, true), encodeSGR(65, 82, 67, true)])
-    const events = parser.parseAllMouseEvents(buf)
+    const events = parseAll(buf)
     expect(events).toHaveLength(3)
     expect(events[0]).toMatchObject({ type: "scroll", scroll: { direction: "up" } })
     expect(events[1]).toMatchObject({ type: "scroll", scroll: { direction: "up" } })
@@ -481,7 +484,7 @@ describe("MouseParser parseAllMouseEvents (multi-event chunks)", () => {
 
   test("chunk with scroll+motion codes (96/97) keeps scroll semantics", () => {
     const buf = Buffer.concat([encodeSGR(64, 82, 67, true), encodeSGR(96, 81, 67, true), encodeSGR(97, 80, 67, true)])
-    const events = parser.parseAllMouseEvents(buf)
+    const events = parseAll(buf)
     expect(events).toHaveLength(3)
     expect(events[0]).toMatchObject({ type: "scroll", scroll: { direction: "up" } })
     expect(events[1]).toMatchObject({ type: "scroll", scroll: { direction: "up" }, x: 81, y: 67 })
@@ -489,18 +492,18 @@ describe("MouseParser parseAllMouseEvents (multi-event chunks)", () => {
   })
 
   test("returns empty array for non-mouse data", () => {
-    const events = parser.parseAllMouseEvents(Buffer.from("\x1b[A"))
+    const events = parseAll(Buffer.from("\x1b[A"))
     expect(events).toHaveLength(0)
   })
 
   test("returns empty array for empty buffer", () => {
-    const events = parser.parseAllMouseEvents(Buffer.from(""))
+    const events = parseAll(Buffer.from(""))
     expect(events).toHaveLength(0)
   })
 
   test("two X10 basic events concatenated", () => {
     const buf = Buffer.concat([encodeBasic(0, 10, 5), encodeBasic(3, 10, 5)])
-    const events = parser.parseAllMouseEvents(buf)
+    const events = parseAll(buf)
     expect(events).toHaveLength(2)
     expect(events[0]).toMatchObject({ type: "down", button: 0, x: 10, y: 5 })
     expect(events[1]).toMatchObject({ type: "up", x: 10, y: 5 })
@@ -512,10 +515,39 @@ describe("MouseParser parseAllMouseEvents (multi-event chunks)", () => {
       encodeSGR(0, 5, 5, true), // press
       encodeSGR(32, 8, 5, true), // motion with button 0 bits → drag if button tracked
     ])
-    const events = parser.parseAllMouseEvents(buf)
+    const events = parseAll(buf)
     expect(events).toHaveLength(2)
     expect(events[0]).toMatchObject({ type: "down" })
     expect(events[1]).toMatchObject({ type: "drag" })
+  })
+
+  test("consumed equals total byte length when all data is mouse events", () => {
+    const buf = Buffer.concat([encodeSGR(0, 10, 5, true), encodeSGR(0, 10, 5, false)])
+    expect(parser.parseAllMouseEvents(buf).consumed).toBe(buf.length)
+  })
+
+  test("consumed stops at non-mouse trailing data", () => {
+    const mouse = encodeSGR(0, 10, 5, true)
+    const buf = Buffer.concat([mouse, Buffer.from("hello")])
+    const result = parser.parseAllMouseEvents(buf)
+    expect(result.events).toHaveLength(1)
+    expect(result.consumed).toBe(mouse.length)
+  })
+
+  test("consumed stops at partial SGR sequence", () => {
+    const complete = encodeSGR(0, 31, 16, true)
+    const buf = Buffer.concat([complete, Buffer.from("\x1b[<0;")])
+    const result = parser.parseAllMouseEvents(buf)
+    expect(result.events).toHaveLength(1)
+    expect(result.consumed).toBe(complete.length)
+  })
+
+  test("consumed is zero for non-mouse data", () => {
+    expect(parser.parseAllMouseEvents(Buffer.from("\x1b[A")).consumed).toBe(0)
+  })
+
+  test("consumed is zero for empty buffer", () => {
+    expect(parser.parseAllMouseEvents(Buffer.from("")).consumed).toBe(0)
   })
 })
 

@@ -1197,18 +1197,21 @@ export class CliRenderer extends EventEmitter implements RenderContext {
   }
 
   private handleMouseData(data: Buffer): boolean {
-    const mouseEvents = this.mouseParser.parseAllMouseEvents(data)
+    const result = this.mouseParser.parseAllMouseEvents(data)
 
-    if (mouseEvents.length === 0) return false
+    if (result.events.length === 0) return false
 
-    let anyHandled = false
-    for (const mouseEvent of mouseEvents) {
-      if (this.processSingleMouseEvent(mouseEvent)) {
-        anyHandled = true
-      }
+    for (const mouseEvent of result.events) {
+      this.processSingleMouseEvent(mouseEvent)
     }
 
-    return anyHandled
+    // Forward any unconsumed remainder (partial sequences or non-mouse data)
+    // to the stdin buffer so it is not silently dropped.
+    if (result.consumed < data.length) {
+      this._stdinBuffer.process(data.subarray(result.consumed))
+    }
+
+    return true
   }
 
   private processSingleMouseEvent(mouseEvent: RawMouseEvent): boolean {
