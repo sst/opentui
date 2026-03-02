@@ -16,6 +16,7 @@ import { TextAttributes, type CapturedFrame } from "../../types"
 
 let renderer: TestRenderer
 let mockMouse: MockMouse
+let renderOnce: () => Promise<void>
 let captureFrame: () => string
 let captureSpans: () => CapturedFrame
 
@@ -27,6 +28,7 @@ beforeEach(async () => {
   const testRenderer = await createTestRenderer({ width: 60, height: 40 })
   renderer = testRenderer.renderer
   mockMouse = testRenderer.mockMouse
+  renderOnce = testRenderer.renderOnce
   captureFrame = testRenderer.captureCharFrame
   captureSpans = testRenderer.captureSpans
 })
@@ -37,22 +39,26 @@ afterEach(async () => {
   }
 })
 
-async function renderMarkdownRenderable(md: MarkdownRenderable): Promise<void> {
+async function renderMarkdownRenderable(md: MarkdownRenderable, timeoutMs: number = 2000): Promise<void> {
   const hasPendingMarkdownParagraphHighlights = (): boolean =>
     md
       .getChildren()
       .some((child) => child instanceof CodeRenderable && child.filetype === "markdown" && child.isHighlighting)
 
-  const nextTick = (): Promise<void> => new Promise((resolve) => setImmediate(resolve))
+  const startedAt = Date.now()
 
-  await renderer.idle()
+  await renderOnce()
 
-  while (hasPendingMarkdownParagraphHighlights()) {
-    await nextTick()
-    await renderer.idle()
+  while (hasPendingMarkdownParagraphHighlights() && Date.now() - startedAt < timeoutMs) {
+    await Bun.sleep(10)
+    await renderOnce()
   }
 
-  await renderer.idle()
+  if (hasPendingMarkdownParagraphHighlights()) {
+    throw new Error("Timed out waiting for markdown paragraph highlights")
+  }
+
+  await renderOnce()
 }
 
 async function renderMarkdown(markdown: string, conceal: boolean = true): Promise<string> {
