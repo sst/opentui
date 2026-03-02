@@ -19,9 +19,13 @@ export type OnHighlightCallback = (
   context: HighlightContext,
 ) => SimpleHighlight[] | undefined | Promise<SimpleHighlight[] | undefined>
 
+export interface ChunkRenderContext extends HighlightContext {
+  highlights: SimpleHighlight[]
+}
+
 export type OnChunksCallback = (
   chunks: TextChunk[],
-  context: HighlightContext & { highlights: SimpleHighlight[] },
+  context: ChunkRenderContext,
 ) => TextChunk[] | undefined | Promise<TextChunk[] | undefined>
 
 export interface CodeOptions extends TextBufferOptions {
@@ -105,7 +109,7 @@ export class CodeRenderable extends TextBufferRenderable {
     return this._filetype
   }
 
-  set filetype(value: string) {
+  set filetype(value: string | undefined) {
     if (this._filetype !== value) {
       this._filetype = value
       this._highlightsDirty = true
@@ -195,6 +199,13 @@ export class CodeRenderable extends TextBufferRenderable {
     return this._isHighlighting
   }
 
+  protected async transformChunks(chunks: TextChunk[], context: ChunkRenderContext): Promise<TextChunk[]> {
+    if (!this._onChunks) return chunks
+
+    const modified = await this._onChunks(chunks, context)
+    return modified ?? chunks
+  }
+
   private ensureVisibleTextBeforeHighlight(): void {
     if (this.isDestroyed) return
 
@@ -265,22 +276,27 @@ export class CodeRenderable extends TextBufferRenderable {
         if (this._streaming) {
           this._lastHighlights = highlights
         }
+      }
+
+      if (highlights.length > 0 || this._onChunks) {
+        const context: ChunkRenderContext = {
+          content,
+          filetype,
+          syntaxStyle: this._syntaxStyle,
+          highlights,
+        }
 
         let chunks = treeSitterToTextChunks(content, highlights, this._syntaxStyle, {
           enabled: this._conceal,
         })
 
-        if (this._onChunks) {
-          const modified = await this._onChunks(chunks, {
-            content,
-            filetype,
-            syntaxStyle: this._syntaxStyle,
-            highlights,
-          })
-          if (modified !== undefined) {
-            chunks = modified
-          }
+        chunks = await this.transformChunks(chunks, context)
+
+        if (snapshotId !== this._highlightSnapshotId) {
+          return
         }
+
+        if (this.isDestroyed) return
 
         const styledText = new StyledText(chunks)
         this.textBuffer.setStyledText(styledText)
