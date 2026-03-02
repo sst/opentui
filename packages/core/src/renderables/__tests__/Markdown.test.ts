@@ -903,7 +903,7 @@ test("simple blockquote", async () => {
   expect(await renderMarkdown(markdown)).toMatchInlineSnapshot(`
     "
     > This is a quote
-    spanning multiple lines"
+    > spanning multiple lines"
   `)
 })
 
@@ -1160,6 +1160,8 @@ Paragraph text.`,
   expect("\n" + lines.join("\n").trimEnd()).toMatchInlineSnapshot(`
     "
     Heading
+
+
 
     Paragraph text."
   `)
