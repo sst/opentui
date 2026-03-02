@@ -585,8 +585,6 @@ pub fn restoreTerminalModes(self: *Terminal, tty: anytype) !void {
     // Re-enable mouse tracking modes if active
     if (self.state.mouse) {
         if (!self.state.mouse_movement) {
-            // Keep the same ordering as setMouseMode(false): clear any-event
-            // first, then re-enable click/drag modes.
             try tty.writeAll(ansi.ANSI.disableAnyEventTracking);
         }
         try tty.writeAll(ansi.ANSI.enableMouseTracking);
