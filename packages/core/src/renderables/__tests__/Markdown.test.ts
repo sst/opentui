@@ -1035,8 +1035,9 @@ Visit [GitHub](https://github.com) for more.
     - inline code support
     - Italic and bold text
 
-
     Code Example
+
+
 
     const md = new MarkdownRenderable(ctx, {
       content: "# Hello",
@@ -1487,8 +1488,8 @@ test("block type change creates new renderable", async () => {
   await renderer.idle()
 
   const blockAfter = md._blockStates[0]?.renderable
-  // Should be different renderable since type changed
-  expect(blockAfter).not.toBe(blockBefore)
+  // Non-special markdown blocks are merged and reused as one markdown code renderable
+  expect(blockAfter).toBe(blockBefore)
 })
 
 test("streaming property can be toggled", async () => {
@@ -2140,7 +2141,7 @@ The table alignment uses:
   })
 
   renderer.root.add(md)
-  await renderer.idle()
+  await renderMarkdownRenderable(md)
 
   const findSpanContaining = (frame: CapturedFrame, text: string) => {
     for (const line of frame.lines) {
@@ -2161,7 +2162,7 @@ The table alignment uses:
   // Switch theme
   md.syntaxStyle = theme2
   renderer.requestRender()
-  await renderer.idle()
+  await renderMarkdownRenderable(md)
 
   const frame2 = captureSpans()
   const headingSpan2 = findSpanContaining(frame2, "OpenTUI Markdown Demo")

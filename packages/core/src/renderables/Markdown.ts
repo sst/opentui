@@ -6,7 +6,7 @@ import type { TextChunk } from "../text-buffer"
 import { createTextAttributes } from "../utils"
 import type { BorderStyle } from "../lib/border"
 import type { ColorInput } from "../lib/RGBA"
-import { Lexer, type MarkedToken, type Token, type Tokens } from "marked"
+import { type MarkedToken, type Token, type Tokens } from "marked"
 import { TextRenderable } from "./Text"
 import { CodeRenderable, type OnChunksCallback } from "./Code"
 import {
@@ -514,14 +514,14 @@ export class MarkdownRenderable extends Renderable {
     })
   }
 
-  private createParagraphCodeRenderable(token: Tokens.Paragraph, id: string, marginBottom: number = 0): CodeRenderable {
+  private createMarkdownCodeRenderable(content: string, id: string, marginBottom: number = 0): CodeRenderable {
     return new CodeRenderable(this.ctx, {
       id,
-      content: token.raw,
+      content,
       filetype: "markdown",
       syntaxStyle: this._syntaxStyle,
       conceal: this._conceal,
-      drawUnstyledText: false,
+      drawUnstyledText: this._streaming,
       streaming: true,
       onChunks: this._linkifyMarkdownChunks,
       treeSitterClient: this._treeSitterClient,
@@ -543,6 +543,67 @@ export class MarkdownRenderable extends Renderable {
       width: "100%",
       marginBottom,
     })
+  }
+
+  private shouldRenderSeparately(token: MarkedToken): boolean {
+    return token.type === "code" || token.type === "table" || token.type === "blockquote"
+  }
+
+  private createMarkdownBlockToken(raw: string): MarkedToken {
+    return {
+      type: "paragraph",
+      raw,
+      text: raw,
+      tokens: [],
+    } as MarkedToken
+  }
+
+  private buildRenderableTokens(tokens: MarkedToken[]): MarkedToken[] {
+    if (this._renderNode) {
+      return tokens.filter((token) => token.type !== "space")
+    }
+
+    const renderTokens: MarkedToken[] = []
+    let markdownRaw = ""
+
+    const flushMarkdownRaw = (): void => {
+      if (markdownRaw.length === 0) return
+      renderTokens.push(this.createMarkdownBlockToken(markdownRaw))
+      markdownRaw = ""
+    }
+
+    for (let i = 0; i < tokens.length; i += 1) {
+      const token = tokens[i]
+
+      if (token.type === "space") {
+        if (markdownRaw.length === 0) {
+          continue
+        }
+
+        let nextIndex = i + 1
+        while (nextIndex < tokens.length && tokens[nextIndex].type === "space") {
+          nextIndex += 1
+        }
+
+        const nextToken = tokens[nextIndex]
+        if (nextToken && !this.shouldRenderSeparately(nextToken)) {
+          markdownRaw += token.raw
+        }
+        continue
+      }
+
+      if (this.shouldRenderSeparately(token)) {
+        flushMarkdownRaw()
+        renderTokens.push(token)
+        continue
+      }
+
+      markdownRaw += token.raw
+    }
+
+    flushMarkdownRaw()
+
+    return renderTokens
   }
 
   private getTableRowsToRender(table: Tokens.Table): Tokens.TableCell[][] {
@@ -802,7 +863,7 @@ export class MarkdownRenderable extends Renderable {
     }
 
     if (token.type === "paragraph") {
-      return this.createParagraphCodeRenderable(token, id, marginBottom)
+      return this.createMarkdownCodeRenderable(token.raw, id, marginBottom)
     }
 
     if (token.type === "table") {
@@ -846,15 +907,15 @@ export class MarkdownRenderable extends Renderable {
         state.renderable.filetype = "markdown"
         state.renderable.syntaxStyle = this._syntaxStyle
         state.renderable.conceal = this._conceal
-        state.renderable.drawUnstyledText = false
+        state.renderable.drawUnstyledText = this._streaming
         state.renderable.streaming = true
         state.renderable.marginBottom = marginBottom
         return
       }
 
       state.renderable.destroyRecursively()
-      const paragraphRenderable = this.createParagraphCodeRenderable(
-        paragraphToken,
+      const paragraphRenderable = this.createMarkdownCodeRenderable(
+        paragraphToken.raw,
         `${this.id}-block-${index}`,
         marginBottom,
       )
@@ -939,26 +1000,20 @@ export class MarkdownRenderable extends Renderable {
       return
     }
 
-    const blockTokens: Array<{ token: MarkedToken; originalIndex: number }> = []
-    for (let i = 0; i < tokens.length; i++) {
-      if (tokens[i].type !== "space") {
-        blockTokens.push({ token: tokens[i], originalIndex: i })
-      }
-    }
-
+    const blockTokens = this.buildRenderableTokens(tokens)
     const lastBlockIndex = blockTokens.length - 1
 
     let blockIndex = 0
     for (let i = 0; i < blockTokens.length; i++) {
-      const { token } = blockTokens[i]
+      const token = blockTokens[i]
       const hasNextToken = i < lastBlockIndex
       const existing = this._blockStates[blockIndex]
 
-      const shouldForceTableRefresh = forceTableRefresh && token.type === "table"
+      const shouldForceRefresh = forceTableRefresh
 
       // Same token object reference means unchanged
       if (existing && existing.token === token) {
-        if (shouldForceTableRefresh) {
+        if (shouldForceRefresh) {
           this.updateBlockRenderable(existing, token, blockIndex, hasNextToken)
           existing.tokenRaw = token.raw
         }
@@ -969,7 +1024,7 @@ export class MarkdownRenderable extends Renderable {
       // Same content, update reference
       if (existing && existing.tokenRaw === token.raw && existing.token.type === token.type) {
         existing.token = token
-        if (shouldForceTableRefresh) {
+        if (shouldForceRefresh) {
           this.updateBlockRenderable(existing, token, blockIndex, hasNextToken)
           existing.tokenRaw = token.raw
         }
@@ -1074,13 +1129,13 @@ export class MarkdownRenderable extends Renderable {
           state.renderable.filetype = "markdown"
           state.renderable.syntaxStyle = this._syntaxStyle
           state.renderable.conceal = this._conceal
-          state.renderable.drawUnstyledText = false
+          state.renderable.drawUnstyledText = this._streaming
           state.renderable.streaming = true
           state.renderable.marginBottom = marginBottom
         } else {
           state.renderable.destroyRecursively()
-          const paragraphRenderable = this.createParagraphCodeRenderable(
-            paragraphToken,
+          const paragraphRenderable = this.createMarkdownCodeRenderable(
+            paragraphToken.raw,
             `${this.id}-block-${i}`,
             marginBottom,
           )
