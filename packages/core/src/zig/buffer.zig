@@ -432,6 +432,53 @@ pub const OptimizedBuffer = struct {
         }
     }
 
+    /// Write a single cell without span cleanup or continuation propagation.
+    /// Updates grapheme and link trackers for grapheme START cells only
+    /// (matching set()'s tracking semantics). Intended for the renderer's
+    /// diff loop where cells are synced individually from an authoritative
+    /// source buffer that already contains correct grapheme spans.
+    pub fn syncCell(self: *OptimizedBuffer, x: u32, y: u32, cell: Cell) void {
+        if (x >= self.width or y >= self.height) return;
+        if (!self.isPointInScissor(@intCast(x), @intCast(y))) return;
+        const index = self.coordsToIndex(x, y);
+
+        const prev_char = self.buffer.char[index];
+        const prev_attr = self.buffer.attributes[index];
+        const prev_link_id = ansi.TextAttributes.getLinkId(prev_attr);
+        const new_link_id = ansi.TextAttributes.getLinkId(cell.attributes);
+
+        // Update grapheme tracker: only track grapheme START cells (not
+        // continuations), matching set()'s semantics so counts stay consistent
+        // for getGraphemeCellCount / getRealCharSize.
+        const prev_is_start = gp.isGraphemeChar(prev_char);
+        const new_is_start = gp.isGraphemeChar(cell.char);
+
+        if (prev_is_start and new_is_start) {
+            const old_id = gp.graphemeIdFromChar(prev_char);
+            const new_id = gp.graphemeIdFromChar(cell.char);
+            if (old_id != new_id) {
+                self.grapheme_tracker.remove(old_id);
+                self.grapheme_tracker.add(new_id);
+            }
+        } else if (prev_is_start) {
+            self.grapheme_tracker.remove(gp.graphemeIdFromChar(prev_char));
+        } else if (new_is_start) {
+            self.grapheme_tracker.add(gp.graphemeIdFromChar(cell.char));
+        }
+
+        self.buffer.char[index] = cell.char;
+        self.buffer.fg[index] = cell.fg;
+        self.buffer.bg[index] = cell.bg;
+        self.buffer.attributes[index] = cell.attributes;
+
+        if (prev_link_id != 0 and prev_link_id != new_link_id) {
+            self.link_tracker.removeCellRef(prev_link_id);
+        }
+        if (new_link_id != 0 and new_link_id != prev_link_id) {
+            self.link_tracker.addCellRef(new_link_id);
+        }
+    }
+
     pub fn set(self: *OptimizedBuffer, x: u32, y: u32, cell: Cell) void {
         if (x >= self.width or y >= self.height) return;
         if (!self.isPointInScissor(@intCast(x), @intCast(y))) return;

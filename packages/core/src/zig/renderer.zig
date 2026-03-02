@@ -741,9 +741,13 @@ pub const CliRenderer = struct {
                 }
                 runLength += 1;
 
-                // Update grapheme/link trackers (and continuation cells), so current buffer
-                // retains grapheme ownership after next buffer clear and IDs remain stable.
-                self.currentRenderBuffer.set(x, y, nextCell.?);
+                // Sync this cell to the current buffer so the next frame's diff is
+                // correct. Use syncCell (no span cleanup / continuation write)
+                // because the diff loop visits every changed cell individually.
+                // Using set() here would cause span cleanup to destroy
+                // continuation cells that were correctly written by an earlier
+                // iteration of this same loop (issue #723).
+                self.currentRenderBuffer.syncCell(x, y, nextCell.?);
 
                 cellsUpdated += 1;
             }

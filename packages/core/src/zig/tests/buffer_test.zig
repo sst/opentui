@@ -2360,3 +2360,83 @@ test "renderer - grapheme WrongGeneration repro with pool slot reuse" {
         cli_renderer.render(false);
     }
 }
+
+// Issue #723: CJK grapheme continuation cells are destroyed when graphemes
+// shift left (e.g. after backspace). The renderer's diff loop calls
+// currentRenderBuffer.set() left-to-right, and set()'s span cleanup at
+// position N+2 destroys the continuation cell at N+1 that was just written
+// by set() at position N, because both share the same stable grapheme pool ID.
+test "renderer - CJK graphemes shifting left must preserve continuation cells (#723)" {
+    const pool = gp.initGlobalPool(std.testing.allocator);
+    defer gp.deinitGlobalPool();
+    var local_link_pool = link.LinkPool.init(std.testing.allocator);
+    defer local_link_pool.deinit();
+
+    const renderer_mod = @import("../renderer.zig");
+    var cli_renderer = try renderer_mod.CliRenderer.create(
+        std.testing.allocator,
+        20,
+        1,
+        pool,
+        true,
+    );
+    defer cli_renderer.destroy();
+
+    const fg = RGBA{ 1.0, 1.0, 1.0, 1.0 };
+    const bg = RGBA{ 0.0, 0.0, 0.0, 1.0 };
+
+    // Frame 1: "abcd你好世" — CJK chars start at column 4
+    // Layout: a(0) b(1) c(2) d(3) 你(4,5) 好(6,7) 世(8,9) spaces(10..19)
+    {
+        const next = cli_renderer.getNextBuffer();
+        try next.drawText("abcd你好世          ", 0, 0, fg, bg, 0);
+        cli_renderer.render(false);
+    }
+
+    // Frame 2: "abc你好世" — backspace deleted 'd', CJK chars shift left by 1
+    // Layout: a(0) b(1) c(2) 你(3,4) 好(5,6) 世(7,8) spaces(9..19)
+    {
+        const next = cli_renderer.getNextBuffer();
+        try next.drawText("abc你好世           ", 0, 0, fg, bg, 0);
+        cli_renderer.render(false);
+    }
+
+    // After frame 2, currentRenderBuffer should match the frame 2 layout exactly.
+    // The bug: span cleanup in set() destroys continuation cells (positions 4, 6, 8)
+    // leaving spaces instead of proper continuation chars.
+    const current = cli_renderer.getCurrentBuffer();
+
+    // Check that position 3 is a grapheme start (你)
+    const cell3 = current.get(3, 0).?;
+    try std.testing.expect(gp.isGraphemeChar(cell3.char));
+    try std.testing.expectEqual(@as(u32, 1), gp.charRightExtent(cell3.char));
+
+    // Check that position 4 is a continuation cell for the same grapheme (你)
+    const cell4 = current.get(4, 0).?;
+    try std.testing.expect(gp.isContinuationChar(cell4.char));
+    const id3 = gp.graphemeIdFromChar(cell3.char);
+    const id4 = gp.graphemeIdFromChar(cell4.char);
+    try std.testing.expectEqual(id3, id4);
+
+    // Check that position 5 is a grapheme start (好)
+    const cell5 = current.get(5, 0).?;
+    try std.testing.expect(gp.isGraphemeChar(cell5.char));
+
+    // Check that position 6 is a continuation cell for the same grapheme (好)
+    const cell6 = current.get(6, 0).?;
+    try std.testing.expect(gp.isContinuationChar(cell6.char));
+    const id5 = gp.graphemeIdFromChar(cell5.char);
+    const id6 = gp.graphemeIdFromChar(cell6.char);
+    try std.testing.expectEqual(id5, id6);
+
+    // Check that position 7 is a grapheme start (世)
+    const cell7 = current.get(7, 0).?;
+    try std.testing.expect(gp.isGraphemeChar(cell7.char));
+
+    // Check that position 8 is a continuation cell for the same grapheme (世)
+    const cell8 = current.get(8, 0).?;
+    try std.testing.expect(gp.isContinuationChar(cell8.char));
+    const id7 = gp.graphemeIdFromChar(cell7.char);
+    const id8 = gp.graphemeIdFromChar(cell8.char);
+    try std.testing.expectEqual(id7, id8);
+}
