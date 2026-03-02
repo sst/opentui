@@ -1370,7 +1370,7 @@ test("streaming mode keeps trailing tokens unstable", async () => {
   })
 
   renderer.root.add(md)
-  await renderer.idle()
+  await renderMarkdownRenderable(md)
 
   const frame1 = captureFrame()
     .split("\n")
@@ -1381,7 +1381,7 @@ test("streaming mode keeps trailing tokens unstable", async () => {
 
   // Extend the heading
   md.content = "# Hello World"
-  await renderer.idle()
+  await renderMarkdownRenderable(md)
 
   const frame2 = captureFrame()
     .split("\n")
@@ -1493,7 +1493,7 @@ test("streaming property can be toggled", async () => {
   })
 
   renderer.root.add(md)
-  await renderer.idle()
+  await renderMarkdownRenderable(md)
 
   expect(md.streaming).toBe(false)
   const blockBefore = md._blockStates[0]?.renderable
@@ -1501,7 +1501,7 @@ test("streaming property can be toggled", async () => {
   md.streaming = true
   expect(md.streaming).toBe(true)
 
-  await renderer.idle()
+  await renderMarkdownRenderable(md)
 
   const blockAfter = md._blockStates[0]?.renderable
   expect(blockAfter).toBe(blockBefore)
@@ -1809,7 +1809,7 @@ test("streaming table with incomplete first row falls back to raw text and updat
   })
 
   renderer.root.add(md)
-  await renderer.idle()
+  await renderMarkdownRenderable(md)
 
   // With streaming=true and 1 data row, rowsToRender drops last row -> length 0
   // Should show raw fallback text
@@ -1826,7 +1826,7 @@ test("streaming table with incomplete first row falls back to raw text and updat
 
   // Now append more characters to the incomplete row
   md.content = "| A |\n|---|\n| 1"
-  await renderer.idle()
+  await renderMarkdownRenderable(md)
 
   const frame2 = captureFrame()
     .split("\n")
@@ -1840,7 +1840,7 @@ test("streaming table with incomplete first row falls back to raw text and updat
 
   // Complete the row by adding closing pipe - still only 1 row, so still 0 complete rows
   md.content = "| A |\n|---|\n| 1 |"
-  await renderer.idle()
+  await renderMarkdownRenderable(md)
 
   const frame3 = captureFrame()
     .split("\n")
@@ -1854,7 +1854,7 @@ test("streaming table with incomplete first row falls back to raw text and updat
 
   // Add second row - now we have 1 complete row (first row), should render as table
   md.content = "| A |\n|---|\n| 1 |\n| 2 |"
-  await renderer.idle()
+  await renderMarkdownRenderable(md)
 
   const frame4 = captureFrame()
     .split("\n")
@@ -1869,7 +1869,7 @@ test("streaming table with incomplete first row falls back to raw text and updat
 
   // Complete the second row - now we have 2 rows, so 1 complete row still (drops last)
   md.content = "| A |\n|---|\n| 1 |\n| 2 |"
-  await renderer.idle()
+  await renderMarkdownRenderable(md)
 
   const frame5 = captureFrame()
     .split("\n")
@@ -1883,7 +1883,7 @@ test("streaming table with incomplete first row falls back to raw text and updat
 
   // Add third row - now we have 2 complete rows to show
   md.content = "| A |\n|---|\n| 1 |\n| 2 |\n| 3 |"
-  await renderer.idle()
+  await renderMarkdownRenderable(md)
 
   const frame6 = captureFrame()
     .split("\n")
@@ -1978,7 +1978,7 @@ test("streaming table can transition back to raw fallback when rows are removed"
   })
 
   renderer.root.add(md)
-  await renderer.idle()
+  await renderMarkdownRenderable(md)
 
   // With 2 rows, we have 1 complete row - should render as table
   let frame = captureFrame()
@@ -1990,7 +1990,7 @@ test("streaming table can transition back to raw fallback when rows are removed"
 
   // Remove second row - back to 1 row, so 0 complete rows
   md.content = "| A |\n|---|\n| 1 |"
-  await renderer.idle()
+  await renderMarkdownRenderable(md)
 
   frame = captureFrame()
     .split("\n")
@@ -2012,7 +2012,7 @@ test("conceal change updates rendered content", async () => {
   })
 
   renderer.root.add(md)
-  await renderer.idle()
+  await renderMarkdownRenderable(md)
 
   const frame1 = captureFrame()
   expect(frame1).not.toContain("**")
@@ -2020,7 +2020,7 @@ test("conceal change updates rendered content", async () => {
 
   md.conceal = false
   renderer.requestRender()
-  await renderer.idle()
+  await renderMarkdownRenderable(md)
 
   const frame2 = captureFrame()
   expect(frame2).toContain("**")

@@ -422,7 +422,7 @@ export class MarkdownRenderable extends Renderable {
       filetype: "markdown",
       syntaxStyle: this._syntaxStyle,
       conceal: this._conceal,
-      drawUnstyledText: this._streaming,
+      drawUnstyledText: false,
       streaming: true,
       onChunks: this._linkifyMarkdownChunks,
       treeSitterClient: this._treeSitterClient,
@@ -451,7 +451,7 @@ export class MarkdownRenderable extends Renderable {
     renderable.filetype = "markdown"
     renderable.syntaxStyle = this._syntaxStyle
     renderable.conceal = this._conceal
-    renderable.drawUnstyledText = this._streaming
+    renderable.drawUnstyledText = false
     renderable.streaming = true
     renderable.marginBottom = marginBottom
   }
