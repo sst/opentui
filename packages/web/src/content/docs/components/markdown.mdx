@@ -46,9 +46,11 @@ const markdown = new MarkdownRenderable(renderer, {
 })
 ```
 
+Use `concealCode` to control concealment inside fenced code blocks independently (`false` by default).
+
 ## Streaming updates
 
-Enable streaming mode for incremental updates:
+Enable streaming mode for incremental updates. Keep it `true` while appending chunks, then set `markdown.streaming = false` when complete to finalize trailing block parsing. Tables include trailing partial rows, with missing cells rendered empty.
 
 ```typescript
 const markdown = new MarkdownRenderable(renderer, {
@@ -59,6 +61,7 @@ const markdown = new MarkdownRenderable(renderer, {
 
 markdown.content += "# Live log\n"
 markdown.content += "- line 1\n"
+markdown.streaming = false
 ```
 
 ## Markdown tables
@@ -85,17 +88,17 @@ const markdown = new MarkdownRenderable(renderer, {
 
 ### `tableOptions`
 
-| Option         | Type                           | Default          | Description                                      |
-| -------------- | ------------------------------ | ---------------- | ------------------------------------------------ |
-| `widthMode`    | `"content" \| "full"`          | `"full"`         | `"full"` expands columns to fill available width |
-| `columnFitter` | `"proportional" \| "balanced"` | `"proportional"` | How columns shrink when space is constrained     |
-| `wrapMode`     | `"none" \| "char" \| "word"`   | `"word"`         | Wrapping mode inside each table cell             |
-| `cellPadding`  | `number`                       | `0`              | Padding on all sides of each cell                |
-| `borders`      | `boolean`                      | `true`           | Enable inner and outer borders                   |
-| `outerBorder`  | `boolean`                      | `borders`        | Override outer border visibility                 |
-| `borderStyle`  | `BorderStyle`                  | `"single"`       | Table border character set                       |
-| `borderColor`  | `ColorInput`                   | conceal fg       | Border color for markdown tables                 |
-| `selectable`   | `boolean`                      | `true`           | Enable table cell text selection                 |
+| Option         | Type                           | Default                 | Description                                      |
+| -------------- | ------------------------------ | ----------------------- | ------------------------------------------------ |
+| `widthMode`    | `"content" \| "full"`          | `"full"`                | `"full"` expands columns to fill available width |
+| `columnFitter` | `"proportional" \| "balanced"` | `"proportional"`        | How columns shrink when space is constrained     |
+| `wrapMode`     | `"none" \| "char" \| "word"`   | `"word"`                | Wrapping mode inside each table cell             |
+| `cellPadding`  | `number`                       | `0`                     | Padding on all sides of each cell                |
+| `borders`      | `boolean`                      | `true`                  | Enable inner and outer borders                   |
+| `outerBorder`  | `boolean`                      | `borders`               | Override outer border visibility                 |
+| `borderStyle`  | `BorderStyle`                  | `"single"`              | Table border character set                       |
+| `borderColor`  | `ColorInput`                   | conceal fg or `#888888` | Border color for markdown tables                 |
+| `selectable`   | `boolean`                      | `true`                  | Enable table cell text selection                 |
 
 ## Custom node rendering
 
@@ -124,8 +127,9 @@ const markdown = new MarkdownRenderable(renderer, {
 | ------------------ | ------------------------------------------------------------------------------- | -------- | ----------------------------------------- |
 | `content`          | `string`                                                                        | `""`     | Markdown source                           |
 | `syntaxStyle`      | `SyntaxStyle`                                                                   | required | Style definitions for tokens              |
-| `conceal`          | `boolean`                                                                       | `true`   | Hide markdown markers                     |
-| `streaming`        | `boolean`                                                                       | `false`  | Optimize for incremental updates          |
+| `conceal`          | `boolean`                                                                       | `true`   | Hide markdown markers in markdown text    |
+| `concealCode`      | `boolean`                                                                       | `false`  | Hide markers inside fenced code blocks    |
+| `streaming`        | `boolean`                                                                       | `false`  | Incremental mode; set `false` to finalize |
 | `tableOptions`     | `MarkdownTableOptions`                                                          | -        | Options for markdown table rendering      |
 | `treeSitterClient` | `TreeSitterClient`                                                              | -        | Custom Tree-sitter client for code blocks |
 | `renderNode`       | `(token: Token, context: RenderNodeContext) => Renderable \| null \| undefined` | -        | Custom render hook per markdown block     |
