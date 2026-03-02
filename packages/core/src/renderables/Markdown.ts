@@ -73,13 +73,13 @@ export interface MarkdownOptions extends RenderableOptions<MarkdownRenderable> {
    *
    * Semantics:
    * - The trailing markdown block stays unstable while streaming is enabled.
-   * - For a trailing table block, the last row is treated as in-progress and hidden.
-   * - When a table is followed by a new markdown block, that table is finalized and
-   *   all parsed rows are rendered even if streaming remains enabled.
+   * - Tables render all rows produced by the markdown parser (including trailing rows).
+   * - Incomplete table rows are normalized by the parser and rendered with empty cells
+   *   where data is missing.
    *
    * Expectations:
    * - Keep this true while chunks are still being appended.
-   * - Set this to false once streaming is complete to finalize the trailing block.
+   * - Set this to false once streaming is complete to finalize trailing token parsing.
    */
   streaming?: boolean
   /**
@@ -484,10 +484,6 @@ export class MarkdownRenderable extends Renderable {
     return this.shouldRenderSeparately(token) ? 1 : 0
   }
 
-  private shouldStreamTable(hasNextToken: boolean): boolean {
-    return this._streaming && !hasNextToken
-  }
-
   private createMarkdownBlockToken(raw: string): MarkedToken {
     return {
       type: "paragraph",
@@ -552,8 +548,8 @@ export class MarkdownRenderable extends Renderable {
     return renderTokens
   }
 
-  private getTableRowsToRender(table: Tokens.Table, tableStreaming: boolean): Tokens.TableCell[][] {
-    return tableStreaming && table.rows.length > 0 ? table.rows.slice(0, -1) : table.rows
+  private getTableRowsToRender(table: Tokens.Table): Tokens.TableCell[][] {
+    return table.rows
   }
 
   private hashString(value: string, seed: number): number {
@@ -641,12 +637,11 @@ export class MarkdownRenderable extends Renderable {
 
   private buildTableContentCache(
     table: Tokens.Table,
-    tableStreaming: boolean,
     previous?: TableContentCache,
     forceRegenerate: boolean = false,
   ): { cache: TableContentCache | null; changed: boolean } {
     const colCount = table.header.length
-    const rowsToRender = this.getTableRowsToRender(table, tableStreaming)
+    const rowsToRender = this.getTableRowsToRender(table)
     if (colCount === 0 || rowsToRender.length === 0) {
       return { cache: null, changed: previous !== undefined }
     }
@@ -783,12 +778,11 @@ export class MarkdownRenderable extends Renderable {
   private createTableBlock(
     table: Tokens.Table,
     id: string,
-    tableStreaming: boolean,
     marginBottom: number = 0,
     previousCache?: TableContentCache,
     forceRegenerate: boolean = false,
   ): { renderable: Renderable; tableContentCache?: TableContentCache } {
-    const { cache } = this.buildTableContentCache(table, tableStreaming, previousCache, forceRegenerate)
+    const { cache } = this.buildTableContentCache(table, previousCache, forceRegenerate)
 
     if (!cache) {
       return {
@@ -811,7 +805,7 @@ export class MarkdownRenderable extends Renderable {
     }
 
     if (token.type === "table") {
-      return this.createTableBlock(token, id, this.shouldStreamTable(hasNextToken), marginBottom).renderable
+      return this.createTableBlock(token, id, marginBottom).renderable
     }
 
     if (token.type === "space") {
@@ -835,8 +829,7 @@ export class MarkdownRenderable extends Renderable {
 
     if (token.type === "table") {
       const tableToken = token as Tokens.Table
-      const tableStreaming = this.shouldStreamTable(hasNextToken)
-      const { cache, changed } = this.buildTableContentCache(tableToken, tableStreaming, state.tableContentCache)
+      const { cache, changed } = this.buildTableContentCache(tableToken, state.tableContentCache)
 
       if (!cache) {
         if (state.renderable instanceof CodeRenderable) {
@@ -917,22 +910,13 @@ export class MarkdownRenderable extends Renderable {
     const blockTokens = this.buildRenderableTokens(tokens)
     const lastBlockIndex = blockTokens.length - 1
 
-    const previousBlockCount = this._blockStates.length
     let blockIndex = 0
     for (let i = 0; i < blockTokens.length; i++) {
       const token = blockTokens[i]
       const hasNextToken = i < lastBlockIndex
       const existing = this._blockStates[blockIndex]
 
-      const previousHasNextToken = blockIndex < previousBlockCount - 1
-      const nextTableStreaming = token.type === "table" ? this.shouldStreamTable(hasNextToken) : false
-      const previousTableStreaming =
-        token.type === "table" && existing?.token.type === "table"
-          ? this.shouldStreamTable(previousHasNextToken)
-          : false
-      const tableStreamingChanged =
-        token.type === "table" && existing?.token.type === "table" && previousTableStreaming !== nextTableStreaming
-      const shouldForceRefresh = forceTableRefresh || tableStreamingChanged
+      const shouldForceRefresh = forceTableRefresh
 
       // Same token object reference means unchanged
       if (existing && existing.token === token) {
@@ -991,7 +975,6 @@ export class MarkdownRenderable extends Renderable {
           const tableBlock = this.createTableBlock(
             token,
             `${this.id}-block-${blockIndex}`,
-            this.shouldStreamTable(hasNextToken),
             this.getInterBlockMargin(token, hasNextToken),
           )
           renderable = tableBlock.renderable
@@ -1002,7 +985,7 @@ export class MarkdownRenderable extends Renderable {
       }
 
       if (token.type === "table" && !tableContentCache && renderable instanceof TextTableRenderable) {
-        const { cache } = this.buildTableContentCache(token as Tokens.Table, this.shouldStreamTable(hasNextToken))
+        const { cache } = this.buildTableContentCache(token as Tokens.Table)
         tableContentCache = cache ?? undefined
       }
 
@@ -1048,8 +1031,7 @@ export class MarkdownRenderable extends Renderable {
 
       if (state.token.type === "table") {
         const tableToken = state.token as Tokens.Table
-        const tableStreaming = this.shouldStreamTable(hasNextToken)
-        const { cache } = this.buildTableContentCache(tableToken, tableStreaming, state.tableContentCache, true)
+        const { cache } = this.buildTableContentCache(tableToken, state.tableContentCache, true)
 
         if (!cache) {
           if (state.renderable instanceof CodeRenderable) {
