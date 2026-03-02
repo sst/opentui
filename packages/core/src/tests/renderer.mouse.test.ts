@@ -1127,6 +1127,77 @@ describe("renderer handleMouseData", () => {
       renderer.destroy()
     }
   })
+
+  test("mouse out is not fired on a destroyed renderable", async () => {
+    try {
+      const target = new TestRenderable(renderer, {
+        id: "destroyed-hover",
+        position: "absolute",
+        left: 1,
+        top: 1,
+        width: 4,
+        height: 4,
+      })
+      renderer.root.add(target)
+      await renderOnce()
+
+      let overCount = 0
+      let outCount = 0
+      target.onMouseOver = () => {
+        overCount++
+      }
+      target.onMouseOut = () => {
+        outCount++
+      }
+
+      await mockMouse.moveTo(target.x + 1, target.y + 1)
+      expect(overCount).toBe(1)
+
+      target.destroy()
+      await renderOnce()
+
+      await mockMouse.moveTo(renderer.width - 1, renderer.height - 1)
+      expect(outCount).toBe(0)
+    } finally {
+      renderer.destroy()
+    }
+  })
+
+  test("mouse out is not fired on a destroyed renderable before render", async () => {
+    try {
+      const target = new TestRenderable(renderer, {
+        id: "destroyed-hover-before-render",
+        position: "absolute",
+        left: 1,
+        top: 1,
+        width: 4,
+        height: 4,
+      })
+      renderer.root.add(target)
+      await renderOnce()
+
+      let overCount = 0
+      let outCount = 0
+      target.onMouseOver = () => {
+        overCount++
+      }
+      target.onMouseOut = () => {
+        outCount++
+      }
+
+      await mockMouse.moveTo(target.x + 1, target.y + 1)
+      expect(overCount).toBe(1)
+
+      // Destroy without rendering — the hit grid still has the old state,
+      // so the next mouse move hits handleMouseData's "out" path directly
+      target.destroy()
+
+      await mockMouse.moveTo(renderer.width - 1, renderer.height - 1)
+      expect(outCount).toBe(0)
+    } finally {
+      renderer.destroy()
+    }
+  })
 })
 
 describe("renderer handleMouseData split height", () => {

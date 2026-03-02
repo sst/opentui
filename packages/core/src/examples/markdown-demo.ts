@@ -1,15 +1,17 @@
 import {
   CliRenderer,
+  CliRenderEvents,
   createCliRenderer,
   BoxRenderable,
   TextRenderable,
   type ParsedKey,
   ScrollBoxRenderable,
 } from "../index"
-import { MarkdownRenderable } from "../renderables/Markdown"
-import { setupCommonDemoKeys } from "./lib/standalone-keys"
 import { parseColor } from "../lib/RGBA"
+import { getTreeSitterClient } from "../lib/tree-sitter"
+import { MarkdownRenderable } from "../renderables/Markdown"
 import { SyntaxStyle } from "../syntax-style"
+import { setupCommonDemoKeys } from "./lib/standalone-keys"
 
 // Rich markdown example showcasing various features
 const markdownContent = `# OpenTUI Markdown Demo
@@ -44,6 +46,20 @@ const md = new MarkdownRenderable(renderer, {
   syntaxStyle: mySyntaxStyle,
   conceal: true, // Hide formatting markers
 })
+\`\`\`
+
+And a JSON configuration example:
+
+\`\`\`json
+{
+  "name": "opentui-markdown-demo",
+  "theme": "github",
+  "features": ["table-alignment", "syntax-highlighting", "conceal-mode"],
+  "streaming": {
+    "enabled": true,
+    "speed": "slowest"
+  }
+}
 \`\`\`
 
 ### API Reference
@@ -228,6 +244,7 @@ let streamingMode = false
 let streamingTimer: Timer | null = null
 let streamPosition = 0
 let endlessMode = false
+let rendererDestroyHandler: (() => void) | null = null
 
 // Streaming speed presets: [minDelay, maxDelay] in milliseconds
 const streamSpeeds = [
@@ -240,6 +257,27 @@ const streamSpeeds = [
   { name: "Fastest", min: 10, max: 50 }, // 6
 ]
 let currentSpeedIndex = 0
+
+const JSON_PARSER_WASM_URL =
+  "https://github.com/tree-sitter/tree-sitter-json/releases/download/v0.24.8/tree-sitter-json.wasm"
+const JSON_HIGHLIGHTS_QUERY_URL =
+  "https://raw.githubusercontent.com/nvim-treesitter/nvim-treesitter/refs/heads/master/queries/json/highlights.scm"
+
+let jsonParserRegistered = false
+
+function registerJsonParserForDemo(): void {
+  if (jsonParserRegistered) return
+
+  getTreeSitterClient().addFiletypeParser({
+    filetype: "json",
+    wasm: JSON_PARSER_WASM_URL,
+    queries: {
+      highlights: [JSON_HIGHLIGHTS_QUERY_URL],
+    },
+  })
+
+  jsonParserRegistered = true
+}
 
 function getCurrentTheme() {
   return themes[themeKeys[currentThemeIndex]]
@@ -283,7 +321,7 @@ function startStreaming() {
   }
 
   function streamNextChunk() {
-    if (!streamingMode || !markdownDisplay) return
+    if (!streamingMode || !markdownDisplay || markdownDisplay.isDestroyed) return
 
     // Random chunk size between 1 and 50 characters
     const chunkSize = Math.floor(Math.random() * 50) + 1
@@ -327,7 +365,19 @@ function startStreaming() {
 
 export async function run(rendererInstance: CliRenderer): Promise<void> {
   renderer = rendererInstance
+
+  rendererDestroyHandler = () => {
+    stopStreaming()
+    markdownDisplay = null
+    markdownScrollBox = null
+    statusText = null
+    parentContainer = null
+    helpModal = null
+  }
+  rendererInstance.on(CliRenderEvents.DESTROY, rendererDestroyHandler)
+
   renderer.start()
+  registerJsonParserForDemo()
 
   const theme = getCurrentTheme()
   renderer.setBackgroundColor(theme.bg)
@@ -537,6 +587,11 @@ Other:
 
 export function destroy(rendererInstance: CliRenderer): void {
   stopStreaming()
+
+  if (rendererDestroyHandler) {
+    rendererInstance.off(CliRenderEvents.DESTROY, rendererDestroyHandler)
+    rendererDestroyHandler = null
+  }
 
   if (keyboardHandler) {
     rendererInstance.keyInput.off("keypress", keyboardHandler)

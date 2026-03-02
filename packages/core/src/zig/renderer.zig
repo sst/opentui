@@ -667,7 +667,7 @@ pub const CliRenderer = struct {
                     if (currentLinkId != 0) {
                         const lp = link.initGlobalLinkPool(self.allocator);
                         if (lp.get(currentLinkId)) |url_bytes| {
-                            writer.print("\x1b]8;;{s}\x1b\\", .{url_bytes}) catch {};
+                            writer.print("\x1b]8;id={d};{s}\x1b\\", .{ currentLinkId, url_bytes }) catch {};
                         } else |_| {
                             // Link not found, treat as no link
                             currentLinkId = 0;
@@ -815,7 +815,7 @@ pub const CliRenderer = struct {
             ansi.ANSI.setMousePointerOutput(writer, mousePointer.toName()) catch {};
             self.lastMousePointerStyle = mousePointer;
         }
-        
+
         writer.writeAll(ansi.ANSI.syncReset) catch {};
 
         const renderEndTime = std.time.microTimestamp();

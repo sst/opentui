@@ -1,4 +1,5 @@
 import { test, expect } from "bun:test"
+import { Lexer } from "marked"
 import { parseMarkdownIncremental, type ParseState } from "../markdown-parser"
 
 test("first parse returns all tokens", () => {
@@ -125,4 +126,92 @@ test("token identity is preserved for stable tokens", () => {
   expect(state2.tokens[0]).toBe(state1.tokens[0])
   expect(state2.tokens[1]).toBe(state1.tokens[1])
   expect(state2.tokens[2]).toBe(state1.tokens[2])
+})
+
+test("trailingUnstable re-parses trailing table when new rows are appended", () => {
+  const content1 = "| A |\n|---|\n| 1 |"
+  const state1 = parseMarkdownIncremental(content1, null, 2)
+  const table1 = state1.tokens.find((token) => token.type === "table") as any
+
+  expect(table1).toBeDefined()
+  expect(table1.rows.length).toBe(1)
+
+  const content2 = "| A |\n|---|\n| 1 |\n| 2 |"
+  const state2 = parseMarkdownIncremental(content2, state1, 2)
+  const table2 = state2.tokens.find((token) => token.type === "table") as any
+
+  expect(table2).toBeDefined()
+  expect(table2.rows.length).toBe(2)
+  expect(table2).not.toBe(table1)
+})
+
+test("trailingUnstable updates trailing table rows in multi-table markdown", () => {
+  const table1Markdown = "| T1 |\n|---|\n| a |\n| b |"
+  const table2Markdown = "| T2 |\n|---|\n| 1 |\n| 2 |"
+
+  const content1 = `${table1Markdown}\n\n${table2Markdown}`
+  const state1 = parseMarkdownIncremental(content1, null, 2)
+  const tables1 = state1.tokens.filter((token) => token.type === "table") as any[]
+
+  expect(tables1.length).toBe(2)
+  expect(tables1[0].rows.length).toBe(2)
+  expect(tables1[1].rows.length).toBe(2)
+
+  const content2 = `${table1Markdown}\n\n${table2Markdown}\n| 3 |`
+  const state2 = parseMarkdownIncremental(content2, state1, 2)
+  const tables2 = state2.tokens.filter((token) => token.type === "table") as any[]
+
+  expect(tables2.length).toBe(2)
+  expect(tables2[0].rows.length).toBe(2)
+  expect(tables2[1]).not.toBe(tables1[1])
+  expect(tables2[1].rows.length).toBe(3)
+})
+
+test("falls back to full re-parse when incremental tail parse fails", () => {
+  const content1 = "| A |\n|---|\n| 1 |"
+  const content2 = "| A |\n|---|\n| 1 |\n| 2 |"
+  const state1 = parseMarkdownIncremental(content1, null, 2)
+
+  const lexerRef = Lexer as unknown as { lex: typeof Lexer.lex }
+  const originalLex = lexerRef.lex
+  let lexCalls = 0
+
+  lexerRef.lex = ((src, options) => {
+    lexCalls += 1
+    if (lexCalls === 1) {
+      throw new Error("incremental tail parse failed")
+    }
+    return originalLex(src, options)
+  }) as typeof Lexer.lex
+
+  try {
+    const state2 = parseMarkdownIncremental(content2, state1, 2)
+    const table = state2.tokens.find((token) => token.type === "table") as any
+
+    expect(lexCalls).toBeGreaterThanOrEqual(2)
+    expect(table).toBeDefined()
+    expect(table.rows.length).toBe(2)
+  } finally {
+    lexerRef.lex = originalLex
+  }
+})
+
+test("returns empty token list when both incremental and full parse fail", () => {
+  const content1 = "| A |\n|---|\n| 1 |"
+  const content2 = "| A |\n|---|\n| 1 |\n| 2 |"
+  const state1 = parseMarkdownIncremental(content1, null, 2)
+
+  const lexerRef = Lexer as unknown as { lex: typeof Lexer.lex }
+  const originalLex = lexerRef.lex
+
+  lexerRef.lex = (() => {
+    throw new Error("parse failed")
+  }) as typeof Lexer.lex
+
+  try {
+    const state2 = parseMarkdownIncremental(content2, state1, 2)
+    expect(state2.tokens).toEqual([])
+  } finally {
+    lexerRef.lex = originalLex
+  }
 })
