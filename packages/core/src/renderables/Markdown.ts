@@ -111,6 +111,8 @@ interface ResolvedTableRenderableOptions {
   selectable: boolean
 }
 
+const TRAILING_MARKDOWN_BLOCK_BREAKS_RE = /(?:\r?\n){2,}$/
+
 export interface BlockState {
   token: MarkedToken
   tokenRaw: string // Cache raw for comparison
@@ -483,7 +485,7 @@ export class MarkdownRenderable extends Renderable {
   }
 
   private normalizeMarkdownBlockRaw(raw: string): string {
-    return raw.replace(/(?:\r?\n){2,}$/g, "\n")
+    return raw.replace(TRAILING_MARKDOWN_BLOCK_BREAKS_RE, "\n")
   }
 
   private buildRenderableTokens(tokens: MarkedToken[]): MarkedToken[] {
