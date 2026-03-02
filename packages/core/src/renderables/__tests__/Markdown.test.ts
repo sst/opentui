@@ -1032,7 +1032,6 @@ Visit [GitHub](https://github.com) for more.
 
     Code Example
 
-
     const md = new MarkdownRenderable(ctx, {
       content: "# Hello",
     })

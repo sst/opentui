@@ -482,6 +482,10 @@ export class MarkdownRenderable extends Renderable {
     } as MarkedToken
   }
 
+  private normalizeMarkdownBlockRaw(raw: string): string {
+    return raw.replace(/(?:\r?\n){2,}$/g, "\n")
+  }
+
   private buildRenderableTokens(tokens: MarkedToken[]): MarkedToken[] {
     if (this._renderNode) {
       return tokens.filter((token) => token.type !== "space")
@@ -492,7 +496,10 @@ export class MarkdownRenderable extends Renderable {
 
     const flushMarkdownRaw = (): void => {
       if (markdownRaw.length === 0) return
-      renderTokens.push(this.createMarkdownBlockToken(markdownRaw))
+      const normalizedRaw = this.normalizeMarkdownBlockRaw(markdownRaw)
+      if (normalizedRaw.length > 0) {
+        renderTokens.push(this.createMarkdownBlockToken(normalizedRaw))
+      }
       markdownRaw = ""
     }
 
