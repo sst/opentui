@@ -1,10 +1,14 @@
-import { test, expect, beforeEach, afterEach } from "bun:test"
-import { MarkdownRenderable } from "../Markdown"
+import { test, expect, beforeAll, beforeEach, afterEach, afterAll } from "bun:test"
+import { MarkdownRenderable, type MarkdownOptions } from "../Markdown"
 import { CodeRenderable } from "../Code"
 import { TextRenderable } from "../Text"
 import { TextTableRenderable } from "../TextTable"
 import { SyntaxStyle } from "../../syntax-style"
 import { RGBA } from "../../lib/RGBA"
+import { TreeSitterClient } from "../../lib/tree-sitter"
+import { tmpdir } from "node:os"
+import { join } from "node:path"
+import { mkdir } from "node:fs/promises"
 import {
   createTestRenderer,
   type MockMouse,
@@ -19,9 +23,18 @@ let mockMouse: MockMouse
 let renderOnce: () => Promise<void>
 let captureFrame: () => string
 let captureSpans: () => CapturedFrame
+let markdownTreeSitterClient: TreeSitterClient
 
 const syntaxStyle = SyntaxStyle.fromStyles({
   default: { fg: RGBA.fromValues(1, 1, 1, 1) },
+})
+
+beforeAll(async () => {
+  const dataPath = join(tmpdir(), "tree-sitter-markdown-renderable-test-data")
+  await mkdir(dataPath, { recursive: true })
+
+  markdownTreeSitterClient = new TreeSitterClient({ dataPath })
+  await markdownTreeSitterClient.initialize()
 })
 
 beforeEach(async () => {
@@ -38,6 +51,17 @@ afterEach(async () => {
     renderer.destroy()
   }
 })
+
+afterAll(async () => {
+  await markdownTreeSitterClient.destroy()
+})
+
+function createMarkdownRenderable(options: MarkdownOptions): MarkdownRenderable {
+  return new MarkdownRenderable(renderer, {
+    treeSitterClient: markdownTreeSitterClient,
+    ...options,
+  })
+}
 
 async function renderMarkdownRenderable(md: MarkdownRenderable, timeoutMs: number = 2000): Promise<void> {
   const hasPendingMarkdownParagraphHighlights = (): boolean =>
@@ -62,7 +86,7 @@ async function renderMarkdownRenderable(md: MarkdownRenderable, timeoutMs: numbe
 }
 
 async function renderMarkdown(markdown: string, conceal: boolean = true): Promise<string> {
-  const md = new MarkdownRenderable(renderer, {
+  const md = createMarkdownRenderable({
     id: "markdown",
     content: markdown,
     syntaxStyle,
@@ -98,7 +122,7 @@ test("basic table alignment", async () => {
 })
 
 test("tableOptions.widthMode configures markdown table layout", async () => {
-  const md = new MarkdownRenderable(renderer, {
+  const md = createMarkdownRenderable({
     id: "markdown-table-width-mode",
     content: "| Name | Age |\n|---|---|\n| Alice | 30 |",
     syntaxStyle,
@@ -118,7 +142,7 @@ test("tableOptions.widthMode configures markdown table layout", async () => {
 })
 
 test("tableOptions updates existing markdown table renderable", async () => {
-  const md = new MarkdownRenderable(renderer, {
+  const md = createMarkdownRenderable({
     id: "markdown-table-updates",
     content: "| Name | Age |\n|---|---|\n| Alice | 30 |",
     syntaxStyle,
@@ -612,7 +636,7 @@ test("selection across markdown table includes table data", async () => {
 
 Outro line below table.`
 
-  const md = new MarkdownRenderable(renderer, {
+  const md = createMarkdownRenderable({
     id: "markdown",
     content: markdown,
     syntaxStyle,
@@ -734,7 +758,7 @@ test("code block concealment is disabled by default", async () => {
     highlights: [[0, 1, "conceal", { conceal: "" }]],
   })
 
-  const md = new MarkdownRenderable(renderer, {
+  const md = createMarkdownRenderable({
     id: "markdown-code-default-conceal",
     content: "```markdown\n# Hidden heading\n```",
     syntaxStyle,
@@ -760,7 +784,7 @@ test("code block concealment can be enabled with concealCode", async () => {
     highlights: [[0, 1, "conceal", { conceal: "" }]],
   })
 
-  const md = new MarkdownRenderable(renderer, {
+  const md = createMarkdownRenderable({
     id: "markdown-code-conceal-enabled",
     content: "```markdown\n# Hidden heading\n```",
     syntaxStyle,
@@ -788,7 +812,7 @@ test("toggling concealCode updates existing code block renderables", async () =>
     highlights: [[0, 1, "conceal", { conceal: "" }]],
   })
 
-  const md = new MarkdownRenderable(renderer, {
+  const md = createMarkdownRenderable({
     id: "markdown-code-conceal-toggle",
     content: "```markdown\n# Hidden heading\n```",
     syntaxStyle,
@@ -1065,7 +1089,7 @@ test("custom renderNode can override heading rendering", async () => {
     return ""
   }
 
-  const md = new MarkdownRenderable(renderer, {
+  const md = createMarkdownRenderable({
     id: "custom-heading",
     content: `# Custom Heading
 
@@ -1101,7 +1125,7 @@ test("custom renderNode can override code block rendering", async () => {
   const { BoxRenderable } = await import("../Box")
   const { TextRenderable } = await import("../Text")
 
-  const md = new MarkdownRenderable(renderer, {
+  const md = createMarkdownRenderable({
     id: "custom-code",
     content: `\`\`\`js
 const x = 1;
@@ -1141,7 +1165,7 @@ const x = 1;
 })
 
 test("custom renderNode returning null uses default", async () => {
-  const md = new MarkdownRenderable(renderer, {
+  const md = createMarkdownRenderable({
     id: "custom-null",
     content: `# Heading
 
@@ -1345,7 +1369,7 @@ test("table at end with trailing blank lines", async () => {
 
 // Incremental parsing tests
 test("incremental update reuses unchanged blocks when appending", async () => {
-  const md = new MarkdownRenderable(renderer, {
+  const md = createMarkdownRenderable({
     id: "markdown",
     content: "# Hello\n\nParagraph 1",
     syntaxStyle,
@@ -1368,7 +1392,7 @@ test("incremental update reuses unchanged blocks when appending", async () => {
 })
 
 test("streaming mode keeps trailing tokens unstable", async () => {
-  const md = new MarkdownRenderable(renderer, {
+  const md = createMarkdownRenderable({
     id: "markdown",
     content: "# Hello",
     syntaxStyle,
@@ -1406,7 +1430,7 @@ test("streaming code blocks with concealCode=true do not flash unconcealed markd
   const recorder = new TestRecorder(renderer)
   recorder.rec()
 
-  const md = new MarkdownRenderable(renderer, {
+  const md = createMarkdownRenderable({
     id: "markdown-streaming-conceal-flicker",
     content: "# Stream\n\n```markdown\n# Hidden heading\n```",
     syntaxStyle,
@@ -1433,7 +1457,7 @@ test("streaming code blocks with concealCode=true do not flash unconcealed markd
 })
 
 test("non-streaming mode parses all tokens as stable", async () => {
-  const md = new MarkdownRenderable(renderer, {
+  const md = createMarkdownRenderable({
     id: "markdown",
     content: "# Hello\n\nPara 1\n\nPara 2",
     syntaxStyle,
@@ -1450,7 +1474,7 @@ test("non-streaming mode parses all tokens as stable", async () => {
 })
 
 test("content update with same text does not rebuild", async () => {
-  const md = new MarkdownRenderable(renderer, {
+  const md = createMarkdownRenderable({
     id: "markdown",
     content: "# Hello",
     syntaxStyle,
@@ -1470,7 +1494,7 @@ test("content update with same text does not rebuild", async () => {
 })
 
 test("block type change creates new renderable", async () => {
-  const md = new MarkdownRenderable(renderer, {
+  const md = createMarkdownRenderable({
     id: "markdown",
     content: "# Hello",
     syntaxStyle,
@@ -1491,7 +1515,7 @@ test("block type change creates new renderable", async () => {
 })
 
 test("streaming property can be toggled", async () => {
-  const md = new MarkdownRenderable(renderer, {
+  const md = createMarkdownRenderable({
     id: "markdown",
     content: "# Hello",
     syntaxStyle,
@@ -1521,7 +1545,7 @@ test("streaming property can be toggled", async () => {
 })
 
 test("clearCache forces full rebuild", async () => {
-  const md = new MarkdownRenderable(renderer, {
+  const md = createMarkdownRenderable({
     id: "markdown",
     content: "# Hello\n\nWorld",
     syntaxStyle,
@@ -1541,7 +1565,7 @@ test("clearCache forces full rebuild", async () => {
 })
 
 test("streaming->non-streaming transition updates table to show final row", async () => {
-  const md = new MarkdownRenderable(renderer, {
+  const md = createMarkdownRenderable({
     id: "markdown",
     content: "| Value |\n|---|\n| first |\n| second |",
     syntaxStyle,
@@ -1575,7 +1599,7 @@ test("streaming->non-streaming transition updates table to show final row", asyn
 })
 
 test("stream end mid-table finalizes full table snapshot", async () => {
-  const md = new MarkdownRenderable(renderer, {
+  const md = createMarkdownRenderable({
     id: "markdown",
     content: "",
     syntaxStyle,
@@ -1626,7 +1650,7 @@ test("stream end mid-table finalizes full table snapshot", async () => {
 })
 
 test("ignores content updates after markdown renderable is destroyed during streaming", async () => {
-  const md = new MarkdownRenderable(renderer, {
+  const md = createMarkdownRenderable({
     id: "markdown",
     content: "",
     syntaxStyle,
@@ -1650,7 +1674,7 @@ test("ignores content updates after markdown renderable is destroyed during stre
 })
 
 test("non-streaming->streaming transition updates table to hide trailing row", async () => {
-  const md = new MarkdownRenderable(renderer, {
+  const md = createMarkdownRenderable({
     id: "markdown",
     content: "| Value |\n|---|\n| first |\n| second |",
     syntaxStyle,
@@ -1684,7 +1708,7 @@ test("non-streaming->streaming transition updates table to hide trailing row", a
 })
 
 test("table only rebuilds when complete row count changes during streaming", async () => {
-  const md = new MarkdownRenderable(renderer, {
+  const md = createMarkdownRenderable({
     id: "markdown",
     content: "| A |\n|---|\n| 1 |",
     syntaxStyle,
@@ -1713,7 +1737,7 @@ test("table only rebuilds when complete row count changes during streaming", asy
 })
 
 test("table shows all rows when streaming is false", async () => {
-  const md = new MarkdownRenderable(renderer, {
+  const md = createMarkdownRenderable({
     id: "markdown",
     content: "| A |\n|---|\n| 1 |",
     syntaxStyle,
@@ -1732,7 +1756,7 @@ test("table shows all rows when streaming is false", async () => {
 })
 
 test("table updates content when not streaming", async () => {
-  const md = new MarkdownRenderable(renderer, {
+  const md = createMarkdownRenderable({
     id: "markdown",
     content: "| A |\n|---|\n| 1 |",
     syntaxStyle,
@@ -1755,7 +1779,7 @@ test("table updates content when not streaming", async () => {
 })
 
 test("table keeps unchanged cell chunks stable across updates", async () => {
-  const md = new MarkdownRenderable(renderer, {
+  const md = createMarkdownRenderable({
     id: "markdown",
     content: "| A | B |\n|---|---|\n| 1 | 2 |\n| 3 | 4 |",
     syntaxStyle,
@@ -1785,7 +1809,7 @@ test("table keeps unchanged cell chunks stable across updates", async () => {
 })
 
 test("streaming table ignores unstable trailing row updates", async () => {
-  const md = new MarkdownRenderable(renderer, {
+  const md = createMarkdownRenderable({
     id: "markdown",
     content: "| A |\n|---|\n| 1 |\n| 2 |",
     syntaxStyle,
@@ -1807,7 +1831,7 @@ test("streaming table ignores unstable trailing row updates", async () => {
 })
 
 test("streaming table with incomplete first row falls back to raw text and updates", async () => {
-  const md = new MarkdownRenderable(renderer, {
+  const md = createMarkdownRenderable({
     id: "markdown",
     content: "| A |\n|---|\n|",
     syntaxStyle,
@@ -1904,7 +1928,7 @@ test("streaming table with incomplete first row falls back to raw text and updat
 })
 
 test("streaming table transitions cleanly from raw fallback to proper table", async () => {
-  const md = new MarkdownRenderable(renderer, {
+  const md = createMarkdownRenderable({
     id: "markdown",
     content: "| Header |",
     syntaxStyle,
@@ -1976,7 +2000,7 @@ test("streaming table transitions cleanly from raw fallback to proper table", as
 })
 
 test("streaming table can transition back to raw fallback when rows are removed", async () => {
-  const md = new MarkdownRenderable(renderer, {
+  const md = createMarkdownRenderable({
     id: "markdown",
     content: "| A |\n|---|\n| 1 |\n| 2 |",
     syntaxStyle,
@@ -2010,7 +2034,7 @@ test("streaming table can transition back to raw fallback when rows are removed"
 })
 
 test("conceal change updates rendered content", async () => {
-  const md = new MarkdownRenderable(renderer, {
+  const md = createMarkdownRenderable({
     id: "markdown",
     content: "# Hello **bold**",
     syntaxStyle,
@@ -2072,7 +2096,7 @@ Here's how to use it:
 \`\`\`typescript
 import { MarkdownRenderable } from "@opentui/core"
 
-const md = new MarkdownRenderable(renderer, {
+const md = createMarkdownRenderable({
   content: "# Hello World",
   syntaxStyle: mySyntaxStyle,
   conceal: true, // Hide formatting markers
@@ -2131,7 +2155,7 @@ The table alignment uses:
 *Press \`?\` for keybindings*
 `
 
-  const md = new MarkdownRenderable(renderer, {
+  const md = createMarkdownRenderable({
     id: "markdown",
     content,
     syntaxStyle: theme1,
@@ -2174,7 +2198,7 @@ The table alignment uses:
 // Paragraph rendering tests
 
 test("paragraph links are rendered with markdown conceal behavior", async () => {
-  const md = new MarkdownRenderable(renderer, {
+  const md = createMarkdownRenderable({
     id: "markdown",
     content: "Check [Google](https://google.com) out",
     syntaxStyle,
@@ -2199,7 +2223,7 @@ test("paragraph initial render does not flash raw markdown markers", async () =>
   const recorder = new TestRecorder(renderer)
   recorder.rec()
 
-  const md = new MarkdownRenderable(renderer, {
+  const md = createMarkdownRenderable({
     id: "markdown",
     content: "This has **bold** text.",
     syntaxStyle,
@@ -2223,7 +2247,7 @@ test("paragraph initial render does not flash raw markdown markers", async () =>
 })
 
 test("paragraph updates do not flash raw markdown markers", async () => {
-  const md = new MarkdownRenderable(renderer, {
+  const md = createMarkdownRenderable({
     id: "markdown",
     content: "**First** value",
     syntaxStyle,
