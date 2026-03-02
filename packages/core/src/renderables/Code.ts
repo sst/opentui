@@ -109,7 +109,7 @@ export class CodeRenderable extends TextBufferRenderable {
     return this._filetype
   }
 
-  set filetype(value: string) {
+  set filetype(value: string | undefined) {
     if (this._filetype !== value) {
       this._filetype = value
       this._highlightsDirty = true
