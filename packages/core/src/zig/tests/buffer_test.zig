@@ -1096,6 +1096,50 @@ test "OptimizedBuffer - set should not clear newly written adjacent grapheme con
     try std.testing.expect(c4.char == ' ');
 }
 
+test "OptimizedBuffer - set span cleanup keeps shared link refcounts consistent" {
+    var local_pool = gp.GraphemePool.initWithOptions(std.testing.allocator, .{});
+    defer local_pool.deinit();
+
+    var local_link_pool = link.LinkPool.init(std.testing.allocator);
+    defer local_link_pool.deinit();
+
+    var buf = try OptimizedBuffer.init(
+        std.testing.allocator,
+        10,
+        1,
+        .{ .pool = &local_pool, .id = "set-span-link-refcount", .link_pool = &local_link_pool },
+    );
+    defer buf.deinit();
+
+    const bg = RGBA{ 0.0, 0.0, 0.0, 1.0 };
+    const fg = RGBA{ 1.0, 1.0, 1.0, 1.0 };
+    try buf.clear(bg, null);
+
+    const link_id = try local_link_pool.alloc("https://example.com");
+    const linked_attr = ansi.TextAttributes.setLinkId(0, link_id);
+
+    const gid = try local_pool.alloc("你");
+    const start = gp.packGraphemeStart(gid & gp.GRAPHEME_ID_MASK, 2);
+
+    // Create three linked cells total:
+    // - a 2-cell grapheme span at x=2..3
+    // - one additional linked cell at x=6
+    buf.set(2, 0, .{ .char = start, .fg = fg, .bg = bg, .attributes = linked_attr });
+    buf.set(6, 0, .{ .char = 'X', .fg = fg, .bg = bg, .attributes = linked_attr });
+
+    try std.testing.expectEqual(@as(u32, 3), buf.link_tracker.used_ids.get(link_id).?);
+    try std.testing.expectEqual(@as(u32, 1), try local_link_pool.getRefcount(link_id));
+
+    // Overwrite the continuation cell at x=3 with a non-grapheme char.
+    // set() will run span cleanup and clear x=2..3. The independent linked
+    // cell at x=6 must remain tracked.
+    buf.set(3, 0, .{ .char = ' ', .fg = fg, .bg = bg, .attributes = 0 });
+
+    try std.testing.expectEqual(@as(u32, 1), buf.link_tracker.getLinkCount());
+    try std.testing.expectEqual(@as(u32, 1), buf.link_tracker.used_ids.get(link_id).?);
+    try std.testing.expectEqual(@as(u32, 1), try local_link_pool.getRefcount(link_id));
+}
+
 test "OptimizedBuffer - sustained rendering should not leak" {
     const tiny_slots = [_]u32{ 2, 2, 2, 2, 2 };
     var local_pool = gp.GraphemePool.initWithOptions(std.testing.allocator, .{

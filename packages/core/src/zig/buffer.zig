@@ -410,26 +410,11 @@ pub const OptimizedBuffer = struct {
         @memset(self.buffer.bg, bg);
     }
 
+    /// Write a single cell and update link tracker. No grapheme tracking,
+    /// span cleanup, or continuation propagation.
     pub fn setRaw(self: *OptimizedBuffer, x: u32, y: u32, cell: Cell) void {
-        if (x >= self.width or y >= self.height) return;
-        if (!self.isPointInScissor(@intCast(x), @intCast(y))) return;
-        const index = self.coordsToIndex(x, y);
-
-        const prev_attr = self.buffer.attributes[index];
-        const prev_link_id = ansi.TextAttributes.getLinkId(prev_attr);
-        const new_link_id = ansi.TextAttributes.getLinkId(cell.attributes);
-
-        self.buffer.char[index] = cell.char;
-        self.buffer.fg[index] = cell.fg;
-        self.buffer.bg[index] = cell.bg;
-        self.buffer.attributes[index] = cell.attributes;
-
-        if (prev_link_id != 0 and prev_link_id != new_link_id) {
-            self.link_tracker.removeCellRef(prev_link_id);
-        }
-        if (new_link_id != 0 and new_link_id != prev_link_id) {
-            self.link_tracker.addCellRef(new_link_id);
-        }
+        const index = self.validateAndIndex(x, y) orelse return;
+        self.writeCellAndLinks(index, cell);
     }
 
     /// Write a single cell without span cleanup or continuation propagation.
@@ -438,18 +423,9 @@ pub const OptimizedBuffer = struct {
     /// diff loop where cells are synced individually from an authoritative
     /// source buffer that already contains correct grapheme spans.
     pub fn syncCell(self: *OptimizedBuffer, x: u32, y: u32, cell: Cell) void {
-        if (x >= self.width or y >= self.height) return;
-        if (!self.isPointInScissor(@intCast(x), @intCast(y))) return;
-        const index = self.coordsToIndex(x, y);
+        const index = self.validateAndIndex(x, y) orelse return;
 
         const prev_char = self.buffer.char[index];
-        const prev_attr = self.buffer.attributes[index];
-        const prev_link_id = ansi.TextAttributes.getLinkId(prev_attr);
-        const new_link_id = ansi.TextAttributes.getLinkId(cell.attributes);
-
-        // Update grapheme tracker: only track grapheme START cells (not
-        // continuations), matching set()'s semantics so counts stay consistent
-        // for getGraphemeCellCount / getRealCharSize.
         const prev_is_start = gp.isGraphemeChar(prev_char);
         const new_is_start = gp.isGraphemeChar(cell.char);
 
@@ -466,27 +442,13 @@ pub const OptimizedBuffer = struct {
             self.grapheme_tracker.add(gp.graphemeIdFromChar(cell.char));
         }
 
-        self.buffer.char[index] = cell.char;
-        self.buffer.fg[index] = cell.fg;
-        self.buffer.bg[index] = cell.bg;
-        self.buffer.attributes[index] = cell.attributes;
-
-        if (prev_link_id != 0 and prev_link_id != new_link_id) {
-            self.link_tracker.removeCellRef(prev_link_id);
-        }
-        if (new_link_id != 0 and new_link_id != prev_link_id) {
-            self.link_tracker.addCellRef(new_link_id);
-        }
+        self.writeCellAndLinks(index, cell);
     }
 
     pub fn set(self: *OptimizedBuffer, x: u32, y: u32, cell: Cell) void {
-        if (x >= self.width or y >= self.height) return;
-        if (!self.isPointInScissor(@intCast(x), @intCast(y))) return;
-
-        const index = self.coordsToIndex(x, y);
+        const index = self.validateAndIndex(x, y) orelse return;
         const prev_char = self.buffer.char[index];
-        const prev_attr = self.buffer.attributes[index];
-        const prev_link_id = ansi.TextAttributes.getLinkId(prev_attr);
+        const prev_link_id = ansi.TextAttributes.getLinkId(self.buffer.attributes[index]);
         var tracker_replaced = false;
 
         // If overwriting a grapheme span (start or continuation) with a different char, clear that span first
@@ -598,18 +560,32 @@ pub const OptimizedBuffer = struct {
                 }
             }
         } else {
-            self.buffer.char[index] = cell.char;
-            self.buffer.fg[index] = cell.fg;
-            self.buffer.bg[index] = cell.bg;
-            self.buffer.attributes[index] = cell.attributes;
+            self.writeCellAndLinks(index, cell);
+        }
+    }
 
-            const new_link_id = ansi.TextAttributes.getLinkId(cell.attributes);
-            if (prev_link_id != 0 and prev_link_id != new_link_id) {
-                self.link_tracker.removeCellRef(prev_link_id);
-            }
-            if (new_link_id != 0 and new_link_id != prev_link_id) {
-                self.link_tracker.addCellRef(new_link_id);
-            }
+    /// Validate coordinates and return buffer index, or null if out of bounds / scissor.
+    fn validateAndIndex(self: *OptimizedBuffer, x: u32, y: u32) ?u32 {
+        if (x >= self.width or y >= self.height) return null;
+        if (!self.isPointInScissor(@intCast(x), @intCast(y))) return null;
+        return self.coordsToIndex(x, y);
+    }
+
+    /// Write cell data at index and update link tracker.
+    fn writeCellAndLinks(self: *OptimizedBuffer, index: u32, cell: Cell) void {
+        const prev_link_id = ansi.TextAttributes.getLinkId(self.buffer.attributes[index]);
+        const new_link_id = ansi.TextAttributes.getLinkId(cell.attributes);
+
+        self.buffer.char[index] = cell.char;
+        self.buffer.fg[index] = cell.fg;
+        self.buffer.bg[index] = cell.bg;
+        self.buffer.attributes[index] = cell.attributes;
+
+        if (prev_link_id != 0 and prev_link_id != new_link_id) {
+            self.link_tracker.removeCellRef(prev_link_id);
+        }
+        if (new_link_id != 0 and new_link_id != prev_link_id) {
+            self.link_tracker.addCellRef(new_link_id);
         }
     }
 
