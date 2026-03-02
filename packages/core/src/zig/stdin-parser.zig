@@ -371,160 +371,162 @@ fn utf8SequenceLength(first: u8) usize {
     return 0;
 }
 
+const EscapeParseState = enum {
+    start,
+    esc,
+    csi,
+    osc,
+    osc_escape,
+    st,
+    st_escape,
+};
+
+fn escapeToken(kind: StdinTokenKind, consumed: usize) ParseResult {
+    return .{ .token = .{
+        .kind = kind,
+        .consumed = consumed,
+        .payload_start = 0,
+        .payload_len = consumed,
+    } };
+}
+
 fn parseEscapeToken(bytes: []const u8) ParseResult {
-    if (bytes.len == 0) return .none;
-    if (bytes[0] != ESC) return parseTextToken(bytes);
+    var i: usize = 0;
+    var st_kind: StdinTokenKind = .unknown;
 
-    if (bytes.len == 1) {
-        return .incomplete;
-    }
+    state: switch (EscapeParseState.start) {
+        .start => {
+            if (bytes.len == 0) {
+                return .none;
+            }
+            if (bytes[0] != ESC) {
+                return parseTextToken(bytes);
+            }
+            if (bytes.len == 1) {
+                return .incomplete;
+            }
 
-    const second = bytes[1];
+            i = 1;
+            continue :state .esc;
+        },
 
-    if (second == ESC) {
-        if (bytes.len == 2) {
-            return .incomplete;
-        }
-
-        if (!isNestedEscapeSequenceStart(bytes[2])) {
-            return .{ .token = .{
-                .kind = .unknown,
-                .consumed = 2,
-                .payload_start = 0,
-                .payload_len = 2,
-            } };
-        }
-
-        const nested = parseEscapeToken(bytes[1..]);
-        switch (nested) {
-            .none => return .incomplete,
-            .incomplete => return .incomplete,
-            .token => |token| {
-                return .{ .token = .{
-                    .kind = token.kind,
-                    .consumed = token.consumed + 1,
-                    .payload_start = 0,
-                    .payload_len = token.payload_len + 1,
-                    .clear_paste_mode = token.clear_paste_mode,
-                } };
+        .esc => switch (bytes[i]) {
+            '[' => {
+                i += 1;
+                continue :state .csi;
             },
-        }
-    }
+            ']' => {
+                i += 1;
+                continue :state .osc;
+            },
+            'P' => {
+                st_kind = .dcs;
+                i += 1;
+                continue :state .st;
+            },
+            '_' => {
+                st_kind = .apc;
+                i += 1;
+                continue :state .st;
+            },
+            'O' => {
+                if (bytes.len < i + 2) {
+                    return .incomplete;
+                }
+                return escapeToken(.ss3, i + 2);
+            },
+            ESC => {
+                if (i + 1 >= bytes.len) {
+                    return .incomplete;
+                }
+                if (!isNestedEscapeSequenceStart(bytes[i + 1])) {
+                    return escapeToken(.unknown, i + 1);
+                }
 
-    return switch (second) {
-        '[' => parseCsiToken(bytes),
-        ']' => parseOscToken(bytes),
-        'P' => parseStTerminatedToken(bytes, .dcs),
-        '_' => parseStTerminatedToken(bytes, .apc),
-        'O' => if (bytes.len >= 3)
-            .{ .token = .{
-                .kind = .ss3,
-                .consumed = 3,
-                .payload_start = 0,
-                .payload_len = 3,
-            } }
-        else
-            .incomplete,
-        else => .{ .token = .{
-            .kind = .unknown,
-            .consumed = 2,
-            .payload_start = 0,
-            .payload_len = 2,
-        } },
-    };
-}
+                i += 1;
+                continue :state .esc;
+            },
+            else => return escapeToken(.unknown, i + 1),
+        },
 
-fn parseCsiToken(bytes: []const u8) ParseResult {
-    if (bytes.len < 3) {
-        return .incomplete;
-    }
+        .csi => {
+            if (i >= bytes.len) {
+                return .incomplete;
+            }
 
-    if (bytes[2] == 'M') {
-        if (bytes.len < 6) {
+            if (bytes[i] == 'M') {
+                const required_len = i + 4;
+                if (bytes.len < required_len) {
+                    return .incomplete;
+                }
+                return escapeToken(.mouse_x10, required_len);
+            }
+
+            var scan_index: usize = i;
+            while (scan_index < bytes.len) : (scan_index += 1) {
+                const b = bytes[scan_index];
+                if (b >= 0x40 and b <= 0x7e) {
+                    const consumed = scan_index + 1;
+                    const kind: StdinTokenKind = if (isMouseSgrSequence(bytes[0..consumed])) .mouse_sgr else .csi;
+                    return escapeToken(kind, consumed);
+                }
+            }
+
             return .incomplete;
-        }
+        },
 
-        return .{ .token = .{
-            .kind = .mouse_x10,
-            .consumed = 6,
-            .payload_start = 0,
-            .payload_len = 6,
-        } };
-    }
+        .osc => {
+            var scan_index: usize = i;
+            while (scan_index < bytes.len) : (scan_index += 1) {
+                const b = bytes[scan_index];
+                if (b == BEL) {
+                    return escapeToken(.osc, scan_index + 1);
+                }
+                if (b == ESC) {
+                    i = scan_index;
+                    continue :state .osc_escape;
+                }
+            }
 
-    var i: usize = 2;
-    while (i < bytes.len) : (i += 1) {
-        const b = bytes[i];
-        if (b >= 0x40 and b <= 0x7e) {
-            const consumed = i + 1;
-            const sequence = bytes[0..consumed];
-            const kind: StdinTokenKind = if (isMouseSgrSequence(sequence)) .mouse_sgr else .csi;
+            return .incomplete;
+        },
 
-            return .{ .token = .{
-                .kind = kind,
-                .consumed = consumed,
-                .payload_start = 0,
-                .payload_len = consumed,
-            } };
-        }
-    }
-
-    return .incomplete;
-}
-
-fn parseOscToken(bytes: []const u8) ParseResult {
-    var i: usize = 2;
-    while (i < bytes.len) : (i += 1) {
-        if (bytes[i] == BEL) {
-            const consumed = i + 1;
-            return .{ .token = .{
-                .kind = .osc,
-                .consumed = consumed,
-                .payload_start = 0,
-                .payload_len = consumed,
-            } };
-        }
-
-        if (bytes[i] == ESC) {
+        .osc_escape => {
             if (i + 1 >= bytes.len) {
                 return .incomplete;
             }
             if (bytes[i + 1] == '\\') {
-                const consumed = i + 2;
-                return .{ .token = .{
-                    .kind = .osc,
-                    .consumed = consumed,
-                    .payload_start = 0,
-                    .payload_len = consumed,
-                } };
+                return escapeToken(.osc, i + 2);
             }
-        }
-    }
 
-    return .incomplete;
-}
+            i += 1;
+            continue :state .osc;
+        },
 
-fn parseStTerminatedToken(bytes: []const u8, kind: StdinTokenKind) ParseResult {
-    var i: usize = 2;
-    while (i < bytes.len) : (i += 1) {
-        if (bytes[i] != ESC) {
-            continue;
-        }
-        if (i + 1 >= bytes.len) {
+        .st => {
+            var scan_index: usize = i;
+            while (scan_index < bytes.len) : (scan_index += 1) {
+                if (bytes[scan_index] == ESC) {
+                    i = scan_index;
+                    continue :state .st_escape;
+                }
+            }
+
             return .incomplete;
-        }
-        if (bytes[i + 1] == '\\') {
-            const consumed = i + 2;
-            return .{ .token = .{
-                .kind = kind,
-                .consumed = consumed,
-                .payload_start = 0,
-                .payload_len = consumed,
-            } };
-        }
-    }
+        },
 
-    return .incomplete;
+        .st_escape => {
+            if (i + 1 >= bytes.len) {
+                return .incomplete;
+            }
+            if (bytes[i + 1] == '\\') {
+                return escapeToken(st_kind, i + 2);
+            }
+
+            i += 1;
+            continue :state .st;
+        },
+    }
 }
 
 fn isNestedEscapeSequenceStart(byte: u8) bool {
