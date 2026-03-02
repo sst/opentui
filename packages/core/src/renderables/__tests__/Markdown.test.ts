@@ -1830,6 +1830,62 @@ test("streaming table ignores unstable trailing row updates", async () => {
   expect(tableAfter.content).toBe(contentBefore)
 })
 
+test("streaming complex tables keep final rows visible (issue #15244)", async () => {
+  const vmHeader = "| VM | 状态 | Owner | Zone | CPU | Mem(GB) | Disk(GB) | Net | Uptime | Cost/月 | Notes |"
+  const vmDelimiter = "|---|---|---|---|---|---|---|---|---|---|---|"
+  const vmRows = [
+    "| vm-api-01 | 🟢 运行中 | alice | us-east-1a | 8 | 32 | 500 | 1.2Gbps | 99.99% | 12,345 | 主节点 — steady |",
+    "| vm-job-02 | 🟢 运行中 | bob | ap-south-1b | 16 | 64 | 1,024 | 950Mbps | 98.70% | 23,456 | 批处理 — spikes |",
+    "| vm-batch-03 | 🟡 维护中 | carol | eu-west-1c | 32 | 128 | 2,048 | 2.4Gbps | 97.10% | 34,567 | 最后一行 — must stay |",
+  ] as const
+
+  const storageHeader = "| 存储池 | 状态 | 使用率 | 可用(GB) | 已用(GB) | 冗余 | 备注 |"
+  const storageDelimiter = "|---|---|---|---|---|---|---|"
+  const storageRows = [
+    "| 热池A | 🟢 正常 | 72% | 12,500 | 32,500 | 3x | 混合负载 |",
+    "| 温池B | 🟢 正常 | 81% | 8,250 | 35,750 | 2x | 历史数据 |",
+    "| 冷池C | 🟡 告警 | 93% | 2,100 | 27,900 | 2x | 最后一行 — must stay |",
+  ] as const
+
+  const buildContent = (vmRowCount: number, storageRowCount: number): string =>
+    `### VM details\n\n${vmHeader}\n${vmDelimiter}\n${vmRows.slice(0, vmRowCount).join("\n")}\n\n### Storage details\n\n${storageHeader}\n${storageDelimiter}\n${storageRows.slice(0, storageRowCount).join("\n")}`
+
+  const md = createMarkdownRenderable({
+    id: "markdown",
+    content: "",
+    syntaxStyle,
+    streaming: true,
+  })
+
+  renderer.root.add(md)
+
+  for (const [vmRowCount, storageRowCount] of [
+    [2, 2],
+    [3, 2],
+    [3, 3],
+  ] as const) {
+    md.content = buildContent(vmRowCount, storageRowCount)
+    await renderMarkdownRenderable(md)
+  }
+
+  const tableBlocks = md._blockStates
+    .map((state) => state.renderable)
+    .filter((renderable): renderable is TextTableRenderable => renderable instanceof TextTableRenderable)
+
+  const cellText = (cell: { text: string }[] | null | undefined): string =>
+    cell?.map((chunk) => chunk.text).join("") ?? ""
+
+  expect(tableBlocks).toHaveLength(2)
+
+  const vmTable = tableBlocks[0]
+  const storageTable = tableBlocks[1]
+
+  expect(vmTable.content.length).toBe(4)
+  expect(storageTable.content.length).toBe(4)
+  expect(cellText(vmTable.content[3]?.[0])).toContain("vm-batch-03")
+  expect(cellText(storageTable.content[3]?.[0])).toContain("冷池C")
+})
+
 test("streaming table with incomplete first row falls back to raw text and updates", async () => {
   const md = createMarkdownRenderable({
     id: "markdown",
