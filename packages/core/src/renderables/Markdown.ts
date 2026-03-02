@@ -468,6 +468,11 @@ export class MarkdownRenderable extends Renderable {
     return token.type === "code" || token.type === "table" || token.type === "blockquote"
   }
 
+  private getInterBlockMargin(token: MarkedToken, hasNextToken: boolean): number {
+    if (!hasNextToken) return 0
+    return this.shouldRenderSeparately(token) ? 1 : 0
+  }
+
   private createMarkdownBlockToken(raw: string): MarkedToken {
     return {
       type: "paragraph",
@@ -775,7 +780,7 @@ export class MarkdownRenderable extends Renderable {
 
   private createDefaultRenderable(token: MarkedToken, index: number, hasNextToken: boolean = false): Renderable | null {
     const id = `${this.id}-block-${index}`
-    const marginBottom = hasNextToken ? 1 : 0
+    const marginBottom = this.getInterBlockMargin(token, hasNextToken)
 
     if (token.type === "code") {
       return this.createCodeRenderable(token, id, marginBottom)
@@ -797,7 +802,7 @@ export class MarkdownRenderable extends Renderable {
   }
 
   private updateBlockRenderable(state: BlockState, token: MarkedToken, index: number, hasNextToken: boolean): void {
-    const marginBottom = hasNextToken ? 1 : 0
+    const marginBottom = this.getInterBlockMargin(token, hasNextToken)
 
     if (token.type === "code") {
       this.applyCodeBlockRenderable(state.renderable as CodeRenderable, token as Tokens.Code, marginBottom)
@@ -949,7 +954,11 @@ export class MarkdownRenderable extends Renderable {
 
       if (!renderable) {
         if (token.type === "table") {
-          const tableBlock = this.createTableBlock(token, `${this.id}-block-${blockIndex}`, hasNextToken ? 1 : 0)
+          const tableBlock = this.createTableBlock(
+            token,
+            `${this.id}-block-${blockIndex}`,
+            this.getInterBlockMargin(token, hasNextToken),
+          )
           renderable = tableBlock.renderable
           tableContentCache = tableBlock.tableContentCache
         } else {
@@ -995,7 +1004,7 @@ export class MarkdownRenderable extends Renderable {
     for (let i = 0; i < this._blockStates.length; i++) {
       const state = this._blockStates[i]
       const hasNextToken = i < this._blockStates.length - 1
-      const marginBottom = hasNextToken ? 1 : 0
+      const marginBottom = this.getInterBlockMargin(state.token, hasNextToken)
 
       if (state.token.type === "code") {
         this.applyCodeBlockRenderable(state.renderable as CodeRenderable, state.token as Tokens.Code, marginBottom)

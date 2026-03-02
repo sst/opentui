@@ -334,7 +334,6 @@ Some text between.
     └──────┴─┘
 
     Some text between.
-
     ┌────────────┬──┐
     │Table2      │BB│
     ├────────────┼──┤
@@ -586,7 +585,6 @@ This is a paragraph after the table.`
   expect(await renderMarkdown(markdown)).toMatchInlineSnapshot(`
     "
     This is a paragraph before the table.
-
     ┌─────┬───┐
     │Name │Age│
     ├─────┼───┤
@@ -682,7 +680,6 @@ And here is more text after.`
   expect(await renderMarkdown(markdown)).toMatchInlineSnapshot(`
     "
     Here is some code:
-
     function hello() {
       return "world";
     }
@@ -707,11 +704,9 @@ fn main() {}
   expect(await renderMarkdown(markdown)).toMatchInlineSnapshot(`
     "
     First block:
-
     print("hello")
 
     Second block:
-
     fn main() {}"
   `)
 })
@@ -1038,7 +1033,6 @@ Visit [GitHub](https://github.com) for more.
     Code Example
 
 
-
     const md = new MarkdownRenderable(ctx, {
       content: "# Hello",
     })
@@ -1162,7 +1156,6 @@ Paragraph text.`,
     Heading
 
 
-
     Paragraph text."
   `)
 })
@@ -1179,7 +1172,6 @@ console.log(x);`
   expect(await renderMarkdown(markdown)).toMatchInlineSnapshot(`
     "
     Here is some code:
-
     const x = 1;
     console.log(x);"
   `)
@@ -1324,7 +1316,6 @@ const x = 1;
   expect(await renderMarkdown(markdown)).toMatchInlineSnapshot(`
     "
     Text before
-
     const x = 1;"
   `)
 })
