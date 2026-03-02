@@ -127,7 +127,6 @@ export interface BlockState {
   tokenRaw: string // Cache raw for comparison
   renderable: Renderable
   tableContentCache?: TableContentCache
-  tableStreaming?: boolean
 }
 
 export type { ParseState }
@@ -843,7 +842,6 @@ export class MarkdownRenderable extends Renderable {
         if (state.renderable instanceof CodeRenderable) {
           this.applyMarkdownCodeRenderable(state.renderable, tableToken.raw, marginBottom)
           state.tableContentCache = undefined
-          state.tableStreaming = tableStreaming
           return
         }
 
@@ -856,7 +854,6 @@ export class MarkdownRenderable extends Renderable {
         this.add(fallbackRenderable)
         state.renderable = fallbackRenderable
         state.tableContentCache = undefined
-        state.tableStreaming = tableStreaming
         return
       }
 
@@ -867,7 +864,6 @@ export class MarkdownRenderable extends Renderable {
         this.applyTableRenderableOptions(state.renderable, this.resolveTableRenderableOptions())
         state.renderable.marginBottom = marginBottom
         state.tableContentCache = cache
-        state.tableStreaming = tableStreaming
         return
       }
 
@@ -876,7 +872,6 @@ export class MarkdownRenderable extends Renderable {
       this.add(tableRenderable)
       state.renderable = tableRenderable
       state.tableContentCache = cache
-      state.tableStreaming = tableStreaming
       return
     }
 
@@ -922,15 +917,21 @@ export class MarkdownRenderable extends Renderable {
     const blockTokens = this.buildRenderableTokens(tokens)
     const lastBlockIndex = blockTokens.length - 1
 
+    const previousBlockCount = this._blockStates.length
     let blockIndex = 0
     for (let i = 0; i < blockTokens.length; i++) {
       const token = blockTokens[i]
       const hasNextToken = i < lastBlockIndex
       const existing = this._blockStates[blockIndex]
 
-      const nextTableStreaming = token.type === "table" ? this.shouldStreamTable(hasNextToken) : undefined
+      const previousHasNextToken = blockIndex < previousBlockCount - 1
+      const nextTableStreaming = token.type === "table" ? this.shouldStreamTable(hasNextToken) : false
+      const previousTableStreaming =
+        token.type === "table" && existing?.token.type === "table"
+          ? this.shouldStreamTable(previousHasNextToken)
+          : false
       const tableStreamingChanged =
-        token.type === "table" && existing?.token.type === "table" && existing.tableStreaming !== nextTableStreaming
+        token.type === "table" && existing?.token.type === "table" && previousTableStreaming !== nextTableStreaming
       const shouldForceRefresh = forceTableRefresh || tableStreamingChanged
 
       // Same token object reference means unchanged
@@ -1012,7 +1013,6 @@ export class MarkdownRenderable extends Renderable {
           tokenRaw: token.raw,
           renderable,
           tableContentCache,
-          tableStreaming: nextTableStreaming,
         }
       }
       blockIndex++
@@ -1065,7 +1065,6 @@ export class MarkdownRenderable extends Renderable {
             state.renderable = fallbackRenderable
           }
           state.tableContentCache = undefined
-          state.tableStreaming = tableStreaming
           continue
         }
 
@@ -1074,7 +1073,6 @@ export class MarkdownRenderable extends Renderable {
           this.applyTableRenderableOptions(state.renderable, this.resolveTableRenderableOptions())
           state.renderable.marginBottom = marginBottom
           state.tableContentCache = cache
-          state.tableStreaming = tableStreaming
           continue
         }
 
@@ -1083,7 +1081,6 @@ export class MarkdownRenderable extends Renderable {
         this.add(tableRenderable)
         state.renderable = tableRenderable
         state.tableContentCache = cache
-        state.tableStreaming = tableStreaming
         continue
       }
 
