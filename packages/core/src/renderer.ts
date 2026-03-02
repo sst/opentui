@@ -663,9 +663,10 @@ export class CliRenderer extends EventEmitter implements RenderContext {
     this.addExitListeners()
 
     this._stdinBuffer = new StdinBuffer({ timeout: 5 })
+    const stdinParserOptions = { timeoutMs: 10, maxBufferBytes: 8 * 1024 * 1024, reserved0: 0 }
 
     if (this.stdinParserMode === "zig") {
-      const parserPtr = this.lib.createStdinParser({ timeoutMs: 10, maxBufferBytes: 64 * 1024, reserved0: 0 })
+      const parserPtr = this.lib.createStdinParser(stdinParserOptions)
       this.nativeStdinParser = new NativeStdinParser(this.lib, parserPtr, {
         timeoutMs: 10,
         armTimeouts: true,
@@ -675,7 +676,7 @@ export class CliRenderer extends EventEmitter implements RenderContext {
       })
       this.stdinRouter = new StdinRouter()
     } else if (this.stdinShadowCompare) {
-      const parserPtr = this.lib.createStdinParser({ timeoutMs: 10, maxBufferBytes: 64 * 1024, reserved0: 0 })
+      const parserPtr = this.lib.createStdinParser(stdinParserOptions)
       this.shadowStdinParser = new NativeStdinParser(this.lib, parserPtr, {
         timeoutMs: 10,
         armTimeouts: false,
@@ -1276,21 +1277,21 @@ export class CliRenderer extends EventEmitter implements RenderContext {
     switch (token.kind) {
       case "mouse_sgr":
       case "mouse_x10": {
-        const sequence = this.decodeTokenPayload(payload)
-
         if (this._useMouse) {
-          const parsed = this.mouseParser.parseMouseEvent(Buffer.from(payload))
+          const parsed = this.mouseParser.parseMouseEvent(payload)
           if (!parsed) {
             return
           }
 
           const handled = this.processSingleMouseEvent(parsed)
           if (!handled) {
+            const sequence = this.decodeTokenPayload(payload)
             this.dispatchSequenceToInputHandlers(sequence)
           }
           return
         }
 
+        const sequence = this.decodeTokenPayload(payload)
         this.dispatchSequenceToInputHandlers(sequence)
         return
       }
@@ -1333,7 +1334,7 @@ export class CliRenderer extends EventEmitter implements RenderContext {
       }
       case "mouse_sgr":
       case "mouse_x10": {
-        const parsed = this.shadowMouseParser.parseMouseEvent(Buffer.from(payload))
+        const parsed = this.shadowMouseParser.parseMouseEvent(payload)
         if (!parsed) {
           return
         }
@@ -2543,7 +2544,8 @@ export class CliRenderer extends EventEmitter implements RenderContext {
       const isLegacyTmux =
         this.capabilities?.terminal?.name?.toLowerCase()?.includes("tmux") &&
         this.capabilities?.terminal?.version?.localeCompare("3.6") < 0
-      const oscSource: OscSubscriptionSource | undefined = this.stdinParserMode === "zig" ? this.stdinRouter ?? undefined : undefined
+      const oscSource: OscSubscriptionSource | undefined =
+        this.stdinParserMode === "zig" ? (this.stdinRouter ?? undefined) : undefined
       this._paletteDetector = createTerminalPalette(
         this.stdin,
         this.stdout,

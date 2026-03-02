@@ -3808,6 +3808,10 @@ class FFIRenderLib implements RenderLib {
   }
 
   public stdinParserPush(parser: Pointer, data: Uint8Array): number {
+    if (data.length === 0) {
+      return 0
+    }
+
     return this.opentui.symbols.stdinParserPush(parser, ptr(data), data.length)
   }
 

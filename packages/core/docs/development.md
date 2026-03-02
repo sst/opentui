@@ -116,12 +116,9 @@ type CliRendererConfig = {
 
 ```ts
 const parserMode: StdinParserMode =
-  config.experimental_stdinParserMode ??
-  (env.OTUI_STDIN_PARSER_ZIG ? "zig" : "legacy")
+  config.experimental_stdinParserMode ?? (env.OTUI_STDIN_PARSER_ZIG ? "zig" : "legacy")
 
-const shadowCompare =
-  config.experimental_stdinShadowCompare ??
-  env.OTUI_STDIN_PARSER_SHADOW
+const shadowCompare = config.experimental_stdinShadowCompare ?? env.OTUI_STDIN_PARSER_SHADOW
 ```
 
 - Config values override environment values.

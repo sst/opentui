@@ -6,15 +6,19 @@ type NativeStdinParserOptions = {
   timeoutMs?: number
   payloadBufferBytes?: number
   tokenCapacity?: number
+  maxPayloadBufferBytes?: number
+  maxTokenCapacity?: number
   armTimeouts?: boolean
   onTimeoutFlush?: () => void
 }
 
 export class NativeStdinParser {
-  private readonly tokenBuffer: Uint8Array
-  private readonly payloadBuffer: Uint8Array
+  private tokenBuffer: Uint8Array
+  private payloadBuffer: Uint8Array
   private readonly statsBuffer = new ArrayBuffer(StdinDrainStatsStruct.size)
   private readonly timeoutMs: number
+  private readonly maxPayloadBufferBytes: number
+  private readonly maxTokenCapacity: number
   private readonly armTimeouts: boolean
   private readonly onTimeoutFlush: (() => void) | null
   private timeoutId: Timer | null = null
@@ -25,9 +29,11 @@ export class NativeStdinParser {
     private readonly parserPtr: Pointer,
     options: NativeStdinParserOptions = {},
   ) {
-    const tokenCapacity = options.tokenCapacity ?? 256
-    const payloadBufferBytes = options.payloadBufferBytes ?? 64 * 1024
+    const tokenCapacity = Math.max(1, options.tokenCapacity ?? 256)
+    const payloadBufferBytes = Math.max(1, options.payloadBufferBytes ?? 64 * 1024)
     this.timeoutMs = options.timeoutMs ?? 10
+    this.maxPayloadBufferBytes = Math.max(payloadBufferBytes, options.maxPayloadBufferBytes ?? 8 * 1024 * 1024)
+    this.maxTokenCapacity = Math.max(tokenCapacity, options.maxTokenCapacity ?? 8192)
     this.armTimeouts = options.armTimeouts ?? true
     this.onTimeoutFlush = options.onTimeoutFlush ?? null
     this.tokenBuffer = new Uint8Array(StdinTokenStruct.size * tokenCapacity)
@@ -62,6 +68,14 @@ export class NativeStdinParser {
 
       if (status !== 0) {
         throw new Error(`stdinParserDrain failed: ${status}`)
+      }
+
+      if (stats.overflowed === 1 && stats.tokenCount === 0 && stats.hasPending === 1) {
+        if (this.tryGrowScratchBuffers()) {
+          continue
+        }
+
+        throw new Error("stdinParserDrain overflow without progress (max scratch buffers reached)")
       }
 
       if (stats.tokenCount === 0) {
@@ -154,5 +168,28 @@ export class NativeStdinParser {
 
     clearTimeout(this.timeoutId)
     this.timeoutId = null
+  }
+
+  private tryGrowScratchBuffers(): boolean {
+    let grew = false
+
+    const currentTokenCapacity = Math.floor(this.tokenBuffer.byteLength / StdinTokenStruct.size)
+    if (currentTokenCapacity < this.maxTokenCapacity) {
+      const nextTokenCapacity = Math.min(currentTokenCapacity * 2, this.maxTokenCapacity)
+      if (nextTokenCapacity > currentTokenCapacity) {
+        this.tokenBuffer = new Uint8Array(StdinTokenStruct.size * nextTokenCapacity)
+        grew = true
+      }
+    }
+
+    if (this.payloadBuffer.byteLength < this.maxPayloadBufferBytes) {
+      const nextPayloadBytes = Math.min(this.payloadBuffer.byteLength * 2, this.maxPayloadBufferBytes)
+      if (nextPayloadBytes > this.payloadBuffer.byteLength) {
+        this.payloadBuffer = new Uint8Array(nextPayloadBytes)
+        grew = true
+      }
+    }
+
+    return grew
   }
 }
