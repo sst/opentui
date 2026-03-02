@@ -1598,6 +1598,43 @@ test("streaming->non-streaming transition updates table to show final row", asyn
   expect(md._blockStates[0]?.renderable).toBe(tableWhileStreaming)
 })
 
+test("streaming table finalizes when a new block starts", async () => {
+  const tableMarkdown = "| Value |\n|---|\n| first |\n| second |"
+  const md = createMarkdownRenderable({
+    id: "markdown",
+    content: tableMarkdown,
+    syntaxStyle,
+    streaming: true,
+  })
+
+  renderer.root.add(md)
+  await renderer.idle()
+
+  const tableWhileTrailing = md._blockStates[0]?.renderable
+
+  let frame = captureFrame()
+    .split("\n")
+    .map((line) => line.trimEnd())
+    .join("\n")
+
+  expect(frame).toContain("first")
+  expect(frame).not.toContain("second")
+
+  md.content = `${tableMarkdown}\n\nAfter table block.`
+  await renderer.idle()
+
+  frame = captureFrame()
+    .split("\n")
+    .map((line) => line.trimEnd())
+    .join("\n")
+
+  expect(md.streaming).toBe(true)
+  expect(frame).toContain("first")
+  expect(frame).toContain("second")
+  expect(md._blockStates.length).toBeGreaterThan(1)
+  expect(md._blockStates[0]?.renderable).toBe(tableWhileTrailing)
+})
+
 test("stream end mid-table finalizes full table snapshot", async () => {
   const md = createMarkdownRenderable({
     id: "markdown",
@@ -1848,7 +1885,7 @@ test("streaming complex tables keep final rows visible (issue #15244)", async ()
   ] as const
 
   const buildContent = (vmRowCount: number, storageRowCount: number): string =>
-    `### VM details\n\n${vmHeader}\n${vmDelimiter}\n${vmRows.slice(0, vmRowCount).join("\n")}\n\n### Storage details\n\n${storageHeader}\n${storageDelimiter}\n${storageRows.slice(0, storageRowCount).join("\n")}`
+    `### VM details\n\n${vmHeader}\n${vmDelimiter}\n${vmRows.slice(0, vmRowCount).join("\n")}\n\n### Storage details\n\n${storageHeader}\n${storageDelimiter}\n${storageRows.slice(0, storageRowCount).join("\n")}\n\nstream complete marker`
 
   const md = createMarkdownRenderable({
     id: "markdown",
