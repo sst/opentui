@@ -1140,6 +1140,46 @@ test "OptimizedBuffer - set span cleanup keeps shared link refcounts consistent"
     try std.testing.expectEqual(@as(u32, 1), try local_link_pool.getRefcount(link_id));
 }
 
+test "OptimizedBuffer - syncCell updates grapheme tracker for start transitions" {
+    var local_pool = gp.GraphemePool.initWithOptions(std.testing.allocator, .{});
+    defer local_pool.deinit();
+
+    var local_link_pool = link.LinkPool.init(std.testing.allocator);
+    defer local_link_pool.deinit();
+
+    var buf = try OptimizedBuffer.init(
+        std.testing.allocator,
+        10,
+        1,
+        .{ .pool = &local_pool, .id = "sync-cell-grapheme-tracker", .link_pool = &local_link_pool },
+    );
+    defer buf.deinit();
+
+    const bg = RGBA{ 0.0, 0.0, 0.0, 1.0 };
+    const fg = RGBA{ 1.0, 1.0, 1.0, 1.0 };
+    try buf.clear(bg, null);
+
+    const gid_old = try local_pool.alloc("你");
+    const gid_new = try local_pool.alloc("好");
+    const old_id = gid_old & gp.GRAPHEME_ID_MASK;
+    const new_id = gid_new & gp.GRAPHEME_ID_MASK;
+    const start_old = gp.packGraphemeStart(old_id, 2);
+    const start_new = gp.packGraphemeStart(new_id, 2);
+
+    buf.syncCell(1, 0, .{ .char = start_old, .fg = fg, .bg = bg, .attributes = 0 });
+    try std.testing.expectEqual(@as(u32, 1), buf.grapheme_tracker.getGraphemeCount());
+    try std.testing.expect(buf.grapheme_tracker.contains(old_id));
+
+    buf.syncCell(1, 0, .{ .char = start_new, .fg = fg, .bg = bg, .attributes = 0 });
+    try std.testing.expectEqual(@as(u32, 1), buf.grapheme_tracker.getGraphemeCount());
+    try std.testing.expect(!buf.grapheme_tracker.contains(old_id));
+    try std.testing.expect(buf.grapheme_tracker.contains(new_id));
+
+    buf.syncCell(1, 0, .{ .char = ' ', .fg = fg, .bg = bg, .attributes = 0 });
+    try std.testing.expectEqual(@as(u32, 0), buf.grapheme_tracker.getGraphemeCount());
+    try std.testing.expect(!buf.grapheme_tracker.contains(new_id));
+}
+
 test "OptimizedBuffer - sustained rendering should not leak" {
     const tiny_slots = [_]u32{ 2, 2, 2, 2, 2 };
     var local_pool = gp.GraphemePool.initWithOptions(std.testing.allocator, .{

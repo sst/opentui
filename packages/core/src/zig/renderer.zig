@@ -741,12 +741,10 @@ pub const CliRenderer = struct {
                 }
                 runLength += 1;
 
-                // Sync this cell to the current buffer so the next frame's diff is
-                // correct. Use syncCell (no span cleanup / continuation write)
-                // because the diff loop visits every changed cell individually.
-                // Using set() here would cause span cleanup to destroy
-                // continuation cells that were correctly written by an earlier
-                // iteration of this same loop (issue #723).
+                // Sync this cell to the current buffer so the next frame's diff
+                // is correct. Use syncCell (set without span cleanup) because
+                // span cleanup would destroy continuation cells written by an
+                // earlier iteration of this same left-to-right pass (#723).
                 self.currentRenderBuffer.syncCell(x, y, nextCell.?);
 
                 cellsUpdated += 1;

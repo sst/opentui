@@ -417,73 +417,77 @@ pub const OptimizedBuffer = struct {
         self.writeCellAndLinks(index, cell);
     }
 
-    /// Write a single cell without span cleanup or continuation propagation.
-    /// Updates grapheme and link trackers for grapheme START cells only
-    /// (matching set()'s tracking semantics). Intended for the renderer's
-    /// diff loop where cells are synced individually from an authoritative
-    /// source buffer that already contains correct grapheme spans.
+    /// Like set(), but without span cleanup. Writes the cell, its continuation
+    /// cells (for width-2+ graphemes), and updates grapheme/link trackers.
+    ///
+    /// Intended for the renderer's diff loop where cells are synced from an
+    /// authoritative source buffer. Span cleanup is skipped because it can
+    /// destroy continuation cells that were correctly written by an earlier
+    /// iteration of the same left-to-right pass (issue #723).
     pub fn syncCell(self: *OptimizedBuffer, x: u32, y: u32, cell: Cell) void {
-        const index = self.validateAndIndex(x, y) orelse return;
-
-        const prev_char = self.buffer.char[index];
-        const prev_is_start = gp.isGraphemeChar(prev_char);
-        const new_is_start = gp.isGraphemeChar(cell.char);
-
-        if (prev_is_start and new_is_start) {
-            const old_id = gp.graphemeIdFromChar(prev_char);
-            const new_id = gp.graphemeIdFromChar(cell.char);
-            if (old_id != new_id) {
-                self.grapheme_tracker.remove(old_id);
-                self.grapheme_tracker.add(new_id);
-            }
-        } else if (prev_is_start) {
-            self.grapheme_tracker.remove(gp.graphemeIdFromChar(prev_char));
-        } else if (new_is_start) {
-            self.grapheme_tracker.add(gp.graphemeIdFromChar(cell.char));
-        }
-
-        self.writeCellAndLinks(index, cell);
+        self.setInternal(x, y, cell, false);
     }
 
     pub fn set(self: *OptimizedBuffer, x: u32, y: u32, cell: Cell) void {
+        self.setInternal(x, y, cell, true);
+    }
+
+    fn setInternal(self: *OptimizedBuffer, x: u32, y: u32, cell: Cell, comptime span_cleanup: bool) void {
         const index = self.validateAndIndex(x, y) orelse return;
         const prev_char = self.buffer.char[index];
         const prev_link_id = ansi.TextAttributes.getLinkId(self.buffer.attributes[index]);
         var tracker_replaced = false;
 
-        // If overwriting a grapheme span (start or continuation) with a different char, clear that span first
-        if ((gp.isGraphemeChar(prev_char) or gp.isContinuationChar(prev_char)) and prev_char != cell.char) {
-            const row_start: u32 = y * self.width;
-            const row_end: u32 = row_start + self.width - 1;
-            const left = gp.charLeftExtent(prev_char);
-            const right = gp.charRightExtent(prev_char);
-            const id = gp.graphemeIdFromChar(prev_char);
-
-            const new_grapheme_id: ?u32 = blk: {
+        if (!span_cleanup) {
+            const old_start_id: ?u32 = if (gp.isGraphemeChar(prev_char)) gp.graphemeIdFromChar(prev_char) else null;
+            const new_start_id: ?u32 = blk: {
                 if (!gp.isGraphemeChar(cell.char)) break :blk null;
                 const new_width = gp.charRightExtent(cell.char) + 1;
                 if (x + new_width > self.width) break :blk null;
                 break :blk gp.graphemeIdFromChar(cell.char);
             };
-            self.grapheme_tracker.replace(id, new_grapheme_id);
-            tracker_replaced = true;
 
-            const span_start = index - @min(left, index - row_start);
-            const span_end = index + @min(right, row_end - index);
+            if (old_start_id != null or new_start_id != null) {
+                self.grapheme_tracker.replace(old_start_id, new_start_id);
+                tracker_replaced = true;
+            }
+        }
 
-            var span_i: u32 = span_start;
-            while (span_i <= span_end) : (span_i += 1) {
-                const span_char = self.buffer.char[span_i];
-                if (!(gp.isGraphemeChar(span_char) or gp.isContinuationChar(span_char))) continue;
-                if (gp.graphemeIdFromChar(span_char) != id) continue;
+        // If overwriting a grapheme span (start or continuation) with a different char, clear that span first
+        if (span_cleanup) {
+            if ((gp.isGraphemeChar(prev_char) or gp.isContinuationChar(prev_char)) and prev_char != cell.char) {
+                const row_start: u32 = y * self.width;
+                const row_end: u32 = row_start + self.width - 1;
+                const left = gp.charLeftExtent(prev_char);
+                const right = gp.charRightExtent(prev_char);
+                const id = gp.graphemeIdFromChar(prev_char);
 
-                const span_link_id = ansi.TextAttributes.getLinkId(self.buffer.attributes[span_i]);
-                if (span_link_id != 0) {
-                    self.link_tracker.removeCellRef(span_link_id);
+                const new_grapheme_id: ?u32 = blk: {
+                    if (!gp.isGraphemeChar(cell.char)) break :blk null;
+                    const new_width = gp.charRightExtent(cell.char) + 1;
+                    if (x + new_width > self.width) break :blk null;
+                    break :blk gp.graphemeIdFromChar(cell.char);
+                };
+                self.grapheme_tracker.replace(id, new_grapheme_id);
+                tracker_replaced = true;
+
+                const span_start = index - @min(left, index - row_start);
+                const span_end = index + @min(right, row_end - index);
+
+                var span_i: u32 = span_start;
+                while (span_i <= span_end) : (span_i += 1) {
+                    const span_char = self.buffer.char[span_i];
+                    if (!(gp.isGraphemeChar(span_char) or gp.isContinuationChar(span_char))) continue;
+                    if (gp.graphemeIdFromChar(span_char) != id) continue;
+
+                    const span_link_id = ansi.TextAttributes.getLinkId(self.buffer.attributes[span_i]);
+                    if (span_link_id != 0) {
+                        self.link_tracker.removeCellRef(span_link_id);
+                    }
+
+                    self.buffer.char[span_i] = @intCast(DEFAULT_SPACE_CHAR);
+                    self.buffer.attributes[span_i] = 0;
                 }
-
-                self.buffer.char[span_i] = @intCast(DEFAULT_SPACE_CHAR);
-                self.buffer.attributes[span_i] = 0;
             }
         }
 
