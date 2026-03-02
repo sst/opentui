@@ -674,8 +674,10 @@ test "renderer - hyperlinks enabled with OSC 8 output" {
 
     const output = cli_renderer.getLastOutputForTest();
 
-    // Verify output contains OSC 8 start sequence with URL
-    try std.testing.expect(std.mem.indexOf(u8, output, "\x1b]8;;https://example.com\x1b\\") != null);
+    // Verify OSC 8 contains id parameter
+    try std.testing.expect(std.mem.indexOf(u8, output, "\x1b]8;id=") != null);
+    // Verify OSC 8 contains the URL
+    try std.testing.expect(std.mem.indexOf(u8, output, ";https://example.com\x1b\\") != null);
 
     // Verify output contains OSC 8 end sequence
     const end_seq = "\x1b]8;;\x1b\\";
@@ -722,6 +724,7 @@ test "renderer - hyperlinks disabled no OSC 8 output" {
 
     // Verify output does NOT contain OSC 8 sequences
     try std.testing.expect(std.mem.indexOf(u8, output, "]8;;") == null);
+    try std.testing.expect(std.mem.indexOf(u8, output, "]8;id=") == null);
 }
 
 test "renderer - link transition mid-line" {
@@ -778,6 +781,57 @@ test "renderer - link transition mid-line" {
         pos += found + end_seq.len;
     }
     try std.testing.expect(count >= 2);
+}
+
+test "renderer - hyperlink spanning multiple rows uses same id" {
+    const pool = gp.initGlobalPool(std.testing.allocator);
+    defer gp.deinitGlobalPool();
+
+    const link_pool = link.initGlobalLinkPool(std.testing.allocator);
+    defer link.deinitGlobalLinkPool();
+
+    var cli_renderer = try CliRenderer.create(
+        std.testing.allocator,
+        80,
+        24,
+        pool,
+        true,
+    );
+    defer cli_renderer.destroy();
+
+    // Enable hyperlinks
+    cli_renderer.terminal.caps.hyperlinks = true;
+
+    const next_buffer = cli_renderer.getNextBuffer();
+
+    // Allocate a single link
+    const link_id = try link_pool.alloc("https://example.com/long-url");
+    const attributes = ansi.TextAttributes.setLinkId(0, link_id);
+
+    const fg = RGBA{ 1.0, 1.0, 1.0, 1.0 };
+    const bg = RGBA{ 0.0, 0.0, 0.0, 1.0 };
+
+    // Fill entire row 0 with linked text so link is never interrupted by empty cells
+    try next_buffer.drawText("01234567890123456789012345678901234567890123456789012345678901234567890123456789", 0, 0, fg, bg, attributes);
+    // Continue the same link on row 1
+    try next_buffer.drawText("Here", 0, 1, fg, bg, attributes);
+
+    cli_renderer.render(false);
+
+    const output = cli_renderer.getLastOutputForTest();
+
+    // Build expected OSC 8 open sequence with the link id
+    var buf: [256]u8 = undefined;
+    const expected_open = std.fmt.bufPrint(&buf, "\x1b]8;id={d};https://example.com/long-url\x1b\\", .{link_id}) catch unreachable;
+    var count: usize = 0;
+    var pos: usize = 0;
+    while (std.mem.indexOf(u8, output[pos..], expected_open)) |found| {
+        count += 1;
+        pos += found + expected_open.len;
+    }
+    // Should appear exactly once: the link stays open across rows without
+    // close/reopen at row boundaries, so terminals treat it as one contiguous link.
+    try std.testing.expectEqual(@as(usize, 1), count);
 }
 
 // ============================================================================
