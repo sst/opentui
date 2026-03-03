@@ -197,7 +197,7 @@ test "stdin parser is chunk-shape invariant" {
     }
 }
 
-test "stdin parser flush timeout emits pending high byte as unknown token" {
+test "stdin parser timeout keeps pending utf8 lead bytes" {
     const parser = try stdin_parser.StdinParser.init(testing.allocator, stdin_parser.defaultOptions());
     defer parser.deinit();
 
@@ -211,9 +211,55 @@ test "stdin parser flush timeout emits pending high byte as unknown token" {
 
     var second = try drainAvailable(parser, testing.allocator);
     defer deinitSnapshots(&second, testing.allocator);
+    try testing.expectEqual(@as(usize, 0), second.items.len);
 
-    try testing.expectEqual(@as(usize, 1), second.items.len);
+    try parser.push(&[_]u8{ 0x80, 0x80 });
+
+    var third = try drainAvailable(parser, testing.allocator);
+    defer deinitSnapshots(&third, testing.allocator);
+
+    try testing.expectEqual(@as(usize, 1), third.items.len);
+    try testing.expectEqual(stdin_parser.StdinTokenKind.text, third.items[0].kind);
+    try testing.expectEqual(@as(usize, 3), third.items[0].payload.len);
+    try testing.expectEqual(@as(u8, 0xE9), third.items[0].payload[0]);
+    try testing.expectEqual(@as(u8, 0x80), third.items[0].payload[1]);
+    try testing.expectEqual(@as(u8, 0x80), third.items[0].payload[2]);
+}
+
+test "stdin parser reset releases retained buffer capacity" {
+    const parser = try stdin_parser.StdinParser.init(testing.allocator, stdin_parser.defaultOptions());
+    defer parser.deinit();
+
+    const chunk = [_]u8{'x'} ** 4096;
+    try parser.push(&chunk);
+
+    const grown_capacity = parser.buffer.capacity;
+    try testing.expect(grown_capacity >= chunk.len);
+
+    parser.reset();
+
+    try testing.expect(parser.buffer.capacity <= 256);
+}
+
+test "stdin parser releases invalid utf8 lead when next byte is not continuation" {
+    const parser = try stdin_parser.StdinParser.init(testing.allocator, stdin_parser.defaultOptions());
+    defer parser.deinit();
+
+    try parser.push(&[_]u8{0xE9});
+
+    var first = try drainAvailable(parser, testing.allocator);
+    defer deinitSnapshots(&first, testing.allocator);
+    try testing.expectEqual(@as(usize, 0), first.items.len);
+
+    try parser.push("x");
+
+    var second = try drainAvailable(parser, testing.allocator);
+    defer deinitSnapshots(&second, testing.allocator);
+
+    try testing.expectEqual(@as(usize, 2), second.items.len);
     try testing.expectEqual(stdin_parser.StdinTokenKind.unknown, second.items[0].kind);
     try testing.expectEqual(@as(usize, 1), second.items[0].payload.len);
     try testing.expectEqual(@as(u8, 0xE9), second.items[0].payload[0]);
+    try testing.expectEqual(stdin_parser.StdinTokenKind.text, second.items[1].kind);
+    try testing.expectEqualStrings("x", second.items[1].payload);
 }

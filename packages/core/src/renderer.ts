@@ -442,6 +442,8 @@ export class CliRenderer extends EventEmitter implements RenderContext {
   private activeLegacyShadowChunkRecords: CompareRecord[] | null = null
   private hasLoggedNativeStdinParserOverflow = false
   private hasLoggedShadowStdinParserOverflow = false
+  private hasLoggedNativeStdinParserError = false
+  private hasLoggedShadowStdinParserError = false
 
   private animationRequest: Map<number, FrameRequestCallback> = new Map()
 
@@ -1155,13 +1157,18 @@ export class CliRenderer extends EventEmitter implements RenderContext {
     }
 
     if (!this.nativeStdinParser) return
-    const accepted = this.nativeStdinParser.push(data)
-    if (!accepted) {
-      this.handleStdinParserOverflow("zig")
-      return
-    }
 
-    this.drainStdinParser()
+    try {
+      const accepted = this.nativeStdinParser.push(data)
+      if (!accepted) {
+        this.handleStdinParserOverflow("zig")
+        return
+      }
+
+      this.drainStdinParser()
+    } catch (error) {
+      this.handleStdinParserFailure("zig", error)
+    }
   }).bind(this)
 
   private handleLegacyBufferedSequence = (sequence: string): void => {
@@ -1376,9 +1383,14 @@ export class CliRenderer extends EventEmitter implements RenderContext {
       return
     }
 
-    const accepted = this.shadowStdinParser.push(data)
-    if (!accepted) {
-      this.handleStdinParserOverflow("shadow")
+    try {
+      const accepted = this.shadowStdinParser.push(data)
+      if (!accepted) {
+        this.handleStdinParserOverflow("shadow")
+        return
+      }
+    } catch (error) {
+      this.handleStdinParserFailure("shadow", error)
       return
     }
 
@@ -1390,15 +1402,21 @@ export class CliRenderer extends EventEmitter implements RenderContext {
       return
     }
 
-    if (flushTimeout) {
-      // Force timeout path when comparing against legacy delayed flush events.
-      this.shadowStdinParser.flushTimeout(Date.now() + 100)
-    }
-
     const zigRecords: CompareRecord[] = []
-    this.shadowStdinParser.drain((token, payload) => {
-      this.collectShadowZigRecord(token, payload, zigRecords)
-    })
+
+    try {
+      if (flushTimeout) {
+        // Force timeout path when comparing against legacy delayed flush events.
+        this.shadowStdinParser.flushTimeout(Date.now() + 100)
+      }
+
+      this.shadowStdinParser.drain((token, payload) => {
+        this.collectShadowZigRecord(token, payload, zigRecords)
+      })
+    } catch (error) {
+      this.handleStdinParserFailure("shadow", error)
+      return
+    }
 
     this.compareShadowRecords(legacyRecords, zigRecords)
   }
@@ -1431,6 +1449,37 @@ export class CliRenderer extends EventEmitter implements RenderContext {
       this.shadowStdinParser?.reset()
     } catch (error) {
       console.error("shadow stdin parser reset failed after overflow", error)
+    }
+  }
+
+  private handleStdinParserFailure(source: "zig" | "shadow", error: unknown): void {
+    if (source === "zig") {
+      if (!this.hasLoggedNativeStdinParserError) {
+        this.hasLoggedNativeStdinParserError = true
+        if (process.env.NODE_ENV !== "test") {
+          console.error("[stdin-parser-error] native parser failure, resetting parser", error)
+        }
+      }
+
+      try {
+        this.nativeStdinParser?.reset()
+      } catch (resetError) {
+        console.error("stdin parser reset failed after parser error", resetError)
+      }
+      return
+    }
+
+    if (!this.hasLoggedShadowStdinParserError) {
+      this.hasLoggedShadowStdinParserError = true
+      if (process.env.NODE_ENV !== "test") {
+        console.error("[stdin-shadow-error] shadow parser failure, resetting parser", error)
+      }
+    }
+
+    try {
+      this.shadowStdinParser?.reset()
+    } catch (resetError) {
+      console.error("shadow stdin parser reset failed after parser error", resetError)
     }
   }
 

@@ -140,30 +140,36 @@ pub const StdinParser = struct {
                 .none => break,
                 .incomplete => {
                     if (self.flush_pending_timeout and !self.in_paste_mode and self.buffer.items.len > 0) {
-                        const forced = if (self.buffer.items[0] == ESC)
-                            CandidateToken{
-                                .kind = .esc,
-                                .consumed = self.buffer.items.len,
-                                .payload_start = 0,
-                                .payload_len = self.buffer.items.len,
+                        const first = self.buffer.items[0];
+                        const seq_len = utf8SequenceLength(first);
+                        const should_force_unknown = seq_len == 0;
+
+                        if (first == ESC or should_force_unknown) {
+                            const forced = if (first == ESC)
+                                CandidateToken{
+                                    .kind = .esc,
+                                    .consumed = self.buffer.items.len,
+                                    .payload_start = 0,
+                                    .payload_len = self.buffer.items.len,
+                                }
+                            else
+                                CandidateToken{
+                                    .kind = .unknown,
+                                    .consumed = 1,
+                                    .payload_start = 0,
+                                    .payload_len = 1,
+                                };
+
+                            if (!self.emitCandidate(forced, token_out, &token_index, payload_out, &payload_index)) {
+                                stats.overflowed = 1;
+                                stats.has_pending = 1;
+                                break;
                             }
-                        else
-                            CandidateToken{
-                                .kind = .unknown,
-                                .consumed = 1,
-                                .payload_start = 0,
-                                .payload_len = 1,
-                            };
 
-                        if (!self.emitCandidate(forced, token_out, &token_index, payload_out, &payload_index)) {
-                            stats.overflowed = 1;
-                            stats.has_pending = 1;
-                            break;
+                            self.consumePrefix(forced.consumed);
+                            self.flush_pending_timeout = self.buffer.items.len > 0;
+                            continue;
                         }
-
-                        self.consumePrefix(forced.consumed);
-                        self.flush_pending_timeout = self.buffer.items.len > 0;
-                        continue;
                     }
 
                     break;
@@ -200,7 +206,9 @@ pub const StdinParser = struct {
     }
 
     pub fn reset(self: *StdinParser) void {
-        self.buffer.clearRetainingCapacity();
+        self.buffer.deinit(self.allocator);
+        self.buffer = std.ArrayList(u8).empty;
+        self.buffer.ensureTotalCapacityPrecise(self.allocator, 128) catch {};
         self.in_paste_mode = false;
         self.pending_since_ms = null;
         self.flush_pending_timeout = false;
@@ -343,12 +351,10 @@ fn parseTextToken(bytes: []const u8) ParseResult {
         } };
     }
 
-    if (bytes.len < seq_len) {
-        return .incomplete;
-    }
+    const available = @min(bytes.len, seq_len);
 
     var i: usize = 1;
-    while (i < seq_len) : (i += 1) {
+    while (i < available) : (i += 1) {
         if ((bytes[i] & 0xc0) != 0x80) {
             return .{ .token = .{
                 .kind = .unknown,
@@ -357,6 +363,10 @@ fn parseTextToken(bytes: []const u8) ParseResult {
                 .payload_len = 1,
             } };
         }
+    }
+
+    if (bytes.len < seq_len) {
+        return .incomplete;
     }
 
     return .{ .token = .{
@@ -369,9 +379,9 @@ fn parseTextToken(bytes: []const u8) ParseResult {
 
 fn utf8SequenceLength(first: u8) usize {
     if (first < 0x80) return 1;
-    if ((first & 0xe0) == 0xc0) return 2;
-    if ((first & 0xf0) == 0xe0) return 3;
-    if ((first & 0xf8) == 0xf0) return 4;
+    if (first >= 0xc2 and first <= 0xdf) return 2;
+    if (first >= 0xe0 and first <= 0xef) return 3;
+    if (first >= 0xf0 and first <= 0xf4) return 4;
     return 0;
 }
 

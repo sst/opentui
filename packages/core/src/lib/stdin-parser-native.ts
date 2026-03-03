@@ -19,6 +19,8 @@ export class NativeStdinParser {
   private readonly timeoutMs: number
   private readonly maxPayloadBufferBytes: number
   private readonly maxTokenCapacity: number
+  private readonly initialPayloadBufferBytes: number
+  private readonly initialTokenCapacity: number
   private readonly armTimeouts: boolean
   private readonly onTimeoutFlush: (() => void) | null
   private timeoutId: Timer | null = null
@@ -34,6 +36,8 @@ export class NativeStdinParser {
     this.timeoutMs = options.timeoutMs ?? 10
     this.maxPayloadBufferBytes = Math.max(payloadBufferBytes, options.maxPayloadBufferBytes ?? 8 * 1024 * 1024)
     this.maxTokenCapacity = Math.max(tokenCapacity, options.maxTokenCapacity ?? 8192)
+    this.initialPayloadBufferBytes = payloadBufferBytes
+    this.initialTokenCapacity = tokenCapacity
     this.armTimeouts = options.armTimeouts ?? true
     this.onTimeoutFlush = options.onTimeoutFlush ?? null
     this.tokenBuffer = new Uint8Array(StdinTokenStruct.size * tokenCapacity)
@@ -115,6 +119,15 @@ export class NativeStdinParser {
     const status = this.lib.stdinParserReset(this.parserPtr)
     if (status !== 0) {
       throw new Error(`stdinParserReset failed: ${status}`)
+    }
+
+    if (this.payloadBuffer.byteLength !== this.initialPayloadBufferBytes) {
+      this.payloadBuffer = new Uint8Array(this.initialPayloadBufferBytes)
+    }
+
+    const currentTokenCapacity = Math.floor(this.tokenBuffer.byteLength / StdinTokenStruct.size)
+    if (currentTokenCapacity !== this.initialTokenCapacity) {
+      this.tokenBuffer = new Uint8Array(StdinTokenStruct.size * this.initialTokenCapacity)
     }
   }
 
