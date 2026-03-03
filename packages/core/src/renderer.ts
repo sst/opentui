@@ -462,6 +462,7 @@ export class CliRenderer extends EventEmitter implements RenderContext {
 
   private inputHandlers: ((sequence: string) => boolean)[] = []
   private prependedInputHandlers: ((sequence: string) => boolean)[] = []
+  private shouldRestoreModesOnNextFocus: boolean = false
 
   private idleResolvers: (() => void)[] = []
 
@@ -1095,12 +1096,16 @@ export class CliRenderer extends EventEmitter implements RenderContext {
       // When the terminal regains focus, some terminal emulators (notably
       // Windows Terminal / ConPTY) may have stripped DEC private modes like
       // mouse tracking, bracketed paste, and focus tracking itself while the
-      // window was unfocused. Re-send all active mode sequences unconditionally.
-      this.lib.restoreTerminalModes(this.rendererPtr)
+      // window was unfocused.
+      if (this.shouldRestoreModesOnNextFocus) {
+        this.lib.restoreTerminalModes(this.rendererPtr)
+        this.shouldRestoreModesOnNextFocus = false
+      }
       this.emit("focus")
       return true
     }
     if (sequence === "\x1b[O") {
+      this.shouldRestoreModesOnNextFocus = true
       this.emit("blur")
       return true
     }
