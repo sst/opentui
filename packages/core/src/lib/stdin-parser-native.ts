@@ -55,15 +55,26 @@ export class NativeStdinParser {
     this.ensureAlive()
 
     while (true) {
+      if (this.destroyed) {
+        return
+      }
+
       const { status, payload } = this.lib.stdinParserNext(this.parserPtr, this.tokenBuffer, this.payloadRefBuffer)
 
       if (status === PARSER_NEXT_TOKEN) {
         const token = StdinTokenStruct.unpack(this.tokenBuffer) as StdinToken
         const payloadBytes =
           payload.payloadPtr && payload.payloadLen > 0
-            ? new Uint8Array(toArrayBuffer(payload.payloadPtr, 0, payload.payloadLen))
+            ? // stdinParserNext returns a borrowed pointer into parser-owned memory.
+              // Copy now so callbacks never hold dangling/aliased views.
+              new Uint8Array(toArrayBuffer(payload.payloadPtr, 0, payload.payloadLen)).slice()
             : EMPTY_PAYLOAD
         onToken(token, payloadBytes)
+
+        if (this.destroyed) {
+          return
+        }
+
         continue
       }
 

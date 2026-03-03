@@ -92,3 +92,48 @@ test("NativeStdinParser timeout flush emits pending escape", () => {
     nativeParser.destroy()
   }
 })
+
+test("NativeStdinParser payload snapshots are stable across drains", () => {
+  const lib = resolveRenderLib()
+  const parser = lib.createStdinParser({ timeoutMs: 10, maxBufferBytes: 1024, reserved0: 0 })
+  const nativeParser = new NativeStdinParser(lib, parser, { armTimeouts: false })
+
+  try {
+    const payloads: Uint8Array[] = []
+    expect(nativeParser.push(Buffer.from("ab"))).toBe(true)
+
+    nativeParser.drain((_token, payload) => {
+      payloads.push(payload)
+    })
+
+    expect(payloads.length).toBe(2)
+    expect(new TextDecoder().decode(payloads[0])).toBe("a")
+    expect(new TextDecoder().decode(payloads[1])).toBe("b")
+  } finally {
+    nativeParser.destroy()
+  }
+})
+
+test("NativeStdinParser allows destroy during token callback", () => {
+  const lib = resolveRenderLib()
+  const parser = lib.createStdinParser({ timeoutMs: 10, maxBufferBytes: 1024, reserved0: 0 })
+  const nativeParser = new NativeStdinParser(lib, parser, { armTimeouts: false })
+
+  try {
+    expect(nativeParser.push(Buffer.from("abc"))).toBe(true)
+
+    let tokenCount = 0
+    expect(() => {
+      nativeParser.drain(() => {
+        tokenCount += 1
+        if (tokenCount === 1) {
+          nativeParser.destroy()
+        }
+      })
+    }).not.toThrow()
+
+    expect(tokenCount).toBe(1)
+  } finally {
+    nativeParser.destroy()
+  }
+})

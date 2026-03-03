@@ -2271,6 +2271,13 @@ export class CliRenderer extends EventEmitter implements RenderContext {
       console.error("Error destroying root renderable:", e instanceof Error ? e.stack : String(e))
     }
 
+    // Remove listeners before destroying parsers
+    this.stdin.removeListener("data", this.stdinListenerLegacy)
+    this.stdin.removeListener("data", this.stdinListenerZig)
+    if (this.stdin.setRawMode) {
+      this.stdin.setRawMode(false)
+    }
+
     this._stdinBuffer.destroy()
     this.nativeStdinParser?.destroy()
     this.nativeStdinParser = null
@@ -2284,12 +2291,6 @@ export class CliRenderer extends EventEmitter implements RenderContext {
     if (this._splitHeight > 0) {
       this.flushStdoutCache(this._splitHeight, true)
     }
-
-    if (this.stdin.setRawMode) {
-      this.stdin.setRawMode(false)
-    }
-    this.stdin.removeListener("data", this.stdinListenerLegacy)
-    this.stdin.removeListener("data", this.stdinListenerZig)
 
     this.lib.destroyRenderer(this.rendererPtr)
     rendererTracker.removeRenderer(this)
