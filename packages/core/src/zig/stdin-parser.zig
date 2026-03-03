@@ -96,6 +96,8 @@ pub const StdinParser = struct {
     options: StdinParserOptions,
     buffer: std.ArrayList(u8),
     in_paste_mode: bool,
+    paste_end_index: ?usize,
+    paste_end_match_len: usize,
     pending_since_ms: ?u64,
     flush_pending_timeout: bool,
     pending_consumed: usize,
@@ -108,6 +110,8 @@ pub const StdinParser = struct {
             .options = options,
             .buffer = std.ArrayList(u8).empty,
             .in_paste_mode = false,
+            .paste_end_index = null,
+            .paste_end_match_len = 0,
             .pending_since_ms = null,
             .flush_pending_timeout = false,
             .pending_consumed = 0,
@@ -136,7 +140,12 @@ pub const StdinParser = struct {
             return error.BufferLimitReached;
         }
 
+        const append_start = self.buffer.items.len;
         try self.buffer.appendSlice(self.allocator, bytes);
+
+        if (self.in_paste_mode and self.paste_end_index == null) {
+            self.updatePasteEndMatcher(bytes, append_start);
+        }
     }
 
     pub fn reset(self: *StdinParser) void {
@@ -144,6 +153,7 @@ pub const StdinParser = struct {
         self.buffer = std.ArrayList(u8).empty;
         self.buffer.ensureTotalCapacityPrecise(self.allocator, 128) catch {};
         self.in_paste_mode = false;
+        self.clearPasteEndMatcher();
         self.pending_since_ms = null;
         self.flush_pending_timeout = false;
         self.pending_consumed = 0;
@@ -219,6 +229,7 @@ pub const StdinParser = struct {
                     self.consumePrefix(consume.consumed);
                     if (consume.clear_paste_mode) {
                         self.in_paste_mode = false;
+                        self.clearPasteEndMatcher();
                     }
                     self.flush_pending_timeout = false;
                     continue;
@@ -254,9 +265,53 @@ pub const StdinParser = struct {
         self.consumePrefix(self.pending_consumed);
         if (self.pending_clear_paste_mode) {
             self.in_paste_mode = false;
+            self.clearPasteEndMatcher();
         }
         self.pending_consumed = 0;
         self.pending_clear_paste_mode = false;
+    }
+
+    fn clearPasteEndMatcher(self: *StdinParser) void {
+        self.paste_end_index = null;
+        self.paste_end_match_len = 0;
+    }
+
+    fn enterPasteMode(self: *StdinParser) void {
+        self.in_paste_mode = true;
+        self.clearPasteEndMatcher();
+
+        if (self.buffer.items.len > 0) {
+            self.updatePasteEndMatcher(self.buffer.items, 0);
+        }
+    }
+
+    fn updatePasteEndMatcher(self: *StdinParser, bytes: []const u8, base_index: usize) void {
+        if (bytes.len == 0 or self.paste_end_index != null) {
+            return;
+        }
+
+        var offset: usize = 0;
+        while (offset < bytes.len) : (offset += 1) {
+            const byte = bytes[offset];
+            const expected = BRACKETED_PASTE_END[self.paste_end_match_len];
+
+            if (byte == expected) {
+                self.paste_end_match_len += 1;
+                if (self.paste_end_match_len == BRACKETED_PASTE_END.len) {
+                    self.paste_end_index = base_index + offset + 1 - BRACKETED_PASTE_END.len;
+                    self.paste_end_match_len = 0;
+                    return;
+                }
+
+                continue;
+            }
+
+            if (self.paste_end_match_len > 0 and byte == BRACKETED_PASTE_END[0]) {
+                self.paste_end_match_len = 1;
+            } else {
+                self.paste_end_match_len = 0;
+            }
+        }
     }
 
     fn hasPendingState(self: *const StdinParser) bool {
@@ -289,7 +344,7 @@ pub const StdinParser = struct {
 
         if (std.mem.startsWith(u8, self.buffer.items, BRACKETED_PASTE_START)) {
             self.consumePrefix(BRACKETED_PASTE_START.len);
-            self.in_paste_mode = true;
+            self.enterPasteMode();
             return self.nextToken();
         }
 
@@ -307,7 +362,7 @@ pub const StdinParser = struct {
     }
 
     fn nextPasteToken(self: *StdinParser) ParseResult {
-        if (std.mem.indexOf(u8, self.buffer.items, BRACKETED_PASTE_END)) |end_index| {
+        if (self.paste_end_index) |end_index| {
             return .{ .token = .{
                 .kind = .paste,
                 .consumed = end_index + BRACKETED_PASTE_END.len,

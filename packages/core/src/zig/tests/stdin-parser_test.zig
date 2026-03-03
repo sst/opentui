@@ -128,6 +128,91 @@ test "stdin parser handles split bracketed paste across pushes" {
     try testing.expectEqualStrings("hello world", second.items[0].payload);
 }
 
+test "stdin parser handles split bracketed paste end across all boundaries" {
+    const paste_end = "\x1b[201~";
+    var split: usize = 1;
+
+    while (split < paste_end.len) : (split += 1) {
+        const parser = try stdin_parser.StdinParser.init(testing.allocator, stdin_parser.defaultOptions());
+        defer parser.deinit();
+
+        try parser.push("\x1b[200~hello");
+        try parser.push(paste_end[0..split]);
+
+        var first = try drainAvailable(parser, testing.allocator);
+        defer deinitSnapshots(&first, testing.allocator);
+        try testing.expectEqual(@as(usize, 0), first.items.len);
+
+        try parser.push(paste_end[split..]);
+
+        var second = try drainAvailable(parser, testing.allocator);
+        defer deinitSnapshots(&second, testing.allocator);
+        try testing.expectEqual(@as(usize, 1), second.items.len);
+        try testing.expectEqual(stdin_parser.StdinTokenKind.paste, second.items[0].kind);
+        try testing.expectEqualStrings("hello", second.items[0].payload);
+    }
+}
+
+test "stdin parser ignores near-match bracketed paste endings" {
+    const parser = try stdin_parser.StdinParser.init(testing.allocator, stdin_parser.defaultOptions());
+    defer parser.deinit();
+
+    try parser.push("\x1b[200~abc\x1b[20");
+
+    var first = try drainAvailable(parser, testing.allocator);
+    defer deinitSnapshots(&first, testing.allocator);
+    try testing.expectEqual(@as(usize, 0), first.items.len);
+
+    try parser.push("2~def");
+
+    var second = try drainAvailable(parser, testing.allocator);
+    defer deinitSnapshots(&second, testing.allocator);
+    try testing.expectEqual(@as(usize, 0), second.items.len);
+
+    try parser.push("\x1b[201~");
+
+    var third = try drainAvailable(parser, testing.allocator);
+    defer deinitSnapshots(&third, testing.allocator);
+    try testing.expectEqual(@as(usize, 1), third.items.len);
+    try testing.expectEqual(stdin_parser.StdinTokenKind.paste, third.items[0].kind);
+    try testing.expectEqualStrings("abc\x1b[202~def", third.items[0].payload);
+}
+
+test "stdin parser handles doubled escape before paste end marker" {
+    const parser = try stdin_parser.StdinParser.init(testing.allocator, stdin_parser.defaultOptions());
+    defer parser.deinit();
+
+    try parser.push("\x1b[200~abc\x1b");
+
+    var first = try drainAvailable(parser, testing.allocator);
+    defer deinitSnapshots(&first, testing.allocator);
+    try testing.expectEqual(@as(usize, 0), first.items.len);
+
+    try parser.push("\x1b[201~");
+
+    var second = try drainAvailable(parser, testing.allocator);
+    defer deinitSnapshots(&second, testing.allocator);
+    try testing.expectEqual(@as(usize, 1), second.items.len);
+    try testing.expectEqual(stdin_parser.StdinTokenKind.paste, second.items[0].kind);
+    try testing.expectEqualStrings("abc\x1b", second.items[0].payload);
+}
+
+test "stdin parser preserves trailing bytes after bracketed paste" {
+    const parser = try stdin_parser.StdinParser.init(testing.allocator, stdin_parser.defaultOptions());
+    defer parser.deinit();
+
+    try parser.push("\x1b[200~hello\x1b[201~x");
+
+    var snapshots = try drainAvailable(parser, testing.allocator);
+    defer deinitSnapshots(&snapshots, testing.allocator);
+
+    try testing.expectEqual(@as(usize, 2), snapshots.items.len);
+    try testing.expectEqual(stdin_parser.StdinTokenKind.paste, snapshots.items[0].kind);
+    try testing.expectEqualStrings("hello", snapshots.items[0].payload);
+    try testing.expectEqual(stdin_parser.StdinTokenKind.text, snapshots.items[1].kind);
+    try testing.expectEqualStrings("x", snapshots.items[1].payload);
+}
+
 test "stdin parser emits empty paste token" {
     const parser = try stdin_parser.StdinParser.init(testing.allocator, stdin_parser.defaultOptions());
     defer parser.deinit();
