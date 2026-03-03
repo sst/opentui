@@ -85,7 +85,7 @@ pub const StdinParser = struct {
     buffer: std.ArrayList(u8),
     in_paste_mode: bool,
     pending_since_ms: ?u64,
-    flush_pending_escape: bool,
+    flush_pending_timeout: bool,
 
     pub fn init(allocator: std.mem.Allocator, options: StdinParserOptions) !*StdinParser {
         const parser = try allocator.create(StdinParser);
@@ -95,7 +95,7 @@ pub const StdinParser = struct {
             .buffer = std.ArrayList(u8).empty,
             .in_paste_mode = false,
             .pending_since_ms = null,
-            .flush_pending_escape = false,
+            .flush_pending_timeout = false,
         };
         errdefer allocator.destroy(parser);
 
@@ -139,13 +139,21 @@ pub const StdinParser = struct {
             switch (parsed) {
                 .none => break,
                 .incomplete => {
-                    if (self.flush_pending_escape and !self.in_paste_mode and self.buffer.items.len > 0 and self.buffer.items[0] == ESC) {
-                        const forced = CandidateToken{
-                            .kind = .esc,
-                            .consumed = self.buffer.items.len,
-                            .payload_start = 0,
-                            .payload_len = self.buffer.items.len,
-                        };
+                    if (self.flush_pending_timeout and !self.in_paste_mode and self.buffer.items.len > 0) {
+                        const forced = if (self.buffer.items[0] == ESC)
+                            CandidateToken{
+                                .kind = .esc,
+                                .consumed = self.buffer.items.len,
+                                .payload_start = 0,
+                                .payload_len = self.buffer.items.len,
+                            }
+                        else
+                            CandidateToken{
+                                .kind = .unknown,
+                                .consumed = 1,
+                                .payload_start = 0,
+                                .payload_len = 1,
+                            };
 
                         if (!self.emitCandidate(forced, token_out, &token_index, payload_out, &payload_index)) {
                             stats.overflowed = 1;
@@ -154,7 +162,7 @@ pub const StdinParser = struct {
                         }
 
                         self.consumePrefix(forced.consumed);
-                        self.flush_pending_escape = false;
+                        self.flush_pending_timeout = self.buffer.items.len > 0;
                         continue;
                     }
 
@@ -171,7 +179,7 @@ pub const StdinParser = struct {
                     if (candidate.clear_paste_mode) {
                         self.in_paste_mode = false;
                     }
-                    self.flush_pending_escape = false;
+                    self.flush_pending_timeout = false;
                 },
             }
         }
@@ -183,7 +191,7 @@ pub const StdinParser = struct {
             }
         } else {
             self.pending_since_ms = null;
-            self.flush_pending_escape = false;
+            self.flush_pending_timeout = false;
         }
 
         stats.token_count = @intCast(token_index);
@@ -195,7 +203,7 @@ pub const StdinParser = struct {
         self.buffer.clearRetainingCapacity();
         self.in_paste_mode = false;
         self.pending_since_ms = null;
-        self.flush_pending_escape = false;
+        self.flush_pending_timeout = false;
     }
 
     pub fn flushTimeout(self: *StdinParser, now_ms: u64) !void {
@@ -206,16 +214,12 @@ pub const StdinParser = struct {
         if (self.buffer.items.len == 0) {
             return;
         }
-        if (self.buffer.items[0] != ESC) {
-            return;
-        }
-
         const timeout_ms: u64 = @intCast(self.options.timeout_ms);
         if (now_ms < pending_since or now_ms - pending_since < timeout_ms) {
             return;
         }
 
-        self.flush_pending_escape = true;
+        self.flush_pending_timeout = true;
     }
 
     fn hasPendingState(self: *const StdinParser) bool {

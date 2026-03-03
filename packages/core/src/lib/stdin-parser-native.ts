@@ -40,19 +40,23 @@ export class NativeStdinParser {
     this.payloadBuffer = new Uint8Array(payloadBufferBytes)
   }
 
-  public push(data: Buffer): void {
+  public push(data: Buffer): boolean {
     this.ensureAlive()
     if (data.length === 0) {
-      return
+      return true
     }
 
     const status = this.lib.stdinParserPush(this.parserPtr, data)
+    if (status === -2) {
+      return false
+    }
     if (status !== 0) {
       throw new Error(`stdinParserPush failed: ${status}`)
     }
     if (this.armTimeouts) {
       this.armTimeoutIfNeeded()
     }
+    return true
   }
 
   public drain(onToken: (token: StdinToken, payload: Uint8Array) => void): void {

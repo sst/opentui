@@ -202,6 +202,34 @@ describe("renderer stdin routing", () => {
     }
   })
 
+  test("legacy shadow compare handles timeout-flushed escape parity", async () => {
+    const previousNodeEnv = process.env.NODE_ENV
+    process.env.NODE_ENV = "test"
+
+    const { renderer } = await createTestRenderer({
+      width: 40,
+      height: 20,
+      useMouse: true,
+      experimental_stdinParserMode: "legacy",
+      experimental_stdinShadowCompare: true,
+    })
+
+    try {
+      const keys: string[] = []
+      renderer.keyInput.on("keypress", (event) => {
+        keys.push(event.name)
+      })
+
+      renderer.stdin.emit("data", Buffer.from("\x1b"))
+      await Bun.sleep(30)
+
+      expect(keys).toEqual(["escape"])
+    } finally {
+      process.env.NODE_ENV = previousNodeEnv
+      renderer.destroy()
+    }
+  })
+
   test("zig mode suspend resets parser state before resume", async () => {
     const { renderer } = await createTestRenderer({
       width: 40,
@@ -227,6 +255,38 @@ describe("renderer stdin routing", () => {
       await Bun.sleep(20)
 
       expect(events).toEqual([{ name: "x", meta: false }])
+    } finally {
+      renderer.destroy()
+    }
+  })
+
+  test("zig mode drops oversized buffered input and keeps processing", async () => {
+    const { renderer } = await createTestRenderer({
+      width: 40,
+      height: 20,
+      useMouse: true,
+      experimental_stdinParserMode: "zig",
+    })
+
+    try {
+      const keys: string[] = []
+      renderer.keyInput.on("keypress", (event) => {
+        keys.push(event.name)
+      })
+
+      const largeChunk = Buffer.from("x".repeat(1024 * 1024))
+
+      expect(() => {
+        renderer.stdin.emit("data", Buffer.from("\x1b[200~"))
+        for (let i = 0; i < 9; i++) {
+          renderer.stdin.emit("data", largeChunk)
+        }
+      }).not.toThrow()
+
+      renderer.stdin.emit("data", Buffer.from("z"))
+      await Bun.sleep(40)
+
+      expect(keys).toContain("z")
     } finally {
       renderer.destroy()
     }

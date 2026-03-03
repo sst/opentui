@@ -196,3 +196,24 @@ test "stdin parser is chunk-shape invariant" {
         try testing.expectEqualStrings(single_chunk.items[i].payload, split_chunks.items[i].payload);
     }
 }
+
+test "stdin parser flush timeout emits pending high byte as unknown token" {
+    const parser = try stdin_parser.StdinParser.init(testing.allocator, stdin_parser.defaultOptions());
+    defer parser.deinit();
+
+    try parser.push(&[_]u8{0xE9});
+
+    var first = try drainAvailable(parser, testing.allocator);
+    defer deinitSnapshots(&first, testing.allocator);
+    try testing.expectEqual(@as(usize, 0), first.items.len);
+
+    try parser.flushTimeout(std.math.maxInt(u64));
+
+    var second = try drainAvailable(parser, testing.allocator);
+    defer deinitSnapshots(&second, testing.allocator);
+
+    try testing.expectEqual(@as(usize, 1), second.items.len);
+    try testing.expectEqual(stdin_parser.StdinTokenKind.unknown, second.items[0].kind);
+    try testing.expectEqual(@as(usize, 1), second.items[0].payload.len);
+    try testing.expectEqual(@as(u8, 0xE9), second.items[0].payload[0]);
+}

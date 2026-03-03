@@ -440,6 +440,8 @@ export class CliRenderer extends EventEmitter implements RenderContext {
   private readonly shadowMouseParser: MouseParser = new MouseParser()
   private shadowMismatchId = 0
   private activeLegacyShadowChunkRecords: CompareRecord[] | null = null
+  private hasLoggedNativeStdinParserOverflow = false
+  private hasLoggedShadowStdinParserOverflow = false
 
   private animationRequest: Map<number, FrameRequestCallback> = new Map()
 
@@ -678,7 +680,7 @@ export class CliRenderer extends EventEmitter implements RenderContext {
     } else if (this.stdinShadowCompare) {
       const parserPtr = this.lib.createStdinParser(stdinParserOptions)
       this.shadowStdinParser = new NativeStdinParser(this.lib, parserPtr, {
-        timeoutMs: 10,
+        timeoutMs: 5,
         armTimeouts: false,
       })
     }
@@ -1153,29 +1155,42 @@ export class CliRenderer extends EventEmitter implements RenderContext {
     }
 
     if (!this.nativeStdinParser) return
-    this.nativeStdinParser.push(data)
+    const accepted = this.nativeStdinParser.push(data)
+    if (!accepted) {
+      this.handleStdinParserOverflow("zig")
+      return
+    }
+
     this.drainStdinParser()
   }).bind(this)
 
   private handleLegacyBufferedSequence = (sequence: string): void => {
+    const record: CompareRecord = {
+      source: "legacy",
+      kind: "sequence",
+      value: sequence,
+    }
+
     if (this.activeLegacyShadowChunkRecords) {
-      this.activeLegacyShadowChunkRecords.push({
-        source: "legacy",
-        kind: "sequence",
-        value: sequence,
-      })
+      this.activeLegacyShadowChunkRecords.push(record)
+    } else if (this.stdinShadowCompare) {
+      this.compareLegacyRecordsWithShadow([record], true)
     }
 
     this.dispatchSequenceToInputHandlers(sequence)
   }
 
   private handleLegacyBufferedPaste = (data: string): void => {
+    const record: CompareRecord = {
+      source: "legacy",
+      kind: "paste",
+      value: data,
+    }
+
     if (this.activeLegacyShadowChunkRecords) {
-      this.activeLegacyShadowChunkRecords.push({
-        source: "legacy",
-        kind: "paste",
-        value: data,
-      })
+      this.activeLegacyShadowChunkRecords.push(record)
+    } else if (this.stdinShadowCompare) {
+      this.compareLegacyRecordsWithShadow([record])
     }
 
     this._keyHandler.processPaste(data)
@@ -1361,13 +1376,62 @@ export class CliRenderer extends EventEmitter implements RenderContext {
       return
     }
 
+    const accepted = this.shadowStdinParser.push(data)
+    if (!accepted) {
+      this.handleStdinParserOverflow("shadow")
+      return
+    }
+
+    this.compareLegacyRecordsWithShadow(legacyRecords)
+  }
+
+  private compareLegacyRecordsWithShadow(legacyRecords: CompareRecord[], flushTimeout = false): void {
+    if (!this.shadowStdinParser) {
+      return
+    }
+
+    if (flushTimeout) {
+      // Force timeout path when comparing against legacy delayed flush events.
+      this.shadowStdinParser.flushTimeout(Date.now() + 100)
+    }
+
     const zigRecords: CompareRecord[] = []
-    this.shadowStdinParser.push(data)
     this.shadowStdinParser.drain((token, payload) => {
       this.collectShadowZigRecord(token, payload, zigRecords)
     })
 
     this.compareShadowRecords(legacyRecords, zigRecords)
+  }
+
+  private handleStdinParserOverflow(source: "zig" | "shadow"): void {
+    if (source === "zig") {
+      if (!this.hasLoggedNativeStdinParserOverflow) {
+        this.hasLoggedNativeStdinParserOverflow = true
+        if (process.env.NODE_ENV !== "test") {
+          console.warn("[stdin-parser-overflow] dropped pending stdin bytes after hitting native parser buffer limit")
+        }
+      }
+
+      try {
+        this.nativeStdinParser?.reset()
+      } catch (error) {
+        console.error("stdin parser reset failed after overflow", error)
+      }
+      return
+    }
+
+    if (!this.hasLoggedShadowStdinParserOverflow) {
+      this.hasLoggedShadowStdinParserOverflow = true
+      if (process.env.NODE_ENV !== "test") {
+        console.warn("[stdin-shadow-overflow] skipped shadow comparison after parser buffer limit")
+      }
+    }
+
+    try {
+      this.shadowStdinParser?.reset()
+    } catch (error) {
+      console.error("shadow stdin parser reset failed after overflow", error)
+    }
   }
 
   private compareShadowRecords(legacyRecords: CompareRecord[], zigRecords: CompareRecord[]): void {
