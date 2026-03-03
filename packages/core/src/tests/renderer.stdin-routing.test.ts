@@ -260,33 +260,78 @@ describe("renderer stdin routing", () => {
     }
   })
 
-  test("zig mode drops oversized buffered input and keeps processing", async () => {
+  test("zig mode discards oversized paste until end marker and then resumes", async () => {
     const { renderer } = await createTestRenderer({
       width: 40,
       height: 20,
       useMouse: true,
       experimental_stdinParserMode: "zig",
+      experimental_stdinParserMaxBufferBytes: 64 * 1024,
     })
 
     try {
       const keys: string[] = []
+      const pastes: string[] = []
       renderer.keyInput.on("keypress", (event) => {
         keys.push(event.name)
       })
+      renderer.keyInput.on("paste", (event) => {
+        pastes.push(event.text)
+      })
 
-      const largeChunk = Buffer.from("x".repeat(1024 * 1024))
+      const largeChunk = Buffer.alloc(16 * 1024, "x")
 
       expect(() => {
         renderer.stdin.emit("data", Buffer.from("\x1b[200~"))
-        for (let i = 0; i < 9; i++) {
+        for (let i = 0; i < 5; i++) {
           renderer.stdin.emit("data", largeChunk)
         }
       }).not.toThrow()
 
       renderer.stdin.emit("data", Buffer.from("z"))
+      await Bun.sleep(20)
+
+      expect(keys).toEqual([])
+      expect(pastes).toEqual([])
+
+      renderer.stdin.emit("data", Buffer.from("\x1b[20"))
+      renderer.stdin.emit("data", Buffer.from("1~"))
+      renderer.stdin.emit("data", Buffer.from("q"))
       await Bun.sleep(40)
 
-      expect(keys).toContain("z")
+      expect(keys).toEqual(["q"])
+      expect(pastes).toEqual([])
+    } finally {
+      renderer.destroy()
+    }
+  })
+
+  test("zig mode emits paste event for large bracketed paste under configured limit", async () => {
+    const { renderer } = await createTestRenderer({
+      width: 40,
+      height: 20,
+      useMouse: true,
+      experimental_stdinParserMode: "zig",
+      experimental_stdinParserMaxBufferBytes: 512 * 1024,
+    })
+
+    try {
+      const payloadSize = 256 * 1024
+      let pasteCount = 0
+      let pastedBytes = 0
+
+      renderer.keyInput.on("paste", (event) => {
+        pasteCount += 1
+        pastedBytes += event.text.length
+      })
+
+      const chunk = Buffer.alloc(payloadSize, "x")
+      const stream = Buffer.concat([Buffer.from("\x1b[200~"), chunk, Buffer.from("\x1b[201~")])
+      renderer.stdin.emit("data", stream)
+      await Bun.sleep(80)
+
+      expect(pasteCount).toBe(1)
+      expect(pastedBytes).toBe(payloadSize)
     } finally {
       renderer.destroy()
     }

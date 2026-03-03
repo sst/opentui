@@ -213,6 +213,51 @@ test "stdin parser preserves trailing bytes after bracketed paste" {
     try testing.expectEqualStrings("x", snapshots.items[1].payload);
 }
 
+test "stdin parser discards oversized paste payload until end marker" {
+    var options = stdin_parser.defaultOptions();
+    options.max_buffer_bytes = 32;
+
+    const parser = try stdin_parser.StdinParser.init(testing.allocator, options);
+    defer parser.deinit();
+
+    try parser.push("\x1b[200~");
+
+    var started = try drainAvailable(parser, testing.allocator);
+    defer deinitSnapshots(&started, testing.allocator);
+    try testing.expectEqual(@as(usize, 0), started.items.len);
+
+    try parser.push("abcdefghijklmnopqrstuvwxyz0123456789");
+
+    var first = try drainAvailable(parser, testing.allocator);
+    defer deinitSnapshots(&first, testing.allocator);
+    try testing.expectEqual(@as(usize, 0), first.items.len);
+
+    try parser.push("ignored");
+
+    var second = try drainAvailable(parser, testing.allocator);
+    defer deinitSnapshots(&second, testing.allocator);
+    try testing.expectEqual(@as(usize, 0), second.items.len);
+
+    try parser.push("\x1b[20");
+    try parser.push("1~z");
+
+    var third = try drainAvailable(parser, testing.allocator);
+    defer deinitSnapshots(&third, testing.allocator);
+    try testing.expectEqual(@as(usize, 1), third.items.len);
+    try testing.expectEqual(stdin_parser.StdinTokenKind.text, third.items[0].kind);
+    try testing.expectEqualStrings("z", third.items[0].payload);
+}
+
+test "stdin parser returns BufferLimitReached outside paste mode" {
+    var options = stdin_parser.defaultOptions();
+    options.max_buffer_bytes = 8;
+
+    const parser = try stdin_parser.StdinParser.init(testing.allocator, options);
+    defer parser.deinit();
+
+    try testing.expectError(error.BufferLimitReached, parser.push("123456789"));
+}
+
 test "stdin parser emits empty paste token" {
     const parser = try stdin_parser.StdinParser.init(testing.allocator, stdin_parser.defaultOptions());
     defer parser.deinit();

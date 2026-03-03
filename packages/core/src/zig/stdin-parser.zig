@@ -39,6 +39,8 @@ const BEL: u8 = 0x07;
 const BRACKETED_PASTE_START = "\x1b[200~";
 const BRACKETED_PASTE_END = "\x1b[201~";
 
+const PushError = error{ OutOfMemory, BufferLimitReached };
+
 pub fn defaultOptions() StdinParserOptions {
     return .{
         .timeout_ms = 10,
@@ -98,6 +100,8 @@ pub const StdinParser = struct {
     in_paste_mode: bool,
     paste_end_index: ?usize,
     paste_end_match_len: usize,
+    discarding_oversized_paste: bool,
+    discard_paste_end_match_len: usize,
     pending_since_ms: ?u64,
     flush_pending_timeout: bool,
     pending_consumed: usize,
@@ -112,6 +116,8 @@ pub const StdinParser = struct {
             .in_paste_mode = false,
             .paste_end_index = null,
             .paste_end_match_len = 0,
+            .discarding_oversized_paste = false,
+            .discard_paste_end_match_len = 0,
             .pending_since_ms = null,
             .flush_pending_timeout = false,
             .pending_consumed = 0,
@@ -128,8 +134,13 @@ pub const StdinParser = struct {
         self.allocator.destroy(self);
     }
 
-    pub fn push(self: *StdinParser, bytes: []const u8) !void {
+    pub fn push(self: *StdinParser, bytes: []const u8) PushError!void {
         if (bytes.len == 0) {
+            return;
+        }
+
+        if (self.discarding_oversized_paste) {
+            try self.consumeDiscardedPasteBytes(bytes);
             return;
         }
 
@@ -137,6 +148,11 @@ pub const StdinParser = struct {
 
         const max_bytes: usize = @intCast(self.options.max_buffer_bytes);
         if (self.buffer.items.len + bytes.len > max_bytes) {
+            if (self.in_paste_mode) {
+                self.enterPasteOverflowDiscardMode();
+                try self.consumeDiscardedPasteBytes(bytes);
+                return;
+            }
             return error.BufferLimitReached;
         }
 
@@ -154,6 +170,8 @@ pub const StdinParser = struct {
         self.buffer.ensureTotalCapacityPrecise(self.allocator, 128) catch {};
         self.in_paste_mode = false;
         self.clearPasteEndMatcher();
+        self.discarding_oversized_paste = false;
+        self.discard_paste_end_match_len = 0;
         self.pending_since_ms = null;
         self.flush_pending_timeout = false;
         self.pending_consumed = 0;
@@ -276,6 +294,21 @@ pub const StdinParser = struct {
         self.paste_end_match_len = 0;
     }
 
+    fn enterPasteOverflowDiscardMode(self: *StdinParser) void {
+        self.buffer.deinit(self.allocator);
+        self.buffer = std.ArrayList(u8).empty;
+        self.buffer.ensureTotalCapacityPrecise(self.allocator, 128) catch {};
+
+        self.in_paste_mode = false;
+        self.clearPasteEndMatcher();
+        self.discarding_oversized_paste = true;
+        self.discard_paste_end_match_len = 0;
+        self.pending_since_ms = null;
+        self.flush_pending_timeout = false;
+        self.pending_consumed = 0;
+        self.pending_clear_paste_mode = false;
+    }
+
     fn enterPasteMode(self: *StdinParser) void {
         self.in_paste_mode = true;
         self.clearPasteEndMatcher();
@@ -314,6 +347,48 @@ pub const StdinParser = struct {
         }
     }
 
+    fn consumeDiscardedPasteBytes(self: *StdinParser, bytes: []const u8) PushError!void {
+        if (!self.discarding_oversized_paste or bytes.len == 0) {
+            return;
+        }
+
+        if (self.findPasteEndInDiscardedBytes(bytes)) |marker_end_offset| {
+            self.discarding_oversized_paste = false;
+            self.discard_paste_end_match_len = 0;
+
+            const trailing_start = marker_end_offset;
+            if (trailing_start < bytes.len) {
+                try self.push(bytes[trailing_start..]);
+            }
+        }
+    }
+
+    fn findPasteEndInDiscardedBytes(self: *StdinParser, bytes: []const u8) ?usize {
+        var offset: usize = 0;
+        while (offset < bytes.len) : (offset += 1) {
+            const byte = bytes[offset];
+            const expected = BRACKETED_PASTE_END[self.discard_paste_end_match_len];
+
+            if (byte == expected) {
+                self.discard_paste_end_match_len += 1;
+                if (self.discard_paste_end_match_len == BRACKETED_PASTE_END.len) {
+                    self.discard_paste_end_match_len = 0;
+                    return offset + 1;
+                }
+
+                continue;
+            }
+
+            if (self.discard_paste_end_match_len > 0 and byte == BRACKETED_PASTE_END[0]) {
+                self.discard_paste_end_match_len = 1;
+            } else {
+                self.discard_paste_end_match_len = 0;
+            }
+        }
+
+        return null;
+    }
+
     fn hasPendingState(self: *const StdinParser) bool {
         return self.pending_consumed > 0 or self.in_paste_mode or self.buffer.items.len > 0;
     }
@@ -334,6 +409,10 @@ pub const StdinParser = struct {
     }
 
     fn nextToken(self: *StdinParser) ParseResult {
+        if (self.discarding_oversized_paste) {
+            return .none;
+        }
+
         if (self.in_paste_mode) {
             return self.nextPasteToken();
         }
