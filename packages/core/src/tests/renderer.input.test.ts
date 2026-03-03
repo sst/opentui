@@ -1108,6 +1108,37 @@ test("high byte buffer handling via keyInput events", async () => {
   })
 })
 
+test("high byte UTF-8 lead byte does not stall indefinitely", async () => {
+  const result = await new Promise<KeyEvent>((resolve, reject) => {
+    const timeout = setTimeout(() => {
+      currentRenderer.keyInput.removeListener("keypress", onKeypress)
+      reject(new Error("timed out waiting for high-byte keypress"))
+    }, 300)
+
+    const onKeypress = (parsedKey: KeyEvent) => {
+      clearTimeout(timeout)
+      currentRenderer.keyInput.removeListener("keypress", onKeypress)
+      resolve(parsedKey)
+    }
+
+    currentRenderer.keyInput.on("keypress", onKeypress)
+    // 128 + 105 = 233, should become \x1b + "i"
+    currentRenderer.stdin.emit("data", Buffer.from([233]))
+  })
+
+  expect(result).toMatchObject({
+    eventType: "press",
+    name: "i",
+    ctrl: false,
+    meta: true,
+    shift: false,
+    option: false,
+    number: false,
+    sequence: "\x1bi",
+    raw: "\x1bi",
+  })
+})
+
 test("empty input via keyInput events", async () => {
   const result = await triggerInput("")
   expect(result).toMatchObject({

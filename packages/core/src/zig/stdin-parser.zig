@@ -38,7 +38,6 @@ const ESC: u8 = 0x1b;
 const BEL: u8 = 0x07;
 const BRACKETED_PASTE_START = "\x1b[200~";
 const BRACKETED_PASTE_END = "\x1b[201~";
-const PASTE_CHUNK_BYTES: usize = 4096;
 
 pub fn defaultOptions() StdinParserOptions {
     return .{
@@ -183,7 +182,7 @@ pub const StdinParser = struct {
                     if (self.flush_pending_timeout and !self.in_paste_mode and self.buffer.items.len > 0) {
                         const first = self.buffer.items[0];
                         const seq_len = utf8SequenceLength(first);
-                        const should_force_unknown = seq_len == 0;
+                        const should_force_unknown = seq_len == 0 or (self.buffer.items.len == 1 and seq_len > 1);
 
                         if (first == ESC or should_force_unknown) {
                             const forced = if (first == ESC)
@@ -309,19 +308,12 @@ pub const StdinParser = struct {
 
     fn nextPasteToken(self: *StdinParser) ParseResult {
         if (std.mem.indexOf(u8, self.buffer.items, BRACKETED_PASTE_END)) |end_index| {
-            if (end_index == 0) {
-                return .{ .consume = .{
-                    .consumed = BRACKETED_PASTE_END.len,
-                    .clear_paste_mode = true,
-                } };
-            }
-
-            const chunk_len = @min(end_index, PASTE_CHUNK_BYTES);
             return .{ .token = .{
                 .kind = .paste,
-                .consumed = chunk_len,
+                .consumed = end_index + BRACKETED_PASTE_END.len,
                 .payload_start = 0,
-                .payload_len = chunk_len,
+                .payload_len = end_index,
+                .clear_paste_mode = true,
             } };
         }
 

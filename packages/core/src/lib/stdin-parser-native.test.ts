@@ -27,7 +27,7 @@ test("NativeStdinParser returns false when parser buffer limit is reached", () =
   }
 })
 
-test("NativeStdinParser emits large paste as bounded chunks", () => {
+test("NativeStdinParser emits complete bracketed paste as one token", () => {
   const lib = resolveRenderLib()
   const parser = lib.createStdinParser({ timeoutMs: 10, maxBufferBytes: 200_000, reserved0: 0 })
   const nativeParser = new NativeStdinParser(lib, parser, { armTimeouts: false })
@@ -42,9 +42,27 @@ test("NativeStdinParser emits large paste as bounded chunks", () => {
       payloadLens.push(payload.length)
     })
 
-    expect(payloadLens.length).toBeGreaterThan(1)
-    expect(payloadLens.every((len) => len > 0 && len <= 4096)).toBe(true)
-    expect(payloadLens.reduce((sum, len) => sum + len, 0)).toBe(70_000)
+    expect(payloadLens).toEqual([70_000])
+  } finally {
+    nativeParser.destroy()
+  }
+})
+
+test("NativeStdinParser emits empty bracketed paste token", () => {
+  const lib = resolveRenderLib()
+  const parser = lib.createStdinParser({ timeoutMs: 10, maxBufferBytes: 1024, reserved0: 0 })
+  const nativeParser = new NativeStdinParser(lib, parser, { armTimeouts: false })
+
+  try {
+    const payloads: string[] = []
+    expect(nativeParser.push(Buffer.from("\x1b[200~\x1b[201~"))).toBe(true)
+
+    nativeParser.drain((token, payload) => {
+      expect(token.kind).toBe("paste")
+      payloads.push(new TextDecoder().decode(payload))
+    })
+
+    expect(payloads).toEqual([""])
   } finally {
     nativeParser.destroy()
   }

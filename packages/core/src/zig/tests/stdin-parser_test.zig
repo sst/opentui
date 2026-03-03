@@ -128,7 +128,21 @@ test "stdin parser handles split bracketed paste across pushes" {
     try testing.expectEqualStrings("hello world", second.items[0].payload);
 }
 
-test "stdin parser chunks large bracketed paste payload" {
+test "stdin parser emits empty paste token" {
+    const parser = try stdin_parser.StdinParser.init(testing.allocator, stdin_parser.defaultOptions());
+    defer parser.deinit();
+
+    try parser.push("\x1b[200~\x1b[201~");
+
+    var snapshots = try drainAvailable(parser, testing.allocator);
+    defer deinitSnapshots(&snapshots, testing.allocator);
+
+    try testing.expectEqual(@as(usize, 1), snapshots.items.len);
+    try testing.expectEqual(stdin_parser.StdinTokenKind.paste, snapshots.items[0].kind);
+    try testing.expectEqual(@as(usize, 0), snapshots.items[0].payload.len);
+}
+
+test "stdin parser emits one token for complete bracketed paste payload" {
     const parser = try stdin_parser.StdinParser.init(testing.allocator, stdin_parser.defaultOptions());
     defer parser.deinit();
 
@@ -143,17 +157,9 @@ test "stdin parser chunks large bracketed paste payload" {
     var snapshots = try drainAvailable(parser, testing.allocator);
     defer deinitSnapshots(&snapshots, testing.allocator);
 
-    try testing.expect(snapshots.items.len > 1);
-
-    var total_payload: usize = 0;
-    for (snapshots.items) |snapshot| {
-        try testing.expectEqual(stdin_parser.StdinTokenKind.paste, snapshot.kind);
-        try testing.expect(snapshot.payload.len > 0);
-        try testing.expect(snapshot.payload.len <= 4096);
-        total_payload += snapshot.payload.len;
-    }
-
-    try testing.expectEqual(@as(usize, 10_000), total_payload);
+    try testing.expectEqual(@as(usize, 1), snapshots.items.len);
+    try testing.expectEqual(stdin_parser.StdinTokenKind.paste, snapshots.items[0].kind);
+    try testing.expectEqual(@as(usize, 10_000), snapshots.items[0].payload.len);
 }
 
 test "stdin parser keeps focus sequences mixed with text" {
@@ -215,7 +221,7 @@ test "stdin parser is chunk-shape invariant" {
     }
 }
 
-test "stdin parser timeout keeps pending utf8 lead bytes" {
+test "stdin parser timeout flushes lone high-byte lead as unknown" {
     const parser = try stdin_parser.StdinParser.init(testing.allocator, stdin_parser.defaultOptions());
     defer parser.deinit();
 
@@ -229,19 +235,11 @@ test "stdin parser timeout keeps pending utf8 lead bytes" {
 
     var second = try drainAvailable(parser, testing.allocator);
     defer deinitSnapshots(&second, testing.allocator);
-    try testing.expectEqual(@as(usize, 0), second.items.len);
 
-    try parser.push(&[_]u8{ 0x80, 0x80 });
-
-    var third = try drainAvailable(parser, testing.allocator);
-    defer deinitSnapshots(&third, testing.allocator);
-
-    try testing.expectEqual(@as(usize, 1), third.items.len);
-    try testing.expectEqual(stdin_parser.StdinTokenKind.text, third.items[0].kind);
-    try testing.expectEqual(@as(usize, 3), third.items[0].payload.len);
-    try testing.expectEqual(@as(u8, 0xE9), third.items[0].payload[0]);
-    try testing.expectEqual(@as(u8, 0x80), third.items[0].payload[1]);
-    try testing.expectEqual(@as(u8, 0x80), third.items[0].payload[2]);
+    try testing.expectEqual(@as(usize, 1), second.items.len);
+    try testing.expectEqual(stdin_parser.StdinTokenKind.unknown, second.items[0].kind);
+    try testing.expectEqual(@as(usize, 1), second.items[0].payload.len);
+    try testing.expectEqual(@as(u8, 0xE9), second.items[0].payload[0]);
 }
 
 test "stdin parser reset releases retained buffer capacity" {

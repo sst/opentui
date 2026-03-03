@@ -291,4 +291,75 @@ describe("renderer stdin routing", () => {
       renderer.destroy()
     }
   })
+
+  test("zig mode emits one paste event for one bracketed paste", async () => {
+    const { renderer } = await createTestRenderer({
+      width: 40,
+      height: 20,
+      useMouse: true,
+      experimental_stdinParserMode: "zig",
+    })
+
+    try {
+      const payload = "x".repeat(70_000)
+      const pastes: string[] = []
+      renderer.keyInput.on("paste", (event) => {
+        pastes.push(event.text)
+      })
+
+      renderer.stdin.emit("data", Buffer.from(`\x1b[200~${payload}\x1b[201~`))
+      await Bun.sleep(80)
+
+      expect(pastes).toEqual([payload])
+    } finally {
+      renderer.destroy()
+    }
+  })
+
+  test("zig mode emits empty paste for empty bracketed paste", async () => {
+    const { renderer } = await createTestRenderer({
+      width: 40,
+      height: 20,
+      useMouse: true,
+      experimental_stdinParserMode: "zig",
+    })
+
+    try {
+      const pastes: string[] = []
+      renderer.keyInput.on("paste", (event) => {
+        pastes.push(event.text)
+      })
+
+      renderer.stdin.emit("data", Buffer.from("\x1b[200~\x1b[201~"))
+      await Bun.sleep(40)
+
+      expect(pastes).toEqual([""])
+    } finally {
+      renderer.destroy()
+    }
+  })
+
+  test("zig mode preserves UTF-8 across bracketed paste chunk boundaries", async () => {
+    const { renderer } = await createTestRenderer({
+      width: 40,
+      height: 20,
+      useMouse: true,
+      experimental_stdinParserMode: "zig",
+    })
+
+    try {
+      const payload = "a".repeat(4095) + "é"
+      const pastes: string[] = []
+      renderer.keyInput.on("paste", (event) => {
+        pastes.push(event.text)
+      })
+
+      renderer.stdin.emit("data", Buffer.from(`\x1b[200~${payload}\x1b[201~`))
+      await Bun.sleep(80)
+
+      expect(pastes.join("")).toBe(payload)
+    } finally {
+      renderer.destroy()
+    }
+  })
 })
