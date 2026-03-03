@@ -1,6 +1,7 @@
 const std = @import("std");
 const builtin = @import("builtin");
 const testing = std.testing;
+const ansi = @import("../ansi.zig");
 const Terminal = @import("../terminal.zig");
 const utf8 = @import("../utf8.zig");
 
@@ -652,4 +653,67 @@ test "queryTerminalSend - sends OSC 66 queries when OPENTUI_FORCE_EXPLICIT_WIDTH
     // Verify the capability was forced on
     try testing.expect(term.caps.explicit_width);
     try testing.expect(!term.skip_explicit_width_query);
+}
+
+test "setMouseMode - enable without movement keeps click/drag only" {
+    var term = Terminal.init(.{});
+    var writer = TestWriter.init(testing.allocator);
+    defer writer.deinit();
+
+    try term.setMouseMode(&writer, true, false);
+
+    const output = writer.getWritten();
+    const idx_disable_any = std.mem.indexOf(u8, output, ansi.ANSI.disableAnyEventTracking).?;
+    const idx_enable_mouse = std.mem.indexOf(u8, output, ansi.ANSI.enableMouseTracking).?;
+    const idx_enable_button = std.mem.indexOf(u8, output, ansi.ANSI.enableButtonEventTracking).?;
+    const idx_enable_sgr = std.mem.indexOf(u8, output, ansi.ANSI.enableSGRMouseMode).?;
+    try testing.expect(std.mem.indexOf(u8, output, ansi.ANSI.enableAnyEventTracking) == null);
+    try testing.expect(idx_disable_any < idx_enable_mouse);
+    try testing.expect(idx_enable_mouse < idx_enable_button);
+    try testing.expect(idx_enable_button < idx_enable_sgr);
+
+    try testing.expect(term.state.mouse);
+    try testing.expect(!term.state.mouse_movement);
+}
+
+test "setMouseMode - enable with movement enables any-event tracking" {
+    var term = Terminal.init(.{});
+    var writer = TestWriter.init(testing.allocator);
+    defer writer.deinit();
+
+    try term.setMouseMode(&writer, true, true);
+
+    const output = writer.getWritten();
+    const idx_enable_mouse = std.mem.indexOf(u8, output, ansi.ANSI.enableMouseTracking).?;
+    const idx_enable_button = std.mem.indexOf(u8, output, ansi.ANSI.enableButtonEventTracking).?;
+    const idx_enable_any = std.mem.indexOf(u8, output, ansi.ANSI.enableAnyEventTracking).?;
+    const idx_enable_sgr = std.mem.indexOf(u8, output, ansi.ANSI.enableSGRMouseMode).?;
+    try testing.expect(idx_enable_mouse < idx_enable_button);
+    try testing.expect(idx_enable_button < idx_enable_any);
+    try testing.expect(idx_enable_any < idx_enable_sgr);
+    try testing.expect(std.mem.indexOf(u8, output, ansi.ANSI.disableAnyEventTracking) == null);
+
+    try testing.expect(term.state.mouse);
+    try testing.expect(term.state.mouse_movement);
+}
+
+test "restoreTerminalModes - respects mouse movement setting" {
+    var term = Terminal.init(.{});
+    term.state.mouse = true;
+    term.state.mouse_movement = false;
+
+    var writer = TestWriter.init(testing.allocator);
+    defer writer.deinit();
+
+    try term.restoreTerminalModes(&writer);
+
+    const output = writer.getWritten();
+    const idx_disable_any = std.mem.indexOf(u8, output, ansi.ANSI.disableAnyEventTracking).?;
+    const idx_enable_mouse = std.mem.indexOf(u8, output, ansi.ANSI.enableMouseTracking).?;
+    const idx_enable_button = std.mem.indexOf(u8, output, ansi.ANSI.enableButtonEventTracking).?;
+    const idx_enable_sgr = std.mem.indexOf(u8, output, ansi.ANSI.enableSGRMouseMode).?;
+    try testing.expect(idx_disable_any < idx_enable_mouse);
+    try testing.expect(idx_enable_mouse < idx_enable_button);
+    try testing.expect(idx_enable_button < idx_enable_sgr);
+    try testing.expect(std.mem.indexOf(u8, output, ansi.ANSI.enableAnyEventTracking) == null);
 }
