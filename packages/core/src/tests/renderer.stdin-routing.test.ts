@@ -128,6 +128,45 @@ describe("renderer stdin routing", () => {
         renderer.destroy()
       }
     })
+
+    test(`focus and mouse mixed in one chunk (${mode})`, async () => {
+      const { renderer, renderOnce } = await createRendererWithMode(mode)
+      try {
+        const events: string[] = []
+        let scrollCount = 0
+
+        const target = new MouseTarget(renderer, {
+          id: `target-focus-then-mouse-${mode}`,
+          position: "absolute",
+          left: 0,
+          top: 0,
+          width: renderer.width,
+          height: renderer.height,
+        })
+        renderer.root.add(target)
+        await renderOnce()
+
+        renderer.on("focus", () => {
+          events.push("focus")
+        })
+
+        target.onMouseScroll = () => {
+          scrollCount++
+        }
+
+        renderer.stdin.emit("data", Buffer.from("\x1b[I\x1b[<64;10;5M"))
+        await Bun.sleep(20)
+
+        expect(events).toEqual(["focus"])
+        if (mode === "legacy") {
+          expect(scrollCount).toBe(0)
+        } else {
+          expect(scrollCount).toBe(1)
+        }
+      } finally {
+        renderer.destroy()
+      }
+    })
   }
 
   test("legacy shadow compare surfaces mixed-chunk mismatch", async () => {
