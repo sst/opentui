@@ -10,7 +10,7 @@ let mockProcessCapabilityResponse: any
 let mockGetTerminalCapabilities: any
 
 beforeEach(async () => {
-  // Small delay to ensure any pending StdinBuffer timeouts from previous tests complete
+  // Small delay to ensure any pending stdin parser timeouts from previous tests complete
   await new Promise((resolve) => setTimeout(resolve, 15))
   ;({ renderer: currentRenderer } = await createTestRenderer({}))
   ;({ renderer: kittyRenderer } = await createTestRenderer({ useKittyKeyboard: true }))
@@ -1430,7 +1430,7 @@ test("capability responses should not trigger keypress events", async () => {
   currentRenderer.stdin.emit("data", Buffer.from("\x1b[1;2R")) // CPR
   currentRenderer.stdin.emit("data", Buffer.from("\x1b[?62;c")) // DA1
 
-  // Wait for StdinBuffer timeout
+  // Wait for stdin parser timeout
   await new Promise((resolve) => setTimeout(resolve, 15))
 
   expect(keypresses).toHaveLength(0)
@@ -1458,12 +1458,12 @@ test("chunked XTVersion response should not trigger keypresses", async () => {
     keypresses.push(event)
   })
 
-  // Send XTVersion in chunks (chunks arrive quickly, within StdinBuffer timeout)
+  // Send XTVersion in chunks (chunks arrive quickly, within stdin parser timeout)
   currentRenderer.stdin.emit("data", Buffer.from("\x1bP>|kit"))
   currentRenderer.stdin.emit("data", Buffer.from("ty(0.40"))
   currentRenderer.stdin.emit("data", Buffer.from(".1)\x1b\\"))
 
-  // Wait for StdinBuffer to process
+  // Wait for stdin parser to process
   await new Promise((resolve) => setTimeout(resolve, 15))
 
   expect(keypresses).toHaveLength(0)

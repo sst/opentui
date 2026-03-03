@@ -135,19 +135,12 @@ Show the debug overlay at startup.
 **Type:** `boolean`  
 **Default:** `false`
 
-## OTUI_STDIN_PARSER_ZIG
+## OTUI_STDIN_PARSER_MAX_BUFFER_BYTES
 
-Enable Zig stdin tokenizer/classifier path
+Maximum buffered bytes for stdin parser
 
-**Type:** `boolean`  
-**Default:** `false`
-
-## OTUI_STDIN_PARSER_SHADOW
-
-Run Zig parser in compare mode while routing legacy path
-
-**Type:** `boolean`  
-**Default:** `false`
+**Type:** `number`  
+**Default:** `67108864` (64 MiB)
 
 ---
 

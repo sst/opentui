@@ -20,10 +20,8 @@
     "build:examples": "bun src/examples/build.ts",
     "test:native": "cd src/zig && zig build test --summary all",
     "bench:native": "cd src/zig && zig build bench -Dbench-optimize=ReleaseFast --",
-    "bench:stdin-parser": "bun src/benchmark/stdin-parser-benchmark.ts",
     "bench:text-table": "bun src/benchmark/text-table-benchmark.ts",
     "bench:ts": "bun src/benchmark/native-span-feed-benchmark.ts --suite=quick --json=src/benchmark/latest-quick-bench-run.json && bun src/benchmark/native-span-feed-benchmark.ts --suite=default --json=src/benchmark/latest-default-bench-run.json && bun src/benchmark/native-span-feed-benchmark.ts --suite=large --json=src/benchmark/latest-large-bench-run.json && bun src/benchmark/native-span-feed-benchmark.ts --suite=all --json=src/benchmark/latest-all-bench-run.json && bun src/benchmark/native-span-feed-async-benchmark.ts --json=src/benchmark/latest-async-bench-run.json",
-    "test:stdin-matrix": "OTUI_STDIN_PARSER_ZIG=0 bun test src/tests/renderer.stdin-routing.test.ts src/tests/renderer.input.test.ts src/tests/renderer.mouse.test.ts src/tests/renderer.focus.test.ts src/tests/renderer.palette.test.ts src/tests/renderer.useMouse.test.ts src/tests/renderer.focus-restore.test.ts && OTUI_STDIN_PARSER_ZIG=1 bun test src/tests/renderer.stdin-routing.test.ts src/tests/renderer.input.test.ts src/tests/renderer.mouse.test.ts src/tests/renderer.focus.test.ts src/tests/renderer.palette.test.ts src/tests/renderer.useMouse.test.ts src/tests/renderer.focus-restore.test.ts",
     "publish": "bun scripts/publish.ts",
     "test:js": "bun test",
     "test": "bun run test:native && bun run test:js"

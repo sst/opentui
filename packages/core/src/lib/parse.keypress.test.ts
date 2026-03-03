@@ -1335,7 +1335,7 @@ test("parseKeypress - filters out terminal response sequences", () => {
   expect(oscResponse2).toBeNull()
 
   // Incomplete OSC sequences should NOT be filtered
-  // StdinBuffer will either complete them or timeout and flush them
+  // The stdin parser will either complete them or timeout and flush them
   const incompleteOsc = parseKeypress("\x1b]11;rgb:0000")
   expect(incompleteOsc).not.toBeNull()
   expect(incompleteOsc?.name).toBe("") // Unknown sequence, but not filtered

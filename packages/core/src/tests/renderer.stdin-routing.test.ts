@@ -2,7 +2,6 @@ import { describe, expect, test } from "bun:test"
 import { Buffer } from "node:buffer"
 import { Renderable, type RenderableOptions } from "../Renderable"
 import type { RenderContext } from "../types"
-import { type StdinParserMode } from "../renderer"
 import { createTestRenderer, type TestRenderer } from "../testing/test-renderer"
 
 class MouseTarget extends Renderable {
@@ -11,7 +10,7 @@ class MouseTarget extends Renderable {
   }
 }
 
-async function createRendererWithMode(mode: StdinParserMode): Promise<{
+async function createRoutingRenderer(): Promise<{
   renderer: TestRenderer
   renderOnce: () => Promise<void>
 }> {
@@ -19,171 +18,17 @@ async function createRendererWithMode(mode: StdinParserMode): Promise<{
     width: 40,
     height: 20,
     useMouse: true,
-    experimental_stdinParserMode: mode,
   })
 
   return { renderer, renderOnce }
 }
 
 describe("renderer stdin routing", () => {
-  for (const mode of ["legacy", "zig"] as const) {
-    test(`mouse then key in one chunk (${mode})`, async () => {
-      const { renderer, renderOnce } = await createRendererWithMode(mode)
-      try {
-        const target = new MouseTarget(renderer, {
-          id: `target-mouse-then-key-${mode}`,
-          position: "absolute",
-          left: 0,
-          top: 0,
-          width: renderer.width,
-          height: renderer.height,
-        })
-        renderer.root.add(target)
-        await renderOnce()
-
-        const keys: string[] = []
-        let scrollCount = 0
-
-        renderer.keyInput.on("keypress", (event) => {
-          keys.push(event.name)
-        })
-
-        target.onMouseScroll = () => {
-          scrollCount++
-        }
-
-        renderer.stdin.emit("data", Buffer.from("\x1b[<64;10;5Mx"))
-        await Bun.sleep(20)
-
-        expect(scrollCount).toBe(1)
-        if (mode === "legacy") {
-          expect(keys).toEqual([])
-        } else {
-          expect(keys).toEqual(["x"])
-        }
-      } finally {
-        renderer.destroy()
-      }
-    })
-
-    test(`key then mouse in one chunk (${mode})`, async () => {
-      const { renderer, renderOnce } = await createRendererWithMode(mode)
-      try {
-        const target = new MouseTarget(renderer, {
-          id: `target-key-then-mouse-${mode}`,
-          position: "absolute",
-          left: 0,
-          top: 0,
-          width: renderer.width,
-          height: renderer.height,
-        })
-        renderer.root.add(target)
-        await renderOnce()
-
-        const keys: string[] = []
-        let scrollCount = 0
-
-        renderer.keyInput.on("keypress", (event) => {
-          keys.push(event.name)
-        })
-
-        target.onMouseScroll = () => {
-          scrollCount++
-        }
-
-        renderer.stdin.emit("data", Buffer.from("x\x1b[<64;10;5M"))
-        await Bun.sleep(20)
-
-        expect(keys).toEqual(["x"])
-        if (mode === "legacy") {
-          expect(scrollCount).toBe(0)
-        } else {
-          expect(scrollCount).toBe(1)
-        }
-      } finally {
-        renderer.destroy()
-      }
-    })
-
-    test(`focus and key mixed in one chunk (${mode})`, async () => {
-      const { renderer } = await createRendererWithMode(mode)
-      try {
-        const events: string[] = []
-        const keys: string[] = []
-
-        renderer.on("focus", () => {
-          events.push("focus")
-        })
-
-        renderer.keyInput.on("keypress", (event) => {
-          keys.push(event.name)
-        })
-
-        renderer.stdin.emit("data", Buffer.from("\x1b[Ix"))
-        await Bun.sleep(20)
-
-        expect(events).toEqual(["focus"])
-        expect(keys).toEqual(["x"])
-      } finally {
-        renderer.destroy()
-      }
-    })
-
-    test(`focus and mouse mixed in one chunk (${mode})`, async () => {
-      const { renderer, renderOnce } = await createRendererWithMode(mode)
-      try {
-        const events: string[] = []
-        let scrollCount = 0
-
-        const target = new MouseTarget(renderer, {
-          id: `target-focus-then-mouse-${mode}`,
-          position: "absolute",
-          left: 0,
-          top: 0,
-          width: renderer.width,
-          height: renderer.height,
-        })
-        renderer.root.add(target)
-        await renderOnce()
-
-        renderer.on("focus", () => {
-          events.push("focus")
-        })
-
-        target.onMouseScroll = () => {
-          scrollCount++
-        }
-
-        renderer.stdin.emit("data", Buffer.from("\x1b[I\x1b[<64;10;5M"))
-        await Bun.sleep(20)
-
-        expect(events).toEqual(["focus"])
-        if (mode === "legacy") {
-          expect(scrollCount).toBe(0)
-        } else {
-          expect(scrollCount).toBe(1)
-        }
-      } finally {
-        renderer.destroy()
-      }
-    })
-  }
-
-  test("legacy shadow compare surfaces mixed-chunk mismatch", async () => {
-    const previousNodeEnv = process.env.NODE_ENV
-    process.env.NODE_ENV = "test"
-
-    const { renderer, renderOnce } = await createTestRenderer({
-      width: 40,
-      height: 20,
-      useMouse: true,
-      experimental_stdinParserMode: "legacy",
-      experimental_stdinShadowCompare: true,
-    })
-
+  test("mouse then key in one chunk", async () => {
+    const { renderer, renderOnce } = await createRoutingRenderer()
     try {
       const target = new MouseTarget(renderer, {
-        id: "shadow-compare-target",
+        id: "target-mouse-then-key",
         position: "absolute",
         left: 0,
         top: 0,
@@ -193,50 +38,123 @@ describe("renderer stdin routing", () => {
       renderer.root.add(target)
       await renderOnce()
 
-      expect(() => {
-        renderer.stdin.emit("data", Buffer.from("\x1b[<64;10;5Mx"))
-      }).toThrow("[stdin-shadow-mismatch]")
-    } finally {
-      process.env.NODE_ENV = previousNodeEnv
-      renderer.destroy()
-    }
-  })
-
-  test("legacy shadow compare handles timeout-flushed escape parity", async () => {
-    const previousNodeEnv = process.env.NODE_ENV
-    process.env.NODE_ENV = "test"
-
-    const { renderer } = await createTestRenderer({
-      width: 40,
-      height: 20,
-      useMouse: true,
-      experimental_stdinParserMode: "legacy",
-      experimental_stdinShadowCompare: true,
-    })
-
-    try {
       const keys: string[] = []
+      let scrollCount = 0
+
       renderer.keyInput.on("keypress", (event) => {
         keys.push(event.name)
       })
 
-      renderer.stdin.emit("data", Buffer.from("\x1b"))
-      await Bun.sleep(30)
+      target.onMouseScroll = () => {
+        scrollCount++
+      }
 
-      expect(keys).toEqual(["escape"])
+      renderer.stdin.emit("data", Buffer.from("\x1b[<64;10;5Mx"))
+      await Bun.sleep(20)
+
+      expect(scrollCount).toBe(1)
+      expect(keys).toEqual(["x"])
     } finally {
-      process.env.NODE_ENV = previousNodeEnv
       renderer.destroy()
     }
   })
 
-  test("zig mode suspend resets parser state before resume", async () => {
-    const { renderer } = await createTestRenderer({
-      width: 40,
-      height: 20,
-      useMouse: true,
-      experimental_stdinParserMode: "zig",
-    })
+  test("key then mouse in one chunk", async () => {
+    const { renderer, renderOnce } = await createRoutingRenderer()
+    try {
+      const target = new MouseTarget(renderer, {
+        id: "target-key-then-mouse",
+        position: "absolute",
+        left: 0,
+        top: 0,
+        width: renderer.width,
+        height: renderer.height,
+      })
+      renderer.root.add(target)
+      await renderOnce()
+
+      const keys: string[] = []
+      let scrollCount = 0
+
+      renderer.keyInput.on("keypress", (event) => {
+        keys.push(event.name)
+      })
+
+      target.onMouseScroll = () => {
+        scrollCount++
+      }
+
+      renderer.stdin.emit("data", Buffer.from("x\x1b[<64;10;5M"))
+      await Bun.sleep(20)
+
+      expect(keys).toEqual(["x"])
+      expect(scrollCount).toBe(1)
+    } finally {
+      renderer.destroy()
+    }
+  })
+
+  test("focus and key mixed in one chunk", async () => {
+    const { renderer } = await createRoutingRenderer()
+    try {
+      const events: string[] = []
+      const keys: string[] = []
+
+      renderer.on("focus", () => {
+        events.push("focus")
+      })
+
+      renderer.keyInput.on("keypress", (event) => {
+        keys.push(event.name)
+      })
+
+      renderer.stdin.emit("data", Buffer.from("\x1b[Ix"))
+      await Bun.sleep(20)
+
+      expect(events).toEqual(["focus"])
+      expect(keys).toEqual(["x"])
+    } finally {
+      renderer.destroy()
+    }
+  })
+
+  test("focus and mouse mixed in one chunk", async () => {
+    const { renderer, renderOnce } = await createRoutingRenderer()
+    try {
+      const events: string[] = []
+      let scrollCount = 0
+
+      const target = new MouseTarget(renderer, {
+        id: "target-focus-then-mouse",
+        position: "absolute",
+        left: 0,
+        top: 0,
+        width: renderer.width,
+        height: renderer.height,
+      })
+      renderer.root.add(target)
+      await renderOnce()
+
+      renderer.on("focus", () => {
+        events.push("focus")
+      })
+
+      target.onMouseScroll = () => {
+        scrollCount++
+      }
+
+      renderer.stdin.emit("data", Buffer.from("\x1b[I\x1b[<64;10;5M"))
+      await Bun.sleep(20)
+
+      expect(events).toEqual(["focus"])
+      expect(scrollCount).toBe(1)
+    } finally {
+      renderer.destroy()
+    }
+  })
+
+  test("suspend resets parser state before resume", async () => {
+    const { renderer } = await createRoutingRenderer()
 
     try {
       const events: Array<{ name: string; meta: boolean }> = []
@@ -260,13 +178,12 @@ describe("renderer stdin routing", () => {
     }
   })
 
-  test("zig mode discards oversized paste until end marker and then resumes", async () => {
+  test("discards oversized paste until end marker and then resumes", async () => {
     const { renderer } = await createTestRenderer({
       width: 40,
       height: 20,
       useMouse: true,
-      experimental_stdinParserMode: "zig",
-      experimental_stdinParserMaxBufferBytes: 64 * 1024,
+      stdinParserMaxBufferBytes: 64 * 1024,
     })
 
     try {
@@ -306,13 +223,12 @@ describe("renderer stdin routing", () => {
     }
   })
 
-  test("zig mode emits paste event for large bracketed paste under configured limit", async () => {
+  test("emits paste event for large bracketed paste under configured limit", async () => {
     const { renderer } = await createTestRenderer({
       width: 40,
       height: 20,
       useMouse: true,
-      experimental_stdinParserMode: "zig",
-      experimental_stdinParserMaxBufferBytes: 512 * 1024,
+      stdinParserMaxBufferBytes: 512 * 1024,
     })
 
     try {
@@ -337,13 +253,8 @@ describe("renderer stdin routing", () => {
     }
   })
 
-  test("zig mode emits one paste event for one bracketed paste", async () => {
-    const { renderer } = await createTestRenderer({
-      width: 40,
-      height: 20,
-      useMouse: true,
-      experimental_stdinParserMode: "zig",
-    })
+  test("emits one paste event for one bracketed paste", async () => {
+    const { renderer } = await createRoutingRenderer()
 
     try {
       const payload = "x".repeat(70_000)
@@ -361,13 +272,8 @@ describe("renderer stdin routing", () => {
     }
   })
 
-  test("zig mode emits empty paste for empty bracketed paste", async () => {
-    const { renderer } = await createTestRenderer({
-      width: 40,
-      height: 20,
-      useMouse: true,
-      experimental_stdinParserMode: "zig",
-    })
+  test("emits empty paste for empty bracketed paste", async () => {
+    const { renderer } = await createRoutingRenderer()
 
     try {
       const pastes: string[] = []
@@ -384,13 +290,8 @@ describe("renderer stdin routing", () => {
     }
   })
 
-  test("zig mode preserves UTF-8 across bracketed paste chunk boundaries", async () => {
-    const { renderer } = await createTestRenderer({
-      width: 40,
-      height: 20,
-      useMouse: true,
-      experimental_stdinParserMode: "zig",
-    })
+  test("preserves UTF-8 across bracketed paste chunk boundaries", async () => {
+    const { renderer } = await createRoutingRenderer()
 
     try {
       const payload = "a".repeat(4095) + "é"
