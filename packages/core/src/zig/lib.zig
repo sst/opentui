@@ -971,8 +971,8 @@ export fn textBufferViewGetLineInfoDirect(view: *text_buffer_view.UnifiedTextBuf
     const line_info = view.getCachedLineInfo();
 
     outPtr.* = .{
-        .start_bytes_ptr = line_info.line_start_bytes.ptr,
-        .start_bytes_len = @intCast(line_info.line_start_bytes.len),
+        .start_cols_ptr = line_info.line_start_cols.ptr,
+        .start_cols_len = @intCast(line_info.line_start_cols.len),
         .width_cols_ptr = line_info.line_width_cols.ptr,
         .width_cols_len = @intCast(line_info.line_width_cols.len),
         .sources_ptr = line_info.line_sources.ptr,
@@ -987,8 +987,8 @@ export fn textBufferViewGetLogicalLineInfoDirect(view: *text_buffer_view.Unified
     const line_info = view.getLogicalLineInfo();
 
     outPtr.* = .{
-        .start_bytes_ptr = line_info.line_start_bytes.ptr,
-        .start_bytes_len = @intCast(line_info.line_start_bytes.len),
+        .start_cols_ptr = line_info.line_start_cols.ptr,
+        .start_cols_len = @intCast(line_info.line_start_cols.len),
         .width_cols_ptr = line_info.line_width_cols.ptr,
         .width_cols_len = @intCast(line_info.line_width_cols.len),
         .sources_ptr = line_info.line_sources.ptr,
@@ -1301,8 +1301,8 @@ export fn editorViewGetTotalVirtualLineCount(view: *editor_view.EditorView) u32 
 export fn editorViewGetLineInfoDirect(view: *editor_view.EditorView, outPtr: *ExternalLineInfo) void {
     const line_info = view.getCachedLineInfo();
     outPtr.* = .{
-        .start_bytes_ptr = line_info.line_start_bytes.ptr,
-        .start_bytes_len = @intCast(line_info.line_start_bytes.len),
+        .start_cols_ptr = line_info.line_start_cols.ptr,
+        .start_cols_len = @intCast(line_info.line_start_cols.len),
         .width_cols_ptr = line_info.line_width_cols.ptr,
         .width_cols_len = @intCast(line_info.line_width_cols.len),
         .sources_ptr = line_info.line_sources.ptr,
@@ -1320,8 +1320,8 @@ export fn editorViewGetTextBufferView(view: *editor_view.EditorView) *text_buffe
 export fn editorViewGetLogicalLineInfoDirect(view: *editor_view.EditorView, outPtr: *ExternalLineInfo) void {
     const line_info = view.getLogicalLineInfo();
     outPtr.* = .{
-        .start_bytes_ptr = line_info.line_start_bytes.ptr,
-        .start_bytes_len = @intCast(line_info.line_start_bytes.len),
+        .start_cols_ptr = line_info.line_start_cols.ptr,
+        .start_cols_len = @intCast(line_info.line_start_cols.len),
         .width_cols_ptr = line_info.line_width_cols.ptr,
         .width_cols_len = @intCast(line_info.line_width_cols.len),
         .sources_ptr = line_info.line_sources.ptr,
@@ -1549,8 +1549,8 @@ pub const ExternalVisualCursor = extern struct {
 };
 
 pub const ExternalLineInfo = extern struct {
-    start_bytes_ptr: [*]const u32,
-    start_bytes_len: u32,
+    start_cols_ptr: [*]const u32,
+    start_cols_len: u32,
     width_cols_ptr: [*]const u32,
     width_cols_len: u32,
     sources_ptr: [*]const u32,

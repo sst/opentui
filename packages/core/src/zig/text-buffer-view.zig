@@ -29,7 +29,7 @@ pub const Viewport = struct {
 };
 
 pub const LineInfo = struct {
-    line_start_bytes: []const u32,
+    line_start_cols: []const u32,
     line_width_cols: []const u32,
     line_sources: []const u32,
     line_wraps: []const u32,
@@ -383,7 +383,7 @@ pub const UnifiedTextBufferView = struct {
             const start_idx = @min(vp.y, @as(u32, @intCast(self.cached_line_starts.items.len)));
             const end_idx = @min(start_idx + vp.height, @as(u32, @intCast(self.cached_line_starts.items.len)));
 
-            const viewport_line_start_bytes = self.cached_line_starts.items[start_idx..end_idx];
+            const viewport_line_start_cols = self.cached_line_starts.items[start_idx..end_idx];
             const viewport_line_width_cols = self.cached_line_widths.items[start_idx..end_idx];
             const viewport_line_sources = self.cached_line_sources.items[start_idx..end_idx];
             const viewport_line_wraps = self.cached_line_wrap_indices.items[start_idx..end_idx];
@@ -394,7 +394,7 @@ pub const UnifiedTextBufferView = struct {
             }
 
             return LineInfo{
-                .line_start_bytes = viewport_line_start_bytes,
+                .line_start_cols = viewport_line_start_cols,
                 .line_width_cols = viewport_line_width_cols,
                 .line_sources = viewport_line_sources,
                 .line_wraps = viewport_line_wraps,
@@ -403,7 +403,7 @@ pub const UnifiedTextBufferView = struct {
         }
 
         return LineInfo{
-            .line_start_bytes = self.cached_line_starts.items,
+            .line_start_cols = self.cached_line_starts.items,
             .line_width_cols = self.cached_line_widths.items,
             .line_sources = self.cached_line_sources.items,
             .line_wraps = self.cached_line_wrap_indices.items,
@@ -415,7 +415,7 @@ pub const UnifiedTextBufferView = struct {
         self.updateVirtualLines();
 
         return LineInfo{
-            .line_start_bytes = self.cached_line_starts.items,
+            .line_start_cols = self.cached_line_starts.items,
             .line_width_cols = self.cached_line_widths.items,
             .line_sources = self.cached_line_sources.items,
             .line_wraps = self.cached_line_wrap_indices.items,

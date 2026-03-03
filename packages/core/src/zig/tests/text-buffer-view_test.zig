@@ -279,7 +279,7 @@ test "TextBufferView getCachedLineInfo - with wrapping" {
     const line_count = view.getVirtualLineCount();
     const line_info = view.getCachedLineInfo();
 
-    try std.testing.expectEqual(@as(usize, line_count), line_info.line_start_bytes.len);
+    try std.testing.expectEqual(@as(usize, line_count), line_info.line_start_cols.len);
     try std.testing.expectEqual(@as(usize, line_count), line_info.line_width_cols.len);
 
     for (line_info.line_width_cols, 0..) |width, i| {
@@ -1275,8 +1275,8 @@ test "TextBufferView line info - empty buffer" {
     try std.testing.expectEqual(@as(u32, 1), line_count);
 
     const line_info = view.getCachedLineInfo();
-    try std.testing.expectEqual(@as(usize, 1), line_info.line_start_bytes.len);
-    try std.testing.expectEqual(@as(u32, 0), line_info.line_start_bytes[0]);
+    try std.testing.expectEqual(@as(usize, 1), line_info.line_start_cols.len);
+    try std.testing.expectEqual(@as(u32, 0), line_info.line_start_cols[0]);
     try std.testing.expectEqual(@as(u32, 0), line_info.line_width_cols[0]);
 }
 
@@ -1298,7 +1298,7 @@ test "TextBufferView line info - simple text without newlines" {
     try std.testing.expectEqual(@as(u32, 1), line_count);
 
     const line_info = view.getCachedLineInfo();
-    try std.testing.expectEqual(@as(u32, 0), line_info.line_start_bytes[0]);
+    try std.testing.expectEqual(@as(u32, 0), line_info.line_start_cols[0]);
     try std.testing.expect(line_info.line_width_cols[0] > 0);
 }
 
@@ -1320,7 +1320,7 @@ test "TextBufferView line info - text ending with newline" {
     try std.testing.expectEqual(@as(u32, 2), line_count);
 
     const line_info = view.getCachedLineInfo();
-    try std.testing.expectEqual(@as(u32, 0), line_info.line_start_bytes[0]);
+    try std.testing.expectEqual(@as(u32, 0), line_info.line_start_cols[0]);
     try std.testing.expect(line_info.line_width_cols[0] > 0);
     try std.testing.expect(line_info.line_width_cols[1] >= 0);
 }
@@ -1343,7 +1343,7 @@ test "TextBufferView line info - consecutive newlines" {
     try std.testing.expectEqual(@as(u32, 3), line_count);
 
     const line_info = view.getCachedLineInfo();
-    try std.testing.expectEqual(@as(u32, 0), line_info.line_start_bytes[0]);
+    try std.testing.expectEqual(@as(u32, 0), line_info.line_start_cols[0]);
 }
 
 test "TextBufferView line info - only newlines" {
@@ -1628,9 +1628,9 @@ test "TextBufferView line info - text starting with newline" {
     try std.testing.expectEqual(@as(u32, 2), line_count);
 
     const line_info = view.getCachedLineInfo();
-    try std.testing.expectEqual(@as(u32, 0), line_info.line_start_bytes[0]);
+    try std.testing.expectEqual(@as(u32, 0), line_info.line_start_cols[0]);
 
-    try std.testing.expectEqual(@as(u32, 1), line_info.line_start_bytes[1]);
+    try std.testing.expectEqual(@as(u32, 1), line_info.line_start_cols[1]);
 }
 
 test "TextBufferView line info - lines with different widths" {
@@ -1712,11 +1712,11 @@ test "TextBufferView line info - thousands of lines" {
     try std.testing.expectEqual(@as(u32, 1000), line_count);
 
     const line_info = view.getCachedLineInfo();
-    try std.testing.expectEqual(@as(u32, 0), line_info.line_start_bytes[0]);
+    try std.testing.expectEqual(@as(u32, 0), line_info.line_start_cols[0]);
 
     var line_idx: u32 = 1;
     while (line_idx < 1000) : (line_idx += 1) {
-        try std.testing.expect(line_info.line_start_bytes[line_idx] > line_info.line_start_bytes[line_idx - 1]);
+        try std.testing.expect(line_info.line_start_cols[line_idx] > line_info.line_start_cols[line_idx - 1]);
     }
 }
 
@@ -3003,7 +3003,7 @@ test "TextBufferView virtual lines - match real lines when no wrap" {
     try std.testing.expectEqual(@as(u32, 3), tb.getLineCount());
 
     const line_info = view.getCachedLineInfo();
-    try std.testing.expectEqual(@as(usize, 3), line_info.line_start_bytes.len);
+    try std.testing.expectEqual(@as(usize, 3), line_info.line_start_cols.len);
     try std.testing.expectEqual(@as(usize, 3), line_info.line_width_cols.len);
 }
 
@@ -3051,7 +3051,7 @@ test "TextBufferView virtual lines - reset to match real lines when wrap removed
     try std.testing.expectEqual(@as(u32, 2), view.getVirtualLineCount());
 
     const line_info = view.getCachedLineInfo();
-    try std.testing.expectEqual(@as(usize, 2), line_info.line_start_bytes.len);
+    try std.testing.expectEqual(@as(usize, 2), line_info.line_start_cols.len);
     try std.testing.expectEqual(@as(usize, 2), line_info.line_width_cols.len);
 }
 
@@ -3072,14 +3072,14 @@ test "TextBufferView virtual lines - multi-line text without wrap" {
     try std.testing.expectEqual(@as(u32, 4), view.getVirtualLineCount());
 
     const line_info = view.getCachedLineInfo();
-    try std.testing.expectEqual(@as(usize, 4), line_info.line_start_bytes.len);
+    try std.testing.expectEqual(@as(usize, 4), line_info.line_start_cols.len);
     try std.testing.expectEqual(@as(usize, 4), line_info.line_width_cols.len);
 
     // Verify the line starts are monotonically non-decreasing (empty lines have same start)
-    try std.testing.expect(line_info.line_start_bytes[0] == 0);
-    try std.testing.expect(line_info.line_start_bytes[1] >= line_info.line_start_bytes[0]);
-    try std.testing.expect(line_info.line_start_bytes[2] >= line_info.line_start_bytes[1]);
-    try std.testing.expect(line_info.line_start_bytes[3] >= line_info.line_start_bytes[2]);
+    try std.testing.expect(line_info.line_start_cols[0] == 0);
+    try std.testing.expect(line_info.line_start_cols[1] >= line_info.line_start_cols[0]);
+    try std.testing.expect(line_info.line_start_cols[2] >= line_info.line_start_cols[1]);
+    try std.testing.expect(line_info.line_start_cols[3] >= line_info.line_start_cols[2]);
 }
 
 test "TextBufferView line info - line starts and widths consistency" {
@@ -3101,7 +3101,7 @@ test "TextBufferView line info - line starts and widths consistency" {
     const line_count = view.getVirtualLineCount();
     const line_info = view.getCachedLineInfo();
 
-    try std.testing.expectEqual(@as(usize, line_count), line_info.line_start_bytes.len);
+    try std.testing.expectEqual(@as(usize, line_count), line_info.line_start_cols.len);
     try std.testing.expectEqual(@as(usize, line_count), line_info.line_width_cols.len);
 
     for (line_info.line_width_cols, 0..) |width, i| {
@@ -3138,11 +3138,11 @@ test "TextBufferView line info - line starts monotonically increasing" {
     try std.testing.expectEqual(@as(u32, 100), line_count);
 
     const line_info = view.getCachedLineInfo();
-    try std.testing.expectEqual(@as(u32, 0), line_info.line_start_bytes[0]);
+    try std.testing.expectEqual(@as(u32, 0), line_info.line_start_cols[0]);
 
     var line_idx: u32 = 1;
     while (line_idx < 100) : (line_idx += 1) {
-        try std.testing.expect(line_info.line_start_bytes[line_idx] >= line_info.line_start_bytes[line_idx - 1]);
+        try std.testing.expect(line_info.line_start_cols[line_idx] >= line_info.line_start_cols[line_idx - 1]);
     }
 }
 
@@ -3377,20 +3377,20 @@ test "TextBufferView automatic updates - with wrapping across buffer changes" {
     try std.testing.expectEqual(@as(u32, 2), view.getVirtualLineCount());
 
     const info1 = view.getCachedLineInfo();
-    try std.testing.expectEqual(@as(usize, 2), info1.line_start_bytes.len);
+    try std.testing.expectEqual(@as(usize, 2), info1.line_start_cols.len);
 
     try tb.setText("Short");
     try std.testing.expectEqual(@as(u32, 1), view.getVirtualLineCount());
 
     const info2 = view.getCachedLineInfo();
-    try std.testing.expectEqual(@as(usize, 1), info2.line_start_bytes.len);
+    try std.testing.expectEqual(@as(usize, 1), info2.line_start_cols.len);
 
     try tb.setText("ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789");
     const vline_count = view.getVirtualLineCount();
     try std.testing.expect(vline_count >= 3);
 
     const info3 = view.getCachedLineInfo();
-    try std.testing.expect(info3.line_start_bytes.len >= 3);
+    try std.testing.expect(info3.line_start_cols.len >= 3);
 }
 
 test "TextBufferView automatic updates - reset clears content and marks views dirty" {

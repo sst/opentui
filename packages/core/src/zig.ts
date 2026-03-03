@@ -2859,12 +2859,12 @@ class FFIRenderLib implements RenderLib {
     this.textBufferViewGetLineInfoDirect(view, ptr(outBuffer))
     const struct = LineInfoStruct.unpack(outBuffer)
 
-    const lineStartBytes = struct.startBytes as number[]
+    const lineStartCols = struct.startCols as number[]
     const lineWidthCols = struct.widthCols as number[]
     const lineWidthColsMax = struct.widthColsMax
 
     return {
-      lineStartBytes,
+      lineStartCols,
       lineWidthCols,
       lineWidthColsMax,
       lineSources: struct.sources as number[],
@@ -2877,12 +2877,12 @@ class FFIRenderLib implements RenderLib {
     this.textBufferViewGetLogicalLineInfoDirect(view, ptr(outBuffer))
     const struct = LineInfoStruct.unpack(outBuffer)
 
-    const lineStartBytes = struct.startBytes as number[]
+    const lineStartCols = struct.startCols as number[]
     const lineWidthCols = struct.widthCols as number[]
     const lineWidthColsMax = struct.widthColsMax
 
     return {
-      lineStartBytes,
+      lineStartCols,
       lineWidthCols,
       lineWidthColsMax,
       lineSources: struct.sources as number[],
@@ -3121,12 +3121,12 @@ class FFIRenderLib implements RenderLib {
     this.opentui.symbols.editorViewGetLineInfoDirect(view, ptr(outBuffer))
     const struct = LineInfoStruct.unpack(outBuffer)
 
-    const lineStartBytes = struct.startBytes as number[]
+    const lineStartCols = struct.startCols as number[]
     const lineWidthCols = struct.widthCols as number[]
     const lineWidthColsMax = struct.widthColsMax
 
     return {
-      lineStartBytes,
+      lineStartCols,
       lineWidthCols,
       lineWidthColsMax,
       lineSources: struct.sources as number[],
@@ -3139,12 +3139,12 @@ class FFIRenderLib implements RenderLib {
     this.opentui.symbols.editorViewGetLogicalLineInfoDirect(view, ptr(outBuffer))
     const struct = LineInfoStruct.unpack(outBuffer)
 
-    const lineStartBytes = struct.startBytes as number[]
+    const lineStartCols = struct.startCols as number[]
     const lineWidthCols = struct.widthCols as number[]
     const lineWidthColsMax = struct.widthColsMax
 
     return {
-      lineStartBytes,
+      lineStartCols,
       lineWidthCols,
       lineWidthColsMax,
       lineSources: struct.sources as number[],

@@ -106,8 +106,8 @@ export const EncodedCharStruct = defineStruct([
 ])
 
 export const LineInfoStruct = defineStruct([
-  ["startBytes", ["u32"]],
-  ["startBytesLen", "u32", { lengthOf: "startBytes" }],
+  ["startCols", ["u32"]],
+  ["startColsLen", "u32", { lengthOf: "startCols" }],
   ["widthCols", ["u32"]],
   ["widthColsLen", "u32", { lengthOf: "widthCols" }],
   ["sources", ["u32"]],

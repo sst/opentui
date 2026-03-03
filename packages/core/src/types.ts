@@ -113,8 +113,8 @@ export interface Highlight {
 }
 
 export interface LineInfo {
-  /** UTF-8 byte offset for each visual line start. */
-  lineStartBytes: number[]
+  /** Display-column offset for each visual line start. */
+  lineStartCols: number[]
   /** Display-column width for each visual line. */
   lineWidthCols: number[]
   /** Maximum display-column width across the reported lines. */

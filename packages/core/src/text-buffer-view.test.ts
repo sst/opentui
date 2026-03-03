@@ -24,7 +24,7 @@ describe("TextBufferView", () => {
       buffer.setStyledText(emptyText)
 
       const lineInfo = view.lineInfo
-      expect(lineInfo.lineStartBytes).toEqual([0])
+      expect(lineInfo.lineStartCols).toEqual([0])
       expect(lineInfo.lineWidthCols).toEqual([0])
     })
 
@@ -33,7 +33,7 @@ describe("TextBufferView", () => {
       buffer.setStyledText(styledText)
 
       const lineInfo = view.lineInfo
-      expect(lineInfo.lineStartBytes).toEqual([0])
+      expect(lineInfo.lineStartCols).toEqual([0])
       expect(lineInfo.lineWidthCols.length).toBe(1)
       expect(lineInfo.lineWidthCols[0]).toBeGreaterThan(0)
     })
@@ -44,7 +44,7 @@ describe("TextBufferView", () => {
 
       const lineInfo = view.lineInfo
       // With newline-aware offsets: "Hello" (0-4) + newline (5) + "World" starts at 6
-      expect(lineInfo.lineStartBytes).toEqual([0, 6])
+      expect(lineInfo.lineStartCols).toEqual([0, 6])
       expect(lineInfo.lineWidthCols.length).toBe(2)
       expect(lineInfo.lineWidthCols[0]).toBeGreaterThan(0)
       expect(lineInfo.lineWidthCols[1]).toBeGreaterThan(0)
@@ -56,7 +56,7 @@ describe("TextBufferView", () => {
       buffer.setStyledText(styledText)
 
       const unwrappedInfo = view.lineInfo
-      expect(unwrappedInfo.lineStartBytes).toEqual([0])
+      expect(unwrappedInfo.lineStartCols).toEqual([0])
       expect(unwrappedInfo.lineWidthCols.length).toBe(1)
       expect(unwrappedInfo.lineWidthCols[0]).toBe(76)
 
@@ -65,15 +65,15 @@ describe("TextBufferView", () => {
 
       const wrappedInfo = view.lineInfo
 
-      expect(wrappedInfo.lineStartBytes.length).toBeGreaterThan(1)
+      expect(wrappedInfo.lineStartCols.length).toBeGreaterThan(1)
       expect(wrappedInfo.lineWidthCols.length).toBeGreaterThan(1)
 
       for (const width of wrappedInfo.lineWidthCols) {
         expect(width).toBeLessThanOrEqual(20)
       }
 
-      for (let i = 1; i < wrappedInfo.lineStartBytes.length; i++) {
-        expect(wrappedInfo.lineStartBytes[i]).toBeGreaterThan(wrappedInfo.lineStartBytes[i - 1])
+      for (let i = 1; i < wrappedInfo.lineStartCols.length; i++) {
+        expect(wrappedInfo.lineStartCols[i]).toBeGreaterThan(wrappedInfo.lineStartCols[i - 1])
       }
     })
 
@@ -87,7 +87,7 @@ describe("TextBufferView", () => {
 
       const lineInfo = view.lineInfo
 
-      expect(lineInfo.lineStartBytes.length).toBeGreaterThan(1)
+      expect(lineInfo.lineStartCols.length).toBeGreaterThan(1)
 
       for (const width of lineInfo.lineWidthCols) {
         expect(width).toBeLessThanOrEqual(12)
@@ -104,7 +104,7 @@ describe("TextBufferView", () => {
 
       const lineInfo = view.lineInfo
 
-      expect(lineInfo.lineStartBytes).toEqual([0, 10, 20])
+      expect(lineInfo.lineStartCols).toEqual([0, 10, 20])
       expect(lineInfo.lineWidthCols).toEqual([10, 10, 6])
     })
 
@@ -117,12 +117,12 @@ describe("TextBufferView", () => {
       view.setWrapWidth(15)
 
       const lineInfo1 = view.lineInfo
-      const lineCount1 = lineInfo1.lineStartBytes.length
+      const lineCount1 = lineInfo1.lineStartCols.length
 
       view.setWrapWidth(30)
 
       const lineInfo2 = view.lineInfo
-      const lineCount2 = lineInfo2.lineStartBytes.length
+      const lineCount2 = lineInfo2.lineStartCols.length
 
       expect(lineCount2).toBeLessThan(lineCount1)
     })
@@ -134,19 +134,19 @@ describe("TextBufferView", () => {
 
       const originalInfo = view.lineInfo
       // With newline-aware offsets: Line 0 (0-5) + newline (6) + Line 1 (7-12) + newline (13) + Line 2 (14-19)
-      expect(originalInfo.lineStartBytes).toEqual([0, 7, 14])
+      expect(originalInfo.lineStartCols).toEqual([0, 7, 14])
 
       view.setWrapMode("char") // Enable wrapping
       view.setWrapWidth(5)
 
       const wrappedInfo = view.lineInfo
-      expect(wrappedInfo.lineStartBytes.length).toBeGreaterThan(3)
+      expect(wrappedInfo.lineStartCols.length).toBeGreaterThan(3)
 
       view.setWrapMode("none") // Disable wrapping
       view.setWrapWidth(null)
 
       const unwrappedInfo = view.lineInfo
-      expect(unwrappedInfo.lineStartBytes).toEqual([0, 7, 14])
+      expect(unwrappedInfo.lineStartCols).toEqual([0, 7, 14])
     })
 
     it("should return extended wrap info", () => {
@@ -386,7 +386,7 @@ describe("TextBufferView", () => {
       buffer.setStyledText(styledText)
 
       const lineInfoBefore = view.lineInfo
-      expect(lineInfoBefore.lineStartBytes).toEqual([0, 15])
+      expect(lineInfoBefore.lineStartCols).toEqual([0, 15])
       expect(lineInfoBefore.lineWidthCols[0]).toBe(14)
       expect(lineInfoBefore.lineWidthCols[1]).toBe(6)
 
@@ -396,14 +396,14 @@ describe("TextBufferView", () => {
       buffer.setStyledText(modifiedText)
 
       const lineInfoAfterModify = view.lineInfo
-      expect(lineInfoAfterModify.lineStartBytes).toEqual([0, 8])
+      expect(lineInfoAfterModify.lineStartCols).toEqual([0, 8])
       expect(lineInfoAfterModify.lineWidthCols[0]).toBe(7)
 
       // Restore original (simulating undo)
       buffer.setStyledText(styledText)
 
       const lineInfoAfterRestore = view.lineInfo
-      expect(lineInfoAfterRestore.lineStartBytes).toEqual([0, 15])
+      expect(lineInfoAfterRestore.lineStartCols).toEqual([0, 15])
       expect(lineInfoAfterRestore.lineWidthCols[0]).toBe(14)
     })
 
@@ -446,16 +446,16 @@ describe("TextBufferView", () => {
 
       buffer.setStyledText(original)
       const originalInfo = view.lineInfo
-      expect(originalInfo.lineStartBytes).toEqual([0, 15, 30])
+      expect(originalInfo.lineStartCols).toEqual([0, 15, 30])
 
       buffer.setStyledText(modified)
       const modifiedInfo = view.lineInfo
-      expect(modifiedInfo.lineStartBytes).toEqual([0, 8, 23])
+      expect(modifiedInfo.lineStartCols).toEqual([0, 8, 23])
 
       // Restore (undo)
       buffer.setStyledText(original)
       const restoredInfo = view.lineInfo
-      expect(restoredInfo.lineStartBytes).toEqual([0, 15, 30])
+      expect(restoredInfo.lineStartCols).toEqual([0, 15, 30])
     })
   })
 
@@ -465,7 +465,7 @@ describe("TextBufferView", () => {
       buffer.setStyledText(emptyText)
 
       const lineInfo = view.lineInfo
-      expect(lineInfo.lineStartBytes).toEqual([0])
+      expect(lineInfo.lineStartCols).toEqual([0])
       expect(lineInfo.lineWidthCols).toEqual([0])
     })
 
@@ -479,8 +479,8 @@ describe("TextBufferView", () => {
 
       const lineInfo = view.lineInfo
       // Should wrap at display width boundaries
-      expect(lineInfo.lineStartBytes[0]).toBe(0)
-      expect(lineInfo.lineStartBytes.length).toBeGreaterThan(1)
+      expect(lineInfo.lineStartCols[0]).toBe(0)
+      expect(lineInfo.lineStartCols.length).toBeGreaterThan(1)
 
       // Each line should respect wrap width in display columns
       for (const width of lineInfo.lineWidthCols) {
@@ -512,7 +512,7 @@ describe("TextBufferView", () => {
 
       const lineInfo = view.lineInfo
       // Tabs expand to display width, offsets should account for this
-      expect(lineInfo.lineStartBytes.length).toBeGreaterThanOrEqual(1)
+      expect(lineInfo.lineStartCols.length).toBeGreaterThanOrEqual(1)
     })
 
     it("should handle emoji in wrapped view", () => {
@@ -524,7 +524,7 @@ describe("TextBufferView", () => {
       view.setWrapWidth(6)
 
       const lineInfo = view.lineInfo
-      expect(lineInfo.lineStartBytes.length).toBeGreaterThan(1)
+      expect(lineInfo.lineStartCols.length).toBeGreaterThan(1)
 
       // Each wrapped line should respect display width limits
       for (const width of lineInfo.lineWidthCols) {
@@ -563,7 +563,7 @@ describe("TextBufferView", () => {
 
       // Verify cache wasn't modified (should be 1 line with wrap width 100)
       const lineInfo = view.lineInfo
-      expect(lineInfo.lineStartBytes.length).toBe(1)
+      expect(lineInfo.lineStartCols.length).toBe(1)
     })
 
     it("should measure char wrap correctly", () => {

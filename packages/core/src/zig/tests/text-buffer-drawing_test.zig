@@ -854,7 +854,7 @@ test "viewport - getCachedLineInfo returns only viewport lines" {
 
     const line_info = view.getCachedLineInfo();
 
-    try std.testing.expectEqual(@as(usize, 3), line_info.line_start_bytes.len);
+    try std.testing.expectEqual(@as(usize, 3), line_info.line_start_cols.len);
     try std.testing.expectEqual(@as(usize, 3), line_info.line_width_cols.len);
 }
 
