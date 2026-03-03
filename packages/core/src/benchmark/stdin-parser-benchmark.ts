@@ -1,7 +1,7 @@
 #!/usr/bin/env bun
 
 import { resolveRenderLib } from "../zig"
-import { StdinDrainStatsStruct, StdinTokenStruct } from "../zig-structs"
+import { StdinPayloadRefStruct, StdinTokenStruct } from "../zig-structs"
 import { StdinBuffer } from "../lib/stdin-buffer"
 
 type Mode = "zig" | "legacy" | "both"
@@ -54,8 +54,6 @@ const iterations = toPositiveInt(getArg("iters"), 5000)
 const warmupIterations = toPositiveInt(getArg("warmup"), 500)
 const patternsPerIteration = toPositiveInt(getArg("patterns"), 24)
 const timeoutMs = toPositiveInt(getArg("timeout"), 10)
-const tokenCapacity = toPositiveInt(getArg("token-cap"), 512)
-const payloadCapacity = toPositiveInt(getArg("payload-cap"), 64 * 1024)
 const jsonPath = getArg("json")
 
 const encoder = new TextEncoder()
@@ -171,9 +169,8 @@ function runLegacyBenchmark(): Result {
 function runZigBenchmark(): Result {
   const lib = resolveRenderLib()
   const parserPtr = lib.createStdinParser({ timeoutMs, maxBufferBytes: 64 * 1024, reserved0: 0 })
-  const tokenBuffer = new Uint8Array(StdinTokenStruct.size * tokenCapacity)
-  const payloadBuffer = new Uint8Array(payloadCapacity)
-  const statsBuffer = new ArrayBuffer(StdinDrainStatsStruct.size)
+  const tokenBuffer = new ArrayBuffer(StdinTokenStruct.size)
+  const payloadRefBuffer = new ArrayBuffer(StdinPayloadRefStruct.size)
 
   let collect = false
   let tokenCount = 0
@@ -183,24 +180,30 @@ function runZigBenchmark(): Result {
   let drainCalls = 0
 
   const drainAvailable = (): boolean => {
-    let hasPending = false
-
     while (true) {
-      const { status, stats } = lib.stdinParserDrain(parserPtr, tokenBuffer, payloadBuffer, statsBuffer)
-      if (status !== 0) {
-        throw new Error(`stdinParserDrain failed: ${status}`)
+      const { status, payload } = lib.stdinParserNext(parserPtr, tokenBuffer, payloadRefBuffer)
+
+      if (status < 0) {
+        throw new Error(`stdinParserNext failed: ${status}`)
       }
 
       if (collect) {
         drainCalls += 1
-        tokenCount += stats.tokenCount
-        payloadBytes += stats.payloadBytes
       }
 
-      hasPending = stats.hasPending === 1
-      if (stats.tokenCount === 0) {
-        return hasPending
+      if (status === 1) {
+        if (collect) {
+          tokenCount += 1
+          payloadBytes += payload.payloadLen
+        }
+        continue
       }
+
+      if (status === 2) {
+        return true
+      }
+
+      return false
     }
   }
 
@@ -303,8 +306,6 @@ if (jsonPath) {
         warmupIterations,
         patternsPerIteration,
         timeoutMs,
-        tokenCapacity,
-        payloadCapacity,
         results,
       },
       null,

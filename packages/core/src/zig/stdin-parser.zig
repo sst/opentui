@@ -30,18 +30,17 @@ pub const StdinParserOptions = extern struct {
     reserved0: u32,
 };
 
-pub const StdinDrainStats = extern struct {
-    token_count: u32,
-    payload_bytes: u32,
-    has_pending: u8,
-    overflowed: u8,
-    reserved0: u16,
+pub const StdinPayloadRef = extern struct {
+    payload_ptr: ?[*]const u8,
+    payload_len: u32,
+    reserved0: u32,
 };
 
 const ESC: u8 = 0x1b;
 const BEL: u8 = 0x07;
 const BRACKETED_PASTE_START = "\x1b[200~";
 const BRACKETED_PASTE_END = "\x1b[201~";
+const PASTE_CHUNK_BYTES: usize = 4096;
 
 pub fn defaultOptions() StdinParserOptions {
     return .{
@@ -76,7 +75,23 @@ const CandidateToken = struct {
 const ParseResult = union(enum) {
     none,
     incomplete,
+    consume: struct {
+        consumed: usize,
+        clear_paste_mode: bool = false,
+    },
     token: CandidateToken,
+};
+
+pub const NextTokenStatus = enum {
+    none,
+    pending,
+    token,
+};
+
+pub const NextToken = struct {
+    status: NextTokenStatus,
+    kind: StdinTokenKind = .unknown,
+    payload: []const u8 = &[_]u8{},
 };
 
 pub const StdinParser = struct {
@@ -86,6 +101,8 @@ pub const StdinParser = struct {
     in_paste_mode: bool,
     pending_since_ms: ?u64,
     flush_pending_timeout: bool,
+    pending_consumed: usize,
+    pending_clear_paste_mode: bool,
 
     pub fn init(allocator: std.mem.Allocator, options: StdinParserOptions) !*StdinParser {
         const parser = try allocator.create(StdinParser);
@@ -96,6 +113,8 @@ pub const StdinParser = struct {
             .in_paste_mode = false,
             .pending_since_ms = null,
             .flush_pending_timeout = false,
+            .pending_consumed = 0,
+            .pending_clear_paste_mode = false,
         };
         errdefer allocator.destroy(parser);
 
@@ -113,6 +132,8 @@ pub const StdinParser = struct {
             return;
         }
 
+        self.commitPendingToken();
+
         const max_bytes: usize = @intCast(self.options.max_buffer_bytes);
         if (self.buffer.items.len + bytes.len > max_bytes) {
             return error.BufferLimitReached;
@@ -121,23 +142,45 @@ pub const StdinParser = struct {
         try self.buffer.appendSlice(self.allocator, bytes);
     }
 
-    pub fn drain(self: *StdinParser, token_out: []StdinToken, payload_out: []u8) StdinDrainStats {
-        var stats = StdinDrainStats{
-            .token_count = 0,
-            .payload_bytes = 0,
-            .has_pending = 0,
-            .overflowed = 0,
-            .reserved0 = 0,
-        };
+    pub fn reset(self: *StdinParser) void {
+        self.buffer.deinit(self.allocator);
+        self.buffer = std.ArrayList(u8).empty;
+        self.buffer.ensureTotalCapacityPrecise(self.allocator, 128) catch {};
+        self.in_paste_mode = false;
+        self.pending_since_ms = null;
+        self.flush_pending_timeout = false;
+        self.pending_consumed = 0;
+        self.pending_clear_paste_mode = false;
+    }
 
-        var token_index: usize = 0;
-        var payload_index: usize = 0;
+    pub fn flushTimeout(self: *StdinParser, now_ms: u64) !void {
+        const pending_since = self.pending_since_ms orelse return;
+        if (self.in_paste_mode) {
+            return;
+        }
+        if (self.buffer.items.len == 0) {
+            return;
+        }
+        const timeout_ms: u64 = @intCast(self.options.timeout_ms);
+        if (now_ms < pending_since or now_ms - pending_since < timeout_ms) {
+            return;
+        }
+
+        self.flush_pending_timeout = true;
+    }
+
+    pub fn next(self: *StdinParser) NextToken {
+        self.commitPendingToken();
 
         while (true) {
             const parsed = self.nextToken();
 
             switch (parsed) {
-                .none => break,
+                .none => {
+                    self.pending_since_ms = null;
+                    self.flush_pending_timeout = false;
+                    return .{ .status = .none };
+                },
                 .incomplete => {
                     if (self.flush_pending_timeout and !self.in_paste_mode and self.buffer.items.len > 0) {
                         const first = self.buffer.items[0];
@@ -160,78 +203,67 @@ pub const StdinParser = struct {
                                     .payload_len = 1,
                                 };
 
-                            if (!self.emitCandidate(forced, token_out, &token_index, payload_out, &payload_index)) {
-                                stats.overflowed = 1;
-                                stats.has_pending = 1;
-                                break;
-                            }
-
-                            self.consumePrefix(forced.consumed);
-                            self.flush_pending_timeout = self.buffer.items.len > 0;
-                            continue;
+                            return self.stageNextToken(forced);
                         }
                     }
 
-                    break;
-                },
-                .token => |candidate| {
-                    if (!self.emitCandidate(candidate, token_out, &token_index, payload_out, &payload_index)) {
-                        stats.overflowed = 1;
-                        stats.has_pending = 1;
-                        break;
+                    if (self.hasPendingState()) {
+                        if (self.pending_since_ms == null) {
+                            self.pending_since_ms = nowMs();
+                        }
+                        return .{ .status = .pending };
                     }
 
-                    self.consumePrefix(candidate.consumed);
-                    if (candidate.clear_paste_mode) {
+                    self.pending_since_ms = null;
+                    self.flush_pending_timeout = false;
+                    return .{ .status = .none };
+                },
+                .consume => |consume| {
+                    self.consumePrefix(consume.consumed);
+                    if (consume.clear_paste_mode) {
                         self.in_paste_mode = false;
                     }
                     self.flush_pending_timeout = false;
+                    continue;
+                },
+                .token => |candidate| {
+                    return self.stageNextToken(candidate);
                 },
             }
         }
-
-        if (self.hasPendingState()) {
-            stats.has_pending = 1;
-            if (self.pending_since_ms == null) {
-                self.pending_since_ms = nowMs();
-            }
-        } else {
-            self.pending_since_ms = null;
-            self.flush_pending_timeout = false;
-        }
-
-        stats.token_count = @intCast(token_index);
-        stats.payload_bytes = @intCast(payload_index);
-        return stats;
     }
 
-    pub fn reset(self: *StdinParser) void {
-        self.buffer.deinit(self.allocator);
-        self.buffer = std.ArrayList(u8).empty;
-        self.buffer.ensureTotalCapacityPrecise(self.allocator, 128) catch {};
-        self.in_paste_mode = false;
-        self.pending_since_ms = null;
+    fn stageNextToken(self: *StdinParser, candidate: CandidateToken) NextToken {
+        const start = candidate.payload_start;
+        const end = start + candidate.payload_len;
+
+        self.pending_consumed = candidate.consumed;
+        self.pending_clear_paste_mode = candidate.clear_paste_mode;
         self.flush_pending_timeout = false;
+        self.pending_since_ms = null;
+
+        return .{
+            .status = .token,
+            .kind = candidate.kind,
+            .payload = self.buffer.items[start..end],
+        };
     }
 
-    pub fn flushTimeout(self: *StdinParser, now_ms: u64) !void {
-        const pending_since = self.pending_since_ms orelse return;
-        if (self.in_paste_mode) {
-            return;
-        }
-        if (self.buffer.items.len == 0) {
-            return;
-        }
-        const timeout_ms: u64 = @intCast(self.options.timeout_ms);
-        if (now_ms < pending_since or now_ms - pending_since < timeout_ms) {
+    fn commitPendingToken(self: *StdinParser) void {
+        if (self.pending_consumed == 0) {
             return;
         }
 
-        self.flush_pending_timeout = true;
+        self.consumePrefix(self.pending_consumed);
+        if (self.pending_clear_paste_mode) {
+            self.in_paste_mode = false;
+        }
+        self.pending_consumed = 0;
+        self.pending_clear_paste_mode = false;
     }
 
     fn hasPendingState(self: *const StdinParser) bool {
-        return self.in_paste_mode or self.buffer.items.len > 0;
+        return self.pending_consumed > 0 or self.in_paste_mode or self.buffer.items.len > 0;
     }
 
     fn consumePrefix(self: *StdinParser, consumed: usize) void {
@@ -247,42 +279,6 @@ pub const StdinParser = struct {
         const remaining = self.buffer.items.len - consumed;
         std.mem.copyForwards(u8, self.buffer.items[0..remaining], self.buffer.items[consumed..]);
         self.buffer.items.len = remaining;
-    }
-
-    fn emitCandidate(
-        self: *StdinParser,
-        candidate: CandidateToken,
-        token_out: []StdinToken,
-        token_index: *usize,
-        payload_out: []u8,
-        payload_index: *usize,
-    ) bool {
-        if (token_index.* >= token_out.len) {
-            return false;
-        }
-        if (payload_index.* + candidate.payload_len > payload_out.len) {
-            return false;
-        }
-
-        if (candidate.payload_len > 0) {
-            const start = candidate.payload_start;
-            const end = start + candidate.payload_len;
-            @memcpy(payload_out[payload_index.* .. payload_index.* + candidate.payload_len], self.buffer.items[start..end]);
-        }
-
-        token_out[token_index.*] = .{
-            .kind = @intFromEnum(candidate.kind),
-            .flags = 0,
-            .reserved0 = 0,
-            .payload_offset = @intCast(payload_index.*),
-            .payload_len = @intCast(candidate.payload_len),
-            .aux0 = 0,
-            .aux1 = 0,
-        };
-
-        token_index.* += 1;
-        payload_index.* += candidate.payload_len;
-        return true;
     }
 
     fn nextToken(self: *StdinParser) ParseResult {
@@ -315,12 +311,19 @@ pub const StdinParser = struct {
 
     fn nextPasteToken(self: *StdinParser) ParseResult {
         if (std.mem.indexOf(u8, self.buffer.items, BRACKETED_PASTE_END)) |end_index| {
+            if (end_index == 0) {
+                return .{ .consume = .{
+                    .consumed = BRACKETED_PASTE_END.len,
+                    .clear_paste_mode = true,
+                } };
+            }
+
+            const chunk_len = @min(end_index, PASTE_CHUNK_BYTES);
             return .{ .token = .{
                 .kind = .paste,
-                .consumed = end_index + BRACKETED_PASTE_END.len,
+                .consumed = chunk_len,
                 .payload_start = 0,
-                .payload_len = end_index,
-                .clear_paste_mode = true,
+                .payload_len = chunk_len,
             } };
         }
 

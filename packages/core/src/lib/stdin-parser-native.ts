@@ -1,26 +1,22 @@
-import type { Pointer } from "bun:ffi"
-import { StdinDrainStatsStruct, StdinTokenStruct, type StdinToken } from "../zig-structs"
+import { toArrayBuffer, type Pointer } from "bun:ffi"
+import { StdinPayloadRefStruct, StdinTokenStruct, type StdinToken } from "../zig-structs"
 import type { RenderLib } from "../zig"
 
 type NativeStdinParserOptions = {
   timeoutMs?: number
-  payloadBufferBytes?: number
-  tokenCapacity?: number
-  maxPayloadBufferBytes?: number
-  maxTokenCapacity?: number
   armTimeouts?: boolean
   onTimeoutFlush?: () => void
 }
 
+const PARSER_NEXT_NONE = 0
+const PARSER_NEXT_TOKEN = 1
+const PARSER_NEXT_PENDING = 2
+const EMPTY_PAYLOAD = new Uint8Array(0)
+
 export class NativeStdinParser {
-  private tokenBuffer: Uint8Array
-  private payloadBuffer: Uint8Array
-  private readonly statsBuffer = new ArrayBuffer(StdinDrainStatsStruct.size)
+  private readonly tokenBuffer = new ArrayBuffer(StdinTokenStruct.size)
+  private readonly payloadRefBuffer = new ArrayBuffer(StdinPayloadRefStruct.size)
   private readonly timeoutMs: number
-  private readonly maxPayloadBufferBytes: number
-  private readonly maxTokenCapacity: number
-  private readonly initialPayloadBufferBytes: number
-  private readonly initialTokenCapacity: number
   private readonly armTimeouts: boolean
   private readonly onTimeoutFlush: (() => void) | null
   private timeoutId: Timer | null = null
@@ -31,17 +27,9 @@ export class NativeStdinParser {
     private readonly parserPtr: Pointer,
     options: NativeStdinParserOptions = {},
   ) {
-    const tokenCapacity = Math.max(1, options.tokenCapacity ?? 256)
-    const payloadBufferBytes = Math.max(1, options.payloadBufferBytes ?? 64 * 1024)
     this.timeoutMs = options.timeoutMs ?? 10
-    this.maxPayloadBufferBytes = Math.max(payloadBufferBytes, options.maxPayloadBufferBytes ?? 8 * 1024 * 1024)
-    this.maxTokenCapacity = Math.max(tokenCapacity, options.maxTokenCapacity ?? 8192)
-    this.initialPayloadBufferBytes = payloadBufferBytes
-    this.initialTokenCapacity = tokenCapacity
     this.armTimeouts = options.armTimeouts ?? true
     this.onTimeoutFlush = options.onTimeoutFlush ?? null
-    this.tokenBuffer = new Uint8Array(StdinTokenStruct.size * tokenCapacity)
-    this.payloadBuffer = new Uint8Array(payloadBufferBytes)
   }
 
   public push(data: Buffer): boolean {
@@ -67,38 +55,26 @@ export class NativeStdinParser {
     this.ensureAlive()
 
     while (true) {
-      const { status, stats } = this.lib.stdinParserDrain(
-        this.parserPtr,
-        this.tokenBuffer,
-        this.payloadBuffer,
-        this.statsBuffer,
-      )
+      const { status, payload } = this.lib.stdinParserNext(this.parserPtr, this.tokenBuffer, this.payloadRefBuffer)
 
-      if (status !== 0) {
-        throw new Error(`stdinParserDrain failed: ${status}`)
+      if (status === PARSER_NEXT_TOKEN) {
+        const token = StdinTokenStruct.unpack(this.tokenBuffer) as StdinToken
+        const payloadBytes =
+          payload.payloadPtr && payload.payloadLen > 0
+            ? new Uint8Array(toArrayBuffer(payload.payloadPtr, 0, payload.payloadLen))
+            : EMPTY_PAYLOAD
+        onToken(token, payloadBytes)
+        continue
       }
 
-      if (stats.overflowed === 1 && stats.tokenCount === 0 && stats.hasPending === 1) {
-        if (this.tryGrowScratchBuffers()) {
-          continue
-        }
-
-        throw new Error("stdinParserDrain overflow without progress (max scratch buffers reached)")
-      }
-
-      if (stats.tokenCount === 0) {
+      if (status === PARSER_NEXT_NONE || status === PARSER_NEXT_PENDING) {
         if (this.armTimeouts) {
-          this.reconcileTimeout(stats.hasPending === 1)
+          this.reconcileTimeout(status === PARSER_NEXT_PENDING)
         }
         return
       }
 
-      const tokens = StdinTokenStruct.unpackList(this.tokenBuffer.buffer, stats.tokenCount) as StdinToken[]
-      for (const token of tokens) {
-        const start = token.payloadOffset
-        const end = start + token.payloadLen
-        onToken(token, this.payloadBuffer.subarray(start, end))
-      }
+      throw new Error(`stdinParserNext failed: ${status}`)
     }
   }
 
@@ -119,15 +95,6 @@ export class NativeStdinParser {
     const status = this.lib.stdinParserReset(this.parserPtr)
     if (status !== 0) {
       throw new Error(`stdinParserReset failed: ${status}`)
-    }
-
-    if (this.payloadBuffer.byteLength !== this.initialPayloadBufferBytes) {
-      this.payloadBuffer = new Uint8Array(this.initialPayloadBufferBytes)
-    }
-
-    const currentTokenCapacity = Math.floor(this.tokenBuffer.byteLength / StdinTokenStruct.size)
-    if (currentTokenCapacity !== this.initialTokenCapacity) {
-      this.tokenBuffer = new Uint8Array(StdinTokenStruct.size * this.initialTokenCapacity)
     }
   }
 
@@ -185,28 +152,5 @@ export class NativeStdinParser {
 
     clearTimeout(this.timeoutId)
     this.timeoutId = null
-  }
-
-  private tryGrowScratchBuffers(): boolean {
-    let grew = false
-
-    const currentTokenCapacity = Math.floor(this.tokenBuffer.byteLength / StdinTokenStruct.size)
-    if (currentTokenCapacity < this.maxTokenCapacity) {
-      const nextTokenCapacity = Math.min(currentTokenCapacity * 2, this.maxTokenCapacity)
-      if (nextTokenCapacity > currentTokenCapacity) {
-        this.tokenBuffer = new Uint8Array(StdinTokenStruct.size * nextTokenCapacity)
-        grew = true
-      }
-    }
-
-    if (this.payloadBuffer.byteLength < this.maxPayloadBufferBytes) {
-      const nextPayloadBytes = Math.min(this.payloadBuffer.byteLength * 2, this.maxPayloadBufferBytes)
-      if (nextPayloadBytes > this.payloadBuffer.byteLength) {
-        this.payloadBuffer = new Uint8Array(nextPayloadBytes)
-        grew = true
-      }
-    }
-
-    return grew
   }
 }

@@ -203,11 +203,9 @@ export type StdinToken = {
   aux1: number
 }
 
-export type StdinDrainStats = {
-  tokenCount: number
-  payloadBytes: number
-  hasPending: number
-  overflowed: number
+export type StdinPayloadRef = {
+  payloadPtr: Pointer | null
+  payloadLen: number
   reserved0: number
 }
 
@@ -244,12 +242,10 @@ export const StdinTokenStruct = defineStruct([
   ["aux1", "i32"],
 ])
 
-export const StdinDrainStatsStruct = defineStruct([
-  ["tokenCount", "u32"],
-  ["payloadBytes", "u32"],
-  ["hasPending", "u8"],
-  ["overflowed", "u8"],
-  ["reserved0", "u16"],
+export const StdinPayloadRefStruct = defineStruct([
+  ["payloadPtr", "pointer", { optional: true }],
+  ["payloadLen", "u32"],
+  ["reserved0", "u32"],
 ])
 
 export const StdinParserOptionsStruct = defineStruct([

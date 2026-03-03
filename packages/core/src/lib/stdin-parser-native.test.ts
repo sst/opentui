@@ -27,78 +27,49 @@ test("NativeStdinParser returns false when parser buffer limit is reached", () =
   }
 })
 
-test("NativeStdinParser grows scratch buffers for large paste payloads", () => {
+test("NativeStdinParser emits large paste as bounded chunks", () => {
   const lib = resolveRenderLib()
   const parser = lib.createStdinParser({ timeoutMs: 10, maxBufferBytes: 200_000, reserved0: 0 })
-  const nativeParser = new NativeStdinParser(lib, parser, {
-    armTimeouts: false,
-    payloadBufferBytes: 1024,
-    tokenCapacity: 8,
-  })
+  const nativeParser = new NativeStdinParser(lib, parser, { armTimeouts: false })
 
   try {
     const chunk = Buffer.from(`\x1b[200~${"x".repeat(70_000)}\x1b[201~`)
-    const tokens: Array<{ kind: string; payloadLen: number }> = []
+    const payloadLens: number[] = []
 
     expect(nativeParser.push(chunk)).toBe(true)
     nativeParser.drain((token, payload) => {
-      tokens.push({ kind: token.kind, payloadLen: payload.length })
+      expect(token.kind).toBe("paste")
+      payloadLens.push(payload.length)
     })
 
-    expect(tokens).toEqual([{ kind: "paste", payloadLen: 70_000 }])
+    expect(payloadLens.length).toBeGreaterThan(1)
+    expect(payloadLens.every((len) => len > 0 && len <= 4096)).toBe(true)
+    expect(payloadLens.reduce((sum, len) => sum + len, 0)).toBe(70_000)
   } finally {
     nativeParser.destroy()
   }
 })
 
-test("NativeStdinParser reset shrinks grown scratch buffers", () => {
+test("NativeStdinParser timeout flush emits pending escape", () => {
   const lib = resolveRenderLib()
-  const parser = lib.createStdinParser({ timeoutMs: 10, maxBufferBytes: 200_000, reserved0: 0 })
-  const nativeParser = new NativeStdinParser(lib, parser, {
-    armTimeouts: false,
-    payloadBufferBytes: 1024,
-    tokenCapacity: 8,
-    maxPayloadBufferBytes: 131_072,
-    maxTokenCapacity: 64,
-  }) as any
+  const parser = lib.createStdinParser({ timeoutMs: 10, maxBufferBytes: 1024, reserved0: 0 })
+  const nativeParser = new NativeStdinParser(lib, parser, { armTimeouts: false })
 
   try {
-    const initialPayloadBytes = nativeParser.payloadBuffer.byteLength
-    const initialTokenBytes = nativeParser.tokenBuffer.byteLength
+    const kinds: string[] = []
+    expect(nativeParser.push(Buffer.from("\x1b"))).toBe(true)
 
-    const chunk = Buffer.from(`\x1b[200~${"x".repeat(70_000)}\x1b[201~`)
-    expect(nativeParser.push(chunk)).toBe(true)
-    nativeParser.drain(() => {})
+    nativeParser.drain((token) => {
+      kinds.push(token.kind)
+    })
+    expect(kinds).toEqual([])
 
-    expect(nativeParser.payloadBuffer.byteLength).toBeGreaterThan(initialPayloadBytes)
-    expect(nativeParser.tokenBuffer.byteLength).toBeGreaterThan(initialTokenBytes)
+    nativeParser.flushTimeout(Date.now() + 100)
+    nativeParser.drain((token) => {
+      kinds.push(token.kind)
+    })
 
-    nativeParser.reset()
-
-    expect(nativeParser.payloadBuffer.byteLength).toBe(initialPayloadBytes)
-    expect(nativeParser.tokenBuffer.byteLength).toBe(initialTokenBytes)
-  } finally {
-    nativeParser.destroy()
-  }
-})
-
-test("NativeStdinParser throws when overflow cannot grow anymore", () => {
-  const lib = resolveRenderLib()
-  const parser = lib.createStdinParser({ timeoutMs: 10, maxBufferBytes: 200_000, reserved0: 0 })
-  const nativeParser = new NativeStdinParser(lib, parser, {
-    armTimeouts: false,
-    payloadBufferBytes: 1024,
-    tokenCapacity: 8,
-    maxPayloadBufferBytes: 1024,
-    maxTokenCapacity: 8,
-  })
-
-  try {
-    const chunk = Buffer.from(`\x1b[200~${"x".repeat(70_000)}\x1b[201~`)
-    expect(nativeParser.push(chunk)).toBe(true)
-    expect(() => {
-      nativeParser.drain(() => {})
-    }).toThrow(/max scratch buffers reached/)
+    expect(kinds).toEqual(["esc"])
   } finally {
     nativeParser.destroy()
   }

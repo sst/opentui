@@ -18,31 +18,21 @@ fn drainAvailable(parser: *stdin_parser.StdinParser, allocator: std.mem.Allocato
     var snapshots = std.ArrayList(TokenSnapshot).empty;
     errdefer deinitSnapshots(&snapshots, allocator);
 
-    var token_buf: [32]stdin_parser.StdinToken = undefined;
-    var payload_buf: [2048]u8 = undefined;
-
     while (true) {
-        const stats = parser.drain(token_buf[0..], payload_buf[0..]);
+        const next = parser.next();
+        switch (next.status) {
+            .none, .pending => break,
+            .token => {
+                const copy = try allocator.alloc(u8, next.payload.len);
+                if (next.payload.len > 0) {
+                    @memcpy(copy, next.payload);
+                }
 
-        var i: usize = 0;
-        while (i < stats.token_count) : (i += 1) {
-            const token = token_buf[i];
-            const start: usize = @intCast(token.payload_offset);
-            const len: usize = @intCast(token.payload_len);
-
-            const copy = try allocator.alloc(u8, len);
-            if (len > 0) {
-                @memcpy(copy, payload_buf[start .. start + len]);
-            }
-
-            try snapshots.append(allocator, .{
-                .kind = @enumFromInt(token.kind),
-                .payload = copy,
-            });
-        }
-
-        if (stats.token_count == 0) {
-            break;
+                try snapshots.append(allocator, .{
+                    .kind = next.kind,
+                    .payload = copy,
+                });
+            },
         }
     }
 
@@ -136,6 +126,34 @@ test "stdin parser handles split bracketed paste across pushes" {
     try testing.expectEqual(@as(usize, 1), second.items.len);
     try testing.expectEqual(stdin_parser.StdinTokenKind.paste, second.items[0].kind);
     try testing.expectEqualStrings("hello world", second.items[0].payload);
+}
+
+test "stdin parser chunks large bracketed paste payload" {
+    const parser = try stdin_parser.StdinParser.init(testing.allocator, stdin_parser.defaultOptions());
+    defer parser.deinit();
+
+    var stream = std.ArrayList(u8).empty;
+    defer stream.deinit(testing.allocator);
+    try stream.appendSlice(testing.allocator, "\x1b[200~");
+    try stream.appendNTimes(testing.allocator, 'x', 10_000);
+    try stream.appendSlice(testing.allocator, "\x1b[201~");
+
+    try parser.push(stream.items);
+
+    var snapshots = try drainAvailable(parser, testing.allocator);
+    defer deinitSnapshots(&snapshots, testing.allocator);
+
+    try testing.expect(snapshots.items.len > 1);
+
+    var total_payload: usize = 0;
+    for (snapshots.items) |snapshot| {
+        try testing.expectEqual(stdin_parser.StdinTokenKind.paste, snapshot.kind);
+        try testing.expect(snapshot.payload.len > 0);
+        try testing.expect(snapshot.payload.len <= 4096);
+        total_payload += snapshot.payload.len;
+    }
+
+    try testing.expectEqual(@as(usize, 10_000), total_payload);
 }
 
 test "stdin parser keeps focus sequences mixed with text" {

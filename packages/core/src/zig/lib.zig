@@ -200,41 +200,51 @@ export fn stdinParserPush(parser: ?*stdin_parser.StdinParser, data_ptr: ?*const 
     return 0;
 }
 
-export fn stdinParserDrain(
+export fn stdinParserNext(
     parser: ?*stdin_parser.StdinParser,
     token_out_ptr: ?*stdin_parser.StdinToken,
-    token_cap: u32,
-    payload_out_ptr: ?*u8,
-    payload_cap: u32,
-    stats_out_ptr: ?*stdin_parser.StdinDrainStats,
+    payload_ref_out_ptr: ?*stdin_parser.StdinPayloadRef,
 ) i32 {
-    if (parser == null or stats_out_ptr == null) {
-        return -1;
-    }
-    if (token_cap > 0 and token_out_ptr == null) {
-        return -1;
-    }
-    if (payload_cap > 0 and payload_out_ptr == null) {
+    if (parser == null or token_out_ptr == null or payload_ref_out_ptr == null) {
         return -1;
     }
 
-    const token_out: []stdin_parser.StdinToken = if (token_cap == 0)
-        &[_]stdin_parser.StdinToken{}
-    else blk: {
-        const many_ptr: [*]stdin_parser.StdinToken = @ptrCast(token_out_ptr.?);
-        break :blk many_ptr[0..@as(usize, token_cap)];
-    };
-
-    const payload_out: []u8 = if (payload_cap == 0)
-        &[_]u8{}
-    else blk: {
-        const many_ptr: [*]u8 = @ptrCast(payload_out_ptr.?);
-        break :blk many_ptr[0..@as(usize, payload_cap)];
-    };
-
-    const stats = parser.?.drain(token_out, payload_out);
-    stats_out_ptr.?.* = stats;
-    return 0;
+    const next = parser.?.next();
+    switch (next.status) {
+        .none => {
+            payload_ref_out_ptr.?.* = .{
+                .payload_ptr = null,
+                .payload_len = 0,
+                .reserved0 = 0,
+            };
+            return 0;
+        },
+        .pending => {
+            payload_ref_out_ptr.?.* = .{
+                .payload_ptr = null,
+                .payload_len = 0,
+                .reserved0 = 0,
+            };
+            return 2;
+        },
+        .token => {
+            token_out_ptr.?.* = .{
+                .kind = @intFromEnum(next.kind),
+                .flags = 0,
+                .reserved0 = 0,
+                .payload_offset = 0,
+                .payload_len = @intCast(next.payload.len),
+                .aux0 = 0,
+                .aux1 = 0,
+            };
+            payload_ref_out_ptr.?.* = .{
+                .payload_ptr = if (next.payload.len == 0) null else next.payload.ptr,
+                .payload_len = @intCast(next.payload.len),
+                .reserved0 = 0,
+            };
+            return 1;
+        },
+    }
 }
 
 export fn stdinParserFlushTimeout(parser: ?*stdin_parser.StdinParser, now_ms: u64) i32 {

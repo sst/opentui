@@ -10,7 +10,7 @@ import {
   type LineInfo,
   type MousePointerStyle,
 } from "./types"
-export type { LineInfo, AllocatorStats, BuildOptions, StdinToken, StdinDrainStats, StdinParserOptions }
+export type { LineInfo, AllocatorStats, BuildOptions, StdinToken, StdinPayloadRef, StdinParserOptions }
 
 import { RGBA } from "./lib/RGBA"
 import { OptimizedBuffer } from "./buffer"
@@ -33,8 +33,7 @@ import {
   ReserveInfoStruct,
   BuildOptionsStruct,
   AllocatorStatsStruct,
-  StdinTokenStruct,
-  StdinDrainStatsStruct,
+  StdinPayloadRefStruct,
   StdinParserOptionsStruct,
 } from "./zig-structs"
 import type {
@@ -44,7 +43,7 @@ import type {
   BuildOptions,
   AllocatorStats,
   StdinToken,
-  StdinDrainStats,
+  StdinPayloadRef,
   StdinParserOptions,
 } from "./zig-structs"
 import { isBunfsPath } from "./lib/bunfs"
@@ -1145,8 +1144,8 @@ function getOpenTUILib(libPath?: string) {
       args: ["ptr", "ptr", "usize"],
       returns: "i32",
     },
-    stdinParserDrain: {
-      args: ["ptr", "ptr", "u32", "ptr", "u32", "ptr"],
+    stdinParserNext: {
+      args: ["ptr", "ptr", "ptr"],
       returns: "i32",
     },
     stdinParserFlushTimeout: {
@@ -1864,12 +1863,11 @@ export interface RenderLib {
   createStdinParser: (options?: StdinParserOptions | null) => Pointer
   destroyStdinParser: (parser: Pointer) => void
   stdinParserPush: (parser: Pointer, data: Uint8Array) => number
-  stdinParserDrain: (
+  stdinParserNext: (
     parser: Pointer,
-    tokenOut: Uint8Array,
-    payloadOut: Uint8Array,
-    statsOut: ArrayBuffer,
-  ) => { status: number; stats: StdinDrainStats }
+    tokenOut: ArrayBuffer,
+    payloadRefOut: ArrayBuffer,
+  ) => { status: number; payload: StdinPayloadRef }
   stdinParserFlushTimeout: (parser: Pointer, nowMs: number) => number
   stdinParserReset: (parser: Pointer) => number
 
@@ -3815,25 +3813,15 @@ class FFIRenderLib implements RenderLib {
     return this.opentui.symbols.stdinParserPush(parser, ptr(data), data.length)
   }
 
-  public stdinParserDrain(
+  public stdinParserNext(
     parser: Pointer,
-    tokenOut: Uint8Array,
-    payloadOut: Uint8Array,
-    statsOut: ArrayBuffer,
-  ): { status: number; stats: StdinDrainStats } {
-    const tokenCap = Math.floor(tokenOut.byteLength / StdinTokenStruct.size)
-    const status = this.opentui.symbols.stdinParserDrain(
-      parser,
-      ptr(tokenOut),
-      tokenCap,
-      ptr(payloadOut),
-      payloadOut.length,
-      ptr(statsOut),
-    )
-
+    tokenOut: ArrayBuffer,
+    payloadRefOut: ArrayBuffer,
+  ): { status: number; payload: StdinPayloadRef } {
+    const status = this.opentui.symbols.stdinParserNext(parser, ptr(tokenOut), ptr(payloadRefOut))
     return {
       status,
-      stats: StdinDrainStatsStruct.unpack(statsOut),
+      payload: StdinPayloadRefStruct.unpack(payloadRefOut) as StdinPayloadRef,
     }
   }
 
