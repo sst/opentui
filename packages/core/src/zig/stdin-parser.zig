@@ -611,6 +611,13 @@ fn parseEscapeToken(bytes: []const u8) ParseResult {
                     const kind: StdinTokenKind = if (isMouseSgrSequence(bytes[0..consumed])) .mouse_sgr else .csi;
                     return escapeToken(kind, consumed);
                 }
+                // ESC inside a CSI body means a new escape sequence is
+                // starting before this one completed.  Abort the current
+                // CSI and emit the bytes consumed so far as unknown so the
+                // new ESC can be parsed cleanly on the next call.
+                if (b == ESC) {
+                    return escapeToken(.unknown, scan_index);
+                }
             }
 
             return .incomplete;

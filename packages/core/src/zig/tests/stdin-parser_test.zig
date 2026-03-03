@@ -387,6 +387,51 @@ test "stdin parser reset releases retained buffer capacity" {
     try testing.expect(parser.buffer.capacity <= 256);
 }
 
+test "stdin parser aborts CSI on embedded ESC" {
+    // When a new ESC arrives inside an incomplete CSI, the parser should
+    // emit the incomplete CSI as unknown and cleanly start parsing the new
+    // escape sequence.
+    const parser = try stdin_parser.StdinParser.init(testing.allocator, stdin_parser.defaultOptions());
+    defer parser.deinit();
+
+    // Push incomplete SGR mouse, then a complete SGR mouse.
+    // Buffer: ESC [ < 3 5 ; ESC [ < 3 5 ; 2 0 ; 5 m
+    try parser.push("\x1b[<35;\x1b[<35;20;5m");
+
+    var snapshots = try drainAvailable(parser, testing.allocator);
+    defer deinitSnapshots(&snapshots, testing.allocator);
+
+    // Two tokens: the incomplete CSI emitted as unknown, then the complete SGR mouse
+    try testing.expectEqual(@as(usize, 2), snapshots.items.len);
+    try testing.expectEqual(stdin_parser.StdinTokenKind.unknown, snapshots.items[0].kind);
+    try testing.expectEqualStrings("\x1b[<35;", snapshots.items[0].payload);
+    try testing.expectEqual(stdin_parser.StdinTokenKind.mouse_sgr, snapshots.items[1].kind);
+    try testing.expectEqualStrings("\x1b[<35;20;5m", snapshots.items[1].payload);
+}
+
+test "stdin parser aborts CSI on embedded ESC with separate pushes" {
+    // Same as above but with data arriving in separate pushes.
+    const parser = try stdin_parser.StdinParser.init(testing.allocator, stdin_parser.defaultOptions());
+    defer parser.deinit();
+
+    // Push incomplete SGR mouse
+    try parser.push("\x1b[<35;");
+    var first = try drainAvailable(parser, testing.allocator);
+    defer deinitSnapshots(&first, testing.allocator);
+    try testing.expectEqual(@as(usize, 0), first.items.len); // pending
+
+    // Push another sequence starting with ESC — should flush the incomplete one
+    try parser.push("\x1b[<35;20;5m");
+    var second = try drainAvailable(parser, testing.allocator);
+    defer deinitSnapshots(&second, testing.allocator);
+
+    try testing.expectEqual(@as(usize, 2), second.items.len);
+    try testing.expectEqual(stdin_parser.StdinTokenKind.unknown, second.items[0].kind);
+    try testing.expectEqualStrings("\x1b[<35;", second.items[0].payload);
+    try testing.expectEqual(stdin_parser.StdinTokenKind.mouse_sgr, second.items[1].kind);
+    try testing.expectEqualStrings("\x1b[<35;20;5m", second.items[1].payload);
+}
+
 test "stdin parser releases invalid utf8 lead when next byte is not continuation" {
     const parser = try stdin_parser.StdinParser.init(testing.allocator, stdin_parser.defaultOptions());
     defer parser.deinit();

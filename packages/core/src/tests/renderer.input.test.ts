@@ -1452,6 +1452,27 @@ test("capability response followed by keypress", async () => {
   expect(keypresses[0].name).toBe("a")
 })
 
+test("partial SGR mouse flushed on timeout should not trigger keypress", async () => {
+  const keypresses: KeyEvent[] = []
+  currentRenderer.keyInput.on("keypress", (event) => {
+    keypresses.push(event)
+  })
+
+  // Incomplete SGR mouse sequence; the native parser flushes this token on timeout.
+  currentRenderer.stdin.emit("data", Buffer.from("\x1b[<35;20"))
+
+  // Wait past native stdin parser timeout (10ms)
+  await new Promise((resolve) => setTimeout(resolve, 15))
+  expect(keypresses).toHaveLength(0)
+
+  // Ensure normal key input still works after the filtered flush
+  currentRenderer.stdin.emit("data", Buffer.from("x"))
+  await new Promise((resolve) => setTimeout(resolve, 15))
+
+  expect(keypresses).toHaveLength(1)
+  expect(keypresses[0].name).toBe("x")
+})
+
 test("chunked XTVersion response should not trigger keypresses", async () => {
   const keypresses: KeyEvent[] = []
   currentRenderer.keyInput.on("keypress", (event) => {
