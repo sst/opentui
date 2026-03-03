@@ -112,6 +112,7 @@ state: struct {
     kitty_keyboard_flags: u8 = 0,
     bracketed_paste: bool = false,
     mouse: bool = false,
+    mouse_movement: bool = true,
     pixel_mouse: bool = false,
     color_scheme_updates: bool = false,
     focus_tracking: bool = false,
@@ -174,7 +175,7 @@ pub fn resetState(self: *Terminal, tty: anytype) !void {
     }
 
     if (self.state.mouse) {
-        try self.setMouseMode(tty, false);
+        try self.setMouseMode(tty, false, self.state.mouse_movement);
     }
 
     if (self.state.bracketed_paste) {
@@ -485,14 +486,27 @@ fn checkEnvironmentOverrides(self: *Terminal) void {
 
 // TODO: Allow pixel mouse mode to be enabled,
 // currently does not make sense and is not supported by higher levels
-pub fn setMouseMode(self: *Terminal, tty: anytype, enable: bool) !void {
-    if (self.state.mouse == enable) return;
+pub fn setMouseMode(self: *Terminal, tty: anytype, enable: bool, enable_movement: bool) !void {
+    if (enable) {
+        if (self.state.mouse and self.state.mouse_movement == enable_movement) return;
+    } else if (!self.state.mouse) {
+        return;
+    }
 
     if (enable) {
         self.state.mouse = true;
+        self.state.mouse_movement = enable_movement;
+        if (!enable_movement) {
+            // Some terminals treat ?1000/?1002/?1003 as one family and let the
+            // last sequence win. Reset any-event tracking first, then enable
+            // click/drag modes so they remain active.
+            try tty.writeAll(ansi.ANSI.disableAnyEventTracking);
+        }
         try tty.writeAll(ansi.ANSI.enableMouseTracking);
         try tty.writeAll(ansi.ANSI.enableButtonEventTracking);
-        try tty.writeAll(ansi.ANSI.enableAnyEventTracking);
+        if (enable_movement) {
+            try tty.writeAll(ansi.ANSI.enableAnyEventTracking);
+        }
         try tty.writeAll(ansi.ANSI.enableSGRMouseMode);
     } else {
         self.state.mouse = false;
@@ -570,9 +584,14 @@ pub fn setColorSchemeUpdates(self: *Terminal, tty: anytype, enable: bool) !void 
 pub fn restoreTerminalModes(self: *Terminal, tty: anytype) !void {
     // Re-enable mouse tracking modes if active
     if (self.state.mouse) {
+        if (!self.state.mouse_movement) {
+            try tty.writeAll(ansi.ANSI.disableAnyEventTracking);
+        }
         try tty.writeAll(ansi.ANSI.enableMouseTracking);
         try tty.writeAll(ansi.ANSI.enableButtonEventTracking);
-        try tty.writeAll(ansi.ANSI.enableAnyEventTracking);
+        if (self.state.mouse_movement) {
+            try tty.writeAll(ansi.ANSI.enableAnyEventTracking);
+        }
         try tty.writeAll(ansi.ANSI.enableSGRMouseMode);
     }
 

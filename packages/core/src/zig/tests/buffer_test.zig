@@ -1096,6 +1096,90 @@ test "OptimizedBuffer - set should not clear newly written adjacent grapheme con
     try std.testing.expect(c4.char == ' ');
 }
 
+test "OptimizedBuffer - set span cleanup keeps shared link refcounts consistent" {
+    var local_pool = gp.GraphemePool.initWithOptions(std.testing.allocator, .{});
+    defer local_pool.deinit();
+
+    var local_link_pool = link.LinkPool.init(std.testing.allocator);
+    defer local_link_pool.deinit();
+
+    var buf = try OptimizedBuffer.init(
+        std.testing.allocator,
+        10,
+        1,
+        .{ .pool = &local_pool, .id = "set-span-link-refcount", .link_pool = &local_link_pool },
+    );
+    defer buf.deinit();
+
+    const bg = RGBA{ 0.0, 0.0, 0.0, 1.0 };
+    const fg = RGBA{ 1.0, 1.0, 1.0, 1.0 };
+    try buf.clear(bg, null);
+
+    const link_id = try local_link_pool.alloc("https://example.com");
+    const linked_attr = ansi.TextAttributes.setLinkId(0, link_id);
+
+    const gid = try local_pool.alloc("你");
+    const start = gp.packGraphemeStart(gid & gp.GRAPHEME_ID_MASK, 2);
+
+    // Create three linked cells total:
+    // - a 2-cell grapheme span at x=2..3
+    // - one additional linked cell at x=6
+    buf.set(2, 0, .{ .char = start, .fg = fg, .bg = bg, .attributes = linked_attr });
+    buf.set(6, 0, .{ .char = 'X', .fg = fg, .bg = bg, .attributes = linked_attr });
+
+    try std.testing.expectEqual(@as(u32, 3), buf.link_tracker.used_ids.get(link_id).?);
+    try std.testing.expectEqual(@as(u32, 1), try local_link_pool.getRefcount(link_id));
+
+    // Overwrite the continuation cell at x=3 with a non-grapheme char.
+    // set() will run span cleanup and clear x=2..3. The independent linked
+    // cell at x=6 must remain tracked.
+    buf.set(3, 0, .{ .char = ' ', .fg = fg, .bg = bg, .attributes = 0 });
+
+    try std.testing.expectEqual(@as(u32, 1), buf.link_tracker.getLinkCount());
+    try std.testing.expectEqual(@as(u32, 1), buf.link_tracker.used_ids.get(link_id).?);
+    try std.testing.expectEqual(@as(u32, 1), try local_link_pool.getRefcount(link_id));
+}
+
+test "OptimizedBuffer - syncCell updates grapheme tracker for start transitions" {
+    var local_pool = gp.GraphemePool.initWithOptions(std.testing.allocator, .{});
+    defer local_pool.deinit();
+
+    var local_link_pool = link.LinkPool.init(std.testing.allocator);
+    defer local_link_pool.deinit();
+
+    var buf = try OptimizedBuffer.init(
+        std.testing.allocator,
+        10,
+        1,
+        .{ .pool = &local_pool, .id = "sync-cell-grapheme-tracker", .link_pool = &local_link_pool },
+    );
+    defer buf.deinit();
+
+    const bg = RGBA{ 0.0, 0.0, 0.0, 1.0 };
+    const fg = RGBA{ 1.0, 1.0, 1.0, 1.0 };
+    try buf.clear(bg, null);
+
+    const gid_old = try local_pool.alloc("你");
+    const gid_new = try local_pool.alloc("好");
+    const old_id = gid_old & gp.GRAPHEME_ID_MASK;
+    const new_id = gid_new & gp.GRAPHEME_ID_MASK;
+    const start_old = gp.packGraphemeStart(old_id, 2);
+    const start_new = gp.packGraphemeStart(new_id, 2);
+
+    buf.syncCell(1, 0, .{ .char = start_old, .fg = fg, .bg = bg, .attributes = 0 });
+    try std.testing.expectEqual(@as(u32, 1), buf.grapheme_tracker.getGraphemeCount());
+    try std.testing.expect(buf.grapheme_tracker.contains(old_id));
+
+    buf.syncCell(1, 0, .{ .char = start_new, .fg = fg, .bg = bg, .attributes = 0 });
+    try std.testing.expectEqual(@as(u32, 1), buf.grapheme_tracker.getGraphemeCount());
+    try std.testing.expect(!buf.grapheme_tracker.contains(old_id));
+    try std.testing.expect(buf.grapheme_tracker.contains(new_id));
+
+    buf.syncCell(1, 0, .{ .char = ' ', .fg = fg, .bg = bg, .attributes = 0 });
+    try std.testing.expectEqual(@as(u32, 0), buf.grapheme_tracker.getGraphemeCount());
+    try std.testing.expect(!buf.grapheme_tracker.contains(new_id));
+}
+
 test "OptimizedBuffer - sustained rendering should not leak" {
     const tiny_slots = [_]u32{ 2, 2, 2, 2, 2 };
     var local_pool = gp.GraphemePool.initWithOptions(std.testing.allocator, .{
@@ -2359,4 +2443,84 @@ test "renderer - grapheme WrongGeneration repro with pool slot reuse" {
         try next.drawText("╰────────────────────────────────────╯", 0, 4, fg, bg, 0);
         cli_renderer.render(false);
     }
+}
+
+// Issue #723: CJK grapheme continuation cells are destroyed when graphemes
+// shift left (e.g. after backspace). The renderer's diff loop calls
+// currentRenderBuffer.set() left-to-right, and set()'s span cleanup at
+// position N+2 destroys the continuation cell at N+1 that was just written
+// by set() at position N, because both share the same stable grapheme pool ID.
+test "renderer - CJK graphemes shifting left must preserve continuation cells (#723)" {
+    const pool = gp.initGlobalPool(std.testing.allocator);
+    defer gp.deinitGlobalPool();
+    var local_link_pool = link.LinkPool.init(std.testing.allocator);
+    defer local_link_pool.deinit();
+
+    const renderer_mod = @import("../renderer.zig");
+    var cli_renderer = try renderer_mod.CliRenderer.create(
+        std.testing.allocator,
+        20,
+        1,
+        pool,
+        true,
+    );
+    defer cli_renderer.destroy();
+
+    const fg = RGBA{ 1.0, 1.0, 1.0, 1.0 };
+    const bg = RGBA{ 0.0, 0.0, 0.0, 1.0 };
+
+    // Frame 1: "abcd你好世" — CJK chars start at column 4
+    // Layout: a(0) b(1) c(2) d(3) 你(4,5) 好(6,7) 世(8,9) spaces(10..19)
+    {
+        const next = cli_renderer.getNextBuffer();
+        try next.drawText("abcd你好世          ", 0, 0, fg, bg, 0);
+        cli_renderer.render(false);
+    }
+
+    // Frame 2: "abc你好世" — backspace deleted 'd', CJK chars shift left by 1
+    // Layout: a(0) b(1) c(2) 你(3,4) 好(5,6) 世(7,8) spaces(9..19)
+    {
+        const next = cli_renderer.getNextBuffer();
+        try next.drawText("abc你好世           ", 0, 0, fg, bg, 0);
+        cli_renderer.render(false);
+    }
+
+    // After frame 2, currentRenderBuffer should match the frame 2 layout exactly.
+    // The bug: span cleanup in set() destroys continuation cells (positions 4, 6, 8)
+    // leaving spaces instead of proper continuation chars.
+    const current = cli_renderer.getCurrentBuffer();
+
+    // Check that position 3 is a grapheme start (你)
+    const cell3 = current.get(3, 0).?;
+    try std.testing.expect(gp.isGraphemeChar(cell3.char));
+    try std.testing.expectEqual(@as(u32, 1), gp.charRightExtent(cell3.char));
+
+    // Check that position 4 is a continuation cell for the same grapheme (你)
+    const cell4 = current.get(4, 0).?;
+    try std.testing.expect(gp.isContinuationChar(cell4.char));
+    const id3 = gp.graphemeIdFromChar(cell3.char);
+    const id4 = gp.graphemeIdFromChar(cell4.char);
+    try std.testing.expectEqual(id3, id4);
+
+    // Check that position 5 is a grapheme start (好)
+    const cell5 = current.get(5, 0).?;
+    try std.testing.expect(gp.isGraphemeChar(cell5.char));
+
+    // Check that position 6 is a continuation cell for the same grapheme (好)
+    const cell6 = current.get(6, 0).?;
+    try std.testing.expect(gp.isContinuationChar(cell6.char));
+    const id5 = gp.graphemeIdFromChar(cell5.char);
+    const id6 = gp.graphemeIdFromChar(cell6.char);
+    try std.testing.expectEqual(id5, id6);
+
+    // Check that position 7 is a grapheme start (世)
+    const cell7 = current.get(7, 0).?;
+    try std.testing.expect(gp.isGraphemeChar(cell7.char));
+
+    // Check that position 8 is a continuation cell for the same grapheme (世)
+    const cell8 = current.get(8, 0).?;
+    try std.testing.expect(gp.isContinuationChar(cell8.char));
+    const id7 = gp.graphemeIdFromChar(cell7.char);
+    const id8 = gp.graphemeIdFromChar(cell8.char);
+    try std.testing.expectEqual(id7, id8);
 }
