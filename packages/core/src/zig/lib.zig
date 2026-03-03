@@ -232,8 +232,6 @@ export fn stdinParserNext(
                 .kind = @intFromEnum(next.kind),
                 .flags = 0,
                 .reserved0 = 0,
-                .payload_offset = 0,
-                .payload_len = @intCast(next.payload.len),
                 .aux0 = 0,
                 .aux1 = 0,
             };

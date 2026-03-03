@@ -197,8 +197,6 @@ export type StdinToken = {
   kind: StdinTokenKind
   flags: number
   reserved0: number
-  payloadOffset: number
-  payloadLen: number
   aux0: number
   aux1: number
 }
@@ -236,8 +234,6 @@ export const StdinTokenStruct = defineStruct([
   ["kind", StdinTokenKindEnum],
   ["flags", "u8"],
   ["reserved0", "u16"],
-  ["payloadOffset", "u32"],
-  ["payloadLen", "u32"],
   ["aux0", "i32"],
   ["aux1", "i32"],
 ])

@@ -18,8 +18,6 @@ pub const StdinToken = extern struct {
     kind: u8,
     flags: u8,
     reserved0: u16,
-    payload_offset: u32,
-    payload_len: u32,
     aux0: i32,
     aux1: i32,
 };
