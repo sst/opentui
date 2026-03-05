@@ -151,18 +151,23 @@ export const parseKeypress = (s: Buffer | string = "", options: ParseKeypressOpt
   }
 
   // Filter out mouse events (SGR and basic)
+  // Complete SGR mouse with ESC prefix: ESC[<btn;x;yM/m
   if (/^\x1b\[<\d+;\d+;\d+[Mm]$/.test(s)) {
     return null
   }
+  // Complete SGR continuation without ESC after lone ESC timeout flush: [<btn;x;yM/m
   if (/^\[<\d+;\d+;\d+[Mm]$/.test(s)) {
     return null
   }
+  // Partial SGR mouse with ESC prefix that can be flushed on timeout
   if (/^\x1b\[<[\d;]*$/.test(s)) {
     return null
   }
+  // Partial SGR continuation without ESC after lone ESC timeout flush
   if (/^\[<[\d;]*$/.test(s)) {
     return null
   }
+  // Legacy X10 mouse sequence: ESC[M + 3 bytes
   if (s.startsWith("\x1b[M") && s.length >= 6) {
     return null
   }
