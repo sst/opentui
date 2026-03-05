@@ -696,6 +696,32 @@ with multiple lines
   `)
 })
 
+test("code block without language uses markdown raw block style", async () => {
+  const style = SyntaxStyle.fromStyles({
+    default: { fg: RGBA.fromHex("#111111") },
+    "markup.raw.block": {
+      fg: RGBA.fromHex("#00aa00"),
+      bg: RGBA.fromHex("#220000"),
+    },
+  })
+
+  const md = createMarkdownRenderable({
+    id: "styled-code-block",
+    content: `\`\`\`
+foo
+\`\`\``,
+    syntaxStyle: style,
+  })
+
+  renderer.root.add(md)
+  await renderMarkdownRenderable(md)
+
+  const span = captureSpans().lines[0]?.spans[0]
+  expect(span?.text).toContain("foo")
+  expect(span?.fg.equals(RGBA.fromHex("#00aa00"))).toBe(true)
+  expect(span?.bg.equals(RGBA.fromHex("#220000"))).toBe(true)
+})
+
 test("code block mixed with text", async () => {
   const markdown = `Here is some code:
 
@@ -1161,6 +1187,41 @@ const x = 1;
     ┌──────────────────────────────────────────────────────────┐
     │CODE: const x = 1;                                        │
     └──────────────────────────────────────────────────────────┘"
+  `)
+})
+
+test("renderNode setter re-renders existing markdown blocks", async () => {
+  const { StyledText } = await import("../../lib/styled-text")
+
+  const md = createMarkdownRenderable({
+    id: "render-node-setter",
+    content: `# Title
+
+Body.`,
+    syntaxStyle,
+  })
+
+  renderer.root.add(md)
+  await renderMarkdownRenderable(md)
+
+  md.renderNode = (node, ctx) => {
+    if (node.type !== "heading") return ctx.defaultRender()
+    return new TextRenderable(renderer, {
+      id: "custom-heading-setter",
+      content: new StyledText([{ __isChunk: true, text: "[SETTER] Title", attributes: 0 }]),
+      width: "100%",
+    })
+  }
+
+  await renderMarkdownRenderable(md)
+
+  const lines = captureFrame()
+    .split("\n")
+    .map((line) => line.trimEnd())
+  expect("\n" + lines.join("\n").trimEnd()).toMatchInlineSnapshot(`
+    "
+    [SETTER] Title
+    Body."
   `)
 })
 

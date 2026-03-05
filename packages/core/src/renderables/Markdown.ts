@@ -246,6 +246,18 @@ export class MarkdownRenderable extends Renderable {
     this.applyTableOptionsToBlocks()
   }
 
+  get renderNode(): MarkdownOptions["renderNode"] | undefined {
+    return this._renderNode
+  }
+
+  set renderNode(value: MarkdownOptions["renderNode"] | undefined) {
+    if (this._renderNode !== value) {
+      this._renderNode = value
+      this.updateBlocks(true)
+      this.requestRender()
+    }
+  }
+
   private getStyle(group: string): StyleDefinition | undefined {
     // The solid reconciler applies props via setters in JSX declaration order.
     // If `content` is set before `syntaxStyle`, updateBlocks() runs before
@@ -440,7 +452,35 @@ export class MarkdownRenderable extends Renderable {
     })
   }
 
+  private getCodeBlockStyle(): StyleDefinition | undefined {
+    const base = this.getStyle("default")
+    const raw = this.getStyle("markup.raw.block") ?? this.getStyle("markup.raw")
+    if (!base && !raw) return undefined
+    return {
+      fg: raw?.fg ?? base?.fg,
+      bg: raw?.bg ?? base?.bg,
+      bold: raw?.bold ?? base?.bold,
+      italic: raw?.italic ?? base?.italic,
+      underline: raw?.underline ?? base?.underline,
+      dim: raw?.dim ?? base?.dim,
+    }
+  }
+
+  private applyCodeBlockStyle(renderable: CodeRenderable): void {
+    const style = this.getCodeBlockStyle()
+    if (!style) return
+    if (style.fg) renderable.fg = style.fg
+    if (style.bg) renderable.bg = style.bg
+    renderable.attributes = createTextAttributes({
+      bold: style.bold,
+      italic: style.italic,
+      underline: style.underline,
+      dim: style.dim,
+    })
+  }
+
   private createCodeRenderable(token: Tokens.Code, id: string, marginBottom: number = 0): Renderable {
+    const style = this.getCodeBlockStyle()
     return new CodeRenderable(this.ctx, {
       id,
       content: token.text,
@@ -450,6 +490,14 @@ export class MarkdownRenderable extends Renderable {
       drawUnstyledText: !(this._streaming && this._concealCode),
       streaming: this._streaming,
       treeSitterClient: this._treeSitterClient,
+      fg: style?.fg,
+      bg: style?.bg,
+      attributes: createTextAttributes({
+        bold: style?.bold,
+        italic: style?.italic,
+        underline: style?.underline,
+        dim: style?.dim,
+      }),
       width: "100%",
       marginBottom,
     })
@@ -473,6 +521,7 @@ export class MarkdownRenderable extends Renderable {
     renderable.drawUnstyledText = !(this._streaming && this._concealCode)
     renderable.streaming = this._streaming
     renderable.marginBottom = marginBottom
+    this.applyCodeBlockStyle(renderable)
   }
 
   private shouldRenderSeparately(token: MarkedToken): boolean {
