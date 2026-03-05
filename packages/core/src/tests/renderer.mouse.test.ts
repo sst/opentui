@@ -1246,7 +1246,7 @@ describe("renderer handleMouseData split height", () => {
     }
   })
 
-  test("split height returns false for input above render area", async () => {
+  test("split height ignores mouse input above render area without leaking to keyboard", async () => {
     try {
       const sequences: string[] = []
       renderer.addInputHandler((sequence) => {
@@ -1261,7 +1261,10 @@ describe("renderer handleMouseData split height", () => {
       await mockMouse.click(1, Math.max(0, renderOffset - 1))
       await Bun.sleep(10)
 
-      expect(sequences.length).toBeGreaterThan(beforeSequences)
+      // Mouse events above the render area are silently ignored.
+      // They must NOT leak through as keyboard sequences to input handlers,
+      // which would cause raw escape codes to appear as typed text.
+      expect(sequences.length).toBe(beforeSequences)
     } finally {
       renderer.destroy()
     }

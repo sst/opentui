@@ -14,9 +14,19 @@ export type RawMouseEvent = {
   scroll?: ScrollInfo
 }
 
+/** Result of parsing a single mouse event, including how many bytes it consumed. */
 type ParsedMouseSequence = {
   event: RawMouseEvent
   consumed: number
+}
+
+/** Result of parseAllMouseEventsWithOffset — contains parsed events, consumed byte count, and partial-sequence detection. */
+export type MouseParseResult = {
+  events: RawMouseEvent[]
+  /** Number of bytes successfully parsed as mouse events. */
+  consumed: number
+  /** True if the buffer ends with an incomplete mouse sequence that needs more data. */
+  partial: boolean
 }
 
 export class MouseParser {
@@ -48,23 +58,77 @@ export class MouseParser {
   }
 
   public parseAllMouseEvents(data: Buffer): RawMouseEvent[] {
+    return this.parseAllMouseEventsWithOffset(data).events
+  }
+
+  /**
+   * Parse all mouse events from the buffer, returning how many bytes were
+   * consumed and whether the buffer ends with an incomplete mouse sequence.
+   * This allows callers to forward unconsumed data to keyboard handlers
+   * and buffer partial sequences for the next stdin chunk.
+   */
+  public parseAllMouseEventsWithOffset(data: Buffer): MouseParseResult {
     const str = this.decodeInput(data)
     const events: RawMouseEvent[] = []
     let offset = 0
+    let partial = false
 
     while (offset < str.length) {
       const parsed = this.parseMouseSequenceAt(str, offset)
-      if (!parsed) {
-        // Stop at the first non-mouse sequence. Callers can decide whether to
-        // route any remaining data through keyboard/terminal input handling.
+      if (parsed) {
+        events.push(parsed.event)
+        offset += parsed.consumed
+        continue
+      }
+
+      // No complete mouse event at this position.
+      // Check if there is a partial (truncated) mouse sequence starting here.
+      if (this.isPartialMouseSequence(str, offset)) {
+        partial = true
         break
       }
 
-      events.push(parsed.event)
-      offset += parsed.consumed
+      // Not a mouse sequence at all — stop. Caller routes the remainder
+      // through keyboard/terminal input handling.
+      break
     }
 
-    return events
+    return { events, consumed: offset, partial }
+  }
+
+  /**
+   * Check whether an incomplete mouse sequence starts at the given offset.
+   * For example, "\x1b[<35;20" is a truncated SGR sequence (missing the
+   * terminating "M" or "m").
+   */
+  private isPartialMouseSequence(str: string, offset: number): boolean {
+    if (!str.startsWith("\x1b[", offset)) return false
+    const remaining = str.slice(offset)
+
+    // Partial SGR mouse: \x1b[< followed by digits/semicolons but no M/m terminator
+    if (remaining.startsWith("\x1b[<")) {
+      // Just "\x1b[" or "\x1b[<" — clearly incomplete
+      if (remaining.length <= 3) return true
+      // Verify the rest consists only of valid SGR mouse characters (digits, semicolons)
+      for (let i = 3; i < remaining.length; i++) {
+        const ch = remaining.charCodeAt(i)
+        if (ch >= 48 && ch <= 57) continue  // digit
+        if (ch === 59) continue               // semicolon
+        // M or m means the sequence is actually complete (should have been parsed above)
+        if (ch === 77 || ch === 109) return false
+        // Any other character — not a valid mouse sequence
+        return false
+      }
+      // Only digits/semicolons without a terminator — partial
+      return true
+    }
+
+    // Partial basic (X10) mouse: \x1b[M needs 3 payload bytes (6 total)
+    if (remaining.startsWith("\x1b[M")) {
+      return remaining.length < 6
+    }
+
+    return false
   }
 
   private parseMouseSequenceAt(str: string, offset: number): ParsedMouseSequence | null {

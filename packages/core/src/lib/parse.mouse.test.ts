@@ -1,5 +1,5 @@
 import { describe, test, expect, beforeEach } from "bun:test"
-import { MouseParser, type RawMouseEvent } from "./parse.mouse"
+import { MouseParser, type RawMouseEvent, type MouseParseResult } from "./parse.mouse"
 
 // Encode a basic/X10 mouse event: ESC [ M Cb Cx Cy
 // buttonByte is the logical value (before the +32 wire offset), x/y are 0-based.
@@ -516,6 +516,114 @@ describe("MouseParser parseAllMouseEvents (multi-event chunks)", () => {
     expect(events).toHaveLength(2)
     expect(events[0]).toMatchObject({ type: "down" })
     expect(events[1]).toMatchObject({ type: "drag" })
+  })
+})
+
+describe("MouseParser parseAllMouseEventsWithOffset (split sequences & mixed data)", () => {
+  let parser: MouseParser
+
+  beforeEach(() => {
+    parser = new MouseParser()
+  })
+
+  test("pure mouse data: consumed equals total length, partial is false", () => {
+    const buf = Buffer.concat([encodeSGR(0, 10, 5, true), encodeSGR(0, 10, 5, false)])
+    const result = parser.parseAllMouseEventsWithOffset(buf)
+    expect(result.events).toHaveLength(2)
+    expect(result.consumed).toBe(buf.length)
+    expect(result.partial).toBe(false)
+  })
+
+  test("mouse followed by non-mouse data: consumed < length, partial is false", () => {
+    const mouseData = encodeSGR(0, 10, 5, true)
+    const keyData = Buffer.from("hello")
+    const buf = Buffer.concat([mouseData, keyData])
+    const result = parser.parseAllMouseEventsWithOffset(buf)
+    expect(result.events).toHaveLength(1)
+    expect(result.consumed).toBe(mouseData.length)
+    expect(result.partial).toBe(false)
+  })
+
+  test("mouse followed by partial mouse sequence: partial is true", () => {
+    const completeEvent = encodeSGR(0, 10, 5, true)
+    const partialEvent = Buffer.from("\x1b[<35;20")
+    const buf = Buffer.concat([completeEvent, partialEvent])
+    const result = parser.parseAllMouseEventsWithOffset(buf)
+    expect(result.events).toHaveLength(1)
+    expect(result.consumed).toBe(completeEvent.length)
+    expect(result.partial).toBe(true)
+  })
+
+  test("only partial SGR mouse sequence: 0 events, partial is true", () => {
+    const buf = Buffer.from("\x1b[<35;20;5")
+    const result = parser.parseAllMouseEventsWithOffset(buf)
+    expect(result.events).toHaveLength(0)
+    expect(result.consumed).toBe(0)
+    expect(result.partial).toBe(true)
+  })
+
+  test("bare ESC-[ < without digits is partial", () => {
+    const buf = Buffer.from("\x1b[<")
+    const result = parser.parseAllMouseEventsWithOffset(buf)
+    expect(result.events).toHaveLength(0)
+    expect(result.consumed).toBe(0)
+    expect(result.partial).toBe(true)
+  })
+
+  test("partial basic mouse: ESC[M + 1 byte (needs 3)", () => {
+    const buf = Buffer.from("\x1b[M\x20")
+    const result = parser.parseAllMouseEventsWithOffset(buf)
+    expect(result.events).toHaveLength(0)
+    expect(result.consumed).toBe(0)
+    expect(result.partial).toBe(true)
+  })
+
+  test("non-mouse data followed by mouse: consumed is 0, partial is false", () => {
+    const keyData = Buffer.from("abc")
+    const mouseData = encodeSGR(0, 10, 5, true)
+    const buf = Buffer.concat([keyData, mouseData])
+    const result = parser.parseAllMouseEventsWithOffset(buf)
+    // Parser starts at offset 0, 'a' is not a mouse introducer — breaks immediately
+    expect(result.events).toHaveLength(0)
+    expect(result.consumed).toBe(0)
+    expect(result.partial).toBe(false)
+  })
+
+  test("empty buffer: 0 events, consumed 0, partial false", () => {
+    const result = parser.parseAllMouseEventsWithOffset(Buffer.from(""))
+    expect(result.events).toHaveLength(0)
+    expect(result.consumed).toBe(0)
+    expect(result.partial).toBe(false)
+  })
+
+  test("non-mouse CSI sequence is not detected as partial", () => {
+    // ESC[A (Cursor Up) — valid CSI but not a mouse sequence
+    const buf = Buffer.from("\x1b[A")
+    const result = parser.parseAllMouseEventsWithOffset(buf)
+    expect(result.events).toHaveLength(0)
+    expect(result.consumed).toBe(0)
+    expect(result.partial).toBe(false)
+  })
+
+  test("simulated split: chunk 1 with partial, chunk 2 completes it", () => {
+    // Chunk 1: complete event + beginning of a second one
+    const complete = encodeSGR(35, 20, 10, true)  // move event
+    const partial = "\x1b[<35;21"
+    const chunk1 = Buffer.concat([complete, Buffer.from(partial)])
+
+    const result1 = parser.parseAllMouseEventsWithOffset(chunk1)
+    expect(result1.events).toHaveLength(1)
+    expect(result1.consumed).toBe(complete.length)
+    expect(result1.partial).toBe(true)
+
+    // Chunk 2: remainder of the partial sequence
+    const remainder = chunk1.toString().slice(result1.consumed)
+    const chunk2str = remainder + ";11M"  // completes \x1b[<35;21;11M
+    const result2 = parser.parseAllMouseEventsWithOffset(Buffer.from(chunk2str))
+    expect(result2.events).toHaveLength(1)
+    expect(result2.events[0]).toMatchObject({ type: "move", x: 20, y: 10 })
+    expect(result2.consumed).toBe(chunk2str.length)
+    expect(result2.partial).toBe(false)
   })
 })
 

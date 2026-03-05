@@ -1013,6 +1013,7 @@ export class CliRenderer extends EventEmitter implements RenderContext {
     this._useMouse = false
     this.setCapturedRenderable(undefined)
     this.mouseParser.reset()
+    this._mousePartialBuffer = ""
     this.lib.disableMouse(this.rendererPtr)
   }
 
@@ -1059,13 +1060,40 @@ export class CliRenderer extends EventEmitter implements RenderContext {
     this.queryPixelResolution()
   }
 
+  /** Buffers partial mouse sequences that span across stdin chunk boundaries. */
+  private _mousePartialBuffer: string = ""
+
   private stdinListener: (data: Buffer) => void = ((data: Buffer) => {
-    // Mouse first (consume and stop if handled)
-    if (this._useMouse && this.handleMouseData(data)) {
+    if (this._useMouse) {
+      // Prepend any leftover partial mouse data from the previous chunk
+      let str = data.toString()
+      if (this._mousePartialBuffer.length > 0) {
+        str = this._mousePartialBuffer + str
+        this._mousePartialBuffer = ""
+      }
+
+      const result = this.mouseParser.parseAllMouseEventsWithOffset(Buffer.from(str))
+
+      // Dispatch parsed mouse events
+      for (const mouseEvent of result.events) {
+        this.processSingleMouseEvent(mouseEvent)
+      }
+
+      // Buffer any trailing partial sequence for the next chunk
+      if (result.partial) {
+        this._mousePartialBuffer = str.slice(result.consumed)
+        return
+      }
+
+      // Forward non-mouse remainder to the keyboard input pipeline
+      const remainder = str.slice(result.consumed)
+      if (remainder.length > 0) {
+        this._stdinBuffer.process(remainder)
+      }
       return
     }
 
-    // Everything else goes through the sequence buffer
+    // Mouse disabled — send everything to the keyboard input pipeline
     this._stdinBuffer.process(data)
   }).bind(this)
 
@@ -1201,13 +1229,17 @@ export class CliRenderer extends EventEmitter implements RenderContext {
     return event
   }
 
+  /**
+   * @deprecated No longer called by stdinListener directly.
+   * Kept for potential external callers.
+   */
   private handleMouseData(data: Buffer): boolean {
-    const mouseEvents = this.mouseParser.parseAllMouseEvents(data)
+    const result = this.mouseParser.parseAllMouseEventsWithOffset(data)
 
-    if (mouseEvents.length === 0) return false
+    if (result.events.length === 0) return false
 
     let anyHandled = false
-    for (const mouseEvent of mouseEvents) {
+    for (const mouseEvent of result.events) {
       if (this.processSingleMouseEvent(mouseEvent)) {
         anyHandled = true
       }
@@ -1515,6 +1547,7 @@ export class CliRenderer extends EventEmitter implements RenderContext {
 
     this.setCapturedRenderable(undefined)
     this.mouseParser.reset()
+    this._mousePartialBuffer = ""
 
     if (this._splitHeight > 0) {
       // TODO: Handle resizing split mode properly
