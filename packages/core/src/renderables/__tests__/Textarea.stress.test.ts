@@ -506,6 +506,29 @@ describe("Textarea - Stress Tests", () => {
     expect(editor.plainText).not.toContain("[<")
   })
 
+  it("REPRO(main): delayed split SGR mouse bytes should not leak into textarea", async () => {
+    const { textarea: editor } = await createTextareaRenderable(currentRenderer, renderOnce, {
+      initialValue: "Original",
+      width: 40,
+      height: 10,
+    })
+
+    editor.focus()
+    const initialText = editor.plainText
+
+    // Simulate a split mouse SGR sequence where ESC and the rest arrive in separate
+    // chunks with a delay greater than the stdin buffer timeout.
+    currentRenderer.stdin.emit("data", Buffer.from("\x1b"))
+    await Bun.sleep(15)
+    currentRenderer.stdin.emit("data", Buffer.from("[<35;20;5m"))
+    await Bun.sleep(1)
+
+    // Correct behavior: no mouse bytes should be inserted into textarea text.
+    expect(editor.plainText).toBe(initialText)
+    expect(editor.plainText).not.toContain("[<")
+    expect(editor.plainText).not.toContain("35;20;5")
+  })
+
   it("STRESS TEST: alternating mouse and keyboard at high frequency", async () => {
     const { textarea: editor } = await createTextareaRenderable(currentRenderer, renderOnce, {
       initialValue: "",
