@@ -42,6 +42,7 @@ import * as inputExample from "./input-demo"
 import * as layoutExample from "./simple-layout-example"
 import * as inputSelectLayoutExample from "./input-select-layout-demo"
 import * as styledTextExample from "./styled-text-demo"
+import * as textTableExample from "./text-table-demo"
 import * as mouseInteractionExample from "./mouse-interaction-demo"
 import * as textSelectionExample from "./text-selection-demo"
 import * as asciiFontSelectionExample from "./ascii-font-selection-demo"
@@ -179,6 +180,12 @@ const examples: Example[] = [
     description: "Template literals with styled text, colors, and formatting",
     run: styledTextExample.run,
     destroy: styledTextExample.destroy,
+  },
+  {
+    name: "TextTable Demo",
+    description: "TextTable renderable with styled chunks, Unicode content, and wrap/border toggles",
+    run: textTableExample.run,
+    destroy: textTableExample.destroy,
   },
   {
     name: "Link Demo",

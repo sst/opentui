@@ -1,0 +1,215 @@
+// Bun Snapshot v1, https://bun.sh/docs/test/snapshots
+
+exports[`TextTableRenderable renders a basic table with styled cell chunks: basic table 1`] = `
+"                                                            
+ ┌─────┬──────┬───────────────────┐                         
+ │Name │Status│Notes              │                         
+ ├─────┼──────┼───────────────────┤                         
+ │Alpha│OK    │All systems nominal│                         
+ ├─────┼──────┼───────────────────┤                         
+ │Bravo│WARN  │Pending checks     │                         
+ └─────┴──────┴───────────────────┘                         
+                                                            
+                                                            
+                                                            
+                                                            
+                                                            
+                                                            
+                                                            
+                                                            
+"
+`;
+
+exports[`TextTableRenderable wraps content and fits columns when width is constrained: wrapped constrained width 1`] = `
+"┌──┬─────────────────────────────┐                          
+│ID│Description                  │                          
+├──┼─────────────────────────────┤                          
+│1 │This is a long sentence that │                          
+│  │should wrap across multiple  │                          
+│  │visual lines                 │                          
+├──┼─────────────────────────────┤                          
+│2 │Short                        │                          
+└──┴─────────────────────────────┘                          
+                                                            
+                                                            
+                                                            
+                                                            
+                                                            
+                                                            
+                                                            
+"
+`;
+
+exports[`TextTableRenderable balanced fitter keeps constrained columns visually closer: fitter proportional constrained 1`] = `
+"┌────┬─────────────┬─────────┬─────────┬───────┬─────────┐  
+│Prov│Compute      │Storage  │Pricing  │Regions│Use Cases│  
+│ider│Services     │Solutions│Model    │       │         │  
+├────┼─────────────┼─────────┼─────────┼───────┼─────────┤  
+│Amaz│EC2          │S3 tiers,│Pay as   │Global │Enterpris│  
+│on W│instances    │ EBS,    │you go,  │regions│e migrati│  
+│eb S│with         │EFS, and │reserved │ and ma│on, analy│  
+│ervi│extensive    │archive  │terms,   │ny edge│tics, ML,│  
+│ces │options for  │classes  │and      │ locati│ and back│  
+│    │general,     │for long │discounte│ons    │end servi│  
+│    │memory, and  │retention│d spot ca│       │ces      │  
+│    │accelerated  │         │pacity   │       │         │  
+│    │workloads    │         │         │       │         │  
+└────┴─────────────┴─────────┴─────────┴───────┴─────────┘  
+                                                            
+                                                            
+"
+`;
+
+exports[`TextTableRenderable balanced fitter keeps constrained columns visually closer: fitter balanced constrained 1`] = `
+"┌────────┬────────┬─────────┬─────────┬────────┬─────────┐  
+│Provider│Compute │Storage  │Pricing  │Regions │Use Cases│  
+│        │Services│Solutions│Model    │        │         │  
+├────────┼────────┼─────────┼─────────┼────────┼─────────┤  
+│Amazon  │EC2     │S3 tiers,│Pay as   │Global  │Enterpris│  
+│Web     │instance│ EBS,    │you go,  │regions │e migrati│  
+│Services│s with e│EFS, and │reserved │and     │on, analy│  
+│        │xtensive│archive  │terms,   │many    │tics, ML,│  
+│        │ options│classes  │and      │edge    │ and back│  
+│        │ for gen│for long │discounte│location│end servi│  
+│        │eral, me│retention│d spot ca│s       │ces      │  
+│        │mory, an│         │pacity   │        │         │  
+│        │d accele│         │         │        │         │  
+│        │rated wo│         │         │        │         │  
+│        │rkloads │         │         │        │         │  
+└────────┴────────┴─────────┴─────────┴────────┴─────────┘  
+"
+`;
+
+exports[`TextTableRenderable rebuilds table when content setter is used: content setter update 1`] = `
+"┌─────┬───────┐                                             
+│Col 1│Col 2  │                                             
+├─────┼───────┤                                             
+│row-1│updated│                                             
+├─────┼───────┤                                             
+│row-2│active │                                             
+└─────┴───────┘                                             
+                                                            
+                                                            
+                                                            
+                                                            
+                                                            
+                                                            
+                                                            
+                                                            
+                                                            
+"
+`;
+
+exports[`TextTableRenderable keeps borders aligned with CJK and emoji content: unicode border alignment 1`] = `
+"┌──────┬──────────────┐                                     
+│Locale│Sample        │                                     
+├──────┼──────────────┤                                     
+│ja-JP │東京で寿司 🍣 │                                     
+├──────┼──────────────┤                                     
+│zh-CN │你好世界 🚀   │                                     
+├──────┼──────────────┤                                     
+│ko-KR │한글 테스트 😄│                                     
+└──────┴──────────────┘                                     
+                                                            
+                                                            
+                                                            
+                                                            
+                                                            
+                                                            
+                                                            
+"
+`;
+
+exports[`TextTableRenderable wraps CJK and emoji without grapheme duplication: unicode wrapping 1`] = `
+"┌───┬────────────────────────┐                              
+│Ite│Details                 │                              
+│m  │                        │                              
+├───┼────────────────────────┤                              
+│mix│東京界 🌍 emoji         │                              
+│ed │wrapping continues      │                              
+│   │across lines for width  │                              
+│   │checks                  │                              
+├───┼────────────────────────┤                              
+│emo│Faces 😀😃😄 should     │                              
+│ji │remain stable           │                              
+└───┴────────────────────────┘                              
+                                                            
+                                                            
+                                                            
+                                                            
+"
+`;
+
+exports[`TextTableRenderable keeps full wrapped table layouts after a wide-to-narrow demo-style resize: demo resize expected primary table 1`] = `
+"┌─────────────────────────┬─────────────┬────────────────────────────┐
+│Task                     │Owner        │ETA                         │
+├─────────────────────────┼─────────────┼────────────────────────────┤
+│Wrap regression in       │core         │done after validating none, │
+│operational status       │platform and │word, and char wrap modes   │
+│dashboard with dynamic   │runtime      │across narrow, medium, wide,│
+│row heights and          │reliability  │ and ultra-wide terminal    │
+│constrained layout       │squad        │widths                      │
+│validation               │             │                            │
+├─────────────────────────┼─────────────┼────────────────────────────┤
+│Unicode layout           │render       │in review with follow-up    │
+│stabilization for mixed  │pipeline     │checks for border style     │
+│Latin, punctuation,      │maintainers  │transitions, cell padding   │
+│symbols, and long        │with         │variants, and selection     │
+│identifiers in adjacent  │fallback     │range consistency           │
+│columns                  │shaping      │                            │
+│                         │support      │                            │
+├─────────────────────────┼─────────────┼────────────────────────────┤
+│Snapshot pass for table  │qa           │today pending final         │
+│rendering in content     │automation   │baseline updates for        │
+│mode and full mode with  │and visual   │oversized fixtures that     │
+│heavy and double border  │diff triage  │intentionally stress        │
+│combinations             │group        │wrapping behavior on high-  │
+│                         │             │resolution terminals        │
+├─────────────────────────┼─────────────┼────────────────────────────┤
+│Document edge cases      │developer    │planned for this sprint     │
+│where long tokens        │experience   │once final reproducible     │
+│without spaces force     │and docs     │examples are captured and   │
+│char wrapping and reveal │tooling      │linked to regression        │
+│per-cell clipping        │             │tracking tickets            │
+│regressions              │             │                            │
+├─────────────────────────┼─────────────┼────────────────────────────┤
+│Performance sweep of     │runtime      │scheduled after review,     │
+│wrapping algorithm under │performance  │with benchmark runs on      │
+│large datasets to        │task force   │laptop and desktop          │
+│confirm stable frame     │             │terminals at 200-plus       │
+│times during rapid key   │             │column widths               │
+│toggling                 │             │                            │
+└─────────────────────────┴─────────────┴────────────────────────────┘
+"
+`;
+
+exports[`TextTableRenderable keeps full wrapped table layouts after a wide-to-narrow demo-style resize: demo resize expected unicode table 1`] = `
+"┌─────┬──────────────────────────────────────────────────────────────┐
+│Colum│Wrapped Text                                                  │
+│n    │                                                              │
+├─────┼──────────────────────────────────────────────────────────────┤
+│mixed│CJK and emoji wrapping stress case: こんにちは世界 and        │
+│-lang│안녕하세요 세계 and 你好，世界 followed by long English prose │
+│uages│that keeps flowing to test whether each cell wraps naturally  │
+│     │even when the terminal is extremely wide and the row still    │
+│     │needs multiple visual lines for readability 🌍🚀              │
+├─────┼──────────────────────────────────────────────────────────────┤
+│emoji│Faces 😀😃😄😁😆 plus symbols 🧪📦🛰️🔧📊 mixed with version   │
+│-and-│tags like release-candidate-build-2026-02-very-long-token-    │
+│symbo│without-breaks to ensure char wrapping remains stable and no  │
+│ls   │glyph alignment issues appear at column boundaries            │
+├─────┼──────────────────────────────────────────────────────────────┤
+│long-│長文の日本語テキストと中文段落和한국어문장을連続して配置し、  │
+│cjk- │その後に additional English context describing renderer       │
+│phras│behavior, border intersection handling, and selection         │
+│e    │extraction so that this single cell remains a reliable        │
+│     │wrapping torture test.                                        │
+├─────┼──────────────────────────────────────────────────────────────┤
+│mixed│Wrap behavior with punctuation-heavy content: [alpha]{beta}(  │
+│-punc│gamma)<delta>|epsilon| then repeated fragments, commas,       │
+│tuati│semicolons, and slashes to verify token boundaries do not     │
+│on   │break border drawing logic or spacing consistency in          │
+│     │neighboring columns.                                          │
+└─────┴──────────────────────────────────────────────────────────────┘
+"
+`;

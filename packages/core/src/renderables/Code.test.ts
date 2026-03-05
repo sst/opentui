@@ -1123,6 +1123,42 @@ test("CodeRenderable - streaming mode with drawUnstyledText=false waits for new 
   currentRenderer.stop()
 })
 
+test("CodeRenderable - onChunks callback can transform chunks when highlights are empty", async () => {
+  const syntaxStyle = SyntaxStyle.fromStyles({
+    default: { fg: RGBA.fromValues(1, 1, 1, 1) },
+  })
+
+  const mockClient = new MockTreeSitterClient()
+  mockClient.setMockResult({ highlights: [] })
+
+  let callbackInvoked = false
+
+  const codeRenderable = new CodeRenderable(currentRenderer, {
+    id: "test-code",
+    content: "hello",
+    filetype: "plaintext",
+    syntaxStyle,
+    treeSitterClient: mockClient,
+    onChunks: (chunks) => {
+      callbackInvoked = true
+      return chunks.map((chunk) => ({
+        ...chunk,
+        text: chunk.text.toUpperCase(),
+      }))
+    },
+  })
+
+  currentRenderer.root.add(codeRenderable)
+  await renderOnce()
+
+  mockClient.resolveHighlightOnce(0)
+  await new Promise((resolve) => setTimeout(resolve, 10))
+  await renderOnce()
+
+  expect(callbackInvoked).toBe(true)
+  expect(codeRenderable.plainText).toBe("HELLO")
+})
+
 test("CodeRenderable - onHighlight callback receives highlights and context", async () => {
   const syntaxStyle = SyntaxStyle.fromStyles({
     default: { fg: RGBA.fromValues(1, 1, 1, 1) },

@@ -1,6 +1,6 @@
 {
   "name": "@opentui/core",
-  "description": "OpenTUI is a TypeScript library for building terminal user interfaces (TUIs)",
+  "description": "OpenTUI is a TypeScript library on a native Zig core for building terminal user interfaces (TUIs)",
   "repository": {
     "type": "git",
     "url": "https://github.com/anomalyco/opentui",
@@ -9,7 +9,7 @@
   "types": "src/index.ts",
   "module": "src/index.ts",
   "main": "src/index.ts",
-  "version": "0.1.79",
+  "version": "0.1.86",
   "type": "module",
   "scripts": {
     "build": "bun run build:native && bun run build:lib",
@@ -20,6 +20,7 @@
     "build:examples": "bun src/examples/build.ts",
     "test:native": "cd src/zig && zig build test --summary all",
     "bench:native": "cd src/zig && zig build bench -Dbench-optimize=ReleaseFast --",
+    "bench:text-table": "bun src/benchmark/text-table-benchmark.ts",
     "bench:ts": "bun src/benchmark/native-span-feed-benchmark.ts --suite=quick --json=src/benchmark/latest-quick-bench-run.json && bun src/benchmark/native-span-feed-benchmark.ts --suite=default --json=src/benchmark/latest-default-bench-run.json && bun src/benchmark/native-span-feed-benchmark.ts --suite=large --json=src/benchmark/latest-large-bench-run.json && bun src/benchmark/native-span-feed-benchmark.ts --suite=all --json=src/benchmark/latest-all-bench-run.json && bun src/benchmark/native-span-feed-async-benchmark.ts --json=src/benchmark/latest-async-bench-run.json",
     "publish": "bun scripts/publish.ts",
     "test:js": "bun test",
@@ -46,15 +47,15 @@
   },
   "optionalDependencies": {
     "@dimforge/rapier2d-simd-compat": "^0.17.3",
-    "bun-webgpu": "0.1.4",
+    "bun-webgpu": "0.1.5",
     "planck": "^1.4.2",
     "three": "0.177.0",
-    "@opentui/core-darwin-x64": "0.1.79",
-    "@opentui/core-darwin-arm64": "0.1.79",
-    "@opentui/core-linux-x64": "0.1.79",
-    "@opentui/core-linux-arm64": "0.1.79",
-    "@opentui/core-win32-x64": "0.1.79",
-    "@opentui/core-win32-arm64": "0.1.79"
+    "@opentui/core-darwin-x64": "0.1.86",
+    "@opentui/core-darwin-arm64": "0.1.86",
+    "@opentui/core-linux-x64": "0.1.86",
+    "@opentui/core-linux-arm64": "0.1.86",
+    "@opentui/core-win32-x64": "0.1.86",
+    "@opentui/core-win32-arm64": "0.1.86"
   },
   "exports": {
     ".": {
@@ -75,6 +76,6 @@
     }
   },
   "engines": {
-    "bun": ">=1.2.0"
+    "bun": ">=1.3.0"
   }
 }

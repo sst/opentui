@@ -5,29 +5,53 @@ import { RGBA } from "./lib/RGBA"
 const rgbaPackTransform = (rgba?: RGBA) => (rgba ? ptr(rgba.buffer) : null)
 const rgbaUnpackTransform = (ptr?: Pointer) => (ptr ? RGBA.fromArray(new Float32Array(toArrayBuffer(ptr))) : undefined)
 
-export const StyledChunkStruct = defineStruct([
-  ["text", "char*"],
-  ["text_len", "u64", { lengthOf: "text" }],
+type StyledChunkInput = {
+  text: string
+  fg?: RGBA | null
+  bg?: RGBA | null
+  attributes?: number | null
+  link?: { url: string } | string | null
+}
+
+export const StyledChunkStruct = defineStruct(
   [
-    "fg",
-    "pointer",
-    {
-      optional: true,
-      packTransform: rgbaPackTransform,
-      unpackTransform: rgbaUnpackTransform,
-    },
+    ["text", "char*"],
+    ["text_len", "u64", { lengthOf: "text" }],
+    [
+      "fg",
+      "pointer",
+      {
+        optional: true,
+        packTransform: rgbaPackTransform,
+        unpackTransform: rgbaUnpackTransform,
+      },
+    ],
+    [
+      "bg",
+      "pointer",
+      {
+        optional: true,
+        packTransform: rgbaPackTransform,
+        unpackTransform: rgbaUnpackTransform,
+      },
+    ],
+    ["attributes", "u32", { default: 0 }],
+    ["link", "char*", { default: "" }],
+    ["link_len", "u64", { lengthOf: "link" }],
   ],
-  [
-    "bg",
-    "pointer",
-    {
-      optional: true,
-      packTransform: rgbaPackTransform,
-      unpackTransform: rgbaUnpackTransform,
+  {
+    mapValue: (chunk: StyledChunkInput): StyledChunkInput => {
+      if (!chunk.link || typeof chunk.link === "string") {
+        return chunk
+      }
+
+      return {
+        ...chunk,
+        link: chunk.link.url,
+      }
     },
-  ],
-  ["attributes", "u32", { optional: true }],
-])
+  },
+)
 
 export const HighlightStruct = defineStruct([
   ["start", "u32"],
@@ -108,6 +132,52 @@ export const CursorStateStruct = defineStruct([
   ["g", "f32"],
   ["b", "f32"],
   ["a", "f32"],
+])
+
+export const CursorStyleOptionsStruct = defineStruct([
+  ["style", "u8", { default: 255 }],
+  ["blinking", "u8", { default: 255 }],
+  [
+    "color",
+    "pointer",
+    {
+      optional: true,
+      packTransform: rgbaPackTransform,
+      unpackTransform: rgbaUnpackTransform,
+    },
+  ],
+  ["cursor", "u8", { default: 255 }],
+])
+
+export const GridDrawOptionsStruct = defineStruct([
+  ["drawInner", "bool_u8", { default: true }],
+  ["drawOuter", "bool_u8", { default: true }],
+])
+
+export type BuildOptions = {
+  gpaSafeStats: boolean
+  gpaMemoryLimitTracking: boolean
+}
+
+export const BuildOptionsStruct = defineStruct([
+  ["gpaSafeStats", "bool_u8"],
+  ["gpaMemoryLimitTracking", "bool_u8"],
+])
+
+export type AllocatorStats = {
+  totalRequestedBytes: number
+  activeAllocations: number
+  smallAllocations: number
+  largeAllocations: number
+  requestedBytesValid: boolean
+}
+
+export const AllocatorStatsStruct = defineStruct([
+  ["totalRequestedBytes", "u64"],
+  ["activeAllocations", "u64"],
+  ["smallAllocations", "u64"],
+  ["largeAllocations", "u64"],
+  ["requestedBytesValid", "bool_u8"],
 ])
 
 export type GrowthPolicy = "grow" | "block"

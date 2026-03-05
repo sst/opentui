@@ -127,6 +127,7 @@ pub const CliRenderer = struct {
     lastCursorStyleTag: ?u8 = null,
     lastCursorBlinking: ?bool = null,
     lastCursorColorRGB: ?[3]u8 = null,
+    lastMousePointerStyle: Terminal.MousePointerStyle = .default,
 
     // Preallocated output buffer
     var outputBuffer: [OUTPUT_BUFFER_SIZE]u8 = undefined;
@@ -281,6 +282,7 @@ pub const CliRenderer = struct {
         }
 
         self.performShutdownSequence();
+        self.terminal.deinit();
 
         self.currentRenderBuffer.deinit();
         self.nextRenderBuffer.deinit();
@@ -665,7 +667,7 @@ pub const CliRenderer = struct {
                     if (currentLinkId != 0) {
                         const lp = link.initGlobalLinkPool(self.allocator);
                         if (lp.get(currentLinkId)) |url_bytes| {
-                            writer.print("\x1b]8;;{s}\x1b\\", .{url_bytes}) catch {};
+                            writer.print("\x1b]8;id={d};{s}\x1b\\", .{ currentLinkId, url_bytes }) catch {};
                         } else |_| {
                             // Link not found, treat as no link
                             currentLinkId = 0;
@@ -739,9 +741,11 @@ pub const CliRenderer = struct {
                 }
                 runLength += 1;
 
-                // Update grapheme/link trackers (and continuation cells), so current buffer
-                // retains grapheme ownership after next buffer clear and IDs remain stable.
-                self.currentRenderBuffer.set(x, y, nextCell.?);
+                // Sync this cell to the current buffer so the next frame's diff
+                // is correct. Use syncCell (set without span cleanup) because
+                // span cleanup would destroy continuation cells written by an
+                // earlier iteration of this same left-to-right pass (#723).
+                self.currentRenderBuffer.syncCell(x, y, nextCell.?);
 
                 cellsUpdated += 1;
             }
@@ -806,6 +810,12 @@ pub const CliRenderer = struct {
             self.lastCursorStyleTag = null;
             self.lastCursorBlinking = null;
             self.lastCursorColorRGB = null;
+        }
+
+        const mousePointer = self.terminal.getMousePointer();
+        if (mousePointer != self.lastMousePointerStyle) {
+            ansi.ANSI.setMousePointerOutput(writer, mousePointer.toName()) catch {};
+            self.lastMousePointerStyle = mousePointer;
         }
 
         writer.writeAll(ansi.ANSI.syncReset) catch {};
@@ -1173,9 +1183,8 @@ pub const CliRenderer = struct {
     }
 
     pub fn enableMouse(self: *CliRenderer, enableMovement: bool) void {
-        _ = enableMovement;
         var stream = std.io.fixedBufferStream(&self.writeOutBuf);
-        self.terminal.setMouseMode(stream.writer(), true) catch {};
+        self.terminal.setMouseMode(stream.writer(), true, enableMovement) catch {};
         self.writeOut(stream.getWritten());
     }
 
@@ -1185,7 +1194,7 @@ pub const CliRenderer = struct {
 
     pub fn disableMouse(self: *CliRenderer) void {
         var stream = std.io.fixedBufferStream(&self.writeOutBuf);
-        self.terminal.setMouseMode(stream.writer(), false) catch {};
+        self.terminal.setMouseMode(stream.writer(), false, self.terminal.state.mouse_movement) catch {};
         self.writeOut(stream.getWritten());
     }
 
@@ -1205,6 +1214,11 @@ pub const CliRenderer = struct {
         return self.terminal.getCapabilities();
     }
 
+    pub fn setTerminalEnvVar(self: *CliRenderer, key: []const u8, value: []const u8) bool {
+        self.terminal.setHostEnvVar(self.allocator, key, value) catch return false;
+        return true;
+    }
+
     pub fn processCapabilityResponse(self: *CliRenderer, response: []const u8) void {
         self.terminal.processCapabilityResponse(response);
         var stream = std.io.fixedBufferStream(&self.writeOutBuf);
@@ -1215,18 +1229,6 @@ pub const CliRenderer = struct {
         const useKitty = self.terminal.opts.kitty_keyboard_flags > 0;
         self.terminal.enableDetectedFeatures(stream.writer(), useKitty) catch {};
         self.writeOut(stream.getWritten());
-    }
-
-    pub fn setCursorPosition(self: *CliRenderer, x: u32, y: u32, visible: bool) void {
-        self.terminal.setCursorPosition(x, y, visible);
-    }
-
-    pub fn setCursorStyle(self: *CliRenderer, style: Terminal.CursorStyle, blinking: bool) void {
-        self.terminal.setCursorStyle(style, blinking);
-    }
-
-    pub fn setCursorColor(self: *CliRenderer, color: [4]f32) void {
-        self.terminal.setCursorColor(color);
     }
 
     pub fn setKittyKeyboardFlags(self: *CliRenderer, flags: u8) void {

@@ -1,27 +1,91 @@
 import { Renderable, type RenderableOptions } from "../Renderable"
 import { type RenderContext } from "../types"
 import { SyntaxStyle, type StyleDefinition } from "../syntax-style"
-import { StyledText } from "../lib/styled-text"
 import type { TextChunk } from "../text-buffer"
 import { createTextAttributes } from "../utils"
-import { Lexer, type MarkedToken, type Token, type Tokens } from "marked"
-import { TextRenderable } from "./Text"
-import { CodeRenderable } from "./Code"
-import { BoxRenderable } from "./Box"
+import type { BorderStyle } from "../lib/border"
+import type { ColorInput } from "../lib/RGBA"
+import { type MarkedToken, type Token, type Tokens } from "marked"
+import { CodeRenderable, type OnChunksCallback } from "./Code"
+import {
+  TextTableRenderable,
+  type TextTableCellContent,
+  type TextTableColumnFitter,
+  type TextTableColumnWidthMode,
+  type TextTableContent,
+} from "./TextTable"
 import type { TreeSitterClient } from "../lib/tree-sitter"
 import { parseMarkdownIncremental, type ParseState } from "./markdown-parser"
 import type { OptimizedBuffer } from "../buffer"
+import { detectLinks } from "../lib/detect-links"
+
+export interface MarkdownTableOptions {
+  /**
+   * Strategy for sizing table columns.
+   * - "content": columns fit to intrinsic content width.
+   * - "full": columns expand to fill available width.
+   */
+  widthMode?: TextTableColumnWidthMode
+  /**
+   * Column fitting method when shrinking constrained tables.
+   */
+  columnFitter?: TextTableColumnFitter
+  /**
+   * Wrapping strategy for table cell content.
+   */
+  wrapMode?: "none" | "char" | "word"
+  /**
+   * Padding applied on all sides of each table cell.
+   */
+  cellPadding?: number
+  /**
+   * Enables/disables table border rendering.
+   */
+  borders?: boolean
+  /**
+   * Overrides outer border visibility. Defaults to `borders`.
+   */
+  outerBorder?: boolean
+  /**
+   * Border style for markdown tables.
+   */
+  borderStyle?: BorderStyle
+  /**
+   * Border color for markdown tables. Defaults to conceal style color.
+   */
+  borderColor?: ColorInput
+  /**
+   * Enables/disables selection support on markdown tables.
+   */
+  selectable?: boolean
+}
 
 export interface MarkdownOptions extends RenderableOptions<MarkdownRenderable> {
   content?: string
   syntaxStyle: SyntaxStyle
+  /** Controls concealment for markdown syntax markers in markdown text blocks. */
   conceal?: boolean
+  /** Controls concealment inside fenced code blocks rendered by CodeRenderable. */
+  concealCode?: boolean
   treeSitterClient?: TreeSitterClient
   /**
    * Enable streaming mode for incremental content updates.
-   * When true, trailing tokens are kept unstable to handle incomplete content.
+   *
+   * Semantics:
+   * - The trailing markdown block stays unstable while streaming is enabled.
+   * - Tables render all rows produced by the markdown parser (including trailing rows).
+   * - Incomplete table rows are normalized by the parser and rendered with empty cells
+   *   where data is missing.
+   *
+   * Expectations:
+   * - Keep this true while chunks are still being appended.
+   * - Set this to false once streaming is complete to finalize trailing token parsing.
    */
   streaming?: boolean
+  /**
+   * Options for internally rendered markdown tables.
+   */
+  tableOptions?: MarkdownTableOptions
   /**
    * Custom node renderer. Return a Renderable to override default rendering,
    * or undefined/null to use default rendering.
@@ -32,15 +96,37 @@ export interface MarkdownOptions extends RenderableOptions<MarkdownRenderable> {
 export interface RenderNodeContext {
   syntaxStyle: SyntaxStyle
   conceal: boolean
+  concealCode: boolean
   treeSitterClient?: TreeSitterClient
   /** Creates default renderable for this token */
   defaultRender: () => Renderable | null
 }
 
+interface TableContentCache {
+  content: TextTableContent
+  cellKeys: Uint32Array[]
+}
+
+interface ResolvedTableRenderableOptions {
+  columnWidthMode: TextTableColumnWidthMode
+  columnFitter: TextTableColumnFitter
+  wrapMode: "none" | "char" | "word"
+  cellPadding: number
+  border: boolean
+  outerBorder: boolean
+  showBorders: boolean
+  borderStyle: BorderStyle
+  borderColor: ColorInput
+  selectable: boolean
+}
+
+const TRAILING_MARKDOWN_BLOCK_BREAKS_RE = /(?:\r?\n){2,}$/
+
 export interface BlockState {
   token: MarkedToken
   tokenRaw: string // Cache raw for comparison
   renderable: Renderable
+  tableContentCache?: TableContentCache
 }
 
 export type { ParseState }
@@ -49,17 +135,25 @@ export class MarkdownRenderable extends Renderable {
   private _content: string = ""
   private _syntaxStyle: SyntaxStyle
   private _conceal: boolean
+  private _concealCode: boolean
   private _treeSitterClient?: TreeSitterClient
+  private _tableOptions?: MarkdownTableOptions
   private _renderNode?: MarkdownOptions["renderNode"]
 
   _parseState: ParseState | null = null
   private _streaming: boolean = false
   _blockStates: BlockState[] = []
   private _styleDirty: boolean = false
+  private _linkifyMarkdownChunks: OnChunksCallback = (chunks, context) =>
+    detectLinks(chunks, {
+      content: context.content,
+      highlights: context.highlights,
+    })
 
   protected _contentDefaultOptions = {
     content: "",
     conceal: true,
+    concealCode: false,
     streaming: false,
   } satisfies Partial<MarkdownOptions>
 
@@ -67,12 +161,15 @@ export class MarkdownRenderable extends Renderable {
     super(ctx, {
       ...options,
       flexDirection: "column",
+      flexShrink: options.flexShrink ?? 0,
     })
 
     this._syntaxStyle = options.syntaxStyle
     this._conceal = options.conceal ?? this._contentDefaultOptions.conceal
+    this._concealCode = options.concealCode ?? this._contentDefaultOptions.concealCode
     this._content = options.content ?? this._contentDefaultOptions.content
     this._treeSitterClient = options.treeSitterClient
+    this._tableOptions = options.tableOptions
     this._renderNode = options.renderNode
     this._streaming = options.streaming ?? this._contentDefaultOptions.streaming
 
@@ -84,6 +181,7 @@ export class MarkdownRenderable extends Renderable {
   }
 
   set content(value: string) {
+    if (this.isDestroyed) return
     if (this._content !== value) {
       this._content = value
       this.updateBlocks()
@@ -115,17 +213,37 @@ export class MarkdownRenderable extends Renderable {
     }
   }
 
+  get concealCode(): boolean {
+    return this._concealCode
+  }
+
+  set concealCode(value: boolean) {
+    if (this._concealCode !== value) {
+      this._concealCode = value
+      // Mark dirty - actual re-render happens in renderSelf
+      this._styleDirty = true
+    }
+  }
+
   get streaming(): boolean {
     return this._streaming
   }
 
   set streaming(value: boolean) {
+    if (this.isDestroyed) return
     if (this._streaming !== value) {
       this._streaming = value
-      // Don't clear parseState - incremental parser handles streaming correctly
-      this.updateBlocks()
-      this.requestRender()
+      this.updateBlocks(true)
     }
+  }
+
+  get tableOptions(): MarkdownTableOptions | undefined {
+    return this._tableOptions
+  }
+
+  set tableOptions(value: MarkdownTableOptions | undefined) {
+    this._tableOptions = value
+    this.applyTableOptionsToBlocks()
   }
 
   private getStyle(group: string): StyleDefinition | undefined {
@@ -306,100 +424,17 @@ export class MarkdownRenderable extends Renderable {
     }
   }
 
-  private renderHeadingChunks(token: Tokens.Heading): TextChunk[] {
-    const chunks: TextChunk[] = []
-    const group = `markup.heading.${token.depth}`
-    const marker = "#".repeat(token.depth) + " "
-
-    if (!this._conceal) {
-      chunks.push(this.createChunk(marker, group))
-    }
-
-    for (const child of token.tokens) {
-      this.renderInlineTokenWithStyle(child as MarkedToken, chunks, group)
-    }
-
-    return chunks
-  }
-
-  private renderParagraphChunks(token: Tokens.Paragraph): TextChunk[] {
-    const chunks: TextChunk[] = []
-    this.renderInlineContent(token.tokens, chunks)
-    return chunks
-  }
-
-  private renderBlockquoteChunks(token: Tokens.Blockquote): TextChunk[] {
-    const chunks: TextChunk[] = []
-    for (const child of token.tokens) {
-      chunks.push(this.createChunk("> ", "punctuation.special"))
-      const childChunks = this.renderTokenToChunks(child as MarkedToken)
-      chunks.push(...childChunks)
-      chunks.push(this.createDefaultChunk("\n"))
-    }
-    return chunks
-  }
-
-  private renderListChunks(token: Tokens.List): TextChunk[] {
-    const chunks: TextChunk[] = []
-    let index = typeof token.start === "number" ? token.start : 1
-
-    for (const item of token.items) {
-      if (token.ordered) {
-        chunks.push(this.createChunk(`${index}. `, "markup.list"))
-        index++
-      } else {
-        chunks.push(this.createChunk("- ", "markup.list"))
-      }
-
-      for (let i = 0; i < item.tokens.length; i++) {
-        const child = item.tokens[i]
-        if (child.type === "text" && i === 0 && "tokens" in child && child.tokens) {
-          this.renderInlineContent(child.tokens, chunks)
-          chunks.push(this.createDefaultChunk("\n"))
-        } else if (child.type === "paragraph" && i === 0) {
-          this.renderInlineContent((child as Tokens.Paragraph).tokens, chunks)
-          chunks.push(this.createDefaultChunk("\n"))
-        } else {
-          const childChunks = this.renderTokenToChunks(child as MarkedToken)
-          chunks.push(...childChunks)
-          chunks.push(this.createDefaultChunk("\n"))
-        }
-      }
-    }
-
-    return chunks
-  }
-
-  private renderThematicBreakChunks(): TextChunk[] {
-    return [this.createChunk("---", "punctuation.special")]
-  }
-
-  private renderTokenToChunks(token: MarkedToken): TextChunk[] {
-    switch (token.type) {
-      case "heading":
-        return this.renderHeadingChunks(token)
-      case "paragraph":
-        return this.renderParagraphChunks(token)
-      case "blockquote":
-        return this.renderBlockquoteChunks(token)
-      case "list":
-        return this.renderListChunks(token)
-      case "hr":
-        return this.renderThematicBreakChunks()
-      case "space":
-        return []
-      default:
-        if ("raw" in token && token.raw) {
-          return [this.createDefaultChunk(token.raw)]
-        }
-        return []
-    }
-  }
-
-  private createTextRenderable(chunks: TextChunk[], id: string, marginBottom: number = 0): TextRenderable {
-    return new TextRenderable(this.ctx, {
+  private createMarkdownCodeRenderable(content: string, id: string, marginBottom: number = 0): CodeRenderable {
+    return new CodeRenderable(this.ctx, {
       id,
-      content: new StyledText(chunks),
+      content,
+      filetype: "markdown",
+      syntaxStyle: this._syntaxStyle,
+      conceal: this._conceal,
+      drawUnstyledText: false,
+      streaming: true,
+      onChunks: this._linkifyMarkdownChunks,
+      treeSitterClient: this._treeSitterClient,
       width: "100%",
       marginBottom,
     })
@@ -411,291 +446,443 @@ export class MarkdownRenderable extends Renderable {
       content: token.text,
       filetype: token.lang || undefined,
       syntaxStyle: this._syntaxStyle,
-      conceal: this._conceal,
+      conceal: this._concealCode,
+      drawUnstyledText: !(this._streaming && this._concealCode),
+      streaming: this._streaming,
       treeSitterClient: this._treeSitterClient,
       width: "100%",
       marginBottom,
     })
   }
 
-  /**
-   * Update an existing table renderable in-place for style/conceal changes.
-   * Much faster than rebuilding the entire table structure.
-   */
-  private updateTableRenderable(tableBox: Renderable, table: Tokens.Table, marginBottom: number): void {
-    tableBox.marginBottom = marginBottom
-    const borderColor = this.getStyle("conceal")?.fg ?? "#888888"
+  private applyMarkdownCodeRenderable(renderable: CodeRenderable, content: string, marginBottom: number): void {
+    renderable.content = content
+    renderable.filetype = "markdown"
+    renderable.syntaxStyle = this._syntaxStyle
+    renderable.conceal = this._conceal
+    renderable.drawUnstyledText = false
+    renderable.streaming = true
+    renderable.marginBottom = marginBottom
+  }
+
+  private applyCodeBlockRenderable(renderable: CodeRenderable, token: Tokens.Code, marginBottom: number): void {
+    renderable.content = token.text
+    renderable.filetype = token.lang || undefined
+    renderable.syntaxStyle = this._syntaxStyle
+    renderable.conceal = this._concealCode
+    renderable.drawUnstyledText = !(this._streaming && this._concealCode)
+    renderable.streaming = this._streaming
+    renderable.marginBottom = marginBottom
+  }
+
+  private shouldRenderSeparately(token: MarkedToken): boolean {
+    return token.type === "code" || token.type === "table" || token.type === "blockquote"
+  }
+
+  private getInterBlockMargin(token: MarkedToken, hasNextToken: boolean): number {
+    if (!hasNextToken) return 0
+    return this.shouldRenderSeparately(token) ? 1 : 0
+  }
+
+  private createMarkdownBlockToken(raw: string): MarkedToken {
+    return {
+      type: "paragraph",
+      raw,
+      text: raw,
+      tokens: [],
+    } as MarkedToken
+  }
+
+  private normalizeMarkdownBlockRaw(raw: string): string {
+    return raw.replace(TRAILING_MARKDOWN_BLOCK_BREAKS_RE, "\n")
+  }
+
+  private buildRenderableTokens(tokens: MarkedToken[]): MarkedToken[] {
+    if (this._renderNode) {
+      return tokens.filter((token) => token.type !== "space")
+    }
+
+    const renderTokens: MarkedToken[] = []
+    let markdownRaw = ""
+
+    const flushMarkdownRaw = (): void => {
+      if (markdownRaw.length === 0) return
+      const normalizedRaw = this.normalizeMarkdownBlockRaw(markdownRaw)
+      if (normalizedRaw.length > 0) {
+        renderTokens.push(this.createMarkdownBlockToken(normalizedRaw))
+      }
+      markdownRaw = ""
+    }
+
+    for (let i = 0; i < tokens.length; i += 1) {
+      const token = tokens[i]
+
+      if (token.type === "space") {
+        if (markdownRaw.length === 0) {
+          continue
+        }
+
+        let nextIndex = i + 1
+        while (nextIndex < tokens.length && tokens[nextIndex].type === "space") {
+          nextIndex += 1
+        }
+
+        const nextToken = tokens[nextIndex]
+        if (nextToken && !this.shouldRenderSeparately(nextToken)) {
+          markdownRaw += token.raw
+        }
+        continue
+      }
+
+      if (this.shouldRenderSeparately(token)) {
+        flushMarkdownRaw()
+        renderTokens.push(token)
+        continue
+      }
+
+      markdownRaw += token.raw
+    }
+
+    flushMarkdownRaw()
+
+    return renderTokens
+  }
+
+  private getTableRowsToRender(table: Tokens.Table): Tokens.TableCell[][] {
+    return table.rows
+  }
+
+  private hashString(value: string, seed: number): number {
+    let hash = seed >>> 0
+    for (let i = 0; i < value.length; i += 1) {
+      hash ^= value.charCodeAt(i)
+      hash = Math.imul(hash, 16777619)
+    }
+    return hash >>> 0
+  }
+
+  private hashTableToken(token: MarkedToken, seed: number, depth: number = 0): number {
+    let hash = this.hashString(token.type, seed)
+
+    if ("raw" in token && typeof token.raw === "string") {
+      return this.hashString(token.raw, hash)
+    }
+
+    if ("text" in token && typeof token.text === "string") {
+      hash = this.hashString(token.text, hash)
+    }
+
+    if (depth < 2 && "tokens" in token && Array.isArray(token.tokens)) {
+      for (const child of token.tokens) {
+        hash = this.hashTableToken(child as MarkedToken, hash, depth + 1)
+      }
+    }
+
+    return hash >>> 0
+  }
+
+  private getTableCellKey(cell: Tokens.TableCell | undefined, isHeader: boolean): number {
+    const seed = isHeader ? 2902232141 : 1371922141
+    if (!cell) {
+      return seed
+    }
+
+    if (typeof cell.text === "string") {
+      return this.hashString(cell.text, seed)
+    }
+
+    if (Array.isArray(cell.tokens) && cell.tokens.length > 0) {
+      let hash = seed ^ cell.tokens.length
+      for (const token of cell.tokens) {
+        hash = this.hashTableToken(token as MarkedToken, hash)
+      }
+      return hash >>> 0
+    }
+
+    return (seed ^ 2654435769) >>> 0
+  }
+
+  private createTableDataCellChunks(cell: Tokens.TableCell | undefined): TextChunk[] {
+    const chunks: TextChunk[] = []
+    if (cell) {
+      this.renderInlineContent(cell.tokens, chunks)
+    }
+    return chunks.length > 0 ? chunks : [this.createDefaultChunk(" ")]
+  }
+
+  private createTableHeaderCellChunks(cell: Tokens.TableCell): TextChunk[] {
+    const chunks: TextChunk[] = []
+    this.renderInlineContent(cell.tokens, chunks)
+
+    const baseChunks = chunks.length > 0 ? chunks : [this.createDefaultChunk(" ")]
     const headingStyle = this.getStyle("markup.heading") || this.getStyle("default")
+    if (!headingStyle) {
+      return baseChunks
+    }
 
-    const rowsToRender = this._streaming && table.rows.length > 0 ? table.rows.slice(0, -1) : table.rows
+    const headingAttributes = createTextAttributes({
+      bold: headingStyle.bold,
+      italic: headingStyle.italic,
+      underline: headingStyle.underline,
+      dim: headingStyle.dim,
+    })
+
+    return baseChunks.map((chunk) => ({
+      ...chunk,
+      fg: headingStyle.fg ?? chunk.fg,
+      bg: headingStyle.bg ?? chunk.bg,
+      attributes: headingAttributes,
+    }))
+  }
+
+  private buildTableContentCache(
+    table: Tokens.Table,
+    previous?: TableContentCache,
+    forceRegenerate: boolean = false,
+  ): { cache: TableContentCache | null; changed: boolean } {
     const colCount = table.header.length
+    const rowsToRender = this.getTableRowsToRender(table)
+    if (colCount === 0 || rowsToRender.length === 0) {
+      return { cache: null, changed: previous !== undefined }
+    }
 
-    // Traverse existing table structure: tableBox -> columnBoxes -> cells
-    const columns = (tableBox as any)._childrenInLayoutOrder as Renderable[]
-    for (let col = 0; col < colCount; col++) {
-      const columnBox = columns[col]
-      if (!columnBox) continue
+    const content: TextTableContent = []
+    const cellKeys: Uint32Array[] = []
+    const totalRows = rowsToRender.length + 1
 
-      // Update column border colors
-      if (columnBox instanceof BoxRenderable) {
-        columnBox.borderColor = borderColor
-      }
+    let changed = forceRegenerate || !previous
 
-      const columnChildren = (columnBox as any)._childrenInLayoutOrder as Renderable[]
+    for (let rowIndex = 0; rowIndex < totalRows; rowIndex += 1) {
+      const rowContent: TextTableCellContent[] = []
+      const rowKeys = new Uint32Array(colCount)
 
-      // Update header (first child of column)
-      const headerBox = columnChildren[0]
-      if (headerBox instanceof BoxRenderable) {
-        headerBox.borderColor = borderColor
-        const headerChildren = (headerBox as any)._childrenInLayoutOrder as Renderable[]
-        const headerText = headerChildren[0]
-        if (headerText instanceof TextRenderable) {
-          const headerCell = table.header[col]
-          const headerChunks: TextChunk[] = []
-          this.renderInlineContent(headerCell.tokens, headerChunks)
-          const styledHeaderChunks = headerChunks.map((chunk) => ({
-            ...chunk,
-            fg: headingStyle?.fg ?? chunk.fg,
-            bg: headingStyle?.bg ?? chunk.bg,
-            attributes: headingStyle
-              ? createTextAttributes({
-                  bold: headingStyle.bold,
-                  italic: headingStyle.italic,
-                  underline: headingStyle.underline,
-                  dim: headingStyle.dim,
-                })
-              : chunk.attributes,
-          }))
-          headerText.content = new StyledText(styledHeaderChunks)
-        }
-      }
+      for (let colIndex = 0; colIndex < colCount; colIndex += 1) {
+        const isHeader = rowIndex === 0
+        const cell = isHeader ? table.header[colIndex] : rowsToRender[rowIndex - 1]?.[colIndex]
+        const cellKey = this.getTableCellKey(cell, isHeader)
+        rowKeys[colIndex] = cellKey
 
-      // Update data rows (remaining children)
-      for (let row = 0; row < rowsToRender.length; row++) {
-        const childIndex = row + 1 // +1 because header is first child
-        const cellContainer = columnChildren[childIndex]
+        const previousCellKey = previous?.cellKeys[rowIndex]?.[colIndex]
+        const previousCellContent = previous?.content[rowIndex]?.[colIndex]
 
-        let cellText: TextRenderable | undefined
-        if (cellContainer instanceof BoxRenderable) {
-          // Cell has a border box wrapper
-          cellContainer.borderColor = borderColor
-          const cellChildren = (cellContainer as any)._childrenInLayoutOrder as Renderable[]
-          cellText = cellChildren[0] as TextRenderable
-        } else if (cellContainer instanceof TextRenderable) {
-          // Last row, no border box
-          cellText = cellContainer
+        if (!forceRegenerate && previousCellKey === cellKey && Array.isArray(previousCellContent)) {
+          rowContent.push(previousCellContent)
+          continue
         }
 
-        if (cellText) {
-          const cell = rowsToRender[row][col]
-          const cellChunks: TextChunk[] = []
-          if (cell) {
-            this.renderInlineContent(cell.tokens, cellChunks)
+        changed = true
+        rowContent.push(
+          isHeader ? this.createTableHeaderCellChunks(table.header[colIndex]) : this.createTableDataCellChunks(cell),
+        )
+      }
+
+      content.push(rowContent)
+      cellKeys.push(rowKeys)
+    }
+
+    if (previous && !changed) {
+      if (previous.content.length !== content.length) {
+        changed = true
+      } else {
+        for (let rowIndex = 0; rowIndex < content.length; rowIndex += 1) {
+          if ((previous.content[rowIndex]?.length ?? 0) !== content[rowIndex].length) {
+            changed = true
+            break
           }
-          cellText.content = new StyledText(cellChunks.length > 0 ? cellChunks : [this.createDefaultChunk(" ")])
         }
       }
+    }
+
+    return {
+      cache: {
+        content,
+        cellKeys,
+      },
+      changed,
     }
   }
 
-  private createTableRenderable(table: Tokens.Table, id: string, marginBottom: number = 0): Renderable {
-    const colCount = table.header.length
+  private resolveTableRenderableOptions(): ResolvedTableRenderableOptions {
+    const borders = this._tableOptions?.borders ?? true
 
-    // During streaming, skip the last row (might be incomplete)
-    const rowsToRender = this._streaming && table.rows.length > 0 ? table.rows.slice(0, -1) : table.rows
-
-    if (colCount === 0 || rowsToRender.length === 0) {
-      return this.createTextRenderable([this.createDefaultChunk(table.raw)], id, marginBottom)
+    return {
+      columnWidthMode: this._tableOptions?.widthMode ?? "full",
+      columnFitter: this._tableOptions?.columnFitter ?? "proportional",
+      wrapMode: this._tableOptions?.wrapMode ?? "word",
+      cellPadding: this._tableOptions?.cellPadding ?? 0,
+      border: borders,
+      outerBorder: this._tableOptions?.outerBorder ?? borders,
+      showBorders: borders,
+      borderStyle: this._tableOptions?.borderStyle ?? "single",
+      borderColor: this._tableOptions?.borderColor ?? this.getStyle("conceal")?.fg ?? "#888888",
+      selectable: this._tableOptions?.selectable ?? true,
     }
+  }
 
-    const tableBox = new BoxRenderable(this.ctx, {
-      id,
-      flexDirection: "row",
-      marginBottom,
-    })
+  private applyTableRenderableOptions(
+    tableRenderable: TextTableRenderable,
+    options: ResolvedTableRenderableOptions,
+  ): void {
+    tableRenderable.columnWidthMode = options.columnWidthMode
+    tableRenderable.columnFitter = options.columnFitter
+    tableRenderable.wrapMode = options.wrapMode
+    tableRenderable.cellPadding = options.cellPadding
+    tableRenderable.border = options.border
+    tableRenderable.outerBorder = options.outerBorder
+    tableRenderable.showBorders = options.showBorders
+    tableRenderable.borderStyle = options.borderStyle
+    tableRenderable.borderColor = options.borderColor
+    tableRenderable.selectable = options.selectable
+  }
 
-    const borderColor = this.getStyle("conceal")?.fg ?? "#888888"
+  private applyTableOptionsToBlocks(): void {
+    const options = this.resolveTableRenderableOptions()
+    let updated = false
 
-    for (let col = 0; col < colCount; col++) {
-      const isFirstCol = col === 0
-      const isLastCol = col === colCount - 1
-
-      const columnBox = new BoxRenderable(this.ctx, {
-        id: `${id}-col-${col}`,
-        flexDirection: "column",
-        border: isLastCol ? true : ["top", "bottom", "left"],
-        borderColor,
-        // Use T-joins for non-first columns to connect with previous column
-        customBorderChars: isFirstCol
-          ? undefined
-          : {
-              topLeft: "┬",
-              topRight: "┐",
-              bottomLeft: "┴",
-              bottomRight: "┘",
-              horizontal: "─",
-              vertical: "│",
-              topT: "┬",
-              bottomT: "┴",
-              leftT: "├",
-              rightT: "┤",
-              cross: "┼",
-            },
-      })
-
-      const headerCell = table.header[col]
-      const headerChunks: TextChunk[] = []
-      this.renderInlineContent(headerCell.tokens, headerChunks)
-      const headingStyle = this.getStyle("markup.heading") || this.getStyle("default")
-      const styledHeaderChunks = headerChunks.map((chunk) => ({
-        ...chunk,
-        fg: headingStyle?.fg ?? chunk.fg,
-        bg: headingStyle?.bg ?? chunk.bg,
-        attributes: headingStyle
-          ? createTextAttributes({
-              bold: headingStyle.bold,
-              italic: headingStyle.italic,
-              underline: headingStyle.underline,
-              dim: headingStyle.dim,
-            })
-          : chunk.attributes,
-      }))
-
-      const headerBox = new BoxRenderable(this.ctx, {
-        id: `${id}-col-${col}-header-box`,
-        border: ["bottom"],
-        borderColor,
-      })
-      headerBox.add(
-        new TextRenderable(this.ctx, {
-          id: `${id}-col-${col}-header`,
-          content: new StyledText(styledHeaderChunks),
-          height: 1,
-          overflow: "hidden",
-          paddingLeft: 1,
-          paddingRight: 1,
-        }),
-      )
-      columnBox.add(headerBox)
-
-      for (let row = 0; row < rowsToRender.length; row++) {
-        const cell = rowsToRender[row][col]
-        const cellChunks: TextChunk[] = []
-        if (cell) {
-          this.renderInlineContent(cell.tokens, cellChunks)
-        }
-
-        const isLastRow = row === rowsToRender.length - 1
-        const cellText = new TextRenderable(this.ctx, {
-          id: `${id}-col-${col}-row-${row}`,
-          content: new StyledText(cellChunks.length > 0 ? cellChunks : [this.createDefaultChunk(" ")]),
-          height: 1,
-          overflow: "hidden",
-          paddingLeft: 1,
-          paddingRight: 1,
-        })
-
-        if (isLastRow) {
-          columnBox.add(cellText)
-        } else {
-          const cellBox = new BoxRenderable(this.ctx, {
-            id: `${id}-col-${col}-row-${row}-box`,
-            border: ["bottom"],
-            borderColor,
-          })
-          cellBox.add(cellText)
-          columnBox.add(cellBox)
-        }
+    for (const state of this._blockStates) {
+      if (state.renderable instanceof TextTableRenderable) {
+        this.applyTableRenderableOptions(state.renderable, options)
+        updated = true
       }
-
-      tableBox.add(columnBox)
     }
 
-    return tableBox
+    if (updated) {
+      this.requestRender()
+    }
+  }
+
+  private createTextTableRenderable(
+    content: TextTableContent,
+    id: string,
+    marginBottom: number = 0,
+  ): TextTableRenderable {
+    const options = this.resolveTableRenderableOptions()
+    return new TextTableRenderable(this.ctx, {
+      id,
+      content,
+      width: "100%",
+      marginBottom,
+      columnWidthMode: options.columnWidthMode,
+      columnFitter: options.columnFitter,
+      wrapMode: options.wrapMode,
+      cellPadding: options.cellPadding,
+      border: options.border,
+      outerBorder: options.outerBorder,
+      showBorders: options.showBorders,
+      borderStyle: options.borderStyle,
+      borderColor: options.borderColor,
+      selectable: options.selectable,
+    })
+  }
+
+  private createTableBlock(
+    table: Tokens.Table,
+    id: string,
+    marginBottom: number = 0,
+    previousCache?: TableContentCache,
+    forceRegenerate: boolean = false,
+  ): { renderable: Renderable; tableContentCache?: TableContentCache } {
+    const { cache } = this.buildTableContentCache(table, previousCache, forceRegenerate)
+
+    if (!cache) {
+      return {
+        renderable: this.createMarkdownCodeRenderable(table.raw, id, marginBottom),
+      }
+    }
+
+    return {
+      renderable: this.createTextTableRenderable(cache.content, id, marginBottom),
+      tableContentCache: cache,
+    }
   }
 
   private createDefaultRenderable(token: MarkedToken, index: number, hasNextToken: boolean = false): Renderable | null {
     const id = `${this.id}-block-${index}`
-    const marginBottom = hasNextToken ? 1 : 0
+    const marginBottom = this.getInterBlockMargin(token, hasNextToken)
 
     if (token.type === "code") {
       return this.createCodeRenderable(token, id, marginBottom)
     }
 
     if (token.type === "table") {
-      return this.createTableRenderable(token, id, marginBottom)
+      return this.createTableBlock(token, id, marginBottom).renderable
     }
 
     if (token.type === "space") {
       return null
     }
 
-    const chunks = this.renderTokenToChunks(token)
-    if (chunks.length === 0) {
+    if (!token.raw) {
       return null
     }
 
-    return this.createTextRenderable(chunks, id, marginBottom)
+    return this.createMarkdownCodeRenderable(token.raw, id, marginBottom)
   }
 
   private updateBlockRenderable(state: BlockState, token: MarkedToken, index: number, hasNextToken: boolean): void {
-    const marginBottom = hasNextToken ? 1 : 0
+    const marginBottom = this.getInterBlockMargin(token, hasNextToken)
 
     if (token.type === "code") {
-      const codeRenderable = state.renderable as CodeRenderable
-      const codeToken = token as Tokens.Code
-      codeRenderable.content = codeToken.text
-      if (codeToken.lang) {
-        codeRenderable.filetype = codeToken.lang
-      }
-      codeRenderable.marginBottom = marginBottom
+      this.applyCodeBlockRenderable(state.renderable as CodeRenderable, token as Tokens.Code, marginBottom)
       return
     }
 
     if (token.type === "table") {
-      const prevTable = state.token as Tokens.Table
-      const newTable = token as Tokens.Table
+      const tableToken = token as Tokens.Table
+      const { cache, changed } = this.buildTableContentCache(tableToken, state.tableContentCache)
 
-      // During streaming, only rebuild when complete row count changes (skip incomplete last row)
-      if (this._streaming) {
-        const prevCompleteRows = Math.max(0, prevTable.rows.length - 1)
-        const newCompleteRows = Math.max(0, newTable.rows.length - 1)
-
-        // Check if both previous and new are in raw fallback mode (no complete rows to render)
-        const prevIsRawFallback = prevTable.header.length === 0 || prevCompleteRows === 0
-        const newIsRawFallback = newTable.header.length === 0 || newCompleteRows === 0
-
-        if (prevCompleteRows === newCompleteRows && prevTable.header.length === newTable.header.length) {
-          // If both are in raw fallback mode and the raw content changed, update the TextRenderable
-          if (prevIsRawFallback && newIsRawFallback && prevTable.raw !== newTable.raw) {
-            const textRenderable = state.renderable as TextRenderable
-            textRenderable.content = new StyledText([this.createDefaultChunk(newTable.raw)])
-            textRenderable.marginBottom = marginBottom
-          }
+      if (!cache) {
+        if (state.renderable instanceof CodeRenderable) {
+          this.applyMarkdownCodeRenderable(state.renderable, tableToken.raw, marginBottom)
+          state.tableContentCache = undefined
           return
         }
+
+        state.renderable.destroyRecursively()
+        const fallbackRenderable = this.createMarkdownCodeRenderable(
+          tableToken.raw,
+          `${this.id}-block-${index}`,
+          marginBottom,
+        )
+        this.add(fallbackRenderable)
+        state.renderable = fallbackRenderable
+        state.tableContentCache = undefined
+        return
       }
 
-      this.remove(state.renderable.id)
-      const newRenderable = this.createTableRenderable(newTable, `${this.id}-block-${index}`, marginBottom)
-      this.add(newRenderable)
-      state.renderable = newRenderable
+      if (state.renderable instanceof TextTableRenderable) {
+        if (changed) {
+          state.renderable.content = cache.content
+        }
+        this.applyTableRenderableOptions(state.renderable, this.resolveTableRenderableOptions())
+        state.renderable.marginBottom = marginBottom
+        state.tableContentCache = cache
+        return
+      }
+
+      state.renderable.destroyRecursively()
+      const tableRenderable = this.createTextTableRenderable(cache.content, `${this.id}-block-${index}`, marginBottom)
+      this.add(tableRenderable)
+      state.renderable = tableRenderable
+      state.tableContentCache = cache
       return
     }
 
-    // Text-based renderables (paragraph, heading, list, blockquote, hr)
-    const textRenderable = state.renderable as TextRenderable
-    const chunks = this.renderTokenToChunks(token)
-    textRenderable.content = new StyledText(chunks)
-    textRenderable.marginBottom = marginBottom
+    if (state.renderable instanceof CodeRenderable) {
+      this.applyMarkdownCodeRenderable(state.renderable, token.raw, marginBottom)
+      return
+    }
+
+    state.renderable.destroyRecursively()
+    const markdownRenderable = this.createMarkdownCodeRenderable(token.raw, `${this.id}-block-${index}`, marginBottom)
+    this.add(markdownRenderable)
+    state.renderable = markdownRenderable
   }
 
-  private updateBlocks(): void {
+  private updateBlocks(forceTableRefresh: boolean = false): void {
+    if (this.isDestroyed) return
     if (!this._content) {
-      for (const state of this._blockStates) {
-        this.remove(state.renderable.id)
-      }
-      this._blockStates = []
+      this.clearBlockStates()
       this._parseState = null
       return
     }
@@ -707,38 +894,36 @@ export class MarkdownRenderable extends Renderable {
 
     // Parse failure fallback
     if (tokens.length === 0 && this._content.length > 0) {
-      for (const state of this._blockStates) {
-        this.remove(state.renderable.id)
-      }
-      const text = this.createTextRenderable([this.createDefaultChunk(this._content)], `${this.id}-fallback`)
-      this.add(text)
+      this.clearBlockStates()
+      const fallback = this.createMarkdownCodeRenderable(this._content, `${this.id}-fallback`)
+      this.add(fallback)
       this._blockStates = [
         {
           token: { type: "text", raw: this._content, text: this._content } as MarkedToken,
           tokenRaw: this._content,
-          renderable: text,
+          renderable: fallback,
         },
       ]
       return
     }
 
-    const blockTokens: Array<{ token: MarkedToken; originalIndex: number }> = []
-    for (let i = 0; i < tokens.length; i++) {
-      if (tokens[i].type !== "space") {
-        blockTokens.push({ token: tokens[i], originalIndex: i })
-      }
-    }
-
+    const blockTokens = this.buildRenderableTokens(tokens)
     const lastBlockIndex = blockTokens.length - 1
 
     let blockIndex = 0
     for (let i = 0; i < blockTokens.length; i++) {
-      const { token } = blockTokens[i]
+      const token = blockTokens[i]
       const hasNextToken = i < lastBlockIndex
       const existing = this._blockStates[blockIndex]
 
+      const shouldForceRefresh = forceTableRefresh
+
       // Same token object reference means unchanged
       if (existing && existing.token === token) {
+        if (shouldForceRefresh) {
+          this.updateBlockRenderable(existing, token, blockIndex, hasNextToken)
+          existing.tokenRaw = token.raw
+        }
         blockIndex++
         continue
       }
@@ -746,6 +931,10 @@ export class MarkdownRenderable extends Renderable {
       // Same content, update reference
       if (existing && existing.tokenRaw === token.raw && existing.token.type === token.type) {
         existing.token = token
+        if (shouldForceRefresh) {
+          this.updateBlockRenderable(existing, token, blockIndex, hasNextToken)
+          existing.tokenRaw = token.raw
+        }
         blockIndex++
         continue
       }
@@ -761,15 +950,17 @@ export class MarkdownRenderable extends Renderable {
 
       // Different type or new block
       if (existing) {
-        this.remove(existing.renderable.id)
+        existing.renderable.destroyRecursively()
       }
 
       let renderable: Renderable | undefined
+      let tableContentCache: TableContentCache | undefined
 
       if (this._renderNode) {
         const context: RenderNodeContext = {
           syntaxStyle: this._syntaxStyle,
           conceal: this._conceal,
+          concealCode: this._concealCode,
           treeSitterClient: this._treeSitterClient,
           defaultRender: () => this.createDefaultRenderable(token, blockIndex, hasNextToken),
         }
@@ -780,7 +971,22 @@ export class MarkdownRenderable extends Renderable {
       }
 
       if (!renderable) {
-        renderable = this.createDefaultRenderable(token, blockIndex, hasNextToken) ?? undefined
+        if (token.type === "table") {
+          const tableBlock = this.createTableBlock(
+            token,
+            `${this.id}-block-${blockIndex}`,
+            this.getInterBlockMargin(token, hasNextToken),
+          )
+          renderable = tableBlock.renderable
+          tableContentCache = tableBlock.tableContentCache
+        } else {
+          renderable = this.createDefaultRenderable(token, blockIndex, hasNextToken) ?? undefined
+        }
+      }
+
+      if (token.type === "table" && !tableContentCache && renderable instanceof TextTableRenderable) {
+        const { cache } = this.buildTableContentCache(token as Tokens.Table)
+        tableContentCache = cache ?? undefined
       }
 
       if (renderable) {
@@ -789,6 +995,7 @@ export class MarkdownRenderable extends Renderable {
           token,
           tokenRaw: token.raw,
           renderable,
+          tableContentCache,
         }
       }
       blockIndex++
@@ -796,13 +1003,13 @@ export class MarkdownRenderable extends Renderable {
 
     while (this._blockStates.length > blockIndex) {
       const removed = this._blockStates.pop()!
-      this.remove(removed.renderable.id)
+      removed.renderable.destroyRecursively()
     }
   }
 
   private clearBlockStates(): void {
     for (const state of this._blockStates) {
-      this.remove(state.renderable.id)
+      state.renderable.destroyRecursively()
     }
     this._blockStates = []
   }
@@ -815,24 +1022,63 @@ export class MarkdownRenderable extends Renderable {
     for (let i = 0; i < this._blockStates.length; i++) {
       const state = this._blockStates[i]
       const hasNextToken = i < this._blockStates.length - 1
+      const marginBottom = this.getInterBlockMargin(state.token, hasNextToken)
 
       if (state.token.type === "code") {
-        // CodeRenderable handles style/conceal changes efficiently
-        const codeRenderable = state.renderable as CodeRenderable
-        codeRenderable.syntaxStyle = this._syntaxStyle
-        codeRenderable.conceal = this._conceal
-      } else if (state.token.type === "table") {
-        // Tables - update in place for better performance
-        const marginBottom = hasNextToken ? 1 : 0
-        this.updateTableRenderable(state.renderable, state.token as Tokens.Table, marginBottom)
-      } else {
-        // TextRenderable blocks - regenerate chunks with new style/conceal
-        const textRenderable = state.renderable as TextRenderable
-        const chunks = this.renderTokenToChunks(state.token)
-        if (chunks.length > 0) {
-          textRenderable.content = new StyledText(chunks)
-        }
+        this.applyCodeBlockRenderable(state.renderable as CodeRenderable, state.token as Tokens.Code, marginBottom)
+        continue
       }
+
+      if (state.token.type === "table") {
+        const tableToken = state.token as Tokens.Table
+        const { cache } = this.buildTableContentCache(tableToken, state.tableContentCache, true)
+
+        if (!cache) {
+          if (state.renderable instanceof CodeRenderable) {
+            this.applyMarkdownCodeRenderable(state.renderable, tableToken.raw, marginBottom)
+          } else {
+            state.renderable.destroyRecursively()
+            const fallbackRenderable = this.createMarkdownCodeRenderable(
+              tableToken.raw,
+              `${this.id}-block-${i}`,
+              marginBottom,
+            )
+            this.add(fallbackRenderable)
+            state.renderable = fallbackRenderable
+          }
+          state.tableContentCache = undefined
+          continue
+        }
+
+        if (state.renderable instanceof TextTableRenderable) {
+          state.renderable.content = cache.content
+          this.applyTableRenderableOptions(state.renderable, this.resolveTableRenderableOptions())
+          state.renderable.marginBottom = marginBottom
+          state.tableContentCache = cache
+          continue
+        }
+
+        state.renderable.destroyRecursively()
+        const tableRenderable = this.createTextTableRenderable(cache.content, `${this.id}-block-${i}`, marginBottom)
+        this.add(tableRenderable)
+        state.renderable = tableRenderable
+        state.tableContentCache = cache
+        continue
+      }
+
+      if (state.renderable instanceof CodeRenderable) {
+        this.applyMarkdownCodeRenderable(state.renderable, state.token.raw, marginBottom)
+        continue
+      }
+
+      state.renderable.destroyRecursively()
+      const markdownRenderable = this.createMarkdownCodeRenderable(
+        state.token.raw,
+        `${this.id}-block-${i}`,
+        marginBottom,
+      )
+      this.add(markdownRenderable)
+      state.renderable = markdownRenderable
     }
   }
 
@@ -840,6 +1086,12 @@ export class MarkdownRenderable extends Renderable {
     this._parseState = null
     this.clearBlockStates()
     this.updateBlocks()
+    this.requestRender()
+  }
+
+  public refreshStyles(): void {
+    this._styleDirty = false
+    this.rerenderBlocks()
     this.requestRender()
   }
 

@@ -158,12 +158,26 @@ Use these methods to control the cursor position and style:
 renderer.setCursorPosition(10, 5, true)
 
 // Cursor style
-renderer.setCursorStyle("block", true) // Blinking block
-renderer.setCursorStyle("underline", false) // Steady underline
-renderer.setCursorStyle("line", true) // Blinking line
+renderer.setCursorStyle({ style: "block", blinking: true }) // Blinking block
+renderer.setCursorStyle({ style: "underline", blinking: false }) // Steady underline
+renderer.setCursorStyle({ style: "line", blinking: true }) // Blinking line
 
-// Cursor color
-renderer.setCursorColor(RGBA.fromHex("#FF0000"))
+// Cursor style with color
+renderer.setCursorStyle({
+  style: "block",
+  blinking: true,
+  color: RGBA.fromHex("#FF0000"),
+})
+
+// Cursor style with mouse pointer
+//
+// Types of mouse pointers available: "default", "pointer", "text", "crosshair", "move",
+// "not-allowed"
+renderer.setCursorStyle({
+  style: "block",
+  blinking: false,
+  cursor: "pointer",
+})
 ```
 
 ## Input handling

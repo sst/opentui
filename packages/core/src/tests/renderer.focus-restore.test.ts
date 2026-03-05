@@ -21,10 +21,6 @@ beforeEach(async () => {
     useMouse: true,
   }))
 
-  // Spy on restoreTerminalModes — spyOn wraps the real method, tracks calls,
-  // and mockRestore() in afterEach puts the original back on the singleton.
-  // No capability mocks are needed: the sequences under test (\x1b[I, \x1b[O)
-  // are not capability responses and never reach processCapabilityResponse.
   restoreSpy = spyOn(renderer.lib, "restoreTerminalModes")
 })
 
@@ -34,7 +30,17 @@ afterEach(() => {
 })
 
 describe("focus restore - terminal mode re-enable on focus-in", () => {
-  test("restoreTerminalModes is called on focus-in event", async () => {
+  test("restoreTerminalModes is NOT called on focus-in without prior blur", async () => {
+    renderer.stdin.emit("data", Buffer.from("\x1b[I"))
+    await new Promise((resolve) => setTimeout(resolve, 15))
+
+    expect(restoreSpy).toHaveBeenCalledTimes(0)
+  })
+
+  test("restoreTerminalModes is called once after blur then focus-in", async () => {
+    renderer.stdin.emit("data", Buffer.from("\x1b[O"))
+    await new Promise((resolve) => setTimeout(resolve, 15))
+
     renderer.stdin.emit("data", Buffer.from("\x1b[I"))
     await new Promise((resolve) => setTimeout(resolve, 15))
 
@@ -48,10 +54,10 @@ describe("focus restore - terminal mode re-enable on focus-in", () => {
     expect(restoreSpy).toHaveBeenCalledTimes(0)
   })
 
-  test("restoreTerminalModes is called before focus event is emitted", async () => {
+  test("restoreTerminalModes is called before focus event is emitted after blur", async () => {
     const callOrder: string[] = []
 
-    restoreSpy.mockImplementation((...args: any[]) => {
+    restoreSpy.mockImplementation(() => {
       callOrder.push("restoreTerminalModes")
     })
 
@@ -59,14 +65,32 @@ describe("focus restore - terminal mode re-enable on focus-in", () => {
       callOrder.push("focus-event")
     })
 
+    renderer.stdin.emit("data", Buffer.from("\x1b[O"))
+    await new Promise((resolve) => setTimeout(resolve, 15))
+
     renderer.stdin.emit("data", Buffer.from("\x1b[I"))
     await new Promise((resolve) => setTimeout(resolve, 15))
 
     expect(callOrder).toEqual(["restoreTerminalModes", "focus-event"])
   })
 
-  test("multiple focus-in events each trigger restoreTerminalModes", async () => {
-    // Simulate: focus lost -> focus gained -> focus lost -> focus gained
+  test("repeated focus-in events only restore once per blur cycle", async () => {
+    renderer.stdin.emit("data", Buffer.from("\x1b[O"))
+    await new Promise((resolve) => setTimeout(resolve, 15))
+
+    renderer.stdin.emit("data", Buffer.from("\x1b[I"))
+    await new Promise((resolve) => setTimeout(resolve, 15))
+
+    renderer.stdin.emit("data", Buffer.from("\x1b[I"))
+    await new Promise((resolve) => setTimeout(resolve, 15))
+
+    renderer.stdin.emit("data", Buffer.from("\x1b[I"))
+    await new Promise((resolve) => setTimeout(resolve, 15))
+
+    expect(restoreSpy).toHaveBeenCalledTimes(1)
+  })
+
+  test("multiple blur/focus cycles each trigger one restore", async () => {
     renderer.stdin.emit("data", Buffer.from("\x1b[O"))
     await new Promise((resolve) => setTimeout(resolve, 15))
 

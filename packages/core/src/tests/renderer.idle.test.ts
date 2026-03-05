@@ -5,6 +5,20 @@ import { RendererControlState } from "../renderer"
 let renderer: TestRenderer
 let renderOnce: () => Promise<void>
 
+async function expectIdleToResolveImmediately(renderer: TestRenderer): Promise<void> {
+  const idlePromise = renderer.idle()
+  let resolved = false
+
+  idlePromise.then(() => {
+    resolved = true
+  })
+
+  await Promise.resolve()
+
+  expect(resolved).toBe(true)
+  await idlePromise
+}
+
 beforeEach(async () => {
   ;({ renderer, renderOnce } = await createTestRenderer({}))
 })
@@ -17,11 +31,7 @@ test("idle() resolves immediately when renderer is already idle", async () => {
   expect(renderer.controlState).toBe(RendererControlState.IDLE)
   expect(renderer.isRunning).toBe(false)
 
-  const start = Date.now()
-  await renderer.idle()
-  const elapsed = Date.now() - start
-
-  expect(elapsed).toBeLessThan(50)
+  await expectIdleToResolveImmediately(renderer)
 })
 
 test("idle() waits for running renderer to stop", async () => {
@@ -57,11 +67,7 @@ test("idle() resolves immediately after requestRender() completes", async () => 
 
   await renderer.idle()
 
-  const start = Date.now()
-  await renderer.idle()
-  const elapsed = Date.now() - start
-
-  expect(elapsed).toBeLessThan(50)
+  await expectIdleToResolveImmediately(renderer)
 })
 
 test("multiple idle() calls all resolve when renderer becomes idle", async () => {
@@ -113,11 +119,7 @@ test("idle() resolves immediately when called on paused renderer", async () => {
   renderer.start()
   renderer.pause()
 
-  const start = Date.now()
-  await renderer.idle()
-  const elapsed = Date.now() - start
-
-  expect(elapsed).toBeLessThan(50)
+  await expectIdleToResolveImmediately(renderer)
 })
 
 test("idle() resolves when renderer is destroyed", async () => {
@@ -133,11 +135,7 @@ test("idle() resolves when renderer is destroyed", async () => {
 test("idle() resolves immediately when called on destroyed renderer", async () => {
   renderer.destroy()
 
-  const start = Date.now()
-  await renderer.idle()
-  const elapsed = Date.now() - start
-
-  expect(elapsed).toBeLessThan(50)
+  await expectIdleToResolveImmediately(renderer)
 })
 
 test("idle() waits through multiple requestRender() calls", async () => {

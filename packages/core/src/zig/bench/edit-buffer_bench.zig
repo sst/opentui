@@ -2,6 +2,7 @@ const std = @import("std");
 const bench_utils = @import("../bench-utils.zig");
 const edit_buffer = @import("../edit-buffer.zig");
 const gp = @import("../grapheme.zig");
+const link = @import("../link.zig");
 
 const EditBuffer = edit_buffer.EditBuffer;
 const BenchResult = bench_utils.BenchResult;
@@ -19,6 +20,7 @@ fn benchInsertOperations(
 ) ![]BenchResult {
     var results: std.ArrayListUnmanaged(BenchResult) = .{};
     errdefer results.deinit(allocator);
+    const link_pool = link.initGlobalLinkPool(allocator);
 
     // Single-line insert at start
     {
@@ -28,7 +30,7 @@ fn benchInsertOperations(
             var final_mem: usize = 0;
 
             for (0..iterations) |iter| {
-                var eb = try EditBuffer.init(allocator, pool, .unicode);
+                var eb = try EditBuffer.init(allocator, pool, link_pool, .unicode);
                 defer eb.deinit();
 
                 const text = "Hello, world! ";
@@ -70,7 +72,7 @@ fn benchInsertOperations(
             var final_mem: usize = 0;
 
             for (0..iterations) |iter| {
-                var eb = try EditBuffer.init(allocator, pool, .unicode);
+                var eb = try EditBuffer.init(allocator, pool, link_pool, .unicode);
                 defer eb.deinit();
 
                 const text = "Line 1\nLine 2\nLine 3\n";
@@ -115,6 +117,7 @@ fn benchDeleteOperations(
 ) ![]BenchResult {
     var results: std.ArrayListUnmanaged(BenchResult) = .{};
     errdefer results.deinit(allocator);
+    const link_pool = link.initGlobalLinkPool(allocator);
 
     // Single-line delete with backspace
     {
@@ -124,7 +127,7 @@ fn benchDeleteOperations(
             var final_mem: usize = 0;
 
             for (0..iterations) |iter| {
-                var eb = try EditBuffer.init(allocator, pool, .unicode);
+                var eb = try EditBuffer.init(allocator, pool, link_pool, .unicode);
                 defer eb.deinit();
 
                 // Build up text
@@ -170,7 +173,7 @@ fn benchDeleteOperations(
             var final_mem: usize = 0;
 
             for (0..iterations) |iter| {
-                var eb = try EditBuffer.init(allocator, pool, .unicode);
+                var eb = try EditBuffer.init(allocator, pool, link_pool, .unicode);
                 defer eb.deinit();
 
                 // Build up text with many lines
@@ -219,6 +222,7 @@ fn benchMixedOperations(
 ) ![]BenchResult {
     var results: std.ArrayListUnmanaged(BenchResult) = .{};
     errdefer results.deinit(allocator);
+    const link_pool = link.initGlobalLinkPool(allocator);
 
     // Simulated typing session
     {
@@ -228,7 +232,7 @@ fn benchMixedOperations(
             var final_mem: usize = 0;
 
             for (0..iterations) |iter| {
-                var eb = try EditBuffer.init(allocator, pool, .unicode);
+                var eb = try EditBuffer.init(allocator, pool, link_pool, .unicode);
                 defer eb.deinit();
 
                 var timer = try std.time.Timer.start();
@@ -284,6 +288,7 @@ fn benchWordBoundaryOperations(
 ) ![]BenchResult {
     var results: std.ArrayListUnmanaged(BenchResult) = .{};
     errdefer results.deinit(allocator);
+    const link_pool = link.initGlobalLinkPool(allocator);
 
     // Next word boundary navigation
     {
@@ -293,7 +298,7 @@ fn benchWordBoundaryOperations(
             var final_mem: usize = 0;
 
             for (0..iterations) |iter| {
-                var eb = try EditBuffer.init(allocator, pool, .unicode);
+                var eb = try EditBuffer.init(allocator, pool, link_pool, .unicode);
                 defer eb.deinit();
 
                 // Build text with many words
@@ -343,7 +348,7 @@ fn benchWordBoundaryOperations(
             var final_mem: usize = 0;
 
             for (0..iterations) |iter| {
-                var eb = try EditBuffer.init(allocator, pool, .unicode);
+                var eb = try EditBuffer.init(allocator, pool, link_pool, .unicode);
                 defer eb.deinit();
 
                 // Build text with many words
@@ -396,7 +401,7 @@ fn benchWordBoundaryOperations(
             var final_mem: usize = 0;
 
             for (0..iterations) |iter| {
-                var eb = try EditBuffer.init(allocator, pool, .unicode);
+                var eb = try EditBuffer.init(allocator, pool, link_pool, .unicode);
                 defer eb.deinit();
 
                 // Build multi-line text with words
