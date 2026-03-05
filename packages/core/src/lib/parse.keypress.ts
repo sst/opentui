@@ -155,10 +155,19 @@ export const parseKeypress = (s: Buffer | string = "", options: ParseKeypressOpt
   if (/^\x1b\[<\d+;\d+;\d+[Mm]$/.test(s)) {
     return null
   }
+  // Complete SGR mouse continuation without leading ESC. This can occur when
+  // ESC was flushed separately on timeout and the rest of the sequence arrived later.
+  if (/^\[<\d+;\d+;\d+[Mm]$/.test(s)) {
+    return null
+  }
   // Incomplete/partial SGR mouse sequences (flushed by the zig parser when
   // a new ESC arrives before the sequence is complete). These start with
   // ESC[< followed by digits/semicolons but lack the terminal M/m.
   if (/^\x1b\[<[\d;]*$/.test(s)) {
+    return null
+  }
+  // Incomplete/partial SGR mouse continuations without ESC.
+  if (/^\[<[\d;]*$/.test(s)) {
     return null
   }
   if (s.startsWith("\x1b[M") && s.length >= 6) {

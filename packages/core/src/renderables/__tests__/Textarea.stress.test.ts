@@ -7,6 +7,19 @@ let renderOnce: () => Promise<void>
 let currentMouse: MockMouse
 let currentMockInput: MockInput
 
+function flushNativeParserTimeout(renderer: TestRenderer): void {
+  // @ts-expect-error - test-only access to private parser
+  const parser = renderer.nativeStdinParser
+  if (!parser) {
+    throw new Error("nativeStdinParser unavailable in test renderer")
+  }
+
+  parser.flushTimeout(Date.now() + 1000)
+
+  // @ts-expect-error - test-only access to private drain method
+  renderer.drainStdinParser()
+}
+
 describe("Textarea - Stress Tests", () => {
   beforeEach(async () => {
     ;({
@@ -501,6 +514,26 @@ describe("Textarea - Stress Tests", () => {
     currentRenderer.stdin.emit("data", Buffer.from(";"))
     currentRenderer.stdin.emit("data", Buffer.from("5"))
     currentRenderer.stdin.emit("data", Buffer.from("m"))
+
+    expect(editor.plainText).toBe(initialText)
+    expect(editor.plainText).not.toContain("[<")
+  })
+
+  it("STRESS TEST: delayed split SGR mouse sequence should not leak into textarea", async () => {
+    const { textarea: editor } = await createTextareaRenderable(currentRenderer, renderOnce, {
+      initialValue: "Original",
+      width: 40,
+      height: 10,
+    })
+
+    editor.focus()
+    const initialText = editor.plainText
+
+    // Simulate ESC and continuation arriving in separate chunks where the ESC is
+    // timeout-flushed before the continuation arrives.
+    currentRenderer.stdin.emit("data", Buffer.from("\x1b"))
+    flushNativeParserTimeout(currentRenderer)
+    currentRenderer.stdin.emit("data", Buffer.from("[<35;20;5m"))
 
     expect(editor.plainText).toBe(initialText)
     expect(editor.plainText).not.toContain("[<")

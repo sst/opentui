@@ -372,6 +372,65 @@ test "stdin parser timeout flushes lone high-byte lead as unknown" {
     try testing.expectEqual(@as(u8, 0xE9), second.items[0].payload[0]);
 }
 
+test "stdin parser classifies SGR continuation after timed-out ESC as unknown" {
+    const parser = try stdin_parser.StdinParser.init(testing.allocator, stdin_parser.defaultOptions());
+    defer parser.deinit();
+
+    try parser.push("\x1b");
+
+    var first = try drainAvailable(parser, testing.allocator);
+    defer deinitSnapshots(&first, testing.allocator);
+    try testing.expectEqual(@as(usize, 0), first.items.len);
+
+    try parser.flushTimeout(std.math.maxInt(u64));
+
+    var second = try drainAvailable(parser, testing.allocator);
+    defer deinitSnapshots(&second, testing.allocator);
+    try testing.expectEqual(@as(usize, 1), second.items.len);
+    try testing.expectEqual(stdin_parser.StdinTokenKind.esc, second.items[0].kind);
+    try testing.expectEqualStrings("\x1b", second.items[0].payload);
+
+    try parser.push("[<35;20;5m");
+
+    var third = try drainAvailable(parser, testing.allocator);
+    defer deinitSnapshots(&third, testing.allocator);
+    try testing.expectEqual(@as(usize, 1), third.items.len);
+    try testing.expectEqual(stdin_parser.StdinTokenKind.unknown, third.items[0].kind);
+    try testing.expectEqualStrings("[<35;20;5m", third.items[0].payload);
+}
+
+test "stdin parser timeout flushes partial SGR continuation after timed-out ESC" {
+    const parser = try stdin_parser.StdinParser.init(testing.allocator, stdin_parser.defaultOptions());
+    defer parser.deinit();
+
+    try parser.push("\x1b");
+
+    var esc_pending = try drainAvailable(parser, testing.allocator);
+    defer deinitSnapshots(&esc_pending, testing.allocator);
+    try testing.expectEqual(@as(usize, 0), esc_pending.items.len);
+
+    try parser.flushTimeout(std.math.maxInt(u64));
+
+    var esc_flushed = try drainAvailable(parser, testing.allocator);
+    defer deinitSnapshots(&esc_flushed, testing.allocator);
+    try testing.expectEqual(@as(usize, 1), esc_flushed.items.len);
+    try testing.expectEqual(stdin_parser.StdinTokenKind.esc, esc_flushed.items[0].kind);
+
+    try parser.push("[<35;20");
+
+    var first = try drainAvailable(parser, testing.allocator);
+    defer deinitSnapshots(&first, testing.allocator);
+    try testing.expectEqual(@as(usize, 0), first.items.len);
+
+    try parser.flushTimeout(std.math.maxInt(u64));
+
+    var second = try drainAvailable(parser, testing.allocator);
+    defer deinitSnapshots(&second, testing.allocator);
+    try testing.expectEqual(@as(usize, 1), second.items.len);
+    try testing.expectEqual(stdin_parser.StdinTokenKind.unknown, second.items[0].kind);
+    try testing.expectEqualStrings("[<35;20", second.items[0].payload);
+}
+
 test "stdin parser reset releases retained buffer capacity" {
     const parser = try stdin_parser.StdinParser.init(testing.allocator, stdin_parser.defaultOptions());
     defer parser.deinit();

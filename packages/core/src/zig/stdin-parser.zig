@@ -106,6 +106,7 @@ pub const StdinParser = struct {
     flush_pending_timeout: bool,
     pending_consumed: usize,
     pending_clear_paste_mode: bool,
+    expect_esc_continuation: bool,
 
     pub fn init(allocator: std.mem.Allocator, options: StdinParserOptions) !*StdinParser {
         const parser = try allocator.create(StdinParser);
@@ -122,6 +123,7 @@ pub const StdinParser = struct {
             .flush_pending_timeout = false,
             .pending_consumed = 0,
             .pending_clear_paste_mode = false,
+            .expect_esc_continuation = false,
         };
         errdefer allocator.destroy(parser);
 
@@ -176,6 +178,7 @@ pub const StdinParser = struct {
         self.flush_pending_timeout = false;
         self.pending_consumed = 0;
         self.pending_clear_paste_mode = false;
+        self.expect_esc_continuation = false;
     }
 
     pub fn flushTimeout(self: *StdinParser, now_ms: u64) !void {
@@ -212,7 +215,24 @@ pub const StdinParser = struct {
                         const seq_len = utf8SequenceLength(first);
                         const should_force_unknown = seq_len == 0 or (self.buffer.items.len == 1 and seq_len > 1);
 
+                        if (self.expect_esc_continuation and std.mem.startsWith(u8, self.buffer.items, "[<")) {
+                            self.expect_esc_continuation = false;
+                            const forced = CandidateToken{
+                                .kind = .unknown,
+                                .consumed = self.buffer.items.len,
+                                .payload_start = 0,
+                                .payload_len = self.buffer.items.len,
+                            };
+                            return self.stageNextToken(forced);
+                        }
+
                         if (first == ESC or should_force_unknown) {
+                            if (first == ESC and self.buffer.items.len == 1) {
+                                self.expect_esc_continuation = true;
+                            } else {
+                                self.expect_esc_continuation = false;
+                            }
+
                             const forced = if (first == ESC)
                                 CandidateToken{
                                     .kind = .esc,
@@ -307,6 +327,7 @@ pub const StdinParser = struct {
         self.flush_pending_timeout = false;
         self.pending_consumed = 0;
         self.pending_clear_paste_mode = false;
+        self.expect_esc_continuation = false;
     }
 
     fn enterPasteMode(self: *StdinParser) void {
@@ -421,6 +442,24 @@ pub const StdinParser = struct {
             return .none;
         }
 
+        if (self.expect_esc_continuation) {
+            const continuation = parseEscLessSgrContinuation(self.buffer.items);
+            switch (continuation) {
+                .none => {
+                    self.expect_esc_continuation = false;
+                },
+                .incomplete => return .incomplete,
+                .consume => |consume| {
+                    self.expect_esc_continuation = false;
+                    return .{ .consume = consume };
+                },
+                .token => |candidate| {
+                    self.expect_esc_continuation = false;
+                    return .{ .token = candidate };
+                },
+            }
+        }
+
         if (std.mem.startsWith(u8, self.buffer.items, BRACKETED_PASTE_START)) {
             self.consumePrefix(BRACKETED_PASTE_START.len);
             self.enterPasteMode();
@@ -502,6 +541,34 @@ fn parseTextToken(bytes: []const u8) ParseResult {
         .payload_start = 0,
         .payload_len = seq_len,
     } };
+}
+
+fn parseEscLessSgrContinuation(bytes: []const u8) ParseResult {
+    if (!std.mem.startsWith(u8, bytes, "[<")) {
+        return .none;
+    }
+
+    var scan_index: usize = 2;
+    while (scan_index < bytes.len) : (scan_index += 1) {
+        const b = bytes[scan_index];
+        if ((b >= '0' and b <= '9') or b == ';') {
+            continue;
+        }
+
+        if (b == 'M' or b == 'm') {
+            const consumed = scan_index + 1;
+            return .{ .token = .{
+                .kind = .unknown,
+                .consumed = consumed,
+                .payload_start = 0,
+                .payload_len = consumed,
+            } };
+        }
+
+        return .none;
+    }
+
+    return .incomplete;
 }
 
 fn utf8SequenceLength(first: u8) usize {
