@@ -140,6 +140,20 @@ const KITTY_FLAG_ALTERNATE_KEYS = 0b100 // Report alternate keys (e.g., numpad v
 const KITTY_FLAG_ALL_KEYS_AS_ESCAPES = 0b1000 // Report all keys as escape codes
 const KITTY_FLAG_REPORT_TEXT = 0b10000 // Report text associated with key events
 
+const monotonicNow = (): number => {
+  if (typeof performance !== "undefined" && typeof performance.now === "function") {
+    return performance.now()
+  }
+  return Date.now()
+}
+
+const getElapsedMs = (currentTime: number, previousTime: number): number => {
+  if (!Number.isFinite(currentTime) || !Number.isFinite(previousTime)) {
+    return 0
+  }
+  return Math.max(currentTime - previousTime, 0)
+}
+
 /**
  * Kitty Keyboard Protocol configuration options
  * See: https://sw.kovidgoyal.net/kitty/keyboard-protocol/#progressive-enhancement
@@ -373,6 +387,7 @@ export class CliRenderer extends EventEmitter implements RenderContext {
   private lastTime: number = 0
   private frameCount: number = 0
   private lastFpsTime: number = 0
+  private now = monotonicNow
   private currentFps: number = 0
   private targetFrameTime: number = 1000 / this.targetFps
   private minTargetFrameTime: number = 1000 / this.maxFps
@@ -765,8 +780,8 @@ export class CliRenderer extends EventEmitter implements RenderContext {
 
     if (!this.updateScheduled && !this.renderTimeout) {
       this.updateScheduled = true
-      const now = Date.now()
-      const elapsed = now - this.lastTime
+      const now = this.now()
+      const elapsed = getElapsedMs(now, this.lastTime)
       const delay = Math.max(this.minTargetFrameTime - elapsed, 0)
 
       if (delay === 0) {
@@ -1899,7 +1914,7 @@ export class CliRenderer extends EventEmitter implements RenderContext {
   private startRenderLoop(): void {
     if (!this._isRunning) return
 
-    this.lastTime = Date.now()
+    this.lastTime = this.now()
     this.frameCount = 0
     this.lastFpsTime = this.lastTime
     this.currentFps = 0
@@ -1917,14 +1932,14 @@ export class CliRenderer extends EventEmitter implements RenderContext {
       this.renderTimeout = null
     }
     try {
-      const now = Date.now()
-      const elapsed = now - this.lastTime
+      const now = this.now()
+      const elapsed = getElapsedMs(now, this.lastTime)
 
       const deltaTime = elapsed
       this.lastTime = now
 
       this.frameCount++
-      if (now - this.lastFpsTime >= 1000) {
+      if (getElapsedMs(now, this.lastFpsTime) >= 1000) {
         this.currentFps = this.frameCount
         this.frameCount = 0
         this.lastFpsTime = now
