@@ -20,6 +20,14 @@ describe("StdinBuffer", () => {
     buffer.process(data)
   }
 
+  // Simulate timeout flush synchronously for deterministic tests.
+  function flushAsTimeout(): void {
+    const flushed = buffer.flush()
+    for (const sequence of flushed) {
+      buffer.emit("data", sequence)
+    }
+  }
+
   // Helper to wait for async operations
   async function wait(ms: number): Promise<void> {
     return new Promise((resolve) => setTimeout(resolve, ms))
@@ -250,6 +258,27 @@ describe("StdinBuffer", () => {
 
       const flushed = buffer.flush()
       expect(flushed).toEqual(["\x1b"])
+    })
+
+    it("should keep delayed SGR mouse continuation as one sequence after ESC flush", () => {
+      processInput("\x1b")
+      flushAsTimeout()
+      expect(emittedSequences).toEqual(["\x1b"])
+
+      processInput("[<35;20;5m")
+      expect(emittedSequences).toEqual(["\x1b", "[<35;20;5m"])
+    })
+
+    it("should flush partial delayed SGR mouse continuation as one sequence", () => {
+      processInput("\x1b")
+      flushAsTimeout()
+      expect(emittedSequences).toEqual(["\x1b"])
+
+      processInput("[<35;20")
+      expect(emittedSequences).toEqual(["\x1b"])
+
+      flushAsTimeout()
+      expect(emittedSequences).toEqual(["\x1b", "[<35;20"])
     })
 
     it("should handle buffer input", () => {

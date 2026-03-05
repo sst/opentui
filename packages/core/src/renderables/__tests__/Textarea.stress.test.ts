@@ -7,6 +7,19 @@ let renderOnce: () => Promise<void>
 let currentMouse: MockMouse
 let currentMockInput: MockInput
 
+function flushLegacyStdinBufferTimeout(renderer: TestRenderer): void {
+  // @ts-expect-error - test-only access to private stdin buffer
+  const stdinBuffer = renderer._stdinBuffer
+  if (!stdinBuffer) {
+    throw new Error("_stdinBuffer unavailable in test renderer")
+  }
+
+  const flushed = stdinBuffer.flush()
+  for (const sequence of flushed) {
+    stdinBuffer.emit("data", sequence)
+  }
+}
+
 describe("Textarea - Stress Tests", () => {
   beforeEach(async () => {
     ;({
@@ -506,7 +519,7 @@ describe("Textarea - Stress Tests", () => {
     expect(editor.plainText).not.toContain("[<")
   })
 
-  it("REPRO(main): delayed split SGR mouse bytes should not leak into textarea", async () => {
+  it("delayed split SGR mouse bytes should not leak into textarea", async () => {
     const { textarea: editor } = await createTextareaRenderable(currentRenderer, renderOnce, {
       initialValue: "Original",
       width: 40,
@@ -516,12 +529,10 @@ describe("Textarea - Stress Tests", () => {
     editor.focus()
     const initialText = editor.plainText
 
-    // Simulate a split mouse SGR sequence where ESC and the rest arrive in separate
-    // chunks with a delay greater than the stdin buffer timeout.
+    // Simulate timeout-flushed ESC, then delayed continuation without sleep.
     currentRenderer.stdin.emit("data", Buffer.from("\x1b"))
-    await Bun.sleep(15)
+    flushLegacyStdinBufferTimeout(currentRenderer)
     currentRenderer.stdin.emit("data", Buffer.from("[<35;20;5m"))
-    await Bun.sleep(1)
 
     // Correct behavior: no mouse bytes should be inserted into textarea text.
     expect(editor.plainText).toBe(initialText)

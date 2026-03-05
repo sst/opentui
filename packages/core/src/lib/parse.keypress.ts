@@ -154,6 +154,15 @@ export const parseKeypress = (s: Buffer | string = "", options: ParseKeypressOpt
   if (/^\x1b\[<\d+;\d+;\d+[Mm]$/.test(s)) {
     return null
   }
+  if (/^\[<\d+;\d+;\d+[Mm]$/.test(s)) {
+    return null
+  }
+  if (/^\x1b\[<[\d;]*$/.test(s)) {
+    return null
+  }
+  if (/^\[<[\d;]*$/.test(s)) {
+    return null
+  }
   if (s.startsWith("\x1b[M") && s.length >= 6) {
     return null
   }

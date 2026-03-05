@@ -1274,6 +1274,26 @@ test("parseKeypress - filters out SGR mouse events", () => {
   expect(mouseScroll).toBeNull()
 })
 
+test("parseKeypress - filters out incomplete/partial SGR mouse sequences", () => {
+  expect(parseKeypress("\x1b[<35;")).toBeNull()
+  expect(parseKeypress("\x1b[<35;20")).toBeNull()
+  expect(parseKeypress("\x1b[<35;20;")).toBeNull()
+  expect(parseKeypress("\x1b[<35;20;5")).toBeNull()
+  expect(parseKeypress("\x1b[<")).toBeNull()
+  expect(parseKeypress("\x1b[<0")).toBeNull()
+  expect(parseKeypress("\x1b[<64;20;10")).toBeNull()
+})
+
+test("parseKeypress - filters out SGR mouse continuations without ESC", () => {
+  expect(parseKeypress("[<35;20;5m")).toBeNull()
+  expect(parseKeypress("[<0;10;5M")).toBeNull()
+  expect(parseKeypress("[<35;")).toBeNull()
+  expect(parseKeypress("[<35;20")).toBeNull()
+  expect(parseKeypress("[<35;20;")).toBeNull()
+  expect(parseKeypress("[<")).toBeNull()
+  expect(parseKeypress("[<64;20;10")).toBeNull()
+})
+
 test("parseKeypress - filters out basic mouse events", () => {
   const basicMouse = parseKeypress("\x1b[M abc")!
   expect(basicMouse).toBeNull()

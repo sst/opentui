@@ -187,6 +187,53 @@ function isNestedEscapeSequenceStart(char: string | undefined): boolean {
   return char === "[" || char === "]" || char === "O" || char === "N" || char === "P" || char === "_"
 }
 
+type EscLessSgrContinuationResult =
+  | { status: "none" }
+  | { status: "incomplete" }
+  | { status: "complete"; consumed: number }
+
+function parseEscLessSgrContinuation(data: string): EscLessSgrContinuationResult {
+  if (!data.startsWith("[<")) {
+    return { status: "none" }
+  }
+
+  let index = 2
+  let part = 0
+  let hasDigit = false
+
+  while (index < data.length) {
+    const char = data[index]
+    const charCode = data.charCodeAt(index)
+
+    if (charCode >= 48 && charCode <= 57) {
+      hasDigit = true
+      index++
+      continue
+    }
+
+    if (char === ";") {
+      if (!hasDigit || part >= 2) {
+        return { status: "none" }
+      }
+      part++
+      hasDigit = false
+      index++
+      continue
+    }
+
+    if (char === "M" || char === "m") {
+      if (!hasDigit || part !== 2) {
+        return { status: "none" }
+      }
+      return { status: "complete", consumed: index + 1 }
+    }
+
+    return { status: "none" }
+  }
+
+  return { status: "incomplete" }
+}
+
 /**
  * Split accumulated buffer into complete sequences
  */
@@ -282,6 +329,7 @@ export class StdinBuffer extends EventEmitter<StdinBufferEventMap> {
   private readonly timeoutMs: number
   private pasteMode: boolean = false
   private pasteBuffer: string = ""
+  private expectEscContinuation: boolean = false
 
   constructor(options: StdinBufferOptions = {}) {
     super()
@@ -316,6 +364,22 @@ export class StdinBuffer extends EventEmitter<StdinBufferEventMap> {
     }
 
     this.buffer += str
+
+    if (this.expectEscContinuation) {
+      const continuation = parseEscLessSgrContinuation(this.buffer)
+
+      if (continuation.status === "complete") {
+        const sequence = this.buffer.slice(0, continuation.consumed)
+        this.buffer = this.buffer.slice(continuation.consumed)
+        this.expectEscContinuation = false
+        this.emit("data", sequence)
+      } else if (continuation.status === "incomplete") {
+        this.armFlushTimeout()
+        return
+      } else {
+        this.expectEscContinuation = false
+      }
+    }
 
     if (this.pasteMode) {
       this.pasteBuffer += this.buffer
@@ -378,14 +442,22 @@ export class StdinBuffer extends EventEmitter<StdinBufferEventMap> {
     }
 
     if (this.buffer.length > 0) {
-      this.timeout = setTimeout(() => {
-        const flushed = this.flush()
-
-        for (const sequence of flushed) {
-          this.emit("data", sequence)
-        }
-      }, this.timeoutMs)
+      this.armFlushTimeout()
     }
+  }
+
+  private armFlushTimeout(): void {
+    if (this.timeout || this.buffer.length === 0) {
+      return
+    }
+
+    this.timeout = setTimeout(() => {
+      const flushed = this.flush()
+
+      for (const sequence of flushed) {
+        this.emit("data", sequence)
+      }
+    }, this.timeoutMs)
   }
 
   flush(): string[] {
@@ -399,6 +471,7 @@ export class StdinBuffer extends EventEmitter<StdinBufferEventMap> {
     }
 
     const sequences = [this.buffer]
+    this.expectEscContinuation = this.buffer === ESC
     this.buffer = ""
     return sequences
   }
@@ -411,6 +484,7 @@ export class StdinBuffer extends EventEmitter<StdinBufferEventMap> {
     this.buffer = ""
     this.pasteMode = false
     this.pasteBuffer = ""
+    this.expectEscContinuation = false
   }
 
   getBuffer(): string {
