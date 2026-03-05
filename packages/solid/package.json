@@ -43,6 +43,7 @@
     "@opentui/core": "workspace:*",
     "babel-plugin-module-resolver": "5.0.2",
     "babel-preset-solid": "1.9.9",
+    "entities": "7.0.1",
     "s-js": "^0.4.9"
   },
   "peerDependencies": {
