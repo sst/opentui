@@ -1,12 +1,28 @@
 import { type RenderContext } from "../types"
 import { StyledText } from "../lib/styled-text"
-import { SyntaxStyle } from "../syntax-style"
+import { SyntaxStyle, type StyleDefinition } from "../syntax-style"
 import { getTreeSitterClient, treeSitterToStyledText, TreeSitterClient } from "../lib/tree-sitter"
 import { TextBufferRenderable, type TextBufferOptions } from "./TextBufferRenderable"
 import type { OptimizedBuffer } from "../buffer"
 import type { SimpleHighlight } from "../lib/tree-sitter/types"
 import type { TextChunk } from "../text-buffer"
 import { treeSitterToTextChunks } from "../lib/tree-sitter-styled-text"
+import { createTextAttributes } from "../utils"
+
+function defaultStyle(syntaxStyle: SyntaxStyle | undefined): StyleDefinition | undefined {
+  if (!syntaxStyle) return undefined
+  return syntaxStyle.getStyle("default")
+}
+
+function defaultAttributes(style: StyleDefinition | undefined): number {
+  if (!style) return 0
+  return createTextAttributes({
+    bold: style.bold,
+    italic: style.italic,
+    underline: style.underline,
+    dim: style.dim,
+  })
+}
 
 export interface HighlightContext {
   content: string
@@ -56,6 +72,9 @@ export class CodeRenderable extends TextBufferRenderable {
   private _lastHighlights: SimpleHighlight[] = []
   private _onHighlight?: OnHighlightCallback
   private _onChunks?: OnChunksCallback
+  private _autoFg: boolean
+  private _autoBg: boolean
+  private _autoAttributes: boolean
 
   protected _contentDefaultOptions = {
     content: "",
@@ -65,7 +84,13 @@ export class CodeRenderable extends TextBufferRenderable {
   } satisfies Partial<CodeOptions>
 
   constructor(ctx: RenderContext, options: CodeOptions) {
-    super(ctx, options)
+    const style = defaultStyle(options.syntaxStyle)
+    super(ctx, {
+      ...options,
+      fg: options.fg ?? style?.fg,
+      bg: options.bg ?? style?.bg,
+      attributes: options.attributes ?? defaultAttributes(style),
+    })
 
     this._content = options.content ?? this._contentDefaultOptions.content
     this._filetype = options.filetype
@@ -76,6 +101,9 @@ export class CodeRenderable extends TextBufferRenderable {
     this._streaming = options.streaming ?? this._contentDefaultOptions.streaming
     this._onHighlight = options.onHighlight
     this._onChunks = options.onChunks
+    this._autoFg = options.fg === undefined
+    this._autoBg = options.bg === undefined
+    this._autoAttributes = options.attributes === undefined
 
     if (this._content.length > 0) {
       this.textBuffer.setText(this._content)
@@ -123,7 +151,21 @@ export class CodeRenderable extends TextBufferRenderable {
   set syntaxStyle(value: SyntaxStyle) {
     if (this._syntaxStyle !== value) {
       this._syntaxStyle = value
+      this.applySyntaxDefaults()
       this._highlightsDirty = true
+    }
+  }
+
+  private applySyntaxDefaults(): void {
+    const style = defaultStyle(this._syntaxStyle)
+    if (this._autoFg) {
+      this.fg = style?.fg
+    }
+    if (this._autoBg) {
+      this.bg = style?.bg
+    }
+    if (this._autoAttributes) {
+      this.attributes = defaultAttributes(style)
     }
   }
 
@@ -232,9 +274,19 @@ export class CodeRenderable extends TextBufferRenderable {
   private async startHighlight(): Promise<void> {
     const content = this._content
     const filetype = this._filetype
+    const syntaxStyle = this._syntaxStyle
     const snapshotId = ++this._highlightSnapshotId
 
     if (!filetype) return
+    if (!syntaxStyle) {
+      this.textBuffer.setText(content)
+      this._shouldRenderTextBuffer = true
+      this._isHighlighting = false
+      this._highlightsDirty = false
+      this.updateTextInfo()
+      this.requestRender()
+      return
+    }
 
     const isInitialContent = this._streaming && !this._hadInitialContent
     if (isInitialContent) {
@@ -258,7 +310,7 @@ export class CodeRenderable extends TextBufferRenderable {
         const context: HighlightContext = {
           content,
           filetype,
-          syntaxStyle: this._syntaxStyle,
+          syntaxStyle,
         }
         const modified = await this._onHighlight(highlights, context)
         if (modified !== undefined) {
@@ -282,11 +334,11 @@ export class CodeRenderable extends TextBufferRenderable {
         const context: ChunkRenderContext = {
           content,
           filetype,
-          syntaxStyle: this._syntaxStyle,
+          syntaxStyle,
           highlights,
         }
 
-        let chunks = treeSitterToTextChunks(content, highlights, this._syntaxStyle, {
+        let chunks = treeSitterToTextChunks(content, highlights, syntaxStyle, {
           enabled: this._conceal,
         })
 

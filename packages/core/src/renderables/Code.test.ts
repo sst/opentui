@@ -6,10 +6,12 @@ import { createTestRenderer, type TestRenderer, MockTreeSitterClient, type MockM
 import { TreeSitterClient } from "../lib/tree-sitter"
 import type { SimpleHighlight } from "../lib/tree-sitter/types"
 import { BoxRenderable } from "./Box"
+import type { CapturedFrame } from "../types"
 
 let currentRenderer: TestRenderer
 let renderOnce: () => Promise<void>
 let captureFrame: () => string
+let captureSpans: () => CapturedFrame
 let mockMouse: MockMouse
 let resize: (width: number, height: number) => void
 
@@ -18,6 +20,7 @@ beforeEach(async () => {
   currentRenderer = testRenderer.renderer
   renderOnce = testRenderer.renderOnce
   captureFrame = testRenderer.captureCharFrame
+  captureSpans = testRenderer.captureSpans
   mockMouse = testRenderer.mockMouse
   resize = testRenderer.resize
 })
@@ -224,6 +227,66 @@ test("CodeRenderable - uses fallback rendering when highlighting throws error", 
   expect(codeRenderable.content).toBe("const message = 'hello world';")
   expect(codeRenderable.filetype).toBe("javascript")
   expect(codeRenderable.plainText).toBe("const message = 'hello world';")
+})
+
+test("CodeRenderable - plain fallback uses syntax default colors", async () => {
+  const syntaxStyle = SyntaxStyle.fromStyles({
+    default: {
+      fg: RGBA.fromHex("#111111"),
+      bg: RGBA.fromHex("#f0f0f0"),
+    },
+  })
+
+  const mockClient = new MockTreeSitterClient()
+  mockClient.setMockResult({ warning: "No parser available", highlights: [] })
+
+  const codeRenderable = new CodeRenderable(currentRenderer, {
+    id: "test-code-fallback-colors",
+    content: "echo test",
+    filetype: "unsupported-language",
+    syntaxStyle,
+    treeSitterClient: mockClient,
+    conceal: false,
+    drawUnstyledText: false,
+  })
+
+  currentRenderer.root.add(codeRenderable)
+
+  expect(codeRenderable.fg.equals(RGBA.fromHex("#111111"))).toBe(true)
+  expect(codeRenderable.bg.equals(RGBA.fromHex("#f0f0f0"))).toBe(true)
+
+  await renderOnce()
+  mockClient.resolveHighlightOnce(0)
+  await new Promise((resolve) => setTimeout(resolve, 10))
+  await renderOnce()
+
+  const spans = captureSpans().lines[0]?.spans ?? []
+  expect(spans.some((span) => span.text.includes("echo test") && span.fg.equals(RGBA.fromHex("#111111")))).toBe(true)
+  expect(spans.some((span) => span.bg.equals(RGBA.fromHex("#f0f0f0")))).toBe(true)
+})
+
+test("CodeRenderable - handles missing syntaxStyle before setter", async () => {
+  const codeRenderable = new CodeRenderable(currentRenderer, {
+    id: "test-code-missing-style",
+    content: "const value = 1",
+    filetype: "javascript",
+    syntaxStyle: undefined as any,
+    conceal: false,
+  } as any)
+
+  currentRenderer.root.add(codeRenderable)
+  await renderOnce()
+
+  expect(codeRenderable.content).toBe("const value = 1")
+  expect(captureFrame()).toContain("const value = 1")
+
+  const syntaxStyle = SyntaxStyle.fromStyles({
+    default: { fg: RGBA.fromHex("#222222") },
+  })
+  codeRenderable.syntaxStyle = syntaxStyle
+  await renderOnce()
+
+  expect(codeRenderable.syntaxStyle).toBe(syntaxStyle)
 })
 
 test("CodeRenderable - handles empty content", async () => {

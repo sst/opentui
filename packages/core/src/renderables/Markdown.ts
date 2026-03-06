@@ -15,6 +15,7 @@ import {
   type TextTableContent,
 } from "./TextTable"
 import type { TreeSitterClient } from "../lib/tree-sitter"
+import { extToFiletype } from "../lib/tree-sitter/resolve-ft"
 import { parseMarkdownIncremental, type ParseState } from "./markdown-parser"
 import type { OptimizedBuffer } from "../buffer"
 import { detectLinks } from "../lib/detect-links"
@@ -246,6 +247,18 @@ export class MarkdownRenderable extends Renderable {
     this.applyTableOptionsToBlocks()
   }
 
+  get renderNode(): MarkdownOptions["renderNode"] | undefined {
+    return this._renderNode
+  }
+
+  set renderNode(value: MarkdownOptions["renderNode"] | undefined) {
+    if (this._renderNode !== value) {
+      this._renderNode = value
+      this.updateBlocks(true)
+      this.requestRender()
+    }
+  }
+
   private getStyle(group: string): StyleDefinition | undefined {
     // The solid reconciler applies props via setters in JSX declaration order.
     // If `content` is set before `syntaxStyle`, updateBlocks() runs before
@@ -440,16 +453,73 @@ export class MarkdownRenderable extends Renderable {
     })
   }
 
+  private resolveCodeFiletype(lang: string | undefined): string | undefined {
+    if (!lang) return undefined
+    const token = lang.trim().split(/\s+/, 1)[0]
+    if (!token) return undefined
+    const normalized = token.toLowerCase()
+    return extToFiletype(normalized) ?? normalized
+  }
+
+  private getCodeBlockStyle(): StyleDefinition | undefined {
+    const base = this.getStyle("default")
+    const raw = this.getStyle("markup.raw.block") ?? this.getStyle("markup.raw")
+    if (!base && !raw) return undefined
+    return {
+      fg: base?.fg ?? raw?.fg,
+      bg: raw?.bg ?? base?.bg,
+      bold: base?.bold ?? raw?.bold,
+      italic: base?.italic ?? raw?.italic,
+      underline: base?.underline ?? raw?.underline,
+      dim: base?.dim ?? raw?.dim,
+    }
+  }
+
+  private applyCodeBlockStyle(renderable: CodeRenderable, token: Tokens.Code): void {
+    const style = this.getCodeBlockStyle()
+    if (!style) {
+      renderable.fg = undefined
+      renderable.bg = undefined
+      renderable.attributes = 0
+      return
+    }
+    renderable.fg = style.fg
+    renderable.bg = style.bg
+    if (token.lang) {
+      renderable.attributes = 0
+      return
+    }
+    renderable.attributes = createTextAttributes({
+      bold: style.bold,
+      italic: style.italic,
+      underline: style.underline,
+      dim: style.dim,
+    })
+  }
+
   private createCodeRenderable(token: Tokens.Code, id: string, marginBottom: number = 0): Renderable {
+    const style = this.getCodeBlockStyle()
+    const filetype = this.resolveCodeFiletype(token.lang)
+    const attrs = token.lang
+      ? 0
+      : createTextAttributes({
+          bold: style?.bold,
+          italic: style?.italic,
+          underline: style?.underline,
+          dim: style?.dim,
+        })
     return new CodeRenderable(this.ctx, {
       id,
       content: token.text,
-      filetype: token.lang || undefined,
+      filetype,
       syntaxStyle: this._syntaxStyle,
       conceal: this._concealCode,
       drawUnstyledText: !(this._streaming && this._concealCode),
       streaming: this._streaming,
       treeSitterClient: this._treeSitterClient,
+      fg: style?.fg,
+      bg: style?.bg,
+      attributes: attrs,
       width: "100%",
       marginBottom,
     })
@@ -467,12 +537,13 @@ export class MarkdownRenderable extends Renderable {
 
   private applyCodeBlockRenderable(renderable: CodeRenderable, token: Tokens.Code, marginBottom: number): void {
     renderable.content = token.text
-    renderable.filetype = token.lang || undefined
+    renderable.filetype = this.resolveCodeFiletype(token.lang)
     renderable.syntaxStyle = this._syntaxStyle
     renderable.conceal = this._concealCode
     renderable.drawUnstyledText = !(this._streaming && this._concealCode)
     renderable.streaming = this._streaming
     renderable.marginBottom = marginBottom
+    this.applyCodeBlockStyle(renderable, token)
   }
 
   private shouldRenderSeparately(token: MarkedToken): boolean {
