@@ -457,12 +457,12 @@ export class MarkdownRenderable extends Renderable {
     const raw = this.getStyle("markup.raw.block") ?? this.getStyle("markup.raw")
     if (!base && !raw) return undefined
     return {
-      fg: raw?.fg ?? base?.fg,
+      fg: base?.fg ?? raw?.fg,
       bg: raw?.bg ?? base?.bg,
-      bold: raw?.bold ?? base?.bold,
-      italic: raw?.italic ?? base?.italic,
-      underline: raw?.underline ?? base?.underline,
-      dim: raw?.dim ?? base?.dim,
+      bold: base?.bold ?? raw?.bold,
+      italic: base?.italic ?? raw?.italic,
+      underline: base?.underline ?? raw?.underline,
+      dim: base?.dim ?? raw?.dim,
     }
   }
 

@@ -696,7 +696,7 @@ with multiple lines
   `)
 })
 
-test("code block without language uses markdown raw block style", async () => {
+test("code block without language uses default foreground and raw block background", async () => {
   const style = SyntaxStyle.fromStyles({
     default: { fg: RGBA.fromHex("#111111") },
     "markup.raw.block": {
@@ -718,8 +718,31 @@ foo
 
   const span = captureSpans().lines[0]?.spans[0]
   expect(span?.text).toContain("foo")
-  expect(span?.fg.equals(RGBA.fromHex("#00aa00"))).toBe(true)
+  expect(span?.fg.equals(RGBA.fromHex("#111111"))).toBe(true)
   expect(span?.bg.equals(RGBA.fromHex("#220000"))).toBe(true)
+})
+
+test("code block without language falls back to raw block foreground when default is missing", async () => {
+  const style = SyntaxStyle.fromStyles({
+    "markup.raw.block": {
+      fg: RGBA.fromHex("#00aa00"),
+    },
+  })
+
+  const md = createMarkdownRenderable({
+    id: "styled-code-block-raw-fallback",
+    content: `\`\`\`
+foo
+\`\`\``,
+    syntaxStyle: style,
+  })
+
+  renderer.root.add(md)
+  await renderMarkdownRenderable(md)
+
+  const span = captureSpans().lines[0]?.spans[0]
+  expect(span?.text).toContain("foo")
+  expect(span?.fg.equals(RGBA.fromHex("#00aa00"))).toBe(true)
 })
 
 test("code block mixed with text", async () => {
