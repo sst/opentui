@@ -9,9 +9,9 @@ let currentMockInput: MockInput
 
 function flushNativeParserTimeout(renderer: TestRenderer): void {
   // @ts-expect-error - test-only access to private parser
-  const parser = renderer.nativeStdinParser
+  const parser = renderer.stdinParser
   if (!parser) {
-    throw new Error("nativeStdinParser unavailable in test renderer")
+    throw new Error("stdinParser unavailable in test renderer")
   }
 
   parser.flushTimeout(Date.now() + 1000)

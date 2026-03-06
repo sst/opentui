@@ -10,7 +10,7 @@ import {
   type LineInfo,
   type MousePointerStyle,
 } from "./types"
-export type { LineInfo, AllocatorStats, BuildOptions, StdinToken, StdinPayloadRef, StdinParserOptions }
+export type { LineInfo, AllocatorStats, BuildOptions }
 
 import { RGBA } from "./lib/RGBA"
 import { OptimizedBuffer } from "./buffer"
@@ -33,8 +33,6 @@ import {
   ReserveInfoStruct,
   BuildOptionsStruct,
   AllocatorStatsStruct,
-  StdinPayloadRefStruct,
-  StdinParserOptionsStruct,
 } from "./zig-structs"
 import type {
   NativeSpanFeedOptions,
@@ -42,9 +40,6 @@ import type {
   ReserveInfo,
   BuildOptions,
   AllocatorStats,
-  StdinToken,
-  StdinPayloadRef,
-  StdinParserOptions,
 } from "./zig-structs"
 import { isBunfsPath } from "./lib/bunfs"
 
@@ -1130,32 +1125,6 @@ function getOpenTUILib(libPath?: string) {
       args: ["ptr", "ptr"],
       returns: "void",
     },
-
-    // Stdin parser
-    createStdinParser: {
-      args: ["ptr"],
-      returns: "ptr",
-    },
-    destroyStdinParser: {
-      args: ["ptr"],
-      returns: "void",
-    },
-    stdinParserPush: {
-      args: ["ptr", "ptr", "usize"],
-      returns: "i32",
-    },
-    stdinParserNext: {
-      args: ["ptr", "ptr", "ptr"],
-      returns: "i32",
-    },
-    stdinParserFlushTimeout: {
-      args: ["ptr", "u64"],
-      returns: "i32",
-    },
-    stdinParserReset: {
-      args: ["ptr"],
-      returns: "i32",
-    },
   })
 
   if (env.OTUI_DEBUG_FFI || env.OTUI_TRACE_FFI) {
@@ -1859,17 +1828,6 @@ export interface RenderLib {
   streamGetStats: (stream: Pointer) => NativeSpanFeedStats | null
   streamReserve: (stream: Pointer, minLen: number) => { status: number; info: ReserveInfo | null }
   streamCommitReserved: (stream: Pointer, length: number) => number
-
-  createStdinParser: (options?: StdinParserOptions | null) => Pointer
-  destroyStdinParser: (parser: Pointer) => void
-  stdinParserPush: (parser: Pointer, data: Uint8Array) => number
-  stdinParserNext: (
-    parser: Pointer,
-    tokenOut: ArrayBuffer,
-    payloadRefOut: ArrayBuffer,
-  ) => { status: number; payload: StdinPayloadRef }
-  stdinParserFlushTimeout: (parser: Pointer, nowMs: number) => number
-  stdinParserReset: (parser: Pointer) => number
 
   onNativeEvent: (name: string, handler: (data: ArrayBuffer) => void) => void
   onceNativeEvent: (name: string, handler: (data: ArrayBuffer) => void) => void
@@ -3790,47 +3748,6 @@ class FFIRenderLib implements RenderLib {
 
   public streamCommitReserved(stream: Pointer, length: number): number {
     return this.opentui.symbols.streamCommitReserved(stream, length)
-  }
-
-  public createStdinParser(options?: StdinParserOptions | null): Pointer {
-    const optionsBuffer = options == null ? null : StdinParserOptionsStruct.pack(options)
-    const parserPtr = this.opentui.symbols.createStdinParser(optionsBuffer ? ptr(optionsBuffer) : null)
-    if (!parserPtr) {
-      throw new Error("Failed to create stdin parser")
-    }
-    return toPointer(parserPtr)
-  }
-
-  public destroyStdinParser(parser: Pointer): void {
-    this.opentui.symbols.destroyStdinParser(parser)
-  }
-
-  public stdinParserPush(parser: Pointer, data: Uint8Array): number {
-    if (data.length === 0) {
-      return 0
-    }
-
-    return this.opentui.symbols.stdinParserPush(parser, ptr(data), data.length)
-  }
-
-  public stdinParserNext(
-    parser: Pointer,
-    tokenOut: ArrayBuffer,
-    payloadRefOut: ArrayBuffer,
-  ): { status: number; payload: StdinPayloadRef } {
-    const status = this.opentui.symbols.stdinParserNext(parser, ptr(tokenOut), ptr(payloadRefOut))
-    return {
-      status,
-      payload: StdinPayloadRefStruct.unpack(payloadRefOut) as StdinPayloadRef,
-    }
-  }
-
-  public stdinParserFlushTimeout(parser: Pointer, nowMs: number): number {
-    return this.opentui.symbols.stdinParserFlushTimeout(parser, nowMs)
-  }
-
-  public stdinParserReset(parser: Pointer): number {
-    return this.opentui.symbols.stdinParserReset(parser)
   }
 
   public createSyntaxStyle(): Pointer {

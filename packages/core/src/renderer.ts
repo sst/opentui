@@ -34,9 +34,8 @@ import {
   isPixelResolutionResponse,
   parsePixelResolution,
 } from "./lib/terminal-capability-detection"
-import { NativeStdinParser } from "./lib/stdin-parser-native"
+import { StdinParser, type StdinToken } from "./lib/stdin-parser"
 import { StdinRouter } from "./lib/stdin-router"
-import type { StdinToken } from "./zig-structs"
 
 registerEnvVar({
   name: "OTUI_DUMP_CAPTURES",
@@ -426,11 +425,11 @@ export class CliRenderer extends EventEmitter implements RenderContext {
   private _console: TerminalConsole
   private _resolution: PixelResolution | null = null
   private _keyHandler: InternalKeyHandler
-  private nativeStdinParser: NativeStdinParser | null = null
+  private stdinParser: StdinParser | null = null
   private stdinRouter: StdinRouter | null = null
   private readonly stdinTextDecoder: TextDecoder = new TextDecoder()
-  private hasLoggedNativeStdinParserOverflow = false
-  private hasLoggedNativeStdinParserError = false
+  private hasLoggedStdinParserOverflow = false
+  private hasLoggedStdinParserError = false
 
   private animationRequest: Map<number, FrameRequestCallback> = new Map()
 
@@ -650,10 +649,9 @@ export class CliRenderer extends EventEmitter implements RenderContext {
     const stdinParserMaxBufferBytes = normalizeStdinParserMaxBufferBytes(
       config.stdinParserMaxBufferBytes ?? env.OTUI_STDIN_PARSER_MAX_BUFFER_BYTES,
     )
-    const stdinParserOptions = { timeoutMs: 10, maxBufferBytes: stdinParserMaxBufferBytes, reserved0: 0 }
-    const parserPtr = this.lib.createStdinParser(stdinParserOptions)
-    this.nativeStdinParser = new NativeStdinParser(this.lib, parserPtr, {
+    this.stdinParser = new StdinParser({
       timeoutMs: 10,
+      maxBufferBytes: stdinParserMaxBufferBytes,
       armTimeouts: true,
       onTimeoutFlush: () => {
         this.drainStdinParser()
@@ -1106,10 +1104,10 @@ export class CliRenderer extends EventEmitter implements RenderContext {
       return
     }
 
-    if (!this.nativeStdinParser) return
+    if (!this.stdinParser) return
 
     try {
-      const accepted = this.nativeStdinParser.push(data)
+      const accepted = this.stdinParser.push(data)
       if (!accepted) {
         this.handleStdinParserOverflow()
         return
@@ -1206,9 +1204,9 @@ export class CliRenderer extends EventEmitter implements RenderContext {
   }
 
   private drainStdinParser(): void {
-    if (!this.nativeStdinParser) return
+    if (!this.stdinParser) return
 
-    this.nativeStdinParser.drain((token, payload) => {
+    this.stdinParser.drain((token, payload) => {
       this.routeStdinToken(token, payload)
     })
   }
@@ -1250,30 +1248,30 @@ export class CliRenderer extends EventEmitter implements RenderContext {
   }
 
   private handleStdinParserOverflow(): void {
-    if (!this.hasLoggedNativeStdinParserOverflow) {
-      this.hasLoggedNativeStdinParserOverflow = true
+    if (!this.hasLoggedStdinParserOverflow) {
+      this.hasLoggedStdinParserOverflow = true
       if (process.env.NODE_ENV !== "test") {
-        console.warn("[stdin-parser-overflow] dropped pending stdin bytes after hitting native parser buffer limit")
+        console.warn("[stdin-parser-overflow] dropped pending stdin bytes after hitting parser buffer limit")
       }
     }
 
     try {
-      this.nativeStdinParser?.reset()
+      this.stdinParser?.reset()
     } catch (error) {
       console.error("stdin parser reset failed after overflow", error)
     }
   }
 
   private handleStdinParserFailure(error: unknown): void {
-    if (!this.hasLoggedNativeStdinParserError) {
-      this.hasLoggedNativeStdinParserError = true
+    if (!this.hasLoggedStdinParserError) {
+      this.hasLoggedStdinParserError = true
       if (process.env.NODE_ENV !== "test") {
-        console.error("[stdin-parser-error] native parser failure, resetting parser", error)
+        console.error("[stdin-parser-error] parser failure, resetting parser", error)
       }
     }
 
     try {
-      this.nativeStdinParser?.reset()
+      this.stdinParser?.reset()
     } catch (resetError) {
       console.error("stdin parser reset failed after parser error", resetError)
     }
@@ -1307,7 +1305,7 @@ export class CliRenderer extends EventEmitter implements RenderContext {
     }
 
     this.stdin.resume()
-    // Keep raw bytes for native parser
+    // Keep raw bytes for stdin parser
     this.stdin.on("data", this.stdinListener)
   }
 
@@ -1835,7 +1833,7 @@ export class CliRenderer extends EventEmitter implements RenderContext {
 
     this.disableMouse()
     this.removeExitListeners()
-    this.nativeStdinParser?.reset()
+    this.stdinParser?.reset()
     this.stdin.removeListener("data", this.stdinListener)
     this.lib.suspendRenderer(this.rendererPtr)
 
@@ -1990,8 +1988,8 @@ export class CliRenderer extends EventEmitter implements RenderContext {
       this.stdin.setRawMode(false)
     }
 
-    this.nativeStdinParser?.destroy()
-    this.nativeStdinParser = null
+    this.stdinParser?.destroy()
+    this.stdinParser = null
     this.stdinRouter?.destroy()
     this.stdinRouter = null
     this._console.destroy()
