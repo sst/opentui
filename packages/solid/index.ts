@@ -4,9 +4,66 @@ import type { JSX } from "./jsx-runtime"
 import { RendererContext } from "./src/elements"
 import { _render as renderInternal, createComponent } from "./src/reconciler"
 
+type DisposeFn = () => void
+
+const createDisposeController = () => {
+  let dispose: DisposeFn | undefined
+  let disposeRequested = false
+  let disposed = false
+
+  const requestDispose = () => {
+    if (disposed) {
+      return
+    }
+
+    if (!dispose) {
+      disposeRequested = true
+      return
+    }
+
+    disposed = true
+    dispose()
+  }
+
+  const setDispose = (nextDispose: DisposeFn) => {
+    dispose = nextDispose
+
+    if (disposeRequested) {
+      requestDispose()
+    }
+  }
+
+  return { requestDispose, setDispose }
+}
+
+const mountWithDestroyGuard = (renderer: CliRenderer, mount: () => void) => {
+  const originalDestroy = renderer.destroy.bind(renderer)
+  let mounting = true
+  let destroyRequested = false
+
+  renderer.destroy = () => {
+    if (mounting) {
+      destroyRequested = true
+      return
+    }
+
+    originalDestroy()
+  }
+
+  try {
+    mount()
+  } finally {
+    mounting = false
+    renderer.destroy = originalDestroy
+  }
+
+  if (destroyRequested) {
+    originalDestroy()
+  }
+}
+
 export const render = async (node: () => JSX.Element, rendererOrConfig: CliRenderer | CliRendererConfig = {}) => {
-  let isDisposed = false
-  let dispose: () => void
+  const { requestDispose, setDispose } = createDisposeController()
 
   const renderer =
     rendererOrConfig instanceof CliRenderer
@@ -14,65 +71,62 @@ export const render = async (node: () => JSX.Element, rendererOrConfig: CliRende
       : await createCliRenderer({
           ...rendererOrConfig,
           onDestroy: () => {
-            if (!isDisposed) {
-              isDisposed = true
-              dispose()
-            }
             rendererOrConfig.onDestroy?.()
           },
         })
 
-  if (rendererOrConfig instanceof CliRenderer) {
-    renderer.on("destroy", () => {
-      if (!isDisposed) {
-        isDisposed = true
-        dispose()
-      }
-    })
-  }
+  renderer.once("destroy", requestDispose)
 
   engine.attach(renderer)
 
-  dispose = renderInternal(
-    () =>
-      createComponent(RendererContext.Provider, {
-        get value() {
-          return renderer
-        },
-        get children() {
-          return createComponent(node, {})
-        },
-      }),
-    renderer.root,
-  )
+  mountWithDestroyGuard(renderer, () => {
+    setDispose(
+      renderInternal(
+        () =>
+          createComponent(RendererContext.Provider, {
+            get value() {
+              return renderer
+            },
+            get children() {
+              return createComponent(node, {})
+            },
+          }),
+        renderer.root,
+      ),
+    )
+  })
 }
 
 export const testRender = async (node: () => JSX.Element, renderConfig: TestRendererOptions = {}) => {
-  let isDisposed = false
+  const { requestDispose, setDispose } = createDisposeController()
+
   const testSetup = await createTestRenderer({
     ...renderConfig,
     onDestroy: () => {
-      if (!isDisposed) {
-        isDisposed = true
-        dispose()
-      }
       renderConfig.onDestroy?.()
     },
   })
+
+  testSetup.renderer.once("destroy", requestDispose)
+
   engine.attach(testSetup.renderer)
 
-  const dispose = renderInternal(
-    () =>
-      createComponent(RendererContext.Provider, {
-        get value() {
-          return testSetup.renderer
-        },
-        get children() {
-          return createComponent(node, {})
-        },
-      }),
-    testSetup.renderer.root,
-  )
+  mountWithDestroyGuard(testSetup.renderer, () => {
+    setDispose(
+      renderInternal(
+        () =>
+          createComponent(RendererContext.Provider, {
+            get value() {
+              return testSetup.renderer
+            },
+            get children() {
+              return createComponent(node, {})
+            },
+          }),
+        testSetup.renderer.root,
+      ),
+    )
+  })
 
   return testSetup
 }
