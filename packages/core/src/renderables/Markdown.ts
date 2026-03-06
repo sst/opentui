@@ -15,6 +15,7 @@ import {
   type TextTableContent,
 } from "./TextTable"
 import type { TreeSitterClient } from "../lib/tree-sitter"
+import { extToFiletype } from "../lib/tree-sitter/resolve-ft"
 import { parseMarkdownIncremental, type ParseState } from "./markdown-parser"
 import type { OptimizedBuffer } from "../buffer"
 import { detectLinks } from "../lib/detect-links"
@@ -452,6 +453,11 @@ export class MarkdownRenderable extends Renderable {
     })
   }
 
+  private resolveCodeFiletype(lang: string | undefined): string | undefined {
+    if (!lang) return undefined
+    return extToFiletype(lang) ?? lang
+  }
+
   private getCodeBlockStyle(): StyleDefinition | undefined {
     const base = this.getStyle("default")
     const raw = this.getStyle("markup.raw.block") ?? this.getStyle("markup.raw")
@@ -466,11 +472,20 @@ export class MarkdownRenderable extends Renderable {
     }
   }
 
-  private applyCodeBlockStyle(renderable: CodeRenderable): void {
+  private applyCodeBlockStyle(renderable: CodeRenderable, token: Tokens.Code): void {
     const style = this.getCodeBlockStyle()
-    if (!style) return
-    if (style.fg) renderable.fg = style.fg
-    if (style.bg) renderable.bg = style.bg
+    if (!style) {
+      renderable.fg = undefined
+      renderable.bg = undefined
+      renderable.attributes = 0
+      return
+    }
+    renderable.fg = token.lang ? undefined : style.fg
+    renderable.bg = style.bg
+    if (token.lang) {
+      renderable.attributes = 0
+      return
+    }
     renderable.attributes = createTextAttributes({
       bold: style.bold,
       italic: style.italic,
@@ -481,23 +496,27 @@ export class MarkdownRenderable extends Renderable {
 
   private createCodeRenderable(token: Tokens.Code, id: string, marginBottom: number = 0): Renderable {
     const style = this.getCodeBlockStyle()
+    const filetype = this.resolveCodeFiletype(token.lang)
+    const attrs = token.lang
+      ? 0
+      : createTextAttributes({
+          bold: style?.bold,
+          italic: style?.italic,
+          underline: style?.underline,
+          dim: style?.dim,
+        })
     return new CodeRenderable(this.ctx, {
       id,
       content: token.text,
-      filetype: token.lang || undefined,
+      filetype,
       syntaxStyle: this._syntaxStyle,
       conceal: this._concealCode,
       drawUnstyledText: !(this._streaming && this._concealCode),
       streaming: this._streaming,
       treeSitterClient: this._treeSitterClient,
-      fg: style?.fg,
+      fg: token.lang ? undefined : style?.fg,
       bg: style?.bg,
-      attributes: createTextAttributes({
-        bold: style?.bold,
-        italic: style?.italic,
-        underline: style?.underline,
-        dim: style?.dim,
-      }),
+      attributes: attrs,
       width: "100%",
       marginBottom,
     })
@@ -515,13 +534,13 @@ export class MarkdownRenderable extends Renderable {
 
   private applyCodeBlockRenderable(renderable: CodeRenderable, token: Tokens.Code, marginBottom: number): void {
     renderable.content = token.text
-    renderable.filetype = token.lang || undefined
+    renderable.filetype = this.resolveCodeFiletype(token.lang)
     renderable.syntaxStyle = this._syntaxStyle
     renderable.conceal = this._concealCode
     renderable.drawUnstyledText = !(this._streaming && this._concealCode)
     renderable.streaming = this._streaming
     renderable.marginBottom = marginBottom
-    this.applyCodeBlockStyle(renderable)
+    this.applyCodeBlockStyle(renderable, token)
   }
 
   private shouldRenderSeparately(token: MarkedToken): boolean {

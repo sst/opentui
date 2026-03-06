@@ -683,6 +683,47 @@ console.log(x);
   `)
 })
 
+test("code block language alias keeps syntax highlighting", async () => {
+  const style = SyntaxStyle.fromStyles({
+    default: { fg: RGBA.fromHex("#111111") },
+    keyword: { fg: RGBA.fromHex("#ff0000") },
+    variable: { fg: RGBA.fromHex("#00ffff") },
+    number: { fg: RGBA.fromHex("#ff00ff") },
+    "markup.raw.block": {
+      fg: RGBA.fromHex("#00aa00"),
+      bg: RGBA.fromHex("#220000"),
+    },
+  })
+
+  const md = createMarkdownRenderable({
+    id: "styled-code-block-with-alias",
+    content: `\`\`\`ts
+const x = 1
+\`\`\``,
+    syntaxStyle: style,
+  })
+
+  renderer.root.add(md)
+  await renderMarkdownRenderable(md)
+
+  const startedAt = Date.now()
+  while (
+    md
+      .getChildren()
+      .some((child) => child instanceof CodeRenderable && child.filetype === "typescript" && child.isHighlighting)
+  ) {
+    if (Date.now() - startedAt > 2000) {
+      throw new Error("Timed out waiting for typescript highlights")
+    }
+    await Bun.sleep(10)
+    await renderOnce()
+  }
+
+  const spans = captureSpans().lines[0]?.spans ?? []
+  expect(spans.some((span) => span.text.includes("const") && span.fg.equals(RGBA.fromHex("#ff0000")))).toBe(true)
+  expect(spans.some((span) => span.bg.equals(RGBA.fromHex("#220000")))).toBe(true)
+})
+
 test("code block without language", async () => {
   const markdown = `\`\`\`
 plain code block
