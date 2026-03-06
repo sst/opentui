@@ -3,7 +3,9 @@ import { join } from "node:path"
 
 const fixturePath = join(import.meta.dir, "destroy-race.fixture.tsx")
 
-const runFixture = (mode: "external" | "helper") => {
+type Mode = "external" | "helper" | "external-active" | "helper-active"
+
+const runFixture = (mode: Mode) => {
   const result = Bun.spawnSync([process.execPath, fixturePath, mode], {
     cwd: join(import.meta.dir, ".."),
     stdout: "pipe",
@@ -34,6 +36,18 @@ describe("destroy race regressions", () => {
 
   it("does not crash when renderer is destroyed during initial render (testRender helper path)", () => {
     const { result } = runFixture("helper")
+
+    expect(result.exitCode).toBe(0)
+  })
+
+  it("does not crash when renderer is destroyed in an active render pass (external renderer path)", () => {
+    const { result } = runFixture("external-active")
+
+    expect(result.exitCode).toBe(0)
+  })
+
+  it("does not crash when renderer is destroyed in an active render pass (testRender helper path)", () => {
+    const { result } = runFixture("helper-active")
 
     expect(result.exitCode).toBe(0)
   })
