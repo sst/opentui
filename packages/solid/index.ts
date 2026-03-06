@@ -6,12 +6,16 @@ import { _render as renderInternal, createComponent } from "./src/reconciler"
 
 type DisposeFn = () => void
 
-const createDisposeController = () => {
+const mountSolidRoot = (renderer: CliRenderer, node: () => JSX.Element) => {
   let dispose: DisposeFn | undefined
   let disposeRequested = false
   let disposed = false
+  let mounting = true
+  let destroyRequested = false
 
-  const requestDispose = () => {
+  const originalDestroy = renderer.destroy.bind(renderer)
+
+  const runDispose = () => {
     if (disposed) {
       return
     }
@@ -25,21 +29,7 @@ const createDisposeController = () => {
     dispose()
   }
 
-  const setDispose = (nextDispose: DisposeFn) => {
-    dispose = nextDispose
-
-    if (disposeRequested) {
-      requestDispose()
-    }
-  }
-
-  return { requestDispose, setDispose }
-}
-
-const mountWithDestroyGuard = (renderer: CliRenderer, mount: () => void) => {
-  const originalDestroy = renderer.destroy.bind(renderer)
-  let mounting = true
-  let destroyRequested = false
+  renderer.once("destroy", runDispose)
 
   renderer.destroy = () => {
     if (mounting) {
@@ -51,10 +41,25 @@ const mountWithDestroyGuard = (renderer: CliRenderer, mount: () => void) => {
   }
 
   try {
-    mount()
+    dispose = renderInternal(
+      () =>
+        createComponent(RendererContext.Provider, {
+          get value() {
+            return renderer
+          },
+          get children() {
+            return createComponent(node, {})
+          },
+        }),
+      renderer.root,
+    )
   } finally {
     mounting = false
     renderer.destroy = originalDestroy
+  }
+
+  if (disposeRequested) {
+    runDispose()
   }
 
   if (destroyRequested) {
@@ -63,8 +68,6 @@ const mountWithDestroyGuard = (renderer: CliRenderer, mount: () => void) => {
 }
 
 export const render = async (node: () => JSX.Element, rendererOrConfig: CliRenderer | CliRendererConfig = {}) => {
-  const { requestDispose, setDispose } = createDisposeController()
-
   const renderer =
     rendererOrConfig instanceof CliRenderer
       ? rendererOrConfig
@@ -75,31 +78,11 @@ export const render = async (node: () => JSX.Element, rendererOrConfig: CliRende
           },
         })
 
-  renderer.once("destroy", requestDispose)
-
   engine.attach(renderer)
-
-  mountWithDestroyGuard(renderer, () => {
-    setDispose(
-      renderInternal(
-        () =>
-          createComponent(RendererContext.Provider, {
-            get value() {
-              return renderer
-            },
-            get children() {
-              return createComponent(node, {})
-            },
-          }),
-        renderer.root,
-      ),
-    )
-  })
+  mountSolidRoot(renderer, node)
 }
 
 export const testRender = async (node: () => JSX.Element, renderConfig: TestRendererOptions = {}) => {
-  const { requestDispose, setDispose } = createDisposeController()
-
   const testSetup = await createTestRenderer({
     ...renderConfig,
     onDestroy: () => {
@@ -107,26 +90,8 @@ export const testRender = async (node: () => JSX.Element, renderConfig: TestRend
     },
   })
 
-  testSetup.renderer.once("destroy", requestDispose)
-
   engine.attach(testSetup.renderer)
-
-  mountWithDestroyGuard(testSetup.renderer, () => {
-    setDispose(
-      renderInternal(
-        () =>
-          createComponent(RendererContext.Provider, {
-            get value() {
-              return testSetup.renderer
-            },
-            get children() {
-              return createComponent(node, {})
-            },
-          }),
-        testSetup.renderer.root,
-      ),
-    )
-  })
+  mountSolidRoot(testSetup.renderer, node)
 
   return testSetup
 }
