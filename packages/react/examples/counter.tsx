@@ -16,5 +16,7 @@ export const App = () => {
   return <text content={`${counter} tests passed...`} fg="#00FF00" />
 }
 
-const renderer = await createCliRenderer()
-createRoot(renderer).render(<App />)
+if (import.meta.main) {
+  const renderer = await createCliRenderer()
+  createRoot(renderer).render(<App />)
+}
