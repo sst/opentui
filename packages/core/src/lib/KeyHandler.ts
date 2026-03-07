@@ -101,13 +101,7 @@ export class KeyHandler extends EventEmitter<KeyHandlerEventMap> {
     this.useKittyKeyboard = useKittyKeyboard
   }
 
-  public processInput(data: string): boolean {
-    const parsedKey = parseKeypress(data, { useKittyKeyboard: this.useKittyKeyboard })
-
-    if (!parsedKey) {
-      return false
-    }
-
+  public processParsedKey(parsedKey: ParsedKey): boolean {
     try {
       switch (parsedKey.eventType) {
         case "press":
@@ -121,11 +115,20 @@ export class KeyHandler extends EventEmitter<KeyHandlerEventMap> {
           break
       }
     } catch (error) {
-      console.error(`[KeyHandler] Error processing input:`, error)
+      console.error(`[KeyHandler] Error processing parsed key:`, error)
       return true
     }
 
     return true
+  }
+
+  public processInput(data: string): boolean {
+    const parsedKey = parseKeypress(data, { useKittyKeyboard: this.useKittyKeyboard })
+    if (!parsedKey) {
+      return false
+    }
+
+    return this.processParsedKey(parsedKey)
   }
 
   public processPaste(data: string): void {

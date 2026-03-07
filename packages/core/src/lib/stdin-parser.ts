@@ -1,140 +1,154 @@
 import { Buffer } from "node:buffer"
+import { parseKeypress, type ParsedKey } from "./parse.keypress"
+import { MouseParser, type RawMouseEvent } from "./parse.mouse"
 
-export const StdinTokenKind = {
-  text: "text",
-  csi: "csi",
-  osc: "osc",
-  dcs: "dcs",
-  apc: "apc",
-  ss3: "ss3",
-  mouse_sgr: "mouse_sgr",
-  mouse_x10: "mouse_x10",
-  paste: "paste",
-  esc: "esc",
-  unknown: "unknown",
-} as const
+export type StdinResponseProtocol = "csi" | "osc" | "dcs" | "apc" | "unknown"
 
-export type StdinTokenKind = (typeof StdinTokenKind)[keyof typeof StdinTokenKind]
-
-export interface StdinToken {
-  kind: StdinTokenKind
-  flags: number
-  reserved0: number
-  aux0: number
-  aux1: number
-}
+export type StdinEvent =
+  | {
+      type: "key"
+      raw: string
+      key: ParsedKey
+    }
+  | {
+      type: "mouse"
+      raw: string
+      encoding: "sgr" | "x10"
+      event: RawMouseEvent
+    }
+  | {
+      type: "paste"
+      text: string
+    }
+  | {
+      type: "response"
+      protocol: StdinResponseProtocol
+      sequence: string
+    }
 
 export interface StdinParserOptions {
   timeoutMs?: number
-  maxBufferBytes?: number
+  maxPendingBytes?: number
   armTimeouts?: boolean
   onTimeoutFlush?: () => void
-  reserved0?: number
+  useKittyKeyboard?: boolean
 }
 
-export const StdinParserNextStatus = {
-  none: "none",
-  pending: "pending",
-  token: "token",
-} as const
+type ParserState =
+  | { tag: "ground" }
+  | { tag: "utf8"; expected: number; seen: number }
+  | { tag: "esc" }
+  | { tag: "ss3" }
+  | { tag: "csi" }
+  | { tag: "osc"; sawEsc: boolean }
+  | { tag: "dcs"; sawEsc: boolean }
+  | { tag: "apc"; sawEsc: boolean }
+  | { tag: "esc_less_mouse" }
 
-export type StdinParserNextStatus = (typeof StdinParserNextStatus)[keyof typeof StdinParserNextStatus]
-
-export type StdinParserNextResult =
-  | { status: typeof StdinParserNextStatus.none }
-  | { status: typeof StdinParserNextStatus.pending }
-  | {
-      status: typeof StdinParserNextStatus.token
-      token: StdinToken
-      payload: Uint8Array
-    }
+interface PasteCollector {
+  tail: Uint8Array
+  decoder: TextDecoder
+  parts: string[]
+}
 
 const DEFAULT_TIMEOUT_MS = 10
-const DEFAULT_MAX_BUFFER_BYTES = 64 * 1024
-const INITIAL_BUFFER_CAPACITY = 128
+const DEFAULT_MAX_PENDING_BYTES = 64 * 1024
+const INITIAL_PENDING_CAPACITY = 256
 const ESC = 0x1b
 const BEL = 0x07
 const BRACKETED_PASTE_START = Buffer.from("\x1b[200~")
 const BRACKETED_PASTE_END = Buffer.from("\x1b[201~")
-const EMPTY_PAYLOAD = new Uint8Array(0)
+const EMPTY_BYTES = new Uint8Array(0)
+const KEY_DECODER = new TextDecoder()
+const RXVT_DOLLAR_CSI_RE = /^\x1b\[\d+\$$/
 
-type CandidateToken = {
-  kind: StdinTokenKind
-  consumed: number
-  payloadStart: number
-  payloadLen: number
-  clearPasteMode?: boolean
-}
+class ByteQueue {
+  private buf: Uint8Array
+  private start = 0
+  private end = 0
 
-type ParseResult =
-  | { type: "none" }
-  | { type: "incomplete" }
-  | { type: "consume"; consumed: number; clearPasteMode?: boolean }
-  | { type: "token"; candidate: CandidateToken }
-
-type EscapeParseState = "start" | "esc" | "csi" | "osc" | "osc_escape" | "st" | "st_escape"
-
-class ByteBuffer {
-  private storage: Uint8Array
-  public length = 0
-
-  constructor(capacity: number = INITIAL_BUFFER_CAPACITY) {
-    this.storage = new Uint8Array(capacity)
+  constructor(capacity = INITIAL_PENDING_CAPACITY) {
+    this.buf = new Uint8Array(capacity)
   }
 
-  public get capacity(): number {
-    return this.storage.length
+  get length(): number {
+    return this.end - this.start
   }
 
-  public get items(): Uint8Array {
-    return this.storage.subarray(0, this.length)
+  get capacity(): number {
+    return this.buf.length
   }
 
-  public append(bytes: Uint8Array): void {
-    if (bytes.length === 0) {
+  view(): Uint8Array {
+    return this.buf.subarray(this.start, this.end)
+  }
+
+  append(chunk: Uint8Array): void {
+    if (chunk.length === 0) {
       return
     }
 
-    this.ensureTotalCapacityPrecise(this.length + bytes.length)
-    this.storage.set(bytes, this.length)
-    this.length += bytes.length
+    this.ensureCapacity(this.length + chunk.length)
+    this.buf.set(chunk, this.end)
+    this.end += chunk.length
   }
 
-  public clearRetainingCapacity(): void {
-    this.length = 0
-  }
-
-  public reset(capacity: number = INITIAL_BUFFER_CAPACITY): void {
-    this.storage = new Uint8Array(capacity)
-    this.length = 0
-  }
-
-  public ensureTotalCapacityPrecise(required: number): void {
-    if (required <= this.storage.length) {
+  consume(count: number): void {
+    if (count <= 0) {
       return
     }
 
-    const next = new Uint8Array(required)
-    next.set(this.storage.subarray(0, this.length))
-    this.storage = next
-  }
-
-  public consumePrefix(consumed: number): void {
-    if (consumed === 0) {
+    if (count >= this.length) {
+      this.start = 0
+      this.end = 0
       return
     }
 
-    if (consumed >= this.length) {
-      this.length = 0
-      return
+    this.start += count
+    if (this.start >= this.buf.length / 2) {
+      this.buf.copyWithin(0, this.start, this.end)
+      this.end -= this.start
+      this.start = 0
     }
-
-    this.storage.copyWithin(0, consumed, this.length)
-    this.length -= consumed
   }
 
-  public payload(start: number, end: number): Uint8Array {
-    return this.storage.subarray(start, end)
+  clear(): void {
+    this.start = 0
+    this.end = 0
+  }
+
+  reset(capacity = INITIAL_PENDING_CAPACITY): void {
+    this.buf = new Uint8Array(capacity)
+    this.start = 0
+    this.end = 0
+  }
+
+  private ensureCapacity(requiredLength: number): void {
+    const currentLength = this.length
+    if (requiredLength <= this.buf.length) {
+      const availableAtEnd = this.buf.length - this.end
+      if (availableAtEnd >= requiredLength - currentLength) {
+        return
+      }
+
+      this.buf.copyWithin(0, this.start, this.end)
+      this.end = currentLength
+      this.start = 0
+      if (requiredLength <= this.buf.length) {
+        return
+      }
+    }
+
+    let nextCapacity = this.buf.length
+    while (nextCapacity < requiredLength) {
+      nextCapacity *= 2
+    }
+
+    const next = new Uint8Array(nextCapacity)
+    next.set(this.view(), 0)
+    this.buf = next
+    this.start = 0
+    this.end = currentLength
   }
 }
 
@@ -146,22 +160,12 @@ function normalizePositiveOption(value: number | undefined, fallback: number): n
   return Math.floor(value)
 }
 
-function nowMs(): number {
-  return Math.max(Date.now(), 0)
-}
-
-function startsWithBytes(bytes: Uint8Array, prefix: Uint8Array): boolean {
-  if (bytes.length < prefix.length) {
-    return false
-  }
-
-  for (let index = 0; index < prefix.length; index += 1) {
-    if (bytes[index] !== prefix[index]) {
-      return false
-    }
-  }
-
-  return true
+function utf8SequenceLength(first: number): number {
+  if (first < 0x80) return 1
+  if (first >= 0xc2 && first <= 0xdf) return 2
+  if (first >= 0xe0 && first <= 0xef) return 3
+  if (first >= 0xf0 && first <= 0xf4) return 4
+  return 0
 }
 
 function bytesEqual(left: Uint8Array, right: Uint8Array): boolean {
@@ -178,146 +182,31 @@ function bytesEqual(left: Uint8Array, right: Uint8Array): boolean {
   return true
 }
 
-function createToken(kind: StdinTokenKind): StdinToken {
-  return {
-    kind,
-    flags: 0,
-    reserved0: 0,
-    aux0: 0,
-    aux1: 0,
-  }
-}
-
-function escapeToken(kind: StdinTokenKind, consumed: number): ParseResult {
-  return {
-    type: "token",
-    candidate: {
-      kind,
-      consumed,
-      payloadStart: 0,
-      payloadLen: consumed,
-    },
-  }
-}
-
-function utf8SequenceLength(first: number): number {
-  if (first < 0x80) return 1
-  if (first >= 0xc2 && first <= 0xdf) return 2
-  if (first >= 0xe0 && first <= 0xef) return 3
-  if (first >= 0xf0 && first <= 0xf4) return 4
-  return 0
-}
-
-function parseTextToken(bytes: Uint8Array): ParseResult {
-  if (bytes.length === 0) {
-    return { type: "none" }
-  }
-
-  const seqLen = utf8SequenceLength(bytes[0]!)
-  if (seqLen === 0) {
-    return {
-      type: "token",
-      candidate: {
-        kind: StdinTokenKind.unknown,
-        consumed: 1,
-        payloadStart: 0,
-        payloadLen: 1,
-      },
-    }
-  }
-
-  const available = Math.min(bytes.length, seqLen)
-  for (let index = 1; index < available; index += 1) {
-    if ((bytes[index]! & 0xc0) !== 0x80) {
-      return {
-        type: "token",
-        candidate: {
-          kind: StdinTokenKind.unknown,
-          consumed: 1,
-          payloadStart: 0,
-          payloadLen: 1,
-        },
-      }
-    }
-  }
-
-  if (bytes.length < seqLen) {
-    return { type: "incomplete" }
-  }
-
-  return {
-    type: "token",
-    candidate: {
-      kind: StdinTokenKind.text,
-      consumed: seqLen,
-      payloadStart: 0,
-      payloadLen: seqLen,
-    },
-  }
-}
-
-function parseEscLessSgrContinuation(bytes: Uint8Array): ParseResult {
-  if (!(bytes[0] === 0x5b && bytes[1] === 0x3c)) {
-    return { type: "none" }
-  }
-
-  let scanIndex = 2
-  while (scanIndex < bytes.length) {
-    const byte = bytes[scanIndex]!
-    if ((byte >= 0x30 && byte <= 0x39) || byte === 0x3b) {
-      scanIndex += 1
-      continue
-    }
-
-    if (byte === 0x4d || byte === 0x6d) {
-      const consumed = scanIndex + 1
-      return {
-        type: "token",
-        candidate: {
-          kind: StdinTokenKind.unknown,
-          consumed,
-          payloadStart: 0,
-          payloadLen: consumed,
-        },
-      }
-    }
-
-    return { type: "none" }
-  }
-
-  return { type: "incomplete" }
-}
-
-function isNestedEscapeSequenceStart(byte: number): boolean {
-  return byte === 0x5b || byte === 0x5d || byte === 0x4f || byte === 0x4e || byte === 0x50 || byte === 0x5f
-}
-
 function isMouseSgrSequence(sequence: Uint8Array): boolean {
-  if (!startsWithBytes(sequence, Buffer.from("\x1b[<"))) {
-    return false
-  }
-
   if (sequence.length < 7) {
     return false
   }
 
-  const final = sequence[sequence.length - 1]!
+  if (sequence[0] !== ESC || sequence[1] !== 0x5b || sequence[2] !== 0x3c) {
+    return false
+  }
+
+  const final = sequence[sequence.length - 1]
   if (final !== 0x4d && final !== 0x6d) {
     return false
   }
 
-  const body = sequence.subarray(3, sequence.length - 1)
-  let partCount = 0
+  let part = 0
   let hasDigit = false
-
-  for (const char of body) {
-    if (char >= 0x30 && char <= 0x39) {
+  for (let index = 3; index < sequence.length - 1; index += 1) {
+    const byte = sequence[index]!
+    if (byte >= 0x30 && byte <= 0x39) {
       hasDigit = true
       continue
     }
 
-    if (char === 0x3b && hasDigit && partCount < 2) {
-      partCount += 1
+    if (byte === 0x3b && hasDigit && part < 2) {
+      part += 1
       hasDigit = false
       continue
     }
@@ -325,289 +214,131 @@ function isMouseSgrSequence(sequence: Uint8Array): boolean {
     return false
   }
 
-  return partCount === 2 && hasDigit
+  return part === 2 && hasDigit
 }
 
-function parseEscapeToken(bytes: Uint8Array): ParseResult {
-  let index = 0
-  let stKind: StdinTokenKind = StdinTokenKind.unknown
-  let state: EscapeParseState = "start"
+function concatBytes(left: Uint8Array, right: Uint8Array): Uint8Array {
+  if (left.length === 0) {
+    return right
+  }
 
-  while (true) {
-    switch (state) {
-      case "start": {
-        if (bytes.length === 0) {
-          return { type: "none" }
-        }
+  if (right.length === 0) {
+    return left
+  }
 
-        if (bytes[0] !== ESC) {
-          return parseTextToken(bytes)
-        }
+  const combined = new Uint8Array(left.length + right.length)
+  combined.set(left, 0)
+  combined.set(right, left.length)
+  return combined
+}
 
-        if (bytes.length === 1) {
-          return { type: "incomplete" }
-        }
+function indexOfBytes(haystack: Uint8Array, needle: Uint8Array): number {
+  if (needle.length === 0) {
+    return 0
+  }
 
-        index = 1
-        state = "esc"
-        continue
-      }
-      case "esc": {
-        const byte = bytes[index]!
-
-        switch (byte) {
-          case 0x5b:
-            index += 1
-            state = "csi"
-            continue
-          case 0x5d:
-            index += 1
-            state = "osc"
-            continue
-          case 0x50:
-            stKind = StdinTokenKind.dcs
-            index += 1
-            state = "st"
-            continue
-          case 0x5f:
-            stKind = StdinTokenKind.apc
-            index += 1
-            state = "st"
-            continue
-          case 0x4f:
-            if (bytes.length < index + 2) {
-              return { type: "incomplete" }
-            }
-            return escapeToken(StdinTokenKind.ss3, index + 2)
-          case ESC:
-            if (index + 1 >= bytes.length) {
-              return { type: "incomplete" }
-            }
-            if (!isNestedEscapeSequenceStart(bytes[index + 1]!)) {
-              return escapeToken(StdinTokenKind.unknown, index + 1)
-            }
-            index += 1
-            state = "esc"
-            continue
-          default:
-            return escapeToken(StdinTokenKind.unknown, index + 1)
-        }
-      }
-      case "csi": {
-        if (index >= bytes.length) {
-          return { type: "incomplete" }
-        }
-
-        if (bytes[index] === 0x4d) {
-          const requiredLength = index + 4
-          if (bytes.length < requiredLength) {
-            return { type: "incomplete" }
-          }
-          return escapeToken(StdinTokenKind.mouse_x10, requiredLength)
-        }
-
-        let scanIndex = index
-        while (scanIndex < bytes.length) {
-          const byte = bytes[scanIndex]!
-          if (byte >= 0x40 && byte <= 0x7e) {
-            const consumed = scanIndex + 1
-            const kind = isMouseSgrSequence(bytes.subarray(0, consumed)) ? StdinTokenKind.mouse_sgr : StdinTokenKind.csi
-            return escapeToken(kind, consumed)
-          }
-
-          if (byte === ESC) {
-            return escapeToken(StdinTokenKind.unknown, scanIndex)
-          }
-
-          scanIndex += 1
-        }
-
-        return { type: "incomplete" }
-      }
-      case "osc": {
-        let scanIndex = index
-        while (scanIndex < bytes.length) {
-          const byte = bytes[scanIndex]!
-          if (byte === BEL) {
-            return escapeToken(StdinTokenKind.osc, scanIndex + 1)
-          }
-          if (byte === ESC) {
-            index = scanIndex
-            state = "osc_escape"
-            break
-          }
-          scanIndex += 1
-        }
-
-        if (state === "osc_escape") {
-          continue
-        }
-
-        return { type: "incomplete" }
-      }
-      case "osc_escape": {
-        if (index + 1 >= bytes.length) {
-          return { type: "incomplete" }
-        }
-        if (bytes[index + 1] === 0x5c) {
-          return escapeToken(StdinTokenKind.osc, index + 2)
-        }
-
-        index += 1
-        state = "osc"
-        continue
-      }
-      case "st": {
-        let scanIndex = index
-        while (scanIndex < bytes.length) {
-          if (bytes[scanIndex] === ESC) {
-            index = scanIndex
-            state = "st_escape"
-            break
-          }
-          scanIndex += 1
-        }
-
-        if (state === "st_escape") {
-          continue
-        }
-
-        return { type: "incomplete" }
-      }
-      case "st_escape": {
-        if (index + 1 >= bytes.length) {
-          return { type: "incomplete" }
-        }
-        if (bytes[index + 1] === 0x5c) {
-          return escapeToken(stKind, index + 2)
-        }
-
-        index += 1
-        state = "st"
-        continue
+  const limit = haystack.length - needle.length
+  for (let offset = 0; offset <= limit; offset += 1) {
+    let matched = true
+    for (let index = 0; index < needle.length; index += 1) {
+      if (haystack[offset + index] !== needle[index]) {
+        matched = false
+        break
       }
     }
+
+    if (matched) {
+      return offset
+    }
+  }
+
+  return -1
+}
+
+function decodeLatin1(bytes: Uint8Array): string {
+  return Buffer.from(bytes.buffer, bytes.byteOffset, bytes.byteLength).toString("latin1")
+}
+
+function decodeUtf8(bytes: Uint8Array): string {
+  return KEY_DECODER.decode(bytes)
+}
+
+function createPasteCollector(): PasteCollector {
+  return {
+    tail: EMPTY_BYTES,
+    decoder: new TextDecoder(),
+    parts: [],
   }
 }
 
 export class StdinParser {
-  private readonly buffer = new ByteBuffer(INITIAL_BUFFER_CAPACITY)
+  private readonly pending = new ByteQueue(INITIAL_PENDING_CAPACITY)
+  private readonly events: StdinEvent[] = []
   private readonly timeoutMs: number
-  private readonly maxBufferBytes: number
+  private readonly maxPendingBytes: number
   private readonly armTimeouts: boolean
   private readonly onTimeoutFlush: (() => void) | null
+  private readonly useKittyKeyboard: boolean
+  private readonly mouseParser = new MouseParser()
   private timeoutId: ReturnType<typeof setTimeout> | null = null
   private destroyed = false
-  private inPasteMode = false
-  private pasteEndIndex: number | null = null
-  private pasteEndMatchLen = 0
-  private discardingOversizedPaste = false
-  private discardPasteEndMatchLen = 0
   private pendingSinceMs: number | null = null
-  private flushPendingTimeout = false
-  private pendingConsumed = 0
-  private pendingClearPasteMode = false
-  private expectEscContinuation = false
+  private forceFlush = false
+  private state: ParserState = { tag: "ground" }
+  private cursor = 0
+  private unitStart = 0
+  private paste: PasteCollector | null = null
 
   constructor(options: StdinParserOptions = {}) {
     this.timeoutMs = normalizePositiveOption(options.timeoutMs, DEFAULT_TIMEOUT_MS)
-    this.maxBufferBytes = normalizePositiveOption(options.maxBufferBytes, DEFAULT_MAX_BUFFER_BYTES)
+    this.maxPendingBytes = normalizePositiveOption(options.maxPendingBytes, DEFAULT_MAX_PENDING_BYTES)
     this.armTimeouts = options.armTimeouts ?? true
     this.onTimeoutFlush = options.onTimeoutFlush ?? null
+    this.useKittyKeyboard = options.useKittyKeyboard ?? true
   }
 
   public get bufferCapacity(): number {
-    return this.buffer.capacity
+    return this.pending.capacity
   }
 
-  public push(data: Uint8Array): boolean {
+  public push(data: Uint8Array): void {
     this.ensureAlive()
     if (data.length === 0) {
-      return true
+      return
     }
 
-    const accepted = this.pushBytes(data)
-    if (accepted && this.armTimeouts) {
-      this.armTimeoutIfNeeded()
-    }
-    return accepted
-  }
+    let remainder = data
+    while (remainder.length > 0) {
+      if (this.paste) {
+        remainder = this.consumePasteBytes(remainder)
+        continue
+      }
 
-  public next(): StdinParserNextResult {
-    this.ensureAlive()
-    this.commitPendingToken()
+      this.pending.append(remainder.subarray(0, 1))
+      remainder = remainder.subarray(1)
+      this.scanPending()
 
-    while (true) {
-      const parsed = this.nextToken()
-
-      switch (parsed.type) {
-        case "none":
-          this.pendingSinceMs = null
-          this.flushPendingTimeout = false
-          return { status: StdinParserNextStatus.none }
-        case "incomplete": {
-          if (this.flushPendingTimeout && !this.inPasteMode && this.buffer.length > 0) {
-            const items = this.buffer.items
-            const first = items[0]!
-            const seqLen = utf8SequenceLength(first)
-            const shouldForceUnknown = seqLen === 0 || (items.length === 1 && seqLen > 1)
-
-            if (this.expectEscContinuation && startsWithBytes(items, Buffer.from("[<"))) {
-              this.expectEscContinuation = false
-              return this.stageNextToken({
-                kind: StdinTokenKind.unknown,
-                consumed: items.length,
-                payloadStart: 0,
-                payloadLen: items.length,
-              })
-            }
-
-            if (first === ESC || shouldForceUnknown) {
-              this.expectEscContinuation = first === ESC && items.length === 1
-              return this.stageNextToken(
-                first === ESC
-                  ? {
-                      kind: StdinTokenKind.esc,
-                      consumed: items.length,
-                      payloadStart: 0,
-                      payloadLen: items.length,
-                    }
-                  : {
-                      kind: StdinTokenKind.unknown,
-                      consumed: 1,
-                      payloadStart: 0,
-                      payloadLen: 1,
-                    },
-              )
-            }
-          }
-
-          if (this.hasPendingState()) {
-            if (this.pendingSinceMs === null) {
-              this.pendingSinceMs = nowMs()
-            }
-            return { status: StdinParserNextStatus.pending }
-          }
-
-          this.pendingSinceMs = null
-          this.flushPendingTimeout = false
-          return { status: StdinParserNextStatus.none }
-        }
-        case "consume":
-          this.consumePrefix(parsed.consumed)
-          if (parsed.clearPasteMode) {
-            this.inPasteMode = false
-            this.clearPasteEndMatcher()
-          }
-          this.flushPendingTimeout = false
-          continue
-        case "token":
-          return this.stageNextToken(parsed.candidate)
+      if (!this.paste && this.pending.length > this.maxPendingBytes) {
+        this.flushPendingOverflow()
+        this.scanPending()
       }
     }
+
+    this.reconcileTimeoutState()
   }
 
-  public drain(onToken: (token: StdinToken, payload: Uint8Array) => void): void {
+  public read(): StdinEvent | null {
+    this.ensureAlive()
+
+    if (this.events.length === 0 && this.forceFlush) {
+      this.scanPending()
+      this.reconcileTimeoutState()
+    }
+
+    return this.events.shift() ?? null
+  }
+
+  public drain(onEvent: (event: StdinEvent) => void): void {
     this.ensureAlive()
 
     while (true) {
@@ -615,39 +346,27 @@ export class StdinParser {
         return
       }
 
-      const next = this.next()
-      if (next.status === StdinParserNextStatus.token) {
-        onToken(next.token, next.payload.length === 0 ? EMPTY_PAYLOAD : next.payload.slice())
-        if (this.destroyed) {
-          return
-        }
-        continue
+      const event = this.read()
+      if (!event) {
+        return
       }
 
-      if (this.armTimeouts) {
-        this.reconcileTimeout(next.status === StdinParserNextStatus.pending)
-      }
-      return
+      onEvent(event)
     }
   }
 
   public flushTimeout(nowMsValue: number): void {
     this.ensureAlive()
-    const pendingSince = this.pendingSinceMs
-    if (pendingSince === null) {
-      return
-    }
-    if (this.inPasteMode) {
-      return
-    }
-    if (this.buffer.length === 0) {
-      return
-    }
-    if (nowMsValue < pendingSince || nowMsValue - pendingSince < this.timeoutMs) {
+
+    if (this.paste || this.pendingSinceMs === null || this.pending.length === 0) {
       return
     }
 
-    this.flushPendingTimeout = true
+    if (nowMsValue < this.pendingSinceMs || nowMsValue - this.pendingSinceMs < this.timeoutMs) {
+      return
+    }
+
+    this.forceFlush = true
   }
 
   public reset(): void {
@@ -675,274 +394,559 @@ export class StdinParser {
     }
   }
 
-  private pushBytes(bytes: Uint8Array): boolean {
-    if (this.discardingOversizedPaste) {
-      this.consumeDiscardedPasteBytes(bytes)
-      return true
-    }
-
-    this.commitPendingToken()
-
-    if (this.buffer.length + bytes.length > this.maxBufferBytes) {
-      if (this.inPasteMode) {
-        this.enterPasteOverflowDiscardMode()
-        this.consumeDiscardedPasteBytes(bytes)
-        return true
-      }
-
-      return false
-    }
-
-    const appendStart = this.buffer.length
-    this.buffer.append(bytes)
-
-    if (this.inPasteMode && this.pasteEndIndex === null) {
-      this.updatePasteEndMatcher(bytes, appendStart)
-    }
-
-    return true
-  }
-
-  private stageNextToken(candidate: CandidateToken): StdinParserNextResult {
-    const start = candidate.payloadStart
-    const end = start + candidate.payloadLen
-
-    this.pendingConsumed = candidate.consumed
-    this.pendingClearPasteMode = candidate.clearPasteMode ?? false
-    this.flushPendingTimeout = false
-    this.pendingSinceMs = null
-
-    return {
-      status: StdinParserNextStatus.token,
-      token: createToken(candidate.kind),
-      payload: this.buffer.payload(start, end),
-    }
-  }
-
-  private commitPendingToken(): void {
-    if (this.pendingConsumed === 0) {
-      return
-    }
-
-    this.consumePrefix(this.pendingConsumed)
-    if (this.pendingClearPasteMode) {
-      this.inPasteMode = false
-      this.clearPasteEndMatcher()
-    }
-    this.pendingConsumed = 0
-    this.pendingClearPasteMode = false
-  }
-
-  private clearPasteEndMatcher(): void {
-    this.pasteEndIndex = null
-    this.pasteEndMatchLen = 0
-  }
-
-  private enterPasteOverflowDiscardMode(): void {
-    this.buffer.reset(INITIAL_BUFFER_CAPACITY)
-    this.inPasteMode = false
-    this.clearPasteEndMatcher()
-    this.discardingOversizedPaste = true
-    this.discardPasteEndMatchLen = 0
-    this.pendingSinceMs = null
-    this.flushPendingTimeout = false
-    this.pendingConsumed = 0
-    this.pendingClearPasteMode = false
-    this.expectEscContinuation = false
-  }
-
-  private enterPasteMode(): void {
-    this.inPasteMode = true
-    this.clearPasteEndMatcher()
-
-    if (this.buffer.length > 0) {
-      this.updatePasteEndMatcher(this.buffer.items, 0)
-    }
-  }
-
-  private updatePasteEndMatcher(bytes: Uint8Array, baseIndex: number): void {
-    if (bytes.length === 0 || this.pasteEndIndex !== null) {
-      return
-    }
-
-    let offset = 0
-    while (offset < bytes.length) {
-      const byte = bytes[offset]!
-      const expected = BRACKETED_PASTE_END[this.pasteEndMatchLen]!
-
-      if (byte === expected) {
-        this.pasteEndMatchLen += 1
-        if (this.pasteEndMatchLen === BRACKETED_PASTE_END.length) {
-          this.pasteEndIndex = baseIndex + offset + 1 - BRACKETED_PASTE_END.length
-          this.pasteEndMatchLen = 0
-          return
-        }
-
-        offset += 1
-        continue
-      }
-
-      if (this.pasteEndMatchLen > 0 && byte === BRACKETED_PASTE_END[0]) {
-        this.pasteEndMatchLen = 1
-      } else {
-        this.pasteEndMatchLen = 0
-      }
-
-      offset += 1
-    }
-  }
-
-  private consumeDiscardedPasteBytes(bytes: Uint8Array): void {
-    if (!this.discardingOversizedPaste || bytes.length === 0) {
-      return
-    }
-
-    const markerEndOffset = this.findPasteEndInDiscardedBytes(bytes)
-    if (markerEndOffset === null) {
-      return
-    }
-
-    this.discardingOversizedPaste = false
-    this.discardPasteEndMatchLen = 0
-
-    if (markerEndOffset < bytes.length) {
-      this.pushBytes(bytes.subarray(markerEndOffset))
-    }
-  }
-
-  private findPasteEndInDiscardedBytes(bytes: Uint8Array): number | null {
-    let offset = 0
-    while (offset < bytes.length) {
-      const byte = bytes[offset]!
-      const expected = BRACKETED_PASTE_END[this.discardPasteEndMatchLen]!
-
-      if (byte === expected) {
-        this.discardPasteEndMatchLen += 1
-        if (this.discardPasteEndMatchLen === BRACKETED_PASTE_END.length) {
-          this.discardPasteEndMatchLen = 0
-          return offset + 1
-        }
-
-        offset += 1
-        continue
-      }
-
-      if (this.discardPasteEndMatchLen > 0 && byte === BRACKETED_PASTE_END[0]) {
-        this.discardPasteEndMatchLen = 1
-      } else {
-        this.discardPasteEndMatchLen = 0
-      }
-
-      offset += 1
-    }
-
-    return null
-  }
-
-  private hasPendingState(): boolean {
-    return this.pendingConsumed > 0 || this.inPasteMode || this.buffer.length > 0
-  }
-
-  private consumePrefix(consumed: number): void {
-    this.buffer.consumePrefix(consumed)
-  }
-
-  private nextToken(): ParseResult {
-    if (this.discardingOversizedPaste) {
-      return { type: "none" }
-    }
-
-    if (this.inPasteMode) {
-      return this.nextPasteToken()
-    }
-
-    const items = this.buffer.items
-    if (items.length === 0) {
-      return { type: "none" }
-    }
-
-    if (this.expectEscContinuation) {
-      const continuation = parseEscLessSgrContinuation(items)
-      switch (continuation.type) {
-        case "none":
-          this.expectEscContinuation = false
-          break
-        case "incomplete":
-          return continuation
-        case "consume":
-          this.expectEscContinuation = false
-          return continuation
-        case "token":
-          this.expectEscContinuation = false
-          return continuation
-      }
-    }
-
-    if (startsWithBytes(items, BRACKETED_PASTE_START)) {
-      this.consumePrefix(BRACKETED_PASTE_START.length)
-      this.enterPasteMode()
-      return this.nextToken()
-    }
-
-    if (
-      items.length < BRACKETED_PASTE_START.length &&
-      bytesEqual(items, BRACKETED_PASTE_START.subarray(0, items.length))
-    ) {
-      return { type: "incomplete" }
-    }
-
-    if (items[0] === ESC) {
-      return parseEscapeToken(items)
-    }
-
-    return parseTextToken(items)
-  }
-
-  private nextPasteToken(): ParseResult {
-    if (this.pasteEndIndex !== null) {
-      return {
-        type: "token",
-        candidate: {
-          kind: StdinTokenKind.paste,
-          consumed: this.pasteEndIndex + BRACKETED_PASTE_END.length,
-          payloadStart: 0,
-          payloadLen: this.pasteEndIndex,
-          clearPasteMode: true,
-        },
-      }
-    }
-
-    return { type: "incomplete" }
-  }
-
-  private armTimeoutIfNeeded(): void {
-    if (this.timeoutId) {
-      return
-    }
-
-    this.timeoutId = setTimeout(() => {
-      this.timeoutId = null
-      if (this.destroyed) {
+  private scanPending(): void {
+    while (true) {
+      const bytes = this.pending.view()
+      if (this.state.tag === "ground" && this.cursor >= bytes.length) {
+        this.pending.clear()
+        this.cursor = 0
+        this.unitStart = 0
+        this.pendingSinceMs = null
+        this.forceFlush = false
         return
       }
 
-      try {
-        this.flushTimeout(Date.now())
-        this.onTimeoutFlush?.()
-      } catch (error) {
-        console.error("stdin parser timeout flush failed", error)
+      const byte = this.cursor < bytes.length ? bytes[this.cursor]! : -1
+      switch (this.state.tag) {
+        case "ground": {
+          this.unitStart = this.cursor
+
+          if (byte === 0x5b) {
+            if (this.cursor + 1 >= bytes.length) {
+              if (!this.forceFlush) {
+                this.markPending()
+                return
+              }
+            } else if (bytes[this.cursor + 1] === 0x3c) {
+              this.cursor += 2
+              this.state = { tag: "esc_less_mouse" }
+              continue
+            }
+          }
+
+          if (byte === ESC) {
+            this.cursor += 1
+            this.state = { tag: "esc" }
+            continue
+          }
+
+          if (byte < 0x80) {
+            this.emitKeyOrResponse("unknown", decodeUtf8(bytes.subarray(this.cursor, this.cursor + 1)))
+            this.consumePrefix(this.cursor + 1)
+            continue
+          }
+
+          const expected = utf8SequenceLength(byte)
+          if (expected === 0) {
+            if (!this.forceFlush && this.cursor + 1 === bytes.length) {
+              this.markPending()
+              return
+            }
+
+            this.emitLegacyHighByte(byte)
+            this.consumePrefix(this.cursor + 1)
+            continue
+          }
+
+          this.cursor += 1
+          this.state = { tag: "utf8", expected, seen: 1 }
+          continue
+        }
+
+        case "utf8": {
+          if (this.cursor >= bytes.length) {
+            if (!this.forceFlush) {
+              this.markPending()
+              return
+            }
+
+            this.emitLegacyHighByte(bytes[this.unitStart]!)
+            this.state = { tag: "ground" }
+            this.consumePrefix(this.unitStart + 1)
+            continue
+          }
+
+          if ((byte & 0xc0) !== 0x80) {
+            this.emitLegacyHighByte(bytes[this.unitStart]!)
+            this.state = { tag: "ground" }
+            this.consumePrefix(this.unitStart + 1)
+            continue
+          }
+
+          const nextSeen = this.state.seen + 1
+          this.cursor += 1
+          if (nextSeen < this.state.expected) {
+            this.state = { tag: "utf8", expected: this.state.expected, seen: nextSeen }
+            continue
+          }
+
+          this.emitKeyOrResponse("unknown", decodeUtf8(bytes.subarray(this.unitStart, this.cursor)))
+          this.state = { tag: "ground" }
+          this.consumePrefix(this.cursor)
+          continue
+        }
+
+        case "esc": {
+          if (this.cursor >= bytes.length) {
+            if (!this.forceFlush) {
+              this.markPending()
+              return
+            }
+
+            this.emitKeyOrResponse("unknown", decodeUtf8(bytes.subarray(this.unitStart, this.cursor)))
+            this.state = { tag: "ground" }
+            this.consumePrefix(this.cursor)
+            continue
+          }
+
+          switch (byte) {
+            case 0x5b:
+              this.cursor += 1
+              this.state = { tag: "csi" }
+              continue
+            case 0x4f:
+              this.cursor += 1
+              this.state = { tag: "ss3" }
+              continue
+            case 0x5d:
+              this.cursor += 1
+              this.state = { tag: "osc", sawEsc: false }
+              continue
+            case 0x50:
+              this.cursor += 1
+              this.state = { tag: "dcs", sawEsc: false }
+              continue
+            case 0x5f:
+              this.cursor += 1
+              this.state = { tag: "apc", sawEsc: false }
+              continue
+            case ESC:
+              this.cursor += 1
+              continue
+            default:
+              this.cursor += 1
+              this.emitKeyOrResponse("unknown", decodeUtf8(bytes.subarray(this.unitStart, this.cursor)))
+              this.state = { tag: "ground" }
+              this.consumePrefix(this.cursor)
+              continue
+          }
+        }
+
+        case "ss3": {
+          if (this.cursor >= bytes.length) {
+            if (!this.forceFlush) {
+              this.markPending()
+              return
+            }
+
+            this.emitOpaqueResponse("unknown", bytes.subarray(this.unitStart, this.cursor))
+            this.state = { tag: "ground" }
+            this.consumePrefix(this.cursor)
+            continue
+          }
+
+          if (byte === ESC) {
+            this.emitOpaqueResponse("unknown", bytes.subarray(this.unitStart, this.cursor))
+            this.state = { tag: "ground" }
+            this.consumePrefix(this.cursor)
+            continue
+          }
+
+          this.cursor += 1
+          this.emitKeyOrResponse("unknown", decodeUtf8(bytes.subarray(this.unitStart, this.cursor)))
+          this.state = { tag: "ground" }
+          this.consumePrefix(this.cursor)
+          continue
+        }
+
+        case "csi": {
+          if (this.cursor >= bytes.length) {
+            if (!this.forceFlush) {
+              this.markPending()
+              return
+            }
+
+            this.emitOpaqueResponse("unknown", bytes.subarray(this.unitStart, this.cursor))
+            this.state = { tag: "ground" }
+            this.consumePrefix(this.cursor)
+            continue
+          }
+
+          if (byte === ESC) {
+            this.emitOpaqueResponse("unknown", bytes.subarray(this.unitStart, this.cursor))
+            this.state = { tag: "ground" }
+            this.consumePrefix(this.cursor)
+            continue
+          }
+
+          if (byte === 0x4d && this.cursor === this.unitStart + 2) {
+            const end = this.cursor + 4
+            if (bytes.length < end) {
+              if (!this.forceFlush) {
+                this.markPending()
+                return
+              }
+
+              this.emitOpaqueResponse("unknown", bytes.subarray(this.unitStart, bytes.length))
+              this.state = { tag: "ground" }
+              this.consumePrefix(bytes.length)
+              continue
+            }
+
+            this.emitMouse(bytes.subarray(this.unitStart, end), "x10")
+            this.state = { tag: "ground" }
+            this.consumePrefix(end)
+            continue
+          }
+
+          if (byte === 0x24) {
+            const candidateEnd = this.cursor + 1
+            const candidate = decodeUtf8(bytes.subarray(this.unitStart, candidateEnd))
+            if (RXVT_DOLLAR_CSI_RE.test(candidate)) {
+              this.emitKeyOrResponse("csi", candidate)
+              this.state = { tag: "ground" }
+              this.consumePrefix(candidateEnd)
+              continue
+            }
+
+            if (!this.forceFlush && candidateEnd >= bytes.length) {
+              this.markPending()
+              return
+            }
+          }
+
+          if (byte >= 0x40 && byte <= 0x7e) {
+            const end = this.cursor + 1
+            const rawBytes = bytes.subarray(this.unitStart, end)
+
+            if (bytesEqual(rawBytes, BRACKETED_PASTE_START)) {
+              this.state = { tag: "ground" }
+              this.consumePrefix(end)
+              this.paste = createPasteCollector()
+              continue
+            }
+
+            if (isMouseSgrSequence(rawBytes)) {
+              this.emitMouse(rawBytes, "sgr")
+              this.state = { tag: "ground" }
+              this.consumePrefix(end)
+              continue
+            }
+
+            this.emitKeyOrResponse("csi", decodeUtf8(rawBytes))
+            this.state = { tag: "ground" }
+            this.consumePrefix(end)
+            continue
+          }
+
+          this.cursor += 1
+          continue
+        }
+
+        case "osc": {
+          if (this.cursor >= bytes.length) {
+            if (!this.forceFlush) {
+              this.markPending()
+              return
+            }
+
+            this.emitOpaqueResponse("unknown", bytes.subarray(this.unitStart, this.cursor))
+            this.state = { tag: "ground" }
+            this.consumePrefix(this.cursor)
+            continue
+          }
+
+          if (this.state.sawEsc) {
+            if (byte === 0x5c) {
+              const end = this.cursor + 1
+              this.emitOpaqueResponse("osc", bytes.subarray(this.unitStart, end))
+              this.state = { tag: "ground" }
+              this.consumePrefix(end)
+              continue
+            }
+
+            this.state = { tag: "osc", sawEsc: false }
+            continue
+          }
+
+          if (byte === BEL) {
+            const end = this.cursor + 1
+            this.emitOpaqueResponse("osc", bytes.subarray(this.unitStart, end))
+            this.state = { tag: "ground" }
+            this.consumePrefix(end)
+            continue
+          }
+
+          if (byte === ESC) {
+            this.cursor += 1
+            this.state = { tag: "osc", sawEsc: true }
+            continue
+          }
+
+          this.cursor += 1
+          continue
+        }
+
+        case "dcs": {
+          if (this.cursor >= bytes.length) {
+            if (!this.forceFlush) {
+              this.markPending()
+              return
+            }
+
+            this.emitOpaqueResponse("unknown", bytes.subarray(this.unitStart, this.cursor))
+            this.state = { tag: "ground" }
+            this.consumePrefix(this.cursor)
+            continue
+          }
+
+          if (this.state.sawEsc) {
+            if (byte === 0x5c) {
+              const end = this.cursor + 1
+              this.emitOpaqueResponse("dcs", bytes.subarray(this.unitStart, end))
+              this.state = { tag: "ground" }
+              this.consumePrefix(end)
+              continue
+            }
+
+            this.state = { tag: "dcs", sawEsc: false }
+            continue
+          }
+
+          if (byte === ESC) {
+            this.cursor += 1
+            this.state = { tag: "dcs", sawEsc: true }
+            continue
+          }
+
+          this.cursor += 1
+          continue
+        }
+
+        case "apc": {
+          if (this.cursor >= bytes.length) {
+            if (!this.forceFlush) {
+              this.markPending()
+              return
+            }
+
+            this.emitOpaqueResponse("unknown", bytes.subarray(this.unitStart, this.cursor))
+            this.state = { tag: "ground" }
+            this.consumePrefix(this.cursor)
+            continue
+          }
+
+          if (this.state.sawEsc) {
+            if (byte === 0x5c) {
+              const end = this.cursor + 1
+              this.emitOpaqueResponse("apc", bytes.subarray(this.unitStart, end))
+              this.state = { tag: "ground" }
+              this.consumePrefix(end)
+              continue
+            }
+
+            this.state = { tag: "apc", sawEsc: false }
+            continue
+          }
+
+          if (byte === ESC) {
+            this.cursor += 1
+            this.state = { tag: "apc", sawEsc: true }
+            continue
+          }
+
+          this.cursor += 1
+          continue
+        }
+
+        case "esc_less_mouse": {
+          if (this.cursor >= bytes.length) {
+            if (!this.forceFlush) {
+              this.markPending()
+              return
+            }
+
+            this.emitOpaqueResponse("unknown", bytes.subarray(this.unitStart, this.cursor))
+            this.state = { tag: "ground" }
+            this.consumePrefix(this.cursor)
+            continue
+          }
+
+          if ((byte >= 0x30 && byte <= 0x39) || byte === 0x3b) {
+            this.cursor += 1
+            continue
+          }
+
+          if (byte === 0x4d || byte === 0x6d) {
+            const end = this.cursor + 1
+            this.emitOpaqueResponse("unknown", bytes.subarray(this.unitStart, end))
+            this.state = { tag: "ground" }
+            this.consumePrefix(end)
+            continue
+          }
+
+          this.emitOpaqueResponse("unknown", bytes.subarray(this.unitStart, this.cursor))
+          this.state = { tag: "ground" }
+          this.consumePrefix(this.cursor)
+          continue
+        }
       }
-    }, this.timeoutMs)
+    }
   }
 
-  private reconcileTimeout(hasPending: boolean): void {
-    if (!hasPending) {
+  private emitKeyOrResponse(protocol: StdinResponseProtocol, raw: string): void {
+    const parsed = parseKeypress(raw, { useKittyKeyboard: this.useKittyKeyboard })
+    if (parsed) {
+      this.events.push({
+        type: "key",
+        raw: parsed.raw,
+        key: parsed,
+      })
+      return
+    }
+
+    this.events.push({
+      type: "response",
+      protocol,
+      sequence: raw,
+    })
+  }
+
+  private emitMouse(rawBytes: Uint8Array, encoding: "sgr" | "x10"): void {
+    const event = this.mouseParser.parseMouseEvent(rawBytes)
+    if (!event) {
+      this.emitOpaqueResponse("unknown", rawBytes)
+      return
+    }
+
+    this.events.push({
+      type: "mouse",
+      raw: decodeLatin1(rawBytes),
+      encoding,
+      event,
+    })
+  }
+
+  private emitLegacyHighByte(byte: number): void {
+    const parsed = parseKeypress(Buffer.from([byte]), { useKittyKeyboard: this.useKittyKeyboard })
+    if (parsed) {
+      this.events.push({
+        type: "key",
+        raw: parsed.raw,
+        key: parsed,
+      })
+      return
+    }
+
+    this.events.push({
+      type: "response",
+      protocol: "unknown",
+      sequence: String.fromCharCode(byte),
+    })
+  }
+
+  private emitOpaqueResponse(protocol: StdinResponseProtocol, rawBytes: Uint8Array): void {
+    this.events.push({
+      type: "response",
+      protocol,
+      sequence: decodeLatin1(rawBytes),
+    })
+  }
+
+  private consumePrefix(endExclusive: number): void {
+    this.pending.consume(endExclusive)
+    this.cursor = 0
+    this.unitStart = 0
+    this.pendingSinceMs = null
+    this.forceFlush = false
+  }
+
+  private flushPendingOverflow(): void {
+    if (this.pending.length === 0) {
+      return
+    }
+
+    this.emitOpaqueResponse("unknown", this.pending.view())
+    this.pending.clear()
+    this.cursor = 0
+    this.unitStart = 0
+    this.pendingSinceMs = null
+    this.forceFlush = false
+    this.state = { tag: "ground" }
+  }
+
+  private markPending(): void {
+    if (this.pendingSinceMs === null) {
+      this.pendingSinceMs = Date.now()
+    }
+  }
+
+  private consumePasteBytes(chunk: Uint8Array): Uint8Array {
+    const paste = this.paste!
+    const combined = concatBytes(paste.tail, chunk)
+    const endIndex = indexOfBytes(combined, BRACKETED_PASTE_END)
+
+    if (endIndex !== -1) {
+      this.pushPasteText(combined.subarray(0, endIndex))
+      const tailText = paste.decoder.decode()
+      if (tailText.length > 0) {
+        paste.parts.push(tailText)
+      }
+
+      this.events.push({
+        type: "paste",
+        text: paste.parts.join(""),
+      })
+
+      this.paste = null
+      return combined.subarray(endIndex + BRACKETED_PASTE_END.length)
+    }
+
+    const keep = Math.min(BRACKETED_PASTE_END.length - 1, combined.length)
+    const stableLength = combined.length - keep
+    if (stableLength > 0) {
+      this.pushPasteText(combined.subarray(0, stableLength))
+    }
+
+    paste.tail = combined.slice(stableLength)
+    return EMPTY_BYTES
+  }
+
+  private pushPasteText(bytes: Uint8Array): void {
+    if (bytes.length === 0) {
+      return
+    }
+
+    const text = this.paste!.decoder.decode(bytes, { stream: true })
+    if (text.length > 0) {
+      this.paste!.parts.push(text)
+    }
+  }
+
+  private reconcileTimeoutState(): void {
+    if (!this.armTimeouts) {
+      return
+    }
+
+    if (this.paste || this.pendingSinceMs === null || this.pending.length === 0) {
       this.clearTimeout()
       return
     }
 
     if (!this.timeoutId) {
-      this.armTimeoutIfNeeded()
+      this.timeoutId = setTimeout(() => {
+        this.timeoutId = null
+        if (this.destroyed) {
+          return
+        }
+
+        try {
+          this.flushTimeout(Date.now())
+          this.onTimeoutFlush?.()
+        } catch (error) {
+          console.error("stdin parser timeout flush failed", error)
+        }
+      }, this.timeoutMs)
     }
   }
 
@@ -956,15 +960,14 @@ export class StdinParser {
   }
 
   private resetState(): void {
-    this.buffer.reset(INITIAL_BUFFER_CAPACITY)
-    this.inPasteMode = false
-    this.clearPasteEndMatcher()
-    this.discardingOversizedPaste = false
-    this.discardPasteEndMatchLen = 0
+    this.pending.reset(INITIAL_PENDING_CAPACITY)
+    this.events.length = 0
     this.pendingSinceMs = null
-    this.flushPendingTimeout = false
-    this.pendingConsumed = 0
-    this.pendingClearPasteMode = false
-    this.expectEscContinuation = false
+    this.forceFlush = false
+    this.state = { tag: "ground" }
+    this.cursor = 0
+    this.unitStart = 0
+    this.paste = null
+    this.mouseParser.reset()
   }
 }

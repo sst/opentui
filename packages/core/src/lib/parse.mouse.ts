@@ -33,13 +33,11 @@ export class MouseParser {
     this.mouseButtonsPressed.clear()
   }
 
-  // NOTE: Renderer currently sets stdin encoding to utf8, so Buffer -> string
-  // decoding happens before parsing. That can corrupt old X10 bytes >= 0x80
-  // (for example x/y >= 95), because utf8 does not preserve arbitrary bytes.
-  // SGR sequences are ASCII digits + separators and are unaffected.
+  // Preserve raw byte values so X10 payload bytes >= 0x80 remain intact.
+  // SGR sequences are ASCII digits + separators and are unaffected either way.
   private decodeInput(data: Buffer | Uint8Array): string {
     const buf = Buffer.isBuffer(data) ? data : Buffer.from(data.buffer, data.byteOffset, data.byteLength)
-    return buf.toString()
+    return buf.toString("latin1")
   }
 
   public parseMouseEvent(data: Buffer | Uint8Array): RawMouseEvent | null {

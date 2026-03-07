@@ -14,7 +14,7 @@ import type { Pointer } from "bun:ffi"
 import { OptimizedBuffer } from "./buffer"
 import { resolveRenderLib, type RenderLib } from "./zig"
 import { TerminalConsole, type ConsoleOptions, capture } from "./console"
-import { MouseParser, type MouseEventType, type RawMouseEvent, type ScrollInfo } from "./lib/parse.mouse"
+import { type MouseEventType, type RawMouseEvent, type ScrollInfo } from "./lib/parse.mouse"
 import { Selection } from "./lib/selection"
 import { Clipboard, type ClipboardTarget } from "./lib/clipboard"
 import { EventEmitter } from "events"
@@ -34,8 +34,7 @@ import {
   isPixelResolutionResponse,
   parsePixelResolution,
 } from "./lib/terminal-capability-detection"
-import { StdinParser, type StdinToken } from "./lib/stdin-parser"
-import { StdinRouter } from "./lib/stdin-router"
+import { StdinParser, type StdinEvent } from "./lib/stdin-parser"
 
 registerEnvVar({
   name: "OTUI_DUMP_CAPTURES",
@@ -426,9 +425,7 @@ export class CliRenderer extends EventEmitter implements RenderContext {
   private _resolution: PixelResolution | null = null
   private _keyHandler: InternalKeyHandler
   private stdinParser: StdinParser | null = null
-  private stdinRouter: StdinRouter | null = null
-  private readonly stdinTextDecoder: TextDecoder = new TextDecoder()
-  private hasLoggedStdinParserOverflow = false
+  private readonly oscSubscribers = new Set<(sequence: string) => void>()
   private hasLoggedStdinParserError = false
 
   private animationRequest: Map<number, FrameRequestCallback> = new Map()
@@ -466,7 +463,6 @@ export class CliRenderer extends EventEmitter implements RenderContext {
   }
 
   private _useConsole: boolean = true
-  private mouseParser: MouseParser = new MouseParser()
   private sigwinchHandler: () => void = (() => {
     const width = this.stdout.columns || 80
     const height = this.stdout.rows || 24
@@ -487,7 +483,7 @@ export class CliRenderer extends EventEmitter implements RenderContext {
   private _onDestroy?: () => void
   private _themeMode: ThemeMode | null = null
 
-  private inputHandlers: ((sequence: string) => boolean)[] = []
+  private sequenceHandlers: ((sequence: string) => boolean)[] = []
   private prependedInputHandlers: ((sequence: string) => boolean)[] = []
   private shouldRestoreModesOnNextFocus: boolean = false
 
@@ -651,13 +647,13 @@ export class CliRenderer extends EventEmitter implements RenderContext {
     )
     this.stdinParser = new StdinParser({
       timeoutMs: 10,
-      maxBufferBytes: stdinParserMaxBufferBytes,
+      maxPendingBytes: stdinParserMaxBufferBytes,
       armTimeouts: true,
       onTimeoutFlush: () => {
         this.drainStdinParser()
       },
+      useKittyKeyboard: useKittyForParsing,
     })
-    this.stdinRouter = new StdinRouter()
 
     this._console = new TerminalConsole(this, config.consoleOptions)
     this.useConsole = config.useConsole ?? true
@@ -1050,7 +1046,6 @@ export class CliRenderer extends EventEmitter implements RenderContext {
   private disableMouse(): void {
     this._useMouse = false
     this.setCapturedRenderable(undefined)
-    this.mouseParser.reset()
     this.lib.disableMouse(this.rendererPtr)
   }
 
@@ -1100,19 +1095,18 @@ export class CliRenderer extends EventEmitter implements RenderContext {
   private stdinListener: (chunk: Buffer | string) => void = ((chunk: Buffer | string) => {
     const data = Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk)
     if (data.length === 0) {
-      this.dispatchSequenceToInputHandlers("")
+      if (this.dispatchSequenceHandlers("")) {
+        return
+      }
+
+      this._keyHandler.processInput("")
       return
     }
 
     if (!this.stdinParser) return
 
     try {
-      const accepted = this.stdinParser.push(data)
-      if (!accepted) {
-        this.handleStdinParserOverflow()
-        return
-      }
-
+      this.stdinParser.push(data)
       this.drainStdinParser()
     } catch (error) {
       this.handleStdinParserFailure(error)
@@ -1120,15 +1114,22 @@ export class CliRenderer extends EventEmitter implements RenderContext {
   }).bind(this)
 
   public addInputHandler(handler: (sequence: string) => boolean): void {
-    this.inputHandlers.push(handler)
+    this.sequenceHandlers.push(handler)
   }
 
   public prependInputHandler(handler: (sequence: string) => boolean): void {
-    this.inputHandlers.unshift(handler)
+    this.sequenceHandlers.unshift(handler)
   }
 
   public removeInputHandler(handler: (sequence: string) => boolean): void {
-    this.inputHandlers = this.inputHandlers.filter((h) => h !== handler)
+    this.sequenceHandlers = this.sequenceHandlers.filter((candidate) => candidate !== handler)
+  }
+
+  public subscribeOsc(handler: (sequence: string) => void): () => void {
+    this.oscSubscribers.add(handler)
+    return () => {
+      this.oscSubscribers.delete(handler)
+    }
   }
 
   private capabilityHandler: (sequence: string) => boolean = ((sequence: string) => {
@@ -1180,7 +1181,7 @@ export class CliRenderer extends EventEmitter implements RenderContext {
     return false
   }).bind(this)
 
-  private dispatchSequenceToInputHandlers(sequence: string): void {
+  private dispatchSequenceHandlers(sequence: string): boolean {
     if (this._debugModeEnabled) {
       this._debugInputs.push({
         timestamp: new Date().toISOString(),
@@ -1188,77 +1189,51 @@ export class CliRenderer extends EventEmitter implements RenderContext {
       })
     }
 
-    for (const handler of this.inputHandlers) {
+    for (const handler of this.sequenceHandlers) {
       if (handler(sequence)) {
-        return
+        return true
       }
     }
-  }
 
-  private decodeTokenPayload(payload: Uint8Array): string {
-    // Preserve single-byte high-bit compatibility behavior
-    if (payload.length === 1 && payload[0]! > 127) {
-      return "\x1b" + String.fromCharCode(payload[0]! - 128)
-    }
-    return this.stdinTextDecoder.decode(payload)
+    return false
   }
 
   private drainStdinParser(): void {
     if (!this.stdinParser) return
 
-    this.stdinParser.drain((token, payload) => {
-      this.routeStdinToken(token, payload)
+    this.stdinParser.drain((event) => {
+      this.handleStdinEvent(event)
     })
   }
 
-  private routeStdinToken(token: StdinToken, payload: Uint8Array): void {
-    switch (token.kind) {
-      case "mouse_sgr":
-      case "mouse_x10": {
-        if (this._useMouse) {
-          const parsed = this.mouseParser.parseMouseEvent(payload)
-          if (!parsed) {
-            return
-          }
-
-          const handled = this.processSingleMouseEvent(parsed)
-          if (!handled) {
-            const sequence = this.decodeTokenPayload(payload)
-            this.dispatchSequenceToInputHandlers(sequence)
-          }
+  private handleStdinEvent(event: StdinEvent): void {
+    switch (event.type) {
+      case "key":
+        if (this.dispatchSequenceHandlers(event.raw)) {
           return
         }
 
-        const sequence = this.decodeTokenPayload(payload)
-        this.dispatchSequenceToInputHandlers(sequence)
+        this._keyHandler.processParsedKey(event.key)
         return
-      }
+      case "mouse":
+        if (this._useMouse && this.processSingleMouseEvent(event.event)) {
+          return
+        }
+
+        this.dispatchSequenceHandlers(event.raw)
+        return
       case "paste":
-        this._keyHandler.processPaste(this.decodeTokenPayload(payload))
+        this._keyHandler.processPaste(event.text)
         return
-      case "osc": {
-        const sequence = this.decodeTokenPayload(payload)
-        this.stdinRouter?.notifyOsc(sequence)
-        this.dispatchSequenceToInputHandlers(sequence)
+      case "response":
+        if (event.protocol === "osc") {
+          for (const subscriber of this.oscSubscribers) {
+            subscriber(event.sequence)
+          }
+        }
+
+        this.dispatchSequenceHandlers(event.sequence)
         return
-      }
-      default:
-        this.dispatchSequenceToInputHandlers(this.decodeTokenPayload(payload))
-    }
-  }
-
-  private handleStdinParserOverflow(): void {
-    if (!this.hasLoggedStdinParserOverflow) {
-      this.hasLoggedStdinParserOverflow = true
-      if (process.env.NODE_ENV !== "test") {
-        console.warn("[stdin-parser-overflow] dropped pending stdin bytes after hitting parser buffer limit")
-      }
-    }
-
-    try {
-      this.stdinParser?.reset()
-    } catch (error) {
-      console.error("stdin parser reset failed after overflow", error)
     }
   }
 
@@ -1296,9 +1271,6 @@ export class CliRenderer extends EventEmitter implements RenderContext {
     this.addInputHandler(this.capabilityHandler)
     this.addInputHandler(this.focusHandler)
     this.addInputHandler(this.themeModeHandler)
-    this.addInputHandler((sequence: string) => {
-      return this._keyHandler.processInput(sequence)
-    })
 
     if (this.stdin.setRawMode) {
       this.stdin.setRawMode(true)
@@ -1628,7 +1600,6 @@ export class CliRenderer extends EventEmitter implements RenderContext {
     this.queryPixelResolution()
 
     this.setCapturedRenderable(undefined)
-    this.mouseParser.reset()
 
     if (this._splitHeight > 0) {
       // TODO: Handle resizing split mode properly
@@ -1990,8 +1961,7 @@ export class CliRenderer extends EventEmitter implements RenderContext {
 
     this.stdinParser?.destroy()
     this.stdinParser = null
-    this.stdinRouter?.destroy()
-    this.stdinRouter = null
+    this.oscSubscribers.clear()
     this._console.destroy()
     this.disableStdoutInterception()
 
@@ -2390,13 +2360,9 @@ export class CliRenderer extends EventEmitter implements RenderContext {
       const isLegacyTmux =
         this.capabilities?.terminal?.name?.toLowerCase()?.includes("tmux") &&
         this.capabilities?.terminal?.version?.localeCompare("3.6") < 0
-      this._paletteDetector = createTerminalPalette(
-        this.stdin,
-        this.stdout,
-        this.writeOut.bind(this),
-        isLegacyTmux,
-        this.stdinRouter ?? undefined,
-      )
+      this._paletteDetector = createTerminalPalette(this.stdin, this.stdout, this.writeOut.bind(this), isLegacyTmux, {
+        subscribeOsc: this.subscribeOsc.bind(this),
+      })
     }
 
     this._paletteDetectionPromise = this._paletteDetector.detect(options).then((result) => {

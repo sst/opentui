@@ -13,7 +13,7 @@ beforeEach(async () => {
   // Small delay to ensure any pending stdin parser timeouts from previous tests complete
   await new Promise((resolve) => setTimeout(resolve, 15))
   ;({ renderer: currentRenderer } = await createTestRenderer({}))
-  ;({ renderer: kittyRenderer } = await createTestRenderer({ useKittyKeyboard: true }))
+  ;({ renderer: kittyRenderer } = await createTestRenderer({ kittyKeyboard: true }))
 
   // Mock native capability functions to avoid interfering with the test terminal
   // @ts-expect-error - mocking for test

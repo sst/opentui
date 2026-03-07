@@ -178,7 +178,7 @@ describe("renderer stdin routing", () => {
     }
   })
 
-  test("discards oversized paste until end marker and then resumes", async () => {
+  test("streams large paste bodies without dropping them and resumes afterward", async () => {
     const { renderer } = await createTestRenderer({
       width: 40,
       height: 20,
@@ -197,27 +197,23 @@ describe("renderer stdin routing", () => {
       })
 
       const largeChunk = Buffer.alloc(16 * 1024, "x")
+      const expectedPaste = largeChunk.toString().repeat(5) + "z"
 
       expect(() => {
         renderer.stdin.emit("data", Buffer.from("\x1b[200~"))
         for (let i = 0; i < 5; i++) {
           renderer.stdin.emit("data", largeChunk)
         }
+        renderer.stdin.emit("data", Buffer.from("z"))
+        renderer.stdin.emit("data", Buffer.from("\x1b[20"))
+        renderer.stdin.emit("data", Buffer.from("1~"))
+        renderer.stdin.emit("data", Buffer.from("q"))
       }).not.toThrow()
 
-      renderer.stdin.emit("data", Buffer.from("z"))
-      await Bun.sleep(20)
-
-      expect(keys).toEqual([])
-      expect(pastes).toEqual([])
-
-      renderer.stdin.emit("data", Buffer.from("\x1b[20"))
-      renderer.stdin.emit("data", Buffer.from("1~"))
-      renderer.stdin.emit("data", Buffer.from("q"))
       await Bun.sleep(40)
 
       expect(keys).toEqual(["q"])
-      expect(pastes).toEqual([])
+      expect(pastes).toEqual([expectedPaste])
     } finally {
       renderer.destroy()
     }
