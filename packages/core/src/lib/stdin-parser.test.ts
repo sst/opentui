@@ -455,10 +455,11 @@ describe("StdinParser", () => {
       }
     })
 
-    // macOS Terminal.app sends ESC+b for Option+Left, ESC+f for Option+Right
+    // Terminal.app may reuse ESC+b / ESC+f for word navigation, but the parser
+    // preserves the raw Meta-b / Meta-f chords instead of rewriting them.
     table([
-      ["meta+b → left (Option+Left)", "\x1bb", [k("left", { raw: "\x1bb", meta: true })]],
-      ["meta+f → right (Option+Right)", "\x1bf", [k("right", { raw: "\x1bf", meta: true })]],
+      ["meta+b (literal chord)", "\x1bb", [k("b", { raw: "\x1bb", meta: true })]],
+      ["meta+f (literal chord)", "\x1bf", [k("f", { raw: "\x1bf", meta: true })]],
       ["meta+n (plain letter)", "\x1bn", [k("n", { raw: "\x1bn", meta: true })]],
       ["meta+p (plain letter)", "\x1bp", [k("p", { raw: "\x1bp", meta: true })]],
     ])
@@ -701,6 +702,23 @@ describe("StdinParser", () => {
         expect(snap(p)).toEqual([x10m("\x1b[M !!", "down", 0, 0)])
       } finally {
         p.destroy()
+      }
+    })
+
+    test("delayed X10 continuation after timed-out escape stays opaque", () => {
+      const { parser, clock } = createTimedParser()
+      try {
+        parser.push(Buffer.from("\x1b"))
+        expect(snap(parser)).toEqual([])
+        clock.advance(10)
+        expect(snap(parser)).toEqual([k("escape", { raw: "\x1b" })])
+
+        parser.push(Buffer.from("[M"))
+        expect(snap(parser)).toEqual([])
+        parser.push(Buffer.from(" !!"))
+        expect(snap(parser)).toEqual([resp("unknown", "[M !!")])
+      } finally {
+        parser.destroy()
       }
     })
   })

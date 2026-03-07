@@ -103,10 +103,11 @@ function advanceClock(clock: ManualClock, ms: number = 10): void {
 async function createRoutingRenderer(options: Partial<TestRendererOptions> = {}): Promise<{
   renderer: TestRenderer
   renderOnce: () => Promise<void>
+  resize: (width: number, height: number) => void
   clock: ManualClock
 }> {
   const clock = new ManualClock()
-  const { renderer, renderOnce } = await createTestRenderer({
+  const { renderer, renderOnce, resize } = await createTestRenderer({
     width: 40,
     height: 20,
     useMouse: true,
@@ -114,7 +115,7 @@ async function createRoutingRenderer(options: Partial<TestRendererOptions> = {})
     ...options,
   })
 
-  return { renderer, renderOnce, clock }
+  return { renderer, renderOnce, resize, clock }
 }
 
 test("basic letters via keyInput events", async () => {
@@ -1912,6 +1913,84 @@ describe("stdin routing", () => {
 
       expect(events).toEqual(["focus"])
       expect(scrollCount).toBe(1)
+    } finally {
+      renderer.destroy()
+    }
+  })
+
+  test("mouse state resets when mouse mode toggles", async () => {
+    const { renderer, renderOnce, clock } = await createRoutingRenderer()
+    try {
+      const target = new MouseTarget(renderer, {
+        id: "target-mouse-toggle-reset",
+        position: "absolute",
+        left: 0,
+        top: 0,
+        width: renderer.width,
+        height: renderer.height,
+      })
+      renderer.root.add(target)
+      await renderOnce()
+
+      let moveCount = 0
+      let dragCount = 0
+      target.onMouseMove = () => {
+        moveCount++
+      }
+      target.onMouseDrag = () => {
+        dragCount++
+      }
+
+      renderer.stdin.emit("data", Buffer.from("\x1b[<0;1;1M"))
+      advanceClock(clock)
+
+      renderer.useMouse = false
+      renderer.useMouse = true
+
+      renderer.stdin.emit("data", Buffer.from("\x1b[<32;2;2M"))
+      advanceClock(clock)
+
+      expect(moveCount).toBe(1)
+      expect(dragCount).toBe(0)
+    } finally {
+      renderer.destroy()
+    }
+  })
+
+  test("mouse state resets on resize", async () => {
+    const { renderer, renderOnce, resize, clock } = await createRoutingRenderer()
+    try {
+      const target = new MouseTarget(renderer, {
+        id: "target-resize-reset",
+        position: "absolute",
+        left: 0,
+        top: 0,
+        width: renderer.width,
+        height: renderer.height,
+      })
+      renderer.root.add(target)
+      await renderOnce()
+
+      let moveCount = 0
+      let dragCount = 0
+      target.onMouseMove = () => {
+        moveCount++
+      }
+      target.onMouseDrag = () => {
+        dragCount++
+      }
+
+      renderer.stdin.emit("data", Buffer.from("\x1b[<0;1;1M"))
+      advanceClock(clock)
+
+      resize(41, 20)
+      await renderOnce()
+
+      renderer.stdin.emit("data", Buffer.from("\x1b[<32;2;2M"))
+      advanceClock(clock)
+
+      expect(moveCount).toBe(1)
+      expect(dragCount).toBe(0)
     } finally {
       renderer.destroy()
     }

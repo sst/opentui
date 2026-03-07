@@ -1029,6 +1029,7 @@ export class CliRenderer extends EventEmitter implements RenderContext {
   private disableMouse(): void {
     this._useMouse = false
     this.setCapturedRenderable(undefined)
+    this.stdinParser?.resetMouseState()
     this.lib.disableMouse(this.rendererPtr)
   }
 
@@ -1586,6 +1587,7 @@ export class CliRenderer extends EventEmitter implements RenderContext {
     this.queryPixelResolution()
 
     this.setCapturedRenderable(undefined)
+    this.stdinParser?.resetMouseState()
 
     if (this._splitHeight > 0) {
       // TODO: Handle resizing split mode properly

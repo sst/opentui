@@ -62,6 +62,7 @@ type ParserState =
   | { tag: "apc"; sawEsc: boolean }
   | { tag: "esc_recovery" }
   | { tag: "esc_less_mouse" }
+  | { tag: "esc_less_x10_mouse" }
 
 // Collects paste body incrementally, bypassing the main ByteQueue so large
 // pastes don't grow the parser buffer. Keeps only a small tail for end-marker
@@ -485,6 +486,11 @@ export class StdinParser {
     this.resetState()
   }
 
+  public resetMouseState(): void {
+    this.ensureAlive()
+    this.mouseParser.reset()
+  }
+
   public destroy(): void {
     if (this.destroyed) {
       return
@@ -685,9 +691,9 @@ export class StdinParser {
           continue
         }
 
-        // Narrow recovery path for a delayed `[<...M/m` mouse continuation
-        // after a timeout-flushed lone ESC. Wait for `<`; if it never arrives,
-        // flush `[` as a normal key.
+        // Narrow recovery path for delayed mouse continuations after a
+        // timeout-flushed lone ESC. Wait for either `<` (SGR) or `M` (X10); if
+        // neither arrives, flush `[` as a normal key.
         case "esc_recovery": {
           if (this.cursor >= bytes.length) {
             if (!this.forceFlush) {
@@ -704,6 +710,12 @@ export class StdinParser {
           if (byte === 0x3c) {
             this.cursor += 1
             this.state = { tag: "esc_less_mouse" }
+            continue
+          }
+
+          if (byte === 0x4d) {
+            this.cursor += 1
+            this.state = { tag: "esc_less_x10_mouse" }
             continue
           }
 
@@ -965,6 +977,30 @@ export class StdinParser {
           this.emitOpaqueResponse("unknown", bytes.subarray(this.unitStart, this.cursor))
           this.state = { tag: "ground" }
           this.consumePrefix(this.cursor)
+          continue
+        }
+
+        // Delayed X10 mouse continuation after `esc_recovery` has consumed the
+        // leading `[`. Consume `[M` plus its three raw payload bytes as one
+        // opaque response so split mouse bytes never leak into text.
+        case "esc_less_x10_mouse": {
+          const end = this.unitStart + 5
+
+          if (bytes.length < end) {
+            if (!this.forceFlush) {
+              this.markPending()
+              return
+            }
+
+            this.emitOpaqueResponse("unknown", bytes.subarray(this.unitStart, bytes.length))
+            this.state = { tag: "ground" }
+            this.consumePrefix(bytes.length)
+            continue
+          }
+
+          this.emitOpaqueResponse("unknown", bytes.subarray(this.unitStart, end))
+          this.state = { tag: "ground" }
+          this.consumePrefix(end)
           continue
         }
       }

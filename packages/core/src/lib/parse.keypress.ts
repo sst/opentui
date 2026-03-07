@@ -323,12 +323,7 @@ export const parseKeypress = (s: Buffer | string = "", options: ParseKeypressOpt
     const char = parts[1]!
     const isUpperCase = /^[A-Z]$/.test(char)
 
-    // macOS Terminal.app sends ESC+b for Option+Left, ESC+f for Option+Right
-    if (char === "b") {
-      key.name = "left"
-    } else if (char === "f") {
-      key.name = "right"
-    } else if (isUpperCase) {
+    if (isUpperCase) {
       key.shift = true
       key.name = char
     } else {

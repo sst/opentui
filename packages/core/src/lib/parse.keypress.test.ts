@@ -1763,19 +1763,19 @@ test("parseKeypress - modifyOtherKeys modified tab, space, and backspace keys", 
   expect(ctrlBackspace8.ctrl).toBe(true)
 })
 
-test("parseKeypress - meta+b/f map to arrow keys (Option+Left/Right on macOS Terminal.app)", () => {
-  // macOS Terminal.app sends ESC+b for Option+Left, ESC+f for Option+Right
-  const metaLeft = parseKeypress("\x1bb")!
-  expect(metaLeft.name).toBe("left")
-  expect(metaLeft.meta).toBe(true)
-  expect(metaLeft.shift).toBe(false)
+test("parseKeypress - meta+b/f stay as literal meta chords", () => {
+  // Terminal.app may reuse these bytes for Option+word navigation, but the parser
+  // preserves the raw Meta-b/Meta-f chords instead of rewriting them globally.
+  const metaB = parseKeypress("\x1bb")!
+  expect(metaB.name).toBe("b")
+  expect(metaB.meta).toBe(true)
+  expect(metaB.shift).toBe(false)
 
-  const metaRight = parseKeypress("\x1bf")!
-  expect(metaRight.name).toBe("right")
-  expect(metaRight.meta).toBe(true)
-  expect(metaRight.shift).toBe(false)
+  const metaF = parseKeypress("\x1bf")!
+  expect(metaF.name).toBe("f")
+  expect(metaF.meta).toBe(true)
+  expect(metaF.shift).toBe(false)
 
-  // Uppercase B and F are just meta+shift+letter (no terminal sends these for arrows)
   const metaShiftB = parseKeypress("\x1bB")!
   expect(metaShiftB.name).toBe("B")
   expect(metaShiftB.meta).toBe(true)
@@ -1786,7 +1786,6 @@ test("parseKeypress - meta+b/f map to arrow keys (Option+Left/Right on macOS Ter
   expect(metaShiftF.meta).toBe(true)
   expect(metaShiftF.shift).toBe(true)
 
-  // n and p are just meta+letter (no terminal sends these for arrows)
   const metaN = parseKeypress("\x1bn")!
   expect(metaN.name).toBe("n")
   expect(metaN.meta).toBe(true)
