@@ -386,6 +386,8 @@ export class StdinParser {
   public push(data: Uint8Array): void {
     this.ensureAlive()
     if (data.length === 0) {
+      // Preserve the existing empty-chunk -> empty-keypress behavior.
+      this.emitKeyOrResponse("unknown", "")
       return
     }
 

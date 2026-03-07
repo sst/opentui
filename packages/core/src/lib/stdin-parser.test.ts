@@ -1600,11 +1600,11 @@ describe("StdinParser", () => {
   })
 
   describe("negative and edge cases", () => {
-    test("push with empty buffer is a no-op", () => {
+    test("push with empty buffer emits an empty key event", () => {
       const p = createParser()
       try {
         p.push(new Uint8Array(0))
-        expect(snap(p)).toEqual([])
+        expect(snap(p)).toEqual([k("")])
       } finally {
         p.destroy()
       }

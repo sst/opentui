@@ -14,7 +14,6 @@ import type { Pointer } from "bun:ffi"
 import { OptimizedBuffer } from "./buffer"
 import { resolveRenderLib, type RenderLib } from "./zig"
 import { TerminalConsole, type ConsoleOptions, capture } from "./console"
-import { parseKeypress } from "./lib/parse.keypress"
 import { type MouseEventType, type RawMouseEvent, type ScrollInfo } from "./lib/parse.mouse"
 import { Selection } from "./lib/selection"
 import { Clipboard, type ClipboardTarget } from "./lib/clipboard"
@@ -1078,18 +1077,6 @@ export class CliRenderer extends EventEmitter implements RenderContext {
 
   private stdinListener: (chunk: Buffer | string) => void = ((chunk: Buffer | string) => {
     const data = Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk)
-    if (data.length === 0) {
-      if (this.dispatchSequenceHandlers("")) {
-        return
-      }
-
-      const parsed = parseKeypress("")
-      if (parsed) {
-        this._keyHandler.processParsedKey(parsed)
-      }
-      return
-    }
-
     if (!this.stdinParser) return
 
     try {
