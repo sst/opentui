@@ -4,10 +4,6 @@ import { ManualClock } from "../testing/manual-clock"
 import type { ScrollInfo } from "./parse.mouse"
 import { StdinParser, type StdinEvent, type StdinParserOptions } from "./stdin-parser"
 
-// ---------------------------------------------------------------------------
-// Snapshot types — intentionally minimal to keep assertions compact
-// ---------------------------------------------------------------------------
-
 type KeySnap = {
   type: "key"
   raw: string
@@ -21,10 +17,6 @@ type MouseSnap = { type: "mouse"; raw: string; encoding: "sgr" | "x10"; event: R
 type PasteSnap = { type: "paste"; text: string }
 type RespSnap = { type: "response"; protocol: string; sequence: string }
 type Snap = KeySnap | MouseSnap | PasteSnap | RespSnap
-
-// ---------------------------------------------------------------------------
-// Shorthand snapshot builders
-// ---------------------------------------------------------------------------
 
 const K_DEFAULTS = { ctrl: false, meta: false, shift: false, eventType: "press" }
 type KOpts = { raw?: string; ctrl?: boolean; meta?: boolean; shift?: boolean; eventType?: string }
@@ -78,10 +70,6 @@ function x10m(
   if (opts.scroll) event.scroll = opts.scroll
   return { type: "mouse", raw, encoding: "x10", event }
 }
-
-// ---------------------------------------------------------------------------
-// Infrastructure
-// ---------------------------------------------------------------------------
 
 function createParser(options: StdinParserOptions = {}): StdinParser {
   return new StdinParser({ armTimeouts: false, clock: new ManualClock(), ...options })
@@ -151,10 +139,6 @@ function x10bytes(rawButton: number, x: number, y: number): number[] {
   return [0x1b, 0x5b, 0x4d, rawButton + 32, x + 33, y + 33]
 }
 
-// ---------------------------------------------------------------------------
-// Table-driven test runner — one test per row, auto-destroy
-// ---------------------------------------------------------------------------
-
 type Case = [label: string, input: ChunkInput, expected: Snap[]]
 
 function table(cases: Case[], opts?: StdinParserOptions) {
@@ -186,15 +170,7 @@ function assertChunkInvariant(input: Uint8Array, opts?: StdinParserOptions) {
   }
 }
 
-// ===========================================================================
-// Tests
-// ===========================================================================
-
 describe("StdinParser", () => {
-  // -------------------------------------------------------------------------
-  // Printable ASCII
-  // -------------------------------------------------------------------------
-
   describe("printable ASCII", () => {
     test("lowercase a-z", () => {
       const p = createParser()
@@ -250,10 +226,6 @@ describe("StdinParser", () => {
     })
   })
 
-  // -------------------------------------------------------------------------
-  // Control characters
-  // -------------------------------------------------------------------------
-
   describe("control characters", () => {
     // Map of special control bytes that get their own key name instead of ctrl+letter
     const special: Record<number, [string, KOpts]> = {
@@ -285,10 +257,6 @@ describe("StdinParser", () => {
     table(cases)
   })
 
-  // -------------------------------------------------------------------------
-  // Special keys
-  // -------------------------------------------------------------------------
-
   describe("special keys", () => {
     table([
       ["return", "\r", [k("return", { raw: "\r" })]],
@@ -314,10 +282,6 @@ describe("StdinParser", () => {
     })
   })
 
-  // -------------------------------------------------------------------------
-  // Escape sequences: arrows and navigation
-  // -------------------------------------------------------------------------
-
   describe("arrows and navigation", () => {
     table([
       // CSI arrows
@@ -340,10 +304,6 @@ describe("StdinParser", () => {
       ["end rxvt", "\x1b[8~", [k("end", { raw: "\x1b[8~" })]],
     ])
   })
-
-  // -------------------------------------------------------------------------
-  // Function keys
-  // -------------------------------------------------------------------------
 
   describe("function keys", () => {
     // ESC [ n ~ form
@@ -372,10 +332,6 @@ describe("StdinParser", () => {
     ])
   })
 
-  // -------------------------------------------------------------------------
-  // Double-bracket CSI variants (Cygwin / putty-style)
-  // -------------------------------------------------------------------------
-
   describe("double-bracket CSI variants", () => {
     table([
       ["f1 ([[A)", "\x1b[[A", [k("f1", { raw: "\x1b[[A" })]],
@@ -387,10 +343,6 @@ describe("StdinParser", () => {
       ["pagedown ([[6~)", "\x1b[[6~", [k("pagedown", { raw: "\x1b[[6~" })]],
     ])
   })
-
-  // -------------------------------------------------------------------------
-  // SS3 sequences
-  // -------------------------------------------------------------------------
 
   describe("SS3 sequences", () => {
     table([
@@ -428,10 +380,6 @@ describe("StdinParser", () => {
       }
     })
   })
-
-  // -------------------------------------------------------------------------
-  // Modifier combinations on escape sequences
-  // -------------------------------------------------------------------------
 
   describe("modifier combinations", () => {
     // CSI 1;modifier letter format
@@ -488,10 +436,6 @@ describe("StdinParser", () => {
       ["ctrl+pgdn (rxvt ^)", "\x1b[6^", [k("pagedown", { raw: "\x1b[6^", ctrl: true })]],
     ])
   })
-
-  // -------------------------------------------------------------------------
-  // Meta key combinations (ESC + char)
-  // -------------------------------------------------------------------------
 
   describe("meta key combinations", () => {
     test("meta+lowercase letters", () => {
@@ -576,10 +520,6 @@ describe("StdinParser", () => {
     })
   })
 
-  // -------------------------------------------------------------------------
-  // Kitty keyboard protocol
-  // -------------------------------------------------------------------------
-
   describe("kitty keyboard protocol", () => {
     // CSI codepoint u format
     table([
@@ -618,10 +558,6 @@ describe("StdinParser", () => {
     ])
   })
 
-  // -------------------------------------------------------------------------
-  // modifyOtherKeys
-  // -------------------------------------------------------------------------
-
   describe("modifyOtherKeys", () => {
     table([
       ["shift+return", "\x1b[27;2;13~", [k("return", { raw: "\x1b[27;2;13~", shift: true })]],
@@ -633,10 +569,6 @@ describe("StdinParser", () => {
       ["shift+digit 5", "\x1b[27;2;53~", [k("5", { raw: "\x1b[27;2;53~", shift: true })]],
     ])
   })
-
-  // -------------------------------------------------------------------------
-  // Mouse: SGR protocol
-  // -------------------------------------------------------------------------
 
   describe("mouse: SGR protocol", () => {
     table([
@@ -719,10 +651,6 @@ describe("StdinParser", () => {
     })
   })
 
-  // -------------------------------------------------------------------------
-  // Mouse: X10 protocol
-  // -------------------------------------------------------------------------
-
   describe("mouse: X10 protocol", () => {
     // X10: ESC [ M <button+32> <x+33> <y+33>
     const leftDown = x10bytes(0, 0, 0)
@@ -776,10 +704,6 @@ describe("StdinParser", () => {
       }
     })
   })
-
-  // -------------------------------------------------------------------------
-  // UTF-8 handling
-  // -------------------------------------------------------------------------
 
   describe("UTF-8 handling", () => {
     table([
@@ -890,10 +814,6 @@ describe("StdinParser", () => {
       }
     })
   })
-
-  // -------------------------------------------------------------------------
-  // Protocol responses (OSC, DCS, APC, focus, DA, CPR, etc.)
-  // -------------------------------------------------------------------------
 
   describe("protocol responses", () => {
     table([
@@ -1014,10 +934,6 @@ describe("StdinParser", () => {
       }
     })
   })
-
-  // -------------------------------------------------------------------------
-  // Bracketed paste
-  // -------------------------------------------------------------------------
 
   describe("bracketed paste", () => {
     table([
@@ -1153,10 +1069,6 @@ describe("StdinParser", () => {
     })
   })
 
-  // -------------------------------------------------------------------------
-  // ESC-less SGR continuation
-  // -------------------------------------------------------------------------
-
   describe("ESC-less SGR continuation", () => {
     table([
       ["[<35;20;5m → unknown response", "[<35;20;5m", [resp("unknown", "[<35;20;5m")]],
@@ -1227,10 +1139,6 @@ describe("StdinParser", () => {
       }
     })
   })
-
-  // -------------------------------------------------------------------------
-  // Timeout behavior
-  // -------------------------------------------------------------------------
 
   describe("timeout behavior", () => {
     test("timeout at exact boundary (9ms no fire, 10ms fires)", () => {
@@ -1322,10 +1230,6 @@ describe("StdinParser", () => {
     })
   })
 
-  // -------------------------------------------------------------------------
-  // Embedded ESC abort
-  // -------------------------------------------------------------------------
-
   describe("embedded ESC abort", () => {
     test("ESC inside partial CSI flushes as unknown, restarts", () => {
       const p = createParser()
@@ -1377,10 +1281,6 @@ describe("StdinParser", () => {
       }
     })
   })
-
-  // -------------------------------------------------------------------------
-  // Chunk-shape invariance
-  // -------------------------------------------------------------------------
 
   describe("chunk-shape invariance", () => {
     const sequences = [
@@ -1466,10 +1366,6 @@ describe("StdinParser", () => {
       }
     }
   })
-
-  // -------------------------------------------------------------------------
-  // State management
-  // -------------------------------------------------------------------------
 
   describe("state management", () => {
     test("reset clears pending bytes and releases capacity", () => {
@@ -1613,10 +1509,6 @@ describe("StdinParser", () => {
     })
   })
 
-  // -------------------------------------------------------------------------
-  // Multi-event interleaving
-  // -------------------------------------------------------------------------
-
   describe("multi-event interleaving", () => {
     table([
       [
@@ -1655,10 +1547,6 @@ describe("StdinParser", () => {
       }
     })
   })
-
-  // -------------------------------------------------------------------------
-  // Negative and edge cases
-  // -------------------------------------------------------------------------
 
   describe("negative and edge cases", () => {
     test("push with empty buffer is a no-op", () => {
