@@ -112,6 +112,26 @@ const EXAMPLES = [
   },
 ]
 
+let firstDrawRuntimeMs: number | null = null
+
+const TimeToFirstDraw = () => {
+  const [runtimeMs, setRuntimeMs] = createSignal<number | null>(firstDrawRuntimeMs)
+
+  onMount(() => {
+    if (firstDrawRuntimeMs === null) {
+      firstDrawRuntimeMs = performance.now()
+    }
+    setRuntimeMs(firstDrawRuntimeMs)
+  })
+
+  const content = () => {
+    const value = runtimeMs()
+    return value === null ? "Time to first draw: --" : `Time to first draw: ${value.toFixed(2)}ms`
+  }
+
+  return <text style={{ fg: "#AAAAAA", alignSelf: "center" }}>{content()}</text>
+}
+
 const ExampleSelector = () => {
   const renderer = useRenderer()
 
@@ -225,10 +245,6 @@ const ExampleSelector = () => {
               text={titleText}
             />
           </box>
-          <text style={{ fg: "#AAAAAA", marginTop: 1, marginLeft: 1, marginRight: 1 }}>
-            Use ↑↓ or j/k to navigate, Shift+↑↓ or Shift+j/k for fast scroll, Enter to run, Escape to return, for
-            console, ctrl+c to quit {selected()} {terminalDimensions().height}
-          </text>
           <box
             title="Examples"
             style={{
@@ -263,6 +279,11 @@ const ExampleSelector = () => {
               fastScrollStep={5}
             />
           </box>
+          <TimeToFirstDraw />
+          <text style={{ fg: "#AAAAAA", marginTop: 1, marginLeft: 1, marginRight: 1 }}>
+            Use ↑↓ or j/k to navigate, Shift+↑↓ or Shift+j/k for fast scroll, Enter to run, Escape to return, ` to
+            toggle console, ctrl+c to quit
+          </text>
         </box>
       </Match>
     </Switch>
