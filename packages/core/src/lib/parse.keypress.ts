@@ -67,11 +67,6 @@ const keyName: Record<string, string> = {
   "[c": "right",
   "[d": "left",
   "[e": "clear",
-  /* option + arrow keys (old style) */
-  f: "right",
-  b: "left",
-  p: "up",
-  n: "down",
 
   "[2$": "insert",
   "[3$": "delete",
@@ -319,8 +314,8 @@ export const parseKeypress = (s: Buffer | string = "", options: ParseKeypressOpt
     // shift+letter
     key.name = s.toLowerCase()
     key.shift = true
-  } else if (s.length === 1) {
-    // Special characters (like $, ^, etc.) - preserve the character
+  } else if (s.length === 1 || (s.length === 2 && s.codePointAt(0)! > 0xffff)) {
+    // Single character (including emoji/surrogate pairs above BMP)
     key.name = s
   } else if ((parts = metaKeyCodeRe.exec(s))) {
     // meta+character key
@@ -328,11 +323,11 @@ export const parseKeypress = (s: Buffer | string = "", options: ParseKeypressOpt
     const char = parts[1]!
     const isUpperCase = /^[A-Z]$/.test(char)
 
-    // Check if uppercase F or B map to arrow keys (old terminal style)
-    if (char === "F") {
-      key.name = "right"
-    } else if (char === "B") {
+    // macOS Terminal.app sends ESC+b for Option+Left, ESC+f for Option+Right
+    if (char === "b") {
       key.name = "left"
+    } else if (char === "f") {
+      key.name = "right"
     } else if (isUpperCase) {
       key.shift = true
       key.name = char
@@ -362,10 +357,10 @@ export const parseKeypress = (s: Buffer | string = "", options: ParseKeypressOpt
     // Parse the key modifier
     // Terminal modifier bits: 1=Shift, 2=Alt/Option, 4=Ctrl, 8=Super, 16=Hyper
     // Note: meta flag is set for Alt/Option (bit 2)
-    key.ctrl = !!(modifier & 4)
-    key.meta = !!(modifier & 2) // Alt/Option sets meta
-    key.shift = !!(modifier & 1)
-    key.option = !!(modifier & 2) // Alt/Option modifier specifically
+    key.ctrl = key.ctrl || !!(modifier & 4)
+    key.meta = key.meta || !!(modifier & 2)
+    key.shift = key.shift || !!(modifier & 1)
+    key.option = key.option || !!(modifier & 2)
     key.super = !!(modifier & 8)
     key.hyper = !!(modifier & 16)
     key.code = code

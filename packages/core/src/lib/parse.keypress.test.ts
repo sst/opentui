@@ -1763,59 +1763,63 @@ test("parseKeypress - modifyOtherKeys modified tab, space, and backspace keys", 
   expect(ctrlBackspace8.ctrl).toBe(true)
 })
 
-test("parseKeypress - meta+arrow keys with uppercase F and B (old style)", () => {
-  // Some terminals send ESC followed by uppercase F/B for meta+arrow keys
-  // ONLY uppercase F and B map to arrow keys (not P/N which require actual shift)
-  // Lowercase f/b are just regular meta+letter combinations
-
-  // Meta+Right (uppercase F)
-  const metaRight = parseKeypress("\u001BF")!
-  expect(metaRight.name).toBe("right")
-  expect(metaRight.meta).toBe(true)
-  expect(metaRight.shift).toBe(false)
-  expect(metaRight.ctrl).toBe(false)
-  expect(metaRight.option).toBe(false)
-  expect(metaRight.sequence).toBe("\u001BF")
-  expect(metaRight.raw).toBe("\u001BF")
-
-  // Meta+Left (uppercase B)
-  const metaLeft = parseKeypress("\u001BB")!
+test("parseKeypress - meta+b/f map to arrow keys (Option+Left/Right on macOS Terminal.app)", () => {
+  // macOS Terminal.app sends ESC+b for Option+Left, ESC+f for Option+Right
+  const metaLeft = parseKeypress("\x1bb")!
   expect(metaLeft.name).toBe("left")
   expect(metaLeft.meta).toBe(true)
   expect(metaLeft.shift).toBe(false)
-  expect(metaLeft.ctrl).toBe(false)
-  expect(metaLeft.option).toBe(false)
-  expect(metaLeft.sequence).toBe("\u001BB")
-  expect(metaLeft.raw).toBe("\u001BB")
 
-  // Uppercase P should be meta+shift+p (not arrow up)
-  const metaShiftP = parseKeypress("\u001BP")!
-  expect(metaShiftP.name).toBe("P")
-  expect(metaShiftP.meta).toBe(true)
-  expect(metaShiftP.shift).toBe(true)
-  expect(metaShiftP.ctrl).toBe(false)
-  expect(metaShiftP.option).toBe(false)
+  const metaRight = parseKeypress("\x1bf")!
+  expect(metaRight.name).toBe("right")
+  expect(metaRight.meta).toBe(true)
+  expect(metaRight.shift).toBe(false)
 
-  // Uppercase N should be meta+shift+n (not arrow down)
-  const metaShiftN = parseKeypress("\u001BN")!
-  expect(metaShiftN.name).toBe("N")
-  expect(metaShiftN.meta).toBe(true)
-  expect(metaShiftN.shift).toBe(true)
-  expect(metaShiftN.ctrl).toBe(false)
-  expect(metaShiftN.option).toBe(false)
+  // Uppercase B and F are just meta+shift+letter (no terminal sends these for arrows)
+  const metaShiftB = parseKeypress("\x1bB")!
+  expect(metaShiftB.name).toBe("B")
+  expect(metaShiftB.meta).toBe(true)
+  expect(metaShiftB.shift).toBe(true)
 
-  // Lowercase versions should NOT map to arrow keys - they're just meta+letter
-  // Meta+f (lowercase f) should be just meta+f, NOT meta+right
-  const metaF = parseKeypress("\u001Bf")!
-  expect(metaF.name).toBe("f")
-  expect(metaF.meta).toBe(true)
-  expect(metaF.shift).toBe(false)
-  expect(metaF.ctrl).toBe(false)
+  const metaShiftF = parseKeypress("\x1bF")!
+  expect(metaShiftF.name).toBe("F")
+  expect(metaShiftF.meta).toBe(true)
+  expect(metaShiftF.shift).toBe(true)
 
-  // Meta+b (lowercase b) should be just meta+b, NOT meta+left
-  const metaB = parseKeypress("\u001Bb")!
-  expect(metaB.name).toBe("b")
-  expect(metaB.meta).toBe(true)
-  expect(metaB.shift).toBe(false)
-  expect(metaB.ctrl).toBe(false)
+  // n and p are just meta+letter (no terminal sends these for arrows)
+  const metaN = parseKeypress("\x1bn")!
+  expect(metaN.name).toBe("n")
+  expect(metaN.meta).toBe(true)
+
+  const metaP = parseKeypress("\x1bp")!
+  expect(metaP.name).toBe("p")
+  expect(metaP.meta).toBe(true)
+})
+
+test("parseKeypress - double ESC preserves meta state when fn-key modifiers are parsed", () => {
+  const metaUp = parseKeypress("\x1b\x1b[A")!
+  expect(metaUp.name).toBe("up")
+  expect(metaUp.meta).toBe(true)
+  expect(metaUp.option).toBe(true)
+  expect(metaUp.ctrl).toBe(false)
+  expect(metaUp.shift).toBe(false)
+
+  const metaCtrlUp = parseKeypress("\x1b\x1b[1;5A")!
+  expect(metaCtrlUp.name).toBe("up")
+  expect(metaCtrlUp.meta).toBe(true)
+  expect(metaCtrlUp.option).toBe(true)
+  expect(metaCtrlUp.ctrl).toBe(true)
+  expect(metaCtrlUp.shift).toBe(false)
+})
+
+test("parseKeypress - preserves printable Unicode characters including non-BMP", () => {
+  for (const char of ["é", "中", "👍"]) {
+    const key = parseKeypress(char)!
+    expect(key.name).toBe(char)
+    expect(key.raw).toBe(char)
+    expect(key.sequence).toBe(char)
+    expect(key.meta).toBe(false)
+    expect(key.ctrl).toBe(false)
+    expect(key.shift).toBe(false)
+  }
 })

@@ -1,3 +1,10 @@
+// Byte-level stdin parser that turns raw terminal input into typed StdinEvents.
+//
+// This replaces a two-phase token -> decode pipeline with a single state machine
+// that produces fully typed events (key, mouse, paste, response) directly from
+// bytes. The parser owns all byte framing and protocol recognition. It does NOT
+// own event dispatch — that belongs to KeyHandler and the renderer.
+
 import { Buffer } from "node:buffer"
 import { SystemClock, type Clock, type TimerHandle } from "./clock"
 import { parseKeypress, type ParsedKey } from "./parse.keypress"
@@ -7,6 +14,8 @@ export { SystemClock, type Clock, type TimerHandle } from "./clock"
 
 export type StdinResponseProtocol = "csi" | "osc" | "dcs" | "apc" | "unknown"
 
+// The four event types the parser produces. Everything stdin sends becomes
+// exactly one of these.
 export type StdinEvent =
   | {
       type: "key"
@@ -38,6 +47,10 @@ export interface StdinParserOptions {
   clock?: Clock
 }
 
+// State machine tags for the byte scanner. Each tag represents which protocol
+// framing mode the parser is currently inside. The sawEsc flag in osc/dcs/apc
+// tracks whether the previous byte was ESC, since the two-byte ST terminator
+// (ESC \) can split across push() calls.
 type ParserState =
   | { tag: "ground" }
   | { tag: "utf8"; expected: number; seen: number }
@@ -49,12 +62,17 @@ type ParserState =
   | { tag: "apc"; sawEsc: boolean }
   | { tag: "esc_less_mouse" }
 
+// Collects paste body incrementally, bypassing the main ByteQueue so large
+// pastes don't grow the parser buffer. Keeps only a small tail for end-marker
+// detection across chunk boundaries.
 interface PasteCollector {
   tail: Uint8Array
   decoder: TextDecoder
   parts: string[]
 }
 
+// 10ms is enough to distinguish a lone ESC keypress from the start of an
+// escape sequence on all but the slowest connections.
 const DEFAULT_TIMEOUT_MS = 10
 const DEFAULT_MAX_PENDING_BYTES = 64 * 1024
 const INITIAL_PENDING_CAPACITY = 256
@@ -64,10 +82,16 @@ const BRACKETED_PASTE_START = Buffer.from("\x1b[200~")
 const BRACKETED_PASTE_END = Buffer.from("\x1b[201~")
 const EMPTY_BYTES = new Uint8Array(0)
 const KEY_DECODER = new TextDecoder()
+// rxvt uses $-terminated CSI sequences for shifted function keys (e.g. ESC[2$).
+// Standard CSI treats $ as an intermediate byte, not a final, so we match these
+// explicitly to avoid waiting for a "real" final byte that never arrives.
 const RXVT_DOLLAR_CSI_RE = /^\x1b\[\d+\$$/
 
 const SYSTEM_CLOCK = new SystemClock()
 
+// Byte buffer for pending input. Uses start/end offsets so consume() just
+// advances the start pointer without copying. Compacts (via copyWithin) only
+// when the consumed prefix exceeds half the buffer, keeping amortized cost low.
 class ByteQueue {
   private buf: Uint8Array
   private start = 0
@@ -89,6 +113,8 @@ class ByteQueue {
     return this.buf.subarray(this.start, this.end)
   }
 
+  // Returns a view of the contents and resets the queue. The view shares
+  // the underlying buffer, so it becomes invalid on the next append().
   take(): Uint8Array {
     const chunk = this.view()
     this.start = 0
@@ -106,6 +132,8 @@ class ByteQueue {
     this.end += chunk.length
   }
 
+  // Drops the first `count` bytes. Compacts when the consumed prefix
+  // exceeds half the buffer to reclaim wasted space at the front.
   consume(count: number): void {
     if (count <= 0) {
       return
@@ -136,6 +164,8 @@ class ByteQueue {
     this.end = 0
   }
 
+  // Tries reclaiming space by compacting data to the front first.
+  // Doubles the allocation if that still isn't enough.
   private ensureCapacity(requiredLength: number): void {
     const currentLength = this.length
     if (requiredLength <= this.buf.length) {
@@ -173,6 +203,10 @@ function normalizePositiveOption(value: number | undefined, fallback: number): n
   return Math.floor(value)
 }
 
+// Returns the expected byte count for a UTF-8 sequence given its lead byte,
+// or 0 for bytes that aren't valid UTF-8 leads. Returning 0 tells the parser
+// this is a legacy high-byte character (0x80–0xBF, 0xC0–0xC1, 0xF5+) that
+// goes through the parseKeypress() meta-key path instead.
 function utf8SequenceLength(first: number): number {
   if (first < 0x80) return 1
   if (first >= 0xc2 && first <= 0xdf) return 2
@@ -195,6 +229,8 @@ function bytesEqual(left: Uint8Array, right: Uint8Array): boolean {
   return true
 }
 
+// Checks whether a byte sequence is a complete SGR mouse report:
+// ESC [ < Ps ; Ps ; Ps M/m  (three semicolon-separated digit groups).
 function isMouseSgrSequence(sequence: Uint8Array): boolean {
   if (sequence.length < 7) {
     return false
@@ -268,6 +304,9 @@ function indexOfBytes(haystack: Uint8Array, needle: Uint8Array): number {
   return -1
 }
 
+// Decodes raw protocol bytes as latin1. Used for mouse and response events
+// where the wire bytes may not be valid UTF-8 but need a lossless string
+// form for downstream sequence handlers.
 function decodeLatin1(bytes: Uint8Array): string {
   return Buffer.from(bytes.buffer, bytes.byteOffset, bytes.byteLength).toString("latin1")
 }
@@ -284,6 +323,14 @@ function createPasteCollector(): PasteCollector {
   }
 }
 
+// Push-driven stdin parser. Callers feed raw bytes via push(), then read
+// typed events via read() or drain(). At most one incomplete protocol unit
+// is buffered at a time; everything else is immediately converted to events.
+//
+// The parser guarantees chunk-shape invariance: the same bytes always produce
+// the same events, regardless of chunk boundaries. A lone ESC resolves via
+// timeout, split UTF-8 codepoints reassemble correctly, and bracketed paste
+// markers may split across any chunk boundary.
 export class StdinParser {
   private readonly pending = new ByteQueue(INITIAL_PENDING_CAPACITY)
   private readonly events: StdinEvent[] = []
@@ -296,11 +343,20 @@ export class StdinParser {
   private readonly clock: Clock
   private timeoutId: TimerHandle | null = null
   private destroyed = false
+  // When the current incomplete unit first appeared. Null when nothing is pending.
   private pendingSinceMs: number | null = null
+  // When true, the state machine treats the current incomplete prefix as
+  // final and emits it as one atomic event (e.g. a lone ESC becomes an
+  // Escape key). Set by the timeout, consumed by the next read() or drain().
   private forceFlush = false
   private state: ParserState = { tag: "ground" }
+  // Scan position within pending.view() during scanPending().
   private cursor = 0
+  // Start of the protocol unit currently being parsed. The bytes from
+  // unitStart through cursor all belong to one atomic unit.
   private unitStart = 0
+  // When non-null, the parser is inside a bracketed paste. All incoming
+  // bytes flow through consumePasteBytes() instead of the normal state machine.
   private paste: PasteCollector | null = null
 
   constructor(options: StdinParserOptions = {}) {
@@ -316,6 +372,12 @@ export class StdinParser {
     return this.pending.capacity
   }
 
+  // Feeds raw stdin bytes into the parser. Converts as much as possible into
+  // queued events and leaves at most one incomplete unit behind in pending.
+  //
+  // When a chunk contains a paste start marker, bytes before the marker go
+  // through normal parsing, then paste mode takes over for the rest. This
+  // prevents large pastes from growing the main buffer.
   public push(data: Uint8Array): void {
     this.ensureAlive()
     if (data.length === 0) {
@@ -329,6 +391,9 @@ export class StdinParser {
         continue
       }
 
+      // If we're in ground state with nothing pending, scan the incoming
+      // chunk for a paste start marker. Only append through the marker so
+      // scanPending() enters paste mode without buffering the full paste.
       const immediatePasteStartIndex =
         this.state.tag === "ground" && this.pending.length === 0 ? indexOfBytes(remainder, BRACKETED_PASTE_START) : -1
       const appendEnd =
@@ -356,6 +421,9 @@ export class StdinParser {
     this.reconcileTimeoutState()
   }
 
+  // Pops one event from the queue. If the queue is empty and a timeout has
+  // set forceFlush, re-scans pending to convert the timed-out incomplete
+  // unit into one final event before returning it.
   public read(): StdinEvent | null {
     this.ensureAlive()
 
@@ -367,6 +435,8 @@ export class StdinParser {
     return this.events.shift() ?? null
   }
 
+  // Delivers all queued events. Stops early if the parser is destroyed
+  // during a callback (e.g. an event handler triggers teardown).
   public drain(onEvent: (event: StdinEvent) => void): void {
     this.ensureAlive()
 
@@ -384,6 +454,10 @@ export class StdinParser {
     }
   }
 
+  // Marks the parser for forced flush if enough time has passed since
+  // incomplete data arrived. Does not immediately emit events — the next
+  // read() or drain() does the actual flush. This separation keeps the
+  // timer callback from emitting events mid-flight in user code.
   public flushTimeout(nowMsValue: number = this.clock.now()): void {
     this.ensureAlive()
 
@@ -423,6 +497,12 @@ export class StdinParser {
     }
   }
 
+  // Scans the pending byte buffer one byte at a time, dispatching on the
+  // current parser state. All protocol framing lives in this single switch
+  // — intentionally not split into per-mode scan helpers.
+  //
+  // Exits when: all bytes consumed (ground), more bytes needed (incomplete
+  // unit), or paste mode entered (body handled by consumePasteBytes).
   private scanPending(): void {
     while (!this.paste) {
       const bytes = this.pending.view()
@@ -440,6 +520,9 @@ export class StdinParser {
         case "ground": {
           this.unitStart = this.cursor
 
+          // ESC-less SGR continuation: after a timed-out lone ESC, the next
+          // chunk can start with `[<...m`. We must catch this before the ASCII
+          // path, or `[` and `<` would become printable text.
           if (byte === 0x5b && this.cursor + 1 < bytes.length && bytes[this.cursor + 1] === 0x3c) {
             this.cursor += 2
             this.state = { tag: "esc_less_mouse" }
@@ -458,6 +541,10 @@ export class StdinParser {
             continue
           }
 
+          // Invalid UTF-8 lead byte. Could be a legacy high-byte from an
+          // older terminal. If it's the last byte in the buffer, wait for
+          // more data or a timeout before committing. On timeout, emit
+          // through parseKeypress() which handles meta-key behavior.
           const expected = utf8SequenceLength(byte)
           if (expected === 0) {
             if (!this.forceFlush && this.cursor + 1 === bytes.length) {
@@ -488,6 +575,8 @@ export class StdinParser {
             continue
           }
 
+          // Not a valid continuation byte. Treat the lead byte as a legacy
+          // high-byte character and restart parsing from this position.
           if ((byte & 0xc0) !== 0x80) {
             this.emitLegacyHighByte(bytes[this.unitStart]!)
             this.state = { tag: "ground" }
@@ -521,6 +610,8 @@ export class StdinParser {
             continue
           }
 
+          // The byte after ESC determines the sub-protocol:
+          // [  ->  CSI, O  ->  SS3, ]  ->  OSC, P  ->  DCS, _  ->  APC.
           switch (byte) {
             case 0x5b:
               this.cursor += 1
@@ -542,6 +633,8 @@ export class StdinParser {
               this.cursor += 1
               this.state = { tag: "apc", sawEsc: false }
               continue
+            // ESC ESC: stay in esc state. Terminals encode Alt+ESC and
+            // similar sequences as ESC ESC [...], so we keep scanning.
             case ESC:
               this.cursor += 1
               continue
@@ -594,6 +687,9 @@ export class StdinParser {
             continue
           }
 
+          // A new ESC inside an incomplete CSI means the previous sequence
+          // was interrupted. Flush everything before the new ESC as one
+          // opaque response, then restart parsing at the new ESC.
           if (byte === ESC) {
             this.emitOpaqueResponse("unknown", bytes.subarray(this.unitStart, this.cursor))
             this.state = { tag: "ground" }
@@ -601,6 +697,9 @@ export class StdinParser {
             continue
           }
 
+          // X10 mouse: ESC [ M plus 3 raw payload bytes (button, x, y).
+          // cursor === unitStart + 2 confirms M comes right after ESC[,
+          // not as a later final byte in a different CSI sequence.
           if (byte === 0x4d && this.cursor === this.unitStart + 2) {
             const end = this.cursor + 4
             if (bytes.length < end) {
@@ -637,6 +736,17 @@ export class StdinParser {
             }
           }
 
+          // Some terminals use ESC [[A..E / ESC [[5~ / ESC [[6~ variants.
+          // Treat the second `[` immediately after ESC[ as part of the CSI
+          // payload instead of as a final byte so parseKeypress() can match
+          // `[[A`, `[[B`, `[[5~`, etc.
+          if (byte === 0x5b && this.cursor === this.unitStart + 2) {
+            this.cursor += 1
+            continue
+          }
+
+          // Standard CSI final byte (0x40–0x7E). Check for bracketed paste
+          // start, SGR mouse, or a regular CSI key/response.
           if (byte >= 0x40 && byte <= 0x7e) {
             const end = this.cursor + 1
             const rawBytes = bytes.subarray(this.unitStart, end)
@@ -665,6 +775,9 @@ export class StdinParser {
           continue
         }
 
+        // OSC sequences end at BEL or ESC \. DCS and APC end at ESC \
+        // only. The sawEsc flag tracks whether the previous byte was ESC,
+        // since the two-byte ESC \ can split across push() calls.
         case "osc": {
           if (this.cursor >= bytes.length) {
             if (!this.forceFlush) {
@@ -781,6 +894,13 @@ export class StdinParser {
           continue
         }
 
+        // ESC-less SGR mouse continuation. When a lone ESC times out and
+        // gets flushed as an Escape key, the remaining `[<35;20;5m` can
+        // arrive without its ESC prefix. This state consumes the entire
+        // `[<digits;digits;digitsM/m` unit as one opaque response so it
+        // never becomes individual printable characters.
+        // TODO: Why do we need to handle this ESC less SGR continuation as a special case, can't we just generically
+        // handle any ESC-less CSI sequence continuation in the same way?
         case "esc_less_mouse": {
           if (this.cursor >= bytes.length) {
             if (!this.forceFlush) {
@@ -816,6 +936,11 @@ export class StdinParser {
     }
   }
 
+  // Tries to parse the raw string as a key via parseKeypress(). If it
+  // recognizes the sequence (printable char, arrow, function key, etc.),
+  // emits a key event. Otherwise emits a response event — this is how
+  // capability responses, focus sequences, and other non-key CSI traffic
+  // avoids becoming text.
   private emitKeyOrResponse(protocol: StdinResponseProtocol, raw: string): void {
     const parsed = parseKeypress(raw, { useKittyKeyboard: this.useKittyKeyboard })
     if (parsed) {
@@ -849,6 +974,10 @@ export class StdinParser {
     })
   }
 
+  // Handles single bytes in the 0x80–0xFF range that aren't valid UTF-8
+  // leads. Passes them through parseKeypress() which maps them to the
+  // existing meta-key behavior (e.g. Alt+letter in terminals that send
+  // high bytes instead of ESC-prefixed sequences).
   private emitLegacyHighByte(byte: number): void {
     const parsed = parseKeypress(Buffer.from([byte]), { useKittyKeyboard: this.useKittyKeyboard })
     if (parsed) {
@@ -875,6 +1004,8 @@ export class StdinParser {
     })
   }
 
+  // Advances past a completed protocol unit. Resets cursor, unitStart,
+  // and timeout state so the next scan iteration starts clean.
   private consumePrefix(endExclusive: number): void {
     this.pending.consume(endExclusive)
     this.cursor = 0
@@ -883,6 +1014,9 @@ export class StdinParser {
     this.forceFlush = false
   }
 
+  // Removes all bytes from the pending queue and returns them. Used when
+  // entering paste mode — leftover bytes after the paste start marker
+  // need to flow through consumePasteBytes() instead.
   private takePendingBytes(): Uint8Array {
     const buffered = this.pending.take()
     this.cursor = 0
@@ -892,6 +1026,9 @@ export class StdinParser {
     return buffered
   }
 
+  // Emits all pending bytes as one opaque response and clears the buffer.
+  // This keeps the parser buffer bounded at maxPendingBytes without
+  // dropping data or splitting it into per-character events.
   private flushPendingOverflow(): void {
     if (this.pending.length === 0) {
       return
@@ -906,10 +1043,19 @@ export class StdinParser {
     this.state = { tag: "ground" }
   }
 
+  // Records when incomplete data first appeared so flushTimeout() can
+  // decide whether enough time has elapsed to force-flush it.
   private markPending(): void {
     this.pendingSinceMs = this.clock.now()
   }
 
+  // Processes bytes during an active bracketed paste. Searches for the end
+  // marker (ESC[201~) using a sliding tail window so the marker can split
+  // across chunk boundaries. Bytes that can't be part of the end marker are
+  // decoded incrementally as UTF-8 and appended to the paste collector.
+  //
+  // Returns any bytes that follow the end marker — those go back through
+  // normal parsing in the push() loop.
   private consumePasteBytes(chunk: Uint8Array): Uint8Array {
     const paste = this.paste!
     const combined = concatBytes(paste.tail, chunk)
@@ -931,6 +1077,8 @@ export class StdinParser {
       return combined.subarray(endIndex + BRACKETED_PASTE_END.length)
     }
 
+    // Keep enough trailing bytes to detect an end marker split across chunks.
+    // Everything before that point is safe to decode immediately.
     const keep = Math.min(BRACKETED_PASTE_END.length - 1, combined.length)
     const stableLength = combined.length - keep
     if (stableLength > 0) {
@@ -941,6 +1089,9 @@ export class StdinParser {
     return EMPTY_BYTES
   }
 
+  // Feeds bytes through the streaming TextDecoder. The { stream: true } flag
+  // tells the decoder to hold back incomplete multi-byte characters until more
+  // bytes arrive, so split UTF-8 codepoints reassemble correctly.
   private pushPasteText(bytes: Uint8Array): void {
     if (bytes.length === 0) {
       return
@@ -952,6 +1103,10 @@ export class StdinParser {
     }
   }
 
+  // Arms or disarms the timeout after every push(). If there's an incomplete
+  // unit in the buffer, starts a timer. When the timer fires, it sets
+  // forceFlush so the next read() converts the incomplete unit into one
+  // atomic event (e.g. a lone ESC becoming an Escape key).
   private reconcileTimeoutState(): void {
     if (!this.armTimeouts) {
       return
@@ -987,6 +1142,9 @@ export class StdinParser {
     this.timeoutId = null
   }
 
+  // Clears all parser state: pending bytes, queued events, timeout tracking,
+  // and any active paste collector. Called by both reset() (suspend/resume)
+  // and destroy() to ensure no stale state survives.
   private resetState(): void {
     this.pending.reset(INITIAL_PENDING_CAPACITY)
     this.events.length = 0
