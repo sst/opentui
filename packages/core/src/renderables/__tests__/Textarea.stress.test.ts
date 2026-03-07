@@ -1,27 +1,17 @@
 import { describe, expect, it, afterAll, beforeEach, afterEach } from "bun:test"
 import { createTestRenderer, type TestRenderer, type MockMouse, type MockInput } from "../../testing/test-renderer"
+import { ManualClock } from "../../testing/manual-clock"
 import { createTextareaRenderable } from "./renderable-test-utils"
 
 let currentRenderer: TestRenderer
 let renderOnce: () => Promise<void>
 let currentMouse: MockMouse
 let currentMockInput: MockInput
-
-function flushNativeParserTimeout(renderer: TestRenderer): void {
-  // @ts-expect-error - test-only access to private parser
-  const parser = renderer.stdinParser
-  if (!parser) {
-    throw new Error("stdinParser unavailable in test renderer")
-  }
-
-  parser.flushTimeout(Date.now() + 1000)
-
-  // @ts-expect-error - test-only access to private drain method
-  renderer.drainStdinParser()
-}
+let currentClock: ManualClock
 
 describe("Textarea - Stress Tests", () => {
   beforeEach(async () => {
+    currentClock = new ManualClock()
     ;({
       renderer: currentRenderer,
       renderOnce,
@@ -30,6 +20,7 @@ describe("Textarea - Stress Tests", () => {
     } = await createTestRenderer({
       width: 80,
       height: 24,
+      stdinParserClock: currentClock,
     }))
   })
 
@@ -532,7 +523,7 @@ describe("Textarea - Stress Tests", () => {
     // Simulate ESC and continuation arriving in separate chunks where the ESC is
     // timeout-flushed before the continuation arrives.
     currentRenderer.stdin.emit("data", Buffer.from("\x1b"))
-    flushNativeParserTimeout(currentRenderer)
+    currentClock.advance(1000)
     currentRenderer.stdin.emit("data", Buffer.from("[<35;20;5m"))
 
     expect(editor.plainText).toBe(initialText)
