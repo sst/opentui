@@ -80,13 +80,6 @@ registerEnvVar({
   default: false,
 })
 
-registerEnvVar({
-  name: "OTUI_STDIN_PARSER_MAX_BUFFER_BYTES",
-  description: "Maximum buffered bytes for stdin parser",
-  type: "number",
-  default: 64 * 1024 * 1024,
-})
-
 export interface CliRendererConfig {
   stdin?: NodeJS.ReadStream
   stdout?: NodeJS.WriteStream
@@ -152,18 +145,6 @@ const KITTY_FLAG_ALL_KEYS_AS_ESCAPES = 0b1000 // Report all keys as escape codes
 const KITTY_FLAG_REPORT_TEXT = 0b10000 // Report text associated with key events
 
 const DEFAULT_STDIN_PARSER_MAX_BUFFER_BYTES = 64 * 1024 * 1024
-const MIN_STDIN_PARSER_MAX_BUFFER_BYTES = 1024
-const MAX_STDIN_PARSER_MAX_BUFFER_BYTES = 0xffffffff
-
-function normalizeStdinParserMaxBufferBytes(value: unknown): number {
-  const numeric = typeof value === "number" ? value : Number(value)
-  if (!Number.isFinite(numeric) || numeric <= 0) {
-    return DEFAULT_STDIN_PARSER_MAX_BUFFER_BYTES
-  }
-
-  const floored = Math.floor(numeric)
-  return Math.max(MIN_STDIN_PARSER_MAX_BUFFER_BYTES, Math.min(floored, MAX_STDIN_PARSER_MAX_BUFFER_BYTES))
-}
 
 /**
  * Kitty Keyboard Protocol configuration options
@@ -645,9 +626,7 @@ export class CliRenderer extends EventEmitter implements RenderContext {
 
     this.addExitListeners()
 
-    const stdinParserMaxBufferBytes = normalizeStdinParserMaxBufferBytes(
-      config.stdinParserMaxBufferBytes ?? env.OTUI_STDIN_PARSER_MAX_BUFFER_BYTES,
-    )
+    const stdinParserMaxBufferBytes = config.stdinParserMaxBufferBytes ?? DEFAULT_STDIN_PARSER_MAX_BUFFER_BYTES
     this.stdinParser = new StdinParser({
       timeoutMs: 10,
       maxPendingBytes: stdinParserMaxBufferBytes,
