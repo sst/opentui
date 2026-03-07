@@ -1,5 +1,5 @@
 import { createCliRenderer } from "@opentui/core"
-import { createRoot } from "../src"
+import { createRoot } from "@opentui/react"
 
 function App() {
   return (
