@@ -1,5 +1,6 @@
 import { describe, expect, test } from "bun:test"
 import { Buffer } from "node:buffer"
+import { ManualClock } from "../testing/manual-clock"
 import type { RawMouseEvent } from "./parse.mouse"
 import { StdinParser, type StdinEvent, type StdinParserOptions } from "./stdin-parser"
 
@@ -30,7 +31,19 @@ type EventSnapshot =
     }
 
 function createParser(options: StdinParserOptions = {}): StdinParser {
-  return new StdinParser({ ...options, armTimeouts: false })
+  return new StdinParser({ armTimeouts: false, clock: new ManualClock(), ...options })
+}
+
+function createTimedParser(options: StdinParserOptions = {}): { parser: StdinParser; clock: ManualClock } {
+  const clock = new ManualClock()
+  return {
+    parser: createParser({ ...options, armTimeouts: true, clock }),
+    clock,
+  }
+}
+
+function advanceParserTimeout(clock: ManualClock): void {
+  clock.advance(10)
 }
 
 function collectAvailable(parser: StdinParser): StdinEvent[] {
@@ -114,6 +127,40 @@ describe("StdinParser", () => {
     }
   })
 
+  test("emits standalone [ immediately and does not join a later <", () => {
+    const parser = createParser()
+
+    try {
+      parser.push(Buffer.from("["))
+      expect(collectSnapshots(parser)).toEqual([
+        {
+          type: "key",
+          raw: "[",
+          name: "[",
+          ctrl: false,
+          meta: false,
+          shift: false,
+          eventType: "press",
+        },
+      ])
+
+      parser.push(Buffer.from("<"))
+      expect(collectSnapshots(parser)).toEqual([
+        {
+          type: "key",
+          raw: "<",
+          name: "<",
+          ctrl: false,
+          meta: false,
+          shift: false,
+          eventType: "press",
+        },
+      ])
+    } finally {
+      parser.destroy()
+    }
+  })
+
   test("emits split UTF-8 text as one key event", () => {
     const parser = createParser()
 
@@ -139,13 +186,16 @@ describe("StdinParser", () => {
   })
 
   test("times out lone ESC to one Escape key event", () => {
-    const parser = createParser()
+    const { parser, clock } = createTimedParser()
 
     try {
       parser.push(Buffer.from("\x1b"))
       expect(collectAvailable(parser)).toEqual([])
 
-      parser.flushTimeout(Number.MAX_SAFE_INTEGER)
+      clock.advance(9)
+      expect(collectAvailable(parser)).toEqual([])
+
+      clock.advance(1)
       expect(collectSnapshots(parser)).toEqual([
         {
           type: "key",
@@ -163,13 +213,13 @@ describe("StdinParser", () => {
   })
 
   test("preserves legacy single high-byte compatibility on timeout", () => {
-    const parser = createParser()
+    const { parser, clock } = createTimedParser()
 
     try {
       parser.push(Uint8Array.from([0xe9]))
       expect(collectAvailable(parser)).toEqual([])
 
-      parser.flushTimeout(Number.MAX_SAFE_INTEGER)
+      advanceParserTimeout(clock)
       expect(collectSnapshots(parser)).toEqual([
         {
           type: "key",
@@ -527,11 +577,11 @@ describe("StdinParser", () => {
   })
 
   test("classifies SGR continuation after timed-out ESC as unknown response", () => {
-    const parser = createParser()
+    const { parser, clock } = createTimedParser()
 
     try {
       parser.push(Buffer.from("\x1b"))
-      parser.flushTimeout(Number.MAX_SAFE_INTEGER)
+      advanceParserTimeout(clock)
       expect(collectSnapshots(parser)).toEqual([
         {
           type: "key",
@@ -558,18 +608,51 @@ describe("StdinParser", () => {
   })
 
   test("timeout flushes partial SGR continuation as one unknown response", () => {
-    const parser = createParser()
+    const { parser, clock } = createTimedParser()
 
     try {
       parser.push(Buffer.from("[<35;20"))
       expect(collectAvailable(parser)).toEqual([])
 
-      parser.flushTimeout(Number.MAX_SAFE_INTEGER)
+      advanceParserTimeout(clock)
       expect(collectSnapshots(parser)).toEqual([
         {
           type: "response",
           protocol: "unknown",
           sequence: "[<35;20",
+        },
+      ])
+    } finally {
+      parser.destroy()
+    }
+  })
+
+  test("resets the timeout when an incomplete sequence receives more bytes", () => {
+    const { parser, clock } = createTimedParser()
+
+    try {
+      parser.push(Buffer.from("\x1b[<35;20;"))
+      clock.advance(9)
+      parser.push(Buffer.from("5"))
+
+      expect(collectAvailable(parser)).toEqual([])
+
+      clock.advance(9)
+      expect(collectAvailable(parser)).toEqual([])
+
+      parser.push(Buffer.from("m"))
+      expect(collectSnapshots(parser)).toEqual([
+        {
+          type: "mouse",
+          raw: "\x1b[<35;20;5m",
+          encoding: "sgr",
+          event: {
+            type: "move",
+            button: 0,
+            x: 19,
+            y: 4,
+            modifiers: { shift: false, alt: false, ctrl: false },
+          },
         },
       ])
     } finally {

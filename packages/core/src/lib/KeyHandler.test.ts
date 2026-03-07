@@ -1,14 +1,24 @@
 import { test, expect } from "bun:test"
 import { InternalKeyHandler, KeyEvent } from "./KeyHandler"
+import { type ParseKeypressOptions, parseKeypress } from "./parse.keypress"
 import { createTestRenderer } from "../testing/test-renderer"
 
 const { renderer, mockInput } = await createTestRenderer({})
 
-function createKeyHandler(useKittyKeyboard: boolean = false): InternalKeyHandler {
-  return new InternalKeyHandler(useKittyKeyboard)
+function createKeyHandler(): InternalKeyHandler {
+  return new InternalKeyHandler()
 }
 
-test("KeyHandler - processInput emits keypress events", () => {
+function dispatchInput(handler: InternalKeyHandler, data: string, options: ParseKeypressOptions = {}): boolean {
+  const parsedKey = parseKeypress(data, options)
+  if (!parsedKey) {
+    return false
+  }
+
+  return handler.processParsedKey(parsedKey)
+}
+
+test("KeyHandler - parsed input emits keypress events", () => {
   const handler = new InternalKeyHandler()
 
   let receivedKey: KeyEvent | undefined
@@ -16,7 +26,7 @@ test("KeyHandler - processInput emits keypress events", () => {
     receivedKey = key
   })
 
-  handler.processInput("a")
+  dispatchInput(handler, "a")
 
   expect(receivedKey).toMatchObject({
     name: "a",
@@ -39,7 +49,7 @@ test("KeyHandler - emits keypress events", () => {
     receivedKey = key
   })
 
-  handler.processInput("a")
+  dispatchInput(handler, "a")
 
   expect(receivedKey).toMatchObject({
     name: "a",
@@ -94,13 +104,10 @@ test("KeyHandler - strips ANSI codes in paste", () => {
   expect(receivedPaste).toBe("text with red color")
 })
 
-test("KeyHandler - constructor accepts useKittyKeyboard parameter", () => {
-  // Test that constructor accepts the parameter without throwing
-  const handler1 = createKeyHandler(false)
-  const handler2 = createKeyHandler(true)
+test("KeyHandler - constructor creates a handler", () => {
+  const handler = createKeyHandler()
 
-  expect(handler1).toBeDefined()
-  expect(handler2).toBeDefined()
+  expect(handler).toBeDefined()
 })
 
 test("KeyHandler - handles string input", () => {
@@ -111,7 +118,7 @@ test("KeyHandler - handles string input", () => {
     receivedKey = key
   })
 
-  handler.processInput("c")
+  dispatchInput(handler, "c")
 
   expect(receivedKey).toMatchObject({
     name: "c",
@@ -151,7 +158,7 @@ test("KeyHandler - preventDefault stops propagation", () => {
     }
   })
 
-  handler.processInput("a")
+  dispatchInput(handler, "a")
 
   expect(globalHandlerCalled).toBe(true)
   expect(secondHandlerCalled).toBe(false)
@@ -170,7 +177,7 @@ test("InternalKeyHandler - onInternal handlers run after regular handlers", () =
     callOrder.push("regular")
   })
 
-  handler.processInput("a")
+  dispatchInput(handler, "a")
 
   expect(callOrder).toEqual(["regular", "internal"])
 })
@@ -192,7 +199,7 @@ test("InternalKeyHandler - preventDefault prevents internal handlers from runnin
     internalHandlerCalled = true
   })
 
-  handler.processInput("a")
+  dispatchInput(handler, "a")
 
   expect(regularHandlerCalled).toBe(true)
   expect(internalHandlerCalled).toBe(false)
@@ -219,7 +226,7 @@ test("InternalKeyHandler - multiple internal handlers can be registered", () => 
   handler.onInternal("keypress", internalHandler2)
   handler.onInternal("keypress", internalHandler3)
 
-  handler.processInput("a")
+  dispatchInput(handler, "a")
 
   expect(handler1Called).toBe(true)
   expect(handler2Called).toBe(true)
@@ -245,7 +252,7 @@ test("InternalKeyHandler - offInternal removes specific handlers", () => {
   // Remove only handler1
   handler.offInternal("keypress", internalHandler1)
 
-  handler.processInput("a")
+  dispatchInput(handler, "a")
 
   expect(handler1Called).toBe(false)
   expect(handler2Called).toBe(true)
@@ -380,20 +387,20 @@ test("KeyHandler - filters out mouse events", () => {
   })
 
   // Mouse events should not generate keypresses
-  handler.processInput("\x1b[<0;10;5M")
+  dispatchInput(handler, "\x1b[<0;10;5M")
   expect(keypressCount).toBe(0)
 
-  handler.processInput("\x1b[<0;10;5m")
+  dispatchInput(handler, "\x1b[<0;10;5m")
   expect(keypressCount).toBe(0)
 
   // Old-style mouse: \x1b[M + 3 bytes, then "c" is a separate keypress
-  handler.processInput("\x1b[M ab")
+  dispatchInput(handler, "\x1b[M ab")
   expect(keypressCount).toBe(0)
 
-  handler.processInput("c")
+  dispatchInput(handler, "c")
   expect(keypressCount).toBe(1)
 
-  handler.processInput("a")
+  dispatchInput(handler, "a")
   expect(keypressCount).toBe(2) // Now we have "c" and "a"
 })
 
@@ -442,7 +449,7 @@ test("KeyHandler - KeyEvent has source field for different key types", () => {
 })
 
 test("KeyHandler - KeyEvent source is 'kitty' when using Kitty keyboard protocol", () => {
-  const handler = createKeyHandler(true)
+  const handler = createKeyHandler()
 
   let receivedKey: KeyEvent | undefined
   handler.on("keypress", (key: KeyEvent) => {
@@ -450,7 +457,7 @@ test("KeyHandler - KeyEvent source is 'kitty' when using Kitty keyboard protocol
   })
 
   // Send a Kitty keyboard protocol sequence for 'a' (codepoint 97)
-  handler.processInput("\x1b[97u")
+  dispatchInput(handler, "\x1b[97u", { useKittyKeyboard: true })
 
   expect(receivedKey).toBeDefined()
   expect(receivedKey?.source).toBe("kitty")
@@ -517,7 +524,7 @@ test("KeyHandler - global handler error is caught and logged", () => {
   })
 
   // Should not throw - error is caught and logged
-  expect(() => handler.processInput("a")).not.toThrow()
+  expect(() => dispatchInput(handler, "a")).not.toThrow()
 
   expect(handlerCalled).toBe(true)
   expect(errorThrown).toBe(true)
@@ -543,7 +550,7 @@ test("KeyHandler - renderable handler error does not stop processing", () => {
   })
 
   // Should not throw
-  expect(() => handler.processInput("a")).not.toThrow()
+  expect(() => dispatchInput(handler, "a")).not.toThrow()
 
   expect(firstInternalCalled).toBe(true)
   expect(errorThrown).toBe(true)
@@ -568,7 +575,7 @@ test("KeyHandler - global handler error stops further global handlers but allows
   })
 
   // Should not throw - errors are caught
-  expect(() => handler.processInput("a")).not.toThrow()
+  expect(() => dispatchInput(handler, "a")).not.toThrow()
 
   expect(globalCalled).toBe(true)
   expect(internalCalled).toBe(true)
@@ -591,7 +598,7 @@ test("KeyHandler - paste handler error is caught and logged", () => {
   expect(handlerCalled).toBe(true)
 })
 
-test("KeyHandler - processInput returns true even when handler throws", () => {
+test("KeyHandler - processParsedKey returns true even when handler throws", () => {
   const handler = createKeyHandler()
 
   handler.on("keypress", (key: KeyEvent) => {
@@ -599,7 +606,7 @@ test("KeyHandler - processInput returns true even when handler throws", () => {
   })
 
   // Should return true indicating the input was handled (even if handler errored)
-  const result = handler.processInput("a")
+  const result = dispatchInput(handler, "a")
   expect(result).toBe(true)
 })
 
@@ -621,7 +628,7 @@ test("KeyHandler - internal handler error with preventDefault still respects pre
     throw new Error("Should not reach here")
   })
 
-  handler.processInput("a")
+  dispatchInput(handler, "a")
 
   expect(globalCalled).toBe(true)
   expect(internalCalled).toBe(false)
@@ -645,7 +652,7 @@ test("KeyHandler - error in one event type does not prevent other event types fr
   })
 
   // Both should not throw - errors are caught and logged
-  expect(() => handler.processInput("a")).not.toThrow()
+  expect(() => dispatchInput(handler, "a")).not.toThrow()
   expect(() => handler.processPaste("test")).not.toThrow()
 
   expect(keypressCalled).toBe(true)

@@ -1,19 +1,24 @@
-import { test, expect, beforeEach, afterEach } from "bun:test"
+import { test, expect, beforeEach, afterEach, describe } from "bun:test"
 import { nonAlphanumericKeys, type KeyEventType, type ParsedKey } from "../lib/parse.keypress"
 import { type KeyEvent } from "../lib/KeyHandler"
 import { Buffer } from "node:buffer"
-import { createTestRenderer, type TestRenderer } from "../testing/test-renderer"
+import { Renderable, type RenderableOptions } from "../Renderable"
+import { createTestRenderer, type TestRenderer, type TestRendererOptions } from "../testing/test-renderer"
+import { ManualClock } from "../testing/manual-clock"
+import type { RenderContext } from "../types"
 
 let currentRenderer: TestRenderer
 let kittyRenderer: TestRenderer
 let mockProcessCapabilityResponse: any
 let mockGetTerminalCapabilities: any
+let currentClock: ManualClock
+let kittyClock: ManualClock
 
 beforeEach(async () => {
-  // Small delay to ensure any pending stdin parser timeouts from previous tests complete
-  await new Promise((resolve) => setTimeout(resolve, 15))
-  ;({ renderer: currentRenderer } = await createTestRenderer({}))
-  ;({ renderer: kittyRenderer } = await createTestRenderer({ kittyKeyboard: true }))
+  currentClock = new ManualClock()
+  kittyClock = new ManualClock()
+  ;({ renderer: currentRenderer } = await createTestRenderer({ stdinParserClock: currentClock }))
+  ;({ renderer: kittyRenderer } = await createTestRenderer({ kittyKeyboard: true, stdinParserClock: kittyClock }))
 
   // Mock native capability functions to avoid interfering with the test terminal
   // @ts-expect-error - mocking for test
@@ -57,6 +62,7 @@ async function triggerInput(sequence: string): Promise<KeyEvent> {
     currentRenderer.keyInput.once("keypress", onKeypress)
 
     currentRenderer.stdin.emit("data", Buffer.from(sequence))
+    advanceCurrentClock()
   })
 }
 
@@ -72,7 +78,43 @@ async function triggerKittyInput(sequence: string): Promise<KeyEvent> {
     kittyRenderer.keyInput.on("keyrelease", onKeypress)
 
     kittyRenderer.stdin.emit("data", Buffer.from(sequence))
+    advanceKittyClock()
   })
+}
+
+function advanceCurrentClock(ms: number = 10): void {
+  currentClock.advance(ms)
+}
+
+function advanceKittyClock(ms: number = 10): void {
+  kittyClock.advance(ms)
+}
+
+class MouseTarget extends Renderable {
+  constructor(context: RenderContext, options: RenderableOptions) {
+    super(context, options)
+  }
+}
+
+function advanceClock(clock: ManualClock, ms: number = 10): void {
+  clock.advance(ms)
+}
+
+async function createRoutingRenderer(options: Partial<TestRendererOptions> = {}): Promise<{
+  renderer: TestRenderer
+  renderOnce: () => Promise<void>
+  clock: ManualClock
+}> {
+  const clock = new ManualClock()
+  const { renderer, renderOnce } = await createTestRenderer({
+    width: 40,
+    height: 20,
+    useMouse: true,
+    stdinParserClock: clock,
+    ...options,
+  })
+
+  return { renderer, renderOnce, clock }
 }
 
 test("basic letters via keyInput events", async () => {
@@ -1093,6 +1135,7 @@ test("high byte buffer handling via keyInput events", async () => {
     currentRenderer.keyInput.on("keypress", onKeypress)
     // 128 + 32 = 160, should become \x1b + " "
     currentRenderer.stdin.emit("data", Buffer.from([160]))
+    advanceCurrentClock()
   })
 
   expect(result).toMatchObject({
@@ -1124,6 +1167,7 @@ test("high byte UTF-8 lead byte does not stall indefinitely", async () => {
     currentRenderer.keyInput.on("keypress", onKeypress)
     // 128 + 105 = 233, should become \x1b + "i"
     currentRenderer.stdin.emit("data", Buffer.from([233]))
+    advanceCurrentClock()
   })
 
   expect(result).toMatchObject({
@@ -1431,7 +1475,7 @@ test("capability responses should not trigger keypress events", async () => {
   currentRenderer.stdin.emit("data", Buffer.from("\x1b[?62;c")) // DA1
 
   // Wait for stdin parser timeout
-  await new Promise((resolve) => setTimeout(resolve, 15))
+  advanceCurrentClock()
 
   expect(keypresses).toHaveLength(0)
 })
@@ -1446,7 +1490,7 @@ test("capability response followed by keypress", async () => {
   currentRenderer.stdin.emit("data", Buffer.from("\x1b[?1016;2$ya"))
 
   // Wait for processing
-  await new Promise((resolve) => setTimeout(resolve, 15))
+  advanceCurrentClock()
 
   expect(keypresses).toHaveLength(1)
   expect(keypresses[0].name).toBe("a")
@@ -1462,15 +1506,34 @@ test("partial SGR mouse flushed on timeout should not trigger keypress", async (
   currentRenderer.stdin.emit("data", Buffer.from("\x1b[<35;20"))
 
   // Wait past native stdin parser timeout (10ms)
-  await new Promise((resolve) => setTimeout(resolve, 15))
+  advanceCurrentClock()
   expect(keypresses).toHaveLength(0)
 
   // Ensure normal key input still works after the filtered flush
   currentRenderer.stdin.emit("data", Buffer.from("x"))
-  await new Promise((resolve) => setTimeout(resolve, 15))
+  advanceCurrentClock()
 
   expect(keypresses).toHaveLength(1)
   expect(keypresses[0].name).toBe("x")
+})
+
+test("incomplete mouse input resets the timeout when more bytes arrive", async () => {
+  const keypresses: KeyEvent[] = []
+  currentRenderer.keyInput.on("keypress", (event) => {
+    keypresses.push(event)
+  })
+
+  currentRenderer.stdin.emit("data", Buffer.from("\x1b[<35;20;"))
+  advanceCurrentClock(9)
+  currentRenderer.stdin.emit("data", Buffer.from("5"))
+  advanceCurrentClock(9)
+
+  expect(keypresses).toHaveLength(0)
+
+  currentRenderer.stdin.emit("data", Buffer.from("m"))
+  advanceCurrentClock()
+
+  expect(keypresses).toHaveLength(0)
 })
 
 test("chunked XTVersion response should not trigger keypresses", async () => {
@@ -1485,7 +1548,7 @@ test("chunked XTVersion response should not trigger keypresses", async () => {
   currentRenderer.stdin.emit("data", Buffer.from(".1)\x1b\\"))
 
   // Wait for stdin parser to process
-  await new Promise((resolve) => setTimeout(resolve, 15))
+  advanceCurrentClock()
 
   expect(keypresses).toHaveLength(0)
 })
@@ -1501,7 +1564,7 @@ test("chunked XTVersion followed by keypress", async () => {
   currentRenderer.stdin.emit("data", Buffer.from(" 1.1.3\x1b\\x"))
 
   // Wait for processing
-  await new Promise((resolve) => setTimeout(resolve, 15))
+  advanceCurrentClock()
 
   expect(keypresses).toHaveLength(1)
   expect(keypresses[0].name).toBe("x")
@@ -1519,7 +1582,7 @@ test("chunked Kitty graphics response should not trigger keypresses", async () =
   currentRenderer.stdin.emit("data", Buffer.from("Zero width/height not allowed\x1b\\"))
 
   // Wait for processing
-  await new Promise((resolve) => setTimeout(resolve, 15))
+  advanceCurrentClock()
 
   expect(keypresses).toHaveLength(0)
 })
@@ -1532,7 +1595,7 @@ test("multiple DECRPM responses in sequence", async () => {
 
   // Simulate multiple DECRPM responses arriving together
   currentRenderer.stdin.emit("data", Buffer.from("\x1b[?1016;2$y\x1b[?2027;0$y\x1b[?2031;2$y"))
-  await new Promise((resolve) => setTimeout(resolve, 15))
+  advanceCurrentClock()
 
   expect(keypresses).toHaveLength(0)
 })
@@ -1548,7 +1611,7 @@ test("pixel resolution response should not trigger keypress", async () => {
   currentRenderer.waitingForPixelResolution = true
 
   currentRenderer.stdin.emit("data", Buffer.from("\x1b[4;720;1280t"))
-  await new Promise((resolve) => setTimeout(resolve, 15))
+  advanceCurrentClock()
 
   expect(keypresses).toHaveLength(0)
   expect(currentRenderer.resolution).toEqual({ width: 1280, height: 720 })
@@ -1568,7 +1631,7 @@ test("chunked pixel resolution response", async () => {
   currentRenderer.stdin.emit("data", Buffer.from("0;1280t"))
 
   // Wait for processing
-  await new Promise((resolve) => setTimeout(resolve, 15))
+  advanceCurrentClock()
 
   expect(keypresses).toHaveLength(0)
   expect(currentRenderer.resolution).toEqual({ width: 1280, height: 720 })
@@ -1582,21 +1645,21 @@ test("kitty full capability response arriving in realistic chunks", async () => 
 
   // Simulate how kitty might send its full response in a few chunks
   currentRenderer.stdin.emit("data", Buffer.from("\x1b[?1016;2$y\x1b[?2027;0$y"))
-  await new Promise((resolve) => setTimeout(resolve, 1))
+  advanceCurrentClock(1)
 
   currentRenderer.stdin.emit("data", Buffer.from("\x1b[?2031;2$y\x1b[?1004;1$y\x1b[1;2R\x1b[1;3R"))
-  await new Promise((resolve) => setTimeout(resolve, 1))
+  advanceCurrentClock(1)
 
   currentRenderer.stdin.emit("data", Buffer.from("\x1bP>|kitty(0."))
-  await new Promise((resolve) => setTimeout(resolve, 1))
+  advanceCurrentClock(1)
 
   currentRenderer.stdin.emit("data", Buffer.from("40.1)\x1b\\\x1b_Gi=1;OK\x1b\\"))
-  await new Promise((resolve) => setTimeout(resolve, 1))
+  advanceCurrentClock(1)
 
   currentRenderer.stdin.emit("data", Buffer.from("\x1b[?62;c"))
 
   // Wait for processing
-  await new Promise((resolve) => setTimeout(resolve, 15))
+  advanceCurrentClock()
 
   expect(keypresses).toHaveLength(0)
 })
@@ -1623,7 +1686,7 @@ test("capability response interleaved with user input", async () => {
   currentRenderer.stdin.emit("data", Buffer.from("llo"))
 
   // Wait for processing
-  await new Promise((resolve) => setTimeout(resolve, 15))
+  advanceCurrentClock()
 
   // Should only have user keypresses
   expect(keypresses).toHaveLength(5)
@@ -1640,11 +1703,11 @@ test("delayed capability responses should be processed", async () => {
   currentRenderer.stdin.emit("data", Buffer.from("abc"))
 
   // Late capability response (e.g., terminal was slow to respond)
-  await new Promise((resolve) => setTimeout(resolve, 50))
+  advanceCurrentClock(50)
   currentRenderer.stdin.emit("data", Buffer.from("\x1b[?2027;2$y"))
 
   // Wait for processing
-  await new Promise((resolve) => setTimeout(resolve, 15))
+  advanceCurrentClock()
 
   // Should have user input but not capability
   expect(keypresses).toHaveLength(3)
@@ -1659,7 +1722,7 @@ test("vscode minimal capability response", async () => {
 
   // VSCode often sends just one DECRPM
   currentRenderer.stdin.emit("data", Buffer.from("\x1b[?1016;2$y"))
-  await new Promise((resolve) => setTimeout(resolve, 15))
+  advanceCurrentClock()
 
   expect(keypresses).toHaveLength(0)
 })
@@ -1674,7 +1737,7 @@ test("alacritty capability response sequence", async () => {
   const alacrittyResponse =
     "\x1b[?1016;0$y\x1b[?2027;0$y\x1b[?2031;0$y\x1b[?1004;2$y\x1b[?2004;2$y\x1b[?2026;2$y\x1b[1;1R\x1b[1;1R\x1b[?0u\x1b[?6c"
   currentRenderer.stdin.emit("data", Buffer.from(alacrittyResponse))
-  await new Promise((resolve) => setTimeout(resolve, 15))
+  advanceCurrentClock()
 
   expect(keypresses).toHaveLength(0)
 })
@@ -1691,10 +1754,10 @@ test("focus and blur events", async () => {
   })
 
   currentRenderer.stdin.emit("data", Buffer.from("\x1b[I"))
-  await new Promise((resolve) => setTimeout(resolve, 15))
+  advanceCurrentClock()
 
   currentRenderer.stdin.emit("data", Buffer.from("\x1b[O"))
-  await new Promise((resolve) => setTimeout(resolve, 15))
+  advanceCurrentClock()
 
   expect(events).toEqual(["focus", "blur"])
 })
@@ -1716,10 +1779,287 @@ test("focus events should not trigger keypress", async () => {
   })
 
   currentRenderer.stdin.emit("data", Buffer.from("\x1b[I"))
-  await new Promise((resolve) => setTimeout(resolve, 15))
+  advanceCurrentClock()
   currentRenderer.stdin.emit("data", Buffer.from("\x1b[O"))
-  await new Promise((resolve) => setTimeout(resolve, 15))
+  advanceCurrentClock()
 
   expect(focusEvents).toEqual(["focus", "blur"])
   expect(keypresses).toHaveLength(0)
+})
+
+describe("stdin routing", () => {
+  test("mouse then key in one chunk", async () => {
+    const { renderer, renderOnce, clock } = await createRoutingRenderer()
+    try {
+      const target = new MouseTarget(renderer, {
+        id: "target-mouse-then-key",
+        position: "absolute",
+        left: 0,
+        top: 0,
+        width: renderer.width,
+        height: renderer.height,
+      })
+      renderer.root.add(target)
+      await renderOnce()
+
+      const keys: string[] = []
+      let scrollCount = 0
+
+      renderer.keyInput.on("keypress", (event) => {
+        keys.push(event.name)
+      })
+
+      target.onMouseScroll = () => {
+        scrollCount++
+      }
+
+      renderer.stdin.emit("data", Buffer.from("\x1b[<64;10;5Mx"))
+      advanceClock(clock)
+
+      expect(scrollCount).toBe(1)
+      expect(keys).toEqual(["x"])
+    } finally {
+      renderer.destroy()
+    }
+  })
+
+  test("key then mouse in one chunk", async () => {
+    const { renderer, renderOnce, clock } = await createRoutingRenderer()
+    try {
+      const target = new MouseTarget(renderer, {
+        id: "target-key-then-mouse",
+        position: "absolute",
+        left: 0,
+        top: 0,
+        width: renderer.width,
+        height: renderer.height,
+      })
+      renderer.root.add(target)
+      await renderOnce()
+
+      const keys: string[] = []
+      let scrollCount = 0
+
+      renderer.keyInput.on("keypress", (event) => {
+        keys.push(event.name)
+      })
+
+      target.onMouseScroll = () => {
+        scrollCount++
+      }
+
+      renderer.stdin.emit("data", Buffer.from("x\x1b[<64;10;5M"))
+      advanceClock(clock)
+
+      expect(keys).toEqual(["x"])
+      expect(scrollCount).toBe(1)
+    } finally {
+      renderer.destroy()
+    }
+  })
+
+  test("focus and key mixed in one chunk", async () => {
+    const { renderer, clock } = await createRoutingRenderer()
+    try {
+      const events: string[] = []
+      const keys: string[] = []
+
+      renderer.on("focus", () => {
+        events.push("focus")
+      })
+
+      renderer.keyInput.on("keypress", (event) => {
+        keys.push(event.name)
+      })
+
+      renderer.stdin.emit("data", Buffer.from("\x1b[Ix"))
+      advanceClock(clock)
+
+      expect(events).toEqual(["focus"])
+      expect(keys).toEqual(["x"])
+    } finally {
+      renderer.destroy()
+    }
+  })
+
+  test("focus and mouse mixed in one chunk", async () => {
+    const { renderer, renderOnce, clock } = await createRoutingRenderer()
+    try {
+      const events: string[] = []
+      let scrollCount = 0
+
+      const target = new MouseTarget(renderer, {
+        id: "target-focus-then-mouse",
+        position: "absolute",
+        left: 0,
+        top: 0,
+        width: renderer.width,
+        height: renderer.height,
+      })
+      renderer.root.add(target)
+      await renderOnce()
+
+      renderer.on("focus", () => {
+        events.push("focus")
+      })
+
+      target.onMouseScroll = () => {
+        scrollCount++
+      }
+
+      renderer.stdin.emit("data", Buffer.from("\x1b[I\x1b[<64;10;5M"))
+      advanceClock(clock)
+
+      expect(events).toEqual(["focus"])
+      expect(scrollCount).toBe(1)
+    } finally {
+      renderer.destroy()
+    }
+  })
+
+  test("suspend resets parser state before resume", async () => {
+    const { renderer, clock } = await createRoutingRenderer()
+
+    try {
+      const events: Array<{ name: string; meta: boolean }> = []
+      renderer.keyInput.on("keypress", (event) => {
+        events.push({ name: event.name, meta: event.meta })
+      })
+
+      renderer.stdin.emit("data", Buffer.from("\x1b["))
+      advanceClock(clock, 5)
+
+      renderer.suspend()
+      renderer.resume()
+      await new Promise((resolve) => setImmediate(resolve))
+
+      renderer.stdin.emit("data", Buffer.from("x"))
+      advanceClock(clock)
+
+      expect(events).toEqual([{ name: "x", meta: false }])
+    } finally {
+      renderer.destroy()
+    }
+  })
+
+  test("streams large paste bodies without dropping them and resumes afterward", async () => {
+    const { renderer, clock } = await createRoutingRenderer({
+      stdinParserMaxBufferBytes: 64 * 1024,
+    })
+
+    try {
+      const keys: string[] = []
+      const pastes: string[] = []
+      renderer.keyInput.on("keypress", (event) => {
+        keys.push(event.name)
+      })
+      renderer.keyInput.on("paste", (event) => {
+        pastes.push(event.text)
+      })
+
+      const largeChunk = Buffer.alloc(16 * 1024, "x")
+      const expectedPaste = largeChunk.toString().repeat(5) + "z"
+
+      expect(() => {
+        renderer.stdin.emit("data", Buffer.from("\x1b[200~"))
+        for (let i = 0; i < 5; i++) {
+          renderer.stdin.emit("data", largeChunk)
+        }
+        renderer.stdin.emit("data", Buffer.from("z"))
+        renderer.stdin.emit("data", Buffer.from("\x1b[20"))
+        renderer.stdin.emit("data", Buffer.from("1~"))
+        renderer.stdin.emit("data", Buffer.from("q"))
+      }).not.toThrow()
+
+      advanceClock(clock)
+
+      expect(keys).toEqual(["q"])
+      expect(pastes).toEqual([expectedPaste])
+    } finally {
+      renderer.destroy()
+    }
+  })
+
+  test("emits paste event for large bracketed paste under configured limit", async () => {
+    const { renderer, clock } = await createRoutingRenderer({
+      stdinParserMaxBufferBytes: 512 * 1024,
+    })
+
+    try {
+      const payloadSize = 256 * 1024
+      let pasteCount = 0
+      let pastedBytes = 0
+
+      renderer.keyInput.on("paste", (event) => {
+        pasteCount += 1
+        pastedBytes += event.text.length
+      })
+
+      const chunk = Buffer.alloc(payloadSize, "x")
+      const stream = Buffer.concat([Buffer.from("\x1b[200~"), chunk, Buffer.from("\x1b[201~")])
+      renderer.stdin.emit("data", stream)
+      advanceClock(clock)
+
+      expect(pasteCount).toBe(1)
+      expect(pastedBytes).toBe(payloadSize)
+    } finally {
+      renderer.destroy()
+    }
+  })
+
+  test("emits one paste event for one bracketed paste", async () => {
+    const { renderer, clock } = await createRoutingRenderer()
+
+    try {
+      const payload = "x".repeat(70_000)
+      const pastes: string[] = []
+      renderer.keyInput.on("paste", (event) => {
+        pastes.push(event.text)
+      })
+
+      renderer.stdin.emit("data", Buffer.from(`\x1b[200~${payload}\x1b[201~`))
+      advanceClock(clock)
+
+      expect(pastes).toEqual([payload])
+    } finally {
+      renderer.destroy()
+    }
+  })
+
+  test("emits empty paste for empty bracketed paste", async () => {
+    const { renderer, clock } = await createRoutingRenderer()
+
+    try {
+      const pastes: string[] = []
+      renderer.keyInput.on("paste", (event) => {
+        pastes.push(event.text)
+      })
+
+      renderer.stdin.emit("data", Buffer.from("\x1b[200~\x1b[201~"))
+      advanceClock(clock)
+
+      expect(pastes).toEqual([""])
+    } finally {
+      renderer.destroy()
+    }
+  })
+
+  test("preserves UTF-8 across bracketed paste chunk boundaries", async () => {
+    const { renderer, clock } = await createRoutingRenderer()
+
+    try {
+      const payload = "a".repeat(4095) + "é"
+      const pastes: string[] = []
+      renderer.keyInput.on("paste", (event) => {
+        pastes.push(event.text)
+      })
+
+      renderer.stdin.emit("data", Buffer.from(`\x1b[200~${payload}\x1b[201~`))
+      advanceClock(clock)
+
+      expect(pastes.join("")).toBe(payload)
+    } finally {
+      renderer.destroy()
+    }
+  })
 })

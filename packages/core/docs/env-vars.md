@@ -37,6 +37,13 @@ Enable debug logging for the FFI bindings.
 **Type:** `boolean`  
 **Default:** `false`
 
+## OTUI_SHOW_STATS
+
+Show the debug overlay at startup.
+
+**Type:** `boolean`  
+**Default:** `false`
+
 ## OTUI_TRACE_FFI
 
 Enable tracing for the FFI bindings.
@@ -127,20 +134,6 @@ Enable debug mode to capture all raw input for debugging purposes.
 
 **Type:** `boolean`  
 **Default:** `false`
-
-## OTUI_SHOW_STATS
-
-Show the debug overlay at startup.
-
-**Type:** `boolean`  
-**Default:** `false`
-
-## OTUI_STDIN_PARSER_MAX_BUFFER_BYTES
-
-Maximum buffered bytes for stdin parser
-
-**Type:** `number`  
-**Default:** `67108864` (64 MiB)
 
 ---
 

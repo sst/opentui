@@ -1,6 +1,9 @@
 import { Buffer } from "node:buffer"
+import { SystemClock, type Clock, type TimerHandle } from "./clock"
 import { parseKeypress, type ParsedKey } from "./parse.keypress"
 import { MouseParser, type RawMouseEvent } from "./parse.mouse"
+
+export { SystemClock, type Clock, type TimerHandle } from "./clock"
 
 export type StdinResponseProtocol = "csi" | "osc" | "dcs" | "apc" | "unknown"
 
@@ -32,6 +35,7 @@ export interface StdinParserOptions {
   armTimeouts?: boolean
   onTimeoutFlush?: () => void
   useKittyKeyboard?: boolean
+  clock?: Clock
 }
 
 type ParserState =
@@ -62,6 +66,8 @@ const EMPTY_BYTES = new Uint8Array(0)
 const KEY_DECODER = new TextDecoder()
 const RXVT_DOLLAR_CSI_RE = /^\x1b\[\d+\$$/
 
+const SYSTEM_CLOCK = new SystemClock()
+
 class ByteQueue {
   private buf: Uint8Array
   private start = 0
@@ -81,6 +87,13 @@ class ByteQueue {
 
   view(): Uint8Array {
     return this.buf.subarray(this.start, this.end)
+  }
+
+  take(): Uint8Array {
+    const chunk = this.view()
+    this.start = 0
+    this.end = 0
+    return chunk
   }
 
   append(chunk: Uint8Array): void {
@@ -280,7 +293,8 @@ export class StdinParser {
   private readonly onTimeoutFlush: (() => void) | null
   private readonly useKittyKeyboard: boolean
   private readonly mouseParser = new MouseParser()
-  private timeoutId: ReturnType<typeof setTimeout> | null = null
+  private readonly clock: Clock
+  private timeoutId: TimerHandle | null = null
   private destroyed = false
   private pendingSinceMs: number | null = null
   private forceFlush = false
@@ -295,6 +309,7 @@ export class StdinParser {
     this.armTimeouts = options.armTimeouts ?? true
     this.onTimeoutFlush = options.onTimeoutFlush ?? null
     this.useKittyKeyboard = options.useKittyKeyboard ?? true
+    this.clock = options.clock ?? SYSTEM_CLOCK
   }
 
   public get bufferCapacity(): number {
@@ -314,13 +329,27 @@ export class StdinParser {
         continue
       }
 
-      this.pending.append(remainder.subarray(0, 1))
-      remainder = remainder.subarray(1)
+      const immediatePasteStartIndex =
+        this.state.tag === "ground" && this.pending.length === 0 ? indexOfBytes(remainder, BRACKETED_PASTE_START) : -1
+      const appendEnd =
+        immediatePasteStartIndex === -1 ? remainder.length : immediatePasteStartIndex + BRACKETED_PASTE_START.length
+
+      this.pending.append(remainder.subarray(0, appendEnd))
+      remainder = remainder.subarray(appendEnd)
       this.scanPending()
+
+      if (this.paste && this.pending.length > 0) {
+        remainder = this.consumePasteBytes(this.takePendingBytes())
+        continue
+      }
 
       if (!this.paste && this.pending.length > this.maxPendingBytes) {
         this.flushPendingOverflow()
         this.scanPending()
+
+        if (this.paste && this.pending.length > 0) {
+          remainder = this.consumePasteBytes(this.takePendingBytes())
+        }
       }
     }
 
@@ -355,7 +384,7 @@ export class StdinParser {
     }
   }
 
-  public flushTimeout(nowMsValue: number): void {
+  public flushTimeout(nowMsValue: number = this.clock.now()): void {
     this.ensureAlive()
 
     if (this.paste || this.pendingSinceMs === null || this.pending.length === 0) {
@@ -395,7 +424,7 @@ export class StdinParser {
   }
 
   private scanPending(): void {
-    while (true) {
+    while (!this.paste) {
       const bytes = this.pending.view()
       if (this.state.tag === "ground" && this.cursor >= bytes.length) {
         this.pending.clear()
@@ -411,17 +440,10 @@ export class StdinParser {
         case "ground": {
           this.unitStart = this.cursor
 
-          if (byte === 0x5b) {
-            if (this.cursor + 1 >= bytes.length) {
-              if (!this.forceFlush) {
-                this.markPending()
-                return
-              }
-            } else if (bytes[this.cursor + 1] === 0x3c) {
-              this.cursor += 2
-              this.state = { tag: "esc_less_mouse" }
-              continue
-            }
+          if (byte === 0x5b && this.cursor + 1 < bytes.length && bytes[this.cursor + 1] === 0x3c) {
+            this.cursor += 2
+            this.state = { tag: "esc_less_mouse" }
+            continue
           }
 
           if (byte === ESC) {
@@ -861,6 +883,15 @@ export class StdinParser {
     this.forceFlush = false
   }
 
+  private takePendingBytes(): Uint8Array {
+    const buffered = this.pending.take()
+    this.cursor = 0
+    this.unitStart = 0
+    this.pendingSinceMs = null
+    this.forceFlush = false
+    return buffered
+  }
+
   private flushPendingOverflow(): void {
     if (this.pending.length === 0) {
       return
@@ -876,9 +907,7 @@ export class StdinParser {
   }
 
   private markPending(): void {
-    if (this.pendingSinceMs === null) {
-      this.pendingSinceMs = Date.now()
-    }
+    this.pendingSinceMs = this.clock.now()
   }
 
   private consumePasteBytes(chunk: Uint8Array): Uint8Array {
@@ -933,21 +962,20 @@ export class StdinParser {
       return
     }
 
-    if (!this.timeoutId) {
-      this.timeoutId = setTimeout(() => {
-        this.timeoutId = null
-        if (this.destroyed) {
-          return
-        }
+    this.clearTimeout()
+    this.timeoutId = this.clock.setTimeout(() => {
+      this.timeoutId = null
+      if (this.destroyed) {
+        return
+      }
 
-        try {
-          this.flushTimeout(Date.now())
-          this.onTimeoutFlush?.()
-        } catch (error) {
-          console.error("stdin parser timeout flush failed", error)
-        }
-      }, this.timeoutMs)
-    }
+      try {
+        this.flushTimeout(this.clock.now())
+        this.onTimeoutFlush?.()
+      } catch (error) {
+        console.error("stdin parser timeout flush failed", error)
+      }
+    }, this.timeoutMs)
   }
 
   private clearTimeout(): void {
@@ -955,7 +983,7 @@ export class StdinParser {
       return
     }
 
-    clearTimeout(this.timeoutId)
+    this.clock.clearTimeout(this.timeoutId)
     this.timeoutId = null
   }
 

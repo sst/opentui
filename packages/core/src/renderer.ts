@@ -14,6 +14,7 @@ import type { Pointer } from "bun:ffi"
 import { OptimizedBuffer } from "./buffer"
 import { resolveRenderLib, type RenderLib } from "./zig"
 import { TerminalConsole, type ConsoleOptions, capture } from "./console"
+import { parseKeypress } from "./lib/parse.keypress"
 import { type MouseEventType, type RawMouseEvent, type ScrollInfo } from "./lib/parse.mouse"
 import { Selection } from "./lib/selection"
 import { Clipboard, type ClipboardTarget } from "./lib/clipboard"
@@ -34,6 +35,7 @@ import {
   isPixelResolutionResponse,
   parsePixelResolution,
 } from "./lib/terminal-capability-detection"
+import { type Clock } from "./lib/clock"
 import { StdinParser, type StdinEvent } from "./lib/stdin-parser"
 
 registerEnvVar({
@@ -113,6 +115,7 @@ export interface CliRendererConfig {
   openConsoleOnError?: boolean
   prependInputHandlers?: ((sequence: string) => boolean)[]
   stdinParserMaxBufferBytes?: number
+  stdinParserClock?: Clock
   onDestroy?: () => void
 }
 
@@ -630,7 +633,7 @@ export class CliRenderer extends EventEmitter implements RenderContext {
 
     const kittyConfig = config.useKittyKeyboard ?? {}
     const useKittyForParsing = kittyConfig !== null
-    this._keyHandler = new InternalKeyHandler(useKittyForParsing)
+    this._keyHandler = new InternalKeyHandler()
     this._keyHandler.on("keypress", (event) => {
       if (this.exitOnCtrlC && event.name === "c" && event.ctrl) {
         process.nextTick(() => {
@@ -653,6 +656,7 @@ export class CliRenderer extends EventEmitter implements RenderContext {
         this.drainStdinParser()
       },
       useKittyKeyboard: useKittyForParsing,
+      clock: config.stdinParserClock,
     })
 
     this._console = new TerminalConsole(this, config.consoleOptions)
@@ -1099,7 +1103,10 @@ export class CliRenderer extends EventEmitter implements RenderContext {
         return
       }
 
-      this._keyHandler.processInput("")
+      const parsed = parseKeypress("")
+      if (parsed) {
+        this._keyHandler.processParsedKey(parsed)
+      }
       return
     }
 
