@@ -6,19 +6,17 @@ import {
   CliRenderer,
   createCliRenderer,
   FrameBufferRenderable,
-  type KeyEvent,
-  type OptimizedBuffer,
   RGBA,
-  Renderable,
   SelectRenderable,
   SelectRenderableEvents,
   TextareaRenderable,
   TextRenderable,
+  TimeToFirstDrawRenderable,
+  type KeyEvent,
   type SelectOption,
   type ThemeMode,
 } from "../index"
 import { measureText } from "../lib/ascii.font"
-import { parseColor } from "../lib/RGBA"
 import * as goldenStarDemo from "./golden-star-demo"
 import * as boxExample from "./fonts"
 import * as fractalShaderExample from "./fractal-shader-demo"
@@ -133,39 +131,6 @@ const MENU_THEMES: Record<ThemeMode, ExampleTheme> = {
     instructionsColor: "#475569",
     notImplementedColor: "#B45309",
   },
-}
-
-class TimeToFirstDrawRenderable extends Renderable {
-  private runtimeMs: number | null = null
-  private fg: RGBA
-
-  constructor(renderer: CliRenderer, color: string | RGBA) {
-    super(renderer, {
-      id: "example-index-time-to-first-draw",
-      width: "100%",
-      height: 1,
-      flexShrink: 0,
-    })
-    this.fg = parseColor(color)
-  }
-
-  public set color(value: string | RGBA) {
-    this.fg = parseColor(value)
-    this.requestRender()
-  }
-
-  protected renderSelf(buffer: OptimizedBuffer, _deltaTime: number): void {
-    if (this.runtimeMs === null) {
-      this.runtimeMs = performance.now()
-    }
-
-    const content = `Time to first draw: ${this.runtimeMs.toFixed(2)}ms`
-    const maxWidth = Math.max(this.width, 1)
-    const visibleContent = content.length > maxWidth ? content.slice(0, maxWidth) : content
-    const centeredX = this.x + Math.max(0, Math.floor((maxWidth - visibleContent.length) / 2))
-
-    buffer.drawText(visibleContent, centeredX, this.y, this.fg)
-  }
 }
 
 const examples: Example[] = [
@@ -642,7 +607,10 @@ class ExampleSelector {
       this.runSelected(option.value as Example)
     })
 
-    this.timeToFirstDrawText = new TimeToFirstDrawRenderable(renderer, theme.instructionsColor)
+    this.timeToFirstDrawText = new TimeToFirstDrawRenderable(renderer, {
+      id: "example-index-time-to-first-draw",
+      fg: theme.instructionsColor,
+    })
     this.menuContainer.add(this.timeToFirstDrawText)
 
     // Instructions at the bottom

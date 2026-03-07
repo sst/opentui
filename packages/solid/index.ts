@@ -98,5 +98,6 @@ export const testRender = async (node: () => JSX.Element, renderConfig: TestRend
 
 export * from "./src/reconciler"
 export * from "./src/elements"
+export * from "./src/time-to-first-draw"
 export * from "./src/types/elements"
 export { type JSX }

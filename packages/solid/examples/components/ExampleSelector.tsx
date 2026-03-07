@@ -1,5 +1,5 @@
 import { measureText } from "@opentui/core"
-import { useKeyboard, useRenderer, useTerminalDimensions } from "@opentui/solid"
+import { TimeToFirstDraw, useKeyboard, useRenderer, useTerminalDimensions } from "@opentui/solid"
 import { createSignal, Match, onMount, Switch } from "solid-js"
 import { Session } from "../session.tsx"
 import { SplitModeDemo } from "./animation-demo.tsx"
@@ -111,26 +111,6 @@ const EXAMPLES = [
     scene: "session-scrollbox",
   },
 ]
-
-let firstDrawRuntimeMs: number | null = null
-
-const TimeToFirstDraw = () => {
-  const [runtimeMs, setRuntimeMs] = createSignal<number | null>(firstDrawRuntimeMs)
-
-  onMount(() => {
-    if (firstDrawRuntimeMs === null) {
-      firstDrawRuntimeMs = performance.now()
-    }
-    setRuntimeMs(firstDrawRuntimeMs)
-  })
-
-  const content = () => {
-    const value = runtimeMs()
-    return value === null ? "Time to first draw: --" : `Time to first draw: ${value.toFixed(2)}ms`
-  }
-
-  return <text style={{ fg: "#AAAAAA", alignSelf: "center" }}>{content()}</text>
-}
 
 const ExampleSelector = () => {
   const renderer = useRenderer()
