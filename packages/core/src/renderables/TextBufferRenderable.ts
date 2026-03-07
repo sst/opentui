@@ -331,6 +331,9 @@ export abstract class TextBufferRenderable extends Renderable implements LineInf
   }
 
   protected onResize(width: number, height: number): void {
+    if (this._wrapMode !== "none" && width > 0) {
+      this.textBufferView.setWrapWidth(width)
+    }
     this.textBufferView.setViewport(this._scrollX, this._scrollY, width, height)
     this.yogaNode.markDirty()
     this.requestRender()
