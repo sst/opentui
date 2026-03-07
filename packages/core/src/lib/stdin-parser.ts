@@ -60,6 +60,7 @@ type ParserState =
   | { tag: "osc"; sawEsc: boolean }
   | { tag: "dcs"; sawEsc: boolean }
   | { tag: "apc"; sawEsc: boolean }
+  | { tag: "esc_recovery" }
   | { tag: "esc_less_mouse" }
 
 // Collects paste body incrementally, bypassing the main ByteQueue so large
@@ -349,6 +350,9 @@ export class StdinParser {
   // final and emits it as one atomic event (e.g. a lone ESC becomes an
   // Escape key). Set by the timeout, consumed by the next read() or drain().
   private forceFlush = false
+  // True only immediately after a timeout flush emits a lone ESC key. The next
+  // `[` may begin a delayed `[<...M/m` mouse continuation recovery path.
+  private justFlushedEsc = false
   private state: ParserState = { tag: "ground" }
   // Scan position within pending.view() during scanPending().
   private cursor = 0
@@ -520,13 +524,18 @@ export class StdinParser {
         case "ground": {
           this.unitStart = this.cursor
 
-          // ESC-less SGR continuation: after a timed-out lone ESC, the next
-          // chunk can start with `[<...m`. We must catch this before the ASCII
-          // path, or `[` and `<` would become printable text.
-          if (byte === 0x5b && this.cursor + 1 < bytes.length && bytes[this.cursor + 1] === 0x3c) {
-            this.cursor += 2
-            this.state = { tag: "esc_less_mouse" }
-            continue
+          // After a timeout-flushed lone ESC, a following `[` may be the start
+          // of a delayed `[<...M/m` mouse continuation. Recover only this narrow
+          // case; otherwise clear the recovery flag and parse bytes normally.
+          if (this.justFlushedEsc) {
+            if (byte === 0x5b) {
+              this.justFlushedEsc = false
+              this.cursor += 1
+              this.state = { tag: "esc_recovery" }
+              continue
+            }
+
+            this.justFlushedEsc = false
           }
 
           if (byte === ESC) {
@@ -604,7 +613,9 @@ export class StdinParser {
               return
             }
 
+            const flushedLoneEsc = this.cursor === this.unitStart + 1 && bytes[this.unitStart] === ESC
             this.emitKeyOrResponse("unknown", decodeUtf8(bytes.subarray(this.unitStart, this.cursor)))
+            this.justFlushedEsc = flushedLoneEsc
             this.state = { tag: "ground" }
             this.consumePrefix(this.cursor)
             continue
@@ -671,6 +682,34 @@ export class StdinParser {
           this.emitKeyOrResponse("unknown", decodeUtf8(bytes.subarray(this.unitStart, this.cursor)))
           this.state = { tag: "ground" }
           this.consumePrefix(this.cursor)
+          continue
+        }
+
+        // Narrow recovery path for a delayed `[<...M/m` mouse continuation
+        // after a timeout-flushed lone ESC. Wait for `<`; if it never arrives,
+        // flush `[` as a normal key.
+        case "esc_recovery": {
+          if (this.cursor >= bytes.length) {
+            if (!this.forceFlush) {
+              this.markPending()
+              return
+            }
+
+            this.emitKeyOrResponse("unknown", decodeUtf8(bytes.subarray(this.unitStart, this.cursor)))
+            this.state = { tag: "ground" }
+            this.consumePrefix(this.cursor)
+            continue
+          }
+
+          if (byte === 0x3c) {
+            this.cursor += 1
+            this.state = { tag: "esc_less_mouse" }
+            continue
+          }
+
+          this.emitKeyOrResponse("unknown", decodeUtf8(bytes.subarray(this.unitStart, this.unitStart + 1)))
+          this.state = { tag: "ground" }
+          this.consumePrefix(this.unitStart + 1)
           continue
         }
 
@@ -894,13 +933,9 @@ export class StdinParser {
           continue
         }
 
-        // ESC-less SGR mouse continuation. When a lone ESC times out and
-        // gets flushed as an Escape key, the remaining `[<35;20;5m` can
-        // arrive without its ESC prefix. This state consumes the entire
-        // `[<digits;digits;digitsM/m` unit as one opaque response so it
-        // never becomes individual printable characters.
-        // TODO: Why do we need to handle this ESC less SGR continuation as a special case, can't we just generically
-        // handle any ESC-less CSI sequence continuation in the same way?
+        // Delayed SGR mouse continuation after `esc_recovery` has consumed the
+        // leading `[`. Consume the rest of `<digits;digits;digitsM/m` as one
+        // opaque response so split mouse bytes never leak into text.
         case "esc_less_mouse": {
           if (this.cursor >= bytes.length) {
             if (!this.forceFlush) {
@@ -1150,6 +1185,7 @@ export class StdinParser {
     this.events.length = 0
     this.pendingSinceMs = null
     this.forceFlush = false
+    this.justFlushedEsc = false
     this.state = { tag: "ground" }
     this.cursor = 0
     this.unitStart = 0

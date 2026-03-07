@@ -1069,13 +1069,7 @@ describe("StdinParser", () => {
     })
   })
 
-  describe("ESC-less SGR continuation", () => {
-    table([
-      ["[<35;20;5m → unknown response", "[<35;20;5m", [resp("unknown", "[<35;20;5m")]],
-      ["[<35;20;5M → unknown response", "[<35;20;5M", [resp("unknown", "[<35;20;5M")]],
-      ["[<0;1;1m → unknown response", "[<0;1;1m", [resp("unknown", "[<0;1;1m")]],
-    ])
-
+  describe("ESC-less SGR continuation recovery", () => {
     test("after timed-out ESC, continuation is not split into text", () => {
       const { parser, clock } = createTimedParser()
       try {
@@ -1090,9 +1084,30 @@ describe("StdinParser", () => {
       }
     })
 
-    test("partial [< waits, then timeout flushes as one response", () => {
+    test("after timed-out ESC, split continuation across pushes is not split into text", () => {
       const { parser, clock } = createTimedParser()
       try {
+        parser.push(Buffer.from("\x1b"))
+        clock.advance(10)
+        expect(snap(parser)).toEqual([k("escape", { raw: "\x1b" })])
+
+        parser.push(Buffer.from("["))
+        expect(snap(parser)).toEqual([])
+
+        parser.push(Buffer.from("<35;20;5m"))
+        expect(snap(parser)).toEqual([resp("unknown", "[<35;20;5m")])
+      } finally {
+        parser.destroy()
+      }
+    })
+
+    test("after timed-out ESC, partial [< waits, then timeout flushes as one response", () => {
+      const { parser, clock } = createTimedParser()
+      try {
+        parser.push(Buffer.from("\x1b"))
+        clock.advance(10)
+        expect(snap(parser)).toEqual([k("escape", { raw: "\x1b" })])
+
         parser.push(Buffer.from("[<35;20"))
         expect(snap(parser)).toEqual([])
         clock.advance(10)
@@ -1102,20 +1117,34 @@ describe("StdinParser", () => {
       }
     })
 
-    test("[< followed by non-digit aborts immediately", () => {
-      const p = createParser()
+    test("after timed-out ESC, [< followed by non-digit aborts immediately", () => {
+      const { parser, clock } = createTimedParser()
       try {
-        p.push(Buffer.from("[<x"))
-        const s = snap(p)
+        parser.push(Buffer.from("\x1b"))
+        clock.advance(10)
+        expect(snap(parser)).toEqual([k("escape", { raw: "\x1b" })])
+
+        parser.push(Buffer.from("[<x"))
+        const s = snap(parser)
         expect(s).toHaveLength(2)
         expect(s[0]).toEqual(resp("unknown", "[<"))
         expect(s[1]).toEqual(k("x"))
+      } finally {
+        parser.destroy()
+      }
+    })
+
+    test("without prior flushed ESC, [< stays literal text", () => {
+      const p = createParser()
+      try {
+        p.push(Buffer.from("[<35;20;5m"))
+        expect(snap(p)).toEqual("[<35;20;5m".split("").map((char) => k(char)))
       } finally {
         p.destroy()
       }
     })
 
-    test("standalone [ then < in separate pushes stay as individual keys", () => {
+    test("without prior flushed ESC, standalone [ then < stay as individual keys", () => {
       const p = createParser()
       try {
         p.push(Buffer.from("["))
@@ -1127,13 +1156,17 @@ describe("StdinParser", () => {
       }
     })
 
-    test("[< at end of input waits for more", () => {
+    test("after timed-out ESC, bare [ waits for more and then flushes as text", () => {
       const { parser, clock } = createTimedParser()
       try {
-        parser.push(Buffer.from("[<"))
+        parser.push(Buffer.from("\x1b"))
+        clock.advance(10)
+        expect(snap(parser)).toEqual([k("escape", { raw: "\x1b" })])
+
+        parser.push(Buffer.from("["))
         expect(snap(parser)).toEqual([])
         clock.advance(10)
-        expect(snap(parser)).toEqual([resp("unknown", "[<")])
+        expect(snap(parser)).toEqual([k("[")])
       } finally {
         parser.destroy()
       }
