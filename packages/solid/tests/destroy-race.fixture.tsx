@@ -2,7 +2,7 @@ import { createTestRenderer } from "@opentui/core/testing"
 import { For, createSignal, onCleanup, onMount } from "solid-js"
 import { render, testRender, useRenderer } from "../index"
 
-type Mode = "external" | "helper" | "external-active" | "helper-active"
+type Mode = "external" | "helper" | "external-onmount" | "helper-onmount" | "external-active" | "helper-active"
 
 const mode = process.argv[2] as Mode | undefined
 const startedAt = Date.now()
@@ -26,6 +26,18 @@ function InitialRaceApp() {
   }
 
   return <text>race repro</text>
+}
+
+function OnMountRaceApp() {
+  const renderer = useRenderer()
+
+  onMount(() => {
+    log("OnMountRaceApp mounted, destroying renderer")
+    renderer.destroy()
+    log("renderer.destroy() returned")
+  })
+
+  return <text>onmount race repro</text>
 }
 
 let appendLine: ((line: string) => void) | undefined
@@ -118,7 +130,11 @@ if (mode === "external") {
   log("External initial mode completed")
 } else if (mode === "helper") {
   const testSetup = await testRender(() => <InitialRaceApp />, { width: 30, height: 10 })
-  await testSetup.renderOnce()
+
+  if (!testSetup.renderer.isDestroyed) {
+    await testSetup.renderOnce()
+  }
+
   await Bun.sleep(10)
 
   if (!testSetup.renderer.isDestroyed) {
@@ -126,6 +142,30 @@ if (mode === "external") {
   }
 
   log("Helper initial mode completed")
+} else if (mode === "external-onmount") {
+  const testSetup = await createTestRenderer({ width: 30, height: 10 })
+  await render(() => <OnMountRaceApp />, testSetup.renderer)
+  await Bun.sleep(10)
+
+  if (!testSetup.renderer.isDestroyed) {
+    testSetup.renderer.destroy()
+  }
+
+  log("External onMount mode completed")
+} else if (mode === "helper-onmount") {
+  const testSetup = await testRender(() => <OnMountRaceApp />, { width: 30, height: 10 })
+
+  if (!testSetup.renderer.isDestroyed) {
+    await testSetup.renderOnce()
+  }
+
+  await Bun.sleep(10)
+
+  if (!testSetup.renderer.isDestroyed) {
+    testSetup.renderer.destroy()
+  }
+
+  log("Helper onMount mode completed")
 } else if (mode === "external-active") {
   await runActivePassScenario(false)
   log("External active mode completed")
