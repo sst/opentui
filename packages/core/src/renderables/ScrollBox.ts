@@ -57,6 +57,41 @@ export interface ScrollBoxOptions extends BoxOptions<ScrollBoxRenderable> {
   viewportCulling?: boolean
 }
 
+const SCROLLBOX_PADDING_KEYS = [
+  "padding",
+  "paddingX",
+  "paddingY",
+  "paddingTop",
+  "paddingRight",
+  "paddingBottom",
+  "paddingLeft",
+] as const
+
+type ScrollBoxPaddingKey = (typeof SCROLLBOX_PADDING_KEYS)[number]
+type ScrollBoxPaddingOptions = Pick<ScrollBoxOptions, ScrollBoxPaddingKey>
+
+function pickScrollBoxPadding(options: Partial<ScrollBoxOptions> | undefined): Partial<ScrollBoxPaddingOptions> {
+  if (!options) return {}
+
+  const picked: Partial<ScrollBoxPaddingOptions> = {}
+  for (const key of SCROLLBOX_PADDING_KEYS) {
+    const value = options[key]
+    if (value !== undefined) {
+      picked[key] = value
+    }
+  }
+
+  return picked
+}
+
+function stripScrollBoxPadding<T extends object>(options: T): Omit<T, ScrollBoxPaddingKey> {
+  const sanitized = { ...options }
+  for (const key of SCROLLBOX_PADDING_KEYS) {
+    delete (sanitized as Partial<Record<ScrollBoxPaddingKey, unknown>>)[key]
+  }
+  return sanitized as Omit<T, ScrollBoxPaddingKey>
+}
+
 export class ScrollBoxRenderable extends BoxRenderable {
   static idCounter = 0
   private internalId = 0
@@ -236,9 +271,8 @@ export class ScrollBoxRenderable extends BoxRenderable {
     }
   }
 
-  constructor(
-    ctx: RenderContext,
-    {
+  constructor(ctx: RenderContext, options: ScrollBoxOptions) {
+    const {
       wrapperOptions,
       viewportOptions,
       contentOptions,
@@ -252,15 +286,27 @@ export class ScrollBoxRenderable extends BoxRenderable {
       scrollY = true,
       scrollAcceleration,
       viewportCulling = true,
-      ...options
-    }: ScrollBoxOptions,
-  ) {
+      ...rootBoxOptions
+    } = options
+
+    const forwardedContentPadding = {
+      ...pickScrollBoxPadding(rootBoxOptions),
+      ...pickScrollBoxPadding(rootOptions),
+    }
+
+    const sanitizedRootBoxOptions = stripScrollBoxPadding(rootBoxOptions)
+    const sanitizedRootOptions = rootOptions ? stripScrollBoxPadding(rootOptions) : undefined
+    const mergedContentOptions = {
+      ...forwardedContentPadding,
+      ...contentOptions,
+    }
+
     // Root
     super(ctx, {
       flexDirection: "row",
       alignItems: "stretch",
-      ...(options as BoxOptions),
-      ...(rootOptions as BoxOptions),
+      ...(sanitizedRootBoxOptions as BoxOptions),
+      ...(sanitizedRootOptions as BoxOptions),
     })
 
     this.internalId = ScrollBoxRenderable.idCounter++
@@ -298,7 +344,7 @@ export class ScrollBoxRenderable extends BoxRenderable {
       onSizeChange: () => {
         this.recalculateBarProps()
       },
-      ...contentOptions,
+      ...mergedContentOptions,
       id: `scroll-box-content-${this.internalId}`,
     })
     this.viewport.add(this.content)
@@ -690,6 +736,41 @@ export class ScrollBoxRenderable extends BoxRenderable {
   }
 
   // Setters for reactive properties
+  public set padding(value: number | `${number}%` | null | undefined) {
+    this.content.padding = value
+    this.requestRender()
+  }
+
+  public set paddingX(value: number | `${number}%` | null | undefined) {
+    this.content.paddingX = value
+    this.requestRender()
+  }
+
+  public set paddingY(value: number | `${number}%` | null | undefined) {
+    this.content.paddingY = value
+    this.requestRender()
+  }
+
+  public set paddingTop(value: number | `${number}%` | null | undefined) {
+    this.content.paddingTop = value
+    this.requestRender()
+  }
+
+  public set paddingRight(value: number | `${number}%` | null | undefined) {
+    this.content.paddingRight = value
+    this.requestRender()
+  }
+
+  public set paddingBottom(value: number | `${number}%` | null | undefined) {
+    this.content.paddingBottom = value
+    this.requestRender()
+  }
+
+  public set paddingLeft(value: number | `${number}%` | null | undefined) {
+    this.content.paddingLeft = value
+    this.requestRender()
+  }
+
   public set rootOptions(options: ScrollBoxOptions["rootOptions"]) {
     Object.assign(this, options)
     this.requestRender()

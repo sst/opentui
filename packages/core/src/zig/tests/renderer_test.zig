@@ -44,6 +44,8 @@ test "renderer - createWithOptions late allocation failure cleans up" {
 test "renderer - create and destroy" {
     const pool = gp.initGlobalPool(std.testing.allocator);
     defer gp.deinitGlobalPool();
+    var local_link_pool = link.LinkPool.init(std.testing.allocator);
+    defer local_link_pool.deinit();
 
     var cli_renderer = try CliRenderer.create(
         std.testing.allocator,
@@ -62,8 +64,10 @@ test "renderer - create and destroy" {
 test "renderer - simple text rendering to currentRenderBuffer" {
     const pool = gp.initGlobalPool(std.testing.allocator);
     defer gp.deinitGlobalPool();
+    var local_link_pool = link.LinkPool.init(std.testing.allocator);
+    defer local_link_pool.deinit();
 
-    var tb = try TextBuffer.init(std.testing.allocator, pool, .unicode);
+    var tb = try TextBuffer.init(std.testing.allocator, pool, &local_link_pool, .unicode);
     defer tb.deinit();
 
     try tb.setText("Hello World");
@@ -103,8 +107,10 @@ test "renderer - simple text rendering to currentRenderBuffer" {
 test "renderer - multi-line text rendering" {
     const pool = gp.initGlobalPool(std.testing.allocator);
     defer gp.deinitGlobalPool();
+    var local_link_pool = link.LinkPool.init(std.testing.allocator);
+    defer local_link_pool.deinit();
 
-    var tb = try TextBuffer.init(std.testing.allocator, pool, .unicode);
+    var tb = try TextBuffer.init(std.testing.allocator, pool, &local_link_pool, .unicode);
     defer tb.deinit();
 
     try tb.setText("Line 1\nLine 2\nLine 3");
@@ -143,8 +149,10 @@ test "renderer - multi-line text rendering" {
 test "renderer - emoji (wide grapheme) rendering" {
     const pool = gp.initGlobalPool(std.testing.allocator);
     defer gp.deinitGlobalPool();
+    var local_link_pool = link.LinkPool.init(std.testing.allocator);
+    defer local_link_pool.deinit();
 
-    var tb = try TextBuffer.init(std.testing.allocator, pool, .unicode);
+    var tb = try TextBuffer.init(std.testing.allocator, pool, &local_link_pool, .unicode);
     defer tb.deinit();
 
     try tb.setText("Hi 👋 there");
@@ -199,8 +207,10 @@ test "renderer - emoji (wide grapheme) rendering" {
 test "renderer - CJK characters rendering" {
     const pool = gp.initGlobalPool(std.testing.allocator);
     defer gp.deinitGlobalPool();
+    var local_link_pool = link.LinkPool.init(std.testing.allocator);
+    defer local_link_pool.deinit();
 
-    var tb = try TextBuffer.init(std.testing.allocator, pool, .unicode);
+    var tb = try TextBuffer.init(std.testing.allocator, pool, &local_link_pool, .unicode);
     defer tb.deinit();
 
     try tb.setText("Hello 世界");
@@ -251,8 +261,10 @@ test "renderer - CJK characters rendering" {
 test "renderer - mixed ASCII, emoji, and CJK" {
     const pool = gp.initGlobalPool(std.testing.allocator);
     defer gp.deinitGlobalPool();
+    var local_link_pool = link.LinkPool.init(std.testing.allocator);
+    defer local_link_pool.deinit();
 
-    var tb = try TextBuffer.init(std.testing.allocator, pool, .unicode);
+    var tb = try TextBuffer.init(std.testing.allocator, pool, &local_link_pool, .unicode);
     defer tb.deinit();
 
     try tb.setText("A 😀 世");
@@ -307,6 +319,8 @@ test "renderer - mixed ASCII, emoji, and CJK" {
 test "renderer - resize updates dimensions" {
     const pool = gp.initGlobalPool(std.testing.allocator);
     defer gp.deinitGlobalPool();
+    var local_link_pool = link.LinkPool.init(std.testing.allocator);
+    defer local_link_pool.deinit();
 
     var cli_renderer = try CliRenderer.create(
         std.testing.allocator,
@@ -329,6 +343,8 @@ test "renderer - resize updates dimensions" {
 test "renderer - background color setting" {
     const pool = gp.initGlobalPool(std.testing.allocator);
     defer gp.deinitGlobalPool();
+    var local_link_pool = link.LinkPool.init(std.testing.allocator);
+    defer local_link_pool.deinit();
 
     var cli_renderer = try CliRenderer.create(
         std.testing.allocator,
@@ -348,8 +364,10 @@ test "renderer - background color setting" {
 test "renderer - empty text buffer renders correctly" {
     const pool = gp.initGlobalPool(std.testing.allocator);
     defer gp.deinitGlobalPool();
+    var local_link_pool = link.LinkPool.init(std.testing.allocator);
+    defer local_link_pool.deinit();
 
-    var tb = try TextBuffer.init(std.testing.allocator, pool, .unicode);
+    var tb = try TextBuffer.init(std.testing.allocator, pool, &local_link_pool, .unicode);
     defer tb.deinit();
 
     try tb.setText("");
@@ -374,8 +392,10 @@ test "renderer - empty text buffer renders correctly" {
 test "renderer - multiple renders update currentRenderBuffer" {
     const pool = gp.initGlobalPool(std.testing.allocator);
     defer gp.deinitGlobalPool();
+    var local_link_pool = link.LinkPool.init(std.testing.allocator);
+    defer local_link_pool.deinit();
 
-    var tb = try TextBuffer.init(std.testing.allocator, pool, .unicode);
+    var tb = try TextBuffer.init(std.testing.allocator, pool, &local_link_pool, .unicode);
     defer tb.deinit();
 
     var view = try TextBufferView.init(std.testing.allocator, tb);
@@ -414,8 +434,10 @@ test "renderer - multiple renders update currentRenderBuffer" {
 test "renderer - 1000 frame render loop with setStyledText" {
     const pool = gp.initGlobalPool(std.testing.allocator);
     defer gp.deinitGlobalPool();
+    var local_link_pool = link.LinkPool.init(std.testing.allocator);
+    defer local_link_pool.deinit();
 
-    var tb = try TextBuffer.init(std.testing.allocator, pool, .unicode);
+    var tb = try TextBuffer.init(std.testing.allocator, pool, &local_link_pool, .unicode);
     defer tb.deinit();
 
     const style = try ss.SyntaxStyle.init(std.testing.allocator);
@@ -499,7 +521,7 @@ test "renderer - grapheme pool refcounting with frame buffer fast path" {
     });
     defer gp.deinitGlobalPool();
 
-    var tb = try TextBuffer.init(std.testing.allocator, limited_pool, .unicode);
+    var tb = try TextBuffer.init(std.testing.allocator, limited_pool, link.initGlobalLinkPool(std.testing.allocator), .unicode);
     defer tb.deinit();
 
     const style = try ss.SyntaxStyle.init(std.testing.allocator);
@@ -574,6 +596,8 @@ test "renderer - grapheme pool refcounting with frame buffer fast path" {
 test "renderer - unchanged grapheme should not churn IDs across frames" {
     const pool = gp.initGlobalPool(std.testing.allocator);
     defer gp.deinitGlobalPool();
+    var local_link_pool = link.LinkPool.init(std.testing.allocator);
+    defer local_link_pool.deinit();
 
     var cli_renderer = try CliRenderer.create(
         std.testing.allocator,
@@ -621,8 +645,7 @@ test "renderer - unchanged grapheme should not churn IDs across frames" {
 test "renderer - hyperlinks enabled with OSC 8 output" {
     const pool = gp.initGlobalPool(std.testing.allocator);
     defer gp.deinitGlobalPool();
-
-    const link_pool = link.initGlobalLinkPool(std.testing.allocator);
+    const local_link_pool = link.initGlobalLinkPool(std.testing.allocator);
     defer link.deinitGlobalLinkPool();
 
     var cli_renderer = try CliRenderer.create(
@@ -638,7 +661,7 @@ test "renderer - hyperlinks enabled with OSC 8 output" {
     cli_renderer.terminal.caps.hyperlinks = true;
 
     // Allocate a link
-    const link_id = try link_pool.alloc("https://example.com");
+    const link_id = try local_link_pool.alloc("https://example.com");
     const attributes = ansi.TextAttributes.setLinkId(ansi.TextAttributes.BOLD, link_id);
 
     const next_buffer = cli_renderer.getNextBuffer();
@@ -651,8 +674,10 @@ test "renderer - hyperlinks enabled with OSC 8 output" {
 
     const output = cli_renderer.getLastOutputForTest();
 
-    // Verify output contains OSC 8 start sequence with URL
-    try std.testing.expect(std.mem.indexOf(u8, output, "\x1b]8;;https://example.com\x1b\\") != null);
+    // Verify OSC 8 contains id parameter
+    try std.testing.expect(std.mem.indexOf(u8, output, "\x1b]8;id=") != null);
+    // Verify OSC 8 contains the URL
+    try std.testing.expect(std.mem.indexOf(u8, output, ";https://example.com\x1b\\") != null);
 
     // Verify output contains OSC 8 end sequence
     const end_seq = "\x1b]8;;\x1b\\";
@@ -668,8 +693,7 @@ test "renderer - hyperlinks enabled with OSC 8 output" {
 test "renderer - hyperlinks disabled no OSC 8 output" {
     const pool = gp.initGlobalPool(std.testing.allocator);
     defer gp.deinitGlobalPool();
-
-    const link_pool = link.initGlobalLinkPool(std.testing.allocator);
+    const local_link_pool = link.initGlobalLinkPool(std.testing.allocator);
     defer link.deinitGlobalLinkPool();
 
     var cli_renderer = try CliRenderer.create(
@@ -685,7 +709,7 @@ test "renderer - hyperlinks disabled no OSC 8 output" {
     cli_renderer.terminal.caps.hyperlinks = false;
 
     // Allocate a link
-    const link_id = try link_pool.alloc("https://example.com");
+    const link_id = try local_link_pool.alloc("https://example.com");
     const attributes = ansi.TextAttributes.setLinkId(0, link_id);
 
     const next_buffer = cli_renderer.getNextBuffer();
@@ -700,13 +724,13 @@ test "renderer - hyperlinks disabled no OSC 8 output" {
 
     // Verify output does NOT contain OSC 8 sequences
     try std.testing.expect(std.mem.indexOf(u8, output, "]8;;") == null);
+    try std.testing.expect(std.mem.indexOf(u8, output, "]8;id=") == null);
 }
 
 test "renderer - link transition mid-line" {
     const pool = gp.initGlobalPool(std.testing.allocator);
     defer gp.deinitGlobalPool();
-
-    const link_pool = link.initGlobalLinkPool(std.testing.allocator);
+    const local_link_pool = link.initGlobalLinkPool(std.testing.allocator);
     defer link.deinitGlobalLinkPool();
 
     var cli_renderer = try CliRenderer.create(
@@ -724,8 +748,8 @@ test "renderer - link transition mid-line" {
     const next_buffer = cli_renderer.getNextBuffer();
 
     // Allocate two different links
-    const link_id1 = try link_pool.alloc("https://first.com");
-    const link_id2 = try link_pool.alloc("https://second.com");
+    const link_id1 = try local_link_pool.alloc("https://first.com");
+    const link_id2 = try local_link_pool.alloc("https://second.com");
 
     const attr1 = ansi.TextAttributes.setLinkId(0, link_id1);
     const attr2 = ansi.TextAttributes.setLinkId(0, link_id2);
@@ -759,6 +783,57 @@ test "renderer - link transition mid-line" {
     try std.testing.expect(count >= 2);
 }
 
+test "renderer - hyperlink spanning multiple rows uses same id" {
+    const pool = gp.initGlobalPool(std.testing.allocator);
+    defer gp.deinitGlobalPool();
+
+    const link_pool = link.initGlobalLinkPool(std.testing.allocator);
+    defer link.deinitGlobalLinkPool();
+
+    var cli_renderer = try CliRenderer.create(
+        std.testing.allocator,
+        80,
+        24,
+        pool,
+        true,
+    );
+    defer cli_renderer.destroy();
+
+    // Enable hyperlinks
+    cli_renderer.terminal.caps.hyperlinks = true;
+
+    const next_buffer = cli_renderer.getNextBuffer();
+
+    // Allocate a single link
+    const link_id = try link_pool.alloc("https://example.com/long-url");
+    const attributes = ansi.TextAttributes.setLinkId(0, link_id);
+
+    const fg = RGBA{ 1.0, 1.0, 1.0, 1.0 };
+    const bg = RGBA{ 0.0, 0.0, 0.0, 1.0 };
+
+    // Fill entire row 0 with linked text so link is never interrupted by empty cells
+    try next_buffer.drawText("01234567890123456789012345678901234567890123456789012345678901234567890123456789", 0, 0, fg, bg, attributes);
+    // Continue the same link on row 1
+    try next_buffer.drawText("Here", 0, 1, fg, bg, attributes);
+
+    cli_renderer.render(false);
+
+    const output = cli_renderer.getLastOutputForTest();
+
+    // Build expected OSC 8 open sequence with the link id
+    var buf: [256]u8 = undefined;
+    const expected_open = std.fmt.bufPrint(&buf, "\x1b]8;id={d};https://example.com/long-url\x1b\\", .{link_id}) catch unreachable;
+    var count: usize = 0;
+    var pos: usize = 0;
+    while (std.mem.indexOf(u8, output[pos..], expected_open)) |found| {
+        count += 1;
+        pos += found + expected_open.len;
+    }
+    // Should appear exactly once: the link stays open across rows without
+    // close/reopen at row boundaries, so terminals treat it as one contiguous link.
+    try std.testing.expectEqual(@as(usize, 1), count);
+}
+
 // ============================================================================
 // GRAPHEME CURSOR POSITIONING TESTS
 // ============================================================================
@@ -766,8 +841,10 @@ test "renderer - link transition mid-line" {
 test "renderer - explicit_cursor_positioning emits cursor move after wide graphemes" {
     const pool = gp.initGlobalPool(std.testing.allocator);
     defer gp.deinitGlobalPool();
+    var local_link_pool = link.LinkPool.init(std.testing.allocator);
+    defer local_link_pool.deinit();
 
-    var tb = try TextBuffer.init(std.testing.allocator, pool, .unicode);
+    var tb = try TextBuffer.init(std.testing.allocator, pool, &local_link_pool, .unicode);
     defer tb.deinit();
 
     try tb.setText("👋X");
@@ -800,8 +877,10 @@ test "renderer - explicit_cursor_positioning emits cursor move after wide graphe
 test "renderer - explicit_cursor_positioning produces more cursor moves" {
     const pool = gp.initGlobalPool(std.testing.allocator);
     defer gp.deinitGlobalPool();
+    var local_link_pool = link.LinkPool.init(std.testing.allocator);
+    defer local_link_pool.deinit();
 
-    var tb = try TextBuffer.init(std.testing.allocator, pool, .unicode);
+    var tb = try TextBuffer.init(std.testing.allocator, pool, &local_link_pool, .unicode);
     defer tb.deinit();
     try tb.setText("👋🎉🚀");
 
@@ -873,8 +952,10 @@ test "renderer - explicit_cursor_positioning produces more cursor moves" {
 test "renderer - explicit_cursor_positioning with CJK characters" {
     const pool = gp.initGlobalPool(std.testing.allocator);
     defer gp.deinitGlobalPool();
+    var local_link_pool = link.LinkPool.init(std.testing.allocator);
+    defer local_link_pool.deinit();
 
-    var tb = try TextBuffer.init(std.testing.allocator, pool, .unicode);
+    var tb = try TextBuffer.init(std.testing.allocator, pool, &local_link_pool, .unicode);
     defer tb.deinit();
 
     try tb.setText("世X");

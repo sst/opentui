@@ -82,6 +82,7 @@ export interface CliRendererConfig {
   stdin?: NodeJS.ReadStream
   stdout?: NodeJS.WriteStream
   remote?: boolean
+  testing?: boolean
   exitOnCtrlC?: boolean
   exitSignals?: NodeJS.Signals[]
   forwardEnvKeys?: string[]
@@ -286,7 +287,10 @@ export async function createCliRenderer(config: CliRendererConfig = {}): Promise
     config.experimental_splitHeight && config.experimental_splitHeight > 0 ? config.experimental_splitHeight : height
 
   const ziglib = resolveRenderLib()
-  const rendererPtr = ziglib.createRenderer(width, renderHeight, { remote: config.remote ?? false })
+  const rendererPtr = ziglib.createRenderer(width, renderHeight, {
+    remote: config.remote ?? false,
+    testing: config.testing ?? false,
+  })
   if (!rendererPtr) {
     throw new Error("Failed to create renderer")
   }
@@ -307,7 +311,9 @@ export async function createCliRenderer(config: CliRendererConfig = {}): Promise
   ziglib.setKittyKeyboardFlags(rendererPtr, kittyFlags)
 
   const renderer = new CliRenderer(ziglib, rendererPtr, stdin, stdout, width, height, config)
-  await renderer.setupTerminal()
+  if (!config.testing) {
+    await renderer.setupTerminal()
+  }
   return renderer
 }
 
@@ -456,6 +462,7 @@ export class CliRenderer extends EventEmitter implements RenderContext {
 
   private inputHandlers: ((sequence: string) => boolean)[] = []
   private prependedInputHandlers: ((sequence: string) => boolean)[] = []
+  private shouldRestoreModesOnNextFocus: boolean = false
 
   private idleResolvers: (() => void)[] = []
 
@@ -1089,12 +1096,16 @@ export class CliRenderer extends EventEmitter implements RenderContext {
       // When the terminal regains focus, some terminal emulators (notably
       // Windows Terminal / ConPTY) may have stripped DEC private modes like
       // mouse tracking, bracketed paste, and focus tracking itself while the
-      // window was unfocused. Re-send all active mode sequences unconditionally.
-      this.lib.restoreTerminalModes(this.rendererPtr)
+      // window was unfocused.
+      if (this.shouldRestoreModesOnNextFocus) {
+        this.lib.restoreTerminalModes(this.rendererPtr)
+        this.shouldRestoreModesOnNextFocus = false
+      }
       this.emit("focus")
       return true
     }
     if (sequence === "\x1b[O") {
+      this.shouldRestoreModesOnNextFocus = true
       this.emit("blur")
       return true
     }
@@ -1261,12 +1272,14 @@ export class CliRenderer extends EventEmitter implements RenderContext {
       !this.currentSelection?.isDragging &&
       !mouseEvent.modifiers.ctrl
     ) {
-      if (
+      const canStartSelection = Boolean(
         maybeRenderable &&
-        maybeRenderable.selectable &&
-        !maybeRenderable.isDestroyed &&
-        maybeRenderable.shouldStartSelection(mouseEvent.x, mouseEvent.y)
-      ) {
+          maybeRenderable.selectable &&
+          !maybeRenderable.isDestroyed &&
+          maybeRenderable.shouldStartSelection(mouseEvent.x, mouseEvent.y),
+      )
+
+      if (canStartSelection && maybeRenderable) {
         this.startSelection(maybeRenderable, mouseEvent.x, mouseEvent.y)
         this.dispatchMouseEvent(maybeRenderable, mouseEvent)
         return true
@@ -1303,7 +1316,11 @@ export class CliRenderer extends EventEmitter implements RenderContext {
     }
 
     if (!sameElement && (mouseEvent.type === "drag" || mouseEvent.type === "move")) {
-      if (this.lastOverRenderable && this.lastOverRenderable !== this.capturedRenderable) {
+      if (
+        this.lastOverRenderable &&
+        this.lastOverRenderable !== this.capturedRenderable &&
+        !this.lastOverRenderable.isDestroyed
+      ) {
         const event = new MouseEvent(this.lastOverRenderable, { ...mouseEvent, type: "out" })
         this.lastOverRenderable.processMouseEvent(event)
       }
@@ -1392,7 +1409,7 @@ export class CliRenderer extends EventEmitter implements RenderContext {
     }
 
     // Fire out on old element
-    if (lastOver) {
+    if (lastOver && !lastOver.isDestroyed) {
       const event = new MouseEvent(lastOver, { ...baseEvent, type: "out" })
       lastOver.processMouseEvent(event)
     }
@@ -2093,6 +2110,7 @@ export class CliRenderer extends EventEmitter implements RenderContext {
     this.selectionContainers.push(renderable.parent || this.root)
     this.currentSelection = new Selection(renderable, { x, y }, { x, y })
     this.currentSelection.isStart = true
+
     this.notifySelectablesOfSelectionChange()
   }
 
@@ -2158,7 +2176,6 @@ export class CliRenderer extends EventEmitter implements RenderContext {
     if (this.currentSelection) {
       this.currentSelection.isDragging = false
       this.emit("selection", this.currentSelection)
-      // Notify renderables that selection is finished (no longer dragging)
       this.notifySelectablesOfSelectionChange()
     }
   }

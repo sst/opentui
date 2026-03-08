@@ -230,6 +230,7 @@ export class TerminalPalette implements TerminalPaletteDetector {
 
       const onData = (chunk: string | Buffer) => {
         buffer += chunk.toString()
+        let updated = false
 
         let m: RegExpExecArray | null
         OSC_SPECIAL_RESPONSE.lastIndex = 0
@@ -237,6 +238,7 @@ export class TerminalPalette implements TerminalPaletteDetector {
           const idx = parseInt(m[1], 10)
           if (idx in results) {
             results[idx] = toHex(m[2], m[3], m[4], m[5])
+            updated = true
           }
         }
 
@@ -248,6 +250,8 @@ export class TerminalPalette implements TerminalPaletteDetector {
           resolve(results)
           return
         }
+
+        if (!updated) return
 
         if (idleTimer) clearTimeout(idleTimer)
         idleTimer = setTimeout(() => {

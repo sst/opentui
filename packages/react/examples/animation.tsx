@@ -75,5 +75,7 @@ export const App = () => {
   )
 }
 
-const renderer = await createCliRenderer()
-createRoot(renderer).render(<App />)
+if (import.meta.main) {
+  const renderer = await createCliRenderer()
+  createRoot(renderer).render(<App />)
+}

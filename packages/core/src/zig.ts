@@ -10,7 +10,7 @@ import {
   type LineInfo,
   type MousePointerStyle,
 } from "./types"
-export type { LineInfo }
+export type { LineInfo, AllocatorStats, BuildOptions }
 
 import { RGBA } from "./lib/RGBA"
 import { OptimizedBuffer } from "./buffer"
@@ -31,10 +31,17 @@ import {
   NativeSpanFeedOptionsStruct,
   NativeSpanFeedStatsStruct,
   ReserveInfoStruct,
+  BuildOptionsStruct,
+  AllocatorStatsStruct,
 } from "./zig-structs"
-import type { NativeSpanFeedOptions, NativeSpanFeedStats, ReserveInfo } from "./zig-structs"
+import type {
+  NativeSpanFeedOptions,
+  NativeSpanFeedStats,
+  ReserveInfo,
+  BuildOptions,
+  AllocatorStats,
+} from "./zig-structs"
 import { isBunfsPath } from "./lib/bunfs"
-import { attributesWithLink } from "./utils"
 
 const module = await import(`@opentui/core-${process.platform}-${process.arch}/index.ts`)
 let targetLibPath = module.default
@@ -1014,6 +1021,14 @@ function getOpenTUILib(libPath?: string) {
       args: [],
       returns: "usize",
     },
+    getBuildOptions: {
+      args: ["ptr"],
+      returns: "void",
+    },
+    getAllocatorStats: {
+      args: ["ptr"],
+      returns: "void",
+    },
 
     // SyntaxStyle functions
     createSyntaxStyle: {
@@ -1269,8 +1284,8 @@ function convertToDebugSymbols<T extends Record<string, any>>(symbols: T): T {
           const countWidth = Math.max(callsHeader.length, ...allStats.map((s) => String(s.count).length))
           const totalWidth = Math.max(totalHeader.length, ...allStats.map((s) => s.total.toFixed(2).length))
           const avgWidth = Math.max(avgHeader.length, ...allStats.map((s) => s.average.toFixed(2).length))
-          const minWidth = Math.max(minHeader.length, ...allStats.map((s) => s.min.toFixed(2).length))
-          const maxWidth = Math.max(maxHeader.length, ...allStats.map((s) => s.max.toFixed(2).length))
+          const statWidthMin = Math.max(minHeader.length, ...allStats.map((s) => s.min.toFixed(2).length))
+          const statWidthMax = Math.max(maxHeader.length, ...allStats.map((s) => s.max.toFixed(2).length))
           const medianWidth = Math.max(medHeader.length, ...allStats.map((s) => s.median.toFixed(2).length))
           const p90Width = Math.max(p90Header.length, ...allStats.map((s) => s.p90.toFixed(2).length))
           const p99Width = Math.max(p99Header.length, ...allStats.map((s) => s.p99.toFixed(2).length))
@@ -1280,14 +1295,14 @@ function convertToDebugSymbols<T extends Record<string, any>>(symbols: T): T {
               `${callsHeader.padStart(countWidth)} | ` +
               `${totalHeader.padStart(totalWidth)} | ` +
               `${avgHeader.padStart(avgWidth)} | ` +
-              `${minHeader.padStart(minWidth)} | ` +
-              `${maxHeader.padStart(maxWidth)} | ` +
+              `${minHeader.padStart(statWidthMin)} | ` +
+              `${maxHeader.padStart(statWidthMax)} | ` +
               `${medHeader.padStart(medianWidth)} | ` +
               `${p90Header.padStart(p90Width)} | ` +
               `${p99Header.padStart(p99Width)}`,
           )
           lines.push(
-            `${"-".repeat(nameWidth)}-+-${"-".repeat(countWidth)}-+-${"-".repeat(totalWidth)}-+-${"-".repeat(avgWidth)}-+-${"-".repeat(minWidth)}-+-${"-".repeat(maxWidth)}-+-${"-".repeat(medianWidth)}-+-${"-".repeat(p90Width)}-+-${"-".repeat(p99Width)}`,
+            `${"-".repeat(nameWidth)}-+-${"-".repeat(countWidth)}-+-${"-".repeat(totalWidth)}-+-${"-".repeat(avgWidth)}-+-${"-".repeat(statWidthMin)}-+-${"-".repeat(statWidthMax)}-+-${"-".repeat(medianWidth)}-+-${"-".repeat(p90Width)}-+-${"-".repeat(p99Width)}`,
           )
 
           allStats.forEach((stat) => {
@@ -1296,8 +1311,8 @@ function convertToDebugSymbols<T extends Record<string, any>>(symbols: T): T {
                 `${String(stat.count).padStart(countWidth)} | ` +
                 `${stat.total.toFixed(2).padStart(totalWidth)} | ` +
                 `${stat.average.toFixed(2).padStart(avgWidth)} | ` +
-                `${stat.min.toFixed(2).padStart(minWidth)} | ` +
-                `${stat.max.toFixed(2).padStart(maxWidth)} | ` +
+                `${stat.min.toFixed(2).padStart(statWidthMin)} | ` +
+                `${stat.max.toFixed(2).padStart(statWidthMax)} | ` +
                 `${stat.median.toFixed(2).padStart(medianWidth)} | ` +
                 `${stat.p90.toFixed(2).padStart(p90Width)} | ` +
                 `${stat.p99.toFixed(2).padStart(p99Width)}`,
@@ -1627,7 +1642,7 @@ export interface RenderLib {
     view: Pointer,
     width: number,
     height: number,
-  ) => { lineCount: number; maxWidth: number } | null
+  ) => { lineCount: number; widthColsMax: number } | null
   textBufferViewGetVirtualLineCount: (view: Pointer) => number
 
   readonly encoder: TextEncoder
@@ -1781,6 +1796,8 @@ export interface RenderLib {
   textBufferGetHighlightCount: (buffer: Pointer) => number
 
   getArenaAllocatedBytes: () => number
+  getBuildOptions: () => BuildOptions
+  getAllocatorStats: () => AllocatorStats
 
   createSyntaxStyle: () => Pointer
   destroySyntaxStyle: (style: Pointer) => void
@@ -2651,28 +2668,13 @@ class FFIRenderLib implements RenderLib {
     buffer: Pointer,
     chunks: Array<{ text: string; fg?: RGBA | null; bg?: RGBA | null; attributes?: number; link?: { url: string } }>,
   ): void {
-    // TODO: This should be a filter on the struct packing to not iterate twice
-    const nonEmptyChunks = chunks.filter((c) => c.text.length > 0)
-    if (nonEmptyChunks.length === 0) {
+    if (chunks.length === 0) {
       this.textBufferClear(buffer)
       return
     }
 
-    // Allocate link IDs and pack them into attributes
-    const processedChunks = nonEmptyChunks.map((chunk) => {
-      if (chunk.link) {
-        const linkId = this.linkAlloc(chunk.link.url)
-        return {
-          ...chunk,
-          attributes: attributesWithLink(chunk.attributes ?? 0, linkId),
-        }
-      }
-      return chunk
-    })
-
-    const chunksBuffer = StyledChunkStruct.packList(processedChunks)
-
-    this.opentui.symbols.textBufferSetStyledText(buffer, ptr(chunksBuffer), processedChunks.length)
+    const chunksBuffer = StyledChunkStruct.packList(chunks)
+    this.opentui.symbols.textBufferSetStyledText(buffer, ptr(chunksBuffer), chunks.length)
   }
 
   public textBufferGetLineCount(buffer: Pointer): number {
@@ -2856,10 +2858,15 @@ class FFIRenderLib implements RenderLib {
     const outBuffer = new ArrayBuffer(LineInfoStruct.size)
     this.textBufferViewGetLineInfoDirect(view, ptr(outBuffer))
     const struct = LineInfoStruct.unpack(outBuffer)
+
+    const lineStartCols = struct.startCols as number[]
+    const lineWidthCols = struct.widthCols as number[]
+    const lineWidthColsMax = struct.widthColsMax
+
     return {
-      maxLineWidth: struct.maxWidth,
-      lineStarts: struct.starts as number[],
-      lineWidths: struct.widths as number[],
+      lineStartCols,
+      lineWidthCols,
+      lineWidthColsMax,
       lineSources: struct.sources as number[],
       lineWraps: struct.wraps as number[],
     }
@@ -2869,10 +2876,15 @@ class FFIRenderLib implements RenderLib {
     const outBuffer = new ArrayBuffer(LineInfoStruct.size)
     this.textBufferViewGetLogicalLineInfoDirect(view, ptr(outBuffer))
     const struct = LineInfoStruct.unpack(outBuffer)
+
+    const lineStartCols = struct.startCols as number[]
+    const lineWidthCols = struct.widthCols as number[]
+    const lineWidthColsMax = struct.widthColsMax
+
     return {
-      maxLineWidth: struct.maxWidth,
-      lineStarts: struct.starts as number[],
-      lineWidths: struct.widths as number[],
+      lineStartCols,
+      lineWidthCols,
+      lineWidthColsMax,
       lineSources: struct.sources as number[],
       lineWraps: struct.wraps as number[],
     }
@@ -2940,7 +2952,7 @@ class FFIRenderLib implements RenderLib {
     view: Pointer,
     width: number,
     height: number,
-  ): { lineCount: number; maxWidth: number } | null {
+  ): { lineCount: number; widthColsMax: number } | null {
     const resultBuffer = new ArrayBuffer(MeasureResultStruct.size)
     const resultPtr = ptr(new Uint8Array(resultBuffer))
     const success = this.opentui.symbols.textBufferViewMeasureForDimensions(view, width, height, resultPtr)
@@ -3000,6 +3012,31 @@ class FFIRenderLib implements RenderLib {
   public getArenaAllocatedBytes(): number {
     const result = this.opentui.symbols.getArenaAllocatedBytes()
     return typeof result === "bigint" ? Number(result) : result
+  }
+
+  public getBuildOptions(): BuildOptions {
+    const optionsBuffer = new ArrayBuffer(BuildOptionsStruct.size)
+    this.opentui.symbols.getBuildOptions(ptr(optionsBuffer))
+    const options = BuildOptionsStruct.unpack(optionsBuffer)
+
+    return {
+      gpaSafeStats: !!options.gpaSafeStats,
+      gpaMemoryLimitTracking: !!options.gpaMemoryLimitTracking,
+    }
+  }
+
+  public getAllocatorStats(): AllocatorStats {
+    const statsBuffer = new ArrayBuffer(AllocatorStatsStruct.size)
+    this.opentui.symbols.getAllocatorStats(ptr(statsBuffer))
+    const stats = AllocatorStatsStruct.unpack(statsBuffer)
+
+    return {
+      totalRequestedBytes: toNumber(stats.totalRequestedBytes),
+      activeAllocations: toNumber(stats.activeAllocations),
+      smallAllocations: toNumber(stats.smallAllocations),
+      largeAllocations: toNumber(stats.largeAllocations),
+      requestedBytesValid: !!stats.requestedBytesValid,
+    }
   }
 
   public bufferDrawTextBufferView(buffer: Pointer, view: Pointer, x: number, y: number): void {
@@ -3083,10 +3120,15 @@ class FFIRenderLib implements RenderLib {
     const outBuffer = new ArrayBuffer(LineInfoStruct.size)
     this.opentui.symbols.editorViewGetLineInfoDirect(view, ptr(outBuffer))
     const struct = LineInfoStruct.unpack(outBuffer)
+
+    const lineStartCols = struct.startCols as number[]
+    const lineWidthCols = struct.widthCols as number[]
+    const lineWidthColsMax = struct.widthColsMax
+
     return {
-      maxLineWidth: struct.maxWidth,
-      lineStarts: struct.starts as number[],
-      lineWidths: struct.widths as number[],
+      lineStartCols,
+      lineWidthCols,
+      lineWidthColsMax,
       lineSources: struct.sources as number[],
       lineWraps: struct.wraps as number[],
     }
@@ -3096,10 +3138,15 @@ class FFIRenderLib implements RenderLib {
     const outBuffer = new ArrayBuffer(LineInfoStruct.size)
     this.opentui.symbols.editorViewGetLogicalLineInfoDirect(view, ptr(outBuffer))
     const struct = LineInfoStruct.unpack(outBuffer)
+
+    const lineStartCols = struct.startCols as number[]
+    const lineWidthCols = struct.widthCols as number[]
+    const lineWidthColsMax = struct.widthColsMax
+
     return {
-      maxLineWidth: struct.maxWidth,
-      lineStarts: struct.starts as number[],
-      lineWidths: struct.widths as number[],
+      lineStartCols,
+      lineWidthCols,
+      lineWidthColsMax,
       lineSources: struct.sources as number[],
       lineWraps: struct.wraps as number[],
     }

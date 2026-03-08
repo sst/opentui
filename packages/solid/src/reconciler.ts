@@ -17,6 +17,7 @@ import {
   TextRenderable,
   type TextNodeOptions,
 } from "@opentui/core"
+import { decodeHTML } from "entities"
 import { useContext } from "solid-js"
 import { createRenderer } from "./renderer"
 import { getComponentCatalogue, RendererContext, SlotRenderable } from "./elements"
@@ -134,7 +135,7 @@ function _createTextNode(value: string | number): TextNode {
     value = value.toString()
   }
 
-  return TextNode.fromString(value, { id })
+  return TextNode.fromString(decodeHTML(value), { id })
 }
 
 export function createSlotNode(): SlotRenderable {
@@ -201,7 +202,7 @@ export const {
     log("Replacing text:", value, "in node:", logId(textNode))
 
     if (!(textNode instanceof TextNode)) return
-    textNode.replace(value, 0)
+    textNode.replace(decodeHTML(value), 0)
   },
 
   setProperty(node: DomNode, name: string, value: any, prev: any): void {
@@ -318,10 +319,13 @@ export const {
         }
         break
       case "text":
-      case "content":
+      case "content": {
+        const textValue = typeof value === "string" ? value : Array.isArray(value) ? value.join("") : `${value}`
         // @ts-expect-error todo validate if prop is actually settable
-        node[name] = typeof value === "string" ? value : Array.isArray(value) ? value.join("") : `${value}`
+        node[name] = decodeHTML(textValue)
         break
+      }
+
       default:
         // @ts-expect-error todo validate if prop is actually settable
         node[name] = value

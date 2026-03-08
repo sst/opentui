@@ -7,15 +7,12 @@ import {
   bold,
   createCliRenderer,
   fg,
-  green,
-  red,
   t,
   type BorderStyle,
   type KeyEvent,
-  yellow,
 } from "../index"
 import type { Selection } from "../lib/selection"
-import type { TextTableColumnWidthMode, TextTableContent } from "../renderables/TextTable"
+import type { TextTableColumnFitter, TextTableColumnWidthMode, TextTableContent } from "../renderables/TextTable"
 import type { TextChunk } from "../text-buffer"
 import { setupCommonDemoKeys } from "./lib/standalone-keys"
 
@@ -34,14 +31,31 @@ let contentIndex = 0
 let wrapIndex = 1
 let borderIndex = 0
 let columnWidthModeIndex = 0
+let columnFitterIndex = 0
 let cellPaddingIndex = 0
 let borderEnabled = true
 let outerBorderEnabled = true
 let showBordersEnabled = true
 
+const PALETTE = {
+  bg: "#000000",
+  panel: "#0d0d0d",
+  tablePrimaryBg: "transparent",
+  tableUnicodeBg: "transparent",
+  text: "#f0f0f0",
+  muted: "#666666",
+  soft: "#bbbbbb",
+  rose: "#e8c97a",
+  ember: "#b8a0ff",
+  flame: "#ffffff",
+  eye: "#00d4aa",
+  border: "#2a2a2a",
+} as const
+
 const WRAP_MODES: Array<"none" | "word" | "char"> = ["none", "word", "char"]
 const BORDER_STYLES: BorderStyle[] = ["single", "rounded", "double", "heavy"]
-const COLUMN_WIDTH_MODES: TextTableColumnWidthMode[] = ["content", "fill"]
+const COLUMN_WIDTH_MODES: TextTableColumnWidthMode[] = ["content", "full"]
+const COLUMN_FITTERS: TextTableColumnFitter[] = ["proportional", "balanced"]
 const CELL_PADDING_VALUES: number[] = [0, 1, 2]
 
 function cell(text: string): TextChunk[] {
@@ -56,21 +70,61 @@ function cell(text: string): TextChunk[] {
 const primaryContentSets: TextTableContent[] = [
   [
     [[bold("Service")], [bold("Status")], [bold("Notes")]],
-    [cell("api"), [green("OK")], [fg("#94a3b8")("latency"), ...cell(" 28ms")]],
-    [cell("worker"), [yellow("DEGRADED")], cell("queue depth: 124")],
-    [cell("billing"), [red("ERROR")], cell("retrying payment provider")],
+    [cell("api"), [fg(PALETTE.eye)("OK")], [fg(PALETTE.muted)("latency"), ...cell(" 28ms")]],
+    [cell("worker"), [fg(PALETTE.ember)("DEGRADED")], cell("queue depth: 124")],
+    [cell("billing"), [fg(PALETTE.flame)("ERROR")], cell("retrying payment provider")],
   ],
   [
     [[bold("Region")], [bold("Requests")], [bold("Trend")]],
-    [cell("us-east-1"), cell("1.2M"), [green("+12.4%")]],
-    [cell("eu-west-1"), cell("890K"), [green("+5.1%")]],
-    [cell("ap-south-1"), cell("540K"), [red("-2.0%")]],
+    [cell("us-east-1"), cell("1.2M"), [fg(PALETTE.eye)("+12.4%")]],
+    [cell("eu-west-1"), cell("890K"), [fg(PALETTE.soft)("+5.1%")]],
+    [cell("ap-south-1"), cell("540K"), [fg(PALETTE.flame)("-2.0%")]],
   ],
   [
     [[bold("Task")], [bold("Owner")], [bold("ETA")]],
-    [cell("Wrap regression"), cell("core"), [green("done")]],
-    [cell("Unicode layout"), cell("render"), cell("in review")],
-    [cell("Snapshot pass"), cell("qa"), cell("today")],
+    [
+      cell(
+        "Wrap regression in operational status dashboard with dynamic row heights and constrained layout validation",
+      ),
+      cell("core platform and runtime reliability squad"),
+      [
+        fg(PALETTE.eye)(
+          "done after validating none, word, and char wrap modes across narrow, medium, wide, and ultra-wide terminal widths",
+        ),
+      ],
+    ],
+    [
+      cell(
+        "Unicode layout stabilization for mixed Latin, punctuation, symbols, and long identifiers in adjacent columns",
+      ),
+      cell("render pipeline maintainers with fallback shaping support"),
+      cell(
+        "in review with follow-up checks for border style transitions, cell padding variants, and selection range consistency",
+      ),
+    ],
+    [
+      cell("Snapshot pass for table rendering in content mode and full mode with heavy and double border combinations"),
+      cell("qa automation and visual diff triage group"),
+      cell(
+        "today pending final baseline updates for oversized fixtures that intentionally stress wrapping behavior on high-resolution terminals",
+      ),
+    ],
+    [
+      cell(
+        "Document edge cases where long tokens without spaces force char wrapping and reveal per-cell clipping regressions",
+      ),
+      cell("developer experience and docs tooling"),
+      cell(
+        "planned for this sprint once final reproducible examples are captured and linked to regression tracking tickets",
+      ),
+    ],
+    [
+      cell(
+        "Performance sweep of wrapping algorithm under large datasets to confirm stable frame times during rapid key toggling",
+      ),
+      cell("runtime performance task force"),
+      cell("scheduled after review, with benchmark runs on laptop and desktop terminals at 200-plus column widths"),
+    ],
   ],
 ]
 
@@ -89,8 +143,30 @@ const unicodeContentSets: TextTableContent[] = [
   ],
   [
     [[bold("Column")], [bold("Wrapped Text")]],
-    [cell("mixed"), cell("CJK and emoji wrapping: こんにちは世界 🌍 followed by long english text for width checks")],
-    [cell("emoji"), cell("Faces 😀😃😄😁😆 and symbols 🧪📦🛰️ across constrained columns")],
+    [
+      cell("mixed-languages"),
+      cell(
+        "CJK and emoji wrapping stress case: こんにちは世界 and 안녕하세요 세계 and 你好，世界 followed by long English prose that keeps flowing to test whether each cell wraps naturally even when the terminal is extremely wide and the row still needs multiple visual lines for readability 🌍🚀",
+      ),
+    ],
+    [
+      cell("emoji-and-symbols"),
+      cell(
+        "Faces 😀😃😄😁😆 plus symbols 🧪📦🛰️🔧📊 mixed with version tags like release-candidate-build-2026-02-very-long-token-without-breaks to ensure char wrapping remains stable and no glyph alignment issues appear at column boundaries",
+      ),
+    ],
+    [
+      cell("long-cjk-phrase"),
+      cell(
+        "長文の日本語テキストと中文段落和한국어문장을連続して配置し、その後に additional English context describing renderer behavior, border intersection handling, and selection extraction so that this single cell remains a reliable wrapping torture test.",
+      ),
+    ],
+    [
+      cell("mixed-punctuation"),
+      cell(
+        "Wrap behavior with punctuation-heavy content: [alpha]{beta}(gamma)<delta>|epsilon| then repeated fragments, commas, semicolons, and slashes to verify token boundaries do not break border drawing logic or spacing consistency in neighboring columns.",
+      ),
+    ],
   ],
 ]
 
@@ -106,6 +182,10 @@ function currentColumnWidthMode(): TextTableColumnWidthMode {
   return COLUMN_WIDTH_MODES[columnWidthModeIndex] ?? "content"
 }
 
+function currentColumnFitter(): TextTableColumnFitter {
+  return COLUMN_FITTERS[columnFitterIndex] ?? "proportional"
+}
+
 function currentCellPadding(): number {
   return CELL_PADDING_VALUES[cellPaddingIndex] ?? 0
 }
@@ -113,8 +193,8 @@ function currentCellPadding(): number {
 function updateControlsText(): void {
   if (!controlsText) return
 
-  controlsText.content = t`${bold("TextTable Demo")}  ${fg("#94a3b8")("1/2/3 dataset • W wrap • B style • M width • P padding • N inner • O outer • H draw • drag to select • C clear")}
-Current: dataset ${fg("#7dd3fc")(String(contentIndex + 1))} | wrap ${fg("#a5b4fc")(currentWrapMode())} | style ${fg("#f9a8d4")(currentBorderStyle())} | width ${fg("#fcd34d")(currentColumnWidthMode())} | padding ${fg("#fda4af")(String(currentCellPadding()))} | inner ${fg("#93c5fd")(borderEnabled ? "on" : "off")} | outer ${fg("#86efac")(outerBorderEnabled ? "on" : "off")} | draw ${fg("#67e8f9")(showBordersEnabled ? "on" : "off")}`
+  controlsText.content = t`${bold("TextTable Demo")}  ${fg(PALETTE.muted)("1/2/3 dataset • W wrap • B style • M width • F fitter • P padding • N inner • O outer • H draw • drag to select • C clear")}
+Current: dataset ${fg(PALETTE.soft)(String(contentIndex + 1))} | wrap ${fg(PALETTE.rose)(currentWrapMode())} | style ${fg(PALETTE.ember)(currentBorderStyle())} | width ${fg(PALETTE.eye)(currentColumnWidthMode())} | fitter ${fg(PALETTE.rose)(currentColumnFitter())} | padding ${fg(PALETTE.soft)(String(currentCellPadding()))} | inner ${fg(PALETTE.rose)(borderEnabled ? "on" : "off")} | outer ${fg(PALETTE.ember)(outerBorderEnabled ? "on" : "off")} | draw ${fg(PALETTE.eye)(showBordersEnabled ? "on" : "off")}`
 }
 
 function clearSelectionStatus(message: string): void {
@@ -141,6 +221,9 @@ function applyTableState(): void {
   primaryTable.columnWidthMode = currentColumnWidthMode()
   unicodeTable.columnWidthMode = currentColumnWidthMode()
 
+  primaryTable.columnFitter = currentColumnFitter()
+  unicodeTable.columnFitter = currentColumnFitter()
+
   primaryTable.cellPadding = currentCellPadding()
   unicodeTable.cellPadding = currentCellPadding()
 
@@ -157,7 +240,7 @@ function applyTableState(): void {
 }
 
 export function run(renderer: CliRenderer): void {
-  renderer.setBackgroundColor("#0b1020")
+  renderer.setBackgroundColor("transparent")
 
   container = new BoxRenderable(renderer, {
     id: "text-table-demo-container",
@@ -166,14 +249,14 @@ export function run(renderer: CliRenderer): void {
     flexDirection: "column",
     padding: 1,
     gap: 1,
-    backgroundColor: "#0b1020",
+    backgroundColor: "transparent",
   })
   renderer.root.add(container)
 
   controlsText = new TextRenderable(renderer, {
     id: "text-table-demo-controls",
     content: "",
-    fg: "#e2e8f0",
+    fg: PALETTE.text,
     wrapMode: "word",
     selectable: false,
   })
@@ -196,7 +279,7 @@ export function run(renderer: CliRenderer): void {
   const primaryLabel = new TextRenderable(renderer, {
     id: "text-table-demo-primary-label",
     content: t`${bold("Operational Table")}`,
-    fg: "#cbd5e1",
+    fg: PALETTE.ember,
     selectable: false,
   })
 
@@ -204,17 +287,18 @@ export function run(renderer: CliRenderer): void {
     id: "text-table-demo-primary",
     width: "100%",
     wrapMode: currentWrapMode(),
+    columnFitter: currentColumnFitter(),
     borderStyle: currentBorderStyle(),
-    borderColor: "#7aa2f7",
-    fg: "#e2e8f0",
-    bg: "transparent",
+    borderColor: PALETTE.ember,
+    fg: PALETTE.text,
+    bg: PALETTE.tablePrimaryBg,
     content: primaryContentSets[contentIndex] ?? primaryContentSets[0],
   })
 
   const unicodeLabel = new TextRenderable(renderer, {
     id: "text-table-demo-unicode-label",
     content: t`${bold("Unicode/CJK/Emoji Table")}`,
-    fg: "#cbd5e1",
+    fg: PALETTE.rose,
     selectable: false,
   })
 
@@ -222,10 +306,11 @@ export function run(renderer: CliRenderer): void {
     id: "text-table-demo-unicode",
     width: "100%",
     wrapMode: currentWrapMode(),
+    columnFitter: currentColumnFitter(),
     borderStyle: currentBorderStyle(),
-    borderColor: "#34d399",
-    fg: "#e2e8f0",
-    bg: "transparent",
+    borderColor: PALETTE.rose,
+    fg: PALETTE.text,
+    bg: PALETTE.tableUnicodeBg,
     content: unicodeContentSets[contentIndex] ?? unicodeContentSets[0],
   })
 
@@ -236,18 +321,18 @@ export function run(renderer: CliRenderer): void {
     flexGrow: 0,
     flexShrink: 0,
     border: true,
-    borderStyle: "single",
-    borderColor: "#64748b",
+    borderStyle: "double",
+    borderColor: PALETTE.border,
     title: "Selected Text",
     titleAlignment: "left",
     padding: 1,
-    backgroundColor: "#111827",
+    backgroundColor: PALETTE.panel,
   })
 
   selectionMetaText = new TextRenderable(renderer, {
     id: "text-table-demo-selection-meta",
     content: "No selection yet",
-    fg: "#93c5fd",
+    fg: PALETTE.eye,
     selectable: false,
   })
 
@@ -268,7 +353,7 @@ export function run(renderer: CliRenderer): void {
   selectionStatusText = new TextRenderable(renderer, {
     id: "text-table-demo-selection-text",
     content: "",
-    fg: "#e2e8f0",
+    fg: PALETTE.text,
     wrapMode: "word",
     width: "100%",
     selectable: false,
@@ -334,6 +419,12 @@ export function run(renderer: CliRenderer): void {
       return
     }
 
+    if (key.name === "f") {
+      columnFitterIndex = (columnFitterIndex + 1) % COLUMN_FITTERS.length
+      applyTableState()
+      return
+    }
+
     if (key.name === "p") {
       cellPaddingIndex = (cellPaddingIndex + 1) % CELL_PADDING_VALUES.length
       applyTableState()
@@ -393,6 +484,7 @@ export function destroy(renderer: CliRenderer): void {
   wrapIndex = 1
   borderIndex = 0
   columnWidthModeIndex = 0
+  columnFitterIndex = 0
   cellPaddingIndex = 0
   borderEnabled = true
   outerBorderEnabled = true

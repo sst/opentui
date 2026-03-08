@@ -5,29 +5,53 @@ import { RGBA } from "./lib/RGBA"
 const rgbaPackTransform = (rgba?: RGBA) => (rgba ? ptr(rgba.buffer) : null)
 const rgbaUnpackTransform = (ptr?: Pointer) => (ptr ? RGBA.fromArray(new Float32Array(toArrayBuffer(ptr))) : undefined)
 
-export const StyledChunkStruct = defineStruct([
-  ["text", "char*"],
-  ["text_len", "u64", { lengthOf: "text" }],
+type StyledChunkInput = {
+  text: string
+  fg?: RGBA | null
+  bg?: RGBA | null
+  attributes?: number | null
+  link?: { url: string } | string | null
+}
+
+export const StyledChunkStruct = defineStruct(
   [
-    "fg",
-    "pointer",
-    {
-      optional: true,
-      packTransform: rgbaPackTransform,
-      unpackTransform: rgbaUnpackTransform,
-    },
+    ["text", "char*"],
+    ["text_len", "u64", { lengthOf: "text" }],
+    [
+      "fg",
+      "pointer",
+      {
+        optional: true,
+        packTransform: rgbaPackTransform,
+        unpackTransform: rgbaUnpackTransform,
+      },
+    ],
+    [
+      "bg",
+      "pointer",
+      {
+        optional: true,
+        packTransform: rgbaPackTransform,
+        unpackTransform: rgbaUnpackTransform,
+      },
+    ],
+    ["attributes", "u32", { default: 0 }],
+    ["link", "char*", { default: "" }],
+    ["link_len", "u64", { lengthOf: "link" }],
   ],
-  [
-    "bg",
-    "pointer",
-    {
-      optional: true,
-      packTransform: rgbaPackTransform,
-      unpackTransform: rgbaUnpackTransform,
+  {
+    mapValue: (chunk: StyledChunkInput): StyledChunkInput => {
+      if (!chunk.link || typeof chunk.link === "string") {
+        return chunk
+      }
+
+      return {
+        ...chunk,
+        link: chunk.link.url,
+      }
     },
-  ],
-  ["attributes", "u32", { optional: true }],
-])
+  },
+)
 
 export const HighlightStruct = defineStruct([
   ["start", "u32"],
@@ -82,20 +106,20 @@ export const EncodedCharStruct = defineStruct([
 ])
 
 export const LineInfoStruct = defineStruct([
-  ["starts", ["u32"]],
-  ["startsLen", "u32", { lengthOf: "starts" }],
-  ["widths", ["u32"]],
-  ["widthsLen", "u32", { lengthOf: "widths" }],
+  ["startCols", ["u32"]],
+  ["startColsLen", "u32", { lengthOf: "startCols" }],
+  ["widthCols", ["u32"]],
+  ["widthColsLen", "u32", { lengthOf: "widthCols" }],
   ["sources", ["u32"]],
   ["sourcesLen", "u32", { lengthOf: "sources" }],
   ["wraps", ["u32"]],
   ["wrapsLen", "u32", { lengthOf: "wraps" }],
-  ["maxWidth", "u32"],
+  ["widthColsMax", "u32"],
 ])
 
 export const MeasureResultStruct = defineStruct([
   ["lineCount", "u32"],
-  ["maxWidth", "u32"],
+  ["widthColsMax", "u32"],
 ])
 
 export const CursorStateStruct = defineStruct([
@@ -128,6 +152,32 @@ export const CursorStyleOptionsStruct = defineStruct([
 export const GridDrawOptionsStruct = defineStruct([
   ["drawInner", "bool_u8", { default: true }],
   ["drawOuter", "bool_u8", { default: true }],
+])
+
+export type BuildOptions = {
+  gpaSafeStats: boolean
+  gpaMemoryLimitTracking: boolean
+}
+
+export const BuildOptionsStruct = defineStruct([
+  ["gpaSafeStats", "bool_u8"],
+  ["gpaMemoryLimitTracking", "bool_u8"],
+])
+
+export type AllocatorStats = {
+  totalRequestedBytes: number
+  activeAllocations: number
+  smallAllocations: number
+  largeAllocations: number
+  requestedBytesValid: boolean
+}
+
+export const AllocatorStatsStruct = defineStruct([
+  ["totalRequestedBytes", "u64"],
+  ["activeAllocations", "u64"],
+  ["smallAllocations", "u64"],
+  ["largeAllocations", "u64"],
+  ["requestedBytesValid", "bool_u8"],
 ])
 
 export type GrowthPolicy = "grow" | "block"

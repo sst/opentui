@@ -12,8 +12,8 @@ const MemRegistry = mem_registry_mod.MemRegistry;
 
 pub const LineInfo = struct {
     line_idx: u32,
-    char_offset: u32,
-    width: u32,
+    col_offset: u32,
+    width_cols: u32,
     seg_start: u32,
     seg_end: u32,
 };
@@ -37,7 +37,7 @@ pub fn walkLines(
     while (i < linestart_count) : (i += 1) {
         const marker = rope.getMarker(.linestart, i) orelse continue;
         const line_start_weight = marker.global_weight;
-        const width = lineWidthAt(rope, i);
+        const width_cols = lineWidthAt(rope, i);
         const seg_end = if (i + 1 < linestart_count) blk: {
             const next_marker = rope.getMarker(.linestart, i + 1) orelse break :blk marker.leaf_index + 1;
             break :blk next_marker.leaf_index;
@@ -46,15 +46,15 @@ pub fn walkLines(
         };
 
         // Line i has i newlines before it (one after each previous line)
-        const char_offset = if (include_newlines_in_offset)
+        const col_offset = if (include_newlines_in_offset)
             line_start_weight
         else
             line_start_weight - i;
 
         callback(ctx, LineInfo{
             .line_idx = i,
-            .char_offset = char_offset,
-            .width = width,
+            .col_offset = col_offset,
+            .width_cols = width_cols,
             .seg_start = marker.leaf_index,
             .seg_end = seg_end,
         });
@@ -77,10 +77,10 @@ pub fn walkLinesAndSegments(
         seg_callback: *const fn (ctx: *anyopaque, line_idx: u32, chunk: *const TextChunk, chunk_idx_in_line: u32) void,
         line_callback: *const fn (ctx: *anyopaque, line_info: LineInfo) void,
         current_line_idx: u32 = 0,
-        current_char_offset: u32 = 0,
+        current_col_offset: u32 = 0,
         line_start_seg: u32 = 0,
         current_seg_idx: u32 = 0,
-        line_width: u32 = 0,
+        line_width_cols: u32 = 0,
         chunk_idx_in_line: u32 = 0,
 
         fn walker(walk_ctx_ptr: *anyopaque, seg: *const Segment, idx: u32) UnifiedRope.Node.WalkerResult {
@@ -89,20 +89,20 @@ pub fn walkLinesAndSegments(
             if (seg.asText()) |chunk| {
                 walk_ctx.seg_callback(walk_ctx.user_ctx, walk_ctx.current_line_idx, chunk, walk_ctx.chunk_idx_in_line);
                 walk_ctx.chunk_idx_in_line += 1;
-                walk_ctx.line_width += chunk.width;
+                walk_ctx.line_width_cols += chunk.width;
             } else if (seg.isBreak()) {
                 walk_ctx.line_callback(walk_ctx.user_ctx, LineInfo{
                     .line_idx = walk_ctx.current_line_idx,
-                    .char_offset = walk_ctx.current_char_offset,
-                    .width = walk_ctx.line_width,
+                    .col_offset = walk_ctx.current_col_offset,
+                    .width_cols = walk_ctx.line_width_cols,
                     .seg_start = walk_ctx.line_start_seg,
                     .seg_end = idx, // Don't include the break
                 });
 
                 walk_ctx.current_line_idx += 1;
-                walk_ctx.current_char_offset += walk_ctx.line_width + 1;
+                walk_ctx.current_col_offset += walk_ctx.line_width_cols + 1;
                 walk_ctx.line_start_seg = idx + 1;
-                walk_ctx.line_width = 0;
+                walk_ctx.line_width_cols = 0;
                 walk_ctx.chunk_idx_in_line = 0;
             }
 
@@ -126,8 +126,8 @@ pub fn walkLinesAndSegments(
     if (has_content_after_break or had_breaks) {
         line_end_callback(ctx, LineInfo{
             .line_idx = walk_ctx.current_line_idx,
-            .char_offset = walk_ctx.current_char_offset,
-            .width = walk_ctx.line_width,
+            .col_offset = walk_ctx.current_col_offset,
+            .width_cols = walk_ctx.line_width_cols,
             .seg_start = walk_ctx.line_start_seg,
             .seg_end = walk_ctx.current_seg_idx,
         });
@@ -400,7 +400,7 @@ pub fn extractTextBetweenOffsets(
     const line_count = rope.root.metrics().custom.linestart_count;
 
     var out_index: usize = 0;
-    var char_offset: u32 = 0;
+    var col_offset: u32 = 0;
 
     _ = width_method; // Just ignore for now, will use .unicode as default
 
@@ -410,7 +410,7 @@ pub fn extractTextBetweenOffsets(
         tab_width: u8,
         out_buffer: []u8,
         out_index: *usize,
-        char_offset: *u32,
+        col_offset: *u32,
         start: u32,
         end: u32,
         line_count: u32,
@@ -421,12 +421,12 @@ pub fn extractTextBetweenOffsets(
             _ = chunk_idx_in_line;
             const ctx = @as(*@This(), @ptrCast(@alignCast(ctx_ptr)));
 
-            const chunk_start_offset = ctx.char_offset.*;
+            const chunk_start_offset = ctx.col_offset.*;
             const chunk_end_offset = chunk_start_offset + chunk.width;
 
             // Skip chunk if it's entirely outside range
             if (chunk_end_offset <= ctx.start or chunk_start_offset >= ctx.end) {
-                ctx.char_offset.* = chunk_end_offset;
+                ctx.col_offset.* = chunk_end_offset;
                 return;
             }
 
@@ -462,20 +462,20 @@ pub fn extractTextBetweenOffsets(
                 }
             }
 
-            ctx.char_offset.* = chunk_end_offset;
+            ctx.col_offset.* = chunk_end_offset;
         }
 
         fn line_end_callback(ctx_ptr: *anyopaque, line_info: LineInfo) void {
             const ctx = @as(*@This(), @ptrCast(@alignCast(ctx_ptr)));
 
             // Add newline if we had content and range extends beyond this line's newline
-            if (ctx.line_had_content and line_info.line_idx < ctx.line_count - 1 and ctx.char_offset.* + 1 < ctx.end and ctx.out_index.* < ctx.out_buffer.len) {
+            if (ctx.line_had_content and line_info.line_idx < ctx.line_count - 1 and ctx.col_offset.* + 1 < ctx.end and ctx.out_index.* < ctx.out_buffer.len) {
                 ctx.out_buffer[ctx.out_index.*] = '\n';
                 ctx.out_index.* += 1;
             }
 
-            // Account for newline in char_offset
-            ctx.char_offset.* += 1;
+            // Account for newline in display offset
+            ctx.col_offset.* += 1;
 
             ctx.line_had_content = false;
         }
@@ -487,7 +487,7 @@ pub fn extractTextBetweenOffsets(
         .tab_width = tab_width,
         .out_buffer = out_buffer,
         .out_index = &out_index,
-        .char_offset = &char_offset,
+        .col_offset = &col_offset,
         .start = start_offset,
         .end = end_offset,
         .line_count = line_count,

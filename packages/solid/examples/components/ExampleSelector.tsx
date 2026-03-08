@@ -1,5 +1,5 @@
 import { measureText } from "@opentui/core"
-import { useKeyboard, useRenderer, useTerminalDimensions } from "@opentui/solid"
+import { TimeToFirstDraw, useKeyboard, useRenderer, useTerminalDimensions } from "@opentui/solid"
 import { createSignal, Match, onMount, Switch } from "solid-js"
 import { Session } from "../session.tsx"
 import { SplitModeDemo } from "./animation-demo.tsx"
@@ -225,10 +225,6 @@ const ExampleSelector = () => {
               text={titleText}
             />
           </box>
-          <text style={{ fg: "#AAAAAA", marginTop: 1, marginLeft: 1, marginRight: 1 }}>
-            Use ↑↓ or j/k to navigate, Shift+↑↓ or Shift+j/k for fast scroll, Enter to run, Escape to return, for
-            console, ctrl+c to quit {selected()} {terminalDimensions().height}
-          </text>
           <box
             title="Examples"
             style={{
@@ -263,6 +259,11 @@ const ExampleSelector = () => {
               fastScrollStep={5}
             />
           </box>
+          <TimeToFirstDraw />
+          <text style={{ fg: "#AAAAAA", marginTop: 1, marginLeft: 1, marginRight: 1 }}>
+            Use ↑↓ or j/k to navigate, Shift+↑↓ or Shift+j/k for fast scroll, Enter to run, Escape to return, ` to
+            toggle console, ctrl+c to quit
+          </text>
         </box>
       </Match>
     </Switch>

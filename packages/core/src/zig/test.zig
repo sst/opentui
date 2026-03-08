@@ -12,6 +12,7 @@ const edit_buffer_tests = @import("tests/edit-buffer_test.zig");
 const edit_buffer_history_tests = @import("tests/edit-buffer-history_test.zig");
 const editor_view_tests = @import("tests/editor-view_test.zig");
 const grapheme_tests = @import("tests/grapheme_test.zig");
+const link_tests = @import("tests/link_test.zig");
 const syntax_style_tests = @import("tests/syntax-style_test.zig");
 const rope_tests = @import("tests/rope_test.zig");
 const rope_nested_tests = @import("tests/rope-nested_test.zig");
@@ -46,6 +47,7 @@ comptime {
     _ = edit_buffer_history_tests;
     _ = editor_view_tests;
     _ = grapheme_tests;
+    _ = link_tests;
     _ = syntax_style_tests;
     _ = rope_tests;
     _ = rope_nested_tests;

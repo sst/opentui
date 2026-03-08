@@ -976,7 +976,7 @@ describe("Textarea - Selection Tests", () => {
 
       expect(bottomText.hasSelection()).toBe(true)
       const bottomSelected = bottomText.getSelectedText()
-      expect(bottomSelected).toBe("Click and ")
+      expect(bottomSelected).toBe("Click and d")
 
       expect(codeText1.hasSelection()).toBe(false)
 
