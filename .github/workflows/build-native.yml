@@ -43,6 +43,8 @@ jobs:
           cd packages/core
           bun run build:native --all
           bun run build:lib
+          cd ../three
+          bun run build
           cd ../react
           bun run build
           cd ../solid
@@ -155,6 +157,13 @@ jobs:
 
           # Copy other package dists (optional - don't fail if missing)
           echo "Packaging other packages..."
+          if [ -d packages/three/dist ]; then
+            cp -r packages/three/dist artifacts/npm-packages/three-dist
+            echo "✅ Three dist packaged"
+          else
+            echo "⚠️  Three dist not found (skipping)"
+          fi
+
           if [ -d packages/react/dist ]; then
             cp -r packages/react/dist artifacts/npm-packages/react-dist
             echo "✅ React dist packaged"

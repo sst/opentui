@@ -62,6 +62,11 @@ jobs:
           fi
 
           # Copy other package dists
+          if [ -d "npm-packages/three-dist" ]; then
+            cp -r npm-packages/three-dist packages/three/dist
+            echo "Copied three dist"
+          fi
+
           if [ -d "npm-packages/react-dist" ]; then
             cp -r npm-packages/react-dist packages/react/dist
             echo "Copied react dist"
@@ -90,6 +95,10 @@ jobs:
 
           echo "📦 Checking @opentui/core..."
           cd packages/core/dist && npm pack --dry-run
+
+          echo ""
+          echo "📦 Checking @opentui/three..."
+          cd ../../three/dist && npm pack --dry-run
 
           echo ""
           echo "📦 Checking @opentui/react..."
