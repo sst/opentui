@@ -67,6 +67,11 @@ const keyName: Record<string, string> = {
   "[c": "right",
   "[d": "left",
   "[e": "clear",
+  /* option + arrow keys (old style) */
+  f: "right",
+  b: "left",
+  p: "up",
+  n: "down",
 
   "[2$": "insert",
   "[3$": "delete",
@@ -323,7 +328,12 @@ export const parseKeypress = (s: Buffer | string = "", options: ParseKeypressOpt
     const char = parts[1]!
     const isUpperCase = /^[A-Z]$/.test(char)
 
-    if (isUpperCase) {
+    // Check if uppercase F or B map to arrow keys (old terminal style)
+    if (char === "F") {
+      key.name = "right"
+    } else if (char === "B") {
+      key.name = "left"
+    } else if (isUpperCase) {
       key.shift = true
       key.name = char
     } else {

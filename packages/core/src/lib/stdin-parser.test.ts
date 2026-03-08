@@ -455,11 +455,13 @@ describe("StdinParser", () => {
       }
     })
 
-    // Terminal.app may reuse ESC+b / ESC+f for word navigation, but the parser
-    // preserves the raw Meta-b / Meta-f chords instead of rewriting them.
+    // Lowercase ESC+b / ESC+f stay literal meta chords, while uppercase ESC+B / ESC+F
+    // preserve the old-style meta+arrow behavior from `main`.
     table([
       ["meta+b (literal chord)", "\x1bb", [k("b", { raw: "\x1bb", meta: true })]],
       ["meta+f (literal chord)", "\x1bf", [k("f", { raw: "\x1bf", meta: true })]],
+      ["meta+B (old-style left)", "\x1bB", [k("left", { raw: "\x1bB", meta: true })]],
+      ["meta+F (old-style right)", "\x1bF", [k("right", { raw: "\x1bF", meta: true })]],
       ["meta+n (plain letter)", "\x1bn", [k("n", { raw: "\x1bn", meta: true })]],
       ["meta+p (plain letter)", "\x1bp", [k("p", { raw: "\x1bp", meta: true })]],
     ])
