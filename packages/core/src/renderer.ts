@@ -1251,7 +1251,6 @@ export class CliRenderer extends EventEmitter implements RenderContext {
     }
 
     this.stdin.resume()
-    // Keep raw bytes for stdin parser
     this.stdin.on("data", this.stdinListener)
   }
 
