@@ -1,6 +1,13 @@
 import { OrthographicCamera, PerspectiveCamera, Scene } from "three"
 
-import { OptimizedBuffer, RGBA, Renderable, type RenderableOptions, type CliRenderer, type RenderContext } from "@opentui/core"
+import {
+  OptimizedBuffer,
+  RGBA,
+  Renderable,
+  type RenderableOptions,
+  type CliRenderer,
+  type RenderContext,
+} from "@opentui/core"
 import { ThreeCliRenderer, type ThreeCliRendererOptions } from "./WGPURenderer"
 
 export interface ThreeRenderableOptions extends RenderableOptions<ThreeRenderable> {

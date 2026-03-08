@@ -11,7 +11,7 @@ import {
 } from "../index"
 import { setupCommonDemoKeys } from "./lib/standalone-keys"
 import * as THREE from "three"
-import { ThreeCliRenderer, SpriteUtils } from "@opentui/3d"
+import { ThreeCliRenderer, SpriteUtils } from "@opentui/three"
 
 // @ts-ignore - Bun specific import attribute for assets
 import staticImagePath from "./assets/main_char_idle.png" with { type: "image/png" }

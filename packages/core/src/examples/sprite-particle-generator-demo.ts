@@ -22,7 +22,7 @@ import {
   SpriteParticleGenerator,
   type ParticleEffectParameters,
   ThreeCliRenderer,
-} from "@opentui/3d"
+} from "@opentui/three"
 
 // @ts-ignore
 import heartPath from "./assets/heart.png" with { type: "image/png" }

@@ -21,7 +21,7 @@ import {
   type PhysicsExplosionHandle,
   RapierPhysicsWorld,
   ThreeCliRenderer,
-} from "@opentui/3d"
+} from "@opentui/three"
 import RAPIER from "@dimforge/rapier2d-simd-compat"
 import { MeshLambertNodeMaterial } from "three/webgpu"
 

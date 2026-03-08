@@ -21,7 +21,7 @@ import {
   type PhysicsExplosionHandle,
   PlanckPhysicsWorld,
   ThreeCliRenderer,
-} from "@opentui/3d"
+} from "@opentui/three"
 import * as planck from "planck"
 
 // @ts-ignore

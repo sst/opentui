@@ -2,7 +2,7 @@
 
 import { CliRenderer, createCliRenderer, RGBA, BoxRenderable, TextRenderable, type KeyEvent } from "../index"
 import { setupCommonDemoKeys } from "./lib/standalone-keys"
-import { TextureUtils, ThreeRenderable, SuperSampleAlgorithm } from "@opentui/3d"
+import { TextureUtils, ThreeRenderable, SuperSampleAlgorithm } from "@opentui/three"
 import {
   Scene as ThreeScene,
   Mesh as ThreeMesh,

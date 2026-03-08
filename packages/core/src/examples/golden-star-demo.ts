@@ -30,7 +30,7 @@ import {
   Quaternion,
   ConeGeometry,
 } from "three"
-import { ThreeCliRenderer } from "@opentui/3d"
+import { ThreeCliRenderer } from "@opentui/three"
 import { setupCommonDemoKeys } from "./lib/standalone-keys"
 
 interface StarParticle {

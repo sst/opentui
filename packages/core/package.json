@@ -28,7 +28,7 @@
   },
   "license": "MIT",
   "devDependencies": {
-    "@opentui/3d": "workspace:*",
+    "@opentui/three": "workspace:*",
     "@types/bun": "latest",
     "@types/node": "^24.0.0",
     "commander": "^13.1.0",

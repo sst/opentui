@@ -21,7 +21,7 @@ import {
   MeshPhongMaterial,
   Vector3,
 } from "three"
-import { ThreeRenderable } from "@opentui/3d"
+import { ThreeRenderable } from "@opentui/three"
 
 let nextZIndex = 200
 let keyListener: ((key: KeyEvent) => void) | null = null

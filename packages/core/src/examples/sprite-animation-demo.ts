@@ -22,7 +22,7 @@ import {
   type ExplosionHandle,
   type ExplosionEffectParameters,
   ThreeCliRenderer,
-} from "@opentui/3d"
+} from "@opentui/three"
 
 // @ts-ignore
 import mainCharIdlePath from "./assets/main_char_idle.png" with { type: "image/png" }

@@ -36,7 +36,7 @@ const packageJson: PackageJson = JSON.parse(readFileSync(join(rootDir, "package.
 const args = process.argv.slice(2)
 const isCi = args.includes("--ci")
 
-console.log("Building @opentui/3d library...")
+console.log("Building @opentui/three library...")
 
 const distDir = join(rootDir, "dist")
 rmSync(distDir, { recursive: true, force: true })

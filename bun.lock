@@ -8,24 +8,6 @@
         "prettier": "3.6.2",
       },
     },
-    "packages/3d": {
-      "name": "@opentui/3d",
-      "version": "0.1.60",
-      "dependencies": {
-        "@opentui/core": "workspace:*",
-      },
-      "devDependencies": {
-        "@types/bun": "latest",
-        "@types/three": "0.177.0",
-        "typescript": "^5",
-      },
-      "optionalDependencies": {
-        "@dimforge/rapier2d-simd-compat": "^0.17.3",
-        "bun-webgpu": "0.1.4",
-        "planck": "^1.4.2",
-        "three": "0.177.0",
-      },
-    },
     "packages/core": {
       "name": "@opentui/core",
       "version": "0.1.86",
@@ -37,7 +19,7 @@
         "yoga-layout": "3.2.1",
       },
       "devDependencies": {
-        "@opentui/3d": "workspace:*",
+        "@opentui/three": "workspace:*",
         "@types/bun": "latest",
         "@types/node": "^24.0.0",
         "commander": "^13.1.0",
@@ -104,6 +86,24 @@
       },
       "peerDependencies": {
         "solid-js": "1.9.9",
+      },
+    },
+    "packages/three": {
+      "name": "@opentui/three",
+      "version": "0.1.60",
+      "dependencies": {
+        "@opentui/core": "workspace:*",
+      },
+      "devDependencies": {
+        "@types/bun": "latest",
+        "@types/three": "0.177.0",
+        "typescript": "^5",
+      },
+      "optionalDependencies": {
+        "@dimforge/rapier2d-simd-compat": "^0.17.3",
+        "bun-webgpu": "0.1.4",
+        "planck": "^1.4.2",
+        "three": "0.177.0",
       },
     },
     "packages/web": {
@@ -367,8 +367,6 @@
 
     "@mdx-js/mdx": ["@mdx-js/mdx@3.1.1", "", { "dependencies": { "@types/estree": "^1.0.0", "@types/estree-jsx": "^1.0.0", "@types/hast": "^3.0.0", "@types/mdx": "^2.0.0", "acorn": "^8.0.0", "collapse-white-space": "^2.0.0", "devlop": "^1.0.0", "estree-util-is-identifier-name": "^3.0.0", "estree-util-scope": "^1.0.0", "estree-walker": "^3.0.0", "hast-util-to-jsx-runtime": "^2.0.0", "markdown-extensions": "^2.0.0", "recma-build-jsx": "^1.0.0", "recma-jsx": "^1.0.0", "recma-stringify": "^1.0.0", "rehype-recma": "^1.0.0", "remark-mdx": "^3.0.0", "remark-parse": "^11.0.0", "remark-rehype": "^11.0.0", "source-map": "^0.7.0", "unified": "^11.0.0", "unist-util-position-from-estree": "^2.0.0", "unist-util-stringify-position": "^4.0.0", "unist-util-visit": "^5.0.0", "vfile": "^6.0.0" } }, "sha512-f6ZO2ifpwAQIpzGWaBQT2TXxPv6z3RBzQKpVftEWN78Vl/YweF1uwussDx8ECAXVtr3Rs89fKyG9YlzUs9DyGQ=="],
 
-    "@opentui/3d": ["@opentui/3d@workspace:packages/3d"],
-
     "@opentui/core": ["@opentui/core@workspace:packages/core"],
 
     "@opentui/core-darwin-arm64": ["@opentui/core-darwin-arm64@0.1.86", "", { "os": "darwin", "cpu": "arm64" }, "sha512-Zp7q64+d+Dcx6YrH3mRcnHq8EOBnrfc1RvjgSWLhpXr49hY6LzuhqpfZM57aGErPYlR+ff8QM6e5FUkFnDfyjw=="],
@@ -386,6 +384,8 @@
     "@opentui/react": ["@opentui/react@workspace:packages/react"],
 
     "@opentui/solid": ["@opentui/solid@workspace:packages/solid"],
+
+    "@opentui/three": ["@opentui/three@workspace:packages/three"],
 
     "@opentui/web": ["@opentui/web@workspace:packages/web"],
 
