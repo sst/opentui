@@ -100,6 +100,13 @@ export class DiffRenderable extends Renderable {
   private _waitingForHighlight: boolean = false
   private _lineInfoChangeHandler: (() => void) | null = null
 
+  /** Whether tree-sitter syntax highlighting is currently in progress. */
+  get isHighlighting(): boolean {
+    const left = this.leftCodeRenderable?.isHighlighting ?? false
+    const right = this.rightCodeRenderable?.isHighlighting ?? false
+    return left || right
+  }
+
   constructor(ctx: RenderContext, options: DiffRenderableOptions) {
     super(ctx, {
       ...options,
