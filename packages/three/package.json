@@ -21,10 +21,8 @@
     "typescript": "^5"
   },
   "dependencies": {
-    "@opentui/core": "workspace:*"
-  },
-  "optionalDependencies": {
     "@dimforge/rapier2d-simd-compat": "^0.17.3",
+    "@opentui/core": "workspace:*",
     "bun-webgpu": "0.1.4",
     "planck": "^1.4.2",
     "three": "0.177.0"
