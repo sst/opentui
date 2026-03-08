@@ -95,8 +95,8 @@ registerEnvVar({
 })
 
 // Cursor & mouse pointer style mappings (avoid recreation on each call)
-const CURSOR_STYLE_TO_ID = { block: 0, line: 1, underline: 2 } as const
-const CURSOR_ID_TO_STYLE = ["block", "line", "underline"] as const
+const CURSOR_STYLE_TO_ID = { block: 0, line: 1, underline: 2, default: 3 } as const
+const CURSOR_ID_TO_STYLE = ["block", "line", "underline", "default"] as const
 const MOUSE_STYLE_TO_ID = { default: 0, pointer: 1, text: 2, crosshair: 3, move: 4, "not-allowed": 5 } as const
 
 // Global singleton state for FFI tracing to prevent duplicate exit handlers

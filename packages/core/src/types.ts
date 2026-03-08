@@ -30,7 +30,7 @@ export function getBaseAttributes(attr: number): number {
 
 export type ThemeMode = "dark" | "light"
 
-export type CursorStyle = "block" | "line" | "underline"
+export type CursorStyle = "block" | "line" | "underline" | "default"
 
 export type MousePointerStyle = "default" | "pointer" | "text" | "crosshair" | "move" | "not-allowed"
 
