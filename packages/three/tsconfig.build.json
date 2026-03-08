@@ -6,16 +6,14 @@
     "emitDeclarationOnly": true,
     "outDir": "./dist",
     "noEmit": false,
-    "rootDir": ".",
+    "rootDir": "./src",
     "types": ["bun"],
     "skipLibCheck": true,
-    "moduleResolution": "bundler",
-    "baseUrl": ".",
     "paths": {
       "@opentui/core": ["../core/dist"],
       "@opentui/core/*": ["../core/dist/*"]
     }
   },
   "include": ["src/**/*"],
-  "exclude": ["**/*.test.ts", "**/*.spec.ts", "scripts/**/*", "node_modules/**/*", "../core/**/*"]
+  "exclude": ["**/*.test.ts", "**/*.spec.ts", "scripts/**/*", "node_modules/**/*"]
 }

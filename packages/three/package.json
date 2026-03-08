@@ -1,10 +1,10 @@
 {
   "name": "@opentui/three",
-  "version": "0.1.60",
+  "version": "0.1.86",
   "description": "3D rendering module for OpenTUI",
   "repository": {
     "type": "git",
-    "url": "https://github.com/sst/opentui",
+    "url": "https://github.com/anomalyco/opentui",
     "directory": "packages/three"
   },
   "module": "src/index.ts",

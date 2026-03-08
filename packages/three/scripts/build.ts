@@ -80,7 +80,7 @@ if (tscResult.status !== 0) {
 
 const exports = {
   ".": {
-    types: "./src/index.d.ts",
+    types: "./index.d.ts",
     import: "./index.js",
     require: "./index.js",
   },
@@ -101,12 +101,11 @@ writeFileSync(
       repository: packageJson.repository,
       module: "index.js",
       main: "index.js",
-      types: "src/index.d.ts",
+      types: "index.d.ts",
       type: packageJson.type,
       license: packageJson.license,
       exports,
       dependencies: processedDependencies,
-      optionalDependencies: packageJson.optionalDependencies,
       engines: packageJson.engines,
     },
     null,
