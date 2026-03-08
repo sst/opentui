@@ -36,6 +36,22 @@ const packageJson: PackageJson = JSON.parse(readFileSync(join(rootDir, "package.
 const args = process.argv.slice(2)
 const isCi = args.includes("--ci")
 
+const replaceLinks = (text: string): string => {
+  return packageJson.homepage
+    ? text.replace(
+        /(\[.*?\]\()(\.\/.*?\))/g,
+        (_, p1: string, p2: string) => `${p1}${packageJson.homepage}/blob/HEAD/${p2.replace("./", "")}`,
+      )
+    : text
+}
+
+const requiredFields: (keyof PackageJson)[] = ["name", "version", "description"]
+const missingRequired = requiredFields.filter((field) => !packageJson[field])
+if (missingRequired.length > 0) {
+  console.error(`Error: Missing required fields in package.json: ${missingRequired.join(", ")}`)
+  process.exit(1)
+}
+
 console.log("Building @opentui/three library...")
 
 const distDir = join(rootDir, "dist")
@@ -115,7 +131,7 @@ writeFileSync(
 
 const readmePath = join(rootDir, "README.md")
 if (existsSync(readmePath)) {
-  copyFileSync(readmePath, join(distDir, "README.md"))
+  writeFileSync(join(distDir, "README.md"), replaceLinks(readFileSync(readmePath, "utf8")))
 }
 
 if (existsSync(licensePath)) {

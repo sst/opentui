@@ -59,7 +59,7 @@ if (!/^\d+\.\d+\.\d+(-[a-zA-Z0-9.-]+)?$/.test(version)) {
   process.exit(1)
 }
 
-console.log(`\nPreparing release ${version} for core, react, and solid packages...\n`)
+console.log(`\nPreparing release ${version} for core, three, react, and solid packages...\n`)
 
 const corePackageJsonPath = join(rootDir, "packages", "core", "package.json")
 console.log("Updating @opentui/core...")
@@ -101,6 +101,22 @@ try {
   process.exit(1)
 }
 
+const threePackageJsonPath = join(rootDir, "packages", "three", "package.json")
+console.log("\nUpdating @opentui/three...")
+
+try {
+  const threePackageJson: PackageJson = JSON.parse(readFileSync(threePackageJsonPath, "utf8"))
+
+  threePackageJson.version = version
+
+  writeFileSync(threePackageJsonPath, JSON.stringify(threePackageJson, null, 2) + "\n")
+  console.log(`  @opentui/three updated to version ${version}`)
+  console.log(`  Note: @opentui/core dependency will be set to ${version} during build`)
+} catch (error) {
+  console.error(`  Failed to update @opentui/three: ${error}`)
+  process.exit(1)
+}
+
 const solidPackageJsonPath = join(rootDir, "packages", "solid", "package.json")
 console.log("\nUpdating @opentui/solid...")
 
@@ -127,7 +143,7 @@ try {
 }
 
 console.log(`
-Successfully prepared release ${version} for core, react, and solid packages!
+Successfully prepared release ${version} for core, three, react, and solid packages!
 
 Next steps:
 1. Review the changes: git diff

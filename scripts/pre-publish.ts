@@ -37,6 +37,12 @@ const ALL_PACKAGES: PackageConfig[] = [
     distDir: join(rootDir, "packages", "core", "dist"),
   },
   {
+    name: "@opentui/three",
+    rootDir: join(rootDir, "packages", "three"),
+    distDir: join(rootDir, "packages", "three", "dist"),
+    requiresCore: true,
+  },
+  {
     name: "@opentui/react",
     rootDir: join(rootDir, "packages", "react"),
     distDir: join(rootDir, "packages", "react", "dist"),

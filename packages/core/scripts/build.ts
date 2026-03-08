@@ -334,6 +334,15 @@ if (buildLib) {
     variants.map(({ platform, arch }) => [`${packageJson.name}-${platform}-${arch}`, packageJson.version]),
   )
 
+  const processedDevDependencies = Object.fromEntries(
+    Object.entries(packageJson.devDependencies ?? {}).map(([name, version]) => {
+      if (version === "workspace:*" || version === "workspace:^") {
+        return [name, packageJson.version]
+      }
+      return [name, version]
+    }),
+  )
+
   writeFileSync(
     join(distDir, "package.json"),
     JSON.stringify(
@@ -353,7 +362,7 @@ if (buildLib) {
         bugs: packageJson.bugs,
         exports,
         dependencies: packageJson.dependencies,
-        devDependencies: packageJson.devDependencies,
+        devDependencies: processedDevDependencies,
         peerDependencies: packageJson.peerDependencies,
         optionalDependencies: {
           ...packageJson.optionalDependencies,

@@ -94,7 +94,7 @@ jobs:
       - name: Build 3D package
         run: |
           cd packages/three
-          bun run build
+          bun run build --ci
 
       - name: Run TypeScript tests
         run: |
