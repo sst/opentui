@@ -2,6 +2,7 @@ import { test, expect, beforeEach, afterEach } from "bun:test"
 import { nonAlphanumericKeys, type KeyEventType, type ParsedKey } from "../lib/parse.keypress"
 import { type KeyEvent } from "../lib/KeyHandler"
 import { Buffer } from "node:buffer"
+import { PassThrough } from "stream"
 import { createTestRenderer, type TestRenderer } from "../testing/test-renderer"
 
 let currentRenderer: TestRenderer
@@ -1106,6 +1107,44 @@ test("high byte buffer handling via keyInput events", async () => {
     sequence: "\x1b ",
     raw: "\x1b ",
   })
+})
+
+test("high byte UTF-8 lead byte survives real stream writes", async () => {
+  const stdin = new PassThrough() as unknown as NodeJS.ReadStream
+  const { renderer } = await createTestRenderer({ stdin })
+
+  try {
+    const resultPromise = new Promise<KeyEvent>((resolve, reject) => {
+      const timeout = setTimeout(() => {
+        renderer.keyInput.removeListener("keypress", onKeypress)
+        reject(new Error("timed out waiting for high-byte keypress from stream write"))
+      }, 100)
+
+      const onKeypress = (parsedKey: KeyEvent) => {
+        clearTimeout(timeout)
+        renderer.keyInput.removeListener("keypress", onKeypress)
+        resolve(parsedKey)
+      }
+
+      renderer.keyInput.on("keypress", onKeypress)
+    })
+
+    stdin.write(Buffer.from([233]))
+    const result = await resultPromise
+    expect(result).toMatchObject({
+      eventType: "press",
+      name: "i",
+      ctrl: false,
+      meta: true,
+      shift: false,
+      option: false,
+      number: false,
+      sequence: "\x1bi",
+      raw: "\x1bi",
+    })
+  } finally {
+    renderer.destroy()
+  }
 })
 
 test("empty input via keyInput events", async () => {
