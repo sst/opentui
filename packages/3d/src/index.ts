@@ -1,5 +1,6 @@
 export * as THREE from "three"
 export * from "./WGPURenderer"
+export * from "./ThreeRenderable"
 export * from "./TextureUtils"
 export * from "./canvas"
 export * from "./SpriteUtils"

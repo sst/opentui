@@ -1,5 +1,5 @@
 import { measureText } from "@opentui/core"
-import { useKeyboard, useRenderer, useTerminalDimensions } from "@opentui/solid"
+import { TimeToFirstDraw, useKeyboard, useRenderer, useTerminalDimensions } from "@opentui/solid"
 import { createSignal, Match, onMount, Switch } from "solid-js"
 import { Session } from "../session.tsx"
 import { SplitModeDemo } from "./animation-demo.tsx"
@@ -16,6 +16,8 @@ import TabSelectDemo from "./tab-select-demo.tsx"
 import TextSelectionDemo from "./text-selection-demo.tsx"
 import TextStyleScene from "./text-style-demo.tsx"
 import { TextareaDemo } from "./textarea-demo.tsx"
+import { TextareaMinimalDemo } from "./textarea-minimal-demo.tsx"
+import { TextTruncationDemo } from "./text-truncation-demo.tsx"
 
 const EXAMPLES = [
   {
@@ -52,6 +54,16 @@ const EXAMPLES = [
     name: "Textarea Demo",
     description: "Interactive textarea editor with navigation, editing, and text wrapping",
     scene: "textarea-demo",
+  },
+  {
+    name: "Textarea Minimal Demo",
+    description: "Minimal prompt-style textarea with submit state",
+    scene: "textarea-minimal-demo",
+  },
+  {
+    name: "Text Truncation Demo",
+    description: "Truncation and wrap mode toggles for varied text blocks",
+    scene: "text-truncation-demo",
   },
   {
     name: "Mouse demo",
@@ -139,10 +151,9 @@ const ExampleSelector = () => {
         break
     }
 
-    switch (key.raw) {
-      case "\u0003":
-        renderer.stop()
-        process.exit(0)
+    if (key.ctrl && key.name === "c") {
+      key.preventDefault()
+      renderer.destroy()
     }
   })
 
@@ -170,6 +181,12 @@ const ExampleSelector = () => {
       </Match>
       <Match when={selectedScene() === "textarea-demo"}>
         <TextareaDemo />
+      </Match>
+      <Match when={selectedScene() === "textarea-minimal-demo"}>
+        <TextareaMinimalDemo />
+      </Match>
+      <Match when={selectedScene() === "text-truncation-demo"}>
+        <TextTruncationDemo />
       </Match>
       <Match when={selectedScene() === "mouse-demo"}>
         <MouseScene />
@@ -208,10 +225,6 @@ const ExampleSelector = () => {
               text={titleText}
             />
           </box>
-          <text style={{ fg: "#AAAAAA", marginTop: 1, marginLeft: 1, marginRight: 1 }}>
-            Use ↑↓ or j/k to navigate, Shift+↑↓ or Shift+j/k for fast scroll, Enter to run, Escape to return, for
-            console, ctrl+c to quit {selected()} {terminalDimensions().height}
-          </text>
           <box
             title="Examples"
             style={{
@@ -246,6 +259,11 @@ const ExampleSelector = () => {
               fastScrollStep={5}
             />
           </box>
+          <TimeToFirstDraw />
+          <text style={{ fg: "#AAAAAA", marginTop: 1, marginLeft: 1, marginRight: 1 }}>
+            Use ↑↓ or j/k to navigate, Shift+↑↓ or Shift+j/k for fast scroll, Enter to run, Escape to return, ` to
+            toggle console, ctrl+c to quit
+          </text>
         </box>
       </Match>
     </Switch>

@@ -118,6 +118,47 @@ describe("SolidJS Renderer - Control Flow Components", () => {
       expect(frame).toContain("1. ○ Learn SolidJS")
       expect(frame).toContain("2. ✓ Build TUI")
     })
+
+    it("should handle array reversal correctly", async () => {
+      const [items, setItems] = createSignal([1, 2, 3, 4])
+
+      testSetup = await testRender(
+        () => (
+          <box id="container">
+            <For each={items()}>{(item) => <box id={`item-${item}`} />}</For>
+          </box>
+        ),
+        { width: 30, height: 15 },
+      )
+
+      await testSetup.renderOnce()
+      const container = testSetup.renderer.root.getChildren()[0]!
+      let children = container.getChildren()
+
+      expect(children.length).toBe(4)
+      expect(children.map((c) => c.id)).toEqual(["item-1", "item-2", "item-3", "item-4"])
+
+      setItems([4, 3, 2, 1])
+      await testSetup.renderOnce()
+
+      children = container.getChildren()
+      expect(children.length).toBe(4)
+      expect(children.map((c) => c.id)).toEqual(["item-4", "item-3", "item-2", "item-1"])
+
+      setItems([1, 2, 3, 4, 5])
+      await testSetup.renderOnce()
+
+      children = container.getChildren()
+      expect(children.length).toBe(5)
+      expect(children.map((c) => c.id)).toEqual(["item-1", "item-2", "item-3", "item-4", "item-5"])
+
+      setItems([5, 4, 3, 2, 1])
+      await testSetup.renderOnce()
+
+      children = container.getChildren()
+      expect(children.length).toBe(5)
+      expect(children.map((c) => c.id)).toEqual(["item-5", "item-4", "item-3", "item-2", "item-1"])
+    })
   })
 
   describe("<Show> Component", () => {
@@ -825,6 +866,27 @@ describe("SolidJS Renderer - Control Flow Components", () => {
       expect(children[2]?.id).toBe("option-order-3")
       expect(children[3]?.id).toBe("option-order-2") // ← BUG: This might be order-1
       expect(children[4]?.id).toBe("option-order-1") // ← BUG: This might be order-2
+    })
+  })
+  describe("Text escaping", () => {
+    it("renders angle brackets in text content without HTML entities", async () => {
+      const content = "with some > text < like this </>"
+
+      testSetup = await testRender(
+        () => (
+          <box>
+            <text>{content}</text>
+          </box>
+        ),
+        { width: 60, height: 5 },
+      )
+
+      await testSetup.renderOnce()
+      const frame = testSetup.captureCharFrame()
+
+      expect(frame).toContain(content)
+      expect(frame).not.toContain("&lt;")
+      expect(frame).not.toContain("&gt;")
     })
   })
 })

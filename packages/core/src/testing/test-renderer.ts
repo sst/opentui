@@ -3,6 +3,7 @@ import { CliRenderer, type CliRendererConfig } from "../renderer"
 import { resolveRenderLib } from "../zig"
 import { createMockKeys } from "./mock-keys"
 import { createMockMouse } from "./mock-mouse"
+import type { CapturedFrame } from "../types"
 
 export interface TestRendererOptions extends CliRendererConfig {
   width?: number
@@ -22,6 +23,7 @@ export async function createTestRenderer(options: TestRendererOptions): Promise<
   mockMouse: MockMouse
   renderOnce: () => Promise<void>
   captureCharFrame: () => string
+  captureSpans: () => CapturedFrame
   resize: (width: number, height: number) => void
 }> {
   process.env.OTUI_USE_CONSOLE = "false"
@@ -59,6 +61,17 @@ export async function createTestRenderer(options: TestRendererOptions): Promise<
       const frameBytes = currentBuffer.getRealCharBytes(true)
       return decoder.decode(frameBytes)
     },
+    captureSpans: () => {
+      const currentBuffer = renderer.currentRenderBuffer
+      const lines = currentBuffer.getSpanLines()
+      const cursorState = renderer.getCursorState()
+      return {
+        cols: currentBuffer.width,
+        rows: currentBuffer.height,
+        cursor: [cursorState.x, cursorState.y] as [number, number],
+        lines,
+      }
+    },
     resize: (width: number, height: number) => {
       //@ts-expect-error - this is a test renderer
       renderer.processResize(width, height)
@@ -76,7 +89,10 @@ async function setupTestRenderer(config: TestRendererOptions) {
     config.experimental_splitHeight && config.experimental_splitHeight > 0 ? config.experimental_splitHeight : height
 
   const ziglib = resolveRenderLib()
-  const rendererPtr = ziglib.createRenderer(width, renderHeight, { testing: true })
+  const rendererPtr = ziglib.createRenderer(width, renderHeight, {
+    testing: true,
+    remote: config.remote ?? false,
+  })
   if (!rendererPtr) {
     throw new Error("Failed to create test renderer")
   }
@@ -93,7 +109,7 @@ async function setupTestRenderer(config: TestRendererOptions) {
 
   process.off("SIGWINCH", renderer["sigwinchHandler"])
 
-  // Do not setup the terminal for testing as we will not actualy output anything to the terminal
+  // Do not setup the terminal for testing as we will not actually output anything to the terminal
   // await renderer.setupTerminal()
 
   return renderer

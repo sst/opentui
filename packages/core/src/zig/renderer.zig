@@ -3,6 +3,7 @@ const Allocator = std.mem.Allocator;
 const ansi = @import("ansi.zig");
 const buf = @import("buffer.zig");
 const gp = @import("grapheme.zig");
+const link = @import("link.zig");
 const Terminal = @import("terminal.zig");
 const logger = @import("logger.zig");
 
@@ -68,18 +69,19 @@ pub const CliRenderer = struct {
         frameCallbackTime: ?f64,
     },
     statSamples: struct {
-        lastFrameTime: std.ArrayList(f64),
-        renderTime: std.ArrayList(f64),
-        overallFrameTime: std.ArrayList(f64),
-        bufferResetTime: std.ArrayList(f64),
-        stdoutWriteTime: std.ArrayList(f64),
-        cellsUpdated: std.ArrayList(u32),
-        frameCallbackTime: std.ArrayList(f64),
+        lastFrameTime: std.ArrayListUnmanaged(f64),
+        renderTime: std.ArrayListUnmanaged(f64),
+        overallFrameTime: std.ArrayListUnmanaged(f64),
+        bufferResetTime: std.ArrayListUnmanaged(f64),
+        stdoutWriteTime: std.ArrayListUnmanaged(f64),
+        cellsUpdated: std.ArrayListUnmanaged(u32),
+        frameCallbackTime: std.ArrayListUnmanaged(f64),
     },
     lastRenderTime: i64,
     allocator: Allocator,
     renderThread: ?std.Thread = null,
-    stdoutWriter: std.io.BufferedWriter(4096, std.fs.File.Writer),
+    stdoutBuffer: [4096]u8,
+    writeOutBuf: [1024]u8 = undefined,
     debugOverlay: struct {
         enabled: bool,
         corner: DebugOverlayCorner,
@@ -97,14 +99,35 @@ pub const CliRenderer = struct {
     currentOutputBuffer: []u8 = &[_]u8{},
     currentOutputLen: usize = 0,
 
+    // Hit grid for mouse event dispatch.
+    //
+    // The hit grid is a screen-sized array where each cell stores the renderable ID
+    // at that position. Mouse events query checkHit(x, y) to find which element to
+    // dispatch to.
+    //
+    // Double buffering: During render, addToHitGrid writes to nextHitGrid. After
+    // render completes, the buffers swap. This keeps hit testing consistent during
+    // a frame. Queries see the previous frame's state, not a half-built grid.
+    //
+    // On-demand sync: When scroll/translate changes between renders, the TypeScript
+    // layer can rebuild currentHitGrid directly via addToCurrentHitGridClipped. This
+    // updates hover states immediately rather than waiting for the next render.
+    //
+    // Scissor clipping: The hitScissorStack mirrors overflow:hidden regions. Elements
+    // outside their parent's visible area are excluded from hit testing. The stack
+    // uses screen coordinates. Buffered renderables need getHitGridScissorRect() to
+    // convert from buffer-local (0,0) to their actual screen position.
     currentHitGrid: []u32,
     nextHitGrid: []u32,
     hitGridWidth: u32,
     hitGridHeight: u32,
+    hitScissorStack: std.ArrayListUnmanaged(buf.ClipRect),
+    hitGridDirty: bool = false,
 
     lastCursorStyleTag: ?u8 = null,
     lastCursorBlinking: ?bool = null,
     lastCursorColorRGB: ?[3]u8 = null,
+    lastMousePointerStyle: Terminal.MousePointerStyle = .default,
 
     // Preallocated output buffer
     var outputBuffer: [OUTPUT_BUFFER_SIZE]u8 = undefined;
@@ -129,52 +152,65 @@ pub const CliRenderer = struct {
             return data.len;
         }
 
-        pub fn writer() std.io.Writer(void, error{BufferFull}, write) {
+        // TODO: std.io.GenericWriter is deprecated, however the "correct" option seems to be much more involved
+        // So I have simply used GenericWriter here, and then the proper migration can be done later
+        pub fn writer() std.io.GenericWriter(void, error{BufferFull}, write) {
             return .{ .context = {} };
         }
     };
 
     pub fn create(allocator: Allocator, width: u32, height: u32, pool: *gp.GraphemePool, testing: bool) !*CliRenderer {
+        return createWithOptions(allocator, width, height, pool, testing, false);
+    }
+
+    pub fn createWithOptions(
+        allocator: Allocator,
+        width: u32,
+        height: u32,
+        pool: *gp.GraphemePool,
+        testing: bool,
+        remote: bool,
+    ) !*CliRenderer {
         const self = try allocator.create(CliRenderer);
+        errdefer allocator.destroy(self);
 
         const currentBuffer = try OptimizedBuffer.init(allocator, width, height, .{ .pool = pool, .width_method = .unicode, .id = "current buffer" });
+        errdefer currentBuffer.deinit();
         const nextBuffer = try OptimizedBuffer.init(allocator, width, height, .{ .pool = pool, .width_method = .unicode, .id = "next buffer" });
-
-        const stdoutWriter = if (testing) blk: {
-            // In testing mode, use /dev/null to discard output
-            const devnull = std.fs.openFileAbsolute("/dev/null", .{ .mode = .write_only }) catch {
-                // Fallback to stdout if /dev/null can't be opened
-                logger.warn("Failed to open /dev/null, falling back to stdout\n", .{});
-                break :blk std.io.BufferedWriter(4096, std.fs.File.Writer){ .unbuffered_writer = std.io.getStdOut().writer() };
-            };
-            break :blk std.io.BufferedWriter(4096, std.fs.File.Writer){ .unbuffered_writer = devnull.writer() };
-        } else blk: {
-            const stdout = std.io.getStdOut();
-            break :blk std.io.BufferedWriter(4096, std.fs.File.Writer){ .unbuffered_writer = stdout.writer() };
-        };
+        errdefer nextBuffer.deinit();
 
         // stat sample arrays
-        var lastFrameTime = std.ArrayList(f64).init(allocator);
-        var renderTime = std.ArrayList(f64).init(allocator);
-        var overallFrameTime = std.ArrayList(f64).init(allocator);
-        var bufferResetTime = std.ArrayList(f64).init(allocator);
-        var stdoutWriteTime = std.ArrayList(f64).init(allocator);
-        var cellsUpdated = std.ArrayList(u32).init(allocator);
-        var frameCallbackTimes = std.ArrayList(f64).init(allocator);
+        var lastFrameTime: std.ArrayListUnmanaged(f64) = .{};
+        errdefer lastFrameTime.deinit(allocator);
+        var renderTime: std.ArrayListUnmanaged(f64) = .{};
+        errdefer renderTime.deinit(allocator);
+        var overallFrameTime: std.ArrayListUnmanaged(f64) = .{};
+        errdefer overallFrameTime.deinit(allocator);
+        var bufferResetTime: std.ArrayListUnmanaged(f64) = .{};
+        errdefer bufferResetTime.deinit(allocator);
+        var stdoutWriteTime: std.ArrayListUnmanaged(f64) = .{};
+        errdefer stdoutWriteTime.deinit(allocator);
+        var cellsUpdated: std.ArrayListUnmanaged(u32) = .{};
+        errdefer cellsUpdated.deinit(allocator);
+        var frameCallbackTimes: std.ArrayListUnmanaged(f64) = .{};
+        errdefer frameCallbackTimes.deinit(allocator);
 
-        try lastFrameTime.ensureTotalCapacity(STAT_SAMPLE_CAPACITY);
-        try renderTime.ensureTotalCapacity(STAT_SAMPLE_CAPACITY);
-        try overallFrameTime.ensureTotalCapacity(STAT_SAMPLE_CAPACITY);
-        try bufferResetTime.ensureTotalCapacity(STAT_SAMPLE_CAPACITY);
-        try stdoutWriteTime.ensureTotalCapacity(STAT_SAMPLE_CAPACITY);
-        try cellsUpdated.ensureTotalCapacity(STAT_SAMPLE_CAPACITY);
-        try frameCallbackTimes.ensureTotalCapacity(STAT_SAMPLE_CAPACITY);
+        try lastFrameTime.ensureTotalCapacity(allocator, STAT_SAMPLE_CAPACITY);
+        try renderTime.ensureTotalCapacity(allocator, STAT_SAMPLE_CAPACITY);
+        try overallFrameTime.ensureTotalCapacity(allocator, STAT_SAMPLE_CAPACITY);
+        try bufferResetTime.ensureTotalCapacity(allocator, STAT_SAMPLE_CAPACITY);
+        try stdoutWriteTime.ensureTotalCapacity(allocator, STAT_SAMPLE_CAPACITY);
+        try cellsUpdated.ensureTotalCapacity(allocator, STAT_SAMPLE_CAPACITY);
+        try frameCallbackTimes.ensureTotalCapacity(allocator, STAT_SAMPLE_CAPACITY);
 
         const hitGridSize = width * height;
         const currentHitGrid = try allocator.alloc(u32, hitGridSize);
+        errdefer allocator.free(currentHitGrid);
         const nextHitGrid = try allocator.alloc(u32, hitGridSize);
+        errdefer allocator.free(nextHitGrid);
         @memset(currentHitGrid, 0); // Initialize with 0 (no renderable)
         @memset(nextHitGrid, 0);
+        const hitScissorStack: std.ArrayListUnmanaged(buf.ClipRect) = .{};
 
         self.* = .{
             .width = width,
@@ -184,7 +220,7 @@ pub const CliRenderer = struct {
             .pool = pool,
             .backgroundColor = .{ 0.0, 0.0, 0.0, 0.0 },
             .renderOffset = 0,
-            .terminal = Terminal.init(.{}),
+            .terminal = Terminal.init(.{ .remote = remote }),
             .testing = testing,
             .lastCursorStyleTag = null,
             .lastCursorBlinking = null,
@@ -216,11 +252,12 @@ pub const CliRenderer = struct {
             },
             .lastRenderTime = std.time.microTimestamp(),
             .allocator = allocator,
-            .stdoutWriter = stdoutWriter,
+            .stdoutBuffer = undefined,
             .currentHitGrid = currentHitGrid,
             .nextHitGrid = nextHitGrid,
             .hitGridWidth = width,
             .hitGridHeight = height,
+            .hitScissorStack = hitScissorStack,
         };
 
         try currentBuffer.clear(.{ self.backgroundColor[0], self.backgroundColor[1], self.backgroundColor[2], self.backgroundColor[3] }, CLEAR_CHAR);
@@ -245,21 +282,23 @@ pub const CliRenderer = struct {
         }
 
         self.performShutdownSequence();
+        self.terminal.deinit();
 
         self.currentRenderBuffer.deinit();
         self.nextRenderBuffer.deinit();
 
         // Free stat sample arrays
-        self.statSamples.lastFrameTime.deinit();
-        self.statSamples.renderTime.deinit();
-        self.statSamples.overallFrameTime.deinit();
-        self.statSamples.bufferResetTime.deinit();
-        self.statSamples.stdoutWriteTime.deinit();
-        self.statSamples.cellsUpdated.deinit();
-        self.statSamples.frameCallbackTime.deinit();
+        self.statSamples.lastFrameTime.deinit(self.allocator);
+        self.statSamples.renderTime.deinit(self.allocator);
+        self.statSamples.overallFrameTime.deinit(self.allocator);
+        self.statSamples.bufferResetTime.deinit(self.allocator);
+        self.statSamples.stdoutWriteTime.deinit(self.allocator);
+        self.statSamples.cellsUpdated.deinit(self.allocator);
+        self.statSamples.frameCallbackTime.deinit(self.allocator);
 
         self.allocator.free(self.currentHitGrid);
         self.allocator.free(self.nextHitGrid);
+        self.hitScissorStack.deinit(self.allocator);
 
         self.allocator.destroy(self);
     }
@@ -268,19 +307,20 @@ pub const CliRenderer = struct {
         self.useAlternateScreen = useAlternateScreen;
         self.terminalSetup = true;
 
-        var bufferedWriter = &self.stdoutWriter;
-        const writer = bufferedWriter.writer();
+        var stdoutWriter = std.fs.File.stdout().writer(&self.stdoutBuffer);
+        const writer = &stdoutWriter.interface;
 
         self.terminal.queryTerminalSend(writer) catch {
             logger.warn("Failed to query terminal capabilities", .{});
         };
+        writer.flush() catch {};
 
         self.setupTerminalWithoutDetection(useAlternateScreen);
     }
 
     fn setupTerminalWithoutDetection(self: *CliRenderer, useAlternateScreen: bool) void {
-        var bufferedWriter = &self.stdoutWriter;
-        const writer = bufferedWriter.writer();
+        var stdoutWriter = std.fs.File.stdout().writer(&self.stdoutBuffer);
+        const writer = &stdoutWriter.interface;
 
         writer.writeAll(ansi.ANSI.saveCursorState) catch {};
 
@@ -294,7 +334,7 @@ pub const CliRenderer = struct {
         const useKitty = self.terminal.opts.kitty_keyboard_flags > 0;
         self.terminal.enableDetectedFeatures(writer, useKitty) catch {};
 
-        bufferedWriter.flush() catch {};
+        writer.flush() catch {};
     }
 
     pub fn suspendRenderer(self: *CliRenderer) void {
@@ -310,16 +350,17 @@ pub const CliRenderer = struct {
     pub fn performShutdownSequence(self: *CliRenderer) void {
         if (!self.terminalSetup) return;
 
-        const direct = self.stdoutWriter.writer();
+        var stdoutWriter = std.fs.File.stdout().writer(&self.stdoutBuffer);
+        const direct = &stdoutWriter.interface;
         self.terminal.resetState(direct) catch {
             logger.warn("Failed to reset terminal state", .{});
         };
 
         if (self.useAlternateScreen) {
-            self.stdoutWriter.flush() catch {};
+            direct.flush() catch {};
         } else if (self.renderOffset == 0) {
             direct.writeAll("\x1b[H\x1b[J") catch {};
-            self.stdoutWriter.flush() catch {};
+            direct.flush() catch {};
         } else if (self.renderOffset > 0) {
             // Currently still handled in typescript
             // const consoleEndLine = self.height - self.renderOffset;
@@ -334,22 +375,22 @@ pub const CliRenderer = struct {
         direct.writeAll(ansi.ANSI.defaultCursorStyle) catch {};
         // Workaround for Ghostty not showing the cursor after shutdown for some reason
         direct.writeAll(ansi.ANSI.showCursor) catch {};
-        self.stdoutWriter.flush() catch {};
-        std.time.sleep(10 * std.time.ns_per_ms);
+        direct.flush() catch {};
+        std.Thread.sleep(10 * std.time.ns_per_ms);
         direct.writeAll(ansi.ANSI.showCursor) catch {};
-        self.stdoutWriter.flush() catch {};
-        std.time.sleep(10 * std.time.ns_per_ms);
+        direct.flush() catch {};
+        std.Thread.sleep(10 * std.time.ns_per_ms);
     }
 
-    fn addStatSample(comptime T: type, samples: *std.ArrayList(T), value: T) void {
-        samples.append(value) catch return;
+    fn addStatSample(self: *CliRenderer, comptime T: type, samples: *std.ArrayListUnmanaged(T), value: T) void {
+        samples.append(self.allocator, value) catch return;
 
         if (samples.items.len > MAX_STAT_SAMPLES) {
             _ = samples.orderedRemove(0);
         }
     }
 
-    fn getStatAverage(comptime T: type, samples: *const std.ArrayList(T)) T {
+    fn getStatAverage(comptime T: type, samples: *const std.ArrayListUnmanaged(T)) T {
         if (samples.items.len == 0) {
             return 0;
         }
@@ -405,8 +446,8 @@ pub const CliRenderer = struct {
         self.renderStats.fps = fps;
         self.renderStats.frameCallbackTime = frameCallbackTime;
 
-        addStatSample(f64, &self.statSamples.overallFrameTime, time);
-        addStatSample(f64, &self.statSamples.frameCallbackTime, frameCallbackTime);
+        self.addStatSample(f64, &self.statSamples.overallFrameTime, time);
+        self.addStatSample(f64, &self.statSamples.frameCallbackTime, frameCallbackTime);
     }
 
     pub fn updateMemoryStats(self: *CliRenderer, heapUsed: u32, heapTotal: u32, arrayBuffers: u32) void {
@@ -431,6 +472,7 @@ pub const CliRenderer = struct {
         const currentHitGridSize = self.hitGridWidth * self.hitGridHeight;
         if (newHitGridSize > currentHitGridSize) {
             const newCurrentHitGrid = try self.allocator.alloc(u32, newHitGridSize);
+            errdefer self.allocator.free(newCurrentHitGrid);
             const newNextHitGrid = try self.allocator.alloc(u32, newHitGridSize);
             @memset(newCurrentHitGrid, 0);
             @memset(newNextHitGrid, 0);
@@ -473,10 +515,12 @@ pub const CliRenderer = struct {
             const outputLen = self.currentOutputLen;
 
             const writeStart = std.time.microTimestamp();
-            if (outputLen > 0) {
-                var bufferedWriter = &self.stdoutWriter;
-                bufferedWriter.writer().writeAll(outputData[0..outputLen]) catch {};
-                bufferedWriter.flush() catch {};
+
+            if (outputLen > 0 and !self.testing) {
+                var stdoutWriter = std.fs.File.stdout().writer(&self.stdoutBuffer);
+                const w = &stdoutWriter.interface;
+                w.writeAll(outputData[0..outputLen]) catch {};
+                w.flush() catch {};
             }
 
             // Signal that rendering is complete
@@ -520,26 +564,29 @@ pub const CliRenderer = struct {
             self.renderMutex.unlock();
         } else {
             const writeStart = std.time.microTimestamp();
-            var bufferedWriter = &self.stdoutWriter;
-            bufferedWriter.writer().writeAll(outputBuffer[0..outputBufferLen]) catch {};
-            bufferedWriter.flush() catch {};
+            if (!self.testing) {
+                var stdoutWriter = std.fs.File.stdout().writer(&self.stdoutBuffer);
+                const w = &stdoutWriter.interface;
+                w.writeAll(outputBuffer[0..outputBufferLen]) catch {};
+                w.flush() catch {};
+            }
             self.renderStats.stdoutWriteTime = @as(f64, @floatFromInt(std.time.microTimestamp() - writeStart));
         }
 
         self.renderStats.lastFrameTime = deltaTime * 1000.0;
         self.renderStats.frameCount += 1;
 
-        addStatSample(f64, &self.statSamples.lastFrameTime, deltaTime * 1000.0);
+        self.addStatSample(f64, &self.statSamples.lastFrameTime, deltaTime * 1000.0);
         if (self.renderStats.renderTime) |rt| {
-            addStatSample(f64, &self.statSamples.renderTime, rt);
+            self.addStatSample(f64, &self.statSamples.renderTime, rt);
         }
         if (self.renderStats.bufferResetTime) |brt| {
-            addStatSample(f64, &self.statSamples.bufferResetTime, brt);
+            self.addStatSample(f64, &self.statSamples.bufferResetTime, brt);
         }
         if (self.renderStats.stdoutWriteTime) |swt| {
-            addStatSample(f64, &self.statSamples.stdoutWriteTime, swt);
+            self.addStatSample(f64, &self.statSamples.stdoutWriteTime, swt);
         }
-        addStatSample(u32, &self.statSamples.cellsUpdated, self.renderStats.cellsUpdated);
+        self.addStatSample(u32, &self.statSamples.cellsUpdated, self.renderStats.cellsUpdated);
     }
 
     pub fn getNextBuffer(self: *CliRenderer) *OptimizedBuffer {
@@ -567,10 +614,12 @@ pub const CliRenderer = struct {
 
         var currentFg: ?RGBA = null;
         var currentBg: ?RGBA = null;
-        var currentAttributes: i16 = -1;
+        var currentAttributes: i32 = -1;
+        var currentLinkId: u32 = 0;
         var utf8Buf: [4]u8 = undefined;
 
         const colorEpsilon: f32 = COLOR_EPSILON_DEFAULT;
+        const hyperlinksEnabled = self.terminal.getCapabilities().hyperlinks;
 
         for (0..self.height) |uy| {
             const y = @as(u32, @intCast(uy));
@@ -606,7 +655,25 @@ pub const CliRenderer = struct {
 
                 const fgMatch = currentFg != null and buf.rgbaEqual(currentFg.?, cell.fg, colorEpsilon);
                 const bgMatch = currentBg != null and buf.rgbaEqual(currentBg.?, cell.bg, colorEpsilon);
-                const sameAttributes = fgMatch and bgMatch and @as(i16, cell.attributes) == currentAttributes;
+                const sameAttributes = fgMatch and bgMatch and @as(i32, @intCast(cell.attributes)) == currentAttributes;
+
+                const linkId = if (hyperlinksEnabled) ansi.TextAttributes.getLinkId(cell.attributes) else 0;
+
+                if (hyperlinksEnabled and linkId != currentLinkId) {
+                    if (currentLinkId != 0) {
+                        writer.writeAll("\x1b]8;;\x1b\\") catch {};
+                    }
+                    currentLinkId = linkId;
+                    if (currentLinkId != 0) {
+                        const lp = link.initGlobalLinkPool(self.allocator);
+                        if (lp.get(currentLinkId)) |url_bytes| {
+                            writer.print("\x1b]8;id={d};{s}\x1b\\", .{ currentLinkId, url_bytes }) catch {};
+                        } else |_| {
+                            // Link not found, treat as no link
+                            currentLinkId = 0;
+                        }
+                    }
+                }
 
                 if (!sameAttributes or runStart == -1) {
                     if (runLength > 0) {
@@ -618,7 +685,7 @@ pub const CliRenderer = struct {
 
                     currentFg = cell.fg;
                     currentBg = cell.bg;
-                    currentAttributes = @intCast(cell.attributes);
+                    currentAttributes = @as(i32, @intCast(cell.attributes));
 
                     ansi.ANSI.moveToOutput(writer, x + 1, y + 1 + self.renderOffset) catch {};
 
@@ -652,11 +719,17 @@ pub const CliRenderer = struct {
                     };
                     if (bytes.len > 0) {
                         const capabilities = self.terminal.getCapabilities();
+                        const graphemeWidth = gp.charRightExtent(cell.char) + 1;
                         if (capabilities.explicit_width) {
-                            const graphemeWidth = gp.charRightExtent(cell.char) + 1;
                             ansi.ANSI.explicitWidthOutput(writer, graphemeWidth, bytes) catch {};
                         } else {
                             writer.writeAll(bytes) catch {};
+                            if (capabilities.explicit_cursor_positioning) {
+                                const nextX = x + graphemeWidth;
+                                if (nextX < self.width) {
+                                    ansi.ANSI.moveToOutput(writer, nextX + 1, y + 1 + self.renderOffset) catch {};
+                                }
+                            }
                         }
                     }
                 } else if (gp.isContinuationChar(cell.char)) {
@@ -668,22 +741,18 @@ pub const CliRenderer = struct {
                 }
                 runLength += 1;
 
-                // Update the current buffer with the new cell
-                self.currentRenderBuffer.setRaw(x, y, nextCell.?);
-
-                // If this is a grapheme start, also update all continuation cells
-                if (gp.isGraphemeChar(nextCell.?.char)) {
-                    const rightExtent = gp.charRightExtent(nextCell.?.char);
-                    var k: u32 = 1;
-                    while (k <= rightExtent and x + k < self.width) : (k += 1) {
-                        if (self.nextRenderBuffer.get(x + k, y)) |contCell| {
-                            self.currentRenderBuffer.setRaw(x + k, y, contCell);
-                        }
-                    }
-                }
+                // Sync this cell to the current buffer so the next frame's diff
+                // is correct. Use syncCell (set without span cleanup) because
+                // span cleanup would destroy continuation cells written by an
+                // earlier iteration of this same left-to-right pass (#723).
+                self.currentRenderBuffer.syncCell(x, y, nextCell.?);
 
                 cellsUpdated += 1;
             }
+        }
+
+        if (hyperlinksEnabled and currentLinkId != 0) {
+            writer.writeAll("\x1b]8;;\x1b\\") catch {};
         }
 
         writer.writeAll(ansi.ANSI.reset) catch {};
@@ -743,6 +812,12 @@ pub const CliRenderer = struct {
             self.lastCursorColorRGB = null;
         }
 
+        const mousePointer = self.terminal.getMousePointer();
+        if (mousePointer != self.lastMousePointerStyle) {
+            ansi.ANSI.setMousePointerOutput(writer, mousePointer.toName()) catch {};
+            self.lastMousePointerStyle = mousePointer;
+        }
+
         writer.writeAll(ansi.ANSI.syncReset) catch {};
 
         const renderEndTime = std.time.microTimestamp();
@@ -753,6 +828,13 @@ pub const CliRenderer = struct {
 
         self.nextRenderBuffer.clear(.{ self.backgroundColor[0], self.backgroundColor[1], self.backgroundColor[2], self.backgroundColor[3] }, null) catch {};
 
+        // Compare hit grids before swap to detect changes. This allows TypeScript to
+        // know if hover state needs rechecking without manually tracking dirty state.
+        self.hitGridDirty = !std.mem.eql(u32, self.currentHitGrid, self.nextHitGrid);
+
+        // Swap hit grids: nextHitGrid (built this frame) becomes the active grid for
+        // hit testing. The old currentHitGrid becomes nextHitGrid and is cleared for
+        // the next frame.
         const temp = self.currentHitGrid;
         self.currentHitGrid = self.nextHitGrid;
         self.nextHitGrid = temp;
@@ -765,16 +847,71 @@ pub const CliRenderer = struct {
     }
 
     pub fn clearTerminal(self: *CliRenderer) void {
-        var bufferedWriter = &self.stdoutWriter;
-        bufferedWriter.writer().writeAll(ansi.ANSI.clearAndHome) catch {};
-        bufferedWriter.flush() catch {};
+        self.writeOut(ansi.ANSI.clearAndHome);
     }
 
+    pub fn writeOut(self: *CliRenderer, data: []const u8) void {
+        if (data.len == 0) return;
+        if (self.testing) return;
+
+        if (self.useThread) {
+            self.renderMutex.lock();
+            while (self.renderInProgress) {
+                self.renderCondition.wait(&self.renderMutex);
+            }
+            self.renderMutex.unlock();
+        }
+
+        var stdoutWriter = std.fs.File.stdout().writer(&self.stdoutBuffer);
+        const w = &stdoutWriter.interface;
+        w.writeAll(data) catch {};
+        w.flush() catch {};
+    }
+
+    pub fn writeOutMultiple(self: *CliRenderer, data_slices: []const []const u8) void {
+        if (self.testing) return;
+
+        if (self.useThread) {
+            self.renderMutex.lock();
+            while (self.renderInProgress) {
+                self.renderCondition.wait(&self.renderMutex);
+            }
+            self.renderMutex.unlock();
+        }
+
+        var totalLen: usize = 0;
+        for (data_slices) |slice| {
+            totalLen += slice.len;
+        }
+
+        if (totalLen == 0) return;
+
+        var stdoutWriter = std.fs.File.stdout().writer(&self.stdoutBuffer);
+        const w = &stdoutWriter.interface;
+        for (data_slices) |slice| {
+            w.writeAll(slice) catch {};
+        }
+        w.flush() catch {};
+    }
+
+    /// Write a renderable's bounds to nextHitGrid for the upcoming frame.
+    ///
+    /// Called during render for each visible renderable. The rect is clipped to
+    /// the current hit scissor stack, so elements inside overflow:hidden parents
+    /// only register hits within the visible region. Later renderables overwrite
+    /// earlier ones. Z-order is determined by render order.
     pub fn addToHitGrid(self: *CliRenderer, x: i32, y: i32, width: u32, height: u32, id: u32) void {
-        const startX = @max(0, x);
-        const startY = @max(0, y);
-        const endX = @min(@as(i32, @intCast(self.hitGridWidth)), x + @as(i32, @intCast(width)));
-        const endY = @min(@as(i32, @intCast(self.hitGridHeight)), y + @as(i32, @intCast(height)));
+        const clipped = self.clipRectToHitScissor(x, y, width, height) orelse return;
+        const startX = @max(0, clipped.x);
+        const startY = @max(0, clipped.y);
+        const endX = @min(
+            @as(i32, @intCast(self.hitGridWidth)),
+            clipped.x + @as(i32, @intCast(clipped.width)),
+        );
+        const endY = @min(
+            @as(i32, @intCast(self.hitGridHeight)),
+            clipped.y + @as(i32, @intCast(clipped.height)),
+        );
 
         if (startX >= endX or startY >= endY) return;
 
@@ -792,6 +929,22 @@ pub const CliRenderer = struct {
         }
     }
 
+    /// Clear currentHitGrid before an immediate rebuild.
+    ///
+    /// Used by syncHitGridIfNeeded in TypeScript when scroll/translate changes
+    /// require updating hit targets without waiting for the next render.
+    pub fn clearCurrentHitGrid(self: *CliRenderer) void {
+        @memset(self.currentHitGrid, 0);
+    }
+
+    /// Return whether the hit grid changed during the last render.
+    /// This is set by comparing the previous and current hit grids after render.
+    /// TypeScript can use this to decide if hover state needs rechecking.
+    pub fn getHitGridDirty(self: *CliRenderer) bool {
+        return self.hitGridDirty;
+    }
+
+    /// Return the renderable ID at screen position (x, y), or 0 if none.
     pub fn checkHit(self: *CliRenderer, x: u32, y: u32) u32 {
         if (x >= self.hitGridWidth or y >= self.hitGridHeight) {
             return 0;
@@ -799,6 +952,110 @@ pub const CliRenderer = struct {
 
         const index = y * self.hitGridWidth + x;
         return self.currentHitGrid[index];
+    }
+
+    /// Return the current (topmost) hit scissor rect, or null if the stack is empty.
+    fn getCurrentHitScissorRect(self: *const CliRenderer) ?buf.ClipRect {
+        if (self.hitScissorStack.items.len == 0) return null;
+        return self.hitScissorStack.items[self.hitScissorStack.items.len - 1];
+    }
+
+    /// Intersect a rect with the current hit scissor. Returns null if fully clipped.
+    fn clipRectToHitScissor(self: *const CliRenderer, x: i32, y: i32, width: u32, height: u32) ?buf.ClipRect {
+        const scissor = self.getCurrentHitScissorRect() orelse return buf.ClipRect{
+            .x = x,
+            .y = y,
+            .width = width,
+            .height = height,
+        };
+
+        const rect_end_x = x + @as(i32, @intCast(width));
+        const rect_end_y = y + @as(i32, @intCast(height));
+        const scissor_end_x = scissor.x + @as(i32, @intCast(scissor.width));
+        const scissor_end_y = scissor.y + @as(i32, @intCast(scissor.height));
+
+        const intersect_x = @max(x, scissor.x);
+        const intersect_y = @max(y, scissor.y);
+        const intersect_end_x = @min(rect_end_x, scissor_end_x);
+        const intersect_end_y = @min(rect_end_y, scissor_end_y);
+
+        if (intersect_x >= intersect_end_x or intersect_y >= intersect_end_y) {
+            return null;
+        }
+
+        return buf.ClipRect{
+            .x = intersect_x,
+            .y = intersect_y,
+            .width = @intCast(intersect_end_x - intersect_x),
+            .height = @intCast(intersect_end_y - intersect_y),
+        };
+    }
+
+    /// Push a scissor rect for hit grid clipping.
+    ///
+    /// The rect is intersected with any existing scissor, so nested overflow:hidden
+    /// containers compound correctly. All coordinates are in screen space.
+    pub fn hitGridPushScissorRect(self: *CliRenderer, x: i32, y: i32, width: u32, height: u32) void {
+        var rect = buf.ClipRect{
+            .x = x,
+            .y = y,
+            .width = width,
+            .height = height,
+        };
+
+        if (self.getCurrentHitScissorRect() != null) {
+            const intersect = self.clipRectToHitScissor(rect.x, rect.y, rect.width, rect.height);
+            if (intersect) |clipped| {
+                rect = clipped;
+            } else {
+                rect = buf.ClipRect{ .x = 0, .y = 0, .width = 0, .height = 0 };
+            }
+        }
+
+        self.hitScissorStack.append(self.allocator, rect) catch |err| {
+            logger.warn("Failed to push hit-grid scissor rect: {}", .{err});
+        };
+    }
+
+    pub fn hitGridPopScissorRect(self: *CliRenderer) void {
+        if (self.hitScissorStack.items.len > 0) {
+            _ = self.hitScissorStack.pop();
+        }
+    }
+
+    /// Clear all hit grid scissors. Called at start of render to reset state.
+    pub fn hitGridClearScissorRects(self: *CliRenderer) void {
+        self.hitScissorStack.clearRetainingCapacity();
+    }
+
+    /// Write directly to currentHitGrid with scissor clipping.
+    ///
+    /// Used for immediate hit grid sync when scroll/translate changes. Unlike
+    /// addToHitGrid (which writes to nextHitGrid for the upcoming frame), this
+    /// updates the grid that checkHit reads right now. Lets hover states update
+    /// without waiting for the next render.
+    pub fn addToCurrentHitGridClipped(self: *CliRenderer, x: i32, y: i32, width: u32, height: u32, id: u32) void {
+        const clipped = self.clipRectToHitScissor(x, y, width, height) orelse return;
+
+        const startX = @max(0, clipped.x);
+        const startY = @max(0, clipped.y);
+        const endX = @min(@as(i32, @intCast(self.hitGridWidth)), clipped.x + @as(i32, @intCast(clipped.width)));
+        const endY = @min(@as(i32, @intCast(self.hitGridHeight)), clipped.y + @as(i32, @intCast(clipped.height)));
+
+        if (startX >= endX or startY >= endY) return;
+
+        const uStartX: u32 = @intCast(startX);
+        const uStartY: u32 = @intCast(startY);
+        const uEndX: u32 = @intCast(endX);
+        const uEndY: u32 = @intCast(endY);
+
+        for (uStartY..uEndY) |row| {
+            const rowStart = row * self.hitGridWidth;
+            const startIdx = rowStart + uStartX;
+            const endIdx = rowStart + uEndX;
+
+            @memset(self.currentHitGrid[startIdx..endIdx], id);
+        }
     }
 
     pub fn dumpHitGrid(self: *CliRenderer) void {
@@ -809,7 +1066,9 @@ pub const CliRenderer = struct {
         const file = std.fs.cwd().createFile(filename, .{}) catch return;
         defer file.close();
 
-        const writer = file.writer();
+        var fileBuffer: [4096]u8 = undefined;
+        var fileWriter = file.writer(&fileBuffer);
+        const writer = &fileWriter.interface;
 
         for (0..self.hitGridHeight) |y| {
             for (0..self.hitGridWidth) |x| {
@@ -821,6 +1080,7 @@ pub const CliRenderer = struct {
             }
             writer.writeByte('\n') catch return;
         }
+        writer.flush() catch {};
     }
 
     fn dumpSingleBuffer(self: *CliRenderer, buffer: *OptimizedBuffer, buffer_name: []const u8, timestamp: i64) void {
@@ -835,7 +1095,9 @@ pub const CliRenderer = struct {
         const file = std.fs.cwd().createFile(filename, .{}) catch return;
         defer file.close();
 
-        const writer = file.writer();
+        var fileBuffer: [4096]u8 = undefined;
+        var fileWriter = file.writer(&fileBuffer);
+        const writer = &fileWriter.interface;
 
         writer.print("{s} Buffer ({d}x{d}):\n", .{ buffer_name, self.width, self.height }) catch return;
         writer.writeAll("Characters:\n") catch return;
@@ -861,6 +1123,15 @@ pub const CliRenderer = struct {
             }
             writer.writeByte('\n') catch return;
         }
+        writer.flush() catch {};
+    }
+
+    pub fn getLastOutputForTest(_: *CliRenderer) []const u8 {
+        // In non-threaded mode, we want the current active buffer
+        // In threaded mode, we want the previously rendered buffer
+        const currentBuffer = if (activeBuffer == .A) &outputBuffer else &outputBufferB;
+        const currentLen = if (activeBuffer == .A) outputBufferLen else outputBufferBLen;
+        return currentBuffer.*[0..currentLen];
     }
 
     pub fn dumpStdoutBuffer(self: *CliRenderer, timestamp: i64) void {
@@ -876,7 +1147,9 @@ pub const CliRenderer = struct {
         const file = std.fs.cwd().createFile(filename, .{}) catch return;
         defer file.close();
 
-        const writer = file.writer();
+        var fileBuffer: [4096]u8 = undefined;
+        var fileWriter = file.writer(&fileBuffer);
+        const writer = &fileWriter.interface;
 
         writer.print("Stdout Buffer Output (timestamp: {d}):\n", .{timestamp}) catch return;
         writer.writeAll("Last Rendered ANSI Output:\n") catch return;
@@ -894,6 +1167,7 @@ pub const CliRenderer = struct {
         writer.writeAll("\n================\n") catch return;
         writer.print("Buffer size: {d} bytes\n", .{lastLen}) catch return;
         writer.print("Active buffer: {s}\n", .{if (activeBuffer == .A) "A" else "B"}) catch return;
+        writer.flush() catch {};
     }
 
     pub fn dumpBuffers(self: *CliRenderer, timestamp: i64) void {
@@ -902,71 +1176,59 @@ pub const CliRenderer = struct {
         self.dumpStdoutBuffer(timestamp);
     }
 
+    pub fn restoreTerminalModes(self: *CliRenderer) void {
+        var stream = std.io.fixedBufferStream(&self.writeOutBuf);
+        self.terminal.restoreTerminalModes(stream.writer()) catch {};
+        self.writeOut(stream.getWritten());
+    }
+
     pub fn enableMouse(self: *CliRenderer, enableMovement: bool) void {
-        _ = enableMovement; // TODO: Use this to control motion tracking levels
-        var bufferedWriter = &self.stdoutWriter;
-        const writer = bufferedWriter.writer();
-
-        self.terminal.setMouseMode(writer, true) catch {};
-
-        bufferedWriter.flush() catch {};
+        var stream = std.io.fixedBufferStream(&self.writeOutBuf);
+        self.terminal.setMouseMode(stream.writer(), true, enableMovement) catch {};
+        self.writeOut(stream.getWritten());
     }
 
     pub fn queryPixelResolution(self: *CliRenderer) void {
-        var bufferedWriter = &self.stdoutWriter;
-        const writer = bufferedWriter.writer();
-
-        writer.writeAll(ansi.ANSI.queryPixelSize) catch {};
-
-        bufferedWriter.flush() catch {};
+        self.writeOut(ansi.ANSI.queryPixelSize);
     }
 
     pub fn disableMouse(self: *CliRenderer) void {
-        var bufferedWriter = &self.stdoutWriter;
-        const writer = bufferedWriter.writer();
-
-        self.terminal.setMouseMode(writer, false) catch {};
-
-        bufferedWriter.flush() catch {};
+        var stream = std.io.fixedBufferStream(&self.writeOutBuf);
+        self.terminal.setMouseMode(stream.writer(), false, self.terminal.state.mouse_movement) catch {};
+        self.writeOut(stream.getWritten());
     }
 
     pub fn enableKittyKeyboard(self: *CliRenderer, flags: u8) void {
-        var bufferedWriter = &self.stdoutWriter;
-        const writer = bufferedWriter.writer();
-
-        self.terminal.setKittyKeyboard(writer, true, flags) catch {};
-        bufferedWriter.flush() catch {};
+        var stream = std.io.fixedBufferStream(&self.writeOutBuf);
+        self.terminal.setKittyKeyboard(stream.writer(), true, flags) catch {};
+        self.writeOut(stream.getWritten());
     }
 
     pub fn disableKittyKeyboard(self: *CliRenderer) void {
-        var bufferedWriter = &self.stdoutWriter;
-        const writer = bufferedWriter.writer();
-
-        self.terminal.setKittyKeyboard(writer, false, 0) catch {};
-        bufferedWriter.flush() catch {};
+        var stream = std.io.fixedBufferStream(&self.writeOutBuf);
+        self.terminal.setKittyKeyboard(stream.writer(), false, 0) catch {};
+        self.writeOut(stream.getWritten());
     }
 
     pub fn getTerminalCapabilities(self: *CliRenderer) Terminal.Capabilities {
         return self.terminal.getCapabilities();
     }
 
+    pub fn setTerminalEnvVar(self: *CliRenderer, key: []const u8, value: []const u8) bool {
+        self.terminal.setHostEnvVar(self.allocator, key, value) catch return false;
+        return true;
+    }
+
     pub fn processCapabilityResponse(self: *CliRenderer, response: []const u8) void {
         self.terminal.processCapabilityResponse(response);
-        const writer = self.stdoutWriter.writer();
+        var stream = std.io.fixedBufferStream(&self.writeOutBuf);
+        _ = self.terminal.sendPendingQueries(stream.writer()) catch |err| blk: {
+            logger.warn("Failed to send pending queries: {}", .{err});
+            break :blk false;
+        };
         const useKitty = self.terminal.opts.kitty_keyboard_flags > 0;
-        self.terminal.enableDetectedFeatures(writer, useKitty) catch {};
-    }
-
-    pub fn setCursorPosition(self: *CliRenderer, x: u32, y: u32, visible: bool) void {
-        self.terminal.setCursorPosition(x, y, visible);
-    }
-
-    pub fn setCursorStyle(self: *CliRenderer, style: Terminal.CursorStyle, blinking: bool) void {
-        self.terminal.setCursorStyle(style, blinking);
-    }
-
-    pub fn setCursorColor(self: *CliRenderer, color: [4]f32) void {
-        self.terminal.setCursorColor(color);
+        self.terminal.enableDetectedFeatures(stream.writer(), useKitty) catch {};
+        self.writeOut(stream.getWritten());
     }
 
     pub fn setKittyKeyboardFlags(self: *CliRenderer, flags: u8) void {
@@ -975,6 +1237,26 @@ pub const CliRenderer = struct {
 
     pub fn getKittyKeyboardFlags(self: *CliRenderer) u8 {
         return self.terminal.opts.kitty_keyboard_flags;
+    }
+
+    pub fn setTerminalTitle(self: *CliRenderer, title: []const u8) void {
+        var stream = std.io.fixedBufferStream(&self.writeOutBuf);
+        self.terminal.setTerminalTitle(stream.writer(), title);
+        self.writeOut(stream.getWritten());
+    }
+
+    pub fn copyToClipboardOSC52(self: *CliRenderer, target: Terminal.ClipboardTarget, payload: []const u8) bool {
+        var stream = std.io.fixedBufferStream(&self.writeOutBuf);
+        self.terminal.writeClipboard(stream.writer(), target, payload) catch return false;
+        self.writeOut(stream.getWritten());
+        return true;
+    }
+
+    pub fn clearClipboardOSC52(self: *CliRenderer, target: Terminal.ClipboardTarget) bool {
+        var stream = std.io.fixedBufferStream(&self.writeOutBuf);
+        self.terminal.writeClipboard(stream.writer(), target, "") catch return false;
+        self.writeOut(stream.getWritten());
+        return true;
     }
 
     fn renderDebugOverlay(self: *CliRenderer) void {

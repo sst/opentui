@@ -1,6 +1,6 @@
 import { TextAttributes, TextNodeRenderable, type RenderContext, type TextNodeOptions } from "@opentui/core"
 
-export const textNodeKeys = ["span", "b", "strong", "i", "em", "u", "br"] as const
+export const textNodeKeys = ["span", "b", "strong", "i", "em", "u", "br", "a"] as const
 export type TextNodeKey = (typeof textNodeKeys)[number]
 
 export class SpanRenderable extends TextNodeRenderable {
@@ -54,5 +54,19 @@ export class LineBreakRenderable extends SpanRenderable {
 
   public override add(): number {
     return super.add("\n")
+  }
+}
+
+export interface LinkOptions extends TextNodeOptions {
+  href: string
+}
+
+export class LinkRenderable extends SpanRenderable {
+  constructor(_ctx: RenderContext | null, options: LinkOptions) {
+    const linkOptions: TextNodeOptions = {
+      ...options,
+      link: { url: options.href },
+    }
+    super(null, linkOptions)
   }
 }

@@ -79,11 +79,15 @@ export interface LayoutOptions extends BaseRenderableOptions {
   maxWidth?: number | "auto" | `${number}%`
   maxHeight?: number | "auto" | `${number}%`
   margin?: number | "auto" | `${number}%`
+  marginX?: number | "auto" | `${number}%`
+  marginY?: number | "auto" | `${number}%`
   marginTop?: number | "auto" | `${number}%`
   marginRight?: number | "auto" | `${number}%`
   marginBottom?: number | "auto" | `${number}%`
   marginLeft?: number | "auto" | `${number}%`
   padding?: number | `${number}%`
+  paddingX?: number | `${number}%`
+  paddingY?: number | `${number}%`
   paddingTop?: number | `${number}%`
   paddingRight?: number | `${number}%`
   paddingBottom?: number | `${number}%`
@@ -306,6 +310,10 @@ export abstract class Renderable extends BaseRenderable {
     return this._focusable
   }
 
+  public set focusable(value: boolean) {
+    this._focusable = value
+  }
+
   public get ctx(): RenderContext {
     return this._ctx
   }
@@ -475,8 +483,8 @@ export abstract class Renderable extends BaseRenderable {
   public set translateX(value: number) {
     if (this._translateX === value) return
     this._translateX = value
-    this.requestRender()
     if (this.parent) this.parent.childrenPrimarySortDirty = true
+    this.requestRender()
   }
 
   public get translateY(): number {
@@ -486,8 +494,8 @@ export abstract class Renderable extends BaseRenderable {
   public set translateY(value: number) {
     if (this._translateY === value) return
     this._translateY = value
-    this.requestRender()
     if (this.parent) this.parent.childrenPrimarySortDirty = true
+    this.requestRender()
   }
 
   public get x(): number {
@@ -596,6 +604,7 @@ export abstract class Renderable extends BaseRenderable {
     if (this._zIndex !== value) {
       this._zIndex = value
       this.parent?.requestZIndexSort()
+      this.requestRender()
     }
   }
 
@@ -720,12 +729,15 @@ export abstract class Renderable extends BaseRenderable {
     const node = this.yogaNode
 
     if (isMarginType(options.margin)) {
-      node.setMargin(Edge.Top, options.margin)
-      node.setMargin(Edge.Right, options.margin)
-      node.setMargin(Edge.Bottom, options.margin)
-      node.setMargin(Edge.Left, options.margin)
+      node.setMargin(Edge.All, options.margin)
     }
 
+    if (isMarginType(options.marginX)) {
+      node.setMargin(Edge.Horizontal, options.marginX)
+    }
+    if (isMarginType(options.marginY)) {
+      node.setMargin(Edge.Vertical, options.marginY)
+    }
     if (isMarginType(options.marginTop)) {
       node.setMargin(Edge.Top, options.marginTop)
     }
@@ -740,12 +752,15 @@ export abstract class Renderable extends BaseRenderable {
     }
 
     if (isPaddingType(options.padding)) {
-      node.setPadding(Edge.Top, options.padding)
-      node.setPadding(Edge.Right, options.padding)
-      node.setPadding(Edge.Bottom, options.padding)
-      node.setPadding(Edge.Left, options.padding)
+      node.setPadding(Edge.All, options.padding)
     }
 
+    if (isPaddingType(options.paddingX)) {
+      node.setPadding(Edge.Horizontal, options.paddingX)
+    }
+    if (isPaddingType(options.paddingY)) {
+      node.setPadding(Edge.Vertical, options.paddingY)
+    }
     if (isPaddingType(options.paddingTop)) {
       node.setPadding(Edge.Top, options.paddingTop)
     }
@@ -898,11 +913,21 @@ export abstract class Renderable extends BaseRenderable {
 
   public set margin(margin: number | "auto" | `${number}%` | null | undefined) {
     if (isMarginType(margin)) {
-      const node = this.yogaNode
-      node.setMargin(Edge.Top, margin)
-      node.setMargin(Edge.Right, margin)
-      node.setMargin(Edge.Bottom, margin)
-      node.setMargin(Edge.Left, margin)
+      this.yogaNode.setMargin(Edge.All, margin)
+      this.requestRender()
+    }
+  }
+
+  public set marginX(marginX: number | "auto" | `${number}%` | null | undefined) {
+    if (isMarginType(marginX)) {
+      this.yogaNode.setMargin(Edge.Horizontal, marginX)
+      this.requestRender()
+    }
+  }
+
+  public set marginY(marginY: number | "auto" | `${number}%` | null | undefined) {
+    if (isMarginType(marginY)) {
+      this.yogaNode.setMargin(Edge.Vertical, marginY)
       this.requestRender()
     }
   }
@@ -937,11 +962,21 @@ export abstract class Renderable extends BaseRenderable {
 
   public set padding(padding: number | `${number}%` | null | undefined) {
     if (isPaddingType(padding)) {
-      const node = this.yogaNode
-      node.setPadding(Edge.Top, padding)
-      node.setPadding(Edge.Right, padding)
-      node.setPadding(Edge.Bottom, padding)
-      node.setPadding(Edge.Left, padding)
+      this.yogaNode.setPadding(Edge.All, padding)
+      this.requestRender()
+    }
+  }
+
+  public set paddingX(paddingX: number | `${number}%` | null | undefined) {
+    if (isPaddingType(paddingX)) {
+      this.yogaNode.setPadding(Edge.Horizontal, paddingX)
+      this.requestRender()
+    }
+  }
+
+  public set paddingY(paddingY: number | `${number}%` | null | undefined) {
+    if (isPaddingType(paddingY)) {
+      this.yogaNode.setPadding(Edge.Vertical, paddingY)
       this.requestRender()
     }
   }
@@ -983,13 +1018,15 @@ export abstract class Renderable extends BaseRenderable {
 
     const oldX = this._x
     const oldY = this._y
+    const oldWidth = this._widthValue
+    const oldHeight = this._heightValue
 
     this._x = layout.left
     this._y = layout.top
 
     const newWidth = Math.max(layout.width, 1)
     const newHeight = Math.max(layout.height, 1)
-    const sizeChanged = this.width !== newWidth || this.height !== newHeight
+    const sizeChanged = oldWidth !== newWidth || oldHeight !== newHeight
 
     this._widthValue = newWidth
     this._heightValue = newHeight
@@ -998,7 +1035,8 @@ export abstract class Renderable extends BaseRenderable {
       this.onLayoutResize(newWidth, newHeight)
     }
 
-    if (oldX !== this._x || oldY !== this._y) {
+    const positionChanged = oldX !== this._x || oldY !== this._y
+    if (positionChanged) {
       if (this.parent) this.parent.childrenPrimarySortDirty = true
     }
   }
@@ -1147,9 +1185,18 @@ export abstract class Renderable extends BaseRenderable {
       return -1
     }
 
-    // Should we really throw for this? Maybe just log a warning in dev.
     if (!this.renderableMapById.has(anchor.id)) {
-      throw new Error("Anchor does not exist")
+      if (process.env.NODE_ENV !== "production") {
+        console.warn(`Anchor with id ${anchor.id} does not exist within the parent ${this.id}, skipping insertBefore`)
+      }
+      return -1
+    }
+
+    if (renderable === anchor || renderable.id === anchor.id) {
+      if (process.env.NODE_ENV !== "production") {
+        console.warn(`Anchor is the same as the node ${renderable.id} being inserted, skipping insertBefore`)
+      }
+      return -1
     }
 
     if (renderable.parent === this) {
@@ -1289,6 +1336,8 @@ export abstract class Renderable extends BaseRenderable {
         y: scissorRect.y,
         width: scissorRect.width,
         height: scissorRect.height,
+        screenX: this.x,
+        screenY: this.y,
       })
     }
     const visibleChildren = this._getVisibleChildren()
@@ -1524,6 +1573,8 @@ interface RenderCommandPushScissorRect extends RenderCommandBase {
   y: number
   width: number
   height: number
+  screenX: number
+  screenY: number
 }
 
 interface RenderCommandPopScissorRect extends RenderCommandBase {
@@ -1594,6 +1645,7 @@ export class RootRenderable extends Renderable {
     this.updateLayout(deltaTime, this.renderList)
 
     // 3. Render all collected renderables
+    this._ctx.clearHitGridScissorRects()
     for (let i = 1; i < this.renderList.length; i++) {
       const command = this.renderList[i]
       switch (command.action) {
@@ -1605,9 +1657,11 @@ export class RootRenderable extends Renderable {
           break
         case "pushScissorRect":
           buffer.pushScissorRect(command.x, command.y, command.width, command.height)
+          this._ctx.pushHitGridScissorRect(command.screenX, command.screenY, command.width, command.height)
           break
         case "popScissorRect":
           buffer.popScissorRect()
+          this._ctx.popHitGridScissorRect()
           break
         case "pushOpacity":
           buffer.pushOpacity(command.opacity)

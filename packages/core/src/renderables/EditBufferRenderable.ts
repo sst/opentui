@@ -61,6 +61,7 @@ export abstract class EditBufferRenderable extends Renderable implements LineInf
   private _autoScrollVelocity: number = 0
   private _autoScrollAccumulator: number = 0
   private _scrollSpeed: number = 16
+  private _keyboardSelectionActive: boolean = false
 
   public readonly editBuffer: EditBuffer
   public readonly editorView: EditorView
@@ -279,6 +280,9 @@ export abstract class EditBufferRenderable extends Renderable implements LineInf
   set showCursor(value: boolean) {
     if (this._showCursor !== value) {
       this._showCursor = value
+      if (!value && this._focused) {
+        this._ctx.setCursorPosition(0, 0, false)
+      }
       this.requestRender()
     }
   }
@@ -426,9 +430,11 @@ export abstract class EditBufferRenderable extends Renderable implements LineInf
     this.lastLocalSelection = localSelection
 
     const updateCursor = true
+    const followCursor = this._keyboardSelectionActive
 
     let changed: boolean
     if (!localSelection?.isActive) {
+      this._keyboardSelectionActive = false
       this.editorView.resetLocalSelection()
       changed = true
     } else if (selection?.isStart) {
@@ -440,6 +446,7 @@ export abstract class EditBufferRenderable extends Renderable implements LineInf
         this._selectionBg,
         this._selectionFg,
         updateCursor,
+        followCursor,
       )
     } else {
       changed = this.editorView.updateLocalSelection(
@@ -450,10 +457,11 @@ export abstract class EditBufferRenderable extends Renderable implements LineInf
         this._selectionBg,
         this._selectionFg,
         updateCursor,
+        followCursor,
       )
     }
 
-    if (changed && localSelection?.isActive && selection?.isSelecting) {
+    if (changed && localSelection?.isActive && selection?.isDragging) {
       const viewport = this.editorView.getViewport()
       const focusY = localSelection.focusY
       const scrollMargin = Math.max(1, Math.floor(viewport.height * this._scrollMargin))
@@ -466,6 +474,7 @@ export abstract class EditBufferRenderable extends Renderable implements LineInf
         this._autoScrollVelocity = 0
       }
     } else {
+      this._keyboardSelectionActive = false
       this._autoScrollVelocity = 0
       this._autoScrollAccumulator = 0
     }
@@ -543,7 +552,7 @@ export abstract class EditBufferRenderable extends Renderable implements LineInf
         Math.floor(effectiveHeight),
       )
 
-      const measuredWidth = measureResult ? Math.max(1, measureResult.maxWidth) : 1
+      const measuredWidth = measureResult ? Math.max(1, measureResult.widthColsMax) : 1
       const measuredHeight = measureResult ? Math.max(1, measureResult.lineCount) : 1
 
       if (widthMode === MeasureMode.AtMost && this._positionType !== "absolute") {
@@ -586,14 +595,12 @@ export abstract class EditBufferRenderable extends Renderable implements LineInf
     const cursorY = this.y + visualCursor.visualRow + 1 // +1 for 1-based terminal coords
 
     this._ctx.setCursorPosition(cursorX, cursorY, true)
-    this._ctx.setCursorColor(this._cursorColor)
-    this._ctx.setCursorStyle(this._cursorStyle.style, this._cursorStyle.blinking)
+    this._ctx.setCursorStyle({ ...this._cursorStyle, color: this._cursorColor })
   }
 
   public focus(): void {
     super.focus()
-    this._ctx.setCursorStyle(this._cursorStyle.style, this._cursorStyle.blinking)
-    this._ctx.setCursorColor(this._cursorColor)
+    this._ctx.setCursorStyle({ ...this._cursorStyle, color: this._cursorColor })
     this.requestRender()
   }
 
@@ -734,9 +741,12 @@ export abstract class EditBufferRenderable extends Renderable implements LineInf
     if (!this.selectable) return
 
     if (!shiftPressed) {
+      this._keyboardSelectionActive = false
       this._ctx.clearSelection()
       return
     }
+
+    this._keyboardSelectionActive = true
 
     const visualCursor = this.editorView.getVisualCursor()
     const cursorX = this.x + visualCursor.visualCol
@@ -746,8 +756,9 @@ export abstract class EditBufferRenderable extends Renderable implements LineInf
       if (!this._ctx.hasSelection) {
         this._ctx.startSelection(this, cursorX, cursorY)
       }
-    } else {
-      this._ctx.updateSelection(this, cursorX, cursorY)
+      return
     }
+
+    this._ctx.updateSelection(this, cursorX, cursorY, { finishDragging: true })
   }
 }

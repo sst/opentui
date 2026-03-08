@@ -17,15 +17,13 @@ const __dirname = dirname(__filename)
 const rootDir = resolve(__dirname, "..")
 
 const args = process.argv.slice(2)
-const includeVue = args.includes("--include-vue")
 let version = args.find((arg) => !arg.startsWith("--"))
 
 if (!version) {
   console.error("Error: Please provide a version number")
-  console.error("Usage: bun scripts/prepare-release.ts <version> [--include-vue]")
+  console.error("Usage: bun scripts/prepare-release.ts <version>")
   console.error("Example: bun scripts/prepare-release.ts 0.2.0")
   console.error("         bun scripts/prepare-release.ts '*' (auto-increment patch)")
-  console.error("         bun scripts/prepare-release.ts 0.2.0 --include-vue")
   process.exit(1)
 }
 
@@ -61,8 +59,7 @@ if (!/^\d+\.\d+\.\d+(-[a-zA-Z0-9.-]+)?$/.test(version)) {
   process.exit(1)
 }
 
-const packagesText = includeVue ? "all packages" : "core, react, and solid packages"
-console.log(`\nPreparing release ${version} for ${packagesText}...\n`)
+console.log(`\nPreparing release ${version} for core, react, and solid packages...\n`)
 
 const corePackageJsonPath = join(rootDir, "packages", "core", "package.json")
 console.log("Updating @opentui/core...")
@@ -120,26 +117,6 @@ try {
   process.exit(1)
 }
 
-if (includeVue) {
-  const vuePackageJsonPath = join(rootDir, "packages", "vue", "package.json")
-  console.log("\nUpdating @opentui/vue...")
-
-  try {
-    const vuePackageJson: PackageJson = JSON.parse(readFileSync(vuePackageJsonPath, "utf8"))
-
-    vuePackageJson.version = version
-
-    writeFileSync(vuePackageJsonPath, JSON.stringify(vuePackageJson, null, 2) + "\n")
-    console.log(`  @opentui/vue updated to version ${version}`)
-    console.log(`  Note: @opentui/core dependency will be set to ${version} during build`)
-  } catch (error) {
-    console.error(`  Failed to update @opentui/vue: ${error}`)
-    process.exit(1)
-  }
-} else {
-  console.log("\nSkipping @opentui/vue (use --include-vue to include)")
-}
-
 console.log("\nUpdating bun.lock...")
 try {
   execSync("bun install", { cwd: rootDir, stdio: "inherit" })
@@ -149,15 +126,13 @@ try {
   process.exit(1)
 }
 
-const publishCmd = includeVue ? "bun run publish --include-vue" : "bun run publish"
-
 console.log(`
-Successfully prepared release ${version} for ${packagesText}!
+Successfully prepared release ${version} for core, react, and solid packages!
 
 Next steps:
 1. Review the changes: git diff
 2. Build the packages: bun run build
 3. Commit the changes: git add -A && git commit -m "Release v${version}" && git push
-4. Publish to npm: ${publishCmd}
+4. Publish to npm: bun run publish
 5. Push to GitHub: git push
-`)
+  `)

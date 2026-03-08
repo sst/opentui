@@ -110,6 +110,7 @@ export class EditorView {
     bgColor?: RGBA,
     fgColor?: RGBA,
     updateCursor?: boolean,
+    followCursor?: boolean,
   ): boolean {
     this.guard()
     return this.lib.editorViewSetLocalSelection(
@@ -121,6 +122,7 @@ export class EditorView {
       bgColor || null,
       fgColor || null,
       updateCursor ?? false,
+      followCursor ?? false,
     )
   }
 
@@ -132,6 +134,7 @@ export class EditorView {
     bgColor?: RGBA,
     fgColor?: RGBA,
     updateCursor?: boolean,
+    followCursor?: boolean,
   ): boolean {
     this.guard()
     return this.lib.editorViewUpdateLocalSelection(
@@ -143,6 +146,7 @@ export class EditorView {
       bgColor || null,
       fgColor || null,
       updateCursor ?? false,
+      followCursor ?? false,
     )
   }
 
@@ -258,7 +262,7 @@ export class EditorView {
     this.lib.editorViewSetTabIndicatorColor(this.viewPtr, color)
   }
 
-  public measureForDimensions(width: number, height: number): { lineCount: number; maxWidth: number } | null {
+  public measureForDimensions(width: number, height: number): { lineCount: number; widthColsMax: number } | null {
     this.guard()
     if (!this._textBufferViewPtr) {
       this._textBufferViewPtr = this.lib.editorViewGetTextBufferView(this.viewPtr)

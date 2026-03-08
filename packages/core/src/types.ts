@@ -16,11 +16,29 @@ export const TextAttributes = {
   STRIKETHROUGH: 1 << 7, // 128
 }
 
+// Constants for attribute bit packing
+export const ATTRIBUTE_BASE_BITS = 8
+export const ATTRIBUTE_BASE_MASK = 0xff
+
+/**
+ * Extract the base 8 bits of attributes from a u32 attribute value.
+ * Currently we only use the first 8 bits for standard text attributes.
+ */
+export function getBaseAttributes(attr: number): number {
+  return attr & ATTRIBUTE_BASE_MASK
+}
+
+export type ThemeMode = "dark" | "light"
+
 export type CursorStyle = "block" | "line" | "underline"
 
+export type MousePointerStyle = "default" | "pointer" | "text" | "crosshair" | "move" | "not-allowed"
+
 export interface CursorStyleOptions {
-  style: CursorStyle
-  blinking: boolean
+  style?: CursorStyle
+  blinking?: boolean
+  color?: RGBA
+  cursor?: MousePointerStyle
 }
 
 export enum DebugOverlayCorner {
@@ -38,16 +56,21 @@ export interface RendererEvents {
   "memory:snapshot": (snapshot: { heapUsed: number; heapTotal: number; arrayBuffers: number }) => void
   selection: (selection: Selection) => void
   "debugOverlay:toggle": (enabled: boolean) => void
+  theme_mode: (mode: ThemeMode) => void
 }
 
 export interface RenderContext extends EventEmitter {
   addToHitGrid: (x: number, y: number, width: number, height: number, id: number) => void
+  pushHitGridScissorRect: (x: number, y: number, width: number, height: number) => void
+  popHitGridScissorRect: () => void
+  clearHitGridScissorRects: () => void
   width: number
   height: number
   requestRender: () => void
   setCursorPosition: (x: number, y: number, visible: boolean) => void
-  setCursorStyle: (style: CursorStyle, blinking: boolean) => void
+  setCursorStyle: (options: CursorStyleOptions) => void
   setCursorColor: (color: RGBA) => void
+  setMousePointer: (shape: MousePointerStyle) => void
   widthMethod: WidthMethod
   capabilities: any | null
   requestLive: () => void
@@ -64,7 +87,12 @@ export interface RenderContext extends EventEmitter {
   _internalKeyInput: InternalKeyHandler
   clearSelection: () => void
   startSelection: (renderable: Renderable, x: number, y: number) => void
-  updateSelection: (currentRenderable: Renderable | undefined, x: number, y: number) => void
+  updateSelection: (
+    currentRenderable: Renderable | undefined,
+    x: number,
+    y: number,
+    options?: { finishDragging?: boolean },
+  ) => void
 }
 
 export type Timeout = ReturnType<typeof setTimeout> | undefined
@@ -85,10 +113,15 @@ export interface Highlight {
 }
 
 export interface LineInfo {
-  lineStarts: number[]
-  lineWidths: number[]
-  maxLineWidth: number
+  /** Display-column offset for each visual line start. */
+  lineStartCols: number[]
+  /** Display-column width for each visual line. */
+  lineWidthCols: number[]
+  /** Maximum display-column width across the reported lines. */
+  lineWidthColsMax: number
+  /** Source logical line index for each visual line. */
   lineSources: number[]
+  /** Wrap index within each source logical line. */
   lineWraps: number[]
 }
 
@@ -97,4 +130,23 @@ export interface LineInfoProvider {
   get lineCount(): number
   get virtualLineCount(): number
   get scrollY(): number
+}
+
+export interface CapturedSpan {
+  text: string
+  fg: RGBA
+  bg: RGBA
+  attributes: number
+  width: number
+}
+
+export interface CapturedLine {
+  spans: CapturedSpan[]
+}
+
+export interface CapturedFrame {
+  cols: number
+  rows: number
+  cursor: [number, number]
+  lines: CapturedLine[]
 }

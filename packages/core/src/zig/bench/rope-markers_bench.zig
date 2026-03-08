@@ -3,6 +3,7 @@ const bench_utils = @import("../bench-utils.zig");
 const rope_mod = @import("../rope.zig");
 
 const BenchResult = bench_utils.BenchResult;
+const BenchStats = bench_utils.BenchStats;
 const MemStats = bench_utils.MemStats;
 
 pub const benchName = "Rope Marker Tracking";
@@ -50,750 +51,663 @@ const RopeType = rope_mod.Rope(Token);
 /// Create a rope with specific marker density
 /// marker_every: insert a marker every N text tokens
 fn createRope(allocator: std.mem.Allocator, text_count: u32, marker_every: u32) !RopeType {
-    var tokens = std.ArrayList(Token).init(allocator);
-    defer tokens.deinit();
+    var tokens: std.ArrayListUnmanaged(Token) = .{};
+    defer tokens.deinit(allocator);
 
-    var i: u32 = 0;
-    while (i < text_count) : (i += 1) {
-        try tokens.append(.{ .text = 10 }); // Each text segment has width 10
+    for (0..text_count) |i| {
+        try tokens.append(allocator, .{ .text = 10 }); // Each text segment has width 10
         if ((i + 1) % marker_every == 0) {
-            try tokens.append(.{ .marker = {} });
+            try tokens.append(allocator, .{ .marker = {} });
         }
     }
 
     return try RopeType.from_slice(allocator, tokens.items);
 }
 
-fn benchRebuildMarkerIndex(allocator: std.mem.Allocator, iterations: usize) ![]BenchResult {
-    var results = std.ArrayList(BenchResult).init(allocator);
+fn benchRebuildMarkerIndex(
+    allocator: std.mem.Allocator,
+    iterations: usize,
+    bench_filter: ?[]const u8,
+) ![]BenchResult {
+    var results: std.ArrayListUnmanaged(BenchResult) = .{};
+    errdefer results.deinit(allocator);
 
     // Small rope, high marker density (every 10 tokens)
     {
-        var min_ns: u64 = std.math.maxInt(u64);
-        var max_ns: u64 = 0;
-        var total_ns: u64 = 0;
+        const name = "Create rope with markers: 1k tokens, marker every 10 (~100 markers)";
+        if (bench_utils.matchesBenchFilter(name, bench_filter)) {
+            var stats = BenchStats{};
+            for (0..iterations) |_| {
+                var arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
+                defer arena.deinit();
 
-        var iter: usize = 0;
-        while (iter < iterations) : (iter += 1) {
-            var arena = std.heap.ArenaAllocator.init(allocator);
-            defer arena.deinit();
+                var timer = try std.time.Timer.start();
+                const rope = try createRope(arena.allocator(), 1000, 10);
+                _ = rope; // Markers are automatically indexed during rope creation
+                stats.record(timer.read());
+            }
 
-            var timer = try std.time.Timer.start();
-            const rope = try createRope(arena.allocator(), 1000, 10);
-            _ = rope; // Markers are automatically indexed during rope creation
-            const elapsed = timer.read();
-
-            min_ns = @min(min_ns, elapsed);
-            max_ns = @max(max_ns, elapsed);
-            total_ns += elapsed;
+            try results.append(allocator, BenchResult{
+                .name = name,
+                .min_ns = stats.min_ns,
+                .avg_ns = stats.avg(),
+                .max_ns = stats.max_ns,
+                .total_ns = stats.total_ns,
+                .iterations = iterations,
+                .mem_stats = null,
+            });
         }
-
-        const name = try std.fmt.allocPrint(allocator, "Create rope with markers: 1k tokens, marker every 10 (~100 markers)", .{});
-        try results.append(BenchResult{
-            .name = name,
-            .min_ns = min_ns,
-            .avg_ns = total_ns / iterations,
-            .max_ns = max_ns,
-            .total_ns = total_ns,
-            .iterations = iterations,
-            .mem_stats = null,
-        });
     }
 
     // Small rope, low marker density (every 100 tokens)
     {
-        var min_ns: u64 = std.math.maxInt(u64);
-        var max_ns: u64 = 0;
-        var total_ns: u64 = 0;
+        const name = "Rebuild index: 1k tokens, marker every 100 (~10 markers)";
+        if (bench_utils.matchesBenchFilter(name, bench_filter)) {
+            var stats = BenchStats{};
+            for (0..iterations) |_| {
+                var arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
+                defer arena.deinit();
 
-        var iter: usize = 0;
-        while (iter < iterations) : (iter += 1) {
-            var arena = std.heap.ArenaAllocator.init(allocator);
-            defer arena.deinit();
+                var timer = try std.time.Timer.start();
+                const rope = try createRope(arena.allocator(), 1000, 100);
+                _ = rope; // Markers are automatically indexed during rope creation
+                stats.record(timer.read());
+            }
 
-            var timer = try std.time.Timer.start();
-            const rope = try createRope(arena.allocator(), 1000, 100);
-            _ = rope; // Markers are automatically indexed during rope creation
-            const elapsed = timer.read();
-
-            min_ns = @min(min_ns, elapsed);
-            max_ns = @max(max_ns, elapsed);
-            total_ns += elapsed;
+            try results.append(allocator, BenchResult{
+                .name = name,
+                .min_ns = stats.min_ns,
+                .avg_ns = stats.avg(),
+                .max_ns = stats.max_ns,
+                .total_ns = stats.total_ns,
+                .iterations = iterations,
+                .mem_stats = null,
+            });
         }
-
-        const name = try std.fmt.allocPrint(allocator, "Rebuild index: 1k tokens, marker every 100 (~10 markers)", .{});
-        try results.append(BenchResult{
-            .name = name,
-            .min_ns = min_ns,
-            .avg_ns = total_ns / iterations,
-            .max_ns = max_ns,
-            .total_ns = total_ns,
-            .iterations = iterations,
-            .mem_stats = null,
-        });
     }
 
     // Medium rope, high marker density
     {
-        var min_ns: u64 = std.math.maxInt(u64);
-        var max_ns: u64 = 0;
-        var total_ns: u64 = 0;
+        const name = "Rebuild index: 10k tokens, marker every 10 (~1k markers)";
+        if (bench_utils.matchesBenchFilter(name, bench_filter)) {
+            var stats = BenchStats{};
+            for (0..iterations) |_| {
+                var arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
+                defer arena.deinit();
 
-        var iter: usize = 0;
-        while (iter < iterations) : (iter += 1) {
-            var arena = std.heap.ArenaAllocator.init(allocator);
-            defer arena.deinit();
+                var timer = try std.time.Timer.start();
+                const rope = try createRope(arena.allocator(), 10000, 10);
+                _ = rope; // Markers are automatically indexed during rope creation
+                stats.record(timer.read());
+            }
 
-            var timer = try std.time.Timer.start();
-            const rope = try createRope(arena.allocator(), 10000, 10);
-            _ = rope; // Markers are automatically indexed during rope creation
-            const elapsed = timer.read();
-
-            min_ns = @min(min_ns, elapsed);
-            max_ns = @max(max_ns, elapsed);
-            total_ns += elapsed;
+            try results.append(allocator, BenchResult{
+                .name = name,
+                .min_ns = stats.min_ns,
+                .avg_ns = stats.avg(),
+                .max_ns = stats.max_ns,
+                .total_ns = stats.total_ns,
+                .iterations = iterations,
+                .mem_stats = null,
+            });
         }
-
-        const name = try std.fmt.allocPrint(allocator, "Rebuild index: 10k tokens, marker every 10 (~1k markers)", .{});
-        try results.append(BenchResult{
-            .name = name,
-            .min_ns = min_ns,
-            .avg_ns = total_ns / iterations,
-            .max_ns = max_ns,
-            .total_ns = total_ns,
-            .iterations = iterations,
-            .mem_stats = null,
-        });
     }
 
     // Medium rope, low marker density
     {
-        var min_ns: u64 = std.math.maxInt(u64);
-        var max_ns: u64 = 0;
-        var total_ns: u64 = 0;
+        const name = "Rebuild index: 10k tokens, marker every 100 (~100 markers)";
+        if (bench_utils.matchesBenchFilter(name, bench_filter)) {
+            var stats = BenchStats{};
+            for (0..iterations) |_| {
+                var arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
+                defer arena.deinit();
 
-        var iter: usize = 0;
-        while (iter < iterations) : (iter += 1) {
-            var arena = std.heap.ArenaAllocator.init(allocator);
-            defer arena.deinit();
+                var timer = try std.time.Timer.start();
+                const rope = try createRope(arena.allocator(), 10000, 100);
+                _ = rope; // Markers are automatically indexed during rope creation
+                stats.record(timer.read());
+            }
 
-            var timer = try std.time.Timer.start();
-            const rope = try createRope(arena.allocator(), 10000, 100);
-            _ = rope; // Markers are automatically indexed during rope creation
-            const elapsed = timer.read();
-
-            min_ns = @min(min_ns, elapsed);
-            max_ns = @max(max_ns, elapsed);
-            total_ns += elapsed;
+            try results.append(allocator, BenchResult{
+                .name = name,
+                .min_ns = stats.min_ns,
+                .avg_ns = stats.avg(),
+                .max_ns = stats.max_ns,
+                .total_ns = stats.total_ns,
+                .iterations = iterations,
+                .mem_stats = null,
+            });
         }
-
-        const name = try std.fmt.allocPrint(allocator, "Rebuild index: 10k tokens, marker every 100 (~100 markers)", .{});
-        try results.append(BenchResult{
-            .name = name,
-            .min_ns = min_ns,
-            .avg_ns = total_ns / iterations,
-            .max_ns = max_ns,
-            .total_ns = total_ns,
-            .iterations = iterations,
-            .mem_stats = null,
-        });
     }
 
     // Large rope, text-editor-like density (marker every 50 = ~50 chars/line)
     {
-        var min_ns: u64 = std.math.maxInt(u64);
-        var max_ns: u64 = 0;
-        var total_ns: u64 = 0;
+        const name = "Rebuild index: 50k tokens, marker every 50 (~1k markers, text-editor-like)";
+        if (bench_utils.matchesBenchFilter(name, bench_filter)) {
+            var stats = BenchStats{};
+            for (0..iterations) |_| {
+                var arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
+                defer arena.deinit();
 
-        var iter: usize = 0;
-        while (iter < iterations) : (iter += 1) {
-            var arena = std.heap.ArenaAllocator.init(allocator);
-            defer arena.deinit();
+                var timer = try std.time.Timer.start();
+                const rope = try createRope(arena.allocator(), 50000, 50);
+                _ = rope; // Markers are automatically indexed during rope creation
+                stats.record(timer.read());
+            }
 
-            var timer = try std.time.Timer.start();
-            const rope = try createRope(arena.allocator(), 50000, 50);
-            _ = rope; // Markers are automatically indexed during rope creation
-            const elapsed = timer.read();
-
-            min_ns = @min(min_ns, elapsed);
-            max_ns = @max(max_ns, elapsed);
-            total_ns += elapsed;
+            try results.append(allocator, BenchResult{
+                .name = name,
+                .min_ns = stats.min_ns,
+                .avg_ns = stats.avg(),
+                .max_ns = stats.max_ns,
+                .total_ns = stats.total_ns,
+                .iterations = iterations,
+                .mem_stats = null,
+            });
         }
-
-        const name = try std.fmt.allocPrint(allocator, "Rebuild index: 50k tokens, marker every 50 (~1k markers, text-editor-like)", .{});
-        try results.append(BenchResult{
-            .name = name,
-            .min_ns = min_ns,
-            .avg_ns = total_ns / iterations,
-            .max_ns = max_ns,
-            .total_ns = total_ns,
-            .iterations = iterations,
-            .mem_stats = null,
-        });
     }
 
     // Very large rope, sparse markers
     {
-        var min_ns: u64 = std.math.maxInt(u64);
-        var max_ns: u64 = 0;
-        var total_ns: u64 = 0;
+        const name = "Rebuild index: 100k tokens, marker every 200 (~500 markers)";
+        if (bench_utils.matchesBenchFilter(name, bench_filter)) {
+            var stats = BenchStats{};
+            for (0..iterations) |_| {
+                var arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
+                defer arena.deinit();
 
-        var iter: usize = 0;
-        while (iter < iterations) : (iter += 1) {
-            var arena = std.heap.ArenaAllocator.init(allocator);
-            defer arena.deinit();
+                var timer = try std.time.Timer.start();
+                const rope = try createRope(arena.allocator(), 100000, 200);
+                _ = rope; // Markers are automatically indexed during rope creation
+                stats.record(timer.read());
+            }
 
-            var timer = try std.time.Timer.start();
-            const rope = try createRope(arena.allocator(), 100000, 200);
-            _ = rope; // Markers are automatically indexed during rope creation
-            const elapsed = timer.read();
-
-            min_ns = @min(min_ns, elapsed);
-            max_ns = @max(max_ns, elapsed);
-            total_ns += elapsed;
+            try results.append(allocator, BenchResult{
+                .name = name,
+                .min_ns = stats.min_ns,
+                .avg_ns = stats.avg(),
+                .max_ns = stats.max_ns,
+                .total_ns = stats.total_ns,
+                .iterations = iterations,
+                .mem_stats = null,
+            });
         }
-
-        const name = try std.fmt.allocPrint(allocator, "Rebuild index: 100k tokens, marker every 200 (~500 markers)", .{});
-        try results.append(BenchResult{
-            .name = name,
-            .min_ns = min_ns,
-            .avg_ns = total_ns / iterations,
-            .max_ns = max_ns,
-            .total_ns = total_ns,
-            .iterations = iterations,
-            .mem_stats = null,
-        });
     }
 
-    return try results.toOwnedSlice();
+    return try results.toOwnedSlice(allocator);
 }
 
-fn benchMarkerLookup(allocator: std.mem.Allocator, iterations: usize) ![]BenchResult {
-    var results = std.ArrayList(BenchResult).init(allocator);
+fn benchMarkerLookup(
+    allocator: std.mem.Allocator,
+    iterations: usize,
+    bench_filter: ?[]const u8,
+) ![]BenchResult {
+    var results: std.ArrayListUnmanaged(BenchResult) = .{};
+    errdefer results.deinit(allocator);
 
     // O(1) lookup in small rope
     {
-        var min_ns: u64 = std.math.maxInt(u64);
-        var max_ns: u64 = 0;
-        var total_ns: u64 = 0;
+        const name = "O(1) lookup: 100 random marker accesses, ~100 markers";
+        if (bench_utils.matchesBenchFilter(name, bench_filter)) {
+            var stats = BenchStats{};
+            for (0..iterations) |_| {
+                var arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
+                defer arena.deinit();
 
-        var iter: usize = 0;
-        while (iter < iterations) : (iter += 1) {
-            var arena = std.heap.ArenaAllocator.init(allocator);
-            defer arena.deinit();
+                var rope = try createRope(arena.allocator(), 1000, 10);
+                // Markers are automatically indexed in the tree structure
 
-            var rope = try createRope(arena.allocator(), 1000, 10);
-            // Markers are automatically indexed in the tree structure
-
-            var timer = try std.time.Timer.start();
-            var i: u32 = 0;
-            while (i < 100) : (i += 1) {
-                _ = rope.getMarker(.marker, i % rope.markerCount(.marker));
+                var timer = try std.time.Timer.start();
+                for (0..100) |i| {
+                    _ = rope.getMarker(.marker, @intCast(i % rope.markerCount(.marker)));
+                }
+                stats.record(timer.read());
             }
-            const elapsed = timer.read();
 
-            min_ns = @min(min_ns, elapsed);
-            max_ns = @max(max_ns, elapsed);
-            total_ns += elapsed;
+            try results.append(allocator, BenchResult{
+                .name = name,
+                .min_ns = stats.min_ns,
+                .avg_ns = stats.avg(),
+                .max_ns = stats.max_ns,
+                .total_ns = stats.total_ns,
+                .iterations = iterations,
+                .mem_stats = null,
+            });
         }
-
-        const name = try std.fmt.allocPrint(allocator, "O(1) lookup: 100 random marker accesses, ~100 markers", .{});
-        try results.append(BenchResult{
-            .name = name,
-            .min_ns = min_ns,
-            .avg_ns = total_ns / iterations,
-            .max_ns = max_ns,
-            .total_ns = total_ns,
-            .iterations = iterations,
-            .mem_stats = null,
-        });
     }
 
     // O(1) lookup in medium rope
     {
-        var min_ns: u64 = std.math.maxInt(u64);
-        var max_ns: u64 = 0;
-        var total_ns: u64 = 0;
+        const name = "O(1) lookup: 1k random marker accesses, ~200 markers";
+        if (bench_utils.matchesBenchFilter(name, bench_filter)) {
+            var stats = BenchStats{};
+            for (0..iterations) |_| {
+                var arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
+                defer arena.deinit();
 
-        var iter: usize = 0;
-        while (iter < iterations) : (iter += 1) {
-            var arena = std.heap.ArenaAllocator.init(allocator);
-            defer arena.deinit();
+                var rope = try createRope(arena.allocator(), 10000, 50);
+                // Markers are automatically indexed in the tree structure
 
-            var rope = try createRope(arena.allocator(), 10000, 50);
-            // Markers are automatically indexed in the tree structure
-
-            var timer = try std.time.Timer.start();
-            var i: u32 = 0;
-            while (i < 1000) : (i += 1) {
-                _ = rope.getMarker(.marker, i % rope.markerCount(.marker));
+                var timer = try std.time.Timer.start();
+                for (0..1000) |i| {
+                    _ = rope.getMarker(.marker, @intCast(i % rope.markerCount(.marker)));
+                }
+                stats.record(timer.read());
             }
-            const elapsed = timer.read();
 
-            min_ns = @min(min_ns, elapsed);
-            max_ns = @max(max_ns, elapsed);
-            total_ns += elapsed;
+            try results.append(allocator, BenchResult{
+                .name = name,
+                .min_ns = stats.min_ns,
+                .avg_ns = stats.avg(),
+                .max_ns = stats.max_ns,
+                .total_ns = stats.total_ns,
+                .iterations = iterations,
+                .mem_stats = null,
+            });
         }
-
-        const name = try std.fmt.allocPrint(allocator, "O(1) lookup: 1k random marker accesses, ~200 markers", .{});
-        try results.append(BenchResult{
-            .name = name,
-            .min_ns = min_ns,
-            .avg_ns = total_ns / iterations,
-            .max_ns = max_ns,
-            .total_ns = total_ns,
-            .iterations = iterations,
-            .mem_stats = null,
-        });
     }
 
     // O(1) lookup in large rope (text-editor scenario)
     {
-        var min_ns: u64 = std.math.maxInt(u64);
-        var max_ns: u64 = 0;
-        var total_ns: u64 = 0;
+        const name = "O(1) lookup: 10k random line jumps, ~1k lines (text-editor)";
+        if (bench_utils.matchesBenchFilter(name, bench_filter)) {
+            var stats = BenchStats{};
+            for (0..iterations) |_| {
+                var arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
+                defer arena.deinit();
 
-        var iter: usize = 0;
-        while (iter < iterations) : (iter += 1) {
-            var arena = std.heap.ArenaAllocator.init(allocator);
-            defer arena.deinit();
+                var rope = try createRope(arena.allocator(), 50000, 50);
+                // Markers are automatically indexed in the tree structure
+                const marker_count = rope.markerCount(.marker);
 
-            var rope = try createRope(arena.allocator(), 50000, 50);
-            // Markers are automatically indexed in the tree structure
-            const marker_count = rope.markerCount(.marker);
+                var prng = std.Random.DefaultPrng.init(42);
+                const random = prng.random();
 
-            var prng = std.Random.DefaultPrng.init(42);
-            const random = prng.random();
-
-            var timer = try std.time.Timer.start();
-            var i: u32 = 0;
-            while (i < 10000) : (i += 1) {
-                const line = random.intRangeAtMost(u32, 0, marker_count - 1);
-                _ = rope.getMarker(.marker, line);
+                var timer = try std.time.Timer.start();
+                for (0..10000) |_| {
+                    const line = random.intRangeAtMost(u32, 0, marker_count - 1);
+                    _ = rope.getMarker(.marker, line);
+                }
+                stats.record(timer.read());
             }
-            const elapsed = timer.read();
 
-            min_ns = @min(min_ns, elapsed);
-            max_ns = @max(max_ns, elapsed);
-            total_ns += elapsed;
+            try results.append(allocator, BenchResult{
+                .name = name,
+                .min_ns = stats.min_ns,
+                .avg_ns = stats.avg(),
+                .max_ns = stats.max_ns,
+                .total_ns = stats.total_ns,
+                .iterations = iterations,
+                .mem_stats = null,
+            });
         }
-
-        const name = try std.fmt.allocPrint(allocator, "O(1) lookup: 10k random line jumps, ~1k lines (text-editor)", .{});
-        try results.append(BenchResult{
-            .name = name,
-            .min_ns = min_ns,
-            .avg_ns = total_ns / iterations,
-            .max_ns = max_ns,
-            .total_ns = total_ns,
-            .iterations = iterations,
-            .mem_stats = null,
-        });
     }
 
     // Sequential marker access (best case)
     {
-        var min_ns: u64 = std.math.maxInt(u64);
-        var max_ns: u64 = 0;
-        var total_ns: u64 = 0;
+        const name = "O(1) lookup: Sequential access to all ~200 markers";
+        if (bench_utils.matchesBenchFilter(name, bench_filter)) {
+            var stats = BenchStats{};
+            for (0..iterations) |_| {
+                var arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
+                defer arena.deinit();
 
-        var iter: usize = 0;
-        while (iter < iterations) : (iter += 1) {
-            var arena = std.heap.ArenaAllocator.init(allocator);
-            defer arena.deinit();
+                var rope = try createRope(arena.allocator(), 10000, 50);
+                // Markers are automatically indexed in the tree structure
+                const marker_count = rope.markerCount(.marker);
 
-            var rope = try createRope(arena.allocator(), 10000, 50);
-            // Markers are automatically indexed in the tree structure
-            const marker_count = rope.markerCount(.marker);
-
-            var timer = try std.time.Timer.start();
-            var i: u32 = 0;
-            while (i < marker_count) : (i += 1) {
-                _ = rope.getMarker(.marker, i);
+                var timer = try std.time.Timer.start();
+                for (0..marker_count) |i| {
+                    _ = rope.getMarker(.marker, @intCast(i));
+                }
+                stats.record(timer.read());
             }
-            const elapsed = timer.read();
 
-            min_ns = @min(min_ns, elapsed);
-            max_ns = @max(max_ns, elapsed);
-            total_ns += elapsed;
+            try results.append(allocator, BenchResult{
+                .name = name,
+                .min_ns = stats.min_ns,
+                .avg_ns = stats.avg(),
+                .max_ns = stats.max_ns,
+                .total_ns = stats.total_ns,
+                .iterations = iterations,
+                .mem_stats = null,
+            });
         }
-
-        const name = try std.fmt.allocPrint(allocator, "O(1) lookup: Sequential access to all ~200 markers", .{});
-        try results.append(BenchResult{
-            .name = name,
-            .min_ns = min_ns,
-            .avg_ns = total_ns / iterations,
-            .max_ns = max_ns,
-            .total_ns = total_ns,
-            .iterations = iterations,
-            .mem_stats = null,
-        });
     }
 
-    return try results.toOwnedSlice();
+    return try results.toOwnedSlice(allocator);
 }
 
-fn benchMarkerCount(allocator: std.mem.Allocator, iterations: usize) ![]BenchResult {
-    var results = std.ArrayList(BenchResult).init(allocator);
+fn benchMarkerCount(
+    allocator: std.mem.Allocator,
+    iterations: usize,
+    bench_filter: ?[]const u8,
+) ![]BenchResult {
+    var results: std.ArrayListUnmanaged(BenchResult) = .{};
+    errdefer results.deinit(allocator);
 
     // Count markers - should be O(1) hash lookup
     {
-        var min_ns: u64 = std.math.maxInt(u64);
-        var max_ns: u64 = 0;
-        var total_ns: u64 = 0;
+        const name = "markerCount: 100k calls (should be ~O(1))";
+        if (bench_utils.matchesBenchFilter(name, bench_filter)) {
+            var stats = BenchStats{};
+            for (0..iterations) |_| {
+                var arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
+                defer arena.deinit();
 
-        var iter: usize = 0;
-        while (iter < iterations) : (iter += 1) {
-            var arena = std.heap.ArenaAllocator.init(allocator);
-            defer arena.deinit();
+                var rope = try createRope(arena.allocator(), 10000, 50);
+                // Markers are automatically indexed in the tree structure
 
-            var rope = try createRope(arena.allocator(), 10000, 50);
-            // Markers are automatically indexed in the tree structure
-
-            var timer = try std.time.Timer.start();
-            var i: u32 = 0;
-            while (i < 100000) : (i += 1) {
-                _ = rope.markerCount(.marker);
+                var timer = try std.time.Timer.start();
+                for (0..100000) |_| {
+                    _ = rope.markerCount(.marker);
+                }
+                stats.record(timer.read());
             }
-            const elapsed = timer.read();
 
-            min_ns = @min(min_ns, elapsed);
-            max_ns = @max(max_ns, elapsed);
-            total_ns += elapsed;
+            try results.append(allocator, BenchResult{
+                .name = name,
+                .min_ns = stats.min_ns,
+                .avg_ns = stats.avg(),
+                .max_ns = stats.max_ns,
+                .total_ns = stats.total_ns,
+                .iterations = iterations,
+                .mem_stats = null,
+            });
         }
-
-        const name = try std.fmt.allocPrint(allocator, "markerCount: 100k calls (should be ~O(1))", .{});
-        try results.append(BenchResult{
-            .name = name,
-            .min_ns = min_ns,
-            .avg_ns = total_ns / iterations,
-            .max_ns = max_ns,
-            .total_ns = total_ns,
-            .iterations = iterations,
-            .mem_stats = null,
-        });
     }
 
-    return try results.toOwnedSlice();
+    return try results.toOwnedSlice(allocator);
 }
 
-fn benchDepthVsPerformance(allocator: std.mem.Allocator, iterations: usize) ![]BenchResult {
-    var results = std.ArrayList(BenchResult).init(allocator);
+fn benchDepthVsPerformance(
+    allocator: std.mem.Allocator,
+    iterations: usize,
+    bench_filter: ?[]const u8,
+) ![]BenchResult {
+    var results: std.ArrayListUnmanaged(BenchResult) = .{};
+    errdefer results.deinit(allocator);
 
     // Shallow tree (from_slice creates balanced tree)
     {
-        var min_ns: u64 = std.math.maxInt(u64);
-        var max_ns: u64 = 0;
-        var total_ns: u64 = 0;
+        const name = "Create BALANCED tree with markers: 10k tokens, ~200 markers";
+        if (bench_utils.matchesBenchFilter(name, bench_filter)) {
+            var stats = BenchStats{};
+            for (0..iterations) |_| {
+                var arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
+                defer arena.deinit();
 
-        var iter: usize = 0;
-        while (iter < iterations) : (iter += 1) {
-            var arena = std.heap.ArenaAllocator.init(allocator);
-            defer arena.deinit();
+                var timer = try std.time.Timer.start();
+                const rope = try createRope(arena.allocator(), 10000, 50);
+                _ = rope; // Markers are automatically indexed during rope creation
+                stats.record(timer.read());
+            }
 
-            var timer = try std.time.Timer.start();
-            const rope = try createRope(arena.allocator(), 10000, 50);
-            _ = rope; // Markers are automatically indexed during rope creation
-            const elapsed = timer.read();
-
-            min_ns = @min(min_ns, elapsed);
-            max_ns = @max(max_ns, elapsed);
-            total_ns += elapsed;
+            try results.append(allocator, BenchResult{
+                .name = name,
+                .min_ns = stats.min_ns,
+                .avg_ns = stats.avg(),
+                .max_ns = stats.max_ns,
+                .total_ns = stats.total_ns,
+                .iterations = iterations,
+                .mem_stats = null,
+            });
         }
-
-        const name = try std.fmt.allocPrint(allocator, "Create BALANCED tree with markers: 10k tokens, ~200 markers", .{});
-        try results.append(BenchResult{
-            .name = name,
-            .min_ns = min_ns,
-            .avg_ns = total_ns / iterations,
-            .max_ns = max_ns,
-            .total_ns = total_ns,
-            .iterations = iterations,
-            .mem_stats = null,
-        });
     }
 
     // Deep tree (built by sequential appends)
     {
-        var min_ns: u64 = std.math.maxInt(u64);
-        var max_ns: u64 = 0;
-        var total_ns: u64 = 0;
+        const name = "Rebuild on UNBALANCED tree: 10k tokens, ~200 markers";
+        if (bench_utils.matchesBenchFilter(name, bench_filter)) {
+            var stats = BenchStats{};
+            for (0..iterations) |_| {
+                var arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
+                defer arena.deinit();
 
-        var iter: usize = 0;
-        while (iter < iterations) : (iter += 1) {
-            var arena = std.heap.ArenaAllocator.init(allocator);
-            defer arena.deinit();
-
-            // Build unbalanced tree through sequential operations
-            var rope = try RopeType.init(arena.allocator());
-            var i: u32 = 0;
-            while (i < 10000) : (i += 1) {
-                try rope.append(.{ .text = 10 });
-                if ((i + 1) % 50 == 0) {
-                    try rope.append(.{ .marker = {} });
+                // Build unbalanced tree through sequential operations
+                var rope = try RopeType.init(arena.allocator());
+                for (0..10000) |i| {
+                    try rope.append(.{ .text = 10 });
+                    if ((i + 1) % 50 == 0) {
+                        try rope.append(.{ .marker = {} });
+                    }
                 }
+
+                var timer = try std.time.Timer.start();
+                // Markers are automatically indexed in the tree structure
+                stats.record(timer.read());
             }
 
-            var timer = try std.time.Timer.start();
-            // Markers are automatically indexed in the tree structure
-            const elapsed = timer.read();
-
-            min_ns = @min(min_ns, elapsed);
-            max_ns = @max(max_ns, elapsed);
-            total_ns += elapsed;
+            try results.append(allocator, BenchResult{
+                .name = name,
+                .min_ns = stats.min_ns,
+                .avg_ns = stats.avg(),
+                .max_ns = stats.max_ns,
+                .total_ns = stats.total_ns,
+                .iterations = iterations,
+                .mem_stats = null,
+            });
         }
-
-        const name = try std.fmt.allocPrint(allocator, "Rebuild on UNBALANCED tree: 10k tokens, ~200 markers", .{});
-        try results.append(BenchResult{
-            .name = name,
-            .min_ns = min_ns,
-            .avg_ns = total_ns / iterations,
-            .max_ns = max_ns,
-            .total_ns = total_ns,
-            .iterations = iterations,
-            .mem_stats = null,
-        });
     }
 
-    return try results.toOwnedSlice();
+    return try results.toOwnedSlice(allocator);
 }
 
-fn benchEditThenRebuild(allocator: std.mem.Allocator, iterations: usize) ![]BenchResult {
-    var results = std.ArrayList(BenchResult).init(allocator);
+fn benchEditThenRebuild(
+    allocator: std.mem.Allocator,
+    iterations: usize,
+    bench_filter: ?[]const u8,
+) ![]BenchResult {
+    var results: std.ArrayListUnmanaged(BenchResult) = .{};
+    errdefer results.deinit(allocator);
 
     // Typical edit workflow: build, edit, rebuild
     {
-        var min_ns: u64 = std.math.maxInt(u64);
-        var max_ns: u64 = 0;
-        var total_ns: u64 = 0;
+        const name = "Edit workflow: 3 inserts + rebuild (~200 markers)";
+        if (bench_utils.matchesBenchFilter(name, bench_filter)) {
+            var stats = BenchStats{};
+            for (0..iterations) |_| {
+                var arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
+                defer arena.deinit();
 
-        var iter: usize = 0;
-        while (iter < iterations) : (iter += 1) {
-            var arena = std.heap.ArenaAllocator.init(allocator);
-            defer arena.deinit();
+                var rope = try createRope(arena.allocator(), 10000, 50);
+                // Markers are automatically indexed in the tree structure
 
-            var rope = try createRope(arena.allocator(), 10000, 50);
-            // Markers are automatically indexed in the tree structure
+                var timer = try std.time.Timer.start();
+                // Simulate typing at line 50
+                const line50_marker = rope.getMarker(.marker, 50).?;
+                const insert_pos = line50_marker.leaf_index + 1;
 
-            var timer = try std.time.Timer.start();
-            // Simulate typing at line 50
-            const line50_marker = rope.getMarker(.marker, 50).?;
-            const insert_pos = line50_marker.leaf_index + 1;
+                // Insert some text
+                try rope.insert(insert_pos, .{ .text = 10 });
+                try rope.insert(insert_pos + 1, .{ .text = 10 });
+                try rope.insert(insert_pos + 2, .{ .text = 10 });
 
-            // Insert some text
-            try rope.insert(insert_pos, .{ .text = 10 });
-            try rope.insert(insert_pos + 1, .{ .text = 10 });
-            try rope.insert(insert_pos + 2, .{ .text = 10 });
+                // Rebuild index after edit
+                // Markers are automatically indexed in the tree structure
+                stats.record(timer.read());
+            }
 
-            // Rebuild index after edit
-            // Markers are automatically indexed in the tree structure
-            const elapsed = timer.read();
-
-            min_ns = @min(min_ns, elapsed);
-            max_ns = @max(max_ns, elapsed);
-            total_ns += elapsed;
+            try results.append(allocator, BenchResult{
+                .name = name,
+                .min_ns = stats.min_ns,
+                .avg_ns = stats.avg(),
+                .max_ns = stats.max_ns,
+                .total_ns = stats.total_ns,
+                .iterations = iterations,
+                .mem_stats = null,
+            });
         }
-
-        const name = try std.fmt.allocPrint(allocator, "Edit workflow: 3 inserts + rebuild (~200 markers)", .{});
-        try results.append(BenchResult{
-            .name = name,
-            .min_ns = min_ns,
-            .avg_ns = total_ns / iterations,
-            .max_ns = max_ns,
-            .total_ns = total_ns,
-            .iterations = iterations,
-            .mem_stats = null,
-        });
     }
 
     // Insert new line (adds marker)
     {
-        var min_ns: u64 = std.math.maxInt(u64);
-        var max_ns: u64 = 0;
-        var total_ns: u64 = 0;
+        const name = "Insert newline: insert marker + rebuild (~200 markers)";
+        if (bench_utils.matchesBenchFilter(name, bench_filter)) {
+            var stats = BenchStats{};
+            for (0..iterations) |_| {
+                var arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
+                defer arena.deinit();
 
-        var iter: usize = 0;
-        while (iter < iterations) : (iter += 1) {
-            var arena = std.heap.ArenaAllocator.init(allocator);
-            defer arena.deinit();
+                var rope = try createRope(arena.allocator(), 10000, 50);
+                // Markers are automatically indexed in the tree structure
 
-            var rope = try createRope(arena.allocator(), 10000, 50);
-            // Markers are automatically indexed in the tree structure
+                var timer = try std.time.Timer.start();
+                // Insert new line (marker) at position 100
+                try rope.insert(100, .{ .marker = {} });
+                // Markers are automatically indexed in the tree structure
+                stats.record(timer.read());
+            }
 
-            var timer = try std.time.Timer.start();
-            // Insert new line (marker) at position 100
-            try rope.insert(100, .{ .marker = {} });
-            // Markers are automatically indexed in the tree structure
-            const elapsed = timer.read();
-
-            min_ns = @min(min_ns, elapsed);
-            max_ns = @max(max_ns, elapsed);
-            total_ns += elapsed;
+            try results.append(allocator, BenchResult{
+                .name = name,
+                .min_ns = stats.min_ns,
+                .avg_ns = stats.avg(),
+                .max_ns = stats.max_ns,
+                .total_ns = stats.total_ns,
+                .iterations = iterations,
+                .mem_stats = null,
+            });
         }
-
-        const name = try std.fmt.allocPrint(allocator, "Insert newline: insert marker + rebuild (~200 markers)", .{});
-        try results.append(BenchResult{
-            .name = name,
-            .min_ns = min_ns,
-            .avg_ns = total_ns / iterations,
-            .max_ns = max_ns,
-            .total_ns = total_ns,
-            .iterations = iterations,
-            .mem_stats = null,
-        });
     }
 
     // Delete line (removes marker)
     {
-        var min_ns: u64 = std.math.maxInt(u64);
-        var max_ns: u64 = 0;
-        var total_ns: u64 = 0;
+        const name = "Delete line: remove marker + rebuild (~200 markers)";
+        if (bench_utils.matchesBenchFilter(name, bench_filter)) {
+            var stats = BenchStats{};
+            for (0..iterations) |_| {
+                var arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
+                defer arena.deinit();
 
-        var iter: usize = 0;
-        while (iter < iterations) : (iter += 1) {
-            var arena = std.heap.ArenaAllocator.init(allocator);
-            defer arena.deinit();
+                var rope = try createRope(arena.allocator(), 10000, 50);
+                // Markers are automatically indexed in the tree structure
 
-            var rope = try createRope(arena.allocator(), 10000, 50);
-            // Markers are automatically indexed in the tree structure
+                var timer = try std.time.Timer.start();
+                // Delete marker at position
+                const marker_pos = rope.getMarker(.marker, 50).?.leaf_index;
+                try rope.delete(marker_pos);
+                // Markers are automatically indexed in the tree structure
+                stats.record(timer.read());
+            }
 
-            var timer = try std.time.Timer.start();
-            // Delete marker at position
-            const marker_pos = rope.getMarker(.marker, 50).?.leaf_index;
-            try rope.delete(marker_pos);
-            // Markers are automatically indexed in the tree structure
-            const elapsed = timer.read();
-
-            min_ns = @min(min_ns, elapsed);
-            max_ns = @max(max_ns, elapsed);
-            total_ns += elapsed;
+            try results.append(allocator, BenchResult{
+                .name = name,
+                .min_ns = stats.min_ns,
+                .avg_ns = stats.avg(),
+                .max_ns = stats.max_ns,
+                .total_ns = stats.total_ns,
+                .iterations = iterations,
+                .mem_stats = null,
+            });
         }
-
-        const name = try std.fmt.allocPrint(allocator, "Delete line: remove marker + rebuild (~200 markers)", .{});
-        try results.append(BenchResult{
-            .name = name,
-            .min_ns = min_ns,
-            .avg_ns = total_ns / iterations,
-            .max_ns = max_ns,
-            .total_ns = total_ns,
-            .iterations = iterations,
-            .mem_stats = null,
-        });
     }
 
-    return try results.toOwnedSlice();
+    return try results.toOwnedSlice(allocator);
 }
 
-fn benchMemoryUsage(allocator: std.mem.Allocator, iterations: usize) ![]BenchResult {
-    var results = std.ArrayList(BenchResult).init(allocator);
+fn benchMemoryUsage(
+    allocator: std.mem.Allocator,
+    iterations: usize,
+    bench_filter: ?[]const u8,
+) ![]BenchResult {
+    var results: std.ArrayListUnmanaged(BenchResult) = .{};
+    errdefer results.deinit(allocator);
 
     // Memory comparison: with vs without marker index
     {
-        var min_ns: u64 = std.math.maxInt(u64);
-        var max_ns: u64 = 0;
-        var total_ns: u64 = 0;
+        const name = "Memory: 50k tokens WITHOUT marker index";
+        if (bench_utils.matchesBenchFilter(name, bench_filter)) {
+            var stats = BenchStats{};
+            for (0..iterations) |_| {
+                var arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
+                defer arena.deinit();
 
-        var iter: usize = 0;
-        while (iter < iterations) : (iter += 1) {
-            var arena = std.heap.ArenaAllocator.init(allocator);
-            defer arena.deinit();
+                const rope = try createRope(arena.allocator(), 50000, 50);
+                // Don't rebuild index - just measure rope creation
+                _ = rope;
 
-            const rope = try createRope(arena.allocator(), 50000, 50);
-            // Don't rebuild index - just measure rope creation
-            _ = rope;
+                const elapsed: u64 = 0; // Placeholder for memory measurement
+                stats.record(elapsed);
+            }
 
-            const elapsed: u64 = 0; // Placeholder for memory measurement
-
-            min_ns = @min(min_ns, elapsed);
-            max_ns = @max(max_ns, elapsed);
-            total_ns += elapsed;
+            try results.append(allocator, BenchResult{
+                .name = name,
+                .min_ns = stats.min_ns,
+                .avg_ns = stats.avg(),
+                .max_ns = stats.max_ns,
+                .total_ns = stats.total_ns,
+                .iterations = iterations,
+                .mem_stats = null,
+            });
         }
-
-        const name = try std.fmt.allocPrint(allocator, "Memory: 50k tokens WITHOUT marker index", .{});
-        try results.append(BenchResult{
-            .name = name,
-            .min_ns = min_ns,
-            .avg_ns = total_ns / iterations,
-            .max_ns = max_ns,
-            .total_ns = total_ns,
-            .iterations = iterations,
-            .mem_stats = null,
-        });
     }
 
     {
-        var min_ns: u64 = std.math.maxInt(u64);
-        var max_ns: u64 = 0;
-        var total_ns: u64 = 0;
+        const name = "Memory: 50k tokens WITH marker index (~1k markers)";
+        if (bench_utils.matchesBenchFilter(name, bench_filter)) {
+            var stats = BenchStats{};
+            for (0..iterations) |_| {
+                var arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
+                defer arena.deinit();
 
-        var iter: usize = 0;
-        while (iter < iterations) : (iter += 1) {
-            var arena = std.heap.ArenaAllocator.init(allocator);
-            defer arena.deinit();
+                const rope = try createRope(arena.allocator(), 50000, 50);
+                _ = rope; // Markers are automatically indexed in the tree structure
 
-            const rope = try createRope(arena.allocator(), 50000, 50);
-            _ = rope; // Markers are automatically indexed in the tree structure
+                const elapsed: u64 = 0; // Placeholder for memory measurement
+                stats.record(elapsed);
+            }
 
-            const elapsed: u64 = 0; // Placeholder for memory measurement
-
-            min_ns = @min(min_ns, elapsed);
-            max_ns = @max(max_ns, elapsed);
-            total_ns += elapsed;
+            try results.append(allocator, BenchResult{
+                .name = name,
+                .min_ns = stats.min_ns,
+                .avg_ns = stats.avg(),
+                .max_ns = stats.max_ns,
+                .total_ns = stats.total_ns,
+                .iterations = iterations,
+                .mem_stats = null,
+            });
         }
-
-        const name = try std.fmt.allocPrint(allocator, "Memory: 50k tokens WITH marker index (~1k markers)", .{});
-        try results.append(BenchResult{
-            .name = name,
-            .min_ns = min_ns,
-            .avg_ns = total_ns / iterations,
-            .max_ns = max_ns,
-            .total_ns = total_ns,
-            .iterations = iterations,
-            .mem_stats = null,
-        });
     }
 
-    return try results.toOwnedSlice();
+    return try results.toOwnedSlice(allocator);
 }
 
 pub fn run(
     allocator: std.mem.Allocator,
     show_mem: bool,
+    bench_filter: ?[]const u8,
 ) ![]BenchResult {
     _ = show_mem;
 
-    var all_results = std.ArrayList(BenchResult).init(allocator);
+    var all_results: std.ArrayListUnmanaged(BenchResult) = .{};
+    errdefer all_results.deinit(allocator);
 
     const iterations: usize = 10;
 
     // Rebuild index benchmarks
-    const rebuild_results = try benchRebuildMarkerIndex(allocator, iterations);
-    defer allocator.free(rebuild_results);
-    try all_results.appendSlice(rebuild_results);
+    const rebuild_results = try benchRebuildMarkerIndex(allocator, iterations, bench_filter);
+    try all_results.appendSlice(allocator, rebuild_results);
 
     // Marker lookup benchmarks
-    const lookup_results = try benchMarkerLookup(allocator, iterations);
-    defer allocator.free(lookup_results);
-    try all_results.appendSlice(lookup_results);
+    const lookup_results = try benchMarkerLookup(allocator, iterations, bench_filter);
+    try all_results.appendSlice(allocator, lookup_results);
 
     // Marker count benchmarks
-    const count_results = try benchMarkerCount(allocator, iterations);
-    defer allocator.free(count_results);
-    try all_results.appendSlice(count_results);
+    const count_results = try benchMarkerCount(allocator, iterations, bench_filter);
+    try all_results.appendSlice(allocator, count_results);
 
     // Tree depth impact
-    const depth_results = try benchDepthVsPerformance(allocator, iterations);
-    defer allocator.free(depth_results);
-    try all_results.appendSlice(depth_results);
+    const depth_results = try benchDepthVsPerformance(allocator, iterations, bench_filter);
+    try all_results.appendSlice(allocator, depth_results);
 
     // Edit workflows
-    const edit_results = try benchEditThenRebuild(allocator, iterations);
-    defer allocator.free(edit_results);
-    try all_results.appendSlice(edit_results);
+    const edit_results = try benchEditThenRebuild(allocator, iterations, bench_filter);
+    try all_results.appendSlice(allocator, edit_results);
 
     // Memory usage comparison
-    const memory_results = try benchMemoryUsage(allocator, iterations);
-    defer allocator.free(memory_results);
-    try all_results.appendSlice(memory_results);
+    const memory_results = try benchMemoryUsage(allocator, iterations, bench_filter);
+    try all_results.appendSlice(allocator, memory_results);
 
-    return try all_results.toOwnedSlice();
+    return try all_results.toOwnedSlice(allocator);
 }

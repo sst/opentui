@@ -2,13 +2,13 @@
 
 <div align="center">
     <a href="https://www.npmjs.com/package/@opentui/core"><img alt="npm" src="https://img.shields.io/npm/v/@opentui/core?style=flat-square" /></a>
-    <a href="https://github.com/sst/opentui/actions/workflows/build-core.yml"><img alt="Build status" src="https://img.shields.io/github/actions/workflow/status/sst/opentui/build-core.yml?style=flat-square&branch=main" /></a>
+    <a href="https://github.com/anomalyco/opentui/actions/workflows/build-core.yml"><img alt="Build status" src="https://img.shields.io/github/actions/workflow/status/anomalyco/opentui/build-core.yml?style=flat-square&branch=main" /></a>
     <a href="https://github.com/msmps/awesome-opentui"><img alt="awesome opentui list" src="https://awesome.re/badge-flat.svg" /></a>
 </div>
 
-OpenTUI is a TypeScript library for building terminal user interfaces (TUIs). It is currently in
-development and is not ready for production use. It will be the foundational TUI framework for both
-[opencode](https://opencode.ai) and [terminaldotshop](https://terminal.shop).
+OpenTUI is a native terminal UI core written in Zig with TypeScript bindings. The native core exposes a C ABI and can be used from any language. OpenTUI powers [OpenCode](https://opencode.ai) in production today and will also power [terminal.shop](https://terminal.shop). It is an extensible core with a focus on correctness, stability, and high performance. It provides a component-based architecture with flexible layout capabilities, allowing you to create complex terminal applications.
+
+Docs: https://opentui.com/docs/getting-started
 
 Quick start with [bun](https://bun.sh) and [create-tui](https://github.com/msmps/create-tui):
 
@@ -18,11 +18,9 @@ bun create tui
 
 This monorepo contains the following packages:
 
-- [`@opentui/core`](packages/core) - The core library works completely standalone, providing an imperative API and all the primitives.
+- [`@opentui/core`](packages/core) - TypeScript bindings for OpenTUI's native Zig core, with an imperative API and all primitives.
 - [`@opentui/solid`](packages/solid) - The SolidJS reconciler for OpenTUI.
 - [`@opentui/react`](packages/react) - The React reconciler for OpenTUI.
-- [`@opentui/vue`](packages/vue) - The Vue reconciler (unmaintained)
-- [`@opentui/go`](packages/go) - Go bindings (unmaintained)
 
 ## Install
 
@@ -34,6 +32,22 @@ NOTE: You must have [Zig](https://ziglang.org/learn/getting-started/) installed 
 bun install @opentui/core
 ```
 
+## AI Agent Skill
+
+Teach your AI coding assistant OpenTUI's APIs and patterns.
+
+**For [OpenCode](https://opencode.ai) (includes `/opentui` command):**
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/msmps/opentui-skill/main/install.sh | bash
+```
+
+**For other AI coding assistants:**
+
+```bash
+npx skills add msmps/opentui-skill
+```
+
 ## Try Examples
 
 You can quickly try out OpenTUI examples without cloning the repository:
@@ -41,12 +55,12 @@ You can quickly try out OpenTUI examples without cloning the repository:
 **For macOS, Linux, WSL, Git Bash:**
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/sst/opentui/main/packages/core/src/examples/install.sh | sh
+curl -fsSL https://raw.githubusercontent.com/anomalyco/opentui/main/packages/core/src/examples/install.sh | sh
 ```
 
 **For Windows (PowerShell/CMD):**
 
-Download the latest release directly from [GitHub Releases](https://github.com/sst/opentui/releases/latest)
+Download the latest release directly from [GitHub Releases](https://github.com/anomalyco/opentui/releases/latest)
 
 ## Running Examples (from the repo root)
 
@@ -64,6 +78,7 @@ See the [Development Guide](packages/core/docs/development.md) for building, tes
 
 ### Documentation
 
+- [Website docs](https://opentui.com/docs/getting-started) - Guides and API references
 - [Development Guide](packages/core/docs/development.md) - Building, testing, and local dev linking
 - [Getting Started](packages/core/docs/getting-started.md) - API and usage guide
 - [Environment Variables](packages/core/docs/env-vars.md) - Configuration options

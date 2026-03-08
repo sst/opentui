@@ -34,6 +34,11 @@ function isCompleteSequence(data: string): "complete" | "incomplete" | "not-esca
 
   const afterEsc = data.slice(1)
 
+  // Double-escape sequences: ESC ESC [ ... / ESC ESC O ...
+  if (afterEsc.startsWith(ESC)) {
+    return isCompleteSequence(afterEsc)
+  }
+
   // CSI sequences: ESC [
   if (afterEsc.startsWith("[")) {
     // Check for old-style mouse sequence: ESC[M + 3 bytes
@@ -175,6 +180,13 @@ function isCompleteApcSequence(data: string): "complete" | "incomplete" {
   return "incomplete"
 }
 
+/* Check if a character can start a nested escape sequence after a double ESC
+ * For example, ESC ESC [ ... for Option+Arrow keys in iTerm2.
+ */
+function isNestedEscapeSequenceStart(char: string | undefined): boolean {
+  return char === "[" || char === "]" || char === "O" || char === "N" || char === "P" || char === "_"
+}
+
 /**
  * Split accumulated buffer into complete sequences
  */
@@ -198,6 +210,17 @@ function extractCompleteSequences(buffer: string): { sequences: string[]; remain
           pos += seqEnd
           break
         } else if (status === "incomplete") {
+          // Keep ESC ESC as its own sequence unless it is followed by a nested
+          // escape introducer (e.g. ESC ESC [D for Option+Left).
+          if (candidate === ESC + ESC) {
+            const nextChar = remaining[seqEnd]
+            if (seqEnd < remaining.length && !isNestedEscapeSequenceStart(nextChar)) {
+              sequences.push(candidate)
+              pos += seqEnd
+              break
+            }
+          }
+
           seqEnd++
         } else {
           // Should not happen when starting with ESC
@@ -211,9 +234,25 @@ function extractCompleteSequences(buffer: string): { sequences: string[]; remain
         return { sequences, remainder: remaining }
       }
     } else {
-      // Not an escape sequence - take a single character
-      sequences.push(remaining[0])
-      pos++
+      // Not an escape sequence - take a single character, keeping surrogate pairs together
+      const code = remaining.charCodeAt(0)
+      if (code >= 0xd800 && code <= 0xdbff) {
+        if (remaining.length === 1) {
+          return { sequences, remainder: remaining }
+        }
+
+        const next = remaining.charCodeAt(1)
+        if (next >= 0xdc00 && next <= 0xdfff) {
+          sequences.push(remaining.slice(0, 2))
+          pos += 2
+        } else {
+          sequences.push(remaining[0])
+          pos++
+        }
+      } else {
+        sequences.push(remaining[0])
+        pos++
+      }
     }
   }
 

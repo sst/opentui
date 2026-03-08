@@ -3,7 +3,7 @@ const bench_utils = @import("../bench-utils.zig");
 const rope_mod = @import("../rope.zig");
 
 const BenchResult = bench_utils.BenchResult;
-const MemStats = bench_utils.MemStats;
+const BenchStats = bench_utils.BenchStats;
 
 pub const benchName = "Rope Data Structure";
 
@@ -22,135 +22,117 @@ const TestItem = struct {
 
 const RopeType = rope_mod.Rope(TestItem);
 
-const BenchData = struct {
-    min_ns: u64,
-    avg_ns: u64,
-    max_ns: u64,
-    total_ns: u64,
-};
-
-fn benchInsertOperations(allocator: std.mem.Allocator, iterations: usize) ![]BenchResult {
-    var results = std.ArrayList(BenchResult).init(allocator);
+fn benchInsertOperations(
+    allocator: std.mem.Allocator,
+    iterations: usize,
+    bench_filter: ?[]const u8,
+) ![]BenchResult {
+    var results: std.ArrayListUnmanaged(BenchResult) = .{};
+    errdefer results.deinit(allocator);
 
     // Sequential appends
     {
-        var min_ns: u64 = std.math.maxInt(u64);
-        var max_ns: u64 = 0;
-        var total_ns: u64 = 0;
+        const name = "Rope sequential append 10k items";
+        if (bench_utils.matchesBenchFilter(name, bench_filter)) {
+            var stats = BenchStats{};
+            for (0..iterations) |_| {
+                var arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
+                defer arena.deinit();
 
-        var iter: usize = 0;
-        while (iter < iterations) : (iter += 1) {
-            var arena = std.heap.ArenaAllocator.init(allocator);
-            defer arena.deinit();
-
-            var rope = try RopeType.init(arena.allocator());
-            var timer = try std.time.Timer.start();
-            var i: u32 = 0;
-            while (i < 10000) : (i += 1) {
-                try rope.append(.{ .value = i });
+                var rope = try RopeType.init(arena.allocator());
+                var timer = try std.time.Timer.start();
+                for (0..10000) |i| {
+                    try rope.append(.{ .value = @intCast(i) });
+                }
+                stats.record(timer.read());
             }
-            const elapsed = timer.read();
 
-            min_ns = @min(min_ns, elapsed);
-            max_ns = @max(max_ns, elapsed);
-            total_ns += elapsed;
+            try results.append(allocator, BenchResult{
+                .name = name,
+                .min_ns = stats.min_ns,
+                .avg_ns = stats.avg(),
+                .max_ns = stats.max_ns,
+                .total_ns = stats.total_ns,
+                .iterations = iterations,
+                .mem_stats = null,
+            });
         }
-
-        const name = try std.fmt.allocPrint(allocator, "Rope sequential append 10k items", .{});
-        try results.append(BenchResult{
-            .name = name,
-            .min_ns = min_ns,
-            .avg_ns = total_ns / iterations,
-            .max_ns = max_ns,
-            .total_ns = total_ns,
-            .iterations = iterations,
-            .mem_stats = null,
-        });
     }
 
     // Sequential prepends
     {
-        var min_ns: u64 = std.math.maxInt(u64);
-        var max_ns: u64 = 0;
-        var total_ns: u64 = 0;
+        const name = "Rope sequential prepend 10k items";
+        if (bench_utils.matchesBenchFilter(name, bench_filter)) {
+            var stats = BenchStats{};
+            for (0..iterations) |_| {
+                var arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
+                defer arena.deinit();
 
-        var iter: usize = 0;
-        while (iter < iterations) : (iter += 1) {
-            var arena = std.heap.ArenaAllocator.init(allocator);
-            defer arena.deinit();
-
-            var rope = try RopeType.init(arena.allocator());
-            var timer = try std.time.Timer.start();
-            var i: u32 = 0;
-            while (i < 10000) : (i += 1) {
-                try rope.prepend(.{ .value = i });
+                var rope = try RopeType.init(arena.allocator());
+                var timer = try std.time.Timer.start();
+                for (0..10000) |i| {
+                    try rope.prepend(.{ .value = @intCast(i) });
+                }
+                stats.record(timer.read());
             }
-            const elapsed = timer.read();
 
-            min_ns = @min(min_ns, elapsed);
-            max_ns = @max(max_ns, elapsed);
-            total_ns += elapsed;
+            try results.append(allocator, BenchResult{
+                .name = name,
+                .min_ns = stats.min_ns,
+                .avg_ns = stats.avg(),
+                .max_ns = stats.max_ns,
+                .total_ns = stats.total_ns,
+                .iterations = iterations,
+                .mem_stats = null,
+            });
         }
-
-        const name = try std.fmt.allocPrint(allocator, "Rope sequential prepend 10k items", .{});
-        try results.append(BenchResult{
-            .name = name,
-            .min_ns = min_ns,
-            .avg_ns = total_ns / iterations,
-            .max_ns = max_ns,
-            .total_ns = total_ns,
-            .iterations = iterations,
-            .mem_stats = null,
-        });
     }
 
     // Random inserts
     {
-        var min_ns: u64 = std.math.maxInt(u64);
-        var max_ns: u64 = 0;
-        var total_ns: u64 = 0;
+        const name = "Rope random insert 5k items";
+        if (bench_utils.matchesBenchFilter(name, bench_filter)) {
+            var stats = BenchStats{};
+            for (0..iterations) |_| {
+                var arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
+                defer arena.deinit();
 
-        var iter: usize = 0;
-        while (iter < iterations) : (iter += 1) {
-            var arena = std.heap.ArenaAllocator.init(allocator);
-            defer arena.deinit();
-
-            var rope = try RopeType.init(arena.allocator());
-            var prng = std.Random.DefaultPrng.init(42);
-            const random = prng.random();
-            var timer = try std.time.Timer.start();
-            var i: u32 = 0;
-            while (i < 5000) : (i += 1) {
-                const pos = if (rope.count() > 0)
-                    random.intRangeAtMost(u32, 0, rope.count())
-                else
-                    0;
-                try rope.insert(pos, .{ .value = i });
+                var rope = try RopeType.init(arena.allocator());
+                var prng = std.Random.DefaultPrng.init(42);
+                const random = prng.random();
+                var timer = try std.time.Timer.start();
+                for (0..5000) |i| {
+                    const pos = if (rope.count() > 0)
+                        random.intRangeAtMost(u32, 0, rope.count())
+                    else
+                        0;
+                    try rope.insert(pos, .{ .value = @intCast(i) });
+                }
+                stats.record(timer.read());
             }
-            const elapsed = timer.read();
 
-            min_ns = @min(min_ns, elapsed);
-            max_ns = @max(max_ns, elapsed);
-            total_ns += elapsed;
+            try results.append(allocator, BenchResult{
+                .name = name,
+                .min_ns = stats.min_ns,
+                .avg_ns = stats.avg(),
+                .max_ns = stats.max_ns,
+                .total_ns = stats.total_ns,
+                .iterations = iterations,
+                .mem_stats = null,
+            });
         }
-
-        const name = try std.fmt.allocPrint(allocator, "Rope random insert 5k items", .{});
-        try results.append(BenchResult{
-            .name = name,
-            .min_ns = min_ns,
-            .avg_ns = total_ns / iterations,
-            .max_ns = max_ns,
-            .total_ns = total_ns,
-            .iterations = iterations,
-            .mem_stats = null,
-        });
     }
 
-    return try results.toOwnedSlice();
+    return results.toOwnedSlice(allocator);
 }
 
-fn benchDeleteOperations(allocator: std.mem.Allocator, iterations: usize) ![]BenchResult {
-    var results = std.ArrayList(BenchResult).init(allocator);
+fn benchDeleteOperations(
+    allocator: std.mem.Allocator,
+    iterations: usize,
+    bench_filter: ?[]const u8,
+) ![]BenchResult {
+    var results: std.ArrayListUnmanaged(BenchResult) = .{};
+    errdefer results.deinit(allocator);
 
     var items: [10000]TestItem = undefined;
     for (&items, 0..) |*item, i| {
@@ -159,120 +141,104 @@ fn benchDeleteOperations(allocator: std.mem.Allocator, iterations: usize) ![]Ben
 
     // Sequential deletes from end
     {
-        var min_ns: u64 = std.math.maxInt(u64);
-        var max_ns: u64 = 0;
-        var total_ns: u64 = 0;
+        const name = "Rope sequential delete 5k from end";
+        if (bench_utils.matchesBenchFilter(name, bench_filter)) {
+            var stats = BenchStats{};
+            for (0..iterations) |_| {
+                var arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
+                defer arena.deinit();
 
-        var iter: usize = 0;
-        while (iter < iterations) : (iter += 1) {
-            var arena = std.heap.ArenaAllocator.init(allocator);
-            defer arena.deinit();
-
-            var rope = try RopeType.from_slice(arena.allocator(), &items);
-            var timer = try std.time.Timer.start();
-            var i: u32 = 0;
-            while (i < 5000) : (i += 1) {
-                try rope.delete(rope.count() - 1);
+                var rope = try RopeType.from_slice(arena.allocator(), &items);
+                var timer = try std.time.Timer.start();
+                for (0..5000) |_| {
+                    try rope.delete(rope.count() - 1);
+                }
+                stats.record(timer.read());
             }
-            const elapsed = timer.read();
 
-            min_ns = @min(min_ns, elapsed);
-            max_ns = @max(max_ns, elapsed);
-            total_ns += elapsed;
+            try results.append(allocator, BenchResult{
+                .name = name,
+                .min_ns = stats.min_ns,
+                .avg_ns = stats.avg(),
+                .max_ns = stats.max_ns,
+                .total_ns = stats.total_ns,
+                .iterations = iterations,
+                .mem_stats = null,
+            });
         }
-
-        const name = try std.fmt.allocPrint(allocator, "Rope sequential delete 5k from end", .{});
-        try results.append(BenchResult{
-            .name = name,
-            .min_ns = min_ns,
-            .avg_ns = total_ns / iterations,
-            .max_ns = max_ns,
-            .total_ns = total_ns,
-            .iterations = iterations,
-            .mem_stats = null,
-        });
     }
 
     // Sequential deletes from beginning
     {
-        var min_ns: u64 = std.math.maxInt(u64);
-        var max_ns: u64 = 0;
-        var total_ns: u64 = 0;
+        const name = "Rope sequential delete 5k from beginning";
+        if (bench_utils.matchesBenchFilter(name, bench_filter)) {
+            var stats = BenchStats{};
+            for (0..iterations) |_| {
+                var arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
+                defer arena.deinit();
 
-        var iter: usize = 0;
-        while (iter < iterations) : (iter += 1) {
-            var arena = std.heap.ArenaAllocator.init(allocator);
-            defer arena.deinit();
-
-            var rope = try RopeType.from_slice(arena.allocator(), &items);
-            var timer = try std.time.Timer.start();
-            var i: u32 = 0;
-            while (i < 5000) : (i += 1) {
-                try rope.delete(0);
+                var rope = try RopeType.from_slice(arena.allocator(), &items);
+                var timer = try std.time.Timer.start();
+                for (0..5000) |_| {
+                    try rope.delete(0);
+                }
+                stats.record(timer.read());
             }
-            const elapsed = timer.read();
 
-            min_ns = @min(min_ns, elapsed);
-            max_ns = @max(max_ns, elapsed);
-            total_ns += elapsed;
+            try results.append(allocator, BenchResult{
+                .name = name,
+                .min_ns = stats.min_ns,
+                .avg_ns = stats.avg(),
+                .max_ns = stats.max_ns,
+                .total_ns = stats.total_ns,
+                .iterations = iterations,
+                .mem_stats = null,
+            });
         }
-
-        const name = try std.fmt.allocPrint(allocator, "Rope sequential delete 5k from beginning", .{});
-        try results.append(BenchResult{
-            .name = name,
-            .min_ns = min_ns,
-            .avg_ns = total_ns / iterations,
-            .max_ns = max_ns,
-            .total_ns = total_ns,
-            .iterations = iterations,
-            .mem_stats = null,
-        });
     }
 
     // Random deletes
     {
-        var min_ns: u64 = std.math.maxInt(u64);
-        var max_ns: u64 = 0;
-        var total_ns: u64 = 0;
+        const name = "Rope random delete 5k items";
+        if (bench_utils.matchesBenchFilter(name, bench_filter)) {
+            var stats = BenchStats{};
+            for (0..iterations) |_| {
+                var arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
+                defer arena.deinit();
 
-        var iter: usize = 0;
-        while (iter < iterations) : (iter += 1) {
-            var arena = std.heap.ArenaAllocator.init(allocator);
-            defer arena.deinit();
-
-            var rope = try RopeType.from_slice(arena.allocator(), &items);
-            var prng = std.Random.DefaultPrng.init(42);
-            const random = prng.random();
-            var timer = try std.time.Timer.start();
-            var i: u32 = 0;
-            while (i < 5000) : (i += 1) {
-                const pos = random.intRangeAtMost(u32, 0, rope.count() - 1);
-                try rope.delete(pos);
+                var rope = try RopeType.from_slice(arena.allocator(), &items);
+                var prng = std.Random.DefaultPrng.init(42);
+                const random = prng.random();
+                var timer = try std.time.Timer.start();
+                for (0..5000) |_| {
+                    const pos = random.intRangeAtMost(u32, 0, rope.count() - 1);
+                    try rope.delete(pos);
+                }
+                stats.record(timer.read());
             }
-            const elapsed = timer.read();
 
-            min_ns = @min(min_ns, elapsed);
-            max_ns = @max(max_ns, elapsed);
-            total_ns += elapsed;
+            try results.append(allocator, BenchResult{
+                .name = name,
+                .min_ns = stats.min_ns,
+                .avg_ns = stats.avg(),
+                .max_ns = stats.max_ns,
+                .total_ns = stats.total_ns,
+                .iterations = iterations,
+                .mem_stats = null,
+            });
         }
-
-        const name = try std.fmt.allocPrint(allocator, "Rope random delete 5k items", .{});
-        try results.append(BenchResult{
-            .name = name,
-            .min_ns = min_ns,
-            .avg_ns = total_ns / iterations,
-            .max_ns = max_ns,
-            .total_ns = total_ns,
-            .iterations = iterations,
-            .mem_stats = null,
-        });
     }
 
-    return try results.toOwnedSlice();
+    return results.toOwnedSlice(allocator);
 }
 
-fn benchBulkOperations(allocator: std.mem.Allocator, iterations: usize) ![]BenchResult {
-    var results = std.ArrayList(BenchResult).init(allocator);
+fn benchBulkOperations(
+    allocator: std.mem.Allocator,
+    iterations: usize,
+    bench_filter: ?[]const u8,
+) ![]BenchResult {
+    var results: std.ArrayListUnmanaged(BenchResult) = .{};
+    errdefer results.deinit(allocator);
 
     var items: [10000]TestItem = undefined;
     for (&items, 0..) |*item, i| {
@@ -281,159 +247,137 @@ fn benchBulkOperations(allocator: std.mem.Allocator, iterations: usize) ![]Bench
 
     // insert_slice
     {
-        var min_ns: u64 = std.math.maxInt(u64);
-        var max_ns: u64 = 0;
-        var total_ns: u64 = 0;
+        const name = "Rope insert_slice 10x1k items";
+        if (bench_utils.matchesBenchFilter(name, bench_filter)) {
+            var stats = BenchStats{};
+            for (0..iterations) |_| {
+                var arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
+                defer arena.deinit();
 
-        var iter: usize = 0;
-        while (iter < iterations) : (iter += 1) {
-            var arena = std.heap.ArenaAllocator.init(allocator);
-            defer arena.deinit();
-
-            var rope = try RopeType.init(arena.allocator());
-            var chunk: [1000]TestItem = undefined;
-            for (&chunk, 0..) |*item, i| {
-                item.* = .{ .value = @intCast(i) };
+                var rope = try RopeType.init(arena.allocator());
+                var chunk: [1000]TestItem = undefined;
+                for (&chunk, 0..) |*item, i| {
+                    item.* = .{ .value = @intCast(i) };
+                }
+                var timer = try std.time.Timer.start();
+                for (0..10) |_| {
+                    try rope.insert_slice(rope.count(), &chunk);
+                }
+                stats.record(timer.read());
             }
-            var timer = try std.time.Timer.start();
-            var i: u32 = 0;
-            while (i < 10) : (i += 1) {
-                try rope.insert_slice(rope.count(), &chunk);
-            }
-            const elapsed = timer.read();
 
-            min_ns = @min(min_ns, elapsed);
-            max_ns = @max(max_ns, elapsed);
-            total_ns += elapsed;
+            try results.append(allocator, BenchResult{
+                .name = name,
+                .min_ns = stats.min_ns,
+                .avg_ns = stats.avg(),
+                .max_ns = stats.max_ns,
+                .total_ns = stats.total_ns,
+                .iterations = iterations,
+                .mem_stats = null,
+            });
         }
-
-        const name = try std.fmt.allocPrint(allocator, "Rope insert_slice 10x1k items", .{});
-        try results.append(BenchResult{
-            .name = name,
-            .min_ns = min_ns,
-            .avg_ns = total_ns / iterations,
-            .max_ns = max_ns,
-            .total_ns = total_ns,
-            .iterations = iterations,
-            .mem_stats = null,
-        });
     }
 
     // delete_range
     {
-        var min_ns: u64 = std.math.maxInt(u64);
-        var max_ns: u64 = 0;
-        var total_ns: u64 = 0;
+        const name = "Rope delete_range 10x500 items";
+        if (bench_utils.matchesBenchFilter(name, bench_filter)) {
+            var stats = BenchStats{};
+            for (0..iterations) |_| {
+                var arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
+                defer arena.deinit();
 
-        var iter: usize = 0;
-        while (iter < iterations) : (iter += 1) {
-            var arena = std.heap.ArenaAllocator.init(allocator);
-            defer arena.deinit();
-
-            var rope = try RopeType.from_slice(arena.allocator(), &items);
-            var timer = try std.time.Timer.start();
-            var i: u32 = 0;
-            while (i < 10) : (i += 1) {
-                const start = if (rope.count() > 500) rope.count() - 500 else 0;
-                const end = rope.count();
-                try rope.delete_range(start, end);
+                var rope = try RopeType.from_slice(arena.allocator(), &items);
+                var timer = try std.time.Timer.start();
+                for (0..10) |_| {
+                    const start = if (rope.count() > 500) rope.count() - 500 else 0;
+                    const end = rope.count();
+                    try rope.delete_range(start, end);
+                }
+                stats.record(timer.read());
             }
-            const elapsed = timer.read();
 
-            min_ns = @min(min_ns, elapsed);
-            max_ns = @max(max_ns, elapsed);
-            total_ns += elapsed;
+            try results.append(allocator, BenchResult{
+                .name = name,
+                .min_ns = stats.min_ns,
+                .avg_ns = stats.avg(),
+                .max_ns = stats.max_ns,
+                .total_ns = stats.total_ns,
+                .iterations = iterations,
+                .mem_stats = null,
+            });
         }
-
-        const name = try std.fmt.allocPrint(allocator, "Rope delete_range 10x500 items", .{});
-        try results.append(BenchResult{
-            .name = name,
-            .min_ns = min_ns,
-            .avg_ns = total_ns / iterations,
-            .max_ns = max_ns,
-            .total_ns = total_ns,
-            .iterations = iterations,
-            .mem_stats = null,
-        });
     }
 
     // split/concat
     {
-        var min_ns: u64 = std.math.maxInt(u64);
-        var max_ns: u64 = 0;
-        var total_ns: u64 = 0;
+        const name = "Rope split/concat 100 cycles at midpoint";
+        if (bench_utils.matchesBenchFilter(name, bench_filter)) {
+            var stats = BenchStats{};
+            for (0..iterations) |_| {
+                var arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
+                defer arena.deinit();
 
-        var iter: usize = 0;
-        while (iter < iterations) : (iter += 1) {
-            var arena = std.heap.ArenaAllocator.init(allocator);
-            defer arena.deinit();
-
-            var rope = try RopeType.from_slice(arena.allocator(), &items);
-            var timer = try std.time.Timer.start();
-            var i: u32 = 0;
-            while (i < 100) : (i += 1) {
-                const mid = rope.count() / 2;
-                var right = try rope.split(mid);
-                try rope.concat(&right);
+                var rope = try RopeType.from_slice(arena.allocator(), &items);
+                var timer = try std.time.Timer.start();
+                for (0..100) |_| {
+                    const mid = rope.count() / 2;
+                    var right = try rope.split(mid);
+                    try rope.concat(&right);
+                }
+                stats.record(timer.read());
             }
-            const elapsed = timer.read();
 
-            min_ns = @min(min_ns, elapsed);
-            max_ns = @max(max_ns, elapsed);
-            total_ns += elapsed;
+            try results.append(allocator, BenchResult{
+                .name = name,
+                .min_ns = stats.min_ns,
+                .avg_ns = stats.avg(),
+                .max_ns = stats.max_ns,
+                .total_ns = stats.total_ns,
+                .iterations = iterations,
+                .mem_stats = null,
+            });
         }
-
-        const name = try std.fmt.allocPrint(allocator, "Rope split/concat 100 cycles at midpoint", .{});
-        try results.append(BenchResult{
-            .name = name,
-            .min_ns = min_ns,
-            .avg_ns = total_ns / iterations,
-            .max_ns = max_ns,
-            .total_ns = total_ns,
-            .iterations = iterations,
-            .mem_stats = null,
-        });
     }
 
     // concat two ropes
     {
-        var min_ns: u64 = std.math.maxInt(u64);
-        var max_ns: u64 = 0;
-        var total_ns: u64 = 0;
+        const name = "Rope concat two 5k-item ropes";
+        if (bench_utils.matchesBenchFilter(name, bench_filter)) {
+            var stats = BenchStats{};
+            for (0..iterations) |_| {
+                var arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
+                defer arena.deinit();
 
-        var iter: usize = 0;
-        while (iter < iterations) : (iter += 1) {
-            var arena = std.heap.ArenaAllocator.init(allocator);
-            defer arena.deinit();
+                var rope1 = try RopeType.from_slice(arena.allocator(), items[0..5000]);
+                const rope2 = try RopeType.from_slice(arena.allocator(), items[5000..]);
+                var timer = try std.time.Timer.start();
+                try rope1.concat(&rope2);
+                stats.record(timer.read());
+            }
 
-            var rope1 = try RopeType.from_slice(arena.allocator(), items[0..5000]);
-            const rope2 = try RopeType.from_slice(arena.allocator(), items[5000..]);
-            var timer = try std.time.Timer.start();
-            try rope1.concat(&rope2);
-            const elapsed = timer.read();
-
-            min_ns = @min(min_ns, elapsed);
-            max_ns = @max(max_ns, elapsed);
-            total_ns += elapsed;
+            try results.append(allocator, BenchResult{
+                .name = name,
+                .min_ns = stats.min_ns,
+                .avg_ns = stats.avg(),
+                .max_ns = stats.max_ns,
+                .total_ns = stats.total_ns,
+                .iterations = iterations,
+                .mem_stats = null,
+            });
         }
-
-        const name = try std.fmt.allocPrint(allocator, "Rope concat two 5k-item ropes", .{});
-        try results.append(BenchResult{
-            .name = name,
-            .min_ns = min_ns,
-            .avg_ns = total_ns / iterations,
-            .max_ns = max_ns,
-            .total_ns = total_ns,
-            .iterations = iterations,
-            .mem_stats = null,
-        });
     }
 
-    return try results.toOwnedSlice();
+    return results.toOwnedSlice(allocator);
 }
 
-fn benchAccessPatterns(allocator: std.mem.Allocator, iterations: usize) ![]BenchResult {
-    var results = std.ArrayList(BenchResult).init(allocator);
+fn benchAccessPatterns(
+    allocator: std.mem.Allocator,
+    iterations: usize,
+    bench_filter: ?[]const u8,
+) ![]BenchResult {
+    var results: std.ArrayListUnmanaged(BenchResult) = .{};
+    errdefer results.deinit(allocator);
 
     var items: [10000]TestItem = undefined;
     for (&items, 0..) |*item, i| {
@@ -442,151 +386,129 @@ fn benchAccessPatterns(allocator: std.mem.Allocator, iterations: usize) ![]Bench
 
     // Sequential get
     {
-        var min_ns: u64 = std.math.maxInt(u64);
-        var max_ns: u64 = 0;
-        var total_ns: u64 = 0;
+        const name = "Rope sequential get all 10k items";
+        if (bench_utils.matchesBenchFilter(name, bench_filter)) {
+            var stats = BenchStats{};
+            for (0..iterations) |_| {
+                var arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
+                defer arena.deinit();
 
-        var iter: usize = 0;
-        while (iter < iterations) : (iter += 1) {
-            var arena = std.heap.ArenaAllocator.init(allocator);
-            defer arena.deinit();
-
-            const rope = try RopeType.from_slice(arena.allocator(), &items);
-            var timer = try std.time.Timer.start();
-            var i: u32 = 0;
-            while (i < 10000) : (i += 1) {
-                _ = rope.get(i);
+                const rope = try RopeType.from_slice(arena.allocator(), &items);
+                var timer = try std.time.Timer.start();
+                for (0..10000) |i| {
+                    _ = rope.get(@intCast(i));
+                }
+                stats.record(timer.read());
             }
-            const elapsed = timer.read();
 
-            min_ns = @min(min_ns, elapsed);
-            max_ns = @max(max_ns, elapsed);
-            total_ns += elapsed;
+            try results.append(allocator, BenchResult{
+                .name = name,
+                .min_ns = stats.min_ns,
+                .avg_ns = stats.avg(),
+                .max_ns = stats.max_ns,
+                .total_ns = stats.total_ns,
+                .iterations = iterations,
+                .mem_stats = null,
+            });
         }
-
-        const name = try std.fmt.allocPrint(allocator, "Rope sequential get all 10k items", .{});
-        try results.append(BenchResult{
-            .name = name,
-            .min_ns = min_ns,
-            .avg_ns = total_ns / iterations,
-            .max_ns = max_ns,
-            .total_ns = total_ns,
-            .iterations = iterations,
-            .mem_stats = null,
-        });
     }
 
     // Random get
     {
-        var min_ns: u64 = std.math.maxInt(u64);
-        var max_ns: u64 = 0;
-        var total_ns: u64 = 0;
+        const name = "Rope random get 10k accesses";
+        if (bench_utils.matchesBenchFilter(name, bench_filter)) {
+            var stats = BenchStats{};
+            for (0..iterations) |_| {
+                var arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
+                defer arena.deinit();
 
-        var iter: usize = 0;
-        while (iter < iterations) : (iter += 1) {
-            var arena = std.heap.ArenaAllocator.init(allocator);
-            defer arena.deinit();
-
-            const rope = try RopeType.from_slice(arena.allocator(), &items);
-            var prng = std.Random.DefaultPrng.init(42);
-            const random = prng.random();
-            var timer = try std.time.Timer.start();
-            var i: u32 = 0;
-            while (i < 10000) : (i += 1) {
-                const pos = random.intRangeAtMost(u32, 0, 9999);
-                _ = rope.get(pos);
+                const rope = try RopeType.from_slice(arena.allocator(), &items);
+                var prng = std.Random.DefaultPrng.init(42);
+                const random = prng.random();
+                var timer = try std.time.Timer.start();
+                for (0..10000) |_| {
+                    const pos = random.intRangeAtMost(u32, 0, 9999);
+                    _ = rope.get(pos);
+                }
+                stats.record(timer.read());
             }
-            const elapsed = timer.read();
 
-            min_ns = @min(min_ns, elapsed);
-            max_ns = @max(max_ns, elapsed);
-            total_ns += elapsed;
+            try results.append(allocator, BenchResult{
+                .name = name,
+                .min_ns = stats.min_ns,
+                .avg_ns = stats.avg(),
+                .max_ns = stats.max_ns,
+                .total_ns = stats.total_ns,
+                .iterations = iterations,
+                .mem_stats = null,
+            });
         }
-
-        const name = try std.fmt.allocPrint(allocator, "Rope random get 10k accesses", .{});
-        try results.append(BenchResult{
-            .name = name,
-            .min_ns = min_ns,
-            .avg_ns = total_ns / iterations,
-            .max_ns = max_ns,
-            .total_ns = total_ns,
-            .iterations = iterations,
-            .mem_stats = null,
-        });
     }
 
     // Walk
     {
-        var min_ns: u64 = std.math.maxInt(u64);
-        var max_ns: u64 = 0;
-        var total_ns: u64 = 0;
+        const name = "Rope walk all 10k items";
+        if (bench_utils.matchesBenchFilter(name, bench_filter)) {
+            var stats = BenchStats{};
+            for (0..iterations) |_| {
+                var arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
+                defer arena.deinit();
 
-        var iter: usize = 0;
-        while (iter < iterations) : (iter += 1) {
-            var arena = std.heap.ArenaAllocator.init(allocator);
-            defer arena.deinit();
+                const rope = try RopeType.from_slice(arena.allocator(), &items);
+                const Ctx = struct {
+                    sum: u64 = 0,
+                    fn walker(ctx: *anyopaque, data: *const TestItem, index: u32) RopeType.Node.WalkerResult {
+                        _ = index;
+                        const self = @as(*@This(), @ptrCast(@alignCast(ctx)));
+                        self.sum += data.value;
+                        return .{};
+                    }
+                };
+                var ctx = Ctx{};
+                var timer = try std.time.Timer.start();
+                try rope.walk(&ctx, Ctx.walker);
+                stats.record(timer.read());
+            }
 
-            const rope = try RopeType.from_slice(arena.allocator(), &items);
-            const Ctx = struct {
-                sum: u64 = 0,
-                fn walker(ctx: *anyopaque, data: *const TestItem, index: u32) RopeType.Node.WalkerResult {
-                    _ = index;
-                    const self = @as(*@This(), @ptrCast(@alignCast(ctx)));
-                    self.sum += data.value;
-                    return .{};
-                }
-            };
-            var ctx = Ctx{};
-            var timer = try std.time.Timer.start();
-            try rope.walk(&ctx, Ctx.walker);
-            const elapsed = timer.read();
-
-            min_ns = @min(min_ns, elapsed);
-            max_ns = @max(max_ns, elapsed);
-            total_ns += elapsed;
+            try results.append(allocator, BenchResult{
+                .name = name,
+                .min_ns = stats.min_ns,
+                .avg_ns = stats.avg(),
+                .max_ns = stats.max_ns,
+                .total_ns = stats.total_ns,
+                .iterations = iterations,
+                .mem_stats = null,
+            });
         }
-
-        const name = try std.fmt.allocPrint(allocator, "Rope walk all 10k items", .{});
-        try results.append(BenchResult{
-            .name = name,
-            .min_ns = min_ns,
-            .avg_ns = total_ns / iterations,
-            .max_ns = max_ns,
-            .total_ns = total_ns,
-            .iterations = iterations,
-            .mem_stats = null,
-        });
     }
 
-    return try results.toOwnedSlice();
+    return results.toOwnedSlice(allocator);
 }
 
 pub fn run(
     allocator: std.mem.Allocator,
     show_mem: bool,
+    bench_filter: ?[]const u8,
 ) ![]BenchResult {
     _ = show_mem; // Rope benchmarks don't currently track memory
 
-    var all_results = std.ArrayList(BenchResult).init(allocator);
+    var all_results: std.ArrayListUnmanaged(BenchResult) = .{};
+    errdefer all_results.deinit(allocator);
 
     const iterations: usize = 10;
 
-    // Run all benchmark categories
-    const insert_results = try benchInsertOperations(allocator, iterations);
-    defer allocator.free(insert_results);
-    try all_results.appendSlice(insert_results);
+    // Run all benchmark categories and filter results
+    const insert_results = try benchInsertOperations(allocator, iterations, bench_filter);
+    try all_results.appendSlice(allocator, insert_results);
 
-    const delete_results = try benchDeleteOperations(allocator, iterations);
-    defer allocator.free(delete_results);
-    try all_results.appendSlice(delete_results);
+    const delete_results = try benchDeleteOperations(allocator, iterations, bench_filter);
+    try all_results.appendSlice(allocator, delete_results);
 
-    const bulk_results = try benchBulkOperations(allocator, iterations);
-    defer allocator.free(bulk_results);
-    try all_results.appendSlice(bulk_results);
+    const bulk_results = try benchBulkOperations(allocator, iterations, bench_filter);
+    try all_results.appendSlice(allocator, bulk_results);
 
-    const access_results = try benchAccessPatterns(allocator, iterations);
-    defer allocator.free(access_results);
-    try all_results.appendSlice(access_results);
+    const access_results = try benchAccessPatterns(allocator, iterations, bench_filter);
+    try all_results.appendSlice(allocator, access_results);
 
-    return try all_results.toOwnedSlice();
+    return all_results.toOwnedSlice(allocator);
 }

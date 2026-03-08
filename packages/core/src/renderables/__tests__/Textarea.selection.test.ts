@@ -224,6 +224,8 @@ describe("Textarea - Selection Tests", () => {
         width: 40,
         height: 5,
         selectable: true,
+        scrollMargin: 0,
+        scrollSpeed: 0,
       })
 
       editor.gotoLine(10)
@@ -322,7 +324,10 @@ describe("Textarea - Selection Tests", () => {
       const viewport = editor.editorView.getViewport()
       expect(viewport.offsetY).toBeGreaterThan(0)
 
-      await currentMouse.drag(editor.x, editor.y, editor.x + 5, editor.y)
+      // Use manual drag steps instead of the drag helper to avoid timing issues
+      await currentMouse.pressDown(editor.x, editor.y)
+      await currentMouse.emitMouseEvent("drag", editor.x + 5, editor.y)
+      await currentMouse.release(editor.x + 5, editor.y)
       await renderOnce()
 
       buffer.clear(RGBA.fromValues(0, 0, 0, 1))
@@ -424,6 +429,7 @@ describe("Textarea - Selection Tests", () => {
         width: 40,
         height: 5,
         selectable: true,
+        scrollSpeed: 0,
       })
 
       editor.gotoLine(20)
@@ -514,6 +520,28 @@ describe("Textarea - Selection Tests", () => {
 
       expect(editor.hasSelection()).toBe(true)
       expect(editor.getSelectedText()).toBe("Hello")
+    })
+
+    it("should extend a mouse selection with shift+right", async () => {
+      const { textarea: editor } = await createTextareaRenderable(currentRenderer, renderOnce, {
+        initialValue: "Hello World",
+        width: 40,
+        height: 10,
+        selectable: true,
+      })
+
+      editor.focus()
+
+      await currentMouse.drag(editor.x, editor.y, editor.x + 5, editor.y)
+      await renderOnce()
+
+      expect(editor.hasSelection()).toBe(true)
+      expect(editor.getSelectedText()).toBe("Hello")
+
+      currentMockInput.pressArrow("right", { shift: true })
+      await renderOnce()
+
+      expect(editor.getSelectedText()).toBe("Hello ")
     })
 
     it("should handle shift+left selection", async () => {
@@ -938,64 +966,24 @@ describe("Textarea - Selection Tests", () => {
 
       await renderOnce()
 
-      console.log(`Layout after render:`)
-      console.log(`  bottomText: (${bottomText.x}, ${bottomText.y}, ${bottomText.width}, ${bottomText.height})`)
-      console.log(`  rightBox: (${rightBox.x}, ${rightBox.y}, ${rightBox.width}, ${rightBox.height})`)
-      console.log(`  codeText1: (${codeText1.x}, ${codeText1.y}, ${codeText1.width}, ${codeText1.height})`)
-      console.log(`  codeText2: (${codeText2.x}, ${codeText2.y}, ${codeText2.width}, ${codeText2.height})`)
-      console.log(`  codeText3: (${codeText3.x}, ${codeText3.y}, ${codeText3.width}, ${codeText3.height})`)
-      console.log(`  codeText4: (${codeText4.x}, ${codeText4.y}, ${codeText4.width}, ${codeText4.height})`)
-
       const startX = bottomText.x + 10
       const startY = bottomText.y
       const endX = codeText2.x + 15
       const endY = codeText2.y
 
-      console.log(`Selection drag: from (${startX}, ${startY}) to (${endX}, ${endY})`)
-
       await currentMouse.drag(startX, startY, endX, endY)
       await renderOnce()
 
-      console.log(`After selection:`)
-      console.log(`  bottomText has selection: ${bottomText.hasSelection()}`)
-      if (bottomText.hasSelection()) {
-        console.log(`    bottomText selected: "${bottomText.getSelectedText()}"`)
-      }
-      console.log(`  codeText1 has selection: ${codeText1.hasSelection()}`)
-      if (codeText1.hasSelection()) {
-        console.log(`    codeText1 selected: "${codeText1.getSelectedText()}"`)
-      }
-      console.log(`  codeText2 has selection: ${codeText2.hasSelection()}`)
-      if (codeText2.hasSelection()) {
-        console.log(`    codeText2 selected: "${codeText2.getSelectedText()}"`)
-        console.log(`    codeText2 selection range: ${JSON.stringify(codeText2.getSelection())}`)
-      }
-      console.log(`  codeText3 has selection: ${codeText3.hasSelection()}`)
-      console.log(`  codeText4 has selection: ${codeText4.hasSelection()}`)
-
       expect(bottomText.hasSelection()).toBe(true)
       const bottomSelected = bottomText.getSelectedText()
-      console.log(`  bottomText selected "${bottomSelected}"`)
-      expect(bottomSelected).toBe("Click and ")
+      expect(bottomSelected).toBe("Click and d")
 
       expect(codeText1.hasSelection()).toBe(false)
 
       expect(codeText2.hasSelection()).toBe(true)
       const codeText2Selected = codeText2.getSelectedText()
-      console.log(`  codeText2 selected: "${codeText2Selected}"`)
-      const codeText2FullContent = codeText2.content.toString()
-      console.log(`  codeText2 full content: "${codeText2FullContent}"`)
-      console.log(`  codeText2 content length: ${codeText2FullContent.length}`)
-      console.log(`  codeText2 local anchor: (${15 - codeText2.x}, ${20 - codeText2.y})`)
-      console.log(`  codeText2 local focus: (${66 - codeText2.x}, ${8 - codeText2.y})`)
-      console.log(`  Expected selection: indices 0 to 15`)
-      console.log(`  Actual selection: indices ${codeText2.getSelection()?.start} to ${codeText2.getSelection()?.end}`)
-
       const codeText2Content = "  const selected = getText()"
       expect(codeText2Selected).toBe(codeText2Content.substring(0, 15))
-
-      console.log(`  codeText3 has selection: ${codeText3.hasSelection()}`)
-      console.log(`  codeText4 has selection: ${codeText4.hasSelection()}`)
 
       bottomText.destroy()
       rightBox.destroy()
@@ -1352,6 +1340,228 @@ describe("Textarea - Selection Tests", () => {
 
       textBelow.destroy()
       editor.destroy()
+    })
+  })
+
+  describe("Selection Preserved on Viewport Scroll", () => {
+    it("should preserve selection when scrolling viewport", async () => {
+      const { textarea: editor } = await createTextareaRenderable(currentRenderer, renderOnce, {
+        initialValue: Array.from({ length: 50 }, (_, i) => `Line ${i}`).join("\n"),
+        width: 40,
+        height: 10,
+        selectable: true,
+      })
+
+      editor.focus()
+      await renderOnce()
+
+      // Select all text using keyboard (Cmd+Shift+Down)
+      currentMockInput.pressKey("ARROW_DOWN", { shift: true, super: true })
+      await renderOnce()
+
+      const selectionBefore = editor.getSelection()
+      const selectedTextBefore = editor.getSelectedText()
+
+      expect(selectionBefore).not.toBeNull()
+      expect(selectedTextBefore).toContain("Line 0")
+      expect(selectedTextBefore).toContain("Line 49")
+
+      // Start renderer to simulate real app with continuous render loop
+      currentRenderer.start()
+
+      // Scroll up with mouse wheel
+      await currentMouse.scroll(editor.x, editor.y + 1, "up")
+      await Bun.sleep(100)
+
+      const selectionAfter = editor.getSelection()
+      const selectedTextAfter = editor.getSelectedText()
+
+      currentRenderer.pause()
+
+      // Selection should not change when scrolling viewport
+      expect(selectionAfter).not.toBeNull()
+      expect(selectionAfter!.start).toBe(selectionBefore!.start)
+      expect(selectionAfter!.end).toBe(selectionBefore!.end)
+      expect(selectedTextAfter).toBe(selectedTextBefore)
+
+      editor.destroy()
+    })
+  })
+
+  describe("Keyboard Selection with Viewport Scrolling", () => {
+    it("should select to buffer home after shift+end then shift+home when scrolled", async () => {
+      const lines = Array.from({ length: 30 }, (_, i) => `Line ${i.toString().padStart(2, "0")}`)
+      const { textarea: editor } = await createTextareaRenderable(currentRenderer, renderOnce, {
+        initialValue: lines.join("\n"),
+        width: 40,
+        height: 6,
+        selectable: true,
+      })
+
+      editor.focus()
+      await renderOnce()
+
+      for (let i = 0; i < 3; i++) {
+        await currentMouse.scroll(editor.x + 2, editor.y + 2, "down")
+      }
+      await renderOnce()
+
+      const viewportAfterScroll = editor.editorView.getViewport()
+      expect(viewportAfterScroll.offsetY).toBeGreaterThan(0)
+      expect(editor.logicalCursor.row).toBeGreaterThan(0)
+
+      currentMockInput.pressKey("END", { shift: true })
+      await renderOnce()
+
+      expect(editor.hasSelection()).toBe(true)
+
+      currentMockInput.pressKey("HOME", { shift: true })
+      await renderOnce()
+
+      const selection = editor.getSelection()
+      expect(selection).not.toBeNull()
+      expect(selection!.start).toBe(0)
+
+      const selectedText = editor.getSelectedText()
+      expect(selectedText.startsWith("Line 00")).toBe(true)
+      expect(selectedText).not.toContain("Line 29")
+    })
+
+    it("should allow shift+end after shift+home from a mid-buffer cursor", async () => {
+      const lines = Array.from({ length: 30 }, (_, i) => `Line ${i.toString().padStart(2, "0")}`)
+      const { textarea: editor } = await createTextareaRenderable(currentRenderer, renderOnce, {
+        initialValue: lines.join("\n"),
+        width: 40,
+        height: 6,
+        selectable: true,
+      })
+
+      editor.focus()
+      editor.gotoLine(10)
+      await renderOnce()
+
+      currentMockInput.pressKey("END", { shift: true })
+      await renderOnce()
+
+      expect(editor.hasSelection()).toBe(true)
+
+      currentMockInput.pressKey("HOME", { shift: true })
+      await renderOnce()
+
+      currentMockInput.pressKey("END", { shift: true })
+      await renderOnce()
+
+      expect(editor.hasSelection()).toBe(true)
+      expect(editor.getSelectedText()).toContain("Line 29")
+    })
+
+    it("should select to buffer home with shift+super+up in scrollable textarea", async () => {
+      // Create textarea with content taller than visible area
+      const lines = Array.from({ length: 50 }, (_, i) => `Line ${i.toString().padStart(2, "0")}`)
+      const { textarea: editor } = await createTextareaRenderable(currentRenderer, renderOnce, {
+        initialValue: lines.join("\n"),
+        width: 40,
+        height: 10,
+        selectable: true,
+      })
+
+      // Move cursor to middle of content (line 25)
+      editor.focus()
+      editor.gotoLine(25)
+      await renderOnce()
+
+      // Verify viewport has scrolled
+      const viewportBefore = editor.editorView.getViewport()
+      expect(viewportBefore.offsetY).toBeGreaterThan(0)
+
+      // Select to buffer home (shift+super+up)
+      currentMockInput.pressKey("ARROW_UP", { shift: true, super: true })
+      await renderOnce()
+
+      // Should have selection
+      expect(editor.hasSelection()).toBe(true)
+
+      // Selection should include content from line 0 to line 25
+      const selectedText = editor.getSelectedText()
+      expect(selectedText).toContain("Line 00")
+      expect(selectedText).toContain("Line 24")
+      expect(selectedText.split("\n").length).toBeGreaterThanOrEqual(25)
+
+      const viewportAfter = editor.editorView.getViewport()
+      expect(viewportAfter.offsetY).toBe(0)
+    })
+
+    it("should select to buffer end with shift+super+down in scrollable textarea", async () => {
+      // Create textarea with content taller than visible area
+      const lines = Array.from({ length: 50 }, (_, i) => `Line ${i.toString().padStart(2, "0")}`)
+      const { textarea: editor } = await createTextareaRenderable(currentRenderer, renderOnce, {
+        initialValue: lines.join("\n"),
+        width: 40,
+        height: 10,
+        selectable: true,
+      })
+
+      // Move cursor to line 20
+      editor.focus()
+      editor.gotoLine(20)
+      await renderOnce()
+
+      const viewportBefore = editor.editorView.getViewport()
+      expect(viewportBefore.offsetY).toBeGreaterThan(0)
+
+      // Select to buffer end (shift+super+down)
+      currentMockInput.pressKey("ARROW_DOWN", { shift: true, super: true })
+      await renderOnce()
+
+      // Should have selection
+      expect(editor.hasSelection()).toBe(true)
+
+      // Selection should include content from line 20 to line 49
+      const selectedText = editor.getSelectedText()
+      expect(selectedText).toContain("Line 20")
+      expect(selectedText).toContain("Line 49")
+      expect(selectedText.split("\n").length).toBeGreaterThanOrEqual(29)
+
+      const viewportAfter = editor.editorView.getViewport()
+      const totalLines = editor.editorView.getTotalVirtualLineCount()
+      const maxOffsetY = Math.max(0, totalLines - viewportBefore.height)
+      expect(viewportAfter.offsetY).toBe(maxOffsetY)
+    })
+
+    it("should handle selection across viewport boundaries correctly", async () => {
+      // Create textarea with content taller than visible area
+      const lines = Array.from({ length: 30 }, (_, i) => `Line ${i.toString().padStart(2, "0")}`)
+      const { textarea: editor } = await createTextareaRenderable(currentRenderer, renderOnce, {
+        initialValue: lines.join("\n"),
+        width: 40,
+        height: 5, // Small viewport
+        selectable: true,
+      })
+
+      // Move cursor to middle (line 15)
+      editor.focus()
+      editor.gotoLine(15)
+      // Move to column 5
+      for (let i = 0; i < 5; i++) {
+        editor.moveCursorRight()
+      }
+      await renderOnce()
+
+      const cursorBefore = editor.editorView.getVisualCursor()
+      expect(cursorBefore.logicalRow).toBe(15)
+      expect(cursorBefore.logicalCol).toBe(5)
+
+      // Select to buffer home
+      currentMockInput.pressKey("ARROW_UP", { shift: true, super: true })
+      await renderOnce()
+
+      expect(editor.hasSelection()).toBe(true)
+      const selectedText = editor.getSelectedText()
+
+      // Should select from (15, 5) to (0, 0)
+      // First line should be complete, last line should be partial
+      expect(selectedText.startsWith("Line 00")).toBe(true)
+      expect(selectedText).toContain("Line 14")
     })
   })
 })

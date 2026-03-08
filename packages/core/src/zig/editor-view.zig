@@ -39,6 +39,7 @@ pub const EditorView = struct {
     edit_buffer: *EditBuffer, // Reference to the EditBuffer (not owned)
     scroll_margin: f32, // Fraction of viewport height (0.0-0.5) to keep cursor away from edges
     desired_visual_col: ?u32, // Preserved visual column for visual up/down navigation
+    selection_follow_cursor: bool, // Keep viewport synced during selection
     cursor_changed_listener: event_emitter.EventEmitter(eb.EditBufferEvent).Listener,
 
     placeholder_buffer: ?*UnifiedTextBuffer,
@@ -51,9 +52,10 @@ pub const EditorView = struct {
     fn onCursorChanged(ctx: *anyopaque) void {
         const self: *EditorView = @ptrCast(@alignCast(ctx));
         self.desired_visual_col = null;
+        self.updatePlaceholderVisibility();
 
         const has_selection = self.text_buffer_view.selection != null;
-        if (!has_selection) {
+        if (!has_selection or self.selection_follow_cursor) {
             const cursor = self.edit_buffer.getPrimaryCursor();
             const vcursor = self.logicalToVisualCursor(cursor.row, cursor.col);
             self.ensureCursorVisible(vcursor.visual_row);
@@ -73,6 +75,7 @@ pub const EditorView = struct {
             .edit_buffer = edit_buffer,
             .scroll_margin = 0.15, // Default 15% margin
             .desired_visual_col = null,
+            .selection_follow_cursor = false,
             .cursor_changed_listener = .{
                 .ctx = undefined, // Will be set below
                 .handle = onCursorChanged,
@@ -155,11 +158,11 @@ pub const EditorView = struct {
                 const target_vline = &vlines[target_visual_row];
                 const target_logical_row = @as(u32, @intCast(target_vline.source_line));
 
-                const line_width = iter_mod.lineWidthAt(&self.edit_buffer.tb.rope, target_logical_row);
+                const line_width = iter_mod.lineWidthAt(self.edit_buffer.tb.rope(), target_logical_row);
                 const target_col = @min(cursor.col, line_width);
 
                 if (self.edit_buffer.cursors.items.len > 0) {
-                    const offset = iter_mod.coordsToOffset(&self.edit_buffer.tb.rope, target_logical_row, target_col) orelse return;
+                    const offset = iter_mod.coordsToOffset(self.edit_buffer.tb.rope(), target_logical_row, target_col) orelse return;
                     self.edit_buffer.cursors.items[0] = .{
                         .row = target_logical_row,
                         .col = target_col,
@@ -177,6 +180,10 @@ pub const EditorView = struct {
         self.scroll_margin = @max(0.0, @min(0.5, margin));
     }
 
+    pub fn setSelectionFollowCursor(self: *EditorView, enabled: bool) void {
+        self.selection_follow_cursor = enabled;
+    }
+
     /// Ensure the cursor is visible within the viewport, adjusting viewport.y and viewport.x if needed
     /// cursor_line: The virtual line index where the cursor is located
     pub fn ensureCursorVisible(self: *EditorView, cursor_line: u32) void {
@@ -186,8 +193,13 @@ pub const EditorView = struct {
         const viewport_width = vp.width;
         if (viewport_height == 0 or viewport_width == 0) return;
 
-        const margin_lines = @max(1, @as(u32, @intFromFloat(@as(f32, @floatFromInt(viewport_height)) * self.scroll_margin)));
-        const margin_cols = @max(1, @as(u32, @intFromFloat(@as(f32, @floatFromInt(viewport_width)) * self.scroll_margin)));
+        const raw_margin_lines = @max(1, @as(u32, @intFromFloat(@as(f32, @floatFromInt(viewport_height)) * self.scroll_margin)));
+        const max_margin_lines = if (viewport_height > 1) (viewport_height - 1) / 2 else 0;
+        const margin_lines = @min(raw_margin_lines, max_margin_lines);
+
+        const raw_margin_cols = @max(1, @as(u32, @intFromFloat(@as(f32, @floatFromInt(viewport_width)) * self.scroll_margin)));
+        const max_margin_cols = if (viewport_width > 1) (viewport_width - 1) / 2 else 0;
+        const margin_cols = @min(raw_margin_cols, max_margin_cols);
 
         const total_lines = self.text_buffer_view.getVirtualLineCount();
         const max_offset_y = if (total_lines > viewport_height) total_lines - viewport_height else 0;
@@ -238,7 +250,7 @@ pub const EditorView = struct {
 
         const has_selection = self.text_buffer_view.selection != null;
 
-        if (!has_selection) {
+        if (!has_selection or self.selection_follow_cursor) {
             const cursor = self.edit_buffer.getPrimaryCursor();
             const vcursor = self.logicalToVisualCursor(cursor.row, cursor.col);
             self.ensureCursorVisible(vcursor.visual_row);
@@ -335,12 +347,12 @@ pub const EditorView = struct {
             break :blk selection.end;
         };
 
-        const focus_coords = iter_mod.offsetToCoords(&self.edit_buffer.tb.rope, focus_offset) orelse return;
+        const focus_coords = iter_mod.offsetToCoords(self.edit_buffer.tb.rope(), focus_offset) orelse return;
 
-        const line_count = iter_mod.getLineCount(&self.edit_buffer.tb.rope);
+        const line_count = iter_mod.getLineCount(self.edit_buffer.tb.rope());
         if (focus_coords.row >= line_count) return;
 
-        const line_width = iter_mod.lineWidthAt(&self.edit_buffer.tb.rope, focus_coords.row);
+        const line_width = iter_mod.lineWidthAt(self.edit_buffer.tb.rope(), focus_coords.row);
         if (focus_coords.col > line_width) return;
 
         // Update cursor to focus position
@@ -373,7 +385,7 @@ pub const EditorView = struct {
 
         var new_offset_x = vp.x;
         if (self.text_buffer_view.wrap_mode == .none) {
-            const max_line_width = iter_mod.getMaxLineWidth(&self.edit_buffer.tb.rope);
+            const max_line_width = iter_mod.getMaxLineWidth(self.edit_buffer.tb.rope());
             const max_offset_x = if (max_line_width > vp.width) max_line_width - vp.width else 0;
             if (vp.x > max_offset_x) {
                 new_offset_x = max_offset_x;
@@ -447,10 +459,10 @@ pub const EditorView = struct {
     /// Returns absolute visual coordinates (document-absolute, not viewport-relative)
     pub fn logicalToVisualCursor(self: *EditorView, logical_row: u32, logical_col: u32) VisualCursor {
         // Clamp logical coordinates to valid buffer ranges
-        const line_count = iter_mod.getLineCount(&self.edit_buffer.tb.rope);
+        const line_count = iter_mod.getLineCount(self.edit_buffer.tb.rope());
         const clamped_row = if (line_count > 0) @min(logical_row, line_count - 1) else 0;
 
-        const line_width = iter_mod.lineWidthAt(&self.edit_buffer.tb.rope, clamped_row);
+        const line_width = iter_mod.lineWidthAt(self.edit_buffer.tb.rope(), clamped_row);
         const clamped_col = @min(logical_col, line_width);
 
         const visual_row_idx = self.text_buffer_view.findVisualLineIndex(clamped_row, clamped_col);
@@ -458,7 +470,7 @@ pub const EditorView = struct {
         const vlines = self.text_buffer_view.virtual_lines.items;
         if (vlines.len == 0 or visual_row_idx >= vlines.len) {
             // Fallback for edge cases
-            const offset = iter_mod.coordsToOffset(&self.edit_buffer.tb.rope, clamped_row, clamped_col) orelse 0;
+            const offset = iter_mod.coordsToOffset(self.edit_buffer.tb.rope(), clamped_row, clamped_col) orelse 0;
             return VisualCursor{
                 .visual_row = 0,
                 .visual_col = 0,
@@ -477,7 +489,7 @@ pub const EditorView = struct {
         else
             0;
 
-        const offset = iter_mod.coordsToOffset(&self.edit_buffer.tb.rope, clamped_row, clamped_col) orelse 0;
+        const offset = iter_mod.coordsToOffset(self.edit_buffer.tb.rope(), clamped_row, clamped_col) orelse 0;
 
         return VisualCursor{
             .visual_row = visual_row_idx,
@@ -497,11 +509,11 @@ pub const EditorView = struct {
         if (visual_row >= vlines.len) return null;
 
         const vline = &vlines[visual_row];
-        const clamped_visual_col = @min(visual_col, vline.width);
+        const clamped_visual_col = @min(visual_col, vline.width_cols);
         const logical_col = vline.source_col_offset + clamped_visual_col;
         const logical_row = @as(u32, @intCast(vline.source_line));
 
-        const offset = iter_mod.coordsToOffset(&self.edit_buffer.tb.rope, logical_row, logical_col) orelse 0;
+        const offset = iter_mod.coordsToOffset(self.edit_buffer.tb.rope(), logical_row, logical_col) orelse 0;
 
         return VisualCursor{
             .visual_row = visual_row,
@@ -584,10 +596,10 @@ pub const EditorView = struct {
             return;
         };
 
-        const start_coords = iter_mod.offsetToCoords(&self.edit_buffer.tb.rope, selection.start) orelse {
+        const start_coords = iter_mod.offsetToCoords(self.edit_buffer.tb.rope(), selection.start) orelse {
             return;
         };
-        const end_coords = iter_mod.offsetToCoords(&self.edit_buffer.tb.rope, selection.end) orelse {
+        const end_coords = iter_mod.offsetToCoords(self.edit_buffer.tb.rope(), selection.end) orelse {
             return;
         };
 
@@ -638,7 +650,7 @@ pub const EditorView = struct {
 
         if (vcursor.visual_row >= vlines.len) {
             // Fallback: return cursor at column 0 of current logical line
-            const offset = iter_mod.coordsToOffset(&self.edit_buffer.tb.rope, cursor.row, 0) orelse 0;
+            const offset = iter_mod.coordsToOffset(self.edit_buffer.tb.rope(), cursor.row, 0) orelse 0;
             return VisualCursor{
                 .visual_row = vcursor.visual_row,
                 .visual_col = 0,
@@ -651,7 +663,7 @@ pub const EditorView = struct {
         const vline = &vlines[vcursor.visual_row];
         const logical_col = vline.source_col_offset; // Start column of this visual line
         const logical_row = @as(u32, @intCast(vline.source_line));
-        const offset = iter_mod.coordsToOffset(&self.edit_buffer.tb.rope, logical_row, logical_col) orelse 0;
+        const offset = iter_mod.coordsToOffset(self.edit_buffer.tb.rope(), logical_row, logical_col) orelse 0;
 
         return VisualCursor{
             .visual_row = vcursor.visual_row,
@@ -691,18 +703,18 @@ pub const EditorView = struct {
                 // The wrap boundary is at next_vline.source_col_offset
                 // To stay on the current visual line, we need to be one position BEFORE the boundary
                 // However, if width is 0, just use the start position
-                if (vline.width > 0) {
-                    logical_col = vline.source_col_offset + vline.width - 1;
+                if (vline.width_cols > 0) {
+                    logical_col = vline.source_col_offset + vline.width_cols - 1;
                 } else {
                     logical_col = vline.source_col_offset;
                 }
             } else {
                 // Next visual line is a different logical line, so we're at the end
-                logical_col = iter_mod.lineWidthAt(&self.edit_buffer.tb.rope, logical_row);
+                logical_col = iter_mod.lineWidthAt(self.edit_buffer.tb.rope(), logical_row);
             }
         } else {
             // This is the last visual line, use end of logical line
-            logical_col = iter_mod.lineWidthAt(&self.edit_buffer.tb.rope, logical_row);
+            logical_col = iter_mod.lineWidthAt(self.edit_buffer.tb.rope(), logical_row);
         }
 
         return self.logicalToVisualCursor(logical_row, logical_col);
@@ -733,6 +745,7 @@ pub const EditorView = struct {
             self.placeholder_buffer = try UnifiedTextBuffer.init(
                 self.global_allocator,
                 self.edit_buffer.tb.pool,
+                self.edit_buffer.tb.link_pool,
                 self.edit_buffer.tb.width_method,
             );
             const syntax_style = try ss.SyntaxStyle.init(self.global_allocator);
@@ -745,11 +758,15 @@ pub const EditorView = struct {
 
         try placeholder.setStyledText(chunks);
 
+        if (self.placeholder_active) {
+            self.text_buffer_view.virtual_lines_dirty = true;
+        }
+
         self.updatePlaceholderVisibility();
     }
 
     fn shouldShowPlaceholder(self: *const EditorView) bool {
-        const rope_len = self.edit_buffer.tb.rope.totalWeight();
+        const rope_len = self.edit_buffer.tb.rope().totalWeight();
         return rope_len == 0 and self.placeholder_buffer != null;
     }
 

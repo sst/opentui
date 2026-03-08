@@ -254,6 +254,35 @@ const contentExamples: ContentExample[] = [
  }`,
   },
   {
+    name: "Real Session: Text Demo",
+    filetype: "typescript",
+    diff: `Index: packages/core/src/examples/index.ts
+===================================================================
+--- packages/core/src/examples/index.ts	before
++++ packages/core/src/examples/index.ts	after
+@@ -56,6 +56,7 @@
+ import * as terminalDemo from "./terminal"
+ import * as diffDemo from "./diff-demo"
+ import * as keypressDebugDemo from "./keypress-debug-demo"
++import * as textTruncationDemo from "./text-truncation-demo"
+ import { setupCommonDemoKeys } from "./lib/standalone-keys"
+ 
+ interface Example {
+@@ -85,6 +86,12 @@
+     destroy: textSelectionExample.destroy,
+   },
+   {
++    name: "Text Truncation Demo",
++    description: "Middle truncation with ellipsis - toggle with 'T' key and resize to test responsive behavior",
++    run: textTruncationDemo.run,
++    destroy: textTruncationDemo.destroy,
++  },
++  {
+     name: "ASCII Font Selection Demo",
+     description: "Text selection with ASCII fonts - precise character-level selection across different font types",
+     run: asciiFontSelectionExample.run,`,
+  },
+  {
     name: "Markdown",
     filetype: "markdown",
     diff: `--- a/README.md
@@ -284,6 +313,30 @@ const contentExamples: ContentExample[] = [
 +## Usage
 +
 +See the [documentation](./docs) for detailed usage instructions.`,
+  },
+  {
+    name: "Real Session: Truncate Feature",
+    filetype: "typescript",
+    diff: `Index: packages/core/src/renderables/TextBufferRenderable.ts
+===================================================================
+--- packages/core/src/renderables/TextBufferRenderable.ts	before
++++ packages/core/src/renderables/TextBufferRenderable.ts	after
+@@ -19,6 +19,7 @@
+   wrapMode?: "none" | "char" | "word"
+   tabIndicator?: string | number
+   tabIndicatorColor?: string | RGBA
++  truncate?: boolean
+ }
+ 
+ export abstract class TextBufferRenderable extends Renderable implements LineInfoProvider {
+@@ -35,6 +36,7 @@
+   protected _tabIndicatorColor?: RGBA
+   protected _scrollX: number = 0
+   protected _scrollY: number = 0
++  protected _truncate: boolean = false
+ 
+   protected textBuffer: TextBuffer
+   protected textBufferView: TextBufferView`,
   },
   {
     name: "Markdown (Conceal Test)",
@@ -322,6 +375,52 @@ const contentExamples: ContentExample[] = [
 +    "logging": "verbose"
 +  }
  }`,
+  },
+  {
+    name: "Real Session: CJK Wrap Test",
+    filetype: "typescript",
+    diff: `Index: packages/core/src/renderables/Text.test.ts
+===================================================================
+--- packages/core/src/renderables/Text.test.ts	before
++++ packages/core/src/renderables/Text.test.ts	after
+@@ -1428,6 +1428,37 @@
+       const frame = captureFrame()
+       expect(frame).toMatchSnapshot()
+     })
++
++    it("should render word wrapped text with CJK and English correctly", async () => {
++      resize(60, 10)
++
++      const { text } = await createTextRenderable(currentRenderer, {
++        content: "🌟 Unicode test: こんにちは世界 Hello World 你好世界",
++        wrapMode: "word",
++        width: 35,
++        left: 0,
++        top: 0,
++      })
++
++      await renderOnce()
++
++      const frame = captureFrame()
++      const lines = frame.split("\\n").filter((l) => l.trim().length > 0)
++
++      console.log("Frame:\\n" + frame)
++      console.log("Line 0:", JSON.stringify(lines[0]))
++      console.log("Line 1:", JSON.stringify(lines[1]))
++
++      // Verify no character duplication - each character should appear only once
++      const line0 = lines[0] || ""
++      const line1 = lines[1] || ""
++
++      const line0_ends_with_kai = line0.trimEnd().endsWith("界")
++      const line1_starts_with_kai = line1.trimStart().startsWith("界")
++
++      // "界" should not appear on both lines (would indicate duplication bug)
++      expect(line0_ends_with_kai && line1_starts_with_kai).toBe(false)
++    })
+   })
+ 
+   describe("Text Node Dimension Updates", () => {`,
   },
 ]
 
@@ -434,12 +533,10 @@ export async function run(rendererInstance: CliRenderer): Promise<void> {
   helpModal = new BoxRenderable(renderer, {
     id: "help-modal",
     position: "absolute",
-    left: "50%",
-    top: "50%",
-    width: 60,
-    height: 14,
-    marginLeft: -30, // Center horizontally
-    marginTop: -7, // Center vertically
+    left: "10%",
+    top: "10%",
+    width: "80%",
+    height: "80%",
     border: true,
     borderStyle: "double",
     borderColor: theme.borderColor,
@@ -459,9 +556,9 @@ export async function run(rendererInstance: CliRenderer): Promise<void> {
   W : Toggle wrap mode (None/Word)
   O : Toggle conceal (hide/show markup)
 
-Theme & Display:
-  T : Cycle through themes
-  C : Cycle content type (TypeScript/Markdown/JSON)
+Theme & Content:
+  T : Cycle through themes (5 themes)
+  C : Cycle through diff examples (6 examples)
   M : Toggle malformed diff example
 
 Other:

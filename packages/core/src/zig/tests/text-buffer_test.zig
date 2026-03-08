@@ -1,6 +1,7 @@
 const std = @import("std");
 const text_buffer = @import("../text-buffer.zig");
 const gp = @import("../grapheme.zig");
+const link = @import("../link.zig");
 const iter_mod = @import("../text-buffer-iterators.zig");
 
 const TextBuffer = text_buffer.UnifiedTextBuffer;
@@ -8,9 +9,10 @@ const TextBuffer = text_buffer.UnifiedTextBuffer;
 test "TextBuffer init - creates empty buffer" {
     const pool = gp.initGlobalPool(std.testing.allocator);
     defer gp.deinitGlobalPool();
+    const link_pool = link.initGlobalLinkPool(std.testing.allocator);
+    defer link.deinitGlobalLinkPool();
 
-
-    var tb = try TextBuffer.init(std.testing.allocator, pool, .unicode);
+    var tb = try TextBuffer.init(std.testing.allocator, pool, link_pool, .unicode);
     defer tb.deinit();
 
     try std.testing.expectEqual(@as(u32, 0), tb.getLength());
@@ -20,26 +22,28 @@ test "TextBuffer init - creates empty buffer" {
 test "TextBuffer line info - empty buffer" {
     const pool = gp.initGlobalPool(std.testing.allocator);
     defer gp.deinitGlobalPool();
+    const link_pool = link.initGlobalLinkPool(std.testing.allocator);
+    defer link.deinitGlobalLinkPool();
 
-
-    var tb = try TextBuffer.init(std.testing.allocator, pool, .unicode);
+    var tb = try TextBuffer.init(std.testing.allocator, pool, link_pool, .unicode);
     defer tb.deinit();
 
     try tb.setText("");
 
     try std.testing.expectEqual(@as(u32, 0), tb.getLength());
     try std.testing.expectEqual(@as(u32, 1), tb.getLineCount());
-    try std.testing.expectEqual(@as(u32, 1), tb.rope.count());
-    try std.testing.expectEqual(@as(u32, 0), iter_mod.coordsToOffset(&tb.rope, 0, 0).?);
-    try std.testing.expectEqual(@as(u32, 0), iter_mod.lineWidthAt(&tb.rope, 0));
+    try std.testing.expectEqual(@as(u32, 1), tb.rope().count());
+    try std.testing.expectEqual(@as(u32, 0), iter_mod.coordsToOffset(tb.rope(), 0, 0).?);
+    try std.testing.expectEqual(@as(u32, 0), iter_mod.lineWidthAt(tb.rope(), 0));
 }
 
 test "TextBuffer line info - simple text without newlines" {
     const pool = gp.initGlobalPool(std.testing.allocator);
     defer gp.deinitGlobalPool();
+    const link_pool = link.initGlobalLinkPool(std.testing.allocator);
+    defer link.deinitGlobalLinkPool();
 
-
-    var tb = try TextBuffer.init(std.testing.allocator, pool, .unicode);
+    var tb = try TextBuffer.init(std.testing.allocator, pool, link_pool, .unicode);
     defer tb.deinit();
 
     const text = "Hello World";
@@ -47,9 +51,9 @@ test "TextBuffer line info - simple text without newlines" {
 
     try std.testing.expectEqual(@as(u32, 11), tb.getLength());
     try std.testing.expectEqual(@as(u32, 1), tb.getLineCount());
-    try std.testing.expectEqual(@as(u32, 2), tb.rope.count());
-    try std.testing.expectEqual(@as(u32, 0), iter_mod.coordsToOffset(&tb.rope, 0, 0).?);
-    try std.testing.expect(iter_mod.lineWidthAt(&tb.rope, 0) > 0);
+    try std.testing.expectEqual(@as(u32, 2), tb.rope().count());
+    try std.testing.expectEqual(@as(u32, 0), iter_mod.coordsToOffset(tb.rope(), 0, 0).?);
+    try std.testing.expect(iter_mod.lineWidthAt(tb.rope(), 0) > 0);
 
     var out_buffer: [100]u8 = undefined;
     const written = tb.getPlainTextIntoBuffer(&out_buffer);
@@ -60,26 +64,28 @@ test "TextBuffer line info - simple text without newlines" {
 test "TextBuffer line info - single newline" {
     const pool = gp.initGlobalPool(std.testing.allocator);
     defer gp.deinitGlobalPool();
+    const link_pool = link.initGlobalLinkPool(std.testing.allocator);
+    defer link.deinitGlobalLinkPool();
 
-
-    var tb = try TextBuffer.init(std.testing.allocator, pool, .unicode);
+    var tb = try TextBuffer.init(std.testing.allocator, pool, link_pool, .unicode);
     defer tb.deinit();
 
     try tb.setText("Hello\nWorld");
 
     try std.testing.expectEqual(@as(u32, 2), tb.getLineCount());
-    try std.testing.expectEqual(@as(u32, 0), iter_mod.coordsToOffset(&tb.rope, 0, 0).?);
-    try std.testing.expectEqual(@as(u32, 6), iter_mod.coordsToOffset(&tb.rope, 1, 0).?);
-    try std.testing.expect(iter_mod.lineWidthAt(&tb.rope, 0) > 0);
-    try std.testing.expect(iter_mod.lineWidthAt(&tb.rope, 1) > 0);
+    try std.testing.expectEqual(@as(u32, 0), iter_mod.coordsToOffset(tb.rope(), 0, 0).?);
+    try std.testing.expectEqual(@as(u32, 6), iter_mod.coordsToOffset(tb.rope(), 1, 0).?);
+    try std.testing.expect(iter_mod.lineWidthAt(tb.rope(), 0) > 0);
+    try std.testing.expect(iter_mod.lineWidthAt(tb.rope(), 1) > 0);
 }
 
 test "TextBuffer line info - multiple lines separated by newlines" {
     const pool = gp.initGlobalPool(std.testing.allocator);
     defer gp.deinitGlobalPool();
+    const link_pool = link.initGlobalLinkPool(std.testing.allocator);
+    defer link.deinitGlobalLinkPool();
 
-
-    var tb = try TextBuffer.init(std.testing.allocator, pool, .unicode);
+    var tb = try TextBuffer.init(std.testing.allocator, pool, link_pool, .unicode);
     defer tb.deinit();
 
     const text = "Line 1\nLine 2\nLine 3";
@@ -87,14 +93,14 @@ test "TextBuffer line info - multiple lines separated by newlines" {
 
     try std.testing.expectEqual(@as(u32, 18), tb.getLength());
     try std.testing.expectEqual(@as(u32, 3), tb.getLineCount());
-    try std.testing.expectEqual(@as(u32, 8), tb.rope.count());
-    try std.testing.expectEqual(@as(u32, 0), iter_mod.coordsToOffset(&tb.rope, 0, 0).?);
-    try std.testing.expectEqual(@as(u32, 7), iter_mod.coordsToOffset(&tb.rope, 1, 0).?);
-    try std.testing.expectEqual(@as(u32, 14), iter_mod.coordsToOffset(&tb.rope, 2, 0).?);
+    try std.testing.expectEqual(@as(u32, 8), tb.rope().count());
+    try std.testing.expectEqual(@as(u32, 0), iter_mod.coordsToOffset(tb.rope(), 0, 0).?);
+    try std.testing.expectEqual(@as(u32, 7), iter_mod.coordsToOffset(tb.rope(), 1, 0).?);
+    try std.testing.expectEqual(@as(u32, 14), iter_mod.coordsToOffset(tb.rope(), 2, 0).?);
 
-    try std.testing.expect(iter_mod.lineWidthAt(&tb.rope, 0) > 0);
-    try std.testing.expect(iter_mod.lineWidthAt(&tb.rope, 1) > 0);
-    try std.testing.expect(iter_mod.lineWidthAt(&tb.rope, 2) > 0);
+    try std.testing.expect(iter_mod.lineWidthAt(tb.rope(), 0) > 0);
+    try std.testing.expect(iter_mod.lineWidthAt(tb.rope(), 1) > 0);
+    try std.testing.expect(iter_mod.lineWidthAt(tb.rope(), 2) > 0);
 
     var out_buffer: [100]u8 = undefined;
     const written = tb.getPlainTextIntoBuffer(&out_buffer);
@@ -105,9 +111,10 @@ test "TextBuffer line info - multiple lines separated by newlines" {
 test "TextBuffer line info - text ending with newline" {
     const pool = gp.initGlobalPool(std.testing.allocator);
     defer gp.deinitGlobalPool();
+    const link_pool = link.initGlobalLinkPool(std.testing.allocator);
+    defer link.deinitGlobalLinkPool();
 
-
-    var tb = try TextBuffer.init(std.testing.allocator, pool, .unicode);
+    var tb = try TextBuffer.init(std.testing.allocator, pool, link_pool, .unicode);
     defer tb.deinit();
 
     const text = "Line 1\nLine 2\n";
@@ -115,81 +122,85 @@ test "TextBuffer line info - text ending with newline" {
 
     // Trailing newline creates an empty 3rd line (matches editor semantics)
     try std.testing.expectEqual(@as(u32, 3), tb.getLineCount());
-    try std.testing.expectEqual(@as(u32, 7), tb.rope.count());
-    try std.testing.expectEqual(@as(u32, 0), iter_mod.coordsToOffset(&tb.rope, 0, 0).?);
-    try std.testing.expectEqual(@as(u32, 7), iter_mod.coordsToOffset(&tb.rope, 1, 0).?);
-    try std.testing.expectEqual(@as(u32, 14), iter_mod.coordsToOffset(&tb.rope, 2, 0).?);
-    try std.testing.expect(iter_mod.lineWidthAt(&tb.rope, 0) > 0);
-    try std.testing.expect(iter_mod.lineWidthAt(&tb.rope, 1) > 0);
-    try std.testing.expect(iter_mod.lineWidthAt(&tb.rope, 2) >= 0); // Empty line
+    try std.testing.expectEqual(@as(u32, 7), tb.rope().count());
+    try std.testing.expectEqual(@as(u32, 0), iter_mod.coordsToOffset(tb.rope(), 0, 0).?);
+    try std.testing.expectEqual(@as(u32, 7), iter_mod.coordsToOffset(tb.rope(), 1, 0).?);
+    try std.testing.expectEqual(@as(u32, 14), iter_mod.coordsToOffset(tb.rope(), 2, 0).?);
+    try std.testing.expect(iter_mod.lineWidthAt(tb.rope(), 0) > 0);
+    try std.testing.expect(iter_mod.lineWidthAt(tb.rope(), 1) > 0);
+    try std.testing.expect(iter_mod.lineWidthAt(tb.rope(), 2) >= 0); // Empty line
 }
 
 test "TextBuffer line info - consecutive newlines" {
     const pool = gp.initGlobalPool(std.testing.allocator);
     defer gp.deinitGlobalPool();
+    const link_pool = link.initGlobalLinkPool(std.testing.allocator);
+    defer link.deinitGlobalLinkPool();
 
-
-    var tb = try TextBuffer.init(std.testing.allocator, pool, .unicode);
+    var tb = try TextBuffer.init(std.testing.allocator, pool, link_pool, .unicode);
     defer tb.deinit();
 
     try tb.setText("Line 1\n\nLine 3");
 
     try std.testing.expectEqual(@as(u32, 3), tb.getLineCount());
-    try std.testing.expectEqual(@as(u32, 0), iter_mod.coordsToOffset(&tb.rope, 0, 0).?);
-    try std.testing.expectEqual(@as(u32, 7), iter_mod.coordsToOffset(&tb.rope, 1, 0).?);
-    try std.testing.expectEqual(@as(u32, 8), iter_mod.coordsToOffset(&tb.rope, 2, 0).?);
+    try std.testing.expectEqual(@as(u32, 0), iter_mod.coordsToOffset(tb.rope(), 0, 0).?);
+    try std.testing.expectEqual(@as(u32, 7), iter_mod.coordsToOffset(tb.rope(), 1, 0).?);
+    try std.testing.expectEqual(@as(u32, 8), iter_mod.coordsToOffset(tb.rope(), 2, 0).?);
 }
 
 test "TextBuffer line info - text starting with newline" {
     const pool = gp.initGlobalPool(std.testing.allocator);
     defer gp.deinitGlobalPool();
+    const link_pool = link.initGlobalLinkPool(std.testing.allocator);
+    defer link.deinitGlobalLinkPool();
 
-
-    var tb = try TextBuffer.init(std.testing.allocator, pool, .unicode);
+    var tb = try TextBuffer.init(std.testing.allocator, pool, link_pool, .unicode);
     defer tb.deinit();
 
     try tb.setText("\nHello World");
 
     try std.testing.expectEqual(@as(u32, 2), tb.getLineCount());
-    try std.testing.expectEqual(@as(u32, 0), iter_mod.coordsToOffset(&tb.rope, 0, 0).?);
-    try std.testing.expectEqual(@as(u32, 1), iter_mod.coordsToOffset(&tb.rope, 1, 0).?);
+    try std.testing.expectEqual(@as(u32, 0), iter_mod.coordsToOffset(tb.rope(), 0, 0).?);
+    try std.testing.expectEqual(@as(u32, 1), iter_mod.coordsToOffset(tb.rope(), 1, 0).?);
 }
 
 test "TextBuffer line info - only newlines" {
     const pool = gp.initGlobalPool(std.testing.allocator);
     defer gp.deinitGlobalPool();
+    const link_pool = link.initGlobalLinkPool(std.testing.allocator);
+    defer link.deinitGlobalLinkPool();
 
-
-    var tb = try TextBuffer.init(std.testing.allocator, pool, .unicode);
+    var tb = try TextBuffer.init(std.testing.allocator, pool, link_pool, .unicode);
     defer tb.deinit();
 
     try tb.setText("\n\n\n");
 
     try std.testing.expectEqual(@as(u32, 4), tb.getLineCount());
-    try std.testing.expectEqual(@as(u32, 0), iter_mod.coordsToOffset(&tb.rope, 0, 0).?);
-    try std.testing.expectEqual(@as(u32, 1), iter_mod.coordsToOffset(&tb.rope, 1, 0).?);
-    try std.testing.expectEqual(@as(u32, 2), iter_mod.coordsToOffset(&tb.rope, 2, 0).?);
-    try std.testing.expectEqual(@as(u32, 3), iter_mod.coordsToOffset(&tb.rope, 3, 0).?);
-    try std.testing.expect(iter_mod.lineWidthAt(&tb.rope, 0) >= 0);
-    try std.testing.expect(iter_mod.lineWidthAt(&tb.rope, 1) >= 0);
-    try std.testing.expect(iter_mod.lineWidthAt(&tb.rope, 2) >= 0);
-    try std.testing.expect(iter_mod.lineWidthAt(&tb.rope, 3) >= 0);
+    try std.testing.expectEqual(@as(u32, 0), iter_mod.coordsToOffset(tb.rope(), 0, 0).?);
+    try std.testing.expectEqual(@as(u32, 1), iter_mod.coordsToOffset(tb.rope(), 1, 0).?);
+    try std.testing.expectEqual(@as(u32, 2), iter_mod.coordsToOffset(tb.rope(), 2, 0).?);
+    try std.testing.expectEqual(@as(u32, 3), iter_mod.coordsToOffset(tb.rope(), 3, 0).?);
+    try std.testing.expect(iter_mod.lineWidthAt(tb.rope(), 0) >= 0);
+    try std.testing.expect(iter_mod.lineWidthAt(tb.rope(), 1) >= 0);
+    try std.testing.expect(iter_mod.lineWidthAt(tb.rope(), 2) >= 0);
+    try std.testing.expect(iter_mod.lineWidthAt(tb.rope(), 3) >= 0);
 }
 
 test "TextBuffer line info - wide characters (Unicode)" {
     const pool = gp.initGlobalPool(std.testing.allocator);
     defer gp.deinitGlobalPool();
+    const link_pool = link.initGlobalLinkPool(std.testing.allocator);
+    defer link.deinitGlobalLinkPool();
 
-
-    var tb = try TextBuffer.init(std.testing.allocator, pool, .unicode);
+    var tb = try TextBuffer.init(std.testing.allocator, pool, link_pool, .unicode);
     defer tb.deinit();
 
     const text = "Hello 世界 🌟";
     try tb.setText(text);
 
     try std.testing.expectEqual(@as(u32, 1), tb.getLineCount());
-    try std.testing.expectEqual(@as(u32, 0), iter_mod.coordsToOffset(&tb.rope, 0, 0).?);
-    try std.testing.expect(iter_mod.lineWidthAt(&tb.rope, 0) > 0);
+    try std.testing.expectEqual(@as(u32, 0), iter_mod.coordsToOffset(tb.rope(), 0, 0).?);
+    try std.testing.expect(iter_mod.lineWidthAt(tb.rope(), 0) > 0);
 
     var out_buffer: [100]u8 = undefined;
     const written = tb.getPlainTextIntoBuffer(&out_buffer);
@@ -199,25 +210,27 @@ test "TextBuffer line info - wide characters (Unicode)" {
 test "TextBuffer line info - empty lines between content" {
     const pool = gp.initGlobalPool(std.testing.allocator);
     defer gp.deinitGlobalPool();
+    const link_pool = link.initGlobalLinkPool(std.testing.allocator);
+    defer link.deinitGlobalLinkPool();
 
-
-    var tb = try TextBuffer.init(std.testing.allocator, pool, .unicode);
+    var tb = try TextBuffer.init(std.testing.allocator, pool, link_pool, .unicode);
     defer tb.deinit();
 
     try tb.setText("First\n\nThird");
 
     try std.testing.expectEqual(@as(u32, 3), tb.getLineCount());
-    try std.testing.expectEqual(@as(u32, 0), iter_mod.coordsToOffset(&tb.rope, 0, 0).?);
-    try std.testing.expectEqual(@as(u32, 6), iter_mod.coordsToOffset(&tb.rope, 1, 0).?);
-    try std.testing.expectEqual(@as(u32, 7), iter_mod.coordsToOffset(&tb.rope, 2, 0).?);
+    try std.testing.expectEqual(@as(u32, 0), iter_mod.coordsToOffset(tb.rope(), 0, 0).?);
+    try std.testing.expectEqual(@as(u32, 6), iter_mod.coordsToOffset(tb.rope(), 1, 0).?);
+    try std.testing.expectEqual(@as(u32, 7), iter_mod.coordsToOffset(tb.rope(), 2, 0).?);
 }
 
 test "TextBuffer line info - very long lines" {
     const pool = gp.initGlobalPool(std.testing.allocator);
     defer gp.deinitGlobalPool();
+    const link_pool = link.initGlobalLinkPool(std.testing.allocator);
+    defer link.deinitGlobalLinkPool();
 
-
-    var tb = try TextBuffer.init(std.testing.allocator, pool, .unicode);
+    var tb = try TextBuffer.init(std.testing.allocator, pool, link_pool, .unicode);
     defer tb.deinit();
 
     // Create a long text with 1000 'A' characters
@@ -225,121 +238,128 @@ test "TextBuffer line info - very long lines" {
     try tb.setText(&longText);
 
     try std.testing.expectEqual(@as(u32, 1), tb.getLineCount());
-    try std.testing.expectEqual(@as(u32, 0), iter_mod.coordsToOffset(&tb.rope, 0, 0).?);
-    try std.testing.expect(iter_mod.lineWidthAt(&tb.rope, 0) > 0);
+    try std.testing.expectEqual(@as(u32, 0), iter_mod.coordsToOffset(tb.rope(), 0, 0).?);
+    try std.testing.expect(iter_mod.lineWidthAt(tb.rope(), 0) > 0);
 }
 
 test "TextBuffer line info - lines with different widths" {
     const pool = gp.initGlobalPool(std.testing.allocator);
     defer gp.deinitGlobalPool();
+    const link_pool = link.initGlobalLinkPool(std.testing.allocator);
+    defer link.deinitGlobalLinkPool();
 
-
-    var tb = try TextBuffer.init(std.testing.allocator, pool, .unicode);
+    var tb = try TextBuffer.init(std.testing.allocator, pool, link_pool, .unicode);
     defer tb.deinit();
 
     // Create text with different line lengths
-    var text_builder = std.ArrayList(u8).init(std.testing.allocator);
-    defer text_builder.deinit();
-    try text_builder.appendSlice("Short\n");
-    try text_builder.appendNTimes('A', 50);
-    try text_builder.appendSlice("\nMedium");
+    var text_builder: std.ArrayListUnmanaged(u8) = .{};
+    defer text_builder.deinit(std.testing.allocator);
+    try text_builder.appendSlice(std.testing.allocator, "Short\n");
+    try text_builder.appendNTimes(std.testing.allocator, 'A', 50);
+    try text_builder.appendSlice(std.testing.allocator, "\nMedium");
     const text = text_builder.items;
     try tb.setText(text);
 
     try std.testing.expectEqual(@as(u32, 3), tb.getLineCount());
-    try std.testing.expect(iter_mod.lineWidthAt(&tb.rope, 0) < iter_mod.lineWidthAt(&tb.rope, 1));
-    try std.testing.expect(iter_mod.lineWidthAt(&tb.rope, 1) > iter_mod.lineWidthAt(&tb.rope, 2));
+    try std.testing.expect(iter_mod.lineWidthAt(tb.rope(), 0) < iter_mod.lineWidthAt(tb.rope(), 1));
+    try std.testing.expect(iter_mod.lineWidthAt(tb.rope(), 1) > iter_mod.lineWidthAt(tb.rope(), 2));
 }
 
 test "TextBuffer line info - text without styling" {
     const pool = gp.initGlobalPool(std.testing.allocator);
     defer gp.deinitGlobalPool();
+    const link_pool = link.initGlobalLinkPool(std.testing.allocator);
+    defer link.deinitGlobalLinkPool();
 
-
-    var tb = try TextBuffer.init(std.testing.allocator, pool, .unicode);
+    var tb = try TextBuffer.init(std.testing.allocator, pool, link_pool, .unicode);
     defer tb.deinit();
 
     // setText now handles all text at once without styling
     try tb.setText("Red\nBlue");
 
     try std.testing.expectEqual(@as(u32, 2), tb.getLineCount());
-    try std.testing.expectEqual(@as(u32, 0), iter_mod.coordsToOffset(&tb.rope, 0, 0).?);
-    try std.testing.expectEqual(@as(u32, 4), iter_mod.coordsToOffset(&tb.rope, 1, 0).?);
+    try std.testing.expectEqual(@as(u32, 0), iter_mod.coordsToOffset(tb.rope(), 0, 0).?);
+    try std.testing.expectEqual(@as(u32, 4), iter_mod.coordsToOffset(tb.rope(), 1, 0).?);
 }
 
 test "TextBuffer line info - buffer with only whitespace" {
     const pool = gp.initGlobalPool(std.testing.allocator);
     defer gp.deinitGlobalPool();
+    const link_pool = link.initGlobalLinkPool(std.testing.allocator);
+    defer link.deinitGlobalLinkPool();
 
-
-    var tb = try TextBuffer.init(std.testing.allocator, pool, .unicode);
+    var tb = try TextBuffer.init(std.testing.allocator, pool, link_pool, .unicode);
     defer tb.deinit();
 
     try tb.setText("   \n \n ");
 
     try std.testing.expectEqual(@as(u32, 3), tb.getLineCount());
-    try std.testing.expectEqual(@as(u32, 0), iter_mod.coordsToOffset(&tb.rope, 0, 0).?);
-    try std.testing.expectEqual(@as(u32, 4), iter_mod.coordsToOffset(&tb.rope, 1, 0).?);
-    try std.testing.expectEqual(@as(u32, 6), iter_mod.coordsToOffset(&tb.rope, 2, 0).?);
+    try std.testing.expectEqual(@as(u32, 0), iter_mod.coordsToOffset(tb.rope(), 0, 0).?);
+    try std.testing.expectEqual(@as(u32, 4), iter_mod.coordsToOffset(tb.rope(), 1, 0).?);
+    try std.testing.expectEqual(@as(u32, 6), iter_mod.coordsToOffset(tb.rope(), 2, 0).?);
 
-    try std.testing.expect(iter_mod.lineWidthAt(&tb.rope, 0) >= 0);
-    try std.testing.expect(iter_mod.lineWidthAt(&tb.rope, 1) >= 0);
-    try std.testing.expect(iter_mod.lineWidthAt(&tb.rope, 2) >= 0);
+    try std.testing.expect(iter_mod.lineWidthAt(tb.rope(), 0) >= 0);
+    try std.testing.expect(iter_mod.lineWidthAt(tb.rope(), 1) >= 0);
+    try std.testing.expect(iter_mod.lineWidthAt(tb.rope(), 2) >= 0);
 }
 
 test "TextBuffer line info - single character lines" {
     const pool = gp.initGlobalPool(std.testing.allocator);
     defer gp.deinitGlobalPool();
+    const link_pool = link.initGlobalLinkPool(std.testing.allocator);
+    defer link.deinitGlobalLinkPool();
 
-
-    var tb = try TextBuffer.init(std.testing.allocator, pool, .unicode);
+    var tb = try TextBuffer.init(std.testing.allocator, pool, link_pool, .unicode);
     defer tb.deinit();
 
     try tb.setText("A\nB\nC");
 
     try std.testing.expectEqual(@as(u32, 3), tb.getLineCount());
-    try std.testing.expectEqual(@as(u32, 0), iter_mod.coordsToOffset(&tb.rope, 0, 0).?);
-    try std.testing.expectEqual(@as(u32, 2), iter_mod.coordsToOffset(&tb.rope, 1, 0).?);
-    try std.testing.expectEqual(@as(u32, 4), iter_mod.coordsToOffset(&tb.rope, 2, 0).?);
+    try std.testing.expectEqual(@as(u32, 0), iter_mod.coordsToOffset(tb.rope(), 0, 0).?);
+    try std.testing.expectEqual(@as(u32, 2), iter_mod.coordsToOffset(tb.rope(), 1, 0).?);
+    try std.testing.expectEqual(@as(u32, 4), iter_mod.coordsToOffset(tb.rope(), 2, 0).?);
 
-    try std.testing.expect(iter_mod.lineWidthAt(&tb.rope, 0) > 0);
-    try std.testing.expect(iter_mod.lineWidthAt(&tb.rope, 1) > 0);
-    try std.testing.expect(iter_mod.lineWidthAt(&tb.rope, 2) > 0);
+    try std.testing.expect(iter_mod.lineWidthAt(tb.rope(), 0) > 0);
+    try std.testing.expect(iter_mod.lineWidthAt(tb.rope(), 1) > 0);
+    try std.testing.expect(iter_mod.lineWidthAt(tb.rope(), 2) > 0);
 }
 
 test "TextBuffer line info - mixed content with special characters" {
     const pool = gp.initGlobalPool(std.testing.allocator);
     defer gp.deinitGlobalPool();
+    const link_pool = link.initGlobalLinkPool(std.testing.allocator);
+    defer link.deinitGlobalLinkPool();
 
-
-    var tb = try TextBuffer.init(std.testing.allocator, pool, .unicode);
+    var tb = try TextBuffer.init(std.testing.allocator, pool, link_pool, .unicode);
     defer tb.deinit();
 
     try tb.setText("Normal\n123\n!@#\n测试\n");
 
     try std.testing.expectEqual(@as(u32, 5), tb.getLineCount()); // line_count (4 lines + empty line at end)
-    try std.testing.expect(iter_mod.lineWidthAt(&tb.rope, 0) >= 0);
-    try std.testing.expect(iter_mod.lineWidthAt(&tb.rope, 1) >= 0);
-    try std.testing.expect(iter_mod.lineWidthAt(&tb.rope, 2) >= 0);
-    try std.testing.expect(iter_mod.lineWidthAt(&tb.rope, 3) >= 0);
-    try std.testing.expect(iter_mod.lineWidthAt(&tb.rope, 4) >= 0);
+    try std.testing.expect(iter_mod.lineWidthAt(tb.rope(), 0) >= 0);
+    try std.testing.expect(iter_mod.lineWidthAt(tb.rope(), 1) >= 0);
+    try std.testing.expect(iter_mod.lineWidthAt(tb.rope(), 2) >= 0);
+    try std.testing.expect(iter_mod.lineWidthAt(tb.rope(), 3) >= 0);
+    try std.testing.expect(iter_mod.lineWidthAt(tb.rope(), 4) >= 0);
 }
 
 test "TextBuffer line info - buffer resize operations" {
     const pool = gp.initGlobalPool(std.testing.allocator);
     defer gp.deinitGlobalPool();
+    const link_pool = link.initGlobalLinkPool(std.testing.allocator);
+    defer link.deinitGlobalLinkPool();
 
     // Create a small buffer that will need to resize
 
-    var tb = try TextBuffer.init(std.testing.allocator, pool, .unicode);
+    var tb = try TextBuffer.init(std.testing.allocator, pool, link_pool, .unicode);
     defer tb.deinit();
 
     // Add text that will cause multiple resizes
-    var text_builder = std.ArrayList(u8).init(std.testing.allocator);
-    defer text_builder.deinit();
-    try text_builder.appendNTimes('A', 100);
-    try text_builder.appendSlice("\n");
-    try text_builder.appendNTimes('B', 100);
+    var text_builder: std.ArrayListUnmanaged(u8) = .{};
+    defer text_builder.deinit(std.testing.allocator);
+    try text_builder.appendNTimes(std.testing.allocator, 'A', 100);
+    try text_builder.appendSlice(std.testing.allocator, "\n");
+    try text_builder.appendNTimes(std.testing.allocator, 'B', 100);
     const longText = text_builder.items;
     try tb.setText(longText);
 
@@ -349,143 +369,151 @@ test "TextBuffer line info - buffer resize operations" {
 test "TextBuffer line info - thousands of lines" {
     const pool = gp.initGlobalPool(std.testing.allocator);
     defer gp.deinitGlobalPool();
+    const link_pool = link.initGlobalLinkPool(std.testing.allocator);
+    defer link.deinitGlobalLinkPool();
 
-
-    var tb = try TextBuffer.init(std.testing.allocator, pool, .unicode);
+    var tb = try TextBuffer.init(std.testing.allocator, pool, link_pool, .unicode);
     defer tb.deinit();
 
     // Create text with 1000 lines
-    var text_builder = std.ArrayList(u8).init(std.testing.allocator);
-    defer text_builder.deinit();
+    var text_builder: std.ArrayListUnmanaged(u8) = .{};
+    defer text_builder.deinit(std.testing.allocator);
 
     var i: u32 = 0;
     while (i < 999) : (i += 1) {
-        try std.fmt.format(text_builder.writer(), "Line {}\n", .{i});
+        try text_builder.writer(std.testing.allocator).print("Line {}\n", .{i});
     }
     // Last line without newline
-    try std.fmt.format(text_builder.writer(), "Line {}", .{i});
+    try text_builder.writer(std.testing.allocator).print("Line {}", .{i});
 
     try tb.setText(text_builder.items);
 
     try std.testing.expectEqual(@as(u32, 1000), tb.getLineCount());
-    try std.testing.expectEqual(@as(u32, 0), iter_mod.coordsToOffset(&tb.rope, 0, 0).?);
+    try std.testing.expectEqual(@as(u32, 0), iter_mod.coordsToOffset(tb.rope(), 0, 0).?);
 
     // Check that line starts are monotonically increasing
     var line_idx: u32 = 1;
     while (line_idx < 1000) : (line_idx += 1) {
-        try std.testing.expect(iter_mod.coordsToOffset(&tb.rope, line_idx, 0).? > iter_mod.coordsToOffset(&tb.rope, line_idx - 1, 0).?);
+        try std.testing.expect(iter_mod.coordsToOffset(tb.rope(), line_idx, 0).? > iter_mod.coordsToOffset(tb.rope(), line_idx - 1, 0).?);
     }
 }
 
 test "TextBuffer line info - alternating empty and content lines" {
     const pool = gp.initGlobalPool(std.testing.allocator);
     defer gp.deinitGlobalPool();
+    const link_pool = link.initGlobalLinkPool(std.testing.allocator);
+    defer link.deinitGlobalLinkPool();
 
-
-    var tb = try TextBuffer.init(std.testing.allocator, pool, .unicode);
+    var tb = try TextBuffer.init(std.testing.allocator, pool, link_pool, .unicode);
     defer tb.deinit();
 
     try tb.setText("\nContent\n\nMore\n\n");
 
     try std.testing.expectEqual(@as(u32, 6), tb.getLineCount());
-    try std.testing.expect(iter_mod.lineWidthAt(&tb.rope, 0) >= 0);
-    try std.testing.expect(iter_mod.lineWidthAt(&tb.rope, 1) >= 0);
-    try std.testing.expect(iter_mod.lineWidthAt(&tb.rope, 2) >= 0);
-    try std.testing.expect(iter_mod.lineWidthAt(&tb.rope, 3) >= 0);
-    try std.testing.expect(iter_mod.lineWidthAt(&tb.rope, 4) >= 0);
-    try std.testing.expect(iter_mod.lineWidthAt(&tb.rope, 5) >= 0);
+    try std.testing.expect(iter_mod.lineWidthAt(tb.rope(), 0) >= 0);
+    try std.testing.expect(iter_mod.lineWidthAt(tb.rope(), 1) >= 0);
+    try std.testing.expect(iter_mod.lineWidthAt(tb.rope(), 2) >= 0);
+    try std.testing.expect(iter_mod.lineWidthAt(tb.rope(), 3) >= 0);
+    try std.testing.expect(iter_mod.lineWidthAt(tb.rope(), 4) >= 0);
+    try std.testing.expect(iter_mod.lineWidthAt(tb.rope(), 5) >= 0);
 }
 
 test "TextBuffer line info - complex Unicode combining characters" {
     const pool = gp.initGlobalPool(std.testing.allocator);
     defer gp.deinitGlobalPool();
+    const link_pool = link.initGlobalLinkPool(std.testing.allocator);
+    defer link.deinitGlobalLinkPool();
 
-
-    var tb = try TextBuffer.init(std.testing.allocator, pool, .unicode);
+    var tb = try TextBuffer.init(std.testing.allocator, pool, link_pool, .unicode);
     defer tb.deinit();
 
     try tb.setText("café\nnaïve\nrésumé");
 
     try std.testing.expectEqual(@as(u32, 3), tb.getLineCount());
-    try std.testing.expect(iter_mod.lineWidthAt(&tb.rope, 0) > 0);
-    try std.testing.expect(iter_mod.lineWidthAt(&tb.rope, 1) > 0);
-    try std.testing.expect(iter_mod.lineWidthAt(&tb.rope, 2) > 0);
+    try std.testing.expect(iter_mod.lineWidthAt(tb.rope(), 0) > 0);
+    try std.testing.expect(iter_mod.lineWidthAt(tb.rope(), 1) > 0);
+    try std.testing.expect(iter_mod.lineWidthAt(tb.rope(), 2) > 0);
 }
 
 test "TextBuffer line info - simple multi-line text" {
     const pool = gp.initGlobalPool(std.testing.allocator);
     defer gp.deinitGlobalPool();
+    const link_pool = link.initGlobalLinkPool(std.testing.allocator);
+    defer link.deinitGlobalLinkPool();
 
-
-    var tb = try TextBuffer.init(std.testing.allocator, pool, .unicode);
+    var tb = try TextBuffer.init(std.testing.allocator, pool, link_pool, .unicode);
     defer tb.deinit();
 
     try tb.setText("Test\nText");
 
     try std.testing.expectEqual(@as(u32, 2), tb.getLineCount());
-    try std.testing.expectEqual(@as(u32, 0), iter_mod.coordsToOffset(&tb.rope, 0, 0).?);
-    try std.testing.expectEqual(@as(u32, 5), iter_mod.coordsToOffset(&tb.rope, 1, 0).?);
-    try std.testing.expect(iter_mod.lineWidthAt(&tb.rope, 0) >= 0);
-    try std.testing.expect(iter_mod.lineWidthAt(&tb.rope, 1) >= 0);
+    try std.testing.expectEqual(@as(u32, 0), iter_mod.coordsToOffset(tb.rope(), 0, 0).?);
+    try std.testing.expectEqual(@as(u32, 5), iter_mod.coordsToOffset(tb.rope(), 1, 0).?);
+    try std.testing.expect(iter_mod.lineWidthAt(tb.rope(), 0) >= 0);
+    try std.testing.expect(iter_mod.lineWidthAt(tb.rope(), 1) >= 0);
 }
 
 test "TextBuffer line info - unicode width method" {
     const pool = gp.initGlobalPool(std.testing.allocator);
     defer gp.deinitGlobalPool();
+    const link_pool = link.initGlobalLinkPool(std.testing.allocator);
+    defer link.deinitGlobalLinkPool();
 
-
-    var tb = try TextBuffer.init(std.testing.allocator, pool, .unicode);
+    var tb = try TextBuffer.init(std.testing.allocator, pool, link_pool, .unicode);
     defer tb.deinit();
 
     try tb.setText("Hello 世界 🌟");
 
     try std.testing.expectEqual(@as(u32, 1), tb.getLineCount());
-    try std.testing.expectEqual(@as(u32, 0), iter_mod.coordsToOffset(&tb.rope, 0, 0).?);
-    try std.testing.expect(iter_mod.lineWidthAt(&tb.rope, 0) > 0);
+    try std.testing.expectEqual(@as(u32, 0), iter_mod.coordsToOffset(tb.rope(), 0, 0).?);
+    try std.testing.expect(iter_mod.lineWidthAt(tb.rope(), 0) > 0);
 }
 
 test "TextBuffer line info - unicode mixed content with special characters" {
     const pool = gp.initGlobalPool(std.testing.allocator);
     defer gp.deinitGlobalPool();
+    const link_pool = link.initGlobalLinkPool(std.testing.allocator);
+    defer link.deinitGlobalLinkPool();
 
-
-    var tb = try TextBuffer.init(std.testing.allocator, pool, .unicode);
+    var tb = try TextBuffer.init(std.testing.allocator, pool, link_pool, .unicode);
     defer tb.deinit();
 
     try tb.setText("Normal\n123\n!@#\n测试\n");
 
     try std.testing.expectEqual(@as(u32, 5), tb.getLineCount()); // line_count (4 lines + empty line at end)
-    try std.testing.expect(iter_mod.lineWidthAt(&tb.rope, 0) >= 0);
-    try std.testing.expect(iter_mod.lineWidthAt(&tb.rope, 1) >= 0);
-    try std.testing.expect(iter_mod.lineWidthAt(&tb.rope, 2) >= 0);
-    try std.testing.expect(iter_mod.lineWidthAt(&tb.rope, 3) >= 0);
-    try std.testing.expect(iter_mod.lineWidthAt(&tb.rope, 4) >= 0);
+    try std.testing.expect(iter_mod.lineWidthAt(tb.rope(), 0) >= 0);
+    try std.testing.expect(iter_mod.lineWidthAt(tb.rope(), 1) >= 0);
+    try std.testing.expect(iter_mod.lineWidthAt(tb.rope(), 2) >= 0);
+    try std.testing.expect(iter_mod.lineWidthAt(tb.rope(), 3) >= 0);
+    try std.testing.expect(iter_mod.lineWidthAt(tb.rope(), 4) >= 0);
 }
 
 test "TextBuffer line info - unicode text without styling" {
     const pool = gp.initGlobalPool(std.testing.allocator);
     defer gp.deinitGlobalPool();
+    const link_pool = link.initGlobalLinkPool(std.testing.allocator);
+    defer link.deinitGlobalLinkPool();
 
-
-    var tb = try TextBuffer.init(std.testing.allocator, pool, .unicode);
+    var tb = try TextBuffer.init(std.testing.allocator, pool, link_pool, .unicode);
     defer tb.deinit();
 
     // setText now handles all text at once without styling
     try tb.setText("Red\nBlue");
 
     try std.testing.expectEqual(@as(u32, 2), tb.getLineCount());
-    try std.testing.expectEqual(@as(u32, 0), iter_mod.coordsToOffset(&tb.rope, 0, 0).?);
-    try std.testing.expectEqual(@as(u32, 4), iter_mod.coordsToOffset(&tb.rope, 1, 0).?);
-    try std.testing.expect(iter_mod.lineWidthAt(&tb.rope, 0) >= 0);
-    try std.testing.expect(iter_mod.lineWidthAt(&tb.rope, 1) >= 0);
+    try std.testing.expectEqual(@as(u32, 0), iter_mod.coordsToOffset(tb.rope(), 0, 0).?);
+    try std.testing.expectEqual(@as(u32, 4), iter_mod.coordsToOffset(tb.rope(), 1, 0).?);
+    try std.testing.expect(iter_mod.lineWidthAt(tb.rope(), 0) >= 0);
+    try std.testing.expect(iter_mod.lineWidthAt(tb.rope(), 1) >= 0);
 }
 
 test "TextBuffer line info - extremely long single line" {
     const pool = gp.initGlobalPool(std.testing.allocator);
     defer gp.deinitGlobalPool();
+    const link_pool = link.initGlobalLinkPool(std.testing.allocator);
+    defer link.deinitGlobalLinkPool();
 
-
-    var tb = try TextBuffer.init(std.testing.allocator, pool, .unicode);
+    var tb = try TextBuffer.init(std.testing.allocator, pool, link_pool, .unicode);
     defer tb.deinit();
 
     // Create extremely long text with 10000 'A' characters
@@ -493,16 +521,17 @@ test "TextBuffer line info - extremely long single line" {
     try tb.setText(&extremelyLongText);
 
     try std.testing.expectEqual(@as(u32, 1), tb.getLineCount());
-    try std.testing.expectEqual(@as(u32, 0), iter_mod.coordsToOffset(&tb.rope, 0, 0).?);
-    try std.testing.expect(iter_mod.lineWidthAt(&tb.rope, 0) > 0);
+    try std.testing.expectEqual(@as(u32, 0), iter_mod.coordsToOffset(tb.rope(), 0, 0).?);
+    try std.testing.expect(iter_mod.lineWidthAt(tb.rope(), 0) > 0);
 }
 
 test "TextBuffer unicode - multi-line with extraction" {
     const pool = gp.initGlobalPool(std.testing.allocator);
     defer gp.deinitGlobalPool();
+    const link_pool = link.initGlobalLinkPool(std.testing.allocator);
+    defer link.deinitGlobalLinkPool();
 
-
-    var tb = try TextBuffer.init(std.testing.allocator, pool, .unicode);
+    var tb = try TextBuffer.init(std.testing.allocator, pool, link_pool, .unicode);
     defer tb.deinit();
 
     const text = "Hello 世界\n🚀 Emoji\nΑλφα";
@@ -518,9 +547,10 @@ test "TextBuffer unicode - multi-line with extraction" {
 test "TextBuffer reset - clears all content" {
     const pool = gp.initGlobalPool(std.testing.allocator);
     defer gp.deinitGlobalPool();
+    const link_pool = link.initGlobalLinkPool(std.testing.allocator);
+    defer link.deinitGlobalLinkPool();
 
-
-    var tb = try TextBuffer.init(std.testing.allocator, pool, .unicode);
+    var tb = try TextBuffer.init(std.testing.allocator, pool, link_pool, .unicode);
     defer tb.deinit();
 
     try tb.setText("Some text\nMore text");
@@ -534,61 +564,64 @@ test "TextBuffer reset - clears all content" {
 test "TextBuffer line iteration - walkLines callback" {
     const pool = gp.initGlobalPool(std.testing.allocator);
     defer gp.deinitGlobalPool();
+    const link_pool = link.initGlobalLinkPool(std.testing.allocator);
+    defer link.deinitGlobalLinkPool();
 
-
-    var tb = try TextBuffer.init(std.testing.allocator, pool, .unicode);
+    var tb = try TextBuffer.init(std.testing.allocator, pool, link_pool, .unicode);
     defer tb.deinit();
 
     const text = "First\nSecond\nThird";
     try tb.setText(text);
 
     const Context = struct {
-        lines: std.ArrayList(iter_mod.LineInfo),
+        lines: std.ArrayListUnmanaged(iter_mod.LineInfo),
+        allocator: std.mem.Allocator,
 
         fn callback(ctx_ptr: *anyopaque, line_info: iter_mod.LineInfo) void {
             const ctx = @as(*@This(), @ptrCast(@alignCast(ctx_ptr)));
-            ctx.lines.append(line_info) catch {};
+            ctx.lines.append(ctx.allocator, line_info) catch {};
         }
     };
 
-    var ctx = Context{ .lines = std.ArrayList(iter_mod.LineInfo).init(std.testing.allocator) };
-    defer ctx.lines.deinit();
+    var ctx = Context{ .lines = .{}, .allocator = std.testing.allocator };
+    defer ctx.lines.deinit(std.testing.allocator);
 
-    iter_mod.walkLines(&tb.rope, &ctx, Context.callback, true);
+    iter_mod.walkLines(tb.rope(), &ctx, Context.callback, true);
 
     try std.testing.expectEqual(@as(usize, 3), ctx.lines.items.len);
     try std.testing.expectEqual(@as(u32, 0), ctx.lines.items[0].line_idx);
-    try std.testing.expectEqual(@as(u32, 5), ctx.lines.items[0].width);
+    try std.testing.expectEqual(@as(u32, 5), ctx.lines.items[0].width_cols);
 
     try std.testing.expectEqual(@as(u32, 1), ctx.lines.items[1].line_idx);
-    try std.testing.expectEqual(@as(u32, 6), ctx.lines.items[1].width);
+    try std.testing.expectEqual(@as(u32, 6), ctx.lines.items[1].width_cols);
 
     try std.testing.expectEqual(@as(u32, 2), ctx.lines.items[2].line_idx);
-    try std.testing.expectEqual(@as(u32, 5), ctx.lines.items[2].width);
+    try std.testing.expectEqual(@as(u32, 5), ctx.lines.items[2].width_cols);
 }
 
 test "TextBuffer line queries - comprehensive rope coordinate checks" {
     const pool = gp.initGlobalPool(std.testing.allocator);
     defer gp.deinitGlobalPool();
+    const link_pool = link.initGlobalLinkPool(std.testing.allocator);
+    defer link.deinitGlobalLinkPool();
 
-
-    var tb = try TextBuffer.init(std.testing.allocator, pool, .unicode);
+    var tb = try TextBuffer.init(std.testing.allocator, pool, link_pool, .unicode);
     defer tb.deinit();
 
     try tb.setText("First\nSecond\nThird");
 
     try std.testing.expectEqual(@as(u32, 3), tb.getLineCount());
 
-    try std.testing.expectEqual(@as(u32, 0), iter_mod.coordsToOffset(&tb.rope, 0, 0).?);
-    try std.testing.expectEqual(@as(u32, 5), iter_mod.lineWidthAt(&tb.rope, 0));
+    try std.testing.expectEqual(@as(u32, 0), iter_mod.coordsToOffset(tb.rope(), 0, 0).?);
+    try std.testing.expectEqual(@as(u32, 5), iter_mod.lineWidthAt(tb.rope(), 0));
 
-    try std.testing.expectEqual(@as(u32, 6), iter_mod.coordsToOffset(&tb.rope, 1, 0).?);
-    try std.testing.expectEqual(@as(u32, 6), iter_mod.lineWidthAt(&tb.rope, 1));
+    try std.testing.expectEqual(@as(u32, 6), iter_mod.coordsToOffset(tb.rope(), 1, 0).?);
+    try std.testing.expectEqual(@as(u32, 6), iter_mod.lineWidthAt(tb.rope(), 1));
 
-    try std.testing.expectEqual(@as(u32, 13), iter_mod.coordsToOffset(&tb.rope, 2, 0).?);
-    try std.testing.expectEqual(@as(u32, 5), iter_mod.lineWidthAt(&tb.rope, 2));
+    try std.testing.expectEqual(@as(u32, 13), iter_mod.coordsToOffset(tb.rope(), 2, 0).?);
+    try std.testing.expectEqual(@as(u32, 5), iter_mod.lineWidthAt(tb.rope(), 2));
 
-    try std.testing.expectEqual(@as(u32, 6), iter_mod.getMaxLineWidth(&tb.rope));
+    try std.testing.expectEqual(@as(u32, 6), iter_mod.getMaxLineWidth(tb.rope()));
 }
 
 // ===== View Registration Tests =====
@@ -596,9 +629,10 @@ test "TextBuffer line queries - comprehensive rope coordinate checks" {
 test "TextBuffer view registration - multiple views can be created" {
     const pool = gp.initGlobalPool(std.testing.allocator);
     defer gp.deinitGlobalPool();
+    const link_pool = link.initGlobalLinkPool(std.testing.allocator);
+    defer link.deinitGlobalLinkPool();
 
-
-    var tb = try TextBuffer.init(std.testing.allocator, pool, .unicode);
+    var tb = try TextBuffer.init(std.testing.allocator, pool, link_pool, .unicode);
     defer tb.deinit();
 
     const id1 = try tb.registerView();
@@ -617,9 +651,10 @@ test "TextBuffer view registration - multiple views can be created" {
 test "TextBuffer view registration - views marked dirty on setText" {
     const pool = gp.initGlobalPool(std.testing.allocator);
     defer gp.deinitGlobalPool();
+    const link_pool = link.initGlobalLinkPool(std.testing.allocator);
+    defer link.deinitGlobalLinkPool();
 
-
-    var tb = try TextBuffer.init(std.testing.allocator, pool, .unicode);
+    var tb = try TextBuffer.init(std.testing.allocator, pool, link_pool, .unicode);
     defer tb.deinit();
 
     const id1 = try tb.registerView();
@@ -643,9 +678,10 @@ test "TextBuffer view registration - views marked dirty on setText" {
 test "TextBuffer view registration - views marked dirty on reset" {
     const pool = gp.initGlobalPool(std.testing.allocator);
     defer gp.deinitGlobalPool();
+    const link_pool = link.initGlobalLinkPool(std.testing.allocator);
+    defer link.deinitGlobalLinkPool();
 
-
-    var tb = try TextBuffer.init(std.testing.allocator, pool, .unicode);
+    var tb = try TextBuffer.init(std.testing.allocator, pool, link_pool, .unicode);
     defer tb.deinit();
 
     const id1 = try tb.registerView();
@@ -661,9 +697,10 @@ test "TextBuffer view registration - views marked dirty on reset" {
 test "TextBuffer view registration - ID reuse after unregister" {
     const pool = gp.initGlobalPool(std.testing.allocator);
     defer gp.deinitGlobalPool();
+    const link_pool = link.initGlobalLinkPool(std.testing.allocator);
+    defer link.deinitGlobalLinkPool();
 
-
-    var tb = try TextBuffer.init(std.testing.allocator, pool, .unicode);
+    var tb = try TextBuffer.init(std.testing.allocator, pool, link_pool, .unicode);
     defer tb.deinit();
 
     const id1 = try tb.registerView();
@@ -680,9 +717,10 @@ test "TextBuffer view registration - ID reuse after unregister" {
 test "TextBuffer view registration - multiple views all marked dirty on setText" {
     const pool = gp.initGlobalPool(std.testing.allocator);
     defer gp.deinitGlobalPool();
+    const link_pool = link.initGlobalLinkPool(std.testing.allocator);
+    defer link.deinitGlobalLinkPool();
 
-
-    var tb = try TextBuffer.init(std.testing.allocator, pool, .unicode);
+    var tb = try TextBuffer.init(std.testing.allocator, pool, link_pool, .unicode);
     defer tb.deinit();
 
     const id1 = try tb.registerView();
@@ -714,9 +752,10 @@ test "TextBuffer view registration - multiple views all marked dirty on setText"
 test "TextBuffer memory registry - register and get buffer" {
     const pool = gp.initGlobalPool(std.testing.allocator);
     defer gp.deinitGlobalPool();
+    const link_pool = link.initGlobalLinkPool(std.testing.allocator);
+    defer link.deinitGlobalLinkPool();
 
-
-    var tb = try TextBuffer.init(std.testing.allocator, pool, .unicode);
+    var tb = try TextBuffer.init(std.testing.allocator, pool, link_pool, .unicode);
     defer tb.deinit();
 
     const text = "Hello World";
@@ -730,9 +769,10 @@ test "TextBuffer memory registry - register and get buffer" {
 test "TextBuffer memory registry - multiple buffers" {
     const pool = gp.initGlobalPool(std.testing.allocator);
     defer gp.deinitGlobalPool();
+    const link_pool = link.initGlobalLinkPool(std.testing.allocator);
+    defer link.deinitGlobalLinkPool();
 
-
-    var tb = try TextBuffer.init(std.testing.allocator, pool, .unicode);
+    var tb = try TextBuffer.init(std.testing.allocator, pool, link_pool, .unicode);
     defer tb.deinit();
 
     const text1 = "First buffer";
@@ -755,9 +795,10 @@ test "TextBuffer memory registry - multiple buffers" {
 test "TextBuffer memory registry - invalid ID returns null" {
     const pool = gp.initGlobalPool(std.testing.allocator);
     defer gp.deinitGlobalPool();
+    const link_pool = link.initGlobalLinkPool(std.testing.allocator);
+    defer link.deinitGlobalLinkPool();
 
-
-    var tb = try TextBuffer.init(std.testing.allocator, pool, .unicode);
+    var tb = try TextBuffer.init(std.testing.allocator, pool, link_pool, .unicode);
     defer tb.deinit();
 
     // Try to get buffer with ID that doesn't exist
@@ -768,9 +809,10 @@ test "TextBuffer memory registry - invalid ID returns null" {
 test "TextBuffer memory registry - addLine from single buffer" {
     const pool = gp.initGlobalPool(std.testing.allocator);
     defer gp.deinitGlobalPool();
+    const link_pool = link.initGlobalLinkPool(std.testing.allocator);
+    defer link.deinitGlobalLinkPool();
 
-
-    var tb = try TextBuffer.init(std.testing.allocator, pool, .unicode);
+    var tb = try TextBuffer.init(std.testing.allocator, pool, link_pool, .unicode);
     defer tb.deinit();
 
     const text = "Hello World";
@@ -790,9 +832,10 @@ test "TextBuffer memory registry - addLine from single buffer" {
 test "TextBuffer memory registry - addLine from multiple buffers" {
     const pool = gp.initGlobalPool(std.testing.allocator);
     defer gp.deinitGlobalPool();
+    const link_pool = link.initGlobalLinkPool(std.testing.allocator);
+    defer link.deinitGlobalLinkPool();
 
-
-    var tb = try TextBuffer.init(std.testing.allocator, pool, .unicode);
+    var tb = try TextBuffer.init(std.testing.allocator, pool, link_pool, .unicode);
     defer tb.deinit();
 
     const text1 = "First line";
@@ -817,9 +860,10 @@ test "TextBuffer memory registry - addLine from multiple buffers" {
 test "TextBuffer memory registry - addLine with invalid mem_id" {
     const pool = gp.initGlobalPool(std.testing.allocator);
     defer gp.deinitGlobalPool();
+    const link_pool = link.initGlobalLinkPool(std.testing.allocator);
+    defer link.deinitGlobalLinkPool();
 
-
-    var tb = try TextBuffer.init(std.testing.allocator, pool, .unicode);
+    var tb = try TextBuffer.init(std.testing.allocator, pool, link_pool, .unicode);
     defer tb.deinit();
 
     // Try to add line with invalid mem_id
@@ -830,9 +874,10 @@ test "TextBuffer memory registry - addLine with invalid mem_id" {
 test "TextBuffer memory registry - mixed with setText" {
     const pool = gp.initGlobalPool(std.testing.allocator);
     defer gp.deinitGlobalPool();
+    const link_pool = link.initGlobalLinkPool(std.testing.allocator);
+    defer link.deinitGlobalLinkPool();
 
-
-    var tb = try TextBuffer.init(std.testing.allocator, pool, .unicode);
+    var tb = try TextBuffer.init(std.testing.allocator, pool, link_pool, .unicode);
     defer tb.deinit();
 
     try tb.setText("Initial text");
@@ -848,9 +893,10 @@ test "TextBuffer memory registry - mixed with setText" {
 test "TextBuffer memory registry - reset clears memory buffers" {
     const pool = gp.initGlobalPool(std.testing.allocator);
     defer gp.deinitGlobalPool();
+    const link_pool = link.initGlobalLinkPool(std.testing.allocator);
+    defer link.deinitGlobalLinkPool();
 
-
-    var tb = try TextBuffer.init(std.testing.allocator, pool, .unicode);
+    var tb = try TextBuffer.init(std.testing.allocator, pool, link_pool, .unicode);
     defer tb.deinit();
 
     const text = "Hello";
@@ -867,9 +913,10 @@ test "TextBuffer memory registry - reset clears memory buffers" {
 test "TextBuffer clear - preserves memory buffers" {
     const pool = gp.initGlobalPool(std.testing.allocator);
     defer gp.deinitGlobalPool();
+    const link_pool = link.initGlobalLinkPool(std.testing.allocator);
+    defer link.deinitGlobalLinkPool();
 
-
-    var tb = try TextBuffer.init(std.testing.allocator, pool, .unicode);
+    var tb = try TextBuffer.init(std.testing.allocator, pool, link_pool, .unicode);
     defer tb.deinit();
 
     const text = "Hello World";
@@ -903,9 +950,10 @@ test "TextBuffer clear - preserves memory buffers" {
 test "TextBuffer setText - preserves previously registered memory buffers" {
     const pool = gp.initGlobalPool(std.testing.allocator);
     defer gp.deinitGlobalPool();
+    const link_pool = link.initGlobalLinkPool(std.testing.allocator);
+    defer link.deinitGlobalLinkPool();
 
-
-    var tb = try TextBuffer.init(std.testing.allocator, pool, .unicode);
+    var tb = try TextBuffer.init(std.testing.allocator, pool, link_pool, .unicode);
     defer tb.deinit();
 
     // Register a memory buffer
@@ -935,9 +983,10 @@ test "TextBuffer setText - preserves previously registered memory buffers" {
 test "TextBuffer setStyledText - preserves previously registered memory buffers" {
     const pool = gp.initGlobalPool(std.testing.allocator);
     defer gp.deinitGlobalPool();
+    const link_pool = link.initGlobalLinkPool(std.testing.allocator);
+    defer link.deinitGlobalLinkPool();
 
-
-    var tb = try TextBuffer.init(std.testing.allocator, pool, .unicode);
+    var tb = try TextBuffer.init(std.testing.allocator, pool, link_pool, .unicode);
     defer tb.deinit();
 
     // Register a memory buffer before setStyledText
@@ -985,9 +1034,10 @@ test "TextBuffer setStyledText - preserves previously registered memory buffers"
 test "TextBuffer clear vs reset - memory registry behavior" {
     const pool = gp.initGlobalPool(std.testing.allocator);
     defer gp.deinitGlobalPool();
+    const link_pool = link.initGlobalLinkPool(std.testing.allocator);
+    defer link.deinitGlobalLinkPool();
 
-
-    var tb = try TextBuffer.init(std.testing.allocator, pool, .unicode);
+    var tb = try TextBuffer.init(std.testing.allocator, pool, link_pool, .unicode);
     defer tb.deinit();
 
     const text = "Test buffer";
@@ -1012,9 +1062,10 @@ test "TextBuffer clear vs reset - memory registry behavior" {
 test "TextBuffer memory registry - partial buffer slices" {
     const pool = gp.initGlobalPool(std.testing.allocator);
     defer gp.deinitGlobalPool();
+    const link_pool = link.initGlobalLinkPool(std.testing.allocator);
+    defer link.deinitGlobalLinkPool();
 
-
-    var tb = try TextBuffer.init(std.testing.allocator, pool, .unicode);
+    var tb = try TextBuffer.init(std.testing.allocator, pool, link_pool, .unicode);
     defer tb.deinit();
 
     const full_text = "0123456789ABCDEFGHIJ";
@@ -1034,9 +1085,10 @@ test "TextBuffer memory registry - partial buffer slices" {
 test "TextBuffer memory registry - unicode text from buffers" {
     const pool = gp.initGlobalPool(std.testing.allocator);
     defer gp.deinitGlobalPool();
+    const link_pool = link.initGlobalLinkPool(std.testing.allocator);
+    defer link.deinitGlobalLinkPool();
 
-
-    var tb = try TextBuffer.init(std.testing.allocator, pool, .unicode);
+    var tb = try TextBuffer.init(std.testing.allocator, pool, link_pool, .unicode);
     defer tb.deinit();
 
     const text1 = "Hello 世界";
@@ -1059,9 +1111,10 @@ test "TextBuffer memory registry - unicode text from buffers" {
 test "TextBuffer memory registry - getByteSize with multiple buffers" {
     const pool = gp.initGlobalPool(std.testing.allocator);
     defer gp.deinitGlobalPool();
+    const link_pool = link.initGlobalLinkPool(std.testing.allocator);
+    defer link.deinitGlobalLinkPool();
 
-
-    var tb = try TextBuffer.init(std.testing.allocator, pool, .unicode);
+    var tb = try TextBuffer.init(std.testing.allocator, pool, link_pool, .unicode);
     defer tb.deinit();
 
     const text1 = "Hello"; // 5 bytes
@@ -1080,9 +1133,10 @@ test "TextBuffer memory registry - getByteSize with multiple buffers" {
 test "TextBuffer memory registry - views marked dirty on addLine" {
     const pool = gp.initGlobalPool(std.testing.allocator);
     defer gp.deinitGlobalPool();
+    const link_pool = link.initGlobalLinkPool(std.testing.allocator);
+    defer link.deinitGlobalLinkPool();
 
-
-    var tb = try TextBuffer.init(std.testing.allocator, pool, .unicode);
+    var tb = try TextBuffer.init(std.testing.allocator, pool, link_pool, .unicode);
     defer tb.deinit();
 
     const view_id = try tb.registerView();
@@ -1101,9 +1155,10 @@ test "TextBuffer memory registry - views marked dirty on addLine" {
 test "TextBuffer memory registry - empty chunk handling" {
     const pool = gp.initGlobalPool(std.testing.allocator);
     defer gp.deinitGlobalPool();
+    const link_pool = link.initGlobalLinkPool(std.testing.allocator);
+    defer link.deinitGlobalLinkPool();
 
-
-    var tb = try TextBuffer.init(std.testing.allocator, pool, .unicode);
+    var tb = try TextBuffer.init(std.testing.allocator, pool, link_pool, .unicode);
     defer tb.deinit();
 
     const text = "Hello World";
@@ -1119,9 +1174,10 @@ test "TextBuffer memory registry - empty chunk handling" {
 test "TextBuffer memory registry - buffer limit of 255" {
     const pool = gp.initGlobalPool(std.testing.allocator);
     defer gp.deinitGlobalPool();
+    const link_pool = link.initGlobalLinkPool(std.testing.allocator);
+    defer link.deinitGlobalLinkPool();
 
-
-    var tb = try TextBuffer.init(std.testing.allocator, pool, .unicode);
+    var tb = try TextBuffer.init(std.testing.allocator, pool, link_pool, .unicode);
     defer tb.deinit();
 
     // Register 255 buffers (the maximum for u8)
@@ -1139,9 +1195,10 @@ test "TextBuffer memory registry - buffer limit of 255" {
 test "TextBuffer memory registry - owned buffer memory management" {
     const pool = gp.initGlobalPool(std.testing.allocator);
     defer gp.deinitGlobalPool();
+    const link_pool = link.initGlobalLinkPool(std.testing.allocator);
+    defer link.deinitGlobalLinkPool();
 
-
-    var tb = try TextBuffer.init(std.testing.allocator, pool, .unicode);
+    var tb = try TextBuffer.init(std.testing.allocator, pool, link_pool, .unicode);
     defer tb.deinit();
 
     // Allocate a buffer that the TextBuffer should own and free
@@ -1159,9 +1216,10 @@ test "TextBuffer memory registry - owned buffer memory management" {
 test "TextBuffer memory registry - byte range out of bounds" {
     const pool = gp.initGlobalPool(std.testing.allocator);
     defer gp.deinitGlobalPool();
+    const link_pool = link.initGlobalLinkPool(std.testing.allocator);
+    defer link.deinitGlobalLinkPool();
 
-
-    var tb = try TextBuffer.init(std.testing.allocator, pool, .unicode);
+    var tb = try TextBuffer.init(std.testing.allocator, pool, link_pool, .unicode);
     defer tb.deinit();
 
     const text = "Hello"; // Only 5 bytes
@@ -1179,9 +1237,10 @@ test "TextBuffer memory registry - byte range out of bounds" {
 test "TextBuffer memory registry - character range highlights across buffers" {
     const pool = gp.initGlobalPool(std.testing.allocator);
     defer gp.deinitGlobalPool();
+    const link_pool = link.initGlobalLinkPool(std.testing.allocator);
+    defer link.deinitGlobalLinkPool();
 
-
-    var tb = try TextBuffer.init(std.testing.allocator, pool, .unicode);
+    var tb = try TextBuffer.init(std.testing.allocator, pool, link_pool, .unicode);
     defer tb.deinit();
 
     const text1 = "Line One";
@@ -1206,9 +1265,10 @@ test "TextBuffer memory registry - character range highlights across buffers" {
 test "TextBuffer memory registry - empty buffer registration" {
     const pool = gp.initGlobalPool(std.testing.allocator);
     defer gp.deinitGlobalPool();
+    const link_pool = link.initGlobalLinkPool(std.testing.allocator);
+    defer link.deinitGlobalLinkPool();
 
-
-    var tb = try TextBuffer.init(std.testing.allocator, pool, .unicode);
+    var tb = try TextBuffer.init(std.testing.allocator, pool, link_pool, .unicode);
     defer tb.deinit();
 
     const empty_text = "";
@@ -1222,9 +1282,10 @@ test "TextBuffer memory registry - empty buffer registration" {
 test "TextBuffer memory registry - same buffer registered multiple times" {
     const pool = gp.initGlobalPool(std.testing.allocator);
     defer gp.deinitGlobalPool();
+    const link_pool = link.initGlobalLinkPool(std.testing.allocator);
+    defer link.deinitGlobalLinkPool();
 
-
-    var tb = try TextBuffer.init(std.testing.allocator, pool, .unicode);
+    var tb = try TextBuffer.init(std.testing.allocator, pool, link_pool, .unicode);
     defer tb.deinit();
 
     const text = "Shared buffer";
@@ -1255,17 +1316,18 @@ test "TextBuffer memory registry - same buffer registered multiple times" {
 test "TextBuffer setText - CRLF line endings (Windows)" {
     const pool = gp.initGlobalPool(std.testing.allocator);
     defer gp.deinitGlobalPool();
+    const link_pool = link.initGlobalLinkPool(std.testing.allocator);
+    defer link.deinitGlobalLinkPool();
 
-
-    var tb = try TextBuffer.init(std.testing.allocator, pool, .unicode);
+    var tb = try TextBuffer.init(std.testing.allocator, pool, link_pool, .unicode);
     defer tb.deinit();
 
     try tb.setText("Line1\r\nLine2\r\nLine3");
 
     try std.testing.expectEqual(@as(u32, 3), tb.getLineCount());
-    try std.testing.expectEqual(@as(u32, 0), iter_mod.coordsToOffset(&tb.rope, 0, 0).?);
-    try std.testing.expectEqual(@as(u32, 6), iter_mod.coordsToOffset(&tb.rope, 1, 0).?);
-    try std.testing.expectEqual(@as(u32, 12), iter_mod.coordsToOffset(&tb.rope, 2, 0).?);
+    try std.testing.expectEqual(@as(u32, 0), iter_mod.coordsToOffset(tb.rope(), 0, 0).?);
+    try std.testing.expectEqual(@as(u32, 6), iter_mod.coordsToOffset(tb.rope(), 1, 0).?);
+    try std.testing.expectEqual(@as(u32, 12), iter_mod.coordsToOffset(tb.rope(), 2, 0).?);
 
     var out_buffer: [100]u8 = undefined;
     const written = tb.getPlainTextIntoBuffer(&out_buffer);
@@ -1275,9 +1337,10 @@ test "TextBuffer setText - CRLF line endings (Windows)" {
 test "TextBuffer setText - mixed line endings (LF, CRLF, CR)" {
     const pool = gp.initGlobalPool(std.testing.allocator);
     defer gp.deinitGlobalPool();
+    const link_pool = link.initGlobalLinkPool(std.testing.allocator);
+    defer link.deinitGlobalLinkPool();
 
-
-    var tb = try TextBuffer.init(std.testing.allocator, pool, .unicode);
+    var tb = try TextBuffer.init(std.testing.allocator, pool, link_pool, .unicode);
     defer tb.deinit();
 
     try tb.setText("Unix\nWindows\r\nOldMac\rEnd");
@@ -1292,41 +1355,44 @@ test "TextBuffer setText - mixed line endings (LF, CRLF, CR)" {
 test "TextBuffer setText - text ending with CRLF" {
     const pool = gp.initGlobalPool(std.testing.allocator);
     defer gp.deinitGlobalPool();
+    const link_pool = link.initGlobalLinkPool(std.testing.allocator);
+    defer link.deinitGlobalLinkPool();
 
-
-    var tb = try TextBuffer.init(std.testing.allocator, pool, .unicode);
+    var tb = try TextBuffer.init(std.testing.allocator, pool, link_pool, .unicode);
     defer tb.deinit();
 
     try tb.setText("Hello World\r\n");
 
     try std.testing.expectEqual(@as(u32, 2), tb.getLineCount());
-    try std.testing.expectEqual(@as(u32, 0), iter_mod.coordsToOffset(&tb.rope, 0, 0).?);
-    try std.testing.expectEqual(@as(u32, 12), iter_mod.coordsToOffset(&tb.rope, 1, 0).?);
-    try std.testing.expectEqual(@as(u32, 0), iter_mod.lineWidthAt(&tb.rope, 1)); // Empty line
+    try std.testing.expectEqual(@as(u32, 0), iter_mod.coordsToOffset(tb.rope(), 0, 0).?);
+    try std.testing.expectEqual(@as(u32, 12), iter_mod.coordsToOffset(tb.rope(), 1, 0).?);
+    try std.testing.expectEqual(@as(u32, 0), iter_mod.lineWidthAt(tb.rope(), 1)); // Empty line
 }
 
 test "TextBuffer setText - consecutive CRLF sequences" {
     const pool = gp.initGlobalPool(std.testing.allocator);
     defer gp.deinitGlobalPool();
+    const link_pool = link.initGlobalLinkPool(std.testing.allocator);
+    defer link.deinitGlobalLinkPool();
 
-
-    var tb = try TextBuffer.init(std.testing.allocator, pool, .unicode);
+    var tb = try TextBuffer.init(std.testing.allocator, pool, link_pool, .unicode);
     defer tb.deinit();
 
     try tb.setText("Line1\r\n\r\nLine3");
 
     try std.testing.expectEqual(@as(u32, 3), tb.getLineCount());
-    try std.testing.expectEqual(@as(u32, 0), iter_mod.coordsToOffset(&tb.rope, 0, 0).?);
-    try std.testing.expectEqual(@as(u32, 6), iter_mod.coordsToOffset(&tb.rope, 1, 0).?);
-    try std.testing.expectEqual(@as(u32, 7), iter_mod.coordsToOffset(&tb.rope, 2, 0).?);
+    try std.testing.expectEqual(@as(u32, 0), iter_mod.coordsToOffset(tb.rope(), 0, 0).?);
+    try std.testing.expectEqual(@as(u32, 6), iter_mod.coordsToOffset(tb.rope(), 1, 0).?);
+    try std.testing.expectEqual(@as(u32, 7), iter_mod.coordsToOffset(tb.rope(), 2, 0).?);
 }
 
 test "TextBuffer setText - only CRLF sequences" {
     const pool = gp.initGlobalPool(std.testing.allocator);
     defer gp.deinitGlobalPool();
+    const link_pool = link.initGlobalLinkPool(std.testing.allocator);
+    defer link.deinitGlobalLinkPool();
 
-
-    var tb = try TextBuffer.init(std.testing.allocator, pool, .unicode);
+    var tb = try TextBuffer.init(std.testing.allocator, pool, link_pool, .unicode);
     defer tb.deinit();
 
     try tb.setText("\r\n\r\n\r\n");
@@ -1335,31 +1401,33 @@ test "TextBuffer setText - only CRLF sequences" {
 
     // All lines should be empty
     for (0..4) |i| {
-        try std.testing.expectEqual(@as(u32, 0), iter_mod.lineWidthAt(&tb.rope, @intCast(i)));
+        try std.testing.expectEqual(@as(u32, 0), iter_mod.lineWidthAt(tb.rope(), @intCast(i)));
     }
 }
 
 test "TextBuffer setText - text starting with CRLF" {
     const pool = gp.initGlobalPool(std.testing.allocator);
     defer gp.deinitGlobalPool();
+    const link_pool = link.initGlobalLinkPool(std.testing.allocator);
+    defer link.deinitGlobalLinkPool();
 
-
-    var tb = try TextBuffer.init(std.testing.allocator, pool, .unicode);
+    var tb = try TextBuffer.init(std.testing.allocator, pool, link_pool, .unicode);
     defer tb.deinit();
 
     try tb.setText("\r\nHello World");
 
     try std.testing.expectEqual(@as(u32, 2), tb.getLineCount());
-    try std.testing.expectEqual(@as(u32, 0), iter_mod.coordsToOffset(&tb.rope, 0, 0).?); // Empty first line
-    try std.testing.expectEqual(@as(u32, 1), iter_mod.coordsToOffset(&tb.rope, 1, 0).?);
+    try std.testing.expectEqual(@as(u32, 0), iter_mod.coordsToOffset(tb.rope(), 0, 0).?); // Empty first line
+    try std.testing.expectEqual(@as(u32, 1), iter_mod.coordsToOffset(tb.rope(), 1, 0).?);
 }
 
 test "TextBuffer setText - CR without LF" {
     const pool = gp.initGlobalPool(std.testing.allocator);
     defer gp.deinitGlobalPool();
+    const link_pool = link.initGlobalLinkPool(std.testing.allocator);
+    defer link.deinitGlobalLinkPool();
 
-
-    var tb = try TextBuffer.init(std.testing.allocator, pool, .unicode);
+    var tb = try TextBuffer.init(std.testing.allocator, pool, link_pool, .unicode);
     defer tb.deinit();
 
     try tb.setText("Line1\rLine2\rLine3");
@@ -1374,35 +1442,37 @@ test "TextBuffer setText - CR without LF" {
 test "TextBuffer setText - very long line with SIMD processing" {
     const pool = gp.initGlobalPool(std.testing.allocator);
     defer gp.deinitGlobalPool();
+    const link_pool = link.initGlobalLinkPool(std.testing.allocator);
+    defer link.deinitGlobalLinkPool();
 
-
-    var tb = try TextBuffer.init(std.testing.allocator, pool, .unicode);
+    var tb = try TextBuffer.init(std.testing.allocator, pool, link_pool, .unicode);
     defer tb.deinit();
 
     // Create a text longer than 16 bytes (SIMD vector size) to test SIMD path
-    var text_builder = std.ArrayList(u8).init(std.testing.allocator);
-    defer text_builder.deinit();
+    var text_builder: std.ArrayListUnmanaged(u8) = .{};
+    defer text_builder.deinit(std.testing.allocator);
 
-    try text_builder.appendNTimes('A', 100);
-    try text_builder.appendSlice("\r\n");
-    try text_builder.appendNTimes('B', 100);
-    try text_builder.appendSlice("\n");
-    try text_builder.appendNTimes('C', 100);
+    try text_builder.appendNTimes(std.testing.allocator, 'A', 100);
+    try text_builder.appendSlice(std.testing.allocator, "\r\n");
+    try text_builder.appendNTimes(std.testing.allocator, 'B', 100);
+    try text_builder.appendSlice(std.testing.allocator, "\n");
+    try text_builder.appendNTimes(std.testing.allocator, 'C', 100);
 
     try tb.setText(text_builder.items);
 
     try std.testing.expectEqual(@as(u32, 3), tb.getLineCount());
-    try std.testing.expectEqual(@as(u32, 100), iter_mod.lineWidthAt(&tb.rope, 0));
-    try std.testing.expectEqual(@as(u32, 100), iter_mod.lineWidthAt(&tb.rope, 1));
-    try std.testing.expectEqual(@as(u32, 100), iter_mod.lineWidthAt(&tb.rope, 2));
+    try std.testing.expectEqual(@as(u32, 100), iter_mod.lineWidthAt(tb.rope(), 0));
+    try std.testing.expectEqual(@as(u32, 100), iter_mod.lineWidthAt(tb.rope(), 1));
+    try std.testing.expectEqual(@as(u32, 100), iter_mod.lineWidthAt(tb.rope(), 2));
 }
 
 test "TextBuffer setText - unicode content with various line endings" {
     const pool = gp.initGlobalPool(std.testing.allocator);
     defer gp.deinitGlobalPool();
+    const link_pool = link.initGlobalLinkPool(std.testing.allocator);
+    defer link.deinitGlobalLinkPool();
 
-
-    var tb = try TextBuffer.init(std.testing.allocator, pool, .unicode);
+    var tb = try TextBuffer.init(std.testing.allocator, pool, link_pool, .unicode);
     defer tb.deinit();
 
     try tb.setText("Hello 世界\r\n🌟 Test\nEnd");
@@ -1417,9 +1487,10 @@ test "TextBuffer setText - unicode content with various line endings" {
 test "TextBuffer setText - multiple consecutive different line endings" {
     const pool = gp.initGlobalPool(std.testing.allocator);
     defer gp.deinitGlobalPool();
+    const link_pool = link.initGlobalLinkPool(std.testing.allocator);
+    defer link.deinitGlobalLinkPool();
 
-
-    var tb = try TextBuffer.init(std.testing.allocator, pool, .unicode);
+    var tb = try TextBuffer.init(std.testing.allocator, pool, link_pool, .unicode);
     defer tb.deinit();
 
     // Mix of \n, \r\n, \r in sequence
@@ -1432,53 +1503,55 @@ test "TextBuffer setText - multiple consecutive different line endings" {
 test "TextBuffer setText - SIMD boundary conditions" {
     const pool = gp.initGlobalPool(std.testing.allocator);
     defer gp.deinitGlobalPool();
+    const link_pool = link.initGlobalLinkPool(std.testing.allocator);
+    defer link.deinitGlobalLinkPool();
 
-
-    var tb = try TextBuffer.init(std.testing.allocator, pool, .unicode);
+    var tb = try TextBuffer.init(std.testing.allocator, pool, link_pool, .unicode);
     defer tb.deinit();
 
     // Create text with newlines at SIMD vector boundaries (16 bytes)
-    var text_builder = std.ArrayList(u8).init(std.testing.allocator);
-    defer text_builder.deinit();
+    var text_builder: std.ArrayListUnmanaged(u8) = .{};
+    defer text_builder.deinit(std.testing.allocator);
 
     // 15 chars + \n = exactly 16 bytes
-    try text_builder.appendNTimes('X', 15);
-    try text_builder.appendSlice("\n");
+    try text_builder.appendNTimes(std.testing.allocator, 'X', 15);
+    try text_builder.appendSlice(std.testing.allocator, "\n");
     // 15 more chars + \n
-    try text_builder.appendNTimes('Y', 15);
-    try text_builder.appendSlice("\n");
+    try text_builder.appendNTimes(std.testing.allocator, 'Y', 15);
+    try text_builder.appendSlice(std.testing.allocator, "\n");
     // Final line
-    try text_builder.appendNTimes('Z', 10);
+    try text_builder.appendNTimes(std.testing.allocator, 'Z', 10);
 
     try tb.setText(text_builder.items);
 
     try std.testing.expectEqual(@as(u32, 3), tb.getLineCount());
-    try std.testing.expectEqual(@as(u32, 15), iter_mod.lineWidthAt(&tb.rope, 0));
-    try std.testing.expectEqual(@as(u32, 15), iter_mod.lineWidthAt(&tb.rope, 1));
-    try std.testing.expectEqual(@as(u32, 10), iter_mod.lineWidthAt(&tb.rope, 2));
+    try std.testing.expectEqual(@as(u32, 15), iter_mod.lineWidthAt(tb.rope(), 0));
+    try std.testing.expectEqual(@as(u32, 15), iter_mod.lineWidthAt(tb.rope(), 1));
+    try std.testing.expectEqual(@as(u32, 10), iter_mod.lineWidthAt(tb.rope(), 2));
 }
 
 test "TextBuffer setText - CRLF at SIMD boundary" {
     const pool = gp.initGlobalPool(std.testing.allocator);
     defer gp.deinitGlobalPool();
+    const link_pool = link.initGlobalLinkPool(std.testing.allocator);
+    defer link.deinitGlobalLinkPool();
 
-
-    var tb = try TextBuffer.init(std.testing.allocator, pool, .unicode);
+    var tb = try TextBuffer.init(std.testing.allocator, pool, link_pool, .unicode);
     defer tb.deinit();
 
     // Create text where \r is at end of SIMD vector and \n is at start of next
-    var text_builder = std.ArrayList(u8).init(std.testing.allocator);
-    defer text_builder.deinit();
+    var text_builder: std.ArrayListUnmanaged(u8) = .{};
+    defer text_builder.deinit(std.testing.allocator);
 
     // 15 chars + \r = 16 bytes, then \n at position 16
-    try text_builder.appendNTimes('A', 15);
-    try text_builder.appendSlice("\r\n");
-    try text_builder.appendSlice("Next line");
+    try text_builder.appendNTimes(std.testing.allocator, 'A', 15);
+    try text_builder.appendSlice(std.testing.allocator, "\r\n");
+    try text_builder.appendSlice(std.testing.allocator, "Next line");
 
     try tb.setText(text_builder.items);
 
     try std.testing.expectEqual(@as(u32, 2), tb.getLineCount());
-    try std.testing.expectEqual(@as(u32, 15), iter_mod.lineWidthAt(&tb.rope, 0));
+    try std.testing.expectEqual(@as(u32, 15), iter_mod.lineWidthAt(tb.rope(), 0));
 
     var out_buffer: [100]u8 = undefined;
     const written = tb.getPlainTextIntoBuffer(&out_buffer);
@@ -1493,9 +1566,10 @@ test "TextBuffer setText - line with multiple u16-sized chunks (SKIPPED)" {
 test "TextBuffer setText - validate rope structure is correct" {
     const pool = gp.initGlobalPool(std.testing.allocator);
     defer gp.deinitGlobalPool();
+    const link_pool = link.initGlobalLinkPool(std.testing.allocator);
+    defer link.deinitGlobalLinkPool();
 
-
-    var tb = try text_buffer.UnifiedTextBuffer.init(std.testing.allocator, pool, .wcwidth);
+    var tb = try text_buffer.UnifiedTextBuffer.init(std.testing.allocator, pool, link_pool, .wcwidth);
     defer tb.deinit();
 
     try tb.setText("Line 1\nLine 2\nLine 3");
@@ -1503,27 +1577,28 @@ test "TextBuffer setText - validate rope structure is correct" {
     const line_count = tb.lineCount();
     try std.testing.expectEqual(@as(u32, 3), line_count);
 
-    const break_count = tb.rope.markerCount(.brk);
+    const break_count = tb.rope().markerCount(.brk);
     try std.testing.expectEqual(@as(u32, 2), break_count);
 
-    const linestart_count = tb.rope.markerCount(.linestart);
+    const linestart_count = tb.rope().markerCount(.linestart);
     try std.testing.expectEqual(@as(u32, 3), linestart_count);
 
-    try std.testing.expectEqual(@as(u32, 6), iter_mod.lineWidthAt(&tb.rope, 0));
-    try std.testing.expectEqual(@as(u32, 6), iter_mod.lineWidthAt(&tb.rope, 1));
-    try std.testing.expectEqual(@as(u32, 6), iter_mod.lineWidthAt(&tb.rope, 2));
+    try std.testing.expectEqual(@as(u32, 6), iter_mod.lineWidthAt(tb.rope(), 0));
+    try std.testing.expectEqual(@as(u32, 6), iter_mod.lineWidthAt(tb.rope(), 1));
+    try std.testing.expectEqual(@as(u32, 6), iter_mod.lineWidthAt(tb.rope(), 2));
 
-    const total_weight = tb.rope.totalWeight();
+    const total_weight = tb.rope().totalWeight();
     try std.testing.expectEqual(@as(u32, 20), total_weight);
 }
 
 test "TextBuffer setText - then deleteRange via EditBuffer - validate markers" {
     const pool = gp.initGlobalPool(std.testing.allocator);
     defer gp.deinitGlobalPool();
-
+    const link_pool = link.initGlobalLinkPool(std.testing.allocator);
+    defer link.deinitGlobalLinkPool();
 
     const edit_buffer = @import("../edit-buffer.zig");
-    var eb = try edit_buffer.EditBuffer.init(std.testing.allocator, pool, .wcwidth);
+    var eb = try edit_buffer.EditBuffer.init(std.testing.allocator, pool, link_pool, .wcwidth);
     defer eb.deinit();
 
     try eb.setText("Line 1\nLine 2\nLine 3");
@@ -1531,16 +1606,17 @@ test "TextBuffer setText - then deleteRange via EditBuffer - validate markers" {
     try eb.deleteRange(.{ .row = 2, .col = 0 }, .{ .row = 2, .col = 6 });
 
     try std.testing.expectEqual(@as(u32, 2), eb.getTextBuffer().lineCount());
-    try std.testing.expectEqual(@as(u32, 2), eb.getTextBuffer().rope.markerCount(.brk));
-    try std.testing.expectEqual(@as(u32, 2), eb.getTextBuffer().rope.markerCount(.linestart));
+    try std.testing.expectEqual(@as(u32, 2), eb.getTextBuffer().rope().markerCount(.brk));
+    try std.testing.expectEqual(@as(u32, 2), eb.getTextBuffer().rope().markerCount(.linestart));
 }
 
 test "TextBuffer setStyledText - repeated calls with SyntaxStyle (crash reproduction)" {
     const pool = gp.initGlobalPool(std.testing.allocator);
     defer gp.deinitGlobalPool();
+    const link_pool = link.initGlobalLinkPool(std.testing.allocator);
+    defer link.deinitGlobalLinkPool();
 
-
-    var tb = try TextBuffer.init(std.testing.allocator, pool, .unicode);
+    var tb = try TextBuffer.init(std.testing.allocator, pool, link_pool, .unicode);
     defer tb.deinit();
 
     // Create a SyntaxStyle (similar to what Text.ts does)
@@ -1602,9 +1678,10 @@ test "TextBuffer setStyledText - repeated calls with SyntaxStyle (crash reproduc
 test "addHighlightByCharRange - single line highlight should not extend to EOL" {
     const pool = gp.initGlobalPool(std.testing.allocator);
     defer gp.deinitGlobalPool();
+    const link_pool = link.initGlobalLinkPool(std.testing.allocator);
+    defer link.deinitGlobalLinkPool();
 
-
-    var tb = try TextBuffer.init(std.testing.allocator, pool, .unicode);
+    var tb = try TextBuffer.init(std.testing.allocator, pool, link_pool, .unicode);
     defer tb.deinit();
 
     const text = "Try moving your cursor through the [VIRTUAL] markers below:";
@@ -1624,9 +1701,10 @@ test "addHighlightByCharRange - single line highlight should not extend to EOL" 
 test "addHighlightByCharRange - multiple highlights on same line should have correct bounds" {
     const pool = gp.initGlobalPool(std.testing.allocator);
     defer gp.deinitGlobalPool();
+    const link_pool = link.initGlobalLinkPool(std.testing.allocator);
+    defer link.deinitGlobalLinkPool();
 
-
-    var tb = try TextBuffer.init(std.testing.allocator, pool, .unicode);
+    var tb = try TextBuffer.init(std.testing.allocator, pool, link_pool, .unicode);
     defer tb.deinit();
 
     const text = "Text [MARK1] and [MARK2] here";
@@ -1648,9 +1726,10 @@ test "addHighlightByCharRange - multiple highlights on same line should have cor
 test "addHighlightByCharRange - highlight after newline should not span to EOL" {
     const pool = gp.initGlobalPool(std.testing.allocator);
     defer gp.deinitGlobalPool();
+    const link_pool = link.initGlobalLinkPool(std.testing.allocator);
+    defer link.deinitGlobalLinkPool();
 
-
-    var tb = try TextBuffer.init(std.testing.allocator, pool, .unicode);
+    var tb = try TextBuffer.init(std.testing.allocator, pool, link_pool, .unicode);
     defer tb.deinit();
 
     const text = "Line1\nLine2 with [MARK] text\nLine3";
@@ -1678,9 +1757,10 @@ test "addHighlightByCharRange - highlight after newline should not span to EOL" 
 test "addHighlightByCharRange - extmarks demo scenario reproduction" {
     const pool = gp.initGlobalPool(std.testing.allocator);
     defer gp.deinitGlobalPool();
+    const link_pool = link.initGlobalLinkPool(std.testing.allocator);
+    defer link.deinitGlobalLinkPool();
 
-
-    var tb = try TextBuffer.init(std.testing.allocator, pool, .unicode);
+    var tb = try TextBuffer.init(std.testing.allocator, pool, link_pool, .unicode);
     defer tb.deinit();
 
     const full_text =
@@ -1714,9 +1794,10 @@ test "addHighlightByCharRange - extmarks demo scenario reproduction" {
 test "TextBuffer append - to empty buffer" {
     const pool = gp.initGlobalPool(std.testing.allocator);
     defer gp.deinitGlobalPool();
+    const link_pool = link.initGlobalLinkPool(std.testing.allocator);
+    defer link.deinitGlobalLinkPool();
 
-
-    var tb = try TextBuffer.init(std.testing.allocator, pool, .unicode);
+    var tb = try TextBuffer.init(std.testing.allocator, pool, link_pool, .unicode);
     defer tb.deinit();
 
     try tb.append("Hello");
@@ -1732,9 +1813,10 @@ test "TextBuffer append - to empty buffer" {
 test "TextBuffer append - to non-empty buffer, no newline" {
     const pool = gp.initGlobalPool(std.testing.allocator);
     defer gp.deinitGlobalPool();
+    const link_pool = link.initGlobalLinkPool(std.testing.allocator);
+    defer link.deinitGlobalLinkPool();
 
-
-    var tb = try TextBuffer.init(std.testing.allocator, pool, .unicode);
+    var tb = try TextBuffer.init(std.testing.allocator, pool, link_pool, .unicode);
     defer tb.deinit();
 
     try tb.setText("Hello");
@@ -1751,9 +1833,10 @@ test "TextBuffer append - to non-empty buffer, no newline" {
 test "TextBuffer append - creating new line with LF" {
     const pool = gp.initGlobalPool(std.testing.allocator);
     defer gp.deinitGlobalPool();
+    const link_pool = link.initGlobalLinkPool(std.testing.allocator);
+    defer link.deinitGlobalLinkPool();
 
-
-    var tb = try TextBuffer.init(std.testing.allocator, pool, .unicode);
+    var tb = try TextBuffer.init(std.testing.allocator, pool, link_pool, .unicode);
     defer tb.deinit();
 
     try tb.setText("Hello");
@@ -1769,9 +1852,10 @@ test "TextBuffer append - creating new line with LF" {
 test "TextBuffer append - multiple lines with various endings" {
     const pool = gp.initGlobalPool(std.testing.allocator);
     defer gp.deinitGlobalPool();
+    const link_pool = link.initGlobalLinkPool(std.testing.allocator);
+    defer link.deinitGlobalLinkPool();
 
-
-    var tb = try TextBuffer.init(std.testing.allocator, pool, .unicode);
+    var tb = try TextBuffer.init(std.testing.allocator, pool, link_pool, .unicode);
     defer tb.deinit();
 
     try tb.setText("A\nB");
@@ -1789,9 +1873,10 @@ test "TextBuffer append - multiple lines with various endings" {
 test "TextBuffer append - CRLF line endings" {
     const pool = gp.initGlobalPool(std.testing.allocator);
     defer gp.deinitGlobalPool();
+    const link_pool = link.initGlobalLinkPool(std.testing.allocator);
+    defer link.deinitGlobalLinkPool();
 
-
-    var tb = try TextBuffer.init(std.testing.allocator, pool, .unicode);
+    var tb = try TextBuffer.init(std.testing.allocator, pool, link_pool, .unicode);
     defer tb.deinit();
 
     try tb.append("Line1\r\nLine2\r\nLine3");
@@ -1807,9 +1892,10 @@ test "TextBuffer append - CRLF line endings" {
 test "TextBuffer append - mixed line endings" {
     const pool = gp.initGlobalPool(std.testing.allocator);
     defer gp.deinitGlobalPool();
+    const link_pool = link.initGlobalLinkPool(std.testing.allocator);
+    defer link.deinitGlobalLinkPool();
 
-
-    var tb = try TextBuffer.init(std.testing.allocator, pool, .unicode);
+    var tb = try TextBuffer.init(std.testing.allocator, pool, link_pool, .unicode);
     defer tb.deinit();
 
     try tb.setText("Unix\n");
@@ -1825,9 +1911,10 @@ test "TextBuffer append - mixed line endings" {
 test "TextBuffer append - empty string is no-op" {
     const pool = gp.initGlobalPool(std.testing.allocator);
     defer gp.deinitGlobalPool();
+    const link_pool = link.initGlobalLinkPool(std.testing.allocator);
+    defer link.deinitGlobalLinkPool();
 
-
-    var tb = try TextBuffer.init(std.testing.allocator, pool, .unicode);
+    var tb = try TextBuffer.init(std.testing.allocator, pool, link_pool, .unicode);
     defer tb.deinit();
 
     try tb.setText("Hello");
@@ -1843,9 +1930,10 @@ test "TextBuffer append - empty string is no-op" {
 test "TextBuffer append - unicode content" {
     const pool = gp.initGlobalPool(std.testing.allocator);
     defer gp.deinitGlobalPool();
+    const link_pool = link.initGlobalLinkPool(std.testing.allocator);
+    defer link.deinitGlobalLinkPool();
 
-
-    var tb = try TextBuffer.init(std.testing.allocator, pool, .unicode);
+    var tb = try TextBuffer.init(std.testing.allocator, pool, link_pool, .unicode);
     defer tb.deinit();
 
     try tb.setText("Hello ");
@@ -1861,9 +1949,10 @@ test "TextBuffer append - unicode content" {
 test "TextBuffer append - streaming/chunked append vs ground truth" {
     const pool = gp.initGlobalPool(std.testing.allocator);
     defer gp.deinitGlobalPool();
+    const link_pool = link.initGlobalLinkPool(std.testing.allocator);
+    defer link.deinitGlobalLinkPool();
 
-
-    var tb = try TextBuffer.init(std.testing.allocator, pool, .unicode);
+    var tb = try TextBuffer.init(std.testing.allocator, pool, link_pool, .unicode);
     defer tb.deinit();
 
     // Append in chunks
@@ -1874,13 +1963,13 @@ test "TextBuffer append - streaming/chunked append vs ground truth" {
     try tb.append(" end");
 
     // Build expected ground truth
-    var expected = std.ArrayList(u8).init(std.testing.allocator);
-    defer expected.deinit();
-    try expected.appendSlice("First");
-    try expected.appendSlice("\nLine2");
-    try expected.appendSlice("\n");
-    try expected.appendSlice("Line3");
-    try expected.appendSlice(" end");
+    var expected: std.ArrayListUnmanaged(u8) = .{};
+    defer expected.deinit(std.testing.allocator);
+    try expected.appendSlice(std.testing.allocator, "First");
+    try expected.appendSlice(std.testing.allocator, "\nLine2");
+    try expected.appendSlice(std.testing.allocator, "\n");
+    try expected.appendSlice(std.testing.allocator, "Line3");
+    try expected.appendSlice(std.testing.allocator, " end");
 
     var out_buffer: [100]u8 = undefined;
     const written = tb.getPlainTextIntoBuffer(&out_buffer);
@@ -1892,9 +1981,10 @@ test "TextBuffer append - streaming/chunked append vs ground truth" {
 test "TextBuffer append - large streaming append" {
     const pool = gp.initGlobalPool(std.testing.allocator);
     defer gp.deinitGlobalPool();
+    const link_pool = link.initGlobalLinkPool(std.testing.allocator);
+    defer link.deinitGlobalLinkPool();
 
-
-    var tb = try TextBuffer.init(std.testing.allocator, pool, .unicode);
+    var tb = try TextBuffer.init(std.testing.allocator, pool, link_pool, .unicode);
     defer tb.deinit();
 
     // Simulate streaming large content
@@ -1908,16 +1998,17 @@ test "TextBuffer append - large streaming append" {
     try std.testing.expectEqual(@as(u32, 101), tb.getLineCount()); // 100 lines + empty final line
 
     // Verify first and last lines can be extracted correctly
-    try std.testing.expectEqual(@as(u32, 0), iter_mod.coordsToOffset(&tb.rope, 0, 0).?);
-    try std.testing.expect(iter_mod.coordsToOffset(&tb.rope, 99, 0).? > 0);
+    try std.testing.expectEqual(@as(u32, 0), iter_mod.coordsToOffset(tb.rope(), 0, 0).?);
+    try std.testing.expect(iter_mod.coordsToOffset(tb.rope(), 99, 0).? > 0);
 }
 
 test "TextBuffer appendFromMemId - basic functionality" {
     const pool = gp.initGlobalPool(std.testing.allocator);
     defer gp.deinitGlobalPool();
+    const link_pool = link.initGlobalLinkPool(std.testing.allocator);
+    defer link.deinitGlobalLinkPool();
 
-
-    var tb = try TextBuffer.init(std.testing.allocator, pool, .unicode);
+    var tb = try TextBuffer.init(std.testing.allocator, pool, link_pool, .unicode);
     defer tb.deinit();
 
     const text = "Alpha\nBeta";
@@ -1935,9 +2026,10 @@ test "TextBuffer appendFromMemId - basic functionality" {
 test "TextBuffer appendFromMemId - append to existing content" {
     const pool = gp.initGlobalPool(std.testing.allocator);
     defer gp.deinitGlobalPool();
+    const link_pool = link.initGlobalLinkPool(std.testing.allocator);
+    defer link.deinitGlobalLinkPool();
 
-
-    var tb = try TextBuffer.init(std.testing.allocator, pool, .unicode);
+    var tb = try TextBuffer.init(std.testing.allocator, pool, link_pool, .unicode);
     defer tb.deinit();
 
     const text = "Gamma";
@@ -1958,9 +2050,10 @@ test "TextBuffer appendFromMemId - append to existing content" {
 test "TextBuffer appendFromMemId - invalid mem_id" {
     const pool = gp.initGlobalPool(std.testing.allocator);
     defer gp.deinitGlobalPool();
+    const link_pool = link.initGlobalLinkPool(std.testing.allocator);
+    defer link.deinitGlobalLinkPool();
 
-
-    var tb = try TextBuffer.init(std.testing.allocator, pool, .unicode);
+    var tb = try TextBuffer.init(std.testing.allocator, pool, link_pool, .unicode);
     defer tb.deinit();
 
     const result = tb.appendFromMemId(99);
@@ -1970,9 +2063,10 @@ test "TextBuffer appendFromMemId - invalid mem_id" {
 test "TextBuffer append - marker invariants maintained" {
     const pool = gp.initGlobalPool(std.testing.allocator);
     defer gp.deinitGlobalPool();
+    const link_pool = link.initGlobalLinkPool(std.testing.allocator);
+    defer link.deinitGlobalLinkPool();
 
-
-    var tb = try TextBuffer.init(std.testing.allocator, pool, .unicode);
+    var tb = try TextBuffer.init(std.testing.allocator, pool, link_pool, .unicode);
     defer tb.deinit();
 
     try tb.append("Line1\n");
@@ -1983,19 +2077,20 @@ test "TextBuffer append - marker invariants maintained" {
     try std.testing.expectEqual(@as(u32, 3), line_count);
 
     // Verify marker counts
-    const linestart_count = tb.rope.markerCount(.linestart);
+    const linestart_count = tb.rope().markerCount(.linestart);
     try std.testing.expectEqual(line_count, linestart_count);
 
-    const break_count = tb.rope.markerCount(.brk);
+    const break_count = tb.rope().markerCount(.brk);
     try std.testing.expectEqual(@as(u32, 2), break_count); // 2 newlines
 }
 
 test "TextBuffer append - memory registry preserved" {
     const pool = gp.initGlobalPool(std.testing.allocator);
     defer gp.deinitGlobalPool();
+    const link_pool = link.initGlobalLinkPool(std.testing.allocator);
+    defer link.deinitGlobalLinkPool();
 
-
-    var tb = try TextBuffer.init(std.testing.allocator, pool, .unicode);
+    var tb = try TextBuffer.init(std.testing.allocator, pool, link_pool, .unicode);
     defer tb.deinit();
 
     const preserved_text = "Preserved";
@@ -2014,9 +2109,10 @@ test "TextBuffer append - memory registry preserved" {
 test "TextBuffer append - views marked dirty" {
     const pool = gp.initGlobalPool(std.testing.allocator);
     defer gp.deinitGlobalPool();
+    const link_pool = link.initGlobalLinkPool(std.testing.allocator);
+    defer link.deinitGlobalLinkPool();
 
-
-    var tb = try TextBuffer.init(std.testing.allocator, pool, .unicode);
+    var tb = try TextBuffer.init(std.testing.allocator, pool, link_pool, .unicode);
     defer tb.deinit();
 
     const view_id = try tb.registerView();
@@ -2033,9 +2129,10 @@ test "TextBuffer append - views marked dirty" {
 test "TextBuffer append - append after clear" {
     const pool = gp.initGlobalPool(std.testing.allocator);
     defer gp.deinitGlobalPool();
+    const link_pool = link.initGlobalLinkPool(std.testing.allocator);
+    defer link.deinitGlobalLinkPool();
 
-
-    var tb = try TextBuffer.init(std.testing.allocator, pool, .unicode);
+    var tb = try TextBuffer.init(std.testing.allocator, pool, link_pool, .unicode);
     defer tb.deinit();
 
     try tb.setText("Initial content");
@@ -2053,9 +2150,10 @@ test "TextBuffer append - append after clear" {
 test "TextBuffer append - consecutive empty line handling" {
     const pool = gp.initGlobalPool(std.testing.allocator);
     defer gp.deinitGlobalPool();
+    const link_pool = link.initGlobalLinkPool(std.testing.allocator);
+    defer link.deinitGlobalLinkPool();
 
-
-    var tb = try TextBuffer.init(std.testing.allocator, pool, .unicode);
+    var tb = try TextBuffer.init(std.testing.allocator, pool, link_pool, .unicode);
     defer tb.deinit();
 
     try tb.setText("Line1\n");
@@ -2072,9 +2170,10 @@ test "TextBuffer append - consecutive empty line handling" {
 test "TextBuffer append - mixed append and setText" {
     const pool = gp.initGlobalPool(std.testing.allocator);
     defer gp.deinitGlobalPool();
+    const link_pool = link.initGlobalLinkPool(std.testing.allocator);
+    defer link.deinitGlobalLinkPool();
 
-
-    var tb = try TextBuffer.init(std.testing.allocator, pool, .unicode);
+    var tb = try TextBuffer.init(std.testing.allocator, pool, link_pool, .unicode);
     defer tb.deinit();
 
     try tb.setText("First");

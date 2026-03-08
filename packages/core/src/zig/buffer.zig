@@ -6,8 +6,10 @@ const tbv = @import("text-buffer-view.zig");
 const edv = @import("editor-view.zig");
 const ss = @import("syntax-style.zig");
 const math = std.math;
+const assert = std.debug.assert;
 
 const gp = @import("grapheme.zig");
+const link = @import("link.zig");
 
 const logger = @import("logger.zig");
 const utf8 = @import("utf8.zig");
@@ -26,6 +28,8 @@ pub const DEFAULT_SPACE_CHAR: u32 = 32;
 const MAX_UNICODE_CODEPOINT: u32 = 0x10FFFF;
 const BLOCK_CHAR: u32 = 0x2588; // Full block █
 const QUADRANT_CHARS_COUNT = 16;
+
+const GRAYSCALE_CHARS = " .'^\",:;Il!i><~+_-?][}{1)(|\\/tfjrxnuvczXYUJCLQ0OZmwqpdbkhao*#MW&8%B@$";
 
 pub const BorderSides = packed struct {
     top: bool = false,
@@ -85,16 +89,31 @@ pub const Cell = struct {
     char: u32,
     fg: RGBA,
     bg: RGBA,
-    attributes: u8,
+    attributes: u32,
 };
 
 fn isRGBAWithAlpha(color: RGBA) bool {
     return color[3] < 1.0;
 }
 
+inline fn isFullyOpaque(opacity: f32, fg: RGBA, bg: RGBA) bool {
+    return opacity == 1.0 and !isRGBAWithAlpha(fg) and !isRGBAWithAlpha(bg);
+}
+
 fn blendColors(overlay: RGBA, text: RGBA) RGBA {
     if (overlay[3] == 1.0) {
         return overlay;
+    }
+
+    if (text[3] == 0.0) {
+        const alpha = overlay[3];
+        const r = overlay[0] * alpha;
+        const g = overlay[1] * alpha;
+        const b = overlay[2] * alpha;
+        if (r < 0.01 and g < 0.01 and b < 0.01) {
+            return .{ 0.0, 0.0, 0.0, 0.0 };
+        }
+        return .{ r, g, b, alpha };
     }
 
     const alpha = overlay[3];
@@ -115,7 +134,9 @@ fn blendColors(overlay: RGBA, text: RGBA) RGBA {
     const oneMinusAlpha = @as(Vec3f, @splat(1.0 - perceptualAlpha));
     const blended = overlayVec * alphaSplat + textVec * oneMinusAlpha;
 
-    return .{ blended[0], blended[1], blended[2], text[3] };
+    const resultAlpha = alpha + text[3] * (1.0 - alpha);
+
+    return .{ blended[0], blended[1], blended[2], resultAlpha };
 }
 
 /// Optimized buffer for terminal rendering
@@ -124,25 +145,28 @@ pub const OptimizedBuffer = struct {
         char: []u32,
         fg: []RGBA,
         bg: []RGBA,
-        attributes: []u8,
+        attributes: []u32,
     },
     width: u32,
     height: u32,
     respectAlpha: bool,
     allocator: Allocator,
     pool: *gp.GraphemePool,
+    link_pool: *link.LinkPool,
 
     grapheme_tracker: gp.GraphemeTracker,
+    link_tracker: link.LinkTracker,
     width_method: utf8.WidthMethod,
     id: []const u8,
-    scissor_stack: std.ArrayList(ClipRect),
-    opacity_stack: std.ArrayList(f32),
+    scissor_stack: std.ArrayListUnmanaged(ClipRect),
+    opacity_stack: std.ArrayListUnmanaged(f32),
 
     const InitOptions = struct {
         respectAlpha: bool = false,
         pool: *gp.GraphemePool,
         width_method: utf8.WidthMethod = .unicode,
         id: []const u8 = "unnamed buffer",
+        link_pool: ?*link.LinkPool = null,
     };
 
     pub fn init(allocator: Allocator, width: u32, height: u32, options: InitOptions) BufferError!*OptimizedBuffer {
@@ -159,25 +183,40 @@ pub const OptimizedBuffer = struct {
         const owned_id = allocator.dupe(u8, options.id) catch return BufferError.OutOfMemory;
         errdefer allocator.free(owned_id);
 
-        var scissor_stack = std.ArrayList(ClipRect).init(allocator);
-        errdefer scissor_stack.deinit();
+        var scissor_stack: std.ArrayListUnmanaged(ClipRect) = .{};
+        errdefer scissor_stack.deinit(allocator);
 
-        var opacity_stack = std.ArrayList(f32).init(allocator);
-        errdefer opacity_stack.deinit();
+        var opacity_stack: std.ArrayListUnmanaged(f32) = .{};
+        errdefer opacity_stack.deinit(allocator);
+
+        const lp = options.link_pool orelse link.initGlobalLinkPool(allocator);
+        const char_buffer = allocator.alloc(u32, size) catch return BufferError.OutOfMemory;
+        errdefer allocator.free(char_buffer);
+
+        const fg_buffer = allocator.alloc(RGBA, size) catch return BufferError.OutOfMemory;
+        errdefer allocator.free(fg_buffer);
+
+        const bg_buffer = allocator.alloc(RGBA, size) catch return BufferError.OutOfMemory;
+        errdefer allocator.free(bg_buffer);
+
+        const attributes_buffer = allocator.alloc(u32, size) catch return BufferError.OutOfMemory;
+        errdefer allocator.free(attributes_buffer);
 
         self.* = .{
             .buffer = .{
-                .char = allocator.alloc(u32, size) catch return BufferError.OutOfMemory,
-                .fg = allocator.alloc(RGBA, size) catch return BufferError.OutOfMemory,
-                .bg = allocator.alloc(RGBA, size) catch return BufferError.OutOfMemory,
-                .attributes = allocator.alloc(u8, size) catch return BufferError.OutOfMemory,
+                .char = char_buffer,
+                .fg = fg_buffer,
+                .bg = bg_buffer,
+                .attributes = attributes_buffer,
             },
             .width = width,
             .height = height,
             .respectAlpha = options.respectAlpha,
             .allocator = allocator,
             .pool = options.pool,
+            .link_pool = lp,
             .grapheme_tracker = gp.GraphemeTracker.init(allocator, options.pool),
+            .link_tracker = link.LinkTracker.init(allocator, lp),
             .width_method = options.width_method,
             .id = owned_id,
             .scissor_stack = scissor_stack,
@@ -204,13 +243,14 @@ pub const OptimizedBuffer = struct {
         return self.buffer.bg.ptr;
     }
 
-    pub fn getAttributesPtr(self: *OptimizedBuffer) [*]u8 {
+    pub fn getAttributesPtr(self: *OptimizedBuffer) [*]u32 {
         return self.buffer.attributes.ptr;
     }
 
     pub fn deinit(self: *OptimizedBuffer) void {
-        self.opacity_stack.deinit();
-        self.scissor_stack.deinit();
+        self.opacity_stack.deinit(self.allocator);
+        self.scissor_stack.deinit(self.allocator);
+        self.link_tracker.deinit();
         self.grapheme_tracker.deinit();
         self.allocator.free(self.buffer.char);
         self.allocator.free(self.buffer.fg);
@@ -292,7 +332,7 @@ pub const OptimizedBuffer = struct {
             }
         }
 
-        try self.scissor_stack.append(rect);
+        try self.scissor_stack.append(self.allocator, rect);
     }
 
     pub fn popScissorRect(self: *OptimizedBuffer) void {
@@ -315,7 +355,7 @@ pub const OptimizedBuffer = struct {
     pub fn pushOpacity(self: *OptimizedBuffer, opacity: f32) !void {
         const current = self.getCurrentOpacity();
         const effective = current * std.math.clamp(opacity, 0.0, 1.0);
-        try self.opacity_stack.append(effective);
+        try self.opacity_stack.append(self.allocator, effective);
     }
 
     /// Pop an opacity value from the stack
@@ -362,6 +402,7 @@ pub const OptimizedBuffer = struct {
 
     pub fn clear(self: *OptimizedBuffer, bg: RGBA, char: ?u32) !void {
         const cellChar = char orelse DEFAULT_SPACE_CHAR;
+        self.link_tracker.clear();
         self.grapheme_tracker.clear();
         @memset(self.buffer.char, @intCast(cellChar));
         @memset(self.buffer.attributes, 0);
@@ -369,38 +410,85 @@ pub const OptimizedBuffer = struct {
         @memset(self.buffer.bg, bg);
     }
 
+    /// Write a single cell and update link tracker. No grapheme tracking,
+    /// span cleanup, or continuation propagation.
     pub fn setRaw(self: *OptimizedBuffer, x: u32, y: u32, cell: Cell) void {
-        if (x >= self.width or y >= self.height) return;
-        if (!self.isPointInScissor(@intCast(x), @intCast(y))) return;
-        const index = self.coordsToIndex(x, y);
-        self.buffer.char[index] = cell.char;
-        self.buffer.fg[index] = cell.fg;
-        self.buffer.bg[index] = cell.bg;
-        self.buffer.attributes[index] = cell.attributes;
+        const index = self.validateAndIndex(x, y) orelse return;
+        self.writeCellAndLinks(index, cell);
+    }
+
+    /// Like set(), but without span cleanup. Writes the cell, its continuation
+    /// cells (for width-2+ graphemes), and updates grapheme/link trackers.
+    ///
+    /// Intended for the renderer's diff loop where cells are synced from an
+    /// authoritative source buffer. Span cleanup is skipped because it can
+    /// destroy continuation cells that were correctly written by an earlier
+    /// iteration of the same left-to-right pass (issue #723).
+    pub fn syncCell(self: *OptimizedBuffer, x: u32, y: u32, cell: Cell) void {
+        self.setInternal(x, y, cell, false);
     }
 
     pub fn set(self: *OptimizedBuffer, x: u32, y: u32, cell: Cell) void {
-        if (x >= self.width or y >= self.height) return;
-        if (!self.isPointInScissor(@intCast(x), @intCast(y))) return;
+        self.setInternal(x, y, cell, true);
+    }
 
-        const index = self.coordsToIndex(x, y);
+    fn setInternal(self: *OptimizedBuffer, x: u32, y: u32, cell: Cell, comptime span_cleanup: bool) void {
+        const index = self.validateAndIndex(x, y) orelse return;
         const prev_char = self.buffer.char[index];
+        const prev_link_id = ansi.TextAttributes.getLinkId(self.buffer.attributes[index]);
+        var tracker_replaced = false;
+
+        if (!span_cleanup) {
+            const old_start_id: ?u32 = if (gp.isGraphemeChar(prev_char)) gp.graphemeIdFromChar(prev_char) else null;
+            const new_start_id: ?u32 = blk: {
+                if (!gp.isGraphemeChar(cell.char)) break :blk null;
+                const new_width = gp.charRightExtent(cell.char) + 1;
+                if (x + new_width > self.width) break :blk null;
+                break :blk gp.graphemeIdFromChar(cell.char);
+            };
+
+            if (old_start_id != null or new_start_id != null) {
+                self.grapheme_tracker.replace(old_start_id, new_start_id);
+                tracker_replaced = true;
+            }
+        }
 
         // If overwriting a grapheme span (start or continuation) with a different char, clear that span first
-        if ((gp.isGraphemeChar(prev_char) or gp.isContinuationChar(prev_char)) and prev_char != cell.char) {
-            const row_start: u32 = y * self.width;
-            const row_end: u32 = row_start + self.width - 1;
-            const left = gp.charLeftExtent(prev_char);
-            const right = gp.charRightExtent(prev_char);
-            const id = gp.graphemeIdFromChar(prev_char);
+        if (span_cleanup) {
+            if ((gp.isGraphemeChar(prev_char) or gp.isContinuationChar(prev_char)) and prev_char != cell.char) {
+                const row_start: u32 = y * self.width;
+                const row_end: u32 = row_start + self.width - 1;
+                const left = gp.charLeftExtent(prev_char);
+                const right = gp.charRightExtent(prev_char);
+                const id = gp.graphemeIdFromChar(prev_char);
 
-            self.grapheme_tracker.remove(id);
+                const new_grapheme_id: ?u32 = blk: {
+                    if (!gp.isGraphemeChar(cell.char)) break :blk null;
+                    const new_width = gp.charRightExtent(cell.char) + 1;
+                    if (x + new_width > self.width) break :blk null;
+                    break :blk gp.graphemeIdFromChar(cell.char);
+                };
+                self.grapheme_tracker.replace(id, new_grapheme_id);
+                tracker_replaced = true;
 
-            const span_start = index - @min(left, index - row_start);
-            const span_end = index + @min(right, row_end - index);
-            const span_len = span_end - span_start + 1;
-            @memset(self.buffer.char[span_start .. span_start + span_len], @intCast(DEFAULT_SPACE_CHAR));
-            @memset(self.buffer.attributes[span_start .. span_start + span_len], 0);
+                const span_start = index - @min(left, index - row_start);
+                const span_end = index + @min(right, row_end - index);
+
+                var span_i: u32 = span_start;
+                while (span_i <= span_end) : (span_i += 1) {
+                    const span_char = self.buffer.char[span_i];
+                    if (!(gp.isGraphemeChar(span_char) or gp.isContinuationChar(span_char))) continue;
+                    if (gp.graphemeIdFromChar(span_char) != id) continue;
+
+                    const span_link_id = ansi.TextAttributes.getLinkId(self.buffer.attributes[span_i]);
+                    if (span_link_id != 0) {
+                        self.link_tracker.removeCellRef(span_link_id);
+                    }
+
+                    self.buffer.char[span_i] = @intCast(DEFAULT_SPACE_CHAR);
+                    self.buffer.attributes[span_i] = 0;
+                }
+            }
         }
 
         if (gp.isGraphemeChar(cell.char)) {
@@ -409,10 +497,25 @@ pub const OptimizedBuffer = struct {
 
             if (x + width > self.width) {
                 const end_of_line = (y + 1) * self.width;
+                var eol_i = index;
+                while (eol_i < end_of_line) : (eol_i += 1) {
+                    const eol_link_id = ansi.TextAttributes.getLinkId(self.buffer.attributes[eol_i]);
+                    if (eol_link_id != 0) {
+                        self.link_tracker.removeCellRef(eol_link_id);
+                    }
+                }
                 @memset(self.buffer.char[index..end_of_line], @intCast(DEFAULT_SPACE_CHAR));
                 @memset(self.buffer.attributes[index..end_of_line], cell.attributes);
                 @memset(self.buffer.fg[index..end_of_line], cell.fg);
                 @memset(self.buffer.bg[index..end_of_line], cell.bg);
+                const new_link_id = ansi.TextAttributes.getLinkId(cell.attributes);
+                if (new_link_id != 0) {
+                    const cells_written = end_of_line - index;
+                    var link_i: u32 = 0;
+                    while (link_i < cells_written) : (link_i += 1) {
+                        self.link_tracker.addCellRef(new_link_id);
+                    }
+                }
                 return;
             }
 
@@ -422,12 +525,31 @@ pub const OptimizedBuffer = struct {
             self.buffer.attributes[index] = cell.attributes;
 
             const id: u32 = gp.graphemeIdFromChar(cell.char);
-            self.grapheme_tracker.add(id);
+            const is_same_grapheme_start = gp.isGraphemeChar(prev_char) and prev_char == cell.char;
+            if (!tracker_replaced and !is_same_grapheme_start) {
+                self.grapheme_tracker.add(id);
+            }
+
+            const new_link_id = ansi.TextAttributes.getLinkId(cell.attributes);
+            if (prev_link_id != 0 and prev_link_id != new_link_id) {
+                self.link_tracker.removeCellRef(prev_link_id);
+            }
+            if (new_link_id != 0 and new_link_id != prev_link_id) {
+                self.link_tracker.addCellRef(new_link_id);
+            }
 
             if (width > 1) {
                 const row_end_index: u32 = (y * self.width) + self.width - 1;
                 const max_right = @min(right, row_end_index - index);
                 if (max_right > 0) {
+                    var cont_i: u32 = 1;
+                    while (cont_i <= max_right) : (cont_i += 1) {
+                        const cont_link_id = ansi.TextAttributes.getLinkId(self.buffer.attributes[index + cont_i]);
+                        if (cont_link_id != 0) {
+                            self.link_tracker.removeCellRef(cont_link_id);
+                        }
+                    }
+
                     @memset(self.buffer.fg[index + 1 .. index + 1 + max_right], cell.fg);
                     @memset(self.buffer.bg[index + 1 .. index + 1 + max_right], cell.bg);
                     @memset(self.buffer.attributes[index + 1 .. index + 1 + max_right], cell.attributes);
@@ -435,14 +557,39 @@ pub const OptimizedBuffer = struct {
                     while (k <= max_right) : (k += 1) {
                         const cont = gp.packContinuation(k, max_right - k, id);
                         self.buffer.char[index + k] = cont;
+                        if (new_link_id != 0) {
+                            self.link_tracker.addCellRef(new_link_id);
+                        }
                     }
                 }
             }
         } else {
-            self.buffer.char[index] = cell.char;
-            self.buffer.fg[index] = cell.fg;
-            self.buffer.bg[index] = cell.bg;
-            self.buffer.attributes[index] = cell.attributes;
+            self.writeCellAndLinks(index, cell);
+        }
+    }
+
+    /// Validate coordinates and return buffer index, or null if out of bounds / scissor.
+    fn validateAndIndex(self: *OptimizedBuffer, x: u32, y: u32) ?u32 {
+        if (x >= self.width or y >= self.height) return null;
+        if (!self.isPointInScissor(@intCast(x), @intCast(y))) return null;
+        return self.coordsToIndex(x, y);
+    }
+
+    /// Write cell data at index and update link tracker.
+    fn writeCellAndLinks(self: *OptimizedBuffer, index: u32, cell: Cell) void {
+        const prev_link_id = ansi.TextAttributes.getLinkId(self.buffer.attributes[index]);
+        const new_link_id = ansi.TextAttributes.getLinkId(cell.attributes);
+
+        self.buffer.char[index] = cell.char;
+        self.buffer.fg[index] = cell.fg;
+        self.buffer.bg[index] = cell.bg;
+        self.buffer.attributes[index] = cell.attributes;
+
+        if (prev_link_id != 0 and prev_link_id != new_link_id) {
+            self.link_tracker.removeCellRef(prev_link_id);
+        }
+        if (new_link_id != 0 and new_link_id != prev_link_id) {
+            self.link_tracker.addCellRef(new_link_id);
         }
     }
 
@@ -481,7 +628,7 @@ pub const OptimizedBuffer = struct {
     /// Calculate the real byte size of the character buffer including grapheme pool data
     pub fn getRealCharSize(self: *const OptimizedBuffer) u32 {
         const total_chars = self.width * self.height;
-        const grapheme_count = self.grapheme_tracker.getGraphemeCount();
+        const grapheme_count = self.grapheme_tracker.getGraphemeCellCount();
         const total_grapheme_bytes = self.grapheme_tracker.getTotalGraphemeBytes();
 
         const regular_char_bytes = (total_chars - grapheme_count) * @sizeOf(u32);
@@ -580,7 +727,16 @@ pub const OptimizedBuffer = struct {
                 finalFg = if (hasFgAlpha) blendColors(overlayCell.fg, destCell.bg) else overlayCell.fg;
             }
 
-            const finalAttributes = if (preserveChar) destCell.attributes else overlayCell.attributes;
+            // When preserving char, preserve its base attributes but NOT its link
+            // Links ALWAYS come from overlay, never from destination
+            // Even if overlay has no link (link_id=0), it clears the destination's link
+            const baseAttrs = if (preserveChar)
+                ansi.TextAttributes.getBaseAttributes(destCell.attributes)
+            else
+                ansi.TextAttributes.getBaseAttributes(overlayCell.attributes);
+            // Overlay link always wins - whether it's a real link or 0 (no link)
+            const overlayLinkId = ansi.TextAttributes.getLinkId(overlayCell.attributes);
+            const finalAttributes = ansi.TextAttributes.setLinkId(@as(u32, baseAttrs), overlayLinkId);
 
             // When overlay background is fully transparent, preserve destination background alpha
             const finalBgAlpha = if (overlayCell.bg[3] == 0.0) destCell.bg[3] else overlayCell.bg[3];
@@ -603,12 +759,17 @@ pub const OptimizedBuffer = struct {
         char: u32,
         fg: RGBA,
         bg: RGBA,
-        attributes: u8,
+        attributes: u32,
     ) !void {
         if (!self.isPointInScissor(@intCast(x), @intCast(y))) return;
 
         // Apply current opacity from the stack
         const opacity = self.getCurrentOpacity();
+        if (isFullyOpaque(opacity, fg, bg)) {
+            self.set(x, y, Cell{ .char = char, .fg = fg, .bg = bg, .attributes = attributes });
+            return;
+        }
+
         const effectiveFg = RGBA{ fg[0], fg[1], fg[2], fg[3] * opacity };
         const effectiveBg = RGBA{ bg[0], bg[1], bg[2], bg[3] * opacity };
 
@@ -629,12 +790,20 @@ pub const OptimizedBuffer = struct {
         char: u32,
         fg: RGBA,
         bg: RGBA,
-        attributes: u8,
+        attributes: u32,
     ) !void {
         if (!self.isPointInScissor(@intCast(x), @intCast(y))) return;
 
         // Apply current opacity from the stack
         const opacity = self.getCurrentOpacity();
+        if (isFullyOpaque(opacity, fg, bg)) {
+            const overlayCell = Cell{ .char = char, .fg = fg, .bg = bg, .attributes = attributes };
+            assert(!gp.isGraphemeChar(char));
+            assert(!gp.isContinuationChar(char));
+            self.setRaw(x, y, overlayCell);
+            return;
+        }
+
         const effectiveFg = RGBA{ fg[0], fg[1], fg[2], fg[3] * opacity };
         const effectiveBg = RGBA{ bg[0], bg[1], bg[2], bg[3] * opacity };
 
@@ -642,12 +811,12 @@ pub const OptimizedBuffer = struct {
 
         if (self.get(x, y)) |destCell| {
             const blendedCell = blendCells(overlayCell, destCell);
-            // After blending, check if result contains a grapheme
-            if (gp.isGraphemeChar(blendedCell.char)) {
-                return self.set(x, y, blendedCell);
-            }
+            assert(!gp.isGraphemeChar(blendedCell.char));
+            assert(!gp.isContinuationChar(blendedCell.char));
             self.setRaw(x, y, blendedCell);
         } else {
+            assert(!gp.isGraphemeChar(overlayCell.char));
+            assert(!gp.isContinuationChar(overlayCell.char));
             self.setRaw(x, y, overlayCell);
         }
     }
@@ -659,7 +828,7 @@ pub const OptimizedBuffer = struct {
         y: u32,
         fg: RGBA,
         bg: RGBA,
-        attributes: u8,
+        attributes: u32,
     ) !void {
         if (!self.isPointInScissor(@intCast(x), @intCast(y))) return;
 
@@ -707,8 +876,9 @@ pub const OptimizedBuffer = struct {
 
         const opacity = self.getCurrentOpacity();
         const hasAlpha = isRGBAWithAlpha(bg) or opacity < 1.0;
+        const linkAware = self.link_tracker.hasAny();
 
-        if (hasAlpha or self.grapheme_tracker.hasAny()) {
+        if (hasAlpha or self.grapheme_tracker.hasAny() or linkAware) {
             var fillY = clippedStartY;
             while (fillY <= clippedEndY) : (fillY += 1) {
                 var fillX = clippedStartX;
@@ -717,7 +887,7 @@ pub const OptimizedBuffer = struct {
                 }
             }
         } else {
-            // For non-alpha (fully opaque) backgrounds, we can do direct filling
+            // For non-alpha (fully opaque) backgrounds with no graphemes or links, we can do direct filling
             var fillY = clippedStartY;
             while (fillY <= clippedEndY) : (fillY += 1) {
                 const rowStartIndex = self.coordsToIndex(@intCast(clippedStartX), @intCast(fillY));
@@ -743,18 +913,18 @@ pub const OptimizedBuffer = struct {
         y: u32,
         fg: RGBA,
         bg: ?RGBA,
-        attributes: u8,
+        attributes: u32,
     ) BufferError!void {
         if (x >= self.width or y >= self.height) return;
         if (text.len == 0) return;
 
         const is_ascii_only = utf8.isAsciiOnly(text);
 
-        var grapheme_list = std.ArrayList(utf8.GraphemeInfo).init(self.allocator);
-        defer grapheme_list.deinit();
+        var grapheme_list: std.ArrayListUnmanaged(utf8.GraphemeInfo) = .{};
+        defer grapheme_list.deinit(self.allocator);
 
         const tab_width: u8 = 2;
-        try utf8.findGraphemeInfo(text, tab_width, is_ascii_only, self.width_method, &grapheme_list);
+        try utf8.findGraphemeInfo(text, tab_width, is_ascii_only, self.width_method, self.allocator, &grapheme_list);
         const specials = grapheme_list.items;
 
         var advance_cells: u32 = 0;
@@ -885,6 +1055,7 @@ pub const OptimizedBuffer = struct {
         if (!self.isRectInScissor(startDestX, startDestY, destWidth, destHeight)) return;
 
         const graphemeAware = self.grapheme_tracker.hasAny() or frameBuffer.grapheme_tracker.hasAny();
+        const linkAware = self.link_tracker.hasAny() or frameBuffer.link_tracker.hasAny();
 
         // Calculate clipping once for both paths
         const clippedRect = self.clipRectToScissor(startDestX, startDestY, destWidth, destHeight) orelse return;
@@ -893,7 +1064,7 @@ pub const OptimizedBuffer = struct {
         const clippedEndX = @min(endDestX, @as(i32, @intCast(clippedRect.x + @as(i32, @intCast(clippedRect.width)) - 1)));
         const clippedEndY = @min(endDestY, @as(i32, @intCast(clippedRect.y + @as(i32, @intCast(clippedRect.height)) - 1)));
 
-        if (!graphemeAware and !frameBuffer.respectAlpha) {
+        if (!graphemeAware and !frameBuffer.respectAlpha and !linkAware) {
             // Fast path: direct memory copy
             var dY = clippedStartY;
 
@@ -1008,11 +1179,11 @@ pub const OptimizedBuffer = struct {
         var currentX = x;
         var currentY = y + @as(i32, @intCast(firstVisibleLine));
         const text_buffer = view.getTextBuffer();
-        const total_line_count = text_buffer.getLineCount();
+        const total_line_count = text_buffer.lineCount();
 
         const line_info = view.getCachedLineInfo();
-        var globalCharPos: u32 = if (firstVisibleLine < line_info.starts.len)
-            line_info.starts[firstVisibleLine]
+        var globalCharPos: u32 = if (firstVisibleLine < line_info.line_start_cols.len)
+            line_info.line_start_cols[firstVisibleLine]
         else
             0;
 
@@ -1021,6 +1192,7 @@ pub const OptimizedBuffer = struct {
 
             currentX = x;
             var column_in_line: u32 = 0;
+            globalCharPos = vline.col_offset;
 
             // When viewport is set, virtual_lines is a slice starting from viewport.y
             // But getVirtualLineSpans expects absolute indices, so we need to use the absolute index
@@ -1031,9 +1203,13 @@ pub const OptimizedBuffer = struct {
             const spans = vline_span_info.spans;
             const col_offset = vline_span_info.col_offset;
             var span_idx: usize = 0;
-            var lineFg = text_buffer.default_fg orelse RGBA{ 1.0, 1.0, 1.0, 1.0 };
-            var lineBg = text_buffer.default_bg orelse RGBA{ 0.0, 0.0, 0.0, 0.0 };
-            var lineAttributes = text_buffer.default_attributes orelse 0;
+            const defaults = text_buffer.defaults();
+            var lineFg = defaults.fg orelse RGBA{ 1.0, 1.0, 1.0, 1.0 };
+            var lineBg = defaults.bg orelse RGBA{ 0.0, 0.0, 0.0, 0.0 };
+            var lineAttributes = defaults.attributes orelse 0;
+            const defaultFg = lineFg;
+            const defaultBg = lineBg;
+            const defaultAttributes = lineAttributes;
 
             // Find the span that contains the starting render position (col_offset + horizontal_offset)
             const start_col = col_offset + horizontal_offset;
@@ -1059,8 +1235,9 @@ pub const OptimizedBuffer = struct {
 
             for (vline.chunks.items) |vchunk| {
                 const chunk = vchunk.chunk;
-                const chunk_bytes = chunk.getBytes(&text_buffer.mem_registry);
-                const specials = chunk.getGraphemes(&text_buffer.mem_registry, text_buffer.allocator, text_buffer.tab_width, text_buffer.width_method) catch continue;
+                const chunk_bytes = chunk.getBytes(text_buffer.memRegistry());
+                const specials = chunk.getGraphemes(text_buffer.memRegistry(), text_buffer.getAllocator(), text_buffer.tabWidth(), text_buffer.widthMethod()) catch continue;
+                const line_col_offset = vline.col_offset;
 
                 if (currentX >= @as(i32, @intCast(self.width))) {
                     globalCharPos += vchunk.width;
@@ -1075,7 +1252,7 @@ pub const OptimizedBuffer = struct {
                 if (vchunk.grapheme_start > 0) {
                     // Use UTF-8 aware position finding to skip to the grapheme_start
                     const is_ascii_only = (vchunk.chunk.flags & tb.TextChunk.Flags.ASCII_ONLY) != 0;
-                    const pos_result = utf8.findPosByWidth(chunk_bytes, vchunk.grapheme_start, text_buffer.tab_width, is_ascii_only, false, text_buffer.width_method);
+                    const pos_result = utf8.findPosByWidth(chunk_bytes, vchunk.grapheme_start, text_buffer.tabWidth(), is_ascii_only, false, text_buffer.widthMethod());
                     byte_offset = pos_result.byte_offset;
 
                     // Advance special_idx to match the skipped columns
@@ -1105,11 +1282,10 @@ pub const OptimizedBuffer = struct {
                         special_idx += 1;
                     } else {
                         if (byte_offset >= chunk_bytes.len) break;
-                        // Read the next UTF-8 grapheme properly
                         const cp_len = std.unicode.utf8ByteSequenceLength(chunk_bytes[byte_offset]) catch 1;
                         const next_byte_offset = @min(byte_offset + cp_len, chunk_bytes.len);
                         grapheme_bytes = chunk_bytes[byte_offset..next_byte_offset];
-                        g_width = 1; // Assuming width 1 for non-special characters (ASCII mostly)
+                        g_width = 1;
                         byte_offset = next_byte_offset;
                     }
 
@@ -1146,16 +1322,39 @@ pub const OptimizedBuffer = struct {
                         continue;
                     }
 
+                    var selection_offset = globalCharPos;
+                    if (vline.is_truncated and globalCharPos >= line_col_offset) {
+                        const ellipsis_width: u32 = 3;
+                        const column_offset_in_line = globalCharPos - line_col_offset;
+                        if (column_offset_in_line >= vline.ellipsis_pos and column_offset_in_line < vline.ellipsis_pos + ellipsis_width) {
+                            selection_offset = line_col_offset + vline.ellipsis_pos;
+                        } else if (column_offset_in_line >= vline.ellipsis_pos + ellipsis_width) {
+                            selection_offset = line_col_offset + vline.truncation_suffix_start +
+                                (column_offset_in_line - vline.ellipsis_pos - ellipsis_width);
+                        } else {
+                            selection_offset = line_col_offset + column_offset_in_line;
+                        }
+                    }
+
                     // Track the actual column position in the source line (including horizontal offset)
-                    const source_col_pos = col_offset + column_in_line;
+                    var source_col_pos = col_offset + column_in_line;
+                    if (vline.is_truncated) {
+                        const ellipsis_width: u32 = 3;
+                        const column_offset_in_line = globalCharPos - line_col_offset;
+                        if (column_offset_in_line >= vline.ellipsis_pos and column_offset_in_line < vline.ellipsis_pos + ellipsis_width) {
+                            source_col_pos = std.math.maxInt(u32);
+                        } else if (column_offset_in_line >= vline.ellipsis_pos + ellipsis_width) {
+                            source_col_pos = vline.truncation_suffix_start + (column_offset_in_line - vline.ellipsis_pos - ellipsis_width);
+                        }
+                    }
 
                     if (source_col_pos >= next_change_col and span_idx + 1 < spans.len) {
                         span_idx += 1;
                         const new_span = spans[span_idx];
 
-                        lineFg = text_buffer.default_fg orelse RGBA{ 1.0, 1.0, 1.0, 1.0 };
-                        lineBg = text_buffer.default_bg orelse RGBA{ 0.0, 0.0, 0.0, 0.0 };
-                        lineAttributes = text_buffer.default_attributes orelse 0;
+                        lineFg = defaultFg;
+                        lineBg = defaultBg;
+                        lineAttributes = defaultAttributes;
 
                         if (text_buffer.getSyntaxStyle()) |style| {
                             if (new_span.style_id != 0) {
@@ -1170,6 +1369,46 @@ pub const OptimizedBuffer = struct {
                         next_change_col = new_span.next_col;
                     }
 
+                    if (vline.is_truncated) {
+                        const column_offset_in_line = globalCharPos - line_col_offset;
+                        const ellipsis_width: u32 = 3;
+                        if (column_offset_in_line >= vline.ellipsis_pos and column_offset_in_line < vline.ellipsis_pos + ellipsis_width) {
+                            lineFg = defaultFg;
+                            lineBg = defaultBg;
+                            lineAttributes = defaultAttributes;
+                        } else if (column_offset_in_line >= vline.ellipsis_pos + ellipsis_width) {
+                            const suffix_col_pos = vline.truncation_suffix_start + (column_offset_in_line - vline.ellipsis_pos - ellipsis_width);
+                            if (spans.len == 0) {
+                                lineFg = defaultFg;
+                                lineBg = defaultBg;
+                                lineAttributes = defaultAttributes;
+                                next_change_col = std.math.maxInt(u32);
+                            } else {
+                                var suffix_span_idx: usize = 0;
+                                while (suffix_span_idx < spans.len and spans[suffix_span_idx].next_col <= suffix_col_pos) {
+                                    suffix_span_idx += 1;
+                                }
+                                if (suffix_span_idx < spans.len) {
+                                    span_idx = suffix_span_idx;
+                                }
+                                const active_span = spans[span_idx];
+                                lineFg = defaultFg;
+                                lineBg = defaultBg;
+                                lineAttributes = defaultAttributes;
+                                if (text_buffer.getSyntaxStyle()) |style| {
+                                    if (active_span.style_id != 0) {
+                                        if (style.resolveById(active_span.style_id)) |resolved_style| {
+                                            if (resolved_style.fg) |fg| lineFg = fg;
+                                            if (resolved_style.bg) |bg| lineBg = bg;
+                                            lineAttributes |= resolved_style.attributes;
+                                        }
+                                    }
+                                }
+                                next_change_col = active_span.next_col;
+                            }
+                        }
+                    }
+
                     var finalFg = lineFg;
                     var finalBg = lineBg;
                     const finalAttributes = lineAttributes;
@@ -1177,7 +1416,7 @@ pub const OptimizedBuffer = struct {
                     var cell_idx: u32 = 0;
                     while (cell_idx < g_width) : (cell_idx += 1) {
                         if (view.getSelection()) |sel| {
-                            const isSelected = globalCharPos + cell_idx >= sel.start and globalCharPos + cell_idx < sel.end;
+                            const isSelected = selection_offset + cell_idx >= sel.start and selection_offset + cell_idx < sel.end;
                             if (isSelected) {
                                 if (sel.bgColor) |selBg| {
                                     finalBg = selBg;
@@ -1286,6 +1525,134 @@ pub const OptimizedBuffer = struct {
         y: i32,
     ) !void {
         try self.drawTextBufferInternal(EditorView, editor_view, x, y);
+    }
+
+    /// Draw a complete border grid in a single call.
+    /// columnOffsets and rowOffsets include an extra trailing entry so that
+    /// the range for column `i` is `[columnOffsets[i]+1 .. columnOffsets[i+1]-1]`.
+    pub fn drawGrid(
+        self: *OptimizedBuffer,
+        borderChars: [*]const u32,
+        borderFg: RGBA,
+        borderBg: RGBA,
+        columnOffsets: [*]const i32,
+        columnCount: u32,
+        rowOffsets: [*]const i32,
+        rowCount: u32,
+        drawInner: bool,
+        drawOuter: bool,
+    ) void {
+        if (rowCount == 0 or columnCount == 0) return;
+        if (!drawInner and !drawOuter) return;
+
+        const hChar = borderChars[@intFromEnum(BorderCharIndex.horizontal)];
+        const vChar = borderChars[@intFromEnum(BorderCharIndex.vertical)];
+        const bufWidth = self.width;
+        const bufHeight = self.height;
+        const bufWidthI32 = @as(i32, @intCast(bufWidth));
+        const bufHeightI32 = @as(i32, @intCast(bufHeight));
+
+        // Draw row-by-row: horizontal border line, then vertical borders for the row's content area
+        var rowIdx: u32 = 0;
+        while (rowIdx <= rowCount) : (rowIdx += 1) {
+            const is_outer_row = rowIdx == 0 or rowIdx == rowCount;
+            const should_draw_horizontal = if (is_outer_row) drawOuter else drawInner;
+            const borderY = rowOffsets[rowIdx];
+            if (borderY >= bufHeightI32) break;
+
+            // --- horizontal border line: intersections + fills ---
+            if (should_draw_horizontal and borderY >= 0) {
+                var colBorderIdx: u32 = 0;
+                while (colBorderIdx <= columnCount) : (colBorderIdx += 1) {
+                    const is_outer_col = colBorderIdx == 0 or colBorderIdx == columnCount;
+                    const should_draw_vertical = if (is_outer_col) drawOuter else drawInner;
+                    if (!should_draw_vertical) continue;
+
+                    const bx = columnOffsets[colBorderIdx];
+                    if (bx >= bufWidthI32) break;
+                    if (bx < 0) continue;
+
+                    const has_up = rowIdx > 0 and should_draw_vertical;
+                    const has_down = rowIdx < rowCount and should_draw_vertical;
+                    const has_left = colBorderIdx > 0;
+                    const has_right = colBorderIdx < columnCount;
+                    const intersection = tableBorderIntersectionByConnections(borderChars, has_up, has_down, has_left, has_right);
+
+                    self.setRaw(@as(u32, @intCast(bx)), @as(u32, @intCast(borderY)), Cell{ .char = intersection, .fg = borderFg, .bg = borderBg, .attributes = 0 });
+                }
+
+                var colIdx: u32 = 0;
+                while (colIdx < columnCount) : (colIdx += 1) {
+                    const has_boundary_after = if (colIdx < columnCount - 1) drawInner else drawOuter;
+                    const boundary_padding: i32 = if (has_boundary_after) 0 else 1;
+                    const startX = columnOffsets[colIdx] + 1;
+                    const endX = columnOffsets[colIdx + 1] + boundary_padding;
+
+                    if (startX >= bufWidthI32) break;
+                    if (endX <= 0) continue;
+
+                    const clampedStart = @as(u32, @intCast(@max(@as(i32, 0), startX)));
+                    const clampedEnd = @as(u32, @intCast(@min(bufWidthI32, endX)));
+
+                    if (clampedStart < clampedEnd) {
+                        const borderYU32 = @as(u32, @intCast(borderY));
+                        @memset(self.buffer.char[borderYU32 * bufWidth + clampedStart .. borderYU32 * bufWidth + clampedEnd], hChar);
+                        @memset(self.buffer.fg[borderYU32 * bufWidth + clampedStart .. borderYU32 * bufWidth + clampedEnd], borderFg);
+                        @memset(self.buffer.bg[borderYU32 * bufWidth + clampedStart .. borderYU32 * bufWidth + clampedEnd], borderBg);
+                        @memset(self.buffer.attributes[borderYU32 * bufWidth + clampedStart .. borderYU32 * bufWidth + clampedEnd], 0);
+                    }
+                }
+            }
+
+            if (rowIdx >= rowCount) break;
+
+            // --- vertical borders for each content line in this row ---
+            const has_row_boundary_after = if (rowIdx < rowCount - 1) drawInner else drawOuter;
+            const row_boundary_padding: i32 = if (has_row_boundary_after) 0 else 1;
+            const contentStartY = borderY + 1;
+            const contentEndY = rowOffsets[rowIdx + 1] + row_boundary_padding;
+            var cy = contentStartY;
+            while (cy < contentEndY and cy < bufHeightI32) : (cy += 1) {
+                if (cy < 0) continue;
+
+                const rowBase = @as(u32, @intCast(cy)) * bufWidth;
+                var colBorderIdx: u32 = 0;
+                while (colBorderIdx <= columnCount) : (colBorderIdx += 1) {
+                    const is_outer_col = colBorderIdx == 0 or colBorderIdx == columnCount;
+                    const should_draw_vertical = if (is_outer_col) drawOuter else drawInner;
+                    if (!should_draw_vertical) continue;
+
+                    const bx = columnOffsets[colBorderIdx];
+                    if (bx >= bufWidthI32) break;
+                    if (bx < 0) continue;
+
+                    const idx = rowBase + @as(u32, @intCast(bx));
+                    self.buffer.char[idx] = vChar;
+                    self.buffer.fg[idx] = borderFg;
+                    self.buffer.bg[idx] = borderBg;
+                    self.buffer.attributes[idx] = 0;
+                }
+            }
+        }
+    }
+
+    fn tableBorderIntersectionByConnections(borderChars: [*]const u32, hasUp: bool, hasDown: bool, hasLeft: bool, hasRight: bool) u32 {
+        if (hasUp and hasDown and hasLeft and hasRight) return borderChars[@intFromEnum(BorderCharIndex.cross)];
+
+        if (!hasUp and hasDown and !hasLeft and hasRight) return borderChars[@intFromEnum(BorderCharIndex.topLeft)];
+        if (!hasUp and hasDown and hasLeft and !hasRight) return borderChars[@intFromEnum(BorderCharIndex.topRight)];
+        if (hasUp and !hasDown and !hasLeft and hasRight) return borderChars[@intFromEnum(BorderCharIndex.bottomLeft)];
+        if (hasUp and !hasDown and hasLeft and !hasRight) return borderChars[@intFromEnum(BorderCharIndex.bottomRight)];
+
+        if (hasUp and hasDown and !hasLeft and hasRight) return borderChars[@intFromEnum(BorderCharIndex.leftT)];
+        if (hasUp and hasDown and hasLeft and !hasRight) return borderChars[@intFromEnum(BorderCharIndex.rightT)];
+        if (!hasUp and hasDown and hasLeft and hasRight) return borderChars[@intFromEnum(BorderCharIndex.topT)];
+        if (hasUp and !hasDown and hasLeft and hasRight) return borderChars[@intFromEnum(BorderCharIndex.bottomT)];
+
+        if ((hasLeft or hasRight) and !hasUp and !hasDown) return borderChars[@intFromEnum(BorderCharIndex.horizontal)];
+        if ((hasUp or hasDown) and !hasLeft and !hasRight) return borderChars[@intFromEnum(BorderCharIndex.vertical)];
+
+        return borderChars[@intFromEnum(BorderCharIndex.cross)];
     }
 
     /// Draw a box with borders and optional fill
@@ -1543,6 +1910,161 @@ pub const OptimizedBuffer = struct {
             }
 
             self.setCellWithAlphaBlending(cellX, cellY, char, fg, bg, 0) catch {};
+        }
+    }
+
+    fn getGrayscaleChar(intensity: f32) u32 {
+        if (intensity < 0.01) return ' ';
+        const clamped = @min(@max(intensity, 0.0), 1.0);
+        const index: usize = @intFromFloat(clamped * @as(f32, @floatFromInt(GRAYSCALE_CHARS.len - 1)));
+        return @as(u32, GRAYSCALE_CHARS[index]);
+    }
+
+    pub fn drawGrayscaleBuffer(
+        self: *OptimizedBuffer,
+        posX: i32,
+        posY: i32,
+        intensities: [*]const f32,
+        srcWidth: u32,
+        srcHeight: u32,
+        fgColor: ?RGBA,
+        bgColor: ?RGBA,
+    ) void {
+        const bg = bgColor orelse RGBA{ 0.0, 0.0, 0.0, 0.0 };
+        if (srcWidth == 0 or srcHeight == 0) return;
+        if (posX >= @as(i32, @intCast(self.width)) or posY >= @as(i32, @intCast(self.height))) return;
+
+        const startX: u32 = if (posX < 0) @intCast(-posX) else 0;
+        const startY: u32 = if (posY < 0) @intCast(-posY) else 0;
+
+        const destStartX: u32 = if (posX < 0) 0 else @intCast(posX);
+        const destStartY: u32 = if (posY < 0) 0 else @intCast(posY);
+
+        if (startX >= srcWidth or startY >= srcHeight) return;
+
+        const visibleWidth = @min(srcWidth - startX, self.width - destStartX);
+        const visibleHeight = @min(srcHeight - startY, self.height - destStartY);
+
+        if (visibleWidth == 0 or visibleHeight == 0) return;
+
+        const baseFg = fgColor orelse RGBA{ 1.0, 1.0, 1.0, 1.0 };
+
+        const opacity = self.getCurrentOpacity();
+        const graphemeAware = self.grapheme_tracker.hasAny();
+        const linkAware = self.link_tracker.hasAny();
+
+        var srcY: u32 = startY;
+        var destY: u32 = destStartY;
+        while (srcY < startY + visibleHeight) : ({
+            srcY += 1;
+            destY += 1;
+        }) {
+            var srcX: u32 = startX;
+            var destX: u32 = destStartX;
+            while (srcX < startX + visibleWidth) : ({
+                srcX += 1;
+                destX += 1;
+            }) {
+                if (!self.isPointInScissor(@intCast(destX), @intCast(destY))) continue;
+
+                const srcIndex = srcY * srcWidth + srcX;
+                const intensity = intensities[srcIndex];
+
+                if (intensity < 0.01) continue;
+
+                const char = getGrayscaleChar(intensity);
+
+                const gray = @min(@max(intensity, 0.0), 1.0);
+                const fg: RGBA = .{ baseFg[0], baseFg[1], baseFg[2], gray * baseFg[3] * opacity };
+
+                if (graphemeAware or linkAware) {
+                    self.setCellWithAlphaBlending(destX, destY, char, fg, bg, 0) catch {};
+                } else {
+                    self.setCellWithAlphaBlendingRaw(destX, destY, char, fg, bg, 0) catch {};
+                }
+            }
+        }
+    }
+
+    pub fn drawGrayscaleBufferSupersampled(
+        self: *OptimizedBuffer,
+        posX: i32,
+        posY: i32,
+        intensities: [*]const f32,
+        srcWidth: u32,
+        srcHeight: u32,
+        fgColor: ?RGBA,
+        bgColor: ?RGBA,
+    ) void {
+        const bg = bgColor orelse RGBA{ 0.0, 0.0, 0.0, 0.0 };
+        const termWidth = srcWidth / 2;
+        const termHeight = srcHeight / 2;
+
+        if (termWidth == 0 or termHeight == 0) return;
+        if (posX >= @as(i32, @intCast(self.width)) or posY >= @as(i32, @intCast(self.height))) return;
+
+        const startX: u32 = if (posX < 0) @intCast(-posX) else 0;
+        const startY: u32 = if (posY < 0) @intCast(-posY) else 0;
+
+        const destStartX: u32 = if (posX < 0) 0 else @intCast(posX);
+        const destStartY: u32 = if (posY < 0) 0 else @intCast(posY);
+
+        if (startX >= termWidth or startY >= termHeight) return;
+
+        const visibleWidth = @min(termWidth - startX, self.width - destStartX);
+        const visibleHeight = @min(termHeight - startY, self.height - destStartY);
+
+        if (visibleWidth == 0 or visibleHeight == 0) return;
+
+        const baseFg = fgColor orelse RGBA{ 1.0, 1.0, 1.0, 1.0 };
+
+        const opacity = self.getCurrentOpacity();
+        const graphemeAware = self.grapheme_tracker.hasAny();
+        const linkAware = self.link_tracker.hasAny();
+
+        const maxIdx = srcHeight * srcWidth;
+        var cellY: u32 = startY;
+        var destY: u32 = destStartY;
+        while (cellY < startY + visibleHeight) : ({
+            cellY += 1;
+            destY += 1;
+        }) {
+            var cellX: u32 = startX;
+            var destX: u32 = destStartX;
+            while (cellX < startX + visibleWidth) : ({
+                cellX += 1;
+                destX += 1;
+            }) {
+                if (!self.isPointInScissor(@intCast(destX), @intCast(destY))) continue;
+
+                const qx = cellX * 2;
+                const qy = cellY * 2;
+
+                const tlIdx = qy * srcWidth + qx;
+                const trIdx = qy * srcWidth + qx + 1;
+                const blIdx = (qy + 1) * srcWidth + qx;
+                const brIdx = (qy + 1) * srcWidth + qx + 1;
+
+                const tl: f32 = if (tlIdx < maxIdx) intensities[tlIdx] else 0.0;
+                const tr: f32 = if (trIdx < maxIdx and qx + 1 < srcWidth) intensities[trIdx] else 0.0;
+                const bl: f32 = if (blIdx < maxIdx and qy + 1 < srcHeight) intensities[blIdx] else 0.0;
+                const br: f32 = if (brIdx < maxIdx and qx + 1 < srcWidth and qy + 1 < srcHeight) intensities[brIdx] else 0.0;
+
+                const avgIntensity = (tl + tr + bl + br) / 4.0;
+
+                if (avgIntensity < 0.01) continue;
+
+                const char = getGrayscaleChar(avgIntensity);
+
+                const gray = @min(@max(avgIntensity, 0.0), 1.0);
+                const fg: RGBA = .{ baseFg[0], baseFg[1], baseFg[2], gray * baseFg[3] * opacity };
+
+                if (graphemeAware or linkAware) {
+                    self.setCellWithAlphaBlending(destX, destY, char, fg, bg, 0) catch {};
+                } else {
+                    self.setCellWithAlphaBlendingRaw(destX, destY, char, fg, bg, 0) catch {};
+                }
+            }
         }
     }
 };

@@ -285,16 +285,16 @@ test "GraphemePool - many allocations" {
 
     for (0..count) |i| {
         var buffer: [8]u8 = undefined;
-        const len = std.fmt.formatIntBuf(&buffer, i, 10, .lower, .{});
-        ids[i] = try pool.alloc(buffer[0..len]);
+        const slice = std.fmt.bufPrint(&buffer, "{d}", .{i}) catch unreachable;
+        ids[i] = try pool.alloc(slice);
         try pool.incref(ids[i]);
     }
 
     for (ids, 0..count) |id, i| {
         const retrieved = try pool.get(id);
         var buffer: [8]u8 = undefined;
-        const len = std.fmt.formatIntBuf(&buffer, i, 10, .lower, .{});
-        try std.testing.expectEqualSlices(u8, buffer[0..len], retrieved);
+        const slice = std.fmt.bufPrint(&buffer, "{d}", .{i}) catch unreachable;
+        try std.testing.expectEqualSlices(u8, slice, retrieved);
     }
 
     for (ids) |id| {
@@ -306,8 +306,8 @@ test "GraphemePool - allocations with varying sizes" {
     var pool = GraphemePool.init(std.testing.allocator);
     defer pool.deinit();
 
-    var ids = std.ArrayList(u32).init(std.testing.allocator);
-    defer ids.deinit();
+    var ids: std.ArrayListUnmanaged(u32) = .{};
+    defer ids.deinit(std.testing.allocator);
 
     for (0..50) |i| {
         const size = (i % 5) * 16 + 5; // Vary sizes: 5, 21, 37, 53, 69...
@@ -315,7 +315,7 @@ test "GraphemePool - allocations with varying sizes" {
         @memset(buffer[0..size], @intCast(i % 256));
         const id = try pool.alloc(buffer[0..size]);
         try pool.incref(id);
-        try ids.append(id);
+        try ids.append(std.testing.allocator, id);
     }
 
     for (ids.items, 0..50) |id, i| {
@@ -338,12 +338,12 @@ test "GraphemePool - reuse many slots" {
 
     for (0..100) |i| {
         var buffer: [8]u8 = undefined;
-        const len = std.fmt.formatIntBuf(&buffer, i, 10, .lower, .{});
-        const id = try pool.alloc(buffer[0..len]);
+        const slice = std.fmt.bufPrint(&buffer, "{d}", .{i}) catch unreachable;
+        const id = try pool.alloc(slice);
         try pool.incref(id);
 
         const retrieved = try pool.get(id);
-        try std.testing.expectEqualSlices(u8, buffer[0..len], retrieved);
+        try std.testing.expectEqualSlices(u8, slice, retrieved);
 
         try pool.decref(id);
     }
@@ -427,8 +427,8 @@ test "GraphemePool - IDs remain unique across many allocations" {
 
     for (0..count) |i| {
         var buffer: [8]u8 = undefined;
-        const len = std.fmt.formatIntBuf(&buffer, i, 10, .lower, .{});
-        ids[i] = try pool.alloc(buffer[0..len]);
+        const slice = std.fmt.bufPrint(&buffer, "{d}", .{i}) catch unreachable;
+        ids[i] = try pool.alloc(slice);
         try pool.incref(ids[i]);
     }
 
@@ -647,6 +647,12 @@ test "GraphemeTracker - add same grapheme twice increfs once" {
         tracker.add(id); // Should not incref again
 
         try std.testing.expectEqual(@as(u32, 1), tracker.getGraphemeCount());
+        try std.testing.expectEqual(@as(u32, 2), tracker.getGraphemeCellCount());
+        try std.testing.expectEqual(@as(u32, 2), tracker.getTotalGraphemeBytes());
+
+        tracker.remove(id);
+        try std.testing.expect(tracker.contains(id));
+        try std.testing.expectEqual(@as(u32, 1), tracker.getGraphemeCellCount());
 
         // After deinit (via defer), tracker decrefs once, bringing refcount to 0
     }
@@ -827,8 +833,8 @@ test "GraphemeTracker - stress test many graphemes" {
     // Add many graphemes
     for (0..count) |i| {
         var buffer: [8]u8 = undefined;
-        const len = std.fmt.formatIntBuf(&buffer, i, 10, .lower, .{});
-        ids[i] = try pool.alloc(buffer[0..len]);
+        const slice = std.fmt.bufPrint(&buffer, "{d}", .{i}) catch unreachable;
+        ids[i] = try pool.alloc(slice);
         tracker.add(ids[i]);
     }
 
@@ -872,7 +878,6 @@ test "GraphemePool - global pool reinitialization returns same instance" {
 }
 
 test "GraphemePool - global unicode data init" {
-
 
     // Pointers should not be null (just verify they're returned)
     // We can't easily test their validity without using them
@@ -1038,6 +1043,27 @@ test "GraphemePool - allocUnowned large text" {
     try pool.decref(id);
 }
 
+test "GraphemePool - alloc does not reuse unowned IDs" {
+    var pool = GraphemePool.init(std.testing.allocator);
+    defer pool.deinit();
+
+    const external_text = "shared";
+
+    const unowned_id = try pool.allocUnowned(external_text);
+    try pool.incref(unowned_id);
+    defer pool.decref(unowned_id) catch {};
+
+    const owned_id = try pool.alloc(external_text);
+    try pool.incref(owned_id);
+    defer pool.decref(owned_id) catch {};
+
+    try std.testing.expect(owned_id != unowned_id);
+
+    const owned_bytes = try pool.get(owned_id);
+    try std.testing.expectEqualSlices(u8, external_text, owned_bytes);
+    try std.testing.expect(@intFromPtr(owned_bytes.ptr) != @intFromPtr(external_text.ptr));
+}
+
 test "GraphemeTracker - with unowned allocations" {
     var pool = GraphemePool.init(std.testing.allocator);
     defer pool.deinit();
@@ -1140,6 +1166,35 @@ test "GraphemePool - initWithOptions with small slots_per_page" {
 
     try pool.decref(id1);
     try pool.decref(id2);
+}
+
+test "GraphemePool - alloc reuses live ID for same bytes" {
+    const tiny_slots = [_]u32{ 1, 1, 1, 1, 1 };
+    var pool = gp.GraphemePool.initWithOptions(std.testing.allocator, .{
+        .slots_per_page = tiny_slots,
+    });
+    defer pool.deinit();
+
+    const grapheme = "👋";
+
+    const id1 = try pool.alloc(grapheme);
+    try pool.incref(id1);
+
+    const id2 = try pool.alloc(grapheme);
+    try std.testing.expectEqual(id1, id2);
+    try std.testing.expectEqual(@as(u32, 1), try pool.getRefcount(id1));
+
+    try pool.decref(id1);
+
+    const id3 = try pool.alloc(grapheme);
+    try pool.incref(id3);
+    defer pool.decref(id3) catch @panic("Failed to decref id3");
+
+    try std.testing.expect(id3 != id1);
+    try std.testing.expectEqualSlices(u8, grapheme, try pool.get(id3));
+
+    const id4 = try pool.alloc(grapheme);
+    try std.testing.expectEqual(id3, id4);
 }
 
 test "GraphemePool - small pool exhaustion and growth" {

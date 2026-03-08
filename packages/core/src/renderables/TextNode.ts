@@ -9,6 +9,7 @@ export interface TextNodeOptions extends BaseRenderableOptions {
   fg?: string | RGBA
   bg?: string | RGBA
   attributes?: number
+  link?: { url: string }
 }
 
 const BrandedTextNodeRenderable: unique symbol = Symbol.for("@opentui/core/TextNodeRenderable")
@@ -23,6 +24,7 @@ function styledTextToTextNodes(styledText: StyledText): TextNodeRenderable[] {
       fg: chunk.fg,
       bg: chunk.bg,
       attributes: chunk.attributes,
+      link: chunk.link,
     })
     node.add(chunk.text)
     return node
@@ -35,6 +37,7 @@ export class TextNodeRenderable extends BaseRenderable {
   private _fg?: RGBA
   private _bg?: RGBA
   private _attributes: number
+  private _link?: { url: string }
   private _children: (string | TextNodeRenderable)[] = []
   public parent: TextNodeRenderable | null = null
 
@@ -44,6 +47,7 @@ export class TextNodeRenderable extends BaseRenderable {
     this._fg = options.fg ? parseColor(options.fg) : undefined
     this._bg = options.bg ? parseColor(options.bg) : undefined
     this._attributes = options.attributes ?? 0
+    this._link = options.link
   }
 
   public get children(): (string | TextNodeRenderable)[] {
@@ -165,20 +169,26 @@ export class TextNodeRenderable extends BaseRenderable {
     this.requestRender()
   }
 
-  public mergeStyles(parentStyle: { fg?: RGBA; bg?: RGBA; attributes: number }): {
+  public mergeStyles(parentStyle: { fg?: RGBA; bg?: RGBA; attributes: number; link?: { url: string } }): {
     fg?: RGBA
     bg?: RGBA
     attributes: number
+    link?: { url: string }
   } {
     return {
       fg: this._fg ?? parentStyle.fg,
       bg: this._bg ?? parentStyle.bg,
       attributes: this._attributes | parentStyle.attributes,
+      link: this._link ?? parentStyle.link,
     }
   }
 
   public gatherWithInheritedStyle(
-    parentStyle: { fg?: RGBA; bg?: RGBA; attributes: number } = { fg: undefined, bg: undefined, attributes: 0 },
+    parentStyle: { fg?: RGBA; bg?: RGBA; attributes: number; link?: { url: string } } = {
+      fg: undefined,
+      bg: undefined,
+      attributes: 0,
+    },
   ): TextChunk[] {
     const currentStyle = this.mergeStyles(parentStyle)
 
@@ -192,6 +202,7 @@ export class TextNodeRenderable extends BaseRenderable {
           fg: currentStyle.fg,
           bg: currentStyle.bg,
           attributes: currentStyle.attributes,
+          link: currentStyle.link,
         })
       } else {
         const childChunks = child.gatherWithInheritedStyle(currentStyle)
@@ -219,7 +230,11 @@ export class TextNodeRenderable extends BaseRenderable {
   }
 
   public toChunks(
-    parentStyle: { fg?: RGBA; bg?: RGBA; attributes: number } = { fg: undefined, bg: undefined, attributes: 0 },
+    parentStyle: { fg?: RGBA; bg?: RGBA; attributes: number; link?: { url: string } } = {
+      fg: undefined,
+      bg: undefined,
+      attributes: 0,
+    },
   ): TextChunk[] {
     return this.gatherWithInheritedStyle(parentStyle)
   }
@@ -275,6 +290,15 @@ export class TextNodeRenderable extends BaseRenderable {
 
   public get attributes(): number {
     return this._attributes
+  }
+
+  public set link(link: { url: string } | undefined) {
+    this._link = link
+    this.requestRender()
+  }
+
+  public get link(): { url: string } | undefined {
+    return this._link
   }
 
   public findDescendantById(id: string): BaseRenderable | undefined {

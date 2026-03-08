@@ -1,9 +1,11 @@
 import { ANSI } from "./ansi"
 import { Renderable, RootRenderable } from "./Renderable"
 import {
-  type CursorStyle,
   DebugOverlayCorner,
+  type CursorStyleOptions,
+  type MousePointerStyle,
   type RenderContext,
+  type ThemeMode,
   type ViewportBounds,
   type WidthMethod,
 } from "./types"
@@ -14,6 +16,7 @@ import { resolveRenderLib, type RenderLib } from "./zig"
 import { TerminalConsole, type ConsoleOptions, capture } from "./console"
 import { MouseParser, type MouseEventType, type RawMouseEvent, type ScrollInfo } from "./lib/parse.mouse"
 import { Selection } from "./lib/selection"
+import { Clipboard, type ClipboardTarget } from "./lib/clipboard"
 import { EventEmitter } from "events"
 import { destroySingleton, hasSingleton, singleton } from "./lib/singleton"
 import { getObjectsInViewport } from "./lib/objects-in-viewport"
@@ -68,11 +71,21 @@ registerEnvVar({
   default: false,
 })
 
+registerEnvVar({
+  name: "OTUI_SHOW_STATS",
+  description: "Show the debug overlay at startup.",
+  type: "boolean",
+  default: false,
+})
+
 export interface CliRendererConfig {
   stdin?: NodeJS.ReadStream
   stdout?: NodeJS.WriteStream
+  remote?: boolean
+  testing?: boolean
   exitOnCtrlC?: boolean
   exitSignals?: NodeJS.Signals[]
+  forwardEnvKeys?: string[]
   debounceDelay?: number
   targetFps?: number
   maxFps?: number
@@ -84,6 +97,7 @@ export interface CliRendererConfig {
   postProcessFns?: ((buffer: OptimizedBuffer, deltaTime: number) => void)[]
   enableMouseMovement?: boolean
   useMouse?: boolean
+  autoFocus?: boolean
   useAlternateScreen?: boolean
   useConsole?: boolean
   experimental_splitHeight?: number
@@ -98,6 +112,25 @@ export type PixelResolution = {
   width: number
   height: number
 }
+
+const DEFAULT_FORWARDED_ENV_KEYS = [
+  "TMUX",
+  "TERM",
+  "OPENTUI_GRAPHICS",
+  "TERM_PROGRAM",
+  "TERM_PROGRAM_VERSION",
+  "ALACRITTY_SOCKET",
+  "ALACRITTY_LOG",
+  "COLORTERM",
+  "TERMUX_VERSION",
+  "VHS_RECORD",
+  "OPENTUI_FORCE_WCWIDTH",
+  "OPENTUI_FORCE_UNICODE",
+  "OPENTUI_FORCE_NOZWJ",
+  "OPENTUI_FORCE_EXPLICIT_WIDTH",
+  "WT_SESSION",
+  "STY",
+] as const
 
 // Kitty keyboard protocol flags
 // See: https://sw.kovidgoyal.net/kitty/keyboard-protocol/
@@ -180,7 +213,7 @@ export class MouseEvent {
   }
   public readonly scroll?: ScrollInfo
   public readonly target: Renderable | null
-  public readonly isSelecting?: boolean
+  public readonly isDragging?: boolean
   private _propagationStopped: boolean = false
   private _defaultPrevented: boolean = false
 
@@ -192,7 +225,7 @@ export class MouseEvent {
     return this._defaultPrevented
   }
 
-  constructor(target: Renderable | null, attributes: RawMouseEvent & { source?: Renderable; isSelecting?: boolean }) {
+  constructor(target: Renderable | null, attributes: RawMouseEvent & { source?: Renderable; isDragging?: boolean }) {
     this.target = target
     this.type = attributes.type
     this.button = attributes.button
@@ -201,7 +234,7 @@ export class MouseEvent {
     this.modifiers = attributes.modifiers
     this.scroll = attributes.scroll
     this.source = attributes.source
-    this.isSelecting = attributes.isSelecting
+    this.isDragging = attributes.isDragging
   }
 
   public stopPropagation(): void {
@@ -254,7 +287,10 @@ export async function createCliRenderer(config: CliRendererConfig = {}): Promise
     config.experimental_splitHeight && config.experimental_splitHeight > 0 ? config.experimental_splitHeight : height
 
   const ziglib = resolveRenderLib()
-  const rendererPtr = ziglib.createRenderer(width, renderHeight)
+  const rendererPtr = ziglib.createRenderer(width, renderHeight, {
+    remote: config.remote ?? false,
+    testing: config.testing ?? false,
+  })
   if (!rendererPtr) {
     throw new Error("Failed to create renderer")
   }
@@ -275,7 +311,9 @@ export async function createCliRenderer(config: CliRendererConfig = {}): Promise
   ziglib.setKittyKeyboardFlags(rendererPtr, kittyFlags)
 
   const renderer = new CliRenderer(ziglib, rendererPtr, stdin, stdout, width, height, config)
-  await renderer.setupTerminal()
+  if (!config.testing) {
+    await renderer.setupTerminal()
+  }
   return renderer
 }
 
@@ -303,6 +341,8 @@ export class CliRenderer extends EventEmitter implements RenderContext {
   private exitSignals: NodeJS.Signals[]
   private _exitListenersAdded: boolean = false
   private _isDestroyed: boolean = false
+  private _destroyPending: boolean = false
+  private _destroyFinalized: boolean = false
   public nextRenderBuffer: OptimizedBuffer
   public currentRenderBuffer: OptimizedBuffer
   private _isRunning: boolean = false
@@ -355,7 +395,7 @@ export class CliRenderer extends EventEmitter implements RenderContext {
     frameCallbackTime: 0,
   }
   public debugOverlay = {
-    enabled: false,
+    enabled: env.OTUI_SHOW_STATS,
     corner: DebugOverlayCorner.bottomRight,
   }
 
@@ -372,6 +412,7 @@ export class CliRenderer extends EventEmitter implements RenderContext {
 
   private enableMouseMovement: boolean = false
   private _useMouse: boolean = true
+  private autoFocus: boolean = true
   private _useAlternateScreen: boolean = env.OTUI_USE_ALTERNATE_SCREEN
   private _suspendedMouseEnabled: boolean = false
   private _previousControlState: RendererControlState = RendererControlState.IDLE
@@ -381,6 +422,7 @@ export class CliRenderer extends EventEmitter implements RenderContext {
 
   private currentSelection: Selection | null = null
   private selectionContainers: Renderable[] = []
+  private clipboard: Clipboard
 
   private _splitHeight: number = 0
   private renderOffset: number = 0
@@ -405,6 +447,9 @@ export class CliRenderer extends EventEmitter implements RenderContext {
   }).bind(this)
   private _capabilities: any | null = null
   private _latestPointer: { x: number; y: number } = { x: 0, y: 0 }
+  private _hasPointer: boolean = false
+  private _lastPointerModifiers: RawMouseEvent["modifiers"] = { shift: false, alt: false, ctrl: false }
+  private _currentMousePointerStyle: MousePointerStyle | undefined = undefined
 
   private _currentFocusedRenderable: Renderable | null = null
   private lifecyclePasses: Set<Renderable> = new Set()
@@ -413,9 +458,11 @@ export class CliRenderer extends EventEmitter implements RenderContext {
   private _cachedPalette: TerminalColors | null = null
   private _paletteDetectionPromise: Promise<TerminalColors> | null = null
   private _onDestroy?: () => void
+  private _themeMode: ThemeMode | null = null
 
   private inputHandlers: ((sequence: string) => boolean)[] = []
   private prependedInputHandlers: ((sequence: string) => boolean)[] = []
+  private shouldRestoreModesOnNextFocus: boolean = false
 
   private idleResolvers: (() => void)[] = []
 
@@ -485,8 +532,8 @@ export class CliRenderer extends EventEmitter implements RenderContext {
     this.stdout = stdout
     this.realStdoutWrite = stdout.write
     this.lib = lib
-    this._terminalWidth = stdout.columns
-    this._terminalHeight = stdout.rows
+    this._terminalWidth = stdout.columns ?? width
+    this._terminalHeight = stdout.rows ?? height
     this.width = width
     this.height = height
     this._useThread = config.useThread === undefined ? false : config.useThread
@@ -500,8 +547,28 @@ export class CliRenderer extends EventEmitter implements RenderContext {
     }
 
     this.rendererPtr = rendererPtr
+
+    const forwardEnvKeys = config.forwardEnvKeys ?? [...DEFAULT_FORWARDED_ENV_KEYS]
+    for (const key of forwardEnvKeys) {
+      const value = process.env[key]
+      if (value === undefined) continue
+      this.lib.setTerminalEnvVar(this.rendererPtr, key, value)
+    }
+
     this.exitOnCtrlC = config.exitOnCtrlC === undefined ? true : config.exitOnCtrlC
-    this.exitSignals = config.exitSignals || ["SIGINT", "SIGTERM", "SIGQUIT", "SIGABRT"]
+    this.exitSignals = config.exitSignals || [
+      "SIGINT", // Ctrl+C
+      "SIGTERM", // Termination signal
+      "SIGQUIT", // Ctrl+\
+      "SIGABRT", // Abort signal
+      "SIGHUP", // Hangup (terminal closed)
+      "SIGBREAK", // Ctrl+Break on Windows
+      "SIGPIPE", // Broken pipe
+      "SIGBUS", // Bus error
+      "SIGFPE", // Floating point exception
+    ]
+
+    this.clipboard = new Clipboard(this.lib, this.rendererPtr)
     this.resizeDebounceDelay = config.debounceDelay || 100
     this.targetFps = config.targetFps || 30
     this.maxFps = config.maxFps || 60
@@ -510,8 +577,9 @@ export class CliRenderer extends EventEmitter implements RenderContext {
     this.memorySnapshotInterval = config.memorySnapshotInterval ?? 0
     this.gatherStats = config.gatherStats || false
     this.maxStatSamples = config.maxStatSamples || 300
-    this.enableMouseMovement = config.enableMouseMovement || true
+    this.enableMouseMovement = config.enableMouseMovement ?? true
     this._useMouse = config.useMouse ?? true
+    this.autoFocus = config.autoFocus ?? true
     this._useAlternateScreen = config.useAlternateScreen ?? env.OTUI_USE_ALTERNATE_SCREEN
     this.nextRenderBuffer = this.lib.getNextBuffer(this.rendererPtr)
     this.currentRenderBuffer = this.lib.getCurrentBuffer(this.rendererPtr)
@@ -636,10 +704,29 @@ export class CliRenderer extends EventEmitter implements RenderContext {
     this._currentFocusedRenderable = renderable
   }
 
+  private setCapturedRenderable(renderable: Renderable | undefined): void {
+    if (this.capturedRenderable === renderable) {
+      return
+    }
+    this.capturedRenderable = renderable
+  }
+
   public addToHitGrid(x: number, y: number, width: number, height: number, id: number) {
     if (id !== this.capturedRenderable?.num) {
       this.lib.addToHitGrid(this.rendererPtr, x, y, width, height, id)
     }
+  }
+
+  public pushHitGridScissorRect(x: number, y: number, width: number, height: number): void {
+    this.lib.hitGridPushScissorRect(this.rendererPtr, x, y, width, height)
+  }
+
+  public popHitGridScissorRect(): void {
+    this.lib.hitGridPopScissorRect(this.rendererPtr)
+  }
+
+  public clearHitGridScissorRects(): void {
+    this.lib.hitGridClearScissorRects(this.rendererPtr)
   }
 
   public get widthMethod(): WidthMethod {
@@ -648,6 +735,15 @@ export class CliRenderer extends EventEmitter implements RenderContext {
   }
 
   private writeOut(chunk: any, encoding?: any, callback?: any): boolean {
+    if (this.rendererPtr && this._useThread) {
+      const data = typeof chunk === "string" ? chunk : (chunk?.toString() ?? "")
+      this.lib.writeOut(this.rendererPtr, data)
+      if (typeof callback === "function") {
+        process.nextTick(callback)
+      }
+      return true
+    }
+
     return this.realStdoutWrite.call(this.stdout, chunk, encoding, callback)
   }
 
@@ -791,6 +887,10 @@ export class CliRenderer extends EventEmitter implements RenderContext {
     return this._capabilities
   }
 
+  public get themeMode(): ThemeMode | null {
+    return this._themeMode
+  }
+
   public getDebugInputs(): Array<{ timestamp: string; sequence: string }> {
     return [...this._debugInputs]
   }
@@ -888,10 +988,15 @@ export class CliRenderer extends EventEmitter implements RenderContext {
     if (space > 0) {
       const backgroundColor = this.backgroundColor.toInts()
       const newlines = " ".repeat(this.width) + "\n".repeat(space)
-      clear =
-        ANSI.setRgbBackground(backgroundColor[0], backgroundColor[1], backgroundColor[2]) +
-        newlines +
-        ANSI.resetBackground
+      // Check if background is transparent (alpha = 0)
+      if (backgroundColor[3] === 0) {
+        clear = newlines
+      } else {
+        clear =
+          ANSI.setRgbBackground(backgroundColor[0], backgroundColor[1], backgroundColor[2]) +
+          newlines +
+          ANSI.resetBackground
+      }
     }
 
     this.writeOut(flush + move + output + clear)
@@ -906,7 +1011,7 @@ export class CliRenderer extends EventEmitter implements RenderContext {
 
   private disableMouse(): void {
     this._useMouse = false
-    this.capturedRenderable = undefined
+    this.setCapturedRenderable(undefined)
     this.mouseParser.reset()
     this.lib.disableMouse(this.rendererPtr)
   }
@@ -932,6 +1037,15 @@ export class CliRenderer extends EventEmitter implements RenderContext {
 
     this.lib.setupTerminal(this.rendererPtr, this._useAlternateScreen)
     this._capabilities = this.lib.getTerminalCapabilities(this.rendererPtr)
+
+    if (this.debugOverlay.enabled) {
+      this.lib.setDebugOverlay(this.rendererPtr, true, this.debugOverlay.corner)
+      if (!this.memorySnapshotInterval) {
+        this.memorySnapshotInterval = 3000
+        this.startMemorySnapshotTimer()
+        this.automaticMemorySnapshot = true
+      }
+    }
 
     this.capabilityTimeoutId = setTimeout(() => {
       this.capabilityTimeoutId = null
@@ -979,11 +1093,38 @@ export class CliRenderer extends EventEmitter implements RenderContext {
 
   private focusHandler: (sequence: string) => boolean = ((sequence: string) => {
     if (sequence === "\x1b[I") {
+      // When the terminal regains focus, some terminal emulators (notably
+      // Windows Terminal / ConPTY) may have stripped DEC private modes like
+      // mouse tracking, bracketed paste, and focus tracking itself while the
+      // window was unfocused.
+      if (this.shouldRestoreModesOnNextFocus) {
+        this.lib.restoreTerminalModes(this.rendererPtr)
+        this.shouldRestoreModesOnNextFocus = false
+      }
       this.emit("focus")
       return true
     }
     if (sequence === "\x1b[O") {
+      this.shouldRestoreModesOnNextFocus = true
       this.emit("blur")
+      return true
+    }
+    return false
+  }).bind(this)
+
+  private themeModeHandler: (sequence: string) => boolean = ((sequence: string) => {
+    if (sequence === "\x1b[?997;1n") {
+      if (this._themeMode !== "dark") {
+        this._themeMode = "dark"
+        this.emit("theme_mode", "dark")
+      }
+      return true
+    }
+    if (sequence === "\x1b[?997;2n") {
+      if (this._themeMode !== "light") {
+        this._themeMode = "light"
+        this.emit("theme_mode", "light")
+      }
       return true
     }
     return false
@@ -1007,6 +1148,7 @@ export class CliRenderer extends EventEmitter implements RenderContext {
     })
     this.addInputHandler(this.capabilityHandler)
     this.addInputHandler(this.focusHandler)
+    this.addInputHandler(this.themeModeHandler)
     this.addInputHandler((sequence: string) => {
       return this._keyHandler.processInput(sequence)
     })
@@ -1038,162 +1180,259 @@ export class CliRenderer extends EventEmitter implements RenderContext {
     })
   }
 
+  private dispatchMouseEvent(
+    target: Renderable,
+    attributes: RawMouseEvent & { source?: Renderable; isDragging?: boolean },
+  ): MouseEvent {
+    const event = new MouseEvent(target, attributes)
+    target.processMouseEvent(event)
+
+    if (this.autoFocus && event.type === "down" && event.button === MouseButton.LEFT && !event.defaultPrevented) {
+      let current: Renderable | null = target
+      while (current) {
+        if (current.focusable) {
+          current.focus()
+          break
+        }
+        current = current.parent
+      }
+    }
+
+    return event
+  }
+
   private handleMouseData(data: Buffer): boolean {
-    const mouseEvent = this.mouseParser.parseMouseEvent(data)
+    const mouseEvents = this.mouseParser.parseAllMouseEvents(data)
 
-    if (mouseEvent) {
-      if (this._splitHeight > 0) {
-        if (mouseEvent.y < this.renderOffset) {
-          return false
-        }
-        mouseEvent.y -= this.renderOffset
+    if (mouseEvents.length === 0) return false
+
+    let anyHandled = false
+    for (const mouseEvent of mouseEvents) {
+      if (this.processSingleMouseEvent(mouseEvent)) {
+        anyHandled = true
       }
+    }
 
-      this._latestPointer.x = mouseEvent.x
-      this._latestPointer.y = mouseEvent.y
+    return anyHandled
+  }
 
-      if (this._console.visible) {
-        const consoleBounds = this._console.bounds
-        if (
-          mouseEvent.x >= consoleBounds.x &&
-          mouseEvent.x < consoleBounds.x + consoleBounds.width &&
-          mouseEvent.y >= consoleBounds.y &&
-          mouseEvent.y < consoleBounds.y + consoleBounds.height
-        ) {
-          const event = new MouseEvent(null, mouseEvent)
-          const handled = this._console.handleMouse(event)
-          if (handled) return true
-        }
+  private processSingleMouseEvent(mouseEvent: RawMouseEvent): boolean {
+    if (this._splitHeight > 0) {
+      if (mouseEvent.y < this.renderOffset) {
+        return false
       }
+      mouseEvent.y -= this.renderOffset
+    }
 
-      if (mouseEvent.type === "scroll") {
-        const maybeRenderableId = this.lib.checkHit(this.rendererPtr, mouseEvent.x, mouseEvent.y)
-        const maybeRenderable = Renderable.renderablesByNumber.get(maybeRenderableId)
+    this._latestPointer.x = mouseEvent.x
+    this._latestPointer.y = mouseEvent.y
+    this._hasPointer = true
+    this._lastPointerModifiers = mouseEvent.modifiers
 
-        if (maybeRenderable) {
-          const event = new MouseEvent(maybeRenderable, mouseEvent)
-          maybeRenderable.processMouseEvent(event)
-        }
-        return true
-      }
-
-      const maybeRenderableId = this.lib.checkHit(this.rendererPtr, mouseEvent.x, mouseEvent.y)
-      const sameElement = maybeRenderableId === this.lastOverRenderableNum
-      this.lastOverRenderableNum = maybeRenderableId
-      const maybeRenderable = Renderable.renderablesByNumber.get(maybeRenderableId)
-
+    if (this._console.visible) {
+      const consoleBounds = this._console.bounds
       if (
-        mouseEvent.type === "down" &&
-        mouseEvent.button === MouseButton.LEFT &&
-        !this.currentSelection?.isSelecting &&
-        !mouseEvent.modifiers.ctrl
+        mouseEvent.x >= consoleBounds.x &&
+        mouseEvent.x < consoleBounds.x + consoleBounds.width &&
+        mouseEvent.y >= consoleBounds.y &&
+        mouseEvent.y < consoleBounds.y + consoleBounds.height
       ) {
-        if (
-          maybeRenderable &&
+        const event = new MouseEvent(null, mouseEvent)
+        const handled = this._console.handleMouse(event)
+        if (handled) return true
+      }
+    }
+
+    if (mouseEvent.type === "scroll") {
+      const maybeRenderableId = this.hitTest(mouseEvent.x, mouseEvent.y)
+      const maybeRenderable = Renderable.renderablesByNumber.get(maybeRenderableId)
+      const fallbackTarget =
+        this._currentFocusedRenderable &&
+        !this._currentFocusedRenderable.isDestroyed &&
+        this._currentFocusedRenderable.focused
+          ? this._currentFocusedRenderable
+          : null
+      const scrollTarget = maybeRenderable ?? fallbackTarget
+
+      if (scrollTarget) {
+        const event = new MouseEvent(scrollTarget, mouseEvent)
+        scrollTarget.processMouseEvent(event)
+      }
+      return true
+    }
+
+    const maybeRenderableId = this.hitTest(mouseEvent.x, mouseEvent.y)
+    const sameElement = maybeRenderableId === this.lastOverRenderableNum
+    this.lastOverRenderableNum = maybeRenderableId
+    const maybeRenderable = Renderable.renderablesByNumber.get(maybeRenderableId)
+
+    if (
+      mouseEvent.type === "down" &&
+      mouseEvent.button === MouseButton.LEFT &&
+      !this.currentSelection?.isDragging &&
+      !mouseEvent.modifiers.ctrl
+    ) {
+      const canStartSelection = Boolean(
+        maybeRenderable &&
           maybeRenderable.selectable &&
           !maybeRenderable.isDestroyed &&
-          maybeRenderable.shouldStartSelection(mouseEvent.x, mouseEvent.y)
-        ) {
-          this.startSelection(maybeRenderable, mouseEvent.x, mouseEvent.y)
-          const event = new MouseEvent(maybeRenderable, mouseEvent)
-          maybeRenderable.processMouseEvent(event)
-          return true
-        }
-      }
+          maybeRenderable.shouldStartSelection(mouseEvent.x, mouseEvent.y),
+      )
 
-      if (mouseEvent.type === "drag" && this.currentSelection?.isSelecting) {
-        this.updateSelection(maybeRenderable, mouseEvent.x, mouseEvent.y)
-
-        if (maybeRenderable) {
-          const event = new MouseEvent(maybeRenderable, { ...mouseEvent, isSelecting: true })
-          maybeRenderable.processMouseEvent(event)
-        }
-
+      if (canStartSelection && maybeRenderable) {
+        this.startSelection(maybeRenderable, mouseEvent.x, mouseEvent.y)
+        this.dispatchMouseEvent(maybeRenderable, mouseEvent)
         return true
       }
+    }
 
-      if (mouseEvent.type === "up" && this.currentSelection?.isSelecting) {
-        if (maybeRenderable) {
-          const event = new MouseEvent(maybeRenderable, { ...mouseEvent, isSelecting: true })
-          maybeRenderable.processMouseEvent(event)
-        }
+    if (mouseEvent.type === "drag" && this.currentSelection?.isDragging) {
+      this.updateSelection(maybeRenderable, mouseEvent.x, mouseEvent.y)
 
-        this.finishSelection()
-        return true
-      }
-
-      if (mouseEvent.type === "down" && mouseEvent.button === MouseButton.LEFT && this.currentSelection) {
-        if (mouseEvent.modifiers.ctrl) {
-          this.currentSelection.isSelecting = true
-          this.updateSelection(maybeRenderable, mouseEvent.x, mouseEvent.y)
-          return true
-        }
-      }
-
-      if (!sameElement && (mouseEvent.type === "drag" || mouseEvent.type === "move")) {
-        if (this.lastOverRenderable && this.lastOverRenderable !== this.capturedRenderable) {
-          const event = new MouseEvent(this.lastOverRenderable, { ...mouseEvent, type: "out" })
-          this.lastOverRenderable.processMouseEvent(event)
-        }
-        this.lastOverRenderable = maybeRenderable
-        if (maybeRenderable) {
-          const event = new MouseEvent(maybeRenderable, {
-            ...mouseEvent,
-            type: "over",
-            source: this.capturedRenderable,
-          })
-          maybeRenderable.processMouseEvent(event)
-        }
-      }
-
-      if (this.capturedRenderable && mouseEvent.type !== "up") {
-        const event = new MouseEvent(this.capturedRenderable, mouseEvent)
-        this.capturedRenderable.processMouseEvent(event)
-        return true
-      }
-
-      if (this.capturedRenderable && mouseEvent.type === "up") {
-        const event = new MouseEvent(this.capturedRenderable, { ...mouseEvent, type: "drag-end" })
-        this.capturedRenderable.processMouseEvent(event)
-        this.capturedRenderable.processMouseEvent(new MouseEvent(this.capturedRenderable, mouseEvent))
-        if (maybeRenderable) {
-          const event = new MouseEvent(maybeRenderable, {
-            ...mouseEvent,
-            type: "drop",
-            source: this.capturedRenderable,
-          })
-          maybeRenderable.processMouseEvent(event)
-        }
-        this.lastOverRenderable = this.capturedRenderable
-        this.lastOverRenderableNum = this.capturedRenderable.num
-        this.capturedRenderable = undefined
-        // Dropping the renderable needs to push another frame when the renderer is not live
-        // to update the hit grid, otherwise capturedRenderable won't be in the hit grid and will not receive mouse events
-        this.requestRender()
-      }
-
-      let event: MouseEvent | undefined = undefined
       if (maybeRenderable) {
-        if (mouseEvent.type === "drag" && mouseEvent.button === MouseButton.LEFT) {
-          this.capturedRenderable = maybeRenderable
-        } else {
-          this.capturedRenderable = undefined
-        }
-        event = new MouseEvent(maybeRenderable, mouseEvent)
+        const event = new MouseEvent(maybeRenderable, { ...mouseEvent, isDragging: true })
         maybeRenderable.processMouseEvent(event)
-      } else {
-        this.capturedRenderable = undefined
-        this.lastOverRenderable = undefined
-      }
-
-      if (!event?.defaultPrevented && mouseEvent.type === "down" && this.currentSelection) {
-        this.clearSelection()
       }
 
       return true
     }
 
-    return false
+    if (mouseEvent.type === "up" && this.currentSelection?.isDragging) {
+      if (maybeRenderable) {
+        const event = new MouseEvent(maybeRenderable, { ...mouseEvent, isDragging: true })
+        maybeRenderable.processMouseEvent(event)
+      }
+
+      this.finishSelection()
+      return true
+    }
+
+    if (mouseEvent.type === "down" && mouseEvent.button === MouseButton.LEFT && this.currentSelection) {
+      if (mouseEvent.modifiers.ctrl) {
+        this.currentSelection.isDragging = true
+        this.updateSelection(maybeRenderable, mouseEvent.x, mouseEvent.y)
+        return true
+      }
+    }
+
+    if (!sameElement && (mouseEvent.type === "drag" || mouseEvent.type === "move")) {
+      if (
+        this.lastOverRenderable &&
+        this.lastOverRenderable !== this.capturedRenderable &&
+        !this.lastOverRenderable.isDestroyed
+      ) {
+        const event = new MouseEvent(this.lastOverRenderable, { ...mouseEvent, type: "out" })
+        this.lastOverRenderable.processMouseEvent(event)
+      }
+      this.lastOverRenderable = maybeRenderable
+      if (maybeRenderable) {
+        const event = new MouseEvent(maybeRenderable, {
+          ...mouseEvent,
+          type: "over",
+          source: this.capturedRenderable,
+        })
+        maybeRenderable.processMouseEvent(event)
+      }
+    }
+
+    if (this.capturedRenderable && mouseEvent.type !== "up") {
+      const event = new MouseEvent(this.capturedRenderable, mouseEvent)
+      this.capturedRenderable.processMouseEvent(event)
+      return true
+    }
+
+    if (this.capturedRenderable && mouseEvent.type === "up") {
+      const event = new MouseEvent(this.capturedRenderable, { ...mouseEvent, type: "drag-end" })
+      this.capturedRenderable.processMouseEvent(event)
+      this.capturedRenderable.processMouseEvent(new MouseEvent(this.capturedRenderable, mouseEvent))
+      if (maybeRenderable) {
+        const event = new MouseEvent(maybeRenderable, {
+          ...mouseEvent,
+          type: "drop",
+          source: this.capturedRenderable,
+        })
+        maybeRenderable.processMouseEvent(event)
+      }
+      this.lastOverRenderable = this.capturedRenderable
+      this.lastOverRenderableNum = this.capturedRenderable.num
+      this.setCapturedRenderable(undefined)
+      // Dropping the renderable needs to push another frame when the renderer is not live
+      // to update the hit grid, otherwise capturedRenderable won't be in the hit grid and will not receive mouse events
+      this.requestRender()
+    }
+
+    let event: MouseEvent | undefined
+    if (maybeRenderable) {
+      if (mouseEvent.type === "drag" && mouseEvent.button === MouseButton.LEFT) {
+        this.setCapturedRenderable(maybeRenderable)
+      } else {
+        this.setCapturedRenderable(undefined)
+      }
+      event = this.dispatchMouseEvent(maybeRenderable, mouseEvent)
+    } else {
+      this.setCapturedRenderable(undefined)
+      this.lastOverRenderable = undefined
+    }
+
+    if (!event?.defaultPrevented && mouseEvent.type === "down" && this.currentSelection) {
+      this.clearSelection()
+    }
+
+    return true
+  }
+
+  /**
+   * Recheck hover state after hit grid changes.
+   * Called after render when native code detects the hit grid changed.
+   * Fires out/over events if the element under the cursor changed.
+   */
+  private recheckHoverState(): void {
+    if (this._isDestroyed || !this._hasPointer) return
+    if (this.capturedRenderable) return
+
+    const hitId = this.hitTest(this._latestPointer.x, this._latestPointer.y)
+    const hitRenderable = Renderable.renderablesByNumber.get(hitId)
+    const lastOver = this.lastOverRenderable
+
+    // No change
+    if (lastOver?.num === hitId) {
+      this.lastOverRenderableNum = hitId
+      return
+    }
+
+    const baseEvent: RawMouseEvent = {
+      type: "move",
+      button: 0,
+      x: this._latestPointer.x,
+      y: this._latestPointer.y,
+      modifiers: this._lastPointerModifiers,
+    }
+
+    // Fire out on old element
+    if (lastOver && !lastOver.isDestroyed) {
+      const event = new MouseEvent(lastOver, { ...baseEvent, type: "out" })
+      lastOver.processMouseEvent(event)
+    }
+
+    this.lastOverRenderable = hitRenderable
+    this.lastOverRenderableNum = hitId
+
+    // Fire over on new element
+    if (hitRenderable) {
+      const event = new MouseEvent(hitRenderable, {
+        ...baseEvent,
+        type: "over",
+      })
+      hitRenderable.processMouseEvent(event)
+    }
+  }
+  public setMousePointer(style: MousePointerStyle): void {
+    this._currentMousePointerStyle = style
+    this.lib.setCursorStyleOptions(this.rendererPtr, { cursor: style })
+  }
+
+  public hitTest(x: number, y: number): number {
+    return this.lib.checkHit(this.rendererPtr, x, y)
   }
 
   private takeMemorySnapshot(): void {
@@ -1274,7 +1513,7 @@ export class CliRenderer extends EventEmitter implements RenderContext {
     this._terminalHeight = height
     this.queryPixelResolution()
 
-    this.capturedRenderable = undefined
+    this.setCapturedRenderable(undefined)
     this.mouseParser.reset()
 
     if (this._splitHeight > 0) {
@@ -1341,6 +1580,18 @@ export class CliRenderer extends EventEmitter implements RenderContext {
     this.lib.setTerminalTitle(this.rendererPtr, title)
   }
 
+  public copyToClipboardOSC52(text: string, target?: ClipboardTarget): boolean {
+    return this.clipboard.copyToClipboardOSC52(text, target)
+  }
+
+  public clearClipboardOSC52(target?: ClipboardTarget): boolean {
+    return this.clipboard.clearClipboardOSC52(target)
+  }
+
+  public isOsc52Supported(): boolean {
+    return this._capabilities?.osc52 ?? this.clipboard.isOsc52Supported()
+  }
+
   public dumpHitGrid(): void {
     this.lib.dumpHitGrid(this.rendererPtr)
   }
@@ -1358,16 +1609,11 @@ export class CliRenderer extends EventEmitter implements RenderContext {
     lib.setCursorPosition(renderer.rendererPtr, x, y, visible)
   }
 
-  public static setCursorStyle(
-    renderer: CliRenderer,
-    style: CursorStyle,
-    blinking: boolean = false,
-    color?: RGBA,
-  ): void {
+  public static setCursorStyle(renderer: CliRenderer, options: CursorStyleOptions): void {
     const lib = resolveRenderLib()
-    lib.setCursorStyle(renderer.rendererPtr, style, blinking)
-    if (color) {
-      lib.setCursorColor(renderer.rendererPtr, color)
+    lib.setCursorStyleOptions(renderer.rendererPtr, options)
+    if (options.cursor !== undefined) {
+      renderer._currentMousePointerStyle = options.cursor
     }
   }
 
@@ -1380,15 +1626,19 @@ export class CliRenderer extends EventEmitter implements RenderContext {
     this.lib.setCursorPosition(this.rendererPtr, x, y, visible)
   }
 
-  public setCursorStyle(style: CursorStyle, blinking: boolean = false, color?: RGBA): void {
-    this.lib.setCursorStyle(this.rendererPtr, style, blinking)
-    if (color) {
-      this.lib.setCursorColor(this.rendererPtr, color)
+  public setCursorStyle(options: CursorStyleOptions): void {
+    this.lib.setCursorStyleOptions(this.rendererPtr, options)
+    if (options.cursor !== undefined) {
+      this._currentMousePointerStyle = options.cursor
     }
   }
 
   public setCursorColor(color: RGBA): void {
     this.lib.setCursorColor(this.rendererPtr, color)
+  }
+
+  public getCursorState() {
+    return this.lib.getCursorState(this.rendererPtr)
   }
 
   public addPostProcessFn(processFn: (buffer: OptimizedBuffer, deltaTime: number) => void): void {
@@ -1515,6 +1765,15 @@ export class CliRenderer extends EventEmitter implements RenderContext {
 
   private internalPause(): void {
     this._isRunning = false
+
+    if (this.renderTimeout) {
+      clearTimeout(this.renderTimeout)
+      this.renderTimeout = null
+    }
+
+    if (!this.rendering) {
+      this.resolveIdleIfNeeded()
+    }
   }
 
   public stop(): void {
@@ -1545,6 +1804,23 @@ export class CliRenderer extends EventEmitter implements RenderContext {
   }
 
   public destroy(): void {
+    if (this._isDestroyed) return
+    this._isDestroyed = true
+    this._destroyPending = true
+
+    if (this.rendering) {
+      // Defer teardown until the active frame completes to avoid freeing native resources mid-render.
+      return
+    }
+
+    this.finalizeDestroy()
+  }
+
+  private finalizeDestroy(): void {
+    if (this._destroyFinalized) return
+    this._destroyFinalized = true
+    this._destroyPending = false
+
     process.removeListener("SIGWINCH", this.sigwinchHandler)
     process.removeListener("uncaughtException", this.handleError)
     process.removeListener("unhandledRejection", this.handleError)
@@ -1575,9 +1851,6 @@ export class CliRenderer extends EventEmitter implements RenderContext {
     this._paletteDetectionPromise = null
     this._cachedPalette = null
 
-    if (this._isDestroyed) return
-    this._isDestroyed = true
-
     this.emit(CliRenderEvents.DESTROY)
 
     if (this.renderTimeout) {
@@ -1587,7 +1860,7 @@ export class CliRenderer extends EventEmitter implements RenderContext {
     this._isRunning = false
 
     this.waitingForPixelResolution = false
-    this.capturedRenderable = undefined
+    this.setCapturedRenderable(undefined)
 
     try {
       this.root.destroyRecursively()
@@ -1643,82 +1916,96 @@ export class CliRenderer extends EventEmitter implements RenderContext {
       clearTimeout(this.renderTimeout)
       this.renderTimeout = null
     }
+    try {
+      const now = Date.now()
+      const elapsed = now - this.lastTime
 
-    const now = Date.now()
-    const elapsed = now - this.lastTime
+      const deltaTime = elapsed
+      this.lastTime = now
 
-    const deltaTime = elapsed
-    this.lastTime = now
-
-    this.frameCount++
-    if (now - this.lastFpsTime >= 1000) {
-      this.currentFps = this.frameCount
-      this.frameCount = 0
-      this.lastFpsTime = now
-    }
-
-    this.renderStats.frameCount++
-    this.renderStats.fps = this.currentFps
-    const overallStart = performance.now()
-
-    const frameRequests = Array.from(this.animationRequest.values())
-    this.animationRequest.clear()
-    const animationRequestStart = performance.now()
-    frameRequests.forEach((callback) => {
-      callback(deltaTime)
-      this.dropLive()
-    })
-    const animationRequestEnd = performance.now()
-    const animationRequestTime = animationRequestEnd - animationRequestStart
-
-    const start = performance.now()
-    for (const frameCallback of this.frameCallbacks) {
-      try {
-        await frameCallback(deltaTime)
-      } catch (error) {
-        console.error("Error in frame callback:", error)
-      }
-    }
-    const end = performance.now()
-    this.renderStats.frameCallbackTime = end - start
-
-    // Render the renderable tree
-    this.root.render(this.nextRenderBuffer, deltaTime)
-
-    for (const postProcessFn of this.postProcessFns) {
-      postProcessFn(this.nextRenderBuffer, deltaTime)
-    }
-
-    this._console.renderToBuffer(this.nextRenderBuffer)
-
-    if (!this._isDestroyed) {
-      this.renderNative()
-
-      const overallFrameTime = performance.now() - overallStart
-
-      // TODO: Add animationRequestTime to stats
-      this.lib.updateStats(this.rendererPtr, overallFrameTime, this.renderStats.fps, this.renderStats.frameCallbackTime)
-
-      if (this.gatherStats) {
-        this.collectStatSample(overallFrameTime)
+      this.frameCount++
+      if (now - this.lastFpsTime >= 1000) {
+        this.currentFps = this.frameCount
+        this.frameCount = 0
+        this.lastFpsTime = now
       }
 
-      if (this._isRunning || this.immediateRerenderRequested) {
-        const targetFrameTime = this.immediateRerenderRequested ? this.minTargetFrameTime : this.targetFrameTime
-        const delay = Math.max(1, targetFrameTime - Math.floor(overallFrameTime))
-        this.immediateRerenderRequested = false
-        this.renderTimeout = setTimeout(() => {
+      this.renderStats.frameCount++
+      this.renderStats.fps = this.currentFps
+      const overallStart = performance.now()
+
+      const frameRequests = Array.from(this.animationRequest.values())
+      this.animationRequest.clear()
+      const animationRequestStart = performance.now()
+      for (const callback of frameRequests) {
+        callback(deltaTime)
+        this.dropLive()
+      }
+      const animationRequestEnd = performance.now()
+      const animationRequestTime = animationRequestEnd - animationRequestStart
+
+      const start = performance.now()
+      for (const frameCallback of this.frameCallbacks) {
+        try {
+          await frameCallback(deltaTime)
+        } catch (error) {
+          console.error("Error in frame callback:", error)
+        }
+      }
+      const end = performance.now()
+      this.renderStats.frameCallbackTime = end - start
+
+      this.root.render(this.nextRenderBuffer, deltaTime)
+
+      for (const postProcessFn of this.postProcessFns) {
+        postProcessFn(this.nextRenderBuffer, deltaTime)
+      }
+
+      this._console.renderToBuffer(this.nextRenderBuffer)
+
+      // If destroy() was requested during this frame, skip native work and scheduling.
+      if (!this._isDestroyed) {
+        this.renderNative()
+
+        // Check if hit grid changed and recheck hover state if needed
+        if (this._useMouse && this.lib.getHitGridDirty(this.rendererPtr)) {
+          this.recheckHoverState()
+        }
+
+        const overallFrameTime = performance.now() - overallStart
+
+        // TODO: Add animationRequestTime to stats
+        this.lib.updateStats(
+          this.rendererPtr,
+          overallFrameTime,
+          this.renderStats.fps,
+          this.renderStats.frameCallbackTime,
+        )
+
+        if (this.gatherStats) {
+          this.collectStatSample(overallFrameTime)
+        }
+
+        if (this._isRunning || this.immediateRerenderRequested) {
+          const targetFrameTime = this.immediateRerenderRequested ? this.minTargetFrameTime : this.targetFrameTime
+          const delay = Math.max(1, targetFrameTime - Math.floor(overallFrameTime))
+          this.immediateRerenderRequested = false
+          this.renderTimeout = setTimeout(() => {
+            this.renderTimeout = null
+            this.loop()
+          }, delay)
+        } else {
+          clearTimeout(this.renderTimeout!)
           this.renderTimeout = null
-          this.loop()
-        }, delay)
-      } else {
-        clearTimeout(this.renderTimeout!)
-        this.renderTimeout = null
+        }
       }
+    } finally {
+      this.rendering = false
+      if (this._destroyPending) {
+        this.finalizeDestroy()
+      }
+      this.resolveIdleIfNeeded()
     }
-
-    this.rendering = false
-    this.resolveIdleIfNeeded()
   }
 
   public intermediateRender(): void {
@@ -1823,13 +2110,23 @@ export class CliRenderer extends EventEmitter implements RenderContext {
     this.selectionContainers.push(renderable.parent || this.root)
     this.currentSelection = new Selection(renderable, { x, y }, { x, y })
     this.currentSelection.isStart = true
+
     this.notifySelectablesOfSelectionChange()
   }
 
-  public updateSelection(currentRenderable: Renderable | undefined, x: number, y: number): void {
+  public updateSelection(
+    currentRenderable: Renderable | undefined,
+    x: number,
+    y: number,
+    options?: { finishDragging?: boolean },
+  ): void {
     if (this.currentSelection) {
       this.currentSelection.isStart = false
       this.currentSelection.focus = { x, y }
+
+      if (options?.finishDragging) {
+        this.currentSelection.isDragging = false
+      }
 
       if (this.selectionContainers.length > 0) {
         const currentContainer = this.selectionContainers[this.selectionContainers.length - 1]
@@ -1856,10 +2153,10 @@ export class CliRenderer extends EventEmitter implements RenderContext {
   }
 
   public requestSelectionUpdate(): void {
-    if (this.currentSelection?.isSelecting) {
+    if (this.currentSelection?.isDragging) {
       const pointer = this._latestPointer
 
-      const maybeRenderableId = this.lib.checkHit(this.rendererPtr, pointer.x, pointer.y)
+      const maybeRenderableId = this.hitTest(pointer.x, pointer.y)
       const maybeRenderable = Renderable.renderablesByNumber.get(maybeRenderableId)
 
       this.updateSelection(maybeRenderable, pointer.x, pointer.y)
@@ -1877,9 +2174,8 @@ export class CliRenderer extends EventEmitter implements RenderContext {
 
   private finishSelection(): void {
     if (this.currentSelection) {
-      this.currentSelection.isSelecting = false
+      this.currentSelection.isDragging = false
       this.emit("selection", this.currentSelection)
-      // Notify renderables that selection is finished (no longer dragging)
       this.notifySelectablesOfSelectionChange()
     }
   }

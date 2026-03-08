@@ -1,10 +1,12 @@
 const std = @import("std");
+const build_options = @import("build_options");
 const Allocator = std.mem.Allocator;
 
 const ansi = @import("ansi.zig");
 const buffer = @import("buffer.zig");
 const renderer = @import("renderer.zig");
 const gp = @import("grapheme.zig");
+const link = @import("link.zig");
 const text_buffer = @import("text-buffer.zig");
 const text_buffer_view = @import("text-buffer-view.zig");
 const edit_buffer_mod = @import("edit-buffer.zig");
@@ -15,38 +17,191 @@ const utf8 = @import("utf8.zig");
 const logger = @import("logger.zig");
 const event_bus = @import("event-bus.zig");
 const utils = @import("utils.zig");
+const native_span_feed = @import("native-span-feed.zig");
 
 pub const OptimizedBuffer = buffer.OptimizedBuffer;
 pub const CliRenderer = renderer.CliRenderer;
 pub const Terminal = terminal.Terminal;
 pub const RGBA = buffer.RGBA;
 
-export fn setLogCallback(callback: ?*const fn (level: u8, msgPtr: [*]const u8, msgLen: usize) callconv(.C) void) void {
+comptime {
+    _ = native_span_feed;
+}
+
+export fn setLogCallback(callback: ?*const fn (level: u8, msgPtr: [*]const u8, msgLen: usize) callconv(.c) void) void {
     logger.setLogCallback(callback);
 }
 
-export fn setEventCallback(callback: ?*const fn (namePtr: [*]const u8, nameLen: usize, dataPtr: [*]const u8, dataLen: usize) callconv(.C) void) void {
+export fn setEventCallback(callback: ?*const fn (namePtr: [*]const u8, nameLen: usize, dataPtr: [*]const u8, dataLen: usize) callconv(.c) void) void {
     event_bus.setEventCallback(callback);
 }
 
-var arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
+var gpa = std.heap.GeneralPurposeAllocator(.{
+    .enable_memory_limit = build_options.gpa_safe_stats,
+    .safety = build_options.gpa_safe_stats,
+}){};
+const globalAllocator = gpa.allocator();
+var arena = std.heap.ArenaAllocator.init(globalAllocator);
 const globalArena = arena.allocator();
+
+pub const ExternalBuildOptions = extern struct {
+    gpa_safe_stats: bool,
+    gpa_memory_limit_tracking: bool,
+};
+
+pub const ExternalAllocatorStats = extern struct {
+    total_requested_bytes: u64,
+    active_allocations: u64,
+    small_allocations: u64,
+    large_allocations: u64,
+    requested_bytes_valid: bool,
+};
+
+fn toNonNegativeU64(value: anytype) u64 {
+    const ValueType = @TypeOf(value);
+
+    return switch (@typeInfo(ValueType)) {
+        .int => |int_info| if (int_info.signedness == .signed) blk: {
+            const signed_value: i64 = @intCast(value);
+            if (signed_value <= 0) break :blk 0;
+            break :blk @intCast(signed_value);
+        } else @intCast(value),
+        .comptime_int => blk: {
+            if (value <= 0) break :blk 0;
+            break :blk @intCast(value);
+        },
+        else => 0,
+    };
+}
+
+const RequestedBytesInfo = struct {
+    bytes: u64,
+    valid: bool,
+};
+
+fn sanitizeRequestedBytes(value: u64) RequestedBytesInfo {
+    const signed_value: i64 = @bitCast(value);
+    if (signed_value < 0) {
+        return .{ .bytes = 0, .valid = false };
+    }
+
+    return .{ .bytes = @intCast(signed_value), .valid = true };
+}
+
+fn queryStatsField(comptime field_names: []const []const u8) ?u64 {
+    if (!@hasDecl(@TypeOf(gpa), "queryStats")) {
+        return null;
+    }
+
+    const stats = gpa.queryStats();
+    const StatsType = @TypeOf(stats);
+
+    inline for (field_names) |field_name| {
+        if (@hasField(StatsType, field_name)) {
+            return toNonNegativeU64(@field(stats, field_name));
+        }
+    }
+
+    return null;
+}
+
+fn getTotalRequestedBytesInfo() RequestedBytesInfo {
+    if (!build_options.gpa_safe_stats) {
+        return .{ .bytes = 0, .valid = false };
+    }
+
+    if (queryStatsField(&.{"total_requested_bytes"})) |value| {
+        return sanitizeRequestedBytes(value);
+    }
+
+    if (@hasField(@TypeOf(gpa), "total_requested_bytes")) {
+        if (@TypeOf(gpa.total_requested_bytes) == void) {
+            return .{ .bytes = 0, .valid = false };
+        }
+
+        return sanitizeRequestedBytes(toNonNegativeU64(gpa.total_requested_bytes));
+    }
+
+    return .{ .bytes = 0, .valid = false };
+}
+
+fn getSmallAllocationCount() u64 {
+    if (queryStatsField(&.{ "small_allocations", "small_allocation_count" })) |value| {
+        return value;
+    }
+
+    var total: u64 = 0;
+    for (gpa.buckets) |bucket_head| {
+        var current = bucket_head;
+        while (current) |bucket| {
+            const allocated: u64 = @intCast(bucket.allocated_count);
+            const freed: u64 = @intCast(bucket.freed_count);
+            if (allocated >= freed) {
+                total += allocated - freed;
+            }
+            current = bucket.next;
+        }
+    }
+
+    return total;
+}
+
+fn getLargeAllocationCount() u64 {
+    if (queryStatsField(&.{ "large_allocations", "large_allocation_count" })) |value| {
+        return value;
+    }
+
+    return @intCast(gpa.large_allocations.count());
+}
+
+export fn createNativeSpanFeed(options_ptr: ?*const native_span_feed.Options) ?*native_span_feed.Stream {
+    return native_span_feed.createNativeSpanFeedWithAllocator(globalAllocator, options_ptr);
+}
 
 export fn getArenaAllocatedBytes() usize {
     return arena.queryCapacity();
 }
 
-export fn createRenderer(width: u32, height: u32, testing: bool) ?*renderer.CliRenderer {
+export fn getBuildOptions(out_ptr: *ExternalBuildOptions) void {
+    out_ptr.* = .{
+        .gpa_safe_stats = build_options.gpa_safe_stats,
+        .gpa_memory_limit_tracking = build_options.gpa_safe_stats,
+    };
+}
+
+export fn getAllocatorStats(out_ptr: *ExternalAllocatorStats) void {
+    const small_allocations = getSmallAllocationCount();
+    const large_allocations = getLargeAllocationCount();
+    const active_allocations = small_allocations + large_allocations;
+    const requested_bytes = getTotalRequestedBytesInfo();
+
+    out_ptr.* = .{
+        .total_requested_bytes = requested_bytes.bytes,
+        .active_allocations = active_allocations,
+        .small_allocations = small_allocations,
+        .large_allocations = large_allocations,
+        .requested_bytes_valid = requested_bytes.valid,
+    };
+}
+
+export fn createRenderer(width: u32, height: u32, testing: bool, remote: bool) ?*renderer.CliRenderer {
     if (width == 0 or height == 0) {
         logger.warn("Invalid renderer dimensions: {}x{}", .{ width, height });
         return null;
     }
 
     const pool = gp.initGlobalPool(globalArena);
-    return renderer.CliRenderer.create(std.heap.page_allocator, width, height, pool, testing) catch |err| {
+    _ = link.initGlobalLinkPool(globalArena);
+    return renderer.CliRenderer.createWithOptions(globalAllocator, width, height, pool, testing, remote) catch |err| {
         logger.err("Failed to create renderer: {}", .{err});
         return null;
     };
+}
+
+export fn setTerminalEnvVar(rendererPtr: *renderer.CliRenderer, keyPtr: [*]const u8, keyLen: usize, valuePtr: [*]const u8, valueLen: usize) bool {
+    const key = keyPtr[0..keyLen];
+    const value = valuePtr[0..valueLen];
+    return rendererPtr.setTerminalEnvVar(key, value);
 }
 
 export fn setUseThread(rendererPtr: *renderer.CliRenderer, useThread: bool) void {
@@ -81,6 +236,25 @@ export fn getCurrentBuffer(rendererPtr: *renderer.CliRenderer) *buffer.Optimized
     return rendererPtr.getCurrentBuffer();
 }
 
+const OutputSlice = extern struct {
+    ptr: [*]const u8,
+    len: usize,
+};
+
+export fn getLastOutputForTest(rendererPtr: *renderer.CliRenderer, outSlice: *OutputSlice) void {
+    const output = rendererPtr.getLastOutputForTest();
+    outSlice.ptr = output.ptr;
+    outSlice.len = output.len;
+}
+
+export fn setHyperlinksCapability(rendererPtr: *renderer.CliRenderer, enabled: bool) void {
+    rendererPtr.terminal.caps.hyperlinks = enabled;
+}
+
+export fn clearGlobalLinkPool() void {
+    link.deinitGlobalLinkPool();
+}
+
 export fn getBufferWidth(bufferPtr: *buffer.OptimizedBuffer) u32 {
     return bufferPtr.width;
 }
@@ -100,14 +274,16 @@ export fn createOptimizedBuffer(width: u32, height: u32, respectAlpha: bool, wid
     }
 
     const pool = gp.initGlobalPool(globalArena);
+    const link_pool = link.initGlobalLinkPool(globalArena);
     const wMethod: utf8.WidthMethod = if (widthMethod == 0) .wcwidth else .unicode;
     const id = idPtr[0..idLen];
 
-    return buffer.OptimizedBuffer.init(std.heap.page_allocator, width, height, .{
+    return buffer.OptimizedBuffer.init(globalAllocator, width, height, .{
         .respectAlpha = respectAlpha,
         .pool = pool,
         .width_method = wMethod,
         .id = id,
+        .link_pool = link_pool,
     }) catch |err| {
         logger.err("Failed to create optimized buffer: {}", .{err});
         return null;
@@ -149,6 +325,8 @@ pub const ExternalCapabilities = extern struct {
     sync: bool,
     bracketed_paste: bool,
     hyperlinks: bool,
+    osc52: bool,
+    explicit_cursor_positioning: bool,
     term_name_ptr: [*]const u8,
     term_name_len: usize,
     term_version_ptr: [*]const u8,
@@ -174,6 +352,8 @@ export fn getTerminalCapabilities(rendererPtr: *renderer.CliRenderer, capsPtr: *
         .sync = caps.sync,
         .bracketed_paste = caps.bracketed_paste,
         .hyperlinks = caps.hyperlinks,
+        .osc52 = caps.osc52,
+        .explicit_cursor_positioning = caps.explicit_cursor_positioning,
         .term_name_ptr = &term.term_info.name,
         .term_name_len = term.term_info.name_len,
         .term_version_ptr = &term.term_info.version,
@@ -187,14 +367,68 @@ export fn processCapabilityResponse(rendererPtr: *renderer.CliRenderer, response
     rendererPtr.processCapabilityResponse(response);
 }
 
-export fn setCursorStyle(rendererPtr: *renderer.CliRenderer, stylePtr: [*]const u8, styleLen: usize, blinking: bool) void {
-    const style = stylePtr[0..styleLen];
-    const cursorStyle = std.meta.stringToEnum(terminal.CursorStyle, style) orelse .block;
-    rendererPtr.terminal.setCursorStyle(cursorStyle, blinking);
-}
-
 export fn setCursorColor(rendererPtr: *renderer.CliRenderer, color: [*]const f32) void {
     rendererPtr.terminal.setCursorColor(utils.f32PtrToRGBA(color));
+}
+
+pub const CursorStyleOptions = extern struct {
+    style: u8,
+    blinking: u8,
+    color: ?[*]const f32,
+    cursor: u8,
+};
+
+export fn setCursorStyleOptions(rendererPtr: *renderer.CliRenderer, options: *const CursorStyleOptions) void {
+    const current = rendererPtr.terminal.getCursorStyle();
+
+    const style = if (options.style <= 2) @as(terminal.CursorStyle, @enumFromInt(options.style)) else current.style;
+    const blinking = if (options.blinking <= 1) options.blinking == 1 else current.blinking;
+
+    if (options.style <= 2 or options.blinking <= 1) {
+        rendererPtr.terminal.setCursorStyle(style, blinking);
+    }
+    if (options.color) |rgba| {
+        rendererPtr.terminal.setCursorColor(utils.f32PtrToRGBA(rgba));
+    }
+    if (options.cursor <= 5) {
+        rendererPtr.terminal.setMousePointerStyle(@enumFromInt(options.cursor));
+    }
+}
+
+pub const ExternalCursorState = extern struct {
+    x: u32,
+    y: u32,
+    visible: bool,
+    style: u8,
+    blinking: bool,
+    r: f32,
+    g: f32,
+    b: f32,
+    a: f32,
+};
+
+export fn getCursorState(rendererPtr: *renderer.CliRenderer, outPtr: *ExternalCursorState) void {
+    const pos = rendererPtr.terminal.getCursorPosition();
+    const style = rendererPtr.terminal.getCursorStyle();
+    const color = rendererPtr.terminal.getCursorColor();
+
+    const styleTag: u8 = switch (style.style) {
+        .block => 0,
+        .line => 1,
+        .underline => 2,
+    };
+
+    outPtr.* = .{
+        .x = pos.x,
+        .y = pos.y,
+        .visible = pos.visible,
+        .style = styleTag,
+        .blinking = style.blinking,
+        .r = color[0],
+        .g = color[1],
+        .b = color[2],
+        .a = color[3],
+    };
 }
 
 export fn setDebugOverlay(rendererPtr: *renderer.CliRenderer, enabled: bool, corner: u8) void {
@@ -214,9 +448,18 @@ export fn clearTerminal(rendererPtr: *renderer.CliRenderer) void {
 
 export fn setTerminalTitle(rendererPtr: *renderer.CliRenderer, titlePtr: [*]const u8, titleLen: usize) void {
     const title = titlePtr[0..titleLen];
-    var bufferedWriter = &rendererPtr.stdoutWriter;
-    const writer = bufferedWriter.writer();
-    rendererPtr.terminal.setTerminalTitle(writer.any(), title);
+    rendererPtr.setTerminalTitle(title);
+}
+
+export fn copyToClipboardOSC52(rendererPtr: *renderer.CliRenderer, target: u8, payloadPtr: [*]const u8, payloadLen: usize) bool {
+    const targetEnum = std.meta.intToEnum(terminal.ClipboardTarget, target) catch .clipboard;
+    const payload = payloadPtr[0..payloadLen];
+    return rendererPtr.copyToClipboardOSC52(targetEnum, payload);
+}
+
+export fn clearClipboardOSC52(rendererPtr: *renderer.CliRenderer, target: u8) bool {
+    const targetEnum = std.meta.intToEnum(terminal.ClipboardTarget, target) catch .clipboard;
+    return rendererPtr.clearClipboardOSC52(targetEnum);
 }
 
 // Buffer functions
@@ -236,7 +479,7 @@ export fn bufferGetBgPtr(bufferPtr: *buffer.OptimizedBuffer) [*]RGBA {
     return bufferPtr.getBgPtr();
 }
 
-export fn bufferGetAttributesPtr(bufferPtr: *buffer.OptimizedBuffer) [*]u8 {
+export fn bufferGetAttributesPtr(bufferPtr: *buffer.OptimizedBuffer) [*]u32 {
     return bufferPtr.getAttributesPtr();
 }
 
@@ -264,19 +507,19 @@ export fn bufferWriteResolvedChars(bufferPtr: *buffer.OptimizedBuffer, outputPtr
     return bufferPtr.writeResolvedChars(output_slice, addLineBreaks) catch 0;
 }
 
-export fn bufferDrawText(bufferPtr: *buffer.OptimizedBuffer, text: [*]const u8, textLen: usize, x: u32, y: u32, fg: [*]const f32, bg: ?[*]const f32, attributes: u8) void {
+export fn bufferDrawText(bufferPtr: *buffer.OptimizedBuffer, text: [*]const u8, textLen: usize, x: u32, y: u32, fg: [*]const f32, bg: ?[*]const f32, attributes: u32) void {
     const rgbaFg = utils.f32PtrToRGBA(fg);
     const rgbaBg = if (bg) |bgPtr| utils.f32PtrToRGBA(bgPtr) else null;
     bufferPtr.drawText(text[0..textLen], x, y, rgbaFg, rgbaBg, attributes) catch {};
 }
 
-export fn bufferSetCellWithAlphaBlending(bufferPtr: *buffer.OptimizedBuffer, x: u32, y: u32, char: u32, fg: [*]const f32, bg: [*]const f32, attributes: u8) void {
+export fn bufferSetCellWithAlphaBlending(bufferPtr: *buffer.OptimizedBuffer, x: u32, y: u32, char: u32, fg: [*]const f32, bg: [*]const f32, attributes: u32) void {
     const rgbaFg = utils.f32PtrToRGBA(fg);
     const rgbaBg = utils.f32PtrToRGBA(bg);
     bufferPtr.setCellWithAlphaBlending(x, y, char, rgbaFg, rgbaBg, attributes) catch {};
 }
 
-export fn bufferSetCell(bufferPtr: *buffer.OptimizedBuffer, x: u32, y: u32, char: u32, fg: [*]const f32, bg: [*]const f32, attributes: u8) void {
+export fn bufferSetCell(bufferPtr: *buffer.OptimizedBuffer, x: u32, y: u32, char: u32, fg: [*]const f32, bg: [*]const f32, attributes: u32) void {
     const rgbaFg = utils.f32PtrToRGBA(fg);
     const rgbaBg = utils.f32PtrToRGBA(bg);
     const cell = buffer.Cell{
@@ -295,6 +538,18 @@ export fn bufferFillRect(bufferPtr: *buffer.OptimizedBuffer, x: u32, y: u32, wid
 
 export fn bufferDrawPackedBuffer(bufferPtr: *buffer.OptimizedBuffer, data: [*]const u8, dataLen: usize, posX: u32, posY: u32, terminalWidthCells: u32, terminalHeightCells: u32) void {
     bufferPtr.drawPackedBuffer(data, dataLen, posX, posY, terminalWidthCells, terminalHeightCells);
+}
+
+export fn bufferDrawGrayscaleBuffer(bufferPtr: *buffer.OptimizedBuffer, posX: i32, posY: i32, intensities: [*]const f32, srcWidth: u32, srcHeight: u32, fg: ?[*]const f32, bg: ?[*]const f32) void {
+    const rgbaFg = if (fg) |fgPtr| utils.f32PtrToRGBA(fgPtr) else null;
+    const rgbaBg = if (bg) |bgPtr| utils.f32PtrToRGBA(bgPtr) else null;
+    bufferPtr.drawGrayscaleBuffer(posX, posY, intensities, srcWidth, srcHeight, rgbaFg, rgbaBg);
+}
+
+export fn bufferDrawGrayscaleBufferSupersampled(bufferPtr: *buffer.OptimizedBuffer, posX: i32, posY: i32, intensities: [*]const f32, srcWidth: u32, srcHeight: u32, fg: ?[*]const f32, bg: ?[*]const f32) void {
+    const rgbaFg = if (fg) |fgPtr| utils.f32PtrToRGBA(fgPtr) else null;
+    const rgbaBg = if (bg) |bgPtr| utils.f32PtrToRGBA(bgPtr) else null;
+    bufferPtr.drawGrayscaleBufferSupersampled(posX, posY, intensities, srcWidth, srcHeight, rgbaFg, rgbaBg);
 }
 
 export fn bufferPushScissorRect(bufferPtr: *buffer.OptimizedBuffer, x: i32, y: i32, width: u32, height: u32) void {
@@ -328,6 +583,57 @@ export fn bufferClearOpacity(bufferPtr: *buffer.OptimizedBuffer) void {
 
 export fn bufferDrawSuperSampleBuffer(bufferPtr: *buffer.OptimizedBuffer, x: u32, y: u32, pixelData: [*]const u8, len: usize, format: u8, alignedBytesPerRow: u32) void {
     bufferPtr.drawSuperSampleBuffer(x, y, pixelData, len, format, alignedBytesPerRow) catch {};
+}
+
+export fn linkAlloc(urlPtr: [*]const u8, urlLen: usize) u32 {
+    const url = urlPtr[0..urlLen];
+    const link_pool = link.initGlobalLinkPool(globalArena);
+    return link_pool.alloc(url) catch 0;
+}
+
+export fn linkGetUrl(id: u32, outPtr: [*]u8, maxLen: usize) usize {
+    const link_pool = link.initGlobalLinkPool(globalArena);
+    const url_bytes = link_pool.get(id) catch return 0;
+    const copyLen = @min(url_bytes.len, maxLen);
+    @memcpy(outPtr[0..copyLen], url_bytes[0..copyLen]);
+    return copyLen;
+}
+
+export fn attributesWithLink(baseAttributes: u32, linkId: u32) u32 {
+    return ansi.TextAttributes.setLinkId(baseAttributes, linkId);
+}
+
+export fn attributesGetLinkId(attributes: u32) u32 {
+    return ansi.TextAttributes.getLinkId(attributes);
+}
+
+pub const ExternalGridDrawOptions = extern struct {
+    draw_inner: bool,
+    draw_outer: bool,
+};
+
+export fn bufferDrawGrid(
+    bufferPtr: *buffer.OptimizedBuffer,
+    borderChars: [*]const u32,
+    borderFg: [*]const f32,
+    borderBg: [*]const f32,
+    columnOffsets: [*]const i32,
+    columnCount: u32,
+    rowOffsets: [*]const i32,
+    rowCount: u32,
+    options: *const ExternalGridDrawOptions,
+) void {
+    bufferPtr.drawGrid(
+        borderChars,
+        utils.f32PtrToRGBA(borderFg),
+        utils.f32PtrToRGBA(borderBg),
+        columnOffsets,
+        columnCount,
+        rowOffsets,
+        rowCount,
+        options.draw_inner,
+        options.draw_outer,
+    );
 }
 
 export fn bufferDrawBox(
@@ -382,8 +688,32 @@ export fn addToHitGrid(rendererPtr: *renderer.CliRenderer, x: i32, y: i32, width
     rendererPtr.addToHitGrid(x, y, width, height, id);
 }
 
+export fn clearCurrentHitGrid(rendererPtr: *renderer.CliRenderer) void {
+    rendererPtr.clearCurrentHitGrid();
+}
+
+export fn hitGridPushScissorRect(rendererPtr: *renderer.CliRenderer, x: i32, y: i32, width: u32, height: u32) void {
+    rendererPtr.hitGridPushScissorRect(x, y, width, height);
+}
+
+export fn hitGridPopScissorRect(rendererPtr: *renderer.CliRenderer) void {
+    rendererPtr.hitGridPopScissorRect();
+}
+
+export fn hitGridClearScissorRects(rendererPtr: *renderer.CliRenderer) void {
+    rendererPtr.hitGridClearScissorRects();
+}
+
+export fn addToCurrentHitGridClipped(rendererPtr: *renderer.CliRenderer, x: i32, y: i32, width: u32, height: u32, id: u32) void {
+    rendererPtr.addToCurrentHitGridClipped(x, y, width, height, id);
+}
+
 export fn checkHit(rendererPtr: *renderer.CliRenderer, x: u32, y: u32) u32 {
     return rendererPtr.checkHit(x, y);
+}
+
+export fn getHitGridDirty(rendererPtr: *renderer.CliRenderer) bool {
+    return rendererPtr.getHitGridDirty();
 }
 
 export fn dumpHitGrid(rendererPtr: *renderer.CliRenderer) void {
@@ -396,6 +726,10 @@ export fn dumpBuffers(rendererPtr: *renderer.CliRenderer, timestamp: i64) void {
 
 export fn dumpStdoutBuffer(rendererPtr: *renderer.CliRenderer, timestamp: i64) void {
     rendererPtr.dumpStdoutBuffer(timestamp);
+}
+
+export fn restoreTerminalModes(rendererPtr: *renderer.CliRenderer) void {
+    rendererPtr.restoreTerminalModes();
 }
 
 export fn enableMouse(rendererPtr: *renderer.CliRenderer, enableMovement: bool) void {
@@ -438,15 +772,20 @@ export fn resumeRenderer(rendererPtr: *renderer.CliRenderer) void {
     rendererPtr.resumeRenderer();
 }
 
+export fn writeOut(rendererPtr: *renderer.CliRenderer, dataPtr: [*]const u8, dataLen: usize) void {
+    if (dataLen == 0) return;
+    const data = dataPtr[0..dataLen];
+    rendererPtr.writeOut(data);
+}
+
 export fn createTextBuffer(widthMethod: u8) ?*text_buffer.UnifiedTextBuffer {
     const pool = gp.initGlobalPool(globalArena);
+    const link_pool = link.initGlobalLinkPool(globalArena);
     const wMethod: utf8.WidthMethod = if (widthMethod == 0) .wcwidth else .unicode;
 
-    const tb = text_buffer.UnifiedTextBuffer.init(std.heap.page_allocator, pool, wMethod) catch {
+    return text_buffer.UnifiedTextBuffer.init(globalAllocator, pool, link_pool, wMethod) catch {
         return null;
     };
-
-    return tb;
 }
 
 export fn destroyTextBuffer(tb: *text_buffer.UnifiedTextBuffer) void {
@@ -479,7 +818,7 @@ export fn textBufferSetDefaultBg(tb: *text_buffer.UnifiedTextBuffer, bg: ?[*]con
     tb.setDefaultBg(bgColor);
 }
 
-export fn textBufferSetDefaultAttributes(tb: *text_buffer.UnifiedTextBuffer, attr: ?[*]const u8) void {
+export fn textBufferSetDefaultAttributes(tb: *text_buffer.UnifiedTextBuffer, attr: ?[*]const u32) void {
     const attributes = if (attr) |a| a[0] else null;
     tb.setDefaultAttributes(attributes);
 }
@@ -489,7 +828,7 @@ export fn textBufferResetDefaults(tb: *text_buffer.UnifiedTextBuffer) void {
 }
 
 export fn textBufferGetTabWidth(tb: *text_buffer.UnifiedTextBuffer) u8 {
-    return tb.getTabWidth();
+    return tb.tabWidth();
 }
 
 export fn textBufferSetTabWidth(tb: *text_buffer.UnifiedTextBuffer, width: u8) void {
@@ -498,18 +837,18 @@ export fn textBufferSetTabWidth(tb: *text_buffer.UnifiedTextBuffer, width: u8) v
 
 export fn textBufferRegisterMemBuffer(tb: *text_buffer.UnifiedTextBuffer, dataPtr: [*]const u8, dataLen: usize, owned: bool) u16 {
     const data = dataPtr[0..dataLen];
-    const mem_id = tb.mem_registry.register(data, owned) catch return 0xFFFF;
+    const mem_id = tb.registerMemBuffer(data, owned) catch return 0xFFFF;
     return @intCast(mem_id);
 }
 
 export fn textBufferReplaceMemBuffer(tb: *text_buffer.UnifiedTextBuffer, id: u8, dataPtr: [*]const u8, dataLen: usize, owned: bool) bool {
     const data = dataPtr[0..dataLen];
-    tb.mem_registry.replace(id, data, owned) catch return false;
+    tb.replaceMemBuffer(id, data, owned) catch return false;
     return true;
 }
 
 export fn textBufferClearMemRegistry(tb: *text_buffer.UnifiedTextBuffer) void {
-    tb.mem_registry.clear();
+    tb.clearMemRegistry();
 }
 
 export fn textBufferSetTextFromMem(tb: *text_buffer.UnifiedTextBuffer, id: u8) void {
@@ -552,10 +891,9 @@ export fn textBufferGetPlainText(tb: *text_buffer.UnifiedTextBuffer, outPtr: [*]
 
 // TextBufferView functions (Array-based for backward compatibility)
 export fn createTextBufferView(tb: *text_buffer.UnifiedTextBuffer) ?*text_buffer_view.UnifiedTextBufferView {
-    const view = text_buffer_view.UnifiedTextBufferView.init(std.heap.page_allocator, tb) catch {
+    return text_buffer_view.UnifiedTextBufferView.init(globalAllocator, tb) catch {
         return null;
     };
-    return view;
 }
 
 export fn destroyTextBufferView(view: *text_buffer_view.UnifiedTextBufferView) void {
@@ -633,15 +971,15 @@ export fn textBufferViewGetLineInfoDirect(view: *text_buffer_view.UnifiedTextBuf
     const line_info = view.getCachedLineInfo();
 
     outPtr.* = .{
-        .starts_ptr = line_info.starts.ptr,
-        .starts_len = @intCast(line_info.starts.len),
-        .widths_ptr = line_info.widths.ptr,
-        .widths_len = @intCast(line_info.widths.len),
-        .sources_ptr = line_info.sources.ptr,
-        .sources_len = @intCast(line_info.sources.len),
-        .wraps_ptr = line_info.wraps.ptr,
-        .wraps_len = @intCast(line_info.wraps.len),
-        .max_width = line_info.max_width,
+        .start_cols_ptr = line_info.line_start_cols.ptr,
+        .start_cols_len = @intCast(line_info.line_start_cols.len),
+        .width_cols_ptr = line_info.line_width_cols.ptr,
+        .width_cols_len = @intCast(line_info.line_width_cols.len),
+        .sources_ptr = line_info.line_sources.ptr,
+        .sources_len = @intCast(line_info.line_sources.len),
+        .wraps_ptr = line_info.line_wraps.ptr,
+        .wraps_len = @intCast(line_info.line_wraps.len),
+        .width_cols_max = line_info.line_width_cols_max,
     };
 }
 
@@ -649,15 +987,15 @@ export fn textBufferViewGetLogicalLineInfoDirect(view: *text_buffer_view.Unified
     const line_info = view.getLogicalLineInfo();
 
     outPtr.* = .{
-        .starts_ptr = line_info.starts.ptr,
-        .starts_len = @intCast(line_info.starts.len),
-        .widths_ptr = line_info.widths.ptr,
-        .widths_len = @intCast(line_info.widths.len),
-        .sources_ptr = line_info.sources.ptr,
-        .sources_len = @intCast(line_info.sources.len),
-        .wraps_ptr = line_info.wraps.ptr,
-        .wraps_len = @intCast(line_info.wraps.len),
-        .max_width = line_info.max_width,
+        .start_cols_ptr = line_info.line_start_cols.ptr,
+        .start_cols_len = @intCast(line_info.line_start_cols.len),
+        .width_cols_ptr = line_info.line_width_cols.ptr,
+        .width_cols_len = @intCast(line_info.line_width_cols.len),
+        .sources_ptr = line_info.line_sources.ptr,
+        .sources_len = @intCast(line_info.line_sources.len),
+        .wraps_ptr = line_info.line_wraps.ptr,
+        .wraps_len = @intCast(line_info.line_wraps.len),
+        .width_cols_max = line_info.line_width_cols_max,
     };
 }
 
@@ -679,16 +1017,20 @@ export fn textBufferViewSetTabIndicatorColor(view: *text_buffer_view.UnifiedText
     view.setTabIndicatorColor(utils.f32PtrToRGBA(color));
 }
 
+export fn textBufferViewSetTruncate(view: *text_buffer_view.UnifiedTextBufferView, truncate: bool) void {
+    view.setTruncate(truncate);
+}
+
 pub const ExternalMeasureResult = extern struct {
     line_count: u32,
-    max_width: u32,
+    width_cols_max: u32,
 };
 
 export fn textBufferViewMeasureForDimensions(view: *text_buffer_view.UnifiedTextBufferView, width: u32, height: u32, outPtr: *ExternalMeasureResult) bool {
     const result = view.measureForDimensions(width, height) catch return false;
     outPtr.* = .{
         .line_count = result.line_count,
-        .max_width = result.max_width,
+        .width_cols_max = result.width_cols_max,
     };
     return true;
 }
@@ -697,11 +1039,13 @@ export fn textBufferViewMeasureForDimensions(view: *text_buffer_view.UnifiedText
 
 export fn createEditBuffer(widthMethod: u8) ?*edit_buffer_mod.EditBuffer {
     const pool = gp.initGlobalPool(globalArena);
+    const link_pool = link.initGlobalLinkPool(globalArena);
     const wMethod: utf8.WidthMethod = if (widthMethod == 0) .wcwidth else .unicode;
 
     return edit_buffer_mod.EditBuffer.init(
-        std.heap.page_allocator,
+        globalAllocator,
         pool,
+        link_pool,
         wMethod,
     ) catch null;
 }
@@ -796,7 +1140,7 @@ export fn editBufferGetEOL(edit_buffer: *edit_buffer_mod.EditBuffer, outPtr: *Ex
 
 export fn editBufferOffsetToPosition(edit_buffer: *edit_buffer_mod.EditBuffer, offset: u32, outPtr: *ExternalLogicalCursor) bool {
     const iter_mod = @import("text-buffer-iterators.zig");
-    const coords = iter_mod.offsetToCoords(&edit_buffer.tb.rope, offset) orelse return false;
+    const coords = iter_mod.offsetToCoords(edit_buffer.tb.rope(), offset) orelse return false;
     outPtr.* = .{
         .row = coords.row,
         .col = coords.col,
@@ -807,12 +1151,12 @@ export fn editBufferOffsetToPosition(edit_buffer: *edit_buffer_mod.EditBuffer, o
 
 export fn editBufferPositionToOffset(edit_buffer: *edit_buffer_mod.EditBuffer, row: u32, col: u32) u32 {
     const iter_mod = @import("text-buffer-iterators.zig");
-    return iter_mod.coordsToOffset(&edit_buffer.tb.rope, row, col) orelse 0;
+    return iter_mod.coordsToOffset(edit_buffer.tb.rope(), row, col) orelse 0;
 }
 
 export fn editBufferGetLineStartOffset(edit_buffer: *edit_buffer_mod.EditBuffer, row: u32) u32 {
     const iter_mod = @import("text-buffer-iterators.zig");
-    return iter_mod.coordsToOffset(&edit_buffer.tb.rope, row, 0) orelse 0;
+    return iter_mod.coordsToOffset(edit_buffer.tb.rope(), row, 0) orelse 0;
 }
 
 export fn editBufferGetTextRange(edit_buffer: *edit_buffer_mod.EditBuffer, start_offset: u32, end_offset: u32, outPtr: [*]u8, maxLen: usize) usize {
@@ -957,15 +1301,15 @@ export fn editorViewGetTotalVirtualLineCount(view: *editor_view.EditorView) u32 
 export fn editorViewGetLineInfoDirect(view: *editor_view.EditorView, outPtr: *ExternalLineInfo) void {
     const line_info = view.getCachedLineInfo();
     outPtr.* = .{
-        .starts_ptr = line_info.starts.ptr,
-        .starts_len = @intCast(line_info.starts.len),
-        .widths_ptr = line_info.widths.ptr,
-        .widths_len = @intCast(line_info.widths.len),
-        .sources_ptr = line_info.sources.ptr,
-        .sources_len = @intCast(line_info.sources.len),
-        .wraps_ptr = line_info.wraps.ptr,
-        .wraps_len = @intCast(line_info.wraps.len),
-        .max_width = line_info.max_width,
+        .start_cols_ptr = line_info.line_start_cols.ptr,
+        .start_cols_len = @intCast(line_info.line_start_cols.len),
+        .width_cols_ptr = line_info.line_width_cols.ptr,
+        .width_cols_len = @intCast(line_info.line_width_cols.len),
+        .sources_ptr = line_info.line_sources.ptr,
+        .sources_len = @intCast(line_info.line_sources.len),
+        .wraps_ptr = line_info.line_wraps.ptr,
+        .wraps_len = @intCast(line_info.line_wraps.len),
+        .width_cols_max = line_info.line_width_cols_max,
     };
 }
 
@@ -976,15 +1320,15 @@ export fn editorViewGetTextBufferView(view: *editor_view.EditorView) *text_buffe
 export fn editorViewGetLogicalLineInfoDirect(view: *editor_view.EditorView, outPtr: *ExternalLineInfo) void {
     const line_info = view.getLogicalLineInfo();
     outPtr.* = .{
-        .starts_ptr = line_info.starts.ptr,
-        .starts_len = @intCast(line_info.starts.len),
-        .widths_ptr = line_info.widths.ptr,
-        .widths_len = @intCast(line_info.widths.len),
-        .sources_ptr = line_info.sources.ptr,
-        .sources_len = @intCast(line_info.sources.len),
-        .wraps_ptr = line_info.wraps.ptr,
-        .wraps_len = @intCast(line_info.wraps.len),
-        .max_width = line_info.max_width,
+        .start_cols_ptr = line_info.line_start_cols.ptr,
+        .start_cols_len = @intCast(line_info.line_start_cols.len),
+        .width_cols_ptr = line_info.line_width_cols.ptr,
+        .width_cols_len = @intCast(line_info.line_width_cols.len),
+        .sources_ptr = line_info.line_sources.ptr,
+        .sources_len = @intCast(line_info.line_sources.len),
+        .wraps_ptr = line_info.line_wraps.ptr,
+        .wraps_len = @intCast(line_info.line_wraps.len),
+        .width_cols_max = line_info.line_width_cols_max,
     };
 }
 
@@ -1017,9 +1361,10 @@ export fn editorViewGetSelection(view: *editor_view.EditorView) u64 {
     return view.text_buffer_view.packSelectionInfo();
 }
 
-export fn editorViewSetLocalSelection(view: *editor_view.EditorView, anchorX: i32, anchorY: i32, focusX: i32, focusY: i32, bgColor: ?[*]const f32, fgColor: ?[*]const f32, updateCursor: bool) bool {
+export fn editorViewSetLocalSelection(view: *editor_view.EditorView, anchorX: i32, anchorY: i32, focusX: i32, focusY: i32, bgColor: ?[*]const f32, fgColor: ?[*]const f32, updateCursor: bool, followCursor: bool) bool {
     const bg = if (bgColor) |bgPtr| utils.f32PtrToRGBA(bgPtr) else null;
     const fg = if (fgColor) |fgPtr| utils.f32PtrToRGBA(fgPtr) else null;
+    view.setSelectionFollowCursor(followCursor);
     return view.setLocalSelection(anchorX, anchorY, focusX, focusY, bg, fg, updateCursor);
 }
 
@@ -1029,13 +1374,15 @@ export fn editorViewUpdateSelection(view: *editor_view.EditorView, end: u32, bgC
     view.updateSelection(end, bg, fg);
 }
 
-export fn editorViewUpdateLocalSelection(view: *editor_view.EditorView, anchorX: i32, anchorY: i32, focusX: i32, focusY: i32, bgColor: ?[*]const f32, fgColor: ?[*]const f32, updateCursor: bool) bool {
+export fn editorViewUpdateLocalSelection(view: *editor_view.EditorView, anchorX: i32, anchorY: i32, focusX: i32, focusY: i32, bgColor: ?[*]const f32, fgColor: ?[*]const f32, updateCursor: bool, followCursor: bool) bool {
     const bg = if (bgColor) |bgPtr| utils.f32PtrToRGBA(bgPtr) else null;
     const fg = if (fgColor) |fgPtr| utils.f32PtrToRGBA(fgPtr) else null;
+    view.setSelectionFollowCursor(followCursor);
     return view.updateLocalSelection(anchorX, anchorY, focusX, focusY, bg, fg, updateCursor);
 }
 
 export fn editorViewResetLocalSelection(view: *editor_view.EditorView) void {
+    view.setSelectionFollowCursor(false);
     view.text_buffer_view.resetLocalSelection();
 }
 
@@ -1202,15 +1549,15 @@ pub const ExternalVisualCursor = extern struct {
 };
 
 pub const ExternalLineInfo = extern struct {
-    starts_ptr: [*]const u32,
-    starts_len: u32,
-    widths_ptr: [*]const u32,
-    widths_len: u32,
+    start_cols_ptr: [*]const u32,
+    start_cols_len: u32,
+    width_cols_ptr: [*]const u32,
+    width_cols_len: u32,
     sources_ptr: [*]const u32,
     sources_len: u32,
     wraps_ptr: [*]const u32,
     wraps_len: u32,
-    max_width: u32,
+    width_cols_max: u32,
 };
 
 export fn textBufferAddHighlightByCharRange(
@@ -1253,15 +1600,14 @@ export fn textBufferGetLineHighlightsPtr(
     line_idx: u32,
     out_count: *usize,
 ) ?[*]const ExternalHighlight {
-    const highs = tb.getLineHighlightsSlice(line_idx);
+    const highs = tb.getLineHighlightsSlice(@intCast(line_idx));
 
     if (highs.len == 0) {
         out_count.* = 0;
         return null;
     }
 
-    const alloc = std.heap.page_allocator;
-    var slice = alloc.alloc(ExternalHighlight, highs.len) catch return null;
+    var slice = globalAllocator.alloc(ExternalHighlight, highs.len) catch return null;
 
     for (highs, 0..) |hl, i| {
         slice[i] = .{
@@ -1278,8 +1624,7 @@ export fn textBufferGetLineHighlightsPtr(
 }
 
 export fn textBufferFreeLineHighlights(ptr: [*]const ExternalHighlight, count: usize) void {
-    const alloc = std.heap.page_allocator;
-    alloc.free(@constCast(ptr)[0..count]);
+    globalAllocator.free(@constCast(ptr)[0..count]);
 }
 
 export fn textBufferGetHighlightCount(tb: *text_buffer.UnifiedTextBuffer) u32 {
@@ -1298,7 +1643,7 @@ export fn textBufferGetTextRangeByCoords(tb: *text_buffer.UnifiedTextBuffer, sta
 
 // SyntaxStyle functions
 export fn createSyntaxStyle() ?*syntax_style.SyntaxStyle {
-    return syntax_style.SyntaxStyle.init(std.heap.page_allocator) catch |err| {
+    return syntax_style.SyntaxStyle.init(globalAllocator) catch |err| {
         logger.err("Failed to create SyntaxStyle: {}", .{err});
         return null;
     };
@@ -1308,7 +1653,7 @@ export fn destroySyntaxStyle(style: *syntax_style.SyntaxStyle) void {
     style.deinit();
 }
 
-export fn syntaxStyleRegister(style: *syntax_style.SyntaxStyle, namePtr: [*]const u8, nameLen: usize, fg: ?[*]const f32, bg: ?[*]const f32, attributes: u8) u32 {
+export fn syntaxStyleRegister(style: *syntax_style.SyntaxStyle, namePtr: [*]const u8, nameLen: usize, fg: ?[*]const f32, bg: ?[*]const f32, attributes: u32) u32 {
     const name = namePtr[0..nameLen];
     const fgColor = if (fg) |fgPtr| utils.f32PtrToRGBA(fgPtr) else null;
     const bgColor = if (bg) |bgPtr| utils.f32PtrToRGBA(bgPtr) else null;
@@ -1346,16 +1691,16 @@ export fn encodeUnicode(
     const is_ascii_only = utf8.isAsciiOnly(text);
 
     // Find grapheme info
-    var grapheme_list = std.ArrayList(utf8.GraphemeInfo).init(std.heap.page_allocator);
-    defer grapheme_list.deinit();
+    var grapheme_list: std.ArrayListUnmanaged(utf8.GraphemeInfo) = .{};
+    defer grapheme_list.deinit(globalAllocator);
 
     const tab_width: u8 = 2;
-    utf8.findGraphemeInfo(text, tab_width, is_ascii_only, wMethod, &grapheme_list) catch return false;
+    utf8.findGraphemeInfo(text, tab_width, is_ascii_only, wMethod, globalAllocator, &grapheme_list) catch return false;
     const specials = grapheme_list.items;
 
     // Allocate output array
     const estimated_count = if (is_ascii_only) text.len else text.len * 2;
-    var result = std.heap.page_allocator.alloc(EncodedChar, estimated_count) catch return false;
+    var result = globalAllocator.alloc(EncodedChar, estimated_count) catch return false;
     var result_idx: usize = 0;
     var success = false;
     var pending_gid: ?u32 = null; // Track grapheme allocated but not yet stored in result
@@ -1378,7 +1723,7 @@ export fn encodeUnicode(
                     pool.decref(gid) catch {};
                 }
             }
-            std.heap.page_allocator.free(result);
+            globalAllocator.free(result);
         }
     }
 
@@ -1432,7 +1777,7 @@ export fn encodeUnicode(
         // Ensure we have space
         if (result_idx >= result.len) {
             const new_len = result.len * 2;
-            result = std.heap.page_allocator.realloc(result, new_len) catch return false;
+            result = globalAllocator.realloc(result, new_len) catch return false;
         }
 
         result[result_idx] = EncodedChar{
@@ -1445,7 +1790,7 @@ export fn encodeUnicode(
     }
 
     // Trim to actual size
-    result = std.heap.page_allocator.realloc(result, result_idx) catch result;
+    result = globalAllocator.realloc(result, result_idx) catch result;
 
     outPtr.* = result.ptr;
     outLenPtr.* = result_idx;
@@ -1468,7 +1813,7 @@ export fn freeUnicode(charsPtr: [*]const EncodedChar, charsLen: usize) void {
     }
 
     // Free the array itself
-    std.heap.page_allocator.free(chars);
+    globalAllocator.free(chars);
 }
 
 export fn bufferDrawChar(
@@ -1478,7 +1823,7 @@ export fn bufferDrawChar(
     y: u32,
     fg: [*]const f32,
     bg: [*]const f32,
-    attributes: u8,
+    attributes: u32,
 ) void {
     const rgbaFg = utils.f32PtrToRGBA(fg);
     const rgbaBg = utils.f32PtrToRGBA(bg);

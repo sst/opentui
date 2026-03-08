@@ -59,6 +59,7 @@ function applyStyle(input: StylableInput, style: StyleAttrs): TextChunk {
       fg,
       bg,
       attributes: mergedAttrs,
+      link: existingChunk.link,
     }
   } else {
     const plainTextStr = String(input)
@@ -124,6 +125,23 @@ export const bg =
   (color: Color) =>
   (input: StylableInput): TextChunk =>
     applyStyle(input, { bg: color })
+
+export const link =
+  (url: string) =>
+  (input: StylableInput): TextChunk => {
+    const chunk =
+      typeof input === "object" && "__isChunk" in input
+        ? (input as TextChunk)
+        : {
+            __isChunk: true as const,
+            text: String(input),
+          }
+
+    return {
+      ...chunk,
+      link: { url },
+    }
+  }
 
 /**
  * Template literal handler for styled text (non-cached version).

@@ -166,7 +166,12 @@ export class TextBufferView {
     this.lib.textBufferViewSetTabIndicatorColor(this.viewPtr, color)
   }
 
-  public measureForDimensions(width: number, height: number): { lineCount: number; maxWidth: number } | null {
+  public setTruncate(truncate: boolean): void {
+    this.guard()
+    this.lib.textBufferViewSetTruncate(this.viewPtr, truncate)
+  }
+
+  public measureForDimensions(width: number, height: number): { lineCount: number; widthColsMax: number } | null {
     this.guard()
     return this.lib.textBufferViewMeasureForDimensions(this.viewPtr, width, height)
   }

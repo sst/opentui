@@ -39,6 +39,15 @@ export default function TextStyleScene() {
       <text>
         Toggle <Show when={counter() % 2 === 0}>text</Show>
       </text>
+      <text>
+        Hyperlinks:{" "}
+        <u>
+          <a href="https://opentui.com" style={{ fg: "blue" }}>
+            opentui.com
+          </a>
+        </u>{" "}
+        - Click if your terminal supports OSC 8
+      </text>
     </box>
   )
 }

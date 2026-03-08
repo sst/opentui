@@ -19,6 +19,7 @@ export interface TextBufferOptions extends RenderableOptions<TextBufferRenderabl
   wrapMode?: "none" | "char" | "word"
   tabIndicator?: string | number
   tabIndicatorColor?: string | RGBA
+  truncate?: boolean
 }
 
 export abstract class TextBufferRenderable extends Renderable implements LineInfoProvider {
@@ -35,9 +36,11 @@ export abstract class TextBufferRenderable extends Renderable implements LineInf
   protected _tabIndicatorColor?: RGBA
   protected _scrollX: number = 0
   protected _scrollY: number = 0
+  protected _truncate: boolean = false
 
   protected textBuffer: TextBuffer
   protected textBufferView: TextBufferView
+  protected _textBufferSyntaxStyle: SyntaxStyle
 
   protected _defaultOptions = {
     fg: RGBA.fromValues(1, 1, 1, 1),
@@ -49,6 +52,7 @@ export abstract class TextBufferRenderable extends Renderable implements LineInf
     wrapMode: "word" as "none" | "char" | "word",
     tabIndicator: undefined,
     tabIndicatorColor: undefined,
+    truncate: false,
   } satisfies Partial<TextBufferOptions>
 
   constructor(ctx: RenderContext, options: TextBufferOptions) {
@@ -65,12 +69,13 @@ export abstract class TextBufferRenderable extends Renderable implements LineInf
     this._tabIndicatorColor = options.tabIndicatorColor
       ? parseColor(options.tabIndicatorColor)
       : this._defaultOptions.tabIndicatorColor
+    this._truncate = options.truncate ?? this._defaultOptions.truncate
 
     this.textBuffer = TextBuffer.create(this._ctx.widthMethod)
     this.textBufferView = TextBufferView.create(this.textBuffer)
 
-    const style = SyntaxStyle.create()
-    this.textBuffer.setSyntaxStyle(style)
+    this._textBufferSyntaxStyle = SyntaxStyle.create()
+    this.textBuffer.setSyntaxStyle(this._textBufferSyntaxStyle)
 
     this.textBufferView.setWrapMode(this._wrapMode)
     this.setupMeasureFunc()
@@ -93,6 +98,8 @@ export abstract class TextBufferRenderable extends Renderable implements LineInf
     if (this.width > 0 && this.height > 0) {
       this.textBufferView.setViewport(this._scrollX, this._scrollY, this.width, this.height)
     }
+
+    this.textBufferView.setTruncate(this._truncate)
 
     this.updateTextInfo()
   }
@@ -164,11 +171,11 @@ export abstract class TextBufferRenderable extends Renderable implements LineInf
   }
 
   public get scrollWidth(): number {
-    return this.lineInfo.maxLineWidth
+    return this.lineInfo.lineWidthColsMax
   }
 
   public get scrollHeight(): number {
-    return this.lineInfo.lineStarts.length
+    return this.lineInfo.lineStartCols.length
   }
 
   public get maxScrollY(): number {
@@ -311,6 +318,18 @@ export abstract class TextBufferRenderable extends Renderable implements LineInf
     }
   }
 
+  get truncate(): boolean {
+    return this._truncate
+  }
+
+  set truncate(value: boolean) {
+    if (this._truncate !== value) {
+      this._truncate = value
+      this.textBufferView.setTruncate(value)
+      this.requestRender()
+    }
+  }
+
   protected onResize(width: number, height: number): void {
     this.textBufferView.setViewport(this._scrollX, this._scrollY, width, height)
     this.yogaNode.markDirty()
@@ -379,7 +398,7 @@ export abstract class TextBufferRenderable extends Renderable implements LineInf
         Math.floor(effectiveHeight),
       )
 
-      const measuredWidth = measureResult ? Math.max(1, measureResult.maxWidth) : 1
+      const measuredWidth = measureResult ? Math.max(1, measureResult.widthColsMax) : 1
       const measuredHeight = measureResult ? Math.max(1, measureResult.lineCount) : 1
 
       if (widthMode === MeasureMode.AtMost && this._positionType !== "absolute") {
@@ -476,6 +495,10 @@ export abstract class TextBufferRenderable extends Renderable implements LineInf
   }
 
   destroy(): void {
+    if (this.isDestroyed) return
+
+    this.textBuffer.setSyntaxStyle(null)
+    this._textBufferSyntaxStyle.destroy()
     this.textBufferView.destroy()
     this.textBuffer.destroy()
     super.destroy()
