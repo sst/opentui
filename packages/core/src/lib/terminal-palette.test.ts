@@ -913,3 +913,91 @@ test("TerminalPalette returns null special colors on OSC not supported", async (
   expect(result.cursorColor).toBe(null)
   expect(result.palette.every((c: string | null) => c === null)).toBe(true)
 })
+
+test("TerminalPalette can generate missing 16-255 from base16", async () => {
+  const stdin = new MockStream() as any
+  const stdout = new MockStream() as any
+
+  const palette = new TerminalPalette(stdin, stdout)
+
+  const detectPromise = palette.detect({ timeout: 2000, size: 256, generateFromBase16: true })
+
+  stdin.emit("data", Buffer.from("\x1b]4;0;#000000\x07"))
+
+  setTimeout(() => {
+    const base16 = [
+      "#1a1a1a",
+      "#e53b39",
+      "#00b648",
+      "#ffc90d",
+      "#4eb3ec",
+      "#b191f9",
+      "#4eb3ec",
+      "#a4a4a4",
+      "#797979",
+      "#ff8d4d",
+      "#00b648",
+      "#ffc90d",
+      "#4eb3ec",
+      "#b191f9",
+      "#4eb3ec",
+      "#e7e7e7",
+    ]
+
+    for (let i = 0; i < 16; i++) {
+      stdin.emit("data", Buffer.from(`\x1b]4;${i};${base16[i]}\x07`))
+    }
+
+    stdin.emit("data", Buffer.from("\x1b]10;#e7e7e7\x07"))
+    stdin.emit("data", Buffer.from("\x1b]11;#0f0f0f\x07"))
+  }, 250)
+
+  const result = await detectPromise
+
+  expect(result.palette[16]).toBe("#0f0f0f")
+  expect(result.palette[200]).toMatch(/^#[0-9a-f]{6}$/)
+  expect(result.palette[231]).toBe("#e7e7e7")
+  expect(result.palette[255]).toMatch(/^#[0-9a-f]{6}$/)
+})
+
+test("TerminalPalette falls back to palette[0]/palette[7] when OSC 11/10 are missing", async () => {
+  const stdin = new MockStream() as any
+  const stdout = new MockStream() as any
+
+  const palette = new TerminalPalette(stdin, stdout)
+
+  const detectPromise = palette.detect({ timeout: 2000, size: 256, generateFromBase16: true })
+
+  stdin.emit("data", Buffer.from("\x1b]4;0;#111111\x07"))
+
+  setTimeout(() => {
+    const base16 = [
+      "#111111",
+      "#aa0000",
+      "#00aa00",
+      "#aaaa00",
+      "#0000aa",
+      "#aa00aa",
+      "#00aaaa",
+      "#dddddd",
+      "#222222",
+      "#ff5555",
+      "#55ff55",
+      "#ffff55",
+      "#5555ff",
+      "#ff55ff",
+      "#55ffff",
+      "#ffffff",
+    ]
+
+    for (let i = 0; i < 16; i++) {
+      stdin.emit("data", Buffer.from(`\x1b]4;${i};${base16[i]}\x07`))
+    }
+  }, 250)
+
+  const result = await detectPromise
+
+  expect(result.defaultBackground).toBe("#111111")
+  expect(result.defaultForeground).toBe("#dddddd")
+  expect(result.palette[16]).toBe("#111111")
+})
