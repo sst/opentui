@@ -13,6 +13,20 @@ export interface Extmark {
   typeId: number
 }
 
+export interface ExtmarkEncounter {
+  extmark: Readonly<Extmark>
+  direction: "left" | "right" | "up" | "down" | "set"
+  skip(): void
+  setCursor(offset: number): void
+}
+
+export interface ExtmarkDeletionEncounter {
+  extmark: Readonly<Extmark>
+  direction: "backward" | "forward"
+  deleteExtmark(): void
+  prevent(): void
+}
+
 export interface ExtmarkOptions {
   start: number // Display-width offset (including newlines), NOT JS string index
   end: number // Display-width offset (including newlines), NOT JS string index
@@ -22,6 +36,8 @@ export interface ExtmarkOptions {
   data?: any
   typeId?: number
   metadata?: any
+  onEncounter?: (encounter: ExtmarkEncounter) => void
+  onDeletion?: (encounter: ExtmarkDeletionEncounter) => void
 }
 
 /**
@@ -35,6 +51,8 @@ export class ExtmarksController {
   private extmarks = new Map<number, Extmark>()
   private extmarksByTypeId = new Map<number, Set<number>>()
   private metadata = new Map<number, any>()
+  private onEncounterCallbacks = new Map<number, (encounter: ExtmarkEncounter) => void>()
+  private onDeletionCallbacks = new Map<number, (encounter: ExtmarkDeletionEncounter) => void>()
   private nextId = 1
   private destroyed = false
   private history = new ExtmarksHistory()
@@ -115,6 +133,7 @@ export class ExtmarksController {
 
       const virtualExtmark = this.findVirtualExtmarkContaining(targetOffset)
       if (virtualExtmark && currentOffset >= virtualExtmark.end) {
+        if (this.invokeEncounterHook(virtualExtmark, "left", virtualExtmark.start - 1)) return
         this.editBuffer.setCursorByOffset(virtualExtmark.start - 1)
         return
       }
@@ -146,6 +165,7 @@ export class ExtmarksController {
 
       const virtualExtmark = this.findVirtualExtmarkContaining(targetOffset)
       if (virtualExtmark && currentOffset <= virtualExtmark.start) {
+        if (this.invokeEncounterHook(virtualExtmark, "right", virtualExtmark.end)) return
         this.editBuffer.setCursorByOffset(virtualExtmark.end)
         return
       }
@@ -174,6 +194,8 @@ export class ExtmarksController {
       if (virtualExtmark) {
         const distanceToStart = newOffset - virtualExtmark.start
         const distanceToEnd = virtualExtmark.end - newOffset
+        const skipTarget = distanceToStart < distanceToEnd ? virtualExtmark.start - 1 : virtualExtmark.end
+        if (this.invokeEncounterHook(virtualExtmark, "up", skipTarget)) return
 
         if (distanceToStart < distanceToEnd) {
           this.editorView.setCursorByOffset(virtualExtmark.start - 1)
@@ -204,6 +226,14 @@ export class ExtmarksController {
       if (virtualExtmark) {
         const distanceToStart = newOffset - virtualExtmark.start
         const distanceToEnd = virtualExtmark.end - newOffset
+        let skipTarget: number
+        if (distanceToStart < distanceToEnd) {
+          const adjusted = virtualExtmark.start - 1
+          skipTarget = adjusted <= currentOffset ? virtualExtmark.end : adjusted
+        } else {
+          skipTarget = virtualExtmark.end
+        }
+        if (this.invokeEncounterHook(virtualExtmark, "down", skipTarget)) return
 
         if (distanceToStart < distanceToEnd) {
           const adjustedOffset = virtualExtmark.start - 1
@@ -234,12 +264,14 @@ export class ExtmarksController {
       if (movingForward) {
         const virtualExtmark = this.findVirtualExtmarkContaining(offset)
         if (virtualExtmark && currentOffset <= virtualExtmark.start) {
+          if (this.invokeEncounterHook(virtualExtmark, "set", virtualExtmark.end)) return
           this.originalSetCursorByOffset(virtualExtmark.end)
           return
         }
       } else {
         for (const extmark of this.extmarks.values()) {
           if (extmark.virtual && currentOffset >= extmark.end && offset < extmark.end && offset >= extmark.start) {
+            if (this.invokeEncounterHook(extmark, "set", extmark.start - 1)) return
             this.originalSetCursorByOffset(extmark.start - 1)
             return
           }
@@ -276,6 +308,8 @@ export class ExtmarksController {
       const virtualExtmark = this.findVirtualExtmarkContaining(targetOffset)
 
       if (virtualExtmark && currentOffset === virtualExtmark.end) {
+        if (!this.invokeDeletionHook(virtualExtmark, "backward")) return
+
         const startCursor = this.offsetToPosition(virtualExtmark.start)
         const endCursor = this.offsetToPosition(virtualExtmark.end)
         const deleteOffset = virtualExtmark.start
@@ -321,6 +355,8 @@ export class ExtmarksController {
       const virtualExtmark = this.findVirtualExtmarkContaining(targetOffset)
 
       if (virtualExtmark && currentOffset === virtualExtmark.start) {
+        if (!this.invokeDeletionHook(virtualExtmark, "forward")) return
+
         const startCursor = this.offsetToPosition(virtualExtmark.start)
         const endCursor = this.offsetToPosition(virtualExtmark.end)
         const deleteOffset = virtualExtmark.start
@@ -503,7 +539,71 @@ export class ExtmarksController {
       this.extmarks.delete(id)
       this.extmarksByTypeId.get(extmark.typeId)?.delete(id)
       this.metadata.delete(id)
+      this.onEncounterCallbacks.delete(id)
+      this.onDeletionCallbacks.delete(id)
     }
+  }
+
+  private invokeEncounterHook(
+    extmark: Extmark,
+    direction: ExtmarkEncounter["direction"],
+    defaultSkipOffset: number,
+  ): boolean {
+    const onEncounter = this.onEncounterCallbacks.get(extmark.id)
+    if (!onEncounter) return false
+
+    let handled = false
+    try {
+      onEncounter({
+        extmark,
+        direction,
+        skip: () => {
+          if (!handled) {
+            handled = true
+            this.originalSetCursorByOffset(defaultSkipOffset)
+          }
+        },
+        setCursor: (offset: number) => {
+          if (!handled) {
+            handled = true
+            this.originalSetCursorByOffset(offset)
+          }
+        },
+      })
+    } catch {}
+
+    if (!handled) {
+      this.originalSetCursorByOffset(defaultSkipOffset)
+    }
+    return true
+  }
+
+  private invokeDeletionHook(extmark: Extmark, direction: ExtmarkDeletionEncounter["direction"]): boolean {
+    const onDeletion = this.onDeletionCallbacks.get(extmark.id)
+    if (!onDeletion) return true
+
+    let handled = false
+    let shouldDelete = true
+    try {
+      onDeletion({
+        extmark,
+        direction,
+        deleteExtmark: () => {
+          if (!handled) {
+            handled = true
+            shouldDelete = true
+          }
+        },
+        prevent: () => {
+          if (!handled) {
+            handled = true
+            shouldDelete = false
+          }
+        },
+      })
+    } catch {}
+
+    return shouldDelete
   }
 
   private findVirtualExtmarkContaining(offset: number): Extmark | null {
@@ -664,6 +764,14 @@ export class ExtmarksController {
       this.metadata.set(id, options.metadata)
     }
 
+    if (options.onEncounter) {
+      this.onEncounterCallbacks.set(id, options.onEncounter)
+    }
+
+    if (options.onDeletion) {
+      this.onDeletionCallbacks.set(id, options.onDeletion)
+    }
+
     this.updateHighlights()
 
     return id
@@ -718,6 +826,8 @@ export class ExtmarksController {
     this.extmarks.clear()
     this.extmarksByTypeId.clear()
     this.metadata.clear()
+    this.onEncounterCallbacks.clear()
+    this.onDeletionCallbacks.clear()
     this.updateHighlights()
   }
 
@@ -831,6 +941,8 @@ export class ExtmarksController {
     this.extmarks.clear()
     this.extmarksByTypeId.clear()
     this.metadata.clear()
+    this.onEncounterCallbacks.clear()
+    this.onDeletionCallbacks.clear()
     this.typeNameToId.clear()
     this.typeIdToName.clear()
     this.history.clear()

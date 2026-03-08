@@ -2970,6 +2970,449 @@ Press ESC to return to main menu.`
     })
   })
 
+  describe("Virtual Extmark - Encounter Hooks", () => {
+    it("should call onEncounter on cursor right with correct direction and extmark", async () => {
+      await setup("abcdefgh")
+
+      textarea.focus()
+      textarea.cursorOffset = 2
+
+      let receivedDirection: string | undefined
+      let receivedExtmark: any
+
+      extmarks.create({
+        start: 3,
+        end: 6,
+        virtual: true,
+        onEncounter: (encounter) => {
+          receivedDirection = encounter.direction
+          receivedExtmark = encounter.extmark
+          encounter.skip()
+        },
+      })
+
+      currentMockInput.pressArrow("right")
+
+      expect(receivedDirection).toBe("right")
+      expect(receivedExtmark).not.toBeUndefined()
+      expect(receivedExtmark.start).toBe(3)
+      expect(receivedExtmark.end).toBe(6)
+      expect(receivedExtmark.virtual).toBe(true)
+    })
+
+    it("should call onEncounter on cursor left", async () => {
+      await setup("abcdefgh")
+
+      textarea.focus()
+      textarea.cursorOffset = 6
+
+      let receivedDirection: string | undefined
+
+      extmarks.create({
+        start: 3,
+        end: 6,
+        virtual: true,
+        onEncounter: (encounter) => {
+          receivedDirection = encounter.direction
+          encounter.skip()
+        },
+      })
+
+      currentMockInput.pressArrow("left")
+
+      expect(receivedDirection).toBe("left")
+    })
+
+    it("should perform default skip when onEncounter calls skip()", async () => {
+      await setup("abcdefgh")
+
+      textarea.focus()
+      textarea.cursorOffset = 2
+
+      extmarks.create({
+        start: 3,
+        end: 6,
+        virtual: true,
+        onEncounter: (encounter) => {
+          encounter.skip()
+        },
+      })
+
+      currentMockInput.pressArrow("right")
+      expect(textarea.cursorOffset).toBe(6)
+    })
+
+    it("should place cursor at custom offset when onEncounter calls setCursor()", async () => {
+      await setup("abcdefgh")
+
+      textarea.focus()
+      textarea.cursorOffset = 2
+
+      extmarks.create({
+        start: 3,
+        end: 6,
+        virtual: true,
+        onEncounter: (encounter) => {
+          encounter.setCursor(4)
+        },
+      })
+
+      currentMockInput.pressArrow("right")
+      expect(textarea.cursorOffset).toBe(4)
+    })
+
+    it("should not call onEncounter for non-virtual extmarks", async () => {
+      await setup("abcdefgh")
+
+      textarea.focus()
+      textarea.cursorOffset = 2
+
+      let called = false
+
+      extmarks.create({
+        start: 3,
+        end: 6,
+        virtual: false,
+        onEncounter: () => {
+          called = true
+        },
+      })
+
+      currentMockInput.pressArrow("right")
+      expect(called).toBe(false)
+    })
+
+    it("should not call onEncounter when no callback provided", async () => {
+      await setup("abcdefgh")
+
+      textarea.focus()
+      textarea.cursorOffset = 2
+
+      extmarks.create({
+        start: 3,
+        end: 6,
+        virtual: true,
+      })
+
+      currentMockInput.pressArrow("right")
+      expect(textarea.cursorOffset).toBe(6)
+    })
+
+    it("should fall back to default behavior when onEncounter doesn't call any method", async () => {
+      await setup("abcdefgh")
+
+      textarea.focus()
+      textarea.cursorOffset = 2
+
+      extmarks.create({
+        start: 3,
+        end: 6,
+        virtual: true,
+        onEncounter: () => {},
+      })
+
+      currentMockInput.pressArrow("right")
+      expect(textarea.cursorOffset).toBe(6)
+    })
+
+    it("should call onEncounter on vertical movement with correct direction", async () => {
+      await setup("abc\n[VIRTUAL]\ndef")
+
+      textarea.focus()
+      textarea.cursorOffset = 1
+
+      let receivedDirection: string | undefined
+
+      extmarks.create({
+        start: 4,
+        end: 13,
+        virtual: true,
+        onEncounter: (encounter) => {
+          receivedDirection = encounter.direction
+          encounter.skip()
+        },
+      })
+
+      currentMockInput.pressArrow("down")
+
+      expect(receivedDirection).toBe("down")
+    })
+
+    it("should call onEncounter on setCursorByOffset", async () => {
+      await setup("abcdefgh")
+
+      let receivedDirection: string | undefined
+      let receivedExtmark: any
+
+      const id = extmarks.create({
+        start: 3,
+        end: 6,
+        virtual: true,
+        onEncounter: (encounter) => {
+          receivedDirection = encounter.direction
+          receivedExtmark = encounter.extmark
+          encounter.skip()
+        },
+      })
+
+      textarea.focus()
+      textarea.cursorOffset = 2
+
+      textarea.editBuffer.setCursorByOffset(4)
+
+      expect(receivedDirection).toBe("set")
+      expect(receivedExtmark).not.toBeUndefined()
+      expect(receivedExtmark.id).toBe(id)
+    })
+
+    it("should call onDeletion on backspace with direction backward", async () => {
+      await setup("abc[LINK]def")
+
+      textarea.focus()
+      textarea.cursorOffset = 9
+
+      let receivedDirection: string | undefined
+      let receivedExtmark: any
+
+      extmarks.create({
+        start: 3,
+        end: 9,
+        virtual: true,
+        onDeletion: (encounter) => {
+          receivedDirection = encounter.direction
+          receivedExtmark = encounter.extmark
+          encounter.deleteExtmark()
+        },
+      })
+
+      currentMockInput.pressBackspace()
+
+      expect(receivedDirection).toBe("backward")
+      expect(receivedExtmark).not.toBeUndefined()
+      expect(receivedExtmark.start).toBe(3)
+      expect(receivedExtmark.end).toBe(9)
+    })
+
+    it("should call onDeletion on delete key with direction forward", async () => {
+      await setup("abc[LINK]def")
+
+      textarea.focus()
+      textarea.cursorOffset = 3
+
+      let receivedDirection: string | undefined
+
+      extmarks.create({
+        start: 3,
+        end: 9,
+        virtual: true,
+        onDeletion: (encounter) => {
+          receivedDirection = encounter.direction
+          encounter.deleteExtmark()
+        },
+      })
+
+      currentMockInput.pressKey("DELETE")
+
+      expect(receivedDirection).toBe("forward")
+    })
+
+    it("should delete extmark when onDeletion calls deleteExtmark()", async () => {
+      await setup("abc[LINK]def")
+
+      textarea.focus()
+      textarea.cursorOffset = 9
+
+      const id = extmarks.create({
+        start: 3,
+        end: 9,
+        virtual: true,
+        onDeletion: (encounter) => {
+          encounter.deleteExtmark()
+        },
+      })
+
+      currentMockInput.pressBackspace()
+
+      expect(textarea.plainText).toBe("abcdef")
+      expect(extmarks.get(id)).toBeNull()
+    })
+
+    it("should prevent deletion when onDeletion calls prevent()", async () => {
+      await setup("abc[LINK]def")
+
+      textarea.focus()
+      textarea.cursorOffset = 9
+
+      const id = extmarks.create({
+        start: 3,
+        end: 9,
+        virtual: true,
+        onDeletion: (encounter) => {
+          encounter.prevent()
+        },
+      })
+
+      currentMockInput.pressBackspace()
+
+      expect(textarea.plainText).toBe("abc[LINK]def")
+      expect(extmarks.get(id)).not.toBeNull()
+      expect(extmarks.get(id)?.start).toBe(3)
+      expect(extmarks.get(id)?.end).toBe(9)
+    })
+
+    it("should not call onDeletion when no callback provided", async () => {
+      await setup("abc[LINK]def")
+
+      textarea.focus()
+      textarea.cursorOffset = 9
+
+      const id = extmarks.create({
+        start: 3,
+        end: 9,
+        virtual: true,
+      })
+
+      currentMockInput.pressBackspace()
+
+      expect(textarea.plainText).toBe("abcdef")
+      expect(extmarks.get(id)).toBeNull()
+    })
+
+    it("should clean up callbacks when extmark is deleted via extmarks.delete()", async () => {
+      await setup("abcdefgh")
+
+      textarea.focus()
+      textarea.cursorOffset = 2
+
+      let callCount = 0
+
+      const id = extmarks.create({
+        start: 3,
+        end: 6,
+        virtual: true,
+        onEncounter: () => {
+          callCount++
+        },
+      })
+
+      extmarks.delete(id)
+
+      extmarks.create({
+        start: 3,
+        end: 6,
+        virtual: true,
+      })
+
+      currentMockInput.pressArrow("right")
+
+      expect(callCount).toBe(0)
+    })
+
+    it("should clean up callbacks on clear()", async () => {
+      await setup("abcdefgh")
+
+      textarea.focus()
+      textarea.cursorOffset = 2
+
+      let callCount = 0
+
+      extmarks.create({
+        start: 3,
+        end: 6,
+        virtual: true,
+        onEncounter: () => {
+          callCount++
+        },
+      })
+
+      extmarks.clear()
+
+      extmarks.create({
+        start: 3,
+        end: 6,
+        virtual: true,
+      })
+
+      currentMockInput.pressArrow("right")
+
+      expect(callCount).toBe(0)
+    })
+
+    it("should support multiple extmarks with different callbacks", async () => {
+      await setup("ab[EXT1]cd[EXT2]ef")
+
+      textarea.focus()
+      textarea.cursorOffset = 1
+
+      let callback1Direction: string | undefined
+      let callback2Direction: string | undefined
+
+      extmarks.create({
+        start: 2,
+        end: 8,
+        virtual: true,
+        onEncounter: (encounter) => {
+          callback1Direction = encounter.direction
+          encounter.skip()
+        },
+      })
+
+      extmarks.create({
+        start: 10,
+        end: 16,
+        virtual: true,
+        onEncounter: (encounter) => {
+          callback2Direction = encounter.direction
+          encounter.skip()
+        },
+      })
+
+      currentMockInput.pressArrow("right")
+      expect(callback1Direction).toBe("right")
+      expect(callback2Direction).toBeUndefined()
+
+      currentMockInput.pressArrow("right")
+      currentMockInput.pressArrow("right")
+      expect(callback2Direction).toBe("right")
+    })
+
+    it("should not restore callbacks after undo/redo", async () => {
+      await setup("abc[LINK]def")
+
+      textarea.focus()
+      textarea.cursorOffset = 9
+
+      let deletionCallCount = 0
+
+      const id = extmarks.create({
+        start: 3,
+        end: 9,
+        virtual: true,
+        onDeletion: (encounter) => {
+          deletionCallCount++
+          encounter.deleteExtmark()
+        },
+      })
+
+      currentMockInput.pressBackspace()
+      expect(deletionCallCount).toBe(1)
+      expect(extmarks.get(id)).toBeNull()
+
+      textarea.undo()
+
+      const restored = extmarks.get(id)
+      expect(restored).not.toBeNull()
+      expect(restored?.start).toBe(3)
+      expect(restored?.end).toBe(9)
+
+      textarea.cursorOffset = 9
+      currentMockInput.pressBackspace()
+
+      expect(textarea.plainText).toBe("abcdef")
+      expect(deletionCallCount).toBe(1)
+    })
+  })
+
   describe("Metadata Operations", () => {
     it("should store and retrieve metadata for extmark", async () => {
       await setup()
