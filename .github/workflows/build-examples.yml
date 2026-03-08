@@ -101,25 +101,25 @@ jobs:
           # Check for platform-specific packages in .bun cache (where bun install --os="*" --cpu="*" puts them)
           echo ""
           echo "Checking for platform-specific bun-webgpu packages in cache..."
-          if [ -d node_modules/.bun/bun-webgpu-darwin-arm64@0.1.4 ]; then
+          if [ -d node_modules/.bun/bun-webgpu-darwin-arm64@0.1.5 ]; then
             echo "✅ bun-webgpu-darwin-arm64 found in cache"
           else
             echo "⚠️  bun-webgpu-darwin-arm64 not found (will be installed during build)"
           fi
 
-          if [ -d node_modules/.bun/bun-webgpu-darwin-x64@0.1.4 ]; then
+          if [ -d node_modules/.bun/bun-webgpu-darwin-x64@0.1.5 ]; then
             echo "✅ bun-webgpu-darwin-x64 found in cache"
           else
             echo "⚠️  bun-webgpu-darwin-x64 not found (will be installed during build)"
           fi
 
-          if [ -d node_modules/.bun/bun-webgpu-linux-x64@0.1.4 ]; then
+          if [ -d node_modules/.bun/bun-webgpu-linux-x64@0.1.5 ]; then
             echo "✅ bun-webgpu-linux-x64 found in cache"
           else
             echo "⚠️  bun-webgpu-linux-x64 not found (will be installed during build)"
           fi
 
-          if [ -d node_modules/.bun/bun-webgpu-win32-x64@0.1.4 ]; then
+          if [ -d node_modules/.bun/bun-webgpu-win32-x64@0.1.5 ]; then
             echo "✅ bun-webgpu-win32-x64 found in cache"
           else
             echo "⚠️  bun-webgpu-win32-x64 not found (will be installed during build)"
