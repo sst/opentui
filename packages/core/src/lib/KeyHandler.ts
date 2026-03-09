@@ -1,6 +1,5 @@
 import { EventEmitter } from "events"
-import { parseKeypress, type KeyEventType, type ParsedKey } from "./parse.keypress"
-import { ANSI } from "../ansi"
+import { type KeyEventType, type ParsedKey } from "./parse.keypress"
 
 export class KeyEvent implements ParsedKey {
   name: string
@@ -94,20 +93,7 @@ export type KeyHandlerEventMap = {
 }
 
 export class KeyHandler extends EventEmitter<KeyHandlerEventMap> {
-  protected useKittyKeyboard: boolean
-
-  constructor(useKittyKeyboard: boolean = false) {
-    super()
-    this.useKittyKeyboard = useKittyKeyboard
-  }
-
-  public processInput(data: string): boolean {
-    const parsedKey = parseKeypress(data, { useKittyKeyboard: this.useKittyKeyboard })
-
-    if (!parsedKey) {
-      return false
-    }
-
+  public processParsedKey(parsedKey: ParsedKey): boolean {
     try {
       switch (parsedKey.eventType) {
         case "press":
@@ -121,7 +107,7 @@ export class KeyHandler extends EventEmitter<KeyHandlerEventMap> {
           break
       }
     } catch (error) {
-      console.error(`[KeyHandler] Error processing input:`, error)
+      console.error(`[KeyHandler] Error processing parsed key:`, error)
       return true
     }
 
@@ -144,10 +130,6 @@ export class KeyHandler extends EventEmitter<KeyHandlerEventMap> {
  */
 export class InternalKeyHandler extends KeyHandler {
   private renderableHandlers: Map<keyof KeyHandlerEventMap, Set<Function>> = new Map()
-
-  constructor(useKittyKeyboard: boolean = false) {
-    super(useKittyKeyboard)
-  }
 
   public emit<K extends keyof KeyHandlerEventMap>(event: K, ...args: KeyHandlerEventMap[K]): boolean {
     return this.emitWithPriority(event, ...args)

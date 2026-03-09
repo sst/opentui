@@ -14,14 +14,13 @@ import type { Pointer } from "bun:ffi"
 import { OptimizedBuffer } from "./buffer"
 import { resolveRenderLib, type RenderLib } from "./zig"
 import { TerminalConsole, type ConsoleOptions, capture } from "./console"
-import { MouseParser, type MouseEventType, type RawMouseEvent, type ScrollInfo } from "./lib/parse.mouse"
+import { type MouseEventType, type RawMouseEvent, type ScrollInfo } from "./lib/parse.mouse"
 import { Selection } from "./lib/selection"
 import { Clipboard, type ClipboardTarget } from "./lib/clipboard"
 import { EventEmitter } from "events"
 import { destroySingleton, hasSingleton, singleton } from "./lib/singleton"
 import { getObjectsInViewport } from "./lib/objects-in-viewport"
 import { KeyHandler, InternalKeyHandler } from "./lib/KeyHandler"
-import { StdinBuffer } from "./lib/stdin-buffer"
 import { env, registerEnvVar } from "./lib/env"
 import { getTreeSitterClient } from "./lib/tree-sitter"
 import {
@@ -35,6 +34,8 @@ import {
   isPixelResolutionResponse,
   parsePixelResolution,
 } from "./lib/terminal-capability-detection"
+import { type Clock } from "./lib/clock"
+import { StdinParser, type StdinEvent } from "./lib/stdin-parser"
 
 registerEnvVar({
   name: "OTUI_DUMP_CAPTURES",
@@ -105,6 +106,8 @@ export interface CliRendererConfig {
   backgroundColor?: ColorInput
   openConsoleOnError?: boolean
   prependInputHandlers?: ((sequence: string) => boolean)[]
+  stdinParserMaxBufferBytes?: number
+  stdinParserClock?: Clock
   onDestroy?: () => void
 }
 
@@ -139,6 +142,8 @@ const KITTY_FLAG_EVENT_TYPES = 0b10 // Report event types (press/repeat/release)
 const KITTY_FLAG_ALTERNATE_KEYS = 0b100 // Report alternate keys (e.g., numpad vs regular)
 const KITTY_FLAG_ALL_KEYS_AS_ESCAPES = 0b1000 // Report all keys as escape codes
 const KITTY_FLAG_REPORT_TEXT = 0b10000 // Report text associated with key events
+
+const DEFAULT_STDIN_PARSER_MAX_BUFFER_BYTES = 64 * 1024 * 1024
 
 /**
  * Kitty Keyboard Protocol configuration options
@@ -402,7 +407,9 @@ export class CliRenderer extends EventEmitter implements RenderContext {
   private _console: TerminalConsole
   private _resolution: PixelResolution | null = null
   private _keyHandler: InternalKeyHandler
-  private _stdinBuffer: StdinBuffer
+  private stdinParser: StdinParser | null = null
+  private readonly oscSubscribers = new Set<(sequence: string) => void>()
+  private hasLoggedStdinParserError = false
 
   private animationRequest: Map<number, FrameRequestCallback> = new Map()
 
@@ -439,7 +446,6 @@ export class CliRenderer extends EventEmitter implements RenderContext {
   }
 
   private _useConsole: boolean = true
-  private mouseParser: MouseParser = new MouseParser()
   private sigwinchHandler: () => void = (() => {
     const width = this.stdout.columns || 80
     const height = this.stdout.rows || 24
@@ -460,7 +466,7 @@ export class CliRenderer extends EventEmitter implements RenderContext {
   private _onDestroy?: () => void
   private _themeMode: ThemeMode | null = null
 
-  private inputHandlers: ((sequence: string) => boolean)[] = []
+  private sequenceHandlers: ((sequence: string) => boolean)[] = []
   private prependedInputHandlers: ((sequence: string) => boolean)[] = []
   private shouldRestoreModesOnNextFocus: boolean = false
 
@@ -607,7 +613,7 @@ export class CliRenderer extends EventEmitter implements RenderContext {
 
     const kittyConfig = config.useKittyKeyboard ?? {}
     const useKittyForParsing = kittyConfig !== null
-    this._keyHandler = new InternalKeyHandler(useKittyForParsing)
+    this._keyHandler = new InternalKeyHandler()
     this._keyHandler.on("keypress", (event) => {
       if (this.exitOnCtrlC && event.name === "c" && event.ctrl) {
         process.nextTick(() => {
@@ -619,7 +625,17 @@ export class CliRenderer extends EventEmitter implements RenderContext {
 
     this.addExitListeners()
 
-    this._stdinBuffer = new StdinBuffer({ timeout: 5 })
+    const stdinParserMaxBufferBytes = config.stdinParserMaxBufferBytes ?? DEFAULT_STDIN_PARSER_MAX_BUFFER_BYTES
+    this.stdinParser = new StdinParser({
+      timeoutMs: 10,
+      maxPendingBytes: stdinParserMaxBufferBytes,
+      armTimeouts: true,
+      onTimeoutFlush: () => {
+        this.drainStdinParser()
+      },
+      useKittyKeyboard: useKittyForParsing,
+      clock: config.stdinParserClock,
+    })
 
     this._console = new TerminalConsole(this, config.consoleOptions)
     this.useConsole = config.useConsole ?? true
@@ -1012,7 +1028,7 @@ export class CliRenderer extends EventEmitter implements RenderContext {
   private disableMouse(): void {
     this._useMouse = false
     this.setCapturedRenderable(undefined)
-    this.mouseParser.reset()
+    this.stdinParser?.resetMouseState()
     this.lib.disableMouse(this.rendererPtr)
   }
 
@@ -1059,26 +1075,35 @@ export class CliRenderer extends EventEmitter implements RenderContext {
     this.queryPixelResolution()
   }
 
-  private stdinListener: (data: Buffer) => void = ((data: Buffer) => {
-    // Mouse first (consume and stop if handled)
-    if (this._useMouse && this.handleMouseData(data)) {
-      return
-    }
+  private stdinListener: (chunk: Buffer | string) => void = ((chunk: Buffer | string) => {
+    const data = Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk)
+    if (!this.stdinParser) return
 
-    // Everything else goes through the sequence buffer
-    this._stdinBuffer.process(data)
+    try {
+      this.stdinParser.push(data)
+      this.drainStdinParser()
+    } catch (error) {
+      this.handleStdinParserFailure(error)
+    }
   }).bind(this)
 
   public addInputHandler(handler: (sequence: string) => boolean): void {
-    this.inputHandlers.push(handler)
+    this.sequenceHandlers.push(handler)
   }
 
   public prependInputHandler(handler: (sequence: string) => boolean): void {
-    this.inputHandlers.unshift(handler)
+    this.sequenceHandlers.unshift(handler)
   }
 
   public removeInputHandler(handler: (sequence: string) => boolean): void {
-    this.inputHandlers = this.inputHandlers.filter((h) => h !== handler)
+    this.sequenceHandlers = this.sequenceHandlers.filter((candidate) => candidate !== handler)
+  }
+
+  public subscribeOsc(handler: (sequence: string) => void): () => void {
+    this.oscSubscribers.add(handler)
+    return () => {
+      this.oscSubscribers.delete(handler)
+    }
   }
 
   private capabilityHandler: (sequence: string) => boolean = ((sequence: string) => {
@@ -1130,6 +1155,77 @@ export class CliRenderer extends EventEmitter implements RenderContext {
     return false
   }).bind(this)
 
+  private dispatchSequenceHandlers(sequence: string): boolean {
+    if (this._debugModeEnabled) {
+      this._debugInputs.push({
+        timestamp: new Date().toISOString(),
+        sequence,
+      })
+    }
+
+    for (const handler of this.sequenceHandlers) {
+      if (handler(sequence)) {
+        return true
+      }
+    }
+
+    return false
+  }
+
+  private drainStdinParser(): void {
+    if (!this.stdinParser) return
+
+    this.stdinParser.drain((event) => {
+      this.handleStdinEvent(event)
+    })
+  }
+
+  private handleStdinEvent(event: StdinEvent): void {
+    switch (event.type) {
+      case "key":
+        if (this.dispatchSequenceHandlers(event.raw)) {
+          return
+        }
+
+        this._keyHandler.processParsedKey(event.key)
+        return
+      case "mouse":
+        if (this._useMouse && this.processSingleMouseEvent(event.event)) {
+          return
+        }
+
+        this.dispatchSequenceHandlers(event.raw)
+        return
+      case "paste":
+        this._keyHandler.processPaste(event.text)
+        return
+      case "response":
+        if (event.protocol === "osc") {
+          for (const subscriber of this.oscSubscribers) {
+            subscriber(event.sequence)
+          }
+        }
+
+        this.dispatchSequenceHandlers(event.sequence)
+        return
+    }
+  }
+
+  private handleStdinParserFailure(error: unknown): void {
+    if (!this.hasLoggedStdinParserError) {
+      this.hasLoggedStdinParserError = true
+      if (process.env.NODE_ENV !== "test") {
+        console.error("[stdin-parser-error] parser failure, resetting parser", error)
+      }
+    }
+
+    try {
+      this.stdinParser?.reset()
+    } catch (resetError) {
+      console.error("stdin parser reset failed after parser error", resetError)
+    }
+  }
+
   private setupInput(): void {
     for (const handler of this.prependedInputHandlers) {
       this.addInputHandler(handler)
@@ -1149,35 +1245,13 @@ export class CliRenderer extends EventEmitter implements RenderContext {
     this.addInputHandler(this.capabilityHandler)
     this.addInputHandler(this.focusHandler)
     this.addInputHandler(this.themeModeHandler)
-    this.addInputHandler((sequence: string) => {
-      return this._keyHandler.processInput(sequence)
-    })
 
     if (this.stdin.setRawMode) {
       this.stdin.setRawMode(true)
     }
 
     this.stdin.resume()
-    this.stdin.setEncoding("utf8")
     this.stdin.on("data", this.stdinListener)
-    this._stdinBuffer.on("data", (sequence: string) => {
-      // Capture all input in debug mode
-      if (this._debugModeEnabled) {
-        this._debugInputs.push({
-          timestamp: new Date().toISOString(),
-          sequence,
-        })
-      }
-
-      for (const handler of this.inputHandlers) {
-        if (handler(sequence)) {
-          return
-        }
-      }
-    })
-    this._stdinBuffer.on("paste", (data: string) => {
-      this._keyHandler.processPaste(data)
-    })
   }
 
   private dispatchMouseEvent(
@@ -1199,21 +1273,6 @@ export class CliRenderer extends EventEmitter implements RenderContext {
     }
 
     return event
-  }
-
-  private handleMouseData(data: Buffer): boolean {
-    const mouseEvents = this.mouseParser.parseAllMouseEvents(data)
-
-    if (mouseEvents.length === 0) return false
-
-    let anyHandled = false
-    for (const mouseEvent of mouseEvents) {
-      if (this.processSingleMouseEvent(mouseEvent)) {
-        anyHandled = true
-      }
-    }
-
-    return anyHandled
   }
 
   private processSingleMouseEvent(mouseEvent: RawMouseEvent): boolean {
@@ -1514,7 +1573,7 @@ export class CliRenderer extends EventEmitter implements RenderContext {
     this.queryPixelResolution()
 
     this.setCapturedRenderable(undefined)
-    this.mouseParser.reset()
+    this.stdinParser?.resetMouseState()
 
     if (this._splitHeight > 0) {
       // TODO: Handle resizing split mode properly
@@ -1719,7 +1778,7 @@ export class CliRenderer extends EventEmitter implements RenderContext {
 
     this.disableMouse()
     this.removeExitListeners()
-    this._stdinBuffer.clear()
+    this.stdinParser?.reset()
     this.stdin.removeListener("data", this.stdinListener)
     this.lib.suspendRenderer(this.rendererPtr)
 
@@ -1868,18 +1927,21 @@ export class CliRenderer extends EventEmitter implements RenderContext {
       console.error("Error destroying root renderable:", e instanceof Error ? e.stack : String(e))
     }
 
-    this._stdinBuffer.destroy()
+    // Remove listener before destroying parser
+    this.stdin.removeListener("data", this.stdinListener)
+    if (this.stdin.setRawMode) {
+      this.stdin.setRawMode(false)
+    }
+
+    this.stdinParser?.destroy()
+    this.stdinParser = null
+    this.oscSubscribers.clear()
     this._console.destroy()
     this.disableStdoutInterception()
 
     if (this._splitHeight > 0) {
       this.flushStdoutCache(this._splitHeight, true)
     }
-
-    if (this.stdin.setRawMode) {
-      this.stdin.setRawMode(false)
-    }
-    this.stdin.removeListener("data", this.stdinListener)
 
     this.lib.destroyRenderer(this.rendererPtr)
     rendererTracker.removeRenderer(this)
@@ -2272,7 +2334,9 @@ export class CliRenderer extends EventEmitter implements RenderContext {
       const isLegacyTmux =
         this.capabilities?.terminal?.name?.toLowerCase()?.includes("tmux") &&
         this.capabilities?.terminal?.version?.localeCompare("3.6") < 0
-      this._paletteDetector = createTerminalPalette(this.stdin, this.stdout, this.writeOut.bind(this), isLegacyTmux)
+      this._paletteDetector = createTerminalPalette(this.stdin, this.stdout, this.writeOut.bind(this), isLegacyTmux, {
+        subscribeOsc: this.subscribeOsc.bind(this),
+      })
     }
 
     this._paletteDetectionPromise = this._paletteDetector.detect(options).then((result) => {

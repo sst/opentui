@@ -1274,6 +1274,28 @@ test("parseKeypress - filters out SGR mouse events", () => {
   expect(mouseScroll).toBeNull()
 })
 
+test("parseKeypress - filters out incomplete/partial SGR mouse sequences", () => {
+  // These are flushed by the zig parser when a new ESC arrives mid-sequence
+  expect(parseKeypress("\x1b[<35;")).toBeNull()
+  expect(parseKeypress("\x1b[<35;20")).toBeNull()
+  expect(parseKeypress("\x1b[<35;20;")).toBeNull()
+  expect(parseKeypress("\x1b[<35;20;5")).toBeNull()
+  expect(parseKeypress("\x1b[<")).toBeNull()
+  expect(parseKeypress("\x1b[<0")).toBeNull()
+  expect(parseKeypress("\x1b[<64;20;10")).toBeNull()
+})
+
+test("parseKeypress - filters out SGR mouse continuations without ESC", () => {
+  // These can occur if ESC is flushed on timeout before the rest of the sequence arrives.
+  expect(parseKeypress("[<35;20;5m")).toBeNull()
+  expect(parseKeypress("[<0;10;5M")).toBeNull()
+  expect(parseKeypress("[<35;")).toBeNull()
+  expect(parseKeypress("[<35;20")).toBeNull()
+  expect(parseKeypress("[<35;20;")).toBeNull()
+  expect(parseKeypress("[<")).toBeNull()
+  expect(parseKeypress("[<64;20;10")).toBeNull()
+})
+
 test("parseKeypress - filters out basic mouse events", () => {
   const basicMouse = parseKeypress("\x1b[M abc")!
   expect(basicMouse).toBeNull()
@@ -1335,7 +1357,7 @@ test("parseKeypress - filters out terminal response sequences", () => {
   expect(oscResponse2).toBeNull()
 
   // Incomplete OSC sequences should NOT be filtered
-  // StdinBuffer will either complete them or timeout and flush them
+  // The stdin parser will either complete them or timeout and flush them
   const incompleteOsc = parseKeypress("\x1b]11;rgb:0000")
   expect(incompleteOsc).not.toBeNull()
   expect(incompleteOsc?.name).toBe("") // Unknown sequence, but not filtered
@@ -1796,4 +1818,32 @@ test("parseKeypress - meta+arrow keys with uppercase F and B (old style)", () =>
   expect(metaB.meta).toBe(true)
   expect(metaB.shift).toBe(false)
   expect(metaB.ctrl).toBe(false)
+})
+
+test("parseKeypress - double ESC preserves meta state when fn-key modifiers are parsed", () => {
+  const metaUp = parseKeypress("\x1b\x1b[A")!
+  expect(metaUp.name).toBe("up")
+  expect(metaUp.meta).toBe(true)
+  expect(metaUp.option).toBe(true)
+  expect(metaUp.ctrl).toBe(false)
+  expect(metaUp.shift).toBe(false)
+
+  const metaCtrlUp = parseKeypress("\x1b\x1b[1;5A")!
+  expect(metaCtrlUp.name).toBe("up")
+  expect(metaCtrlUp.meta).toBe(true)
+  expect(metaCtrlUp.option).toBe(true)
+  expect(metaCtrlUp.ctrl).toBe(true)
+  expect(metaCtrlUp.shift).toBe(false)
+})
+
+test("parseKeypress - preserves printable Unicode characters including non-BMP", () => {
+  for (const char of ["é", "中", "👍"]) {
+    const key = parseKeypress(char)!
+    expect(key.name).toBe(char)
+    expect(key.raw).toBe(char)
+    expect(key.sequence).toBe(char)
+    expect(key.meta).toBe(false)
+    expect(key.ctrl).toBe(false)
+    expect(key.shift).toBe(false)
+  }
 })

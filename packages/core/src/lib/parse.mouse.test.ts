@@ -225,6 +225,13 @@ describe("MouseParser basic (X10) mode", () => {
     test("returns null for empty buffer", () => {
       expect(parser.parseMouseEvent(Buffer.from(""))).toBeNull()
     })
+
+    test("accepts Uint8Array input without Buffer conversion at callsite", () => {
+      const encoded = encodeSGR(64, 10, 5, true)
+      const view = new Uint8Array(encoded.buffer, encoded.byteOffset, encoded.byteLength)
+      const e = parser.parseMouseEvent(view)
+      expect(e).toMatchObject({ type: "scroll", scroll: { direction: "up", delta: 1 } })
+    })
   })
 })
 

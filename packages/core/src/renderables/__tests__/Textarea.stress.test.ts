@@ -1,14 +1,17 @@
 import { describe, expect, it, afterAll, beforeEach, afterEach } from "bun:test"
 import { createTestRenderer, type TestRenderer, type MockMouse, type MockInput } from "../../testing/test-renderer"
+import { ManualClock } from "../../testing/manual-clock"
 import { createTextareaRenderable } from "./renderable-test-utils"
 
 let currentRenderer: TestRenderer
 let renderOnce: () => Promise<void>
 let currentMouse: MockMouse
 let currentMockInput: MockInput
+let currentClock: ManualClock
 
 describe("Textarea - Stress Tests", () => {
   beforeEach(async () => {
+    currentClock = new ManualClock()
     ;({
       renderer: currentRenderer,
       renderOnce,
@@ -17,6 +20,7 @@ describe("Textarea - Stress Tests", () => {
     } = await createTestRenderer({
       width: 80,
       height: 24,
+      stdinParserClock: currentClock,
     }))
   })
 
@@ -501,6 +505,26 @@ describe("Textarea - Stress Tests", () => {
     currentRenderer.stdin.emit("data", Buffer.from(";"))
     currentRenderer.stdin.emit("data", Buffer.from("5"))
     currentRenderer.stdin.emit("data", Buffer.from("m"))
+
+    expect(editor.plainText).toBe(initialText)
+    expect(editor.plainText).not.toContain("[<")
+  })
+
+  it("STRESS TEST: delayed split SGR mouse sequence should not leak into textarea", async () => {
+    const { textarea: editor } = await createTextareaRenderable(currentRenderer, renderOnce, {
+      initialValue: "Original",
+      width: 40,
+      height: 10,
+    })
+
+    editor.focus()
+    const initialText = editor.plainText
+
+    // Simulate ESC and continuation arriving in separate chunks where the ESC is
+    // timeout-flushed before the continuation arrives.
+    currentRenderer.stdin.emit("data", Buffer.from("\x1b"))
+    currentClock.advance(1000)
+    currentRenderer.stdin.emit("data", Buffer.from("[<35;20;5m"))
 
     expect(editor.plainText).toBe(initialText)
     expect(editor.plainText).not.toContain("[<")

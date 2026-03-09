@@ -1,3 +1,4 @@
+import { readFile } from "node:fs/promises"
 import { Color, Texture, DataTexture, NearestFilter, ClampToEdgeWrapping, RGBAFormat, UnsignedByteType } from "three"
 import { Jimp } from "jimp"
 
@@ -15,7 +16,7 @@ export class TextureUtils {
    */
   static async loadTextureFromFile(path: string): Promise<DataTexture | null> {
     try {
-      const buffer = await Bun.file(path).arrayBuffer()
+      const buffer = await readFile(path)
       const image = await Jimp.read(buffer)
 
       image.flip({ horizontal: false, vertical: true })

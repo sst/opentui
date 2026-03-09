@@ -41,6 +41,7 @@ pub const CursorStyle = enum {
     block,
     line,
     underline,
+    default,
 };
 
 pub const MousePointerStyle = enum(u8) {
@@ -124,7 +125,7 @@ state: struct {
         x: u32 = 1, // 1-based for rendering
         y: u32 = 1, // 1-based for rendering
         visible: bool = true,
-        style: CursorStyle = .block,
+        style: CursorStyle = .default,
         blinking: bool = false,
         color: [4]f32 = .{ 1.0, 1.0, 1.0, 1.0 }, // RGBA
     } = .{},

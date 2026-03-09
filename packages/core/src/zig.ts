@@ -1,5 +1,5 @@
 import { dlopen, toArrayBuffer, JSCallback, ptr, type Pointer } from "bun:ffi"
-import { existsSync } from "fs"
+import { existsSync, writeFileSync } from "fs"
 import { EventEmitter } from "events"
 import {
   type CursorStyle,
@@ -95,13 +95,13 @@ registerEnvVar({
 })
 
 // Cursor & mouse pointer style mappings (avoid recreation on each call)
-const CURSOR_STYLE_TO_ID = { block: 0, line: 1, underline: 2 } as const
-const CURSOR_ID_TO_STYLE = ["block", "line", "underline"] as const
+const CURSOR_STYLE_TO_ID = { block: 0, line: 1, underline: 2, default: 3 } as const
+const CURSOR_ID_TO_STYLE = ["block", "line", "underline", "default"] as const
 const MOUSE_STYLE_TO_ID = { default: 0, pointer: 1, text: 2, crosshair: 3, move: 4, "not-allowed": 5 } as const
 
 // Global singleton state for FFI tracing to prevent duplicate exit handlers
 let globalTraceSymbols: Record<string, number[]> | null = null
-let globalFFILogWriter: ReturnType<ReturnType<typeof Bun.file>["writer"]> | null = null
+let globalFFILogPath: string | null = null
 let exitHandlerRegistered = false
 
 function toPointer(value: number | bigint): Pointer {
@@ -1142,12 +1142,11 @@ function convertToDebugSymbols<T extends Record<string, any>>(symbols: T): T {
     globalTraceSymbols = {}
   }
 
-  // Initialize global debug log writer on first call
-  if (env.OTUI_DEBUG_FFI && !globalFFILogWriter) {
+  // Initialize global debug log path on first call
+  if (env.OTUI_DEBUG_FFI && !globalFFILogPath) {
     const now = new Date()
     const timestamp = now.toISOString().replace(/[:.]/g, "-").replace(/T/, "_").split("Z")[0]
-    const logFilePath = `ffi_otui_debug_${timestamp}.log`
-    globalFFILogWriter = Bun.file(logFilePath).writer()
+    globalFFILogPath = `ffi_otui_debug_${timestamp}.log`
   }
 
   const debugSymbols: Record<string, any> = {}
@@ -1157,12 +1156,10 @@ function convertToDebugSymbols<T extends Record<string, any>>(symbols: T): T {
     debugSymbols[key] = value
   })
 
-  if (env.OTUI_DEBUG_FFI && globalFFILogWriter) {
-    const writer = globalFFILogWriter
+  if (env.OTUI_DEBUG_FFI && globalFFILogPath) {
+    const logPath = globalFFILogPath
     const writeSync = (msg: string) => {
-      const buffer = new TextEncoder().encode(msg + "\n")
-      writer.write(buffer)
-      writer.flush()
+      writeFileSync(logPath, msg + "\n", { flag: "a" })
     }
 
     Object.entries(symbols).forEach(([key, value]) => {
@@ -1203,14 +1200,6 @@ function convertToDebugSymbols<T extends Record<string, any>>(symbols: T): T {
     exitHandlerRegistered = true
 
     process.on("exit", () => {
-      try {
-        if (globalFFILogWriter) {
-          globalFFILogWriter.end()
-        }
-      } catch (e) {
-        // Ignore errors on exit
-      }
-
       if (globalTraceSymbols) {
         const allStats: Array<{
           name: string

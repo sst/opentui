@@ -2,7 +2,7 @@ import { test, expect, beforeEach, afterEach } from "bun:test"
 import { DiffRenderable } from "./Diff"
 import { SyntaxStyle } from "../syntax-style"
 import { RGBA } from "../lib/RGBA"
-import { createTestRenderer, type TestRenderer } from "../testing"
+import { createMockMouse, createTestRenderer, type TestRenderer } from "../testing"
 import type { SimpleHighlight } from "../lib/tree-sitter/types"
 
 let currentRenderer: TestRenderer
@@ -2290,6 +2290,87 @@ test("DiffRenderable - target remains functional after multiple updates", async 
 
   leftCodeRenderable.off("line-info-change", leftListener)
   rightCodeRenderable.off("line-info-change", rightListener)
+})
+
+test("DiffRenderable - split view scroll is not synchronized by default", async () => {
+  const mockMouse = createMockMouse(currentRenderer)
+  const syntaxStyle = SyntaxStyle.fromStyles({
+    default: { fg: RGBA.fromValues(1, 1, 1, 1) },
+  })
+
+  const diffRenderable = new DiffRenderable(currentRenderer, {
+    id: "test-diff",
+    diff: multiLineDiff,
+    view: "split",
+    syntaxStyle,
+    showLineNumbers: true,
+    width: "100%",
+    height: 4,
+  })
+
+  currentRenderer.root.add(diffRenderable)
+  await renderOnce()
+
+  const leftCodeRenderable = (diffRenderable as any).leftCodeRenderable
+  const rightCodeRenderable = (diffRenderable as any).rightCodeRenderable
+
+  expect(leftCodeRenderable).toBeTruthy()
+  expect(rightCodeRenderable).toBeTruthy()
+
+  // Scroll over left pane
+  mockMouse.scroll(leftCodeRenderable.x, leftCodeRenderable.y + 1, "down")
+  await renderOnce()
+
+  expect(leftCodeRenderable.scrollY).toBe(1)
+  expect(rightCodeRenderable.scrollY).toBe(0)
+
+  // Scroll over right pane
+  mockMouse.scroll(rightCodeRenderable.x + 1, rightCodeRenderable.y + 1, "down")
+  await renderOnce()
+
+  expect(rightCodeRenderable.scrollY).toBe(1)
+  expect(leftCodeRenderable.scrollY).toBe(1)
+})
+
+test("DiffRenderable - split view wheel scroll keeps panes synchronized", async () => {
+  const mockMouse = createMockMouse(currentRenderer)
+  const syntaxStyle = SyntaxStyle.fromStyles({
+    default: { fg: RGBA.fromValues(1, 1, 1, 1) },
+  })
+
+  const diffRenderable = new DiffRenderable(currentRenderer, {
+    id: "test-diff",
+    diff: multiLineDiff,
+    syncScroll: true,
+    view: "split",
+    syntaxStyle,
+    showLineNumbers: true,
+    width: "100%",
+    height: 4,
+  })
+
+  currentRenderer.root.add(diffRenderable)
+  await renderOnce()
+
+  const leftCodeRenderable = (diffRenderable as any).leftCodeRenderable
+  const rightCodeRenderable = (diffRenderable as any).rightCodeRenderable
+
+  expect(leftCodeRenderable).toBeTruthy()
+  expect(rightCodeRenderable).toBeTruthy()
+
+  // Scroll over left pane
+  await mockMouse.scroll(leftCodeRenderable.x + 1, leftCodeRenderable.y + 1, "down")
+  await renderOnce()
+
+  expect(leftCodeRenderable.scrollY).toBeGreaterThan(0)
+  expect(leftCodeRenderable.scrollY).toBe(rightCodeRenderable.scrollY)
+
+  // Scroll over right pane
+  await mockMouse.scroll(rightCodeRenderable.x + 1, rightCodeRenderable.y + 1, "down")
+  await renderOnce()
+
+  expect(rightCodeRenderable.scrollY).toBeGreaterThan(0)
+  expect(leftCodeRenderable.scrollY).toBe(rightCodeRenderable.scrollY)
 })
 
 test("DiffRenderable - gutter remains in correct position after updates", async () => {

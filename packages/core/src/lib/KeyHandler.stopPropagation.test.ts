@@ -1,8 +1,18 @@
-import { test, expect, beforeEach } from "bun:test"
+import { test, expect } from "bun:test"
 import { InternalKeyHandler, KeyEvent } from "./KeyHandler"
+import { parseKeypress } from "./parse.keypress"
 
-function createKeyHandler(useKittyKeyboard: boolean = false): InternalKeyHandler {
-  return new InternalKeyHandler(useKittyKeyboard)
+function createKeyHandler(): InternalKeyHandler {
+  return new InternalKeyHandler()
+}
+
+function dispatchInput(handler: InternalKeyHandler, data: string): boolean {
+  const parsedKey = parseKeypress(data)
+  if (!parsedKey) {
+    return false
+  }
+
+  return handler.processParsedKey(parsedKey)
 }
 
 test("stopPropagation - stops subsequent global handlers", () => {
@@ -19,7 +29,7 @@ test("stopPropagation - stops subsequent global handlers", () => {
     callOrder.push("global2")
   })
 
-  handler.processInput("a")
+  dispatchInput(handler, "a")
 
   expect(callOrder).toEqual(["global1"])
 })
@@ -38,7 +48,7 @@ test("stopPropagation - stops internal handlers from running", () => {
     callOrder.push("internal")
   })
 
-  handler.processInput("a")
+  dispatchInput(handler, "a")
 
   expect(callOrder).toEqual(["global"])
 })
@@ -57,7 +67,7 @@ test("stopPropagation - internal handler can stop other internal handlers", () =
     callOrder.push("internal2")
   })
 
-  handler.processInput("a")
+  dispatchInput(handler, "a")
 
   expect(callOrder).toEqual(["internal1"])
 })
@@ -75,7 +85,7 @@ test("stopPropagation - does not affect preventDefault", () => {
     preventedDefault = key.defaultPrevented
   })
 
-  handler.processInput("a")
+  dispatchInput(handler, "a")
 
   expect(stoppedPropagation).toBe(true)
   expect(preventedDefault).toBe(true)
@@ -102,7 +112,7 @@ test("stopPropagation - without calling it, all handlers run", () => {
     callOrder.push("internal2")
   })
 
-  handler.processInput("a")
+  dispatchInput(handler, "a")
 
   expect(callOrder).toEqual(["global1", "global2", "internal1", "internal2"])
 })
@@ -127,7 +137,7 @@ test("stopPropagation - paste events support stopPropagation", () => {
 })
 
 test("stopPropagation - works with keyrelease events", () => {
-  const handler = createKeyHandler(true) // Enable kitty for release events
+  const handler = createKeyHandler()
 
   const callOrder: string[] = []
 
@@ -175,7 +185,7 @@ test("stopPropagation - error in handler does not affect propagation stopped sta
     callOrder.push("global2")
   })
 
-  expect(() => handler.processInput("a")).not.toThrow()
+  expect(() => dispatchInput(handler, "a")).not.toThrow()
 
   expect(callOrder).toEqual(["global1"])
 })
@@ -205,7 +215,7 @@ test("stopPropagation - modal scenario: ESC key handled by modal, stops at modal
     }
   })
 
-  handler.processInput("\x1b")
+  dispatchInput(handler, "\x1b")
 
   // Global handlers run before internal handlers
   // So app handler runs first, but modal can still stop further internal handlers
@@ -238,7 +248,7 @@ test("stopPropagation - modal scenario: global modal handler prevents app handle
     }
   })
 
-  handler.processInput("\x1b")
+  dispatchInput(handler, "\x1b")
 
   // When modal is registered as a global handler first, it can stop the app handler
   expect(callOrder).toEqual(["modal"])
@@ -271,7 +281,7 @@ test("stopPropagation - event flow without stopPropagation shows order", () => {
     expect(key.propagationStopped).toBe(false)
   })
 
-  handler.processInput("a")
+  dispatchInput(handler, "a")
 
   // Verify execution order: global handlers first, then internal handlers
   expect(events).toEqual(["global1", "global2", "internal1", "internal2"])
