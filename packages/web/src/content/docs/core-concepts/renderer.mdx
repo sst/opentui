@@ -158,9 +158,14 @@ Use these methods to control the cursor position and style:
 renderer.setCursorPosition(10, 5, true)
 
 // Cursor style
+//
+// Available styles: "default", "block", "underline", "line"
+// The default style is "default", which preserves the terminal's native cursor
+// style instead of overriding it.
 renderer.setCursorStyle({ style: "block", blinking: true }) // Blinking block
 renderer.setCursorStyle({ style: "underline", blinking: false }) // Steady underline
 renderer.setCursorStyle({ style: "line", blinking: true }) // Blinking line
+renderer.setCursorStyle({ style: "default" }) // Reset to terminal's native cursor
 
 // Cursor style with color
 renderer.setCursorStyle({
