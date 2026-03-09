@@ -34,6 +34,8 @@ test "OptimizedBuffer - init frees allocations on OOM" {
 test "OptimizedBuffer - init and deinit" {
     const pool = gp.initGlobalPool(std.testing.allocator);
     defer gp.deinitGlobalPool();
+    var local_link_pool = link.LinkPool.init(std.testing.allocator);
+    defer local_link_pool.deinit();
 
     var buf = try OptimizedBuffer.init(
         std.testing.allocator,
@@ -50,6 +52,8 @@ test "OptimizedBuffer - init and deinit" {
 test "OptimizedBuffer - clear fills with default char" {
     const pool = gp.initGlobalPool(std.testing.allocator);
     defer gp.deinitGlobalPool();
+    var local_link_pool = link.LinkPool.init(std.testing.allocator);
+    defer local_link_pool.deinit();
 
     var buf = try OptimizedBuffer.init(
         std.testing.allocator,
@@ -75,6 +79,8 @@ test "OptimizedBuffer - clear fills with default char" {
 test "OptimizedBuffer - drawText with ASCII" {
     const pool = gp.initGlobalPool(std.testing.allocator);
     defer gp.deinitGlobalPool();
+    var local_link_pool = link.LinkPool.init(std.testing.allocator);
+    defer local_link_pool.deinit();
 
     var buf = try OptimizedBuffer.init(
         std.testing.allocator,
@@ -100,6 +106,8 @@ test "OptimizedBuffer - drawText with ASCII" {
 test "OptimizedBuffer - repeated emoji rendering should not exhaust pool" {
     const pool = gp.initGlobalPool(std.testing.allocator);
     defer gp.deinitGlobalPool();
+    var local_link_pool = link.LinkPool.init(std.testing.allocator);
+    defer local_link_pool.deinit();
 
     var buf = try OptimizedBuffer.init(
         std.testing.allocator,
@@ -125,6 +133,8 @@ test "OptimizedBuffer - repeated emoji rendering should not exhaust pool" {
 test "OptimizedBuffer - repeated CJK rendering should not exhaust pool" {
     const pool = gp.initGlobalPool(std.testing.allocator);
     defer gp.deinitGlobalPool();
+    var local_link_pool = link.LinkPool.init(std.testing.allocator);
+    defer local_link_pool.deinit();
 
     var buf = try OptimizedBuffer.init(
         std.testing.allocator,
@@ -150,8 +160,10 @@ test "OptimizedBuffer - repeated CJK rendering should not exhaust pool" {
 test "OptimizedBuffer - drawTextBuffer repeatedly should not exhaust pool" {
     const pool = gp.initGlobalPool(std.testing.allocator);
     defer gp.deinitGlobalPool();
+    var local_link_pool = link.LinkPool.init(std.testing.allocator);
+    defer local_link_pool.deinit();
 
-    var tb = try TextBuffer.init(std.testing.allocator, pool, .wcwidth);
+    var tb = try TextBuffer.init(std.testing.allocator, pool, &local_link_pool, .wcwidth);
     defer tb.deinit();
 
     var view = try TextBufferView.init(std.testing.allocator, tb);
@@ -179,6 +191,8 @@ test "OptimizedBuffer - drawTextBuffer repeatedly should not exhaust pool" {
 test "OptimizedBuffer - mixed ASCII and emoji repeated rendering" {
     const pool = gp.initGlobalPool(std.testing.allocator);
     defer gp.deinitGlobalPool();
+    var local_link_pool = link.LinkPool.init(std.testing.allocator);
+    defer local_link_pool.deinit();
 
     var buf = try OptimizedBuffer.init(
         std.testing.allocator,
@@ -206,6 +220,8 @@ test "OptimizedBuffer - mixed ASCII and emoji repeated rendering" {
 test "OptimizedBuffer - overwriting graphemes repeatedly" {
     const pool = gp.initGlobalPool(std.testing.allocator);
     defer gp.deinitGlobalPool();
+    var local_link_pool = link.LinkPool.init(std.testing.allocator);
+    defer local_link_pool.deinit();
 
     var buf = try OptimizedBuffer.init(
         std.testing.allocator,
@@ -232,6 +248,8 @@ test "OptimizedBuffer - overwriting graphemes repeatedly" {
 test "OptimizedBuffer - rendering to different positions" {
     const pool = gp.initGlobalPool(std.testing.allocator);
     defer gp.deinitGlobalPool();
+    var local_link_pool = link.LinkPool.init(std.testing.allocator);
+    defer local_link_pool.deinit();
 
     var buf = try OptimizedBuffer.init(
         std.testing.allocator,
@@ -264,8 +282,10 @@ test "OptimizedBuffer - rendering to different positions" {
 test "OptimizedBuffer - large text buffer with wrapping repeated render" {
     const pool = gp.initGlobalPool(std.testing.allocator);
     defer gp.deinitGlobalPool();
+    var local_link_pool = link.LinkPool.init(std.testing.allocator);
+    defer local_link_pool.deinit();
 
-    var tb = try TextBuffer.init(std.testing.allocator, pool, .wcwidth);
+    var tb = try TextBuffer.init(std.testing.allocator, pool, &local_link_pool, .wcwidth);
     defer tb.deinit();
 
     var view = try TextBufferView.init(std.testing.allocator, tb);
@@ -306,6 +326,8 @@ test "OptimizedBuffer - large text buffer with wrapping repeated render" {
 test "OptimizedBuffer - grapheme tracker counts" {
     const pool = gp.initGlobalPool(std.testing.allocator);
     defer gp.deinitGlobalPool();
+    var local_link_pool = link.LinkPool.init(std.testing.allocator);
+    defer local_link_pool.deinit();
 
     var buf = try OptimizedBuffer.init(
         std.testing.allocator,
@@ -337,6 +359,8 @@ test "OptimizedBuffer - grapheme tracker counts" {
 test "OptimizedBuffer - alternating emojis should not leak" {
     const pool = gp.initGlobalPool(std.testing.allocator);
     defer gp.deinitGlobalPool();
+    var local_link_pool = link.LinkPool.init(std.testing.allocator);
+    defer local_link_pool.deinit();
 
     var buf = try OptimizedBuffer.init(
         std.testing.allocator,
@@ -365,8 +389,10 @@ test "OptimizedBuffer - alternating emojis should not leak" {
 test "OptimizedBuffer - drawTextBuffer without clear should not exhaust pool" {
     const pool = gp.initGlobalPool(std.testing.allocator);
     defer gp.deinitGlobalPool();
+    var local_link_pool = link.LinkPool.init(std.testing.allocator);
+    defer local_link_pool.deinit();
 
-    var tb = try TextBuffer.init(std.testing.allocator, pool, .wcwidth);
+    var tb = try TextBuffer.init(std.testing.allocator, pool, &local_link_pool, .wcwidth);
     defer tb.deinit();
 
     var view = try TextBufferView.init(std.testing.allocator, tb);
@@ -397,8 +423,10 @@ test "OptimizedBuffer - drawTextBuffer without clear should not exhaust pool" {
 test "OptimizedBuffer - many small graphemes without clear" {
     const pool = gp.initGlobalPool(std.testing.allocator);
     defer gp.deinitGlobalPool();
+    var local_link_pool = link.LinkPool.init(std.testing.allocator);
+    defer local_link_pool.deinit();
 
-    var tb = try TextBuffer.init(std.testing.allocator, pool, .wcwidth);
+    var tb = try TextBuffer.init(std.testing.allocator, pool, &local_link_pool, .wcwidth);
     defer tb.deinit();
 
     var view = try TextBufferView.init(std.testing.allocator, tb);
@@ -429,8 +457,10 @@ test "OptimizedBuffer - many small graphemes without clear" {
 test "OptimizedBuffer - stress test with many graphemes" {
     const pool = gp.initGlobalPool(std.testing.allocator);
     defer gp.deinitGlobalPool();
+    var local_link_pool = link.LinkPool.init(std.testing.allocator);
+    defer local_link_pool.deinit();
 
-    var tb = try TextBuffer.init(std.testing.allocator, pool, .wcwidth);
+    var tb = try TextBuffer.init(std.testing.allocator, pool, &local_link_pool, .wcwidth);
     defer tb.deinit();
 
     var view = try TextBufferView.init(std.testing.allocator, tb);
@@ -473,8 +503,10 @@ test "OptimizedBuffer - stress test with many graphemes" {
 test "OptimizedBuffer - pool slot exhaustion test" {
     const pool = gp.initGlobalPool(std.testing.allocator);
     defer gp.deinitGlobalPool();
+    var local_link_pool = link.LinkPool.init(std.testing.allocator);
+    defer local_link_pool.deinit();
 
-    var tb = try TextBuffer.init(std.testing.allocator, pool, .wcwidth);
+    var tb = try TextBuffer.init(std.testing.allocator, pool, &local_link_pool, .wcwidth);
     defer tb.deinit();
 
     var view = try TextBufferView.init(std.testing.allocator, tb);
@@ -515,7 +547,7 @@ test "OptimizedBuffer - many unique graphemes with small pool" {
     });
     defer local_pool.deinit();
 
-    var tb = try TextBuffer.init(std.testing.allocator, &local_pool, .wcwidth);
+    var tb = try TextBuffer.init(std.testing.allocator, &local_pool, link.initGlobalLinkPool(std.testing.allocator), .wcwidth);
     defer tb.deinit();
 
     var view = try TextBufferView.init(std.testing.allocator, tb);
@@ -570,8 +602,10 @@ test "OptimizedBuffer - many unique graphemes with small pool" {
 test "OptimizedBuffer - continuous rendering without buffer recreation" {
     const pool = gp.initGlobalPool(std.testing.allocator);
     defer gp.deinitGlobalPool();
+    var local_link_pool = link.LinkPool.init(std.testing.allocator);
+    defer local_link_pool.deinit();
 
-    var tb = try TextBuffer.init(std.testing.allocator, pool, .wcwidth);
+    var tb = try TextBuffer.init(std.testing.allocator, pool, &local_link_pool, .wcwidth);
     defer tb.deinit();
 
     var view = try TextBufferView.init(std.testing.allocator, tb);
@@ -596,8 +630,10 @@ test "OptimizedBuffer - continuous rendering without buffer recreation" {
 test "OptimizedBuffer - multiple buffers rendering same TextBuffer" {
     const pool = gp.initGlobalPool(std.testing.allocator);
     defer gp.deinitGlobalPool();
+    var local_link_pool = link.LinkPool.init(std.testing.allocator);
+    defer local_link_pool.deinit();
 
-    var tb = try TextBuffer.init(std.testing.allocator, pool, .wcwidth);
+    var tb = try TextBuffer.init(std.testing.allocator, pool, &local_link_pool, .wcwidth);
     defer tb.deinit();
 
     var view = try TextBufferView.init(std.testing.allocator, tb);
@@ -644,7 +680,7 @@ test "OptimizedBuffer - continuous render without clear with small pool" {
     });
     defer local_pool.deinit();
 
-    var tb = try TextBuffer.init(std.testing.allocator, &local_pool, .wcwidth);
+    var tb = try TextBuffer.init(std.testing.allocator, &local_pool, link.initGlobalLinkPool(std.testing.allocator), .wcwidth);
     defer tb.deinit();
 
     var view = try TextBufferView.init(std.testing.allocator, tb);
@@ -676,7 +712,7 @@ test "OptimizedBuffer - graphemes with scissor clipping and small pool" {
     });
     defer local_pool.deinit();
 
-    var tb = try TextBuffer.init(std.testing.allocator, &local_pool, .wcwidth);
+    var tb = try TextBuffer.init(std.testing.allocator, &local_pool, link.initGlobalLinkPool(std.testing.allocator), .wcwidth);
     defer tb.deinit();
 
     var view = try TextBufferView.init(std.testing.allocator, tb);
@@ -942,7 +978,7 @@ test "OptimizedBuffer - repeated drawTextBuffer without clear should not leak" {
     });
     defer local_pool.deinit();
 
-    var tb = try TextBuffer.init(std.testing.allocator, &local_pool, .wcwidth);
+    var tb = try TextBuffer.init(std.testing.allocator, &local_pool, link.initGlobalLinkPool(std.testing.allocator), .wcwidth);
     defer tb.deinit();
 
     var view = try TextBufferView.init(std.testing.allocator, tb);
@@ -974,7 +1010,7 @@ test "OptimizedBuffer - renderer two-buffer swap pattern should not leak" {
     });
     defer local_pool.deinit();
 
-    var tb = try TextBuffer.init(std.testing.allocator, &local_pool, .wcwidth);
+    var tb = try TextBuffer.init(std.testing.allocator, &local_pool, link.initGlobalLinkPool(std.testing.allocator), .wcwidth);
     defer tb.deinit();
 
     var view = try TextBufferView.init(std.testing.allocator, tb);
@@ -1016,6 +1052,134 @@ test "OptimizedBuffer - renderer two-buffer swap pattern should not leak" {
     }
 }
 
+test "OptimizedBuffer - set should not clear newly written adjacent grapheme continuation" {
+    var local_pool = gp.GraphemePool.initWithOptions(std.testing.allocator, .{});
+    defer local_pool.deinit();
+
+    var buf = try OptimizedBuffer.init(
+        std.testing.allocator,
+        8,
+        1,
+        .{ .pool = &local_pool, .id = "set-adjacent-grapheme" },
+    );
+    defer buf.deinit();
+
+    const bg = RGBA{ 0.0, 0.0, 0.0, 1.0 };
+    const fg = RGBA{ 1.0, 1.0, 1.0, 1.0 };
+    try buf.clear(bg, null);
+
+    const old_gid = try local_pool.alloc("🌟");
+    const old_start = gp.packGraphemeStart(old_gid & gp.GRAPHEME_ID_MASK, 2);
+    buf.set(3, 0, .{ .char = old_start, .fg = fg, .bg = bg, .attributes = 0 });
+
+    const new_gid = try local_pool.alloc("🔥");
+    const new_start = gp.packGraphemeStart(new_gid & gp.GRAPHEME_ID_MASK, 2);
+
+    // Simulate renderer's left-to-right in-place update:
+    // - x=2 writes a new grapheme (which writes continuation at x=3)
+    // - x=3 would be skipped by char-equality
+    // - x=4 overwrites an old continuation from the previous frame
+    // The overwrite at x=4 must not clear the new continuation at x=3.
+    buf.set(2, 0, .{ .char = new_start, .fg = fg, .bg = bg, .attributes = 0 });
+    buf.set(4, 0, .{ .char = ' ', .fg = fg, .bg = bg, .attributes = 0 });
+
+    const c2 = buf.get(2, 0).?;
+    const c3 = buf.get(3, 0).?;
+    const c4 = buf.get(4, 0).?;
+
+    try std.testing.expect(gp.isGraphemeChar(c2.char));
+    try std.testing.expect(gp.graphemeIdFromChar(c2.char) == (new_gid & gp.GRAPHEME_ID_MASK));
+
+    try std.testing.expect(gp.isContinuationChar(c3.char));
+    try std.testing.expect(gp.graphemeIdFromChar(c3.char) == (new_gid & gp.GRAPHEME_ID_MASK));
+
+    try std.testing.expect(c4.char == ' ');
+}
+
+test "OptimizedBuffer - set span cleanup keeps shared link refcounts consistent" {
+    var local_pool = gp.GraphemePool.initWithOptions(std.testing.allocator, .{});
+    defer local_pool.deinit();
+
+    var local_link_pool = link.LinkPool.init(std.testing.allocator);
+    defer local_link_pool.deinit();
+
+    var buf = try OptimizedBuffer.init(
+        std.testing.allocator,
+        10,
+        1,
+        .{ .pool = &local_pool, .id = "set-span-link-refcount", .link_pool = &local_link_pool },
+    );
+    defer buf.deinit();
+
+    const bg = RGBA{ 0.0, 0.0, 0.0, 1.0 };
+    const fg = RGBA{ 1.0, 1.0, 1.0, 1.0 };
+    try buf.clear(bg, null);
+
+    const link_id = try local_link_pool.alloc("https://example.com");
+    const linked_attr = ansi.TextAttributes.setLinkId(0, link_id);
+
+    const gid = try local_pool.alloc("你");
+    const start = gp.packGraphemeStart(gid & gp.GRAPHEME_ID_MASK, 2);
+
+    // Create three linked cells total:
+    // - a 2-cell grapheme span at x=2..3
+    // - one additional linked cell at x=6
+    buf.set(2, 0, .{ .char = start, .fg = fg, .bg = bg, .attributes = linked_attr });
+    buf.set(6, 0, .{ .char = 'X', .fg = fg, .bg = bg, .attributes = linked_attr });
+
+    try std.testing.expectEqual(@as(u32, 3), buf.link_tracker.used_ids.get(link_id).?);
+    try std.testing.expectEqual(@as(u32, 1), try local_link_pool.getRefcount(link_id));
+
+    // Overwrite the continuation cell at x=3 with a non-grapheme char.
+    // set() will run span cleanup and clear x=2..3. The independent linked
+    // cell at x=6 must remain tracked.
+    buf.set(3, 0, .{ .char = ' ', .fg = fg, .bg = bg, .attributes = 0 });
+
+    try std.testing.expectEqual(@as(u32, 1), buf.link_tracker.getLinkCount());
+    try std.testing.expectEqual(@as(u32, 1), buf.link_tracker.used_ids.get(link_id).?);
+    try std.testing.expectEqual(@as(u32, 1), try local_link_pool.getRefcount(link_id));
+}
+
+test "OptimizedBuffer - syncCell updates grapheme tracker for start transitions" {
+    var local_pool = gp.GraphemePool.initWithOptions(std.testing.allocator, .{});
+    defer local_pool.deinit();
+
+    var local_link_pool = link.LinkPool.init(std.testing.allocator);
+    defer local_link_pool.deinit();
+
+    var buf = try OptimizedBuffer.init(
+        std.testing.allocator,
+        10,
+        1,
+        .{ .pool = &local_pool, .id = "sync-cell-grapheme-tracker", .link_pool = &local_link_pool },
+    );
+    defer buf.deinit();
+
+    const bg = RGBA{ 0.0, 0.0, 0.0, 1.0 };
+    const fg = RGBA{ 1.0, 1.0, 1.0, 1.0 };
+    try buf.clear(bg, null);
+
+    const gid_old = try local_pool.alloc("你");
+    const gid_new = try local_pool.alloc("好");
+    const old_id = gid_old & gp.GRAPHEME_ID_MASK;
+    const new_id = gid_new & gp.GRAPHEME_ID_MASK;
+    const start_old = gp.packGraphemeStart(old_id, 2);
+    const start_new = gp.packGraphemeStart(new_id, 2);
+
+    buf.syncCell(1, 0, .{ .char = start_old, .fg = fg, .bg = bg, .attributes = 0 });
+    try std.testing.expectEqual(@as(u32, 1), buf.grapheme_tracker.getGraphemeCount());
+    try std.testing.expect(buf.grapheme_tracker.contains(old_id));
+
+    buf.syncCell(1, 0, .{ .char = start_new, .fg = fg, .bg = bg, .attributes = 0 });
+    try std.testing.expectEqual(@as(u32, 1), buf.grapheme_tracker.getGraphemeCount());
+    try std.testing.expect(!buf.grapheme_tracker.contains(old_id));
+    try std.testing.expect(buf.grapheme_tracker.contains(new_id));
+
+    buf.syncCell(1, 0, .{ .char = ' ', .fg = fg, .bg = bg, .attributes = 0 });
+    try std.testing.expectEqual(@as(u32, 0), buf.grapheme_tracker.getGraphemeCount());
+    try std.testing.expect(!buf.grapheme_tracker.contains(new_id));
+}
+
 test "OptimizedBuffer - sustained rendering should not leak" {
     const tiny_slots = [_]u32{ 2, 2, 2, 2, 2 };
     var local_pool = gp.GraphemePool.initWithOptions(std.testing.allocator, .{
@@ -1023,7 +1187,7 @@ test "OptimizedBuffer - sustained rendering should not leak" {
     });
     defer local_pool.deinit();
 
-    var tb = try TextBuffer.init(std.testing.allocator, &local_pool, .wcwidth);
+    var tb = try TextBuffer.init(std.testing.allocator, &local_pool, link.initGlobalLinkPool(std.testing.allocator), .wcwidth);
     defer tb.deinit();
 
     var view = try TextBufferView.init(std.testing.allocator, tb);
@@ -1055,7 +1219,7 @@ test "OptimizedBuffer - rendering with changing content should not leak" {
     });
     defer local_pool.deinit();
 
-    var tb = try TextBuffer.init(std.testing.allocator, &local_pool, .wcwidth);
+    var tb = try TextBuffer.init(std.testing.allocator, &local_pool, link.initGlobalLinkPool(std.testing.allocator), .wcwidth);
     defer tb.deinit();
 
     var view = try TextBufferView.init(std.testing.allocator, tb);
@@ -1102,17 +1266,17 @@ test "OptimizedBuffer - multiple TextBuffers rendering simultaneously should not
     });
     defer local_pool.deinit();
 
-    var tb1 = try TextBuffer.init(std.testing.allocator, &local_pool, .wcwidth);
+    var tb1 = try TextBuffer.init(std.testing.allocator, &local_pool, link.initGlobalLinkPool(std.testing.allocator), .wcwidth);
     defer tb1.deinit();
     var view1 = try TextBufferView.init(std.testing.allocator, tb1);
     defer view1.deinit();
 
-    var tb2 = try TextBuffer.init(std.testing.allocator, &local_pool, .wcwidth);
+    var tb2 = try TextBuffer.init(std.testing.allocator, &local_pool, link.initGlobalLinkPool(std.testing.allocator), .wcwidth);
     defer tb2.deinit();
     var view2 = try TextBufferView.init(std.testing.allocator, tb2);
     defer view2.deinit();
 
-    var tb3 = try TextBuffer.init(std.testing.allocator, &local_pool, .wcwidth);
+    var tb3 = try TextBuffer.init(std.testing.allocator, &local_pool, link.initGlobalLinkPool(std.testing.allocator), .wcwidth);
     defer tb3.deinit();
     var view3 = try TextBufferView.init(std.testing.allocator, tb3);
     defer view3.deinit();
@@ -1186,7 +1350,7 @@ test "OptimizedBuffer - drawTextBuffer with graphemes then clear removes all poo
     });
     defer local_pool.deinit();
 
-    var tb = try TextBuffer.init(std.testing.allocator, &local_pool, .wcwidth);
+    var tb = try TextBuffer.init(std.testing.allocator, &local_pool, link.initGlobalLinkPool(std.testing.allocator), .wcwidth);
     defer tb.deinit();
 
     var view = try TextBufferView.init(std.testing.allocator, tb);
@@ -1271,8 +1435,10 @@ test "OptimizedBuffer - drawTextBuffer with graphemes then clear removes all poo
 test "OptimizedBuffer - drawTextBuffer with negative y coordinate should not panic" {
     const pool = gp.initGlobalPool(std.testing.allocator);
     defer gp.deinitGlobalPool();
+    var local_link_pool = link.LinkPool.init(std.testing.allocator);
+    defer local_link_pool.deinit();
 
-    var tb = try TextBuffer.init(std.testing.allocator, pool, .wcwidth);
+    var tb = try TextBuffer.init(std.testing.allocator, pool, &local_link_pool, .wcwidth);
     defer tb.deinit();
 
     var view = try TextBufferView.init(std.testing.allocator, tb);
@@ -1324,6 +1490,8 @@ test "OptimizedBuffer - drawTextBuffer with negative y coordinate should not pan
 test "OptimizedBuffer - cells are initialized after resize grow" {
     const pool = gp.initGlobalPool(std.testing.allocator);
     defer gp.deinitGlobalPool();
+    var local_link_pool = link.LinkPool.init(std.testing.allocator);
+    defer local_link_pool.deinit();
 
     var buf = try OptimizedBuffer.init(
         std.testing.allocator,
@@ -1344,7 +1512,6 @@ test "OptimizedBuffer - cells are initialized after resize grow" {
 test "OptimizedBuffer - link encoding round-trip" {
     const pool = gp.initGlobalPool(std.testing.allocator);
     defer gp.deinitGlobalPool();
-
     var local_link_pool = link.LinkPool.init(std.testing.allocator);
     defer local_link_pool.deinit();
 
@@ -1381,7 +1548,6 @@ test "OptimizedBuffer - link encoding round-trip" {
 test "OptimizedBuffer - link tracker per-cell counting" {
     const pool = gp.initGlobalPool(std.testing.allocator);
     defer gp.deinitGlobalPool();
-
     var local_link_pool = link.LinkPool.init(std.testing.allocator);
     defer local_link_pool.deinit();
 
@@ -1431,7 +1597,6 @@ test "OptimizedBuffer - link tracker per-cell counting" {
 test "OptimizedBuffer - fillRect removes links" {
     const pool = gp.initGlobalPool(std.testing.allocator);
     defer gp.deinitGlobalPool();
-
     var local_link_pool = link.LinkPool.init(std.testing.allocator);
     defer local_link_pool.deinit();
 
@@ -1473,7 +1638,6 @@ test "OptimizedBuffer - fillRect removes links" {
 test "OptimizedBuffer - link reuse after free" {
     const pool = gp.initGlobalPool(std.testing.allocator);
     defer gp.deinitGlobalPool();
-
     var local_link_pool = link.LinkPool.init(std.testing.allocator);
     defer local_link_pool.deinit();
 
@@ -1510,7 +1674,6 @@ test "OptimizedBuffer - link reuse after free" {
 test "OptimizedBuffer - alpha blending preserves overlay link not dest link" {
     const pool = gp.initGlobalPool(std.testing.allocator);
     defer gp.deinitGlobalPool();
-
     var local_link_pool = link.LinkPool.init(std.testing.allocator);
     defer local_link_pool.deinit();
 
@@ -1552,7 +1715,6 @@ test "OptimizedBuffer - alpha blending preserves overlay link not dest link" {
 test "OptimizedBuffer - alpha blending with no link clears underlying link" {
     const pool = gp.initGlobalPool(std.testing.allocator);
     defer gp.deinitGlobalPool();
-
     var local_link_pool = link.LinkPool.init(std.testing.allocator);
     defer local_link_pool.deinit();
 
@@ -1593,6 +1755,8 @@ test "OptimizedBuffer - alpha blending with no link clears underlying link" {
 test "OptimizedBuffer - drawGrayscaleBuffer basic rendering" {
     const pool = gp.initGlobalPool(std.testing.allocator);
     defer gp.deinitGlobalPool();
+    var local_link_pool = link.LinkPool.init(std.testing.allocator);
+    defer local_link_pool.deinit();
 
     var buf = try OptimizedBuffer.init(
         std.testing.allocator,
@@ -1629,6 +1793,8 @@ test "OptimizedBuffer - drawGrayscaleBuffer basic rendering" {
 test "OptimizedBuffer - drawGrayscaleBuffer negative position clipping" {
     const pool = gp.initGlobalPool(std.testing.allocator);
     defer gp.deinitGlobalPool();
+    var local_link_pool = link.LinkPool.init(std.testing.allocator);
+    defer local_link_pool.deinit();
 
     var buf = try OptimizedBuffer.init(
         std.testing.allocator,
@@ -1661,6 +1827,8 @@ test "OptimizedBuffer - drawGrayscaleBuffer negative position clipping" {
 test "OptimizedBuffer - drawGrayscaleBuffer negative position fully clipped" {
     const pool = gp.initGlobalPool(std.testing.allocator);
     defer gp.deinitGlobalPool();
+    var local_link_pool = link.LinkPool.init(std.testing.allocator);
+    defer local_link_pool.deinit();
 
     var buf = try OptimizedBuffer.init(
         std.testing.allocator,
@@ -1689,6 +1857,8 @@ test "OptimizedBuffer - drawGrayscaleBuffer negative position fully clipped" {
 test "OptimizedBuffer - drawGrayscaleBuffer respects scissor rect" {
     const pool = gp.initGlobalPool(std.testing.allocator);
     defer gp.deinitGlobalPool();
+    var local_link_pool = link.LinkPool.init(std.testing.allocator);
+    defer local_link_pool.deinit();
 
     var buf = try OptimizedBuffer.init(
         std.testing.allocator,
@@ -1726,6 +1896,8 @@ test "OptimizedBuffer - drawGrayscaleBuffer respects scissor rect" {
 test "OptimizedBuffer - drawGrayscaleBuffer intensity to character mapping" {
     const pool = gp.initGlobalPool(std.testing.allocator);
     defer gp.deinitGlobalPool();
+    var local_link_pool = link.LinkPool.init(std.testing.allocator);
+    defer local_link_pool.deinit();
 
     var buf = try OptimizedBuffer.init(
         std.testing.allocator,
@@ -1762,6 +1934,8 @@ test "OptimizedBuffer - drawGrayscaleBuffer intensity to character mapping" {
 test "OptimizedBuffer - drawGrayscaleBuffer alpha blending preserves underlying bg" {
     const pool = gp.initGlobalPool(std.testing.allocator);
     defer gp.deinitGlobalPool();
+    var local_link_pool = link.LinkPool.init(std.testing.allocator);
+    defer local_link_pool.deinit();
 
     var buf = try OptimizedBuffer.init(
         std.testing.allocator,
@@ -1800,6 +1974,8 @@ test "OptimizedBuffer - drawGrayscaleBuffer alpha blending preserves underlying 
 test "OptimizedBuffer - drawGrayscaleBuffer fully transparent bg preserves underlying" {
     const pool = gp.initGlobalPool(std.testing.allocator);
     defer gp.deinitGlobalPool();
+    var local_link_pool = link.LinkPool.init(std.testing.allocator);
+    defer local_link_pool.deinit();
 
     var buf = try OptimizedBuffer.init(
         std.testing.allocator,
@@ -1832,6 +2008,8 @@ test "OptimizedBuffer - drawGrayscaleBuffer fully transparent bg preserves under
 test "OptimizedBuffer - drawGrayscaleBuffer opaque bg overwrites underlying" {
     const pool = gp.initGlobalPool(std.testing.allocator);
     defer gp.deinitGlobalPool();
+    var local_link_pool = link.LinkPool.init(std.testing.allocator);
+    defer local_link_pool.deinit();
 
     var buf = try OptimizedBuffer.init(
         std.testing.allocator,
@@ -1862,6 +2040,8 @@ test "OptimizedBuffer - drawGrayscaleBuffer opaque bg overwrites underlying" {
 test "OptimizedBuffer - drawGrayscaleBuffer with opacity stack" {
     const pool = gp.initGlobalPool(std.testing.allocator);
     defer gp.deinitGlobalPool();
+    var local_link_pool = link.LinkPool.init(std.testing.allocator);
+    defer local_link_pool.deinit();
 
     var buf = try OptimizedBuffer.init(
         std.testing.allocator,
@@ -1895,6 +2075,8 @@ test "OptimizedBuffer - drawGrayscaleBuffer with opacity stack" {
 test "OptimizedBuffer - drawGrayscaleBufferSupersampled alpha blending" {
     const pool = gp.initGlobalPool(std.testing.allocator);
     defer gp.deinitGlobalPool();
+    var local_link_pool = link.LinkPool.init(std.testing.allocator);
+    defer local_link_pool.deinit();
 
     var buf = try OptimizedBuffer.init(
         std.testing.allocator,
@@ -1925,6 +2107,8 @@ test "OptimizedBuffer - drawGrayscaleBufferSupersampled alpha blending" {
 test "OptimizedBuffer - drawGrayscaleBufferSupersampled fully transparent preserves bg" {
     const pool = gp.initGlobalPool(std.testing.allocator);
     defer gp.deinitGlobalPool();
+    var local_link_pool = link.LinkPool.init(std.testing.allocator);
+    defer local_link_pool.deinit();
 
     var buf = try OptimizedBuffer.init(
         std.testing.allocator,
@@ -1956,6 +2140,8 @@ test "OptimizedBuffer - drawGrayscaleBufferSupersampled fully transparent preser
 test "OptimizedBuffer - drawGrayscaleBufferSupersampled respects scissor" {
     const pool = gp.initGlobalPool(std.testing.allocator);
     defer gp.deinitGlobalPool();
+    var local_link_pool = link.LinkPool.init(std.testing.allocator);
+    defer local_link_pool.deinit();
 
     var buf = try OptimizedBuffer.init(
         std.testing.allocator,
@@ -1990,6 +2176,8 @@ test "OptimizedBuffer - drawGrayscaleBufferSupersampled respects scissor" {
 test "OptimizedBuffer - drawGrayscaleBufferSupersampled with opacity stack" {
     const pool = gp.initGlobalPool(std.testing.allocator);
     defer gp.deinitGlobalPool();
+    var local_link_pool = link.LinkPool.init(std.testing.allocator);
+    defer local_link_pool.deinit();
 
     var buf = try OptimizedBuffer.init(
         std.testing.allocator,
@@ -2024,6 +2212,8 @@ test "OptimizedBuffer - drawGrayscaleBufferSupersampled with opacity stack" {
 test "OptimizedBuffer - blendColors with transparent destination" {
     const pool = gp.initGlobalPool(std.testing.allocator);
     defer gp.deinitGlobalPool();
+    var local_link_pool = link.LinkPool.init(std.testing.allocator);
+    defer local_link_pool.deinit();
 
     var buf = try OptimizedBuffer.init(
         std.testing.allocator,
@@ -2049,6 +2239,8 @@ test "OptimizedBuffer - blendColors with transparent destination" {
 test "OptimizedBuffer - drawGrayscaleBuffer with custom fg color" {
     const pool = gp.initGlobalPool(std.testing.allocator);
     defer gp.deinitGlobalPool();
+    var local_link_pool = link.LinkPool.init(std.testing.allocator);
+    defer local_link_pool.deinit();
 
     var buf = try OptimizedBuffer.init(
         std.testing.allocator,
@@ -2079,6 +2271,8 @@ test "OptimizedBuffer - drawGrayscaleBuffer with custom fg color" {
 test "OptimizedBuffer - drawGrayscaleBuffer custom fg with partial intensity" {
     const pool = gp.initGlobalPool(std.testing.allocator);
     defer gp.deinitGlobalPool();
+    var local_link_pool = link.LinkPool.init(std.testing.allocator);
+    defer local_link_pool.deinit();
 
     var buf = try OptimizedBuffer.init(
         std.testing.allocator,
@@ -2109,6 +2303,8 @@ test "OptimizedBuffer - drawGrayscaleBuffer custom fg with partial intensity" {
 test "OptimizedBuffer - drawGrayscaleBufferSupersampled with custom fg color" {
     const pool = gp.initGlobalPool(std.testing.allocator);
     defer gp.deinitGlobalPool();
+    var local_link_pool = link.LinkPool.init(std.testing.allocator);
+    defer local_link_pool.deinit();
 
     var buf = try OptimizedBuffer.init(
         std.testing.allocator,
@@ -2135,4 +2331,196 @@ test "OptimizedBuffer - drawGrayscaleBufferSupersampled with custom fg color" {
     try std.testing.expect(cell.fg[0] < 0.1);
     try std.testing.expect(cell.fg[1] > 0.9);
     try std.testing.expect(cell.fg[2] > 0.9);
+}
+
+// Overwriting a grapheme cell with the same ID but different extent bits must
+// not free the pool slot (which would allow reuse and generation bump).
+test "buffer - set same grapheme ID with different extents keeps slot alive" {
+    var local_pool = gp.GraphemePool.initWithOptions(std.testing.allocator, .{
+        .slots_per_page = .{ 1, 1, 1, 1, 1 },
+    });
+    defer local_pool.deinit();
+
+    var local_link_pool = link.LinkPool.init(std.testing.allocator);
+    defer local_link_pool.deinit();
+
+    var buf = try OptimizedBuffer.init(std.testing.allocator, 10, 2, .{
+        .pool = &local_pool,
+        .link_pool = &local_link_pool,
+        .width_method = .unicode,
+    });
+    defer buf.deinit();
+
+    const fg = RGBA{ 1.0, 1.0, 1.0, 1.0 };
+    const bg = RGBA{ 0.0, 0.0, 0.0, 1.0 };
+
+    const emoji = "👋";
+
+    const gid = local_pool.alloc(emoji) catch @panic("alloc failed");
+    const packed_w2 = gp.packGraphemeStart(gid & gp.GRAPHEME_ID_MASK, 2);
+    buf.set(0, 0, buffer_mod.Cell{ .char = packed_w2, .fg = fg, .bg = bg, .attributes = 0 });
+
+    const id_from_char = gp.graphemeIdFromChar(packed_w2);
+    try std.testing.expect(buf.grapheme_tracker.contains(id_from_char));
+
+    // Same grapheme ID, different width → different packed char
+    const packed_w1 = gp.packGraphemeStart(gid & gp.GRAPHEME_ID_MASK, 1);
+    buf.set(0, 0, buffer_mod.Cell{ .char = packed_w1, .fg = fg, .bg = bg, .attributes = 0 });
+
+    try std.testing.expect(buf.grapheme_tracker.contains(id_from_char));
+
+    const bytes = local_pool.get(gid) catch @panic("get failed - slot was freed");
+    try std.testing.expectEqualSlices(u8, emoji, bytes);
+}
+
+// Exercises grapheme pool slot reuse across multiple render frames with
+// alternating dialog/form content to stress the alloc→set→render cycle.
+test "renderer - grapheme WrongGeneration repro with pool slot reuse" {
+    const pool = gp.initGlobalPool(std.testing.allocator);
+    defer gp.deinitGlobalPool();
+    var local_link_pool = link.LinkPool.init(std.testing.allocator);
+    defer local_link_pool.deinit();
+
+    const renderer_mod = @import("../renderer.zig");
+    var cli_renderer = try renderer_mod.CliRenderer.create(
+        std.testing.allocator,
+        40,
+        5,
+        pool,
+        true,
+    );
+    defer cli_renderer.destroy();
+
+    const fg = RGBA{ 1.0, 1.0, 1.0, 1.0 };
+    const bg = RGBA{ 0.0, 0.0, 0.0, 1.0 };
+
+    {
+        const next = cli_renderer.getNextBuffer();
+        try next.drawText("╭────────────────────────────────────╮", 0, 0, fg, bg, 0);
+        try next.drawText("│ ◇ Select Files                    │", 0, 1, fg, bg, 0);
+        try next.drawText("│ ▫ src/    ▪ file.ts                │", 0, 2, fg, bg, 0);
+        try next.drawText("│ ↑↓ navigate  ⏎ select  esc close   │", 0, 3, fg, bg, 0);
+        try next.drawText("╰────────────────────────────────────╯", 0, 4, fg, bg, 0);
+        cli_renderer.render(false);
+    }
+
+    {
+        const next = cli_renderer.getNextBuffer();
+        try next.drawText("  Your Name                              ", 0, 0, fg, bg, 0);
+        try next.drawText("  John Doe                               ", 0, 1, fg, bg, 0);
+        try next.drawText("                                         ", 0, 2, fg, bg, 0);
+        try next.drawText("  Select Files                           ", 0, 3, fg, bg, 0);
+        try next.drawText("  Enter file path...                     ", 0, 4, fg, bg, 0);
+        cli_renderer.render(false);
+    }
+
+    {
+        const next = cli_renderer.getNextBuffer();
+        try next.drawText("╭────────────────────────────────────╮", 0, 0, fg, bg, 0);
+        try next.drawText("│ ◇ Select Files                    │", 0, 1, fg, bg, 0);
+        try next.drawText("│ ▫ src/    ▪ file.ts                │", 0, 2, fg, bg, 0);
+        try next.drawText("│ ↑↓ navigate  ⏎ select  esc close   │", 0, 3, fg, bg, 0);
+        try next.drawText("╰────────────────────────────────────╯", 0, 4, fg, bg, 0);
+        cli_renderer.render(false);
+    }
+
+    {
+        const next = cli_renderer.getNextBuffer();
+        try next.drawText("  Your Name                              ", 0, 0, fg, bg, 0);
+        try next.drawText("  John Doe                               ", 0, 1, fg, bg, 0);
+        try next.drawText("                                         ", 0, 2, fg, bg, 0);
+        try next.drawText("  Select Files                           ", 0, 3, fg, bg, 0);
+        try next.drawText("  Enter file path...                     ", 0, 4, fg, bg, 0);
+        cli_renderer.render(false);
+    }
+
+    {
+        const next = cli_renderer.getNextBuffer();
+        try next.drawText("╭────────────────────────────────────╮", 0, 0, fg, bg, 0);
+        try next.drawText("│ Filter: s                          │", 0, 1, fg, bg, 0);
+        try next.drawText("│ ▫ src/                             │", 0, 2, fg, bg, 0);
+        try next.drawText("│ ↑↓ navigate  ⏎/tab select          │", 0, 3, fg, bg, 0);
+        try next.drawText("╰────────────────────────────────────╯", 0, 4, fg, bg, 0);
+        cli_renderer.render(false);
+    }
+}
+
+// Issue #723: CJK grapheme continuation cells are destroyed when graphemes
+// shift left (e.g. after backspace). The renderer's diff loop calls
+// currentRenderBuffer.set() left-to-right, and set()'s span cleanup at
+// position N+2 destroys the continuation cell at N+1 that was just written
+// by set() at position N, because both share the same stable grapheme pool ID.
+test "renderer - CJK graphemes shifting left must preserve continuation cells (#723)" {
+    const pool = gp.initGlobalPool(std.testing.allocator);
+    defer gp.deinitGlobalPool();
+    var local_link_pool = link.LinkPool.init(std.testing.allocator);
+    defer local_link_pool.deinit();
+
+    const renderer_mod = @import("../renderer.zig");
+    var cli_renderer = try renderer_mod.CliRenderer.create(
+        std.testing.allocator,
+        20,
+        1,
+        pool,
+        true,
+    );
+    defer cli_renderer.destroy();
+
+    const fg = RGBA{ 1.0, 1.0, 1.0, 1.0 };
+    const bg = RGBA{ 0.0, 0.0, 0.0, 1.0 };
+
+    // Frame 1: "abcd你好世" — CJK chars start at column 4
+    // Layout: a(0) b(1) c(2) d(3) 你(4,5) 好(6,7) 世(8,9) spaces(10..19)
+    {
+        const next = cli_renderer.getNextBuffer();
+        try next.drawText("abcd你好世          ", 0, 0, fg, bg, 0);
+        cli_renderer.render(false);
+    }
+
+    // Frame 2: "abc你好世" — backspace deleted 'd', CJK chars shift left by 1
+    // Layout: a(0) b(1) c(2) 你(3,4) 好(5,6) 世(7,8) spaces(9..19)
+    {
+        const next = cli_renderer.getNextBuffer();
+        try next.drawText("abc你好世           ", 0, 0, fg, bg, 0);
+        cli_renderer.render(false);
+    }
+
+    // After frame 2, currentRenderBuffer should match the frame 2 layout exactly.
+    // The bug: span cleanup in set() destroys continuation cells (positions 4, 6, 8)
+    // leaving spaces instead of proper continuation chars.
+    const current = cli_renderer.getCurrentBuffer();
+
+    // Check that position 3 is a grapheme start (你)
+    const cell3 = current.get(3, 0).?;
+    try std.testing.expect(gp.isGraphemeChar(cell3.char));
+    try std.testing.expectEqual(@as(u32, 1), gp.charRightExtent(cell3.char));
+
+    // Check that position 4 is a continuation cell for the same grapheme (你)
+    const cell4 = current.get(4, 0).?;
+    try std.testing.expect(gp.isContinuationChar(cell4.char));
+    const id3 = gp.graphemeIdFromChar(cell3.char);
+    const id4 = gp.graphemeIdFromChar(cell4.char);
+    try std.testing.expectEqual(id3, id4);
+
+    // Check that position 5 is a grapheme start (好)
+    const cell5 = current.get(5, 0).?;
+    try std.testing.expect(gp.isGraphemeChar(cell5.char));
+
+    // Check that position 6 is a continuation cell for the same grapheme (好)
+    const cell6 = current.get(6, 0).?;
+    try std.testing.expect(gp.isContinuationChar(cell6.char));
+    const id5 = gp.graphemeIdFromChar(cell5.char);
+    const id6 = gp.graphemeIdFromChar(cell6.char);
+    try std.testing.expectEqual(id5, id6);
+
+    // Check that position 7 is a grapheme start (世)
+    const cell7 = current.get(7, 0).?;
+    try std.testing.expect(gp.isGraphemeChar(cell7.char));
+
+    // Check that position 8 is a continuation cell for the same grapheme (世)
+    const cell8 = current.get(8, 0).?;
+    try std.testing.expect(gp.isContinuationChar(cell8.char));
+    const id7 = gp.graphemeIdFromChar(cell7.char);
+    const id8 = gp.graphemeIdFromChar(cell8.char);
+    try std.testing.expectEqual(id7, id8);
 }

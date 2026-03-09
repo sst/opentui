@@ -7,6 +7,7 @@ import { SyntaxStyle } from "../syntax-style"
 import { parsePatch, type StructuredPatch } from "diff"
 import { TextRenderable } from "./Text"
 import type { TreeSitterClient } from "../lib/tree-sitter"
+import type { MouseEvent } from "../renderer"
 
 interface LogicalLine {
   content: string
@@ -19,6 +20,7 @@ interface LogicalLine {
 
 export interface DiffRenderableOptions extends RenderableOptions<DiffRenderable> {
   diff?: string
+  syncScroll?: boolean
   view?: "unified" | "split"
 
   // CodeRenderable options
@@ -51,6 +53,7 @@ export interface DiffRenderableOptions extends RenderableOptions<DiffRenderable>
 
 export class DiffRenderable extends Renderable {
   private _diff: string
+  private _syncScroll: boolean = false
   private _view: "unified" | "split"
   private _parsedDiff: StructuredPatch | null = null
   private _parseError: Error | null = null
@@ -107,6 +110,7 @@ export class DiffRenderable extends Renderable {
     })
 
     this._diff = options.diff ?? ""
+    this._syncScroll = options.syncScroll ?? false
     this._view = options.view ?? "unified"
 
     // CodeRenderable options
@@ -181,6 +185,30 @@ export class DiffRenderable extends Renderable {
     } else {
       this.buildSplitView()
     }
+  }
+
+  protected override onMouseEvent(event: MouseEvent): void {
+    if (event.type !== "scroll" || this._view !== "split" || !this._syncScroll) return
+    if (!this.leftCodeRenderable || !this.rightCodeRenderable) return
+    if (!event.target) return
+
+    if (this.isInsideSide(event.target, "left")) {
+      this.rightCodeRenderable.scrollY = this.leftCodeRenderable.scrollY
+      this.rightCodeRenderable.scrollX = this.leftCodeRenderable.scrollX
+    } else if (this.isInsideSide(event.target, "right")) {
+      this.leftCodeRenderable.scrollY = this.rightCodeRenderable.scrollY
+      this.leftCodeRenderable.scrollX = this.rightCodeRenderable.scrollX
+    }
+  }
+
+  private isInsideSide(target: Renderable | null, side: "left" | "right"): boolean {
+    const container = side === "left" ? this.leftCodeRenderable : this.rightCodeRenderable
+    let current = target
+    while (current) {
+      if (current === container) return true
+      current = current.parent
+    }
+    return false
   }
 
   protected override onResize(width: number, height: number): void {
@@ -864,6 +892,19 @@ export class DiffRenderable extends Renderable {
     }
   }
 
+  public get syncScroll(): boolean {
+    return this._syncScroll
+  }
+
+  public set syncScroll(value: boolean) {
+    if (this._syncScroll !== value) {
+      this._syncScroll = value
+      if (!value) {
+        this.detachLineInfoListeners()
+      }
+    }
+  }
+
   public get view(): "unified" | "split" {
     return this._view
   }
@@ -1134,5 +1175,35 @@ export class DiffRenderable extends Renderable {
         this.rightCodeRenderable.fg = parsed
       }
     }
+  }
+
+  public setLineColor(line: number, color: string | RGBA | LineColorConfig): void {
+    this.leftSide?.setLineColor(line, color)
+    this.rightSide?.setLineColor(line, color)
+  }
+
+  public clearLineColor(line: number): void {
+    this.leftSide?.clearLineColor(line)
+    this.rightSide?.clearLineColor(line)
+  }
+
+  public setLineColors(lineColors: Map<number, string | RGBA | LineColorConfig>): void {
+    this.leftSide?.setLineColors(lineColors)
+    this.rightSide?.setLineColors(lineColors)
+  }
+
+  public clearAllLineColors(): void {
+    this.leftSide?.clearAllLineColors()
+    this.rightSide?.clearAllLineColors()
+  }
+
+  public highlightLines(startLine: number, endLine: number, color: string | RGBA | LineColorConfig): void {
+    this.leftSide?.highlightLines(startLine, endLine, color)
+    this.rightSide?.highlightLines(startLine, endLine, color)
+  }
+
+  public clearHighlightLines(startLine: number, endLine: number): void {
+    this.leftSide?.clearHighlightLines(startLine, endLine)
+    this.rightSide?.clearHighlightLines(startLine, endLine)
   }
 }

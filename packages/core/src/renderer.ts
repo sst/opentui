@@ -1,8 +1,9 @@
 import { ANSI } from "./ansi"
 import { Renderable, RootRenderable } from "./Renderable"
 import {
-  type CursorStyle,
   DebugOverlayCorner,
+  type CursorStyleOptions,
+  type MousePointerStyle,
   type RenderContext,
   type ThemeMode,
   type ViewportBounds,
@@ -13,14 +14,13 @@ import type { Pointer } from "bun:ffi"
 import { OptimizedBuffer } from "./buffer"
 import { resolveRenderLib, type RenderLib } from "./zig"
 import { TerminalConsole, type ConsoleOptions, capture } from "./console"
-import { MouseParser, type MouseEventType, type RawMouseEvent, type ScrollInfo } from "./lib/parse.mouse"
+import { type MouseEventType, type RawMouseEvent, type ScrollInfo } from "./lib/parse.mouse"
 import { Selection } from "./lib/selection"
 import { Clipboard, type ClipboardTarget } from "./lib/clipboard"
 import { EventEmitter } from "events"
 import { destroySingleton, hasSingleton, singleton } from "./lib/singleton"
 import { getObjectsInViewport } from "./lib/objects-in-viewport"
 import { KeyHandler, InternalKeyHandler } from "./lib/KeyHandler"
-import { StdinBuffer } from "./lib/stdin-buffer"
 import { env, registerEnvVar } from "./lib/env"
 import { getTreeSitterClient } from "./lib/tree-sitter"
 import {
@@ -34,6 +34,8 @@ import {
   isPixelResolutionResponse,
   parsePixelResolution,
 } from "./lib/terminal-capability-detection"
+import { type Clock } from "./lib/clock"
+import { StdinParser, type StdinEvent } from "./lib/stdin-parser"
 
 registerEnvVar({
   name: "OTUI_DUMP_CAPTURES",
@@ -81,8 +83,10 @@ export interface CliRendererConfig {
   stdin?: NodeJS.ReadStream
   stdout?: NodeJS.WriteStream
   remote?: boolean
+  testing?: boolean
   exitOnCtrlC?: boolean
   exitSignals?: NodeJS.Signals[]
+  forwardEnvKeys?: string[]
   debounceDelay?: number
   targetFps?: number
   maxFps?: number
@@ -102,6 +106,8 @@ export interface CliRendererConfig {
   backgroundColor?: ColorInput
   openConsoleOnError?: boolean
   prependInputHandlers?: ((sequence: string) => boolean)[]
+  stdinParserMaxBufferBytes?: number
+  stdinParserClock?: Clock
   onDestroy?: () => void
 }
 
@@ -110,6 +116,25 @@ export type PixelResolution = {
   height: number
 }
 
+const DEFAULT_FORWARDED_ENV_KEYS = [
+  "TMUX",
+  "TERM",
+  "OPENTUI_GRAPHICS",
+  "TERM_PROGRAM",
+  "TERM_PROGRAM_VERSION",
+  "ALACRITTY_SOCKET",
+  "ALACRITTY_LOG",
+  "COLORTERM",
+  "TERMUX_VERSION",
+  "VHS_RECORD",
+  "OPENTUI_FORCE_WCWIDTH",
+  "OPENTUI_FORCE_UNICODE",
+  "OPENTUI_FORCE_NOZWJ",
+  "OPENTUI_FORCE_EXPLICIT_WIDTH",
+  "WT_SESSION",
+  "STY",
+] as const
+
 // Kitty keyboard protocol flags
 // See: https://sw.kovidgoyal.net/kitty/keyboard-protocol/
 const KITTY_FLAG_DISAMBIGUATE = 0b1 // Report disambiguated escape codes
@@ -117,6 +142,8 @@ const KITTY_FLAG_EVENT_TYPES = 0b10 // Report event types (press/repeat/release)
 const KITTY_FLAG_ALTERNATE_KEYS = 0b100 // Report alternate keys (e.g., numpad vs regular)
 const KITTY_FLAG_ALL_KEYS_AS_ESCAPES = 0b1000 // Report all keys as escape codes
 const KITTY_FLAG_REPORT_TEXT = 0b10000 // Report text associated with key events
+
+const DEFAULT_STDIN_PARSER_MAX_BUFFER_BYTES = 64 * 1024 * 1024
 
 /**
  * Kitty Keyboard Protocol configuration options
@@ -265,7 +292,10 @@ export async function createCliRenderer(config: CliRendererConfig = {}): Promise
     config.experimental_splitHeight && config.experimental_splitHeight > 0 ? config.experimental_splitHeight : height
 
   const ziglib = resolveRenderLib()
-  const rendererPtr = ziglib.createRenderer(width, renderHeight, { remote: config.remote ?? false })
+  const rendererPtr = ziglib.createRenderer(width, renderHeight, {
+    remote: config.remote ?? false,
+    testing: config.testing ?? false,
+  })
   if (!rendererPtr) {
     throw new Error("Failed to create renderer")
   }
@@ -286,7 +316,9 @@ export async function createCliRenderer(config: CliRendererConfig = {}): Promise
   ziglib.setKittyKeyboardFlags(rendererPtr, kittyFlags)
 
   const renderer = new CliRenderer(ziglib, rendererPtr, stdin, stdout, width, height, config)
-  await renderer.setupTerminal()
+  if (!config.testing) {
+    await renderer.setupTerminal()
+  }
   return renderer
 }
 
@@ -375,7 +407,9 @@ export class CliRenderer extends EventEmitter implements RenderContext {
   private _console: TerminalConsole
   private _resolution: PixelResolution | null = null
   private _keyHandler: InternalKeyHandler
-  private _stdinBuffer: StdinBuffer
+  private stdinParser: StdinParser | null = null
+  private readonly oscSubscribers = new Set<(sequence: string) => void>()
+  private hasLoggedStdinParserError = false
 
   private animationRequest: Map<number, FrameRequestCallback> = new Map()
 
@@ -412,7 +446,6 @@ export class CliRenderer extends EventEmitter implements RenderContext {
   }
 
   private _useConsole: boolean = true
-  private mouseParser: MouseParser = new MouseParser()
   private sigwinchHandler: () => void = (() => {
     const width = this.stdout.columns || 80
     const height = this.stdout.rows || 24
@@ -422,6 +455,7 @@ export class CliRenderer extends EventEmitter implements RenderContext {
   private _latestPointer: { x: number; y: number } = { x: 0, y: 0 }
   private _hasPointer: boolean = false
   private _lastPointerModifiers: RawMouseEvent["modifiers"] = { shift: false, alt: false, ctrl: false }
+  private _currentMousePointerStyle: MousePointerStyle | undefined = undefined
 
   private _currentFocusedRenderable: Renderable | null = null
   private lifecyclePasses: Set<Renderable> = new Set()
@@ -432,8 +466,9 @@ export class CliRenderer extends EventEmitter implements RenderContext {
   private _onDestroy?: () => void
   private _themeMode: ThemeMode | null = null
 
-  private inputHandlers: ((sequence: string) => boolean)[] = []
+  private sequenceHandlers: ((sequence: string) => boolean)[] = []
   private prependedInputHandlers: ((sequence: string) => boolean)[] = []
+  private shouldRestoreModesOnNextFocus: boolean = false
 
   private idleResolvers: (() => void)[] = []
 
@@ -518,6 +553,14 @@ export class CliRenderer extends EventEmitter implements RenderContext {
     }
 
     this.rendererPtr = rendererPtr
+
+    const forwardEnvKeys = config.forwardEnvKeys ?? [...DEFAULT_FORWARDED_ENV_KEYS]
+    for (const key of forwardEnvKeys) {
+      const value = process.env[key]
+      if (value === undefined) continue
+      this.lib.setTerminalEnvVar(this.rendererPtr, key, value)
+    }
+
     this.exitOnCtrlC = config.exitOnCtrlC === undefined ? true : config.exitOnCtrlC
     this.exitSignals = config.exitSignals || [
       "SIGINT", // Ctrl+C
@@ -570,7 +613,7 @@ export class CliRenderer extends EventEmitter implements RenderContext {
 
     const kittyConfig = config.useKittyKeyboard ?? {}
     const useKittyForParsing = kittyConfig !== null
-    this._keyHandler = new InternalKeyHandler(useKittyForParsing)
+    this._keyHandler = new InternalKeyHandler()
     this._keyHandler.on("keypress", (event) => {
       if (this.exitOnCtrlC && event.name === "c" && event.ctrl) {
         process.nextTick(() => {
@@ -582,7 +625,17 @@ export class CliRenderer extends EventEmitter implements RenderContext {
 
     this.addExitListeners()
 
-    this._stdinBuffer = new StdinBuffer({ timeout: 5 })
+    const stdinParserMaxBufferBytes = config.stdinParserMaxBufferBytes ?? DEFAULT_STDIN_PARSER_MAX_BUFFER_BYTES
+    this.stdinParser = new StdinParser({
+      timeoutMs: 10,
+      maxPendingBytes: stdinParserMaxBufferBytes,
+      armTimeouts: true,
+      onTimeoutFlush: () => {
+        this.drainStdinParser()
+      },
+      useKittyKeyboard: useKittyForParsing,
+      clock: config.stdinParserClock,
+    })
 
     this._console = new TerminalConsole(this, config.consoleOptions)
     this.useConsole = config.useConsole ?? true
@@ -975,7 +1028,7 @@ export class CliRenderer extends EventEmitter implements RenderContext {
   private disableMouse(): void {
     this._useMouse = false
     this.setCapturedRenderable(undefined)
-    this.mouseParser.reset()
+    this.stdinParser?.resetMouseState()
     this.lib.disableMouse(this.rendererPtr)
   }
 
@@ -1022,26 +1075,35 @@ export class CliRenderer extends EventEmitter implements RenderContext {
     this.queryPixelResolution()
   }
 
-  private stdinListener: (data: Buffer) => void = ((data: Buffer) => {
-    // Mouse first (consume and stop if handled)
-    if (this._useMouse && this.handleMouseData(data)) {
-      return
-    }
+  private stdinListener: (chunk: Buffer | string) => void = ((chunk: Buffer | string) => {
+    const data = Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk)
+    if (!this.stdinParser) return
 
-    // Everything else goes through the sequence buffer
-    this._stdinBuffer.process(data)
+    try {
+      this.stdinParser.push(data)
+      this.drainStdinParser()
+    } catch (error) {
+      this.handleStdinParserFailure(error)
+    }
   }).bind(this)
 
   public addInputHandler(handler: (sequence: string) => boolean): void {
-    this.inputHandlers.push(handler)
+    this.sequenceHandlers.push(handler)
   }
 
   public prependInputHandler(handler: (sequence: string) => boolean): void {
-    this.inputHandlers.unshift(handler)
+    this.sequenceHandlers.unshift(handler)
   }
 
   public removeInputHandler(handler: (sequence: string) => boolean): void {
-    this.inputHandlers = this.inputHandlers.filter((h) => h !== handler)
+    this.sequenceHandlers = this.sequenceHandlers.filter((candidate) => candidate !== handler)
+  }
+
+  public subscribeOsc(handler: (sequence: string) => void): () => void {
+    this.oscSubscribers.add(handler)
+    return () => {
+      this.oscSubscribers.delete(handler)
+    }
   }
 
   private capabilityHandler: (sequence: string) => boolean = ((sequence: string) => {
@@ -1059,12 +1121,16 @@ export class CliRenderer extends EventEmitter implements RenderContext {
       // When the terminal regains focus, some terminal emulators (notably
       // Windows Terminal / ConPTY) may have stripped DEC private modes like
       // mouse tracking, bracketed paste, and focus tracking itself while the
-      // window was unfocused. Re-send all active mode sequences unconditionally.
-      this.lib.restoreTerminalModes(this.rendererPtr)
+      // window was unfocused.
+      if (this.shouldRestoreModesOnNextFocus) {
+        this.lib.restoreTerminalModes(this.rendererPtr)
+        this.shouldRestoreModesOnNextFocus = false
+      }
       this.emit("focus")
       return true
     }
     if (sequence === "\x1b[O") {
+      this.shouldRestoreModesOnNextFocus = true
       this.emit("blur")
       return true
     }
@@ -1089,6 +1155,77 @@ export class CliRenderer extends EventEmitter implements RenderContext {
     return false
   }).bind(this)
 
+  private dispatchSequenceHandlers(sequence: string): boolean {
+    if (this._debugModeEnabled) {
+      this._debugInputs.push({
+        timestamp: new Date().toISOString(),
+        sequence,
+      })
+    }
+
+    for (const handler of this.sequenceHandlers) {
+      if (handler(sequence)) {
+        return true
+      }
+    }
+
+    return false
+  }
+
+  private drainStdinParser(): void {
+    if (!this.stdinParser) return
+
+    this.stdinParser.drain((event) => {
+      this.handleStdinEvent(event)
+    })
+  }
+
+  private handleStdinEvent(event: StdinEvent): void {
+    switch (event.type) {
+      case "key":
+        if (this.dispatchSequenceHandlers(event.raw)) {
+          return
+        }
+
+        this._keyHandler.processParsedKey(event.key)
+        return
+      case "mouse":
+        if (this._useMouse && this.processSingleMouseEvent(event.event)) {
+          return
+        }
+
+        this.dispatchSequenceHandlers(event.raw)
+        return
+      case "paste":
+        this._keyHandler.processPaste(event.text)
+        return
+      case "response":
+        if (event.protocol === "osc") {
+          for (const subscriber of this.oscSubscribers) {
+            subscriber(event.sequence)
+          }
+        }
+
+        this.dispatchSequenceHandlers(event.sequence)
+        return
+    }
+  }
+
+  private handleStdinParserFailure(error: unknown): void {
+    if (!this.hasLoggedStdinParserError) {
+      this.hasLoggedStdinParserError = true
+      if (process.env.NODE_ENV !== "test") {
+        console.error("[stdin-parser-error] parser failure, resetting parser", error)
+      }
+    }
+
+    try {
+      this.stdinParser?.reset()
+    } catch (resetError) {
+      console.error("stdin parser reset failed after parser error", resetError)
+    }
+  }
+
   private setupInput(): void {
     for (const handler of this.prependedInputHandlers) {
       this.addInputHandler(handler)
@@ -1108,35 +1245,13 @@ export class CliRenderer extends EventEmitter implements RenderContext {
     this.addInputHandler(this.capabilityHandler)
     this.addInputHandler(this.focusHandler)
     this.addInputHandler(this.themeModeHandler)
-    this.addInputHandler((sequence: string) => {
-      return this._keyHandler.processInput(sequence)
-    })
 
     if (this.stdin.setRawMode) {
       this.stdin.setRawMode(true)
     }
 
     this.stdin.resume()
-    this.stdin.setEncoding("utf8")
     this.stdin.on("data", this.stdinListener)
-    this._stdinBuffer.on("data", (sequence: string) => {
-      // Capture all input in debug mode
-      if (this._debugModeEnabled) {
-        this._debugInputs.push({
-          timestamp: new Date().toISOString(),
-          sequence,
-        })
-      }
-
-      for (const handler of this.inputHandlers) {
-        if (handler(sequence)) {
-          return
-        }
-      }
-    })
-    this._stdinBuffer.on("paste", (data: string) => {
-      this._keyHandler.processPaste(data)
-    })
   }
 
   private dispatchMouseEvent(
@@ -1160,169 +1275,169 @@ export class CliRenderer extends EventEmitter implements RenderContext {
     return event
   }
 
-  private handleMouseData(data: Buffer): boolean {
-    const mouseEvent = this.mouseParser.parseMouseEvent(data)
-
-    if (mouseEvent) {
-      if (this._splitHeight > 0) {
-        if (mouseEvent.y < this.renderOffset) {
-          return false
-        }
-        mouseEvent.y -= this.renderOffset
+  private processSingleMouseEvent(mouseEvent: RawMouseEvent): boolean {
+    if (this._splitHeight > 0) {
+      if (mouseEvent.y < this.renderOffset) {
+        return false
       }
+      mouseEvent.y -= this.renderOffset
+    }
 
-      this._latestPointer.x = mouseEvent.x
-      this._latestPointer.y = mouseEvent.y
-      this._hasPointer = true
-      this._lastPointerModifiers = mouseEvent.modifiers
+    this._latestPointer.x = mouseEvent.x
+    this._latestPointer.y = mouseEvent.y
+    this._hasPointer = true
+    this._lastPointerModifiers = mouseEvent.modifiers
 
-      if (this._console.visible) {
-        const consoleBounds = this._console.bounds
-        if (
-          mouseEvent.x >= consoleBounds.x &&
-          mouseEvent.x < consoleBounds.x + consoleBounds.width &&
-          mouseEvent.y >= consoleBounds.y &&
-          mouseEvent.y < consoleBounds.y + consoleBounds.height
-        ) {
-          const event = new MouseEvent(null, mouseEvent)
-          const handled = this._console.handleMouse(event)
-          if (handled) return true
-        }
-      }
-
-      if (mouseEvent.type === "scroll") {
-        const maybeRenderableId = this.hitTest(mouseEvent.x, mouseEvent.y)
-        const maybeRenderable = Renderable.renderablesByNumber.get(maybeRenderableId)
-        const fallbackTarget =
-          this._currentFocusedRenderable &&
-          !this._currentFocusedRenderable.isDestroyed &&
-          this._currentFocusedRenderable.focused
-            ? this._currentFocusedRenderable
-            : null
-        const scrollTarget = maybeRenderable ?? fallbackTarget
-
-        if (scrollTarget) {
-          const event = new MouseEvent(scrollTarget, mouseEvent)
-          scrollTarget.processMouseEvent(event)
-        }
-        return true
-      }
-
-      const maybeRenderableId = this.hitTest(mouseEvent.x, mouseEvent.y)
-      const sameElement = maybeRenderableId === this.lastOverRenderableNum
-      this.lastOverRenderableNum = maybeRenderableId
-      const maybeRenderable = Renderable.renderablesByNumber.get(maybeRenderableId)
-
+    if (this._console.visible) {
+      const consoleBounds = this._console.bounds
       if (
-        mouseEvent.type === "down" &&
-        mouseEvent.button === MouseButton.LEFT &&
-        !this.currentSelection?.isDragging &&
-        !mouseEvent.modifiers.ctrl
+        mouseEvent.x >= consoleBounds.x &&
+        mouseEvent.x < consoleBounds.x + consoleBounds.width &&
+        mouseEvent.y >= consoleBounds.y &&
+        mouseEvent.y < consoleBounds.y + consoleBounds.height
       ) {
-        if (
-          maybeRenderable &&
+        const event = new MouseEvent(null, mouseEvent)
+        const handled = this._console.handleMouse(event)
+        if (handled) return true
+      }
+    }
+
+    if (mouseEvent.type === "scroll") {
+      const maybeRenderableId = this.hitTest(mouseEvent.x, mouseEvent.y)
+      const maybeRenderable = Renderable.renderablesByNumber.get(maybeRenderableId)
+      const fallbackTarget =
+        this._currentFocusedRenderable &&
+        !this._currentFocusedRenderable.isDestroyed &&
+        this._currentFocusedRenderable.focused
+          ? this._currentFocusedRenderable
+          : null
+      const scrollTarget = maybeRenderable ?? fallbackTarget
+
+      if (scrollTarget) {
+        const event = new MouseEvent(scrollTarget, mouseEvent)
+        scrollTarget.processMouseEvent(event)
+      }
+      return true
+    }
+
+    const maybeRenderableId = this.hitTest(mouseEvent.x, mouseEvent.y)
+    const sameElement = maybeRenderableId === this.lastOverRenderableNum
+    this.lastOverRenderableNum = maybeRenderableId
+    const maybeRenderable = Renderable.renderablesByNumber.get(maybeRenderableId)
+
+    if (
+      mouseEvent.type === "down" &&
+      mouseEvent.button === MouseButton.LEFT &&
+      !this.currentSelection?.isDragging &&
+      !mouseEvent.modifiers.ctrl
+    ) {
+      const canStartSelection = Boolean(
+        maybeRenderable &&
           maybeRenderable.selectable &&
           !maybeRenderable.isDestroyed &&
-          maybeRenderable.shouldStartSelection(mouseEvent.x, mouseEvent.y)
-        ) {
-          this.startSelection(maybeRenderable, mouseEvent.x, mouseEvent.y)
-          this.dispatchMouseEvent(maybeRenderable, mouseEvent)
-          return true
-        }
-      }
+          maybeRenderable.shouldStartSelection(mouseEvent.x, mouseEvent.y),
+      )
 
-      if (mouseEvent.type === "drag" && this.currentSelection?.isDragging) {
-        this.updateSelection(maybeRenderable, mouseEvent.x, mouseEvent.y)
-
-        if (maybeRenderable) {
-          const event = new MouseEvent(maybeRenderable, { ...mouseEvent, isDragging: true })
-          maybeRenderable.processMouseEvent(event)
-        }
-
+      if (canStartSelection && maybeRenderable) {
+        this.startSelection(maybeRenderable, mouseEvent.x, mouseEvent.y)
+        this.dispatchMouseEvent(maybeRenderable, mouseEvent)
         return true
       }
+    }
 
-      if (mouseEvent.type === "up" && this.currentSelection?.isDragging) {
-        if (maybeRenderable) {
-          const event = new MouseEvent(maybeRenderable, { ...mouseEvent, isDragging: true })
-          maybeRenderable.processMouseEvent(event)
-        }
+    if (mouseEvent.type === "drag" && this.currentSelection?.isDragging) {
+      this.updateSelection(maybeRenderable, mouseEvent.x, mouseEvent.y)
 
-        this.finishSelection()
-        return true
-      }
-
-      if (mouseEvent.type === "down" && mouseEvent.button === MouseButton.LEFT && this.currentSelection) {
-        if (mouseEvent.modifiers.ctrl) {
-          this.currentSelection.isDragging = true
-          this.updateSelection(maybeRenderable, mouseEvent.x, mouseEvent.y)
-          return true
-        }
-      }
-
-      if (!sameElement && (mouseEvent.type === "drag" || mouseEvent.type === "move")) {
-        if (this.lastOverRenderable && this.lastOverRenderable !== this.capturedRenderable) {
-          const event = new MouseEvent(this.lastOverRenderable, { ...mouseEvent, type: "out" })
-          this.lastOverRenderable.processMouseEvent(event)
-        }
-        this.lastOverRenderable = maybeRenderable
-        if (maybeRenderable) {
-          const event = new MouseEvent(maybeRenderable, {
-            ...mouseEvent,
-            type: "over",
-            source: this.capturedRenderable,
-          })
-          maybeRenderable.processMouseEvent(event)
-        }
-      }
-
-      if (this.capturedRenderable && mouseEvent.type !== "up") {
-        const event = new MouseEvent(this.capturedRenderable, mouseEvent)
-        this.capturedRenderable.processMouseEvent(event)
-        return true
-      }
-
-      if (this.capturedRenderable && mouseEvent.type === "up") {
-        const event = new MouseEvent(this.capturedRenderable, { ...mouseEvent, type: "drag-end" })
-        this.capturedRenderable.processMouseEvent(event)
-        this.capturedRenderable.processMouseEvent(new MouseEvent(this.capturedRenderable, mouseEvent))
-        if (maybeRenderable) {
-          const event = new MouseEvent(maybeRenderable, {
-            ...mouseEvent,
-            type: "drop",
-            source: this.capturedRenderable,
-          })
-          maybeRenderable.processMouseEvent(event)
-        }
-        this.lastOverRenderable = this.capturedRenderable
-        this.lastOverRenderableNum = this.capturedRenderable.num
-        this.setCapturedRenderable(undefined)
-        // Dropping the renderable needs to push another frame when the renderer is not live
-        // to update the hit grid, otherwise capturedRenderable won't be in the hit grid and will not receive mouse events
-        this.requestRender()
-      }
-
-      let event: MouseEvent | undefined
       if (maybeRenderable) {
-        if (mouseEvent.type === "drag" && mouseEvent.button === MouseButton.LEFT) {
-          this.setCapturedRenderable(maybeRenderable)
-        } else {
-          this.setCapturedRenderable(undefined)
-        }
-        event = this.dispatchMouseEvent(maybeRenderable, mouseEvent)
-      } else {
-        this.setCapturedRenderable(undefined)
-        this.lastOverRenderable = undefined
-      }
-
-      if (!event?.defaultPrevented && mouseEvent.type === "down" && this.currentSelection) {
-        this.clearSelection()
+        const event = new MouseEvent(maybeRenderable, { ...mouseEvent, isDragging: true })
+        maybeRenderable.processMouseEvent(event)
       }
 
       return true
     }
 
-    return false
+    if (mouseEvent.type === "up" && this.currentSelection?.isDragging) {
+      if (maybeRenderable) {
+        const event = new MouseEvent(maybeRenderable, { ...mouseEvent, isDragging: true })
+        maybeRenderable.processMouseEvent(event)
+      }
+
+      this.finishSelection()
+      return true
+    }
+
+    if (mouseEvent.type === "down" && mouseEvent.button === MouseButton.LEFT && this.currentSelection) {
+      if (mouseEvent.modifiers.ctrl) {
+        this.currentSelection.isDragging = true
+        this.updateSelection(maybeRenderable, mouseEvent.x, mouseEvent.y)
+        return true
+      }
+    }
+
+    if (!sameElement && (mouseEvent.type === "drag" || mouseEvent.type === "move")) {
+      if (
+        this.lastOverRenderable &&
+        this.lastOverRenderable !== this.capturedRenderable &&
+        !this.lastOverRenderable.isDestroyed
+      ) {
+        const event = new MouseEvent(this.lastOverRenderable, { ...mouseEvent, type: "out" })
+        this.lastOverRenderable.processMouseEvent(event)
+      }
+      this.lastOverRenderable = maybeRenderable
+      if (maybeRenderable) {
+        const event = new MouseEvent(maybeRenderable, {
+          ...mouseEvent,
+          type: "over",
+          source: this.capturedRenderable,
+        })
+        maybeRenderable.processMouseEvent(event)
+      }
+    }
+
+    if (this.capturedRenderable && mouseEvent.type !== "up") {
+      const event = new MouseEvent(this.capturedRenderable, mouseEvent)
+      this.capturedRenderable.processMouseEvent(event)
+      return true
+    }
+
+    if (this.capturedRenderable && mouseEvent.type === "up") {
+      const event = new MouseEvent(this.capturedRenderable, { ...mouseEvent, type: "drag-end" })
+      this.capturedRenderable.processMouseEvent(event)
+      this.capturedRenderable.processMouseEvent(new MouseEvent(this.capturedRenderable, mouseEvent))
+      if (maybeRenderable) {
+        const event = new MouseEvent(maybeRenderable, {
+          ...mouseEvent,
+          type: "drop",
+          source: this.capturedRenderable,
+        })
+        maybeRenderable.processMouseEvent(event)
+      }
+      this.lastOverRenderable = this.capturedRenderable
+      this.lastOverRenderableNum = this.capturedRenderable.num
+      this.setCapturedRenderable(undefined)
+      // Dropping the renderable needs to push another frame when the renderer is not live
+      // to update the hit grid, otherwise capturedRenderable won't be in the hit grid and will not receive mouse events
+      this.requestRender()
+    }
+
+    let event: MouseEvent | undefined
+    if (maybeRenderable) {
+      if (mouseEvent.type === "drag" && mouseEvent.button === MouseButton.LEFT) {
+        this.setCapturedRenderable(maybeRenderable)
+      } else {
+        this.setCapturedRenderable(undefined)
+      }
+      event = this.dispatchMouseEvent(maybeRenderable, mouseEvent)
+    } else {
+      this.setCapturedRenderable(undefined)
+      this.lastOverRenderable = undefined
+    }
+
+    if (!event?.defaultPrevented && mouseEvent.type === "down" && this.currentSelection) {
+      this.clearSelection()
+    }
+
+    return true
   }
 
   /**
@@ -1353,7 +1468,7 @@ export class CliRenderer extends EventEmitter implements RenderContext {
     }
 
     // Fire out on old element
-    if (lastOver) {
+    if (lastOver && !lastOver.isDestroyed) {
       const event = new MouseEvent(lastOver, { ...baseEvent, type: "out" })
       lastOver.processMouseEvent(event)
     }
@@ -1369,6 +1484,10 @@ export class CliRenderer extends EventEmitter implements RenderContext {
       })
       hitRenderable.processMouseEvent(event)
     }
+  }
+  public setMousePointer(style: MousePointerStyle): void {
+    this._currentMousePointerStyle = style
+    this.lib.setCursorStyleOptions(this.rendererPtr, { cursor: style })
   }
 
   public hitTest(x: number, y: number): number {
@@ -1454,7 +1573,7 @@ export class CliRenderer extends EventEmitter implements RenderContext {
     this.queryPixelResolution()
 
     this.setCapturedRenderable(undefined)
-    this.mouseParser.reset()
+    this.stdinParser?.resetMouseState()
 
     if (this._splitHeight > 0) {
       // TODO: Handle resizing split mode properly
@@ -1549,16 +1668,11 @@ export class CliRenderer extends EventEmitter implements RenderContext {
     lib.setCursorPosition(renderer.rendererPtr, x, y, visible)
   }
 
-  public static setCursorStyle(
-    renderer: CliRenderer,
-    style: CursorStyle,
-    blinking: boolean = false,
-    color?: RGBA,
-  ): void {
+  public static setCursorStyle(renderer: CliRenderer, options: CursorStyleOptions): void {
     const lib = resolveRenderLib()
-    lib.setCursorStyle(renderer.rendererPtr, style, blinking)
-    if (color) {
-      lib.setCursorColor(renderer.rendererPtr, color)
+    lib.setCursorStyleOptions(renderer.rendererPtr, options)
+    if (options.cursor !== undefined) {
+      renderer._currentMousePointerStyle = options.cursor
     }
   }
 
@@ -1571,10 +1685,10 @@ export class CliRenderer extends EventEmitter implements RenderContext {
     this.lib.setCursorPosition(this.rendererPtr, x, y, visible)
   }
 
-  public setCursorStyle(style: CursorStyle, blinking: boolean = false, color?: RGBA): void {
-    this.lib.setCursorStyle(this.rendererPtr, style, blinking)
-    if (color) {
-      this.lib.setCursorColor(this.rendererPtr, color)
+  public setCursorStyle(options: CursorStyleOptions): void {
+    this.lib.setCursorStyleOptions(this.rendererPtr, options)
+    if (options.cursor !== undefined) {
+      this._currentMousePointerStyle = options.cursor
     }
   }
 
@@ -1664,7 +1778,7 @@ export class CliRenderer extends EventEmitter implements RenderContext {
 
     this.disableMouse()
     this.removeExitListeners()
-    this._stdinBuffer.clear()
+    this.stdinParser?.reset()
     this.stdin.removeListener("data", this.stdinListener)
     this.lib.suspendRenderer(this.rendererPtr)
 
@@ -1710,6 +1824,15 @@ export class CliRenderer extends EventEmitter implements RenderContext {
 
   private internalPause(): void {
     this._isRunning = false
+
+    if (this.renderTimeout) {
+      clearTimeout(this.renderTimeout)
+      this.renderTimeout = null
+    }
+
+    if (!this.rendering) {
+      this.resolveIdleIfNeeded()
+    }
   }
 
   public stop(): void {
@@ -1804,18 +1927,21 @@ export class CliRenderer extends EventEmitter implements RenderContext {
       console.error("Error destroying root renderable:", e instanceof Error ? e.stack : String(e))
     }
 
-    this._stdinBuffer.destroy()
+    // Remove listener before destroying parser
+    this.stdin.removeListener("data", this.stdinListener)
+    if (this.stdin.setRawMode) {
+      this.stdin.setRawMode(false)
+    }
+
+    this.stdinParser?.destroy()
+    this.stdinParser = null
+    this.oscSubscribers.clear()
     this._console.destroy()
     this.disableStdoutInterception()
 
     if (this._splitHeight > 0) {
       this.flushStdoutCache(this._splitHeight, true)
     }
-
-    if (this.stdin.setRawMode) {
-      this.stdin.setRawMode(false)
-    }
-    this.stdin.removeListener("data", this.stdinListener)
 
     this.lib.destroyRenderer(this.rendererPtr)
     rendererTracker.removeRenderer(this)
@@ -2046,6 +2172,7 @@ export class CliRenderer extends EventEmitter implements RenderContext {
     this.selectionContainers.push(renderable.parent || this.root)
     this.currentSelection = new Selection(renderable, { x, y }, { x, y })
     this.currentSelection.isStart = true
+
     this.notifySelectablesOfSelectionChange()
   }
 
@@ -2111,7 +2238,6 @@ export class CliRenderer extends EventEmitter implements RenderContext {
     if (this.currentSelection) {
       this.currentSelection.isDragging = false
       this.emit("selection", this.currentSelection)
-      // Notify renderables that selection is finished (no longer dragging)
       this.notifySelectablesOfSelectionChange()
     }
   }
@@ -2208,7 +2334,9 @@ export class CliRenderer extends EventEmitter implements RenderContext {
       const isLegacyTmux =
         this.capabilities?.terminal?.name?.toLowerCase()?.includes("tmux") &&
         this.capabilities?.terminal?.version?.localeCompare("3.6") < 0
-      this._paletteDetector = createTerminalPalette(this.stdin, this.stdout, this.writeOut.bind(this), isLegacyTmux)
+      this._paletteDetector = createTerminalPalette(this.stdin, this.stdout, this.writeOut.bind(this), isLegacyTmux, {
+        subscribeOsc: this.subscribeOsc.bind(this),
+      })
     }
 
     this._paletteDetectionPromise = this._paletteDetector.detect(options).then((result) => {

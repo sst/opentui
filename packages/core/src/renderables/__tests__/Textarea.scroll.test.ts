@@ -620,7 +620,7 @@ describe("Textarea - Scroll Tests", () => {
       await renderOnce()
 
       const viewportWide = editor.editorView.getViewport()
-      const totalLineWidthWide = editor.lineInfo.maxLineWidth
+      const totalLineWidthWide = editor.lineInfo.lineWidthColsMax
       const maxOffsetXWide = Math.max(0, totalLineWidthWide - viewportWide.width)
 
       expect(viewportWide.offsetX).toBeLessThanOrEqual(maxOffsetXWide)

@@ -253,4 +253,39 @@ describe("OptimizedBuffer", () => {
       expect(bgBuffer[3]).toBeLessThan(1.0)
     })
   })
+
+  describe("grapheme pool churn across drawFrameBuffer", () => {
+    it("should not crash with WrongGeneration after many grapheme alloc cycles", () => {
+      const parent = OptimizedBuffer.create(40, 5, "unicode", { id: "parent" })
+      const child = OptimizedBuffer.create(40, 5, "unicode", { id: "child", respectAlpha: true })
+
+      const fg = RGBA.fromValues(1, 1, 1, 1)
+      const bg = RGBA.fromValues(0, 0, 0, 1)
+
+      for (let cycle = 0; cycle < 50; cycle++) {
+        parent.clear(bg)
+
+        if (cycle % 2 === 0) {
+          child.drawText("╭────────────────────────────────────╮", 0, 0, fg, bg)
+          child.drawText("│ ◇ Select Files ▫ src/ ▪ file.ts   │", 0, 1, fg, bg)
+          child.drawText("│ ↑↓ navigate  ⏎ select  esc close  │", 0, 2, fg, bg)
+          child.drawText("╰────────────────────────────────────╯", 0, 3, fg, bg)
+        } else {
+          child.drawText("  Your Name                              ", 0, 0, fg, bg)
+          child.drawText("  John Doe                               ", 0, 1, fg, bg)
+          child.drawText("                                         ", 0, 2, fg, bg)
+          child.drawText("  Select Files                           ", 0, 3, fg, bg)
+        }
+
+        parent.drawFrameBuffer(0, 0, child)
+
+        const frameBytes = parent.getRealCharBytes(true)
+        const text = new TextDecoder().decode(frameBytes)
+        expect(text.length).toBeGreaterThan(0)
+      }
+
+      child.destroy()
+      parent.destroy()
+    })
+  })
 })

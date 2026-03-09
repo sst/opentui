@@ -6,9 +6,7 @@
     <a href="https://github.com/msmps/awesome-opentui"><img alt="awesome opentui list" src="https://awesome.re/badge-flat.svg" /></a>
 </div>
 
-OpenTUI is a TypeScript library for building terminal user interfaces (TUIs). It is currently in
-development and is not ready for production use. It will be the foundational TUI framework for both
-[OpenCode](https://opencode.ai) and [terminaldotshop](https://terminal.shop).
+OpenTUI is a native terminal UI core written in Zig with TypeScript bindings. The native core exposes a C ABI and can be used from any language. OpenTUI powers [OpenCode](https://opencode.ai) in production today and will also power [terminal.shop](https://terminal.shop). It is an extensible core with a focus on correctness, stability, and high performance. It provides a component-based architecture with flexible layout capabilities, allowing you to create complex terminal applications.
 
 Docs: https://opentui.com/docs/getting-started
 
@@ -20,7 +18,7 @@ bun create tui
 
 This monorepo contains the following packages:
 
-- [`@opentui/core`](packages/core) - The core library works completely standalone, providing an imperative API and all the primitives.
+- [`@opentui/core`](packages/core) - TypeScript bindings for OpenTUI's native Zig core, with an imperative API and all primitives.
 - [`@opentui/solid`](packages/solid) - The SolidJS reconciler for OpenTUI.
 - [`@opentui/react`](packages/react) - The React reconciler for OpenTUI.
 

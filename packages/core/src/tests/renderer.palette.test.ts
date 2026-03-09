@@ -495,7 +495,7 @@ describe("Palette detector cleanup", () => {
     }).not.toThrow()
   })
 
-  test("cleanup removes all palette detector listeners from stdin", async () => {
+  test("palette detection uses router OSC source without extra stdin listeners", async () => {
     const { mockStdin, mockStdout } = createMockStreams()
 
     const { renderer } = await createTestRenderer({
@@ -503,22 +503,18 @@ describe("Palette detector cleanup", () => {
       stdout: mockStdout,
     })
 
-    const initialListenerCount = mockStdin.listenerCount("data")
-
+    const baselineListenerCount = mockStdin.listenerCount("data")
     const palettePromise = renderer.getPalette({ timeout: 300 })
 
     const duringDetectionCount = mockStdin.listenerCount("data")
-    expect(duringDetectionCount).toBe(initialListenerCount + 1)
+    expect(duringDetectionCount).toBe(baselineListenerCount)
 
     await palettePromise
 
     const afterDetectionCount = mockStdin.listenerCount("data")
-    expect(afterDetectionCount).toBe(initialListenerCount)
+    expect(afterDetectionCount).toBe(baselineListenerCount)
 
     renderer.destroy()
-
-    const afterDestroyCount = mockStdin.listenerCount("data")
-    expect(afterDestroyCount).toBe(0)
   })
 })
 

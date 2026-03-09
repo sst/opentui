@@ -151,7 +151,23 @@ export const parseKeypress = (s: Buffer | string = "", options: ParseKeypressOpt
   }
 
   // Filter out mouse events (SGR and basic)
+  // Complete SGR mouse: ESC[<btn;x;yM or ESC[<btn;x;ym
   if (/^\x1b\[<\d+;\d+;\d+[Mm]$/.test(s)) {
+    return null
+  }
+  // Complete SGR mouse continuation without leading ESC. This can occur when
+  // ESC was flushed separately on timeout and the rest of the sequence arrived later.
+  if (/^\[<\d+;\d+;\d+[Mm]$/.test(s)) {
+    return null
+  }
+  // Incomplete/partial SGR mouse sequences (flushed by the zig parser when
+  // a new ESC arrives before the sequence is complete). These start with
+  // ESC[< followed by digits/semicolons but lack the terminal M/m.
+  if (/^\x1b\[<[\d;]*$/.test(s)) {
+    return null
+  }
+  // Incomplete/partial SGR mouse continuations without ESC.
+  if (/^\[<[\d;]*$/.test(s)) {
     return null
   }
   if (s.startsWith("\x1b[M") && s.length >= 6) {
@@ -303,8 +319,8 @@ export const parseKeypress = (s: Buffer | string = "", options: ParseKeypressOpt
     // shift+letter
     key.name = s.toLowerCase()
     key.shift = true
-  } else if (s.length === 1) {
-    // Special characters (like $, ^, etc.) - preserve the character
+  } else if (s.length === 1 || (s.length === 2 && s.codePointAt(0)! > 0xffff)) {
+    // Single character (including emoji/surrogate pairs above BMP)
     key.name = s
   } else if ((parts = metaKeyCodeRe.exec(s))) {
     // meta+character key
@@ -346,10 +362,10 @@ export const parseKeypress = (s: Buffer | string = "", options: ParseKeypressOpt
     // Parse the key modifier
     // Terminal modifier bits: 1=Shift, 2=Alt/Option, 4=Ctrl, 8=Super, 16=Hyper
     // Note: meta flag is set for Alt/Option (bit 2)
-    key.ctrl = !!(modifier & 4)
-    key.meta = !!(modifier & 2) // Alt/Option sets meta
-    key.shift = !!(modifier & 1)
-    key.option = !!(modifier & 2) // Alt/Option modifier specifically
+    key.ctrl = key.ctrl || !!(modifier & 4)
+    key.meta = key.meta || !!(modifier & 2)
+    key.shift = key.shift || !!(modifier & 1)
+    key.option = key.option || !!(modifier & 2)
     key.super = !!(modifier & 8)
     key.hyper = !!(modifier & 16)
     key.code = code

@@ -1,8 +1,9 @@
-import { mkdir, writeFile } from "fs/promises"
+import { mkdir, readFile, writeFile } from "fs/promises"
 import * as path from "path"
+import { env } from "../env"
 
 export interface DownloadResult {
-  content?: ArrayBuffer
+  content?: Buffer
   filePath?: string
   error?: string
 }
@@ -45,8 +46,9 @@ export class DownloadUtils {
       await mkdir(path.dirname(cacheFile), { recursive: true })
 
       try {
-        const cachedContent = await Bun.file(cacheFile).arrayBuffer()
+        const cachedContent = await readFile(cacheFile)
         if (cachedContent.byteLength > 0) {
+          if (env.OTUI_DEBUG) console.log(`Loaded from cache: ${cacheFile} (${source})`)
           return { content: cachedContent, filePath: cacheFile }
         }
       } catch (error) {
@@ -54,14 +56,16 @@ export class DownloadUtils {
       }
 
       try {
+        if (env.OTUI_DEBUG) console.log(`Downloading from URL: ${source}`)
         const response = await fetch(source)
         if (!response.ok) {
           return { error: `Failed to fetch from ${source}: ${response.statusText}` }
         }
-        const content = await response.arrayBuffer()
+        const content = Buffer.from(await response.arrayBuffer())
 
         try {
           await writeFile(cacheFile, Buffer.from(content))
+          if (env.OTUI_DEBUG) console.log(`Cached: ${source}`)
         } catch (cacheError) {
           console.warn(`Failed to cache: ${cacheError}`)
         }
@@ -72,7 +76,8 @@ export class DownloadUtils {
       }
     } else {
       try {
-        const content = await Bun.file(source).arrayBuffer()
+        if (env.OTUI_DEBUG) console.log(`Loading from local path: ${source}`)
+        const content = await readFile(source)
         return { content, filePath: source }
       } catch (error) {
         return { error: `Error loading from local path ${source}: ${error}` }
@@ -90,13 +95,15 @@ export class DownloadUtils {
 
     if (isUrl) {
       try {
+        if (env.OTUI_DEBUG) console.log(`Downloading from URL: ${source}`)
         const response = await fetch(source)
         if (!response.ok) {
           return { error: `Failed to fetch from ${source}: ${response.statusText}` }
         }
-        const content = await response.arrayBuffer()
+        const content = Buffer.from(await response.arrayBuffer())
 
         await writeFile(targetPath, Buffer.from(content))
+        if (env.OTUI_DEBUG) console.log(`Downloaded: ${source} -> ${targetPath}`)
 
         return { content, filePath: targetPath }
       } catch (error) {
@@ -104,7 +111,8 @@ export class DownloadUtils {
       }
     } else {
       try {
-        const content = await Bun.file(source).arrayBuffer()
+        if (env.OTUI_DEBUG) console.log(`Copying from local path: ${source}`)
+        const content = await readFile(source)
         await writeFile(targetPath, Buffer.from(content))
         return { content, filePath: targetPath }
       } catch (error) {

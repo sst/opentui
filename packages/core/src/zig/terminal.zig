@@ -41,6 +41,20 @@ pub const CursorStyle = enum {
     block,
     line,
     underline,
+    default,
+};
+
+pub const MousePointerStyle = enum(u8) {
+    default = 0,
+    pointer = 1,
+    text = 2,
+    crosshair = 3,
+    move = 4,
+    not_allowed = 5,
+
+    pub fn toName(self: MousePointerStyle) []const u8 {
+        return if (self == .not_allowed) "not-allowed" else @tagName(self);
+    }
 };
 
 pub const ClipboardTarget = enum {
@@ -85,6 +99,7 @@ pub const TerminalInfo = struct {
 
 caps: Capabilities = .{},
 opts: Options = .{},
+host_env_map: ?std.process.EnvMap = null,
 
 in_tmux: bool = false,
 skip_graphics_query: bool = false,
@@ -98,17 +113,19 @@ state: struct {
     kitty_keyboard_flags: u8 = 0,
     bracketed_paste: bool = false,
     mouse: bool = false,
+    mouse_movement: bool = true,
     pixel_mouse: bool = false,
     color_scheme_updates: bool = false,
     focus_tracking: bool = false,
     modify_other_keys: bool = false,
+    mouse_pointer: MousePointerStyle = .default,
     cursor: struct {
         row: u16 = 0,
         col: u16 = 0,
         x: u32 = 1, // 1-based for rendering
         y: u32 = 1, // 1-based for rendering
         visible: bool = true,
-        style: CursorStyle = .block,
+        style: CursorStyle = .default,
         blinking: bool = false,
         color: [4]f32 = .{ 1.0, 1.0, 1.0, 1.0 }, // RGBA
     } = .{},
@@ -125,9 +142,30 @@ pub fn init(opts: Options) Terminal {
     return term;
 }
 
+pub fn deinit(self: *Terminal) void {
+    if (self.host_env_map) |*env_map| {
+        env_map.deinit();
+        self.host_env_map = null;
+    }
+    self.opts.env_map = null;
+}
+
+pub fn setHostEnvVar(self: *Terminal, allocator: std.mem.Allocator, key: []const u8, value: []const u8) !void {
+    if (self.host_env_map == null) {
+        self.host_env_map = std.process.EnvMap.init(allocator);
+    }
+
+    const env_map = &self.host_env_map.?;
+    try env_map.put(key, value);
+    self.opts.env_map = env_map;
+    self.checkEnvironmentOverrides();
+}
+
 pub fn resetState(self: *Terminal, tty: anytype) !void {
     try tty.writeAll(ansi.ANSI.showCursor);
     try tty.writeAll(ansi.ANSI.reset);
+    try tty.writeAll(ansi.ANSI.resetMousePointer);
+    self.state.mouse_pointer = .default;
 
     if (self.state.kitty_keyboard) {
         try self.setKittyKeyboard(tty, false, 0);
@@ -138,7 +176,7 @@ pub fn resetState(self: *Terminal, tty: anytype) !void {
     }
 
     if (self.state.mouse) {
-        try self.setMouseMode(tty, false);
+        try self.setMouseMode(tty, false, self.state.mouse_movement);
     }
 
     if (self.state.bracketed_paste) {
@@ -295,7 +333,10 @@ fn checkEnvironmentOverrides(self: *Terminal) void {
 
     var env_map_storage: ?std.process.EnvMap = null;
     const env_map: *const std.process.EnvMap = self.opts.env_map orelse blk: {
-        env_map_storage = std.process.getEnvMap(std.heap.page_allocator) catch return;
+        env_map_storage = std.process.getEnvMap(std.heap.page_allocator) catch |err| {
+            logger.err("Failed to get environment map: {}", .{err});
+            return;
+        };
         break :blk &env_map_storage.?;
     };
     defer if (env_map_storage) |*map| map.deinit();
@@ -321,8 +362,12 @@ fn checkEnvironmentOverrides(self: *Terminal) void {
         }
     }
 
-    if (env_map.get("OPENTUI_NO_GRAPHICS")) |_| {
-        self.skip_graphics_query = true;
+    if (env_map.get("OPENTUI_GRAPHICS")) |val| {
+        if (std.mem.eql(u8, val, "false") or std.mem.eql(u8, val, "0")) {
+            self.skip_graphics_query = true;
+        } else if (std.mem.eql(u8, val, "true") or std.mem.eql(u8, val, "1")) {
+            self.skip_graphics_query = false;
+        }
     }
 
     if (!self.term_info.from_xtversion) {
@@ -442,14 +487,27 @@ fn checkEnvironmentOverrides(self: *Terminal) void {
 
 // TODO: Allow pixel mouse mode to be enabled,
 // currently does not make sense and is not supported by higher levels
-pub fn setMouseMode(self: *Terminal, tty: anytype, enable: bool) !void {
-    if (self.state.mouse == enable) return;
+pub fn setMouseMode(self: *Terminal, tty: anytype, enable: bool, enable_movement: bool) !void {
+    if (enable) {
+        if (self.state.mouse and self.state.mouse_movement == enable_movement) return;
+    } else if (!self.state.mouse) {
+        return;
+    }
 
     if (enable) {
         self.state.mouse = true;
+        self.state.mouse_movement = enable_movement;
+        if (!enable_movement) {
+            // Some terminals treat ?1000/?1002/?1003 as one family and let the
+            // last sequence win. Reset any-event tracking first, then enable
+            // click/drag modes so they remain active.
+            try tty.writeAll(ansi.ANSI.disableAnyEventTracking);
+        }
         try tty.writeAll(ansi.ANSI.enableMouseTracking);
         try tty.writeAll(ansi.ANSI.enableButtonEventTracking);
-        try tty.writeAll(ansi.ANSI.enableAnyEventTracking);
+        if (enable_movement) {
+            try tty.writeAll(ansi.ANSI.enableAnyEventTracking);
+        }
         try tty.writeAll(ansi.ANSI.enableSGRMouseMode);
     } else {
         self.state.mouse = false;
@@ -527,9 +585,14 @@ pub fn setColorSchemeUpdates(self: *Terminal, tty: anytype, enable: bool) !void 
 pub fn restoreTerminalModes(self: *Terminal, tty: anytype) !void {
     // Re-enable mouse tracking modes if active
     if (self.state.mouse) {
+        if (!self.state.mouse_movement) {
+            try tty.writeAll(ansi.ANSI.disableAnyEventTracking);
+        }
         try tty.writeAll(ansi.ANSI.enableMouseTracking);
         try tty.writeAll(ansi.ANSI.enableButtonEventTracking);
-        try tty.writeAll(ansi.ANSI.enableAnyEventTracking);
+        if (self.state.mouse_movement) {
+            try tty.writeAll(ansi.ANSI.enableAnyEventTracking);
+        }
         try tty.writeAll(ansi.ANSI.enableSGRMouseMode);
     }
 
@@ -717,6 +780,14 @@ pub fn getCapabilities(self: *Terminal) Capabilities {
     return self.caps;
 }
 
+pub fn setMousePointerStyle(self: *Terminal, style: MousePointerStyle) void {
+    self.state.mouse_pointer = style;
+}
+
+pub fn getMousePointer(self: *Terminal) MousePointerStyle {
+    return self.state.mouse_pointer;
+}
+
 pub fn setCursorPosition(self: *Terminal, x: u32, y: u32, visible: bool) void {
     self.state.cursor.x = @max(1, x);
     self.state.cursor.y = @max(1, y);
@@ -812,7 +883,10 @@ pub fn writeClipboard(self: *Terminal, tty: anytype, target: ClipboardTarget, pa
     } else {
         var env_map_storage: ?std.process.EnvMap = null;
         const env_map: *const std.process.EnvMap = self.opts.env_map orelse blk: {
-            env_map_storage = std.process.getEnvMap(std.heap.page_allocator) catch return;
+            env_map_storage = std.process.getEnvMap(std.heap.page_allocator) catch |err| {
+                logger.err("Failed to get environment map: {}", .{err});
+                return;
+            };
             break :blk &env_map_storage.?;
         };
         defer if (env_map_storage) |*map| map.deinit();

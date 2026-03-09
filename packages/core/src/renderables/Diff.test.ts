@@ -2,7 +2,7 @@ import { test, expect, beforeEach, afterEach } from "bun:test"
 import { DiffRenderable } from "./Diff"
 import { SyntaxStyle } from "../syntax-style"
 import { RGBA } from "../lib/RGBA"
-import { createTestRenderer, type TestRenderer } from "../testing"
+import { createMockMouse, createTestRenderer, type TestRenderer } from "../testing"
 import type { SimpleHighlight } from "../lib/tree-sitter/types"
 
 let currentRenderer: TestRenderer
@@ -2292,6 +2292,87 @@ test("DiffRenderable - target remains functional after multiple updates", async 
   rightCodeRenderable.off("line-info-change", rightListener)
 })
 
+test("DiffRenderable - split view scroll is not synchronized by default", async () => {
+  const mockMouse = createMockMouse(currentRenderer)
+  const syntaxStyle = SyntaxStyle.fromStyles({
+    default: { fg: RGBA.fromValues(1, 1, 1, 1) },
+  })
+
+  const diffRenderable = new DiffRenderable(currentRenderer, {
+    id: "test-diff",
+    diff: multiLineDiff,
+    view: "split",
+    syntaxStyle,
+    showLineNumbers: true,
+    width: "100%",
+    height: 4,
+  })
+
+  currentRenderer.root.add(diffRenderable)
+  await renderOnce()
+
+  const leftCodeRenderable = (diffRenderable as any).leftCodeRenderable
+  const rightCodeRenderable = (diffRenderable as any).rightCodeRenderable
+
+  expect(leftCodeRenderable).toBeTruthy()
+  expect(rightCodeRenderable).toBeTruthy()
+
+  // Scroll over left pane
+  mockMouse.scroll(leftCodeRenderable.x, leftCodeRenderable.y + 1, "down")
+  await renderOnce()
+
+  expect(leftCodeRenderable.scrollY).toBe(1)
+  expect(rightCodeRenderable.scrollY).toBe(0)
+
+  // Scroll over right pane
+  mockMouse.scroll(rightCodeRenderable.x + 1, rightCodeRenderable.y + 1, "down")
+  await renderOnce()
+
+  expect(rightCodeRenderable.scrollY).toBe(1)
+  expect(leftCodeRenderable.scrollY).toBe(1)
+})
+
+test("DiffRenderable - split view wheel scroll keeps panes synchronized", async () => {
+  const mockMouse = createMockMouse(currentRenderer)
+  const syntaxStyle = SyntaxStyle.fromStyles({
+    default: { fg: RGBA.fromValues(1, 1, 1, 1) },
+  })
+
+  const diffRenderable = new DiffRenderable(currentRenderer, {
+    id: "test-diff",
+    diff: multiLineDiff,
+    syncScroll: true,
+    view: "split",
+    syntaxStyle,
+    showLineNumbers: true,
+    width: "100%",
+    height: 4,
+  })
+
+  currentRenderer.root.add(diffRenderable)
+  await renderOnce()
+
+  const leftCodeRenderable = (diffRenderable as any).leftCodeRenderable
+  const rightCodeRenderable = (diffRenderable as any).rightCodeRenderable
+
+  expect(leftCodeRenderable).toBeTruthy()
+  expect(rightCodeRenderable).toBeTruthy()
+
+  // Scroll over left pane
+  await mockMouse.scroll(leftCodeRenderable.x + 1, leftCodeRenderable.y + 1, "down")
+  await renderOnce()
+
+  expect(leftCodeRenderable.scrollY).toBeGreaterThan(0)
+  expect(leftCodeRenderable.scrollY).toBe(rightCodeRenderable.scrollY)
+
+  // Scroll over right pane
+  await mockMouse.scroll(rightCodeRenderable.x + 1, rightCodeRenderable.y + 1, "down")
+  await renderOnce()
+
+  expect(rightCodeRenderable.scrollY).toBeGreaterThan(0)
+  expect(leftCodeRenderable.scrollY).toBe(rightCodeRenderable.scrollY)
+})
+
 test("DiffRenderable - gutter remains in correct position after updates", async () => {
   const syntaxStyle = SyntaxStyle.fromStyles({
     default: { fg: RGBA.fromValues(1, 1, 1, 1) },
@@ -2883,4 +2964,77 @@ test("DiffRenderable - split view with word wrapping: changing diff content shou
   // But due to the bug, the buggy frame has misaligned left/right sides because
   // the lineInfo from CodeRenderable is STALE after changing diff content
   expect(buggyFrame).toBe(correctFrame)
+})
+
+test("DiffRenderable - setLineColor applies color to line", async () => {
+  const syntaxStyle = SyntaxStyle.fromStyles({
+    default: { fg: RGBA.fromValues(1, 1, 1, 1) },
+  })
+
+  const diffRenderable = new DiffRenderable(currentRenderer, {
+    id: "test-diff",
+    diff: simpleDiff,
+    view: "unified",
+    syntaxStyle,
+  })
+
+  diffRenderable.setLineColor(0, "#ff0000")
+  diffRenderable.setLineColor(1, { gutter: "#00ff00", content: "#0000ff" })
+  diffRenderable.clearLineColor(0)
+  diffRenderable.clearLineColor(1)
+})
+
+test("DiffRenderable - highlightLines applies color to range", async () => {
+  const syntaxStyle = SyntaxStyle.fromStyles({
+    default: { fg: RGBA.fromValues(1, 1, 1, 1) },
+  })
+
+  const diffRenderable = new DiffRenderable(currentRenderer, {
+    id: "test-diff",
+    diff: multiLineDiff,
+    view: "unified",
+    syntaxStyle,
+  })
+
+  diffRenderable.highlightLines(0, 3, "#ff0000")
+  diffRenderable.clearHighlightLines(0, 3)
+})
+
+test("DiffRenderable - setLineColors and clearAllLineColors", async () => {
+  const syntaxStyle = SyntaxStyle.fromStyles({
+    default: { fg: RGBA.fromValues(1, 1, 1, 1) },
+  })
+
+  const diffRenderable = new DiffRenderable(currentRenderer, {
+    id: "test-diff",
+    diff: simpleDiff,
+    view: "unified",
+    syntaxStyle,
+  })
+
+  const lineColors = new Map<number, string>()
+  lineColors.set(0, "#ff0000")
+  lineColors.set(1, "#00ff00")
+  lineColors.set(2, "#0000ff")
+
+  diffRenderable.setLineColors(lineColors)
+  diffRenderable.clearAllLineColors()
+})
+
+test("DiffRenderable - line highlighting works in split view", async () => {
+  const syntaxStyle = SyntaxStyle.fromStyles({
+    default: { fg: RGBA.fromValues(1, 1, 1, 1) },
+  })
+
+  const diffRenderable = new DiffRenderable(currentRenderer, {
+    id: "test-diff",
+    diff: simpleDiff,
+    view: "split",
+    syntaxStyle,
+  })
+
+  diffRenderable.setLineColor(0, "#ff0000")
+  diffRenderable.highlightLines(0, 2, "#00ff00")
+  diffRenderable.clearHighlightLines(0, 2)
+  diffRenderable.clearAllLineColors()
 })

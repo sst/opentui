@@ -6,10 +6,12 @@ import {
   type TabSelectOption,
 } from "./TabSelect"
 import { createTestRenderer, type MockInput, type TestRenderer } from "../testing/test-renderer"
+import { ManualClock } from "../testing/manual-clock"
 
 let currentRenderer: TestRenderer
 let currentMockInput: MockInput
 let renderOnce: () => Promise<void>
+let currentClock: ManualClock
 
 const sampleOptions: TabSelectOption[] = [
   { name: "Tab 1", description: "First tab" },
@@ -31,7 +33,14 @@ async function createTabSelectRenderable(
 }
 
 beforeEach(async () => {
-  ;({ renderer: currentRenderer, mockInput: currentMockInput, renderOnce } = await createTestRenderer({}))
+  currentClock = new ManualClock()
+  ;({
+    renderer: currentRenderer,
+    mockInput: currentMockInput,
+    renderOnce,
+  } = await createTestRenderer({
+    stdinParserClock: currentClock,
+  }))
 })
 
 afterEach(() => {
@@ -114,8 +123,8 @@ describe("TabSelectRenderable", () => {
       tabSelect.focus()
       expect(tabSelect.getSelectedIndex()).toBe(0)
 
-      // [ should now move right instead of left
       currentMockInput.pressKey("[")
+      currentClock.advance(10)
       expect(tabSelect.getSelectedIndex()).toBe(1)
     })
 

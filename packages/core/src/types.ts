@@ -30,11 +30,15 @@ export function getBaseAttributes(attr: number): number {
 
 export type ThemeMode = "dark" | "light"
 
-export type CursorStyle = "block" | "line" | "underline"
+export type CursorStyle = "block" | "line" | "underline" | "default"
+
+export type MousePointerStyle = "default" | "pointer" | "text" | "crosshair" | "move" | "not-allowed"
 
 export interface CursorStyleOptions {
-  style: CursorStyle
-  blinking: boolean
+  style?: CursorStyle
+  blinking?: boolean
+  color?: RGBA
+  cursor?: MousePointerStyle
 }
 
 export enum DebugOverlayCorner {
@@ -64,8 +68,9 @@ export interface RenderContext extends EventEmitter {
   height: number
   requestRender: () => void
   setCursorPosition: (x: number, y: number, visible: boolean) => void
-  setCursorStyle: (style: CursorStyle, blinking: boolean) => void
+  setCursorStyle: (options: CursorStyleOptions) => void
   setCursorColor: (color: RGBA) => void
+  setMousePointer: (shape: MousePointerStyle) => void
   widthMethod: WidthMethod
   capabilities: any | null
   requestLive: () => void
@@ -108,10 +113,15 @@ export interface Highlight {
 }
 
 export interface LineInfo {
-  lineStarts: number[]
-  lineWidths: number[]
-  maxLineWidth: number
+  /** Display-column offset for each visual line start. */
+  lineStartCols: number[]
+  /** Display-column width for each visual line. */
+  lineWidthCols: number[]
+  /** Maximum display-column width across the reported lines. */
+  lineWidthColsMax: number
+  /** Source logical line index for each visual line. */
   lineSources: number[]
+  /** Wrap index within each source logical line. */
   lineWraps: number[]
 }
 
