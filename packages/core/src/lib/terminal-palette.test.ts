@@ -2,6 +2,7 @@ import { test, expect } from "bun:test"
 import { TerminalPalette } from "./terminal-palette"
 import { EventEmitter } from "events"
 import { Buffer } from "node:buffer"
+import { ManualClock } from "../testing/manual-clock"
 
 class MockStream extends EventEmitter {
   isTTY = true
@@ -14,15 +15,64 @@ class MockStream extends EventEmitter {
   }
 }
 
-test("TerminalPalette detectOSCSupport returns true on response", async () => {
+function createPaletteHarness(
+  options: {
+    writeFn?: (data: string | Buffer) => boolean
+    oscSource?: {
+      subscribeOsc(handler: (sequence: string) => void): () => void
+    }
+  } = {},
+) {
   const stdin = new MockStream() as any
   const stdout = new MockStream() as any
+  const clock = new ManualClock()
+  const palette = new TerminalPalette(stdin, stdout, options.writeFn, false, options.oscSource, clock)
 
-  const palette = new TerminalPalette(stdin, stdout)
+  return { stdin, stdout, clock, palette }
+}
+
+async function flushAsync(): Promise<void> {
+  await Promise.resolve()
+  await Promise.resolve()
+}
+
+async function startPaletteDetection(
+  options: {
+    timeout?: number
+    size?: number
+    writeFn?: (data: string | Buffer) => boolean
+  } = {},
+) {
+  const timeout = options.timeout ?? 2000
+  const harness = createPaletteHarness({ writeFn: options.writeFn })
+  const detectPromise = harness.palette.detect({
+    timeout,
+    size: options.size ?? 256,
+  })
+
+  harness.stdin.emit("data", Buffer.from("\x1b]4;0;#000000\x07"))
+  await flushAsync()
+
+  return { ...harness, detectPromise, timeout }
+}
+
+async function advanceClock(clock: ManualClock, ms: number): Promise<void> {
+  await flushAsync()
+  // Flush queued 0ms mock terminal responses before advancing the real timeout window.
+  clock.advance(0)
+  await flushAsync()
+  clock.advance(ms)
+  await flushAsync()
+}
+
+test("TerminalPalette detectOSCSupport returns true on response", async () => {
+  const { stdin, clock, palette } = createPaletteHarness()
 
   const detectPromise = palette.detectOSCSupport(500)
 
   stdin.emit("data", Buffer.from("\x1b]4;0;#ff0000\x07"))
+
+  await advanceClock(clock, 500)
 
   const result = await detectPromise
 
@@ -30,34 +80,30 @@ test("TerminalPalette detectOSCSupport returns true on response", async () => {
 })
 
 test("TerminalPalette detectOSCSupport returns false on timeout", async () => {
-  const stdin = new MockStream() as any
-  const stdout = new MockStream() as any
+  const { clock, palette } = createPaletteHarness()
 
-  const palette = new TerminalPalette(stdin, stdout)
+  const detectPromise = palette.detectOSCSupport(100)
 
-  const result = await palette.detectOSCSupport(100)
+  await advanceClock(clock, 300)
+
+  const result = await detectPromise
 
   expect(result).toBe(false)
 })
 
 test("TerminalPalette parses OSC 4 hex format correctly", async () => {
-  const stdin = new MockStream() as any
-  const stdout = new MockStream() as any
+  const { stdin, clock, detectPromise, timeout } = await startPaletteDetection()
 
-  const palette = new TerminalPalette(stdin, stdout)
-
-  const detectPromise = palette.detect({ timeout: 2000, size: 256 })
-
-  stdin.emit("data", Buffer.from("\x1b]4;0;#000000\x07"))
-
-  setTimeout(() => {
+  clock.setTimeout(() => {
     for (let i = 0; i < 256; i++) {
       const color = i === 0 ? "#ff00aa" : i === 1 ? "#00ff00" : i === 2 ? "#0000ff" : "#000000"
       stdin.emit("data", Buffer.from(`\x1b]4;${i};${color}\x07`))
     }
     stdin.emit("data", Buffer.from("\x1b]10;#aabbcc\x07"))
     stdin.emit("data", Buffer.from("\x1b]11;#ddeeff\x07"))
-  }, 400)
+  }, 0)
+
+  await advanceClock(clock, timeout)
 
   const result = await detectPromise
 
@@ -69,21 +115,16 @@ test("TerminalPalette parses OSC 4 hex format correctly", async () => {
 })
 
 test("TerminalPalette parses OSC 4 rgb format with 4 hex digits", async () => {
-  const stdin = new MockStream() as any
-  const stdout = new MockStream() as any
+  const { stdin, clock, detectPromise, timeout } = await startPaletteDetection()
 
-  const palette = new TerminalPalette(stdin, stdout)
-
-  const detectPromise = palette.detect({ timeout: 2000, size: 256 })
-
-  stdin.emit("data", Buffer.from("\x1b]4;0;#000000\x07"))
-
-  setTimeout(() => {
+  clock.setTimeout(() => {
     stdin.emit("data", Buffer.from("\x1b]4;0;rgb:ffff/0000/aaaa\x07"))
     for (let i = 1; i < 256; i++) {
       stdin.emit("data", Buffer.from(`\x1b]4;${i};#000000\x07`))
     }
-  }, 400)
+  }, 0)
+
+  await advanceClock(clock, timeout)
 
   const result = await detectPromise
 
@@ -92,21 +133,16 @@ test("TerminalPalette parses OSC 4 rgb format with 4 hex digits", async () => {
 })
 
 test("TerminalPalette parses OSC 4 rgb format with 2 hex digits", async () => {
-  const stdin = new MockStream() as any
-  const stdout = new MockStream() as any
+  const { stdin, clock, detectPromise, timeout } = await startPaletteDetection()
 
-  const palette = new TerminalPalette(stdin, stdout)
-
-  const detectPromise = palette.detect({ timeout: 2000, size: 256 })
-
-  stdin.emit("data", Buffer.from("\x1b]4;0;#000000\x07"))
-
-  setTimeout(() => {
+  clock.setTimeout(() => {
     stdin.emit("data", Buffer.from("\x1b]4;0;rgb:ff/00/aa\x07"))
     for (let i = 1; i < 256; i++) {
       stdin.emit("data", Buffer.from(`\x1b]4;${i};#000000\x07`))
     }
-  }, 400)
+  }, 0)
+
+  await advanceClock(clock, timeout)
 
   const result = await detectPromise
 
@@ -115,16 +151,9 @@ test("TerminalPalette parses OSC 4 rgb format with 2 hex digits", async () => {
 })
 
 test("TerminalPalette handles multiple color responses in single buffer", async () => {
-  const stdin = new MockStream() as any
-  const stdout = new MockStream() as any
+  const { stdin, clock, detectPromise, timeout } = await startPaletteDetection()
 
-  const palette = new TerminalPalette(stdin, stdout)
-
-  const detectPromise = palette.detect({ timeout: 2000, size: 256 })
-
-  stdin.emit("data", Buffer.from("\x1b]4;0;#000000\x07"))
-
-  setTimeout(() => {
+  clock.setTimeout(() => {
     stdin.emit(
       "data",
       Buffer.from(
@@ -138,7 +167,9 @@ test("TerminalPalette handles multiple color responses in single buffer", async 
     for (let i = 4; i < 256; i++) {
       stdin.emit("data", Buffer.from(`\x1b]4;${i};#000000\x07`))
     }
-  }, 400)
+  }, 0)
+
+  await advanceClock(clock, timeout)
 
   const result = await detectPromise
 
@@ -149,21 +180,16 @@ test("TerminalPalette handles multiple color responses in single buffer", async 
 })
 
 test("TerminalPalette handles BEL terminator", async () => {
-  const stdin = new MockStream() as any
-  const stdout = new MockStream() as any
+  const { stdin, clock, detectPromise, timeout } = await startPaletteDetection()
 
-  const palette = new TerminalPalette(stdin, stdout)
-
-  const detectPromise = palette.detect({ timeout: 2000, size: 256 })
-
-  stdin.emit("data", Buffer.from("\x1b]4;0;#000000\x07"))
-
-  setTimeout(() => {
+  clock.setTimeout(() => {
     stdin.emit("data", Buffer.from("\x1b]4;0;#ff0000\x07"))
     for (let i = 1; i < 256; i++) {
       stdin.emit("data", Buffer.from(`\x1b]4;${i};#000000\x07`))
     }
-  }, 400)
+  }, 0)
+
+  await advanceClock(clock, timeout)
 
   const result = await detectPromise
 
@@ -171,21 +197,16 @@ test("TerminalPalette handles BEL terminator", async () => {
 })
 
 test("TerminalPalette handles ST terminator", async () => {
-  const stdin = new MockStream() as any
-  const stdout = new MockStream() as any
+  const { stdin, clock, detectPromise, timeout } = await startPaletteDetection()
 
-  const palette = new TerminalPalette(stdin, stdout)
-
-  const detectPromise = palette.detect({ timeout: 2000, size: 256 })
-
-  stdin.emit("data", Buffer.from("\x1b]4;0;#000000\x07"))
-
-  setTimeout(() => {
+  clock.setTimeout(() => {
     stdin.emit("data", Buffer.from("\x1b]4;0;#00ff00\x1b\\"))
     for (let i = 1; i < 256; i++) {
       stdin.emit("data", Buffer.from(`\x1b]4;${i};#000000\x07`))
     }
-  }, 400)
+  }, 0)
+
+  await advanceClock(clock, timeout)
 
   const result = await detectPromise
 
@@ -193,21 +214,16 @@ test("TerminalPalette handles ST terminator", async () => {
 })
 
 test("TerminalPalette scales color components correctly", async () => {
-  const stdin = new MockStream() as any
-  const stdout = new MockStream() as any
+  const { stdin, clock, detectPromise, timeout } = await startPaletteDetection()
 
-  const palette = new TerminalPalette(stdin, stdout)
-
-  const detectPromise = palette.detect({ timeout: 2000, size: 256 })
-
-  stdin.emit("data", Buffer.from("\x1b]4;0;#000000\x07"))
-
-  setTimeout(() => {
+  clock.setTimeout(() => {
     stdin.emit("data", Buffer.from("\x1b]4;0;rgb:ffff/0000/0000\x07"))
     for (let i = 1; i < 256; i++) {
       stdin.emit("data", Buffer.from(`\x1b]4;${i};#000000\x07`))
     }
-  }, 400)
+  }, 0)
+
+  await advanceClock(clock, timeout)
 
   const result = await detectPromise
 
@@ -215,18 +231,13 @@ test("TerminalPalette scales color components correctly", async () => {
 })
 
 test("TerminalPalette returns null for colors that don't respond", async () => {
-  const stdin = new MockStream() as any
-  const stdout = new MockStream() as any
+  const { stdin, clock, detectPromise, timeout } = await startPaletteDetection({ timeout: 1000 })
 
-  const palette = new TerminalPalette(stdin, stdout)
-
-  const detectPromise = palette.detect({ timeout: 1000, size: 256 })
-
-  stdin.emit("data", Buffer.from("\x1b]4;0;#000000\x07"))
-
-  setTimeout(() => {
+  clock.setTimeout(() => {
     stdin.emit("data", Buffer.from("\x1b]4;0;#ff0000\x07"))
-  }, 400)
+  }, 0)
+
+  await advanceClock(clock, timeout)
 
   const result = await detectPromise
 
@@ -235,16 +246,9 @@ test("TerminalPalette returns null for colors that don't respond", async () => {
 })
 
 test("TerminalPalette handles response split across chunks", async () => {
-  const stdin = new MockStream() as any
-  const stdout = new MockStream() as any
+  const { stdin, clock, detectPromise, timeout } = await startPaletteDetection()
 
-  const palette = new TerminalPalette(stdin, stdout)
-
-  const detectPromise = palette.detect({ timeout: 2000, size: 256 })
-
-  stdin.emit("data", Buffer.from("\x1b]4;0;#000000\x07"))
-
-  setTimeout(() => {
+  clock.setTimeout(() => {
     stdin.emit("data", Buffer.from("\x1b]4;0;#ff"))
     stdin.emit("data", Buffer.from("00aa\x07"))
 
@@ -255,7 +259,9 @@ test("TerminalPalette handles response split across chunks", async () => {
     for (let i = 2; i < 256; i++) {
       stdin.emit("data", Buffer.from(`\x1b]4;${i};#000000\x07`))
     }
-  }, 400)
+  }, 0)
+
+  await advanceClock(clock, timeout)
 
   const result = await detectPromise
 
@@ -264,16 +270,9 @@ test("TerminalPalette handles response split across chunks", async () => {
 })
 
 test("TerminalPalette handles OSC response mixed with mouse events", async () => {
-  const stdin = new MockStream() as any
-  const stdout = new MockStream() as any
+  const { stdin, clock, detectPromise, timeout } = await startPaletteDetection()
 
-  const palette = new TerminalPalette(stdin, stdout)
-
-  const detectPromise = palette.detect({ timeout: 2000, size: 256 })
-
-  stdin.emit("data", Buffer.from("\x1b]4;0;#000000\x07"))
-
-  setTimeout(() => {
+  clock.setTimeout(() => {
     stdin.emit("data", Buffer.from("\x1b]4;0;#ff00aa\x07"))
     stdin.emit("data", Buffer.from("\x1b[<0;10;5M"))
     stdin.emit("data", Buffer.from("\x1b]4;1;#00ff00\x07"))
@@ -284,7 +283,9 @@ test("TerminalPalette handles OSC response mixed with mouse events", async () =>
     for (let i = 3; i < 256; i++) {
       stdin.emit("data", Buffer.from(`\x1b]4;${i};#000000\x07`))
     }
-  }, 400)
+  }, 0)
+
+  await advanceClock(clock, timeout)
 
   const result = await detectPromise
 
@@ -294,16 +295,9 @@ test("TerminalPalette handles OSC response mixed with mouse events", async () =>
 })
 
 test("TerminalPalette handles OSC response mixed with key events", async () => {
-  const stdin = new MockStream() as any
-  const stdout = new MockStream() as any
+  const { stdin, clock, detectPromise, timeout } = await startPaletteDetection()
 
-  const palette = new TerminalPalette(stdin, stdout)
-
-  const detectPromise = palette.detect({ timeout: 2000, size: 256 })
-
-  stdin.emit("data", Buffer.from("\x1b]4;0;#000000\x07"))
-
-  setTimeout(() => {
+  clock.setTimeout(() => {
     stdin.emit("data", Buffer.from("\x1b]4;0;#ff00aa\x07"))
     stdin.emit("data", Buffer.from("hello"))
     stdin.emit("data", Buffer.from("\x1b]4;1;#00ff00\x07"))
@@ -315,7 +309,9 @@ test("TerminalPalette handles OSC response mixed with key events", async () => {
     for (let i = 4; i < 256; i++) {
       stdin.emit("data", Buffer.from(`\x1b]4;${i};#000000\x07`))
     }
-  }, 400)
+  }, 0)
+
+  await advanceClock(clock, timeout)
 
   const result = await detectPromise
 
@@ -326,16 +322,9 @@ test("TerminalPalette handles OSC response mixed with key events", async () => {
 })
 
 test("TerminalPalette handles response split mid-escape sequence", async () => {
-  const stdin = new MockStream() as any
-  const stdout = new MockStream() as any
+  const { stdin, clock, detectPromise, timeout } = await startPaletteDetection()
 
-  const palette = new TerminalPalette(stdin, stdout)
-
-  const detectPromise = palette.detect({ timeout: 2000, size: 256 })
-
-  stdin.emit("data", Buffer.from("\x1b]4;0;#000000\x07"))
-
-  setTimeout(() => {
+  clock.setTimeout(() => {
     stdin.emit("data", Buffer.from("\x1b"))
     stdin.emit("data", Buffer.from("]4;0;#ff00aa\x07"))
 
@@ -351,7 +340,9 @@ test("TerminalPalette handles response split mid-escape sequence", async () => {
     for (let i = 4; i < 256; i++) {
       stdin.emit("data", Buffer.from(`\x1b]4;${i};#000000\x07`))
     }
-  }, 400)
+  }, 0)
+
+  await advanceClock(clock, timeout)
 
   const result = await detectPromise
 
@@ -362,16 +353,9 @@ test("TerminalPalette handles response split mid-escape sequence", async () => {
 })
 
 test("TerminalPalette handles mixed ANSI sequences and OSC responses", async () => {
-  const stdin = new MockStream() as any
-  const stdout = new MockStream() as any
+  const { stdin, clock, detectPromise, timeout } = await startPaletteDetection()
 
-  const palette = new TerminalPalette(stdin, stdout)
-
-  const detectPromise = palette.detect({ timeout: 2000, size: 256 })
-
-  stdin.emit("data", Buffer.from("\x1b]4;0;#000000\x07"))
-
-  setTimeout(() => {
+  clock.setTimeout(() => {
     stdin.emit("data", Buffer.from("\x1b[2J"))
     stdin.emit("data", Buffer.from("\x1b]4;0;#ff00aa\x07"))
     stdin.emit("data", Buffer.from("\x1b[H"))
@@ -383,7 +367,9 @@ test("TerminalPalette handles mixed ANSI sequences and OSC responses", async () 
     for (let i = 3; i < 256; i++) {
       stdin.emit("data", Buffer.from(`\x1b]4;${i};#000000\x07`))
     }
-  }, 400)
+  }, 0)
+
+  await advanceClock(clock, timeout)
 
   const result = await detectPromise
 
@@ -393,16 +379,9 @@ test("TerminalPalette handles mixed ANSI sequences and OSC responses", async () 
 })
 
 test("TerminalPalette handles complex chunking with partial responses", async () => {
-  const stdin = new MockStream() as any
-  const stdout = new MockStream() as any
+  const { stdin, clock, detectPromise, timeout } = await startPaletteDetection()
 
-  const palette = new TerminalPalette(stdin, stdout)
-
-  const detectPromise = palette.detect({ timeout: 2000, size: 256 })
-
-  stdin.emit("data", Buffer.from("\x1b]4;0;#000000\x07"))
-
-  setTimeout(() => {
+  clock.setTimeout(() => {
     const response0 = "\x1b]4;0;rgb:ffff/0000/aaaa\x07"
     for (let i = 0; i < response0.length; i += 3) {
       stdin.emit("data", Buffer.from(response0.slice(i, i + 3)))
@@ -420,7 +399,9 @@ test("TerminalPalette handles complex chunking with partial responses", async ()
     for (let i = 2; i < 256; i++) {
       stdin.emit("data", Buffer.from(`\x1b]4;${i};#000000\x07`))
     }
-  }, 400)
+  }, 0)
+
+  await advanceClock(clock, timeout)
 
   const result = await detectPromise
 
@@ -429,16 +410,9 @@ test("TerminalPalette handles complex chunking with partial responses", async ()
 })
 
 test("TerminalPalette ignores malformed responses and waits for valid ones", async () => {
-  const stdin = new MockStream() as any
-  const stdout = new MockStream() as any
+  const { stdin, clock, detectPromise, timeout } = await startPaletteDetection()
 
-  const palette = new TerminalPalette(stdin, stdout)
-
-  const detectPromise = palette.detect({ timeout: 2000, size: 256 })
-
-  stdin.emit("data", Buffer.from("\x1b]4;0;#000000\x07"))
-
-  setTimeout(() => {
+  clock.setTimeout(() => {
     stdin.emit("data", Buffer.from("\x1b]4;0;#ff00\x07"))
     stdin.emit("data", Buffer.from("\x1b]4;1;rgb:gg00/0000/0000\x07"))
     stdin.emit("data", Buffer.from("\x1b]4;2;#zzzzzz\x07"))
@@ -450,7 +424,9 @@ test("TerminalPalette ignores malformed responses and waits for valid ones", asy
     for (let i = 3; i < 256; i++) {
       stdin.emit("data", Buffer.from(`\x1b]4;${i};#000000\x07`))
     }
-  }, 400)
+  }, 0)
+
+  await advanceClock(clock, timeout)
 
   const result = await detectPromise
 
@@ -460,16 +436,9 @@ test("TerminalPalette ignores malformed responses and waits for valid ones", asy
 })
 
 test("TerminalPalette handles buffer overflow gracefully", async () => {
-  const stdin = new MockStream() as any
-  const stdout = new MockStream() as any
+  const { stdin, clock, detectPromise, timeout } = await startPaletteDetection()
 
-  const palette = new TerminalPalette(stdin, stdout)
-
-  const detectPromise = palette.detect({ timeout: 2000, size: 256 })
-
-  stdin.emit("data", Buffer.from("\x1b]4;0;#000000\x07"))
-
-  setTimeout(() => {
+  clock.setTimeout(() => {
     const junkData = "x".repeat(10000)
     stdin.emit("data", Buffer.from(junkData))
 
@@ -479,7 +448,9 @@ test("TerminalPalette handles buffer overflow gracefully", async () => {
     for (let i = 2; i < 256; i++) {
       stdin.emit("data", Buffer.from(`\x1b]4;${i};#000000\x07`))
     }
-  }, 400)
+  }, 0)
+
+  await advanceClock(clock, timeout)
 
   const result = await detectPromise
 
@@ -488,16 +459,9 @@ test("TerminalPalette handles buffer overflow gracefully", async () => {
 })
 
 test("TerminalPalette handles all 256 colors in a single blob", async () => {
-  const stdin = new MockStream() as any
-  const stdout = new MockStream() as any
+  const { stdin, clock, detectPromise, timeout } = await startPaletteDetection()
 
-  const palette = new TerminalPalette(stdin, stdout)
-
-  const detectPromise = palette.detect({ timeout: 2000, size: 256 })
-
-  stdin.emit("data", Buffer.from("\x1b]4;0;#000000\x07"))
-
-  setTimeout(() => {
+  clock.setTimeout(() => {
     let blob = ""
     for (let i = 0; i < 256; i++) {
       const color = i === 0 ? "#ff0011" : i === 1 ? "#00ff22" : i === 255 ? "#aabbcc" : "#000000"
@@ -505,7 +469,9 @@ test("TerminalPalette handles all 256 colors in a single blob", async () => {
     }
 
     stdin.emit("data", Buffer.from(blob))
-  }, 400)
+  }, 0)
+
+  await advanceClock(clock, timeout)
 
   const result = await detectPromise
 
@@ -516,16 +482,9 @@ test("TerminalPalette handles all 256 colors in a single blob", async () => {
 })
 
 test("TerminalPalette handles blob split across multiple chunks", async () => {
-  const stdin = new MockStream() as any
-  const stdout = new MockStream() as any
+  const { stdin, clock, detectPromise, timeout } = await startPaletteDetection()
 
-  const palette = new TerminalPalette(stdin, stdout)
-
-  const detectPromise = palette.detect({ timeout: 2000, size: 256 })
-
-  stdin.emit("data", Buffer.from("\x1b]4;0;#000000\x07"))
-
-  setTimeout(() => {
+  clock.setTimeout(() => {
     let blob = ""
     for (let i = 0; i < 256; i++) {
       const color = i === 5 ? "#112233" : i === 100 ? "#445566" : i === 200 ? "#778899" : "#000000"
@@ -536,7 +495,9 @@ test("TerminalPalette handles blob split across multiple chunks", async () => {
     for (let i = 0; i < blob.length; i += chunkSize) {
       stdin.emit("data", Buffer.from(blob.slice(i, i + chunkSize)))
     }
-  }, 400)
+  }, 0)
+
+  await advanceClock(clock, timeout)
 
   const result = await detectPromise
 
@@ -547,16 +508,9 @@ test("TerminalPalette handles blob split across multiple chunks", async () => {
 })
 
 test("TerminalPalette handles blob with mixed junk data", async () => {
-  const stdin = new MockStream() as any
-  const stdout = new MockStream() as any
+  const { stdin, clock, detectPromise, timeout } = await startPaletteDetection()
 
-  const palette = new TerminalPalette(stdin, stdout)
-
-  const detectPromise = palette.detect({ timeout: 2000, size: 256 })
-
-  stdin.emit("data", Buffer.from("\x1b]4;0;#000000\x07"))
-
-  setTimeout(() => {
+  clock.setTimeout(() => {
     let blob = ""
     for (let i = 0; i < 256; i++) {
       const color = i === 10 ? "#abcdef" : i === 50 ? "#fedcba" : "#000000"
@@ -574,7 +528,9 @@ test("TerminalPalette handles blob with mixed junk data", async () => {
     }
 
     stdin.emit("data", Buffer.from(blob))
-  }, 400)
+  }, 0)
+
+  await advanceClock(clock, timeout)
 
   const result = await detectPromise
 
@@ -584,16 +540,9 @@ test("TerminalPalette handles blob with mixed junk data", async () => {
 })
 
 test("TerminalPalette handles realistic terminal response pattern", async () => {
-  const stdin = new MockStream() as any
-  const stdout = new MockStream() as any
+  const { stdin, clock, detectPromise, timeout } = await startPaletteDetection()
 
-  const palette = new TerminalPalette(stdin, stdout)
-
-  const detectPromise = palette.detect({ timeout: 2000, size: 256 })
-
-  stdin.emit("data", Buffer.from("\x1b]4;0;#000000\x07"))
-
-  setTimeout(() => {
+  clock.setTimeout(() => {
     let chunk1 = ""
     for (let i = 0; i <= 5; i++) {
       chunk1 += `\x1b]4;${i};#ff0000\x07`
@@ -619,7 +568,9 @@ test("TerminalPalette handles realistic terminal response pattern", async () => 
       chunk4 += `\x1b]4;${i};#ffffff\x07`
     }
     stdin.emit("data", Buffer.from(chunk4))
-  }, 400)
+  }, 0)
+
+  await advanceClock(clock, timeout)
 
   const result = await detectPromise
 
@@ -635,8 +586,6 @@ test("TerminalPalette handles realistic terminal response pattern", async () => 
 })
 
 test("TerminalPalette uses custom write function when provided", async () => {
-  const stdin = new MockStream() as any
-  const stdout = new MockStream() as any
   const writtenData: string[] = []
 
   const customWrite = (data: string | Buffer) => {
@@ -644,11 +593,13 @@ test("TerminalPalette uses custom write function when provided", async () => {
     return true
   }
 
-  const palette = new TerminalPalette(stdin, stdout, customWrite)
+  const { stdin, clock, palette } = createPaletteHarness({ writeFn: customWrite })
 
   const detectPromise = palette.detectOSCSupport(500)
 
   stdin.emit("data", Buffer.from("\x1b]4;0;#ff0000\x07"))
+
+  await advanceClock(clock, 500)
 
   const result = await detectPromise
 
@@ -658,8 +609,6 @@ test("TerminalPalette uses custom write function when provided", async () => {
 })
 
 test("TerminalPalette uses custom write function for palette detection", async () => {
-  const stdin = new MockStream() as any
-  const stdout = new MockStream() as any
   const writtenData: string[] = []
 
   const customWrite = (data: string | Buffer) => {
@@ -667,18 +616,16 @@ test("TerminalPalette uses custom write function for palette detection", async (
     return true
   }
 
-  const palette = new TerminalPalette(stdin, stdout, customWrite)
+  const { stdin, clock, detectPromise, timeout } = await startPaletteDetection({ writeFn: customWrite })
 
-  const detectPromise = palette.detect({ timeout: 2000, size: 256 })
-
-  stdin.emit("data", Buffer.from("\x1b]4;0;#000000\x07"))
-
-  setTimeout(() => {
+  clock.setTimeout(() => {
     for (let i = 0; i < 256; i++) {
       const color = "#aabbcc"
       stdin.emit("data", Buffer.from(`\x1b]4;${i};${color}\x07`))
     }
-  }, 400)
+  }, 0)
+
+  await advanceClock(clock, timeout)
 
   await detectPromise
 
@@ -696,6 +643,7 @@ test("TerminalPalette uses custom write function for palette detection", async (
 })
 
 test("TerminalPalette falls back to stdout.write when no custom write function provided", async () => {
+  const clock = new ManualClock()
   const stdin = new MockStream() as any
   const writtenData: string[] = []
 
@@ -705,11 +653,13 @@ test("TerminalPalette falls back to stdout.write when no custom write function p
     return true
   }
 
-  const palette = new TerminalPalette(stdin, stdout)
+  const palette = new TerminalPalette(stdin, stdout, undefined, false, undefined, clock)
 
   const detectPromise = palette.detectOSCSupport(500)
 
   stdin.emit("data", Buffer.from("\x1b]4;0;#ff0000\x07"))
+
+  await advanceClock(clock, 500)
 
   const result = await detectPromise
 
@@ -719,8 +669,6 @@ test("TerminalPalette falls back to stdout.write when no custom write function p
 })
 
 test("TerminalPalette custom write function can intercept and modify output", async () => {
-  const stdin = new MockStream() as any
-  const stdout = new MockStream() as any
   const interceptedWrites: string[] = []
   let actualWrites = 0
 
@@ -730,11 +678,13 @@ test("TerminalPalette custom write function can intercept and modify output", as
     return true
   }
 
-  const palette = new TerminalPalette(stdin, stdout, customWrite)
+  const { stdin, clock, palette } = createPaletteHarness({ writeFn: customWrite })
 
   const detectPromise = palette.detectOSCSupport(500)
 
   stdin.emit("data", Buffer.from("\x1b]4;0;#ff0000\x07"))
+
+  await advanceClock(clock, 500)
 
   await detectPromise
 
@@ -744,16 +694,9 @@ test("TerminalPalette custom write function can intercept and modify output", as
 })
 
 test("TerminalPalette detects all special OSC colors (10-19)", async () => {
-  const stdin = new MockStream() as any
-  const stdout = new MockStream() as any
+  const { stdin, clock, detectPromise, timeout } = await startPaletteDetection()
 
-  const palette = new TerminalPalette(stdin, stdout)
-
-  const detectPromise = palette.detect({ timeout: 2000, size: 256 })
-
-  stdin.emit("data", Buffer.from("\x1b]4;0;#000000\x07"))
-
-  setTimeout(() => {
+  clock.setTimeout(() => {
     for (let i = 0; i < 256; i++) {
       stdin.emit("data", Buffer.from(`\x1b]4;${i};#000000\x07`))
     }
@@ -766,7 +709,9 @@ test("TerminalPalette detects all special OSC colors (10-19)", async () => {
     stdin.emit("data", Buffer.from("\x1b]16;#ff0007\x07"))
     stdin.emit("data", Buffer.from("\x1b]17;#ff0008\x07"))
     stdin.emit("data", Buffer.from("\x1b]19;#ff0009\x07"))
-  }, 400)
+  }, 0)
+
+  await advanceClock(clock, timeout)
 
   const result = await detectPromise
 
@@ -782,22 +727,17 @@ test("TerminalPalette detects all special OSC colors (10-19)", async () => {
 })
 
 test("TerminalPalette handles special colors in rgb format", async () => {
-  const stdin = new MockStream() as any
-  const stdout = new MockStream() as any
+  const { stdin, clock, detectPromise, timeout } = await startPaletteDetection()
 
-  const palette = new TerminalPalette(stdin, stdout)
-
-  const detectPromise = palette.detect({ timeout: 2000, size: 256 })
-
-  stdin.emit("data", Buffer.from("\x1b]4;0;#000000\x07"))
-
-  setTimeout(() => {
+  clock.setTimeout(() => {
     for (let i = 0; i < 256; i++) {
       stdin.emit("data", Buffer.from(`\x1b]4;${i};#000000\x07`))
     }
     stdin.emit("data", Buffer.from("\x1b]10;rgb:ffff/0000/0000\x07"))
     stdin.emit("data", Buffer.from("\x1b]11;rgb:0000/ffff/0000\x07"))
-  }, 400)
+  }, 0)
+
+  await advanceClock(clock, timeout)
 
   const result = await detectPromise
 
@@ -806,22 +746,17 @@ test("TerminalPalette handles special colors in rgb format", async () => {
 })
 
 test("TerminalPalette handles missing special colors gracefully", async () => {
-  const stdin = new MockStream() as any
-  const stdout = new MockStream() as any
+  const { stdin, clock, detectPromise, timeout } = await startPaletteDetection()
 
-  const palette = new TerminalPalette(stdin, stdout)
-
-  const detectPromise = palette.detect({ timeout: 2000, size: 256 })
-
-  stdin.emit("data", Buffer.from("\x1b]4;0;#000000\x07"))
-
-  setTimeout(() => {
+  clock.setTimeout(() => {
     for (let i = 0; i < 256; i++) {
       stdin.emit("data", Buffer.from(`\x1b]4;${i};#000000\x07`))
     }
     stdin.emit("data", Buffer.from("\x1b]10;#ff0001\x07"))
     stdin.emit("data", Buffer.from("\x1b]11;#ff0002\x07"))
-  }, 400)
+  }, 0)
+
+  await advanceClock(clock, timeout)
 
   const result = await detectPromise
 
@@ -833,22 +768,17 @@ test("TerminalPalette handles missing special colors gracefully", async () => {
 })
 
 test("TerminalPalette special colors with ST terminator", async () => {
-  const stdin = new MockStream() as any
-  const stdout = new MockStream() as any
+  const { stdin, clock, detectPromise, timeout } = await startPaletteDetection()
 
-  const palette = new TerminalPalette(stdin, stdout)
-
-  const detectPromise = palette.detect({ timeout: 2000, size: 256 })
-
-  stdin.emit("data", Buffer.from("\x1b]4;0;#000000\x07"))
-
-  setTimeout(() => {
+  clock.setTimeout(() => {
     for (let i = 0; i < 256; i++) {
       stdin.emit("data", Buffer.from(`\x1b]4;${i};#000000\x07`))
     }
     stdin.emit("data", Buffer.from("\x1b]10;#aabbcc\x1b\\"))
     stdin.emit("data", Buffer.from("\x1b]11;#ddeeff\x1b\\"))
-  }, 400)
+  }, 0)
+
+  await advanceClock(clock, timeout)
 
   const result = await detectPromise
 
@@ -857,16 +787,9 @@ test("TerminalPalette special colors with ST terminator", async () => {
 })
 
 test("TerminalPalette handles mixed palette and special color responses", async () => {
-  const stdin = new MockStream() as any
-  const stdout = new MockStream() as any
+  const { stdin, clock, detectPromise, timeout } = await startPaletteDetection()
 
-  const palette = new TerminalPalette(stdin, stdout)
-
-  const detectPromise = palette.detect({ timeout: 2000, size: 256 })
-
-  stdin.emit("data", Buffer.from("\x1b]4;0;#000000\x07"))
-
-  setTimeout(() => {
+  clock.setTimeout(() => {
     stdin.emit("data", Buffer.from("\x1b]4;0;#010203\x07"))
     stdin.emit("data", Buffer.from("\x1b]10;#aabbcc\x07"))
     stdin.emit("data", Buffer.from("\x1b]4;1;#040506\x07"))
@@ -874,7 +797,9 @@ test("TerminalPalette handles mixed palette and special color responses", async 
     for (let i = 2; i < 256; i++) {
       stdin.emit("data", Buffer.from(`\x1b]4;${i};#000000\x07`))
     }
-  }, 400)
+  }, 0)
+
+  await advanceClock(clock, timeout)
 
   const result = await detectPromise
 
@@ -885,14 +810,15 @@ test("TerminalPalette handles mixed palette and special color responses", async 
 })
 
 test("TerminalPalette returns null special colors on non-TTY", async () => {
-  const stdin = new MockStream() as any
-  const stdout = new MockStream() as any
+  const { stdin, stdout, clock, palette } = createPaletteHarness()
   stdin.isTTY = false
   stdout.isTTY = false
 
-  const palette = new TerminalPalette(stdin, stdout)
+  const detectPromise = palette.detect({ timeout: 100 })
 
-  const result = await palette.detect({ timeout: 100 })
+  await advanceClock(clock, 100)
+
+  const result = await detectPromise
 
   expect(result.defaultForeground).toBe(null)
   expect(result.defaultBackground).toBe(null)
@@ -901,12 +827,13 @@ test("TerminalPalette returns null special colors on non-TTY", async () => {
 })
 
 test("TerminalPalette returns null special colors on OSC not supported", async () => {
-  const stdin = new MockStream() as any
-  const stdout = new MockStream() as any
+  const { clock, palette } = createPaletteHarness()
 
-  const palette = new TerminalPalette(stdin, stdout)
+  const detectPromise = palette.detect({ timeout: 100 })
 
-  const result = await palette.detect({ timeout: 100 })
+  await advanceClock(clock, 300)
+
+  const result = await detectPromise
 
   expect(result.defaultForeground).toBe(null)
   expect(result.defaultBackground).toBe(null)
@@ -916,7 +843,6 @@ test("TerminalPalette returns null special colors on OSC not supported", async (
 
 test("TerminalPalette can read OSC from router subscription source", async () => {
   const stdin = new MockStream() as any
-  const stdout = new MockStream() as any
 
   const handlers = new Set<(sequence: string) => void>()
   let subscribeCount = 0
@@ -933,12 +859,16 @@ test("TerminalPalette can read OSC from router subscription source", async () =>
     },
   }
 
-  const palette = new TerminalPalette(stdin, stdout, undefined, false, oscSource)
+  const clock = new ManualClock()
+  const stdout = new MockStream() as any
+  const palette = new TerminalPalette(stdin, stdout, undefined, false, oscSource, clock)
 
   const detectPromise = palette.detectOSCSupport(500)
   for (const handler of handlers) {
     handler("\x1b]4;0;#ff0000\x07")
   }
+
+  await advanceClock(clock, 500)
 
   const supported = await detectPromise
   expect(supported).toBe(true)

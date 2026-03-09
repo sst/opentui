@@ -108,6 +108,7 @@ export interface CliRendererConfig {
   prependInputHandlers?: ((sequence: string) => boolean)[]
   stdinParserMaxBufferBytes?: number
   stdinParserClock?: Clock
+  paletteClock?: Clock
   onDestroy?: () => void
 }
 
@@ -463,6 +464,7 @@ export class CliRenderer extends EventEmitter implements RenderContext {
   private _paletteDetector: TerminalPaletteDetector | null = null
   private _cachedPalette: TerminalColors | null = null
   private _paletteDetectionPromise: Promise<TerminalColors> | null = null
+  private paletteClock?: Clock
   private _onDestroy?: () => void
   private _themeMode: ThemeMode | null = null
 
@@ -640,6 +642,7 @@ export class CliRenderer extends EventEmitter implements RenderContext {
     this._console = new TerminalConsole(this, config.consoleOptions)
     this.useConsole = config.useConsole ?? true
     this._openConsoleOnError = config.openConsoleOnError ?? process.env.NODE_ENV !== "production"
+    this.paletteClock = config.paletteClock
     this._onDestroy = config.onDestroy
 
     global.requestAnimationFrame = (callback: FrameRequestCallback) => {
@@ -2334,9 +2337,16 @@ export class CliRenderer extends EventEmitter implements RenderContext {
       const isLegacyTmux =
         this.capabilities?.terminal?.name?.toLowerCase()?.includes("tmux") &&
         this.capabilities?.terminal?.version?.localeCompare("3.6") < 0
-      this._paletteDetector = createTerminalPalette(this.stdin, this.stdout, this.writeOut.bind(this), isLegacyTmux, {
-        subscribeOsc: this.subscribeOsc.bind(this),
-      })
+      this._paletteDetector = createTerminalPalette(
+        this.stdin,
+        this.stdout,
+        this.writeOut.bind(this),
+        isLegacyTmux,
+        {
+          subscribeOsc: this.subscribeOsc.bind(this),
+        },
+        this.paletteClock,
+      )
     }
 
     this._paletteDetectionPromise = this._paletteDetector.detect(options).then((result) => {

@@ -1,4 +1,8 @@
+import { SystemClock, type Clock, type TimerHandle } from "./clock"
+
 type Hex = string | null
+
+const SYSTEM_CLOCK = new SystemClock()
 
 const OSC4_RESPONSE =
   /\x1b]4;(\d+);(?:(?:rgb:)([0-9a-fA-F]+)\/([0-9a-fA-F]+)\/([0-9a-fA-F]+)|#([0-9a-fA-F]{6}))(?:\x07|\x1b\\)/g
@@ -68,6 +72,7 @@ export class TerminalPalette implements TerminalPaletteDetector {
   private activeQuerySessions: Array<() => void> = []
   private inLegacyTmux: boolean
   private oscSource?: OscSubscriptionSource
+  private readonly clock: Clock
 
   constructor(
     stdin: NodeJS.ReadStream,
@@ -75,12 +80,14 @@ export class TerminalPalette implements TerminalPaletteDetector {
     writeFn?: WriteFunction,
     isLegacyTmux?: boolean,
     oscSource?: OscSubscriptionSource,
+    clock?: Clock,
   ) {
     this.stdin = stdin
     this.stdout = stdout
     this.writeFn = writeFn || ((data: string | Buffer) => stdout.write(data))
     this.inLegacyTmux = isLegacyTmux ?? false
     this.oscSource = oscSource
+    this.clock = clock ?? SYSTEM_CLOCK
   }
 
   /**
@@ -112,7 +119,7 @@ export class TerminalPalette implements TerminalPaletteDetector {
   }
 
   private createQuerySession() {
-    const timers = new Set<NodeJS.Timeout>()
+    const timers = new Set<TimerHandle>()
     const subscriptions = new Set<() => void>()
     let closed = false
 
@@ -121,7 +128,7 @@ export class TerminalPalette implements TerminalPaletteDetector {
       closed = true
 
       for (const timer of timers) {
-        clearTimeout(timer)
+        this.clock.clearTimeout(timer)
       }
       timers.clear()
 
@@ -137,18 +144,18 @@ export class TerminalPalette implements TerminalPaletteDetector {
     this.activeQuerySessions.push(cleanup)
 
     return {
-      setTimer: (fn: () => void, ms: number): NodeJS.Timeout => {
-        const timer = setTimeout(fn, ms)
+      setTimer: (fn: () => void, ms: number): TimerHandle => {
+        const timer = this.clock.setTimeout(fn, ms)
         timers.add(timer)
         return timer
       },
-      resetTimer: (existing: NodeJS.Timeout | null, fn: () => void, ms: number): NodeJS.Timeout => {
+      resetTimer: (existing: TimerHandle | null, fn: () => void, ms: number): TimerHandle => {
         if (existing) {
-          clearTimeout(existing)
+          this.clock.clearTimeout(existing)
           timers.delete(existing)
         }
 
-        const timer = setTimeout(fn, ms)
+        const timer = this.clock.setTimeout(fn, ms)
         timers.add(timer)
         return timer
       },
@@ -211,7 +218,7 @@ export class TerminalPalette implements TerminalPaletteDetector {
     return new Promise<Map<number, Hex>>((resolve) => {
       const session = this.createQuerySession()
       let buffer = ""
-      let idleTimer: NodeJS.Timeout | null = null
+      let idleTimer: TimerHandle | null = null
       let settled = false
 
       const finish = () => {
@@ -269,7 +276,7 @@ export class TerminalPalette implements TerminalPaletteDetector {
     return new Promise<Record<number, Hex>>((resolve) => {
       const session = this.createQuerySession()
       let buffer = ""
-      let idleTimer: NodeJS.Timeout | null = null
+      let idleTimer: TimerHandle | null = null
       let settled = false
 
       const finish = () => {
@@ -370,6 +377,7 @@ export function createTerminalPalette(
   writeFn?: WriteFunction,
   isLegacyTmux?: boolean,
   oscSource?: OscSubscriptionSource,
+  clock?: Clock,
 ): TerminalPaletteDetector {
-  return new TerminalPalette(stdin, stdout, writeFn, isLegacyTmux, oscSource)
+  return new TerminalPalette(stdin, stdout, writeFn, isLegacyTmux, oscSource, clock)
 }
