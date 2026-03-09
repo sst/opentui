@@ -838,6 +838,30 @@ test "renderer - hyperlink spanning multiple rows uses same id" {
 // GRAPHEME CURSOR POSITIONING TESTS
 // ============================================================================
 
+test "renderer - default cursor style emits reset cursor ANSI" {
+    const pool = gp.initGlobalPool(std.testing.allocator);
+    defer gp.deinitGlobalPool();
+    var local_link_pool = link.LinkPool.init(std.testing.allocator);
+    defer local_link_pool.deinit();
+
+    var cli_renderer = try CliRenderer.create(
+        std.testing.allocator,
+        80,
+        24,
+        pool,
+        true,
+    );
+    defer cli_renderer.destroy();
+
+    cli_renderer.terminal.setCursorPosition(4, 2, true);
+    cli_renderer.render(false);
+
+    const output = cli_renderer.getLastOutputForTest();
+
+    try std.testing.expect(std.mem.indexOf(u8, output, ansi.ANSI.defaultCursorStyle) != null);
+    try std.testing.expect(std.mem.indexOf(u8, output, ansi.ANSI.cursorBlock) == null);
+}
+
 test "renderer - explicit_cursor_positioning emits cursor move after wide graphemes" {
     const pool = gp.initGlobalPool(std.testing.allocator);
     defer gp.deinitGlobalPool();
