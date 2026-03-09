@@ -1,5 +1,6 @@
 import { test, expect } from "bun:test"
 import { InternalKeyHandler, KeyEvent } from "./KeyHandler"
+import { parseKeypress } from "./parse.keypress"
 
 /**
  * Integration tests demonstrating real-world scenarios with stopPropagation
@@ -7,6 +8,15 @@ import { InternalKeyHandler, KeyEvent } from "./KeyHandler"
 
 function createKeyHandler(): InternalKeyHandler {
   return new InternalKeyHandler()
+}
+
+function dispatchInput(handler: InternalKeyHandler, data: string): boolean {
+  const parsedKey = parseKeypress(data)
+  if (!parsedKey) {
+    return false
+  }
+
+  return handler.processParsedKey(parsedKey)
 }
 
 test("Integration - Modal ESC handler prevents subsequent handlers", () => {
@@ -33,7 +43,7 @@ test("Integration - Modal ESC handler prevents subsequent handlers", () => {
   })
 
   // Simulate ESC key press while modal is open
-  handler.processInput("\x1b")
+  dispatchInput(handler, "\x1b")
 
   expect(modalOpen).toBe(false)
   expect(modalHandledEsc).toBe(true)
@@ -62,9 +72,9 @@ test("Integration - Focused input field handles key, stops parent handlers", () 
   })
 
   // Type some keys
-  handler.processInput("a")
-  handler.processInput("b")
-  handler.processInput("c")
+  dispatchInput(handler, "a")
+  dispatchInput(handler, "b")
+  dispatchInput(handler, "c")
 
   expect(inputValue).toEqual(["a", "b", "c"])
   expect(parentHandledKey).toBe(true) // Parent ran first (global priority)
@@ -109,7 +119,7 @@ test("Integration - Dialog system with priority: innermost modal wins", () => {
   handler.on("keypress", outerHandler)
 
   // Press ESC
-  handler.processInput("\x1b")
+  dispatchInput(handler, "\x1b")
 
   expect(closeLog).toEqual(["inner"])
   expect(innerModalClosed).toBe(true)
@@ -142,7 +152,7 @@ test("Integration - Keyboard shortcut system with priorities", () => {
   })
 
   // Ctrl+S with editor focused
-  handler.processInput("\x13") // Ctrl+S
+  dispatchInput(handler, "\x13") // Ctrl+S
 
   expect(actions).toEqual(["save", "save-document"])
   // Note: global runs first, then internal. To truly override,
@@ -179,7 +189,7 @@ test("Integration - preventDefault vs stopPropagation behavior", () => {
     }
   })
 
-  handler.processInput("a")
+  dispatchInput(handler, "a")
 
   expect(log).toEqual([
     "handler1-saw-a",
@@ -206,7 +216,7 @@ test("Integration - preventDefault vs stopPropagation behavior", () => {
     }
   })
 
-  handler.processInput("b")
+  dispatchInput(handler, "b")
 
   expect(log).toEqual([
     "handler1-saw-b",
@@ -237,7 +247,7 @@ test("Integration - Form submission with Enter key", () => {
   })
 
   // Press Enter
-  handler.processInput("\r")
+  dispatchInput(handler, "\r")
 
   expect(inputValue).toBe("\n")
   expect(formSubmitted).toBe(true) // Global handler ran first
@@ -271,7 +281,7 @@ test("Integration - Event bubbling with multiple nested components", () => {
     eventLog.push({ component: "sibling", stopped: key.propagationStopped })
   })
 
-  handler.processInput(" ") // Space key
+  dispatchInput(handler, " ") // Space key
 
   expect(eventLog).toEqual([
     { component: "root", stopped: false },

@@ -113,10 +113,15 @@ export interface Highlight {
 }
 
 export interface LineInfo {
-  lineStarts: number[]
-  lineWidths: number[]
-  maxLineWidth: number
+  /** Display-column offset for each visual line start. */
+  lineStartCols: number[]
+  /** Display-column width for each visual line. */
+  lineWidthCols: number[]
+  /** Maximum display-column width across the reported lines. */
+  lineWidthColsMax: number
+  /** Source logical line index for each visual line. */
   lineSources: number[]
+  /** Wrap index within each source logical line. */
   lineWraps: number[]
 }
 

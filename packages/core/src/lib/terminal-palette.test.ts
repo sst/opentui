@@ -913,3 +913,36 @@ test("TerminalPalette returns null special colors on OSC not supported", async (
   expect(result.cursorColor).toBe(null)
   expect(result.palette.every((c: string | null) => c === null)).toBe(true)
 })
+
+test("TerminalPalette can read OSC from router subscription source", async () => {
+  const stdin = new MockStream() as any
+  const stdout = new MockStream() as any
+
+  const handlers = new Set<(sequence: string) => void>()
+  let subscribeCount = 0
+  let unsubscribeCount = 0
+
+  const oscSource = {
+    subscribeOsc(handler: (sequence: string) => void) {
+      subscribeCount++
+      handlers.add(handler)
+      return () => {
+        unsubscribeCount++
+        handlers.delete(handler)
+      }
+    },
+  }
+
+  const palette = new TerminalPalette(stdin, stdout, undefined, false, oscSource)
+
+  const detectPromise = palette.detectOSCSupport(500)
+  for (const handler of handlers) {
+    handler("\x1b]4;0;#ff0000\x07")
+  }
+
+  const supported = await detectPromise
+  expect(supported).toBe(true)
+  expect(subscribeCount).toBe(1)
+  expect(unsubscribeCount).toBe(1)
+  expect(stdin.listenerCount("data")).toBe(0)
+})

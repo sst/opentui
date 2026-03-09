@@ -868,4 +868,25 @@ describe("SolidJS Renderer - Control Flow Components", () => {
       expect(children[4]?.id).toBe("option-order-1") // ← BUG: This might be order-2
     })
   })
+  describe("Text escaping", () => {
+    it("renders angle brackets in text content without HTML entities", async () => {
+      const content = "with some > text < like this </>"
+
+      testSetup = await testRender(
+        () => (
+          <box>
+            <text>{content}</text>
+          </box>
+        ),
+        { width: 60, height: 5 },
+      )
+
+      await testSetup.renderOnce()
+      const frame = testSetup.captureCharFrame()
+
+      expect(frame).toContain(content)
+      expect(frame).not.toContain("&lt;")
+      expect(frame).not.toContain("&gt;")
+    })
+  })
 })

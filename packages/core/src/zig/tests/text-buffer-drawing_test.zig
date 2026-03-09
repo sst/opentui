@@ -313,8 +313,8 @@ test "drawTextBuffer - word wrap does not split multi-byte UTF-8 characters" {
 
     for (vlines) |vline| {
         var line_buffer: [200]u8 = undefined;
-        const line_start_offset = vline.char_offset;
-        const line_end_offset = line_start_offset + vline.width;
+        const line_start_offset = vline.col_offset;
+        const line_end_offset = line_start_offset + vline.width_cols;
         const extracted = tb.getTextRange(line_start_offset, line_end_offset, &line_buffer);
 
         const is_valid_utf8 = std.unicode.utf8ValidateSlice(line_buffer[0..extracted]);
@@ -324,10 +324,10 @@ test "drawTextBuffer - word wrap does not split multi-byte UTF-8 characters" {
     try std.testing.expect(vlines.len == 2);
 
     var full_buffer: [200]u8 = undefined;
-    const line0_len = tb.getTextRange(vlines[0].char_offset, vlines[0].char_offset + vlines[0].width, &full_buffer);
+    const line0_len = tb.getTextRange(vlines[0].col_offset, vlines[0].col_offset + vlines[0].width_cols, &full_buffer);
     const line0_text = full_buffer[0..line0_len];
 
-    const line1_len = tb.getTextRange(vlines[1].char_offset, vlines[1].char_offset + vlines[1].width, &full_buffer);
+    const line1_len = tb.getTextRange(vlines[1].col_offset, vlines[1].col_offset + vlines[1].width_cols, &full_buffer);
     const line1_text = full_buffer[0..line1_len];
 
     const line0_ends_with_kai = std.mem.endsWith(u8, line0_text, "界");
@@ -854,8 +854,8 @@ test "viewport - getCachedLineInfo returns only viewport lines" {
 
     const line_info = view.getCachedLineInfo();
 
-    try std.testing.expectEqual(@as(usize, 3), line_info.starts.len);
-    try std.testing.expectEqual(@as(usize, 3), line_info.widths.len);
+    try std.testing.expectEqual(@as(usize, 3), line_info.line_start_cols.len);
+    try std.testing.expectEqual(@as(usize, 3), line_info.line_width_cols.len);
 }
 
 test "viewport - changing viewport updates returned lines" {

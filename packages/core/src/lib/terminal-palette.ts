@@ -32,6 +32,10 @@ export interface TerminalPaletteDetector {
   cleanup(): void
 }
 
+export type OscSubscriptionSource = {
+  subscribeOsc(handler: (sequence: string) => void): () => void
+}
+
 function scaleComponent(comp: string): string {
   const val = parseInt(comp, 16)
   const maxIn = (1 << (4 * comp.length)) - 1
@@ -61,15 +65,22 @@ export class TerminalPalette implements TerminalPaletteDetector {
   private stdin: NodeJS.ReadStream
   private stdout: NodeJS.WriteStream
   private writeFn: WriteFunction
-  private activeListeners: Array<{ event: string; handler: (...args: any[]) => void }> = []
-  private activeTimers: Array<NodeJS.Timeout> = []
+  private activeQuerySessions: Array<() => void> = []
   private inLegacyTmux: boolean
+  private oscSource?: OscSubscriptionSource
 
-  constructor(stdin: NodeJS.ReadStream, stdout: NodeJS.WriteStream, writeFn?: WriteFunction, isLegacyTmux?: boolean) {
+  constructor(
+    stdin: NodeJS.ReadStream,
+    stdout: NodeJS.WriteStream,
+    writeFn?: WriteFunction,
+    isLegacyTmux?: boolean,
+    oscSource?: OscSubscriptionSource,
+  ) {
     this.stdin = stdin
     this.stdout = stdout
     this.writeFn = writeFn || ((data: string | Buffer) => stdout.write(data))
     this.inLegacyTmux = isLegacyTmux ?? false
+    this.oscSource = oscSource
   }
 
   /**
@@ -81,77 +92,137 @@ export class TerminalPalette implements TerminalPaletteDetector {
   }
 
   cleanup(): void {
-    for (const { event, handler } of this.activeListeners) {
-      this.stdin.removeListener(event, handler)
+    for (const cleanupSession of [...this.activeQuerySessions]) {
+      cleanupSession()
     }
-    this.activeListeners = []
+    this.activeQuerySessions = []
+  }
 
-    for (const timer of this.activeTimers) {
-      clearTimeout(timer)
+  private subscribeInput(handler: (chunk: string | Buffer) => void): () => void {
+    if (this.oscSource) {
+      return this.oscSource.subscribeOsc((sequence) => {
+        handler(sequence)
+      })
     }
-    this.activeTimers = []
+
+    this.stdin.on("data", handler)
+    return () => {
+      this.stdin.removeListener("data", handler)
+    }
+  }
+
+  private createQuerySession() {
+    const timers = new Set<NodeJS.Timeout>()
+    const subscriptions = new Set<() => void>()
+    let closed = false
+
+    const cleanup = () => {
+      if (closed) return
+      closed = true
+
+      for (const timer of timers) {
+        clearTimeout(timer)
+      }
+      timers.clear()
+
+      for (const unsubscribe of subscriptions) {
+        unsubscribe()
+      }
+      subscriptions.clear()
+
+      const idx = this.activeQuerySessions.indexOf(cleanup)
+      if (idx !== -1) this.activeQuerySessions.splice(idx, 1)
+    }
+
+    this.activeQuerySessions.push(cleanup)
+
+    return {
+      setTimer: (fn: () => void, ms: number): NodeJS.Timeout => {
+        const timer = setTimeout(fn, ms)
+        timers.add(timer)
+        return timer
+      },
+      resetTimer: (existing: NodeJS.Timeout | null, fn: () => void, ms: number): NodeJS.Timeout => {
+        if (existing) {
+          clearTimeout(existing)
+          timers.delete(existing)
+        }
+
+        const timer = setTimeout(fn, ms)
+        timers.add(timer)
+        return timer
+      },
+      subscribeInput: (handler: (chunk: string | Buffer) => void): (() => void) => {
+        const unsubscribe = this.subscribeInput(handler)
+        subscriptions.add(unsubscribe)
+        return () => {
+          if (!subscriptions.has(unsubscribe)) return
+          subscriptions.delete(unsubscribe)
+          unsubscribe()
+        }
+      },
+      cleanup,
+    }
   }
 
   async detectOSCSupport(timeoutMs = 300): Promise<boolean> {
     const out = this.stdout
-    const inp = this.stdin
 
-    if (!out.isTTY || !inp.isTTY) return false
+    if (!out.isTTY || !this.stdin.isTTY) return false
 
     return new Promise<boolean>((resolve) => {
+      const session = this.createQuerySession()
       let buffer = ""
+      let settled = false
+
+      const finish = (supported: boolean) => {
+        if (settled) return
+        settled = true
+        session.cleanup()
+        resolve(supported)
+      }
 
       const onData = (chunk: string | Buffer) => {
         buffer += chunk.toString()
         // Reset regex lastIndex before testing due to global flag
         OSC4_RESPONSE.lastIndex = 0
         if (OSC4_RESPONSE.test(buffer)) {
-          cleanup()
-          resolve(true)
+          finish(true)
         }
       }
 
-      const onTimeout = () => {
-        cleanup()
-        resolve(false)
-      }
-
-      const cleanup = () => {
-        clearTimeout(timer)
-        inp.removeListener("data", onData)
-        // Remove from active tracking
-        const listenerIdx = this.activeListeners.findIndex((l) => l.handler === onData)
-        if (listenerIdx !== -1) this.activeListeners.splice(listenerIdx, 1)
-        const timerIdx = this.activeTimers.indexOf(timer)
-        if (timerIdx !== -1) this.activeTimers.splice(timerIdx, 1)
-      }
-
-      const timer = setTimeout(onTimeout, timeoutMs)
-      this.activeTimers.push(timer)
-      inp.on("data", onData)
-      this.activeListeners.push({ event: "data", handler: onData })
+      session.setTimer(() => {
+        finish(false)
+      }, timeoutMs)
+      session.subscribeInput(onData)
       this.writeOsc("\x1b]4;0;?\x07")
     })
   }
 
   private async queryPalette(indices: number[], timeoutMs = 1200): Promise<Map<number, Hex>> {
     const out = this.stdout
-    const inp = this.stdin
     const results = new Map<number, Hex>()
     indices.forEach((i) => results.set(i, null))
 
-    if (!out.isTTY || !inp.isTTY) {
+    if (!out.isTTY || !this.stdin.isTTY) {
       return results
     }
 
     return new Promise<Map<number, Hex>>((resolve) => {
+      const session = this.createQuerySession()
       let buffer = ""
-      let lastResponseTime = Date.now()
       let idleTimer: NodeJS.Timeout | null = null
+      let settled = false
+
+      const finish = () => {
+        if (settled) return
+        settled = true
+        session.cleanup()
+        resolve(results)
+      }
 
       const onData = (chunk: string | Buffer) => {
         buffer += chunk.toString()
-        lastResponseTime = Date.now()
 
         let m: RegExpExecArray | null
         OSC4_RESPONSE.lastIndex = 0
@@ -164,50 +235,21 @@ export class TerminalPalette implements TerminalPaletteDetector {
 
         const done = [...results.values()].filter((v) => v !== null).length
         if (done === results.size) {
-          cleanup()
-          resolve(results)
+          finish()
           return
         }
 
-        if (idleTimer) clearTimeout(idleTimer)
-        idleTimer = setTimeout(() => {
-          cleanup()
-          resolve(results)
-        }, 150)
-        if (idleTimer) this.activeTimers.push(idleTimer)
+        idleTimer = session.resetTimer(idleTimer, finish, 150)
       }
 
-      const onTimeout = () => {
-        cleanup()
-        resolve(results)
-      }
-
-      const cleanup = () => {
-        clearTimeout(timer)
-        if (idleTimer) clearTimeout(idleTimer)
-        inp.removeListener("data", onData)
-        // Remove from active tracking
-        const listenerIdx = this.activeListeners.findIndex((l) => l.handler === onData)
-        if (listenerIdx !== -1) this.activeListeners.splice(listenerIdx, 1)
-        const timerIdx = this.activeTimers.indexOf(timer)
-        if (timerIdx !== -1) this.activeTimers.splice(timerIdx, 1)
-        if (idleTimer) {
-          const idleTimerIdx = this.activeTimers.indexOf(idleTimer)
-          if (idleTimerIdx !== -1) this.activeTimers.splice(idleTimerIdx, 1)
-        }
-      }
-
-      const timer = setTimeout(onTimeout, timeoutMs)
-      this.activeTimers.push(timer)
-      inp.on("data", onData)
-      this.activeListeners.push({ event: "data", handler: onData })
+      session.setTimer(finish, timeoutMs)
+      session.subscribeInput(onData)
       this.writeOsc(indices.map((i) => `\x1b]4;${i};?\x07`).join(""))
     })
   }
 
   private async querySpecialColors(timeoutMs = 1200): Promise<Record<number, Hex>> {
     const out = this.stdout
-    const inp = this.stdin
     const results: Record<number, Hex> = {
       10: null,
       11: null,
@@ -220,13 +262,22 @@ export class TerminalPalette implements TerminalPaletteDetector {
       19: null,
     }
 
-    if (!out.isTTY || !inp.isTTY) {
+    if (!out.isTTY || !this.stdin.isTTY) {
       return results
     }
 
     return new Promise<Record<number, Hex>>((resolve) => {
+      const session = this.createQuerySession()
       let buffer = ""
       let idleTimer: NodeJS.Timeout | null = null
+      let settled = false
+
+      const finish = () => {
+        if (settled) return
+        settled = true
+        session.cleanup()
+        resolve(results)
+      }
 
       const onData = (chunk: string | Buffer) => {
         buffer += chunk.toString()
@@ -246,44 +297,17 @@ export class TerminalPalette implements TerminalPaletteDetector {
 
         const done = Object.values(results).filter((v) => v !== null).length
         if (done === Object.keys(results).length) {
-          cleanup()
-          resolve(results)
+          finish()
           return
         }
 
         if (!updated) return
 
-        if (idleTimer) clearTimeout(idleTimer)
-        idleTimer = setTimeout(() => {
-          cleanup()
-          resolve(results)
-        }, 150)
-        if (idleTimer) this.activeTimers.push(idleTimer)
+        idleTimer = session.resetTimer(idleTimer, finish, 150)
       }
 
-      const onTimeout = () => {
-        cleanup()
-        resolve(results)
-      }
-
-      const cleanup = () => {
-        clearTimeout(timer)
-        if (idleTimer) clearTimeout(idleTimer)
-        inp.removeListener("data", onData)
-        const listenerIdx = this.activeListeners.findIndex((l) => l.handler === onData)
-        if (listenerIdx !== -1) this.activeListeners.splice(listenerIdx, 1)
-        const timerIdx = this.activeTimers.indexOf(timer)
-        if (timerIdx !== -1) this.activeTimers.splice(timerIdx, 1)
-        if (idleTimer) {
-          const idleTimerIdx = this.activeTimers.indexOf(idleTimer)
-          if (idleTimerIdx !== -1) this.activeTimers.splice(idleTimerIdx, 1)
-        }
-      }
-
-      const timer = setTimeout(onTimeout, timeoutMs)
-      this.activeTimers.push(timer)
-      inp.on("data", onData)
-      this.activeListeners.push({ event: "data", handler: onData })
+      session.setTimer(finish, timeoutMs)
+      session.subscribeInput(onData)
       this.writeOsc(
         [
           "\x1b]10;?\x07",
@@ -345,6 +369,7 @@ export function createTerminalPalette(
   stdout: NodeJS.WriteStream,
   writeFn?: WriteFunction,
   isLegacyTmux?: boolean,
+  oscSource?: OscSubscriptionSource,
 ): TerminalPaletteDetector {
-  return new TerminalPalette(stdin, stdout, writeFn, isLegacyTmux)
+  return new TerminalPalette(stdin, stdout, writeFn, isLegacyTmux, oscSource)
 }

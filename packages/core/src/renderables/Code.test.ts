@@ -1789,19 +1789,19 @@ test("CodeRenderable - lineInfo is accessible with drawUnstyledText=false before
   currentRenderer.root.add(codeRenderable)
 
   expect(codeRenderable.lineCount).toBe(3)
-  expect(codeRenderable.lineInfo.lineStarts.length).toBe(3)
+  expect(codeRenderable.lineInfo.lineStartCols.length).toBe(3)
 
   await renderOnce()
 
   expect(mockClient.isHighlighting()).toBe(true)
-  expect(codeRenderable.lineInfo.lineStarts.length).toBe(3)
+  expect(codeRenderable.lineInfo.lineStartCols.length).toBe(3)
   expect(codeRenderable.lineInfo.lineSources.length).toBe(3)
 
   mockClient.resolveHighlightOnce(0)
   await new Promise((resolve) => setTimeout(resolve, 10))
   await renderOnce()
 
-  expect(codeRenderable.lineInfo.lineStarts.length).toBe(3)
+  expect(codeRenderable.lineInfo.lineStartCols.length).toBe(3)
   expect(codeRenderable.lineInfo.lineSources.length).toBe(3)
 })
 

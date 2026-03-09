@@ -552,7 +552,7 @@ export abstract class EditBufferRenderable extends Renderable implements LineInf
         Math.floor(effectiveHeight),
       )
 
-      const measuredWidth = measureResult ? Math.max(1, measureResult.maxWidth) : 1
+      const measuredWidth = measureResult ? Math.max(1, measureResult.widthColsMax) : 1
       const measuredHeight = measureResult ? Math.max(1, measureResult.lineCount) : 1
 
       if (widthMode === MeasureMode.AtMost && this._positionType !== "absolute") {

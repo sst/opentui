@@ -741,9 +741,11 @@ pub const CliRenderer = struct {
                 }
                 runLength += 1;
 
-                // Update grapheme/link trackers (and continuation cells), so current buffer
-                // retains grapheme ownership after next buffer clear and IDs remain stable.
-                self.currentRenderBuffer.set(x, y, nextCell.?);
+                // Sync this cell to the current buffer so the next frame's diff
+                // is correct. Use syncCell (set without span cleanup) because
+                // span cleanup would destroy continuation cells written by an
+                // earlier iteration of this same left-to-right pass (#723).
+                self.currentRenderBuffer.syncCell(x, y, nextCell.?);
 
                 cellsUpdated += 1;
             }
@@ -1181,9 +1183,8 @@ pub const CliRenderer = struct {
     }
 
     pub fn enableMouse(self: *CliRenderer, enableMovement: bool) void {
-        _ = enableMovement;
         var stream = std.io.fixedBufferStream(&self.writeOutBuf);
-        self.terminal.setMouseMode(stream.writer(), true) catch {};
+        self.terminal.setMouseMode(stream.writer(), true, enableMovement) catch {};
         self.writeOut(stream.getWritten());
     }
 
@@ -1193,7 +1194,7 @@ pub const CliRenderer = struct {
 
     pub fn disableMouse(self: *CliRenderer) void {
         var stream = std.io.fixedBufferStream(&self.writeOutBuf);
-        self.terminal.setMouseMode(stream.writer(), false) catch {};
+        self.terminal.setMouseMode(stream.writer(), false, self.terminal.state.mouse_movement) catch {};
         self.writeOut(stream.getWritten());
     }
 

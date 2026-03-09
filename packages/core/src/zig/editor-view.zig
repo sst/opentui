@@ -509,7 +509,7 @@ pub const EditorView = struct {
         if (visual_row >= vlines.len) return null;
 
         const vline = &vlines[visual_row];
-        const clamped_visual_col = @min(visual_col, vline.width);
+        const clamped_visual_col = @min(visual_col, vline.width_cols);
         const logical_col = vline.source_col_offset + clamped_visual_col;
         const logical_row = @as(u32, @intCast(vline.source_line));
 
@@ -703,8 +703,8 @@ pub const EditorView = struct {
                 // The wrap boundary is at next_vline.source_col_offset
                 // To stay on the current visual line, we need to be one position BEFORE the boundary
                 // However, if width is 0, just use the start position
-                if (vline.width > 0) {
-                    logical_col = vline.source_col_offset + vline.width - 1;
+                if (vline.width_cols > 0) {
+                    logical_col = vline.source_col_offset + vline.width_cols - 1;
                 } else {
                     logical_col = vline.source_col_offset;
                 }
