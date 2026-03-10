@@ -590,13 +590,13 @@ test "TextBuffer line iteration - walkLines callback" {
 
     try std.testing.expectEqual(@as(usize, 3), ctx.lines.items.len);
     try std.testing.expectEqual(@as(u32, 0), ctx.lines.items[0].line_idx);
-    try std.testing.expectEqual(@as(u32, 5), ctx.lines.items[0].width);
+    try std.testing.expectEqual(@as(u32, 5), ctx.lines.items[0].width_cols);
 
     try std.testing.expectEqual(@as(u32, 1), ctx.lines.items[1].line_idx);
-    try std.testing.expectEqual(@as(u32, 6), ctx.lines.items[1].width);
+    try std.testing.expectEqual(@as(u32, 6), ctx.lines.items[1].width_cols);
 
     try std.testing.expectEqual(@as(u32, 2), ctx.lines.items[2].line_idx);
-    try std.testing.expectEqual(@as(u32, 5), ctx.lines.items[2].width);
+    try std.testing.expectEqual(@as(u32, 5), ctx.lines.items[2].width_cols);
 }
 
 test "TextBuffer line queries - comprehensive rope coordinate checks" {

@@ -1,7 +1,7 @@
 import { createCliRenderer } from "@opentui/core"
-import { createRoot } from "../src"
+import { createRoot } from "@opentui/react"
 
-function App() {
+export function App() {
   return (
     <text>
       Color Showcase{"\n"}
@@ -68,5 +68,7 @@ function App() {
   )
 }
 
-const renderer = await createCliRenderer()
-createRoot(renderer).render(<App />)
+if (import.meta.main) {
+  const renderer = await createCliRenderer()
+  createRoot(renderer).render(<App />)
+}

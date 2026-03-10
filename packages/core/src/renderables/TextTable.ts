@@ -656,7 +656,7 @@ export class TextTableRenderable extends Renderable {
         if (!cell) continue
 
         const measure = cell.textBufferView.measureForDimensions(0, MEASURE_HEIGHT)
-        const measuredWidth = Math.max(1, measure?.maxWidth ?? 0) + horizontalPadding
+        const measuredWidth = Math.max(1, measure?.widthColsMax ?? 0) + horizontalPadding
         intrinsicWidths[colIdx] = Math.max(intrinsicWidths[colIdx], measuredWidth)
       }
     }

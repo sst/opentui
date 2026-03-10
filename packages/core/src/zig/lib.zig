@@ -158,6 +158,8 @@ export fn createNativeSpanFeed(options_ptr: ?*const native_span_feed.Options) ?*
     return native_span_feed.createNativeSpanFeedWithAllocator(globalAllocator, options_ptr);
 }
 
+
+
 export fn getArenaAllocatedBytes() usize {
     return arena.queryCapacity();
 }
@@ -381,10 +383,10 @@ pub const CursorStyleOptions = extern struct {
 export fn setCursorStyleOptions(rendererPtr: *renderer.CliRenderer, options: *const CursorStyleOptions) void {
     const current = rendererPtr.terminal.getCursorStyle();
 
-    const style = if (options.style <= 2) @as(terminal.CursorStyle, @enumFromInt(options.style)) else current.style;
+    const style = if (options.style <= 3) @as(terminal.CursorStyle, @enumFromInt(options.style)) else current.style;
     const blinking = if (options.blinking <= 1) options.blinking == 1 else current.blinking;
 
-    if (options.style <= 2 or options.blinking <= 1) {
+    if (options.style <= 3 or options.blinking <= 1) {
         rendererPtr.terminal.setCursorStyle(style, blinking);
     }
     if (options.color) |rgba| {
@@ -416,6 +418,7 @@ export fn getCursorState(rendererPtr: *renderer.CliRenderer, outPtr: *ExternalCu
         .block => 0,
         .line => 1,
         .underline => 2,
+        .default => 3,
     };
 
     outPtr.* = .{
@@ -971,15 +974,15 @@ export fn textBufferViewGetLineInfoDirect(view: *text_buffer_view.UnifiedTextBuf
     const line_info = view.getCachedLineInfo();
 
     outPtr.* = .{
-        .starts_ptr = line_info.starts.ptr,
-        .starts_len = @intCast(line_info.starts.len),
-        .widths_ptr = line_info.widths.ptr,
-        .widths_len = @intCast(line_info.widths.len),
-        .sources_ptr = line_info.sources.ptr,
-        .sources_len = @intCast(line_info.sources.len),
-        .wraps_ptr = line_info.wraps.ptr,
-        .wraps_len = @intCast(line_info.wraps.len),
-        .max_width = line_info.max_width,
+        .start_cols_ptr = line_info.line_start_cols.ptr,
+        .start_cols_len = @intCast(line_info.line_start_cols.len),
+        .width_cols_ptr = line_info.line_width_cols.ptr,
+        .width_cols_len = @intCast(line_info.line_width_cols.len),
+        .sources_ptr = line_info.line_sources.ptr,
+        .sources_len = @intCast(line_info.line_sources.len),
+        .wraps_ptr = line_info.line_wraps.ptr,
+        .wraps_len = @intCast(line_info.line_wraps.len),
+        .width_cols_max = line_info.line_width_cols_max,
     };
 }
 
@@ -987,15 +990,15 @@ export fn textBufferViewGetLogicalLineInfoDirect(view: *text_buffer_view.Unified
     const line_info = view.getLogicalLineInfo();
 
     outPtr.* = .{
-        .starts_ptr = line_info.starts.ptr,
-        .starts_len = @intCast(line_info.starts.len),
-        .widths_ptr = line_info.widths.ptr,
-        .widths_len = @intCast(line_info.widths.len),
-        .sources_ptr = line_info.sources.ptr,
-        .sources_len = @intCast(line_info.sources.len),
-        .wraps_ptr = line_info.wraps.ptr,
-        .wraps_len = @intCast(line_info.wraps.len),
-        .max_width = line_info.max_width,
+        .start_cols_ptr = line_info.line_start_cols.ptr,
+        .start_cols_len = @intCast(line_info.line_start_cols.len),
+        .width_cols_ptr = line_info.line_width_cols.ptr,
+        .width_cols_len = @intCast(line_info.line_width_cols.len),
+        .sources_ptr = line_info.line_sources.ptr,
+        .sources_len = @intCast(line_info.line_sources.len),
+        .wraps_ptr = line_info.line_wraps.ptr,
+        .wraps_len = @intCast(line_info.line_wraps.len),
+        .width_cols_max = line_info.line_width_cols_max,
     };
 }
 
@@ -1023,14 +1026,14 @@ export fn textBufferViewSetTruncate(view: *text_buffer_view.UnifiedTextBufferVie
 
 pub const ExternalMeasureResult = extern struct {
     line_count: u32,
-    max_width: u32,
+    width_cols_max: u32,
 };
 
 export fn textBufferViewMeasureForDimensions(view: *text_buffer_view.UnifiedTextBufferView, width: u32, height: u32, outPtr: *ExternalMeasureResult) bool {
     const result = view.measureForDimensions(width, height) catch return false;
     outPtr.* = .{
         .line_count = result.line_count,
-        .max_width = result.max_width,
+        .width_cols_max = result.width_cols_max,
     };
     return true;
 }
@@ -1301,15 +1304,15 @@ export fn editorViewGetTotalVirtualLineCount(view: *editor_view.EditorView) u32 
 export fn editorViewGetLineInfoDirect(view: *editor_view.EditorView, outPtr: *ExternalLineInfo) void {
     const line_info = view.getCachedLineInfo();
     outPtr.* = .{
-        .starts_ptr = line_info.starts.ptr,
-        .starts_len = @intCast(line_info.starts.len),
-        .widths_ptr = line_info.widths.ptr,
-        .widths_len = @intCast(line_info.widths.len),
-        .sources_ptr = line_info.sources.ptr,
-        .sources_len = @intCast(line_info.sources.len),
-        .wraps_ptr = line_info.wraps.ptr,
-        .wraps_len = @intCast(line_info.wraps.len),
-        .max_width = line_info.max_width,
+        .start_cols_ptr = line_info.line_start_cols.ptr,
+        .start_cols_len = @intCast(line_info.line_start_cols.len),
+        .width_cols_ptr = line_info.line_width_cols.ptr,
+        .width_cols_len = @intCast(line_info.line_width_cols.len),
+        .sources_ptr = line_info.line_sources.ptr,
+        .sources_len = @intCast(line_info.line_sources.len),
+        .wraps_ptr = line_info.line_wraps.ptr,
+        .wraps_len = @intCast(line_info.line_wraps.len),
+        .width_cols_max = line_info.line_width_cols_max,
     };
 }
 
@@ -1320,15 +1323,15 @@ export fn editorViewGetTextBufferView(view: *editor_view.EditorView) *text_buffe
 export fn editorViewGetLogicalLineInfoDirect(view: *editor_view.EditorView, outPtr: *ExternalLineInfo) void {
     const line_info = view.getLogicalLineInfo();
     outPtr.* = .{
-        .starts_ptr = line_info.starts.ptr,
-        .starts_len = @intCast(line_info.starts.len),
-        .widths_ptr = line_info.widths.ptr,
-        .widths_len = @intCast(line_info.widths.len),
-        .sources_ptr = line_info.sources.ptr,
-        .sources_len = @intCast(line_info.sources.len),
-        .wraps_ptr = line_info.wraps.ptr,
-        .wraps_len = @intCast(line_info.wraps.len),
-        .max_width = line_info.max_width,
+        .start_cols_ptr = line_info.line_start_cols.ptr,
+        .start_cols_len = @intCast(line_info.line_start_cols.len),
+        .width_cols_ptr = line_info.line_width_cols.ptr,
+        .width_cols_len = @intCast(line_info.line_width_cols.len),
+        .sources_ptr = line_info.line_sources.ptr,
+        .sources_len = @intCast(line_info.line_sources.len),
+        .wraps_ptr = line_info.line_wraps.ptr,
+        .wraps_len = @intCast(line_info.line_wraps.len),
+        .width_cols_max = line_info.line_width_cols_max,
     };
 }
 
@@ -1549,15 +1552,15 @@ pub const ExternalVisualCursor = extern struct {
 };
 
 pub const ExternalLineInfo = extern struct {
-    starts_ptr: [*]const u32,
-    starts_len: u32,
-    widths_ptr: [*]const u32,
-    widths_len: u32,
+    start_cols_ptr: [*]const u32,
+    start_cols_len: u32,
+    width_cols_ptr: [*]const u32,
+    width_cols_len: u32,
     sources_ptr: [*]const u32,
     sources_len: u32,
     wraps_ptr: [*]const u32,
     wraps_len: u32,
-    max_width: u32,
+    width_cols_max: u32,
 };
 
 export fn textBufferAddHighlightByCharRange(

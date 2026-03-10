@@ -1182,8 +1182,8 @@ pub const OptimizedBuffer = struct {
         const total_line_count = text_buffer.lineCount();
 
         const line_info = view.getCachedLineInfo();
-        var globalCharPos: u32 = if (firstVisibleLine < line_info.starts.len)
-            line_info.starts[firstVisibleLine]
+        var globalCharPos: u32 = if (firstVisibleLine < line_info.line_start_cols.len)
+            line_info.line_start_cols[firstVisibleLine]
         else
             0;
 
@@ -1192,7 +1192,7 @@ pub const OptimizedBuffer = struct {
 
             currentX = x;
             var column_in_line: u32 = 0;
-            globalCharPos = vline.char_offset;
+            globalCharPos = vline.col_offset;
 
             // When viewport is set, virtual_lines is a slice starting from viewport.y
             // But getVirtualLineSpans expects absolute indices, so we need to use the absolute index
@@ -1237,7 +1237,7 @@ pub const OptimizedBuffer = struct {
                 const chunk = vchunk.chunk;
                 const chunk_bytes = chunk.getBytes(text_buffer.memRegistry());
                 const specials = chunk.getGraphemes(text_buffer.memRegistry(), text_buffer.getAllocator(), text_buffer.tabWidth(), text_buffer.widthMethod()) catch continue;
-                const line_char_offset = vline.char_offset;
+                const line_col_offset = vline.col_offset;
 
                 if (currentX >= @as(i32, @intCast(self.width))) {
                     globalCharPos += vchunk.width;
@@ -1323,16 +1323,16 @@ pub const OptimizedBuffer = struct {
                     }
 
                     var selection_offset = globalCharPos;
-                    if (vline.is_truncated and globalCharPos >= line_char_offset) {
+                    if (vline.is_truncated and globalCharPos >= line_col_offset) {
                         const ellipsis_width: u32 = 3;
-                        const column_offset_in_line = globalCharPos - line_char_offset;
+                        const column_offset_in_line = globalCharPos - line_col_offset;
                         if (column_offset_in_line >= vline.ellipsis_pos and column_offset_in_line < vline.ellipsis_pos + ellipsis_width) {
-                            selection_offset = line_char_offset + vline.ellipsis_pos;
+                            selection_offset = line_col_offset + vline.ellipsis_pos;
                         } else if (column_offset_in_line >= vline.ellipsis_pos + ellipsis_width) {
-                            selection_offset = line_char_offset + vline.truncation_suffix_start +
+                            selection_offset = line_col_offset + vline.truncation_suffix_start +
                                 (column_offset_in_line - vline.ellipsis_pos - ellipsis_width);
                         } else {
-                            selection_offset = line_char_offset + column_offset_in_line;
+                            selection_offset = line_col_offset + column_offset_in_line;
                         }
                     }
 
@@ -1340,7 +1340,7 @@ pub const OptimizedBuffer = struct {
                     var source_col_pos = col_offset + column_in_line;
                     if (vline.is_truncated) {
                         const ellipsis_width: u32 = 3;
-                        const column_offset_in_line = globalCharPos - line_char_offset;
+                        const column_offset_in_line = globalCharPos - line_col_offset;
                         if (column_offset_in_line >= vline.ellipsis_pos and column_offset_in_line < vline.ellipsis_pos + ellipsis_width) {
                             source_col_pos = std.math.maxInt(u32);
                         } else if (column_offset_in_line >= vline.ellipsis_pos + ellipsis_width) {
@@ -1370,7 +1370,7 @@ pub const OptimizedBuffer = struct {
                     }
 
                     if (vline.is_truncated) {
-                        const column_offset_in_line = globalCharPos - line_char_offset;
+                        const column_offset_in_line = globalCharPos - line_col_offset;
                         const ellipsis_width: u32 = 3;
                         if (column_offset_in_line >= vline.ellipsis_pos and column_offset_in_line < vline.ellipsis_pos + ellipsis_width) {
                             lineFg = defaultFg;

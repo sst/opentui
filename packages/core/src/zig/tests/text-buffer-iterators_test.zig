@@ -71,7 +71,7 @@ test "walkLines - single text segment" {
     iter_mod.walkLines(&rope, &ctx, Context.callback, true);
 
     try testing.expectEqual(@as(usize, 1), ctx.lines.items.len);
-    try testing.expectEqual(@as(u32, 10), ctx.lines.items[0].width);
+    try testing.expectEqual(@as(u32, 10), ctx.lines.items[0].width_cols);
 }
 
 test "walkLines - text + break + text" {
@@ -120,12 +120,12 @@ test "walkLines - text + break + text" {
     try testing.expectEqual(@as(usize, 2), ctx.lines.items.len);
 
     try testing.expectEqual(@as(u32, 0), ctx.lines.items[0].line_idx);
-    try testing.expectEqual(@as(u32, 10), ctx.lines.items[0].width);
-    try testing.expectEqual(@as(u32, 0), ctx.lines.items[0].char_offset);
+    try testing.expectEqual(@as(u32, 10), ctx.lines.items[0].width_cols);
+    try testing.expectEqual(@as(u32, 0), ctx.lines.items[0].col_offset);
 
     try testing.expectEqual(@as(u32, 1), ctx.lines.items[1].line_idx);
-    try testing.expectEqual(@as(u32, 5), ctx.lines.items[1].width);
-    try testing.expectEqual(@as(u32, 11), ctx.lines.items[1].char_offset);
+    try testing.expectEqual(@as(u32, 5), ctx.lines.items[1].width_cols);
+    try testing.expectEqual(@as(u32, 11), ctx.lines.items[1].col_offset);
 }
 
 test "walkLines - exclude newlines in offset" {
@@ -174,12 +174,12 @@ test "walkLines - exclude newlines in offset" {
     try testing.expectEqual(@as(usize, 2), ctx.lines.items.len);
 
     try testing.expectEqual(@as(u32, 0), ctx.lines.items[0].line_idx);
-    try testing.expectEqual(@as(u32, 10), ctx.lines.items[0].width);
-    try testing.expectEqual(@as(u32, 0), ctx.lines.items[0].char_offset);
+    try testing.expectEqual(@as(u32, 10), ctx.lines.items[0].width_cols);
+    try testing.expectEqual(@as(u32, 0), ctx.lines.items[0].col_offset);
 
     try testing.expectEqual(@as(u32, 1), ctx.lines.items[1].line_idx);
-    try testing.expectEqual(@as(u32, 5), ctx.lines.items[1].width);
-    try testing.expectEqual(@as(u32, 10), ctx.lines.items[1].char_offset);
+    try testing.expectEqual(@as(u32, 5), ctx.lines.items[1].width_cols);
+    try testing.expectEqual(@as(u32, 10), ctx.lines.items[1].col_offset);
 }
 
 test "coordsToOffset - valid coordinates" {

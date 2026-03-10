@@ -66,5 +66,7 @@ export function ExtendExample() {
   )
 }
 
-const renderer = await createCliRenderer()
-createRoot(renderer).render(<ExtendExample />)
+if (import.meta.main) {
+  const renderer = await createCliRenderer()
+  createRoot(renderer).render(<ExtendExample />)
+}

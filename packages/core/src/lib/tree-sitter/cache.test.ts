@@ -1,8 +1,9 @@
 import { test, expect, beforeEach, beforeAll, afterAll, describe } from "bun:test"
 import { TreeSitterClient, addDefaultParsers } from "./client"
-import { tmpdir } from "os"
-import { join, resolve } from "path"
-import { mkdir, readdir, stat } from "fs/promises"
+import { tmpdir } from "node:os"
+import { join, resolve } from "node:path"
+import { mkdir, readdir, stat } from "node:fs/promises"
+import { readFileSync } from "node:fs"
 import type { FiletypeParserOptions } from "./types"
 
 describe("TreeSitterClient Caching", () => {
@@ -18,7 +19,7 @@ describe("TreeSitterClient Caching", () => {
       fetch(req) {
         const url = new URL(req.url)
         const filePath = join(assetsDir, url.pathname)
-        return new Response(Bun.file(filePath))
+        return new Response(readFileSync(filePath))
       },
     })
   })

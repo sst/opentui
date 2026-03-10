@@ -135,7 +135,7 @@ pub const UnifiedTextBuffer = struct {
     }
 
     /// Accessor: get maximum line width across all lines.
-    pub fn maxLineWidth(self: *const Self) u32 {
+    pub fn lineWidthColsMax(self: *const Self) u32 {
         return iter_mod.getMaxLineWidth(&self._rope);
     }
 
@@ -885,24 +885,24 @@ pub const UnifiedTextBuffer = struct {
 
             fn callback(ctx_ptr: *anyopaque, line_info: LineInfo) void {
                 const ctx = @as(*@This(), @ptrCast(@alignCast(ctx_ptr)));
-                const line_start_char = line_info.char_offset;
-                const line_end_char = line_info.char_offset + line_info.width;
+                const line_start_col_offset = line_info.col_offset;
+                const line_end_col_offset = line_info.col_offset + line_info.width_cols;
 
                 // Skip lines before the highlight
-                if (line_end_char <= ctx.char_start) return;
+                if (line_end_col_offset <= ctx.char_start) return;
                 // Stop after the highlight ends
-                if (line_start_char >= ctx.char_end) return;
+                if (line_start_col_offset >= ctx.char_end) return;
 
                 // This line overlaps with the highlight
-                const col_start = if (ctx.char_start > line_start_char)
-                    ctx.char_start - line_start_char
+                const col_start = if (ctx.char_start > line_start_col_offset)
+                    ctx.char_start - line_start_col_offset
                 else
                     0;
 
-                const col_end = if (ctx.char_end < line_end_char)
-                    ctx.char_end - line_start_char
+                const col_end = if (ctx.char_end < line_end_col_offset)
+                    ctx.char_end - line_start_col_offset
                 else
-                    line_info.width;
+                    line_info.width_cols;
 
                 ctx.buffer.addHighlight(
                     line_info.line_idx,

@@ -5,8 +5,7 @@ import { resolveRenderLib } from "../zig"
 import { Command } from "commander"
 import path from "node:path"
 import { existsSync } from "node:fs"
-import { mkdir } from "node:fs/promises"
-import { mkdtemp, unlink } from "node:fs/promises"
+import { mkdir, mkdtemp, readFile, unlink } from "node:fs/promises"
 import { tmpdir } from "node:os"
 
 const realStdoutWrite = process.stdout.write.bind(process.stdout)
@@ -1752,7 +1751,7 @@ async function runSpawnedScenarios(plans: ScenarioPlan[]): Promise<void> {
       throw new Error(`Scenario ${plan.name} failed with exit code ${exitCode}`)
     }
 
-    const json = await Bun.file(jsonPath).text()
+    const json = await readFile(jsonPath, "utf8")
     await unlink(jsonPath)
     const payload = JSON.parse(json)
     const result = payload.results?.[0] as ScenarioResult | undefined

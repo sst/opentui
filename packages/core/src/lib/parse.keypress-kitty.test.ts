@@ -403,6 +403,29 @@ test("parseKeypress - Kitty keyboard invalid event types", () => {
   expect(emptyEvent.eventType).toBe("press")
 })
 
+test("parseKeypress - Kitty repeat/release matrix", () => {
+  const options: ParseKeypressOptions = { useKittyKeyboard: true }
+  const cases = [
+    ["\x1b[97;1:2u", "a", "press", true, false, false, false],
+    ["\x1b[97;5:3u", "a", "release", false, true, false, false],
+    ["\x1b[1;2:2A", "up", "press", true, false, true, false],
+    ["\x1b[1;5:3B", "down", "release", false, true, false, false],
+    ["\x1b[5;1:2~", "pageup", "press", true, false, false, false],
+    ["\x1b[3;5:3~", "delete", "release", false, true, false, false],
+  ] as const
+
+  for (const [sequence, name, eventType, repeated, ctrl, shift, meta] of cases) {
+    const result = parseKeypress(sequence, options)!
+    expect(result.name).toBe(name)
+    expect(result.eventType).toBe(eventType)
+    expect(result.repeated === true).toBe(repeated)
+    expect(result.ctrl).toBe(ctrl)
+    expect(result.shift).toBe(shift)
+    expect(result.meta).toBe(meta)
+    expect(result.source).toBe("kitty")
+  }
+})
+
 // Test progressive enhancement (non-CSI u sequences)
 // Note: We don't implement this yet, but these should fall back to regular parsing
 test("parseKeypress - Kitty progressive enhancement fallback", () => {

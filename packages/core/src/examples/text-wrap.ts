@@ -8,8 +8,7 @@ import { TextNodeRenderable } from "../renderables/TextNode"
 import { ScrollBoxRenderable } from "../renderables/ScrollBox"
 import { InputRenderable, InputRenderableEvents } from "../renderables/Input"
 import { setupCommonDemoKeys } from "./lib/standalone-keys"
-import { existsSync } from "fs"
-import { resolve } from "path"
+import { readFile, stat } from "node:fs/promises"
 
 let mainContainer: BoxRenderable | null = null
 let contentBox: BoxRenderable | null = null
@@ -579,7 +578,7 @@ export function run(renderer: CliRenderer): void {
       }
 
       // Get file size for display
-      const fileStats = await Bun.file(filePath).stat()
+      const fileStats = await stat(filePath)
       const fileSizeBytes = fileStats.size
       const fileSizeMB = (fileSizeBytes / (1024 * 1024)).toFixed(2)
 
@@ -690,8 +689,8 @@ export function run(renderer: CliRenderer): void {
 
           await Bun.write(filePath, content)
 
-          // Load it back using Bun.file().text()
-          const loadedContent = await Bun.file(filePath).text()
+          // Load it back from disk
+          const loadedContent = await readFile(filePath, "utf8")
 
           // Create a new TextNodeRenderable with the downloaded content
           const babylonTextNode = TextNodeRenderable.fromString(

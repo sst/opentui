@@ -171,11 +171,11 @@ export abstract class TextBufferRenderable extends Renderable implements LineInf
   }
 
   public get scrollWidth(): number {
-    return this.lineInfo.maxLineWidth
+    return this.lineInfo.lineWidthColsMax
   }
 
   public get scrollHeight(): number {
-    return this.lineInfo.lineStarts.length
+    return this.lineInfo.lineStartCols.length
   }
 
   public get maxScrollY(): number {
@@ -398,7 +398,7 @@ export abstract class TextBufferRenderable extends Renderable implements LineInf
         Math.floor(effectiveHeight),
       )
 
-      const measuredWidth = measureResult ? Math.max(1, measureResult.maxWidth) : 1
+      const measuredWidth = measureResult ? Math.max(1, measureResult.widthColsMax) : 1
       const measuredHeight = measureResult ? Math.max(1, measureResult.lineCount) : 1
 
       if (widthMode === MeasureMode.AtMost && this._positionType !== "absolute") {
