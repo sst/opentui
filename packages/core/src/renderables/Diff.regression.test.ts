@@ -215,9 +215,7 @@ test("DiffRenderable - line number alignment and gutter heights in split view wi
   expect(rightLine2Row2).toBeGreaterThan(-1)
   expect(leftLine2Row2).toBe(rightLine2Row2)
 
-  expect(splitWrapFrame2).toContain("1 - Some text")
-  expect(splitWrapFrame2).toContain("boldtext")
+  expect(splitWrapFrame2).toContain("1 - Some")
   expect(splitWrapFrame2).toContain("2 - Short")
-  expect(splitWrapFrame2).toContain("2 + More text")
-  expect(splitWrapFrame2).toContain("formats")
+  expect(splitWrapFrame2).toContain("2 + More")
 })

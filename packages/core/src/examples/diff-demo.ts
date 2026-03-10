@@ -223,6 +223,45 @@ interface ContentExample {
   diff: string
 }
 
+const contextualDiff: ContentExample = {
+  name: "TypeScript (Contextual Headers)",
+  filetype: "typescript",
+  diff: `--- a/user-service.ts
++++ b/user-service.ts
+@@ -18,6 +18,6 @@ class UserService {
+   constructor(private db: Database) {
+     this.cache = new Map()
+-    this.ttl = 3600
++    this.ttl = 7200
+   }
+ 
+   async getUser(id: string): Promise<User> {
+@@ -34,7 +34,11 @@ async getUser(id: string): Promise<User> {
+     const cached = this.cache.get(id)
+     if (cached) return cached
+ 
+-    const user = await this.db.query("SELECT * FROM users WHERE id = ?", [id])
++    const user = await this.db.query(
++      "SELECT id, name, email, role FROM users WHERE id = ? AND active = true",
++      [id],
++    )
+     this.cache.set(id, user)
++    this.setExpiry(id)
+     return user
+   }
+@@ -52,7 +56,9 @@ async deleteUser(id: string): Promise<void> {
+     await this.db.query("DELETE FROM users WHERE id = ?", [id])
+     this.cache.delete(id)
++    this.logger.info(\`Deleted user \${id}\`)
+   }
+ 
+-  clearCache(): void {
++  async clearCache(): Promise<void> {
+     this.cache.clear()
++    await this.db.query("DELETE FROM user_cache")
+   }`,
+}
+
 const contentExamples: ContentExample[] = [
   {
     name: "TypeScript",
@@ -234,13 +273,13 @@ const contentExamples: ContentExample[] = [
    add(a: number, b: number): number {
      return a + b;
    }
- 
+
 -  subtract(a: number, b: number): number {
 -    return a - b;
 +  subtract(a: number, b: number, c: number = 0): number {
 +    return a - b - c;
    }
- 
+
    multiply(a: number, b: number): number {
      return a * b;
    }
@@ -266,7 +305,7 @@ const contentExamples: ContentExample[] = [
  import * as keypressDebugDemo from "./keypress-debug-demo"
 +import * as textTruncationDemo from "./text-truncation-demo"
  import { setupCommonDemoKeys } from "./lib/standalone-keys"
- 
+
  interface Example {
 @@ -85,6 +86,12 @@
      destroy: textSelectionExample.destroy,
@@ -289,20 +328,20 @@ const contentExamples: ContentExample[] = [
 +++ b/README.md
 @@ -1,12 +1,21 @@
  # Project Name
- 
+
 -A simple project description.
 +A comprehensive project description with detailed features.
- 
+
  ## Features
- 
+
 -- Feature 1
 -- Feature 2
 +- **Feature 1**: Enhanced with new capabilities
 +- **Feature 2**: Now supports multiple formats
 +- **Feature 3**: Added real-time synchronization
- 
+
  ## Installation
- 
+
 -\`npm install\`
 +\`\`\`bash
 +npm install
@@ -327,14 +366,14 @@ const contentExamples: ContentExample[] = [
    tabIndicatorColor?: string | RGBA
 +  truncate?: boolean
  }
- 
+
  export abstract class TextBufferRenderable extends Renderable implements LineInfoProvider {
 @@ -35,6 +36,7 @@
    protected _tabIndicatorColor?: RGBA
    protected _scrollX: number = 0
    protected _scrollY: number = 0
 +  protected _truncate: boolean = false
- 
+
    protected textBuffer: TextBuffer
    protected textBufferView: TextBufferView`,
   },
@@ -419,9 +458,10 @@ const contentExamples: ContentExample[] = [
 +      expect(line0_ends_with_kai && line1_starts_with_kai).toBe(false)
 +    })
    })
- 
+
    describe("Text Node Dimension Updates", () => {`,
   },
+  contextualDiff,
 ]
 
 const malformedDiff = `--- a/calculator.ts
@@ -431,7 +471,7 @@ const malformedDiff = `--- a/calculator.ts
    add(a: number, b: number): number {
      return a + b;
    }
- 
+
 -  subtract(a: number, b: number): number {
 -    return a - b;
 +  subtract(a: number, b: number, c: number = 0): number {

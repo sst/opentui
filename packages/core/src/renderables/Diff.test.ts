@@ -2966,6 +2966,196 @@ test("DiffRenderable - split view with word wrapping: changing diff content shou
   expect(buggyFrame).toBe(correctFrame)
 })
 
+const diffWithContext = `--- a/app.js
++++ b/app.js
+@@ -10,4 +10,5 @@ function setup() {
+ const a = 1;
+ const b = 2;
+-const c = 3;
++const c = 30;
++const d = 40;
+ const e = 5;`
+
+const multiHunkWithContext = `--- a/app.js
++++ b/app.js
+@@ -5,3 +5,3 @@ function init() {
+ const x = 1;
+-const y = 2;
++const y = 20;
+ const z = 3;
+@@ -20,3 +20,4 @@ function cleanup() {
+ doA();
+-doB();
++doB(true);
++doC();
+ doD();`
+
+const diffWithoutContext = `--- a/app.js
++++ b/app.js
+@@ -1,3 +1,3 @@
+ const a = 1;
+-const b = 2;
++const b = 20;
+ const c = 3;`
+
+test("DiffRenderable - unified view renders hunk header with @@ context", async () => {
+  const syntaxStyle = SyntaxStyle.fromStyles({
+    default: { fg: RGBA.fromValues(1, 1, 1, 1) },
+  })
+
+  const diffRenderable = new DiffRenderable(currentRenderer, {
+    id: "test-diff",
+    diff: diffWithContext,
+    view: "unified",
+    syntaxStyle,
+    width: "100%",
+    height: "100%",
+  })
+
+  currentRenderer.root.add(diffRenderable)
+  await renderOnce()
+
+  const frame = captureFrame()
+  expect(frame).not.toContain("Error parsing diff")
+  expect("\n" + frame.trimEnd()).toMatchInlineSnapshot(`
+    "
+        @ function setup() {                                                        
+     10   const a = 1;                                                              
+     11   const b = 2;                                                              
+     12 - const c = 3;                                                              
+     12 + const c = 30;                                                             
+     13 + const d = 40;                                                             
+     14   const e = 5;"
+  `)
+})
+
+test("DiffRenderable - unified view does not render hunk header when no context text", async () => {
+  const syntaxStyle = SyntaxStyle.fromStyles({
+    default: { fg: RGBA.fromValues(1, 1, 1, 1) },
+  })
+
+  const diffRenderable = new DiffRenderable(currentRenderer, {
+    id: "test-diff",
+    diff: diffWithoutContext,
+    view: "unified",
+    syntaxStyle,
+    width: "100%",
+    height: "100%",
+  })
+
+  currentRenderer.root.add(diffRenderable)
+  await renderOnce()
+
+  const frame = captureFrame()
+  expect(frame).not.toContain("Error parsing diff")
+  expect(frame).not.toContain("@@")
+  expect("\n" + frame.trimEnd()).toMatchInlineSnapshot(`
+    "
+     1   const a = 1;                                                               
+     2 - const b = 2;                                                               
+     2 + const b = 20;                                                              
+     3   const c = 3;"
+  `)
+})
+
+test("DiffRenderable - unified view renders multiple hunk headers with context", async () => {
+  const syntaxStyle = SyntaxStyle.fromStyles({
+    default: { fg: RGBA.fromValues(1, 1, 1, 1) },
+  })
+
+  const diffRenderable = new DiffRenderable(currentRenderer, {
+    id: "test-diff",
+    diff: multiHunkWithContext,
+    view: "unified",
+    syntaxStyle,
+    width: "100%",
+    height: "100%",
+  })
+
+  currentRenderer.root.add(diffRenderable)
+  await renderOnce()
+
+  const frame = captureFrame()
+  expect(frame).not.toContain("Error parsing diff")
+  expect("\n" + frame.trimEnd()).toMatchInlineSnapshot(`
+    "
+        @ function init() {                                                         
+      5   const x = 1;                                                              
+      6 - const y = 2;                                                              
+      6 + const y = 20;                                                             
+      7   const z = 3;                                                              
+        @ function cleanup() {                                                      
+     20   doA();                                                                    
+     21 - doB();                                                                    
+     21 + doB(true);                                                                
+     22 + doC();                                                                    
+     23   doD();"
+  `)
+})
+
+test("DiffRenderable - split view renders hunk header with @@ context", async () => {
+  const syntaxStyle = SyntaxStyle.fromStyles({
+    default: { fg: RGBA.fromValues(1, 1, 1, 1) },
+  })
+
+  const diffRenderable = new DiffRenderable(currentRenderer, {
+    id: "test-diff",
+    diff: diffWithContext,
+    view: "split",
+    syntaxStyle,
+    width: "100%",
+    height: "100%",
+  })
+
+  currentRenderer.root.add(diffRenderable)
+  await renderOnce()
+
+  const frame = captureFrame()
+  expect(frame).not.toContain("Error parsing diff")
+  expect("\n" + frame.trimEnd()).toMatchInlineSnapshot(`
+    "
+        @ function setup() {                    @ function setup() {                
+     10   const a = 1;                       10   const a = 1;                      
+     11   const b = 2;                       11   const b = 2;                      
+     12 - const c = 3;                       12 + const c = 30;                     
+                                             13 + const d = 40;                     
+     13   const e = 5;                       14   const e = 5;"
+  `)
+})
+
+test("DiffRenderable - split view renders multiple hunk headers with context", async () => {
+  const syntaxStyle = SyntaxStyle.fromStyles({
+    default: { fg: RGBA.fromValues(1, 1, 1, 1) },
+  })
+
+  const diffRenderable = new DiffRenderable(currentRenderer, {
+    id: "test-diff",
+    diff: multiHunkWithContext,
+    view: "split",
+    syntaxStyle,
+    width: "100%",
+    height: "100%",
+  })
+
+  currentRenderer.root.add(diffRenderable)
+  await renderOnce()
+
+  const frame = captureFrame()
+  expect(frame).not.toContain("Error parsing diff")
+  expect("\n" + frame.trimEnd()).toMatchInlineSnapshot(`
+    "
+        @ function init() {                     @ function init() {                 
+      5   const x = 1;                        5   const x = 1;                      
+      6 - const y = 2;                        6 + const y = 20;                     
+      7   const z = 3;                        7   const z = 3;                      
+        @ function cleanup() {                  @ function cleanup() {              
+     20   doA();                             20   doA();                            
+     21 - doB();                             21 + doB(true);                        
+                                             22 + doC();                            
+     22   doD();                             23   doD();"
+  `)
+})
+
 test("DiffRenderable - setLineColor applies color to line", async () => {
   const syntaxStyle = SyntaxStyle.fromStyles({
     default: { fg: RGBA.fromValues(1, 1, 1, 1) },
