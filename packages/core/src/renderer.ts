@@ -1930,7 +1930,14 @@ export class CliRenderer extends EventEmitter implements RenderContext {
       console.error("Error destroying root renderable:", e instanceof Error ? e.stack : String(e))
     }
 
-    // Remove listener before destroying parser
+    // Disable mouse tracking while still in raw mode so the terminal stops
+    // generating SGR mouse events before we restore cooked mode. Without this,
+    // any mouse movement between setRawMode(false) and destroyRenderer() leaks
+    // partial escape sequences (e.g. "35;80;40M") onto the user's shell prompt.
+    if (this._useMouse) {
+      this.disableMouse()
+    }
+
     this.stdin.removeListener("data", this.stdinListener)
     if (this.stdin.setRawMode) {
       this.stdin.setRawMode(false)
