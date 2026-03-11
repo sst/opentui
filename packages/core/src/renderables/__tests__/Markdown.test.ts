@@ -683,6 +683,102 @@ console.log(x);
   `)
 })
 
+test("code block language alias keeps syntax highlighting", async () => {
+  const style = SyntaxStyle.fromStyles({
+    default: { fg: RGBA.fromHex("#111111") },
+    keyword: { fg: RGBA.fromHex("#ff0000") },
+    variable: { fg: RGBA.fromHex("#00ffff") },
+    number: { fg: RGBA.fromHex("#ff00ff") },
+    "markup.raw.block": {
+      fg: RGBA.fromHex("#00aa00"),
+      bg: RGBA.fromHex("#220000"),
+    },
+  })
+
+  const md = createMarkdownRenderable({
+    id: "styled-code-block-with-alias",
+    content: `\`\`\`ts
+const x = 1
+\`\`\``,
+    syntaxStyle: style,
+  })
+
+  renderer.root.add(md)
+  await renderMarkdownRenderable(md)
+
+  const startedAt = Date.now()
+  while (
+    md
+      .getChildren()
+      .some((child) => child instanceof CodeRenderable && child.filetype === "typescript" && child.isHighlighting)
+  ) {
+    if (Date.now() - startedAt > 2000) {
+      throw new Error("Timed out waiting for typescript highlights")
+    }
+    await Bun.sleep(10)
+    await renderOnce()
+  }
+
+  const spans = captureSpans().lines[0]?.spans ?? []
+  expect(spans.some((span) => span.text.includes("const") && span.fg.equals(RGBA.fromHex("#ff0000")))).toBe(true)
+  expect(spans.some((span) => span.bg.equals(RGBA.fromHex("#220000")))).toBe(true)
+})
+
+test("code block language info resolves aliases case-insensitively", async () => {
+  const md = createMarkdownRenderable({
+    id: "code-info-normalization",
+    content: `\`\`\`BASH title=script
+echo one
+\`\`\`
+
+\`\`\`SQL title=query
+select 1;
+\`\`\`
+
+\`\`\`ToMl title=config
+a = 1
+\`\`\``,
+    syntaxStyle,
+  })
+
+  renderer.root.add(md)
+  await renderMarkdownRenderable(md)
+
+  const blocks = md
+    .getChildren()
+    .filter((child): child is CodeRenderable => child instanceof CodeRenderable && child.filetype !== "markdown")
+
+  expect(blocks).toHaveLength(3)
+  expect(blocks[0]?.filetype).toBe("shell")
+  expect(blocks[1]?.filetype).toBe("sql")
+  expect(blocks[2]?.filetype).toBe("toml")
+})
+
+test("unknown code block language falls back to default foreground", async () => {
+  const style = SyntaxStyle.fromStyles({
+    default: { fg: RGBA.fromHex("#111111") },
+    "markup.raw.block": {
+      fg: RGBA.fromHex("#00aa00"),
+      bg: RGBA.fromHex("#220000"),
+    },
+  })
+
+  const md = createMarkdownRenderable({
+    id: "styled-code-block-unknown-lang",
+    content: `\`\`\`definitely_not_a_language
+echo test
+\`\`\``,
+    syntaxStyle: style,
+  })
+
+  renderer.root.add(md)
+  await renderMarkdownRenderable(md)
+
+  const spans = captureSpans().lines[0]?.spans ?? []
+  expect(spans.some((span) => span.text.includes("echo test") && span.fg.equals(RGBA.fromHex("#111111")))).toBe(true)
+  expect(spans.some((span) => span.bg.equals(RGBA.fromHex("#220000")))).toBe(true)
+})
+
 test("code block without language", async () => {
   const markdown = `\`\`\`
 plain code block
@@ -694,6 +790,55 @@ with multiple lines
     plain code block
     with multiple lines"
   `)
+})
+
+test("code block without language uses default foreground and raw block background", async () => {
+  const style = SyntaxStyle.fromStyles({
+    default: { fg: RGBA.fromHex("#111111") },
+    "markup.raw.block": {
+      fg: RGBA.fromHex("#00aa00"),
+      bg: RGBA.fromHex("#220000"),
+    },
+  })
+
+  const md = createMarkdownRenderable({
+    id: "styled-code-block",
+    content: `\`\`\`
+foo
+\`\`\``,
+    syntaxStyle: style,
+  })
+
+  renderer.root.add(md)
+  await renderMarkdownRenderable(md)
+
+  const span = captureSpans().lines[0]?.spans[0]
+  expect(span?.text).toContain("foo")
+  expect(span?.fg.equals(RGBA.fromHex("#111111"))).toBe(true)
+  expect(span?.bg.equals(RGBA.fromHex("#220000"))).toBe(true)
+})
+
+test("code block without language falls back to raw block foreground when default is missing", async () => {
+  const style = SyntaxStyle.fromStyles({
+    "markup.raw.block": {
+      fg: RGBA.fromHex("#00aa00"),
+    },
+  })
+
+  const md = createMarkdownRenderable({
+    id: "styled-code-block-raw-fallback",
+    content: `\`\`\`
+foo
+\`\`\``,
+    syntaxStyle: style,
+  })
+
+  renderer.root.add(md)
+  await renderMarkdownRenderable(md)
+
+  const span = captureSpans().lines[0]?.spans[0]
+  expect(span?.text).toContain("foo")
+  expect(span?.fg.equals(RGBA.fromHex("#00aa00"))).toBe(true)
 })
 
 test("code block mixed with text", async () => {
@@ -1161,6 +1306,41 @@ const x = 1;
     ┌──────────────────────────────────────────────────────────┐
     │CODE: const x = 1;                                        │
     └──────────────────────────────────────────────────────────┘"
+  `)
+})
+
+test("renderNode setter re-renders existing markdown blocks", async () => {
+  const { StyledText } = await import("../../lib/styled-text")
+
+  const md = createMarkdownRenderable({
+    id: "render-node-setter",
+    content: `# Title
+
+Body.`,
+    syntaxStyle,
+  })
+
+  renderer.root.add(md)
+  await renderMarkdownRenderable(md)
+
+  md.renderNode = (node, ctx) => {
+    if (node.type !== "heading") return ctx.defaultRender()
+    return new TextRenderable(renderer, {
+      id: "custom-heading-setter",
+      content: new StyledText([{ __isChunk: true, text: "[SETTER] Title", attributes: 0 }]),
+      width: "100%",
+    })
+  }
+
+  await renderMarkdownRenderable(md)
+
+  const lines = captureFrame()
+    .split("\n")
+    .map((line) => line.trimEnd())
+  expect("\n" + lines.join("\n").trimEnd()).toMatchInlineSnapshot(`
+    "
+    [SETTER] Title
+    Body."
   `)
 })
 
