@@ -253,9 +253,11 @@ Subscribe to paste events.
 ```tsx
 import { usePaste } from "@opentui/solid"
 
+const textDecoder = new TextDecoder()
+
 const App = () => {
   usePaste((event) => {
-    console.log("Pasted:", event.text)
+    console.log("Pasted:", textDecoder.decode(event.bytes))
   })
 
   return <text>Paste something!</text>
