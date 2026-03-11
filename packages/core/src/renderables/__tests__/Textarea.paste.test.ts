@@ -1,11 +1,16 @@
 import { describe, expect, it, beforeEach, afterEach } from "bun:test"
+import { Buffer } from "node:buffer"
 import { createTestRenderer, type TestRenderer, type MockInput } from "../../testing/test-renderer.js"
 import { createTextareaRenderable } from "./renderable-test-utils.js"
-import { PasteEvent } from "../../lib/index.js"
+import { decodePasteBytes, PasteEvent } from "../../lib/index.js"
 
 let currentRenderer: TestRenderer
 let renderOnce: () => Promise<void>
 let currentMockInput: MockInput
+
+function pasteBytes(text: string): Uint8Array {
+  return Uint8Array.from(Buffer.from(text))
+}
 
 describe("Textarea - Paste Tests", () => {
   beforeEach(async () => {
@@ -210,6 +215,20 @@ describe("Textarea - Paste Tests", () => {
       expect(editor.plainText).toBe("Hello 🌟世界👍")
     })
 
+    it("should strip ANSI sequences when inserting pasted text", async () => {
+      const { textarea: editor } = await createTextareaRenderable(currentRenderer, renderOnce, {
+        initialValue: "",
+        width: 40,
+        height: 10,
+      })
+
+      editor.focus()
+
+      await currentMockInput.pasteBracketedText("text with \x1b[31mred\x1b[0m color")
+
+      expect(editor.plainText).toBe("text with red color")
+    })
+
     it("should replace entire selection with pasted text", async () => {
       const { textarea: editor } = await createTextareaRenderable(currentRenderer, renderOnce, {
         initialValue: "AAAA\nBBBB\nCCCC",
@@ -245,7 +264,7 @@ describe("Textarea - Paste Tests", () => {
       editor.focus()
       editor.gotoLine(9999)
 
-      editor.handlePaste(new PasteEvent(" Content"))
+      editor.handlePaste(new PasteEvent(pasteBytes(" Content")))
 
       expect(editor.plainText).toBe("Test Content")
     })
@@ -270,7 +289,7 @@ describe("Textarea - Paste Tests", () => {
       expect(editor.getSelectedText()).toBe("World")
 
       // Use handlePaste directly
-      editor.handlePaste(new PasteEvent("Universe"))
+      editor.handlePaste(new PasteEvent(pasteBytes("Universe")))
 
       expect(editor.hasSelection()).toBe(false)
       expect(editor.plainText).toBe("Hello Universe")
@@ -311,7 +330,7 @@ describe("Textarea - Paste Tests", () => {
       await currentMockInput.pasteBracketedText(" Event")
 
       expect(receivedEvent).not.toBeNull()
-      expect(receivedEvent.text).toBe(" Event")
+      expect(receivedEvent.bytes).toEqual(pasteBytes(" Event"))
       expect(typeof receivedEvent.preventDefault).toBe("function")
       expect(receivedEvent.defaultPrevented).toBe(false)
       expect(editor.plainText).toBe("Test Event")
@@ -323,7 +342,7 @@ describe("Textarea - Paste Tests", () => {
         width: 40,
         height: 10,
         onPaste: (event) => {
-          if (event.text.includes("blocked")) {
+          if (decodePasteBytes(event.bytes).includes("blocked")) {
             event.preventDefault()
           }
         },

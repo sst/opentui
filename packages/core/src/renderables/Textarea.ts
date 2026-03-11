@@ -1,7 +1,8 @@
+import type { KeyEvent, PasteEvent } from "../lib/KeyHandler.js"
+import { decodePasteBytes, stripAnsiSequences } from "../lib/paste.js"
+import { RGBA, parseColor, type ColorInput } from "../lib/RGBA.js"
 import { type RenderContext } from "../types.js"
 import { EditBufferRenderable, type EditBufferOptions } from "./EditBufferRenderable.js"
-import type { KeyEvent, PasteEvent } from "../lib/KeyHandler.js"
-import { RGBA, parseColor, type ColorInput } from "../lib/RGBA.js"
 import {
   type KeyBinding as BaseKeyBinding,
   mergeKeyBindings,
@@ -256,7 +257,7 @@ export class TextareaRenderable extends EditBufferRenderable {
   }
 
   public handlePaste(event: PasteEvent): void {
-    this.insertText(event.text)
+    this.insertText(stripAnsiSequences(decodePasteBytes(event.bytes)))
   }
 
   public handleKeyPress(key: KeyEvent): boolean {

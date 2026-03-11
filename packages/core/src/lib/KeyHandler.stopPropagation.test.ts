@@ -1,9 +1,14 @@
 import { test, expect } from "bun:test"
+import { Buffer } from "node:buffer"
 import { InternalKeyHandler, KeyEvent } from "./KeyHandler.js"
 import { parseKeypress } from "./parse.keypress.js"
 
 function createKeyHandler(): InternalKeyHandler {
   return new InternalKeyHandler()
+}
+
+function pasteBytes(text: string): Uint8Array {
+  return Uint8Array.from(Buffer.from(text))
 }
 
 function dispatchInput(handler: InternalKeyHandler, data: string): boolean {
@@ -131,7 +136,7 @@ test("stopPropagation - paste events support stopPropagation", () => {
     callOrder.push("internal")
   })
 
-  handler.processPaste("hello")
+  handler.processPaste(pasteBytes("hello"))
 
   expect(callOrder).toEqual(["global"])
 })

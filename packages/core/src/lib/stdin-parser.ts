@@ -9,6 +9,7 @@ import { Buffer } from "node:buffer"
 import { SystemClock, type Clock, type TimerHandle } from "./clock"
 import { parseKeypress, type ParsedKey } from "./parse.keypress"
 import { MouseParser, type RawMouseEvent } from "./parse.mouse"
+import type { PasteMetadata } from "./paste"
 
 export { SystemClock, type Clock, type TimerHandle } from "./clock"
 
@@ -30,7 +31,8 @@ export type StdinEvent =
     }
   | {
       type: "paste"
-      text: string
+      bytes: Uint8Array
+      metadata?: PasteMetadata
     }
   | {
       type: "response"
@@ -69,8 +71,8 @@ type ParserState =
 // detection across chunk boundaries.
 interface PasteCollector {
   tail: Uint8Array
-  decoder: TextDecoder
-  parts: string[]
+  parts: Uint8Array[]
+  totalLength: number
 }
 
 // 10ms is enough to distinguish a lone ESC keypress from the start of an
@@ -320,9 +322,28 @@ function decodeUtf8(bytes: Uint8Array): string {
 function createPasteCollector(): PasteCollector {
   return {
     tail: EMPTY_BYTES,
-    decoder: new TextDecoder(),
     parts: [],
+    totalLength: 0,
   }
+}
+
+function joinPasteBytes(parts: Uint8Array[], totalLength: number): Uint8Array {
+  if (totalLength === 0) {
+    return EMPTY_BYTES
+  }
+
+  if (parts.length === 1) {
+    return parts[0]!
+  }
+
+  const bytes = new Uint8Array(totalLength)
+  let offset = 0
+  for (const part of parts) {
+    bytes.set(part, offset)
+    offset += part.length
+  }
+
+  return bytes
 }
 
 // Push-driven stdin parser. Callers feed raw bytes via push(), then read
@@ -1125,7 +1146,7 @@ export class StdinParser {
   // Processes bytes during an active bracketed paste. Searches for the end
   // marker (ESC[201~) using a sliding tail window so the marker can split
   // across chunk boundaries. Bytes that can't be part of the end marker are
-  // decoded incrementally as UTF-8 and appended to the paste collector.
+  // appended to the paste collector without decoding.
   //
   // Returns any bytes that follow the end marker — those go back through
   // normal parsing in the push() loop.
@@ -1135,15 +1156,11 @@ export class StdinParser {
     const endIndex = indexOfBytes(combined, BRACKETED_PASTE_END)
 
     if (endIndex !== -1) {
-      this.pushPasteText(combined.subarray(0, endIndex))
-      const tailText = paste.decoder.decode()
-      if (tailText.length > 0) {
-        paste.parts.push(tailText)
-      }
+      this.pushPasteBytes(combined.subarray(0, endIndex))
 
       this.events.push({
         type: "paste",
-        text: paste.parts.join(""),
+        bytes: joinPasteBytes(paste.parts, paste.totalLength),
       })
 
       this.paste = null
@@ -1151,29 +1168,27 @@ export class StdinParser {
     }
 
     // Keep enough trailing bytes to detect an end marker split across chunks.
-    // Everything before that point is safe to decode immediately.
+    // Everything before that point is safe to retain immediately.
     const keep = Math.min(BRACKETED_PASTE_END.length - 1, combined.length)
     const stableLength = combined.length - keep
     if (stableLength > 0) {
-      this.pushPasteText(combined.subarray(0, stableLength))
+      this.pushPasteBytes(combined.subarray(0, stableLength))
     }
 
-    paste.tail = combined.slice(stableLength)
+    paste.tail = Uint8Array.from(combined.subarray(stableLength))
     return EMPTY_BYTES
   }
 
-  // Feeds bytes through the streaming TextDecoder. The { stream: true } flag
-  // tells the decoder to hold back incomplete multi-byte characters until more
-  // bytes arrive, so split UTF-8 codepoints reassemble correctly.
-  private pushPasteText(bytes: Uint8Array): void {
+  private pushPasteBytes(bytes: Uint8Array): void {
     if (bytes.length === 0) {
       return
     }
 
-    const text = this.paste!.decoder.decode(bytes, { stream: true })
-    if (text.length > 0) {
-      this.paste!.parts.push(text)
-    }
+    // Copy here because subarray() inputs may alias the caller's chunk or the
+    // parser's pending buffer across pushes. The emitted paste event must keep
+    // the original bytes even if those backing buffers are later reused.
+    this.paste!.parts.push(Uint8Array.from(bytes))
+    this.paste!.totalLength += bytes.length
   }
 
   // Arms or disarms the timeout after every push(). If there's an incomplete

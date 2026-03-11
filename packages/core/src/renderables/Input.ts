@@ -1,4 +1,5 @@
 import type { PasteEvent } from "../lib/KeyHandler.js"
+import { decodePasteBytes, stripAnsiSequences } from "../lib/paste.js"
 import type { RenderContext } from "../types.js"
 import {
   TextareaRenderable,
@@ -93,7 +94,7 @@ export class InputRenderable extends TextareaRenderable {
    * Handle paste - strip newlines and enforce maxLength
    */
   public override handlePaste(event: PasteEvent): void {
-    const sanitized = event.text.replace(/[\n\r]/g, "")
+    const sanitized = stripAnsiSequences(decodePasteBytes(event.bytes)).replace(/[\n\r]/g, "")
     if (sanitized) {
       this.insertText(sanitized)
     }

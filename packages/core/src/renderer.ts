@@ -1200,7 +1200,7 @@ export class CliRenderer extends EventEmitter implements RenderContext {
         this.dispatchSequenceHandlers(event.raw)
         return
       case "paste":
-        this._keyHandler.processPaste(event.text)
+        this._keyHandler.processPaste(event.bytes, event.metadata)
         return
       case "response":
         if (event.protocol === "osc") {

@@ -1,4 +1,5 @@
 import { test, expect, beforeEach, afterEach, describe } from "bun:test"
+import { decodePasteBytes } from "../lib/paste.js"
 import { nonAlphanumericKeys, type KeyEventType, type ParsedKey } from "../lib/parse.keypress.js"
 import { type KeyEvent } from "../lib/KeyHandler.js"
 import { Buffer } from "node:buffer"
@@ -2033,7 +2034,7 @@ describe("stdin routing", () => {
         keys.push(event.name)
       })
       renderer.keyInput.on("paste", (event) => {
-        pastes.push(event.text)
+        pastes.push(decodePasteBytes(event.bytes))
       })
 
       const largeChunk = Buffer.alloc(16 * 1024, "x")
@@ -2071,7 +2072,7 @@ describe("stdin routing", () => {
 
       renderer.keyInput.on("paste", (event) => {
         pasteCount += 1
-        pastedBytes += event.text.length
+        pastedBytes += event.bytes.length
       })
 
       const chunk = Buffer.alloc(payloadSize, "x")
@@ -2093,7 +2094,7 @@ describe("stdin routing", () => {
       const payload = "x".repeat(70_000)
       const pastes: string[] = []
       renderer.keyInput.on("paste", (event) => {
-        pastes.push(event.text)
+        pastes.push(decodePasteBytes(event.bytes))
       })
 
       renderer.stdin.emit("data", Buffer.from(`\x1b[200~${payload}\x1b[201~`))
@@ -2111,7 +2112,7 @@ describe("stdin routing", () => {
     try {
       const pastes: string[] = []
       renderer.keyInput.on("paste", (event) => {
-        pastes.push(event.text)
+        pastes.push(decodePasteBytes(event.bytes))
       })
 
       renderer.stdin.emit("data", Buffer.from("\x1b[200~\x1b[201~"))
@@ -2130,7 +2131,7 @@ describe("stdin routing", () => {
       const payload = "a".repeat(4095) + "é"
       const pastes: string[] = []
       renderer.keyInput.on("paste", (event) => {
-        pastes.push(event.text)
+        pastes.push(decodePasteBytes(event.bytes))
       })
 
       renderer.stdin.emit("data", Buffer.from(`\x1b[200~${payload}\x1b[201~`))

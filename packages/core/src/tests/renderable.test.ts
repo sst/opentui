@@ -1,4 +1,5 @@
 import { test, expect, beforeEach, afterEach, describe, spyOn } from "bun:test"
+import { decodePasteBytes } from "../lib/paste"
 import {
   Renderable,
   BaseRenderable,
@@ -775,7 +776,7 @@ describe("Renderable - Focus", () => {
     await testMockInput.pasteBracketedText("test text")
 
     expect(receivedEvent).not.toBeNull()
-    expect(receivedEvent.text).toBe("test text")
+    expect(decodePasteBytes(receivedEvent.bytes)).toBe("test text")
     expect(receivedEvent.defaultPrevented).toBe(true)
     expect(handlePasteCalled).toBe(false)
   })
@@ -792,7 +793,7 @@ describe("Renderable - Focus", () => {
     await testMockInput.pasteBracketedText("handler text")
 
     expect(receivedEvent).not.toBeNull()
-    expect(receivedEvent.text).toBe("handler text")
+    expect(decodePasteBytes(receivedEvent.bytes)).toBe("handler text")
     expect(typeof receivedEvent.preventDefault).toBe("function")
   })
 
