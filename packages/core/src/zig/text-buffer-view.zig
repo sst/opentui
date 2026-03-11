@@ -1163,7 +1163,9 @@ pub const UnifiedTextBufferView = struct {
                                     const single_result = utf8.findWrapPosByWidth(remaining_bytes, 1, wctx.text_buffer.tabWidth(), is_ascii_only, wctx.text_buffer.widthMethod());
                                     byte_offset += single_result.byte_offset;
                                 }
-                            } else if (wctx.last_wrap_chunk_count > 0) {
+                            } else if (wctx.last_wrap_chunk_count > 0 and
+                                wctx.last_wrap_chunk_count <= wctx.current_vline.chunks.items.len)
+                            {
                                 var accumulated_width: u32 = 0;
                                 for (wctx.current_vline.chunks.items[0..wctx.last_wrap_chunk_count]) |vchunk| {
                                     accumulated_width += vchunk.width;
