@@ -74,6 +74,17 @@ function enhancedAliasCase(sequence: string, name: string): KeyCase {
   }
 }
 
+function canonicalAliasCase(sequence: string, expected: ExpectedKey): KeyCase {
+  return {
+    title: `canonical ${JSON.stringify(sequence)} -> ${expected.name}`,
+    sequence,
+    expected: {
+      eventType: "press",
+      ...expected,
+    },
+  }
+}
+
 function modifierCase(modifier: number, expected: ExpectedKey): KeyCase {
   return {
     title: `modifier ${modifier} -> ${expected.name}`,
@@ -219,6 +230,15 @@ const enhancedLetterAliasCases = [
   ["\x1b[1;1:1S", "f4"],
 ] as const satisfies ReadonlyArray<readonly [string, string]>
 
+const canonicalLetterAliasCases: KeyCase[] = [
+  canonicalAliasCase("\x1b[P", { name: "f1" }),
+  canonicalAliasCase("\x1b[Q", { name: "f2" }),
+  canonicalAliasCase("\x1b[S", { name: "f4" }),
+  canonicalAliasCase("\x1b[1;2P", { name: "f1", shift: true }),
+  canonicalAliasCase("\x1b[1;5Q", { name: "f2", ctrl: true }),
+  canonicalAliasCase("\x1b[1;3S", { name: "f4", meta: true, option: true }),
+]
+
 const enhancedTildeAliasCases = [
   ["\x1b[2;1:1~", "insert"],
   ["\x1b[3;1:1~", "delete"],
@@ -272,8 +292,8 @@ const eventAndPayloadCases = [
   ["\x1b[97:65;2u", { name: "a", sequence: "A", shift: true }],
   ["\x1b[97::113u", { name: "a", sequence: "a", baseCode: 113 }],
   ["\x1b[97;1;65u", { name: "a", sequence: "A" }],
-  ["\x1b[0;1;229u", { name: "å", sequence: "å" }],
-  ["\x1b[0;1;104:105u", { name: "hi", sequence: "hi" }],
+  ["\x1b[0;;229u", { name: "å", sequence: "å" }],
+  ["\x1b[0;;104:105u", { name: "hi", sequence: "hi" }],
 ] as const satisfies ReadonlyArray<readonly [string, ExpectedKey]>
 
 describe("Kitty protocol: functional key definitions", () => {
@@ -289,6 +309,15 @@ describe("Kitty protocol: enhanced letter aliases", () => {
 
   test("CSI 1;1:1R is not an enhanced F3 alias in the current spec", () => {
     expect(parseKeypress("\x1b[1;1:1R", options)?.name).not.toBe("f3")
+  })
+})
+
+describe("Kitty protocol: canonical CSI letter forms", () => {
+  defineKeyCases(canonicalLetterAliasCases)
+
+  test("CSI R is not a canonical F3 alias in the current spec", () => {
+    expect(parseKeypress("\x1b[R", options)?.name).not.toBe("f3")
+    expect(parseKeypress("\x1b[1;2R", options)?.name).not.toBe("f3")
   })
 })
 
