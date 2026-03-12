@@ -12,7 +12,12 @@ import {
 } from "../index.js"
 import { setupCommonDemoKeys } from "./lib/standalone-keys.js"
 import * as THREE from "three"
-import { SpriteAnimator, type TiledSprite, type SpriteDefinition, type AnimationDefinition } from "@opentui/three"
+import {
+  SpriteAnimator,
+  type TiledSprite,
+  type SpriteDefinition,
+  type AnimationDefinition,
+} from "@opentui/three"
 import {
   SpriteResourceManager,
   type ResourceConfig,

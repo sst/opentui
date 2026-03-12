@@ -1,4 +1,4 @@
-import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, mock } from "bun:test"
+import { afterEach, beforeEach, describe, expect, it } from "bun:test"
 import { createTestRenderer, type TestRendererOptions } from "@opentui/core/testing"
 import { createContext, useContext, useEffect, useMemo, useState } from "react"
 import { act, type ReactNode } from "react"
@@ -17,7 +17,6 @@ const hostContext = {
 }
 
 let testSetup: Awaited<ReturnType<typeof createTestRenderer>>
-let originalConsoleError: typeof console.error
 
 function setIsReactActEnvironment(isReactActEnvironment: boolean) {
   // @ts-expect-error - this is a test environment
@@ -57,22 +56,7 @@ async function setupSlotTest(
   return { setup, registry }
 }
 
-async function renderWithinAct(): Promise<void> {
-  await act(async () => {
-    await testSetup.renderOnce()
-  })
-}
-
 describe("React Slot System", () => {
-  beforeAll(() => {
-    originalConsoleError = console.error
-    console.error = mock(() => {})
-  })
-
-  afterAll(() => {
-    console.error = originalConsoleError
-  })
-
   beforeEach(() => {
     if (testSetup) {
       testSetup.renderer.destroy()
@@ -114,7 +98,7 @@ describe("React Slot System", () => {
     )
     testSetup = setup
 
-    await renderWithinAct()
+    await testSetup.renderOnce()
     const frame = testSetup.captureCharFrame()
 
     expect(frame).toContain("fallback-only")
@@ -144,9 +128,9 @@ describe("React Slot System", () => {
     )
     testSetup = setup
 
-    await renderWithinAct()
+    await testSetup.renderOnce()
 
-    await renderWithinAct()
+    await testSetup.renderOnce()
     const frame = testSetup.captureCharFrame()
 
     expect(frame).toContain("base-content")
@@ -187,7 +171,7 @@ describe("React Slot System", () => {
     )
     testSetup = setup
 
-    await renderWithinAct()
+    await testSetup.renderOnce()
     const frame = testSetup.captureCharFrame()
 
     expect(frame).toContain("early-plugin")
@@ -229,7 +213,7 @@ describe("React Slot System", () => {
     )
     testSetup = setup
 
-    await renderWithinAct()
+    await testSetup.renderOnce()
     const frame = testSetup.captureCharFrame()
 
     expect(frame).toContain("early-plugin")
@@ -271,7 +255,7 @@ describe("React Slot System", () => {
     )
     testSetup = setup
 
-    await renderWithinAct()
+    await testSetup.renderOnce()
     const frame = testSetup.captureCharFrame()
 
     expect(frame).toContain("healthy-plugin")
@@ -312,7 +296,7 @@ describe("React Slot System", () => {
     )
     testSetup = setup
 
-    await renderWithinAct()
+    await testSetup.renderOnce()
     const frame = testSetup.captureCharFrame()
 
     expect(frame).toContain("single-fallback")
@@ -342,13 +326,13 @@ describe("React Slot System", () => {
       },
     }
 
-    await renderWithinAct()
+    await testSetup.renderOnce()
     expect(testSetup.captureCharFrame()).toContain("dynamic-fallback")
 
     act(() => {
       registry.register(plugin)
     })
-    await renderWithinAct()
+    await testSetup.renderOnce()
     const withPlugin = testSetup.captureCharFrame()
     expect(withPlugin).toContain("dynamic-plugin")
     expect(withPlugin).not.toContain("dynamic-fallback")
@@ -356,7 +340,7 @@ describe("React Slot System", () => {
     act(() => {
       registry.unregister("dynamic-plugin")
     })
-    await renderWithinAct()
+    await testSetup.renderOnce()
     const withoutPlugin = testSetup.captureCharFrame()
     expect(withoutPlugin).toContain("dynamic-fallback")
     expect(withoutPlugin).not.toContain("dynamic-plugin")
@@ -411,7 +395,7 @@ describe("React Slot System", () => {
     )
     testSetup = setup
 
-    await renderWithinAct()
+    await testSetup.renderOnce()
     const initialFrame = testSetup.captureCharFrame()
     expect(initialFrame).toContain("status-plugin")
     expect(initialFrame).not.toContain("sidebar-plugin")
@@ -420,7 +404,7 @@ describe("React Slot System", () => {
       testSetup.renderer.keyInput.emit("keypress", { name: "tab" } as any)
     })
 
-    await renderWithinAct()
+    await testSetup.renderOnce()
     const switchedFrame = testSetup.captureCharFrame()
     expect(switchedFrame).toContain("sidebar-plugin")
     expect(switchedFrame).not.toContain("status-plugin")
@@ -457,7 +441,7 @@ describe("React Slot System", () => {
     )
     testSetup = setup
 
-    await renderWithinAct()
+    await testSetup.renderOnce()
     const frame = testSetup.captureCharFrame()
     expect(frame).toContain("ctx:inside-provider")
   })
@@ -507,7 +491,7 @@ describe("React Slot System", () => {
     )
     testSetup = setup
 
-    await renderWithinAct()
+    await testSetup.renderOnce()
     const beforeReorder = testSetup.captureCharFrame()
 
     expect(beforeReorder).toContain("alpha:alpha")
@@ -517,7 +501,7 @@ describe("React Slot System", () => {
       registry.updateOrder("beta", -1)
     })
 
-    await renderWithinAct()
+    await testSetup.renderOnce()
     const afterReorder = testSetup.captureCharFrame()
 
     expect(afterReorder).toContain("beta:beta")
@@ -556,7 +540,7 @@ describe("React Slot System", () => {
     )
     testSetup = setup
 
-    await renderWithinAct()
+    await testSetup.renderOnce()
     const frame = testSetup.captureCharFrame()
 
     expect(frame).toContain("fallback-visible")
@@ -586,7 +570,7 @@ describe("React Slot System", () => {
     )
     testSetup = setup
 
-    await renderWithinAct()
+    await testSetup.renderOnce()
     const frame = testSetup.captureCharFrame()
 
     expect(frame).toContain("replace-fallback-visible")
@@ -625,8 +609,8 @@ describe("React Slot System", () => {
     )
     testSetup = setup
 
-    await renderWithinAct()
-    await renderWithinAct()
+    await testSetup.renderOnce()
+    await testSetup.renderOnce()
     const frame = testSetup.captureCharFrame()
 
     expect(frame).toContain("replace-safe-fallback")
@@ -667,7 +651,7 @@ describe("React Slot System", () => {
     )
     testSetup = setup
 
-    await renderWithinAct()
+    await testSetup.renderOnce()
     const frame = testSetup.captureCharFrame()
 
     expect(frame).toContain("fallback-visible")
@@ -713,8 +697,8 @@ describe("React Slot System", () => {
     )
     testSetup = setup
 
-    await renderWithinAct()
-    await renderWithinAct()
+    await testSetup.renderOnce()
+    await testSetup.renderOnce()
     const frame = testSetup.captureCharFrame()
 
     expect(frame).toContain("safe-host-content")
@@ -755,7 +739,7 @@ describe("React Slot System", () => {
     )
     testSetup = setup
 
-    await renderWithinAct()
+    await testSetup.renderOnce()
     const frame = testSetup.captureCharFrame()
 
     expect(frame).toContain("safe-host-content")
@@ -790,7 +774,7 @@ describe("React Slot System", () => {
     )
     testSetup = setup
 
-    await renderWithinAct()
+    await testSetup.renderOnce()
     const frame = testSetup.captureCharFrame()
 
     expect(frame).toContain("fallback-visible")
@@ -916,19 +900,19 @@ describe("React Slot System", () => {
     })
     testSetup = setup
 
-    await renderWithinAct()
+    await testSetup.renderOnce()
 
     act(() => {
       testSetup.renderer.keyInput.emit("keypress", { name: "e" } as any)
     })
-    await renderWithinAct()
+    await testSetup.renderOnce()
 
     act(() => {
       testSetup.renderer.keyInput.emit("keypress", { name: "d" } as any)
     })
 
     for (let index = 0; index < 5; index++) {
-      await renderWithinAct()
+      await testSetup.renderOnce()
     }
 
     const frame = testSetup.captureCharFrame()

@@ -75,7 +75,6 @@ type PluginErrorBoundaryProps = {
 
 type PluginErrorBoundaryState = {
   failure: PluginErrorEvent | null
-  caughtError: Error | null
 }
 
 function renderPluginFailurePlaceholder(
@@ -107,14 +106,7 @@ function renderPluginFailurePlaceholder(
 class PluginErrorBoundary extends React.Component<PluginErrorBoundaryProps, PluginErrorBoundaryState> {
   constructor(props: PluginErrorBoundaryProps) {
     super(props)
-    this.state = { failure: null, caughtError: null }
-  }
-
-  static getDerivedStateFromError(error: Error): PluginErrorBoundaryState {
-    return {
-      failure: null,
-      caughtError: error,
-    }
+    this.state = { failure: null }
   }
 
   override componentDidCatch(error: Error): void {
@@ -126,34 +118,21 @@ class PluginErrorBoundary extends React.Component<PluginErrorBoundaryProps, Plug
       error,
     })
 
-    this.setState({ failure, caughtError: null })
+    this.setState({ failure })
   }
 
   override componentDidUpdate(previousProps: PluginErrorBoundaryProps): void {
-    if (previousProps.resetToken !== this.props.resetToken && (this.state.failure || this.state.caughtError)) {
-      this.setState({ failure: null, caughtError: null })
+    if (previousProps.resetToken !== this.props.resetToken && this.state.failure) {
+      this.setState({ failure: null })
     }
   }
 
   override render(): ReactNode {
-    const failure =
-      this.state.failure ??
-      (this.state.caughtError
-        ? {
-            pluginId: this.props.pluginId,
-            slot: this.props.slotName,
-            phase: "render",
-            source: "react",
-            error: this.state.caughtError,
-            timestamp: Date.now(),
-          }
-        : null)
-
-    if (failure) {
+    if (this.state.failure) {
       const placeholder = renderPluginFailurePlaceholder(
         this.props.registry,
         this.props.pluginFailurePlaceholder,
-        failure,
+        this.state.failure,
         this.props.pluginId,
         this.props.slotName,
       )

@@ -12,15 +12,11 @@ type RuntimePluginSupportState = typeof globalThis & {
   [runtimePluginSupportInstalledKey]?: boolean
 }
 
-type RuntimeModuleEntry = Record<string, unknown> | (() => Record<string, unknown> | Promise<Record<string, unknown>>)
-
-const dynamicImportModule = new Function("specifier", "return import(specifier)") as (
-  specifier: string,
-) => Promise<Record<string, unknown>>
-
 const loadThreeRuntime = async (): Promise<Record<string, unknown>> => {
-  return await dynamicImportModule(new URL("../../three/src/index.ts", import.meta.url).href)
+  return (await import(new URL("../../three/src/index.ts", import.meta.url).href)) as Record<string, unknown>
 }
+
+type RuntimeModuleEntry = Record<string, unknown> | (() => Record<string, unknown> | Promise<Record<string, unknown>>)
 
 const additionalRuntimeModules: Record<string, RuntimeModuleEntry> = {
   "@opentui/react": opentuiReactRuntime as Record<string, unknown>,
