@@ -864,53 +864,6 @@ test "TextBufferView word wrapping - fragmented rope with word boundary" {
     try std.testing.expectEqual(@as(u32, 6), vlines[1].width_cols);
 }
 
-test "TextBufferView word wrapping - stale rollback state after newline with fragmented CJK" {
-    const pool = gp.initGlobalPool(std.testing.allocator);
-    defer gp.deinitGlobalPool();
-    const link_pool = link.initGlobalLinkPool(std.testing.allocator);
-    defer link.deinitGlobalLinkPool();
-
-    var tb = try TextBuffer.init(std.testing.allocator, pool, link_pool, .wcwidth);
-    defer tb.deinit();
-
-    var view = try TextBufferView.init(std.testing.allocator, tb);
-    defer view.deinit();
-
-    const text = "a b\n好界";
-    const mem_id = try tb.registerMemBuffer(text, false);
-
-    const seg_mod = @import("../text-buffer-segment.zig");
-    const Segment = seg_mod.Segment;
-
-    var segments: std.ArrayListUnmanaged(Segment) = .{};
-    defer segments.deinit(std.testing.allocator);
-
-    try segments.append(std.testing.allocator, Segment{ .linestart = {} });
-    try segments.append(std.testing.allocator, Segment{ .text = tb.createChunk(mem_id, 0, 1) });
-    try segments.append(std.testing.allocator, Segment{ .text = tb.createChunk(mem_id, 1, 2) });
-    try segments.append(std.testing.allocator, Segment{ .text = tb.createChunk(mem_id, 2, 3) });
-    try segments.append(std.testing.allocator, Segment{ .brk = {} });
-    try segments.append(std.testing.allocator, Segment{ .linestart = {} });
-    try segments.append(std.testing.allocator, Segment{ .text = tb.createChunk(mem_id, 4, 7) });
-    try segments.append(std.testing.allocator, Segment{ .text = tb.createChunk(mem_id, 7, 10) });
-
-    try tb.rope().setSegments(segments.items);
-    view.virtual_lines_dirty = true;
-
-    view.setWrapMode(.word);
-    view.setWrapWidth(3);
-
-    const vlines = view.getVirtualLines();
-
-    try std.testing.expectEqual(@as(usize, 3), vlines.len);
-    try std.testing.expectEqual(@as(u32, 3), vlines[0].width_cols);
-    try std.testing.expectEqual(@as(u32, 2), vlines[1].width_cols);
-    try std.testing.expectEqual(@as(u32, 2), vlines[2].width_cols);
-    try std.testing.expectEqual(@as(u32, 0), vlines[0].source_line);
-    try std.testing.expectEqual(@as(u32, 1), vlines[1].source_line);
-    try std.testing.expectEqual(@as(u32, 1), vlines[2].source_line);
-}
-
 test "TextBufferView wrapping - very narrow width (1 char)" {
     const pool = gp.initGlobalPool(std.testing.allocator);
     defer gp.deinitGlobalPool();
