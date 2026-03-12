@@ -16,13 +16,17 @@ type FixtureState = typeof globalThis & {
   }
 }
 
+const loadCore3dHostRuntime = async (): Promise<Record<string, unknown>> => {
+  return (await import("../../three/src/index.ts")) as Record<string, unknown>
+}
+
 const tempRoot = mkdtempSync(join(tmpdir(), "solid-runtime-plugin-support-fixture-"))
 const entryPath = join(tempRoot, "entry.tsx")
 
 const source = [
   'import * as solid from "@opentui/solid"',
   'import * as core from "@opentui/core"',
-  'import * as core3d from "@opentui/core/3d"',
+  'import * as core3d from "@opentui/three"',
   'import * as coreTesting from "@opentui/core/testing"',
   'import { createSignal } from "solid-js"',
   "const state = globalThis as { __solidRuntimeHost__?: { solid: Record<string, unknown>; core: Record<string, unknown>; core3d: Record<string, unknown>; coreTesting: Record<string, unknown>; solidJs: Record<string, unknown> } }",
@@ -47,7 +51,7 @@ const state = globalThis as FixtureState
 state.__solidRuntimeHost__ = {
   solid: solidRuntime as Record<string, unknown>,
   core: coreRuntime as Record<string, unknown>,
-  core3d: (await import("@opentui/core/3d")) as Record<string, unknown>,
+  core3d: await loadCore3dHostRuntime(),
   coreTesting: (await import("@opentui/core/testing")) as Record<string, unknown>,
   solidJs: solidJsRuntime as Record<string, unknown>,
 }

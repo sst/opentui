@@ -4,7 +4,6 @@ import {
   createRuntimePlugin,
   isCoreRuntimeModuleSpecifier,
   runtimeModuleIdForSpecifier,
-  type RuntimeModuleEntry,
 } from "@opentui/core/runtime-plugin"
 import * as solidJsRuntime from "solid-js"
 import * as solidJsStoreRuntime from "solid-js/store"
@@ -17,8 +16,19 @@ type RuntimePluginSupportState = typeof globalThis & {
   [runtimePluginSupportInstalledKey]?: boolean
 }
 
+type RuntimeModuleEntry = Record<string, unknown> | (() => Record<string, unknown> | Promise<Record<string, unknown>>)
+
+const dynamicImportModule = new Function("specifier", "return import(specifier)") as (
+  specifier: string,
+) => Promise<Record<string, unknown>>
+
+const loadThreeRuntime = async (): Promise<Record<string, unknown>> => {
+  return await dynamicImportModule(new URL("../../three/src/index.ts", import.meta.url).href)
+}
+
 const additionalRuntimeModules: Record<string, RuntimeModuleEntry> = {
   "@opentui/solid": solidRuntime as Record<string, unknown>,
+  "@opentui/three": loadThreeRuntime,
   "solid-js": solidJsRuntime as Record<string, unknown>,
   "solid-js/store": solidJsStoreRuntime as Record<string, unknown>,
 }

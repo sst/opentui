@@ -23,12 +23,24 @@ const DEFAULT_CORE_RUNTIME_MODULE_SPECIFIERS = [
 
 const DEFAULT_CORE_RUNTIME_MODULE_SPECIFIER_SET = new Set<string>(DEFAULT_CORE_RUNTIME_MODULE_SPECIFIERS)
 
+const dynamicImportModule = new Function("specifier", "return import(specifier)") as (
+  specifier: string,
+) => Promise<RuntimeModuleExports>
+
 export const isCoreRuntimeModuleSpecifier = (specifier: string): boolean => {
   return DEFAULT_CORE_RUNTIME_MODULE_SPECIFIER_SET.has(specifier)
 }
 
 const loadCore3dRuntimeModule = async (): Promise<RuntimeModuleExports> => {
-  return (await import("@opentui/three")) as RuntimeModuleExports
+  try {
+    return await dynamicImportModule("@opentui/three")
+  } catch (error) {
+    if (error instanceof Error && /Cannot find module '@opentui\/three'/.test(error.message)) {
+      return await dynamicImportModule(new URL("../../three/src/index.ts", import.meta.url).href)
+    }
+
+    throw error
+  }
 }
 
 const loadCoreTestingRuntimeModule = async (): Promise<RuntimeModuleExports> => {

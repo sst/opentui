@@ -1,6 +1,6 @@
 import { plugin as registerBunPlugin } from "bun"
 import * as coreRuntime from "@opentui/core"
-import { createRuntimePlugin, type RuntimeModuleEntry } from "@opentui/core/runtime-plugin"
+import { createRuntimePlugin } from "@opentui/core/runtime-plugin"
 import * as reactRuntime from "react"
 import * as reactJsxRuntime from "react/jsx-runtime"
 import * as reactJsxDevRuntime from "react/jsx-dev-runtime"
@@ -12,8 +12,19 @@ type RuntimePluginSupportState = typeof globalThis & {
   [runtimePluginSupportInstalledKey]?: boolean
 }
 
+type RuntimeModuleEntry = Record<string, unknown> | (() => Record<string, unknown> | Promise<Record<string, unknown>>)
+
+const dynamicImportModule = new Function("specifier", "return import(specifier)") as (
+  specifier: string,
+) => Promise<Record<string, unknown>>
+
+const loadThreeRuntime = async (): Promise<Record<string, unknown>> => {
+  return await dynamicImportModule(new URL("../../three/src/index.ts", import.meta.url).href)
+}
+
 const additionalRuntimeModules: Record<string, RuntimeModuleEntry> = {
   "@opentui/react": opentuiReactRuntime as Record<string, unknown>,
+  "@opentui/three": loadThreeRuntime,
   "@opentui/react/jsx-runtime": reactJsxRuntime as Record<string, unknown>,
   "@opentui/react/jsx-dev-runtime": reactJsxDevRuntime as Record<string, unknown>,
   react: reactRuntime as Record<string, unknown>,

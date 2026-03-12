@@ -22,12 +22,16 @@ type FixtureState = typeof globalThis & {
   }
 }
 
+const loadCore3dHostRuntime = async (): Promise<Record<string, unknown>> => {
+  return (await import("../../three/src/index.ts")) as Record<string, unknown>
+}
+
 const tempRoot = mkdtempSync(join(tmpdir(), "react-runtime-plugin-support-fixture-"))
 const entryPath = join(tempRoot, "entry.ts")
 
 const source = [
   'import * as core from "@opentui/core"',
-  'import * as core3d from "@opentui/core/3d"',
+  'import * as core3d from "@opentui/three"',
   'import * as coreTesting from "@opentui/core/testing"',
   'import * as opentuiReact from "@opentui/react"',
   'import * as opentuiReactJsx from "@opentui/react/jsx-runtime"',
@@ -57,7 +61,7 @@ writeFileSync(entryPath, source)
 const state = globalThis as FixtureState
 state.__reactRuntimeHost__ = {
   core: coreRuntime as Record<string, unknown>,
-  core3d: (await import("@opentui/core/3d")) as Record<string, unknown>,
+  core3d: await loadCore3dHostRuntime(),
   coreTesting: (await import("@opentui/core/testing")) as Record<string, unknown>,
   opentuiReact: opentuiReactRuntime as Record<string, unknown>,
   opentuiReactJsx: (await import("../jsx-runtime.js")) as Record<string, unknown>,
