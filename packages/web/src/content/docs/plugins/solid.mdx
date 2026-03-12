@@ -20,7 +20,7 @@ If your app loads plugins from disk at runtime (for example `await import(fileUr
 import "@opentui/solid/runtime-plugin-support"
 ```
 
-This is a Bun drop-in that installs runtime transform support so external TS/TSX plugin modules use the same runtime instances as the host app (`@opentui/solid`, `@opentui/core`, `solid-js`, and `solid-js/store`).
+This is a Bun drop-in that installs runtime transform support so external TS/TSX plugin modules use the same runtime instances as the host app (`@opentui/solid`, `@opentui/core`, `@opentui/core/3d`, `@opentui/core/testing`, `solid-js`, and `solid-js/store`).
 
 Use this for plugin systems in both normal Bun runs and standalone compiled executables.
 

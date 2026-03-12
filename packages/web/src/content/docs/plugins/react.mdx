@@ -12,12 +12,32 @@ Use slots when you want external modules to contribute `ReactNode` UI in host-de
 
 If you have not read the shared model yet, start with [Plugin Slots](/docs/plugins/slots).
 
+## Runtime-loaded external plugins
+
+If your app loads plugins from disk at runtime (for example `await import(fileUrl)`), add this import once in your app entry:
+
+```ts
+import "@opentui/react/runtime-plugin-support"
+```
+
+This installs Bun runtime support so external TS/TSX plugin modules resolve against the host runtime instances (`@opentui/react`, React JSX runtime modules, and core runtime modules).
+
+Use this for plugin systems in both normal Bun runs and standalone compiled executables.
+
+```ts
+import "@opentui/react/runtime-plugin-support"
+
+const mod = await import(pathToFileURL(pluginPath).href)
+registry.register(mod.loadExternalPlugin())
+```
+
 ## What React adds
 
 - `createReactSlotRegistry(renderer, context, options?)` — create a registry typed for `ReactNode`. Accepts the same [`SlotRegistryOptions`](/docs/plugins/slots#registry-options) as `createSlotRegistry`.
 - `Slot<TSlots, TContext>` — generic slot component that takes `registry` as a required prop
 - `createSlot(registry, options?)` — optional convenience helper that returns a registry-bound `<Slot />` component
 - `ReactPlugin<TSlots, TContext>` — convenience type alias for a plugin that returns `ReactNode`
+- `@opentui/react/runtime-plugin-support` — one-line runtime support for external plugin/module loading
 
 Register plugins directly with `registry.register()` — no wrapper function is needed (unlike core's `registerCorePlugin`).
 

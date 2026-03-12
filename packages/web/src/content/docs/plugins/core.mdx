@@ -20,10 +20,36 @@ On top of `createSlotRegistry`, core provides:
 - `registerCorePlugin` — register a plugin using the core-specific `CorePlugin` interface
 - `SlotRenderable` — a `Renderable` that mounts a slot into the renderable tree
 - `resolveCoreSlot` — resolve slot entries without mounting
+- `@opentui/core/runtime-plugin-support` / `createRuntimePlugin` — runtime module support for external plugin/module loading in Bun
 
 Core slot renderers receive both the host context and slot data: `(ctx, data) => BaseRenderable`.
 
 `createCoreSlotRegistry` accepts the same [`SlotRegistryOptions`](/docs/plugins/slots#registry-options) as `createSlotRegistry`.
+
+## Runtime-loaded external plugins
+
+If your app loads plugin modules from disk at runtime, import this once in your app entry:
+
+```ts
+import "@opentui/core/runtime-plugin-support"
+```
+
+This installs Bun runtime support for `@opentui/core` plus default core runtime entrypoints (`@opentui/core/3d`, `@opentui/core/testing`).
+
+If you need additional host-resolved modules, register your own plugin:
+
+```ts
+import { plugin } from "bun"
+import { createRuntimePlugin } from "@opentui/core/runtime-plugin"
+
+plugin(
+  createRuntimePlugin({
+    additional: {
+      "my-runtime-module": async () => (await import("./runtime-module")) as Record<string, unknown>,
+    },
+  }),
+)
+```
 
 ## `CorePlugin` interface
 
