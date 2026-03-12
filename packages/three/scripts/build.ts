@@ -103,7 +103,10 @@ const exports = {
 }
 
 const processedDependencies = { ...packageJson.dependencies }
-if (processedDependencies["@opentui/core"] === "workspace:*" || processedDependencies["@opentui/core"] === "workspace:^") {
+if (
+  processedDependencies["@opentui/core"] === "workspace:*" ||
+  processedDependencies["@opentui/core"] === "workspace:^"
+) {
   processedDependencies["@opentui/core"] = packageJson.version
 }
 
