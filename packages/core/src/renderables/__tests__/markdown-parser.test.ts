@@ -1,6 +1,6 @@
 import { test, expect } from "bun:test"
 import { Lexer } from "marked"
-import { parseMarkdownIncremental, type ParseState } from "../markdown-parser"
+import { parseMarkdownIncremental, type ParseState } from "../markdown-parser.js"
 
 test("first parse returns all tokens", () => {
   const state = parseMarkdownIncremental("# Hello\n\nParagraph", null)

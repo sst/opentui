@@ -1,7 +1,7 @@
 import { describe, test, expect, beforeEach, afterEach } from "bun:test"
-import { createTestRenderer, type TestRenderer } from "./test-renderer"
-import { TestRecorder } from "./test-recorder"
-import { TextRenderable } from "../renderables/Text"
+import { createTestRenderer, type TestRenderer } from "./test-renderer.js"
+import { TestRecorder } from "./test-recorder.js"
+import { TextRenderable } from "../renderables/Text.js"
 
 describe("TestRecorder", () => {
   let renderer: TestRenderer

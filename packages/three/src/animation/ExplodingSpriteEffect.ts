@@ -16,8 +16,8 @@ import {
   mat3,
 } from "three/tsl"
 import { MeshBasicNodeMaterial, NodeMaterial } from "three/webgpu"
-import type { TiledSprite, SpriteDefinition, SpriteAnimator } from "./SpriteAnimator"
-import type { SpriteResource } from "../SpriteResourceManager"
+import type { TiledSprite, SpriteDefinition, SpriteAnimator } from "./SpriteAnimator.js"
+import type { SpriteResource } from "../SpriteResourceManager.js"
 
 export interface ExplosionEffectParameters {
   numRows: number

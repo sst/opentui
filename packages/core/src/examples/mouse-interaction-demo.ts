@@ -18,8 +18,8 @@ import {
   type BoxOptions,
   Text,
   type VChild,
-} from "../index"
-import { setupCommonDemoKeys } from "./lib/standalone-keys"
+} from "../index.js"
+import { setupCommonDemoKeys } from "./lib/standalone-keys.js"
 
 interface TrailCell {
   x: number

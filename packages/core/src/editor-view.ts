@@ -1,8 +1,8 @@
-import { RGBA } from "./lib/RGBA"
-import { resolveRenderLib, type RenderLib, type VisualCursor, type LineInfo } from "./zig"
+import { RGBA } from "./lib/RGBA.js"
+import { resolveRenderLib, type RenderLib, type VisualCursor, type LineInfo } from "./zig.js"
 import { type Pointer } from "bun:ffi"
-import type { EditBuffer } from "./edit-buffer"
-import { createExtmarksController } from "./lib"
+import type { EditBuffer } from "./edit-buffer.js"
+import { createExtmarksController } from "./lib/index.js"
 
 export interface Viewport {
   offsetY: number

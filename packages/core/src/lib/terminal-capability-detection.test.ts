@@ -1,5 +1,9 @@
 import { test, expect, describe } from "bun:test"
-import { isCapabilityResponse, isPixelResolutionResponse, parsePixelResolution } from "./terminal-capability-detection"
+import {
+  isCapabilityResponse,
+  isPixelResolutionResponse,
+  parsePixelResolution,
+} from "./terminal-capability-detection.js"
 
 describe("isCapabilityResponse", () => {
   test("detects DECRPM responses", () => {

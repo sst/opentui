@@ -7,10 +7,10 @@ import {
   type ParsedKey,
   ScrollBoxRenderable,
   LineNumberRenderable,
-} from "../index"
-import { setupCommonDemoKeys } from "./lib/standalone-keys"
-import { parseColor } from "../lib/RGBA"
-import { SyntaxStyle } from "../syntax-style"
+} from "../index.js"
+import { setupCommonDemoKeys } from "./lib/standalone-keys.js"
+import { parseColor } from "../lib/RGBA.js"
+import { SyntaxStyle } from "../syntax-style.js"
 
 // Code examples to cycle through
 const examples = [

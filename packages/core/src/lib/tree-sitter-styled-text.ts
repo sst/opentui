@@ -1,10 +1,10 @@
-import type { TextChunk } from "../text-buffer"
-import { StyledText } from "./styled-text"
-import { SyntaxStyle, type StyleDefinition } from "../syntax-style"
-import { TreeSitterClient } from "./tree-sitter/client"
-import type { SimpleHighlight } from "./tree-sitter/types"
-import { createTextAttributes } from "../utils"
-import { registerEnvVar, env } from "./env"
+import type { TextChunk } from "../text-buffer.js"
+import { StyledText } from "./styled-text.js"
+import { SyntaxStyle, type StyleDefinition } from "../syntax-style.js"
+import { TreeSitterClient } from "./tree-sitter/client.js"
+import type { SimpleHighlight } from "./tree-sitter/types.js"
+import { createTextAttributes } from "../utils.js"
+import { registerEnvVar, env } from "./env.js"
 
 registerEnvVar({ name: "OTUI_TS_STYLE_WARN", default: false, description: "Enable warnings for missing syntax styles" })
 

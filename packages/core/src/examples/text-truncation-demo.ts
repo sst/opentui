@@ -11,8 +11,8 @@ import {
   cyan,
   yellow,
   magenta,
-} from ".."
-import { setupCommonDemoKeys } from "./lib/standalone-keys"
+} from "../index.js"
+import { setupCommonDemoKeys } from "./lib/standalone-keys.js"
 
 let renderer: CliRenderer | null = null
 let mainContainer: BoxRenderable | null = null

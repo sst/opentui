@@ -1,8 +1,8 @@
-import type { RGBA } from "./lib/RGBA"
+import type { RGBA } from "./lib/RGBA.js"
 import type { EventEmitter } from "events"
-import type { Selection } from "./lib/selection"
-import type { Renderable } from "./Renderable"
-import type { InternalKeyHandler, KeyHandler } from "./lib/KeyHandler"
+import type { Selection } from "./lib/selection.js"
+import type { Renderable } from "./Renderable.js"
+import type { InternalKeyHandler, KeyHandler } from "./lib/KeyHandler.js"
 
 export const TextAttributes = {
   NONE: 0,
@@ -30,7 +30,7 @@ export function getBaseAttributes(attr: number): number {
 
 export type ThemeMode = "dark" | "light"
 
-export type CursorStyle = "block" | "line" | "underline"
+export type CursorStyle = "block" | "line" | "underline" | "default"
 
 export type MousePointerStyle = "default" | "pointer" | "text" | "crosshair" | "move" | "not-allowed"
 

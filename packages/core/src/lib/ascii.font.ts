@@ -1,5 +1,5 @@
-import { OptimizedBuffer } from "../buffer"
-import { parseColor, RGBA, type ColorInput } from "./RGBA"
+import { OptimizedBuffer } from "../buffer.js"
+import { parseColor, RGBA, type ColorInput } from "./RGBA.js"
 import block from "./fonts/block.json"
 import shade from "./fonts/shade.json"
 import slick from "./fonts/slick.json"

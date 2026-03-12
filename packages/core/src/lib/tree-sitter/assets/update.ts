@@ -2,9 +2,9 @@
 
 import { readFile, writeFile, mkdir } from "fs/promises"
 import * as path from "path"
-import { DownloadUtils } from "../download-utils"
+import { DownloadUtils } from "../download-utils.js"
 import { parseArgs } from "util"
-import type { FiletypeParserOptions } from "../types"
+import type { FiletypeParserOptions } from "../types.js"
 import { readdir } from "fs/promises"
 
 interface ParsersConfig {

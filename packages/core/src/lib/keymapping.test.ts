@@ -7,7 +7,7 @@ import {
   defaultKeyAliases,
   keyBindingToString,
   type KeyAliasMap,
-} from "./keymapping"
+} from "./keymapping.js"
 
 describe("keymapping", () => {
   describe("getKeyBindingKey", () => {

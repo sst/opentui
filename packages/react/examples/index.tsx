@@ -9,6 +9,7 @@ import { App as BoxDemo } from "./box"
 import { App as CounterDemo } from "./counter"
 import { App as DiffDemo } from "./diff"
 import { ExtendExample } from "./extend-example"
+import ExternalPluginSlotsDemo from "./external-plugin-slots-demo"
 import { App as FlushSyncDemo } from "./flush-sync"
 import LineNumberDemo from "./line-number"
 import OpacityDemo from "./opacity"
@@ -86,6 +87,11 @@ const EXAMPLES: ExampleDefinition[] = [
     name: "Extend Demo",
     description: "Custom renderable registration through extend",
     component: ExtendExample,
+  },
+  {
+    name: "External Plugin Slots Demo",
+    description: "Loads .plugin/index.tsx and renders external React slot components",
+    component: ExternalPluginSlotsDemo,
   },
 ]
 

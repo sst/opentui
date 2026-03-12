@@ -1,6 +1,6 @@
-import { createCliRenderer, TextRenderable, t, type CliRenderer, BoxRenderable, bold, fg } from "../index"
-import { setupCommonDemoKeys } from "./lib/standalone-keys"
-import { createTimeline, type JSAnimation, Timeline } from "../animation/Timeline"
+import { createCliRenderer, TextRenderable, t, type CliRenderer, BoxRenderable, bold, fg } from "../index.js"
+import { setupCommonDemoKeys } from "./lib/standalone-keys.js"
+import { createTimeline, type JSAnimation, Timeline } from "../animation/Timeline.js"
 
 let text: TextRenderable | null = null
 let instructionsText: TextRenderable | null = null

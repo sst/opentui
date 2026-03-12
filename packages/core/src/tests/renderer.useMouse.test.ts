@@ -1,5 +1,5 @@
 import { test, expect, describe } from "bun:test"
-import { createTestRenderer } from "../testing/test-renderer"
+import { createTestRenderer } from "../testing/test-renderer.js"
 
 // NOTE: These tests are not running the mouse activation sequences,
 // only verifying that the configuration is applied correctly.

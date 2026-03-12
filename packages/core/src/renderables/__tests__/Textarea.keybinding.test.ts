@@ -1,7 +1,7 @@
 import { describe, expect, it, afterAll, beforeEach, afterEach } from "bun:test"
-import { createTestRenderer, type TestRenderer, type MockMouse, type MockInput } from "../../testing/test-renderer"
-import { createTextareaRenderable } from "./renderable-test-utils"
-import { KeyEvent } from "../../lib/KeyHandler"
+import { createTestRenderer, type TestRenderer, type MockMouse, type MockInput } from "../../testing/test-renderer.js"
+import { createTextareaRenderable } from "./renderable-test-utils.js"
+import { KeyEvent } from "../../lib/KeyHandler.js"
 
 // Helper function to create a KeyEvent from a string
 function createKeyEvent(

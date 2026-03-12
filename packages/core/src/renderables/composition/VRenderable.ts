@@ -1,6 +1,6 @@
-import { Renderable, type RenderableOptions } from "../../Renderable"
-import type { OptimizedBuffer } from "../../buffer"
-import type { RenderContext } from "../../types"
+import { Renderable, type RenderableOptions } from "../../Renderable.js"
+import type { OptimizedBuffer } from "../../buffer.js"
+import type { RenderContext } from "../../types.js"
 
 export interface VRenderableOptions extends RenderableOptions<VRenderable> {
   render?: (

@@ -1,8 +1,8 @@
 import { CliRenderer, createCliRenderer, engine, type CliRendererConfig } from "@opentui/core"
 import { createTestRenderer, type TestRendererOptions } from "@opentui/core/testing"
 import type { JSX } from "./jsx-runtime"
-import { RendererContext } from "./src/elements"
-import { _render as renderInternal, createComponent } from "./src/reconciler"
+import { RendererContext } from "./src/elements/index.js"
+import { _render as renderInternal, createComponent } from "./src/reconciler.js"
 
 type DisposeFn = () => void
 
@@ -96,8 +96,9 @@ export const testRender = async (node: () => JSX.Element, renderConfig: TestRend
   return testSetup
 }
 
-export * from "./src/reconciler"
-export * from "./src/elements"
-export * from "./src/time-to-first-draw"
-export * from "./src/types/elements"
+export * from "./src/reconciler.js"
+export * from "./src/elements/index.js"
+export * from "./src/time-to-first-draw.js"
+export * from "./src/plugins/slot.js"
+export * from "./src/types/elements.js"
 export { type JSX }

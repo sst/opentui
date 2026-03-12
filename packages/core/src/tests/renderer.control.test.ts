@@ -1,7 +1,7 @@
 import { test, expect, beforeEach, afterEach } from "bun:test"
-import { createTestRenderer, type TestRenderer, type MockInput, type MockMouse } from "../testing/test-renderer"
-import { RendererControlState } from "../renderer"
-import { Renderable } from "../Renderable"
+import { createTestRenderer, type TestRenderer, type MockInput, type MockMouse } from "../testing/test-renderer.js"
+import { RendererControlState } from "../renderer.js"
+import { Renderable } from "../Renderable.js"
 
 class TestRenderable extends Renderable {
   constructor(renderer: TestRenderer, options: any) {

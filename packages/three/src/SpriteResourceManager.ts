@@ -1,5 +1,5 @@
 import * as THREE from "three"
-import { TextureUtils } from "./TextureUtils"
+import { TextureUtils } from "./TextureUtils.js"
 import type { Scene } from "three"
 
 export interface ResourceConfig {

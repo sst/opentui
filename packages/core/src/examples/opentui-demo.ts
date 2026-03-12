@@ -8,10 +8,10 @@ import {
   parseColor,
   getBorderFromSides,
   type KeyEvent,
-} from "../index"
-import type { BorderCharacters, BorderSidesConfig, CliRenderer } from "../index"
-import { TabControllerRenderable } from "./lib/tab-controller"
-import { setupCommonDemoKeys } from "./lib/standalone-keys"
+} from "../index.js"
+import type { BorderCharacters, BorderSidesConfig, CliRenderer } from "../index.js"
+import { TabControllerRenderable } from "./lib/tab-controller.js"
+import { setupCommonDemoKeys } from "./lib/standalone-keys.js"
 
 let globalTabController: TabControllerRenderable | null = null
 let globalKeyboardHandler: ((key: KeyEvent) => void) | null = null

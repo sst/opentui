@@ -12,7 +12,7 @@ import {
   type CliRenderer,
   type RenderContext,
   BoxRenderable,
-} from "../index"
+} from "../index.js"
 
 const GRAPHEME_LINES: string[] = [
   "👩🏽‍💻  👨‍👩‍👧‍👦  🏳️‍🌈  🇺🇸  🇩🇪  🇯🇵  🇮🇳",

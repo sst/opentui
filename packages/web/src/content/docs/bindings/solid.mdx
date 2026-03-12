@@ -37,7 +37,15 @@ Add preload script to `bunfig.toml`:
 preload = ["@opentui/solid/preload"]
 ```
 
-### 3. Create your app
+### 3. Enable runtime-loaded plugin support (if needed)
+
+If your app loads external TS/TSX modules at runtime (for example a file-based plugin system), import this once in your entry file before dynamic imports:
+
+```ts
+import "@opentui/solid/runtime-plugin-support"
+```
+
+### 4. Create your app
 
 ```tsx
 import { render } from "@opentui/solid"
@@ -134,6 +142,8 @@ extend({ custom_box: CustomBoxRenderable })
 ### `getComponentCatalogue()`
 
 Returns the current component catalogue that powers JSX tag lookup.
+
+For plugin slots, see [Plugin Slots overview](/docs/plugins/slots) and [Solid slots](/docs/plugins/solid).
 
 ## Hooks
 
@@ -367,6 +377,8 @@ await Bun.build({
   },
 })
 ```
+
+If that executable loads external plugins/modules at runtime, keep `import "@opentui/solid/runtime-plugin-support"` in your app entry.
 
 ## Example: counter
 

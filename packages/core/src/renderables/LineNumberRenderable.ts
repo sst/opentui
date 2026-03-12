@@ -1,7 +1,7 @@
-import { Renderable, type RenderableOptions } from "../Renderable"
-import { OptimizedBuffer } from "../buffer"
-import type { RenderContext, LineInfoProvider } from "../types"
-import { RGBA, parseColor } from "../lib/RGBA"
+import { Renderable, type RenderableOptions } from "../Renderable.js"
+import { OptimizedBuffer } from "../buffer.js"
+import type { RenderContext, LineInfoProvider } from "../types.js"
+import { RGBA, parseColor } from "../lib/RGBA.js"
 import { MeasureMode } from "yoga-layout"
 
 export interface LineSign {

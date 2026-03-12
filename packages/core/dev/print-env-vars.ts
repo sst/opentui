@@ -9,7 +9,7 @@
  *   bun dev/print-env-vars.ts --update   # Update docs/env-vars.md
  */
 
-import { generateEnvColored, generateEnvMarkdown } from "../src/index"
+import { generateEnvColored, generateEnvMarkdown } from "../src/index.js"
 import { join } from "path"
 
 const args = process.argv.slice(2)

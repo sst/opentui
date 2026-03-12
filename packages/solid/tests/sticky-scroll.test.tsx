@@ -1,7 +1,7 @@
 import { describe, expect, it, beforeEach, afterEach } from "bun:test"
-import { testRender } from "../index"
+import { testRender } from "../index.js"
 import { createSignal, For } from "solid-js"
-import type { ScrollBoxRenderable } from "../../core/src/renderables"
+import type { ScrollBoxRenderable } from "../../core/src/renderables/index.js"
 
 let testSetup: Awaited<ReturnType<typeof testRender>>
 

@@ -1,12 +1,12 @@
-import { type RenderContext } from "../types"
-import { StyledText } from "../lib/styled-text"
-import { SyntaxStyle } from "../syntax-style"
-import { getTreeSitterClient, treeSitterToStyledText, TreeSitterClient } from "../lib/tree-sitter"
-import { TextBufferRenderable, type TextBufferOptions } from "./TextBufferRenderable"
-import type { OptimizedBuffer } from "../buffer"
-import type { SimpleHighlight } from "../lib/tree-sitter/types"
-import type { TextChunk } from "../text-buffer"
-import { treeSitterToTextChunks } from "../lib/tree-sitter-styled-text"
+import { type RenderContext } from "../types.js"
+import { StyledText } from "../lib/styled-text.js"
+import { SyntaxStyle } from "../syntax-style.js"
+import { getTreeSitterClient, treeSitterToStyledText, TreeSitterClient } from "../lib/tree-sitter/index.js"
+import { TextBufferRenderable, type TextBufferOptions } from "./TextBufferRenderable.js"
+import type { OptimizedBuffer } from "../buffer.js"
+import type { SimpleHighlight } from "../lib/tree-sitter/types.js"
+import type { TextChunk } from "../text-buffer.js"
+import { treeSitterToTextChunks } from "../lib/tree-sitter-styled-text.js"
 
 export interface HighlightContext {
   content: string

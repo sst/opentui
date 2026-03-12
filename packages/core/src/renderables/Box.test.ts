@@ -1,7 +1,7 @@
 import { test, expect, describe, beforeEach, afterEach, spyOn } from "bun:test"
-import { BoxRenderable, type BoxOptions } from "./Box"
-import { createTestRenderer, type TestRenderer } from "../testing/test-renderer"
-import type { BorderStyle } from "../lib/border"
+import { BoxRenderable, type BoxOptions } from "./Box.js"
+import { createTestRenderer, type TestRenderer } from "../testing/test-renderer.js"
+import type { BorderStyle } from "../lib/border.js"
 
 let testRenderer: TestRenderer
 let renderOnce: () => Promise<void>

@@ -1,9 +1,9 @@
 import { test, expect, beforeEach, afterEach } from "bun:test"
-import { createTestRenderer, type TestRenderer } from "../testing"
-import { ScrollBoxRenderable } from "../renderables/ScrollBox"
-import { BoxRenderable } from "../renderables/Box"
-import { TextRenderable } from "../renderables/Text"
-import { TestRecorder } from "../testing/test-recorder"
+import { createTestRenderer, type TestRenderer } from "../testing.js"
+import { ScrollBoxRenderable } from "../renderables/ScrollBox.js"
+import { BoxRenderable } from "../renderables/Box.js"
+import { TextRenderable } from "../renderables/Text.js"
+import { TestRecorder } from "../testing/test-recorder.js"
 
 let testRenderer: TestRenderer
 

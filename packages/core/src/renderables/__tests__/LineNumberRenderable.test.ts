@@ -1,10 +1,10 @@
 import { describe, test, expect } from "bun:test"
-import { createTestRenderer } from "../../testing/test-renderer"
-import { TextBufferRenderable } from "../TextBufferRenderable"
-import { LineNumberRenderable } from "../LineNumberRenderable"
-import { BoxRenderable } from "../Box"
-import { TextareaRenderable } from "../Textarea"
-import { t, fg, bold, cyan } from "../../lib/styled-text"
+import { createTestRenderer } from "../../testing/test-renderer.js"
+import { TextBufferRenderable } from "../TextBufferRenderable.js"
+import { LineNumberRenderable } from "../LineNumberRenderable.js"
+import { BoxRenderable } from "../Box.js"
+import { TextareaRenderable } from "../Textarea.js"
+import { t, fg, bold, cyan } from "../../lib/styled-text.js"
 
 const initialContent = `Welcome to the TextareaRenderable Demo!
 

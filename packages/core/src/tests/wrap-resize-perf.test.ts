@@ -1,7 +1,7 @@
 import { describe, expect, it } from "bun:test"
-import { TextBuffer } from "../text-buffer"
-import { TextBufferView } from "../text-buffer-view"
-import { stringToStyledText } from "../lib/styled-text"
+import { TextBuffer } from "../text-buffer.js"
+import { TextBufferView } from "../text-buffer-view.js"
+import { stringToStyledText } from "../lib/styled-text.js"
 
 /**
  * These tests verify algorithmic complexity rather than absolute performance.
@@ -23,6 +23,29 @@ describe("Word wrap algorithmic complexity", () => {
       fn()
       times.push(performance.now() - start)
     }
+    times.sort((a, b) => a - b)
+    return times[Math.floor(times.length / 2)]
+  }
+
+  function measureMedianPerCall(
+    fn: (width: number) => void,
+    widths: number[],
+    iterations = 9,
+    roundsPerIteration = 4,
+  ): number {
+    const callsPerSample = widths.length * roundsPerIteration
+    const times: number[] = []
+
+    for (let i = 0; i < iterations; i++) {
+      const start = performance.now()
+      for (let round = 0; round < roundsPerIteration; round++) {
+        for (const width of widths) {
+          fn(width)
+        }
+      }
+      times.push((performance.now() - start) / callsPerSample)
+    }
+
     times.sort((a, b) => a - b)
     return times[Math.floor(times.length / 2)]
   }
@@ -98,17 +121,21 @@ describe("Word wrap algorithmic complexity", () => {
     smallView.setWrapWidth(80)
     largeView.setWrapWidth(80)
 
-    // Warm up
-    smallView.measureForDimensions(80, 100)
-    largeView.measureForDimensions(80, 100)
+    const measureWidths = [76, 77, 78, 79, 80, 81, 82, 83]
 
-    const smallTime = measureMedian(() => {
-      smallView.measureForDimensions(80, 100)
-    })
+    // Warm up with changing widths so we measure wrap work, not cache hits.
+    for (const width of measureWidths) {
+      smallView.measureForDimensions(width, 100)
+      largeView.measureForDimensions(width, 100)
+    }
 
-    const largeTime = measureMedian(() => {
-      largeView.measureForDimensions(80, 100)
-    })
+    const smallTime = measureMedianPerCall((width) => {
+      smallView.measureForDimensions(width, 100)
+    }, measureWidths)
+
+    const largeTime = measureMedianPerCall((width) => {
+      largeView.measureForDimensions(width, 100)
+    }, measureWidths)
 
     smallView.destroy()
     largeView.destroy()

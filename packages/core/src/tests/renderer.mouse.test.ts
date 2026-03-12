@@ -1,9 +1,9 @@
 import { beforeEach, describe, expect, test } from "bun:test"
-import { createTestRenderer, MouseButtons, type MockMouse, type TestRenderer } from "../testing"
-import { Renderable, type RenderableOptions } from "../Renderable"
-import type { RenderContext } from "../types"
-import type { Selection } from "../lib/selection"
-import type { MouseEvent } from "../renderer"
+import { createTestRenderer, MouseButtons, type MockMouse, type TestRenderer } from "../testing.js"
+import { Renderable, type RenderableOptions } from "../Renderable.js"
+import type { RenderContext } from "../types.js"
+import type { Selection } from "../lib/selection.js"
+import type { MouseEvent } from "../renderer.js"
 
 class TestRenderable extends Renderable {
   public selectionActive = false

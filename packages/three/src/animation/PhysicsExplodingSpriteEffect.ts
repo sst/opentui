@@ -1,15 +1,15 @@
 import * as THREE from "three"
 import { texture as tslTexture, uv, vec2, attribute } from "three/tsl"
 import { MeshBasicNodeMaterial, NodeMaterial } from "three/webgpu"
-import type { TiledSprite, SpriteDefinition, SpriteAnimator } from "./SpriteAnimator"
+import type { TiledSprite, SpriteDefinition, SpriteAnimator } from "./SpriteAnimator.js"
 import type {
   PhysicsRigidBody,
   PhysicsWorld,
   PhysicsRigidBodyDesc,
   PhysicsColliderDesc,
   PhysicsVector2,
-} from "../physics/physics-interface"
-import type { SpriteResource } from "../SpriteResourceManager"
+} from "../physics/physics-interface.js"
+import type { SpriteResource } from "../SpriteResourceManager.js"
 
 export interface PhysicsExplosionEffectParameters {
   numRows: number

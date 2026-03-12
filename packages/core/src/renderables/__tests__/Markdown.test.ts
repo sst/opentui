@@ -1,11 +1,11 @@
 import { test, expect, beforeAll, beforeEach, afterEach, afterAll } from "bun:test"
-import { MarkdownRenderable, type MarkdownOptions } from "../Markdown"
-import { CodeRenderable } from "../Code"
-import { TextRenderable } from "../Text"
-import { TextTableRenderable } from "../TextTable"
-import { SyntaxStyle } from "../../syntax-style"
-import { RGBA } from "../../lib/RGBA"
-import { TreeSitterClient } from "../../lib/tree-sitter"
+import { MarkdownRenderable, type MarkdownOptions } from "../Markdown.js"
+import { CodeRenderable } from "../Code.js"
+import { TextRenderable } from "../Text.js"
+import { TextTableRenderable } from "../TextTable.js"
+import { SyntaxStyle } from "../../syntax-style.js"
+import { RGBA } from "../../lib/RGBA.js"
+import { TreeSitterClient } from "../../lib/tree-sitter/index.js"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
 import { mkdir } from "node:fs/promises"
@@ -15,8 +15,8 @@ import {
   type TestRenderer,
   MockTreeSitterClient,
   TestRecorder,
-} from "../../testing"
-import { TextAttributes, type CapturedFrame } from "../../types"
+} from "../../testing.js"
+import { TextAttributes, type CapturedFrame } from "../../types.js"
 
 let renderer: TestRenderer
 let mockMouse: MockMouse

@@ -10,7 +10,7 @@ import {
   type RenderContext,
 } from "@opentui/core"
 import { useContext } from "solid-js"
-import { RendererContext } from "../../src/elements/hooks"
+import { RendererContext } from "../../src/elements/hooks.js"
 
 let nextZIndex = 101
 class DraggableTransparentBox extends BoxRenderable {

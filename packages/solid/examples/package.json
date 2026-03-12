@@ -1,0 +1,10 @@
+{
+  "name": "@opentui/solid-examples",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "bun --preload ../scripts/preload.ts index.tsx",
+    "build": "bun build.ts",
+    "build:all": "bun build.ts --all"
+  }
+}

@@ -1,7 +1,7 @@
 import { test, expect } from "bun:test"
-import { Renderable } from "../Renderable"
-import type { OptimizedBuffer } from "../buffer"
-import { createTestRenderer, type TestRenderer } from "../testing/test-renderer"
+import { Renderable } from "../Renderable.js"
+import type { OptimizedBuffer } from "../buffer.js"
+import { createTestRenderer, type TestRenderer } from "../testing/test-renderer.js"
 
 class DestroyingRenderable extends Renderable {
   protected renderSelf(_buffer: OptimizedBuffer, _deltaTime: number): void {}

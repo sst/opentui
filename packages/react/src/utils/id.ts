@@ -1,4 +1,4 @@
-import type { Type } from "../types/host"
+import type { Type } from "../types/host.js"
 
 const idCounter = new Map<string, number>()
 

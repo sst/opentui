@@ -1,7 +1,7 @@
 import { test, expect, beforeEach, afterEach, describe } from "bun:test"
-import { SelectRenderable, type SelectRenderableOptions, SelectRenderableEvents, type SelectOption } from "./Select"
-import { createTestRenderer, type MockInput, type TestRenderer } from "../testing/test-renderer"
-import { KeyEvent } from "../lib/KeyHandler"
+import { SelectRenderable, type SelectRenderableOptions, SelectRenderableEvents, type SelectOption } from "./Select.js"
+import { createTestRenderer, type MockInput, type TestRenderer } from "../testing/test-renderer.js"
+import { KeyEvent } from "../lib/KeyHandler.js"
 
 // Helper function to create a KeyEvent from a string or object
 function createKeyEvent(

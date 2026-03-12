@@ -6,7 +6,7 @@ import {
   type RenderableOptions,
   type RenderContext,
   RGBA,
-} from "../index"
+} from "../index.js"
 
 const defaultThumbBackgroundColor = RGBA.fromHex("#9a9ea3")
 const defaultTrackBackgroundColor = RGBA.fromHex("#252527")

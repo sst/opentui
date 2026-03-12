@@ -8,9 +8,9 @@ import {
   fg,
   bold,
   type KeyEvent,
-} from "../index"
-import { ScrollBoxRenderable } from "../renderables/ScrollBox"
-import { setupCommonDemoKeys } from "./lib/standalone-keys"
+} from "../index.js"
+import { ScrollBoxRenderable } from "../renderables/ScrollBox.js"
+import { setupCommonDemoKeys } from "./lib/standalone-keys.js"
 
 let overlay: BoxRenderable | null = null
 let dialog: BoxRenderable | null = null

@@ -1,8 +1,8 @@
-import { Renderable, type RenderableOptions } from "../Renderable"
-import { OptimizedBuffer } from "../buffer"
-import { RGBA, parseColor, type ColorInput } from "../lib/RGBA"
-import type { KeyEvent } from "../lib/KeyHandler"
-import type { RenderContext } from "../types"
+import { Renderable, type RenderableOptions } from "../Renderable.js"
+import { OptimizedBuffer } from "../buffer.js"
+import { RGBA, parseColor, type ColorInput } from "../lib/RGBA.js"
+import type { KeyEvent } from "../lib/KeyHandler.js"
+import type { RenderContext } from "../types.js"
 import {
   type KeyBinding as BaseKeyBinding,
   mergeKeyBindings,
@@ -11,7 +11,7 @@ import {
   type KeyAliasMap,
   defaultKeyAliases,
   mergeKeyAliases,
-} from "../lib/keymapping"
+} from "../lib/keymapping.js"
 
 export interface TabSelectOption {
   name: string

@@ -1,11 +1,11 @@
 import { test, expect, beforeEach, afterEach } from "bun:test"
-import { CodeRenderable } from "./Code"
-import { SyntaxStyle } from "../syntax-style"
-import { RGBA } from "../lib/RGBA"
-import { createTestRenderer, type TestRenderer, MockTreeSitterClient, type MockMouse } from "../testing"
-import { TreeSitterClient } from "../lib/tree-sitter"
-import type { SimpleHighlight } from "../lib/tree-sitter/types"
-import { BoxRenderable } from "./Box"
+import { CodeRenderable } from "./Code.js"
+import { SyntaxStyle } from "../syntax-style.js"
+import { RGBA } from "../lib/RGBA.js"
+import { createTestRenderer, type TestRenderer, MockTreeSitterClient, type MockMouse } from "../testing.js"
+import { TreeSitterClient } from "../lib/tree-sitter/index.js"
+import type { SimpleHighlight } from "../lib/tree-sitter/types.js"
+import { BoxRenderable } from "./Box.js"
 
 let currentRenderer: TestRenderer
 let renderOnce: () => Promise<void>

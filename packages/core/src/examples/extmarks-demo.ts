@@ -7,10 +7,10 @@ import {
   KeyEvent,
   type ExtmarksController,
   type ExtmarkDeletedEvent,
-} from "../index"
-import { setupCommonDemoKeys } from "./lib/standalone-keys"
-import { SyntaxStyle } from "../syntax-style"
-import { RGBA } from "../lib/RGBA"
+} from "../index.js"
+import { setupCommonDemoKeys } from "./lib/standalone-keys.js"
+import { SyntaxStyle } from "../syntax-style.js"
+import { RGBA } from "../lib/RGBA.js"
 
 const initialContent = `Welcome to the Extmarks Demo!
 

@@ -1,5 +1,5 @@
 import { describe, test, expect, beforeEach, afterEach } from "bun:test"
-import { testRender } from "../index"
+import { testRender } from "../index.js"
 import { SyntaxStyle, RGBA } from "@opentui/core"
 import { createSignal, Show } from "solid-js"
 

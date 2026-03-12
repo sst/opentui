@@ -1,6 +1,6 @@
 import { describe, expect, it, beforeEach, afterEach } from "bun:test"
-import { OptimizedBuffer } from "./buffer"
-import { RGBA } from "./lib/RGBA"
+import { OptimizedBuffer } from "./buffer.js"
+import { RGBA } from "./lib/RGBA.js"
 
 describe("OptimizedBuffer", () => {
   let buffer: OptimizedBuffer

@@ -1,10 +1,10 @@
 import { test, expect, beforeEach, afterEach, beforeAll, describe } from "bun:test"
-import { TreeSitterClient } from "./client"
+import { TreeSitterClient } from "./client.js"
 import { tmpdir } from "os"
 import { join } from "path"
 import { mkdir, writeFile, unlink } from "fs/promises"
-import { getDataPaths } from "../data-paths"
-import { getTreeSitterClient } from "."
+import { getDataPaths } from "../data-paths.js"
+import { getTreeSitterClient } from "./index.js"
 
 describe("TreeSitterClient", () => {
   let client: TreeSitterClient

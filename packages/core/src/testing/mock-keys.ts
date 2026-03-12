@@ -1,5 +1,5 @@
-import type { CliRenderer } from "../renderer"
-import { ANSI } from "../ansi"
+import type { CliRenderer } from "../renderer.js"
+import { ANSI } from "../ansi.js"
 
 export const KeyCodes = {
   // Control keys

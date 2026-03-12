@@ -1,7 +1,14 @@
-import { CliRenderer, createCliRenderer, DiffRenderable, BoxRenderable, TextRenderable, type ParsedKey } from "../index"
-import { setupCommonDemoKeys } from "./lib/standalone-keys"
-import { parseColor, type RGBA } from "../lib/RGBA"
-import { SyntaxStyle } from "../syntax-style"
+import {
+  CliRenderer,
+  createCliRenderer,
+  DiffRenderable,
+  BoxRenderable,
+  TextRenderable,
+  type ParsedKey,
+} from "../index.js"
+import { setupCommonDemoKeys } from "./lib/standalone-keys.js"
+import { parseColor, type RGBA } from "../lib/RGBA.js"
+import { SyntaxStyle } from "../syntax-style.js"
 
 interface DiffTheme {
   name: string
@@ -261,11 +268,11 @@ const contentExamples: ContentExample[] = [
 --- packages/core/src/examples/index.ts	before
 +++ packages/core/src/examples/index.ts	after
 @@ -56,6 +56,7 @@
- import * as terminalDemo from "./terminal"
- import * as diffDemo from "./diff-demo"
- import * as keypressDebugDemo from "./keypress-debug-demo"
-+import * as textTruncationDemo from "./text-truncation-demo"
- import { setupCommonDemoKeys } from "./lib/standalone-keys"
+ import * as terminalDemo from "./terminal.js"
+ import * as diffDemo from "./diff-demo.js"
+ import * as keypressDebugDemo from "./keypress-debug-demo.js"
++import * as textTruncationDemo from "./text-truncation-demo.js"
+ import { setupCommonDemoKeys } from "./lib/standalone-keys.js"
  
  interface Example {
 @@ -85,6 +86,12 @@

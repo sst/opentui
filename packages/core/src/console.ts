@@ -3,13 +3,13 @@ import { Console } from "node:console"
 import fs from "node:fs"
 import path from "node:path"
 import util from "node:util"
-import type { CliRenderer, ColorInput, MouseEvent } from "."
-import { OptimizedBuffer } from "./buffer"
-import { Capture, CapturedWritableStream } from "./lib/output.capture"
-import { parseColor, RGBA } from "./lib/RGBA"
-import { singleton } from "./lib/singleton"
-import { env, registerEnvVar } from "./lib/env"
-import type { KeyEvent } from "./lib/KeyHandler"
+import type { CliRenderer, ColorInput, MouseEvent } from "./index.js"
+import { OptimizedBuffer } from "./buffer.js"
+import { Capture, CapturedWritableStream } from "./lib/output.capture.js"
+import { parseColor, RGBA } from "./lib/RGBA.js"
+import { singleton } from "./lib/singleton.js"
+import { env, registerEnvVar } from "./lib/env.js"
+import type { KeyEvent } from "./lib/KeyHandler.js"
 import {
   type KeyBinding as BaseKeyBinding,
   mergeKeyBindings,
@@ -19,7 +19,7 @@ import {
   defaultKeyAliases,
   mergeKeyAliases,
   keyBindingToString,
-} from "./lib/keymapping"
+} from "./lib/keymapping.js"
 
 interface CallerInfo {
   functionName: string

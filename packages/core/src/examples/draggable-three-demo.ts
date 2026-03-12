@@ -8,8 +8,8 @@ import {
   TextRenderable,
   type KeyEvent,
   type MouseEvent,
-} from "../index"
-import { setupCommonDemoKeys } from "./lib/standalone-keys"
+} from "../index.js"
+import { setupCommonDemoKeys } from "./lib/standalone-keys.js"
 import {
   Scene as ThreeScene,
   Mesh as ThreeMesh,

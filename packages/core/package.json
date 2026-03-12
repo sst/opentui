@@ -9,7 +9,7 @@
   "types": "src/index.ts",
   "module": "src/index.ts",
   "main": "src/index.ts",
-  "version": "0.1.86",
+  "version": "0.1.87",
   "type": "module",
   "scripts": {
     "build": "bun run build:native && bun run build:lib",
@@ -28,7 +28,7 @@
   },
   "license": "MIT",
   "devDependencies": {
-    "@opentui/three": "workspace:*",
+    "@opentui/three": "workspace:^",
     "@types/bun": "latest",
     "@types/node": "^24.0.0",
     "commander": "^13.1.0",
@@ -46,12 +46,12 @@
     "web-tree-sitter": "0.25.10"
   },
   "optionalDependencies": {
-    "@opentui/core-darwin-x64": "0.1.86",
-    "@opentui/core-darwin-arm64": "0.1.86",
-    "@opentui/core-linux-x64": "0.1.86",
-    "@opentui/core-linux-arm64": "0.1.86",
-    "@opentui/core-win32-x64": "0.1.86",
-    "@opentui/core-win32-arm64": "0.1.86"
+    "@opentui/core-darwin-x64": "0.1.87",
+    "@opentui/core-darwin-arm64": "0.1.87",
+    "@opentui/core-linux-x64": "0.1.87",
+    "@opentui/core-linux-arm64": "0.1.87",
+    "@opentui/core-win32-x64": "0.1.87",
+    "@opentui/core-win32-arm64": "0.1.87"
   },
   "exports": {
     ".": {
@@ -61,6 +61,14 @@
     "./testing": {
       "types": "./src/testing.ts",
       "import": "./src/testing.ts"
+    },
+    "./runtime-plugin": {
+      "types": "./src/runtime-plugin.ts",
+      "import": "./src/runtime-plugin.ts"
+    },
+    "./runtime-plugin-support": {
+      "types": "./src/runtime-plugin-support.ts",
+      "import": "./src/runtime-plugin-support.ts"
     },
     "./parser.worker": {
       "types": "./src/lib/tree-sitter/parser.worker.ts",

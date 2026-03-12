@@ -1,5 +1,5 @@
 import { describe, expect, it, beforeEach, afterEach } from "bun:test"
-import { testRender } from "../index"
+import { testRender } from "../index.js"
 import type { TextRenderable } from "@opentui/core"
 
 let testSetup: Awaited<ReturnType<typeof testRender>>

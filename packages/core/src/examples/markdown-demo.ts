@@ -6,12 +6,12 @@ import {
   TextRenderable,
   type ParsedKey,
   ScrollBoxRenderable,
-} from "../index"
-import { parseColor } from "../lib/RGBA"
-import { getTreeSitterClient } from "../lib/tree-sitter"
-import { MarkdownRenderable } from "../renderables/Markdown"
-import { SyntaxStyle } from "../syntax-style"
-import { setupCommonDemoKeys } from "./lib/standalone-keys"
+} from "../index.js"
+import { parseColor } from "../lib/RGBA.js"
+import { getTreeSitterClient } from "../lib/tree-sitter/index.js"
+import { MarkdownRenderable } from "../renderables/Markdown.js"
+import { SyntaxStyle } from "../syntax-style.js"
+import { setupCommonDemoKeys } from "./lib/standalone-keys.js"
 
 // Rich markdown example showcasing various features
 const markdownContent = `# OpenTUI Markdown Demo

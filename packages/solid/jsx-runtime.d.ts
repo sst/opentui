@@ -14,7 +14,7 @@ import type {
   TabSelectProps,
   TextareaProps,
   TextProps,
-} from "./src/types/elements"
+} from "./src/types/elements.js"
 import type { DomNode } from "./dist"
 
 declare namespace JSX {

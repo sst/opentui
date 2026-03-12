@@ -1,6 +1,6 @@
-import type { EditBuffer } from "../edit-buffer"
-import type { EditorView } from "../editor-view"
-import { ExtmarksHistory, type ExtmarksSnapshot } from "./extmarks-history"
+import type { EditBuffer } from "../edit-buffer.js"
+import type { EditorView } from "../editor-view.js"
+import { ExtmarksHistory, type ExtmarksSnapshot } from "./extmarks-history.js"
 
 export interface Extmark {
   id: number

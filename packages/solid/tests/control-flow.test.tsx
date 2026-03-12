@@ -1,5 +1,5 @@
 import { describe, expect, it, beforeEach, afterEach, test } from "bun:test"
-import { testRender } from "../index"
+import { testRender } from "../index.js"
 import { createSignal, createEffect, createMemo, For, Show, Switch, Match, Index, ErrorBoundary } from "solid-js"
 
 let testSetup: Awaited<ReturnType<typeof testRender>>

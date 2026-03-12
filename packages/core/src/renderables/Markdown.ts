@@ -1,23 +1,23 @@
-import { Renderable, type RenderableOptions } from "../Renderable"
-import { type RenderContext } from "../types"
-import { SyntaxStyle, type StyleDefinition } from "../syntax-style"
-import type { TextChunk } from "../text-buffer"
-import { createTextAttributes } from "../utils"
-import type { BorderStyle } from "../lib/border"
-import type { ColorInput } from "../lib/RGBA"
+import { Renderable, type RenderableOptions } from "../Renderable.js"
+import { type RenderContext } from "../types.js"
+import { SyntaxStyle, type StyleDefinition } from "../syntax-style.js"
+import type { TextChunk } from "../text-buffer.js"
+import { createTextAttributes } from "../utils.js"
+import type { BorderStyle } from "../lib/border.js"
+import type { ColorInput } from "../lib/RGBA.js"
 import { type MarkedToken, type Token, type Tokens } from "marked"
-import { CodeRenderable, type OnChunksCallback } from "./Code"
+import { CodeRenderable, type OnChunksCallback } from "./Code.js"
 import {
   TextTableRenderable,
   type TextTableCellContent,
   type TextTableColumnFitter,
   type TextTableColumnWidthMode,
   type TextTableContent,
-} from "./TextTable"
-import type { TreeSitterClient } from "../lib/tree-sitter"
-import { parseMarkdownIncremental, type ParseState } from "./markdown-parser"
-import type { OptimizedBuffer } from "../buffer"
-import { detectLinks } from "../lib/detect-links"
+} from "./TextTable.js"
+import type { TreeSitterClient } from "../lib/tree-sitter/index.js"
+import { parseMarkdownIncremental, type ParseState } from "./markdown-parser.js"
+import type { OptimizedBuffer } from "../buffer.js"
+import { detectLinks } from "../lib/detect-links.js"
 
 export interface MarkdownTableOptions {
   /**

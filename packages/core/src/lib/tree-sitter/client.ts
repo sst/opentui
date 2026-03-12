@@ -1,6 +1,6 @@
 import { EventEmitter } from "events"
-import { createDebounce, clearDebounceScope, DebounceController } from "../debounce"
-import { ProcessQueue } from "../queue"
+import { createDebounce, clearDebounceScope, DebounceController } from "../debounce.js"
+import { ProcessQueue } from "../queue.js"
 import type {
   TreeSitterClientOptions,
   TreeSitterClientEvents,
@@ -10,12 +10,12 @@ import type {
   Edit,
   PerformanceStats,
   SimpleHighlight,
-} from "./types"
-import { getParsers } from "./default-parsers"
+} from "./types.js"
+import { getParsers } from "./default-parsers.js"
 import { resolve, isAbsolute, parse } from "path"
 import { existsSync } from "fs"
-import { registerEnvVar, env } from "../env"
-import { isBunfsPath, normalizeBunfsPath } from "../bunfs"
+import { registerEnvVar, env } from "../env.js"
+import { isBunfsPath, normalizeBunfsPath } from "../bunfs.js"
 
 registerEnvVar({
   name: "OTUI_TREE_SITTER_WORKER_PATH",

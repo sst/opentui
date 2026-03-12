@@ -1,9 +1,9 @@
 import { Readable } from "stream"
-import { CliRenderer, type CliRendererConfig } from "../renderer"
-import { resolveRenderLib } from "../zig"
-import { createMockKeys } from "./mock-keys"
-import { createMockMouse } from "./mock-mouse"
-import type { CapturedFrame } from "../types"
+import { CliRenderer, type CliRendererConfig } from "../renderer.js"
+import { resolveRenderLib } from "../zig.js"
+import { createMockKeys } from "./mock-keys.js"
+import { createMockMouse } from "./mock-mouse.js"
+import type { CapturedFrame } from "../types.js"
 
 export interface TestRendererOptions extends CliRendererConfig {
   width?: number

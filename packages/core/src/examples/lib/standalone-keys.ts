@@ -1,4 +1,4 @@
-import { resolveRenderLib, type CliRenderer, type KeyEvent } from "../.."
+import { resolveRenderLib, type CliRenderer, type KeyEvent } from "../../index.js"
 
 export function setupCommonDemoKeys(renderer: CliRenderer) {
   renderer.keyInput.on("keypress", (key: KeyEvent) => {

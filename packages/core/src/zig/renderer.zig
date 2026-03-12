@@ -783,6 +783,9 @@ pub const CliRenderer = struct {
                     else
                         ansi.ANSI.cursorUnderline;
                 },
+                .default => {
+                    cursorStyleCode = ansi.ANSI.defaultCursorStyle;
+                },
             }
 
             const cursorR = rgbaComponentToU8(cursorColor[0]);

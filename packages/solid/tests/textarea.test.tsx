@@ -1,5 +1,5 @@
 import { describe, expect, it, beforeEach, afterEach } from "bun:test"
-import { testRender } from "../index"
+import { testRender } from "../index.js"
 import { createSignal } from "solid-js"
 import { TextAttributes } from "@opentui/core"
 

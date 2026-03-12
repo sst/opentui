@@ -1,9 +1,9 @@
 import { EventEmitter } from "events"
 import Yoga, { Direction, Display, Edge, FlexDirection, type Config, type Node as YogaNode } from "yoga-layout"
-import { OptimizedBuffer } from "./buffer"
-import type { KeyEvent, PasteEvent } from "./lib/KeyHandler"
-import type { MouseEventType } from "./lib/parse.mouse"
-import type { Selection } from "./lib/selection"
+import { OptimizedBuffer } from "./buffer.js"
+import type { KeyEvent, PasteEvent } from "./lib/KeyHandler.js"
+import type { MouseEventType } from "./lib/parse.mouse.js"
+import type { Selection } from "./lib/selection.js"
 import {
   parseAlign,
   parseAlignItems,
@@ -18,10 +18,10 @@ import {
   type OverflowString,
   type PositionTypeString,
   type WrapString,
-} from "./lib/yoga.options"
-import { maybeMakeRenderable, type VNode } from "./renderables/composition/vnode"
-import type { MouseEvent } from "./renderer"
-import type { RenderContext } from "./types"
+} from "./lib/yoga.options.js"
+import { maybeMakeRenderable, type VNode } from "./renderables/composition/vnode.js"
+import type { MouseEvent } from "./renderer.js"
+import type { RenderContext } from "./types.js"
 import {
   validateOptions,
   isPositionType,
@@ -32,7 +32,7 @@ import {
   isPaddingType,
   isPositionTypeType,
   isOverflowType,
-} from "./lib/renderable.validations"
+} from "./lib/renderable.validations.js"
 
 const BrandedRenderable: unique symbol = Symbol.for("@opentui/core/Renderable")
 

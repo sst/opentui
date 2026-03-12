@@ -1,7 +1,7 @@
 import { describe, expect, it, afterAll, beforeAll } from "bun:test"
-import { InputRenderable, type InputRenderableOptions, InputRenderableEvents } from "./Input"
-import { createTestRenderer } from "../testing/test-renderer"
-import type { KeyEvent } from "../lib/KeyHandler"
+import { InputRenderable, type InputRenderableOptions, InputRenderableEvents } from "./Input.js"
+import { createTestRenderer } from "../testing/test-renderer.js"
+import type { KeyEvent } from "../lib/KeyHandler.js"
 
 const { renderer, mockInput } = await createTestRenderer({})
 

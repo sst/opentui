@@ -1,13 +1,13 @@
 import { test, expect, beforeAll, afterAll, describe } from "bun:test"
-import { TreeSitterClient } from "./tree-sitter/client"
-import { treeSitterToStyledText, treeSitterToTextChunks } from "./tree-sitter-styled-text"
-import { SyntaxStyle } from "../syntax-style"
-import { RGBA } from "./RGBA"
-import { createTextAttributes } from "../utils"
+import { TreeSitterClient } from "./tree-sitter/client.js"
+import { treeSitterToStyledText, treeSitterToTextChunks } from "./tree-sitter-styled-text.js"
+import { SyntaxStyle } from "../syntax-style.js"
+import { RGBA } from "./RGBA.js"
+import { createTextAttributes } from "../utils.js"
 import { tmpdir } from "os"
 import { join } from "path"
 import { mkdir } from "fs/promises"
-import type { SimpleHighlight } from "./tree-sitter/types"
+import type { SimpleHighlight } from "./tree-sitter/types.js"
 
 describe("TreeSitter Styled Text", () => {
   let client: TreeSitterClient

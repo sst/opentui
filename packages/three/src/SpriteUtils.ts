@@ -1,4 +1,4 @@
-import { TextureUtils } from "./TextureUtils"
+import { TextureUtils } from "./TextureUtils.js"
 import { Sprite, SpriteMaterial, DataTexture, type SpriteMaterialParameters } from "three"
 
 export class SheetSprite extends Sprite {

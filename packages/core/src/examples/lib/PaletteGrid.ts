@@ -1,8 +1,8 @@
-import type { RenderableOptions } from "../../Renderable"
-import { RGBA } from "../../lib/RGBA"
-import { FrameBufferRenderable, type FrameBufferOptions } from "../../renderables/FrameBuffer"
-import type { RenderContext } from "../../types"
-import { TextAttributes } from "../../index"
+import type { RenderableOptions } from "../../Renderable.js"
+import { RGBA } from "../../lib/RGBA.js"
+import { FrameBufferRenderable, type FrameBufferOptions } from "../../renderables/FrameBuffer.js"
+import type { RenderContext } from "../../types.js"
+import { TextAttributes } from "../../index.js"
 
 export interface PaletteGridOptions extends Omit<RenderableOptions<PaletteGridRenderable>, "width" | "height"> {
   colors: string[]

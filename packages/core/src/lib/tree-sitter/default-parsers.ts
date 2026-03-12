@@ -2,7 +2,7 @@
 // Run 'bun assets/update.ts' to regenerate this file
 // Last generated: 2025-11-06T15:28:19.836Z
 
-import type { FiletypeParserOptions } from "./types"
+import type { FiletypeParserOptions } from "./types.js"
 import { resolve, dirname } from "path"
 import { fileURLToPath } from "url"
 

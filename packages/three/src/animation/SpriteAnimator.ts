@@ -2,7 +2,7 @@ import * as THREE from "three"
 import { uniform, texture as tslTexture, uv, float, vec2, bufferAttribute, mix } from "three/tsl"
 import { MeshBasicNodeMaterial, NodeMaterial } from "three/webgpu"
 import type { Scene } from "three"
-import { type SpriteResource, InstanceManager } from "../SpriteResourceManager"
+import { type SpriteResource, InstanceManager } from "../SpriteResourceManager.js"
 
 export interface AnimationStateConfig {
   imagePath: string

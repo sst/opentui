@@ -10,9 +10,9 @@ import {
   bold,
   underline,
   fg,
-} from "../index"
-import type { CliRenderer, RenderContext } from "../index"
-import { setupCommonDemoKeys } from "./lib/standalone-keys"
+} from "../index.js"
+import type { CliRenderer, RenderContext } from "../index.js"
+import { setupCommonDemoKeys } from "./lib/standalone-keys.js"
 
 let nextZIndex = 101
 let draggableBoxes: DraggableTransparentBox[] = []

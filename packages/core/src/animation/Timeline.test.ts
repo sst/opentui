@@ -1,5 +1,5 @@
 import { expect, describe, it, beforeEach, afterEach } from "bun:test"
-import { createTimeline, Timeline, type JSAnimation, engine, type EasingFunctions } from "./Timeline"
+import { createTimeline, Timeline, type JSAnimation, engine, type EasingFunctions } from "./Timeline.js"
 
 describe("Timeline", () => {
   let timeline: Timeline

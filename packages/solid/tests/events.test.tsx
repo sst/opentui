@@ -1,8 +1,8 @@
 import { describe, expect, it, beforeEach, afterEach } from "bun:test"
-import { testRender } from "../index"
+import { testRender } from "../index.js"
 import { createSignal } from "solid-js"
 import { createSpy } from "@opentui/core/testing"
-import { usePaste, useKeyboard } from "../src/elements/hooks"
+import { usePaste, useKeyboard } from "../src/elements/hooks.js"
 import type { PasteEvent } from "@opentui/core"
 
 let testSetup: Awaited<ReturnType<typeof testRender>>

@@ -1,7 +1,7 @@
 #!/usr/bin/env bun
 
-import { CliRenderer, createCliRenderer, RGBA, BoxRenderable, TextRenderable, type KeyEvent } from "../index"
-import { setupCommonDemoKeys } from "./lib/standalone-keys"
+import { CliRenderer, createCliRenderer, RGBA, BoxRenderable, TextRenderable, type KeyEvent } from "../index.js"
+import { setupCommonDemoKeys } from "./lib/standalone-keys.js"
 import { TextureUtils, ThreeRenderable, SuperSampleAlgorithm } from "@opentui/three"
 import {
   Scene as ThreeScene,

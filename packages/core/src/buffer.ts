@@ -1,11 +1,11 @@
-import type { TextBuffer } from "./text-buffer"
-import { RGBA } from "./lib"
-import { resolveRenderLib, type RenderLib } from "./zig"
+import type { TextBuffer } from "./text-buffer.js"
+import { RGBA } from "./lib/index.js"
+import { resolveRenderLib, type RenderLib } from "./zig.js"
 import { type Pointer, toArrayBuffer, ptr } from "bun:ffi"
-import { type BorderStyle, type BorderSides, BorderCharArrays, parseBorderStyle } from "./lib"
-import { type WidthMethod, type CapturedSpan, type CapturedLine } from "./types"
-import type { TextBufferView } from "./text-buffer-view"
-import type { EditorView } from "./editor-view"
+import { type BorderStyle, type BorderSides, BorderCharArrays, parseBorderStyle } from "./lib/index.js"
+import { type WidthMethod, type CapturedSpan, type CapturedLine } from "./types.js"
+import type { TextBufferView } from "./text-buffer-view.js"
+import type { EditorView } from "./editor-view.js"
 
 // Pack drawing options into a single u32
 // bits 0-3: borderSides, bit 4: shouldFill, bits 5-6: titleAlignment

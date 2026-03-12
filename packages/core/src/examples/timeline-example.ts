@@ -1,6 +1,6 @@
-import { createTimeline, type JSAnimation, Timeline } from "../animation/Timeline"
-import { CliRenderer, createCliRenderer, TextRenderable, BoxRenderable, type KeyEvent } from "../index"
-import { setupCommonDemoKeys } from "./lib/standalone-keys"
+import { createTimeline, type JSAnimation, Timeline } from "../animation/Timeline.js"
+import { CliRenderer, createCliRenderer, TextRenderable, BoxRenderable, type KeyEvent } from "../index.js"
+import { setupCommonDemoKeys } from "./lib/standalone-keys.js"
 
 class TimelineExample {
   private _mainTimeline: Timeline

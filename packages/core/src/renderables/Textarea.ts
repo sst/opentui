@@ -1,7 +1,7 @@
-import { type RenderContext } from "../types"
-import { EditBufferRenderable, type EditBufferOptions } from "./EditBufferRenderable"
-import type { KeyEvent, PasteEvent } from "../lib/KeyHandler"
-import { RGBA, parseColor, type ColorInput } from "../lib/RGBA"
+import { type RenderContext } from "../types.js"
+import { EditBufferRenderable, type EditBufferOptions } from "./EditBufferRenderable.js"
+import type { KeyEvent, PasteEvent } from "../lib/KeyHandler.js"
+import { RGBA, parseColor, type ColorInput } from "../lib/RGBA.js"
 import {
   type KeyBinding as BaseKeyBinding,
   mergeKeyBindings,
@@ -10,9 +10,9 @@ import {
   type KeyAliasMap,
   defaultKeyAliases,
   mergeKeyAliases,
-} from "../lib/keymapping"
-import { type StyledText, fg } from "../lib/styled-text"
-import type { ExtmarksController } from "../lib/extmarks"
+} from "../lib/keymapping.js"
+import { type StyledText, fg } from "../lib/styled-text.js"
+import type { ExtmarksController } from "../lib/extmarks.js"
 
 export type TextareaAction =
   | "move-left"

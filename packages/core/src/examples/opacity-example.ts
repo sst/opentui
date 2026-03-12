@@ -1,5 +1,5 @@
-import { CliRenderer, BoxRenderable, TextRenderable, createCliRenderer, type KeyEvent } from "../index"
-import { setupCommonDemoKeys } from "./lib/standalone-keys"
+import { CliRenderer, BoxRenderable, TextRenderable, createCliRenderer, type KeyEvent } from "../index.js"
+import { setupCommonDemoKeys } from "./lib/standalone-keys.js"
 
 let renderer: CliRenderer | null = null
 let header: BoxRenderable | null = null

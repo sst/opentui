@@ -1,7 +1,14 @@
 #!/usr/bin/env bun
 
-import { CliRenderer, createCliRenderer, OptimizedBuffer, RGBA, FrameBufferRenderable, type KeyEvent } from "../index"
-import { setupCommonDemoKeys } from "./lib/standalone-keys"
+import {
+  CliRenderer,
+  createCliRenderer,
+  OptimizedBuffer,
+  RGBA,
+  FrameBufferRenderable,
+  type KeyEvent,
+} from "../index.js"
+import { setupCommonDemoKeys } from "./lib/standalone-keys.js"
 
 let framebuffer: OptimizedBuffer | null = null
 let keyListener: ((key: KeyEvent) => void) | null = null

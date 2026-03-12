@@ -1,7 +1,7 @@
 #!/usr/bin/env bun
 
 import { createCliRenderer, RGBA, TextRenderable, BoxRenderable, FrameBufferRenderable } from "@opentui/core"
-import { ThreeCliRenderer, TextureUtils } from "../src"
+import { ThreeCliRenderer, TextureUtils } from "../src/index.js"
 import type { Mesh, MeshPhongMaterial as MeshPhongMaterialType } from "three"
 import {
   Scene as ThreeScene,

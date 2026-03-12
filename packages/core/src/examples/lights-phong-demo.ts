@@ -8,8 +8,8 @@ import {
   TextRenderable,
   FrameBufferRenderable,
   type KeyEvent,
-} from "../index"
-import { setupCommonDemoKeys } from "./lib/standalone-keys"
+} from "../index.js"
+import { setupCommonDemoKeys } from "./lib/standalone-keys.js"
 import { TextureUtils, ThreeCliRenderer } from "@opentui/three"
 import {
   Scene as ThreeScene,

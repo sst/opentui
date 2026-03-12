@@ -8,9 +8,9 @@ import {
   bold,
   fg,
   BoxRenderable,
-} from "../index"
-import { setupCommonDemoKeys } from "./lib/standalone-keys"
-import { TextRenderable } from "../renderables/Text"
+} from "../index.js"
+import { setupCommonDemoKeys } from "./lib/standalone-keys.js"
+import { TextRenderable } from "../renderables/Text.js"
 
 let nameInput: InputRenderable | null = null
 let emailInput: InputRenderable | null = null

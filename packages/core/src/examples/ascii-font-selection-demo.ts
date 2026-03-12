@@ -1,8 +1,8 @@
 #!/usr/bin/env bun
 
-import { CliRenderer, createCliRenderer, BoxRenderable, TextRenderable, RGBA } from ".."
-import { ASCIIFontRenderable } from "../renderables/ASCIIFont"
-import { setupCommonDemoKeys } from "./lib/standalone-keys"
+import { CliRenderer, createCliRenderer, BoxRenderable, TextRenderable, RGBA } from "../index.js"
+import { ASCIIFontRenderable } from "../renderables/ASCIIFont.js"
+import { setupCommonDemoKeys } from "./lib/standalone-keys.js"
 
 let mainContainer: BoxRenderable | null = null
 let fontGroup: BoxRenderable | null = null

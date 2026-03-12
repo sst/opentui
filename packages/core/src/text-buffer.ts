@@ -1,9 +1,9 @@
-import type { StyledText } from "./lib/styled-text"
-import { RGBA } from "./lib/RGBA"
-import { resolveRenderLib, type LineInfo, type RenderLib } from "./zig"
+import type { StyledText } from "./lib/styled-text.js"
+import { RGBA } from "./lib/RGBA.js"
+import { resolveRenderLib, type LineInfo, type RenderLib } from "./zig.js"
 import { type Pointer } from "bun:ffi"
-import { type WidthMethod, type Highlight } from "./types"
-import type { SyntaxStyle } from "./syntax-style"
+import { type WidthMethod, type Highlight } from "./types.js"
+import type { SyntaxStyle } from "./syntax-style.js"
 
 export interface TextChunk {
   __isChunk: true

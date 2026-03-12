@@ -1,7 +1,7 @@
-import { CliRenderer, BoxRenderable, TextRenderable, createCliRenderer, type KeyEvent } from "../index"
-import { InputRenderable, InputRenderableEvents } from "../renderables/Input"
-import { SelectRenderable, SelectRenderableEvents, type SelectOption } from "../renderables/Select"
-import { setupCommonDemoKeys } from "./lib/standalone-keys"
+import { CliRenderer, BoxRenderable, TextRenderable, createCliRenderer, type KeyEvent } from "../index.js"
+import { InputRenderable, InputRenderableEvents } from "../renderables/Input.js"
+import { SelectRenderable, SelectRenderableEvents, type SelectOption } from "../renderables/Select.js"
+import { setupCommonDemoKeys } from "./lib/standalone-keys.js"
 
 let renderer: CliRenderer | null = null
 let header: TextRenderable | null = null

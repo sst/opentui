@@ -9,8 +9,8 @@ import {
   FrameBufferRenderable,
   BoxRenderable,
   ASCIIFontRenderable,
-} from "../index"
-import { setupCommonDemoKeys } from "./lib/standalone-keys"
+} from "../index.js"
+import { setupCommonDemoKeys } from "./lib/standalone-keys.js"
 
 /**
  * This demo showcases framebuffers with multiple

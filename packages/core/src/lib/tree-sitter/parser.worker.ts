@@ -9,10 +9,10 @@ import type {
   FiletypeParserOptions,
   PerformanceStats,
   InjectionMapping,
-} from "./types"
-import { DownloadUtils } from "./download-utils"
+} from "./types.js"
+import { DownloadUtils } from "./download-utils.js"
 import { isMainThread } from "worker_threads"
-import { isBunfsPath, normalizeBunfsPath } from "../bunfs"
+import { isBunfsPath, normalizeBunfsPath } from "../bunfs.js"
 
 const self = globalThis
 

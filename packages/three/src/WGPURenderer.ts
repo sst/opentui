@@ -2,7 +2,7 @@ import { PerspectiveCamera, OrthographicCamera, Color, NoToneMapping, LinearSRGB
 import { WebGPURenderer } from "three/webgpu"
 import { RGBA, CliRenderEvents, type CliRenderer, type OptimizedBuffer } from "@opentui/core"
 import { createWebGPUDevice, setupGlobals } from "bun-webgpu"
-import { CLICanvas, SuperSampleAlgorithm } from "./canvas"
+import { CLICanvas, SuperSampleAlgorithm } from "./canvas.js"
 
 export enum SuperSampleType {
   NONE = "none",

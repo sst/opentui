@@ -10,8 +10,8 @@ import {
   type MouseEvent,
   OptimizedBuffer,
   type RenderContext,
-} from "../index"
-import { setupCommonDemoKeys } from "./lib/standalone-keys"
+} from "../index.js"
+import { setupCommonDemoKeys } from "./lib/standalone-keys.js"
 
 let titleText: TextRenderable | null = null
 let instructionsText: TextRenderable | null = null

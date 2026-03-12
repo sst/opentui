@@ -1,5 +1,5 @@
 import type { BaseRenderable, RootRenderable, TextNodeRenderable } from "@opentui/core"
-import { baseComponents } from "../components"
+import { baseComponents } from "../components/index.js"
 
 export type Type = keyof typeof baseComponents
 export type Props = Record<string, any>

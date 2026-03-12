@@ -1,10 +1,10 @@
 import { describe, expect, it, beforeEach, afterEach } from "bun:test"
-import { TextRenderable, type TextOptions } from "./Text"
-import { TextNodeRenderable } from "./TextNode"
-import { RGBA } from "../lib/RGBA"
-import { stringToStyledText, StyledText } from "../lib/styled-text"
-import { createTestRenderer, type MockMouse, type TestRenderer } from "../testing/test-renderer"
-import { BoxRenderable } from "./Box"
+import { TextRenderable, type TextOptions } from "./Text.js"
+import { TextNodeRenderable } from "./TextNode.js"
+import { RGBA } from "../lib/RGBA.js"
+import { stringToStyledText, StyledText } from "../lib/styled-text.js"
+import { createTestRenderer, type MockMouse, type TestRenderer } from "../testing/test-renderer.js"
+import { BoxRenderable } from "./Box.js"
 
 let currentRenderer: TestRenderer
 let renderOnce: () => Promise<void>

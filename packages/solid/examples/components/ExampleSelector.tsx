@@ -10,8 +10,10 @@ import ExtendDemo from "./extend-demo.tsx"
 import InputScene from "./input-demo.tsx"
 import LineNumberDemo from "./line-number-demo.tsx"
 import MouseScene from "./mouse-demo.tsx"
+import PluginSlotsDemo from "./plugin-slots-demo.tsx"
 import { ScrollDemo, ScrollDemoIndex } from "./scroll-demo.tsx"
 import { CustomScrollAccelDemo } from "./custom-scroll-accel-demo.tsx"
+import ExternalPluginSlotsDemo from "./external-plugin-slots-demo.tsx"
 import TabSelectDemo from "./tab-select-demo.tsx"
 import TextSelectionDemo from "./text-selection-demo.tsx"
 import TextStyleScene from "./text-style-demo.tsx"
@@ -109,6 +111,16 @@ const EXAMPLES = [
     name: "Session Scrollbox",
     description: "Live message stream with chunked arrival simulation",
     scene: "session-scrollbox",
+  },
+  {
+    name: "Plugin Slots Error Demo",
+    description: "Trigger plugin crashes and reset boundary state",
+    scene: "plugin-slots-demo",
+  },
+  {
+    name: "Plugin Slots External JSX Demo",
+    description: "Loads .plugin/index.tsx and renders external JSX slot components",
+    scene: "plugin-slots-external-demo",
   },
 ]
 
@@ -214,6 +226,12 @@ const ExampleSelector = () => {
       </Match>
       <Match when={selectedScene() === "session-scrollbox"}>
         <Session />
+      </Match>
+      <Match when={selectedScene() === "plugin-slots-demo"}>
+        <PluginSlotsDemo />
+      </Match>
+      <Match when={selectedScene() === "plugin-slots-external-demo"}>
+        <ExternalPluginSlotsDemo />
       </Match>
       <Match when={selected() === -1}>
         <box style={{ height: terminalDimensions().height, backgroundColor: "#001122", padding: 1 }}>

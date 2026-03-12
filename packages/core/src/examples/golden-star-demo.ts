@@ -1,15 +1,9 @@
 #!/usr/bin/env bun
 
-import {
-  createCliRenderer,
-  CliRenderer,
-  FrameBufferRenderable,
-  BoxRenderable,
-  RGBA,
-  ASCIIFontRenderable,
-  OptimizedBuffer,
-} from "../index"
-import type { ASCIIFontName } from "../lib/ascii.font"
+import { createCliRenderer, CliRenderer, FrameBufferRenderable, BoxRenderable, OptimizedBuffer } from "../index.js"
+import { RGBA } from "../lib/index.js"
+import { ASCIIFontRenderable } from "../renderables/ASCIIFont.js"
+import type { ASCIIFontName } from "../lib/ascii.font.js"
 import {
   Scene as ThreeScene,
   Mesh as ThreeMesh,
@@ -31,7 +25,7 @@ import {
   ConeGeometry,
 } from "three"
 import { ThreeCliRenderer } from "@opentui/three"
-import { setupCommonDemoKeys } from "./lib/standalone-keys"
+import { setupCommonDemoKeys } from "./lib/standalone-keys.js"
 
 interface StarParticle {
   instanceIndex: number

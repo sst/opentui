@@ -1,6 +1,6 @@
 import { test, expect, describe, mock, beforeEach } from "bun:test"
-import { TerminalConsole, ConsolePosition } from "./console"
-import { MouseEvent } from "./renderer"
+import { TerminalConsole, ConsolePosition } from "./console.js"
+import { MouseEvent } from "./renderer.js"
 
 interface MockRenderer {
   terminalWidth: number

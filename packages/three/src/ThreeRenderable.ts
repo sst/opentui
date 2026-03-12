@@ -8,7 +8,7 @@ import {
   type CliRenderer,
   type RenderContext,
 } from "@opentui/core"
-import { ThreeCliRenderer, type ThreeCliRendererOptions } from "./WGPURenderer"
+import { ThreeCliRenderer, type ThreeCliRendererOptions } from "./WGPURenderer.js"
 
 export interface ThreeRenderableOptions extends RenderableOptions<ThreeRenderable> {
   scene?: Scene | null

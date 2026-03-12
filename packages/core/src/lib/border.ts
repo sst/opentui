@@ -1,4 +1,4 @@
-import type { ColorInput } from "./RGBA"
+import type { ColorInput } from "./RGBA.js"
 
 export interface BorderCharacters {
   topLeft: string

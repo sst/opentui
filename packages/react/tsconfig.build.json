@@ -18,6 +18,20 @@
       "@opentui/core/*": ["../core/dist/*"]
     }
   },
-  "include": ["src/**/*", "jsx-runtime.d.ts", "jsx-dev-runtime.d.ts", "jsx-namespace.d.ts"],
-  "exclude": ["**/*.test.ts", "**/*.spec.ts", "examples/**/*", "scripts/**/*", "node_modules/**/*", "../core/**/*"]
+  "include": [
+    "src/**/*",
+    "jsx-runtime.d.ts",
+    "jsx-dev-runtime.d.ts",
+    "jsx-namespace.d.ts",
+    "scripts/runtime-plugin-support.ts"
+  ],
+  "exclude": [
+    "**/*.test.ts",
+    "**/*.spec.ts",
+    "examples/**/*",
+    "node_modules/**/*",
+    "../core/**/*",
+    "scripts/build.ts",
+    "scripts/publish.ts"
+  ]
 }

@@ -1,7 +1,7 @@
 import { describe, expect, it } from "bun:test"
-import { TextNodeRenderable, isTextNodeRenderable } from "./TextNode"
-import { RGBA } from "../lib/RGBA"
-import { StyledText, red, bold, t } from "../lib/styled-text"
+import { TextNodeRenderable, isTextNodeRenderable } from "./TextNode.js"
+import { RGBA } from "../lib/RGBA.js"
+import { StyledText, red, bold, t } from "../lib/styled-text.js"
 
 describe("TextNodeRenderable", () => {
   describe("Constructor and Options", () => {

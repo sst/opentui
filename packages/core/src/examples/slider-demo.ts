@@ -1,6 +1,6 @@
-import { type CliRenderer, createCliRenderer, t, fg, bold, BoxRenderable, TextRenderable } from "../index"
-import { SliderRenderable } from "../renderables/Slider"
-import { setupCommonDemoKeys } from "./lib/standalone-keys"
+import { type CliRenderer, createCliRenderer, t, fg, bold, BoxRenderable, TextRenderable } from "../index.js"
+import { SliderRenderable } from "../renderables/Slider.js"
+import { setupCommonDemoKeys } from "./lib/standalone-keys.js"
 
 let horizontalSlider1: SliderRenderable | null = null
 let horizontalSlider2: SliderRenderable | null = null

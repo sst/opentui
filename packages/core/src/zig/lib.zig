@@ -158,6 +158,8 @@ export fn createNativeSpanFeed(options_ptr: ?*const native_span_feed.Options) ?*
     return native_span_feed.createNativeSpanFeedWithAllocator(globalAllocator, options_ptr);
 }
 
+
+
 export fn getArenaAllocatedBytes() usize {
     return arena.queryCapacity();
 }
@@ -381,10 +383,10 @@ pub const CursorStyleOptions = extern struct {
 export fn setCursorStyleOptions(rendererPtr: *renderer.CliRenderer, options: *const CursorStyleOptions) void {
     const current = rendererPtr.terminal.getCursorStyle();
 
-    const style = if (options.style <= 2) @as(terminal.CursorStyle, @enumFromInt(options.style)) else current.style;
+    const style = if (options.style <= 3) @as(terminal.CursorStyle, @enumFromInt(options.style)) else current.style;
     const blinking = if (options.blinking <= 1) options.blinking == 1 else current.blinking;
 
-    if (options.style <= 2 or options.blinking <= 1) {
+    if (options.style <= 3 or options.blinking <= 1) {
         rendererPtr.terminal.setCursorStyle(style, blinking);
     }
     if (options.color) |rgba| {
@@ -416,6 +418,7 @@ export fn getCursorState(rendererPtr: *renderer.CliRenderer, outPtr: *ExternalCu
         .block => 0,
         .line => 1,
         .underline => 2,
+        .default => 3,
     };
 
     outPtr.* = .{

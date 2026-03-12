@@ -1,6 +1,6 @@
 import { GPUCanvasContextMock } from "bun-webgpu"
 import { RGBA, type OptimizedBuffer } from "@opentui/core"
-import { SuperSampleType } from "./WGPURenderer"
+import { SuperSampleType } from "./WGPURenderer.js"
 import { toArrayBuffer } from "bun:ffi"
 import { Jimp } from "jimp"
 

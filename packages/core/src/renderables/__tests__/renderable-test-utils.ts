@@ -1,6 +1,6 @@
-import { TextareaRenderable } from "../Textarea"
-import { type TestRenderer } from "../../testing/test-renderer"
-import { type TextareaOptions } from "../Textarea"
+import { TextareaRenderable } from "../Textarea.js"
+import { type TestRenderer } from "../../testing/test-renderer.js"
+import { type TextareaOptions } from "../Textarea.js"
 
 export async function createTextareaRenderable(
   renderer: TestRenderer,

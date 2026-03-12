@@ -74,6 +74,16 @@ const isActive = (path: string) => currentPath === path || currentPath === `${pa
             </div>
 
             <div class="sidebar-section">
+              <div class="sidebar-title">Plugin API</div>
+              <ul class="sidebar-links">
+                <li><a href="/docs/plugins/slots" class:list={{ active: isActive("/docs/plugins/slots") }}>Overview</a></li>
+                <li><a href="/docs/plugins/core" class:list={{ active: isActive("/docs/plugins/core") }}>Core</a></li>
+                <li><a href="/docs/plugins/react" class:list={{ active: isActive("/docs/plugins/react") }}>React</a></li>
+                <li><a href="/docs/plugins/solid" class:list={{ active: isActive("/docs/plugins/solid") }}>Solid</a></li>
+              </ul>
+            </div>
+
+            <div class="sidebar-section">
               <div class="sidebar-title">Components</div>
               <ul class="sidebar-links">
                 <li><a href="/docs/components/text" class:list={{ active: isActive("/docs/components/text") }}>Text</a></li>

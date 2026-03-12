@@ -1,9 +1,9 @@
 import { describe, test, expect, beforeEach, afterEach } from "bun:test"
-import { createTestRenderer, type TestRenderer } from "./test-renderer"
-import { TextRenderable } from "../renderables/Text"
-import { BoxRenderable } from "../renderables/Box"
-import { TextAttributes, type CapturedFrame } from "../types"
-import { RGBA } from "../lib"
+import { createTestRenderer, type TestRenderer } from "./test-renderer.js"
+import { TextRenderable } from "../renderables/Text.js"
+import { BoxRenderable } from "../renderables/Box.js"
+import { TextAttributes, type CapturedFrame } from "../types.js"
+import { RGBA } from "../lib/index.js"
 
 describe("captureSpans", () => {
   let renderer: TestRenderer

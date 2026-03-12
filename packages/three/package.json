@@ -1,6 +1,6 @@
 {
   "name": "@opentui/three",
-  "version": "0.1.86",
+  "version": "0.1.87",
   "description": "3D rendering module for OpenTUI",
   "repository": {
     "type": "git",
@@ -22,7 +22,7 @@
   },
   "dependencies": {
     "@dimforge/rapier2d-simd-compat": "^0.17.3",
-    "@opentui/core": "workspace:*",
+    "@opentui/core": "workspace:^",
     "bun-webgpu": "0.1.5",
     "jimp": "1.6.0",
     "planck": "^1.4.2",

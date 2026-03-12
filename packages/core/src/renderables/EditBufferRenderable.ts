@@ -1,12 +1,12 @@
-import { Renderable, type RenderableOptions } from "../Renderable"
-import { convertGlobalToLocalSelection, Selection, type LocalSelectionBounds } from "../lib/selection"
-import { EditBuffer, type LogicalCursor } from "../edit-buffer"
-import { EditorView, type VisualCursor } from "../editor-view"
-import { RGBA, parseColor } from "../lib/RGBA"
-import type { RenderContext, Highlight, CursorStyleOptions, LineInfoProvider, LineInfo } from "../types"
-import type { OptimizedBuffer } from "../buffer"
+import { Renderable, type RenderableOptions } from "../Renderable.js"
+import { convertGlobalToLocalSelection, Selection, type LocalSelectionBounds } from "../lib/selection.js"
+import { EditBuffer, type LogicalCursor } from "../edit-buffer.js"
+import { EditorView, type VisualCursor } from "../editor-view.js"
+import { RGBA, parseColor } from "../lib/RGBA.js"
+import type { RenderContext, Highlight, CursorStyleOptions, LineInfoProvider, LineInfo } from "../types.js"
+import type { OptimizedBuffer } from "../buffer.js"
 import { MeasureMode } from "yoga-layout"
-import type { SyntaxStyle } from "../syntax-style"
+import type { SyntaxStyle } from "../syntax-style.js"
 
 export interface CursorChangeEvent {
   line: number

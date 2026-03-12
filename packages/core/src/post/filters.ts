@@ -1,4 +1,4 @@
-import type { OptimizedBuffer } from "../buffer"
+import type { OptimizedBuffer } from "../buffer.js"
 
 /**
  * Applies a scanline effect by darkening every nth row.

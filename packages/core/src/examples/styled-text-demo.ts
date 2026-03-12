@@ -12,9 +12,9 @@ import {
   link,
   BoxRenderable,
   type KeyEvent,
-} from "../index"
-import { TextRenderable } from "../renderables/Text"
-import { setupCommonDemoKeys } from "./lib/standalone-keys"
+} from "../index.js"
+import { TextRenderable } from "../renderables/Text.js"
+import { setupCommonDemoKeys } from "./lib/standalone-keys.js"
 
 let parentContainer: BoxRenderable | null = null
 let counter = 0

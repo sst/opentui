@@ -1,7 +1,7 @@
 import { describe, expect, it, beforeEach, afterEach } from "bun:test"
-import { createTestRenderer, type TestRenderer, type MockInput } from "../../testing/test-renderer"
-import { createTextareaRenderable } from "./renderable-test-utils"
-import { PasteEvent } from "../../lib"
+import { createTestRenderer, type TestRenderer, type MockInput } from "../../testing/test-renderer.js"
+import { createTextareaRenderable } from "./renderable-test-utils.js"
+import { PasteEvent } from "../../lib/index.js"
 
 let currentRenderer: TestRenderer
 let renderOnce: () => Promise<void>

@@ -1,10 +1,10 @@
 #!/usr/bin/env bun
 
-import { type CliRenderer, createCliRenderer, BoxRenderable, TextRenderable, type KeyEvent } from "../index"
-import { ScrollBoxRenderable } from "../renderables/ScrollBox"
-import { TextNodeRenderable } from "../renderables/TextNode"
-import { setupCommonDemoKeys } from "./lib/standalone-keys"
-import { env, registerEnvVar } from "../lib/env"
+import { type CliRenderer, createCliRenderer, BoxRenderable, TextRenderable, type KeyEvent } from "../index.js"
+import { ScrollBoxRenderable } from "../renderables/ScrollBox.js"
+import { TextNodeRenderable } from "../renderables/TextNode.js"
+import { setupCommonDemoKeys } from "./lib/standalone-keys.js"
+import { env, registerEnvVar } from "../lib/env.js"
 
 registerEnvVar({
   name: "OTUI_KEYPRESS_DEBUG_SHOW_JSON",

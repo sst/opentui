@@ -12,8 +12,8 @@ import {
   yellow,
   cyan,
   magenta,
-} from ".."
-import { setupCommonDemoKeys } from "./lib/standalone-keys"
+} from "../index.js"
+import { setupCommonDemoKeys } from "./lib/standalone-keys.js"
 
 let mainContainer: BoxRenderable | null = null
 let floatingBox: BoxRenderable | null = null

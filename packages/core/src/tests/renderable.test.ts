@@ -6,11 +6,11 @@ import {
   RenderableEvents,
   type BaseRenderableOptions,
   type RenderableOptions,
-} from "../Renderable"
-import { createTestRenderer, type TestRenderer, type MockMouse, type MockInput } from "../testing/test-renderer"
-import type { RenderContext } from "../types"
-import { TextNodeRenderable } from "../renderables/TextNode"
-import { TextRenderable } from "../renderables/Text"
+} from "../Renderable.js"
+import { createTestRenderer, type TestRenderer, type MockMouse, type MockInput } from "../testing/test-renderer.js"
+import type { RenderContext } from "../types.js"
+import { TextNodeRenderable } from "../renderables/TextNode.js"
+import { TextRenderable } from "../renderables/Text.js"
 
 export class TestBaseRenderable extends BaseRenderable {
   constructor(options: BaseRenderableOptions) {

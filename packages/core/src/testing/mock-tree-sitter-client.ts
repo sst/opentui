@@ -1,5 +1,5 @@
-import { TreeSitterClient } from "../lib/tree-sitter"
-import type { SimpleHighlight } from "../lib/tree-sitter/types"
+import { TreeSitterClient } from "../lib/tree-sitter/index.js"
+import type { SimpleHighlight } from "../lib/tree-sitter/types.js"
 
 export class MockTreeSitterClient extends TreeSitterClient {
   private _highlightPromises: Array<{

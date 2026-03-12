@@ -1,11 +1,11 @@
 import { test, expect, beforeEach, afterEach, describe } from "bun:test"
-import { createTestRenderer, type TestRenderer, type MockMouse, MockTreeSitterClient } from "../testing"
-import { ScrollBoxRenderable } from "../renderables/ScrollBox"
-import { BoxRenderable } from "../renderables/Box"
-import { TextRenderable } from "../renderables/Text"
-import { CodeRenderable } from "../renderables/Code"
-import { LinearScrollAccel, MacOSScrollAccel, type ScrollAcceleration } from "../lib/scroll-acceleration"
-import { SyntaxStyle } from "../syntax-style"
+import { createTestRenderer, type TestRenderer, type MockMouse, MockTreeSitterClient } from "../testing.js"
+import { ScrollBoxRenderable } from "../renderables/ScrollBox.js"
+import { BoxRenderable } from "../renderables/Box.js"
+import { TextRenderable } from "../renderables/Text.js"
+import { CodeRenderable } from "../renderables/Code.js"
+import { LinearScrollAccel, MacOSScrollAccel, type ScrollAcceleration } from "../lib/scroll-acceleration.js"
+import { SyntaxStyle } from "../syntax-style.js"
 
 // Test accelerator that returns a constant multiplier
 class ConstantScrollAccel implements ScrollAcceleration {

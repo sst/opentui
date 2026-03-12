@@ -1,12 +1,12 @@
-import { type KeyEvent } from "../lib"
-import { getObjectsInViewport } from "../lib/objects-in-viewport"
-import { LinearScrollAccel, MacOSScrollAccel, type ScrollAcceleration } from "../lib/scroll-acceleration"
-import type { Renderable, RenderableOptions } from "../Renderable"
-import type { MouseEvent } from "../renderer"
-import type { RenderContext } from "../types"
-import { BoxRenderable, type BoxOptions } from "./Box"
-import type { VNode } from "./composition/vnode"
-import { ScrollBarRenderable, type ScrollBarOptions, type ScrollUnit } from "./ScrollBar"
+import { type KeyEvent } from "../lib/index.js"
+import { getObjectsInViewport } from "../lib/objects-in-viewport.js"
+import { LinearScrollAccel, MacOSScrollAccel, type ScrollAcceleration } from "../lib/scroll-acceleration.js"
+import type { Renderable, RenderableOptions } from "../Renderable.js"
+import type { MouseEvent } from "../renderer.js"
+import type { RenderContext } from "../types.js"
+import { BoxRenderable, type BoxOptions } from "./Box.js"
+import type { VNode } from "./composition/vnode.js"
+import { ScrollBarRenderable, type ScrollBarOptions, type ScrollUnit } from "./ScrollBar.js"
 
 class ContentRenderable extends BoxRenderable {
   private viewport: BoxRenderable

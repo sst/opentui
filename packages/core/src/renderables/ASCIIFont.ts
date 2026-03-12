@@ -4,17 +4,17 @@ import {
   renderFontToFrameBuffer,
   type ASCIIFontName,
   type fonts,
-} from "../lib/ascii.font"
-import { parseColor, type ColorInput } from "../lib/RGBA"
+} from "../lib/ascii.font.js"
+import { parseColor, type ColorInput } from "../lib/RGBA.js"
 import {
   ASCIIFontSelectionHelper,
   convertGlobalToLocalSelection,
   Selection,
   type LocalSelectionBounds,
-} from "../lib/selection"
-import type { RenderableOptions } from "../Renderable"
-import type { RenderContext } from "../types"
-import { FrameBufferRenderable, type FrameBufferOptions } from "./FrameBuffer"
+} from "../lib/selection.js"
+import type { RenderableOptions } from "../Renderable.js"
+import type { RenderContext } from "../types.js"
+import { FrameBufferRenderable, type FrameBufferOptions } from "./FrameBuffer.js"
 
 export interface ASCIIFontOptions extends Omit<RenderableOptions<ASCIIFontRenderable>, "width" | "height"> {
   text?: string

@@ -1,8 +1,8 @@
 import { describe, expect, it, beforeEach, afterEach } from "bun:test"
-import { createTestRenderer, type TestRenderer, type MockMouse } from "../../testing/test-renderer"
-import { createTextareaRenderable } from "./renderable-test-utils"
-import { TextRenderable } from "../Text"
-import { RGBA } from "../../lib/RGBA"
+import { createTestRenderer, type TestRenderer, type MockMouse } from "../../testing/test-renderer.js"
+import { createTextareaRenderable } from "./renderable-test-utils.js"
+import { TextRenderable } from "../Text.js"
+import { RGBA } from "../../lib/RGBA.js"
 
 let currentRenderer: TestRenderer
 let renderOnce: () => Promise<void>

@@ -1,5 +1,5 @@
 import { describe, expect, it, beforeEach, afterEach } from "bun:test"
-import { EditBuffer } from "./edit-buffer"
+import { EditBuffer } from "./edit-buffer.js"
 
 describe("EditBuffer", () => {
   let buffer: EditBuffer

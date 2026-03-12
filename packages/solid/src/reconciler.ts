@@ -19,10 +19,10 @@ import {
 } from "@opentui/core"
 import { decodeHTML } from "entities"
 import { useContext } from "solid-js"
-import { createRenderer } from "./renderer"
-import { getComponentCatalogue, RendererContext, SlotRenderable } from "./elements"
-import { getNextId } from "./utils/id-counter"
-import { log } from "./utils/log"
+import { createRenderer } from "./renderer/index.js"
+import { getComponentCatalogue, RendererContext, SlotRenderable } from "./elements/index.js"
+import { getNextId } from "./utils/id-counter.js"
+import { log } from "./utils/log.js"
 
 class TextNode extends TextNodeRenderable {
   public static override fromString(text: string, options: Partial<TextNodeOptions> = {}): TextNode {

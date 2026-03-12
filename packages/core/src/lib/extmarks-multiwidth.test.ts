@@ -1,9 +1,9 @@
 import { describe, expect, it, afterEach } from "bun:test"
-import { TextareaRenderable } from "../renderables/Textarea"
-import { createTestRenderer, type TestRenderer, type MockInput } from "../testing/test-renderer"
-import { type ExtmarksController } from "./extmarks"
-import { SyntaxStyle } from "../syntax-style"
-import { RGBA } from "./RGBA"
+import { TextareaRenderable } from "../renderables/Textarea.js"
+import { createTestRenderer, type TestRenderer, type MockInput } from "../testing/test-renderer.js"
+import { type ExtmarksController } from "./extmarks.js"
+import { SyntaxStyle } from "../syntax-style.js"
+import { RGBA } from "./RGBA.js"
 
 let currentRenderer: TestRenderer
 let renderOnce: () => Promise<void>

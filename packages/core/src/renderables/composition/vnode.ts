@@ -1,5 +1,5 @@
-import { isRenderable, Renderable, type RenderableOptions } from "../../Renderable"
-import type { RenderContext } from "../../types"
+import { isRenderable, Renderable, type RenderableOptions } from "../../Renderable.js"
+import type { RenderContext } from "../../types.js"
 import util from "node:util"
 
 export type VChild = VNode | Renderable | VChild[] | null | undefined | false

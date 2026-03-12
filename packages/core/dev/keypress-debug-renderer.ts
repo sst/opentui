@@ -1,8 +1,8 @@
 #!/usr/bin/env bun
-import { BoxRenderable, type CliRenderer, createCliRenderer, CodeRenderable, addDefaultParsers } from "../src/index"
-import { ScrollBoxRenderable } from "../src/renderables/ScrollBox"
-import { SyntaxStyle } from "../src/syntax-style"
-import { parseColor } from "../src/lib/RGBA"
+import { BoxRenderable, type CliRenderer, createCliRenderer, CodeRenderable, addDefaultParsers } from "../src/index.js"
+import { ScrollBoxRenderable } from "../src/renderables/ScrollBox.js"
+import { SyntaxStyle } from "../src/syntax-style.js"
+import { parseColor } from "../src/lib/RGBA.js"
 
 const parsers = [
   {

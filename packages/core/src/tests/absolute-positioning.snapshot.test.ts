@@ -1,7 +1,7 @@
 import { test, expect, beforeEach, afterEach, describe } from "bun:test"
-import { createTestRenderer, type TestRenderer } from "../testing/test-renderer"
-import { BoxRenderable } from "../renderables/Box"
-import { TextRenderable } from "../renderables/Text"
+import { createTestRenderer, type TestRenderer } from "../testing/test-renderer.js"
+import { BoxRenderable } from "../renderables/Box.js"
+import { TextRenderable } from "../renderables/Text.js"
 
 let testRenderer: TestRenderer
 let renderOnce: () => Promise<void>
