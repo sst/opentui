@@ -1,18 +1,14 @@
 import { test, expect } from "bun:test"
-import { Buffer } from "node:buffer"
 import { InternalKeyHandler, KeyEvent } from "./KeyHandler.js"
 import { type ParseKeypressOptions, parseKeypress } from "./parse.keypress.js"
 import { decodePasteBytes } from "./paste.js"
 import { createTestRenderer } from "../testing/test-renderer.js"
+import { pasteBytes } from "../testing/mock-keys.js"
 
 const { renderer, mockInput } = await createTestRenderer({})
 
 function createKeyHandler(): InternalKeyHandler {
   return new InternalKeyHandler()
-}
-
-function pasteBytes(text: string): Uint8Array {
-  return Uint8Array.from(Buffer.from(text))
 }
 
 function dispatchInput(handler: InternalKeyHandler, data: string, options: ParseKeypressOptions = {}): boolean {

@@ -1,16 +1,12 @@
 import { describe, expect, it, beforeEach, afterEach } from "bun:test"
-import { Buffer } from "node:buffer"
 import { createTestRenderer, type TestRenderer, type MockInput } from "../../testing/test-renderer.js"
 import { createTextareaRenderable } from "./renderable-test-utils.js"
 import { decodePasteBytes, PasteEvent } from "../../lib/index.js"
+import { pasteBytes } from "../../testing/mock-keys.js"
 
 let currentRenderer: TestRenderer
 let renderOnce: () => Promise<void>
 let currentMockInput: MockInput
-
-function pasteBytes(text: string): Uint8Array {
-  return Uint8Array.from(Buffer.from(text))
-}
 
 describe("Textarea - Paste Tests", () => {
   beforeEach(async () => {
