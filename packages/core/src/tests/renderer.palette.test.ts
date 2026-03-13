@@ -98,13 +98,13 @@ async function detectPaletteAndAdvanceClock(
 }
 
 async function createPaletteRenderer(options: Partial<TestRendererOptions> = {}) {
-  const clock = new ManualClock()
+  const clock = options.clock instanceof ManualClock ? options.clock : new ManualClock()
   const { mockStdin, mockStdout, writes } = createMockStreams(clock)
   const { renderer } = await createTestRenderer({
     stdin: mockStdin,
     stdout: mockStdout,
-    paletteClock: clock,
     ...options,
+    clock,
   })
 
   return { renderer, mockStdin, mockStdout, writes, clock }
@@ -246,7 +246,7 @@ describe("Palette detection with non-TTY", () => {
     const { renderer } = await createTestRenderer({
       stdin: mockStdin,
       stdout: mockStdout,
-      paletteClock: clock,
+      clock,
     })
 
     const palette = await detectPaletteAndAdvanceClock(renderer, clock, { timeout: 100 })
@@ -298,7 +298,7 @@ describe("Palette detection with OSC responses", () => {
       stdin: mockStdin,
       stdout: mockStdout,
       useThread: false,
-      paletteClock: clock,
+      clock,
     })
 
     const palette = await detectPaletteAndAdvanceClock(renderer, clock, { timeout: 300 })
@@ -352,7 +352,7 @@ describe("Palette detection with OSC responses", () => {
       stdin: mockStdin,
       stdout: mockStdout,
       useThread: false,
-      paletteClock: clock,
+      clock,
     })
 
     const palette = await detectPaletteAndAdvanceClock(renderer, clock, { timeout: 300 })
@@ -534,7 +534,7 @@ describe("Palette detection error handling", () => {
     const { renderer } = await createTestRenderer({
       stdin: mockStdin,
       stdout: mockStdout,
-      paletteClock: clock,
+      clock,
     })
 
     const palette = await detectPaletteAndAdvanceClock(renderer, clock, { timeout: 100 })

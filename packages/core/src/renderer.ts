@@ -34,7 +34,7 @@ import {
   isPixelResolutionResponse,
   parsePixelResolution,
 } from "./lib/terminal-capability-detection.js"
-import { type Clock } from "./lib/clock.js"
+import { type Clock, type TimerHandle, SystemClock } from "./lib/clock.js"
 import { StdinParser, type StdinEvent } from "./lib/stdin-parser.js"
 
 registerEnvVar({
@@ -94,7 +94,7 @@ export interface CliRendererConfig {
   useThread?: boolean
   gatherStats?: boolean
   maxStatSamples?: number
-  consoleOptions?: ConsoleOptions
+  consoleOptions?: Omit<ConsoleOptions, "clock">
   postProcessFns?: ((buffer: OptimizedBuffer, deltaTime: number) => void)[]
   enableMouseMovement?: boolean
   useMouse?: boolean
@@ -107,8 +107,7 @@ export interface CliRendererConfig {
   openConsoleOnError?: boolean
   prependInputHandlers?: ((sequence: string) => boolean)[]
   stdinParserMaxBufferBytes?: number
-  stdinParserClock?: Clock
-  paletteClock?: Clock
+  clock?: Clock
   onDestroy?: () => void
 }
 
@@ -356,7 +355,7 @@ export class CliRenderer extends EventEmitter implements RenderContext {
   private maxFps: number = 60
   private automaticMemorySnapshot: boolean = false
   private memorySnapshotInterval: number
-  private memorySnapshotTimer: Timer | null = null
+  private memorySnapshotTimer: TimerHandle | null = null
   private lastMemorySnapshot: { heapUsed: number; heapTotal: number; arrayBuffers: number } = {
     heapUsed: 0,
     heapTotal: 0,
@@ -372,10 +371,11 @@ export class CliRenderer extends EventEmitter implements RenderContext {
   private postProcessFns: ((buffer: OptimizedBuffer, deltaTime: number) => void)[] = []
   private backgroundColor: RGBA = RGBA.fromInts(0, 0, 0, 0)
   private waitingForPixelResolution: boolean = false
+  private readonly clock: Clock
 
   private rendering: boolean = false
   private renderingNative: boolean = false
-  private renderTimeout: Timer | null = null
+  private renderTimeout: TimerHandle | null = null
   private lastTime: number = 0
   private frameCount: number = 0
   private lastFpsTime: number = 0
@@ -414,8 +414,8 @@ export class CliRenderer extends EventEmitter implements RenderContext {
 
   private animationRequest: Map<number, FrameRequestCallback> = new Map()
 
-  private resizeTimeoutId: ReturnType<typeof setTimeout> | null = null
-  private capabilityTimeoutId: ReturnType<typeof setTimeout> | null = null
+  private resizeTimeoutId: TimerHandle | null = null
+  private capabilityTimeoutId: TimerHandle | null = null
   private resizeDebounceDelay: number = 100
 
   private enableMouseMovement: boolean = false
@@ -464,7 +464,6 @@ export class CliRenderer extends EventEmitter implements RenderContext {
   private _paletteDetector: TerminalPaletteDetector | null = null
   private _cachedPalette: TerminalColors | null = null
   private _paletteDetectionPromise: Promise<TerminalColors> | null = null
-  private paletteClock?: Clock
   private _onDestroy?: () => void
   private _themeMode: ThemeMode | null = null
 
@@ -627,6 +626,8 @@ export class CliRenderer extends EventEmitter implements RenderContext {
 
     this.addExitListeners()
 
+    this.clock = config.clock ?? new SystemClock()
+
     const stdinParserMaxBufferBytes = config.stdinParserMaxBufferBytes ?? DEFAULT_STDIN_PARSER_MAX_BUFFER_BYTES
     this.stdinParser = new StdinParser({
       timeoutMs: 10,
@@ -636,13 +637,15 @@ export class CliRenderer extends EventEmitter implements RenderContext {
         this.drainStdinParser()
       },
       useKittyKeyboard: useKittyForParsing,
-      clock: config.stdinParserClock,
+      clock: this.clock,
     })
 
-    this._console = new TerminalConsole(this, config.consoleOptions)
+    this._console = new TerminalConsole(this, {
+      ...(config.consoleOptions ?? {}),
+      clock: this.clock,
+    })
     this.useConsole = config.useConsole ?? true
     this._openConsoleOnError = config.openConsoleOnError ?? process.env.NODE_ENV !== "production"
-    this.paletteClock = config.paletteClock
     this._onDestroy = config.onDestroy
 
     global.requestAnimationFrame = (callback: FrameRequestCallback) => {
@@ -784,7 +787,7 @@ export class CliRenderer extends EventEmitter implements RenderContext {
 
     if (!this.updateScheduled && !this.renderTimeout) {
       this.updateScheduled = true
-      const now = Date.now()
+      const now = this.clock.now()
       const elapsed = now - this.lastTime
       const delay = Math.max(this.minTargetFrameTime - elapsed, 0)
 
@@ -793,7 +796,7 @@ export class CliRenderer extends EventEmitter implements RenderContext {
         return
       }
 
-      setTimeout(() => this.activateFrame(), delay)
+      this.clock.setTimeout(() => this.activateFrame(), delay)
     }
   }
 
@@ -1066,7 +1069,7 @@ export class CliRenderer extends EventEmitter implements RenderContext {
       }
     }
 
-    this.capabilityTimeoutId = setTimeout(() => {
+    this.capabilityTimeoutId = this.clock.setTimeout(() => {
       this.capabilityTimeoutId = null
       this.removeInputHandler(this.capabilityHandler)
     }, 5000)
@@ -1520,14 +1523,14 @@ export class CliRenderer extends EventEmitter implements RenderContext {
   private startMemorySnapshotTimer(): void {
     this.stopMemorySnapshotTimer()
 
-    this.memorySnapshotTimer = setInterval(() => {
+    this.memorySnapshotTimer = this.clock.setInterval(() => {
       this.takeMemorySnapshot()
     }, this.memorySnapshotInterval)
   }
 
   private stopMemorySnapshotTimer(): void {
     if (this.memorySnapshotTimer) {
-      clearInterval(this.memorySnapshotTimer)
+      this.clock.clearInterval(this.memorySnapshotTimer)
       this.memorySnapshotTimer = null
     }
   }
@@ -1538,7 +1541,7 @@ export class CliRenderer extends EventEmitter implements RenderContext {
     if (this._isRunning && interval > 0) {
       this.startMemorySnapshotTimer()
     } else if (interval <= 0 && this.memorySnapshotTimer) {
-      clearInterval(this.memorySnapshotTimer)
+      this.clock.clearInterval(this.memorySnapshotTimer)
       this.memorySnapshotTimer = null
     }
   }
@@ -1551,11 +1554,11 @@ export class CliRenderer extends EventEmitter implements RenderContext {
     }
 
     if (this.resizeTimeoutId !== null) {
-      clearTimeout(this.resizeTimeoutId)
+      this.clock.clearTimeout(this.resizeTimeoutId)
       this.resizeTimeoutId = null
     }
 
-    this.resizeTimeoutId = setTimeout(() => {
+    this.resizeTimeoutId = this.clock.setTimeout(() => {
       this.resizeTimeoutId = null
       this.processResize(width, height)
     }, this.resizeDebounceDelay)
@@ -1829,7 +1832,7 @@ export class CliRenderer extends EventEmitter implements RenderContext {
     this._isRunning = false
 
     if (this.renderTimeout) {
-      clearTimeout(this.renderTimeout)
+      this.clock.clearTimeout(this.renderTimeout)
       this.renderTimeout = null
     }
 
@@ -1848,12 +1851,12 @@ export class CliRenderer extends EventEmitter implements RenderContext {
       this._isRunning = false
 
       if (this.memorySnapshotTimer) {
-        clearInterval(this.memorySnapshotTimer)
+        this.clock.clearInterval(this.memorySnapshotTimer)
         this.memorySnapshotTimer = null
       }
 
       if (this.renderTimeout) {
-        clearTimeout(this.renderTimeout)
+        this.clock.clearTimeout(this.renderTimeout)
         this.renderTimeout = null
       }
 
@@ -1892,17 +1895,17 @@ export class CliRenderer extends EventEmitter implements RenderContext {
     this.removeExitListeners()
 
     if (this.resizeTimeoutId !== null) {
-      clearTimeout(this.resizeTimeoutId)
+      this.clock.clearTimeout(this.resizeTimeoutId)
       this.resizeTimeoutId = null
     }
 
     if (this.capabilityTimeoutId !== null) {
-      clearTimeout(this.capabilityTimeoutId)
+      this.clock.clearTimeout(this.capabilityTimeoutId)
       this.capabilityTimeoutId = null
     }
 
     if (this.memorySnapshotTimer) {
-      clearInterval(this.memorySnapshotTimer)
+      this.clock.clearInterval(this.memorySnapshotTimer)
     }
 
     // Clean up palette detector
@@ -1916,7 +1919,7 @@ export class CliRenderer extends EventEmitter implements RenderContext {
     this.emit(CliRenderEvents.DESTROY)
 
     if (this.renderTimeout) {
-      clearTimeout(this.renderTimeout)
+      this.clock.clearTimeout(this.renderTimeout)
       this.renderTimeout = null
     }
     this._isRunning = false
@@ -1964,7 +1967,7 @@ export class CliRenderer extends EventEmitter implements RenderContext {
   private startRenderLoop(): void {
     if (!this._isRunning) return
 
-    this.lastTime = Date.now()
+    this.lastTime = this.clock.now()
     this.frameCount = 0
     this.lastFpsTime = this.lastTime
     this.currentFps = 0
@@ -1978,11 +1981,11 @@ export class CliRenderer extends EventEmitter implements RenderContext {
 
     this.rendering = true
     if (this.renderTimeout) {
-      clearTimeout(this.renderTimeout)
+      this.clock.clearTimeout(this.renderTimeout)
       this.renderTimeout = null
     }
     try {
-      const now = Date.now()
+      const now = this.clock.now()
       const elapsed = now - this.lastTime
 
       const deltaTime = elapsed
@@ -2055,12 +2058,12 @@ export class CliRenderer extends EventEmitter implements RenderContext {
           const targetFrameTime = this.immediateRerenderRequested ? this.minTargetFrameTime : this.targetFrameTime
           const delay = Math.max(1, targetFrameTime - Math.floor(overallFrameTime))
           this.immediateRerenderRequested = false
-          this.renderTimeout = setTimeout(() => {
+          this.renderTimeout = this.clock.setTimeout(() => {
             this.renderTimeout = null
             this.loop()
           }, delay)
         } else {
-          clearTimeout(this.renderTimeout!)
+          this.clock.clearTimeout(this.renderTimeout!)
           this.renderTimeout = null
         }
       }
@@ -2345,7 +2348,7 @@ export class CliRenderer extends EventEmitter implements RenderContext {
         {
           subscribeOsc: this.subscribeOsc.bind(this),
         },
-        this.paletteClock,
+        this.clock,
       )
     }
 

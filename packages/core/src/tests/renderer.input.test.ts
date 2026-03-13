@@ -18,8 +18,8 @@ let kittyClock: ManualClock
 beforeEach(async () => {
   currentClock = new ManualClock()
   kittyClock = new ManualClock()
-  ;({ renderer: currentRenderer } = await createTestRenderer({ stdinParserClock: currentClock }))
-  ;({ renderer: kittyRenderer } = await createTestRenderer({ kittyKeyboard: true, stdinParserClock: kittyClock }))
+  ;({ renderer: currentRenderer } = await createTestRenderer({ clock: currentClock }))
+  ;({ renderer: kittyRenderer } = await createTestRenderer({ kittyKeyboard: true, clock: kittyClock }))
 
   // Mock native capability functions to avoid interfering with the test terminal
   // @ts-expect-error - mocking for test
@@ -112,7 +112,7 @@ async function createRoutingRenderer(options: Partial<TestRendererOptions> = {})
     width: 40,
     height: 20,
     useMouse: true,
-    stdinParserClock: clock,
+    clock,
     ...options,
   })
 

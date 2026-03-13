@@ -5,6 +5,7 @@ import path from "node:path"
 import util from "node:util"
 import type { CliRenderer, ColorInput, MouseEvent } from "./index.js"
 import { OptimizedBuffer } from "./buffer.js"
+import { type Clock, SystemClock } from "./lib/clock.js"
 import { Capture, CapturedWritableStream } from "./lib/output.capture.js"
 import { parseColor, RGBA } from "./lib/RGBA.js"
 import { singleton } from "./lib/singleton.js"
@@ -268,9 +269,12 @@ export interface ConsoleOptions {
   keyAliasMap?: KeyAliasMap
   selectionColor?: ColorInput
   copyButtonColor?: ColorInput
+  clock?: Clock
 }
 
-const DEFAULT_CONSOLE_OPTIONS: Required<Omit<ConsoleOptions, "onCopySelection" | "keyBindings" | "keyAliasMap">> & {
+const DEFAULT_CONSOLE_OPTIONS: Required<
+  Omit<ConsoleOptions, "onCopySelection" | "keyBindings" | "keyAliasMap" | "clock">
+> & {
   onCopySelection?: (text: string) => void
   keyBindings?: ConsoleKeyBinding[]
   keyAliasMap?: KeyAliasMap
@@ -311,7 +315,7 @@ export class TerminalConsole extends EventEmitter {
   private isFocused: boolean = false
   private renderer: CliRenderer
   private keyHandler: (event: KeyEvent) => void
-  private options: Required<Omit<ConsoleOptions, "onCopySelection" | "keyBindings" | "keyAliasMap">> & {
+  private options: Required<Omit<ConsoleOptions, "onCopySelection" | "keyBindings" | "keyAliasMap" | "clock">> & {
     onCopySelection?: (text: string) => void
     keyBindings?: ConsoleKeyBinding[]
     keyAliasMap?: KeyAliasMap
@@ -340,7 +344,8 @@ export class TerminalConsole extends EventEmitter {
     width: 0,
     height: 0,
   }
-  private _autoScrollInterval: number | null = null
+  private _autoScrollInterval: ReturnType<Clock["setInterval"]> | null = null
+  private readonly clock: Clock
 
   private _keyBindingsMap: Map<string, ConsoleAction>
   private _keyAliasMap: KeyAliasMap
@@ -386,6 +391,7 @@ export class TerminalConsole extends EventEmitter {
   constructor(renderer: CliRenderer, options: ConsoleOptions = {}) {
     super()
     this.renderer = renderer
+    this.clock = options.clock ?? new SystemClock()
     this.options = { ...DEFAULT_CONSOLE_OPTIONS, ...options }
     this.keyHandler = this.handleKeyPress.bind(this)
     this._debugModeEnabled = this.options.startInDebugMode
@@ -1043,14 +1049,14 @@ export class TerminalConsole extends EventEmitter {
 
   private stopAutoScroll(): void {
     if (this._autoScrollInterval !== null) {
-      clearInterval(this._autoScrollInterval)
+      this.clock.clearInterval(this._autoScrollInterval)
       this._autoScrollInterval = null
     }
   }
 
   private startAutoScroll(direction: "up" | "down"): void {
     this.stopAutoScroll()
-    this._autoScrollInterval = setInterval(() => {
+    this._autoScrollInterval = this.clock.setInterval(() => {
       if (direction === "up") {
         if (this.scrollTopIndex > 0) {
           this.scrollTopIndex--
@@ -1084,7 +1090,7 @@ export class TerminalConsole extends EventEmitter {
           this.stopAutoScroll()
         }
       }
-    }, 50) as any
+    }, 50)
   }
 
   private triggerCopy(): void {

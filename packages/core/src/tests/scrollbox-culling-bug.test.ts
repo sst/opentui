@@ -1,14 +1,18 @@
 import { test, expect, beforeEach, afterEach } from "bun:test"
 import { createTestRenderer, type TestRenderer } from "../testing.js"
+import { ManualClock } from "../testing/manual-clock.js"
 import { ScrollBoxRenderable } from "../renderables/ScrollBox.js"
 import { BoxRenderable } from "../renderables/Box.js"
 import { TextRenderable } from "../renderables/Text.js"
 import { TestRecorder } from "../testing/test-recorder.js"
 
 let testRenderer: TestRenderer
+let renderOnce: () => Promise<void>
+let clock: ManualClock
 
 beforeEach(async () => {
-  ;({ renderer: testRenderer } = await createTestRenderer({ width: 50, height: 12 }))
+  clock = new ManualClock()
+  ;({ renderer: testRenderer, renderOnce } = await createTestRenderer({ width: 50, height: 12, clock }))
 })
 
 afterEach(() => {
@@ -54,10 +58,12 @@ test("scrollbox culling issue: last item not visible in frame after content grow
     item.add(text)
 
     scrollBox.add(item)
-    await Bun.sleep(10)
+    await renderOnce()
   }
 
-  await testRenderer.idle()
+  // Advance clock to trigger any pending re-render scheduled by stickyScroll's requestRender()
+  clock.advance(100)
+  await renderOnce()
 
   recorder.stop()
 

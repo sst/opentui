@@ -39,7 +39,7 @@ beforeEach(async () => {
     mockInput: currentMockInput,
     renderOnce,
   } = await createTestRenderer({
-    stdinParserClock: currentClock,
+    clock: currentClock,
   }))
 })
 

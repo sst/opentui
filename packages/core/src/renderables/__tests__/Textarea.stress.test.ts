@@ -20,7 +20,7 @@ describe("Textarea - Stress Tests", () => {
     } = await createTestRenderer({
       width: 80,
       height: 24,
-      stdinParserClock: currentClock,
+      clock: currentClock,
     }))
   })
 
@@ -112,7 +112,7 @@ describe("Textarea - Stress Tests", () => {
       const startY = i % 5
       const endX = (i + 10) % 30
       const endY = (i + 3) % 8
-      await currentMouse.drag(startX, startY, endX, endY)
+      await currentMouse.drag(startX, startY, endX, endY, 0, { delayMs: 0 })
     }
 
     // Text should remain unchanged or only contain valid selections/edits
@@ -135,7 +135,7 @@ describe("Textarea - Stress Tests", () => {
       if (i % 3 === 0) {
         currentMockInput.pressKey("x")
       }
-      await currentMouse.click(i % 40, i % 10)
+      await currentMouse.click(i % 40, i % 10, 0, { delayMs: 0 })
       if (i % 5 === 0) {
         currentMockInput.pressKey("y")
       }
