@@ -752,7 +752,7 @@ export class ScrollBoxRenderable extends BoxRenderable {
 
         if (this._stickyStart && !this._hasManualScroll) {
           this.applyStickyStart(this._stickyStart)
-        } else {
+        } else if (!this._hasManualScroll) {
           if (this._stickyScrollTop) {
             this.scrollTop = 0
           } else if (this._stickyScrollBottom && newMaxScrollTop > 0) {
