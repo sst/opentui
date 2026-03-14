@@ -564,12 +564,6 @@ export class ScrollBoxRenderable extends BoxRenderable {
         }
       }
 
-      // Only mark as manual scroll if there's meaningful scrollable content
-      const maxScrollTop = Math.max(0, this.scrollHeight - this.viewport.height)
-      const maxScrollLeft = Math.max(0, this.scrollWidth - this.viewport.width)
-      if (maxScrollTop > 1 || maxScrollLeft > 1) {
-        this._hasManualScroll = true
-      }
     }
 
     if (event.type === "drag" && event.isDragging) {
@@ -582,13 +576,11 @@ export class ScrollBoxRenderable extends BoxRenderable {
   public handleKeyPress(key: KeyEvent): boolean {
     // Let scrollbars handle their own acceleration
     if (this.verticalScrollBar.handleKeyPress(key)) {
-      this._hasManualScroll = true
       this.scrollAccel.reset()
       this.resetScrollAccumulators()
       return true
     }
     if (this.horizontalScrollBar.handleKeyPress(key)) {
-      this._hasManualScroll = true
       this.scrollAccel.reset()
       this.resetScrollAccumulators()
       return true
