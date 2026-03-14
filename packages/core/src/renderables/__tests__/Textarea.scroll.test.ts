@@ -1,15 +1,20 @@
 import { describe, expect, it, beforeEach, afterEach } from "bun:test"
 import { createTestRenderer, type TestRenderer, type MockMouse } from "../../testing/test-renderer.js"
-import { createTextareaRenderable } from "./renderable-test-utils.js"
+import { createTextareaRenderable, simulateFrames as _simulateFrames } from "./renderable-test-utils.js"
 import { TestRecorder } from "../../testing/test-recorder.js"
 import { RGBA } from "../../lib/RGBA.js"
+import { ManualClock } from "../../testing/manual-clock.js"
 
 let currentRenderer: TestRenderer
 let renderOnce: () => Promise<void>
 let currentMouse: MockMouse
+let clock: ManualClock
+
+const simulateFrames = (ms: number, frameInterval?: number) => _simulateFrames(clock, renderOnce, ms, frameInterval)
 
 describe("Textarea - Scroll Tests", () => {
   beforeEach(async () => {
+    clock = new ManualClock()
     ;({
       renderer: currentRenderer,
       renderOnce,
@@ -17,6 +22,7 @@ describe("Textarea - Scroll Tests", () => {
     } = await createTestRenderer({
       width: 80,
       height: 24,
+      clock,
     }))
   })
 
@@ -40,24 +46,19 @@ describe("Textarea - Scroll Tests", () => {
       const viewportBefore = editor.editorView.getViewport()
       expect(viewportBefore.offsetY).toBe(0)
 
-      // Start renderer to enable auto-scroll with actual deltaTime
-      currentRenderer.start()
-
       // Start dragging from top
       await currentMouse.pressDown(editor.x, editor.y)
 
       // Move to bottom edge to trigger auto-scroll (keep button pressed)
       await currentMouse.moveTo(editor.x + 5, editor.y + editor.height - 1)
 
-      // Wait 1 second for auto-scroll to happen
-      await Bun.sleep(1000)
+      // Simulate 1 second of frames for auto-scroll
+      await simulateFrames(1000)
 
       const viewportAfter = editor.editorView.getViewport()
 
       // Release mouse
       await currentMouse.release(editor.x + 5, editor.y + editor.height - 1)
-
-      currentRenderer.pause()
 
       // Viewport should have scrolled down significantly
       expect(viewportAfter.offsetY).toBeGreaterThan(viewportBefore.offsetY)
@@ -105,19 +106,17 @@ describe("Textarea - Scroll Tests", () => {
       const viewportBefore = editor.editorView.getViewport()
       expect(viewportBefore.offsetY).toBeGreaterThan(0)
 
-      currentRenderer.start()
-
       // Start dragging from within viewport
       await currentMouse.pressDown(editor.x + 2, editor.y + 5)
       // Drag to the top edge (within bounds) to trigger upward auto-scroll
       await currentMouse.moveTo(editor.x + 2, editor.y)
 
-      await Bun.sleep(1000)
+      // Simulate 1 second of frames for auto-scroll
+      await simulateFrames(1000)
 
       const viewportAfter = editor.editorView.getViewport()
 
       await currentMouse.release(editor.x + 2, editor.y)
-      currentRenderer.pause()
 
       expect(viewportAfter.offsetY).toBeLessThan(viewportBefore.offsetY)
 
@@ -135,25 +134,22 @@ describe("Textarea - Scroll Tests", () => {
       editor.editBuffer.gotoLine(0)
       await renderOnce()
 
-      currentRenderer.start()
-
       await currentMouse.pressDown(editor.x + 2, editor.y)
       await currentMouse.moveTo(editor.x + 2, editor.y + editor.height - 1)
 
-      await Bun.sleep(1000)
+      // Simulate 1 second of auto-scroll
+      await simulateFrames(1000)
 
-      // End selection (mouse up) and wait a moment
+      // End selection (mouse up) and render a few more frames
       await currentMouse.release(editor.x + 2, editor.y + editor.height - 1)
-      await Bun.sleep(200)
+      await simulateFrames(200)
 
       const viewportAfterRelease = editor.editorView.getViewport()
 
       // If selection-end notifications work, viewport should remain stable
-      await Bun.sleep(1000)
+      await simulateFrames(1000)
 
       const viewportFinal = editor.editorView.getViewport()
-
-      currentRenderer.pause()
 
       expect(viewportFinal.offsetY).toBe(viewportAfterRelease.offsetY)
 
@@ -442,15 +438,12 @@ describe("Textarea - Scroll Tests", () => {
       const viewportInitial = editor.editorView.getViewport()
       expect(viewportInitial.offsetY).toBe(0)
 
-      // Start renderer for auto-scroll
-      currentRenderer.start()
-
       // Drag selection from top to way below viewport to trigger auto-scroll to bottom
       await currentMouse.pressDown(editor.x, editor.y)
       await currentMouse.moveTo(editor.x + 5, editor.y + editor.height - 1)
 
-      // Wait 2 seconds for auto-scroll to reach near the end
-      await Bun.sleep(2000)
+      // Simulate 2 seconds for auto-scroll to reach near the end
+      await simulateFrames(2000)
 
       // Release mouse to complete selection
       await currentMouse.release(editor.x + 5, editor.y + editor.height - 1)
@@ -464,13 +457,9 @@ describe("Textarea - Scroll Tests", () => {
       for (let i = 0; i < 100; i++) {
         await currentMouse.scroll(editor.x + 5, editor.y + 5, "up")
       }
-
-      // Wait 2 seconds to ensure all scroll events are processed
-      await Bun.sleep(2000)
+      await renderOnce()
 
       const viewportFinal = editor.editorView.getViewport()
-
-      currentRenderer.pause()
 
       // Should have scrolled all the way back to top
       expect(viewportFinal.offsetY).toBe(0)
@@ -696,17 +685,15 @@ describe("Textarea - Scroll Tests", () => {
       await renderOnce()
 
       recorder.rec()
-      currentRenderer.start()
 
       await currentMouse.pressDown(editor.x + 2, editor.y)
       await currentMouse.moveTo(editor.x + 2, editor.y + editor.height - 1)
 
-      // Wait for auto-scroll WITHOUT moving mouse
-      await Bun.sleep(2000)
+      // Simulate 2 seconds of auto-scroll WITHOUT moving mouse
+      await simulateFrames(2000)
 
       await currentMouse.release(editor.x + 2, editor.y + editor.height - 1)
-      currentRenderer.pause()
-      await currentRenderer.idle()
+      await renderOnce()
       recorder.stop()
 
       const frames = recorder.recordedFrames

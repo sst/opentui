@@ -3,22 +3,27 @@ import { DiffRenderable } from "./Diff.js"
 import { SyntaxStyle } from "../syntax-style.js"
 import { RGBA } from "../lib/RGBA.js"
 import { createTestRenderer, type TestRenderer } from "../testing.js"
+import { ManualClock } from "../testing/manual-clock.js"
 import { MockTreeSitterClient } from "../testing/mock-tree-sitter-client.js"
 import type { SimpleHighlight } from "../lib/tree-sitter/types.js"
 import { BoxRenderable } from "./Box.js"
+import { settleDiffHighlighting } from "./__tests__/renderable-test-utils.js"
 
 let currentRenderer: TestRenderer
 let renderOnce: () => Promise<void>
 let captureFrame: () => string
 let mockClient: MockTreeSitterClient
+let clock: ManualClock
 
 beforeEach(async () => {
-  mockClient = new MockTreeSitterClient({ autoResolveTimeout: 1 })
+  mockClient = new MockTreeSitterClient()
+  clock = new ManualClock()
 
   const testRenderer = await createTestRenderer({
     width: 32,
     height: 10,
     gatherStats: true,
+    clock,
   })
   currentRenderer = testRenderer.renderer
   renderOnce = testRenderer.renderOnce
@@ -83,8 +88,7 @@ test("DiffRenderable - no endless loop when concealing markdown formatting", asy
   await renderOnce()
   diffRenderable.wrapMode = "word"
 
-  await renderOnce()
-  await Bun.sleep(2000)
+  await settleDiffHighlighting(diffRenderable, mockClient, renderOnce)
 
   const stats = currentRenderer.getStats()
   expect(stats.frameCount).toBeLessThan(25)
@@ -152,9 +156,9 @@ test("DiffRenderable - line number alignment and gutter heights in split view wi
   expect(splitFrame).toContain("2 - Short")
   expect(splitFrame).toContain("2 + More text")
 
+  // First wrapMode toggle: none → word
   diffRenderable.wrapMode = "word"
-  await currentRenderer.idle()
-  await Bun.sleep(200)
+  await settleDiffHighlighting(diffRenderable, mockClient, renderOnce)
   const splitWrapFrame = captureFrame()
 
   const diffChildren = diffRenderable.getChildren()
@@ -190,12 +194,11 @@ test("DiffRenderable - line number alignment and gutter heights in split view wi
   expect(leftGutter.height).toBe(leftVisualLines)
   expect(rightGutter.height).toBe(rightVisualLines)
 
+  // Second wrapMode toggle: word → none → word
   diffRenderable.wrapMode = "none"
   await renderOnce()
   diffRenderable.wrapMode = "word"
-  await renderOnce()
-  await Bun.sleep(200) // Give time for highlight rebuild
-  await renderOnce()
+  await settleDiffHighlighting(diffRenderable, mockClient, renderOnce)
   const splitWrapFrame2 = captureFrame()
   const lines2 = splitWrapFrame2.split("\n")
   let leftLine2Row2 = -1

@@ -318,9 +318,9 @@ canvas.frameBuffer.drawText("Custom Graphics", 12, 7, RGBA.fromHex("#FFFFFF"))
 OpenTUI uses the Yoga layout engine, providing CSS Flexbox-like capabilities for responsive layouts:
 
 ```typescript
-import { GroupRenderable, BoxRenderable } from "@opentui/core"
+import { BoxRenderable } from "@opentui/core"
 
-const container = new GroupRenderable(renderer, {
+const container = new BoxRenderable(renderer, {
   id: "container",
   flexDirection: "row",
   justifyContent: "space-between",

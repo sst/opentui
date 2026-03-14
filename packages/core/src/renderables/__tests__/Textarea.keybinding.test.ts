@@ -1,3 +1,4 @@
+import { Buffer } from "node:buffer"
 import { describe, expect, it, afterAll, beforeEach, afterEach } from "bun:test"
 import { createTestRenderer, type TestRenderer, type MockMouse, type MockInput } from "../../testing/test-renderer.js"
 import { createTextareaRenderable } from "./renderable-test-utils.js"
@@ -415,6 +416,19 @@ describe("Textarea - Keybinding Tests", () => {
 
       kittyMockInput.pressKey("B", { shift: true })
       expect(editor.plainText).toBe("AB")
+    })
+
+    it("should not insert text when Caps Lock key is pressed", async () => {
+      const { textarea: editor } = await createTextareaRenderable(kittyRenderer, kittyRenderOnce, {
+        initialValue: "",
+        width: 40,
+        height: 10,
+      })
+
+      editor.focus()
+
+      kittyRenderer.stdin.emit("data", Buffer.from("\x1b[57358u"))
+      expect(editor.plainText).toBe("")
     })
   })
 

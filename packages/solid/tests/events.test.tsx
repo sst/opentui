@@ -1,6 +1,7 @@
 import { describe, expect, it, beforeEach, afterEach } from "bun:test"
 import { testRender } from "../index.js"
 import { createSignal } from "solid-js"
+import { decodePasteBytes } from "@opentui/core"
 import { createSpy } from "@opentui/core/testing"
 import { usePaste, useKeyboard } from "../src/elements/hooks.js"
 import type { PasteEvent } from "@opentui/core"
@@ -326,8 +327,9 @@ describe("SolidJS Renderer Integration Tests", () => {
 
       const TestComponent = () => {
         usePaste((event) => {
-          pasteSpy(event.text)
-          setPastedText(event.text)
+          const text = decodePasteBytes(event.bytes)
+          pasteSpy(text)
+          setPastedText(text)
         })
 
         return (
@@ -393,7 +395,7 @@ describe("SolidJS Renderer Integration Tests", () => {
               focused
               onPaste={(val) => {
                 pasteSpy(val)
-                setPastedText(val.text)
+                setPastedText(decodePasteBytes(val.bytes))
               }}
             />
           </box>
@@ -404,8 +406,9 @@ describe("SolidJS Renderer Integration Tests", () => {
 
       // Register global handler that prevents paste containing "forbidden"
       testSetup.renderer.keyInput.on("paste", (event: PasteEvent) => {
-        globalHandlerSpy(event.text)
-        if (event.text.includes("forbidden")) {
+        const text = decodePasteBytes(event.bytes)
+        globalHandlerSpy(text)
+        if (text.includes("forbidden")) {
           event.preventDefault()
         }
       })

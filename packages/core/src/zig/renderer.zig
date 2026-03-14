@@ -481,9 +481,14 @@ pub const CliRenderer = struct {
             self.allocator.free(self.nextHitGrid);
             self.currentHitGrid = newCurrentHitGrid;
             self.nextHitGrid = newNextHitGrid;
-            self.hitGridWidth = width;
-            self.hitGridHeight = height;
         }
+
+        // Always update dimensions. The backing buffer is at least as large as
+        // width*height, so this is safe even when the terminal shrinks. Without
+        // this, checkHit keeps using stale dimensions after a shrink and returns
+        // 0 for any coordinate beyond the old bounds.
+        self.hitGridWidth = width;
+        self.hitGridHeight = height;
 
         const cursor = self.terminal.getCursorPosition();
         self.terminal.setCursorPosition(@min(cursor.x, width), @min(cursor.y, height), cursor.visible);

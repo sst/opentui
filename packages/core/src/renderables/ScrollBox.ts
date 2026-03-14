@@ -425,6 +425,55 @@ export class ScrollBoxRenderable extends BoxRenderable {
     // change will trigger the scrollTop setter which handles it
   }
 
+  public scrollChildIntoView(childId: string): void {
+    const child = this.content.findDescendantById(childId)
+    if (!child) return
+
+    const getNearestDelta = (
+      elementStart: number,
+      elementEnd: number,
+      viewportStart: number,
+      viewportEnd: number,
+    ): number => {
+      const elementSize = elementEnd - elementStart
+      const viewportSize = viewportEnd - viewportStart
+      const elementStartOutside = elementStart < viewportStart
+      const elementEndOutside = elementEnd > viewportEnd
+
+      if (elementStartOutside && elementEndOutside) {
+        return 0
+      }
+
+      if ((elementStartOutside && elementSize < viewportSize) || (elementEndOutside && elementSize > viewportSize)) {
+        return elementStart - viewportStart
+      }
+
+      if ((elementStartOutside && elementSize > viewportSize) || (elementEndOutside && elementSize < viewportSize)) {
+        return elementEnd - viewportEnd
+      }
+
+      return 0
+    }
+
+    const childTop = child.y
+    const childBottom = child.y + child.height
+    const viewportTop = this.viewport.y
+    const viewportBottom = this.viewport.y + this.viewport.height
+
+    const dy = getNearestDelta(childTop, childBottom, viewportTop, viewportBottom)
+
+    const childLeft = child.x
+    const childRight = child.x + child.width
+    const viewportLeft = this.viewport.x
+    const viewportRight = this.viewport.x + this.viewport.width
+
+    const dx = getNearestDelta(childLeft, childRight, viewportLeft, viewportRight)
+
+    if (dx !== 0 || dy !== 0) {
+      this.scrollBy({ x: dx, y: dy })
+    }
+  }
+
   public scrollTo(position: number | { x: number; y: number }): void {
     if (typeof position === "number") {
       this.scrollTop = position

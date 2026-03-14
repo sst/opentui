@@ -56,6 +56,7 @@ export class CodeRenderable extends TextBufferRenderable {
   private _lastHighlights: SimpleHighlight[] = []
   private _onHighlight?: OnHighlightCallback
   private _onChunks?: OnChunksCallback
+  private _highlightingPromise: Promise<void> = Promise.resolve()
 
   protected _contentDefaultOptions = {
     content: "",
@@ -197,6 +198,10 @@ export class CodeRenderable extends TextBufferRenderable {
 
   get isHighlighting(): boolean {
     return this._isHighlighting
+  }
+
+  get highlightingDone(): Promise<void> {
+    return this._highlightingPromise
   }
 
   protected async transformChunks(chunks: TextChunk[], context: ChunkRenderContext): Promise<TextChunk[]> {
@@ -342,7 +347,7 @@ export class CodeRenderable extends TextBufferRenderable {
       } else {
         this.ensureVisibleTextBeforeHighlight()
         this._highlightsDirty = false
-        this.startHighlight()
+        this._highlightingPromise = this.startHighlight()
       }
     }
 

@@ -249,6 +249,44 @@ test "Word wrap - fragmented at exact word boundary" {
     try std.testing.expectEqual(@as(u32, 6), vlines[1].width_cols);
 }
 
+test "Word wrap - stale rollback state after newline with EditBuffer inserts" {
+    const pool = gp.initGlobalPool(std.testing.allocator);
+    defer gp.deinitGlobalPool();
+    const link_pool = link.initGlobalLinkPool(std.testing.allocator);
+    defer link.deinitGlobalLinkPool();
+
+    var eb = try EditBuffer.init(std.testing.allocator, pool, link_pool, .wcwidth);
+    defer eb.deinit();
+
+    var view = try TextBufferView.init(std.testing.allocator, eb.getTextBuffer());
+    defer view.deinit();
+
+    view.setWrapMode(.word);
+    view.setWrapWidth(3);
+
+    try eb.setText("a\n好");
+
+    try eb.setCursor(0, 1);
+    try eb.insertText(" b");
+
+    try eb.setCursor(1, 2);
+    try eb.insertText("界");
+
+    var plain_text: [32]u8 = undefined;
+    const plain_text_len = view.getPlainTextIntoBuffer(&plain_text);
+    try std.testing.expectEqualStrings("a b\n好界", plain_text[0..plain_text_len]);
+
+    const vlines = view.getVirtualLines();
+
+    try std.testing.expectEqual(@as(usize, 3), vlines.len);
+    try std.testing.expectEqual(@as(u32, 3), vlines[0].width_cols);
+    try std.testing.expectEqual(@as(u32, 2), vlines[1].width_cols);
+    try std.testing.expectEqual(@as(u32, 2), vlines[2].width_cols);
+    try std.testing.expectEqual(@as(u32, 0), vlines[0].source_line);
+    try std.testing.expectEqual(@as(u32, 1), vlines[1].source_line);
+    try std.testing.expectEqual(@as(u32, 1), vlines[2].source_line);
+}
+
 test "Word wrap - chunk boundary at start of word" {
     const pool = gp.initGlobalPool(std.testing.allocator);
     defer gp.deinitGlobalPool();

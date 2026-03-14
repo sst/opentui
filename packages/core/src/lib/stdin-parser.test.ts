@@ -14,7 +14,7 @@ type KeySnap = {
   eventType: string
 }
 type MouseSnap = { type: "mouse"; raw: string; encoding: "sgr" | "x10"; event: Record<string, unknown> }
-type PasteSnap = { type: "paste"; text: string }
+type PasteSnap = { type: "paste"; bytes: Uint8Array }
 type RespSnap = { type: "response"; protocol: string; sequence: string }
 type Snap = KeySnap | MouseSnap | PasteSnap | RespSnap
 
@@ -30,7 +30,7 @@ function resp(protocol: string, sequence: string): RespSnap {
 }
 
 function paste(text: string): PasteSnap {
-  return { type: "paste", text }
+  return { type: "paste", bytes: Uint8Array.from(Buffer.from(text)) }
 }
 
 const NO_MODS = { shift: false, alt: false, ctrl: false }
@@ -98,7 +98,7 @@ function snapshotEvent(event: StdinEvent): Snap {
       return { type: "mouse", raw: event.raw, encoding: event.encoding, event: ev }
     }
     case "paste":
-      return { type: "paste", text: event.text }
+      return { type: "paste", bytes: event.bytes }
     case "response":
       return { type: "response", protocol: event.protocol, sequence: event.sequence }
   }
@@ -994,6 +994,22 @@ describe("StdinParser", () => {
       }
     })
 
+    test("paste body bytes do not alias caller buffers across pushes", () => {
+      const p = createParser()
+      try {
+        p.push(Buffer.from("\x1b[200~"))
+
+        const chunk = Buffer.from("hello")
+        p.push(chunk)
+        chunk.fill(0x78)
+
+        p.push(Buffer.from("\x1b[201~"))
+        expect(snap(p)).toEqual([paste("hello")])
+      } finally {
+        p.destroy()
+      }
+    })
+
     test("near-match end markers are part of paste body", () => {
       const p = createParser()
       try {
@@ -1037,7 +1053,7 @@ describe("StdinParser", () => {
         const s = snap(p)
         expect(s).toHaveLength(1)
         expect(s[0]!.type).toBe("paste")
-        expect((s[0] as PasteSnap).text).toHaveLength(6000)
+        expect((s[0] as PasteSnap).bytes).toHaveLength(6000)
         expect(p.bufferCapacity).toBeLessThanOrEqual(512)
       } finally {
         p.destroy()

@@ -1163,7 +1163,9 @@ pub const UnifiedTextBufferView = struct {
                                     const single_result = utf8.findWrapPosByWidth(remaining_bytes, 1, wctx.text_buffer.tabWidth(), is_ascii_only, wctx.text_buffer.widthMethod());
                                     byte_offset += single_result.byte_offset;
                                 }
-                            } else if (wctx.last_wrap_chunk_count > 0) {
+                            } else if (wctx.last_wrap_chunk_count > 0 and
+                                wctx.last_wrap_chunk_count <= wctx.current_vline.chunks.items.len)
+                            {
                                 var accumulated_width: u32 = 0;
                                 for (wctx.current_vline.chunks.items[0..wctx.last_wrap_chunk_count]) |vchunk| {
                                     accumulated_width += vchunk.width;
@@ -1346,6 +1348,9 @@ pub const UnifiedTextBufferView = struct {
                     wctx.line_position = 0;
                     wctx.current_vline = VirtualLine.init();
                     wctx.current_vline.col_offset = wctx.global_char_offset;
+                    wctx.last_wrap_chunk_count = 0;
+                    wctx.last_wrap_line_position = 0;
+                    wctx.last_wrap_global_offset = 0;
                     wctx.chunk_idx_in_line = 0;
                     wctx.current_line_first_vline_idx = @intCast(wctx.output.virtual_lines.items.len);
                     wctx.current_line_vline_count = 0;

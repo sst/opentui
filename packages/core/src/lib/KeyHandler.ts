@@ -1,5 +1,6 @@
 import { EventEmitter } from "events"
 import { type KeyEventType, type ParsedKey } from "./parse.keypress.js"
+import type { PasteMetadata } from "./paste.js"
 
 export class KeyEvent implements ParsedKey {
   name: string
@@ -61,12 +62,15 @@ export class KeyEvent implements ParsedKey {
 }
 
 export class PasteEvent {
-  text: string
+  type: "paste" = "paste"
+  bytes: Uint8Array
+  metadata?: PasteMetadata
   private _defaultPrevented: boolean = false
   private _propagationStopped: boolean = false
 
-  constructor(text: string) {
-    this.text = text
+  constructor(bytes: Uint8Array, metadata?: PasteMetadata) {
+    this.bytes = bytes
+    this.metadata = metadata
   }
 
   get defaultPrevented(): boolean {
@@ -114,10 +118,9 @@ export class KeyHandler extends EventEmitter<KeyHandlerEventMap> {
     return true
   }
 
-  public processPaste(data: string): void {
+  public processPaste(bytes: Uint8Array, metadata?: PasteMetadata): void {
     try {
-      const cleanedData = Bun.stripANSI(data)
-      this.emit("paste", new PasteEvent(cleanedData))
+      this.emit("paste", new PasteEvent(bytes, metadata))
     } catch (error) {
       console.error(`[KeyHandler] Error processing paste:`, error)
     }

@@ -32,6 +32,8 @@ const keyName: Record<string, string> = {
   "[21~": "f10",
   "[23~": "f11",
   "[24~": "f12",
+  "[29~": "menu",
+  "[57427~": "clear",
   /* xterm ESC [ letter */
   "[A": "up",
   "[B": "down",
@@ -40,6 +42,9 @@ const keyName: Record<string, string> = {
   "[E": "clear",
   "[F": "end",
   "[H": "home",
+  "[P": "f1",
+  "[Q": "f2",
+  "[S": "f4",
   /* xterm/gnome ESC O letter */
   OA: "up",
   OB: "down",

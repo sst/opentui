@@ -1,6 +1,7 @@
 import { test, expect, describe, mock, beforeEach } from "bun:test"
 import { TerminalConsole, ConsolePosition } from "./console.js"
 import { MouseEvent } from "./renderer.js"
+import { ManualClock } from "./testing/manual-clock.js"
 
 interface MockRenderer {
   terminalWidth: number
@@ -411,9 +412,11 @@ describe("TerminalConsole", () => {
 
   describe("Auto-scroll during selection", () => {
     test("should auto-scroll up when dragging at top edge", async () => {
+      const clock = new ManualClock()
       terminalConsole = new TerminalConsole(mockRenderer as any, {
         position: ConsolePosition.BOTTOM,
         sizePercent: 30,
+        clock,
       })
       terminalConsole["isVisible"] = true
 
@@ -437,8 +440,8 @@ describe("TerminalConsole", () => {
       // Check that auto-scroll interval was started
       expect(terminalConsole["_autoScrollInterval"]).not.toBeNull()
 
-      // Wait for auto-scroll to happen
-      await new Promise((resolve) => setTimeout(resolve, 100))
+      // Advance clock to trigger auto-scroll (interval is 50ms)
+      clock.advance(100)
 
       // Should have scrolled up
       expect(terminalConsole["scrollTopIndex"]).toBeLessThan(20)
@@ -451,9 +454,11 @@ describe("TerminalConsole", () => {
     })
 
     test("should auto-scroll down when dragging at bottom edge", async () => {
+      const clock = new ManualClock()
       terminalConsole = new TerminalConsole(mockRenderer as any, {
         position: ConsolePosition.BOTTOM,
         sizePercent: 30,
+        clock,
       })
       terminalConsole["isVisible"] = true
 
@@ -479,8 +484,8 @@ describe("TerminalConsole", () => {
       // Check that auto-scroll interval was started
       expect(terminalConsole["_autoScrollInterval"]).not.toBeNull()
 
-      // Wait for auto-scroll to happen
-      await new Promise((resolve) => setTimeout(resolve, 100))
+      // Advance clock to trigger auto-scroll (interval is 50ms)
+      clock.advance(100)
 
       // Should have scrolled down
       expect(terminalConsole["scrollTopIndex"]).toBeGreaterThan(0)
@@ -524,9 +529,11 @@ describe("TerminalConsole", () => {
     })
 
     test("should extend selection as auto-scroll happens", async () => {
+      const clock = new ManualClock()
       terminalConsole = new TerminalConsole(mockRenderer as any, {
         position: ConsolePosition.BOTTOM,
         sizePercent: 30,
+        clock,
       })
       terminalConsole["isVisible"] = true
 
@@ -547,8 +554,8 @@ describe("TerminalConsole", () => {
       // Drag to top edge
       terminalConsole.handleMouse(createMouseEvent(bounds.x + 1, bounds.y + 1, "drag", 0))
 
-      // Wait for auto-scroll
-      await new Promise((resolve) => setTimeout(resolve, 100))
+      // Advance clock to trigger auto-scroll (interval is 50ms)
+      clock.advance(100)
 
       // Selection end should have moved with the scroll
       const endLine = terminalConsole["_selectionEnd"]?.line
