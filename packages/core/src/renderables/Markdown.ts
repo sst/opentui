@@ -859,15 +859,6 @@ export class MarkdownRenderable extends Renderable {
         }
         break
 
-      case "text":
-      case "paragraph":
-        if ("tokens" in token && Array.isArray(token.tokens)) {
-          this.renderInlineContent(token.tokens, chunks)
-        } else if ("text" in token && typeof token.text === "string") {
-          chunks.push(this.createDefaultChunk(token.text))
-        }
-        break
-
       default:
         if ("tokens" in token && Array.isArray(token.tokens)) {
           this.renderInlineContent(token.tokens, chunks)
