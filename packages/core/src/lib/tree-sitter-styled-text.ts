@@ -35,6 +35,30 @@ function shouldSuppressInInjection(group: string, meta: any): boolean {
   return group === "markup.raw.block"
 }
 
+/**
+ * Build a mapping from UTF-8 byte offsets to JavaScript string (UTF-16 code unit) indices.
+ * Tree-sitter returns byte offsets, but String.slice() needs character indices.
+ */
+function buildByteToCharMap(content: string): (byteOffset: number) => number {
+  const map = new Map<number, number>()
+  let charIdx = 0
+  let byteIdx = 0
+  for (charIdx = 0; charIdx < content.length; charIdx++) {
+    map.set(byteIdx, charIdx)
+    const code = content.codePointAt(charIdx)!
+    // Advance byte index by the UTF-8 byte length of this code point
+    if (code <= 0x7f) byteIdx += 1
+    else if (code <= 0x7ff) byteIdx += 2
+    else if (code <= 0xffff) byteIdx += 3
+    else {
+      byteIdx += 4
+      charIdx++ // Skip the second half of the surrogate pair
+    }
+  }
+  map.set(byteIdx, charIdx) // End-of-string
+  return (offset: number) => map.get(offset) ?? charIdx
+}
+
 export function treeSitterToTextChunks(
   content: string,
   highlights: SimpleHighlight[],
@@ -45,11 +69,16 @@ export function treeSitterToTextChunks(
   const defaultStyle = syntaxStyle.getStyle("default")
   const concealEnabled = options?.enabled ?? true
 
+  // Convert byte offsets from tree-sitter to JS string character indices
+  const byteToChar = buildByteToCharMap(content)
+
   const injectionContainerRanges: Array<{ start: number; end: number }> = []
   const boundaries: Boundary[] = []
 
   for (let i = 0; i < highlights.length; i++) {
-    const [start, end, , meta] = highlights[i]
+    const [startByte, endByte, , meta] = highlights[i]
+    const start = byteToChar(startByte)
+    const end = byteToChar(endByte)
     if (start === end) continue // Skip zero-length ranges
     if (meta?.containsInjection) {
       injectionContainerRanges.push({ start, end })
