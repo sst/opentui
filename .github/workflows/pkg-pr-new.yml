@@ -16,7 +16,6 @@ jobs:
         startsWith(github.event.comment.body, '/pkg-preview')) &&
       contains(fromJson('["OWNER","MEMBER","COLLABORATOR"]'), github.event.comment.author_association)
     runs-on: ubuntu-latest
-
     steps:
       - name: Checkout PR branch
         uses: actions/checkout@v4
