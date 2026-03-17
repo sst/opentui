@@ -546,7 +546,7 @@ export class MarkdownRenderable extends Renderable {
         }
 
         const nextToken = tokens[nextIndex]
-        if (nextToken && !this.shouldRenderSeparately(nextToken)) {
+        if (nextToken && (!this.shouldRenderSeparately(nextToken) || nextToken.type === "list")) {
           markdownRaw += token.raw
         }
         continue
@@ -914,10 +914,10 @@ export class MarkdownRenderable extends Renderable {
     let inlineChunks: TextChunk[] = []
     let childIndex = 0
 
-    const flushInlineChunks = (): void => {
+    const flushInlineChunks = (marginBottom: number = 0): void => {
       if (inlineChunks.length === 0) return
 
-      body.add(this.createInlineTextRenderable(inlineChunks, `${id}-inline-${childIndex}`))
+      body.add(this.createInlineTextRenderable(inlineChunks, `${id}-inline-${childIndex}`, marginBottom))
       inlineChunks = []
       childIndex += 1
     }
@@ -930,6 +930,11 @@ export class MarkdownRenderable extends Renderable {
           body.add(nestedRenderable)
           childIndex += 1
         }
+        continue
+      }
+
+      if (token.type === "space" && item.loose) {
+        flushInlineChunks(1)
         continue
       }
 
