@@ -53,7 +53,7 @@ registerEnvVar({
 
 registerEnvVar({
   name: "OTUI_USE_ALTERNATE_SCREEN",
-  description: "Whether to use the console. Will not capture console output if set to false.",
+  description: "Use the terminal alternate screen buffer.",
   type: "boolean",
   default: true,
 })
