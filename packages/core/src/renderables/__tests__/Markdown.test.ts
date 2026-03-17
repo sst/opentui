@@ -103,6 +103,52 @@ async function renderMarkdown(markdown: string, conceal: boolean = true): Promis
   return "\n" + lines.join("\n").trimEnd()
 }
 
+async function renderMarkdownWithSize(
+  markdown: string,
+  width: number,
+  height: number = 40,
+  conceal: boolean = true,
+): Promise<string> {
+  const testRenderer = await createTestRenderer({ width, height })
+  const localRenderer = testRenderer.renderer
+
+  try {
+    const md = new MarkdownRenderable(localRenderer, {
+      id: "markdown-sized",
+      content: markdown,
+      syntaxStyle,
+      conceal,
+      tableOptions: { widthMode: "content" },
+      treeSitterClient: markdownTreeSitterClient,
+    })
+
+    localRenderer.root.add(md)
+
+    await testRenderer.renderOnce()
+
+    const startedAt = Date.now()
+    while (
+      md
+        .getChildren()
+        .some((child) => child instanceof CodeRenderable && child.filetype === "markdown" && child.isHighlighting) &&
+      Date.now() - startedAt < 2000
+    ) {
+      await Bun.sleep(10)
+      await testRenderer.renderOnce()
+    }
+
+    await testRenderer.renderOnce()
+
+    const lines = testRenderer
+      .captureCharFrame()
+      .split("\n")
+      .map((line) => line.trimEnd())
+    return "\n" + lines.join("\n").trimEnd()
+  } finally {
+    localRenderer.destroy()
+  }
+}
+
 test("basic table alignment", async () => {
   const markdown = `| Name | Age |
 |---|---|
@@ -904,6 +950,42 @@ test("ordered list", async () => {
     2. Second item
     3. Third item"
   `)
+})
+
+test("unordered list continuation lines use hanging indent", async () => {
+  const frame = await renderMarkdownWithSize("- It ran a default review and the working tree was clean", 26)
+  const lines = frame
+    .trim()
+    .split("\n")
+    .filter((line) => line.length > 0)
+
+  expect(lines.length).toBeGreaterThan(1)
+  expect(lines[0]?.startsWith("- ")).toBe(true)
+  expect(lines[1]?.startsWith("  ")).toBe(true)
+})
+
+test("ordered list continuation lines use hanging indent", async () => {
+  const frame = await renderMarkdownWithSize("12. Latest commit is on the PR branch and checks are passing", 30)
+  const lines = frame
+    .trim()
+    .split("\n")
+    .filter((line) => line.length > 0)
+
+  expect(lines.length).toBeGreaterThan(1)
+  expect(lines[0]?.startsWith("12. ")).toBe(true)
+  expect(lines[1]?.startsWith("    ")).toBe(true)
+})
+
+test("task list continuation lines use hanging indent", async () => {
+  const frame = await renderMarkdownWithSize("- [ ] bowtie-go-kg checks are still passing after the review", 34)
+  const lines = frame
+    .trim()
+    .split("\n")
+    .filter((line) => line.length > 0)
+
+  expect(lines.length).toBeGreaterThan(1)
+  expect(lines[0]?.startsWith("- [ ] ")).toBe(true)
+  expect(lines[1]?.startsWith("      ")).toBe(true)
 })
 
 test("list with inline formatting", async () => {
