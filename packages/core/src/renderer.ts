@@ -323,8 +323,15 @@ export async function createCliRenderer(config: CliRendererConfig = {}): Promise
 }
 
 export enum CliRenderEvents {
+  RESIZE = "resize",
+  FOCUS = "focus",
+  BLUR = "blur",
+  THEME_MODE = "theme_mode",
+  CAPABILITIES = "capabilities",
+  SELECTION = "selection",
   DEBUG_OVERLAY_TOGGLE = "debugOverlay:toggle",
   DESTROY = "destroy",
+  MEMORY_SNAPSHOT = "memory:snapshot",
 }
 
 export enum RendererControlState {
@@ -971,7 +978,7 @@ export class CliRenderer extends EventEmitter implements RenderContext {
 
     this._console.resize(this.width, this.height)
     this.root.resize(this.width, this.height)
-    this.emit("resize", this.width, this.height)
+    this.emit(CliRenderEvents.RESIZE, this.width, this.height)
     this.requestRender()
   }
 
@@ -1116,7 +1123,7 @@ export class CliRenderer extends EventEmitter implements RenderContext {
     if (isCapabilityResponse(sequence)) {
       this.lib.processCapabilityResponse(this.rendererPtr, sequence)
       this._capabilities = this.lib.getTerminalCapabilities(this.rendererPtr)
-      this.emit("capabilities", this._capabilities)
+      this.emit(CliRenderEvents.CAPABILITIES, this._capabilities)
       return true
     }
     return false
@@ -1132,12 +1139,12 @@ export class CliRenderer extends EventEmitter implements RenderContext {
         this.lib.restoreTerminalModes(this.rendererPtr)
         this.shouldRestoreModesOnNextFocus = false
       }
-      this.emit("focus")
+      this.emit(CliRenderEvents.FOCUS)
       return true
     }
     if (sequence === "\x1b[O") {
       this.shouldRestoreModesOnNextFocus = true
-      this.emit("blur")
+      this.emit(CliRenderEvents.BLUR)
       return true
     }
     return false
@@ -1147,14 +1154,14 @@ export class CliRenderer extends EventEmitter implements RenderContext {
     if (sequence === "\x1b[?997;1n") {
       if (this._themeMode !== "dark") {
         this._themeMode = "dark"
-        this.emit("theme_mode", "dark")
+        this.emit(CliRenderEvents.THEME_MODE, "dark")
       }
       return true
     }
     if (sequence === "\x1b[?997;2n") {
       if (this._themeMode !== "light") {
         this._themeMode = "light"
-        this.emit("theme_mode", "light")
+        this.emit(CliRenderEvents.THEME_MODE, "light")
       }
       return true
     }
@@ -1517,7 +1524,7 @@ export class CliRenderer extends EventEmitter implements RenderContext {
       this.lastMemorySnapshot.arrayBuffers,
     )
 
-    this.emit("memory:snapshot", this.lastMemorySnapshot)
+    this.emit(CliRenderEvents.MEMORY_SNAPSHOT, this.lastMemorySnapshot)
   }
 
   private startMemorySnapshotTimer(): void {
@@ -1603,7 +1610,7 @@ export class CliRenderer extends EventEmitter implements RenderContext {
     this.currentRenderBuffer = this.lib.getCurrentBuffer(this.rendererPtr)
     this._console.resize(this.width, this.height)
     this.root.resize(this.width, this.height)
-    this.emit("resize", this.width, this.height)
+    this.emit(CliRenderEvents.RESIZE, this.width, this.height)
     this.requestRender()
   }
 
@@ -2243,7 +2250,7 @@ export class CliRenderer extends EventEmitter implements RenderContext {
   private finishSelection(): void {
     if (this.currentSelection) {
       this.currentSelection.isDragging = false
-      this.emit("selection", this.currentSelection)
+      this.emit(CliRenderEvents.SELECTION, this.currentSelection)
       this.notifySelectablesOfSelectionChange()
     }
   }
