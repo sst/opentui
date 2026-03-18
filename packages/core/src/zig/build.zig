@@ -267,13 +267,27 @@ fn buildTarget(
 
     applyDependencies(b, module, optimize, target, build_options);
 
-    const lib = b.addLibrary(.{
+    // Build dynamic library
+    const dyn_lib = b.addLibrary(.{
         .name = LIB_NAME,
         .root_module = module,
         .linkage = .dynamic,
     });
+    const dyn_install_dir = b.addInstallArtifact(dyn_lib, .{
+        .dest_dir = .{
+            .override = .{
+                .custom = try std.fmt.allocPrint(b.allocator, "../lib/{s}", .{output_name}),
+            },
+        },
+    });
 
-    const install_dir = b.addInstallArtifact(lib, .{
+    // Build static library
+    const static_lib = b.addLibrary(.{
+        .name = LIB_NAME,
+        .root_module = module,
+        .linkage = .static,
+    });
+    const static_install_dir = b.addInstallArtifact(static_lib, .{
         .dest_dir = .{
             .override = .{
                 .custom = try std.fmt.allocPrint(b.allocator, "../lib/{s}", .{output_name}),
@@ -283,7 +297,9 @@ fn buildTarget(
 
     const build_step_name = try std.fmt.allocPrint(b.allocator, "build-{s}", .{output_name});
     const build_step = b.step(build_step_name, try std.fmt.allocPrint(b.allocator, "Build for {s}", .{description}));
-    build_step.dependOn(&install_dir.step);
+    build_step.dependOn(&dyn_install_dir.step);
+    build_step.dependOn(&static_install_dir.step);
 
-    b.getInstallStep().dependOn(&install_dir.step);
+    b.getInstallStep().dependOn(&dyn_install_dir.step);
+    b.getInstallStep().dependOn(&static_install_dir.step);
 }

@@ -59,21 +59,22 @@ jobs:
           # Verify critical files exist (all 6 platforms)
           echo ""
           echo "Verifying native binaries exist..."
-          test -f packages/core/node_modules/@opentui/core-darwin-x64/libopentui.dylib || (echo "❌ darwin-x64 binary missing!" && exit 1)
-          test -f packages/core/node_modules/@opentui/core-darwin-arm64/libopentui.dylib || (echo "❌ darwin-arm64 binary missing!" && exit 1)
-          test -f packages/core/node_modules/@opentui/core-linux-x64/libopentui.so || (echo "❌ linux-x64 binary missing!" && exit 1)
-          test -f packages/core/node_modules/@opentui/core-linux-arm64/libopentui.so || (echo "❌ linux-arm64 binary missing!" && exit 1)
-          test -f packages/core/node_modules/@opentui/core-win32-x64/opentui.dll || (echo "❌ windows-x64 binary missing!" && exit 1)
-          test -f packages/core/node_modules/@opentui/core-win32-arm64/opentui.dll || (echo "❌ windows-arm64 binary missing!" && exit 1)
-
-          echo "Verifying dist packages exist..."
-          test -d packages/core/dist || (echo "❌ core dist missing!" && exit 1)
-          test -f packages/core/dist/package.json || (echo "❌ core dist/package.json missing!" && exit 1)
+          test -f packages/core/node_modules/@opentui/core-darwin-x64/libopentui.dylib || (echo "❌ darwin-x64 dynamic binary missing!" && exit 1)
+          test -f packages/core/node_modules/@opentui/core-darwin-x64/libopentui.a || (echo "❌ darwin-x64 static binary missing!" && exit 1)
+          test -f packages/core/node_modules/@opentui/core-darwin-arm64/libopentui.dylib || (echo "❌ darwin-arm64 dynamic binary missing!" && exit 1)
+          test -f packages/core/node_modules/@opentui/core-darwin-arm64/libopentui.a || (echo "❌ darwin-arm64 static binary missing!" && exit 1)
+          test -f packages/core/node_modules/@opentui/core-linux-x64/libopentui.so || (echo "❌ linux-x64 dynamic binary missing!" && exit 1)
+          test -f packages/core/node_modules/@opentui/core-linux-x64/libopentui.a || (echo "❌ linux-x64 static binary missing!" && exit 1)
+          test -f packages/core/node_modules/@opentui/core-linux-arm64/libopentui.so || (echo "❌ linux-arm64 dynamic binary missing!" && exit 1)
+          test -f packages/core/node_modules/@opentui/core-linux-arm64/libopentui.a || (echo "❌ linux-arm64 static binary missing!" && exit 1)
+          test -f packages/core/node_modules/@opentui/core-win32-x64/opentui.dll || (echo "❌ windows-x64 dynamic binary missing!" && exit 1)
+          test -f packages/core/node_modules/@opentui/core-win32-x64/opentui.lib || (echo "❌ windows-x64 static binary missing!" && exit 1)
+          test -f packages/core/node_modules/@opentui/core-win32-arm64/opentui.dll || (echo "❌ windows-arm64 dynamic binary missing!" && exit 1)
+          test -f packages/core/node_modules/@opentui/core-win32-arm64/opentui.lib || (echo "❌ windows-arm64 static binary missing!" && exit 1)
 
           echo "✅ All required build outputs verified (6 platforms)"
 
-      # Create separate zips for each platform's native binaries
-      - name: Package native binaries - darwin-x64
+      - name: Package dynamic binaries - darwin-x64
         run: |
           set -e
           mkdir -p artifacts/native-darwin-x64
@@ -82,9 +83,8 @@ jobs:
           zip -r native-darwin-x64.zip native-darwin-x64/
           test -f native-darwin-x64.zip || (echo "❌ Failed to create darwin-x64 zip" && exit 1)
           test -s native-darwin-x64.zip || (echo "❌ darwin-x64 zip is empty" && exit 1)
-          echo "✅ darwin-x64 packaged successfully ($(du -h native-darwin-x64.zip | cut -f1))"
-
-      - name: Package native binaries - darwin-arm64
+          echo "✅ darwin-x64 dynamic packaged successfully ($(du -h native-darwin-x64.zip | cut -f1))"
+      - name: Package dynamic binaries - darwin-arm64
         run: |
           set -e
           mkdir -p artifacts/native-darwin-arm64
@@ -93,9 +93,8 @@ jobs:
           zip -r native-darwin-arm64.zip native-darwin-arm64/
           test -f native-darwin-arm64.zip || (echo "❌ Failed to create darwin-arm64 zip" && exit 1)
           test -s native-darwin-arm64.zip || (echo "❌ darwin-arm64 zip is empty" && exit 1)
-          echo "✅ darwin-arm64 packaged successfully ($(du -h native-darwin-arm64.zip | cut -f1))"
-
-      - name: Package native binaries - linux-x64
+          echo "✅ darwin-arm64 dynamic packaged successfully ($(du -h native-darwin-arm64.zip | cut -f1))"
+      - name: Package dynamic binaries - linux-x64
         run: |
           set -e
           mkdir -p artifacts/native-linux-x64
@@ -104,9 +103,8 @@ jobs:
           zip -r native-linux-x64.zip native-linux-x64/
           test -f native-linux-x64.zip || (echo "❌ Failed to create linux-x64 zip" && exit 1)
           test -s native-linux-x64.zip || (echo "❌ linux-x64 zip is empty" && exit 1)
-          echo "✅ linux-x64 packaged successfully ($(du -h native-linux-x64.zip | cut -f1))"
-
-      - name: Package native binaries - windows-x64
+          echo "✅ linux-x64 dynamic packaged successfully ($(du -h native-linux-x64.zip | cut -f1))"
+      - name: Package dynamic binaries - windows-x64
         run: |
           set -e
           mkdir -p artifacts/native-windows-x64
@@ -115,9 +113,8 @@ jobs:
           zip -r native-windows-x64.zip native-windows-x64/
           test -f native-windows-x64.zip || (echo "❌ Failed to create windows-x64 zip" && exit 1)
           test -s native-windows-x64.zip || (echo "❌ windows-x64 zip is empty" && exit 1)
-          echo "✅ windows-x64 packaged successfully ($(du -h native-windows-x64.zip | cut -f1))"
-
-      - name: Package native binaries - linux-arm64
+          echo "✅ windows-x64 dynamic packaged successfully ($(du -h native-windows-x64.zip | cut -f1))"
+      - name: Package dynamic binaries - linux-arm64
         run: |
           set -e
           mkdir -p artifacts/native-linux-arm64
@@ -126,9 +123,8 @@ jobs:
           zip -r native-linux-arm64.zip native-linux-arm64/
           test -f native-linux-arm64.zip || (echo "❌ Failed to create linux-arm64 zip" && exit 1)
           test -s native-linux-arm64.zip || (echo "❌ linux-arm64 zip is empty" && exit 1)
-          echo "✅ linux-arm64 packaged successfully ($(du -h native-linux-arm64.zip | cut -f1))"
-
-      - name: Package native binaries - windows-arm64
+          echo "✅ linux-arm64 dynamic packaged successfully ($(du -h native-linux-arm64.zip | cut -f1))"
+      - name: Package dynamic binaries - windows-arm64
         run: |
           set -e
           mkdir -p artifacts/native-windows-arm64
@@ -137,7 +133,68 @@ jobs:
           zip -r native-windows-arm64.zip native-windows-arm64/
           test -f native-windows-arm64.zip || (echo "❌ Failed to create windows-arm64 zip" && exit 1)
           test -s native-windows-arm64.zip || (echo "❌ windows-arm64 zip is empty" && exit 1)
-          echo "✅ windows-arm64 packaged successfully ($(du -h native-windows-arm64.zip | cut -f1))"
+          echo "✅ windows-arm64 dynamic packaged successfully ($(du -h native-windows-arm64.zip | cut -f1))"
+
+      - name: Package static binaries - darwin-x64
+        run: |
+          set -e
+          mkdir -p artifacts/native-darwin-x64-static
+          cp packages/core/node_modules/@opentui/core-darwin-x64/libopentui.a artifacts/native-darwin-x64-static/
+          cd artifacts
+          zip -r native-darwin-x64-static.zip native-darwin-x64-static/
+          test -f native-darwin-x64-static.zip || (echo "❌ Failed to create darwin-x64-static zip" && exit 1)
+          test -s native-darwin-x64-static.zip || (echo "❌ darwin-x64-static zip is empty" && exit 1)
+          echo "✅ darwin-x64 static packaged successfully ($(du -h native-darwin-x64-static.zip | cut -f1))"
+      - name: Package static binaries - darwin-arm64
+        run: |
+          set -e
+          mkdir -p artifacts/native-darwin-arm64-static
+          cp packages/core/node_modules/@opentui/core-darwin-arm64/libopentui.a artifacts/native-darwin-arm64-static/
+          cd artifacts
+          zip -r native-darwin-arm64-static.zip native-darwin-arm64-static/
+          test -f native-darwin-arm64-static.zip || (echo "❌ Failed to create darwin-arm64-static zip" && exit 1)
+          test -s native-darwin-arm64-static.zip || (echo "❌ darwin-arm64-static zip is empty" && exit 1)
+          echo "✅ darwin-arm64 static packaged successfully ($(du -h native-darwin-arm64-static.zip | cut -f1))"
+      - name: Package static binaries - linux-x64
+        run: |
+          set -e
+          mkdir -p artifacts/native-linux-x64-static
+          cp packages/core/node_modules/@opentui/core-linux-x64/libopentui.a artifacts/native-linux-x64-static/
+          cd artifacts
+          zip -r native-linux-x64-static.zip native-linux-x64-static/
+          test -f native-linux-x64-static.zip || (echo "❌ Failed to create linux-x64-static zip" && exit 1)
+          test -s native-linux-x64-static.zip || (echo "❌ linux-x64-static zip is empty" && exit 1)
+          echo "✅ linux-x64 static packaged successfully ($(du -h native-linux-x64-static.zip | cut -f1))"
+      - name: Package static binaries - windows-x64
+        run: |
+          set -e
+          mkdir -p artifacts/native-windows-x64-static
+          cp packages/core/node_modules/@opentui/core-win32-x64/opentui.lib artifacts/native-windows-x64-static/
+          cd artifacts
+          zip -r native-windows-x64-static.zip native-windows-x64-static/
+          test -f native-windows-x64-static.zip || (echo "❌ Failed to create windows-x64-static zip" && exit 1)
+          test -s native-windows-x64-static.zip || (echo "❌ windows-x64-static zip is empty" && exit 1)
+          echo "✅ windows-x64 static packaged successfully ($(du -h native-windows-x64-static.zip | cut -f1))"
+      - name: Package static binaries - linux-arm64
+        run: |
+          set -e
+          mkdir -p artifacts/native-linux-arm64-static
+          cp packages/core/node_modules/@opentui/core-linux-arm64/libopentui.a artifacts/native-linux-arm64-static/
+          cd artifacts
+          zip -r native-linux-arm64-static.zip native-linux-arm64-static/
+          test -f native-linux-arm64-static.zip || (echo "❌ Failed to create linux-arm64-static zip" && exit 1)
+          test -s native-linux-arm64-static.zip || (echo "❌ linux-arm64-static zip is empty" && exit 1)
+          echo "✅ linux-arm64 static packaged successfully ($(du -h native-linux-arm64-static.zip | cut -f1))"
+      - name: Package static binaries - windows-arm64
+        run: |
+          set -e
+          mkdir -p artifacts/native-windows-arm64-static
+          cp packages/core/node_modules/@opentui/core-win32-arm64/opentui.lib artifacts/native-windows-arm64-static/
+          cd artifacts
+          zip -r native-windows-arm64-static.zip native-windows-arm64-static/
+          test -f native-windows-arm64-static.zip || (echo "❌ Failed to create windows-arm64-static zip" && exit 1)
+          test -s native-windows-arm64-static.zip || (echo "❌ windows-arm64-static zip is empty" && exit 1)
+          echo "✅ windows-arm64 static packaged successfully ($(du -h native-windows-arm64-static.zip | cut -f1))"
 
       # Package the built npm packages (for use by build-examples and npm-publish)
       - name: Package npm packages
@@ -179,16 +236,24 @@ jobs:
         run: |
           set -e
           echo "Verifying all artifacts exist..."
+          # Dynamic libraries
           test -f artifacts/native-darwin-x64.zip || (echo "❌ native-darwin-x64.zip missing!" && exit 1)
           test -f artifacts/native-darwin-arm64.zip || (echo "❌ native-darwin-arm64.zip missing!" && exit 1)
           test -f artifacts/native-linux-x64.zip || (echo "❌ native-linux-x64.zip missing!" && exit 1)
           test -f artifacts/native-linux-arm64.zip || (echo "❌ native-linux-arm64.zip missing!" && exit 1)
           test -f artifacts/native-windows-x64.zip || (echo "❌ native-windows-x64.zip missing!" && exit 1)
           test -f artifacts/native-windows-arm64.zip || (echo "❌ native-windows-arm64.zip missing!" && exit 1)
+          # Static libraries
+          test -f artifacts/native-darwin-x64-static.zip || (echo "❌ native-darwin-x64-static.zip missing!" && exit 1)
+          test -f artifacts/native-darwin-arm64-static.zip || (echo "❌ native-darwin-arm64-static.zip missing!" && exit 1)
+          test -f artifacts/native-linux-x64-static.zip || (echo "❌ native-linux-x64-static.zip missing!" && exit 1)
+          test -f artifacts/native-linux-arm64-static.zip || (echo "❌ native-linux-arm64-static.zip missing!" && exit 1)
+          test -f artifacts/native-windows-x64-static.zip || (echo "❌ native-windows-x64-static.zip missing!" && exit 1)
+          test -f artifacts/native-windows-arm64-static.zip || (echo "❌ native-windows-arm64-static.zip missing!" && exit 1)
           test -f artifacts/npm-packages.zip || (echo "❌ npm-packages.zip missing!" && exit 1)
 
           echo ""
-          echo "✅ All 6 platform artifacts verified. Ready to upload:"
+          echo "✅ All 12 artifacts verified. Ready to upload:"
           ls -lah artifacts/*.zip
 
       - name: Upload native binaries artifacts
@@ -202,6 +267,12 @@ jobs:
             artifacts/native-linux-arm64.zip
             artifacts/native-windows-x64.zip
             artifacts/native-windows-arm64.zip
+            artifacts/native-darwin-x64-static.zip
+            artifacts/native-darwin-arm64-static.zip
+            artifacts/native-linux-x64-static.zip
+            artifacts/native-linux-arm64-static.zip
+            artifacts/native-windows-x64-static.zip
+            artifacts/native-windows-arm64-static.zip
           if-no-files-found: error
           retention-days: 30
 
