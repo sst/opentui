@@ -179,6 +179,53 @@ describe("React Slot System", () => {
     expect(frame).not.toContain("replace-fallback")
   })
 
+  it("replace mode does not invoke fallback components when plugin content wins", async () => {
+    const fallbackLifecycle: string[] = []
+
+    function FallbackProbe() {
+      fallbackLifecycle.push("render")
+
+      useEffect(() => {
+        fallbackLifecycle.push("mount")
+
+        return () => {
+          fallbackLifecycle.push("cleanup")
+        }
+      }, [])
+
+      return <text>fallback-probe</text>
+    }
+
+    const { setup } = await setupSlotTest(
+      (slotRegistry) => {
+        slotRegistry.register({
+          id: "replace-plugin",
+          slots: {
+            statusbar() {
+              return <text>plugin-only</text>
+            },
+          },
+        })
+
+        const Slot = createSlot(slotRegistry)
+        return (
+          <Slot name="statusbar" user="lee" mode="replace">
+            <FallbackProbe />
+          </Slot>
+        )
+      },
+      { width: 40, height: 6 },
+    )
+    testSetup = setup
+
+    await testSetup.renderOnce()
+    const frame = testSetup.captureCharFrame()
+
+    expect(frame).toContain("plugin-only")
+    expect(frame).not.toContain("fallback-probe")
+    expect(fallbackLifecycle).toEqual([])
+  })
+
   it("single_winner mode renders only the highest-priority plugin", async () => {
     const { setup } = await setupSlotTest(
       (slotRegistry) => {
