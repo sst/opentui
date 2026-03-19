@@ -13,6 +13,7 @@ jobs:
   # Extract version and check if it's a dry run
   prepare:
     name: Prepare Release
+    if: ${{ !contains(github.ref_name, 'snapshot') }}
     runs-on: ubuntu-latest
     outputs:
       version: ${{ steps.extract.outputs.version }}
@@ -103,6 +104,14 @@ jobs:
       version: ${{ needs.prepare.outputs.fullTag }}
       isDryRun: ${{ needs.prepare.outputs.isDryRun == 'true' }}
 
+  # Build static core libraries for release assets
+  build-static-core:
+    name: Build Static Core
+    needs: [prepare, validate-version]
+    uses: ./.github/workflows/build-static-core.yml
+    with:
+      version: ${{ needs.prepare.outputs.fullTag }}
+
   # Build example executables
   build-examples:
     name: Build Examples
@@ -126,7 +135,7 @@ jobs:
   # Create GitHub release with assets
   github-release:
     name: Create GitHub Release
-    needs: [prepare, build-native, build-examples, npm-publish]
+    needs: [prepare, build-native, build-static-core, build-examples, npm-publish]
     runs-on: ubuntu-latest
 
     steps:
@@ -150,35 +159,41 @@ jobs:
 
           # Verify artifact directories exist
           test -d "artifacts/native-binaries-$FULL_TAG" || (echo "❌ native-binaries artifact directory not found!" && exit 1)
+          test -d "artifacts/static-native-binaries-$FULL_TAG" || (echo "❌ static-native-binaries artifact directory not found!" && exit 1)
           test -d "artifacts/example-executables-$FULL_TAG" || (echo "❌ example-executables artifact directory not found!" && exit 1)
 
-          # Copy native binaries (unzip and rezip with versioned names)
-          echo "Processing native binaries..."
-          cd "artifacts/native-binaries-$FULL_TAG"
+          process_native_artifacts() {
+            artifact_dir="$1"
+            label="$2"
 
-          for zip_file in native-*.zip; do
-            if [ -f "$zip_file" ]; then
-              platform=$(echo "$zip_file" | sed 's/native-//' | sed 's/.zip//')
-              echo "  Processing $platform..."
-              unzip -q "$zip_file"
-              
-              # Repackage with versioned name
-              dir_name=$(echo "$zip_file" | sed 's/.zip//')
-              if [ -d "$dir_name" ]; then
-                cd "$dir_name"
-                zip -r "$WORK_DIR/release-assets/opentui-native-v${FULL_TAG}-${platform}.zip" .
-                cd ..
-                
-                # Verify the output
-                test -f "$WORK_DIR/release-assets/opentui-native-v${FULL_TAG}-${platform}.zip" || (echo "❌ Failed to create native $platform release asset!" && exit 1)
-                echo "  ✅ opentui-native-v${FULL_TAG}-${platform}.zip created"
-              else
-                echo "❌ Directory $dir_name not found after unzip!" && exit 1
+            echo "Processing $label..."
+            cd "$artifact_dir"
+
+            for zip_file in native-*.zip; do
+              if [ -f "$zip_file" ]; then
+                platform=$(echo "$zip_file" | sed 's/native-//' | sed 's/.zip//')
+                echo "  Processing $platform..."
+                unzip -q "$zip_file"
+
+                dir_name=$(echo "$zip_file" | sed 's/.zip//')
+                if [ -d "$dir_name" ]; then
+                  cd "$dir_name"
+                  zip -r "$WORK_DIR/release-assets/opentui-native-v${FULL_TAG}-${platform}.zip" .
+                  cd ..
+
+                  test -f "$WORK_DIR/release-assets/opentui-native-v${FULL_TAG}-${platform}.zip" || (echo "❌ Failed to create native $platform release asset!" && exit 1)
+                  echo "  ✅ opentui-native-v${FULL_TAG}-${platform}.zip created"
+                else
+                  echo "❌ Directory $dir_name not found after unzip!" && exit 1
+                fi
               fi
-            fi
-          done
+            done
 
-          cd "$WORK_DIR"
+            cd "$WORK_DIR"
+          }
+
+          process_native_artifacts "artifacts/native-binaries-$FULL_TAG" "dynamic native binaries"
+          process_native_artifacts "artifacts/static-native-binaries-$FULL_TAG" "static native binaries"
 
           # Copy example executables (unzip and rezip with versioned names)
           echo "Processing example executables..."

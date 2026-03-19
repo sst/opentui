@@ -26,6 +26,12 @@ const SUPPORTED_TARGETS = [_]SupportedTarget{
     .{ .zig_target = "aarch64-windows-gnu", .output_name = "aarch64-windows", .description = "Windows aarch64" },
 };
 
+const LibraryLinkageMode = enum {
+    dynamic,
+    static,
+    both,
+};
+
 const LIB_NAME = "opentui";
 const ROOT_SOURCE_FILE = "lib.zig";
 
@@ -87,6 +93,27 @@ fn checkZigVersion() void {
     }
 }
 
+fn parseLibraryLinkageMode(value: []const u8) !LibraryLinkageMode {
+    if (std.mem.eql(u8, value, "dynamic")) return .dynamic;
+    if (std.mem.eql(u8, value, "static")) return .static;
+    if (std.mem.eql(u8, value, "both")) return .both;
+    return error.InvalidLibraryLinkageMode;
+}
+
+fn shouldBuildDynamic(linkage_mode: LibraryLinkageMode) bool {
+    return switch (linkage_mode) {
+        .dynamic, .both => true,
+        .static => false,
+    };
+}
+
+fn shouldBuildStatic(linkage_mode: LibraryLinkageMode) bool {
+    return switch (linkage_mode) {
+        .static, .both => true,
+        .dynamic => false,
+    };
+}
+
 pub fn build(b: *std.Build) void {
     checkZigVersion();
 
@@ -96,21 +123,26 @@ pub fn build(b: *std.Build) void {
     const target_option = b.option([]const u8, "target", "Build for specific target (e.g., 'x86_64-linux-gnu').");
     const build_all = b.option(bool, "all", "Build for all supported targets") orelse false;
     const gpa_safe_stats = b.option(bool, "gpa-safe-stats", "Enable GPA safety checks for trustworthy allocator stats") orelse false;
+    const linkage_mode_option = b.option([]const u8, "linkage", "Library linkage outputs to build: dynamic (default), static, or both") orelse "dynamic";
+    const linkage_mode = parseLibraryLinkageMode(linkage_mode_option) catch {
+        std.debug.print("Error: Invalid linkage mode '{s}'. Expected one of: dynamic, static, both\n", .{linkage_mode_option});
+        std.process.exit(1);
+    };
     const build_options = b.addOptions();
     build_options.addOption(bool, "gpa_safe_stats", gpa_safe_stats);
 
     if (target_option) |target_str| {
         // Build single target
-        buildSingleTarget(b, target_str, optimize, build_options) catch |err| {
+        buildSingleTarget(b, target_str, optimize, build_options, linkage_mode) catch |err| {
             std.debug.print("Error building target '{s}': {}\n", .{ target_str, err });
             std.process.exit(1);
         };
     } else if (build_all) {
         // Build all supported targets
-        buildAllTargets(b, optimize, build_options);
+        buildAllTargets(b, optimize, build_options, linkage_mode);
     } else {
         // Build for native target only (default)
-        buildNativeTarget(b, optimize, build_options);
+        buildNativeTarget(b, optimize, build_options, linkage_mode);
     }
 
     // Test step (native only)
@@ -180,7 +212,12 @@ pub fn build(b: *std.Build) void {
     debug_step.dependOn(&run_debug.step);
 }
 
-fn buildAllTargets(b: *std.Build, optimize: std.builtin.OptimizeMode, build_options: *std.Build.Step.Options) void {
+fn buildAllTargets(
+    b: *std.Build,
+    optimize: std.builtin.OptimizeMode,
+    build_options: *std.Build.Step.Options,
+    linkage_mode: LibraryLinkageMode,
+) void {
     for (SUPPORTED_TARGETS) |supported_target| {
         buildTarget(
             b,
@@ -189,6 +226,7 @@ fn buildAllTargets(b: *std.Build, optimize: std.builtin.OptimizeMode, build_opti
             supported_target.description,
             optimize,
             build_options,
+            linkage_mode,
         ) catch |err| {
             std.debug.print("Failed to build target {s}: {}\n", .{ supported_target.description, err });
             continue;
@@ -196,7 +234,12 @@ fn buildAllTargets(b: *std.Build, optimize: std.builtin.OptimizeMode, build_opti
     }
 }
 
-fn buildNativeTarget(b: *std.Build, optimize: std.builtin.OptimizeMode, build_options: *std.Build.Step.Options) void {
+fn buildNativeTarget(
+    b: *std.Build,
+    optimize: std.builtin.OptimizeMode,
+    build_options: *std.Build.Step.Options,
+    linkage_mode: LibraryLinkageMode,
+) void {
     // Find the matching supported target for the native platform
     const native_arch = @tagName(builtin.cpu.arch);
     const native_os = @tagName(builtin.os.tag);
@@ -213,6 +256,7 @@ fn buildNativeTarget(b: *std.Build, optimize: std.builtin.OptimizeMode, build_op
                 supported_target.description,
                 optimize,
                 build_options,
+                linkage_mode,
             ) catch |err| {
                 std.debug.print("Failed to build native target {s}: {}\n", .{ supported_target.description, err });
             };
@@ -228,6 +272,7 @@ fn buildSingleTarget(
     target_str: []const u8,
     optimize: std.builtin.OptimizeMode,
     build_options: *std.Build.Step.Options,
+    linkage_mode: LibraryLinkageMode,
 ) !void {
     // Check if it matches a known target, use its output_name
     for (SUPPORTED_TARGETS) |supported_target| {
@@ -239,13 +284,14 @@ fn buildSingleTarget(
                 supported_target.description,
                 optimize,
                 build_options,
+                linkage_mode,
             );
             return;
         }
     }
     // Custom target - use target string as output name
     const description = try std.fmt.allocPrint(b.allocator, "Custom target: {s}", .{target_str});
-    try buildTarget(b, target_str, target_str, description, optimize, build_options);
+    try buildTarget(b, target_str, target_str, description, optimize, build_options, linkage_mode);
 }
 
 fn buildTarget(
@@ -255,6 +301,7 @@ fn buildTarget(
     description: []const u8,
     optimize: std.builtin.OptimizeMode,
     build_options: *std.Build.Step.Options,
+    linkage_mode: LibraryLinkageMode,
 ) !void {
     const target_query = try std.Target.Query.parse(.{ .arch_os_abi = zig_target });
     const target = b.resolveTargetQuery(target_query);
@@ -267,39 +314,44 @@ fn buildTarget(
 
     applyDependencies(b, module, optimize, target, build_options);
 
-    // Build dynamic library
-    const dyn_lib = b.addLibrary(.{
-        .name = LIB_NAME,
-        .root_module = module,
-        .linkage = .dynamic,
-    });
-    const dyn_install_dir = b.addInstallArtifact(dyn_lib, .{
-        .dest_dir = .{
-            .override = .{
-                .custom = try std.fmt.allocPrint(b.allocator, "../lib/{s}", .{output_name}),
-            },
-        },
-    });
-
-    // Build static library
-    const static_lib = b.addLibrary(.{
-        .name = LIB_NAME,
-        .root_module = module,
-        .linkage = .static,
-    });
-    const static_install_dir = b.addInstallArtifact(static_lib, .{
-        .dest_dir = .{
-            .override = .{
-                .custom = try std.fmt.allocPrint(b.allocator, "../lib/{s}", .{output_name}),
-            },
-        },
-    });
+    const install_subdir = try std.fmt.allocPrint(b.allocator, "../lib/{s}", .{output_name});
 
     const build_step_name = try std.fmt.allocPrint(b.allocator, "build-{s}", .{output_name});
     const build_step = b.step(build_step_name, try std.fmt.allocPrint(b.allocator, "Build for {s}", .{description}));
-    build_step.dependOn(&dyn_install_dir.step);
-    build_step.dependOn(&static_install_dir.step);
 
-    b.getInstallStep().dependOn(&dyn_install_dir.step);
-    b.getInstallStep().dependOn(&static_install_dir.step);
+    if (shouldBuildDynamic(linkage_mode)) {
+        const dyn_lib = b.addLibrary(.{
+            .name = LIB_NAME,
+            .root_module = module,
+            .linkage = .dynamic,
+        });
+        const dyn_install_dir = b.addInstallArtifact(dyn_lib, .{
+            .dest_dir = .{
+                .override = .{
+                    .custom = install_subdir,
+                },
+            },
+        });
+
+        build_step.dependOn(&dyn_install_dir.step);
+        b.getInstallStep().dependOn(&dyn_install_dir.step);
+    }
+
+    if (shouldBuildStatic(linkage_mode)) {
+        const static_lib = b.addLibrary(.{
+            .name = LIB_NAME,
+            .root_module = module,
+            .linkage = .static,
+        });
+        const static_install_dir = b.addInstallArtifact(static_lib, .{
+            .dest_dir = .{
+                .override = .{
+                    .custom = install_subdir,
+                },
+            },
+        });
+
+        build_step.dependOn(&static_install_dir.step);
+        b.getInstallStep().dependOn(&static_install_dir.step);
+    }
 }

@@ -1,0 +1,114 @@
+name: Build Static Core
+
+on:
+  workflow_call:
+    inputs:
+      version:
+        description: "Version being released"
+        required: true
+        type: string
+
+env:
+  ZIG_VERSION: 0.15.2
+
+jobs:
+  build-static-core:
+    name: Build Static Core Libraries
+    runs-on: macos-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Zig
+        uses: goto-bus-stop/setup-zig@v2
+        with:
+          version: ${{ env.ZIG_VERSION }}
+
+      - name: Build static libraries (cross-compile all platforms)
+        run: |
+          rm -rf packages/core/src/zig/lib packages/core/src/zig/zig-out
+          cd packages/core/src/zig
+          zig build -Doptimize=ReleaseFast -Dall -Dlinkage=static
+
+      - name: Verify static build outputs
+        run: |
+          set -e
+
+          for dir in \
+            packages/core/src/zig/lib/x86_64-macos \
+            packages/core/src/zig/lib/aarch64-macos \
+            packages/core/src/zig/lib/x86_64-linux \
+            packages/core/src/zig/lib/aarch64-linux \
+            packages/core/src/zig/lib/x86_64-windows \
+            packages/core/src/zig/lib/aarch64-windows
+          do
+            test -d "$dir" || (echo "❌ Missing static output directory: $dir" && exit 1)
+            compgen -G "$dir/*" > /dev/null || (echo "❌ Static output directory is empty: $dir" && exit 1)
+
+            if compgen -G "$dir/*.dylib" > /dev/null || compgen -G "$dir/*.so" > /dev/null || compgen -G "$dir/*.dll" > /dev/null; then
+              echo "❌ Found dynamic library in static output directory: $dir"
+              ls -lah "$dir"
+              exit 1
+            fi
+          done
+
+          echo "✅ All required static build outputs verified (6 platforms)"
+
+      - name: Package static binaries
+        run: |
+          set -e
+          mkdir -p artifacts
+
+          for target in \
+            native-darwin-x64-static:x86_64-macos \
+            native-darwin-arm64-static:aarch64-macos \
+            native-linux-x64-static:x86_64-linux \
+            native-linux-arm64-static:aarch64-linux \
+            native-windows-x64-static:x86_64-windows \
+            native-windows-arm64-static:aarch64-windows
+          do
+            artifact_name=${target%%:*}
+            source_dir=${target#*:}
+
+            mkdir -p "artifacts/$artifact_name"
+            cp -r "packages/core/src/zig/lib/$source_dir/." "artifacts/$artifact_name/"
+
+            (
+              cd artifacts
+              zip -r "${artifact_name}.zip" "$artifact_name"
+            )
+
+            test -f "artifacts/${artifact_name}.zip" || (echo "❌ Failed to create ${artifact_name}.zip" && exit 1)
+            test -s "artifacts/${artifact_name}.zip" || (echo "❌ ${artifact_name}.zip is empty" && exit 1)
+            echo "✅ ${artifact_name}.zip packaged successfully ($(du -h "artifacts/${artifact_name}.zip" | cut -f1))"
+          done
+
+      - name: Verify static artifacts before upload
+        run: |
+          set -e
+          echo "Verifying static artifacts exist..."
+          test -f artifacts/native-darwin-x64-static.zip || (echo "❌ native-darwin-x64-static.zip missing!" && exit 1)
+          test -f artifacts/native-darwin-arm64-static.zip || (echo "❌ native-darwin-arm64-static.zip missing!" && exit 1)
+          test -f artifacts/native-linux-x64-static.zip || (echo "❌ native-linux-x64-static.zip missing!" && exit 1)
+          test -f artifacts/native-linux-arm64-static.zip || (echo "❌ native-linux-arm64-static.zip missing!" && exit 1)
+          test -f artifacts/native-windows-x64-static.zip || (echo "❌ native-windows-x64-static.zip missing!" && exit 1)
+          test -f artifacts/native-windows-arm64-static.zip || (echo "❌ native-windows-arm64-static.zip missing!" && exit 1)
+
+          echo ""
+          echo "✅ All 6 static artifacts verified. Ready to upload:"
+          ls -lah artifacts/*.zip
+
+      - name: Upload static binaries artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: static-native-binaries-${{ inputs.version }}
+          path: |
+            artifacts/native-darwin-x64-static.zip
+            artifacts/native-darwin-arm64-static.zip
+            artifacts/native-linux-x64-static.zip
+            artifacts/native-linux-arm64-static.zip
+            artifacts/native-windows-x64-static.zip
+            artifacts/native-windows-arm64-static.zip
+          if-no-files-found: error
+          retention-days: 30

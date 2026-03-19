@@ -10,7 +10,40 @@ permissions:
   pull-requests: write
 
 jobs:
+  prepare:
+    name: Prepare Snapshot Release
+    runs-on: ubuntu-latest
+    outputs:
+      tag: ${{ steps.extract.outputs.tag }}
+      snapshotVersion: ${{ steps.version_scheme.outputs.version }}
+
+    steps:
+      - name: Extract version from tag
+        id: extract
+        run: |
+          TAG=${GITHUB_REF#refs/tags/v}
+          echo "tag=$TAG" >> $GITHUB_OUTPUT
+          echo "Extracted tag: $TAG"
+
+      - name: Generate snapshot version
+        id: version_scheme
+        run: |
+          COMMIT_SHA=${GITHUB_SHA::8}
+
+          VERSION="0.0.0-$(date +%Y%m%d)-${COMMIT_SHA}"
+          echo "version=$VERSION" >> $GITHUB_OUTPUT
+          echo "Using snapshot version: $VERSION"
+
+  build-static-core:
+    name: Build Static Core
+    needs: prepare
+    uses: ./.github/workflows/build-static-core.yml
+    with:
+      version: ${{ needs.prepare.outputs.tag }}
+
   release:
+    name: Publish Snapshot Packages
+    needs: prepare
     runs-on: macos-latest
 
     steps:
@@ -28,29 +61,11 @@ jobs:
         with:
           version: 0.15.2
 
-      - name: Extract version from tag
-        id: extract_version
-        run: |
-          TAG=${GITHUB_REF#refs/tags/v}
-          echo "version=$TAG" >> $GITHUB_OUTPUT
-          echo "Extracted version: $TAG"
-
-      - name: Generate snapshot version
-        id: version_scheme
-        run: |
-          TAG_VERSION="${{ steps.extract_version.outputs.version }}"
-          COMMIT_SHA=$(git rev-parse --short=8 HEAD)
-
-          # Pre-release snapshot
-          VERSION="0.0.0-$(date +%Y%m%d)-${COMMIT_SHA}"
-          echo "version=$VERSION" >> $GITHUB_OUTPUT
-          echo "Using snapshot version: $VERSION"
-
       - name: Install dependencies
         run: bun i
 
       - name: Prepare release versions
-        run: bun run prepare-release "${{ steps.version_scheme.outputs.version }}"
+        run: bun run prepare-release "${{ needs.prepare.outputs.snapshotVersion }}"
 
       - name: Build packages (cross-compile for all platforms)
         run: |
