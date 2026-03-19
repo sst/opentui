@@ -456,9 +456,12 @@ export class MarkdownRenderable extends Renderable {
   }
 
   private applyMarkdownCodeRenderable(renderable: CodeRenderable, content: string, marginBottom: number): void {
+    const defaultStyle = this.getStyle("markup.raw") || this.getStyle("default")
     renderable.content = content
     renderable.filetype = "markdown"
     renderable.syntaxStyle = this._syntaxStyle
+    renderable.fg = defaultStyle?.fg
+    renderable.bg = defaultStyle?.bg
     renderable.conceal = this._conceal
     renderable.drawUnstyledText = false
     renderable.streaming = true
@@ -466,9 +469,12 @@ export class MarkdownRenderable extends Renderable {
   }
 
   private applyCodeBlockRenderable(renderable: CodeRenderable, token: Tokens.Code, marginBottom: number): void {
+    const defaultStyle = this.getStyle("markup.raw.block") || this.getStyle("default")
     renderable.content = token.text
     renderable.filetype = token.lang || undefined
     renderable.syntaxStyle = this._syntaxStyle
+    renderable.fg = defaultStyle?.fg
+    renderable.bg = defaultStyle?.bg
     renderable.conceal = this._concealCode
     renderable.drawUnstyledText = !(this._streaming && this._concealCode)
     renderable.streaming = this._streaming

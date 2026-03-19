@@ -1424,9 +1424,8 @@ pub const OptimizedBuffer = struct {
                                         finalFg = selFg;
                                     }
                                 } else {
-                                    const temp = lineFg;
-                                    finalFg = if (lineBg[3] > 0) lineBg else RGBA{ 0.0, 0.0, 0.0, 1.0 };
-                                    finalBg = temp;
+                                    finalFg = lineBg;
+                                    finalBg = lineFg;
                                 }
                                 break;
                             }
