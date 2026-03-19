@@ -117,13 +117,26 @@ export function Slot<
 
   const entryIds = createMemo(() => entries().map((entry) => entry.id))
   const entriesById = createMemo(() => new Map(entries().map((entry) => [entry.id, entry])))
-  const fallbackChildren = children(() => local.children)
 
   const slotName = () => String(local.name)
 
-  const renderPluginFailurePlaceholder = (failure: PluginErrorEvent, fallbackValue: JSX.Element): JSX.Element => {
+  const FallbackView = (): JSX.Element => {
+    const resolvedFallbackChildren = children(() => local.children)
+    return <>{resolvedFallbackChildren()}</>
+  }
+
+  const renderFallback = (): JSX.Element => {
+    return <FallbackView />
+  }
+
+  const resolveFallback = (fallbackValue?: (() => JSX.Element) | undefined): JSX.Element => fallbackValue?.() ?? null
+
+  const renderPluginFailurePlaceholder = (
+    failure: PluginErrorEvent,
+    fallbackValue?: (() => JSX.Element) | undefined,
+  ): JSX.Element => {
     if (!pluginFailurePlaceholder()) {
-      return fallbackValue
+      return resolveFallback(fallbackValue)
     }
 
     try {
@@ -137,15 +150,14 @@ export function Slot<
         error,
       })
 
-      return fallbackValue
+      return resolveFallback(fallbackValue)
     }
   }
 
   const renderEntry = (
     entry: ResolvedSlotRenderer<JSX.Element, TSlots[K], TContext>,
-    fallbackOnError?: JSX.Element,
+    fallbackOnError?: () => JSX.Element,
   ): JSX.Element => {
-    const fallbackValue = fallbackOnError ?? null
     let initialRender: JSX.Element
 
     try {
@@ -159,7 +171,7 @@ export function Slot<
         error,
       })
 
-      return renderPluginFailurePlaceholder(failure, fallbackValue)
+      return renderPluginFailurePlaceholder(failure, fallbackOnError)
     }
 
     const resolvedInitialRender = children(() => initialRender)
@@ -168,7 +180,7 @@ export function Slot<
       .some((node) => node !== null && node !== undefined && node !== false)
 
     if (!hasInitialOutput) {
-      return fallbackValue
+      return resolveFallback(fallbackOnError)
     }
 
     return (
@@ -182,7 +194,7 @@ export function Slot<
             error,
           })
 
-          return renderPluginFailurePlaceholder(failure, fallbackValue)
+          return renderPluginFailurePlaceholder(failure, fallbackOnError)
         }}
       >
         {resolvedInitialRender()}
@@ -209,7 +221,7 @@ export function Slot<
 
   const appendView = (
     <>
-      {fallbackChildren()}
+      {renderFallback}
       <For each={entryIds()}>{(entryId) => <AppendEntry entryId={entryId} />}</For>
     </>
   )
@@ -219,19 +231,18 @@ export function Slot<
       {(() => {
         const resolvedEntries = entries()
         const mode = local.mode ?? "append"
-        const fallback = fallbackChildren()
 
         if (resolvedEntries.length === 0) {
-          return fallback
+          return renderFallback()
         }
 
         if (mode === "single_winner") {
           const winner = resolvedEntries[0]
           if (!winner) {
-            return fallback
+            return renderFallback()
           }
 
-          return renderEntry(winner, fallback)
+          return renderEntry(winner, renderFallback)
         }
 
         if (mode === "replace") {
@@ -241,7 +252,7 @@ export function Slot<
           )
 
           if (!hasPluginOutput) {
-            return fallback
+            return renderFallback()
           }
 
           return <>{renderedEntries}</>
