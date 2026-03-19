@@ -40,12 +40,20 @@ export type StdinEvent =
       sequence: string
     }
 
+export interface StdinParserProtocolContext {
+  kittyKeyboardEnabled: boolean
+  privateCapabilityRepliesActive: boolean
+  pixelResolutionQueryActive: boolean
+  explicitWidthCprActive: boolean
+}
+
 export interface StdinParserOptions {
   timeoutMs?: number
   maxPendingBytes?: number
   armTimeouts?: boolean
   onTimeoutFlush?: () => void
   useKittyKeyboard?: boolean
+  protocolContext?: Partial<StdinParserProtocolContext>
   clock?: Clock
 }
 
@@ -59,6 +67,18 @@ type ParserState =
   | { tag: "esc" }
   | { tag: "ss3" }
   | { tag: "csi" }
+  | { tag: "csi_sgr_mouse"; part: number; hasDigit: boolean }
+  | { tag: "csi_sgr_mouse_deferred"; part: number; hasDigit: boolean }
+  | { tag: "csi_parametric"; semicolons: number; segments: number; hasDigit: boolean; firstParamValue: number | null }
+  | {
+      tag: "csi_parametric_deferred"
+      semicolons: number
+      segments: number
+      hasDigit: boolean
+      firstParamValue: number | null
+    }
+  | { tag: "csi_private_reply"; semicolons: number; hasDigit: boolean; sawDollar: boolean }
+  | { tag: "csi_private_reply_deferred"; semicolons: number; hasDigit: boolean; sawDollar: boolean }
   | { tag: "osc"; sawEsc: boolean }
   | { tag: "dcs"; sawEsc: boolean }
   | { tag: "apc"; sawEsc: boolean }
@@ -86,6 +106,12 @@ const BRACKETED_PASTE_START = Buffer.from("\x1b[200~")
 const BRACKETED_PASTE_END = Buffer.from("\x1b[201~")
 const EMPTY_BYTES = new Uint8Array(0)
 const KEY_DECODER = new TextDecoder()
+const DEFAULT_PROTOCOL_CONTEXT: StdinParserProtocolContext = {
+  kittyKeyboardEnabled: false,
+  privateCapabilityRepliesActive: false,
+  pixelResolutionQueryActive: false,
+  explicitWidthCprActive: false,
+}
 // rxvt uses $-terminated CSI sequences for shifted function keys (e.g. ESC[2$).
 // Standard CSI treats $ as an intermediate byte, not a final, so we match these
 // explicitly to avoid waiting for a "real" final byte that never arrives.
@@ -270,6 +296,117 @@ function isMouseSgrSequence(sequence: Uint8Array): boolean {
   return part === 2 && hasDigit
 }
 
+function isAsciiDigit(byte: number): boolean {
+  return byte >= 0x30 && byte <= 0x39
+}
+
+interface ParametricCsiLike {
+  semicolons: number
+  segments: number
+  hasDigit: boolean
+  firstParamValue: number | null
+}
+
+interface PrivateReplyCsiLike {
+  semicolons: number
+  hasDigit: boolean
+  sawDollar: boolean
+}
+
+function parsePositiveDecimalPrefix(sequence: Uint8Array, start: number, endExclusive: number): number | null {
+  if (start >= endExclusive) return null
+
+  let value = 0
+  let sawDigit = false
+  for (let index = start; index < endExclusive; index += 1) {
+    const byte = sequence[index]!
+    if (!isAsciiDigit(byte)) return null
+    sawDigit = true
+    value = value * 10 + (byte - 0x30)
+  }
+
+  return sawDigit ? value : null
+}
+
+function canStillBeKittyU(state: ParametricCsiLike): boolean {
+  return state.semicolons >= 1
+}
+
+function canStillBeKittySpecial(state: ParametricCsiLike): boolean {
+  return state.semicolons === 1 && state.segments > 1
+}
+
+function canStillBeExplicitWidthCpr(state: ParametricCsiLike): boolean {
+  return state.firstParamValue === 1 && state.semicolons === 1
+}
+
+function canStillBePixelResolution(state: ParametricCsiLike): boolean {
+  return state.firstParamValue === 4 && state.semicolons === 2
+}
+
+function canDeferParametricCsi(state: ParametricCsiLike, context: StdinParserProtocolContext): boolean {
+  return (
+    (context.kittyKeyboardEnabled && (canStillBeKittyU(state) || canStillBeKittySpecial(state))) ||
+    (context.explicitWidthCprActive && canStillBeExplicitWidthCpr(state)) ||
+    (context.pixelResolutionQueryActive && canStillBePixelResolution(state))
+  )
+}
+
+function canCompleteDeferredParametricCsi(
+  state: ParametricCsiLike,
+  byte: number,
+  context: StdinParserProtocolContext,
+): boolean {
+  if (context.kittyKeyboardEnabled) {
+    if (state.hasDigit && byte === 0x75) return true
+    if (
+      state.hasDigit &&
+      state.semicolons === 1 &&
+      state.segments > 1 &&
+      (byte === 0x7e || (byte >= 0x41 && byte <= 0x5a))
+    ) {
+      return true
+    }
+  }
+
+  if (
+    context.explicitWidthCprActive &&
+    state.hasDigit &&
+    state.firstParamValue === 1 &&
+    state.semicolons === 1 &&
+    byte === 0x52
+  ) {
+    return true
+  }
+
+  if (
+    context.pixelResolutionQueryActive &&
+    state.hasDigit &&
+    state.firstParamValue === 4 &&
+    state.semicolons === 2 &&
+    byte === 0x74
+  ) {
+    return true
+  }
+
+  return false
+}
+
+function canDeferPrivateReplyCsi(context: StdinParserProtocolContext): boolean {
+  return context.privateCapabilityRepliesActive
+}
+
+function canCompleteDeferredPrivateReplyCsi(
+  state: PrivateReplyCsiLike,
+  byte: number,
+  context: StdinParserProtocolContext,
+): boolean {
+  if (!context.privateCapabilityRepliesActive) return false
+  if (state.sawDollar) return state.hasDigit && byte === 0x79
+  if (byte === 0x63) return state.hasDigit || state.semicolons > 0
+  return state.hasDigit && byte === 0x75
+}
+
 function concatBytes(left: Uint8Array, right: Uint8Array): Uint8Array {
   if (left.length === 0) {
     return right
@@ -364,6 +501,7 @@ export class StdinParser {
   private readonly useKittyKeyboard: boolean
   private readonly mouseParser = new MouseParser()
   private readonly clock: Clock
+  private protocolContext: StdinParserProtocolContext
   private timeoutId: TimerHandle | null = null
   private destroyed = false
   // When the current incomplete unit first appeared. Null when nothing is pending.
@@ -392,10 +530,24 @@ export class StdinParser {
     this.onTimeoutFlush = options.onTimeoutFlush ?? null
     this.useKittyKeyboard = options.useKittyKeyboard ?? true
     this.clock = options.clock ?? SYSTEM_CLOCK
+    this.protocolContext = {
+      ...DEFAULT_PROTOCOL_CONTEXT,
+      kittyKeyboardEnabled: options.protocolContext?.kittyKeyboardEnabled ?? false,
+      privateCapabilityRepliesActive: options.protocolContext?.privateCapabilityRepliesActive ?? false,
+      pixelResolutionQueryActive: options.protocolContext?.pixelResolutionQueryActive ?? false,
+      explicitWidthCprActive: options.protocolContext?.explicitWidthCprActive ?? false,
+    }
   }
 
   public get bufferCapacity(): number {
     return this.pending.capacity
+  }
+
+  public updateProtocolContext(patch: Partial<StdinParserProtocolContext>): void {
+    this.ensureAlive()
+    this.protocolContext = { ...this.protocolContext, ...patch }
+    this.reconcileDeferredStateWithProtocolContext()
+    this.reconcileTimeoutState()
   }
 
   // Feeds raw stdin bytes into the parser. Converts as much as possible into
@@ -810,6 +962,12 @@ export class StdinParser {
             }
           }
 
+          if (byte === 0x3c && this.cursor === this.unitStart + 2) {
+            this.cursor += 1
+            this.state = { tag: "csi_sgr_mouse", part: 0, hasDigit: false }
+            continue
+          }
+
           // Some terminals use ESC [[A..E / ESC [[5~ / ESC [[6~ variants.
           // Treat the second `[` immediately after ESC[ as part of the CSI
           // payload instead of as a final byte so parseKeypress() can match
@@ -817,6 +975,27 @@ export class StdinParser {
           if (byte === 0x5b && this.cursor === this.unitStart + 2) {
             this.cursor += 1
             continue
+          }
+
+          if (byte === 0x3f && this.cursor === this.unitStart + 2) {
+            this.cursor += 1
+            this.state = { tag: "csi_private_reply", semicolons: 0, hasDigit: false, sawDollar: false }
+            continue
+          }
+
+          if (byte === 0x3b) {
+            const firstParamValue = parsePositiveDecimalPrefix(bytes, this.unitStart + 2, this.cursor)
+            if (firstParamValue !== null) {
+              this.cursor += 1
+              this.state = {
+                tag: "csi_parametric",
+                semicolons: 1,
+                segments: 1,
+                hasDigit: false,
+                firstParamValue,
+              }
+              continue
+            }
           }
 
           // Standard CSI final byte (0x40–0x7E). Check for bracketed paste
@@ -846,6 +1025,320 @@ export class StdinParser {
           }
 
           this.cursor += 1
+          continue
+        }
+
+        case "csi_sgr_mouse": {
+          if (this.cursor >= bytes.length) {
+            if (!this.forceFlush) {
+              this.markPending()
+              return
+            }
+
+            this.state = { tag: "csi_sgr_mouse_deferred", part: this.state.part, hasDigit: this.state.hasDigit }
+            this.pendingSinceMs = null
+            this.forceFlush = false
+            return
+          }
+
+          if (byte === ESC) {
+            this.emitOpaqueResponse("unknown", bytes.subarray(this.unitStart, this.cursor))
+            this.state = { tag: "ground" }
+            this.consumePrefix(this.cursor)
+            continue
+          }
+
+          if (isAsciiDigit(byte)) {
+            this.cursor += 1
+            this.state = { tag: "csi_sgr_mouse", part: this.state.part, hasDigit: true }
+            continue
+          }
+
+          if (byte === 0x3b && this.state.hasDigit && this.state.part < 2) {
+            this.cursor += 1
+            this.state = { tag: "csi_sgr_mouse", part: this.state.part + 1, hasDigit: false }
+            continue
+          }
+
+          if (byte >= 0x40 && byte <= 0x7e) {
+            const end = this.cursor + 1
+            const rawBytes = bytes.subarray(this.unitStart, end)
+            if (isMouseSgrSequence(rawBytes)) {
+              this.emitMouse(rawBytes, "sgr")
+            } else {
+              this.emitKeyOrResponse("csi", decodeUtf8(rawBytes))
+            }
+            this.state = { tag: "ground" }
+            this.consumePrefix(end)
+            continue
+          }
+
+          this.state = { tag: "csi" }
+          continue
+        }
+
+        case "csi_sgr_mouse_deferred": {
+          if (this.cursor >= bytes.length) {
+            this.pendingSinceMs = null
+            this.forceFlush = false
+            return
+          }
+
+          if (byte === ESC) {
+            this.emitOpaqueResponse("unknown", bytes.subarray(this.unitStart, this.cursor))
+            this.state = { tag: "ground" }
+            this.consumePrefix(this.cursor)
+            continue
+          }
+
+          if (isAsciiDigit(byte) || byte === 0x3b || byte === 0x4d || byte === 0x6d) {
+            this.state = { tag: "csi_sgr_mouse", part: this.state.part, hasDigit: this.state.hasDigit }
+            continue
+          }
+
+          this.emitOpaqueResponse("unknown", bytes.subarray(this.unitStart, this.cursor))
+          this.state = { tag: "ground" }
+          this.consumePrefix(this.cursor)
+          continue
+        }
+
+        case "csi_parametric": {
+          if (this.cursor >= bytes.length) {
+            if (!this.forceFlush) {
+              this.markPending()
+              return
+            }
+
+            if (canDeferParametricCsi(this.state, this.protocolContext)) {
+              this.state = {
+                tag: "csi_parametric_deferred",
+                semicolons: this.state.semicolons,
+                segments: this.state.segments,
+                hasDigit: this.state.hasDigit,
+                firstParamValue: this.state.firstParamValue,
+              }
+              this.pendingSinceMs = null
+              this.forceFlush = false
+              return
+            }
+
+            this.emitOpaqueResponse("unknown", bytes.subarray(this.unitStart, this.cursor))
+            this.state = { tag: "ground" }
+            this.consumePrefix(this.cursor)
+            continue
+          }
+
+          if (byte === ESC) {
+            this.emitOpaqueResponse("unknown", bytes.subarray(this.unitStart, this.cursor))
+            this.state = { tag: "ground" }
+            this.consumePrefix(this.cursor)
+            continue
+          }
+
+          if (isAsciiDigit(byte)) {
+            this.cursor += 1
+            this.state = {
+              tag: "csi_parametric",
+              semicolons: this.state.semicolons,
+              segments: this.state.segments,
+              hasDigit: true,
+              firstParamValue: this.state.firstParamValue,
+            }
+            continue
+          }
+
+          if (byte === 0x3a && this.state.hasDigit && this.state.segments < 3) {
+            this.cursor += 1
+            this.state = {
+              tag: "csi_parametric",
+              semicolons: this.state.semicolons,
+              segments: this.state.segments + 1,
+              hasDigit: false,
+              firstParamValue: this.state.firstParamValue,
+            }
+            continue
+          }
+
+          if (byte === 0x3b && this.state.semicolons < 2) {
+            this.cursor += 1
+            this.state = {
+              tag: "csi_parametric",
+              semicolons: this.state.semicolons + 1,
+              segments: 1,
+              hasDigit: false,
+              firstParamValue: this.state.firstParamValue,
+            }
+            continue
+          }
+
+          if (byte >= 0x40 && byte <= 0x7e) {
+            const end = this.cursor + 1
+            this.emitKeyOrResponse("csi", decodeUtf8(bytes.subarray(this.unitStart, end)))
+            this.state = { tag: "ground" }
+            this.consumePrefix(end)
+            continue
+          }
+
+          this.state = { tag: "csi" }
+          continue
+        }
+
+        case "csi_parametric_deferred": {
+          if (this.cursor >= bytes.length) {
+            this.pendingSinceMs = null
+            this.forceFlush = false
+            return
+          }
+
+          if (byte === ESC) {
+            this.emitOpaqueResponse("unknown", bytes.subarray(this.unitStart, this.cursor))
+            this.state = { tag: "ground" }
+            this.consumePrefix(this.cursor)
+            continue
+          }
+
+          if (isAsciiDigit(byte) || byte === 0x3a || byte === 0x3b) {
+            this.state = {
+              tag: "csi_parametric",
+              semicolons: this.state.semicolons,
+              segments: this.state.segments,
+              hasDigit: this.state.hasDigit,
+              firstParamValue: this.state.firstParamValue,
+            }
+            continue
+          }
+
+          if (canCompleteDeferredParametricCsi(this.state, byte, this.protocolContext)) {
+            this.state = {
+              tag: "csi_parametric",
+              semicolons: this.state.semicolons,
+              segments: this.state.segments,
+              hasDigit: this.state.hasDigit,
+              firstParamValue: this.state.firstParamValue,
+            }
+            continue
+          }
+
+          this.emitOpaqueResponse("unknown", bytes.subarray(this.unitStart, this.cursor))
+          this.state = { tag: "ground" }
+          this.consumePrefix(this.cursor)
+          continue
+        }
+
+        case "csi_private_reply": {
+          if (this.cursor >= bytes.length) {
+            if (!this.forceFlush) {
+              this.markPending()
+              return
+            }
+
+            if (canDeferPrivateReplyCsi(this.protocolContext)) {
+              this.state = {
+                tag: "csi_private_reply_deferred",
+                semicolons: this.state.semicolons,
+                hasDigit: this.state.hasDigit,
+                sawDollar: this.state.sawDollar,
+              }
+              this.pendingSinceMs = null
+              this.forceFlush = false
+              return
+            }
+
+            this.emitOpaqueResponse("unknown", bytes.subarray(this.unitStart, this.cursor))
+            this.state = { tag: "ground" }
+            this.consumePrefix(this.cursor)
+            continue
+          }
+
+          if (byte === ESC) {
+            this.emitOpaqueResponse("unknown", bytes.subarray(this.unitStart, this.cursor))
+            this.state = { tag: "ground" }
+            this.consumePrefix(this.cursor)
+            continue
+          }
+
+          if (isAsciiDigit(byte)) {
+            this.cursor += 1
+            this.state = {
+              tag: "csi_private_reply",
+              semicolons: this.state.semicolons,
+              hasDigit: true,
+              sawDollar: this.state.sawDollar,
+            }
+            continue
+          }
+
+          if (byte === 0x3b) {
+            this.cursor += 1
+            this.state = {
+              tag: "csi_private_reply",
+              semicolons: this.state.semicolons + 1,
+              hasDigit: false,
+              sawDollar: false,
+            }
+            continue
+          }
+
+          if (byte === 0x24 && this.state.hasDigit && !this.state.sawDollar) {
+            this.cursor += 1
+            this.state = {
+              tag: "csi_private_reply",
+              semicolons: this.state.semicolons,
+              hasDigit: true,
+              sawDollar: true,
+            }
+            continue
+          }
+
+          if (byte >= 0x40 && byte <= 0x7e) {
+            const end = this.cursor + 1
+            this.emitKeyOrResponse("csi", decodeUtf8(bytes.subarray(this.unitStart, end)))
+            this.state = { tag: "ground" }
+            this.consumePrefix(end)
+            continue
+          }
+
+          this.state = { tag: "csi" }
+          continue
+        }
+
+        case "csi_private_reply_deferred": {
+          if (this.cursor >= bytes.length) {
+            this.pendingSinceMs = null
+            this.forceFlush = false
+            return
+          }
+
+          if (byte === ESC) {
+            this.emitOpaqueResponse("unknown", bytes.subarray(this.unitStart, this.cursor))
+            this.state = { tag: "ground" }
+            this.consumePrefix(this.cursor)
+            continue
+          }
+
+          if (isAsciiDigit(byte) || byte === 0x3b || byte === 0x24) {
+            this.state = {
+              tag: "csi_private_reply",
+              semicolons: this.state.semicolons,
+              hasDigit: this.state.hasDigit,
+              sawDollar: this.state.sawDollar,
+            }
+            continue
+          }
+
+          if (canCompleteDeferredPrivateReplyCsi(this.state, byte, this.protocolContext)) {
+            this.state = {
+              tag: "csi_private_reply",
+              semicolons: this.state.semicolons,
+              hasDigit: this.state.hasDigit,
+              sawDollar: this.state.sawDollar,
+            }
+            continue
+          }
+
+          this.emitOpaqueResponse("unknown", bytes.subarray(this.unitStart, this.cursor))
+          this.state = { tag: "ground" }
+          this.consumePrefix(this.cursor)
           continue
         }
 
@@ -1189,6 +1682,26 @@ export class StdinParser {
     // the original bytes even if those backing buffers are later reused.
     this.paste!.parts.push(Uint8Array.from(bytes))
     this.paste!.totalLength += bytes.length
+  }
+
+  private reconcileDeferredStateWithProtocolContext(): void {
+    switch (this.state.tag) {
+      case "csi_parametric_deferred":
+        if (!canDeferParametricCsi(this.state, this.protocolContext)) {
+          this.emitOpaqueResponse("unknown", this.pending.view().subarray(this.unitStart, this.cursor))
+          this.state = { tag: "ground" }
+          this.consumePrefix(this.cursor)
+        }
+        return
+
+      case "csi_private_reply_deferred":
+        if (!canDeferPrivateReplyCsi(this.protocolContext)) {
+          this.emitOpaqueResponse("unknown", this.pending.view().subarray(this.unitStart, this.cursor))
+          this.state = { tag: "ground" }
+          this.consumePrefix(this.cursor)
+        }
+        return
+    }
   }
 
   // Arms or disarms the timeout after every push(). If there's an incomplete
