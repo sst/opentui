@@ -116,12 +116,33 @@ renderer.resume() // Resume from suspended state
 
 ## Events
 
-The renderer emits events. You can listen for them:
+Use `renderer.on(event, callback)` to subscribe:
+
+| Event                 | Payload                           | Description                                                           |
+| --------------------- | --------------------------------- | --------------------------------------------------------------------- |
+| `resize`              | `(width: number, height: number)` | Terminal window resized                                               |
+| `focus`               | `()`                              | Terminal window gained focus                                          |
+| `blur`                | `()`                              | Terminal window lost focus                                            |
+| `theme_mode`          | `(mode: "dark" \| "light")`       | Terminal color scheme changed. See [Theme mode](#theme-mode) section. |
+| `capabilities`        | `(caps: Capabilities)`            | Terminal capabilities detected                                        |
+| `selection`           | `(selection: Selection)`          | Text selection completed                                              |
+| `destroy`             | `()`                              | Renderer destroyed                                                    |
+| `memory:snapshot`     | `(snapshot: MemorySnapshot)`      | Memory usage snapshot available                                       |
+| `debugOverlay:toggle` | `(enabled: boolean)`              | Debug overlay visibility changed                                      |
 
 ```typescript
 // Terminal resized
 renderer.on("resize", (width, height) => {
   console.log(`Terminal size: ${width}x${height}`)
+})
+
+// Terminal focus events
+renderer.on("focus", () => {
+  console.log("Terminal gained focus")
+})
+
+renderer.on("blur", () => {
+  console.log("Terminal lost focus")
 })
 
 // Renderer destroyed

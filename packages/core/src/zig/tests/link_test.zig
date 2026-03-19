@@ -121,6 +121,33 @@ test "LinkTracker - clear releases tracked IDs" {
     try std.testing.expectEqual(@as(u32, 0), try pool.getRefcount(id2));
 }
 
+test "LinkTracker - clear only decrefs once per ID with multiple cell refs" {
+    var pool = LinkPool.init(std.testing.allocator);
+    defer pool.deinit();
+
+    const id = try pool.alloc("https://example.com/shared");
+
+    var tracker_a = LinkTracker.init(std.testing.allocator, &pool);
+    defer tracker_a.deinit();
+
+    var tracker_b = LinkTracker.init(std.testing.allocator, &pool);
+    defer tracker_b.deinit();
+
+    tracker_a.addCellRef(id);
+    tracker_a.addCellRef(id);
+    tracker_a.addCellRef(id);
+
+    tracker_b.addCellRef(id);
+
+    try std.testing.expectEqual(@as(u32, 2), try pool.getRefcount(id));
+
+    // Clear tracker A should decref once (2 -> 1).
+    tracker_a.clear();
+
+    try std.testing.expectEqual(@as(u32, 1), try pool.getRefcount(id));
+    try std.testing.expectEqualSlices(u8, "https://example.com/shared", try pool.get(id));
+}
+
 test "LinkPool - leak repro: alloc-only IDs accumulate live slots" {
     var pool = LinkPool.init(std.testing.allocator);
     defer pool.deinit();

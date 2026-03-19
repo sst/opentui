@@ -7,6 +7,9 @@ on:
 
 env:
   ZIG_VERSION: 0.15.2
+  # Workaround for bug in Zig 0.15.2 (fixed in next version)
+  # https://github.com/ziglang/zig/issues/25805
+  ZIG_GLOBAL_CACHE_DIR: ${{ github.workspace }}/.zig-global-cache
 
 jobs:
   build:
@@ -51,7 +54,12 @@ jobs:
             platform: darwin-arm64
           - os: ubuntu-latest
             platform: linux-x64
+          - os: windows-latest
+            platform: win32-x64
     runs-on: ${{ matrix.os }}
+    defaults:
+      run:
+        shell: bash
     steps:
       - name: Checkout code
         uses: actions/checkout@v4

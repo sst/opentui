@@ -264,11 +264,7 @@ pub const LinkTracker = struct {
         var it = self.used_ids.iterator();
         while (it.next()) |entry| {
             const id = entry.key_ptr.*;
-            const count = entry.value_ptr.*;
-            var i: u32 = 0;
-            while (i < count) : (i += 1) {
-                self.pool.decref(id) catch {};
-            }
+            self.pool.decref(id) catch {};
         }
     }
 
