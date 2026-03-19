@@ -473,6 +473,7 @@ export class CliRenderer extends EventEmitter implements RenderContext {
   private _paletteDetectionPromise: Promise<TerminalColors> | null = null
   private _onDestroy?: () => void
   private _themeMode: ThemeMode | null = null
+  private _terminalFocusState: boolean | null = null
 
   private sequenceHandlers: ((sequence: string) => boolean)[] = []
   private prependedInputHandlers: ((sequence: string) => boolean)[] = []
@@ -1180,12 +1181,18 @@ export class CliRenderer extends EventEmitter implements RenderContext {
         this.lib.restoreTerminalModes(this.rendererPtr)
         this.shouldRestoreModesOnNextFocus = false
       }
-      this.emit(CliRenderEvents.FOCUS)
+      if (this._terminalFocusState !== true) {
+        this._terminalFocusState = true
+        this.emit(CliRenderEvents.FOCUS)
+      }
       return true
     }
     if (sequence === "\x1b[O") {
       this.shouldRestoreModesOnNextFocus = true
-      this.emit(CliRenderEvents.BLUR)
+      if (this._terminalFocusState !== false) {
+        this._terminalFocusState = false
+        this.emit(CliRenderEvents.BLUR)
+      }
       return true
     }
     return false

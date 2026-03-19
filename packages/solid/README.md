@@ -128,6 +128,8 @@ Returns the current component catalogue that powers JSX tag lookup.
 
 - `useRenderer()`
 - `onResize(callback)`
+- `onFocus(callback)`
+- `onBlur(callback)`
 - `useTerminalDimensions()`
 - `useKeyboard(handler, options?)`
 - `usePaste(handler)`
