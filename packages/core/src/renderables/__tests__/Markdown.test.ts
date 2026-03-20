@@ -103,6 +103,15 @@ async function renderMarkdown(markdown: string, conceal: boolean = true): Promis
   return "\n" + lines.join("\n").trimEnd()
 }
 
+function findSpanContaining(frame: CapturedFrame, text: string) {
+  for (const line of frame.lines) {
+    const span = line.spans.find((candidate) => candidate.text.includes(text))
+    if (span) return span
+  }
+
+  return undefined
+}
+
 test("basic table alignment", async () => {
   const markdown = `| Name | Age |
 |---|---|
@@ -2168,14 +2177,6 @@ The table alignment uses:
 
   renderer.root.add(md)
   await renderMarkdownRenderable(md)
-
-  const findSpanContaining = (frame: CapturedFrame, text: string) => {
-    for (const line of frame.lines) {
-      const span = line.spans.find((candidate) => candidate.text.includes(text))
-      if (span) return span
-    }
-    return undefined
-  }
 
   const frame1 = captureSpans()
   const headingSpan1 = findSpanContaining(frame1, "OpenTUI Markdown Demo")

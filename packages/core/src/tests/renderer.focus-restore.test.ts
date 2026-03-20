@@ -130,6 +130,35 @@ describe("focus restore - terminal mode re-enable on focus-in", () => {
     expect(events).toEqual(["focus", "blur"])
   })
 
+  test("duplicate focus and blur sequences only emit transitions once", async () => {
+    const events: string[] = []
+
+    renderer.on("focus", () => {
+      events.push("focus")
+    })
+
+    renderer.on("blur", () => {
+      events.push("blur")
+    })
+
+    renderer.stdin.emit("data", Buffer.from("\x1b[O"))
+    clock.advance(15)
+    renderer.stdin.emit("data", Buffer.from("\x1b[O"))
+    clock.advance(15)
+
+    renderer.stdin.emit("data", Buffer.from("\x1b[I"))
+    clock.advance(15)
+    renderer.stdin.emit("data", Buffer.from("\x1b[I"))
+    clock.advance(15)
+
+    renderer.stdin.emit("data", Buffer.from("\x1b[O"))
+    clock.advance(15)
+    renderer.stdin.emit("data", Buffer.from("\x1b[O"))
+    clock.advance(15)
+
+    expect(events).toEqual(["blur", "focus", "blur"])
+  })
+
   test("focus events do not trigger keypress events", async () => {
     const keypresses: any[] = []
 

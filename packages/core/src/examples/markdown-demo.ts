@@ -31,7 +31,7 @@ Welcome to the **MarkdownRenderable** showcase! This demonstrates automatic tabl
 |---|---|---|---|
 | Table alignment | **Done** | High | Uses \`marked\` parser |
 | Conceal mode | *Working* | Medium | Hides \`**\`, \`\`\`, etc. |
-| Theme switching | **Done** | Low | 3 themes available |
+| Theme switching | **Done** | Low | Multiple themes available |
 | Unicode support | 日本語 | High | CJK characters |
 
 ## Code Examples
@@ -44,6 +44,8 @@ import { MarkdownRenderable } from "@opentui/core"
 const md = new MarkdownRenderable(renderer, {
   content: "# Hello World",
   syntaxStyle: mySyntaxStyle,
+  fg: "#24292F",
+  bg: "#FFFFFF",
   conceal: true, // Hide formatting markers
 })
 \`\`\`
@@ -60,6 +62,25 @@ And a JSON configuration example:
     "speed": "slowest"
   }
 }
+\`\`\`
+
+## Light Theme Fallback Checks
+
+Press \`T\` until **GitHub Light**. These fences intentionally skip syntax
+highlighting and should still inherit the theme text color.
+
+Unlabeled fenced block:
+
+\`\`\`
+this fence has no language tag
+it should stay readable in GitHub Light
+\`\`\`
+
+Unsupported parser fallback:
+
+\`\`\`toml
+title = "GitHub Light"
+status = "fallback text should stay readable"
 \`\`\`
 
 ### API Reference
@@ -116,6 +137,42 @@ The table alignment uses:
 
 // Theme definitions
 const themes = {
+  githubLight: {
+    name: "GitHub Light",
+    bg: "#FFFFFF",
+    styles: {
+      keyword: { fg: parseColor("#CF222E"), bold: true },
+      string: { fg: parseColor("#0A3069") },
+      comment: { fg: parseColor("#6E7781"), italic: true },
+      number: { fg: parseColor("#0550AE") },
+      function: { fg: parseColor("#8250DF") },
+      type: { fg: parseColor("#953800") },
+      operator: { fg: parseColor("#CF222E") },
+      variable: { fg: parseColor("#24292F") },
+      property: { fg: parseColor("#0550AE") },
+      "punctuation.bracket": { fg: parseColor("#24292F") },
+      "punctuation.delimiter": { fg: parseColor("#57606A") },
+      "markup.heading": { fg: parseColor("#0550AE"), bold: true },
+      "markup.heading.1": { fg: parseColor("#1A7F37"), bold: true, underline: true },
+      "markup.heading.2": { fg: parseColor("#0550AE"), bold: true },
+      "markup.heading.3": { fg: parseColor("#8250DF") },
+      "markup.bold": { fg: parseColor("#24292F"), bold: true },
+      "markup.strong": { fg: parseColor("#24292F"), bold: true },
+      "markup.italic": { fg: parseColor("#24292F"), italic: true },
+      "markup.list": { fg: parseColor("#CF222E") },
+      "markup.quote": { fg: parseColor("#6E7781"), italic: true },
+      "markup.raw": { fg: parseColor("#24292F"), bg: parseColor("#F6F8FA") },
+      "markup.raw.block": { fg: parseColor("#24292F"), bg: parseColor("#F6F8FA") },
+      "markup.raw.inline": { fg: parseColor("#24292F"), bg: parseColor("#F6F8FA") },
+      "markup.link": { fg: parseColor("#0969DA"), underline: true },
+      "markup.link.label": { fg: parseColor("#0A3069"), underline: true },
+      "markup.link.url": { fg: parseColor("#0969DA"), underline: true },
+      label: { fg: parseColor("#1A7F37") },
+      conceal: { fg: parseColor("#6E7781") },
+      "punctuation.special": { fg: parseColor("#57606A") },
+      default: { fg: parseColor("#24292F") },
+    },
+  },
   github: {
     name: "GitHub Dark",
     bg: "#0D1117",
@@ -283,6 +340,14 @@ function getCurrentTheme() {
   return themes[themeKeys[currentThemeIndex]]
 }
 
+function getThemeTextColor(theme: (typeof themes)[ThemeKey]) {
+  return theme.styles.default.fg
+}
+
+function getThemeMutedTextColor(theme: (typeof themes)[ThemeKey]) {
+  return theme.styles.conceal.fg ?? theme.styles.default.fg
+}
+
 function getCurrentSpeed() {
   return streamSpeeds[currentSpeedIndex]
 }
@@ -432,7 +497,7 @@ export async function run(rendererInstance: CliRenderer): Promise<void> {
   const helpContent = new TextRenderable(renderer, {
     id: "help-content",
     content: `Theme:
-  T : Cycle through themes (GitHub/Monokai/Nord)
+  T : Cycle through themes
 
 View Controls:
   C : Toggle concealment (hide **, \`, etc.)
@@ -479,6 +544,8 @@ Other:
     id: "markdown-display",
     content: markdownContent,
     syntaxStyle,
+    fg: getThemeTextColor(theme),
+    bg: theme.bg,
     conceal: concealEnabled,
     width: "100%",
   })
@@ -494,6 +561,34 @@ Other:
   })
   parentContainer.add(statusText)
 
+  const applyTheme = (theme: (typeof themes)[ThemeKey]) => {
+    rendererInstance.setBackgroundColor(theme.bg)
+    syntaxStyle = SyntaxStyle.fromStyles(theme.styles)
+
+    titleBox.backgroundColor = theme.bg
+    instructionsText.fg = getThemeMutedTextColor(theme)
+    helpContent.fg = getThemeTextColor(theme)
+
+    if (markdownDisplay) {
+      markdownDisplay.syntaxStyle = syntaxStyle
+      markdownDisplay.fg = getThemeTextColor(theme)
+      markdownDisplay.bg = theme.bg
+    }
+
+    if (markdownScrollBox) {
+      markdownScrollBox.title = `MarkdownRenderable - ${theme.name}`
+      markdownScrollBox.backgroundColor = theme.bg
+    }
+
+    if (helpModal) {
+      helpModal.backgroundColor = theme.bg
+    }
+
+    if (statusText) {
+      statusText.fg = getThemeTextColor(theme)
+    }
+  }
+
   const updateStatusText = () => {
     if (statusText) {
       const theme = getCurrentTheme()
@@ -504,6 +599,7 @@ Other:
     }
   }
 
+  applyTheme(theme)
   updateStatusText()
 
   keyboardHandler = (key: ParsedKey) => {
@@ -546,26 +642,7 @@ Other:
     } else if (key.name === "t" && !key.ctrl && !key.meta) {
       // Cycle through themes
       currentThemeIndex = (currentThemeIndex + 1) % themeKeys.length
-      const theme = getCurrentTheme()
-
-      // Update background color
-      renderer?.setBackgroundColor(theme.bg)
-
-      // Update syntax style
-      syntaxStyle = SyntaxStyle.fromStyles(theme.styles)
-
-      if (markdownDisplay) {
-        markdownDisplay.syntaxStyle = syntaxStyle
-      }
-
-      if (markdownScrollBox) {
-        markdownScrollBox.title = `MarkdownRenderable - ${theme.name}`
-        markdownScrollBox.backgroundColor = theme.bg
-      }
-
-      if (helpModal) {
-        helpModal.backgroundColor = theme.bg
-      }
+      applyTheme(getCurrentTheme())
 
       updateStatusText()
     } else if (key.name === "c" && !key.ctrl && !key.meta) {

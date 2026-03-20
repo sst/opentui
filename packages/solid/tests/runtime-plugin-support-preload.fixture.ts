@@ -1,11 +1,9 @@
 import { mkdtempSync, rmSync, writeFileSync } from "node:fs"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
-import { plugin as registerPlugin } from "bun"
 import * as coreRuntime from "@opentui/core"
 import * as solidJsRuntime from "solid-js"
 import * as solidRuntime from "../index"
-import { resetSolidTransformPluginState } from "../scripts/solid-plugin"
 
 type FixtureState = typeof globalThis & {
   __solidRuntimeHost__?: {
@@ -16,7 +14,7 @@ type FixtureState = typeof globalThis & {
   }
 }
 
-const tempRoot = mkdtempSync(join(tmpdir(), "solid-runtime-plugin-support-fixture-"))
+const tempRoot = mkdtempSync(join(tmpdir(), "solid-runtime-plugin-support-preload-fixture-"))
 const entryPath = join(tempRoot, "entry.tsx")
 
 const source = [
@@ -49,14 +47,10 @@ state.__solidRuntimeHost__ = {
   solidJs: solidJsRuntime as Record<string, unknown>,
 }
 
-registerPlugin.clearAll()
-resetSolidTransformPluginState()
-
 try {
   await import("../scripts/runtime-plugin-support")
   await import(entryPath)
 } finally {
-  registerPlugin.clearAll()
   delete state.__solidRuntimeHost__
   rmSync(tempRoot, { recursive: true, force: true })
 }

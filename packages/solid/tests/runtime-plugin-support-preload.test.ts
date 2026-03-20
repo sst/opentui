@@ -1,9 +1,9 @@
 import { describe, expect, it } from "bun:test"
 import { join } from "node:path"
 
-describe("solid runtime plugin support", () => {
-  it("loads external TSX modules against host runtime modules", () => {
-    const fixturePath = join(import.meta.dir, "runtime-plugin-support.fixture.ts")
+describe("solid runtime plugin support with preload", () => {
+  it("rewrites external TSX modules even when the preload plugin is already active", () => {
+    const fixturePath = join(import.meta.dir, "runtime-plugin-support-preload.fixture.ts")
     const result = Bun.spawnSync([process.execPath, fixturePath], {
       cwd: join(import.meta.dir, ".."),
       stdout: "pipe",
@@ -15,11 +15,11 @@ describe("solid runtime plugin support", () => {
     const stderr = result.stderr.toString().trim()
 
     if (stdout) {
-      console.debug(`[runtime-plugin-support.fixture] stdout:\n${stdout}`)
+      console.debug(`[runtime-plugin-support-preload.fixture] stdout:\n${stdout}`)
     }
 
     if (stderr) {
-      console.debug(`[runtime-plugin-support.fixture] stderr:\n${stderr}`)
+      console.debug(`[runtime-plugin-support-preload.fixture] stderr:\n${stderr}`)
     }
 
     expect(result.exitCode).toBe(0)

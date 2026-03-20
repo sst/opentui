@@ -11,7 +11,6 @@ import * as opentuiReactRuntime from "../src/index"
 type FixtureState = typeof globalThis & {
   __reactRuntimeHost__?: {
     core: Record<string, unknown>
-    core3d: Record<string, unknown>
     coreTesting: Record<string, unknown>
     opentuiReact: Record<string, unknown>
     opentuiReactJsx: Record<string, unknown>
@@ -27,7 +26,6 @@ const entryPath = join(tempRoot, "entry.ts")
 
 const source = [
   'import * as core from "@opentui/core"',
-  'import * as core3d from "@opentui/core/3d"',
   'import * as coreTesting from "@opentui/core/testing"',
   'import * as opentuiReact from "@opentui/react"',
   'import * as opentuiReactJsx from "@opentui/react/jsx-runtime"',
@@ -35,11 +33,10 @@ const source = [
   'import * as react from "react"',
   'import * as reactJsx from "react/jsx-runtime"',
   'import * as reactJsxDev from "react/jsx-dev-runtime"',
-  "const state = globalThis as { __reactRuntimeHost__?: { core: Record<string, unknown>; core3d: Record<string, unknown>; coreTesting: Record<string, unknown>; opentuiReact: Record<string, unknown>; opentuiReactJsx: Record<string, unknown>; opentuiReactJsxDev: Record<string, unknown>; react: Record<string, unknown>; reactJsx: Record<string, unknown>; reactJsxDev: Record<string, unknown> } }",
+  "const state = globalThis as { __reactRuntimeHost__?: { core: Record<string, unknown>; coreTesting: Record<string, unknown>; opentuiReact: Record<string, unknown>; opentuiReactJsx: Record<string, unknown>; opentuiReactJsxDev: Record<string, unknown>; react: Record<string, unknown>; reactJsx: Record<string, unknown>; reactJsxDev: Record<string, unknown> } }",
   "const host = state.__reactRuntimeHost__",
   "const checks = [",
   "  `core=${core.engine === host?.core.engine}`,",
-  "  `core3d=${core3d.ThreeRenderable === host?.core3d.ThreeRenderable}`,",
   "  `coreTesting=${coreTesting.createTestRenderer === host?.coreTesting.createTestRenderer}`,",
   "  `opentuiReact=${opentuiReact.render === host?.opentuiReact.render}`,",
   "  `opentuiReactJsx=${opentuiReactJsx.jsx === host?.opentuiReactJsx.jsx}`,",
@@ -57,7 +54,6 @@ writeFileSync(entryPath, source)
 const state = globalThis as FixtureState
 state.__reactRuntimeHost__ = {
   core: coreRuntime as Record<string, unknown>,
-  core3d: (await import("@opentui/core/3d")) as Record<string, unknown>,
   coreTesting: (await import("@opentui/core/testing")) as Record<string, unknown>,
   opentuiReact: opentuiReactRuntime as Record<string, unknown>,
   opentuiReactJsx: (await import("../jsx-runtime.js")) as Record<string, unknown>,

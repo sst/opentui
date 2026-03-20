@@ -228,6 +228,40 @@ const App = () => {
 }
 ```
 
+### `onFocus(callback)`
+
+Run side effects when the terminal window gains focus.
+
+```tsx
+import { onFocus } from "@opentui/solid"
+
+const App = () => {
+  onFocus(() => {
+    console.log("Terminal focused")
+  })
+
+  return <text>Switch away and back to trigger focus events</text>
+}
+```
+
+### `onBlur(callback)`
+
+Run side effects when the terminal window loses focus.
+
+```tsx
+import { onBlur } from "@opentui/solid"
+
+const App = () => {
+  onBlur(() => {
+    console.log("Terminal blurred")
+  })
+
+  return <text>Switch away and back to trigger blur events</text>
+}
+```
+
+These hooks listen for terminal focus-in/focus-out events when the terminal emulator supports them.
+
 ### `useTerminalDimensions()`
 
 Get reactive terminal dimensions (returns a Solid signal).
@@ -410,13 +444,13 @@ render(App)
 
 ## Differences from React bindings
 
-| Aspect             | Solid                                | React                                  |
-| ------------------ | ------------------------------------ | -------------------------------------- |
-| Render function    | `render(() => <App />)`              | `createRoot(renderer).render(<App />)` |
-| Component naming   | snake_case (`ascii_font`)            | kebab-case (`ascii-font`)              |
-| State              | `createSignal`                       | `useState`                             |
-| Effects            | `onMount`, `onCleanup`               | `useEffect`                            |
-| Resize hook        | `onResize(callback)`                 | `useOnResize(callback)`                |
-| Dimensions         | Returns signal: `dimensions().width` | Returns object: `dimensions.width`     |
-| Extra hooks        | `usePaste`, `useSelectionHandler`    | -                                      |
-| Special components | `Portal`, `Dynamic`                  | -                                      |
+| Aspect             | Solid                                                  | React                                  |
+| ------------------ | ------------------------------------------------------ | -------------------------------------- |
+| Render function    | `render(() => <App />)`                                | `createRoot(renderer).render(<App />)` |
+| Component naming   | snake_case (`ascii_font`)                              | kebab-case (`ascii-font`)              |
+| State              | `createSignal`                                         | `useState`                             |
+| Effects            | `onMount`, `onCleanup`                                 | `useEffect`                            |
+| Resize hook        | `onResize(callback)`                                   | `useOnResize(callback)`                |
+| Dimensions         | Returns signal: `dimensions().width`                   | Returns object: `dimensions.width`     |
+| Extra hooks        | `onFocus`, `onBlur`, `usePaste`, `useSelectionHandler` | -                                      |
+| Special components | `Portal`, `Dynamic`                                    | -                                      |

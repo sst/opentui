@@ -33,7 +33,7 @@ registerPlugin(
 )
 
 try {
-  await import(entryPath)
+  await import(`${entryPath}?reload=1`)
 } finally {
   registerPlugin.clearAll()
   rmSync(tempRoot, { recursive: true, force: true })

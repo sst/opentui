@@ -27,6 +27,17 @@ export class ManualClock implements Clock {
     return this.time
   }
 
+  public setTime(time: number): void {
+    const targetTime = Math.floor(time)
+
+    if (targetTime >= this.time) {
+      this.advance(targetTime - this.time)
+      return
+    }
+
+    this.time = targetTime
+  }
+
   public setTimeout(fn: () => void, delayMs: number): TimerHandle {
     return this.schedule(fn, delayMs, false)
   }

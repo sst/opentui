@@ -11,24 +11,16 @@ export interface CreateRuntimePluginOptions {
 }
 
 const CORE_RUNTIME_SPECIFIER = "@opentui/core"
-const CORE_3D_RUNTIME_SPECIFIER = "@opentui/core/3d"
 const CORE_TESTING_RUNTIME_SPECIFIER = "@opentui/core/testing"
 const RUNTIME_MODULE_PREFIX = "opentui:runtime-module:"
+const MAX_RUNTIME_RESOLVE_PARENTS = 64
 
-const DEFAULT_CORE_RUNTIME_MODULE_SPECIFIERS = [
-  CORE_RUNTIME_SPECIFIER,
-  CORE_3D_RUNTIME_SPECIFIER,
-  CORE_TESTING_RUNTIME_SPECIFIER,
-] as const
+const DEFAULT_CORE_RUNTIME_MODULE_SPECIFIERS = [CORE_RUNTIME_SPECIFIER, CORE_TESTING_RUNTIME_SPECIFIER] as const
 
 const DEFAULT_CORE_RUNTIME_MODULE_SPECIFIER_SET = new Set<string>(DEFAULT_CORE_RUNTIME_MODULE_SPECIFIERS)
 
 export const isCoreRuntimeModuleSpecifier = (specifier: string): boolean => {
   return DEFAULT_CORE_RUNTIME_MODULE_SPECIFIER_SET.has(specifier)
-}
-
-const loadCore3dRuntimeModule = async (): Promise<RuntimeModuleExports> => {
-  return (await import("./3d")) as RuntimeModuleExports
 }
 
 const loadCoreTestingRuntimeModule = async (): Promise<RuntimeModuleExports> => {
@@ -55,46 +47,148 @@ const resolveRuntimeModuleExports = async (moduleEntry: RuntimeModuleEntry): Pro
   return moduleEntry
 }
 
+const sourcePath = (path: string): string => {
+  const searchIndex = path.indexOf("?")
+  const hashIndex = path.indexOf("#")
+  const end = [searchIndex, hashIndex].filter((index) => index >= 0).sort((a, b) => a - b)[0]
+  return end === undefined ? path : path.slice(0, end)
+}
+
 const runtimeLoaderForPath = (path: string): "js" | "ts" | "jsx" | "tsx" | null => {
-  if (path.endsWith(".tsx")) {
+  const cleanPath = sourcePath(path)
+
+  if (cleanPath.endsWith(".tsx")) {
     return "tsx"
   }
 
-  if (path.endsWith(".jsx")) {
+  if (cleanPath.endsWith(".jsx")) {
     return "jsx"
   }
 
-  if (path.endsWith(".ts") || path.endsWith(".mts") || path.endsWith(".cts")) {
+  if (cleanPath.endsWith(".ts") || cleanPath.endsWith(".mts") || cleanPath.endsWith(".cts")) {
     return "ts"
   }
 
-  if (path.endsWith(".js") || path.endsWith(".mjs") || path.endsWith(".cjs")) {
+  if (cleanPath.endsWith(".js") || cleanPath.endsWith(".mjs") || cleanPath.endsWith(".cjs")) {
     return "js"
   }
 
   return null
 }
 
-const rewriteRuntimeSpecifiers = (code: string, runtimeModuleIdsBySpecifier: Map<string, string>): string => {
+const runtimeSourceFilter = /^(?!.*(?:\/|\\)node_modules(?:\/|\\)).*\.(?:[cm]?js|[cm]?ts|jsx|tsx)(?:[?#].*)?$/
+
+const resolveImportSpecifierPatterns = [
+  /(from\s+["'])([^"']+)(["'])/g,
+  /(import\s+["'])([^"']+)(["'])/g,
+  /(import\s*\(\s*["'])([^"']+)(["']\s*\))/g,
+  /(require\s*\(\s*["'])([^"']+)(["']\s*\))/g,
+] as const
+
+const isBareSpecifier = (specifier: string): boolean => {
+  if (specifier.startsWith(".") || specifier.startsWith("/") || specifier.startsWith("\\")) {
+    return false
+  }
+
+  if (
+    specifier.startsWith("node:") ||
+    specifier.startsWith("bun:") ||
+    specifier.startsWith("http:") ||
+    specifier.startsWith("https:") ||
+    specifier.startsWith("file:") ||
+    specifier.startsWith("data:")
+  ) {
+    return false
+  }
+
+  if (specifier.startsWith(RUNTIME_MODULE_PREFIX)) {
+    return false
+  }
+
+  return true
+}
+
+const registerResolveParent = (resolveParentsByRecency: string[], resolveParent: string): void => {
+  const existingIndex = resolveParentsByRecency.indexOf(resolveParent)
+  if (existingIndex >= 0) {
+    resolveParentsByRecency.splice(existingIndex, 1)
+  }
+
+  resolveParentsByRecency.push(resolveParent)
+
+  if (resolveParentsByRecency.length > MAX_RUNTIME_RESOLVE_PARENTS) {
+    resolveParentsByRecency.shift()
+  }
+}
+
+const rewriteImportSpecifiers = (code: string, resolveReplacement: (specifier: string) => string | null): string => {
   let transformedCode = code
 
-  for (const [specifier, moduleId] of runtimeModuleIdsBySpecifier.entries()) {
-    const escapedSpecifier = escapeRegExp(specifier)
+  for (const pattern of resolveImportSpecifierPatterns) {
+    transformedCode = transformedCode.replace(pattern, (fullMatch, prefix, specifier, suffix) => {
+      const replacement = resolveReplacement(specifier)
+      if (!replacement || replacement === specifier) {
+        return fullMatch
+      }
 
-    transformedCode = transformedCode
-      .replace(new RegExp(`(from\\s+["'])${escapedSpecifier}(["'])`, "g"), `$1${moduleId}$2`)
-      .replace(new RegExp(`(import\\s+["'])${escapedSpecifier}(["'])`, "g"), `$1${moduleId}$2`)
-      .replace(new RegExp(`(import\\s*\\(\\s*["'])${escapedSpecifier}(["']\\s*\\))`, "g"), `$1${moduleId}$2`)
-      .replace(new RegExp(`(require\\s*\\(\\s*["'])${escapedSpecifier}(["']\\s*\\))`, "g"), `$1${moduleId}$2`)
+      return `${prefix}${replacement}${suffix}`
+    })
   }
 
   return transformedCode
 }
 
+const resolveFromParent = (specifier: string, parent: string): string | null => {
+  try {
+    const resolvedSpecifier = import.meta.resolve(specifier, parent)
+    if (
+      resolvedSpecifier === specifier ||
+      resolvedSpecifier.startsWith("node:") ||
+      resolvedSpecifier.startsWith("bun:")
+    ) {
+      return null
+    }
+
+    return resolvedSpecifier
+  } catch {
+    return null
+  }
+}
+
+const rewriteImportsFromResolveParents = (code: string, resolveParentsByRecency: string[]): string => {
+  if (resolveParentsByRecency.length === 0) {
+    return code
+  }
+
+  const resolveFromParents = (specifier: string): string | null => {
+    if (!isBareSpecifier(specifier)) {
+      return null
+    }
+
+    for (let index = resolveParentsByRecency.length - 1; index >= 0; index -= 1) {
+      const resolveParent = resolveParentsByRecency[index]
+      const resolvedSpecifier = resolveFromParent(specifier, resolveParent)
+      if (resolvedSpecifier) {
+        return resolvedSpecifier
+      }
+    }
+
+    return null
+  }
+
+  return rewriteImportSpecifiers(code, resolveFromParents)
+}
+
+const rewriteRuntimeSpecifiers = (code: string, runtimeModuleIdsBySpecifier: Map<string, string>): string => {
+  return rewriteImportSpecifiers(code, (specifier) => {
+    const runtimeModuleId = runtimeModuleIdsBySpecifier.get(specifier)
+    return runtimeModuleId ?? null
+  })
+}
+
 export function createRuntimePlugin(input: CreateRuntimePluginOptions = {}): BunPlugin {
   const runtimeModules = new Map<string, RuntimeModuleEntry>()
   runtimeModules.set(CORE_RUNTIME_SPECIFIER, input.core ?? (coreRuntime as RuntimeModuleExports))
-  runtimeModules.set(CORE_3D_RUNTIME_SPECIFIER, loadCore3dRuntimeModule)
   runtimeModules.set(CORE_TESTING_RUNTIME_SPECIFIER, loadCoreTestingRuntimeModule)
 
   for (const [specifier, moduleEntry] of Object.entries(input.additional ?? {})) {
@@ -109,6 +203,8 @@ export function createRuntimePlugin(input: CreateRuntimePluginOptions = {}): Bun
   return {
     name: "bun-plugin-opentui-runtime-modules",
     setup: (build) => {
+      const resolveParentsByRecency: string[] = []
+
       for (const [specifier, moduleEntry] of runtimeModules.entries()) {
         const moduleId = runtimeModuleIdsBySpecifier.get(specifier)
 
@@ -124,15 +220,22 @@ export function createRuntimePlugin(input: CreateRuntimePluginOptions = {}): Bun
         build.onResolve({ filter: exactSpecifierFilter(specifier) }, () => ({ path: moduleId }))
       }
 
-      build.onLoad({ filter: /\.(?:[cm]?js|[cm]?ts|jsx|tsx)$/ }, async (args) => {
+      build.onLoad({ filter: runtimeSourceFilter }, async (args) => {
+        const path = sourcePath(args.path)
         const loader = runtimeLoaderForPath(args.path)
         if (!loader) {
-          return undefined
+          throw new Error(`Unable to determine runtime loader for path: ${args.path}`)
         }
 
-        const file = Bun.file(args.path)
+        const file = Bun.file(path)
         const contents = await file.text()
-        const transformedContents = rewriteRuntimeSpecifiers(contents, runtimeModuleIdsBySpecifier)
+        const runtimeRewrittenContents = rewriteRuntimeSpecifiers(contents, runtimeModuleIdsBySpecifier)
+
+        if (runtimeRewrittenContents !== contents) {
+          registerResolveParent(resolveParentsByRecency, path)
+        }
+
+        const transformedContents = rewriteImportsFromResolveParents(runtimeRewrittenContents, resolveParentsByRecency)
 
         return {
           contents: transformedContents,

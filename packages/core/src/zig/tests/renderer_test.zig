@@ -359,6 +359,13 @@ test "renderer - background color setting" {
     cli_renderer.setBackgroundColor(bg_color);
 
     try std.testing.expectEqual(bg_color, cli_renderer.backgroundColor);
+    try std.testing.expectEqual(bg_color, cli_renderer.getNextBuffer().getBlendBackdropColor().?);
+
+    const transparent_bg = RGBA{ 0.25, 0.5, 0.75, 0.0 };
+    cli_renderer.setBackgroundColor(transparent_bg);
+
+    try std.testing.expectEqual(transparent_bg, cli_renderer.backgroundColor);
+    try std.testing.expectEqual(RGBA{ 0.25, 0.5, 0.75, 1.0 }, cli_renderer.getNextBuffer().getBlendBackdropColor().?);
 }
 
 test "renderer - empty text buffer renders correctly" {

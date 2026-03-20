@@ -158,6 +158,28 @@ describe("solid transform plugin", () => {
     }
   })
 
+  it("transforms queried TSX paths", async () => {
+    const tempFile = createTempTsxFile("const node = <text>ok</text>\nexport { node }")
+
+    try {
+      const { build, loadHandlers } = createMockBuild()
+      createSolidTransformPlugin().setup(build as any)
+
+      const transformed = await runLoad(loadHandlers, `${tempFile.path}?reload=1`)
+
+      expect(transformed).toBeDefined()
+
+      if (!transformed) {
+        throw new Error("Expected transformed output")
+      }
+
+      expect(transformed.loader).toBe("js")
+      expect(transformed.contents).toContain("@opentui/solid")
+    } finally {
+      tempFile.dispose()
+    }
+  })
+
   it("transforms runtime-resolved modules end-to-end in a subprocess", () => {
     const fixturePath = join(import.meta.dir, "solid-plugin.fixture.ts")
     const result = Bun.spawnSync([process.execPath, fixturePath], {

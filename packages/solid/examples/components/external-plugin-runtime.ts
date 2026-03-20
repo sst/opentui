@@ -1,23 +1,25 @@
 import { plugin as registerBunPlugin } from "bun"
 import * as coreRuntime from "@opentui/core"
+import * as core3dRuntime from "@opentui/core/3d"
 import {
   createRuntimePlugin,
   isCoreRuntimeModuleSpecifier,
   runtimeModuleIdForSpecifier,
   type RuntimeModuleEntry,
 } from "@opentui/core/runtime-plugin"
+import * as solidRuntime from "@opentui/solid"
+import { ensureSolidTransformPlugin } from "@opentui/solid/bun-plugin"
 import * as solidJsRuntime from "solid-js"
 import * as solidJsStoreRuntime from "solid-js/store"
-import * as solidRuntime from "../index"
-import { ensureSolidTransformPlugin } from "./solid-plugin"
 
-const runtimePluginSupportInstalledKey = Symbol.for("opentui.solid.runtime-plugin-support")
+const externalPluginRuntimeSupportInstalledKey = Symbol.for("opentui.solid.examples.external-plugin-runtime")
 
-type RuntimePluginSupportState = typeof globalThis & {
-  [runtimePluginSupportInstalledKey]?: boolean
+type ExternalPluginRuntimeSupportState = typeof globalThis & {
+  [externalPluginRuntimeSupportInstalledKey]?: boolean
 }
 
 const additionalRuntimeModules: Record<string, RuntimeModuleEntry> = {
+  "@opentui/core/3d": core3dRuntime as Record<string, unknown>,
   "@opentui/solid": solidRuntime as Record<string, unknown>,
   "solid-js": solidJsRuntime as Record<string, unknown>,
   "solid-js/store": solidJsStoreRuntime as Record<string, unknown>,
@@ -31,10 +33,10 @@ const resolveRuntimeSpecifier = (specifier: string): string | null => {
   return runtimeModuleIdForSpecifier(specifier)
 }
 
-export function ensureRuntimePluginSupport(): boolean {
-  const state = globalThis as RuntimePluginSupportState
+export function ensureExternalPluginRuntimeSupport(): boolean {
+  const state = globalThis as ExternalPluginRuntimeSupportState
 
-  if (state[runtimePluginSupportInstalledKey]) {
+  if (state[externalPluginRuntimeSupportInstalledKey]) {
     return false
   }
 
@@ -52,8 +54,8 @@ export function ensureRuntimePluginSupport(): boolean {
     }),
   )
 
-  state[runtimePluginSupportInstalledKey] = true
+  state[externalPluginRuntimeSupportInstalledKey] = true
   return true
 }
 
-ensureRuntimePluginSupport()
+ensureExternalPluginRuntimeSupport()
