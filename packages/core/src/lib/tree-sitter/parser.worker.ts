@@ -50,6 +50,8 @@ interface ReusableParserState {
 class ParserWorker {
   private bufferParsers: Map<number, ParserState> = new Map()
   private filetypeParserOptions: Map<string, FiletypeParserOptions> = new Map()
+  private filetypeAliases: Map<string, string> = new Map()
+  private registeredAliases: Map<string, string[]> = new Map()
   private filetypeParsers: Map<string, FiletypeParser> = new Map()
   private filetypeParserPromises: Map<string, Promise<FiletypeParser | undefined>> = new Map()
   private reusableParsers: Map<string, ReusableParserState> = new Map()
@@ -112,7 +114,55 @@ class ParserWorker {
   }
 
   public addFiletypeParser(filetypeParser: FiletypeParserOptions) {
-    this.filetypeParserOptions.set(filetypeParser.filetype, filetypeParser)
+    const previousAliases = this.registeredAliases.get(filetypeParser.filetype) ?? []
+    for (const alias of previousAliases) {
+      if (this.filetypeAliases.get(alias) === filetypeParser.filetype) {
+        this.filetypeAliases.delete(alias)
+      }
+    }
+
+    const aliases = [...new Set((filetypeParser.aliases ?? []).filter((alias) => alias !== filetypeParser.filetype))]
+
+    this.filetypeAliases.delete(filetypeParser.filetype)
+    this.filetypeParserOptions.set(filetypeParser.filetype, {
+      ...filetypeParser,
+      aliases,
+    })
+    this.registeredAliases.set(filetypeParser.filetype, aliases)
+
+    for (const alias of aliases) {
+      this.filetypeAliases.set(alias, filetypeParser.filetype)
+    }
+
+    this.invalidateParserCaches(filetypeParser.filetype)
+    for (const alias of aliases) {
+      this.invalidateParserCaches(alias)
+    }
+  }
+
+  private resolveCanonicalFiletype(filetype: string): string {
+    let current = filetype
+    const seen = new Set<string>()
+
+    while (!this.filetypeParserOptions.has(current) && this.filetypeAliases.has(current) && !seen.has(current)) {
+      seen.add(current)
+      current = this.filetypeAliases.get(current)!
+    }
+
+    return current
+  }
+
+  private invalidateParserCaches(filetype: string): void {
+    this.filetypeParsers.delete(filetype)
+    this.filetypeParserPromises.delete(filetype)
+
+    const reusableParser = this.reusableParsers.get(filetype)
+    if (reusableParser) {
+      reusableParser.parser.delete()
+      this.reusableParsers.delete(filetype)
+    }
+
+    this.reusableParserPromises.delete(filetype)
   }
 
   private async createQueries(
@@ -184,25 +234,27 @@ class ParserWorker {
   }
 
   private async resolveFiletypeParser(filetype: string): Promise<FiletypeParser | undefined> {
-    if (this.filetypeParsers.has(filetype)) {
-      return this.filetypeParsers.get(filetype)
+    const canonicalFiletype = this.resolveCanonicalFiletype(filetype)
+
+    if (this.filetypeParsers.has(canonicalFiletype)) {
+      return this.filetypeParsers.get(canonicalFiletype)
     }
 
-    if (this.filetypeParserPromises.has(filetype)) {
-      return this.filetypeParserPromises.get(filetype)
+    if (this.filetypeParserPromises.has(canonicalFiletype)) {
+      return this.filetypeParserPromises.get(canonicalFiletype)
     }
 
-    const loadingPromise = this.loadFiletypeParser(filetype)
-    this.filetypeParserPromises.set(filetype, loadingPromise)
+    const loadingPromise = this.loadFiletypeParser(canonicalFiletype)
+    this.filetypeParserPromises.set(canonicalFiletype, loadingPromise)
 
     try {
       const result = await loadingPromise
       if (result) {
-        this.filetypeParsers.set(filetype, result)
+        this.filetypeParsers.set(canonicalFiletype, result)
       }
       return result
     } finally {
-      this.filetypeParserPromises.delete(filetype)
+      this.filetypeParserPromises.delete(canonicalFiletype)
     }
   }
 
@@ -233,25 +285,27 @@ class ParserWorker {
   }
 
   private async getReusableParser(filetype: string): Promise<ReusableParserState | undefined> {
-    if (this.reusableParsers.has(filetype)) {
-      return this.reusableParsers.get(filetype)
+    const canonicalFiletype = this.resolveCanonicalFiletype(filetype)
+
+    if (this.reusableParsers.has(canonicalFiletype)) {
+      return this.reusableParsers.get(canonicalFiletype)
     }
 
-    if (this.reusableParserPromises.has(filetype)) {
-      return this.reusableParserPromises.get(filetype)
+    if (this.reusableParserPromises.has(canonicalFiletype)) {
+      return this.reusableParserPromises.get(canonicalFiletype)
     }
 
-    const creationPromise = this.createReusableParser(filetype)
-    this.reusableParserPromises.set(filetype, creationPromise)
+    const creationPromise = this.createReusableParser(canonicalFiletype)
+    this.reusableParserPromises.set(canonicalFiletype, creationPromise)
 
     try {
       const result = await creationPromise
       if (result) {
-        this.reusableParsers.set(filetype, result)
+        this.reusableParsers.set(canonicalFiletype, result)
       }
       return result
     } finally {
-      this.reusableParserPromises.delete(filetype)
+      this.reusableParserPromises.delete(canonicalFiletype)
     }
   }
 

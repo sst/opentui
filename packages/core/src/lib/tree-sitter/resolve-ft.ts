@@ -50,6 +50,13 @@ export function extToFiletype(extension: string): string | undefined {
   return extensionToFiletype.get(extension)
 }
 
+function normalizeFiletypeToken(value: string): string | undefined {
+  const normalizedValue = value.trim().replace(/^\./, "").toLowerCase()
+  if (!normalizedValue) return undefined
+
+  return pathToFiletype(normalizedValue) ?? extToFiletype(normalizedValue) ?? normalizedValue
+}
+
 export function pathToFiletype(path: string): string | undefined {
   if (typeof path !== "string") return undefined
   const lastDot = path.lastIndexOf(".")
@@ -59,4 +66,13 @@ export function pathToFiletype(path: string): string | undefined {
 
   const extension = path.substring(lastDot + 1)
   return extToFiletype(extension)
+}
+
+export function infoStringToFiletype(infoString: string): string | undefined {
+  if (typeof infoString !== "string") return undefined
+
+  const languageToken = infoString.trim().split(/\s+/, 1)[0]
+  if (!languageToken) return undefined
+
+  return normalizeFiletypeToken(languageToken)
 }

@@ -64,6 +64,32 @@ And a JSON configuration example:
 }
 \`\`\`
 
+Here's a TSX component example:
+
+\`\`\`tsx
+import React from "react"
+import { useState } from "react"
+
+interface Props {
+  title: string
+  count: number
+}
+
+export const Counter: React.FC<Props> = ({ title, count: initialCount }) => {
+  const [count, setCount] = useState(initialCount)
+
+  return (
+    <div className="counter">
+      <h1>{title}</h1>
+      <p>Count: {count}</p>
+      <button onClick={() => setCount(c => c + 1)}>
+        Increment
+      </button>
+    </div>
+  )
+}
+\`\`\`
+
 ## Light Theme Fallback Checks
 
 Press \`T\` until **GitHub Light**. These fences intentionally skip syntax

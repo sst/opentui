@@ -37,15 +37,32 @@ interface EditQueueItem {
 
 let DEFAULT_PARSERS: FiletypeParserOptions[] = getParsers()
 
+function getParserFiletypes(parser: FiletypeParserOptions): Set<string> {
+  return new Set([parser.filetype, ...(parser.aliases ?? [])])
+}
+
 export function addDefaultParsers(parsers: FiletypeParserOptions[]): void {
   for (const parser of parsers) {
-    const existingIndex = DEFAULT_PARSERS.findIndex((p) => p.filetype === parser.filetype)
+    const parserFiletypes = getParserFiletypes(parser)
+    const nextDefaultParsers: FiletypeParserOptions[] = []
+    let insertIndex = DEFAULT_PARSERS.length
 
-    if (existingIndex >= 0) {
-      DEFAULT_PARSERS[existingIndex] = parser
-    } else {
-      DEFAULT_PARSERS.push(parser)
+    for (const existingParser of DEFAULT_PARSERS) {
+      const existingFiletypes = getParserFiletypes(existingParser)
+      const conflicts = [...parserFiletypes].some((filetype) => existingFiletypes.has(filetype))
+
+      if (conflicts) {
+        if (insertIndex === DEFAULT_PARSERS.length) {
+          insertIndex = nextDefaultParsers.length
+        }
+        continue
+      }
+
+      nextDefaultParsers.push(existingParser)
     }
+
+    nextDefaultParsers.splice(insertIndex, 0, parser)
+    DEFAULT_PARSERS = nextDefaultParsers
   }
 }
 
@@ -194,6 +211,9 @@ export class TreeSitterClient extends EventEmitter<TreeSitterClientEvents> {
   public addFiletypeParser(filetypeParser: FiletypeParserOptions): void {
     const resolvedParser: FiletypeParserOptions = {
       ...filetypeParser,
+      aliases: filetypeParser.aliases
+        ? [...new Set(filetypeParser.aliases.filter((alias) => alias !== filetypeParser.filetype))]
+        : undefined,
       wasm: this.resolvePath(filetypeParser.wasm),
       queries: {
         highlights: filetypeParser.queries.highlights.map((path) => this.resolvePath(path)),
