@@ -1,5 +1,5 @@
 import { TextNodeRenderable, TextRenderable, type Renderable } from "@opentui/core"
-import pkgJson from "../../package.json"
+import pkgJson from "../../package.json" with { type: "json" }
 import { createContext } from "react"
 import type { HostConfig, ReactContext } from "react-reconciler"
 import { DefaultEventPriority, NoEventPriority } from "react-reconciler/constants"
