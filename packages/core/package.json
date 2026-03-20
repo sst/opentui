@@ -59,28 +59,40 @@
   },
   "exports": {
     ".": {
+      "source": "./src/index.ts",
+      "bun": "./src/index.ts",
       "types": "./dist/index.d.ts",
-      "import": "./src/index.ts"
+      "import": "./dist/index.js"
     },
     "./3d": {
+      "source": "./src/3d.ts",
+      "bun": "./src/3d.ts",
       "types": "./dist/3d.d.ts",
-      "import": "./src/3d.ts"
+      "import": "./dist/3d.js"
     },
     "./testing": {
+      "source": "./src/testing.ts",
+      "bun": "./src/testing.ts",
       "types": "./dist/testing.d.ts",
-      "import": "./src/testing.ts"
+      "import": "./dist/testing.js"
     },
     "./runtime-plugin": {
+      "source": "./src/runtime-plugin.ts",
+      "bun": "./src/runtime-plugin.ts",
       "types": "./dist/runtime-plugin.d.ts",
-      "import": "./src/runtime-plugin.ts"
+      "import": "./dist/runtime-plugin.js"
     },
     "./runtime-plugin-support": {
+      "source": "./src/runtime-plugin-support.ts",
+      "bun": "./src/runtime-plugin-support.ts",
       "types": "./dist/runtime-plugin-support.d.ts",
-      "import": "./src/runtime-plugin-support.ts"
+      "import": "./dist/runtime-plugin-support.js"
     },
     "./parser.worker": {
+      "source": "./src/lib/tree-sitter/parser.worker.ts",
+      "bun": "./src/lib/tree-sitter/parser.worker.ts",
       "types": "./dist/lib/tree-sitter/parser.worker.d.ts",
-      "import": "./src/lib/tree-sitter/parser.worker.ts"
+      "import": "./dist/parser.worker.js"
     }
   },
   "engines": {
