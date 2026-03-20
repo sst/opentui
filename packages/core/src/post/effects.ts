@@ -1,4 +1,4 @@
-import type { OptimizedBuffer } from "../buffer"
+import type { OptimizedBuffer } from "../buffer.js"
 
 interface ActiveGlitch {
   y: number
