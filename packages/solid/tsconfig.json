@@ -9,7 +9,7 @@
     "jsxImportSource": "@opentui/solid",
     "allowJs": true,
 
-    // Node module resolution
+    // Modern module resolution
     "moduleResolution": "NodeNext",
     "allowImportingTsExtensions": true,
     "verbatimModuleSyntax": true,
