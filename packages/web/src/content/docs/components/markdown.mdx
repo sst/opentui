@@ -34,6 +34,15 @@ const markdown = new MarkdownRenderable(renderer, {
 renderer.root.add(markdown)
 ````
 
+## Fenced language normalization
+
+Code fence info strings are normalized before Tree-sitter highlighting.
+
+- `tsx` -> `typescriptreact`
+- `.jsx` -> `javascriptreact`
+- `TSX title=Button.tsx` -> `typescriptreact`
+- `Dockerfile` -> `dockerfile`
+
 ## Concealment
 
 Hide markdown markers (backticks, emphasis markers, etc.) when `conceal` is true:

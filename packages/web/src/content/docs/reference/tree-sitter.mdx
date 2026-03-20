@@ -51,12 +51,20 @@ client.addFiletypeParser({
 ```typescript
 interface FiletypeParserOptions {
   filetype: string
+  aliases?: string[]
   wasm: string
   queries: {
     highlights: string[]
+    injections?: string[]
+  }
+  injectionMapping?: {
+    nodeTypes?: Record<string, string>
+    infoStringMap?: Record<string, string>
   }
 }
 ```
+
+`aliases` maps additional filetype ids to the same parser assets.
 
 ## Use local files
 
@@ -131,8 +139,11 @@ const client = new TreeSitterClient({
 ## File type resolution
 
 ```typescript
-import { pathToFiletype, extToFiletype } from "@opentui/core"
+import { pathToFiletype, extToFiletype, infoStringToFiletype } from "@opentui/core"
 
 const ft1 = pathToFiletype("src/main.rs")
 const ft2 = extToFiletype("ts")
+const ft3 = infoStringToFiletype("TSX title=Button.tsx")
 ```
+
+`infoStringToFiletype()` is used for fenced markdown code blocks.
