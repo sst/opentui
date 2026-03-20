@@ -12,12 +12,7 @@
     "jsx": "react-jsx",
     "jsxImportSource": "@opentui/react",
     "moduleResolution": "NodeNext",
-    "baseUrl": ".",
     "paths": {
-      "@opentui/core": ["../core/dist/index.d.ts"],
-      "@opentui/core/testing": ["../core/dist/testing.d.ts"],
-      "@opentui/core/runtime-plugin": ["../core/dist/runtime-plugin.d.ts"],
-      "@opentui/core/*": ["../core/dist/*"],
       "react-reconciler/constants": ["./node_modules/@types/react-reconciler/constants.d.ts"]
     }
   },

@@ -59,27 +59,27 @@
   },
   "exports": {
     ".": {
-      "types": "./src/index.ts",
+      "types": "./dist/index.d.ts",
       "import": "./src/index.ts"
     },
     "./3d": {
-      "types": "./src/3d.ts",
+      "types": "./dist/3d.d.ts",
       "import": "./src/3d.ts"
     },
     "./testing": {
-      "types": "./src/testing.ts",
+      "types": "./dist/testing.d.ts",
       "import": "./src/testing.ts"
     },
     "./runtime-plugin": {
-      "types": "./src/runtime-plugin.ts",
+      "types": "./dist/runtime-plugin.d.ts",
       "import": "./src/runtime-plugin.ts"
     },
     "./runtime-plugin-support": {
-      "types": "./src/runtime-plugin-support.ts",
+      "types": "./dist/runtime-plugin-support.d.ts",
       "import": "./src/runtime-plugin-support.ts"
     },
     "./parser.worker": {
-      "types": "./src/lib/tree-sitter/parser.worker.ts",
+      "types": "./dist/lib/tree-sitter/parser.worker.d.ts",
       "import": "./src/lib/tree-sitter/parser.worker.ts"
     }
   },
