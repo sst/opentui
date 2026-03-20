@@ -310,7 +310,7 @@ const themes = {
 }
 
 type ThemeKey = keyof typeof themes
-const themeKeys = Object.keys(themes) as ThemeKey[]
+const themeKeys = ["github", "githubLight", "monokai", "nord"] as const satisfies readonly ThemeKey[]
 
 let renderer: CliRenderer | null = null
 let keyboardHandler: ((key: ParsedKey) => void) | null = null
