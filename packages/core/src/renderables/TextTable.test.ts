@@ -1,13 +1,13 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test"
-import { OptimizedBuffer } from "../buffer.ts"
-import { RGBA } from "../lib/RGBA.ts"
-import { bold, green, red, yellow } from "../lib/styled-text.ts"
-import { createTestRenderer, type MockMouse, type TestRenderer } from "../testing/test-renderer.ts"
-import type { CapturedFrame } from "../types.ts"
-import { BoxRenderable } from "./Box.ts"
-import { ScrollBoxRenderable } from "./ScrollBox.ts"
-import { TextRenderable } from "./Text.ts"
-import { TextTableRenderable, type TextTableCellContent, type TextTableContent } from "./TextTable.ts"
+import { OptimizedBuffer } from "../buffer.js"
+import { RGBA } from "../lib/RGBA.js"
+import { bold, green, red, yellow } from "../lib/styled-text.js"
+import { createTestRenderer, type MockMouse, type TestRenderer } from "../testing/test-renderer.js"
+import type { CapturedFrame } from "../types.js"
+import { BoxRenderable } from "./Box.js"
+import { ScrollBoxRenderable } from "./ScrollBox.js"
+import { TextRenderable } from "./Text.js"
+import { TextTableRenderable, type TextTableCellContent, type TextTableContent } from "./TextTable.js"
 
 const VERTICAL_BORDER_CP = "│".codePointAt(0)!
 const BORDER_CHAR_PATTERN = /[┌┐└┘├┤┬┴┼│─]/

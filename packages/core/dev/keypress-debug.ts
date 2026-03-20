@@ -1,5 +1,5 @@
 #!/usr/bin/env bun
-import { parseKeypress } from "../src/lib/parse.keypress.ts"
+import { parseKeypress } from "../src/lib/parse.keypress.js"
 
 console.log("Keypress Debug Tool")
 console.log("Press keys to see their parsed output. Press Ctrl+C to exit.\n")

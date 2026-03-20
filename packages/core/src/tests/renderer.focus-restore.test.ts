@@ -1,8 +1,8 @@
 import { test, expect, beforeEach, afterEach, describe, spyOn } from "bun:test"
 import { Buffer } from "node:buffer"
-import { createTestRenderer, type TestRenderer, type MockInput, type MockMouse } from "../testing/test-renderer.ts"
-import { Renderable } from "../Renderable.ts"
-import { ManualClock } from "../testing/manual-clock.ts"
+import { createTestRenderer, type TestRenderer, type MockInput, type MockMouse } from "../testing/test-renderer.js"
+import { Renderable } from "../Renderable.js"
+import { ManualClock } from "../testing/manual-clock.js"
 
 class TestRenderable extends Renderable {
   constructor(renderer: TestRenderer, options: any) {

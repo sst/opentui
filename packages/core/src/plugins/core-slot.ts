@@ -1,8 +1,8 @@
-import { BaseRenderable, Renderable, type RenderableOptions } from "../Renderable.ts"
-import type { CliRenderer } from "../renderer.ts"
-import type { RenderContext } from "../types.ts"
-import { createSlotRegistry, SlotRegistry, type SlotRegistryOptions } from "./registry.ts"
-import type { Plugin, PluginContext, PluginErrorEvent, SlotMode } from "./types.ts"
+import { BaseRenderable, Renderable, type RenderableOptions } from "../Renderable.js"
+import type { CliRenderer } from "../renderer.js"
+import type { RenderContext } from "../types.js"
+import { createSlotRegistry, SlotRegistry, type SlotRegistryOptions } from "./registry.js"
+import type { Plugin, PluginContext, PluginErrorEvent, SlotMode } from "./types.js"
 
 export type CoreSlotMode = SlotMode
 

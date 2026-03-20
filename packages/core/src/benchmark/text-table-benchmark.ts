@@ -7,8 +7,8 @@ import {
   type TextTableColumnWidthMode,
   type TextTableContent,
   type CliRenderer,
-} from "../index.ts"
-import { createTestRenderer } from "../testing.ts"
+} from "../index.js"
+import { createTestRenderer } from "../testing.js"
 import { Command } from "commander"
 import { existsSync } from "node:fs"
 import { mkdir } from "node:fs/promises"

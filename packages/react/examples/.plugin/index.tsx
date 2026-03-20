@@ -1,5 +1,5 @@
 import { type ReactPlugin } from "@opentui/react"
-import { ExternalSidebarPanel, ExternalStatusCard } from "./slot-components.tsx"
+import { ExternalSidebarPanel, ExternalStatusCard } from "./slot-components.jsx"
 
 export type ExternalPluginSlots = {
   statusbar: { label: string }

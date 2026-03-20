@@ -1,7 +1,7 @@
 #!/usr/bin/env bun
 
-import { MarkdownRenderable, SyntaxStyle, createCliRenderer, parseColor } from "../index.ts"
-import { resolveRenderLib } from "../zig.ts"
+import { MarkdownRenderable, SyntaxStyle, createCliRenderer, parseColor } from "../index.js"
+import { resolveRenderLib } from "../zig.js"
 import { Command } from "commander"
 import path from "node:path"
 import { existsSync } from "node:fs"

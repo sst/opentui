@@ -1,5 +1,5 @@
-import type { TextChunk } from "../text-buffer.ts"
-import type { SimpleHighlight } from "./tree-sitter/types.ts"
+import type { TextChunk } from "../text-buffer.js"
+import type { SimpleHighlight } from "./tree-sitter/types.js"
 
 const URL_SCOPES = ["markup.link.url", "string.special.url"]
 

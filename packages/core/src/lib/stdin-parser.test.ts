@@ -1,8 +1,8 @@
 import { describe, expect, test } from "bun:test"
 import { Buffer } from "node:buffer"
-import { ManualClock } from "../testing/manual-clock.ts"
-import type { ScrollInfo } from "./parse.mouse.ts"
-import { StdinParser, type StdinEvent, type StdinParserOptions } from "./stdin-parser.ts"
+import { ManualClock } from "../testing/manual-clock.js"
+import type { ScrollInfo } from "./parse.mouse.js"
+import { StdinParser, type StdinEvent, type StdinParserOptions } from "./stdin-parser.js"
 
 type KeySnap = {
   type: "key"

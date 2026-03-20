@@ -1,11 +1,11 @@
-import { singleton } from "./singleton.ts"
+import { singleton } from "./singleton.js"
 
 /**
  * Environment variable registry
  *
  * Usage:
  * ```ts
- * import { registerEnvVar, env } from "./lib/env.ts";
+ * import { registerEnvVar, env } from "./lib/env.js";
  *
  * // Register environment variables
  * registerEnvVar({

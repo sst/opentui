@@ -1,9 +1,9 @@
 import { afterEach, beforeEach, describe, expect, it } from "bun:test"
 import { createTestRenderer, type TestRendererOptions } from "@opentui/core/testing"
 import { createContext, createComponent, createSignal, onCleanup, onMount, useContext, type JSX } from "solid-js"
-import { createSlot, createSolidSlotRegistry, Slot, type SolidPlugin } from "../src/plugins/slot.tsx"
-import { _render as renderInternal } from "../src/reconciler.ts"
-import { RendererContext } from "../src/elements/index.ts"
+import { createSlot, createSolidSlotRegistry, Slot, type SolidPlugin } from "../src/plugins/slot.jsx"
+import { _render as renderInternal } from "../src/reconciler.js"
+import { RendererContext } from "../src/elements/index.js"
 
 interface AppSlots {
   statusbar: { user: string }

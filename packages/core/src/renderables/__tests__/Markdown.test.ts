@@ -1088,8 +1088,8 @@ Visit [GitHub](https://github.com) for more.
 // Custom renderNode tests
 
 test("custom renderNode can override heading rendering", async () => {
-  const { TextRenderable } = await import("../Text.ts")
-  const { StyledText } = await import("../../lib/styled-text.ts")
+  const { TextRenderable } = await import("../Text.js")
+  const { StyledText } = await import("../../lib/styled-text.js")
 
   // Helper to extract text from marked tokens
   const extractText = (node: any): string => {
@@ -1131,8 +1131,8 @@ Regular paragraph.`,
 })
 
 test("custom renderNode can override code block rendering", async () => {
-  const { BoxRenderable } = await import("../Box.ts")
-  const { TextRenderable } = await import("../Text.ts")
+  const { BoxRenderable } = await import("../Box.js")
+  const { TextRenderable } = await import("../Text.js")
 
   const md = createMarkdownRenderable({
     id: "custom-code",

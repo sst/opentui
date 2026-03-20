@@ -18,8 +18,8 @@ import {
   RGBA,
   TextAttributes,
   type MouseEvent,
-} from "../index.ts"
-import { setupCommonDemoKeys } from "./lib/standalone-keys.ts"
+} from "../index.js"
+import { setupCommonDemoKeys } from "./lib/standalone-keys.js"
 
 let container: BoxRenderable | null = null
 let mouseArea: BoxRenderable | null = null

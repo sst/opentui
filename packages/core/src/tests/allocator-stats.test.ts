@@ -1,5 +1,5 @@
 import { test, expect } from "bun:test"
-import { resolveRenderLib } from "../zig.ts"
+import { resolveRenderLib } from "../zig.js"
 
 const lib = resolveRenderLib()
 

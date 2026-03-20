@@ -1,4 +1,4 @@
-import type { Clock, TimerHandle } from "../lib/clock.ts"
+import type { Clock, TimerHandle } from "../lib/clock.js"
 
 interface ScheduledTimer {
   id: number

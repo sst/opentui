@@ -1,7 +1,7 @@
 import { OptimizedBuffer, RGBA, type RenderContext } from "@opentui/core"
 import { ThreeRenderable, THREE } from "@opentui/core/3d"
 import { extend, type SolidPlugin } from "@opentui/solid"
-import { ExternalSidebarPanel, ExternalStatusCard } from "./slot-components.tsx"
+import { ExternalSidebarPanel, ExternalStatusCard } from "./slot-components.jsx"
 
 export type ExternalPluginSlots = {
   statusbar: { label: string }

@@ -11,8 +11,8 @@ import {
   type CoreSlotRegistry,
   type PluginErrorEvent,
   type KeyEvent,
-} from "../index.ts"
-import { setupCommonDemoKeys } from "./lib/standalone-keys.ts"
+} from "../index.js"
+import { setupCommonDemoKeys } from "./lib/standalone-keys.js"
 
 type DemoSlot = "statusbar" | "sidebar"
 type DemoContext = { appName: string; version: string }
