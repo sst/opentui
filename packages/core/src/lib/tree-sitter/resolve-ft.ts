@@ -1,3 +1,5 @@
+import path from "node:path"
+
 export const extensionToFiletype: Map<string, string> = new Map([
   ["astro", "astro"],
   ["bash", "bash"],
@@ -137,7 +139,7 @@ function getBasename(value: string): string | undefined {
   const normalizedValue = value.trim().replaceAll("\\", "/")
   if (!normalizedValue) return undefined
 
-  const basename = normalizedValue.substring(normalizedValue.lastIndexOf("/") + 1).toLowerCase()
+  const basename = path.posix.basename(normalizedValue).toLowerCase()
   return basename || undefined
 }
 
