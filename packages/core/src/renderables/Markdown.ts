@@ -425,6 +425,7 @@ export class MarkdownRenderable extends Renderable {
   }
 
   private createMarkdownCodeRenderable(content: string, id: string, marginBottom: number = 0): CodeRenderable {
+    const defaultStyle = this.getStyle("default")
     return new CodeRenderable(this.ctx, {
       id,
       content,
@@ -435,12 +436,15 @@ export class MarkdownRenderable extends Renderable {
       streaming: true,
       onChunks: this._linkifyMarkdownChunks,
       treeSitterClient: this._treeSitterClient,
+      fg: defaultStyle?.fg,
+      bg: defaultStyle?.bg,
       width: "100%",
       marginBottom,
     })
   }
 
   private createCodeRenderable(token: Tokens.Code, id: string, marginBottom: number = 0): Renderable {
+    const defaultStyle = this.getStyle("default")
     return new CodeRenderable(this.ctx, {
       id,
       content: token.text,
@@ -450,28 +454,36 @@ export class MarkdownRenderable extends Renderable {
       drawUnstyledText: !(this._streaming && this._concealCode),
       streaming: this._streaming,
       treeSitterClient: this._treeSitterClient,
+      fg: defaultStyle?.fg,
+      bg: defaultStyle?.bg,
       width: "100%",
       marginBottom,
     })
   }
 
   private applyMarkdownCodeRenderable(renderable: CodeRenderable, content: string, marginBottom: number): void {
+    const defaultStyle = this.getStyle("default")
     renderable.content = content
     renderable.filetype = "markdown"
     renderable.syntaxStyle = this._syntaxStyle
     renderable.conceal = this._conceal
     renderable.drawUnstyledText = false
     renderable.streaming = true
+    renderable.fg = defaultStyle?.fg
+    renderable.bg = defaultStyle?.bg
     renderable.marginBottom = marginBottom
   }
 
   private applyCodeBlockRenderable(renderable: CodeRenderable, token: Tokens.Code, marginBottom: number): void {
+    const defaultStyle = this.getStyle("default")
     renderable.content = token.text
     renderable.filetype = token.lang || undefined
     renderable.syntaxStyle = this._syntaxStyle
     renderable.conceal = this._concealCode
     renderable.drawUnstyledText = !(this._streaming && this._concealCode)
     renderable.streaming = this._streaming
+    renderable.fg = defaultStyle?.fg
+    renderable.bg = defaultStyle?.bg
     renderable.marginBottom = marginBottom
   }
 

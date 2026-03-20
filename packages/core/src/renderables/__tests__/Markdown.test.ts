@@ -2285,3 +2285,79 @@ test("paragraph updates do not flash raw markdown markers", async () => {
   expect(finalFrame).toContain("Second value")
   expect(finalFrame).not.toContain("**Second**")
 })
+
+test("code block without language uses syntaxStyle default fg and bg", async () => {
+  const customStyle = SyntaxStyle.fromStyles({
+    default: { fg: RGBA.fromValues(0.22, 0.23, 0.26, 1), bg: RGBA.fromValues(0.98, 0.98, 0.98, 1) },
+  })
+
+  const markdown = `\`\`\`
+plain code block
+\`\`\``
+
+  const md = createMarkdownRenderable({
+    id: "markdown-code-fg",
+    content: markdown,
+    syntaxStyle: customStyle,
+    conceal: true,
+  })
+
+  renderer.root.add(md)
+  await renderMarkdownRenderable(md)
+
+  const frame = captureSpans()
+  const findSpanContaining = (text: string) => {
+    for (const line of frame.lines) {
+      const span = line.spans.find((candidate) => candidate.text.includes(text))
+      if (span) return span
+    }
+    return undefined
+  }
+
+  const codeSpan = findSpanContaining("plain code block")
+  expect(codeSpan).toBeDefined()
+  expect(codeSpan!.fg.r).toBeCloseTo(0.22, 1)
+  expect(codeSpan!.fg.g).toBeCloseTo(0.23, 1)
+  expect(codeSpan!.fg.b).toBeCloseTo(0.26, 1)
+  expect(codeSpan!.bg.r).toBeCloseTo(0.98, 1)
+  expect(codeSpan!.bg.g).toBeCloseTo(0.98, 1)
+  expect(codeSpan!.bg.b).toBeCloseTo(0.98, 1)
+})
+
+test("code block with language uses syntaxStyle default fg and bg for unstyled tokens", async () => {
+  const customStyle = SyntaxStyle.fromStyles({
+    default: { fg: RGBA.fromValues(0.22, 0.23, 0.26, 1), bg: RGBA.fromValues(0.98, 0.98, 0.98, 1) },
+  })
+
+  const markdown = `\`\`\`unknownlang
+some unstyled text
+\`\`\``
+
+  const md = createMarkdownRenderable({
+    id: "markdown-code-fg-lang",
+    content: markdown,
+    syntaxStyle: customStyle,
+    conceal: true,
+  })
+
+  renderer.root.add(md)
+  await renderMarkdownRenderable(md)
+
+  const frame = captureSpans()
+  const findSpanContaining = (text: string) => {
+    for (const line of frame.lines) {
+      const span = line.spans.find((candidate) => candidate.text.includes(text))
+      if (span) return span
+    }
+    return undefined
+  }
+
+  const codeSpan = findSpanContaining("some unstyled text")
+  expect(codeSpan).toBeDefined()
+  expect(codeSpan!.fg.r).toBeCloseTo(0.22, 1)
+  expect(codeSpan!.fg.g).toBeCloseTo(0.23, 1)
+  expect(codeSpan!.fg.b).toBeCloseTo(0.26, 1)
+  expect(codeSpan!.bg.r).toBeCloseTo(0.98, 1)
+  expect(codeSpan!.bg.g).toBeCloseTo(0.98, 1)
+  expect(codeSpan!.bg.b).toBeCloseTo(0.98, 1)
+})
