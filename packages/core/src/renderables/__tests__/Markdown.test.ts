@@ -439,14 +439,15 @@ test("table with links", async () => {
 })
 
 test("table with long URL that exceeds column width", async () => {
+  const longUrl = "https://github.com/charmbracelet/glamour/issues/149#issuecomment-1234567890"
   const markdown = `| Name | Link |
 |---|---|
-| Example | https://github.com/modelcontextprotocol/servers/pull/3653 |
+| Example | ${longUrl} |
 | Short | https://example.com |`
 
   const rendered = await renderMarkdown(markdown)
 
-  expect(rendered).toContain("https://github.com/modelcontextprotocol/servers/pull/3653")
+  expect(rendered).toContain(longUrl)
   expect(rendered).toContain("https://example.com")
 })
 
