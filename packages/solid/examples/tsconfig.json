@@ -3,13 +3,13 @@
     // Environment setup & latest features
     "lib": ["ESNext"],
     "target": "ESNext",
-    "module": "Preserve",
+    "module": "NodeNext",
     "moduleDetection": "force",
     "jsx": "preserve",
     "jsxImportSource": "@opentui/solid",
     "allowJs": true,
-    // Bundler mode
-    "moduleResolution": "bundler",
+    // Node module resolution
+    "moduleResolution": "NodeNext",
     "allowImportingTsExtensions": true,
     "verbatimModuleSyntax": true,
     "noEmit": true,

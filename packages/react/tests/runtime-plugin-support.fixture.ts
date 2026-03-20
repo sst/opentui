@@ -6,7 +6,7 @@ import * as coreRuntime from "@opentui/core"
 import * as reactRuntime from "react"
 import * as reactJsxRuntime from "react/jsx-runtime"
 import * as reactJsxDevRuntime from "react/jsx-dev-runtime"
-import * as opentuiReactRuntime from "../src/index"
+import * as opentuiReactRuntime from "../src/index.ts"
 
 type FixtureState = typeof globalThis & {
   __reactRuntimeHost__?: {
@@ -66,7 +66,7 @@ state.__reactRuntimeHost__ = {
 registerPlugin.clearAll()
 
 try {
-  await import("../scripts/runtime-plugin-support")
+  await import("../scripts/runtime-plugin-support.ts")
   await import(entryPath)
 } finally {
   registerPlugin.clearAll()

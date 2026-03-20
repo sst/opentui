@@ -1,7 +1,7 @@
 import { TimeToFirstDrawRenderable } from "@opentui/core"
 import { createElement } from "react"
-import { extend } from "./components"
-import type { ExtendedComponentProps } from "./types/components"
+import { extend } from "./components/index.ts"
+import type { ExtendedComponentProps } from "./types/components.ts"
 
 declare module "@opentui/react" {
   interface OpenTUIComponents {

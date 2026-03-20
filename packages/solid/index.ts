@@ -1,6 +1,6 @@
 import { CliRenderer, createCliRenderer, engine, type CliRendererConfig } from "@opentui/core"
 import { createTestRenderer, type TestRendererOptions } from "@opentui/core/testing"
-import type { JSX } from "./jsx-runtime"
+import type { JSX } from "./jsx-runtime.d.ts"
 import { RendererContext } from "./src/elements/index.js"
 import { _render as renderInternal, createComponent } from "./src/reconciler.js"
 

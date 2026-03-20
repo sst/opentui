@@ -1,7 +1,7 @@
-import type { OptimizedBuffer } from "../buffer"
-import { parseColor, RGBA, type ColorInput } from "../lib/RGBA"
-import { Renderable, type RenderableOptions } from "../Renderable"
-import type { RenderContext } from "../types"
+import type { OptimizedBuffer } from "../buffer.ts"
+import { parseColor, RGBA, type ColorInput } from "../lib/RGBA.ts"
+import { Renderable, type RenderableOptions } from "../Renderable.ts"
+import type { RenderContext } from "../types.ts"
 
 export interface TimeToFirstDrawOptions extends RenderableOptions<TimeToFirstDrawRenderable> {
   fg?: ColorInput

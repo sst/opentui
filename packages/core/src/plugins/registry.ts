@@ -1,4 +1,4 @@
-import type { CliRenderer } from "../renderer"
+import type { CliRenderer } from "../renderer.ts"
 import type {
   Plugin,
   PluginContext,
@@ -6,7 +6,7 @@ import type {
   PluginErrorReport,
   ResolvedSlotRenderer,
   SlotRenderer,
-} from "./types"
+} from "./types.ts"
 
 const noop = () => {}
 const DEFAULT_DEBUG_PLUGIN_ERRORS = false

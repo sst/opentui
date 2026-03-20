@@ -1,6 +1,6 @@
 import { test, expect } from "bun:test"
-import { NativeSpanFeed } from "../NativeSpanFeed"
-import { resolveRenderLib } from "../zig"
+import { NativeSpanFeed } from "../NativeSpanFeed.ts"
+import { resolveRenderLib } from "../zig.ts"
 
 const lib = resolveRenderLib()
 

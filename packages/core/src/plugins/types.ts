@@ -1,4 +1,4 @@
-import type { CliRenderer } from "../renderer"
+import type { CliRenderer } from "../renderer.ts"
 
 export type PluginContext = object
 

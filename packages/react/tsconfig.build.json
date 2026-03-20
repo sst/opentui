@@ -11,7 +11,7 @@
     "skipLibCheck": true,
     "jsx": "react-jsx",
     "jsxImportSource": "@opentui/react",
-    "moduleResolution": "bundler",
+    "moduleResolution": "NodeNext",
     "baseUrl": ".",
     "paths": {
       "@opentui/core": ["../core/dist"],

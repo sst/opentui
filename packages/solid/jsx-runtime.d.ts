@@ -15,7 +15,7 @@ import type {
   TextareaProps,
   TextProps,
 } from "./src/types/elements.js"
-import type { DomNode } from "./dist"
+import type { DomNode } from "./dist/index.js"
 
 declare namespace JSX {
   // Replace Node with Renderable

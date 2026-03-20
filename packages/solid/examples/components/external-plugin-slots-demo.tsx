@@ -2,7 +2,7 @@ import { existsSync, readFileSync } from "node:fs"
 import { dirname, join } from "node:path"
 import process from "node:process"
 import { pathToFileURL } from "node:url"
-import "./external-plugin-runtime"
+import "./external-plugin-runtime.ts"
 import {
   Slot,
   createSolidSlotRegistry,
@@ -12,7 +12,7 @@ import {
   useRenderer,
 } from "@opentui/solid"
 import { createEffect, createMemo, createSignal, on, onCleanup, onMount, Show } from "solid-js"
-import { resolveExternalPluginCandidates } from "./external-plugin-path"
+import { resolveExternalPluginCandidates } from "./external-plugin-path.ts"
 
 const STATUSBAR_LABEL = "host-status"
 const SIDEBAR_SECTION = "external-plugins"

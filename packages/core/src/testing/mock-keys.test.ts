@@ -953,7 +953,7 @@ describe("mock-keys", () => {
 
   describe("modifyOtherKeys Mode (CSI u variant)", () => {
     test("modifyOtherKeys sequences can be parsed by parseKeypress", async () => {
-      const { parseKeypress } = await import("../lib/parse.keypress")
+      const { parseKeypress } = await import("../lib/parse.keypress.ts")
 
       // Test that our generated sequences can be parsed correctly
       const tests = [

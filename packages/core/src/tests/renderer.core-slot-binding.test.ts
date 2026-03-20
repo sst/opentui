@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test"
-import { Renderable } from "../Renderable"
-import { createTestRenderer, type TestRenderer } from "../testing/test-renderer"
-import { createCoreSlotRegistry, registerCorePlugin, SlotRenderable } from "../plugins/core-slot"
+import { Renderable } from "../Renderable.ts"
+import { createTestRenderer, type TestRenderer } from "../testing/test-renderer.ts"
+import { createCoreSlotRegistry, registerCorePlugin, SlotRenderable } from "../plugins/core-slot.ts"
 
 type AppSlot = "statusbar"
 type AppContext = { appName: string; version: string }
