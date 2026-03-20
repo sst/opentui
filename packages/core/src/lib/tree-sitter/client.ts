@@ -37,24 +37,12 @@ interface EditQueueItem {
 
 let DEFAULT_PARSERS: FiletypeParserOptions[] = getParsers()
 
-function getParserFiletypes(parser: FiletypeParserOptions): Set<string> {
-  return new Set([parser.filetype, ...(parser.aliases ?? [])])
-}
-
-function parsersConflict(left: FiletypeParserOptions, right: FiletypeParserOptions): boolean {
-  const leftFiletypes = getParserFiletypes(left)
-  for (const filetype of getParserFiletypes(right)) {
-    if (leftFiletypes.has(filetype)) {
-      return true
-    }
-  }
-
-  return false
-}
-
 export function addDefaultParsers(parsers: FiletypeParserOptions[]): void {
   for (const parser of parsers) {
-    DEFAULT_PARSERS = [...DEFAULT_PARSERS.filter((existingParser) => !parsersConflict(existingParser, parser)), parser]
+    DEFAULT_PARSERS = [
+      ...DEFAULT_PARSERS.filter((existingParser) => existingParser.filetype !== parser.filetype),
+      parser,
+    ]
   }
 }
 
