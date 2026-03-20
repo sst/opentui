@@ -438,6 +438,18 @@ test("table with links", async () => {
   `)
 })
 
+test("table with long URL that exceeds column width", async () => {
+  const markdown = `| Name | Link |
+|---|---|
+| Example | https://github.com/modelcontextprotocol/servers/pull/3653 |
+| Short | https://example.com |`
+
+  const rendered = await renderMarkdown(markdown)
+
+  expect(rendered).toContain("https://github.com/modelcontextprotocol/servers/pull/3653")
+  expect(rendered).toContain("https://example.com")
+})
+
 test("single row table (header + delimiter only)", async () => {
   const markdown = `| Only | Header |
 |---|---|`
