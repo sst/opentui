@@ -1,60 +1,61 @@
-export function extToFiletype(extension: string): string | undefined {
-  const extensionToFiletype: Map<string, string> = new Map([
-    ["js", "javascript"],
-    ["jsx", "javascriptreact"],
-    ["ts", "typescript"],
-    ["tsx", "typescriptreact"],
-    ["md", "markdown"],
-    ["json", "json"],
-    ["py", "python"],
-    ["rb", "ruby"],
-    ["go", "go"],
-    ["rs", "rust"],
-    ["c", "c"],
-    ["cpp", "cpp"],
-    ["c++", "cpp"],
-    ["cs", "csharp"],
-    ["java", "java"],
-    ["kt", "kotlin"],
-    ["swift", "swift"],
-    ["php", "php"],
-    ["sql", "sql"],
-    ["pl", "perl"],
-    ["lua", "lua"],
-    ["erl", "erlang"],
-    ["exs", "elixir"],
-    ["ex", "elixir"],
-    ["elm", "elm"],
-    ["fsharp", "fsharp"],
-    ["fs", "fsharp"],
-    ["fsx", "fsharp"],
-    ["fsscript", "fsharp"],
-    ["fsi", "fsharp"],
-    ["h", "c"],
-    ["hpp", "cpp"],
-    ["html", "html"],
-    ["css", "css"],
-    ["scss", "scss"],
-    ["less", "less"],
-    ["sh", "shell"],
-    ["bash", "shell"],
-    ["zsh", "shell"],
-    ["vim", "vim"],
-    ["yaml", "yaml"],
-    ["yml", "yaml"],
-    ["toml", "toml"],
-    ["xml", "xml"],
-    ["zig", "zig"],
-  ])
-
-  return extensionToFiletype.get(extension)
-}
+export const extensionToFiletype: Map<string, string> = new Map([
+  ["js", "javascript"],
+  ["jsx", "javascriptreact"],
+  ["ts", "typescript"],
+  ["tsx", "typescriptreact"],
+  ["md", "markdown"],
+  ["json", "json"],
+  ["py", "python"],
+  ["rb", "ruby"],
+  ["go", "go"],
+  ["rs", "rust"],
+  ["c", "c"],
+  ["cpp", "cpp"],
+  ["c++", "cpp"],
+  ["cs", "csharp"],
+  ["java", "java"],
+  ["kt", "kotlin"],
+  ["swift", "swift"],
+  ["php", "php"],
+  ["sql", "sql"],
+  ["pl", "perl"],
+  ["lua", "lua"],
+  ["erl", "erlang"],
+  ["exs", "elixir"],
+  ["ex", "elixir"],
+  ["elm", "elm"],
+  ["fsharp", "fsharp"],
+  ["fs", "fsharp"],
+  ["fsx", "fsharp"],
+  ["fsscript", "fsharp"],
+  ["fsi", "fsharp"],
+  ["h", "c"],
+  ["hpp", "cpp"],
+  ["html", "html"],
+  ["css", "css"],
+  ["scss", "scss"],
+  ["less", "less"],
+  ["sh", "shell"],
+  ["bash", "shell"],
+  ["zsh", "shell"],
+  ["vim", "vim"],
+  ["yaml", "yaml"],
+  ["yml", "yaml"],
+  ["toml", "toml"],
+  ["xml", "xml"],
+  ["zig", "zig"],
+])
 
 function normalizeFiletypeToken(value: string): string | undefined {
   const normalizedValue = value.trim().replace(/^\./, "").toLowerCase()
-  if (!normalizedValue) return undefined
+  return normalizedValue || undefined
+}
 
-  return pathToFiletype(normalizedValue) ?? extToFiletype(normalizedValue) ?? normalizedValue
+export function extToFiletype(extension: string): string | undefined {
+  const normalizedExtension = normalizeFiletypeToken(extension)
+  if (!normalizedExtension) return undefined
+
+  return extensionToFiletype.get(normalizedExtension)
 }
 
 export function pathToFiletype(path: string): string | undefined {
@@ -71,8 +72,9 @@ export function pathToFiletype(path: string): string | undefined {
 export function infoStringToFiletype(infoString: string): string | undefined {
   if (typeof infoString !== "string") return undefined
 
-  const languageToken = infoString.trim().split(/\s+/, 1)[0]
-  if (!languageToken) return undefined
+  const token = infoString.trim().split(/\s+/, 1)[0]
+  const normalizedToken = normalizeFiletypeToken(token)
+  if (!normalizedToken) return undefined
 
-  return normalizeFiletypeToken(languageToken)
+  return pathToFiletype(normalizedToken) ?? extToFiletype(normalizedToken) ?? normalizedToken
 }

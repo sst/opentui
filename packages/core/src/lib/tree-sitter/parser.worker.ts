@@ -51,7 +51,6 @@ class ParserWorker {
   private bufferParsers: Map<number, ParserState> = new Map()
   private filetypeParserOptions: Map<string, FiletypeParserOptions> = new Map()
   private filetypeAliases: Map<string, string> = new Map()
-  private registeredAliases: Map<string, string[]> = new Map()
   private filetypeParsers: Map<string, FiletypeParser> = new Map()
   private filetypeParserPromises: Map<string, Promise<FiletypeParser | undefined>> = new Map()
   private reusableParsers: Map<string, ReusableParserState> = new Map()
@@ -114,7 +113,7 @@ class ParserWorker {
   }
 
   public addFiletypeParser(filetypeParser: FiletypeParserOptions) {
-    const previousAliases = this.registeredAliases.get(filetypeParser.filetype) ?? []
+    const previousAliases = this.filetypeParserOptions.get(filetypeParser.filetype)?.aliases ?? []
     for (const alias of previousAliases) {
       if (this.filetypeAliases.get(alias) === filetypeParser.filetype) {
         this.filetypeAliases.delete(alias)
@@ -128,28 +127,20 @@ class ParserWorker {
       ...filetypeParser,
       aliases,
     })
-    this.registeredAliases.set(filetypeParser.filetype, aliases)
 
     for (const alias of aliases) {
       this.filetypeAliases.set(alias, filetypeParser.filetype)
     }
 
     this.invalidateParserCaches(filetypeParser.filetype)
-    for (const alias of aliases) {
-      this.invalidateParserCaches(alias)
-    }
   }
 
   private resolveCanonicalFiletype(filetype: string): string {
-    let current = filetype
-    const seen = new Set<string>()
-
-    while (!this.filetypeParserOptions.has(current) && this.filetypeAliases.has(current) && !seen.has(current)) {
-      seen.add(current)
-      current = this.filetypeAliases.get(current)!
+    if (this.filetypeParserOptions.has(filetype)) {
+      return filetype
     }
 
-    return current
+    return this.filetypeAliases.get(filetype) ?? filetype
   }
 
   private invalidateParserCaches(filetype: string): void {
