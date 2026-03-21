@@ -1,4 +1,4 @@
-import { createCliRenderer, TextRenderable, t, type CliRenderer, BoxRenderable, bold, fg } from "../index.js"
+import { BoxRenderable, bold, createCliRenderer, fg, TextRenderable, t, type CliRenderer } from "../index.js"
 import { setupCommonDemoKeys } from "./lib/standalone-keys.js"
 import { createTimeline, type JSAnimation, Timeline } from "../animation/Timeline.js"
 
@@ -306,7 +306,9 @@ class SplitModeAnimations {
 
 export function run(rendererInstance: CliRenderer): void {
   rendererInstance.setBackgroundColor("#001122")
-  rendererInstance.experimental_splitHeight = 20
+  rendererInstance.footerHeight = 20
+  rendererInstance.screenMode = "split-footer"
+  rendererInstance.externalOutputMode = "capture-stdout"
 
   animationSystem = new SplitModeAnimations(rendererInstance)
 
@@ -343,8 +345,8 @@ export function run(rendererInstance: CliRenderer): void {
 
   console.log("=== Split Mode Demo ===")
   console.log(`Terminal size: ${rendererInstance.terminalWidth}x${rendererInstance.terminalHeight}`)
-  console.log(`Renderer split height: ${rendererInstance.experimental_splitHeight}`)
-  console.log(`Renderer offset: ${rendererInstance.terminalHeight - rendererInstance.experimental_splitHeight}`)
+  console.log(`Renderer split height: ${rendererInstance.footerHeight}`)
+  console.log(`Renderer offset: ${rendererInstance.terminalHeight - rendererInstance.footerHeight}`)
   console.log("Console output should appear here and scroll naturally")
   console.log("The renderer should stay fixed at the bottom as a footer")
   console.log(`Test output running at ${testOutputInterval}ms intervals (use M/L to adjust speed)`)
@@ -366,22 +368,25 @@ export function run(rendererInstance: CliRenderer): void {
 
   keyHandler = (key) => {
     if (key.name === "+") {
-      const currentHeight = rendererInstance.experimental_splitHeight || 0
+      const currentHeight = rendererInstance.footerHeight
       const newHeight = Math.min(currentHeight + 1, rendererInstance.terminalHeight - 5)
-      rendererInstance.experimental_splitHeight = newHeight
+      rendererInstance.footerHeight = newHeight
       console.log(`Split height increased to ${newHeight}`)
     } else if (key.name === "-") {
-      const currentHeight = rendererInstance.experimental_splitHeight || 0
+      const currentHeight = rendererInstance.footerHeight
       const newHeight = Math.max(currentHeight - 1, 5)
-      rendererInstance.experimental_splitHeight = newHeight
+      rendererInstance.footerHeight = newHeight
       console.log(`Split height decreased to ${newHeight}`)
     } else if (key.name === "0") {
-      if (rendererInstance.experimental_splitHeight > 0) {
-        rendererInstance.experimental_splitHeight = 0
-        console.log("Switched to fullscreen mode")
+      if (rendererInstance.screenMode === "split-footer") {
+        rendererInstance.externalOutputMode = "passthrough"
+        rendererInstance.screenMode = "main-screen"
+        console.log("Switched to main-screen mode")
       } else {
-        rendererInstance.experimental_splitHeight = 20
-        console.log("Switched to split mode (height 10)")
+        rendererInstance.footerHeight = 20
+        rendererInstance.screenMode = "split-footer"
+        rendererInstance.externalOutputMode = "capture-stdout"
+        console.log("Switched to split-footer mode (height 20)")
       }
     } else if (key.name === "m") {
       testOutputInterval = Math.max(5, testOutputInterval - 5)
@@ -427,7 +432,8 @@ export function destroy(rendererInstance: CliRenderer): void {
   }
 
   rendererInstance.clearFrameCallbacks()
-  rendererInstance.experimental_splitHeight = 0
+  rendererInstance.externalOutputMode = "passthrough"
+  rendererInstance.screenMode = "main-screen"
 }
 
 if (import.meta.main) {
@@ -435,8 +441,10 @@ if (import.meta.main) {
     targetFps: 30,
     exitOnCtrlC: true,
     useMouse: true,
-    useAlternateScreen: false,
-    useConsole: false,
+    screenMode: "split-footer",
+    footerHeight: 20,
+    externalOutputMode: "capture-stdout",
+    consoleMode: "disabled",
   })
 
   run(renderer)

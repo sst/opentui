@@ -101,7 +101,7 @@ export const ExamplesIndex = () => {
   const [selected, setSelected] = useState(-1)
 
   useEffect(() => {
-    renderer.useConsole = true
+    renderer.consoleMode = "console-overlay"
   }, [renderer])
 
   useKeyboard((key) => {

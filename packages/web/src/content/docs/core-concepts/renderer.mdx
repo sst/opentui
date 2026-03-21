@@ -24,24 +24,118 @@ const renderer = await createCliRenderer({
 The factory function does three things:
 
 1. Loads the native Zig rendering library
-2. Configures terminal settings (mouse, keyboard protocol, and alternate screen)
+2. Configures terminal settings (mouse, keyboard protocol, and the selected screen mode)
 3. Returns an initialized `CliRenderer` instance
 
 ## Configuration options
 
-| Option                | Type               | Default   | Description                                                                        |
-| --------------------- | ------------------ | --------- | ---------------------------------------------------------------------------------- |
-| `exitOnCtrlC`         | `boolean`          | `true`    | Call `renderer.destroy()` when Ctrl+C is pressed                                   |
-| `exitSignals`         | `NodeJS.Signals[]` | see below | Signals that trigger cleanup ([details](/core-concepts/lifecycle#signal-handling)) |
-| `targetFps`           | `number`           | `30`      | Target frames per second for the render loop                                       |
-| `maxFps`              | `number`           | `60`      | Maximum FPS for immediate re-renders                                               |
-| `useMouse`            | `boolean`          | `true`    | Enable mouse input and tracking                                                    |
-| `autoFocus`           | `boolean`          | `true`    | Focus nearest focusable on left click                                              |
-| `enableMouseMovement` | `boolean`          | `true`    | Track mouse movement (not just clicks)                                             |
-| `useAlternateScreen`  | `boolean`          | `true`    | Use terminal alternate screen buffer                                               |
-| `consoleOptions`      | `ConsoleOptions`   | -         | Options for the built-in console overlay                                           |
-| `openConsoleOnError`  | `boolean`          | `true`    | Auto-open console when errors occur (dev only)                                     |
-| `onDestroy`           | `() => void`       | -         | Callback executed when renderer is destroyed                                       |
+This page covers the options that most apps set directly.
+`CliRendererConfig` also includes lower-level hooks for testing and tuning, such as `stdin`, `stdout`, `clock`,
+`postProcessFns`, and `prependInputHandlers`.
+
+| Option                | Type                           | Default              | Description                                                                             |
+| --------------------- | ------------------------------ | -------------------- | --------------------------------------------------------------------------------------- |
+| `screenMode`          | `ScreenMode`                   | `"alternate-screen"` | How the renderer uses terminal space ([details](#screen-modes))                         |
+| `footerHeight`        | `number`                       | `12`                 | Requested footer rows for `"split-footer"` mode                                         |
+| `externalOutputMode`  | `ExternalOutputMode`           | varies               | How writes to `stdout.write` are handled ([details](#external-output-mode))             |
+| `consoleMode`         | `ConsoleMode`                  | `"console-overlay"`  | How the built-in console overlay behaves ([details](#console-mode))                     |
+| `exitOnCtrlC`         | `boolean`                      | `true`               | Call `renderer.destroy()` when Ctrl+C is pressed                                        |
+| `exitSignals`         | `NodeJS.Signals[]`             | see below            | Signals that trigger cleanup ([details](/docs/core-concepts/lifecycle#signal-handling)) |
+| `targetFps`           | `number`                       | `30`                 | Target frames per second for the render loop                                            |
+| `maxFps`              | `number`                       | `60`                 | Maximum FPS cap for immediate re-renders                                                |
+| `useMouse`            | `boolean`                      | `true`               | Enable mouse input                                                                      |
+| `autoFocus`           | `boolean`                      | `true`               | Focus the nearest focusable renderable on left click                                    |
+| `enableMouseMovement` | `boolean`                      | `true`               | Track mouse movement, not just clicks and scrolls                                       |
+| `useKittyKeyboard`    | `KittyKeyboardOptions \| null` | `{}`                 | Kitty keyboard protocol settings, or `null` to disable                                  |
+| `backgroundColor`     | `ColorInput`                   | transparent          | Background color for the render buffer                                                  |
+| `consoleOptions`      | `ConsoleOptions`               | -                    | Options forwarded to the built-in console overlay                                       |
+| `openConsoleOnError`  | `boolean`                      | `true` (dev)         | Open the console overlay on uncaught errors                                             |
+| `onDestroy`           | `() => void`                   | -                    | Run after the renderer finishes cleanup                                                 |
+
+You can also change `screenMode`, `footerHeight`, `externalOutputMode`, and `consoleMode` at runtime through their
+matching `renderer` properties.
+
+## Screen modes
+
+The `screenMode` option controls whether OpenTUI owns the alternate screen or a reserved region of the main screen. You
+can also change modes at runtime by setting `renderer.screenMode`.
+
+### `"alternate-screen"` (default)
+
+Switches to the terminal's alternate screen buffer. The original scrollback content is preserved and restored when the
+renderer exits. This is the standard mode for full-screen TUI applications.
+
+```typescript
+const renderer = await createCliRenderer({
+  screenMode: "alternate-screen",
+})
+```
+
+### `"main-screen"`
+
+Renders on the terminal's main screen without switching buffers. OpenTUI still reserves a render region by scrolling terminal content, so this is not a true scrollback-native inline or direct renderer. Use it when you want the UI to stay on the main screen for testing, benchmarks, or short-lived tools.
+
+```typescript
+const renderer = await createCliRenderer({
+  screenMode: "main-screen",
+})
+```
+
+### `"split-footer"`
+
+Pins the renderer to a reserved footer region at the bottom of the terminal. The area above the footer stays available for normal program output. This is the closest thing OpenTUI currently has to a direct-render mode, but it still uses the same buffered main-screen renderer rather than a separate inline backend.
+
+The `footerHeight` option controls how many rows the footer requests (default: 12). When using split-footer mode, `externalOutputMode` defaults to `"capture-stdout"` so that writes to `stdout.write` can be replayed above the footer instead of overlapping it.
+
+```typescript
+const renderer = await createCliRenderer({
+  screenMode: "split-footer",
+  footerHeight: 20,
+})
+
+// Change footer height at runtime
+renderer.footerHeight = 15
+```
+
+## External output mode
+
+The `externalOutputMode` option controls what happens to writes that go through the renderer's configured `stdout.write` while the renderer is active. It does not change `stderr`, and it is separate from the built-in console overlay.
+
+The native renderer still paints to the real TTY. `externalOutputMode` only changes the TypeScript-side `stdout.write` path.
+
+- **`"capture-stdout"`**: Intercepts `stdout.write`, queues the text, and flushes it above the footer during split-footer renders. Only valid when `screenMode` is `"split-footer"`.
+- **`"passthrough"`**: Leaves `stdout.write` untouched. Output goes directly to the terminal.
+
+The default depends on the screen mode: `"capture-stdout"` for split-footer, `"passthrough"` for everything else.
+
+```typescript
+// Captured stdout appears above the footer
+const renderer = await createCliRenderer({
+  screenMode: "split-footer",
+  externalOutputMode: "capture-stdout",
+})
+
+// Switch at runtime
+renderer.externalOutputMode = "passthrough"
+```
+
+## Console mode
+
+The `consoleMode` option controls the built-in console overlay (`TerminalConsole`).
+
+- **`"console-overlay"`** (default): Captures console output (console.log, console.error, etc.) and renders it in a toggleable panel within the TUI.
+- **`"disabled"`**: Hides and deactivates the overlay surface.
+
+Current caveat: `consoleMode` only changes the overlay surface.
+If you need plain `console.*` behavior, set `OTUI_USE_CONSOLE=false`.
+
+```typescript
+const renderer = await createCliRenderer({
+  screenMode: "split-footer",
+  externalOutputMode: "capture-stdout",
+  consoleMode: "disabled",
+})
+```
 
 ## The root renderable
 
@@ -252,13 +346,11 @@ Destroying the renderer restores the terminal to its original state, disables mo
 
 ## Environment variables
 
-| Variable                    | Description                                  |
-| --------------------------- | -------------------------------------------- |
-| `OTUI_USE_ALTERNATE_SCREEN` | Override alternate screen setting            |
-| `OTUI_SHOW_STATS`           | Show debug overlay at startup                |
-| `OTUI_DEBUG`                | Enable debug input capture                   |
-| `OTUI_NO_NATIVE_RENDER`     | Disable native rendering (for debugging)     |
-| `OTUI_DUMP_CAPTURES`        | Dump captured output when the renderer exits |
-| `OTUI_OVERRIDE_STDOUT`      | Override stdout stream (for debugging)       |
-| `OTUI_USE_CONSOLE`          | Enable/disable built-in console              |
-| `SHOW_CONSOLE`              | Show console at startup                      |
+See the [environment variable reference](/docs/reference/env-vars) for the full list.
+
+The renderer-specific ones you will most likely care about are:
+
+- `OTUI_USE_CONSOLE` controls global `console.*` capture.
+- `SHOW_CONSOLE` opens the built-in console overlay at startup.
+- `OTUI_NO_NATIVE_RENDER` skips the Zig/native frame renderer. In `"split-footer"` mode, the current stdout flush path can still write ANSI.
+- `OTUI_DUMP_CAPTURES` dumps captured stdout and console caches from the renderer exit handler.
