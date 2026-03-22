@@ -2104,7 +2104,6 @@ describe("stdin routing", () => {
 
       renderer.suspend()
       renderer.resume()
-      await new Promise((resolve) => setImmediate(resolve))
 
       renderer.stdin.emit("data", Buffer.from("x"))
       advanceClock(clock)

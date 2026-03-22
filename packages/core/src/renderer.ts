@@ -1311,8 +1311,8 @@ export class CliRenderer extends EventEmitter implements RenderContext {
       this.stdin.setRawMode(true)
     }
 
-    this.stdin.resume()
     this.stdin.on("data", this.stdinListener)
+    this.stdin.resume()
   }
 
   private dispatchMouseEvent(
@@ -1862,14 +1862,14 @@ export class CliRenderer extends EventEmitter implements RenderContext {
       this.stdin.setRawMode(true)
     }
 
+    // Drain any input buffered during suspension before registering the
+    // listener. Adding a "data" listener can auto-resume a Readable, so the
+    // drain must come first while the stream is still paused and read()
+    // pulls from the internal buffer rather than being a flowing-mode no-op.
+    while (this.stdin.read() !== null) {}
+    this.stdin.on("data", this.stdinListener)
     this.stdin.resume()
     this.addExitListeners()
-
-    setImmediate(() => {
-      // Consume any existing stdin data to avoid processing stale input
-      while (this.stdin.read() !== null) {}
-      this.stdin.on("data", this.stdinListener)
-    })
 
     this.lib.resumeRenderer(this.rendererPtr)
 
