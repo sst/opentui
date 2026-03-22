@@ -618,7 +618,7 @@ export class CliRenderer extends EventEmitter implements RenderContext {
 
     process.on("uncaughtException", this.handleError)
     process.on("unhandledRejection", this.handleError)
-    process.on("beforeExit", this.exitHandler)
+    process.on("exit", this.exitHandler)
 
     const kittyConfig = config.useKittyKeyboard ?? {}
     const useKittyForParsing = kittyConfig !== null
@@ -1953,7 +1953,7 @@ export class CliRenderer extends EventEmitter implements RenderContext {
     process.removeListener("uncaughtException", this.handleError)
     process.removeListener("unhandledRejection", this.handleError)
     process.removeListener("warning", this.warningHandler)
-    process.removeListener("beforeExit", this.exitHandler)
+    process.removeListener("exit", this.exitHandler)
     capture.removeListener("write", this.captureCallback)
     this.removeExitListeners()
 
