@@ -100,6 +100,10 @@ inline fn isFullyOpaque(opacity: f32, fg: RGBA, bg: RGBA) bool {
     return opacity == 1.0 and !isRGBAWithAlpha(fg) and !isRGBAWithAlpha(bg);
 }
 
+inline fn isFullyTransparent(opacity: f32, fg: RGBA, bg: RGBA) bool {
+    return opacity == 0.0 or (fg[3] == 0.0 and bg[3] == 0.0);
+}
+
 fn blendColors(overlay: RGBA, text: RGBA, blendBackdropColor: ?RGBA) RGBA {
     var dest = text;
     if (dest[3] == 0.0) {
@@ -787,8 +791,8 @@ pub const OptimizedBuffer = struct {
     ) !void {
         if (!self.isPointInScissor(@intCast(x), @intCast(y))) return;
 
-        // Apply current opacity from the stack
         const opacity = self.getCurrentOpacity();
+        if (isFullyTransparent(opacity, fg, bg)) return;
         if (isFullyOpaque(opacity, fg, bg)) {
             self.set(x, y, Cell{ .char = char, .fg = fg, .bg = bg, .attributes = attributes });
             return;
@@ -818,8 +822,8 @@ pub const OptimizedBuffer = struct {
     ) !void {
         if (!self.isPointInScissor(@intCast(x), @intCast(y))) return;
 
-        // Apply current opacity from the stack
         const opacity = self.getCurrentOpacity();
+        if (isFullyTransparent(opacity, fg, bg)) return;
         if (isFullyOpaque(opacity, fg, bg)) {
             const overlayCell = Cell{ .char = char, .fg = fg, .bg = bg, .attributes = attributes };
             assert(!gp.isGraphemeChar(char));
@@ -854,18 +858,7 @@ pub const OptimizedBuffer = struct {
         bg: RGBA,
         attributes: u32,
     ) !void {
-        if (!self.isPointInScissor(@intCast(x), @intCast(y))) return;
-
-        if (isRGBAWithAlpha(bg) or isRGBAWithAlpha(fg)) {
-            try self.setCellWithAlphaBlending(x, y, char, fg, bg, attributes);
-        } else {
-            self.set(x, y, Cell{
-                .char = char,
-                .fg = fg,
-                .bg = bg,
-                .attributes = attributes,
-            });
-        }
+        try self.setCellWithAlphaBlending(x, y, char, fg, bg, attributes);
     }
 
     pub fn fillRect(
@@ -880,6 +873,9 @@ pub const OptimizedBuffer = struct {
         if (x >= self.width or y >= self.height) return;
 
         if (!self.isRectInScissor(@intCast(x), @intCast(y), width, height)) return;
+
+        const opacity = self.getCurrentOpacity();
+        if (isFullyTransparent(opacity, .{ 0.0, 0.0, 0.0, 0.0 }, bg)) return;
 
         const startX = x;
         const startY = y;
@@ -898,7 +894,6 @@ pub const OptimizedBuffer = struct {
         const clippedEndX = @min(endX, @as(u32, @intCast(clippedRect.x + @as(i32, @intCast(clippedRect.width)) - 1)));
         const clippedEndY = @min(endY, @as(u32, @intCast(clippedRect.y + @as(i32, @intCast(clippedRect.height)) - 1)));
 
-        const opacity = self.getCurrentOpacity();
         const hasAlpha = isRGBAWithAlpha(bg) or opacity < 1.0;
         const linkAware = self.link_tracker.hasAny();
 
@@ -941,6 +936,9 @@ pub const OptimizedBuffer = struct {
     ) BufferError!void {
         if (x >= self.width or y >= self.height) return;
         if (text.len == 0) return;
+
+        const opacity = self.getCurrentOpacity();
+        if (isFullyTransparent(opacity, fg, bg orelse .{ 0.0, 0.0, 0.0, 0.0 })) return;
 
         const is_ascii_only = utf8.isAsciiOnly(text);
 
@@ -1054,6 +1052,9 @@ pub const OptimizedBuffer = struct {
 
     pub fn drawFrameBuffer(self: *OptimizedBuffer, destX: i32, destY: i32, frameBuffer: *OptimizedBuffer, sourceX: ?u32, sourceY: ?u32, sourceWidth: ?u32, sourceHeight: ?u32) void {
         if (self.width == 0 or self.height == 0 or frameBuffer.width == 0 or frameBuffer.height == 0) return;
+
+        const opacity = self.getCurrentOpacity();
+        if (opacity == 0.0) return;
 
         const srcX = sourceX orelse 0;
         const srcY = sourceY orelse 0;
@@ -1181,6 +1182,9 @@ pub const OptimizedBuffer = struct {
         x: i32,
         y: i32,
     ) !void {
+        const opacity = self.getCurrentOpacity();
+        if (opacity == 0.0) return;
+
         const virtual_lines = view.getVirtualLines();
         if (virtual_lines.len == 0) return;
 
@@ -1569,6 +1573,9 @@ pub const OptimizedBuffer = struct {
         if (rowCount == 0 or columnCount == 0) return;
         if (!drawInner and !drawOuter) return;
 
+        const opacity = self.getCurrentOpacity();
+        if (isFullyTransparent(opacity, borderFg, borderBg)) return;
+
         const hChar = borderChars[@intFromEnum(BorderCharIndex.horizontal)];
         const vChar = borderChars[@intFromEnum(BorderCharIndex.vertical)];
         const bufWidth = self.width;
@@ -1694,6 +1701,9 @@ pub const OptimizedBuffer = struct {
         title: ?[]const u8,
         titleAlignment: u8, // 0=left, 1=center, 2=right
     ) !void {
+        const opacity = self.getCurrentOpacity();
+        if (isFullyTransparent(opacity, borderColor, backgroundColor)) return;
+
         const startX = @max(0, x);
         const startY = @max(0, y);
         const endX = @min(@as(i32, @intCast(self.width)) - 1, x + @as(i32, @intCast(width)) - 1);
