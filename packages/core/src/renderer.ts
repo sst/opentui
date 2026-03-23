@@ -589,6 +589,7 @@ export class CliRenderer extends EventEmitter implements RenderContext {
     this.maxFps = config.maxFps || 60
     this.targetFrameTime = 1000 / this.targetFps
     this.minTargetFrameTime = 1000 / this.maxFps
+    this.clock = config.clock ?? new SystemClock()
     this.memorySnapshotInterval = config.memorySnapshotInterval ?? 0
     this.gatherStats = config.gatherStats || false
     this.maxStatSamples = config.maxStatSamples || 300
@@ -633,8 +634,6 @@ export class CliRenderer extends EventEmitter implements RenderContext {
     })
 
     this.addExitListeners()
-
-    this.clock = config.clock ?? new SystemClock()
 
     const stdinParserMaxBufferBytes = config.stdinParserMaxBufferBytes ?? DEFAULT_STDIN_PARSER_MAX_BUFFER_BYTES
     this.stdinParser = new StdinParser({
