@@ -995,7 +995,7 @@ test("links with conceal mode", async () => {
 
   expect(await renderMarkdown(markdown)).toMatchInlineSnapshot(`
     "
-    Check out OpenTUI (https://github.com/sst/opentui) for more."
+    Check out OpenTUI for more."
   `)
 })
 
@@ -2220,7 +2220,7 @@ test("paragraph links are rendered with markdown conceal behavior", async () => 
 
   const frame = captureFrame()
   expect(frame).toContain("Google")
-  expect(frame).toContain("https://google.com")
+  expect(frame).not.toContain("https://google.com")
   expect(frame).not.toContain("[Google](https://google.com)")
 })
 
