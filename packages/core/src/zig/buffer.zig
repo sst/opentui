@@ -100,6 +100,14 @@ inline fn isFullyOpaque(opacity: f32, fg: RGBA, bg: RGBA) bool {
     return opacity == 1.0 and !isRGBAWithAlpha(fg) and !isRGBAWithAlpha(bg);
 }
 
+inline fn pow(a: f32, b: f32) f32 {
+    if (a <= 0.0) return 0.0;
+
+    const i = @as(i32, @bitCast(a));
+    const result: i32 = @intFromFloat(b * @as(f32, @floatFromInt(i - 1065353216)) + 1065353216.0);
+    return @bitCast(result);
+}
+
 fn blendColors(overlay: RGBA, text: RGBA, blendBackdropColor: ?RGBA) RGBA {
     var dest = text;
     if (dest[3] == 0.0) {
@@ -129,10 +137,10 @@ fn blendColors(overlay: RGBA, text: RGBA, blendBackdropColor: ?RGBA) RGBA {
     // For high alpha values (>0.8), use a more aggressive curve
     if (alpha > 0.8) {
         const normalizedHighAlpha = (alpha - 0.8) * 5.0;
-        const curvedHighAlpha = std.math.pow(f32, normalizedHighAlpha, 0.2);
+        const curvedHighAlpha = pow(normalizedHighAlpha, 0.2);
         perceptualAlpha = 0.8 + (curvedHighAlpha * 0.2);
     } else {
-        perceptualAlpha = std.math.pow(f32, alpha, 0.9);
+        perceptualAlpha = pow(alpha, 0.9);
     }
 
     const overlayVec = Vec3f{ overlay[0], overlay[1], overlay[2] };
