@@ -40,6 +40,7 @@ function createKeyEvent(
 let currentRenderer: TestRenderer
 let currentMockInput: MockInput
 let renderOnce: () => Promise<void>
+let captureCharFrame: () => string
 
 const sampleOptions: SelectOption[] = [
   { name: "Option 1", description: "First option" },
@@ -61,7 +62,12 @@ async function createSelectRenderable(
 }
 
 beforeEach(async () => {
-  ;({ renderer: currentRenderer, mockInput: currentMockInput, renderOnce } = await createTestRenderer({}))
+  ;({
+    renderer: currentRenderer,
+    mockInput: currentMockInput,
+    renderOnce,
+    captureCharFrame,
+  } = await createTestRenderer({}))
 })
 
 afterEach(() => {
@@ -174,6 +180,23 @@ describe("SelectRenderable", () => {
       expect(select.options).toEqual([])
       expect(select.getSelectedIndex()).toBe(0)
       expect(select.getSelectedOption()).toBe(null)
+    })
+
+    test("should clear rendered option text when options are set to empty", async () => {
+      const { select } = await createSelectRenderable(currentRenderer, {
+        width: 24,
+        height: 6,
+        options: sampleOptions,
+      })
+
+      await renderOnce()
+      expect(captureCharFrame()).toContain("Option 1")
+
+      select.options = []
+      await renderOnce()
+
+      expect(captureCharFrame()).not.toContain("Option 1")
+      expect(captureCharFrame()).not.toContain("Option 2")
     })
 
     test("should preserve valid selected index when options change", async () => {

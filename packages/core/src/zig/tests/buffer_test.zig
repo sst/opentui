@@ -2236,6 +2236,37 @@ test "OptimizedBuffer - blendColors with transparent destination" {
     try std.testing.expectEqual(@as(f32, 0.5), cell.fg[3]);
 }
 
+test "OptimizedBuffer - blend backdrop flattens transparent destination" {
+    const pool = gp.initGlobalPool(std.testing.allocator);
+    defer gp.deinitGlobalPool();
+    var local_link_pool = link.LinkPool.init(std.testing.allocator);
+    defer local_link_pool.deinit();
+
+    var buf = try OptimizedBuffer.init(
+        std.testing.allocator,
+        2,
+        2,
+        .{ .pool = pool, .id = "test-buffer", .blendBackdropColor = RGBA{ 1.0, 1.0, 1.0, 1.0 } },
+    );
+    defer buf.deinit();
+
+    const transparent_bg = RGBA{ 0.0, 0.0, 0.0, 0.0 };
+    try buf.clear(transparent_bg, null);
+
+    const opaque_fg = RGBA{ 1.0, 1.0, 1.0, 1.0 };
+    const semi_black_bg = RGBA{ 0.0, 0.0, 0.0, 0.5 };
+    try buf.setCellWithAlphaBlending(0, 0, buffer_mod.DEFAULT_SPACE_CHAR, opaque_fg, semi_black_bg, 0);
+
+    const cell = buf.get(0, 0).?;
+    try std.testing.expect(cell.bg[0] > 0.45);
+    try std.testing.expect(cell.bg[0] < 0.48);
+    try std.testing.expect(cell.bg[1] > 0.45);
+    try std.testing.expect(cell.bg[1] < 0.48);
+    try std.testing.expect(cell.bg[2] > 0.45);
+    try std.testing.expect(cell.bg[2] < 0.48);
+    try std.testing.expectEqual(@as(f32, 0.5), cell.bg[3]);
+}
+
 test "OptimizedBuffer - drawGrayscaleBuffer with custom fg color" {
     const pool = gp.initGlobalPool(std.testing.allocator);
     defer gp.deinitGlobalPool();

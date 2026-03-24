@@ -34,6 +34,24 @@ const markdown = new MarkdownRenderable(renderer, {
 renderer.root.add(markdown)
 ````
 
+## Fenced language normalization
+
+Code fence info strings are normalized before Tree-sitter highlighting.
+
+- `tsx` -> `typescriptreact`
+- `.jsx` -> `javascriptreact`
+- `TSX title=Button.tsx` -> `typescriptreact`
+- `Dockerfile` -> `dockerfile`
+
+Normalization uses `infoStringToFiletype()`. You can extend or override mappings at runtime:
+
+```typescript
+import { extensionToFiletype, basenameToFiletype } from "@opentui/core"
+
+extensionToFiletype.set("templ", "html")
+basenameToFiletype.set("mytoolrc", "yaml")
+```
+
 ## Concealment
 
 Hide markdown markers (backticks, emphasis markers, etc.) when `conceal` is true:

@@ -51,12 +51,54 @@ client.addFiletypeParser({
 ```typescript
 interface FiletypeParserOptions {
   filetype: string
+  aliases?: string[]
   wasm: string
   queries: {
     highlights: string[]
+    injections?: string[]
+  }
+  injectionMapping?: {
+    nodeTypes?: Record<string, string>
+    infoStringMap?: Record<string, string>
   }
 }
 ```
+
+`aliases` maps additional filetype ids to the same parser assets.
+
+## Language injections
+
+Use `queries.injections` to highlight embedded languages.
+
+- `injectionMapping.nodeTypes` maps injected node types to filetype ids.
+- `injectionMapping.infoStringMap` maps code fence language labels to filetype ids.
+
+```typescript
+client.addFiletypeParser({
+  filetype: "markdown",
+  wasm: "https://github.com/tree-sitter-grammars/tree-sitter-markdown/releases/download/v0.5.1/tree-sitter-markdown.wasm",
+  queries: {
+    highlights: ["./assets/markdown/highlights.scm"],
+    injections: [
+      "https://raw.githubusercontent.com/nvim-treesitter/nvim-treesitter/refs/heads/master/queries/markdown/injections.scm",
+    ],
+  },
+  injectionMapping: {
+    nodeTypes: {
+      inline: "markdown_inline",
+      pipe_table_cell: "markdown_inline",
+    },
+    infoStringMap: {
+      js: "javascript",
+      jsx: "javascriptreact",
+      ts: "typescript",
+      tsx: "typescriptreact",
+    },
+  },
+})
+```
+
+If `infoStringMap` has no match, the fence language label is used as the filetype id.
 
 ## Use local files
 
@@ -131,8 +173,20 @@ const client = new TreeSitterClient({
 ## File type resolution
 
 ```typescript
-import { pathToFiletype, extToFiletype } from "@opentui/core"
+import { pathToFiletype, extToFiletype, infoStringToFiletype } from "@opentui/core"
 
 const ft1 = pathToFiletype("src/main.rs")
 const ft2 = extToFiletype("ts")
+const ft3 = infoStringToFiletype("TSX title=Button.tsx")
+```
+
+`infoStringToFiletype()` is used for fenced markdown code blocks.
+
+You can extend or override mappings at runtime:
+
+```typescript
+import { extensionToFiletype, basenameToFiletype } from "@opentui/core"
+
+extensionToFiletype.set("templ", "html")
+basenameToFiletype.set("mytoolrc", "yaml")
 ```

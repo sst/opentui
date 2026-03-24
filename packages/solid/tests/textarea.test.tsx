@@ -968,8 +968,7 @@ describe("Textarea Layout Tests", () => {
               Hello 世界
               <br />
               こんにちは
-              <br />
-              🌟 Emoji 🚀
+              <br />🌟 Emoji 🚀
             </text>
           </box>
         ),

@@ -1,8 +1,8 @@
 import { afterEach, beforeEach, expect, test } from "bun:test"
 
 import { clearEnvCache } from "../lib/env.ts"
-import { createTestRenderer, type TestRenderer } from "../testing/test-renderer"
-import { ManualClock } from "../testing/manual-clock"
+import { createTestRenderer, type TestRenderer } from "../testing/test-renderer.js"
+import { ManualClock } from "../testing/manual-clock.js"
 
 let renderer: TestRenderer | null = null
 let previousShowConsole: string | undefined

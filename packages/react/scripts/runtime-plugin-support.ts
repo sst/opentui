@@ -4,7 +4,7 @@ import { createRuntimePlugin, type RuntimeModuleEntry } from "@opentui/core/runt
 import * as reactRuntime from "react"
 import * as reactJsxRuntime from "react/jsx-runtime"
 import * as reactJsxDevRuntime from "react/jsx-dev-runtime"
-import * as opentuiReactRuntime from "../src/index"
+import * as opentuiReactRuntime from "../src/index.js"
 
 const runtimePluginSupportInstalledKey = "__opentuiReactRuntimePluginSupportInstalled__"
 

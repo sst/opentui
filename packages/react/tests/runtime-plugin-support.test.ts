@@ -24,7 +24,6 @@ describe("react runtime plugin support", () => {
 
     expect(result.exitCode).toBe(0)
     expect(stdout).toContain("core=true")
-    expect(stdout).toContain("core3d=true")
     expect(stdout).toContain("coreTesting=true")
     expect(stdout).toContain("opentuiReact=true")
     expect(stdout).toContain("opentuiReactJsx=true")

@@ -1,8 +1,8 @@
 import { test, expect, describe } from "bun:test"
-import { detectLinks } from "./detect-links"
-import type { TextChunk } from "../text-buffer"
-import type { SimpleHighlight } from "./tree-sitter/types"
-import { RGBA } from "./RGBA"
+import { detectLinks } from "./detect-links.js"
+import type { TextChunk } from "../text-buffer.js"
+import type { SimpleHighlight } from "./tree-sitter/types.js"
+import { RGBA } from "./RGBA.js"
 
 function chunk(text: string): TextChunk {
   return { __isChunk: true, text, fg: RGBA.fromInts(255, 255, 255, 255), attributes: 0 }

@@ -1,9 +1,8 @@
-import type { TextBuffer } from "./text-buffer.js"
 import { RGBA } from "./lib/index.js"
 import { resolveRenderLib, type RenderLib } from "./zig.js"
 import { type Pointer, toArrayBuffer, ptr } from "bun:ffi"
 import { type BorderStyle, type BorderSides, BorderCharArrays, parseBorderStyle } from "./lib/index.js"
-import { type WidthMethod, type CapturedSpan, type CapturedLine } from "./types.js"
+import { TargetChannel, type WidthMethod, type CapturedSpan, type CapturedLine } from "./types.js"
 import type { TextBufferView } from "./text-buffer-view.js"
 import type { EditorView } from "./editor-view.js"
 
@@ -286,6 +285,30 @@ export class OptimizedBuffer {
 
   public fillRect(x: number, y: number, width: number, height: number, bg: RGBA): void {
     this.lib.bufferFillRect(this.bufferPtr, x, y, width, height, bg)
+  }
+
+  public colorMatrix(
+    matrix: Float32Array,
+    cellMask: Float32Array,
+    strength: number = 1.0,
+    target: TargetChannel = TargetChannel.Both,
+  ): void {
+    this.guard()
+    if (matrix.length !== 16) throw new RangeError(`colorMatrix matrix must have length 16, got ${matrix.length}`)
+    const cellMaskCount = Math.floor(cellMask.length / 3)
+    this.lib.bufferColorMatrix(this.bufferPtr, ptr(matrix), ptr(cellMask), cellMaskCount, strength, target)
+  }
+
+  public colorMatrixUniform(
+    matrix: Float32Array,
+    strength: number = 1.0,
+    target: TargetChannel = TargetChannel.Both,
+  ): void {
+    this.guard()
+    if (matrix.length !== 16)
+      throw new RangeError(`colorMatrixUniform matrix must have length 16, got ${matrix.length}`)
+    if (strength === 0.0) return
+    this.lib.bufferColorMatrixUniform(this.bufferPtr, ptr(matrix), strength, target)
   }
 
   public drawFrameBuffer(

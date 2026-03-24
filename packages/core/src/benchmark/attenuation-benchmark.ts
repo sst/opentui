@@ -1,0 +1,81 @@
+#!/usr/bin/env bun
+
+import { performance } from "node:perf_hooks"
+import { OptimizedBuffer } from "../buffer.js"
+import { VignetteEffect } from "../post/effects.js"
+
+type Scenario = { width: number; height: number }
+type ScenarioResult = {
+  size: string
+  cells: number
+  avgMs: number
+  avgNsPerCell: number
+  medianMs: number
+  p95Ms: number
+}
+
+const ITERATIONS = 5000
+const WARMUP_ITERATIONS = 100
+const STRENGTH = 0.7
+const baseScenarios: Array<{ width: number; height: number }> = [
+  { width: 40, height: 20 },
+  { width: 80, height: 24 },
+  { width: 120, height: 40 },
+  { width: 200, height: 60 },
+]
+const scenarios: Scenario[] = baseScenarios
+
+function calculateStats(samples: number[]): { avgMs: number; medianMs: number; p95Ms: number } {
+  const sorted = [...samples].sort((a, b) => a - b)
+  const total = samples.reduce((sum, value) => sum + value, 0)
+  const avgMs = total / samples.length
+  const mid = Math.floor(sorted.length / 2)
+  const medianMs = sorted.length % 2 === 0 ? (sorted[mid - 1] + sorted[mid]) / 2 : sorted[mid]
+  const p95Index = Math.floor(0.95 * (sorted.length - 1))
+  const p95Ms = sorted[p95Index]
+
+  return { avgMs, medianMs, p95Ms }
+}
+
+function formatMs(value: number): number {
+  return Number(value.toFixed(4))
+}
+
+function formatNs(value: number): number {
+  return Number(value.toFixed(2))
+}
+
+function runScenario({ width, height }: Scenario): ScenarioResult {
+  const buffer = OptimizedBuffer.create(width, height, "unicode", { id: `vignette-bench-${width}x${height}` })
+  const vignetteEffect = new VignetteEffect(STRENGTH)
+  const { fg, bg } = buffer.buffers
+  fg.fill(1)
+  bg.fill(1)
+
+  for (let i = 0; i < WARMUP_ITERATIONS; i++) {
+    vignetteEffect.apply(buffer)
+  }
+
+  const samples = new Array<number>(ITERATIONS)
+  for (let i = 0; i < ITERATIONS; i++) {
+    const start = performance.now()
+    vignetteEffect.apply(buffer)
+    samples[i] = performance.now() - start
+  }
+
+  buffer.destroy()
+
+  const stats = calculateStats(samples)
+  return {
+    size: `${width}x${height}`,
+    cells: width * height,
+    avgMs: formatMs(stats.avgMs),
+    avgNsPerCell: formatNs((stats.avgMs * 1_000_000) / (width * height)),
+    medianMs: formatMs(stats.medianMs),
+    p95Ms: formatMs(stats.p95Ms),
+  }
+}
+
+console.log(`Vignette Effect Benchmark (${ITERATIONS} iterations per scenario)`)
+const results = scenarios.map(runScenario)
+console.table(results)

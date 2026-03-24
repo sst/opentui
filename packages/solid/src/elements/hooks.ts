@@ -105,6 +105,30 @@ export const usePaste = (callback: (event: PasteEvent) => void) => {
  */
 export const useKeyHandler = useKeyboard
 
+export const onFocus = (callback: () => void) => {
+  const renderer = useRenderer()
+
+  onMount(() => {
+    renderer.on("focus", callback)
+  })
+
+  onCleanup(() => {
+    renderer.off("focus", callback)
+  })
+}
+
+export const onBlur = (callback: () => void) => {
+  const renderer = useRenderer()
+
+  onMount(() => {
+    renderer.on("blur", callback)
+  })
+
+  onCleanup(() => {
+    renderer.off("blur", callback)
+  })
+}
+
 export const useSelectionHandler = (callback: (selection: Selection) => void) => {
   const renderer = useRenderer()
 

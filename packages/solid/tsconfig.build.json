@@ -11,6 +11,7 @@
     "skipLibCheck": true,
     "jsx": "preserve",
     "jsxImportSource": "@opentui/solid",
+    "module": "ESNext",
     "moduleResolution": "bundler",
     "baseUrl": ".",
     "paths": {

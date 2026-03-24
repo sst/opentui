@@ -4,6 +4,7 @@ import { EventEmitter } from "events"
 import {
   type CursorStyle,
   type CursorStyleOptions,
+  type TargetChannel,
   type DebugOverlayCorner,
   type WidthMethod,
   type Highlight,
@@ -259,6 +260,14 @@ function getOpenTUILib(libPath?: string) {
     },
     bufferFillRect: {
       args: ["ptr", "u32", "u32", "u32", "u32", "ptr"],
+      returns: "void",
+    },
+    bufferColorMatrix: {
+      args: ["ptr", "ptr", "ptr", "usize", "f32", "u8"],
+      returns: "void",
+    },
+    bufferColorMatrixUniform: {
+      args: ["ptr", "ptr", "f32", "u8"],
       returns: "void",
     },
     bufferResize: {
@@ -1439,6 +1448,15 @@ export interface RenderLib {
     attributes?: number,
   ) => void
   bufferFillRect: (buffer: Pointer, x: number, y: number, width: number, height: number, color: RGBA) => void
+  bufferColorMatrix: (
+    buffer: Pointer,
+    matrixPtr: Pointer,
+    cellMaskPtr: Pointer,
+    cellMaskCount: number,
+    strength: number,
+    target: TargetChannel,
+  ) => void
+  bufferColorMatrixUniform: (buffer: Pointer, matrixPtr: Pointer, strength: number, target: TargetChannel) => void
   bufferDrawSuperSampleBuffer: (
     buffer: Pointer,
     x: number,
@@ -2167,6 +2185,21 @@ class FFIRenderLib implements RenderLib {
   public bufferFillRect(buffer: Pointer, x: number, y: number, width: number, height: number, color: RGBA) {
     const bg = color.buffer
     this.opentui.symbols.bufferFillRect(buffer, x, y, width, height, bg)
+  }
+
+  public bufferColorMatrix(
+    buffer: Pointer,
+    matrixPtr: Pointer,
+    cellMaskPtr: Pointer,
+    cellMaskCount: number,
+    strength: number,
+    target: TargetChannel,
+  ): void {
+    this.opentui.symbols.bufferColorMatrix(buffer, matrixPtr, cellMaskPtr, cellMaskCount, strength, target)
+  }
+
+  public bufferColorMatrixUniform(buffer: Pointer, matrixPtr: Pointer, strength: number, target: TargetChannel): void {
+    this.opentui.symbols.bufferColorMatrixUniform(buffer, matrixPtr, strength, target)
   }
 
   public bufferDrawSuperSampleBuffer(

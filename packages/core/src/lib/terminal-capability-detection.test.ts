@@ -150,7 +150,7 @@ describe("renderer capabilities event", () => {
    * multiple emissions and handle them reactively.
    */
   test("kitty terminal emits capabilities event for each response", async () => {
-    const { createTestRenderer } = await import("../testing/test-renderer")
+    const { createTestRenderer } = await import("../testing/test-renderer.js")
     const { renderer } = await createTestRenderer({})
 
     const events: any[] = []

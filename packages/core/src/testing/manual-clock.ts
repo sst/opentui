@@ -1,4 +1,4 @@
-import type { Clock, TimerHandle } from "../lib/clock"
+import type { Clock, TimerHandle } from "../lib/clock.js"
 
 interface ScheduledTimer {
   id: number
@@ -25,6 +25,17 @@ export class ManualClock implements Clock {
 
   public now(): number {
     return this.time
+  }
+
+  public setTime(time: number): void {
+    const targetTime = Math.floor(time)
+
+    if (targetTime >= this.time) {
+      this.advance(targetTime - this.time)
+      return
+    }
+
+    this.time = targetTime
   }
 
   public setTimeout(fn: () => void, delayMs: number): TimerHandle {

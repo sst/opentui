@@ -18,6 +18,7 @@ const logger = @import("logger.zig");
 const event_bus = @import("event-bus.zig");
 const utils = @import("utils.zig");
 const native_span_feed = @import("native-span-feed.zig");
+const buffer_effects = @import("buffer-methods.zig");
 
 pub const OptimizedBuffer = buffer.OptimizedBuffer;
 pub const CliRenderer = renderer.CliRenderer;
@@ -157,8 +158,6 @@ fn getLargeAllocationCount() u64 {
 export fn createNativeSpanFeed(options_ptr: ?*const native_span_feed.Options) ?*native_span_feed.Stream {
     return native_span_feed.createNativeSpanFeedWithAllocator(globalAllocator, options_ptr);
 }
-
-
 
 export fn getArenaAllocatedBytes() usize {
     return arena.queryCapacity();
@@ -537,6 +536,21 @@ export fn bufferSetCell(bufferPtr: *buffer.OptimizedBuffer, x: u32, y: u32, char
 export fn bufferFillRect(bufferPtr: *buffer.OptimizedBuffer, x: u32, y: u32, width: u32, height: u32, bg: [*]const f32) void {
     const rgbaBg = utils.f32PtrToRGBA(bg);
     bufferPtr.fillRect(x, y, width, height, rgbaBg) catch {};
+}
+
+export fn bufferColorMatrix(bufferPtr: *buffer.OptimizedBuffer, matrixPtr: [*]const f32, cellMaskPtr: [*]const f32, cellMaskCount: usize, strength: f32, target: u8) void {
+    if (cellMaskCount == 0) return;
+    const matrix = matrixPtr[0..16];
+    const len = cellMaskCount * 3;
+    const cellMask = cellMaskPtr[0..len];
+    const targetEnum: buffer_effects.ColorTarget = @enumFromInt(target);
+    buffer_effects.colorMatrix(bufferPtr, matrix, cellMask, strength, targetEnum);
+}
+
+export fn bufferColorMatrixUniform(bufferPtr: *buffer.OptimizedBuffer, matrixPtr: [*]const f32, strength: f32, target: u8) void {
+    const matrix = matrixPtr[0..16];
+    const targetEnum: buffer_effects.ColorTarget = @enumFromInt(target);
+    buffer_effects.colorMatrixUniform(bufferPtr, matrix, strength, targetEnum);
 }
 
 export fn bufferDrawPackedBuffer(bufferPtr: *buffer.OptimizedBuffer, data: [*]const u8, dataLen: usize, posX: u32, posY: u32, terminalWidthCells: u32, terminalHeightCells: u32) void {

@@ -4,7 +4,7 @@ import { SyntaxStyle, type StyleDefinition } from "../syntax-style.js"
 import type { TextChunk } from "../text-buffer.js"
 import { createTextAttributes } from "../utils.js"
 import type { BorderStyle } from "../lib/border.js"
-import type { ColorInput } from "../lib/RGBA.js"
+import { RGBA, parseColor, type ColorInput } from "../lib/RGBA.js"
 import { type MarkedToken, type Token, type Tokens } from "marked"
 import { StyledText } from "../lib/styled-text.js"
 import { BoxRenderable } from "./Box.js"
@@ -18,6 +18,7 @@ import {
   type TextTableContent,
 } from "./TextTable.js"
 import type { TreeSitterClient } from "../lib/tree-sitter/index.js"
+import { infoStringToFiletype } from "../lib/tree-sitter/resolve-ft.js"
 import { parseMarkdownIncremental, type ParseState } from "./markdown-parser.js"
 import type { OptimizedBuffer } from "../buffer.js"
 import { detectLinks } from "../lib/detect-links.js"
@@ -66,6 +67,8 @@ export interface MarkdownTableOptions {
 export interface MarkdownOptions extends RenderableOptions<MarkdownRenderable> {
   content?: string
   syntaxStyle: SyntaxStyle
+  fg?: ColorInput
+  bg?: ColorInput
   /** Controls concealment for markdown syntax markers in markdown text blocks. */
   conceal?: boolean
   /** Controls concealment inside fenced code blocks rendered by CodeRenderable. */
@@ -125,6 +128,11 @@ interface ResolvedTableRenderableOptions {
 
 const TRAILING_MARKDOWN_BLOCK_BREAKS_RE = /(?:\r?\n){2,}$/
 
+function colorsEqual(left?: RGBA, right?: RGBA): boolean {
+  if (!left || !right) return left === right
+  return left.equals(right)
+}
+
 export interface BlockState {
   token: MarkedToken
   tokenRaw: string // Cache raw for comparison
@@ -137,6 +145,8 @@ export type { ParseState }
 export class MarkdownRenderable extends Renderable {
   private _content: string = ""
   private _syntaxStyle: SyntaxStyle
+  private _fg?: RGBA
+  private _bg?: RGBA
   private _conceal: boolean
   private _concealCode: boolean
   private _treeSitterClient?: TreeSitterClient
@@ -168,6 +178,8 @@ export class MarkdownRenderable extends Renderable {
     })
 
     this._syntaxStyle = options.syntaxStyle
+    this._fg = options.fg ? parseColor(options.fg) : undefined
+    this._bg = options.bg ? parseColor(options.bg) : undefined
     this._conceal = options.conceal ?? this._contentDefaultOptions.conceal
     this._concealCode = options.concealCode ?? this._contentDefaultOptions.concealCode
     this._content = options.content ?? this._contentDefaultOptions.content
@@ -200,6 +212,30 @@ export class MarkdownRenderable extends Renderable {
     if (this._syntaxStyle !== value) {
       this._syntaxStyle = value
       // Mark dirty - actual re-render happens in renderSelf
+      this._styleDirty = true
+    }
+  }
+
+  get fg(): RGBA | undefined {
+    return this._fg
+  }
+
+  set fg(value: ColorInput | undefined) {
+    const next = value ? parseColor(value) : undefined
+    if (!colorsEqual(this._fg, next)) {
+      this._fg = next
+      this._styleDirty = true
+    }
+  }
+
+  get bg(): RGBA | undefined {
+    return this._bg
+  }
+
+  set bg(value: ColorInput | undefined) {
+    const next = value ? parseColor(value) : undefined
+    if (!colorsEqual(this._bg, next)) {
+      this._bg = next
       this._styleDirty = true
     }
   }
@@ -448,6 +484,8 @@ export class MarkdownRenderable extends Renderable {
       content,
       filetype: "markdown",
       syntaxStyle: this._syntaxStyle,
+      fg: this._fg,
+      bg: this._bg,
       conceal: this._conceal,
       drawUnstyledText: false,
       streaming: true,
@@ -462,8 +500,10 @@ export class MarkdownRenderable extends Renderable {
     return new CodeRenderable(this.ctx, {
       id,
       content: token.text,
-      filetype: token.lang || undefined,
+      filetype: infoStringToFiletype(token.lang ?? ""),
       syntaxStyle: this._syntaxStyle,
+      fg: this._fg,
+      bg: this._bg,
       conceal: this._concealCode,
       drawUnstyledText: !(this._streaming && this._concealCode),
       streaming: this._streaming,
@@ -477,6 +517,8 @@ export class MarkdownRenderable extends Renderable {
     renderable.content = content
     renderable.filetype = "markdown"
     renderable.syntaxStyle = this._syntaxStyle
+    renderable.fg = this._fg
+    renderable.bg = this._bg
     renderable.conceal = this._conceal
     renderable.drawUnstyledText = false
     renderable.streaming = true
@@ -485,8 +527,10 @@ export class MarkdownRenderable extends Renderable {
 
   private applyCodeBlockRenderable(renderable: CodeRenderable, token: Tokens.Code, marginBottom: number): void {
     renderable.content = token.text
-    renderable.filetype = token.lang || undefined
+    renderable.filetype = infoStringToFiletype(token.lang ?? "")
     renderable.syntaxStyle = this._syntaxStyle
+    renderable.fg = this._fg
+    renderable.bg = this._bg
     renderable.conceal = this._concealCode
     renderable.drawUnstyledText = !(this._streaming && this._concealCode)
     renderable.streaming = this._streaming

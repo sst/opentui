@@ -912,7 +912,7 @@ describe("Textarea - Selection Tests", () => {
     })
 
     it("should handle cross-renderable selection from bottom-left text to top-right text", async () => {
-      const { BoxRenderable } = await import("../Box")
+      const { BoxRenderable } = await import("../Box.js")
 
       const bottomText = new TextRenderable(currentRenderer, {
         id: "bottom-instructions",

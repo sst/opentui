@@ -1,0 +1,7 @@
+{
+  "$schema": "./node_modules/oxfmt/configuration_schema.json",
+  "semi": false,
+  "printWidth": 120,
+  "sortPackageJson": false,
+  "ignorePatterns": ["**/.zig-cache/**", "packages/core/src/lib/tree-sitter/default-parsers.ts"]
+}

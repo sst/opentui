@@ -2,9 +2,9 @@ import { afterEach, beforeEach, describe, expect, it } from "bun:test"
 import { createTestRenderer, type TestRendererOptions } from "@opentui/core/testing"
 import { createContext, useContext, useEffect, useMemo, useState } from "react"
 import { act, type ReactNode } from "react"
-import { createReactSlotRegistry, createSlot, Slot, type ReactPlugin } from "../src/plugins/slot"
-import { useKeyboard } from "../src/hooks/use-keyboard"
-import { createRoot, type Root } from "../src/reconciler/renderer"
+import { createReactSlotRegistry, createSlot, Slot, type ReactPlugin } from "../src/plugins/slot.js"
+import { useKeyboard } from "../src/hooks/use-keyboard.js"
+import { createRoot, type Root } from "../src/reconciler/renderer.js"
 
 interface AppSlots {
   statusbar: { user: string }
@@ -177,6 +177,53 @@ describe("React Slot System", () => {
     expect(frame).toContain("early-plugin")
     expect(frame).toContain("late-plugin")
     expect(frame).not.toContain("replace-fallback")
+  })
+
+  it("replace mode does not invoke fallback components when plugin content wins", async () => {
+    const fallbackLifecycle: string[] = []
+
+    function FallbackProbe() {
+      fallbackLifecycle.push("render")
+
+      useEffect(() => {
+        fallbackLifecycle.push("mount")
+
+        return () => {
+          fallbackLifecycle.push("cleanup")
+        }
+      }, [])
+
+      return <text>fallback-probe</text>
+    }
+
+    const { setup } = await setupSlotTest(
+      (slotRegistry) => {
+        slotRegistry.register({
+          id: "replace-plugin",
+          slots: {
+            statusbar() {
+              return <text>plugin-only</text>
+            },
+          },
+        })
+
+        const Slot = createSlot(slotRegistry)
+        return (
+          <Slot name="statusbar" user="lee" mode="replace">
+            <FallbackProbe />
+          </Slot>
+        )
+      },
+      { width: 40, height: 6 },
+    )
+    testSetup = setup
+
+    await testSetup.renderOnce()
+    const frame = testSetup.captureCharFrame()
+
+    expect(frame).toContain("plugin-only")
+    expect(frame).not.toContain("fallback-probe")
+    expect(fallbackLifecycle).toEqual([])
   })
 
   it("single_winner mode renders only the highest-priority plugin", async () => {

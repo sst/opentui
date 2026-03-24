@@ -1,8 +1,8 @@
 import { describe, expect, test } from "bun:test"
 import { Buffer } from "node:buffer"
-import { ManualClock } from "../testing/manual-clock"
+import { ManualClock } from "../testing/manual-clock.js"
 import type { ScrollInfo } from "./parse.mouse"
-import { StdinParser, type StdinEvent, type StdinParserOptions } from "./stdin-parser"
+import { StdinParser, type StdinEvent, type StdinParserOptions } from "./stdin-parser.js"
 
 type KeySnap = {
   type: "key"
@@ -375,6 +375,21 @@ describe("StdinParser", () => {
         expect(snap(parser)).toEqual([])
         clock.advance(10)
         expect(snap(parser)).toEqual([resp("unknown", "\x1bO")])
+      } finally {
+        parser.destroy()
+      }
+    })
+
+    test("SS3 timeout flush does not swallow later text", () => {
+      const { parser, clock } = createTimedParser()
+      try {
+        parser.push(Buffer.from("\x1bO"))
+        expect(snap(parser)).toEqual([])
+        clock.advance(10)
+        expect(snap(parser)).toEqual([resp("unknown", "\x1bO")])
+
+        parser.push(Buffer.from("a"))
+        expect(snap(parser)).toEqual([k("a")])
       } finally {
         parser.destroy()
       }
@@ -906,7 +921,7 @@ describe("StdinParser", () => {
       }
     })
 
-    test("timeout flushes partial OSC as unknown", () => {
+    test("partial OSC flushes on timeout as unknown", () => {
       const { parser, clock } = createTimedParser()
       try {
         parser.push(Buffer.from("\x1b]incomplete"))
@@ -918,7 +933,7 @@ describe("StdinParser", () => {
       }
     })
 
-    test("timeout flushes partial DCS as unknown", () => {
+    test("partial DCS flushes on timeout as unknown", () => {
       const { parser, clock } = createTimedParser()
       try {
         parser.push(Buffer.from("\x1bPpartial"))
@@ -930,7 +945,7 @@ describe("StdinParser", () => {
       }
     })
 
-    test("timeout flushes partial APC as unknown", () => {
+    test("partial APC flushes on timeout as unknown", () => {
       const { parser, clock } = createTimedParser()
       try {
         parser.push(Buffer.from("\x1b_partial"))
@@ -942,13 +957,447 @@ describe("StdinParser", () => {
       }
     })
 
-    test("timeout flushes partial CSI as unknown", () => {
+    test("partial generic CSI flushes on timeout as unknown", () => {
       const { parser, clock } = createTimedParser()
       try {
         parser.push(Buffer.from("\x1b[123"))
         expect(snap(parser)).toEqual([])
         clock.advance(10)
         expect(snap(parser)).toEqual([resp("unknown", "\x1b[123")])
+      } finally {
+        parser.destroy()
+      }
+    })
+
+    test("partial kitty CSI stays pending after timeout", () => {
+      const { parser, clock } = createTimedParser({ protocolContext: { kittyKeyboardEnabled: true } })
+      try {
+        parser.push(Buffer.from("\x1b[118;5"))
+        expect(snap(parser)).toEqual([])
+        clock.advance(10)
+        expect(snap(parser)).toEqual([])
+      } finally {
+        parser.destroy()
+      }
+    })
+
+    test("partial kitty CSI stays pending after timeout when split after first semicolon", () => {
+      const { parser, clock } = createTimedParser({ protocolContext: { kittyKeyboardEnabled: true } })
+      try {
+        parser.push(Buffer.from("\x1b[97;"))
+        expect(snap(parser)).toEqual([])
+        clock.advance(10)
+        expect(snap(parser)).toEqual([])
+
+        parser.push(Buffer.from("2u"))
+        expect(snap(parser)).toEqual([k("a", { shift: true, raw: "\x1b[97;2u" })])
+      } finally {
+        parser.destroy()
+      }
+    })
+
+    test("partial kitty CSI stays pending after timeout for higher modifier bits", () => {
+      const { parser, clock } = createTimedParser({ protocolContext: { kittyKeyboardEnabled: true } })
+      try {
+        parser.push(Buffer.from("\x1b[97;9"))
+        expect(snap(parser)).toEqual([])
+        clock.advance(10)
+        expect(snap(parser)).toEqual([])
+
+        parser.push(Buffer.from("u"))
+        const event = parser.read()
+        expect(event?.type).toBe("key")
+        if (!event || event.type !== "key") throw new Error("expected key event")
+        expect(event.raw).toBe("\x1b[97;9u")
+        expect(event.key.name).toBe("a")
+        expect(event.key.super).toBe(true)
+        expect(parser.read()).toBeNull()
+      } finally {
+        parser.destroy()
+      }
+    })
+
+    test("partial kitty special-key CSI stays pending after timeout", () => {
+      const { parser, clock } = createTimedParser({ protocolContext: { kittyKeyboardEnabled: true } })
+      try {
+        parser.push(Buffer.from("\x1b[1;1:"))
+        expect(snap(parser)).toEqual([])
+        clock.advance(10)
+        expect(snap(parser)).toEqual([])
+
+        parser.push(Buffer.from("3A"))
+        expect(snap(parser)).toEqual([k("up", { raw: "\x1b[1;1:3A", eventType: "release" })])
+      } finally {
+        parser.destroy()
+      }
+    })
+
+    test("partial SGR mouse CSI stays pending after timeout", () => {
+      const { parser, clock } = createTimedParser()
+      try {
+        parser.push(Buffer.from("\x1b[<35;20"))
+        expect(snap(parser)).toEqual([])
+        clock.advance(10)
+        expect(snap(parser)).toEqual([])
+
+        parser.push(Buffer.from(";5m"))
+        expect(snap(parser)).toEqual([sgr("\x1b[<35;20;5m", "move", 19, 4)])
+      } finally {
+        parser.destroy()
+      }
+    })
+
+    test("split CSI across reads reassembles after timeout", () => {
+      const { parser, clock } = createTimedParser({ protocolContext: { kittyKeyboardEnabled: true } })
+      try {
+        // Kitty Ctrl+V release split across two reads
+        parser.push(Buffer.from("\x1b[118;5"))
+        expect(snap(parser)).toEqual([])
+        clock.advance(10)
+        // Stays pending — not flushed
+        expect(snap(parser)).toEqual([])
+        parser.push(Buffer.from(";3u"))
+        expect(snap(parser)).toEqual([k("v", { ctrl: true, raw: "\x1b[118;5;3u" })])
+      } finally {
+        parser.destroy()
+      }
+    })
+
+    test("split kitty escape CSI across reads reassembles after timeout", () => {
+      const { parser, clock } = createTimedParser({ protocolContext: { kittyKeyboardEnabled: true } })
+      try {
+        parser.push(Buffer.from("\x1b[27;5"))
+        expect(snap(parser)).toEqual([])
+        clock.advance(10)
+        expect(snap(parser)).toEqual([])
+        parser.push(Buffer.from("u"))
+        expect(snap(parser)).toEqual([k("escape", { ctrl: true, raw: "\x1b[27;5u" })])
+      } finally {
+        parser.destroy()
+      }
+    })
+
+    test("timed-out standard one-semicolon CSI key flushes before later text", () => {
+      const { parser, clock } = createTimedParser()
+      try {
+        parser.push(Buffer.from("\x1b[1;5"))
+        expect(snap(parser)).toEqual([])
+        clock.advance(10)
+        expect(snap(parser)).toEqual([resp("unknown", "\x1b[1;5")])
+
+        parser.push(Buffer.from("A"))
+        expect(snap(parser)).toEqual([k("a", { raw: "A", shift: true })])
+      } finally {
+        parser.destroy()
+      }
+    })
+
+    test("timed-out one-semicolon CSI response flushes before later text", () => {
+      const { parser, clock } = createTimedParser()
+      try {
+        parser.push(Buffer.from("\x1b[24;80"))
+        expect(snap(parser)).toEqual([])
+        clock.advance(10)
+        expect(snap(parser)).toEqual([resp("unknown", "\x1b[24;80")])
+
+        parser.push(Buffer.from("R"))
+        expect(snap(parser)).toEqual([k("r", { raw: "R", shift: true })])
+      } finally {
+        parser.destroy()
+      }
+    })
+
+    test("timed-out partial kitty CSI resyncs on a later ESC", () => {
+      const { parser, clock } = createTimedParser({ protocolContext: { kittyKeyboardEnabled: true } })
+      try {
+        parser.push(Buffer.from("\x1b[118;5"))
+        expect(snap(parser)).toEqual([])
+        clock.advance(10)
+        expect(snap(parser)).toEqual([])
+
+        parser.push(Buffer.from("\x1b[A"))
+        expect(snap(parser)).toEqual([resp("unknown", "\x1b[118;5"), k("up", { raw: "\x1b[A" })])
+      } finally {
+        parser.destroy()
+      }
+    })
+
+    test("timed-out partial kitty CSI flushes before unrelated later text", () => {
+      const { parser, clock } = createTimedParser({ protocolContext: { kittyKeyboardEnabled: true } })
+      try {
+        parser.push(Buffer.from("\x1b[118;5"))
+        expect(snap(parser)).toEqual([])
+        clock.advance(10)
+        expect(snap(parser)).toEqual([])
+
+        parser.push(Buffer.from("a"))
+        expect(snap(parser)).toEqual([resp("unknown", "\x1b[118;5"), k("a")])
+      } finally {
+        parser.destroy()
+      }
+    })
+
+    test("partial generic CSI timeout flush does not swallow later text", () => {
+      const { parser, clock } = createTimedParser()
+      try {
+        parser.push(Buffer.from("\x1b[123"))
+        expect(snap(parser)).toEqual([])
+        clock.advance(10)
+        expect(snap(parser)).toEqual([resp("unknown", "\x1b[123")])
+
+        parser.push(Buffer.from("a"))
+        expect(snap(parser)).toEqual([k("a")])
+      } finally {
+        parser.destroy()
+      }
+    })
+
+    test("partial large-parameter CSI flushes on timeout before later text", () => {
+      const { parser, clock } = createTimedParser()
+      try {
+        parser.push(Buffer.from("\x1b[80;120"))
+        expect(snap(parser)).toEqual([])
+        clock.advance(10)
+        expect(snap(parser)).toEqual([resp("unknown", "\x1b[80;120")])
+
+        parser.push(Buffer.from("a"))
+        expect(snap(parser)).toEqual([k("a")])
+      } finally {
+        parser.destroy()
+      }
+    })
+
+    test("partial OSC timeout flush does not swallow later text", () => {
+      const { parser, clock } = createTimedParser()
+      try {
+        parser.push(Buffer.from("\x1b]52;c;"))
+        expect(snap(parser)).toEqual([])
+        clock.advance(10)
+        expect(snap(parser)).toEqual([resp("unknown", "\x1b]52;c;")])
+
+        parser.push(Buffer.from("abc"))
+        expect(snap(parser)).toEqual([k("a"), k("b"), k("c")])
+      } finally {
+        parser.destroy()
+      }
+    })
+
+    test("partial OSC timeout flush does not swallow later escape sequences", () => {
+      const { parser, clock } = createTimedParser()
+      try {
+        parser.push(Buffer.from("\x1b]52;c;"))
+        expect(snap(parser)).toEqual([])
+        clock.advance(10)
+        expect(snap(parser)).toEqual([resp("unknown", "\x1b]52;c;")])
+
+        parser.push(Buffer.from("\x1b[A"))
+        expect(snap(parser)).toEqual([k("up", { raw: "\x1b[A" })])
+      } finally {
+        parser.destroy()
+      }
+    })
+  })
+
+  describe("protocol context", () => {
+    test("partial explicit-width CPR stays pending after timeout when probe is active", () => {
+      const { parser, clock } = createTimedParser({
+        protocolContext: { explicitWidthCprActive: true },
+      })
+
+      try {
+        parser.push(Buffer.from("\x1b[1;2"))
+        expect(snap(parser)).toEqual([])
+        clock.advance(10)
+        expect(snap(parser)).toEqual([])
+
+        parser.push(Buffer.from("R"))
+        expect(snap(parser)).toEqual([resp("csi", "\x1b[1;2R")])
+      } finally {
+        parser.destroy()
+      }
+    })
+
+    test("partial explicit-width CPR flushes before later text when probe is inactive", () => {
+      const { parser, clock } = createTimedParser()
+
+      try {
+        parser.push(Buffer.from("\x1b[1;2"))
+        expect(snap(parser)).toEqual([])
+        clock.advance(10)
+        expect(snap(parser)).toEqual([resp("unknown", "\x1b[1;2")])
+
+        parser.push(Buffer.from("R"))
+        expect(snap(parser)).toEqual([k("r", { raw: "R", shift: true })])
+      } finally {
+        parser.destroy()
+      }
+    })
+
+    test("partial pixel resolution response stays pending after timeout while query is active", () => {
+      const { parser, clock } = createTimedParser({
+        protocolContext: { pixelResolutionQueryActive: true },
+      })
+
+      try {
+        parser.push(Buffer.from("\x1b[4;1080;192"))
+        expect(snap(parser)).toEqual([])
+        clock.advance(10)
+        expect(snap(parser)).toEqual([])
+
+        parser.push(Buffer.from("0t"))
+        expect(snap(parser)).toEqual([resp("csi", "\x1b[4;1080;1920t")])
+      } finally {
+        parser.destroy()
+      }
+    })
+
+    test("partial DECRPM stays pending after timeout while capability probe is active", () => {
+      const { parser, clock } = createTimedParser({
+        protocolContext: { privateCapabilityRepliesActive: true },
+      })
+
+      try {
+        parser.push(Buffer.from("\x1b[?1016;2$"))
+        expect(snap(parser)).toEqual([])
+        clock.advance(10)
+        expect(snap(parser)).toEqual([])
+
+        parser.push(Buffer.from("y"))
+        expect(snap(parser)).toEqual([resp("csi", "\x1b[?1016;2$y")])
+      } finally {
+        parser.destroy()
+      }
+    })
+
+    test("partial DA1 stays pending after timeout while capability probe is active", () => {
+      const { parser, clock } = createTimedParser({
+        protocolContext: { privateCapabilityRepliesActive: true },
+      })
+
+      try {
+        parser.push(Buffer.from("\x1b[?62;"))
+        expect(snap(parser)).toEqual([])
+        clock.advance(10)
+        expect(snap(parser)).toEqual([])
+
+        parser.push(Buffer.from("c"))
+        expect(snap(parser)).toEqual([resp("csi", "\x1b[?62;c")])
+      } finally {
+        parser.destroy()
+      }
+    })
+
+    test("timed-out modified CSI key still flushes before later final byte", () => {
+      const { parser, clock } = createTimedParser({
+        protocolContext: { explicitWidthCprActive: true },
+      })
+
+      try {
+        parser.push(Buffer.from("\x1b[1;5"))
+        expect(snap(parser)).toEqual([])
+        clock.advance(10)
+        expect(snap(parser)).toEqual([])
+
+        parser.push(Buffer.from("A"))
+        expect(snap(parser)).toEqual([resp("unknown", "\x1b[1;5"), k("a", { raw: "A", shift: true })])
+      } finally {
+        parser.destroy()
+      }
+    })
+
+    test("generic row/col CPR does not reassemble during explicit-width probe window", () => {
+      const { parser, clock } = createTimedParser({
+        protocolContext: { explicitWidthCprActive: true },
+      })
+
+      try {
+        parser.push(Buffer.from("\x1b[24;80"))
+        expect(snap(parser)).toEqual([])
+        clock.advance(10)
+        expect(snap(parser)).toEqual([resp("unknown", "\x1b[24;80")])
+
+        parser.push(Buffer.from("R"))
+        expect(snap(parser)).toEqual([k("r", { raw: "R", shift: true })])
+      } finally {
+        parser.destroy()
+      }
+    })
+
+    test("deferred explicit-width CPR flushes when probe context is cleared", () => {
+      const { parser, clock } = createTimedParser({
+        protocolContext: { explicitWidthCprActive: true },
+      })
+
+      try {
+        parser.push(Buffer.from("\x1b[1;2"))
+        expect(snap(parser)).toEqual([])
+        clock.advance(10)
+        expect(snap(parser)).toEqual([])
+
+        parser.updateProtocolContext({ explicitWidthCprActive: false })
+        expect(snap(parser)).toEqual([resp("unknown", "\x1b[1;2")])
+      } finally {
+        parser.destroy()
+      }
+    })
+
+    test("timed-out pending explicit-width CPR does not rearm until more bytes arrive", () => {
+      const clock = new ManualClock()
+      let timeoutFlushes = 0
+      let parser!: StdinParser
+      parser = new StdinParser({
+        armTimeouts: true,
+        clock,
+        protocolContext: { explicitWidthCprActive: true },
+        onTimeoutFlush: () => {
+          timeoutFlushes += 1
+          parser.drain(() => {})
+        },
+      })
+
+      try {
+        parser.push(Buffer.from("\x1b[1;2"))
+        clock.advance(10)
+        expect(timeoutFlushes).toBe(1)
+
+        clock.advance(50)
+        expect(timeoutFlushes).toBe(1)
+        expect(snap(parser)).toEqual([])
+
+        parser.push(Buffer.from(";"))
+        clock.advance(10)
+        expect(timeoutFlushes).toBe(2)
+      } finally {
+        parser.destroy()
+      }
+    })
+
+    test("timed-out pending private reply does not rearm until more bytes arrive", () => {
+      const clock = new ManualClock()
+      let timeoutFlushes = 0
+      let parser!: StdinParser
+      parser = new StdinParser({
+        armTimeouts: true,
+        clock,
+        protocolContext: { privateCapabilityRepliesActive: true },
+        onTimeoutFlush: () => {
+          timeoutFlushes += 1
+          parser.drain(() => {})
+        },
+      })
+
+      try {
+        parser.push(Buffer.from("\x1b[?1016;2$"))
+        clock.advance(10)
+        expect(timeoutFlushes).toBe(1)
+
+        clock.advance(50)
+        expect(timeoutFlushes).toBe(1)
+        expect(snap(parser)).toEqual([])
+
+        parser.push(Buffer.from(";"))
+        clock.advance(10)
+        expect(timeoutFlushes).toBe(2)
       } finally {
         parser.destroy()
       }
@@ -1234,6 +1683,67 @@ describe("StdinParser", () => {
         expect(snap(parser)).toEqual([])
         parser.push(Buffer.from("m")) // complete
         expect(snap(parser)).toEqual([sgr("\x1b[<35;20;5m", "move", 19, 4)])
+      } finally {
+        parser.destroy()
+      }
+    })
+
+    test("timed-out pending kitty CSI does not rearm until more bytes arrive", () => {
+      const clock = new ManualClock()
+      let timeoutFlushes = 0
+      let parser!: StdinParser
+      parser = new StdinParser({
+        armTimeouts: true,
+        clock,
+        protocolContext: { kittyKeyboardEnabled: true },
+        onTimeoutFlush: () => {
+          timeoutFlushes += 1
+          parser.drain(() => {})
+        },
+      })
+
+      try {
+        parser.push(Buffer.from("\x1b[118;5"))
+        clock.advance(10)
+        expect(timeoutFlushes).toBe(1)
+
+        clock.advance(50)
+        expect(timeoutFlushes).toBe(1)
+        expect(snap(parser)).toEqual([])
+
+        parser.push(Buffer.from(";"))
+        clock.advance(10)
+        expect(timeoutFlushes).toBe(2)
+      } finally {
+        parser.destroy()
+      }
+    })
+
+    test("timed-out pending SGR mouse CSI does not rearm until more bytes arrive", () => {
+      const clock = new ManualClock()
+      let timeoutFlushes = 0
+      let parser!: StdinParser
+      parser = new StdinParser({
+        armTimeouts: true,
+        clock,
+        onTimeoutFlush: () => {
+          timeoutFlushes += 1
+          parser.drain(() => {})
+        },
+      })
+
+      try {
+        parser.push(Buffer.from("\x1b[<35;20"))
+        clock.advance(10)
+        expect(timeoutFlushes).toBe(1)
+
+        clock.advance(50)
+        expect(timeoutFlushes).toBe(1)
+        expect(snap(parser)).toEqual([])
+
+        parser.push(Buffer.from(";"))
+        clock.advance(10)
+        expect(timeoutFlushes).toBe(2)
       } finally {
         parser.destroy()
       }

@@ -11,8 +11,10 @@ import {
 export type InputAction = TextareaAction
 export type InputKeyBinding = TextareaKeyBinding
 
-export interface InputRenderableOptions
-  extends Omit<TextareaOptions, "height" | "minHeight" | "maxHeight" | "initialValue"> {
+export interface InputRenderableOptions extends Omit<
+  TextareaOptions,
+  "height" | "minHeight" | "maxHeight" | "initialValue"
+> {
   /** Initial text value (newlines are stripped) */
   value?: string
   /** Maximum number of characters allowed */

@@ -6,7 +6,7 @@ import {
   type RuntimeModuleEntry,
   type RuntimeModuleExports,
   type RuntimeModuleLoader,
-} from "./runtime-plugin"
+} from "./runtime-plugin.js"
 
 const runtimePluginSupportInstalledKey = "__opentuiCoreRuntimePluginSupportInstalled__"
 

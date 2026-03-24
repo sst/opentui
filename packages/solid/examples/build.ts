@@ -5,7 +5,7 @@ import { dirname, join, resolve } from "node:path"
 import { fileURLToPath } from "node:url"
 import process from "node:process"
 import { type BunPlugin } from "bun"
-import { createSolidTransformPlugin } from "../scripts/solid-plugin"
+import { createSolidTransformPlugin } from "../scripts/solid-plugin.js"
 
 type BuildTarget = {
   platform: "darwin" | "linux" | "windows"

@@ -3,7 +3,7 @@ import { mkdtempSync, rmSync, writeFileSync } from "node:fs"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
 import { runtimeModuleIdForSpecifier } from "@opentui/core/runtime-plugin"
-import { createSolidTransformPlugin } from "../scripts/solid-plugin"
+import { createSolidTransformPlugin } from "../scripts/solid-plugin.js"
 
 type ResolveCallback = (args: { path: string; importer: string }) => unknown | Promise<unknown>
 type LoadResult = { contents: string; loader: string } | void
@@ -153,6 +153,28 @@ describe("solid transform plugin", () => {
       expect(transformed.contents).toContain(runtimeFixtureModule)
       expect(transformed.contents).not.toContain('from "@opentui/core"')
       expect(transformed.contents).not.toContain('from "fixture-sync"')
+    } finally {
+      tempFile.dispose()
+    }
+  })
+
+  it("transforms queried TSX paths", async () => {
+    const tempFile = createTempTsxFile("const node = <text>ok</text>\nexport { node }")
+
+    try {
+      const { build, loadHandlers } = createMockBuild()
+      createSolidTransformPlugin().setup(build as any)
+
+      const transformed = await runLoad(loadHandlers, `${tempFile.path}?reload=1`)
+
+      expect(transformed).toBeDefined()
+
+      if (!transformed) {
+        throw new Error("Expected transformed output")
+      }
+
+      expect(transformed.loader).toBe("js")
+      expect(transformed.contents).toContain("@opentui/solid")
     } finally {
       tempFile.dispose()
     }
