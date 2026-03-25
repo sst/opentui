@@ -460,9 +460,10 @@ fn checkEnvironmentOverrides(self: *Terminal) void {
 
     if (!self.caps.hyperlinks and !self.term_info.from_xtversion) {
         const is_wsl = env_map.get("WSL_DISTRO_NAME") != null or env_map.get("WSL_INTEROP") != null;
-        if (is_wsl) {
+        const has_wt_session = env_map.get("WT_SESSION") != null;
+        if (is_wsl and has_wt_session) {
             if (env_map.get("TERM")) |term| {
-                if (std.mem.startsWith(u8, term, "xterm") or std.mem.indexOf(u8, term, "256color") != null) {
+                if (std.mem.startsWith(u8, term, "xterm")) {
                     self.caps.hyperlinks = true;
                 }
             }

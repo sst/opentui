@@ -129,6 +129,41 @@ test "setHostEnvVar applies env overrides in shared library mode" {
     try testing.expect(term.skip_graphics_query);
 }
 
+test "environment overrides - enables hyperlinks for WSL Windows Terminal xterm" {
+    var env = std.process.EnvMap.init(testing.allocator);
+    defer env.deinit();
+    try env.put("WSL_DISTRO_NAME", "Ubuntu");
+    try env.put("WT_SESSION", "test-session");
+    try env.put("TERM", "xterm-256color");
+
+    const term = Terminal.init(.{ .env_map = &env });
+
+    try testing.expect(term.caps.hyperlinks);
+}
+
+test "environment overrides - does not enable hyperlinks for WSL without WT_SESSION" {
+    var env = std.process.EnvMap.init(testing.allocator);
+    defer env.deinit();
+    try env.put("WSL_DISTRO_NAME", "Ubuntu");
+    try env.put("TERM", "xterm-256color");
+
+    const term = Terminal.init(.{ .env_map = &env });
+
+    try testing.expect(!term.caps.hyperlinks);
+}
+
+test "environment overrides - does not enable hyperlinks for WSL non-xterm terms" {
+    var env = std.process.EnvMap.init(testing.allocator);
+    defer env.deinit();
+    try env.put("WSL_INTEROP", "/run/WSL/123_interop");
+    try env.put("WT_SESSION", "test-session");
+    try env.put("TERM", "screen-256color");
+
+    const term = Terminal.init(.{ .env_map = &env });
+
+    try testing.expect(!term.caps.hyperlinks);
+}
+
 test "parseXtversion - terminal name only" {
     var term = Terminal.init(.{});
     const response = "\x1bP>|wezterm\x1b\\";
