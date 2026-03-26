@@ -14,6 +14,25 @@ import { type ColorInput, RGBA, parseColor } from "../lib/RGBA.js"
 import { isValidPercentage } from "../lib/renderable.validations.js"
 import type { RenderContext } from "../types.js"
 
+const CHAR_FLAG_MASK = 0xc0000000 >>> 0
+const CHAR_FLAG_GRAPHEME = 0x80000000 >>> 0
+const CHAR_FLAG_CONTINUATION = 0xc0000000 >>> 0
+const CHAR_EXT_RIGHT_SHIFT = 28
+const CHAR_EXT_LEFT_SHIFT = 26
+const CHAR_EXT_MASK = 0x3
+const TRANSPARENT = RGBA.fromValues(0, 0, 0, 0)
+
+function isWideClusterCell(charCode: number): boolean {
+  const flag = (charCode & CHAR_FLAG_MASK) >>> 0
+  if (flag !== CHAR_FLAG_GRAPHEME && flag !== CHAR_FLAG_CONTINUATION) {
+    return false
+  }
+
+  const left = (charCode >>> CHAR_EXT_LEFT_SHIFT) & CHAR_EXT_MASK
+  const right = (charCode >>> CHAR_EXT_RIGHT_SHIFT) & CHAR_EXT_MASK
+  return left + right > 0
+}
+
 interface Rect {
   x: number
   y: number
@@ -81,6 +100,8 @@ export class BoxRenderable extends Renderable {
   protected _bottomTitle?: string
   protected _bottomTitleAlignment: "left" | "center" | "right"
   private suppressFillDuringFrameBufferRender = false
+  private frameBufferNeedsReset = false
+  private frameBufferRendered = false
 
   protected _defaultOptions = {
     backgroundColor: "transparent",
@@ -263,44 +284,49 @@ export class BoxRenderable extends Renderable {
   }
 
   public override render(buffer: OptimizedBuffer, deltaTime: number): void {
+    let shouldDrawFrameBuffer = false
+
     if (!this.buffered || !this.frameBuffer) {
       this.renderToBuffer(buffer, deltaTime)
-      this.markClean()
-      this._ctx.addToHitGrid(this.x, this.y, this.width, this.height, this.num)
-      return
-    }
-
-    if (this.shouldBypassFrameBuffer(buffer)) {
+    } else if (this.canReuseFrameBuffer(buffer)) {
+      shouldDrawFrameBuffer = true
+    } else if (this.shouldBypassFrameBuffer(buffer)) {
+      // The framebuffer is skipped entirely on this path, so any retained
+      // contents must be discarded before we use it again later.
+      this.frameBufferNeedsReset = true
+      this.frameBufferRendered = false
       this.renderToBuffer(buffer, deltaTime)
-      this.markClean()
-      this._ctx.addToHitGrid(this.x, this.y, this.width, this.height, this.num)
-      return
+    } else {
+      if (this.frameBufferNeedsReset || this.shouldClearFrameBufferBeforeRender(buffer)) {
+        // Only reset retained contents when this box would otherwise alpha-blend
+        // onto its own previous framebuffer output.
+        this.frameBuffer.clear(RGBA.fromValues(0, 0, 0, 0))
+        this.frameBufferNeedsReset = false
+        this.frameBufferRendered = false
+      }
+      const shouldRenderFillDirectly = this.shouldRenderFillDirectly(buffer)
+      const shouldRenderBeforeUnderDirectFill = shouldRenderFillDirectly && !!this.renderBefore
+      if (shouldRenderBeforeUnderDirectFill) {
+        this.renderBefore!.call(this, this.frameBuffer, deltaTime)
+        buffer.drawFrameBuffer(this.x, this.y, this.frameBuffer)
+        this.frameBuffer.clear(RGBA.fromValues(0, 0, 0, 0))
+      }
+      if (shouldRenderFillDirectly) {
+        this.renderFill(buffer)
+        this.suppressFillDuringFrameBufferRender = true
+      }
+      this.renderToBuffer(this.frameBuffer, deltaTime, {
+        skipRenderBefore: shouldRenderBeforeUnderDirectFill,
+      })
+      this.frameBufferRendered = true
+      shouldDrawFrameBuffer = true
     }
-
-    if (this.shouldClearFrameBufferBeforeRender(buffer)) {
-      // Only reset retained contents when this box would otherwise alpha-blend
-      // onto its own previous framebuffer output.
-      this.frameBuffer.clear(RGBA.fromValues(0, 0, 0, 0))
-    }
-    const shouldRenderFillDirectly = this.shouldRenderFillDirectly(buffer)
-    const shouldRenderBeforeUnderDirectFill = shouldRenderFillDirectly && !!this.renderBefore
-    if (shouldRenderBeforeUnderDirectFill) {
-      // renderBefore still belongs beneath the direct translucent fill, so
-      // draw it from the framebuffer first, then clear before the main pass.
-      this.renderBefore!.call(this, this.frameBuffer, deltaTime)
-      buffer.drawFrameBuffer(this.x, this.y, this.frameBuffer)
-      this.frameBuffer.clear(RGBA.fromValues(0, 0, 0, 0))
-    }
-    if (shouldRenderFillDirectly) {
-      this.renderFill(buffer)
-      this.suppressFillDuringFrameBufferRender = true
-    }
-    this.renderToBuffer(this.frameBuffer, deltaTime, {
-      skipRenderBefore: shouldRenderBeforeUnderDirectFill,
-    })
     this.markClean()
     this._ctx.addToHitGrid(this.x, this.y, this.width, this.height, this.num)
-    buffer.drawFrameBuffer(this.x, this.y, this.frameBuffer)
+
+    if (shouldDrawFrameBuffer) {
+      buffer.drawFrameBuffer(this.x, this.y, this.frameBuffer!)
+    }
   }
 
   protected renderSelf(buffer: OptimizedBuffer, _deltaTime: number): void {
@@ -310,8 +336,7 @@ export class BoxRenderable extends Renderable {
       return
     }
 
-    const hasFocusWithin = this._focusable && (this._focused || this._hasFocusedDescendant)
-    const currentBorderColor = hasFocusWithin ? this._focusedBorderColor : this._borderColor
+    const currentBorderColor = this.getCurrentBorderColor()
     const { x, y } = this.getRenderOrigin(buffer)
     if (!this.suppressFillDuringFrameBufferRender) {
       this.renderFill(buffer)
@@ -320,6 +345,7 @@ export class BoxRenderable extends Renderable {
       return
     }
 
+    const borderBackgroundColor = this.shouldFill && currentBorderColor.a > 0 ? TRANSPARENT : this._backgroundColor
     buffer.drawBox({
       x,
       y,
@@ -329,7 +355,7 @@ export class BoxRenderable extends Renderable {
       customBorderChars: this._customBorderChars,
       border: this._border,
       borderColor: currentBorderColor,
-      backgroundColor: this._backgroundColor,
+      backgroundColor: borderBackgroundColor,
       shouldFill: false,
       title: this._title,
       titleAlignment: this._titleAlignment,
@@ -354,19 +380,44 @@ export class BoxRenderable extends Renderable {
       return false
     }
 
-    const hasFocusWithin = this._focusable && (this._focused || this._hasFocusedDescendant)
-    const currentBorderColor = hasFocusWithin ? this._focusedBorderColor : this._borderColor
-    return this._backgroundColor.a < 1 || currentBorderColor.a < 1 || buffer.getCurrentOpacity() < 1
+    return this.hasTranslucentParts(buffer)
   }
 
   private shouldClearFrameBufferBeforeRender(buffer: OptimizedBuffer): boolean {
-    const hasFocusWithin = this._focusable && (this._focused || this._hasFocusedDescendant)
-    const currentBorderColor = hasFocusWithin ? this._focusedBorderColor : this._borderColor
-    return this._backgroundColor.a < 1 || currentBorderColor.a < 1 || buffer.getCurrentOpacity() < 1
+    return this.hasTranslucentParts(buffer)
+  }
+
+  private canReuseFrameBuffer(buffer: OptimizedBuffer): boolean {
+    if (!this.frameBufferRendered || this.frameBufferNeedsReset || this.isDirty || this.live) {
+      return false
+    }
+
+    if (this.shouldBypassFrameBuffer(buffer)) {
+      return false
+    }
+
+    return !this.shouldRenderFillDirectly(buffer)
   }
 
   private shouldRenderFillDirectly(buffer: OptimizedBuffer): boolean {
+    return this.hasTranslucentFill(buffer)
+  }
+
+  private hasTranslucentParts(buffer: OptimizedBuffer): boolean {
+    return this.hasTranslucentFill(buffer) || this.hasTranslucentBorder()
+  }
+
+  private hasTranslucentFill(buffer: OptimizedBuffer): boolean {
     return this._backgroundColor.a < 1 || buffer.getCurrentOpacity() < 1
+  }
+
+  private hasTranslucentBorder(): boolean {
+    return this.getCurrentBorderColor().a < 1
+  }
+
+  private getCurrentBorderColor(): RGBA {
+    const hasFocusWithin = this._focusable && (this._focused || this._hasFocusedDescendant)
+    return hasFocusWithin ? this._focusedBorderColor : this._borderColor
   }
 
   private renderToBuffer(
@@ -400,9 +451,10 @@ export class BoxRenderable extends Renderable {
     return { x: this.x, y: this.y }
   }
 
-  // Translucent fills use a hybrid strategy: clip any wide spans crossed by
-  // the perimeter so the box edge stays straight, but use the normal fill
-  // path in the interior so fully enclosed wide text can still show through.
+  // Translucent fills only need the hybrid strategy when the perimeter
+  // actually crosses a wide span. Otherwise the normal preserved fill path
+  // can be used for the whole rect, which keeps small narrow-text overlays
+  // from collapsing into an all-edge clipped fill.
   private renderFill(buffer: OptimizedBuffer): void {
     if (!this.shouldFill || this.width <= 0 || this.height <= 0) {
       return
@@ -419,6 +471,11 @@ export class BoxRenderable extends Renderable {
 
     const backgroundIsTranslucent = this._backgroundColor.a < 1 || buffer.getCurrentOpacity() < 1
     if (!backgroundIsTranslucent) {
+      buffer.fillRect(fillRect.x, fillRect.y, fillRect.width, fillRect.height, this._backgroundColor)
+      return
+    }
+
+    if (!this.fillPerimeterTouchesWideGrapheme(buffer, fillRect)) {
       buffer.fillRect(fillRect.x, fillRect.y, fillRect.width, fillRect.height, this._backgroundColor)
       return
     }
@@ -450,24 +507,49 @@ export class BoxRenderable extends Renderable {
     buffer.fillRect(fillRect.x + 1, fillRect.y + 1, fillRect.width - 2, fillRect.height - 2, this._backgroundColor)
   }
 
-  private getClippedFillRect(buffer: OptimizedBuffer): Rect | null {
-    const leftInset = this.borderSides.left ? 1 : 0
-    const rightInset = this.borderSides.right ? 1 : 0
-    const topInset = this.borderSides.top ? 1 : 0
-    const bottomInset = this.borderSides.bottom ? 1 : 0
+  private fillPerimeterTouchesWideGrapheme(
+    buffer: OptimizedBuffer,
+    fillRect: { x: number; y: number; width: number; height: number },
+  ): boolean {
+    const chars = buffer.buffers.char
+    const top = fillRect.y
+    const bottom = fillRect.y + fillRect.height - 1
+    const left = fillRect.x
+    const right = fillRect.x + fillRect.width - 1
+    const rowStride = buffer.width
 
-    const rectWidth = this.width - leftInset - rightInset
-    const rectHeight = this.height - topInset - bottomInset
-    if (rectWidth <= 0 || rectHeight <= 0) {
+    for (let x = left; x <= right; x++) {
+      if (isWideClusterCell(chars[top * rowStride + x])) {
+        return true
+      }
+      if (bottom !== top && isWideClusterCell(chars[bottom * rowStride + x])) {
+        return true
+      }
+    }
+
+    for (let y = top + 1; y < bottom; y++) {
+      if (isWideClusterCell(chars[y * rowStride + left])) {
+        return true
+      }
+      if (right !== left && isWideClusterCell(chars[y * rowStride + right])) {
+        return true
+      }
+    }
+
+    return false
+  }
+
+  private getClippedFillRect(buffer: OptimizedBuffer): Rect | null {
+    if (this.width <= 0 || this.height <= 0) {
       return null
     }
 
     const { x, y } = this.getRenderOrigin(buffer)
     const requestedRect = {
-      x: x + leftInset,
-      y: y + topInset,
-      width: rectWidth,
-      height: rectHeight,
+      x,
+      y,
+      width: this.width,
+      height: this.height,
     }
     const visibleClipRect = this.getVisibleClipRect(buffer)
     if (!visibleClipRect) {
