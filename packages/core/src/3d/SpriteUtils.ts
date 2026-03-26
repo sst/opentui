@@ -51,8 +51,7 @@ export class SpriteUtils {
     const spriteTexture = await TextureUtils.fromFile(path)
 
     if (!spriteTexture) {
-      console.error("Failed to load sprite texture, exiting.")
-      process.exit(1)
+      throw new Error(`Failed to load sprite texture from ${path}`)
     }
 
     const spriteMaterial = new SpriteMaterial({ map: spriteTexture })
