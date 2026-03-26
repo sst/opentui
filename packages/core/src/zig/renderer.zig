@@ -662,6 +662,96 @@ pub const CliRenderer = struct {
 
                 const cell = nextCell.?;
 
+                if (gp.isContinuationChar(cell.char)) {
+                    const startX = x - @min(gp.charLeftExtent(cell.char), x);
+                    const startCell = self.nextRenderBuffer.get(startX, y);
+
+                    if (startCell) |resolvedStartCell| {
+                        if (gp.isGraphemeChar(resolvedStartCell.char) and gp.graphemeIdFromChar(resolvedStartCell.char) == gp.graphemeIdFromChar(cell.char)) {
+                            if (runLength > 0) {
+                                writer.writeAll(ansi.ANSI.reset) catch {};
+                                runStart = -1;
+                                runLength = 0;
+                            }
+
+                            currentFg = resolvedStartCell.fg;
+                            currentBg = resolvedStartCell.bg;
+                            currentAttributes = @as(i32, @intCast(resolvedStartCell.attributes));
+
+                            const startLinkId = if (hyperlinksEnabled) ansi.TextAttributes.getLinkId(resolvedStartCell.attributes) else 0;
+                            if (hyperlinksEnabled and startLinkId != currentLinkId) {
+                                if (currentLinkId != 0) {
+                                    writer.writeAll("\x1b]8;;\x1b\\") catch {};
+                                }
+                                currentLinkId = startLinkId;
+                                if (currentLinkId != 0) {
+                                    const lp = link.initGlobalLinkPool(self.allocator);
+                                    if (lp.get(currentLinkId)) |url_bytes| {
+                                        writer.print("\x1b]8;id={d};{s}\x1b\\", .{ currentLinkId, url_bytes }) catch {};
+                                    } else |_| {
+                                        currentLinkId = 0;
+                                    }
+                                }
+                            }
+
+                            ansi.ANSI.moveToOutput(writer, startX + 1, y + 1 + self.renderOffset) catch {};
+
+                            const fgR = rgbaComponentToU8(resolvedStartCell.fg[0]);
+                            const fgG = rgbaComponentToU8(resolvedStartCell.fg[1]);
+                            const fgB = rgbaComponentToU8(resolvedStartCell.fg[2]);
+
+                            const bgR = rgbaComponentToU8(resolvedStartCell.bg[0]);
+                            const bgG = rgbaComponentToU8(resolvedStartCell.bg[1]);
+                            const bgB = rgbaComponentToU8(resolvedStartCell.bg[2]);
+                            const bgA = resolvedStartCell.bg[3];
+
+                            ansi.ANSI.fgColorOutput(writer, fgR, fgG, fgB) catch {};
+
+                            if (bgA < 0.001) {
+                                writer.writeAll("\x1b[49m") catch {};
+                            } else {
+                                ansi.ANSI.bgColorOutput(writer, bgR, bgG, bgB) catch {};
+                            }
+
+                            ansi.TextAttributes.applyAttributesOutputWriter(writer, resolvedStartCell.attributes) catch {};
+
+                            const gid: u32 = gp.graphemeIdFromChar(resolvedStartCell.char);
+                            const bytes = self.pool.get(gid) catch |err| {
+                                self.performShutdownSequence();
+                                std.debug.panic("Fatal: no grapheme bytes in pool for gid {d}: {}", .{ gid, err });
+                            };
+
+                            if (bytes.len > 0) {
+                                const capabilities = self.terminal.getCapabilities();
+                                const graphemeWidth = gp.charRightExtent(resolvedStartCell.char) + 1;
+                                if (capabilities.explicit_width) {
+                                    ansi.ANSI.explicitWidthOutput(writer, graphemeWidth, bytes) catch {};
+                                } else {
+                                    writer.writeAll(bytes) catch {};
+                                    if (capabilities.explicit_cursor_positioning) {
+                                        const nextX = startX + graphemeWidth;
+                                        if (nextX < self.width) {
+                                            ansi.ANSI.moveToOutput(writer, nextX + 1, y + 1 + self.renderOffset) catch {};
+                                        }
+                                    }
+                                }
+
+                                var spanOffset: u32 = 0;
+                                while (spanOffset < graphemeWidth) : (spanOffset += 1) {
+                                    if (self.nextRenderBuffer.get(startX + spanOffset, y)) |spanCell| {
+                                        self.currentRenderBuffer.syncCell(startX + spanOffset, y, spanCell);
+                                    }
+                                }
+
+                                cellsUpdated += graphemeWidth;
+                                runStart = @intCast(startX);
+                                runLength = graphemeWidth;
+                                continue;
+                            }
+                        }
+                    }
+                }
+
                 const fgMatch = currentFg != null and buf.rgbaEqual(currentFg.?, cell.fg, colorEpsilon);
                 const bgMatch = currentBg != null and buf.rgbaEqual(currentBg.?, cell.bg, colorEpsilon);
                 const sameAttributes = fgMatch and bgMatch and @as(i32, @intCast(cell.attributes)) == currentAttributes;
@@ -742,8 +832,9 @@ pub const CliRenderer = struct {
                         }
                     }
                 } else if (gp.isContinuationChar(cell.char)) {
-                    // Write a space for continuation cells to clear any previous content
-                    writer.writeByte(' ') catch {};
+                    // Continuation cells are rendered as part of the grapheme start cell.
+                    // Emitting an extra space here causes style-only updates on wide
+                    // graphemes to introduce a visual gap in the terminal output.
                 } else {
                     const len = std.unicode.utf8Encode(@intCast(cell.char), &utf8Buf) catch 1;
                     writer.writeAll(utf8Buf[0..len]) catch {};

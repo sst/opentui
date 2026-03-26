@@ -733,12 +733,13 @@ pub const OptimizedBuffer = struct {
             const charIsDefaultSpace = overlayCell.char == DEFAULT_SPACE_CHAR;
             const destNotZero = destCell.char != 0;
             const destNotDefaultSpace = destCell.char != DEFAULT_SPACE_CHAR;
-            const destWidthIsOne = gp.encodedCharWidth(destCell.char) == 1;
+            const destWidth = gp.encodedCharWidth(destCell.char);
+            const destWidthIsValid = destWidth == 1 or destWidth == 2;
 
             const preserveChar = (charIsDefaultSpace and
                 destNotZero and
                 destNotDefaultSpace and
-                destWidthIsOne);
+                destWidthIsValid);
             const finalChar = if (preserveChar) destCell.char else overlayCell.char;
 
             var finalFg: RGBA = undefined;
