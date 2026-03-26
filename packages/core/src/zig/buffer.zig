@@ -12,6 +12,7 @@ const link = @import("link.zig");
 
 const logger = @import("logger.zig");
 const utf8 = @import("utf8.zig");
+const uucode = @import("uucode");
 
 pub const RGBA = ansi.RGBA;
 pub const Vec3f = @Vector(3, f32);
@@ -686,6 +687,71 @@ pub const OptimizedBuffer = struct {
         };
     }
 
+    pub const WideCharKind = enum { wide_text, emoji, unknown };
+
+    fn isEmojiLikeSequence(bytes: []const u8) bool {
+        var offset: usize = 0;
+        while (offset < bytes.len) {
+            const cp_len = std.unicode.utf8ByteSequenceLength(bytes[offset]) catch return false;
+            if (offset + cp_len > bytes.len) return false;
+            const cp = std.unicode.utf8Decode(bytes[offset .. offset + cp_len]) catch return false;
+
+            if (cp == 0x200D or cp == 0xFE0F or cp == 0x20E3) return true;
+            if (cp >= 0x1F1E6 and cp <= 0x1F1FF) return true;
+            if (cp >= 0x1F3FB and cp <= 0x1F3FF) return true;
+
+            offset += cp_len;
+        }
+
+        return false;
+    }
+
+    /// Classify wide cells in the order most likely to preserve overlay intent:
+    /// explicit emoji signals first, East Asian width next, then multi-codepoint
+    /// sequence heuristics for ZWJ/flags/modifiers.
+    pub fn classifyWideChar(self: *const OptimizedBuffer, char: u32) WideCharKind {
+        const grapheme_bytes: ?[]const u8 = blk: {
+            if (!gp.isGraphemeChar(char) and !gp.isContinuationChar(char)) break :blk null;
+            const id = gp.graphemeIdFromChar(char);
+            const bytes = self.pool.get(id) catch return .unknown;
+            if (bytes.len == 0) return .unknown;
+            break :blk bytes;
+        };
+        const cp: u21 = blk: {
+            if (grapheme_bytes == null) {
+                if (char > 0x10FFFF) return .unknown;
+                break :blk @intCast(char);
+            }
+
+            const bytes = grapheme_bytes.?;
+            const seq_len = std.unicode.utf8ByteSequenceLength(bytes[0]) catch return .unknown;
+            if (seq_len > bytes.len) return .unknown;
+            break :blk std.unicode.utf8Decode(bytes[0..seq_len]) catch return .unknown;
+        };
+
+        if (uucode.get(.is_emoji_presentation, cp)) return .emoji;
+
+        const eaw = uucode.get(.east_asian_width, cp);
+        if (eaw == .fullwidth or eaw == .wide) return .wide_text;
+
+        if (grapheme_bytes) |bytes| {
+            const seq_len = std.unicode.utf8ByteSequenceLength(bytes[0]) catch return .unknown;
+            if (seq_len < bytes.len) {
+                if (isEmojiLikeSequence(bytes)) return .emoji;
+                return .wide_text;
+            }
+        }
+
+        return .unknown;
+    }
+
+    fn shouldPlaceholderWideChar(self: *const OptimizedBuffer, char: u32) bool {
+        return switch (self.classifyWideChar(char)) {
+            .emoji => true,
+            .wide_text, .unknown => false,
+        };
+    }
+
     const GraphemeSpan = struct {
         start: u32,
         end: u32,
@@ -726,6 +792,9 @@ pub const OptimizedBuffer = struct {
         const span_char = self.buffer.char[index];
         const span = self.graphemeSpanForIndex(index, span_char);
         const start_char = self.buffer.char[span.start];
+        // If the canonical start cell is clipped away, blend from the visible
+        // cell we were asked to update so partial-span writes still have a
+        // style source.
         const style_source_index = if (gp.isGraphemeChar(start_char) and gp.graphemeIdFromChar(start_char) == span.id)
             span.start
         else
@@ -903,10 +972,34 @@ pub const OptimizedBuffer = struct {
         return overlayCell;
     }
 
+    // Render a stable ASCII placeholder using the overlay tint instead of
+    // trying to recolor emoji bytes, which terminals treat opaquely.
+    fn renderPlaceholder(self: *OptimizedBuffer, span_start: u32, width: u32, overlayCell: Cell, destCell: Cell) void {
+        const blendedBg = blendBackgroundColor(self, overlayCell, destCell);
+        const blendedFg = blendColors(overlayCell.bg, destCell.fg, self.blendBackdropColor);
+        const y = span_start / self.width;
+        const x = span_start % self.width;
+        const attrs = overlayCell.attributes;
+        const left = makeCell('[', blendedFg, blendedBg, attrs);
+        const right = makeCell(']', blendedFg, blendedBg, attrs);
+        const space = makeCell(DEFAULT_SPACE_CHAR, blendedFg, blendedBg, attrs);
+
+        self.set(x, y, left);
+        if (width > 1 and x + 1 < self.width) {
+            self.set(x + 1, y, right);
+        }
+
+        var extra: u32 = 2;
+        while (extra < width) : (extra += 1) {
+            if (x + extra < self.width) {
+                self.set(x + extra, y, space);
+            }
+        }
+    }
+
     /// Alpha-blend an overlay cell onto the destination at (x, y).
-    /// When the blend preserves a wide grapheme, the entire span is
-    /// tinted uniformly. Returns the rightmost x-coordinate written
-    /// (which may be > x for wide graphemes).
+    /// Wide text spans are preserved and tinted uniformly. Wide emoji use a
+    /// placeholder span instead of rendering tinted color emoji.
     pub fn setCellWithAlphaBlending(
         self: *OptimizedBuffer,
         x: u32,
@@ -938,27 +1031,56 @@ pub const OptimizedBuffer = struct {
             applyOpacity(cell.bg, opacity_u8),
             cell.attributes,
         );
+        if (ansi.alpha(effectiveCell.fg) == 0 and ansi.alpha(effectiveCell.bg) == 0) return x;
 
-        if (self.get(x, y)) |destCell| {
-            const blendedCell = self.blendCells(effectiveCell, destCell);
-            if (blendedCell.char == destCell.char and
-                (gp.isGraphemeChar(destCell.char) or gp.isContinuationChar(destCell.char)))
-            {
-                if (gp.charLeftExtent(destCell.char) + gp.charRightExtent(destCell.char) == 0) {
-                    // Single-cell grapheme: update just this cell.
-                    self.writeStyleAndLinks(index, blendedCell.fg, blendedCell.bg, blendedCell.attributes);
-                } else {
-                    // Wide grapheme: resolve the full span, blend once
-                    // from the canonical start cell, and write uniformly.
-                    return self.blendPreservedGraphemeSpan(index, effectiveCell);
-                }
-            } else {
-                self.set(x, y, blendedCell);
-            }
-        } else {
+        const destCell = self.get(x, y) orelse {
             self.set(x, y, effectiveCell);
+            return x;
+        };
+
+        if (effectiveCell.char == DEFAULT_SPACE_CHAR and ansi.alpha(effectiveCell.bg) == 0) {
+            if (gp.isGraphemeChar(destCell.char) or gp.isContinuationChar(destCell.char)) {
+                const span = self.graphemeSpanForIndex(index, destCell.char);
+                return span.end % self.width;
+            }
+            return x;
         }
-        return x;
+
+        const blendedCell = self.blendCells(effectiveCell, destCell);
+        const preservesDestChar = blendedCell.char == destCell.char and
+            (gp.isGraphemeChar(destCell.char) or gp.isContinuationChar(destCell.char));
+        if (!preservesDestChar) {
+            self.set(x, y, blendedCell);
+            return x;
+        }
+
+        const isWideSpan = gp.charLeftExtent(destCell.char) + gp.charRightExtent(destCell.char) > 0;
+        if (!isWideSpan) {
+            // Single-cell grapheme: update just this cell.
+            self.writeStyleAndLinks(index, blendedCell.fg, blendedCell.bg, blendedCell.attributes);
+            return x;
+        }
+
+        if (effectiveCell.char == DEFAULT_SPACE_CHAR and self.shouldPlaceholderWideChar(destCell.char)) {
+            const span = self.graphemeSpanForIndex(index, destCell.char);
+            const span_start_x = span.start % self.width;
+            const span_end_x = span.end % self.width;
+            const span_y = span.start / self.width;
+            if (self.isPointInScissor(@intCast(span_start_x), @intCast(span_y)) and
+                self.isPointInScissor(@intCast(span_end_x), @intCast(span_y)))
+            {
+                const width = span.end - span.start + 1;
+                const start_cell = self.cellAtIndex(span.start);
+                self.renderPlaceholder(span.start, width, effectiveCell, start_cell);
+                return span_end_x;
+            }
+
+            return self.blendPreservedGraphemeSpan(index, effectiveCell);
+        }
+
+        // Wide grapheme: resolve the full span, blend once from the canonical
+        // start cell, and write uniformly.
+        return self.blendPreservedGraphemeSpan(index, effectiveCell);
     }
 
     pub fn setCellWithAlphaBlendingRaw(

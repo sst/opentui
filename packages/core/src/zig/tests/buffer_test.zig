@@ -3620,3 +3620,213 @@ test "scissored partial-span tint followed by unclipped tint applies to both cel
     // x=2 must now be tinted (the second fillRect must have applied)
     try std.testing.expect(ansi.greenF(final_x2.bg) > 0.01);
 }
+
+test "alpha overlay preserves wide text but replaces emoji with placeholder" {
+    const pool = gp.initGlobalPool(std.testing.allocator);
+    defer gp.deinitGlobalPool();
+
+    var buf = try OptimizedBuffer.init(
+        std.testing.allocator,
+        10,
+        1,
+        .{ .pool = pool, .id = "test-preserve-text-placeholder-emoji" },
+    );
+    defer buf.deinit();
+
+    const bg = ansi.rgbaFromFloats(0.0, 0.0, 0.0, 1.0);
+    const fg = ansi.rgbaFromFloats(1.0, 1.0, 1.0, 1.0);
+    try buf.clear(bg, null);
+
+    const cjk_gid = try pool.alloc("東");
+    buf.set(0, 0, .{ .char = gp.packGraphemeStart(cjk_gid & gp.GRAPHEME_ID_MASK, 2), .fg = fg, .bg = bg, .attributes = 0 });
+
+    const emoji_gid = try pool.alloc("👋");
+    buf.set(4, 0, .{ .char = gp.packGraphemeStart(emoji_gid & gp.GRAPHEME_ID_MASK, 2), .fg = fg, .bg = bg, .attributes = 0 });
+
+    try buf.fillRect(0, 0, 10, 1, ansi.rgbaFromFloats(0.0, 0.0, 1.0, 0.5));
+
+    try std.testing.expect(gp.isGraphemeChar(buf.get(0, 0).?.char));
+    try std.testing.expectEqual(@as(u32, '['), buf.get(4, 0).?.char);
+    try std.testing.expectEqual(@as(u32, ']'), buf.get(5, 0).?.char);
+}
+
+test "placeholder rendering produces bracket characters and blanks extra cells" {
+    const pool = gp.initGlobalPool(std.testing.allocator);
+    defer gp.deinitGlobalPool();
+
+    var buf = try OptimizedBuffer.init(
+        std.testing.allocator,
+        12,
+        1,
+        .{ .pool = pool, .id = "test-placeholder-rendering" },
+    );
+    defer buf.deinit();
+
+    const bg = ansi.rgbaFromFloats(0.0, 0.0, 0.0, 1.0);
+    const fg = ansi.rgbaFromFloats(1.0, 1.0, 1.0, 1.0);
+    try buf.clear(bg, null);
+
+    const emoji_gid = try pool.alloc("👋");
+    buf.set(2, 0, .{ .char = gp.packGraphemeStart(emoji_gid & gp.GRAPHEME_ID_MASK, 4), .fg = fg, .bg = bg, .attributes = 0 });
+
+    try buf.fillRect(2, 0, 4, 1, ansi.rgbaFromFloats(1.0, 0.0, 0.0, 0.5));
+
+    try std.testing.expectEqual(@as(u32, '['), buf.get(2, 0).?.char);
+    try std.testing.expectEqual(@as(u32, ']'), buf.get(3, 0).?.char);
+    try std.testing.expectEqual(@as(u32, buffer_mod.DEFAULT_SPACE_CHAR), buf.get(4, 0).?.char);
+    try std.testing.expectEqual(@as(u32, buffer_mod.DEFAULT_SPACE_CHAR), buf.get(5, 0).?.char);
+}
+
+test "classifyWideChar distinguishes wide text, emoji, and wide non-emoji text" {
+    const pool = gp.initGlobalPool(std.testing.allocator);
+    defer gp.deinitGlobalPool();
+
+    var buf = try OptimizedBuffer.init(
+        std.testing.allocator,
+        12,
+        1,
+        .{ .pool = pool, .id = "test-classify-wide-char" },
+    );
+    defer buf.deinit();
+
+    try std.testing.expectEqual(OptimizedBuffer.WideCharKind.wide_text, buf.classifyWideChar(0x6771));
+
+    const cjk_gid = try pool.alloc("東");
+    try std.testing.expectEqual(
+        OptimizedBuffer.WideCharKind.wide_text,
+        buf.classifyWideChar(gp.packGraphemeStart(cjk_gid & gp.GRAPHEME_ID_MASK, 2)),
+    );
+
+    const emoji_gid = try pool.alloc("👋");
+    try std.testing.expectEqual(
+        OptimizedBuffer.WideCharKind.emoji,
+        buf.classifyWideChar(gp.packGraphemeStart(emoji_gid & gp.GRAPHEME_ID_MASK, 2)),
+    );
+
+    const dark_bg = ansi.rgbaFromFloats(0.0, 0.0, 0.0, 1.0);
+    const fg = ansi.rgbaFromFloats(1.0, 1.0, 1.0, 1.0);
+    try buf.clear(dark_bg, null);
+    try buf.drawText("नमस्ते", 0, 0, fg, dark_bg, 0);
+    try std.testing.expectEqual(OptimizedBuffer.WideCharKind.wide_text, buf.classifyWideChar(buf.get(2, 0).?.char));
+}
+
+test "setCellWithAlphaBlending on emoji produces placeholder" {
+    const pool = gp.initGlobalPool(std.testing.allocator);
+    defer gp.deinitGlobalPool();
+
+    var buf = try OptimizedBuffer.init(
+        std.testing.allocator,
+        10,
+        1,
+        .{ .pool = pool, .id = "test-emoji-placeholder" },
+    );
+    defer buf.deinit();
+
+    const bg = ansi.rgbaFromFloats(0.0, 0.0, 0.0, 1.0);
+    const fg = ansi.rgbaFromFloats(1.0, 1.0, 1.0, 1.0);
+    try buf.clear(bg, null);
+
+    const emoji_gid = try pool.alloc("👋");
+    buf.set(2, 0, .{ .char = gp.packGraphemeStart(emoji_gid & gp.GRAPHEME_ID_MASK, 2), .fg = fg, .bg = bg, .attributes = 0 });
+
+    _ = try buf.setCellWithAlphaBlending(2, 0, buffer_mod.DEFAULT_SPACE_CHAR, ansi.rgbaFromFloats(1.0, 1.0, 1.0, 1.0), ansi.rgbaFromFloats(1.0, 0.0, 0.0, 0.5), 0);
+    try std.testing.expectEqual(@as(u32, '['), buf.get(2, 0).?.char);
+    try std.testing.expectEqual(@as(u32, ']'), buf.get(3, 0).?.char);
+}
+
+test "transparent space alpha overlay leaves emoji unchanged" {
+    const pool = gp.initGlobalPool(std.testing.allocator);
+    defer gp.deinitGlobalPool();
+
+    var buf = try OptimizedBuffer.init(
+        std.testing.allocator,
+        10,
+        1,
+        .{ .pool = pool, .id = "test-transparent-emoji-noop" },
+    );
+    defer buf.deinit();
+
+    const bg = ansi.rgbaFromFloats(0.0, 0.0, 0.0, 1.0);
+    const fg = ansi.rgbaFromFloats(1.0, 1.0, 1.0, 1.0);
+    try buf.clear(bg, null);
+
+    const emoji_gid = try pool.alloc("👋");
+    const emoji_start = gp.packGraphemeStart(emoji_gid & gp.GRAPHEME_ID_MASK, 2);
+    buf.set(2, 0, .{ .char = emoji_start, .fg = fg, .bg = bg, .attributes = 0 });
+
+    const start_before = buf.get(2, 0).?;
+    const cont_before = buf.get(3, 0).?;
+
+    _ = try buf.setCellWithAlphaBlending(2, 0, buffer_mod.DEFAULT_SPACE_CHAR, fg, ansi.rgbaFromFloats(0.0, 0.0, 0.0, 0.0), 0);
+
+    const start_after = buf.get(2, 0).?;
+    const cont_after = buf.get(3, 0).?;
+    try std.testing.expectEqual(start_before.char, start_after.char);
+    try std.testing.expectEqual(cont_before.char, cont_after.char);
+    try std.testing.expectEqualStrings("👋", try pool.get(gp.graphemeIdFromChar(start_after.char)));
+}
+
+test "fillRect preserves wide non-emoji text grapheme" {
+    const pool = gp.initGlobalPool(std.testing.allocator);
+    defer gp.deinitGlobalPool();
+
+    var buf = try OptimizedBuffer.init(
+        std.testing.allocator,
+        12,
+        1,
+        .{ .pool = pool, .id = "test-wide-non-emoji-text" },
+    );
+    defer buf.deinit();
+
+    const bg = ansi.rgbaFromFloats(0.0, 0.0, 0.0, 1.0);
+    const fg = ansi.rgbaFromFloats(1.0, 1.0, 1.0, 1.0);
+    try buf.clear(bg, null);
+    try buf.drawText("नमस्ते", 0, 0, fg, bg, 0);
+
+    try buf.fillRect(0, 0, 8, 1, ansi.rgbaFromFloats(1.0, 0.0, 0.0, 0.5));
+
+    try std.testing.expect(gp.isGraphemeChar(buf.get(2, 0).?.char));
+    try std.testing.expect(gp.isContinuationChar(buf.get(3, 0).?.char));
+}
+
+test "emoji graphemes survive placeholder replacement across frames" {
+    const pool = gp.initGlobalPool(std.testing.allocator);
+    defer gp.deinitGlobalPool();
+
+    var fb = try OptimizedBuffer.init(
+        std.testing.allocator,
+        10,
+        1,
+        .{ .pool = pool, .id = "framebuffer" },
+    );
+    defer fb.deinit();
+
+    const dark_bg = ansi.rgbaFromFloats(0.04, 0.05, 0.08, 1.0);
+    const fg = ansi.rgbaFromFloats(1.0, 1.0, 1.0, 1.0);
+    try fb.clear(dark_bg, null);
+
+    const gid = try pool.alloc("👋");
+    fb.set(2, 0, .{ .char = gp.packGraphemeStart(gid & gp.GRAPHEME_ID_MASK, 2), .fg = fg, .bg = dark_bg, .attributes = 0 });
+
+    var buf = try OptimizedBuffer.init(
+        std.testing.allocator,
+        10,
+        1,
+        .{ .pool = pool, .id = "main-buffer" },
+    );
+    defer buf.deinit();
+
+    try buf.clear(dark_bg, null);
+    buf.drawFrameBuffer(0, 0, fb, null, null, null, null);
+    try buf.fillRect(0, 0, 10, 1, ansi.rgbaFromFloats(0.0, 0.0, 1.0, 0.5));
+    try std.testing.expectEqual(@as(u32, '['), buf.get(2, 0).?.char);
+
+    try buf.clear(dark_bg, null);
+    buf.drawFrameBuffer(0, 0, fb, null, null, null, null);
+
+    const start = buf.get(2, 0).?;
+    const cont = buf.get(3, 0).?;
+    try std.testing.expect(gp.isGraphemeChar(start.char));
+    try std.testing.expect(gp.isContinuationChar(cont.char));
+    try std.testing.expectEqualStrings("👋", try pool.get(gp.graphemeIdFromChar(start.char)));
+}
