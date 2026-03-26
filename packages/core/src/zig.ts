@@ -99,6 +99,7 @@ registerEnvVar({
 const CURSOR_STYLE_TO_ID = { block: 0, line: 1, underline: 2, default: 3 } as const
 const CURSOR_ID_TO_STYLE = ["block", "line", "underline", "default"] as const
 const MOUSE_STYLE_TO_ID = { default: 0, pointer: 1, text: 2, crosshair: 3, move: 4, "not-allowed": 5 } as const
+const WIDTH_METHOD_TO_CODE = { wcwidth: 0, unicode: 1, no_zwj: 2 } as const
 
 // Global singleton state for FFI tracing to prevent duplicate exit handlers
 let globalTraceSymbols: Record<string, number[]> | null = null
@@ -2422,7 +2423,7 @@ class FFIRenderLib implements RenderLib {
       console.error(new Error(`Invalid dimensions for OptimizedBuffer: ${width}x${height}`).stack)
     }
 
-    const widthMethodCode = widthMethod === "wcwidth" ? 0 : widthMethod === "no_zwj" ? 2 : 1
+    const widthMethodCode = WIDTH_METHOD_TO_CODE[widthMethod]
     const idToUse = id || "unnamed buffer"
     const idBytes = this.encoder.encode(idToUse)
     const bufferPtr = this.opentui.symbols.createOptimizedBuffer(
@@ -2592,7 +2593,7 @@ class FFIRenderLib implements RenderLib {
 
   // TextBuffer methods
   public createTextBuffer(widthMethod: WidthMethod): TextBuffer {
-    const widthMethodCode = widthMethod === "wcwidth" ? 0 : widthMethod === "no_zwj" ? 2 : 1
+    const widthMethodCode = WIDTH_METHOD_TO_CODE[widthMethod]
     const bufferPtr = this.opentui.symbols.createTextBuffer(widthMethodCode)
     if (!bufferPtr) {
       throw new Error(`Failed to create TextBuffer`)
@@ -3176,7 +3177,7 @@ class FFIRenderLib implements RenderLib {
 
   // EditBuffer implementations
   public createEditBuffer(widthMethod: WidthMethod): Pointer {
-    const widthMethodCode = widthMethod === "wcwidth" ? 0 : widthMethod === "no_zwj" ? 2 : 1
+    const widthMethodCode = WIDTH_METHOD_TO_CODE[widthMethod]
     const bufferPtr = this.opentui.symbols.createEditBuffer(widthMethodCode)
     if (!bufferPtr) {
       throw new Error("Failed to create EditBuffer")
@@ -3641,7 +3642,7 @@ class FFIRenderLib implements RenderLib {
     widthMethod: WidthMethod,
   ): { ptr: Pointer; data: Array<{ width: number; char: number }> } | null {
     const textBytes = this.encoder.encode(text)
-    const widthMethodCode = widthMethod === "wcwidth" ? 0 : widthMethod === "no_zwj" ? 2 : 1
+    const widthMethodCode = WIDTH_METHOD_TO_CODE[widthMethod]
 
     const outPtrBuffer = new ArrayBuffer(8) // Pointer size
     const outLenBuffer = new ArrayBuffer(8) // usize
