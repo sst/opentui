@@ -393,6 +393,7 @@ export class CliRenderer extends EventEmitter implements RenderContext {
   private minTargetFrameTime: number = 1000 / this.maxFps
   private immediateRerenderRequested: boolean = false
   private updateScheduled: boolean = false
+  private forceNextRender: boolean = false
 
   private liveRequestCounter: number = 0
   private _controlState: RendererControlState = RendererControlState.IDLE
@@ -800,9 +801,13 @@ export class CliRenderer extends EventEmitter implements RenderContext {
     return this.realStdoutWrite.call(this.stdout, chunk, encoding, callback)
   }
 
-  public requestRender() {
+  public requestRender(force: boolean = false) {
     if (this._controlState === RendererControlState.EXPLICIT_SUSPENDED) {
       return
+    }
+
+    if (force) {
+      this.forceNextRender = true
     }
 
     if (this._isRunning) {
@@ -1164,9 +1169,27 @@ export class CliRenderer extends EventEmitter implements RenderContext {
 
   private capabilityHandler: (sequence: string) => boolean = ((sequence: string) => {
     if (isCapabilityResponse(sequence)) {
+      const prev = this._capabilities
+
       this.lib.processCapabilityResponse(this.rendererPtr, sequence)
       this._capabilities = this.lib.getTerminalCapabilities(this.rendererPtr)
       this.emit(CliRenderEvents.CAPABILITIES, this._capabilities)
+
+      const shouldRender =
+        !prev ||
+        prev.rgb !== this._capabilities.rgb ||
+        prev.kitty_graphics !== this._capabilities.kitty_graphics ||
+        prev.sixel !== this._capabilities.sixel ||
+        prev.hyperlinks !== this._capabilities.hyperlinks ||
+        prev.explicit_width !== this._capabilities.explicit_width ||
+        prev.explicit_cursor_positioning !== this._capabilities.explicit_cursor_positioning ||
+        prev.scaled_text !== this._capabilities.scaled_text ||
+        prev.unicode !== this._capabilities.unicode
+
+      if (shouldRender) {
+        this.requestRender(true)
+      }
+
       return true
     }
     return false
@@ -2159,8 +2182,10 @@ export class CliRenderer extends EventEmitter implements RenderContext {
       throw new Error("Rendering called concurrently")
     }
 
-    let force = false
-    if (this._splitHeight > 0) {
+    let force = this.forceNextRender
+    this.forceNextRender = false
+
+    if (!force && this._splitHeight > 0) {
       // TODO: Flickering could maybe be even more reduced by moving the flush to the native layer,
       // to output the flush with the buffered writer, after the render is done.
       force = this.flushStdoutCache(this._splitHeight)
