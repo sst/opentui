@@ -282,6 +282,7 @@ pub fn enableDetectedFeatures(self: *Terminal, tty: anytype, use_kitty_keyboard:
         // Windows-specific defaults for ConPTY
         self.caps.rgb = true;
         self.caps.bracketed_paste = true;
+        self.caps.hyperlinks = true;
     }
 
     self.checkEnvironmentOverrides();
@@ -322,10 +323,6 @@ fn checkEnvironmentOverrides(self: *Terminal) void {
 
     // Always just try to enable bracketed paste, even if it was reported as not supported
     self.caps.bracketed_paste = true;
-
-    if (self.caps.rgb) {
-        self.caps.hyperlinks = true;
-    }
 
     if (self.opts.remote) {
         return;
@@ -781,11 +778,19 @@ fn isOsc52Term(value: []const u8) bool {
 }
 
 fn isHyperlinkTerm(value: []const u8) bool {
-    return std.ascii.indexOfIgnoreCase(value, "ghostty") != null or
+    // https://github.com/Alhadis/OSC8-Adoption/?tab=readme-ov-file#terminal-emulators
+    return std.ascii.indexOfIgnoreCase(value, "alacritty") != null or
+        std.ascii.indexOfIgnoreCase(value, "foot") != null or
+        std.ascii.indexOfIgnoreCase(value, "ghostty") != null or
+        std.ascii.indexOfIgnoreCase(value, "iterm") != null or
         std.ascii.indexOfIgnoreCase(value, "kitty") != null or
+        std.ascii.indexOfIgnoreCase(value, "konsole") != null or
+        std.ascii.indexOfIgnoreCase(value, "terminology") != null or
+        std.ascii.indexOfIgnoreCase(value, "vte") != null or
         std.ascii.indexOfIgnoreCase(value, "wezterm") != null or
-        std.ascii.indexOfIgnoreCase(value, "alacritty") != null or
-        std.ascii.indexOfIgnoreCase(value, "iterm") != null;
+        std.ascii.indexOfIgnoreCase(value, "xterm.js") != null or // vscode etc
+        std.ascii.indexOfIgnoreCase(value, "77") != null or // mintty
+        std.ascii.indexOfIgnoreCase(value, "990") != null; // domterm
 }
 
 pub fn getCapabilities(self: *Terminal) Capabilities {
