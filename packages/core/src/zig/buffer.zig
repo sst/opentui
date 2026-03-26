@@ -922,7 +922,7 @@ pub const OptimizedBuffer = struct {
         return bytes_written;
     }
 
-    pub fn blendCells(self: *const OptimizedBuffer, overlayCell: Cell, destCell: Cell) Cell {
+    fn blendAlphaCells(self: *const OptimizedBuffer, overlayCell: Cell, destCell: Cell, allow_preserve_char: bool) Cell {
         const hasBgAlpha = isRGBAWithAlpha(overlayCell.bg);
         const hasFgAlpha = isRGBAWithAlpha(overlayCell.fg);
 
@@ -935,7 +935,8 @@ pub const OptimizedBuffer = struct {
             const destNotZero = destCell.char != 0;
             const destNotDefaultSpace = destCell.char != DEFAULT_SPACE_CHAR;
 
-            const preserveChar = (charIsDefaultSpace and
+            const preserveChar = (allow_preserve_char and
+                charIsDefaultSpace and
                 destNotZero and
                 destNotDefaultSpace);
             const finalChar = if (preserveChar) destCell.char else overlayCell.char;
@@ -970,6 +971,14 @@ pub const OptimizedBuffer = struct {
         }
 
         return overlayCell;
+    }
+
+    pub fn blendCells(self: *const OptimizedBuffer, overlayCell: Cell, destCell: Cell) Cell {
+        return self.blendAlphaCells(overlayCell, destCell, true);
+    }
+
+    fn blendCellsWithoutPreservingChar(self: *const OptimizedBuffer, overlayCell: Cell, destCell: Cell) Cell {
+        return self.blendAlphaCells(overlayCell, destCell, false);
     }
 
     // Render a stable ASCII placeholder using the overlay tint instead of
@@ -1038,12 +1047,12 @@ pub const OptimizedBuffer = struct {
             return x;
         };
 
-        if (effectiveCell.char == DEFAULT_SPACE_CHAR and ansi.alpha(effectiveCell.bg) == 0) {
-            if (gp.isGraphemeChar(destCell.char) or gp.isContinuationChar(destCell.char)) {
-                const span = self.graphemeSpanForIndex(index, destCell.char);
-                return span.end % self.width;
-            }
-            return x;
+        if (effectiveCell.char == DEFAULT_SPACE_CHAR and
+            ansi.alpha(effectiveCell.bg) == 0 and
+            (gp.isGraphemeChar(destCell.char) or gp.isContinuationChar(destCell.char)))
+        {
+            const span = self.graphemeSpanForIndex(index, destCell.char);
+            return span.end % self.width;
         }
 
         const blendedCell = self.blendCells(effectiveCell, destCell);
@@ -1159,6 +1168,77 @@ pub const OptimizedBuffer = struct {
         return true;
     }
 
+    /// Alpha-blend an overlay cell while clipping any intersected wide
+    /// grapheme span instead of tinting that full span uniformly. Box edge
+    /// bands use this path so geometric edges stay straight even when they
+    /// cut through a wide glyph.
+    pub fn setCellWithAlphaBlendingClipWideGraphemes(
+        self: *OptimizedBuffer,
+        x: u32,
+        y: u32,
+        char: u32,
+        fg: RGBA,
+        bg: RGBA,
+        attributes: u32,
+    ) void {
+        if (!self.isPointInScissor(@intCast(x), @intCast(y))) return;
+
+        const opacity = self.getCurrentOpacity();
+        const cell = makeCell(char, fg, bg, attributes);
+        if (isFullyTransparent(opacity, cell.fg, cell.bg)) return;
+        if (isFullyOpaque(opacity, cell.fg, cell.bg)) {
+            self.set(x, y, cell);
+            return;
+        }
+
+        const opacity_u8 = opacityToU8(opacity);
+        const overlayCell = makeCell(
+            cell.char,
+            applyOpacity(cell.fg, opacity_u8),
+            applyOpacity(cell.bg, opacity_u8),
+            cell.attributes,
+        );
+        if (overlayCell.char == DEFAULT_SPACE_CHAR and ansi.alpha(overlayCell.bg) == 0) return;
+        if (ansi.alpha(overlayCell.fg) == 0 and ansi.alpha(overlayCell.bg) == 0) return;
+
+        if (self.get(x, y)) |destCell| {
+            const blendedCell = self.blendCellsWithoutPreservingChar(overlayCell, destCell);
+            self.set(x, y, blendedCell);
+        } else {
+            self.set(x, y, overlayCell);
+        }
+    }
+
+    const FillBounds = struct {
+        start_x: u32,
+        start_y: u32,
+        end_x: u32,
+        end_y: u32,
+    };
+
+    fn clippedFillBounds(self: *const OptimizedBuffer, x: u32, y: u32, width: u32, height: u32) ?FillBounds {
+        if (self.width == 0 or self.height == 0 or width == 0 or height == 0) return null;
+        if (x >= self.width or y >= self.height) return null;
+        if (!self.isRectInScissor(@intCast(x), @intCast(y), width, height)) return null;
+
+        const maxEndX = self.width - 1;
+        const maxEndY = self.height - 1;
+        const requestedEndX = x + width - 1;
+        const requestedEndY = y + height - 1;
+        const endX = @min(maxEndX, requestedEndX);
+        const endY = @min(maxEndY, requestedEndY);
+        if (x > endX or y > endY) return null;
+
+        const clippedRect = self.clipRectToScissor(@intCast(x), @intCast(y), endX - x + 1, endY - y + 1) orelse return null;
+
+        return .{
+            .start_x = @max(x, @as(u32, @intCast(clippedRect.x))),
+            .start_y = @max(y, @as(u32, @intCast(clippedRect.y))),
+            .end_x = @min(endX, @as(u32, @intCast(clippedRect.x + @as(i32, @intCast(clippedRect.width)) - 1))),
+            .end_y = @min(endY, @as(u32, @intCast(clippedRect.y + @as(i32, @intCast(clippedRect.height)) - 1))),
+        };
+    }
+
     pub fn drawChar(
         self: *OptimizedBuffer,
         char: u32,
@@ -1179,41 +1259,20 @@ pub const OptimizedBuffer = struct {
         height: u32,
         bg: RGBA,
     ) void {
-        if (self.width == 0 or self.height == 0 or width == 0 or height == 0) return;
-        if (x >= self.width or y >= self.height) return;
-
-        if (!self.isRectInScissor(@intCast(x), @intCast(y), width, height)) return;
-
         const opacity = self.getCurrentOpacity();
         if (isFullyTransparent(opacity, ansi.rgbColor(0, 0, 0, 0), bg)) return;
-
-        const startX = x;
-        const startY = y;
-        const maxEndX = if (x < self.width) self.width - 1 else 0;
-        const maxEndY = if (y < self.height) self.height - 1 else 0;
-        const requestedEndX = x + width - 1;
-        const requestedEndY = y + height - 1;
-        const endX = @min(maxEndX, requestedEndX);
-        const endY = @min(maxEndY, requestedEndY);
-
-        if (startX > endX or startY > endY) return;
-
-        const clippedRect = self.clipRectToScissor(@intCast(startX), @intCast(startY), endX - startX + 1, endY - startY + 1) orelse return;
-        const clippedStartX = @max(startX, @as(u32, @intCast(clippedRect.x)));
-        const clippedStartY = @max(startY, @as(u32, @intCast(clippedRect.y)));
-        const clippedEndX = @min(endX, @as(u32, @intCast(clippedRect.x + @as(i32, @intCast(clippedRect.width)) - 1)));
-        const clippedEndY = @min(endY, @as(u32, @intCast(clippedRect.y + @as(i32, @intCast(clippedRect.height)) - 1)));
+        const bounds = self.clippedFillBounds(x, y, width, height) orelse return;
 
         const hasAlpha = isRGBAWithAlpha(bg) or opacity < 1.0;
         const graphemeAware = self.grapheme_tracker.hasAny();
         const linkAware = self.link_tracker.hasAny();
 
         if (graphemeAware or linkAware) {
-            var fillY = clippedStartY;
-            while (fillY <= clippedEndY) : (fillY += 1) {
+            var fillY = bounds.start_y;
+            while (fillY <= bounds.end_y) : (fillY += 1) {
                 var cursor = BlendCursor{};
-                var fillX = clippedStartX;
-                while (fillX <= clippedEndX) : (fillX += 1) {
+                var fillX = bounds.start_x;
+                while (fillX <= bounds.end_x) : (fillX += 1) {
                     fillX = cursor.blendAt(
                         self,
                         fillX,
@@ -1228,19 +1287,19 @@ pub const OptimizedBuffer = struct {
         } else if (hasAlpha) {
             // No grapheme/link bookkeeping is needed here, so the raw blend
             // path avoids the extra tracker work done by the generic setter.
-            var fillY = clippedStartY;
-            while (fillY <= clippedEndY) : (fillY += 1) {
-                var fillX = clippedStartX;
-                while (fillX <= clippedEndX) : (fillX += 1) {
+            var fillY = bounds.start_y;
+            while (fillY <= bounds.end_y) : (fillY += 1) {
+                var fillX = bounds.start_x;
+                while (fillX <= bounds.end_x) : (fillX += 1) {
                     self.setCellWithAlphaBlendingRaw(fillX, fillY, DEFAULT_SPACE_CHAR, ansi.rgbColor(255, 255, 255, 255), bg, 0);
                 }
             }
         } else {
             // For non-alpha (fully opaque) backgrounds with no graphemes or links, we can do direct filling
-            var fillY = clippedStartY;
-            while (fillY <= clippedEndY) : (fillY += 1) {
-                const rowStartIndex = self.coordsToIndex(@intCast(clippedStartX), @intCast(fillY));
-                const rowWidth = clippedEndX - clippedStartX + 1;
+            var fillY = bounds.start_y;
+            while (fillY <= bounds.end_y) : (fillY += 1) {
+                const rowStartIndex = self.coordsToIndex(@intCast(bounds.start_x), @intCast(fillY));
+                const rowWidth = bounds.end_x - bounds.start_x + 1;
 
                 const rowSliceChar = self.buffer.char[rowStartIndex .. rowStartIndex + rowWidth];
                 const rowSliceFg = self.buffer.fg[rowStartIndex .. rowStartIndex + rowWidth];
@@ -1279,6 +1338,33 @@ pub const OptimizedBuffer = struct {
             @intCast(endY - startY + 1),
             bg,
         );
+    }
+
+    pub fn fillRectClipWideGraphemes(
+        self: *OptimizedBuffer,
+        x: u32,
+        y: u32,
+        width: u32,
+        height: u32,
+        bg: RGBA,
+    ) void {
+        if (ansi.alpha(bg) == 0 or self.getCurrentOpacity() == 0.0) return;
+        const bounds = self.clippedFillBounds(x, y, width, height) orelse return;
+
+        const hasAlpha = isRGBAWithAlpha(bg) or self.getCurrentOpacity() < 1.0;
+        const linkAware = self.link_tracker.hasAny();
+
+        if (hasAlpha or self.grapheme_tracker.hasAny() or linkAware) {
+            var fillY = bounds.start_y;
+            while (fillY <= bounds.end_y) : (fillY += 1) {
+                var fillX = bounds.start_x;
+                while (fillX <= bounds.end_x) : (fillX += 1) {
+                    self.setCellWithAlphaBlendingClipWideGraphemes(fillX, fillY, DEFAULT_SPACE_CHAR, ansi.rgbColor(255, 255, 255, 255), bg, 0);
+                }
+            }
+        } else {
+            self.fillRect(x, y, width, height, bg);
+        }
     }
 
     pub fn drawText(

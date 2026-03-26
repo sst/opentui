@@ -1150,17 +1150,17 @@ test "renderer - fallback path does not emit post-grapheme cursor moves" {
     cli_renderer.terminal.caps.explicit_cursor_positioning = false;
     cli_renderer.terminal.caps.explicit_width = false;
 
-    const dark_bg = RGBA{ 0.04, 0.05, 0.08, 1.0 };
-    const tinted_bg = RGBA{ 0.0, 0.0, 1.0, 0.5 };
-    const fg = RGBA{ 1.0, 1.0, 1.0, 1.0 };
+    const dark_bg = ansi.rgbaFromFloats(0.04, 0.05, 0.08, 1.0);
+    const tinted_bg = ansi.rgbaFromFloats(0.0, 0.0, 1.0, 0.5);
+    const fg = ansi.rgbaFromFloats(1.0, 1.0, 1.0, 1.0);
 
     const first_buffer = cli_renderer.getNextBuffer();
-    try first_buffer.clear(dark_bg, null);
+    first_buffer.clear(dark_bg, null);
     try first_buffer.drawText("👋  ", 0, 0, fg, dark_bg, 0);
     cli_renderer.render(false);
 
     const second_buffer = cli_renderer.getNextBuffer();
-    try second_buffer.clear(dark_bg, null);
+    second_buffer.clear(dark_bg, null);
     try second_buffer.drawText("👋  ", 0, 0, fg, tinted_bg, 0);
     cli_renderer.render(false);
 
@@ -2053,18 +2053,18 @@ test "renderer - repainting CJK text under translucent overlay keeps wide text i
     cli_renderer.terminal.caps.explicit_cursor_positioning = false;
     cli_renderer.terminal.caps.explicit_width = false;
 
-    const dark_bg = RGBA{ 0.0, 0.0, 0.0, 1.0 };
-    const tint_bg = RGBA{ 1.0, 0.0, 0.0, 0.15 };
+    const dark_bg = ansi.rgbaFromFloats(0.0, 0.0, 0.0, 1.0);
+    const tint_bg = ansi.rgbaFromFloats(1.0, 0.0, 0.0, 0.15);
 
     const first_buffer = cli_renderer.getNextBuffer();
-    try first_buffer.clear(dark_bg, null);
-    try first_buffer.drawTextBuffer(view, 0, 0);
+    first_buffer.clear(dark_bg, null);
+    first_buffer.drawTextBuffer(view, 0, 0);
     cli_renderer.render(false);
 
     const second_buffer = cli_renderer.getNextBuffer();
-    try second_buffer.clear(dark_bg, null);
-    try second_buffer.drawTextBuffer(view, 0, 0);
-    try second_buffer.fillRect(0, 0, 90, 6, tint_bg, ansi.COLOR_TAG_RGB);
+    second_buffer.clear(dark_bg, null);
+    second_buffer.drawTextBuffer(view, 0, 0);
+    second_buffer.fillRect(0, 0, 90, 6, tint_bg);
     cli_renderer.render(false);
 
     const output = cli_renderer.getLastOutputForTest();
@@ -2093,8 +2093,8 @@ test "renderer - explicit_cursor_positioning does not emit continuation spaces a
     cli_renderer.terminal.caps.explicit_width = false;
 
     const next_buffer = cli_renderer.getNextBuffer();
-    const fg = RGBA{ 1.0, 1.0, 1.0, 1.0 };
-    const bg = RGBA{ 0.0, 0.0, 0.0, 1.0 };
+    const fg = ansi.rgbaFromFloats(1.0, 1.0, 1.0, 1.0);
+    const bg = ansi.rgbaFromFloats(0.0, 0.0, 0.0, 1.0);
     try next_buffer.drawText("世X", 0, 0, fg, bg, 0);
 
     cli_renderer.render(false);
@@ -2122,17 +2122,17 @@ test "renderer - repainting wide emoji after placeholder preclears span" {
     cli_renderer.terminal.caps.explicit_cursor_positioning = true;
     cli_renderer.terminal.caps.explicit_width = false;
 
-    const dark_bg = RGBA{ 0.04, 0.05, 0.08, 1.0 };
-    const tinted_bg = RGBA{ 0.0, 0.0, 1.0, 0.5 };
-    const fg = RGBA{ 1.0, 1.0, 1.0, 1.0 };
+    const dark_bg = ansi.rgbaFromFloats(0.04, 0.05, 0.08, 1.0);
+    const tinted_bg = ansi.rgbaFromFloats(0.0, 0.0, 1.0, 0.5);
+    const fg = ansi.rgbaFromFloats(1.0, 1.0, 1.0, 1.0);
 
     const first_buffer = cli_renderer.getNextBuffer();
-    try first_buffer.clear(dark_bg, null);
+    first_buffer.clear(dark_bg, null);
     try first_buffer.drawText("[]", 2, 0, fg, tinted_bg, 0);
     cli_renderer.render(false);
 
     const second_buffer = cli_renderer.getNextBuffer();
-    try second_buffer.clear(dark_bg, null);
+    second_buffer.clear(dark_bg, null);
     try second_buffer.drawText("👋", 2, 0, fg, dark_bg, 0);
     cli_renderer.render(false);
 
@@ -2156,17 +2156,17 @@ test "renderer - explicit_width repainting wide emoji preclears span" {
     cli_renderer.terminal.caps.explicit_cursor_positioning = false;
     cli_renderer.terminal.caps.explicit_width = true;
 
-    const dark_bg = RGBA{ 0.04, 0.05, 0.08, 1.0 };
-    const tinted_bg = RGBA{ 0.0, 0.0, 1.0, 0.5 };
-    const fg = RGBA{ 1.0, 1.0, 1.0, 1.0 };
+    const dark_bg = ansi.rgbaFromFloats(0.04, 0.05, 0.08, 1.0);
+    const tinted_bg = ansi.rgbaFromFloats(0.0, 0.0, 1.0, 0.5);
+    const fg = ansi.rgbaFromFloats(1.0, 1.0, 1.0, 1.0);
 
     const first_buffer = cli_renderer.getNextBuffer();
-    try first_buffer.clear(dark_bg, null);
+    first_buffer.clear(dark_bg, null);
     try first_buffer.drawText("[]", 2, 0, fg, tinted_bg, 0);
     cli_renderer.render(false);
 
     const second_buffer = cli_renderer.getNextBuffer();
-    try second_buffer.clear(dark_bg, null);
+    second_buffer.clear(dark_bg, null);
     try second_buffer.drawText("👋", 2, 0, fg, dark_bg, 0);
     cli_renderer.render(false);
 
@@ -2190,17 +2190,17 @@ test "renderer - fallback repainting wide emoji preclears span before following 
     cli_renderer.terminal.caps.explicit_cursor_positioning = false;
     cli_renderer.terminal.caps.explicit_width = false;
 
-    const dark_bg = RGBA{ 0.04, 0.05, 0.08, 1.0 };
-    const tinted_bg = RGBA{ 0.0, 0.0, 1.0, 0.5 };
-    const fg = RGBA{ 1.0, 1.0, 1.0, 1.0 };
+    const dark_bg = ansi.rgbaFromFloats(0.04, 0.05, 0.08, 1.0);
+    const tinted_bg = ansi.rgbaFromFloats(0.0, 0.0, 1.0, 0.5);
+    const fg = ansi.rgbaFromFloats(1.0, 1.0, 1.0, 1.0);
 
     const first_buffer = cli_renderer.getNextBuffer();
-    try first_buffer.clear(dark_bg, null);
+    first_buffer.clear(dark_bg, null);
     try first_buffer.drawText("[]A", 2, 0, fg, tinted_bg, 0);
     cli_renderer.render(false);
 
     const second_buffer = cli_renderer.getNextBuffer();
-    try second_buffer.clear(dark_bg, null);
+    second_buffer.clear(dark_bg, null);
     try second_buffer.drawText("👋B", 2, 0, fg, dark_bg, 0);
     cli_renderer.render(false);
 

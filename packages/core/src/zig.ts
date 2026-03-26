@@ -428,6 +428,10 @@ function getOpenTUILib(libPath?: string) {
       args: ["ptr", "i32", "i32", "u32", "u32", "ptr", "u32", "ptr", "ptr", "ptr", "u32", "ptr", "u32"],
       returns: "void",
     },
+    bufferFillRectClipWideGraphemes: {
+      args: ["ptr", "u32", "u32", "u32", "u32", "ptr"],
+      returns: "void",
+    },
     bufferPushScissorRect: {
       args: ["ptr", "i32", "i32", "u32", "u32"],
       returns: "void",
@@ -456,7 +460,6 @@ function getOpenTUILib(libPath?: string) {
       args: ["ptr"],
       returns: "void",
     },
-
     addToHitGrid: {
       args: ["ptr", "i32", "i32", "u32", "u32", "u32"],
       returns: "void",
@@ -1681,6 +1684,14 @@ export interface RenderLib extends AudioEngineLib {
     attributes?: number,
   ) => void
   bufferFillRect: (buffer: Pointer, x: number, y: number, width: number, height: number, color: RGBA) => void
+  bufferFillRectClipWideGraphemes: (
+    buffer: Pointer,
+    x: number,
+    y: number,
+    width: number,
+    height: number,
+    color: RGBA,
+  ) => void
   bufferColorMatrix: (
     buffer: Pointer,
     matrixPtr: Pointer,
@@ -2485,6 +2496,18 @@ class FFIRenderLib implements RenderLib {
   public bufferFillRect(buffer: Pointer, x: number, y: number, width: number, height: number, color: RGBA) {
     const bg = rgbaPtr(color)
     this.opentui.symbols.bufferFillRect(buffer, x, y, width, height, bg)
+  }
+
+  public bufferFillRectClipWideGraphemes(
+    buffer: Pointer,
+    x: number,
+    y: number,
+    width: number,
+    height: number,
+    color: RGBA,
+  ) {
+    const bg = rgbaPtr(color)
+    this.opentui.symbols.bufferFillRectClipWideGraphemes(buffer, x, y, width, height, bg)
   }
 
   public bufferColorMatrix(

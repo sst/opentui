@@ -1404,15 +1404,15 @@ export abstract class Renderable extends BaseRenderable {
 
     const shouldPushScissor = this._overflow !== "visible" && this.width > 0 && this.height > 0
     if (shouldPushScissor) {
-      const scissorRect = this.getScissorRect()
+      const scissorRect = this.getOverflowClipRect()
       renderList.push({
         action: "pushScissorRect",
         x: scissorRect.x,
         y: scissorRect.y,
         width: scissorRect.width,
         height: scissorRect.height,
-        screenX: this._screenX,
-        screenY: this._screenY,
+        screenX: scissorRect.x,
+        screenY: scissorRect.y,
       })
     }
     // Most renderables expose all children. Skip building a visible-child list
@@ -1501,6 +1501,20 @@ export abstract class Renderable extends BaseRenderable {
       y: this.buffered ? 0 : this._screenY,
       width: this.width,
       height: this.height,
+    }
+  }
+
+  public getOverflowClipRect(): { x: number; y: number; width: number; height: number } {
+    const scissorRect = this.getScissorRect()
+    if (!this.buffered) {
+      return scissorRect
+    }
+
+    return {
+      x: scissorRect.x + this.x,
+      y: scissorRect.y + this.y,
+      width: scissorRect.width,
+      height: scissorRect.height,
     }
   }
 

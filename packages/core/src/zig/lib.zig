@@ -770,6 +770,10 @@ export fn bufferFillRect(bufferPtr: *buffer.OptimizedBuffer, x: u32, y: u32, wid
     bufferPtr.fillRect(x, y, width, height, ptrToRGBA(bg));
 }
 
+export fn bufferFillRectClipWideGraphemes(bufferPtr: *buffer.OptimizedBuffer, x: u32, y: u32, width: u32, height: u32, bg: [*]const u16) void {
+    bufferPtr.fillRectClipWideGraphemes(x, y, width, height, ptrToRGBA(bg));
+}
+
 export fn bufferColorMatrix(bufferPtr: *buffer.OptimizedBuffer, matrixPtr: [*]const f32, cellMaskPtr: [*]const f32, cellMaskCount: usize, strength: f32, target: u8) void {
     if (cellMaskCount == 0) return;
     const matrix = matrixPtr[0..16];
