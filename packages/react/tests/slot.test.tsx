@@ -2,9 +2,9 @@ import { afterEach, beforeEach, describe, expect, it } from "bun:test"
 import { createTestRenderer, type TestRendererOptions } from "@opentui/core/testing"
 import { createContext, useContext, useEffect, useMemo, useState } from "react"
 import { act, type ReactNode } from "react"
-import { createReactSlotRegistry, createSlot, Slot, type ReactPlugin } from "../src/plugins/slot"
-import { useKeyboard } from "../src/hooks/use-keyboard"
-import { createRoot, type Root } from "../src/reconciler/renderer"
+import { createReactSlotRegistry, createSlot, Slot, type ReactPlugin } from "../src/plugins/slot.js"
+import { useKeyboard } from "../src/hooks/use-keyboard.js"
+import { createRoot, type Root } from "../src/reconciler/renderer.js"
 
 interface AppSlots {
   statusbar: { user: string }

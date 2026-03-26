@@ -1,4 +1,4 @@
-import { SystemClock, type Clock, type TimerHandle } from "./clock"
+import { SystemClock, type Clock, type TimerHandle } from "./clock.js"
 
 type Hex = string | null
 

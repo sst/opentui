@@ -1,8 +1,8 @@
 import { describe, expect, test } from "bun:test"
 import { EventEmitter } from "events"
-import { createSlotRegistry, SlotRegistry } from "../plugins/registry"
-import type { Plugin } from "../plugins/types"
-import type { CliRenderer } from "../renderer"
+import { createSlotRegistry, SlotRegistry } from "../plugins/registry.js"
+import type { Plugin } from "../plugins/types.js"
+import type { CliRenderer } from "../renderer.js"
 
 interface AppSlots {
   statusbar: { user: string }

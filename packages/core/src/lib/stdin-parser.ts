@@ -6,12 +6,12 @@
 // own event dispatch — that belongs to KeyHandler and the renderer.
 
 import { Buffer } from "node:buffer"
-import { SystemClock, type Clock, type TimerHandle } from "./clock"
-import { parseKeypress, type ParsedKey } from "./parse.keypress"
-import { MouseParser, type RawMouseEvent } from "./parse.mouse"
-import type { PasteMetadata } from "./paste"
+import { SystemClock, type Clock, type TimerHandle } from "./clock.js"
+import { parseKeypress, type ParsedKey } from "./parse.keypress.js"
+import { MouseParser, type RawMouseEvent } from "./parse.mouse.js"
+import type { PasteMetadata } from "./paste.js"
 
-export { SystemClock, type Clock, type TimerHandle } from "./clock"
+export { SystemClock, type Clock, type TimerHandle } from "./clock.js"
 
 export type StdinResponseProtocol = "csi" | "osc" | "dcs" | "apc" | "unknown"
 

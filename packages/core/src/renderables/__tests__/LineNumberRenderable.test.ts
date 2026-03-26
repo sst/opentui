@@ -1065,8 +1065,8 @@ describe("LineNumberRenderable", () => {
     })
 
     // Import Code renderable
-    const { CodeRenderable } = await import("../Code")
-    const { SyntaxStyle } = await import("../../syntax-style")
+    const { CodeRenderable } = await import("../Code.js")
+    const { SyntaxStyle } = await import("../../syntax-style.js")
 
     const syntaxStyle = SyntaxStyle.create()
 
@@ -1132,8 +1132,8 @@ describe("LineNumberRenderable", () => {
       height: 10,
     })
 
-    const { CodeRenderable } = await import("../Code")
-    const { SyntaxStyle } = await import("../../syntax-style")
+    const { CodeRenderable } = await import("../Code.js")
+    const { SyntaxStyle } = await import("../../syntax-style.js")
 
     const syntaxStyle = SyntaxStyle.create()
 
@@ -1196,8 +1196,8 @@ describe("LineNumberRenderable", () => {
       height: 10,
     })
 
-    const { CodeRenderable } = await import("../Code")
-    const { SyntaxStyle } = await import("../../syntax-style")
+    const { CodeRenderable } = await import("../Code.js")
+    const { SyntaxStyle } = await import("../../syntax-style.js")
 
     const syntaxStyle = SyntaxStyle.create()
 

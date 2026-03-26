@@ -4,8 +4,8 @@ import { EventEmitter } from "events"
 import { Buffer } from "node:buffer"
 import { Readable } from "node:stream"
 import tty from "tty"
-import { ManualClock } from "../testing/manual-clock"
-import type { GetPaletteOptions, TerminalColors } from "../lib/terminal-palette"
+import { ManualClock } from "../testing/manual-clock.js"
+import type { GetPaletteOptions, TerminalColors } from "../lib/terminal-palette.js"
 
 const OSC_SUPPORT_TIMEOUT_MS = 300
 

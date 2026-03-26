@@ -3,7 +3,7 @@ import { mkdtempSync, rmSync, writeFileSync } from "node:fs"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
 import { runtimeModuleIdForSpecifier } from "@opentui/core/runtime-plugin"
-import { createSolidTransformPlugin } from "../scripts/solid-plugin"
+import { createSolidTransformPlugin } from "../scripts/solid-plugin.js"
 
 type ResolveCallback = (args: { path: string; importer: string }) => unknown | Promise<unknown>
 type LoadResult = { contents: string; loader: string } | void

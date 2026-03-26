@@ -3,8 +3,8 @@ import { tmpdir } from "node:os"
 import { join } from "node:path"
 import { plugin as registerPlugin } from "bun"
 import { createRuntimePlugin, runtimeModuleIdForSpecifier, type RuntimeModuleEntry } from "@opentui/core/runtime-plugin"
-import * as solidRuntime from "../index"
-import { createSolidTransformPlugin } from "../scripts/solid-plugin"
+import * as solidRuntime from "../index.js"
+import { createSolidTransformPlugin } from "../scripts/solid-plugin.js"
 
 const tempRoot = mkdtempSync(join(tmpdir(), "solid-plugin-fixture-"))
 const entryPath = join(tempRoot, "entry.tsx")

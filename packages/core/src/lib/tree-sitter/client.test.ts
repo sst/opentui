@@ -40,8 +40,14 @@ describe("TreeSitterClient", () => {
     const hasJavaScript = await client.preloadParser("javascript")
     expect(hasJavaScript).toBe(true)
 
+    const hasJavaScriptReact = await client.preloadParser("javascriptreact")
+    expect(hasJavaScriptReact).toBe(true)
+
     const hasTypeScript = await client.preloadParser("typescript")
     expect(hasTypeScript).toBe(true)
+
+    const hasTypeScriptReact = await client.preloadParser("typescriptreact")
+    expect(hasTypeScriptReact).toBe(true)
   })
 
   test("should return false for unsupported filetypes", async () => {
@@ -299,6 +305,29 @@ describe("TreeSitterClient", () => {
     expect(client.getAllBuffers()).toHaveLength(0)
   })
 
+  test("should perform one-shot highlighting for react parser aliases", async () => {
+    await client.initialize()
+
+    const jsxCode = 'const view = <div className="card">hello</div>'
+    const tsxCode = 'const view: JSX.Element = <div className="card">hello</div>'
+
+    const [jsxResult, tsxResult] = await Promise.all([
+      client.highlightOnce(jsxCode, "javascriptreact"),
+      client.highlightOnce(tsxCode, "typescriptreact"),
+    ])
+
+    expect(jsxResult.highlights).toBeDefined()
+    expect(tsxResult.highlights).toBeDefined()
+    expect(jsxResult.highlights!.length).toBeGreaterThan(0)
+    expect(tsxResult.highlights!.length).toBeGreaterThan(0)
+
+    const jsxGroups = jsxResult.highlights!.map((hl) => hl[2])
+    const tsxGroups = tsxResult.highlights!.map((hl) => hl[2])
+
+    expect(jsxGroups).toContain("keyword")
+    expect(tsxGroups).toContain("keyword")
+  })
+
   test("should handle Devanagari characters and highlight ranges after them correctly", async () => {
     await client.initialize()
 
@@ -357,6 +386,7 @@ describe("TreeSitterClient", () => {
     try {
       client.addFiletypeParser({
         filetype: "test-lang",
+        aliases: ["test-lang-react"],
         queries: {
           highlights: [testQueryPath],
         },
@@ -368,12 +398,19 @@ describe("TreeSitterClient", () => {
       const hasParser = await client.preloadParser("test-lang")
       expect(hasParser).toBe(true)
 
+      const hasAliasParser = await client.preloadParser("test-lang-react")
+      expect(hasAliasParser).toBe(true)
+
       const testCode = "const myVariable = 42;"
       const result = await client.highlightOnce(testCode, "test-lang")
+      const aliasResult = await client.highlightOnce(testCode, "test-lang-react")
 
       expect(result.highlights).toBeDefined()
+      expect(aliasResult.highlights).toBeDefined()
       expect(result.error).toBeUndefined()
+      expect(aliasResult.error).toBeUndefined()
       expect(result.warning).toBeUndefined()
+      expect(aliasResult.warning).toBeUndefined()
     } finally {
       try {
         await unlink(testQueryPath)
@@ -419,6 +456,43 @@ describe("TreeSitterClient", () => {
 
       expect(languageLoadLogs.length).toBeLessThanOrEqual(1)
       expect(queryLoadLogs.length).toBeLessThanOrEqual(1)
+    } finally {
+      await freshClient.destroy()
+    }
+  })
+
+  test("should reuse canonical parser assets for aliased filetypes", async () => {
+    const freshClient = new TreeSitterClient({ dataPath })
+    const workerLogs: string[] = []
+
+    freshClient.on("worker:log", (_logType, message) => {
+      if (message.includes("Loading from local path:")) {
+        workerLogs.push(message)
+      }
+    })
+
+    try {
+      await freshClient.initialize()
+
+      const jsxCode = 'const view = <div className="card">hello</div>'
+      const [canonicalResult, aliasResult] = await Promise.all([
+        freshClient.highlightOnce(jsxCode, "javascript"),
+        freshClient.highlightOnce(jsxCode, "javascriptreact"),
+      ])
+
+      expect(canonicalResult.highlights).toBeDefined()
+      expect(aliasResult.highlights).toBeDefined()
+      expect(canonicalResult.error).toBeUndefined()
+      expect(aliasResult.error).toBeUndefined()
+
+      await new Promise((resolve) => setTimeout(resolve, 100))
+
+      const languageLoadLogs = workerLogs.filter((log) => log.includes("tree-sitter-javascript.wasm"))
+      const queryLoadLogs = workerLogs.filter((log) => log.includes("/assets/javascript/highlights.scm"))
+
+      expect(languageLoadLogs.length).toBeLessThanOrEqual(1)
+      expect(queryLoadLogs.length).toBeLessThanOrEqual(1)
+      expect(workerLogs.some((log) => log.includes("javascriptreact"))).toBe(false)
     } finally {
       await freshClient.destroy()
     }
@@ -488,6 +562,36 @@ Some text here.`
       const hasTypeScriptHighlights = groups.some((g) => g === "keyword" || g === "type" || g === "function")
 
       expect(hasTypeScriptHighlights).toBe(true)
+    } finally {
+      await client.destroy()
+    }
+  }, 10000)
+
+  test("should highlight tsx code blocks in markdown using language-specific injection", async () => {
+    const client = new TreeSitterClient({ dataPath })
+
+    try {
+      await client.initialize()
+
+      const markdownCode = `# Code Example
+
+\`\`\`tsx
+const view: JSX.Element = <div>Hello</div>;
+\`\`\`
+
+Some text here.`
+
+      const result = await client.highlightOnce(markdownCode, "markdown")
+
+      expect(result.highlights).toBeDefined()
+      expect(result.highlights!.length).toBeGreaterThan(0)
+
+      const constHighlight = result.highlights!.find((hl) => {
+        const text = markdownCode.substring(hl[0], hl[1])
+        return text === "const" && hl[2] === "keyword"
+      })
+
+      expect(constHighlight).toBeDefined()
     } finally {
       await client.destroy()
     }

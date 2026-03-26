@@ -23,9 +23,17 @@ import {
   AmbientLight,
 } from "three"
 import * as Filters from "../post/filters.js"
-import { DistortionEffect, VignetteEffect, BrightnessEffect, BlurEffect, BloomEffect } from "../post/filters.js"
 import type { OptimizedBuffer } from "../buffer.js"
 import { ThreeCliRenderer } from "../3d.js"
+import {
+  DistortionEffect,
+  VignetteEffect,
+  CloudsEffect,
+  FlamesEffect,
+  RainbowTextEffect,
+  CRTRollingBarEffect,
+} from "../post/effects.js"
+import * as Matrices from "../post/matrices.js"
 
 // State management for the demo
 interface ShaderCubeDemoState {
@@ -40,9 +48,15 @@ interface ShaderCubeDemoState {
   materials: MeshPhongMaterial[]
   distortionEffectInstance: DistortionEffect
   vignetteEffectInstance: VignetteEffect
-  brightnessEffectInstance: BrightnessEffect
-  blurEffectInstance: BlurEffect
-  bloomEffectInstance: BloomEffect
+  cloudsEffectInstance: CloudsEffect
+  flamesEffectInstance: FlamesEffect
+  rainbowTextEffectInstance: RainbowTextEffect
+  crtRollingBarEffectInstance: CRTRollingBarEffect
+  pipboyVignetteEffectInstance: VignetteEffect
+  pipboyBarEffectInstance: CRTRollingBarEffect
+  brightnessValue: number
+  gainValue: number
+  colorMatrixEffectInstance: ColorMatrixEffect
   filterFunctions: { name: string; func: ((buffer: OptimizedBuffer, deltaTime: number) => void) | null }[]
   currentFilterIndex: number
   time: number
@@ -77,7 +91,9 @@ export async function run(renderer: CliRenderer): Promise<void> {
   renderer.start()
   const WIDTH = renderer.terminalWidth
   const HEIGHT = renderer.terminalHeight
-  const CAM_DISTANCE = 2
+  const CAM_DISTANCE = 3.5
+  const CAMERA_PAN_STEP = 0.2
+  const CAMERA_ZOOM_STEP = 0.35
   const rotationSpeed = [0.2, 0.4, 0.1]
 
   const lightColors = [
@@ -99,24 +115,112 @@ export async function run(renderer: CliRenderer): Promise<void> {
   // Initialize effect instances
   const distortionEffectInstance = new DistortionEffect()
   const vignetteEffectInstance = new VignetteEffect()
-  const brightnessEffectInstance = new BrightnessEffect()
-  const blurEffectInstance = new BlurEffect(1)
-  const bloomEffectInstance = new BloomEffect(0.7, 0.3, 2)
+  const cloudsEffectInstance = new CloudsEffect(0.27, 0.001, 0.75, 1.0)
+  const flamesEffectInstance = new FlamesEffect(0.04, 0.02, 0.9)
+  const rainbowTextEffectInstance = new RainbowTextEffect(0.006, 1.0, 1.0, 10.0)
+  const crtRollingBarEffectInstance = new CRTRollingBarEffect(0.8, 0.1, 0.4, 0.2)
+
+  // Pipboy-specific instances (decoupled from other effects)
+  const pipboyVignetteEffectInstance = new VignetteEffect(0.75)
+  const pipboyBarEffectInstance = new CRTRollingBarEffect(2.5, 0.08, 0.75, 0.15)
+
+  // Simple value-based brightness and gain (no class instances)
+  let brightnessValue = 0.0
+  let gainValue = 1.0
+
+  // Helper function to create right-half cell masks for selective saturation
+  function createRightHalfCellMask(width: number, height: number): Float32Array {
+    const rightHalfWidth = Math.floor(width / 2)
+    const rightHalfPixels = rightHalfWidth * height
+    const cellMask = new Float32Array(rightHalfPixels * 3)
+    let i = 0
+    for (let y = 0; y < height; y++) {
+      for (let x = Math.floor(width / 2); x < width; x++) {
+        cellMask[i++] = x
+        cellMask[i++] = y
+        cellMask[i++] = 1
+      }
+    }
+    return cellMask
+  }
+
+  // Full screen saturation mode toggle (null cellMask = uniform)
+  let saturationFullScreen = false
+
+  // Saturation state variables
+  let saturationValue = 1.0
+  let saturationCellMask: Float32Array | null = createRightHalfCellMask(WIDTH, HEIGHT)
+
+  // Registry of all available color matrices with their display names
+  const colorMatrixRegistry: { name: string; matrix: Float32Array }[] = [
+    { name: "Sepia", matrix: Matrices.SEPIA_MATRIX },
+    { name: "Protanopia Sim", matrix: Matrices.PROTANOPIA_SIM_MATRIX },
+    { name: "Deuteranopia Sim", matrix: Matrices.DEUTERANOPIA_SIM_MATRIX },
+    { name: "Tritanopia Sim", matrix: Matrices.TRITANOPIA_SIM_MATRIX },
+    { name: "Achromatopsia", matrix: Matrices.ACHROMATOPSIA_MATRIX },
+    { name: "Protanopia Comp", matrix: Matrices.PROTANOPIA_COMP_MATRIX },
+    { name: "Deuteranopia Comp", matrix: Matrices.DEUTERANOPIA_COMP_MATRIX },
+    { name: "Tritanopia Comp", matrix: Matrices.TRITANOPIA_COMP_MATRIX },
+    // Creative effects
+    { name: "Technicolor", matrix: Matrices.TECHNICOLOR_MATRIX },
+    { name: "Solarization", matrix: Matrices.SOLARIZATION_MATRIX },
+    { name: "Synthwave", matrix: Matrices.SYNTHWAVE_MATRIX },
+    { name: "Greenscale", matrix: Matrices.GREENSCALE_MATRIX },
+    { name: "Grayscale", matrix: Matrices.GRAYSCALE_MATRIX },
+    { name: "Invert", matrix: Matrices.INVERT_MATRIX },
+  ]
+
+  // ColorMatrix effect that can cycle through all matrices
+  class ColorMatrixEffect {
+    private currentIndex = 0
+
+    public get currentMatrixName(): string {
+      return colorMatrixRegistry[this.currentIndex].name
+    }
+
+    public apply(buffer: OptimizedBuffer): void {
+      const { matrix } = colorMatrixRegistry[this.currentIndex]
+      buffer.colorMatrixUniform(matrix, 1.0)
+    }
+
+    public nextMatrix(): void {
+      this.currentIndex = (this.currentIndex + 1) % colorMatrixRegistry.length
+    }
+
+    public previousMatrix(): void {
+      this.currentIndex = (this.currentIndex - 1 + colorMatrixRegistry.length) % colorMatrixRegistry.length
+    }
+  }
+
+  const colorMatrixEffectInstance = new ColorMatrixEffect()
 
   const filterFunctions: { name: string; func: ((buffer: OptimizedBuffer, deltaTime: number) => void) | null }[] = [
     { name: "None", func: null },
     { name: "Scanlines", func: (buf, _dt) => Filters.applyScanlines(buf, 0.85) },
     { name: "Vignette", func: vignetteEffectInstance.apply.bind(vignetteEffectInstance) },
-    { name: "Grayscale", func: (buf, _dt) => Filters.applyGrayscale(buf) },
-    { name: "Sepia", func: (buf, _dt) => Filters.applySepia(buf) },
-    { name: "Invert", func: (buf, _dt) => Filters.applyInvert(buf) },
+    { name: "Color Matrix", func: colorMatrixEffectInstance.apply.bind(colorMatrixEffectInstance) },
     { name: "Noise", func: (buf, _dt) => Filters.applyNoise(buf, 0.05) },
-    { name: "Blur", func: blurEffectInstance.apply.bind(blurEffectInstance) },
     { name: "Chromatic Aberration", func: (buf, _dt) => Filters.applyChromaticAberration(buf, 2) },
     { name: "ASCII Art", func: (buf, _dt) => Filters.applyAsciiArt(buf) },
-    { name: "Bloom", func: bloomEffectInstance.apply.bind(bloomEffectInstance) },
     { name: "Distortion", func: distortionEffectInstance.apply.bind(distortionEffectInstance) },
-    { name: "Brightness", func: brightnessEffectInstance.apply.bind(brightnessEffectInstance) },
+    { name: "Clouds", func: cloudsEffectInstance.apply.bind(cloudsEffectInstance) },
+    { name: "Flames", func: flamesEffectInstance.apply.bind(flamesEffectInstance) },
+    { name: "Rainbow Text", func: rainbowTextEffectInstance.apply.bind(rainbowTextEffectInstance) },
+    { name: "CRT Rolling Bar", func: crtRollingBarEffectInstance.apply.bind(crtRollingBarEffectInstance) },
+    {
+      name: "Pipboy",
+      func: (buf, dt) => {
+        pipboyVignetteEffectInstance.apply(buf)
+        buf.colorMatrixUniform(Matrices.GREENSCALE_MATRIX, 1.0)
+        pipboyBarEffectInstance.apply(buf, dt)
+      },
+    },
+    { name: "Brightness", func: (buf, _dt) => Filters.applyBrightness(buf, brightnessValue) },
+    { name: "Gain", func: (buf, _dt) => Filters.applyGain(buf, gainValue) },
+    {
+      name: "Saturation",
+      func: (buf, _dt) => Filters.applySaturation(buf, saturationCellMask ?? undefined, saturationValue),
+    },
   ]
 
   // Box in the background to show alpha channel works
@@ -368,7 +472,7 @@ export async function run(renderer: CliRenderer): Promise<void> {
   const controlsText = new TextRenderable(renderer, {
     id: "shader-controls",
     content:
-      "WASD: Move | QE: Rotate | ZX: Zoom | V: Light Viz | C: Light Color | L: Lights | M/N: Material | P/B/I: Maps | R: Reset | Space: Rotation | J/K Filter | [/]{/} Param Adjust",
+      "WASD: Move | QE: Rotate | ZX: Zoom | V: Light Viz | C: Light Color | L: Lights | M/N: Material | P/B/I: Maps | R: Reset | Space: Rotation | J/K Filter | [/]{/} Params | T: Saturation Mode",
     position: "absolute",
     left: 0,
     top: HEIGHT - 2,
@@ -380,41 +484,77 @@ export async function run(renderer: CliRenderer): Promise<void> {
   function updateParameterUI() {
     const selectedFilter = filterFunctions[currentFilterIndex]
     let param1Text = ""
-    let param2Text = ""
     let param1Visible = false
-    let param2Visible = false
 
     switch (selectedFilter.name) {
       case "Distortion":
         param1Text = `Distortion Chance: ${distortionEffectInstance.glitchChancePerSecond.toFixed(2)} ([/])`
-        param2Text = `Distortion Lines: ${distortionEffectInstance.maxGlitchLines} ({/})`
         param1Visible = true
-        param2Visible = true
         break
       case "Vignette":
         param1Text = `Vignette Strength: ${vignetteEffectInstance.strength.toFixed(2)} ([/])`
         param1Visible = true
         break
       case "Brightness":
-        param1Text = `Brightness Factor: ${brightnessEffectInstance.brightness.toFixed(2)} ([/])`
+        param1Text = `Brightness Factor: ${brightnessValue.toFixed(2)} ([/])`
         param1Visible = true
         break
-      case "Blur":
-        param1Text = `Blur Radius: ${blurEffectInstance.radius} ([/])`
+      case "Gain":
+        param1Text = `Gain Factor: ${gainValue.toFixed(2)} ([/])`
         param1Visible = true
         break
-      case "Bloom":
-        param1Text = `Bloom Strength: ${bloomEffectInstance.strength.toFixed(2)} ([/])`
-        param2Text = `Bloom Radius: ${bloomEffectInstance.radius} ({/})`
+      case "Saturation":
+        param1Text = `Saturation: ${saturationValue.toFixed(2)} (T: ${saturationFullScreen ? "Full" : "Half"}) ([/])`
         param1Visible = true
-        param2Visible = true
+        break
+      case "Color Matrix":
+        param1Text = `Matrix: ${colorMatrixEffectInstance.currentMatrixName} ([/] to cycle)`
+        param1Visible = true
+        break
+      case "Clouds":
+        param1Text = `Clouds: scale=${cloudsEffectInstance.scale.toFixed(3)} ([/] to adjust)`
+        param2StatusText.content = `speed=${cloudsEffectInstance.speed.toFixed(3)} ({/} to adjust)`
+        param1Visible = true
+        param2StatusText.visible = true
+        break
+      case "Flames":
+        param1Text = `Flames: scale=${flamesEffectInstance.scale.toFixed(3)} ([/] to adjust)`
+        param2StatusText.content = `speed=${flamesEffectInstance.speed.toFixed(3)} ({/} to adjust)`
+        param1Visible = true
+        param2StatusText.visible = true
+        break
+      case "Rainbow Text":
+        param1Text = `Rainbow: speed=${rainbowTextEffectInstance.speed.toFixed(3)} ([/] to adjust)`
+        param2StatusText.content = `repeats=${rainbowTextEffectInstance.repeats.toFixed(1)} ({/} to adjust)`
+        param1Visible = true
+        param2StatusText.visible = true
+        break
+      case "CRT Rolling Bar":
+        param1Text = `CRT Bar: speed=${crtRollingBarEffectInstance.speed.toFixed(2)} ([/] to adjust)`
+        param2StatusText.content = `intensity=${crtRollingBarEffectInstance.intensity.toFixed(2)} ({/} to adjust)`
+        param1Visible = true
+        param2StatusText.visible = true
+        break
+      case "Pipboy":
+        param1Text = `Pipboy: bar speed=${pipboyBarEffectInstance.speed.toFixed(2)} ([/] to adjust)`
+        param2StatusText.content = `vignette=${pipboyVignetteEffectInstance.strength.toFixed(2)} ({/} to adjust)`
+        param1Visible = true
+        param2StatusText.visible = true
         break
     }
 
     param1StatusText.content = param1Text
     param1StatusText.visible = param1Visible
-    param2StatusText.content = param2Text
-    param2StatusText.visible = param2Visible
+    if (
+      selectedFilter.name !== "Clouds" &&
+      selectedFilter.name !== "Flames" &&
+      selectedFilter.name !== "Rainbow Text" &&
+      selectedFilter.name !== "CRT Rolling Bar" &&
+      selectedFilter.name !== "Pipboy"
+    ) {
+      param2StatusText.content = ""
+      param2StatusText.visible = false
+    }
   }
 
   function updateTextureEffectsUI() {
@@ -424,14 +564,14 @@ export async function run(renderer: CliRenderer): Promise<void> {
   const keyHandler = (key: KeyEvent) => {
     const cubeObject = sceneRoot.getObjectByName("cube") as ThreeMesh | undefined
 
-    if (key.name === "w") cameraNode.translateY(0.5)
-    else if (key.name === "s") cameraNode.translateY(-0.5)
-    else if (key.name === "a") cameraNode.translateX(-0.5)
-    else if (key.name === "d") cameraNode.translateX(0.5)
+    if (key.name === "w") cameraNode.translateY(CAMERA_PAN_STEP)
+    else if (key.name === "s") cameraNode.translateY(-CAMERA_PAN_STEP)
+    else if (key.name === "a") cameraNode.translateX(-CAMERA_PAN_STEP)
+    else if (key.name === "d") cameraNode.translateX(CAMERA_PAN_STEP)
     if (key.name === "q") cameraNode.rotateY(0.1)
     else if (key.name === "e") cameraNode.rotateY(-0.1)
-    if (key.name === "z") cameraNode.translateZ(1)
-    else if (key.name === "x") cameraNode.translateZ(-1)
+    if (key.name === "z") cameraNode.translateZ(CAMERA_ZOOM_STEP)
+    else if (key.name === "x") cameraNode.translateZ(-CAMERA_ZOOM_STEP)
     if (key.name === "r") {
       cameraNode.position.set(0, 0, CAM_DISTANCE)
       cameraNode.rotation.set(0, 0, 0)
@@ -496,9 +636,13 @@ export async function run(renderer: CliRenderer): Promise<void> {
       engine.toggleSuperSampling()
     }
 
+    // Cycle through region modes for current filter (if applicable)
+    // NOTE: Region cycling removed - effects now apply to entire buffer
+    // Previously handled by key 'h'
+
     // Toggle debug mode for console caller info
-    if (key.name === "k") {
-      renderer.console.toggleDebugMode()
+    if (key.name === "o") {
+      renderer.console.toggle()
     }
 
     // Toggle texture effects
@@ -546,8 +690,21 @@ export async function run(renderer: CliRenderer): Promise<void> {
       updateParameterUI()
     }
 
-    // Parameter Adjustment Keys ([ / ] and { / })
     let paramChanged = false
+
+    if (key.name === "t" && filterFunctions[currentFilterIndex].name === "Saturation") {
+      saturationFullScreen = !saturationFullScreen
+      if (saturationFullScreen) {
+        // null cellMask = uniform saturation (uses colorMatrixUniform, much faster)
+        saturationCellMask = null
+      } else {
+        // cellMask = selective saturation on right half
+        saturationCellMask = createRightHalfCellMask(renderer.terminalWidth, renderer.terminalHeight)
+      }
+      paramChanged = true
+    }
+
+    // Parameter Adjustment Keys ([ / ] and { / })
     const currentFilterName = filterFunctions[currentFilterIndex].name
     const height = renderer.terminalHeight
 
@@ -565,15 +722,39 @@ export async function run(renderer: CliRenderer): Promise<void> {
           paramChanged = true
           break
         case "Brightness":
-          brightnessEffectInstance.brightness = Math.max(0, brightnessEffectInstance.brightness - 0.05)
+          brightnessValue = Math.max(-1.0, brightnessValue - 0.05)
           paramChanged = true
           break
-        case "Blur":
-          blurEffectInstance.radius = Math.max(0, blurEffectInstance.radius - 1)
+        case "Gain":
+          gainValue = Math.max(0, gainValue - 0.05)
           paramChanged = true
           break
-        case "Bloom":
-          bloomEffectInstance.strength = Math.max(0, bloomEffectInstance.strength - 0.05)
+        case "Saturation":
+          saturationValue = Math.max(0, saturationValue - 0.05)
+          paramChanged = true
+          break
+        case "Color Matrix":
+          colorMatrixEffectInstance.previousMatrix()
+          paramChanged = true
+          break
+        case "Clouds":
+          cloudsEffectInstance.scale = Math.max(0.05, cloudsEffectInstance.scale - 0.01)
+          paramChanged = true
+          break
+        case "Flames":
+          flamesEffectInstance.scale = Math.max(0.01, flamesEffectInstance.scale - 0.002)
+          paramChanged = true
+          break
+        case "Rainbow Text":
+          rainbowTextEffectInstance.speed = Math.max(0, rainbowTextEffectInstance.speed - 0.001)
+          paramChanged = true
+          break
+        case "CRT Rolling Bar":
+          crtRollingBarEffectInstance.speed = Math.max(0.1, crtRollingBarEffectInstance.speed - 0.1)
+          paramChanged = true
+          break
+        case "Pipboy":
+          pipboyBarEffectInstance.speed = Math.max(0.1, pipboyBarEffectInstance.speed - 0.1)
           paramChanged = true
           break
       }
@@ -591,15 +772,39 @@ export async function run(renderer: CliRenderer): Promise<void> {
           paramChanged = true
           break
         case "Brightness":
-          brightnessEffectInstance.brightness = Math.min(50, brightnessEffectInstance.brightness + 0.05)
+          brightnessValue = Math.min(1.0, brightnessValue + 0.05)
           paramChanged = true
           break
-        case "Blur":
-          blurEffectInstance.radius = Math.min(50, blurEffectInstance.radius + 1)
+        case "Gain":
+          gainValue = Math.min(50, gainValue + 0.05)
           paramChanged = true
           break
-        case "Bloom":
-          bloomEffectInstance.strength = Math.min(25, bloomEffectInstance.strength + 0.05)
+        case "Saturation":
+          saturationValue = Math.min(10, saturationValue + 0.05)
+          paramChanged = true
+          break
+        case "Color Matrix":
+          colorMatrixEffectInstance.nextMatrix()
+          paramChanged = true
+          break
+        case "Clouds":
+          cloudsEffectInstance.scale = Math.min(1.0, cloudsEffectInstance.scale + 0.01)
+          paramChanged = true
+          break
+        case "Flames":
+          flamesEffectInstance.scale = Math.min(0.1, flamesEffectInstance.scale + 0.002)
+          paramChanged = true
+          break
+        case "Rainbow Text":
+          rainbowTextEffectInstance.speed = Math.min(0.5, rainbowTextEffectInstance.speed + 0.001)
+          paramChanged = true
+          break
+        case "CRT Rolling Bar":
+          crtRollingBarEffectInstance.speed = Math.min(5.0, crtRollingBarEffectInstance.speed + 0.1)
+          paramChanged = true
+          break
+        case "Pipboy":
+          pipboyBarEffectInstance.speed = Math.min(10.0, pipboyBarEffectInstance.speed + 0.1)
           paramChanged = true
           break
       }
@@ -612,8 +817,24 @@ export async function run(renderer: CliRenderer): Promise<void> {
           distortionEffectInstance.maxGlitchLines = Math.max(0, distortionEffectInstance.maxGlitchLines - 1)
           paramChanged = true
           break
-        case "Bloom":
-          bloomEffectInstance.radius = Math.max(0, bloomEffectInstance.radius - 1)
+        case "Clouds":
+          cloudsEffectInstance.speed = Math.max(0.0, cloudsEffectInstance.speed - 0.001)
+          paramChanged = true
+          break
+        case "Flames":
+          flamesEffectInstance.speed = Math.max(0.005, flamesEffectInstance.speed - 0.001)
+          paramChanged = true
+          break
+        case "Rainbow Text":
+          rainbowTextEffectInstance.repeats = Math.max(1.0, rainbowTextEffectInstance.repeats - 0.5)
+          paramChanged = true
+          break
+        case "CRT Rolling Bar":
+          crtRollingBarEffectInstance.intensity = Math.max(0.0, crtRollingBarEffectInstance.intensity - 0.05)
+          paramChanged = true
+          break
+        case "Pipboy":
+          pipboyVignetteEffectInstance.strength = Math.max(0.0, pipboyVignetteEffectInstance.strength - 0.05)
           paramChanged = true
           break
       }
@@ -623,8 +844,24 @@ export async function run(renderer: CliRenderer): Promise<void> {
           distortionEffectInstance.maxGlitchLines = Math.min(height - 1, distortionEffectInstance.maxGlitchLines + 1)
           paramChanged = true
           break
-        case "Bloom":
-          bloomEffectInstance.radius = Math.min(20, bloomEffectInstance.radius + 1)
+        case "Clouds":
+          cloudsEffectInstance.speed = Math.min(0.02, cloudsEffectInstance.speed + 0.001)
+          paramChanged = true
+          break
+        case "Flames":
+          flamesEffectInstance.speed = Math.min(0.1, flamesEffectInstance.speed + 0.001)
+          paramChanged = true
+          break
+        case "Rainbow Text":
+          rainbowTextEffectInstance.repeats = Math.min(20.0, rainbowTextEffectInstance.repeats + 0.5)
+          paramChanged = true
+          break
+        case "CRT Rolling Bar":
+          crtRollingBarEffectInstance.intensity = Math.min(1.0, crtRollingBarEffectInstance.intensity + 0.05)
+          paramChanged = true
+          break
+        case "Pipboy":
+          pipboyVignetteEffectInstance.strength = Math.min(3.0, pipboyVignetteEffectInstance.strength + 0.05)
           paramChanged = true
           break
       }
@@ -710,9 +947,15 @@ export async function run(renderer: CliRenderer): Promise<void> {
     materials,
     distortionEffectInstance,
     vignetteEffectInstance,
-    brightnessEffectInstance,
-    blurEffectInstance,
-    bloomEffectInstance,
+    cloudsEffectInstance,
+    flamesEffectInstance,
+    rainbowTextEffectInstance,
+    crtRollingBarEffectInstance,
+    pipboyVignetteEffectInstance,
+    pipboyBarEffectInstance,
+    brightnessValue,
+    gainValue,
+    colorMatrixEffectInstance,
     filterFunctions,
     currentFilterIndex,
     time,

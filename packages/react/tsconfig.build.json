@@ -11,6 +11,7 @@
     "skipLibCheck": true,
     "jsx": "react-jsx",
     "jsxImportSource": "@opentui/react",
+    "module": "ESNext",
     "moduleResolution": "bundler",
     "baseUrl": ".",
     "paths": {

@@ -1,5 +1,5 @@
 import { dlopen, FFIType, suffix } from "bun:ffi"
-import { setRenderLibPath } from "../zig"
+import { setRenderLibPath } from "../zig.js"
 
 if (!process.env.NATIVE_SPAN_FEED_LIB) {
   process.env.NATIVE_SPAN_FEED_LIB = "bench"

@@ -8,7 +8,9 @@
     "noEmit": false,
     "rootDir": "./src",
     "types": ["bun", "node", "three"],
-    "skipLibCheck": true
+    "skipLibCheck": true,
+    "module": "ESNext",
+    "moduleResolution": "bundler"
   },
   "include": ["src/**/*"],
   "exclude": [

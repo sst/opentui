@@ -1,7 +1,7 @@
 import { describe, expect, it } from "bun:test"
 import { join } from "node:path"
-import * as coreRuntime from "../index"
-import { createRuntimePlugin, runtimeModuleIdForSpecifier } from "../runtime-plugin"
+import * as coreRuntime from "../index.js"
+import { createRuntimePlugin, runtimeModuleIdForSpecifier } from "../runtime-plugin.js"
 
 type ResolveResult = { path: string; namespace?: string } | void
 type ResolveCallback = (args: { path: string; importer: string }) => ResolveResult | Promise<ResolveResult>

@@ -80,18 +80,15 @@ export function createSolidTransformPlugin(input: CreateSolidTransformPluginOpti
   return {
     name: "bun-plugin-solid",
     setup: (build) => {
-      build.onLoad(
-        { filter: /[\/\\]node_modules[\/\\]solid-js[\/\\]dist[\/\\]server\.js(?:[?#].*)?$/ },
-        async (args) => {
-          const path = sourcePath(args.path).replace("server.js", "solid.js")
-          const file = Bun.file(path)
-          const code = await file.text()
-          return { contents: code, loader: "js" }
-        },
-      )
+      build.onLoad({ filter: /[/\\]node_modules[/\\]solid-js[/\\]dist[/\\]server\.js(?:[?#].*)?$/ }, async (args) => {
+        const path = sourcePath(args.path).replace("server.js", "solid.js")
+        const file = Bun.file(path)
+        const code = await file.text()
+        return { contents: code, loader: "js" }
+      })
 
       build.onLoad(
-        { filter: /[\/\\]node_modules[\/\\]solid-js[\/\\]store[\/\\]dist[\/\\]server\.js(?:[?#].*)?$/ },
+        { filter: /[/\\]node_modules[/\\]solid-js[/\\]store[/\\]dist[/\\]server\.js(?:[?#].*)?$/ },
         async (args) => {
           const path = sourcePath(args.path).replace("server.js", "store.js")
           const file = Bun.file(path)

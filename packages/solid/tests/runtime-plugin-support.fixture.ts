@@ -4,8 +4,8 @@ import { join } from "node:path"
 import { plugin as registerPlugin } from "bun"
 import * as coreRuntime from "@opentui/core"
 import * as solidJsRuntime from "solid-js"
-import * as solidRuntime from "../index"
-import { resetSolidTransformPluginState } from "../scripts/solid-plugin"
+import * as solidRuntime from "../index.js"
+import { resetSolidTransformPluginState } from "../scripts/solid-plugin.js"
 
 type FixtureState = typeof globalThis & {
   __solidRuntimeHost__?: {
@@ -53,7 +53,7 @@ registerPlugin.clearAll()
 resetSolidTransformPluginState()
 
 try {
-  await import("../scripts/runtime-plugin-support")
+  await import("../scripts/runtime-plugin-support.js")
   await import(entryPath)
 } finally {
   registerPlugin.clearAll()

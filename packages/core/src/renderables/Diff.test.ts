@@ -2728,8 +2728,8 @@ test("DiffRenderable - fg prop accepts RGBA directly", async () => {
 })
 
 test("DiffRenderable - split view with word wrapping: changing diff content should not misalign sides", async () => {
-  const { BoxRenderable } = await import("./Box")
-  const { parseColor } = await import("../lib/RGBA")
+  const { BoxRenderable } = await import("./Box.js")
+  const { parseColor } = await import("../lib/RGBA.js")
 
   // Use terminal width that matches the demo (~116 chars)
   const testRenderer = await createTestRenderer({ width: 116, height: 30 })

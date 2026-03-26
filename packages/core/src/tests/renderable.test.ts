@@ -1,5 +1,5 @@
 import { test, expect, beforeEach, afterEach, describe, spyOn } from "bun:test"
-import { decodePasteBytes } from "../lib/paste"
+import { decodePasteBytes } from "../lib/paste.js"
 import {
   Renderable,
   BaseRenderable,

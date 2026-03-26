@@ -48,6 +48,12 @@ export enum DebugOverlayCorner {
   bottomRight = 3,
 }
 
+export enum TargetChannel {
+  FG = 1,
+  BG = 2,
+  Both = 3,
+}
+
 export type WidthMethod = "wcwidth" | "unicode"
 
 export interface RendererEvents {

@@ -2,7 +2,7 @@ import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
 import { plugin as registerPlugin } from "bun"
-import { createRuntimePlugin } from "../runtime-plugin"
+import { createRuntimePlugin } from "../runtime-plugin.js"
 
 const tempRoot = mkdtempSync(join(tmpdir(), "core-runtime-plugin-resolve-roots-fixture-"))
 const hostModuleDir = join(tempRoot, "host")

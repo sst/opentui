@@ -1,4 +1,4 @@
-import type { CliRenderer } from "../renderer"
+import type { CliRenderer } from "../renderer.js"
 import type {
   Plugin,
   PluginContext,
@@ -6,7 +6,7 @@ import type {
   PluginErrorReport,
   ResolvedSlotRenderer,
   SlotRenderer,
-} from "./types"
+} from "./types.js"
 
 const noop = () => {}
 const DEFAULT_DEBUG_PLUGIN_ERRORS = false
@@ -83,7 +83,7 @@ export class SlotRegistry<TNode, TSlots extends object, TContext extends PluginC
 
   public register(plugin: Plugin<TNode, TSlots, TContext>): () => void {
     if (this.plugins.some((entry) => entry.plugin.id === plugin.id)) {
-      throw new Error(`Plugin with id \"${plugin.id}\" is already registered`)
+      throw new Error(`Plugin with id "${plugin.id}" is already registered`)
     }
 
     try {
@@ -220,9 +220,9 @@ export class SlotRegistry<TNode, TSlots extends object, TContext extends PluginC
     }
 
     if (this.options.debugPluginErrors) {
-      const slotLabel = event.slot ? ` slot=\"${event.slot}\"` : ""
+      const slotLabel = event.slot ? ` slot="${event.slot}"` : ""
       console.debug(
-        `[SlotRegistry][PluginError] plugin=\"${event.pluginId}\" phase=\"${event.phase}\" source=\"${event.source}\"${slotLabel}`,
+        `[SlotRegistry][PluginError] plugin="${event.pluginId}" phase="${event.phase}" source="${event.source}"${slotLabel}`,
       )
       console.debug(event.error)
     }

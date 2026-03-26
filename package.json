@@ -7,20 +7,21 @@
   ],
   "scripts": {
     "build": "cd packages/core && bun run build && cd ../solid && bun run build && cd ../react && bun run build",
+    "fmt": "oxfmt --write .",
+    "fmt:check": "oxfmt --check .",
+    "lint": "oxlint .",
+    "lint:ci": "oxlint . --deny-warnings",
+    "lint:fix": "oxlint --fix .",
     "pre-publish": "bun scripts/pre-publish.ts",
     "publish": "bun run pre-publish && bun run publish:core && bun run publish:react && bun run publish:solid",
     "publish:core": "cd packages/core && bun run publish",
     "publish:react": "cd packages/react && bun run publish",
     "publish:solid": "cd packages/solid && bun run publish",
     "prepare-release": "bun scripts/prepare-release.ts",
-    "prettier:write": "prettier --write .",
     "test": "bun run --filter '@opentui/core' --filter '@opentui/solid' --filter '@opentui/react' --if-present test"
   },
   "devDependencies": {
-    "prettier": "3.6.2"
-  },
-  "prettier": {
-    "semi": false,
-    "printWidth": 120
+    "oxfmt": "0.41.0",
+    "oxlint": "1.56.0"
   }
 }

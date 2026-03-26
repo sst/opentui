@@ -1,5 +1,5 @@
 import { type BunPlugin } from "bun"
-import * as coreRuntime from "./index"
+import * as coreRuntime from "./index.js"
 
 export type RuntimeModuleExports = Record<string, unknown>
 export type RuntimeModuleLoader = () => RuntimeModuleExports | Promise<RuntimeModuleExports>
@@ -24,7 +24,7 @@ export const isCoreRuntimeModuleSpecifier = (specifier: string): boolean => {
 }
 
 const loadCoreTestingRuntimeModule = async (): Promise<RuntimeModuleExports> => {
-  return (await import("./testing")) as RuntimeModuleExports
+  return (await import("./testing.js")) as RuntimeModuleExports
 }
 
 const escapeRegExp = (value: string): string => {

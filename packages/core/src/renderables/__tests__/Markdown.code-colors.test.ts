@@ -29,6 +29,15 @@ function createMarkdownRenderable(options: MarkdownOptions): MarkdownRenderable 
   return new MarkdownRenderable(renderer, options)
 }
 
+class RecordingMockTreeSitterClient extends MockTreeSitterClient {
+  highlightCalls: Array<{ content: string; filetype: string }> = []
+
+  async highlightOnce(content: string, filetype: string) {
+    this.highlightCalls.push({ content, filetype })
+    return super.highlightOnce(content, filetype)
+  }
+}
+
 function findSpanContaining(frame: CapturedFrame, text: string) {
   for (const line of frame.lines) {
     const span = line.spans.find((candidate) => candidate.text.includes(text))
@@ -100,6 +109,62 @@ test("unsupported fenced code blocks keep inherited markdown fg/bg after highlig
   expect(codeBlock.fg.equals(fg)).toBe(true)
   expect(codeBlock.bg.equals(bg)).toBe(true)
   expectSpanColors("answer = 42", fg, bg)
+})
+
+test("fenced tsx code blocks normalize the language before highlighting", async () => {
+  const mockTreeSitterClient = new RecordingMockTreeSitterClient()
+
+  const md = createMarkdownRenderable({
+    id: "markdown-code-tsx-normalized-filetype",
+    content: "```tsx\nconst view = <div>Hello</div>\n```",
+    syntaxStyle,
+    treeSitterClient: mockTreeSitterClient,
+  })
+
+  renderer.root.add(md)
+  await renderer.idle()
+
+  const codeBlock = md._blockStates[0]?.renderable as CodeRenderable
+  expect(codeBlock).toBeInstanceOf(CodeRenderable)
+  expect(codeBlock.filetype).toBe("typescriptreact")
+  expect(mockTreeSitterClient.highlightCalls[0]?.filetype).toBe("typescriptreact")
+
+  mockTreeSitterClient.resolveAllHighlightOnce()
+  await Bun.sleep(10)
+  await renderer.idle()
+})
+
+test("updating fenced code blocks reapplies normalized filetypes", async () => {
+  const mockTreeSitterClient = new RecordingMockTreeSitterClient()
+
+  const md = createMarkdownRenderable({
+    id: "markdown-code-react-filetype-update",
+    content: "```jsx\nconst view = <div>Hello</div>\n```",
+    syntaxStyle,
+    treeSitterClient: mockTreeSitterClient,
+  })
+
+  renderer.root.add(md)
+  await renderer.idle()
+
+  const codeBlock = md._blockStates[0]?.renderable as CodeRenderable
+  expect(codeBlock).toBeInstanceOf(CodeRenderable)
+  expect(codeBlock.filetype).toBe("javascriptreact")
+
+  mockTreeSitterClient.resolveAllHighlightOnce()
+  await Bun.sleep(10)
+  await renderer.idle()
+
+  md.content = "```tsx\nconst view = <div>Hello</div>\n```"
+  await renderer.idle()
+
+  expect(md._blockStates[0]?.renderable).toBe(codeBlock)
+  expect(codeBlock.filetype).toBe("typescriptreact")
+  expect(mockTreeSitterClient.highlightCalls.at(-1)?.filetype).toBe("typescriptreact")
+
+  mockTreeSitterClient.resolveAllHighlightOnce()
+  await Bun.sleep(10)
+  await renderer.idle()
 })
 
 test("updating markdown fg/bg rerenders existing fenced code block renderables", async () => {

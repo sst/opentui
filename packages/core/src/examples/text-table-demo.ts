@@ -10,11 +10,11 @@ import {
   t,
   type BorderStyle,
   type KeyEvent,
-} from "../index"
-import type { Selection } from "../lib/selection"
-import type { TextTableColumnFitter, TextTableColumnWidthMode, TextTableContent } from "../renderables/TextTable"
-import type { TextChunk } from "../text-buffer"
-import { setupCommonDemoKeys } from "./lib/standalone-keys"
+} from "../index.js"
+import type { Selection } from "../lib/selection.js"
+import type { TextTableColumnFitter, TextTableColumnWidthMode, TextTableContent } from "../renderables/TextTable.js"
+import type { TextChunk } from "../text-buffer.js"
+import { setupCommonDemoKeys } from "./lib/standalone-keys.js"
 
 let container: BoxRenderable | null = null
 let primaryTable: TextTableRenderable | null = null

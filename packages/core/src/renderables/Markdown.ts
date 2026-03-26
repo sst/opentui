@@ -15,6 +15,7 @@ import {
   type TextTableContent,
 } from "./TextTable.js"
 import type { TreeSitterClient } from "../lib/tree-sitter/index.js"
+import { infoStringToFiletype } from "../lib/tree-sitter/resolve-ft.js"
 import { parseMarkdownIncremental, type ParseState } from "./markdown-parser.js"
 import type { OptimizedBuffer } from "../buffer.js"
 import { detectLinks } from "../lib/detect-links.js"
@@ -481,7 +482,7 @@ export class MarkdownRenderable extends Renderable {
     return new CodeRenderable(this.ctx, {
       id,
       content: token.text,
-      filetype: token.lang || undefined,
+      filetype: infoStringToFiletype(token.lang ?? ""),
       syntaxStyle: this._syntaxStyle,
       fg: this._fg,
       bg: this._bg,
@@ -508,7 +509,7 @@ export class MarkdownRenderable extends Renderable {
 
   private applyCodeBlockRenderable(renderable: CodeRenderable, token: Tokens.Code, marginBottom: number): void {
     renderable.content = token.text
-    renderable.filetype = token.lang || undefined
+    renderable.filetype = infoStringToFiletype(token.lang ?? "")
     renderable.syntaxStyle = this._syntaxStyle
     renderable.fg = this._fg
     renderable.bg = this._bg
