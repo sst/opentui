@@ -7,7 +7,6 @@ import {
   OptimizedBuffer,
   t,
   bold,
-  underline,
   fg,
   type MouseEvent,
   type KeyEvent,
@@ -16,12 +15,12 @@ import type { CliRenderer, RenderContext } from "@opentui/core"
 import { setupCommonDemoKeys } from "./lib/standalone-keys.js"
 
 const GRAPHEME_LINES: string[] = [
-  "東京都  北京市  서울시  大阪府  名古屋  横浜市  上海市",
-  "👨‍👩‍👧‍👦  👩🏽‍💻  🏳️‍🌈  🇺🇸  🇩🇪  🇯🇵  🇮🇳  家族  絵文字  🎉🎊🎈",
-  "こんにちは世界  你好世界  안녕하세요  สวัสดี  مرحبا",
-  "漢字テスト  中文测试  한국어  日本語  繁體中文  简体中文",
-  "🚀 Full-width: ＡＢＣＤＥＦ  Half: abcdef  ½ ⅞ ⅓",
-  "混合テキスト mixed text with 漢字 and emoji 🎯",
+  "W2 CJK: 東京都  北京市  서울시  大阪府  名古屋  横浜市  上海市",
+  "W2 emoji: 👨‍👩‍👧‍👦  👩🏽‍💻  👩‍🚀  🇺🇸  🇩🇪  🇯🇵  🇮🇳  🎉🎊🎈",
+  "VS16 off/on: ♥ / ♥️   ☀ / ☀️   ✈ / ✈️   ☎ / ☎️   ☺ / ☺️   ✂ / ✂️",
+  "ZWJ + flags: 👩‍🚀  🧑‍🚀  👨‍👩‍👧‍👦  🧑‍💻  🇺🇸  🇩🇪  🇯🇵  🇮🇳",
+  "Mixed: こんにちは世界  你好世界  안녕하세요  สวัสดี  مرحبا",
+  "Half/full: ＡＢＣＤＥＦ  abcdef  ½ ⅞ ⅓  漢字  emoji 🎯",
 ]
 
 const HEADER_HEIGHT = 2
@@ -37,6 +36,7 @@ class DraggableBox extends BoxRenderable {
   private dragOffsetX = 0
   private dragOffsetY = 0
   private alphaPercentage: number
+  private showAlphaLabel: boolean
 
   constructor(
     ctx: RenderContext,
@@ -47,6 +47,8 @@ class DraggableBox extends BoxRenderable {
     height: number,
     bg: RGBA,
     zIndex: number,
+    bordered = false,
+    showAlphaLabel = true,
   ) {
     super(ctx, {
       id,
@@ -54,15 +56,23 @@ class DraggableBox extends BoxRenderable {
       height,
       zIndex,
       backgroundColor: bg,
+      border: bordered,
+      borderColor: bordered ? RGBA.fromInts(255, 255, 255, 235) : undefined,
+      borderStyle: bordered ? "rounded" : undefined,
       position: "absolute",
       left: x,
       top: y,
     })
     this.alphaPercentage = Math.round(bg.a * 100)
+    this.showAlphaLabel = showAlphaLabel
   }
 
   protected renderSelf(buffer: OptimizedBuffer): void {
     super.renderSelf(buffer)
+
+    if (!this.showAlphaLabel) {
+      return
+    }
 
     const alphaText = `${this.alphaPercentage}%`
     const centerX = this.x + Math.floor(this.width / 2 - alphaText.length / 2)
@@ -94,7 +104,7 @@ class DraggableBox extends BoxRenderable {
           const newY = event.y - this.dragOffsetY
 
           this.x = Math.max(0, Math.min(newX, this._ctx.width - this.width))
-          this.y = Math.max(0, Math.min(newY, this._ctx.height - this.height))
+          this.y = Math.max(HEADER_HEIGHT, Math.min(newY, this._ctx.height - this.height))
 
           event.stopPropagation()
         }
@@ -139,7 +149,8 @@ function toggleScrim(renderer: CliRenderer) {
 function updateHeader() {
   if (!headerDisplay) return
   const dimLabel = scrimVisible ? "D: hide scrim" : "D: show scrim"
-  headerDisplay.content = t`${bold(fg("#00D4AA")("Wide Grapheme Overlay"))} ${fg("#A8A8B2")(`| ${dimLabel} | Drag boxes over CJK/emoji | Ctrl+C: quit`)}`
+  headerDisplay.content = t`${bold(fg("#00D4AA")("Wide Grapheme Overlay"))} ${fg("#A8A8B2")(`| ${dimLabel} | Ctrl+C: quit`)}
+${fg("#7A8394")("Compare the small bordered probe, one large bordered box, and the plain translucent fills across the CJK/emoji lines")}`
 }
 
 export function run(renderer: CliRenderer): void {
@@ -167,6 +178,21 @@ export function run(renderer: CliRenderer): void {
   const background = new GraphemeBackground(renderer, "wg-background", renderer.terminalWidth, bgHeight)
   root.add(background)
 
+  const edgeProbe = new DraggableBox(
+    renderer,
+    "wg-edge-probe",
+    11,
+    HEADER_HEIGHT,
+    6,
+    3,
+    RGBA.fromValues(64 / 255, 176 / 255, 255 / 255, 128 / 255),
+    90,
+    true,
+    false,
+  )
+  root.add(edgeProbe)
+  draggableBoxes.push(edgeProbe)
+
   // Full-screen dimming scrim (same as opencode dialog backdrop: RGBA(0,0,0,150))
   scrim = new BoxRenderable(renderer, {
     id: "wg-scrim",
@@ -191,6 +217,7 @@ export function run(renderer: CliRenderer): void {
     8,
     RGBA.fromValues(64 / 255, 176 / 255, 255 / 255, 128 / 255),
     100,
+    true,
   )
   root.add(box1)
   draggableBoxes.push(box1)

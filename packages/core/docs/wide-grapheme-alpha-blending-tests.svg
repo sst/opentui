@@ -1,0 +1,444 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1540 920" width="1540" height="920" role="img" aria-labelledby="title desc">
+  <title id="title">Wide grapheme alpha-blending test map</title>
+  <desc id="desc">Twelve panels illustrating the current wide-grapheme alpha-blending contract: wide text is preserved through interior translucent fills, wide emoji are replaced with [] placeholders, scissor clipping only updates cells inside the clip, boundary-band fills clip crossed spans with fillRectClipWideGraphemes, and renderer repaints preclear placeholder spans before restoring emoji and following cells.</desc>
+  <style>
+    .bg { fill: #f7f4ee; }
+    .panel { fill: #fffdf8; stroke: #cfc7b8; stroke-width: 1.5; }
+    .title { font: 700 28px Menlo, Consolas, monospace; fill: #1d1d1d; }
+    .subtitle { font: 400 14px Menlo, Consolas, monospace; fill: #5a5a5a; }
+    .panel-title { font: 700 17px Menlo, Consolas, monospace; fill: #1d1d1d; }
+    .panel-sub { font: 400 11px Menlo, Consolas, monospace; fill: #666; }
+    .label { font: 700 11px Menlo, Consolas, monospace; fill: #666; letter-spacing: 0.6px; }
+    .call-label { font: 700 9px Menlo, Consolas, monospace; fill: #666; letter-spacing: 0.15px; }
+    .note { font: 400 11px Menlo, Consolas, monospace; fill: #4d4d4d; }
+    .note-center { text-anchor: middle; }
+    .legend { font: 400 12px Menlo, Consolas, monospace; fill: #444; }
+    .cell { fill: #fbfbfb; stroke: #b8b8b8; stroke-width: 1; rx: 4; }
+    .wg { fill: #ddd8f8; stroke: #7569b8; stroke-width: 1; rx: 4; }
+    .emoji { fill: #fde0b8; stroke: #c67a21; stroke-width: 1; rx: 4; }
+    .tint { fill: #e5f3df; stroke: #78a06a; stroke-width: 1; rx: 4; }
+    .preserve { fill: #c7efd4; stroke: #3f8a63; stroke-width: 1.25; rx: 4; }
+    .placeholder-cell { fill: #f4d9e8; stroke: #a75e84; stroke-width: 1; rx: 4; }
+    .edge-fill { fill: #dfe9f8; stroke: #6d87b4; stroke-width: 1; rx: 4; }
+    .overlay { fill: #f9d7a8; opacity: 0.42; stroke: #d48e3a; stroke-width: 1.5; stroke-dasharray: 4 3; rx: 4; }
+    .overlay-line { fill: none; stroke: #d48e3a; stroke-width: 2; stroke-dasharray: 5 3; rx: 4; }
+    .scissor { fill: none; stroke: #d95a5a; stroke-width: 2; stroke-dasharray: 5 4; rx: 6; }
+    .wg-text { font: 700 13px Menlo, Consolas, monospace; fill: #5f4512; text-anchor: middle; }
+    .b-text { font: 700 16px Menlo, Consolas, monospace; fill: #d97b1d; }
+    .ph-text { font: 700 16px Menlo, Consolas, monospace; fill: #6c3554; text-anchor: middle; }
+    .dim { fill: #8b8b8b; }
+  </style>
+
+  <defs>
+    <g id="row-base">
+      <rect class="cell" x="64" y="0" width="28" height="28"/>
+      <rect class="cell" x="96" y="0" width="28" height="28"/>
+      <rect class="cell" x="128" y="0" width="28" height="28"/>
+      <rect class="cell" x="160" y="0" width="28" height="28"/>
+      <rect class="cell" x="192" y="0" width="28" height="28"/>
+      <rect class="cell" x="224" y="0" width="28" height="28"/>
+      <rect class="cell" x="256" y="0" width="28" height="28"/>
+      <rect class="cell" x="288" y="0" width="28" height="28"/>
+    </g>
+  </defs>
+
+  <rect class="bg" x="0" y="0" width="1540" height="920"/>
+
+  <text class="title" x="24" y="44">Wide Grapheme Alpha-Blending Test Map</text>
+  <text class="subtitle" x="24" y="68">WG = wide text. EM = wide emoji. Lavender = original wide text. Gold = original emoji. Orange = translucent overlay.</text>
+  <text class="subtitle" x="24" y="88">Pale green = overlay-filled cell. Mint = preserved wide text. Rose = [] placeholder. Blue = clipped edge fill.</text>
+
+  <rect class="wg" x="24" y="104" width="28" height="18"/>
+  <text class="legend" x="60" y="117">wide text grapheme</text>
+  <rect class="emoji" x="248" y="104" width="28" height="18"/>
+  <text class="legend" x="284" y="117">wide emoji grapheme</text>
+  <rect class="overlay" x="474" y="104" width="28" height="18"/>
+  <text class="legend" x="510" y="117">translucent overlay</text>
+  <rect class="tint" x="700" y="104" width="28" height="18"/>
+  <text class="legend" x="736" y="117">overlay-filled cell</text>
+  <rect class="preserve" x="982" y="104" width="28" height="18"/>
+  <text class="legend" x="1018" y="117">preserved wide text</text>
+  <rect class="placeholder-cell" x="1250" y="104" width="28" height="18"/>
+  <text class="legend" x="1286" y="117">[] placeholder</text>
+
+  <rect class="edge-fill" x="24" y="126" width="28" height="18"/>
+  <text class="legend" x="60" y="139">clipped edge fill</text>
+  <rect class="scissor" x="248" y="124" width="32" height="22"/>
+  <text class="legend" x="292" y="139">scissor clip</text>
+
+  <g transform="translate(24,148)">
+    <rect class="panel" x="0" y="0" width="360" height="240" rx="12"/>
+    <text class="panel-title" x="16" y="28">1. Basic preservation</text>
+    <text class="panel-sub" x="16" y="44">setCellWithAlphaBlending()</text>
+    <text class="label" x="20" y="66">BEFORE</text>
+    <g transform="translate(0,72)">
+      <use href="#row-base"/>
+      <rect class="wg" x="160" y="0" width="28" height="28"/>
+      <rect class="wg" x="192" y="0" width="28" height="28"/>
+      <text class="wg-text" x="190" y="18">WG</text>
+    </g>
+    <text class="call-label" x="20" y="126">SETCELLWITHALPHABLENDING()</text>
+    <g transform="translate(0,132)">
+      <use href="#row-base"/>
+      <rect class="wg" x="160" y="0" width="28" height="28"/>
+      <rect class="wg" x="192" y="0" width="28" height="28"/>
+      <rect class="overlay" x="64" y="0" width="252" height="28"/>
+      <text class="wg-text" x="190" y="18">WG</text>
+    </g>
+    <text class="label" x="20" y="186">AFTER</text>
+    <g transform="translate(0,192)">
+      <use href="#row-base"/>
+      <rect class="tint" x="64" y="0" width="28" height="28"/>
+      <rect class="tint" x="96" y="0" width="28" height="28"/>
+      <rect class="tint" x="128" y="0" width="28" height="28"/>
+      <rect class="preserve" x="160" y="0" width="28" height="28"/>
+      <rect class="preserve" x="192" y="0" width="28" height="28"/>
+      <rect class="tint" x="224" y="0" width="28" height="28"/>
+      <rect class="tint" x="256" y="0" width="28" height="28"/>
+      <rect class="tint" x="288" y="0" width="28" height="28"/>
+      <text class="wg-text" x="190" y="18">WG</text>
+    </g>
+  </g>
+
+  <g transform="translate(400,148)">
+    <rect class="panel" x="0" y="0" width="360" height="240" rx="12"/>
+    <text class="panel-title" x="16" y="28">2. Emoji placeholder</text>
+    <text class="panel-sub" x="16" y="44">fillRect() over a wide emoji</text>
+    <text class="label" x="20" y="66">BEFORE</text>
+    <g transform="translate(0,72)">
+      <use href="#row-base"/>
+      <rect class="emoji" x="160" y="0" width="28" height="28"/>
+      <rect class="emoji" x="192" y="0" width="28" height="28"/>
+      <text class="wg-text" x="190" y="18">EM</text>
+    </g>
+    <text class="call-label" x="20" y="126">FILLRECT()</text>
+    <g transform="translate(0,132)">
+      <use href="#row-base"/>
+      <rect class="emoji" x="160" y="0" width="28" height="28"/>
+      <rect class="emoji" x="192" y="0" width="28" height="28"/>
+      <rect class="overlay" x="64" y="0" width="252" height="28"/>
+      <text class="wg-text" x="190" y="18">EM</text>
+    </g>
+    <text class="note note-center" x="180" y="175">wide emoji become [] instead of bleeding through</text>
+    <text class="label" x="20" y="186">AFTER</text>
+    <g transform="translate(0,192)">
+      <use href="#row-base"/>
+      <rect class="tint" x="64" y="0" width="28" height="28"/>
+      <rect class="tint" x="96" y="0" width="28" height="28"/>
+      <rect class="tint" x="128" y="0" width="28" height="28"/>
+      <rect class="placeholder-cell" x="160" y="0" width="28" height="28"/>
+      <rect class="placeholder-cell" x="192" y="0" width="28" height="28"/>
+      <rect class="tint" x="224" y="0" width="28" height="28"/>
+      <rect class="tint" x="256" y="0" width="28" height="28"/>
+      <rect class="tint" x="288" y="0" width="28" height="28"/>
+      <text class="ph-text" x="174" y="19">[</text>
+      <text class="ph-text" x="206" y="19">]</text>
+    </g>
+  </g>
+
+  <g transform="translate(776,148)">
+    <rect class="panel" x="0" y="0" width="360" height="240" rx="12"/>
+    <text class="panel-title" x="16" y="28">3. Multi-space pass</text>
+    <text class="panel-sub" x="16" y="44" xml:space="preserve">drawText(&quot;  &quot;) over one span</text>
+    <text class="label" x="20" y="66">BEFORE</text>
+    <g transform="translate(0,72)">
+      <use href="#row-base"/>
+      <rect class="wg" x="160" y="0" width="28" height="28"/>
+      <rect class="wg" x="192" y="0" width="28" height="28"/>
+      <text class="wg-text" x="190" y="18">WG</text>
+    </g>
+    <text class="call-label" x="20" y="126" xml:space="preserve">DRAWTEXT(&quot;  &quot;)</text>
+    <g transform="translate(0,132)">
+      <use href="#row-base"/>
+      <rect class="wg" x="160" y="0" width="28" height="28"/>
+      <rect class="wg" x="192" y="0" width="28" height="28"/>
+      <rect class="overlay" x="160" y="0" width="28" height="28"/>
+      <rect class="overlay" x="192" y="0" width="28" height="28"/>
+      <text class="wg-text" x="190" y="18">WG</text>
+    </g>
+    <text class="note note-center" x="180" y="175">second space is skipped, not re-blended</text>
+    <text class="label" x="20" y="186">AFTER</text>
+    <g transform="translate(0,192)">
+      <use href="#row-base"/>
+      <rect class="preserve" x="160" y="0" width="28" height="28"/>
+      <rect class="preserve" x="192" y="0" width="28" height="28"/>
+      <text class="wg-text" x="190" y="18">WG</text>
+    </g>
+  </g>
+
+  <g transform="translate(1152,148)">
+    <rect class="panel" x="0" y="0" width="360" height="240" rx="12"/>
+    <text class="panel-title" x="16" y="28">4. Multiple spans</text>
+    <text class="panel-sub" x="16" y="44">drawText() across two graphemes</text>
+    <text class="label" x="20" y="66">BEFORE</text>
+    <g transform="translate(0,72)">
+      <use href="#row-base"/>
+      <rect class="wg" x="128" y="0" width="28" height="28"/>
+      <rect class="wg" x="160" y="0" width="28" height="28"/>
+      <rect class="wg" x="224" y="0" width="28" height="28"/>
+      <rect class="wg" x="256" y="0" width="28" height="28"/>
+      <text class="wg-text" x="158" y="18">WG</text>
+      <text class="wg-text" x="254" y="18">WG</text>
+    </g>
+    <text class="call-label" x="20" y="126" xml:space="preserve">DRAWTEXT(&quot;          &quot;)</text>
+    <g transform="translate(0,132)">
+      <use href="#row-base"/>
+      <rect class="wg" x="128" y="0" width="28" height="28"/>
+      <rect class="wg" x="160" y="0" width="28" height="28"/>
+      <rect class="wg" x="224" y="0" width="28" height="28"/>
+      <rect class="wg" x="256" y="0" width="28" height="28"/>
+      <rect class="overlay" x="64" y="0" width="252" height="28"/>
+      <text class="wg-text" x="158" y="18">WG</text>
+      <text class="wg-text" x="254" y="18">WG</text>
+    </g>
+    <text class="note note-center" x="180" y="175">cursor resets after the gap between spans</text>
+    <text class="label" x="20" y="186">AFTER</text>
+    <g transform="translate(0,192)">
+      <use href="#row-base"/>
+      <rect class="tint" x="64" y="0" width="28" height="28"/>
+      <rect class="tint" x="96" y="0" width="28" height="28"/>
+      <rect class="preserve" x="128" y="0" width="28" height="28"/>
+      <rect class="preserve" x="160" y="0" width="28" height="28"/>
+      <rect class="tint" x="192" y="0" width="28" height="28"/>
+      <rect class="preserve" x="224" y="0" width="28" height="28"/>
+      <rect class="preserve" x="256" y="0" width="28" height="28"/>
+      <rect class="tint" x="288" y="0" width="28" height="28"/>
+      <text class="wg-text" x="158" y="18">WG</text>
+      <text class="wg-text" x="254" y="18">WG</text>
+    </g>
+  </g>
+
+  <g transform="translate(24,404)">
+    <rect class="panel" x="0" y="0" width="360" height="240" rx="12"/>
+    <text class="panel-title" x="16" y="28">5. Scissor clipping</text>
+    <text class="panel-sub" x="16" y="44">fillRect() must not bleed outside clip</text>
+    <text class="label" x="20" y="66">BEFORE</text>
+    <g transform="translate(0,72)">
+      <use href="#row-base"/>
+      <rect class="wg" x="160" y="0" width="28" height="28"/>
+      <rect class="wg" x="192" y="0" width="28" height="28"/>
+      <text class="wg-text" x="190" y="18">WG</text>
+    </g>
+    <text class="call-label" x="20" y="126">FILLRECT() WITH SCISSOR</text>
+    <g transform="translate(0,132)">
+      <use href="#row-base"/>
+      <rect class="wg" x="160" y="0" width="28" height="28"/>
+      <rect class="wg" x="192" y="0" width="28" height="28"/>
+      <rect class="overlay" x="192" y="0" width="28" height="28"/>
+      <rect class="scissor" x="189" y="-3" width="34" height="34"/>
+      <text class="wg-text" x="190" y="18">WG</text>
+    </g>
+    <text class="note note-center" x="180" y="175">only the clipped cell may change</text>
+    <text class="label" x="20" y="186">AFTER</text>
+    <g transform="translate(0,192)">
+      <use href="#row-base"/>
+      <rect class="wg" x="160" y="0" width="28" height="28"/>
+      <rect class="preserve" x="192" y="0" width="28" height="28"/>
+      <text class="wg-text" x="190" y="18">WG</text>
+    </g>
+  </g>
+
+  <g transform="translate(400,404)">
+    <rect class="panel" x="0" y="0" width="360" height="240" rx="12"/>
+    <text class="panel-title" x="16" y="28">6. Edge clip, left</text>
+    <text class="panel-sub" x="16" y="44">fillRectClipWideGraphemes()</text>
+    <text class="label" x="20" y="66">BEFORE</text>
+    <g transform="translate(0,72)">
+      <use href="#row-base"/>
+      <rect class="wg" x="160" y="0" width="28" height="28"/>
+      <rect class="wg" x="192" y="0" width="28" height="28"/>
+      <text class="wg-text" x="190" y="18">WG</text>
+    </g>
+    <text class="call-label" x="20" y="126">FILLRECTCLIPWIDEGRAPHEMES()</text>
+    <g transform="translate(0,132)">
+      <use href="#row-base"/>
+      <rect class="wg" x="160" y="0" width="28" height="28"/>
+      <rect class="wg" x="192" y="0" width="28" height="28"/>
+      <rect class="overlay" x="192" y="0" width="28" height="28"/>
+      <text class="wg-text" x="190" y="18">WG</text>
+    </g>
+    <text class="note note-center" x="180" y="175">crossed span is cleared; only the inside cell fills</text>
+    <text class="label" x="20" y="186">AFTER</text>
+    <g transform="translate(0,192)">
+      <use href="#row-base"/>
+      <rect class="edge-fill" x="192" y="0" width="28" height="28"/>
+    </g>
+  </g>
+
+  <g transform="translate(776,404)">
+    <rect class="panel" x="0" y="0" width="360" height="240" rx="12"/>
+    <text class="panel-title" x="16" y="28">7. Edge clip, right</text>
+    <text class="panel-sub" x="16" y="44">fillRectClipWideGraphemes()</text>
+    <text class="label" x="20" y="66">BEFORE</text>
+    <g transform="translate(0,72)">
+      <use href="#row-base"/>
+      <rect class="wg" x="160" y="0" width="28" height="28"/>
+      <rect class="wg" x="192" y="0" width="28" height="28"/>
+      <text class="wg-text" x="190" y="18">WG</text>
+    </g>
+    <text class="call-label" x="20" y="126">FILLRECTCLIPWIDEGRAPHEMES()</text>
+    <g transform="translate(0,132)">
+      <use href="#row-base"/>
+      <rect class="wg" x="160" y="0" width="28" height="28"/>
+      <rect class="wg" x="192" y="0" width="28" height="28"/>
+      <rect class="overlay" x="160" y="0" width="28" height="28"/>
+      <text class="wg-text" x="190" y="18">WG</text>
+    </g>
+    <text class="note note-center" x="180" y="175">mirrored edge case: right half stays untouched</text>
+    <text class="label" x="20" y="186">AFTER</text>
+    <g transform="translate(0,192)">
+      <use href="#row-base"/>
+      <rect class="edge-fill" x="160" y="0" width="28" height="28"/>
+    </g>
+  </g>
+
+  <g transform="translate(1152,404)">
+    <rect class="panel" x="0" y="0" width="360" height="240" rx="12"/>
+    <text class="panel-title" x="16" y="28">8. Scissor, then full write</text>
+    <text class="panel-sub" x="16" y="44">a clipped write must not suppress a later full one</text>
+    <text class="label" x="20" y="66">BEFORE</text>
+    <g transform="translate(0,72)">
+      <use href="#row-base"/>
+      <rect class="wg" x="160" y="0" width="28" height="28"/>
+      <rect class="wg" x="192" y="0" width="28" height="28"/>
+      <text class="wg-text" x="190" y="18">WG</text>
+    </g>
+    <text class="call-label" x="20" y="126">FILLRECT() CLIPPED, THEN FILLRECT()</text>
+    <g transform="translate(0,132)">
+      <use href="#row-base"/>
+      <rect class="wg" x="160" y="0" width="28" height="28"/>
+      <rect class="wg" x="192" y="0" width="28" height="28"/>
+      <rect class="overlay" x="192" y="0" width="28" height="28"/>
+      <rect class="scissor" x="189" y="-3" width="34" height="34"/>
+      <rect class="overlay-line" x="160" y="0" width="28" height="28"/>
+      <text class="wg-text" x="190" y="18">WG</text>
+    </g>
+    <text class="note note-center" x="180" y="175">later full write still reaches the start cell</text>
+    <text class="label" x="20" y="186">AFTER</text>
+    <g transform="translate(0,192)">
+      <use href="#row-base"/>
+      <rect class="preserve" x="160" y="0" width="28" height="28"/>
+      <rect class="preserve" x="192" y="0" width="28" height="28"/>
+      <text class="wg-text" x="190" y="18">WG</text>
+    </g>
+  </g>
+
+  <g transform="translate(24,660)">
+    <rect class="panel" x="0" y="0" width="360" height="240" rx="12"/>
+    <text class="panel-title" x="16" y="28">9. Hybrid fill: edge row</text>
+    <text class="panel-sub" x="16" y="44">perimeter uses clipped fill</text>
+    <text class="label" x="20" y="66">BEFORE</text>
+    <g transform="translate(0,72)">
+      <use href="#row-base"/>
+      <rect class="wg" x="160" y="0" width="28" height="28"/>
+      <rect class="wg" x="192" y="0" width="28" height="28"/>
+      <text class="wg-text" x="190" y="18">WG</text>
+    </g>
+    <text class="call-label" x="20" y="126">BOX EDGE BAND</text>
+    <g transform="translate(0,132)">
+      <use href="#row-base"/>
+      <rect class="wg" x="160" y="0" width="28" height="28"/>
+      <rect class="wg" x="192" y="0" width="28" height="28"/>
+      <rect class="overlay" x="192" y="0" width="28" height="28"/>
+      <text class="wg-text" x="190" y="18">WG</text>
+    </g>
+    <text class="note note-center" x="180" y="175">crossed span is cleared at the edge</text>
+    <text class="label" x="20" y="186">AFTER</text>
+    <g transform="translate(0,192)">
+      <use href="#row-base"/>
+      <rect class="edge-fill" x="192" y="0" width="28" height="28"/>
+    </g>
+  </g>
+
+  <g transform="translate(400,660)">
+    <rect class="panel" x="0" y="0" width="360" height="240" rx="12"/>
+    <text class="panel-title" x="16" y="28">10. Hybrid fill: interior row</text>
+    <text class="panel-sub" x="16" y="44">interior uses preserved fill</text>
+    <text class="label" x="20" y="66">BEFORE</text>
+    <g transform="translate(0,72)">
+      <use href="#row-base"/>
+      <rect class="wg" x="192" y="0" width="28" height="28"/>
+      <rect class="wg" x="224" y="0" width="28" height="28"/>
+      <text class="wg-text" x="222" y="18">WG</text>
+    </g>
+    <text class="call-label" x="20" y="126">BOX INTERIOR FILL</text>
+    <g transform="translate(0,132)">
+      <use href="#row-base"/>
+      <rect class="wg" x="192" y="0" width="28" height="28"/>
+      <rect class="wg" x="224" y="0" width="28" height="28"/>
+      <rect class="overlay" x="160" y="0" width="124" height="28"/>
+      <text class="wg-text" x="222" y="18">WG</text>
+    </g>
+    <text class="note note-center" x="180" y="175">fully interior wide text stays visible</text>
+    <text class="label" x="20" y="186">AFTER</text>
+    <g transform="translate(0,192)">
+      <use href="#row-base"/>
+      <rect class="tint" x="160" y="0" width="28" height="28"/>
+      <rect class="preserve" x="192" y="0" width="28" height="28"/>
+      <rect class="preserve" x="224" y="0" width="28" height="28"/>
+      <rect class="tint" x="256" y="0" width="28" height="28"/>
+      <text class="wg-text" x="222" y="18">WG</text>
+    </g>
+  </g>
+
+  <g transform="translate(776,660)">
+    <rect class="panel" x="0" y="0" width="360" height="240" rx="12"/>
+    <text class="panel-title" x="16" y="28">11. Renderer preclear</text>
+    <text class="panel-sub" x="16" y="44">placeholder span repaints back to emoji</text>
+    <text class="label" x="20" y="66">BEFORE</text>
+    <g transform="translate(0,72)">
+      <use href="#row-base"/>
+      <rect class="placeholder-cell" x="160" y="0" width="28" height="28"/>
+      <rect class="placeholder-cell" x="192" y="0" width="28" height="28"/>
+      <text class="ph-text" x="174" y="19">[</text>
+      <text class="ph-text" x="206" y="19">]</text>
+    </g>
+    <text class="call-label" x="20" y="126">RENDER() RESTORES WIDE EMOJI</text>
+    <g transform="translate(0,132)">
+      <use href="#row-base"/>
+      <rect class="overlay-line" x="160" y="0" width="60" height="28"/>
+      <text class="ph-text" x="174" y="19">[</text>
+      <text class="ph-text" x="206" y="19">]</text>
+    </g>
+    <text class="note note-center" x="180" y="175">renderer clears the old span first</text>
+    <text class="label" x="20" y="186">AFTER</text>
+    <g transform="translate(0,192)">
+      <use href="#row-base"/>
+      <rect class="emoji" x="160" y="0" width="28" height="28"/>
+      <rect class="emoji" x="192" y="0" width="28" height="28"/>
+      <text class="wg-text" x="190" y="18">EM</text>
+    </g>
+  </g>
+
+  <g transform="translate(1152,660)">
+    <rect class="panel" x="0" y="0" width="360" height="240" rx="12"/>
+    <text class="panel-title" x="16" y="28">12. Renderer follow-up cell</text>
+    <text class="panel-sub" x="16" y="44">fallback repaint before following ASCII</text>
+    <text class="label" x="20" y="66">BEFORE</text>
+    <g transform="translate(0,72)">
+      <use href="#row-base"/>
+      <rect class="placeholder-cell" x="160" y="0" width="28" height="28"/>
+      <rect class="placeholder-cell" x="192" y="0" width="28" height="28"/>
+      <text class="ph-text" x="174" y="19">[</text>
+      <text class="ph-text" x="206" y="19">]</text>
+      <text class="b-text" x="233" y="19">A</text>
+    </g>
+    <text class="call-label" x="20" y="126">RENDER() REPAINTS EMOJI, THEN B</text>
+    <g transform="translate(0,132)">
+      <use href="#row-base"/>
+      <rect class="overlay-line" x="160" y="0" width="92" height="28"/>
+      <text class="ph-text" x="174" y="19">[</text>
+      <text class="ph-text" x="206" y="19">]</text>
+      <text class="b-text" x="233" y="19">A</text>
+    </g>
+    <text class="note note-center" x="180" y="175">fallback path repositions before B</text>
+    <text class="label" x="20" y="186">AFTER</text>
+    <g transform="translate(0,192)">
+      <use href="#row-base"/>
+      <rect class="emoji" x="160" y="0" width="28" height="28"/>
+      <rect class="emoji" x="192" y="0" width="28" height="28"/>
+      <text class="wg-text" x="190" y="18">EM</text>
+      <text class="b-text" x="233" y="19">B</text>
+    </g>
+  </g>
+</svg>
