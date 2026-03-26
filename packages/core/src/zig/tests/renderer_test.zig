@@ -1015,3 +1015,111 @@ test "renderer - explicit_cursor_positioning with CJK characters" {
 
     try std.testing.expect(std.mem.indexOf(u8, output, "\x1b[1;3H") != null);
 }
+
+test "renderer - wide grapheme replacing narrow chars clears continuation cell" {
+    // Regression test: when frame 1 has narrow chars ("ABCDE") and frame 2
+    // replaces them with a 2-cell-wide grapheme, the renderer must output
+    // something at the continuation cell position to clear old content.
+    //
+    // Bug: syncCell() for the grapheme start cell propagates a continuation
+    // marker into currentRenderBuffer before the diff loop reaches that
+    // cell.  Both buffers then match -> diff skips -> stale terminal content.
+    const pool = gp.initGlobalPool(std.testing.allocator);
+    defer gp.deinitGlobalPool();
+    var local_link_pool = link.LinkPool.init(std.testing.allocator);
+    defer local_link_pool.deinit();
+
+    const fg = RGBA{ 1.0, 1.0, 1.0, 1.0 };
+    const bg = RGBA{ 0.0, 0.0, 0.0, 1.0 };
+
+    var cli_renderer = try CliRenderer.create(
+        std.testing.allocator,
+        20,
+        3,
+        pool,
+        true,
+    );
+    defer cli_renderer.destroy();
+
+    // Frame 1: narrow chars "ABCDE" at row 1.
+    {
+        const next = cli_renderer.getNextBuffer();
+        try next.drawText("ABCDE", 0, 1, fg, bg, 0);
+        cli_renderer.render(false);
+    }
+
+    // Sanity check: 'C' is at cell (2,1).
+    {
+        const cur = cli_renderer.getCurrentBuffer();
+        const cell_c = cur.get(2, 1);
+        try std.testing.expect(cell_c != null);
+        try std.testing.expectEqual(@as(u32, 'C'), cell_c.?.char);
+    }
+
+    // Frame 2: " ⚠X " at row 1.  U+26A0 (⚠) is 2 cells wide.
+    //   cell 0 = ' '
+    //   cell 1 = grapheme start (⚠)
+    //   cell 2 = continuation        <-- must replace old 'C'
+    //   cell 3 = 'X'
+    //   cell 4 = ' '
+    {
+        const next = cli_renderer.getNextBuffer();
+        // U+26A0 = UTF-8 E2 9A A0
+        try next.drawText(" \xe2\x9a\xa0X ", 0, 1, fg, bg, 0);
+        cli_renderer.render(false);
+    }
+
+    const output = cli_renderer.getLastOutputForTest();
+
+    // Cell (2,1) = column 3 (1-based), row 2 (1-based).
+    // The ANSI output must contain a cursor move to this position
+    // (ESC[2;3H) so the old 'C' is overwritten.
+    const move_to_cont = "\x1b[2;3H";
+    try std.testing.expect(std.mem.indexOf(u8, output, move_to_cont) != null);
+}
+
+test "renderer - explicit width wide grapheme does not clear continuation cell manually" {
+    const pool = gp.initGlobalPool(std.testing.allocator);
+    defer gp.deinitGlobalPool();
+    var local_link_pool = link.LinkPool.init(std.testing.allocator);
+    defer local_link_pool.deinit();
+
+    const fg = RGBA{ 1.0, 1.0, 1.0, 1.0 };
+    const bg = RGBA{ 0.0, 0.0, 0.0, 1.0 };
+
+    var cli_renderer = try CliRenderer.create(
+        std.testing.allocator,
+        20,
+        3,
+        pool,
+        true,
+    );
+    defer cli_renderer.destroy();
+
+    cli_renderer.terminal.caps.explicit_width = true;
+
+    {
+        const next = cli_renderer.getNextBuffer();
+        try next.drawText("ABCDE", 0, 1, fg, bg, 0);
+        cli_renderer.render(false);
+    }
+
+    {
+        const next = cli_renderer.getNextBuffer();
+        try next.drawText(" \xe2\x9a\xa0X ", 0, 1, fg, bg, 0);
+        cli_renderer.render(false);
+    }
+
+    const cur = cli_renderer.getCurrentBuffer();
+    const continuation = cur.get(2, 1);
+    try std.testing.expect(continuation != null);
+    try std.testing.expect(gp.isContinuationChar(continuation.?.char));
+
+    const output = cli_renderer.getLastOutputForTest();
+
+    const explicit_width_write = "\x1b]66;w=2;\xe2\x9a\xa0\x1b\\";
+    try std.testing.expect(std.mem.indexOf(u8, output, explicit_width_write) != null);
+
+    const move_to_cont = "\x1b[2;3H";
+    try std.testing.expect(std.mem.indexOf(u8, output, move_to_cont) == null);
+}

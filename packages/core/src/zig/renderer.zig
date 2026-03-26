@@ -740,6 +740,40 @@ pub const CliRenderer = struct {
                                 }
                             }
                         }
+                        // Clear continuation positions now, before syncCell
+                        // propagates continuation markers into currentRenderBuffer
+                        // and poisons the diff (making it skip these cells).
+                        //
+                        // Skip this when explicit-width output is available: the
+                        // terminal already treats the grapheme as spanning these
+                        // cells, so writing spaces into the continuation positions
+                        // would clobber the grapheme we just rendered.
+                        if (!capabilities.explicit_width and graphemeWidth > 1) {
+                            var clearedContinuationCell = false;
+                            var ci: u32 = 1;
+                            while (ci < graphemeWidth) : (ci += 1) {
+                                const contX = x + ci;
+                                if (contX >= self.width) break;
+                                const contCell = self.nextRenderBuffer.get(contX, y) orelse continue;
+                                const curCell = self.currentRenderBuffer.get(contX, y) orelse continue;
+                                // Skip if already a matching continuation (steady-state,
+                                // no transition from narrow to wide).
+                                if (curCell.char == contCell.char) continue;
+                                ansi.ANSI.moveToOutput(writer, contX + 1, y + 1 + self.renderOffset) catch {};
+                                writer.writeByte(' ') catch {};
+                                self.currentRenderBuffer.syncCell(contX, y, contCell);
+                                cellsUpdated += 1;
+                                clearedContinuationCell = true;
+                            }
+                            if (clearedContinuationCell) {
+                                // Reset run state only if we actually emitted
+                                // continuation clears. The cursor is now after the
+                                // last cleared cell, not where the grapheme output
+                                // would have left it.
+                                runStart = -1;
+                                runLength = 0;
+                            }
+                        }
                     }
                 } else if (gp.isContinuationChar(cell.char)) {
                     // Write a space for continuation cells to clear any previous content
