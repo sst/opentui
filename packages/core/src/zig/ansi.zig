@@ -126,6 +126,7 @@ pub const ANSI = struct {
         }
     }
 
+    pub const xtversionTmux = wrapForTmux(xtversion);
     pub const kittyGraphicsQueryTmux = wrapForTmux(kittyGraphicsQuery);
     pub const capabilityQueriesTmux = wrapForTmux(capabilityQueriesBase) ++ csiUQuery;
     pub const sixelGeometryQuery = "\x1b[?2;1;0S";

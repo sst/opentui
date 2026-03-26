@@ -104,6 +104,7 @@ host_env_map: ?std.process.EnvMap = null,
 in_tmux: bool = false,
 skip_graphics_query: bool = false,
 skip_explicit_width_query: bool = false,
+xtversion_query_pending: bool = false,
 graphics_query_pending: bool = false,
 capability_queries_pending: bool = false,
 
@@ -222,13 +223,21 @@ pub fn exitAltScreen(self: *Terminal, tty: anytype) !void {
 
 pub fn queryTerminalSend(self: *Terminal, tty: anytype) !void {
     self.checkEnvironmentOverrides();
+    self.xtversion_query_pending = false;
     self.graphics_query_pending = !self.skip_graphics_query;
     self.capability_queries_pending = false;
 
-    // Send xtversion first (doesn't need DCS wrapping - used for tmux detection)
-    try tty.writeAll(ansi.ANSI.xtversion ++
-        ansi.ANSI.hideCursor ++
-        ansi.ANSI.saveCursorState);
+    try tty.writeAll(ansi.ANSI.hideCursor ++ ansi.ANSI.saveCursorState);
+
+    // Send xtversion first. If it turns out we're in tmux,
+    // send it again with DCS passthrough to get the xtversion of the underlying terminal.
+    // This makes sure we can detect both tmux and the underlying terminal.
+    if (self.in_tmux) {
+        try tty.writeAll(ansi.ANSI.xtversionTmux);
+    } else {
+        try tty.writeAll(ansi.ANSI.xtversion);
+        self.xtversion_query_pending = true;
+    }
 
     if (self.in_tmux) {
         try tty.writeAll(ansi.ANSI.capabilityQueriesTmux);
@@ -250,13 +259,24 @@ pub fn queryTerminalSend(self: *Terminal, tty: anytype) !void {
 }
 
 pub fn sendPendingQueries(self: *Terminal, tty: anytype) !bool {
+    self.in_tmux = self.in_tmux or self.isXtversionTmux();
+
     var sent = false;
-    const is_tmux = self.in_tmux or self.isXtversionTmux();
+
+    // Re-send xtversion DCS wrapped if tmux is detected,
+    // so we can get the real xtversion of the underlying terminal.
+    if (self.xtversion_query_pending) {
+        if (self.in_tmux) {
+            try tty.writeAll(ansi.ANSI.xtversionTmux);
+            sent = true;
+        }
+        self.xtversion_query_pending = false;
+    }
 
     // Re-send capability queries DCS wrapped if tmux detected via xtversion
     // Only needed if we got xtversion response indicating tmux
     if (self.capability_queries_pending) {
-        if (self.term_info.from_xtversion and is_tmux) {
+        if (self.term_info.from_xtversion and self.in_tmux) {
             try tty.writeAll(ansi.ANSI.capabilityQueriesTmux);
             sent = true;
         }
@@ -265,7 +285,7 @@ pub fn sendPendingQueries(self: *Terminal, tty: anytype) !bool {
     }
 
     if (self.graphics_query_pending and !self.skip_graphics_query) {
-        if (is_tmux) {
+        if (self.in_tmux) {
             try tty.writeAll(ansi.ANSI.kittyGraphicsQueryTmux);
         } else {
             try tty.writeAll(ansi.ANSI.kittyGraphicsQuery);
@@ -316,7 +336,7 @@ pub fn enableDetectedFeatures(self: *Terminal, tty: anytype, use_kitty_keyboard:
 }
 
 fn checkEnvironmentOverrides(self: *Terminal) void {
-    self.in_tmux = false;
+    self.in_tmux = self.in_tmux or self.isXtversionTmux();
     self.skip_graphics_query = false;
     self.skip_explicit_width_query = false;
 
@@ -868,11 +888,7 @@ pub fn writeClipboard(self: *Terminal, tty: anytype, target: ClipboardTarget, pa
 
     const osc52 = stream.getWritten();
 
-    // Use self.in_tmux which is set by checkEnvironmentOverrides() considering
-    // env vars, xtversion response, and remote option
-    const is_tmux = self.in_tmux or self.isXtversionTmux();
-
-    if (is_tmux) {
+    if (self.in_tmux) {
         // For nested tmux, we use a fixed level of 1 as we don't have access
         // to env vars here (by design - detection already happened in checkEnvironmentOverrides)
         // In practice, single-level wrapping works for most cases

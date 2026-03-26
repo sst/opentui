@@ -277,7 +277,8 @@ test "queryTerminalSend - sends DCS wrapped queries when in tmux" {
 
 test "sendPendingQueries - sends wrapped queries after tmux detected via xtversion" {
     var term = Terminal.init(.{});
-    term.in_tmux = false;
+    term.in_tmux = false; // simulate not detected via env
+    term.xtversion_query_pending = true;
     term.capability_queries_pending = true;
     term.graphics_query_pending = true;
 
@@ -294,6 +295,9 @@ test "sendPendingQueries - sends wrapped queries after tmux detected via xtversi
     try testing.expect(did_send);
 
     const output = writer.getWritten();
+
+    // Should send xtversion wrapped
+    try testing.expect(std.mem.indexOf(u8, output, "\x1bPtmux;\x1b\x1b[>0q") != null);
 
     // Should send DCS wrapped capability queries (wrapForTmux wraps all queries together)
     try testing.expect(std.mem.indexOf(u8, output, "\x1bPtmux;\x1b\x1b[?1016$p") != null);
