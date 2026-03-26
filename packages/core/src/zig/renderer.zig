@@ -1308,6 +1308,12 @@ pub const CliRenderer = struct {
 
             var runStart: i64 = -1;
             var runLength: u32 = 0;
+            // Tracks continuation cells already covered by a grapheme emitted
+            // in this pass so we do not print trailing spaces into that span.
+            var lastEmittedGraphemeEnd: u32 = 0;
+            // Tracks old wide spans already blanked this row so repainting any
+            // of their cells does not repeatedly clear the same terminal cells.
+            var lastClearedOldGraphemeEnd: u32 = 0;
 
             for (0..self.width) |ux| {
                 const x = @as(u32, @intCast(ux));
@@ -1315,6 +1321,15 @@ pub const CliRenderer = struct {
                 const nextCell = self.nextRenderBuffer.get(x, y);
 
                 if (currentCell == null or nextCell == null) continue;
+                // A lead-cell sync writes the grapheme's continuation cells into
+                // currentRenderBuffer immediately. When we reach those tails later
+                // in the same left-to-right pass, they can now compare equal even
+                // though the grapheme was just emitted. Skipping them here keeps
+                // the active run open so fallback output does not inject cursor
+                // moves between adjacent wide graphemes.
+                if (gp.isContinuationChar(nextCell.?.char) and x < lastEmittedGraphemeEnd) {
+                    continue;
+                }
 
                 if (!should_force) {
                     const charEqual = currentCell.?.char == nextCell.?.char;
@@ -1382,6 +1397,28 @@ pub const CliRenderer = struct {
                     ansi.TextAttributes.applyAttributesOutputWriter(writer, cell.attributes) catch {};
                 }
 
+                var clearedOldWideSpan = false;
+                if (!force and (gp.isGraphemeChar(currentCell.?.char) or gp.isContinuationChar(currentCell.?.char)) and currentCell.?.char != cell.char) {
+                    const oldLeft = gp.charLeftExtent(currentCell.?.char);
+                    const oldRight = gp.charRightExtent(currentCell.?.char);
+                    const oldWidth = oldLeft + 1 + oldRight;
+                    const oldStartX = x - oldLeft;
+                    const oldEndX = oldStartX + oldWidth;
+                    if (oldWidth > 1 and oldEndX > lastClearedOldGraphemeEnd) {
+                        // Clear the old terminal footprint first: the buffer can
+                        // already be correct while the terminal still shows stale
+                        // cells from the previous wide grapheme.
+                        ansi.ANSI.moveToOutput(writer, oldStartX + 1, y + 1 + self.renderOffset) catch {};
+                        var clear_from_start_i: u32 = 0;
+                        while (clear_from_start_i < oldWidth) : (clear_from_start_i += 1) {
+                            writer.writeByte(' ') catch {};
+                        }
+                        ansi.ANSI.moveToOutput(writer, x + 1, y + 1 + self.renderOffset) catch {};
+                        lastClearedOldGraphemeEnd = oldEndX;
+                        clearedOldWideSpan = true;
+                    }
+                }
+
                 // Handle grapheme characters
                 if (gp.isGraphemeChar(cell.char)) {
                     const gid: u32 = gp.graphemeIdFromChar(cell.char);
@@ -1392,11 +1429,19 @@ pub const CliRenderer = struct {
                     if (bytes.len > 0) {
                         const capabilities = self.terminal.getCapabilities();
                         const graphemeWidth = gp.charRightExtent(cell.char) + 1;
+                        lastEmittedGraphemeEnd = x + graphemeWidth;
+                        if (!force and graphemeWidth > 1 and currentCell.?.char != cell.char and !clearedOldWideSpan) {
+                            var clear_i: u32 = 0;
+                            while (clear_i < graphemeWidth) : (clear_i += 1) {
+                                writer.writeByte(' ') catch {};
+                            }
+                            ansi.ANSI.moveToOutput(writer, x + 1, y + 1 + self.renderOffset) catch {};
+                        }
                         if (capabilities.explicit_width) {
                             ansi.ANSI.explicitWidthOutput(writer, graphemeWidth, bytes) catch {};
                         } else {
                             writer.writeAll(bytes) catch {};
-                            if (capabilities.explicit_cursor_positioning) {
+                            if (capabilities.explicit_cursor_positioning and graphemeWidth > 1) {
                                 const nextX = x + graphemeWidth;
                                 if (nextX < self.width) {
                                     ansi.ANSI.moveToOutput(writer, nextX + 1, y + 1 + self.renderOffset) catch {};
@@ -1405,11 +1450,13 @@ pub const CliRenderer = struct {
                         }
                     }
                 } else if (gp.isContinuationChar(cell.char)) {
-                    // Intentionally do not write a space for continuation cells.
-                    // NOTE: disabled to fix 2-cell emoji rendering when the two
-                    // cells have distinct colors (space overwrite can break glyph output)
-
-                    // writer.writeByte(' ') catch {};
+                    // Only clear continuation cells that are not part of the
+                    // wide grapheme we just emitted. Writing a space into an
+                    // already-emitted span can split 2-cell glyphs, including
+                    // emoji whose two cells end up with distinct styling.
+                    if (x >= lastEmittedGraphemeEnd) {
+                        writer.writeByte(' ') catch {};
+                    }
                 } else {
                     const len = std.unicode.utf8Encode(@intCast(cell.char), &utf8Buf) catch 1;
                     writer.writeAll(utf8Buf[0..len]) catch {};

@@ -1134,6 +1134,40 @@ test "renderer - explicit_cursor_positioning emits cursor move after wide graphe
     try std.testing.expect(std.mem.indexOf(u8, output, "\x1b[1;3H") != null);
 }
 
+test "renderer - fallback path does not emit post-grapheme cursor moves" {
+    const pool = gp.initGlobalPool(std.testing.allocator);
+    defer gp.deinitGlobalPool();
+
+    var cli_renderer = try CliRenderer.create(
+        std.testing.allocator,
+        20,
+        2,
+        pool,
+        true,
+    );
+    defer cli_renderer.destroy();
+
+    cli_renderer.terminal.caps.explicit_cursor_positioning = false;
+    cli_renderer.terminal.caps.explicit_width = false;
+
+    const dark_bg = RGBA{ 0.04, 0.05, 0.08, 1.0 };
+    const tinted_bg = RGBA{ 0.0, 0.0, 1.0, 0.5 };
+    const fg = RGBA{ 1.0, 1.0, 1.0, 1.0 };
+
+    const first_buffer = cli_renderer.getNextBuffer();
+    try first_buffer.clear(dark_bg, null);
+    try first_buffer.drawText("👋  ", 0, 0, fg, dark_bg, 0);
+    cli_renderer.render(false);
+
+    const second_buffer = cli_renderer.getNextBuffer();
+    try second_buffer.clear(dark_bg, null);
+    try second_buffer.drawText("👋  ", 0, 0, fg, tinted_bg, 0);
+    cli_renderer.render(false);
+
+    const output = cli_renderer.getLastOutputForTest();
+    try std.testing.expect(std.mem.indexOf(u8, output, "👋\x1b[1;3H") == null);
+}
+
 test "renderer - explicit_cursor_positioning produces more cursor moves" {
     const pool = gp.initGlobalPool(std.testing.allocator);
     defer gp.deinitGlobalPool();
@@ -1206,6 +1240,7 @@ test "renderer - explicit_cursor_positioning produces more cursor moves" {
         }
     }
 
+    try std.testing.expect(count_without > 0);
     try std.testing.expect(count_with > count_without);
 }
 
@@ -1985,4 +2020,192 @@ test "renderer - unchanged frame with unchanged cursor emits no output" {
     // No-op frames must be byte-empty; otherwise repeated sync/cursor toggles can
     // produce visible shimmer in terminals that animate cursor or repaint eagerly.
     try std.testing.expectEqual(@as(usize, 0), output.len);
+}
+
+test "renderer - repainting CJK text under translucent overlay keeps wide text in fallback output" {
+    const pool = gp.initGlobalPool(std.testing.allocator);
+    defer gp.deinitGlobalPool();
+    var local_link_pool = link.LinkPool.init(std.testing.allocator);
+    defer local_link_pool.deinit();
+
+    var tb = try TextBuffer.init(std.testing.allocator, pool, &local_link_pool, .unicode);
+    defer tb.deinit();
+
+    try tb.setText(
+        \\const GRAPHEME_LINES: string[] = [
+        \\  "W2 CJK: 東京都  北京市  서울시  大阪府",
+        \\  "Mixed: こんにちは世界  你好世界  안녕하세요",
+        \\]
+    );
+
+    var view = try TextBufferView.init(std.testing.allocator, tb);
+    defer view.deinit();
+
+    var cli_renderer = try CliRenderer.create(
+        std.testing.allocator,
+        90,
+        6,
+        pool,
+        true,
+    );
+    defer cli_renderer.destroy();
+
+    cli_renderer.terminal.caps.explicit_cursor_positioning = false;
+    cli_renderer.terminal.caps.explicit_width = false;
+
+    const dark_bg = RGBA{ 0.0, 0.0, 0.0, 1.0 };
+    const tint_bg = RGBA{ 1.0, 0.0, 0.0, 0.15 };
+
+    const first_buffer = cli_renderer.getNextBuffer();
+    try first_buffer.clear(dark_bg, null);
+    try first_buffer.drawTextBuffer(view, 0, 0);
+    cli_renderer.render(false);
+
+    const second_buffer = cli_renderer.getNextBuffer();
+    try second_buffer.clear(dark_bg, null);
+    try second_buffer.drawTextBuffer(view, 0, 0);
+    try second_buffer.fillRect(0, 0, 90, 6, tint_bg, ansi.COLOR_TAG_RGB);
+    cli_renderer.render(false);
+
+    const output = cli_renderer.getLastOutputForTest();
+    try std.testing.expect(std.mem.indexOf(u8, output, "東京都") != null);
+    try std.testing.expect(std.mem.indexOf(u8, output, "北京市") != null);
+    try std.testing.expect(std.mem.indexOf(u8, output, "서울시") != null);
+    try std.testing.expect(std.mem.indexOf(u8, output, "こんにちは世界") != null);
+    try std.testing.expect(std.mem.indexOf(u8, output, "你好世界") != null);
+    try std.testing.expect(std.mem.indexOf(u8, output, "안녕하세요") != null);
+}
+
+test "renderer - explicit_cursor_positioning does not emit continuation spaces after wide graphemes" {
+    const pool = gp.initGlobalPool(std.testing.allocator);
+    defer gp.deinitGlobalPool();
+
+    var cli_renderer = try CliRenderer.create(
+        std.testing.allocator,
+        80,
+        24,
+        pool,
+        true,
+    );
+    defer cli_renderer.destroy();
+
+    cli_renderer.terminal.caps.explicit_cursor_positioning = true;
+    cli_renderer.terminal.caps.explicit_width = false;
+
+    const next_buffer = cli_renderer.getNextBuffer();
+    const fg = RGBA{ 1.0, 1.0, 1.0, 1.0 };
+    const bg = RGBA{ 0.0, 0.0, 0.0, 1.0 };
+    try next_buffer.drawText("世X", 0, 0, fg, bg, 0);
+
+    cli_renderer.render(false);
+
+    const output = cli_renderer.getLastOutputForTest();
+
+    try std.testing.expect(std.mem.indexOf(u8, output, "世") != null);
+    try std.testing.expect(std.mem.indexOf(u8, output, "X") != null);
+    try std.testing.expect(std.mem.indexOf(u8, output, "\x1b[1;3H X") == null);
+}
+
+test "renderer - repainting wide emoji after placeholder preclears span" {
+    const pool = gp.initGlobalPool(std.testing.allocator);
+    defer gp.deinitGlobalPool();
+
+    var cli_renderer = try CliRenderer.create(
+        std.testing.allocator,
+        20,
+        2,
+        pool,
+        true,
+    );
+    defer cli_renderer.destroy();
+
+    cli_renderer.terminal.caps.explicit_cursor_positioning = true;
+    cli_renderer.terminal.caps.explicit_width = false;
+
+    const dark_bg = RGBA{ 0.04, 0.05, 0.08, 1.0 };
+    const tinted_bg = RGBA{ 0.0, 0.0, 1.0, 0.5 };
+    const fg = RGBA{ 1.0, 1.0, 1.0, 1.0 };
+
+    const first_buffer = cli_renderer.getNextBuffer();
+    try first_buffer.clear(dark_bg, null);
+    try first_buffer.drawText("[]", 2, 0, fg, tinted_bg, 0);
+    cli_renderer.render(false);
+
+    const second_buffer = cli_renderer.getNextBuffer();
+    try second_buffer.clear(dark_bg, null);
+    try second_buffer.drawText("👋", 2, 0, fg, dark_bg, 0);
+    cli_renderer.render(false);
+
+    const output = cli_renderer.getLastOutputForTest();
+    try std.testing.expect(std.mem.indexOf(u8, output, "  \x1b[1;3H👋") != null);
+}
+
+test "renderer - explicit_width repainting wide emoji preclears span" {
+    const pool = gp.initGlobalPool(std.testing.allocator);
+    defer gp.deinitGlobalPool();
+
+    var cli_renderer = try CliRenderer.create(
+        std.testing.allocator,
+        20,
+        2,
+        pool,
+        true,
+    );
+    defer cli_renderer.destroy();
+
+    cli_renderer.terminal.caps.explicit_cursor_positioning = false;
+    cli_renderer.terminal.caps.explicit_width = true;
+
+    const dark_bg = RGBA{ 0.04, 0.05, 0.08, 1.0 };
+    const tinted_bg = RGBA{ 0.0, 0.0, 1.0, 0.5 };
+    const fg = RGBA{ 1.0, 1.0, 1.0, 1.0 };
+
+    const first_buffer = cli_renderer.getNextBuffer();
+    try first_buffer.clear(dark_bg, null);
+    try first_buffer.drawText("[]", 2, 0, fg, tinted_bg, 0);
+    cli_renderer.render(false);
+
+    const second_buffer = cli_renderer.getNextBuffer();
+    try second_buffer.clear(dark_bg, null);
+    try second_buffer.drawText("👋", 2, 0, fg, dark_bg, 0);
+    cli_renderer.render(false);
+
+    const output = cli_renderer.getLastOutputForTest();
+    try std.testing.expect(std.mem.indexOf(u8, output, "  \x1b[1;3H\x1b]66;w=2;") != null);
+}
+
+test "renderer - fallback repainting wide emoji preclears span before following cell redraw" {
+    const pool = gp.initGlobalPool(std.testing.allocator);
+    defer gp.deinitGlobalPool();
+
+    var cli_renderer = try CliRenderer.create(
+        std.testing.allocator,
+        20,
+        2,
+        pool,
+        true,
+    );
+    defer cli_renderer.destroy();
+
+    cli_renderer.terminal.caps.explicit_cursor_positioning = false;
+    cli_renderer.terminal.caps.explicit_width = false;
+
+    const dark_bg = RGBA{ 0.04, 0.05, 0.08, 1.0 };
+    const tinted_bg = RGBA{ 0.0, 0.0, 1.0, 0.5 };
+    const fg = RGBA{ 1.0, 1.0, 1.0, 1.0 };
+
+    const first_buffer = cli_renderer.getNextBuffer();
+    try first_buffer.clear(dark_bg, null);
+    try first_buffer.drawText("[]A", 2, 0, fg, tinted_bg, 0);
+    cli_renderer.render(false);
+
+    const second_buffer = cli_renderer.getNextBuffer();
+    try second_buffer.clear(dark_bg, null);
+    try second_buffer.drawText("👋B", 2, 0, fg, dark_bg, 0);
+    cli_renderer.render(false);
+
+    const output = cli_renderer.getLastOutputForTest();
+    try std.testing.expect(std.mem.indexOf(u8, output, "  \x1b[1;3H👋") != null);
+    try std.testing.expect(std.mem.indexOf(u8, output, "👋B") != null);
+    try std.testing.expect(std.mem.indexOf(u8, output, "\x1b[1;5H") == null);
 }
