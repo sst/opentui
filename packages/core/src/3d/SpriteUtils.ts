@@ -42,6 +42,7 @@ export class SpriteUtils {
 
     sprite.updateMatrix = function () {
       this.matrix.compose(this.position, this.quaternion, this.scale.clone().setX(this.scale.x * textureAspectRatio))
+      this.matrixWorldNeedsUpdate = true
     }
 
     return sprite
@@ -63,6 +64,7 @@ export class SpriteUtils {
 
     sprite.updateMatrix = function () {
       this.matrix.compose(this.position, this.quaternion, this.scale.clone().setX(this.scale.x * frameAspectRatio))
+      this.matrixWorldNeedsUpdate = true
     }
 
     return sprite
