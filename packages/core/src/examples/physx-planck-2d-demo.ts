@@ -2,6 +2,7 @@
 
 import {
   CliRenderer,
+  CliRenderEvents,
   TextRenderable,
   FrameBufferRenderable,
   BoxRenderable,
@@ -61,16 +62,87 @@ interface DemoState {
   statsText: TextRenderable
   frameCallback: (deltaTime: number) => Promise<void>
   keyHandler: (key: KeyEvent) => void
-  statsInterval: NodeJS.Timeout
+  statsInterval: NodeJS.Timeout | null
   resizeHandler: (width: number, height: number) => void
 }
 
+interface PendingDemoState {
+  isDestroyed: boolean
+  engine: ThreeCliRenderer | null
+  statsInterval: NodeJS.Timeout | null
+}
+
 let demoState: DemoState | null = null
+let pendingDemoState: PendingDemoState | null = null
+let rendererDestroyHandler: (() => void) | null = null
 
 const spawnInterval = 800
 const orthoViewHeight = 20.0
 
+function unregisterRendererDestroyHandler(renderer: CliRenderer): void {
+  if (!rendererDestroyHandler) return
+
+  renderer.off(CliRenderEvents.DESTROY, rendererDestroyHandler)
+  rendererDestroyHandler = null
+}
+
+function cleanupPendingDemoState(renderer: CliRenderer, state: PendingDemoState): void {
+  state.isDestroyed = true
+
+  const pendingStatsInterval = state.statsInterval
+  if (pendingStatsInterval) {
+    clearInterval(pendingStatsInterval)
+    state.statsInterval = null
+  }
+
+  if (state.engine) {
+    state.engine.destroy()
+    state.engine = null
+  }
+
+  if (!renderer.isDestroyed) {
+    renderer.root.remove("planck-main")
+    renderer.root.remove("planck-container")
+  }
+
+  if (pendingDemoState === state) {
+    pendingDemoState = null
+  }
+}
+
+function cleanupDemoState(renderer: CliRenderer, state: DemoState): void {
+  state.isInitialized = false
+
+  renderer.removeFrameCallback(state.frameCallback)
+  renderer.keyInput.off("keypress", state.keyHandler)
+  renderer.off("resize", state.resizeHandler)
+
+  const statsInterval = state.statsInterval
+  if (statsInterval) {
+    clearInterval(statsInterval)
+    state.statsInterval = null
+  }
+
+  for (const box of state.physicsWorld.boxes) {
+    box.sprite.destroy()
+    state.physicsWorld.world.destroyBody(box.rigidBody)
+  }
+
+  state.physicsExplosionManager.disposeAll()
+  state.engine.destroy()
+
+  if (!renderer.isDestroyed) {
+    renderer.root.remove("planck-main")
+    renderer.root.remove("planck-container")
+  }
+}
+
 export async function run(renderer: CliRenderer): Promise<void> {
+  rendererDestroyHandler = () => {
+    destroy(renderer)
+  }
+  renderer.on(CliRenderEvents.DESTROY, rendererDestroyHandler)
+
   renderer.start()
   const initialTermWidth = renderer.terminalWidth
   const initialTermHeight = renderer.terminalHeight
@@ -97,7 +169,34 @@ export async function run(renderer: CliRenderer): Promise<void> {
     focalLength: 1,
   })
 
-  await engine.init()
+  const startupState: PendingDemoState = {
+    isDestroyed: false,
+    engine,
+    statsInterval: null,
+  }
+  pendingDemoState = startupState
+
+  const abortStartupIfDestroyed = (): boolean => {
+    if (!startupState.isDestroyed) return false
+
+    cleanupPendingDemoState(renderer, startupState)
+    return true
+  }
+
+  try {
+    await engine.init()
+  } catch (error) {
+    cleanupPendingDemoState(renderer, startupState)
+    unregisterRendererDestroyHandler(renderer)
+
+    if (startupState.isDestroyed) {
+      return
+    }
+
+    throw error
+  }
+
+  if (abortStartupIfDestroyed()) return
 
   const scene = new THREE.Scene()
 
@@ -124,7 +223,21 @@ export async function run(renderer: CliRenderer): Promise<void> {
     sheetNumFrames: 1,
   }
 
-  const crateResource = await resourceManager.createResource(crateResourceConfig)
+  let crateResource
+  try {
+    crateResource = await resourceManager.createResource(crateResourceConfig)
+  } catch (error) {
+    cleanupPendingDemoState(renderer, startupState)
+    unregisterRendererDestroyHandler(renderer)
+
+    if (startupState.isDestroyed) {
+      return
+    }
+
+    throw error
+  }
+
+  if (abortStartupIfDestroyed()) return
 
   const crateIdleAnimation: AnimationDefinition = {
     resource: crateResource,
@@ -234,7 +347,7 @@ export async function run(renderer: CliRenderer): Promise<void> {
     statsText,
     frameCallback: async () => {},
     keyHandler: () => {},
-    statsInterval: setInterval(() => {}, 100),
+    statsInterval: null,
     resizeHandler: () => {},
   }
 
@@ -457,44 +570,47 @@ export async function run(renderer: CliRenderer): Promise<void> {
     state.camera.updateProjectionMatrix()
   }
 
+  if (abortStartupIfDestroyed()) return
+
   state.statsInterval = setInterval(() => {
-    if (state.isInitialized) {
+    if (state.isInitialized && !state.statsText.isDestroyed) {
       const explosionCount = state.activeExplosionHandles.filter((h) => !h.hasBeenRestored).length
       state.statsText.content = `Crates: ${state.physicsWorld.boxes.length} | Explosions: ${explosionCount} | Press [B] for burst spawn`
     }
   }, 100)
+  startupState.statsInterval = state.statsInterval
 
   // Register handlers
   renderer.setFrameCallback(state.frameCallback)
   renderer.keyInput.on("keypress", state.keyHandler)
   renderer.on("resize", state.resizeHandler)
 
+  startupState.engine = null
+  startupState.statsInterval = null
+  pendingDemoState = null
   demoState = state
   console.log("Planck physics demo initialized!")
 }
 
 export function destroy(renderer: CliRenderer): void {
-  if (!demoState) return
+  unregisterRendererDestroyHandler(renderer)
 
-  renderer.removeFrameCallback(demoState.frameCallback)
-  renderer.keyInput.off("keypress", demoState.keyHandler)
-  renderer.root.removeListener("resize", demoState.resizeHandler)
+  let didCleanup = false
 
-  clearInterval(demoState.statsInterval)
-
-  for (const box of demoState.physicsWorld.boxes) {
-    box.sprite.destroy()
-    demoState.physicsWorld.world.destroyBody(box.rigidBody)
+  if (pendingDemoState) {
+    cleanupPendingDemoState(renderer, pendingDemoState)
+    didCleanup = true
   }
 
-  demoState.physicsExplosionManager.disposeAll()
-  demoState.engine.destroy()
+  if (demoState) {
+    cleanupDemoState(renderer, demoState)
+    demoState = null
+    didCleanup = true
+  }
 
-  renderer.root.remove("planck-main")
-  renderer.root.remove("planck-container")
-
-  demoState = null
-  console.log("Planck physics demo cleaned up!")
+  if (didCleanup) {
+    console.log("Planck physics demo cleaned up!")
+  }
 }
 
 if (import.meta.main) {

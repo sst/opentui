@@ -458,6 +458,18 @@ fn checkEnvironmentOverrides(self: *Terminal) void {
         }
     }
 
+    if (!self.caps.hyperlinks and !self.term_info.from_xtversion) {
+        const is_wsl = env_map.get("WSL_DISTRO_NAME") != null or env_map.get("WSL_INTEROP") != null;
+        const has_wt_session = env_map.get("WT_SESSION") != null;
+        if (is_wsl and has_wt_session) {
+            if (env_map.get("TERM")) |term| {
+                if (std.mem.startsWith(u8, term, "xterm")) {
+                    self.caps.hyperlinks = true;
+                }
+            }
+        }
+    }
+
     if (!self.caps.osc52 and !self.term_info.from_xtversion) {
         if (env_map.get("WT_SESSION") != null) {
             self.caps.osc52 = true;

@@ -133,6 +133,8 @@ const DEFAULT_FORWARDED_ENV_KEYS = [
   "OPENTUI_FORCE_EXPLICIT_WIDTH",
   "WT_SESSION",
   "STY",
+  "WSL_DISTRO_NAME",
+  "WSL_INTEROP",
 ] as const
 
 // Kitty keyboard protocol flags
