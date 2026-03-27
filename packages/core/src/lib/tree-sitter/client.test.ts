@@ -305,6 +305,48 @@ describe("TreeSitterClient", () => {
     expect(client.getAllBuffers()).toHaveLength(0)
   })
 
+  test("idle resolves immediately when no tree-sitter work is pending", async () => {
+    await client.initialize()
+
+    await expect(client.idle()).resolves.toBeUndefined()
+  })
+
+  test("idle waits for queued buffer updates to finish", async () => {
+    await client.initialize()
+
+    const initialCode = 'const hello = "world";'
+    const nextCode = 'const hello = "world";\nconst foo = 42;'
+    await client.createBuffer(1, initialCode, "javascript")
+    await client.idle()
+
+    let receivedVersion: number | undefined
+    client.on("highlights:response", (bufferId, version) => {
+      if (bufferId === 1) {
+        receivedVersion = version
+      }
+    })
+
+    await client.updateBuffer(
+      1,
+      [{
+        startIndex: initialCode.length,
+        oldEndIndex: initialCode.length,
+        newEndIndex: nextCode.length,
+        startPosition: { row: 0, column: initialCode.length },
+        oldEndPosition: { row: 0, column: initialCode.length },
+        newEndPosition: { row: 1, column: 14 },
+      }],
+      nextCode,
+      2,
+    )
+
+    expect(receivedVersion).toBeUndefined()
+
+    await client.idle()
+
+    expect(receivedVersion).toBe(2)
+  })
+
   test("should perform one-shot highlighting for react parser aliases", async () => {
     await client.initialize()
 

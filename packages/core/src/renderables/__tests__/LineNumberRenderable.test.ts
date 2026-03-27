@@ -1057,8 +1057,7 @@ describe("LineNumberRenderable", () => {
     expect(widthAfterThirdRender).toBe(widthAfterFirstRender)
   })
 
-  // TODO: flaky - works locally but fails in CI every time
-  test.skip("handles async content loading in Code renderable with drawUnstyledText=false", async () => {
+  test("handles async content loading in Code renderable with drawUnstyledText=false", async () => {
     const { renderer, renderOnce, captureCharFrame } = await createTestRenderer({
       width: 30,
       height: 10,
@@ -1104,12 +1103,10 @@ describe("LineNumberRenderable", () => {
     const code = `function hello() {\n  console.log("Hello");\n}`
     codeRenderable.content = code
 
-    // Wait for render and highlighting
     await renderOnce()
-    // Give highlighting time to complete (increased for CI)
-    await Bun.sleep(1000)
+    await codeRenderable.treeSitterClient.idle()
+    await codeRenderable.highlightingDone
     await renderOnce()
-    await Bun.sleep(100)
     await renderOnce()
 
     frame = captureCharFrame()

@@ -932,12 +932,7 @@ test("CodeRenderable - with drawUnstyledText=false, multiple updates only render
   expect(frameAfterHighlighting).toContain("let newMessage")
 })
 
-// TODO: flaky in CI because it needs to finish in time
-// lib/tree-sitter/client.ts needs a way to check if the queue is empty
-// then this can wait for all tree-sitter operations to complete
-// instead of the arbitrary 500ms wait
-// it worked before because text was set anyway for drawUnstyledText=false
-test.skip("CodeRenderable - simulates markdown stream from LLM with async updates", async () => {
+test("CodeRenderable - simulates markdown stream from LLM with async updates", async () => {
   const syntaxStyle = SyntaxStyle.fromStyles({
     default: { fg: RGBA.fromValues(1, 1, 1, 1) },
     keyword: { fg: RGBA.fromValues(0, 0, 1, 1) },
@@ -982,7 +977,6 @@ console.log(message);
   await codeRenderable.treeSitterClient.preloadParser("markdown")
 
   currentRenderer.root.add(codeRenderable)
-  currentRenderer.start()
 
   let currentContent = ""
 
@@ -996,11 +990,12 @@ console.log(message);
     const chunk = chunks[i]
     currentContent += chunk
     codeRenderable.content = currentContent
-    await new Promise((resolve) => setTimeout(resolve, Math.floor(Math.random() * 25) + 1))
+    await renderOnce()
   }
 
-  // wait for highlighting to complete (long for slow machines/CI)
-  await new Promise((resolve) => setTimeout(resolve, 500))
+  await codeRenderable.treeSitterClient.idle()
+  await codeRenderable.highlightingDone
+  await renderOnce()
 
   expect(codeRenderable.content).toBe(fullMarkdownContent)
   expect(codeRenderable.content.length).toBeGreaterThanOrEqual(targetSize)
