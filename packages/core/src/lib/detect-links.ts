@@ -19,13 +19,9 @@ export function detectLinks(
     const url = content.slice(start, end)
     ranges.push({ start, end, url })
 
-    for (let j = i - 1; j >= 0; j--) {
-      const [labelStart, labelEnd, prev] = highlights[j]
-      if (prev === "markup.link.label") {
-        ranges.push({ start: labelStart, end: labelEnd, url })
-        break
-      }
-      if (!prev.startsWith("markup.link")) break
+    const labelRange = findLabelBefore(highlights, i)
+    if (labelRange) {
+      ranges.push({ start: labelRange.labelStart, end: labelRange.labelEnd, url })
     }
   }
 
@@ -53,4 +49,29 @@ export function detectLinks(
   }
 
   return chunks
+}
+
+function findLabelBefore(highlights: SimpleHighlight[], index: number) {
+  let labelStart: number | null = null
+  let labelEnd: number | null = null
+
+  for (let j = index - 1; j >= 0; j--) {
+    const [start, end, scope] = highlights[j]
+
+    if (!scope.startsWith("markup.link")) {
+      if (labelStart !== null && labelEnd !== null) break
+      continue
+    }
+
+    if (scope === "markup.link.label") {
+      labelStart = start
+      if (labelEnd === null) labelEnd = end
+    }
+  }
+
+  if (labelStart !== null && labelEnd !== null) {
+    return { labelStart, labelEnd }
+  }
+
+  return null
 }
