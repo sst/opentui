@@ -221,6 +221,7 @@ export class MouseEvent {
   public readonly scroll?: ScrollInfo
   public readonly target: Renderable | null
   public readonly isDragging?: boolean
+  public readonly clickCount: number
   private _propagationStopped: boolean = false
   private _defaultPrevented: boolean = false
 
@@ -232,7 +233,10 @@ export class MouseEvent {
     return this._defaultPrevented
   }
 
-  constructor(target: Renderable | null, attributes: RawMouseEvent & { source?: Renderable; isDragging?: boolean }) {
+  constructor(
+    target: Renderable | null,
+    attributes: RawMouseEvent & { source?: Renderable; isDragging?: boolean; clickCount?: number },
+  ) {
     this.target = target
     this.type = attributes.type
     this.button = attributes.button
@@ -242,6 +246,7 @@ export class MouseEvent {
     this.scroll = attributes.scroll
     this.source = attributes.source
     this.isDragging = attributes.isDragging
+    this.clickCount = attributes.clickCount ?? 0
   }
 
   public stopPropagation(): void {
@@ -439,6 +444,7 @@ export class CliRenderer extends EventEmitter implements RenderContext {
 
   private currentSelection: Selection | null = null
   private selectionContainers: Renderable[] = []
+  private wordSelectionOrigin: { renderable: Renderable; start: { x: number; y: number }; end: { x: number; y: number } } | null = null
   private clipboard: Clipboard
 
   private _splitHeight: number = 0
@@ -466,6 +472,9 @@ export class CliRenderer extends EventEmitter implements RenderContext {
   private _hasPointer: boolean = false
   private _lastPointerModifiers: RawMouseEvent["modifiers"] = { shift: false, alt: false, ctrl: false }
   private _currentMousePointerStyle: MousePointerStyle | undefined = undefined
+  private _lastClickInfo: { x: number; y: number; button: number; count: number; timeMs: number } | null = null
+  private _activeClickCount: number = 0
+  private _activePointerSequence: { button: number; x: number; y: number; dragged: boolean } | null = null
 
   private _currentFocusedRenderable: Renderable | null = null
   private lifecyclePasses: Set<Renderable> = new Set()
@@ -1317,9 +1326,65 @@ export class CliRenderer extends EventEmitter implements RenderContext {
     this.stdin.resume()
   }
 
+  private getMouseEventClickCount(mouseEvent: RawMouseEvent): number {
+    const nowMs = this.clock.now()
+
+    if (mouseEvent.type === "down") {
+      const withinThreshold =
+        this._lastClickInfo &&
+        this._lastClickInfo.button === mouseEvent.button &&
+        this._lastClickInfo.x === mouseEvent.x &&
+        this._lastClickInfo.y === mouseEvent.y &&
+        nowMs - this._lastClickInfo.timeMs <= 400
+
+      this._activePointerSequence = {
+        button: mouseEvent.button,
+        x: mouseEvent.x,
+        y: mouseEvent.y,
+        dragged: false,
+      }
+      this._activeClickCount = withinThreshold ? this._lastClickInfo.count + 1 : 1
+      return this._activeClickCount
+    }
+
+    if (mouseEvent.type === "drag") {
+      if (this._activePointerSequence && this._activePointerSequence.button === mouseEvent.button) {
+        this._activePointerSequence.dragged = true
+      }
+      return this._activeClickCount
+    }
+
+    if (mouseEvent.type === "up") {
+      const wasDrag = this._activePointerSequence?.dragged === true
+      const clickCount = wasDrag ? 0 : this._activeClickCount || 1
+
+      if (wasDrag) {
+        this._lastClickInfo = null
+      } else {
+        this._lastClickInfo = {
+          x: mouseEvent.x,
+          y: mouseEvent.y,
+          button: mouseEvent.button,
+          count: clickCount,
+          timeMs: nowMs,
+        }
+      }
+
+      this._activePointerSequence = null
+      this._activeClickCount = 0
+      return clickCount
+    }
+
+    if (mouseEvent.type === "move") {
+      return this._activeClickCount
+    }
+
+    return 0
+  }
+
   private dispatchMouseEvent(
     target: Renderable,
-    attributes: RawMouseEvent & { source?: Renderable; isDragging?: boolean },
+    attributes: RawMouseEvent & { source?: Renderable; isDragging?: boolean; clickCount?: number },
   ): MouseEvent {
     const event = new MouseEvent(target, attributes)
     target.processMouseEvent(event)
@@ -1346,27 +1411,32 @@ export class CliRenderer extends EventEmitter implements RenderContext {
       mouseEvent.y -= this.renderOffset
     }
 
-    this._latestPointer.x = mouseEvent.x
-    this._latestPointer.y = mouseEvent.y
+    const mouseEventWithClickCount = {
+      ...mouseEvent,
+      clickCount: this.getMouseEventClickCount(mouseEvent),
+    }
+
+    this._latestPointer.x = mouseEventWithClickCount.x
+    this._latestPointer.y = mouseEventWithClickCount.y
     this._hasPointer = true
-    this._lastPointerModifiers = mouseEvent.modifiers
+    this._lastPointerModifiers = mouseEventWithClickCount.modifiers
 
     if (this._console.visible) {
       const consoleBounds = this._console.bounds
       if (
-        mouseEvent.x >= consoleBounds.x &&
-        mouseEvent.x < consoleBounds.x + consoleBounds.width &&
-        mouseEvent.y >= consoleBounds.y &&
-        mouseEvent.y < consoleBounds.y + consoleBounds.height
+        mouseEventWithClickCount.x >= consoleBounds.x &&
+        mouseEventWithClickCount.x < consoleBounds.x + consoleBounds.width &&
+        mouseEventWithClickCount.y >= consoleBounds.y &&
+        mouseEventWithClickCount.y < consoleBounds.y + consoleBounds.height
       ) {
-        const event = new MouseEvent(null, mouseEvent)
+        const event = new MouseEvent(null, mouseEventWithClickCount)
         const handled = this._console.handleMouse(event)
         if (handled) return true
       }
     }
 
-    if (mouseEvent.type === "scroll") {
-      const maybeRenderableId = this.hitTest(mouseEvent.x, mouseEvent.y)
+    if (mouseEventWithClickCount.type === "scroll") {
+      const maybeRenderableId = this.hitTest(mouseEventWithClickCount.x, mouseEventWithClickCount.y)
       const maybeRenderable = Renderable.renderablesByNumber.get(maybeRenderableId)
       const fallbackTarget =
         this._currentFocusedRenderable &&
@@ -1377,51 +1447,65 @@ export class CliRenderer extends EventEmitter implements RenderContext {
       const scrollTarget = maybeRenderable ?? fallbackTarget
 
       if (scrollTarget) {
-        const event = new MouseEvent(scrollTarget, mouseEvent)
+        const event = new MouseEvent(scrollTarget, mouseEventWithClickCount)
         scrollTarget.processMouseEvent(event)
       }
       return true
     }
 
-    const maybeRenderableId = this.hitTest(mouseEvent.x, mouseEvent.y)
+    const maybeRenderableId = this.hitTest(mouseEventWithClickCount.x, mouseEventWithClickCount.y)
     const sameElement = maybeRenderableId === this.lastOverRenderableNum
     this.lastOverRenderableNum = maybeRenderableId
     const maybeRenderable = Renderable.renderablesByNumber.get(maybeRenderableId)
 
     if (
-      mouseEvent.type === "down" &&
-      mouseEvent.button === MouseButton.LEFT &&
+      mouseEventWithClickCount.type === "down" &&
+      mouseEventWithClickCount.button === MouseButton.LEFT &&
       !this.currentSelection?.isDragging &&
-      !mouseEvent.modifiers.ctrl
+      !mouseEventWithClickCount.modifiers.ctrl
     ) {
       const canStartSelection = Boolean(
         maybeRenderable &&
         maybeRenderable.selectable &&
         !maybeRenderable.isDestroyed &&
-        maybeRenderable.shouldStartSelection(mouseEvent.x, mouseEvent.y),
+        maybeRenderable.shouldStartSelection(mouseEventWithClickCount.x, mouseEventWithClickCount.y),
       )
 
       if (canStartSelection && maybeRenderable) {
-        this.startSelection(maybeRenderable, mouseEvent.x, mouseEvent.y)
-        this.dispatchMouseEvent(maybeRenderable, mouseEvent)
+        const cc = mouseEventWithClickCount.clickCount
+        if (cc >= 3) {
+          this.selectLine(mouseEventWithClickCount.x, mouseEventWithClickCount.y)
+        } else if (cc === 2) {
+          this.selectWord(mouseEventWithClickCount.x, mouseEventWithClickCount.y)
+          if (this.currentSelection) {
+            this.currentSelection.isDragging = true
+          }
+        } else {
+          this.startSelection(maybeRenderable, mouseEventWithClickCount.x, mouseEventWithClickCount.y)
+        }
+        this.dispatchMouseEvent(maybeRenderable, mouseEventWithClickCount)
         return true
       }
     }
 
-    if (mouseEvent.type === "drag" && this.currentSelection?.isDragging) {
-      this.updateSelection(maybeRenderable, mouseEvent.x, mouseEvent.y)
+    if (mouseEventWithClickCount.type === "drag" && this.currentSelection?.isDragging) {
+      if (this.wordSelectionOrigin) {
+        this.updateSelectionWordSnap(mouseEventWithClickCount.x, mouseEventWithClickCount.y)
+      } else {
+        this.updateSelection(maybeRenderable, mouseEventWithClickCount.x, mouseEventWithClickCount.y)
+      }
 
       if (maybeRenderable) {
-        const event = new MouseEvent(maybeRenderable, { ...mouseEvent, isDragging: true })
+        const event = new MouseEvent(maybeRenderable, { ...mouseEventWithClickCount, isDragging: true })
         maybeRenderable.processMouseEvent(event)
       }
 
       return true
     }
 
-    if (mouseEvent.type === "up" && this.currentSelection?.isDragging) {
+    if (mouseEventWithClickCount.type === "up" && this.currentSelection?.isDragging) {
       if (maybeRenderable) {
-        const event = new MouseEvent(maybeRenderable, { ...mouseEvent, isDragging: true })
+        const event = new MouseEvent(maybeRenderable, { ...mouseEventWithClickCount, isDragging: true })
         maybeRenderable.processMouseEvent(event)
       }
 
@@ -1429,27 +1513,31 @@ export class CliRenderer extends EventEmitter implements RenderContext {
       return true
     }
 
-    if (mouseEvent.type === "down" && mouseEvent.button === MouseButton.LEFT && this.currentSelection) {
-      if (mouseEvent.modifiers.ctrl) {
+    if (
+      mouseEventWithClickCount.type === "down" &&
+      mouseEventWithClickCount.button === MouseButton.LEFT &&
+      this.currentSelection
+    ) {
+      if (mouseEventWithClickCount.modifiers.ctrl) {
         this.currentSelection.isDragging = true
-        this.updateSelection(maybeRenderable, mouseEvent.x, mouseEvent.y)
+        this.updateSelection(maybeRenderable, mouseEventWithClickCount.x, mouseEventWithClickCount.y)
         return true
       }
     }
 
-    if (!sameElement && (mouseEvent.type === "drag" || mouseEvent.type === "move")) {
+    if (!sameElement && (mouseEventWithClickCount.type === "drag" || mouseEventWithClickCount.type === "move")) {
       if (
         this.lastOverRenderable &&
         this.lastOverRenderable !== this.capturedRenderable &&
         !this.lastOverRenderable.isDestroyed
       ) {
-        const event = new MouseEvent(this.lastOverRenderable, { ...mouseEvent, type: "out" })
+        const event = new MouseEvent(this.lastOverRenderable, { ...mouseEventWithClickCount, type: "out" })
         this.lastOverRenderable.processMouseEvent(event)
       }
       this.lastOverRenderable = maybeRenderable
       if (maybeRenderable) {
         const event = new MouseEvent(maybeRenderable, {
-          ...mouseEvent,
+          ...mouseEventWithClickCount,
           type: "over",
           source: this.capturedRenderable,
         })
@@ -1457,19 +1545,19 @@ export class CliRenderer extends EventEmitter implements RenderContext {
       }
     }
 
-    if (this.capturedRenderable && mouseEvent.type !== "up") {
-      const event = new MouseEvent(this.capturedRenderable, mouseEvent)
+    if (this.capturedRenderable && mouseEventWithClickCount.type !== "up") {
+      const event = new MouseEvent(this.capturedRenderable, mouseEventWithClickCount)
       this.capturedRenderable.processMouseEvent(event)
       return true
     }
 
-    if (this.capturedRenderable && mouseEvent.type === "up") {
-      const event = new MouseEvent(this.capturedRenderable, { ...mouseEvent, type: "drag-end" })
+    if (this.capturedRenderable && mouseEventWithClickCount.type === "up") {
+      const event = new MouseEvent(this.capturedRenderable, { ...mouseEventWithClickCount, type: "drag-end" })
       this.capturedRenderable.processMouseEvent(event)
-      this.capturedRenderable.processMouseEvent(new MouseEvent(this.capturedRenderable, mouseEvent))
+      this.capturedRenderable.processMouseEvent(new MouseEvent(this.capturedRenderable, mouseEventWithClickCount))
       if (maybeRenderable) {
         const event = new MouseEvent(maybeRenderable, {
-          ...mouseEvent,
+          ...mouseEventWithClickCount,
           type: "drop",
           source: this.capturedRenderable,
         })
@@ -1485,18 +1573,18 @@ export class CliRenderer extends EventEmitter implements RenderContext {
 
     let event: MouseEvent | undefined
     if (maybeRenderable) {
-      if (mouseEvent.type === "drag" && mouseEvent.button === MouseButton.LEFT) {
+      if (mouseEventWithClickCount.type === "drag" && mouseEventWithClickCount.button === MouseButton.LEFT) {
         this.setCapturedRenderable(maybeRenderable)
       } else {
         this.setCapturedRenderable(undefined)
       }
-      event = this.dispatchMouseEvent(maybeRenderable, mouseEvent)
+      event = this.dispatchMouseEvent(maybeRenderable, mouseEventWithClickCount)
     } else {
       this.setCapturedRenderable(undefined)
       this.lastOverRenderable = undefined
     }
 
-    if (!event?.defaultPrevented && mouseEvent.type === "down" && this.currentSelection) {
+    if (!event?.defaultPrevented && mouseEventWithClickCount.type === "down" && this.currentSelection) {
       this.clearSelection()
     }
 
@@ -2237,6 +2325,7 @@ export class CliRenderer extends EventEmitter implements RenderContext {
       this.currentSelection = null
     }
     this.selectionContainers = []
+    this.wordSelectionOrigin = null
   }
 
   /**
@@ -2252,6 +2341,82 @@ export class CliRenderer extends EventEmitter implements RenderContext {
     this.currentSelection.isStart = true
 
     this.notifySelectablesOfSelectionChange()
+  }
+
+  private setSelectionBounds(renderable: Renderable, anchor: { x: number; y: number }, focus: { x: number; y: number }): void {
+    this.clearSelection()
+    this.selectionContainers.push(renderable.parent || this.root)
+    this.currentSelection = new Selection(renderable, anchor, focus)
+    this.currentSelection.isStart = true
+    this.currentSelection.isDragging = false
+    this.notifySelectablesOfSelectionChange()
+  }
+
+  public selectWord(x: number, y: number): void {
+    const maybeRenderableId = this.hitTest(x, y)
+    const maybeRenderable = Renderable.renderablesByNumber.get(maybeRenderableId)
+    const bounds = maybeRenderable?.getWordSelectionBounds(x, y)
+
+    if (!maybeRenderable || !bounds) return
+
+    this.setSelectionBounds(maybeRenderable, bounds.anchor, bounds.focus)
+    this.finishSelection()
+    this.wordSelectionOrigin = {
+      renderable: maybeRenderable,
+      start: bounds.anchor,
+      end: bounds.focus,
+    }
+  }
+
+  public selectLine(x: number, y: number): void {
+    const maybeRenderableId = this.hitTest(x, y)
+    const maybeRenderable = Renderable.renderablesByNumber.get(maybeRenderableId)
+    const bounds = maybeRenderable?.getLineSelectionBounds(x, y)
+
+    if (!maybeRenderable || !bounds) return
+
+    this.setSelectionBounds(maybeRenderable, bounds.anchor, bounds.focus)
+    this.finishSelection()
+  }
+
+  public updateSelectionWordSnap(x: number, y: number): void {
+    const origin = this.wordSelectionOrigin
+    if (!origin || origin.renderable.isDestroyed) return
+
+    const bounds = origin.renderable.getWordSelectionBounds(x, y)
+    if (!bounds) return
+
+    const comparePoints = (left: { x: number; y: number }, right: { x: number; y: number }): number => {
+      if (left.y !== right.y) return left.y - right.y
+      return left.x - right.x
+    }
+
+    const isBeforeOrigin = comparePoints(bounds.focus, origin.start) <= 0
+    const isAfterOrigin = comparePoints(bounds.anchor, origin.end) >= 0
+
+    if (isBeforeOrigin) {
+      this.setSelectionBounds(origin.renderable, origin.end, bounds.anchor)
+      if (this.currentSelection) {
+        this.currentSelection.isDragging = true
+      }
+      this.wordSelectionOrigin = origin
+      return
+    }
+
+    if (isAfterOrigin) {
+      this.setSelectionBounds(origin.renderable, origin.start, bounds.focus)
+      if (this.currentSelection) {
+        this.currentSelection.isDragging = true
+      }
+      this.wordSelectionOrigin = origin
+      return
+    }
+
+    this.setSelectionBounds(origin.renderable, origin.start, origin.end)
+    if (this.currentSelection) {
+      this.currentSelection.isDragging = true
+    }
+    this.wordSelectionOrigin = origin
   }
 
   public updateSelection(

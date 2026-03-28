@@ -4,6 +4,7 @@ import { OptimizedBuffer } from "./buffer.js"
 import type { KeyEvent, PasteEvent } from "./lib/KeyHandler.js"
 import type { MouseEventType } from "./lib/parse.mouse.js"
 import type { Selection } from "./lib/selection.js"
+import type { SelectionCoordinateBounds } from "./lib/selection-primitives.js"
 import {
   parseAlign,
   parseAlignItems,
@@ -376,6 +377,14 @@ export abstract class Renderable extends BaseRenderable {
 
   public shouldStartSelection(x: number, y: number): boolean {
     return false
+  }
+
+  public getWordSelectionBounds(x: number, y: number): SelectionCoordinateBounds | null {
+    return null
+  }
+
+  public getLineSelectionBounds(x: number, y: number): SelectionCoordinateBounds | null {
+    return null
   }
 
   public focus(): void {

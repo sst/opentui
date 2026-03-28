@@ -3,6 +3,11 @@ import { convertGlobalToLocalSelection, Selection, type LocalSelectionBounds } f
 import { EditBuffer, type LogicalCursor } from "../edit-buffer.js"
 import { EditorView, type VisualCursor } from "../editor-view.js"
 import { RGBA, parseColor } from "../lib/RGBA.js"
+import {
+  createVisualLineProbe,
+  getWordSelectionBoundsForVisualLine,
+  type SelectionCoordinateBounds,
+} from "../lib/selection-primitives.js"
 import type { RenderContext, Highlight, CursorStyleOptions, LineInfoProvider, LineInfo } from "../types.js"
 import type { OptimizedBuffer } from "../buffer.js"
 import { MeasureMode } from "yoga-layout"
@@ -522,6 +527,29 @@ export abstract class EditBufferRenderable extends Renderable implements LineInf
 
   getSelection(): { start: number; end: number } | null {
     return this.editorView.getSelection()
+  }
+
+  public getWordSelectionBounds(x: number, y: number): SelectionCoordinateBounds | null {
+    const probe = createVisualLineProbe(this.editorView, y - this.y, this.height, this._selectionBg, this._selectionFg)
+    if (!probe) return null
+
+    const bounds = getWordSelectionBoundsForVisualLine(probe, x - this.x)
+    if (!bounds) return null
+
+    return {
+      anchor: { x: this.x + bounds.startX, y: this.y + probe.localY },
+      focus: { x: this.x + bounds.endX, y: this.y + probe.localY },
+    }
+  }
+
+  public getLineSelectionBounds(_x: number, y: number): SelectionCoordinateBounds | null {
+    const probe = createVisualLineProbe(this.editorView, y - this.y, this.height, this._selectionBg, this._selectionFg)
+    if (!probe) return null
+
+    return {
+      anchor: { x: this.x, y: this.y + probe.localY },
+      focus: { x: this.x + probe.width, y: this.y + probe.localY },
+    }
   }
 
   // Undefined = 0,

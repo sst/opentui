@@ -3,6 +3,11 @@ import { convertGlobalToLocalSelection, Selection, type LocalSelectionBounds } f
 import { TextBuffer, type TextChunk } from "../text-buffer.js"
 import { TextBufferView } from "../text-buffer-view.js"
 import { RGBA, parseColor } from "../lib/RGBA.js"
+import {
+  createVisualLineProbe,
+  getWordSelectionBoundsForVisualLine,
+  type SelectionCoordinateBounds,
+} from "../lib/selection-primitives.js"
 import { type RenderContext, type LineInfoProvider } from "../types.js"
 import type { OptimizedBuffer } from "../buffer.js"
 import { MeasureMode } from "yoga-layout"
@@ -473,6 +478,29 @@ export abstract class TextBufferRenderable extends Renderable implements LineInf
 
   getSelection(): { start: number; end: number } | null {
     return this.textBufferView.getSelection()
+  }
+
+  public getWordSelectionBounds(x: number, y: number): SelectionCoordinateBounds | null {
+    const probe = createVisualLineProbe(this.textBufferView, y - this.y, this.height, this._selectionBg, this._selectionFg)
+    if (!probe) return null
+
+    const bounds = getWordSelectionBoundsForVisualLine(probe, x - this.x)
+    if (!bounds) return null
+
+    return {
+      anchor: { x: this.x + bounds.startX, y: this.y + probe.localY },
+      focus: { x: this.x + bounds.endX, y: this.y + probe.localY },
+    }
+  }
+
+  public getLineSelectionBounds(_x: number, y: number): SelectionCoordinateBounds | null {
+    const probe = createVisualLineProbe(this.textBufferView, y - this.y, this.height, this._selectionBg, this._selectionFg)
+    if (!probe) return null
+
+    return {
+      anchor: { x: this.x, y: this.y + probe.localY },
+      focus: { x: this.x + probe.width, y: this.y + probe.localY },
+    }
   }
 
   render(buffer: OptimizedBuffer, deltaTime: number): void {
