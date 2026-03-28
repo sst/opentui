@@ -634,18 +634,19 @@ export class StdinParser {
     }
   }
 
-  // Marks the parser for forced flush if enough time has passed since
-  // incomplete data arrived. Does not immediately emit events — the next
-  // read() or drain() does the actual flush. This separation keeps the
+  // Marks the parser for forced flush. Called by the timeout callback after
+  // the configured delay has elapsed. Does not immediately emit events — the
+  // next read() or drain() does the actual flush. This separation keeps the
   // timer callback from emitting events mid-flight in user code.
-  public flushTimeout(nowMsValue: number = this.clock.now()): void {
+  //
+  // Note: we trust the timer and don't re-check elapsed time. setTimeout
+  // fires based on the event loop's internal clock, but clock.now() may use
+  // a different time source (e.g. performance.now()) that can report slightly
+  // less elapsed time, causing the check to intermittently fail.
+  public flushTimeout(): void {
     this.ensureAlive()
 
     if (this.paste || this.pendingSinceMs === null || this.pending.length === 0) {
-      return
-    }
-
-    if (nowMsValue < this.pendingSinceMs || nowMsValue - this.pendingSinceMs < this.timeoutMs) {
       return
     }
 
@@ -1726,7 +1727,7 @@ export class StdinParser {
       }
 
       try {
-        this.flushTimeout(this.clock.now())
+        this.flushTimeout()
         this.onTimeoutFlush?.()
       } catch (error) {
         console.error("stdin parser timeout flush failed", error)
