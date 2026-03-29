@@ -456,6 +456,7 @@ function startStreaming() {
 
 export async function run(rendererInstance: CliRenderer): Promise<void> {
   renderer = rendererInstance
+  showingHelp = false
 
   rendererDestroyHandler = () => {
     stopStreaming()
@@ -709,6 +710,7 @@ export function destroy(rendererInstance: CliRenderer): void {
   statusText = null
   syntaxStyle = null
   helpModal = null
+  showingHelp = false
 
   renderer = null
 }

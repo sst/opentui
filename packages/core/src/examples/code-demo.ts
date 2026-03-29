@@ -586,6 +586,7 @@ let showingHelp = false
 
 export async function run(rendererInstance: CliRenderer): Promise<void> {
   renderer = rendererInstance
+  showingHelp = false
   renderer.start()
   const getCurrentTheme = () => themes[currentThemeIndex]
   renderer.setBackgroundColor(getCurrentTheme().backgroundColor)
@@ -908,6 +909,7 @@ export function destroy(rendererInstance: CliRenderer): void {
   timingText = null
   syntaxStyle = null
   helpModal = null
+  showingHelp = false
 
   renderer = null
 }
