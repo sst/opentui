@@ -1,7 +1,7 @@
 import { test, expect, beforeEach, afterEach } from "bun:test"
 import { DiffRenderable } from "./Diff.js"
 import { SyntaxStyle } from "../syntax-style.js"
-import { RGBA } from "../lib/RGBA.js"
+import { RGBA, parseColor } from "../lib/RGBA.js"
 import { createMockMouse, createTestRenderer, type TestRenderer } from "../testing.js"
 import { MockTreeSitterClient } from "../testing/mock-tree-sitter-client.js"
 import type { SimpleHighlight } from "../lib/tree-sitter/types.js"
@@ -616,6 +616,80 @@ test("DiffRenderable - custom colors applied correctly", async () => {
   // Should not crash with custom colors
   const frame = captureFrame()
   expect(frame).toContain('console.log("Hello")')
+})
+
+test("DiffRenderable - line number fg/bg colors update after construction", async () => {
+  const syntaxStyle = SyntaxStyle.fromStyles({
+    default: { fg: RGBA.fromValues(1, 1, 1, 1) },
+  })
+
+  const diffRenderable = new DiffRenderable(currentRenderer, {
+    id: "test-diff",
+    diff: simpleDiff,
+    view: "unified",
+    syntaxStyle,
+    lineNumberFg: "#445566",
+    lineNumberBg: "#101820",
+    width: "100%",
+    height: "100%",
+  })
+
+  currentRenderer.root.add(diffRenderable)
+  await renderOnce()
+
+  const findCharPosition = (char: string): { x: number; y: number } | null => {
+    const buffer = currentRenderer.currentRenderBuffer
+    const charBuffer = buffer.buffers.char
+    const codePoint = char.codePointAt(0)
+    if (codePoint === undefined) return null
+
+    for (let y = 0; y < buffer.height; y++) {
+      for (let x = 0; x < buffer.width; x++) {
+        if (charBuffer[y * buffer.width + x] === codePoint) {
+          return { x, y }
+        }
+      }
+    }
+
+    return null
+  }
+
+  const getColorAt = (channel: "fg" | "bg", x: number, y: number) => {
+    const buffer = currentRenderer.currentRenderBuffer
+    const colorBuffer = channel === "fg" ? buffer.buffers.fg : buffer.buffers.bg
+    const offset = (y * buffer.width + x) * 4
+
+    return {
+      r: colorBuffer[offset],
+      g: colorBuffer[offset + 1],
+      b: colorBuffer[offset + 2],
+      a: colorBuffer[offset + 3],
+    }
+  }
+
+  const expectColorClose = (
+    actual: { r: number; g: number; b: number; a: number },
+    expected: { r: number; g: number; b: number; a: number },
+  ) => {
+    expect(actual.r).toBeCloseTo(expected.r, 2)
+    expect(actual.g).toBeCloseTo(expected.g, 2)
+    expect(actual.b).toBeCloseTo(expected.b, 2)
+    expect(actual.a).toBeCloseTo(expected.a, 2)
+  }
+
+  const initialPos = findCharPosition("1")
+  expect(initialPos).not.toBeNull()
+  expectColorClose(getColorAt("fg", initialPos!.x, initialPos!.y), parseColor("#445566"))
+  expectColorClose(getColorAt("bg", initialPos!.x, initialPos!.y), parseColor("#101820"))
+
+  diffRenderable.lineNumberFg = "#ff00ff"
+  diffRenderable.lineNumberBg = "#2a2a2a"
+  await renderOnce()
+
+  const updatedPos = findCharPosition("1")
+  expect(updatedPos).not.toBeNull()
+  expectColorClose(getColorAt("fg", updatedPos!.x, updatedPos!.y), parseColor("#ff00ff"))
+  expectColorClose(getColorAt("bg", updatedPos!.x, updatedPos!.y), parseColor("#2a2a2a"))
 })
 
 test("DiffRenderable - line numbers hidden for empty alignment lines in split view", async () => {
