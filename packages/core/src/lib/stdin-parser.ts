@@ -642,11 +642,20 @@ export class StdinParser {
   public flushTimeout(nowMsValue: number = this.clock.now()): void {
     this.ensureAlive()
 
-    if (this.paste || this.pendingSinceMs === null || this.pending.length === 0) {
+    if (this.pendingSinceMs !== null && (nowMsValue < this.pendingSinceMs || nowMsValue - this.pendingSinceMs < this.timeoutMs)) {
       return
     }
 
-    if (nowMsValue < this.pendingSinceMs || nowMsValue - this.pendingSinceMs < this.timeoutMs) {
+    this.tryForceFlush()
+  }
+
+  // Sets forceFlush when there are pending bytes outside of a paste.
+  // Extracted so the setTimeout callback in reconcileTimeoutState() can
+  // bypass the elapsed-time check in flushTimeout() — setTimeout already
+  // enforced the delay and re-checking via clock.now() can race (the
+  // clock may report slightly less time than setTimeout's own timer).
+  private tryForceFlush(): void {
+    if (this.paste || this.pendingSinceMs === null || this.pending.length === 0) {
       return
     }
 
@@ -1727,7 +1736,7 @@ export class StdinParser {
       }
 
       try {
-        this.flushTimeout(this.clock.now())
+        this.tryForceFlush()
         this.onTimeoutFlush?.()
       } catch (error) {
         console.error("stdin parser timeout flush failed", error)

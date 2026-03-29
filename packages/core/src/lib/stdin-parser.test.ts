@@ -1,6 +1,7 @@
 import { describe, expect, test } from "bun:test"
 import { Buffer } from "node:buffer"
 import { ManualClock } from "../testing/manual-clock.js"
+import type { Clock, TimerHandle } from "./clock.js"
 import type { ScrollInfo } from "./parse.mouse"
 import { StdinParser, type StdinEvent, type StdinParserOptions } from "./stdin-parser.js"
 
@@ -2199,6 +2200,61 @@ describe("StdinParser", () => {
         expect(snap(p)).toEqual([paste("\x1b[20".repeat(100))])
       } finally {
         p.destroy()
+      }
+    })
+  })
+
+  describe("clock skew race condition", () => {
+    test("timer callback flushes even when clock reports slightly less elapsed time than timeoutMs", () => {
+      const inner = new ManualClock()
+      let insideTimerCallback = false
+
+      // Wraps ManualClock so that now() returns pendingSinceMs + timeoutMs - 1
+      // during the timer callback, simulating real-world clock skew where
+      // performance.now() reports slightly less time than setTimeout enforced.
+      const skewClock: Clock = {
+        now(): number {
+          if (insideTimerCallback) {
+            // Report 1ms less than the timeout requires — this is the
+            // race condition that kept bytes stuck before the fix.
+            return 9
+          }
+          return inner.now()
+        },
+        setTimeout(fn: () => void, delayMs: number): TimerHandle {
+          return inner.setTimeout(() => {
+            insideTimerCallback = true
+            try {
+              fn()
+            } finally {
+              insideTimerCallback = false
+            }
+          }, delayMs)
+        },
+        clearTimeout(handle: TimerHandle): void {
+          inner.clearTimeout(handle)
+        },
+        setInterval(fn: () => void, delayMs: number): TimerHandle {
+          return inner.setInterval(fn, delayMs)
+        },
+        clearInterval(handle: TimerHandle): void {
+          inner.clearInterval(handle)
+        },
+      }
+
+      const parser = new StdinParser({ armTimeouts: true, clock: skewClock })
+      try {
+        parser.push(Buffer.from("\x1b"))
+        expect(snap(parser)).toEqual([])
+
+        // Fire the timer — the skewed clock will report only 9ms elapsed,
+        // but the fix ensures tryForceFlush() is called directly, bypassing
+        // the time re-check.
+        inner.advance(10)
+
+        expect(snap(parser)).toEqual([k("escape", { raw: "\x1b" })])
+      } finally {
+        parser.destroy()
       }
     })
   })
