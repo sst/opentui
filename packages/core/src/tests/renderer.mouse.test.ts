@@ -1,9 +1,9 @@
 import { beforeEach, describe, expect, test } from "bun:test"
 import { createTestRenderer, MouseButtons, type MockMouse, type TestRenderer } from "../testing.js"
 import { Renderable, type RenderableOptions } from "../Renderable.js"
+import type { MouseEvent } from "../renderer.js"
 import type { RenderContext } from "../types.js"
 import type { Selection } from "../lib/selection.js"
-import type { MouseEvent } from "../renderer.js"
 
 class TestRenderable extends Renderable {
   public selectionActive = false
@@ -198,9 +198,10 @@ describe("renderer handleMouseData", () => {
 
       await mockMouse.scroll(target.x + 1, target.y + 1, "down")
 
-      expect(scrollEvent?.type).toBe("scroll")
-      expect(scrollEvent?.scroll?.direction).toBe("down")
-      expect(scrollEvent?.scroll?.delta).toBe(1)
+      expect(scrollEvent).not.toBeNull()
+      expect(scrollEvent!.type).toBe("scroll")
+      expect(scrollEvent!.scroll?.direction).toBe("down")
+      expect(scrollEvent!.scroll?.delta).toBe(1)
     } finally {
       renderer.destroy()
     }
@@ -264,7 +265,7 @@ describe("renderer handleMouseData", () => {
 
   test("console mouse handling consumes events inside console bounds", async () => {
     try {
-      renderer.useConsole = true
+      renderer.consoleMode = "console-overlay"
       renderer.console.show()
 
       const target = new TestRenderable(renderer, {
@@ -299,7 +300,7 @@ describe("renderer handleMouseData", () => {
 
   test("console mouse handling falls through when not handled", async () => {
     try {
-      renderer.useConsole = true
+      renderer.consoleMode = "console-overlay"
       renderer.console.show()
 
       const target = new TestRenderable(renderer, {
@@ -375,8 +376,10 @@ describe("renderer handleMouseData", () => {
       await mockMouse.release(endX, endY)
 
       expect(renderer.hasSelection).toBe(true)
-      expect(dragEvent?.isDragging).toBe(true)
-      expect(upEvent?.isDragging).toBe(true)
+      expect(dragEvent).not.toBeNull()
+      expect(upEvent).not.toBeNull()
+      expect(dragEvent!.isDragging).toBe(true)
+      expect(upEvent!.isDragging).toBe(true)
       expect(renderer.getSelection()?.isDragging).toBe(false)
     } finally {
       renderer.destroy()
@@ -897,7 +900,7 @@ describe("renderer handleMouseData", () => {
         modifiers: { shift: true, alt: true },
       })
 
-      expect(modifiers).toEqual({ shift: true, alt: true, ctrl: false })
+      expect(modifiers!).toEqual({ shift: true, alt: true, ctrl: false })
     } finally {
       renderer.destroy()
     }
@@ -1212,7 +1215,8 @@ describe("renderer handleMouseData split height", () => {
     ;({ renderer, mockMouse, renderOnce } = await createTestRenderer({
       width: 40,
       height: baseHeight,
-      experimental_splitHeight: splitHeight,
+      screenMode: "split-footer",
+      footerHeight: splitHeight,
     }))
   })
 
@@ -1240,7 +1244,8 @@ describe("renderer handleMouseData split height", () => {
 
       const screenY = renderOffset + target.y + 1
       await mockMouse.click(target.x + 1, screenY)
-      expect(downEvent?.y).toBe(target.y + 1)
+      expect(downEvent).not.toBeNull()
+      expect(downEvent!.y).toBe(target.y + 1)
     } finally {
       renderer.destroy()
     }

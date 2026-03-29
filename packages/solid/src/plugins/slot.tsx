@@ -92,20 +92,36 @@ export function Slot<
   const registry = () => local.registry
   const pluginFailurePlaceholder = () => local.pluginFailurePlaceholder
   const [version, setVersion] = createSignal(0)
+  let queued = false
+  let disposed = false
 
   const unsubscribe = registry().subscribe(() => {
+    if (queued) return
+    queued = true
     setVersion((current) => current + 1)
+    queueMicrotask(() => {
+      queued = false
+      if (disposed) return
+    })
   })
-  onCleanup(unsubscribe)
+  onCleanup(() => {
+    disposed = true
+    unsubscribe()
+  })
 
   const entries = createMemo<Array<ResolvedSlotRenderer<JSX.Element, TSlots[K], TContext>>>((previousEntries = []) => {
     version()
     const resolvedEntries = registry().resolveEntries(local.name as K) as Array<
       ResolvedSlotRenderer<JSX.Element, TSlots[K], TContext>
     >
-    const previousById = new Map(previousEntries.map((entry) => [entry.id, entry]))
 
-    return resolvedEntries.map((entry) => {
+    if (resolvedEntries.length === 0) {
+      if (previousEntries.length === 0) return previousEntries
+      return []
+    }
+
+    const previousById = new Map(previousEntries.map((entry) => [entry.id, entry]))
+    const nextEntries = resolvedEntries.map((entry) => {
       const previousEntry = previousById.get(entry.id)
       if (previousEntry && previousEntry.renderer === entry.renderer) {
         return previousEntry
@@ -113,6 +129,13 @@ export function Slot<
 
       return entry
     })
+
+    const unchanged =
+      nextEntries.length === previousEntries.length &&
+      nextEntries.every((entry, index) => entry === previousEntries[index])
+    if (unchanged) return previousEntries
+
+    return nextEntries
   })
 
   const entryIds = createMemo(() => entries().map((entry) => entry.id))
@@ -120,13 +143,17 @@ export function Slot<
 
   const slotName = () => String(local.name)
 
-  const FallbackView = (): JSX.Element => {
-    const resolvedFallbackChildren = children(() => local.children)
-    return <>{resolvedFallbackChildren()}</>
-  }
-
+  let fallbackView: (() => JSX.Element) | undefined
   const renderFallback = (): JSX.Element => {
-    return <FallbackView />
+    if (fallbackView) return fallbackView()
+
+    const resolvedFallbackChildren = children(() => local.children)
+    fallbackView = () => {
+      const value = resolvedFallbackChildren()
+      return (value ?? null) as JSX.Element
+    }
+
+    return fallbackView()
   }
 
   const resolveFallback = (fallbackValue?: (() => JSX.Element) | undefined): JSX.Element => fallbackValue?.() ?? null

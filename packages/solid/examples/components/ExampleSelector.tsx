@@ -128,7 +128,7 @@ const ExampleSelector = () => {
   const renderer = useRenderer()
 
   onMount(() => {
-    renderer.useConsole = true
+    renderer.consoleMode = "console-overlay"
     // renderer.console.show();
   })
 

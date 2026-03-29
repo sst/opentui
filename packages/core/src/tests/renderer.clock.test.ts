@@ -16,6 +16,23 @@ afterEach(() => {
   renderer.destroy()
 })
 
+test("renderer init does not pre-schedule frames when size is unchanged", async () => {
+  let frameCalls = 0
+  renderer.setFrameCallback(async () => {
+    frameCalls++
+  })
+
+  // @ts-expect-error - inspect private renderer scheduling state in regression test
+  expect(renderer.updateScheduled).toBe(false)
+  // @ts-expect-error - inspect private manual clock timers in regression test
+  expect(clock.timers.size).toBe(0)
+
+  clock.advance(100)
+  await Promise.resolve()
+
+  expect(frameCalls).toBe(0)
+})
+
 test("requestRender() does not stall after a backward clock jump", async () => {
   clock.setTime(10_000)
   // @ts-expect-error - inspect private renderer timing state in regression test
