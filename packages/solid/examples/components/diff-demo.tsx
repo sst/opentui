@@ -261,6 +261,7 @@ export default function DiffDemo() {
         padding={1}
         border
         borderColor={currentTheme().borderColor}
+        flexShrink={0}
       >
         <text fg={currentTheme().selectionFg}>Diff Demo - Unified & Split View</text>
         <text fg={currentTheme().lineNumberFg}>Theme: {currentTheme().name}</text>
@@ -272,6 +273,7 @@ export default function DiffDemo() {
 
       <box
         flexGrow={1}
+        flexBasis={0}
         border
         borderStyle="single"
         borderColor={currentTheme().borderColor}
