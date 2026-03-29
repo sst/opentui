@@ -268,7 +268,10 @@ export default function DiffDemo() {
         <text fg={currentTheme().lineNumberFg}>Keybindings:</text>
         <text fg={currentTheme().selectionFg}> V - Toggle view ({currentView().toUpperCase()})</text>
         <text fg={currentTheme().selectionFg}> L - Toggle line numbers ({showLineNumbers() ? "ON" : "OFF"})</text>
-        <text fg={currentTheme().selectionFg}> T - Cycle theme ({currentThemeIndex() + 1}/{themes.length})</text>
+        <text fg={currentTheme().selectionFg}>
+          {" "}
+          T - Cycle theme ({currentThemeIndex() + 1}/{themes.length})
+        </text>
       </box>
 
       <box
