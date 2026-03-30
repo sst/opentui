@@ -104,6 +104,39 @@ test("loop() clamps negative deltaTime after a backward clock jump", async () =>
   expect(deltas).toEqual([0])
 })
 
+test("targetFps setter updates frame timing", () => {
+  renderer.targetFps = 120
+
+  expect(renderer.targetFps).toBe(120)
+  // @ts-expect-error - inspect private renderer timing state in regression test
+  expect(renderer.targetFrameTime).toBe(1000 / 120)
+})
+
+test("maxFps setter updates requestRender throttle timing", async () => {
+  let renderCalled = false
+
+  // @ts-expect-error - intercept private render method in regression test
+  renderer.renderNative = () => {
+    renderCalled = true
+  }
+
+  renderer.maxFps = 10
+
+  expect(renderer.maxFps).toBe(10)
+  // @ts-expect-error - inspect private renderer timing state in regression test
+  expect(renderer.minTargetFrameTime).toBe(1000 / 10)
+
+  renderer.requestRender()
+
+  clock.advance(99)
+  await Promise.resolve()
+  expect(renderCalled).toBe(false)
+
+  clock.advance(1)
+  await Promise.resolve()
+  expect(renderCalled).toBe(true)
+})
+
 test("start() does not double-schedule frames when a render was already queued", async () => {
   let renderCalls = 0
 
