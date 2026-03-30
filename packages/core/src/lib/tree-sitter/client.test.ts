@@ -328,14 +328,16 @@ describe("TreeSitterClient", () => {
 
     await client.updateBuffer(
       1,
-      [{
-        startIndex: initialCode.length,
-        oldEndIndex: initialCode.length,
-        newEndIndex: nextCode.length,
-        startPosition: { row: 0, column: initialCode.length },
-        oldEndPosition: { row: 0, column: initialCode.length },
-        newEndPosition: { row: 1, column: 14 },
-      }],
+      [
+        {
+          startIndex: initialCode.length,
+          oldEndIndex: initialCode.length,
+          newEndIndex: nextCode.length,
+          startPosition: { row: 0, column: initialCode.length },
+          oldEndPosition: { row: 0, column: initialCode.length },
+          newEndPosition: { row: 1, column: 14 },
+        },
+      ],
       nextCode,
       2,
     )
