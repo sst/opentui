@@ -4,6 +4,7 @@ const buffer = @import("../buffer.zig");
 const text_buffer = @import("../text-buffer.zig");
 const text_buffer_view = @import("../text-buffer-view.zig");
 const gp = @import("../grapheme.zig");
+const link = @import("../link.zig");
 
 const OptimizedBuffer = buffer.OptimizedBuffer;
 const UnifiedTextBuffer = text_buffer.UnifiedTextBuffer;
@@ -58,7 +59,8 @@ fn setupTextBuffer(
     text: []const u8,
     wrap_width: ?u32,
 ) !struct { *UnifiedTextBuffer, *UnifiedTextBufferView } {
-    const tb = try UnifiedTextBuffer.init(allocator, pool, .unicode);
+    const link_pool = link.initGlobalLinkPool(allocator);
+    const tb = try UnifiedTextBuffer.init(allocator, pool, link_pool, .unicode);
     errdefer tb.deinit();
 
     try tb.setText(text);

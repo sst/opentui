@@ -1,6 +1,6 @@
-import { TextAttributes, createCliRenderer, TextRenderable, BoxRenderable, type KeyEvent } from "../index"
-import { setupCommonDemoKeys } from "./lib/standalone-keys"
-import type { CliRenderer } from "../index"
+import { TextAttributes, createCliRenderer, TextRenderable, BoxRenderable, type KeyEvent } from "../index.js"
+import { setupCommonDemoKeys } from "./lib/standalone-keys.js"
+import type { CliRenderer } from "../index.js"
 
 let globalKeyboardHandler: ((key: KeyEvent) => void) | null = null
 let zIndexPhase = 0

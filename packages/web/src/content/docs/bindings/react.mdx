@@ -55,6 +55,16 @@ Configure your `tsconfig.json`:
 }
 ```
 
+## Runtime-loaded plugin support (if needed)
+
+If your app loads external TS/TSX modules at runtime (for example a file-based plugin system), import this once in your app entry before dynamic imports:
+
+```ts
+import "@opentui/react/runtime-plugin-support"
+```
+
+Use this for both normal Bun runs and standalone compiled executables.
+
 ## Components
 
 OpenTUI React provides JSX intrinsic elements that map to core renderables:
@@ -104,6 +114,8 @@ import { createRoot } from "@opentui/react"
 const renderer = await createCliRenderer()
 createRoot(renderer).render(<App />)
 ```
+
+For plugin slots, see [Plugin Slots overview](/docs/plugins/slots) and [React slots](/docs/plugins/react).
 
 ## Hooks
 

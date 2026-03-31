@@ -275,6 +275,8 @@ export function App() {
   )
 }
 
-const renderer = await createCliRenderer({ exitOnCtrlC: true, targetFps: 60 })
-renderer.setBackgroundColor("#0D1117")
-createRoot(renderer).render(<App />)
+if (import.meta.main) {
+  const renderer = await createCliRenderer({ exitOnCtrlC: true, targetFps: 60 })
+  renderer.setBackgroundColor("#0D1117")
+  createRoot(renderer).render(<App />)
+}

@@ -1,7 +1,8 @@
 import { test, expect, beforeEach, afterEach, describe, spyOn } from "bun:test"
 import { Buffer } from "node:buffer"
-import { createTestRenderer, type TestRenderer, type MockInput, type MockMouse } from "../testing/test-renderer"
-import { Renderable } from "../Renderable"
+import { createTestRenderer, type TestRenderer, type MockInput, type MockMouse } from "../testing/test-renderer.js"
+import { Renderable } from "../Renderable.js"
+import { ManualClock } from "../testing/manual-clock.js"
 
 class TestRenderable extends Renderable {
   constructor(renderer: TestRenderer, options: any) {
@@ -14,17 +15,16 @@ let mockInput: MockInput
 let mockMouse: MockMouse
 let renderOnce: () => Promise<void>
 let restoreSpy: ReturnType<typeof spyOn>
+let clock: ManualClock
 
 beforeEach(async () => {
-  await new Promise((resolve) => setTimeout(resolve, 15))
+  clock = new ManualClock()
   ;({ renderer, mockInput, mockMouse, renderOnce } = await createTestRenderer({
     useMouse: true,
+    clock,
   }))
 
-  // Spy on restoreTerminalModes — spyOn wraps the real method, tracks calls,
-  // and mockRestore() in afterEach puts the original back on the singleton.
-  // No capability mocks are needed: the sequences under test (\x1b[I, \x1b[O)
-  // are not capability responses and never reach processCapabilityResponse.
+  // @ts-expect-error - testing private renderer internals
   restoreSpy = spyOn(renderer.lib, "restoreTerminalModes")
 })
 
@@ -34,24 +34,34 @@ afterEach(() => {
 })
 
 describe("focus restore - terminal mode re-enable on focus-in", () => {
-  test("restoreTerminalModes is called on focus-in event", async () => {
+  test("restoreTerminalModes is NOT called on focus-in without prior blur", async () => {
     renderer.stdin.emit("data", Buffer.from("\x1b[I"))
-    await new Promise((resolve) => setTimeout(resolve, 15))
+    clock.advance(15)
+
+    expect(restoreSpy).toHaveBeenCalledTimes(0)
+  })
+
+  test("restoreTerminalModes is called once after blur then focus-in", async () => {
+    renderer.stdin.emit("data", Buffer.from("\x1b[O"))
+    clock.advance(15)
+
+    renderer.stdin.emit("data", Buffer.from("\x1b[I"))
+    clock.advance(15)
 
     expect(restoreSpy).toHaveBeenCalledTimes(1)
   })
 
   test("restoreTerminalModes is NOT called on blur event", async () => {
     renderer.stdin.emit("data", Buffer.from("\x1b[O"))
-    await new Promise((resolve) => setTimeout(resolve, 15))
+    clock.advance(15)
 
     expect(restoreSpy).toHaveBeenCalledTimes(0)
   })
 
-  test("restoreTerminalModes is called before focus event is emitted", async () => {
+  test("restoreTerminalModes is called before focus event is emitted after blur", async () => {
     const callOrder: string[] = []
 
-    restoreSpy.mockImplementation((...args: any[]) => {
+    restoreSpy.mockImplementation(() => {
       callOrder.push("restoreTerminalModes")
     })
 
@@ -59,25 +69,43 @@ describe("focus restore - terminal mode re-enable on focus-in", () => {
       callOrder.push("focus-event")
     })
 
+    renderer.stdin.emit("data", Buffer.from("\x1b[O"))
+    clock.advance(15)
+
     renderer.stdin.emit("data", Buffer.from("\x1b[I"))
-    await new Promise((resolve) => setTimeout(resolve, 15))
+    clock.advance(15)
 
     expect(callOrder).toEqual(["restoreTerminalModes", "focus-event"])
   })
 
-  test("multiple focus-in events each trigger restoreTerminalModes", async () => {
-    // Simulate: focus lost -> focus gained -> focus lost -> focus gained
+  test("repeated focus-in events only restore once per blur cycle", async () => {
     renderer.stdin.emit("data", Buffer.from("\x1b[O"))
-    await new Promise((resolve) => setTimeout(resolve, 15))
+    clock.advance(15)
 
     renderer.stdin.emit("data", Buffer.from("\x1b[I"))
-    await new Promise((resolve) => setTimeout(resolve, 15))
-
-    renderer.stdin.emit("data", Buffer.from("\x1b[O"))
-    await new Promise((resolve) => setTimeout(resolve, 15))
+    clock.advance(15)
 
     renderer.stdin.emit("data", Buffer.from("\x1b[I"))
-    await new Promise((resolve) => setTimeout(resolve, 15))
+    clock.advance(15)
+
+    renderer.stdin.emit("data", Buffer.from("\x1b[I"))
+    clock.advance(15)
+
+    expect(restoreSpy).toHaveBeenCalledTimes(1)
+  })
+
+  test("multiple blur/focus cycles each trigger one restore", async () => {
+    renderer.stdin.emit("data", Buffer.from("\x1b[O"))
+    clock.advance(15)
+
+    renderer.stdin.emit("data", Buffer.from("\x1b[I"))
+    clock.advance(15)
+
+    renderer.stdin.emit("data", Buffer.from("\x1b[O"))
+    clock.advance(15)
+
+    renderer.stdin.emit("data", Buffer.from("\x1b[I"))
+    clock.advance(15)
 
     expect(restoreSpy).toHaveBeenCalledTimes(2)
   })
@@ -94,12 +122,41 @@ describe("focus restore - terminal mode re-enable on focus-in", () => {
     })
 
     renderer.stdin.emit("data", Buffer.from("\x1b[I"))
-    await new Promise((resolve) => setTimeout(resolve, 15))
+    clock.advance(15)
 
     renderer.stdin.emit("data", Buffer.from("\x1b[O"))
-    await new Promise((resolve) => setTimeout(resolve, 15))
+    clock.advance(15)
 
     expect(events).toEqual(["focus", "blur"])
+  })
+
+  test("duplicate focus and blur sequences only emit transitions once", async () => {
+    const events: string[] = []
+
+    renderer.on("focus", () => {
+      events.push("focus")
+    })
+
+    renderer.on("blur", () => {
+      events.push("blur")
+    })
+
+    renderer.stdin.emit("data", Buffer.from("\x1b[O"))
+    clock.advance(15)
+    renderer.stdin.emit("data", Buffer.from("\x1b[O"))
+    clock.advance(15)
+
+    renderer.stdin.emit("data", Buffer.from("\x1b[I"))
+    clock.advance(15)
+    renderer.stdin.emit("data", Buffer.from("\x1b[I"))
+    clock.advance(15)
+
+    renderer.stdin.emit("data", Buffer.from("\x1b[O"))
+    clock.advance(15)
+    renderer.stdin.emit("data", Buffer.from("\x1b[O"))
+    clock.advance(15)
+
+    expect(events).toEqual(["blur", "focus", "blur"])
   })
 
   test("focus events do not trigger keypress events", async () => {
@@ -110,9 +167,9 @@ describe("focus restore - terminal mode re-enable on focus-in", () => {
     })
 
     renderer.stdin.emit("data", Buffer.from("\x1b[I"))
-    await new Promise((resolve) => setTimeout(resolve, 15))
+    clock.advance(15)
     renderer.stdin.emit("data", Buffer.from("\x1b[O"))
-    await new Promise((resolve) => setTimeout(resolve, 15))
+    clock.advance(15)
 
     expect(keypresses).toHaveLength(0)
   })
@@ -143,9 +200,9 @@ describe("focus restore - terminal mode re-enable on focus-in", () => {
 
     // Simulate focus loss and regain
     renderer.stdin.emit("data", Buffer.from("\x1b[O"))
-    await new Promise((resolve) => setTimeout(resolve, 15))
+    clock.advance(15)
     renderer.stdin.emit("data", Buffer.from("\x1b[I"))
-    await new Promise((resolve) => setTimeout(resolve, 15))
+    clock.advance(15)
 
     // Verify restoreTerminalModes was called
     expect(restoreSpy).toHaveBeenCalledTimes(1)
@@ -168,20 +225,20 @@ describe("focus restore - terminal mode re-enable on focus-in", () => {
 
     // Verify keyboard works initially
     mockInput.pressKey("a")
-    await new Promise((resolve) => setTimeout(resolve, 15))
+    clock.advance(15)
     expect(keyEventCount).toBeGreaterThan(0)
 
     const countBefore = keyEventCount
 
     // Simulate focus loss and regain
     renderer.stdin.emit("data", Buffer.from("\x1b[O"))
-    await new Promise((resolve) => setTimeout(resolve, 15))
+    clock.advance(15)
     renderer.stdin.emit("data", Buffer.from("\x1b[I"))
-    await new Promise((resolve) => setTimeout(resolve, 15))
+    clock.advance(15)
 
     // Verify keyboard still works after focus restore
     mockInput.pressKey("b")
-    await new Promise((resolve) => setTimeout(resolve, 15))
+    clock.advance(15)
     expect(keyEventCount).toBeGreaterThan(countBefore)
 
     renderer.keyInput.off("keypress", onKeypress)
@@ -193,7 +250,7 @@ describe("focus restore - terminal mode re-enable on focus-in", () => {
       renderer.stdin.emit("data", Buffer.from("\x1b[O"))
       renderer.stdin.emit("data", Buffer.from("\x1b[I"))
     }
-    await new Promise((resolve) => setTimeout(resolve, 15))
+    clock.advance(15)
 
     expect(restoreSpy).toHaveBeenCalledTimes(10)
   })

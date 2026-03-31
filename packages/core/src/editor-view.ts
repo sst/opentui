@@ -1,8 +1,8 @@
-import { RGBA } from "./lib/RGBA"
-import { resolveRenderLib, type RenderLib, type VisualCursor, type LineInfo } from "./zig"
+import { RGBA } from "./lib/RGBA.js"
+import { resolveRenderLib, type RenderLib, type VisualCursor, type LineInfo } from "./zig.js"
 import { type Pointer } from "bun:ffi"
-import type { EditBuffer } from "./edit-buffer"
-import { createExtmarksController } from "./lib"
+import type { EditBuffer } from "./edit-buffer.js"
+import { createExtmarksController } from "./lib/index.js"
 
 export interface Viewport {
   offsetY: number
@@ -262,7 +262,7 @@ export class EditorView {
     this.lib.editorViewSetTabIndicatorColor(this.viewPtr, color)
   }
 
-  public measureForDimensions(width: number, height: number): { lineCount: number; maxWidth: number } | null {
+  public measureForDimensions(width: number, height: number): { lineCount: number; widthColsMax: number } | null {
     this.guard()
     if (!this._textBufferViewPtr) {
       this._textBufferViewPtr = this.lib.editorViewGetTextBufferView(this.viewPtr)

@@ -17,12 +17,12 @@ import type {
   TabSelectProps,
   TextareaProps,
   TextProps,
-} from "./src/types/components"
+} from "./src/types/components.js"
 
 export namespace JSX {
   type Element = React.ReactNode
 
-  interface ElementClass extends React.ComponentClass<any> {
+  interface ElementClass extends React.Component<any> {
     render(): React.ReactNode
   }
 

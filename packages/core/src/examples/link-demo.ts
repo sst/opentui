@@ -12,8 +12,8 @@ import {
   TextRenderable,
   type MouseEvent,
   type RenderContext,
-} from "../index"
-import { setupCommonDemoKeys } from "./lib/standalone-keys"
+} from "../index.js"
+import { setupCommonDemoKeys } from "./lib/standalone-keys.js"
 
 let nextZIndex = 100
 let draggableBoxes: DraggableBox[] = []

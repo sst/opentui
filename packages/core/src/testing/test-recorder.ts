@@ -1,4 +1,4 @@
-import type { TestRenderer } from "./test-renderer"
+import type { TestRenderer } from "./test-renderer.js"
 
 export interface RecordBuffersOptions {
   fg?: boolean

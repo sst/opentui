@@ -1,7 +1,7 @@
 import { describe, expect, it, beforeEach, afterEach } from "bun:test"
-import { TextBuffer } from "./text-buffer"
-import { StyledText, stringToStyledText } from "./lib/styled-text"
-import { RGBA } from "./lib/RGBA"
+import { TextBuffer } from "./text-buffer.js"
+import { StyledText, stringToStyledText } from "./lib/styled-text.js"
+import { RGBA } from "./lib/RGBA.js"
 
 describe("TextBuffer", () => {
   let buffer: TextBuffer

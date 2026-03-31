@@ -1,4 +1,5 @@
 import { test, expect, beforeEach, afterEach, describe, spyOn } from "bun:test"
+import { decodePasteBytes } from "../lib/paste.js"
 import {
   Renderable,
   BaseRenderable,
@@ -6,11 +7,11 @@ import {
   RenderableEvents,
   type BaseRenderableOptions,
   type RenderableOptions,
-} from "../Renderable"
-import { createTestRenderer, type TestRenderer, type MockMouse, type MockInput } from "../testing/test-renderer"
-import type { RenderContext } from "../types"
-import { TextNodeRenderable } from "../renderables/TextNode"
-import { TextRenderable } from "../renderables/Text"
+} from "../Renderable.js"
+import { createTestRenderer, type TestRenderer, type MockMouse, type MockInput } from "../testing/test-renderer.js"
+import type { RenderContext } from "../types.js"
+import { TextNodeRenderable } from "../renderables/TextNode.js"
+import { TextRenderable } from "../renderables/Text.js"
 
 export class TestBaseRenderable extends BaseRenderable {
   constructor(options: BaseRenderableOptions) {
@@ -775,7 +776,7 @@ describe("Renderable - Focus", () => {
     await testMockInput.pasteBracketedText("test text")
 
     expect(receivedEvent).not.toBeNull()
-    expect(receivedEvent.text).toBe("test text")
+    expect(decodePasteBytes(receivedEvent.bytes)).toBe("test text")
     expect(receivedEvent.defaultPrevented).toBe(true)
     expect(handlePasteCalled).toBe(false)
   })
@@ -792,7 +793,7 @@ describe("Renderable - Focus", () => {
     await testMockInput.pasteBracketedText("handler text")
 
     expect(receivedEvent).not.toBeNull()
-    expect(receivedEvent.text).toBe("handler text")
+    expect(decodePasteBytes(receivedEvent.bytes)).toBe("handler text")
     expect(typeof receivedEvent.preventDefault).toBe("function")
   })
 

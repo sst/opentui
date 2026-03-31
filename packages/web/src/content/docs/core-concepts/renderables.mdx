@@ -198,6 +198,8 @@ Mouse events bubble up through the tree. Stop propagation with `event.stopPropag
 For focusable renderables:
 
 ```typescript
+const textDecoder = new TextDecoder()
+
 const input = new InputRenderable(renderer, {
   id: "input",
   onKeyDown: (key) => {
@@ -206,7 +208,7 @@ const input = new InputRenderable(renderer, {
     }
   },
   onPaste: (event) => {
-    console.log("Pasted:", event.text)
+    console.log("Pasted:", textDecoder.decode(event.bytes))
   },
 })
 ```

@@ -1,7 +1,7 @@
-import { Renderable, type RenderableOptions } from "../Renderable"
-import { OptimizedBuffer } from "../buffer"
-import type { RenderContext, LineInfoProvider } from "../types"
-import { RGBA, parseColor } from "../lib/RGBA"
+import { Renderable, type RenderableOptions } from "../Renderable.js"
+import { OptimizedBuffer } from "../buffer.js"
+import type { RenderContext, LineInfoProvider } from "../types.js"
+import { RGBA, parseColor } from "../lib/RGBA.js"
 import { MeasureMode } from "yoga-layout"
 
 export interface LineSign {
@@ -29,6 +29,9 @@ export interface LineNumberOptions extends RenderableOptions<LineNumberRenderabl
   lineNumbers?: Map<number, number>
   showLineNumbers?: boolean
 }
+
+const DEFAULT_GUTTER_FG = "#888888"
+const DEFAULT_GUTTER_BG = "transparent"
 
 class GutterRenderable extends Renderable {
   private target: Renderable & LineInfoProvider
@@ -185,6 +188,28 @@ class GutterRenderable extends Renderable {
     this._lineColorsGutter = lineColorsGutter
     this._lineColorsContent = lineColorsContent
     this.requestRender()
+  }
+
+  public get fg(): RGBA {
+    return this._fg
+  }
+
+  public setFg(fg: RGBA): void {
+    if (this._fg !== fg) {
+      this._fg = fg
+      this.requestRender()
+    }
+  }
+
+  public get bg(): RGBA {
+    return this._bg
+  }
+
+  public setBg(bg: RGBA): void {
+    if (this._bg !== bg) {
+      this._bg = bg
+      this.requestRender()
+    }
   }
 
   public getLineColors(): { gutter: Map<number, RGBA>; content: Map<number, RGBA> } {
@@ -371,8 +396,8 @@ export class LineNumberRenderable extends Renderable {
       height: "auto",
     })
 
-    this._fg = parseColor(options.fg ?? "#888888")
-    this._bg = parseColor(options.bg ?? "transparent")
+    this._fg = parseColor(options.fg ?? DEFAULT_GUTTER_FG)
+    this._bg = parseColor(options.bg ?? DEFAULT_GUTTER_BG)
     this._minWidth = options.minWidth ?? 3
     this._paddingRight = options.paddingRight ?? 1
     this._lineNumberOffset = options.lineNumberOffset ?? 0
@@ -538,6 +563,30 @@ export class LineNumberRenderable extends Renderable {
     return this.gutter?.visible ?? false
   }
 
+  public get fg(): RGBA {
+    return this._fg
+  }
+
+  public set fg(value: string | RGBA | undefined) {
+    const parsed = parseColor(value ?? DEFAULT_GUTTER_FG)
+    if (this._fg !== parsed) {
+      this._fg = parsed
+      this.gutter?.setFg(parsed)
+    }
+  }
+
+  public get bg(): RGBA {
+    return this._bg
+  }
+
+  public set bg(value: string | RGBA | undefined) {
+    const parsed = parseColor(value ?? DEFAULT_GUTTER_BG)
+    if (this._bg !== parsed) {
+      this._bg = parsed
+      this.gutter?.setBg(parsed)
+    }
+  }
+
   public setLineColor(line: number, color: string | RGBA | LineColorConfig): void {
     this.parseLineColor(line, color)
     // Update gutter if it exists
@@ -652,5 +701,24 @@ export class LineNumberRenderable extends Renderable {
 
   public getLineNumbers(): Map<number, number> {
     return this._lineNumbers
+  }
+
+  public highlightLines(startLine: number, endLine: number, color: string | RGBA | LineColorConfig): void {
+    for (let i = startLine; i <= endLine; i++) {
+      this.parseLineColor(i, color)
+    }
+    if (this.gutter) {
+      this.gutter.setLineColors(this._lineColorsGutter, this._lineColorsContent)
+    }
+  }
+
+  public clearHighlightLines(startLine: number, endLine: number): void {
+    for (let i = startLine; i <= endLine; i++) {
+      this._lineColorsGutter.delete(i)
+      this._lineColorsContent.delete(i)
+    }
+    if (this.gutter) {
+      this.gutter.setLineColors(this._lineColorsGutter, this._lineColorsContent)
+    }
   }
 }

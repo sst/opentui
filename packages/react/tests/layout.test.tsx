@@ -1,7 +1,7 @@
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, mock } from "bun:test"
 import { useState } from "react"
 import { act } from "react"
-import { testRender } from "../src/test-utils"
+import { testRender } from "../src/test-utils.js"
 
 let testSetup: Awaited<ReturnType<typeof testRender>>
 

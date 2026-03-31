@@ -1,10 +1,18 @@
 #!/usr/bin/env bun
 
-import { type CliRenderer, createCliRenderer, BoxRenderable, TextRenderable, type KeyEvent } from "../index"
-import { ScrollBoxRenderable } from "../renderables/ScrollBox"
-import { TextNodeRenderable } from "../renderables/TextNode"
-import { setupCommonDemoKeys } from "./lib/standalone-keys"
-import { env, registerEnvVar } from "../lib/env"
+import {
+  type CliRenderer,
+  createCliRenderer,
+  BoxRenderable,
+  TextRenderable,
+  type KeyEvent,
+  type PasteEvent,
+  decodePasteBytes,
+} from "../index.js"
+import { ScrollBoxRenderable } from "../renderables/ScrollBox.js"
+import { TextNodeRenderable } from "../renderables/TextNode.js"
+import { setupCommonDemoKeys } from "./lib/standalone-keys.js"
+import { env, registerEnvVar } from "../lib/env.js"
 
 registerEnvVar({
   name: "OTUI_KEYPRESS_DEBUG_SHOW_JSON",
@@ -23,7 +31,7 @@ let showJson = false
 let inputHandler: ((sequence: string) => boolean) | null = null
 let keypressHandler: ((event: KeyEvent) => void) | null = null
 let keyreleaseHandler: ((event: KeyEvent) => void) | null = null
-let pasteHandler: ((event: { text: string }) => void) | null = null
+let pasteHandler: ((event: PasteEvent) => void) | null = null
 
 // Storage for all captured data
 let allRawInputs: Array<{ timestamp: string; sequence: string }> = []
@@ -124,8 +132,9 @@ function formatEventAsText(renderer: CliRenderer, eventType: string, event: any)
   }
 
   // Paste text
-  if (event.text && eventType === "paste") {
-    const textPreview = event.text.length > 50 ? event.text.substring(0, 47) + "..." : event.text
+  if (eventType === "paste") {
+    const pasteText = decodePasteBytes(event.bytes)
+    const textPreview = pasteText.length > 50 ? pasteText.substring(0, 47) + "..." : pasteText
     const pasteNode = TextNodeRenderable.fromString(`\n  "${textPreview}"`, {
       fg: "#A5D6FF",
     })
@@ -374,7 +383,7 @@ JSON file in the current directory.`,
   }
   renderer.keyInput.on("keyrelease", keyreleaseHandler)
 
-  pasteHandler = (event: { text: string }) => {
+  pasteHandler = (event: PasteEvent) => {
     // Store all paste events
     allKeyEvents.push({
       timestamp: new Date().toISOString(),

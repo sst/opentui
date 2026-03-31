@@ -1,5 +1,5 @@
 import { test, expect } from "bun:test"
-import { parseKeypress, type ParseKeypressOptions } from "./parse.keypress"
+import { parseKeypress, type ParseKeypressOptions } from "./parse.keypress.js"
 
 test("parseKeypress - Kitty keyboard protocol disabled by default", () => {
   // Kitty sequences should fall back to regular parsing when disabled
@@ -184,6 +184,23 @@ test("parseKeypress - Kitty keyboard caps lock", () => {
   const result = parseKeypress("\x1b[97;65u", options)! // modifier 65 - 1 = 64 = caps lock
   expect(result.name).toBe("a")
   expect(result.capsLock).toBe(true)
+})
+
+test("parseKeypress - Kitty keyboard lock keys", () => {
+  const options: ParseKeypressOptions = { useKittyKeyboard: true }
+
+  const cases = [
+    ["\x1b[57358u", "capslock", "[57358u"],
+    ["\x1b[57359u", "scrolllock", "[57359u"],
+    ["\x1b[57360u", "numlock", "[57360u"],
+  ] as const
+
+  for (const [sequence, name, code] of cases) {
+    const result = parseKeypress(sequence, options)!
+    expect(result.name).toBe(name)
+    expect(result.code).toBe(code)
+    expect(result.source).toBe("kitty")
+  }
 })
 
 test("parseKeypress - Kitty keyboard num lock", () => {
@@ -401,6 +418,29 @@ test("parseKeypress - Kitty keyboard invalid event types", () => {
   const emptyEvent = parseKeypress("\x1b[97;1:u", options)!
   expect(emptyEvent.name).toBe("a")
   expect(emptyEvent.eventType).toBe("press")
+})
+
+test("parseKeypress - Kitty repeat/release matrix", () => {
+  const options: ParseKeypressOptions = { useKittyKeyboard: true }
+  const cases = [
+    ["\x1b[97;1:2u", "a", "press", true, false, false, false],
+    ["\x1b[97;5:3u", "a", "release", false, true, false, false],
+    ["\x1b[1;2:2A", "up", "press", true, false, true, false],
+    ["\x1b[1;5:3B", "down", "release", false, true, false, false],
+    ["\x1b[5;1:2~", "pageup", "press", true, false, false, false],
+    ["\x1b[3;5:3~", "delete", "release", false, true, false, false],
+  ] as const
+
+  for (const [sequence, name, eventType, repeated, ctrl, shift, meta] of cases) {
+    const result = parseKeypress(sequence, options)!
+    expect(result.name).toBe(name)
+    expect(result.eventType).toBe(eventType)
+    expect(result.repeated === true).toBe(repeated)
+    expect(result.ctrl).toBe(ctrl)
+    expect(result.shift).toBe(shift)
+    expect(result.meta).toBe(meta)
+    expect(result.source).toBe("kitty")
+  }
 })
 
 // Test progressive enhancement (non-CSI u sequences)

@@ -1,11 +1,12 @@
-import { type RenderContext } from "../types"
-import { StyledText } from "../lib/styled-text"
-import { SyntaxStyle } from "../syntax-style"
-import { getTreeSitterClient, treeSitterToStyledText, TreeSitterClient } from "../lib/tree-sitter"
-import { TextBufferRenderable, type TextBufferOptions } from "./TextBufferRenderable"
-import type { OptimizedBuffer } from "../buffer"
-import type { SimpleHighlight } from "../lib/tree-sitter/types"
-import { treeSitterToTextChunks } from "../lib/tree-sitter-styled-text"
+import { type RenderContext } from "../types.js"
+import { StyledText } from "../lib/styled-text.js"
+import { SyntaxStyle } from "../syntax-style.js"
+import { getTreeSitterClient, treeSitterToStyledText, TreeSitterClient } from "../lib/tree-sitter/index.js"
+import { TextBufferRenderable, type TextBufferOptions } from "./TextBufferRenderable.js"
+import type { OptimizedBuffer } from "../buffer.js"
+import type { SimpleHighlight } from "../lib/tree-sitter/types.js"
+import type { TextChunk } from "../text-buffer.js"
+import { treeSitterToTextChunks } from "../lib/tree-sitter-styled-text.js"
 
 export interface HighlightContext {
   content: string
@@ -18,6 +19,15 @@ export type OnHighlightCallback = (
   context: HighlightContext,
 ) => SimpleHighlight[] | undefined | Promise<SimpleHighlight[] | undefined>
 
+export interface ChunkRenderContext extends HighlightContext {
+  highlights: SimpleHighlight[]
+}
+
+export type OnChunksCallback = (
+  chunks: TextChunk[],
+  context: ChunkRenderContext,
+) => TextChunk[] | undefined | Promise<TextChunk[] | undefined>
+
 export interface CodeOptions extends TextBufferOptions {
   content?: string
   filetype?: string
@@ -27,6 +37,7 @@ export interface CodeOptions extends TextBufferOptions {
   drawUnstyledText?: boolean
   streaming?: boolean
   onHighlight?: OnHighlightCallback
+  onChunks?: OnChunksCallback
 }
 
 export class CodeRenderable extends TextBufferRenderable {
@@ -44,6 +55,8 @@ export class CodeRenderable extends TextBufferRenderable {
   private _hadInitialContent: boolean = false
   private _lastHighlights: SimpleHighlight[] = []
   private _onHighlight?: OnHighlightCallback
+  private _onChunks?: OnChunksCallback
+  private _highlightingPromise: Promise<void> = Promise.resolve()
 
   protected _contentDefaultOptions = {
     content: "",
@@ -63,6 +76,7 @@ export class CodeRenderable extends TextBufferRenderable {
     this._drawUnstyledText = options.drawUnstyledText ?? this._contentDefaultOptions.drawUnstyledText
     this._streaming = options.streaming ?? this._contentDefaultOptions.streaming
     this._onHighlight = options.onHighlight
+    this._onChunks = options.onChunks
 
     if (this._content.length > 0) {
       this.textBuffer.setText(this._content)
@@ -96,7 +110,7 @@ export class CodeRenderable extends TextBufferRenderable {
     return this._filetype
   }
 
-  set filetype(value: string) {
+  set filetype(value: string | undefined) {
     if (this._filetype !== value) {
       this._filetype = value
       this._highlightsDirty = true
@@ -171,8 +185,30 @@ export class CodeRenderable extends TextBufferRenderable {
     }
   }
 
+  get onChunks(): OnChunksCallback | undefined {
+    return this._onChunks
+  }
+
+  set onChunks(value: OnChunksCallback | undefined) {
+    if (this._onChunks !== value) {
+      this._onChunks = value
+      this._highlightsDirty = true
+    }
+  }
+
   get isHighlighting(): boolean {
     return this._isHighlighting
+  }
+
+  get highlightingDone(): Promise<void> {
+    return this._highlightingPromise
+  }
+
+  protected async transformChunks(chunks: TextChunk[], context: ChunkRenderContext): Promise<TextChunk[]> {
+    if (!this._onChunks) return chunks
+
+    const modified = await this._onChunks(chunks, context)
+    return modified ?? chunks
   }
 
   private ensureVisibleTextBeforeHighlight(): void {
@@ -245,10 +281,28 @@ export class CodeRenderable extends TextBufferRenderable {
         if (this._streaming) {
           this._lastHighlights = highlights
         }
+      }
 
-        const chunks = treeSitterToTextChunks(content, highlights, this._syntaxStyle, {
+      if (highlights.length > 0 || this._onChunks) {
+        const context: ChunkRenderContext = {
+          content,
+          filetype,
+          syntaxStyle: this._syntaxStyle,
+          highlights,
+        }
+
+        let chunks = treeSitterToTextChunks(content, highlights, this._syntaxStyle, {
           enabled: this._conceal,
         })
+
+        chunks = await this.transformChunks(chunks, context)
+
+        if (snapshotId !== this._highlightSnapshotId) {
+          return
+        }
+
+        if (this.isDestroyed) return
+
         const styledText = new StyledText(chunks)
         this.textBuffer.setStyledText(styledText)
       } else {
@@ -293,7 +347,7 @@ export class CodeRenderable extends TextBufferRenderable {
       } else {
         this.ensureVisibleTextBeforeHighlight()
         this._highlightsDirty = false
-        this.startHighlight()
+        this._highlightingPromise = this.startHighlight()
       }
     }
 

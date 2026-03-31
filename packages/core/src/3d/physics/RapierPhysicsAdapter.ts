@@ -5,7 +5,7 @@ import type {
   PhysicsColliderDesc,
   PhysicsRigidBody,
   PhysicsWorld,
-} from "./physics-interface"
+} from "./physics-interface.js"
 
 export class RapierRigidBody implements PhysicsRigidBody {
   constructor(private rapierBody: RAPIER.RigidBody) {}

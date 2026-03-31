@@ -1,12 +1,12 @@
-import { Renderable, type RenderableOptions } from "../Renderable"
-import { convertGlobalToLocalSelection, Selection, type LocalSelectionBounds } from "../lib/selection"
-import { EditBuffer, type LogicalCursor } from "../edit-buffer"
-import { EditorView, type VisualCursor } from "../editor-view"
-import { RGBA, parseColor } from "../lib/RGBA"
-import type { RenderContext, Highlight, CursorStyleOptions, LineInfoProvider, LineInfo } from "../types"
-import type { OptimizedBuffer } from "../buffer"
+import { Renderable, type RenderableOptions } from "../Renderable.js"
+import { convertGlobalToLocalSelection, Selection, type LocalSelectionBounds } from "../lib/selection.js"
+import { EditBuffer, type LogicalCursor } from "../edit-buffer.js"
+import { EditorView, type VisualCursor } from "../editor-view.js"
+import { RGBA, parseColor } from "../lib/RGBA.js"
+import type { RenderContext, Highlight, CursorStyleOptions, LineInfoProvider, LineInfo } from "../types.js"
+import type { OptimizedBuffer } from "../buffer.js"
 import { MeasureMode } from "yoga-layout"
-import type { SyntaxStyle } from "../syntax-style"
+import type { SyntaxStyle } from "../syntax-style.js"
 
 export interface CursorChangeEvent {
   line: number
@@ -552,7 +552,7 @@ export abstract class EditBufferRenderable extends Renderable implements LineInf
         Math.floor(effectiveHeight),
       )
 
-      const measuredWidth = measureResult ? Math.max(1, measureResult.maxWidth) : 1
+      const measuredWidth = measureResult ? Math.max(1, measureResult.widthColsMax) : 1
       const measuredHeight = measureResult ? Math.max(1, measureResult.lineCount) : 1
 
       if (widthMode === MeasureMode.AtMost && this._positionType !== "absolute") {
@@ -595,14 +595,12 @@ export abstract class EditBufferRenderable extends Renderable implements LineInf
     const cursorY = this.y + visualCursor.visualRow + 1 // +1 for 1-based terminal coords
 
     this._ctx.setCursorPosition(cursorX, cursorY, true)
-    this._ctx.setCursorColor(this._cursorColor)
-    this._ctx.setCursorStyle(this._cursorStyle.style, this._cursorStyle.blinking)
+    this._ctx.setCursorStyle({ ...this._cursorStyle, color: this._cursorColor })
   }
 
   public focus(): void {
     super.focus()
-    this._ctx.setCursorStyle(this._cursorStyle.style, this._cursorStyle.blinking)
-    this._ctx.setCursorColor(this._cursorColor)
+    this._ctx.setCursorStyle({ ...this._cursorStyle, color: this._cursorColor })
     this.requestRender()
   }
 

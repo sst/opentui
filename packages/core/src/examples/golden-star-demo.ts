@@ -1,9 +1,9 @@
 #!/usr/bin/env bun
 
-import { createCliRenderer, CliRenderer, FrameBufferRenderable, BoxRenderable, OptimizedBuffer } from "../index"
-import { RGBA } from "../lib"
-import { ASCIIFontRenderable } from "../renderables/ASCIIFont"
-import type { ASCIIFontName } from "../lib/ascii.font"
+import { createCliRenderer, CliRenderer, FrameBufferRenderable, BoxRenderable, OptimizedBuffer } from "../index.js"
+import { RGBA } from "../lib/index.js"
+import { ASCIIFontRenderable } from "../renderables/ASCIIFont.js"
+import type { ASCIIFontName } from "../lib/ascii.font.js"
 import {
   Scene as ThreeScene,
   Mesh as ThreeMesh,
@@ -24,8 +24,8 @@ import {
   Quaternion,
   ConeGeometry,
 } from "three"
-import { ThreeCliRenderer } from "../3d"
-import { setupCommonDemoKeys } from "./lib/standalone-keys"
+import { ThreeCliRenderer } from "../3d.js"
+import { setupCommonDemoKeys } from "./lib/standalone-keys.js"
 
 interface StarParticle {
   instanceIndex: number

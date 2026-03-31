@@ -10,12 +10,12 @@ import {
   BoxRenderable,
   InputRenderable,
   InputRenderableEvents,
-} from "../index"
-import { ScrollBoxRenderable } from "../renderables/ScrollBox"
-import { setupCommonDemoKeys } from "./lib/standalone-keys"
-import type { TerminalColors } from "../lib/terminal-palette"
-import { PaletteGridRenderable } from "./lib/PaletteGrid"
-import { HexListRenderable } from "./lib/HexList"
+} from "../index.js"
+import { ScrollBoxRenderable } from "../renderables/ScrollBox.js"
+import { setupCommonDemoKeys } from "./lib/standalone-keys.js"
+import type { TerminalColors } from "../lib/terminal-palette.js"
+import { PaletteGridRenderable } from "./lib/PaletteGrid.js"
+import { HexListRenderable } from "./lib/HexList.js"
 
 /**
  * This demo showcases terminal palette detection.

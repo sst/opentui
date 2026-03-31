@@ -1,11 +1,11 @@
 import { OrthographicCamera, PerspectiveCamera, Scene } from "three"
 
-import { OptimizedBuffer } from "../buffer"
-import { RGBA } from "../lib/RGBA"
-import { Renderable, type RenderableOptions } from "../Renderable"
-import type { CliRenderer } from "../renderer"
-import type { RenderContext } from "../types"
-import { ThreeCliRenderer, type ThreeCliRendererOptions } from "./WGPURenderer"
+import { OptimizedBuffer } from "../buffer.js"
+import { RGBA } from "../lib/RGBA.js"
+import { Renderable, type RenderableOptions } from "../Renderable.js"
+import type { CliRenderer } from "../renderer.js"
+import type { RenderContext } from "../types.js"
+import { ThreeCliRenderer, type ThreeCliRendererOptions } from "./WGPURenderer.js"
 
 export interface ThreeRenderableOptions extends RenderableOptions<ThreeRenderable> {
   scene?: Scene | null

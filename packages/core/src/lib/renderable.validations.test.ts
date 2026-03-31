@@ -10,7 +10,7 @@ import {
   isPositionTypeType,
   isOverflowType,
   isValidPercentage,
-} from "./renderable.validations"
+} from "./renderable.validations.js"
 
 describe("Utility Functions", () => {
   test("validateOptions", () => {

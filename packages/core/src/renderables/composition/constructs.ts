@@ -19,11 +19,11 @@ import {
   type SelectRenderableOptions,
   type TabSelectRenderableOptions,
   type FrameBufferOptions,
-} from "../"
-import { TextNodeRenderable, type TextNodeOptions } from "../TextNode"
-import { h, type VChild } from "./vnode"
-import { TextAttributes } from "../../types"
-import type { RGBA } from "../../lib/RGBA"
+} from "..//index.js"
+import { TextNodeRenderable, type TextNodeOptions } from "../TextNode.js"
+import { h, type VChild } from "./vnode.js"
+import { TextAttributes } from "../../types.js"
+import type { RGBA } from "../../lib/RGBA.js"
 
 export function Generic(props?: VRenderableOptions, ...children: VChild[]) {
   return h(VRenderable, props || {}, ...children)

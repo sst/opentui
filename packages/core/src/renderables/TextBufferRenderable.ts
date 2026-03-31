@@ -1,13 +1,13 @@
-import { Renderable, type RenderableOptions } from "../Renderable"
-import { convertGlobalToLocalSelection, Selection, type LocalSelectionBounds } from "../lib/selection"
-import { TextBuffer, type TextChunk } from "../text-buffer"
-import { TextBufferView } from "../text-buffer-view"
-import { RGBA, parseColor } from "../lib/RGBA"
-import { type RenderContext, type LineInfoProvider } from "../types"
-import type { OptimizedBuffer } from "../buffer"
+import { Renderable, type RenderableOptions } from "../Renderable.js"
+import { convertGlobalToLocalSelection, Selection, type LocalSelectionBounds } from "../lib/selection.js"
+import { TextBuffer, type TextChunk } from "../text-buffer.js"
+import { TextBufferView } from "../text-buffer-view.js"
+import { RGBA, parseColor } from "../lib/RGBA.js"
+import { type RenderContext, type LineInfoProvider } from "../types.js"
+import type { OptimizedBuffer } from "../buffer.js"
 import { MeasureMode } from "yoga-layout"
-import type { LineInfo } from "../zig"
-import { SyntaxStyle } from "../syntax-style"
+import type { LineInfo } from "../zig.js"
+import { SyntaxStyle } from "../syntax-style.js"
 
 export interface TextBufferOptions extends RenderableOptions<TextBufferRenderable> {
   fg?: string | RGBA
@@ -40,6 +40,7 @@ export abstract class TextBufferRenderable extends Renderable implements LineInf
 
   protected textBuffer: TextBuffer
   protected textBufferView: TextBufferView
+  protected _textBufferSyntaxStyle: SyntaxStyle
 
   protected _defaultOptions = {
     fg: RGBA.fromValues(1, 1, 1, 1),
@@ -73,8 +74,8 @@ export abstract class TextBufferRenderable extends Renderable implements LineInf
     this.textBuffer = TextBuffer.create(this._ctx.widthMethod)
     this.textBufferView = TextBufferView.create(this.textBuffer)
 
-    const style = SyntaxStyle.create()
-    this.textBuffer.setSyntaxStyle(style)
+    this._textBufferSyntaxStyle = SyntaxStyle.create()
+    this.textBuffer.setSyntaxStyle(this._textBufferSyntaxStyle)
 
     this.textBufferView.setWrapMode(this._wrapMode)
     this.setupMeasureFunc()
@@ -170,11 +171,11 @@ export abstract class TextBufferRenderable extends Renderable implements LineInf
   }
 
   public get scrollWidth(): number {
-    return this.lineInfo.maxLineWidth
+    return this.lineInfo.lineWidthColsMax
   }
 
   public get scrollHeight(): number {
-    return this.lineInfo.lineStarts.length
+    return this.lineInfo.lineStartCols.length
   }
 
   public get maxScrollY(): number {
@@ -397,7 +398,7 @@ export abstract class TextBufferRenderable extends Renderable implements LineInf
         Math.floor(effectiveHeight),
       )
 
-      const measuredWidth = measureResult ? Math.max(1, measureResult.maxWidth) : 1
+      const measuredWidth = measureResult ? Math.max(1, measureResult.widthColsMax) : 1
       const measuredHeight = measureResult ? Math.max(1, measureResult.lineCount) : 1
 
       if (widthMode === MeasureMode.AtMost && this._positionType !== "absolute") {
@@ -494,6 +495,10 @@ export abstract class TextBufferRenderable extends Renderable implements LineInf
   }
 
   destroy(): void {
+    if (this.isDestroyed) return
+
+    this.textBuffer.setSyntaxStyle(null)
+    this._textBufferSyntaxStyle.destroy()
     this.textBufferView.destroy()
     this.textBuffer.destroy()
     super.destroy()

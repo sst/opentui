@@ -3,6 +3,7 @@ const bench_utils = @import("../bench-utils.zig");
 const text_buffer = @import("../text-buffer.zig");
 const text_buffer_view = @import("../text-buffer-view.zig");
 const gp = @import("../grapheme.zig");
+const link = @import("../link.zig");
 
 const UnifiedTextBuffer = text_buffer.UnifiedTextBuffer;
 const UnifiedTextBufferView = text_buffer_view.UnifiedTextBufferView;
@@ -99,6 +100,7 @@ fn benchSetText(
 ) ![]BenchResult {
     var results: std.ArrayListUnmanaged(BenchResult) = .{};
     errdefer results.deinit(allocator);
+    const link_pool = link.initGlobalLinkPool(allocator);
 
     // Small text
     {
@@ -109,7 +111,7 @@ fn benchSetText(
             var final_mem: usize = 0;
 
             for (0..iterations) |i| {
-                var tb = try UnifiedTextBuffer.init(allocator, pool, .unicode);
+                var tb = try UnifiedTextBuffer.init(allocator, pool, link_pool, .unicode);
                 defer tb.deinit();
 
                 var timer = try std.time.Timer.start();
@@ -159,7 +161,7 @@ fn benchSetText(
             var final_mem: usize = 0;
 
             for (0..iterations) |i| {
-                var tb = try UnifiedTextBuffer.init(allocator, pool, .unicode);
+                var tb = try UnifiedTextBuffer.init(allocator, pool, link_pool, .unicode);
                 defer tb.deinit();
 
                 var timer = try std.time.Timer.start();
@@ -204,9 +206,10 @@ fn benchWrap(
     var stats = BenchStats{};
     var final_tb_mem: usize = 0;
     var final_view_mem: usize = 0;
+    const link_pool = link.initGlobalLinkPool(allocator);
 
     for (0..iterations) |i| {
-        var tb = try UnifiedTextBuffer.init(allocator, pool, .unicode);
+        var tb = try UnifiedTextBuffer.init(allocator, pool, link_pool, .unicode);
         defer tb.deinit();
 
         try tb.setText(text);
@@ -261,13 +264,14 @@ fn benchMeasureForDimensionsLayout(
     var stats = BenchStats{};
     var final_tb_mem: usize = 0;
     var final_view_mem: usize = 0;
+    const link_pool = link.initGlobalLinkPool(allocator);
 
     const token = "token ";
     const newline = "\n";
     const newline_stride: usize = 20;
 
     for (0..iterations) |i| {
-        var tb = try UnifiedTextBuffer.init(allocator, pool, .unicode);
+        var tb = try UnifiedTextBuffer.init(allocator, pool, link_pool, .unicode);
         defer tb.deinit();
 
         try tb.setText(text);

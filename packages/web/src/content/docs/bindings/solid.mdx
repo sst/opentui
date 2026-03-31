@@ -37,7 +37,15 @@ Add preload script to `bunfig.toml`:
 preload = ["@opentui/solid/preload"]
 ```
 
-### 3. Create your app
+### 3. Enable runtime-loaded plugin support (if needed)
+
+If your app loads external TS/TSX modules at runtime (for example a file-based plugin system), import this once in your entry file before dynamic imports:
+
+```ts
+import "@opentui/solid/runtime-plugin-support"
+```
+
+### 4. Create your app
 
 ```tsx
 import { render } from "@opentui/solid"
@@ -135,6 +143,8 @@ extend({ custom_box: CustomBoxRenderable })
 
 Returns the current component catalogue that powers JSX tag lookup.
 
+For plugin slots, see [Plugin Slots overview](/docs/plugins/slots) and [Solid slots](/docs/plugins/solid).
+
 ## Hooks
 
 ### `useRenderer()`
@@ -218,6 +228,40 @@ const App = () => {
 }
 ```
 
+### `onFocus(callback)`
+
+Run side effects when the terminal window gains focus.
+
+```tsx
+import { onFocus } from "@opentui/solid"
+
+const App = () => {
+  onFocus(() => {
+    console.log("Terminal focused")
+  })
+
+  return <text>Switch away and back to trigger focus events</text>
+}
+```
+
+### `onBlur(callback)`
+
+Run side effects when the terminal window loses focus.
+
+```tsx
+import { onBlur } from "@opentui/solid"
+
+const App = () => {
+  onBlur(() => {
+    console.log("Terminal blurred")
+  })
+
+  return <text>Switch away and back to trigger blur events</text>
+}
+```
+
+These hooks listen for terminal focus-in/focus-out events when the terminal emulator supports them.
+
 ### `useTerminalDimensions()`
 
 Get reactive terminal dimensions (returns a Solid signal).
@@ -243,9 +287,11 @@ Subscribe to paste events.
 ```tsx
 import { usePaste } from "@opentui/solid"
 
+const textDecoder = new TextDecoder()
+
 const App = () => {
   usePaste((event) => {
-    console.log("Pasted:", event.text)
+    console.log("Pasted:", textDecoder.decode(event.bytes))
   })
 
   return <text>Paste something!</text>
@@ -368,6 +414,8 @@ await Bun.build({
 })
 ```
 
+If that executable loads external plugins/modules at runtime, keep `import "@opentui/solid/runtime-plugin-support"` in your app entry.
+
 ## Example: counter
 
 ```tsx
@@ -396,13 +444,13 @@ render(App)
 
 ## Differences from React bindings
 
-| Aspect             | Solid                                | React                                  |
-| ------------------ | ------------------------------------ | -------------------------------------- |
-| Render function    | `render(() => <App />)`              | `createRoot(renderer).render(<App />)` |
-| Component naming   | snake_case (`ascii_font`)            | kebab-case (`ascii-font`)              |
-| State              | `createSignal`                       | `useState`                             |
-| Effects            | `onMount`, `onCleanup`               | `useEffect`                            |
-| Resize hook        | `onResize(callback)`                 | `useOnResize(callback)`                |
-| Dimensions         | Returns signal: `dimensions().width` | Returns object: `dimensions.width`     |
-| Extra hooks        | `usePaste`, `useSelectionHandler`    | -                                      |
-| Special components | `Portal`, `Dynamic`                  | -                                      |
+| Aspect             | Solid                                                  | React                                  |
+| ------------------ | ------------------------------------------------------ | -------------------------------------- |
+| Render function    | `render(() => <App />)`                                | `createRoot(renderer).render(<App />)` |
+| Component naming   | snake_case (`ascii_font`)                              | kebab-case (`ascii-font`)              |
+| State              | `createSignal`                                         | `useState`                             |
+| Effects            | `onMount`, `onCleanup`                                 | `useEffect`                            |
+| Resize hook        | `onResize(callback)`                                   | `useOnResize(callback)`                |
+| Dimensions         | Returns signal: `dimensions().width`                   | Returns object: `dimensions.width`     |
+| Extra hooks        | `onFocus`, `onBlur`, `usePaste`, `useSelectionHandler` | -                                      |
+| Special components | `Portal`, `Dynamic`                                    | -                                      |

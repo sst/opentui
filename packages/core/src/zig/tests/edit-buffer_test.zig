@@ -3,6 +3,7 @@ const edit_buffer = @import("../edit-buffer.zig");
 const text_buffer = @import("../text-buffer.zig");
 const text_buffer_view = @import("../text-buffer-view.zig");
 const gp = @import("../grapheme.zig");
+const link = @import("../link.zig");
 const iter_mod = @import("../text-buffer-iterators.zig");
 
 const EditBuffer = edit_buffer.EditBuffer;
@@ -12,8 +13,10 @@ const Cursor = edit_buffer.Cursor;
 test "EditBuffer - init and deinit" {
     const pool = gp.initGlobalPool(std.testing.allocator);
     defer gp.deinitGlobalPool();
+    const link_pool = link.initGlobalLinkPool(std.testing.allocator);
+    defer link.deinitGlobalLinkPool();
 
-    var eb = try EditBuffer.init(std.testing.allocator, pool, .wcwidth);
+    var eb = try EditBuffer.init(std.testing.allocator, pool, link_pool, .wcwidth);
     defer eb.deinit();
 
     try std.testing.expectEqual(@as(u32, 0), eb.getTextBuffer().getLength());
@@ -26,8 +29,10 @@ test "EditBuffer - init and deinit" {
 test "EditBuffer - next word boundary basic" {
     const pool = gp.initGlobalPool(std.testing.allocator);
     defer gp.deinitGlobalPool();
+    const link_pool = link.initGlobalLinkPool(std.testing.allocator);
+    defer link.deinitGlobalLinkPool();
 
-    var eb = try EditBuffer.init(std.testing.allocator, pool, .wcwidth);
+    var eb = try EditBuffer.init(std.testing.allocator, pool, link_pool, .wcwidth);
     defer eb.deinit();
 
     try eb.insertText("Hello World");
@@ -41,8 +46,10 @@ test "EditBuffer - next word boundary basic" {
 test "EditBuffer - prev word boundary basic" {
     const pool = gp.initGlobalPool(std.testing.allocator);
     defer gp.deinitGlobalPool();
+    const link_pool = link.initGlobalLinkPool(std.testing.allocator);
+    defer link.deinitGlobalLinkPool();
 
-    var eb = try EditBuffer.init(std.testing.allocator, pool, .wcwidth);
+    var eb = try EditBuffer.init(std.testing.allocator, pool, link_pool, .wcwidth);
     defer eb.deinit();
 
     try eb.insertText("Hello World");
@@ -56,8 +63,10 @@ test "EditBuffer - prev word boundary basic" {
 test "EditBuffer - next word boundary across line" {
     const pool = gp.initGlobalPool(std.testing.allocator);
     defer gp.deinitGlobalPool();
+    const link_pool = link.initGlobalLinkPool(std.testing.allocator);
+    defer link.deinitGlobalLinkPool();
 
-    var eb = try EditBuffer.init(std.testing.allocator, pool, .wcwidth);
+    var eb = try EditBuffer.init(std.testing.allocator, pool, link_pool, .wcwidth);
     defer eb.deinit();
 
     try eb.insertText("Hello\nWorld");
@@ -71,8 +80,10 @@ test "EditBuffer - next word boundary across line" {
 test "EditBuffer - prev word boundary across line" {
     const pool = gp.initGlobalPool(std.testing.allocator);
     defer gp.deinitGlobalPool();
+    const link_pool = link.initGlobalLinkPool(std.testing.allocator);
+    defer link.deinitGlobalLinkPool();
 
-    var eb = try EditBuffer.init(std.testing.allocator, pool, .wcwidth);
+    var eb = try EditBuffer.init(std.testing.allocator, pool, link_pool, .wcwidth);
     defer eb.deinit();
 
     try eb.insertText("Hello\nWorld");
@@ -86,8 +97,10 @@ test "EditBuffer - prev word boundary across line" {
 test "EditBuffer - hyphen word boundary" {
     const pool = gp.initGlobalPool(std.testing.allocator);
     defer gp.deinitGlobalPool();
+    const link_pool = link.initGlobalLinkPool(std.testing.allocator);
+    defer link.deinitGlobalLinkPool();
 
-    var eb = try EditBuffer.init(std.testing.allocator, pool, .wcwidth);
+    var eb = try EditBuffer.init(std.testing.allocator, pool, link_pool, .wcwidth);
     defer eb.deinit();
 
     try eb.insertText("self-contained");
@@ -101,8 +114,10 @@ test "EditBuffer - hyphen word boundary" {
 test "EditBuffer - multiple word boundaries" {
     const pool = gp.initGlobalPool(std.testing.allocator);
     defer gp.deinitGlobalPool();
+    const link_pool = link.initGlobalLinkPool(std.testing.allocator);
+    defer link.deinitGlobalLinkPool();
 
-    var eb = try EditBuffer.init(std.testing.allocator, pool, .wcwidth);
+    var eb = try EditBuffer.init(std.testing.allocator, pool, link_pool, .wcwidth);
     defer eb.deinit();
 
     try eb.insertText("The quick brown fox");
@@ -123,8 +138,10 @@ test "EditBuffer - multiple word boundaries" {
 test "EditBuffer - word boundary at end of line" {
     const pool = gp.initGlobalPool(std.testing.allocator);
     defer gp.deinitGlobalPool();
+    const link_pool = link.initGlobalLinkPool(std.testing.allocator);
+    defer link.deinitGlobalLinkPool();
 
-    var eb = try EditBuffer.init(std.testing.allocator, pool, .wcwidth);
+    var eb = try EditBuffer.init(std.testing.allocator, pool, link_pool, .wcwidth);
     defer eb.deinit();
 
     try eb.insertText("Hello");
@@ -138,8 +155,10 @@ test "EditBuffer - word boundary at end of line" {
 test "EditBuffer - word boundary at start of line" {
     const pool = gp.initGlobalPool(std.testing.allocator);
     defer gp.deinitGlobalPool();
+    const link_pool = link.initGlobalLinkPool(std.testing.allocator);
+    defer link.deinitGlobalLinkPool();
 
-    var eb = try EditBuffer.init(std.testing.allocator, pool, .wcwidth);
+    var eb = try EditBuffer.init(std.testing.allocator, pool, link_pool, .wcwidth);
     defer eb.deinit();
 
     try eb.insertText("Hello");
@@ -153,8 +172,10 @@ test "EditBuffer - word boundary at start of line" {
 test "EditBuffer - getEOL basic" {
     const pool = gp.initGlobalPool(std.testing.allocator);
     defer gp.deinitGlobalPool();
+    const link_pool = link.initGlobalLinkPool(std.testing.allocator);
+    defer link.deinitGlobalLinkPool();
 
-    var eb = try EditBuffer.init(std.testing.allocator, pool, .wcwidth);
+    var eb = try EditBuffer.init(std.testing.allocator, pool, link_pool, .wcwidth);
     defer eb.deinit();
 
     try eb.insertText("Hello World");
@@ -168,8 +189,10 @@ test "EditBuffer - getEOL basic" {
 test "EditBuffer - getEOL at end of line" {
     const pool = gp.initGlobalPool(std.testing.allocator);
     defer gp.deinitGlobalPool();
+    const link_pool = link.initGlobalLinkPool(std.testing.allocator);
+    defer link.deinitGlobalLinkPool();
 
-    var eb = try EditBuffer.init(std.testing.allocator, pool, .wcwidth);
+    var eb = try EditBuffer.init(std.testing.allocator, pool, link_pool, .wcwidth);
     defer eb.deinit();
 
     try eb.insertText("Hello");
@@ -183,8 +206,10 @@ test "EditBuffer - getEOL at end of line" {
 test "EditBuffer - getEOL multi-line" {
     const pool = gp.initGlobalPool(std.testing.allocator);
     defer gp.deinitGlobalPool();
+    const link_pool = link.initGlobalLinkPool(std.testing.allocator);
+    defer link.deinitGlobalLinkPool();
 
-    var eb = try EditBuffer.init(std.testing.allocator, pool, .wcwidth);
+    var eb = try EditBuffer.init(std.testing.allocator, pool, link_pool, .wcwidth);
     defer eb.deinit();
 
     try eb.insertText("Hello\nWorld\nTest");
@@ -198,8 +223,10 @@ test "EditBuffer - getEOL multi-line" {
 test "EditBuffer - getEOL empty line" {
     const pool = gp.initGlobalPool(std.testing.allocator);
     defer gp.deinitGlobalPool();
+    const link_pool = link.initGlobalLinkPool(std.testing.allocator);
+    defer link.deinitGlobalLinkPool();
 
-    var eb = try EditBuffer.init(std.testing.allocator, pool, .wcwidth);
+    var eb = try EditBuffer.init(std.testing.allocator, pool, link_pool, .wcwidth);
     defer eb.deinit();
 
     try eb.insertText("Hello\n\nWorld");
@@ -213,8 +240,10 @@ test "EditBuffer - getEOL empty line" {
 test "EditBuffer - word boundary with tabs" {
     const pool = gp.initGlobalPool(std.testing.allocator);
     defer gp.deinitGlobalPool();
+    const link_pool = link.initGlobalLinkPool(std.testing.allocator);
+    defer link.deinitGlobalLinkPool();
 
-    var eb = try EditBuffer.init(std.testing.allocator, pool, .wcwidth);
+    var eb = try EditBuffer.init(std.testing.allocator, pool, link_pool, .wcwidth);
     defer eb.deinit();
 
     try eb.insertText("Hello\tWorld");
@@ -232,8 +261,10 @@ test "EditBuffer - word boundary with tabs" {
 test "EditBuffer - word boundary with CJK graphemes" {
     const pool = gp.initGlobalPool(std.testing.allocator);
     defer gp.deinitGlobalPool();
+    const link_pool = link.initGlobalLinkPool(std.testing.allocator);
+    defer link.deinitGlobalLinkPool();
 
-    var eb = try EditBuffer.init(std.testing.allocator, pool, .wcwidth);
+    var eb = try EditBuffer.init(std.testing.allocator, pool, link_pool, .wcwidth);
     defer eb.deinit();
 
     // "你" = 2 cols, " " = 1 col, "好" = 2 cols
@@ -248,11 +279,189 @@ test "EditBuffer - word boundary with CJK graphemes" {
     try std.testing.expectEqual(@as(u32, 3), prev_cursor.col);
 }
 
+test "EditBuffer - word boundary mixed CJK and ASCII transition" {
+    const pool = gp.initGlobalPool(std.testing.allocator);
+    defer gp.deinitGlobalPool();
+    const link_pool = link.initGlobalLinkPool(std.testing.allocator);
+    defer link.deinitGlobalLinkPool();
+
+    var eb = try EditBuffer.init(std.testing.allocator, pool, link_pool, .wcwidth);
+    defer eb.deinit();
+
+    try eb.setText("日本語abc");
+
+    const eol = eb.getEOL();
+    try std.testing.expect(eol.col >= 3);
+
+    try eb.setCursor(0, 0);
+    const next_cursor = eb.getNextWordBoundary();
+    try std.testing.expectEqual(eol.col - 3, next_cursor.col);
+
+    try eb.setCursor(next_cursor.row, next_cursor.col);
+    const next_cursor2 = eb.getNextWordBoundary();
+    try std.testing.expectEqual(eol.col, next_cursor2.col);
+
+    try eb.setCursor(0, eol.col);
+    const prev_cursor = eb.getPrevWordBoundary();
+    try std.testing.expectEqual(eol.col - 3, prev_cursor.col);
+
+    try eb.setCursor(prev_cursor.row, prev_cursor.col);
+    const prev_cursor2 = eb.getPrevWordBoundary();
+    try std.testing.expectEqual(@as(u32, 0), prev_cursor2.col);
+}
+
+test "EditBuffer - word boundary keeps Hangul run grouped" {
+    const pool = gp.initGlobalPool(std.testing.allocator);
+    defer gp.deinitGlobalPool();
+    const link_pool = link.initGlobalLinkPool(std.testing.allocator);
+    defer link.deinitGlobalLinkPool();
+
+    var eb = try EditBuffer.init(std.testing.allocator, pool, link_pool, .wcwidth);
+    defer eb.deinit();
+
+    try eb.setText("테스트test");
+
+    const eol = eb.getEOL();
+    try std.testing.expect(eol.col >= 4);
+
+    try eb.setCursor(0, 0);
+    const next_cursor = eb.getNextWordBoundary();
+    try std.testing.expectEqual(eol.col - 4, next_cursor.col);
+
+    try eb.setCursor(next_cursor.row, next_cursor.col);
+    const next_cursor2 = eb.getNextWordBoundary();
+    try std.testing.expectEqual(eol.col, next_cursor2.col);
+
+    try eb.setCursor(0, eol.col);
+    const prev_cursor = eb.getPrevWordBoundary();
+    try std.testing.expectEqual(eol.col - 4, prev_cursor.col);
+
+    try eb.setCursor(prev_cursor.row, prev_cursor.col);
+    const prev_cursor2 = eb.getPrevWordBoundary();
+    try std.testing.expectEqual(@as(u32, 0), prev_cursor2.col);
+}
+
+test "EditBuffer - word boundary respects CJK punctuation before ASCII" {
+    const pool = gp.initGlobalPool(std.testing.allocator);
+    defer gp.deinitGlobalPool();
+    const link_pool = link.initGlobalLinkPool(std.testing.allocator);
+    defer link.deinitGlobalLinkPool();
+
+    var eb = try EditBuffer.init(std.testing.allocator, pool, link_pool, .wcwidth);
+    defer eb.deinit();
+
+    try eb.setText("日本語。abc");
+
+    const eol = eb.getEOL();
+    try std.testing.expect(eol.col >= 5);
+
+    try eb.setCursor(0, 0);
+    const next_cursor = eb.getNextWordBoundary();
+    try std.testing.expectEqual(eol.col - 3, next_cursor.col);
+
+    try eb.setCursor(next_cursor.row, next_cursor.col);
+    const next_cursor2 = eb.getNextWordBoundary();
+    try std.testing.expectEqual(eol.col, next_cursor2.col);
+
+    try eb.setCursor(0, eol.col);
+    const prev_cursor = eb.getPrevWordBoundary();
+    try std.testing.expectEqual(eol.col - 3, prev_cursor.col);
+
+    try eb.setCursor(prev_cursor.row, prev_cursor.col);
+    const prev_cursor2 = eb.getPrevWordBoundary();
+    try std.testing.expectEqual(@as(u32, 0), prev_cursor2.col);
+}
+
+test "EditBuffer - word boundary with compat ideograph and ASCII" {
+    const pool = gp.initGlobalPool(std.testing.allocator);
+    defer gp.deinitGlobalPool();
+    const link_pool = link.initGlobalLinkPool(std.testing.allocator);
+    defer link.deinitGlobalLinkPool();
+
+    var eb = try EditBuffer.init(std.testing.allocator, pool, link_pool, .wcwidth);
+    defer eb.deinit();
+
+    try eb.setText("丽abc");
+
+    const eol = eb.getEOL();
+    try std.testing.expect(eol.col >= 3);
+
+    try eb.setCursor(0, 0);
+    const next_cursor = eb.getNextWordBoundary();
+    try std.testing.expectEqual(eol.col - 3, next_cursor.col);
+
+    try eb.setCursor(next_cursor.row, next_cursor.col);
+    const next_cursor2 = eb.getNextWordBoundary();
+    try std.testing.expectEqual(eol.col, next_cursor2.col);
+
+    try eb.setCursor(0, eol.col);
+    const prev_cursor = eb.getPrevWordBoundary();
+    try std.testing.expectEqual(eol.col - 3, prev_cursor.col);
+
+    try eb.setCursor(prev_cursor.row, prev_cursor.col);
+    const prev_cursor2 = eb.getPrevWordBoundary();
+    try std.testing.expectEqual(@as(u32, 0), prev_cursor2.col);
+}
+
+test "EditBuffer - word boundary single-character script transitions" {
+    const pool = gp.initGlobalPool(std.testing.allocator);
+    defer gp.deinitGlobalPool();
+    const link_pool = link.initGlobalLinkPool(std.testing.allocator);
+    defer link.deinitGlobalLinkPool();
+
+    var eb = try EditBuffer.init(std.testing.allocator, pool, link_pool, .wcwidth);
+    defer eb.deinit();
+
+    try eb.setText("a日");
+
+    var eol = eb.getEOL();
+    try std.testing.expectEqual(@as(u32, 3), eol.col);
+
+    try eb.setCursor(0, 0);
+    var next_cursor = eb.getNextWordBoundary();
+    try std.testing.expectEqual(@as(u32, 1), next_cursor.col);
+
+    try eb.setCursor(next_cursor.row, next_cursor.col);
+    var next_cursor2 = eb.getNextWordBoundary();
+    try std.testing.expectEqual(@as(u32, 3), next_cursor2.col);
+
+    try eb.setCursor(0, eol.col);
+    var prev_cursor = eb.getPrevWordBoundary();
+    try std.testing.expectEqual(@as(u32, 1), prev_cursor.col);
+
+    try eb.setCursor(prev_cursor.row, prev_cursor.col);
+    var prev_cursor2 = eb.getPrevWordBoundary();
+    try std.testing.expectEqual(@as(u32, 0), prev_cursor2.col);
+
+    try eb.setText("日a");
+
+    eol = eb.getEOL();
+    try std.testing.expectEqual(@as(u32, 3), eol.col);
+
+    try eb.setCursor(0, 0);
+    next_cursor = eb.getNextWordBoundary();
+    try std.testing.expectEqual(@as(u32, 2), next_cursor.col);
+
+    try eb.setCursor(next_cursor.row, next_cursor.col);
+    next_cursor2 = eb.getNextWordBoundary();
+    try std.testing.expectEqual(@as(u32, 3), next_cursor2.col);
+
+    try eb.setCursor(0, eol.col);
+    prev_cursor = eb.getPrevWordBoundary();
+    try std.testing.expectEqual(@as(u32, 2), prev_cursor.col);
+
+    try eb.setCursor(prev_cursor.row, prev_cursor.col);
+    prev_cursor2 = eb.getPrevWordBoundary();
+    try std.testing.expectEqual(@as(u32, 0), prev_cursor2.col);
+}
+
 test "EditBuffer - word boundary with emoji" {
     const pool = gp.initGlobalPool(std.testing.allocator);
     defer gp.deinitGlobalPool();
+    const link_pool = link.initGlobalLinkPool(std.testing.allocator);
+    defer link.deinitGlobalLinkPool();
 
-    var eb = try EditBuffer.init(std.testing.allocator, pool, .wcwidth);
+    var eb = try EditBuffer.init(std.testing.allocator, pool, link_pool, .wcwidth);
     defer eb.deinit();
 
     // "🌟" = 2 cols, " " = 1 col, "ok" = 2 cols
@@ -270,8 +479,10 @@ test "EditBuffer - word boundary with emoji" {
 test "EditBuffer - moveRight past tab at start of line" {
     const pool = gp.initGlobalPool(std.testing.allocator);
     defer gp.deinitGlobalPool();
+    const link_pool = link.initGlobalLinkPool(std.testing.allocator);
+    defer link.deinitGlobalLinkPool();
 
-    var eb = try EditBuffer.init(std.testing.allocator, pool, .wcwidth);
+    var eb = try EditBuffer.init(std.testing.allocator, pool, link_pool, .wcwidth);
     defer eb.deinit();
 
     try eb.insertText("\tHello");
@@ -289,8 +500,10 @@ test "EditBuffer - moveRight past tab at start of line" {
 test "EditBuffer - moveRight after typing before tab" {
     const pool = gp.initGlobalPool(std.testing.allocator);
     defer gp.deinitGlobalPool();
+    const link_pool = link.initGlobalLinkPool(std.testing.allocator);
+    defer link.deinitGlobalLinkPool();
 
-    var eb = try EditBuffer.init(std.testing.allocator, pool, .wcwidth);
+    var eb = try EditBuffer.init(std.testing.allocator, pool, link_pool, .wcwidth);
     defer eb.deinit();
 
     try eb.insertText("\tWorld");
@@ -316,8 +529,10 @@ test "EditBuffer - moveRight after typing before tab" {
 test "EditBuffer - moveRight between two tabs" {
     const pool = gp.initGlobalPool(std.testing.allocator);
     defer gp.deinitGlobalPool();
+    const link_pool = link.initGlobalLinkPool(std.testing.allocator);
+    defer link.deinitGlobalLinkPool();
 
-    var eb = try EditBuffer.init(std.testing.allocator, pool, .wcwidth);
+    var eb = try EditBuffer.init(std.testing.allocator, pool, link_pool, .wcwidth);
     defer eb.deinit();
 
     try eb.insertText("\t\tHello");
@@ -336,8 +551,10 @@ test "EditBuffer - moveRight between two tabs" {
 test "EditBuffer - type and move around single tab" {
     const pool = gp.initGlobalPool(std.testing.allocator);
     defer gp.deinitGlobalPool();
+    const link_pool = link.initGlobalLinkPool(std.testing.allocator);
+    defer link.deinitGlobalLinkPool();
 
-    var eb = try EditBuffer.init(std.testing.allocator, pool, .wcwidth);
+    var eb = try EditBuffer.init(std.testing.allocator, pool, link_pool, .wcwidth);
     defer eb.deinit();
 
     try eb.insertText("\t");
@@ -368,8 +585,10 @@ test "EditBuffer - type and move around single tab" {
 test "EditBuffer - insert text between tabs and move right" {
     const pool = gp.initGlobalPool(std.testing.allocator);
     defer gp.deinitGlobalPool();
+    const link_pool = link.initGlobalLinkPool(std.testing.allocator);
+    defer link.deinitGlobalLinkPool();
 
-    var eb = try EditBuffer.init(std.testing.allocator, pool, .wcwidth);
+    var eb = try EditBuffer.init(std.testing.allocator, pool, link_pool, .wcwidth);
     defer eb.deinit();
 
     try eb.insertText("\t\tx");
@@ -398,8 +617,10 @@ test "EditBuffer - insert text between tabs and move right" {
 test "EditBuffer - insert after tab and move around" {
     const pool = gp.initGlobalPool(std.testing.allocator);
     defer gp.deinitGlobalPool();
+    const link_pool = link.initGlobalLinkPool(std.testing.allocator);
+    defer link.deinitGlobalLinkPool();
 
-    var eb = try EditBuffer.init(std.testing.allocator, pool, .wcwidth);
+    var eb = try EditBuffer.init(std.testing.allocator, pool, link_pool, .wcwidth);
     defer eb.deinit();
 
     try eb.insertText("\t");
@@ -425,8 +646,10 @@ test "EditBuffer - insert after tab and move around" {
 test "EditBuffer - cursor stuck after typing around tab" {
     const pool = gp.initGlobalPool(std.testing.allocator);
     defer gp.deinitGlobalPool();
+    const link_pool = link.initGlobalLinkPool(std.testing.allocator);
+    defer link.deinitGlobalLinkPool();
 
-    var eb = try EditBuffer.init(std.testing.allocator, pool, .wcwidth);
+    var eb = try EditBuffer.init(std.testing.allocator, pool, link_pool, .wcwidth);
     defer eb.deinit();
 
     try eb.insertText("hello\tworld");
@@ -443,8 +666,10 @@ test "EditBuffer - cursor stuck after typing around tab" {
 test "EditBuffer - complex tab scenario" {
     const pool = gp.initGlobalPool(std.testing.allocator);
     defer gp.deinitGlobalPool();
+    const link_pool = link.initGlobalLinkPool(std.testing.allocator);
+    defer link.deinitGlobalLinkPool();
 
-    var eb = try EditBuffer.init(std.testing.allocator, pool, .wcwidth);
+    var eb = try EditBuffer.init(std.testing.allocator, pool, link_pool, .wcwidth);
     defer eb.deinit();
 
     try eb.insertText("\tx\ty");
@@ -477,8 +702,10 @@ test "EditBuffer - complex tab scenario" {
 test "EditBuffer - cursor stuck at tab in middle of line" {
     const pool = gp.initGlobalPool(std.testing.allocator);
     defer gp.deinitGlobalPool();
+    const link_pool = link.initGlobalLinkPool(std.testing.allocator);
+    defer link.deinitGlobalLinkPool();
 
-    var eb = try EditBuffer.init(std.testing.allocator, pool, .wcwidth);
+    var eb = try EditBuffer.init(std.testing.allocator, pool, link_pool, .wcwidth);
     defer eb.deinit();
 
     try eb.insertText("a\tb");
@@ -498,8 +725,10 @@ test "EditBuffer - cursor stuck at tab in middle of line" {
 test "EditBuffer - type between tabs then move right" {
     const pool = gp.initGlobalPool(std.testing.allocator);
     defer gp.deinitGlobalPool();
+    const link_pool = link.initGlobalLinkPool(std.testing.allocator);
+    defer link.deinitGlobalLinkPool();
 
-    var eb = try EditBuffer.init(std.testing.allocator, pool, .wcwidth);
+    var eb = try EditBuffer.init(std.testing.allocator, pool, link_pool, .wcwidth);
     defer eb.deinit();
 
     try eb.insertText("\t\t");
@@ -523,8 +752,10 @@ test "EditBuffer - type between tabs then move right" {
 test "EditBuffer - tabs only with cursor movement" {
     const pool = gp.initGlobalPool(std.testing.allocator);
     defer gp.deinitGlobalPool();
+    const link_pool = link.initGlobalLinkPool(std.testing.allocator);
+    defer link.deinitGlobalLinkPool();
 
-    var eb = try EditBuffer.init(std.testing.allocator, pool, .wcwidth);
+    var eb = try EditBuffer.init(std.testing.allocator, pool, link_pool, .wcwidth);
     defer eb.deinit();
 
     try eb.insertText("\t\t\t");
@@ -547,8 +778,10 @@ test "EditBuffer - tabs only with cursor movement" {
 test "EditBuffer - getTextRange basic ASCII" {
     const pool = gp.initGlobalPool(std.testing.allocator);
     defer gp.deinitGlobalPool();
+    const link_pool = link.initGlobalLinkPool(std.testing.allocator);
+    defer link.deinitGlobalLinkPool();
 
-    var eb = try EditBuffer.init(std.testing.allocator, pool, .wcwidth);
+    var eb = try EditBuffer.init(std.testing.allocator, pool, link_pool, .wcwidth);
     defer eb.deinit();
 
     try eb.insertText("Hello World");
@@ -561,8 +794,10 @@ test "EditBuffer - getTextRange basic ASCII" {
 test "EditBuffer - getTextRange full text" {
     const pool = gp.initGlobalPool(std.testing.allocator);
     defer gp.deinitGlobalPool();
+    const link_pool = link.initGlobalLinkPool(std.testing.allocator);
+    defer link.deinitGlobalLinkPool();
 
-    var eb = try EditBuffer.init(std.testing.allocator, pool, .wcwidth);
+    var eb = try EditBuffer.init(std.testing.allocator, pool, link_pool, .wcwidth);
     defer eb.deinit();
 
     try eb.insertText("Hello World");
@@ -575,8 +810,10 @@ test "EditBuffer - getTextRange full text" {
 test "EditBuffer - getTextRange with emojis" {
     const pool = gp.initGlobalPool(std.testing.allocator);
     defer gp.deinitGlobalPool();
+    const link_pool = link.initGlobalLinkPool(std.testing.allocator);
+    defer link.deinitGlobalLinkPool();
 
-    var eb = try EditBuffer.init(std.testing.allocator, pool, .wcwidth);
+    var eb = try EditBuffer.init(std.testing.allocator, pool, link_pool, .wcwidth);
     defer eb.deinit();
 
     try eb.insertText("Hello 👋 World");
@@ -590,8 +827,10 @@ test "EditBuffer - getTextRange with emojis" {
 test "EditBuffer - getTextRange emoji with skin tone" {
     const pool = gp.initGlobalPool(std.testing.allocator);
     defer gp.deinitGlobalPool();
+    const link_pool = link.initGlobalLinkPool(std.testing.allocator);
+    defer link.deinitGlobalLinkPool();
 
-    var eb = try EditBuffer.init(std.testing.allocator, pool, .wcwidth);
+    var eb = try EditBuffer.init(std.testing.allocator, pool, link_pool, .wcwidth);
     defer eb.deinit();
 
     // Waving hand with medium skin tone
@@ -606,8 +845,10 @@ test "EditBuffer - getTextRange emoji with skin tone" {
 test "EditBuffer - getTextRange flag emoji" {
     const pool = gp.initGlobalPool(std.testing.allocator);
     defer gp.deinitGlobalPool();
+    const link_pool = link.initGlobalLinkPool(std.testing.allocator);
+    defer link.deinitGlobalLinkPool();
 
-    var eb = try EditBuffer.init(std.testing.allocator, pool, .wcwidth);
+    var eb = try EditBuffer.init(std.testing.allocator, pool, link_pool, .wcwidth);
     defer eb.deinit();
 
     // USA flag 🇺🇸 (regional indicator symbols)
@@ -622,8 +863,10 @@ test "EditBuffer - getTextRange flag emoji" {
 test "EditBuffer - getTextRange family emoji" {
     const pool = gp.initGlobalPool(std.testing.allocator);
     defer gp.deinitGlobalPool();
+    const link_pool = link.initGlobalLinkPool(std.testing.allocator);
+    defer link.deinitGlobalLinkPool();
 
-    var eb = try EditBuffer.init(std.testing.allocator, pool, .wcwidth);
+    var eb = try EditBuffer.init(std.testing.allocator, pool, link_pool, .wcwidth);
     defer eb.deinit();
 
     // Family emoji (ZWJ sequence): 👨‍👩‍👧‍👦
@@ -638,8 +881,10 @@ test "EditBuffer - getTextRange family emoji" {
 test "EditBuffer - getTextRange Devanagari with combining marks" {
     const pool = gp.initGlobalPool(std.testing.allocator);
     defer gp.deinitGlobalPool();
+    const link_pool = link.initGlobalLinkPool(std.testing.allocator);
+    defer link.deinitGlobalLinkPool();
 
-    var eb = try EditBuffer.init(std.testing.allocator, pool, .wcwidth);
+    var eb = try EditBuffer.init(std.testing.allocator, pool, link_pool, .wcwidth);
     defer eb.deinit();
 
     // "नमस्ते" (Namaste in Devanagari) - 5 display columns with zero-width combining marks
@@ -654,8 +899,10 @@ test "EditBuffer - getTextRange Devanagari with combining marks" {
 test "EditBuffer - getTextRange CJK characters" {
     const pool = gp.initGlobalPool(std.testing.allocator);
     defer gp.deinitGlobalPool();
+    const link_pool = link.initGlobalLinkPool(std.testing.allocator);
+    defer link.deinitGlobalLinkPool();
 
-    var eb = try EditBuffer.init(std.testing.allocator, pool, .wcwidth);
+    var eb = try EditBuffer.init(std.testing.allocator, pool, link_pool, .wcwidth);
     defer eb.deinit();
 
     // "你好" (Hello in Chinese) - each character is 2 cols wide
@@ -670,8 +917,10 @@ test "EditBuffer - getTextRange CJK characters" {
 test "EditBuffer - getTextRange single CJK character" {
     const pool = gp.initGlobalPool(std.testing.allocator);
     defer gp.deinitGlobalPool();
+    const link_pool = link.initGlobalLinkPool(std.testing.allocator);
+    defer link.deinitGlobalLinkPool();
 
-    var eb = try EditBuffer.init(std.testing.allocator, pool, .wcwidth);
+    var eb = try EditBuffer.init(std.testing.allocator, pool, link_pool, .wcwidth);
     defer eb.deinit();
 
     try eb.insertText("A 日 B");
@@ -685,8 +934,10 @@ test "EditBuffer - getTextRange single CJK character" {
 test "EditBuffer - getTextRange across lines" {
     const pool = gp.initGlobalPool(std.testing.allocator);
     defer gp.deinitGlobalPool();
+    const link_pool = link.initGlobalLinkPool(std.testing.allocator);
+    defer link.deinitGlobalLinkPool();
 
-    var eb = try EditBuffer.init(std.testing.allocator, pool, .wcwidth);
+    var eb = try EditBuffer.init(std.testing.allocator, pool, link_pool, .wcwidth);
     defer eb.deinit();
 
     try eb.insertText("Hello\nWorld");
@@ -700,8 +951,10 @@ test "EditBuffer - getTextRange across lines" {
 test "EditBuffer - getTextRange with tabs" {
     const pool = gp.initGlobalPool(std.testing.allocator);
     defer gp.deinitGlobalPool();
+    const link_pool = link.initGlobalLinkPool(std.testing.allocator);
+    defer link.deinitGlobalLinkPool();
 
-    var eb = try EditBuffer.init(std.testing.allocator, pool, .wcwidth);
+    var eb = try EditBuffer.init(std.testing.allocator, pool, link_pool, .wcwidth);
     defer eb.deinit();
 
     try eb.insertText("A\tB");
@@ -715,8 +968,10 @@ test "EditBuffer - getTextRange with tabs" {
 test "EditBuffer - getTextRange partial grapheme snap to start" {
     const pool = gp.initGlobalPool(std.testing.allocator);
     defer gp.deinitGlobalPool();
+    const link_pool = link.initGlobalLinkPool(std.testing.allocator);
+    defer link.deinitGlobalLinkPool();
 
-    var eb = try EditBuffer.init(std.testing.allocator, pool, .wcwidth);
+    var eb = try EditBuffer.init(std.testing.allocator, pool, link_pool, .wcwidth);
     defer eb.deinit();
 
     // CJK character is 2 cols wide
@@ -731,8 +986,10 @@ test "EditBuffer - getTextRange partial grapheme snap to start" {
 test "EditBuffer - getTextRange partial grapheme snap to end" {
     const pool = gp.initGlobalPool(std.testing.allocator);
     defer gp.deinitGlobalPool();
+    const link_pool = link.initGlobalLinkPool(std.testing.allocator);
+    defer link.deinitGlobalLinkPool();
 
-    var eb = try EditBuffer.init(std.testing.allocator, pool, .wcwidth);
+    var eb = try EditBuffer.init(std.testing.allocator, pool, link_pool, .wcwidth);
     defer eb.deinit();
 
     // CJK character is 2 cols wide
@@ -747,8 +1004,10 @@ test "EditBuffer - getTextRange partial grapheme snap to end" {
 test "EditBuffer - getTextRange empty range" {
     const pool = gp.initGlobalPool(std.testing.allocator);
     defer gp.deinitGlobalPool();
+    const link_pool = link.initGlobalLinkPool(std.testing.allocator);
+    defer link.deinitGlobalLinkPool();
 
-    var eb = try EditBuffer.init(std.testing.allocator, pool, .wcwidth);
+    var eb = try EditBuffer.init(std.testing.allocator, pool, link_pool, .wcwidth);
     defer eb.deinit();
 
     try eb.insertText("Hello");
@@ -761,8 +1020,10 @@ test "EditBuffer - getTextRange empty range" {
 test "EditBuffer - getTextRange out of bounds" {
     const pool = gp.initGlobalPool(std.testing.allocator);
     defer gp.deinitGlobalPool();
+    const link_pool = link.initGlobalLinkPool(std.testing.allocator);
+    defer link.deinitGlobalLinkPool();
 
-    var eb = try EditBuffer.init(std.testing.allocator, pool, .wcwidth);
+    var eb = try EditBuffer.init(std.testing.allocator, pool, link_pool, .wcwidth);
     defer eb.deinit();
 
     try eb.insertText("Hello");
@@ -775,8 +1036,10 @@ test "EditBuffer - getTextRange out of bounds" {
 test "EditBuffer - getTextRange mixed scripts" {
     const pool = gp.initGlobalPool(std.testing.allocator);
     defer gp.deinitGlobalPool();
+    const link_pool = link.initGlobalLinkPool(std.testing.allocator);
+    defer link.deinitGlobalLinkPool();
 
-    var eb = try EditBuffer.init(std.testing.allocator, pool, .wcwidth);
+    var eb = try EditBuffer.init(std.testing.allocator, pool, link_pool, .wcwidth);
     defer eb.deinit();
 
     // Mix of ASCII, emoji, CJK, Devanagari
@@ -799,8 +1062,10 @@ test "EditBuffer - getTextRange mixed scripts" {
 test "EditBuffer - getTextRange before cursor" {
     const pool = gp.initGlobalPool(std.testing.allocator);
     defer gp.deinitGlobalPool();
+    const link_pool = link.initGlobalLinkPool(std.testing.allocator);
+    defer link.deinitGlobalLinkPool();
 
-    var eb = try EditBuffer.init(std.testing.allocator, pool, .wcwidth);
+    var eb = try EditBuffer.init(std.testing.allocator, pool, link_pool, .wcwidth);
     defer eb.deinit();
 
     try eb.insertText("Hello World");
@@ -817,8 +1082,10 @@ test "EditBuffer - getTextRange before cursor" {
 test "EditBuffer - getTextRange char before cursor" {
     const pool = gp.initGlobalPool(std.testing.allocator);
     defer gp.deinitGlobalPool();
+    const link_pool = link.initGlobalLinkPool(std.testing.allocator);
+    defer link.deinitGlobalLinkPool();
 
-    var eb = try EditBuffer.init(std.testing.allocator, pool, .wcwidth);
+    var eb = try EditBuffer.init(std.testing.allocator, pool, link_pool, .wcwidth);
     defer eb.deinit();
 
     try eb.insertText("Hello World");
@@ -838,8 +1105,10 @@ test "EditBuffer - getTextRange char before cursor" {
 test "EditBuffer - getTextRange emoji before cursor" {
     const pool = gp.initGlobalPool(std.testing.allocator);
     defer gp.deinitGlobalPool();
+    const link_pool = link.initGlobalLinkPool(std.testing.allocator);
+    defer link.deinitGlobalLinkPool();
 
-    var eb = try EditBuffer.init(std.testing.allocator, pool, .wcwidth);
+    var eb = try EditBuffer.init(std.testing.allocator, pool, link_pool, .wcwidth);
     defer eb.deinit();
 
     try eb.insertText("Hi 👋");
@@ -857,8 +1126,10 @@ test "EditBuffer - getTextRange emoji before cursor" {
 test "EditBuffer - getTextRange multiline with emojis" {
     const pool = gp.initGlobalPool(std.testing.allocator);
     defer gp.deinitGlobalPool();
+    const link_pool = link.initGlobalLinkPool(std.testing.allocator);
+    defer link.deinitGlobalLinkPool();
 
-    var eb = try EditBuffer.init(std.testing.allocator, pool, .wcwidth);
+    var eb = try EditBuffer.init(std.testing.allocator, pool, link_pool, .wcwidth);
     defer eb.deinit();
 
     try eb.insertText("Line1 👋\nLine2 🎉\nLine3");
@@ -872,8 +1143,10 @@ test "EditBuffer - getTextRange multiline with emojis" {
 test "EditBuffer - wcwidth mode treats multi-codepoint emoji as separate chars" {
     const pool = gp.initGlobalPool(std.testing.allocator);
     defer gp.deinitGlobalPool();
+    const link_pool = link.initGlobalLinkPool(std.testing.allocator);
+    defer link.deinitGlobalLinkPool();
 
-    var eb = try EditBuffer.init(std.testing.allocator, pool, .wcwidth);
+    var eb = try EditBuffer.init(std.testing.allocator, pool, link_pool, .wcwidth);
     defer eb.deinit();
 
     // Hand emoji with skin tone: U+1F44B (waving hand) + U+1F3FB (light skin tone)
@@ -953,8 +1226,10 @@ test "EditBuffer - wcwidth mode treats multi-codepoint emoji as separate chars" 
 test "EditBuffer - wcwidth comprehensive emoji cursor movement and backspace" {
     const pool = gp.initGlobalPool(std.testing.allocator);
     defer gp.deinitGlobalPool();
+    const link_pool = link.initGlobalLinkPool(std.testing.allocator);
+    defer link.deinitGlobalLinkPool();
 
-    var eb = try EditBuffer.init(std.testing.allocator, pool, .wcwidth);
+    var eb = try EditBuffer.init(std.testing.allocator, pool, link_pool, .wcwidth);
     defer eb.deinit();
 
     // Test string with various emoji types
@@ -1142,8 +1417,10 @@ test "EditBuffer - wcwidth comprehensive emoji cursor movement and backspace" {
 test "EditBuffer - wcwidth ZWJ does not appear in rendered text" {
     const pool = gp.initGlobalPool(std.testing.allocator);
     defer gp.deinitGlobalPool();
+    const link_pool = link.initGlobalLinkPool(std.testing.allocator);
+    defer link.deinitGlobalLinkPool();
 
-    var eb = try EditBuffer.init(std.testing.allocator, pool, .wcwidth);
+    var eb = try EditBuffer.init(std.testing.allocator, pool, link_pool, .wcwidth);
     defer eb.deinit();
 
     const woman_tech = "👩🏽‍💻"; // Contains ZWJ at byte position
@@ -1192,8 +1469,10 @@ test "EditBuffer - wcwidth ZWJ does not appear in rendered text" {
 test "EditBuffer - wcwidth each visible emoji requires exactly one cursor move" {
     const pool = gp.initGlobalPool(std.testing.allocator);
     defer gp.deinitGlobalPool();
+    const link_pool = link.initGlobalLinkPool(std.testing.allocator);
+    defer link.deinitGlobalLinkPool();
 
-    var eb = try EditBuffer.init(std.testing.allocator, pool, .wcwidth);
+    var eb = try EditBuffer.init(std.testing.allocator, pool, link_pool, .wcwidth);
     defer eb.deinit();
 
     // Test 1: Simple laptop emoji (no ZWJ)
@@ -1277,8 +1556,10 @@ test "EditBuffer - wcwidth each visible emoji requires exactly one cursor move" 
 test "EditBuffer - replaceText allows undo" {
     const pool = gp.initGlobalPool(std.testing.allocator);
     defer gp.deinitGlobalPool();
+    const link_pool = link.initGlobalLinkPool(std.testing.allocator);
+    defer link.deinitGlobalLinkPool();
 
-    var eb = try EditBuffer.init(std.testing.allocator, pool, .wcwidth);
+    var eb = try EditBuffer.init(std.testing.allocator, pool, link_pool, .wcwidth);
     defer eb.deinit();
 
     // Set initial text (resets everything)
@@ -1305,8 +1586,10 @@ test "EditBuffer - replaceText allows undo" {
 test "EditBuffer - setText clears all history" {
     const pool = gp.initGlobalPool(std.testing.allocator);
     defer gp.deinitGlobalPool();
+    const link_pool = link.initGlobalLinkPool(std.testing.allocator);
+    defer link.deinitGlobalLinkPool();
 
-    var eb = try EditBuffer.init(std.testing.allocator, pool, .wcwidth);
+    var eb = try EditBuffer.init(std.testing.allocator, pool, link_pool, .wcwidth);
     defer eb.deinit();
 
     // Insert some text that creates undo history
@@ -1332,8 +1615,10 @@ test "EditBuffer - setText clears all history" {
 test "EditBuffer - multiple replaceText with history keeps add_buffer functional" {
     const pool = gp.initGlobalPool(std.testing.allocator);
     defer gp.deinitGlobalPool();
+    const link_pool = link.initGlobalLinkPool(std.testing.allocator);
+    defer link.deinitGlobalLinkPool();
 
-    var eb = try EditBuffer.init(std.testing.allocator, pool, .wcwidth);
+    var eb = try EditBuffer.init(std.testing.allocator, pool, link_pool, .wcwidth);
     defer eb.deinit();
 
     // Use replaceText to preserve history
@@ -1371,8 +1656,10 @@ test "EditBuffer - multiple replaceText with history keeps add_buffer functional
 test "EditBuffer - setText resets add_buffer" {
     const pool = gp.initGlobalPool(std.testing.allocator);
     defer gp.deinitGlobalPool();
+    const link_pool = link.initGlobalLinkPool(std.testing.allocator);
+    defer link.deinitGlobalLinkPool();
 
-    var eb = try EditBuffer.init(std.testing.allocator, pool, .wcwidth);
+    var eb = try EditBuffer.init(std.testing.allocator, pool, link_pool, .wcwidth);
     defer eb.deinit();
 
     // Insert text that uses add_buffer

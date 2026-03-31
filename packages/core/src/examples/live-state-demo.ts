@@ -16,9 +16,9 @@ import {
   fg,
   parseColor,
   Box,
-} from "../index"
-import type { BoxOptions } from "../renderables/Box"
-import { setupCommonDemoKeys } from "./lib/standalone-keys"
+} from "../index.js"
+import type { BoxOptions } from "../renderables/Box.js"
+import { setupCommonDemoKeys } from "./lib/standalone-keys.js"
 
 let mainGroup: BoxRenderable | null = null
 let titleText: TextRenderable | null = null

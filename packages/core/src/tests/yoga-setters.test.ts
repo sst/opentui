@@ -1,7 +1,7 @@
 import { test, expect, beforeEach, afterEach, describe } from "bun:test"
-import { Renderable, type RenderableOptions } from "../Renderable"
-import { createTestRenderer, type TestRenderer } from "../testing/test-renderer"
-import type { RenderContext } from "../types"
+import { Renderable, type RenderableOptions } from "../Renderable.js"
+import { createTestRenderer, type TestRenderer } from "../testing/test-renderer.js"
+import type { RenderContext } from "../types.js"
 
 class TestRenderable extends Renderable {
   constructor(ctx: RenderContext, options: RenderableOptions) {

@@ -1,11 +1,11 @@
 import { test, expect, beforeEach, afterEach } from "bun:test"
-import { CodeRenderable } from "./Code"
-import { SyntaxStyle } from "../syntax-style"
-import { RGBA } from "../lib/RGBA"
-import { createTestRenderer, type TestRenderer, MockTreeSitterClient, type MockMouse } from "../testing"
-import { TreeSitterClient } from "../lib/tree-sitter"
-import type { SimpleHighlight } from "../lib/tree-sitter/types"
-import { BoxRenderable } from "./Box"
+import { CodeRenderable } from "./Code.js"
+import { SyntaxStyle } from "../syntax-style.js"
+import { RGBA } from "../lib/RGBA.js"
+import { createTestRenderer, type TestRenderer, MockTreeSitterClient, type MockMouse } from "../testing.js"
+import { TreeSitterClient } from "../lib/tree-sitter/index.js"
+import type { SimpleHighlight } from "../lib/tree-sitter/types.js"
+import { BoxRenderable } from "./Box.js"
 
 let currentRenderer: TestRenderer
 let renderOnce: () => Promise<void>
@@ -1123,6 +1123,42 @@ test("CodeRenderable - streaming mode with drawUnstyledText=false waits for new 
   currentRenderer.stop()
 })
 
+test("CodeRenderable - onChunks callback can transform chunks when highlights are empty", async () => {
+  const syntaxStyle = SyntaxStyle.fromStyles({
+    default: { fg: RGBA.fromValues(1, 1, 1, 1) },
+  })
+
+  const mockClient = new MockTreeSitterClient()
+  mockClient.setMockResult({ highlights: [] })
+
+  let callbackInvoked = false
+
+  const codeRenderable = new CodeRenderable(currentRenderer, {
+    id: "test-code",
+    content: "hello",
+    filetype: "plaintext",
+    syntaxStyle,
+    treeSitterClient: mockClient,
+    onChunks: (chunks) => {
+      callbackInvoked = true
+      return chunks.map((chunk) => ({
+        ...chunk,
+        text: chunk.text.toUpperCase(),
+      }))
+    },
+  })
+
+  currentRenderer.root.add(codeRenderable)
+  await renderOnce()
+
+  mockClient.resolveHighlightOnce(0)
+  await new Promise((resolve) => setTimeout(resolve, 10))
+  await renderOnce()
+
+  expect(callbackInvoked).toBe(true)
+  expect(codeRenderable.plainText).toBe("HELLO")
+})
+
 test("CodeRenderable - onHighlight callback receives highlights and context", async () => {
   const syntaxStyle = SyntaxStyle.fromStyles({
     default: { fg: RGBA.fromValues(1, 1, 1, 1) },
@@ -1753,19 +1789,19 @@ test("CodeRenderable - lineInfo is accessible with drawUnstyledText=false before
   currentRenderer.root.add(codeRenderable)
 
   expect(codeRenderable.lineCount).toBe(3)
-  expect(codeRenderable.lineInfo.lineStarts.length).toBe(3)
+  expect(codeRenderable.lineInfo.lineStartCols.length).toBe(3)
 
   await renderOnce()
 
   expect(mockClient.isHighlighting()).toBe(true)
-  expect(codeRenderable.lineInfo.lineStarts.length).toBe(3)
+  expect(codeRenderable.lineInfo.lineStartCols.length).toBe(3)
   expect(codeRenderable.lineInfo.lineSources.length).toBe(3)
 
   mockClient.resolveHighlightOnce(0)
   await new Promise((resolve) => setTimeout(resolve, 10))
   await renderOnce()
 
-  expect(codeRenderable.lineInfo.lineStarts.length).toBe(3)
+  expect(codeRenderable.lineInfo.lineStartCols.length).toBe(3)
   expect(codeRenderable.lineInfo.lineSources.length).toBe(3)
 })
 
@@ -1924,7 +1960,7 @@ test("CodeRenderable - streaming with conceal and drawUnstyledText=false should 
   }
 
   // Use TestRecorder to capture frames
-  const { TestRecorder } = await import("../testing/test-recorder")
+  const { TestRecorder } = await import("../testing/test-recorder.js")
   const recorder = new TestRecorder(currentRenderer)
 
   // Start renderer and recorder

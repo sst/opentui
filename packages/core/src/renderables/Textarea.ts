@@ -1,7 +1,8 @@
-import { type RenderContext } from "../types"
-import { EditBufferRenderable, type EditBufferOptions } from "./EditBufferRenderable"
-import type { KeyEvent, PasteEvent } from "../lib/KeyHandler"
-import { RGBA, parseColor, type ColorInput } from "../lib/RGBA"
+import type { KeyEvent, PasteEvent } from "../lib/KeyHandler.js"
+import { decodePasteBytes, stripAnsiSequences } from "../lib/paste.js"
+import { RGBA, parseColor, type ColorInput } from "../lib/RGBA.js"
+import { type RenderContext } from "../types.js"
+import { EditBufferRenderable, type EditBufferOptions } from "./EditBufferRenderable.js"
 import {
   type KeyBinding as BaseKeyBinding,
   mergeKeyBindings,
@@ -10,9 +11,9 @@ import {
   type KeyAliasMap,
   defaultKeyAliases,
   mergeKeyAliases,
-} from "../lib/keymapping"
-import { type StyledText, fg } from "../lib/styled-text"
-import type { ExtmarksController } from "../lib/extmarks"
+} from "../lib/keymapping.js"
+import { type StyledText, fg } from "../lib/styled-text.js"
+import type { ExtmarksController } from "../lib/extmarks.js"
 
 export type TextareaAction =
   | "move-left"
@@ -256,7 +257,7 @@ export class TextareaRenderable extends EditBufferRenderable {
   }
 
   public handlePaste(event: PasteEvent): void {
-    this.insertText(event.text)
+    this.insertText(stripAnsiSequences(decodePasteBytes(event.bytes)))
   }
 
   public handleKeyPress(key: KeyEvent): boolean {
@@ -629,10 +630,11 @@ export class TextareaRenderable extends EditBufferRenderable {
     return this._placeholder
   }
 
-  set placeholder(value: StyledText | string | null) {
-    if (this._placeholder !== value) {
-      this._placeholder = value
-      this.applyPlaceholder(value)
+  set placeholder(value: StyledText | string | null | undefined) {
+    const normalizedValue = value ?? null
+    if (this._placeholder !== normalizedValue) {
+      this._placeholder = normalizedValue
+      this.applyPlaceholder(normalizedValue)
       this.requestRender()
     }
   }

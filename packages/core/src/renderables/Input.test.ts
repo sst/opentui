@@ -1,7 +1,8 @@
 import { describe, expect, it, afterAll, beforeAll } from "bun:test"
-import { InputRenderable, type InputRenderableOptions, InputRenderableEvents } from "./Input"
-import { createTestRenderer } from "../testing/test-renderer"
-import type { KeyEvent } from "../lib/KeyHandler"
+import { InputRenderable, type InputRenderableOptions, InputRenderableEvents } from "./Input.js"
+import { decodePasteBytes } from "../lib/paste.js"
+import { createTestRenderer } from "../testing/test-renderer.js"
+import type { KeyEvent } from "../lib/KeyHandler.js"
 
 const { renderer, mockInput } = await createTestRenderer({})
 
@@ -326,7 +327,7 @@ describe("InputRenderable", () => {
         width: 20,
         height: 1,
         onPaste: (event) => {
-          pasteText = event.text
+          pasteText = decodePasteBytes(event.bytes)
           pasteCalled = true
         },
       })
@@ -338,6 +339,18 @@ describe("InputRenderable", () => {
       expect(input.value).toBe("pasted text")
       expect(pasteCalled).toBe(true)
       expect(pasteText).toBe("pasted text")
+    })
+
+    it("should strip ANSI sequences from pasted text before inserting", () => {
+      const { input } = createInputRenderable({
+        width: 20,
+      })
+
+      input.focus()
+
+      mockInput.pasteBracketedText("hi \x1b[31mred\x1b[0m")
+
+      expect(input.value).toBe("hi red")
     })
   })
 

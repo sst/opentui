@@ -1,5 +1,5 @@
 import { test, expect } from "bun:test"
-import { buildKittyKeyboardFlags } from "../renderer"
+import { buildKittyKeyboardFlags } from "../renderer.js"
 
 // Kitty Keyboard Protocol progressive enhancement flags
 // See: https://sw.kovidgoyal.net/kitty/keyboard-protocol/#progressive-enhancement

@@ -1,6 +1,7 @@
 const std = @import("std");
 const builtin = @import("builtin");
 const testing = std.testing;
+const ansi = @import("../ansi.zig");
 const Terminal = @import("../terminal.zig");
 const utf8 = @import("../utf8.zig");
 
@@ -110,6 +111,57 @@ test "remote ignores env overrides but accepts capability responses" {
 
     term.processCapabilityResponse("\x1bP>|kitty(0.40.1)\x1b\\");
     try testing.expect(term.caps.osc52);
+}
+
+test "setHostEnvVar applies env overrides in shared library mode" {
+    var term = Terminal.init(.{});
+    defer term.deinit();
+
+    try term.setHostEnvVar(testing.allocator, "TERM", "screen");
+    try testing.expect(term.skip_graphics_query);
+    try testing.expect(term.caps.unicode == .wcwidth);
+    try testing.expect(term.caps.explicit_cursor_positioning);
+
+    try term.setHostEnvVar(testing.allocator, "OPENTUI_FORCE_UNICODE", "1");
+    try testing.expect(term.caps.unicode == .unicode);
+
+    try term.setHostEnvVar(testing.allocator, "OPENTUI_GRAPHICS", "0");
+    try testing.expect(term.skip_graphics_query);
+}
+
+test "environment overrides - enables hyperlinks for WSL Windows Terminal xterm" {
+    var env = std.process.EnvMap.init(testing.allocator);
+    defer env.deinit();
+    try env.put("WSL_DISTRO_NAME", "Ubuntu");
+    try env.put("WT_SESSION", "test-session");
+    try env.put("TERM", "xterm-256color");
+
+    const term = Terminal.init(.{ .env_map = &env });
+
+    try testing.expect(term.caps.hyperlinks);
+}
+
+test "environment overrides - does not enable hyperlinks for WSL without WT_SESSION" {
+    var env = std.process.EnvMap.init(testing.allocator);
+    defer env.deinit();
+    try env.put("WSL_DISTRO_NAME", "Ubuntu");
+    try env.put("TERM", "xterm-256color");
+
+    const term = Terminal.init(.{ .env_map = &env });
+
+    try testing.expect(!term.caps.hyperlinks);
+}
+
+test "environment overrides - does not enable hyperlinks for WSL non-xterm terms" {
+    var env = std.process.EnvMap.init(testing.allocator);
+    defer env.deinit();
+    try env.put("WSL_INTEROP", "/run/WSL/123_interop");
+    try env.put("WT_SESSION", "test-session");
+    try env.put("TERM", "screen-256color");
+
+    const term = Terminal.init(.{ .env_map = &env });
+
+    try testing.expect(!term.caps.hyperlinks);
 }
 
 test "parseXtversion - terminal name only" {
@@ -636,4 +688,67 @@ test "queryTerminalSend - sends OSC 66 queries when OPENTUI_FORCE_EXPLICIT_WIDTH
     // Verify the capability was forced on
     try testing.expect(term.caps.explicit_width);
     try testing.expect(!term.skip_explicit_width_query);
+}
+
+test "setMouseMode - enable without movement keeps click/drag only" {
+    var term = Terminal.init(.{});
+    var writer = TestWriter.init(testing.allocator);
+    defer writer.deinit();
+
+    try term.setMouseMode(&writer, true, false);
+
+    const output = writer.getWritten();
+    const idx_disable_any = std.mem.indexOf(u8, output, ansi.ANSI.disableAnyEventTracking).?;
+    const idx_enable_mouse = std.mem.indexOf(u8, output, ansi.ANSI.enableMouseTracking).?;
+    const idx_enable_button = std.mem.indexOf(u8, output, ansi.ANSI.enableButtonEventTracking).?;
+    const idx_enable_sgr = std.mem.indexOf(u8, output, ansi.ANSI.enableSGRMouseMode).?;
+    try testing.expect(std.mem.indexOf(u8, output, ansi.ANSI.enableAnyEventTracking) == null);
+    try testing.expect(idx_disable_any < idx_enable_mouse);
+    try testing.expect(idx_enable_mouse < idx_enable_button);
+    try testing.expect(idx_enable_button < idx_enable_sgr);
+
+    try testing.expect(term.state.mouse);
+    try testing.expect(!term.state.mouse_movement);
+}
+
+test "setMouseMode - enable with movement enables any-event tracking" {
+    var term = Terminal.init(.{});
+    var writer = TestWriter.init(testing.allocator);
+    defer writer.deinit();
+
+    try term.setMouseMode(&writer, true, true);
+
+    const output = writer.getWritten();
+    const idx_enable_mouse = std.mem.indexOf(u8, output, ansi.ANSI.enableMouseTracking).?;
+    const idx_enable_button = std.mem.indexOf(u8, output, ansi.ANSI.enableButtonEventTracking).?;
+    const idx_enable_any = std.mem.indexOf(u8, output, ansi.ANSI.enableAnyEventTracking).?;
+    const idx_enable_sgr = std.mem.indexOf(u8, output, ansi.ANSI.enableSGRMouseMode).?;
+    try testing.expect(idx_enable_mouse < idx_enable_button);
+    try testing.expect(idx_enable_button < idx_enable_any);
+    try testing.expect(idx_enable_any < idx_enable_sgr);
+    try testing.expect(std.mem.indexOf(u8, output, ansi.ANSI.disableAnyEventTracking) == null);
+
+    try testing.expect(term.state.mouse);
+    try testing.expect(term.state.mouse_movement);
+}
+
+test "restoreTerminalModes - respects mouse movement setting" {
+    var term = Terminal.init(.{});
+    term.state.mouse = true;
+    term.state.mouse_movement = false;
+
+    var writer = TestWriter.init(testing.allocator);
+    defer writer.deinit();
+
+    try term.restoreTerminalModes(&writer);
+
+    const output = writer.getWritten();
+    const idx_disable_any = std.mem.indexOf(u8, output, ansi.ANSI.disableAnyEventTracking).?;
+    const idx_enable_mouse = std.mem.indexOf(u8, output, ansi.ANSI.enableMouseTracking).?;
+    const idx_enable_button = std.mem.indexOf(u8, output, ansi.ANSI.enableButtonEventTracking).?;
+    const idx_enable_sgr = std.mem.indexOf(u8, output, ansi.ANSI.enableSGRMouseMode).?;
+    try testing.expect(idx_disable_any < idx_enable_mouse);
+    try testing.expect(idx_enable_mouse < idx_enable_button);
+    try testing.expect(idx_enable_button < idx_enable_sgr);
+    try testing.expect(std.mem.indexOf(u8, output, ansi.ANSI.enableAnyEventTracking) == null);
 }

@@ -8,27 +8,27 @@ import {
   FrameBufferRenderable,
   BoxRenderable,
   type KeyEvent,
-} from "../index"
-import { setupCommonDemoKeys } from "./lib/standalone-keys"
+} from "../index.js"
+import { setupCommonDemoKeys } from "./lib/standalone-keys.js"
 import * as THREE from "three"
 import {
   SpriteAnimator,
   TiledSprite,
   type SpriteDefinition,
   type AnimationDefinition,
-} from "../3d/animation/SpriteAnimator"
-import { SpriteResourceManager, type ResourceConfig } from "../3d/SpriteResourceManager"
+} from "../3d/animation/SpriteAnimator.js"
+import { SpriteResourceManager, type ResourceConfig } from "../3d/SpriteResourceManager.js"
 import {
   ExplosionManager,
   type ExplosionHandle,
   type ExplosionEffectParameters,
-} from "../3d/animation/ExplodingSpriteEffect"
+} from "../3d/animation/ExplodingSpriteEffect.js"
 
 // @ts-ignore
 import mainCharIdlePath from "./assets/main_char_idle.png" with { type: "image/png" }
 import { randFloat } from "three/src/math/MathUtils.js"
 import { MeshLambertNodeMaterial } from "three/webgpu"
-import { ThreeCliRenderer } from "../3d"
+import { ThreeCliRenderer } from "../3d.js"
 
 interface SpriteAnimationDemoState {
   engine: ThreeCliRenderer

@@ -1,5 +1,5 @@
 import { TextAttributes, type TextareaRenderable } from "@opentui/core"
-import { useTextareaKeybindings } from "./textarea-keybindings"
+import { useTextareaKeybindings } from "./textarea-keybindings.js"
 
 export function TextareaMinimalDemo() {
   const bindings = useTextareaKeybindings()

@@ -1,7 +1,6 @@
 # OpenTUI Core
 
-OpenTUI Core is a TypeScript library for building terminal user interfaces (TUIs). It is currently in
-development and is not ready for production use.
+OpenTUI is a native terminal UI core written in Zig with TypeScript bindings. The native core exposes a C ABI and can be used from any language. OpenTUI powers OpenCode in production today and will also power terminal.shop. It is an extensible core with a focus on correctness, stability, and high performance. It provides a component-based architecture with flexible layout capabilities, allowing you to create complex terminal applications.
 
 ## Documentation
 

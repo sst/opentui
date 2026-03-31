@@ -1,11 +1,11 @@
 import { describe, expect, it, beforeEach, afterEach } from "bun:test"
-import { createTestRenderer, type TestRenderer, type MockInput } from "../../testing/test-renderer"
-import { createTextareaRenderable } from "./renderable-test-utils"
-import { RGBA } from "../../lib/RGBA"
-import { SyntaxStyle } from "../../syntax-style"
-import { OptimizedBuffer } from "../../buffer"
-import { fg, t } from "../../lib"
-import { BoxRenderable, TextareaRenderable, TextRenderable } from ".."
+import { createTestRenderer, type TestRenderer, type MockInput } from "../../testing/test-renderer.js"
+import { createTextareaRenderable } from "./renderable-test-utils.js"
+import { RGBA } from "../../lib/RGBA.js"
+import { SyntaxStyle } from "../../syntax-style.js"
+import { OptimizedBuffer } from "../../buffer.js"
+import { fg, t } from "../../lib/index.js"
+import { BoxRenderable, TextareaRenderable, TextRenderable } from "../index.js"
 
 let currentRenderer: TestRenderer
 let renderOnce: () => Promise<void>
@@ -1193,6 +1193,24 @@ describe("Textarea - Rendering Tests", () => {
       expect(editor.plainText).toBe("")
 
       editor.placeholder = null
+      expect(editor.placeholder).toBe(null)
+      expect(editor.plainText).toBe("")
+    })
+
+    it("should reset placeholder when set to undefined", async () => {
+      const { textarea: editor } = await createTextareaRenderable(currentRenderer, renderOnce, {
+        initialValue: "",
+        width: 40,
+        height: 10,
+        placeholder: "Initial placeholder",
+      })
+
+      expect(editor.placeholder).toBe("Initial placeholder")
+
+      expect(() => {
+        editor.placeholder = undefined
+      }).not.toThrow()
+
       expect(editor.placeholder).toBe(null)
       expect(editor.plainText).toBe("")
     })

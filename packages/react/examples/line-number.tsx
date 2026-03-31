@@ -155,5 +155,7 @@ console.log('Even numbers:', evens)`
   )
 }
 
-const renderer = await createCliRenderer()
-createRoot(renderer).render(<App />)
+if (import.meta.main) {
+  const renderer = await createCliRenderer()
+  createRoot(renderer).render(<App />)
+}

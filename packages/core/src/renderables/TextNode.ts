@@ -1,9 +1,9 @@
-import type { TextRenderable } from "."
-import { BaseRenderable, type BaseRenderableOptions } from "../Renderable"
-import { RGBA, parseColor } from "../lib/RGBA"
-import { isStyledText, StyledText } from "../lib/styled-text"
-import { type TextChunk } from "../text-buffer"
-import type { RenderContext } from "../types"
+import type { TextRenderable } from "./index.js"
+import { BaseRenderable, type BaseRenderableOptions } from "../Renderable.js"
+import { RGBA, parseColor } from "../lib/RGBA.js"
+import { isStyledText, StyledText } from "../lib/styled-text.js"
+import { type TextChunk } from "../text-buffer.js"
+import type { RenderContext } from "../types.js"
 
 export interface TextNodeOptions extends BaseRenderableOptions {
   fg?: string | RGBA

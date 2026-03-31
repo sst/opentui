@@ -41,6 +41,7 @@ const buildLib = args.find((arg) => arg === "--lib")
 const buildNative = args.find((arg) => arg === "--native")
 const isDev = args.includes("--dev")
 const buildAll = args.includes("--all") // Build for all platforms
+const gpaSafeStats = args.includes("--gpa-safe-stats")
 
 const variants: Variant[] = [
   { platform: "darwin", arch: "x64" },
@@ -84,6 +85,9 @@ if (buildNative) {
   const zigArgs = ["build", `-Doptimize=${isDev ? "Debug" : "ReleaseFast"}`]
   if (buildAll) {
     zigArgs.push("-Dall")
+  }
+  if (gpaSafeStats) {
+    zigArgs.push("-Dgpa-safe-stats=true")
   }
 
   const zigBuild: SpawnSyncReturns<Buffer> = spawnSync("zig", zigArgs, {
@@ -189,7 +193,13 @@ if (buildLib) {
     process.exit(1)
   }
 
-  const entryPoints: string[] = [packageJson.module, "src/3d.ts", "src/testing.ts"]
+  const entryPoints: string[] = [
+    packageJson.module,
+    "src/3d.ts",
+    "src/testing.ts",
+    "src/runtime-plugin.ts",
+    "src/runtime-plugin-support.ts",
+  ]
 
   // Build main entry points with code splitting
   // External patterns to prevent bundling tree-sitter assets and default-parsers
@@ -244,7 +254,14 @@ if (buildLib) {
   // See: https://github.com/oven-sh/bun/issues/5344
   // and: https://github.com/oven-sh/bun/issues/10631
   console.log("Post-processing bundled files to fix duplicate exports...")
-  const bundledFiles = ["dist/index.js", "dist/3d.js", "dist/testing.js", "dist/lib/tree-sitter/parser.worker.js"]
+  const bundledFiles = [
+    "dist/index.js",
+    "dist/3d.js",
+    "dist/testing.js",
+    "dist/runtime-plugin.js",
+    "dist/runtime-plugin-support.js",
+    "dist/lib/tree-sitter/parser.worker.js",
+  ]
   for (const filePath of bundledFiles) {
     const fullPath = join(rootDir, filePath)
     if (existsSync(fullPath)) {
@@ -323,6 +340,16 @@ if (buildLib) {
       import: "./testing.js",
       require: "./testing.js",
       types: "./testing.d.ts",
+    },
+    "./runtime-plugin": {
+      import: "./runtime-plugin.js",
+      require: "./runtime-plugin.js",
+      types: "./runtime-plugin.d.ts",
+    },
+    "./runtime-plugin-support": {
+      import: "./runtime-plugin-support.js",
+      require: "./runtime-plugin-support.js",
+      types: "./runtime-plugin-support.d.ts",
     },
     "./parser.worker": {
       import: "./lib/tree-sitter/parser.worker.js",

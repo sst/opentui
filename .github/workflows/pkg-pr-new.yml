@@ -1,31 +1,26 @@
 name: Publish Preview Packages
 
 on:
-  pull_request:
-    paths:
-      - "packages/core/**"
-      - "packages/react/**"
-      - "packages/solid/**"
-  push:
-    branches:
-      - "**"
-    tags:
-      - "!**"
-    paths:
-      - "packages/core/**"
-      - "packages/react/**"
-      - "packages/solid/**"
+  issue_comment:
+    types: [created]
 
 permissions: {}
 
 jobs:
   publish:
     name: Publish Preview
+    if: |
+      github.event.issue.pull_request &&
+      github.event.issue.state == 'open' &&
+      (contains(github.event.comment.body, ' /pkg-preview') ||
+        startsWith(github.event.comment.body, '/pkg-preview')) &&
+      contains(fromJson('["OWNER","MEMBER","COLLABORATOR"]'), github.event.comment.author_association)
     runs-on: ubuntu-latest
-
     steps:
-      - name: Checkout code
+      - name: Checkout PR branch
         uses: actions/checkout@v4
+        with:
+          ref: refs/pull/${{ github.event.issue.number }}/head
 
       - name: Setup Bun
         uses: oven-sh/setup-bun@v2

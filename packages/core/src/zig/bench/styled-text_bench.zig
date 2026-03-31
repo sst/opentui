@@ -3,6 +3,7 @@ const bench_utils = @import("../bench-utils.zig");
 const text_buffer_mod = @import("../text-buffer.zig");
 const syntax_style_mod = @import("../syntax-style.zig");
 const gp = @import("../grapheme.zig");
+const link = @import("../link.zig");
 
 const BenchResult = bench_utils.BenchResult;
 const BenchStats = bench_utils.BenchStats;
@@ -32,6 +33,7 @@ fn benchSetStyledTextOperations(
     const global_alloc = arena.allocator();
 
     const pool = gp.initGlobalPool(global_alloc);
+    const link_pool = link.initGlobalLinkPool(global_alloc);
 
     // Single chunk - baseline
     {
@@ -43,7 +45,7 @@ fn benchSetStyledTextOperations(
             const fg_color = [4]f32{ 1.0, 1.0, 1.0, 1.0 };
 
             for (0..iterations) |_| {
-                const tb = try TextBuffer.init(allocator, pool, .wcwidth);
+                const tb = try TextBuffer.init(allocator, pool, link_pool, .wcwidth);
                 defer tb.deinit();
 
                 const style = try SyntaxStyle.init(allocator);
@@ -89,7 +91,7 @@ fn benchSetStyledTextOperations(
             const magenta = [4]f32{ 1.0, 0.0, 1.0, 1.0 };
 
             for (0..iterations) |_| {
-                const tb = try TextBuffer.init(allocator, pool, .wcwidth);
+                const tb = try TextBuffer.init(allocator, pool, link_pool, .wcwidth);
                 defer tb.deinit();
 
                 const style = try SyntaxStyle.init(allocator);
@@ -141,7 +143,7 @@ fn benchSetStyledTextOperations(
             const number_color = [4]f32{ 0.7, 1.0, 0.7, 1.0 };
 
             for (0..iterations) |_| {
-                const tb = try TextBuffer.init(allocator, pool, .wcwidth);
+                const tb = try TextBuffer.init(allocator, pool, link_pool, .wcwidth);
                 defer tb.deinit();
 
                 const style = try SyntaxStyle.init(allocator);
@@ -195,7 +197,7 @@ fn benchSetStyledTextOperations(
             const text = "Lorem ipsum ";
 
             for (0..iterations) |_| {
-                const tb = try TextBuffer.init(allocator, pool, .wcwidth);
+                const tb = try TextBuffer.init(allocator, pool, link_pool, .wcwidth);
                 defer tb.deinit();
 
                 const style = try SyntaxStyle.init(allocator);
@@ -241,7 +243,7 @@ fn benchSetStyledTextOperations(
             var stats = BenchStats{};
 
             for (0..iterations) |_| {
-                const tb = try TextBuffer.init(allocator, pool, .wcwidth);
+                const tb = try TextBuffer.init(allocator, pool, link_pool, .wcwidth);
                 defer tb.deinit();
 
                 const style = try SyntaxStyle.init(allocator);
@@ -296,6 +298,7 @@ fn benchHighlightOperations(
     const global_alloc = arena.allocator();
 
     const pool = gp.initGlobalPool(global_alloc);
+    const link_pool = link.initGlobalLinkPool(global_alloc);
 
     // Baseline: 1000 sequential addHighlightByCharRange calls (unbatched)
     {
@@ -304,7 +307,7 @@ fn benchHighlightOperations(
             var stats = BenchStats{};
 
             for (0..iterations) |_| {
-                const tb = try TextBuffer.init(allocator, pool, .wcwidth);
+                const tb = try TextBuffer.init(allocator, pool, link_pool, .wcwidth);
                 defer tb.deinit();
 
                 const style = try SyntaxStyle.init(allocator);
@@ -347,7 +350,7 @@ fn benchHighlightOperations(
             var stats = BenchStats{};
 
             for (0..iterations) |_| {
-                const tb = try TextBuffer.init(allocator, pool, .wcwidth);
+                const tb = try TextBuffer.init(allocator, pool, link_pool, .wcwidth);
                 defer tb.deinit();
 
                 const style = try SyntaxStyle.init(allocator);
@@ -418,7 +421,7 @@ fn benchHighlightOperations(
             }
 
             for (0..iterations) |_| {
-                const tb = try TextBuffer.init(allocator, pool, .wcwidth);
+                const tb = try TextBuffer.init(allocator, pool, link_pool, .wcwidth);
                 defer tb.deinit();
 
                 const style = try SyntaxStyle.init(allocator);

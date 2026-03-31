@@ -8,9 +8,9 @@ import {
   TextRenderable,
   FrameBufferRenderable,
   type KeyEvent,
-} from "../index"
-import { setupCommonDemoKeys } from "./lib/standalone-keys"
-import { TextureUtils } from "../3d/TextureUtils"
+} from "../index.js"
+import { setupCommonDemoKeys } from "./lib/standalone-keys.js"
+import { TextureUtils } from "../3d/TextureUtils.js"
 import {
   Scene as ThreeScene,
   Mesh as ThreeMesh,
@@ -29,7 +29,7 @@ import { TeapotGeometry } from "three/addons/geometries/TeapotGeometry.js"
 import normalTexPath from "./assets/Water_2_M_Normal.jpg" with { type: "image/jpeg" }
 // @ts-ignore
 import alphaTexPath from "./assets/roughness_map.jpg" with { type: "image/jpeg" }
-import { ThreeCliRenderer } from "../3d"
+import { ThreeCliRenderer } from "../3d.js"
 
 interface PhongDemoState {
   camera: PerspectiveCamera

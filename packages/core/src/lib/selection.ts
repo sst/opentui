@@ -1,5 +1,5 @@
-import { Renderable, type ViewportBounds } from ".."
-import { coordinateToCharacterIndex, fonts } from "./ascii.font"
+import { Renderable, type ViewportBounds } from "../index.js"
+import { coordinateToCharacterIndex, fonts } from "./ascii.font.js"
 
 class SelectionAnchor {
   private relativeX: number

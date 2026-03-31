@@ -1,9 +1,9 @@
 import { EventEmitter } from "events"
 import Yoga, { Direction, Display, Edge, FlexDirection, type Config, type Node as YogaNode } from "yoga-layout"
-import { OptimizedBuffer } from "./buffer"
-import type { KeyEvent, PasteEvent } from "./lib/KeyHandler"
-import type { MouseEventType } from "./lib/parse.mouse"
-import type { Selection } from "./lib/selection"
+import { OptimizedBuffer } from "./buffer.js"
+import type { KeyEvent, PasteEvent } from "./lib/KeyHandler.js"
+import type { MouseEventType } from "./lib/parse.mouse.js"
+import type { Selection } from "./lib/selection.js"
 import {
   parseAlign,
   parseAlignItems,
@@ -18,10 +18,10 @@ import {
   type OverflowString,
   type PositionTypeString,
   type WrapString,
-} from "./lib/yoga.options"
-import { maybeMakeRenderable, type VNode } from "./renderables/composition/vnode"
-import type { MouseEvent } from "./renderer"
-import type { RenderContext } from "./types"
+} from "./lib/yoga.options.js"
+import { maybeMakeRenderable, type VNode } from "./renderables/composition/vnode.js"
+import type { MouseEvent } from "./renderer.js"
+import type { RenderContext } from "./types.js"
 import {
   validateOptions,
   isPositionType,
@@ -32,7 +32,7 @@ import {
   isPaddingType,
   isPositionTypeType,
   isOverflowType,
-} from "./lib/renderable.validations"
+} from "./lib/renderable.validations.js"
 
 const BrandedRenderable: unique symbol = Symbol.for("@opentui/core/Renderable")
 
@@ -565,17 +565,19 @@ export abstract class Renderable extends BaseRenderable {
   }
 
   public set width(value: number | "auto" | `${number}%`) {
-    if (isDimensionType(value)) {
-      this._width = value
-      this.yogaNode.setWidth(value)
-
-      if (typeof value === "number" && this._flexShrink === 1) {
-        this._flexShrink = 0
-        this.yogaNode.setFlexShrink(0)
-      }
-
-      this.requestRender()
+    if (!isDimensionType(value) || this._width === value) {
+      return
     }
+
+    this._width = value
+    this.yogaNode.setWidth(value)
+
+    if (typeof value === "number" && this._flexShrink === 1) {
+      this._flexShrink = 0
+      this.yogaNode.setFlexShrink(0)
+    }
+
+    this.requestRender()
   }
 
   public get height(): number {
@@ -583,17 +585,19 @@ export abstract class Renderable extends BaseRenderable {
   }
 
   public set height(value: number | "auto" | `${number}%`) {
-    if (isDimensionType(value)) {
-      this._height = value
-      this.yogaNode.setHeight(value)
-
-      if (typeof value === "number" && this._flexShrink === 1) {
-        this._flexShrink = 0
-        this.yogaNode.setFlexShrink(0)
-      }
-
-      this.requestRender()
+    if (!isDimensionType(value) || this._height === value) {
+      return
     }
+
+    this._height = value
+    this.yogaNode.setHeight(value)
+
+    if (typeof value === "number" && this._flexShrink === 1) {
+      this._flexShrink = 0
+      this.yogaNode.setFlexShrink(0)
+    }
+
+    this.requestRender()
   }
 
   public get zIndex(): number {

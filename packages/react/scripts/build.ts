@@ -125,6 +125,15 @@ if (existsSync(join(rootDir, "jsx-dev-runtime.js"))) {
   copyFileSync(join(rootDir, "jsx-dev-runtime.js"), join(distDir, "jsx-dev-runtime.js"))
 }
 
+mkdirSync(join(distDir, "scripts"), { recursive: true })
+
+if (existsSync(join(rootDir, "scripts", "runtime-plugin-support.ts"))) {
+  copyFileSync(
+    join(rootDir, "scripts", "runtime-plugin-support.ts"),
+    join(distDir, "scripts", "runtime-plugin-support.ts"),
+  )
+}
+
 const exports = {
   ".": {
     types: "./src/index.d.ts",
@@ -140,6 +149,10 @@ const exports = {
     types: "./src/test-utils.d.ts",
     import: "./test-utils.js",
     require: "./test-utils.js",
+  },
+  "./runtime-plugin-support": {
+    types: "./scripts/runtime-plugin-support.d.ts",
+    import: "./scripts/runtime-plugin-support.ts",
   },
   "./jsx-runtime": {
     types: "./jsx-runtime.d.ts",

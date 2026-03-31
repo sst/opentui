@@ -1,8 +1,8 @@
 #!/usr/bin/env bun
 
-import { CliRenderer, createCliRenderer, RGBA, BoxRenderable, TextRenderable, type KeyEvent } from "../index"
-import { setupCommonDemoKeys } from "./lib/standalone-keys"
-import { TextureUtils } from "../3d/TextureUtils"
+import { CliRenderer, createCliRenderer, RGBA, BoxRenderable, TextRenderable, type KeyEvent } from "../index.js"
+import { setupCommonDemoKeys } from "./lib/standalone-keys.js"
+import { TextureUtils } from "../3d/TextureUtils.js"
 import {
   Scene as ThreeScene,
   Mesh as ThreeMesh,
@@ -15,7 +15,7 @@ import {
 } from "three"
 import { MeshPhongNodeMaterial } from "three/webgpu"
 import { lights } from "three/tsl"
-import { ThreeRenderable, SuperSampleAlgorithm } from "../3d"
+import { ThreeRenderable, SuperSampleAlgorithm } from "../3d.js"
 
 // @ts-ignore
 import cratePath from "./assets/crate.png" with { type: "image/png" }

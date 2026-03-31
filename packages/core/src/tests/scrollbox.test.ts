@@ -1,11 +1,11 @@
 import { test, expect, beforeEach, afterEach, describe } from "bun:test"
-import { createTestRenderer, type TestRenderer, type MockMouse, MockTreeSitterClient } from "../testing"
-import { ScrollBoxRenderable } from "../renderables/ScrollBox"
-import { BoxRenderable } from "../renderables/Box"
-import { TextRenderable } from "../renderables/Text"
-import { CodeRenderable } from "../renderables/Code"
-import { LinearScrollAccel, MacOSScrollAccel, type ScrollAcceleration } from "../lib/scroll-acceleration"
-import { SyntaxStyle } from "../syntax-style"
+import { createTestRenderer, type TestRenderer, type MockMouse, MockTreeSitterClient } from "../testing.js"
+import { ScrollBoxRenderable } from "../renderables/ScrollBox.js"
+import { BoxRenderable } from "../renderables/Box.js"
+import { TextRenderable } from "../renderables/Text.js"
+import { CodeRenderable } from "../renderables/Code.js"
+import { LinearScrollAccel, MacOSScrollAccel, type ScrollAcceleration } from "../lib/scroll-acceleration.js"
+import { SyntaxStyle } from "../syntax-style.js"
 
 // Test accelerator that returns a constant multiplier
 class ConstantScrollAccel implements ScrollAcceleration {
@@ -122,6 +122,87 @@ describe("ScrollBoxRenderable - clipping", () => {
   })
 })
 
+describe("ScrollBoxRenderable - padding behavior", () => {
+  test("applies scrollbox padding to content while keeping scrollbar docked", async () => {
+    const noPadding = new ScrollBoxRenderable(testRenderer, {
+      left: 0,
+      top: 0,
+      width: 26,
+      height: 9,
+      border: true,
+      scrollY: true,
+    })
+
+    const padded = new ScrollBoxRenderable(testRenderer, {
+      left: 0,
+      top: 11,
+      width: 26,
+      height: 9,
+      border: true,
+      scrollY: true,
+      padding: 2,
+    })
+
+    for (let index = 0; index < 24; index += 1) {
+      noPadding.add(new TextRenderable(testRenderer, { content: `NP-${index}` }))
+      padded.add(new TextRenderable(testRenderer, { content: `PD-${index}` }))
+    }
+
+    testRenderer.root.add(noPadding)
+    testRenderer.root.add(padded)
+
+    await renderOnce()
+
+    expect(noPadding.verticalScrollBar.visible).toBe(true)
+    expect(padded.verticalScrollBar.visible).toBe(true)
+    expect(noPadding.verticalScrollBar.x).toBe(noPadding.x + noPadding.width - 2)
+    expect(padded.verticalScrollBar.x).toBe(padded.x + padded.width - 2)
+
+    const frameLines = captureCharFrame().split("\n")
+    const noPaddingRow = frameLines.find((line) => line.includes("NP-0"))
+    const paddedRow = frameLines.find((line) => line.includes("PD-0"))
+
+    expect(noPaddingRow).toBeDefined()
+    expect(paddedRow).toBeDefined()
+
+    const noPaddingTextX = noPaddingRow?.indexOf("NP-0") ?? -1
+    const paddedTextX = paddedRow?.indexOf("PD-0") ?? -1
+
+    expect(paddedTextX).toBeGreaterThan(noPaddingTextX)
+  })
+
+  test("padding setter updates content inset without moving scrollbar", async () => {
+    const scrollBox = new ScrollBoxRenderable(testRenderer, {
+      width: 26,
+      height: 9,
+      border: true,
+      scrollY: true,
+    })
+
+    for (let index = 0; index < 24; index += 1) {
+      scrollBox.add(new TextRenderable(testRenderer, { content: `PX-${index}` }))
+    }
+
+    testRenderer.root.add(scrollBox)
+    await renderOnce()
+
+    const beforeScrollbarX = scrollBox.verticalScrollBar.x
+    const beforeFrameLines = captureCharFrame().split("\n")
+    const beforeRow = beforeFrameLines.find((line) => line.includes("PX-0"))
+    const beforeTextX = beforeRow?.indexOf("PX-0") ?? -1
+
+    scrollBox.padding = 2
+    await renderOnce()
+
+    const afterFrameLines = captureCharFrame().split("\n")
+    const afterRow = afterFrameLines.find((line) => line.includes("PX-0"))
+    const afterTextX = afterRow?.indexOf("PX-0") ?? -1
+
+    expect(scrollBox.verticalScrollBar.x).toBe(beforeScrollbarX)
+    expect(afterTextX).toBeGreaterThan(beforeTextX)
+  })
+})
+
 describe("ScrollBoxRenderable - destroyRecursively", () => {
   test("destroys internal ScrollBox components", () => {
     const parent = new ScrollBoxRenderable(testRenderer, { id: "scroll-parent" })
@@ -228,9 +309,8 @@ describe("ScrollBoxRenderable - Mouse interaction", () => {
 
     for (let i = 0; i < 5; i++) {
       await mockMouse.scroll(25, 10, "down")
-      await new Promise((resolve) => setTimeout(resolve, 10))
+      await renderOnce()
     }
-    await renderOnce()
     const rapidScrollDistance = scrollBox.scrollTop
 
     expect(rapidScrollDistance).toBeGreaterThan(slowScrollDistance * 3)
@@ -247,12 +327,10 @@ describe("ScrollBoxRenderable - Mouse interaction", () => {
     testRenderer.root.add(slowdownBox)
     await renderOnce()
 
-    // Do multiple scrolls with delay to ensure they're treated as slow scrolls
+    // ConstantScrollAccel ignores timing, so no delay needed
     for (let i = 0; i < 5; i++) {
       await mockMouse.scroll(25, 10, "down")
       await renderOnce()
-      // Add delay to prevent acceleration from kicking in
-      await new Promise((resolve) => setTimeout(resolve, 200))
     }
     const slowdownDistance = slowdownBox.scrollTop
 
@@ -277,11 +355,10 @@ describe("ScrollBoxRenderable - Mouse interaction", () => {
     testRenderer.root.add(linearBox)
     await renderOnce()
 
+    // LinearScrollAccel ignores timing, so no delay needed
     for (let i = 0; i < 5; i++) {
       await mockMouse.scroll(25, 10, "down")
       await renderOnce()
-      // Add delay to prevent acceleration from kicking in
-      await new Promise((resolve) => setTimeout(resolve, 200))
     }
     const linearDistance = linearBox.scrollTop
 
@@ -414,6 +491,7 @@ world
 \`\`\`
 `
 
+    const codes: CodeRenderable[] = []
     for (let i = 0; i < 100; i++) {
       const wrapper = new BoxRenderable(testRenderer, {
         marginTop: 2,
@@ -426,6 +504,7 @@ world
         drawUnstyledText: false,
         treeSitterClient: mockTreeSitterClient,
       })
+      codes.push(code)
       wrapper.add(code)
       scrollBox.add(wrapper)
     }
@@ -433,15 +512,14 @@ world
     await renderOnce()
 
     mockTreeSitterClient.resolveAllHighlightOnce()
-    await new Promise((resolve) => setTimeout(resolve, 10))
-
+    await Promise.all(codes.map((c) => c.highlightingDone))
     await renderOnce()
 
     scrollBox.scrollTo(scrollBox.scrollHeight)
     await renderOnce()
 
     mockTreeSitterClient.resolveAllHighlightOnce()
-    await new Promise((resolve) => setTimeout(resolve, 10))
+    await Promise.all(codes.map((c) => c.highlightingDone))
     await renderOnce()
 
     const frameAfterScroll = captureCharFrame()
@@ -527,7 +605,7 @@ world
     await testRenderer.idle()
 
     mockTreeSitterClient.resolveAllHighlightOnce()
-    await new Promise((resolve) => setTimeout(resolve, 1))
+    await Promise.resolve()
 
     await testRenderer.idle()
 
@@ -578,6 +656,7 @@ world
 
     await renderOnce()
 
+    const codes: CodeRenderable[] = []
     for (let i = 0; i < 50; i++) {
       const wrapper = new BoxRenderable(testRenderer, {
         marginTop: 1,
@@ -590,6 +669,7 @@ world
         drawUnstyledText: false,
         treeSitterClient: mockTreeSitterClient,
       })
+      codes.push(code)
       wrapper.add(code)
       scrollBox.add(wrapper)
     }
@@ -597,15 +677,14 @@ world
     await renderOnce()
 
     mockTreeSitterClient.resolveAllHighlightOnce()
-    await new Promise((resolve) => setTimeout(resolve, 10))
-
+    await Promise.all(codes.map((c) => c.highlightingDone))
     await renderOnce()
 
     scrollBox.scrollTo(scrollBox.scrollHeight)
     await renderOnce()
 
     mockTreeSitterClient.resolveAllHighlightOnce()
-    await new Promise((resolve) => setTimeout(resolve, 10))
+    await Promise.all(codes.map((c) => c.highlightingDone))
     await renderOnce()
 
     const frame = captureCharFrame()
@@ -647,6 +726,7 @@ world
 
     await renderOnce()
 
+    const codes: CodeRenderable[] = []
     for (let i = 0; i < 50; i++) {
       const wrapper = new BoxRenderable(testRenderer, { id: `wrapper-${i}` })
       wrapper.marginTop = 1
@@ -662,15 +742,14 @@ world
       wrapper.add(code)
       code.content = `Item ${i}`
       code.filetype = "markdown"
+      codes.push(code)
 
       scrollBox.add(wrapper)
     }
 
-    await Bun.sleep(20)
-
+    await renderOnce()
     mockTreeSitterClient.resolveAllHighlightOnce()
-    await Bun.sleep(20)
-
+    await Promise.all(codes.map((c) => c.highlightingDone))
     await renderOnce()
 
     scrollBox.scrollTo(scrollBox.scrollHeight)
@@ -741,8 +820,8 @@ world
 
   test("stays scrolled to bottom with growing code renderables in sticky scroll mode", async () => {
     const syntaxStyle = SyntaxStyle.fromTheme([])
-    // Use auto-resolving mock client to avoid timing issues with stale highlight detection
-    const autoResolvingClient = new MockTreeSitterClient({ autoResolveTimeout: 1 })
+    // Use manual-resolving mock client for deterministic behavior
+    const autoResolvingClient = new MockTreeSitterClient()
     autoResolvingClient.setMockResult({ highlights: [] })
 
     const parent = new BoxRenderable(testRenderer, {
@@ -783,8 +862,10 @@ world
     wrapper1.add(code1)
     scrollBox.add(wrapper1)
 
-    await Bun.sleep(10)
-    await testRenderer.idle()
+    await renderOnce()
+    autoResolvingClient.resolveAllHighlightOnce()
+    await code1.highlightingDone
+    await renderOnce()
 
     scrollPositions.push(scrollBox.scrollTop)
     maxScrollPositions.push(Math.max(0, scrollBox.scrollHeight - scrollBox.viewport.height))
@@ -798,8 +879,10 @@ function test() {
 }
 console.log(test())`
 
-    await Bun.sleep(10)
-    await testRenderer.idle()
+    await renderOnce()
+    autoResolvingClient.resolveAllHighlightOnce()
+    await code1.highlightingDone
+    await renderOnce()
 
     scrollPositions.push(scrollBox.scrollTop)
     maxScrollPositions.push(Math.max(0, scrollBox.scrollHeight - scrollBox.viewport.height))
@@ -819,8 +902,10 @@ console.log(test())`
     wrapper2.add(code2)
     scrollBox.add(wrapper2)
 
-    await Bun.sleep(10)
-    await testRenderer.idle()
+    await renderOnce()
+    autoResolvingClient.resolveAllHighlightOnce()
+    await code2.highlightingDone
+    await renderOnce()
 
     scrollPositions.push(scrollBox.scrollTop)
     maxScrollPositions.push(Math.max(0, scrollBox.scrollHeight - scrollBox.viewport.height))
@@ -836,8 +921,10 @@ function multiply(a, b) {
 const result = multiply(x, y)
 console.log('Result:', result)`
 
-    await Bun.sleep(10)
-    await testRenderer.idle()
+    await renderOnce()
+    autoResolvingClient.resolveAllHighlightOnce()
+    await code2.highlightingDone
+    await renderOnce()
 
     scrollPositions.push(scrollBox.scrollTop)
     maxScrollPositions.push(Math.max(0, scrollBox.scrollHeight - scrollBox.viewport.height))
@@ -857,8 +944,10 @@ console.log('Result:', result)`
     wrapper3.add(code3)
     scrollBox.add(wrapper3)
 
-    await Bun.sleep(10)
-    await testRenderer.idle()
+    await renderOnce()
+    autoResolvingClient.resolveAllHighlightOnce()
+    await code3.highlightingDone
+    await renderOnce()
 
     scrollPositions.push(scrollBox.scrollTop)
     maxScrollPositions.push(Math.max(0, scrollBox.scrollHeight - scrollBox.viewport.height))
@@ -890,8 +979,10 @@ console.log(processor.process())
 console.log(processor.filter(x => x > 2))
 console.log(processor.reduce((acc, val) => acc + val, 0))`
 
-    await Bun.sleep(10)
-    await testRenderer.idle()
+    await renderOnce()
+    autoResolvingClient.resolveAllHighlightOnce()
+    await code3.highlightingDone
+    await renderOnce()
 
     scrollPositions.push(scrollBox.scrollTop)
     maxScrollPositions.push(Math.max(0, scrollBox.scrollHeight - scrollBox.viewport.height))
@@ -966,7 +1057,7 @@ console.log(processor.reduce((acc, val) => acc + val, 0))`
       code += `Line ${i}\n`
     }
 
-    const { LineNumberRenderable } = await import("../renderables/LineNumberRenderable")
+    const { LineNumberRenderable } = await import("../renderables/LineNumberRenderable.js")
     const codeRenderable = new CodeRenderable(testRenderer, {
       content: code,
       filetype: "javascript",
@@ -987,7 +1078,7 @@ console.log(processor.reduce((acc, val) => acc + val, 0))`
     await renderOnce()
 
     mockTreeSitterClient.resolveAllHighlightOnce()
-    await new Promise((resolve) => setTimeout(resolve, 10))
+    await codeRenderable.highlightingDone
     await renderOnce()
 
     // Capture initial frame (should show top lines)
@@ -1043,8 +1134,9 @@ console.log(processor.reduce((acc, val) => acc + val, 0))`
 
       scrollBox.add(code)
 
+      await renderOnce()
       mockTreeSitterClient.resolveAllHighlightOnce()
-      await new Promise((resolve) => setTimeout(resolve, 1))
+      await code.highlightingDone
       await renderOnce()
 
       const maxScroll = Math.max(0, scrollBox.scrollHeight - scrollBox.viewport.height)
@@ -1194,6 +1286,206 @@ console.log(processor.reduce((acc, val) => acc + val, 0))`
       // Without the fix, this would fail: scroll would jump to top
       expect(scrollBox.scrollTop).toBe(expectedMaxScroll)
     }
+  })
+
+  // Regression test for issue #709: content size recalculation should not clear manual scroll state
+  test("does not reset _hasManualScroll during content size recalculation (issue #709)", async () => {
+    const scrollBox = new ScrollBoxRenderable(testRenderer, {
+      width: 40,
+      height: 10,
+      stickyScroll: true,
+      stickyStart: "bottom",
+    })
+
+    testRenderer.root.add(scrollBox)
+
+    for (let i = 0; i < 30; i++) {
+      scrollBox.add(new TextRenderable(testRenderer, { id: `line-${i}`, content: `Line ${i}` }))
+    }
+    await renderOnce()
+
+    const initialMaxScroll = Math.max(0, scrollBox.scrollHeight - scrollBox.viewport.height)
+    expect(scrollBox.scrollTop).toBe(initialMaxScroll)
+    expect((scrollBox as any)._hasManualScroll).toBe(false)
+
+    scrollBox.scrollTo(5)
+    await renderOnce()
+
+    expect(scrollBox.scrollTop).toBe(5)
+    expect((scrollBox as any)._hasManualScroll).toBe(true)
+
+    // Force a size recalculation that programmatically clamps scrollTop to 0.
+    // This must not be treated as a user returning to sticky position.
+    for (let i = 0; i < 28; i++) {
+      scrollBox.remove(`line-${i}`)
+    }
+    await renderOnce()
+
+    expect(Math.max(0, scrollBox.scrollHeight - scrollBox.viewport.height)).toBe(0)
+    expect(scrollBox.scrollTop).toBe(0)
+    expect((scrollBox as any)._hasManualScroll).toBe(true)
+
+    // When content grows again, we should keep manual-scroll mode and stay away from sticky bottom.
+    for (let i = 30; i < 50; i++) {
+      scrollBox.add(new TextRenderable(testRenderer, { id: `line-${i}`, content: `Line ${i}` }))
+    }
+    await renderOnce()
+
+    const newMaxScroll = Math.max(0, scrollBox.scrollHeight - scrollBox.viewport.height)
+    expect(newMaxScroll).toBeGreaterThan(0)
+    expect((scrollBox as any)._hasManualScroll).toBe(true)
+    expect(scrollBox.scrollTop).toBe(0)
+  })
+
+  test("scrollChildIntoView does nothing when child is already visible", async () => {
+    const scrollBox = new ScrollBoxRenderable(testRenderer, {
+      width: 40,
+      height: 10,
+    })
+
+    for (let i = 0; i < 10; i++) {
+      scrollBox.add(new BoxRenderable(testRenderer, { id: `child-${i}`, height: 1 }))
+    }
+    testRenderer.root.add(scrollBox)
+    await renderOnce()
+
+    expect(scrollBox.scrollTop).toBe(0)
+
+    scrollBox.scrollChildIntoView("child-2")
+    expect(scrollBox.scrollTop).toBe(0)
+  })
+
+  test("scrollChildIntoView scrolls down to reveal child below viewport", async () => {
+    const scrollBox = new ScrollBoxRenderable(testRenderer, {
+      width: 40,
+      height: 10,
+    })
+
+    for (let i = 0; i < 30; i++) {
+      scrollBox.add(new BoxRenderable(testRenderer, { id: `child-${i}`, height: 1 }))
+    }
+    testRenderer.root.add(scrollBox)
+    await renderOnce()
+
+    scrollBox.scrollChildIntoView("child-25")
+    await renderOnce()
+
+    const child = scrollBox.content.findDescendantById("child-25")!
+    expect(child.y).toBeGreaterThanOrEqual(scrollBox.viewport.y)
+    expect(child.y + child.height).toBe(scrollBox.viewport.y + scrollBox.viewport.height)
+  })
+
+  test("scrollChildIntoView scrolls up to reveal child above viewport", async () => {
+    const scrollBox = new ScrollBoxRenderable(testRenderer, {
+      width: 40,
+      height: 10,
+    })
+
+    for (let i = 0; i < 30; i++) {
+      scrollBox.add(new BoxRenderable(testRenderer, { id: `child-${i}`, height: 1 }))
+    }
+    testRenderer.root.add(scrollBox)
+    await renderOnce()
+
+    scrollBox.scrollTo(20)
+    await renderOnce()
+
+    scrollBox.scrollChildIntoView("child-15")
+    await renderOnce()
+
+    const child = scrollBox.content.findDescendantById("child-15")!
+    expect(child.y).toBe(scrollBox.viewport.y)
+    expect(child.y + child.height).toBeLessThanOrEqual(scrollBox.viewport.y + scrollBox.viewport.height)
+  })
+
+  test("scrollChildIntoView finds nested descendants by id", async () => {
+    const scrollBox = new ScrollBoxRenderable(testRenderer, {
+      width: 40,
+      height: 10,
+    })
+
+    for (let i = 0; i < 30; i++) {
+      const wrapper = new BoxRenderable(testRenderer, { id: `wrapper-${i}`, height: 1 })
+      wrapper.add(new BoxRenderable(testRenderer, { id: `nested-${i}`, height: 1 }))
+      scrollBox.add(wrapper)
+    }
+    testRenderer.root.add(scrollBox)
+    await renderOnce()
+
+    scrollBox.scrollChildIntoView("nested-25")
+    await renderOnce()
+
+    const child = scrollBox.content.findDescendantById("nested-25")!
+    expect(child.y).toBeGreaterThanOrEqual(scrollBox.viewport.y)
+    expect(child.y + child.height).toBeLessThanOrEqual(scrollBox.viewport.y + scrollBox.viewport.height)
+  })
+
+  test("scrollChildIntoView does nothing for nonexistent child", async () => {
+    const scrollBox = new ScrollBoxRenderable(testRenderer, {
+      width: 40,
+      height: 10,
+    })
+
+    for (let i = 0; i < 20; i++) {
+      scrollBox.add(new BoxRenderable(testRenderer, { id: `child-${i}`, height: 1 }))
+    }
+    testRenderer.root.add(scrollBox)
+    await renderOnce()
+
+    scrollBox.scrollTo(5)
+    await renderOnce()
+
+    const scrollTopBefore = scrollBox.scrollTop
+    scrollBox.scrollChildIntoView("does-not-exist")
+    expect(scrollBox.scrollTop).toBe(scrollTopBefore)
+  })
+
+  test("scrollChildIntoView handles horizontal scrolling", async () => {
+    const scrollBox = new ScrollBoxRenderable(testRenderer, {
+      width: 20,
+      height: 10,
+      scrollX: true,
+      contentOptions: {
+        flexDirection: "row",
+      },
+    })
+
+    for (let i = 0; i < 6; i++) {
+      scrollBox.add(new BoxRenderable(testRenderer, { id: `child-${i}`, width: 10, height: 2 }))
+    }
+
+    testRenderer.root.add(scrollBox)
+    await renderOnce()
+
+    scrollBox.scrollLeft = 30
+    await renderOnce()
+
+    scrollBox.scrollChildIntoView("child-0")
+    await renderOnce()
+
+    const child = scrollBox.content.findDescendantById("child-0")!
+    expect(child.x).toBe(scrollBox.viewport.x)
+    expect(child.x + child.width).toBeLessThanOrEqual(scrollBox.viewport.x + scrollBox.viewport.width)
+  })
+
+  test("scrollChildIntoView follows nearest behavior for oversized children", async () => {
+    const scrollBox = new ScrollBoxRenderable(testRenderer, {
+      width: 40,
+      height: 10,
+    })
+
+    scrollBox.add(new BoxRenderable(testRenderer, { id: "oversized", height: 30 }))
+    testRenderer.root.add(scrollBox)
+    await renderOnce()
+
+    scrollBox.scrollChildIntoView("oversized")
+    expect(scrollBox.scrollTop).toBe(0)
+
+    scrollBox.scrollTo(10)
+    await renderOnce()
+
+    scrollBox.scrollChildIntoView("oversized")
+    expect(scrollBox.scrollTop).toBe(10)
   })
 
   // Regression test for issue #530: edge case when content fits in viewport

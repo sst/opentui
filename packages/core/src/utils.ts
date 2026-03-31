@@ -1,5 +1,5 @@
-import { TextAttributes } from "./types"
-import { Renderable } from "./Renderable"
+import { TextAttributes } from "./types.js"
+import { Renderable } from "./Renderable.js"
 
 export function createTextAttributes({
   bold = false,

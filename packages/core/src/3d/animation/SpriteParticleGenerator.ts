@@ -19,7 +19,7 @@ import {
   mod,
 } from "three/tsl"
 import { MeshBasicNodeMaterial, NodeMaterial } from "three/webgpu"
-import type { SpriteResource, InstanceManager } from "../SpriteResourceManager"
+import type { SpriteResource, InstanceManager } from "../SpriteResourceManager.js"
 
 export interface ParticleEffectParameters {
   resource: SpriteResource

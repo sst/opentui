@@ -2,9 +2,9 @@
 
 import { readFile, writeFile, mkdir } from "fs/promises"
 import * as path from "path"
-import { DownloadUtils } from "../download-utils"
+import { DownloadUtils } from "../download-utils.js"
 import { parseArgs } from "util"
-import type { FiletypeParserOptions } from "../types"
+import type { FiletypeParserOptions } from "../types.js"
 import { readdir } from "fs/promises"
 
 interface ParsersConfig {
@@ -13,6 +13,7 @@ interface ParsersConfig {
 
 interface GeneratedParser {
   filetype: string
+  aliases?: string[]
   languagePath: string
   highlightsPath: string
   injectionsPath?: string
@@ -174,10 +175,11 @@ async function generateDefaultParsersFile(parsers: GeneratedParser[], outputPath
       const injectionMappingLine = parser.injectionMapping
         ? `        injectionMapping: ${JSON.stringify(parser.injectionMapping, null, 10)},`
         : ""
+      const aliasesLine = parser.aliases?.length ? `        aliases: ${JSON.stringify(parser.aliases)},` : ""
 
       return `      {
         filetype: "${parser.filetype}",
-        queries: {
+${aliasesLine ? aliasesLine + "\n" : ""}        queries: {
 ${queriesLines.join("\n")}
         },
         wasm: resolve(dirname(fileURLToPath(import.meta.url)), ${safeFiletype}_language),${injectionMappingLine ? "\n" + injectionMappingLine : ""}
@@ -259,6 +261,7 @@ async function main(options?: Partial<UpdateOptions>): Promise<void> {
 
       generatedParsers.push({
         filetype: parser.filetype,
+        aliases: parser.aliases,
         languagePath,
         highlightsPath,
         injectionsPath,

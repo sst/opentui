@@ -13,7 +13,16 @@ Add a line number gutter to renderables that provide line info, such as `CodeRen
 ### Renderable API
 
 ```typescript
-import { CodeRenderable, LineNumberRenderable, ScrollBoxRenderable, SyntaxStyle, RGBA } from "@opentui/core"
+import {
+  CodeRenderable,
+  LineNumberRenderable,
+  ScrollBoxRenderable,
+  SyntaxStyle,
+  RGBA,
+  createCliRenderer,
+} from "@opentui/core"
+
+const renderer = await createCliRenderer()
 
 const syntaxStyle = SyntaxStyle.fromStyles({
   default: { fg: RGBA.fromHex("#E6EDF3") },

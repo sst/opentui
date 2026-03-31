@@ -1,9 +1,11 @@
 import { test, expect, beforeEach, afterEach } from "bun:test"
-import { DiffRenderable } from "./Diff"
-import { SyntaxStyle } from "../syntax-style"
-import { RGBA } from "../lib/RGBA"
-import { createTestRenderer, type TestRenderer } from "../testing"
-import type { SimpleHighlight } from "../lib/tree-sitter/types"
+import { DiffRenderable } from "./Diff.js"
+import { SyntaxStyle } from "../syntax-style.js"
+import { RGBA, parseColor } from "../lib/RGBA.js"
+import { createMockMouse, createTestRenderer, type TestRenderer } from "../testing.js"
+import { MockTreeSitterClient } from "../testing/mock-tree-sitter-client.js"
+import type { SimpleHighlight } from "../lib/tree-sitter/types.js"
+import { settleDiffHighlighting } from "./__tests__/renderable-test-utils.js"
 
 let currentRenderer: TestRenderer
 let renderOnce: () => Promise<void>
@@ -616,6 +618,80 @@ test("DiffRenderable - custom colors applied correctly", async () => {
   expect(frame).toContain('console.log("Hello")')
 })
 
+test("DiffRenderable - line number fg/bg colors update after construction", async () => {
+  const syntaxStyle = SyntaxStyle.fromStyles({
+    default: { fg: RGBA.fromValues(1, 1, 1, 1) },
+  })
+
+  const diffRenderable = new DiffRenderable(currentRenderer, {
+    id: "test-diff",
+    diff: simpleDiff,
+    view: "unified",
+    syntaxStyle,
+    lineNumberFg: "#445566",
+    lineNumberBg: "#101820",
+    width: "100%",
+    height: "100%",
+  })
+
+  currentRenderer.root.add(diffRenderable)
+  await renderOnce()
+
+  const findCharPosition = (char: string): { x: number; y: number } | null => {
+    const buffer = currentRenderer.currentRenderBuffer
+    const charBuffer = buffer.buffers.char
+    const codePoint = char.codePointAt(0)
+    if (codePoint === undefined) return null
+
+    for (let y = 0; y < buffer.height; y++) {
+      for (let x = 0; x < buffer.width; x++) {
+        if (charBuffer[y * buffer.width + x] === codePoint) {
+          return { x, y }
+        }
+      }
+    }
+
+    return null
+  }
+
+  const getColorAt = (channel: "fg" | "bg", x: number, y: number) => {
+    const buffer = currentRenderer.currentRenderBuffer
+    const colorBuffer = channel === "fg" ? buffer.buffers.fg : buffer.buffers.bg
+    const offset = (y * buffer.width + x) * 4
+
+    return {
+      r: colorBuffer[offset],
+      g: colorBuffer[offset + 1],
+      b: colorBuffer[offset + 2],
+      a: colorBuffer[offset + 3],
+    }
+  }
+
+  const expectColorClose = (
+    actual: { r: number; g: number; b: number; a: number },
+    expected: { r: number; g: number; b: number; a: number },
+  ) => {
+    expect(actual.r).toBeCloseTo(expected.r, 2)
+    expect(actual.g).toBeCloseTo(expected.g, 2)
+    expect(actual.b).toBeCloseTo(expected.b, 2)
+    expect(actual.a).toBeCloseTo(expected.a, 2)
+  }
+
+  const initialPos = findCharPosition("1")
+  expect(initialPos).not.toBeNull()
+  expectColorClose(getColorAt("fg", initialPos!.x, initialPos!.y), parseColor("#445566"))
+  expectColorClose(getColorAt("bg", initialPos!.x, initialPos!.y), parseColor("#101820"))
+
+  diffRenderable.lineNumberFg = "#ff00ff"
+  diffRenderable.lineNumberBg = "#2a2a2a"
+  await renderOnce()
+
+  const updatedPos = findCharPosition("1")
+  expect(updatedPos).not.toBeNull()
+  expectColorClose(getColorAt("fg", updatedPos!.x, updatedPos!.y), parseColor("#ff00ff"))
+  expectColorClose(getColorAt("bg", updatedPos!.x, updatedPos!.y), parseColor("#2a2a2a"))
+})
+
 test("DiffRenderable - line numbers hidden for empty alignment lines in split view", async () => {
   const syntaxStyle = SyntaxStyle.fromStyles({
     default: { fg: RGBA.fromValues(1, 1, 1, 1) },
@@ -658,8 +734,8 @@ test("DiffRenderable - stable rendering across multiple frames (no visual glitch
 
   currentRenderer.root.add(diffRenderable)
 
-  // Wait for automatic initial render to happen
-  await Bun.sleep(50)
+  // Render the initial frame
+  await renderOnce()
 
   const frameAfterAutoRender = captureFrame()
 
@@ -1128,8 +1204,8 @@ test("DiffRenderable - split view with wrapMode honors wrapping alignment", asyn
   renderer.root.add(diffRenderable)
   await renderOnce()
 
-  // Wait for deferred rebuild with wrap alignment (debounced 150ms)
-  await new Promise((resolve) => setTimeout(resolve, 200))
+  // Flush microtask-based deferred rebuild for wrap alignment
+  await Promise.resolve()
   await renderOnce()
 
   const frame = captureFrame()
@@ -1622,8 +1698,8 @@ test("DiffRenderable - very long lines wrapping multiple times in split view", a
   currentRenderer.root.add(diffRenderable)
   await renderOnce()
 
-  // Wait for wrap alignment to complete (microtask)
-  await new Promise((resolve) => setTimeout(resolve, 10))
+  // Flush microtask-based wrap alignment
+  await Promise.resolve()
   await renderOnce()
 
   const frame = captureFrame()
@@ -1671,8 +1747,8 @@ test("DiffRenderable - rapid diff updates trigger microtask coalescing", async (
   diffRenderable.diff = removeOnlyDiff
   diffRenderable.diff = simpleDiff
 
-  // Wait for microtask to complete
-  await new Promise((resolve) => setTimeout(resolve, 10))
+  // Flush microtask-based coalesced rebuild
+  await Promise.resolve()
   await renderOnce()
 
   const frame = captureFrame()
@@ -2005,7 +2081,6 @@ test("DiffRenderable - can toggle conceal with markdown diff", async () => {
     default: { fg: RGBA.fromValues(1, 1, 1, 1) },
   })
 
-  const { MockTreeSitterClient } = await import("../testing")
   const mockClient = new MockTreeSitterClient()
 
   const markdownDiff = `--- a/test.md
@@ -2038,23 +2113,14 @@ test("DiffRenderable - can toggle conceal with markdown diff", async () => {
   })
 
   currentRenderer.root.add(diffRenderable)
-  await renderOnce()
-
-  mockClient.resolveAllHighlightOnce()
-  await new Promise((resolve) => setTimeout(resolve, 50))
-  await renderOnce()
+  await settleDiffHighlighting(diffRenderable, mockClient, renderOnce)
 
   const frameWithConceal = captureFrame()
   expect(frameWithConceal).toMatchSnapshot("markdown diff with conceal enabled")
   expect(diffRenderable.conceal).toBe(true)
 
   diffRenderable.conceal = false
-  await renderOnce()
-
-  // Wait for re-highlighting
-  mockClient.resolveAllHighlightOnce()
-  await new Promise((resolve) => setTimeout(resolve, 50))
-  await renderOnce()
+  await settleDiffHighlighting(diffRenderable, mockClient, renderOnce)
 
   const frameWithoutConceal = captureFrame()
   expect(frameWithoutConceal).toMatchSnapshot("markdown diff with conceal disabled")
@@ -2063,11 +2129,7 @@ test("DiffRenderable - can toggle conceal with markdown diff", async () => {
   expect(frameWithConceal).not.toBe(frameWithoutConceal)
 
   diffRenderable.conceal = true
-  await renderOnce()
-
-  mockClient.resolveAllHighlightOnce()
-  await new Promise((resolve) => setTimeout(resolve, 50))
-  await renderOnce()
+  await settleDiffHighlighting(diffRenderable, mockClient, renderOnce)
 
   const frameWithConcealAgain = captureFrame()
   expect(frameWithConcealAgain).toBe(frameWithConceal)
@@ -2078,7 +2140,6 @@ test("DiffRenderable - conceal works in split view", async () => {
     default: { fg: RGBA.fromValues(1, 1, 1, 1) },
   })
 
-  const { MockTreeSitterClient } = await import("../testing")
   const mockClient = new MockTreeSitterClient()
 
   const markdownDiff = `--- a/test.md
@@ -2109,22 +2170,14 @@ test("DiffRenderable - conceal works in split view", async () => {
   })
 
   currentRenderer.root.add(diffRenderable)
-  await renderOnce()
-
-  mockClient.resolveAllHighlightOnce()
-  await new Promise((resolve) => setTimeout(resolve, 50))
-  await renderOnce()
+  await settleDiffHighlighting(diffRenderable, mockClient, renderOnce)
 
   const frameWithConceal = captureFrame()
   expect(frameWithConceal).toMatchSnapshot("split view markdown diff with conceal enabled")
   expect(diffRenderable.conceal).toBe(true)
 
   diffRenderable.conceal = false
-  await renderOnce()
-
-  mockClient.resolveAllHighlightOnce()
-  await new Promise((resolve) => setTimeout(resolve, 50))
-  await renderOnce()
+  await settleDiffHighlighting(diffRenderable, mockClient, renderOnce)
 
   const frameWithoutConceal = captureFrame()
   expect(frameWithoutConceal).toMatchSnapshot("split view markdown diff with conceal disabled")
@@ -2181,8 +2234,8 @@ test("DiffRenderable - should handle resize with wrapping without leaking listen
   for (let i = 0; i < 10; i++) {
     diffRenderable.width = 50 + i * 5
     await renderOnce()
-    // Wait for microtask rebuild
-    await new Promise((resolve) => setTimeout(resolve, 10))
+    // Flush microtask rebuild
+    await Promise.resolve()
     await renderOnce()
   }
 
@@ -2290,6 +2343,87 @@ test("DiffRenderable - target remains functional after multiple updates", async 
 
   leftCodeRenderable.off("line-info-change", leftListener)
   rightCodeRenderable.off("line-info-change", rightListener)
+})
+
+test("DiffRenderable - split view scroll is not synchronized by default", async () => {
+  const mockMouse = createMockMouse(currentRenderer)
+  const syntaxStyle = SyntaxStyle.fromStyles({
+    default: { fg: RGBA.fromValues(1, 1, 1, 1) },
+  })
+
+  const diffRenderable = new DiffRenderable(currentRenderer, {
+    id: "test-diff",
+    diff: multiLineDiff,
+    view: "split",
+    syntaxStyle,
+    showLineNumbers: true,
+    width: "100%",
+    height: 4,
+  })
+
+  currentRenderer.root.add(diffRenderable)
+  await renderOnce()
+
+  const leftCodeRenderable = (diffRenderable as any).leftCodeRenderable
+  const rightCodeRenderable = (diffRenderable as any).rightCodeRenderable
+
+  expect(leftCodeRenderable).toBeTruthy()
+  expect(rightCodeRenderable).toBeTruthy()
+
+  // Scroll over left pane
+  mockMouse.scroll(leftCodeRenderable.x, leftCodeRenderable.y + 1, "down")
+  await renderOnce()
+
+  expect(leftCodeRenderable.scrollY).toBe(1)
+  expect(rightCodeRenderable.scrollY).toBe(0)
+
+  // Scroll over right pane
+  mockMouse.scroll(rightCodeRenderable.x + 1, rightCodeRenderable.y + 1, "down")
+  await renderOnce()
+
+  expect(rightCodeRenderable.scrollY).toBe(1)
+  expect(leftCodeRenderable.scrollY).toBe(1)
+})
+
+test("DiffRenderable - split view wheel scroll keeps panes synchronized", async () => {
+  const mockMouse = createMockMouse(currentRenderer)
+  const syntaxStyle = SyntaxStyle.fromStyles({
+    default: { fg: RGBA.fromValues(1, 1, 1, 1) },
+  })
+
+  const diffRenderable = new DiffRenderable(currentRenderer, {
+    id: "test-diff",
+    diff: multiLineDiff,
+    syncScroll: true,
+    view: "split",
+    syntaxStyle,
+    showLineNumbers: true,
+    width: "100%",
+    height: 4,
+  })
+
+  currentRenderer.root.add(diffRenderable)
+  await renderOnce()
+
+  const leftCodeRenderable = (diffRenderable as any).leftCodeRenderable
+  const rightCodeRenderable = (diffRenderable as any).rightCodeRenderable
+
+  expect(leftCodeRenderable).toBeTruthy()
+  expect(rightCodeRenderable).toBeTruthy()
+
+  // Scroll over left pane
+  await mockMouse.scroll(leftCodeRenderable.x + 1, leftCodeRenderable.y + 1, "down")
+  await renderOnce()
+
+  expect(leftCodeRenderable.scrollY).toBeGreaterThan(0)
+  expect(leftCodeRenderable.scrollY).toBe(rightCodeRenderable.scrollY)
+
+  // Scroll over right pane
+  await mockMouse.scroll(rightCodeRenderable.x + 1, rightCodeRenderable.y + 1, "down")
+  await renderOnce()
+
+  expect(rightCodeRenderable.scrollY).toBeGreaterThan(0)
+  expect(leftCodeRenderable.scrollY).toBe(rightCodeRenderable.scrollY)
 })
 
 test("DiffRenderable - gutter remains in correct position after updates", async () => {
@@ -2438,14 +2572,13 @@ test("DiffRenderable - line numbers update correctly after resize causes wrappin
 
   resize(60, 40)
 
-  await new Promise((resolve) => setTimeout(resolve, 10))
+  await Promise.resolve()
+  await renderOnce()
 
   expect(lineInfoChangeEmitted).toBe(true)
   expect(leftCodeRenderable.virtualLineCount).toBe(11)
 
-  await renderOnce()
-
-  await new Promise((resolve) => setTimeout(resolve, 50))
+  await Promise.resolve()
   await renderOnce()
 
   const frameAfter = captureFrame()
@@ -2669,8 +2802,8 @@ test("DiffRenderable - fg prop accepts RGBA directly", async () => {
 })
 
 test("DiffRenderable - split view with word wrapping: changing diff content should not misalign sides", async () => {
-  const { BoxRenderable } = await import("./Box")
-  const { parseColor } = await import("../lib/RGBA")
+  const { BoxRenderable } = await import("./Box.js")
+  const { parseColor } = await import("../lib/RGBA.js")
 
   // Use terminal width that matches the demo (~116 chars)
   const testRenderer = await createTestRenderer({ width: 116, height: 30 })
@@ -2805,22 +2938,26 @@ test("DiffRenderable - split view with word wrapping: changing diff content shou
   })
 
   parentContainer1.add(correctDiff)
-  await Bun.sleep(200)
+  await renderOnce()
 
   // Press V - toggle to split view
   correctDiff.view = "split"
-  await Bun.sleep(200)
+  await Promise.resolve()
+  await renderOnce()
 
   // Press W - toggle to word wrap
   correctDiff.wrapMode = "word"
-  await Bun.sleep(500)
+  await Promise.resolve()
+  await renderOnce()
+  await Promise.resolve()
+  await renderOnce()
 
   const correctFrame = captureFrame()
 
   // Clean up
   parentContainer1.destroyRecursively()
   renderer.root.remove("parent-container-1")
-  await Bun.sleep(100)
+  await renderOnce()
 
   // PART 2: BUGGY PATH
   // Start with calculatorDiff, view="unified", wrapMode="none"
@@ -2857,21 +2994,26 @@ test("DiffRenderable - split view with word wrapping: changing diff content shou
   })
 
   parentContainer2.add(buggyDiff)
-  await Bun.sleep(200)
+  await renderOnce()
 
   // Press V - toggle to split view
   buggyDiff.view = "split"
-  await Bun.sleep(200)
+  await Promise.resolve()
+  await renderOnce()
 
   // Press W - toggle to word wrap
   buggyDiff.wrapMode = "word"
-  await Bun.sleep(200)
+  await Promise.resolve()
+  await renderOnce()
 
   // Press C - change diff content to textDemoDiff
   // THIS IS WHERE THE BUG MANIFESTS - lineInfo is STALE
   buggyDiff.diff = textDemoDiff
   buggyDiff.filetype = "typescript"
-  await Bun.sleep(500)
+  await Promise.resolve()
+  await renderOnce()
+  await Promise.resolve()
+  await renderOnce()
 
   const buggyFrame = captureFrame()
 
@@ -2883,4 +3025,77 @@ test("DiffRenderable - split view with word wrapping: changing diff content shou
   // But due to the bug, the buggy frame has misaligned left/right sides because
   // the lineInfo from CodeRenderable is STALE after changing diff content
   expect(buggyFrame).toBe(correctFrame)
+})
+
+test("DiffRenderable - setLineColor applies color to line", async () => {
+  const syntaxStyle = SyntaxStyle.fromStyles({
+    default: { fg: RGBA.fromValues(1, 1, 1, 1) },
+  })
+
+  const diffRenderable = new DiffRenderable(currentRenderer, {
+    id: "test-diff",
+    diff: simpleDiff,
+    view: "unified",
+    syntaxStyle,
+  })
+
+  diffRenderable.setLineColor(0, "#ff0000")
+  diffRenderable.setLineColor(1, { gutter: "#00ff00", content: "#0000ff" })
+  diffRenderable.clearLineColor(0)
+  diffRenderable.clearLineColor(1)
+})
+
+test("DiffRenderable - highlightLines applies color to range", async () => {
+  const syntaxStyle = SyntaxStyle.fromStyles({
+    default: { fg: RGBA.fromValues(1, 1, 1, 1) },
+  })
+
+  const diffRenderable = new DiffRenderable(currentRenderer, {
+    id: "test-diff",
+    diff: multiLineDiff,
+    view: "unified",
+    syntaxStyle,
+  })
+
+  diffRenderable.highlightLines(0, 3, "#ff0000")
+  diffRenderable.clearHighlightLines(0, 3)
+})
+
+test("DiffRenderable - setLineColors and clearAllLineColors", async () => {
+  const syntaxStyle = SyntaxStyle.fromStyles({
+    default: { fg: RGBA.fromValues(1, 1, 1, 1) },
+  })
+
+  const diffRenderable = new DiffRenderable(currentRenderer, {
+    id: "test-diff",
+    diff: simpleDiff,
+    view: "unified",
+    syntaxStyle,
+  })
+
+  const lineColors = new Map<number, string>()
+  lineColors.set(0, "#ff0000")
+  lineColors.set(1, "#00ff00")
+  lineColors.set(2, "#0000ff")
+
+  diffRenderable.setLineColors(lineColors)
+  diffRenderable.clearAllLineColors()
+})
+
+test("DiffRenderable - line highlighting works in split view", async () => {
+  const syntaxStyle = SyntaxStyle.fromStyles({
+    default: { fg: RGBA.fromValues(1, 1, 1, 1) },
+  })
+
+  const diffRenderable = new DiffRenderable(currentRenderer, {
+    id: "test-diff",
+    diff: simpleDiff,
+    view: "split",
+    syntaxStyle,
+  })
+
+  diffRenderable.setLineColor(0, "#ff0000")
+  diffRenderable.highlightLines(0, 2, "#00ff00")
+  diffRenderable.clearHighlightLines(0, 2)
+  diffRenderable.clearAllLineColors()
 })

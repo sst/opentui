@@ -1,5 +1,5 @@
 import { describe, expect, it, beforeEach, afterEach, test } from "bun:test"
-import { testRender } from "../index"
+import { testRender } from "../index.js"
 import { createSignal, createEffect, createMemo, For, Show, Switch, Match, Index, ErrorBoundary } from "solid-js"
 
 let testSetup: Awaited<ReturnType<typeof testRender>>
@@ -866,6 +866,27 @@ describe("SolidJS Renderer - Control Flow Components", () => {
       expect(children[2]?.id).toBe("option-order-3")
       expect(children[3]?.id).toBe("option-order-2") // ← BUG: This might be order-1
       expect(children[4]?.id).toBe("option-order-1") // ← BUG: This might be order-2
+    })
+  })
+  describe("Text escaping", () => {
+    it("renders angle brackets in text content without HTML entities", async () => {
+      const content = "with some > text < like this </>"
+
+      testSetup = await testRender(
+        () => (
+          <box>
+            <text>{content}</text>
+          </box>
+        ),
+        { width: 60, height: 5 },
+      )
+
+      await testSetup.renderOnce()
+      const frame = testSetup.captureCharFrame()
+
+      expect(frame).toContain(content)
+      expect(frame).not.toContain("&lt;")
+      expect(frame).not.toContain("&gt;")
     })
   })
 })

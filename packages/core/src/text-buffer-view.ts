@@ -1,7 +1,7 @@
-import { RGBA } from "./lib/RGBA"
-import { resolveRenderLib, type LineInfo, type RenderLib } from "./zig"
+import { RGBA } from "./lib/RGBA.js"
+import { resolveRenderLib, type LineInfo, type RenderLib } from "./zig.js"
 import { type Pointer } from "bun:ffi"
-import type { TextBuffer } from "./text-buffer"
+import type { TextBuffer } from "./text-buffer.js"
 
 export class TextBufferView {
   private lib: RenderLib
@@ -171,7 +171,7 @@ export class TextBufferView {
     this.lib.textBufferViewSetTruncate(this.viewPtr, truncate)
   }
 
-  public measureForDimensions(width: number, height: number): { lineCount: number; maxWidth: number } | null {
+  public measureForDimensions(width: number, height: number): { lineCount: number; widthColsMax: number } | null {
     this.guard()
     return this.lib.textBufferViewMeasureForDimensions(this.viewPtr, width, height)
   }

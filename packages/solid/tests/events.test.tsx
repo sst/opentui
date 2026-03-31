@@ -1,8 +1,9 @@
 import { describe, expect, it, beforeEach, afterEach } from "bun:test"
-import { testRender } from "../index"
+import { testRender } from "../index.js"
 import { createSignal } from "solid-js"
+import { decodePasteBytes } from "@opentui/core"
 import { createSpy } from "@opentui/core/testing"
-import { usePaste, useKeyboard } from "../src/elements/hooks"
+import { onBlur, onFocus, usePaste, useKeyboard } from "../src/elements/hooks.js"
 import type { PasteEvent } from "@opentui/core"
 
 let testSetup: Awaited<ReturnType<typeof testRender>>
@@ -326,8 +327,9 @@ describe("SolidJS Renderer Integration Tests", () => {
 
       const TestComponent = () => {
         usePaste((event) => {
-          pasteSpy(event.text)
-          setPastedText(event.text)
+          const text = decodePasteBytes(event.bytes)
+          pasteSpy(text)
+          setPastedText(text)
         })
 
         return (
@@ -344,6 +346,46 @@ describe("SolidJS Renderer Integration Tests", () => {
       expect(pasteSpy.callCount()).toBe(1)
       expect(pasteSpy.calls[0]?.[0]).toBe("pasted content")
       expect(pastedText()).toBe("pasted content")
+    })
+
+    it("should handle terminal focus hooks", async () => {
+      const focusSpy = createSpy()
+      const blurSpy = createSpy()
+      const [status, setStatus] = createSignal("idle")
+
+      const TestComponent = () => {
+        onFocus(() => {
+          focusSpy()
+          setStatus("focused")
+        })
+
+        onBlur(() => {
+          blurSpy()
+          setStatus("blurred")
+        })
+
+        return (
+          <box>
+            <text>Status: {status()}</text>
+          </box>
+        )
+      }
+
+      testSetup = await testRender(() => <TestComponent />, { width: 30, height: 5 })
+
+      testSetup.renderer.stdin.emit("data", Buffer.from("\x1b[I"))
+      await new Promise((resolve) => setTimeout(resolve, 10))
+
+      expect(focusSpy.callCount()).toBe(1)
+      expect(blurSpy.callCount()).toBe(0)
+      expect(status()).toBe("focused")
+
+      testSetup.renderer.stdin.emit("data", Buffer.from("\x1b[O"))
+      await new Promise((resolve) => setTimeout(resolve, 10))
+
+      expect(focusSpy.callCount()).toBe(1)
+      expect(blurSpy.callCount()).toBe(1)
+      expect(status()).toBe("blurred")
     })
 
     it("should handle global preventDefault for keyboard events", async () => {
@@ -393,7 +435,7 @@ describe("SolidJS Renderer Integration Tests", () => {
               focused
               onPaste={(val) => {
                 pasteSpy(val)
-                setPastedText(val.text)
+                setPastedText(decodePasteBytes(val.bytes))
               }}
             />
           </box>
@@ -404,8 +446,9 @@ describe("SolidJS Renderer Integration Tests", () => {
 
       // Register global handler that prevents paste containing "forbidden"
       testSetup.renderer.keyInput.on("paste", (event: PasteEvent) => {
-        globalHandlerSpy(event.text)
-        if (event.text.includes("forbidden")) {
+        const text = decodePasteBytes(event.bytes)
+        globalHandlerSpy(text)
+        if (text.includes("forbidden")) {
           event.preventDefault()
         }
       })

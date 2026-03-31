@@ -1,8 +1,8 @@
-import { CliRenderer, createCliRenderer, TextRenderable, BoxRenderable, type KeyEvent } from "../index"
-import { setupCommonDemoKeys } from "./lib/standalone-keys"
-import { parseColor } from "../lib/RGBA"
-import { hastToStyledText, type HASTElement } from "../lib/hast-styled-text"
-import { SyntaxStyle } from "../syntax-style"
+import { CliRenderer, createCliRenderer, TextRenderable, BoxRenderable, type KeyEvent } from "../index.js"
+import { setupCommonDemoKeys } from "./lib/standalone-keys.js"
+import { parseColor } from "../lib/RGBA.js"
+import { hastToStyledText, type HASTElement } from "../lib/hast-styled-text.js"
+import { SyntaxStyle } from "../syntax-style.js"
 
 const exampleHAST: HASTElement = (await import("./assets/hast-example.json", { with: { type: "json" } })) as HASTElement
 

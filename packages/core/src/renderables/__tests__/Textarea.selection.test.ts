@@ -1,9 +1,9 @@
 import { describe, expect, it, beforeEach, afterEach } from "bun:test"
-import { createTestRenderer, type TestRenderer, type MockMouse, type MockInput } from "../../testing/test-renderer"
-import { createTextareaRenderable } from "./renderable-test-utils"
-import { RGBA } from "../../lib/RGBA"
-import { OptimizedBuffer } from "../../buffer"
-import { TextRenderable } from "../Text"
+import { createTestRenderer, type TestRenderer, type MockMouse, type MockInput } from "../../testing/test-renderer.js"
+import { createTextareaRenderable } from "./renderable-test-utils.js"
+import { RGBA } from "../../lib/RGBA.js"
+import { OptimizedBuffer } from "../../buffer.js"
+import { TextRenderable } from "../Text.js"
 
 let currentRenderer: TestRenderer
 let renderOnce: () => Promise<void>
@@ -912,7 +912,7 @@ describe("Textarea - Selection Tests", () => {
     })
 
     it("should handle cross-renderable selection from bottom-left text to top-right text", async () => {
-      const { BoxRenderable } = await import("../Box")
+      const { BoxRenderable } = await import("../Box.js")
 
       const bottomText = new TextRenderable(currentRenderer, {
         id: "bottom-instructions",
@@ -976,7 +976,7 @@ describe("Textarea - Selection Tests", () => {
 
       expect(bottomText.hasSelection()).toBe(true)
       const bottomSelected = bottomText.getSelectedText()
-      expect(bottomSelected).toBe("Click and ")
+      expect(bottomSelected).toBe("Click and d")
 
       expect(codeText1.hasSelection()).toBe(false)
 

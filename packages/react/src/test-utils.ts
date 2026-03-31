@@ -1,6 +1,6 @@
 import { createTestRenderer, type TestRendererOptions } from "@opentui/core/testing"
 import { act, type ReactNode } from "react"
-import { createRoot, type Root } from "./reconciler/renderer"
+import { createRoot, type Root } from "./reconciler/renderer.js"
 
 function setIsReactActEnvironment(isReactActEnvironment: boolean) {
   // @ts-expect-error - this is a test environment

@@ -1,6 +1,6 @@
 import { describe, test, expect } from "bun:test"
-import { createMockMouse, MouseButtons } from "./mock-mouse"
-import { MouseParser } from "../lib/parse.mouse"
+import { createMockMouse, MouseButtons } from "./mock-mouse.js"
+import { MouseParser } from "../lib/parse.mouse.js"
 
 class MockRenderer {
   public stdin: { emit: (event: string, data: Buffer) => void }
@@ -21,24 +21,7 @@ class MockRenderer {
 
 // Helper function to parse all events from buffer
 function parseAllEvents(emittedData: Buffer, parser: MouseParser) {
-  const parsedEvents: NonNullable<ReturnType<MouseParser["parseMouseEvent"]>>[] = []
-  let offset = 0
-  while (offset < emittedData.length) {
-    const event = parser.parseMouseEvent(emittedData.subarray(offset))
-    if (event) {
-      parsedEvents.push(event)
-      const str = emittedData.subarray(offset).toString()
-      const match = str.match(/\x1b\[<[^Mm]*[Mm]/)
-      if (match) {
-        offset += match[0].length
-      } else {
-        break
-      }
-    } else {
-      break
-    }
-  }
-  return parsedEvents
+  return parser.parseAllMouseEvents(emittedData)
 }
 
 describe("mock-mouse + parser integration", () => {

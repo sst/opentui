@@ -1,74 +1,78 @@
 #!/usr/bin/env bun
 
 import {
+  ASCIIFontRenderable,
+  BoxRenderable,
   CliRenderer,
   createCliRenderer,
-  TextRenderable,
   FrameBufferRenderable,
   RGBA,
   SelectRenderable,
   SelectRenderableEvents,
-  BoxRenderable,
   TextareaRenderable,
-  type SelectOption,
+  TextRenderable,
+  TimeToFirstDrawRenderable,
   type KeyEvent,
+  type SelectOption,
   type ThemeMode,
-  ASCIIFontRenderable,
-} from "../index"
-import { measureText } from "../lib/ascii.font"
-import * as goldenStarDemo from "./golden-star-demo"
-import * as boxExample from "./fonts"
-import * as fractalShaderExample from "./fractal-shader-demo"
-import * as framebufferExample from "./framebuffer-demo"
-import * as lightsPhongExample from "./lights-phong-demo"
-import * as physxPlanckExample from "./physx-planck-2d-demo"
-import * as physxRapierExample from "./physx-rapier-2d-demo"
-import * as opentuiDemo from "./opentui-demo"
-import * as nestedZIndexDemo from "./nested-zindex-demo"
-import * as relativePositioningDemo from "./relative-positioning-demo"
-import * as transparencyDemo from "./transparency-demo"
-import * as draggableThreeDemo from "./draggable-three-demo"
-import * as scrollExample from "./scroll-example"
-import * as stickyScrollExample from "./sticky-scroll-example"
-import * as shaderCubeExample from "./shader-cube-demo"
-import * as spriteAnimationExample from "./sprite-animation-demo"
-import * as spriteParticleExample from "./sprite-particle-generator-demo"
-import * as staticSpriteExample from "./static-sprite-demo"
-import * as textureLoadingExample from "./texture-loading-demo"
-import * as timelineExample from "./timeline-example"
-import * as tabSelectExample from "./tab-select-demo"
-import * as selectExample from "./select-demo"
-import * as inputExample from "./input-demo"
-import * as layoutExample from "./simple-layout-example"
-import * as inputSelectLayoutExample from "./input-select-layout-demo"
-import * as styledTextExample from "./styled-text-demo"
-import * as mouseInteractionExample from "./mouse-interaction-demo"
-import * as textSelectionExample from "./text-selection-demo"
-import * as asciiFontSelectionExample from "./ascii-font-selection-demo"
-import * as splitModeExample from "./split-mode-demo"
-import * as consoleExample from "./console-demo"
-import * as vnodeCompositionDemo from "./vnode-composition-demo"
-import * as hastSyntaxHighlightingExample from "./hast-syntax-highlighting-demo"
-import * as codeDemo from "./code-demo"
-import * as liveStateExample from "./live-state-demo"
-import * as fullUnicodeExample from "./full-unicode-demo"
-import * as textNodeDemo from "./text-node-demo"
-import * as textWrapExample from "./text-wrap"
-import * as editorDemo from "./editor-demo"
-import * as sliderDemo from "./slider-demo"
-import * as terminalDemo from "./terminal"
-import * as diffDemo from "./diff-demo"
-import * as keypressDebugDemo from "./keypress-debug-demo"
-import * as extmarksDemo from "./extmarks-demo"
-import * as markdownDemo from "./markdown-demo"
-import * as linkDemo from "./link-demo"
-import * as opacityExample from "./opacity-example"
-import * as scrollboxOverlayHitTest from "./scrollbox-overlay-hit-test"
-import * as scrollboxMouseTest from "./scrollbox-mouse-test"
-import * as textTruncationDemo from "./text-truncation-demo"
-import * as grayscaleBufferDemo from "./grayscale-buffer-demo"
-import * as focusRestoreDemo from "./focus-restore-demo"
-import { setupCommonDemoKeys } from "./lib/standalone-keys"
+} from "../index.js"
+import { measureText } from "../lib/ascii.font.js"
+import * as goldenStarDemo from "./golden-star-demo.js"
+import * as boxExample from "./fonts.js"
+import * as fractalShaderExample from "./fractal-shader-demo.js"
+import * as framebufferExample from "./framebuffer-demo.js"
+import * as lightsPhongExample from "./lights-phong-demo.js"
+import * as physxPlanckExample from "./physx-planck-2d-demo.js"
+import * as physxRapierExample from "./physx-rapier-2d-demo.js"
+import * as opentuiDemo from "./opentui-demo.js"
+import * as nestedZIndexDemo from "./nested-zindex-demo.js"
+import * as relativePositioningDemo from "./relative-positioning-demo.js"
+import * as transparencyDemo from "./transparency-demo.js"
+import * as draggableThreeDemo from "./draggable-three-demo.js"
+import * as scrollExample from "./scroll-example.js"
+import * as stickyScrollExample from "./sticky-scroll-example.js"
+import * as shaderCubeExample from "./shader-cube-demo.js"
+import * as spriteAnimationExample from "./sprite-animation-demo.js"
+import * as spriteParticleExample from "./sprite-particle-generator-demo.js"
+import * as staticSpriteExample from "./static-sprite-demo.js"
+import * as textureLoadingExample from "./texture-loading-demo.js"
+import * as timelineExample from "./timeline-example.js"
+import * as tabSelectExample from "./tab-select-demo.js"
+import * as selectExample from "./select-demo.js"
+import * as inputExample from "./input-demo.js"
+import * as layoutExample from "./simple-layout-example.js"
+import * as inputSelectLayoutExample from "./input-select-layout-demo.js"
+import * as styledTextExample from "./styled-text-demo.js"
+import * as textTableExample from "./text-table-demo.js"
+import * as mouseInteractionExample from "./mouse-interaction-demo.js"
+import * as textSelectionExample from "./text-selection-demo.js"
+import * as asciiFontSelectionExample from "./ascii-font-selection-demo.js"
+import * as splitModeExample from "./split-mode-demo.js"
+import * as consoleExample from "./console-demo.js"
+import * as vnodeCompositionDemo from "./vnode-composition-demo.js"
+import * as hastSyntaxHighlightingExample from "./hast-syntax-highlighting-demo.js"
+import * as codeDemo from "./code-demo.js"
+import * as liveStateExample from "./live-state-demo.js"
+import * as fullUnicodeExample from "./full-unicode-demo.js"
+import * as textNodeDemo from "./text-node-demo.js"
+import * as textWrapExample from "./text-wrap.js"
+import * as editorDemo from "./editor-demo.js"
+import * as sliderDemo from "./slider-demo.js"
+import * as terminalDemo from "./terminal.js"
+import * as diffDemo from "./diff-demo.js"
+import * as keypressDebugDemo from "./keypress-debug-demo.js"
+import * as extmarksDemo from "./extmarks-demo.js"
+import * as markdownDemo from "./markdown-demo.js"
+import * as linkDemo from "./link-demo.js"
+import * as opacityExample from "./opacity-example.js"
+import * as scrollboxOverlayHitTest from "./scrollbox-overlay-hit-test.js"
+import * as scrollboxMouseTest from "./scrollbox-mouse-test.js"
+import * as textTruncationDemo from "./text-truncation-demo.js"
+import * as grayscaleBufferDemo from "./grayscale-buffer-demo.js"
+import * as focusRestoreDemo from "./focus-restore-demo.js"
+import { setupCommonDemoKeys } from "./lib/standalone-keys.js"
+import * as corePluginSlotsDemo from "./core-plugin-slots-demo.js"
+import * as wideGraphemeOverlayDemo from "./wide-grapheme-overlay-demo.js"
 
 interface Example {
   name: string
@@ -181,16 +185,16 @@ const examples: Example[] = [
     destroy: styledTextExample.destroy,
   },
   {
+    name: "TextTable Demo",
+    description: "TextTable renderable with styled chunks, Unicode content, and wrap/border toggles",
+    run: textTableExample.run,
+    destroy: textTableExample.destroy,
+  },
+  {
     name: "Link Demo",
     description: "Hyperlink support with OSC 8 - clickable links and link inheritance in styled text",
     run: linkDemo.run,
     destroy: linkDemo.destroy,
-  },
-  {
-    name: "Extmarks Demo",
-    description: "Virtual extmarks - text ranges that cursor jumps over, like inline tags and links",
-    run: extmarksDemo.run,
-    destroy: extmarksDemo.destroy,
   },
   {
     name: "Opacity Demo",
@@ -234,6 +238,12 @@ const examples: Example[] = [
     description: "Test automatic renderer lifecycle management with live renderables",
     run: liveStateExample.run,
     destroy: liveStateExample.destroy,
+  },
+  {
+    name: "Core Plugin Slots Demo",
+    description: "Framework-free plugin slots with cached renderables and deterministic ordering",
+    run: corePluginSlotsDemo.run,
+    destroy: corePluginSlotsDemo.destroy,
   },
   {
     name: "Layout System Demo",
@@ -428,6 +438,12 @@ const examples: Example[] = [
     destroy: fullUnicodeExample.destroy,
   },
   {
+    name: "Wide Grapheme Overlay Demo",
+    description: "Drag transparent boxes over CJK/emoji, toggle dimming scrim with D key",
+    run: wideGraphemeOverlayDemo.run,
+    destroy: wideGraphemeOverlayDemo.destroy,
+  },
+  {
     name: "Split Mode Demo (Experimental)",
     description: "Renderer confined to bottom area with normal terminal output above",
     run: splitModeExample.run,
@@ -464,6 +480,7 @@ class ExampleSelector {
   private filterBox: BoxRenderable | null = null
   private filterInput: TextareaRenderable | null = null
   private instructions: TextRenderable | null = null
+  private timeToFirstDrawText: TimeToFirstDrawRenderable | null = null
   private selectElement: SelectRenderable | null = null
   private selectBox: BoxRenderable | null = null
   private notImplementedText: TextRenderable | null = null
@@ -598,6 +615,12 @@ class ExampleSelector {
       this.runSelected(option.value as Example)
     })
 
+    this.timeToFirstDrawText = new TimeToFirstDrawRenderable(renderer, {
+      id: "example-index-time-to-first-draw",
+      fg: theme.instructionsColor,
+    })
+    this.menuContainer.add(this.timeToFirstDrawText)
+
     // Instructions at the bottom
     this.instructions = new TextRenderable(renderer, {
       id: "example-index-instructions",
@@ -644,6 +667,10 @@ class ExampleSelector {
 
     if (this.instructions) {
       this.instructions.fg = theme.instructionsColor
+    }
+
+    if (this.timeToFirstDrawText) {
+      this.timeToFirstDrawText.color = theme.instructionsColor
     }
 
     if (this.notImplementedText) {
@@ -810,6 +837,9 @@ class ExampleSelector {
     if (this.instructions) {
       this.instructions.visible = false
     }
+    if (this.timeToFirstDrawText) {
+      this.timeToFirstDrawText.visible = false
+    }
     if (this.filterInput) {
       this.filterInput.blur()
     }
@@ -833,6 +863,9 @@ class ExampleSelector {
     }
     if (this.instructions) {
       this.instructions.visible = true
+    }
+    if (this.timeToFirstDrawText) {
+      this.timeToFirstDrawText.visible = true
     }
     if (this.filterInput) {
       // Clear filter when returning to menu

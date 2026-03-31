@@ -8,8 +8,8 @@ import {
   TextRenderable,
   type KeyEvent,
   type MouseEvent,
-} from "../index"
-import { setupCommonDemoKeys } from "./lib/standalone-keys"
+} from "../index.js"
+import { setupCommonDemoKeys } from "./lib/standalone-keys.js"
 import {
   Scene as ThreeScene,
   Mesh as ThreeMesh,
@@ -21,7 +21,7 @@ import {
   MeshPhongMaterial,
   Vector3,
 } from "three"
-import { ThreeRenderable } from "../3d"
+import { ThreeRenderable } from "../3d.js"
 
 let nextZIndex = 200
 let keyListener: ((key: KeyEvent) => void) | null = null

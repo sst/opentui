@@ -1,11 +1,10 @@
-import type { TextBuffer } from "./text-buffer"
-import { RGBA } from "./lib"
-import { resolveRenderLib, type RenderLib } from "./zig"
+import { RGBA } from "./lib/index.js"
+import { resolveRenderLib, type RenderLib } from "./zig.js"
 import { type Pointer, toArrayBuffer, ptr } from "bun:ffi"
-import { type BorderStyle, type BorderSides, BorderCharArrays, parseBorderStyle } from "./lib"
-import { type WidthMethod, type CapturedSpan, type CapturedLine } from "./types"
-import type { TextBufferView } from "./text-buffer-view"
-import type { EditorView } from "./editor-view"
+import { type BorderStyle, type BorderSides, BorderCharArrays, parseBorderStyle } from "./lib/index.js"
+import { TargetChannel, type WidthMethod, type CapturedSpan, type CapturedLine } from "./types.js"
+import type { TextBufferView } from "./text-buffer-view.js"
+import type { EditorView } from "./editor-view.js"
 
 // Pack drawing options into a single u32
 // bits 0-3: borderSides, bit 4: shouldFill, bits 5-6: titleAlignment
@@ -288,6 +287,30 @@ export class OptimizedBuffer {
     this.lib.bufferFillRect(this.bufferPtr, x, y, width, height, bg)
   }
 
+  public colorMatrix(
+    matrix: Float32Array,
+    cellMask: Float32Array,
+    strength: number = 1.0,
+    target: TargetChannel = TargetChannel.Both,
+  ): void {
+    this.guard()
+    if (matrix.length !== 16) throw new RangeError(`colorMatrix matrix must have length 16, got ${matrix.length}`)
+    const cellMaskCount = Math.floor(cellMask.length / 3)
+    this.lib.bufferColorMatrix(this.bufferPtr, ptr(matrix), ptr(cellMask), cellMaskCount, strength, target)
+  }
+
+  public colorMatrixUniform(
+    matrix: Float32Array,
+    strength: number = 1.0,
+    target: TargetChannel = TargetChannel.Both,
+  ): void {
+    this.guard()
+    if (matrix.length !== 16)
+      throw new RangeError(`colorMatrixUniform matrix must have length 16, got ${matrix.length}`)
+    if (strength === 0.0) return
+    this.lib.bufferColorMatrixUniform(this.bufferPtr, ptr(matrix), strength, target)
+  }
+
   public drawFrameBuffer(
     destX: number,
     destY: number,
@@ -480,6 +503,36 @@ export class OptimizedBuffer {
   public freeUnicode(encoded: { ptr: Pointer; data: Array<{ width: number; char: number }> }): void {
     this.guard()
     this.lib.freeUnicode(encoded)
+  }
+
+  public drawGrid(options: {
+    borderChars: Uint32Array
+    borderFg: RGBA
+    borderBg: RGBA
+    columnOffsets: Int32Array
+    rowOffsets: Int32Array
+    drawInner: boolean
+    drawOuter: boolean
+  }): void {
+    this.guard()
+
+    const columnCount = Math.max(0, options.columnOffsets.length - 1)
+    const rowCount = Math.max(0, options.rowOffsets.length - 1)
+
+    this.lib.bufferDrawGrid(
+      this.bufferPtr,
+      options.borderChars,
+      options.borderFg,
+      options.borderBg,
+      options.columnOffsets,
+      columnCount,
+      options.rowOffsets,
+      rowCount,
+      {
+        drawInner: options.drawInner,
+        drawOuter: options.drawOuter,
+      },
+    )
   }
 
   public drawChar(char: number, x: number, y: number, fg: RGBA, bg: RGBA, attributes: number = 0): void {

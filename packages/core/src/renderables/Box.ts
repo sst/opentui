@@ -1,6 +1,6 @@
 import { Edge, Gutter } from "yoga-layout"
-import { type RenderableOptions, Renderable } from "../Renderable"
-import type { OptimizedBuffer } from "../buffer"
+import { type RenderableOptions, Renderable } from "../Renderable.js"
+import type { OptimizedBuffer } from "../buffer.js"
 import {
   type BorderCharacters,
   type BorderSides,
@@ -9,10 +9,10 @@ import {
   borderCharsToArray,
   getBorderSides,
   parseBorderStyle,
-} from "../lib"
-import { type ColorInput, RGBA, parseColor } from "../lib/RGBA"
-import { isValidPercentage } from "../lib/renderable.validations"
-import type { RenderContext } from "../types"
+} from "../lib/index.js"
+import { type ColorInput, RGBA, parseColor } from "../lib/RGBA.js"
+import { isValidPercentage } from "../lib/renderable.validations.js"
+import type { RenderContext } from "../types.js"
 
 export interface BoxOptions<TRenderable extends Renderable = BoxRenderable> extends RenderableOptions<TRenderable> {
   backgroundColor?: string | RGBA

@@ -6,7 +6,7 @@ order: 3
 
 # Keyboard input
 
-OpenTUI parses terminal input and provides structured key events. The `renderer.keyInput` EventEmitter emits `keypress` and `paste` events with detailed key information.
+OpenTUI parses terminal input and provides structured key events. The `renderer.keyInput` EventEmitter emits `keypress` events plus raw `paste` events with optional metadata.
 
 ## Basic key handling
 
@@ -123,14 +123,17 @@ keyHandler.on("keypress", (key: KeyEvent) => {
 
 ## Paste events
 
-Handle pasted text separately from individual keypresses:
+Handle pasted bytes separately from individual keypresses. Decode them explicitly when you expect text:
 
 ```typescript
 import { type PasteEvent } from "@opentui/core"
 
+const textDecoder = new TextDecoder()
+
 keyHandler.on("paste", (event: PasteEvent) => {
-  console.log("Pasted text:", event.text)
-  // Insert text at cursor position
+  console.log("Pasted bytes:", event.bytes)
+  console.log("Decoded text:", textDecoder.decode(event.bytes))
+  console.log("Metadata:", event.metadata)
 })
 ```
 

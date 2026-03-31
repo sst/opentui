@@ -1,7 +1,7 @@
 import { describe, expect, it, beforeEach, afterEach } from "bun:test"
-import { SyntaxStyle } from "./syntax-style"
-import { RGBA } from "./lib/RGBA"
-import type { StyleDefinition, ThemeTokenStyle } from "./syntax-style"
+import { SyntaxStyle } from "./syntax-style.js"
+import { RGBA } from "./lib/RGBA.js"
+import type { StyleDefinition, ThemeTokenStyle } from "./syntax-style.js"
 
 describe("NativeSyntaxStyle", () => {
   let style: SyntaxStyle

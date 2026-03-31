@@ -1,5 +1,5 @@
 import { test, expect } from "bun:test"
-import { DataPathsManager } from "./data-paths"
+import { DataPathsManager } from "./data-paths.js"
 
 test("DataPathsManager validates appName", () => {
   const manager = new DataPathsManager()

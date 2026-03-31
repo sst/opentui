@@ -1,4 +1,4 @@
-import { TextureUtils } from "./TextureUtils"
+import { TextureUtils } from "./TextureUtils.js"
 import { Sprite, SpriteMaterial, DataTexture, type SpriteMaterialParameters } from "three"
 
 export class SheetSprite extends Sprite {
@@ -51,8 +51,7 @@ export class SpriteUtils {
     const spriteTexture = await TextureUtils.fromFile(path)
 
     if (!spriteTexture) {
-      console.error("Failed to load sprite texture, exiting.")
-      process.exit(1)
+      throw new Error(`Failed to load sprite texture from ${path}`)
     }
 
     const spriteMaterial = new SpriteMaterial({ map: spriteTexture })

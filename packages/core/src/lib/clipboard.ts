@@ -2,7 +2,7 @@
 // Delegates to native Zig implementation for ANSI sequence generation.
 
 import type { Pointer } from "bun:ffi"
-import type { RenderLib } from "../zig"
+import type { RenderLib } from "../zig.js"
 
 export enum ClipboardTarget {
   Clipboard = 0,

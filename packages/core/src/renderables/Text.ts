@@ -1,10 +1,10 @@
-import { BaseRenderable } from "../Renderable"
-import { stringToStyledText, StyledText } from "../lib/styled-text"
-import { type TextChunk } from "../text-buffer"
-import { RGBA } from "../lib/RGBA"
-import { type RenderContext } from "../types"
-import { RootTextNodeRenderable, TextNodeRenderable } from "./TextNode"
-import { TextBufferRenderable, type TextBufferOptions } from "./TextBufferRenderable"
+import { BaseRenderable } from "../Renderable.js"
+import { stringToStyledText, StyledText } from "../lib/styled-text.js"
+import { type TextChunk } from "../text-buffer.js"
+import { RGBA } from "../lib/RGBA.js"
+import { type RenderContext } from "../types.js"
+import { RootTextNodeRenderable, TextNodeRenderable } from "./TextNode.js"
+import { TextBufferRenderable, type TextBufferOptions } from "./TextBufferRenderable.js"
 
 export interface TextOptions extends TextBufferOptions {
   content?: StyledText | string

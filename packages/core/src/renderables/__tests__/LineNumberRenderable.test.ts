@@ -1,10 +1,11 @@
 import { describe, test, expect } from "bun:test"
-import { createTestRenderer } from "../../testing/test-renderer"
-import { TextBufferRenderable } from "../TextBufferRenderable"
-import { LineNumberRenderable } from "../LineNumberRenderable"
-import { BoxRenderable } from "../Box"
-import { TextareaRenderable } from "../Textarea"
-import { t, fg, bold, cyan } from "../../lib/styled-text"
+import { createTestRenderer } from "../../testing/test-renderer.js"
+import { TextBufferRenderable } from "../TextBufferRenderable.js"
+import { LineNumberRenderable } from "../LineNumberRenderable.js"
+import { BoxRenderable } from "../Box.js"
+import { TextareaRenderable } from "../Textarea.js"
+import { t, fg, bold, cyan } from "../../lib/styled-text.js"
+import { parseColor } from "../../lib/RGBA.js"
 
 const initialContent = `Welcome to the TextareaRenderable Demo!
 
@@ -812,6 +813,83 @@ describe("LineNumberRenderable", () => {
     expect(frame).toContain("102 Line 3")
   })
 
+  test("can dynamically update gutter fg and bg colors", async () => {
+    const { renderer, renderOnce } = await createTestRenderer({
+      width: 20,
+      height: 5,
+    })
+
+    const textRenderable = new MockTextBuffer(renderer, {
+      text: "alpha\nbeta",
+      width: "100%",
+      height: "100%",
+    })
+
+    const lineNumberRenderable = new LineNumberRenderable(renderer, {
+      target: textRenderable,
+      fg: "#ffffff",
+      bg: "#000000",
+      width: "100%",
+      height: "100%",
+    })
+
+    renderer.root.add(lineNumberRenderable)
+    await renderOnce()
+
+    const findCharX = (char: string, y: number) => {
+      const buffer = renderer.currentRenderBuffer
+      const charBuffer = buffer.buffers.char
+      const codePoint = char.codePointAt(0)
+      if (codePoint === undefined) return -1
+
+      for (let x = 0; x < buffer.width; x++) {
+        if (charBuffer[y * buffer.width + x] === codePoint) {
+          return x
+        }
+      }
+      return -1
+    }
+
+    const getColorAt = (channel: "fg" | "bg", x: number, y: number) => {
+      const buffer = renderer.currentRenderBuffer
+      const colorBuffer = channel === "fg" ? buffer.buffers.fg : buffer.buffers.bg
+      const offset = (y * buffer.width + x) * 4
+      return {
+        r: colorBuffer[offset],
+        g: colorBuffer[offset + 1],
+        b: colorBuffer[offset + 2],
+        a: colorBuffer[offset + 3],
+      }
+    }
+
+    const expectColorClose = (
+      actual: { r: number; g: number; b: number; a: number },
+      expected: { r: number; g: number; b: number; a: number },
+    ) => {
+      expect(actual.r).toBeCloseTo(expected.r, 2)
+      expect(actual.g).toBeCloseTo(expected.g, 2)
+      expect(actual.b).toBeCloseTo(expected.b, 2)
+      expect(actual.a).toBeCloseTo(expected.a, 2)
+    }
+
+    const line1NumberX = findCharX("1", 0)
+    expect(line1NumberX).toBeGreaterThanOrEqual(0)
+
+    lineNumberRenderable.fg = "#ff0000"
+    lineNumberRenderable.bg = "#123456"
+    await renderOnce()
+
+    expectColorClose(getColorAt("fg", line1NumberX, 0), parseColor("#ff0000"))
+    expectColorClose(getColorAt("bg", line1NumberX, 0), parseColor("#123456"))
+
+    lineNumberRenderable.fg = "#00ff00"
+    lineNumberRenderable.bg = "#654321"
+    await renderOnce()
+
+    expectColorClose(getColorAt("fg", line1NumberX, 0), parseColor("#00ff00"))
+    expectColorClose(getColorAt("bg", line1NumberX, 0), parseColor("#654321"))
+  })
+
   test("hides line numbers for specific lines", async () => {
     const { renderer, renderOnce, captureCharFrame } = await createTestRenderer({
       width: 20,
@@ -1065,8 +1143,8 @@ describe("LineNumberRenderable", () => {
     })
 
     // Import Code renderable
-    const { CodeRenderable } = await import("../Code")
-    const { SyntaxStyle } = await import("../../syntax-style")
+    const { CodeRenderable } = await import("../Code.js")
+    const { SyntaxStyle } = await import("../../syntax-style.js")
 
     const syntaxStyle = SyntaxStyle.create()
 
@@ -1132,8 +1210,8 @@ describe("LineNumberRenderable", () => {
       height: 10,
     })
 
-    const { CodeRenderable } = await import("../Code")
-    const { SyntaxStyle } = await import("../../syntax-style")
+    const { CodeRenderable } = await import("../Code.js")
+    const { SyntaxStyle } = await import("../../syntax-style.js")
 
     const syntaxStyle = SyntaxStyle.create()
 
@@ -1196,8 +1274,8 @@ describe("LineNumberRenderable", () => {
       height: 10,
     })
 
-    const { CodeRenderable } = await import("../Code")
-    const { SyntaxStyle } = await import("../../syntax-style")
+    const { CodeRenderable } = await import("../Code.js")
+    const { SyntaxStyle } = await import("../../syntax-style.js")
 
     const syntaxStyle = SyntaxStyle.create()
 
@@ -1608,6 +1686,83 @@ describe("LineNumberRenderable", () => {
     expect(contentColor!.b).toBeCloseTo(0x1f / 255, 2)
   })
 
+  test("highlightLines applies color to a range of lines", async () => {
+    const { renderer, renderOnce } = await createTestRenderer({
+      width: 20,
+      height: 10,
+    })
+
+    const text = "Line 1\nLine 2\nLine 3\nLine 4\nLine 5"
+    const textRenderable = new TextBufferRenderable(renderer, {
+      content: text,
+      width: "100%",
+      height: "100%",
+    })
+
+    const lineNumberRenderable = new LineNumberRenderable(renderer, {
+      target: textRenderable,
+      minWidth: 3,
+      paddingRight: 1,
+      fg: "#ffffff",
+      bg: "#000000",
+      width: "100%",
+      height: "100%",
+    })
+
+    renderer.root.add(lineNumberRenderable)
+    await renderOnce()
+
+    lineNumberRenderable.highlightLines(1, 3, "#2d4a2e")
+    await renderOnce()
+
+    const colors = lineNumberRenderable.getLineColors()
+    expect(colors.gutter.has(0)).toBe(false)
+    expect(colors.gutter.has(1)).toBe(true)
+    expect(colors.gutter.has(2)).toBe(true)
+    expect(colors.gutter.has(3)).toBe(true)
+    expect(colors.gutter.has(4)).toBe(false)
+  })
+
+  test("clearHighlightLines removes color from a range of lines", async () => {
+    const { renderer, renderOnce } = await createTestRenderer({
+      width: 20,
+      height: 10,
+    })
+
+    const text = "Line 1\nLine 2\nLine 3\nLine 4\nLine 5"
+    const textRenderable = new TextBufferRenderable(renderer, {
+      content: text,
+      width: "100%",
+      height: "100%",
+    })
+
+    const lineNumberRenderable = new LineNumberRenderable(renderer, {
+      target: textRenderable,
+      minWidth: 3,
+      paddingRight: 1,
+      fg: "#ffffff",
+      bg: "#000000",
+      width: "100%",
+      height: "100%",
+    })
+
+    renderer.root.add(lineNumberRenderable)
+    await renderOnce()
+
+    lineNumberRenderable.highlightLines(0, 4, "#2d4a2e")
+    await renderOnce()
+
+    lineNumberRenderable.clearHighlightLines(1, 3)
+    await renderOnce()
+
+    const colors = lineNumberRenderable.getLineColors()
+    expect(colors.gutter.has(0)).toBe(true)
+    expect(colors.gutter.has(1)).toBe(false)
+    expect(colors.gutter.has(2)).toBe(false)
+    expect(colors.gutter.has(3)).toBe(false)
+    expect(colors.gutter.has(4)).toBe(true)
+  })
+
   test("maintains stable visual line count when scrolling and typing with word wrap", async () => {
     const { renderer, renderOnce, captureCharFrame } = await createTestRenderer({
       width: 35,
@@ -1664,14 +1819,14 @@ describe("LineNumberRenderable", () => {
     await renderOnce()
 
     const lineInfoInitial = editor.editorView.getLogicalLineInfo()
-    const visualLinesInitial = lineInfoInitial.lineStarts.length
+    const visualLinesInitial = lineInfoInitial.lineStartCols.length
 
     // Move cursor to bottom to trigger scrolling
     editor.gotoBufferEnd()
     await renderOnce()
 
     const lineInfoAfterScroll = editor.editorView.getLogicalLineInfo()
-    const visualLinesAfterScroll = lineInfoAfterScroll.lineStarts.length
+    const visualLinesAfterScroll = lineInfoAfterScroll.lineStartCols.length
 
     const frame1 = captureCharFrame()
     expect(frame1).toMatchSnapshot()
@@ -1685,7 +1840,7 @@ describe("LineNumberRenderable", () => {
     await renderOnce()
 
     const lineInfoAfterTyping = editor.editorView.getLogicalLineInfo()
-    const visualLinesAfterTyping = lineInfoAfterTyping.lineStarts.length
+    const visualLinesAfterTyping = lineInfoAfterTyping.lineStartCols.length
 
     const frame2 = captureCharFrame()
     expect(frame2).toMatchSnapshot()

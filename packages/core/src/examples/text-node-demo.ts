@@ -11,9 +11,9 @@ import {
   green,
   yellow,
   cyan,
-} from ".."
-import { TextNodeRenderable } from "../renderables/TextNode"
-import { setupCommonDemoKeys } from "./lib/standalone-keys"
+} from "../index.js"
+import { TextNodeRenderable } from "../renderables/TextNode.js"
+import { setupCommonDemoKeys } from "./lib/standalone-keys.js"
 
 let mainContainer: BoxRenderable | null = null
 let demoText: TextRenderable | null = null

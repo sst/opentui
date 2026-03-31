@@ -1,8 +1,8 @@
 import { test, expect, beforeEach, afterEach } from "bun:test"
-import { createTestRenderer, MouseButtons, type MockMouse, type TestRenderer } from "../testing"
-import { ScrollBoxRenderable } from "../renderables/ScrollBox"
-import { BoxRenderable } from "../renderables/Box"
-import { TextRenderable } from "../renderables/Text"
+import { createTestRenderer, MouseButtons, type MockMouse, type TestRenderer } from "../testing.js"
+import { ScrollBoxRenderable } from "../renderables/ScrollBox.js"
+import { BoxRenderable } from "../renderables/Box.js"
+import { TextRenderable } from "../renderables/Text.js"
 
 let testRenderer: TestRenderer
 let mockMouse: MockMouse

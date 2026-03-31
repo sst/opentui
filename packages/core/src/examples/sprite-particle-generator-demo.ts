@@ -9,18 +9,18 @@ import {
   TextRenderable,
   FrameBufferRenderable,
   type KeyEvent,
-} from "../index"
-import { setupCommonDemoKeys } from "./lib/standalone-keys"
+} from "../index.js"
+import { setupCommonDemoKeys } from "./lib/standalone-keys.js"
 import * as THREE from "three"
 import {
   SpriteAnimator,
   type TiledSprite,
   type SpriteDefinition,
   type AnimationDefinition,
-} from "../3d/animation/SpriteAnimator"
-import { SpriteResourceManager, type ResourceConfig } from "../3d/SpriteResourceManager"
-import { SpriteParticleGenerator, type ParticleEffectParameters } from "../3d/animation/SpriteParticleGenerator"
-import { ThreeCliRenderer } from "../3d"
+} from "../3d/animation/SpriteAnimator.js"
+import { SpriteResourceManager, type ResourceConfig } from "../3d/SpriteResourceManager.js"
+import { SpriteParticleGenerator, type ParticleEffectParameters } from "../3d/animation/SpriteParticleGenerator.js"
+import { ThreeCliRenderer } from "../3d.js"
 
 // @ts-ignore
 import heartPath from "./assets/heart.png" with { type: "image/png" }
