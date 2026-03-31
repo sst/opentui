@@ -1690,6 +1690,21 @@ describe("StdinParser", () => {
       }
     })
 
+    test("flushTimeout() only flushes when caller reports elapsed timeout", () => {
+      const parser = createParser({ timeoutMs: TEST_TIMEOUT_MS })
+      try {
+        parser.push(Buffer.from("\x1b"))
+
+        parser.flushTimeout(TEST_TIMEOUT_MS - 1)
+        expect(snap(parser)).toEqual([])
+
+        parser.flushTimeout(TEST_TIMEOUT_MS)
+        expect(snap(parser)).toEqual([k("escape", { raw: "\x1b" })])
+      } finally {
+        parser.destroy()
+      }
+    })
+
     test("timeout resets when more bytes arrive", () => {
       const { parser, clock } = createTimedParser()
       try {
@@ -2204,15 +2219,15 @@ describe("StdinParser", () => {
     })
   })
 
-  describe("clock skew race condition", () => {
-    test("timer callback flushes even when clock reports slightly less elapsed time than timeoutMs", () => {
+  describe("timer/clock disagreement race condition", () => {
+    test("timeout callback flushes even when now() reports slightly less elapsed time than timeoutMs", () => {
       const inner = new ManualClock()
       let insideTimerCallback = false
 
       // Wraps ManualClock so that now() returns pendingSinceMs + timeoutMs - 1
-      // during the timer callback, simulating real-world clock skew where
-      // performance.now() reports slightly less time than setTimeout enforced.
-      const skewClock: Clock = {
+      // during the timeout callback, simulating runtime behavior where timer
+      // scheduling and now() sampling disagree by a small amount.
+      const disagreeingClock: Clock = {
         now(): number {
           if (insideTimerCallback) {
             // Report 1ms less than the timeout requires — this is the
@@ -2242,14 +2257,13 @@ describe("StdinParser", () => {
         },
       }
 
-      const parser = new StdinParser({ armTimeouts: true, clock: skewClock, timeoutMs: TEST_TIMEOUT_MS })
+      const parser = new StdinParser({ armTimeouts: true, clock: disagreeingClock, timeoutMs: TEST_TIMEOUT_MS })
       try {
         parser.push(Buffer.from("\x1b"))
         expect(snap(parser)).toEqual([])
 
-        // Fire the timer — the skewed clock will report timeoutMs - 1 elapsed,
-        // but the fix ensures tryForceFlush() is called directly, bypassing
-        // the time re-check.
+        // Fire the timer — now() will report timeoutMs - 1 elapsed, but the
+        // timeout callback still force-flushes without re-checking elapsed time.
         inner.advance(TEST_TIMEOUT_MS)
 
         expect(snap(parser)).toEqual([k("escape", { raw: "\x1b" })])

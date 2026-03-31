@@ -654,9 +654,9 @@ export class StdinParser {
 
   // Sets forceFlush when there are pending bytes outside of a paste.
   // Extracted so the setTimeout callback in reconcileTimeoutState() can
-  // bypass the elapsed-time check in flushTimeout() — setTimeout already
-  // enforced the delay and re-checking via clock.now() can race (the
-  // clock may report slightly less time than setTimeout's own timer).
+  // bypass flushTimeout()'s elapsed-time comparison. Timer scheduling and
+  // clock.now() sampling can disagree by a small amount; re-checking elapsed
+  // time in the callback can skip a flush and leave pending bytes stuck.
   private tryForceFlush(): void {
     if (this.paste || this.pendingSinceMs === null || this.pending.length === 0) {
       return
