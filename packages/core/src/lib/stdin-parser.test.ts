@@ -1,6 +1,7 @@
 import { describe, expect, test } from "bun:test"
 import { Buffer } from "node:buffer"
 import { ManualClock } from "../testing/manual-clock.js"
+import type { Clock, TimerHandle } from "./clock.js"
 import type { ScrollInfo } from "./parse.mouse"
 import { StdinParser, type StdinEvent, type StdinParserOptions } from "./stdin-parser.js"
 
@@ -19,6 +20,7 @@ type RespSnap = { type: "response"; protocol: string; sequence: string }
 type Snap = KeySnap | MouseSnap | PasteSnap | RespSnap
 
 const K_DEFAULTS = { ctrl: false, meta: false, shift: false, eventType: "press" }
+const TEST_TIMEOUT_MS = 10
 type KOpts = { raw?: string; ctrl?: boolean; meta?: boolean; shift?: boolean; eventType?: string }
 
 function k(name: string, opts: KOpts = {}): KeySnap {
@@ -77,7 +79,7 @@ function createParser(options: StdinParserOptions = {}): StdinParser {
 
 function createTimedParser(options: StdinParserOptions = {}): { parser: StdinParser; clock: ManualClock } {
   const clock = new ManualClock()
-  return { parser: new StdinParser({ armTimeouts: true, clock, ...options }), clock }
+  return { parser: new StdinParser({ armTimeouts: true, clock, timeoutMs: TEST_TIMEOUT_MS, ...options }), clock }
 }
 
 function snapshotEvent(event: StdinEvent): Snap {
@@ -1348,6 +1350,7 @@ describe("StdinParser", () => {
       parser = new StdinParser({
         armTimeouts: true,
         clock,
+        timeoutMs: TEST_TIMEOUT_MS,
         protocolContext: { explicitWidthCprActive: true },
         onTimeoutFlush: () => {
           timeoutFlushes += 1
@@ -1379,6 +1382,7 @@ describe("StdinParser", () => {
       parser = new StdinParser({
         armTimeouts: true,
         clock,
+        timeoutMs: TEST_TIMEOUT_MS,
         protocolContext: { privateCapabilityRepliesActive: true },
         onTimeoutFlush: () => {
           timeoutFlushes += 1
@@ -1659,13 +1663,42 @@ describe("StdinParser", () => {
   })
 
   describe("timeout behavior", () => {
-    test("timeout at exact boundary (9ms no fire, 10ms fires)", () => {
+    test("default timeout at exact boundary (19ms no fire, 20ms fires)", () => {
+      const clock = new ManualClock()
+      const parser = new StdinParser({ armTimeouts: true, clock })
+      try {
+        parser.push(Buffer.from("\x1b"))
+        clock.advance(19)
+        expect(snap(parser)).toEqual([])
+        clock.advance(1)
+        expect(snap(parser)).toEqual([k("escape", { raw: "\x1b" })])
+      } finally {
+        parser.destroy()
+      }
+    })
+
+    test("configured timeout at exact boundary (9ms no fire, 10ms fires)", () => {
       const { parser, clock } = createTimedParser()
       try {
         parser.push(Buffer.from("\x1b"))
         clock.advance(9)
         expect(snap(parser)).toEqual([])
         clock.advance(1)
+        expect(snap(parser)).toEqual([k("escape", { raw: "\x1b" })])
+      } finally {
+        parser.destroy()
+      }
+    })
+
+    test("flushTimeout() only flushes when caller reports elapsed timeout", () => {
+      const parser = createParser({ timeoutMs: TEST_TIMEOUT_MS })
+      try {
+        parser.push(Buffer.from("\x1b"))
+
+        parser.flushTimeout(TEST_TIMEOUT_MS - 1)
+        expect(snap(parser)).toEqual([])
+
+        parser.flushTimeout(TEST_TIMEOUT_MS)
         expect(snap(parser)).toEqual([k("escape", { raw: "\x1b" })])
       } finally {
         parser.destroy()
@@ -1695,6 +1728,7 @@ describe("StdinParser", () => {
       parser = new StdinParser({
         armTimeouts: true,
         clock,
+        timeoutMs: TEST_TIMEOUT_MS,
         protocolContext: { kittyKeyboardEnabled: true },
         onTimeoutFlush: () => {
           timeoutFlushes += 1
@@ -1726,6 +1760,7 @@ describe("StdinParser", () => {
       parser = new StdinParser({
         armTimeouts: true,
         clock,
+        timeoutMs: TEST_TIMEOUT_MS,
         onTimeoutFlush: () => {
           timeoutFlushes += 1
           parser.drain(() => {})
@@ -2180,6 +2215,60 @@ describe("StdinParser", () => {
         expect(snap(p)).toEqual([paste("\x1b[20".repeat(100))])
       } finally {
         p.destroy()
+      }
+    })
+  })
+
+  describe("timer/clock disagreement race condition", () => {
+    test("timeout callback flushes even when now() reports slightly less elapsed time than timeoutMs", () => {
+      const inner = new ManualClock()
+      let insideTimerCallback = false
+
+      // Wraps ManualClock so that now() returns pendingSinceMs + timeoutMs - 1
+      // during the timeout callback, simulating runtime behavior where timer
+      // scheduling and now() sampling disagree by a small amount.
+      const disagreeingClock: Clock = {
+        now(): number {
+          if (insideTimerCallback) {
+            // Report 1ms less than the timeout requires — this is the
+            // race condition that kept bytes stuck before the fix.
+            return TEST_TIMEOUT_MS - 1
+          }
+          return inner.now()
+        },
+        setTimeout(fn: () => void, delayMs: number): TimerHandle {
+          return inner.setTimeout(() => {
+            insideTimerCallback = true
+            try {
+              fn()
+            } finally {
+              insideTimerCallback = false
+            }
+          }, delayMs)
+        },
+        clearTimeout(handle: TimerHandle): void {
+          inner.clearTimeout(handle)
+        },
+        setInterval(fn: () => void, delayMs: number): TimerHandle {
+          return inner.setInterval(fn, delayMs)
+        },
+        clearInterval(handle: TimerHandle): void {
+          inner.clearInterval(handle)
+        },
+      }
+
+      const parser = new StdinParser({ armTimeouts: true, clock: disagreeingClock, timeoutMs: TEST_TIMEOUT_MS })
+      try {
+        parser.push(Buffer.from("\x1b"))
+        expect(snap(parser)).toEqual([])
+
+        // Fire the timer — now() will report timeoutMs - 1 elapsed, but the
+        // timeout callback still force-flushes without re-checking elapsed time.
+        inner.advance(TEST_TIMEOUT_MS)
+
+        expect(snap(parser)).toEqual([k("escape", { raw: "\x1b" })])
+      } finally {
+        parser.destroy()
       }
     })
   })

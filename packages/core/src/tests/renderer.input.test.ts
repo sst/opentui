@@ -83,11 +83,11 @@ async function triggerKittyInput(sequence: string): Promise<KeyEvent> {
   })
 }
 
-function advanceCurrentClock(ms: number = 10): void {
+function advanceCurrentClock(ms: number = 20): void {
   currentClock.advance(ms)
 }
 
-function advanceKittyClock(ms: number = 10): void {
+function advanceKittyClock(ms: number = 20): void {
   kittyClock.advance(ms)
 }
 
@@ -97,7 +97,7 @@ class MouseTarget extends Renderable {
   }
 }
 
-function advanceClock(clock: ManualClock, ms: number = 10): void {
+function advanceClock(clock: ManualClock, ms: number = 20): void {
   clock.advance(ms)
 }
 
@@ -1507,7 +1507,7 @@ test("partial SGR mouse stays pending on timeout, completes when rest arrives", 
   // Incomplete SGR mouse sequence; stays pending (not flushed on timeout).
   currentRenderer.stdin.emit("data", Buffer.from("\x1b[<35;20"))
 
-  // Wait past native stdin parser timeout (10ms)
+  // Wait past native stdin parser timeout (20ms)
   advanceCurrentClock()
   expect(keypresses).toHaveLength(0)
 
@@ -1565,9 +1565,9 @@ test("incomplete mouse input resets the timeout when more bytes arrive", async (
   })
 
   currentRenderer.stdin.emit("data", Buffer.from("\x1b[<35;20;"))
-  advanceCurrentClock(9)
+  advanceCurrentClock(19)
   currentRenderer.stdin.emit("data", Buffer.from("5"))
-  advanceCurrentClock(9)
+  advanceCurrentClock(19)
 
   expect(keypresses).toHaveLength(0)
 

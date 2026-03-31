@@ -44,6 +44,8 @@ export class SlotRegistry<TNode, TSlots extends object, TContext extends PluginC
   private errorListeners: Set<(event: PluginErrorEvent) => void> = new Set()
   private pluginErrors: PluginErrorEvent[] = []
   private registrationOrder = 0
+  private batchDepth = 0
+  private batchedNotify = false
   private rendererInstance: CliRenderer
   private hostContext: Readonly<TContext>
   private options: Required<Pick<SlotRegistryOptions, "debugPluginErrors" | "maxPluginErrors">> &
@@ -196,6 +198,20 @@ export class SlotRegistry<TNode, TSlots extends object, TContext extends PluginC
     }
   }
 
+  public batch<T>(run: () => T): T {
+    this.batchDepth += 1
+
+    try {
+      return run()
+    } finally {
+      this.batchDepth -= 1
+      if (this.batchDepth === 0 && this.batchedNotify) {
+        this.batchedNotify = false
+        this.flushListeners()
+      }
+    }
+  }
+
   public getPluginErrors(): readonly PluginErrorEvent[] {
     return this.pluginErrors
   }
@@ -313,6 +329,15 @@ export class SlotRegistry<TNode, TSlots extends object, TContext extends PluginC
   }
 
   private notifyListeners(): void {
+    if (this.batchDepth > 0) {
+      this.batchedNotify = true
+      return
+    }
+
+    this.flushListeners()
+  }
+
+  private flushListeners(): void {
     for (const listener of this.listeners) {
       try {
         listener()

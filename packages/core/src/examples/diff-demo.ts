@@ -505,6 +505,7 @@ const applyTheme = (themeIndex: number) => {
 
 export async function run(rendererInstance: CliRenderer): Promise<void> {
   renderer = rendererInstance
+  showingHelp = false
   renderer.start()
 
   const theme = themes[currentThemeIndex]
@@ -685,6 +686,7 @@ export function destroy(rendererInstance: CliRenderer): void {
   titleBox = null
   syntaxStyle = null
   helpModal = null
+  showingHelp = false
 
   renderer = null
 }

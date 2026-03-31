@@ -442,6 +442,8 @@ export class DiffRenderable extends Renderable {
       }
     } else {
       sideRef.width = width
+      sideRef.fg = this._lineNumberFg
+      sideRef.bg = this._lineNumberBg
       sideRef.setLineColors(lineColors)
       sideRef.setLineSigns(lineSigns)
       sideRef.setLineNumbers(lineNumbers)
