@@ -153,7 +153,7 @@ const ExampleSelector = () => {
       case "`":
         renderer.console.toggle()
         break
-      case "t":
+      case ".":
         renderer.toggleDebugOverlay()
         break
       case "g":
@@ -280,7 +280,7 @@ const ExampleSelector = () => {
           <TimeToFirstDraw />
           <text style={{ fg: "#AAAAAA", marginTop: 1, marginLeft: 1, marginRight: 1 }}>
             Use ↑↓ or j/k to navigate, Shift+↑↓ or Shift+j/k for fast scroll, Enter to run, Escape to return, ` to
-            toggle console, ctrl+c to quit
+            toggle console, . to toggle debug overlay, ctrl+c to quit
           </text>
         </box>
       </Match>

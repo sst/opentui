@@ -384,6 +384,77 @@ describe("Solid Slot System", () => {
     expect(withoutPlugin).not.toContain("dynamic-plugin")
   })
 
+  it("replace mode restores fallback content after unregistering a shared plugin across multiple slots", async () => {
+    const Node = (props: { id: string }) => {
+      return (
+        <box flexDirection="column">
+          <text>{props.id}</text>
+          <text>{`${props.id}:detail`}</text>
+        </box>
+      )
+    }
+
+    const plugin: SolidPlugin<AppSlots> = {
+      id: "toggle-pair",
+      slots: {
+        statusbar() {
+          return <Node id="plugin-status" />
+        },
+        sidebar() {
+          return <Node id="plugin-sidebar" />
+        },
+      },
+    }
+
+    const { setup, registry } = await setupSlotTest(
+      (slotRegistry) => {
+        const Slot = createSlot(slotRegistry)
+
+        return (
+          <box flexDirection="column">
+            <Slot name="statusbar" user="sam" mode="replace">
+              <Node id="fallback-status" />
+            </Slot>
+            <Slot name="sidebar" items={["one"]} mode="replace">
+              <Node id="fallback-sidebar" />
+            </Slot>
+          </box>
+        )
+      },
+      { width: 80, height: 12 },
+    )
+    testSetup = setup
+
+    const settle = async () => {
+      await testSetup.renderOnce()
+      await Bun.sleep(0)
+      await testSetup.renderOnce()
+    }
+
+    await settle()
+    let frame = testSetup.captureCharFrame()
+    expect(frame).toContain("fallback-status")
+    expect(frame).toContain("fallback-sidebar")
+    expect(frame).not.toContain("plugin-status")
+    expect(frame).not.toContain("plugin-sidebar")
+
+    const off = registry.register(plugin)
+    await settle()
+    frame = testSetup.captureCharFrame()
+    expect(frame).toContain("plugin-status")
+    expect(frame).toContain("plugin-sidebar")
+    expect(frame).not.toContain("fallback-status")
+    expect(frame).not.toContain("fallback-sidebar")
+
+    off()
+    await settle()
+    frame = testSetup.captureCharFrame()
+    expect(frame).toContain("fallback-status")
+    expect(frame).toContain("fallback-sidebar")
+    expect(frame).not.toContain("plugin-status")
+    expect(frame).not.toContain("plugin-sidebar")
+  })
+
   it("switches rendered slot when props.name changes", async () => {
     let switchSlot: (() => void) | null = null
 

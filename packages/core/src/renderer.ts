@@ -493,11 +493,12 @@ export class CliRenderer extends EventEmitter implements RenderContext {
   private _isDestroyed: boolean = false
   private _destroyPending: boolean = false
   private _destroyFinalized: boolean = false
+  private _destroyCleanupPrepared: boolean = false
   public nextRenderBuffer: OptimizedBuffer
   public currentRenderBuffer: OptimizedBuffer
   private _isRunning: boolean = false
-  private targetFps: number = 30
-  private maxFps: number = 60
+  private _targetFps: number = 30
+  private _maxFps: number = 60
   private automaticMemorySnapshot: boolean = false
   private memorySnapshotInterval: number
   private memorySnapshotTimer: TimerHandle | null = null
@@ -525,8 +526,8 @@ export class CliRenderer extends EventEmitter implements RenderContext {
   private frameCount: number = 0
   private lastFpsTime: number = 0
   private currentFps: number = 0
-  private targetFrameTime: number = 1000 / this.targetFps
-  private minTargetFrameTime: number = 1000 / this.maxFps
+  private targetFrameTime: number = 1000 / this._targetFps
+  private minTargetFrameTime: number = 1000 / this._maxFps
   private immediateRerenderRequested: boolean = false
   private updateScheduled: boolean = false
 
@@ -723,8 +724,6 @@ export class CliRenderer extends EventEmitter implements RenderContext {
     this.resizeDebounceDelay = config.debounceDelay || 100
     this.targetFps = config.targetFps || 30
     this.maxFps = config.maxFps || 60
-    this.targetFrameTime = 1000 / this.targetFps
-    this.minTargetFrameTime = 1000 / this.maxFps
     this.clock = config.clock ?? new SystemClock()
     this.memorySnapshotInterval = config.memorySnapshotInterval ?? 0
     this.gatherStats = config.gatherStats || false
@@ -963,9 +962,17 @@ export class CliRenderer extends EventEmitter implements RenderContext {
   }
 
   private async activateFrame() {
-    await this.loop()
-    this.updateScheduled = false
-    this.resolveIdleIfNeeded()
+    if (!this.updateScheduled) {
+      this.resolveIdleIfNeeded()
+      return
+    }
+
+    try {
+      await this.loop()
+    } finally {
+      this.updateScheduled = false
+      this.resolveIdleIfNeeded()
+    }
   }
 
   public get consoleMode(): ConsoleMode {
@@ -1037,6 +1044,24 @@ export class CliRenderer extends EventEmitter implements RenderContext {
 
   public get useThread(): boolean {
     return this._useThread
+  }
+
+  public get targetFps(): number {
+    return this._targetFps
+  }
+
+  public set targetFps(targetFps: number) {
+    this._targetFps = targetFps
+    this.targetFrameTime = 1000 / this._targetFps
+  }
+
+  public get maxFps(): number {
+    return this._maxFps
+  }
+
+  public set maxFps(maxFps: number) {
+    this._maxFps = maxFps
+    this.minTargetFrameTime = 1000 / this._maxFps
   }
 
   public get useMouse(): boolean {
@@ -2006,6 +2031,11 @@ export class CliRenderer extends EventEmitter implements RenderContext {
     if (!this._isRunning && !this._isDestroyed) {
       this._isRunning = true
 
+      // Invalidate any queued idle one-shot frame.
+      // start()/live/resume transition to the continuous loop, so queued
+      // activateFrame callbacks must no-op via !updateScheduled.
+      this.updateScheduled = false
+
       if (this.memorySnapshotInterval > 0) {
         this.startMemorySnapshotTimer()
       }
@@ -2125,17 +2155,17 @@ export class CliRenderer extends EventEmitter implements RenderContext {
     this._destroyPending = true
 
     if (this.rendering) {
-      // Defer teardown until the active frame completes to avoid freeing native resources mid-render.
+      // Restore terminal/input state immediately, but defer full native teardown until the frame unwinds.
+      this.prepareDestroyDuringRender()
       return
     }
 
     this.finalizeDestroy()
   }
 
-  private finalizeDestroy(): void {
-    if (this._destroyFinalized) return
-    this._destroyFinalized = true
-    this._destroyPending = false
+  private cleanupBeforeDestroy(): void {
+    if (this._destroyCleanupPrepared) return
+    this._destroyCleanupPrepared = true
 
     process.removeListener("SIGWINCH", this.sigwinchHandler)
     process.removeListener("uncaughtException", this.handleError)
@@ -2157,24 +2187,15 @@ export class CliRenderer extends EventEmitter implements RenderContext {
 
     if (this.memorySnapshotTimer) {
       this.clock.clearInterval(this.memorySnapshotTimer)
+      this.memorySnapshotTimer = null
     }
-
-    // Clean up palette detector
-    if (this._paletteDetector) {
-      this._paletteDetector.cleanup()
-      this._paletteDetector = null
-    }
-    this._paletteDetectionPromise = null
-    this._cachedPalette = null
-
-    this.emit(CliRenderEvents.DESTROY)
 
     if (this.renderTimeout) {
       this.clock.clearTimeout(this.renderTimeout)
       this.renderTimeout = null
     }
-    this._isRunning = false
 
+    this._isRunning = false
     this.waitingForPixelResolution = false
     this.updateStdinParserProtocolContext(
       {
@@ -2186,27 +2207,51 @@ export class CliRenderer extends EventEmitter implements RenderContext {
     )
     this.setCapturedRenderable(undefined)
 
+    this.stdin.removeListener("data", this.stdinListener)
+    if (this.stdin.setRawMode) {
+      this.stdin.setRawMode(false)
+    }
+
+    this.externalOutputMode = "passthrough"
+
+    if (this._splitHeight > 0) {
+      this.flushStdoutCache(this._splitHeight, true)
+    }
+  }
+
+  private prepareDestroyDuringRender(): void {
+    this.cleanupBeforeDestroy()
+    this.lib.suspendRenderer(this.rendererPtr)
+  }
+
+  private finalizeDestroy(): void {
+    if (this._destroyFinalized) return
+
+    this._destroyFinalized = true
+    this._destroyPending = false
+
+    this.cleanupBeforeDestroy()
+
+    // Clean up palette detector
+    if (this._paletteDetector) {
+      this._paletteDetector.cleanup()
+      this._paletteDetector = null
+    }
+    this._paletteDetectionPromise = null
+    this._cachedPalette = null
+
+    this.emit(CliRenderEvents.DESTROY)
+
     try {
       this.root.destroyRecursively()
     } catch (e) {
       console.error("Error destroying root renderable:", e instanceof Error ? e.stack : String(e))
     }
 
-    // Remove listener before destroying parser
-    this.stdin.removeListener("data", this.stdinListener)
-    if (this.stdin.setRawMode) {
-      this.stdin.setRawMode(false)
-    }
-
     this.stdinParser?.destroy()
     this.stdinParser = null
     this.oscSubscribers.clear()
     this._console.destroy()
-    this.externalOutputMode = "passthrough"
-
-    if (this._splitHeight > 0) {
-      this.flushStdoutCache(this._splitHeight, true)
-    }
 
     this.lib.destroyRenderer(this.rendererPtr)
     rendererTracker.removeRenderer(this)

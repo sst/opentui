@@ -143,17 +143,9 @@ export function Slot<
 
   const slotName = () => String(local.name)
 
-  let fallbackView: (() => JSX.Element) | undefined
   const renderFallback = (): JSX.Element => {
-    if (fallbackView) return fallbackView()
-
-    const resolvedFallbackChildren = children(() => local.children)
-    fallbackView = () => {
-      const value = resolvedFallbackChildren()
-      return (value ?? null) as JSX.Element
-    }
-
-    return fallbackView()
+    const value = children(() => local.children)()
+    return (value ?? null) as JSX.Element
   }
 
   const resolveFallback = (fallbackValue?: (() => JSX.Element) | undefined): JSX.Element => fallbackValue?.() ?? null
