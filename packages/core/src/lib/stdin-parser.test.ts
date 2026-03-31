@@ -2217,7 +2217,7 @@ describe("StdinParser", () => {
           if (insideTimerCallback) {
             // Report 1ms less than the timeout requires — this is the
             // race condition that kept bytes stuck before the fix.
-            return 9
+            return TEST_TIMEOUT_MS - 1
           }
           return inner.now()
         },
@@ -2242,15 +2242,15 @@ describe("StdinParser", () => {
         },
       }
 
-      const parser = new StdinParser({ armTimeouts: true, clock: skewClock })
+      const parser = new StdinParser({ armTimeouts: true, clock: skewClock, timeoutMs: TEST_TIMEOUT_MS })
       try {
         parser.push(Buffer.from("\x1b"))
         expect(snap(parser)).toEqual([])
 
-        // Fire the timer — the skewed clock will report only 9ms elapsed,
+        // Fire the timer — the skewed clock will report timeoutMs - 1 elapsed,
         // but the fix ensures tryForceFlush() is called directly, bypassing
         // the time re-check.
-        inner.advance(10)
+        inner.advance(TEST_TIMEOUT_MS)
 
         expect(snap(parser)).toEqual([k("escape", { raw: "\x1b" })])
       } finally {
