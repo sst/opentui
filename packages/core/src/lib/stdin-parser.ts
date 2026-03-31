@@ -642,7 +642,10 @@ export class StdinParser {
   public flushTimeout(nowMsValue: number = this.clock.now()): void {
     this.ensureAlive()
 
-    if (this.pendingSinceMs !== null && (nowMsValue < this.pendingSinceMs || nowMsValue - this.pendingSinceMs < this.timeoutMs)) {
+    if (
+      this.pendingSinceMs !== null &&
+      (nowMsValue < this.pendingSinceMs || nowMsValue - this.pendingSinceMs < this.timeoutMs)
+    ) {
       return
     }
 
