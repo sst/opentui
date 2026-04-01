@@ -2207,7 +2207,14 @@ export class CliRenderer extends EventEmitter implements RenderContext {
     )
     this.setCapturedRenderable(undefined)
 
+    // Disable mouse tracking before disabling raw mode to prevent
+    // mouse events from being echoed as garbled text (matches suspend() ordering)
+    if (this._useMouse) {
+      this.disableMouse()
+    }
+
     this.stdin.removeListener("data", this.stdinListener)
+    while (this.stdin.read() !== null) {} // drain buffered mouse events
     if (this.stdin.setRawMode) {
       this.stdin.setRawMode(false)
     }
