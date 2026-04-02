@@ -18,6 +18,21 @@ export interface EditorTraits {
   status?: string
 }
 
+export enum EditBufferRenderableEvents {
+  TRAITS_CHANGED = "traits-changed",
+}
+
+function sameCapture(a?: readonly EditorCapture[], b?: readonly EditorCapture[]) {
+  if (a === b) return true
+  if (!a || !b) return !a && !b
+  if (a.length !== b.length) return false
+  return a.every((item, i) => item === b[i])
+}
+
+function sameTraits(a: EditorTraits, b: EditorTraits) {
+  return a.suspend === b.suspend && a.status === b.status && sameCapture(a.capture, b.capture)
+}
+
 export function isEditBufferRenderable(obj: unknown): obj is EditBufferRenderable {
   return !!(obj && typeof obj === "object" && BrandedEditBufferRenderable in obj)
 }
@@ -55,7 +70,7 @@ export abstract class EditBufferRenderable extends Renderable implements LineInf
   [BrandedEditBufferRenderable] = true
   protected _focusable: boolean = true
   public selectable: boolean = true
-  public traits: EditorTraits = {}
+  private _traits: EditorTraits = {}
 
   protected _textColor: RGBA
   protected _backgroundColor: RGBA
@@ -241,6 +256,17 @@ export abstract class EditBufferRenderable extends Renderable implements LineInf
 
   get selectionBg(): RGBA | undefined {
     return this._selectionBg
+  }
+
+  get traits(): EditorTraits {
+    return this._traits
+  }
+
+  set traits(value: EditorTraits) {
+    if (sameTraits(this._traits, value)) return
+    const prev = this._traits
+    this._traits = value
+    this.emit(EditBufferRenderableEvents.TRAITS_CHANGED, value, prev)
   }
 
   set selectionBg(value: RGBA | string | undefined) {

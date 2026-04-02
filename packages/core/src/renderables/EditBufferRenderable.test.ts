@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test"
 import { BoxRenderable } from "./Box.js"
-import { isEditBufferRenderable } from "./EditBufferRenderable.js"
+import { EditBufferRenderableEvents, isEditBufferRenderable } from "./EditBufferRenderable.js"
 import { InputRenderable } from "./Input.js"
 import { TextareaRenderable } from "./Textarea.js"
 import { createTestRenderer, type TestRenderer } from "../testing/test-renderer.js"
@@ -89,6 +89,32 @@ describe("EditBufferRenderable", () => {
 
     expect(textarea.traits.status).toBe("PALETTE")
     expect(input.traits.status).toBe("FILTER")
+  })
+
+  test("emits traits-changed when traits are reassigned", async () => {
+    const textarea = new TextareaRenderable(renderer, { width: 20, height: 3 })
+    const calls: Array<{ next: unknown; prev: unknown }> = []
+
+    renderer.root.add(textarea)
+    await renderOnce()
+
+    textarea.on(EditBufferRenderableEvents.TRAITS_CHANGED, (next, prev) => {
+      calls.push({ next, prev })
+    })
+
+    textarea.traits = { status: "FILTER" }
+    textarea.traits = { status: "FILTER" }
+    textarea.traits = { status: "FILTER", suspend: true }
+
+    expect(calls).toHaveLength(2)
+    expect(calls[0]).toEqual({
+      next: { status: "FILTER" },
+      prev: {},
+    })
+    expect(calls[1]).toEqual({
+      next: { status: "FILTER", suspend: true },
+      prev: { status: "FILTER" },
+    })
   })
 
   test("clears traits on destroy", async () => {
