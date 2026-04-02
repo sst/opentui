@@ -8,6 +8,20 @@ import type { OptimizedBuffer } from "../buffer.js"
 import { MeasureMode } from "yoga-layout"
 import type { SyntaxStyle } from "../syntax-style.js"
 
+const BrandedEditBufferRenderable: unique symbol = Symbol.for("@opentui/core/EditBufferRenderable")
+
+export type EditorCapture = "escape" | "navigate" | "submit" | "tab"
+
+export interface EditorTraits {
+  capture?: readonly EditorCapture[]
+  suspend?: boolean
+  status?: string
+}
+
+export function isEditBufferRenderable(obj: unknown): obj is EditBufferRenderable {
+  return !!(obj && typeof obj === "object" && BrandedEditBufferRenderable in obj)
+}
+
 export interface CursorChangeEvent {
   line: number
   visualColumn: number
@@ -38,8 +52,10 @@ export interface EditBufferOptions extends RenderableOptions<EditBufferRenderabl
 }
 
 export abstract class EditBufferRenderable extends Renderable implements LineInfoProvider {
+  [BrandedEditBufferRenderable] = true
   protected _focusable: boolean = true
   public selectable: boolean = true
+  public traits: EditorTraits = {}
 
   protected _textColor: RGBA
   protected _backgroundColor: RGBA
