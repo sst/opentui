@@ -220,4 +220,43 @@ describe("EditBufferRenderable", () => {
     expect(textarea.logicalCursor.row).toBe(1)
     expect(textarea.logicalCursor.col).toBe(3)
   })
+
+  test("reports cursorCharacterOffset for text positions", async () => {
+    const textarea = new TextareaRenderable(renderer, {
+      width: 20,
+      height: 3,
+      initialValue: "abc\ndef",
+    })
+
+    renderer.root.add(textarea)
+    await renderOnce()
+
+    textarea.setCursor(0, 1)
+    expect(textarea.cursorCharacterOffset).toBe(1)
+
+    textarea.gotoLineTextEnd()
+    expect(textarea.cursorCharacterOffset).toBe(2)
+
+    textarea.gotoBufferEnd()
+    expect(textarea.cursorCharacterOffset).toBe(6)
+
+    textarea.clear()
+    expect(textarea.cursorCharacterOffset).toBeUndefined()
+  })
+
+  test("sets inclusive selection through renderable api", async () => {
+    const textarea = new TextareaRenderable(renderer, {
+      width: 20,
+      height: 3,
+      initialValue: "abcdefg",
+    })
+
+    renderer.root.add(textarea)
+    await renderOnce()
+
+    textarea.setSelectionInclusive(2, 3)
+
+    expect(textarea.getSelection()).toEqual({ start: 2, end: 4 })
+    expect(textarea.getSelectedText()).toBe("cd")
+  })
 })

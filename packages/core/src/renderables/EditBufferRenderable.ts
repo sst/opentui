@@ -208,6 +208,24 @@ export abstract class EditBufferRenderable extends Renderable implements LineInf
     this.requestRender()
   }
 
+  get cursorCharacterOffset(): number | undefined {
+    const len = this.plainText.length
+    if (len <= 0) return
+
+    const cursor = this.logicalCursor
+    const offset = this.cursorOffset
+    if (offset >= len) {
+      if (cursor.col > 0) return len - 1
+      return 0
+    }
+
+    if (this.plainText[offset] === "\n" && cursor.col > 0) {
+      return offset - 1
+    }
+
+    return offset
+  }
+
   get textColor(): RGBA {
     return this._textColor
   }
@@ -559,6 +577,10 @@ export abstract class EditBufferRenderable extends Renderable implements LineInf
     this._ctx.clearSelection()
     this.editorView.setSelection(start, end, this._selectionBg, this._selectionFg)
     this.requestRender()
+  }
+
+  setSelectionInclusive(start: number, end: number): void {
+    this.setSelection(Math.min(start, end), Math.max(start, end) + 1)
   }
 
   clearSelection(): boolean {
