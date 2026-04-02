@@ -635,6 +635,8 @@ export abstract class EditBufferRenderable extends Renderable implements LineInf
   override destroy(): void {
     if (this.isDestroyed) return
 
+    this.traits = {}
+
     if (this._focused) {
       this._ctx.setCursorPosition(0, 0, false)
       // Manually blur to unhook event handlers BEFORE setting destroyed flag

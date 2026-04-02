@@ -90,4 +90,21 @@ describe("EditBufferRenderable", () => {
     expect(textarea.traits.status).toBe("PALETTE")
     expect(input.traits.status).toBe("FILTER")
   })
+
+  test("clears traits on destroy", async () => {
+    const textarea = new TextareaRenderable(renderer, { width: 20, height: 3 })
+
+    renderer.root.add(textarea)
+    await renderOnce()
+
+    textarea.traits = {
+      capture: ["escape"],
+      suspend: true,
+      status: "BUSY",
+    }
+
+    textarea.destroy()
+
+    expect(textarea.traits).toEqual({})
+  })
 })
