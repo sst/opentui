@@ -107,4 +107,62 @@ describe("EditBufferRenderable", () => {
 
     expect(textarea.traits).toEqual({})
   })
+
+  test("sets and clears selection through renderable api", async () => {
+    const textarea = new TextareaRenderable(renderer, {
+      width: 20,
+      height: 3,
+      initialValue: "abcdefg",
+    })
+
+    renderer.root.add(textarea)
+    await renderOnce()
+
+    textarea.setSelection(2, 4)
+
+    expect(textarea.hasSelection()).toBe(true)
+    expect(textarea.getSelection()).toEqual({ start: 2, end: 4 })
+    expect(textarea.getSelectedText()).toBe("cd")
+
+    expect(textarea.clearSelection()).toBe(true)
+    expect(textarea.hasSelection()).toBe(false)
+    expect(textarea.getSelectedText()).toBe("")
+    expect(textarea.clearSelection()).toBe(false)
+  })
+
+  test("deletes selection through renderable api", async () => {
+    const textarea = new TextareaRenderable(renderer, {
+      width: 20,
+      height: 3,
+      initialValue: "abcdefg",
+    })
+
+    renderer.root.add(textarea)
+    await renderOnce()
+
+    textarea.setSelection(2, 4)
+
+    expect(textarea.deleteSelection()).toBe(true)
+    expect(textarea.plainText).toBe("abefg")
+    expect(textarea.hasSelection()).toBe(false)
+    expect(textarea.cursorOffset).toBe(2)
+    expect(textarea.deleteSelection()).toBe(false)
+  })
+
+  test("sets cursor through renderable api", async () => {
+    const textarea = new TextareaRenderable(renderer, {
+      width: 20,
+      height: 3,
+      initialValue: "abc\ndef",
+    })
+
+    renderer.root.add(textarea)
+    await renderOnce()
+
+    textarea.setCursor(1, 2)
+
+    expect(textarea.logicalCursor.row).toBe(1)
+    expect(textarea.logicalCursor.col).toBe(2)
+    expect(textarea.cursorOffset).toBe(6)
+  })
 })

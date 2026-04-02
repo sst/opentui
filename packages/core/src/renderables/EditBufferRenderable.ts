@@ -540,6 +540,39 @@ export abstract class EditBufferRenderable extends Renderable implements LineInf
     return this.editorView.getSelection()
   }
 
+  setSelection(start: number, end: number): void {
+    this.lastLocalSelection = null
+    this.editorView.setSelection(start, end, this._selectionBg, this._selectionFg)
+    this.requestRender()
+  }
+
+  clearSelection(): boolean {
+    const had = this.hasSelection()
+    this.lastLocalSelection = null
+    this.editorView.resetSelection()
+    this._ctx.clearSelection()
+    if (had) {
+      this.requestRender()
+    }
+    return had
+  }
+
+  deleteSelection(): boolean {
+    if (!this.hasSelection()) return false
+
+    this.lastLocalSelection = null
+    this.editorView.deleteSelectedText()
+    this.editorView.resetSelection()
+    this._ctx.clearSelection()
+    this.requestRender()
+    return true
+  }
+
+  setCursor(row: number, col: number): void {
+    this.editBuffer.setCursor(row, col)
+    this.requestRender()
+  }
+
   // Undefined = 0,
   // Exactly = 1,
   // AtMost = 2
