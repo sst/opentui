@@ -203,4 +203,33 @@ describe("solid transform plugin", () => {
     expect(result.exitCode).toBe(0)
     expect(stdout).toContain("sync=sync-value;async=async-value;jsx=true")
   })
+
+  it("ignores host project babel config when transforming plugins", async () => {
+    const hostile = mkdtempSync(join(tmpdir(), "solid-plugin-hostile-config-"))
+    const tsxPath = join(hostile, "fixture.tsx")
+    writeFileSync(tsxPath, "const node = <text>ok</text>\nexport { node }")
+    writeFileSync(
+      join(hostile, "babel.config.json"),
+      JSON.stringify({ plugins: ["nonexistent-plugin-should-never-load"] }),
+    )
+    writeFileSync(join(hostile, ".babelrc.json"), JSON.stringify({ plugins: ["another-nonexistent-plugin"] }))
+
+    const prev = process.cwd()
+    try {
+      process.chdir(hostile)
+
+      const { build, loadHandlers } = createMockBuild()
+      createSolidTransformPlugin().setup(build as any)
+
+      const transformed = await runLoad(loadHandlers, tsxPath)
+
+      expect(transformed).toBeDefined()
+      if (!transformed) throw new Error("Expected transformed output")
+      expect(transformed.loader).toBe("js")
+      expect(transformed.contents).toContain("@opentui/solid")
+    } finally {
+      process.chdir(prev)
+      rmSync(hostile, { recursive: true, force: true })
+    }
+  })
 })
