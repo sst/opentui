@@ -200,4 +200,24 @@ describe("EditBufferRenderable", () => {
     expect(textarea.logicalCursor.col).toBe(2)
     expect(textarea.cursorOffset).toBe(6)
   })
+
+  test("goes to exact current line boundaries through renderable api", async () => {
+    const textarea = new TextareaRenderable(renderer, {
+      width: 20,
+      height: 3,
+      initialValue: "abc\ndef",
+    })
+
+    renderer.root.add(textarea)
+    await renderOnce()
+
+    textarea.setCursor(1, 2)
+    textarea.gotoLineStart()
+    expect(textarea.logicalCursor.row).toBe(1)
+    expect(textarea.logicalCursor.col).toBe(0)
+
+    textarea.gotoLineTextEnd()
+    expect(textarea.logicalCursor.row).toBe(1)
+    expect(textarea.logicalCursor.col).toBe(3)
+  })
 })

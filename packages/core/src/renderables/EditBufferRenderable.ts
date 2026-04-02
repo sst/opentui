@@ -702,6 +702,15 @@ export abstract class EditBufferRenderable extends Renderable implements LineInf
     this.requestRender()
   }
 
+  public gotoLineStart(): void {
+    this.setCursor(this.logicalCursor.row, 0)
+  }
+
+  public gotoLineTextEnd(): void {
+    const eol = this.editBuffer.getEOL()
+    this.setCursor(eol.row, eol.col)
+  }
+
   public gotoLineHome(options?: { select?: boolean }): boolean {
     const select = options?.select ?? false
     this.updateSelectionForMovement(select, true)
