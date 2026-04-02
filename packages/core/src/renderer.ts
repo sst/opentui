@@ -491,6 +491,7 @@ export class CliRenderer extends EventEmitter implements RenderContext {
   private exitSignals: NodeJS.Signals[]
   private _exitListenersAdded: boolean = false
   private _sigtstpListenersAdded: boolean = false
+  private _suspendedBySigtstp: boolean = false
   private _isDestroyed: boolean = false
   private _destroyPending: boolean = false
   private _destroyFinalized: boolean = false
@@ -844,6 +845,7 @@ export class CliRenderer extends EventEmitter implements RenderContext {
   }
 
   private sigtstpHandler = (): void => {
+    this._suspendedBySigtstp = true
     this.suspend()
     // Remove handler to allow default SIGTSTP behavior (suspend process)
     process.removeListener("SIGTSTP", this.sigtstpHandler)
@@ -854,7 +856,13 @@ export class CliRenderer extends EventEmitter implements RenderContext {
   private sigcontHandler = (): void => {
     // Re-register SIGTSTP handler before resuming
     this.addSigtstpListeners()
-    this.resume()
+    // Only resume if our SIGTSTP handler called suspend(). A spurious SIGCONT
+    // (e.g., terminal refocus without prior SIGTSTP) would add a duplicate
+    // stdin listener, causing every keystroke to be delivered twice.
+    if (this._suspendedBySigtstp) {
+      this._suspendedBySigtstp = false
+      this.resume()
+    }
   }
 
   private addSigtstpListeners(): void {
