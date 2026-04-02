@@ -149,6 +149,41 @@ describe("EditBufferRenderable", () => {
     expect(textarea.deleteSelection()).toBe(false)
   })
 
+  test("keeps explicit selection when selection colors change", async () => {
+    const textarea = new TextareaRenderable(renderer, {
+      width: 20,
+      height: 3,
+      initialValue: "abcdefg",
+    })
+
+    renderer.root.add(textarea)
+    await renderOnce()
+
+    textarea.setSelection(2, 4)
+    textarea.selectionBg = "#ff0000"
+    textarea.selectionFg = "#000000"
+
+    expect(textarea.getSelection()).toEqual({ start: 2, end: 4 })
+    expect(textarea.getSelectedText()).toBe("cd")
+  })
+
+  test("inherits movement selection behavior from edit buffer renderable", async () => {
+    const textarea = new TextareaRenderable(renderer, {
+      width: 20,
+      height: 3,
+      initialValue: "abcdefg",
+    })
+
+    renderer.root.add(textarea)
+    await renderOnce()
+
+    textarea.cursorOffset = 2
+    textarea.moveCursorRight({ select: true })
+
+    expect(textarea.getSelection()).toEqual({ start: 2, end: 3 })
+    expect(textarea.getSelectedText()).toBe("c")
+  })
+
   test("sets cursor through renderable api", async () => {
     const textarea = new TextareaRenderable(renderer, {
       width: 20,
