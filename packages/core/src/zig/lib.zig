@@ -665,6 +665,8 @@ export fn bufferDrawBox(
     backgroundColor: [*]const f32,
     title: ?[*]const u8,
     titleLen: u32,
+    bottomTitle: ?[*]const u8,
+    bottomTitleLen: u32,
 ) void {
     const borderSides = buffer.BorderSides{
         .top = (packedOptions & 0b1000) != 0,
@@ -675,8 +677,10 @@ export fn bufferDrawBox(
 
     const shouldFill = ((packedOptions >> 4) & 1) != 0;
     const titleAlignment = @as(u8, @intCast((packedOptions >> 5) & 0b11));
-
+    const bottomTitleAlignment = @as(u8, @intCast((packedOptions >> 7) & 0b11));
     const titleSlice = if (title) |t| t[0..titleLen] else null;
+
+    const bottomTitleSlice = if (bottomTitle) |bt| bt[0..bottomTitleLen] else null;
 
     bufferPtr.drawBox(
         x,
@@ -690,6 +694,8 @@ export fn bufferDrawBox(
         shouldFill,
         titleSlice,
         titleAlignment,
+        bottomTitleSlice,
+        bottomTitleAlignment,
     ) catch {};
 }
 

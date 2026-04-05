@@ -31,6 +31,9 @@ bun run src/examples/index.ts
 ## Testing
 
 ```bash
+# Build native dependencies first
+bun run build
+
 # TypeScript tests
 cd packages/core
 bun test

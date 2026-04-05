@@ -719,7 +719,6 @@ export class CliRenderer extends EventEmitter implements RenderContext {
       "SIGBREAK", // Ctrl+Break on Windows
       "SIGPIPE", // Broken pipe
       "SIGBUS", // Bus error
-      "SIGFPE", // Floating point exception
     ]
 
     this.clipboard = new Clipboard(this.lib, this.rendererPtr)
