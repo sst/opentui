@@ -15,6 +15,7 @@ jobs:
     permissions:
       contents: write
       issues: write
+      pull-requests: read
     steps:
       - name: React to trigger comment
         continue-on-error: true
@@ -38,14 +39,28 @@ jobs:
           echo "head_ref=$(jq -r .head.ref pr_data.json)" >> $GITHUB_OUTPUT
           echo "head_repo=$(jq -r .head.repo.full_name pr_data.json)" >> $GITHUB_OUTPUT
 
-      - name: Check branch is in this repo
-        id: repo-check
+      - name: Determine run mode
+        id: run-mode
+        run: |
+          if [ "${{ steps.pr-details.outputs.head_repo }}" = "${{ github.repository }}" ]; then
+            echo "run=true" >> $GITHUB_OUTPUT
+            echo "skip_reason=" >> $GITHUB_OUTPUT
+            exit 0
+          fi
+
+          echo "run=false" >> $GITHUB_OUTPUT
+          echo "skip_reason=fork" >> $GITHUB_OUTPUT
+
+      - name: Comment skipped reason
+        if: steps.run-mode.outputs.run != 'true'
+        continue-on-error: true
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          if [ "${{ steps.pr-details.outputs.head_repo }}" = "${{ github.repository }}" ]; then
-            echo "can_push=true" >> $GITHUB_OUTPUT
-            exit 0
+          if [ "${{ steps.run-mode.outputs.skip_reason }}" = "fork" ]; then
+            BODY='Skipping `/fmt`: this PR comes from a fork, and this workflow cannot push commits to fork branches with `GITHUB_TOKEN`.'
+          else
+            BODY='Skipping `/fmt` for this PR.'
           fi
 
           gh api \
@@ -53,33 +68,32 @@ jobs:
             -H "Accept: application/vnd.github+json" \
             -H "X-GitHub-Api-Version: 2022-11-28" \
             /repos/${{ github.repository }}/issues/${{ steps.pr-details.outputs.number }}/comments \
-            -f body='`/fmt` currently only works for PR branches in this repository (fork PRs are not supported).'
-          echo "can_push=false" >> $GITHUB_OUTPUT
+            -f body="$BODY"
 
       - name: Checkout PR branch
-        if: steps.repo-check.outputs.can_push == 'true'
+        if: steps.run-mode.outputs.run == 'true'
         uses: actions/checkout@v4
         with:
           ref: ${{ steps.pr-details.outputs.head_ref }}
           fetch-depth: 0
 
       - name: Setup Bun
-        if: steps.repo-check.outputs.can_push == 'true'
+        if: steps.run-mode.outputs.run == 'true'
         uses: oven-sh/setup-bun@v2
         with:
           bun-version: latest
 
       - name: Install dependencies
-        if: steps.repo-check.outputs.can_push == 'true'
+        if: steps.run-mode.outputs.run == 'true'
         run: bun install --frozen-lockfile
 
       - name: Run formatter
-        if: steps.repo-check.outputs.can_push == 'true'
+        if: steps.run-mode.outputs.run == 'true'
         run: bun fmt
 
       - name: Commit formatting changes
         id: commit
-        if: steps.repo-check.outputs.can_push == 'true'
+        if: steps.run-mode.outputs.run == 'true'
         run: |
           if [ -z "$(git status --porcelain)" ]; then
             echo "committed=false" >> $GITHUB_OUTPUT
@@ -95,7 +109,8 @@ jobs:
           echo "committed=true" >> $GITHUB_OUTPUT
 
       - name: Comment result
-        if: steps.repo-check.outputs.can_push == 'true'
+        if: steps.run-mode.outputs.run == 'true'
+        continue-on-error: true
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
@@ -111,3 +126,42 @@ jobs:
             -H "X-GitHub-Api-Version: 2022-11-28" \
             /repos/${{ github.repository }}/issues/${{ steps.pr-details.outputs.number }}/comments \
             -f body="$BODY"
+
+      - name: React to comment on successful format run
+        if: success() && steps.run-mode.outputs.run == 'true'
+        continue-on-error: true
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh api \
+            --method POST \
+            -H "Accept: application/vnd.github+json" \
+            -H "X-GitHub-Api-Version: 2022-11-28" \
+            /repos/${{ github.repository }}/issues/comments/${{ github.event.comment.id }}/reactions \
+            -f content='hooray'
+
+      - name: React to comment when skipped
+        if: success() && steps.run-mode.outputs.run != 'true'
+        continue-on-error: true
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh api \
+            --method POST \
+            -H "Accept: application/vnd.github+json" \
+            -H "X-GitHub-Api-Version: 2022-11-28" \
+            /repos/${{ github.repository }}/issues/comments/${{ github.event.comment.id }}/reactions \
+            -f content='confused'
+
+      - name: React to comment on failure
+        if: failure()
+        continue-on-error: true
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh api \
+            --method POST \
+            -H "Accept: application/vnd.github+json" \
+            -H "X-GitHub-Api-Version: 2022-11-28" \
+            /repos/${{ github.repository }}/issues/comments/${{ github.event.comment.id }}/reactions \
+            -f content='-1'
