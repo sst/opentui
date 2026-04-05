@@ -1,0 +1,114 @@
+name: Format PR
+
+on:
+  issue_comment:
+    types: [created]
+
+jobs:
+  format-pr:
+    if: |
+      github.event.issue.pull_request &&
+      github.event.issue.state == 'open' &&
+      (contains(github.event.comment.body, ' /fmt') ||
+        startsWith(github.event.comment.body, '/fmt')) &&
+      contains(fromJson('["OWNER","MEMBER"]'), github.event.comment.author_association)
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      issues: write
+    steps:
+      - name: React to trigger comment
+        continue-on-error: true
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh api \
+            --method POST \
+            -H "Accept: application/vnd.github+json" \
+            -H "X-GitHub-Api-Version: 2022-11-28" \
+            /repos/${{ github.repository }}/issues/comments/${{ github.event.comment.id }}/reactions \
+            -f content='eyes'
+
+      - name: Get PR details
+        id: pr-details
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh api /repos/${{ github.repository }}/pulls/${{ github.event.issue.number }} > pr_data.json
+          echo "number=${{ github.event.issue.number }}" >> $GITHUB_OUTPUT
+          echo "head_ref=$(jq -r .head.ref pr_data.json)" >> $GITHUB_OUTPUT
+          echo "head_repo=$(jq -r .head.repo.full_name pr_data.json)" >> $GITHUB_OUTPUT
+
+      - name: Check branch is in this repo
+        id: repo-check
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          if [ "${{ steps.pr-details.outputs.head_repo }}" = "${{ github.repository }}" ]; then
+            echo "can_push=true" >> $GITHUB_OUTPUT
+            exit 0
+          fi
+
+          gh api \
+            --method POST \
+            -H "Accept: application/vnd.github+json" \
+            -H "X-GitHub-Api-Version: 2022-11-28" \
+            /repos/${{ github.repository }}/issues/${{ steps.pr-details.outputs.number }}/comments \
+            -f body='`/fmt` currently only works for PR branches in this repository (fork PRs are not supported).'
+          echo "can_push=false" >> $GITHUB_OUTPUT
+
+      - name: Checkout PR branch
+        if: steps.repo-check.outputs.can_push == 'true'
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ steps.pr-details.outputs.head_ref }}
+          fetch-depth: 0
+
+      - name: Setup Bun
+        if: steps.repo-check.outputs.can_push == 'true'
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+
+      - name: Install dependencies
+        if: steps.repo-check.outputs.can_push == 'true'
+        run: bun install --frozen-lockfile
+
+      - name: Run formatter
+        if: steps.repo-check.outputs.can_push == 'true'
+        run: bun fmt
+
+      - name: Commit formatting changes
+        id: commit
+        if: steps.repo-check.outputs.can_push == 'true'
+        run: |
+          if [ -z "$(git status --porcelain)" ]; then
+            echo "committed=false" >> $GITHUB_OUTPUT
+            exit 0
+          fi
+
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A
+          git commit -m "style: run bun fmt"
+          git push origin "HEAD:${{ steps.pr-details.outputs.head_ref }}"
+          echo "sha=$(git rev-parse HEAD)" >> $GITHUB_OUTPUT
+          echo "committed=true" >> $GITHUB_OUTPUT
+
+      - name: Comment result
+        if: steps.repo-check.outputs.can_push == 'true'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          if [ "${{ steps.commit.outputs.committed }}" = "true" ]; then
+            BODY="Ran \`bun fmt\` and pushed commit \`${{ steps.commit.outputs.sha }}\`."
+          else
+            BODY="Ran \`bun fmt\`. No formatting changes were needed."
+          fi
+
+          gh api \
+            --method POST \
+            -H "Accept: application/vnd.github+json" \
+            -H "X-GitHub-Api-Version: 2022-11-28" \
+            /repos/${{ github.repository }}/issues/${{ steps.pr-details.outputs.number }}/comments \
+            -f body="$BODY"
