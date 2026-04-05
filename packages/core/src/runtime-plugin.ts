@@ -1,3 +1,39 @@
+/*
+ * Exposes runtime-only modules (for example `@opentui/core`, `@opentui/solid`,
+ * `solid-js`) to externally loaded plugins by rewriting matching imports to
+ * virtual `opentui:runtime-module:*` ids.
+ *
+ * Why this is exact-path + prescan instead of one broad `onLoad`:
+ * - Bun can break CJS/UMD interop if a file is routed through plugin `onLoad`
+ *   (real repro: `jsonc-parser` resolving to `lib/umd/main.js`;
+ *   https://github.com/oven-sh/bun/issues/19279,
+ *   https://github.com/oven-sh/bun/issues/21369), so arbitrary `node_modules`
+ *   JS cannot be blanket-rewritten.
+ * - runtime `onResolve` is sync-only, so package/type/source discovery here is
+ *   synchronous and cached.
+ * - a matched `onLoad` cannot safely fall through, so loaders must be narrow.
+ * - Bun may canonicalize paths before `onLoad`, so loaders are registered for
+ *   both the resolved path spelling and its realpath, then canonical-checked.
+ * - Bun may native-load `node_modules` ESM without firing `onResolve` for
+ *   nested package imports, so `node_modules` ESM is recursively prescanned and
+ *   only files that actually need runtime rewriting get exact-path loaders.
+ *
+ * Behavior:
+ * - non-`node_modules` source files get a dedicated rewrite loader immediately.
+ * - `node_modules` files are rewritten only if they are ESM (`.mjs`, `.mts`,
+ *   `.ts`, `.tsx`, `.jsx`, or `.js` under `package.json#type="module"`) and
+ *   directly or transitively need runtime-module rewriting; unrelated CJS stays
+ *   untouched.
+ * - optional bare-specifier rewriting is preserved for sibling files in
+ *   packages already marked for runtime rewriting.
+ *
+ * Notes:
+ * - import scanning is regex-based, not a full parser.
+ * - CJS helper libraries that themselves import runtime modules are still not
+ *   supported.
+ * - `package.json#type` caching is per plugin setup, not module-global, so a
+ *   later plugin instance in the same process can observe filesystem changes.
+ */
 import { existsSync, readFileSync, realpathSync } from "node:fs"
 import { basename, dirname, isAbsolute, join } from "node:path"
 import { fileURLToPath } from "node:url"
@@ -378,19 +414,6 @@ const rewriteRuntimeSpecifiers = (code: string, runtimeModuleIdsBySpecifier: Map
   })
 }
 
-/*
- * Exposes runtime-only modules like `@opentui/core`, `@opentui/solid`, and `solid-js` to
- * externally loaded plugins by rewriting matching ESM imports to virtual runtime module ids.
- *
- * The resolver looks more complex than the rewrite itself because Bun currently breaks CJS
- * interop when a CJS file is processed through plugin `onLoad`:
- * https://github.com/oven-sh/bun/issues/21369
- *
- * That means we cannot safely blanket-rewrite every file in `node_modules`. Instead we only
- * register exact `onLoad` handlers for ESM files that actually need runtime-module rewriting,
- * and we recursively pre-register matching ESM descendants in `node_modules` so package-to-
- * package ESM imports still work without touching unrelated CJS dependencies.
- */
 export function createRuntimePlugin(input: CreateRuntimePluginOptions = {}): BunPlugin {
   const runtimeModules = new Map<string, RuntimeModuleEntry>()
   runtimeModules.set(CORE_RUNTIME_SPECIFIER, input.core ?? (coreRuntime as RuntimeModuleExports))
