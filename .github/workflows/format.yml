@@ -9,8 +9,7 @@ jobs:
     if: |
       github.event.issue.pull_request &&
       github.event.issue.state == 'open' &&
-      (contains(github.event.comment.body, ' /fmt') ||
-        startsWith(github.event.comment.body, '/fmt')) &&
+      github.event.comment.body == '/fmt' &&
       contains(fromJson('["OWNER","MEMBER"]'), github.event.comment.author_association)
     runs-on: ubuntu-latest
     permissions:
