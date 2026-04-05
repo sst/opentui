@@ -1,4 +1,4 @@
-import type { TextRenderable } from "./index.js"
+import type { TextRenderable } from "./Text.js"
 import { BaseRenderable, type BaseRenderableOptions } from "../Renderable.js"
 import { RGBA, parseColor } from "../lib/RGBA.js"
 import { isStyledText, StyledText } from "../lib/styled-text.js"
