@@ -413,6 +413,7 @@ export abstract class Renderable extends BaseRenderable {
   public blur(): void {
     if (!this._focused || !this._focusable) return
 
+    this._ctx.blurRenderable(this)
     this._focused = false
     this.requestRender()
 

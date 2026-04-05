@@ -1,4 +1,4 @@
-import { test, expect, beforeEach, afterEach } from "bun:test"
+import { test, expect, beforeEach, afterEach, describe } from "bun:test"
 import { CliRenderEvents } from "../renderer.js"
 import { createTestRenderer, MouseButtons, type MockMouse, type TestRenderer } from "../testing.js"
 import { ScrollBoxRenderable } from "../renderables/ScrollBox.js"
@@ -291,4 +291,162 @@ test("focused_editor event emits on editor focus changes", async () => {
     ["editor-b", null],
   ])
   expect(testRenderer.currentFocusedEditor?.id).toBe("editor-b")
+})
+
+describe("focus hierarchy mode", () => {
+  test("focusing child focuses entire ancestor chain", async () => {
+    const { renderer } = await createTestRenderer({
+      width: 50,
+      height: 30,
+      focusAncestors: true,
+    })
+
+    const grandparent = new BoxRenderable(renderer, {
+      id: "grandparent",
+      width: 20,
+      height: 10,
+      focusable: true,
+    })
+    const parent = new BoxRenderable(renderer, {
+      id: "parent",
+      width: 15,
+      height: 8,
+      focusable: true,
+    })
+    const child = new BoxRenderable(renderer, {
+      id: "child",
+      width: 10,
+      height: 5,
+      focusable: true,
+    })
+
+    grandparent.add(parent)
+    parent.add(child)
+    renderer.root.add(grandparent)
+    await renderer.idle()
+
+    child.focus()
+
+    expect(child.focused).toBe(true)
+    expect(parent.focused).toBe(true)
+    expect(grandparent.focused).toBe(true)
+
+    renderer.destroy()
+  })
+
+  test("switching to different tree blurs old ancestors", async () => {
+    const { renderer } = await createTestRenderer({
+      width: 50,
+      height: 30,
+      focusAncestors: true,
+    })
+
+    const tree1 = new BoxRenderable(renderer, { id: "tree1", width: 10, height: 5, focusable: true })
+    const child1 = new BoxRenderable(renderer, { id: "child1", width: 5, height: 3, focusable: true })
+    tree1.add(child1)
+    renderer.root.add(tree1)
+
+    const tree2 = new BoxRenderable(renderer, { id: "tree2", width: 10, height: 5, focusable: true })
+    const child2 = new BoxRenderable(renderer, { id: "child2", width: 5, height: 3, focusable: true })
+    tree2.add(child2)
+    renderer.root.add(tree2)
+
+    await renderer.idle()
+
+    child1.focus()
+    expect(child1.focused).toBe(true)
+    expect(tree1.focused).toBe(true)
+
+    child2.focus()
+    expect(child2.focused).toBe(true)
+    expect(tree2.focused).toBe(true)
+    expect(tree1.focused).toBe(false)
+    expect(child1.focused).toBe(false)
+
+    renderer.destroy()
+  })
+
+  test("shared ancestors remain focused when switching between siblings", async () => {
+    const { renderer } = await createTestRenderer({
+      width: 50,
+      height: 30,
+      focusAncestors: true,
+    })
+
+    const root = new BoxRenderable(renderer, { id: "root", width: 20, height: 10, focusable: true })
+    const branchA = new BoxRenderable(renderer, { id: "branchA", width: 8, height: 6, focusable: true })
+    const branchB = new BoxRenderable(renderer, { id: "branchB", width: 8, height: 6, focusable: true })
+    const leafA = new BoxRenderable(renderer, { id: "leafA", width: 4, height: 3, focusable: true })
+    const leafB = new BoxRenderable(renderer, { id: "leafB", width: 4, height: 3, focusable: true })
+
+    root.add(branchA)
+    root.add(branchB)
+    branchA.add(leafA)
+    branchB.add(leafB)
+    renderer.root.add(root)
+
+    await renderer.idle()
+
+    leafA.focus()
+    expect(leafA.focused).toBe(true)
+    expect(branchA.focused).toBe(true)
+    expect(root.focused).toBe(true)
+    expect(branchB.focused).toBe(false)
+
+    leafB.focus()
+    expect(leafB.focused).toBe(true)
+    expect(branchB.focused).toBe(true)
+    expect(root.focused).toBe(true)
+    expect(branchA.focused).toBe(false)
+    expect(leafA.focused).toBe(false)
+
+    renderer.destroy()
+  })
+
+  test("multiple disjoint trees stay independent", async () => {
+    const { renderer } = await createTestRenderer({
+      width: 50,
+      height: 30,
+      focusAncestors: true,
+    })
+
+    const tree1Root = new BoxRenderable(renderer, { id: "tree1Root", width: 8, height: 5, focusable: true })
+    const tree1Child = new BoxRenderable(renderer, { id: "tree1Child", width: 4, height: 3, focusable: true })
+    tree1Root.add(tree1Child)
+    renderer.root.add(tree1Root)
+
+    const tree2Root = new BoxRenderable(renderer, {
+      id: "tree2Root",
+      position: "absolute",
+      left: 20,
+      top: 0,
+      width: 8,
+      height: 5,
+      focusable: true,
+    })
+    const tree2Child = new BoxRenderable(renderer, { id: "tree2Child", width: 4, height: 3, focusable: true })
+    tree2Root.add(tree2Child)
+    renderer.root.add(tree2Root)
+
+    await renderer.idle()
+
+    tree1Child.focus()
+    expect(tree1Child.focused).toBe(true)
+    expect(tree1Root.focused).toBe(true)
+    expect(tree2Root.focused).toBe(false)
+
+    tree2Child.focus()
+    expect(tree2Child.focused).toBe(true)
+    expect(tree2Root.focused).toBe(true)
+    expect(tree1Root.focused).toBe(false)
+    expect(tree1Child.focused).toBe(false)
+
+    tree1Child.focus()
+    expect(tree1Child.focused).toBe(true)
+    expect(tree1Root.focused).toBe(true)
+    expect(tree2Root.focused).toBe(false)
+    expect(tree2Child.focused).toBe(false)
+
+    renderer.destroy()
+  })
 })

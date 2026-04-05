@@ -172,6 +172,9 @@ export interface CliRendererConfig {
 
   // Run after destroy() finishes cleanup.
   onDestroy?: () => void
+
+  // Focus the hierarchy of renderables when they are focused.
+  focusAncestors?: boolean
 }
 
 // Controls how the renderer uses terminal space:
@@ -609,6 +612,7 @@ export class CliRenderer extends EventEmitter implements RenderContext {
   private _currentMousePointerStyle: MousePointerStyle | undefined = undefined
 
   private _currentFocusedRenderable: Renderable | null = null
+  private _focusedRenderables: Set<Renderable> = new Set()
   private lifecyclePasses: Set<Renderable> = new Set()
   private _openConsoleOnError: boolean = true
   private _paletteDetector: TerminalPaletteDetector | null = null
@@ -617,6 +621,8 @@ export class CliRenderer extends EventEmitter implements RenderContext {
   private _onDestroy?: () => void
   private _themeMode: ThemeMode | null = null
   private _terminalFocusState: boolean | null = null
+
+  private _focusAncestors: boolean
 
   private sequenceHandlers: ((sequence: string) => boolean)[] = []
   private prependedInputHandlers: ((sequence: string) => boolean)[] = []
@@ -699,6 +705,8 @@ export class CliRenderer extends EventEmitter implements RenderContext {
 
     this._footerHeight = footerHeight
     this._screenMode = screenMode
+
+    this._focusAncestors = config.focusAncestors ?? false
 
     this.rendererPtr = rendererPtr
 
@@ -889,8 +897,26 @@ export class CliRenderer extends EventEmitter implements RenderContext {
 
     const prev = this.currentFocusedEditor
 
-    if (this._currentFocusedRenderable) {
-      this._currentFocusedRenderable.blur()
+    if (this._focusAncestors) {
+      const parent = renderable.parent
+      const ancestors = new Set([renderable])
+
+      const blurred = this._focusedRenderables.difference(ancestors)
+
+      for (const rend of blurred) {
+        rend.blur()
+      }
+
+      if (parent && parent.focusable && !parent.focused) {
+        parent.focus()
+        ancestors.add(parent)
+      }
+
+      this._focusedRenderables = ancestors
+    } else {
+      if (this._currentFocusedRenderable) {
+        this._currentFocusedRenderable.blur()
+      }
     }
 
     this._currentFocusedRenderable = renderable
@@ -898,6 +924,16 @@ export class CliRenderer extends EventEmitter implements RenderContext {
     const next = this.currentFocusedEditor
     if (prev !== next) {
       this.emit(CliRenderEvents.FOCUSED_EDITOR, next, prev)
+    }
+  }
+
+  public blurRenderable(renderable: Renderable): void {
+    if (this._currentFocusedRenderable === renderable) {
+      this._currentFocusedRenderable = null
+    }
+
+    if (this._focusedRenderables.has(renderable)) {
+      this._focusedRenderables.delete(renderable)
     }
   }
 
