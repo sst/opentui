@@ -24,7 +24,10 @@ writeFileSync(
   }),
 )
 
-writeFileSync(join(hostRuntimeDependencyDir, "index.js"), 'export const marker = "resolved-from-scoped-package-parent"\n')
+writeFileSync(
+  join(hostRuntimeDependencyDir, "index.js"),
+  'export const marker = "resolved-from-scoped-package-parent"\n',
+)
 
 writeFileSync(
   join(scopedPackageDir, "package.json"),
@@ -41,7 +44,7 @@ writeFileSync(
   [
     'import { marker as runtimeMarker } from "fixture-runtime"',
     'import { helperMarker } from "./helper.js"',
-    'export const marker = `${runtimeMarker}:${helperMarker}`',
+    "export const marker = `${runtimeMarker}:${helperMarker}`",
   ].join("\n"),
 )
 
@@ -55,7 +58,7 @@ writeFileSync(
   [
     'import { marker as entryMarker } from "fixture-entry-runtime"',
     'import { marker as scopedMarker } from "@runtime-plugin/scoped-fixture"',
-    'console.log(`entry=${entryMarker};scoped=${scopedMarker}`)',
+    "console.log(`entry=${entryMarker};scoped=${scopedMarker}`)",
     "export const noop = 1",
   ].join("\n"),
 )

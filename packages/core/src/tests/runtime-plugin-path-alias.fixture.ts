@@ -9,7 +9,10 @@ const aliasRoot = join(dirname(realRoot), `core-runtime-plugin-path-alias-link-$
 const realEntryPath = join(realRoot, "external.ts")
 const aliasEntryPath = join(aliasRoot, "external.ts")
 
-writeFileSync(realEntryPath, ['import { marker } from "@opentui/core"', "export const externalMarker = marker"].join("\n"))
+writeFileSync(
+  realEntryPath,
+  ['import { marker } from "@opentui/core"', "export const externalMarker = marker"].join("\n"),
+)
 
 symlinkSync(realRoot, aliasRoot, process.platform === "win32" ? "junction" : "dir")
 

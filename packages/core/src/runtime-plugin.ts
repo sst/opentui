@@ -497,7 +497,9 @@ export function createRuntimePlugin(input: CreateRuntimePluginOptions = {}): Bun
         const importSpecifiers = collectImportSpecifiers(contents)
         const analysis = {
           importSpecifiers,
-          needsRuntimeSpecifierRewrite: importSpecifiers.some((specifier) => runtimeModuleIdsBySpecifier.has(specifier)),
+          needsRuntimeSpecifierRewrite: importSpecifiers.some((specifier) =>
+            runtimeModuleIdsBySpecifier.has(specifier),
+          ),
         }
 
         sourceAnalysisByPath.set(normalizedPath, analysis)
@@ -588,7 +590,11 @@ export function createRuntimePlugin(input: CreateRuntimePluginOptions = {}): Bun
         }
 
         const packageRoot = nodeModulesPackageRootForPath(path)
-        if (rewriteOptions.nodeModulesBareSpecifiers && packageRoot && nodeModulesBareRewritePackageRoots.has(packageRoot)) {
+        if (
+          rewriteOptions.nodeModulesBareSpecifiers &&
+          packageRoot &&
+          nodeModulesBareRewritePackageRoots.has(packageRoot)
+        ) {
           installRewriteLoader(path)
           return undefined
         }

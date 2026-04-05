@@ -37,7 +37,7 @@ writeFileSync(
   }),
 )
 
-writeFileSync(join(commonJsDependencyDir, "index.js"), 'exports.parse = (input) => JSON.parse(input)\n')
+writeFileSync(join(commonJsDependencyDir, "index.js"), "exports.parse = (input) => JSON.parse(input)\n")
 
 writeFileSync(
   join(esmPrimitivesDependencyDir, "package.json"),
