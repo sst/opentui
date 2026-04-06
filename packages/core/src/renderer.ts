@@ -892,32 +892,44 @@ export class CliRenderer extends EventEmitter implements RenderContext {
     return Math.max(now - then, 0)
   }
 
+  // Are we currently focusing ancestors
+  private _isFocusingAncestors = false
+
   public focusRenderable(renderable: Renderable) {
     if (this._currentFocusedRenderable === renderable) return
 
     const prev = this.currentFocusedEditor
 
     if (this._focusAncestors) {
+      const currentFocused = this._focusedRenderables
       const parent = renderable.parent
-      const ancestors = new Set([renderable])
+      const mustBlur = this._isFocusingAncestors
+      // We are starting a focus hierarchy
+      // We need to know which currently focused elements to blur.
+      if (!this._isFocusingAncestors) {
+        this._isFocusingAncestors = true
+        this._focusedRenderables = new Set([renderable])
+      } else this._focusedRenderables.add(renderable)
 
-      if (parent && parent.focusable && !parent.focused) {
-        parent.focus()
-        ancestors.add(parent)
+      if (parent && parent.focusable) {
+        if (parent.focused) this._focusedRenderables.add(parent)
+        else parent.focus()
       }
 
-      const blurred = this._focusedRenderables.difference(ancestors)
+      if (!mustBlur) {
+        const blurred = currentFocused.difference(this._focusedRenderables)
 
-      for (const rend of blurred) {
-        rend.blur()
+        for (const rend of blurred) {
+          rend.blur()
+        }
+
+        this._isFocusingAncestors = false
       }
-
-      this._focusedRenderables = ancestors
     } else {
-      if (this._currentFocusedRenderable) {
-        this._currentFocusedRenderable.blur()
-      }
+      this._currentFocusedRenderable?.blur()
     }
+
+    if (this._isFocusingAncestors) return
 
     this._currentFocusedRenderable = renderable
 
