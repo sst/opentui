@@ -901,15 +901,15 @@ export class CliRenderer extends EventEmitter implements RenderContext {
       const parent = renderable.parent
       const ancestors = new Set([renderable])
 
+      if (parent && parent.focusable && !parent.focused) {
+        parent.focus()
+        ancestors.add(parent)
+      }
+
       const blurred = this._focusedRenderables.difference(ancestors)
 
       for (const rend of blurred) {
         rend.blur()
-      }
-
-      if (parent && parent.focusable && !parent.focused) {
-        parent.focus()
-        ancestors.add(parent)
       }
 
       this._focusedRenderables = ancestors
