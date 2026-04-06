@@ -932,9 +932,7 @@ export class CliRenderer extends EventEmitter implements RenderContext {
       this._currentFocusedRenderable = null
     }
 
-    if (this._focusedRenderables.has(renderable)) {
-      this._focusedRenderables.delete(renderable)
-    }
+    this._focusedRenderables.delete(renderable)
   }
 
   private setCapturedRenderable(renderable: Renderable | undefined): void {
