@@ -172,9 +172,6 @@ export interface CliRendererConfig {
 
   // Run after destroy() finishes cleanup.
   onDestroy?: () => void
-
-  // Focus the hierarchy of renderables when they are focused.
-  focusAncestors?: boolean
 }
 
 // Controls how the renderer uses terminal space:
@@ -507,7 +504,11 @@ export class CliRenderer extends EventEmitter implements RenderContext {
   private automaticMemorySnapshot: boolean = false
   private memorySnapshotInterval: number
   private memorySnapshotTimer: TimerHandle | null = null
-  private lastMemorySnapshot: { heapUsed: number; heapTotal: number; arrayBuffers: number } = {
+  private lastMemorySnapshot: {
+    heapUsed: number
+    heapTotal: number
+    arrayBuffers: number
+  } = {
     heapUsed: 0,
     heapTotal: 0,
     arrayBuffers: 0,
@@ -608,11 +609,14 @@ export class CliRenderer extends EventEmitter implements RenderContext {
   private _capabilities: any | null = null
   private _latestPointer: { x: number; y: number } = { x: 0, y: 0 }
   private _hasPointer: boolean = false
-  private _lastPointerModifiers: RawMouseEvent["modifiers"] = { shift: false, alt: false, ctrl: false }
+  private _lastPointerModifiers: RawMouseEvent["modifiers"] = {
+    shift: false,
+    alt: false,
+    ctrl: false,
+  }
   private _currentMousePointerStyle: MousePointerStyle | undefined = undefined
 
   private _currentFocusedRenderable: Renderable | null = null
-  private _focusedRenderables: Set<Renderable> = new Set()
   private lifecyclePasses: Set<Renderable> = new Set()
   private _openConsoleOnError: boolean = true
   private _paletteDetector: TerminalPaletteDetector | null = null
@@ -621,8 +625,6 @@ export class CliRenderer extends EventEmitter implements RenderContext {
   private _onDestroy?: () => void
   private _themeMode: ThemeMode | null = null
   private _terminalFocusState: boolean | null = null
-
-  private _focusAncestors: boolean
 
   private sequenceHandlers: ((sequence: string) => boolean)[] = []
   private prependedInputHandlers: ((sequence: string) => boolean)[] = []
@@ -705,8 +707,6 @@ export class CliRenderer extends EventEmitter implements RenderContext {
 
     this._footerHeight = footerHeight
     this._screenMode = screenMode
-
-    this._focusAncestors = config.focusAncestors ?? false
 
     this.rendererPtr = rendererPtr
 
@@ -892,45 +892,12 @@ export class CliRenderer extends EventEmitter implements RenderContext {
     return Math.max(now - then, 0)
   }
 
-  // Are we currently focusing ancestors
-  private _isFocusingAncestors = false
-
   public focusRenderable(renderable: Renderable) {
     if (this._currentFocusedRenderable === renderable) return
 
     const prev = this.currentFocusedEditor
 
-    if (this._focusAncestors) {
-      const currentFocused = this._focusedRenderables
-      const parent = renderable.parent
-      const mustBlur = this._isFocusingAncestors
-      // We are starting a focus hierarchy
-      // We need to know which currently focused elements to blur.
-      if (!this._isFocusingAncestors) {
-        this._isFocusingAncestors = true
-        this._focusedRenderables = new Set([renderable])
-      } else this._focusedRenderables.add(renderable)
-
-      if (parent && parent.focusable) {
-        if (parent.focused) this._focusedRenderables.add(parent)
-        else parent.focus()
-      }
-
-      if (!mustBlur) {
-        const blurred = currentFocused.difference(this._focusedRenderables)
-
-        for (const rend of blurred) {
-          rend.blur()
-        }
-
-        this._isFocusingAncestors = false
-      }
-    } else {
-      this._currentFocusedRenderable?.blur()
-    }
-
-    if (this._isFocusingAncestors) return
-
+    this._currentFocusedRenderable?.blur()
     this._currentFocusedRenderable = renderable
 
     const next = this.currentFocusedEditor
@@ -943,8 +910,6 @@ export class CliRenderer extends EventEmitter implements RenderContext {
     if (this._currentFocusedRenderable === renderable) {
       this._currentFocusedRenderable = null
     }
-
-    this._focusedRenderables.delete(renderable)
   }
 
   private setCapturedRenderable(renderable: Renderable | undefined): void {
@@ -1684,7 +1649,10 @@ export class CliRenderer extends EventEmitter implements RenderContext {
       this.updateSelection(maybeRenderable, mouseEvent.x, mouseEvent.y)
 
       if (maybeRenderable) {
-        const event = new MouseEvent(maybeRenderable, { ...mouseEvent, isDragging: true })
+        const event = new MouseEvent(maybeRenderable, {
+          ...mouseEvent,
+          isDragging: true,
+        })
         maybeRenderable.processMouseEvent(event)
       }
 
@@ -1693,7 +1661,10 @@ export class CliRenderer extends EventEmitter implements RenderContext {
 
     if (mouseEvent.type === "up" && this.currentSelection?.isDragging) {
       if (maybeRenderable) {
-        const event = new MouseEvent(maybeRenderable, { ...mouseEvent, isDragging: true })
+        const event = new MouseEvent(maybeRenderable, {
+          ...mouseEvent,
+          isDragging: true,
+        })
         maybeRenderable.processMouseEvent(event)
       }
 
@@ -1715,7 +1686,10 @@ export class CliRenderer extends EventEmitter implements RenderContext {
         this.lastOverRenderable !== this.capturedRenderable &&
         !this.lastOverRenderable.isDestroyed
       ) {
-        const event = new MouseEvent(this.lastOverRenderable, { ...mouseEvent, type: "out" })
+        const event = new MouseEvent(this.lastOverRenderable, {
+          ...mouseEvent,
+          type: "out",
+        })
         this.lastOverRenderable.processMouseEvent(event)
       }
       this.lastOverRenderable = maybeRenderable
@@ -1736,7 +1710,10 @@ export class CliRenderer extends EventEmitter implements RenderContext {
     }
 
     if (this.capturedRenderable && mouseEvent.type === "up") {
-      const event = new MouseEvent(this.capturedRenderable, { ...mouseEvent, type: "drag-end" })
+      const event = new MouseEvent(this.capturedRenderable, {
+        ...mouseEvent,
+        type: "drag-end",
+      })
       this.capturedRenderable.processMouseEvent(event)
       this.capturedRenderable.processMouseEvent(new MouseEvent(this.capturedRenderable, mouseEvent))
       if (maybeRenderable) {
