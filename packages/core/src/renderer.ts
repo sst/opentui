@@ -1265,16 +1265,22 @@ export class CliRenderer extends EventEmitter implements RenderContext {
 
     let clear = ""
     if (space > 0) {
-      const backgroundColor = this.backgroundColor.toInts()
       const newlines = " ".repeat(this.width) + "\n".repeat(space)
-      // Check if background is transparent (alpha = 0)
-      if (backgroundColor[3] === 0) {
-        clear = newlines
+      const { ansi16Index } = this.backgroundColor
+      if (ansi16Index !== undefined) {
+        // Named ANSI 16-color: emit palette code to respect the user's terminal theme
+        clear = ANSI.setAnsi16Background(ansi16Index) + newlines + ANSI.resetBackground
       } else {
-        clear =
-          ANSI.setRgbBackground(backgroundColor[0], backgroundColor[1], backgroundColor[2]) +
-          newlines +
-          ANSI.resetBackground
+        const backgroundColor = this.backgroundColor.toInts()
+        // Check if background is transparent (alpha = 0)
+        if (backgroundColor[3] === 0) {
+          clear = newlines
+        } else {
+          clear =
+            ANSI.setRgbBackground(backgroundColor[0], backgroundColor[1], backgroundColor[2]) +
+            newlines +
+            ANSI.resetBackground
+        }
       }
     }
 

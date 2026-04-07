@@ -160,6 +160,89 @@ describe("BoxRenderable - borderStyle validation", () => {
   })
 })
 
+describe("BoxRenderable - named ANSI color index preservation", () => {
+  test("backgroundColor named color preserves ansi16Index on stored RGBA", () => {
+    const box = new BoxRenderable(testRenderer, {
+      id: "ansi-bg-box",
+      width: 10,
+      height: 5,
+      backgroundColor: "red",
+    })
+
+    expect(box.backgroundColor.ansi16Index).toBe(1)
+  })
+
+  test("borderColor named color preserves ansi16Index on stored RGBA", () => {
+    const box = new BoxRenderable(testRenderer, {
+      id: "ansi-border-box",
+      width: 10,
+      height: 5,
+      borderColor: "blue",
+    })
+
+    expect(box.borderColor.ansi16Index).toBe(4)
+  })
+
+  test("bright named color preserves ansi16Index on stored RGBA", () => {
+    const box = new BoxRenderable(testRenderer, {
+      id: "ansi-bright-box",
+      width: 10,
+      height: 5,
+      backgroundColor: "brightcyan",
+    })
+
+    expect(box.backgroundColor.ansi16Index).toBe(14)
+  })
+
+  test("mixed-case named color normalises and preserves ansi16Index", () => {
+    const box = new BoxRenderable(testRenderer, {
+      id: "ansi-case-box",
+      width: 10,
+      height: 5,
+      backgroundColor: "brightCyan",
+    })
+
+    expect(box.backgroundColor.ansi16Index).toBe(14)
+  })
+
+  test("hex backgroundColor does not set ansi16Index", () => {
+    const box = new BoxRenderable(testRenderer, {
+      id: "hex-bg-box",
+      width: 10,
+      height: 5,
+      backgroundColor: "#FF0000",
+    })
+
+    expect(box.backgroundColor.ansi16Index).toBeUndefined()
+  })
+
+  test("non-ANSI named color (gray) does not set ansi16Index", () => {
+    const box = new BoxRenderable(testRenderer, {
+      id: "gray-bg-box",
+      width: 10,
+      height: 5,
+      backgroundColor: "gray",
+    })
+
+    expect(box.backgroundColor.ansi16Index).toBeUndefined()
+  })
+
+  test("backgroundColor setter updates ansi16Index", () => {
+    const box = new BoxRenderable(testRenderer, {
+      id: "setter-box",
+      width: 10,
+      height: 5,
+      backgroundColor: "#FF0000",
+    })
+
+    expect(box.backgroundColor.ansi16Index).toBeUndefined()
+
+    box.backgroundColor = "green"
+
+    expect(box.backgroundColor.ansi16Index).toBe(2)
+  })
+})
+
 describe("BoxRenderable - border titles (top and bottom)", () => {
   test("renders top and bottom titles on their respective borders", async () => {
     const box = new BoxRenderable(testRenderer, {

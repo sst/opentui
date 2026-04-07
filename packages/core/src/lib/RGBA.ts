@@ -1,5 +1,9 @@
 export class RGBA {
   buffer: Float32Array
+  /** ANSI 16-color palette index (0-15) when this color was created from a
+   *  standard named color (e.g. "red", "brightcyan"). Undefined for all other
+   *  inputs so callers can fall back to truecolor without a separate flag. */
+  ansi16Index?: number
 
   constructor(buffer: Float32Array) {
     this.buffer = buffer
@@ -186,6 +190,30 @@ const CSS_COLOR_NAMES: Record<string, string> = {
   brightwhite: "#FFFFFF",
 }
 
+// Maps the subset of CSS_COLOR_NAMES that correspond to the 16-color ANSI
+// palette to their canonical palette index (0 = black … 15 = brightwhite).
+// Colors that exist in CSS_COLOR_NAMES but have no ANSI 16 equivalent
+// (gray, silver, maroon, olive, …) are intentionally absent so callers
+// continue to use truecolor for those inputs.
+const ANSI_16_INDEX: Record<string, number> = {
+  black: 0,
+  red: 1,
+  green: 2,
+  yellow: 3,
+  blue: 4,
+  magenta: 5,
+  cyan: 6,
+  white: 7,
+  brightblack: 8,
+  brightred: 9,
+  brightgreen: 10,
+  brightyellow: 11,
+  brightblue: 12,
+  brightmagenta: 13,
+  brightcyan: 14,
+  brightwhite: 15,
+}
+
 export function parseColor(color: ColorInput): RGBA {
   if (typeof color === "string") {
     const lowerColor = color.toLowerCase()
@@ -195,7 +223,12 @@ export function parseColor(color: ColorInput): RGBA {
     }
 
     if (CSS_COLOR_NAMES[lowerColor]) {
-      return hexToRgb(CSS_COLOR_NAMES[lowerColor])
+      const rgba = hexToRgb(CSS_COLOR_NAMES[lowerColor])
+      const ansi16 = ANSI_16_INDEX[lowerColor]
+      if (ansi16 !== undefined) {
+        rgba.ansi16Index = ansi16
+      }
+      return rgba
     }
 
     return hexToRgb(color)
