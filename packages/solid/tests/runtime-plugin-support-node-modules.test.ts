@@ -1,9 +1,9 @@
 import { describe, expect, it } from "bun:test"
 import { join } from "node:path"
 
-describe("solid runtime plugin support", () => {
-  it("loads external TSX modules against host runtime modules", () => {
-    const fixturePath = join(import.meta.dir, "runtime-plugin-support.fixture.ts")
+describe("solid runtime plugin support in node_modules", () => {
+  it("rewrites runtime module specifiers for external node_modules modules", () => {
+    const fixturePath = join(import.meta.dir, "runtime-plugin-support-node-modules.fixture.ts")
     const result = Bun.spawnSync([process.execPath, fixturePath], {
       cwd: join(import.meta.dir, ".."),
       stdout: "pipe",
@@ -18,6 +18,8 @@ describe("solid runtime plugin support", () => {
     expect(stdout).toContain("core=true")
     expect(stdout).toContain("coreTesting=true")
     expect(stdout).toContain("solidJs=true")
-    expect(stdout).toContain("jsx=true")
+    expect(stdout).toContain("cjs=true")
+    expect(stdout).toContain("esmPackage=true")
+    expect(stdout).toContain("solidStore=true")
   })
 })

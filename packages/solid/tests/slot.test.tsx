@@ -221,6 +221,51 @@ describe("Solid Slot System", () => {
     expect(fallbackLifecycle).toEqual([])
   })
 
+  it("replace mode mounts winning plugin content once", async () => {
+    const pluginLifecycle: string[] = []
+
+    const PluginProbe = () => {
+      onMount(() => {
+        pluginLifecycle.push("mount")
+      })
+
+      onCleanup(() => {
+        pluginLifecycle.push("cleanup")
+      })
+
+      return <text>plugin-probe</text>
+    }
+
+    const { setup } = await setupSlotTest(
+      (registry) => {
+        registry.register({
+          id: "replace-plugin-probe",
+          slots: {
+            statusbar() {
+              return <PluginProbe />
+            },
+          },
+        })
+
+        const Slot = createSlot(registry)
+        return (
+          <Slot name="statusbar" user="lee" mode="replace">
+            <text>replace-fallback</text>
+          </Slot>
+        )
+      },
+      { width: 40, height: 6 },
+    )
+    testSetup = setup
+
+    await testSetup.renderOnce()
+    const frame = testSetup.captureCharFrame()
+
+    expect(frame).toContain("plugin-probe")
+    expect(frame).not.toContain("replace-fallback")
+    expect(pluginLifecycle).toEqual(["mount"])
+  })
+
   it("single_winner mode renders only the highest-priority plugin", async () => {
     const { setup } = await setupSlotTest(
       (registry) => {

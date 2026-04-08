@@ -13,6 +13,7 @@ import { children, createMemo, createSignal, ErrorBoundary, For, onCleanup, spli
 
 export type { SlotMode }
 type SlotMap = Record<string, object>
+const EMPTY_ENTRY_IDS: string[] = []
 
 export type SolidPlugin<TSlots extends SlotMap, TContext extends PluginContext = PluginContext> = Plugin<
   JSX.Element,
@@ -238,10 +239,19 @@ export function Slot<
     )
   }
 
+  const appendEntryIds = createMemo(() => {
+    const mode = local.mode ?? "append"
+    if (mode !== "append") {
+      return EMPTY_ENTRY_IDS
+    }
+
+    return entryIds()
+  })
+
   const appendView = (
     <>
       {renderFallback}
-      <For each={entryIds()}>{(entryId) => <AppendEntry entryId={entryId} />}</For>
+      <For each={appendEntryIds()}>{(entryId) => <AppendEntry entryId={entryId} />}</For>
     </>
   )
 

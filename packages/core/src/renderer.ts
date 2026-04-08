@@ -21,6 +21,7 @@ import { EventEmitter } from "events"
 import { destroySingleton, hasSingleton, singleton } from "./lib/singleton.js"
 import { getObjectsInViewport } from "./lib/objects-in-viewport.js"
 import { KeyHandler, InternalKeyHandler } from "./lib/KeyHandler.js"
+import { isEditBufferRenderable, type EditBufferRenderable } from "./renderables/EditBufferRenderable.js"
 import { env, registerEnvVar } from "./lib/env.js"
 import { getTreeSitterClient } from "./lib/tree-sitter/index.js"
 import {
@@ -464,6 +465,7 @@ export enum CliRenderEvents {
   RESIZE = "resize",
   FOCUS = "focus",
   BLUR = "blur",
+  FOCUSED_EDITOR = "focused_editor",
   THEME_MODE = "theme_mode",
   CAPABILITIES = "capabilities",
   SELECTION = "selection",
@@ -717,7 +719,6 @@ export class CliRenderer extends EventEmitter implements RenderContext {
       "SIGBREAK", // Ctrl+Break on Windows
       "SIGPIPE", // Broken pipe
       "SIGBUS", // Bus error
-      "SIGFPE", // Floating point exception
     ]
 
     this.clipboard = new Clipboard(this.lib, this.rendererPtr)
@@ -767,7 +768,7 @@ export class CliRenderer extends EventEmitter implements RenderContext {
 
     const stdinParserMaxBufferBytes = config.stdinParserMaxBufferBytes ?? DEFAULT_STDIN_PARSER_MAX_BUFFER_BYTES
     this.stdinParser = new StdinParser({
-      timeoutMs: 10,
+      timeoutMs: 20,
       maxPendingBytes: stdinParserMaxBufferBytes,
       armTimeouts: true,
       onTimeoutFlush: () => {
@@ -861,6 +862,12 @@ export class CliRenderer extends EventEmitter implements RenderContext {
     return this._currentFocusedRenderable
   }
 
+  public get currentFocusedEditor(): EditBufferRenderable | null {
+    if (!this._currentFocusedRenderable) return null
+    if (!isEditBufferRenderable(this._currentFocusedRenderable)) return null
+    return this._currentFocusedRenderable
+  }
+
   private normalizeClockTime(now: number, fallback: number): number {
     if (Number.isFinite(now)) {
       return now
@@ -880,11 +887,18 @@ export class CliRenderer extends EventEmitter implements RenderContext {
   public focusRenderable(renderable: Renderable) {
     if (this._currentFocusedRenderable === renderable) return
 
+    const prev = this.currentFocusedEditor
+
     if (this._currentFocusedRenderable) {
       this._currentFocusedRenderable.blur()
     }
 
     this._currentFocusedRenderable = renderable
+
+    const next = this.currentFocusedEditor
+    if (prev !== next) {
+      this.emit(CliRenderEvents.FOCUSED_EDITOR, next, prev)
+    }
   }
 
   private setCapturedRenderable(renderable: Renderable | undefined): void {
