@@ -190,15 +190,6 @@ describe("solid transform plugin", () => {
     })
 
     const stdout = result.stdout.toString().trim()
-    const stderr = result.stderr.toString().trim()
-
-    if (stdout) {
-      console.debug(`[solid-plugin.fixture] stdout:\n${stdout}`)
-    }
-
-    if (stderr) {
-      console.debug(`[solid-plugin.fixture] stderr:\n${stderr}`)
-    }
 
     expect(result.exitCode).toBe(0)
     expect(stdout).toContain("sync=sync-value;async=async-value;jsx=true")

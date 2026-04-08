@@ -79,7 +79,7 @@ renderer.root.add(
 
 ## Titles
 
-Add a title to the box border:
+Add a title and bottom title to the box border:
 
 ```typescript
 const panel = new BoxRenderable(renderer, {
@@ -89,10 +89,12 @@ const panel = new BoxRenderable(renderer, {
   borderStyle: "rounded",
   title: "Settings",
   titleAlignment: "center",
+  bottomTitle: "Footer",
+  bottomTitleAlignment: "center",
 })
 ```
 
-### Title alignment
+### Title alignment (both top and bottom titles)
 
 ```typescript
 {
@@ -104,6 +106,16 @@ const panel = new BoxRenderable(renderer, {
 {
   titleAlignment: "right"
 } // ┌────────── Title ┐
+
+{
+  bottomTitleAlignment: "left"
+} // └─ Title ────────┘
+{
+  bottomTitleAlignment: "center"
+} // └──── Title ─────┘
+{
+  bottomTitleAlignment: "right"
+} // └────────── Title ┘
 ```
 
 ## Layout container
@@ -152,21 +164,23 @@ const button = new BoxRenderable(renderer, {
 
 ## Properties
 
-| Property          | Type               | Default        | Description                       |
-| ----------------- | ------------------ | -------------- | --------------------------------- |
-| `width`           | `number \| string` | -              | Width in characters or percentage |
-| `height`          | `number \| string` | -              | Height in rows or percentage      |
-| `backgroundColor` | `string \| RGBA`   | -              | Background fill color             |
-| `border`          | `boolean`          | `false`        | Show border                       |
-| `borderStyle`     | `string`           | `"single"`     | Border style                      |
-| `borderColor`     | `string \| RGBA`   | -              | Border color                      |
-| `title`           | `string`           | -              | Title text in border              |
-| `titleAlignment`  | `string`           | `"left"`       | Title position                    |
-| `padding`         | `number`           | `0`            | Internal padding                  |
-| `gap`             | `number \| string` | -              | Gap between children              |
-| `flexDirection`   | `string`           | `"column"`     | Child layout direction            |
-| `justifyContent`  | `string`           | `"flex-start"` | Main axis alignment               |
-| `alignItems`      | `string`           | `"stretch"`    | Cross axis alignment              |
+| Property               | Type               | Default        | Description                       |
+| ---------------------- | ------------------ | -------------- | --------------------------------- |
+| `width`                | `number \| string` | -              | Width in characters or percentage |
+| `height`               | `number \| string` | -              | Height in rows or percentage      |
+| `backgroundColor`      | `string \| RGBA`   | -              | Background fill color             |
+| `border`               | `boolean`          | `false`        | Show border                       |
+| `borderStyle`          | `string`           | `"single"`     | Border style                      |
+| `borderColor`          | `string \| RGBA`   | -              | Border color                      |
+| `title`                | `string`           | -              | Title text in border              |
+| `titleAlignment`       | `string`           | `"left"`       | Title position                    |
+| `bottomTitle`          | `string`           | -              | Bottom title text in border       |
+| `bottomTitleAlignment` | `string`           | `"left"`       | Bottom title position             |
+| `padding`              | `number`           | `0`            | Internal padding                  |
+| `gap`                  | `number \| string` | -              | Gap between children              |
+| `flexDirection`        | `string`           | `"column"`     | Child layout direction            |
+| `justifyContent`       | `string`           | `"flex-start"` | Main axis alignment               |
+| `alignItems`           | `string`           | `"stretch"`    | Cross axis alignment              |
 
 ## Example: Card component
 

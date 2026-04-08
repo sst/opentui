@@ -12,17 +12,8 @@ const runFixture = (code: number, mode: "idle" | "during-render" = "idle") => {
   })
 
   const stdout = result.stdout.toString()
-  const stderr = result.stderr.toString()
 
-  console.debug(`[destroy-on-exit] exit=${result.exitCode}`)
-  if (stdout.trim()) {
-    console.debug(`[destroy-on-exit] stdout:\n${stdout.trimEnd()}`)
-  }
-  if (stderr.trim()) {
-    console.debug(`[destroy-on-exit] stderr:\n${stderr.trimEnd()}`)
-  }
-
-  return { result, stdout, stderr }
+  return { result, stdout }
 }
 
 describe("destroy on process exit", () => {
