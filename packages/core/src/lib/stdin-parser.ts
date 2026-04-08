@@ -95,9 +95,10 @@ interface PasteCollector {
   totalLength: number
 }
 
-// 10ms is enough to distinguish a lone ESC keypress from the start of an
-// escape sequence on all but the slowest connections.
-const DEFAULT_TIMEOUT_MS = 10
+// 20ms is to distinguish a lone ESC keypress from the start of an
+// escape sequence. Gemini/Claude uses 50ms, Codex uses 20ms, trying
+// this as a balanced default for now.
+const DEFAULT_TIMEOUT_MS = 20
 const DEFAULT_MAX_PENDING_BYTES = 64 * 1024
 const INITIAL_PENDING_CAPACITY = 256
 const ESC = 0x1b
@@ -326,6 +327,35 @@ function parsePositiveDecimalPrefix(sequence: Uint8Array, start: number, endExcl
   }
 
   return sawDigit ? value : null
+}
+
+// Returns the leading kitty codepoint from field 1, like `97` in `97:65`.
+// The CSI scanner uses this at `;` boundaries to recognize alternate-key
+// forms (`codepoint[:shifted[:base]]`). That keeps split kitty sequences
+// pending, instead of flushing them as unknown on timeout.
+function parseKittyFirstFieldCodepoint(sequence: Uint8Array, start: number, endExclusive: number): number | null {
+  if (start >= endExclusive) return null
+
+  let firstColon = -1
+  for (let index = start; index < endExclusive; index += 1) {
+    if (sequence[index] === 0x3a) {
+      firstColon = index
+      break
+    }
+  }
+
+  if (firstColon === -1) return null
+
+  const codepoint = parsePositiveDecimalPrefix(sequence, start, firstColon)
+  if (codepoint === null) return null
+
+  // Remaining bytes in field 1 must stay kitty-compatible: digits or colons.
+  for (let index = firstColon + 1; index < endExclusive; index += 1) {
+    const byte = sequence[index]!
+    if (byte !== 0x3a && !isAsciiDigit(byte)) return null
+  }
+
+  return codepoint
 }
 
 function canStillBeKittyU(state: ParametricCsiLike): boolean {
@@ -641,11 +671,23 @@ export class StdinParser {
   public flushTimeout(nowMsValue: number = this.clock.now()): void {
     this.ensureAlive()
 
-    if (this.paste || this.pendingSinceMs === null || this.pending.length === 0) {
+    if (
+      this.pendingSinceMs !== null &&
+      (nowMsValue < this.pendingSinceMs || nowMsValue - this.pendingSinceMs < this.timeoutMs)
+    ) {
       return
     }
 
-    if (nowMsValue < this.pendingSinceMs || nowMsValue - this.pendingSinceMs < this.timeoutMs) {
+    this.tryForceFlush()
+  }
+
+  // Sets forceFlush when there are pending bytes outside of a paste.
+  // Extracted so the setTimeout callback in reconcileTimeoutState() can
+  // bypass flushTimeout()'s elapsed-time comparison. Timer scheduling and
+  // clock.now() sampling can disagree by a small amount; re-checking elapsed
+  // time in the callback can skip a flush and leave pending bytes stuck.
+  private tryForceFlush(): void {
+    if (this.paste || this.pendingSinceMs === null || this.pending.length === 0) {
       return
     }
 
@@ -984,7 +1026,14 @@ export class StdinParser {
           }
 
           if (byte === 0x3b) {
-            const firstParamValue = parsePositiveDecimalPrefix(bytes, this.unitStart + 2, this.cursor)
+            const firstParamStart = this.unitStart + 2
+            const firstParamEnd = this.cursor
+            let firstParamValue = parsePositiveDecimalPrefix(bytes, firstParamStart, firstParamEnd)
+
+            if (firstParamValue === null && this.protocolContext.kittyKeyboardEnabled) {
+              firstParamValue = parseKittyFirstFieldCodepoint(bytes, firstParamStart, firstParamEnd)
+            }
+
             if (firstParamValue !== null) {
               this.cursor += 1
               this.state = {
@@ -1726,7 +1775,7 @@ export class StdinParser {
       }
 
       try {
-        this.flushTimeout(this.clock.now())
+        this.tryForceFlush()
         this.onTimeoutFlush?.()
       } catch (error) {
         console.error("stdin parser timeout flush failed", error)

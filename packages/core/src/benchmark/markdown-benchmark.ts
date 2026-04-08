@@ -350,20 +350,16 @@ if (spawnPerScenario && !scenarioFilter) {
   process.exit(0)
 }
 
-process.env.OTUI_OVERRIDE_STDOUT = "false"
-process.env.OTUI_USE_ALTERNATE_SCREEN = "false"
-
 const renderer = await createCliRenderer({
   exitOnCtrlC: true,
   targetFps,
   maxFps,
   testing,
-  useAlternateScreen: false,
-  useConsole: false,
+  screenMode: "main-screen",
+  externalOutputMode: "passthrough",
+  consoleMode: "disabled",
   useMouse: false,
 })
-
-renderer.disableStdoutInterception()
 
 renderer.requestRender = () => {}
 
@@ -1740,11 +1736,7 @@ async function runSpawnedScenarios(plans: ScenarioPlan[]): Promise<void> {
     const child = Bun.spawn([process.execPath, new URL(import.meta.url).pathname, ...args], {
       stdout: "inherit",
       stderr: "inherit",
-      env: {
-        ...process.env,
-        OTUI_OVERRIDE_STDOUT: "false",
-        OTUI_USE_ALTERNATE_SCREEN: "false",
-      },
+      env: process.env,
     })
     const exitCode = await child.exited
     if (exitCode !== 0) {

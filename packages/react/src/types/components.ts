@@ -78,7 +78,7 @@ export type GetNonStyledProperties<TConstructor> =
   TConstructor extends RenderableConstructor<TextRenderable>
     ? NonStyledProps | "content"
     : TConstructor extends RenderableConstructor<BoxRenderable>
-      ? NonStyledProps | "title"
+      ? NonStyledProps | "title" | "bottomTitle"
       : TConstructor extends RenderableConstructor<ASCIIFontRenderable>
         ? NonStyledProps | "text" | "selectable"
         : TConstructor extends RenderableConstructor<InputRenderable>

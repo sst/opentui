@@ -16,6 +16,23 @@ afterEach(() => {
   renderer.destroy()
 })
 
+test("renderer init does not pre-schedule frames when size is unchanged", async () => {
+  let frameCalls = 0
+  renderer.setFrameCallback(async () => {
+    frameCalls++
+  })
+
+  // @ts-expect-error - inspect private renderer scheduling state in regression test
+  expect(renderer.updateScheduled).toBe(false)
+  // @ts-expect-error - inspect private manual clock timers in regression test
+  expect(clock.timers.size).toBe(0)
+
+  clock.advance(100)
+  await Promise.resolve()
+
+  expect(frameCalls).toBe(0)
+})
+
 test("requestRender() does not stall after a backward clock jump", async () => {
   clock.setTime(10_000)
   // @ts-expect-error - inspect private renderer timing state in regression test
@@ -85,4 +102,57 @@ test("loop() clamps negative deltaTime after a backward clock jump", async () =>
   await renderOnce()
 
   expect(deltas).toEqual([0])
+})
+
+test("targetFps setter updates frame timing", () => {
+  renderer.targetFps = 120
+
+  expect(renderer.targetFps).toBe(120)
+  // @ts-expect-error - inspect private renderer timing state in regression test
+  expect(renderer.targetFrameTime).toBe(1000 / 120)
+})
+
+test("maxFps setter updates requestRender throttle timing", async () => {
+  let renderCalled = false
+
+  // @ts-expect-error - intercept private render method in regression test
+  renderer.renderNative = () => {
+    renderCalled = true
+  }
+
+  renderer.maxFps = 10
+
+  expect(renderer.maxFps).toBe(10)
+  // @ts-expect-error - inspect private renderer timing state in regression test
+  expect(renderer.minTargetFrameTime).toBe(1000 / 10)
+
+  renderer.requestRender()
+
+  clock.advance(99)
+  await Promise.resolve()
+  expect(renderCalled).toBe(false)
+
+  clock.advance(1)
+  await Promise.resolve()
+  expect(renderCalled).toBe(true)
+})
+
+test("start() does not double-schedule frames when a render was already queued", async () => {
+  let renderCalls = 0
+
+  // @ts-expect-error - intercept private render method in regression test
+  renderer.renderNative = () => {
+    renderCalls++
+  }
+
+  renderer.requestRender()
+  renderer.start()
+
+  clock.advance(1000)
+  await Promise.resolve()
+
+  // @ts-expect-error - inspect private manual clock timers in regression test
+  expect(clock.timers.size).toBe(1)
+  expect(renderCalls).toBeGreaterThanOrEqual(25)
+  expect(renderCalls).toBeLessThanOrEqual(40)
 })

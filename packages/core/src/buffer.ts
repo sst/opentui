@@ -7,11 +7,12 @@ import type { TextBufferView } from "./text-buffer-view.js"
 import type { EditorView } from "./editor-view.js"
 
 // Pack drawing options into a single u32
-// bits 0-3: borderSides, bit 4: shouldFill, bits 5-6: titleAlignment
+// bits 0-3: borderSides, bit 4: shouldFill, bits 5-6: titleAlignment, bits 7-8: bottomTitleAlignment
 function packDrawOptions(
   border: boolean | BorderSides[],
   shouldFill: boolean,
   titleAlignment: "left" | "center" | "right",
+  bottomTitleAlignment: "left" | "center" | "right",
 ): number {
   let packed = 0
 
@@ -34,7 +35,10 @@ function packDrawOptions(
     right: 2,
   }
   const alignment = alignmentMap[titleAlignment]
+  const bottomAlignment = alignmentMap[bottomTitleAlignment]
+
   packed |= alignment << 5
+  packed |= bottomAlignment << 7
 
   return packed
 }
@@ -439,12 +443,19 @@ export class OptimizedBuffer {
     shouldFill?: boolean
     title?: string
     titleAlignment?: "left" | "center" | "right"
+    bottomTitle?: string
+    bottomTitleAlignment?: "left" | "center" | "right"
   }): void {
     this.guard()
     const style = parseBorderStyle(options.borderStyle, "single")
     const borderChars: Uint32Array = options.customBorderChars ?? BorderCharArrays[style]
 
-    const packedOptions = packDrawOptions(options.border, options.shouldFill ?? false, options.titleAlignment || "left")
+    const packedOptions = packDrawOptions(
+      options.border,
+      options.shouldFill ?? false,
+      options.titleAlignment || "left",
+      options.bottomTitleAlignment || "left",
+    )
 
     this.lib.bufferDrawBox(
       this.bufferPtr,
@@ -457,6 +468,7 @@ export class OptimizedBuffer {
       options.borderColor,
       options.backgroundColor,
       options.title ?? null,
+      options.bottomTitle ?? null,
     )
   }
 

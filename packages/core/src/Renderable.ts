@@ -565,17 +565,19 @@ export abstract class Renderable extends BaseRenderable {
   }
 
   public set width(value: number | "auto" | `${number}%`) {
-    if (isDimensionType(value)) {
-      this._width = value
-      this.yogaNode.setWidth(value)
-
-      if (typeof value === "number" && this._flexShrink === 1) {
-        this._flexShrink = 0
-        this.yogaNode.setFlexShrink(0)
-      }
-
-      this.requestRender()
+    if (!isDimensionType(value) || this._width === value) {
+      return
     }
+
+    this._width = value
+    this.yogaNode.setWidth(value)
+
+    if (typeof value === "number" && this._flexShrink === 1) {
+      this._flexShrink = 0
+      this.yogaNode.setFlexShrink(0)
+    }
+
+    this.requestRender()
   }
 
   public get height(): number {
@@ -583,17 +585,19 @@ export abstract class Renderable extends BaseRenderable {
   }
 
   public set height(value: number | "auto" | `${number}%`) {
-    if (isDimensionType(value)) {
-      this._height = value
-      this.yogaNode.setHeight(value)
-
-      if (typeof value === "number" && this._flexShrink === 1) {
-        this._flexShrink = 0
-        this.yogaNode.setFlexShrink(0)
-      }
-
-      this.requestRender()
+    if (!isDimensionType(value) || this._height === value) {
+      return
     }
+
+    this._height = value
+    this.yogaNode.setHeight(value)
+
+    if (typeof value === "number" && this._flexShrink === 1) {
+      this._flexShrink = 0
+      this.yogaNode.setFlexShrink(0)
+    }
+
+    this.requestRender()
   }
 
   public get zIndex(): number {

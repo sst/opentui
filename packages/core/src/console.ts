@@ -3,7 +3,8 @@ import { Console } from "node:console"
 import fs from "node:fs"
 import path from "node:path"
 import util from "node:util"
-import type { CliRenderer, ColorInput, MouseEvent } from "./index.js"
+import type { CliRenderer, MouseEvent } from "./renderer.js"
+import type { ColorInput } from "./lib/RGBA.js"
 import { OptimizedBuffer } from "./buffer.js"
 import { type Clock, SystemClock } from "./lib/clock.js"
 import { Capture, CapturedWritableStream } from "./lib/output.capture.js"
@@ -166,8 +167,6 @@ class TerminalConsoleCache extends EventEmitter {
     if (this._originalConsole) {
       global.console = this._originalConsole
     }
-
-    this.setupConsoleCapture()
   }
 
   public addLogEntry(level: LogLevel, ...args: any[]) {

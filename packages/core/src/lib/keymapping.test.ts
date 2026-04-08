@@ -181,6 +181,43 @@ describe("keymapping", () => {
     it("should have esc -> escape alias", () => {
       expect(defaultKeyAliases.esc).toBe("escape")
     })
+
+    it("should have keypad aliases to normalized key names", () => {
+      const keypadAliases: KeyAliasMap = {
+        kp0: "0",
+        kp1: "1",
+        kp2: "2",
+        kp3: "3",
+        kp4: "4",
+        kp5: "5",
+        kp6: "6",
+        kp7: "7",
+        kp8: "8",
+        kp9: "9",
+        kpdecimal: ".",
+        kpdivide: "/",
+        kpmultiply: "*",
+        kpminus: "-",
+        kpplus: "+",
+        kpenter: "enter",
+        kpequal: "=",
+        kpseparator: ",",
+        kpleft: "left",
+        kpright: "right",
+        kpup: "up",
+        kpdown: "down",
+        kppageup: "pageup",
+        kppagedown: "pagedown",
+        kphome: "home",
+        kpend: "end",
+        kpinsert: "insert",
+        kpdelete: "delete",
+      }
+
+      for (const [key, value] of Object.entries(keypadAliases)) {
+        expect(defaultKeyAliases[key]).toBe(value)
+      }
+    })
   })
 
   describe("alias override behavior", () => {
