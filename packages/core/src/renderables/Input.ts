@@ -107,7 +107,7 @@ export class InputRenderable extends TextareaRenderable {
     if (value.length !== 1) {
       console.warn(
         `Invalid passwordChar "${value}", falling back to "${InputRenderable.defaultOptions.passwordChar}". ` +
-        `passwordChar must be a single character.`
+          `passwordChar must be a single character.`,
       )
       return InputRenderable.defaultOptions.passwordChar
     }
