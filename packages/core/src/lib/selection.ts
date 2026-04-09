@@ -1,5 +1,5 @@
-import { Renderable, type ViewportBounds } from ".."
-import { coordinateToCharacterIndex, fonts } from "./ascii.font"
+import { Renderable, type ViewportBounds } from "../index.js"
+import { coordinateToCharacterIndex, fonts } from "./ascii.font.js"
 
 class SelectionAnchor {
   private relativeX: number
@@ -29,7 +29,7 @@ export class Selection {
   private _selectedRenderables: Renderable[] = []
   private _touchedRenderables: Renderable[] = []
   private _isActive: boolean = true
-  private _isSelecting: boolean = true
+  private _isDragging: boolean = true
   private _isStart: boolean = false
 
   constructor(anchorRenderable: Renderable, anchor: { x: number; y: number }, focus: { x: number; y: number }) {
@@ -65,12 +65,12 @@ export class Selection {
     this._isActive = value
   }
 
-  get isSelecting(): boolean {
-    return this._isSelecting
+  get isDragging(): boolean {
+    return this._isDragging
   }
 
-  set isSelecting(value: boolean) {
-    this._isSelecting = value
+  set isDragging(value: boolean) {
+    this._isDragging = value
   }
 
   get bounds(): ViewportBounds {

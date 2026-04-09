@@ -1,0 +1,128 @@
+---
+title: React
+description: React slot components backed by the shared plugin registry
+order: 3
+---
+
+# React slots
+
+This page shows React integration for plugin slots.
+
+Use slots when you want external modules to contribute `ReactNode` UI in host-defined regions without forking your app. The host keeps ownership of layout and slot typing; plugins only see the context and props you expose.
+
+If you have not read the shared model yet, start with [Plugin Slots](/docs/plugins/slots).
+
+## Runtime-loaded external plugins
+
+If your app loads plugins from disk at runtime (for example `await import(fileUrl)`), add this import once in your app entry:
+
+```ts
+import "@opentui/react/runtime-plugin-support"
+```
+
+This installs Bun runtime support so external TS/TSX plugin modules resolve against the host runtime instances (`@opentui/react`, React JSX runtime modules, and core runtime modules).
+
+Use this for plugin systems in both normal Bun runs and standalone compiled executables.
+
+```ts
+import "@opentui/react/runtime-plugin-support"
+
+const mod = await import(pathToFileURL(pluginPath).href)
+registry.register(mod.loadExternalPlugin())
+```
+
+## What React adds
+
+- `createReactSlotRegistry(renderer, context, options?)` — create a registry typed for `ReactNode`. Accepts the same [`SlotRegistryOptions`](/docs/plugins/slots#registry-options) as `createSlotRegistry`.
+- `Slot<TSlots, TContext>` — generic slot component that takes `registry` as a required prop
+- `createSlot(registry, options?)` — optional convenience helper that returns a registry-bound `<Slot />` component
+- `ReactPlugin<TSlots, TContext>` — convenience type alias for a plugin that returns `ReactNode`
+- `@opentui/react/runtime-plugin-support` — one-line runtime support for external plugin/module loading
+
+Register plugins directly with `registry.register()` — no wrapper function is needed (unlike core's `registerCorePlugin`).
+
+## Basic usage
+
+```tsx
+import { createCliRenderer } from "@opentui/core"
+import { createReactSlotRegistry, createRoot, Slot } from "@opentui/react"
+
+type Slots = {
+  statusbar: { user: string }
+}
+
+const context = { appName: "react-app", version: "1.0.0" }
+const renderer = await createCliRenderer()
+
+const registry = createReactSlotRegistry<Slots, typeof context>(renderer, context)
+
+const unregister = registry.register({
+  id: "clock-plugin",
+  slots: {
+    statusbar(ctx, props) {
+      return <text>{`${ctx.appName}:${props.user}`}</text>
+    },
+  },
+})
+
+const AppSlot = Slot<Slots, typeof context>
+
+function App() {
+  return (
+    <AppSlot registry={registry} name="statusbar" user="sam" mode="replace">
+      <text>fallback-statusbar</text>
+    </AppSlot>
+  )
+}
+
+createRoot(renderer).render(<App />)
+```
+
+## Optional convenience helper
+
+If you prefer not to pass `registry` each time, you can still bind one once:
+
+```tsx
+const AppSlot = createSlot(registry)
+```
+
+## `<Slot>` props
+
+| Prop                       | Type                                       | Required | Description                                                                                                |
+| -------------------------- | ------------------------------------------ | -------- | ---------------------------------------------------------------------------------------------------------- |
+| `registry`                 | `SlotRegistry<ReactNode, Slots, Context>`  | yes      | Registry to resolve plugins from                                                                           |
+| `name`                     | `keyof Slots`                              | yes      | Which slot to render                                                                                       |
+| `mode`                     | `SlotMode`                                 | no       | `"append"` (default), `"replace"`, or `"single_winner"`. See [slot modes](/docs/plugins/slots#slot-modes). |
+| `pluginFailurePlaceholder` | `(failure: PluginErrorEvent) => ReactNode` | no       | Per-slot placeholder UI when a plugin throws                                                               |
+| `children`                 | `ReactNode`                                | no       | Fallback UI                                                                                                |
+| _remaining_                | `Slots[name]`                              | —        | Slot-specific props forwarded to plugin renderers                                                          |
+
+## `ReactSlotOptions` (for `createSlot`)
+
+| Option                     | Type                                       | Required | Description                                 |
+| -------------------------- | ------------------------------------------ | -------- | ------------------------------------------- |
+| `pluginFailurePlaceholder` | `(failure: PluginErrorEvent) => ReactNode` | no       | Creates placeholder UI when a plugin throws |
+
+## Plugin failure placeholders
+
+```tsx
+const Slot = createSlot(registry, {
+  pluginFailurePlaceholder(failure) {
+    return <text>{`plugin-error:${failure.pluginId}:${failure.phase}`}</text>
+  },
+})
+```
+
+If a plugin throws, the slot renders the placeholder. If no placeholder is provided (or it returns `null`), the slot falls back to `children`.
+
+Plugins that throw during the initial render call are caught inline. Plugins that throw during a React re-render are caught by an internal error boundary that resets on registry changes.
+
+## Observability
+
+```tsx
+registry.onPluginError((event) => {
+  console.error(event.pluginId, event.phase, event.source, event.error.message)
+})
+```
+
+Example: `packages/react/examples/plugin-slots-errors.tsx`

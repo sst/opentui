@@ -8,11 +8,11 @@ import {
   FrameBufferRenderable,
   BoxRenderable,
   type KeyEvent,
-} from "../index"
-import { setupCommonDemoKeys } from "./lib/standalone-keys"
+} from "../index.js"
+import { setupCommonDemoKeys } from "./lib/standalone-keys.js"
 import * as THREE from "three"
-import { ThreeCliRenderer } from "../3d"
-import { SpriteUtils } from "../3d/SpriteUtils"
+import { ThreeCliRenderer } from "../3d.js"
+import { SpriteUtils } from "../3d/SpriteUtils.js"
 
 // @ts-ignore - Bun specific import attribute for assets
 import staticImagePath from "./assets/main_char_idle.png" with { type: "image/png" }

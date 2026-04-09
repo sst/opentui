@@ -1,6 +1,6 @@
 import { useEffect } from "react"
-import { useEffectEvent } from "./use-event"
-import { useRenderer } from "./use-renderer"
+import { useEffectEvent } from "./use-event.js"
+import { useRenderer } from "./use-renderer.js"
 
 export const useOnResize = (callback: (width: number, height: number) => void) => {
   const renderer = useRenderer()

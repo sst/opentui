@@ -1,5 +1,7 @@
 const std = @import("std");
+const builtin = @import("builtin");
 const testing = std.testing;
+const ansi = @import("../ansi.zig");
 const Terminal = @import("../terminal.zig");
 const utf8 = @import("../utf8.zig");
 
@@ -11,6 +13,7 @@ test "parseXtversion - kitty format" {
     try testing.expectEqualStrings("kitty", term.getTerminalName());
     try testing.expectEqualStrings("0.40.1", term.getTerminalVersion());
     try testing.expect(term.term_info.from_xtversion);
+    try testing.expect(term.caps.osc52);
 }
 
 test "parseXtversion - ghostty format" {
@@ -21,6 +24,7 @@ test "parseXtversion - ghostty format" {
     try testing.expectEqualStrings("ghostty", term.getTerminalName());
     try testing.expectEqualStrings("1.1.3", term.getTerminalVersion());
     try testing.expect(term.term_info.from_xtversion);
+    try testing.expect(term.caps.osc52);
 }
 
 test "parseXtversion - tmux format" {
@@ -31,6 +35,7 @@ test "parseXtversion - tmux format" {
     try testing.expectEqualStrings("tmux", term.getTerminalName());
     try testing.expectEqualStrings("3.5a", term.getTerminalVersion());
     try testing.expect(term.term_info.from_xtversion);
+    try testing.expect(term.caps.osc52);
 }
 
 test "parseXtversion - with prefix data" {
@@ -53,6 +58,7 @@ test "parseXtversion - full kitty response" {
     try testing.expect(term.term_info.from_xtversion);
     try testing.expect(term.caps.kitty_keyboard);
     try testing.expect(term.caps.kitty_graphics);
+    try testing.expect(term.caps.osc52);
 }
 
 test "parseXtversion - full ghostty response" {
@@ -88,6 +94,76 @@ test "environment variables - should be overridden by xtversion" {
     try testing.expect(term.term_info.from_xtversion);
 }
 
+test "remote ignores env overrides but accepts capability responses" {
+    if (builtin.os.tag == .windows) return error.SkipZigTest;
+
+    var env = std.process.EnvMap.init(testing.allocator);
+    defer env.deinit();
+    try env.put("TMUX", "/tmp/tmux-1000/default,12345,0");
+    try env.put("TERM_PROGRAM", "iTerm.app");
+    try env.put("WT_SESSION", "test-session");
+
+    var term = Terminal.init(.{ .remote = true, .env_map = &env });
+
+    try testing.expect(!term.in_tmux);
+    try testing.expect(!term.caps.osc52);
+    try testing.expect(!term.caps.explicit_cursor_positioning);
+
+    term.processCapabilityResponse("\x1bP>|kitty(0.40.1)\x1b\\");
+    try testing.expect(term.caps.osc52);
+}
+
+test "setHostEnvVar applies env overrides in shared library mode" {
+    var term = Terminal.init(.{});
+    defer term.deinit();
+
+    try term.setHostEnvVar(testing.allocator, "TERM", "screen");
+    try testing.expect(term.skip_graphics_query);
+    try testing.expect(term.caps.unicode == .wcwidth);
+    try testing.expect(term.caps.explicit_cursor_positioning);
+
+    try term.setHostEnvVar(testing.allocator, "OPENTUI_FORCE_UNICODE", "1");
+    try testing.expect(term.caps.unicode == .unicode);
+
+    try term.setHostEnvVar(testing.allocator, "OPENTUI_GRAPHICS", "0");
+    try testing.expect(term.skip_graphics_query);
+}
+
+test "environment overrides - enables hyperlinks for WSL Windows Terminal xterm" {
+    var env = std.process.EnvMap.init(testing.allocator);
+    defer env.deinit();
+    try env.put("WSL_DISTRO_NAME", "Ubuntu");
+    try env.put("WT_SESSION", "test-session");
+    try env.put("TERM", "xterm-256color");
+
+    const term = Terminal.init(.{ .env_map = &env });
+
+    try testing.expect(term.caps.hyperlinks);
+}
+
+test "environment overrides - does not enable hyperlinks for WSL without WT_SESSION" {
+    var env = std.process.EnvMap.init(testing.allocator);
+    defer env.deinit();
+    try env.put("WSL_DISTRO_NAME", "Ubuntu");
+    try env.put("TERM", "xterm-256color");
+
+    const term = Terminal.init(.{ .env_map = &env });
+
+    try testing.expect(!term.caps.hyperlinks);
+}
+
+test "environment overrides - does not enable hyperlinks for WSL non-xterm terms" {
+    var env = std.process.EnvMap.init(testing.allocator);
+    defer env.deinit();
+    try env.put("WSL_INTEROP", "/run/WSL/123_interop");
+    try env.put("WT_SESSION", "test-session");
+    try env.put("TERM", "screen-256color");
+
+    const term = Terminal.init(.{ .env_map = &env });
+
+    try testing.expect(!term.caps.hyperlinks);
+}
+
 test "parseXtversion - terminal name only" {
     var term = Terminal.init(.{});
     const response = "\x1bP>|wezterm\x1b\\";
@@ -96,6 +172,7 @@ test "parseXtversion - terminal name only" {
     try testing.expectEqualStrings("wezterm", term.getTerminalName());
     try testing.expectEqualStrings("", term.getTerminalVersion());
     try testing.expect(term.term_info.from_xtversion);
+    try testing.expect(term.caps.osc52);
 }
 
 test "parseXtversion - empty response" {
@@ -126,6 +203,10 @@ const TestWriter = struct {
 
     pub fn writeAll(self: *TestWriter, data: []const u8) !void {
         try self.buffer.appendSlice(self.allocator, data);
+    }
+
+    pub fn writeByte(self: *TestWriter, byte: u8) !void {
+        try self.buffer.append(self.allocator, byte);
     }
 
     pub fn print(self: *TestWriter, comptime fmt: []const u8, args: anytype) !void {
@@ -377,4 +458,338 @@ test "processCapabilityResponse - ghostty does not set explicit_cursor_positioni
     term.processCapabilityResponse(response);
 
     try testing.expect(!term.caps.explicit_cursor_positioning);
+}
+
+// ============================================================================
+// CLIPBOARD (OSC 52) TESTS
+// ============================================================================
+
+test "writeClipboard - generates basic OSC52 sequence" {
+    if (builtin.os.tag == .windows) return error.SkipZigTest;
+
+    var env = std.process.EnvMap.init(testing.allocator);
+    defer env.deinit();
+
+    var term = Terminal.init(.{ .env_map = &env });
+    term.caps.osc52 = true;
+
+    var writer = TestWriter.init(testing.allocator);
+    defer writer.deinit();
+
+    try term.writeClipboard(&writer, .clipboard, "aGVsbG8=");
+
+    const output = writer.getWritten();
+    // Should be: ESC]52;c;aGVsbG8=ESC\
+    try testing.expectEqualStrings("\x1b]52;c;aGVsbG8=\x1b\\", output);
+}
+
+test "writeClipboard - supports different targets" {
+    if (builtin.os.tag == .windows) return error.SkipZigTest;
+
+    var env = std.process.EnvMap.init(testing.allocator);
+    defer env.deinit();
+
+    var term = Terminal.init(.{ .env_map = &env });
+    term.caps.osc52 = true;
+
+    var writer = TestWriter.init(testing.allocator);
+    defer writer.deinit();
+
+    try term.writeClipboard(&writer, .primary, "test");
+    try testing.expect(std.mem.indexOf(u8, writer.getWritten(), "\x1b]52;p;") != null);
+
+    writer.reset();
+    try term.writeClipboard(&writer, .secondary, "test");
+    try testing.expect(std.mem.indexOf(u8, writer.getWritten(), "\x1b]52;s;") != null);
+
+    writer.reset();
+    try term.writeClipboard(&writer, .query, "test");
+    try testing.expect(std.mem.indexOf(u8, writer.getWritten(), "\x1b]52;q;") != null);
+}
+
+test "writeClipboard - returns error when OSC52 not supported" {
+    if (builtin.os.tag == .windows) return error.SkipZigTest;
+
+    var term = Terminal.init(.{});
+    term.caps.osc52 = false;
+
+    var writer = TestWriter.init(testing.allocator);
+    defer writer.deinit();
+
+    const result = term.writeClipboard(&writer, .clipboard, "test");
+    try testing.expectError(error.NotSupported, result);
+}
+
+test "writeClipboard - wraps in DCS passthrough for tmux" {
+    if (builtin.os.tag == .windows) return error.SkipZigTest;
+
+    var env = std.process.EnvMap.init(testing.allocator);
+    defer env.deinit();
+    try env.put("TMUX", "/tmp/tmux-1000/default,12345,0");
+
+    var term = Terminal.init(.{ .env_map = &env });
+    term.caps.osc52 = true;
+
+    var writer = TestWriter.init(testing.allocator);
+    defer writer.deinit();
+
+    try term.writeClipboard(&writer, .clipboard, "test");
+
+    const output = writer.getWritten();
+    // Should start with tmux DCS wrapper
+    try testing.expect(std.mem.startsWith(u8, output, "\x1bPtmux;"));
+    // Should end with DCS terminator
+    try testing.expect(std.mem.endsWith(u8, output, "\x1b\\"));
+    // Should have doubled ESC characters inside
+    try testing.expect(std.mem.indexOf(u8, output, "\x1b\x1b") != null);
+}
+
+test "writeClipboard - wraps in DCS passthrough for GNU Screen" {
+    if (builtin.os.tag == .windows) return error.SkipZigTest;
+
+    var env = std.process.EnvMap.init(testing.allocator);
+    defer env.deinit();
+    try env.put("STY", "12345.pts-0.hostname");
+
+    var term = Terminal.init(.{ .env_map = &env });
+    term.caps.osc52 = true;
+
+    var writer = TestWriter.init(testing.allocator);
+    defer writer.deinit();
+
+    try term.writeClipboard(&writer, .clipboard, "test");
+
+    const output = writer.getWritten();
+    // Should start with DCS (but not tmux prefix)
+    try testing.expect(std.mem.startsWith(u8, output, "\x1bP"));
+    try testing.expect(!std.mem.startsWith(u8, output, "\x1bPtmux;"));
+    // Should end with DCS terminator
+    try testing.expect(std.mem.endsWith(u8, output, "\x1b\\"));
+    // Should have doubled ESC characters
+    try testing.expect(std.mem.indexOf(u8, output, "\x1b\x1b") != null);
+}
+
+test "writeClipboard - handles tmux sessions" {
+    if (builtin.os.tag == .windows) return error.SkipZigTest;
+
+    var env = std.process.EnvMap.init(testing.allocator);
+    defer env.deinit();
+    try env.put("TMUX", "/tmp/tmux-1000/default,12345,0");
+
+    var term = Terminal.init(.{ .env_map = &env });
+    term.caps.osc52 = true;
+
+    var writer = TestWriter.init(testing.allocator);
+    defer writer.deinit();
+
+    try term.writeClipboard(&writer, .clipboard, "test");
+
+    const output = writer.getWritten();
+    // Should have tmux DCS wrapper
+    try testing.expect(std.mem.startsWith(u8, output, "\x1bPtmux;"));
+    // Should end with DCS terminator
+    try testing.expect(std.mem.endsWith(u8, output, "\x1b\\"));
+    // Should have doubled ESC characters
+    try testing.expect(std.mem.indexOf(u8, output, "\x1b\x1b") != null);
+}
+
+test "caps.osc52 - clipboard capability flag" {
+    var term = Terminal.init(.{});
+
+    term.caps.osc52 = false;
+    try testing.expect(!term.caps.osc52);
+
+    term.caps.osc52 = true;
+    try testing.expect(term.caps.osc52);
+}
+
+fn countSubstring(haystack: []const u8, needle: []const u8) usize {
+    var count: usize = 0;
+    var i: usize = 0;
+    while (i < haystack.len) {
+        if (std.mem.startsWith(u8, haystack[i..], needle)) {
+            count += 1;
+            i += needle.len;
+        } else {
+            i += 1;
+        }
+    }
+    return count;
+}
+
+test "queryTerminalSend - skips OSC 66 queries when OPENTUI_FORCE_EXPLICIT_WIDTH=false" {
+    if (builtin.os.tag == .windows) return error.SkipZigTest;
+
+    var env = std.process.EnvMap.init(testing.allocator);
+    defer env.deinit();
+    try env.put("OPENTUI_FORCE_EXPLICIT_WIDTH", "false");
+
+    var term = Terminal.init(.{ .env_map = &env });
+
+    var writer = TestWriter.init(testing.allocator);
+    defer writer.deinit();
+
+    try term.queryTerminalSend(&writer);
+
+    const output = writer.getWritten();
+
+    // Should not contain OSC 66 queries
+    try testing.expect(std.mem.indexOf(u8, output, "\x1b]66;") == null);
+
+    // Should still contain other queries
+    try testing.expect(std.mem.indexOf(u8, output, "\x1b[>0q") != null); // xtversion
+
+    // Verify the flag was set correctly
+    try testing.expect(term.skip_explicit_width_query);
+    try testing.expect(!term.caps.explicit_width);
+}
+
+test "queryTerminalSend - sends OSC 66 queries by default" {
+    if (builtin.os.tag == .windows) return error.SkipZigTest;
+
+    var env = std.process.EnvMap.init(testing.allocator);
+    defer env.deinit();
+
+    var term = Terminal.init(.{ .env_map = &env });
+
+    var writer = TestWriter.init(testing.allocator);
+    defer writer.deinit();
+
+    try term.queryTerminalSend(&writer);
+
+    const output = writer.getWritten();
+
+    // Should contain OSC 66 explicit width query
+    try testing.expect(std.mem.indexOf(u8, output, "\x1b]66;w=1; \x1b\\") != null);
+
+    // Should contain OSC 66 scaled text query
+    try testing.expect(std.mem.indexOf(u8, output, "\x1b]66;s=2; \x1b\\") != null);
+
+    // Verify the flag was not set
+    try testing.expect(!term.skip_explicit_width_query);
+}
+
+test "queryTerminalSend - sends OSC 66 queries when OPENTUI_FORCE_EXPLICIT_WIDTH=true" {
+    if (builtin.os.tag == .windows) return error.SkipZigTest;
+
+    var env = std.process.EnvMap.init(testing.allocator);
+    defer env.deinit();
+    try env.put("OPENTUI_FORCE_EXPLICIT_WIDTH", "true");
+
+    var term = Terminal.init(.{ .env_map = &env });
+
+    var writer = TestWriter.init(testing.allocator);
+    defer writer.deinit();
+
+    try term.queryTerminalSend(&writer);
+
+    const output = writer.getWritten();
+
+    // Should contain OSC 66 queries
+    try testing.expect(std.mem.indexOf(u8, output, "\x1b]66;w=1; \x1b\\") != null);
+    try testing.expect(std.mem.indexOf(u8, output, "\x1b]66;s=2; \x1b\\") != null);
+
+    // Verify the capability was forced on
+    try testing.expect(term.caps.explicit_width);
+    try testing.expect(!term.skip_explicit_width_query);
+}
+
+test "setMouseMode - enable without movement keeps click/drag only" {
+    var term = Terminal.init(.{});
+    var writer = TestWriter.init(testing.allocator);
+    defer writer.deinit();
+
+    try term.setMouseMode(&writer, true, false);
+
+    const output = writer.getWritten();
+    const idx_disable_any = std.mem.indexOf(u8, output, ansi.ANSI.disableAnyEventTracking).?;
+    const idx_enable_mouse = std.mem.indexOf(u8, output, ansi.ANSI.enableMouseTracking).?;
+    const idx_enable_button = std.mem.indexOf(u8, output, ansi.ANSI.enableButtonEventTracking).?;
+    const idx_enable_sgr = std.mem.indexOf(u8, output, ansi.ANSI.enableSGRMouseMode).?;
+    try testing.expect(std.mem.indexOf(u8, output, ansi.ANSI.enableAnyEventTracking) == null);
+    try testing.expect(idx_disable_any < idx_enable_mouse);
+    try testing.expect(idx_enable_mouse < idx_enable_button);
+    try testing.expect(idx_enable_button < idx_enable_sgr);
+
+    try testing.expect(term.state.mouse);
+    try testing.expect(!term.state.mouse_movement);
+}
+
+test "setMouseMode - enable with movement enables any-event tracking" {
+    var term = Terminal.init(.{});
+    var writer = TestWriter.init(testing.allocator);
+    defer writer.deinit();
+
+    try term.setMouseMode(&writer, true, true);
+
+    const output = writer.getWritten();
+    const idx_enable_mouse = std.mem.indexOf(u8, output, ansi.ANSI.enableMouseTracking).?;
+    const idx_enable_button = std.mem.indexOf(u8, output, ansi.ANSI.enableButtonEventTracking).?;
+    const idx_enable_any = std.mem.indexOf(u8, output, ansi.ANSI.enableAnyEventTracking).?;
+    const idx_enable_sgr = std.mem.indexOf(u8, output, ansi.ANSI.enableSGRMouseMode).?;
+    try testing.expect(idx_enable_mouse < idx_enable_button);
+    try testing.expect(idx_enable_button < idx_enable_any);
+    try testing.expect(idx_enable_any < idx_enable_sgr);
+    try testing.expect(std.mem.indexOf(u8, output, ansi.ANSI.disableAnyEventTracking) == null);
+
+    try testing.expect(term.state.mouse);
+    try testing.expect(term.state.mouse_movement);
+}
+
+test "restoreTerminalModes - respects mouse movement setting" {
+    var term = Terminal.init(.{});
+    term.state.mouse = true;
+    term.state.mouse_movement = false;
+
+    var writer = TestWriter.init(testing.allocator);
+    defer writer.deinit();
+
+    try term.restoreTerminalModes(&writer);
+
+    const output = writer.getWritten();
+    const idx_disable_any = std.mem.indexOf(u8, output, ansi.ANSI.disableAnyEventTracking).?;
+    const idx_enable_mouse = std.mem.indexOf(u8, output, ansi.ANSI.enableMouseTracking).?;
+    const idx_enable_button = std.mem.indexOf(u8, output, ansi.ANSI.enableButtonEventTracking).?;
+    const idx_enable_sgr = std.mem.indexOf(u8, output, ansi.ANSI.enableSGRMouseMode).?;
+    try testing.expect(idx_disable_any < idx_enable_mouse);
+    try testing.expect(idx_enable_mouse < idx_enable_button);
+    try testing.expect(idx_enable_button < idx_enable_sgr);
+    try testing.expect(std.mem.indexOf(u8, output, ansi.ANSI.enableAnyEventTracking) == null);
+}
+
+test "resetState - force-disables mouse when cleanup is pending and state drifted false" {
+    var term = Terminal.init(.{});
+    term.state.mouse = false;
+    term.state.mouse_movement = false;
+    term.state.mouse_was_enabled = true;
+
+    var writer = TestWriter.init(testing.allocator);
+    defer writer.deinit();
+
+    try term.resetState(&writer);
+
+    const output = writer.getWritten();
+    const idx_disable_any = std.mem.indexOf(u8, output, ansi.ANSI.disableAnyEventTracking).?;
+    const idx_disable_button = std.mem.indexOf(u8, output, ansi.ANSI.disableButtonEventTracking).?;
+    const idx_disable_mouse = std.mem.indexOf(u8, output, ansi.ANSI.disableMouseTracking).?;
+    const idx_disable_sgr = std.mem.indexOf(u8, output, ansi.ANSI.disableSGRMouseMode).?;
+    try testing.expect(idx_disable_any < idx_disable_button);
+    try testing.expect(idx_disable_button < idx_disable_mouse);
+    try testing.expect(idx_disable_mouse < idx_disable_sgr);
+    try testing.expect(!term.state.mouse);
+}
+
+test "resetState - skips mouse disable when mouse was never enabled" {
+    var term = Terminal.init(.{});
+
+    var writer = TestWriter.init(testing.allocator);
+    defer writer.deinit();
+
+    try term.resetState(&writer);
+
+    const output = writer.getWritten();
+    try testing.expect(std.mem.indexOf(u8, output, ansi.ANSI.disableAnyEventTracking) == null);
+    try testing.expect(std.mem.indexOf(u8, output, ansi.ANSI.disableButtonEventTracking) == null);
+    try testing.expect(std.mem.indexOf(u8, output, ansi.ANSI.disableMouseTracking) == null);
+    try testing.expect(std.mem.indexOf(u8, output, ansi.ANSI.disableSGRMouseMode) == null);
 }

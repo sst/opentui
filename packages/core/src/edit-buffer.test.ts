@@ -1,5 +1,5 @@
 import { describe, expect, it, beforeEach, afterEach } from "bun:test"
-import { EditBuffer } from "./edit-buffer"
+import { EditBuffer } from "./edit-buffer.js"
 
 describe("EditBuffer", () => {
   let buffer: EditBuffer
@@ -416,6 +416,45 @@ describe("EditBuffer", () => {
 
       const next1 = buffer.getNextWordBoundary()
       expect(next1.col).toBeGreaterThan(0)
+    })
+
+    it("should handle word boundaries after CJK graphemes", () => {
+      // "你" = 2 cols, " " = 1 col, "好" = 2 cols
+      buffer.setText("你 好")
+      buffer.setCursorToLineCol(0, 0)
+
+      const nextBoundary = buffer.getNextWordBoundary()
+      expect(nextBoundary.col).toBe(3)
+
+      buffer.setCursorToLineCol(0, 5)
+      const prevBoundary = buffer.getPrevWordBoundary()
+      expect(prevBoundary.col).toBe(3)
+    })
+
+    it("should handle word boundaries after emoji", () => {
+      // "🌟" = 2 cols, " " = 1 col, "ok" = 2 cols
+      buffer.setText("🌟 ok")
+      buffer.setCursorToLineCol(0, 0)
+
+      const nextBoundary = buffer.getNextWordBoundary()
+      expect(nextBoundary.col).toBe(3)
+
+      buffer.setCursorToLineCol(0, 5)
+      const prevBoundary = buffer.getPrevWordBoundary()
+      expect(prevBoundary.col).toBe(3)
+    })
+
+    it("should handle word boundaries around tabs", () => {
+      // tab = 2 cols
+      buffer.setText("Hello\tWorld")
+      buffer.setCursorToLineCol(0, 0)
+
+      const nextBoundary = buffer.getNextWordBoundary()
+      expect(nextBoundary.col).toBe(7)
+
+      buffer.setCursorToLineCol(0, 12)
+      const prevBoundary = buffer.getPrevWordBoundary()
+      expect(prevBoundary.col).toBe(7)
     })
   })
 

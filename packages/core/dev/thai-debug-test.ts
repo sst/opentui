@@ -1,6 +1,6 @@
 #!/usr/bin/env bun
-import { TextRenderable, createCliRenderer } from "../src/index"
-import { ScrollBoxRenderable } from "../src/renderables/ScrollBox"
+import { TextRenderable, createCliRenderer } from "../src/index.js"
+import { ScrollBoxRenderable } from "../src/renderables/ScrollBox.js"
 async function main() {
   const renderer = await createCliRenderer({ exitOnCtrlC: true })
   console.log("capabilities:", renderer.capabilities)

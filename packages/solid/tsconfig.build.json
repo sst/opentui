@@ -11,6 +11,7 @@
     "skipLibCheck": true,
     "jsx": "preserve",
     "jsxImportSource": "@opentui/solid",
+    "module": "ESNext",
     "moduleResolution": "bundler",
     "baseUrl": ".",
     "paths": {
@@ -23,7 +24,8 @@
     "src/**/*",
     "jsx-runtime.d.ts",
     // See the comment below
-    "scripts/solid-plugin.ts"
+    "scripts/solid-plugin.ts",
+    "scripts/runtime-plugin-support.ts"
   ],
   "exclude": [
     "**/*.test.ts",

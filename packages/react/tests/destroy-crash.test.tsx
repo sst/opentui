@@ -1,7 +1,7 @@
 import { describe, expect, it } from "bun:test"
 import React, { useEffect, useState } from "react"
 import { createTestRenderer } from "@opentui/core/testing"
-import { createRoot } from "../src/reconciler/renderer"
+import { createRoot } from "../src/reconciler/renderer.js"
 
 /**
  * Regression test for: Native Yoga crash when renderer.destroy() is called

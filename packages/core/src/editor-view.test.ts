@@ -1,7 +1,7 @@
 import { describe, expect, it, beforeEach, afterEach } from "bun:test"
-import { EditBuffer } from "./edit-buffer"
-import { EditorView } from "./editor-view"
-import { RGBA } from "./lib/RGBA"
+import { EditBuffer } from "./edit-buffer.js"
+import { EditorView } from "./editor-view.js"
+import { RGBA } from "./lib/RGBA.js"
 
 describe("EditorView", () => {
   let buffer: EditBuffer

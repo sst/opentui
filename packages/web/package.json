@@ -1,0 +1,22 @@
+{
+  "name": "@opentui/web",
+  "version": "0.0.1",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "astro dev",
+    "build": "astro build",
+    "preview": "astro preview",
+    "astro": "astro",
+    "scaffold": "bun scripts/test-doc-examples.ts"
+  },
+  "dependencies": {
+    "@astrojs/mdx": "^4.3.1",
+    "@opentui/core": "workspace:*",
+    "astro": "^5.10.2"
+  },
+  "devDependencies": {
+    "@types/bun": "latest",
+    "typescript": "^5"
+  }
+}

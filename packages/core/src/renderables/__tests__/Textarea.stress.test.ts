@@ -1,14 +1,17 @@
 import { describe, expect, it, afterAll, beforeEach, afterEach } from "bun:test"
-import { createTestRenderer, type TestRenderer, type MockMouse, type MockInput } from "../../testing/test-renderer"
-import { createTextareaRenderable } from "./renderable-test-utils"
+import { createTestRenderer, type TestRenderer, type MockMouse, type MockInput } from "../../testing/test-renderer.js"
+import { ManualClock } from "../../testing/manual-clock.js"
+import { createTextareaRenderable } from "./renderable-test-utils.js"
 
 let currentRenderer: TestRenderer
 let renderOnce: () => Promise<void>
 let currentMouse: MockMouse
 let currentMockInput: MockInput
+let currentClock: ManualClock
 
 describe("Textarea - Stress Tests", () => {
   beforeEach(async () => {
+    currentClock = new ManualClock()
     ;({
       renderer: currentRenderer,
       renderOnce,
@@ -17,6 +20,7 @@ describe("Textarea - Stress Tests", () => {
     } = await createTestRenderer({
       width: 80,
       height: 24,
+      clock: currentClock,
     }))
   })
 
@@ -108,7 +112,7 @@ describe("Textarea - Stress Tests", () => {
       const startY = i % 5
       const endX = (i + 10) % 30
       const endY = (i + 3) % 8
-      await currentMouse.drag(startX, startY, endX, endY)
+      await currentMouse.drag(startX, startY, endX, endY, 0, { delayMs: 0 })
     }
 
     // Text should remain unchanged or only contain valid selections/edits
@@ -131,7 +135,7 @@ describe("Textarea - Stress Tests", () => {
       if (i % 3 === 0) {
         currentMockInput.pressKey("x")
       }
-      await currentMouse.click(i % 40, i % 10)
+      await currentMouse.click(i % 40, i % 10, 0, { delayMs: 0 })
       if (i % 5 === 0) {
         currentMockInput.pressKey("y")
       }
@@ -464,7 +468,7 @@ describe("Textarea - Stress Tests", () => {
 
     for (let i = 0; i < 10000; i++) {
       const button = buttonCodes[i % buttonCodes.length]
-      const modifier = modifiers[(i / buttonCodes.length) % modifiers.length | 0]
+      const modifier = modifiers[((i / buttonCodes.length) % modifiers.length) | 0]
       const code = button | modifier
       const x = (i % 40) + 1
       const y = (i % 10) + 1
@@ -501,6 +505,26 @@ describe("Textarea - Stress Tests", () => {
     currentRenderer.stdin.emit("data", Buffer.from(";"))
     currentRenderer.stdin.emit("data", Buffer.from("5"))
     currentRenderer.stdin.emit("data", Buffer.from("m"))
+
+    expect(editor.plainText).toBe(initialText)
+    expect(editor.plainText).not.toContain("[<")
+  })
+
+  it("STRESS TEST: delayed split SGR mouse sequence should not leak into textarea", async () => {
+    const { textarea: editor } = await createTextareaRenderable(currentRenderer, renderOnce, {
+      initialValue: "Original",
+      width: 40,
+      height: 10,
+    })
+
+    editor.focus()
+    const initialText = editor.plainText
+
+    // Simulate ESC and continuation arriving in separate chunks where the ESC is
+    // timeout-flushed before the continuation arrives.
+    currentRenderer.stdin.emit("data", Buffer.from("\x1b"))
+    currentClock.advance(1000)
+    currentRenderer.stdin.emit("data", Buffer.from("[<35;20;5m"))
 
     expect(editor.plainText).toBe(initialText)
     expect(editor.plainText).not.toContain("[<")

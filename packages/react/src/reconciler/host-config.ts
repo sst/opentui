@@ -3,11 +3,11 @@ import pkgJson from "../../package.json"
 import { createContext } from "react"
 import type { HostConfig, ReactContext } from "react-reconciler"
 import { DefaultEventPriority, NoEventPriority } from "react-reconciler/constants"
-import { getComponentCatalogue } from "../components"
-import { textNodeKeys, type TextNodeKey } from "../components/text"
-import type { Container, HostContext, Instance, Props, PublicInstance, TextInstance, Type } from "../types/host"
-import { getNextId } from "../utils/id"
-import { setInitialProperties, updateProperties } from "../utils/index"
+import { getComponentCatalogue } from "../components/index.js"
+import { textNodeKeys, type TextNodeKey } from "../components/text.js"
+import type { Container, HostContext, Instance, Props, PublicInstance, TextInstance, Type } from "../types/host.js"
+import { getNextId } from "../utils/id.js"
+import { setInitialProperties, updateProperties } from "../utils/index.js"
 
 let currentUpdatePriority = NoEventPriority
 

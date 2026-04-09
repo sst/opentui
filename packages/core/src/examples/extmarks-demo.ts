@@ -6,11 +6,10 @@ import {
   TextRenderable,
   KeyEvent,
   type ExtmarksController,
-  type ExtmarkDeletedEvent,
-} from "../index"
-import { setupCommonDemoKeys } from "./lib/standalone-keys"
-import { SyntaxStyle } from "../syntax-style"
-import { RGBA } from "../lib/RGBA"
+} from "../index.js"
+import { setupCommonDemoKeys } from "./lib/standalone-keys.js"
+import { SyntaxStyle } from "../syntax-style.js"
+import { RGBA } from "../lib/RGBA.js"
 
 const initialContent = `Welcome to the Extmarks Demo!
 
@@ -89,13 +88,6 @@ export async function run(rendererInstance: CliRenderer): Promise<void> {
   }
 
   findAndMarkVirtualRanges()
-
-  extmarksController.on("extmark-deleted", (event: ExtmarkDeletedEvent) => {
-    if (helpText) {
-      const extmark = event.extmark
-      helpText.content = `Deleted extmark at ${extmark.start}-${extmark.end} via ${event.trigger}`
-    }
-  })
 
   helpText = new TextRenderable(renderer, {
     id: "help",

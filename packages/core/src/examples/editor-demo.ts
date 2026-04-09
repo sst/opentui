@@ -10,8 +10,8 @@ import {
   bold,
   cyan,
   fg,
-} from "../index"
-import { setupCommonDemoKeys } from "./lib/standalone-keys"
+} from "../index.js"
+import { setupCommonDemoKeys } from "./lib/standalone-keys.js"
 
 const initialContent = `Welcome to the TextareaRenderable Demo!
 

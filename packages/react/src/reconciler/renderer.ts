@@ -1,9 +1,9 @@
 import { CliRenderer, CliRenderEvents, engine } from "@opentui/core"
 import React, { type ReactNode } from "react"
 import type { OpaqueRoot } from "react-reconciler"
-import { AppContext } from "../components/app"
-import { ErrorBoundary } from "../components/error-boundary"
-import { _render, reconciler } from "./reconciler"
+import { AppContext } from "../components/app.js"
+import { ErrorBoundary } from "../components/error-boundary.js"
+import { _render, reconciler } from "./reconciler.js"
 
 // flushSync was renamed to flushSyncFromReconciler in react-reconciler 0.32.0
 // the types for react-reconciler are not up to date with the library

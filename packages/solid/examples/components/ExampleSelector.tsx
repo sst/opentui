@@ -1,5 +1,5 @@
 import { measureText } from "@opentui/core"
-import { useKeyboard, useRenderer, useTerminalDimensions } from "@opentui/solid"
+import { TimeToFirstDraw, useKeyboard, useRenderer, useTerminalDimensions } from "@opentui/solid"
 import { createSignal, Match, onMount, Switch } from "solid-js"
 import { Session } from "../session.tsx"
 import { SplitModeDemo } from "./animation-demo.tsx"
@@ -10,12 +10,15 @@ import ExtendDemo from "./extend-demo.tsx"
 import InputScene from "./input-demo.tsx"
 import LineNumberDemo from "./line-number-demo.tsx"
 import MouseScene from "./mouse-demo.tsx"
+import PluginSlotsDemo from "./plugin-slots-demo.tsx"
 import { ScrollDemo, ScrollDemoIndex } from "./scroll-demo.tsx"
 import { CustomScrollAccelDemo } from "./custom-scroll-accel-demo.tsx"
+import ExternalPluginSlotsDemo from "./external-plugin-slots-demo.tsx"
 import TabSelectDemo from "./tab-select-demo.tsx"
 import TextSelectionDemo from "./text-selection-demo.tsx"
 import TextStyleScene from "./text-style-demo.tsx"
 import { TextareaDemo } from "./textarea-demo.tsx"
+import { TextareaMinimalDemo } from "./textarea-minimal-demo.tsx"
 import { TextTruncationDemo } from "./text-truncation-demo.tsx"
 
 const EXAMPLES = [
@@ -53,6 +56,11 @@ const EXAMPLES = [
     name: "Textarea Demo",
     description: "Interactive textarea editor with navigation, editing, and text wrapping",
     scene: "textarea-demo",
+  },
+  {
+    name: "Textarea Minimal Demo",
+    description: "Minimal prompt-style textarea with submit state",
+    scene: "textarea-minimal-demo",
   },
   {
     name: "Text Truncation Demo",
@@ -104,13 +112,23 @@ const EXAMPLES = [
     description: "Live message stream with chunked arrival simulation",
     scene: "session-scrollbox",
   },
+  {
+    name: "Plugin Slots Error Demo",
+    description: "Trigger plugin crashes and reset boundary state",
+    scene: "plugin-slots-demo",
+  },
+  {
+    name: "Plugin Slots External JSX Demo",
+    description: "Loads .plugin/index.tsx and renders external JSX slot components",
+    scene: "plugin-slots-external-demo",
+  },
 ]
 
 const ExampleSelector = () => {
   const renderer = useRenderer()
 
   onMount(() => {
-    renderer.useConsole = true
+    renderer.consoleMode = "console-overlay"
     // renderer.console.show();
   })
 
@@ -135,7 +153,7 @@ const ExampleSelector = () => {
       case "`":
         renderer.console.toggle()
         break
-      case "t":
+      case ".":
         renderer.toggleDebugOverlay()
         break
       case "g":
@@ -145,9 +163,9 @@ const ExampleSelector = () => {
         break
     }
 
-    switch (key.raw) {
-      case "\u0003":
-        renderer.destroy()
+    if (key.ctrl && key.name === "c") {
+      key.preventDefault()
+      renderer.destroy()
     }
   })
 
@@ -175,6 +193,9 @@ const ExampleSelector = () => {
       </Match>
       <Match when={selectedScene() === "textarea-demo"}>
         <TextareaDemo />
+      </Match>
+      <Match when={selectedScene() === "textarea-minimal-demo"}>
+        <TextareaMinimalDemo />
       </Match>
       <Match when={selectedScene() === "text-truncation-demo"}>
         <TextTruncationDemo />
@@ -206,6 +227,12 @@ const ExampleSelector = () => {
       <Match when={selectedScene() === "session-scrollbox"}>
         <Session />
       </Match>
+      <Match when={selectedScene() === "plugin-slots-demo"}>
+        <PluginSlotsDemo />
+      </Match>
+      <Match when={selectedScene() === "plugin-slots-external-demo"}>
+        <ExternalPluginSlotsDemo />
+      </Match>
       <Match when={selected() === -1}>
         <box style={{ height: terminalDimensions().height, backgroundColor: "#001122", padding: 1 }}>
           <box alignItems="center">
@@ -216,10 +243,6 @@ const ExampleSelector = () => {
               text={titleText}
             />
           </box>
-          <text style={{ fg: "#AAAAAA", marginTop: 1, marginLeft: 1, marginRight: 1 }}>
-            Use ↑↓ or j/k to navigate, Shift+↑↓ or Shift+j/k for fast scroll, Enter to run, Escape to return, for
-            console, ctrl+c to quit {selected()} {terminalDimensions().height}
-          </text>
           <box
             title="Examples"
             style={{
@@ -254,6 +277,11 @@ const ExampleSelector = () => {
               fastScrollStep={5}
             />
           </box>
+          <TimeToFirstDraw />
+          <text style={{ fg: "#AAAAAA", marginTop: 1, marginLeft: 1, marginRight: 1 }}>
+            Use ↑↓ or j/k to navigate, Shift+↑↓ or Shift+j/k for fast scroll, Enter to run, Escape to return, ` to
+            toggle console, . to toggle debug overlay, ctrl+c to quit
+          </text>
         </box>
       </Match>
     </Switch>

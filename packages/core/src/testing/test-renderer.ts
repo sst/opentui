@@ -1,8 +1,9 @@
-import { Readable } from "stream"
-import { CliRenderer, type CliRendererConfig } from "../renderer"
-import { resolveRenderLib } from "../zig"
-import { createMockKeys } from "./mock-keys"
-import { createMockMouse } from "./mock-mouse"
+import { Readable, Writable } from "stream"
+import { CliRenderer, type CliRendererConfig } from "../renderer.js"
+import { resolveRenderLib } from "../zig.js"
+import { createMockKeys } from "./mock-keys.js"
+import { createMockMouse } from "./mock-mouse.js"
+import type { CapturedFrame } from "../types.js"
 
 export interface TestRendererOptions extends CliRendererConfig {
   width?: number
@@ -16,27 +17,46 @@ export type MockMouse = ReturnType<typeof createMockMouse>
 
 const decoder = new TextDecoder()
 
+class TestWriteStream extends Writable {
+  public readonly isTTY = true
+  public readonly columns: number
+  public readonly rows: number
+
+  constructor(columns: number, rows: number) {
+    super()
+    this.columns = columns
+    this.rows = rows
+  }
+
+  _write(_chunk: any, _encoding: BufferEncoding, callback: (error?: Error | null) => void): void {
+    callback()
+  }
+
+  getColorDepth(): number {
+    return 24
+  }
+}
+
 export async function createTestRenderer(options: TestRendererOptions): Promise<{
   renderer: TestRenderer
   mockInput: MockInput
   mockMouse: MockMouse
   renderOnce: () => Promise<void>
   captureCharFrame: () => string
+  captureSpans: () => CapturedFrame
   resize: (width: number, height: number) => void
 }> {
-  process.env.OTUI_USE_CONSOLE = "false"
-
   // Convert legacy kittyKeyboard boolean to new format
   const useKittyKeyboard = options.kittyKeyboard ? { events: true } : options.useKittyKeyboard
 
   const renderer = await setupTestRenderer({
     ...options,
     useKittyKeyboard,
-    useAlternateScreen: false,
-    useConsole: false,
+    screenMode: options.screenMode ?? "main-screen",
+    footerHeight: options.footerHeight ?? 12,
+    consoleMode: options.consoleMode ?? "disabled",
+    externalOutputMode: options.externalOutputMode ?? "passthrough",
   })
-
-  renderer.disableStdoutInterception()
 
   const mockInput = createMockKeys(renderer, {
     kittyKeyboard: options.kittyKeyboard,
@@ -59,6 +79,17 @@ export async function createTestRenderer(options: TestRendererOptions): Promise<
       const frameBytes = currentBuffer.getRealCharBytes(true)
       return decoder.decode(frameBytes)
     },
+    captureSpans: () => {
+      const currentBuffer = renderer.currentRenderBuffer
+      const lines = currentBuffer.getSpanLines()
+      const cursorState = renderer.getCursorState()
+      return {
+        cols: currentBuffer.width,
+        rows: currentBuffer.height,
+        cursor: [cursorState.x, cursorState.y] as [number, number],
+        lines,
+      }
+    },
     resize: (width: number, height: number) => {
       //@ts-expect-error - this is a test renderer
       renderer.processResize(width, height)
@@ -68,15 +99,16 @@ export async function createTestRenderer(options: TestRendererOptions): Promise<
 
 async function setupTestRenderer(config: TestRendererOptions) {
   const stdin = config.stdin || (new Readable({ read() {} }) as NodeJS.ReadStream)
-  const stdout = config.stdout || process.stdout
-
-  const width = config.width || stdout.columns || 80
-  const height = config.height || stdout.rows || 24
-  const renderHeight =
-    config.experimental_splitHeight && config.experimental_splitHeight > 0 ? config.experimental_splitHeight : height
+  const width = config.width || config.stdout?.columns || process.stdout.columns || 80
+  const height = config.height || config.stdout?.rows || process.stdout.rows || 24
+  const stdout = config.stdout || (new TestWriteStream(width, height) as unknown as NodeJS.WriteStream)
+  const renderHeight = config.screenMode === "split-footer" ? (config.footerHeight ?? 12) : height
 
   const ziglib = resolveRenderLib()
-  const rendererPtr = ziglib.createRenderer(width, renderHeight, { testing: true })
+  const rendererPtr = ziglib.createRenderer(width, renderHeight, {
+    testing: true,
+    remote: config.remote ?? false,
+  })
   if (!rendererPtr) {
     throw new Error("Failed to create test renderer")
   }

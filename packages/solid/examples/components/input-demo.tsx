@@ -8,7 +8,7 @@ const InputScene = () => {
   let inputRef: InputRenderable | null = null
 
   usePaste((event) => {
-    inputRef?.insertText(event.text)
+    inputRef?.handlePaste(event)
   })
 
   onMount(() => {

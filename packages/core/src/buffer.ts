@@ -1,18 +1,18 @@
-import type { TextBuffer } from "./text-buffer"
-import { RGBA } from "./lib"
-import { resolveRenderLib, type RenderLib } from "./zig"
+import { RGBA } from "./lib/index.js"
+import { resolveRenderLib, type RenderLib } from "./zig.js"
 import { type Pointer, toArrayBuffer, ptr } from "bun:ffi"
-import { type BorderStyle, type BorderSides, BorderCharArrays, parseBorderStyle } from "./lib"
-import { type WidthMethod } from "./types"
-import type { TextBufferView } from "./text-buffer-view"
-import type { EditorView } from "./editor-view"
+import { type BorderStyle, type BorderSides, BorderCharArrays, parseBorderStyle } from "./lib/index.js"
+import { TargetChannel, type WidthMethod, type CapturedSpan, type CapturedLine } from "./types.js"
+import type { TextBufferView } from "./text-buffer-view.js"
+import type { EditorView } from "./editor-view.js"
 
 // Pack drawing options into a single u32
-// bits 0-3: borderSides, bit 4: shouldFill, bits 5-6: titleAlignment
+// bits 0-3: borderSides, bit 4: shouldFill, bits 5-6: titleAlignment, bits 7-8: bottomTitleAlignment
 function packDrawOptions(
   border: boolean | BorderSides[],
   shouldFill: boolean,
   titleAlignment: "left" | "center" | "right",
+  bottomTitleAlignment: "left" | "center" | "right",
 ): number {
   let packed = 0
 
@@ -35,7 +35,10 @@ function packDrawOptions(
     right: 2,
   }
   const alignment = alignmentMap[titleAlignment]
+  const bottomAlignment = alignmentMap[bottomTitleAlignment]
+
   packed |= alignment << 5
+  packed |= bottomAlignment << 7
 
   return packed
 }
@@ -153,6 +156,70 @@ export class OptimizedBuffer {
     return outputBuffer.slice(0, bytesWritten)
   }
 
+  public getSpanLines(): CapturedLine[] {
+    this.guard()
+    const { char, fg, bg, attributes } = this.buffers
+    const lines: CapturedLine[] = []
+
+    const CHAR_FLAG_CONTINUATION = 0xc0000000 | 0
+    const CHAR_FLAG_MASK = 0xc0000000 | 0
+
+    const realTextBytes = this.getRealCharBytes(true)
+    const realTextLines = new TextDecoder().decode(realTextBytes).split("\n")
+
+    for (let y = 0; y < this._height; y++) {
+      const spans: CapturedSpan[] = []
+      let currentSpan: CapturedSpan | null = null
+
+      const lineChars = [...(realTextLines[y] || "")]
+      let charIdx = 0
+
+      for (let x = 0; x < this._width; x++) {
+        const i = y * this._width + x
+        const cp = char[i]
+        const cellFg = RGBA.fromValues(fg[i * 4], fg[i * 4 + 1], fg[i * 4 + 2], fg[i * 4 + 3])
+        const cellBg = RGBA.fromValues(bg[i * 4], bg[i * 4 + 1], bg[i * 4 + 2], bg[i * 4 + 3])
+        const cellAttrs = attributes[i] & 0xff
+
+        // Continuation cells are placeholders for wide characters (emojis, CJK)
+        const isContinuation = (cp & CHAR_FLAG_MASK) === CHAR_FLAG_CONTINUATION
+        const cellChar = isContinuation ? "" : (lineChars[charIdx++] ?? " ")
+
+        // Check if this cell continues the current span
+        if (
+          currentSpan &&
+          currentSpan.fg.equals(cellFg) &&
+          currentSpan.bg.equals(cellBg) &&
+          currentSpan.attributes === cellAttrs
+        ) {
+          currentSpan.text += cellChar
+          currentSpan.width += 1
+        } else {
+          // Start a new span
+          if (currentSpan) {
+            spans.push(currentSpan)
+          }
+          currentSpan = {
+            text: cellChar,
+            fg: cellFg,
+            bg: cellBg,
+            attributes: cellAttrs,
+            width: 1,
+          }
+        }
+      }
+
+      // Push the last span
+      if (currentSpan) {
+        spans.push(currentSpan)
+      }
+
+      lines.push({ spans })
+    }
+
+    return lines
+  }
+
   public clear(bg: RGBA = RGBA.fromValues(0, 0, 0, 1)): void {
     this.guard()
     this.lib.bufferClear(this.bufferPtr, bg)
@@ -222,6 +289,30 @@ export class OptimizedBuffer {
 
   public fillRect(x: number, y: number, width: number, height: number, bg: RGBA): void {
     this.lib.bufferFillRect(this.bufferPtr, x, y, width, height, bg)
+  }
+
+  public colorMatrix(
+    matrix: Float32Array,
+    cellMask: Float32Array,
+    strength: number = 1.0,
+    target: TargetChannel = TargetChannel.Both,
+  ): void {
+    this.guard()
+    if (matrix.length !== 16) throw new RangeError(`colorMatrix matrix must have length 16, got ${matrix.length}`)
+    const cellMaskCount = Math.floor(cellMask.length / 3)
+    this.lib.bufferColorMatrix(this.bufferPtr, ptr(matrix), ptr(cellMask), cellMaskCount, strength, target)
+  }
+
+  public colorMatrixUniform(
+    matrix: Float32Array,
+    strength: number = 1.0,
+    target: TargetChannel = TargetChannel.Both,
+  ): void {
+    this.guard()
+    if (matrix.length !== 16)
+      throw new RangeError(`colorMatrixUniform matrix must have length 16, got ${matrix.length}`)
+    if (strength === 0.0) return
+    this.lib.bufferColorMatrixUniform(this.bufferPtr, ptr(matrix), strength, target)
   }
 
   public drawFrameBuffer(
@@ -352,12 +443,19 @@ export class OptimizedBuffer {
     shouldFill?: boolean
     title?: string
     titleAlignment?: "left" | "center" | "right"
+    bottomTitle?: string
+    bottomTitleAlignment?: "left" | "center" | "right"
   }): void {
     this.guard()
     const style = parseBorderStyle(options.borderStyle, "single")
     const borderChars: Uint32Array = options.customBorderChars ?? BorderCharArrays[style]
 
-    const packedOptions = packDrawOptions(options.border, options.shouldFill ?? false, options.titleAlignment || "left")
+    const packedOptions = packDrawOptions(
+      options.border,
+      options.shouldFill ?? false,
+      options.titleAlignment || "left",
+      options.bottomTitleAlignment || "left",
+    )
 
     this.lib.bufferDrawBox(
       this.bufferPtr,
@@ -370,6 +468,7 @@ export class OptimizedBuffer {
       options.borderColor,
       options.backgroundColor,
       options.title ?? null,
+      options.bottomTitle ?? null,
     )
   }
 
@@ -416,6 +515,36 @@ export class OptimizedBuffer {
   public freeUnicode(encoded: { ptr: Pointer; data: Array<{ width: number; char: number }> }): void {
     this.guard()
     this.lib.freeUnicode(encoded)
+  }
+
+  public drawGrid(options: {
+    borderChars: Uint32Array
+    borderFg: RGBA
+    borderBg: RGBA
+    columnOffsets: Int32Array
+    rowOffsets: Int32Array
+    drawInner: boolean
+    drawOuter: boolean
+  }): void {
+    this.guard()
+
+    const columnCount = Math.max(0, options.columnOffsets.length - 1)
+    const rowCount = Math.max(0, options.rowOffsets.length - 1)
+
+    this.lib.bufferDrawGrid(
+      this.bufferPtr,
+      options.borderChars,
+      options.borderFg,
+      options.borderBg,
+      options.columnOffsets,
+      columnCount,
+      options.rowOffsets,
+      rowCount,
+      {
+        drawInner: options.drawInner,
+        drawOuter: options.drawOuter,
+      },
+    )
   }
 
   public drawChar(char: number, x: number, y: number, fg: RGBA, bg: RGBA, attributes: number = 0): void {

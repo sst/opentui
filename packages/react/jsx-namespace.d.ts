@@ -9,6 +9,7 @@ import type {
   LineBreakProps,
   LineNumberProps,
   LinkProps,
+  MarkdownProps,
   OpenTUIComponents,
   ScrollBoxProps,
   SelectProps,
@@ -16,12 +17,12 @@ import type {
   TabSelectProps,
   TextareaProps,
   TextProps,
-} from "./src/types/components"
+} from "./src/types/components.js"
 
 export namespace JSX {
   type Element = React.ReactNode
 
-  interface ElementClass extends React.ComponentClass<any> {
+  interface ElementClass extends React.Component<any> {
     render(): React.ReactNode
   }
 
@@ -41,6 +42,7 @@ export namespace JSX {
     span: SpanProps
     code: CodeProps
     diff: DiffProps
+    markdown: MarkdownProps
     input: InputProps
     textarea: TextareaProps
     select: SelectProps

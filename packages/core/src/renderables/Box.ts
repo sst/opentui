@@ -1,6 +1,6 @@
 import { Edge, Gutter } from "yoga-layout"
-import { type RenderableOptions, Renderable } from "../Renderable"
-import type { OptimizedBuffer } from "../buffer"
+import { type RenderableOptions, Renderable } from "../Renderable.js"
+import type { OptimizedBuffer } from "../buffer.js"
 import {
   type BorderCharacters,
   type BorderSides,
@@ -9,10 +9,10 @@ import {
   borderCharsToArray,
   getBorderSides,
   parseBorderStyle,
-} from "../lib"
-import { type ColorInput, RGBA, parseColor } from "../lib/RGBA"
-import { isValidPercentage } from "../lib/renderable.validations"
-import type { RenderContext } from "../types"
+} from "../lib/index.js"
+import { type ColorInput, RGBA, parseColor } from "../lib/RGBA.js"
+import { isValidPercentage } from "../lib/renderable.validations.js"
+import type { RenderContext } from "../types.js"
 
 export interface BoxOptions<TRenderable extends Renderable = BoxRenderable> extends RenderableOptions<TRenderable> {
   backgroundColor?: string | RGBA
@@ -23,7 +23,10 @@ export interface BoxOptions<TRenderable extends Renderable = BoxRenderable> exte
   shouldFill?: boolean
   title?: string
   titleAlignment?: "left" | "center" | "right"
+  bottomTitle?: string
+  bottomTitleAlignment?: "left" | "center" | "right"
   focusedBorderColor?: ColorInput
+  focusable?: boolean
   gap?: number | `${number}%`
   rowGap?: number | `${number}%`
   columnGap?: number | `${number}%`
@@ -51,6 +54,8 @@ export class BoxRenderable extends Renderable {
   public shouldFill: boolean
   protected _title?: string
   protected _titleAlignment: "left" | "center" | "right"
+  protected _bottomTitle?: string
+  protected _bottomTitleAlignment: "left" | "center" | "right"
 
   protected _defaultOptions = {
     backgroundColor: "transparent",
@@ -59,11 +64,16 @@ export class BoxRenderable extends Renderable {
     borderColor: "#FFFFFF",
     shouldFill: true,
     titleAlignment: "left",
+    bottomTitleAlignment: "left",
     focusedBorderColor: "#00AAFF",
   } satisfies Partial<BoxOptions>
 
   constructor(ctx: RenderContext, options: BoxOptions) {
     super(ctx, options)
+
+    if (options.focusable === true) {
+      this._focusable = true
+    }
 
     this._backgroundColor = parseColor(options.backgroundColor || this._defaultOptions.backgroundColor)
     this._border = options.border ?? this._defaultOptions.border
@@ -82,6 +92,8 @@ export class BoxRenderable extends Renderable {
     this.shouldFill = options.shouldFill ?? this._defaultOptions.shouldFill
     this._title = options.title
     this._titleAlignment = options.titleAlignment || this._defaultOptions.titleAlignment
+    this._bottomTitle = options.bottomTitle
+    this._bottomTitleAlignment = options.bottomTitleAlignment || this._defaultOptions.bottomTitleAlignment
 
     this.applyYogaBorders()
 
@@ -203,6 +215,28 @@ export class BoxRenderable extends Renderable {
     }
   }
 
+  public get bottomTitle(): string | undefined {
+    return this._bottomTitle
+  }
+
+  public set bottomTitle(value: string | undefined) {
+    if (this._bottomTitle !== value) {
+      this._bottomTitle = value
+      this.requestRender()
+    }
+  }
+
+  public get bottomTitleAlignment(): "left" | "center" | "right" {
+    return this._bottomTitleAlignment
+  }
+
+  public set bottomTitleAlignment(value: "left" | "center" | "right") {
+    if (this._bottomTitleAlignment !== value) {
+      this._bottomTitleAlignment = value
+      this.requestRender()
+    }
+  }
+
   protected renderSelf(buffer: OptimizedBuffer): void {
     const currentBorderColor = this._focused ? this._focusedBorderColor : this._borderColor
 
@@ -219,6 +253,8 @@ export class BoxRenderable extends Renderable {
       shouldFill: this.shouldFill,
       title: this._title,
       titleAlignment: this._titleAlignment,
+      bottomTitle: this._bottomTitle,
+      bottomTitleAlignment: this._bottomTitleAlignment,
     })
   }
 

@@ -172,9 +172,54 @@ fn benchGetGraphemes(
     };
 }
 
+fn computeBenchName(allocator: std.mem.Allocator, size: usize, text_type: TextType) ![]const u8 {
+    var temp_arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
+    defer temp_arena.deinit();
+    const temp_alloc = temp_arena.allocator();
+
+    const text = try generateTestText(temp_alloc, size, text_type);
+
+    var registry = MemRegistry.init(temp_alloc);
+    defer registry.deinit();
+
+    const mem_id = try registry.register(text, false);
+    const is_ascii = switch (text_type) {
+        .ascii => true,
+        else => false,
+    };
+    const approx_width: u16 = @intCast(@min(text.len, std.math.maxInt(u16)));
+    var chunk = TextChunk{
+        .mem_id = mem_id,
+        .byte_start = 0,
+        .byte_end = @intCast(text.len),
+        .width = approx_width,
+        .flags = if (is_ascii) TextChunk.Flags.ASCII_ONLY else 0,
+    };
+
+    const graphemes = try chunk.getGraphemes(
+        &registry,
+        temp_alloc,
+        4, // tab width
+        .unicode,
+    );
+
+    const type_str = switch (text_type) {
+        .ascii => "ASCII",
+        .mixed => "Mixed",
+        .heavy_unicode => "Heavy Unicode",
+    };
+
+    return try std.fmt.allocPrint(
+        allocator,
+        "getGraphemes {s} ({d} bytes, {d} graphemes)",
+        .{ type_str, size, graphemes.len },
+    );
+}
+
 pub fn run(
     allocator: std.mem.Allocator,
     show_mem: bool,
+    bench_filter: ?[]const u8,
 ) ![]BenchResult {
     // Global pool and unicode data are initialized once in bench.zig
     _ = gp.initGlobalPool(allocator);
@@ -188,16 +233,39 @@ pub fn run(
     const sizes = [_]usize{ 100, 1024, 4 * 1024, 16 * 1024, 64 * 1024 };
     const text_types = [_]TextType{ .ascii, .mixed, .heavy_unicode };
 
-    for (text_types) |text_type| {
-        for (sizes) |size| {
-            const result = try benchGetGraphemes(
-                allocator,
-                size,
-                text_type,
-                iterations,
-                show_mem,
-            );
-            try results.append(allocator, result);
+    if (bench_filter == null) {
+        for (text_types) |text_type| {
+            for (sizes) |size| {
+                const result = try benchGetGraphemes(
+                    allocator,
+                    size,
+                    text_type,
+                    iterations,
+                    show_mem,
+                );
+                try results.append(allocator, result);
+            }
+        }
+    } else {
+        for (text_types) |text_type| {
+            for (sizes) |size| {
+                const name = try computeBenchName(allocator, size, text_type);
+                if (!bench_utils.matchesBenchFilter(name, bench_filter)) {
+                    allocator.free(name);
+                    continue;
+                }
+
+                var result = try benchGetGraphemes(
+                    allocator,
+                    size,
+                    text_type,
+                    iterations,
+                    show_mem,
+                );
+                allocator.free(result.name);
+                result.name = name;
+                try results.append(allocator, result);
+            }
         }
     }
 

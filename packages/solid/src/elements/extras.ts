@@ -1,8 +1,8 @@
 import { createEffect, createMemo, getOwner, onCleanup, runWithOwner, splitProps, untrack } from "solid-js"
-import { createSlotNode, createElement, insert, spread, type DomNode } from "../reconciler"
+import { createSlotNode, createElement, insert, spread, type DomNode } from "../reconciler.js"
 import type { JSX } from "../../jsx-runtime"
 import type { ValidComponent, ComponentProps } from "solid-js"
-import { useRenderer } from "./hooks"
+import { useRenderer } from "./hooks.js"
 
 /**
  * Renders components somewhere else in the DOM

@@ -1,9 +1,9 @@
 import { EventEmitter } from "events"
 import Yoga, { Direction, Display, Edge, FlexDirection, type Config, type Node as YogaNode } from "yoga-layout"
-import { OptimizedBuffer } from "./buffer"
-import type { KeyEvent, PasteEvent } from "./lib/KeyHandler"
-import type { MouseEventType } from "./lib/parse.mouse"
-import type { Selection } from "./lib/selection"
+import { OptimizedBuffer } from "./buffer.js"
+import type { KeyEvent, PasteEvent } from "./lib/KeyHandler.js"
+import type { MouseEventType } from "./lib/parse.mouse.js"
+import type { Selection } from "./lib/selection.js"
 import {
   parseAlign,
   parseAlignItems,
@@ -18,10 +18,10 @@ import {
   type OverflowString,
   type PositionTypeString,
   type WrapString,
-} from "./lib/yoga.options"
-import { maybeMakeRenderable, type VNode } from "./renderables/composition/vnode"
-import type { MouseEvent } from "./renderer"
-import type { RenderContext } from "./types"
+} from "./lib/yoga.options.js"
+import { maybeMakeRenderable, type VNode } from "./renderables/composition/vnode.js"
+import type { MouseEvent } from "./renderer.js"
+import type { RenderContext } from "./types.js"
 import {
   validateOptions,
   isPositionType,
@@ -32,7 +32,7 @@ import {
   isPaddingType,
   isPositionTypeType,
   isOverflowType,
-} from "./lib/renderable.validations"
+} from "./lib/renderable.validations.js"
 
 const BrandedRenderable: unique symbol = Symbol.for("@opentui/core/Renderable")
 
@@ -79,11 +79,15 @@ export interface LayoutOptions extends BaseRenderableOptions {
   maxWidth?: number | "auto" | `${number}%`
   maxHeight?: number | "auto" | `${number}%`
   margin?: number | "auto" | `${number}%`
+  marginX?: number | "auto" | `${number}%`
+  marginY?: number | "auto" | `${number}%`
   marginTop?: number | "auto" | `${number}%`
   marginRight?: number | "auto" | `${number}%`
   marginBottom?: number | "auto" | `${number}%`
   marginLeft?: number | "auto" | `${number}%`
   padding?: number | `${number}%`
+  paddingX?: number | `${number}%`
+  paddingY?: number | `${number}%`
   paddingTop?: number | `${number}%`
   paddingRight?: number | `${number}%`
   paddingBottom?: number | `${number}%`
@@ -304,6 +308,10 @@ export abstract class Renderable extends BaseRenderable {
 
   public get focusable(): boolean {
     return this._focusable
+  }
+
+  public set focusable(value: boolean) {
+    this._focusable = value
   }
 
   public get ctx(): RenderContext {
@@ -557,17 +565,19 @@ export abstract class Renderable extends BaseRenderable {
   }
 
   public set width(value: number | "auto" | `${number}%`) {
-    if (isDimensionType(value)) {
-      this._width = value
-      this.yogaNode.setWidth(value)
-
-      if (typeof value === "number" && this._flexShrink === 1) {
-        this._flexShrink = 0
-        this.yogaNode.setFlexShrink(0)
-      }
-
-      this.requestRender()
+    if (!isDimensionType(value) || this._width === value) {
+      return
     }
+
+    this._width = value
+    this.yogaNode.setWidth(value)
+
+    if (typeof value === "number" && this._flexShrink === 1) {
+      this._flexShrink = 0
+      this.yogaNode.setFlexShrink(0)
+    }
+
+    this.requestRender()
   }
 
   public get height(): number {
@@ -575,17 +585,19 @@ export abstract class Renderable extends BaseRenderable {
   }
 
   public set height(value: number | "auto" | `${number}%`) {
-    if (isDimensionType(value)) {
-      this._height = value
-      this.yogaNode.setHeight(value)
-
-      if (typeof value === "number" && this._flexShrink === 1) {
-        this._flexShrink = 0
-        this.yogaNode.setFlexShrink(0)
-      }
-
-      this.requestRender()
+    if (!isDimensionType(value) || this._height === value) {
+      return
     }
+
+    this._height = value
+    this.yogaNode.setHeight(value)
+
+    if (typeof value === "number" && this._flexShrink === 1) {
+      this._flexShrink = 0
+      this.yogaNode.setFlexShrink(0)
+    }
+
+    this.requestRender()
   }
 
   public get zIndex(): number {
@@ -721,12 +733,15 @@ export abstract class Renderable extends BaseRenderable {
     const node = this.yogaNode
 
     if (isMarginType(options.margin)) {
-      node.setMargin(Edge.Top, options.margin)
-      node.setMargin(Edge.Right, options.margin)
-      node.setMargin(Edge.Bottom, options.margin)
-      node.setMargin(Edge.Left, options.margin)
+      node.setMargin(Edge.All, options.margin)
     }
 
+    if (isMarginType(options.marginX)) {
+      node.setMargin(Edge.Horizontal, options.marginX)
+    }
+    if (isMarginType(options.marginY)) {
+      node.setMargin(Edge.Vertical, options.marginY)
+    }
     if (isMarginType(options.marginTop)) {
       node.setMargin(Edge.Top, options.marginTop)
     }
@@ -741,12 +756,15 @@ export abstract class Renderable extends BaseRenderable {
     }
 
     if (isPaddingType(options.padding)) {
-      node.setPadding(Edge.Top, options.padding)
-      node.setPadding(Edge.Right, options.padding)
-      node.setPadding(Edge.Bottom, options.padding)
-      node.setPadding(Edge.Left, options.padding)
+      node.setPadding(Edge.All, options.padding)
     }
 
+    if (isPaddingType(options.paddingX)) {
+      node.setPadding(Edge.Horizontal, options.paddingX)
+    }
+    if (isPaddingType(options.paddingY)) {
+      node.setPadding(Edge.Vertical, options.paddingY)
+    }
     if (isPaddingType(options.paddingTop)) {
       node.setPadding(Edge.Top, options.paddingTop)
     }
@@ -899,11 +917,21 @@ export abstract class Renderable extends BaseRenderable {
 
   public set margin(margin: number | "auto" | `${number}%` | null | undefined) {
     if (isMarginType(margin)) {
-      const node = this.yogaNode
-      node.setMargin(Edge.Top, margin)
-      node.setMargin(Edge.Right, margin)
-      node.setMargin(Edge.Bottom, margin)
-      node.setMargin(Edge.Left, margin)
+      this.yogaNode.setMargin(Edge.All, margin)
+      this.requestRender()
+    }
+  }
+
+  public set marginX(marginX: number | "auto" | `${number}%` | null | undefined) {
+    if (isMarginType(marginX)) {
+      this.yogaNode.setMargin(Edge.Horizontal, marginX)
+      this.requestRender()
+    }
+  }
+
+  public set marginY(marginY: number | "auto" | `${number}%` | null | undefined) {
+    if (isMarginType(marginY)) {
+      this.yogaNode.setMargin(Edge.Vertical, marginY)
       this.requestRender()
     }
   }
@@ -938,11 +966,21 @@ export abstract class Renderable extends BaseRenderable {
 
   public set padding(padding: number | `${number}%` | null | undefined) {
     if (isPaddingType(padding)) {
-      const node = this.yogaNode
-      node.setPadding(Edge.Top, padding)
-      node.setPadding(Edge.Right, padding)
-      node.setPadding(Edge.Bottom, padding)
-      node.setPadding(Edge.Left, padding)
+      this.yogaNode.setPadding(Edge.All, padding)
+      this.requestRender()
+    }
+  }
+
+  public set paddingX(paddingX: number | `${number}%` | null | undefined) {
+    if (isPaddingType(paddingX)) {
+      this.yogaNode.setPadding(Edge.Horizontal, paddingX)
+      this.requestRender()
+    }
+  }
+
+  public set paddingY(paddingY: number | `${number}%` | null | undefined) {
+    if (isPaddingType(paddingY)) {
+      this.yogaNode.setPadding(Edge.Vertical, paddingY)
       this.requestRender()
     }
   }
@@ -1151,9 +1189,18 @@ export abstract class Renderable extends BaseRenderable {
       return -1
     }
 
-    // Should we really throw for this? Maybe just log a warning in dev.
     if (!this.renderableMapById.has(anchor.id)) {
-      throw new Error("Anchor does not exist")
+      if (process.env.NODE_ENV !== "production") {
+        console.warn(`Anchor with id ${anchor.id} does not exist within the parent ${this.id}, skipping insertBefore`)
+      }
+      return -1
+    }
+
+    if (renderable === anchor || renderable.id === anchor.id) {
+      if (process.env.NODE_ENV !== "production") {
+        console.warn(`Anchor is the same as the node ${renderable.id} being inserted, skipping insertBefore`)
+      }
+      return -1
     }
 
     if (renderable.parent === this) {

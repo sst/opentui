@@ -30,7 +30,15 @@ const LIB_NAME = "opentui";
 const ROOT_SOURCE_FILE = "lib.zig";
 
 /// Apply dependencies to a module
-fn applyDependencies(b: *std.Build, module: *std.Build.Module, optimize: std.builtin.OptimizeMode, target: std.Build.ResolvedTarget) void {
+fn applyDependencies(
+    b: *std.Build,
+    module: *std.Build.Module,
+    optimize: std.builtin.OptimizeMode,
+    target: std.Build.ResolvedTarget,
+    build_options: *std.Build.Step.Options,
+) void {
+    module.addOptions("build_options", build_options);
+
     // Add uucode for grapheme break detection and width calculation
     if (b.lazyDependency("uucode", .{
         .target = target,
@@ -83,21 +91,26 @@ pub fn build(b: *std.Build) void {
     checkZigVersion();
 
     const optimize = b.standardOptimizeOption(.{});
+    const bench_optimize = b.option(std.builtin.OptimizeMode, "bench-optimize", "Optimize mode for benchmarks") orelse .ReleaseFast;
+    const debug_use_llvm = b.option(bool, "debug-llvm", "Use LLVM backend for debug/test artifacts");
     const target_option = b.option([]const u8, "target", "Build for specific target (e.g., 'x86_64-linux-gnu').");
     const build_all = b.option(bool, "all", "Build for all supported targets") orelse false;
+    const gpa_safe_stats = b.option(bool, "gpa-safe-stats", "Enable GPA safety checks for trustworthy allocator stats") orelse false;
+    const build_options = b.addOptions();
+    build_options.addOption(bool, "gpa_safe_stats", gpa_safe_stats);
 
     if (target_option) |target_str| {
         // Build single target
-        buildSingleTarget(b, target_str, optimize) catch |err| {
+        buildSingleTarget(b, target_str, optimize, build_options) catch |err| {
             std.debug.print("Error building target '{s}': {}\n", .{ target_str, err });
             std.process.exit(1);
         };
     } else if (build_all) {
         // Build all supported targets
-        buildAllTargets(b, optimize);
+        buildAllTargets(b, optimize, build_options);
     } else {
         // Build for native target only (default)
-        buildNativeTarget(b, optimize);
+        buildNativeTarget(b, optimize, build_options);
     }
 
     // Test step (native only)
@@ -108,10 +121,11 @@ pub fn build(b: *std.Build) void {
         .target = native_target,
         .optimize = .Debug,
     });
-    applyDependencies(b, test_mod, .Debug, native_target);
+    applyDependencies(b, test_mod, .Debug, native_target, build_options);
     const run_test = b.addRunArtifact(b.addTest(.{
         .root_module = test_mod,
         .filters = if (b.option([]const u8, "test-filter", "Skip tests that do not match filter")) |f| &.{f} else &.{},
+        .use_llvm = debug_use_llvm,
     }));
     test_step.dependOn(&run_test.step);
 
@@ -120,9 +134,9 @@ pub fn build(b: *std.Build) void {
     const bench_mod = b.createModule(.{
         .root_source_file = b.path("bench.zig"),
         .target = native_target,
-        .optimize = optimize,
+        .optimize = bench_optimize,
     });
-    applyDependencies(b, bench_mod, optimize, native_target);
+    applyDependencies(b, bench_mod, bench_optimize, native_target, build_options);
     const bench_exe = b.addExecutable(.{
         .name = "opentui-bench",
         .root_module = bench_mod,
@@ -133,6 +147,22 @@ pub fn build(b: *std.Build) void {
     }
     bench_step.dependOn(&run_bench.step);
 
+    const bench_ffi_step = b.step("bench-ffi", "Build NativeSpanFeed benchmark library");
+    const bench_ffi_mod = b.createModule(.{
+        .root_source_file = b.path("native-span-feed-bench-lib.zig"),
+        .target = native_target,
+        .optimize = bench_optimize,
+    });
+    applyDependencies(b, bench_ffi_mod, bench_optimize, native_target, build_options);
+    const bench_ffi_lib = b.addLibrary(.{
+        .name = "native_span_feed_bench",
+        .root_module = bench_ffi_mod,
+        .linkage = .dynamic,
+    });
+    const install_bench_ffi = b.addInstallArtifact(bench_ffi_lib, .{});
+    bench_ffi_step.dependOn(&install_bench_ffi.step);
+    bench_step.dependOn(bench_ffi_step);
+
     // Debug step (native only)
     const debug_step = b.step("debug", "Run debug executable");
     const debug_mod = b.createModule(.{
@@ -140,25 +170,33 @@ pub fn build(b: *std.Build) void {
         .target = native_target,
         .optimize = .Debug,
     });
-    applyDependencies(b, debug_mod, .Debug, native_target);
+    applyDependencies(b, debug_mod, .Debug, native_target, build_options);
     const debug_exe = b.addExecutable(.{
         .name = "opentui-debug",
         .root_module = debug_mod,
+        .use_llvm = debug_use_llvm,
     });
     const run_debug = b.addRunArtifact(debug_exe);
     debug_step.dependOn(&run_debug.step);
 }
 
-fn buildAllTargets(b: *std.Build, optimize: std.builtin.OptimizeMode) void {
+fn buildAllTargets(b: *std.Build, optimize: std.builtin.OptimizeMode, build_options: *std.Build.Step.Options) void {
     for (SUPPORTED_TARGETS) |supported_target| {
-        buildTarget(b, supported_target.zig_target, supported_target.output_name, supported_target.description, optimize) catch |err| {
+        buildTarget(
+            b,
+            supported_target.zig_target,
+            supported_target.output_name,
+            supported_target.description,
+            optimize,
+            build_options,
+        ) catch |err| {
             std.debug.print("Failed to build target {s}: {}\n", .{ supported_target.description, err });
             continue;
         };
     }
 }
 
-fn buildNativeTarget(b: *std.Build, optimize: std.builtin.OptimizeMode) void {
+fn buildNativeTarget(b: *std.Build, optimize: std.builtin.OptimizeMode, build_options: *std.Build.Step.Options) void {
     // Find the matching supported target for the native platform
     const native_arch = @tagName(builtin.cpu.arch);
     const native_os = @tagName(builtin.os.tag);
@@ -168,7 +206,14 @@ fn buildNativeTarget(b: *std.Build, optimize: std.builtin.OptimizeMode) void {
         if (std.mem.indexOf(u8, supported_target.zig_target, native_arch) != null and
             std.mem.indexOf(u8, supported_target.zig_target, native_os) != null)
         {
-            buildTarget(b, supported_target.zig_target, supported_target.output_name, supported_target.description, optimize) catch |err| {
+            buildTarget(
+                b,
+                supported_target.zig_target,
+                supported_target.output_name,
+                supported_target.description,
+                optimize,
+                build_options,
+            ) catch |err| {
                 std.debug.print("Failed to build native target {s}: {}\n", .{ supported_target.description, err });
             };
             return;
@@ -178,17 +223,29 @@ fn buildNativeTarget(b: *std.Build, optimize: std.builtin.OptimizeMode) void {
     std.debug.print("No matching supported target for native platform ({s}-{s})\n", .{ native_arch, native_os });
 }
 
-fn buildSingleTarget(b: *std.Build, target_str: []const u8, optimize: std.builtin.OptimizeMode) !void {
+fn buildSingleTarget(
+    b: *std.Build,
+    target_str: []const u8,
+    optimize: std.builtin.OptimizeMode,
+    build_options: *std.Build.Step.Options,
+) !void {
     // Check if it matches a known target, use its output_name
     for (SUPPORTED_TARGETS) |supported_target| {
         if (std.mem.eql(u8, target_str, supported_target.zig_target)) {
-            try buildTarget(b, supported_target.zig_target, supported_target.output_name, supported_target.description, optimize);
+            try buildTarget(
+                b,
+                supported_target.zig_target,
+                supported_target.output_name,
+                supported_target.description,
+                optimize,
+                build_options,
+            );
             return;
         }
     }
     // Custom target - use target string as output name
     const description = try std.fmt.allocPrint(b.allocator, "Custom target: {s}", .{target_str});
-    try buildTarget(b, target_str, target_str, description, optimize);
+    try buildTarget(b, target_str, target_str, description, optimize, build_options);
 }
 
 fn buildTarget(
@@ -197,6 +254,7 @@ fn buildTarget(
     output_name: []const u8,
     description: []const u8,
     optimize: std.builtin.OptimizeMode,
+    build_options: *std.Build.Step.Options,
 ) !void {
     const target_query = try std.Target.Query.parse(.{ .arch_os_abi = zig_target });
     const target = b.resolveTargetQuery(target_query);
@@ -207,7 +265,7 @@ fn buildTarget(
         .optimize = optimize,
     });
 
-    applyDependencies(b, module, optimize, target);
+    applyDependencies(b, module, optimize, target, build_options);
 
     const lib = b.addLibrary(.{
         .name = LIB_NAME,

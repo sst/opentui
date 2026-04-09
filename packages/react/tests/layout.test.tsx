@@ -1,7 +1,7 @@
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, mock } from "bun:test"
 import { useState } from "react"
 import { act } from "react"
-import { testRender } from "../src/test-utils"
+import { testRender } from "../src/test-utils.js"
 
 let testSetup: Awaited<ReturnType<typeof testRender>>
 
@@ -224,6 +224,51 @@ describe("React Renderer | Layout Tests", () => {
       await testSetup.renderOnce()
       const frame = testSetup.captureCharFrame()
       expect(frame).toMatchSnapshot()
+    })
+
+    it("should support focusable prop and controlled focus state", async () => {
+      let boxRef: any
+      let setFocused: (value: boolean) => void
+
+      function TestComponent() {
+        const [focused, _setFocused] = useState(false)
+        setFocused = _setFocused
+
+        return (
+          <box
+            ref={(r) => {
+              boxRef = r
+            }}
+            focusable
+            focused={focused}
+            style={{ width: 10, height: 5, border: true }}
+          />
+        )
+      }
+
+      testSetup = await testRender(<TestComponent />, {
+        width: 15,
+        height: 8,
+      })
+
+      await testSetup.renderOnce()
+
+      expect(boxRef.focusable).toBe(true)
+      expect(boxRef.focused).toBe(false)
+
+      act(() => {
+        setFocused(true)
+      })
+      await testSetup.renderOnce()
+
+      expect(boxRef.focused).toBe(true)
+
+      act(() => {
+        setFocused(false)
+      })
+      await testSetup.renderOnce()
+
+      expect(boxRef.focused).toBe(false)
     })
   })
 

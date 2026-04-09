@@ -16,10 +16,10 @@ import {
   type RenderContext,
   type TextNodeOptions,
 } from "@opentui/core"
-import type { RenderableConstructor } from "../types/elements"
-export * from "./hooks"
-export * from "./extras"
-export * from "./slot"
+import type { RenderableConstructor } from "../types/elements.js"
+export * from "./hooks.js"
+export * from "./extras.js"
+export * from "./slot.js"
 
 class SpanRenderable extends TextNodeRenderable {
   constructor(
@@ -139,4 +139,4 @@ export function getComponentCatalogue(): ComponentCatalogue {
   return componentCatalogue
 }
 
-export type { ExtendedComponentProps, ExtendedIntrinsicElements, RenderableConstructor } from "../types/elements"
+export type { ExtendedComponentProps, ExtendedIntrinsicElements, RenderableConstructor } from "../types/elements.js"

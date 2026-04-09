@@ -6,9 +6,9 @@ import {
   RGBA,
   TextRenderable,
   type KeyEvent,
-} from "../index"
-import { renderFontToFrameBuffer } from "../lib/ascii.font"
-import { setupCommonDemoKeys } from "./lib/standalone-keys"
+} from "../index.js"
+import { renderFontToFrameBuffer } from "../lib/ascii.font.js"
+import { setupCommonDemoKeys } from "./lib/standalone-keys.js"
 
 let scrollY = 0
 let contentHeight = 56

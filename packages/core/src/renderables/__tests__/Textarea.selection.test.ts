@@ -1,9 +1,9 @@
 import { describe, expect, it, beforeEach, afterEach } from "bun:test"
-import { createTestRenderer, type TestRenderer, type MockMouse, type MockInput } from "../../testing/test-renderer"
-import { createTextareaRenderable } from "./renderable-test-utils"
-import { RGBA } from "../../lib/RGBA"
-import { OptimizedBuffer } from "../../buffer"
-import { TextRenderable } from "../Text"
+import { createTestRenderer, type TestRenderer, type MockMouse, type MockInput } from "../../testing/test-renderer.js"
+import { createTextareaRenderable } from "./renderable-test-utils.js"
+import { RGBA } from "../../lib/RGBA.js"
+import { OptimizedBuffer } from "../../buffer.js"
+import { TextRenderable } from "../Text.js"
 
 let currentRenderer: TestRenderer
 let renderOnce: () => Promise<void>
@@ -218,13 +218,14 @@ describe("Textarea - Selection Tests", () => {
       buffer.destroy()
     })
 
-    // It's flaky
     it("should handle viewport-aware selection correctly", async () => {
       const { textarea: editor } = await createTextareaRenderable(currentRenderer, renderOnce, {
         initialValue: Array.from({ length: 15 }, (_, i) => `Line ${i}`).join("\n"),
         width: 40,
         height: 5,
         selectable: true,
+        scrollMargin: 0,
+        scrollSpeed: 0,
       })
 
       editor.gotoLine(10)
@@ -428,6 +429,7 @@ describe("Textarea - Selection Tests", () => {
         width: 40,
         height: 5,
         selectable: true,
+        scrollSpeed: 0,
       })
 
       editor.gotoLine(20)
@@ -910,7 +912,7 @@ describe("Textarea - Selection Tests", () => {
     })
 
     it("should handle cross-renderable selection from bottom-left text to top-right text", async () => {
-      const { BoxRenderable } = await import("../Box")
+      const { BoxRenderable } = await import("../Box.js")
 
       const bottomText = new TextRenderable(currentRenderer, {
         id: "bottom-instructions",
@@ -974,7 +976,7 @@ describe("Textarea - Selection Tests", () => {
 
       expect(bottomText.hasSelection()).toBe(true)
       const bottomSelected = bottomText.getSelectedText()
-      expect(bottomSelected).toBe("Click and ")
+      expect(bottomSelected).toBe("Click and d")
 
       expect(codeText1.hasSelection()).toBe(false)
 
@@ -1337,6 +1339,51 @@ describe("Textarea - Selection Tests", () => {
       expect(cursorAfterResize.visualCol).toBeLessThan(editor.width)
 
       textBelow.destroy()
+      editor.destroy()
+    })
+  })
+
+  describe("Selection Preserved on Viewport Scroll", () => {
+    it("should preserve selection when scrolling viewport", async () => {
+      const { textarea: editor } = await createTextareaRenderable(currentRenderer, renderOnce, {
+        initialValue: Array.from({ length: 50 }, (_, i) => `Line ${i}`).join("\n"),
+        width: 40,
+        height: 10,
+        selectable: true,
+      })
+
+      editor.focus()
+      await renderOnce()
+
+      // Select all text using keyboard (Cmd+Shift+Down)
+      currentMockInput.pressKey("ARROW_DOWN", { shift: true, super: true })
+      await renderOnce()
+
+      const selectionBefore = editor.getSelection()
+      const selectedTextBefore = editor.getSelectedText()
+
+      expect(selectionBefore).not.toBeNull()
+      expect(selectedTextBefore).toContain("Line 0")
+      expect(selectedTextBefore).toContain("Line 49")
+
+      // Start renderer to simulate real app with continuous render loop
+      currentRenderer.start()
+
+      // Scroll up with mouse wheel
+      await currentMouse.scroll(editor.x, editor.y + 1, "up")
+      await Bun.sleep(100)
+
+      const selectionAfter = editor.getSelection()
+      const selectedTextAfter = editor.getSelectedText()
+
+      currentRenderer.pause()
+
+      // Selection should not change when scrolling viewport
+      expect(selectionAfter).not.toBeNull()
+      expect(selectionAfter!.start).toBe(selectionBefore!.start)
+      expect(selectionAfter!.end).toBe(selectionBefore!.end)
+      expect(selectedTextAfter).toBe(selectedTextBefore)
+
       editor.destroy()
     })
   })

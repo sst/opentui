@@ -1,0 +1,68 @@
+---
+title: ScrollBar
+description: Standalone scrollbar with arrows and keyboard control
+order: 8
+---
+
+# ScrollBar
+
+A standalone scrollbar component with optional arrows, keyboard navigation, and a draggable thumb.
+
+## Basic usage
+
+### Renderable API
+
+```typescript
+import { ScrollBarRenderable, createCliRenderer } from "@opentui/core"
+
+const renderer = await createCliRenderer()
+
+const scrollbar = new ScrollBarRenderable(renderer, {
+  id: "scrollbar",
+  orientation: "vertical",
+  height: 10,
+  showArrows: true,
+  trackOptions: {
+    backgroundColor: "#222222",
+    foregroundColor: "#888888",
+  },
+  onChange: (position) => {
+    console.log("Scroll position:", position)
+  },
+})
+
+// Connect the scrollbar to your content
+scrollbar.scrollSize = 200
+scrollbar.viewportSize = 20
+scrollbar.scrollPosition = 0
+
+renderer.root.add(scrollbar)
+scrollbar.focus()
+```
+
+## Keyboard controls
+
+When focused, the scrollbar responds to:
+
+- `Up`/`Down` or `k`/`j` for vertical bars
+- `Left`/`Right` or `h`/`l` for horizontal bars
+- `PageUp`/`PageDown` for larger jumps
+- `Home`/`End` to jump to start/end
+
+## Construct API
+
+> Not available yet. Use `ScrollBarRenderable` for now.
+
+## Properties
+
+| Property         | Type                           | Default | Description                            |
+| ---------------- | ------------------------------ | ------- | -------------------------------------- |
+| `orientation`    | `"vertical"` or `"horizontal"` | -       | Scrollbar direction                    |
+| `showArrows`     | `boolean`                      | `false` | Show arrow buttons                     |
+| `arrowOptions`   | `ArrowOptions`                 | -       | Styling for arrow buttons              |
+| `trackOptions`   | `Partial<SliderOptions>`       | -       | Styling for the track and thumb        |
+| `scrollSize`     | `number`                       | `0`     | Total scrollable size                  |
+| `viewportSize`   | `number`                       | `0`     | Visible size of the viewport           |
+| `scrollPosition` | `number`                       | `0`     | Current scroll position                |
+| `scrollStep`     | `number`                       | -       | Step size when `scrollBy(..., "step")` |
+| `onChange`       | `(position: number) => void`   | -       | Fired when scroll position changes     |

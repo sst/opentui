@@ -1,10 +1,10 @@
 import { describe, expect, it, beforeEach, afterEach } from "bun:test"
-import { TextRenderable, type TextOptions } from "./Text"
-import { TextNodeRenderable } from "./TextNode"
-import { RGBA } from "../lib/RGBA"
-import { stringToStyledText, StyledText } from "../lib/styled-text"
-import { createTestRenderer, type MockMouse, type TestRenderer } from "../testing/test-renderer"
-import { BoxRenderable } from "./Box"
+import { TextRenderable, type TextOptions } from "./Text.js"
+import { TextNodeRenderable } from "./TextNode.js"
+import { RGBA } from "../lib/RGBA.js"
+import { stringToStyledText, StyledText } from "../lib/styled-text.js"
+import { createTestRenderer, type MockMouse, type TestRenderer } from "../testing/test-renderer.js"
+import { BoxRenderable } from "./Box.js"
 
 let currentRenderer: TestRenderer
 let renderOnce: () => Promise<void>
@@ -2299,6 +2299,27 @@ describe("TextRenderable Selection", () => {
 
       const frame = captureFrame()
       expect(frame).toMatchSnapshot()
+    })
+
+    it("regression #651: should keep multi-byte UTF-8 words intact when wrapping in word mode", async () => {
+      resize(80, 24)
+
+      await createTextRenderable(currentRenderer, {
+        content: "gyorskiszolgáló éttermek közül. Azóta alapjaiban értelmeztük újra a vendéglátást",
+        wrapMode: "word",
+        width: 40,
+        left: 0,
+        top: 0,
+      })
+
+      const lines = captureFrame()
+        .split("\n")
+        .map((line) => line.trimEnd())
+        .filter((line) => line.length > 0)
+
+      const expectedLines = ["gyorskiszolgáló éttermek közül. Azóta", "alapjaiban értelmeztük újra a", "vendéglátást"]
+
+      expect(lines).toEqual(expectedLines)
     })
 
     it("should dynamically change wrap mode", async () => {

@@ -2,6 +2,7 @@ const std = @import("std");
 const text_buffer = @import("../text-buffer.zig");
 const text_buffer_view = @import("../text-buffer-view.zig");
 const gp = @import("../grapheme.zig");
+const link = @import("../link.zig");
 
 const TextBuffer = text_buffer.UnifiedTextBuffer;
 const TextBufferView = text_buffer_view.UnifiedTextBufferView;
@@ -9,6 +10,8 @@ const TextBufferView = text_buffer_view.UnifiedTextBufferView;
 test "word wrap complexity - width changes are O(n)" {
     const pool = gp.initGlobalPool(std.testing.allocator);
     defer gp.deinitGlobalPool();
+    const link_pool = link.initGlobalLinkPool(std.testing.allocator);
+    defer link.deinitGlobalLinkPool();
 
     const size: usize = 100_000;
 
@@ -16,7 +19,7 @@ test "word wrap complexity - width changes are O(n)" {
     defer std.testing.allocator.free(text);
     @memset(text, 'x');
 
-    var tb = try TextBuffer.init(std.testing.allocator, pool, .wcwidth);
+    var tb = try TextBuffer.init(std.testing.allocator, pool, link_pool, .wcwidth);
     defer tb.deinit();
     try tb.setText(text);
 
@@ -66,8 +69,10 @@ test "word wrap complexity - width changes are O(n)" {
 test "word wrap - virtual line count correctness" {
     const pool = gp.initGlobalPool(std.testing.allocator);
     defer gp.deinitGlobalPool();
+    const link_pool = link.initGlobalLinkPool(std.testing.allocator);
+    defer link.deinitGlobalLinkPool();
 
-    var tb = try TextBuffer.init(std.testing.allocator, pool, .wcwidth);
+    var tb = try TextBuffer.init(std.testing.allocator, pool, link_pool, .wcwidth);
     defer tb.deinit();
 
     var view = try TextBufferView.init(std.testing.allocator, tb);

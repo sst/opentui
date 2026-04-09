@@ -1,5 +1,10 @@
-import type { CliRenderer } from "../renderer"
-import { ANSI } from "../ansi"
+import { Buffer } from "node:buffer"
+import type { CliRenderer } from "../renderer.js"
+import { ANSI } from "../ansi.js"
+
+export function pasteBytes(text: string): Uint8Array {
+  return Uint8Array.from(Buffer.from(text))
+}
 
 export const KeyCodes = {
   // Control keys
@@ -292,6 +297,14 @@ export function createMockKeys(renderer: CliRenderer, options?: MockKeysOptions)
       } else if (keyCode.length === 1) {
         // For regular characters and single-char control codes with modifiers
         let char = keyCode
+
+        // Shift+Tab produces the back-tab escape sequence \x1b[Z in standard ANSI terminals
+        if (char === "\t" && modifiers.shift) {
+          // Build the base as \x1b[Z, then apply meta prefix if also pressed
+          keyCode = modifiers.meta ? "\x1b\x1b[Z" : "\x1b[Z"
+          renderer.stdin.emit("data", Buffer.from(keyCode))
+          return
+        }
 
         // Special handling for backspace with modifiers - use modifyOtherKeys format
         // Terminals send Ctrl+Backspace as CSI 27;5;127~ (or CSI 27;5;8~)

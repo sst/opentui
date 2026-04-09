@@ -1,6 +1,6 @@
-import { BoxRenderable, type CliRenderer, createCliRenderer, TextRenderable, t, fg, bold } from "../index"
-import { ScrollBoxRenderable } from "../renderables/ScrollBox"
-import { setupCommonDemoKeys } from "./lib/standalone-keys"
+import { BoxRenderable, type CliRenderer, createCliRenderer, TextRenderable, t, fg, bold } from "../index.js"
+import { ScrollBoxRenderable } from "../renderables/ScrollBox.js"
+import { setupCommonDemoKeys } from "./lib/standalone-keys.js"
 
 let scrollBox: ScrollBoxRenderable | null = null
 let renderer: CliRenderer | null = null

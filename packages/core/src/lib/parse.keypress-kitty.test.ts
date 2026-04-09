@@ -1,5 +1,5 @@
 import { test, expect } from "bun:test"
-import { parseKeypress, type ParseKeypressOptions } from "./parse.keypress"
+import { parseKeypress, type ParseKeypressOptions } from "./parse.keypress.js"
 
 test("parseKeypress - Kitty keyboard protocol disabled by default", () => {
   // Kitty sequences should fall back to regular parsing when disabled
@@ -186,6 +186,23 @@ test("parseKeypress - Kitty keyboard caps lock", () => {
   expect(result.capsLock).toBe(true)
 })
 
+test("parseKeypress - Kitty keyboard lock keys", () => {
+  const options: ParseKeypressOptions = { useKittyKeyboard: true }
+
+  const cases = [
+    ["\x1b[57358u", "capslock", "[57358u"],
+    ["\x1b[57359u", "scrolllock", "[57359u"],
+    ["\x1b[57360u", "numlock", "[57360u"],
+  ] as const
+
+  for (const [sequence, name, code] of cases) {
+    const result = parseKeypress(sequence, options)!
+    expect(result.name).toBe(name)
+    expect(result.code).toBe(code)
+    expect(result.source).toBe("kitty")
+  }
+})
+
 test("parseKeypress - Kitty keyboard num lock", () => {
   const options: ParseKeypressOptions = { useKittyKeyboard: true }
   const result = parseKeypress("\x1b[97;129u", options)! // modifier 129 - 1 = 128 = num lock
@@ -221,10 +238,10 @@ test("parseKeypress - Kitty keyboard invalid codepoint", () => {
 test("parseKeypress - Kitty keyboard keypad keys", () => {
   const options: ParseKeypressOptions = { useKittyKeyboard: true }
 
-  const kp0 = parseKeypress("\x1b[57400u", options)
+  const kp0 = parseKeypress("\x1b[57399u", options)
   expect(kp0?.name).toBe("kp0")
 
-  const kpEnter = parseKeypress("\x1b[57415u", options)
+  const kpEnter = parseKeypress("\x1b[57414u", options)
   expect(kpEnter?.name).toBe("kpenter")
 })
 
@@ -403,6 +420,29 @@ test("parseKeypress - Kitty keyboard invalid event types", () => {
   expect(emptyEvent.eventType).toBe("press")
 })
 
+test("parseKeypress - Kitty repeat/release matrix", () => {
+  const options: ParseKeypressOptions = { useKittyKeyboard: true }
+  const cases = [
+    ["\x1b[97;1:2u", "a", "press", true, false, false, false],
+    ["\x1b[97;5:3u", "a", "release", false, true, false, false],
+    ["\x1b[1;2:2A", "up", "press", true, false, true, false],
+    ["\x1b[1;5:3B", "down", "release", false, true, false, false],
+    ["\x1b[5;1:2~", "pageup", "press", true, false, false, false],
+    ["\x1b[3;5:3~", "delete", "release", false, true, false, false],
+  ] as const
+
+  for (const [sequence, name, eventType, repeated, ctrl, shift, meta] of cases) {
+    const result = parseKeypress(sequence, options)!
+    expect(result.name).toBe(name)
+    expect(result.eventType).toBe(eventType)
+    expect(result.repeated === true).toBe(repeated)
+    expect(result.ctrl).toBe(ctrl)
+    expect(result.shift).toBe(shift)
+    expect(result.meta).toBe(meta)
+    expect(result.source).toBe("kitty")
+  }
+})
+
 // Test progressive enhancement (non-CSI u sequences)
 // Note: We don't implement this yet, but these should fall back to regular parsing
 test("parseKeypress - Kitty progressive enhancement fallback", () => {
@@ -485,16 +525,16 @@ test("parseKeypress - Kitty sequences are NOT filtered by terminal response filt
 
   // All keypad keys
   const keypadKeys = [
-    [57400, "kp0"],
-    [57401, "kp1"],
-    [57409, "kp9"],
-    [57410, "kpdecimal"],
-    [57411, "kpdivide"],
-    [57412, "kpmultiply"],
-    [57413, "kpminus"],
-    [57414, "kpplus"],
-    [57415, "kpenter"],
-    [57416, "kpequal"],
+    [57399, "kp0"],
+    [57400, "kp1"],
+    [57408, "kp9"],
+    [57409, "kpdecimal"],
+    [57410, "kpdivide"],
+    [57411, "kpmultiply"],
+    [57412, "kpminus"],
+    [57413, "kpplus"],
+    [57414, "kpenter"],
+    [57415, "kpequal"],
   ] as const
   for (const [code, expectedName] of keypadKeys) {
     const result = parseKeypress(`\x1b[${code}u`, options)

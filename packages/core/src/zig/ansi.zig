@@ -60,8 +60,13 @@ pub const ANSI = struct {
 
     pub const resetCursorColor = "\x1b]112\x07";
     pub const resetCursorColorFallback = "\x1b]12;default\x07";
+    pub const resetMousePointer = "\x1b]22;\x07";
     pub const saveCursorState = "\x1b[s";
     pub const restoreCursorState = "\x1b[u";
+
+    pub fn setMousePointerOutput(writer: anytype, shape: []const u8) AnsiError!void {
+        writer.print("\x1b]22;{s}\x07", .{ shape }) catch return AnsiError.WriteFailed;
+    }
 
     pub const switchToAlternateScreen = "\x1b[?1049h";
     pub const switchToMainScreen = "\x1b[?1049l";
@@ -102,6 +107,10 @@ pub const ANSI = struct {
     // tmux DCS passthrough wrapper (ESC chars doubled)
     pub const tmuxDcsStart = "\x1bPtmux;";
     pub const tmuxDcsEnd = "\x1b\\";
+
+    // GNU Screen DCS passthrough wrapper (no tmux prefix)
+    pub const screenDcsStart = "\x1bP";
+    pub const screenDcsEnd = "\x1b\\";
 
     pub fn wrapForTmux(comptime seq: []const u8) []const u8 {
         comptime {

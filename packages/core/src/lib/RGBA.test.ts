@@ -1,5 +1,5 @@
 import { test, expect, describe } from "bun:test"
-import { RGBA, hexToRgb, rgbToHex, hsvToRgb, parseColor } from "./RGBA"
+import { RGBA, hexToRgb, rgbToHex, hsvToRgb, parseColor } from "./RGBA.js"
 
 describe("RGBA class", () => {
   describe("constructor", () => {

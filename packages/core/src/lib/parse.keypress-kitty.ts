@@ -1,7 +1,7 @@
 // Kitty Keyboard Protocol parser
 // Based on https://sw.kovidgoyal.net/kitty/keyboard-protocol/
 
-import type { ParsedKey } from "./parse.keypress"
+import type { ParsedKey } from "./parse.keypress.js"
 
 const kittyKeyMap: Record<number, string> = {
   // Standard keys
@@ -25,6 +25,12 @@ const kittyKeyMap: Record<number, string> = {
   57355: "pagedown",
   57356: "home",
   57357: "end",
+  57358: "capslock",
+  57359: "scrolllock",
+  57360: "numlock",
+  57361: "printscreen",
+  57362: "pause",
+  57363: "menu",
 
   // Function keys
   57364: "f1",
@@ -64,23 +70,35 @@ const kittyKeyMap: Record<number, string> = {
   57398: "f35",
 
   // Keypad
-  57400: "kp0",
-  57401: "kp1",
-  57402: "kp2",
-  57403: "kp3",
-  57404: "kp4",
-  57405: "kp5",
-  57406: "kp6",
-  57407: "kp7",
-  57408: "kp8",
-  57409: "kp9",
-  57410: "kpdecimal",
-  57411: "kpdivide",
-  57412: "kpmultiply",
-  57413: "kpminus",
-  57414: "kpplus",
-  57415: "kpenter",
-  57416: "kpequal",
+  57399: "kp0",
+  57400: "kp1",
+  57401: "kp2",
+  57402: "kp3",
+  57403: "kp4",
+  57404: "kp5",
+  57405: "kp6",
+  57406: "kp7",
+  57407: "kp8",
+  57408: "kp9",
+  57409: "kpdecimal",
+  57410: "kpdivide",
+  57411: "kpmultiply",
+  57412: "kpminus",
+  57413: "kpplus",
+  57414: "kpenter",
+  57415: "kpequal",
+  57416: "kpseparator",
+  57417: "kpleft",
+  57418: "kpright",
+  57419: "kpup",
+  57420: "kpdown",
+  57421: "kppageup",
+  57422: "kppagedown",
+  57423: "kphome",
+  57424: "kpend",
+  57425: "kpinsert",
+  57426: "kpdelete",
+  57427: "clear",
 
   // Media keys
   57428: "mediaplay",
@@ -148,9 +166,9 @@ const functionalKeyMap: Record<string, string> = {
   D: "left",
   H: "home",
   F: "end",
+  E: "clear",
   P: "f1",
   Q: "f2",
-  R: "f3",
   S: "f4",
 }
 
@@ -176,6 +194,8 @@ const tildeKeyMap: Record<string, string> = {
   "21": "f10",
   "23": "f11",
   "24": "f12",
+  "29": "menu",
+  "57427": "clear",
 }
 
 /**
@@ -319,6 +339,8 @@ export function parseKittyKeyboard(sequence: string): ParsedKey | null {
   if (knownKey) {
     key.name = knownKey
     key.code = `[${codepoint}u`
+  } else if (codepoint === 0) {
+    key.name = ""
   } else {
     // It's a Unicode character
     if (codepoint > 0 && codepoint <= 0x10ffff) {
@@ -403,7 +425,14 @@ export function parseKittyKeyboard(sequence: string): ParsedKey | null {
   }
 
   if (text) {
+    if (codepoint === 0) {
+      key.name = text
+    }
     key.sequence = text
+  }
+
+  if (codepoint === 0 && text === "") {
+    return null
   }
 
   return key

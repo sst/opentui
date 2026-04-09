@@ -1,9 +1,9 @@
-import type { StyledText } from "./lib/styled-text"
-import { RGBA } from "./lib/RGBA"
-import { resolveRenderLib, type LineInfo, type RenderLib } from "./zig"
+import type { StyledText } from "./lib/styled-text.js"
+import { RGBA } from "./lib/RGBA.js"
+import { resolveRenderLib, type LineInfo, type RenderLib } from "./zig.js"
 import { type Pointer } from "bun:ffi"
-import { type WidthMethod, type Highlight } from "./types"
-import type { SyntaxStyle } from "./syntax-style"
+import { type WidthMethod, type Highlight } from "./types.js"
+import type { SyntaxStyle } from "./syntax-style.js"
 
 export interface TextChunk {
   __isChunk: true
@@ -86,16 +86,7 @@ export class TextBuffer {
   public setStyledText(text: StyledText): void {
     this.guard()
 
-    // TODO: This should not be necessary anymore, the struct packing should take care of this
-    const chunks = text.chunks.map((chunk) => ({
-      text: chunk.text,
-      fg: chunk.fg || null,
-      bg: chunk.bg || null,
-      attributes: chunk.attributes ?? 0,
-      link: chunk.link,
-    }))
-
-    this.lib.textBufferSetStyledText(this.bufferPtr, chunks)
+    this.lib.textBufferSetStyledText(this.bufferPtr, text.chunks)
 
     this._length = this.lib.textBufferGetLength(this.bufferPtr)
     this._byteSize = this.lib.textBufferGetByteSize(this.bufferPtr)

@@ -1,8 +1,8 @@
-import { mkdir, writeFile } from "fs/promises"
+import { mkdir, readFile, writeFile } from "fs/promises"
 import * as path from "path"
 
 export interface DownloadResult {
-  content?: ArrayBuffer
+  content?: Buffer
   filePath?: string
   error?: string
 }
@@ -45,7 +45,7 @@ export class DownloadUtils {
       await mkdir(path.dirname(cacheFile), { recursive: true })
 
       try {
-        const cachedContent = await Bun.file(cacheFile).arrayBuffer()
+        const cachedContent = await readFile(cacheFile)
         if (cachedContent.byteLength > 0) {
           console.log(`Loaded from cache: ${cacheFile} (${source})`)
           return { content: cachedContent, filePath: cacheFile }
@@ -60,7 +60,7 @@ export class DownloadUtils {
         if (!response.ok) {
           return { error: `Failed to fetch from ${source}: ${response.statusText}` }
         }
-        const content = await response.arrayBuffer()
+        const content = Buffer.from(await response.arrayBuffer())
 
         try {
           await writeFile(cacheFile, Buffer.from(content))
@@ -76,7 +76,7 @@ export class DownloadUtils {
     } else {
       try {
         console.log(`Loading from local path: ${source}`)
-        const content = await Bun.file(source).arrayBuffer()
+        const content = await readFile(source)
         return { content, filePath: source }
       } catch (error) {
         return { error: `Error loading from local path ${source}: ${error}` }
@@ -99,7 +99,7 @@ export class DownloadUtils {
         if (!response.ok) {
           return { error: `Failed to fetch from ${source}: ${response.statusText}` }
         }
-        const content = await response.arrayBuffer()
+        const content = Buffer.from(await response.arrayBuffer())
 
         await writeFile(targetPath, Buffer.from(content))
         console.log(`Downloaded: ${source} -> ${targetPath}`)
@@ -111,7 +111,7 @@ export class DownloadUtils {
     } else {
       try {
         console.log(`Copying from local path: ${source}`)
-        const content = await Bun.file(source).arrayBuffer()
+        const content = await readFile(source)
         await writeFile(targetPath, Buffer.from(content))
         return { content, filePath: targetPath }
       } catch (error) {

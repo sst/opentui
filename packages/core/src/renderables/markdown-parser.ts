@@ -28,10 +28,10 @@ export function parseMarkdownIncremental(
   let reuseCount = 0
 
   for (const token of prevState.tokens) {
-    const tokenEnd = offset + token.raw.length
-    if (tokenEnd <= newContent.length && newContent.slice(offset, tokenEnd) === token.raw) {
+    const tokenLength = token.raw.length
+    if (offset + tokenLength <= newContent.length && newContent.startsWith(token.raw, offset)) {
       reuseCount++
-      offset = tokenEnd
+      offset += tokenLength
     } else {
       break
     }
@@ -56,6 +56,11 @@ export function parseMarkdownIncremental(
     const newTokens = Lexer.lex(remainingContent, { gfm: true }) as MarkedToken[]
     return { content: newContent, tokens: [...stableTokens, ...newTokens] }
   } catch {
-    return { content: newContent, tokens: stableTokens }
+    try {
+      const fullTokens = Lexer.lex(newContent, { gfm: true }) as MarkedToken[]
+      return { content: newContent, tokens: fullTokens }
+    } catch {
+      return { content: newContent, tokens: [] }
+    }
   }
 }

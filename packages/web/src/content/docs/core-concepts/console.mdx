@@ -1,0 +1,117 @@
+---
+title: Console overlay
+description: Built-in debugging console for TUI applications
+order: 4
+---
+
+# Console overlay
+
+OpenTUI includes a built-in console overlay that captures all `console.log`, `console.info`, `console.warn`, `console.error`, and `console.debug` calls. You can position the console at any edge of the terminal. It supports scrolling and focus management.
+
+## Basic usage
+
+```typescript
+import { createCliRenderer, ConsolePosition } from "@opentui/core"
+
+const renderer = await createCliRenderer({
+  consoleOptions: {
+    position: ConsolePosition.BOTTOM,
+    sizePercent: 30,
+  },
+})
+
+// These appear in the overlay instead of stdout
+console.log("This appears in the overlay")
+console.error("Errors are color-coded red")
+console.warn("Warnings appear in yellow")
+```
+
+## Configuration options
+
+```typescript
+const renderer = await createCliRenderer({
+  consoleOptions: {
+    position: ConsolePosition.BOTTOM, // Position on screen
+    sizePercent: 30, // Size as percentage of terminal
+    colorInfo: "#00FFFF", // Color for console.info
+    colorWarn: "#FFFF00", // Color for console.warn
+    colorError: "#FF0000", // Color for console.error
+    startInDebugMode: false, // Show file/line info in logs
+  },
+})
+```
+
+## Console positions
+
+```typescript
+import { ConsolePosition } from "@opentui/core"
+
+ConsolePosition.TOP // Dock at top
+ConsolePosition.BOTTOM // Dock at bottom
+ConsolePosition.LEFT // Dock at left
+ConsolePosition.RIGHT // Dock at right
+```
+
+## Toggling the console
+
+Toggle the console overlay in code:
+
+```typescript
+// Toggle visibility and focus
+renderer.console.toggle()
+
+// When open but not focused, toggle() focuses the console
+// When focused, toggle() closes the console
+```
+
+## Console shortcuts
+
+When the console is focused:
+
+| Key        | Action                     |
+| ---------- | -------------------------- |
+| Arrow keys | Scroll through log history |
+| `+`        | Increase console size      |
+| `-`        | Decrease console size      |
+
+## Keybinding for toggle
+
+Add a keyboard shortcut to toggle the console:
+
+```typescript
+renderer.keyInput.on("keypress", (key) => {
+  // Toggle with backtick key
+  if (key.name === "`") {
+    renderer.console.toggle()
+  }
+
+  // Or with a modifier
+  if (key.ctrl && key.name === "l") {
+    renderer.console.toggle()
+  }
+})
+```
+
+## Why use the console?
+
+Terminal UI applications capture stdout for rendering. Regular `console.log` calls would interfere with your interface. The console overlay solves this problem:
+
+- Captures all console output without disrupting the UI
+- Displays logs in a dedicated overlay area
+- Color-codes different log levels for easy identification
+- Lets you scroll through history for debugging
+
+## Environment variables
+
+Control console behavior with environment variables:
+
+```bash
+# Disable console capture entirely
+OTUI_USE_CONSOLE=false bun app.ts
+
+# Start with console visible
+SHOW_CONSOLE=true bun app.ts
+
+# Dump captured output on exit
+OTUI_DUMP_CAPTURES=true bun app.ts
+```

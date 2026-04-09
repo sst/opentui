@@ -78,7 +78,7 @@ export type GetNonStyledProperties<TConstructor> =
   TConstructor extends RenderableConstructor<TextRenderable>
     ? NonStyledProps | "content"
     : TConstructor extends RenderableConstructor<BoxRenderable>
-      ? NonStyledProps | "title"
+      ? NonStyledProps | "title" | "bottomTitle"
       : TConstructor extends RenderableConstructor<ASCIIFontRenderable>
         ? NonStyledProps | "text" | "selectable"
         : TConstructor extends RenderableConstructor<InputRenderable>
@@ -131,7 +131,9 @@ export type LinkProps = SpanProps & {
 
 export type LineBreakProps = Pick<SpanProps, "id">
 
-export type BoxProps = ComponentProps<ContainerProps<BoxOptions>, BoxRenderable>
+export type BoxProps = ComponentProps<ContainerProps<BoxOptions>, BoxRenderable> & {
+  focused?: boolean
+}
 
 export type InputProps = ComponentProps<InputRenderableOptions, InputRenderable> & {
   focused?: boolean

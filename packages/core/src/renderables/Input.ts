@@ -1,17 +1,20 @@
-import type { PasteEvent } from "../lib/KeyHandler"
-import type { RenderContext } from "../types"
+import type { PasteEvent } from "../lib/KeyHandler.js"
+import { decodePasteBytes, stripAnsiSequences } from "../lib/paste.js"
+import type { RenderContext } from "../types.js"
 import {
   TextareaRenderable,
   type TextareaOptions,
   type TextareaAction,
   type KeyBinding as TextareaKeyBinding,
-} from "./Textarea"
+} from "./Textarea.js"
 
 export type InputAction = TextareaAction
 export type InputKeyBinding = TextareaKeyBinding
 
-export interface InputRenderableOptions
-  extends Omit<TextareaOptions, "height" | "minHeight" | "maxHeight" | "initialValue"> {
+export interface InputRenderableOptions extends Omit<
+  TextareaOptions,
+  "height" | "minHeight" | "maxHeight" | "initialValue"
+> {
   /** Initial text value (newlines are stripped) */
   value?: string
   /** Maximum number of characters allowed */
@@ -93,7 +96,7 @@ export class InputRenderable extends TextareaRenderable {
    * Handle paste - strip newlines and enforce maxLength
    */
   public override handlePaste(event: PasteEvent): void {
-    const sanitized = event.text.replace(/[\n\r]/g, "")
+    const sanitized = stripAnsiSequences(decodePasteBytes(event.bytes)).replace(/[\n\r]/g, "")
     if (sanitized) {
       this.insertText(sanitized)
     }
@@ -163,6 +166,48 @@ export class InputRenderable extends TextareaRenderable {
 
   public override deleteChar(): boolean {
     const result = super.deleteChar()
+    this.emit(InputRenderableEvents.INPUT, this.plainText)
+    return result
+  }
+
+  public override deleteLine(): boolean {
+    const result = super.deleteLine()
+    this.emit(InputRenderableEvents.INPUT, this.plainText)
+    return result
+  }
+
+  public override deleteWordBackward(): boolean {
+    const result = super.deleteWordBackward()
+    this.emit(InputRenderableEvents.INPUT, this.plainText)
+    return result
+  }
+
+  public override deleteWordForward(): boolean {
+    const result = super.deleteWordForward()
+    this.emit(InputRenderableEvents.INPUT, this.plainText)
+    return result
+  }
+
+  public override deleteToLineStart(): boolean {
+    const result = super.deleteToLineStart()
+    this.emit(InputRenderableEvents.INPUT, this.plainText)
+    return result
+  }
+
+  public override deleteToLineEnd(): boolean {
+    const result = super.deleteToLineEnd()
+    this.emit(InputRenderableEvents.INPUT, this.plainText)
+    return result
+  }
+
+  public override undo(): boolean {
+    const result = super.undo()
+    this.emit(InputRenderableEvents.INPUT, this.plainText)
+    return result
+  }
+
+  public override redo(): boolean {
+    const result = super.redo()
     this.emit(InputRenderableEvents.INPUT, this.plainText)
     return result
   }

@@ -1,4 +1,5 @@
 import { test, expect, beforeEach, afterEach, describe, spyOn } from "bun:test"
+import { decodePasteBytes } from "../lib/paste.js"
 import {
   Renderable,
   BaseRenderable,
@@ -6,11 +7,11 @@ import {
   RenderableEvents,
   type BaseRenderableOptions,
   type RenderableOptions,
-} from "../Renderable"
-import { createTestRenderer, type TestRenderer, type MockMouse, type MockInput } from "../testing/test-renderer"
-import type { RenderContext } from "../types"
-import { TextNodeRenderable } from "../renderables/TextNode"
-import { TextRenderable } from "../renderables/Text"
+} from "../Renderable.js"
+import { createTestRenderer, type TestRenderer, type MockMouse, type MockInput } from "../testing/test-renderer.js"
+import type { RenderContext } from "../types.js"
+import { TextNodeRenderable } from "../renderables/TextNode.js"
+import { TextRenderable } from "../renderables/Text.js"
 
 export class TestBaseRenderable extends BaseRenderable {
   constructor(options: BaseRenderableOptions) {
@@ -214,6 +215,34 @@ describe("Renderable - Child Management", () => {
     parent.insertBefore(newChild, child2)
 
     expect(parent.getRenderable("newChild")).toBe(newChild)
+  })
+
+  test("insertBefore with same node as anchor should not change order", () => {
+    const parent = new TestRenderable(testRenderer, { id: "parent" })
+    const child1 = new TestRenderable(testRenderer, { id: "child1" })
+    const child2 = new TestRenderable(testRenderer, { id: "child2" })
+    const child3 = new TestRenderable(testRenderer, { id: "child3" })
+
+    parent.add(child1)
+    parent.add(child2)
+    parent.add(child3)
+
+    const childrenBefore = parent.getChildren()
+    expect(childrenBefore[0].id).toBe("child1")
+    expect(childrenBefore[1].id).toBe("child2")
+    expect(childrenBefore[2].id).toBe("child3")
+
+    // Call insertBefore with child2 as both the node and anchor
+    // This should be a no-op
+    parent.insertBefore(child3, child3)
+    parent.insertBefore(child2, child2)
+    parent.insertBefore(child1, child1)
+
+    const childrenAfter = parent.getChildren()
+    expect(childrenAfter[0].id).toBe("child1")
+    expect(childrenAfter[1].id).toBe("child2")
+    expect(childrenAfter[2].id).toBe("child3")
+    expect(parent.getChildrenCount()).toBe(3)
   })
 
   test("handles adding destroyed renderable", () => {
@@ -747,7 +776,7 @@ describe("Renderable - Focus", () => {
     await testMockInput.pasteBracketedText("test text")
 
     expect(receivedEvent).not.toBeNull()
-    expect(receivedEvent.text).toBe("test text")
+    expect(decodePasteBytes(receivedEvent.bytes)).toBe("test text")
     expect(receivedEvent.defaultPrevented).toBe(true)
     expect(handlePasteCalled).toBe(false)
   })
@@ -764,7 +793,7 @@ describe("Renderable - Focus", () => {
     await testMockInput.pasteBracketedText("handler text")
 
     expect(receivedEvent).not.toBeNull()
-    expect(receivedEvent.text).toBe("handler text")
+    expect(decodePasteBytes(receivedEvent.bytes)).toBe("handler text")
     expect(typeof receivedEvent.preventDefault).toBe("function")
   })
 

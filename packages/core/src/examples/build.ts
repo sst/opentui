@@ -1,9 +1,9 @@
 #!/usr/bin/env bun
 
-import { mkdirSync } from "fs"
-import { join, dirname } from "path"
-import { fileURLToPath } from "url"
-import { $ } from "bun"
+import { mkdirSync } from "node:fs"
+import { readFile } from "node:fs/promises"
+import { join, dirname } from "node:path"
+import { fileURLToPath } from "node:url"
 
 const __filename = fileURLToPath(import.meta.url)
 const __dirname = dirname(__filename)
@@ -25,7 +25,7 @@ const distDir = join(examplesDir, "dist")
 mkdirSync(distDir, { recursive: true })
 
 // Get version from package.json
-const packageJson = JSON.parse(await Bun.file(join(rootDir, "package.json")).text())
+const packageJson = JSON.parse(await readFile(join(rootDir, "package.json"), "utf8"))
 const version = packageJson.version
 
 // Install bun-webgpu for all platforms to ensure cross-compilation works

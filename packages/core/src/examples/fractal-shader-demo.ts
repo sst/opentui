@@ -1,7 +1,7 @@
 #!/usr/bin/env bun
 
-import { BoxRenderable, CliRenderer, createCliRenderer, RGBA, TextRenderable, type KeyEvent } from "../index"
-import { setupCommonDemoKeys } from "./lib/standalone-keys"
+import { BoxRenderable, CliRenderer, createCliRenderer, RGBA, TextRenderable, type KeyEvent } from "../index.js"
+import { setupCommonDemoKeys } from "./lib/standalone-keys.js"
 import { Scene as ThreeScene, Mesh as ThreeMesh, PerspectiveCamera, PlaneGeometry, Vector2 } from "three"
 import { MeshBasicNodeMaterial } from "three/webgpu"
 import {
@@ -21,7 +21,7 @@ import {
   Fn,
   int,
 } from "three/tsl"
-import { ThreeCliRenderer } from "../3d"
+import { ThreeCliRenderer } from "../3d.js"
 
 let engine: ThreeCliRenderer | null = null
 let sceneRoot: ThreeScene | null = null

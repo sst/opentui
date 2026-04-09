@@ -1,8 +1,8 @@
 #!/usr/bin/env bun
 
-import { createCliRenderer, RGBA, TextRenderable, BoxRenderable, FrameBufferRenderable } from "../index"
-import { ThreeCliRenderer } from "../3d/WGPURenderer"
-import { TextureUtils } from "../3d/TextureUtils"
+import { createCliRenderer, RGBA, TextRenderable, BoxRenderable, FrameBufferRenderable } from "../index.js"
+import { ThreeCliRenderer } from "../3d/WGPURenderer.js"
+import { TextureUtils } from "../3d/TextureUtils.js"
 import {
   Scene as ThreeScene,
   Mesh as ThreeMesh,

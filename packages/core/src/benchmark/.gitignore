@@ -1,0 +1,7 @@
+*.json
+!latest-quick-bench-run.json
+!latest-default-bench-run.json
+!latest-large-bench-run.json
+!latest-all-bench-run.json
+!latest-async-bench-run.json
+

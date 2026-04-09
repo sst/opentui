@@ -1,7 +1,7 @@
-import type { TextRenderable } from "../renderables/Text"
-import type { TextBuffer, TextChunk } from "../text-buffer"
-import { createTextAttributes } from "../utils"
-import { parseColor, type ColorInput } from "./RGBA"
+import type { TextRenderable } from "../renderables/Text.js"
+import type { TextBuffer, TextChunk } from "../text-buffer.js"
+import { createTextAttributes } from "../utils.js"
+import { parseColor, type ColorInput } from "./RGBA.js"
 
 const BrandedStyledText: unique symbol = Symbol.for("@opentui/core/StyledText")
 

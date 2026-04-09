@@ -1,20 +1,48 @@
 import { test, expect, describe, beforeEach, afterEach, spyOn } from "bun:test"
-import { BoxRenderable, type BoxOptions } from "./Box"
-import { createTestRenderer, type TestRenderer } from "../testing/test-renderer"
-import type { BorderStyle } from "../lib/border"
+import { BoxRenderable, type BoxOptions } from "./Box.js"
+import { createTestRenderer, type TestRenderer } from "../testing/test-renderer.js"
+import type { BorderStyle } from "../lib/border.js"
 
 let testRenderer: TestRenderer
 let renderOnce: () => Promise<void>
+let captureFrame: () => string
 let warnSpy: ReturnType<typeof spyOn>
 
 beforeEach(async () => {
-  ;({ renderer: testRenderer, renderOnce } = await createTestRenderer({}))
+  ;({ renderer: testRenderer, renderOnce, captureCharFrame: captureFrame } = await createTestRenderer({}))
   warnSpy = spyOn(console, "warn").mockImplementation(() => {})
 })
 
 afterEach(() => {
   testRenderer.destroy()
   warnSpy.mockRestore()
+})
+
+describe("BoxRenderable - focusable option", () => {
+  test("is not focusable by default", async () => {
+    const box = new BoxRenderable(testRenderer, {
+      id: "test-box",
+      width: 10,
+      height: 5,
+    })
+
+    expect(box.focusable).toBe(false)
+    box.focus()
+    expect(box.focused).toBe(false)
+  })
+
+  test("can be made focusable via option", async () => {
+    const box = new BoxRenderable(testRenderer, {
+      id: "test-box",
+      focusable: true,
+      width: 10,
+      height: 5,
+    })
+
+    expect(box.focusable).toBe(true)
+    box.focus()
+    expect(box.focused).toBe(true)
+  })
 })
 
 describe("BoxRenderable - borderStyle validation", () => {
@@ -129,5 +157,49 @@ describe("BoxRenderable - borderStyle validation", () => {
         expect(box.borderStyle).toBe(style)
       },
     )
+  })
+})
+
+describe("BoxRenderable - border titles (top and bottom)", () => {
+  test("renders top and bottom titles on their respective borders", async () => {
+    const box = new BoxRenderable(testRenderer, {
+      id: "border-title-box",
+      border: true,
+      width: 16,
+      height: 5,
+      title: "Top",
+      titleAlignment: "left",
+      bottomTitle: "Bot",
+      bottomTitleAlignment: "right",
+    })
+
+    testRenderer.root.add(box)
+    await renderOnce()
+
+    const lines = captureFrame().split("\n")
+
+    expect(lines[0].slice(0, 16)).toBe("┌─Top──────────┐")
+    expect(lines[4].slice(0, 16)).toBe("└──────────Bot─┘")
+  })
+
+  test.each([
+    ["left", "└─Bot────────────┘"],
+    ["center", "└──────Bot───────┘"],
+    ["right", "└────────────Bot─┘"],
+  ] as const)("renders bottom title with %s alignment", async (alignment, expectedBorder) => {
+    const box = new BoxRenderable(testRenderer, {
+      id: `bottom-title-${alignment}`,
+      border: true,
+      width: 18,
+      height: 5,
+      bottomTitle: "Bot",
+      bottomTitleAlignment: alignment,
+    })
+
+    testRenderer.root.add(box)
+    await renderOnce()
+
+    const lines = captureFrame().split("\n")
+    expect(lines[4].slice(0, 18)).toBe(expectedBorder)
   })
 })

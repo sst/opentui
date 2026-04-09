@@ -2,13 +2,13 @@ import type { RootRenderable } from "@opentui/core"
 import React from "react"
 import ReactReconciler from "react-reconciler"
 import { ConcurrentRoot } from "react-reconciler/constants"
-import { hostConfig } from "./host-config"
+import { hostConfig } from "./host-config.js"
 
 export const reconciler = ReactReconciler(hostConfig)
 
 if (process.env["DEV"] === "true") {
   try {
-    await import("./devtools")
+    await import("./devtools.js")
   } catch (error: any) {
     if (error.code === "ERR_MODULE_NOT_FOUND") {
       console.warn(

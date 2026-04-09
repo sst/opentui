@@ -1,4 +1,4 @@
-import { createCliRenderer, MouseEvent, type CliRenderer } from "../renderer"
+import { createCliRenderer, MouseEvent, type CliRenderer } from "../renderer.js"
 import {
   Box,
   Text,
@@ -10,13 +10,13 @@ import {
   BoxRenderable,
   type BoxOptions,
   vstyles,
-} from "../renderables"
-import type { RenderContext } from "../types"
-import type { OptimizedBuffer } from "../buffer"
-import { setupCommonDemoKeys } from "./lib/standalone-keys"
-import { RGBA, parseColor } from "../lib"
-import type { Renderable } from "../Renderable"
-import { TextAttributes } from "../types"
+} from "../renderables/index.js"
+import type { RenderContext } from "../types.js"
+import type { OptimizedBuffer } from "../buffer.js"
+import { setupCommonDemoKeys } from "./lib/standalone-keys.js"
+import { RGBA, parseColor } from "../lib/index.js"
+import type { Renderable } from "../Renderable.js"
+import { TextAttributes } from "../types.js"
 
 const textColor = parseColor("#FFFFFF")
 const globalbgColor = parseColor("#333333")

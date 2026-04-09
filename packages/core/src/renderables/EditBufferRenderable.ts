@@ -1,12 +1,41 @@
-import { Renderable, type RenderableOptions } from "../Renderable"
-import { convertGlobalToLocalSelection, Selection, type LocalSelectionBounds } from "../lib/selection"
-import { EditBuffer, type LogicalCursor } from "../edit-buffer"
-import { EditorView, type VisualCursor } from "../editor-view"
-import { RGBA, parseColor } from "../lib/RGBA"
-import type { RenderContext, Highlight, CursorStyleOptions, LineInfoProvider, LineInfo } from "../types"
-import type { OptimizedBuffer } from "../buffer"
+import { Renderable, type RenderableOptions } from "../Renderable.js"
+import { convertGlobalToLocalSelection, Selection, type LocalSelectionBounds } from "../lib/selection.js"
+import { EditBuffer, type LogicalCursor } from "../edit-buffer.js"
+import { EditorView, type VisualCursor } from "../editor-view.js"
+import { RGBA, parseColor } from "../lib/RGBA.js"
+import type { RenderContext, Highlight, CursorStyleOptions, LineInfoProvider, LineInfo } from "../types.js"
+import type { OptimizedBuffer } from "../buffer.js"
 import { MeasureMode } from "yoga-layout"
-import type { SyntaxStyle } from "../syntax-style"
+import type { SyntaxStyle } from "../syntax-style.js"
+
+const BrandedEditBufferRenderable: unique symbol = Symbol.for("@opentui/core/EditBufferRenderable")
+
+export type EditorCapture = "escape" | "navigate" | "submit" | "tab"
+
+export interface EditorTraits {
+  capture?: readonly EditorCapture[]
+  suspend?: boolean
+  status?: string
+}
+
+export enum EditBufferRenderableEvents {
+  TRAITS_CHANGED = "traits-changed",
+}
+
+function sameCapture(a?: readonly EditorCapture[], b?: readonly EditorCapture[]) {
+  if (a === b) return true
+  if (!a || !b) return !a && !b
+  if (a.length !== b.length) return false
+  return a.every((item, i) => item === b[i])
+}
+
+function sameTraits(a: EditorTraits, b: EditorTraits) {
+  return a.suspend === b.suspend && a.status === b.status && sameCapture(a.capture, b.capture)
+}
+
+export function isEditBufferRenderable(obj: unknown): obj is EditBufferRenderable {
+  return !!(obj && typeof obj === "object" && BrandedEditBufferRenderable in obj)
+}
 
 export interface CursorChangeEvent {
   line: number
@@ -38,8 +67,10 @@ export interface EditBufferOptions extends RenderableOptions<EditBufferRenderabl
 }
 
 export abstract class EditBufferRenderable extends Renderable implements LineInfoProvider {
+  [BrandedEditBufferRenderable] = true
   protected _focusable: boolean = true
   public selectable: boolean = true
+  private _traits: EditorTraits = {}
 
   protected _textColor: RGBA
   protected _backgroundColor: RGBA
@@ -192,6 +223,24 @@ export abstract class EditBufferRenderable extends Renderable implements LineInf
     this.requestRender()
   }
 
+  get cursorCharacterOffset(): number | undefined {
+    const len = this.plainText.length
+    if (len <= 0) return
+
+    const cursor = this.logicalCursor
+    const offset = this.cursorOffset
+    if (offset >= len) {
+      if (cursor.col > 0) return len - 1
+      return 0
+    }
+
+    if (this.plainText[offset] === "\n" && cursor.col > 0) {
+      return offset - 1
+    }
+
+    return offset
+  }
+
   get textColor(): RGBA {
     return this._textColor
   }
@@ -209,13 +258,22 @@ export abstract class EditBufferRenderable extends Renderable implements LineInf
     return this._selectionBg
   }
 
+  get traits(): EditorTraits {
+    return this._traits
+  }
+
+  set traits(value: EditorTraits) {
+    if (sameTraits(this._traits, value)) return
+    const prev = this._traits
+    this._traits = value
+    this.emit(EditBufferRenderableEvents.TRAITS_CHANGED, value, prev)
+  }
+
   set selectionBg(value: RGBA | string | undefined) {
     const newColor = value ? parseColor(value) : this._defaultOptions.selectionBg
     if (this._selectionBg !== newColor) {
       this._selectionBg = newColor
-      if (this.lastLocalSelection) {
-        this.updateLocalSelection(this.lastLocalSelection)
-      }
+      this.refreshSelectionStyle()
       this.requestRender()
     }
   }
@@ -228,9 +286,7 @@ export abstract class EditBufferRenderable extends Renderable implements LineInf
     const newColor = value ? parseColor(value) : this._defaultOptions.selectionFg
     if (this._selectionFg !== newColor) {
       this._selectionFg = newColor
-      if (this.lastLocalSelection) {
-        this.updateLocalSelection(this.lastLocalSelection)
-      }
+      this.refreshSelectionStyle()
       this.requestRender()
     }
   }
@@ -461,7 +517,7 @@ export abstract class EditBufferRenderable extends Renderable implements LineInf
       )
     }
 
-    if (changed && localSelection?.isActive && selection?.isSelecting) {
+    if (changed && localSelection?.isActive && selection?.isDragging) {
       const viewport = this.editorView.getViewport()
       const focusY = localSelection.focusY
       const scrollMargin = Math.max(1, Math.floor(viewport.height * this._scrollMargin))
@@ -524,6 +580,356 @@ export abstract class EditBufferRenderable extends Renderable implements LineInf
     return this.editorView.getSelection()
   }
 
+  private refreshSelectionStyle(): void {
+    if (this.lastLocalSelection) {
+      this.updateLocalSelection(this.lastLocalSelection)
+      return
+    }
+
+    const selection = this.getSelection()
+    if (!selection) return
+    this.editorView.setSelection(selection.start, selection.end, this._selectionBg, this._selectionFg)
+  }
+
+  private deleteSelectedText(): void {
+    this.editorView.deleteSelectedText()
+    this._ctx.clearSelection()
+    this.requestRender()
+  }
+
+  setSelection(start: number, end: number): void {
+    this.lastLocalSelection = null
+    this.editorView.resetLocalSelection()
+    this._ctx.clearSelection()
+    this.editorView.setSelection(start, end, this._selectionBg, this._selectionFg)
+    this.requestRender()
+  }
+
+  setSelectionInclusive(start: number, end: number): void {
+    this.setSelection(Math.min(start, end), Math.max(start, end) + 1)
+  }
+
+  clearSelection(): boolean {
+    const had = this.hasSelection()
+    this.lastLocalSelection = null
+    this.editorView.resetSelection()
+    this.editorView.resetLocalSelection()
+    this._ctx.clearSelection()
+    if (had) {
+      this.requestRender()
+    }
+    return had
+  }
+
+  deleteSelection(): boolean {
+    if (!this.hasSelection()) return false
+
+    this.lastLocalSelection = null
+    this.deleteSelectedText()
+    return true
+  }
+
+  setCursor(row: number, col: number): void {
+    this.editBuffer.setCursor(row, col)
+    this.requestRender()
+  }
+
+  public insertChar(char: string): void {
+    if (this.hasSelection()) {
+      this.deleteSelectedText()
+    }
+
+    this.editBuffer.insertChar(char)
+    this.requestRender()
+  }
+
+  public insertText(text: string): void {
+    if (this.hasSelection()) {
+      this.deleteSelectedText()
+    }
+
+    this.editBuffer.insertText(text)
+    this.requestRender()
+  }
+
+  public deleteChar(): boolean {
+    if (this.hasSelection()) {
+      this.deleteSelectedText()
+      return true
+    }
+
+    this._ctx.clearSelection()
+    this.editBuffer.deleteChar()
+    this.requestRender()
+    return true
+  }
+
+  public deleteCharBackward(): boolean {
+    if (this.hasSelection()) {
+      this.deleteSelectedText()
+      return true
+    }
+
+    this._ctx.clearSelection()
+    this.editBuffer.deleteCharBackward()
+    this.requestRender()
+    return true
+  }
+
+  public newLine(): boolean {
+    this._ctx.clearSelection()
+    this.editBuffer.newLine()
+    this.requestRender()
+    return true
+  }
+
+  public deleteLine(): boolean {
+    this._ctx.clearSelection()
+    this.editBuffer.deleteLine()
+    this.requestRender()
+    return true
+  }
+
+  public moveCursorLeft(options?: { select?: boolean }): boolean {
+    const select = options?.select ?? false
+
+    if (!select && this.hasSelection()) {
+      const selection = this.getSelection()!
+      this.editBuffer.setCursorByOffset(selection.start)
+      this._ctx.clearSelection()
+      this.requestRender()
+      return true
+    }
+
+    this.updateSelectionForMovement(select, true)
+    this.editBuffer.moveCursorLeft()
+    this.updateSelectionForMovement(select, false)
+    this.requestRender()
+    return true
+  }
+
+  public moveCursorRight(options?: { select?: boolean }): boolean {
+    const select = options?.select ?? false
+
+    if (!select && this.hasSelection()) {
+      const selection = this.getSelection()!
+      const targetOffset = this.cursorOffset === selection.start ? selection.end - 1 : selection.end
+      this.editBuffer.setCursorByOffset(targetOffset)
+      this._ctx.clearSelection()
+      this.requestRender()
+      return true
+    }
+
+    this.updateSelectionForMovement(select, true)
+    this.editBuffer.moveCursorRight()
+    this.updateSelectionForMovement(select, false)
+    this.requestRender()
+    return true
+  }
+
+  public moveCursorUp(options?: { select?: boolean }): boolean {
+    const select = options?.select ?? false
+    this.updateSelectionForMovement(select, true)
+    this.editorView.moveUpVisual()
+    this.updateSelectionForMovement(select, false)
+    this.requestRender()
+    return true
+  }
+
+  public moveCursorDown(options?: { select?: boolean }): boolean {
+    const select = options?.select ?? false
+    this.updateSelectionForMovement(select, true)
+    this.editorView.moveDownVisual()
+    this.updateSelectionForMovement(select, false)
+    this.requestRender()
+    return true
+  }
+
+  public gotoLine(line: number): void {
+    this.editBuffer.gotoLine(line)
+    this.requestRender()
+  }
+
+  public gotoLineStart(): void {
+    this.setCursor(this.logicalCursor.row, 0)
+  }
+
+  public gotoLineTextEnd(): void {
+    const eol = this.editBuffer.getEOL()
+    this.setCursor(eol.row, eol.col)
+  }
+
+  public gotoLineHome(options?: { select?: boolean }): boolean {
+    const select = options?.select ?? false
+    this.updateSelectionForMovement(select, true)
+    const cursor = this.editorView.getCursor()
+    if (cursor.col === 0 && cursor.row > 0) {
+      this.editBuffer.setCursor(cursor.row - 1, 0)
+      const prevLineEol = this.editBuffer.getEOL()
+      this.editBuffer.setCursor(prevLineEol.row, prevLineEol.col)
+    } else {
+      this.editBuffer.setCursor(cursor.row, 0)
+    }
+
+    this.updateSelectionForMovement(select, false)
+    this.requestRender()
+    return true
+  }
+
+  public gotoLineEnd(options?: { select?: boolean }): boolean {
+    const select = options?.select ?? false
+    this.updateSelectionForMovement(select, true)
+    const cursor = this.editorView.getCursor()
+    const eol = this.editBuffer.getEOL()
+    const lineCount = this.editBuffer.getLineCount()
+    if (cursor.col === eol.col && cursor.row < lineCount - 1) {
+      this.editBuffer.setCursor(cursor.row + 1, 0)
+    } else {
+      this.editBuffer.setCursor(eol.row, eol.col)
+    }
+
+    this.updateSelectionForMovement(select, false)
+    this.requestRender()
+    return true
+  }
+
+  public gotoVisualLineHome(options?: { select?: boolean }): boolean {
+    const select = options?.select ?? false
+    this.updateSelectionForMovement(select, true)
+    const sol = this.editorView.getVisualSOL()
+    this.editBuffer.setCursor(sol.logicalRow, sol.logicalCol)
+    this.updateSelectionForMovement(select, false)
+    this.requestRender()
+    return true
+  }
+
+  public gotoVisualLineEnd(options?: { select?: boolean }): boolean {
+    const select = options?.select ?? false
+    this.updateSelectionForMovement(select, true)
+    const eol = this.editorView.getVisualEOL()
+    this.editBuffer.setCursor(eol.logicalRow, eol.logicalCol)
+    this.updateSelectionForMovement(select, false)
+    this.requestRender()
+    return true
+  }
+
+  public gotoBufferHome(options?: { select?: boolean }): boolean {
+    const select = options?.select ?? false
+    this.updateSelectionForMovement(select, true)
+    this.editBuffer.setCursor(0, 0)
+    this.updateSelectionForMovement(select, false)
+    this.requestRender()
+    return true
+  }
+
+  public gotoBufferEnd(options?: { select?: boolean }): boolean {
+    const select = options?.select ?? false
+    this.updateSelectionForMovement(select, true)
+    this.editBuffer.gotoLine(999999)
+    this.updateSelectionForMovement(select, false)
+    this.requestRender()
+    return true
+  }
+
+  public selectAll(): boolean {
+    this.updateSelectionForMovement(false, true)
+    this.editBuffer.setCursor(0, 0)
+    return this.gotoBufferEnd({ select: true })
+  }
+
+  public deleteToLineEnd(): boolean {
+    const cursor = this.editorView.getCursor()
+    const eol = this.editBuffer.getEOL()
+
+    if (eol.col > cursor.col) {
+      this.editBuffer.deleteRange(cursor.row, cursor.col, eol.row, eol.col)
+    }
+
+    this.requestRender()
+    return true
+  }
+
+  public deleteToLineStart(): boolean {
+    const cursor = this.editorView.getCursor()
+
+    if (cursor.col > 0) {
+      this.editBuffer.deleteRange(cursor.row, 0, cursor.row, cursor.col)
+    }
+
+    this.requestRender()
+    return true
+  }
+
+  public undo(): boolean {
+    this._ctx.clearSelection()
+    this.editBuffer.undo()
+    this.requestRender()
+    return true
+  }
+
+  public redo(): boolean {
+    this._ctx.clearSelection()
+    this.editBuffer.redo()
+    this.requestRender()
+    return true
+  }
+
+  public moveWordForward(options?: { select?: boolean }): boolean {
+    const select = options?.select ?? false
+    this.updateSelectionForMovement(select, true)
+    const nextWord = this.editBuffer.getNextWordBoundary()
+    this.editBuffer.setCursorByOffset(nextWord.offset)
+    this.updateSelectionForMovement(select, false)
+    this.requestRender()
+    return true
+  }
+
+  public moveWordBackward(options?: { select?: boolean }): boolean {
+    const select = options?.select ?? false
+    this.updateSelectionForMovement(select, true)
+    const prevWord = this.editBuffer.getPrevWordBoundary()
+    this.editBuffer.setCursorByOffset(prevWord.offset)
+    this.updateSelectionForMovement(select, false)
+    this.requestRender()
+    return true
+  }
+
+  public deleteWordForward(): boolean {
+    if (this.hasSelection()) {
+      this.deleteSelectedText()
+      return true
+    }
+
+    const currentCursor = this.editBuffer.getCursorPosition()
+    const nextWord = this.editBuffer.getNextWordBoundary()
+
+    if (nextWord.offset > currentCursor.offset) {
+      this.editBuffer.deleteRange(currentCursor.row, currentCursor.col, nextWord.row, nextWord.col)
+    }
+
+    this._ctx.clearSelection()
+    this.requestRender()
+    return true
+  }
+
+  public deleteWordBackward(): boolean {
+    if (this.hasSelection()) {
+      this.deleteSelectedText()
+      return true
+    }
+
+    const currentCursor = this.editBuffer.getCursorPosition()
+    const prevWord = this.editBuffer.getPrevWordBoundary()
+
+    if (prevWord.offset < currentCursor.offset) {
+      this.editBuffer.deleteRange(prevWord.row, prevWord.col, currentCursor.row, currentCursor.col)
+    }
+
+    this._ctx.clearSelection()
+    this.requestRender()
+    return true
+  }
+
   // Undefined = 0,
   // Exactly = 1,
   // AtMost = 2
@@ -552,7 +958,7 @@ export abstract class EditBufferRenderable extends Renderable implements LineInf
         Math.floor(effectiveHeight),
       )
 
-      const measuredWidth = measureResult ? Math.max(1, measureResult.maxWidth) : 1
+      const measuredWidth = measureResult ? Math.max(1, measureResult.widthColsMax) : 1
       const measuredHeight = measureResult ? Math.max(1, measureResult.lineCount) : 1
 
       if (widthMode === MeasureMode.AtMost && this._positionType !== "absolute") {
@@ -595,14 +1001,12 @@ export abstract class EditBufferRenderable extends Renderable implements LineInf
     const cursorY = this.y + visualCursor.visualRow + 1 // +1 for 1-based terminal coords
 
     this._ctx.setCursorPosition(cursorX, cursorY, true)
-    this._ctx.setCursorColor(this._cursorColor)
-    this._ctx.setCursorStyle(this._cursorStyle.style, this._cursorStyle.blinking)
+    this._ctx.setCursorStyle({ ...this._cursorStyle, color: this._cursorColor })
   }
 
   public focus(): void {
     super.focus()
-    this._ctx.setCursorStyle(this._cursorStyle.style, this._cursorStyle.blinking)
-    this._ctx.setCursorColor(this._cursorColor)
+    this._ctx.setCursorStyle({ ...this._cursorStyle, color: this._cursorColor })
     this.requestRender()
   }
 
@@ -620,6 +1024,8 @@ export abstract class EditBufferRenderable extends Renderable implements LineInf
 
   override destroy(): void {
     if (this.isDestroyed) return
+
+    this.traits = {}
 
     if (this._focused) {
       this._ctx.setCursorPosition(0, 0, false)
@@ -725,12 +1131,6 @@ export abstract class EditBufferRenderable extends Renderable implements LineInf
     this.requestRender()
   }
 
-  public insertText(text: string): void {
-    this.editBuffer.insertText(text)
-    this.yogaNode.markDirty()
-    this.requestRender()
-  }
-
   public getTextRange(startOffset: number, endOffset: number): string {
     return this.editBuffer.getTextRange(startOffset, endOffset)
   }
@@ -761,6 +1161,6 @@ export abstract class EditBufferRenderable extends Renderable implements LineInf
       return
     }
 
-    this._ctx.updateSelection(this, cursorX, cursorY)
+    this._ctx.updateSelection(this, cursorX, cursorY, { finishDragging: true })
   }
 }

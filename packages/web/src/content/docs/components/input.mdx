@@ -1,0 +1,195 @@
+---
+title: Input
+description: Text input field with cursor and focus states
+order: 3
+---
+
+# Input
+
+Text input field with cursor, placeholder text, and focus states. Focus the input to receive keyboard input.
+
+## Basic usage
+
+### Renderable api
+
+```typescript
+import { InputRenderable, InputRenderableEvents, createCliRenderer } from "@opentui/core"
+
+const renderer = await createCliRenderer()
+
+const input = new InputRenderable(renderer, {
+  id: "name-input",
+  width: 25,
+  placeholder: "Enter your name...",
+})
+
+input.on(InputRenderableEvents.CHANGE, (value) => {
+  console.log("Input value:", value)
+})
+
+input.focus()
+renderer.root.add(input)
+```
+
+### Construct api
+
+```typescript
+import { Input, createCliRenderer } from "@opentui/core"
+
+const renderer = await createCliRenderer()
+
+const input = Input({
+  placeholder: "Enter your name...",
+  width: 25,
+})
+
+input.focus()
+renderer.root.add(input)
+```
+
+## Focus states
+
+The input changes appearance when focused:
+
+```typescript
+const input = new InputRenderable(renderer, {
+  id: "styled-input",
+  width: 30,
+  placeholder: "Type here...",
+  backgroundColor: "#1a1a1a",
+  focusedBackgroundColor: "#2a2a2a",
+  textColor: "#FFFFFF",
+  cursorColor: "#00FF00",
+})
+```
+
+## Events
+
+### Input event
+
+Fires on every keystroke as the value changes:
+
+```typescript
+import { InputRenderableEvents } from "@opentui/core"
+
+input.on(InputRenderableEvents.INPUT, (value: string) => {
+  console.log("Current value:", value)
+})
+```
+
+### Change event
+
+Fires when the input loses focus (blur) or when you press Enter, but only if the value changed since focus:
+
+```typescript
+input.on(InputRenderableEvents.CHANGE, (value: string) => {
+  console.log("Value committed:", value)
+})
+```
+
+### Enter event
+
+Fires when the user presses Enter/Return:
+
+```typescript
+input.on(InputRenderableEvents.ENTER, (value: string) => {
+  console.log("Submitted value:", value)
+})
+```
+
+### Getting the current value
+
+```typescript
+const currentValue = input.value
+```
+
+### Setting the value
+
+```typescript
+input.value = "New value"
+```
+
+## Properties
+
+| Property                 | Type                                   | Default      | Description                  |
+| ------------------------ | -------------------------------------- | ------------ | ---------------------------- |
+| `width`                  | `number`                               | -            | Input field width            |
+| `value`                  | `string`                               | `""`         | Initial text value           |
+| `placeholder`            | `string`                               | `""`         | Placeholder text when empty  |
+| `maxLength`              | `number`                               | `1000`       | Maximum number of characters |
+| `backgroundColor`        | `string \| RGBA`                       | -            | Background when unfocused    |
+| `focusedBackgroundColor` | `string \| RGBA`                       | -            | Background when focused      |
+| `textColor`              | `string \| RGBA`                       | -            | Text color                   |
+| `cursorColor`            | `string \| RGBA`                       | -            | Cursor color                 |
+| `position`               | `"static" \| "relative" \| "absolute"` | `"relative"` | Positioning mode             |
+
+## Example: Login form
+
+```typescript
+import { Box, Text, Input, delegate, createCliRenderer } from "@opentui/core"
+
+const renderer = await createCliRenderer()
+
+function LabeledInput(props: { id: string; label: string; placeholder: string }) {
+  return delegate(
+    { focus: `${props.id}-input` },
+    Box(
+      { flexDirection: "row", marginBottom: 1 },
+      Text({ content: props.label.padEnd(12), fg: "#888888" }),
+      Input({
+        id: `${props.id}-input`,
+        placeholder: props.placeholder,
+        width: 20,
+        backgroundColor: "#222",
+        focusedBackgroundColor: "#333",
+        textColor: "#FFF",
+        cursorColor: "#0F0",
+      }),
+    ),
+  )
+}
+
+const usernameInput = LabeledInput({
+  id: "username",
+  label: "Username:",
+  placeholder: "Enter username",
+})
+
+const passwordInput = LabeledInput({
+  id: "password",
+  label: "Password:",
+  placeholder: "Enter password",
+})
+
+const form = Box(
+  {
+    width: 40,
+    borderStyle: "rounded",
+    title: "Login",
+    padding: 1,
+  },
+  usernameInput,
+  passwordInput,
+)
+
+// Focus the username input
+usernameInput.focus()
+
+renderer.root.add(form)
+```
+
+## Tab navigation
+
+Add tab navigation between inputs:
+
+```typescript
+const inputs = [usernameInput, passwordInput]
+let focusIndex = 0
+
+renderer.keyInput.on("keypress", (key) => {
+  if (key.name === "tab") {
+    focusIndex = (focusIndex + 1) % inputs.length
+    inputs[focusIndex].focus()
+  }
+})
+```

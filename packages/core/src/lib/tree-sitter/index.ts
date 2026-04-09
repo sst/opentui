@@ -1,14 +1,14 @@
-import { singleton } from "../singleton"
-import { TreeSitterClient } from "./client"
-import type { TreeSitterClientOptions } from "./types"
-import { getDataPaths } from "../data-paths"
+import { singleton } from "../singleton.js"
+import { TreeSitterClient } from "./client.js"
+import type { TreeSitterClientOptions } from "./types.js"
+import { getDataPaths } from "../data-paths.js"
 
-export * from "./client"
-export * from "../tree-sitter-styled-text"
-export * from "./types"
-export * from "./resolve-ft"
-export type { UpdateOptions } from "./assets/update"
-export { updateAssets } from "./assets/update"
+export * from "./client.js"
+export * from "../tree-sitter-styled-text.js"
+export * from "./types.js"
+export * from "./resolve-ft.js"
+export type { UpdateOptions } from "./assets/update.js"
+export { updateAssets } from "./assets/update.js"
 
 export function getTreeSitterClient(): TreeSitterClient {
   const dataPathsManager = getDataPaths()

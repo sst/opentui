@@ -5,7 +5,7 @@ import type {
   PhysicsColliderDesc,
   PhysicsRigidBody,
   PhysicsWorld,
-} from "./physics-interface"
+} from "./physics-interface.js"
 
 export class PlanckRigidBody implements PhysicsRigidBody {
   constructor(private planckBody: planck.Body) {}

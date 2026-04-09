@@ -1,4 +1,4 @@
-import { createMemo, createSignal, For, onMount, Show } from "solid-js"
+import { createMemo, createSignal, For, onCleanup, onMount, Show } from "solid-js"
 import { createStore, produce } from "solid-js/store"
 
 // Message types
@@ -64,11 +64,26 @@ export function Session() {
   }
 
   // Simulate chunked arrival for a specific message
+  let chunkInterval: ReturnType<typeof setInterval> | undefined
+  let initialTimeout: ReturnType<typeof setTimeout> | undefined
+
+  const stopChunking = () => {
+    if (chunkInterval) {
+      clearInterval(chunkInterval)
+      chunkInterval = undefined
+    }
+    if (initialTimeout) {
+      clearTimeout(initialTimeout)
+      initialTimeout = undefined
+    }
+    setIsChunkingActive(false)
+  }
+
   const startChunkingMessage = (messageId: string, fullContent: string) => {
     let currentIndex = 0
     const chunkSize = Math.floor(Math.random() * 5) + 1 // 1-5 characters per chunk
 
-    const chunkInterval = setInterval(() => {
+    chunkInterval = setInterval(() => {
       setMessages(
         "data",
         produce((ms) => {
@@ -83,8 +98,7 @@ export function Session() {
       currentIndex += chunkSize
 
       if (currentIndex >= fullContent.length) {
-        clearInterval(chunkInterval)
-        setIsChunkingActive(false) // Reset the flag
+        stopChunking()
         // Immediately start the next message
         addMessage()
       }
@@ -92,7 +106,11 @@ export function Session() {
   }
 
   onMount(() => {
-    setTimeout(addMessage, 500)
+    initialTimeout = setTimeout(addMessage, 500)
+  })
+
+  onCleanup(() => {
+    stopChunking()
   })
 
   return (

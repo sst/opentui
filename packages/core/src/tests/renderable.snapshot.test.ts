@@ -1,7 +1,7 @@
 import { test, expect, beforeEach, afterEach, describe } from "bun:test"
-import { createTestRenderer, type TestRenderer } from "../testing/test-renderer"
-import { BoxRenderable } from "../renderables/Box"
-import { TextRenderable } from "../renderables/Text"
+import { createTestRenderer, type TestRenderer } from "../testing/test-renderer.js"
+import { BoxRenderable } from "../renderables/Box.js"
+import { TextRenderable } from "../renderables/Text.js"
 
 let testRenderer: TestRenderer
 let renderOnce: () => Promise<void>
@@ -408,7 +408,7 @@ describe("Renderable - insertBefore method", () => {
     expect(children[2]?.id).toBe("item-2")
   })
 
-  test("insertBefore with invalid anchor throws error", async () => {
+  test("insertBefore with invalid anchor returns -1", async () => {
     const container = new BoxRenderable(testRenderer, {
       id: "container",
       width: 10,
@@ -421,9 +421,7 @@ describe("Renderable - insertBefore method", () => {
 
     container.add(item1)
 
-    expect(() => {
-      container.insertBefore(item2, notAChild)
-    }).toThrow("Anchor does not exist")
+    expect(container.insertBefore(item2, notAChild)).toBe(-1)
   })
 
   test("insertBefore returns correct index", async () => {

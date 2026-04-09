@@ -1,6 +1,6 @@
 import { test, expect, describe } from "bun:test"
-import { getObjectsInViewport } from "./objects-in-viewport"
-import type { ViewportBounds } from "../types"
+import { getObjectsInViewport } from "./objects-in-viewport.js"
+import type { ViewportBounds } from "../types.js"
 
 interface TestObject {
   x: number

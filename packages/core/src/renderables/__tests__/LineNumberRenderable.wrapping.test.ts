@@ -1,7 +1,7 @@
 import { describe, test, expect } from "bun:test"
-import { createTestRenderer } from "../../testing/test-renderer"
-import { TextareaRenderable } from "../Textarea"
-import { LineNumberRenderable } from "../LineNumberRenderable"
+import { createTestRenderer } from "../../testing/test-renderer.js"
+import { TextareaRenderable } from "../Textarea.js"
+import { LineNumberRenderable } from "../LineNumberRenderable.js"
 
 describe("LineNumberRenderable Wrapping & Scrolling", () => {
   test("renders correct line numbers when scrolled", async () => {

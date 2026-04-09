@@ -66,10 +66,14 @@ jobs:
           TAG_VERSION="${{ needs.prepare.outputs.version }}"
           echo "Validating version: $TAG_VERSION"
 
-          # Check packages/*/package.json versions
+          # Check package.json versions (exclude web, not published to npm)
           FAILED=false
           for pkg in packages/*/; do
             if [ -f "$pkg/package.json" ]; then
+              if [ "$(basename "$pkg")" = "web" ]; then
+                echo "INFO: Skipping $pkg (not published to npm)"
+                continue
+              fi
               PKG_VERSION=$(node -p "require('./$pkg/package.json').version")
               if [ "$PKG_VERSION" != "$TAG_VERSION" ]; then
                 echo "❌ Package $pkg version ($PKG_VERSION) does not match tag version ($TAG_VERSION)"

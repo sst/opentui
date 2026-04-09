@@ -1,6 +1,6 @@
 // Copied from https://github.com/enquirer/enquirer/blob/36785f3399a41cd61e9d28d1eb9c2fcd73d69b4c/lib/keypress.js
 import { Buffer } from "node:buffer"
-import { parseKittyKeyboard } from "./parse.keypress-kitty"
+import { parseKittyKeyboard } from "./parse.keypress-kitty.js"
 
 const metaKeyCodeRe = /^(?:\x1b)([a-zA-Z0-9])$/
 
@@ -32,6 +32,8 @@ const keyName: Record<string, string> = {
   "[21~": "f10",
   "[23~": "f11",
   "[24~": "f12",
+  "[29~": "menu",
+  "[57427~": "clear",
   /* xterm ESC [ letter */
   "[A": "up",
   "[B": "down",
@@ -40,6 +42,9 @@ const keyName: Record<string, string> = {
   "[E": "clear",
   "[F": "end",
   "[H": "home",
+  "[P": "f1",
+  "[Q": "f2",
+  "[S": "f4",
   /* xterm/gnome ESC O letter */
   OA: "up",
   OB: "down",
@@ -151,7 +156,23 @@ export const parseKeypress = (s: Buffer | string = "", options: ParseKeypressOpt
   }
 
   // Filter out mouse events (SGR and basic)
+  // Complete SGR mouse: ESC[<btn;x;yM or ESC[<btn;x;ym
   if (/^\x1b\[<\d+;\d+;\d+[Mm]$/.test(s)) {
+    return null
+  }
+  // Complete SGR mouse continuation without leading ESC. This can occur when
+  // ESC was flushed separately on timeout and the rest of the sequence arrived later.
+  if (/^\[<\d+;\d+;\d+[Mm]$/.test(s)) {
+    return null
+  }
+  // Incomplete/partial SGR mouse sequences (flushed by the zig parser when
+  // a new ESC arrives before the sequence is complete). These start with
+  // ESC[< followed by digits/semicolons but lack the terminal M/m.
+  if (/^\x1b\[<[\d;]*$/.test(s)) {
+    return null
+  }
+  // Incomplete/partial SGR mouse continuations without ESC.
+  if (/^\[<[\d;]*$/.test(s)) {
     return null
   }
   if (s.startsWith("\x1b[M") && s.length >= 6) {
@@ -250,7 +271,12 @@ export const parseKeypress = (s: Buffer | string = "", options: ParseKeypressOpt
       key.name = "backspace"
     } else {
       // For other character codes, use the character itself
-      key.name = String.fromCharCode(charCode)
+      const char = String.fromCharCode(charCode)
+      key.name = char
+      key.sequence = char
+      if (charCode >= 48 && charCode <= 57) {
+        key.number = true
+      }
     }
 
     return key
@@ -298,8 +324,8 @@ export const parseKeypress = (s: Buffer | string = "", options: ParseKeypressOpt
     // shift+letter
     key.name = s.toLowerCase()
     key.shift = true
-  } else if (s.length === 1) {
-    // Special characters (like $, ^, etc.) - preserve the character
+  } else if (s.length === 1 || (s.length === 2 && s.codePointAt(0)! > 0xffff)) {
+    // Single character (including emoji/surrogate pairs above BMP)
     key.name = s
   } else if ((parts = metaKeyCodeRe.exec(s))) {
     // meta+character key
@@ -341,10 +367,10 @@ export const parseKeypress = (s: Buffer | string = "", options: ParseKeypressOpt
     // Parse the key modifier
     // Terminal modifier bits: 1=Shift, 2=Alt/Option, 4=Ctrl, 8=Super, 16=Hyper
     // Note: meta flag is set for Alt/Option (bit 2)
-    key.ctrl = !!(modifier & 4)
-    key.meta = !!(modifier & 2) // Alt/Option sets meta
-    key.shift = !!(modifier & 1)
-    key.option = !!(modifier & 2) // Alt/Option modifier specifically
+    key.ctrl = key.ctrl || !!(modifier & 4)
+    key.meta = key.meta || !!(modifier & 2)
+    key.shift = key.shift || !!(modifier & 1)
+    key.option = key.option || !!(modifier & 2)
     key.super = !!(modifier & 8)
     key.hyper = !!(modifier & 16)
     key.code = code
