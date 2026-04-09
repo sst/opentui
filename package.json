@@ -23,7 +23,7 @@
   "devDependencies": {
     "oxfmt": "0.41.0",
     "oxlint": "1.56.0",
-    "vitest": "^4.1.3"
+    "vitest": "4.1.3"
   },
   "trustedDependencies": [
     "koffi"
