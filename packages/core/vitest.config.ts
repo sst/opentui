@@ -1,3 +1,8 @@
+/**
+ * Vitest is used to run tests under Node.js.
+ * bun:test imports are replaced with Vitest in nodejs/compat.ts.
+ */
+
 import { basename, dirname, join } from "node:path"
 import { defineConfig } from "vitest/config"
 
@@ -20,10 +25,11 @@ export default defineConfig({
       "--import=./src/nodejs/compat.ts",
     ],
     experimental: {
+      // Disable Vite bundling entirely so we exersize the nodejs/compat.ts shim.
       viteModuleRunner: false,
     },
     // Create independent snapshots from bun:test
     resolveSnapshotPath: (testPath, ext) =>
-      join(dirname(testPath), "__snapshots__", `${basename(testPath)}.nodejs.${ext}`),
+      join(dirname(testPath), "__snapshots__", `${basename(testPath)}.nodejs${ext}`),
   },
 })
