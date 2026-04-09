@@ -9,7 +9,7 @@ export function setup() {
   Object.defineProperty(globalThis, "Bun", {
     configurable: true,
     enumerable: true,
-    get: () => require("./NodeBun.js"),
+    get: () => require("./NodeBun.js").default,
   })
 
   mod.registerHooks({ resolve: resolveBun, load: loadBun })

@@ -1,6 +1,7 @@
 import type { WriteFileOptions } from "node:fs"
 import * as fs from "node:fs/promises"
 import * as path from "node:path"
+import * as cp from "node:child_process"
 import { isArrayBufferView } from "node:util/types"
 
 /**
@@ -27,6 +28,12 @@ type BunFile = Bun.BunFile
 type BunWrite = typeof Bun.write
 type BunFileLike = { name: string | undefined }
 type BunPathLike = string | NodeJS.TypedArray | ArrayBufferLike | URL
+
+type SpawnSyncOptions = Bun.SpawnOptions.SpawnSyncOptions<
+  Bun.SpawnOptions.Writable,
+  Bun.SpawnOptions.Readable,
+  Bun.SpawnOptions.Readable
+>
 
 class NodeBunError extends Error {
   constructor(message: string) {
@@ -106,9 +113,43 @@ class NodeBun implements NodeBunInterface {
     throw new NodeBunError("Bun.spawn is not supported in Node.js")
   }
 
-  get spawnSync(): typeof Bun.spawnSync {
-    throw new NodeBunError("Bun.spawnSync is not supported in Node.js")
-  }
+  spawnSync: typeof Bun.spawnSync = ((
+    cmdsOrOptions: string[] | (SpawnSyncOptions & { cmd: string[] }),
+    options?: SpawnSyncOptions,
+  ): Bun.SyncSubprocess => {
+    let cmd: string[]
+    let opts: SpawnSyncOptions
+    if (Array.isArray(cmdsOrOptions)) {
+      cmd = cmdsOrOptions
+      opts = options ?? {}
+    } else {
+      cmd = cmdsOrOptions.cmd
+      opts = cmdsOrOptions
+    }
+
+    const [file, ...args] = cmd
+    const result = cp.spawnSync(file, args, {
+      cwd: opts.cwd,
+      env: opts.env as NodeJS.ProcessEnv | undefined,
+      stdio: [
+        opts.stdin === "pipe" ? "pipe" : "ignore",
+        opts.stdout === "pipe" ? "pipe" : "ignore",
+        opts.stderr === "pipe" ? "pipe" : "ignore",
+      ],
+      timeout: opts.timeout,
+      maxBuffer: opts.maxBuffer,
+    })
+
+    return {
+      stdout: result.stdout ?? Buffer.alloc(0),
+      stderr: result.stderr ?? Buffer.alloc(0),
+      exitCode: result.status ?? 1,
+      success: result.status === 0,
+      pid: result.pid ?? 0,
+      signalCode: result.signal ?? undefined,
+      resourceUsage: undefined!,
+    } as Bun.SyncSubprocess
+  }) as typeof Bun.spawnSync
 
   get build(): typeof Bun.build {
     throw new NodeBunError("Bun.build is not supported in Node.js")
