@@ -77,7 +77,7 @@ const resolveBun: mod.ResolveHookSync = (request, context, next) => {
 }
 
 const loadBun: mod.LoadHookSync = (url, context, next) => {
-  if (context.importAttributes?.type === "file") {
+  if (context.importAttributes?.type === "file" || context.importAttributes?.type === "wasm") {
     return {
       shortCircuit: true,
       format: "json",
