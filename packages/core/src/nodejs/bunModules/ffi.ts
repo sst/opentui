@@ -479,7 +479,7 @@ function returnsToKoffiType(returns: FFITypeOrString | undefined): koffi.TypeSpe
 function isPointerType(type: FFITypeOrString | undefined): boolean {
   if (type === undefined) return false
   const num = typeof type === "number" ? type : FFITypeStringToType[type as keyof typeof FFITypeStringToType]
-  return num === FFIType.ptr || num === FFIType.pointer
+  return num === FFIType.ptr
 }
 
 function isBigIntType(type: FFITypeOrString | undefined): boolean {
@@ -500,6 +500,11 @@ const ptrBackingArrays = new Map<number, WeakRef<Uint8Array>>()
 // native memory) rather than a one-time memcpy snapshot.
 const ptrExternals = new Map<number, WeakRef<object>>()
 
+// koffi passes null for 0-length TypedArrays, but Bun passes a valid non-null
+// address. Native code may treat null as "no data" even when length is also
+// passed as 0. Use a static 1-byte sentinel so the pointer is always non-null.
+const emptyPtrSentinel = new Uint8Array(1)
+
 function resolvePointerArg(arg: unknown): unknown {
   if (typeof arg === "number") {
     const ref = ptrBackingArrays.get(arg)
@@ -510,6 +515,9 @@ function resolvePointerArg(arg: unknown): unknown {
     // Real native address (e.g. from JSCallback.ptr or read from output buffer) —
     // koffi accepts BigInt for pointer params.
     return BigInt(arg)
+  }
+  if (isArrayBufferView(arg) && arg.byteLength === 0) {
+    return emptyPtrSentinel
   }
   return arg
 }
@@ -544,10 +552,10 @@ function ffiFunctionToKoffiFunction<T extends (...args: unknown[]) => unknown>(
     if (returnsPtr && typeof result === "object" && result !== null) {
       const addr = Number(koffi.address(result))
       ptrExternals.set(addr, new WeakRef(result))
-      return addr as unknown
+      return addr
     }
     if (returnsBigInt && typeof result === "number") {
-      return BigInt(result) as unknown
+      return BigInt(result)
     }
     return result
   }
@@ -605,11 +613,7 @@ let _memcpy: ((dest: Uint8Array, src: bigint, n: number) => void) | undefined
 function getMemcpy() {
   if (!_memcpy) {
     const libcName =
-      process.platform === "darwin"
-        ? "libSystem.B.dylib"
-        : process.platform === "win32"
-          ? "msvcrt.dll"
-          : "libc.so.6"
+      process.platform === "darwin" ? "libSystem.B.dylib" : process.platform === "win32" ? "msvcrt.dll" : "libc.so.6"
     const libc = koffi.load(libcName)
     const fn = libc.func("memcpy", "void*", ["void*", "void*", "size_t"])
     _memcpy = fn as unknown as (dest: Uint8Array, src: bigint, n: number) => void
