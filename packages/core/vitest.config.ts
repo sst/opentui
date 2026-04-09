@@ -25,8 +25,13 @@ export default defineConfig({
       "--import=./src/nodejs/compat.ts",
     ],
     experimental: {
-      // Disable Vite bundling entirely so we exersize the nodejs/compat.ts shim.
+      // Disable Vite bundling entirely so we exercise the nodejs/compat.ts shim.
       viteModuleRunner: false,
+      // Disable vitest's native Node loader hooks — they call
+      // module.stripTypeScriptTypes() (strip-only mode) which doesn't support
+      // const enum or parameter properties. We rely on Node.js's
+      // --experimental-transform-types instead.
+      nodeLoader: false,
     },
     // Create independent snapshots from bun:test
     resolveSnapshotPath: (testPath, ext) =>
