@@ -420,8 +420,31 @@ export class JSCallback implements BunJSCallback {
   #registeredCallback: koffi.IKoffiRegisteredCallback | null
 
   constructor(callback: (...args: any[]) => any, definition: FFIFunction) {
+    // Wrap callback to convert koffi External pointer args → numbers (Bun convention),
+    // mirroring the conversion done for FFI function return values.
+    const ptrArgIndices: number[] = []
+    if (definition.args) {
+      for (let i = 0; i < definition.args.length; i++) {
+        if (isPointerType(definition.args[i])) ptrArgIndices.push(i)
+      }
+    }
+    const wrappedCallback =
+      ptrArgIndices.length > 0
+        ? (...args: any[]) => {
+            for (const i of ptrArgIndices) {
+              const arg = args[i]
+              if (typeof arg === "object" && arg !== null) {
+                const addr = Number(koffi.address(arg))
+                ptrExternals.set(addr, new WeakRef(arg))
+                args[i] = addr
+              }
+            }
+            return callback(...args)
+          }
+        : callback
+
     const proto = koffi.proto(returnsToKoffiType(definition.returns), argsToKoffiTypes(definition.args))
-    this.#registeredCallback = koffi.register(callback, koffi.pointer(proto))
+    this.#registeredCallback = koffi.register(wrappedCallback, koffi.pointer(proto))
     this.#threadsafe = definition.threadsafe ?? false
   }
 
@@ -472,6 +495,11 @@ function isBigIntType(type: FFITypeOrString | undefined): boolean {
 // (important for output parameters).
 const ptrBackingArrays = new Map<number, WeakRef<Uint8Array>>()
 
+// Maps numeric pointer addresses (from FFI return values) back to their koffi External.
+// toArrayBuffer needs the External to create a live koffi.view() (zero-copy alias of
+// native memory) rather than a one-time memcpy snapshot.
+const ptrExternals = new Map<number, WeakRef<object>>()
+
 function resolvePointerArg(arg: unknown): unknown {
   if (typeof arg === "number") {
     const ref = ptrBackingArrays.get(arg)
@@ -514,7 +542,9 @@ function ffiFunctionToKoffiFunction<T extends (...args: unknown[]) => unknown>(
     }
     const result = func(...args)
     if (returnsPtr && typeof result === "object" && result !== null) {
-      return Number(koffi.address(result)) as unknown
+      const addr = Number(koffi.address(result))
+      ptrExternals.set(addr, new WeakRef(result))
+      return addr as unknown
     }
     if (returnsBigInt && typeof result === "number") {
       return BigInt(result) as unknown
@@ -604,7 +634,25 @@ export const toArrayBuffer: typeof bunToArrayBuffer = (pointer, offset, length) 
     return koffi.view(pointer, length)
   }
 
-  // For numeric addresses (Bun convention), use memcpy to copy into a new buffer
+  // Check if we have the koffi External for this address — if so, use koffi.view
+  // for a live zero-copy alias (matching Bun's toArrayBuffer behavior).
+  if (typeof pointer === "number") {
+    const ref = ptrExternals.get(pointer)
+    if (ref) {
+      const external = ref.deref()
+      if (external) {
+        if (offset) {
+          const addr = koffi.address(external) + BigInt(offset)
+          const dest = new Uint8Array(length)
+          getMemcpy()(dest, addr, length)
+          return dest.buffer
+        }
+        return koffi.view(external, length)
+      }
+    }
+  }
+
+  // Fallback: memcpy for addresses we don't have an External for
   let ptrBigint = typeof pointer === "bigint" ? pointer : BigInt(pointer)
   if (offset) {
     ptrBigint += BigInt(offset)
