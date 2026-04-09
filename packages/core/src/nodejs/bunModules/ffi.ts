@@ -371,7 +371,7 @@ const FFITypeStringToType = {
   ["buffer"]: FFIType.buffer,
 } as const
 
-const BunPtrType = koffi.opaque("BunPtr")
+const BunPtrType = koffi.pointer("BunPtr", koffi.opaque())
 const NapiEnvType = koffi.opaque("NapiEnv")
 const NapiValueType = koffi.opaque("NapiValue")
 const BufferType = koffi.opaque("Buffer")
@@ -421,7 +421,7 @@ export class JSCallback implements BunJSCallback {
 
   constructor(callback: (...args: any[]) => any, definition: FFIFunction) {
     const proto = koffi.proto(returnsToKoffiType(definition.returns), argsToKoffiTypes(definition.args))
-    this.#registeredCallback = koffi.register(callback, proto)
+    this.#registeredCallback = koffi.register(callback, koffi.pointer(proto))
     this.#threadsafe = definition.threadsafe ?? false
   }
 
@@ -462,19 +462,35 @@ function ffiFunctionToKoffiFunction<T extends (...args: unknown[]) => unknown>(
   return func as T & koffi.KoffiFunction
 }
 
+const KoffiNativeAlloc = Symbol("KoffiNativeAlloc")
+const NativeAllocRegistry = new FinalizationRegistry((val) => koffi.free(val))
+
+function nativeAlloc(value: object, bytes: number) {
+  if (KoffiNativeAlloc in value) {
+    return value[KoffiNativeAlloc]
+  }
+  const ptr = koffi.alloc(koffi.types.uint8, bytes)
+  Object.defineProperty(value, KoffiNativeAlloc, {
+    value: ptr,
+    writable: false,
+    configurable: true,
+    enumerable: false,
+  })
+  NativeAllocRegistry.register(value, ptr)
+  return ptr
+}
+
 /**
  * Bun returns the pointer to the data backing a TypedArray, ArrayBuffer, etc,
  * directly aliasing the data.  koffi doesn't appear to expose such magicks, so
  * we have to settle for faking it.
  *
- * TODO: don't re-allocate every time.
- * TODO: don't leak.
+ * TODO: copy the data back from opaque to the target after a call to native function.
  */
 export const ptr: typeof bunPtr = (value) => {
-  const uint8 = koffi.types.uint8
-  const opaque = koffi.alloc(uint8, value.byteLength)
+  const opaque = nativeAlloc(value, value.byteLength)
   const encodable = isArrayBufferView(value) ? new Uint8Array(value.buffer, value.byteOffset, value.byteLength) : value
-  koffi.encode(opaque, uint8, encodable, encodable.byteLength)
+  koffi.encode(opaque, koffi.types.uint8, encodable, encodable.byteLength)
   const pointer = Number(koffi.address(opaque))
   return pointer as Pointer
 }
@@ -484,7 +500,10 @@ export const toArrayBuffer: typeof bunToArrayBuffer = (pointer, offset, length) 
   if (offset) {
     ptrBigint += BigInt(offset)
   }
-  return koffi.view(ptrBigint, length ? length : -1)
+  if (length === undefined) {
+    throw new Error(`bun:ffi.toArrayBuffer requires a length argument`)
+  }
+  return koffi.view(ptrBigint, length)
 }
 
 function guessSuffix() {

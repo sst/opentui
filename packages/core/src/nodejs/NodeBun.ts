@@ -51,12 +51,12 @@ class NodeBun implements NodeBunInterface {
   }
 
   stringWidth(text: string): number {
-    const stringWidth = require("string-width")
+    const stringWidth = import.meta.require("string-width")
     return stringWidth(text)
   }
 
   stripANSI(text: string): string {
-    const stripANSI = require("strip-ansi")
+    const stripANSI = import.meta.require("strip-ansi")
     return stripANSI(text)
   }
 
