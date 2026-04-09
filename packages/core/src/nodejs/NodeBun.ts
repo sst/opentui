@@ -122,7 +122,14 @@ class NodeBun implements NodeBunInterface {
       opts = cmdsOrOptions
     }
 
-    const [file, ...args] = cmd
+    const [file, ...rawArgs] = cmd
+    // When spawning node, inject compat shims so the child process can load .ts
+    // files and use Bun APIs (bun:ffi, bun:test, etc.)
+    let args = rawArgs
+    if (file === process.execPath || file === "node") {
+      const compatPath = new URL("./compat.ts", import.meta.url).pathname
+      args = ["--experimental-transform-types", `--import=${compatPath}`, ...rawArgs]
+    }
     const result = cp.spawnSync(file, args, {
       cwd: opts.cwd,
       env: opts.env as NodeJS.ProcessEnv | undefined,
