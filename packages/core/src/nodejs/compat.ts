@@ -1,6 +1,28 @@
 import * as mod from "node:module"
+import { Worker as NodeWorker, isMainThread, parentPort } from "node:worker_threads"
 
 const require = mod.createRequire(import.meta.url)
+
+/**
+ * Wraps node:worker_threads Worker to match the Web Worker API surface
+ * used by this project (constructor with URL string, .onmessage, .onerror,
+ * .postMessage, .terminate).
+ */
+class WebWorkerShim extends NodeWorker {
+  onmessage: ((event: { data: unknown }) => void) | null = null
+  onerror: ((event: { message: string }) => void) | null = null
+
+  constructor(url: string | URL) {
+    const resolved = typeof url === "string" && url.startsWith("file://") ? new URL(url) : url
+    super(resolved, { execArgv: [...process.execArgv, `--import=${import.meta.url}`] })
+    this.on("message", (data: unknown) => {
+      this.onmessage?.({ data })
+    })
+    this.on("error", (error: Error) => {
+      this.onerror?.({ message: error.message })
+    })
+  }
+}
 
 /**
  * Sets up Bun shims in a Node.js process.
@@ -11,6 +33,24 @@ export function setup() {
     enumerable: true,
     get: () => require("./NodeBun.js").default,
   })
+
+  if (globalThis.Worker === undefined) {
+    ;(globalThis as any).Worker = WebWorkerShim
+  }
+
+  // Inside a worker thread, bridge Web Worker messaging API to parentPort
+  if (!isMainThread && parentPort) {
+    ;(globalThis as any).postMessage = (msg: unknown) => parentPort!.postMessage(msg)
+    Object.defineProperty(globalThis, "onmessage", {
+      configurable: true,
+      set(handler: ((event: { data: unknown }) => void) | null) {
+        parentPort!.removeAllListeners("message")
+        if (handler) {
+          parentPort!.on("message", (data: unknown) => handler({ data }))
+        }
+      },
+    })
+  }
 
   mod.registerHooks({ resolve: resolveBun, load: loadBun })
   if (process.env.VITEST) {
