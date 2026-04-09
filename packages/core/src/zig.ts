@@ -50,10 +50,6 @@ if (isBunfsPath(targetLibPath)) {
   targetLibPath = targetLibPath.replace("../", "")
 }
 
-if (targetLibPath.startsWith("file://")) {
-  targetLibPath = targetLibPath.slice(7)
-}
-
 if (!existsSync(targetLibPath)) {
   throw new Error(
     `opentui is not supported on the current platform: ${process.platform}-${process.arch}: not found: ${targetLibPath}`,
