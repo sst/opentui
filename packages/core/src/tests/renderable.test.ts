@@ -118,8 +118,8 @@ describe("Renderable", () => {
     expect(renderable.liveCount).toBe(0)
   })
 
-  test("isRenderable", () => {
-    const { isRenderable } = require("../Renderable")
+  test("isRenderable", async () => {
+    const { isRenderable } = await import("../Renderable.js")
     const renderable = new TestBaseRenderable({})
     expect(isRenderable(renderable)).toBe(true)
     expect(isRenderable({})).toBe(false)
