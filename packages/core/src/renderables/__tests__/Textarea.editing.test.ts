@@ -188,6 +188,77 @@ describe("Textarea - Editing Tests", () => {
 
       expect(editor.plainText).toBe("Hello ")
     })
+
+    it("should delete to line start from middle of line", async () => {
+      const { textarea: editor } = await createTextareaRenderable(currentRenderer, renderOnce, {
+        initialValue: "Hello World",
+        width: 40,
+        height: 10,
+      })
+
+      for (let i = 0; i < 6; i++) {
+        editor.moveCursorRight()
+      }
+      editor.deleteToLineStart()
+
+      expect(editor.plainText).toBe("World")
+      expect(editor.logicalCursor.col).toBe(0)
+    })
+
+    it("should join with previous line when deleteToLineStart at col 0", async () => {
+      const { textarea: editor } = await createTextareaRenderable(currentRenderer, renderOnce, {
+        initialValue: "Line 1\nLine 2\nLine 3",
+        width: 40,
+        height: 10,
+      })
+
+      editor.gotoLine(1)
+      editor.deleteToLineStart()
+
+      expect(editor.plainText).toBe("Line 1Line 2\nLine 3")
+    })
+
+    it("should not delete when deleteToLineStart at row 0 col 0", async () => {
+      const { textarea: editor } = await createTextareaRenderable(currentRenderer, renderOnce, {
+        initialValue: "Hello World",
+        width: 40,
+        height: 10,
+      })
+
+      editor.deleteToLineStart()
+
+      expect(editor.plainText).toBe("Hello World")
+      expect(editor.logicalCursor.col).toBe(0)
+      expect(editor.logicalCursor.row).toBe(0)
+    })
+
+    it("should repeatedly delete lines with deleteToLineStart", async () => {
+      const { textarea: editor } = await createTextareaRenderable(currentRenderer, renderOnce, {
+        initialValue: "Line 1\nLine 2\nLine 3",
+        width: 40,
+        height: 10,
+      })
+
+      // Move to end of last line
+      editor.gotoLine(2)
+      editor.gotoLineEnd()
+
+      // First press: clear "Line 3" content
+      editor.deleteToLineStart()
+      expect(editor.plainText).toBe("Line 1\nLine 2\n")
+
+      // Second press: join with previous line (delete newline)
+      editor.deleteToLineStart()
+      expect(editor.plainText).toBe("Line 1\nLine 2")
+
+      // Third press: clear "Line 2" content
+      editor.deleteToLineStart()
+      expect(editor.plainText).toBe("Line 1\n")
+
+      // Fourth press: join with first line
+      editor.deleteToLineStart()
+      expect(editor.plainText).toBe("Line 1")
+    })
   })
 
   describe("Cursor Movement via Methods", () => {
