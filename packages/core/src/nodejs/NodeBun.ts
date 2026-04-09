@@ -1,8 +1,10 @@
+import * as cp from "node:child_process"
 import type { WriteFileOptions } from "node:fs"
 import * as fs from "node:fs/promises"
 import * as path from "node:path"
-import * as cp from "node:child_process"
 import { isArrayBufferView } from "node:util/types"
+import stringWidth from "string-width"
+import stripANSI from "strip-ansi"
 
 /**
  * ```bash
@@ -57,15 +59,8 @@ class NodeBun implements NodeBunInterface {
     return new Promise((resolve) => setTimeout(resolve, ms))
   }
 
-  stringWidth(text: string): number {
-    const stringWidth = import.meta.require("string-width")
-    return stringWidth(text)
-  }
-
-  stripANSI(text: string): string {
-    const stripANSI = import.meta.require("strip-ansi")
-    return stripANSI(text)
-  }
+  stringWidth = stringWidth
+  stripANSI = stripANSI
 
   write: typeof Bun.write = (destination, data, options): Promise<number> => {
     let dest: string | URL
