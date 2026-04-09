@@ -412,15 +412,17 @@ export abstract class Renderable extends BaseRenderable {
     this.emit(RenderableEvents.FOCUSED)
   }
 
-  private propagateFocusChange(hasFocus: boolean): void {
+  protected propagateFocusChange(hasFocus: boolean): void {
     let parent = this.parent
     while (parent) {
       if (parent._hasFocusedDescendant !== hasFocus) {
         parent._hasFocusedDescendant = hasFocus
-        parent.requestRender()
+        parent.markDirty()
       }
       parent = parent.parent
     }
+
+    this.requestRender()
   }
 
   public blur(): void {

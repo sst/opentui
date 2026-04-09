@@ -733,6 +733,7 @@ describe("Renderable - Focus", () => {
 
     renderable.focus()
     expect(renderable.focused).toBe(true)
+    expect(testRenderer.currentFocusedRenderable).toEqual(renderable)
 
     renderable.blur()
     expect(renderable.focused).toBe(false)
@@ -825,10 +826,12 @@ describe("Renderable - Focus", () => {
     renderable.focus()
     expect(renderable.focused).toBe(true)
     expect(blurSpy).not.toHaveBeenCalled()
+    expect(testRenderer.currentFocusedRenderable).toEqual(renderable)
 
     renderable.blur()
     expect(blurSpy).toHaveBeenCalledWith(renderable)
     expect(blurSpy).toHaveBeenCalledTimes(1)
+    expect(testRenderer.currentFocusedRenderable).toBeNull()
   })
 
   test("destroy() blurs renderable on context when focused", () => {
@@ -838,11 +841,13 @@ describe("Renderable - Focus", () => {
     renderable.focus()
     expect(renderable.focused).toBe(true)
     expect(blurSpy).not.toHaveBeenCalled()
+    expect(testRenderer.currentFocusedRenderable).toEqual(renderable)
 
     renderable.destroy()
     expect(blurSpy).toHaveBeenCalledWith(renderable)
     expect(blurSpy).toHaveBeenCalledTimes(1)
     expect(renderable.focused).toBe(false)
+    expect(testRenderer.currentFocusedRenderable).toBeNull()
   })
 
   test("destroy() does not call blurRenderable when renderable was not focused", () => {
