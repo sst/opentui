@@ -1,4 +1,5 @@
 import * as mod from "node:module"
+import { fileURLToPath } from "node:url"
 import { Worker as NodeWorker, isMainThread, parentPort } from "node:worker_threads"
 
 const require = mod.createRequire(import.meta.url)
@@ -78,10 +79,13 @@ const resolveBun: mod.ResolveHookSync = (request, context, next) => {
 
 const loadBun: mod.LoadHookSync = (url, context, next) => {
   if (context.importAttributes?.type === "file" || context.importAttributes?.type === "wasm") {
+    // Bun's `import ... with { type: "file" }` returns the absolute file path.
+    // Convert file:// URL to a path to match.
+    const filePath = url.startsWith("file://") ? fileURLToPath(url) : url
     return {
       shortCircuit: true,
       format: "json",
-      source: JSON.stringify(url),
+      source: JSON.stringify(filePath),
     }
   }
 
