@@ -15,13 +15,26 @@ class WebWorkerShim extends NodeWorker {
 
   constructor(url: string | URL) {
     const resolved = typeof url === "string" && url.startsWith("file://") ? new URL(url) : url
-    super(resolved, { execArgv: [...process.execArgv, `--import=${import.meta.url}`] })
+    let constructorError: Error | null = null
+    try {
+      super(resolved, { execArgv: [...process.execArgv, `--import=${import.meta.url}`] })
+    } catch (e) {
+      // Bun defers worker errors instead of throwing synchronously.
+      // Allocate a dummy worker and fire the error async.
+      super(new URL(import.meta.url), { execArgv: [] })
+      constructorError = e as Error
+      this.terminate()
+    }
     this.on("message", (data: unknown) => {
       this.onmessage?.({ data })
     })
     this.on("error", (error: Error) => {
       this.onerror?.({ message: error.message })
     })
+    if (constructorError) {
+      const err = constructorError
+      queueMicrotask(() => this.emit("error", err))
+    }
   }
 }
 
