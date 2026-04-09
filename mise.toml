@@ -1,3 +1,4 @@
 [tools]
 bun = "latest"
 zig = "{{ read_file(path='.zig-version') | trim }}"
+node = "22.13.1"
