@@ -453,13 +453,76 @@ function returnsToKoffiType(returns: FFITypeOrString | undefined): koffi.TypeSpe
   return ffiTypeToKoffiType(returns ?? FFIType.void)
 }
 
+function isPointerType(type: FFITypeOrString | undefined): boolean {
+  if (type === undefined) return false
+  const num = typeof type === "number" ? type : FFITypeStringToType[type as keyof typeof FFITypeStringToType]
+  return num === FFIType.ptr || num === FFIType.pointer
+}
+
+function isBigIntType(type: FFITypeOrString | undefined): boolean {
+  if (type === undefined) return false
+  const num = typeof type === "number" ? type : FFITypeStringToType[type as keyof typeof FFITypeStringToType]
+  return num === FFIType.i64 || num === FFIType.u64 || num === FFIType.i64_fast || num === FFIType.u64_fast
+}
+
+// Maps addresses returned by ptr() back to the original Uint8Array.
+// When the address appears as an FFI function argument, the wrapper passes the
+// Uint8Array directly to koffi — both Bun and koffi pass a TypedArray's underlying
+// memory address verbatim, so the native side can read/write JS-owned memory
+// (important for output parameters).
+const ptrBackingArrays = new Map<number, WeakRef<Uint8Array>>()
+
+function resolvePointerArg(arg: unknown): unknown {
+  if (typeof arg === "number") {
+    const ref = ptrBackingArrays.get(arg)
+    if (ref) {
+      const arr = ref.deref()
+      if (arr) return arr
+    }
+    // Real native address (e.g. from JSCallback.ptr or read from output buffer) —
+    // koffi accepts BigInt for pointer params.
+    return BigInt(arg)
+  }
+  return arg
+}
+
 function ffiFunctionToKoffiFunction<T extends (...args: unknown[]) => unknown>(
   lib: koffi.IKoffiLib,
   name: string,
   type: FFIFunction,
 ): T & koffi.KoffiFunction {
   const func = lib.func(name, returnsToKoffiType(type.returns), argsToKoffiTypes(type.args))
-  return func as T & koffi.KoffiFunction
+
+  const ptrArgIndices: number[] = []
+  if (type.args) {
+    for (let i = 0; i < type.args.length; i++) {
+      if (isPointerType(type.args[i])) ptrArgIndices.push(i)
+    }
+  }
+  const returnsPtr = isPointerType(type.returns)
+  // koffi may return small u64/i64 values as number instead of bigint;
+  // Bun always returns bigint for these types.
+  const returnsBigInt = isBigIntType(type.returns)
+
+  if (ptrArgIndices.length === 0 && !returnsPtr && !returnsBigInt) {
+    return func as T & koffi.KoffiFunction
+  }
+
+  const wrapper = (...args: unknown[]) => {
+    for (const i of ptrArgIndices) {
+      args[i] = resolvePointerArg(args[i])
+    }
+    const result = func(...args)
+    if (returnsPtr && typeof result === "object" && result !== null) {
+      return Number(koffi.address(result)) as unknown
+    }
+    if (returnsBigInt && typeof result === "number") {
+      return BigInt(result) as unknown
+    }
+    return result
+  }
+  Object.defineProperty(wrapper, "name", { value: name })
+  return wrapper as T & koffi.KoffiFunction
 }
 
 const KoffiNativeAlloc = Symbol("KoffiNativeAlloc")
@@ -469,41 +532,86 @@ function nativeAlloc(value: object, bytes: number) {
   if (KoffiNativeAlloc in value) {
     return value[KoffiNativeAlloc]
   }
-  const ptr = koffi.alloc(koffi.types.uint8, bytes)
+  const alloc = koffi.alloc(koffi.types.uint8, bytes)
   Object.defineProperty(value, KoffiNativeAlloc, {
-    value: ptr,
+    value: alloc,
     writable: false,
     configurable: true,
     enumerable: false,
   })
-  NativeAllocRegistry.register(value, ptr)
-  return ptr
+  NativeAllocRegistry.register(value, alloc)
+  return alloc
 }
 
 /**
- * Bun returns the pointer to the data backing a TypedArray, ArrayBuffer, etc,
- * directly aliasing the data.  koffi doesn't appear to expose such magicks, so
- * we have to settle for faking it.
+ * Returns the address of a koffi-allocated copy of `value` — a real native
+ * address that can be embedded in packed structs for the native side to
+ * dereference.
  *
- * TODO: copy the data back from opaque to the target after a call to native function.
+ * The original Uint8Array is also stored so that when this address is later
+ * passed as an FFI function argument, the wrapper can pass the original
+ * TypedArray to koffi instead (enabling write-back for output parameters).
  */
 export const ptr: typeof bunPtr = (value) => {
+  const view = isArrayBufferView(value)
+    ? new Uint8Array(value.buffer, value.byteOffset, value.byteLength)
+    : new Uint8Array(value)
+
+  // Allocate koffi memory and copy current data — gives a real native address
+  // that can be safely embedded in struct binary data.
   const opaque = nativeAlloc(value, value.byteLength)
-  const encodable = isArrayBufferView(value) ? new Uint8Array(value.buffer, value.byteOffset, value.byteLength) : value
-  koffi.encode(opaque, koffi.types.uint8, encodable, encodable.byteLength)
-  const pointer = Number(koffi.address(opaque))
-  return pointer as Pointer
+  koffi.encode(opaque, koffi.types.uint8, view, view.byteLength)
+  const address = Number(koffi.address(opaque))
+
+  // Also store the original view so resolvePointerArg can pass it through
+  // to koffi for direct memory access (output parameter write-back).
+  ptrBackingArrays.set(address, new WeakRef(view))
+
+  return address as Pointer
+}
+
+// Lazy-loaded memcpy for copying from raw addresses
+let _memcpy: ((dest: Uint8Array, src: bigint, n: number) => void) | undefined
+function getMemcpy() {
+  if (!_memcpy) {
+    const libcName =
+      process.platform === "darwin"
+        ? "libSystem.B.dylib"
+        : process.platform === "win32"
+          ? "msvcrt.dll"
+          : "libc.so.6"
+    const libc = koffi.load(libcName)
+    const fn = libc.func("memcpy", "void*", ["void*", "void*", "size_t"])
+    _memcpy = fn as unknown as (dest: Uint8Array, src: bigint, n: number) => void
+  }
+  return _memcpy
 }
 
 export const toArrayBuffer: typeof bunToArrayBuffer = (pointer, offset, length) => {
-  let ptrBigint = BigInt(pointer)
-  if (offset) {
-    ptrBigint += BigInt(offset)
-  }
   if (length === undefined) {
     throw new Error(`bun:ffi.toArrayBuffer requires a length argument`)
   }
-  return koffi.view(ptrBigint, length)
+
+  // If pointer is a koffi External, we can use koffi.view directly
+  if (typeof pointer === "object" && pointer !== null) {
+    if (offset) {
+      // Need to offset the pointer — convert to address and use memcpy path
+      const addr = koffi.address(pointer) + BigInt(offset)
+      const dest = new Uint8Array(length)
+      getMemcpy()(dest, addr, length)
+      return dest.buffer
+    }
+    return koffi.view(pointer, length)
+  }
+
+  // For numeric addresses (Bun convention), use memcpy to copy into a new buffer
+  let ptrBigint = typeof pointer === "bigint" ? pointer : BigInt(pointer)
+  if (offset) {
+    ptrBigint += BigInt(offset)
+  }
+  const dest = new Uint8Array(length)
+  getMemcpy()(dest, ptrBigint, length)
+  return dest.buffer
 }
 
 function guessSuffix() {
