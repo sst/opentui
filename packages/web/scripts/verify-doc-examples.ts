@@ -11,12 +11,12 @@
  * 3. Reports any type errors found
  */
 
-import { readFile, writeFile, mkdir, rm } from "node:fs/promises"
-import { join, relative } from "node:path"
 import { existsSync } from "node:fs"
+import { mkdir, readFile, rm, writeFile } from "node:fs/promises"
+import { join, relative } from "node:path"
 
-const DOCS_DIR = join(import.meta.dir, "../src/content/docs")
-const CORE_PACKAGE = join(import.meta.dir, "../../core")
+const DOCS_DIR = join(import.meta.dirname, "../src/content/docs")
+const CORE_PACKAGE = join(import.meta.dirname, "../../core")
 const CORE_DIST = join(CORE_PACKAGE, "dist")
 const TEST_DIR = "/tmp/opentui-doc-verify"
 

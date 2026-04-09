@@ -1,6 +1,6 @@
-import { describe, test, expect } from "bun:test"
-import { createMockKeys, KeyCodes } from "./mock-keys.js"
+import { describe, expect, test } from "bun:test"
 import { PassThrough } from "stream"
+import { createMockKeys, KeyCodes } from "./mock-keys.js"
 
 class MockRenderer {
   public stdin: PassThrough

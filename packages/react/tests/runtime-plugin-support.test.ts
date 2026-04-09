@@ -3,9 +3,9 @@ import { join } from "node:path"
 
 describe("react runtime plugin support", () => {
   it("loads external modules against host runtime exports", () => {
-    const fixturePath = join(import.meta.dir, "runtime-plugin-support.fixture.ts")
+    const fixturePath = join(import.meta.dirname, "runtime-plugin-support.fixture.ts")
     const result = Bun.spawnSync([process.execPath, fixturePath], {
-      cwd: join(import.meta.dir, ".."),
+      cwd: join(import.meta.dirname, ".."),
       stdout: "pipe",
       stderr: "pipe",
       env: process.env,

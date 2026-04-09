@@ -1,11 +1,11 @@
 import { describe, expect, it } from "bun:test"
 import { join } from "node:path"
 
-const fixturePath = join(import.meta.dir, "destroy-on-exit.fixture.ts")
+const fixturePath = join(import.meta.dirname, "destroy-on-exit.fixture.ts")
 
 const runFixture = (code: number, mode: "idle" | "during-render" = "idle") => {
   const result = Bun.spawnSync([process.execPath, fixturePath, code.toString(), mode], {
-    cwd: join(import.meta.dir, ".."),
+    cwd: join(import.meta.dirname, ".."),
     stdout: "pipe",
     stderr: "pipe",
     env: process.env,

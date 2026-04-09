@@ -1,12 +1,15 @@
-import { test, expect, beforeEach, beforeAll, afterAll, describe } from "bun:test"
-import { TreeSitterClient, addDefaultParsers } from "./client.js"
+import { afterAll, beforeAll, beforeEach, describe, expect, test } from "bun:test"
+import { readFileSync } from "node:fs"
+import { mkdir, readdir, stat, writeFile } from "node:fs/promises"
 import { tmpdir } from "node:os"
 import { join, resolve } from "node:path"
-import { mkdir, readdir, stat, writeFile } from "node:fs/promises"
-import { readFileSync } from "node:fs"
+import { TreeSitterClient } from "./client.js"
 import type { FiletypeParserOptions } from "./types.js"
 
-describe("TreeSitterClient Caching", () => {
+const shouldSkip = Bun.serve === undefined
+const describeFn = shouldSkip ? describe.skip : describe
+
+describeFn("TreeSitterClient Caching", () => {
   let dataPath: string
   let testServer: any
   const TEST_PORT = 55231

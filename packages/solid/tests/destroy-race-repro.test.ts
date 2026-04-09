@@ -1,13 +1,13 @@
 import { describe, expect, it } from "bun:test"
 import { join } from "node:path"
 
-const fixturePath = join(import.meta.dir, "destroy-race.fixture.tsx")
+const fixturePath = join(import.meta.dirname, "destroy-race.fixture.tsx")
 
 type Mode = "external" | "helper" | "external-onmount" | "helper-onmount" | "external-active" | "helper-active"
 
 const runFixture = (mode: Mode) => {
   const result = Bun.spawnSync([process.execPath, fixturePath, mode], {
-    cwd: join(import.meta.dir, ".."),
+    cwd: join(import.meta.dirname, ".."),
     stdout: "pipe",
     stderr: "pipe",
     env: process.env,

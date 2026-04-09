@@ -1,8 +1,8 @@
+import { runtimeModuleIdForSpecifier } from "@opentui/core/runtime-plugin"
 import { describe, expect, it } from "bun:test"
 import { mkdtempSync, rmSync, writeFileSync } from "node:fs"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
-import { runtimeModuleIdForSpecifier } from "@opentui/core/runtime-plugin"
 import { createSolidTransformPlugin } from "../scripts/solid-plugin.js"
 
 type ResolveCallback = (args: { path: string; importer: string }) => unknown | Promise<unknown>
@@ -181,9 +181,9 @@ describe("solid transform plugin", () => {
   })
 
   it("transforms runtime-resolved modules end-to-end in a subprocess", () => {
-    const fixturePath = join(import.meta.dir, "solid-plugin.fixture.ts")
+    const fixturePath = join(import.meta.dirname, "solid-plugin.fixture.ts")
     const result = Bun.spawnSync([process.execPath, fixturePath], {
-      cwd: join(import.meta.dir, ".."),
+      cwd: join(import.meta.dirname, ".."),
       stdout: "pipe",
       stderr: "pipe",
       env: process.env,
