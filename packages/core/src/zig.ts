@@ -1,58 +1,63 @@
-import { dlopen, toArrayBuffer, JSCallback, ptr, type Pointer } from "bun:ffi"
-import { existsSync, writeFileSync } from "fs"
+import { dlopen, JSCallback, ptr, toArrayBuffer, type Pointer } from "bun:ffi"
 import { EventEmitter } from "events"
+import { existsSync, writeFileSync } from "fs"
 import {
   type CursorStyle,
   type CursorStyleOptions,
-  type TargetChannel,
   type DebugOverlayCorner,
-  type WidthMethod,
   type Highlight,
   type LineInfo,
-  type MousePointerStyle,
+  type TargetChannel,
+  type WidthMethod,
 } from "./types.js"
-export type { LineInfo, AllocatorStats, BuildOptions }
+export type { AllocatorStats, BuildOptions, LineInfo }
 
-import { RGBA } from "./lib/RGBA.js"
 import { OptimizedBuffer } from "./buffer.js"
-import { TextBuffer } from "./text-buffer.js"
+import { isBunfsPath } from "./lib/bunfs.js"
 import { env, registerEnvVar } from "./lib/env.js"
-import {
-  StyledChunkStruct,
-  HighlightStruct,
-  LogicalCursorStruct,
-  VisualCursorStruct,
-  TerminalCapabilitiesStruct,
-  EncodedCharStruct,
-  LineInfoStruct,
-  MeasureResultStruct,
-  CursorStateStruct,
-  CursorStyleOptionsStruct,
-  GridDrawOptionsStruct,
-  NativeSpanFeedOptionsStruct,
-  NativeSpanFeedStatsStruct,
-  ReserveInfoStruct,
-  BuildOptionsStruct,
-  AllocatorStatsStruct,
-} from "./zig-structs.js"
+import { RGBA } from "./lib/RGBA.js"
+import { TextBuffer } from "./text-buffer.js"
 import type {
+  AllocatorStats,
+  BuildOptions,
   NativeSpanFeedOptions,
   NativeSpanFeedStats,
   ReserveInfo,
-  BuildOptions,
-  AllocatorStats,
 } from "./zig-structs.js"
-import { isBunfsPath } from "./lib/bunfs.js"
+import {
+  AllocatorStatsStruct,
+  BuildOptionsStruct,
+  CursorStateStruct,
+  CursorStyleOptionsStruct,
+  EncodedCharStruct,
+  GridDrawOptionsStruct,
+  HighlightStruct,
+  LineInfoStruct,
+  LogicalCursorStruct,
+  MeasureResultStruct,
+  NativeSpanFeedOptionsStruct,
+  NativeSpanFeedStatsStruct,
+  ReserveInfoStruct,
+  StyledChunkStruct,
+  TerminalCapabilitiesStruct,
+  VisualCursorStruct,
+} from "./zig-structs.js"
 
-const module = await import(`@opentui/core-${process.platform}-${process.arch}/index.ts`)
+const module = await import(`@opentui/core-${process.platform}-${process.arch}/index.js`)
 let targetLibPath = module.default
 
 if (isBunfsPath(targetLibPath)) {
   targetLibPath = targetLibPath.replace("../", "")
 }
 
+if (targetLibPath.startsWith("file://")) {
+  targetLibPath = targetLibPath.slice(7)
+}
+
 if (!existsSync(targetLibPath)) {
-  throw new Error(`opentui is not supported on the current platform: ${process.platform}-${process.arch}`)
+  throw new Error(
+    `opentui is not supported on the current platform: ${process.platform}-${process.arch}: not found: ${targetLibPath}`,
+  )
 }
 
 registerEnvVar({
@@ -3871,7 +3876,7 @@ export function resolveRenderLib(): RenderLib {
       opentuiLib = new FFIRenderLib(opentuiLibPath)
     } catch (error) {
       throw new Error(
-        `Failed to initialize OpenTUI render library: ${error instanceof Error ? error.message : "Unknown error"}`,
+        `Failed to initialize OpenTUI render library: ${error instanceof Error ? error.stack : "Unknown error"}`,
       )
     }
   }

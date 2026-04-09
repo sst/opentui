@@ -1,9 +1,8 @@
-import { spawnSync, type SpawnSyncReturns } from "node:child_process"
 import { copyFileSync, existsSync, mkdirSync, readFileSync, readdirSync, rmSync, writeFileSync } from "fs"
-import { dirname, join, resolve } from "path"
-import { fileURLToPath } from "url"
+import { spawnSync, type SpawnSyncReturns } from "node:child_process"
+import path, { dirname, join, resolve } from "path"
 import process from "process"
-import path from "path"
+import { fileURLToPath } from "url"
 
 interface Variant {
   platform: string
@@ -136,11 +135,14 @@ if (buildNative) {
       continue
     }
 
-    const indexTsContent = `const module = await import("./${libraryFileName}", { with: { type: "file" } })
+    const indexJsContent = `const module = await import("./${libraryFileName}", { with: { type: "file" } })
 const path = module.default
 export default path;
 `
-    writeFileSync(join(nativeDir, "index.ts"), indexTsContent)
+    const indexDtsContent = `declare const path: string
+export default path;`
+    writeFileSync(join(nativeDir, "index.js"), indexJsContent)
+    writeFileSync(join(nativeDir, "index.d.ts"), indexDtsContent)
 
     writeFileSync(
       join(nativeDir, "package.json"),
@@ -149,8 +151,8 @@ export default path;
           name: nativeName,
           version: packageJson.version,
           description: `Prebuilt ${platform}-${arch} binaries for ${packageJson.name}`,
-          main: "index.ts",
-          types: "index.ts",
+          main: "index.js",
+          types: "index.d.ts",
           license: packageJson.license,
           author: packageJson.author,
           homepage: packageJson.homepage,
