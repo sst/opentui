@@ -1,4 +1,5 @@
 import { afterAll, beforeAll, beforeEach, describe, expect, test } from "bun:test"
+import { createServer, type Server } from "node:http"
 import { readFileSync } from "node:fs"
 import { mkdir, readdir, stat, writeFile } from "node:fs/promises"
 import { tmpdir } from "node:os"
@@ -6,30 +7,34 @@ import { join, resolve } from "node:path"
 import { TreeSitterClient } from "./client.js"
 import type { FiletypeParserOptions } from "./types.js"
 
-const shouldSkip = Bun.serve === undefined
-const describeFn = shouldSkip ? describe.skip : describe
-
-describeFn("TreeSitterClient Caching", () => {
+describe("TreeSitterClient Caching", () => {
   let dataPath: string
-  let testServer: any
+  let testServer: Server
   const TEST_PORT = 55231
   const BASE_URL = `http://localhost:${TEST_PORT}`
 
   beforeAll(async () => {
-    const assetsDir = resolve(__dirname, "assets")
-    testServer = Bun.serve({
-      port: TEST_PORT,
-      fetch(req) {
-        const url = new URL(req.url)
-        const filePath = join(assetsDir, url.pathname)
-        return new Response(readFileSync(filePath))
-      },
+    const assetsDir = resolve(import.meta.dirname, "assets")
+    testServer = createServer((req, res) => {
+      const filePath = join(assetsDir, req.url ?? "/")
+      try {
+        const data = readFileSync(filePath)
+        res.writeHead(200)
+        res.end(data)
+      } catch {
+        res.writeHead(404)
+        res.end("Not found")
+      }
+    })
+    await new Promise<void>((resolve, reject) => {
+      testServer.on("error", reject)
+      testServer.listen(TEST_PORT, resolve)
     })
   })
 
   afterAll(async () => {
     if (testServer) {
-      testServer.stop()
+      await new Promise<void>((resolve) => testServer.close(() => resolve()))
     }
   })
 
