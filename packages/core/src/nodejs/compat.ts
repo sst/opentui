@@ -54,9 +54,7 @@ export function setup() {
   }
 
   mod.registerHooks({ resolve: resolveBun, load: loadBun })
-  if (process.env.VITEST) {
-    mod.registerHooks({ resolve: resolveJsToTs })
-  }
+  mod.registerHooks({ resolve: resolveJsToTs })
 }
 
 const BUN_PREFIX = "bun:"
@@ -122,5 +120,4 @@ const resolveJsToTs: mod.ResolveHookSync = (request, context, next) => {
   return next(tsRequest, context)
 }
 
-// Auto-setup when loaded via --import in vitest workers
-if (process.env.VITEST) setup()
+setup()
