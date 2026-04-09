@@ -1,0 +1,3 @@
+[tools]
+bun = "latest"
+zig = "{{ read_file(path='.zig-version') | trim }}"
