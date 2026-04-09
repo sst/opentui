@@ -1648,6 +1648,17 @@ export class RootRenderable extends Renderable {
     this.renderList.length = 0
     this.updateLayout(deltaTime, this.renderList)
 
+    // 2b. onSizeChange callbacks during updateLayout may dirty the yoga tree
+    // (e.g. ScrollBox hides a scrollbar). Re-layout so dimensions converge
+    // within this frame instead of relying on a deferred second render, which
+    // has different timing between Bun and Node.js (process.nextTick fires
+    // during an await in Bun but after it resolves in Node.js).
+    if (this.yogaNode.isDirty()) {
+      this.calculateLayout()
+      this.renderList.length = 0
+      this.updateLayout(deltaTime, this.renderList)
+    }
+
     // 3. Render all collected renderables
     this._ctx.clearHitGridScissorRects()
     for (let i = 1; i < this.renderList.length; i++) {
