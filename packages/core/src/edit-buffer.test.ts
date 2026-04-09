@@ -1,4 +1,4 @@
-import { describe, expect, it, beforeEach, afterEach } from "bun:test"
+import { afterEach, beforeEach, describe, expect, it } from "bun:test"
 import { EditBuffer } from "./edit-buffer.js"
 
 describe("EditBuffer", () => {
@@ -742,6 +742,11 @@ describe("EditBuffer Placeholder", () => {
   afterEach(() => {
     buffer.destroy()
   })
+
+  if (!process.versions.bun) {
+    // nodejs vitest fails unless there's at least one test in a describe block
+    it.todo("placeholder tests", () => {})
+  }
 })
 
 describe("EditBuffer Events", () => {
