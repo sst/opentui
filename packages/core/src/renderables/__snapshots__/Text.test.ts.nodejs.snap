@@ -1,0 +1,421 @@
+// Vitest Snapshot v1, https://vitest.dev/guide/snapshot.html
+
+exports[`TextRenderable Selection > Absolute Positioned Box with Text > should handle width:100% text in absolute positioned box with constrained maxWidth 1`] = `
+"                                                                      
+                                                                      
+                                                                      
+                                                                      
+                                                                      
+                                                                      
+                                                                      
+             This is an extremely long piece of text                  
+             that needs to wrap multiple times within                 
+             the constrained width of the absolutely                  
+             positioned container box with significant                
+             padding on all sides.                                    
+                                                                      
+                                                                      
+                                                                      
+"
+`;
+
+exports[`TextRenderable Selection > Absolute Positioned Box with Text > should render multiple text elements in absolute positioned box with proper spacing 1`] = `
+"                                                                                          
+                                                                                          
+                                                                                          
+                                        ┌───────────────────────────────────────────┐     
+                                        │                                           │     
+                                        │  System Update                            │     
+                                        │                                           │     
+                                        │  A new version is available with bug      │     
+                                        │  fixes and performance improvements.      │     
+                                        │                                           │     
+                                        │  Click to install                         │     
+                                        │                                           │     
+                                        └───────────────────────────────────────────┘     
+                                                                                          
+                                                                                          
+                                                                                          
+                                                                                          
+                                                                                          
+                                                                                          
+                                                                                          
+"
+`;
+
+exports[`TextRenderable Selection > Absolute Positioned Box with Text > should render text fully visible in absolute positioned box at various positions 1`] = `
+"                                                                                                    
+                                                           ┌──────────────────────────────────────┐ 
+                                                           │ Error: File not found in the         │ 
+                                                           │ specified directory path             │ 
+                                                           └──────────────────────────────────────┘ 
+                                                                                                    
+                                                                                                    
+                                                                                                    
+                                                                                                    
+                                                                                                    
+                                                                                                    
+                                                                                                    
+                                                                                                    
+                                                                                                    
+                                                                                                    
+                                                                                                    
+                                                                                                    
+                                                                                                    
+                                                                                                    
+                                                                                                    
+ ───────────────────────────────────                                                                
+  Success: Operation completed                                                                      
+  successfully!                                                                                     
+ ───────────────────────────────────                                                                
+                                                                                                    
+"
+`;
+
+exports[`TextRenderable Selection > Absolute Positioned Box with Text > should render text in absolute positioned box with padding and borders correctly 1`] = `
+"                                                                                
+                                                                                
+                  │                                                          │  
+                  │                                                          │  
+                  │    Important Notification                                │  
+                  │                                                          │  
+                  │                                                          │  
+                  │    This is a longer message that should wrap properly within
+                  │                                                          │  
+                  │                                                          │  
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+"
+`;
+
+exports[`TextRenderable Selection > Text Content Snapshots > should render TextNode text composition correctly 1`] = `
+"First Second Third  
+                    
+                    
+                    
+                    
+"
+`;
+
+exports[`TextRenderable Selection > Text Content Snapshots > should render basic text content correctly 1`] = `
+"                    
+                    
+                    
+     Hello World    
+                    
+"
+`;
+
+exports[`TextRenderable Selection > Text Content Snapshots > should render empty buffer correctly 1`] = `
+"                    
+                    
+                    
+                    
+                    
+"
+`;
+
+exports[`TextRenderable Selection > Text Content Snapshots > should render multiline text content correctly 1`] = `
+"                    
+ Line 1: Hello      
+ Line 2: World      
+ Line 3: Testing    
+ Line 4: Multiline  
+"
+`;
+
+exports[`TextRenderable Selection > Text Content Snapshots > should render text positioning correctly 1`] = `
+"Top                 
+                    
+        Mid         
+                    
+                Bot 
+"
+`;
+
+exports[`TextRenderable Selection > Text Content Snapshots > should render text with character wrapping correctly 1`] = `
+"This is a very      
+long text that      
+should wrap to      
+multiple lines      
+when wrap is en     
+"
+`;
+
+exports[`TextRenderable Selection > Text Content Snapshots > should render text with graphemes/emojis correctly 1`] = `
+"                    
+                    
+Hello 🌍 World 👋   
+ Test 🚀 Emoji      
+                    
+"
+`;
+
+exports[`TextRenderable Selection > Text Content Snapshots > should render text with tab indicator correctly 1`] = `
+"Line 1→ Tabbed      
+Line 2→ → Double tab
+                    
+                    
+                    
+"
+`;
+
+exports[`TextRenderable Selection > Text Content Snapshots > should render wrapped multiline text correctly 1`] = `
+"                    
+First li            
+ne with             
+long con            
+tent                
+"
+`;
+
+exports[`TextRenderable Selection > Text Content Snapshots > should render wrapped text with different content 1`] = `
+"                    
+  ABCDEFGHIJ        
+  KLMNOPQRST        
+  UVWXYZ abc        
+  defghijklm        
+"
+`;
+
+exports[`TextRenderable Selection > Text Content Snapshots > should render wrapped text with emojis and graphemes 1`] = `
+" Hello 🌍 Wor       
+ ld 👋 This i       
+ s a test wit       
+ h emojis 🚀        
+ that should        
+"
+`;
+
+exports[`TextRenderable Selection > Text Node Dimension Updates > should handle multiple text node updates with complex layout changes 1`] = `
+"First part          
+Middle text         
+Bottom text         
+                    
+                    
+                    
+                    
+                    
+                    
+                    
+"
+`;
+
+exports[`TextRenderable Selection > Text Node Dimension Updates > should handle multiple text node updates with complex layout changes 2`] = `
+"First of            
+a                   
+sentence            
+partthat            
+will wrap           
+Middle text         
+Bottom text         
+                    
+                    
+                    
+"
+`;
+
+exports[`TextRenderable Selection > Text Node Dimension Updates > should update dimensions and reposition subsequent elements when text nodes expand 1`] = `
+"Short               
+Second text         
+                    
+                    
+                    
+"
+`;
+
+exports[`TextRenderable Selection > Text Node Dimension Updates > should update dimensions and reposition subsequent elements when text nodes expand 2`] = `
+"Short text that will
+ definitely wrap    
+Second text         
+                    
+                    
+"
+`;
+
+exports[`TextRenderable Selection > Width/Height Setter Layout Tests > should not shrink box when height is set via setter in column layout with text 1`] = `
+"┌───────────────────────┐     
+│Header                 │     
+│                       │     
+│                       │     
+│Line1                  │     
+│Line2                  │     
+│Line3                  │     
+│Footer                 │     
+│                       │     
+└───────────────────────┘     
+                              
+                              
+                              
+                              
+                              
+"
+`;
+
+exports[`TextRenderable Selection > Width/Height Setter Layout Tests > should not shrink box when minHeight is set via setter in column layout with text 1`] = `
+"┌───────────────────────┐     
+│Header                 │     
+│                       │     
+│                       │     
+│Line1                  │     
+│Line2                  │     
+│Line3                  │     
+│Footer                 │     
+│                       │     
+└───────────────────────┘     
+                              
+                              
+                              
+                              
+                              
+"
+`;
+
+exports[`TextRenderable Selection > Width/Height Setter Layout Tests > should not shrink box when minWidth is set via setter 1`] = `
+"┌────────────────────────────┐          
+│>    Content that takes up  │          
+│     space                  │          
+└────────────────────────────┘          
+                                        
+                                        
+                                        
+                                        
+                                        
+                                        
+"
+`;
+
+exports[`TextRenderable Selection > Width/Height Setter Layout Tests > should not shrink box when width is set from undefined via setter 1`] = `
+"┌────────────────────────────┐          
+│>    Content that takes up  │          
+│     space                  │          
+└────────────────────────────┘          
+                                        
+                                        
+                                        
+                                        
+                                        
+                                        
+"
+`;
+
+exports[`TextRenderable Selection > Width/Height Setter Layout Tests > should not shrink box when width is set via setter 1`] = `
+"┌────────────────────────────┐          
+│>    Content that takes up  │          
+│     space                  │          
+└────────────────────────────┘          
+                                        
+                                        
+                                        
+                                        
+                                        
+                                        
+"
+`;
+
+exports[`TextRenderable Selection > Word Wrapping > should compare char vs word wrapping with same content 1`] = `
+"Hello               
+wonderful           
+world of            
+text                
+wrapping            
+"
+`;
+
+exports[`TextRenderable Selection > Word Wrapping > should correctly wrap text when updating content via text.content 1`] = `
+"Short text          
+                    
+                    
+                    
+                    
+"
+`;
+
+exports[`TextRenderable Selection > Word Wrapping > should correctly wrap text when updating content via text.content 2`] = `
+"This is a much      
+longer text that    
+should definitely   
+wrap to multiple    
+lines               
+"
+`;
+
+exports[`TextRenderable Selection > Word Wrapping > should dynamically change wrap mode 1`] = `
+"The quick           
+brown fox           
+jumps               
+                    
+                    
+"
+`;
+
+exports[`TextRenderable Selection > Word Wrapping > should handle long words that exceed wrap width in word mode 1`] = `
+"ABCDEFGHIJ          
+KLMNOPQRST          
+UVWXYZ              
+                    
+                    
+"
+`;
+
+exports[`TextRenderable Selection > Word Wrapping > should handle word wrapping with hyphens and dashes 1`] = `
+"self-               
+contained           
+multi-line          
+text-               
+wrapping            
+"
+`;
+
+exports[`TextRenderable Selection > Word Wrapping > should handle word wrapping with punctuation 1`] = `
+"Hello,              
+World.              
+Test-               
+Example/            
+Path                
+"
+`;
+
+exports[`TextRenderable Selection > Word Wrapping > should handle word wrapping with single character words 1`] = `
+"a b c d             
+e f g h             
+i j k l             
+m n o p             
+                    
+"
+`;
+
+exports[`TextRenderable Selection > Word Wrapping > should preserve empty lines with word wrapping 1`] = `
+"First               
+line                
+                    
+Third               
+line                
+"
+`;
+
+exports[`TextRenderable Selection > Word Wrapping > should wrap at character boundaries when using char mode 1`] = `
+"The quick brown     
+ fox jumps over     
+ the lazy dog       
+                    
+                    
+"
+`;
+
+exports[`TextRenderable Selection > Word Wrapping > should wrap at word boundaries when using word mode 1`] = `
+"The quick           
+brown fox           
+jumps over the      
+lazy dog            
+                    
+"
+`;

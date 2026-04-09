@@ -1,0 +1,158 @@
+// Vitest Snapshot v1, https://vitest.dev/guide/snapshot.html
+
+exports[`LineNumberRenderable > combines line number offset with hidden line numbers 1`] = `
+" 42 Line 1          
+    Line 2          
+ 44 Line 3          
+    Line 4          
+ 46 Line 5          
+                    
+                    
+                    
+                    
+                    
+"
+`;
+
+exports[`LineNumberRenderable > hides line numbers for specific lines 1`] = `
+" 1 Line 1           
+   Line 2           
+ 3 Line 3           
+   Line 4           
+ 5 Line 5           
+                    
+                    
+                    
+                    
+                    
+"
+`;
+
+exports[`LineNumberRenderable > maintains consistent left padding for all line numbers 1`] = `
+"  1 Line 1                    
+  2 Line 2                    
+  3 Line 3                    
+  4 Line 4                    
+  5 Line 5                    
+  6 Line 6                    
+  7 Line 7                    
+  8 Line 8                    
+  9 Line 9                    
+ 10 Line 10                   
+ 11 Line 11                   
+ 12 Line 12                   
+                              
+                              
+                              
+"
+`;
+
+exports[`LineNumberRenderable > maintains stable visual line count when scrolling and typing with word wrap 1`] = `
+"                                   
+ ┌───────────────────────────────┐ 
+ │     Ctrl+Y to redo            │ 
+ │  36                           │ 
+ │  37 VIEW:                     │ 
+ │  38   • Shift+W to toggle     │ 
+ │     wrap mode (word/char/     │ 
+ │     none)                     │ 
+ │  39   • Shift+L to toggle     │ 
+ │     line numbers              │ 
+ │  40                           │ 
+ │  41 FEATURES:                 │ 
+ │  42   ✓ Grapheme-aware        │ 
+ │     cursor movement           │ 
+ │  43   ✓ Unicode (emoji 🌟     │ 
+ │     and CJK 世界, 你好世界,   │ 
+ │     中文, 한글)               │ 
+ │  44   ✓ Incremental editing   │ 
+ │  45   ✓ Text wrapping and     │ 
+ │     viewport management       │ 
+ │  46   ✓ Undo/redo support     │ 
+ │  47   ✓ Word-based            │ 
+ │     navigation and deletion   │ 
+ │  48   ✓ Text selection with   │ 
+ │     shift keys                │ 
+ │  49                           │ 
+ │  50 Press ESC to return to    │ 
+ │     main menu                 │ 
+ └───────────────────────────────┘ 
+                                   
+"
+`;
+
+exports[`LineNumberRenderable > maintains stable visual line count when scrolling and typing with word wrap 2`] = `
+"                                   
+ ┌───────────────────────────────┐ 
+ │     Ctrl+Y to redo            │ 
+ │  36                           │ 
+ │  37 VIEW:                     │ 
+ │  38   • Shift+W to toggle     │ 
+ │     wrap mode (word/char/     │ 
+ │     none)                     │ 
+ │  39   • Shift+L to toggle     │ 
+ │     line numbers              │ 
+ │  40                           │ 
+ │  41 FEATURES:                 │ 
+ │  42   ✓ Grapheme-aware        │ 
+ │     cursor movement           │ 
+ │  43   ✓ Unicode (emoji 🌟     │ 
+ │     and CJK 世界, 你好世界,   │ 
+ │     中文, 한글)               │ 
+ │  44   ✓ Incremental editing   │ 
+ │  45   ✓ Text wrapping and     │ 
+ │     viewport management       │ 
+ │  46   ✓ Undo/redo support     │ 
+ │  47   ✓ Word-based            │ 
+ │     navigation and deletion   │ 
+ │  48   ✓ Text selection with   │ 
+ │     shift keys                │ 
+ │  49 a                         │ 
+ │  50 Press ESC to return to    │ 
+ │     main menu                 │ 
+ └───────────────────────────────┘ 
+                                   
+"
+`;
+
+exports[`LineNumberRenderable > renders line numbers correctly 1`] = `
+" 1 Line 1           
+ 2 Line 2           
+ 3 Line 3           
+                    
+                    
+                    
+                    
+                    
+                    
+                    
+"
+`;
+
+exports[`LineNumberRenderable > renders line numbers for wrapping text 1`] = `
+" 1 Line 1 is very l 
+   ong and should w 
+   rap around multi 
+   ple lines        
+                    
+                    
+                    
+                    
+                    
+                    
+"
+`;
+
+exports[`LineNumberRenderable > renders line numbers with offset 1`] = `
+" 42 Line 1          
+ 43 Line 2          
+ 44 Line 3          
+                    
+                    
+                    
+                    
+                    
+                    
+                    
+"
+`;

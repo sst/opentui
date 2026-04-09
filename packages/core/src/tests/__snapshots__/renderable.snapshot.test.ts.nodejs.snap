@@ -1,0 +1,19 @@
+// Vitest Snapshot v1, https://vitest.dev/guide/snapshot.html
+
+exports[`Renderable - insertBefore > reproduces insertBefore behavior with state change after timeout > insertBefore initial state 1`] = `
+"banana    
+apple     
+pear      
+          
+          
+"
+`;
+
+exports[`Renderable - insertBefore > reproduces insertBefore behavior with state change after timeout > insertBefore reordered state 1`] = `
+"banana    
+pear      
+apple     
+          
+          
+"
+`;
