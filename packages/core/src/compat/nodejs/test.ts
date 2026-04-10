@@ -8,7 +8,14 @@ export const spyOn = vi.spyOn
 expect.extend({
   toInclude(received: unknown, expected: unknown) {
     const pass =
-      typeof received === "string" ? received.includes(expected as string) : Array.isArray(received) ? received.includes(expected) : false
-    return { pass, message: () => `expected ${this.utils.printReceived(received)} to include ${this.utils.printExpected(expected)}` }
+      typeof received === "string"
+        ? received.includes(expected as string)
+        : Array.isArray(received)
+          ? received.includes(expected)
+          : false
+    return {
+      pass,
+      message: () => `expected ${this.utils.printReceived(received)} to include ${this.utils.printExpected(expected)}`,
+    }
   },
 })

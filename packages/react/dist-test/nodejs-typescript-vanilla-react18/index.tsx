@@ -24,10 +24,10 @@ describe("@opentui/react dist test (Node.js + TypeScript, vanilla React 18)", ()
   })
 
   it("renders simple text via testRender", async () => {
-    const { renderer, renderOnce, captureCharFrame } = await testRender(
-      <text>Hello from React 18 dist test</text>,
-      { width: 40, height: 4 },
-    )
+    const { renderer, renderOnce, captureCharFrame } = await testRender(<text>Hello from React 18 dist test</text>, {
+      width: 40,
+      height: 4,
+    })
 
     try {
       await renderOnce()
@@ -63,10 +63,10 @@ describe("@opentui/react dist test (Node.js + TypeScript, vanilla React 18)", ()
       return <text>{`Count: ${count}`}</text>
     }
 
-    const { renderer, renderOnce, captureCharFrame } = await testRender(
-      <Counter initial={42} />,
-      { width: 20, height: 4 },
-    )
+    const { renderer, renderOnce, captureCharFrame } = await testRender(<Counter initial={42} />, {
+      width: 20,
+      height: 4,
+    })
 
     try {
       await renderOnce()

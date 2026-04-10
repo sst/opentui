@@ -2,7 +2,7 @@ import * as mod from "node:module"
 import { extname } from "node:path"
 import { __url as ffiUrl } from "../ffi.js"
 import * as NodeBun from "../runtime.js"
-import { fileURLToPath } from "node:url";
+import { fileURLToPath } from "node:url"
 
 if (typeof globalThis.Bun === "undefined") {
   Object.defineProperty(globalThis, "Bun", {
@@ -69,12 +69,10 @@ mod.registerHooks({
     try {
       return next(specifier, context)
     } catch (error) {
-      if (context.importAttributes.type === "file" || context.importAttributes.type?.includes(
-        '/'
-      )) {
+      if (context.importAttributes.type === "file" || context.importAttributes.type?.includes("/")) {
         const absolutePath = fileURLToPath(specifier)
         return {
-          format: 'module',
+          format: "module",
           source: `export default ${JSON.stringify(absolutePath)}`,
           shortCircuit: true,
         }

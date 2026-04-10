@@ -356,5 +356,4 @@ describe("runtime plugin", () => {
     expect(result.exitCode).toBe(0)
     expect(stdout).toContain("marker=resolved-from-windows-file-url")
   })
-
 })

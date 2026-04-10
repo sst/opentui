@@ -332,7 +332,8 @@ const getRepoPackageDir = (packageName: string): string => {
 
 const getRepoDistDir = (packageName: string): string => join(getRepoPackageDir(packageName), "dist")
 
-const getNativePackageDir = (): string => join(getRepoPackageDir("@opentui/core"), "node_modules", "@opentui", nativePackageName.slice("@opentui/".length))
+const getNativePackageDir = (): string =>
+  join(getRepoPackageDir("@opentui/core"), "node_modules", "@opentui", nativePackageName.slice("@opentui/".length))
 
 const readSourcePackageJson = (packageName: string): DistTestPackageJson => {
   const packageJsonPath = join(getRepoPackageDir(packageName), "package.json")
@@ -476,7 +477,9 @@ const ensureRepoPackagesReady = ({ packageNames, buildCache }: EnsureRepoPackage
       }
     } catch (error) {
       const wrapped =
-        error instanceof Error ? new Error(`Failed to prepare ${packageName}: ${error.message}`, { cause: error }) : new Error(`Failed to prepare ${packageName}`)
+        error instanceof Error
+          ? new Error(`Failed to prepare ${packageName}: ${error.message}`, { cause: error })
+          : new Error(`Failed to prepare ${packageName}`)
       buildCache.failedPackages.set(packageName, wrapped)
       throw wrapped
     }
@@ -714,8 +717,12 @@ const verifyLocalPackageInstall = ({ fixture }: VerifyLocalPackageInstallArgs): 
 
     if (installedPaths.length !== 1) {
       const renderedPaths =
-        installedPaths.length === 0 ? "none found" : installedPaths.map((installedPath) => `\n    - ${installedPath}`).join("")
-      failures.push(`${packageName}: expected exactly 1 installed copy, found ${installedPaths.length}${installedPaths.length === 0 ? ` (${renderedPaths})` : ` at:${renderedPaths}`}`)
+        installedPaths.length === 0
+          ? "none found"
+          : installedPaths.map((installedPath) => `\n    - ${installedPath}`).join("")
+      failures.push(
+        `${packageName}: expected exactly 1 installed copy, found ${installedPaths.length}${installedPaths.length === 0 ? ` (${renderedPaths})` : ` at:${renderedPaths}`}`,
+      )
     }
   }
 
@@ -989,7 +996,9 @@ const runFixture = ({ fixture, invocationDir, buildCache }: RunFixtureArgs): voi
 const getFixtureOutputNames = (sourceTestDirs: string[]): string[] => {
   return sourceTestDirs.map((sourceTestDir) => {
     const repoRelativePath = relative(repoRoot, sourceTestDir).replaceAll("\\", "/")
-    const trimmedPath = repoRelativePath.startsWith("packages/") ? repoRelativePath.slice("packages/".length) : repoRelativePath
+    const trimmedPath = repoRelativePath.startsWith("packages/")
+      ? repoRelativePath.slice("packages/".length)
+      : repoRelativePath
     const outputName = trimmedPath.replaceAll("/", "-")
 
     if (!outputName) {
@@ -1060,9 +1069,7 @@ const main = (): void => {
     throw new Error("Missing required dist-test fixture path")
   }
 
-  const outputRootDir = args.outDir
-    ? resolve(invocationDir, args.outDir)
-    : mkdtempSync(join(tmpdir(), "dist-test-"))
+  const outputRootDir = args.outDir ? resolve(invocationDir, args.outDir) : mkdtempSync(join(tmpdir(), "dist-test-"))
   const fixtures = createFixtures({
     invocationDir,
     args,

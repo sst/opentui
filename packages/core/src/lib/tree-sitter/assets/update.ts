@@ -154,7 +154,9 @@ async function generateDefaultParsersFile(parsers: GeneratedParser[], outputPath
         `const ${safeFiletype}_language = fileURLToPath(new URL("${parser.languagePath}", import.meta.url))`,
       ]
       if (parser.injectionsPath) {
-        lines.push(`const ${safeFiletype}_injections = fileURLToPath(new URL("${parser.injectionsPath}", import.meta.url))`)
+        lines.push(
+          `const ${safeFiletype}_injections = fileURLToPath(new URL("${parser.injectionsPath}", import.meta.url))`,
+        )
       }
       return lines.join("\n")
     })
