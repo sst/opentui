@@ -2,6 +2,7 @@ import { describe, test, expect, beforeEach, afterEach } from "bun:test"
 import { testRender } from "../index.js"
 import { SyntaxStyle, RGBA } from "@opentui/core"
 import { createSignal, Show } from "solid-js"
+import { sleep } from "@opentui/core/compat/runtime"
 
 let testSetup: Awaited<ReturnType<typeof testRender>>
 
@@ -57,7 +58,7 @@ describe("DiffRenderable with SolidJS", () => {
     ))
 
     // Wait for automatic initial render
-    await Bun.sleep(50)
+    await sleep(50)
 
     const boxRenderable = testSetup.renderer.root.getRenderable("root")
     const diffRenderable = boxRenderable?.getRenderable("test-diff") as any
@@ -415,7 +416,7 @@ describe("DiffRenderable with SolidJS", () => {
 
     await testSetup.renderOnce()
     setWrapMode("word")
-    await Bun.sleep(10)
+    await sleep(10)
     await testSetup.renderer.idle()
 
     const frameAfterToggle = testSetup.captureCharFrame()
@@ -438,7 +439,7 @@ describe("DiffRenderable with SolidJS", () => {
       </box>
     ))
 
-    await Bun.sleep(10)
+    await sleep(10)
     await testSetup.renderer.idle()
 
     const frameFromStart = testSetup.captureCharFrame()

@@ -2,6 +2,7 @@ import { describe, expect, it } from "bun:test"
 import React, { useEffect, useState } from "react"
 import { createTestRenderer } from "@opentui/core/testing"
 import { createRoot } from "../src/reconciler/renderer.js"
+import { sleep } from "@opentui/core/compat/runtime"
 
 /**
  * Regression test for: Native Yoga crash when renderer.destroy() is called
@@ -73,7 +74,7 @@ describe("Renderer Destroy Crash with Pending React Updates", () => {
 
     // Let the component mount and interval start
     await testSetup.renderOnce()
-    await Bun.sleep(30)
+    await sleep(30)
     await testSetup.renderOnce()
 
     // Destroy WITHOUT unmounting React - this is the bug!
@@ -83,7 +84,7 @@ describe("Renderer Destroy Crash with Pending React Updates", () => {
 
     // Wait for interval to fire more updates after destroy
     // This is when the crash occurs if the bug is present
-    await Bun.sleep(100)
+    await sleep(100)
 
     // If we reach here without crashing, the bug is fixed
     expect(true).toBe(true)

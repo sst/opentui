@@ -2,6 +2,7 @@ import { describe, expect, it, beforeEach, afterEach } from "bun:test"
 import { testRender } from "../index.js"
 import { createSignal, onMount, Show } from "solid-js"
 import type { TextareaRenderable } from "@opentui/core"
+import { sleep } from "@opentui/core/compat/runtime"
 
 let testSetup: Awaited<ReturnType<typeof testRender>>
 
@@ -394,12 +395,12 @@ describe("Textarea Cursor Behavior Tests", () => {
 
       testSetup.renderer.addPostProcessFn(captureOffsets)
       testSetup.renderer.start()
-      await Bun.sleep(30)
+      await sleep(30)
 
       viewOffsets.length = 0
       await testSetup.mockInput.pasteBracketedText("Line 1\nLine 2\nLine 3")
 
-      await Bun.sleep(200)
+      await sleep(200)
       testSetup.renderer.pause()
       await testSetup.renderer.idle()
 
@@ -493,12 +494,12 @@ describe("Textarea Cursor Behavior Tests", () => {
       testSetup.renderer.addPostProcessFn(captureOffsets)
 
       testSetup.renderer.start()
-      await Bun.sleep(30)
+      await sleep(30)
 
       viewOffsets.length = 0
       await testSetup.mockInput.pasteBracketedText("Line 1\nLine 2\nLine 3")
 
-      await Bun.sleep(200)
+      await sleep(200)
       testSetup.renderer.pause()
       await testSetup.renderer.idle()
 
@@ -592,12 +593,12 @@ describe("Textarea Cursor Behavior Tests", () => {
       testSetup.renderer.addPostProcessFn(captureHeight)
 
       testSetup.renderer.start()
-      await Bun.sleep(30)
+      await sleep(30)
 
       heights.length = 0
       await testSetup.mockInput.pasteBracketedText("Line 1\nLine 2\nLine 3")
 
-      await Bun.sleep(200)
+      await sleep(200)
       testSetup.renderer.pause()
       await testSetup.renderer.idle()
 

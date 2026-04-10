@@ -4,6 +4,7 @@ import { createSignal, createMemo, createEffect, For } from "solid-js"
 import type { ScrollBoxRenderable } from "../../core/src/renderables/index.js"
 import { SyntaxStyle } from "../../core/src/syntax-style.js"
 import { MockTreeSitterClient } from "@opentui/core/testing"
+import { sleep } from "@opentui/core/compat/runtime"
 
 let testSetup: Awaited<ReturnType<typeof testRender>>
 let mockTreeSitterClient: MockTreeSitterClient
@@ -364,7 +365,7 @@ world
     const filler = Array.from({ length: 12 }, (_, i) => `Message ${i + 1}`)
     setItems([...filler, opencodeMessage])
     await testSetup.renderOnce()
-    await Bun.sleep(20)
+    await sleep(20)
     await testSetup.renderOnce()
 
     if (scrollRef) {
@@ -400,7 +401,7 @@ world
     for (let width = 100; width >= 80; width -= 1) {
       testSetup.resize(width, 24)
       await testSetup.renderOnce()
-      await Bun.sleep(20)
+      await sleep(20)
       await testSetup.renderOnce()
       if (scrollRef) {
         scrollRef.scrollTo(scrollRef.scrollHeight)

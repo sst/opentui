@@ -1,9 +1,19 @@
 import { runtimeModuleIdForSpecifier } from "@opentui/core/runtime-plugin"
 import { describe, expect, it } from "bun:test"
 import { mkdtempSync, rmSync, writeFileSync } from "node:fs"
+import { createRequire } from "node:module"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
-import { createSolidTransformPlugin } from "../scripts/solid-plugin.js"
+import { spawnSync } from "@opentui/core/compat/testHelpers"
+
+const require = createRequire(import.meta.url)
+const bunDescribe = process.versions.bun ? describe : describe.skip
+
+type CreateSolidTransformPlugin = (typeof import("../scripts/solid-plugin.js"))["createSolidTransformPlugin"]
+
+const createSolidTransformPlugin: CreateSolidTransformPlugin = (...args) => {
+  return require("../scripts/solid-plugin.js").createSolidTransformPlugin(...args)
+}
 
 type ResolveCallback = (args: { path: string; importer: string }) => unknown | Promise<unknown>
 type LoadResult = { contents: string; loader: string } | void
@@ -73,7 +83,7 @@ const createTempTsxFile = (source: string): { path: string; dispose: () => void 
   }
 }
 
-describe("solid transform plugin", () => {
+bunDescribe("solid transform plugin", () => {
   it("does not register runtime module resolvers by default", () => {
     const { build, resolveFilters, modules } = createMockBuild()
     createSolidTransformPlugin().setup(build as any)
@@ -182,7 +192,7 @@ describe("solid transform plugin", () => {
 
   it("transforms runtime-resolved modules end-to-end in a subprocess", () => {
     const fixturePath = join(import.meta.dirname, "solid-plugin.fixture.ts")
-    const result = Bun.spawnSync([process.execPath, fixturePath], {
+    const result = spawnSync([process.execPath, fixturePath], {
       cwd: join(import.meta.dirname, ".."),
       stdout: "pipe",
       stderr: "pipe",

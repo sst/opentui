@@ -1,10 +1,13 @@
 import { describe, expect, it } from "bun:test"
 import { join } from "node:path"
+import { spawnSync } from "@opentui/core/compat/testHelpers"
+
+const bunIt = process.versions.bun ? it : it.skip
 
 describe("solid runtime plugin support with preload", () => {
-  it("rewrites external TSX modules even when the preload plugin is already active", () => {
+  bunIt("rewrites external TSX modules even when the preload plugin is already active", () => {
     const fixturePath = join(import.meta.dirname, "runtime-plugin-support-preload.fixture.ts")
-    const result = Bun.spawnSync([process.execPath, fixturePath], {
+    const result = spawnSync([process.execPath, fixturePath], {
       cwd: join(import.meta.dirname, ".."),
       stdout: "pipe",
       stderr: "pipe",

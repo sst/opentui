@@ -18,7 +18,8 @@
     "publish:react": "cd packages/react && bun run publish",
     "publish:solid": "cd packages/solid && bun run publish",
     "prepare-release": "bun scripts/prepare-release.ts",
-    "test": "bun run --filter '@opentui/core' --filter '@opentui/solid' --filter '@opentui/react' --if-present test"
+    "test": "bun run --filter '@opentui/core' --filter '@opentui/solid' --filter '@opentui/react' --if-present test",
+    "test:nodejs": "bun run --filter '@opentui/core' --filter '@opentui/solid' --filter '@opentui/react' --if-present test:nodejs"
   },
   "devDependencies": {
     "oxfmt": "0.41.0",

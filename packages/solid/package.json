@@ -16,7 +16,8 @@
     "build": "bun scripts/build.ts",
     "build:examples": "bun examples/build.ts",
     "publish": "bun scripts/publish.ts",
-    "test": "bun test"
+    "test": "bun test",
+    "test:nodejs": "npx vitest run"
   },
   "exports": {
     ".": {

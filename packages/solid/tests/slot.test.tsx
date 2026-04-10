@@ -4,6 +4,7 @@ import { createContext, createComponent, createSignal, onCleanup, onMount, useCo
 import { createSlot, createSolidSlotRegistry, Slot, type SolidPlugin } from "../src/plugins/slot.js"
 import { _render as renderInternal } from "../src/reconciler.js"
 import { RendererContext } from "../src/elements/index.js"
+import { sleep } from "@opentui/core/compat/runtime"
 
 interface AppSlots {
   statusbar: { user: string }
@@ -472,7 +473,7 @@ describe("Solid Slot System", () => {
 
     const settle = async () => {
       await testSetup.renderOnce()
-      await Bun.sleep(0)
+      await sleep(0)
       await testSetup.renderOnce()
     }
 

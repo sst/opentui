@@ -1,0 +1,8 @@
+// Vitest Snapshot v1, https://vitest.dev/guide/snapshot.html
+
+exports[`SolidJS Renderer - Dynamic and Portal Components > <Dynamic> Component > should pass props correctly to dynamic components 1`] = `
+"Updated text        
+                    
+                    
+"
+`;

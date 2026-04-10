@@ -74,6 +74,14 @@
       "types": "./src/testing.ts",
       "import": "./src/testing.ts"
     },
+    "./compat/runtime": {
+      "types": "./src/compat/runtime.ts",
+      "import": "./src/compat/runtime.ts"
+    },
+    "./compat/testHelpers": {
+      "types": "./src/compat/testHelpers.ts",
+      "import": "./src/compat/testHelpers.ts"
+    },
     "./runtime-plugin": {
       "types": "./src/runtime-plugin.ts",
       "import": "./src/runtime-plugin.ts"

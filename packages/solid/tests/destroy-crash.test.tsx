@@ -2,6 +2,7 @@ import { describe, expect, it } from "bun:test"
 import { createTestRenderer } from "@opentui/core/testing"
 import { For, createSignal, onCleanup, onMount } from "solid-js"
 import { render } from "../index.js"
+import { sleep } from "@opentui/core/compat/runtime"
 
 describe("Renderer destroy with pending Solid updates", () => {
   it("disposes Solid root when renderer is destroyed externally", async () => {
@@ -66,7 +67,7 @@ describe("Renderer destroy with pending Solid updates", () => {
       await render(() => <App />, testSetup.renderer)
 
       await testSetup.renderOnce()
-      await Bun.sleep(30)
+      await sleep(30)
       await testSetup.renderOnce()
 
       log(`ticks before destroy: ${intervalTicks}`)
@@ -74,11 +75,11 @@ describe("Renderer destroy with pending Solid updates", () => {
       log("calling renderer.destroy()")
       testSetup.renderer.destroy()
 
-      await Bun.sleep(30)
+      await sleep(30)
       const ticksSoonAfterDestroy = intervalTicks
       log(`ticks soon after destroy: ${ticksSoonAfterDestroy}`)
 
-      await Bun.sleep(60)
+      await sleep(60)
       const ticksLaterAfterDestroy = intervalTicks
       log(`ticks later after destroy: ${ticksLaterAfterDestroy}`)
 

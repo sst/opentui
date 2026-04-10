@@ -9,6 +9,7 @@ import {
   createSolidSlotRegistry,
   useRenderer,
 } from "../index.js"
+import { sleep } from "@opentui/core/compat/runtime"
 
 type AppSlots = {
   statusbar: { user: string }
@@ -157,7 +158,7 @@ describe("slot behavior stability without preload", () => {
       }
 
       await setup.renderOnce()
-      await Bun.sleep(0)
+      await sleep(0)
       await setup.renderOnce()
 
       const settled = setup.renderer.listenerCount("selection")
@@ -248,7 +249,7 @@ describe("slot behavior stability without preload", () => {
       registry.updateOrder("sidebar-only", 5)
 
       await setup.renderOnce()
-      await Bun.sleep(0)
+      await sleep(0)
       await setup.renderOnce()
 
       expect(mounts).toBe(1)

@@ -1,10 +1,13 @@
 import { describe, expect, it } from "bun:test"
 import { join } from "node:path"
+import { spawnSync } from "@opentui/core/compat/testHelpers"
+
+const bunIt = process.versions.bun ? it : it.skip
 
 describe("react runtime plugin support", () => {
-  it("loads external modules against host runtime exports", () => {
+  bunIt("loads external modules against host runtime exports", () => {
     const fixturePath = join(import.meta.dirname, "runtime-plugin-support.fixture.ts")
-    const result = Bun.spawnSync([process.execPath, fixturePath], {
+    const result = spawnSync([process.execPath, fixturePath], {
       cwd: join(import.meta.dirname, ".."),
       stdout: "pipe",
       stderr: "pipe",

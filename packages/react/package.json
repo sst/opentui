@@ -39,7 +39,8 @@
     "build:examples": "bun examples/build.ts",
     "build:dev": "bun run scripts/build.ts --dev",
     "publish": "bun run scripts/publish.ts",
-    "test": "bun test"
+    "test": "bun test",
+    "test:nodejs": "npx vitest run"
   },
   "devDependencies": {
     "@types/bun": "latest",
