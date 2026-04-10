@@ -1,6 +1,6 @@
 import * as mod from "node:module"
+import { __url as ffiUrl } from "../ffi.js"
 import * as NodeBun from "../runtime.js"
-import { __url as ffiUrl } from "./ffi.js"
 
 if (typeof globalThis.Bun === "undefined") {
   Object.defineProperty(globalThis, "Bun", {

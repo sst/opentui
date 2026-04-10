@@ -1,5 +1,7 @@
 import { FFIType } from "./FFIType.js"
 
+export { FFIType }
+
 export type Pointer = number & { __pointer__: null }
 
 interface FFITypeStringToType {
@@ -172,3 +174,5 @@ export const dlopen = ffiModule.dlopen
 export const ptr = ffiModule.ptr
 export const suffix = ffiModule.suffix
 export const toArrayBuffer = ffiModule.toArrayBuffer
+
+export const __url = import.meta.url
