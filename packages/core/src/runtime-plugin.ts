@@ -455,7 +455,7 @@ export function createRuntimePlugin(input: CreateRuntimePluginOptions = {}): Bun
 
         // Register both the resolved path spelling and its canonical realpath so Bun
         // can reach the loader even if it reports the same file through a different alias.
-        build.onLoad({ filter: exactPathFilter([resolvedTargetPath, canonicalTargetPath]) }, async (args) => {
+        build.onLoad({ filter: exactPathFilter([resolvedTargetPath, canonicalTargetPath]) }, async (args: any) => {
           const loadedPath = normalizeSourcePath(args.path)
           if (loadedPath !== canonicalTargetPath) {
             return undefined
@@ -568,7 +568,7 @@ export function createRuntimePlugin(input: CreateRuntimePluginOptions = {}): Bun
         build.onResolve({ filter: exactSpecifierFilter(specifier) }, () => ({ path: moduleId }))
       }
 
-      build.onResolve({ filter: /.*/ }, (args) => {
+      build.onResolve({ filter: /.*/ }, (args: any) => {
         if (runtimeModuleIdsBySpecifier.has(args.path) || args.path.startsWith(RUNTIME_MODULE_PREFIX)) {
           return undefined
         }
