@@ -23,6 +23,8 @@ export interface BoxOptions<TRenderable extends Renderable = BoxRenderable> exte
   shouldFill?: boolean
   title?: string
   titleAlignment?: "left" | "center" | "right"
+  bottomTitle?: string
+  bottomTitleAlignment?: "left" | "center" | "right"
   focusedBorderColor?: ColorInput
   focusable?: boolean
   gap?: number | `${number}%`
@@ -52,6 +54,8 @@ export class BoxRenderable extends Renderable {
   public shouldFill: boolean
   protected _title?: string
   protected _titleAlignment: "left" | "center" | "right"
+  protected _bottomTitle?: string
+  protected _bottomTitleAlignment: "left" | "center" | "right"
 
   protected _defaultOptions = {
     backgroundColor: "transparent",
@@ -60,6 +64,7 @@ export class BoxRenderable extends Renderable {
     borderColor: "#FFFFFF",
     shouldFill: true,
     titleAlignment: "left",
+    bottomTitleAlignment: "left",
     focusedBorderColor: "#00AAFF",
   } satisfies Partial<BoxOptions>
 
@@ -87,6 +92,8 @@ export class BoxRenderable extends Renderable {
     this.shouldFill = options.shouldFill ?? this._defaultOptions.shouldFill
     this._title = options.title
     this._titleAlignment = options.titleAlignment || this._defaultOptions.titleAlignment
+    this._bottomTitle = options.bottomTitle
+    this._bottomTitleAlignment = options.bottomTitleAlignment || this._defaultOptions.bottomTitleAlignment
 
     this.applyYogaBorders()
 
@@ -208,6 +215,28 @@ export class BoxRenderable extends Renderable {
     }
   }
 
+  public get bottomTitle(): string | undefined {
+    return this._bottomTitle
+  }
+
+  public set bottomTitle(value: string | undefined) {
+    if (this._bottomTitle !== value) {
+      this._bottomTitle = value
+      this.requestRender()
+    }
+  }
+
+  public get bottomTitleAlignment(): "left" | "center" | "right" {
+    return this._bottomTitleAlignment
+  }
+
+  public set bottomTitleAlignment(value: "left" | "center" | "right") {
+    if (this._bottomTitleAlignment !== value) {
+      this._bottomTitleAlignment = value
+      this.requestRender()
+    }
+  }
+
   protected renderSelf(buffer: OptimizedBuffer): void {
     const currentBorderColor = this._focused ? this._focusedBorderColor : this._borderColor
 
@@ -224,6 +253,8 @@ export class BoxRenderable extends Renderable {
       shouldFill: this.shouldFill,
       title: this._title,
       titleAlignment: this._titleAlignment,
+      bottomTitle: this._bottomTitle,
+      bottomTitleAlignment: this._bottomTitleAlignment,
     })
   }
 

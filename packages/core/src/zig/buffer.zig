@@ -178,6 +178,13 @@ pub const OptimizedBuffer = struct {
         link_pool: ?*link.LinkPool = null,
     };
 
+    const BoxTitleLayout = struct {
+        shouldDraw: bool = false,
+        x: i32 = 0,
+        startX: i32 = 0,
+        endX: i32 = 0,
+    };
+
     pub fn init(allocator: Allocator, width: u32, height: u32, options: InitOptions) BufferError!*OptimizedBuffer {
         if (width == 0 or height == 0) {
             logger.warn("OptimizedBuffer.init: Invalid dimensions {}x{}", .{ width, height });
@@ -1693,6 +1700,8 @@ pub const OptimizedBuffer = struct {
         shouldFill: bool,
         title: ?[]const u8,
         titleAlignment: u8, // 0=left, 1=center, 2=right
+        bottomTitle: ?[]const u8,
+        bottomTitleAlignment: u8, // 0=left, 1=center, 2=right
     ) !void {
         const startX = @max(0, x);
         const startY = @max(0, y);
@@ -1710,36 +1719,8 @@ pub const OptimizedBuffer = struct {
         const isAtActualTop = startY == y;
         const isAtActualBottom = endY == y + @as(i32, @intCast(height)) - 1;
 
-        var shouldDrawTitle = false;
-        var titleX: i32 = startX;
-        var titleStartX: i32 = 0;
-        var titleEndX: i32 = 0;
-
-        if (title) |titleText| {
-            if (titleText.len > 0 and borderSides.top and isAtActualTop) {
-                const is_ascii = utf8.isAsciiOnly(titleText);
-                const titleLength = @as(i32, @intCast(utf8.calculateTextWidth(titleText, 2, is_ascii, self.width_method)));
-                const minTitleSpace = 4;
-
-                shouldDrawTitle = @as(i32, @intCast(width)) >= titleLength + minTitleSpace;
-
-                if (shouldDrawTitle) {
-                    const padding = 2;
-
-                    if (titleAlignment == 1) { // center
-                        titleX = startX + @max(padding, @divFloor(@as(i32, @intCast(width)) - titleLength, 2));
-                    } else if (titleAlignment == 2) { // right
-                        titleX = startX + @as(i32, @intCast(width)) - padding - titleLength;
-                    } else { // left
-                        titleX = startX + padding;
-                    }
-
-                    titleX = @max(startX + padding, @min(titleX, endX - titleLength));
-                    titleStartX = titleX;
-                    titleEndX = titleX + titleLength - 1;
-                }
-            }
-        }
+        const titleLayout = self.computeBoxTitleLayout(title, borderSides.top, isAtActualTop, startX, endX, width, titleAlignment);
+        const bottomTitleLayout = self.computeBoxTitleLayout(bottomTitle, borderSides.bottom, isAtActualBottom, startX, endX, width, bottomTitleAlignment);
 
         if (shouldFill) {
             if (!borderSides.top and !borderSides.right and !borderSides.bottom and !borderSides.left) {
@@ -1776,7 +1757,7 @@ pub const OptimizedBuffer = struct {
                 var drawX = startX;
                 while (drawX <= endX) : (drawX += 1) {
                     if (startY >= 0 and startY < @as(i32, @intCast(self.height))) {
-                        if (shouldDrawTitle and drawX >= titleStartX and drawX <= titleEndX) {
+                        if (titleLayout.shouldDraw and drawX >= titleLayout.startX and drawX <= titleLayout.endX) {
                             continue;
                         }
 
@@ -1799,6 +1780,10 @@ pub const OptimizedBuffer = struct {
                 var drawX = startX;
                 while (drawX <= endX) : (drawX += 1) {
                     if (endY >= 0 and endY < @as(i32, @intCast(self.height))) {
+                        if (bottomTitleLayout.shouldDraw and drawX >= bottomTitleLayout.startX and drawX <= bottomTitleLayout.endX) {
+                            continue;
+                        }
+
                         var char = borderChars[@intFromEnum(BorderCharIndex.horizontal)];
 
                         // Handle corners
@@ -1833,11 +1818,60 @@ pub const OptimizedBuffer = struct {
             }
         }
 
-        if (shouldDrawTitle) {
+        if (titleLayout.shouldDraw) {
             if (title) |titleText| {
-                try self.drawText(titleText, @intCast(titleX), @intCast(startY), borderColor, backgroundColor, 0);
+                try self.drawText(titleText, @intCast(titleLayout.x), @intCast(startY), borderColor, backgroundColor, 0);
             }
         }
+
+        if (bottomTitleLayout.shouldDraw) {
+            if (bottomTitle) |titleText| {
+                try self.drawText(titleText, @intCast(bottomTitleLayout.x), @intCast(endY), borderColor, backgroundColor, 0);
+            }
+        }
+    }
+
+    fn computeBoxTitleLayout(
+        self: *OptimizedBuffer,
+        titleText: ?[]const u8,
+        borderSide: bool,
+        isAtActualSide: bool,
+        startX: i32,
+        endX: i32,
+        width: u32,
+        alignment: u8,
+    ) BoxTitleLayout {
+        const text = titleText orelse return .{ .x = startX };
+
+        if (text.len == 0 or !borderSide or !isAtActualSide) {
+            return .{ .x = startX };
+        }
+
+        const is_ascii = utf8.isAsciiOnly(text);
+        const titleLength = @as(i32, @intCast(utf8.calculateTextWidth(text, 2, is_ascii, self.width_method)));
+        const minTitleSpace = 4;
+
+        if (@as(i32, @intCast(width)) < titleLength + minTitleSpace) {
+            return .{ .x = startX };
+        }
+
+        const padding = 2;
+        var titleX = startX + padding;
+
+        if (alignment == 1) {
+            titleX = startX + @max(padding, @divFloor(@as(i32, @intCast(width)) - titleLength, 2));
+        } else if (alignment == 2) {
+            titleX = startX + @as(i32, @intCast(width)) - padding - titleLength;
+        }
+
+        titleX = @max(startX + padding, @min(titleX, endX - titleLength));
+
+        return .{
+            .shouldDraw = true,
+            .x = titleX,
+            .startX = titleX,
+            .endX = titleX + titleLength - 1,
+        };
     }
 
     /// Draw a buffer of pixel data using super sampling (2x2 pixels per character cell)

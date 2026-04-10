@@ -5,7 +5,9 @@ import { RGBA } from "../../lib/RGBA.js"
 import { SyntaxStyle } from "../../syntax-style.js"
 import { OptimizedBuffer } from "../../buffer.js"
 import { fg, t } from "../../lib/index.js"
-import { BoxRenderable, TextareaRenderable, TextRenderable } from "../index.js"
+import { BoxRenderable } from "../Box.js"
+import { TextareaRenderable } from "../Textarea.js"
+import { TextRenderable } from "../Text.js"
 
 let currentRenderer: TestRenderer
 let renderOnce: () => Promise<void>
