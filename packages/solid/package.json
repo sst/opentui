@@ -16,8 +16,10 @@
     "build": "bun scripts/build.ts",
     "build:examples": "bun examples/build.ts",
     "publish": "bun scripts/publish.ts",
-    "test": "bun test",
-    "test:nodejs": "npx vitest run"
+    "test:bun": "bun test",
+    "test:dist": "bun ../../scripts/dist-test.ts ./dist-test/*",
+    "test:nodejs": "npx vitest run",
+    "test": "bun run test:bun && bun run test:nodejs && bun run test:dist"
   },
   "exports": {
     ".": {

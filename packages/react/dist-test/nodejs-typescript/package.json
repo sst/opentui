@@ -1,0 +1,20 @@
+{
+  "name": "@opentui/react-dist-test-nodejs-typescript",
+  "private": true,
+  "type": "module",
+  "engines": {
+    "node": ">=22"
+  },
+  "scripts": {
+    "build": "npx tsgo --project tsconfig.json",
+    "test": "node --test dist/index.js"
+  },
+  "dependencies": {
+    "@opentui/core": "*",
+    "@opentui/react": "*",
+    "@typescript/native-preview": "latest",
+    "@types/react": "^19.0.0",
+    "@types/node": "^24.0.0",
+    "react": ">=19.0.0"
+  }
+}

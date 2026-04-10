@@ -1,0 +1,14 @@
+{
+  "name": "@opentui/core-dist-test-bun",
+  "private": true,
+  "type": "module",
+  "engines": {
+    "bun": ">=1.3.0"
+  },
+  "scripts": {
+    "test": "bun test index.test.ts"
+  },
+  "dependencies": {
+    "@opentui/core": "*"
+  }
+}
