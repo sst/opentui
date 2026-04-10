@@ -1,6 +1,6 @@
 import { RGBA, parseColor, type ColorInput } from "./lib/RGBA.js"
 import { resolveRenderLib, type RenderLib } from "./zig.js"
-import { type Pointer } from "bun:ffi"
+import { type Pointer } from "./compat/ffi.js"
 import { createTextAttributes } from "./utils.js"
 
 export interface StyleDefinition {

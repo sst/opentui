@@ -1,4 +1,5 @@
 import { test, expect, beforeEach, afterEach } from "bun:test"
+import { sleep } from "../compat/runtime.js"
 import { CodeRenderable } from "./Code.js"
 import { SyntaxStyle } from "../syntax-style.js"
 import { RGBA } from "../lib/RGBA.js"
@@ -1109,14 +1110,14 @@ test("CodeRenderable - streaming mode with drawUnstyledText=false waits for new 
   currentRenderer.root.add(codeRenderable)
   currentRenderer.start()
 
-  await Bun.sleep(30)
+  await sleep(30)
 
   expect(codeRenderable.plainText).toBe("const initial = 'hello';")
 
   codeRenderable.content = "const updated = 'world';"
   expect(codeRenderable.plainText).toBe("const initial = 'hello';")
 
-  await Bun.sleep(30)
+  await sleep(30)
 
   expect(codeRenderable.plainText).toBe("const updated = 'world';")
 
@@ -2046,7 +2047,7 @@ test("CodeRenderable - streaming with drawUnstyledText=false falls back to unsty
   currentRenderer.root.add(codeRenderable)
   currentRenderer.start()
 
-  await Bun.sleep(30)
+  await sleep(30)
 
   mockClient.highlightOnce = async () => {
     throw new Error("Highlighting failed")
@@ -2054,7 +2055,7 @@ test("CodeRenderable - streaming with drawUnstyledText=false falls back to unsty
 
   codeRenderable.content = "const updated = 'world';"
 
-  await Bun.sleep(30)
+  await sleep(30)
 
   expect(codeRenderable.plainText).toBe("const updated = 'world';")
 

@@ -1,6 +1,6 @@
 import { afterAll, beforeAll, beforeEach, describe, expect, test } from "bun:test"
-import { createServer, type Server } from "node:http"
 import { readFileSync } from "node:fs"
+import { createServer, type Server } from "node:http"
 import { mkdir, readdir, stat, writeFile } from "node:fs/promises"
 import { tmpdir } from "node:os"
 import { join, resolve } from "node:path"

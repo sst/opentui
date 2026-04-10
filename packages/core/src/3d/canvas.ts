@@ -1,12 +1,12 @@
+import { readFileSync } from "node:fs"
 import { GPUCanvasContextMock } from "bun-webgpu"
 import { RGBA } from "../lib/RGBA.js"
 import { SuperSampleType } from "./WGPURenderer.js"
 import type { OptimizedBuffer } from "../buffer.js"
-import { toArrayBuffer } from "bun:ffi"
+import { toArrayBuffer } from "../compat/ffi.js"
 import { Jimp } from "jimp"
 
-// @ts-ignore
-import shaderTemplate from "./shaders/supersampling.wgsl" with { type: "text" }
+const shaderTemplate = readFileSync(new URL("./shaders/supersampling.wgsl", import.meta.url), "utf8")
 
 const WORKGROUP_SIZE = 4
 const SUPERSAMPLING_COMPUTE_SHADER = shaderTemplate.replace(/\${WORKGROUP_SIZE}/g, WORKGROUP_SIZE.toString())

@@ -1,339 +1,19 @@
+import koffi from "koffi"
+import { fileURLToPath } from "node:url"
+import { isArrayBufferView } from "node:util/types"
 import type {
-  dlopen as bunDlopen,
-  JSCallback as BunJSCallback,
-  ptr as bunPtr,
-  toArrayBuffer as bunToArrayBuffer,
   ConvertFns,
+  DlopenFunction,
   FFIFunction,
   FFITypeOrString,
+  JSCallback as IJSCallback,
   Pointer,
-} from "bun:ffi"
-import koffi from "koffi"
-import { isArrayBufferView } from "node:util/types"
+  PtrFunction,
+  ToArrayBufferFunction,
+} from "../ffi.js"
+import { FFIType } from "../FFIType.js"
 
-/** Copy of Bun's FFIType enum. */
-export enum FFIType {
-  char = 0,
-  /**
-   * 8-bit signed integer
-   *
-   * Must be a value between -127 and 127
-   *
-   * When passing to a FFI function (C ABI), type coercion is not performed.
-   *
-   * In C:
-   * ```c
-   * signed char
-   * char // on x64 & aarch64 macOS
-   * ```
-   *
-   * In JavaScript:
-   * ```js
-   * var num = 0;
-   * ```
-   */
-  int8_t = 1,
-  /**
-   * 8-bit signed integer
-   *
-   * Must be a value between -127 and 127
-   *
-   * When passing to a FFI function (C ABI), type coercion is not performed.
-   *
-   * In C:
-   * ```c
-   * signed char
-   * char // on x64 & aarch64 macOS
-   * ```
-   *
-   * In JavaScript:
-   * ```js
-   * var num = 0;
-   * ```
-   */
-  i8 = 1,
-
-  /**
-   * 8-bit unsigned integer
-   *
-   * Must be a value between 0 and 255
-   *
-   * When passing to a FFI function (C ABI), type coercion is not performed.
-   *
-   * In C:
-   * ```c
-   * unsigned char
-   * ```
-   *
-   * In JavaScript:
-   * ```js
-   * var num = 0;
-   * ```
-   */
-  uint8_t = 2,
-  /**
-   * 8-bit unsigned integer
-   *
-   * Must be a value between 0 and 255
-   *
-   * When passing to a FFI function (C ABI), type coercion is not performed.
-   *
-   * In C:
-   * ```c
-   * unsigned char
-   * ```
-   *
-   * In JavaScript:
-   * ```js
-   * var num = 0;
-   * ```
-   */
-  u8 = 2,
-
-  /**
-   * 16-bit signed integer
-   *
-   * Must be a value between -32768 and 32767
-   *
-   * When passing to a FFI function (C ABI), type coercion is not performed.
-   *
-   * In C:
-   * ```c
-   * in16_t
-   * short // on arm64 & x64
-   * ```
-   *
-   * In JavaScript:
-   * ```js
-   * var num = 0;
-   * ```
-   */
-  int16_t = 3,
-  /**
-   * 16-bit signed integer
-   *
-   * Must be a value between -32768 and 32767
-   *
-   * When passing to a FFI function (C ABI), type coercion is not performed.
-   *
-   * In C:
-   * ```c
-   * in16_t
-   * short // on arm64 & x64
-   * ```
-   *
-   * In JavaScript:
-   * ```js
-   * var num = 0;
-   * ```
-   */
-  i16 = 3,
-
-  /**
-   * 16-bit unsigned integer
-   *
-   * Must be a value between 0 and 65535, inclusive.
-   *
-   * When passing to a FFI function (C ABI), type coercion is not performed.
-   *
-   * In C:
-   * ```c
-   * uint16_t
-   * unsigned short // on arm64 & x64
-   * ```
-   *
-   * In JavaScript:
-   * ```js
-   * var num = 0;
-   * ```
-   */
-  uint16_t = 4,
-  /**
-   * 16-bit unsigned integer
-   *
-   * Must be a value between 0 and 65535, inclusive.
-   *
-   * When passing to a FFI function (C ABI), type coercion is not performed.
-   *
-   * In C:
-   * ```c
-   * uint16_t
-   * unsigned short // on arm64 & x64
-   * ```
-   *
-   * In JavaScript:
-   * ```js
-   * var num = 0;
-   * ```
-   */
-  u16 = 4,
-
-  /**
-   * 32-bit signed integer
-   */
-  int32_t = 5,
-
-  /**
-   * 32-bit signed integer
-   *
-   * Alias of {@link FFIType.int32_t}
-   */
-  i32 = 5,
-  /**
-   * 32-bit signed integer
-   *
-   * The same as `int` in C
-   *
-   * ```c
-   * int
-   * ```
-   */
-  int = 5,
-
-  /**
-   * 32-bit unsigned integer
-   *
-   * The same as `unsigned int` in C (on x64 & arm64)
-   *
-   * C:
-   * ```c
-   * unsigned int
-   * ```
-   * JavaScript:
-   * ```js
-   * ptr(new Uint32Array(1))
-   * ```
-   */
-  uint32_t = 6,
-  /**
-   * 32-bit unsigned integer
-   *
-   * Alias of {@link FFIType.uint32_t}
-   */
-  u32 = 6,
-
-  /**
-   * int64 is a 64-bit signed integer
-   */
-  int64_t = 7,
-  /**
-   * i64 is a 64-bit signed integer
-   */
-  i64 = 7,
-
-  /**
-   * 64-bit unsigned integer
-   */
-  uint64_t = 8,
-  /**
-   * 64-bit unsigned integer
-   */
-  u64 = 8,
-
-  /**
-   * IEEE-754 double precision float
-   */
-  double = 9,
-
-  /**
-   * Alias of {@link FFIType.double}
-   */
-  f64 = 9,
-
-  /**
-   * IEEE-754 single precision float
-   */
-  float = 10,
-
-  /**
-   * Alias of {@link FFIType.float}
-   */
-  f32 = 10,
-
-  /**
-   * Boolean value
-   *
-   * Must be `true` or `false`. `0` and `1` type coercion is not supported.
-   *
-   * In C, this corresponds to:
-   * ```c
-   * bool
-   * _Bool
-   * ```
-   */
-  bool = 11,
-
-  /**
-   * Pointer value
-   *
-   * See {@link Bun.FFI.ptr} for more information
-   *
-   * In C:
-   * ```c
-   * void*
-   * ```
-   *
-   * In JavaScript:
-   * ```js
-   * ptr(new Uint8Array(1))
-   * ```
-   */
-  ptr = 12,
-  /**
-   * Pointer value
-   *
-   * alias of {@link FFIType.ptr}
-   */
-  pointer = 12,
-
-  /**
-   * void value
-   *
-   * void arguments are not supported
-   *
-   * void return type is the default return type
-   *
-   * In C:
-   * ```c
-   * void
-   * ```
-   */
-  void = 13,
-
-  /**
-   * When used as a `returns`, this will automatically become a {@link CString}.
-   *
-   * When used in `args` it is equivalent to {@link FFIType.pointer}
-   */
-  cstring = 14,
-
-  /**
-   * Attempt to coerce `BigInt` into a `Number` if it fits. This improves performance
-   * but means you might get a `BigInt` or you might get a `number`.
-   *
-   * In C, this always becomes `int64_t`
-   *
-   * In JavaScript, this could be number or it could be BigInt, depending on what
-   * value is passed in.
-   */
-  i64_fast = 15,
-
-  /**
-   * Attempt to coerce `BigInt` into a `Number` if it fits. This improves performance
-   * but means you might get a `BigInt` or you might get a `number`.
-   *
-   * In C, this always becomes `uint64_t`
-   *
-   * In JavaScript, this could be number or it could be BigInt, depending on what
-   * value is passed in.
-   */
-  u64_fast = 16,
-  function = 17,
-
-  napi_env = 18,
-  napi_value = 19,
-  buffer = 20,
-}
+export { FFIType }
 
 const FFITypeStringToType = {
   ["char"]: FFIType.char,
@@ -415,7 +95,7 @@ function ffiTypeToKoffiType(type: FFITypeOrString): koffi.TypeSpec {
   return ffiTypeToKoffiTypeMap[numberType]
 }
 
-export class JSCallback implements BunJSCallback {
+export class JSCallback implements IJSCallback {
   #threadsafe: boolean
   #registeredCallback: koffi.IKoffiRegisteredCallback | null
 
@@ -590,10 +270,10 @@ function nativeAlloc(value: object, bytes: number) {
  * passed as an FFI function argument, the wrapper can pass the original
  * TypedArray to koffi instead (enabling write-back for output parameters).
  */
-export const ptr: typeof bunPtr = (value) => {
+export const ptr: PtrFunction = (value) => {
   const view = isArrayBufferView(value)
     ? new Uint8Array(value.buffer, value.byteOffset, value.byteLength)
-    : new Uint8Array(value)
+    : new Uint8Array(value as ArrayBuffer)
 
   // Allocate koffi memory and copy current data — gives a real native address
   // that can be safely embedded in struct binary data.
@@ -621,9 +301,13 @@ function getMemcpy() {
   return _memcpy
 }
 
-export const toArrayBuffer: typeof bunToArrayBuffer = (pointer, offset, length) => {
+export const toArrayBuffer: ToArrayBufferFunction = (pointer, offset, length) => {
+  if (pointer === null) {
+    throw new TypeError("ptr must be a number")
+  }
+
   if (length === undefined) {
-    throw new Error(`bun:ffi.toArrayBuffer requires a length argument`)
+    throw new Error(`nodejs ffi.toArrayBuffer requires a length argument`)
   }
 
   // If pointer is a koffi External, we can use koffi.view directly
@@ -658,7 +342,7 @@ export const toArrayBuffer: typeof bunToArrayBuffer = (pointer, offset, length) 
 
   // Fallback: memcpy for addresses we don't have an External for
   let ptrBigint = typeof pointer === "bigint" ? pointer : BigInt(pointer)
-  if (offset) {
+  if (offset && ptrBigint !== null) {
     ptrBigint += BigInt(offset)
   }
   const dest = new Uint8Array(length)
@@ -666,27 +350,14 @@ export const toArrayBuffer: typeof bunToArrayBuffer = (pointer, offset, length) 
   return dest.buffer
 }
 
-function guessSuffix() {
-  switch (process.platform) {
-    case "darwin":
-      return "dylib"
-    case "linux":
-      return "so"
-    case "win32":
-      return "dll"
-    default:
-      return "so"
-  }
-}
+export const suffix: string = koffi.extension.slice(1)
 
-export const suffix: string = guessSuffix()
-
-export const dlopen: typeof bunDlopen = (name, symbols) => {
+export const dlopen: DlopenFunction = (name, symbols) => {
   let loadPath: string
   if (typeof name === "string") {
     loadPath = name
   } else if (name instanceof URL) {
-    loadPath = name.pathname
+    loadPath = fileURLToPath(name)
   } else {
     throw new Error(`Unsupported FFI library name: ${name}`)
   }
@@ -701,3 +372,5 @@ export const dlopen: typeof bunDlopen = (name, symbols) => {
     close: () => lib.unload(),
   }
 }
+
+export const __url = import.meta.url

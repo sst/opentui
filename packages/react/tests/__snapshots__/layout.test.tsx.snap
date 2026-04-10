@@ -193,3 +193,1163 @@ exports[`React Renderer | Layout Tests Empty and Edge Cases should handle very s
      
 "
 `;
+
+exports[`TextRenderable Selection Text Content Snapshots should render basic text content correctly 1`] = `
+"                    
+                    
+                    
+     Hello World    
+                    
+"
+`;
+
+exports[`TextRenderable Selection Text Content Snapshots should render multiline text content correctly 1`] = `
+"                    
+ Line 1: Hello      
+ Line 2: World      
+ Line 3: Testing    
+ Line 4: Multiline  
+"
+`;
+
+exports[`TextRenderable Selection Text Content Snapshots should render text with graphemes/emojis correctly 1`] = `
+"                    
+                    
+Hello 🌍 World 👋   
+ Test 🚀 Emoji      
+                    
+"
+`;
+
+exports[`TextRenderable Selection Text Content Snapshots should render TextNode text composition correctly 1`] = `
+"First Second Third  
+                    
+                    
+                    
+                    
+"
+`;
+
+exports[`TextRenderable Selection Text Content Snapshots should render text positioning correctly 1`] = `
+"Top                 
+                    
+        Mid         
+                    
+                Bot 
+"
+`;
+
+exports[`TextRenderable Selection Text Content Snapshots should render empty buffer correctly 1`] = `
+"                    
+                    
+                    
+                    
+                    
+"
+`;
+
+exports[`TextRenderable Selection Text Content Snapshots should render text with character wrapping correctly 1`] = `
+"This is a very      
+long text that      
+should wrap to      
+multiple lines      
+when wrap is en     
+"
+`;
+
+exports[`TextRenderable Selection Text Content Snapshots should render wrapped text with different content 1`] = `
+"                    
+  ABCDEFGHIJ        
+  KLMNOPQRST        
+  UVWXYZ abc        
+  defghijklm        
+"
+`;
+
+exports[`TextRenderable Selection Text Content Snapshots should render wrapped text with emojis and graphemes 1`] = `
+" Hello 🌍 Wor       
+ ld 👋 This i       
+ s a test wit       
+ h emojis 🚀        
+ that should        
+"
+`;
+
+exports[`TextRenderable Selection Text Content Snapshots should render wrapped multiline text correctly 1`] = `
+"                    
+First li            
+ne with             
+long con            
+tent                
+"
+`;
+
+exports[`TextRenderable Selection Text Content Snapshots should render text with tab indicator correctly 1`] = `
+"Line 1→ Tabbed      
+Line 2→ → Double tab
+                    
+                    
+                    
+"
+`;
+
+exports[`TextRenderable Selection Text Node Dimension Updates should update dimensions and reposition subsequent elements when text nodes expand 1`] = `
+"Short               
+Second text         
+                    
+                    
+                    
+"
+`;
+
+exports[`TextRenderable Selection Text Node Dimension Updates should update dimensions and reposition subsequent elements when text nodes expand 2`] = `
+"Short text that will
+ definitely wrap    
+Second text         
+                    
+                    
+"
+`;
+
+exports[`TextRenderable Selection Text Node Dimension Updates should handle multiple text node updates with complex layout changes 1`] = `
+"First part          
+Middle text         
+Bottom text         
+                    
+                    
+                    
+                    
+                    
+                    
+                    
+"
+`;
+
+exports[`TextRenderable Selection Text Node Dimension Updates should handle multiple text node updates with complex layout changes 2`] = `
+"First of            
+a                   
+sentence            
+partthat            
+will wrap           
+Middle text         
+Bottom text         
+                    
+                    
+                    
+"
+`;
+
+exports[`TextRenderable Selection Width/Height Setter Layout Tests should not shrink box when width is set via setter 1`] = `
+"┌────────────────────────────┐          
+│>    Content that takes up  │          
+│     space                  │          
+└────────────────────────────┘          
+                                        
+                                        
+                                        
+                                        
+                                        
+                                        
+"
+`;
+
+exports[`TextRenderable Selection Width/Height Setter Layout Tests should not shrink box when height is set via setter in column layout with text 1`] = `
+"┌───────────────────────┐     
+│Header                 │     
+│                       │     
+│                       │     
+│Line1                  │     
+│Line2                  │     
+│Line3                  │     
+│Footer                 │     
+│                       │     
+└───────────────────────┘     
+                              
+                              
+                              
+                              
+                              
+"
+`;
+
+exports[`TextRenderable Selection Width/Height Setter Layout Tests should not shrink box when minWidth is set via setter 1`] = `
+"┌────────────────────────────┐          
+│>    Content that takes up  │          
+│     space                  │          
+└────────────────────────────┘          
+                                        
+                                        
+                                        
+                                        
+                                        
+                                        
+"
+`;
+
+exports[`TextRenderable Selection Width/Height Setter Layout Tests should not shrink box when minHeight is set via setter in column layout with text 1`] = `
+"┌───────────────────────┐     
+│Header                 │     
+│                       │     
+│                       │     
+│Line1                  │     
+│Line2                  │     
+│Line3                  │     
+│Footer                 │     
+│                       │     
+└───────────────────────┘     
+                              
+                              
+                              
+                              
+                              
+"
+`;
+
+exports[`TextRenderable Selection Width/Height Setter Layout Tests should not shrink box when width is set from undefined via setter 1`] = `
+"┌────────────────────────────┐          
+│>    Content that takes up  │          
+│     space                  │          
+└────────────────────────────┘          
+                                        
+                                        
+                                        
+                                        
+                                        
+                                        
+"
+`;
+
+exports[`TextRenderable Selection Absolute Positioned Box with Text should render text in absolute positioned box with padding and borders correctly 1`] = `
+"                                                                                
+                                                                                
+                  │                                                          │  
+                  │                                                          │  
+                  │    Important Notification                                │  
+                  │                                                          │  
+                  │                                                          │  
+                  │    This is a longer message that should wrap properly within
+                  │                                                          │  
+                  │                                                          │  
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+"
+`;
+
+exports[`TextRenderable Selection Absolute Positioned Box with Text should render text fully visible in absolute positioned box at various positions 1`] = `
+"                                                                                                    
+                                                           ┌──────────────────────────────────────┐ 
+                                                           │ Error: File not found in the         │ 
+                                                           │ specified directory path             │ 
+                                                           └──────────────────────────────────────┘ 
+                                                                                                    
+                                                                                                    
+                                                                                                    
+                                                                                                    
+                                                                                                    
+                                                                                                    
+                                                                                                    
+                                                                                                    
+                                                                                                    
+                                                                                                    
+                                                                                                    
+                                                                                                    
+                                                                                                    
+                                                                                                    
+                                                                                                    
+ ───────────────────────────────────                                                                
+  Success: Operation completed                                                                      
+  successfully!                                                                                     
+ ───────────────────────────────────                                                                
+                                                                                                    
+"
+`;
+
+exports[`TextRenderable Selection Absolute Positioned Box with Text should handle width:100% text in absolute positioned box with constrained maxWidth 1`] = `
+"                                                                      
+                                                                      
+                                                                      
+                                                                      
+                                                                      
+                                                                      
+                                                                      
+             This is an extremely long piece of text                  
+             that needs to wrap multiple times within                 
+             the constrained width of the absolutely                  
+             positioned container box with significant                
+             padding on all sides.                                    
+                                                                      
+                                                                      
+                                                                      
+"
+`;
+
+exports[`TextRenderable Selection Absolute Positioned Box with Text should render multiple text elements in absolute positioned box with proper spacing 1`] = `
+"                                                                                          
+                                                                                          
+                                                                                          
+                                        ┌───────────────────────────────────────────┐     
+                                        │                                           │     
+                                        │  System Update                            │     
+                                        │                                           │     
+                                        │  A new version is available with bug      │     
+                                        │  fixes and performance improvements.      │     
+                                        │                                           │     
+                                        │  Click to install                         │     
+                                        │                                           │     
+                                        └───────────────────────────────────────────┘     
+                                                                                          
+                                                                                          
+                                                                                          
+                                                                                          
+                                                                                          
+                                                                                          
+                                                                                          
+"
+`;
+
+exports[`TextRenderable Selection Word Wrapping should wrap at word boundaries when using word mode 1`] = `
+"The quick           
+brown fox           
+jumps over the      
+lazy dog            
+                    
+"
+`;
+
+exports[`TextRenderable Selection Word Wrapping should wrap at character boundaries when using char mode 1`] = `
+"The quick brown     
+ fox jumps over     
+ the lazy dog       
+                    
+                    
+"
+`;
+
+exports[`TextRenderable Selection Word Wrapping should handle word wrapping with punctuation 1`] = `
+"Hello,              
+World.              
+Test-               
+Example/            
+Path                
+"
+`;
+
+exports[`TextRenderable Selection Word Wrapping should handle word wrapping with hyphens and dashes 1`] = `
+"self-               
+contained           
+multi-line          
+text-               
+wrapping            
+"
+`;
+
+exports[`TextRenderable Selection Word Wrapping should dynamically change wrap mode 1`] = `
+"The quick           
+brown fox           
+jumps               
+                    
+                    
+"
+`;
+
+exports[`TextRenderable Selection Word Wrapping should handle long words that exceed wrap width in word mode 1`] = `
+"ABCDEFGHIJ          
+KLMNOPQRST          
+UVWXYZ              
+                    
+                    
+"
+`;
+
+exports[`TextRenderable Selection Word Wrapping should preserve empty lines with word wrapping 1`] = `
+"First               
+line                
+                    
+Third               
+line                
+"
+`;
+
+exports[`TextRenderable Selection Word Wrapping should handle word wrapping with single character words 1`] = `
+"a b c d             
+e f g h             
+i j k l             
+m n o p             
+                    
+"
+`;
+
+exports[`TextRenderable Selection Word Wrapping should compare char vs word wrapping with same content 1`] = `
+"Hello               
+wonderful           
+world of            
+text                
+wrapping            
+"
+`;
+
+exports[`TextRenderable Selection Word Wrapping should correctly wrap text when updating content via text.content 1`] = `
+"Short text          
+                    
+                    
+                    
+                    
+"
+`;
+
+exports[`TextRenderable Selection Word Wrapping should correctly wrap text when updating content via text.content 2`] = `
+"This is a much      
+longer text that    
+should definitely   
+wrap to multiple    
+lines               
+"
+`;
+
+exports[`TextTableRenderable renders a basic table with styled cell chunks: basic table 1`] = `
+"                                                            
+ ┌─────┬──────┬───────────────────┐                         
+ │Name │Status│Notes              │                         
+ ├─────┼──────┼───────────────────┤                         
+ │Alpha│OK    │All systems nominal│                         
+ ├─────┼──────┼───────────────────┤                         
+ │Bravo│WARN  │Pending checks     │                         
+ └─────┴──────┴───────────────────┘                         
+                                                            
+                                                            
+                                                            
+                                                            
+                                                            
+                                                            
+                                                            
+                                                            
+"
+`;
+
+exports[`TextTableRenderable wraps content and fits columns when width is constrained: wrapped constrained width 1`] = `
+"┌──┬─────────────────────────────┐                          
+│ID│Description                  │                          
+├──┼─────────────────────────────┤                          
+│1 │This is a long sentence that │                          
+│  │should wrap across multiple  │                          
+│  │visual lines                 │                          
+├──┼─────────────────────────────┤                          
+│2 │Short                        │                          
+└──┴─────────────────────────────┘                          
+                                                            
+                                                            
+                                                            
+                                                            
+                                                            
+                                                            
+                                                            
+"
+`;
+
+exports[`TextTableRenderable balanced fitter keeps constrained columns visually closer: fitter proportional constrained 1`] = `
+"┌────┬─────────────┬─────────┬─────────┬───────┬─────────┐  
+│Prov│Compute      │Storage  │Pricing  │Regions│Use Cases│  
+│ider│Services     │Solutions│Model    │       │         │  
+├────┼─────────────┼─────────┼─────────┼───────┼─────────┤  
+│Amaz│EC2          │S3 tiers,│Pay as   │Global │Enterpris│  
+│on W│instances    │ EBS,    │you go,  │regions│e migrati│  
+│eb S│with         │EFS, and │reserved │ and ma│on, analy│  
+│ervi│extensive    │archive  │terms,   │ny edge│tics, ML,│  
+│ces │options for  │classes  │and      │ locati│ and back│  
+│    │general,     │for long │discounte│ons    │end servi│  
+│    │memory, and  │retention│d spot ca│       │ces      │  
+│    │accelerated  │         │pacity   │       │         │  
+│    │workloads    │         │         │       │         │  
+└────┴─────────────┴─────────┴─────────┴───────┴─────────┘  
+                                                            
+                                                            
+"
+`;
+
+exports[`TextTableRenderable balanced fitter keeps constrained columns visually closer: fitter balanced constrained 1`] = `
+"┌────────┬────────┬─────────┬─────────┬────────┬─────────┐  
+│Provider│Compute │Storage  │Pricing  │Regions │Use Cases│  
+│        │Services│Solutions│Model    │        │         │  
+├────────┼────────┼─────────┼─────────┼────────┼─────────┤  
+│Amazon  │EC2     │S3 tiers,│Pay as   │Global  │Enterpris│  
+│Web     │instance│ EBS,    │you go,  │regions │e migrati│  
+│Services│s with e│EFS, and │reserved │and     │on, analy│  
+│        │xtensive│archive  │terms,   │many    │tics, ML,│  
+│        │ options│classes  │and      │edge    │ and back│  
+│        │ for gen│for long │discounte│location│end servi│  
+│        │eral, me│retention│d spot ca│s       │ces      │  
+│        │mory, an│         │pacity   │        │         │  
+│        │d accele│         │         │        │         │  
+│        │rated wo│         │         │        │         │  
+│        │rkloads │         │         │        │         │  
+└────────┴────────┴─────────┴─────────┴────────┴─────────┘  
+"
+`;
+
+exports[`TextTableRenderable rebuilds table when content setter is used: content setter update 1`] = `
+"┌─────┬───────┐                                             
+│Col 1│Col 2  │                                             
+├─────┼───────┤                                             
+│row-1│updated│                                             
+├─────┼───────┤                                             
+│row-2│active │                                             
+└─────┴───────┘                                             
+                                                            
+                                                            
+                                                            
+                                                            
+                                                            
+                                                            
+                                                            
+                                                            
+                                                            
+"
+`;
+
+exports[`TextTableRenderable keeps borders aligned with CJK and emoji content: unicode border alignment 1`] = `
+"┌──────┬──────────────┐                                     
+│Locale│Sample        │                                     
+├──────┼──────────────┤                                     
+│ja-JP │東京で寿司 🍣 │                                     
+├──────┼──────────────┤                                     
+│zh-CN │你好世界 🚀   │                                     
+├──────┼──────────────┤                                     
+│ko-KR │한글 테스트 😄│                                     
+└──────┴──────────────┘                                     
+                                                            
+                                                            
+                                                            
+                                                            
+                                                            
+                                                            
+                                                            
+"
+`;
+
+exports[`TextTableRenderable wraps CJK and emoji without grapheme duplication: unicode wrapping 1`] = `
+"┌───┬────────────────────────┐                              
+│Ite│Details                 │                              
+│m  │                        │                              
+├───┼────────────────────────┤                              
+│mix│東京界 🌍 emoji         │                              
+│ed │wrapping continues      │                              
+│   │across lines for width  │                              
+│   │checks                  │                              
+├───┼────────────────────────┤                              
+│emo│Faces 😀😃😄 should     │                              
+│ji │remain stable           │                              
+└───┴────────────────────────┘                              
+                                                            
+                                                            
+                                                            
+                                                            
+"
+`;
+
+exports[`TextTableRenderable keeps full wrapped table layouts after a wide-to-narrow demo-style resize: demo resize expected primary table 1`] = `
+"┌─────────────────────────┬─────────────┬────────────────────────────┐
+│Task                     │Owner        │ETA                         │
+├─────────────────────────┼─────────────┼────────────────────────────┤
+│Wrap regression in       │core         │done after validating none, │
+│operational status       │platform and │word, and char wrap modes   │
+│dashboard with dynamic   │runtime      │across narrow, medium, wide,│
+│row heights and          │reliability  │ and ultra-wide terminal    │
+│constrained layout       │squad        │widths                      │
+│validation               │             │                            │
+├─────────────────────────┼─────────────┼────────────────────────────┤
+│Unicode layout           │render       │in review with follow-up    │
+│stabilization for mixed  │pipeline     │checks for border style     │
+│Latin, punctuation,      │maintainers  │transitions, cell padding   │
+│symbols, and long        │with         │variants, and selection     │
+│identifiers in adjacent  │fallback     │range consistency           │
+│columns                  │shaping      │                            │
+│                         │support      │                            │
+├─────────────────────────┼─────────────┼────────────────────────────┤
+│Snapshot pass for table  │qa           │today pending final         │
+│rendering in content     │automation   │baseline updates for        │
+│mode and full mode with  │and visual   │oversized fixtures that     │
+│heavy and double border  │diff triage  │intentionally stress        │
+│combinations             │group        │wrapping behavior on high-  │
+│                         │             │resolution terminals        │
+├─────────────────────────┼─────────────┼────────────────────────────┤
+│Document edge cases      │developer    │planned for this sprint     │
+│where long tokens        │experience   │once final reproducible     │
+│without spaces force     │and docs     │examples are captured and   │
+│char wrapping and reveal │tooling      │linked to regression        │
+│per-cell clipping        │             │tracking tickets            │
+│regressions              │             │                            │
+├─────────────────────────┼─────────────┼────────────────────────────┤
+│Performance sweep of     │runtime      │scheduled after review,     │
+│wrapping algorithm under │performance  │with benchmark runs on      │
+│large datasets to        │task force   │laptop and desktop          │
+│confirm stable frame     │             │terminals at 200-plus       │
+│times during rapid key   │             │column widths               │
+│toggling                 │             │                            │
+└─────────────────────────┴─────────────┴────────────────────────────┘
+"
+`;
+
+exports[`TextTableRenderable keeps full wrapped table layouts after a wide-to-narrow demo-style resize: demo resize expected unicode table 1`] = `
+"┌─────┬──────────────────────────────────────────────────────────────┐
+│Colum│Wrapped Text                                                  │
+│n    │                                                              │
+├─────┼──────────────────────────────────────────────────────────────┤
+│mixed│CJK and emoji wrapping stress case: こんにちは世界 and        │
+│-lang│안녕하세요 세계 and 你好，世界 followed by long English prose │
+│uages│that keeps flowing to test whether each cell wraps naturally  │
+│     │even when the terminal is extremely wide and the row still    │
+│     │needs multiple visual lines for readability 🌍🚀              │
+├─────┼──────────────────────────────────────────────────────────────┤
+│emoji│Faces 😀😃😄😁😆 plus symbols 🧪📦🛰️🔧📊 mixed with version   │
+│-and-│tags like release-candidate-build-2026-02-very-long-token-    │
+│symbo│without-breaks to ensure char wrapping remains stable and no  │
+│ls   │glyph alignment issues appear at column boundaries            │
+├─────┼──────────────────────────────────────────────────────────────┤
+│long-│長文の日本語テキストと中文段落和한국어문장을連続して配置し、  │
+│cjk- │その後に additional English context describing renderer       │
+│phras│behavior, border intersection handling, and selection         │
+│e    │extraction so that this single cell remains a reliable        │
+│     │wrapping torture test.                                        │
+├─────┼──────────────────────────────────────────────────────────────┤
+│mixed│Wrap behavior with punctuation-heavy content: [alpha]{beta}(  │
+│-punc│gamma)<delta>|epsilon| then repeated fragments, commas,       │
+│tuati│semicolons, and slashes to verify token boundaries do not     │
+│on   │break border drawing logic or spacing consistency in          │
+│     │neighboring columns.                                          │
+└─────┴──────────────────────────────────────────────────────────────┘
+"
+`;
+
+exports[`Absolute Positioning - Snapshot Tests Basic absolute positioning absolute positioned box at top-left: absolute positioned box at top-left 1`] = `
+"┌─────────────┐                         
+│Top Left     │                         
+│             │                         
+│             │                         
+└─────────────┘                         
+                                        
+                                        
+                                        
+                                        
+                                        
+                                        
+                                        
+                                        
+                                        
+                                        
+                                        
+                                        
+                                        
+                                        
+                                        
+"
+`;
+
+exports[`Absolute Positioning - Snapshot Tests Basic absolute positioning absolute positioned box at bottom-right using right/bottom: absolute positioned box at bottom-right 1`] = `
+"                                        
+                                        
+                                        
+                                        
+                                        
+                                        
+                                        
+                                        
+                                        
+                                        
+                                        
+                                        
+                                        
+                                        
+                                        
+                         ┌─────────────┐
+                         │Bottom Right │
+                         │             │
+                         │             │
+                         └─────────────┘
+"
+`;
+
+exports[`Absolute Positioning - Snapshot Tests Basic absolute positioning absolute positioned box centered with left/top: absolute positioned box centered 1`] = `
+"                                        
+                                        
+                                        
+                                        
+                                        
+          ┌──────────────────┐          
+          │Centered          │          
+          │                  │          
+          │                  │          
+          │                  │          
+          │                  │          
+          │                  │          
+          └──────────────────┘          
+                                        
+                                        
+                                        
+                                        
+                                        
+                                        
+                                        
+"
+`;
+
+exports[`Absolute Positioning - Snapshot Tests Nested absolute positioning absolute child inside absolute parent - basic: nested absolute - child inside parent at left/top 1`] = `
+"                                        
+                                        
+                                        
+     ┌────────────────────────────┐     
+     │                            │     
+     │  ┌──────────┐              │     
+     │  │Nested    │              │     
+     │  │          │              │     
+     │  └──────────┘              │     
+     │                            │     
+     │                            │     
+     │                            │     
+     │                            │     
+     │                            │     
+     └────────────────────────────┘     
+                                        
+                                        
+                                        
+                                        
+                                        
+"
+`;
+
+exports[`Absolute Positioning - Snapshot Tests Nested absolute positioning absolute child at bottom:0 inside absolute parent (issue #406 fix): nested absolute - child at bottom:0 of parent 1`] = `
+"                                        
+                                        
+     ┌────────────────────────────┐     
+     │                            │     
+     │                            │     
+     │                            │     
+     │                            │     
+     │                            │     
+     │                            │     
+     │                            │     
+     │                            │     
+     │                            │     
+     │  ┌─────────────┐           │     
+     │  │At Bottom    │           │     
+     │  └─────────────┘           │     
+     └────────────────────────────┘     
+                                        
+                                        
+                                        
+                                        
+"
+`;
+
+exports[`Absolute Positioning - Snapshot Tests Nested absolute positioning absolute child at right:0 inside absolute parent: nested absolute - child at right:0 of parent 1`] = `
+"                                        
+                                        
+  ┌─────────────────────────────────┐   
+  │                                 │   
+  │                     ┌──────────┐│   
+  │                     │At Right  ││   
+  │                     │          ││   
+  │                     └──────────┘│   
+  │                                 │   
+  │                                 │   
+  │                                 │   
+  │                                 │   
+  │                                 │   
+  └─────────────────────────────────┘   
+                                        
+                                        
+                                        
+                                        
+                                        
+                                        
+"
+`;
+
+exports[`Absolute Positioning - Snapshot Tests Nested absolute positioning absolute child at bottom-right corner inside absolute parent: nested absolute - child at bottom-right corner 1`] = `
+"                                        
+   ┌────────────────────────────────┐   
+   │                                │   
+   │                                │   
+   │                                │   
+   │                                │   
+   │                                │   
+   │                                │   
+   │                                │   
+   │                                │   
+   │                                │   
+   │                 ┌────────────┐ │   
+   │                 │Corner      │ │   
+   │                 │            │ │   
+   │                 └────────────┘ │   
+   │                                │   
+   └────────────────────────────────┘   
+                                        
+                                        
+                                        
+"
+`;
+
+exports[`Absolute Positioning - Snapshot Tests Nested absolute positioning multiple absolute children inside absolute parent at different positions: nested absolute - four corners inside parent 1`] = `
+"                                        
+  ┌──────────────────────────────────┐  
+  │                                  │  
+  │ ┌────────┐            ┌────────┐ │  
+  │ │TL      │            │TR      │ │  
+  │ └────────┘            └────────┘ │  
+  │                                  │  
+  │                                  │  
+  │                                  │  
+  │                                  │  
+  │                                  │  
+  │                                  │  
+  │                                  │  
+  │ ┌────────┐            ┌────────┐ │  
+  │ │BL      │            │BR      │ │  
+  │ └────────┘            └────────┘ │  
+  │                                  │  
+  └──────────────────────────────────┘  
+                                        
+                                        
+"
+`;
+
+exports[`Absolute Positioning - Snapshot Tests Three-level nesting deeply nested absolute positioning - grandchild at bottom: three-level nested absolute - grandchild at bottom 1`] = `
+"                                        
+ ┌────────────────────────────────────┐ 
+ │                                    │ 
+ │                                    │ 
+ │  ┌──────────────────────────────┐  │ 
+ │  │                              │  │ 
+ │  │                              │  │ 
+ │  │                              │  │ 
+ │  │                              │  │ 
+ │  │                              │  │ 
+ │  │                              │  │ 
+ │  │  ┌─────────────┐             │  │ 
+ │  │  │Deep         │             │  │ 
+ │  │  └─────────────┘             │  │ 
+ │  │                              │  │ 
+ │  └──────────────────────────────┘  │ 
+ │                                    │ 
+ │                                    │ 
+ └────────────────────────────────────┘ 
+                                        
+"
+`;
+
+exports[`Absolute Positioning - Snapshot Tests Mixed positioning absolute child inside relative parent: absolute child inside relative parent 1`] = `
+"                                        
+                                        
+   ┌────────────────────────────┐       
+   │                            │       
+   │                            │       
+   │                            │       
+   │                            │       
+   │                            │       
+   │                            │       
+   │                            │       
+   │               ┌──────────┐ │       
+   │               │Absolute  │ │       
+   │               │          │ │       
+   │               └──────────┘ │       
+   │                            │       
+   └────────────────────────────┘       
+                                        
+                                        
+                                        
+                                        
+"
+`;
+
+exports[`Absolute Positioning - Snapshot Tests Mixed positioning sibling absolute elements at same level: sibling absolute elements overlapping 1`] = `
+"┌─────────────┐                         
+│Box 1        │                         
+│             │                         
+│             │                         
+│           ┌─────────────┐             
+└───────────│Box 2        │             
+            │             │             
+            │             │             
+            │           ┌─────────────┐ 
+            └───────────│Box 3        │ 
+                        │             │ 
+                        │             │ 
+                        │             │ 
+                        └─────────────┘ 
+                                        
+                                        
+                                        
+                                        
+                                        
+                                        
+"
+`;
+
+exports[`Absolute Positioning - Snapshot Tests Edge cases absolute positioned box with negative coordinates (partially off-screen): absolute box with negative coordinates 1`] = `
+"              │                         
+              │                         
+              │                         
+              │                         
+              │                         
+──────────────┘                         
+                                        
+                                        
+                                        
+                                        
+                                        
+                                        
+                                        
+                                        
+                                        
+                                        
+                                        
+                                        
+                                        
+                                        
+"
+`;
+
+exports[`Absolute Positioning - Snapshot Tests Edge cases absolute positioned box extending beyond viewport: absolute box extending beyond viewport 1`] = `
+"                                        
+                                        
+                                        
+                                        
+                                        
+                                        
+                                        
+                                        
+                                        
+                                        
+                                        
+                                        
+                                        
+                                        
+                                        
+                              ┌─────────
+                              │Overflow 
+                              │         
+                              │         
+                              │         
+"
+`;
+
+exports[`Absolute Positioning - Snapshot Tests Edge cases absolute child fills parent completely: absolute child fills parent with inset 0 1`] = `
+"                                        
+                                        
+                                        
+     ┌────────────────────────────┐     
+     │╔══════════════════════════╗│     
+     │║Full                      ║│     
+     │║                          ║│     
+     │║                          ║│     
+     │║                          ║│     
+     │║                          ║│     
+     │║                          ║│     
+     │║                          ║│     
+     │║                          ║│     
+     │╚══════════════════════════╝│     
+     └────────────────────────────┘     
+                                        
+                                        
+                                        
+                                        
+                                        
+"
+`;
+
+exports[`Absolute Positioning - Snapshot Tests Edge cases absolute positioned box with percentage width inside absolute parent: absolute child with percentage width 1`] = `
+"                                                  
+                                                  
+     ┌──────────────────────────────────────┐     
+     │                                      │     
+     │                                      │     
+     │                                      │     
+     │                                      │     
+     │                                      │     
+     │                                      │     
+     │                                      │     
+     │                                      │     
+     │  ┌─────────────────┐                 │     
+     │  │50%              │                 │     
+     │  │                 │                 │     
+     │  └─────────────────┘                 │     
+     │                                      │     
+     └──────────────────────────────────────┘     
+                                                  
+                                                  
+                                                  
+"
+`;
+
+exports[`Absolute Positioning - Snapshot Tests Edge cases absolute positioned box with percentage height inside absolute parent: absolute child with percentage height 1`] = `
+"                                        
+                                        
+     ┌────────────────────────────┐     
+     │                            │     
+     │  ┌─────────────┐           │     
+     │  │50% H        │           │     
+     │  │             │           │     
+     │  │             │           │     
+     │  │             │           │     
+     │  │             │           │     
+     │  └─────────────┘           │     
+     │                            │     
+     │                            │     
+     │                            │     
+     │                            │     
+     │                            │     
+     │                            │     
+     └────────────────────────────┘     
+                                        
+                                        
+"
+`;
+
+exports[`Absolute Positioning - Snapshot Tests Edge cases absolute child with conflicting insets (left and right without explicit width): absolute child with left and right insets (no explicit width) 1`] = `
+"                                        
+                                        
+   ┌────────────────────────────────┐   
+   │                                │   
+   │                                │   
+   │  ┌──────────────────────────┐  │   
+   │  │Stretch                   │  │   
+   │  │                          │  │   
+   │  │                          │  │   
+   │  └──────────────────────────┘  │   
+   │                                │   
+   │                                │   
+   │                                │   
+   │                                │   
+   │                                │   
+   └────────────────────────────────┘   
+                                        
+                                        
+                                        
+                                        
+"
+`;
+
+exports[`Absolute Positioning - Snapshot Tests Edge cases absolute child with conflicting insets (top and bottom without explicit height): absolute child with top and bottom insets (no explicit height) 1`] = `
+"                                        
+     ┌────────────────────────────┐     
+     │                            │     
+     │  ┌─────────────┐           │     
+     │  │VStretch     │           │     
+     │  │             │           │     
+     │  │             │           │     
+     │  │             │           │     
+     │  │             │           │     
+     │  │             │           │     
+     │  │             │           │     
+     │  │             │           │     
+     │  │             │           │     
+     │  │             │           │     
+     │  └─────────────┘           │     
+     │                            │     
+     └────────────────────────────┘     
+                                        
+                                        
+                                        
+"
+`;
+
+exports[`Absolute Positioning - Snapshot Tests Complex hierarchies relative parent with absolute child containing absolute grandchild: relative -> absolute -> absolute hierarchy 1`] = `
+"                                        
+  ┌─────────────────────────────────┐   
+  │                                 │   
+  │  ┌──────────────────────────┐   │   
+  │  │                          │   │   
+  │  │                          │   │   
+  │  │                          │   │   
+  │  │                          │   │   
+  │  │                          │   │   
+  │  │             ┌──────────┐ │   │   
+  │  │             │Grand     │ │   │   
+  │  │             │          │ │   │   
+  │  │             └──────────┘ │   │   
+  │  │                          │   │   
+  │  └──────────────────────────┘   │   
+  │                                 │   
+  └─────────────────────────────────┘   
+                                        
+                                        
+                                        
+"
+`;
+
+exports[`Absolute Positioning - Snapshot Tests Complex hierarchies multiple nested relative and absolute layers: relative -> absolute -> relative -> absolute hierarchy 1`] = `
+"┌────────────────────────────────────┐  
+│                                    │  
+│  ┌──────────────────────────────┐  │  
+│  │                              │  │  
+│  │ ┌──────────────────────────┐ │  │  
+│  │ │                          │ │  │  
+│  │ │                          │ │  │  
+│  │ │                          │ │  │  
+│  │ │                          │ │  │  
+│  │ │               ┌────────┐ │ │  │  
+│  │ │               │Deep    │ │ │  │  
+│  │ │               └────────┘ │ │  │  
+│  │ │                          │ │  │  
+│  │ └──────────────────────────┘ │  │  
+│  │                              │  │  
+│  └──────────────────────────────┘  │  
+│                                    │  
+└────────────────────────────────────┘  
+                                        
+                                        
+"
+`;
+
+exports[`ScrollBoxRenderable - Content Visibility scrolls CodeRenderable with LineNumberRenderable using mouse wheel 1`] = `
+" 22 Line 22                                                                     
+ 23 Line 23                                                                     
+ 24 Line 24                                                                     
+ 25 Line 25                                                                     
+ 26 Line 26                                                                     
+ 27 Line 27                                                                     
+ 28 Line 28                                                                     
+ 29 Line 29                                                                     
+ 30 Line 30                                                                     
+ 31                                    ▄                                        
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+"
+`;
+
+exports[`Renderable - insertBefore reproduces insertBefore behavior with state change after timeout: insertBefore initial state 1`] = `
+"banana    
+apple     
+pear      
+          
+          
+"
+`;
+
+exports[`Renderable - insertBefore reproduces insertBefore behavior with state change after timeout: insertBefore reordered state 1`] = `
+"banana    
+pear      
+apple     
+          
+          
+"
+`;

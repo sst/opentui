@@ -1,4 +1,5 @@
 import { test, expect, beforeEach, afterEach } from "bun:test"
+import { sleep } from "../../compat/runtime.js"
 import { MarkdownRenderable, type MarkdownOptions } from "../Markdown.js"
 import { CodeRenderable } from "../Code.js"
 import { SyntaxStyle } from "../../syntax-style.js"
@@ -100,7 +101,7 @@ test("unsupported fenced code blocks keep inherited markdown fg/bg after highlig
   expect(mockTreeSitterClient.isHighlighting()).toBe(true)
 
   mockTreeSitterClient.resolveAllHighlightOnce()
-  await Bun.sleep(10)
+  await sleep(10)
   await renderer.idle()
 
   const codeBlock = md._blockStates[0]?.renderable as CodeRenderable
@@ -130,7 +131,7 @@ test("fenced tsx code blocks normalize the language before highlighting", async 
   expect(mockTreeSitterClient.highlightCalls[0]?.filetype).toBe("typescriptreact")
 
   mockTreeSitterClient.resolveAllHighlightOnce()
-  await Bun.sleep(10)
+  await sleep(10)
   await renderer.idle()
 })
 
@@ -152,7 +153,7 @@ test("updating fenced code blocks reapplies normalized filetypes", async () => {
   expect(codeBlock.filetype).toBe("javascriptreact")
 
   mockTreeSitterClient.resolveAllHighlightOnce()
-  await Bun.sleep(10)
+  await sleep(10)
   await renderer.idle()
 
   md.content = "```tsx\nconst view = <div>Hello</div>\n```"
@@ -163,7 +164,7 @@ test("updating fenced code blocks reapplies normalized filetypes", async () => {
   expect(mockTreeSitterClient.highlightCalls.at(-1)?.filetype).toBe("typescriptreact")
 
   mockTreeSitterClient.resolveAllHighlightOnce()
-  await Bun.sleep(10)
+  await sleep(10)
   await renderer.idle()
 })
 
@@ -220,7 +221,7 @@ test("updating markdown fg/bg rerenders markdown fallback renderables", async ()
 
   renderer.root.add(md)
   await renderer.idle()
-  await Bun.sleep(10)
+  await sleep(10)
   await renderer.idle()
 
   const paragraphBlock = md._blockStates[0]?.renderable as CodeRenderable
@@ -232,7 +233,7 @@ test("updating markdown fg/bg rerenders markdown fallback renderables", async ()
   md.bg = nextBg
   renderer.requestRender()
   await renderer.idle()
-  await Bun.sleep(10)
+  await sleep(10)
   await renderer.idle()
 
   expect(md._blockStates[0]?.renderable).toBe(paragraphBlock)

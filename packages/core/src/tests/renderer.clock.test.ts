@@ -1,4 +1,5 @@
 import { afterEach, beforeEach, expect, test } from "bun:test"
+import { sleep } from "../compat/runtime.js"
 import { SystemClock } from "../lib/clock.js"
 import { createTestRenderer, type TestRenderer } from "../testing/test-renderer.js"
 import { ManualClock } from "../testing/manual-clock.js"
@@ -76,7 +77,7 @@ test("requestRender() uses SystemClock by default when no clock is injected", as
     }
 
     defaultRenderer.requestRender()
-    await Bun.sleep(20)
+    await sleep(20)
 
     expect(renderCalled).toBe(true)
   } finally {

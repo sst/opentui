@@ -1,4 +1,4 @@
-import { toArrayBuffer, type Pointer } from "bun:ffi"
+import { toArrayBuffer, type Pointer } from "./compat/ffi.js"
 import { resolveRenderLib } from "./zig.js"
 import { SpanInfoStruct } from "./zig-structs.js"
 import type { GrowthPolicy, NativeSpanFeedOptions, NativeSpanFeedStats } from "./zig-structs.js"

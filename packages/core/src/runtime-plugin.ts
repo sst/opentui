@@ -37,7 +37,6 @@
 import { existsSync, readFileSync, realpathSync } from "node:fs"
 import { basename, dirname, isAbsolute, join } from "node:path"
 import { fileURLToPath } from "node:url"
-import { type BunPlugin } from "bun"
 import * as coreRuntime from "./index.js"
 
 export type RuntimeModuleExports = Record<string, unknown>
@@ -58,6 +57,11 @@ export interface CreateRuntimePluginOptions {
   core?: RuntimeModuleEntry
   additional?: Record<string, RuntimeModuleEntry>
   rewrite?: RuntimePluginRewriteOptions
+}
+
+export interface BunPlugin {
+  name: string
+  setup(build: any): void | Promise<void>
 }
 
 const CORE_RUNTIME_SPECIFIER = "@opentui/core"
@@ -466,7 +470,7 @@ export function createRuntimePlugin(input: CreateRuntimePluginOptions = {}): Bun
             throw new Error(`Unable to determine runtime loader for path: ${args.path}`)
           }
 
-          const contents = await Bun.file(loadedPath).text()
+          const contents = readFileSync(loadedPath, "utf8")
           const runtimeRewrittenContents = shouldRewriteRuntimeSpecifiers
             ? rewriteRuntimeSpecifiers(contents, runtimeModuleIdsBySpecifier)
             : contents

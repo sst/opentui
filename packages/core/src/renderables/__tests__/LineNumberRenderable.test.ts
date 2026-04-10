@@ -1,4 +1,5 @@
 import { describe, test, expect } from "bun:test"
+import { sleep } from "../../compat/runtime.js"
 import { createTestRenderer } from "../../testing/test-renderer.js"
 import { TextBufferRenderable } from "../TextBufferRenderable.js"
 import { LineNumberRenderable } from "../LineNumberRenderable.js"
@@ -1185,9 +1186,9 @@ describe("LineNumberRenderable", () => {
     // Wait for render and highlighting
     await renderOnce()
     // Give highlighting time to complete (increased for CI)
-    await Bun.sleep(1000)
+    await sleep(1000)
     await renderOnce()
-    await Bun.sleep(100)
+    await sleep(100)
     await renderOnce()
 
     frame = captureCharFrame()
@@ -1238,7 +1239,7 @@ describe("LineNumberRenderable", () => {
 
     // First render
     await renderOnce()
-    await Bun.sleep(50)
+    await sleep(50)
     await renderOnce()
 
     let frame = captureCharFrame()
@@ -1252,7 +1253,7 @@ describe("LineNumberRenderable", () => {
     codeRenderable.content = "line 1\nline 2\nline 3\nline 4\nline 5"
 
     await renderOnce()
-    await Bun.sleep(50)
+    await sleep(50)
     await renderOnce()
 
     frame = captureCharFrame()
@@ -1312,7 +1313,7 @@ describe("LineNumberRenderable", () => {
     codeRenderable.filetype = "typescript"
 
     await renderOnce()
-    await Bun.sleep(100)
+    await sleep(100)
     await renderOnce()
 
     frame = captureCharFrame()

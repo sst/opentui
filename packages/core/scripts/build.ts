@@ -135,9 +135,11 @@ if (buildNative) {
       continue
     }
 
-    const indexJsContent = `const module = await import("./${libraryFileName}", { with: { type: "file" } })
-const path = module.default
-export default path;
+    const indexJsContent = `import { fileURLToPath } from "node:url"
+
+const path = fileURLToPath(new URL("./${libraryFileName}", import.meta.url))
+
+export default path
 `
     const indexDtsContent = `declare const path: string
 export default path;`

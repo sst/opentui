@@ -1,6 +1,6 @@
 import { RGBA } from "./lib/index.js"
 import { resolveRenderLib, type RenderLib } from "./zig.js"
-import { type Pointer, toArrayBuffer, ptr } from "bun:ffi"
+import { type Pointer, ptr, toArrayBuffer } from "./compat/ffi.js"
 import { type BorderStyle, type BorderSides, BorderCharArrays, parseBorderStyle } from "./lib/index.js"
 import { TargetChannel, type WidthMethod, type CapturedSpan, type CapturedLine } from "./types.js"
 import type { TextBufferView } from "./text-buffer-view.js"

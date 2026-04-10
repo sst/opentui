@@ -16,6 +16,7 @@ import { resolve, isAbsolute, parse } from "path"
 import { existsSync } from "fs"
 import { registerEnvVar, env } from "../env.js"
 import { isBunfsPath, normalizeBunfsPath } from "../bunfs.js"
+import { Worker } from "../../compat/Worker.js"
 
 registerEnvVar({
   name: "OTUI_TREE_SITTER_WORKER_PATH",
@@ -52,7 +53,7 @@ const isUrl = (path: string) => path.startsWith("http://") || path.startsWith("h
 // TODO: TreeSitterClient should have a setOptions method, passing it on to the worker etc.
 export class TreeSitterClient extends EventEmitter<TreeSitterClientEvents> {
   private initialized = false
-  private worker: Worker | undefined
+  private worker: InstanceType<typeof Worker> | undefined
   private buffers: Map<number, BufferState> = new Map()
   private initializePromise: Promise<void> | undefined
   private initializeResolvers:

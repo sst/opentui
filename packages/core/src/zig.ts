@@ -1,4 +1,4 @@
-import { dlopen, JSCallback, ptr, toArrayBuffer, type Pointer } from "bun:ffi"
+import { JSCallback, dlopen, ptr, toArrayBuffer, type Pointer } from "./compat/ffi.js"
 import { EventEmitter } from "events"
 import { existsSync, writeFileSync } from "fs"
 import {
@@ -16,6 +16,7 @@ import { OptimizedBuffer } from "./buffer.js"
 import { isBunfsPath } from "./lib/bunfs.js"
 import { env, registerEnvVar } from "./lib/env.js"
 import { RGBA } from "./lib/RGBA.js"
+import { writeFile } from "./compat/runtime.js"
 import { TextBuffer } from "./text-buffer.js"
 import type {
   AllocatorStats,
@@ -1329,7 +1330,9 @@ function convertToDebugSymbols<T extends Record<string, any>>(symbols: T): T {
           const now = new Date()
           const timestamp = now.toISOString().replace(/[:.]/g, "-").replace(/T/, "_").split("Z")[0]
           const traceFilePath = `ffi_otui_trace_${timestamp}.log`
-          Bun.write(traceFilePath, output)
+          void writeFile(traceFilePath, output).catch((error) => {
+            console.error("Failed to write FFI trace file:", error)
+          })
         } catch (e) {
           console.error("Failed to write FFI trace file:", e)
         }

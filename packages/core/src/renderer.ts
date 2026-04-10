@@ -10,7 +10,8 @@ import {
   type WidthMethod,
 } from "./types.js"
 import { RGBA, parseColor, type ColorInput } from "./lib/RGBA.js"
-import type { Pointer } from "bun:ffi"
+import type { Pointer } from "./compat/ffi.js"
+import { sleep } from "./compat/runtime.js"
 import { OptimizedBuffer } from "./buffer.js"
 import { resolveRenderLib, type RenderLib } from "./zig.js"
 import { TerminalConsole, type ConsoleOptions, capture } from "./console.js"
@@ -659,7 +660,7 @@ export class CliRenderer extends EventEmitter implements RenderContext {
   private exitHandler: () => void = (() => {
     this.destroy()
     if (env.OTUI_DUMP_CAPTURES) {
-      Bun.sleep(100).then(() => {
+      sleep(100).then(() => {
         this.dumpOutputCache("=== CAPTURED OUTPUT ===\n")
       })
     }

@@ -1,4 +1,5 @@
 import type { OptimizedBuffer } from "../buffer.js"
+import { stringWidth } from "../compat/runtime.js"
 import { parseColor, RGBA, type ColorInput } from "../lib/index.js"
 import type { KeyEvent } from "../lib/KeyHandler.js"
 import { Renderable, type RenderableOptions } from "../Renderable.js"
@@ -344,7 +345,7 @@ export class ArrowRenderable extends Renderable {
     }
 
     if (!options.width) {
-      this.width = Bun.stringWidth(this.getArrowChar())
+      this.width = stringWidth(this.getArrowChar())
     }
   }
 

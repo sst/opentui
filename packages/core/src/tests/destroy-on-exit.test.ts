@@ -1,10 +1,12 @@
 import { describe, expect, it } from "bun:test"
+import { spawnSync } from "../compat/testHelpers.js"
 import { join } from "node:path"
 
 const fixturePath = join(import.meta.dirname, "destroy-on-exit.fixture.ts")
+const supportedDescribe = process.versions.bun ? describe : describe.skip
 
 const runFixture = (code: number, mode: "idle" | "during-render" = "idle") => {
-  const result = Bun.spawnSync([process.execPath, fixturePath, code.toString(), mode], {
+  const result = spawnSync([process.execPath, fixturePath, code.toString(), mode], {
     cwd: join(import.meta.dirname, ".."),
     stdout: "pipe",
     stderr: "pipe",
@@ -16,7 +18,7 @@ const runFixture = (code: number, mode: "idle" | "during-render" = "idle") => {
   return { result, stdout }
 }
 
-describe("destroy on process exit", () => {
+supportedDescribe("destroy on process exit", () => {
   it("it should let applications restore terminal state in an exit handler", () => {
     const { result, stdout } = runFixture(0)
 

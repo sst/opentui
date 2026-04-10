@@ -1,39 +1,20 @@
 /**
  * Vitest is used to run tests under Node.js.
- * bun:test imports are replaced with Vitest in nodejs/compat.ts.
+ * Tests import `bun:test`, which is aliased to the Vitest adapter here.
  */
 
 import { basename, dirname, join } from "node:path"
+import { fileURLToPath } from "node:url"
 import { defineConfig } from "vitest/config"
 
 export default defineConfig({
-  test: {
-    // globalSetup: "./src/nodejs/compat.ts",
-    environment: "node",
-    isolate: false,
-    // alias: {
-    //   "bun:ffi": "./src/nodejs/bunModules/ffi.ts",
-    //   "bun:test": "./src/nodejs/bunModules/test.ts",
-    // },
-    execArgv: [
-      // "--experimental-transform-types",
-      // "--import=tsx",
-      // "--import=@swc-node/register/esm",
-      "--no-experimental-strip-types",
-      "--experimental-transform-types",
-      // "--import=esbuild-register/loader",
-      "--import=./src/nodejs/compat.ts",
-    ],
-    experimental: {
-      // Disable Vite bundling entirely so we exercise the nodejs/compat.ts shim.
-      viteModuleRunner: false,
-      // Disable vitest's native Node loader hooks — they call
-      // module.stripTypeScriptTypes() (strip-only mode) which doesn't support
-      // const enum or parameter properties. We rely on Node.js's
-      // --experimental-transform-types instead.
-      nodeLoader: false,
+  resolve: {
+    alias: {
+      "bun:test": fileURLToPath(new URL("./src/compat/test.ts", import.meta.url)),
     },
-    // Create independent snapshots from bun:test
+  },
+  test: {
+    environment: "node",
     resolveSnapshotPath: (testPath, ext) =>
       join(dirname(testPath), "__snapshots__", `${basename(testPath)}.nodejs${ext}`),
   },

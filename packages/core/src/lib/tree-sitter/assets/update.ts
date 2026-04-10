@@ -146,15 +146,15 @@ async function downloadAndCombineQueries(
 }
 
 async function generateDefaultParsersFile(parsers: GeneratedParser[], outputPath: string): Promise<void> {
-  const imports = parsers
+  const constants = parsers
     .map((parser) => {
       const safeFiletype = parser.filetype.replace(/[^a-zA-Z0-9]/g, "_")
       const lines = [
-        `import ${safeFiletype}_highlights from "${parser.highlightsPath}" with { type: "file" }`,
-        `import ${safeFiletype}_language from "${parser.languagePath}" with { type: "file" }`,
+        `const ${safeFiletype}_highlights = fileURLToPath(new URL("${parser.highlightsPath}", import.meta.url))`,
+        `const ${safeFiletype}_language = fileURLToPath(new URL("${parser.languagePath}", import.meta.url))`,
       ]
       if (parser.injectionsPath) {
-        lines.push(`import ${safeFiletype}_injections from "${parser.injectionsPath}" with { type: "file" }`)
+        lines.push(`const ${safeFiletype}_injections = fileURLToPath(new URL("${parser.injectionsPath}", import.meta.url))`)
       }
       return lines.join("\n")
     })
@@ -163,13 +163,9 @@ async function generateDefaultParsersFile(parsers: GeneratedParser[], outputPath
   const parserDefinitions = parsers
     .map((parser) => {
       const safeFiletype = parser.filetype.replace(/[^a-zA-Z0-9]/g, "_")
-      const queriesLines = [
-        `          highlights: [resolve(dirname(fileURLToPath(import.meta.url)), ${safeFiletype}_highlights)],`,
-      ]
+      const queriesLines = [`          highlights: [${safeFiletype}_highlights],`]
       if (parser.injectionsPath) {
-        queriesLines.push(
-          `          injections: [resolve(dirname(fileURLToPath(import.meta.url)), ${safeFiletype}_injections)],`,
-        )
+        queriesLines.push(`          injections: [${safeFiletype}_injections],`)
       }
 
       const injectionMappingLine = parser.injectionMapping
@@ -182,7 +178,7 @@ async function generateDefaultParsersFile(parsers: GeneratedParser[], outputPath
 ${aliasesLine ? aliasesLine + "\n" : ""}        queries: {
 ${queriesLines.join("\n")}
         },
-        wasm: resolve(dirname(fileURLToPath(import.meta.url)), ${safeFiletype}_language),${injectionMappingLine ? "\n" + injectionMappingLine : ""}
+        wasm: ${safeFiletype}_language,${injectionMappingLine ? "\n" + injectionMappingLine : ""}
       }`
     })
     .join(",\n")
@@ -191,11 +187,10 @@ ${queriesLines.join("\n")}
 // Run 'bun assets/update.ts' to regenerate this file
 // Last generated: ${new Date().toISOString()}
 
-import type { FiletypeParserOptions } from "./types"
-import { resolve, dirname } from "path"
-import { fileURLToPath } from "url"
+import { fileURLToPath } from "node:url"
+import type { FiletypeParserOptions } from "./types.js"
 
-${imports}
+${constants}
 
 // Cached parsers to avoid re-resolving paths on every call
 let _cachedParsers: FiletypeParserOptions[] | undefined

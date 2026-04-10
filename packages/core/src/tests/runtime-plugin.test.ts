@@ -1,4 +1,5 @@
 import { describe, expect, it } from "bun:test"
+import { spawnSync } from "../compat/testHelpers.js"
 import { join } from "node:path"
 import * as coreRuntime from "../index.js"
 import { createRuntimePlugin, runtimeModuleIdForSpecifier } from "../runtime-plugin.js"
@@ -199,7 +200,7 @@ describe("runtime plugin", () => {
 
   bunIt("resolves runtime modules end-to-end in a subprocess", () => {
     const fixturePath = join(import.meta.dirname, "runtime-plugin.fixture.ts")
-    const result = Bun.spawnSync([process.execPath, fixturePath], {
+    const result = spawnSync([process.execPath, fixturePath], {
       cwd: join(import.meta.dirname, "..", ".."),
       stdout: "pipe",
       stderr: "pipe",
@@ -214,7 +215,7 @@ describe("runtime plugin", () => {
 
   bunIt("resolves bare imports from external runtime roots", () => {
     const fixturePath = join(import.meta.dirname, "runtime-plugin-resolve-roots.fixture.ts")
-    const result = Bun.spawnSync([process.execPath, fixturePath], {
+    const result = spawnSync([process.execPath, fixturePath], {
       cwd: join(import.meta.dirname, "..", ".."),
       stdout: "pipe",
       stderr: "pipe",
@@ -229,7 +230,7 @@ describe("runtime plugin", () => {
 
   bunIt("rewrites runtime specifiers in node_modules modules by default", () => {
     const fixturePath = join(import.meta.dirname, "runtime-plugin-node-modules-runtime-specifier.fixture.ts")
-    const result = Bun.spawnSync([process.execPath, fixturePath], {
+    const result = spawnSync([process.execPath, fixturePath], {
       cwd: join(import.meta.dirname, "..", ".."),
       stdout: "pipe",
       stderr: "pipe",
@@ -244,7 +245,7 @@ describe("runtime plugin", () => {
 
   bunIt("rewrites runtime specifiers in node_modules .mjs modules", () => {
     const fixturePath = join(import.meta.dirname, "runtime-plugin-node-modules-mjs.fixture.ts")
-    const result = Bun.spawnSync([process.execPath, fixturePath], {
+    const result = spawnSync([process.execPath, fixturePath], {
       cwd: join(import.meta.dirname, "..", ".."),
       stdout: "pipe",
       stderr: "pipe",
@@ -259,7 +260,7 @@ describe("runtime plugin", () => {
 
   bunIt("rewrites runtime specifiers across node_modules ESM cycles", () => {
     const fixturePath = join(import.meta.dirname, "runtime-plugin-node-modules-cycle.fixture.ts")
-    const result = Bun.spawnSync([process.execPath, fixturePath], {
+    const result = spawnSync([process.execPath, fixturePath], {
       cwd: join(import.meta.dirname, "..", ".."),
       stdout: "pipe",
       stderr: "pipe",
@@ -276,7 +277,7 @@ describe("runtime plugin", () => {
 
   bunIt("does not keep stale node_modules package type across plugin instances", () => {
     const fixturePath = join(import.meta.dirname, "runtime-plugin-node-modules-package-type-cache.fixture.ts")
-    const result = Bun.spawnSync([process.execPath, fixturePath], {
+    const result = spawnSync([process.execPath, fixturePath], {
       cwd: join(import.meta.dirname, "..", ".."),
       stdout: "pipe",
       stderr: "pipe",
@@ -291,7 +292,7 @@ describe("runtime plugin", () => {
 
   bunIt("rewrites bare imports for scoped node_modules package siblings when enabled", () => {
     const fixturePath = join(import.meta.dirname, "runtime-plugin-node-modules-scoped-package-bare-rewrite.fixture.ts")
-    const result = Bun.spawnSync([process.execPath, fixturePath], {
+    const result = spawnSync([process.execPath, fixturePath], {
       cwd: join(import.meta.dirname, "..", ".."),
       stdout: "pipe",
       stderr: "pipe",
@@ -308,7 +309,7 @@ describe("runtime plugin", () => {
 
   bunIt("does not rewrite non-runtime bare imports in node_modules modules by default", () => {
     const fixturePath = join(import.meta.dirname, "runtime-plugin-node-modules-no-bare-rewrite.fixture.ts")
-    const result = Bun.spawnSync([process.execPath, fixturePath], {
+    const result = spawnSync([process.execPath, fixturePath], {
       cwd: join(import.meta.dirname, "..", ".."),
       stdout: "pipe",
       stderr: "pipe",
@@ -323,7 +324,7 @@ describe("runtime plugin", () => {
 
   bunIt("rewrites runtime specifiers when Bun canonicalizes a symlinked import path", () => {
     const fixturePath = join(import.meta.dirname, "runtime-plugin-path-alias.fixture.ts")
-    const result = Bun.spawnSync([process.execPath, fixturePath], {
+    const result = spawnSync([process.execPath, fixturePath], {
       cwd: join(import.meta.dirname, "..", ".."),
       stdout: "pipe",
       stderr: "pipe",
@@ -343,7 +344,7 @@ describe("runtime plugin", () => {
     }
 
     const fixturePath = join(import.meta.dirname, "runtime-plugin-windows-file-url.fixture.ts")
-    const result = Bun.spawnSync([process.execPath, fixturePath], {
+    const result = spawnSync([process.execPath, fixturePath], {
       cwd: join(import.meta.dirname, "..", ".."),
       stdout: "pipe",
       stderr: "pipe",

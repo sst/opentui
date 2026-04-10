@@ -1,18 +1,19 @@
-import { Parser, Query, Tree, Language } from "web-tree-sitter"
-import type { Edit, QueryCapture, Range } from "web-tree-sitter"
 import { mkdir } from "fs/promises"
 import * as path from "path"
-import type {
-  HighlightRange,
-  HighlightResponse,
-  SimpleHighlight,
-  FiletypeParserOptions,
-  PerformanceStats,
-  InjectionMapping,
-} from "./types.js"
-import { DownloadUtils } from "./download-utils.js"
+import { fileURLToPath } from "url"
+import type { Edit, QueryCapture, Range } from "web-tree-sitter"
+import { Language, Parser, Query, Tree } from "web-tree-sitter"
 import { isMainThread } from "worker_threads"
 import { isBunfsPath, normalizeBunfsPath } from "../bunfs.js"
+import { DownloadUtils } from "./download-utils.js"
+import type {
+  FiletypeParserOptions,
+  HighlightRange,
+  HighlightResponse,
+  InjectionMapping,
+  PerformanceStats,
+  SimpleHighlight,
+} from "./types.js"
 
 const self = globalThis
 
@@ -88,9 +89,7 @@ class ParserWorker {
       await mkdir(path.join(this.tsDataPath, "languages"), { recursive: true })
       await mkdir(path.join(this.tsDataPath, "queries"), { recursive: true })
 
-      let { default: treeWasm } = await import("web-tree-sitter/tree-sitter.wasm" as string, {
-        with: { type: "wasm" },
-      })
+      let treeWasm = fileURLToPath(new URL(import.meta.resolve("web-tree-sitter/tree-sitter.wasm")))
 
       if (isBunfsPath(treeWasm)) {
         treeWasm = normalizeBunfsPath(path.parse(treeWasm).base)

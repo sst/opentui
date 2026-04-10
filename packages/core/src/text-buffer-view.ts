@@ -1,6 +1,6 @@
 import { RGBA } from "./lib/RGBA.js"
 import { resolveRenderLib, type LineInfo, type RenderLib } from "./zig.js"
-import { type Pointer } from "bun:ffi"
+import { type Pointer } from "./compat/ffi.js"
 import type { TextBuffer } from "./text-buffer.js"
 
 export class TextBufferView {
