@@ -6,6 +6,7 @@ on:
     branches: [main]
 
 env:
+  NODE_VERSION: 22
   ZIG_VERSION: 0.15.2
   # Workaround for bug in Zig 0.15.2 (fixed in next version)
   # https://github.com/ziglang/zig/issues/25805
@@ -69,6 +70,11 @@ jobs:
         with:
           bun-version: latest
 
+      - name: Setup Node.js
+        uses: actions/setup-node@v6.3.0
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+
       - name: Setup Zig
         uses: goto-bus-stop/setup-zig@v2
         with:
@@ -89,20 +95,30 @@ jobs:
           ls -la packages/core/node_modules/@opentui/
           ls -la packages/core/node_modules/@opentui/core-${{ matrix.platform }}/
 
-      - name: Run native tests
-        run: |
-          cd packages/core/src/zig
-          zig build test --summary all
-
       - name: Build TypeScript library
         run: |
           cd packages/core
           bun run build:lib
 
-      - name: Run TypeScript tests
+      - name: Run native tests
         run: |
           cd packages/core
-          bun run test:js
+          bun run test:native
+
+      - name: Run Bun tests
+        run: |
+          cd packages/core
+          bun run test:bun
+
+      - name: Run Node.js tests
+        run: |
+          cd packages/core
+          bun run test:nodejs
+
+      - name: Run dist tests
+        run: |
+          cd packages/core
+          bun run test:dist
 
   # Gate job for branch protection
   build-complete:
