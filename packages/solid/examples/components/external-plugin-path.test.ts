@@ -1,11 +1,13 @@
 import { describe, expect, it } from "bun:test"
-import { join } from "node:path"
+import { join, resolve } from "node:path"
 import { pathToFileURL } from "node:url"
 import { resolveExternalPluginCandidates } from "./external-plugin-path.js"
 
 describe("external plugin path", () => {
   it("prefers the dist sibling plugin before the source plugin", () => {
-    const root = "/repo/packages/solid/examples"
+    // pathToFileURL(source) under node/windows will add the drive letter if not present,
+    // so we must also adopt this behavor for our `root` path via resolve(process.cwd(), ...).
+    const root = resolve(process.cwd(), "/repo/packages/solid/examples")
     const dist = join(root, "dist", "darwin-arm64")
     const source = join(root, "components", "external-plugin-slots-demo.tsx")
     const candidates = resolveExternalPluginCandidates({
@@ -21,7 +23,7 @@ describe("external plugin path", () => {
   })
 
   it("supports running from the workspace root in dev", () => {
-    const cwd = "/repo"
+    const cwd = resolve(process.cwd(), "/repo")
     const root = join(cwd, "packages", "solid", "examples")
     const source = join(root, "components", "external-plugin-slots-demo.tsx")
     const candidates = resolveExternalPluginCandidates({
