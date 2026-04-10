@@ -36,12 +36,11 @@ export function resolveExternalPluginCandidates(input: ResolveExternalPluginCand
 
   const paths = new Set<string>()
   const moduleDir = dirname(modulePath)
-  const execDir = dirname(input.execPath)
+  const execDir = dirname(execPath)
 
-  if (input.envPath && input.envPath.trim().length > 0) {
-    paths.add(normalizeExternalPluginPath(input.envPath.trim(), input.cwd))
+  if (envPath) {
+    paths.add(envPath)
   }
-
   paths.add(resolve(input.cwd, defaultPluginEntry))
   paths.add(join(execDir, defaultPluginEntry))
   paths.add(resolve(execDir, "..", defaultPluginEntry))
