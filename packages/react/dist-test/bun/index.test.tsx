@@ -86,21 +86,14 @@ describe("@opentui/react dist test (Bun)", () => {
   })
 
   test("uses createRoot directly with createTestRenderer", async () => {
-    let root: ReturnType<typeof createRoot> | null = null
     const { renderer, renderOnce, captureCharFrame } = await createTestRenderer({
       width: 30,
       height: 4,
-      onDestroy() {
-        act(() => {
-          root?.unmount()
-          root = null
-        })
-      },
     })
 
     // @ts-expect-error - required for React act() to work in test environment
     globalThis.IS_REACT_ACT_ENVIRONMENT = true
-    root = createRoot(renderer)
+    const root = createRoot(renderer)
 
     try {
       act(() => {
@@ -109,6 +102,9 @@ describe("@opentui/react dist test (Bun)", () => {
       await renderOnce()
       expect(captureCharFrame()).toMatch(/Direct root render/)
     } finally {
+      act(() => {
+        root.unmount()
+      })
       renderer.destroy()
       // @ts-expect-error
       globalThis.IS_REACT_ACT_ENVIRONMENT = false

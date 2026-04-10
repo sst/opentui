@@ -19,6 +19,8 @@ interface DistTestPackageJson {
   dependencies?: Record<string, string>
   devDependencies?: Record<string, string>
   optionalDependencies?: Record<string, string>
+  overrides?: Record<string, string>
+  resolutions?: Record<string, string>
 }
 
 interface PackedPackageJson {
@@ -58,6 +60,7 @@ interface DistTestFixture {
 
 interface RunCommandArgs {
   cmd: string
+  displayCmd?: string
   args: string[]
   cwd: string
   env?: NodeJS.ProcessEnv
@@ -114,6 +117,10 @@ interface RewriteFixturePackageJsonArgs {
   tarballs: Map<string, string>
 }
 
+interface VerifyLocalPackageInstallArgs {
+  fixture: DistTestFixture
+}
+
 interface CreateFixturesArgs {
   invocationDir: string
   args: CliArgs
@@ -138,6 +145,7 @@ type Runtime = "node" | "bun"
 
 const repoRoot = resolve(fileURLToPath(new URL("..", import.meta.url)))
 const nativePackageName = `@opentui/core-${process.platform}-${process.arch}`
+const bunExecutable = process.execPath
 
 const logInfo = (message: string): void => console.log(`INFO: ${message}`)
 const logSuccess = (message: string): void => console.log(`SUCCESS: ${message}`)
@@ -208,7 +216,8 @@ Examples:
   }
 }
 
-const runCommand = ({ cmd, args, cwd, env, quiet = false }: RunCommandArgs): void => {
+const runCommand = ({ cmd, displayCmd, args, cwd, env, quiet = false }: RunCommandArgs): void => {
+  const renderedCmd = displayCmd ?? cmd
   const result = spawnSync(cmd, args, {
     cwd,
     env: env ? { ...process.env, ...env } : process.env,
@@ -224,7 +233,7 @@ const runCommand = ({ cmd, args, cwd, env, quiet = false }: RunCommandArgs): voi
       const stdout = result.stdout?.toString()
       const stderr = result.stderr?.toString()
 
-      console.error(`$ (cd ${cwd} && ${cmd} ${args.join(" ")})`)
+      console.error(`$ (cd ${cwd} && ${renderedCmd} ${args.join(" ")})`)
 
       if (stdout) {
         process.stdout.write(stdout)
@@ -235,14 +244,15 @@ const runCommand = ({ cmd, args, cwd, env, quiet = false }: RunCommandArgs): voi
       }
     }
 
-    throw new Error(`Command failed with exit code ${result.status ?? "unknown"}: ${cmd} ${args.join(" ")}`)
+    throw new Error(`Command failed with exit code ${result.status ?? "unknown"}: ${renderedCmd} ${args.join(" ")}`)
   }
 }
 
 const bun = (ctx: BunCommandContext, ...args: string[]): void => {
   const env = ctx.tmpDir ? { TMPDIR: ctx.tmpDir } : undefined
   runCommand({
-    cmd: "bun",
+    cmd: bunExecutable,
+    displayCmd: "bun",
     args,
     cwd: ctx.cwd,
     env,
@@ -487,6 +497,8 @@ const rewriteFixturePackageJson = ({
   tarballs,
 }: RewriteFixturePackageJsonArgs): DistTestPackageJson => {
   const dependencies = { ...(packageJson.dependencies ?? {}) }
+  const overrides = { ...(packageJson.overrides ?? {}) }
+  const resolutions = { ...(packageJson.resolutions ?? {}) }
 
   for (const packageName of localPackageNames) {
     const tarballPath = tarballs.get(packageName)
@@ -494,10 +506,14 @@ const rewriteFixturePackageJson = ({
       throw new Error(`Missing tarball for local dependency ${packageName}`)
     }
 
-    dependencies[packageName] = normalizeFileDependency({
+    const fileDependency = normalizeFileDependency({
       cwd: destinationDir,
       filePath: tarballPath,
     })
+
+    dependencies[packageName] = fileDependency
+    overrides[packageName] = fileDependency
+    resolutions[packageName] = fileDependency
   }
 
   if (localPackageNames.includes("@opentui/core")) {
@@ -515,6 +531,8 @@ const rewriteFixturePackageJson = ({
   return {
     ...packageJson,
     dependencies,
+    overrides,
+    resolutions,
   }
 }
 
@@ -624,6 +642,85 @@ const prepareFixtureDirectory = ({ fixture }: { fixture: DistTestFixture }): voi
     fixture.paths.packDir,
   ]) {
     mkdirSync(dirPath, { recursive: true })
+  }
+}
+
+const collectInstalledPackagePaths = ({
+  nodeModulesDir,
+  packageName,
+}: {
+  nodeModulesDir: string
+  packageName: string
+}): string[] => {
+  if (!existsSync(nodeModulesDir)) {
+    return []
+  }
+
+  const packagePathSegments = packageName.split("/")
+  const matches = new Set<string>()
+  const visitedNodeModules = new Set<string>()
+
+  const visitNodeModules = (currentNodeModulesDir: string): void => {
+    const normalizedDir = resolve(currentNodeModulesDir)
+    if (visitedNodeModules.has(normalizedDir) || !existsSync(normalizedDir)) {
+      return
+    }
+
+    visitedNodeModules.add(normalizedDir)
+
+    const candidatePackageDir = join(normalizedDir, ...packagePathSegments)
+    if (existsSync(join(candidatePackageDir, "package.json"))) {
+      matches.add(candidatePackageDir)
+    }
+
+    for (const entry of readdirSync(normalizedDir, { withFileTypes: true })) {
+      if (!entry.isDirectory() || entry.name === ".bin") {
+        continue
+      }
+
+      if (entry.name.startsWith("@")) {
+        const scopeDir = join(normalizedDir, entry.name)
+        for (const scopedEntry of readdirSync(scopeDir, { withFileTypes: true })) {
+          if (!scopedEntry.isDirectory()) {
+            continue
+          }
+
+          visitNodeModules(join(scopeDir, scopedEntry.name, "node_modules"))
+        }
+        continue
+      }
+
+      visitNodeModules(join(normalizedDir, entry.name, "node_modules"))
+    }
+  }
+
+  visitNodeModules(nodeModulesDir)
+  return [...matches].sort()
+}
+
+const verifyLocalPackageInstall = ({ fixture }: VerifyLocalPackageInstallArgs): void => {
+  if (fixture.localPackageNames.length === 0) {
+    return
+  }
+
+  const nodeModulesDir = join(fixture.paths.destinationDir, "node_modules")
+  const failures: string[] = []
+
+  for (const packageName of fixture.localPackageNames) {
+    const installedPaths = collectInstalledPackagePaths({
+      nodeModulesDir,
+      packageName,
+    })
+
+    if (installedPaths.length !== 1) {
+      const renderedPaths =
+        installedPaths.length === 0 ? "none found" : installedPaths.map((installedPath) => `\n    - ${installedPath}`).join("")
+      failures.push(`${packageName}: expected exactly 1 installed copy, found ${installedPaths.length}${installedPaths.length === 0 ? ` (${renderedPaths})` : ` at:${renderedPaths}`}`)
+    }
+  }
+
+  if (failures.length > 0) {
+    throw new Error(`Local package install verification failed:\n  ${failures.join("\n  ")}`)
   }
 }
 
@@ -792,6 +889,32 @@ const runFixture = ({ fixture, invocationDir, buildCache }: RunFixtureArgs): voi
     }
 
     logSuccess("Dependencies installed")
+  }
+
+  if (fixture.localPackageNames.length > 0) {
+    logInfo("Verifying local package installs...")
+    try {
+      verifyLocalPackageInstall({
+        fixture,
+      })
+    } catch (error) {
+      throw annotateError({
+        error,
+        fixture,
+        invocationDir,
+        phase: "verify local package installs",
+        rerunCommands: [
+          `cd ${fixture.paths.destinationDir} && find node_modules -path '*/package.json' | sort`,
+          getDistTestRerunCommand({
+            fixture,
+            invocationDir,
+            buildEnabled: buildCache.buildEnabled,
+          }),
+        ],
+      })
+    }
+
+    logSuccess("Local package installs verified")
   }
 
   if (packageJson.scripts?.build) {
