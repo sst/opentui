@@ -1,4 +1,4 @@
-import { defineStruct, defineEnum } from "./compat/bun-ffi-structs/index.js"
+import { defineEnum, defineStruct } from "./compat/bun-ffi-structs.js"
 import { ptr, toArrayBuffer, type Pointer } from "./compat/ffi.js"
 import { RGBA } from "./lib/RGBA.js"
 
