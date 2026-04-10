@@ -7,18 +7,20 @@ type MessageEventLike<T = unknown> = { data: T }
 type ErrorEventLike = { message: string }
 
 const ownExtension = extname(import.meta.url)
+const knownProtocolRegex = /^(file|data|node):/
 
 function resolveWorkerTarget(url: string | URL): string {
   if (url instanceof URL) {
     return url.href
   }
 
-  if (/^[a-zA-Z][a-zA-Z\d+\-.]*:/.test(url)) {
+  // allowing any <words>:<anything> will confuse windows absolute path starting
+  // with a drive letter with a valid url.
+  if (knownProtocolRegex.test(url)) {
     return url
   }
 
-  const absolutePath = isAbsolute(url) ? url : resolve(url)
-  return pathToFileURL(absolutePath).href
+  return pathToFileURL(url).href
 }
 
 function normalizeExtension(specifier: string): string
