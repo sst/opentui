@@ -52,7 +52,7 @@ describe("SolidJS Renderer Integration Tests", () => {
     })
 
     it("should throw on rendering text without parent <text> element", async () => {
-      expect(
+      await expect(
         testRender(() => <box>This text is not wrapped in a text element</box>, {
           width: 30,
           height: 5,
@@ -61,7 +61,7 @@ describe("SolidJS Renderer Integration Tests", () => {
     })
 
     it("should throw on rendering span without parent <text> element", async () => {
-      expect(
+      await expect(
         testRender(
           () => (
             <box>
