@@ -1,4 +1,5 @@
 export class RGBA {
+  static readonly BYTE_LENGTH = 16 // 4 floats * 4 bytes per float
   buffer: Float32Array
 
   constructor(buffer: Float32Array) {
