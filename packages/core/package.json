@@ -33,7 +33,6 @@
     "@types/bun": "latest",
     "@types/node": "^24.0.0",
     "@types/three": "0.177.0",
-    "commander": "^13.1.0",
     "typescript": "^5",
     "web-tree-sitter": "0.25.10"
   },
@@ -51,16 +50,17 @@
   },
   "optionalDependencies": {
     "@dimforge/rapier2d-simd-compat": "^0.17.3",
-    "koffi": "2.15.6",
+    "@opentui/core-darwin-arm64": "0.1.97",
+    "@opentui/core-darwin-x64": "0.1.97",
+    "@opentui/core-linux-arm64": "0.1.97",
+    "@opentui/core-linux-x64": "0.1.97",
+    "@opentui/core-win32-arm64": "0.1.97",
+    "@opentui/core-win32-x64": "0.1.97",
     "bun-webgpu": "0.1.5",
+    "koffi": "2.15.6",
     "planck": "^1.4.2",
     "three": "0.177.0",
-    "@opentui/core-darwin-x64": "0.1.97",
-    "@opentui/core-darwin-arm64": "0.1.97",
-    "@opentui/core-linux-x64": "0.1.97",
-    "@opentui/core-linux-arm64": "0.1.97",
-    "@opentui/core-win32-x64": "0.1.97",
-    "@opentui/core-win32-arm64": "0.1.97"
+    "unsafe-pointer": "0.2.0"
   },
   "exports": {
     ".": {

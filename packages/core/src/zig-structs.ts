@@ -3,7 +3,8 @@ import { ptr, toArrayBuffer, type Pointer } from "./compat/ffi.js"
 import { RGBA } from "./lib/RGBA.js"
 
 const rgbaPackTransform = (rgba?: RGBA) => (rgba ? ptr(rgba.buffer) : null)
-const rgbaUnpackTransform = (ptr?: Pointer) => (ptr ? RGBA.fromArray(new Float32Array(toArrayBuffer(ptr, 0, RGBA.BYTE_LENGTH))) : undefined)
+const rgbaUnpackTransform = (ptr?: Pointer) =>
+  ptr ? RGBA.fromArray(new Float32Array(toArrayBuffer(ptr, 0, RGBA.BYTE_LENGTH))) : undefined
 
 type StyledChunkInput = {
   text: string

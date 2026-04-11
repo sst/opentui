@@ -23,6 +23,7 @@
     "test:dist": "bun scripts/dist-test.ts --build packages/*/dist-test/*"
   },
   "devDependencies": {
+    "commander": "^13.1.0",
     "oxfmt": "0.41.0",
     "oxlint": "1.56.0",
     "vitest": "4.1.3"

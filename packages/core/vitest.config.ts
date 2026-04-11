@@ -12,10 +12,12 @@ export default defineConfig({
     alias: {
       "bun:test": fileURLToPath(new URL("./src/compat/test.ts", import.meta.url)),
     },
+    external: true,
   },
   test: {
     environment: "node",
     resolveSnapshotPath: (testPath, ext) =>
       join(dirname(testPath), "__snapshots__", `${basename(testPath)}.nodejs${ext}`),
+    root: "src",
   },
 })

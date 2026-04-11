@@ -12,5 +12,6 @@ export default defineConfig({
     environment: "node",
     resolveSnapshotPath: (testPath, ext) =>
       join(dirname(testPath), "__snapshots__", `${basename(testPath)}.nodejs${ext}`),
+    root: "src",
   },
 })

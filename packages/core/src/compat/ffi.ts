@@ -151,11 +151,7 @@ export interface JSCallbackConstructor {
 
 export type DlopenFunction = <Fns extends Record<string, FFIFunction>>(name: string | URL, symbols: Fns) => Library<Fns>
 export type PtrFunction = (value: ArrayBufferLike | ArrayBufferView) => Pointer
-export type ToArrayBufferFunction = (
-  pointer: Pointer | bigint | object | null,
-  offset?: number,
-  length?: number,
-) => ArrayBuffer
+export type ToArrayBufferFunction = (pointer: Pointer, offset: number | undefined, length: number) => ArrayBuffer
 
 type FfiModule = {
   JSCallback: JSCallbackConstructor

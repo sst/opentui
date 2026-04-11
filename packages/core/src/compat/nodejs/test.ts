@@ -1,8 +1,9 @@
+import type { mock as bunMock, spyOn as bunSpyOn } from "bun:test"
 import { vi, expect } from "vitest"
 export * from "vitest"
 
-export const mock = vi.fn
-export const spyOn = vi.spyOn
+export const mock: typeof bunMock = vi.fn as any
+export const spyOn: typeof bunSpyOn = vi.spyOn as any
 
 // Bun's toInclude → vitest's toContain
 expect.extend({
