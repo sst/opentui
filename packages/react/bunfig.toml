@@ -1,2 +1,4 @@
 [test]
-root = "src"
+pathIgnorePatterns = [
+  "dist-test/**"
+]
