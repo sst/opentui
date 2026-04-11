@@ -1,4 +1,2 @@
 [test]
-pathExcludePatterns = [
-  "dist-test/**"
-]
+pathExcludePatterns = ["dist-test/**"]

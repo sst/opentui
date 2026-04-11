@@ -12,6 +12,6 @@ export default defineConfig({
     environment: "node",
     resolveSnapshotPath: (testPath, ext) =>
       join(dirname(testPath), "__snapshots__", `${basename(testPath)}.nodejs${ext}`),
-    exclude: ["node_modules/**", "dist-test/**"]
+    exclude: ["node_modules/**", "dist-test/**"],
   },
 })

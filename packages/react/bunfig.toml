@@ -1,4 +1,2 @@
 [test]
-pathIgnorePatterns = [
-  "dist-test/**"
-]
+pathIgnorePatterns = ["dist-test/**"]
