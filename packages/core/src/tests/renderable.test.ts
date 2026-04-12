@@ -50,6 +50,18 @@ class TestRenderable extends Renderable {
   }
 }
 
+class CountingRenderable extends Renderable {
+  public renderCount = 0
+
+  constructor(ctx: RenderContext, options: RenderableOptions) {
+    super(ctx, options)
+  }
+
+  protected renderSelf(): void {
+    this.renderCount += 1
+  }
+}
+
 class TestFocusableRenderable extends Renderable {
   _focusable = true
 
@@ -958,6 +970,58 @@ describe("Renderable - Layout with Viewport Filtering", () => {
     expect(child3.width).toBe(100)
     expect(child3.height).toBe(25)
     expect(child3.y).toBe(60)
+  })
+
+  test("renders all children when visible-children hook returns default path", async () => {
+    const parent = new ViewportFilteringRenderable(testRenderer, {
+      id: "parent",
+      width: 100,
+      height: 100,
+      flexDirection: "column",
+    })
+
+    const child1 = new CountingRenderable(testRenderer, { id: "child1", height: 20, flexGrow: 0 })
+    const child2 = new CountingRenderable(testRenderer, { id: "child2", height: 20, flexGrow: 0 })
+    const child3 = new CountingRenderable(testRenderer, { id: "child3", height: 20, flexGrow: 0 })
+
+    parent.add(child1)
+    parent.add(child2)
+    parent.add(child3)
+    testRenderer.root.add(parent)
+
+    await renderOnce()
+
+    expect(child1.renderCount).toBeGreaterThan(0)
+    expect(child2.renderCount).toBeGreaterThan(0)
+    expect(child3.renderCount).toBeGreaterThan(0)
+    expect(child1.renderCount).toBe(child2.renderCount)
+    expect(child2.renderCount).toBe(child3.renderCount)
+  })
+
+  test("renders only filtered children while still updating hidden layout", async () => {
+    const parent = new ViewportFilteringRenderable(testRenderer, {
+      id: "parent",
+      width: 100,
+      height: 100,
+      flexDirection: "column",
+    })
+
+    const child1 = new CountingRenderable(testRenderer, { id: "child1", height: 20, flexGrow: 0 })
+    const child2 = new CountingRenderable(testRenderer, { id: "child2", height: 20, flexGrow: 0 })
+    const child3 = new CountingRenderable(testRenderer, { id: "child3", height: 20, flexGrow: 0 })
+
+    parent.add(child1)
+    parent.add(child2)
+    parent.add(child3)
+    testRenderer.root.add(parent)
+    parent.enableFiltering()
+
+    await renderOnce()
+
+    expect(child1.renderCount).toBeGreaterThan(0)
+    expect(child2.renderCount).toBeGreaterThan(0)
+    expect(child3.renderCount).toBe(0)
+    expect(child3.height).toBe(20)
   })
 
   test("child inserted before visible children receives layout when filtered", async () => {
