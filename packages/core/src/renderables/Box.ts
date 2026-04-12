@@ -238,6 +238,12 @@ export class BoxRenderable extends Renderable {
   }
 
   protected renderSelf(buffer: OptimizedBuffer): void {
+    const hasBorder = this.borderSides.top || this.borderSides.right || this.borderSides.bottom || this.borderSides.left
+    const hasVisibleFill = this.shouldFill && this._backgroundColor.a > 0
+    if (!hasBorder && !hasVisibleFill) {
+      return
+    }
+
     const hasFocusWithin = this._focusable && (this._focused || this._hasFocusedDescendant)
     const currentBorderColor = hasFocusWithin ? this._focusedBorderColor : this._borderColor
     const screenX = this._screenX
