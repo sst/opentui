@@ -508,6 +508,8 @@ export abstract class Renderable extends BaseRenderable {
   public set translateX(value: number) {
     if (this._translateX === value) return
     this._translateX = value
+    const parentScreenX = this.parent ? this.parent._screenX : 0
+    this._screenX = parentScreenX + this._x + this._translateX
     if (this.parent) this.parent.childrenPrimarySortDirty = true
     this.requestRender()
   }
@@ -519,8 +521,22 @@ export abstract class Renderable extends BaseRenderable {
   public set translateY(value: number) {
     if (this._translateY === value) return
     this._translateY = value
+    const parentScreenY = this.parent ? this.parent._screenY : 0
+    this._screenY = parentScreenY + this._y + this._translateY
     if (this.parent) this.parent.childrenPrimarySortDirty = true
     this.requestRender()
+  }
+
+  // Use the cached parent screen position plus this node's current local offset.
+  // That keeps culling/sorting in sync even before this node refreshes _screenX/Y.
+  public get screenX(): number {
+    const parentScreenX = this.parent ? this.parent._screenX : 0
+    return parentScreenX + this._x + this._translateX
+  }
+
+  public get screenY(): number {
+    const parentScreenY = this.parent ? this.parent._screenY : 0
+    return parentScreenY + this._y + this._translateY
   }
 
   public get x(): number {
@@ -661,8 +677,8 @@ export abstract class Renderable extends BaseRenderable {
 
     const sorted = [...this._childrenInLayoutOrder]
     sorted.sort((a, b) => {
-      const va = axis === "y" ? a.y : a.x
-      const vb = axis === "y" ? b.y : b.x
+      const va = axis === "y" ? a.screenY : a.screenX
+      const vb = axis === "y" ? b.screenY : b.screenX
       return va - vb
     })
 

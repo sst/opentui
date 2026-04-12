@@ -62,7 +62,7 @@ class CountingRenderable extends Renderable {
   }
 
   public getScreenPosition(): { x: number; y: number } {
-    return { x: this._screenX, y: this._screenY }
+    return { x: this.screenX, y: this.screenY }
   }
 }
 
@@ -248,6 +248,11 @@ describe("Renderable", () => {
     parent.translateY = 3
     child.translateX = 2
     child.translateY = 5
+
+    expect(parent.screenX).toBe(parent.x)
+    expect(parent.screenY).toBe(parent.y)
+    expect(child.screenX).toBe(child.x)
+    expect(child.screenY).toBe(child.y)
 
     await renderOnce()
 
