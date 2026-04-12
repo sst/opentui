@@ -146,15 +146,29 @@ async function downloadAndCombineQueries(
 }
 
 async function generateDefaultParsersFile(parsers: GeneratedParser[], outputPath: string): Promise<void> {
+  const imports = parsers
+    .map((parser) => {
+      const safeFiletype = parser.filetype.replace(/[^a-zA-Z0-9]/g, "_")
+      const lines = [
+        `import ${safeFiletype}_highlights from "${parser.highlightsPath}" with { type: "file" }`,
+        `import ${safeFiletype}_language from "${parser.languagePath}" with { type: "file" }`,
+      ]
+      if (parser.injectionsPath) {
+        lines.push(`import ${safeFiletype}_injections from "${parser.injectionsPath}" with { type: "file" }`)
+      }
+      return lines.join("\n")
+    })
+    .join("\n")
+
   const parserDefinitions = parsers
     .map((parser) => {
       const safeFiletype = parser.filetype.replace(/[^a-zA-Z0-9]/g, "_")
       const queriesLines = [
-        `          highlights: [fileURLToPath(new URL("${parser.highlightsPath}", import.meta.url))],`,
+        `          highlights: [resolve(dirname(fileURLToPath(import.meta.url)), ${safeFiletype}_highlights)],`,
       ]
       if (parser.injectionsPath) {
         queriesLines.push(
-          `          injections: [fileURLToPath(new URL("${parser.injectionsPath}", import.meta.url))],`,
+          `          injections: [resolve(dirname(fileURLToPath(import.meta.url)), ${safeFiletype}_injections)],`,
         )
       }
 
@@ -168,7 +182,7 @@ async function generateDefaultParsersFile(parsers: GeneratedParser[], outputPath
 ${aliasesLine ? aliasesLine + "\n" : ""}        queries: {
 ${queriesLines.join("\n")}
         },
-        wasm: fileURLToPath(new URL("${parser.languagePath}", import.meta.url)),${injectionMappingLine ? "\n" + injectionMappingLine : ""}
+        wasm: resolve(dirname(fileURLToPath(import.meta.url)), ${safeFiletype}_language),${injectionMappingLine ? "\n" + injectionMappingLine : ""}
       }`
     })
     .join(",\n")
@@ -178,7 +192,10 @@ ${queriesLines.join("\n")}
 // Last generated: ${new Date().toISOString()}
 
 import type { FiletypeParserOptions } from "./types"
+import { resolve, dirname } from "path"
 import { fileURLToPath } from "url"
+
+${imports}
 
 // Cached parsers to avoid re-resolving paths on every call
 let _cachedParsers: FiletypeParserOptions[] | undefined
