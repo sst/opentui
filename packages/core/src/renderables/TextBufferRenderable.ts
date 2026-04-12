@@ -477,20 +477,22 @@ export abstract class TextBufferRenderable extends Renderable implements LineInf
 
   render(buffer: OptimizedBuffer, deltaTime: number): void {
     if (!this.visible) return
+    const screenX = this._screenX
+    const screenY = this._screenY
 
     this.markClean()
-    this._ctx.addToHitGrid(this.x, this.y, this.width, this.height, this.num)
+    this._ctx.addToHitGrid(screenX, screenY, this.width, this.height, this.num)
 
     this.renderSelf(buffer)
 
     if (this.buffered && this.frameBuffer) {
-      buffer.drawFrameBuffer(this.x, this.y, this.frameBuffer)
+      buffer.drawFrameBuffer(screenX, screenY, this.frameBuffer)
     }
   }
 
   protected renderSelf(buffer: OptimizedBuffer): void {
     if (this.textBuffer.ptr) {
-      buffer.drawTextBuffer(this.textBufferView, this.x, this.y)
+      buffer.drawTextBuffer(this.textBufferView, this._screenX, this._screenY)
     }
   }
 

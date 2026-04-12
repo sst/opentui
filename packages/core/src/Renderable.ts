@@ -209,6 +209,8 @@ export abstract class Renderable extends BaseRenderable {
   protected _translateY: number = 0
   protected _x: number = 0
   protected _y: number = 0
+  protected _screenX: number = 0
+  protected _screenY: number = 0
   protected _width: number | "auto" | `${number}%`
   protected _height: number | "auto" | `${number}%`
   protected _widthValue: number = 0
@@ -1048,6 +1050,10 @@ export abstract class Renderable extends BaseRenderable {
 
     this._x = layout.left
     this._y = layout.top
+    const parentScreenX = this.parent ? this.parent._screenX : 0
+    const parentScreenY = this.parent ? this.parent._screenY : 0
+    this._screenX = parentScreenX + this._x + this._translateX
+    this._screenY = parentScreenY + this._y + this._translateY
 
     const newWidth = Math.max(layout.width, 1)
     const newHeight = Math.max(layout.height, 1)
@@ -1364,8 +1370,8 @@ export abstract class Renderable extends BaseRenderable {
         y: scissorRect.y,
         width: scissorRect.width,
         height: scissorRect.height,
-        screenX: this.x,
-        screenY: this.y,
+        screenX: this._screenX,
+        screenY: this._screenY,
       })
     }
     const visibleChildren = this._getVisibleChildren()
@@ -1386,6 +1392,8 @@ export abstract class Renderable extends BaseRenderable {
   }
 
   public render(buffer: OptimizedBuffer, deltaTime: number): void {
+    const screenX = this._screenX
+    const screenY = this._screenY
     let renderBuffer = buffer
     if (this.buffered && this.frameBuffer) {
       renderBuffer = this.frameBuffer
@@ -1402,10 +1410,10 @@ export abstract class Renderable extends BaseRenderable {
     }
 
     this.markClean()
-    this._ctx.addToHitGrid(this.x, this.y, this.width, this.height, this.num)
+    this._ctx.addToHitGrid(screenX, screenY, this.width, this.height, this.num)
 
     if (this.buffered && this.frameBuffer) {
-      buffer.drawFrameBuffer(this.x, this.y, this.frameBuffer)
+      buffer.drawFrameBuffer(screenX, screenY, this.frameBuffer)
     }
   }
 
@@ -1425,8 +1433,8 @@ export abstract class Renderable extends BaseRenderable {
     height: number
   } {
     return {
-      x: this.buffered ? 0 : this.x,
-      y: this.buffered ? 0 : this.y,
+      x: this.buffered ? 0 : this._screenX,
+      y: this.buffered ? 0 : this._screenY,
       width: this.width,
       height: this.height,
     }

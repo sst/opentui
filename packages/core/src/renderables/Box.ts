@@ -240,10 +240,12 @@ export class BoxRenderable extends Renderable {
   protected renderSelf(buffer: OptimizedBuffer): void {
     const hasFocusWithin = this._focusable && (this._focused || this._hasFocusedDescendant)
     const currentBorderColor = hasFocusWithin ? this._focusedBorderColor : this._borderColor
+    const screenX = this._screenX
+    const screenY = this._screenY
 
     buffer.drawBox({
-      x: this.x,
-      y: this.y,
+      x: screenX,
+      y: screenY,
       width: this.width,
       height: this.height,
       borderStyle: this._borderStyle,
