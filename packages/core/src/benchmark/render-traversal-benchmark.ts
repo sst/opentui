@@ -5,7 +5,7 @@ import { existsSync } from "node:fs"
 import { mkdir } from "node:fs/promises"
 import path from "node:path"
 import { Command } from "commander"
-import { BoxRenderable, RGBA, ScrollBoxRenderable, TextRenderable } from "../index.js"
+import { BoxRenderable, RGBA, ScrollBarRenderable, ScrollBoxRenderable, TextRenderable } from "../index.js"
 import { createTestRenderer, type TestRenderer } from "../testing.js"
 
 type ScenarioRuntime = {
@@ -323,6 +323,118 @@ function createScenarios(): ScenarioDefinition[] {
 
           item.add(leaf)
           scrollBox.add(item)
+        }
+
+        await ctx.renderOnce()
+
+        return {
+          renderablesPerIteration: renderables,
+          layoutOnlyBoxesPerIteration: layoutOnlyBoxes,
+          runIteration: async () => {
+            await ctx.renderOnce()
+          },
+          teardown: () => {
+            root.destroyRecursively()
+          },
+        }
+      },
+    },
+    {
+      name: "scrollbar_stack",
+      description: "Visible scrollbars and slider tracks with arrows",
+      setup: async (ctx) => {
+        clearRoot(ctx.renderer)
+        resetBuffers(ctx.renderer)
+
+        let renderables = 0
+        let layoutOnlyBoxes = 0
+
+        const root = new BoxRenderable(ctx.renderer, {
+          id: "bench-scrollbar-root",
+          width: "100%",
+          height: "100%",
+          border: false,
+          backgroundColor: COLORS.transparent,
+          flexDirection: "column",
+          gap: 1,
+          paddingLeft: 1,
+          paddingRight: 1,
+          paddingTop: 1,
+        })
+        renderables += 1
+        layoutOnlyBoxes += 1
+        ctx.renderer.root.add(root)
+
+        const verticalRow = new BoxRenderable(ctx.renderer, {
+          id: "bench-scrollbar-vertical-row",
+          width: "100%",
+          height: 14,
+          border: false,
+          backgroundColor: COLORS.transparent,
+          flexDirection: "row",
+          gap: 1,
+        })
+        renderables += 1
+        layoutOnlyBoxes += 1
+        root.add(verticalRow)
+
+        for (let i = 0; i < 10; i += 1) {
+          const bar = new ScrollBarRenderable(ctx.renderer, {
+            id: `bench-vertical-scrollbar-${i}`,
+            orientation: "vertical",
+            showArrows: true,
+            width: 2,
+            height: 14,
+            trackOptions: {
+              backgroundColor: COLORS.panel,
+              foregroundColor: COLORS.accent,
+            },
+            arrowOptions: {
+              backgroundColor: COLORS.panel,
+              foregroundColor: COLORS.warning,
+            },
+          })
+          bar.scrollSize = 400 + i * 30
+          bar.viewportSize = 24 + (i % 3)
+          bar.scrollPosition = 10 + i * 7
+          renderables += 4
+          verticalRow.add(bar)
+        }
+
+        const horizontalColumn = new BoxRenderable(ctx.renderer, {
+          id: "bench-scrollbar-horizontal-column",
+          width: "100%",
+          flexGrow: 1,
+          border: false,
+          backgroundColor: COLORS.transparent,
+          flexDirection: "column",
+          gap: 1,
+        })
+        renderables += 1
+        layoutOnlyBoxes += 1
+        root.add(horizontalColumn)
+
+        for (let i = 0; i < 8; i += 1) {
+          const bar = new ScrollBarRenderable(ctx.renderer, {
+            id: `bench-horizontal-scrollbar-${i}`,
+            orientation: "horizontal",
+            showArrows: true,
+            width: 28,
+            height: 1,
+            trackOptions: {
+              backgroundColor: COLORS.element,
+              foregroundColor: COLORS.accent,
+            },
+            arrowOptions: {
+              backgroundColor: COLORS.element,
+              foregroundColor: COLORS.warning,
+            },
+          })
+          bar.scrollSize = 520 + i * 50
+          bar.viewportSize = 32 + (i % 4)
+          bar.scrollPosition = 15 + i * 11
+          renderables += 4
+          horizontalColumn.add(bar)
         }
 
         await ctx.renderOnce()
