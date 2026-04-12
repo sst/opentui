@@ -18,6 +18,7 @@ import {
   StyledText,
   TextBuffer,
   TextBufferView,
+  TextNodeRenderable,
   TextRenderable,
   TextareaRenderable,
   underline,
@@ -77,6 +78,14 @@ type TimingStats = {
 type TextFeedTreeState = {
   root: BoxRenderable
   textNodes: TextRenderable[]
+  drawCallsPerIteration: number
+  renderablesPerIteration: number
+}
+
+type TextNodeFeedTreeState = {
+  root: BoxRenderable
+  texts: TextRenderable[]
+  mutableLeaves: TextNodeRenderable[]
   drawCallsPerIteration: number
   renderablesPerIteration: number
 }
@@ -372,6 +381,62 @@ function createScenarios(): ScenarioDefinition[] {
       },
     },
     {
+      name: "render_text_nodes_idle",
+      description: "Render-tree TextRenderables backed by text nodes with no per-frame changes",
+      setup: async (ctx) => {
+        const state = await buildTextNodeFeedTree(ctx)
+        return {
+          kind: "render-tree",
+          drawCallsPerIteration: state.drawCallsPerIteration,
+          renderablesPerIteration: state.renderablesPerIteration,
+          runIteration: async () => {
+            await ctx.renderOnce()
+          },
+          teardown: () => {
+            state.root.destroyRecursively()
+          },
+        }
+      },
+    },
+    {
+      name: "render_text_nodes_idle_dense",
+      description: "Dense tree of idle text-node-backed TextRenderables",
+      setup: async (ctx) => {
+        const state = await buildDenseTextNodeTree(ctx)
+        return {
+          kind: "render-tree",
+          drawCallsPerIteration: state.drawCallsPerIteration,
+          renderablesPerIteration: state.renderablesPerIteration,
+          runIteration: async () => {
+            await ctx.renderOnce()
+          },
+          teardown: () => {
+            state.root.destroyRecursively()
+          },
+        }
+      },
+    },
+    {
+      name: "render_text_nodes_mutating",
+      description: "Render-tree TextRenderables backed by text nodes with per-frame text updates",
+      setup: async (ctx) => {
+        const state = await buildTextNodeFeedTree(ctx)
+        return {
+          kind: "render-tree",
+          drawCallsPerIteration: state.drawCallsPerIteration,
+          renderablesPerIteration: state.renderablesPerIteration,
+          runIteration: async (iteration) => {
+            const leaf = state.mutableLeaves[iteration % state.mutableLeaves.length]
+            leaf.replace(`status-${iteration % 10}`.padEnd(12, " "), 0)
+            await ctx.renderOnce()
+          },
+          teardown: () => {
+            state.root.destroyRecursively()
+          },
+        }
+      },
+    },
+    {
       name: "render_textarea_editor",
       description: "Render-tree Textarea editor view with selection and wrapping",
       setup: async (ctx) => {
@@ -421,6 +486,154 @@ function createScenarios(): ScenarioDefinition[] {
       },
     },
   ]
+}
+
+async function buildTextNodeFeedTree(ctx: BenchmarkContext): Promise<TextNodeFeedTreeState> {
+  clearRoot(ctx.renderer)
+  resetBuffers(ctx.renderer)
+
+  let renderablesPerIteration = 0
+  const texts: TextRenderable[] = []
+  const mutableLeaves: TextNodeRenderable[] = []
+
+  const root = new BoxRenderable(ctx.renderer, {
+    id: "bench-text-node-root",
+    width: "100%",
+    height: "100%",
+    border: false,
+    backgroundColor: COLORS.transparent,
+    flexDirection: "column",
+    paddingLeft: 1,
+    paddingRight: 1,
+    paddingTop: 1,
+    gap: 1,
+  })
+  renderablesPerIteration += 1
+  ctx.renderer.root.add(root)
+
+  const messageCount = Math.max(12, Math.floor((ctx.height - 2) / 2))
+  for (let i = 0; i < messageCount; i += 1) {
+    const row = new BoxRenderable(ctx.renderer, {
+      id: `bench-text-node-row-${i}`,
+      width: "100%",
+      border: false,
+      backgroundColor: COLORS.transparent,
+      flexDirection: "row",
+      gap: 1,
+    })
+    renderablesPerIteration += 1
+
+    const rail = new BoxRenderable(ctx.renderer, {
+      id: `bench-text-node-rail-${i}`,
+      width: 2,
+      minWidth: 2,
+      maxWidth: 2,
+      border: false,
+      backgroundColor: COLORS.transparent,
+    })
+    renderablesPerIteration += 1
+
+    const text = new TextRenderable(ctx.renderer, {
+      id: `bench-text-node-${i}`,
+      width: "100%",
+      wrapMode: "word",
+      bg: COLORS.transparent,
+    })
+    renderablesPerIteration += 1
+    texts.push(text)
+
+    const prefix = new TextNodeRenderable({ fg: COLORS.warning, attributes: 0 })
+    prefix.add(`[${String(i).padStart(2, "0")}] `)
+
+    const body = new TextNodeRenderable({ fg: COLORS.selectionFg, attributes: 0 })
+    body.add("The renderer should update this text node tree only when it changes, not on every frame. ")
+
+    const linkNode = new TextNodeRenderable({ fg: COLORS.accent, link: { url: `https://example.test/${i}` }, attributes: 0 })
+    linkNode.add("documentation")
+
+    const mutable = new TextNodeRenderable({ fg: COLORS.success, attributes: 0 })
+    mutable.add(`status-${i % 10}`.padEnd(12, " "))
+    mutableLeaves.push(mutable)
+
+    body.add(linkNode)
+    body.add(" current state=")
+    body.add(mutable)
+    body.add(" and wrapped notes about viewport offsets and selection handling.")
+
+    text.add(prefix)
+    text.add(body)
+
+    row.add(rail)
+    row.add(text)
+    root.add(row)
+  }
+
+  await ctx.renderOnce()
+
+  return {
+    root,
+    texts,
+    mutableLeaves,
+    drawCallsPerIteration: texts.length,
+    renderablesPerIteration,
+  }
+}
+
+async function buildDenseTextNodeTree(ctx: BenchmarkContext): Promise<TextNodeFeedTreeState> {
+  clearRoot(ctx.renderer)
+  resetBuffers(ctx.renderer)
+
+  let renderablesPerIteration = 0
+  const texts: TextRenderable[] = []
+  const mutableLeaves: TextNodeRenderable[] = []
+
+  const root = new BoxRenderable(ctx.renderer, {
+    id: "bench-dense-text-node-root",
+    width: "100%",
+    height: "100%",
+    border: false,
+    backgroundColor: COLORS.transparent,
+    flexDirection: "column",
+  })
+  renderablesPerIteration += 1
+  ctx.renderer.root.add(root)
+
+  const textCount = Math.max(140, ctx.height * 6)
+  for (let i = 0; i < textCount; i += 1) {
+    const text = new TextRenderable(ctx.renderer, {
+      id: `bench-dense-text-${i}`,
+      width: "100%",
+      wrapMode: "word",
+      bg: COLORS.transparent,
+    })
+    renderablesPerIteration += 1
+    texts.push(text)
+
+    const prefix = new TextNodeRenderable({ fg: COLORS.warning, attributes: 0 })
+    prefix.add(`${String(i).padStart(3, "0")}: `)
+
+    const body = new TextNodeRenderable({ fg: COLORS.selectionFg, attributes: 0 })
+    body.add("text-node lifecycle bookkeeping should stay idle when nothing changes ")
+
+    const mutable = new TextNodeRenderable({ fg: COLORS.success, attributes: 0 })
+    mutable.add(`idle-${i % 10}`)
+    mutableLeaves.push(mutable)
+
+    body.add(mutable)
+    text.add(prefix)
+    text.add(body)
+    root.add(text)
+  }
+
+  await ctx.renderOnce()
+
+  return {
+    root,
+    texts,
+    mutableLeaves,
+    drawCallsPerIteration: texts.length,
+    renderablesPerIteration,
+  }
 }
 
 async function buildTextFeedTree(ctx: BenchmarkContext): Promise<TextFeedTreeState> {
