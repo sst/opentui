@@ -982,6 +982,8 @@ export abstract class EditBufferRenderable extends Renderable implements LineInf
   render(buffer: OptimizedBuffer, deltaTime: number): void {
     if (!this.visible) return
     if (this.isDestroyed) return
+    // Editor rendering/cursor placement reads absolute coordinates multiple
+    // times per frame, so it benefits from the same cached screen position.
     const screenX = this._screenX
     const screenY = this._screenY
 

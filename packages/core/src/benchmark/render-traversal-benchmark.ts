@@ -1,5 +1,9 @@
 #!/usr/bin/env bun
 
+// This benchmark targets render/layout bookkeeping in wrapper-heavy trees,
+// scrollbox culling, and scrollbar-heavy paths that exercise Renderable
+// traversal without depending on one specific widget.
+
 import { performance } from "node:perf_hooks"
 import { existsSync } from "node:fs"
 import { mkdir } from "node:fs/promises"

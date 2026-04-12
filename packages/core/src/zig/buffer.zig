@@ -871,6 +871,12 @@ pub const OptimizedBuffer = struct {
         fg: RGBA,
         attributes: u32,
     ) bool {
+        // drawTextBuffer spends a lot of time in generic alpha blending when the
+        // common case is really "opaque glyph over transparent bg". In that case
+        // the result is just: keep the destination background, write fg/attrs,
+        // and preserve an underlying visible glyph when the overlay char is a
+        // transparent space. Links and graphemes stay on the slow path because
+        // they need tracker maintenance that direct writes would skip.
         if (fg[3] != 1.0) return false;
         if (ansi.TextAttributes.getLinkId(attributes) != 0) return false;
         if (gp.isGraphemeChar(char) or gp.isContinuationChar(char)) return false;
@@ -949,6 +955,8 @@ pub const OptimizedBuffer = struct {
             }
         } else if (hasAlpha) {
             if (opacity == 1.0 and bg[3] == 0.0) {
+                // A fully transparent fill only needs to normalize empty cells;
+                // visible width-1 text should remain exactly as it was.
                 const white = RGBA{ 1.0, 1.0, 1.0, 1.0 };
                 var fillY = clippedStartY;
                 while (fillY <= clippedEndY) : (fillY += 1) {
@@ -967,6 +975,8 @@ pub const OptimizedBuffer = struct {
                     }
                 }
             } else {
+                // No grapheme/link bookkeeping is needed here, so the raw blend
+                // path avoids the extra tracker work done by the generic setter.
                 var fillY = clippedStartY;
                 while (fillY <= clippedEndY) : (fillY += 1) {
                     var fillX = clippedStartX;
@@ -1547,6 +1557,9 @@ pub const OptimizedBuffer = struct {
                         drawBg = temp;
                     }
 
+                    // TextBuffer/Textarea typically render opaque glyphs onto a
+                    // transparent bg. Reuse the direct transparent-text write
+                    // path instead of paying for generic per-cell blending.
                     const useTransparentTextFastPath = self.getCurrentOpacity() == 1.0 and drawBg[3] == 0.0;
 
                     if (grapheme_bytes.len == 1 and grapheme_bytes[0] == '\t') {
@@ -1783,6 +1796,9 @@ pub const OptimizedBuffer = struct {
     }
 
     inline fn canUseTransparentBorderFastPath(self: *const OptimizedBuffer, borderChars: [*]const u32, borderColor: RGBA, backgroundColor: RGBA) bool {
+        // When border glyphs are width-1, opaque, and tracker-free, drawing them
+        // over a transparent background is just a direct char/fg/attrs write
+        // while keeping the destination background unchanged.
         return self.getCurrentOpacity() == 1.0 and
             borderColor[3] == 1.0 and
             backgroundColor[3] == 0.0 and

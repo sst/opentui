@@ -1,5 +1,9 @@
 #!/usr/bin/env bun
 
+// These scenarios cover common box patterns such as split borders, prompt/toast
+// layouts, and full-frame panels so drawBox is measured on realistic trees, not
+// only isolated rectangles.
+
 import { performance } from "node:perf_hooks"
 import { existsSync } from "node:fs"
 import { mkdir } from "node:fs/promises"

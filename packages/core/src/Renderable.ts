@@ -209,6 +209,8 @@ export abstract class Renderable extends BaseRenderable {
   protected _translateY: number = 0
   protected _x: number = 0
   protected _y: number = 0
+  // Render hot paths only need absolute terminal coordinates. Cache them during
+  // layout so render-time code does not keep walking parent chains via x/y.
   protected _screenX: number = 0
   protected _screenY: number = 0
   protected _width: number | "auto" | `${number}%`
@@ -1050,6 +1052,8 @@ export abstract class Renderable extends BaseRenderable {
 
     this._x = layout.left
     this._y = layout.top
+    // Layout is updated top-down, so the parent cache is already current here.
+    // Recomputing once per layout pass keeps render-time coordinate reads cheap.
     const parentScreenX = this.parent ? this.parent._screenX : 0
     const parentScreenY = this.parent ? this.parent._screenY : 0
     this._screenX = parentScreenX + this._x + this._translateX

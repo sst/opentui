@@ -1,5 +1,9 @@
 #!/usr/bin/env bun
 
+// These scenarios isolate text-buffer/editor rendering from the rest of the UI
+// so native text drawing and TextRenderable lifecycle work can be measured on
+// wrapped, styled, and selected content with minimal unrelated noise.
+
 import { performance } from "node:perf_hooks"
 import { existsSync } from "node:fs"
 import { mkdir } from "node:fs/promises"
