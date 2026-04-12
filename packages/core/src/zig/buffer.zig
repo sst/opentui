@@ -864,6 +864,32 @@ pub const OptimizedBuffer = struct {
         }
     }
 
+    inline fn trySetTransparentTextCellFast(
+        self: *OptimizedBuffer,
+        index: u32,
+        char: u32,
+        fg: RGBA,
+        attributes: u32,
+    ) bool {
+        if (fg[3] != 1.0) return false;
+        if (ansi.TextAttributes.getLinkId(attributes) != 0) return false;
+        if (gp.isGraphemeChar(char) or gp.isContinuationChar(char)) return false;
+
+        const dest_char = self.buffer.char[index];
+        const dest_attributes = self.buffer.attributes[index];
+        if (ansi.TextAttributes.getLinkId(dest_attributes) != 0) return false;
+        if (gp.isGraphemeChar(dest_char) or gp.isContinuationChar(dest_char)) return false;
+
+        if (char == DEFAULT_SPACE_CHAR and dest_char != 0 and dest_char != DEFAULT_SPACE_CHAR and gp.encodedCharWidth(dest_char) == 1) {
+            return true;
+        }
+
+        self.buffer.char[index] = char;
+        self.buffer.fg[index] = fg;
+        self.buffer.attributes[index] = attributes;
+        return true;
+    }
+
     pub fn drawChar(
         self: *OptimizedBuffer,
         char: u32,
@@ -1521,6 +1547,8 @@ pub const OptimizedBuffer = struct {
                         drawBg = temp;
                     }
 
+                    const useTransparentTextFastPath = self.getCurrentOpacity() == 1.0 and drawBg[3] == 0.0;
+
                     if (grapheme_bytes.len == 1 and grapheme_bytes[0] == '\t') {
                         const tab_indicator = view.getTabIndicator();
                         const tab_indicator_color = view.getTabIndicatorColor();
@@ -1531,6 +1559,13 @@ pub const OptimizedBuffer = struct {
 
                             const char = if (tab_col == 0 and tab_indicator != null) tab_indicator.? else DEFAULT_SPACE_CHAR;
                             const fg = if (tab_col == 0 and tab_indicator_color != null) tab_indicator_color.? else drawFg;
+
+                            if (useTransparentTextFastPath) {
+                                const index = self.coordsToIndex(@intCast(currentX + @as(i32, @intCast(tab_col))), @intCast(currentY));
+                                if (self.trySetTransparentTextCellFast(index, char, fg, drawAttributes)) {
+                                    continue;
+                                }
+                            }
 
                             try self.setCellWithAlphaBlending(
                                 @intCast(currentX + @as(i32, @intCast(tab_col))),
@@ -1554,6 +1589,17 @@ pub const OptimizedBuffer = struct {
                                 continue;
                             };
                             encoded_char = gp.packGraphemeStart(gid & gp.GRAPHEME_ID_MASK, g_width);
+                        }
+
+                        if (useTransparentTextFastPath) {
+                            const index = self.coordsToIndex(@intCast(currentX), @intCast(currentY));
+                            if (self.trySetTransparentTextCellFast(index, encoded_char, drawFg, drawAttributes)) {
+                                globalCharPos += g_width;
+                                currentX += @as(i32, @intCast(g_width));
+                                column_in_line += g_width;
+                                col += g_width;
+                                continue;
+                            }
                         }
 
                         try self.setCellWithAlphaBlending(
