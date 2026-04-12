@@ -1378,13 +1378,22 @@ export abstract class Renderable extends BaseRenderable {
         screenY: this._screenY,
       })
     }
-    const visibleChildren = this._getVisibleChildren()
-    for (const child of this._childrenInZIndexOrder) {
-      if (!visibleChildren.includes(child.num)) {
-        child.updateFromLayout()
-        continue
+    // Most renderables expose all children. Skip building a visible-child list
+    // unless a subclass actually performs viewport/style-based child filtering.
+    if (!this._hasVisibleChildFilter()) {
+      for (const child of this._childrenInZIndexOrder) {
+        child.updateLayout(deltaTime, renderList)
       }
-      child.updateLayout(deltaTime, renderList)
+    } else {
+      const visibleChildren = this._getVisibleChildren()
+      const visibleChildSet = new Set(visibleChildren)
+      for (const child of this._childrenInZIndexOrder) {
+        if (!visibleChildSet.has(child.num)) {
+          child.updateFromLayout()
+          continue
+        }
+        child.updateLayout(deltaTime, renderList)
+      }
     }
 
     if (shouldPushScissor) {
@@ -1419,6 +1428,10 @@ export abstract class Renderable extends BaseRenderable {
     if (this.buffered && this.frameBuffer) {
       buffer.drawFrameBuffer(screenX, screenY, this.frameBuffer)
     }
+  }
+
+  protected _hasVisibleChildFilter(): boolean {
+    return false
   }
 
   protected _getVisibleChildren(): number[] {

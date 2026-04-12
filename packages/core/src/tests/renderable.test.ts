@@ -996,6 +996,10 @@ describe("Renderable - Layout with Viewport Filtering", () => {
       this._filterEnabled = true
     }
 
+    protected _hasVisibleChildFilter(): boolean {
+      return this._filterEnabled
+    }
+
     protected _getVisibleChildren(): number[] {
       if (!this._filterEnabled) {
         return super._getVisibleChildren()
