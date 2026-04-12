@@ -1669,6 +1669,53 @@ test "OptimizedBuffer - fillRect alpha path preserves underlying text without tr
     try std.testing.expect(filled.fg[0] > 0.9);
 }
 
+test "OptimizedBuffer - fillRect transparent path preserves text and clears empty styling without trackers" {
+    const pool = gp.initGlobalPool(std.testing.allocator);
+    defer gp.deinitGlobalPool();
+
+    var buf = try OptimizedBuffer.init(
+        std.testing.allocator,
+        6,
+        3,
+        .{ .pool = pool, .id = "test-buffer" },
+    );
+    defer buf.deinit();
+
+    const red_bg = RGBA{ 1.0, 0.0, 0.0, 1.0 };
+    const yellow_fg = RGBA{ 1.0, 1.0, 0.0, 1.0 };
+    const green_fg = RGBA{ 0.0, 1.0, 0.0, 1.0 };
+    const blue_bg = RGBA{ 0.0, 0.0, 1.0, 1.0 };
+    try buf.clear(red_bg, null);
+    try buf.drawText("X", 1, 1, yellow_fg, red_bg, ansi.TextAttributes.BOLD);
+    try buf.drawText(" ", 0, 1, green_fg, blue_bg, ansi.TextAttributes.UNDERLINE);
+
+    try std.testing.expect(!buf.grapheme_tracker.hasAny());
+    try std.testing.expect(!buf.link_tracker.hasAny());
+
+    const transparent_bg = RGBA{ 0.0, 0.0, 0.0, 0.0 };
+    try buf.fillRect(0, 0, 3, 3, transparent_bg);
+
+    const preserved = buf.get(1, 1).?;
+    try std.testing.expectEqual(@as(u32, 'X'), preserved.char);
+    try std.testing.expectEqual(yellow_fg[0], preserved.fg[0]);
+    try std.testing.expectEqual(yellow_fg[1], preserved.fg[1]);
+    try std.testing.expectEqual(yellow_fg[2], preserved.fg[2]);
+    try std.testing.expectEqual(red_bg[0], preserved.bg[0]);
+    try std.testing.expectEqual(red_bg[1], preserved.bg[1]);
+    try std.testing.expectEqual(red_bg[2], preserved.bg[2]);
+    try std.testing.expectEqual(ansi.TextAttributes.BOLD, preserved.attributes);
+
+    const clearedSpace = buf.get(0, 1).?;
+    try std.testing.expectEqual(@as(u32, buffer_mod.DEFAULT_SPACE_CHAR), clearedSpace.char);
+    try std.testing.expectEqual(@as(f32, 1.0), clearedSpace.fg[0]);
+    try std.testing.expectEqual(@as(f32, 1.0), clearedSpace.fg[1]);
+    try std.testing.expectEqual(@as(f32, 1.0), clearedSpace.fg[2]);
+    try std.testing.expectEqual(blue_bg[0], clearedSpace.bg[0]);
+    try std.testing.expectEqual(blue_bg[1], clearedSpace.bg[1]);
+    try std.testing.expectEqual(blue_bg[2], clearedSpace.bg[2]);
+    try std.testing.expectEqual(@as(u32, 0), clearedSpace.attributes);
+}
+
 test "OptimizedBuffer - link reuse after free" {
     const pool = gp.initGlobalPool(std.testing.allocator);
     defer gp.deinitGlobalPool();
