@@ -537,9 +537,7 @@ async function runScenario(
       maxMs: round(stats.maxMs, 4),
       stdDevMs: round(stats.stdDevMs, 4),
       avgUsPerDrawCall:
-        runtime.drawCallsPerIteration > 0
-          ? round((stats.avgMs * 1000) / runtime.drawCallsPerIteration, 2)
-          : 0,
+        runtime.drawCallsPerIteration > 0 ? round((stats.avgMs * 1000) / runtime.drawCallsPerIteration, 2) : 0,
       approxNsPerRequestedCell:
         runtime.requestedCellsPerIteration > 0
           ? round((stats.avgMs * 1_000_000) / runtime.requestedCellsPerIteration, 2)

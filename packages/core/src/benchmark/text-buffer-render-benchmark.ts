@@ -552,7 +552,11 @@ async function buildTextNodeFeedTree(ctx: BenchmarkContext): Promise<TextNodeFee
     const body = new TextNodeRenderable({ fg: COLORS.selectionFg, attributes: 0 })
     body.add("The renderer should update this text node tree only when it changes, not on every frame. ")
 
-    const linkNode = new TextNodeRenderable({ fg: COLORS.accent, link: { url: `https://example.test/${i}` }, attributes: 0 })
+    const linkNode = new TextNodeRenderable({
+      fg: COLORS.accent,
+      link: { url: `https://example.test/${i}` },
+      attributes: 0,
+    })
     linkNode.add("documentation")
 
     const mutable = new TextNodeRenderable({ fg: COLORS.success, attributes: 0 })
