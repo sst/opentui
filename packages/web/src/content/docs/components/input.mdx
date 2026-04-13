@@ -63,6 +63,38 @@ const input = new InputRenderable(renderer, {
 })
 ```
 
+## Password Input
+
+Use the `type` property to create a password input that masks characters:
+
+```typescript
+const passwordInput = new InputRenderable(renderer, {
+  id: "password-input",
+  width: 25,
+  placeholder: "Enter password...",
+  type: "password",
+  maskChar: "*",
+})
+
+passwordInput.on(InputRenderableEvents.CHANGE, (value) => {
+  console.log("Password submitted:", value)
+})
+
+passwordInput.focus()
+renderer.root.add(passwordInput)
+```
+
+You can customize the mask character:
+
+```typescript
+const passwordInput = Input({
+  width: 25,
+  placeholder: "Enter password...",
+  type: "password",
+  maskChar: "•",
+})
+```
+
 ## Events
 
 ### Input event
@@ -116,6 +148,8 @@ input.value = "New value"
 | `width`                  | `number`                               | -            | Input field width            |
 | `value`                  | `string`                               | `""`         | Initial text value           |
 | `placeholder`            | `string`                               | `""`         | Placeholder text when empty  |
+| `type`                   | `"text" \| "password"`                 | `"text"`     | Input type. Use 'password' to mask input with the mask character. |
+| `maskChar`               | `string`                               | `"*"`        | Character used to mask input in password mode. Must be exactly 1 character. |
 | `maxLength`              | `number`                               | `1000`       | Maximum number of characters |
 | `backgroundColor`        | `string \| RGBA`                       | -            | Background when unfocused    |
 | `focusedBackgroundColor` | `string \| RGBA`                       | -            | Background when focused      |
