@@ -37,6 +37,8 @@ class ContentRenderable extends BoxRenderable {
 
   protected _getVisibleChildren(): number[] {
     if (this._viewportCulling) {
+      // The viewport is in terminal coordinates, so culling has to compare it
+      // against each child's absolute screen position rather than local x/y.
       return getObjectsInViewport(
         {
           x: this.viewport.screenX,

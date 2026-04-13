@@ -505,6 +505,8 @@ export abstract class Renderable extends BaseRenderable {
     return this._translateX
   }
 
+  // Translate updates bypass layout, so keep the absolute screen cache current
+  // here to make same-frame sort/cull/render reads observe the new position.
   public set translateX(value: number) {
     if (this._translateX === value) return
     this._translateX = value
@@ -677,6 +679,8 @@ export abstract class Renderable extends BaseRenderable {
 
     const sorted = [...this._childrenInLayoutOrder]
     sorted.sort((a, b) => {
+      // Viewport culling compares against screen-space bounds, so primary-axis
+      // ordering has to use absolute positions instead of parent-relative x/y.
       const va = axis === "y" ? a.screenY : a.screenX
       const vb = axis === "y" ? b.screenY : b.screenX
       return va - vb
