@@ -1397,6 +1397,40 @@ describe("InputRenderable", () => {
       input.destroy()
     })
 
+    it("should place cursor correctly mid-string with mixed emoji and ascii", async () => {
+      resetRoot()
+      const { input } = createInputRenderable({ type: "password", width: 20 })
+      input.focus()
+      input.insertText("a🎍b")
+      // move cursor left once to sit between 🎍 and b
+      input.moveCursorLeft()
+      await renderOnce()
+
+      const frame: CapturedFrame = captureSpans()
+
+      // "a🎍" = 2 graphemes -> cursor at column 2
+      expect(frame.cursor).toEqual([input.x + 3, input.y + 1])
+
+      input.destroy()
+    })
+
+    it("should place cursor correctly after ZWJ sequence", async () => {
+      resetRoot()
+      const { input } = createInputRenderable({ type: "password", width: 20 })
+      input.focus()
+      input.insertText("👨‍👩‍👧a")
+      // move cursor left once to sit between ZWJ and a
+      input.moveCursorLeft()
+      await renderOnce()
+
+      const frame: CapturedFrame = captureSpans()
+
+      // ZWJ = 1 grapheme -> cursor at column 1
+      expect(frame.cursor).toEqual([input.x + 2, input.y + 1])
+
+      input.destroy()
+    })
+
      it("should not affect text mode rendering", async () => {
        resetRoot()
        const { input } = createInputRenderable({ width: 20 })
