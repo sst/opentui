@@ -54,7 +54,7 @@ export class InputRenderable extends TextareaRenderable {
     // Input-specific
     maxLength: 1000,
     value: "",
-    type: "text" as "text" | "password",
+    type: "text" as const,
     maskChar: "*",
   } satisfies Partial<InputRenderableOptions>
 
