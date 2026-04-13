@@ -1669,7 +1669,7 @@ test "OptimizedBuffer - fillRect alpha path preserves underlying text without tr
     try std.testing.expect(filled.fg[0] > 0.9);
 }
 
-test "OptimizedBuffer - fillRect transparent path preserves text and clears empty styling without trackers" {
+test "OptimizedBuffer - fillRect transparent path is a no-op without trackers" {
     const pool = gp.initGlobalPool(std.testing.allocator);
     defer gp.deinitGlobalPool();
 
@@ -1705,15 +1705,15 @@ test "OptimizedBuffer - fillRect transparent path preserves text and clears empt
     try std.testing.expectEqual(red_bg[2], preserved.bg[2]);
     try std.testing.expectEqual(ansi.TextAttributes.BOLD, preserved.attributes);
 
-    const clearedSpace = buf.get(0, 1).?;
-    try std.testing.expectEqual(@as(u32, buffer_mod.DEFAULT_SPACE_CHAR), clearedSpace.char);
-    try std.testing.expectEqual(@as(f32, 1.0), clearedSpace.fg[0]);
-    try std.testing.expectEqual(@as(f32, 1.0), clearedSpace.fg[1]);
-    try std.testing.expectEqual(@as(f32, 1.0), clearedSpace.fg[2]);
-    try std.testing.expectEqual(blue_bg[0], clearedSpace.bg[0]);
-    try std.testing.expectEqual(blue_bg[1], clearedSpace.bg[1]);
-    try std.testing.expectEqual(blue_bg[2], clearedSpace.bg[2]);
-    try std.testing.expectEqual(@as(u32, 0), clearedSpace.attributes);
+    const unchangedSpace = buf.get(0, 1).?;
+    try std.testing.expectEqual(@as(u32, buffer_mod.DEFAULT_SPACE_CHAR), unchangedSpace.char);
+    try std.testing.expectEqual(green_fg[0], unchangedSpace.fg[0]);
+    try std.testing.expectEqual(green_fg[1], unchangedSpace.fg[1]);
+    try std.testing.expectEqual(green_fg[2], unchangedSpace.fg[2]);
+    try std.testing.expectEqual(blue_bg[0], unchangedSpace.bg[0]);
+    try std.testing.expectEqual(blue_bg[1], unchangedSpace.bg[1]);
+    try std.testing.expectEqual(blue_bg[2], unchangedSpace.bg[2]);
+    try std.testing.expectEqual(ansi.TextAttributes.UNDERLINE, unchangedSpace.attributes);
 }
 
 test "OptimizedBuffer - drawBox transparent border preserves destination background without trackers" {

@@ -954,35 +954,13 @@ pub const OptimizedBuffer = struct {
                 }
             }
         } else if (hasAlpha) {
-            if (opacity == 1.0 and bg[3] == 0.0) {
-                // A fully transparent fill only needs to normalize empty cells;
-                // visible width-1 text should remain exactly as it was.
-                const white = RGBA{ 1.0, 1.0, 1.0, 1.0 };
-                var fillY = clippedStartY;
-                while (fillY <= clippedEndY) : (fillY += 1) {
-                    var index = self.coordsToIndex(@intCast(clippedStartX), @intCast(fillY));
-                    const rowEndIndex = index + (clippedEndX - clippedStartX + 1);
-
-                    while (index < rowEndIndex) : (index += 1) {
-                        const destChar = self.buffer.char[index];
-                        if (destChar != 0 and destChar != DEFAULT_SPACE_CHAR and gp.encodedCharWidth(destChar) == 1) {
-                            continue;
-                        }
-
-                        self.buffer.char[index] = DEFAULT_SPACE_CHAR;
-                        self.buffer.fg[index] = white;
-                        self.buffer.attributes[index] = 0;
-                    }
-                }
-            } else {
-                // No grapheme/link bookkeeping is needed here, so the raw blend
-                // path avoids the extra tracker work done by the generic setter.
-                var fillY = clippedStartY;
-                while (fillY <= clippedEndY) : (fillY += 1) {
-                    var fillX = clippedStartX;
-                    while (fillX <= clippedEndX) : (fillX += 1) {
-                        try self.setCellWithAlphaBlendingRaw(fillX, fillY, DEFAULT_SPACE_CHAR, .{ 1.0, 1.0, 1.0, 1.0 }, bg, 0);
-                    }
+            // No grapheme/link bookkeeping is needed here, so the raw blend
+            // path avoids the extra tracker work done by the generic setter.
+            var fillY = clippedStartY;
+            while (fillY <= clippedEndY) : (fillY += 1) {
+                var fillX = clippedStartX;
+                while (fillX <= clippedEndX) : (fillX += 1) {
+                    try self.setCellWithAlphaBlendingRaw(fillX, fillY, DEFAULT_SPACE_CHAR, .{ 1.0, 1.0, 1.0, 1.0 }, bg, 0);
                 }
             }
         } else {
