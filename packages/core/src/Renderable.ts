@@ -209,6 +209,10 @@ export abstract class Renderable extends BaseRenderable {
   protected _translateY: number = 0
   protected _x: number = 0
   protected _y: number = 0
+  // Render hot paths only need absolute terminal coordinates. Cache them during
+  // layout so render-time code does not keep walking parent chains via x/y.
+  protected _screenX: number = 0
+  protected _screenY: number = 0
   protected _width: number | "auto" | `${number}%`
   protected _height: number | "auto" | `${number}%`
   protected _widthValue: number = 0
@@ -501,9 +505,13 @@ export abstract class Renderable extends BaseRenderable {
     return this._translateX
   }
 
+  // Translate updates bypass layout, so keep the absolute screen cache current
+  // here to make same-frame sort/cull/render reads observe the new position.
   public set translateX(value: number) {
     if (this._translateX === value) return
     this._translateX = value
+    const parentScreenX = this.parent ? this.parent._screenX : 0
+    this._screenX = parentScreenX + this._x + this._translateX
     if (this.parent) this.parent.childrenPrimarySortDirty = true
     this.requestRender()
   }
@@ -515,8 +523,22 @@ export abstract class Renderable extends BaseRenderable {
   public set translateY(value: number) {
     if (this._translateY === value) return
     this._translateY = value
+    const parentScreenY = this.parent ? this.parent._screenY : 0
+    this._screenY = parentScreenY + this._y + this._translateY
     if (this.parent) this.parent.childrenPrimarySortDirty = true
     this.requestRender()
+  }
+
+  // Use the cached parent screen position plus this node's current local offset.
+  // That keeps culling/sorting in sync even before this node refreshes _screenX/Y.
+  public get screenX(): number {
+    const parentScreenX = this.parent ? this.parent._screenX : 0
+    return parentScreenX + this._x + this._translateX
+  }
+
+  public get screenY(): number {
+    const parentScreenY = this.parent ? this.parent._screenY : 0
+    return parentScreenY + this._y + this._translateY
   }
 
   public get x(): number {
@@ -657,8 +679,10 @@ export abstract class Renderable extends BaseRenderable {
 
     const sorted = [...this._childrenInLayoutOrder]
     sorted.sort((a, b) => {
-      const va = axis === "y" ? a.y : a.x
-      const vb = axis === "y" ? b.y : b.x
+      // Viewport culling compares against screen-space bounds, so primary-axis
+      // ordering has to use absolute positions instead of parent-relative x/y.
+      const va = axis === "y" ? a.screenY : a.screenX
+      const vb = axis === "y" ? b.screenY : b.screenX
       return va - vb
     })
 
@@ -1048,6 +1072,12 @@ export abstract class Renderable extends BaseRenderable {
 
     this._x = layout.left
     this._y = layout.top
+    // Layout is updated top-down, so the parent cache is already current here.
+    // Recomputing once per layout pass keeps render-time coordinate reads cheap.
+    const parentScreenX = this.parent ? this.parent._screenX : 0
+    const parentScreenY = this.parent ? this.parent._screenY : 0
+    this._screenX = parentScreenX + this._x + this._translateX
+    this._screenY = parentScreenY + this._y + this._translateY
 
     const newWidth = Math.max(layout.width, 1)
     const newHeight = Math.max(layout.height, 1)
@@ -1364,17 +1394,26 @@ export abstract class Renderable extends BaseRenderable {
         y: scissorRect.y,
         width: scissorRect.width,
         height: scissorRect.height,
-        screenX: this.x,
-        screenY: this.y,
+        screenX: this._screenX,
+        screenY: this._screenY,
       })
     }
-    const visibleChildren = this._getVisibleChildren()
-    for (const child of this._childrenInZIndexOrder) {
-      if (!visibleChildren.includes(child.num)) {
-        child.updateFromLayout()
-        continue
+    // Most renderables expose all children. Skip building a visible-child list
+    // unless a subclass actually performs viewport/style-based child filtering.
+    if (!this._hasVisibleChildFilter()) {
+      for (const child of this._childrenInZIndexOrder) {
+        child.updateLayout(deltaTime, renderList)
       }
-      child.updateLayout(deltaTime, renderList)
+    } else {
+      const visibleChildren = this._getVisibleChildren()
+      const visibleChildSet = new Set(visibleChildren)
+      for (const child of this._childrenInZIndexOrder) {
+        if (!visibleChildSet.has(child.num)) {
+          child.updateFromLayout()
+          continue
+        }
+        child.updateLayout(deltaTime, renderList)
+      }
     }
 
     if (shouldPushScissor) {
@@ -1401,12 +1440,23 @@ export abstract class Renderable extends BaseRenderable {
       this.renderAfter.call(this, renderBuffer, deltaTime)
     }
 
+    // Hooks may move the renderable mid-frame, so sample the cached absolute
+    // position after they run before hit-grid writes or framebuffer compositing.
+    const screenX = this._screenX
+    const screenY = this._screenY
+
     this.markClean()
-    this._ctx.addToHitGrid(this.x, this.y, this.width, this.height, this.num)
+    this._ctx.addToHitGrid(screenX, screenY, this.width, this.height, this.num)
 
     if (this.buffered && this.frameBuffer) {
-      buffer.drawFrameBuffer(this.x, this.y, this.frameBuffer)
+      buffer.drawFrameBuffer(screenX, screenY, this.frameBuffer)
     }
+  }
+
+  protected _hasVisibleChildFilter(): boolean {
+    // Presume an override of _getVisibleChildren means this subclass is using
+    // the legacy filtering hook, so existing custom renderables keep working.
+    return this._getVisibleChildren !== Renderable.prototype._getVisibleChildren
   }
 
   protected _getVisibleChildren(): number[] {
@@ -1425,8 +1475,8 @@ export abstract class Renderable extends BaseRenderable {
     height: number
   } {
     return {
-      x: this.buffered ? 0 : this.x,
-      y: this.buffered ? 0 : this.y,
+      x: this.buffered ? 0 : this._screenX,
+      y: this.buffered ? 0 : this._screenY,
       width: this.width,
       height: this.height,
     }

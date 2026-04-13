@@ -51,6 +51,8 @@ const rope_markers_bench = @import("bench/rope-markers_bench.zig");
 const text_buffer_coords_bench = @import("bench/text-buffer-coords_bench.zig");
 const styled_text_bench = @import("bench/styled-text_bench.zig");
 const buffer_draw_text_buffer_bench = @import("bench/buffer-draw-text-buffer_bench.zig");
+const buffer_color_blending_bench = @import("bench/buffer-color-blending_bench.zig");
+const buffer_draw_box_bench = @import("bench/buffer-draw-box_bench.zig");
 const utf8_bench = @import("bench/utf8_bench.zig");
 const text_chunk_graphemes_bench = @import("bench/text-chunk-graphemes_bench.zig");
 
@@ -99,6 +101,8 @@ pub fn main() !void {
         .{ .name = text_buffer_coords_bench.benchName, .run = text_buffer_coords_bench.run },
         .{ .name = styled_text_bench.benchName, .run = styled_text_bench.run },
         .{ .name = buffer_draw_text_buffer_bench.benchName, .run = buffer_draw_text_buffer_bench.run },
+        .{ .name = buffer_color_blending_bench.benchName, .run = buffer_color_blending_bench.run },
+        .{ .name = buffer_draw_box_bench.benchName, .run = buffer_draw_box_bench.run },
         .{ .name = utf8_bench.benchName, .run = utf8_bench.run },
         .{ .name = text_chunk_graphemes_bench.benchName, .run = text_chunk_graphemes_bench.run },
     };

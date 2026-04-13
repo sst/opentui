@@ -982,25 +982,31 @@ export abstract class EditBufferRenderable extends Renderable implements LineInf
   render(buffer: OptimizedBuffer, deltaTime: number): void {
     if (!this.visible) return
     if (this.isDestroyed) return
+    // Editor rendering/cursor placement reads absolute coordinates multiple
+    // times per frame, so it benefits from the same cached screen position.
+    const screenX = this._screenX
+    const screenY = this._screenY
 
     this.markClean()
-    this._ctx.addToHitGrid(this.x, this.y, this.width, this.height, this.num)
+    this._ctx.addToHitGrid(screenX, screenY, this.width, this.height, this.num)
 
     this.renderSelf(buffer)
     this.renderCursor(buffer)
   }
 
   protected renderSelf(buffer: OptimizedBuffer): void {
-    buffer.drawEditorView(this.editorView, this.x, this.y)
+    buffer.drawEditorView(this.editorView, this._screenX, this._screenY)
   }
 
   protected renderCursor(buffer: OptimizedBuffer): void {
     if (!this._showCursor || !this._focused) return
 
     const visualCursor = this.editorView.getVisualCursor()
+    const screenX = this._screenX
+    const screenY = this._screenY
 
-    const cursorX = this.x + visualCursor.visualCol + 1 // +1 for 1-based terminal coords
-    const cursorY = this.y + visualCursor.visualRow + 1 // +1 for 1-based terminal coords
+    const cursorX = screenX + visualCursor.visualCol + 1 // +1 for 1-based terminal coords
+    const cursorY = screenY + visualCursor.visualRow + 1 // +1 for 1-based terminal coords
 
     this._ctx.setCursorPosition(cursorX, cursorY, true)
     this._ctx.setCursorStyle({ ...this._cursorStyle, color: this._cursorColor })

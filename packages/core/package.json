@@ -9,7 +9,7 @@
   "types": "src/index.ts",
   "module": "src/index.ts",
   "main": "src/index.ts",
-  "version": "0.1.98",
+  "version": "0.1.99",
   "type": "module",
   "scripts": {
     "build": "bun run build:native && bun run build:lib",
@@ -20,6 +20,7 @@
     "build:examples": "bun src/examples/build.ts",
     "test:native": "cd src/zig && zig build test --summary all",
     "bench:native": "cd src/zig && zig build bench -Dbench-optimize=ReleaseFast --",
+    "bench:box-draw": "bun src/benchmark/box-draw-benchmark.ts",
     "bench:text-table": "bun src/benchmark/text-table-benchmark.ts",
     "bench:ts": "bun src/benchmark/native-span-feed-benchmark.ts --suite=quick --json=src/benchmark/latest-quick-bench-run.json && bun src/benchmark/native-span-feed-benchmark.ts --suite=default --json=src/benchmark/latest-default-bench-run.json && bun src/benchmark/native-span-feed-benchmark.ts --suite=large --json=src/benchmark/latest-large-bench-run.json && bun src/benchmark/native-span-feed-benchmark.ts --suite=all --json=src/benchmark/latest-all-bench-run.json && bun src/benchmark/native-span-feed-async-benchmark.ts --json=src/benchmark/latest-async-bench-run.json",
     "publish": "bun scripts/publish.ts",
@@ -50,12 +51,12 @@
     "bun-webgpu": "0.1.5",
     "planck": "^1.4.2",
     "three": "0.177.0",
-    "@opentui/core-darwin-x64": "0.1.98",
-    "@opentui/core-darwin-arm64": "0.1.98",
-    "@opentui/core-linux-x64": "0.1.98",
-    "@opentui/core-linux-arm64": "0.1.98",
-    "@opentui/core-win32-x64": "0.1.98",
-    "@opentui/core-win32-arm64": "0.1.98"
+    "@opentui/core-darwin-x64": "0.1.99",
+    "@opentui/core-darwin-arm64": "0.1.99",
+    "@opentui/core-linux-x64": "0.1.99",
+    "@opentui/core-linux-arm64": "0.1.99",
+    "@opentui/core-win32-x64": "0.1.99",
+    "@opentui/core-win32-arm64": "0.1.99"
   },
   "exports": {
     ".": {

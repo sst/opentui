@@ -100,6 +100,18 @@ inline fn isFullyOpaque(opacity: f32, fg: RGBA, bg: RGBA) bool {
     return opacity == 1.0 and !isRGBAWithAlpha(fg) and !isRGBAWithAlpha(bg);
 }
 
+inline fn pow(a: f32, b: f32) f32 {
+    if (a <= 0.0) return 0.0;
+
+    const i = @as(i32, @bitCast(a));
+    const result: i32 = @intFromFloat(b * @as(f32, @floatFromInt(i - 1065353216)) + 1065353216.0);
+    return @bitCast(result);
+}
+
+inline fn isFullyTransparent(opacity: f32, fg: RGBA, bg: RGBA) bool {
+    return opacity == 0.0 or (fg[3] == 0.0 and bg[3] == 0.0);
+}
+
 fn blendColors(overlay: RGBA, text: RGBA, blendBackdropColor: ?RGBA) RGBA {
     var dest = text;
     if (dest[3] == 0.0) {
@@ -129,10 +141,10 @@ fn blendColors(overlay: RGBA, text: RGBA, blendBackdropColor: ?RGBA) RGBA {
     // For high alpha values (>0.8), use a more aggressive curve
     if (alpha > 0.8) {
         const normalizedHighAlpha = (alpha - 0.8) * 5.0;
-        const curvedHighAlpha = std.math.pow(f32, normalizedHighAlpha, 0.2);
+        const curvedHighAlpha = pow(normalizedHighAlpha, 0.2);
         perceptualAlpha = 0.8 + (curvedHighAlpha * 0.2);
     } else {
-        perceptualAlpha = std.math.pow(f32, alpha, 0.9);
+        perceptualAlpha = pow(alpha, 0.9);
     }
 
     const overlayVec = Vec3f{ overlay[0], overlay[1], overlay[2] };
@@ -794,8 +806,8 @@ pub const OptimizedBuffer = struct {
     ) !void {
         if (!self.isPointInScissor(@intCast(x), @intCast(y))) return;
 
-        // Apply current opacity from the stack
         const opacity = self.getCurrentOpacity();
+        if (isFullyTransparent(opacity, fg, bg)) return;
         if (isFullyOpaque(opacity, fg, bg)) {
             self.set(x, y, Cell{ .char = char, .fg = fg, .bg = bg, .attributes = attributes });
             return;
@@ -825,8 +837,8 @@ pub const OptimizedBuffer = struct {
     ) !void {
         if (!self.isPointInScissor(@intCast(x), @intCast(y))) return;
 
-        // Apply current opacity from the stack
         const opacity = self.getCurrentOpacity();
+        if (isFullyTransparent(opacity, fg, bg)) return;
         if (isFullyOpaque(opacity, fg, bg)) {
             const overlayCell = Cell{ .char = char, .fg = fg, .bg = bg, .attributes = attributes };
             assert(!gp.isGraphemeChar(char));
@@ -852,6 +864,38 @@ pub const OptimizedBuffer = struct {
         }
     }
 
+    inline fn trySetTransparentTextCellFast(
+        self: *OptimizedBuffer,
+        index: u32,
+        char: u32,
+        fg: RGBA,
+        attributes: u32,
+    ) bool {
+        // drawTextBuffer spends a lot of time in generic alpha blending when the
+        // common case is really "opaque glyph over transparent bg". In that case
+        // the result is just: keep the destination background, write fg/attrs,
+        // and preserve an underlying visible glyph when the overlay char is a
+        // transparent space. Links and graphemes stay on the slow path because
+        // they need tracker maintenance that direct writes would skip.
+        if (fg[3] != 1.0) return false;
+        if (ansi.TextAttributes.getLinkId(attributes) != 0) return false;
+        if (gp.isGraphemeChar(char) or gp.isContinuationChar(char)) return false;
+
+        const dest_char = self.buffer.char[index];
+        const dest_attributes = self.buffer.attributes[index];
+        if (ansi.TextAttributes.getLinkId(dest_attributes) != 0) return false;
+        if (gp.isGraphemeChar(dest_char) or gp.isContinuationChar(dest_char)) return false;
+
+        if (char == DEFAULT_SPACE_CHAR and dest_char != 0 and dest_char != DEFAULT_SPACE_CHAR and gp.encodedCharWidth(dest_char) == 1) {
+            return true;
+        }
+
+        self.buffer.char[index] = char;
+        self.buffer.fg[index] = fg;
+        self.buffer.attributes[index] = attributes;
+        return true;
+    }
+
     pub fn drawChar(
         self: *OptimizedBuffer,
         char: u32,
@@ -861,18 +905,7 @@ pub const OptimizedBuffer = struct {
         bg: RGBA,
         attributes: u32,
     ) !void {
-        if (!self.isPointInScissor(@intCast(x), @intCast(y))) return;
-
-        if (isRGBAWithAlpha(bg) or isRGBAWithAlpha(fg)) {
-            try self.setCellWithAlphaBlending(x, y, char, fg, bg, attributes);
-        } else {
-            self.set(x, y, Cell{
-                .char = char,
-                .fg = fg,
-                .bg = bg,
-                .attributes = attributes,
-            });
-        }
+        try self.setCellWithAlphaBlending(x, y, char, fg, bg, attributes);
     }
 
     pub fn fillRect(
@@ -887,6 +920,9 @@ pub const OptimizedBuffer = struct {
         if (x >= self.width or y >= self.height) return;
 
         if (!self.isRectInScissor(@intCast(x), @intCast(y), width, height)) return;
+
+        const opacity = self.getCurrentOpacity();
+        if (isFullyTransparent(opacity, .{ 0.0, 0.0, 0.0, 0.0 }, bg)) return;
 
         const startX = x;
         const startY = y;
@@ -905,16 +941,26 @@ pub const OptimizedBuffer = struct {
         const clippedEndX = @min(endX, @as(u32, @intCast(clippedRect.x + @as(i32, @intCast(clippedRect.width)) - 1)));
         const clippedEndY = @min(endY, @as(u32, @intCast(clippedRect.y + @as(i32, @intCast(clippedRect.height)) - 1)));
 
-        const opacity = self.getCurrentOpacity();
         const hasAlpha = isRGBAWithAlpha(bg) or opacity < 1.0;
+        const graphemeAware = self.grapheme_tracker.hasAny();
         const linkAware = self.link_tracker.hasAny();
 
-        if (hasAlpha or self.grapheme_tracker.hasAny() or linkAware) {
+        if (graphemeAware or linkAware) {
             var fillY = clippedStartY;
             while (fillY <= clippedEndY) : (fillY += 1) {
                 var fillX = clippedStartX;
                 while (fillX <= clippedEndX) : (fillX += 1) {
                     try self.setCellWithAlphaBlending(fillX, fillY, DEFAULT_SPACE_CHAR, .{ 1.0, 1.0, 1.0, 1.0 }, bg, 0);
+                }
+            }
+        } else if (hasAlpha) {
+            // No grapheme/link bookkeeping is needed here, so the raw blend
+            // path avoids the extra tracker work done by the generic setter.
+            var fillY = clippedStartY;
+            while (fillY <= clippedEndY) : (fillY += 1) {
+                var fillX = clippedStartX;
+                while (fillX <= clippedEndX) : (fillX += 1) {
+                    try self.setCellWithAlphaBlendingRaw(fillX, fillY, DEFAULT_SPACE_CHAR, .{ 1.0, 1.0, 1.0, 1.0 }, bg, 0);
                 }
             }
         } else {
@@ -948,6 +994,9 @@ pub const OptimizedBuffer = struct {
     ) BufferError!void {
         if (x >= self.width or y >= self.height) return;
         if (text.len == 0) return;
+
+        const opacity = self.getCurrentOpacity();
+        if (isFullyTransparent(opacity, fg, bg orelse .{ 0.0, 0.0, 0.0, 0.0 })) return;
 
         const is_ascii_only = utf8.isAsciiOnly(text);
 
@@ -1061,6 +1110,9 @@ pub const OptimizedBuffer = struct {
 
     pub fn drawFrameBuffer(self: *OptimizedBuffer, destX: i32, destY: i32, frameBuffer: *OptimizedBuffer, sourceX: ?u32, sourceY: ?u32, sourceWidth: ?u32, sourceHeight: ?u32) void {
         if (self.width == 0 or self.height == 0 or frameBuffer.width == 0 or frameBuffer.height == 0) return;
+
+        const opacity = self.getCurrentOpacity();
+        if (opacity == 0.0) return;
 
         const srcX = sourceX orelse 0;
         const srcY = sourceY orelse 0;
@@ -1188,6 +1240,9 @@ pub const OptimizedBuffer = struct {
         x: i32,
         y: i32,
     ) !void {
+        const opacity = self.getCurrentOpacity();
+        if (opacity == 0.0) return;
+
         const virtual_lines = view.getVirtualLines();
         if (virtual_lines.len == 0) return;
 
@@ -1480,6 +1535,11 @@ pub const OptimizedBuffer = struct {
                         drawBg = temp;
                     }
 
+                    // TextBuffer/Textarea typically render opaque glyphs onto a
+                    // transparent bg. Reuse the direct transparent-text write
+                    // path instead of paying for generic per-cell blending.
+                    const useTransparentTextFastPath = self.getCurrentOpacity() == 1.0 and drawBg[3] == 0.0;
+
                     if (grapheme_bytes.len == 1 and grapheme_bytes[0] == '\t') {
                         const tab_indicator = view.getTabIndicator();
                         const tab_indicator_color = view.getTabIndicatorColor();
@@ -1490,6 +1550,13 @@ pub const OptimizedBuffer = struct {
 
                             const char = if (tab_col == 0 and tab_indicator != null) tab_indicator.? else DEFAULT_SPACE_CHAR;
                             const fg = if (tab_col == 0 and tab_indicator_color != null) tab_indicator_color.? else drawFg;
+
+                            if (useTransparentTextFastPath) {
+                                const index = self.coordsToIndex(@intCast(currentX + @as(i32, @intCast(tab_col))), @intCast(currentY));
+                                if (self.trySetTransparentTextCellFast(index, char, fg, drawAttributes)) {
+                                    continue;
+                                }
+                            }
 
                             try self.setCellWithAlphaBlending(
                                 @intCast(currentX + @as(i32, @intCast(tab_col))),
@@ -1513,6 +1580,17 @@ pub const OptimizedBuffer = struct {
                                 continue;
                             };
                             encoded_char = gp.packGraphemeStart(gid & gp.GRAPHEME_ID_MASK, g_width);
+                        }
+
+                        if (useTransparentTextFastPath) {
+                            const index = self.coordsToIndex(@intCast(currentX), @intCast(currentY));
+                            if (self.trySetTransparentTextCellFast(index, encoded_char, drawFg, drawAttributes)) {
+                                globalCharPos += g_width;
+                                currentX += @as(i32, @intCast(g_width));
+                                column_in_line += g_width;
+                                col += g_width;
+                                continue;
+                            }
                         }
 
                         try self.setCellWithAlphaBlending(
@@ -1575,6 +1653,9 @@ pub const OptimizedBuffer = struct {
     ) void {
         if (rowCount == 0 or columnCount == 0) return;
         if (!drawInner and !drawOuter) return;
+
+        const opacity = self.getCurrentOpacity();
+        if (isFullyTransparent(opacity, borderFg, borderBg)) return;
 
         const hChar = borderChars[@intFromEnum(BorderCharIndex.horizontal)];
         const vChar = borderChars[@intFromEnum(BorderCharIndex.vertical)];
@@ -1686,6 +1767,29 @@ pub const OptimizedBuffer = struct {
         return borderChars[@intFromEnum(BorderCharIndex.cross)];
     }
 
+    inline fn isSingleWidthBorderChar(char: u32) bool {
+        if (char == 0) return true;
+        if (char > MAX_UNICODE_CODEPOINT) return false;
+        return utf8.eastAsianWidth(@intCast(char)) == 1;
+    }
+
+    inline fn canUseTransparentBorderFastPath(self: *const OptimizedBuffer, borderChars: [*]const u32, borderColor: RGBA, backgroundColor: RGBA) bool {
+        // When border glyphs are width-1, opaque, and tracker-free, drawing them
+        // over a transparent background is just a direct char/fg/attrs write
+        // while keeping the destination background unchanged.
+        return self.getCurrentOpacity() == 1.0 and
+            borderColor[3] == 1.0 and
+            backgroundColor[3] == 0.0 and
+            !self.grapheme_tracker.hasAny() and
+            !self.link_tracker.hasAny() and
+            isSingleWidthBorderChar(borderChars[@intFromEnum(BorderCharIndex.topLeft)]) and
+            isSingleWidthBorderChar(borderChars[@intFromEnum(BorderCharIndex.topRight)]) and
+            isSingleWidthBorderChar(borderChars[@intFromEnum(BorderCharIndex.bottomLeft)]) and
+            isSingleWidthBorderChar(borderChars[@intFromEnum(BorderCharIndex.bottomRight)]) and
+            isSingleWidthBorderChar(borderChars[@intFromEnum(BorderCharIndex.horizontal)]) and
+            isSingleWidthBorderChar(borderChars[@intFromEnum(BorderCharIndex.vertical)]);
+    }
+
     /// Draw a box with borders and optional fill
     pub fn drawBox(
         self: *OptimizedBuffer,
@@ -1703,6 +1807,9 @@ pub const OptimizedBuffer = struct {
         bottomTitle: ?[]const u8,
         bottomTitleAlignment: u8, // 0=left, 1=center, 2=right
     ) !void {
+        const opacity = self.getCurrentOpacity();
+        if (isFullyTransparent(opacity, borderColor, backgroundColor)) return;
+
         const startX = @max(0, x);
         const startY = @max(0, y);
         const endX = @min(@as(i32, @intCast(self.width)) - 1, x + @as(i32, @intCast(width)) - 1);
@@ -1749,6 +1856,7 @@ pub const OptimizedBuffer = struct {
 
         const extendVerticalsToTop = leftBorderOnly or rightBorderOnly or bottomOnlyWithVerticals;
         const extendVerticalsToBottom = leftBorderOnly or rightBorderOnly or topOnlyWithVerticals;
+        const useTransparentBorderFastPath = canUseTransparentBorderFastPath(self, borderChars, borderColor, backgroundColor);
 
         // Draw horizontal borders
         if (borderSides.top or borderSides.bottom) {
@@ -1770,7 +1878,14 @@ pub const OptimizedBuffer = struct {
                             char = if (borderSides.right) borderChars[@intFromEnum(BorderCharIndex.topRight)] else borderChars[@intFromEnum(BorderCharIndex.horizontal)];
                         }
 
-                        try self.setCellWithAlphaBlending(@intCast(drawX), @intCast(startY), char, borderColor, backgroundColor, 0);
+                        if (useTransparentBorderFastPath) {
+                            const index = self.coordsToIndex(@intCast(drawX), @intCast(startY));
+                            self.buffer.char[index] = char;
+                            self.buffer.fg[index] = borderColor;
+                            self.buffer.attributes[index] = 0;
+                        } else {
+                            try self.setCellWithAlphaBlending(@intCast(drawX), @intCast(startY), char, borderColor, backgroundColor, 0);
+                        }
                     }
                 }
             }
@@ -1793,7 +1908,14 @@ pub const OptimizedBuffer = struct {
                             char = if (borderSides.right) borderChars[@intFromEnum(BorderCharIndex.bottomRight)] else borderChars[@intFromEnum(BorderCharIndex.horizontal)];
                         }
 
-                        try self.setCellWithAlphaBlending(@intCast(drawX), @intCast(endY), char, borderColor, backgroundColor, 0);
+                        if (useTransparentBorderFastPath) {
+                            const index = self.coordsToIndex(@intCast(drawX), @intCast(endY));
+                            self.buffer.char[index] = char;
+                            self.buffer.fg[index] = borderColor;
+                            self.buffer.attributes[index] = 0;
+                        } else {
+                            try self.setCellWithAlphaBlending(@intCast(drawX), @intCast(endY), char, borderColor, backgroundColor, 0);
+                        }
                     }
                 }
             }
@@ -1808,12 +1930,26 @@ pub const OptimizedBuffer = struct {
             while (drawY <= verticalEndY) : (drawY += 1) {
                 // Left border
                 if (borderSides.left and isAtActualLeft and startX >= 0 and startX < @as(i32, @intCast(self.width))) {
-                    try self.setCellWithAlphaBlending(@intCast(startX), @intCast(drawY), borderChars[@intFromEnum(BorderCharIndex.vertical)], borderColor, backgroundColor, 0);
+                    if (useTransparentBorderFastPath) {
+                        const index = self.coordsToIndex(@intCast(startX), @intCast(drawY));
+                        self.buffer.char[index] = borderChars[@intFromEnum(BorderCharIndex.vertical)];
+                        self.buffer.fg[index] = borderColor;
+                        self.buffer.attributes[index] = 0;
+                    } else {
+                        try self.setCellWithAlphaBlending(@intCast(startX), @intCast(drawY), borderChars[@intFromEnum(BorderCharIndex.vertical)], borderColor, backgroundColor, 0);
+                    }
                 }
 
                 // Right border
                 if (borderSides.right and isAtActualRight and endX >= 0 and endX < @as(i32, @intCast(self.width))) {
-                    try self.setCellWithAlphaBlending(@intCast(endX), @intCast(drawY), borderChars[@intFromEnum(BorderCharIndex.vertical)], borderColor, backgroundColor, 0);
+                    if (useTransparentBorderFastPath) {
+                        const index = self.coordsToIndex(@intCast(endX), @intCast(drawY));
+                        self.buffer.char[index] = borderChars[@intFromEnum(BorderCharIndex.vertical)];
+                        self.buffer.fg[index] = borderColor;
+                        self.buffer.attributes[index] = 0;
+                    } else {
+                        try self.setCellWithAlphaBlending(@intCast(endX), @intCast(drawY), borderChars[@intFromEnum(BorderCharIndex.vertical)], borderColor, backgroundColor, 0);
+                    }
                 }
             }
         }

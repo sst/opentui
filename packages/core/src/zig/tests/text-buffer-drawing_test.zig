@@ -2,6 +2,7 @@ const std = @import("std");
 const text_buffer = @import("../text-buffer.zig");
 const text_buffer_view = @import("../text-buffer-view.zig");
 const buffer = @import("../buffer.zig");
+const ansi = @import("../ansi.zig");
 const gp = @import("../grapheme.zig");
 const link = @import("../link.zig");
 const ss = @import("../syntax-style.zig");
@@ -130,6 +131,59 @@ test "drawTextBuffer - text wrapping at word boundaries" {
 
     const virtual_lines = view.getVirtualLines();
     try std.testing.expect(virtual_lines.len > 1);
+}
+
+test "drawTextBuffer - transparent background preserves underlying non-space under spaces" {
+    const pool = gp.initGlobalPool(std.testing.allocator);
+    defer gp.deinitGlobalPool();
+    const link_pool = link.initGlobalLinkPool(std.testing.allocator);
+    defer link.deinitGlobalLinkPool();
+
+    var tb = try TextBuffer.init(std.testing.allocator, pool, link_pool, .unicode);
+    defer tb.deinit();
+
+    var view = try TextBufferView.init(std.testing.allocator, tb);
+    defer view.deinit();
+
+    try tb.setText("A A");
+
+    var opt_buffer = try OptimizedBuffer.init(
+        std.testing.allocator,
+        5,
+        2,
+        .{ .pool = pool, .width_method = .unicode },
+    );
+    defer opt_buffer.deinit();
+
+    const red_bg = RGBA{ 1.0, 0.0, 0.0, 1.0 };
+    const blue_bg = RGBA{ 0.0, 0.0, 1.0, 1.0 };
+    const green_fg = RGBA{ 0.0, 1.0, 0.0, 1.0 };
+    try opt_buffer.clear(red_bg, 32);
+    try opt_buffer.drawChar('X', 1, 0, green_fg, blue_bg, ansi.TextAttributes.BOLD);
+
+    try opt_buffer.drawTextBuffer(view, 0, 0);
+
+    const left = opt_buffer.get(0, 0).?;
+    try std.testing.expectEqual(@as(u32, 'A'), left.char);
+    try std.testing.expectEqual(red_bg[0], left.bg[0]);
+    try std.testing.expectEqual(red_bg[1], left.bg[1]);
+    try std.testing.expectEqual(red_bg[2], left.bg[2]);
+
+    const middle = opt_buffer.get(1, 0).?;
+    try std.testing.expectEqual(@as(u32, 'X'), middle.char);
+    try std.testing.expectEqual(green_fg[0], middle.fg[0]);
+    try std.testing.expectEqual(green_fg[1], middle.fg[1]);
+    try std.testing.expectEqual(green_fg[2], middle.fg[2]);
+    try std.testing.expectEqual(blue_bg[0], middle.bg[0]);
+    try std.testing.expectEqual(blue_bg[1], middle.bg[1]);
+    try std.testing.expectEqual(blue_bg[2], middle.bg[2]);
+    try std.testing.expectEqual(ansi.TextAttributes.BOLD, middle.attributes);
+
+    const right = opt_buffer.get(2, 0).?;
+    try std.testing.expectEqual(@as(u32, 'A'), right.char);
+    try std.testing.expectEqual(red_bg[0], right.bg[0]);
+    try std.testing.expectEqual(red_bg[1], right.bg[1]);
+    try std.testing.expectEqual(red_bg[2], right.bg[2]);
 }
 
 test "drawTextBuffer - text wrapping at character boundaries" {

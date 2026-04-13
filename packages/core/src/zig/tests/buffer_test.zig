@@ -1635,6 +1635,123 @@ test "OptimizedBuffer - fillRect removes links" {
     try std.testing.expect(ansi.TextAttributes.hasLink(buf.get(10, 0).?.attributes));
 }
 
+test "OptimizedBuffer - fillRect alpha path preserves underlying text without trackers" {
+    const pool = gp.initGlobalPool(std.testing.allocator);
+    defer gp.deinitGlobalPool();
+
+    var buf = try OptimizedBuffer.init(
+        std.testing.allocator,
+        6,
+        3,
+        .{ .pool = pool, .id = "test-buffer" },
+    );
+    defer buf.deinit();
+
+    const bg = RGBA{ 0.0, 0.0, 0.0, 1.0 };
+    const fg = RGBA{ 1.0, 1.0, 1.0, 1.0 };
+    try buf.clear(bg, null);
+    try buf.drawText("X", 1, 1, fg, bg, 0);
+
+    try std.testing.expect(!buf.grapheme_tracker.hasAny());
+    try std.testing.expect(!buf.link_tracker.hasAny());
+
+    const overlay_bg = RGBA{ 0.0, 0.0, 1.0, 0.5 };
+    try buf.fillRect(0, 0, 3, 3, overlay_bg);
+
+    const preserved = buf.get(1, 1).?;
+    try std.testing.expectEqual(@as(u32, 'X'), preserved.char);
+    try std.testing.expect(preserved.bg[2] > 0.1);
+    try std.testing.expect(preserved.fg[2] > 0.5);
+
+    const filled = buf.get(0, 0).?;
+    try std.testing.expectEqual(@as(u32, buffer_mod.DEFAULT_SPACE_CHAR), filled.char);
+    try std.testing.expect(filled.bg[2] > 0.1);
+    try std.testing.expect(filled.fg[0] > 0.9);
+}
+
+test "OptimizedBuffer - fillRect transparent path is a no-op without trackers" {
+    const pool = gp.initGlobalPool(std.testing.allocator);
+    defer gp.deinitGlobalPool();
+
+    var buf = try OptimizedBuffer.init(
+        std.testing.allocator,
+        6,
+        3,
+        .{ .pool = pool, .id = "test-buffer" },
+    );
+    defer buf.deinit();
+
+    const red_bg = RGBA{ 1.0, 0.0, 0.0, 1.0 };
+    const yellow_fg = RGBA{ 1.0, 1.0, 0.0, 1.0 };
+    const green_fg = RGBA{ 0.0, 1.0, 0.0, 1.0 };
+    const blue_bg = RGBA{ 0.0, 0.0, 1.0, 1.0 };
+    try buf.clear(red_bg, null);
+    try buf.drawText("X", 1, 1, yellow_fg, red_bg, ansi.TextAttributes.BOLD);
+    try buf.drawText(" ", 0, 1, green_fg, blue_bg, ansi.TextAttributes.UNDERLINE);
+
+    try std.testing.expect(!buf.grapheme_tracker.hasAny());
+    try std.testing.expect(!buf.link_tracker.hasAny());
+
+    const transparent_bg = RGBA{ 0.0, 0.0, 0.0, 0.0 };
+    try buf.fillRect(0, 0, 3, 3, transparent_bg);
+
+    const preserved = buf.get(1, 1).?;
+    try std.testing.expectEqual(@as(u32, 'X'), preserved.char);
+    try std.testing.expectEqual(yellow_fg[0], preserved.fg[0]);
+    try std.testing.expectEqual(yellow_fg[1], preserved.fg[1]);
+    try std.testing.expectEqual(yellow_fg[2], preserved.fg[2]);
+    try std.testing.expectEqual(red_bg[0], preserved.bg[0]);
+    try std.testing.expectEqual(red_bg[1], preserved.bg[1]);
+    try std.testing.expectEqual(red_bg[2], preserved.bg[2]);
+    try std.testing.expectEqual(ansi.TextAttributes.BOLD, preserved.attributes);
+
+    const unchangedSpace = buf.get(0, 1).?;
+    try std.testing.expectEqual(@as(u32, buffer_mod.DEFAULT_SPACE_CHAR), unchangedSpace.char);
+    try std.testing.expectEqual(green_fg[0], unchangedSpace.fg[0]);
+    try std.testing.expectEqual(green_fg[1], unchangedSpace.fg[1]);
+    try std.testing.expectEqual(green_fg[2], unchangedSpace.fg[2]);
+    try std.testing.expectEqual(blue_bg[0], unchangedSpace.bg[0]);
+    try std.testing.expectEqual(blue_bg[1], unchangedSpace.bg[1]);
+    try std.testing.expectEqual(blue_bg[2], unchangedSpace.bg[2]);
+    try std.testing.expectEqual(ansi.TextAttributes.UNDERLINE, unchangedSpace.attributes);
+}
+
+test "OptimizedBuffer - drawBox transparent border preserves destination background without trackers" {
+    const pool = gp.initGlobalPool(std.testing.allocator);
+    defer gp.deinitGlobalPool();
+
+    var buf = try OptimizedBuffer.init(
+        std.testing.allocator,
+        4,
+        4,
+        .{ .pool = pool, .id = "test-buffer" },
+    );
+    defer buf.deinit();
+
+    const red_bg = RGBA{ 1.0, 0.0, 0.0, 1.0 };
+    const yellow_fg = RGBA{ 1.0, 1.0, 0.0, 1.0 };
+    const green_fg = RGBA{ 0.0, 1.0, 0.0, 1.0 };
+    const transparent_bg = RGBA{ 0.0, 0.0, 0.0, 0.0 };
+    try buf.clear(red_bg, null);
+    try buf.drawText("A", 0, 1, yellow_fg, red_bg, ansi.TextAttributes.BOLD);
+
+    try std.testing.expect(!buf.grapheme_tracker.hasAny());
+    try std.testing.expect(!buf.link_tracker.hasAny());
+
+    const border_chars = [_]u32{ 0x250c, 0x2510, 0x2514, 0x2518, 0x2500, 0x2502, 0, 0, 0, 0, 0 };
+    try buf.drawBox(0, 0, 4, 4, &border_chars, .{ .left = true }, green_fg, transparent_bg, false, null, 0, null, 0);
+
+    const cell = buf.get(0, 1).?;
+    try std.testing.expectEqual(@as(u32, 0x2502), cell.char);
+    try std.testing.expectEqual(green_fg[0], cell.fg[0]);
+    try std.testing.expectEqual(green_fg[1], cell.fg[1]);
+    try std.testing.expectEqual(green_fg[2], cell.fg[2]);
+    try std.testing.expectEqual(red_bg[0], cell.bg[0]);
+    try std.testing.expectEqual(red_bg[1], cell.bg[1]);
+    try std.testing.expectEqual(red_bg[2], cell.bg[2]);
+    try std.testing.expectEqual(@as(u32, 0), cell.attributes);
+}
+
 test "OptimizedBuffer - link reuse after free" {
     const pool = gp.initGlobalPool(std.testing.allocator);
     defer gp.deinitGlobalPool();
