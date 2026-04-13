@@ -183,12 +183,22 @@ export class InputRenderable extends TextareaRenderable {
   }
 
   public override deleteWordBackward(): boolean {
+    if (this._type === "password") {
+      const result = super.deleteToLineStart()
+      this.emit(InputRenderableEvents.INPUT, this.plainText)
+      return result
+    }
     const result = super.deleteWordBackward()
     this.emit(InputRenderableEvents.INPUT, this.plainText)
     return result
   }
 
   public override deleteWordForward(): boolean {
+    if (this._type === "password") {
+      const result = super.deleteToLineEnd()
+      this.emit(InputRenderableEvents.INPUT, this.plainText)
+      return result
+    }
     const result = super.deleteWordForward()
     this.emit(InputRenderableEvents.INPUT, this.plainText)
     return result
@@ -257,6 +267,31 @@ export class InputRenderable extends TextareaRenderable {
 
   public get maskChar(): string {
     return this._maskChar
+  }
+
+  public override getSelectedText(): string {
+    if (this._type === "password") return ""
+    return super.getSelectedText()
+  }
+
+  public override moveWordForward(options?: { select?: boolean }): boolean {
+    if (this._type !== "password") return super.moveWordForward(options)
+    const select = options?.select ?? false
+    this.updateSelectionForMovement(select, true)
+    this.editBuffer.setCursorByOffset(this.plainText.length)
+    this.updateSelectionForMovement(select, false)
+    this.requestRender()
+    return true
+  }
+
+  public override moveWordBackward(options?: { select?: boolean }): boolean {
+    if (this._type !== "password") return super.moveWordBackward(options)
+    const select = options?.select ?? false
+    this.updateSelectionForMovement(select, true)
+    this.editBuffer.setCursorByOffset(0)
+    this.updateSelectionForMovement(select, false)
+    this.requestRender()
+    return true
   }
 
   protected override renderSelf(buffer: OptimizedBuffer): void {

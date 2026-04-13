@@ -1382,19 +1382,70 @@ describe("InputRenderable", () => {
       input.destroy()
     })
 
-    it("should not affect text mode rendering", async () => {
-      resetRoot()
-      const { input } = createInputRenderable({ width: 20 })
-      input.focus()
-      input.insertText("hello")
-      await renderOnce()
+     it("should not affect text mode rendering", async () => {
+       resetRoot()
+       const { input } = createInputRenderable({ width: 20 })
+       input.focus()
+       input.insertText("hello")
+       await renderOnce()
 
-      const frame = captureCharFrame()
+       const frame = captureCharFrame()
 
-      expect(frame).toContain("hello")
-      expect(frame).not.toContain("*****")
+       expect(frame).toContain("hello")
+       expect(frame).not.toContain("*****")
 
-      input.destroy()
-    })
-  })
+       input.destroy()
+     })
+
+     it("should jump to end on moveWordForward in password mode", () => {
+       const { input } = createInputRenderable({ type: "password" })
+       input.focus()
+       input.insertText("hello world")
+       input.cursorOffset = 0
+       input.moveWordForward()
+       expect(input.cursorOffset).toBe(11)
+     })
+
+     it("should jump to start on moveWordBackward in password mode", () => {
+       const { input } = createInputRenderable({ type: "password" })
+       input.focus()
+       input.insertText("hello world")
+       input.moveWordBackward()
+       expect(input.cursorOffset).toBe(0)
+     })
+
+     it("should delete all text on deleteWordBackward in password mode", () => {
+       const { input } = createInputRenderable({ type: "password" })
+       input.focus()
+       input.insertText("hello world")
+       input.deleteWordBackward()
+       expect(input.value).toBe("")
+     })
+
+     it("should delete all text on deleteWordForward in password mode", () => {
+       const { input } = createInputRenderable({ type: "password" })
+       input.focus()
+       input.insertText("hello world")
+       input.cursorOffset = 0
+       input.deleteWordForward()
+       expect(input.value).toBe("")
+     })
+
+     it("should return empty string from getSelectedText in password mode", () => {
+       const { input } = createInputRenderable({ type: "password" })
+       input.focus()
+       input.insertText("secret")
+       input.selectAll()
+       expect(input.getSelectedText()).toBe("")
+     })
+
+     it("should use normal word navigation in text mode (regression)", () => {
+       const { input } = createInputRenderable({})
+       input.focus()
+       input.insertText("hello world")
+       input.cursorOffset = 0
+       input.moveWordForward()
+       expect(input.cursorOffset).toBe(6)
+     })
+   })
 })
