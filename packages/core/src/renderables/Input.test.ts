@@ -3,8 +3,9 @@ import { InputRenderable, type InputRenderableOptions, InputRenderableEvents } f
 import { decodePasteBytes } from "../lib/paste.js"
 import { createTestRenderer } from "../testing/test-renderer.js"
 import type { KeyEvent } from "../lib/KeyHandler.js"
+import type { CapturedFrame } from "../types.js"
 
-const { renderer, mockInput } = await createTestRenderer({})
+const { renderer, mockInput, captureCharFrame, captureSpans, renderOnce } = await createTestRenderer({})
 
 function createInputRenderable(options: InputRenderableOptions): { input: InputRenderable; root: any } {
   if (!renderer) {
@@ -16,6 +17,12 @@ function createInputRenderable(options: InputRenderableOptions): { input: InputR
   renderer.requestRender()
 
   return { input: inputRenderable, root: renderer.root }
+}
+
+function resetRoot(): void {
+  for (const child of renderer.root.getChildren()) {
+    child.destroy()
+  }
 }
 
 describe("InputRenderable", () => {
@@ -1279,6 +1286,115 @@ describe("InputRenderable", () => {
       expect(input.type).toBe("text")
       input.type = "password"
       expect(input.type).toBe("password")
+    })
+
+    it("should display mask chars instead of real text", async () => {
+      resetRoot()
+      const { input } = createInputRenderable({ type: "password", width: 20 })
+      input.focus()
+      input.insertText("hello")
+      await renderOnce()
+
+      const frame = captureCharFrame()
+
+      expect(frame).toContain("*****")
+      expect(frame).not.toContain("hello")
+
+      input.destroy()
+    })
+
+    it("should use custom maskChar", async () => {
+      resetRoot()
+      const { input } = createInputRenderable({ type: "password", maskChar: "●", width: 20 })
+      input.focus()
+      input.insertText("abc")
+      await renderOnce()
+
+      const frame = captureCharFrame()
+
+      expect(frame).toContain("●●●")
+      expect(frame).not.toContain("abc")
+
+      input.destroy()
+    })
+
+    it("should show placeholder when empty", async () => {
+      resetRoot()
+      const { input } = createInputRenderable({ type: "password", placeholder: "Enter password", width: 30 })
+      await renderOnce()
+
+      const frame = captureCharFrame()
+
+      expect(frame).toContain("Enter password")
+
+      input.destroy()
+    })
+
+    it("should hide placeholder when text is entered", async () => {
+      resetRoot()
+      const { input } = createInputRenderable({ type: "password", placeholder: "Enter password", width: 30 })
+      input.focus()
+      input.insertText("x")
+      await renderOnce()
+
+      const frame = captureCharFrame()
+
+      expect(frame).toContain("*")
+      expect(frame).not.toContain("Enter password")
+
+      input.destroy()
+    })
+
+    it("should fill the configured background while masked", async () => {
+      resetRoot()
+      const { input } = createInputRenderable({
+        type: "password",
+        value: "abc",
+        width: 8,
+        backgroundColor: "#123456",
+      })
+      await renderOnce()
+
+      const frame = captureSpans()
+      const inputLine = frame.lines[input.y]
+      const maskedSpan = inputLine?.spans.find((span) => span.text.includes("***"))
+
+      expect(maskedSpan).toBeDefined()
+      expect(maskedSpan?.bg.r).toBeCloseTo(0x12 / 255)
+      expect(maskedSpan?.bg.g).toBeCloseTo(0x34 / 255)
+      expect(maskedSpan?.bg.b).toBeCloseTo(0x56 / 255)
+
+      input.destroy()
+    })
+
+    it("should keep cursor position correct after typing in password mode", async () => {
+      resetRoot()
+      const { input } = createInputRenderable({ type: "password", width: 20 })
+      input.focus()
+      input.insertText("hello")
+      await renderOnce()
+
+      const frame: CapturedFrame = captureSpans()
+
+      expect(input.cursorOffset).toBe(5)
+      expect(frame.cursor).toEqual([input.x + 6, input.y + 1])
+
+      input.destroy()
+    })
+
+    it("should not affect text mode rendering", async () => {
+      resetRoot()
+      const { input } = createInputRenderable({ width: 20 })
+      input.focus()
+      input.insertText("hello")
+      await renderOnce()
+
+      const frame = captureCharFrame()
+
+      expect(frame).toContain("hello")
+      expect(frame).not.toContain("*****")
+
+      input.destroy()
     })
   })
 })

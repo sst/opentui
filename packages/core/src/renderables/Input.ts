@@ -1,3 +1,4 @@
+import type { OptimizedBuffer } from "../buffer.js"
 import type { PasteEvent } from "../lib/KeyHandler.js"
 import { decodePasteBytes, stripAnsiSequences } from "../lib/paste.js"
 import type { RenderContext } from "../types.js"
@@ -256,6 +257,45 @@ export class InputRenderable extends TextareaRenderable {
 
   public get maskChar(): string {
     return this._maskChar
+  }
+
+  protected override renderSelf(buffer: OptimizedBuffer): void {
+    if (this._type !== "password") {
+      super.renderSelf(buffer)
+      return
+    }
+
+    const bg = this._backgroundColor
+    const fg = this._textColor
+
+    buffer.fillRect(this.x, this.y, this.width, 1, bg)
+
+    const text = this.plainText
+
+    if (text.length === 0) {
+      const placeholder = this.placeholder
+      if (placeholder) {
+        buffer.drawText(placeholder, this.x, this.y, this.placeholderColor, bg)
+      }
+      return
+    }
+
+    const masked = this._maskChar.repeat(text.length)
+    const viewport = this.editorView.getViewport()
+    const offsetX = viewport.offsetX
+    const sliced = masked.slice(offsetX, offsetX + this.width)
+
+    const sel = this.editorView.getSelection()
+    const selection = sel
+      ? {
+          start: Math.max(0, sel.start - offsetX),
+          end: Math.max(0, sel.end - offsetX),
+          bgColor: this._selectionBg,
+          fgColor: this._selectionFg,
+        }
+      : undefined
+
+    buffer.drawText(sliced, this.x, this.y, fg, bg, this._defaultAttributes, selection)
   }
 
   public override set placeholder(placeholder: string) {
