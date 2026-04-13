@@ -119,6 +119,8 @@ export function createSolidTransformPlugin(input: CreateSolidTransformPluginOpti
 
         const transforms = await transformAsync(code, {
           filename: path,
+          configFile: false,
+          babelrc: false,
           plugins,
           presets: [
             [

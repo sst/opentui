@@ -111,6 +111,26 @@ const isCtrlKey = (code: string) => {
   return ["Oa", "Ob", "Oc", "Od", "Oe", "[2^", "[3^", "[5^", "[6^", "[7^", "[8^"].includes(code)
 }
 
+// Map raw control bytes to the key names that bindings expect. Terminals send
+// Ctrl+A..Ctrl+Z as 0x01..0x1a, and they send Ctrl+\\..Ctrl+_ as 0x1c..0x1f.
+// The ESC-prefixed meta+ctrl path reuses this mapping, so the raw and meta
+// forms stay aligned.
+const getCtrlKeyName = (charCode: number): string | undefined => {
+  if (charCode === 0) {
+    return "space"
+  }
+
+  if (charCode >= 1 && charCode <= 26) {
+    return String.fromCharCode(charCode + "a".charCodeAt(0) - 1)
+  }
+
+  if (charCode >= 28 && charCode <= 31) {
+    return String.fromCharCode(charCode + 64)
+  }
+
+  return undefined
+}
+
 export type KeyEventType = "press" | "repeat" | "release"
 
 export interface ParsedKey {
@@ -129,6 +149,9 @@ export interface ParsedKey {
   hyper?: boolean
   capsLock?: boolean
   numLock?: boolean
+  // Kitty's base-layout codepoint as a Unicode number. Example: 99 means "c".
+  // This lets shortcut matching recover Ctrl+C from an event whose printed name
+  // is something else under the active layout or IME.
   baseCode?: number
   repeated?: boolean
 }
@@ -233,6 +256,9 @@ export const parseKeypress = (s: Buffer | string = "", options: ParseKeypressOpt
 
   key.sequence = key.sequence || s || key.name
 
+  const ctrlKeyName = s.length === 1 ? getCtrlKeyName(s.charCodeAt(0)) : undefined
+  const metaCtrlKeyName = s.length === 2 && s[0] === "\x1b" ? getCtrlKeyName(s.charCodeAt(1)) : undefined
+
   // Check for Kitty keyboard protocol if enabled
   if (options.useKittyKeyboard) {
     const kittyResult = parseKittyKeyboard(s)
@@ -305,13 +331,9 @@ export const parseKeypress = (s: Buffer | string = "", options: ParseKeypressOpt
   } else if (s === " " || s === "\x1b ") {
     key.name = "space"
     key.meta = s.length === 2
-  } else if (s === "\x00") {
-    // ctrl+space
-    key.name = "space"
-    key.ctrl = true
-  } else if (s.length === 1 && s <= "\x1a") {
-    // ctrl+letter
-    key.name = String.fromCharCode(s.charCodeAt(0) + "a".charCodeAt(0) - 1)
+  } else if (ctrlKeyName) {
+    // ctrl+space, ctrl+letter, ctrl+\\, ctrl+], ctrl+^, ctrl+_
+    key.name = ctrlKeyName
     key.ctrl = true
   } else if (s.length === 1 && s >= "0" && s <= "9") {
     // number - keep the actual number character for vim commands
@@ -344,11 +366,12 @@ export const parseKeypress = (s: Buffer | string = "", options: ParseKeypressOpt
     } else {
       key.name = char
     }
-  } else if (s.length === 2 && s[0] === "\x1b" && s[1]! <= "\x1a") {
-    // meta+ctrl+letter (ESC + control character)
+  } else if (metaCtrlKeyName) {
+    // ESC + control byte is the raw meta+ctrl form. Reuse the same names as
+    // the plain ctrl path, so meta+ctrl+\\ and friends resolve consistently.
     key.meta = true
     key.ctrl = true
-    key.name = String.fromCharCode(s.charCodeAt(1) + "a".charCodeAt(0) - 1)
+    key.name = metaCtrlKeyName
   } else if ((parts = fnKeyRe.exec(s))) {
     const segs = [...s]
 

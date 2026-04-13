@@ -742,8 +742,11 @@ pub const CliRenderer = struct {
                         }
                     }
                 } else if (gp.isContinuationChar(cell.char)) {
-                    // Write a space for continuation cells to clear any previous content
-                    writer.writeByte(' ') catch {};
+                    // Intentionally do not write a space for continuation cells.
+                    // NOTE: disabled to fix 2-cell emoji rendering when the two
+                    // cells have distinct colors (space overwrite can break glyph output)
+
+                    // writer.writeByte(' ') catch {};
                 } else {
                     const len = std.unicode.utf8Encode(@intCast(cell.char), &utf8Buf) catch 1;
                     writer.writeAll(utf8Buf[0..len]) catch {};

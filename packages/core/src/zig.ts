@@ -363,7 +363,7 @@ function getOpenTUILib(libPath?: string) {
       returns: "void",
     },
     bufferDrawBox: {
-      args: ["ptr", "i32", "i32", "u32", "u32", "ptr", "u32", "ptr", "ptr", "ptr", "u32"],
+      args: ["ptr", "i32", "i32", "u32", "u32", "ptr", "u32", "ptr", "ptr", "ptr", "u32", "ptr", "u32"],
       returns: "void",
     },
     bufferPushScissorRect: {
@@ -1517,6 +1517,7 @@ export interface RenderLib {
     borderColor: RGBA,
     backgroundColor: RGBA,
     title: string | null,
+    bottomTitle: string | null,
   ) => void
   bufferResize: (buffer: Pointer, width: number, height: number) => void
   resizeRenderer: (renderer: Pointer, width: number, height: number) => void
@@ -2327,10 +2328,15 @@ class FFIRenderLib implements RenderLib {
     borderColor: RGBA,
     backgroundColor: RGBA,
     title: string | null,
+    bottomTitle: string | null,
   ): void {
     const titleBytes = title ? this.encoder.encode(title) : null
     const titleLen = title ? titleBytes!.length : 0
     const titlePtr = title ? titleBytes : null
+
+    const bottomTitleBytes = bottomTitle ? this.encoder.encode(bottomTitle) : null
+    const bottomTitleLen = bottomTitle ? bottomTitleBytes!.length : 0
+    const bottomTitlePtr = bottomTitle ? bottomTitleBytes : null
 
     this.opentui.symbols.bufferDrawBox(
       buffer,
@@ -2344,6 +2350,8 @@ class FFIRenderLib implements RenderLib {
       backgroundColor.buffer,
       titlePtr,
       titleLen,
+      bottomTitlePtr,
+      bottomTitleLen,
     )
   }
 

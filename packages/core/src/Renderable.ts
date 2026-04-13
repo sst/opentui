@@ -220,6 +220,7 @@ export abstract class Renderable extends BaseRenderable {
 
   protected _focusable: boolean = false
   protected _focused: boolean = false
+  protected _hasFocusedDescendant: boolean = false
   protected keypressHandler: ((key: KeyEvent) => void) | null = null
   protected pasteHandler: ((event: PasteEvent) => void) | null = null
 
@@ -407,12 +408,27 @@ export abstract class Renderable extends BaseRenderable {
 
     this.ctx._internalKeyInput.onInternal("keypress", this.keypressHandler)
     this.ctx._internalKeyInput.onInternal("paste", this.pasteHandler)
+    this.propagateFocusChange(true)
     this.emit(RenderableEvents.FOCUSED)
+  }
+
+  protected propagateFocusChange(hasFocus: boolean): void {
+    let parent = this.parent
+    while (parent) {
+      if (parent._hasFocusedDescendant !== hasFocus) {
+        parent._hasFocusedDescendant = hasFocus
+        parent.markDirty()
+      }
+      parent = parent.parent
+    }
+
+    this.requestRender()
   }
 
   public blur(): void {
     if (!this._focused || !this._focusable) return
 
+    this._ctx.blurRenderable(this)
     this._focused = false
     this.requestRender()
 
@@ -426,11 +442,16 @@ export abstract class Renderable extends BaseRenderable {
       this.pasteHandler = null
     }
 
+    this.propagateFocusChange(false)
     this.emit(RenderableEvents.BLURRED)
   }
 
   public get focused(): boolean {
     return this._focused
+  }
+
+  public get hasFocusedDescendant(): boolean {
+    return this._hasFocusedDescendant
   }
 
   public get live(): boolean {
@@ -565,17 +586,19 @@ export abstract class Renderable extends BaseRenderable {
   }
 
   public set width(value: number | "auto" | `${number}%`) {
-    if (isDimensionType(value)) {
-      this._width = value
-      this.yogaNode.setWidth(value)
-
-      if (typeof value === "number" && this._flexShrink === 1) {
-        this._flexShrink = 0
-        this.yogaNode.setFlexShrink(0)
-      }
-
-      this.requestRender()
+    if (!isDimensionType(value) || this._width === value) {
+      return
     }
+
+    this._width = value
+    this.yogaNode.setWidth(value)
+
+    if (typeof value === "number" && this._flexShrink === 1) {
+      this._flexShrink = 0
+      this.yogaNode.setFlexShrink(0)
+    }
+
+    this.requestRender()
   }
 
   public get height(): number {
@@ -583,17 +606,19 @@ export abstract class Renderable extends BaseRenderable {
   }
 
   public set height(value: number | "auto" | `${number}%`) {
-    if (isDimensionType(value)) {
-      this._height = value
-      this.yogaNode.setHeight(value)
-
-      if (typeof value === "number" && this._flexShrink === 1) {
-        this._flexShrink = 0
-        this.yogaNode.setFlexShrink(0)
-      }
-
-      this.requestRender()
+    if (!isDimensionType(value) || this._height === value) {
+      return
     }
+
+    this._height = value
+    this.yogaNode.setHeight(value)
+
+    if (typeof value === "number" && this._flexShrink === 1) {
+      this._flexShrink = 0
+      this.yogaNode.setFlexShrink(0)
+    }
+
+    this.requestRender()
   }
 
   public get zIndex(): number {
@@ -1074,7 +1099,10 @@ export abstract class Renderable extends BaseRenderable {
 
     try {
       const widthMethod = this._ctx.widthMethod
-      this.frameBuffer = OptimizedBuffer.create(w, h, widthMethod, { respectAlpha: true, id: `framebuffer-${this.id}` })
+      this.frameBuffer = OptimizedBuffer.create(w, h, widthMethod, {
+        respectAlpha: true,
+        id: `framebuffer-${this.id}`,
+      })
     } catch (error) {
       console.error(`Failed to create frame buffer for ${this.id}:`, error)
       this.frameBuffer = null
@@ -1390,7 +1418,12 @@ export abstract class Renderable extends BaseRenderable {
     // Override this method to provide custom rendering
   }
 
-  protected getScissorRect(): { x: number; y: number; width: number; height: number } {
+  protected getScissorRect(): {
+    x: number
+    y: number
+    width: number
+    height: number
+  } {
     return {
       x: this.buffered ? 0 : this.x,
       y: this.buffered ? 0 : this.y,
@@ -1606,7 +1639,14 @@ export class RootRenderable extends Renderable {
   private renderList: RenderCommand[] = []
 
   constructor(ctx: RenderContext) {
-    super(ctx, { id: "__root__", zIndex: 0, visible: true, width: ctx.width, height: ctx.height, enableLayout: true })
+    super(ctx, {
+      id: "__root__",
+      zIndex: 0,
+      visible: true,
+      width: ctx.width,
+      height: ctx.height,
+      enableLayout: true,
+    })
 
     if (this.yogaNode) {
       this.yogaNode.free()

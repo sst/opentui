@@ -2,10 +2,12 @@ import { describe, expect, it } from "bun:test"
 import {
   mergeKeyBindings,
   getKeyBindingKey,
+  getKeyBindingAction,
   buildKeyBindingsMap,
   mergeKeyAliases,
   defaultKeyAliases,
   keyBindingToString,
+  matchesKeyBinding,
   type KeyAliasMap,
 } from "./keymapping.js"
 
@@ -38,6 +40,33 @@ describe("keymapping", () => {
       const superBinding = { name: "z", super: true, action: "test" }
       const key = getKeyBindingKey(superBinding)
       expect(key).toBe("z:0:0:0:1")
+    })
+  })
+
+  describe("getKeyBindingAction", () => {
+    it("should fall back to baseCode when the parsed name differs", () => {
+      const map = buildKeyBindingsMap([{ name: "c", ctrl: true, action: "copy" as const }])
+
+      const action = getKeyBindingAction(map, { name: "ㅊ", baseCode: 99, ctrl: true })
+
+      expect(action).toBe("copy")
+    })
+
+    it("should prefer a direct name match over the baseCode fallback", () => {
+      const map = buildKeyBindingsMap([
+        { name: "c", ctrl: true, action: "copy" as const },
+        { name: "ㅊ", ctrl: true, action: "insert" as const },
+      ])
+
+      const action = getKeyBindingAction(map, { name: "ㅊ", baseCode: 99, ctrl: true })
+
+      expect(action).toBe("insert")
+    })
+  })
+
+  describe("matchesKeyBinding", () => {
+    it("should match a binding by baseCode when available", () => {
+      expect(matchesKeyBinding({ name: "ㅊ", baseCode: 99, ctrl: true }, { name: "c", ctrl: true })).toBe(true)
     })
   })
 
@@ -180,6 +209,43 @@ describe("keymapping", () => {
 
     it("should have esc -> escape alias", () => {
       expect(defaultKeyAliases.esc).toBe("escape")
+    })
+
+    it("should have keypad aliases to normalized key names", () => {
+      const keypadAliases: KeyAliasMap = {
+        kp0: "0",
+        kp1: "1",
+        kp2: "2",
+        kp3: "3",
+        kp4: "4",
+        kp5: "5",
+        kp6: "6",
+        kp7: "7",
+        kp8: "8",
+        kp9: "9",
+        kpdecimal: ".",
+        kpdivide: "/",
+        kpmultiply: "*",
+        kpminus: "-",
+        kpplus: "+",
+        kpenter: "enter",
+        kpequal: "=",
+        kpseparator: ",",
+        kpleft: "left",
+        kpright: "right",
+        kpup: "up",
+        kpdown: "down",
+        kppageup: "pageup",
+        kppagedown: "pagedown",
+        kphome: "home",
+        kpend: "end",
+        kpinsert: "insert",
+        kpdelete: "delete",
+      }
+
+      for (const [key, value] of Object.entries(keypadAliases)) {
+        expect(defaultKeyAliases[key]).toBe(value)
+      }
     })
   })
 

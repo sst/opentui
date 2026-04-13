@@ -126,6 +126,24 @@ canvas.frameBuffer.drawFrameBuffer(
 )
 ```
 
+### colorMatrix / colorMatrixUniform
+
+Apply native 4x4 RGBA matrix transforms for post-processing effects. Use `colorMatrixUniform` for full-buffer
+transforms, and `colorMatrix` when you want to target specific cells.
+
+```typescript
+import { INVERT_MATRIX, TargetChannel } from "@opentui/core"
+
+// Full-buffer transform
+canvas.frameBuffer.colorMatrixUniform(INVERT_MATRIX, 1.0, TargetChannel.Both)
+
+// Per-cell transform with explicit mask
+const cellMask = new Float32Array([10, 5, 1.0, 11, 5, 0.5])
+canvas.frameBuffer.colorMatrix(INVERT_MATRIX, cellMask, 1.0, TargetChannel.FG)
+```
+
+See [Color matrix reference](/docs/reference/color-matrix) for matrix layout, mask format, and behavior details.
+
 ## Properties
 
 | Property                         | Type      | Default      | Description                           |

@@ -1,4 +1,5 @@
 import { test, expect } from "bun:test"
+import { Readable } from "node:stream"
 import { Renderable } from "../Renderable.js"
 import type { OptimizedBuffer } from "../buffer.js"
 import { createTestRenderer, type TestRenderer } from "../testing/test-renderer.js"
@@ -6,6 +7,42 @@ import { createTestRenderer, type TestRenderer } from "../testing/test-renderer.
 class DestroyingRenderable extends Renderable {
   protected renderSelf(_buffer: OptimizedBuffer, _deltaTime: number): void {}
 }
+
+test("destroying renderer during frame callback should synchronously clean up terminal state", async () => {
+  const rawModeCalls: boolean[] = []
+  const stdin = new Readable({ read() {} }) as NodeJS.ReadStream & {
+    setRawMode: (enabled: boolean) => NodeJS.ReadStream
+  }
+  stdin.setRawMode = (enabled) => {
+    rawModeCalls.push(enabled)
+    return stdin
+  }
+
+  const { renderer } = await createTestRenderer({ stdin })
+  const lib = (renderer as any).lib as { suspendRenderer: (rendererPtr: unknown) => void }
+  const originalSuspendRenderer = lib.suspendRenderer.bind(lib)
+  let suspendCalls = 0
+  let cleanupObserved = false
+
+  lib.suspendRenderer = (rendererPtr: unknown) => {
+    suspendCalls++
+    originalSuspendRenderer(rendererPtr)
+  }
+
+  renderer.setFrameCallback(async () => {
+    renderer.destroy()
+    cleanupObserved = true
+
+    expect(rawModeCalls.at(-1)).toBe(false)
+    expect(suspendCalls).toBe(1)
+  })
+
+  renderer.start()
+
+  await new Promise((resolve) => setTimeout(resolve, 100))
+
+  expect(cleanupObserved).toBe(true)
+})
 
 test("destroying renderer during frame callback should not crash", async () => {
   const { renderer } = await createTestRenderer({})

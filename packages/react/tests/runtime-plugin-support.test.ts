@@ -12,15 +12,6 @@ describe("react runtime plugin support", () => {
     })
 
     const stdout = result.stdout.toString().trim()
-    const stderr = result.stderr.toString().trim()
-
-    if (stdout) {
-      console.debug(`[runtime-plugin-support.fixture] stdout:\n${stdout}`)
-    }
-
-    if (stderr) {
-      console.debug(`[runtime-plugin-support.fixture] stderr:\n${stderr}`)
-    }
 
     expect(result.exitCode).toBe(0)
     expect(stdout).toContain("core=true")

@@ -9,13 +9,21 @@ import {
   underline,
   fg,
   type MouseEvent,
+  type KeyEvent,
   type CliRenderer,
   type RenderContext,
   BoxRenderable,
 } from "../index.js"
+import { VignetteEffect } from "../post/effects.js"
+
+type FullUnicodeDemoState = {
+  keyHandler: (key: KeyEvent) => void
+}
+
+let demoState: FullUnicodeDemoState | null = null
 
 const GRAPHEME_LINES: string[] = [
-  "👩🏽‍💻  👨‍👩‍👧‍👦  🏳️‍🌈  🇺🇸  🇩🇪  🇯🇵  🇮🇳",
+  "✅ 👩🏽‍💻  👨‍👩‍👧‍👦  🏳️‍🌈  🇺🇸  🇩🇪  🇯🇵  🇮🇳",
   "a̐éö̲  Z͑͗͛̒͘a̴͈͚̐̓l̷͓̱͉g̶̙̗̓͘o̵͍͈  क्‍ष",
   "مرحبا  こんにちは  สวัสดี  Здравствуйте",
   "𝔘𝔫𝔦𝔠𝔬𝔡𝔢  𝒻𝓊𝓁𝓁 𝓌𝒾𝒹𝓉𝒽：ＡＢＣ  ½ ⅞ ⅓",
@@ -56,18 +64,21 @@ class DraggableGraphemeBox extends FrameBufferRenderable {
         this.isDragging = true
         this.dragOffsetX = event.x - this.x
         this.dragOffsetY = event.y - this.y
+        this.requestRender()
         event.stopPropagation()
         break
       case "drag":
         if (this.isDragging) {
           this.x = event.x - this.dragOffsetX
           this.y = event.y - this.dragOffsetY
+          this.requestRender()
           event.stopPropagation()
         }
         break
       case "drag-end":
         if (this.isDragging) {
           this.isDragging = false
+          this.requestRender()
           event.stopPropagation()
         }
         break
@@ -106,7 +117,7 @@ class DraggableStyledText extends TextRenderable {
     })
 
     // Styled text content with graphemes
-    const content = t`${bold(blue("Graphemes:"))} 👩🏽‍💻  👨‍👩‍👧‍👦  🏳️‍🌈  🇺🇸  🇩🇪  🇯🇵  🇮🇳
+    const content = t`${bold(blue("Graphemes:"))} ✅ 👩🏽‍💻  👨‍👩‍👧‍👦  🏳️‍🌈  🇺🇸  🇩🇪  🇯🇵  🇮🇳
 ${underline("Complex:")} a̐éö̲  Z͑͗͛̒͘a̴͈͚̐̓l̷͓̱͉g̶̙̗̓͘o̵͍͈  क्‍ष`
 
     this.content = content
@@ -120,18 +131,21 @@ ${underline("Complex:")} a̐éö̲  Z͑͗͛̒͘a̴͈͚̐̓l̷͓̱͉g̶̙̗̓͘
         this.isDragging = true
         this.dragOffsetX = event.x - this.x
         this.dragOffsetY = event.y - this.y
+        this.requestRender()
         event.stopPropagation()
         break
       case "drag":
         if (this.isDragging) {
           this.x = event.x - this.dragOffsetX
           this.y = event.y - this.dragOffsetY
+          this.requestRender()
           event.stopPropagation()
         }
         break
       case "drag-end":
         if (this.isDragging) {
           this.isDragging = false
+          this.requestRender()
           event.stopPropagation()
         }
         break
@@ -141,7 +155,11 @@ ${underline("Complex:")} a̐éö̲  Z͑͗͛̒͘a̴͈͚̐̓l̷͓̱͉g̶̙̗̓͘
 
 export function run(renderer: CliRenderer): void {
   renderer.start()
+  renderer.pause()
   renderer.setBackgroundColor(RGBA.fromInts(0, 17, 34, 255))
+
+  const vignetteEffect = new VignetteEffect(0.55)
+  let vignetteEnabled = false
 
   const rootGroup = new BoxRenderable(renderer, { id: "full-unicode-root", zIndex: 1 })
   renderer.root.add(rootGroup)
@@ -169,10 +187,52 @@ export function run(renderer: CliRenderer): void {
   // Draggable styled text using TextRenderable (grapheme-aware via TextBuffer)
   const styledText = new DraggableStyledText(renderer, "draggable-styled-text", 8, 12)
   rootGroup.add(styledText)
+
+  const styledText2 = new DraggableStyledText(renderer, "draggable-styled-text-2", 18, 16)
+  styledText2.content = t`${bold(fg("#55FF55", "Emoji Check:"))} ✅ 👩🏽‍💻  👨‍👩‍👧‍👦  🏳️‍🌈
+${underline("Drag me too:")} 🇺🇸  🇩🇪  🇯🇵  🇮🇳  a̐éö̲`
+  rootGroup.add(styledText2)
+
+  const hintText = new TextRenderable(renderer, {
+    id: "full-unicode-hint",
+    position: "absolute",
+    left: 2,
+    top: 1,
+    zIndex: 3,
+    content: "V: Toggle vignette",
+    fg: "#AAFFAA",
+  })
+  rootGroup.add(hintText)
+
+  const keyHandler = (key: KeyEvent): void => {
+    if (key.name?.toLowerCase() !== "v") return
+    vignetteEnabled = !vignetteEnabled
+    hintText.content = `V: Toggle vignette (${vignetteEnabled ? "ON" : "OFF"})`
+
+    renderer.clearPostProcessFns()
+    if (vignetteEnabled) {
+      renderer.addPostProcessFn(vignetteEffect.apply.bind(vignetteEffect))
+    }
+
+    renderer.requestRender()
+  }
+
+  renderer.keyInput.on("keypress", keyHandler)
+
+  demoState = {
+    keyHandler,
+  }
+
+  renderer.requestRender()
 }
 
 export function destroy(renderer: CliRenderer): void {
+  if (demoState) {
+    renderer.keyInput.off("keypress", demoState.keyHandler)
+  }
+  renderer.clearPostProcessFns()
   renderer.root.remove("full-unicode-root")
+  demoState = null
 }
 
 if (import.meta.main) {

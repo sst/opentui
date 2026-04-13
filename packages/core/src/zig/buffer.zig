@@ -108,6 +108,10 @@ inline fn pow(a: f32, b: f32) f32 {
     return @bitCast(result);
 }
 
+inline fn isFullyTransparent(opacity: f32, fg: RGBA, bg: RGBA) bool {
+    return opacity == 0.0 or (fg[3] == 0.0 and bg[3] == 0.0);
+}
+
 fn blendColors(overlay: RGBA, text: RGBA, blendBackdropColor: ?RGBA) RGBA {
     var dest = text;
     if (dest[3] == 0.0) {
@@ -184,6 +188,13 @@ pub const OptimizedBuffer = struct {
         width_method: utf8.WidthMethod = .unicode,
         id: []const u8 = "unnamed buffer",
         link_pool: ?*link.LinkPool = null,
+    };
+
+    const BoxTitleLayout = struct {
+        shouldDraw: bool = false,
+        x: i32 = 0,
+        startX: i32 = 0,
+        endX: i32 = 0,
     };
 
     pub fn init(allocator: Allocator, width: u32, height: u32, options: InitOptions) BufferError!*OptimizedBuffer {
@@ -795,8 +806,8 @@ pub const OptimizedBuffer = struct {
     ) !void {
         if (!self.isPointInScissor(@intCast(x), @intCast(y))) return;
 
-        // Apply current opacity from the stack
         const opacity = self.getCurrentOpacity();
+        if (isFullyTransparent(opacity, fg, bg)) return;
         if (isFullyOpaque(opacity, fg, bg)) {
             self.set(x, y, Cell{ .char = char, .fg = fg, .bg = bg, .attributes = attributes });
             return;
@@ -826,8 +837,8 @@ pub const OptimizedBuffer = struct {
     ) !void {
         if (!self.isPointInScissor(@intCast(x), @intCast(y))) return;
 
-        // Apply current opacity from the stack
         const opacity = self.getCurrentOpacity();
+        if (isFullyTransparent(opacity, fg, bg)) return;
         if (isFullyOpaque(opacity, fg, bg)) {
             const overlayCell = Cell{ .char = char, .fg = fg, .bg = bg, .attributes = attributes };
             assert(!gp.isGraphemeChar(char));
@@ -862,18 +873,7 @@ pub const OptimizedBuffer = struct {
         bg: RGBA,
         attributes: u32,
     ) !void {
-        if (!self.isPointInScissor(@intCast(x), @intCast(y))) return;
-
-        if (isRGBAWithAlpha(bg) or isRGBAWithAlpha(fg)) {
-            try self.setCellWithAlphaBlending(x, y, char, fg, bg, attributes);
-        } else {
-            self.set(x, y, Cell{
-                .char = char,
-                .fg = fg,
-                .bg = bg,
-                .attributes = attributes,
-            });
-        }
+        try self.setCellWithAlphaBlending(x, y, char, fg, bg, attributes);
     }
 
     pub fn fillRect(
@@ -888,6 +888,9 @@ pub const OptimizedBuffer = struct {
         if (x >= self.width or y >= self.height) return;
 
         if (!self.isRectInScissor(@intCast(x), @intCast(y), width, height)) return;
+
+        const opacity = self.getCurrentOpacity();
+        if (isFullyTransparent(opacity, .{ 0.0, 0.0, 0.0, 0.0 }, bg)) return;
 
         const startX = x;
         const startY = y;
@@ -906,7 +909,6 @@ pub const OptimizedBuffer = struct {
         const clippedEndX = @min(endX, @as(u32, @intCast(clippedRect.x + @as(i32, @intCast(clippedRect.width)) - 1)));
         const clippedEndY = @min(endY, @as(u32, @intCast(clippedRect.y + @as(i32, @intCast(clippedRect.height)) - 1)));
 
-        const opacity = self.getCurrentOpacity();
         const hasAlpha = isRGBAWithAlpha(bg) or opacity < 1.0;
         const linkAware = self.link_tracker.hasAny();
 
@@ -949,6 +951,9 @@ pub const OptimizedBuffer = struct {
     ) BufferError!void {
         if (x >= self.width or y >= self.height) return;
         if (text.len == 0) return;
+
+        const opacity = self.getCurrentOpacity();
+        if (isFullyTransparent(opacity, fg, bg orelse .{ 0.0, 0.0, 0.0, 0.0 })) return;
 
         const is_ascii_only = utf8.isAsciiOnly(text);
 
@@ -1062,6 +1067,9 @@ pub const OptimizedBuffer = struct {
 
     pub fn drawFrameBuffer(self: *OptimizedBuffer, destX: i32, destY: i32, frameBuffer: *OptimizedBuffer, sourceX: ?u32, sourceY: ?u32, sourceWidth: ?u32, sourceHeight: ?u32) void {
         if (self.width == 0 or self.height == 0 or frameBuffer.width == 0 or frameBuffer.height == 0) return;
+
+        const opacity = self.getCurrentOpacity();
+        if (opacity == 0.0) return;
 
         const srcX = sourceX orelse 0;
         const srcY = sourceY orelse 0;
@@ -1189,6 +1197,9 @@ pub const OptimizedBuffer = struct {
         x: i32,
         y: i32,
     ) !void {
+        const opacity = self.getCurrentOpacity();
+        if (opacity == 0.0) return;
+
         const virtual_lines = view.getVirtualLines();
         if (virtual_lines.len == 0) return;
 
@@ -1577,6 +1588,9 @@ pub const OptimizedBuffer = struct {
         if (rowCount == 0 or columnCount == 0) return;
         if (!drawInner and !drawOuter) return;
 
+        const opacity = self.getCurrentOpacity();
+        if (isFullyTransparent(opacity, borderFg, borderBg)) return;
+
         const hChar = borderChars[@intFromEnum(BorderCharIndex.horizontal)];
         const vChar = borderChars[@intFromEnum(BorderCharIndex.vertical)];
         const bufWidth = self.width;
@@ -1701,7 +1715,12 @@ pub const OptimizedBuffer = struct {
         shouldFill: bool,
         title: ?[]const u8,
         titleAlignment: u8, // 0=left, 1=center, 2=right
+        bottomTitle: ?[]const u8,
+        bottomTitleAlignment: u8, // 0=left, 1=center, 2=right
     ) !void {
+        const opacity = self.getCurrentOpacity();
+        if (isFullyTransparent(opacity, borderColor, backgroundColor)) return;
+
         const startX = @max(0, x);
         const startY = @max(0, y);
         const endX = @min(@as(i32, @intCast(self.width)) - 1, x + @as(i32, @intCast(width)) - 1);
@@ -1718,36 +1737,8 @@ pub const OptimizedBuffer = struct {
         const isAtActualTop = startY == y;
         const isAtActualBottom = endY == y + @as(i32, @intCast(height)) - 1;
 
-        var shouldDrawTitle = false;
-        var titleX: i32 = startX;
-        var titleStartX: i32 = 0;
-        var titleEndX: i32 = 0;
-
-        if (title) |titleText| {
-            if (titleText.len > 0 and borderSides.top and isAtActualTop) {
-                const is_ascii = utf8.isAsciiOnly(titleText);
-                const titleLength = @as(i32, @intCast(utf8.calculateTextWidth(titleText, 2, is_ascii, self.width_method)));
-                const minTitleSpace = 4;
-
-                shouldDrawTitle = @as(i32, @intCast(width)) >= titleLength + minTitleSpace;
-
-                if (shouldDrawTitle) {
-                    const padding = 2;
-
-                    if (titleAlignment == 1) { // center
-                        titleX = startX + @max(padding, @divFloor(@as(i32, @intCast(width)) - titleLength, 2));
-                    } else if (titleAlignment == 2) { // right
-                        titleX = startX + @as(i32, @intCast(width)) - padding - titleLength;
-                    } else { // left
-                        titleX = startX + padding;
-                    }
-
-                    titleX = @max(startX + padding, @min(titleX, endX - titleLength));
-                    titleStartX = titleX;
-                    titleEndX = titleX + titleLength - 1;
-                }
-            }
-        }
+        const titleLayout = self.computeBoxTitleLayout(title, borderSides.top, isAtActualTop, startX, endX, width, titleAlignment);
+        const bottomTitleLayout = self.computeBoxTitleLayout(bottomTitle, borderSides.bottom, isAtActualBottom, startX, endX, width, bottomTitleAlignment);
 
         if (shouldFill) {
             if (!borderSides.top and !borderSides.right and !borderSides.bottom and !borderSides.left) {
@@ -1784,7 +1775,7 @@ pub const OptimizedBuffer = struct {
                 var drawX = startX;
                 while (drawX <= endX) : (drawX += 1) {
                     if (startY >= 0 and startY < @as(i32, @intCast(self.height))) {
-                        if (shouldDrawTitle and drawX >= titleStartX and drawX <= titleEndX) {
+                        if (titleLayout.shouldDraw and drawX >= titleLayout.startX and drawX <= titleLayout.endX) {
                             continue;
                         }
 
@@ -1807,6 +1798,10 @@ pub const OptimizedBuffer = struct {
                 var drawX = startX;
                 while (drawX <= endX) : (drawX += 1) {
                     if (endY >= 0 and endY < @as(i32, @intCast(self.height))) {
+                        if (bottomTitleLayout.shouldDraw and drawX >= bottomTitleLayout.startX and drawX <= bottomTitleLayout.endX) {
+                            continue;
+                        }
+
                         var char = borderChars[@intFromEnum(BorderCharIndex.horizontal)];
 
                         // Handle corners
@@ -1841,11 +1836,60 @@ pub const OptimizedBuffer = struct {
             }
         }
 
-        if (shouldDrawTitle) {
+        if (titleLayout.shouldDraw) {
             if (title) |titleText| {
-                try self.drawText(titleText, @intCast(titleX), @intCast(startY), borderColor, backgroundColor, 0);
+                try self.drawText(titleText, @intCast(titleLayout.x), @intCast(startY), borderColor, backgroundColor, 0);
             }
         }
+
+        if (bottomTitleLayout.shouldDraw) {
+            if (bottomTitle) |titleText| {
+                try self.drawText(titleText, @intCast(bottomTitleLayout.x), @intCast(endY), borderColor, backgroundColor, 0);
+            }
+        }
+    }
+
+    fn computeBoxTitleLayout(
+        self: *OptimizedBuffer,
+        titleText: ?[]const u8,
+        borderSide: bool,
+        isAtActualSide: bool,
+        startX: i32,
+        endX: i32,
+        width: u32,
+        alignment: u8,
+    ) BoxTitleLayout {
+        const text = titleText orelse return .{ .x = startX };
+
+        if (text.len == 0 or !borderSide or !isAtActualSide) {
+            return .{ .x = startX };
+        }
+
+        const is_ascii = utf8.isAsciiOnly(text);
+        const titleLength = @as(i32, @intCast(utf8.calculateTextWidth(text, 2, is_ascii, self.width_method)));
+        const minTitleSpace = 4;
+
+        if (@as(i32, @intCast(width)) < titleLength + minTitleSpace) {
+            return .{ .x = startX };
+        }
+
+        const padding = 2;
+        var titleX = startX + padding;
+
+        if (alignment == 1) {
+            titleX = startX + @max(padding, @divFloor(@as(i32, @intCast(width)) - titleLength, 2));
+        } else if (alignment == 2) {
+            titleX = startX + @as(i32, @intCast(width)) - padding - titleLength;
+        }
+
+        titleX = @max(startX + padding, @min(titleX, endX - titleLength));
+
+        return .{
+            .shouldDraw = true,
+            .x = titleX,
+            .startX = titleX,
+            .endX = titleX + titleLength - 1,
+        };
     }
 
     /// Draw a buffer of pixel data using super sampling (2x2 pixels per character cell)

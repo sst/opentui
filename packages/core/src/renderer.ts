@@ -21,6 +21,7 @@ import { EventEmitter } from "events"
 import { destroySingleton, hasSingleton, singleton } from "./lib/singleton.js"
 import { getObjectsInViewport } from "./lib/objects-in-viewport.js"
 import { KeyHandler, InternalKeyHandler } from "./lib/KeyHandler.js"
+import { isEditBufferRenderable, type EditBufferRenderable } from "./renderables/EditBufferRenderable.js"
 import { env, registerEnvVar } from "./lib/env.js"
 import { getTreeSitterClient } from "./lib/tree-sitter/index.js"
 import {
@@ -36,31 +37,33 @@ import {
 } from "./lib/terminal-capability-detection.js"
 import { type Clock, type TimerHandle, SystemClock } from "./lib/clock.js"
 import { StdinParser, type StdinEvent, type StdinParserProtocolContext } from "./lib/stdin-parser.js"
+import { matchesKeyBinding } from "./lib/keymapping.js"
 
 registerEnvVar({
   name: "OTUI_DUMP_CAPTURES",
-  description: "Dump captured output when the renderer exits.",
+  description: "Dump captured stdout and console caches when the renderer exit handler runs.",
   type: "boolean",
   default: false,
 })
 
 registerEnvVar({
   name: "OTUI_NO_NATIVE_RENDER",
-  description: "Disable native rendering. This will not actually output ansi and is useful for debugging.",
+  description:
+    "Skip the Zig/native frame renderer. Useful for debugging the render loop; split-footer stdout flushing may still write ANSI.",
   type: "boolean",
   default: false,
 })
 
 registerEnvVar({
   name: "OTUI_USE_ALTERNATE_SCREEN",
-  description: "Use the terminal alternate screen buffer.",
+  description: "When explicitly set, force screen mode selection: true=alternate-screen, false=main-screen.",
   type: "boolean",
   default: true,
 })
 
 registerEnvVar({
   name: "OTUI_OVERRIDE_STDOUT",
-  description: "Override the stdout stream. This is useful for debugging.",
+  description: "When explicitly set, force stdout routing: false=passthrough, true=capture in split-footer mode.",
   type: "boolean",
   default: true,
 })
@@ -80,40 +83,175 @@ registerEnvVar({
 })
 
 export interface CliRendererConfig {
+  // Read input from this stream. Defaults to process.stdin.
   stdin?: NodeJS.ReadStream
+
+  // Use a custom stdout stream for size detection and stdout interception.
+  // Native frame output still goes to the real TTY.
   stdout?: NodeJS.WriteStream
+
+  // Tell the native renderer it is driving a remote terminal.
   remote?: boolean
+
+  // Skip terminal setup. Useful in tests.
   testing?: boolean
+
+  // Call renderer.destroy() when Ctrl+C is pressed. Defaults to true.
   exitOnCtrlC?: boolean
+
+  // Clean up on these signals. Defaults to the common termination signals.
   exitSignals?: NodeJS.Signals[]
+
+  // Forward these env var names to native terminal detection.
   forwardEnvKeys?: string[]
+
+  // Wait this long before handling resize events. Defaults to 100 ms.
   debounceDelay?: number
+
+  // Aim for this many frames per second in continuous mode. Defaults to 30.
   targetFps?: number
+
+  // Cap immediate re-renders at this frame rate. Defaults to 60.
   maxFps?: number
+
+  // Emit memory snapshots on this interval in ms. Set 0 to disable.
   memorySnapshotInterval?: number
+
+  // Render from a separate thread when the platform supports it.
   useThread?: boolean
+
+  // Collect frame timing stats for the debug overlay.
   gatherStats?: boolean
+
+  // Keep this many timing samples. Defaults to 300.
   maxStatSamples?: number
+
+  // Pass options to the built-in console overlay.
   consoleOptions?: Omit<ConsoleOptions, "clock">
+
+  // Run these hooks after each render pass.
   postProcessFns?: ((buffer: OptimizedBuffer, deltaTime: number) => void)[]
+
+  // Track mouse move events. Defaults to true.
   enableMouseMovement?: boolean
+
+  // Enable mouse input. Defaults to true.
   useMouse?: boolean
+
+  // Focus the nearest focusable renderable on left click. Defaults to true.
   autoFocus?: boolean
-  useAlternateScreen?: boolean
-  useConsole?: boolean
-  experimental_splitHeight?: number
+
+  // Choose where the renderer owns terminal space. Defaults to "alternate-screen".
+  screenMode?: ScreenMode
+
+  // Set the requested footer height for "split-footer". Defaults to 12.
+  footerHeight?: number
+
+  // Choose what happens to writes that go through `stdout.write`.
+  externalOutputMode?: ExternalOutputMode
+
+  // Choose what the built-in console overlay does.
+  consoleMode?: ConsoleMode
+
+  // Set Kitty keyboard protocol flags, or null to disable them.
   useKittyKeyboard?: KittyKeyboardOptions | null
+
+  // Fill the render buffer with this background color. Default transparent.
   backgroundColor?: ColorInput
+
+  // Open the console overlay on uncaught errors. Defaults to true in development.
   openConsoleOnError?: boolean
+
+  // Run these input handlers before the built-in handlers.
   prependInputHandlers?: ((sequence: string) => boolean)[]
+
+  // Cap the stdin parser buffer size in bytes. Defaults to 64 MB.
   stdinParserMaxBufferBytes?: number
+
+  // Use a custom clock for timers and tests.
   clock?: Clock
+
+  // Run after destroy() finishes cleanup.
   onDestroy?: () => void
 }
+
+// Controls how the renderer uses terminal space:
+//
+// - "alternate-screen": Use the terminal's alternate screen buffer.
+//
+// - "main-screen": Render on the main screen.
+//
+// - "split-footer": Keep the renderer in a reserved footer on the main screen.
+export type ScreenMode = "alternate-screen" | "main-screen" | "split-footer"
+
+// Controls writes that go through the configured `stdout.write`.
+//
+// - "capture-stdout": Queue stdout and replay it above the split footer.
+//   Only valid with "split-footer".
+//
+// - "passthrough": Leave stdout alone.
+export type ExternalOutputMode = "capture-stdout" | "passthrough"
+
+// Controls the built-in console overlay:
+//
+// - "console-overlay": Capture `console.*` output and show the overlay.
+//
+// - "disabled": Hide the overlay. `OTUI_USE_CONSOLE` controls global console
+//   capture.
+export type ConsoleMode = "console-overlay" | "disabled"
 
 export type PixelResolution = {
   width: number
   height: number
+}
+
+const DEFAULT_FOOTER_HEIGHT = 12
+
+function normalizeFooterHeight(footerHeight: number | undefined): number {
+  if (footerHeight === undefined) {
+    return DEFAULT_FOOTER_HEIGHT
+  }
+
+  if (!Number.isFinite(footerHeight)) {
+    throw new Error("footerHeight must be a finite number")
+  }
+
+  const normalizedFooterHeight = Math.trunc(footerHeight)
+  if (normalizedFooterHeight <= 0) {
+    throw new Error("footerHeight must be greater than 0")
+  }
+
+  return normalizedFooterHeight
+}
+
+function resolveModes(config: CliRendererConfig): {
+  screenMode: ScreenMode
+  footerHeight: number
+  externalOutputMode: ExternalOutputMode
+} {
+  let screenMode = config.screenMode ?? "alternate-screen"
+  if (process.env.OTUI_USE_ALTERNATE_SCREEN !== undefined) {
+    screenMode = env.OTUI_USE_ALTERNATE_SCREEN ? "alternate-screen" : "main-screen"
+  }
+
+  const footerHeight =
+    screenMode === "split-footer" ? normalizeFooterHeight(config.footerHeight) : DEFAULT_FOOTER_HEIGHT
+
+  let externalOutputMode =
+    config.externalOutputMode ?? (screenMode === "split-footer" ? "capture-stdout" : "passthrough")
+  if (process.env.OTUI_OVERRIDE_STDOUT !== undefined) {
+    externalOutputMode = env.OTUI_OVERRIDE_STDOUT && screenMode === "split-footer" ? "capture-stdout" : "passthrough"
+  }
+
+  if (externalOutputMode === "capture-stdout" && screenMode !== "split-footer") {
+    throw new Error('externalOutputMode "capture-stdout" requires screenMode "split-footer"')
+  }
+
+  return {
+    screenMode,
+    footerHeight,
+    externalOutputMode,
+  }
 }
 
 const DEFAULT_FORWARDED_ENV_KEYS = [
@@ -133,6 +271,8 @@ const DEFAULT_FORWARDED_ENV_KEYS = [
   "OPENTUI_FORCE_EXPLICIT_WIDTH",
   "WT_SESSION",
   "STY",
+  "WSL_DISTRO_NAME",
+  "WSL_INTEROP",
 ] as const
 
 // Kitty keyboard protocol flags
@@ -285,11 +425,11 @@ export async function createCliRenderer(config: CliRendererConfig = {}): Promise
   }
   const stdin = config.stdin || process.stdin
   const stdout = config.stdout || process.stdout
+  const { screenMode, footerHeight } = resolveModes(config)
 
   const width = stdout.columns || 80
   const height = stdout.rows || 24
-  const renderHeight =
-    config.experimental_splitHeight && config.experimental_splitHeight > 0 ? config.experimental_splitHeight : height
+  const renderHeight = screenMode === "split-footer" ? footerHeight : height
 
   const ziglib = resolveRenderLib()
   const rendererPtr = ziglib.createRenderer(width, renderHeight, {
@@ -326,6 +466,7 @@ export enum CliRenderEvents {
   RESIZE = "resize",
   FOCUS = "focus",
   BLUR = "blur",
+  FOCUSED_EDITOR = "focused_editor",
   THEME_MODE = "theme_mode",
   CAPABILITIES = "capabilities",
   SELECTION = "selection",
@@ -355,15 +496,20 @@ export class CliRenderer extends EventEmitter implements RenderContext {
   private _isDestroyed: boolean = false
   private _destroyPending: boolean = false
   private _destroyFinalized: boolean = false
+  private _destroyCleanupPrepared: boolean = false
   public nextRenderBuffer: OptimizedBuffer
   public currentRenderBuffer: OptimizedBuffer
   private _isRunning: boolean = false
-  private targetFps: number = 30
-  private maxFps: number = 60
+  private _targetFps: number = 30
+  private _maxFps: number = 60
   private automaticMemorySnapshot: boolean = false
   private memorySnapshotInterval: number
   private memorySnapshotTimer: TimerHandle | null = null
-  private lastMemorySnapshot: { heapUsed: number; heapTotal: number; arrayBuffers: number } = {
+  private lastMemorySnapshot: {
+    heapUsed: number
+    heapTotal: number
+    arrayBuffers: number
+  } = {
     heapUsed: 0,
     heapTotal: 0,
     arrayBuffers: 0,
@@ -387,8 +533,8 @@ export class CliRenderer extends EventEmitter implements RenderContext {
   private frameCount: number = 0
   private lastFpsTime: number = 0
   private currentFps: number = 0
-  private targetFrameTime: number = 1000 / this.targetFps
-  private minTargetFrameTime: number = 1000 / this.maxFps
+  private targetFrameTime: number = 1000 / this._targetFps
+  private minTargetFrameTime: number = 1000 / this._maxFps
   private immediateRerenderRequested: boolean = false
   private updateScheduled: boolean = false
 
@@ -428,7 +574,9 @@ export class CliRenderer extends EventEmitter implements RenderContext {
   private enableMouseMovement: boolean = false
   private _useMouse: boolean = true
   private autoFocus: boolean = true
-  private _useAlternateScreen: boolean = env.OTUI_USE_ALTERNATE_SCREEN
+  private _screenMode: ScreenMode = "alternate-screen"
+  private _footerHeight: number = DEFAULT_FOOTER_HEIGHT
+  private _externalOutputMode: ExternalOutputMode = "passthrough"
   private _suspendedMouseEnabled: boolean = false
   private _previousControlState: RendererControlState = RendererControlState.IDLE
   private capturedRenderable?: Renderable
@@ -462,7 +610,11 @@ export class CliRenderer extends EventEmitter implements RenderContext {
   private _capabilities: any | null = null
   private _latestPointer: { x: number; y: number } = { x: 0, y: 0 }
   private _hasPointer: boolean = false
-  private _lastPointerModifiers: RawMouseEvent["modifiers"] = { shift: false, alt: false, ctrl: false }
+  private _lastPointerModifiers: RawMouseEvent["modifiers"] = {
+    shift: false,
+    alt: false,
+    ctrl: false,
+  }
   private _currentMousePointerStyle: MousePointerStyle | undefined = undefined
 
   private _currentFocusedRenderable: Renderable | null = null
@@ -552,14 +704,10 @@ export class CliRenderer extends EventEmitter implements RenderContext {
     this.width = width
     this.height = height
     this._useThread = config.useThread === undefined ? false : config.useThread
-    this._splitHeight = config.experimental_splitHeight || 0
+    const { screenMode, footerHeight, externalOutputMode } = resolveModes(config)
 
-    if (this._splitHeight > 0) {
-      capture.on("write", this.captureCallback)
-      this.renderOffset = height - this._splitHeight
-      this.height = this._splitHeight
-      lib.setRenderOffset(rendererPtr, this.renderOffset)
-    }
+    this._footerHeight = footerHeight
+    this._screenMode = screenMode
 
     this.rendererPtr = rendererPtr
 
@@ -580,15 +728,12 @@ export class CliRenderer extends EventEmitter implements RenderContext {
       "SIGBREAK", // Ctrl+Break on Windows
       "SIGPIPE", // Broken pipe
       "SIGBUS", // Bus error
-      "SIGFPE", // Floating point exception
     ]
 
     this.clipboard = new Clipboard(this.lib, this.rendererPtr)
     this.resizeDebounceDelay = config.debounceDelay || 100
     this.targetFps = config.targetFps || 30
     this.maxFps = config.maxFps || 60
-    this.targetFrameTime = 1000 / this.targetFps
-    this.minTargetFrameTime = 1000 / this.maxFps
     this.clock = config.clock ?? new SystemClock()
     this.memorySnapshotInterval = config.memorySnapshotInterval ?? 0
     this.gatherStats = config.gatherStats || false
@@ -596,7 +741,6 @@ export class CliRenderer extends EventEmitter implements RenderContext {
     this.enableMouseMovement = config.enableMouseMovement ?? true
     this._useMouse = config.useMouse ?? true
     this.autoFocus = config.autoFocus ?? true
-    this._useAlternateScreen = config.useAlternateScreen ?? env.OTUI_USE_ALTERNATE_SCREEN
     this.nextRenderBuffer = this.lib.getNextBuffer(this.rendererPtr)
     this.currentRenderBuffer = this.lib.getCurrentBuffer(this.rendererPtr)
     this.postProcessFns = config.postProcessFns || []
@@ -606,10 +750,6 @@ export class CliRenderer extends EventEmitter implements RenderContext {
 
     if (this.memorySnapshotInterval > 0) {
       this.startMemorySnapshotTimer()
-    }
-
-    if (env.OTUI_OVERRIDE_STDOUT) {
-      this.stdout.write = this.interceptStdoutWrite.bind(this)
     }
 
     // Handle terminal resize
@@ -625,7 +765,9 @@ export class CliRenderer extends EventEmitter implements RenderContext {
     const useKittyForParsing = kittyConfig !== null
     this._keyHandler = new InternalKeyHandler()
     this._keyHandler.on("keypress", (event) => {
-      if (this.exitOnCtrlC && event.name === "c" && event.ctrl) {
+      // Use the shared matcher here too. Kitty can report a non-Latin
+      // character plus a base-layout `c`, and Ctrl+C should still exit.
+      if (this.exitOnCtrlC && matchesKeyBinding(event, { name: "c", ctrl: true })) {
         process.nextTick(() => {
           this.destroy()
         })
@@ -637,7 +779,7 @@ export class CliRenderer extends EventEmitter implements RenderContext {
 
     const stdinParserMaxBufferBytes = config.stdinParserMaxBufferBytes ?? DEFAULT_STDIN_PARSER_MAX_BUFFER_BYTES
     this.stdinParser = new StdinParser({
-      timeoutMs: 10,
+      timeoutMs: 20,
       maxPendingBytes: stdinParserMaxBufferBytes,
       armTimeouts: true,
       onTimeoutFlush: () => {
@@ -657,7 +799,9 @@ export class CliRenderer extends EventEmitter implements RenderContext {
       ...(config.consoleOptions ?? {}),
       clock: this.clock,
     })
-    this.useConsole = config.useConsole ?? true
+    this.consoleMode = config.consoleMode ?? "console-overlay"
+    this.applyScreenMode(screenMode, false, false)
+    this.externalOutputMode = externalOutputMode
     this._openConsoleOnError = config.openConsoleOnError ?? process.env.NODE_ENV !== "production"
     this._onDestroy = config.onDestroy
 
@@ -729,6 +873,12 @@ export class CliRenderer extends EventEmitter implements RenderContext {
     return this._currentFocusedRenderable
   }
 
+  public get currentFocusedEditor(): EditBufferRenderable | null {
+    if (!this._currentFocusedRenderable) return null
+    if (!isEditBufferRenderable(this._currentFocusedRenderable)) return null
+    return this._currentFocusedRenderable
+  }
+
   private normalizeClockTime(now: number, fallback: number): number {
     if (Number.isFinite(now)) {
       return now
@@ -748,11 +898,21 @@ export class CliRenderer extends EventEmitter implements RenderContext {
   public focusRenderable(renderable: Renderable) {
     if (this._currentFocusedRenderable === renderable) return
 
-    if (this._currentFocusedRenderable) {
-      this._currentFocusedRenderable.blur()
-    }
+    const prev = this.currentFocusedEditor
 
+    this._currentFocusedRenderable?.blur()
     this._currentFocusedRenderable = renderable
+
+    const next = this.currentFocusedEditor
+    if (prev !== next) {
+      this.emit(CliRenderEvents.FOCUSED_EDITOR, next, prev)
+    }
+  }
+
+  public blurRenderable(renderable: Renderable): void {
+    if (this._currentFocusedRenderable === renderable) {
+      this._currentFocusedRenderable = null
+    }
   }
 
   private setCapturedRenderable(renderable: Renderable | undefined): void {
@@ -830,18 +990,26 @@ export class CliRenderer extends EventEmitter implements RenderContext {
   }
 
   private async activateFrame() {
-    await this.loop()
-    this.updateScheduled = false
-    this.resolveIdleIfNeeded()
+    if (!this.updateScheduled) {
+      this.resolveIdleIfNeeded()
+      return
+    }
+
+    try {
+      await this.loop()
+    } finally {
+      this.updateScheduled = false
+      this.resolveIdleIfNeeded()
+    }
   }
 
-  public get useConsole(): boolean {
-    return this._useConsole
+  public get consoleMode(): ConsoleMode {
+    return this._useConsole ? "console-overlay" : "disabled"
   }
 
-  public set useConsole(value: boolean) {
-    this._useConsole = value
-    if (value) {
+  public set consoleMode(mode: ConsoleMode) {
+    this._useConsole = mode === "console-overlay"
+    if (this._useConsole) {
       this.console.activate()
     } else {
       this.console.deactivate()
@@ -906,6 +1074,24 @@ export class CliRenderer extends EventEmitter implements RenderContext {
     return this._useThread
   }
 
+  public get targetFps(): number {
+    return this._targetFps
+  }
+
+  public set targetFps(targetFps: number) {
+    this._targetFps = targetFps
+    this.targetFrameTime = 1000 / this._targetFps
+  }
+
+  public get maxFps(): number {
+    return this._maxFps
+  }
+
+  public set maxFps(maxFps: number) {
+    this._maxFps = maxFps
+    this.minTargetFrameTime = 1000 / this._maxFps
+  }
+
   public get useMouse(): boolean {
     return this._useMouse
   }
@@ -922,8 +1108,45 @@ export class CliRenderer extends EventEmitter implements RenderContext {
     }
   }
 
-  public get experimental_splitHeight(): number {
-    return this._splitHeight
+  public get screenMode(): ScreenMode {
+    return this._screenMode
+  }
+
+  public set screenMode(mode: ScreenMode) {
+    if (this.externalOutputMode === "capture-stdout" && mode !== "split-footer") {
+      throw new Error('externalOutputMode "capture-stdout" requires screenMode "split-footer"')
+    }
+
+    this.applyScreenMode(mode)
+  }
+
+  public get footerHeight(): number {
+    return this._footerHeight
+  }
+
+  public set footerHeight(footerHeight: number) {
+    const normalizedFooterHeight = normalizeFooterHeight(footerHeight)
+    if (normalizedFooterHeight === this._footerHeight) {
+      return
+    }
+
+    this._footerHeight = normalizedFooterHeight
+    if (this.screenMode === "split-footer") {
+      this.applyScreenMode("split-footer")
+    }
+  }
+
+  public get externalOutputMode(): ExternalOutputMode {
+    return this._externalOutputMode
+  }
+
+  public set externalOutputMode(mode: ExternalOutputMode) {
+    if (mode === "capture-stdout" && this.screenMode !== "split-footer") {
+      throw new Error('externalOutputMode "capture-stdout" requires screenMode "split-footer"')
+    }
+
+    this._externalOutputMode = mode
+    this.stdout.write = mode === "capture-stdout" ? this.interceptStdoutWrite : this.realStdoutWrite
   }
 
   public get liveRequestCount(): number {
@@ -955,55 +1178,6 @@ export class CliRenderer extends EventEmitter implements RenderContext {
     this.lib.setKittyKeyboardFlags(this.rendererPtr, flags)
   }
 
-  public set experimental_splitHeight(splitHeight: number) {
-    if (splitHeight < 0) splitHeight = 0
-
-    const prevSplitHeight = this._splitHeight
-
-    if (splitHeight > 0) {
-      this._splitHeight = splitHeight
-      this.renderOffset = this._terminalHeight - this._splitHeight
-      this.height = this._splitHeight
-
-      if (prevSplitHeight === 0) {
-        this.useConsole = false
-        capture.on("write", this.captureCallback)
-        const freedLines = this._terminalHeight - this._splitHeight
-        const scrollDown = ANSI.scrollDown(freedLines)
-        this.writeOut(scrollDown)
-      } else if (prevSplitHeight > this._splitHeight) {
-        const freedLines = prevSplitHeight - this._splitHeight
-        const scrollDown = ANSI.scrollDown(freedLines)
-        this.writeOut(scrollDown)
-      } else if (prevSplitHeight < this._splitHeight) {
-        const additionalLines = this._splitHeight - prevSplitHeight
-        const scrollUp = ANSI.scrollUp(additionalLines)
-        this.writeOut(scrollUp)
-      }
-    } else {
-      if (prevSplitHeight > 0) {
-        this.flushStdoutCache(this._terminalHeight, true)
-
-        capture.off("write", this.captureCallback)
-        this.useConsole = true
-      }
-
-      this._splitHeight = 0
-      this.renderOffset = 0
-      this.height = this._terminalHeight
-    }
-
-    this.width = this._terminalWidth
-    this.lib.setRenderOffset(this.rendererPtr, this.renderOffset)
-    this.lib.resizeRenderer(this.rendererPtr, this.width, this.height)
-    this.nextRenderBuffer = this.lib.getNextBuffer(this.rendererPtr)
-
-    this._console.resize(this.width, this.height)
-    this.root.resize(this.width, this.height)
-    this.emit(CliRenderEvents.RESIZE, this.width, this.height)
-    this.requestRender()
-  }
-
   private interceptStdoutWrite = (chunk: any, encoding?: any, callback?: any): boolean => {
     const text = chunk.toString()
 
@@ -1019,8 +1193,76 @@ export class CliRenderer extends EventEmitter implements RenderContext {
     return true
   }
 
-  public disableStdoutInterception(): void {
-    this.stdout.write = this.realStdoutWrite
+  private applyScreenMode(screenMode: ScreenMode, emitResize: boolean = true, requestRender: boolean = true): void {
+    const prevScreenMode = this._screenMode
+    const prevSplitHeight = this._splitHeight
+    const nextSplitHeight = screenMode === "split-footer" ? this._footerHeight : 0
+
+    if (prevScreenMode === screenMode && prevSplitHeight === nextSplitHeight) {
+      return
+    }
+
+    const prevUseAlternateScreen = prevScreenMode === "alternate-screen"
+    const nextUseAlternateScreen = screenMode === "alternate-screen"
+    const terminalScreenModeChanged = this._terminalIsSetup && prevUseAlternateScreen !== nextUseAlternateScreen
+    const leavingSplitFooter = prevSplitHeight > 0 && nextSplitHeight === 0
+
+    if (this._terminalIsSetup && leavingSplitFooter) {
+      this.flushStdoutCache(this._terminalHeight, true)
+    }
+
+    if (this._terminalIsSetup && !terminalScreenModeChanged) {
+      if (prevSplitHeight === 0 && nextSplitHeight > 0) {
+        const freedLines = this._terminalHeight - nextSplitHeight
+        const scrollDown = ANSI.scrollDown(freedLines)
+        this.writeOut(scrollDown)
+      } else if (prevSplitHeight > nextSplitHeight && nextSplitHeight > 0) {
+        const freedLines = prevSplitHeight - nextSplitHeight
+        const scrollDown = ANSI.scrollDown(freedLines)
+        this.writeOut(scrollDown)
+      } else if (prevSplitHeight < nextSplitHeight && prevSplitHeight > 0) {
+        const additionalLines = nextSplitHeight - prevSplitHeight
+        const scrollUp = ANSI.scrollUp(additionalLines)
+        this.writeOut(scrollUp)
+      }
+    }
+
+    if (prevSplitHeight === 0 && nextSplitHeight > 0) {
+      capture.on("write", this.captureCallback)
+    } else if (prevSplitHeight > 0 && nextSplitHeight === 0) {
+      capture.off("write", this.captureCallback)
+    }
+
+    this._screenMode = screenMode
+    this._splitHeight = nextSplitHeight
+    this.renderOffset = nextSplitHeight > 0 ? this._terminalHeight - nextSplitHeight : 0
+    this.width = this._terminalWidth
+    this.height = nextSplitHeight > 0 ? nextSplitHeight : this._terminalHeight
+
+    this.lib.setRenderOffset(this.rendererPtr, this.renderOffset)
+    this.lib.resizeRenderer(this.rendererPtr, this.width, this.height)
+    this.nextRenderBuffer = this.lib.getNextBuffer(this.rendererPtr)
+    this.currentRenderBuffer = this.lib.getCurrentBuffer(this.rendererPtr)
+
+    this._console.resize(this.width, this.height)
+    this.root.resize(this.width, this.height)
+
+    if (terminalScreenModeChanged) {
+      this.lib.suspendRenderer(this.rendererPtr)
+      this.lib.setupTerminal(this.rendererPtr, nextUseAlternateScreen)
+
+      if (this._useMouse) {
+        this.enableMouse()
+      }
+    }
+
+    if (emitResize) {
+      this.emit(CliRenderEvents.RESIZE, this.width, this.height)
+    }
+
+    if (requestRender) {
+      this.requestRender()
+    }
   }
 
   // TODO: Move this to native
@@ -1092,7 +1334,7 @@ export class CliRenderer extends EventEmitter implements RenderContext {
       privateCapabilityRepliesActive: true,
       explicitWidthCprActive: true,
     })
-    this.lib.setupTerminal(this.rendererPtr, this._useAlternateScreen)
+    this.lib.setupTerminal(this.rendererPtr, this._screenMode === "alternate-screen")
     this._capabilities = this.lib.getTerminalCapabilities(this.rendererPtr)
 
     if (this.debugOverlay.enabled) {
@@ -1410,7 +1652,10 @@ export class CliRenderer extends EventEmitter implements RenderContext {
       this.updateSelection(maybeRenderable, mouseEvent.x, mouseEvent.y)
 
       if (maybeRenderable) {
-        const event = new MouseEvent(maybeRenderable, { ...mouseEvent, isDragging: true })
+        const event = new MouseEvent(maybeRenderable, {
+          ...mouseEvent,
+          isDragging: true,
+        })
         maybeRenderable.processMouseEvent(event)
       }
 
@@ -1419,7 +1664,10 @@ export class CliRenderer extends EventEmitter implements RenderContext {
 
     if (mouseEvent.type === "up" && this.currentSelection?.isDragging) {
       if (maybeRenderable) {
-        const event = new MouseEvent(maybeRenderable, { ...mouseEvent, isDragging: true })
+        const event = new MouseEvent(maybeRenderable, {
+          ...mouseEvent,
+          isDragging: true,
+        })
         maybeRenderable.processMouseEvent(event)
       }
 
@@ -1441,7 +1689,10 @@ export class CliRenderer extends EventEmitter implements RenderContext {
         this.lastOverRenderable !== this.capturedRenderable &&
         !this.lastOverRenderable.isDestroyed
       ) {
-        const event = new MouseEvent(this.lastOverRenderable, { ...mouseEvent, type: "out" })
+        const event = new MouseEvent(this.lastOverRenderable, {
+          ...mouseEvent,
+          type: "out",
+        })
         this.lastOverRenderable.processMouseEvent(event)
       }
       this.lastOverRenderable = maybeRenderable
@@ -1462,7 +1713,10 @@ export class CliRenderer extends EventEmitter implements RenderContext {
     }
 
     if (this.capturedRenderable && mouseEvent.type === "up") {
-      const event = new MouseEvent(this.capturedRenderable, { ...mouseEvent, type: "drag-end" })
+      const event = new MouseEvent(this.capturedRenderable, {
+        ...mouseEvent,
+        type: "drag-end",
+      })
       this.capturedRenderable.processMouseEvent(event)
       this.capturedRenderable.processMouseEvent(new MouseEvent(this.capturedRenderable, mouseEvent))
       if (maybeRenderable) {
@@ -1817,6 +2071,11 @@ export class CliRenderer extends EventEmitter implements RenderContext {
     if (!this._isRunning && !this._isDestroyed) {
       this._isRunning = true
 
+      // Invalidate any queued idle one-shot frame.
+      // start()/live/resume transition to the continuous loop, so queued
+      // activateFrame callbacks must no-op via !updateScheduled.
+      this.updateScheduled = false
+
       if (this.memorySnapshotInterval > 0) {
         this.startMemorySnapshotTimer()
       }
@@ -1936,17 +2195,17 @@ export class CliRenderer extends EventEmitter implements RenderContext {
     this._destroyPending = true
 
     if (this.rendering) {
-      // Defer teardown until the active frame completes to avoid freeing native resources mid-render.
+      // Restore terminal/input state immediately, but defer full native teardown until the frame unwinds.
+      this.prepareDestroyDuringRender()
       return
     }
 
     this.finalizeDestroy()
   }
 
-  private finalizeDestroy(): void {
-    if (this._destroyFinalized) return
-    this._destroyFinalized = true
-    this._destroyPending = false
+  private cleanupBeforeDestroy(): void {
+    if (this._destroyCleanupPrepared) return
+    this._destroyCleanupPrepared = true
 
     process.removeListener("SIGWINCH", this.sigwinchHandler)
     process.removeListener("uncaughtException", this.handleError)
@@ -1968,7 +2227,51 @@ export class CliRenderer extends EventEmitter implements RenderContext {
 
     if (this.memorySnapshotTimer) {
       this.clock.clearInterval(this.memorySnapshotTimer)
+      this.memorySnapshotTimer = null
     }
+
+    if (this.renderTimeout) {
+      this.clock.clearTimeout(this.renderTimeout)
+      this.renderTimeout = null
+    }
+
+    this._isRunning = false
+    this.waitingForPixelResolution = false
+    this.updateStdinParserProtocolContext(
+      {
+        privateCapabilityRepliesActive: false,
+        pixelResolutionQueryActive: false,
+        explicitWidthCprActive: false,
+      },
+      true,
+    )
+    this._useMouse = false
+    this.setCapturedRenderable(undefined)
+
+    this.stdin.removeListener("data", this.stdinListener)
+    if (this.stdin.setRawMode) {
+      this.stdin.setRawMode(false)
+    }
+
+    this.externalOutputMode = "passthrough"
+
+    if (this._splitHeight > 0) {
+      this.flushStdoutCache(this._splitHeight, true)
+    }
+  }
+
+  private prepareDestroyDuringRender(): void {
+    this.cleanupBeforeDestroy()
+    this.lib.suspendRenderer(this.rendererPtr)
+  }
+
+  private finalizeDestroy(): void {
+    if (this._destroyFinalized) return
+
+    this._destroyFinalized = true
+    this._destroyPending = false
+
+    this.cleanupBeforeDestroy()
 
     // Clean up palette detector
     if (this._paletteDetector) {
@@ -1980,44 +2283,16 @@ export class CliRenderer extends EventEmitter implements RenderContext {
 
     this.emit(CliRenderEvents.DESTROY)
 
-    if (this.renderTimeout) {
-      this.clock.clearTimeout(this.renderTimeout)
-      this.renderTimeout = null
-    }
-    this._isRunning = false
-
-    this.waitingForPixelResolution = false
-    this.updateStdinParserProtocolContext(
-      {
-        privateCapabilityRepliesActive: false,
-        pixelResolutionQueryActive: false,
-        explicitWidthCprActive: false,
-      },
-      true,
-    )
-    this.setCapturedRenderable(undefined)
-
     try {
       this.root.destroyRecursively()
     } catch (e) {
       console.error("Error destroying root renderable:", e instanceof Error ? e.stack : String(e))
     }
 
-    // Remove listener before destroying parser
-    this.stdin.removeListener("data", this.stdinListener)
-    if (this.stdin.setRawMode) {
-      this.stdin.setRawMode(false)
-    }
-
     this.stdinParser?.destroy()
     this.stdinParser = null
     this.oscSubscribers.clear()
     this._console.destroy()
-    this.disableStdoutInterception()
-
-    if (this._splitHeight > 0) {
-      this.flushStdoutCache(this._splitHeight, true)
-    }
 
     this.lib.destroyRenderer(this.rendererPtr)
     rendererTracker.removeRenderer(this)
