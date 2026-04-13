@@ -114,6 +114,7 @@ state: struct {
     bracketed_paste: bool = false,
     mouse: bool = false,
     mouse_movement: bool = true,
+    mouse_was_enabled: bool = false,
     pixel_mouse: bool = false,
     color_scheme_updates: bool = false,
     focus_tracking: bool = false,
@@ -175,8 +176,8 @@ pub fn resetState(self: *Terminal, tty: anytype) !void {
         try self.setModifyOtherKeys(tty, false);
     }
 
-    if (self.state.mouse) {
-        try self.setMouseMode(tty, false, self.state.mouse_movement);
+    if (self.state.mouse_was_enabled) {
+        try self.forceDisableMouseMode(tty);
     }
 
     if (self.state.bracketed_paste) {
@@ -458,6 +459,18 @@ fn checkEnvironmentOverrides(self: *Terminal) void {
         }
     }
 
+    if (!self.caps.hyperlinks and !self.term_info.from_xtversion) {
+        const is_wsl = env_map.get("WSL_DISTRO_NAME") != null or env_map.get("WSL_INTEROP") != null;
+        const has_wt_session = env_map.get("WT_SESSION") != null;
+        if (is_wsl and has_wt_session) {
+            if (env_map.get("TERM")) |term| {
+                if (std.mem.startsWith(u8, term, "xterm")) {
+                    self.caps.hyperlinks = true;
+                }
+            }
+        }
+    }
+
     if (!self.caps.osc52 and !self.term_info.from_xtversion) {
         if (env_map.get("WT_SESSION") != null) {
             self.caps.osc52 = true;
@@ -485,6 +498,13 @@ fn checkEnvironmentOverrides(self: *Terminal) void {
     }
 }
 
+fn writeMouseDisableSequences(tty: anytype) !void {
+    try tty.writeAll(ansi.ANSI.disableAnyEventTracking);
+    try tty.writeAll(ansi.ANSI.disableButtonEventTracking);
+    try tty.writeAll(ansi.ANSI.disableMouseTracking);
+    try tty.writeAll(ansi.ANSI.disableSGRMouseMode);
+}
+
 // TODO: Allow pixel mouse mode to be enabled,
 // currently does not make sense and is not supported by higher levels
 pub fn setMouseMode(self: *Terminal, tty: anytype, enable: bool, enable_movement: bool) !void {
@@ -497,6 +517,9 @@ pub fn setMouseMode(self: *Terminal, tty: anytype, enable: bool, enable_movement
     if (enable) {
         self.state.mouse = true;
         self.state.mouse_movement = enable_movement;
+        // Arms the shutdown cleanup path so resetState() will still emit mouse
+        // disable sequences even if a later best-effort disable silently fails.
+        self.state.mouse_was_enabled = true;
         if (!enable_movement) {
             // Some terminals treat ?1000/?1002/?1003 as one family and let the
             // last sequence win. Reset any-event tracking first, then enable
@@ -512,11 +535,16 @@ pub fn setMouseMode(self: *Terminal, tty: anytype, enable: bool, enable_movement
     } else {
         self.state.mouse = false;
         self.state.pixel_mouse = false;
-        try tty.writeAll(ansi.ANSI.disableAnyEventTracking);
-        try tty.writeAll(ansi.ANSI.disableButtonEventTracking);
-        try tty.writeAll(ansi.ANSI.disableMouseTracking);
-        try tty.writeAll(ansi.ANSI.disableSGRMouseMode);
+        try writeMouseDisableSequences(tty);
     }
+}
+
+// Best-effort shutdown path: emit the reset sequences even if tracked state
+// already drifted to false because earlier writes failed.
+pub fn forceDisableMouseMode(self: *Terminal, tty: anytype) !void {
+    self.state.mouse = false;
+    self.state.pixel_mouse = false;
+    try writeMouseDisableSequences(tty);
 }
 
 pub fn setBracketedPaste(self: *Terminal, tty: anytype, enable: bool) !void {

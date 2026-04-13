@@ -202,6 +202,41 @@ describe("SlotRegistry", () => {
     expect(notifyCount).toBe(3)
   })
 
+  test("batch coalesces listener notifications", () => {
+    const registry = new SlotRegistry<TestNode, AppSlots, AppContext>(createMockRenderer(), hostContext)
+    let notifyCount = 0
+
+    registry.subscribe(() => {
+      notifyCount += 1
+    })
+
+    registry.batch(() => {
+      registry.register({
+        id: "first",
+        slots: {
+          statusbar() {
+            return "first"
+          },
+        },
+      })
+
+      registry.register({
+        id: "second",
+        slots: {
+          statusbar() {
+            return "second"
+          },
+        },
+      })
+
+      registry.updateOrder("second", -1)
+      registry.unregister("first")
+    })
+
+    expect(notifyCount).toBe(1)
+    expect(registry.resolve("statusbar").map((renderer) => renderer(hostContext, { user: "sam" }))).toEqual(["second"])
+  })
+
   test("returns false and does not notify when updating order for unknown plugin", () => {
     const registry = new SlotRegistry<TestNode, AppSlots, AppContext>(createMockRenderer(), hostContext)
     let notifyCount = 0

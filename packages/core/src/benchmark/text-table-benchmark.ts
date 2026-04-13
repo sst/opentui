@@ -272,8 +272,9 @@ if (scenarioFilter && filteredScenarios.length === 0) {
 const { renderer, renderOnce } = await createTestRenderer({
   width,
   height,
-  useAlternateScreen: false,
-  useConsole: false,
+  screenMode: "main-screen",
+  externalOutputMode: "passthrough",
+  consoleMode: "disabled",
 })
 
 renderer.requestRender = () => {}

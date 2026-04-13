@@ -6,7 +6,7 @@ import { KeyEvent } from "../../lib/KeyHandler.js"
 
 // Helper function to create a KeyEvent from a string
 function createKeyEvent(
-  input: string | { name: string; shift?: boolean; ctrl?: boolean; meta?: boolean; super?: boolean },
+  input: string | { name: string; shift?: boolean; ctrl?: boolean; meta?: boolean; super?: boolean; baseCode?: number },
 ): KeyEvent {
   if (typeof input === "string") {
     return new KeyEvent({
@@ -29,6 +29,7 @@ function createKeyEvent(
       meta: input.meta ?? false,
       shift: input.shift ?? false,
       super: input.super ?? false,
+      baseCode: input.baseCode,
       option: false,
       number: false,
       raw: input.name,
@@ -622,6 +623,23 @@ describe("Textarea - Keybinding Tests", () => {
 
       currentMockInput.pressKey("g", { ctrl: true })
       expect(editor.logicalCursor.row).toBe(0)
+      expect(editor.logicalCursor.col).toBe(0)
+    })
+
+    it("should use baseCode when matching ctrl shortcuts from alternate layouts", async () => {
+      const { textarea: editor } = await createTextareaRenderable(currentRenderer, renderOnce, {
+        initialValue: "Hello World",
+        width: 40,
+        height: 10,
+      })
+
+      editor.focus()
+      editor.gotoLine(9999)
+      expect(editor.logicalCursor.col).toBe(11)
+
+      const handled = editor.handleKeyPress(createKeyEvent({ name: "ㅁ", baseCode: 97, ctrl: true }))
+
+      expect(handled).toBe(true)
       expect(editor.logicalCursor.col).toBe(0)
     })
 

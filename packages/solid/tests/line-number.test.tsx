@@ -152,4 +152,75 @@ console.log(test())`
     // Line numbers should not be present
     expect(frame).not.toContain(" 1 function")
   })
+
+  test("updates line number gutter colors when fg/bg props change", async () => {
+    const syntaxStyle = SyntaxStyle.create()
+    const [lineFg, setLineFg] = createSignal("#ff0000")
+    const [lineBg, setLineBg] = createSignal("#112233")
+
+    testSetup = await testRender(
+      () => (
+        <box id="root" width="100%" height="100%">
+          <line_number id="line-numbers" fg={lineFg()} bg={lineBg()} width="100%" height="100%">
+            <code id="code-content" content={"alpha\nbeta"} syntaxStyle={syntaxStyle} width="100%" height="100%" />
+          </line_number>
+        </box>
+      ),
+      {
+        width: 20,
+        height: 5,
+      },
+    )
+
+    await testSetup.renderOnce()
+
+    const findCharX = (char: string, y: number) => {
+      const buffer = testSetup.renderer.currentRenderBuffer
+      const charBuffer = buffer.buffers.char
+      const codePoint = char.codePointAt(0)
+      if (codePoint === undefined) return -1
+
+      for (let x = 0; x < buffer.width; x++) {
+        if (charBuffer[y * buffer.width + x] === codePoint) {
+          return x
+        }
+      }
+      return -1
+    }
+
+    const getColorAt = (channel: "fg" | "bg", x: number, y: number) => {
+      const buffer = testSetup.renderer.currentRenderBuffer
+      const colorBuffer = channel === "fg" ? buffer.buffers.fg : buffer.buffers.bg
+      const offset = (y * buffer.width + x) * 4
+      return {
+        r: colorBuffer[offset],
+        g: colorBuffer[offset + 1],
+        b: colorBuffer[offset + 2],
+        a: colorBuffer[offset + 3],
+      }
+    }
+
+    const expectRgb = (
+      actual: { r: number; g: number; b: number; a: number },
+      expected: { r: number; g: number; b: number },
+    ) => {
+      expect(actual.r).toBeCloseTo(expected.r / 255, 2)
+      expect(actual.g).toBeCloseTo(expected.g / 255, 2)
+      expect(actual.b).toBeCloseTo(expected.b / 255, 2)
+      expect(actual.a).toBeCloseTo(1, 2)
+    }
+
+    const line1NumberX = findCharX("1", 0)
+    expect(line1NumberX).toBeGreaterThanOrEqual(0)
+
+    expectRgb(getColorAt("fg", line1NumberX, 0), { r: 0xff, g: 0x00, b: 0x00 })
+    expectRgb(getColorAt("bg", line1NumberX, 0), { r: 0x11, g: 0x22, b: 0x33 })
+
+    setLineFg("#00ff00")
+    setLineBg("#334455")
+    await testSetup.renderOnce()
+
+    expectRgb(getColorAt("fg", line1NumberX, 0), { r: 0x00, g: 0xff, b: 0x00 })
+    expectRgb(getColorAt("bg", line1NumberX, 0), { r: 0x33, g: 0x44, b: 0x55 })
+  })
 })

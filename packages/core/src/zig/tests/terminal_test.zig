@@ -129,6 +129,41 @@ test "setHostEnvVar applies env overrides in shared library mode" {
     try testing.expect(term.skip_graphics_query);
 }
 
+test "environment overrides - enables hyperlinks for WSL Windows Terminal xterm" {
+    var env = std.process.EnvMap.init(testing.allocator);
+    defer env.deinit();
+    try env.put("WSL_DISTRO_NAME", "Ubuntu");
+    try env.put("WT_SESSION", "test-session");
+    try env.put("TERM", "xterm-256color");
+
+    const term = Terminal.init(.{ .env_map = &env });
+
+    try testing.expect(term.caps.hyperlinks);
+}
+
+test "environment overrides - does not enable hyperlinks for WSL without WT_SESSION" {
+    var env = std.process.EnvMap.init(testing.allocator);
+    defer env.deinit();
+    try env.put("WSL_DISTRO_NAME", "Ubuntu");
+    try env.put("TERM", "xterm-256color");
+
+    const term = Terminal.init(.{ .env_map = &env });
+
+    try testing.expect(!term.caps.hyperlinks);
+}
+
+test "environment overrides - does not enable hyperlinks for WSL non-xterm terms" {
+    var env = std.process.EnvMap.init(testing.allocator);
+    defer env.deinit();
+    try env.put("WSL_INTEROP", "/run/WSL/123_interop");
+    try env.put("WT_SESSION", "test-session");
+    try env.put("TERM", "screen-256color");
+
+    const term = Terminal.init(.{ .env_map = &env });
+
+    try testing.expect(!term.caps.hyperlinks);
+}
+
 test "parseXtversion - terminal name only" {
     var term = Terminal.init(.{});
     const response = "\x1bP>|wezterm\x1b\\";
@@ -168,6 +203,10 @@ const TestWriter = struct {
 
     pub fn writeAll(self: *TestWriter, data: []const u8) !void {
         try self.buffer.appendSlice(self.allocator, data);
+    }
+
+    pub fn writeByte(self: *TestWriter, byte: u8) !void {
+        try self.buffer.append(self.allocator, byte);
     }
 
     pub fn print(self: *TestWriter, comptime fmt: []const u8, args: anytype) !void {
@@ -716,4 +755,41 @@ test "restoreTerminalModes - respects mouse movement setting" {
     try testing.expect(idx_enable_mouse < idx_enable_button);
     try testing.expect(idx_enable_button < idx_enable_sgr);
     try testing.expect(std.mem.indexOf(u8, output, ansi.ANSI.enableAnyEventTracking) == null);
+}
+
+test "resetState - force-disables mouse when cleanup is pending and state drifted false" {
+    var term = Terminal.init(.{});
+    term.state.mouse = false;
+    term.state.mouse_movement = false;
+    term.state.mouse_was_enabled = true;
+
+    var writer = TestWriter.init(testing.allocator);
+    defer writer.deinit();
+
+    try term.resetState(&writer);
+
+    const output = writer.getWritten();
+    const idx_disable_any = std.mem.indexOf(u8, output, ansi.ANSI.disableAnyEventTracking).?;
+    const idx_disable_button = std.mem.indexOf(u8, output, ansi.ANSI.disableButtonEventTracking).?;
+    const idx_disable_mouse = std.mem.indexOf(u8, output, ansi.ANSI.disableMouseTracking).?;
+    const idx_disable_sgr = std.mem.indexOf(u8, output, ansi.ANSI.disableSGRMouseMode).?;
+    try testing.expect(idx_disable_any < idx_disable_button);
+    try testing.expect(idx_disable_button < idx_disable_mouse);
+    try testing.expect(idx_disable_mouse < idx_disable_sgr);
+    try testing.expect(!term.state.mouse);
+}
+
+test "resetState - skips mouse disable when mouse was never enabled" {
+    var term = Terminal.init(.{});
+
+    var writer = TestWriter.init(testing.allocator);
+    defer writer.deinit();
+
+    try term.resetState(&writer);
+
+    const output = writer.getWritten();
+    try testing.expect(std.mem.indexOf(u8, output, ansi.ANSI.disableAnyEventTracking) == null);
+    try testing.expect(std.mem.indexOf(u8, output, ansi.ANSI.disableButtonEventTracking) == null);
+    try testing.expect(std.mem.indexOf(u8, output, ansi.ANSI.disableMouseTracking) == null);
+    try testing.expect(std.mem.indexOf(u8, output, ansi.ANSI.disableSGRMouseMode) == null);
 }
