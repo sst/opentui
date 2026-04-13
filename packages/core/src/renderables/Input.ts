@@ -16,10 +16,15 @@ export interface InputRenderableOptions extends Omit<
   TextareaOptions,
   "height" | "minHeight" | "maxHeight" | "initialValue"
 > {
+  /** Initial text value (newlines are stripped) */
   value?: string
+  /** Maximum number of characters allowed */
   maxLength?: number
+  /** Placeholder text (Input only supports string, not StyledText) */
   placeholder?: string
+  /** Input type, use "password" to mask characters */
   type?: "text" | "password"
+  /** Character used to mask input in password mode (must be exactly 1 character) */
   maskChar?: string
 }
 
