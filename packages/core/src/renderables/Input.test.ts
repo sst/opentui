@@ -1367,6 +1367,39 @@ describe("InputRenderable", () => {
       input.destroy()
     })
 
+    it("should render visible mask chars when ascii text overflows viewport", async () => {
+      resetRoot()
+      const { input } = createInputRenderable({ type: "password", width: 5 })
+      input.focus()
+      input.insertText("abcdefgh")
+      // move cursor to start so viewport scrolls back to beginning
+      input.cursorOffset = 0
+      await renderOnce()
+
+      const frame = captureCharFrame()
+
+      // viewport at start shows first 5 mask chars
+      expect(frame).toContain("*****")
+
+      input.destroy()
+    })
+
+    it("should render visible mask chars when emoji text overflows viewport", async () => {
+      resetRoot()
+      // width 5, each emoji is display-width 2, so 3 emoji already overflow
+      const { input } = createInputRenderable({ type: "password", width: 5 })
+      input.focus()
+      input.insertText("🎍🎍🎍🎍")
+      await renderOnce()
+
+      const frame = captureCharFrame()
+
+      // viewport must show some mask chars, not be blank
+      expect(frame).toMatch(/\*+/)
+
+      input.destroy()
+    })
+
     it("should keep cursor position correct after typing in password mode", async () => {
       resetRoot()
       const { input } = createInputRenderable({ type: "password", width: 20 })

@@ -383,14 +383,14 @@ export class InputRenderable extends TextareaRenderable {
     const graphemeCount = [...new Intl.Segmenter().segment(text)].length
     const masked = this._maskChar.repeat(graphemeCount)
     const viewport = this.editorView.getViewport()
-    const offsetX = viewport.offsetX
-    const sliced = masked.slice(offsetX, offsetX + this.width)
+    const graphemeOffsetX = this._displayColToGraphemeIndex(text, viewport.offsetX)
+    const sliced = masked.slice(graphemeOffsetX, graphemeOffsetX + this.width)
 
     const sel = this.editorView.getSelection()
     const selection = sel
       ? {
-          start: Math.max(0, sel.start - offsetX),
-          end: Math.max(0, sel.end - offsetX),
+          start: Math.max(0, this._displayColToGraphemeIndex(text, sel.start) - graphemeOffsetX),
+          end: Math.max(0, this._displayColToGraphemeIndex(text, sel.end) - graphemeOffsetX),
           bgColor: this._selectionBg,
           fgColor: this._selectionFg,
         }
