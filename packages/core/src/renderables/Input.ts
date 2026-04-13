@@ -320,7 +320,8 @@ export class InputRenderable extends TextareaRenderable {
       return
     }
 
-    const masked = this._maskChar.repeat(text.length)
+    const graphemeCount = [...new Intl.Segmenter().segment(text)].length
+    const masked = this._maskChar.repeat(graphemeCount)
     const viewport = this.editorView.getViewport()
     const offsetX = viewport.offsetX
     const sliced = masked.slice(offsetX, offsetX + this.width)

@@ -1547,4 +1547,36 @@ describe("InputRenderable", () => {
         input.destroy()
       })
     })
+
+    it("should produce one mask char per emoji grapheme", async () => {
+      resetRoot()
+      const { input } = createInputRenderable({ type: "password", width: 20 })
+      input.focus()
+      input.insertText("🎍😍")
+      await renderOnce()
+
+      const frame = captureCharFrame()
+
+      expect(frame).toContain("**")
+      expect(frame).not.toContain("***")
+      expect(frame).not.toContain("🎍")
+      expect(frame).not.toContain("😍")
+
+      input.destroy()
+    })
+
+    it("should produce one mask char per ZWJ sequence", async () => {
+      resetRoot()
+      const { input } = createInputRenderable({ type: "password", width: 20 })
+      input.focus()
+      input.insertText("👨‍👩‍👧")
+      await renderOnce()
+
+      const frame = captureCharFrame()
+
+      expect(frame).toContain("*")
+      expect(frame).not.toContain("**")
+
+      input.destroy()
+    })
   })
