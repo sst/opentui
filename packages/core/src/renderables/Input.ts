@@ -15,12 +15,11 @@ export interface InputRenderableOptions extends Omit<
   TextareaOptions,
   "height" | "minHeight" | "maxHeight" | "initialValue"
 > {
-  /** Initial text value (newlines are stripped) */
   value?: string
-  /** Maximum number of characters allowed */
   maxLength?: number
-  /** Placeholder text (Input only supports string, not StyledText) */
   placeholder?: string
+  type?: "text" | "password"
+  maskChar?: string
 }
 
 // TODO: make this just plain strings instead of an enum (same for other events)
@@ -44,6 +43,8 @@ export enum InputRenderableEvents {
 export class InputRenderable extends TextareaRenderable {
   private _maxLength: number
   private _lastCommittedValue: string = ""
+  private _type: "text" | "password"
+  private _maskChar: string
 
   // Only specify defaults that differ from TextareaRenderable/EditBufferRenderable
   private static readonly defaultOptions = {
@@ -52,6 +53,8 @@ export class InputRenderable extends TextareaRenderable {
     // Input-specific
     maxLength: 1000,
     value: "",
+    type: "text" as "text" | "password",
+    maskChar: "*",
   } satisfies Partial<InputRenderableOptions>
 
   constructor(ctx: RenderContext, options: InputRenderableOptions) {
@@ -78,6 +81,8 @@ export class InputRenderable extends TextareaRenderable {
 
     this._maxLength = maxLength
     this._lastCommittedValue = this.plainText
+    this._type = options.type ?? defaults.type
+    this._maskChar = options.maskChar ?? defaults.maskChar
 
     // Set cursor to end of initial value
     if (initialValue) {
@@ -230,6 +235,27 @@ export class InputRenderable extends TextareaRenderable {
 
   public get maxLength(): number {
     return this._maxLength
+  }
+
+  public set type(type: "text" | "password") {
+    this._type = type
+    this.requestRender()
+  }
+
+  public get type(): "text" | "password" {
+    return this._type
+  }
+
+  public set maskChar(maskChar: string) {
+    if (maskChar.length !== 1) {
+      throw new Error("maskChar must be exactly 1 character")
+    }
+    this._maskChar = maskChar
+    this.requestRender()
+  }
+
+  public get maskChar(): string {
+    return this._maskChar
   }
 
   public override set placeholder(placeholder: string) {

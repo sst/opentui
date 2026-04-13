@@ -1225,4 +1225,60 @@ describe("InputRenderable", () => {
       expect(input.cursorOffset).toBe(5)
     })
   })
+
+  describe("Password Mode", () => {
+    it("should default type to 'text'", () => {
+      const { input } = createInputRenderable({})
+      expect(input.type).toBe("text")
+    })
+
+    it("should default maskChar to '*'", () => {
+      const { input } = createInputRenderable({})
+      expect(input.maskChar).toBe("*")
+    })
+
+    it("should accept type: 'password' in options", () => {
+      const { input } = createInputRenderable({ type: "password" })
+      expect(input.type).toBe("password")
+    })
+
+    it("should accept custom maskChar in options", () => {
+      const { input } = createInputRenderable({ maskChar: "●" })
+      expect(input.maskChar).toBe("●")
+    })
+
+    it("should throw when maskChar is empty string", () => {
+      const { input } = createInputRenderable({})
+      expect(() => {
+        input.maskChar = ""
+      }).toThrow()
+    })
+
+    it("should throw when maskChar is multi-char", () => {
+      const { input } = createInputRenderable({})
+      expect(() => {
+        input.maskChar = "ab"
+      }).toThrow()
+    })
+
+    it("should accept single-char maskChar", () => {
+      const { input } = createInputRenderable({})
+      input.maskChar = "●"
+      expect(input.maskChar).toBe("●")
+    })
+
+    it("should return real text from value in password mode", () => {
+      const { input } = createInputRenderable({ type: "password" })
+      input.focus()
+      input.insertText("hello")
+      expect(input.value).toBe("hello")
+    })
+
+    it("should update type at runtime", () => {
+      const { input } = createInputRenderable({})
+      expect(input.type).toBe("text")
+      input.type = "password"
+      expect(input.type).toBe("password")
+    })
+  })
 })
