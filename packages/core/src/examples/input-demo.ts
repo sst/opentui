@@ -71,7 +71,7 @@ Type: Enter text in focused field`
   const statusText = t`${bold(fg("#FFFFFF")("Input Values:"))}
 Name: "${nameValue}" (${fg(nameColor)(nameStatus)})
 Email: "${emailValue}" (${fg(emailColor)(emailStatus)})
-Password: "${passwordValue.replace(/./g, "*")}" (${fg(passwordColor)(passwordStatus)})
+Password: "${passwordValue}" (${fg(passwordColor)(passwordStatus)})
 Comment: "${commentValue}" (${fg(commentColor)(commentStatus)})
 
 ${bold(fg("#FFAA00")(`Active Input: ${activeInputName}`))}
@@ -198,6 +198,7 @@ export function run(rendererInstance: CliRenderer): void {
     cursorColor: "#FFFF00",
     value: "",
     maxLength: 50,
+    type: "password",
   })
 
   commentInput = new InputRenderable(renderer, {
