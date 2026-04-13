@@ -315,6 +315,23 @@ describe("TerminalConsole", () => {
       expect(onCopy).toHaveBeenCalledWith("Hello")
     })
 
+    test("should use baseCode for Ctrl+Shift+C from alternate layouts", () => {
+      const onCopy = mock(() => {})
+      terminalConsole = new TerminalConsole(mockRenderer as any, {
+        position: ConsolePosition.BOTTOM,
+        sizePercent: 30,
+        onCopySelection: onCopy,
+      })
+
+      terminalConsole["_displayLines"] = [{ text: "Hello World", level: "LOG" as any, indent: false }]
+      terminalConsole["_selectionStart"] = { line: 0, col: 0 }
+      terminalConsole["_selectionEnd"] = { line: 0, col: 5 }
+
+      terminalConsole["handleKeyPress"]({ name: "ㅊ", baseCode: 99, ctrl: true, shift: true, meta: false } as any)
+
+      expect(onCopy).toHaveBeenCalledWith("Hello")
+    })
+
     test("should not trigger when no selection", () => {
       const onCopy = mock(() => {})
       terminalConsole = new TerminalConsole(mockRenderer as any, {

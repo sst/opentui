@@ -1,10 +1,18 @@
-export interface KeyBinding<Action extends string = string> {
+export interface KeyBindingLike {
   name: string
   ctrl?: boolean
   shift?: boolean
   meta?: boolean
   super?: boolean
+}
+
+export interface KeyBinding<Action extends string = string> extends KeyBindingLike {
   action: Action
+}
+
+export interface KeyBindingLookup extends KeyBindingLike {
+  // Kitty's base-layout codepoint as a Unicode number. Example: 99 means "c".
+  baseCode?: number
 }
 
 export type KeyAliasMap = Record<string, string>
@@ -62,8 +70,67 @@ export function mergeKeyBindings<Action extends string>(
   return Array.from(map.values())
 }
 
-export function getKeyBindingKey<Action extends string>(binding: KeyBinding<Action>): string {
+export function getKeyBindingKey(binding: KeyBindingLike): string {
   return `${binding.name}:${binding.ctrl ? 1 : 0}:${binding.shift ? 1 : 0}:${binding.meta ? 1 : 0}:${binding.super ? 1 : 0}`
+}
+
+// `baseCode` is Kitty's "base layout codepoint": the character for the same
+// physical key on the keyboard's base layout. Example: an event may arrive as
+// `name: "ㅊ", baseCode: 99`, where `99` is Unicode `c`. We normalize that
+// numeric codepoint to the key names we store in key maps so Ctrl+ㅊ can still
+// match a Ctrl+C binding.
+function getBaseCodeKeyName(baseCode: number | undefined): string | undefined {
+  if (baseCode === undefined || baseCode < 32 || baseCode === 127) {
+    return undefined
+  }
+
+  try {
+    const name = String.fromCodePoint(baseCode)
+
+    if (name.length === 1 && name >= "A" && name <= "Z") {
+      return name.toLowerCase()
+    }
+
+    return name
+  } catch {
+    return undefined
+  }
+}
+
+// Return every lookup key that can represent this event. We try the parsed
+// name first, then the base-layout key when Kitty provides one. That keeps
+// direct character bindings precise, and still lets physical-layout
+// shortcuts resolve.
+export function getKeyBindingKeys(binding: KeyBindingLookup): string[] {
+  const names = new Set([binding.name])
+  const baseCodeName = getBaseCodeKeyName(binding.baseCode)
+
+  if (baseCodeName) {
+    names.add(baseCodeName)
+  }
+
+  return [...names].map((name) => getKeyBindingKey({ ...binding, name }))
+}
+
+export function getKeyBindingAction<Action extends string>(
+  map: Map<string, Action>,
+  binding: KeyBindingLookup,
+): Action | undefined {
+  for (const key of getKeyBindingKeys(binding)) {
+    const action = map.get(key)
+
+    if (action !== undefined) {
+      return action
+    }
+  }
+
+  return undefined
+}
+
+export function matchesKeyBinding(binding: KeyBindingLookup, match: KeyBindingLike): boolean {
+  const matchKey = getKeyBindingKey(match)
+
+  return getKeyBindingKeys(binding).includes(matchKey)
 }
 
 export function buildKeyBindingsMap<Action extends string>(

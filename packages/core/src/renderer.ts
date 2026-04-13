@@ -37,6 +37,7 @@ import {
 } from "./lib/terminal-capability-detection.js"
 import { type Clock, type TimerHandle, SystemClock } from "./lib/clock.js"
 import { StdinParser, type StdinEvent, type StdinParserProtocolContext } from "./lib/stdin-parser.js"
+import { matchesKeyBinding } from "./lib/keymapping.js"
 
 registerEnvVar({
   name: "OTUI_DUMP_CAPTURES",
@@ -504,7 +505,11 @@ export class CliRenderer extends EventEmitter implements RenderContext {
   private automaticMemorySnapshot: boolean = false
   private memorySnapshotInterval: number
   private memorySnapshotTimer: TimerHandle | null = null
-  private lastMemorySnapshot: { heapUsed: number; heapTotal: number; arrayBuffers: number } = {
+  private lastMemorySnapshot: {
+    heapUsed: number
+    heapTotal: number
+    arrayBuffers: number
+  } = {
     heapUsed: 0,
     heapTotal: 0,
     arrayBuffers: 0,
@@ -605,7 +610,11 @@ export class CliRenderer extends EventEmitter implements RenderContext {
   private _capabilities: any | null = null
   private _latestPointer: { x: number; y: number } = { x: 0, y: 0 }
   private _hasPointer: boolean = false
-  private _lastPointerModifiers: RawMouseEvent["modifiers"] = { shift: false, alt: false, ctrl: false }
+  private _lastPointerModifiers: RawMouseEvent["modifiers"] = {
+    shift: false,
+    alt: false,
+    ctrl: false,
+  }
   private _currentMousePointerStyle: MousePointerStyle | undefined = undefined
 
   private _currentFocusedRenderable: Renderable | null = null
@@ -756,7 +765,9 @@ export class CliRenderer extends EventEmitter implements RenderContext {
     const useKittyForParsing = kittyConfig !== null
     this._keyHandler = new InternalKeyHandler()
     this._keyHandler.on("keypress", (event) => {
-      if (this.exitOnCtrlC && event.name === "c" && event.ctrl) {
+      // Use the shared matcher here too. Kitty can report a non-Latin
+      // character plus a base-layout `c`, and Ctrl+C should still exit.
+      if (this.exitOnCtrlC && matchesKeyBinding(event, { name: "c", ctrl: true })) {
         process.nextTick(() => {
           this.destroy()
         })
@@ -889,15 +900,18 @@ export class CliRenderer extends EventEmitter implements RenderContext {
 
     const prev = this.currentFocusedEditor
 
-    if (this._currentFocusedRenderable) {
-      this._currentFocusedRenderable.blur()
-    }
-
+    this._currentFocusedRenderable?.blur()
     this._currentFocusedRenderable = renderable
 
     const next = this.currentFocusedEditor
     if (prev !== next) {
       this.emit(CliRenderEvents.FOCUSED_EDITOR, next, prev)
+    }
+  }
+
+  public blurRenderable(renderable: Renderable): void {
+    if (this._currentFocusedRenderable === renderable) {
+      this._currentFocusedRenderable = null
     }
   }
 
@@ -1638,7 +1652,10 @@ export class CliRenderer extends EventEmitter implements RenderContext {
       this.updateSelection(maybeRenderable, mouseEvent.x, mouseEvent.y)
 
       if (maybeRenderable) {
-        const event = new MouseEvent(maybeRenderable, { ...mouseEvent, isDragging: true })
+        const event = new MouseEvent(maybeRenderable, {
+          ...mouseEvent,
+          isDragging: true,
+        })
         maybeRenderable.processMouseEvent(event)
       }
 
@@ -1649,7 +1666,10 @@ export class CliRenderer extends EventEmitter implements RenderContext {
       this.updateSelection(maybeRenderable, mouseEvent.x, mouseEvent.y)
 
       if (maybeRenderable) {
-        const event = new MouseEvent(maybeRenderable, { ...mouseEvent, isDragging: true })
+        const event = new MouseEvent(maybeRenderable, {
+          ...mouseEvent,
+          isDragging: true,
+        })
         maybeRenderable.processMouseEvent(event)
       }
 
@@ -1671,7 +1691,10 @@ export class CliRenderer extends EventEmitter implements RenderContext {
         this.lastOverRenderable !== this.capturedRenderable &&
         !this.lastOverRenderable.isDestroyed
       ) {
-        const event = new MouseEvent(this.lastOverRenderable, { ...mouseEvent, type: "out" })
+        const event = new MouseEvent(this.lastOverRenderable, {
+          ...mouseEvent,
+          type: "out",
+        })
         this.lastOverRenderable.processMouseEvent(event)
       }
       this.lastOverRenderable = maybeRenderable
@@ -1692,7 +1715,10 @@ export class CliRenderer extends EventEmitter implements RenderContext {
     }
 
     if (this.capturedRenderable && mouseEvent.type === "up") {
-      const event = new MouseEvent(this.capturedRenderable, { ...mouseEvent, type: "drag-end" })
+      const event = new MouseEvent(this.capturedRenderable, {
+        ...mouseEvent,
+        type: "drag-end",
+      })
       this.capturedRenderable.processMouseEvent(event)
       this.capturedRenderable.processMouseEvent(new MouseEvent(this.capturedRenderable, mouseEvent))
       if (maybeRenderable) {

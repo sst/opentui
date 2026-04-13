@@ -310,7 +310,10 @@ export function parseKittyKeyboard(sequence: string): ParsedKey | null {
 
   let text = ""
 
-  // Parse field 1: unicode-key-code:shifted_codepoint:base_layout_codepoint
+  // Parse field 1: unicode-key-code:shifted_codepoint:base_layout_codepoint.
+  // The character this key produced, the shifted variant, and what the same
+  // physical key would be on the base layout. Example: a key can produce `ㅊ`
+  // but still report base-layout codepoint 99, which is Unicode `c`.
   const field1 = fields[0]?.split(":") || []
   const codepointStr = field1[0]
   if (!codepointStr) return null
@@ -347,7 +350,8 @@ export function parseKittyKeyboard(sequence: string): ParsedKey | null {
       const char = String.fromCodePoint(codepoint)
       key.name = char
 
-      // Store base layout codepoint for keyboard layout disambiguation
+      // Keep the raw Unicode codepoint from Kitty so higher-level matching can
+      // later turn `99` into `c` and use that as a layout-stable fallback.
       if (baseCodepoint) {
         key.baseCode = baseCodepoint
       }

@@ -733,6 +733,7 @@ describe("Renderable - Focus", () => {
 
     renderable.focus()
     expect(renderable.focused).toBe(true)
+    expect(testRenderer.currentFocusedRenderable).toEqual(renderable)
 
     renderable.blur()
     expect(renderable.focused).toBe(false)
@@ -816,6 +817,50 @@ describe("Renderable - Focus", () => {
 
     expect(onPasteCalled).toBe(true)
     expect(handlePasteCalled).toBe(false)
+  })
+
+  test("blur() calls _ctx.blurRenderable to reset focusedRenderable", () => {
+    const renderable = new TestFocusableRenderable(testRenderer, { id: "test-blur-context" })
+    const blurSpy = spyOn(testRenderer, "blurRenderable")
+
+    renderable.focus()
+    expect(renderable.focused).toBe(true)
+    expect(blurSpy).not.toHaveBeenCalled()
+    expect(testRenderer.currentFocusedRenderable).toEqual(renderable)
+
+    renderable.blur()
+    expect(blurSpy).toHaveBeenCalledWith(renderable)
+    expect(blurSpy).toHaveBeenCalledTimes(1)
+    expect(testRenderer.currentFocusedRenderable).toBeNull()
+  })
+
+  test("destroy() blurs renderable on context when focused", () => {
+    const renderable = new TestFocusableRenderable(testRenderer, { id: "test-destroy-focused" })
+    const blurSpy = spyOn(testRenderer, "blurRenderable")
+
+    renderable.focus()
+    expect(renderable.focused).toBe(true)
+    expect(blurSpy).not.toHaveBeenCalled()
+    expect(testRenderer.currentFocusedRenderable).toEqual(renderable)
+
+    renderable.destroy()
+    expect(blurSpy).toHaveBeenCalledWith(renderable)
+    expect(blurSpy).toHaveBeenCalledTimes(1)
+    expect(renderable.focused).toBe(false)
+    expect(testRenderer.currentFocusedRenderable).toBeNull()
+  })
+
+  test("destroy() does not call blurRenderable when renderable was not focused", () => {
+    const renderable = new TestFocusableRenderable(testRenderer, { id: "test-destroy-not-focused" })
+    const blurSpy = spyOn(testRenderer, "blurRenderable")
+
+    // Don't focus the renderable
+    expect(renderable.focused).toBe(false)
+
+    renderable.destroy()
+    // blur() is called but returns early since renderable wasn't focused
+    // so blurRenderable is never called
+    expect(blurSpy).not.toHaveBeenCalled()
   })
 })
 

@@ -6,7 +6,32 @@ import {
   type TabSelectOption,
 } from "./TabSelect.js"
 import { createTestRenderer, type MockInput, type TestRenderer } from "../testing/test-renderer.js"
+import { KeyEvent } from "../lib/KeyHandler.js"
 import { ManualClock } from "../testing/manual-clock.js"
+
+function createKeyEvent(input: {
+  name: string
+  shift?: boolean
+  ctrl?: boolean
+  meta?: boolean
+  super?: boolean
+  baseCode?: number
+}): KeyEvent {
+  return new KeyEvent({
+    name: input.name,
+    sequence: input.name === "space" ? " " : input.name,
+    ctrl: input.ctrl ?? false,
+    meta: input.meta ?? false,
+    shift: input.shift ?? false,
+    super: input.super ?? false,
+    baseCode: input.baseCode,
+    option: false,
+    number: false,
+    raw: input.name,
+    eventType: "press",
+    source: "raw",
+  })
+}
 
 let currentRenderer: TestRenderer
 let currentMockInput: MockInput
@@ -69,6 +94,22 @@ describe("TabSelectRenderable", () => {
       // H should move left
       currentMockInput.pressKey("h")
       expect(tabSelect.getSelectedIndex()).toBe(0)
+    })
+
+    test("should use baseCode for custom key bindings from alternate layouts", async () => {
+      const { tabSelect } = await createTabSelectRenderable(currentRenderer, {
+        width: 100,
+        options: sampleOptions,
+        keyBindings: [{ name: "l", action: "move-right" }],
+      })
+
+      tabSelect.focus()
+      expect(tabSelect.getSelectedIndex()).toBe(0)
+
+      const handled = tabSelect.handleKeyPress(createKeyEvent({ name: "ㅣ", baseCode: 108 }))
+
+      expect(handled).toBe(true)
+      expect(tabSelect.getSelectedIndex()).toBe(1)
     })
 
     test("should support key aliases", async () => {
