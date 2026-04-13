@@ -1425,8 +1425,6 @@ export abstract class Renderable extends BaseRenderable {
   }
 
   public render(buffer: OptimizedBuffer, deltaTime: number): void {
-    const screenX = this._screenX
-    const screenY = this._screenY
     let renderBuffer = buffer
     if (this.buffered && this.frameBuffer) {
       renderBuffer = this.frameBuffer
@@ -1442,6 +1440,11 @@ export abstract class Renderable extends BaseRenderable {
       this.renderAfter.call(this, renderBuffer, deltaTime)
     }
 
+    // Hooks may move the renderable mid-frame, so sample the cached absolute
+    // position after they run before hit-grid writes or framebuffer compositing.
+    const screenX = this._screenX
+    const screenY = this._screenY
+
     this.markClean()
     this._ctx.addToHitGrid(screenX, screenY, this.width, this.height, this.num)
 
@@ -1451,7 +1454,9 @@ export abstract class Renderable extends BaseRenderable {
   }
 
   protected _hasVisibleChildFilter(): boolean {
-    return false
+    // Presume an override of _getVisibleChildren means this subclass is using
+    // the legacy filtering hook, so existing custom renderables keep working.
+    return this._getVisibleChildren !== Renderable.prototype._getVisibleChildren
   }
 
   protected _getVisibleChildren(): number[] {

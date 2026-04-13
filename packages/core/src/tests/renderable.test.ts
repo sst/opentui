@@ -282,6 +282,71 @@ describe("Renderable - Child Management", () => {
     expect(parent.getRenderable("child2")).toBe(child2)
   })
 
+  test("renderBefore position changes update hit-grid coordinates in the same frame", async () => {
+    testRenderer.requestRender = () => {}
+    const hitGridSpy = spyOn(testRenderer, "addToHitGrid")
+
+    const renderable = new TestRenderable(testRenderer, {
+      id: "hook-moved-hit-grid",
+      position: "absolute",
+      left: 2,
+      top: 3,
+      width: 4,
+      height: 2,
+      renderBefore: function () {
+        if (this.translateX === 0) {
+          this.translateX = 5
+        }
+      },
+    })
+
+    testRenderer.root.add(renderable)
+    await renderOnce()
+
+    expect(renderable.screenX).toBe(7)
+
+    const call = hitGridSpy.mock.calls.find((args) => args[4] === renderable.num)
+    if (!call) {
+      throw new Error("Expected renderable to be added to the hit grid")
+    }
+
+    expect(call[0]).toBe(renderable.screenX)
+    expect(call[1]).toBe(renderable.screenY)
+  })
+
+  test("renderBefore position changes update frame-buffer compositing coordinates in the same frame", async () => {
+    testRenderer.requestRender = () => {}
+    const drawFrameBufferSpy = spyOn(testRenderer.nextRenderBuffer, "drawFrameBuffer")
+
+    const renderable = new TestRenderable(testRenderer, {
+      id: "hook-moved-buffered",
+      buffered: true,
+      position: "absolute",
+      left: 2,
+      top: 3,
+      width: 4,
+      height: 2,
+      renderBefore: function () {
+        if (this.translateX === 0) {
+          this.translateX = 5
+        }
+      },
+    })
+
+    testRenderer.root.add(renderable)
+    await renderOnce()
+
+    expect(renderable.screenX).toBe(7)
+
+    const call = drawFrameBufferSpy.mock.calls.find((args) => args[2]?.id === `framebuffer-${renderable.id}`)
+    if (!call) {
+      throw new Error("Expected renderable frame buffer to be composited")
+    }
+
+    expect(call[0]).toBe(renderable.screenX)
+    expect(call[1]).toBe(renderable.screenY)
+  })
+
   test("can insert child at specific index", () => {
     const parent = new TestRenderable(testRenderer, { id: "parent" })
     const child1 = new TestRenderable(testRenderer, { id: "child1" })
@@ -1013,6 +1078,56 @@ describe("Renderable - Layout with Viewport Filtering", () => {
       return children.map((c) => c.num)
     }
   }
+
+  class LegacyViewportFilteringRenderable extends Renderable {
+    private _filterEnabled = false
+
+    constructor(ctx: RenderContext, options: RenderableOptions) {
+      super(ctx, options)
+    }
+
+    enableFiltering() {
+      this._filterEnabled = true
+    }
+
+    protected _getVisibleChildren(): number[] {
+      if (!this._filterEnabled) {
+        return super._getVisibleChildren()
+      }
+
+      return this._childrenInZIndexOrder.slice(0, 1).map((child) => child.num)
+    }
+  }
+
+  test("legacy subclasses that only override _getVisibleChildren still filter children", async () => {
+    const parent = new LegacyViewportFilteringRenderable(testRenderer, {
+      id: "parent",
+      width: 100,
+      height: 100,
+      flexDirection: "column",
+    })
+
+    const visibleChild = new CountingRenderable(testRenderer, {
+      id: "visible-child",
+      height: 30,
+      flexGrow: 0,
+    })
+    const filteredChild = new CountingRenderable(testRenderer, {
+      id: "filtered-child",
+      height: 30,
+      flexGrow: 0,
+    })
+
+    parent.add(visibleChild)
+    parent.add(filteredChild)
+    parent.enableFiltering()
+    testRenderer.root.add(parent)
+
+    await renderOnce()
+
+    expect(visibleChild.renderCount).toBeGreaterThan(0)
+    expect(filteredChild.renderCount).toBe(0)
+  })
 
   test("newly added children receive layout even when filtered from viewport", async () => {
     const parent = new ViewportFilteringRenderable(testRenderer, {
