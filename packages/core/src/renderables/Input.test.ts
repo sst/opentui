@@ -1439,13 +1439,112 @@ describe("InputRenderable", () => {
        expect(input.getSelectedText()).toBe("")
      })
 
-     it("should use normal word navigation in text mode (regression)", () => {
-       const { input } = createInputRenderable({})
-       input.focus()
-       input.insertText("hello world")
-       input.cursorOffset = 0
-       input.moveWordForward()
-       expect(input.cursorOffset).toBe(6)
-     })
-   })
-})
+      it("should use normal word navigation in text mode (regression)", () => {
+        const { input } = createInputRenderable({})
+        input.focus()
+        input.insertText("hello world")
+        input.cursorOffset = 0
+        input.moveWordForward()
+        expect(input.cursorOffset).toBe(6)
+      })
+
+      it("should switch rendering from text to password at runtime", async () => {
+        resetRoot()
+        const { input } = createInputRenderable({ width: 20 })
+        input.focus()
+        input.insertText("hello")
+        await renderOnce()
+        expect(captureCharFrame()).toContain("hello")
+
+        input.type = "password"
+        await renderOnce()
+        const frame = captureCharFrame()
+        expect(frame).toContain("*****")
+        expect(frame).not.toContain("hello")
+
+        input.destroy()
+      })
+
+      it("should switch rendering from password to text at runtime", async () => {
+        resetRoot()
+        const { input } = createInputRenderable({ type: "password", width: 20 })
+        input.focus()
+        input.insertText("hello")
+        await renderOnce()
+        expect(captureCharFrame()).toContain("*****")
+
+        input.type = "text"
+        await renderOnce()
+        const frame = captureCharFrame()
+        expect(frame).toContain("hello")
+        expect(frame).not.toContain("*****")
+
+        input.destroy()
+      })
+
+      it("should update rendering when maskChar changes at runtime", async () => {
+        resetRoot()
+        const { input } = createInputRenderable({ type: "password", width: 20 })
+        input.focus()
+        input.insertText("abc")
+        await renderOnce()
+        expect(captureCharFrame()).toContain("***")
+
+        input.maskChar = "●"
+        await renderOnce()
+        const frame = captureCharFrame()
+        expect(frame).toContain("●●●")
+        expect(frame).not.toContain("***")
+
+        input.destroy()
+      })
+
+      it("should respect maxLength in password mode", () => {
+        const { input } = createInputRenderable({ type: "password", maxLength: 5 })
+        input.focus()
+        input.insertText("hello world")
+        expect(input.value).toBe("hello")
+        expect(input.value.length).toBe(5)
+      })
+
+      it("should handle paste in password mode", () => {
+        const { input } = createInputRenderable({ type: "password" })
+        input.focus()
+        const pasteEvent = { bytes: new TextEncoder().encode("pasted") }
+        input.handlePaste(pasteEvent as any)
+        expect(input.value).toBe("pasted")
+      })
+
+      it("should emit INPUT event with real text in password mode", () => {
+        const { input } = createInputRenderable({ type: "password" })
+        input.focus()
+        const received: string[] = []
+        input.on(InputRenderableEvents.INPUT, (v: string) => received.push(v))
+        input.insertText("a")
+        expect(received).toEqual(["a"])
+      })
+
+      it("should emit CHANGE event with real text in password mode", () => {
+        const { input } = createInputRenderable({ type: "password" })
+        input.focus()
+        const received: string[] = []
+        input.on(InputRenderableEvents.CHANGE, (v: string) => received.push(v))
+        input.insertText("secret")
+        input.blur()
+        expect(received).toEqual(["secret"])
+      })
+
+      it("should handle programmatic value set in password mode", async () => {
+        resetRoot()
+        const { input } = createInputRenderable({ type: "password", width: 20 })
+        input.value = "hello"
+        await renderOnce()
+        const frame = captureCharFrame()
+        expect(frame).toContain("*****")
+        expect(frame).not.toContain("hello")
+        expect(input.value).toBe("hello")
+
+        input.destroy()
+      })
+    })
+  })
