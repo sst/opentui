@@ -1382,6 +1382,21 @@ describe("InputRenderable", () => {
       input.destroy()
     })
 
+    it("should place cursor at grapheme index after emoji input", async () => {
+      resetRoot()
+      const { input } = createInputRenderable({ type: "password", width: 20 })
+      input.focus()
+      input.insertText("🎍😍")
+      await renderOnce()
+
+      const frame: CapturedFrame = captureSpans()
+
+      // 2 emoji graphemes -> cursor at column 2 (not 4 which is display-width sum)
+      expect(frame.cursor).toEqual([input.x + 3, input.y + 1])
+
+      input.destroy()
+    })
+
      it("should not affect text mode rendering", async () => {
        resetRoot()
        const { input } = createInputRenderable({ width: 20 })

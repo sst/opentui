@@ -299,6 +299,66 @@ export class InputRenderable extends TextareaRenderable {
     return true
   }
 
+  // Maps a display-width column in the real text to a grapheme index.
+  // Needed in password mode because mask chars are always width-1 while
+  // the real text may contain wide characters (emoji, CJK, etc.).
+  private _displayColToGraphemeIndex(text: string, displayCol: number): number {
+    let col = 0
+    let idx = 0
+    for (const { segment } of new Intl.Segmenter().segment(text)) {
+      if (col >= displayCol) break
+      col += this._graphemeDisplayWidth(segment)
+      idx++
+    }
+    return idx
+  }
+
+  // Approximates terminal display width for a grapheme cluster.
+  // Matches the wcwidth/unicode ranges used by the Zig rendering layer.
+  private _graphemeDisplayWidth(g: string): number {
+    const cp = g.codePointAt(0)
+    if (cp === undefined) return 1
+    if (
+      (cp >= 0x1100 && cp <= 0x115f) ||
+      cp === 0x2329 || cp === 0x232a ||
+      (cp >= 0x2e80 && cp <= 0x303e) ||
+      (cp >= 0x3040 && cp <= 0x33ff) ||
+      (cp >= 0x3400 && cp <= 0x4dbf) ||
+      (cp >= 0x4e00 && cp <= 0x9fff) ||
+      (cp >= 0xa000 && cp <= 0xa4cf) ||
+      (cp >= 0xac00 && cp <= 0xd7af) ||
+      (cp >= 0xf900 && cp <= 0xfaff) ||
+      (cp >= 0xfe10 && cp <= 0xfe1f) ||
+      (cp >= 0xfe30 && cp <= 0xfe4f) ||
+      (cp >= 0xff00 && cp <= 0xff60) ||
+      (cp >= 0xffe0 && cp <= 0xffe6) ||
+      (cp >= 0x1f004 && cp <= 0x1f0cf) ||
+      (cp >= 0x1f300 && cp <= 0x1f9ff) ||
+      (cp >= 0x20000 && cp <= 0x2fffd) ||
+      (cp >= 0x30000 && cp <= 0x3fffd)
+    ) return 2
+    return 1
+  }
+
+  protected override renderCursor(buffer: OptimizedBuffer): void {
+    if (this._type !== "password") {
+      super.renderCursor(buffer)
+      return
+    }
+    if (!this._showCursor || !this._focused) return
+
+    const text = this.plainText
+    const logicalCol = this.logicalCursor.col
+    const graphemeIdx = this._displayColToGraphemeIndex(text, logicalCol)
+    const viewport = this.editorView.getViewport()
+    const col = graphemeIdx - viewport.offsetX
+
+    const cursorX = this._screenX + col + 1
+    const cursorY = this._screenY + 1
+    this._ctx.setCursorPosition(cursorX, cursorY, true)
+    this._ctx.setCursorStyle({ ...this._cursorStyle, color: this._cursorColor })
+  }
+
   protected override renderSelf(buffer: OptimizedBuffer): void {
     if (this._type !== "password") {
       super.renderSelf(buffer)
