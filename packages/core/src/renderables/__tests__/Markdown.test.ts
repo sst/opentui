@@ -1021,7 +1021,6 @@ After`
   expect(await renderMarkdown(markdown)).toMatchInlineSnapshot(`
     "
     Before
-
     ---
 
     After"
@@ -1078,7 +1077,6 @@ Visit [GitHub](https://github.com) for more.
     Links
 
     Visit GitHub (https://github.com) for more.
-
     ---
 
     Press ? for help"
@@ -2285,4 +2283,55 @@ test("paragraph updates do not flash raw markdown markers", async () => {
   const finalFrame = captureFrame()
   expect(finalFrame).toContain("Second value")
   expect(finalFrame).not.toContain("**Second**")
+})
+
+// Thematic break (hr) rendering tests
+
+test("hr after table does not cause subsequent content to render as frontmatter", async () => {
+  const markdown = `| Name | Age |
+|---|---|
+| Alice | 30 |
+
+---
+
+This text should render normally.`
+
+  const frame = await renderMarkdown(markdown)
+
+  expect(frame).toContain("Alice")
+  expect(frame).toContain("This text should render normally.")
+})
+
+test("hr between paragraphs renders content on both sides correctly", async () => {
+  const markdown = `First paragraph with **bold** text.
+
+---
+
+Second paragraph with *italic* text.`
+
+  const frame = await renderMarkdown(markdown)
+
+  expect(frame).toContain("First paragraph with bold text.")
+  expect(frame).toContain("Second paragraph with italic text.")
+})
+
+test("multiple hrs do not break subsequent markdown formatting", async () => {
+  const markdown = `| Col |
+|---|
+| val |
+
+---
+
+Some text.
+
+---
+
+More text with **bold**.`
+
+  const frame = await renderMarkdown(markdown)
+
+  expect(frame).toContain("val")
+  expect(frame).toContain("Some text.")
+  expect(frame).toContain("More text with bold.")
+  expect(frame).not.toContain("**bold**")
 })
