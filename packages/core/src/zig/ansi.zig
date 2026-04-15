@@ -61,6 +61,14 @@ pub const ANSI = struct {
     pub const resetCursorColor = "\x1b]112\x07";
     pub const resetCursorColorFallback = "\x1b]12;default\x07";
     pub const resetMousePointer = "\x1b]22;\x07";
+
+    // OSC 11 - Set terminal background color
+    pub fn setTerminalBgColorOutput(writer: anytype, r: u8, g: u8, b: u8) AnsiError!void {
+        writer.print("\x1b]11;rgb:{x:0>2}/{x:0>2}/{x:0>2}\x07", .{ r, g, b }) catch return AnsiError.WriteFailed;
+    }
+
+    // OSC 111 - Reset terminal background color to default
+    pub const resetTerminalBgColor = "\x1b]111\x07";
     pub const saveCursorState = "\x1b[s";
     pub const restoreCursorState = "\x1b[u";
 

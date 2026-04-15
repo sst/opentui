@@ -209,6 +209,9 @@ pub fn resetState(self: *Terminal, tty: anytype) !void {
     }
 
     self.setTerminalTitle(tty, "");
+
+    // OSC 111 - reset terminal background color to its default
+    try tty.writeAll(ansi.ANSI.resetTerminalBgColor);
 }
 
 pub fn enterAltScreen(self: *Terminal, tty: anytype) !void {

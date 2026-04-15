@@ -500,6 +500,18 @@ pub const CliRenderer = struct {
     pub fn setBackgroundColor(self: *CliRenderer, rgba: RGBA) void {
         self.backgroundColor = rgba;
         self.nextRenderBuffer.setBlendBackdropColor(.{ rgba[0], rgba[1], rgba[2], 1.0 });
+
+        // Emit OSC 11 to sync terminal background color with the renderer background.
+        // Skip if alpha is 0 (fully transparent — let terminal use its own default).
+        if (rgba[3] > 0 and !self.testing) {
+            var stdoutWriter = std.fs.File.stdout().writer(&self.stdoutBuffer);
+            const writer = &stdoutWriter.interface;
+            const r: u8 = @intFromFloat(@round(@min(rgba[0] * 255.0, 255.0)));
+            const g: u8 = @intFromFloat(@round(@min(rgba[1] * 255.0, 255.0)));
+            const b: u8 = @intFromFloat(@round(@min(rgba[2] * 255.0, 255.0)));
+            ansi.ANSI.setTerminalBgColorOutput(writer, r, g, b) catch {};
+            writer.flush() catch {};
+        }
     }
 
     pub fn setRenderOffset(self: *CliRenderer, offset: u32) void {

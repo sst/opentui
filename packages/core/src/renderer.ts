@@ -1955,6 +1955,15 @@ export class CliRenderer extends EventEmitter implements RenderContext {
     this.lib.setTerminalTitle(this.rendererPtr, title)
   }
 
+  /**
+   * Reset the terminal background color to its default via OSC 111.
+   * Called automatically by destroy() and suspend(), but exposed for
+   * consumers that need explicit control (e.g. before SIGTSTP).
+   */
+  public resetTerminalBgColor(): void {
+    process.stdout.write("\x1b]111\x07")
+  }
+
   public copyToClipboardOSC52(text: string, target?: ClipboardTarget): boolean {
     return this.clipboard.copyToClipboardOSC52(text, target)
   }
