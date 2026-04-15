@@ -90,6 +90,19 @@ if (buildNative) {
     zigArgs.push("-Dgpa-safe-stats=true")
   }
 
+  // On Windows, zig 0.15.x panics when the project and zig's global cache are
+  // on different drives (e.g. project on F:, zig on C:). std.fs.path.relative
+  // returns an absolute path across drives, which triggers an assertion in
+  // Build/Step/Run.zig:662. Workaround: force --cache-dir onto the same drive
+  // as the zig installation (C:) so all path operations stay on one drive.
+  if (process.platform === "win32") {
+    // zig 0.15.x panics when project and zig global cache are on different
+    // Windows drives. Force cache onto the user's home drive (same as zig).
+    const homedir: string = process.env["USERPROFILE"] ?? process.env["HOME"] ?? "C:\\Users\\Default"
+    const zigCacheDir = join(homedir, ".zig-cache", "opentui-core")
+    zigArgs.push("--cache-dir", zigCacheDir)
+  }
+
   const zigBuild: SpawnSyncReturns<Buffer> = spawnSync("zig", zigArgs, {
     cwd: join(rootDir, "src", "zig"),
     stdio: "inherit",
