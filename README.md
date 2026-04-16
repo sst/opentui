@@ -72,16 +72,6 @@ cd packages/core
 bun run src/examples/index.ts
 ```
 
-## Terminal Background Color
-
-Calling `renderer.setBackgroundColor(rgba)` syncs the terminal's own background color via OSC 11 (`\e]11;rgb:RR/GG/BB\e\`). This eliminates the visible pixel gutter on Windows Terminal (and other tiling terminals) where the character grid doesn't divide evenly into the window — those edge pixels now match your app's theme instead of the terminal profile default.
-
-- OSC 11 is emitted automatically on every `setBackgroundColor()` call (skipped when alpha is 0, which leaves the terminal default untouched).
-- OSC 111 is emitted automatically on `destroy()` and `suspend()` to restore the terminal's original background.
-- For explicit control (e.g. before sending `SIGTSTP`), call `renderer.resetTerminalBgColor()`.
-
-Terminals that don't support OSC 11/111 ignore it silently — no behavior change on unsupported terminals.
-
 ## Development
 
 See the [Development Guide](packages/core/docs/development.md) for building, testing, debugging, and local development linking.
