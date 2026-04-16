@@ -32,6 +32,10 @@ NOTE: You must have [Zig](https://ziglang.org/learn/getting-started/) installed 
 bun install @opentui/core
 ```
 
+### Windows — cross-drive build
+
+If your project lives on a different drive from your Zig installation (e.g. project on `F:`, Zig on `C:`), the build script automatically passes `--cache-dir %USERPROFILE%\.zig-cache\opentui-core` so Zig's cache stays on one drive. No manual steps needed; the workaround is baked into `scripts/build.ts`.
+
 ## AI Agent Skill
 
 Teach your AI coding assistant OpenTUI's APIs and patterns.
@@ -71,6 +75,16 @@ bun install
 cd packages/core
 bun run src/examples/index.ts
 ```
+
+## Terminal Background Color
+
+Calling `renderer.setBackgroundColor(rgba)` syncs the terminal's own background color via OSC 11 (`\e]11;rgb:RR/GG/BB\e\`). This eliminates the visible pixel gutter on Windows Terminal (and other tiling terminals) where the character grid doesn't divide evenly into the window — those edge pixels now match your app's theme instead of the terminal profile default.
+
+- OSC 11 is emitted automatically on every `setBackgroundColor()` call (skipped when alpha is 0, which leaves the terminal default untouched).
+- OSC 111 is emitted automatically on `destroy()` and `suspend()` to restore the terminal's original background.
+- For explicit control (e.g. before sending `SIGTSTP`), call `renderer.resetTerminalBgColor()`.
+
+Terminals that don't support OSC 11/111 ignore it silently — no behavior change on unsupported terminals.
 
 ## Development
 
