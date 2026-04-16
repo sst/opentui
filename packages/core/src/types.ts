@@ -55,7 +55,7 @@ export enum TargetChannel {
   Both = 3,
 }
 
-export type WidthMethod = "wcwidth" | "unicode"
+export type WidthMethod = "wcwidth" | "unicode" | "no_zwj"
 
 export interface RendererEvents {
   resize: (width: number, height: number) => void
