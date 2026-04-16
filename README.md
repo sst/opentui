@@ -32,6 +32,10 @@ NOTE: You must have [Zig](https://ziglang.org/learn/getting-started/) installed 
 bun install @opentui/core
 ```
 
+### Windows — cross-drive build
+
+If your project lives on a different drive from your Zig installation (e.g. project on `F:`, Zig on `C:`), the build script automatically passes `--cache-dir %USERPROFILE%\.zig-cache\opentui-core` so Zig's cache stays on one drive. No manual steps needed; the workaround is baked into `scripts/build.ts`.
+
 ## AI Agent Skill
 
 Teach your AI coding assistant OpenTUI's APIs and patterns.
