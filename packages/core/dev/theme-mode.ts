@@ -21,7 +21,17 @@ const updateThemeHistory: string[] = []
 
 function updateThemeDisplay() {
   if (!renderer || renderer.isDestroyed) return
-  if (!titleText || !themeText || !statusText || !eventCountText || !firstDrawText || !waitForThemeModeText || !historyText || !helpText) return
+  if (
+    !titleText ||
+    !themeText ||
+    !statusText ||
+    !eventCountText ||
+    !firstDrawText ||
+    !waitForThemeModeText ||
+    !historyText ||
+    !helpText
+  )
+    return
 
   const currentTheme = renderer.themeMode
   updateThemeHistory.push(`updateThemeDisplay ${updateThemeHistory.length + 1}: themeMode=${currentTheme ?? "null"}`)
