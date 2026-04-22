@@ -98,6 +98,7 @@ export class CodeRenderable extends TextBufferRenderable {
       this._highlightSnapshotId++
 
       if (this._streaming && !this._drawUnstyledText && this._filetype) {
+        this.requestRender()
         return
       }
 
