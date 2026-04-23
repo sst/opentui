@@ -368,6 +368,26 @@ test "renderer - background color setting" {
     try std.testing.expectEqual(RGBA{ 0.25, 0.5, 0.75, 1.0 }, cli_renderer.getNextBuffer().getBlendBackdropColor().?);
 }
 
+test "renderer - theme color query tracks pending background restore" {
+    const pool = gp.initGlobalPool(std.testing.allocator);
+    defer gp.deinitGlobalPool();
+    var local_link_pool = link.LinkPool.init(std.testing.allocator);
+    defer local_link_pool.deinit();
+
+    var cli_renderer = try CliRenderer.create(
+        std.testing.allocator,
+        80,
+        24,
+        pool,
+        true,
+    );
+    defer cli_renderer.destroy();
+
+    cli_renderer.setBackgroundColor(RGBA{ 0.1, 0.2, 0.3, 1.0 });
+    cli_renderer.queryThemeColors();
+    try std.testing.expectEqual(RGBA{ 0.1, 0.2, 0.3, 1.0 }, cli_renderer.backgroundColor);
+}
+
 test "renderer - empty text buffer renders correctly" {
     const pool = gp.initGlobalPool(std.testing.allocator);
     defer gp.deinitGlobalPool();

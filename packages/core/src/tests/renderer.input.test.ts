@@ -123,6 +123,40 @@ async function createRoutingRenderer(options: Partial<TestRendererOptions> = {})
   return { renderer, renderOnce, resize, clock }
 }
 
+async function createThemeQueryRenderer(): Promise<{
+  renderer: TestRenderer
+  queryThemeColorsCalls: { count: number }
+  clock: ManualClock
+}> {
+  const clock = new ManualClock()
+  const stdout = {
+    isTTY: true,
+    columns: 80,
+    rows: 24,
+    write: () => true,
+    getColorDepth: () => 24,
+  } as any
+
+  const { renderer } = await createTestRenderer({
+    clock,
+    stdout,
+    useThread: false,
+  })
+
+  // @ts-expect-error - mocking for test
+  renderer.lib.processCapabilityResponse = () => {}
+  // @ts-expect-error - mocking for test
+  renderer.lib.getTerminalCapabilities = () => ({ unicode: "unicode" })
+
+  const queryThemeColorsCalls = { count: 0 }
+  // @ts-expect-error - mocking for test
+  renderer.lib.queryThemeColors = () => {
+    queryThemeColorsCalls.count += 1
+  }
+
+  return { renderer, queryThemeColorsCalls, clock }
+}
+
 test("basic letters via keyInput events", async () => {
   const result = await triggerInput("a")
   expect(result).toMatchObject({
@@ -1694,7 +1728,104 @@ test("OSC 10/11 fallback sets initial theme mode once both colors arrive", () =>
   expect(themeModes).toEqual(["dark"])
 })
 
-test("CSI 997 overrides OSC fallback when the reported mode differs", () => {
+test("CSI 997 does not set theme mode directly and triggers an OSC refresh query", async () => {
+  const { renderer, queryThemeColorsCalls, clock } = await createThemeQueryRenderer()
+  const themeModes: string[] = []
+  renderer.on("theme_mode", (mode) => {
+    themeModes.push(mode)
+  })
+
+  renderer.stdin.emit("data", Buffer.from("\x1b[?997;2n"))
+  advanceClock(clock)
+
+  expect(renderer.themeMode).toBeNull()
+  expect(themeModes).toEqual([])
+  expect(queryThemeColorsCalls.count).toBe(1)
+
+  renderer.destroy()
+})
+
+test("conflicting CSI 997 before initial OSC replies does not override the OSC-derived mode", () => {
+  const themeModes: string[] = []
+  currentRenderer.on("theme_mode", (mode) => {
+    themeModes.push(mode)
+  })
+
+  currentRenderer.stdin.emit("data", Buffer.from("\x1b[?997;2n"))
+  advanceCurrentClock()
+
+  currentRenderer.stdin.emit("data", Buffer.from("\x1b]10;#ffffff\x07"))
+  currentRenderer.stdin.emit("data", Buffer.from("\x1b]11;#000000\x07"))
+  advanceCurrentClock()
+
+  expect(currentRenderer.themeMode).toBe("dark")
+  expect(themeModes).toEqual(["dark"])
+})
+
+test("CSI 997 refreshes theme mode only after fresh OSC 10 and 11 replies arrive", async () => {
+  const { renderer, queryThemeColorsCalls, clock } = await createThemeQueryRenderer()
+  const themeModes: string[] = []
+  renderer.on("theme_mode", (mode) => {
+    themeModes.push(mode)
+  })
+
+  renderer.stdin.emit("data", Buffer.from("\x1b]10;#ffffff\x07"))
+  renderer.stdin.emit("data", Buffer.from("\x1b]11;#000000\x07"))
+  advanceClock(clock)
+
+  expect(renderer.themeMode).toBe("dark")
+  expect(themeModes).toEqual(["dark"])
+
+  renderer.stdin.emit("data", Buffer.from("\x1b[?997;2n"))
+  advanceClock(clock)
+
+  expect(renderer.themeMode).toBe("dark")
+  expect(themeModes).toEqual(["dark"])
+  expect(queryThemeColorsCalls.count).toBe(1)
+
+  renderer.stdin.emit("data", Buffer.from("\x1b]10;#000000\x07"))
+  advanceClock(clock)
+
+  expect(renderer.themeMode).toBe("dark")
+  expect(themeModes).toEqual(["dark"])
+
+  renderer.stdin.emit("data", Buffer.from("\x1b]11;#ffffff\x07"))
+  advanceClock(clock)
+
+  expect(renderer.themeMode).toBe("light")
+  expect(themeModes).toEqual(["dark", "light"])
+
+  renderer.destroy()
+})
+
+test("CSI 997 refresh timeout restores background override state without changing theme mode", async () => {
+  const { renderer, queryThemeColorsCalls, clock } = await createThemeQueryRenderer()
+  const themeModes: string[] = []
+  renderer.on("theme_mode", (mode) => {
+    themeModes.push(mode)
+  })
+
+  renderer.stdin.emit("data", Buffer.from("\x1b]10;#ffffff\x07"))
+  renderer.stdin.emit("data", Buffer.from("\x1b]11;#000000\x07"))
+  advanceClock(clock)
+
+  renderer.stdin.emit("data", Buffer.from("\x1b[?997;2n"))
+  advanceClock(clock, 249)
+
+  expect(renderer.themeMode).toBe("dark")
+  expect(themeModes).toEqual(["dark"])
+  expect(queryThemeColorsCalls.count).toBe(1)
+
+  advanceClock(clock, 1)
+  await flushMicrotasks()
+
+  expect(renderer.themeMode).toBe("dark")
+  expect(themeModes).toEqual(["dark"])
+
+  renderer.destroy()
+})
+
+test("CSI 997 refresh with the same OSC-derived mode does not emit twice", () => {
   const themeModes: string[] = []
   currentRenderer.on("theme_mode", (mode) => {
     themeModes.push(mode)
@@ -1704,64 +1835,81 @@ test("CSI 997 overrides OSC fallback when the reported mode differs", () => {
   currentRenderer.stdin.emit("data", Buffer.from("\x1b]11;#000000\x07"))
   advanceCurrentClock()
 
+  currentRenderer.stdin.emit("data", Buffer.from("\x1b[?997;1n"))
+  advanceCurrentClock()
+
+  currentRenderer.stdin.emit("data", Buffer.from("\x1b]10;#ffffff\x07"))
+  currentRenderer.stdin.emit("data", Buffer.from("\x1b]11;#000000\x07"))
+  advanceCurrentClock()
+
+  expect(currentRenderer.themeMode).toBe("dark")
+  expect(themeModes).toEqual(["dark"])
+})
+
+test("multiple CSI 997 responses while a refresh is pending do not emit early", () => {
+  const themeModes: string[] = []
+  currentRenderer.on("theme_mode", (mode) => {
+    themeModes.push(mode)
+  })
+
+  currentRenderer.stdin.emit("data", Buffer.from("\x1b]10;#ffffff\x07"))
+  currentRenderer.stdin.emit("data", Buffer.from("\x1b]11;#000000\x07"))
+  advanceCurrentClock()
+
+  currentRenderer.stdin.emit("data", Buffer.from("\x1b[?997;1n"))
+  currentRenderer.stdin.emit("data", Buffer.from("\x1b[?997;2n"))
+  advanceCurrentClock()
+
+  currentRenderer.stdin.emit("data", Buffer.from("\x1b]10;#000000\x07"))
+  advanceCurrentClock()
+
   expect(currentRenderer.themeMode).toBe("dark")
   expect(themeModes).toEqual(["dark"])
 
-  currentRenderer.stdin.emit("data", Buffer.from("\x1b[?997;2n"))
+  currentRenderer.stdin.emit("data", Buffer.from("\x1b]11;#ffffff\x07"))
   advanceCurrentClock()
 
   expect(currentRenderer.themeMode).toBe("light")
   expect(themeModes).toEqual(["dark", "light"])
 })
 
-test("CSI 997 with the same mode as OSC fallback does not emit twice", () => {
-  const themeModes: string[] = []
-  currentRenderer.on("theme_mode", (mode) => {
-    themeModes.push(mode)
-  })
-
-  currentRenderer.stdin.emit("data", Buffer.from("\x1b]10;#ffffff\x07"))
-  currentRenderer.stdin.emit("data", Buffer.from("\x1b]11;#000000\x07"))
-  advanceCurrentClock()
-
-  currentRenderer.stdin.emit("data", Buffer.from("\x1b[?997;1n"))
-  advanceCurrentClock()
-
-  expect(currentRenderer.themeMode).toBe("dark")
-  expect(themeModes).toEqual(["dark"])
-})
-
-test("OSC fallback does not override CSI 997", () => {
-  const themeModes: string[] = []
-  currentRenderer.on("theme_mode", (mode) => {
-    themeModes.push(mode)
-  })
-
-  currentRenderer.stdin.emit("data", Buffer.from("\x1b[?997;2n"))
-  advanceCurrentClock()
-
-  currentRenderer.stdin.emit("data", Buffer.from("\x1b]10;#ffffff\x07"))
-  currentRenderer.stdin.emit("data", Buffer.from("\x1b]11;#000000\x07"))
-  advanceCurrentClock()
-
-  expect(currentRenderer.themeMode).toBe("light")
-  expect(themeModes).toEqual(["light"])
-})
-
 test("waitForThemeMode resolves when initial theme mode is set", async () => {
   const themeModePromise = currentRenderer.waitForThemeMode(500)
 
-  currentRenderer.stdin.emit("data", Buffer.from("\x1b[?997;1n"))
+  currentRenderer.stdin.emit("data", Buffer.from("\x1b]10;#ffffff\x07"))
+  currentRenderer.stdin.emit("data", Buffer.from("\x1b]11;#000000\x07"))
   advanceCurrentClock()
 
   await expect(themeModePromise).resolves.toBe("dark")
 })
 
 test("waitForThemeMode resolves immediately when theme mode is already set", async () => {
-  currentRenderer.stdin.emit("data", Buffer.from("\x1b[?997;2n"))
+  currentRenderer.stdin.emit("data", Buffer.from("\x1b]10;#000000\x07"))
+  currentRenderer.stdin.emit("data", Buffer.from("\x1b]11;#ffffff\x07"))
   advanceCurrentClock()
 
   await expect(currentRenderer.waitForThemeMode()).resolves.toBe("light")
+})
+
+test("waitForThemeMode ignores CSI 997 until OSC-derived mode is available", async () => {
+  let resolvedThemeMode: string | null | undefined
+
+  currentRenderer.waitForThemeMode(500).then((mode) => {
+    resolvedThemeMode = mode
+  })
+
+  currentRenderer.stdin.emit("data", Buffer.from("\x1b[?997;2n"))
+  advanceCurrentClock(249)
+  await flushMicrotasks()
+
+  expect(resolvedThemeMode).toBeUndefined()
+
+  currentRenderer.stdin.emit("data", Buffer.from("\x1b]10;#000000\x07"))
+  currentRenderer.stdin.emit("data", Buffer.from("\x1b]11;#ffffff\x07"))
+  advanceCurrentClock(1)
+  await flushMicrotasks()
+
+  expect(resolvedThemeMode).toBe("light")
 })
 
 test("waitForThemeMode returns current theme mode after the default timeout", async () => {

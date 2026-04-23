@@ -215,8 +215,11 @@ pub fn resetState(self: *Terminal, tty: anytype) !void {
 
     self.setTerminalTitle(tty, "");
 
-    // OSC 111 - reset terminal background color to its default
-    try tty.writeAll(ansi.ANSI.resetTerminalBgColor);
+    // OSC 111 is intentionally disabled for now. In Ghostty, sending the
+    // reset alone is enough to poison later OSC 11 background reporting for
+    // system light/dark theme changes, which breaks theme detection on the
+    // next app startup even though the immediate reset appears to work.
+    // try tty.writeAll(ansi.ANSI.resetTerminalBgColor);
 }
 
 pub fn enterAltScreen(self: *Terminal, tty: anytype) !void {
@@ -237,15 +240,13 @@ pub fn queryTerminalSend(self: *Terminal, tty: anytype) !void {
     self.startup_cursor_query_pending = true;
     self.startup_cursor_query_captured = false;
 
+    // We intentionally do not send CSI ?996n here. Terminals disagree on the
+    // meaning and reliability of the ?997 reply, so startup theme detection is
+    // derived from fresh OSC 10/11 fg/bg colors instead.
     try self.setColorSchemeUpdates(tty, true);
-    try tty.writeAll(ansi.ANSI.colorSchemeRequest);
 
-    if (self.in_tmux) {
-        try tty.writeAll(ansi.ANSI.oscThemeQueriesTmux);
-    } else {
-        try tty.writeAll(ansi.ANSI.oscThemeQueries);
-        self.theme_queries_pending = true;
-    }
+    try self.queryThemeColors(tty);
+    self.theme_queries_pending = !self.in_tmux;
     self.state.theme_queries_sent = true;
 
     // Send xtversion first (doesn't need DCS wrapping - used for tmux detection)
@@ -348,18 +349,25 @@ pub fn enableDetectedFeatures(self: *Terminal, tty: anytype, use_kitty_keyboard:
 
     if (!self.state.color_scheme_updates) {
         try self.setColorSchemeUpdates(tty, true);
-        try tty.writeAll(ansi.ANSI.colorSchemeRequest);
     }
 
     if (!self.state.theme_queries_sent) {
-        if (is_tmux) {
-            try tty.writeAll(ansi.ANSI.oscThemeQueriesTmux);
-            self.theme_queries_pending = false;
-        } else {
-            try tty.writeAll(ansi.ANSI.oscThemeQueries);
-            self.theme_queries_pending = true;
-        }
+        try self.queryThemeColors(tty);
+        self.theme_queries_pending = !is_tmux;
         self.state.theme_queries_sent = true;
+    }
+}
+
+pub fn queryThemeColors(self: *Terminal, tty: anytype) !void {
+    const is_tmux = self.in_tmux or self.isXtversionTmux();
+
+    // We only use the ?997 notification as a refresh trigger. The actual theme
+    // mode is derived from the returned OSC 10/11 fg/bg colors, so callers
+    // should query those colors directly instead of sending CSI ?996n.
+    if (is_tmux) {
+        try tty.writeAll(ansi.ANSI.oscThemeQueriesTmux);
+    } else {
+        try tty.writeAll(ansi.ANSI.oscThemeQueries);
     }
 }
 

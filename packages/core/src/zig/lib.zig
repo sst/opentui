@@ -964,6 +964,10 @@ export fn queryPixelResolution(rendererPtr: *renderer.CliRenderer) void {
     rendererPtr.queryPixelResolution();
 }
 
+export fn queryThemeColors(rendererPtr: *renderer.CliRenderer) void {
+    rendererPtr.queryThemeColors();
+}
+
 export fn enableKittyKeyboard(rendererPtr: *renderer.CliRenderer, flags: u8) void {
     rendererPtr.enableKittyKeyboard(flags);
 }

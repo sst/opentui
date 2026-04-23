@@ -280,14 +280,13 @@ test "queryTerminalSend - sends unwrapped queries when not in tmux" {
 
     const output = writer.getWritten();
 
-    const idx_color_scheme_request = std.mem.indexOf(u8, output, ansi.ANSI.colorSchemeRequest).?;
     const idx_osc_theme_queries = std.mem.indexOf(u8, output, ansi.ANSI.oscThemeQueries).?;
     const idx_xtversion = std.mem.indexOf(u8, output, "\x1b[>0q").?;
 
     // Should contain xtversion
     try testing.expect(std.mem.indexOf(u8, output, "\x1b[>0q") != null);
-    try testing.expect(idx_color_scheme_request < idx_xtversion);
     try testing.expect(idx_osc_theme_queries < idx_xtversion);
+    try testing.expect(std.mem.indexOf(u8, output, "\x1b[?996n") == null);
 
     // Should contain unwrapped DECRQM queries (single ESC)
     try testing.expect(std.mem.indexOf(u8, output, "\x1b[?1016$p") != null);
@@ -318,14 +317,13 @@ test "queryTerminalSend - sends DCS wrapped queries when in tmux" {
 
     const output = writer.getWritten();
 
-    const idx_color_scheme_request = std.mem.indexOf(u8, output, ansi.ANSI.colorSchemeRequest).?;
     const idx_osc_theme_queries = std.mem.indexOf(u8, output, ansi.ANSI.oscThemeQueriesTmux).?;
     const idx_xtversion = std.mem.indexOf(u8, output, "\x1b[>0q").?;
 
     // Should contain xtversion (unwrapped - used for detection)
     try testing.expect(std.mem.indexOf(u8, output, "\x1b[>0q") != null);
-    try testing.expect(idx_color_scheme_request < idx_xtversion);
     try testing.expect(idx_osc_theme_queries < idx_xtversion);
+    try testing.expect(std.mem.indexOf(u8, output, "\x1b[?996n") == null);
 
     // Should contain tmux DCS wrapper start and doubled ESC for queries
     // wrapForTmux wraps all queries together with one DCS envelope
@@ -788,9 +786,9 @@ test "enableDetectedFeatures - sends initial theme queries" {
     const output = writer.getWritten();
 
     try testing.expect(std.mem.indexOf(u8, output, ansi.ANSI.colorSchemeSet) != null);
-    try testing.expect(std.mem.indexOf(u8, output, ansi.ANSI.colorSchemeRequest) != null);
     try testing.expect(std.mem.indexOf(u8, output, "\x1b]10;?\x07") != null);
     try testing.expect(std.mem.indexOf(u8, output, "\x1b]11;?\x07") != null);
+    try testing.expect(std.mem.indexOf(u8, output, "\x1b[?996n") == null);
     try testing.expect(term.theme_queries_pending);
     try testing.expect(term.state.theme_queries_sent);
 }
