@@ -1,4 +1,5 @@
 import { test, expect, beforeAll, beforeEach, afterEach, afterAll } from "bun:test"
+import { Lexer } from "marked"
 import { MarkdownRenderable, type MarkdownOptions } from "../Markdown.js"
 import { CodeRenderable } from "../Code.js"
 import { TextRenderable } from "../Text.js"
@@ -185,6 +186,97 @@ test("tableOptions updates existing markdown table renderable", async () => {
   expect(updatedTable.outerBorder).toBe(false)
   expect(updatedTable.showBorders).toBe(false)
   expect(updatedTable.selectable).toBe(false)
+})
+
+test("internalBlockMode=top-level defaults markdown tables to borderless columns", async () => {
+  const md = createMarkdownRenderable({
+    id: "markdown-top-level-table-default-style",
+    content: "| Name | Age |\n|---|---|\n| Alice | 30 |",
+    syntaxStyle,
+    internalBlockMode: "top-level",
+  })
+
+  renderer.root.add(md)
+  await renderMarkdownRenderable(md)
+
+  const table = md._blockStates[0]?.renderable as TextTableRenderable
+  expect(table).toBeInstanceOf(TextTableRenderable)
+  expect(table.columnWidthMode).toBe("content")
+  expect(table.columnGap).toBe(2)
+  expect(table.border).toBe(false)
+  expect(table.outerBorder).toBe(false)
+  expect(table.showBorders).toBe(false)
+
+  const rendered = captureFrame()
+    .split("\n")
+    .map((line) => line.trimEnd())
+    .join("\n")
+
+  expect(rendered).not.toContain("┌")
+  expect(rendered).toMatch(/Name\s{2,}Age/)
+  expect(rendered).toMatch(/Alice\s{2,}30/)
+})
+
+test("tableOptions.style updates existing markdown table renderable content layout", async () => {
+  const md = createMarkdownRenderable({
+    id: "markdown-table-style-updates",
+    content: "| Name | Age |\n|---|---|\n| Alice | 30 |",
+    syntaxStyle,
+  })
+
+  renderer.root.add(md)
+  await renderMarkdownRenderable(md)
+
+  const table = md._blockStates[0]?.renderable as TextTableRenderable
+  expect(table).toBeInstanceOf(TextTableRenderable)
+  expect(table.border).toBe(true)
+
+  md.tableOptions = { style: "columns" }
+
+  await renderer.idle()
+
+  const updatedTable = md._blockStates[0]?.renderable as TextTableRenderable
+  expect(updatedTable).toBe(table)
+  expect(updatedTable.columnWidthMode).toBe("content")
+  expect(updatedTable.columnGap).toBe(2)
+  expect(updatedTable.border).toBe(false)
+  expect(updatedTable.outerBorder).toBe(false)
+  expect(updatedTable.showBorders).toBe(false)
+
+  const rendered = captureFrame()
+    .split("\n")
+    .map((line) => line.trimEnd())
+    .join("\n")
+
+  expect(rendered).not.toContain("┌")
+  expect(rendered).toMatch(/Name\s{2,}Age/)
+  expect(rendered).toMatch(/Alice\s{2,}30/)
+})
+
+test("borderless column tables keep visual spacing out of copied text", async () => {
+  const md = createMarkdownRenderable({
+    id: "markdown-top-level-table-selection",
+    content: "| Name | Age |\n|---|---|\n| Alice | 30 |",
+    syntaxStyle,
+    internalBlockMode: "top-level",
+  })
+
+  renderer.root.add(md)
+  await renderMarkdownRenderable(md)
+
+  const table = md._blockStates[0]?.renderable as TextTableRenderable
+  expect(table).toBeInstanceOf(TextTableRenderable)
+
+  const lines = captureFrame().split("\n")
+  const headerY = lines.findIndex((line) => line.includes("Name"))
+  const rowY = lines.findIndex((line) => line.includes("Alice"))
+  const startX = lines[headerY]!.indexOf("Name")
+  const endX = table.x + table.width - 1
+
+  await mockMouse.drag(startX, headerY, endX, rowY)
+  await renderer.idle()
+
+  expect(table.getSelectedText()).toBe("Name\tAge\nAlice\t30")
 })
 
 test("table with inline code (backticks)", async () => {
@@ -1173,6 +1265,45 @@ const x = 1;
   `)
 })
 
+test("custom renderNode output survives top-level spacing updates", async () => {
+  const md = createMarkdownRenderable({
+    id: "custom-spacing-update",
+    content: "Paragraph\n# Heading",
+    syntaxStyle,
+    internalBlockMode: "top-level",
+    renderNode: (node, ctx) => {
+      if (node.type === "heading") {
+        return new TextRenderable(renderer, {
+          id: "custom-text-spacing",
+          content: "CUSTOM",
+          width: "100%",
+        })
+      }
+
+      return ctx.defaultRender()
+    },
+  })
+
+  renderer.root.add(md)
+  await renderMarkdownRenderable(md)
+
+  md.content = "Paragraph\n\n# Heading"
+  await renderMarkdownRenderable(md)
+
+  expect(md._blockStates.map((state) => state.marginTop ?? 0)).toEqual([0, 1])
+
+  const lines = captureFrame()
+    .split("\n")
+    .map((line) => line.trimEnd())
+
+  expect("\n" + lines.join("\n").trimEnd()).toMatchInlineSnapshot(`
+    "
+    Paragraph
+
+    CUSTOM"
+  `)
+})
+
 test("custom renderNode returning null uses default", async () => {
   const md = createMarkdownRenderable({
     id: "custom-null",
@@ -1377,6 +1508,129 @@ test("table at end with trailing blank lines", async () => {
 })
 
 // Incremental parsing tests
+
+test("internalBlockMode=top-level preserves top-level block boundaries", async () => {
+  const md = createMarkdownRenderable({
+    id: "markdown-top-level-blocks",
+    content: "# Title\n\n```ts\nconst x = 1\n```\n\n| A |\n|---|\n| 1 |",
+    syntaxStyle,
+    streaming: false,
+    internalBlockMode: "top-level",
+    tableOptions: { widthMode: "content" },
+  })
+
+  renderer.root.add(md)
+  await renderMarkdownRenderable(md)
+
+  expect(md._blockStates.map((state) => state.token.type)).toEqual(["heading", "code", "table"])
+  expect(md._blockStates[1]?.renderable).toBeInstanceOf(CodeRenderable)
+  expect(md._blockStates[2]?.renderable).toBeInstanceOf(TextTableRenderable)
+  expect(md._stableBlockCount).toBe(3)
+})
+
+test("internalBlockMode=top-level normalizes one blank row between top-level blocks", async () => {
+  const md = createMarkdownRenderable({
+    id: "markdown-top-level-spacing",
+    content: "# Title\n\nParagraph\n\n```ts\nconst x = 1\n```",
+    syntaxStyle,
+    internalBlockMode: "top-level",
+  })
+
+  renderer.root.add(md)
+  await renderMarkdownRenderable(md)
+
+  const lines = captureFrame()
+    .split("\n")
+    .map((line) => line.trimEnd())
+
+  expect("\n" + lines.join("\n").trimEnd()).toMatchInlineSnapshot(`
+    "
+    Title
+
+    Paragraph
+
+    const x = 1"
+  `)
+})
+
+test("internalBlockMode=top-level keeps tight paragraph list transitions tight", async () => {
+  const md = createMarkdownRenderable({
+    id: "markdown-top-level-tight-list-spacing",
+    content: "Paragraph:\n- one\n- two",
+    syntaxStyle,
+    internalBlockMode: "top-level",
+  })
+
+  renderer.root.add(md)
+  await renderMarkdownRenderable(md)
+
+  expect(md._blockStates.map((state) => state.marginTop ?? 0)).toEqual([0, 0])
+
+  const lines = captureFrame()
+    .split("\n")
+    .map((line) => line.trimEnd())
+
+  expect("\n" + lines.join("\n").trimEnd()).toMatchInlineSnapshot(`
+    "
+    Paragraph:
+    - one
+    - two"
+  `)
+})
+
+test("internalBlockMode=top-level tightens spacing when a blank line is removed", async () => {
+  const md = createMarkdownRenderable({
+    id: "markdown-top-level-tighten-spacing",
+    content: "Paragraph\n\n- one\n- two",
+    syntaxStyle,
+    internalBlockMode: "top-level",
+  })
+
+  renderer.root.add(md)
+  await renderMarkdownRenderable(md)
+
+  md.content = "Paragraph\n- one\n- two"
+  await renderMarkdownRenderable(md)
+
+  expect(md._blockStates.map((state) => state.marginTop ?? 0)).toEqual([0, 0])
+
+  const lines = captureFrame()
+    .split("\n")
+    .map((line) => line.trimEnd())
+
+  expect("\n" + lines.join("\n").trimEnd()).toMatchInlineSnapshot(`
+    "
+    Paragraph
+    - one
+    - two"
+  `)
+})
+
+test("internalBlockMode=top-level preserves spacing after tight fenced code blocks", async () => {
+  const md = createMarkdownRenderable({
+    id: "markdown-top-level-tight-code-spacing",
+    content: "```ts\nconst x = 1\n```\nParagraph",
+    syntaxStyle,
+    internalBlockMode: "top-level",
+  })
+
+  renderer.root.add(md)
+  await renderMarkdownRenderable(md)
+
+  expect(md._blockStates.map((state) => state.marginTop ?? 0)).toEqual([0, 1])
+
+  const lines = captureFrame()
+    .split("\n")
+    .map((line) => line.trimEnd())
+
+  expect("\n" + lines.join("\n").trimEnd()).toMatchInlineSnapshot(`
+    "
+    const x = 1
+
+    Paragraph"
+  `)
+})
+
 test("incremental update reuses unchanged blocks when appending", async () => {
   const md = createMarkdownRenderable({
     id: "markdown",
@@ -1482,6 +1736,68 @@ test("non-streaming mode parses all tokens as stable", async () => {
   expect(parseState!.tokens.length).toBeGreaterThan(0)
 })
 
+test("internalBlockMode=top-level exposes a conservative stable block prefix", async () => {
+  const md = createMarkdownRenderable({
+    id: "markdown-top-level-stable-prefix",
+    content: "# Title\n\nPara 1\n\n",
+    syntaxStyle,
+    streaming: true,
+    internalBlockMode: "top-level",
+  })
+
+  renderer.root.add(md)
+  await renderMarkdownRenderable(md)
+
+  md.content = "# Title\n\nPara 1\n\nPara 2"
+  await renderMarkdownRenderable(md)
+
+  expect(md._blockStates.map((state) => state.token.type)).toEqual(["heading", "paragraph", "paragraph"])
+  expect(md._stableBlockCount).toBe(1)
+})
+
+test("default block mode still coalesces ordinary markdown blocks", async () => {
+  const md = createMarkdownRenderable({
+    id: "markdown-default-coalesced-blocks",
+    content: "# Title\n\nPara 1",
+    syntaxStyle,
+  })
+
+  renderer.root.add(md)
+  await renderMarkdownRenderable(md)
+
+  expect(md._blockStates).toHaveLength(1)
+  expect(md._blockStates[0]?.token.type).toBe("paragraph")
+  expect(md._stableBlockCount).toBe(0)
+})
+
+test("parse failure fallback leaves stable block count at zero", async () => {
+  const lexerRef = Lexer as unknown as { lex: typeof Lexer.lex }
+  const originalLex = lexerRef.lex
+
+  lexerRef.lex = (() => {
+    throw new Error("parse failed")
+  }) as typeof Lexer.lex
+
+  try {
+    const md = createMarkdownRenderable({
+      id: "markdown-parse-failure-stable-blocks",
+      content: "# Broken",
+      syntaxStyle,
+      streaming: true,
+      internalBlockMode: "top-level",
+    })
+
+    renderer.root.add(md)
+    await renderMarkdownRenderable(md)
+
+    expect(md._stableBlockCount).toBe(0)
+    expect(md._blockStates).toHaveLength(1)
+    expect(md._blockStates[0]?.renderable).toBeInstanceOf(CodeRenderable)
+  } finally {
+    lexerRef.lex = originalLex
+  }
+})
+
 test("content update with same text does not rebuild", async () => {
   const md = createMarkdownRenderable({
     id: "markdown",
@@ -1519,7 +1835,7 @@ test("block type change creates new renderable", async () => {
   await renderer.idle()
 
   const blockAfter = md._blockStates[0]?.renderable
-  // Non-special markdown blocks are merged and reused as one markdown code renderable
+  // Non-special markdown blocks are coalesced and reused as one markdown code renderable
   expect(blockAfter).toBe(blockBefore)
 })
 

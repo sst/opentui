@@ -192,6 +192,16 @@ scrollbox.scrollTo(0)
 scrollbox.scrollTo({ x: 0, y: 100 })
 ```
 
+### scrollChildIntoView
+
+Scroll the minimum distance needed to show a nested child in the viewport. The method uses DOM-style "nearest" behavior: if the child already fits, the call is a no-op; otherwise it scrolls to reveal the nearest edge.
+
+```typescript
+scrollbox.scrollChildIntoView("table-row-42")
+```
+
+Use it when you focus an element offscreen (search results, a newly inserted form field, etc.) and want to bring it into view without moving the scroll position more than needed.
+
 ## Keyboard navigation
 
 When focused, ScrollBox responds to keyboard input:

@@ -4,6 +4,7 @@ import { createTextareaRenderable } from "./renderable-test-utils.js"
 import { RGBA } from "../../lib/RGBA.js"
 import { SyntaxStyle } from "../../syntax-style.js"
 import { OptimizedBuffer } from "../../buffer.js"
+import type { CapturedFrame } from "../../types.js"
 import { fg, t } from "../../lib/index.js"
 import { BoxRenderable } from "../Box.js"
 import { TextareaRenderable } from "../Textarea.js"
@@ -13,6 +14,7 @@ let currentRenderer: TestRenderer
 let renderOnce: () => Promise<void>
 let currentMockInput: MockInput
 let captureFrame: () => string
+let captureSpans: () => CapturedFrame
 let resize: (width: number, height: number) => void
 
 describe("Textarea - Rendering Tests", () => {
@@ -21,6 +23,7 @@ describe("Textarea - Rendering Tests", () => {
       renderer: currentRenderer,
       renderOnce,
       captureCharFrame: captureFrame,
+      captureSpans,
       mockInput: currentMockInput,
       resize,
     } = await createTestRenderer({
@@ -34,6 +37,60 @@ describe("Textarea - Rendering Tests", () => {
   })
 
   describe("Wrapping", () => {
+    it("fills textarea bounds with indexed background color", async () => {
+      const surface = RGBA.fromIndex(254)
+      await createTextareaRenderable(currentRenderer, renderOnce, {
+        initialValue: "abc",
+        width: 6,
+        height: 2,
+        backgroundColor: surface,
+        focusedBackgroundColor: surface,
+      })
+
+      const frame = captureSpans()
+      expect(frame.lines[0].spans[0].text).toBe("abc   ")
+      expect(frame.lines[0].spans[0].bg.tag).toBe(254)
+      expect(frame.lines[1].spans[0].text).toBe("      ")
+      expect(frame.lines[1].spans[0].bg.tag).toBe(254)
+    })
+
+    it("fills textarea bounds without double-blending translucent backgrounds", async () => {
+      const surface = RGBA.fromValues(1, 0, 0, 0.5)
+      await createTextareaRenderable(currentRenderer, renderOnce, {
+        initialValue: "abc",
+        width: 6,
+        height: 2,
+        backgroundColor: surface,
+        focusedBackgroundColor: surface,
+      })
+
+      const frame = captureSpans()
+      expect(frame.lines[0].spans[0].text).toBe("abc   ")
+      expect(frame.lines[1].spans[0].text).toBe("      ")
+      expect(frame.lines[0].spans[0].bg.r).toBeCloseTo(frame.lines[1].spans[0].bg.r, 5)
+      expect(frame.lines[0].spans[0].bg.g).toBeCloseTo(frame.lines[1].spans[0].bg.g, 5)
+      expect(frame.lines[0].spans[0].bg.b).toBeCloseTo(frame.lines[1].spans[0].bg.b, 5)
+      expect(frame.lines[0].spans[0].bg.a).toBeCloseTo(0.5, 5)
+      expect(frame.lines[1].spans[0].bg.a).toBeCloseTo(0.5, 5)
+    })
+
+    it("fills textarea background while placeholder is shown", async () => {
+      const surface = RGBA.fromIndex(254)
+      await createTextareaRenderable(currentRenderer, renderOnce, {
+        initialValue: "",
+        placeholder: "hint",
+        width: 6,
+        height: 2,
+        backgroundColor: surface,
+        focusedBackgroundColor: surface,
+      })
+
+      const frame = captureSpans()
+      expect(frame.lines[0].spans.some((span) => span.text.includes("hint"))).toBe(true)
+      expect(frame.lines[0].spans.slice(0, 2).every((span) => span.bg.tag === 254)).toBe(true)
+      expect(frame.lines[1].spans[0].bg.tag).toBe(254)
+    })
+
     it("should move cursor down through all wrapped visual lines at column 0", async () => {
       // Create a long line that will wrap into multiple visual lines
       const longText =

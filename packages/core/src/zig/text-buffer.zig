@@ -21,6 +21,9 @@ const LineInfo = iter_mod.LineInfo;
 pub const TextChunk = seg_mod.TextChunk;
 pub const MemRegistry = mem_registry_mod.MemRegistry;
 pub const RGBA = seg_mod.RGBA;
+pub const ColorTag = ansi.ColorTag;
+pub const COLOR_TAG_RGB = ansi.COLOR_TAG_RGB;
+pub const COLOR_TAG_DEFAULT = ansi.COLOR_TAG_DEFAULT;
 pub const TextSelection = seg_mod.TextSelection;
 pub const TextBufferError = seg_mod.TextBufferError;
 pub const Highlight = seg_mod.Highlight;
@@ -38,6 +41,8 @@ pub const StyledChunk = extern struct {
     text_len: usize,
     fg_ptr: ?[*]const f32,
     bg_ptr: ?[*]const f32,
+    fg_tag: ansi.ColorTag = ansi.COLOR_TAG_RGB,
+    bg_tag: ansi.ColorTag = ansi.COLOR_TAG_RGB,
     attributes: u32,
     link_ptr: ?[*]const u8 = null,
     link_len: usize = 0,
@@ -49,6 +54,8 @@ pub const UnifiedTextBuffer = struct {
     mem_registry: MemRegistry,
     default_fg: ?RGBA,
     default_bg: ?RGBA,
+    default_fg_tag: ansi.ColorTag,
+    default_bg_tag: ansi.ColorTag,
     default_attributes: ?u32,
 
     allocator: Allocator,
@@ -88,6 +95,8 @@ pub const UnifiedTextBuffer = struct {
     pub const Defaults = struct {
         fg: ?RGBA,
         bg: ?RGBA,
+        fg_tag: ansi.ColorTag,
+        bg_tag: ansi.ColorTag,
         attributes: ?u32,
     };
 
@@ -96,6 +105,8 @@ pub const UnifiedTextBuffer = struct {
         return .{
             .fg = self.default_fg,
             .bg = self.default_bg,
+            .fg_tag = self.default_fg_tag,
+            .bg_tag = self.default_bg_tag,
             .attributes = self.default_attributes,
         };
     }
@@ -194,6 +205,8 @@ pub const UnifiedTextBuffer = struct {
             .mem_registry = mem_registry,
             .default_fg = null,
             .default_bg = null,
+            .default_fg_tag = ansi.COLOR_TAG_RGB,
+            .default_bg_tag = ansi.COLOR_TAG_RGB,
             .default_attributes = null,
             .allocator = internal_allocator,
             .global_allocator = global_allocator,
@@ -379,11 +392,21 @@ pub const UnifiedTextBuffer = struct {
 
     // Default colors/attributes
     pub fn setDefaultFg(self: *Self, fg: ?RGBA) void {
+        self.setDefaultFgWithTag(fg, ansi.COLOR_TAG_RGB);
+    }
+
+    pub fn setDefaultFgWithTag(self: *Self, fg: ?RGBA, fg_tag: ansi.ColorTag) void {
         self.default_fg = fg;
+        self.default_fg_tag = fg_tag;
     }
 
     pub fn setDefaultBg(self: *Self, bg: ?RGBA) void {
+        self.setDefaultBgWithTag(bg, ansi.COLOR_TAG_RGB);
+    }
+
+    pub fn setDefaultBgWithTag(self: *Self, bg: ?RGBA, bg_tag: ansi.ColorTag) void {
         self.default_bg = bg;
+        self.default_bg_tag = bg_tag;
     }
 
     pub fn setDefaultAttributes(self: *Self, attributes: ?u32) void {
@@ -393,6 +416,8 @@ pub const UnifiedTextBuffer = struct {
     pub fn resetDefaults(self: *Self) void {
         self.default_fg = null;
         self.default_bg = null;
+        self.default_fg_tag = ansi.COLOR_TAG_RGB;
+        self.default_bg_tag = ansi.COLOR_TAG_RGB;
         self.default_attributes = null;
     }
 
@@ -1082,7 +1107,13 @@ pub const UnifiedTextBuffer = struct {
 
                     var style_name_buf: [64]u8 = undefined;
                     const style_name = std.fmt.bufPrint(&style_name_buf, "chunk{d}", .{i}) catch continue;
-                    const style_id = (@constCast(style)).registerStyle(style_name, fg, bg, attributes) catch continue;
+                    const style_id = (@constCast(style)).registerStyleDefinition(style_name, .{
+                        .fg = fg,
+                        .bg = bg,
+                        .fg_tag = chunk.fg_tag,
+                        .bg_tag = chunk.bg_tag,
+                        .attributes = attributes,
+                    }) catch continue;
 
                     self.addHighlightByCharRange(char_pos, char_pos + chunk_len, style_id, 1, 0) catch {};
                 }

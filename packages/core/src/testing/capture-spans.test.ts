@@ -4,6 +4,8 @@ import { TextRenderable } from "../renderables/Text.js"
 import { BoxRenderable } from "../renderables/Box.js"
 import { TextAttributes, type CapturedFrame } from "../types.js"
 import { RGBA } from "../lib/index.js"
+import { StyledText } from "../lib/styled-text.js"
+import { COLOR_TAG_DEFAULT, COLOR_TAG_RGB } from "../lib/RGBA.js"
 
 describe("captureSpans", () => {
   let renderer: TestRenderer
@@ -143,6 +145,27 @@ describe("captureSpans", () => {
 
     expect(allSpans.some((s) => s.fg.r === 1 && s.fg.g === 0)).toBe(true)
     expect(allSpans.some((s) => s.fg.g === 1 && s.fg.r === 0)).toBe(true)
+  })
+
+  test("preserves tag-only color intent differences in captured spans", async () => {
+    const text = new TextRenderable(renderer, {
+      content: new StyledText([
+        { __isChunk: true, text: "A", fg: RGBA.fromHex("#aabbcc") },
+        { __isChunk: true, text: "B", fg: RGBA.defaultForeground("#aabbcc") },
+      ]),
+    })
+
+    renderer.root.add(text)
+    await renderOnce()
+
+    const firstLine = captureSpans().lines[0]
+    const contentSpans = firstLine.spans.filter((span) => span.text.trim().length > 0)
+
+    expect(contentSpans).toHaveLength(2)
+    expect(contentSpans[0].text).toBe("A")
+    expect(contentSpans[1].text).toBe("B")
+    expect(contentSpans[0].fg.tag).toBe(COLOR_TAG_RGB)
+    expect(contentSpans[1].fg.tag).toBe(COLOR_TAG_DEFAULT)
   })
 
   test("handles box-drawing characters without crashing", async () => {

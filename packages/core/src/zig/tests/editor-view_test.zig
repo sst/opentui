@@ -4,6 +4,7 @@ const edit_buffer = @import("../edit-buffer.zig");
 const text_buffer = @import("../text-buffer.zig");
 const text_buffer_view = @import("../text-buffer-view.zig");
 const opt_buffer_mod = @import("../buffer.zig");
+const ansi = @import("../ansi.zig");
 const gp = @import("../grapheme.zig");
 const link = @import("../link.zig");
 
@@ -2840,6 +2841,93 @@ test "EditorView - placeholder shrink clears tail and preserves background" {
     try std.testing.expectEqual(@as(f32, panel_bg[1]), tail.bg[1]);
     try std.testing.expectEqual(@as(f32, panel_bg[2]), tail.bg[2]);
     try std.testing.expectEqual(@as(f32, panel_bg[3]), tail.bg[3]);
+}
+
+test "EditorView - translucent default background fills viewport without double blending" {
+    const pool = gp.initGlobalPool(std.testing.allocator);
+    defer gp.deinitGlobalPool();
+    const link_pool = link.initGlobalLinkPool(std.testing.allocator);
+    defer link.deinitGlobalLinkPool();
+
+    var eb = try EditBuffer.init(std.testing.allocator, pool, link_pool, .wcwidth);
+    defer eb.deinit();
+
+    var ev = try EditorView.init(std.testing.allocator, eb, 6, 2);
+    defer ev.deinit();
+
+    try eb.setText("abc");
+    eb.tb.setDefaultBgWithTag(.{ 1.0, 0.0, 0.0, 0.5 }, ansi.COLOR_TAG_RGB);
+
+    var opt_buffer = try opt_buffer_mod.OptimizedBuffer.init(
+        std.testing.allocator,
+        6,
+        2,
+        .{ .pool = pool, .width_method = .wcwidth },
+    );
+    defer opt_buffer.deinit();
+
+    try opt_buffer.clear(.{ 0.0, 0.0, 0.0, 1.0 }, 32);
+    try opt_buffer.drawEditorView(ev, 0, 0);
+
+    const text_cell = opt_buffer.get(0, 0).?;
+    const trailing_cell = opt_buffer.get(3, 0).?;
+    const blank_row_cell = opt_buffer.get(0, 1).?;
+
+    try std.testing.expectEqual(@as(u32, 'a'), text_cell.char);
+    try std.testing.expectEqual(@as(u32, 32), trailing_cell.char);
+    try std.testing.expectEqual(@as(u32, 32), blank_row_cell.char);
+    try std.testing.expectEqual(text_cell.bg, trailing_cell.bg);
+    try std.testing.expectEqual(trailing_cell.bg, blank_row_cell.bg);
+}
+
+test "EditorView - placeholder uses original default background fill" {
+    const pool = gp.initGlobalPool(std.testing.allocator);
+    defer gp.deinitGlobalPool();
+    const link_pool = link.initGlobalLinkPool(std.testing.allocator);
+    defer link.deinitGlobalLinkPool();
+
+    var eb = try EditBuffer.init(std.testing.allocator, pool, link_pool, .wcwidth);
+    defer eb.deinit();
+
+    var ev = try EditorView.init(std.testing.allocator, eb, 6, 2);
+    defer ev.deinit();
+
+    const placeholder_text = "hint";
+    const placeholder_fg = text_buffer.RGBA{ 0.5, 0.5, 0.5, 1.0 };
+    const placeholder_chunks = [_]text_buffer.StyledChunk{.{
+        .text_ptr = placeholder_text.ptr,
+        .text_len = placeholder_text.len,
+        .fg_ptr = @ptrCast(&placeholder_fg),
+        .bg_ptr = null,
+        .attributes = 0,
+    }};
+
+    eb.tb.setDefaultBgWithTag(.{ 0.89411765, 0.89411765, 0.89411765, 1.0 }, ansi.indexedColorTag(254));
+    try ev.setPlaceholderStyledText(&placeholder_chunks);
+
+    var opt_buffer = try opt_buffer_mod.OptimizedBuffer.init(
+        std.testing.allocator,
+        6,
+        2,
+        .{ .pool = pool, .width_method = .wcwidth },
+    );
+    defer opt_buffer.deinit();
+
+    try opt_buffer.clear(.{ 0.0, 0.0, 0.0, 1.0 }, 32);
+    try opt_buffer.drawEditorView(ev, 0, 0);
+
+    const text_cell = opt_buffer.get(0, 0).?;
+    const trailing_cell = opt_buffer.get(4, 0).?;
+    const blank_row_cell = opt_buffer.get(0, 1).?;
+
+    try std.testing.expectEqual(@as(u32, 'h'), text_cell.char);
+    try std.testing.expectEqual(@as(u32, 32), trailing_cell.char);
+    try std.testing.expectEqual(@as(u32, 32), blank_row_cell.char);
+    try std.testing.expectEqual(ansi.indexedColorTag(254), text_cell.bg_tag);
+    try std.testing.expectEqual(ansi.indexedColorTag(254), trailing_cell.bg_tag);
+    try std.testing.expectEqual(ansi.indexedColorTag(254), blank_row_cell.bg_tag);
+    try std.testing.expectEqual(@as(f32, 1.0), text_cell.bg[3]);
+    try std.testing.expectEqual(@as(f32, 1.0), blank_row_cell.bg[3]);
 }
 
 test "EditorView - tab indicator set and get" {

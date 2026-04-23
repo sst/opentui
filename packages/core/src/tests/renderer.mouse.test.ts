@@ -1251,6 +1251,47 @@ describe("renderer handleMouseData split height", () => {
     }
   })
 
+  test("split height clamps to terminal height before applying mouse offsets", async () => {
+    const requestedFooterHeight = 8
+    const terminalHeight = 5
+    const setup = await createTestRenderer({
+      width: 40,
+      height: terminalHeight,
+      screenMode: "split-footer",
+      footerHeight: requestedFooterHeight,
+    })
+
+    const clampedRenderer = setup.renderer
+    const clampedMouse = setup.mockMouse
+
+    try {
+      const target = new TestRenderable(clampedRenderer, {
+        id: "split-clamped-target",
+        position: "absolute",
+        left: 2,
+        top: 1,
+        width: 6,
+        height: 3,
+      })
+      clampedRenderer.root.add(target)
+      await setup.renderOnce()
+
+      let downEvent: MouseEvent | null = null
+      target.onMouseDown = (event) => {
+        downEvent = event
+      }
+
+      await clampedMouse.click(target.x + 1, target.y + 1)
+
+      expect((clampedRenderer as any)._splitHeight).toBe(terminalHeight)
+      expect((clampedRenderer as any).renderOffset).toBe(0)
+      expect(downEvent).not.toBeNull()
+      expect(downEvent!.y).toBe(target.y + 1)
+    } finally {
+      clampedRenderer.destroy()
+    }
+  })
+
   test("split height returns false for input above render area", async () => {
     try {
       const sequences: string[] = []

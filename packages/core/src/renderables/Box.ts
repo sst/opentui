@@ -238,11 +238,22 @@ export class BoxRenderable extends Renderable {
   }
 
   protected renderSelf(buffer: OptimizedBuffer): void {
-    const currentBorderColor = this._focused ? this._focusedBorderColor : this._borderColor
+    const hasBorder = this.borderSides.top || this.borderSides.right || this.borderSides.bottom || this.borderSides.left
+    const hasVisibleFill = this.shouldFill && this._backgroundColor.a > 0
+    // Many boxes are used only for layout. Skip drawBox entirely when a box
+    // would not draw pixels so wrapper nodes do not pay the FFI/native cost.
+    if (!hasBorder && !hasVisibleFill) {
+      return
+    }
+
+    const hasFocusWithin = this._focusable && (this._focused || this._hasFocusedDescendant)
+    const currentBorderColor = hasFocusWithin ? this._focusedBorderColor : this._borderColor
+    const screenX = this._screenX
+    const screenY = this._screenY
 
     buffer.drawBox({
-      x: this.x,
-      y: this.y,
+      x: screenX,
+      y: screenY,
       width: this.width,
       height: this.height,
       borderStyle: this._borderStyle,

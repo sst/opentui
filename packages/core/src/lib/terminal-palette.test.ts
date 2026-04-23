@@ -1,5 +1,5 @@
 import { test, expect } from "bun:test"
-import { TerminalPalette } from "./terminal-palette.js"
+import { TerminalPalette, normalizeTerminalPalette } from "./terminal-palette.js"
 import { EventEmitter } from "events"
 import { Buffer } from "node:buffer"
 import { ManualClock } from "../testing/manual-clock.js"
@@ -64,6 +64,17 @@ async function advanceClock(clock: ManualClock, ms: number): Promise<void> {
   clock.advance(ms)
   await flushAsync()
 }
+
+test("normalizeTerminalPalette returns detached fallback colors", () => {
+  const normalized = normalizeTerminalPalette(null)
+  normalized.palette[0].r = 1
+  normalized.defaultForeground.g = 0
+
+  const fresh = normalizeTerminalPalette(null)
+
+  expect(fresh.palette[0].toInts()).toEqual([0, 0, 0, 255])
+  expect(fresh.defaultForeground.toInts()).toEqual([255, 255, 255, 255])
+})
 
 test("TerminalPalette detectOSCSupport returns true on response", async () => {
   const { stdin, clock, palette } = createPaletteHarness()

@@ -5,7 +5,7 @@ import { KeyEvent } from "../lib/KeyHandler.js"
 
 // Helper function to create a KeyEvent from a string or object
 function createKeyEvent(
-  input: string | { name: string; shift?: boolean; ctrl?: boolean; meta?: boolean; super?: boolean },
+  input: string | { name: string; shift?: boolean; ctrl?: boolean; meta?: boolean; super?: boolean; baseCode?: number },
 ): KeyEvent {
   if (typeof input === "string") {
     return new KeyEvent({
@@ -28,6 +28,7 @@ function createKeyEvent(
       meta: input.meta ?? false,
       shift: input.shift ?? false,
       super: input.super ?? false,
+      baseCode: input.baseCode,
       option: false,
       number: false,
       raw: input.name,
@@ -418,6 +419,23 @@ describe("SelectRenderable", () => {
       const kHandled = select.handleKeyPress(createKeyEvent("k"))
       expect(kHandled).toBe(true)
       expect(select.getSelectedIndex()).toBe(1)
+    })
+
+    test("should use baseCode for custom bindings from alternate layouts", async () => {
+      const { select } = await createSelectRenderable(currentRenderer, {
+        width: 20,
+        height: 5,
+        options: sampleOptions,
+        selectedIndex: 1,
+        keyBindings: [{ name: "j", action: "move-down" }],
+      })
+
+      select.focus()
+
+      const handled = select.handleKeyPress(createKeyEvent({ name: "ㅓ", baseCode: 106 }))
+
+      expect(handled).toBe(true)
+      expect(select.getSelectedIndex()).toBe(2)
     })
 
     test("should handle enter key", async () => {

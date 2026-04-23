@@ -312,7 +312,7 @@ pub const EditorView = struct {
         const changed = self.text_buffer_view.setLocalSelection(anchorX, anchorY, focusX, focusY, bgColor, fgColor);
 
         if (changed and updateCursor) {
-            self.updateCursorToSelectionFocus(focusX, focusY);
+            self.syncCursorToSelectionFocus();
         }
 
         return changed;
@@ -322,7 +322,7 @@ pub const EditorView = struct {
         const changed = self.text_buffer_view.updateLocalSelection(anchorX, anchorY, focusX, focusY, bgColor, fgColor);
 
         if (changed and updateCursor) {
-            self.updateCursorToSelectionFocus(focusX, focusY);
+            self.syncCursorToSelectionFocus();
         }
 
         return changed;
@@ -334,7 +334,7 @@ pub const EditorView = struct {
 
     /// Updates the cursor position to match the selection focus position.
     /// Does NOT trigger viewport scrolling - TypeScript layer handles that.
-    fn updateCursorToSelectionFocus(self: *EditorView, _: i32, _: i32) void {
+    pub fn syncCursorToSelectionFocus(self: *EditorView) void {
         const selection = self.text_buffer_view.getSelection() orelse return;
 
         const focus_offset = if (self.text_buffer_view.selection_anchor_offset) |anchor| blk: {

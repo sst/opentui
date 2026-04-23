@@ -145,6 +145,44 @@ Returns the current component catalogue that powers JSX tag lookup.
 
 For plugin slots, see [Plugin Slots overview](/docs/plugins/slots) and [Solid slots](/docs/plugins/solid).
 
+## Scrollback writers
+
+In [`split-footer`](/docs/core-concepts/renderer#split-footer) mode with `externalOutputMode: "capture-stdout"`, the Solid binding provides helpers that append JSX-rendered output above the footer. They wrap [`renderer.writeToScrollback`](/docs/core-concepts/renderer#writing-to-scrollback) so you can write scrollback content with signals and components.
+
+### `writeSolidToScrollback(renderer, node, options?)`
+
+Render a JSX node once and append it as a scrollback commit.
+
+```tsx
+import { writeSolidToScrollback } from "@opentui/solid"
+
+writeSolidToScrollback(renderer, () => <text fg="#8BD5CA">api responded in 12ms</text>)
+```
+
+### `createScrollbackWriter(node, options?)`
+
+If you need to pass the same JSX rendering to multiple `writeToScrollback` calls (or hold onto the writer inside your own code), use the lower-level factory:
+
+```tsx
+import { createScrollbackWriter } from "@opentui/solid"
+
+const writer = createScrollbackWriter(() => <text>logged at {new Date().toISOString()}</text>, { startOnNewLine: true })
+
+renderer.writeToScrollback(writer)
+```
+
+### Options
+
+| Option            | Type      | Default        | Description                                                              |
+| ----------------- | --------- | -------------- | ------------------------------------------------------------------------ |
+| `width`           | `number`  | renderer width | Override the snapshot width in columns                                   |
+| `height`          | `number`  | measured auto  | Override the snapshot height in rows (otherwise measured from layout)    |
+| `rowColumns`      | `number`  | snapshot width | Explicit last-row column count for tail tracking                         |
+| `startOnNewLine`  | `boolean` | `true`         | Insert a newline before this commit if the previous commit ended mid-row |
+| `trailingNewline` | `boolean` | -              | Append a newline after the final row                                     |
+
+The writer returns a `ScrollbackSnapshot` whose teardown disposes the inner Solid subtree after the snapshot renders. Use the core [`ScrollbackSurface`](/docs/core-concepts/renderer#writing-to-scrollback) APIs directly if you need streaming commits that re-render the same tree over time.
+
 ## Hooks
 
 ### `useRenderer()`

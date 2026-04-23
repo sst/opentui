@@ -1,3 +1,4 @@
+import { RGBA, DEFAULT_BACKGROUND_RGB, DEFAULT_FOREGROUND_RGB, ansi256IndexToRgb } from "./RGBA.js"
 import { SystemClock, type Clock, type TimerHandle } from "./clock.js"
 
 type Hex = string | null
@@ -34,6 +35,12 @@ export interface TerminalPaletteDetector {
   detect(options?: GetPaletteOptions): Promise<TerminalColors>
   detectOSCSupport(timeoutMs?: number): Promise<boolean>
   cleanup(): void
+}
+
+export interface NormalizedTerminalPalette {
+  palette: RGBA[]
+  defaultForeground: RGBA
+  defaultBackground: RGBA
 }
 
 export type OscSubscriptionSource = {
@@ -380,4 +387,48 @@ export function createTerminalPalette(
   clock?: Clock,
 ): TerminalPaletteDetector {
   return new TerminalPalette(stdin, stdout, writeFn, isLegacyTmux, oscSource, clock)
+}
+
+const DEFAULT_FOREGROUND_FALLBACK = RGBA.fromInts(...DEFAULT_FOREGROUND_RGB)
+const DEFAULT_BACKGROUND_FALLBACK = RGBA.fromInts(...DEFAULT_BACKGROUND_RGB)
+
+let fallbackAnsi256Palette: RGBA[] | null = null
+
+function getFallbackAnsi256Palette(): readonly RGBA[] {
+  if (!fallbackAnsi256Palette) {
+    fallbackAnsi256Palette = Array.from({ length: 256 }, (_, index) => {
+      const [r, g, b] = ansi256IndexToRgb(index)
+      return RGBA.fromInts(r, g, b)
+    })
+  }
+
+  return fallbackAnsi256Palette
+}
+
+export function normalizeTerminalPalette(colors?: TerminalColors | null): NormalizedTerminalPalette {
+  const fallbackPalette = getFallbackAnsi256Palette()
+
+  return {
+    palette: Array.from({ length: 256 }, (_, index) => {
+      const detected = colors?.palette[index]
+      return detected ? RGBA.fromHex(detected) : RGBA.clone(fallbackPalette[index])
+    }),
+    defaultForeground: colors?.defaultForeground
+      ? RGBA.fromHex(colors.defaultForeground)
+      : RGBA.clone(DEFAULT_FOREGROUND_FALLBACK),
+    defaultBackground: colors?.defaultBackground
+      ? RGBA.fromHex(colors.defaultBackground)
+      : RGBA.clone(DEFAULT_BACKGROUND_FALLBACK),
+  }
+}
+
+export function buildTerminalPaletteSignature(colors?: TerminalColors | null): string {
+  const normalized = normalizeTerminalPalette(colors)
+  const paletteSignature = normalized.palette.map((color) => color.toInts().join(",")).join(";")
+
+  return [
+    paletteSignature,
+    normalized.defaultForeground.toInts().join(","),
+    normalized.defaultBackground.toInts().join(","),
+  ].join("|")
 }

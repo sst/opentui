@@ -1,3 +1,120 @@
+export type RGBTriplet = readonly [number, number, number]
+export type ColorKind = "rgb" | "indexed" | "default"
+export type ColorInput = string | RGBA
+
+export const COLOR_TAG_RGB = 256
+export const COLOR_TAG_DEFAULT = 257
+export const DEFAULT_FOREGROUND_RGB: RGBTriplet = [255, 255, 255]
+export const DEFAULT_BACKGROUND_RGB: RGBTriplet = [0, 0, 0]
+
+const RGBA_BUFFER_STRIDE = 5
+
+const ANSI16_RGB: readonly RGBTriplet[] = [
+  [0x00, 0x00, 0x00],
+  [0x80, 0x00, 0x00],
+  [0x00, 0x80, 0x00],
+  [0x80, 0x80, 0x00],
+  [0x00, 0x00, 0x80],
+  [0x80, 0x00, 0x80],
+  [0x00, 0x80, 0x80],
+  [0xc0, 0xc0, 0xc0],
+  [0x80, 0x80, 0x80],
+  [0xff, 0x00, 0x00],
+  [0x00, 0xff, 0x00],
+  [0xff, 0xff, 0x00],
+  [0x00, 0x00, 0xff],
+  [0xff, 0x00, 0xff],
+  [0x00, 0xff, 0xff],
+  [0xff, 0xff, 0xff],
+]
+
+const ANSI_256_CUBE_LEVELS = [0, 95, 135, 175, 215, 255] as const
+
+export interface NormalizedColorValue {
+  rgba: RGBA
+  tag: number
+}
+
+function normalizeColorTag(tag: number | undefined): number {
+  const normalizedTag = tag != null && Number.isFinite(tag) ? Math.round(tag) : COLOR_TAG_RGB
+
+  if (normalizedTag === COLOR_TAG_RGB || normalizedTag === COLOR_TAG_DEFAULT) {
+    return normalizedTag
+  }
+
+  if (Number.isInteger(normalizedTag) && normalizedTag >= 0 && normalizedTag <= 255) {
+    return normalizedTag
+  }
+
+  return COLOR_TAG_RGB
+}
+
+function normalizeRGBABuffer(buffer: Float32Array): Float32Array {
+  if (buffer.length === RGBA_BUFFER_STRIDE) {
+    buffer[4] = normalizeColorTag(buffer[4])
+    return buffer
+  }
+
+  const normalized = new Float32Array(RGBA_BUFFER_STRIDE)
+  normalized[0] = buffer[0] ?? 0
+  normalized[1] = buffer[1] ?? 0
+  normalized[2] = buffer[2] ?? 0
+  normalized[3] = buffer[3] ?? 0
+  normalized[4] = COLOR_TAG_RGB
+
+  return normalized
+}
+
+function withTag(rgba: RGBA, tag: number): RGBA {
+  const tagged = RGBA.clone(rgba)
+  tagged.tag = tag
+  return tagged
+}
+
+function rgbaForAnsi256Index(index: number): RGBA {
+  const [r, g, b] = ansi256IndexToRgb(index)
+  return RGBA.fromInts(r, g, b)
+}
+
+export function normalizeIndexedColorIndex(index: number): number {
+  if (!Number.isInteger(index) || index < 0 || index > 255) {
+    throw new RangeError(`Indexed color must be an integer in the range 0..255, got ${index}`)
+  }
+
+  return index
+}
+
+export function ansi256IndexToRgb(index: number): RGBTriplet {
+  const normalizedIndex = normalizeIndexedColorIndex(index)
+
+  if (normalizedIndex < ANSI16_RGB.length) {
+    return ANSI16_RGB[normalizedIndex]
+  }
+
+  if (normalizedIndex < 232) {
+    const cubeIndex = normalizedIndex - 16
+    const r = Math.floor(cubeIndex / 36)
+    const g = Math.floor(cubeIndex / 6) % 6
+    const b = cubeIndex % 6
+    return [ANSI_256_CUBE_LEVELS[r], ANSI_256_CUBE_LEVELS[g], ANSI_256_CUBE_LEVELS[b]]
+  }
+
+  const value = 8 + (normalizedIndex - 232) * 10
+  return [value, value, value]
+}
+
+export function decodeColorTag(tag: number): { kind: ColorKind; index?: number } {
+  if (tag === COLOR_TAG_DEFAULT) {
+    return { kind: "default" }
+  }
+
+  if (tag === COLOR_TAG_RGB) {
+    return { kind: "rgb" }
+  }
+
+  return { kind: "indexed", index: normalizeIndexedColorIndex(tag) }
+}
+
 export class RGBA {
   buffer: Float32Array
   /** ANSI 16-color palette index (0-15) when this color was created from a
@@ -6,23 +123,44 @@ export class RGBA {
   ansi16Index?: number
 
   constructor(buffer: Float32Array) {
-    this.buffer = buffer
+    this.buffer = normalizeRGBABuffer(buffer)
   }
 
   static fromArray(array: Float32Array) {
     return new RGBA(array)
   }
 
-  static fromValues(r: number, g: number, b: number, a: number = 1.0) {
-    return new RGBA(new Float32Array([r, g, b, a]))
+  static fromValues(r: number, g: number, b: number, a: number = 1.0, tag: number = COLOR_TAG_RGB) {
+    return new RGBA(new Float32Array([r, g, b, a, normalizeColorTag(tag)]))
   }
 
-  static fromInts(r: number, g: number, b: number, a: number = 255) {
-    return new RGBA(new Float32Array([r / 255, g / 255, b / 255, a / 255]))
+  static clone(rgba: RGBA) {
+    return RGBA.fromValues(rgba.r, rgba.g, rgba.b, rgba.a, rgba.tag)
+  }
+
+  static fromInts(r: number, g: number, b: number, a: number = 255, tag: number = COLOR_TAG_RGB) {
+    return new RGBA(new Float32Array([r / 255, g / 255, b / 255, a / 255, normalizeColorTag(tag)]))
   }
 
   static fromHex(hex: string): RGBA {
     return hexToRgb(hex)
+  }
+
+  static fromIndex(index: number, snapshot?: ColorInput): RGBA {
+    const normalizedIndex = normalizeIndexedColorIndex(index)
+    return withTag(snapshot ? parseColor(snapshot) : rgbaForAnsi256Index(normalizedIndex), normalizedIndex)
+  }
+
+  static defaultForeground(snapshot?: ColorInput): RGBA {
+    return withTag(snapshot ? parseColor(snapshot) : RGBA.fromInts(...DEFAULT_FOREGROUND_RGB), COLOR_TAG_DEFAULT)
+  }
+
+  static defaultBackground(snapshot?: ColorInput): RGBA {
+    return withTag(snapshot ? parseColor(snapshot) : RGBA.fromInts(...DEFAULT_BACKGROUND_RGB), COLOR_TAG_DEFAULT)
+  }
+
+  static getIntentTag(rgba: RGBA): number {
+    return rgba.tag
   }
 
   toInts(): [number, number, number, number] {
@@ -61,6 +199,14 @@ export class RGBA {
     this.buffer[3] = value
   }
 
+  get tag(): number {
+    return normalizeColorTag(this.buffer[4])
+  }
+
+  set tag(value: number) {
+    this.buffer[4] = normalizeColorTag(value)
+  }
+
   map<R>(fn: (value: number) => R) {
     return [fn(this.r), fn(this.g), fn(this.b), fn(this.a)]
   }
@@ -71,11 +217,18 @@ export class RGBA {
 
   equals(other?: RGBA): boolean {
     if (!other) return false
-    return this.r === other.r && this.g === other.g && this.b === other.b && this.a === other.a
+    return (
+      this.r === other.r && this.g === other.g && this.b === other.b && this.a === other.a && this.tag === other.tag
+    )
   }
 }
 
-export type ColorInput = string | RGBA
+export function normalizeColorValue(value: ColorInput | null | undefined): NormalizedColorValue | null {
+  if (value == null) return null
+
+  const rgba = parseColor(value)
+  return { rgba, tag: rgba.tag }
+}
 
 export function hexToRgb(hex: string): RGBA {
   hex = hex.replace(/^#/, "")

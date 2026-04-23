@@ -1,12 +1,14 @@
 ---
 title: Colors
-description: Working with RGBA colors in OpenTUI
+description: Working with RGBA colors and palette-aware color intent in OpenTUI
 order: 2
 ---
 
 # Colors
 
 OpenTUI uses the `RGBA` class for color representation. The class stores colors as normalized float values (0.0-1.0) internally, but provides methods for working with different color formats.
+
+Every color also carries a **color tag** that records the original intent: an RGB snapshot, an indexed ANSI slot, or the terminal default. The renderer uses this tag to keep palette-relative colors stable when the terminal palette changes.
 
 ## Creating colors
 
@@ -66,6 +68,97 @@ const color2 = parseColor("blue") // CSS color name
 const color3 = parseColor("transparent") // Transparent
 const color4 = parseColor(RGBA.fromInts(255, 0, 0, 255)) // Pass-through
 ```
+
+## Color intent
+
+Every `RGBA` value stores a `tag` next to the RGBA snapshot to record the original color intent. The renderer reads this tag to decide which ANSI sequence to emit:
+
+- `COLOR_TAG_RGB` (`256`): a literal RGB color. The renderer emits `38;2;r;g;b` / `48;2;r;g;b`.
+- `COLOR_TAG_DEFAULT` (`257`): the terminal's default foreground or background. The renderer emits `39` / `49` (SGR default) so the terminal picks the right side of its palette.
+- Any integer in `0..255`: an indexed ANSI color. The renderer emits `38;5;n` / `48;5;n` so the user's theme overrides for that palette slot keep working when the palette changes.
+
+Each color still carries its RGBA values so alpha blending and non-ANSI renderers work. The tag flows end-to-end through TypeScript, the FFI, the buffer, and the native renderer.
+
+### Default foreground and background
+
+```typescript
+import { RGBA } from "@opentui/core"
+
+// Will emit SGR 39 / 49 when rendered
+const fg = RGBA.defaultForeground()
+const bg = RGBA.defaultBackground()
+```
+
+You can pass an optional snapshot color to override the RGBA fallback. The renderer uses the snapshot for early frames, before it detects the terminal palette:
+
+```typescript
+const fg = RGBA.defaultForeground("#E6EDF3")
+```
+
+### Indexed ANSI colors (0-255)
+
+```typescript
+import { RGBA, ansi256IndexToRgb } from "@opentui/core"
+
+// Indexed colors keep their palette slot even if the user changes their theme
+const ansiRed = RGBA.fromIndex(1)
+const ansiBrightBlue = RGBA.fromIndex(12)
+
+// With a custom RGBA snapshot (for early frames before palette detection)
+const themed = RGBA.fromIndex(4, "#1F6FEB")
+
+// Convert an ANSI 256 index to an RGB triplet
+const [r, g, b] = ansi256IndexToRgb(196)
+```
+
+### Inspecting and creating tagged colors
+
+```typescript
+import { RGBA, decodeColorTag, COLOR_TAG_DEFAULT, COLOR_TAG_RGB } from "@opentui/core"
+
+const fg = RGBA.defaultForeground()
+RGBA.getIntentTag(fg) // => 257 (COLOR_TAG_DEFAULT)
+decodeColorTag(fg.tag) // => { kind: "default" }
+
+const indexed = RGBA.fromIndex(10)
+decodeColorTag(indexed.tag) // => { kind: "indexed", index: 10 }
+
+const literal = RGBA.fromHex("#00FF00")
+decodeColorTag(literal.tag) // => { kind: "rgb" }
+```
+
+### Exported tag constants and types
+
+| Export                     | Description                                                     |
+| -------------------------- | --------------------------------------------------------------- |
+| `COLOR_TAG_RGB`            | `256` — marker for literal RGBA colors                          |
+| `COLOR_TAG_DEFAULT`        | `257` — marker for terminal default foreground/background       |
+| `DEFAULT_FOREGROUND_RGB`   | `[255, 255, 255]` fallback RGB triplet for the default fg       |
+| `DEFAULT_BACKGROUND_RGB`   | `[0, 0, 0]` fallback RGB triplet for the default bg             |
+| `ColorKind`                | `"rgb" \| "indexed" \| "default"`                               |
+| `RGBTriplet`               | `readonly [number, number, number]`                             |
+| `ansi256IndexToRgb(index)` | Converts an ANSI 256 palette index to an RGB triplet            |
+| `decodeColorTag(tag)`      | Returns the `ColorKind` (plus `index` for indexed) for a tag    |
+| `normalizeColorValue(v)`   | Parses a `ColorInput` and returns both the `rgba` and its `tag` |
+
+## Terminal palette detection
+
+When the terminal supports it, the renderer queries the active palette (OSC 4 for palette slots, OSC 10/11 for default fg/bg) and publishes it to the native renderer. Indexed colors stay mapped to the terminal's user-configured slots, and the renderer re-resolves RGB fallbacks against the detected palette.
+
+```typescript
+const colors = await renderer.getPalette({ size: 256 })
+
+console.log(colors.palette[1]) // '#cc0000' or whatever red your theme uses
+console.log(colors.defaultForeground, colors.defaultBackground)
+```
+
+Useful members:
+
+- `renderer.getPalette(options?)` — returns a `TerminalColors` snapshot. Cached by requested size (`16` or `256`).
+- `renderer.paletteDetectionStatus` — `"idle" | "detecting" | "cached"`.
+- `renderer.clearPaletteCache()` — drop cached palettes (for example, after the user changes their theme).
+
+`getPalette` throws if the renderer is suspended. The renderer also runs detection automatically on startup so the native side has palette data for `38;5` and `39/49` emission.
 
 ## Alpha blending
 

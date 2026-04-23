@@ -1,13 +1,17 @@
 const std = @import("std");
 const Allocator = std.mem.Allocator;
+const ansi = @import("ansi.zig");
 const buffer = @import("buffer.zig");
 const events = @import("event-emitter.zig");
 
 pub const RGBA = buffer.RGBA;
+pub const ColorTag = buffer.ColorTag;
 
 pub const StyleDefinition = struct {
     fg: ?RGBA,
     bg: ?RGBA,
+    fg_tag: ColorTag = ansi.COLOR_TAG_RGB,
+    bg_tag: ColorTag = ansi.COLOR_TAG_RGB,
     attributes: u32,
 };
 
@@ -64,13 +68,9 @@ pub const SyntaxStyle = struct {
         self.global_allocator.destroy(self);
     }
 
-    pub fn registerStyle(self: *SyntaxStyle, name: []const u8, fg: ?RGBA, bg: ?RGBA, attributes: u32) SyntaxStyleError!u32 {
+    fn putStyle(self: *SyntaxStyle, name: []const u8, definition: StyleDefinition) SyntaxStyleError!u32 {
         if (self.name_to_id.get(name)) |existing_id| {
-            try self.id_to_style.put(self.allocator, existing_id, StyleDefinition{
-                .fg = fg,
-                .bg = bg,
-                .attributes = attributes,
-            });
+            try self.id_to_style.put(self.allocator, existing_id, definition);
             return existing_id;
         }
 
@@ -80,13 +80,21 @@ pub const SyntaxStyle = struct {
         const owned_name = self.allocator.dupe(u8, name) catch return SyntaxStyleError.OutOfMemory;
 
         try self.name_to_id.put(self.allocator, owned_name, id);
-        try self.id_to_style.put(self.allocator, id, StyleDefinition{
+        try self.id_to_style.put(self.allocator, id, definition);
+
+        return id;
+    }
+
+    pub fn registerStyle(self: *SyntaxStyle, name: []const u8, fg: ?RGBA, bg: ?RGBA, attributes: u32) SyntaxStyleError!u32 {
+        return self.registerStyleDefinition(name, .{
             .fg = fg,
             .bg = bg,
             .attributes = attributes,
         });
+    }
 
-        return id;
+    pub fn registerStyleDefinition(self: *SyntaxStyle, name: []const u8, definition: StyleDefinition) SyntaxStyleError!u32 {
+        return self.putStyle(name, definition);
     }
 
     pub fn resolveById(self: *const SyntaxStyle, id: u32) ?StyleDefinition {
@@ -126,8 +134,14 @@ pub const SyntaxStyle = struct {
 
         for (ids) |id| {
             if (self.resolveById(id)) |style| {
-                if (style.fg) |fg| merged.fg = fg;
-                if (style.bg) |bg| merged.bg = bg;
+                if (style.fg) |fg| {
+                    merged.fg = fg;
+                    merged.fg_tag = style.fg_tag;
+                }
+                if (style.bg) |bg| {
+                    merged.bg = bg;
+                    merged.bg_tag = style.bg_tag;
+                }
                 // Attributes are OR'd together
                 merged.attributes |= style.attributes;
             }

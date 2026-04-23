@@ -1,6 +1,6 @@
 import { defineStruct, defineEnum } from "bun-ffi-structs"
 import { ptr, toArrayBuffer, type Pointer } from "bun:ffi"
-import { RGBA } from "./lib/RGBA.js"
+import { RGBA, COLOR_TAG_RGB, normalizeColorValue } from "./lib/RGBA.js"
 
 const rgbaPackTransform = (rgba?: RGBA) => (rgba ? ptr(rgba.buffer) : null)
 const rgbaUnpackTransform = (ptr?: Pointer) => (ptr ? RGBA.fromArray(new Float32Array(toArrayBuffer(ptr))) : undefined)
@@ -9,6 +9,8 @@ type StyledChunkInput = {
   text: string
   fg?: RGBA | null
   bg?: RGBA | null
+  fg_tag?: number
+  bg_tag?: number
   attributes?: number | null
   link?: { url: string } | string | null
 }
@@ -35,18 +37,33 @@ export const StyledChunkStruct = defineStruct(
         unpackTransform: rgbaUnpackTransform,
       },
     ],
+    ["fg_tag", "u16", { default: COLOR_TAG_RGB }],
+    ["bg_tag", "u16", { default: COLOR_TAG_RGB }],
     ["attributes", "u32", { default: 0 }],
     ["link", "char*", { default: "" }],
     ["link_len", "u64", { lengthOf: "link" }],
   ],
   {
     mapValue: (chunk: StyledChunkInput): StyledChunkInput => {
+      const normalizedFg = normalizeColorValue(chunk.fg ?? null)
+      const normalizedBg = normalizeColorValue(chunk.bg ?? null)
+
       if (!chunk.link || typeof chunk.link === "string") {
-        return chunk
+        return {
+          ...chunk,
+          fg: normalizedFg?.rgba ?? null,
+          bg: normalizedBg?.rgba ?? null,
+          fg_tag: normalizedFg?.tag ?? COLOR_TAG_RGB,
+          bg_tag: normalizedBg?.tag ?? COLOR_TAG_RGB,
+        }
       }
 
       return {
         ...chunk,
+        fg: normalizedFg?.rgba ?? null,
+        bg: normalizedBg?.rgba ?? null,
+        fg_tag: normalizedFg?.tag ?? COLOR_TAG_RGB,
+        bg_tag: normalizedBg?.tag ?? COLOR_TAG_RGB,
         link: chunk.link.url,
       }
     },
@@ -81,6 +98,7 @@ export const TerminalCapabilitiesStruct = defineStruct([
   ["kitty_keyboard", "bool_u8"],
   ["kitty_graphics", "bool_u8"],
   ["rgb", "bool_u8"],
+  ["ansi256", "bool_u8"],
   ["unicode", UnicodeMethodEnum],
   ["sgr_pixels", "bool_u8"],
   ["color_scheme_updates", "bool_u8"],

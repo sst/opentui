@@ -1,6 +1,6 @@
 import { describe, expect, it } from "bun:test"
 import { TextNodeRenderable, isTextNodeRenderable } from "./TextNode.js"
-import { RGBA } from "../lib/RGBA.js"
+import { COLOR_TAG_DEFAULT, RGBA } from "../lib/RGBA.js"
 import { StyledText, red, bold, t } from "../lib/styled-text.js"
 
 describe("TextNodeRenderable", () => {
@@ -44,6 +44,28 @@ describe("TextNodeRenderable", () => {
       expect(node.bg?.g).toBe(0)
       expect(node.bg?.b).toBe(1)
       expect(node.bg?.a).toBe(1)
+    })
+
+    it("should preserve RGBA intent constructors in constructor and setters", () => {
+      const node = new TextNodeRenderable({
+        fg: RGBA.fromIndex(6),
+        bg: RGBA.defaultBackground(),
+      })
+
+      expect(node.fg).toBeDefined()
+      expect(node.bg).toBeDefined()
+      expect(node.fg).toBeInstanceOf(RGBA)
+      expect(node.bg).toBeInstanceOf(RGBA)
+      expect(RGBA.getIntentTag(node.fg!)).toBe(6)
+      expect(RGBA.getIntentTag(node.bg!)).toBe(COLOR_TAG_DEFAULT)
+
+      node.fg = RGBA.defaultForeground()
+      node.bg = RGBA.fromIndex(4)
+
+      expect(node.fg).toBeInstanceOf(RGBA)
+      expect(node.bg).toBeInstanceOf(RGBA)
+      expect(RGBA.getIntentTag(node.fg!)).toBe(COLOR_TAG_DEFAULT)
+      expect(RGBA.getIntentTag(node.bg!)).toBe(4)
     })
 
     it("should handle undefined colors", () => {
@@ -617,9 +639,10 @@ describe("TextNodeRenderable", () => {
 
       expect(chunks).toHaveLength(1)
       expect(chunks[0].text).toBe("Test")
-      expect(chunks[0].fg?.r).toBe(0)
-      expect(chunks[0].fg?.g).toBe(1)
-      expect(chunks[0].fg?.b).toBe(0)
+      expect(chunks[0].fg).toBeInstanceOf(RGBA)
+      expect((chunks[0].fg as RGBA).r).toBe(0)
+      expect((chunks[0].fg as RGBA).g).toBe(1)
+      expect((chunks[0].fg as RGBA).b).toBe(0)
     })
 
     it("should get children using getChildren", () => {

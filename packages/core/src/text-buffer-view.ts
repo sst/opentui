@@ -111,6 +111,11 @@ export class TextBufferView {
     this.lib.textBufferViewSetWrapMode(this.viewPtr, mode)
   }
 
+  public setFirstLineOffset(offset: number): void {
+    this.guard()
+    this.lib.textBufferViewSetFirstLineOffset(this.viewPtr, offset)
+  }
+
   public setViewportSize(width: number, height: number): void {
     this.guard()
     this.lib.textBufferViewSetViewportSize(this.viewPtr, width, height)

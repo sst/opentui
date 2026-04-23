@@ -868,7 +868,7 @@ describe("StdinParser", () => {
       // DA (Device Attributes)
       ["DA1", "\x1b[?62;1;2;6;7;8;9;15;22c", [resp("csi", "\x1b[?62;1;2;6;7;8;9;15;22c")]],
       // CPR (Cursor Position Report)
-      ["CPR", "\x1b[24;80R", [resp("csi", "\x1b[24;80R")]],
+      ["CPR", "\x1b[24;80R", [resp("cpr", "\x1b[24;80R")]],
       // Window/cell size
       ["window size", "\x1b[4;600;800t", [resp("csi", "\x1b[4;600;800t")]],
       // Mode report
@@ -1228,7 +1228,7 @@ describe("StdinParser", () => {
         expect(snap(parser)).toEqual([])
 
         parser.push(Buffer.from("R"))
-        expect(snap(parser)).toEqual([resp("csi", "\x1b[1;2R")])
+        expect(snap(parser)).toEqual([resp("cpr", "\x1b[1;2R")])
       } finally {
         parser.destroy()
       }
@@ -1304,6 +1304,37 @@ describe("StdinParser", () => {
       }
     })
 
+    test("theme mode replies are emitted as CSI responses", () => {
+      const parser = createParser({
+        protocolContext: { privateCapabilityRepliesActive: true },
+      })
+
+      try {
+        parser.push(Buffer.from("\x1b[?997;1n"))
+        expect(snap(parser)).toEqual([resp("csi", "\x1b[?997;1n")])
+      } finally {
+        parser.destroy()
+      }
+    })
+
+    test("partial theme mode reply stays pending after timeout while capability probe is active", () => {
+      const { parser, clock } = createTimedParser({
+        protocolContext: { privateCapabilityRepliesActive: true },
+      })
+
+      try {
+        parser.push(Buffer.from("\x1b[?997;1"))
+        expect(snap(parser)).toEqual([])
+        clock.advance(10)
+        expect(snap(parser)).toEqual([])
+
+        parser.push(Buffer.from("n"))
+        expect(snap(parser)).toEqual([resp("csi", "\x1b[?997;1n")])
+      } finally {
+        parser.destroy()
+      }
+    })
+
     test("timed-out modified CSI key still flushes before later final byte", () => {
       const { parser, clock } = createTimedParser({
         protocolContext: { explicitWidthCprActive: true },
@@ -1335,6 +1366,24 @@ describe("StdinParser", () => {
 
         parser.push(Buffer.from("R"))
         expect(snap(parser)).toEqual([k("r", { raw: "R", shift: true })])
+      } finally {
+        parser.destroy()
+      }
+    })
+
+    test("generic row/col CPR stays pending after timeout while startup cursor probe is active", () => {
+      const { parser, clock } = createTimedParser({
+        protocolContext: { startupCursorCprActive: true },
+      })
+
+      try {
+        parser.push(Buffer.from("\x1b[24;80"))
+        expect(snap(parser)).toEqual([])
+        clock.advance(10)
+        expect(snap(parser)).toEqual([])
+
+        parser.push(Buffer.from("R"))
+        expect(snap(parser)).toEqual([resp("cpr", "\x1b[24;80R")])
       } finally {
         parser.destroy()
       }

@@ -58,6 +58,10 @@ export class OptimizedBuffer {
     bg: Float32Array
     attributes: Uint32Array
   } | null = null
+  private _rawColorTags: {
+    fg: Uint16Array
+    bg: Uint16Array
+  } | null = null
   private _destroyed: boolean = false
 
   get ptr(): Pointer {
@@ -71,6 +75,32 @@ export class OptimizedBuffer {
     if (this._destroyed) throw new Error(`Buffer ${this.id} is destroyed`)
   }
 
+  private ensureRawBufferViews(): void {
+    if (this._rawBuffers !== null && this._rawColorTags !== null) {
+      return
+    }
+
+    const size = this._width * this._height
+    const charPtr = this.lib.bufferGetCharPtr(this.bufferPtr)
+    const fgPtr = this.lib.bufferGetFgPtr(this.bufferPtr)
+    const bgPtr = this.lib.bufferGetBgPtr(this.bufferPtr)
+    const fgTagPtr = this.lib.bufferGetFgTagPtr(this.bufferPtr)
+    const bgTagPtr = this.lib.bufferGetBgTagPtr(this.bufferPtr)
+    const attributesPtr = this.lib.bufferGetAttributesPtr(this.bufferPtr)
+
+    this._rawBuffers = {
+      char: new Uint32Array(toArrayBuffer(charPtr, 0, size * 4)),
+      fg: new Float32Array(toArrayBuffer(fgPtr, 0, size * 4 * 4)),
+      bg: new Float32Array(toArrayBuffer(bgPtr, 0, size * 4 * 4)),
+      attributes: new Uint32Array(toArrayBuffer(attributesPtr, 0, size * 4)),
+    }
+
+    this._rawColorTags = {
+      fg: new Uint16Array(toArrayBuffer(fgTagPtr, 0, size * 2)),
+      bg: new Uint16Array(toArrayBuffer(bgTagPtr, 0, size * 2)),
+    }
+  }
+
   get buffers(): {
     char: Uint32Array
     fg: Float32Array
@@ -78,22 +108,14 @@ export class OptimizedBuffer {
     attributes: Uint32Array
   } {
     this.guard()
-    if (this._rawBuffers === null) {
-      const size = this._width * this._height
-      const charPtr = this.lib.bufferGetCharPtr(this.bufferPtr)
-      const fgPtr = this.lib.bufferGetFgPtr(this.bufferPtr)
-      const bgPtr = this.lib.bufferGetBgPtr(this.bufferPtr)
-      const attributesPtr = this.lib.bufferGetAttributesPtr(this.bufferPtr)
+    this.ensureRawBufferViews()
+    return this._rawBuffers!
+  }
 
-      this._rawBuffers = {
-        char: new Uint32Array(toArrayBuffer(charPtr, 0, size * 4)),
-        fg: new Float32Array(toArrayBuffer(fgPtr, 0, size * 4 * 4)),
-        bg: new Float32Array(toArrayBuffer(bgPtr, 0, size * 4 * 4)),
-        attributes: new Uint32Array(toArrayBuffer(attributesPtr, 0, size * 4)),
-      }
-    }
-
-    return this._rawBuffers
+  private get rawColorTags(): { fg: Uint16Array; bg: Uint16Array } {
+    this.guard()
+    this.ensureRawBufferViews()
+    return this._rawColorTags!
   }
 
   constructor(
@@ -159,6 +181,7 @@ export class OptimizedBuffer {
   public getSpanLines(): CapturedLine[] {
     this.guard()
     const { char, fg, bg, attributes } = this.buffers
+    const { fg: fgTag, bg: bgTag } = this.rawColorTags
     const lines: CapturedLine[] = []
 
     const CHAR_FLAG_CONTINUATION = 0xc0000000 | 0
@@ -177,8 +200,8 @@ export class OptimizedBuffer {
       for (let x = 0; x < this._width; x++) {
         const i = y * this._width + x
         const cp = char[i]
-        const cellFg = RGBA.fromValues(fg[i * 4], fg[i * 4 + 1], fg[i * 4 + 2], fg[i * 4 + 3])
-        const cellBg = RGBA.fromValues(bg[i * 4], bg[i * 4 + 1], bg[i * 4 + 2], bg[i * 4 + 3])
+        const cellFg = RGBA.fromValues(fg[i * 4], fg[i * 4 + 1], fg[i * 4 + 2], fg[i * 4 + 3], fgTag[i])
+        const cellBg = RGBA.fromValues(bg[i * 4], bg[i * 4 + 1], bg[i * 4 + 2], bg[i * 4 + 3], bgTag[i])
         const cellAttrs = attributes[i] & 0xff
 
         // Continuation cells are placeholders for wide characters (emojis, CJK)
@@ -426,6 +449,7 @@ export class OptimizedBuffer {
     this._width = width
     this._height = height
     this._rawBuffers = null
+    this._rawColorTags = null
 
     this.lib.bufferResize(this.bufferPtr, width, height)
   }

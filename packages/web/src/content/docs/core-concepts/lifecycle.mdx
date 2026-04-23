@@ -63,7 +63,6 @@ OpenTUI listens for common exit signals and calls `destroy()` when it receives t
 | `SIGBREAK` | Ctrl+Break on Windows    |
 | `SIGPIPE`  | Broken pipe              |
 | `SIGBUS`   | Bus error                |
-| `SIGFPE`   | Floating point exception |
 
 You can customize which signals trigger cleanup:
 
@@ -86,7 +85,7 @@ By default, Ctrl+C calls `destroy()`. If you want to handle Ctrl+C yourself, dis
 ```typescript
 const renderer = await createCliRenderer({
   exitOnCtrlC: false,
-  exitSignals: ["SIGTERM", "SIGQUIT", "SIGABRT", "SIGHUP", "SIGBREAK", "SIGPIPE", "SIGBUS", "SIGFPE"],
+  exitSignals: ["SIGTERM", "SIGQUIT", "SIGABRT", "SIGHUP", "SIGBREAK", "SIGPIPE", "SIGBUS"],
 })
 
 renderer.keyInput.on("keypress", (key) => {

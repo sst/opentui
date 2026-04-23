@@ -4,6 +4,7 @@ const ansi = @import("ansi.zig");
 const buf = @import("buffer.zig");
 const gp = @import("grapheme.zig");
 const link = @import("link.zig");
+const split_scrollback = @import("split-scrollback.zig");
 const Terminal = @import("terminal.zig");
 const logger = @import("logger.zig");
 
@@ -26,18 +27,59 @@ pub const RendererError = error{
     WriteFailed,
 };
 
-fn rgbaComponentToU8(component: f32) u8 {
-    if (!std.math.isFinite(component)) return 0;
-
-    const clamped = std.math.clamp(component, 0.0, 1.0);
-    return @intFromFloat(@round(clamped * 255.0));
-}
-
 pub const DebugOverlayCorner = enum {
     topLeft,
     topRight,
     bottomLeft,
     bottomRight,
+};
+
+fn moveToSplitOutputCursor(writer: anytype, render_offset: u32, output_column: u32, width: u32) void {
+    const safe_width = @max(width, @as(u32, 1));
+    const row: u32 = if (render_offset > 0) render_offset else 1;
+    const column: u32 = if (render_offset == 0 or output_column == 0)
+        1
+    else
+        @min(output_column + 1, safe_width);
+
+    ansi.ANSI.moveToOutput(writer, column, row) catch {};
+}
+
+fn snapshotRowEnd(snapshot: *const OptimizedBuffer, row: u32, limit: u32) u32 {
+    var x = limit;
+    while (x > 0) {
+        const cell = snapshot.get(x - 1, row) orelse {
+            x -= 1;
+            continue;
+        };
+
+        if (cell.char == 0 or gp.isContinuationChar(cell.char)) {
+            x -= 1;
+            continue;
+        }
+
+        return x;
+    }
+
+    return 0;
+}
+
+pub const SplitFooterTransitionMode = enum(u8) {
+    none = 0,
+    viewport_scroll = 1,
+    clear_stale_rows = 2,
+};
+
+const SplitFooterTransition = struct {
+    mode: SplitFooterTransitionMode = .none,
+    source_top_line: u32 = 0,
+    source_height: u32 = 0,
+    target_top_line: u32 = 0,
+    target_height: u32 = 0,
+
+    fn clear(self: *SplitFooterTransition) void {
+        self.* = .{};
+    }
 };
 
 pub const CliRenderer = struct {
@@ -52,6 +94,7 @@ pub const CliRenderer = struct {
     testing: bool = false,
     useAlternateScreen: bool = true,
     terminalSetup: bool = false,
+    clearOnShutdown: bool = true,
 
     renderStats: struct {
         lastFrameTime: f64,
@@ -98,6 +141,14 @@ pub const CliRenderer = struct {
     renderInProgress: bool = false,
     currentOutputBuffer: []u8 = &[_]u8{},
     currentOutputLen: usize = 0,
+    splitScrollback: split_scrollback.SplitScrollback = .{},
+    // Batch state for split-footer commit flushing. A single JS render tick can
+    // enqueue multiple stdout snapshots; batching keeps all of them inside one
+    // sync frame so terminals do not repeatedly enter/exit synchronized update.
+    splitBatchActive: bool = false,
+    splitBatchRedrawFooter: bool = false,
+    splitBatchDeltaTime: f64 = 0,
+    pendingSplitFooterTransition: SplitFooterTransition = .{},
 
     // Hit grid for mouse event dispatch.
     //
@@ -127,7 +178,19 @@ pub const CliRenderer = struct {
     lastCursorStyleTag: ?u8 = null,
     lastCursorBlinking: ?bool = null,
     lastCursorColorRGB: ?[3]u8 = null,
+    // Cursor diff cache. If nothing changed we avoid emitting cursor restore/show
+    // sequences for no-op frames, which removes a major source of visible flicker.
+    lastCursorX: ?u32 = null,
+    lastCursorY: ?u32 = null,
+    lastCursorVisible: ?bool = null,
     lastMousePointerStyle: Terminal.MousePointerStyle = .default,
+    palette_rgba: [256]RGBA,
+    default_fg_rgba: RGBA,
+    default_bg_rgba: RGBA,
+    palette_epoch: u32,
+    last_rendered_palette_epoch: ?u32 = null,
+    force_full_repaint: bool = false,
+    palette_index_cache: std.AutoHashMapUnmanaged(u64, u8) = .{},
 
     // Preallocated output buffer
     var outputBuffer: [OUTPUT_BUFFER_SIZE]u8 = undefined;
@@ -258,8 +321,13 @@ pub const CliRenderer = struct {
             .hitGridWidth = width,
             .hitGridHeight = height,
             .hitScissorStack = hitScissorStack,
+            .palette_rgba = undefined,
+            .default_fg_rgba = .{ 1.0, 1.0, 1.0, 1.0 },
+            .default_bg_rgba = .{ 0.0, 0.0, 0.0, 1.0 },
+            .palette_epoch = 0,
         };
 
+        self.resetFallbackPaletteState();
         nextBuffer.setBlendBackdropColor(.{ self.backgroundColor[0], self.backgroundColor[1], self.backgroundColor[2], 1.0 });
 
         try currentBuffer.clear(.{ self.backgroundColor[0], self.backgroundColor[1], self.backgroundColor[2], self.backgroundColor[3] }, CLEAR_CHAR);
@@ -297,6 +365,7 @@ pub const CliRenderer = struct {
         self.statSamples.stdoutWriteTime.deinit(self.allocator);
         self.statSamples.cellsUpdated.deinit(self.allocator);
         self.statSamples.frameCallbackTime.deinit(self.allocator);
+        self.palette_index_cache.deinit(self.allocator);
 
         self.allocator.free(self.currentHitGrid);
         self.allocator.free(self.nextHitGrid);
@@ -317,10 +386,10 @@ pub const CliRenderer = struct {
         };
         writer.flush() catch {};
 
-        self.setupTerminalWithoutDetection(useAlternateScreen);
+        self.setupTerminalWithoutDetection(useAlternateScreen, true);
     }
 
-    fn setupTerminalWithoutDetection(self: *CliRenderer, useAlternateScreen: bool) void {
+    fn setupTerminalWithoutDetection(self: *CliRenderer, useAlternateScreen: bool, reserve_non_alt_surface: bool) void {
         var stdoutWriter = std.fs.File.stdout().writer(&self.stdoutBuffer);
         const writer = &stdoutWriter.interface;
 
@@ -328,7 +397,7 @@ pub const CliRenderer = struct {
 
         if (useAlternateScreen) {
             self.terminal.enterAltScreen(writer) catch {};
-        } else {
+        } else if (reserve_non_alt_surface) {
             ansi.ANSI.makeRoomForRendererOutput(writer, @max(self.height, 1)) catch {};
         }
 
@@ -344,9 +413,23 @@ pub const CliRenderer = struct {
         self.performShutdownSequence();
     }
 
+    pub fn setClearOnShutdown(self: *CliRenderer, clear: bool) void {
+        self.clearOnShutdown = clear;
+    }
+
     pub fn resumeRenderer(self: *CliRenderer) void {
         if (!self.terminalSetup) return;
-        self.setupTerminalWithoutDetection(self.useAlternateScreen);
+        self.setupTerminalWithoutDetection(self.useAlternateScreen, self.renderOffset == 0);
+    }
+
+    fn clearSplitFooterSurface(self: *CliRenderer, writer: anytype) void {
+        if (self.renderOffset == 0) return;
+
+        const footer_top_line = @max(self.renderOffset + 1, @as(u32, 1));
+        writer.writeAll("\x1b[r") catch {};
+        ansi.ANSI.moveToOutput(writer, 1, footer_top_line) catch {};
+        writer.writeAll(ansi.ANSI.eraseBelowCursor) catch {};
+        ansi.ANSI.moveToOutput(writer, 1, footer_top_line) catch {};
     }
 
     pub fn performShutdownSequence(self: *CliRenderer) void {
@@ -360,13 +443,12 @@ pub const CliRenderer = struct {
 
         if (self.useAlternateScreen) {
             direct.flush() catch {};
-        } else if (self.renderOffset == 0) {
+        } else if (self.clearOnShutdown and self.renderOffset == 0) {
             direct.writeAll("\x1b[H\x1b[J") catch {};
             direct.flush() catch {};
-        } else if (self.renderOffset > 0) {
-            // Currently still handled in typescript
-            // const consoleEndLine = self.height - self.renderOffset;
-            // ansi.ANSI.moveToOutput(direct, 1, consoleEndLine) catch {};
+        } else if (self.clearOnShutdown and self.renderOffset > 0) {
+            self.clearSplitFooterSurface(direct);
+            direct.flush() catch {};
         }
 
         // NOTE: This messes up state after shutdown, but might be necessary for windows?
@@ -500,10 +582,211 @@ pub const CliRenderer = struct {
     pub fn setBackgroundColor(self: *CliRenderer, rgba: RGBA) void {
         self.backgroundColor = rgba;
         self.nextRenderBuffer.setBlendBackdropColor(.{ rgba[0], rgba[1], rgba[2], 1.0 });
+
+        // Emit OSC 11 to sync terminal background color with the renderer background.
+        // Skip if alpha is 0 (fully transparent — let terminal use its own default).
+        if (rgba[3] > 0 and !self.testing) {
+            var stdoutWriter = std.fs.File.stdout().writer(&self.stdoutBuffer);
+            const writer = &stdoutWriter.interface;
+            const r: u8 = @intFromFloat(@round(@min(rgba[0] * 255.0, 255.0)));
+            const g: u8 = @intFromFloat(@round(@min(rgba[1] * 255.0, 255.0)));
+            const b: u8 = @intFromFloat(@round(@min(rgba[2] * 255.0, 255.0)));
+            ansi.ANSI.setTerminalBgColorOutput(writer, r, g, b) catch {};
+            writer.flush() catch {};
+        }
+    }
+
+    fn resetFallbackPaletteState(self: *CliRenderer) void {
+        for (0..self.palette_rgba.len) |index| {
+            self.palette_rgba[index] = ansi.fallbackAnsi256Color(index);
+        }
+        self.default_fg_rgba = .{ 1.0, 1.0, 1.0, 1.0 };
+        self.default_bg_rgba = .{ 0.0, 0.0, 0.0, 1.0 };
+    }
+
+    pub fn setPaletteState(self: *CliRenderer, palette: []const RGBA, default_fg: RGBA, default_bg: RGBA, palette_epoch: u32) void {
+        self.resetFallbackPaletteState();
+
+        const copy_len = @min(palette.len, self.palette_rgba.len);
+        for (palette[0..copy_len], 0..) |color, index| {
+            self.palette_rgba[index] = color;
+        }
+
+        self.default_fg_rgba = default_fg;
+        self.default_bg_rgba = default_bg;
+
+        if (self.palette_epoch != palette_epoch) {
+            self.palette_epoch = palette_epoch;
+            self.force_full_repaint = true;
+            self.palette_index_cache.clearRetainingCapacity();
+        }
+    }
+
+    fn cachedNearestPaletteIndex(self: *CliRenderer, rgba: RGBA) u8 {
+        const rgb24 = ansi.rgbaToRgb24(rgba);
+        const key = (@as(u64, self.palette_epoch) << 24) | @as(u64, rgb24);
+
+        if (self.palette_index_cache.get(key)) |cached| {
+            return cached;
+        }
+
+        var best_index: u8 = 0;
+        var best_distance = std.math.inf(f32);
+
+        for (self.palette_rgba, 0..) |candidate, index| {
+            const distance = ansi.colorDistanceSquared(rgba, candidate);
+            if (distance < best_distance) {
+                best_distance = distance;
+                best_index = @intCast(index);
+            }
+        }
+
+        self.palette_index_cache.put(self.allocator, key, best_index) catch {};
+        return best_index;
+    }
+
+    fn emitColor(self: *CliRenderer, writer: anytype, rgba: RGBA, tag: ansi.ColorTag, is_background: bool) void {
+        const caps = self.terminal.getCapabilities();
+        const decoded = ansi.decodeColorTag(tag);
+
+        if (decoded.kind == .default) {
+            if (is_background) {
+                ansi.ANSI.bgDefaultOutput(writer) catch {};
+            } else {
+                ansi.ANSI.fgDefaultOutput(writer) catch {};
+            }
+            return;
+        }
+
+        if (is_background and decoded.kind == .rgb and rgba[3] < 0.001) {
+            ansi.ANSI.bgDefaultOutput(writer) catch {};
+            return;
+        }
+
+        if (decoded.kind == .indexed and caps.ansi256) {
+            const index = decoded.index orelse 0;
+            if (is_background) {
+                ansi.ANSI.bgIndexedColorOutput(writer, index) catch {};
+            } else {
+                ansi.ANSI.fgIndexedColorOutput(writer, index) catch {};
+            }
+            return;
+        }
+
+        if (!caps.rgb and caps.ansi256) {
+            const index: u8 = if (decoded.kind == .indexed)
+                decoded.index orelse 0
+            else
+                self.cachedNearestPaletteIndex(rgba);
+
+            if (is_background) {
+                ansi.ANSI.bgIndexedColorOutput(writer, index) catch {};
+            } else {
+                ansi.ANSI.fgIndexedColorOutput(writer, index) catch {};
+            }
+            return;
+        }
+
+        const r = ansi.rgbaComponentToU8(rgba[0]);
+        const g = ansi.rgbaComponentToU8(rgba[1]);
+        const b = ansi.rgbaComponentToU8(rgba[2]);
+
+        if (is_background) {
+            ansi.ANSI.bgColorOutput(writer, r, g, b) catch {};
+        } else {
+            ansi.ANSI.fgColorOutput(writer, r, g, b) catch {};
+        }
     }
 
     pub fn setRenderOffset(self: *CliRenderer, offset: u32) void {
+        if (self.terminalSetup and !self.useAlternateScreen and self.renderOffset > 0 and offset == 0) {
+            var stdoutWriter = std.fs.File.stdout().writer(&self.stdoutBuffer);
+            const writer = &stdoutWriter.interface;
+            self.clearSplitFooterSurface(writer);
+            writer.flush() catch {};
+        }
+
         self.renderOffset = offset;
+    }
+
+    pub fn resetSplitScrollback(self: *CliRenderer, seed_rows: u32, pinned_render_offset: u32) u32 {
+        self.splitScrollback.reset(seed_rows);
+        self.renderOffset = self.splitScrollback.renderOffset(pinned_render_offset);
+        return self.renderOffset;
+    }
+
+    pub fn syncSplitScrollback(self: *CliRenderer, pinned_render_offset: u32) u32 {
+        self.renderOffset = self.splitScrollback.renderOffset(pinned_render_offset);
+        return self.renderOffset;
+    }
+
+    pub fn setPendingSplitFooterTransition(
+        self: *CliRenderer,
+        mode: SplitFooterTransitionMode,
+        source_top_line: u32,
+        source_height: u32,
+        target_top_line: u32,
+        target_height: u32,
+    ) void {
+        self.pendingSplitFooterTransition = .{
+            .mode = mode,
+            .source_top_line = source_top_line,
+            .source_height = source_height,
+            .target_top_line = target_top_line,
+            .target_height = target_height,
+        };
+    }
+
+    pub fn clearPendingSplitFooterTransition(self: *CliRenderer) void {
+        self.pendingSplitFooterTransition.clear();
+    }
+
+    fn applyPendingSplitFooterTransition(self: *CliRenderer, writer: anytype, frame_started: *bool) void {
+        const transition = self.pendingSplitFooterTransition;
+        defer self.pendingSplitFooterTransition.clear();
+
+        if (transition.mode == .none or transition.source_height == 0 or transition.target_height == 0) {
+            return;
+        }
+
+        if (!frame_started.*) {
+            beginRenderFrame(writer);
+            frame_started.* = true;
+        }
+
+        switch (transition.mode) {
+            .viewport_scroll => {
+                if (transition.source_height > transition.target_height) {
+                    writer.print("\x1b[{d}T", .{transition.source_height - transition.target_height}) catch {};
+                } else if (transition.source_height < transition.target_height) {
+                    writer.print("\x1b[{d}S", .{transition.target_height - transition.source_height}) catch {};
+                }
+            },
+            .clear_stale_rows => {
+                const source_end = transition.source_top_line + transition.source_height - 1;
+                const target_end = transition.target_top_line + transition.target_height - 1;
+                var line = transition.source_top_line;
+                while (line <= source_end) : (line += 1) {
+                    if (line >= transition.target_top_line and line <= target_end) {
+                        continue;
+                    }
+
+                    ansi.ANSI.moveToOutput(writer, 1, line) catch {};
+                    writer.writeAll("\x1b[2K") catch {};
+                }
+            },
+            .none => {},
+        }
+    }
+
+    fn resetActiveOutputBuffer() void {
+        // TODO: check if we need to guard this with a mutex when threading is enabled. It should be safe as long as the
+        // render thread only reads from the current buffer after the main thread has finished writing and signaled
+        if (activeBuffer == .A) {
+            outputBufferLen = 0;
+        } else {
+            outputBufferBLen = 0;
+        }
     }
 
     fn renderThreadFn(self: *CliRenderer) void {
@@ -549,8 +832,128 @@ pub const CliRenderer = struct {
         self.lastRenderTime = now;
         self.renderDebugOverlay();
 
-        self.prepareRenderFrame(force);
+        self.prepareRenderFrame(force, true, false);
 
+        self.finalizeRender(deltaTime);
+    }
+
+    pub fn repaintSplitFooter(
+        self: *CliRenderer,
+        pinned_render_offset: u32,
+        force: bool,
+    ) u32 {
+        const now = std.time.microTimestamp();
+        const deltaTimeMs = @as(f64, @floatFromInt(now - self.lastRenderTime));
+        const deltaTime = deltaTimeMs / 1000.0; // Convert to seconds
+
+        self.lastRenderTime = now;
+        self.renderDebugOverlay();
+
+        self.prepareSplitFooterRepaintFrame(pinned_render_offset, force);
+
+        self.finalizeRender(deltaTime);
+
+        return self.renderOffset;
+    }
+
+    pub fn commitSplitFooterSnapshotBatched(
+        self: *CliRenderer,
+        snapshot: *const OptimizedBuffer,
+        row_columns: u32,
+        start_on_new_line: bool,
+        trailing_newline: bool,
+        pinned_render_offset: u32,
+        force: bool,
+        begin_frame: bool,
+        finalize_frame: bool,
+    ) u32 {
+        // Batched commit protocol:
+        // - first call starts frame and appends payload
+        // - middle calls append payload only
+        // - final call renders footer diff/cursor and closes frame
+        // This avoids repeated syncSet/syncReset and cursor toggles per chunk.
+        if (begin_frame) {
+            const now = std.time.microTimestamp();
+            const deltaTimeMs = @as(f64, @floatFromInt(now - self.lastRenderTime));
+            const deltaTime = deltaTimeMs / 1000.0;
+
+            self.lastRenderTime = now;
+            self.renderDebugOverlay();
+
+            resetActiveOutputBuffer();
+            const writer = OutputBufferWriter.writer();
+            beginRenderFrame(writer);
+            var frame_started = true;
+            self.applyPendingSplitFooterTransition(writer, &frame_started);
+
+            // Track batch lifetime so subsequent calls can append into the same
+            // output buffer without restarting frame state.
+            self.splitBatchActive = !finalize_frame;
+            self.splitBatchRedrawFooter = false;
+            self.splitBatchDeltaTime = deltaTime;
+
+            const redraw_footer = self.appendSplitFooterSnapshotCommit(
+                writer,
+                snapshot,
+                row_columns,
+                start_on_new_line,
+                trailing_newline,
+                pinned_render_offset,
+                force,
+            );
+
+            if (finalize_frame) {
+                self.prepareRenderFrame(redraw_footer, false, true);
+                self.finalizeRender(deltaTime);
+                self.splitBatchActive = false;
+                self.splitBatchRedrawFooter = false;
+                self.splitBatchDeltaTime = 0;
+            } else {
+                self.splitBatchRedrawFooter = redraw_footer;
+            }
+
+            return self.renderOffset;
+        }
+
+        // Defensive fallback: if caller forgot begin_frame, execute through a
+        // single-call frame instead of appending into undefined batch state.
+        if (!self.splitBatchActive) {
+            return self.commitSplitFooterSnapshotBatched(
+                snapshot,
+                row_columns,
+                start_on_new_line,
+                trailing_newline,
+                pinned_render_offset,
+                force,
+                true,
+                true,
+            );
+        }
+
+        const writer = OutputBufferWriter.writer();
+        const redraw_footer = self.appendSplitFooterSnapshotCommit(
+            writer,
+            snapshot,
+            row_columns,
+            start_on_new_line,
+            trailing_newline,
+            pinned_render_offset,
+            force,
+        );
+        self.splitBatchRedrawFooter = self.splitBatchRedrawFooter or redraw_footer;
+
+        if (finalize_frame) {
+            self.prepareRenderFrame(self.splitBatchRedrawFooter, false, true);
+            self.finalizeRender(self.splitBatchDeltaTime);
+            self.splitBatchActive = false;
+            self.splitBatchRedrawFooter = false;
+            self.splitBatchDeltaTime = 0;
+        }
+
+        return self.renderOffset;
+    }
+
+    fn finalizeRender(self: *CliRenderer, deltaTime: f64) void {
         if (self.useThread) {
             self.renderMutex.lock();
             while (self.renderInProgress) {
@@ -573,10 +976,11 @@ pub const CliRenderer = struct {
             self.renderMutex.unlock();
         } else {
             const writeStart = std.time.microTimestamp();
+            const output = if (activeBuffer == .A) outputBuffer[0..outputBufferLen] else outputBufferB[0..outputBufferBLen];
             if (!self.testing) {
                 var stdoutWriter = std.fs.File.stdout().writer(&self.stdoutBuffer);
                 const w = &stdoutWriter.interface;
-                w.writeAll(outputBuffer[0..outputBufferLen]) catch {};
+                w.writeAll(output) catch {};
                 w.flush() catch {};
             }
             self.renderStats.stdoutWriteTime = @as(f64, @floatFromInt(std.time.microTimestamp() - writeStart));
@@ -598,6 +1002,257 @@ pub const CliRenderer = struct {
         self.addStatSample(u32, &self.statSamples.cellsUpdated, self.renderStats.cellsUpdated);
     }
 
+    fn prepareSplitFooterRepaintFrame(
+        self: *CliRenderer,
+        pinned_render_offset: u32,
+        force: bool,
+    ) void {
+        const previousRenderOffset = self.renderOffset;
+        const next_render_offset = self.splitScrollback.renderOffset(pinned_render_offset);
+        const redraw_footer = force or previousRenderOffset != next_render_offset;
+
+        self.renderOffset = next_render_offset;
+        // Do not pre-start sync frame here. prepareRenderFrame now lazily starts
+        // frame output only when something actually changes; this prevents no-op
+        // repaint ticks from emitting hide/show cursor and sync envelopes.
+        self.prepareRenderFrame(redraw_footer, true, false);
+    }
+
+    /// Serialization for one split append payload.
+    ///
+    /// This function intentionally does not emit syncSet/syncReset or footer
+    /// repaint sequences. It only writes snapshot text rows at the current output
+    /// cursor. Frame boundaries are controlled by commitSplitFooterSnapshot*
+    /// callers so multiple payloads can share one frame.
+    ///
+    /// row_columns limits the per-row emitted width. Caller may provide a
+    /// wider buffer but a smaller logical row width for wrapped stdout chunks.
+    ///
+    /// trailing_newline mirrors stdout semantics: only payloads that logically
+    /// ended with '\n' advance and clear the next row after the final row.
+    fn writeSnapshotCommit(
+        self: *CliRenderer,
+        writer: anytype,
+        snapshot: *const OptimizedBuffer,
+        row_columns: u32,
+        trailing_newline: bool,
+    ) void {
+        var currentFg: ?RGBA = null;
+        var currentBg: ?RGBA = null;
+        var currentFgTag: ?ansi.ColorTag = null;
+        var currentBgTag: ?ansi.ColorTag = null;
+        var currentAttributes: i32 = -1;
+        var currentLinkId: u32 = 0;
+        var utf8Buf: [4]u8 = undefined;
+
+        const colorEpsilon: f32 = COLOR_EPSILON_DEFAULT;
+        const hyperlinksEnabled = self.terminal.getCapabilities().hyperlinks;
+        const render_columns = @min(row_columns, snapshot.width);
+
+        for (0..snapshot.height) |uy| {
+            const y = @as(u32, @intCast(uy));
+            const row_end = snapshotRowEnd(snapshot, y, render_columns);
+
+            for (0..row_end) |ux| {
+                const x = @as(u32, @intCast(ux));
+                const cell = snapshot.get(x, y) orelse continue;
+
+                const fgMatch = currentFg != null and currentFgTag != null and currentFgTag.? == cell.fg_tag and buf.rgbaEqual(currentFg.?, cell.fg, colorEpsilon);
+                const bgMatch = currentBg != null and currentBgTag != null and currentBgTag.? == cell.bg_tag and buf.rgbaEqual(currentBg.?, cell.bg, colorEpsilon);
+                const sameAttributes = fgMatch and bgMatch and @as(i32, @intCast(cell.attributes)) == currentAttributes;
+
+                const linkId = if (hyperlinksEnabled) ansi.TextAttributes.getLinkId(cell.attributes) else 0;
+                if (hyperlinksEnabled and linkId != currentLinkId) {
+                    if (currentLinkId != 0) {
+                        writer.writeAll("\x1b]8;;\x1b\\") catch {};
+                    }
+                    currentLinkId = linkId;
+                    if (currentLinkId != 0) {
+                        const lp = link.initGlobalLinkPool(self.allocator);
+                        if (lp.get(currentLinkId)) |url_bytes| {
+                            writer.print("\x1b]8;id={d};{s}\x1b\\", .{ currentLinkId, url_bytes }) catch {};
+                        } else |_| {
+                            currentLinkId = 0;
+                        }
+                    }
+                }
+
+                if (!sameAttributes) {
+                    writer.writeAll(ansi.ANSI.reset) catch {};
+
+                    currentFg = cell.fg;
+                    currentBg = cell.bg;
+                    currentFgTag = cell.fg_tag;
+                    currentBgTag = cell.bg_tag;
+                    currentAttributes = @as(i32, @intCast(cell.attributes));
+
+                    self.emitColor(writer, cell.fg, cell.fg_tag, false);
+                    self.emitColor(writer, cell.bg, cell.bg_tag, true);
+
+                    ansi.TextAttributes.applyAttributesOutputWriter(writer, cell.attributes) catch {};
+                }
+
+                if (cell.char == 0) {
+                    writer.writeByte(' ') catch {};
+                } else if (gp.isGraphemeChar(cell.char)) {
+                    const gid: u32 = gp.graphemeIdFromChar(cell.char);
+                    const bytes = self.pool.get(gid) catch {
+                        writer.writeByte(' ') catch {};
+                        continue;
+                    };
+
+                    if (bytes.len > 0) {
+                        const capabilities = self.terminal.getCapabilities();
+                        const graphemeWidth = gp.charRightExtent(cell.char) + 1;
+                        if (capabilities.explicit_width) {
+                            ansi.ANSI.explicitWidthOutput(writer, graphemeWidth, bytes) catch {};
+                        } else {
+                            writer.writeAll(bytes) catch {};
+                        }
+                    }
+                } else if (gp.isContinuationChar(cell.char)) {
+                    // Keep split scrollback payload behavior aligned with the live
+                    // frame renderer: continuation cells must not serialize as
+                    // spaces, or wide graphemes become one extra column wider in
+                    // terminal output and table rows can autowrap unexpectedly.
+                } else {
+                    const len = std.unicode.utf8Encode(@intCast(cell.char), &utf8Buf) catch 1;
+                    writer.writeAll(utf8Buf[0..len]) catch {};
+                }
+            }
+
+            if (hyperlinksEnabled and currentLinkId != 0) {
+                writer.writeAll("\x1b]8;;\x1b\\") catch {};
+                currentLinkId = 0;
+            }
+
+            writer.writeAll(ansi.ANSI.reset) catch {};
+            // Guarantee short rows do not leave stale content from prior frame data.
+            writer.writeAll(ansi.ANSI.eraseToEndOfLine) catch {};
+            currentFg = null;
+            currentBg = null;
+            currentFgTag = null;
+            currentBgTag = null;
+            currentAttributes = -1;
+
+            const is_last_row = @as(u32, @intCast(uy + 1)) >= snapshot.height;
+            if (!is_last_row or trailing_newline) {
+                writer.writeAll("\r\n") catch {};
+            }
+
+            if (is_last_row and trailing_newline) {
+                // After a trailing newline, clear the destination row that becomes
+                // current so old footer text cannot flash through.
+                writer.writeAll(ansi.ANSI.reset) catch {};
+                writer.writeAll(ansi.ANSI.eraseToEndOfLine) catch {};
+            }
+        }
+    }
+
+    /// Shared append path for all split payload sources.
+    ///
+    /// Contract: append payload first, then position for footer repaint in the
+    /// same frame. Returning redraw_footer lets caller skip full diff work when
+    /// footer position did not actually change.
+    fn appendSplitFooterSnapshotCommit(
+        self: *CliRenderer,
+        writer: anytype,
+        snapshot: *const OptimizedBuffer,
+        row_columns: u32,
+        start_on_new_line: bool,
+        trailing_newline: bool,
+        pinned_render_offset: u32,
+        force: bool,
+    ) bool {
+        const previousRenderOffset = self.renderOffset;
+        const previousOutputColumn = self.splitScrollback.tail_column;
+        const snapshot_has_content = snapshot.width > 0 and snapshot.height > 0;
+        const normalized_row_columns = @min(row_columns, snapshot.width);
+        const starts_mid_line = previousOutputColumn > 0 and start_on_new_line;
+        const starts_wrapped_line = previousOutputColumn >= self.width;
+        const previousFooterTopLine: u32 = @max(previousRenderOffset + 1, @as(u32, 1));
+
+        if (snapshot_has_content) {
+            // First update logical split scrollback state, then emit terminal I/O.
+            // Keeping model state authoritative makes repaint decisions deterministic.
+            if (starts_mid_line) {
+                self.splitScrollback.noteNewline();
+            }
+
+            var row: u32 = 0;
+            while (row < snapshot.height) : (row += 1) {
+                self.splitScrollback.publishRow(
+                    snapshotRowEnd(snapshot, row, normalized_row_columns),
+                    self.width,
+                    row + 1 < snapshot.height or trailing_newline,
+                );
+            }
+        }
+
+        const next_render_offset = self.splitScrollback.renderOffset(pinned_render_offset);
+        const targetFooterTopLine: u32 = @max(next_render_offset + 1, @as(u32, 1));
+        // Footer redraw is only needed when offset changes (settling/pinning) or
+        // when an explicit force was requested by the caller.
+        const redraw_footer = force or previousRenderOffset != next_render_offset;
+        // When split scrollback is settled at the pinned boundary, newlines/wraps from
+        // appended output must scroll only the upper pane. Without a temporary DECSTBM
+        // region, terminals advance into the footer rows and overwrite them in place.
+        const use_bounded_scroll_region = snapshot_has_content and
+            pinned_render_offset > 0 and
+            next_render_offset == pinned_render_offset;
+
+        if (snapshot_has_content or force) {
+            if (snapshot_has_content) {
+                // Clear rows that are transitioning from "footer surface" to scrollback before
+                // writing appended rows. If this happens after append, the clear itself is what
+                // gets scrolled and manifests as extra blank lines in history.
+                if (targetFooterTopLine > previousFooterTopLine) {
+                    var clear_line = previousFooterTopLine;
+                    while (clear_line < targetFooterTopLine) : (clear_line += 1) {
+                        ansi.ANSI.moveToOutput(writer, 1, clear_line) catch {};
+                        writer.writeAll("\x1b[2K") catch {};
+                    }
+                }
+
+                if (use_bounded_scroll_region) {
+                    // Temporarily bound scrolling to the upper pane so newline/wrap
+                    // from appended payload pushes history upward instead of stepping
+                    // through footer rows.
+                    writer.print("\x1b[1;{d}r", .{pinned_render_offset}) catch {};
+                }
+
+                moveToSplitOutputCursor(writer, previousRenderOffset, previousOutputColumn, self.width);
+                if (starts_mid_line or starts_wrapped_line) {
+                    // The prior commit left output cursor mid-row and caller asked
+                    // for newline anchoring. When the prior commit exactly filled the
+                    // row, we also need a CRLF here because moving the cursor back to
+                    // the last column loses the terminal's pending autowrap state.
+                    // Emit CRLF before payload to preserve logical row boundaries
+                    // across commit chunks.
+                    writer.writeAll("\r\n") catch {};
+                }
+
+                // Serialize payload rows at current output cursor.
+                self.writeSnapshotCommit(writer, snapshot, normalized_row_columns, trailing_newline);
+
+                if (use_bounded_scroll_region) {
+                    // Restore default full-height scroll region for regular repaint
+                    // and cursor operations after append is complete.
+                    writer.writeAll("\x1b[r") catch {};
+                }
+            }
+
+            self.renderOffset = next_render_offset;
+            if (redraw_footer) {
+                ansi.ANSI.moveToOutput(writer, 1, targetFooterTopLine) catch {};
+            }
+        } else {
+            self.renderOffset = next_render_offset;
+        }
+
+        return redraw_footer;
+    }
+
     pub fn getNextBuffer(self: *CliRenderer) *OptimizedBuffer {
         return self.nextRenderBuffer;
     }
@@ -606,23 +1261,32 @@ pub const CliRenderer = struct {
         return self.currentRenderBuffer;
     }
 
-    fn prepareRenderFrame(self: *CliRenderer, force: bool) void {
+    fn beginRenderFrame(writer: anytype) void {
+        writer.writeAll(ansi.ANSI.syncSet) catch {};
+        writer.writeAll(ansi.ANSI.hideCursor) catch {};
+    }
+
+    fn prepareRenderFrame(self: *CliRenderer, force: bool, reset_output_buffer: bool, sync_started: bool) void {
         const renderStartTime = std.time.microTimestamp();
         var cellsUpdated: u32 = 0;
+        const palette_force = self.last_rendered_palette_epoch == null or self.last_rendered_palette_epoch.? != self.palette_epoch;
+        const should_force = force or self.force_full_repaint or palette_force;
 
-        if (activeBuffer == .A) {
-            outputBufferLen = 0;
-        } else {
-            outputBufferBLen = 0;
+        if (reset_output_buffer) {
+            resetActiveOutputBuffer();
         }
 
         var writer = OutputBufferWriter.writer();
-
-        writer.writeAll(ansi.ANSI.syncSet) catch {};
-        writer.writeAll(ansi.ANSI.hideCursor) catch {};
+        // Lazy frame start is the core no-op suppression mechanism. If diffing,
+        // cursor state, and pointer state are unchanged, frame_started stays false
+        // and we emit nothing at all for this tick.
+        var frame_started = sync_started;
+        self.applyPendingSplitFooterTransition(writer, &frame_started);
 
         var currentFg: ?RGBA = null;
         var currentBg: ?RGBA = null;
+        var currentFgTag: ?ansi.ColorTag = null;
+        var currentBgTag: ?ansi.ColorTag = null;
         var currentAttributes: i32 = -1;
         var currentLinkId: u32 = 0;
         var utf8Buf: [4]u8 = undefined;
@@ -643,11 +1307,13 @@ pub const CliRenderer = struct {
 
                 if (currentCell == null or nextCell == null) continue;
 
-                if (!force) {
+                if (!should_force) {
                     const charEqual = currentCell.?.char == nextCell.?.char;
                     const attrEqual = currentCell.?.attributes == nextCell.?.attributes;
+                    const fgTagEqual = currentCell.?.fg_tag == nextCell.?.fg_tag;
+                    const bgTagEqual = currentCell.?.bg_tag == nextCell.?.bg_tag;
 
-                    if (charEqual and attrEqual and
+                    if (charEqual and attrEqual and fgTagEqual and bgTagEqual and
                         buf.rgbaEqual(currentCell.?.fg, nextCell.?.fg, colorEpsilon) and
                         buf.rgbaEqual(currentCell.?.bg, nextCell.?.bg, colorEpsilon))
                     {
@@ -662,8 +1328,13 @@ pub const CliRenderer = struct {
 
                 const cell = nextCell.?;
 
-                const fgMatch = currentFg != null and buf.rgbaEqual(currentFg.?, cell.fg, colorEpsilon);
-                const bgMatch = currentBg != null and buf.rgbaEqual(currentBg.?, cell.bg, colorEpsilon);
+                if (!frame_started) {
+                    beginRenderFrame(writer);
+                    frame_started = true;
+                }
+
+                const fgMatch = currentFg != null and currentFgTag != null and currentFgTag.? == cell.fg_tag and buf.rgbaEqual(currentFg.?, cell.fg, colorEpsilon);
+                const bgMatch = currentBg != null and currentBgTag != null and currentBgTag.? == cell.bg_tag and buf.rgbaEqual(currentBg.?, cell.bg, colorEpsilon);
                 const sameAttributes = fgMatch and bgMatch and @as(i32, @intCast(cell.attributes)) == currentAttributes;
 
                 const linkId = if (hyperlinksEnabled) ansi.TextAttributes.getLinkId(cell.attributes) else 0;
@@ -694,27 +1365,14 @@ pub const CliRenderer = struct {
 
                     currentFg = cell.fg;
                     currentBg = cell.bg;
+                    currentFgTag = cell.fg_tag;
+                    currentBgTag = cell.bg_tag;
                     currentAttributes = @as(i32, @intCast(cell.attributes));
 
                     ansi.ANSI.moveToOutput(writer, x + 1, y + 1 + self.renderOffset) catch {};
 
-                    const fgR = rgbaComponentToU8(cell.fg[0]);
-                    const fgG = rgbaComponentToU8(cell.fg[1]);
-                    const fgB = rgbaComponentToU8(cell.fg[2]);
-
-                    const bgR = rgbaComponentToU8(cell.bg[0]);
-                    const bgG = rgbaComponentToU8(cell.bg[1]);
-                    const bgB = rgbaComponentToU8(cell.bg[2]);
-                    const bgA = cell.bg[3];
-
-                    ansi.ANSI.fgColorOutput(writer, fgR, fgG, fgB) catch {};
-
-                    // If alpha is 0 (transparent), use terminal default background instead of black
-                    if (bgA < 0.001) {
-                        writer.writeAll("\x1b[49m") catch {};
-                    } else {
-                        ansi.ANSI.bgColorOutput(writer, bgR, bgG, bgB) catch {};
-                    }
+                    self.emitColor(writer, cell.fg, cell.fg_tag, false);
+                    self.emitColor(writer, cell.bg, cell.bg_tag, true);
 
                     ansi.TextAttributes.applyAttributesOutputWriter(writer, cell.attributes) catch {};
                 }
@@ -764,10 +1422,16 @@ pub const CliRenderer = struct {
         }
 
         if (hyperlinksEnabled and currentLinkId != 0) {
+            if (!frame_started) {
+                beginRenderFrame(writer);
+                frame_started = true;
+            }
             writer.writeAll("\x1b]8;;\x1b\\") catch {};
         }
 
-        writer.writeAll(ansi.ANSI.reset) catch {};
+        if (frame_started) {
+            writer.writeAll(ansi.ANSI.reset) catch {};
+        }
 
         const cursorPos = self.terminal.getCursorPosition();
         const cursorStyle = self.terminal.getCursorStyle();
@@ -800,46 +1464,83 @@ pub const CliRenderer = struct {
                 },
             }
 
-            const cursorR = rgbaComponentToU8(cursorColor[0]);
-            const cursorG = rgbaComponentToU8(cursorColor[1]);
-            const cursorB = rgbaComponentToU8(cursorColor[2]);
+            const cursorR = ansi.rgbaComponentToU8(cursorColor[0]);
+            const cursorG = ansi.rgbaComponentToU8(cursorColor[1]);
+            const cursorB = ansi.rgbaComponentToU8(cursorColor[2]);
 
             const styleTag: u8 = @intFromEnum(cursorStyle.style);
             const styleChanged = (self.lastCursorStyleTag == null or self.lastCursorStyleTag.? != styleTag) or
                 (self.lastCursorBlinking == null or self.lastCursorBlinking.? != cursorStyle.blinking);
             const colorChanged = (self.lastCursorColorRGB == null or self.lastCursorColorRGB.?[0] != cursorR or self.lastCursorColorRGB.?[1] != cursorG or self.lastCursorColorRGB.?[2] != cursorB);
+            const cursorX = cursorPos.x;
+            const cursorY = cursorPos.y + self.renderOffset;
+            const positionChanged = self.lastCursorX == null or self.lastCursorY == null or self.lastCursorX.? != cursorX or self.lastCursorY.? != cursorY;
+            const visibilityChanged = self.lastCursorVisible == null or !self.lastCursorVisible.?;
+            // If any visual output was produced this frame, we must restore cursor
+            // state (position + visibility). If frame is otherwise empty, only emit
+            // cursor sequences when some cursor property actually changed.
+            const needsCursorRestore = frame_started or styleChanged or colorChanged or positionChanged or visibilityChanged;
 
-            if (colorChanged) {
-                ansi.ANSI.cursorColorOutputWriter(writer, cursorR, cursorG, cursorB) catch {};
-                self.lastCursorColorRGB = .{ cursorR, cursorG, cursorB };
+            if (needsCursorRestore) {
+                if (!frame_started) {
+                    beginRenderFrame(writer);
+                    frame_started = true;
+                }
+
+                if (colorChanged) {
+                    ansi.ANSI.cursorColorOutputWriter(writer, cursorR, cursorG, cursorB) catch {};
+                    self.lastCursorColorRGB = .{ cursorR, cursorG, cursorB };
+                }
+                if (styleChanged) {
+                    writer.writeAll(cursorStyleCode) catch {};
+                    self.lastCursorStyleTag = styleTag;
+                    self.lastCursorBlinking = cursorStyle.blinking;
+                }
+
+                ansi.ANSI.moveToOutput(writer, cursorX, cursorY) catch {};
+                writer.writeAll(ansi.ANSI.showCursor) catch {};
             }
-            if (styleChanged) {
-                writer.writeAll(cursorStyleCode) catch {};
-                self.lastCursorStyleTag = styleTag;
-                self.lastCursorBlinking = cursorStyle.blinking;
-            }
-            ansi.ANSI.moveToOutput(writer, cursorPos.x, cursorPos.y + self.renderOffset) catch {};
-            writer.writeAll(ansi.ANSI.showCursor) catch {};
+
+            self.lastCursorX = cursorX;
+            self.lastCursorY = cursorY;
+            self.lastCursorVisible = true;
         } else {
-            writer.writeAll(ansi.ANSI.hideCursor) catch {};
+            if (!frame_started and (self.lastCursorVisible == null or self.lastCursorVisible.?)) {
+                beginRenderFrame(writer);
+                frame_started = true;
+                writer.writeAll(ansi.ANSI.hideCursor) catch {};
+            }
+
             self.lastCursorStyleTag = null;
             self.lastCursorBlinking = null;
             self.lastCursorColorRGB = null;
+            self.lastCursorX = null;
+            self.lastCursorY = null;
+            self.lastCursorVisible = false;
         }
 
         const mousePointer = self.terminal.getMousePointer();
         if (mousePointer != self.lastMousePointerStyle) {
+            if (!frame_started) {
+                beginRenderFrame(writer);
+                frame_started = true;
+            }
             ansi.ANSI.setMousePointerOutput(writer, mousePointer.toName()) catch {};
             self.lastMousePointerStyle = mousePointer;
         }
 
-        writer.writeAll(ansi.ANSI.syncReset) catch {};
+        // Only close sync if we opened it. This keeps true no-op frames empty.
+        if (frame_started) {
+            writer.writeAll(ansi.ANSI.syncReset) catch {};
+        }
 
         const renderEndTime = std.time.microTimestamp();
         const renderTime = @as(f64, @floatFromInt(renderEndTime - renderStartTime));
 
         self.renderStats.cellsUpdated = cellsUpdated;
         self.renderStats.renderTime = renderTime;
+        self.last_rendered_palette_epoch = self.palette_epoch;
+        self.force_full_repaint = false;
 
         self.nextRenderBuffer.clear(.{ self.backgroundColor[0], self.backgroundColor[1], self.backgroundColor[2], self.backgroundColor[3] }, null) catch {};
 
@@ -1303,7 +2004,7 @@ pub const CliRenderer = struct {
             },
         }
 
-        self.nextRenderBuffer.fillRect(x, y, width, height, .{ 20.0 / 255.0, 20.0 / 255.0, 40.0 / 255.0, 1.0 }) catch {};
+        self.nextRenderBuffer.fillRect(x, y, width, height, .{ 20.0 / 255.0, 20.0 / 255.0, 40.0 / 255.0, 1.0 }, ansi.COLOR_TAG_RGB) catch {};
         self.nextRenderBuffer.drawText("Debug Information", x + 1, y + 1, .{ 1.0, 1.0, 100.0 / 255.0, 1.0 }, .{ 0.0, 0.0, 0.0, 0.0 }, ansi.TextAttributes.BOLD) catch {};
 
         var row: u32 = 2;

@@ -77,6 +77,7 @@ export interface TextTableOptions extends RenderableOptions<TextTableRenderable>
   columnWidthMode?: TextTableColumnWidthMode
   columnFitter?: TextTableColumnFitter
   cellPadding?: number
+  columnGap?: number
   showBorders?: boolean
   border?: boolean
   outerBorder?: boolean
@@ -98,6 +99,7 @@ export class TextTableRenderable extends Renderable {
   private _columnWidthMode: TextTableColumnWidthMode
   private _columnFitter: TextTableColumnFitter
   private _cellPadding: number
+  private _columnGap: number
   private _showBorders: boolean
   private _border: boolean
   private _outerBorder: boolean
@@ -132,6 +134,7 @@ export class TextTableRenderable extends Renderable {
     columnWidthMode: "full" as TextTableColumnWidthMode,
     columnFitter: "proportional" as TextTableColumnFitter,
     cellPadding: 0,
+    columnGap: 0,
     showBorders: true,
     border: true,
     outerBorder: true,
@@ -155,6 +158,7 @@ export class TextTableRenderable extends Renderable {
     this._columnWidthMode = options.columnWidthMode ?? this._defaultOptions.columnWidthMode
     this._columnFitter = this.resolveColumnFitter(options.columnFitter)
     this._cellPadding = this.resolveCellPadding(options.cellPadding)
+    this._columnGap = this.resolveColumnGap(options.columnGap)
     this._showBorders = options.showBorders ?? this._defaultOptions.showBorders
     this._border = options.border ?? this._defaultOptions.border
     this._hasExplicitOuterBorder = options.outerBorder !== undefined
@@ -229,6 +233,17 @@ export class TextTableRenderable extends Renderable {
     const next = this.resolveCellPadding(value)
     if (this._cellPadding === next) return
     this._cellPadding = next
+    this.invalidateLayoutAndRaster()
+  }
+
+  public get columnGap(): number {
+    return this._columnGap
+  }
+
+  public set columnGap(value: number) {
+    const next = this.resolveColumnGap(value)
+    if (this._columnGap === next) return
+    this._columnGap = next
     this.invalidateLayoutAndRaster()
   }
 
@@ -623,6 +638,7 @@ export class TextTableRenderable extends Renderable {
       borderLayout.left,
       borderLayout.right,
       borderLayout.innerVertical,
+      this.getInterColumnGap(borderLayout),
     )
     const rowOffsets = this.computeOffsets(
       rowHeights,
@@ -665,7 +681,10 @@ export class TextTableRenderable extends Renderable {
       return intrinsicWidths
     }
 
-    const maxContentWidth = Math.max(1, Math.floor(maxTableWidth) - this.getVerticalBorderCount(borderLayout))
+    const maxContentWidth = Math.max(
+      1,
+      Math.floor(maxTableWidth) - this.getVerticalBorderCount(borderLayout) - this.getTotalInterColumnGap(borderLayout),
+    )
     const currentWidth = intrinsicWidths.reduce((sum, width) => sum + width, 0)
 
     if (currentWidth === maxContentWidth) {
@@ -905,18 +924,31 @@ export class TextTableRenderable extends Renderable {
     startBoundary: boolean,
     endBoundary: boolean,
     includeInnerBoundaries: boolean,
+    innerGap: number = 0,
   ): number[] {
     const offsets: number[] = [startBoundary ? 0 : -1]
     let cursor = offsets[0] ?? 0
 
     for (let idx = 0; idx < parts.length; idx++) {
       const size = parts[idx] ?? 1
-      const hasBoundaryAfter = idx < parts.length - 1 ? includeInnerBoundaries : endBoundary
-      cursor += size + (hasBoundaryAfter ? 1 : 0)
+      const separatorAfter = idx < parts.length - 1 ? (includeInnerBoundaries ? 1 : innerGap) : endBoundary ? 1 : 0
+      cursor += size + separatorAfter
       offsets.push(cursor)
     }
 
     return offsets
+  }
+
+  private getInterColumnGap(borderLayout: ResolvedTableBorderLayout): number {
+    if (borderLayout.innerVertical) {
+      return 0
+    }
+
+    return this._columnGap
+  }
+
+  private getTotalInterColumnGap(borderLayout: ResolvedTableBorderLayout): number {
+    return Math.max(0, this._columnCount - 1) * this.getInterColumnGap(borderLayout)
   }
 
   private applyLayoutToViews(layout: TextTableLayout): void {
@@ -1319,6 +1351,14 @@ export class TextTableRenderable extends Renderable {
   private resolveCellPadding(value: number | undefined): number {
     if (value === undefined || !Number.isFinite(value)) {
       return this._defaultOptions.cellPadding
+    }
+
+    return Math.max(0, Math.floor(value))
+  }
+
+  private resolveColumnGap(value: number | undefined): number {
+    if (value === undefined || !Number.isFinite(value)) {
+      return this._defaultOptions.columnGap
     }
 
     return Math.max(0, Math.floor(value))

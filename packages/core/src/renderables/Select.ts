@@ -7,8 +7,8 @@ import type { RenderContext } from "../types.js"
 import {
   type KeyBinding as BaseKeyBinding,
   mergeKeyBindings,
-  getKeyBindingKey,
   buildKeyBindingsMap,
+  getKeyBindingAction,
   type KeyAliasMap,
   defaultKeyAliases,
   mergeKeyAliases,
@@ -328,16 +328,7 @@ export class SelectRenderable extends Renderable {
   }
 
   public handleKeyPress(key: KeyEvent): boolean {
-    const bindingKey = getKeyBindingKey({
-      name: key.name,
-      ctrl: key.ctrl,
-      shift: key.shift,
-      meta: key.meta,
-      super: key.super,
-      action: "move-up" as SelectAction,
-    })
-
-    const action = this._keyBindingsMap.get(bindingKey)
+    const action = getKeyBindingAction(this._keyBindingsMap, key)
 
     if (action) {
       switch (action) {

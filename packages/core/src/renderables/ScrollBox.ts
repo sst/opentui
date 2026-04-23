@@ -31,13 +31,27 @@ class ContentRenderable extends BoxRenderable {
     this._viewportCulling = value
   }
 
+  protected _hasVisibleChildFilter(): boolean {
+    return this._viewportCulling
+  }
+
   protected _getVisibleChildren(): number[] {
     if (this._viewportCulling) {
-      return getObjectsInViewport(this.viewport, this.getChildrenSortedByPrimaryAxis(), this.primaryAxis, 0).map(
-        (child) => child.num,
-      )
+      // The viewport is in terminal coordinates, so culling has to compare it
+      // against each child's absolute screen position rather than local x/y.
+      return getObjectsInViewport(
+        {
+          x: this.viewport.screenX,
+          y: this.viewport.screenY,
+          width: this.viewport.width,
+          height: this.viewport.height,
+        },
+        this.getChildrenSortedByPrimaryAxis(),
+        this.primaryAxis,
+        0,
+      ).map((child) => child.num)
     }
-    return this.getChildrenSortedByPrimaryAxis().map((child) => child.num)
+    return super._getVisibleChildren()
   }
 }
 

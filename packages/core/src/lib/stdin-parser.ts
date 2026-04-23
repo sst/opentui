@@ -13,7 +13,7 @@ import type { PasteMetadata } from "./paste.js"
 
 export { SystemClock, type Clock, type TimerHandle } from "./clock.js"
 
-export type StdinResponseProtocol = "csi" | "osc" | "dcs" | "apc" | "unknown"
+export type StdinResponseProtocol = "csi" | "cpr" | "osc" | "dcs" | "apc" | "unknown"
 
 // The four event types the parser produces. Everything stdin sends becomes
 // exactly one of these.
@@ -45,6 +45,7 @@ export interface StdinParserProtocolContext {
   privateCapabilityRepliesActive: boolean
   pixelResolutionQueryActive: boolean
   explicitWidthCprActive: boolean
+  startupCursorCprActive: boolean
 }
 
 export interface StdinParserOptions {
@@ -112,6 +113,7 @@ const DEFAULT_PROTOCOL_CONTEXT: StdinParserProtocolContext = {
   privateCapabilityRepliesActive: false,
   pixelResolutionQueryActive: false,
   explicitWidthCprActive: false,
+  startupCursorCprActive: false,
 }
 // rxvt uses $-terminated CSI sequences for shifted function keys (e.g. ESC[2$).
 // Standard CSI treats $ as an intermediate byte, not a final, so we match these
@@ -370,6 +372,10 @@ function canStillBeExplicitWidthCpr(state: ParametricCsiLike): boolean {
   return state.firstParamValue === 1 && state.semicolons === 1
 }
 
+function canStillBeStartupCursorCpr(state: ParametricCsiLike): boolean {
+  return state.semicolons === 1
+}
+
 function canStillBePixelResolution(state: ParametricCsiLike): boolean {
   return state.firstParamValue === 4 && state.semicolons === 2
 }
@@ -378,6 +384,7 @@ function canDeferParametricCsi(state: ParametricCsiLike, context: StdinParserPro
   return (
     (context.kittyKeyboardEnabled && (canStillBeKittyU(state) || canStillBeKittySpecial(state))) ||
     (context.explicitWidthCprActive && canStillBeExplicitWidthCpr(state)) ||
+    (context.startupCursorCprActive && canStillBeStartupCursorCpr(state)) ||
     (context.pixelResolutionQueryActive && canStillBePixelResolution(state))
   )
 }
@@ -409,6 +416,10 @@ function canCompleteDeferredParametricCsi(
     return true
   }
 
+  if (context.startupCursorCprActive && state.hasDigit && state.semicolons === 1 && byte === 0x52) {
+    return true
+  }
+
   if (
     context.pixelResolutionQueryActive &&
     state.hasDigit &&
@@ -420,6 +431,14 @@ function canCompleteDeferredParametricCsi(
   }
 
   return false
+}
+
+function classifyParametricCsiProtocol(state: ParametricCsiLike, finalByte: number): StdinResponseProtocol {
+  if (finalByte === 0x52 && state.semicolons === 1 && state.segments === 1 && state.hasDigit) {
+    return "cpr"
+  }
+
+  return "csi"
 }
 
 function canDeferPrivateReplyCsi(context: StdinParserProtocolContext): boolean {
@@ -434,6 +453,7 @@ function canCompleteDeferredPrivateReplyCsi(
   if (!context.privateCapabilityRepliesActive) return false
   if (state.sawDollar) return state.hasDigit && byte === 0x79
   if (byte === 0x63) return state.hasDigit || state.semicolons > 0
+  if (byte === 0x6e) return state.hasDigit
   return state.hasDigit && byte === 0x75
 }
 
@@ -566,6 +586,7 @@ export class StdinParser {
       privateCapabilityRepliesActive: options.protocolContext?.privateCapabilityRepliesActive ?? false,
       pixelResolutionQueryActive: options.protocolContext?.pixelResolutionQueryActive ?? false,
       explicitWidthCprActive: options.protocolContext?.explicitWidthCprActive ?? false,
+      startupCursorCprActive: options.protocolContext?.startupCursorCprActive ?? false,
     }
   }
 
@@ -1222,7 +1243,8 @@ export class StdinParser {
 
           if (byte >= 0x40 && byte <= 0x7e) {
             const end = this.cursor + 1
-            this.emitKeyOrResponse("csi", decodeUtf8(bytes.subarray(this.unitStart, end)))
+            const protocol = classifyParametricCsiProtocol(this.state, byte)
+            this.emitKeyOrResponse(protocol, decodeUtf8(bytes.subarray(this.unitStart, end)))
             this.state = { tag: "ground" }
             this.consumePrefix(end)
             continue
@@ -1341,7 +1363,7 @@ export class StdinParser {
 
           if (byte >= 0x40 && byte <= 0x7e) {
             const end = this.cursor + 1
-            this.emitKeyOrResponse("csi", decodeUtf8(bytes.subarray(this.unitStart, end)))
+            this.emitOpaqueResponse("csi", bytes.subarray(this.unitStart, end))
             this.state = { tag: "ground" }
             this.consumePrefix(end)
             continue

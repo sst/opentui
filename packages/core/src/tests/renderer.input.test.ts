@@ -91,6 +91,10 @@ function advanceKittyClock(ms: number = 20): void {
   kittyClock.advance(ms)
 }
 
+async function flushMicrotasks(): Promise<void> {
+  await Promise.resolve()
+}
+
 class MouseTarget extends Renderable {
   constructor(context: RenderContext, options: RenderableOptions) {
     super(context, options)
@@ -656,6 +660,36 @@ test("Kitty keyboard ctrl+a via keyInput events", async () => {
     capsLock: false,
     numLock: false,
   })
+})
+
+test("Kitty keyboard Ctrl+C with alternate base layout still exits the renderer", async () => {
+  const clock = new ManualClock()
+  const { renderer } = await createTestRenderer({ kittyKeyboard: true, clock })
+
+  try {
+    // Simulate Ctrl+C from a non-Latin IME. Kitty reports the produced
+    // character (`ㅊ`) plus the base-layout key (`c`).
+    const keypress = new Promise<KeyEvent>((resolve) => {
+      renderer.keyInput.once("keypress", resolve)
+    })
+
+    renderer.stdin.emit("data", Buffer.from("\x1b[12618::99;5u"))
+    clock.advance(20)
+
+    const event = await keypress
+    expect(event).toMatchObject({
+      name: "ㅊ",
+      ctrl: true,
+      baseCode: 99,
+    })
+
+    await new Promise<void>((resolve) => process.nextTick(resolve))
+    expect(renderer.isDestroyed).toBe(true)
+  } finally {
+    if (!renderer.isDestroyed) {
+      renderer.destroy()
+    }
+  }
 })
 
 test("Kitty keyboard alt+a via keyInput events", async () => {
@@ -1639,6 +1673,119 @@ test("multiple DECRPM responses in sequence", async () => {
   advanceCurrentClock()
 
   expect(keypresses).toHaveLength(0)
+})
+
+test("OSC 10/11 fallback sets initial theme mode once both colors arrive", () => {
+  const themeModes: string[] = []
+  currentRenderer.on("theme_mode", (mode) => {
+    themeModes.push(mode)
+  })
+
+  currentRenderer.stdin.emit("data", Buffer.from("\x1b]10;#ffffff\x07"))
+  advanceCurrentClock()
+
+  expect(currentRenderer.themeMode).toBeNull()
+  expect(themeModes).toEqual([])
+
+  currentRenderer.stdin.emit("data", Buffer.from("\x1b]11;#000000\x07"))
+  advanceCurrentClock()
+
+  expect(currentRenderer.themeMode).toBe("dark")
+  expect(themeModes).toEqual(["dark"])
+})
+
+test("CSI 997 overrides OSC fallback when the reported mode differs", () => {
+  const themeModes: string[] = []
+  currentRenderer.on("theme_mode", (mode) => {
+    themeModes.push(mode)
+  })
+
+  currentRenderer.stdin.emit("data", Buffer.from("\x1b]10;#ffffff\x07"))
+  currentRenderer.stdin.emit("data", Buffer.from("\x1b]11;#000000\x07"))
+  advanceCurrentClock()
+
+  expect(currentRenderer.themeMode).toBe("dark")
+  expect(themeModes).toEqual(["dark"])
+
+  currentRenderer.stdin.emit("data", Buffer.from("\x1b[?997;2n"))
+  advanceCurrentClock()
+
+  expect(currentRenderer.themeMode).toBe("light")
+  expect(themeModes).toEqual(["dark", "light"])
+})
+
+test("CSI 997 with the same mode as OSC fallback does not emit twice", () => {
+  const themeModes: string[] = []
+  currentRenderer.on("theme_mode", (mode) => {
+    themeModes.push(mode)
+  })
+
+  currentRenderer.stdin.emit("data", Buffer.from("\x1b]10;#ffffff\x07"))
+  currentRenderer.stdin.emit("data", Buffer.from("\x1b]11;#000000\x07"))
+  advanceCurrentClock()
+
+  currentRenderer.stdin.emit("data", Buffer.from("\x1b[?997;1n"))
+  advanceCurrentClock()
+
+  expect(currentRenderer.themeMode).toBe("dark")
+  expect(themeModes).toEqual(["dark"])
+})
+
+test("OSC fallback does not override CSI 997", () => {
+  const themeModes: string[] = []
+  currentRenderer.on("theme_mode", (mode) => {
+    themeModes.push(mode)
+  })
+
+  currentRenderer.stdin.emit("data", Buffer.from("\x1b[?997;2n"))
+  advanceCurrentClock()
+
+  currentRenderer.stdin.emit("data", Buffer.from("\x1b]10;#ffffff\x07"))
+  currentRenderer.stdin.emit("data", Buffer.from("\x1b]11;#000000\x07"))
+  advanceCurrentClock()
+
+  expect(currentRenderer.themeMode).toBe("light")
+  expect(themeModes).toEqual(["light"])
+})
+
+test("waitForThemeMode resolves when initial theme mode is set", async () => {
+  const themeModePromise = currentRenderer.waitForThemeMode(500)
+
+  currentRenderer.stdin.emit("data", Buffer.from("\x1b[?997;1n"))
+  advanceCurrentClock()
+
+  await expect(themeModePromise).resolves.toBe("dark")
+})
+
+test("waitForThemeMode resolves immediately when theme mode is already set", async () => {
+  currentRenderer.stdin.emit("data", Buffer.from("\x1b[?997;2n"))
+  advanceCurrentClock()
+
+  await expect(currentRenderer.waitForThemeMode()).resolves.toBe("light")
+})
+
+test("waitForThemeMode returns current theme mode after the default timeout", async () => {
+  let resolvedThemeMode: string | null | undefined
+
+  currentRenderer.waitForThemeMode().then((mode) => {
+    resolvedThemeMode = mode
+  })
+
+  advanceCurrentClock(999)
+  await flushMicrotasks()
+  expect(resolvedThemeMode).toBeUndefined()
+
+  advanceCurrentClock(1)
+  await flushMicrotasks()
+  expect(resolvedThemeMode).toBeNull()
+})
+
+test("waitForThemeMode resolves with current theme mode when renderer is destroyed", async () => {
+  const themeModePromise = currentRenderer.waitForThemeMode(500)
+
+  currentRenderer.destroy()
+
+  await expect(themeModePromise).resolves.toBeNull()
 })
 
 test("pixel resolution response should not trigger keypress", async () => {

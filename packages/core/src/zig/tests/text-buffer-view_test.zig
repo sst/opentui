@@ -708,7 +708,6 @@ test "TextBufferView word wrapping - CJK boundary width" {
     try std.testing.expectEqual(@as(u32, 2), vlines[1].width_cols);
 }
 
-
 test "TextBufferView word wrapping - compare char vs word mode" {
     const pool = gp.initGlobalPool(std.testing.allocator);
     defer gp.deinitGlobalPool();
@@ -2341,6 +2340,30 @@ test "TextBufferView measureForDimensions - word wrap" {
     // Should wrap at word boundaries
     try std.testing.expect(result.line_count >= 2);
     try std.testing.expect(result.width_cols_max <= 10);
+}
+
+test "TextBufferView word wrap - first line offset reduces initial line width" {
+    const pool = gp.initGlobalPool(std.testing.allocator);
+    defer gp.deinitGlobalPool();
+    const link_pool = link.initGlobalLinkPool(std.testing.allocator);
+    defer link.deinitGlobalLinkPool();
+
+    var tb = try TextBuffer.init(std.testing.allocator, pool, link_pool, .wcwidth);
+    defer tb.deinit();
+
+    var view = try TextBufferView.init(std.testing.allocator, tb);
+    defer view.deinit();
+
+    try tb.setText(" located");
+    view.setWrapMode(.word);
+    view.setWrapWidth(20);
+    view.setFirstLineOffset(17);
+
+    const vlines = view.getVirtualLines();
+
+    try std.testing.expectEqual(@as(usize, 2), vlines.len);
+    try std.testing.expectEqual(@as(u32, 1), vlines[0].width_cols);
+    try std.testing.expectEqual(@as(u32, 7), vlines[1].width_cols);
 }
 
 test "TextBufferView measureForDimensions - empty buffer" {

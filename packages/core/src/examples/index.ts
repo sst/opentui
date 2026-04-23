@@ -48,6 +48,7 @@ import * as mouseInteractionExample from "./mouse-interaction-demo.js"
 import * as textSelectionExample from "./text-selection-demo.js"
 import * as asciiFontSelectionExample from "./ascii-font-selection-demo.js"
 import * as splitModeExample from "./split-mode-demo.js"
+import * as splitFooterStreamingDemo from "./split-footer-streaming-demo.js"
 import * as consoleExample from "./console-demo.js"
 import * as vnodeCompositionDemo from "./vnode-composition-demo.js"
 import * as hastSyntaxHighlightingExample from "./hast-syntax-highlighting-demo.js"
@@ -232,6 +233,12 @@ const examples: Example[] = [
     description: "Markdown rendering with table alignment, syntax highlighting, and theme switching",
     run: markdownDemo.run,
     destroy: markdownDemo.destroy,
+  },
+  {
+    name: "Split Footer Streaming Demo",
+    description: "Focused split-footer surface demo for progressive text, code, and markdown scrollback",
+    run: splitFooterStreamingDemo.run,
+    destroy: splitFooterStreamingDemo.destroy,
   },
   {
     name: "Live State Management Demo",

@@ -15,8 +15,8 @@ import type { KeyEvent } from "./lib/KeyHandler.js"
 import {
   type KeyBinding as BaseKeyBinding,
   mergeKeyBindings,
-  getKeyBindingKey,
   buildKeyBindingsMap,
+  getKeyBindingAction,
   type KeyAliasMap,
   defaultKeyAliases,
   mergeKeyAliases,
@@ -516,16 +516,7 @@ export class TerminalConsole extends EventEmitter {
       return
     }
 
-    const bindingKey = getKeyBindingKey({
-      name: event.name,
-      ctrl: event.ctrl,
-      shift: event.shift,
-      meta: event.meta,
-      super: event.super,
-      action: "scroll-up" as ConsoleAction,
-    })
-
-    const action = this._keyBindingsMap.get(bindingKey)
+    const action = getKeyBindingAction(this._keyBindingsMap, event)
 
     if (action) {
       const handler = this._actionHandlers.get(action)

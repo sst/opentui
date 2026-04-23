@@ -1,16 +1,40 @@
 import { test, expect, describe } from "bun:test"
-import { RGBA, hexToRgb, rgbToHex, hsvToRgb, parseColor } from "./RGBA.js"
+import {
+  COLOR_TAG_DEFAULT,
+  COLOR_TAG_RGB,
+  RGBA,
+  decodeColorTag,
+  hexToRgb,
+  hsvToRgb,
+  normalizeColorValue,
+  parseColor,
+  rgbToHex,
+} from "./RGBA.js"
 
 describe("RGBA class", () => {
   describe("constructor", () => {
-    test("creates RGBA with Float32Array buffer", () => {
-      const buffer = new Float32Array([0.5, 0.6, 0.7, 0.8])
+    test("uses the provided 5-float buffer", () => {
+      const buffer = new Float32Array([0.5, 0.6, 0.7, 0.8, COLOR_TAG_RGB])
       const rgba = new RGBA(buffer)
       expect(rgba.buffer).toBe(buffer)
+      expect(rgba.tag).toBe(COLOR_TAG_RGB)
     })
 
-    test("buffer is mutable reference", () => {
+    test("upgrades legacy 4-float buffers to explicit RGB tag", () => {
       const buffer = new Float32Array([0.5, 0.6, 0.7, 0.8])
+      const rgba = new RGBA(buffer)
+
+      expect(rgba.buffer).not.toBe(buffer)
+      expect(rgba.buffer).toHaveLength(5)
+      expect(rgba.r).toBeCloseTo(0.5, 5)
+      expect(rgba.g).toBeCloseTo(0.6, 5)
+      expect(rgba.b).toBeCloseTo(0.7, 5)
+      expect(rgba.a).toBeCloseTo(0.8, 5)
+      expect(rgba.tag).toBe(COLOR_TAG_RGB)
+    })
+
+    test("buffer is mutable reference when already 5-float", () => {
+      const buffer = new Float32Array([0.5, 0.6, 0.7, 0.8, COLOR_TAG_RGB])
       const rgba = new RGBA(buffer)
       buffer[0] = 0.9
       expect(rgba.r).toBeCloseTo(0.9, 5)
@@ -18,19 +42,21 @@ describe("RGBA class", () => {
   })
 
   describe("fromArray", () => {
-    test("creates RGBA from Float32Array", () => {
+    test("creates RGBA from legacy 4-float arrays", () => {
       const array = new Float32Array([0.1, 0.2, 0.3, 0.4])
       const rgba = RGBA.fromArray(array)
       expect(rgba.r).toBeCloseTo(0.1, 5)
       expect(rgba.g).toBeCloseTo(0.2, 5)
       expect(rgba.b).toBeCloseTo(0.3, 5)
       expect(rgba.a).toBeCloseTo(0.4, 5)
+      expect(rgba.tag).toBe(COLOR_TAG_RGB)
     })
 
-    test("uses same buffer reference", () => {
-      const array = new Float32Array([0.1, 0.2, 0.3, 0.4])
+    test("uses same buffer reference when already 5-float", () => {
+      const array = new Float32Array([0.1, 0.2, 0.3, 0.4, COLOR_TAG_DEFAULT])
       const rgba = RGBA.fromArray(array)
       expect(rgba.buffer).toBe(array)
+      expect(rgba.tag).toBe(COLOR_TAG_DEFAULT)
     })
   })
 
@@ -117,6 +143,69 @@ describe("RGBA class", () => {
       expect(rgba.g).toBeCloseTo(1.569, 2)
       expect(rgba.b).toBeCloseTo(1.961, 2)
       expect(rgba.a).toBeCloseTo(2.353, 2)
+    })
+  })
+
+  describe("clone", () => {
+    test("creates a detached copy", () => {
+      const original = RGBA.fromValues(0.1, 0.2, 0.3, 0.4)
+      const cloned = RGBA.clone(original)
+      expect(cloned).not.toBe(original)
+      expect(cloned.buffer).not.toBe(original.buffer)
+      expect(cloned.toInts()).toEqual(original.toInts())
+      cloned.r = 0.9
+      expect(original.r).toBeCloseTo(0.1, 5)
+    })
+  })
+
+  describe("intent helpers", () => {
+    test("fromIndex uses ANSI256 fallback snapshots", () => {
+      expect(RGBA.fromIndex(9).toInts()).toEqual([255, 0, 0, 255])
+      expect(RGBA.fromIndex(21).toInts()).toEqual([0, 0, 255, 255])
+      expect(RGBA.fromIndex(232).toInts()).toEqual([8, 8, 8, 255])
+      expect(RGBA.fromIndex(255).toInts()).toEqual([238, 238, 238, 255])
+    })
+
+    test("stores explicit tags in the fifth float", () => {
+      const rgb = RGBA.fromHex("#112233")
+      const indexed = RGBA.fromIndex(6)
+      const defaultFg = RGBA.defaultForeground()
+
+      expect(rgb.buffer).toHaveLength(5)
+      expect(rgb.buffer[4]).toBe(COLOR_TAG_RGB)
+      expect(indexed.buffer[4]).toBe(6)
+      expect(defaultFg.buffer[4]).toBe(COLOR_TAG_DEFAULT)
+    })
+
+    test("does not mutate caller-owned snapshots when constructing tagged colors", () => {
+      const indexedSnapshot = RGBA.fromHex("#112233")
+      const defaultSnapshot = RGBA.fromHex("#abcdef")
+
+      const indexed = RGBA.fromIndex(6, indexedSnapshot)
+      const defaultFg = RGBA.defaultForeground(defaultSnapshot)
+
+      expect(indexed).not.toBe(indexedSnapshot)
+      expect(defaultFg).not.toBe(defaultSnapshot)
+      expect(RGBA.getIntentTag(indexedSnapshot)).toBe(COLOR_TAG_RGB)
+      expect(RGBA.getIntentTag(defaultSnapshot)).toBe(COLOR_TAG_RGB)
+      expect(RGBA.getIntentTag(indexed)).toBe(6)
+      expect(RGBA.getIntentTag(defaultFg)).toBe(COLOR_TAG_DEFAULT)
+      expect(indexed.toInts()).toEqual(indexedSnapshot.toInts())
+      expect(defaultFg.toInts()).toEqual(defaultSnapshot.toInts())
+    })
+
+    test("normalizeColorValue and decodeColorTag preserve color intent", () => {
+      expect(normalizeColorValue(null)).toBeNull()
+      expect(
+        [RGBA.fromHex("#123456"), RGBA.fromIndex(12), RGBA.defaultBackground()].map((color) => [
+          normalizeColorValue(color)?.tag,
+          decodeColorTag(color.tag),
+        ]),
+      ).toEqual([
+        [COLOR_TAG_RGB, { kind: "rgb" }],
+        [12, { kind: "indexed", index: 12 }],
+        [COLOR_TAG_DEFAULT, { kind: "default" }],
+      ])
     })
   })
 
@@ -271,6 +360,14 @@ describe("RGBA class", () => {
       expect(result[1]).toBe(2)
       expect(result[2]).toBe(3)
       expect(result[3]).toBe(4)
+    })
+  })
+
+  describe("equals", () => {
+    test("compares both rgba values and tags", () => {
+      const rgb = RGBA.fromHex("#112233")
+      expect(rgb.equals(RGBA.fromIndex(6, rgb))).toBe(false)
+      expect(RGBA.defaultForeground("#aabbcc").equals(RGBA.defaultForeground("#aabbcc"))).toBe(true)
     })
   })
 

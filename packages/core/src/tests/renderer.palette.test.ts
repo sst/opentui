@@ -1,4 +1,4 @@
-import { test, expect, describe } from "bun:test"
+import { test, expect, describe, spyOn } from "bun:test"
 import { createTestRenderer, type TestRendererOptions } from "../testing/test-renderer.js"
 import { EventEmitter } from "events"
 import { Buffer } from "node:buffer"
@@ -168,6 +168,28 @@ describe("Palette caching behavior", () => {
 
     const oscSupportChecks = writes.filter((w) => w.includes("\x1b]4;0;?"))
     expect(oscSupportChecks.length).toBeLessThanOrEqual(2)
+
+    renderer.destroy()
+  })
+
+  test("concurrent requests with different sizes redetect for the later caller", async () => {
+    const { renderer, clock } = await createPaletteRenderer()
+
+    const palette16Promise = renderer.getPalette({ size: 16, timeout: 300 })
+    const palette256Promise = renderer.getPalette({ size: 256, timeout: 300 })
+
+    await advancePaletteClock(clock, 300)
+    await flushAsync()
+
+    expect(renderer.paletteDetectionStatus).toBe("detecting")
+
+    await advancePaletteClock(clock, 300)
+
+    const [palette16, palette256] = await Promise.all([palette16Promise, palette256Promise])
+
+    expect(palette16.palette).toHaveLength(16)
+    expect(palette256.palette).toHaveLength(256)
+    expect(palette16).not.toBe(palette256)
 
     renderer.destroy()
   })
@@ -437,6 +459,43 @@ describe("Palette cache invalidation", () => {
     await palettePromise
     expect(renderer.paletteDetectionStatus).toBe("cached")
 
+    renderer.destroy()
+  })
+})
+
+describe("Capability repaint handling", () => {
+  test("capability responses request a forced repaint", async () => {
+    const clock = new ManualClock()
+    const { renderer } = await createTestRenderer({ clock })
+    const lib = (renderer as unknown as { lib: any }).lib
+
+    const renderSpy = spyOn(lib, "render")
+    const originalProcessCapabilityResponse = lib.processCapabilityResponse
+    const originalGetTerminalCapabilities = lib.getTerminalCapabilities
+
+    lib.processCapabilityResponse = () => {}
+    lib.getTerminalCapabilities = () => ({ rgb: true, ansi256: true, unicode: "unicode" })
+
+    // @ts-expect-error - testing private renderer state
+    expect(renderer.forceFullRepaintRequested).toBe(false)
+
+    // @ts-expect-error - testing private renderer method
+    renderer.capabilityHandler("\x1bP>|wezterm\x1b\\")
+
+    // @ts-expect-error - testing private renderer state
+    expect(renderer.forceFullRepaintRequested).toBe(true)
+    // @ts-expect-error - testing private renderer state
+    expect(renderer.updateScheduled).toBe(true)
+
+    // @ts-expect-error - testing private renderer method
+    await renderer.activateFrame()
+
+    const lastCall = renderSpy.mock.calls[renderSpy.mock.calls.length - 1]
+    expect(lastCall?.[1]).toBe(true)
+
+    renderSpy.mockRestore()
+    lib.processCapabilityResponse = originalProcessCapabilityResponse
+    lib.getTerminalCapabilities = originalGetTerminalCapabilities
     renderer.destroy()
   })
 })

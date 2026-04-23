@@ -1,5 +1,6 @@
 import { Readable, Writable } from "stream"
 import { CliRenderer, type CliRendererConfig } from "../renderer.js"
+import { calculateRenderGeometry } from "../lib/render-geometry.js"
 import { resolveRenderLib } from "../zig.js"
 import { createMockKeys } from "./mock-keys.js"
 import { createMockMouse } from "./mock-mouse.js"
@@ -102,10 +103,12 @@ async function setupTestRenderer(config: TestRendererOptions) {
   const width = config.width || config.stdout?.columns || process.stdout.columns || 80
   const height = config.height || config.stdout?.rows || process.stdout.rows || 24
   const stdout = config.stdout || (new TestWriteStream(width, height) as unknown as NodeJS.WriteStream)
-  const renderHeight = config.screenMode === "split-footer" ? (config.footerHeight ?? 12) : height
+  const screenMode = config.screenMode ?? "alternate-screen"
+  const footerHeight = config.footerHeight ?? 12
+  const geometry = calculateRenderGeometry(screenMode, width, height, footerHeight)
 
   const ziglib = resolveRenderLib()
-  const rendererPtr = ziglib.createRenderer(width, renderHeight, {
+  const rendererPtr = ziglib.createRenderer(geometry.renderWidth, geometry.renderHeight, {
     testing: true,
     remote: config.remote ?? false,
   })
