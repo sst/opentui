@@ -36,6 +36,10 @@ import {
 
 const BrandedRenderable: unique symbol = Symbol.for("@opentui/core/Renderable")
 
+function isValidRenderableId(value: unknown): value is string {
+  return typeof value === "string" && value.length > 0
+}
+
 export enum LayoutEvents {
   LAYOUT_CHANGED = "layout-changed",
   ADDED = "added",
@@ -146,7 +150,7 @@ export abstract class BaseRenderable extends EventEmitter {
   constructor(options: BaseRenderableOptions) {
     super()
     this.num = BaseRenderable.renderableNumber++
-    this._id = options.id ?? `renderable-${this.num}`
+    this._id = isValidRenderableId(options.id) ? options.id : `renderable-${this.num}`
   }
 
   public abstract add(obj: BaseRenderable | unknown, index?: number): number
@@ -163,6 +167,10 @@ export abstract class BaseRenderable extends EventEmitter {
   }
 
   public set id(value: string) {
+    if (!isValidRenderableId(value)) {
+      return
+    }
+
     this._id = value
   }
 
@@ -308,6 +316,10 @@ export abstract class Renderable extends BaseRenderable {
   }
 
   public override set id(value: string) {
+    if (!isValidRenderableId(value)) {
+      return
+    }
+
     if (this.parent) {
       this.parent.renderableMapById.delete(this.id)
       this.parent.renderableMapById.set(value, this)

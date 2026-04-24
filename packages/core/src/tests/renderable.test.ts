@@ -105,6 +105,22 @@ describe("BaseRenderable", () => {
     expect(renderable.id).toBe("custom-id")
   })
 
+  test("falls back to generated id for invalid constructor id", () => {
+    for (const id of ["", null, 42]) {
+      const renderable = new TestBaseRenderable({ id } as any)
+      expect(renderable.id).toMatch(/^renderable-\d+$/)
+    }
+  })
+
+  test("ignores invalid id assignments", () => {
+    const renderable = new TestBaseRenderable({ id: "stable-id" })
+
+    for (const id of ["", null, undefined, 42]) {
+      renderable.id = id as any
+      expect(renderable.id).toBe("stable-id")
+    }
+  })
+
   test("has unique numbers", () => {
     const r1 = new TestBaseRenderable({})
     const r2 = new TestBaseRenderable({})
@@ -426,6 +442,34 @@ describe("Renderable - Child Management", () => {
 
     expect(parent.getRenderable("child")).toBeUndefined()
     expect(parent.getRenderable("new-child-id")).toBe(child)
+  })
+
+  test("ignores invalid renderable id changes and preserves parent mapping", () => {
+    const parent = new TestRenderable(testRenderer, { id: "parent" })
+    const child = new TestRenderable(testRenderer, { id: "child" })
+
+    parent.add(child)
+
+    for (const id of ["", null, undefined, 42]) {
+      child.id = id as any
+      expect(child.id).toBe("child")
+      expect(parent.getRenderable("child")).toBe(child)
+    }
+
+    parent.remove(child.id)
+    expect(parent.getChildrenCount()).toBe(0)
+  })
+
+  test("can remove child created with invalid id option", () => {
+    const parent = new TestRenderable(testRenderer, { id: "parent" })
+    const child = new TestRenderable(testRenderer, { id: "" } as any)
+
+    expect(child.id).toMatch(/^renderable-\d+$/)
+
+    parent.add(child)
+    parent.remove(child.id)
+
+    expect(parent.getChildrenCount()).toBe(0)
   })
 
   test("findDescendantById finds direct children", () => {
