@@ -1,6 +1,6 @@
 ---
 name: opentui
-description: Build terminal UIs with OpenTUI. Covers the core API, React and Solid bindings, components, layout, keyboard input, plugins, and testing.
+description: Build terminal UIs with OpenTUI. Covers the core API, keymaps, React and Solid bindings, components, layout, keyboard input, plugins, and testing.
 ---
 
 # OpenTUI Skill
@@ -18,6 +18,7 @@ Inside the OpenTUI repo, this skill root lives at `packages/web/src/content/`, s
 
 - Getting started: `/docs/getting-started`
 - Core: `/docs/core-concepts/renderer`
+- Keymap: `/docs/keymap/overview`
 - React: `/docs/bindings/react`
 - Solid: `/docs/bindings/solid`
 - Components: `/docs/components/text`, `/docs/components/input`
@@ -32,6 +33,7 @@ Inside the OpenTUI repo, this skill root lives at `packages/web/src/content/`, s
 | ---------------------------------------------------------- | --------------------------------- |
 | `getting-started`, `installation`, `quickstart`, `intro`   | `docs/getting-started.mdx`        |
 | `core`, `renderer`, `terminal`, `scrollback`, `lifecycle`  | `docs/core-concepts/renderer.mdx` |
+| `keymap`, `keybindings`, `shortcuts`, `commands`, `leader` | `docs/keymap/overview.mdx`        |
 | `layout`, `flexbox`, `yoga`, `positioning`                 | `docs/core-concepts/layout.mdx`   |
 | `keyboard`, `input`, `keybindings`, `paste`, `focus`       | `docs/core-concepts/keyboard.mdx` |
 | `react`, `jsx`, `hooks`, `animation`, `testing`            | `docs/bindings/react.mdx`         |
@@ -47,6 +49,7 @@ For concrete component requests, jump straight to `docs/components/<name>.mdx` a
 
 - `docs/getting-started.mdx`
 - `docs/core-concepts/renderer.mdx`
+- `docs/keymap/overview.mdx`
 - `docs/core-concepts/layout.mdx`
 - `docs/core-concepts/keyboard.mdx`
 - `docs/bindings/react.mdx`

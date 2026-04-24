@@ -2,7 +2,14 @@ import { readdir, readFile } from "node:fs/promises"
 import { join, relative, sep } from "node:path"
 import { fileURLToPath } from "node:url"
 
-export type DocSectionId = "getting-started" | "core-concepts" | "plugins" | "components" | "bindings" | "reference"
+export type DocSectionId =
+  | "getting-started"
+  | "core-concepts"
+  | "plugins"
+  | "components"
+  | "bindings"
+  | "keymap"
+  | "reference"
 
 export interface SkillMetadata {
   include: boolean
@@ -63,7 +70,8 @@ export const DOC_SECTION_CONFIG: Record<DocSectionId, { title: string; order: nu
   plugins: { title: "Plugin API", order: 3 },
   components: { title: "Components", order: 4 },
   bindings: { title: "Bindings", order: 5 },
-  reference: { title: "Reference", order: 6 },
+  keymap: { title: "Keymap", order: 6 },
+  reference: { title: "Reference", order: 7 },
 }
 
 let docsIndexPromise: Promise<DocsIndex> | undefined

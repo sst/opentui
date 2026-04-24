@@ -1,0 +1,80 @@
+---
+title: HTML
+description: DOM adapter for the shared keymap engine
+order: 4
+---
+
+# HTML keymap
+
+This page covers `@opentui/keymap/html`, the DOM host adapter for the shared keymap engine.
+
+If you have not read the shared model yet, start with [Keymap overview](/docs/keymap/overview).
+
+## What HTML adds
+
+- `HtmlKeymapEvent` - shared keymap event plus optional `originalEvent: KeyboardEvent`
+- `normalizeHtmlKeyName(key)` - normalizes browser `event.key` values to keymap names
+- `createHtmlKeymapEvent(event?)` - wraps a `KeyboardEvent` in `HtmlKeymapEvent`
+- `createHtmlKeymapHost(root)` - adapts an `HTMLElement` subtree to `KeymapHost`
+- `htmlEventMatchResolver` - HTML-specific event matcher for browser key events
+- `createHtmlKeymap(root)` - creates a bare `Keymap<HTMLElement, HtmlKeymapEvent>`
+- `createDefaultHtmlKeymap(root)` - creates an HTML keymap with the default parser, enabled fields, metadata fields, and HTML event matching installed
+
+`@opentui/keymap/html` re-exports the shared `@opentui/keymap` API.
+
+## Basic usage
+
+```ts
+import { createDefaultHtmlKeymap } from "@opentui/keymap/html"
+
+const root = document.getElementById("app")!
+const keymap = createDefaultHtmlKeymap(root)
+
+keymap.registerLayer({
+  commands: [
+    {
+      name: "toggle-help",
+      run() {
+        document.body.classList.toggle("help-open")
+      },
+    },
+  ],
+  bindings: [{ key: "?", cmd: "toggle-help" }],
+})
+```
+
+If you want to control parser or event-matching stages yourself, start from `createHtmlKeymap(root)` and install the pieces manually.
+
+## Key normalization
+
+| Browser input             | Keymap result | Notes                                                                 |
+| ------------------------- | ------------- | --------------------------------------------------------------------- |
+| `ArrowLeft`               | `left`        | Navigation keys are normalized to the shared canonical names          |
+| `Enter`                   | `return`      | Canonical name is `return`; display stringifiers render it as `enter` |
+| `A`                       | `a`           | Printable names are lowercased                                        |
+| `F12`                     | `f12`         | Function keys are normalized to lowercase                             |
+| `altKey`                  | `meta`        | Keymap uses `meta` for Alt/Option                                     |
+| `metaKey`                 | `super`       | Keymap uses `super` for the platform Meta key                         |
+
+The HTML matcher also adds an unshifted match candidate for shifted printable punctuation, so bindings such as `":"` and `"?"` work as literal keys instead of forcing `shift+semicolon`-style spellings.
+
+## Host behavior
+
+| Behavior                | HTML adapter implementation                                              |
+| ----------------------- | ------------------------------------------------------------------------ |
+| Root target             | The `HTMLElement` passed to `createHtmlKeymapHost()` / `createHtmlKeymap()` |
+| Focused target          | `document.activeElement` when it is the root or a descendant             |
+| Parent traversal        | `HTMLElement.parentElement`                                              |
+| Target destroy tracking | `MutationObserver` over the root subtree when available                  |
+| Event subscription      | `keydown`, `keyup`, `focusin`, and `focusout` listeners on the root in capture phase |
+
+When a target element disconnects from the rooted subtree, local layers registered against it are removed.
+
+## Bare vs default
+
+| Helper                         | What it installs                                                                                                                     |
+| ------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------ |
+| `createHtmlKeymap(root)`       | HTML host adapter only                                                                                                                |
+| `createDefaultHtmlKeymap(root)`| `createHtmlKeymap(root)` plus `registerDefaultKeys`, `registerEnabledFields`, `registerMetadataFields`, and `htmlEventMatchResolver` |
+
+Example: `packages/keymap/examples/keymap-html/app.ts`

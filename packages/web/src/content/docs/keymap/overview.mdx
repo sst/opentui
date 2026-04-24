@@ -1,0 +1,87 @@
+---
+title: Overview
+description: Shared binding, command, and sequence engine for OpenTUI hosts
+order: 1
+navTitle: Overview
+skill:
+  entry: true
+  intents: [keymap, keybindings, shortcuts, commands, leader, ex-commands]
+---
+
+# Keymap
+
+OpenTUI Keymap is a host-agnostic binding engine for terminals and the browser. It gives you layered shortcuts, discoverable commands, sequence handling, and framework-ready state so one key system can drive the whole app.
+
+This section covers the shared engine plus the host-specific entrypoints. Start with the page that matches your host or framework:
+
+- [Core](/docs/keymap/core) - bare `Keymap` and `KeymapHost`
+- [OpenTUI](/docs/keymap/opentui) - `CliRenderer` / `Renderable` host adapter
+- [HTML](/docs/keymap/html) - `HTMLElement` / `KeyboardEvent` host adapter
+- [React](/docs/keymap/react) - provider and hooks for a pre-created OpenTUI keymap
+- [Solid](/docs/keymap/solid) - provider and hooks for a pre-created OpenTUI keymap
+- [Addons](/docs/keymap/addons) - shipped addons plus addon authoring
+
+## Entry points
+
+| Package                           | Adds                                                        | Use for                                         |
+| --------------------------------- | ----------------------------------------------------------- | ----------------------------------------------- |
+| `@opentui/keymap`                 | `Keymap`, key stringifiers, shared types                    | Bare engine or custom hosts                     |
+| `@opentui/keymap/addons`          | Universal addons                                            | Parser stages, metadata, diagnostics, sequences |
+| `@opentui/keymap/addons/opentui`  | Universal addons plus OpenTUI-specific helpers              | Base-layout fallback and edit-buffer helpers    |
+| `@opentui/keymap/opentui`         | OpenTUI host adapter                                        | Terminal apps built on `@opentui/core`          |
+| `@opentui/keymap/html`            | DOM host adapter                                            | Browser UIs rooted in an `HTMLElement`          |
+| `@opentui/keymap/react`           | React provider and hooks for an OpenTUI keymap              | OpenTUI React apps                              |
+| `@opentui/keymap/solid`           | Solid provider and hooks for an OpenTUI keymap              | OpenTUI Solid apps                              |
+
+## Core model
+
+| Concept            | Description                                                                                           |
+| ------------------ | ----------------------------------------------------------------------------------------------------- |
+| Host               | Adapts focus, hierarchy, lifecycle, and key events into the shared `KeymapHost` contract             |
+| Layer              | Registration unit containing optional target scoping, bindings, commands, priority, and custom fields |
+| Binding            | Maps a key or key sequence to a string command or inline handler                                      |
+| Command            | Named handler with raw registration fields and optional compiled attrs                                |
+| Token              | Named single-stroke alias used inside binding strings such as `<leader>`                              |
+| Pending sequence   | The currently matched prefix when a sequence is in progress                                           |
+| Active key         | Discoverable view of what can run next from the current focus and pending state                       |
+| Runtime data       | Mutable key-value store used by matchers, commands, and intercepts                                    |
+
+## Bare vs default helpers
+
+| Helper                           | What it installs                                                                                                  |
+| -------------------------------- | ----------------------------------------------------------------------------------------------------------------- |
+| `new Keymap(host)`               | Bare engine only                                                                                                  |
+| `createOpenTuiKeymap(renderer)`  | Bare engine plus the OpenTUI host adapter                                                                         |
+| `createHtmlKeymap(root)`         | Bare engine plus the HTML host adapter                                                                            |
+| `createDefaultOpenTuiKeymap(...)`| `createOpenTuiKeymap(...)` plus `registerDefaultKeys`, `registerEnabledFields`, and `registerMetadataFields`     |
+| `createDefaultHtmlKeymap(...)`   | `createHtmlKeymap(...)` plus `registerDefaultKeys`, `registerEnabledFields`, `registerMetadataFields`, and HTML event matching |
+
+The default helpers intentionally stay small. Leader tokens, ex commands, timed disambiguation, warning analyzers, and OpenTUI textarea helpers are separate addons.
+
+## Binding syntax at a glance
+
+```ts
+[
+  { key: "x", cmd: "save-file" },
+  { key: "ctrl+x", cmd: "cut" },
+  { key: "dd", cmd: "delete-line" },
+  { key: "<leader>s", cmd: ":write session.log" },
+  { key: "?", cmd: "toggle-help" },
+  { key: { name: "return", ctrl: true }, cmd: "submit" },
+]
+```
+
+- The default parser accepts single-stroke named keys, modifier chords, literal punctuation, and concatenated multi-stroke sequences.
+- Multi-stroke sequences are concatenated with no separator. `ctrl+x ctrl+s` needs `registerEmacsBindings()` or a custom parser/expander.
+- Tokens such as `<leader>` must resolve to a single stroke.
+- Release bindings are single-stroke only.
+
+Use `stringifyKeyStroke()` and `stringifyKeySequence()` to render canonical labels. Pass `preferDisplay: true` to preserve token displays such as `<leader>` when available.
+
+## Next
+
+- [Core](/docs/keymap/core) documents the shared runtime, queries, intercepts, and extension points.
+- [Addons](/docs/keymap/addons) covers the shipped addons and how to build your own on top of the public APIs.
+- [OpenTUI](/docs/keymap/opentui), [HTML](/docs/keymap/html), [React](/docs/keymap/react), and [Solid](/docs/keymap/solid) cover the host/framework-specific surfaces.
+
+Examples: `packages/core/src/examples/keymap-demo.ts`, `packages/keymap/examples/keymap-html/app.ts`, `packages/react/examples/keymap.tsx`, `packages/solid/examples/components/keymap-demo.tsx`

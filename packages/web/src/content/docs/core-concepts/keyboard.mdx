@@ -49,8 +49,6 @@ OpenTUI normalizes several key names so your keybindings work the same across la
 The default aliases are:
 
 ```ts
-import { defaultKeyAliases } from "@opentui/core"
-
 // enter -> return
 // esc   -> escape
 //
@@ -65,14 +63,14 @@ import { defaultKeyAliases } from "@opentui/core"
 Both `key.name === "enter"` and `key.name === "kpenter"` resolve to `"return"` when you match them with `matchesKeyBinding`. Editable components that accept a `keyAliasMap` option (`InputRenderable`, `TextareaRenderable`, `SelectRenderable`, etc.) merge these defaults with your own map:
 
 ```typescript
-import { mergeKeyAliases, defaultKeyAliases, InputRenderable } from "@opentui/core"
+import { InputRenderable } from "@opentui/core"
 
 const input = new InputRenderable(renderer, {
   id: "field",
-  keyAliasMap: mergeKeyAliases(defaultKeyAliases, {
+  keyAliasMap: {
     // Treat the numpad decimal key as forward-delete
     kpdecimal: "delete",
-  }),
+  },
 })
 ```
 
