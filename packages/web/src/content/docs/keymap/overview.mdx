@@ -38,7 +38,7 @@ The model has three phases: **register time**, **query time**, and **dispatch ti
 
 ## Register time
 
-Register time is when you shape the keymap by calling APIs such as `registerLayer()`, `registerToken()`, and addon registration helpers.
+Register time is when you shape the keymap by calling APIs such as `registerLayer()`, `registerToken()`, and addon registration helpers. This phase writes the compiled model that later queries and dispatch use.
 
 At this stage, the keymap turns declarations into compiled state:
 
@@ -54,7 +54,7 @@ At this stage, the keymap turns declarations into compiled state:
 
 ## Query time
 
-Query time is when application code asks the keymap what is currently available.
+Query time is when application code asks the keymap what is currently available. This phase reads the compiled model through current focus, target liveness, pending-sequence state, runtime data, and enabled matchers.
 
 At this stage, the keymap reads compiled registrations through current state:
 
@@ -68,7 +68,7 @@ At this stage, the keymap reads compiled registrations through current state:
 
 ## Dispatch time
 
-Dispatch time starts when the host reports focus changes or input. This phase uses the compiled registrations plus current focus, pending-sequence state, and runtime data.
+Dispatch time starts when the host reports focus changes or input. This phase reads the same compiled model through current state, then may update pending-sequence state or runtime data.
 
 On each input event, the keymap does this:
 
