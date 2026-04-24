@@ -11,7 +11,7 @@
  * 3. Reports any type errors found
  */
 
-import { readFile, writeFile, mkdir, rm } from "node:fs/promises"
+import { cp, readFile, writeFile, mkdir, rm } from "node:fs/promises"
 import { join } from "node:path"
 import { existsSync } from "node:fs"
 
@@ -21,6 +21,20 @@ const REPO_ROOT = join(import.meta.dir, "../../..")
 const DOCS_DIR = join(import.meta.dir, "../src/content/docs")
 const CORE_PACKAGE = join(import.meta.dir, "../../core")
 const TEST_DIR = "/tmp/opentui-doc-verify"
+const VENDORED_CORE_PACKAGE = join(TEST_DIR, "vendor-core")
+
+interface PackageJson {
+  name?: string
+  version?: string
+  type?: string
+  main?: string
+  module?: string
+  types?: string
+  exports?: unknown
+  dependencies?: Record<string, string>
+  optionalDependencies?: Record<string, string>
+  peerDependencies?: Record<string, string>
+}
 
 interface CodeBlock {
   code: string
@@ -320,6 +334,31 @@ async function setupTestEnv(): Promise<boolean> {
     return false
   }
 
+  const corePackageJsonPath = join(CORE_PACKAGE, "package.json")
+  const corePackageJson = JSON.parse(await readFile(corePackageJsonPath, "utf8")) as PackageJson
+
+  await mkdir(VENDORED_CORE_PACKAGE, { recursive: true })
+  await cp(join(CORE_PACKAGE, "src"), join(VENDORED_CORE_PACKAGE, "src"), { recursive: true })
+  await writeFile(
+    join(VENDORED_CORE_PACKAGE, "package.json"),
+    JSON.stringify(
+      {
+        name: corePackageJson.name ?? "@opentui/core",
+        version: corePackageJson.version ?? "0.0.0",
+        type: corePackageJson.type ?? "module",
+        main: corePackageJson.main ?? "src/index.ts",
+        module: corePackageJson.module ?? "src/index.ts",
+        types: corePackageJson.types ?? "src/index.ts",
+        exports: corePackageJson.exports,
+        dependencies: corePackageJson.dependencies,
+        optionalDependencies: corePackageJson.optionalDependencies,
+        peerDependencies: corePackageJson.peerDependencies,
+      },
+      null,
+      2,
+    ),
+  )
+
   // Create package.json for the verifier sandbox.
   await writeFile(
     join(TEST_DIR, "package.json"),
@@ -327,7 +366,7 @@ async function setupTestEnv(): Promise<boolean> {
       name: "doc-verify",
       type: "module",
       dependencies: {
-        "@opentui/core": `file:${CORE_PACKAGE}`,
+        "@opentui/core": `file:${VENDORED_CORE_PACKAGE}`,
       },
     }),
   )
@@ -352,7 +391,7 @@ async function setupTestEnv(): Promise<boolean> {
   )
 
   // Install dependencies
-  const install = Bun.spawnSync(["bun", "install"], {
+  const install = Bun.spawnSync(["bun", "install", "--production"], {
     cwd: TEST_DIR,
     stdout: "pipe",
     stderr: "pipe",
