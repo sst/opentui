@@ -27,9 +27,61 @@ A binding maps a `key` or key sequence to a `cmd`:
 
 - The default parser accepts single-stroke named keys, modifier chords, literal punctuation, and concatenated multi-stroke sequences.
 
-A keymap is a set of layers. Each layer can register bindings and commands, optionally scoped to a target. When input arrives, the runtime picks the active layers from the current focus state, matches the key or sequence, and runs the highest-precedence command.
+The model uses a small set of terms:
 
-All entrypoints below use that same runtime. They only differ in how they provide targets, focus, and key events.
+- **Host**: supplies targets, focus state, and input events.
+- **Layer**: groups bindings and commands, optionally scoped to a target and priority.
+- **Binding**: says which input to match.
+- **Command**: says what to run when that binding wins.
+
+The model has three phases: **register time**, **query time**, and **dispatch time**.
+
+## Register time
+
+Register time is when you shape the keymap by calling APIs such as `registerLayer()`, `registerToken()`, and addon registration helpers.
+
+At this stage, the keymap turns declarations into compiled state:
+
+1. Register layers, tokens, and addons.
+2. Expand, parse, transform, and normalize binding input.
+3. Compile fields into requirements, attrs, and matchers.
+4. Validate and store commands and compiled binding sequences.
+
+- Binding strings are expanded, parsed, transformed, and normalized here.
+- Layer, binding, and command fields compile here.
+- Command definitions are validated and indexed here.
+- Environment changes such as token registration can recompile affected layers.
+
+## Query time
+
+Query time is when application code asks the keymap what is currently available.
+
+At this stage, the keymap reads compiled registrations through current state:
+
+1. Start from the compiled layers, bindings, and commands.
+2. Apply current focus, target scoping, priority, pending-sequence state, enabled matchers, and runtime data.
+3. Return derived views such as active keys, pending sequence, commands, and command entries.
+
+- `getActiveKeys()` is a query over the current state, not just a dump of registered bindings.
+- `getCommands()` and `getCommandEntries()` can project reachable, active, or registered command views.
+- Query results change when focus, pending sequence, runtime data, or enabled matchers change.
+
+## Dispatch time
+
+Dispatch time starts when the host reports focus changes or input. This phase uses the compiled registrations plus current focus, pending-sequence state, and runtime data.
+
+On each input event, the keymap does this:
+
+1. Read host focus state and the incoming input event.
+2. Select the active layers for that focus state.
+3. Match an exact binding or continue a pending sequence.
+4. Resolve the winning command by precedence.
+5. Run the command and refresh keymap state.
+
+- Target scoping, priority, enabled matchers, and runtime data are evaluated here.
+- Commands and intercepts can update runtime data and pending-sequence state during dispatch.
+
+All entrypoints below use the same registration, query, and dispatch model. They only differ in how they provide targets, focus, and input events.
 
 Start with the page that matches your host or framework:
 
@@ -52,7 +104,7 @@ Start with the page that matches your host or framework:
 | `@opentui/keymap/react`           | React provider and hooks for an OpenTUI keymap              | OpenTUI React apps                              |
 | `@opentui/keymap/solid`           | Solid provider and hooks for an OpenTUI keymap              | OpenTUI Solid apps                              |
 
-## Core model
+## Vocabulary
 
 | Concept            | Description                                                                                           |
 | ------------------ | ----------------------------------------------------------------------------------------------------- |
@@ -61,9 +113,9 @@ Start with the page that matches your host or framework:
 | Binding            | Maps a key or key sequence to a string command or inline handler                                      |
 | Command            | Named handler with raw registration fields and optional compiled attrs                                |
 | Token              | Named single-stroke alias used inside binding strings such as `<leader>`                              |
+| Runtime data       | Mutable key-value store used by matchers, commands, and intercepts                                    |
 | Pending sequence   | The currently matched prefix when a sequence is in progress                                           |
 | Active key         | Discoverable view of what can run next from the current focus and pending state                       |
-| Runtime data       | Mutable key-value store used by matchers, commands, and intercepts                                    |
 
 ## Bare vs default helpers
 
