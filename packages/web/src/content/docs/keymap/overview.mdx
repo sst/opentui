@@ -12,7 +12,26 @@ skill:
 
 OpenTUI Keymap is a host-agnostic binding engine for terminals and the browser. It gives you layered shortcuts, discoverable commands, sequence handling, and framework-ready state so one key system can drive the whole app.
 
-This section covers the shared engine plus the host-specific entrypoints. Start with the page that matches your host or framework:
+A binding maps a `key` or key sequence to a `cmd`:
+
+```ts
+[
+  { key: "x", cmd: "save-file" },
+  { key: "ctrl+x", cmd: "cut" },
+  { key: "dd", cmd: "delete-line" },
+  { key: "<leader>s", cmd: ":write session.log" },
+  { key: "?", cmd: "toggle-help" },
+  { key: { name: "return", ctrl: true }, cmd: "submit" },
+]
+```
+
+- The default parser accepts single-stroke named keys, modifier chords, literal punctuation, and concatenated multi-stroke sequences.
+
+A keymap is a set of layers. Each layer can register bindings and commands, optionally scoped to a target. When input arrives, the runtime picks the active layers from the current focus state, matches the key or sequence, and runs the highest-precedence command.
+
+All entrypoints below use that same runtime. They only differ in how they provide targets, focus, and key events.
+
+Start with the page that matches your host or framework:
 
 - [Core](/docs/keymap/core) - bare `Keymap` and `KeymapHost`
 - [OpenTUI](/docs/keymap/opentui) - `CliRenderer` / `Renderable` host adapter
@@ -57,26 +76,6 @@ This section covers the shared engine plus the host-specific entrypoints. Start 
 | `createDefaultHtmlKeymap(...)`   | `createHtmlKeymap(...)` plus `registerDefaultKeys`, `registerEnabledFields`, `registerMetadataFields`, and HTML event matching |
 
 The default helpers intentionally stay small. Leader tokens, ex commands, timed disambiguation, warning analyzers, and OpenTUI textarea helpers are separate addons.
-
-## Binding syntax at a glance
-
-```ts
-[
-  { key: "x", cmd: "save-file" },
-  { key: "ctrl+x", cmd: "cut" },
-  { key: "dd", cmd: "delete-line" },
-  { key: "<leader>s", cmd: ":write session.log" },
-  { key: "?", cmd: "toggle-help" },
-  { key: { name: "return", ctrl: true }, cmd: "submit" },
-]
-```
-
-- The default parser accepts single-stroke named keys, modifier chords, literal punctuation, and concatenated multi-stroke sequences.
-- Multi-stroke sequences are concatenated with no separator. `ctrl+x ctrl+s` needs `registerEmacsBindings()` or a custom parser/expander.
-- Tokens such as `<leader>` must resolve to a single stroke.
-- Release bindings are single-stroke only.
-
-Use `stringifyKeyStroke()` and `stringifyKeySequence()` to render canonical labels. Pass `preferDisplay: true` to preserve token displays such as `<leader>` when available.
 
 ## Next
 
