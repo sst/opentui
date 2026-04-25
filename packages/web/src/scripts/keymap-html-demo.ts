@@ -8,6 +8,7 @@ import {
 import * as addons from "@opentui/keymap/addons"
 
 const app = document.getElementById("app") as HTMLElement | null
+const keymapRoot = document.body
 const alphaPanel = document.getElementById("alpha-panel") as HTMLElement | null
 const betaPanel = document.getElementById("beta-panel") as HTMLElement | null
 const notesCard = document.getElementById("notes-card") as HTMLElement | null
@@ -59,7 +60,7 @@ if (
   throw new Error("HTML keymap example is missing required DOM nodes")
 }
 
-const keymap = createDefaultHtmlKeymap(app)
+const keymap = createDefaultHtmlKeymap(keymapRoot)
 const focusableTargets = [alphaPanel, betaPanel, notesField, draftField, activeKeysCard, logCard]
 
 let alphaValue = 0
