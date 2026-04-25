@@ -7,16 +7,23 @@
     "outDir": "./dist",
     "noEmit": false,
     "rootDir": ".",
-    "baseUrl": ".",
     "paths": {
       "@opentui/react": ["./src/framework-react.d.ts"],
       "@opentui/solid": ["./src/framework-solid.d.ts"]
     },
-    "types": ["bun", "node"],
     "skipLibCheck": true,
     "module": "ESNext",
     "moduleResolution": "bundler"
   },
   "include": ["src/**/*"],
-  "exclude": ["**/*.test.ts", "**/*.test.tsx", "**/*.spec.ts", "**/*.spec.tsx", "tests/**/*", "node_modules/**/*"]
+  "exclude": [
+    "**/*.test.ts",
+    "**/*.test.tsx",
+    "**/*.spec.ts",
+    "**/*.spec.tsx",
+    "**/tests/**/*",
+    "src/keymap-benchmark.ts",
+    "tests/**/*",
+    "node_modules/**/*"
+  ]
 }

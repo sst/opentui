@@ -124,7 +124,7 @@ verifyHtmlBundleIsolation(join(distDir, "html.js"))
 console.log("Generating TypeScript declarations...")
 
 const tsconfigBuildPath = join(rootDir, "tsconfig.build.json")
-const tscResult: SpawnSyncReturns<Buffer> = spawnSync("bunx", ["tsc", "-p", tsconfigBuildPath], {
+const tscResult: SpawnSyncReturns<Buffer> = spawnSync("bunx", ["--no-install", "tsc", "-p", tsconfigBuildPath], {
   cwd: rootDir,
   stdio: "inherit",
 })
