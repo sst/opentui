@@ -2203,7 +2203,7 @@ class FFIRenderLib implements RenderLib {
     this.opentui.symbols.rendererSetPaletteState(
       renderer,
       paletteBuffer,
-      paletteBuffer.length,
+      palette.length,
       defaultForeground.buffer,
       defaultBackground.buffer,
       paletteEpoch >>> 0,
