@@ -207,6 +207,18 @@ test "setHostEnvVar detects ansi256 separately from rgb" {
     try testing.expect(term.caps.ansi256);
 }
 
+test "environment overrides - WT_SESSION enables rgb and ansi256" {
+    var env = std.process.EnvMap.init(testing.allocator);
+    defer env.deinit();
+    try env.put("TERM", "xterm-256color");
+    try env.put("WT_SESSION", "test-session");
+
+    const term = Terminal.init(.{ .env_map = &env });
+
+    try testing.expect(term.caps.rgb);
+    try testing.expect(term.caps.ansi256);
+}
+
 test "parseXtversion - terminal name only" {
     var term = Terminal.init(.{});
     const response = "\x1bP>|wezterm\x1b\\";

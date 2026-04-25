@@ -483,6 +483,11 @@ fn checkEnvironmentOverrides(self: *Terminal) void {
         }
     }
 
+    if (env_map.get("WT_SESSION") != null) {
+        self.caps.rgb = true;
+        self.caps.ansi256 = true;
+    }
+
     if (!self.term_info.from_xtversion) {
         if (env_map.get("TERMUX_VERSION")) |_| {
             self.caps.unicode = .wcwidth;
