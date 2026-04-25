@@ -31,50 +31,33 @@ A binding maps a `key` or key sequence to a `cmd`:
 
 ## Register
 
-Register time is when you shape the keymap by calling APIs such as `registerLayer()`, `registerToken()` and addon registration helpers. This phase writes the compiled model that later dispatch and queries use.
+Shape the keymap by registering layers, tokens and addons. Each layer declares bindings that map keys or key sequences to commands, optionally scoped to a target with a priority. Addons extend the engine with parsers, field compilers, command resolvers and more.
 
-At this stage, the keymap turns declarations into compiled state:
-
-1. Register layers, tokens and addons.
-2. Expand, parse, transform and normalize binding input.
-3. Compile fields into requirements, attrs and matchers.
-4. Validate and store commands and compiled binding sequences.
-
-- Binding strings are expanded, parsed, transformed and normalized here.
-- Layer, binding and command fields compile here.
-- Command definitions are validated and indexed here.
-- Environment changes such as token registration can recompile affected layers.
+- Use `registerLayer()` to add bindings and commands.
+- Use `registerToken()` to define named key aliases like `<leader>`.
+- Use addons to install parsers, field compilers, disambiguation and other behaviour.
+- Every registration call returns a disposer for cleanup.
 
 ## Dispatch
 
-Dispatch time starts when the host reports focus changes or input. This phase reads the same compiled model through current state, then may update pending-sequence state or runtime data.
+When a key event arrives from the host, the engine walks the active layers to find matching bindings, resolves ambiguity between exact matches and sequence prefixes, and runs the winning command. Intercepts can observe or consume input before binding resolution.
 
-On each input event, the keymap does this:
-
-1. Read host focus state and the incoming input event.
-2. Select the active layers for that focus state.
-3. Match an exact binding or continue a pending sequence.
-4. Resolve the winning command by precedence.
-5. Run the command and refresh keymap state.
-
-- Target scoping, priority, enabled matchers and runtime data are evaluated here.
-- Commands and intercepts can update runtime data and pending-sequence state during dispatch.
+- Bindings are matched against active layers based on focus, priority and conditions.
+- Multi-stroke sequences build up a pending sequence until resolved.
+- Commands run in your application space and can return `false` to let lower-priority handlers continue.
+- Use `intercept("key", ...)` or `intercept("raw", ...)` to hook into the input pipeline.
 
 ## Query
 
-Query time is when application code asks the keymap what is currently available. This phase reads the same compiled model through current focus, target liveness, pending-sequence state, runtime data and enabled matchers.
+Ask the keymap what is currently available. Query results reflect the live state -- they change when focus, pending sequence, runtime data or conditions change.
 
-At this stage, the keymap does this:
+- `getActiveKeys()` returns the keys that can fire from the current focus and pending state.
+- `getCommands()` and `getCommandEntries()` return command metadata with optional binding information.
+- `getPendingSequence()` returns the current multi-stroke prefix.
+- `runCommand()` and `dispatchCommand()` execute commands programmatically.
+- Subscribe to `on("state")` for batched change notifications.
 
-1. Start from the compiled layers, bindings and commands.
-2. Apply current focus, target scoping, priority, pending-sequence state, enabled matchers and runtime data.
-3. Return derived views such as active keys, pending sequence, commands and command entries.
-
-- `getActiveKeys()` is a query over the current state, not just a dump of registered bindings.
-- `getCommands()` and `getCommandEntries()` can project reachable, active, or registered command views.
-- Query results change when focus, pending sequence, runtime data, or enabled matchers change.
-
-All entrypoints below use the same registration, query and dispatch model. They only differ in how they provide targets, focus and input events.
+All entry points below use the same registration, dispatch and query model. They only differ in how they provide targets, focus and input events.
 
 Start with the page that matches your host or framework:
 
