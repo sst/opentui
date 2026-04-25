@@ -34,11 +34,11 @@ The model uses a small set of terms:
 - **Binding**: says which input to match.
 - **Command**: says what to run when that binding wins.
 
-The model has three phases: **register time**, **query time**, and **dispatch time**.
+The model has three phases: **register time**, **dispatch time**, and **query time**.
 
 ## Register time
 
-Register time is when you shape the keymap by calling APIs such as `registerLayer()`, `registerToken()`, and addon registration helpers. This phase writes the compiled model that later queries and dispatch use.
+Register time is when you shape the keymap by calling APIs such as `registerLayer()`, `registerToken()`, and addon registration helpers. This phase writes the compiled model that later dispatch and queries use.
 
 At this stage, the keymap turns declarations into compiled state:
 
@@ -51,20 +51,6 @@ At this stage, the keymap turns declarations into compiled state:
 - Layer, binding, and command fields compile here.
 - Command definitions are validated and indexed here.
 - Environment changes such as token registration can recompile affected layers.
-
-## Query time
-
-Query time is when application code asks the keymap what is currently available. This phase reads the compiled model through current focus, target liveness, pending-sequence state, runtime data, and enabled matchers.
-
-At this stage, the keymap reads compiled registrations through current state:
-
-1. Start from the compiled layers, bindings, and commands.
-2. Apply current focus, target scoping, priority, pending-sequence state, enabled matchers, and runtime data.
-3. Return derived views such as active keys, pending sequence, commands, and command entries.
-
-- `getActiveKeys()` is a query over the current state, not just a dump of registered bindings.
-- `getCommands()` and `getCommandEntries()` can project reachable, active, or registered command views.
-- Query results change when focus, pending sequence, runtime data, or enabled matchers change.
 
 ## Dispatch time
 
@@ -80,6 +66,20 @@ On each input event, the keymap does this:
 
 - Target scoping, priority, enabled matchers, and runtime data are evaluated here.
 - Commands and intercepts can update runtime data and pending-sequence state during dispatch.
+
+## Query time
+
+Query time is when application code asks the keymap what is currently available. This phase reads the same compiled model through current focus, target liveness, pending-sequence state, runtime data, and enabled matchers.
+
+At this stage, the keymap does this:
+
+1. Start from the compiled layers, bindings, and commands.
+2. Apply current focus, target scoping, priority, pending-sequence state, enabled matchers, and runtime data.
+3. Return derived views such as active keys, pending sequence, commands, and command entries.
+
+- `getActiveKeys()` is a query over the current state, not just a dump of registered bindings.
+- `getCommands()` and `getCommandEntries()` can project reachable, active, or registered command views.
+- Query results change when focus, pending sequence, runtime data, or enabled matchers change.
 
 All entrypoints below use the same registration, query, and dispatch model. They only differ in how they provide targets, focus, and input events.
 
