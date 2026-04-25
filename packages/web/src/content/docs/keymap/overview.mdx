@@ -27,18 +27,9 @@ A binding maps a `key` or key sequence to a `cmd`:
 
 - The default parser accepts single-stroke named keys, modifier chords, literal punctuation and concatenated multi-stroke sequences.
 
-## Concept Overview
+<img src="/keymap-engine-overview.svg" alt="Keymap Engine Concept Overview" style="width: 100%; margin: 1.5rem 0; display: block;" />
 
-The model uses a small set of terms:
-
-- **Host**: supplies targets, focus state and input events.
-- **Layer**: groups bindings and commands, optionally scoped to a target and priority.
-- **Binding**: says which input to match.
-- **Command**: says what to run when that binding wins.
-
-The model has three phases: **register time**, **dispatch time** and **query time**.
-
-## Register time
+## Register
 
 Register time is when you shape the keymap by calling APIs such as `registerLayer()`, `registerToken()` and addon registration helpers. This phase writes the compiled model that later dispatch and queries use.
 
@@ -54,7 +45,7 @@ At this stage, the keymap turns declarations into compiled state:
 - Command definitions are validated and indexed here.
 - Environment changes such as token registration can recompile affected layers.
 
-## Dispatch time
+## Dispatch
 
 Dispatch time starts when the host reports focus changes or input. This phase reads the same compiled model through current state, then may update pending-sequence state or runtime data.
 
@@ -69,7 +60,7 @@ On each input event, the keymap does this:
 - Target scoping, priority, enabled matchers and runtime data are evaluated here.
 - Commands and intercepts can update runtime data and pending-sequence state during dispatch.
 
-## Query time
+## Query
 
 Query time is when application code asks the keymap what is currently available. This phase reads the same compiled model through current focus, target liveness, pending-sequence state, runtime data and enabled matchers.
 
