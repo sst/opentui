@@ -88,9 +88,9 @@ keymap.registerLayer({
 | Shorthand map         | `{ x: "save-file", y: () => {} }`    | Expanded by `normalizeBindings()` / `registerLayer()`                       |
 | Release binding       | `{ key: "a", event: "release", ...}`| Release bindings support a single stroke only                               |
 
-`BindingInput` reserves `key`, `cmd`, `event`, `preventDefault`, and `fallthrough`. All other fields are available to binding-field compilers.
+`BindingInput` reserves `key`, `cmd`, `event`, `preventDefault` and `fallthrough`. All other fields are available to binding-field compilers.
 
-The shared default parser understands single-stroke named keys, modifier chords, literal punctuation, `" "` for space, `"+"` as a literal plus key, and `<token>` segments. Spaced Emacs-style sequences such as `ctrl+x ctrl+s` are not part of the default parser.
+The shared default parser understands single-stroke named keys, modifier chords, literal punctuation, `" "` for space, `"+"` as a literal plus key and `<token>` segments. Spaced Emacs-style sequences such as `ctrl+x ctrl+s` are not part of the default parser.
 
 ## State and discovery
 
@@ -173,7 +173,7 @@ Use `stringifyKeyStroke()` or `stringifyKeySequence()` for display. Canonical fo
 
 | Form                      | Description                                                                 |
 | ------------------------- | --------------------------------------------------------------------------- |
-| `intercept("key", fn)`  | Runs before binding dispatch. Context exposes `event`, `setData`, `getData`, and `consume()` |
+| `intercept("key", fn)`  | Runs before binding dispatch. Context exposes `event`, `setData`, `getData` and `consume()`   |
 | `intercept("raw", fn)`  | Runs on raw host input before key parsing. Context exposes `sequence` and `stop()` |
 
 Intercept options:
@@ -235,7 +235,7 @@ Disambiguation resolvers must return synchronously. For async behavior, use `ctx
 
 ## Constraints
 
-- Runtime/data re-entry is supported during dispatch. Command handlers, intercepts, and pending-sequence listeners can read and write runtime data.
+- Runtime/data re-entry is supported during dispatch. Command handlers, intercepts and pending-sequence listeners can read and write runtime data.
 - Structural re-entry is not supported during dispatch. Do not register or unregister layers, parsers, resolvers, tokens, or similar environment-shaping state while a dispatch is in flight.
 - After the host is destroyed, host-backed reads such as `getActiveKeys()` are unavailable. Metadata reads such as `getCommands()` and runtime data access remain usable.
 

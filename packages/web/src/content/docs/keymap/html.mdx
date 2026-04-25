@@ -18,7 +18,7 @@ If you have not read the shared model yet, start with [Keymap overview](/docs/ke
 - `createHtmlKeymapHost(root)` - adapts an `HTMLElement` subtree to `KeymapHost`
 - `htmlEventMatchResolver` - HTML-specific event matcher for browser key events
 - `createHtmlKeymap(root)` - creates a bare `Keymap<HTMLElement, HtmlKeymapEvent>`
-- `createDefaultHtmlKeymap(root)` - creates an HTML keymap with the default parser, enabled fields, metadata fields, and HTML event matching installed
+- `createDefaultHtmlKeymap(root)` - creates an HTML keymap with the default parser, enabled fields, metadata fields and HTML event matching installed
 
 `@opentui/keymap/html` re-exports the shared `@opentui/keymap` API.
 
@@ -66,7 +66,7 @@ The HTML matcher also adds an unshifted match candidate for shifted printable pu
 | Focused target          | `document.activeElement` when it is the root or a descendant             |
 | Parent traversal        | `HTMLElement.parentElement`                                              |
 | Target destroy tracking | `MutationObserver` over the root subtree when available                  |
-| Event subscription      | `keydown`, `keyup`, `focusin`, and `focusout` listeners on the root in capture phase |
+| Event subscription      | `keydown`, `keyup`, `focusin` and `focusout` listeners on the root in capture phase   |
 
 When a target element disconnects from the rooted subtree, local layers registered against it are removed.
 
@@ -75,6 +75,6 @@ When a target element disconnects from the rooted subtree, local layers register
 | Helper                         | What it installs                                                                                                                     |
 | ------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------ |
 | `createHtmlKeymap(root)`       | HTML host adapter only                                                                                                                |
-| `createDefaultHtmlKeymap(root)`| `createHtmlKeymap(root)` plus `registerDefaultKeys`, `registerEnabledFields`, `registerMetadataFields`, and `htmlEventMatchResolver` |
+| `createDefaultHtmlKeymap(root)`| `createHtmlKeymap(root)` plus `registerDefaultKeys`, `registerEnabledFields`, `registerMetadataFields` and `htmlEventMatchResolver`   |
 
 Example: `packages/keymap/examples/keymap-html/app.ts`

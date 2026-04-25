@@ -6,7 +6,7 @@ order: 7
 
 # Keymap addons
 
-`@opentui/keymap` keeps the engine bare. Addons install parser stages, field compilers, diagnostics, disambiguation, and host-specific helpers by calling the public registration APIs.
+`@opentui/keymap` keeps the engine bare. Addons install parser stages, field compilers, diagnostics, disambiguation and host-specific helpers by calling the public registration APIs.
 
 Every addon returns a disposer.
 
@@ -27,7 +27,7 @@ import * as opentuiAddons from "@opentui/keymap/addons/opentui"
 | `registerDefaultEventMatchResolver()`| Appends `defaultEventMatchResolver`                                         |
 | `registerDefaultKeys()`              | Installs both default stages together                                       |
 
-The shared default parser accepts single-stroke named keys, modifier chords, literal punctuation, `" "` for space, `"+"` as a literal plus key, and `<token>` segments. It parses concatenated multi-stroke sequences such as `dd` or `<leader>s`.
+The shared default parser accepts single-stroke named keys, modifier chords, literal punctuation, `" "` for space, `"+"` as a literal plus key and `<token>` segments. It parses concatenated multi-stroke sequences such as `dd` or `<leader>s`.
 
 ### Field addons
 
@@ -39,7 +39,7 @@ The shared default parser accepts single-stroke named keys, modifier chords, lit
 
 `registerEnabledFields()` accepts `boolean`, `() => boolean`, or `ReactiveMatcher` values. It applies to layers and commands, not bindings.
 
-`registerAliasesField()` adds bindings instead of replacing the originals, and aliases stay local to the layer that declared them.
+`registerAliasesField()` adds bindings instead of replacing the originals and aliases stay local to the layer that declared them.
 
 ### Syntax and sequence addons
 
@@ -121,7 +121,7 @@ Adds an event match resolver that falls back to `KeyEvent.baseCode` so bindings 
 | `createTextareaBindings()`           | Returns generated textarea bindings with overrides prepended                 |
 | `registerEditBufferCommands()`       | Registers the shared edit-buffer command set against `renderer.currentFocusedEditor` |
 | `registerTextareaMappingSuspension()`| Suspends focused `TextareaRenderable` mapped shortcuts while keeping plain typing intact |
-| `registerManagedTextareaLayer()`     | High-level textarea integration: commands, suspension, default bindings, and overrides |
+| `registerManagedTextareaLayer()`     | High-level textarea integration: commands, suspension, default bindings and overrides   |
 
 `registerManagedTextareaLayer()` accepts a global `Layer` shape plus optional `bindings`, but it intentionally excludes `target` and `targetMode`. The helper is global and follows `renderer.currentFocusedEditor`.
 
@@ -179,7 +179,7 @@ The generated textarea bindings come from the shared `defaultTextareaKeyBindings
 
 ## Building addons
 
-An addon is usually a function that accepts a keymap, registers one or more pieces of behavior, and returns a disposer.
+An addon is usually a function that accepts a keymap, registers one or more pieces of behavior and returns a disposer.
 
 ```ts
 import type { Keymap, KeymapEvent } from "@opentui/keymap"
@@ -245,6 +245,6 @@ Reserved field names:
 
 - All registration APIs return disposers. Stateful addons should clean up in reverse order.
 - Structural re-entry is not supported during dispatch. Do not register or unregister layers, tokens, parsers, resolvers, or similar environment state while a dispatch is in flight.
-- Runtime data re-entry is supported during dispatch. Commands, intercepts, and pending-sequence listeners may read and write `keymap` data.
+- Runtime data re-entry is supported during dispatch. Commands, intercepts and pending-sequence listeners may read and write `keymap` data.
 
 Reference implementations: `packages/keymap/src/addons/universal/*.ts`, `packages/keymap/src/addons/opentui/*.ts`

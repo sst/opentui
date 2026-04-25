@@ -79,7 +79,7 @@ createRoot(renderer).render(
 
 ## `useBindings`
 
-`useBindings()` registers a full `LayerFields<Renderable, KeyEvent>` object. The returned layer can include `priority`, `enabled`, `bindings`, `commands`, and any custom addon fields.
+`useBindings()` registers a full `LayerFields<Renderable, KeyEvent>` object. The returned layer can include `priority`, `enabled`, `bindings`, `commands` and any custom addon fields.
 
 React-specific layer shapes:
 
@@ -101,7 +101,7 @@ const activeKeys = useActiveKeys({ includeMetadata: true })
 const pendingSequence = usePendingSequence()
 ```
 
-Use these hooks for command palettes, key hint UIs, leader prompts, and status bars.
+Use these hooks for command palettes, key hint UIs, leader prompts and status bars.
 
 ## `reactiveMatcherFromStore()`
 

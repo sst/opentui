@@ -14,7 +14,7 @@ If you have not read the shared model yet, start with [Keymap overview](/docs/ke
 
 - `createOpenTuiKeymapHost(renderer)` - adapts `CliRenderer` and `Renderable` to `KeymapHost`
 - `createOpenTuiKeymap(renderer)` - creates a bare `Keymap<Renderable, KeyEvent>`
-- `createDefaultOpenTuiKeymap(renderer)` - creates an OpenTUI keymap with the default parser, enabled fields, and metadata fields installed
+- `createDefaultOpenTuiKeymap(renderer)` - creates an OpenTUI keymap with the default parser, enabled fields and metadata fields installed
 
 `@opentui/keymap/opentui` re-exports the shared `@opentui/keymap` API.
 
@@ -47,7 +47,7 @@ If you want to control the installed addons yourself, start from `createOpenTuiK
 | Helper                             | What it installs                                                                                                  |
 | ---------------------------------- | ----------------------------------------------------------------------------------------------------------------- |
 | `createOpenTuiKeymap(renderer)`    | OpenTUI host adapter only                                                                                         |
-| `createDefaultOpenTuiKeymap(renderer)` | `createOpenTuiKeymap(renderer)` plus `registerDefaultKeys`, `registerEnabledFields`, and `registerMetadataFields` |
+| `createDefaultOpenTuiKeymap(renderer)` | `createOpenTuiKeymap(renderer)` plus `registerDefaultKeys`, `registerEnabledFields` and `registerMetadataFields`   |
 
 The default helper does not install leader tokens, ex commands, disambiguation addons, warning analyzers, or textarea helpers.
 
