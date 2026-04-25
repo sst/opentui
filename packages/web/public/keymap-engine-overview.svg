@@ -36,9 +36,7 @@
       <stop offset="0%" stop-color="#2a80a8"/>
       <stop offset="100%" stop-color="#4a98b8"/>
     </linearGradient>
-    <filter id="softShadow" x="-10%" y="-10%" width="120%" height="120%">
-      <feDropShadow dx="0" dy="2" stdDeviation="4" flood-color="#000" flood-opacity="0.35"/>
-    </filter>
+
     <marker id="arrowCyan" markerWidth="8" markerHeight="6" refX="7" refY="3" orient="auto">
       <path d="M0,0 L8,3 L0,6 L2,3 Z" fill="#4a9eaa"/>
     </marker>
@@ -84,7 +82,7 @@
   <!-- ================================================================== -->
 
   <!-- HOST: x=24 w=472 y=76 h=82 -->
-  <rect x="24" y="76" width="472" height="82" rx="10" fill="#101318" stroke="url(#hostGrad)" stroke-width="1.5" filter="url(#softShadow)"/>
+  <rect x="24" y="76" width="472" height="82" rx="10" fill="#101318" stroke="#788898" stroke-width="1.5"/>
   <path d="M34,76 L486,76 A10,10 0 0,1 496,86 L496,104 L24,104 L24,86 A10,10 0 0,1 34,76 Z" fill="url(#hostGrad)" opacity="0.06"/>
   <!-- Icon: terminal. Band center=90. Icon 14x10 center=5. ty=90-5=85 -->
   <g transform="translate(40, 85)">
@@ -105,7 +103,7 @@
   <!-- ================================================================== -->
 
   <!-- REGISTER: x=24 w=228 y=174 h=118 -->
-  <rect x="24" y="174" width="228" height="118" rx="10" fill="#0e161e" stroke="url(#registerGrad)" stroke-width="1.5" filter="url(#softShadow)"/>
+  <rect x="24" y="174" width="228" height="118" rx="10" fill="#0e161e" stroke="#4a9eaa" stroke-width="1.5"/>
   <path d="M34,174 L242,174 A10,10 0 0,1 252,184 L252,202 L24,202 L24,184 A10,10 0 0,1 34,174 Z" fill="url(#registerGrad)" opacity="0.1"/>
   <!-- Icon: plus-circle. Band center=188. Icon center=7. ty=188-7=181 -->
   <g transform="translate(40, 181)">
@@ -126,7 +124,7 @@
   <path d="M138,292 L138,440" fill="none" stroke="#4a9eaa" stroke-width="1.3" opacity="0.35"/>
 
   <!-- ADDONS: x=24 w=228 y=306 h=130 -->
-  <rect x="24" y="306" width="228" height="130" rx="10" fill="#16101c" stroke="url(#addonGrad)" stroke-width="1.5" filter="url(#softShadow)"/>
+  <rect x="24" y="306" width="228" height="130" rx="10" fill="#16101c" stroke="#b06890" stroke-width="1.5"/>
   <path d="M34,306 L242,306 A10,10 0 0,1 252,316 L252,334 L24,334 L24,316 A10,10 0 0,1 34,306 Z" fill="url(#addonGrad)" opacity="0.08"/>
   <!-- Icon: plug. Band center=320. Icon 0..14 center=7. ty=320-7=313 -->
   <g transform="translate(40, 313)">
@@ -146,7 +144,7 @@
 
 
   <!-- DISPATCH: x=268 w=228 y=174 h=262 -->
-  <rect x="268" y="174" width="228" height="262" rx="10" fill="#18140e" stroke="url(#dispatchGrad)" stroke-width="1.5" filter="url(#softShadow)"/>
+  <rect x="268" y="174" width="228" height="262" rx="10" fill="#18140e" stroke="#c08060" stroke-width="1.5"/>
   <path d="M278,174 L486,174 A10,10 0 0,1 496,184 L496,202 L268,202 L268,184 A10,10 0 0,1 278,174 Z" fill="url(#dispatchGrad)" opacity="0.1"/>
   <!-- Icon: diamond. Band center=188. Diamond 14x14 center=7. ty=188-7=181 -->
   <g transform="translate(284, 181)">
@@ -159,7 +157,7 @@
   <path d="M382,158 L382,210" fill="none" stroke="#788898" stroke-width="1.2" marker-end="url(#arrowHost)" opacity="0.4"/>
 
   <!-- Key Input badge -->
-  <rect x="282" y="212" width="200" height="24" rx="6" fill="#131820" stroke="url(#hostGrad)" stroke-width="0.8"/>
+  <rect x="282" y="212" width="200" height="24" rx="6" fill="#131820" stroke="#788898" stroke-width="0.8"/>
   <!-- Keycap icon. Badge center=224. Icon 10x10 center=5. ty=224-5=219 -->
   <g transform="translate(290, 219)">
     <rect x="0" y="0" width="10" height="10" rx="2" fill="none" stroke="#788898" stroke-width="1.2"/>
@@ -208,7 +206,7 @@
   <path d="M382,436 L382,468" fill="none" stroke="#c08060" stroke-width="1.3" marker-end="url(#arrowAmber)" opacity="0.4"/>
 
   <!-- LAYERS: x=24 w=472 y=470 h=162 -->
-  <rect x="24" y="470" width="472" height="162" rx="10" fill="#161830" stroke="url(#layerGrad)" stroke-width="1.5" filter="url(#softShadow)"/>
+  <rect x="24" y="470" width="472" height="162" rx="10" fill="#161830" stroke="#7668b0" stroke-width="1.5"/>
   <path d="M34,470 L486,470 A10,10 0 0,1 496,480 L496,498 L24,498 L24,480 A10,10 0 0,1 34,470 Z" fill="url(#layerGrad)" opacity="0.1"/>
   <!-- Icon: three bars. Band center=484. Icon local 2..13.5 center=7.75. ty=484-7.75=476 -->
   <g transform="translate(40, 476)">
@@ -254,7 +252,7 @@
   <path d="M382,632 L382,658" fill="none" stroke="#8a6aaa" stroke-width="1.3" marker-end="url(#arrowIndigo)" opacity="0.4"/>
 
   <!-- QUERY: x=24 w=228 y=660 h=148 -->
-  <rect x="24" y="660" width="228" height="148" rx="10" fill="#0e1616" stroke="url(#queryGrad)" stroke-width="1.5" filter="url(#softShadow)"/>
+  <rect x="24" y="660" width="228" height="148" rx="10" fill="#0e1616" stroke="#4a9a80" stroke-width="1.5"/>
   <path d="M34,660 L242,660 A10,10 0 0,1 252,670 L252,688 L24,688 L24,670 A10,10 0 0,1 34,660 Z" fill="url(#queryGrad)" opacity="0.08"/>
   <!-- Icon: magnifier. Band center=674. Circle center=6. ty=674-6=668 -->
   <g transform="translate(40, 668)">
@@ -273,7 +271,7 @@
   <text x="38" y="797" fill="#505868" font-size="7.5" font-style="italic">runCommand() getPendingSequence()</text>
 
   <!-- EVENTS: x=268 w=228 y=660 h=148 -->
-  <rect x="268" y="660" width="228" height="148" rx="10" fill="#121020" stroke="url(#stateGrad)" stroke-width="1.5" filter="url(#softShadow)"/>
+  <rect x="268" y="660" width="228" height="148" rx="10" fill="#121020" stroke="#8a6aaa" stroke-width="1.5"/>
   <path d="M278,660 L486,660 A10,10 0 0,1 496,670 L496,688 L268,688 L268,670 A10,10 0 0,1 278,660 Z" fill="url(#stateGrad)" opacity="0.08"/>
   <!-- Icon: broadcast. Band center=674. Circles center=7. ty=674-7=667 -->
   <g transform="translate(284, 667)">
