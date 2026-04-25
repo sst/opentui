@@ -18,6 +18,7 @@
   "dependencies": {
     "@astrojs/mdx": "^4.3.1",
     "@opentui/core": "workspace:*",
+    "@opentui/keymap": "workspace:*",
     "astro": "^5.10.2"
   },
   "devDependencies": {

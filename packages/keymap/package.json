@@ -46,7 +46,6 @@
   "scripts": {
     "build": "bun run scripts/build.ts",
     "publish": "bun run scripts/publish.ts",
-    "serve:keymap-html": "bun run scripts/serve-keymap-html.ts",
     "test": "bun run scripts/test.ts"
   },
   "dependencies": {

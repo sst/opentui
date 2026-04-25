@@ -8,6 +8,8 @@ order: 4
 
 This page covers `@opentui/keymap/html`, the DOM host adapter for the shared keymap engine.
 
+Live demo: [HTML keymap demo](/demos/keymap-html/)
+
 If you have not read the shared model yet, start with [Keymap overview](/docs/keymap/overview).
 
 ## What HTML adds
@@ -76,5 +78,3 @@ When a target element disconnects from the rooted subtree, local layers register
 | ------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------ |
 | `createHtmlKeymap(root)`       | HTML host adapter only                                                                                                                |
 | `createDefaultHtmlKeymap(root)`| `createHtmlKeymap(root)` plus `registerDefaultKeys`, `registerEnabledFields`, `registerMetadataFields` and `htmlEventMatchResolver`   |
-
-Example: `packages/keymap/examples/keymap-html/app.ts`

@@ -1,10 +1,14 @@
+---
+import demoStylesUrl from "../../../styles/keymap-html-demo.css?url"
+---
+
 <!doctype html>
 <html lang="en">
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>HTML Keymap Demo</title>
-    <link rel="stylesheet" href="/styles.css" />
+    <link rel="stylesheet" href={demoStylesUrl} />
   </head>
   <body>
     <div id="app" class="app-shell">
@@ -108,6 +112,6 @@ This example runs against the built dist bundle.</textarea
       </div>
     </div>
 
-    <script type="module" src="/app.js"></script>
+    <script src="../../../scripts/keymap-html-demo.ts"></script>
   </body>
 </html>

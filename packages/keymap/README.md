@@ -65,8 +65,7 @@ bun install @opentui/keymap
 bun run build
 bun run test
 bun src/keymap-benchmark.ts
-bun run serve:keymap-html
 ```
 
 - `bun src/keymap-benchmark.ts` runs the benchmark suite from `src/keymap-benchmark.ts`.
-- `bun run serve:keymap-html` builds the package and serves the HTML demo locally.
+- The HTML demo now lives in the docs app at `/demos/keymap-html/` under `packages/web`.

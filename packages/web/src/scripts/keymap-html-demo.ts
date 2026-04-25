@@ -4,8 +4,8 @@ import {
   stringifyKeyStroke,
   type ActiveKey,
   type KeySequencePart,
-} from "/dist/html.js"
-import * as addons from "/dist/addons/index.js"
+} from "@opentui/keymap/html"
+import * as addons from "@opentui/keymap/addons"
 
 const app = document.getElementById("app") as HTMLElement | null
 const alphaPanel = document.getElementById("alpha-panel") as HTMLElement | null
