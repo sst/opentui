@@ -510,7 +510,7 @@ export fn rendererSetPaletteState(
     defaultBgPtr: [*]const f32,
     paletteEpoch: u32,
 ) void {
-    if (paletteLen < 256 * 4) return;
+    if (paletteLen < 256) return;
 
     var palette: [256]renderer.RGBA = undefined;
     var index: usize = 0;
