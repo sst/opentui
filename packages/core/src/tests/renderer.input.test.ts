@@ -1745,6 +1745,22 @@ test("CSI 997 does not set theme mode directly and triggers an OSC refresh query
   renderer.destroy()
 })
 
+test("CSI 997 does not query theme colors again while a refresh is already pending", async () => {
+  const { renderer, queryThemeColorsCalls, clock } = await createThemeQueryRenderer()
+
+  renderer.stdin.emit("data", Buffer.from("\x1b[?997;1n"))
+  advanceClock(clock)
+
+  expect(queryThemeColorsCalls.count).toBe(1)
+
+  renderer.stdin.emit("data", Buffer.from("\x1b[?997;2n"))
+  advanceClock(clock)
+
+  expect(queryThemeColorsCalls.count).toBe(1)
+
+  renderer.destroy()
+})
+
 test("conflicting CSI 997 before initial OSC replies does not override the OSC-derived mode", () => {
   const themeModes: string[] = []
   currentRenderer.on("theme_mode", (mode) => {
