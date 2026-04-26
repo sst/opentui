@@ -346,6 +346,29 @@ test "queryTerminalSend - sends DCS wrapped queries when in tmux" {
     try testing.expect(!term.theme_queries_pending);
 }
 
+test "queryTerminalSend - sends plain and wrapped theme queries when TMUX is set" {
+    if (builtin.os.tag == .windows) return error.SkipZigTest;
+
+    var env = std.process.EnvMap.init(testing.allocator);
+    defer env.deinit();
+    try env.put("TMUX", "/tmp/tmux-1000/default,12345,0");
+    try env.put("TERM", "screen-256color");
+
+    var term = Terminal.init(.{ .env_map = &env });
+    var writer = TestWriter.init(testing.allocator);
+    defer writer.deinit();
+
+    try term.queryTerminalSend(&writer);
+
+    const output = writer.getWritten();
+
+    try testing.expect(term.in_tmux);
+    try testing.expect(std.mem.indexOf(u8, output, ansi.ANSI.oscThemeQueries) != null);
+    try testing.expect(std.mem.indexOf(u8, output, ansi.ANSI.oscThemeQueriesTmux) != null);
+    try testing.expect(std.mem.indexOf(u8, output, "\x1b[?996n") == null);
+    try testing.expect(!term.theme_queries_pending);
+}
+
 test "sendPendingQueries - sends wrapped queries after tmux detected via xtversion" {
     var term = Terminal.init(.{});
     term.in_tmux = false;

@@ -364,10 +364,10 @@ pub fn queryThemeColors(self: *Terminal, tty: anytype) !void {
     // We only use the ?997 notification as a refresh trigger. The actual theme
     // mode is derived from the returned OSC 10/11 fg/bg colors, so callers
     // should query those colors directly instead of sending CSI ?996n.
+    try tty.writeAll(ansi.ANSI.oscThemeQueries);
+
     if (is_tmux) {
         try tty.writeAll(ansi.ANSI.oscThemeQueriesTmux);
-    } else {
-        try tty.writeAll(ansi.ANSI.oscThemeQueries);
     }
 }
 
