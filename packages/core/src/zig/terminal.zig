@@ -347,6 +347,7 @@ pub fn enableDetectedFeatures(self: *Terminal, tty: anytype, use_kitty_keyboard:
 
     const is_tmux = self.in_tmux or self.isXtversionTmux();
 
+    // queryTerminalSend already enabled mode 2031 during normal startup.
     if (!self.state.color_scheme_updates) {
         try self.setColorSchemeUpdates(tty, true);
     }
@@ -367,6 +368,9 @@ pub fn queryThemeColors(self: *Terminal, tty: anytype) !void {
     try tty.writeAll(ansi.ANSI.oscThemeQueries);
 
     if (is_tmux) {
+        // In tested tmux 3.5a/3.6a + Ghostty setups, plain OSC 10/11 replied
+        // and the wrapped form did not. Keep dual-send conservatively until we
+        // can prove wrapped OSC 10/11 is never needed elsewhere.
         try tty.writeAll(ansi.ANSI.oscThemeQueriesTmux);
     }
 }
