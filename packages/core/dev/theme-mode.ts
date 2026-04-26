@@ -1,5 +1,5 @@
 #!/usr/bin/env bun
-import { BoxRenderable, type CliRenderer, createCliRenderer, TextRenderable } from "../src/index.js"
+import { BoxRenderable, type CliRenderer, createCliRenderer, type KeyEvent, TextRenderable } from "../src/index.js"
 import { parseColor } from "../src/lib/RGBA.js"
 
 let renderer: CliRenderer | null = null
@@ -19,6 +19,47 @@ let waitForThemeModeResolvedMs: number | null = null
 let waitForThemeModeResolvedValue: string | null = null
 const updateThemeHistory: string[] = []
 
+function stringifySequence(sequence: string): string {
+  return JSON.stringify(sequence)
+}
+
+function classifyDebugSequence(sequence: string): string | null {
+  if (sequence === "\x1b[?997;1n" || sequence === "\x1b[?997;2n") {
+    return "csi-theme-notify"
+  }
+
+  if (sequence.startsWith("\x1bP")) {
+    if (sequence.includes("\x1b]10;") || sequence.includes("\x1b]11;")) {
+      return "dcs-theme-reply"
+    }
+    if (sequence.includes(">|tmux")) {
+      return "dcs-xtversion"
+    }
+    return "dcs"
+  }
+
+  if (sequence.startsWith("\x1b]")) {
+    if (sequence.includes("\x1b]10;") || sequence.includes("\x1b]11;")) {
+      return "osc-theme-reply"
+    }
+    return "osc"
+  }
+
+  if (/^\x1b\[[0-9;]+R$/.test(sequence)) {
+    return "cpr"
+  }
+
+  if (sequence.includes("$y")) {
+    return "decrqm"
+  }
+
+  if (sequence.startsWith("\x1b[") && sequence.endsWith("c")) {
+    return "device-attributes"
+  }
+
+  return null
+}
+
 function updateThemeDisplay() {
   if (!renderer || renderer.isDestroyed) return
   if (
@@ -35,6 +76,13 @@ function updateThemeDisplay() {
 
   const currentTheme = renderer.themeMode
   updateThemeHistory.push(`updateThemeDisplay ${updateThemeHistory.length + 1}: themeMode=${currentTheme ?? "null"}`)
+  console.log("[theme-mode-debug] updateThemeDisplay", {
+    themeMode: currentTheme,
+    themeModeEventCount,
+    timeToFirstDrawMs,
+    waitForThemeModeResolvedMs,
+    waitForThemeModeResolvedValue,
+  })
 
   eventCountText.content = `theme_mode events: ${themeModeEventCount}`
   firstDrawText.content =
@@ -87,10 +135,33 @@ ${updateThemeHistory.join("\n")}`
 
 async function main() {
   firstDrawStartedAt = performance.now()
+  console.log("[theme-mode-debug] starting", {
+    tmux: process.env.TMUX ?? null,
+    term: process.env.TERM ?? null,
+    termProgram: process.env.TERM_PROGRAM ?? null,
+    termProgramVersion: process.env.TERM_PROGRAM_VERSION ?? null,
+  })
 
   renderer = await createCliRenderer({
     exitOnCtrlC: true,
     targetFps: 30,
+    prependInputHandlers: [
+      (sequence) => {
+        const debugKind = classifyDebugSequence(sequence)
+        if (debugKind) {
+          console.log("[theme-mode-debug] input", {
+            kind: debugKind,
+            sequence: stringifySequence(sequence),
+          })
+        }
+        return false
+      },
+    ],
+  })
+
+  console.log("[theme-mode-debug] renderer created", {
+    initialThemeMode: renderer.themeMode,
+    consoleMode: renderer.consoleMode,
   })
 
   const mainContainer = new BoxRenderable(renderer, {
@@ -149,7 +220,7 @@ async function main() {
 
   helpText = new TextRenderable(renderer, {
     id: "help",
-    content: "Press Ctrl+C to exit. Try switching your terminal's light/dark theme to see updates.",
+    content: "Press ` to toggle the renderer console. Press Ctrl+C to exit. Try switching your terminal's light/dark theme to see updates.",
     fg: parseColor("#888888"),
   })
 
@@ -162,16 +233,37 @@ async function main() {
   mainContainer.add(historyText)
   mainContainer.add(helpText)
 
+  renderer.keyInput.on("keypress", (key: KeyEvent) => {
+    if (key.name === "`" || key.name === '"') {
+      console.log("[theme-mode-debug] toggling console", {
+        key: key.name,
+        ctrl: key.ctrl,
+        meta: key.meta,
+        shift: key.shift,
+      })
+      renderer?.console.toggle()
+    }
+  })
+
   // Listen for theme mode changes from the terminal
   renderer.on("theme_mode", () => {
     themeModeEventCount++
+    console.log("[theme-mode-debug] theme_mode event", {
+      count: themeModeEventCount,
+      themeMode: renderer?.themeMode ?? null,
+    })
     updateThemeDisplay()
   })
 
   waitForThemeModeStartedAt = performance.now()
+  console.log("[theme-mode-debug] waiting for theme mode")
   const resolvedThemeMode = await renderer.waitForThemeMode()
   waitForThemeModeResolvedMs = performance.now() - waitForThemeModeStartedAt
   waitForThemeModeResolvedValue = resolvedThemeMode
+  console.log("[theme-mode-debug] waitForThemeMode resolved", {
+    resolvedThemeMode,
+    waitForThemeModeResolvedMs,
+  })
 
   updateThemeDisplay()
 
@@ -181,6 +273,7 @@ async function main() {
     }
 
     timeToFirstDrawMs = performance.now() - firstDrawStartedAt
+    console.log("[theme-mode-debug] first draw", { timeToFirstDrawMs })
     renderer.removeFrameCallback(handleFirstDraw)
     updateThemeDisplay()
   }
