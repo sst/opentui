@@ -220,7 +220,8 @@ async function main() {
 
   helpText = new TextRenderable(renderer, {
     id: "help",
-    content: "Press ` to toggle the renderer console. Press Ctrl+C to exit. Try switching your terminal's light/dark theme to see updates.",
+    content:
+      "Press ` to toggle the renderer console. Press Ctrl+C to exit. Try switching your terminal's light/dark theme to see updates.",
     fg: parseColor("#888888"),
   })
 
