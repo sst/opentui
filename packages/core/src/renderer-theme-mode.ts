@@ -160,6 +160,10 @@ export class RendererThemeMode {
   }
 
   private requestThemeOscColors(): void {
+    if (this.themeRefreshTimeoutId !== null) {
+      return
+    }
+
     this.themeQueryPending = true
     this.themeOscForeground = null
     this.themeOscBackground = null
